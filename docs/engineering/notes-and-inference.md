@@ -988,8 +988,8 @@ anyone alone.
 - **Not while paused.** Like everything that reaches the AI, catching up and asking are refused while notes are
   paused (`409 conflict`), and nothing is sent to NEAR AI. They need a live call that has had notes on
   (`409 conflict` otherwise).
-- **Not broadcast, not kept.** Nothing about catching up goes into the call's state or nudges anyone else's
-  browser. Questions, answers and catch-ups aren't stored anywhere, and no operation receipt is kept, unless
+- **Not broadcast, not kept.** Nothing about catching up goes into the call's state or tells anyone else's
+  browser to read the call again. Questions, answers and catch-ups aren't stored anywhere, and no operation receipt is kept, unless
   the person asking keeps an answer in [their own notes](#your-own-notes). Catching up and
   asking are limited like asking about notes, 20 a minute, counted per connection to the call.
 
@@ -1016,8 +1016,8 @@ notes**.
   `401 unauthenticated` for none). They go with the call's note, so they start when notes first come on, and they
   carry on while notes are paused or off: they're your own words, nothing goes to the AI, and a mark made then says
   nothing was captured. Someone with only the link has no account to keep anything under and doesn't get the note, so
-  they're refused (`403 forbidden`) and the app doesn't offer it. Nothing goes into the call's state or nudges
-  anyone's browser. Once the call has ended the same notes are read by the note (`409 conflict` here).
+  they're refused (`403 forbidden`) and the app doesn't offer it. Nothing goes into the call's state or tells
+  anyone's browser to read the call again. Once the call has ended the same notes are read by the note (`409 conflict` here).
 - **Bookmarks** are pointers, never copies: a line by its ID (line IDs stay the same from the live transcript into the
   note), a shared screen by its frame, or a moment. "Mark this" (**B**, the dock, **More** on a phone, or **Mark this**
   in Yours) keeps when it was pressed, where that falls in the recording, and the breakout room if any, and opens at the
@@ -1933,8 +1933,8 @@ note, and the notes standing without it when it can't be written) is covered by 
 
 `apps/api/src/features/calls/liveNotes.integration.test.ts` covers a call's shared live notes: two people watching and one run, everyone
 reading the same notes; watchers racing across two API instances; the 30-second limit from both sides of it, nothing
-asked with nothing new or nobody watching, and what was said meanwhile taken up at the next look; the room nudged and told
-when they're being written, a refresh that failed saying so and being tried again with the notes as they were, and replies
+asked with nothing new or nobody watching, and what was said meanwhile taken up at the next look; the room told to read
+the call again, and told when they're being written, a refresh that failed saying so and being tried again with the notes as they were, and replies
 that aren't what was asked for counting as failed; nobody charged, and the notes at the end charged as ever; Catch up and
 Ask unchanged; a guest's notes written from what they may read alone, in what reaches the notes model too, read-only, and
 not showing what's ticked in everyone's; guests who can't read the same lines shared one run, and one who can't read
@@ -1946,7 +1946,7 @@ join and someone removed getting nothing; each breakout room's notes kept to the
 the organizer visiting getting notes of its own, the main room's talk during rooms for the people who stayed and left out
 once rooms have closed, even with nothing new said, a ticked follow-up worded from that talk no longer shown or told to
 the model, there or when a long call pushed it off the list, and still reaching the note, a room paused on its own, and a
-record bound to its part of the call; a tick shared and nudging the room, kept through a refresh that rewords it, taken back, and made while the notes
+record bound to its part of the call; a tick shared and the room told to read the call again, kept through a refresh that rewords it, taken back, and made while the notes
 were being written; a ticked item the model stops listing kept, with its ID if it returns, and one nobody ticked let go of;
 the notes model's word taken for which follow-up is which, in short items and other languages, with the labels in the
 prompt and never the IDs; an ID it wasn't told being something new, one it used twice staying with the first, and what's

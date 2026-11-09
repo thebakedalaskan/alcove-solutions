@@ -232,14 +232,22 @@ started now don't go on the calendar: share the link. Everyone invited gets the 
 ## 5. Join
 
 Pre-join (`/join/<code>`) shows your camera and a mic level, mic and camera switches, the title, and what the call
-captures and who gets the notes. Under the preview you pick a microphone (its level moves as you speak), camera
-and speaker (where the browser allows choosing one; otherwise it says calls play through your system's speaker),
-and **Test microphone** records three seconds and plays them back, without uploading or keeping anything. Alcove
-remembers the choices in this browser and says when one isn't plugged in. When the browser or the computer blocks
-the microphone or camera, or there's none, the picker says so ("Microphone blocked", "No camera") and a note under
-it says how to allow it in this browser, with **Try again**; you can still join, with them off, and turn them on
-later. Allowing them in the browser's settings is noticed by itself. In the call, the arrow beside the microphone
-and camera buttons switches devices without leaving the call or interrupting the notes.
+captures and who gets the notes. Under the preview sit a calm picker each for the microphone, camera and speaker,
+each showing the device in use (the microphone's with its level moving as you speak), then **Background**. A picker
+opens a menu in the call's own style, not the browser's list: the devices with a tick on the one in use, each by its
+full name (the one that follows the system says so). The microphone's menu has **Test your microphone**, which
+listens for three seconds (a bar fills, the seconds count down) and plays them back through the speaker you chose,
+without uploading or keeping anything, and **Noise reduction**. The speaker's has **Play a test sound**; where the
+browser can't choose a speaker, its picker says calls play through your system's speaker, and the sound plays there.
+Picking applies at once and the menu stays open; Escape or a click away closes it, and focus goes back to the
+picker. Alcove remembers the choices in this browser. When one it remembered isn't available, or a device goes, a
+short line under that device's picker says so ("The microphone you chose before isn’t available.") until you pick
+one. **Background** opens its window, with a big live preview of you beside the choices (6.29). When the browser or
+the computer blocks the microphone or camera, or there's none, the picker says so ("Microphone blocked", "No camera")
+and a panel under the pickers says how to allow it in this browser, with **Try again**; you can still join, with them
+off, and turn them on later. Allowing them in the browser's settings is noticed by itself. In the call, the arrows
+beside the microphone and camera buttons open the same menus, and switch devices without leaving the call or
+interrupting the notes.
 
 Everyone sees what the call captures before they join and while they wait: whether notes are on, paused or off,
 the recording, transcript, AI notes and shared screens each with its state, that the notes are written in
@@ -256,8 +264,9 @@ the same for everyone. Someone newly invited and a guest with the link see nothi
   pencil; Enter or clicking away saves, Escape puts it back) and turn notes on or off, and a change that can't be
   saved says so and goes back. Once it's live both are read-only. On a team, a call started just now shows arches of
   people on Alcove, free first and busy dimmed, with **Add** for anyone else; pressing one picks them (anyone the call
-  was started with comes picked), the button says **Join and ring 2**, and **Copy link** sits under it. With nobody
-  picked it says **Join**. On your own, your link comes first with **Copy**, then **Join**. A scheduled call shows the
+  was started with comes picked), and the button says **Join and ring 2**. With nobody picked it says **Join**.
+  **Copy link** sits quietly under the button, on a team or on your own; there's no link box, since the address the
+  organizer is on is the call's link too. A scheduled call shows the
   time and who is invited, without the arches. **Home** out of a call started just now cancels it; reloading doesn't.
   Once its link has been copied here it stays, since someone may be on their way: it's reachable by that link, and
   shows on Home once someone is in it.
@@ -304,70 +313,85 @@ time, slides in on the right.
   opens what's captured: each kind of capture and its state, who changed it and when, who gets the notes, and the
   organizer's **Pause notes**, **Resume notes** and **Turn off** (or **Turn on notes**) and **Notes written by** (the AI model that writes this call's notes), or
   anyone else's **Ask for notes**; and the shield, whose hover says what confidential compute covers (verified only when the
-  server's hardware check is bound to this browser's request). On the right, what's only yours: **View** (Your view, below);
-  **Board** (**O**), which opens the board picker under it, and **Workspace** (**W**, with a count of what's been brought to
-  this call), which opens the workspace, each on your stage just for you (Presenting, below); **Notes** and **Chat** (**C**,
-  with a count of what's new), which open your side; **Attention**, with the hands, open questions and host-only waiting count; and who is here, the faces and the count (and, for whoever hosts, how
+  server's hardware check is bound to this browser's request). On the right, what's only yours: **Board** (**O**), which
+  opens the board picker under it, and **Workspace** (**W**, with a count of what's been brought to this call), which
+  opens the workspace, each on your stage just for you (Presenting, below); **Notes** and **Chat** (**C**,
+  with a count of what's new), which open your side; and who is here, the faces and the count (and, for whoever hosts, how
   many are asking to join), which open People. Each is lit while what it opens is open, and pressing it again puts it away:
   on Board and Workspace that's **Close**, which asks first while you present it. When two things are on your stage and
   there isn't room for both, they take turns, with a switcher in the top bar. On a phone (narrower than 600 px) the top bar
-  is the title, the notes sign, compact Attention counts, Chat (with its count) and the faces.
-- **Dock.** Microphone (**M**) and camera (**V**), each with an arrow for its menu: which microphone, which
-  speaker, **Play test sound** and **Noise reduction**; your camera's preview, which camera and, where the
-  browser can do it, **Background**: **Off**, **Blur** with **Mild** or **Strong** strength, the solid colors **Slate**, **Sand**
-  and **Rose**, Alcove's pictures (**Balloons**, **Beach**, **Office**), or up to six of your own (**Add image**; JPEG, PNG or
-  WebP up to 20 MB, kept sealed in this browser, and a guest has none). Each custom picture has **Replace** and **Remove**;
-  a failed replacement leaves the old picture. The same choice is on the pre-join screen, so you pick it before anyone sees you.
-  Choosing while the camera is off leaves it off. Removing the picture you're using shows strong blur
-  instead. A microphone or camera that can't work has a caution mark, and
+  is the title, the notes sign, Chat (with its count) and the faces.
+- **Dock.** Microphone (**M**) and camera (**V**), each with an arrow for its menu, the pre-join pickers' own menus:
+  which microphone (its level beside it), which speaker and **Play a test sound**, and **Noise reduction** (no **Test
+  your microphone** here: in the call your microphone is live, heard by everyone and by the notes); your camera's
+  preview, which camera, and **Background**, which says what's behind you now and opens Background's window over the
+  call, closing the menu first. The window has a big live preview of you on the
+  left, with what's behind you named on it, and on the right **Blur** (**Off**, **Light**, **Strong**), **Pictures**
+  (Alcove's **Balloons**, **Beach** and **Office**), **Colours** (**Slate**, **Sand**, **Rose**) and **Yours**: up to six of
+  your own (**Add**; kept sealed in this browser; a guest has none, and Yours says to sign in). Each of your own has
+  **Replace** and **Remove**; a failed replacement leaves the old picture, and a picture that's refused says why under
+  Yours (JPEG, PNG or WebP, up to 20 MB, six at most). Picking applies at once; **Done** or Escape closes it, and on a
+  phone it's a sheet, the preview on top. The same window opens from the pre-join's **Background**, so you pick it
+  before anyone sees you. Choosing while the camera is off leaves it off. Removing the picture you're using shows
+  strong blur instead. A microphone or camera that can't work has a caution mark, and
   pressing it opens its menu, which says why and how to fix it. Unplugging a device moves to another one,
   muted or not as before, and says which; a device that comes back is used again. Nothing turns your
   microphone or camera on by itself during a call. Then **Share** (Presenting and Sharing, below; it says **Presenting**
   while you present), **Raise your hand**, **More** and **Leave**, and, in focus, **Show everything**. **More** is the same
-  on every screen: **Turn on captions** (or **Turn off captions**), **Mark this moment** (Only you, **B**), **Catch up on
-  what you missed**, **Breakout rooms** (the organizer's, once someone else is in the call), then **Audio and video
-  settings**, **Sounds and notifications**, **Video quality**, **Move to another device** and **Keyboard shortcuts**, which lists the call's keys, then
-  what works on a tile, on a shared screen and on a board you present. On a phone the dock is microphone, camera,
-  **Share**, **More** and **Leave**, and **More** starts with a grid of **Board**, **Workspace**, **Notes**, **Chat** (with
-  its count) and **People**, then **Raise your hand**
-  and **Your view**; the devices are under Audio and video settings. **Video quality** sets the most video you send (360p, 720p or HD 1080p,
-  where your camera has it) and how you see everyone else's cameras: **Auto** (as sharp as each tile on your
-  screen), **Data saver**, or **No cameras**, which stays said at the top of the call with **Show cameras**. Both
-  are remembered in this browser, and shared screens are never made smaller.
+  on every screen, what you do in a call first: **Turn on captions** (or **Turn off captions**), **Mark this moment**,
+  **Catch up on what you missed** and **Breakout rooms** (the organizer's, once someone else is in the call); then, under a
+  hairline, **Open floating call** (Keep the call in view, below), **Reset layout** (only once you've changed the layout:
+  Your view, below), **Move to another device** and **Settings**. On a phone the dock is microphone, camera, **Share**,
+  **More** and **Leave**, and **More** starts with a grid of **Board**, **Workspace**, **Notes**, **Chat** (with its count)
+  and **People**, then **Raise your hand**; the devices are in Settings.
+- **Settings**, from **More**, is one window, its parts as tabs down its left (on a phone, a sheet with the parts in a
+  strip along its top), and closes with its **×** or **Esc**. **Audio and video** has the dock's two menus in one place:
+  which microphone, with its level, which speaker, **Play a test sound** and **Noise reduction**, then your camera's
+  preview, which camera, and its **Background**. **Video quality** sets the most video you send (360p, 720p or HD
+  1080p, where your camera has it) and how you see everyone else's cameras: **Auto** (as sharp as each tile on your
+  screen), **Data saver**, or **No cameras**, which stays said at the top of the call with **Show cameras**. Both are
+  remembered in this browser, and shared screens are never made smaller. **Sounds** and **Notifications** are the same
+  choices of cues and browser alerts as Settings has (11.20), guests included. **Call** is there for whoever hosts, and
+  changes the call for everyone in it: **Lock the call** (nobody new can ask to join, and anyone who leaves can't come
+  back), and, for the organizer alone, **Pointing at shared screens** (anyone here can point and mark, unless whoever
+  shares says only they can). Someone hosting while the organizer is away has Lock the call; anyone else has no Call.
 - **Your side.** One panel at a time, on the right, at a fixed width: it slides in and the stage makes room. In a window
   too narrow for both (under 864 px), it slides in over the stage instead, which keeps its width and dims behind it, and a
   press on the stage puts it away; the top bar and the dock work as ever. **Notes**,
-  **Chat**, **Attention** and the faces (People) open it from the top right; **Your notes** opens there beside a board you present, and
+  **Chat** and the faces (People) open it from the top right; **Your notes** opens there beside a board you present, and
   **Breakout rooms** (in People or **More**) opens the rooms there. A panel's button is lit while it's open, and pressing it
   again, its **×**, or **Esc** (once no menu is open, you're not in focus, and nobody you pinned is here) puts it away. On a
   phone a panel is a sheet over the call. A reload finds your side as it was, and a call you've just joined opens Notes
   beside the stage on a wide screen while notes are on. Nothing on your side changes anyone else's screen.
-- **Your view.** **View**, at the top right, says "Only your screen changes.": **The people** (**Auto**, **Speaker** or
-  **Grid**); **Beside what's shared**, where the people sit while something is open: **Tiles**, a column on the right that
-  narrows with the stage, **Arches**, a row over what's open, which a narrow stage gets anyway, or **Hidden** (**⇧P**),
-  standing small on the horizon beside the dock, where whoever's talking or has a hand up rises, with a line saying so;
-  **See yourself** (**In the grid**, **In a corner** or **Hidden**); and **Reset my view**, which puts it all back. A small
-  toolbar over the people beside what's open folds them to arches and back, or hides them. On a phone, **Your view** is in
-  **More**, without Beside what's shared, as what's open fills the screen under a row of arches there. Drag a tile to
-  reorder, drag its corner to make it bigger. A tile's **⋯** menu says what each choice changes and the key for it: **Pin
-  for me** (up to six people, who share the main stage), **Move earlier** and **Move later**, **Make bigger** (Only you),
-  and **Spotlight for everyone** (Everyone; organizer only). On your own tile it also has where you see yourself: **In the
-  grid**, **In a corner** (drag it, or Shift and an arrow, to another corner) or **Hidden** (a small chip in the corner
-  brings you back; everyone else still sees you). On anyone else's it has **Volume for you** (Only you): a slider from muted
-  to 100% and a quick mute, for that person's voice in your speakers only; the same control is in their row in People, and
-  someone you've turned down shows "40% for you" on their tile and in People. Nobody else hears a difference, and nothing
-  they say goes into the notes any differently. A pin or a spotlight shows on the tile with an ×, a spotlight also as a bar
-  with **Stop spotlight**. From the keyboard, Tab to the stage, move between tiles with the arrow keys, and use **Enter**
-  for the menu, **P** to pin, **Shift** with an arrow to move and **+** or **−** to resize; on a presented thing's tile,
+- **Your view.** There are no layouts to choose: the stage lays itself out, everyone in a grid, and someone doing most
+  of the talking on the main stage over a strip of everyone else until you arrange anything yourself. Drag a tile to
+  move it, and pull its corner to make it bigger; once you do, the stage is a grid again and stays as you left it.
+  Beside what's open the people stand in a column of tiles on the right that narrows with the stage, or a row of
+  arches over it on a narrow stage and on a phone; **⇧P** hides them, standing small on the horizon beside the dock,
+  where whoever's talking or has a hand up rises, with a line saying so, and brings them back. Once you've changed the
+  layout (moved, sized or pinned someone, or hidden the people), **Reset layout** in **More** puts it back, with
+  **Undo**; where you see yourself stays as it is. Only your screen changes. A tile's **⋯** menu is short, with no key
+  hints. On your own tile: **Set a status** (journey 6.34), **Pin for me** (up to six people, who share the main
+  stage), **See yourself**: **Grid**, **Corner** (drag it, or Shift and an arrow, to another corner) or **Hidden** (a
+  small chip in the corner brings you back; everyone else still sees you), and for whoever hosts **Spotlight for
+  everyone**. On anyone else's: **Pin for me**, **Message Kofi privately**, **Nudge Kofi** (journey 6.16) and **Volume
+  for you**: a slider from muted to 100% and a quick mute, for that person's voice in your speakers only; the same
+  control is in their row in People, and someone you've turned down shows "40% for you" on their tile and in People.
+  Nobody else hears a difference, and nothing they say goes into the notes any differently. For whoever hosts it also
+  has **Spotlight for everyone**, **Lower hand** while their hand is up, **Mute for everyone** while their microphone
+  is on, and **Remove from the call**. A pin or a spotlight shows on the tile with an ×, a spotlight also as a bar
+  with **Stop spotlight**. From the keyboard, Tab to the stage, move between tiles with the arrow keys, and use
+  **Enter** for the menu and **P** to pin; on a presented thing's tile,
   **Enter** or **P** puts it on your stage, with the keys on its frame. Closing what's on your stage leaves the keys on its
   tile while someone still presents it, or else on what opens it again (**Board**, **Workspace**, or **Share** for your
   own screen), never nowhere. What's open on your stage comes before the people in Tab's order. The keys stay put as
   **Unfollow** turns into **Follow Priya** and back, go to your side as what it shows changes from inside it, to the next
-  step's first choice inside Share, and back to **More** as **Keyboard shortcuts** closes; on a phone, your side's sheet
-  keeps them while it's up. On a share on your stage, **L** points at it, and **Escape** stops pointing;
+  step's first choice inside Share, and back to **More** as **Settings** closes; on a phone, your side's sheet keeps them
+  while it's up. On a share on your stage, **L** points at it, and **Escape** stops pointing;
   then **Escape** unpins everyone. Someone pinned who leaves is pinned again if they come back, and nothing you arranged
-  moves when people talk, join, leave or turn their camera off. Alcove remembers how you like calls (how you see the people,
-  and where you see yourself) for your account in this browser; how you arranged this call lasts until you leave it.
+  moves when people talk, join, leave or turn their camera off. Alcove remembers how you like calls (whether the people
+  beside what's open are hidden, and where you see yourself) for your account in this browser; how you arranged this call
+  lasts until you leave it.
 - **Presenting.** What you have open, or what someone presents, sits on your stage in one frame, with the people beside
   it. Its bar has whoever presents it (their face, or what kind of thing it is while nobody does), its name, which opens a
   menu of what you can do with it, and a line: "Open just for you", "You’re presenting · 3 following" or "Priya is
@@ -463,9 +487,9 @@ time, slides in on the right.
   picture shows none, as they're about the live one, and freezing stops your pointing; a share in its own window shows
   them, and you point in the call. Your own share shows what others point at too. Its name has **Others can point at it**
   (on unless you turn it off; you always can) and **Clear marks** while there are any; changing what you share clears
-  them too. The organizer can turn pointing off for everyone in People. Pointers and marks go from browser to browser,
-  encrypted end to end, and stay in your room; they're never recorded or read for the notes, and nobody's computer is
-  ever controlled from the call.
+  them too. The organizer can turn pointing off for everyone, in **Settings › Call**. Pointers and marks go from browser to
+  browser, encrypted end to end, and stay in your room; they're never recorded or read for the notes, and nobody's
+  computer is ever controlled from the call.
 - **Captions** are off until you turn them on (**More › Turn on captions**; they have no key, as **C** is Chat), and
   turning them off only hides them: while notes are on the call is still transcribed. Captions show the newest line, in
   the language you pick on the captions themselves (translated in confidential compute, for you alone), with the
@@ -496,19 +520,57 @@ time, slides in on the right.
   chosen. Each answer says which calls it comes from, and opens them in a new tab. Only you see it, and nothing of it
   is kept. It waits while notes are paused, and a guest, or someone with no notes from the series, doesn't have it.
 - **Transcript** (the whole call so far, with who's talking at the end) and **Ask** are the Notes panel's other tabs.
-  **Chat** (**C**) has a panel to itself, encrypted end to end. **People**, from the faces: who is here, with raised
-  hands, pins and spotlight, who is asking to join, who is ringing and how they answered, and who is invited and not
-  here (the organizer can ring anyone in the last two); for the organizer, **Breakout rooms**, which opens the rooms on
-  their side.
-- **Private messages (journey 6.30).** Choose someone in **Chat audience**, or **Message privately** on their tile. The composer always says **Only you and [name]**. Each person and room chat keep separate drafts. Private replies have times, unread counts and sending, sent, delivered or failed states; **Retry privately** keeps the original recipient and message. A departed recipient or different room makes that conversation unavailable. Only the original pair can read it, including admitted guests. Private messages never enter the shared chat, recording, transcript, AI notes or shared exports, and history ends with the call. Unread indicators and optional sound do not open over shared work or take focus; notifications show no private preview.
-- **Chat threads (journey 6.31).** Reply opens one discussion under its original message. Replying to a reply keeps that thread and shows the specific context. Counts and unread replies stay on the original; Open new replies moves to the first unread message. Back to chat restores your position and its own draft. Every room, private audience and thread retains its separate draft. Only the original audience can read or reply; unavailable originals show a placeholder, with only the replies you can already read. Failed replies stay in that thread for deliberate retry. Sounds → Replies and Show reply alerts control new-reply cues for authors and people who have participated, without notifying the entire room or revealing private previews. Seeing a message while the call is visible and focused updates its read receipt.
+  **Chat** (**C**) has a panel to itself, encrypted end to end, with its conversations as tabs: **Everyone**, **Questions**
+  and one per private conversation. **People**, from the faces, opens with **Find someone**,
+  which narrows every list in it by name: who is asking to join (first, for whoever hosts), who is here (hands raised
+  first, in the order they went up, with each person's status, pins and spotlight), who is ringing and how they answered,
+  and who is invited and not here (the organizer can ring anyone in the last two); for the organizer, **Breakout rooms**,
+  which opens the rooms on their side. Each row in the call has **Message privately** and **⋯** (a nudge, how loud they
+  are for you, and whoever hosts' controls), and **Copy link** sits at its foot. Locking the call and pointing at shared
+  screens are in the call's settings, not in the list.
+- **Chat, like Slack.** Messages sit on the panel without boxes; a run from one person within five minutes sits under
+  one arch, name and time, and the others' times show in the margin as you point at them. Point at a message (or reach it
+  with the keyboard) for a small bar over its top right corner: three quick reactions, the rest from the smiley, **Reply in
+  thread** and, on someone else's, **Message privately**. On a phone, its **⋯** or pressing and holding it opens the same
+  as a sheet, with all eight reactions. A message that mentions you is highlighted until you've seen it; **Open mention**
+  goes to the first. Sending and failed states stay with the message, and **Retry** sends it again in its own conversation.
+  In a breakout room, **Everyone** is the people in that room, and a line says where the conversation moved.
+- **Private messages (journey 6.30).** Each private conversation is a tab of its own, with a lock and a dot when something
+  new arrives. Start one with **+** beside the tabs (find someone in the call), **Message privately** on their tile, the lock
+  on their row in **People**, or the lock on a message of theirs. It opens with **Only you and [name] can read this.**, and
+  Send says **Send only to [name]**. Each conversation and each thread keeps its own draft. Private messages have times,
+  reactions, unread counts and sending, sent, delivered or failed states; **Retry privately** keeps the original recipient
+  and message. A departed recipient or different room makes that conversation unavailable (its tab stays, quieter, to read).
+  Only the original pair can read it, its reactions included, admitted guests too. Private messages never enter the shared
+  chat, recording, transcript, AI notes or shared exports, and history ends with the call. Unread indicators and optional
+  sound do not open over shared work or take focus; notifications show no private preview.
+- **Chat threads (journey 6.31).** **Reply in thread** opens one discussion in place of the conversation: **←**, **Thread**
+  and where it is (**In Everyone · 3 people**), the original on top, a line with how many replies, the replies, and a
+  composer that says **Reply…**. Under the original in the conversation, the thread's line shows who replied, **2 replies**
+  and **Last reply 14:29**, or how many are new; pressing it opens the thread at the first new reply. **Also send to
+  Everyone** sends a reply to the conversation as well, where it says what it answered and opens the thread. **←** restores
+  your place and its own draft. Every room, private conversation and thread keeps its separate draft. Only the original
+  audience can read or reply; unavailable originals show a placeholder, with only the replies you can already read. Failed
+  replies stay in that thread for deliberate retry. Sounds → Replies and Show reply alerts control new-reply cues for authors
+  and people who have participated, without notifying the entire room or revealing private previews. Seeing a message while
+  the call is visible and focused updates its read receipt.
 - **Browser notifications (journey 6.33).** Explicitly enable browser alerts, choose their categories and turn them off independently from sounds and local reply alerts. In a background tab, fresh authorized private messages, relevant replies/mentions and pending call actions can show generic alerts. Click back to the exact original conversation/action after access is checked; handled actions and ended sessions explain their unavailability. Blocked or unsupported browsers retain the same unread counts and pending actions in Alcove.
 
-- **Reacting to chat.** Hover a message (or tab to it) to show **Add reaction**; it opens a picker of eight emoji
+- **Reacting to chat.** The bar over a message has thumbs up, heart and laughing at once, and the smiley opens all eight
   (thumbs up, thumbs down, heart, smile, laughing, surprised, sad, celebrate). Each emoji someone used sits under
-  the message with how many, and yours is marked. Press one to add yours, or press yours again to take it back. Its
-  tooltip names who reacted, and after about 40 characters says how many more ("Aiko, Maya, Kofi +2"). You can react
-  once your own message has gone out. If a reaction doesn't send, it's taken back and a toast says so.
+  the message as a pill with how many, yours outlined. Press one to add yours, or press yours again to take it back; **+**
+  at the end adds another. Its tooltip names who reacted, and after about 40 characters says how many more ("Aiko, Maya,
+  Kofi +2"). You can react once your own message has gone out, in private conversations too, where only the two of you
+  see them. If a reaction doesn't send, it's taken back and a toast says so.
+- **Questions (journey 6.15).** **Questions** in Chat holds the room's questions, separate from chat and from the private AI
+  **Ask** under Notes; its tab says how many are open. Type in **Ask a question** and press Send; switch on **Ask
+  anonymously** first and the question says **Anonymous** to everyone, whoever hosts included, and only you see **You,
+  anonymously** and **Take back your question**. Each question shows its votes in a column: press it to vote, again to take
+  your vote back; one identity has one vote. **Most votes** or **Newest** sets the order; votes arriving while you read don't
+  move anything, and **Reorder** applies the current ranking. Whoever hosts can **Pin question** (it leads the list),
+  **Mark question answered** or **Dismiss question**; answered and dismissed questions leave the open count and the list,
+  and **Show answered** brings them back, marked. Whoever asked can take a question back, and it goes for everyone.
+  Questions belong to the room they were asked in, and stay with that audience when rooms close.
 - **Mentioning someone in chat (journey 6.32).** Type **@** and search the people who can read this room or, in a private conversation, its original two participants. Their address, or a guest's
   identity, distinguishes people with the same name. Use the arrow keys and **Enter**, or press their row, to select them.
   Selected people appear beside the composer and stay highlighted in the sent message; changing the tagged words removes
@@ -521,7 +583,8 @@ time, slides in on the right.
   in People. A ring that isn't answered never says they're offline: Alcove can't know.
 - **Someone asking to join.** A card drops in for the organizer with **Not now** and **Let in**, and stays until it's
   answered. On your own, while nobody else is here, **Just you so far** keeps the link to hand: at the bottom left of the
-  stage, or, while the workspace is open, at the foot of its list, under Trash, where it covers none of it.
+  stage, or, while the workspace is open, at the foot of its list, under Trash, where it covers none of it. Its **×** closes
+  it for the rest of the call, through a reload, and nothing takes its place: the link is at the foot of People.
 - **Catching up**, for you alone, and not saved unless you keep an answer. **Catch up on what you missed**, in **More**,
   opens **Ask** in Notes on what you most likely
   missed: your time away if you just came back, what was said before you came if you joined late, or the last
@@ -591,86 +654,89 @@ Calls are for groups: invited people join with their accounts, anyone else with 
 organizer lets them in, and video, audio and chat are encrypted end to end between the people in the call
 ([Calls and recordings › Group calls](../engineering/calls-and-recordings.md#group-calls)).
 
-### Shared attention (journeys 6.14–6.17)
+### Hands, questions, nudges and status (journeys 6.14 to 6.17, 6.34 and 6.35)
 
-**Attention** stays reachable beside a shared screen, document or board, while the people are hidden, and in focus.
-Its hands and open-question counts are for the room you are in. A host also sees the current count waiting to join.
-On a phone the same control opens a sheet. Opening it changes only your own view and never starts presenting anything.
-Requests already outstanding appear after joining or reconnecting without replaying their sounds. New requests update
-counts and a polite screen-reader announcement without moving focus.
+A raised hand, a nudge and a status are about one person, so they live on that person: on their tile, and on their row in
+People. Opening People changes only your own view and never starts presenting anything. Requests already outstanding appear
+after joining or reconnecting without replaying their sounds, and a polite screen-reader announcement says how many hands
+are up, and for whoever hosts how many are waiting, without moving focus.
 
-14. **Take turns with the hand queue.** Hands lists people in server order. **Raise your hand** and **Lower yours**
-    change only your own hand after confirmation. The current host can **Lower** one request or **Lower all**.
-    Each raise has its own identity, so an old lower cannot remove a newer raise. The queue remains visible after a
-    reconnect or moving to another device. Existing room-help indicators remain on the host's room overview.
-15. **Ask, vote and resolve shared questions.** Q&A is for questions to everyone in this room, separate from Chat and
-    the private AI **Ask** tab under Notes. Type a question, then **Post question**. It shows its author, text and votes;
-    **Vote** switches to **Voted**, and pressing it again removes your vote. One identity has one vote. **Most votes**,
-    **Newest** and **Refresh order** apply a new order deliberately; arriving votes leave the reading order in place.
-    The host can **Pin question**, **Mark question answered** or **Dismiss question**. Resolved questions leave the open
-    count and lose their pin; **Show resolved questions** reveals their answered or dismissed state. Questions remain
-    with their original room audience when rooms close. Another room's questions never become main-room questions.
-16. **Signal quietly, then clear it.** Signals offers **Can’t hear you**, **Slow down**, **Yes**, **No** and **Need a break**.
-    One active signal appears beside your tile. Press the same choice to clear it; it also expires after a moment or clears
-    when you leave or change rooms. The current host and presenter can see counts by kind for their room. Signals are visual.
-17. **Let someone in from Attention.** The host's **Waiting** tab shows the same current requests and **Let in** / turn-away
-    controls as People. A withdrawn, resolved or expired request disappears. A stale press never claims that someone joined.
+14. **Raise your hand, and take turns.** **Raise your hand** in the dock (in **More** on a phone) shows your hand on your
+    tile and puts you first in People, after anyone who raised theirs before you; **Lower your hand** takes it down. Whoever
+    hosts lowers someone's hand from their **⋯** (**Lower hand**), on their tile or in People, once they've had their turn.
+    Each raise has its own identity, so an old lower can't take down a newer raise, and a hand stays up through a reload or
+    a move to another device. In a breakout room, it asks the organizer for help.
+15. **Ask, vote and resolve questions** in Chat's **Questions** tab (above, under Chat), by name or anonymously. Another
+    room's questions never become main-room questions.
+16. **Nudge someone quietly.** Someone's **⋯** has **Nudge Kofi**, a step in the same menu headed "Only Kofi sees it":
+    **You’re muted**, **Can’t hear you**, **Slow down a little** or **A bit louder**. Only they see it, as a quiet toast on
+    their side ("Kofi can’t hear you"); **You’re muted** offers **Unmute** while they are. Nobody else is told, whoever hosts
+    included. The same nudge from several people within a minute is one note that says how many ("3 people can’t hear
+    you"), and the same again from you meanwhile changes nothing. You're told "Kofi got your nudge: Can’t hear you". Only
+    someone in your part of the call can be nudged.
+    If you talk with your microphone muted, the top of the call says "You’re talking on mute", with **Unmute**, from how
+    loud your microphone is here alone: nothing of it leaves your device.
+17. **Let someone in from People.** Someone asking to join gets a card on the stage, and the faces at the top right count
+    them for whoever hosts; People opens with them first, with **×** and **Let in**. A withdrawn, resolved or expired request
+    disappears, and a stale press never claims that someone joined.
+34. **Set your status.** Your own tile's **⋯** opens **Set a status**: **Be right back**, **Listening only** or **On my
+    phone**, and **Back in** 2, 5 or 10 minutes. Everyone in the call sees it at the top left of your tile with the time
+    you're back ("Be right back · 14:37"), and on your row in People; Be right back dims your tile, and a line along its foot
+    counts the time down. It goes when its time runs out, when you talk, or with **I’m back** in the same menu, and stays
+    through a reload.
+35. **Find someone, and write to them.** **Find someone**, at the top of People, narrows every list in it by name; **Message
+    privately** on someone's row opens Chat with only you and them.
 
 **Sounds.** Successful microphone on/off transitions and fresh joins, departures, hands, questions and host admissions
-have short speaker cues. Room changes and reconnection synchronize without playing history. **More → Sounds and notifications → Sounds** includes **Play sounds**, **Quiet mode**, volume, individual categories and a preview, also for guests.
+have short speaker cues. Room changes and reconnection synchronize without playing history. **More → Settings → Sounds** includes **Play sounds**, **Quiet mode**, volume, individual categories and a preview, also for guests.
 Settings has the same account preferences. Quiet mode retains microphone confirmations and host admission cues; browser
 notification permission is independent. Sound uses your selected speaker and never enters the outgoing call or notes.
-If playback is blocked, Attention and its counts still work.
+If playback is blocked, hands, People and their counts still work.
 
-### Presenter timers (journeys 6.26–6.28)
+### The call's timer (journeys 6.26–6.28)
 
-26. **Prepare reusable timing.** Before joining a call you organize, **Prepare timer presets** opens your private
-    library. Name a preset and add ordered segments with a name, duration and optional presenter. Quick durations
-    include 15 minutes; custom durations are entered in seconds. Duplicate, remove or move a segment with its named
-    controls. The planned total updates as you edit. **Save preset** keeps definitions only. Edit/rename, duplicate
-    and delete are explicit; deleting a preset keeps copies already loaded into calls.
-27. **Run the sequence.** **Timer** opens the call’s timer panel. The current host can **Build sequence**, or open
-    **Your presets** and **Use copy**, then **Save timer plan**. **Start timer** begins the first turn. Current and next
-    segments, the presenter and total planned time remain readable. **Pause**, **Resume**, **Restart segment**,
-    **Add 1 min**, **Skip** and **Next segment** change the shared timer. At zero it says time is up and counts over
-    time; the host explicitly moves on or finishes the sequence. Editing upcoming slots preserves the current turn.
-    Changes to this call stay here; **Replace with this plan** asks before updating a saved preset.
-28. **Follow the timer in your own view.** Every admitted participant, including a guest, sees the same countdown.
-    The compact timer reopens details while a screen, workspace or board is in use, in focus and in the floating call.
-    A named presenter receives an explicit warning at 30 seconds and at zero, using words and an icon as well as colour.
-    **Sound when time is up** is off initially and changes only this browser’s cue; it respects call sound and quiet
-    settings. The visual timer stays visible with sound off. Joining late, reconnecting or backgrounding the tab keeps
-    the existing clock; whoever is authorized to host now can continue controlling it.
+26. **Start a timer for everyone.** Whoever hosts has **Timer** in the top bar (its icon alone on a phone). It opens
+    **Timer for everyone**: the length, big, then **1 min**, **3 min**, **5 min**, **10 min** and **15 min**, a minute less
+    or more, and **Start**. Once it starts, the button is the countdown, the same second for everyone in the call.
+27. **Pause it, add a minute or stop it.** The countdown opens the same popover, with **Pause** (then **Resume**),
+    **+1 min** and **Stop**. In its last 30 seconds it turns the caution colour with a warning sign. At zero a soft chime
+    plays and it counts up, over time (`+0:12`), until the host adds a minute (counted from then) or stops it. **Stop**
+    brings **Timer** back for another.
+28. **Follow the timer.** Everyone let in, guests too, sees the countdown in the top bar, over the stage in focus and in the
+    floating call. Pressing it opens the same popover, which says only the host can change it. Joining late, reconnecting
+    or a tab in the background shows the same second; the chime follows **Sounds › Timers**. Whoever hosts now, a stand-in
+    too, controls it.
 
-**6.29 Choose what others see behind you.** Before joining, open **Background** and preview blur, a solid color or a picture.
-During the call, the arrow beside the camera has the same choices. The preview and outgoing video use the same local effect;
+**6.29 Choose what others see behind you.** Before joining, **Background** opens its window: a big live preview of you, and
+blur, a picture or a colour beside it, applied as you pick. During the call, **Background** in the camera's menu opens the same
+window. The preview and outgoing video use the same local effect;
 switching a camera or turning it off/on keeps the choice, remembered on this browser/device. A lower processing quality is
-announced and explained in the picker when the device is busy; the chosen background stays on and quality recovers when it can.
+announced and explained under the preview when the device is busy; the chosen background stays on and quality recovers when it can.
 A browser without effects explains that and offers **Choose Off**. A background that cannot load, is no longer kept here or
 stops processing turns the camera off and says so: choose another background, or **Off**, then deliberately turn the camera on.
 
 ### Floating call
 
-**6.22 Keep the call in view.** On a supported desktop browser, **Open floating call** in **View** opens a small,
+**6.22 Keep the call in view.** On a supported desktop browser, **Open floating call** in **More** opens a small,
 movable and resizable window over other apps. It shows the speaker or a selected live shared screen, with the same
 microphone, camera and raised-hand state as the meeting. Its controls act on this call. Closing the window keeps you
 in the call; **Return to call** brings the meeting forward. **Leave** asks only the current host to confirm; other
 participants leave immediately. Both save the last recording pieces before departing, and a failure keeps the call open
 with an explanation and Leave available to retry.
 
-Hands, open Q&A, people asking to enter (for the host), and new chat have compact indicators that return to their matching Attention tab or Chat in the full meeting. The compact and full meeting controls share one confirmed action owner and the same speaker cues.
+Hands, open Q&A, people asking to enter (for the host), and new chat have compact indicators that return to the full meeting: hands and people asking to enter open People, and Q&A and chat open Chat. The compact and full meeting controls share one confirmed action owner and the same speaker cues.
 The window shows no personal notes or message text. Its Chat count includes unread mentions; opening Chat returns to
 the full call, where **Open mention** finds the exact message and reading it clears its mention attention.
 
 On a supported secure site, the call floats automatically when you switch tabs, subject to the browser's permission.
 There is no separate Alcove preference; the browser controls this choice and may show its permission question.
 An already-allowed live microphone can stay muted. The call never requests camera, microphone or screen access just to
-enable automatic opening. **View** retains **Open floating call** when manual opening is needed. Minimizing Chrome and
+enable automatic opening. **More** keeps **Open floating call** for when manual opening is needed. Minimizing Chrome and
 switching tabs are different browser behaviors; an already-open floating window can remain over other apps.
 Unsupported browsers keep the normal call controls.
 
-When this browser can’t float a call, View keeps the unavailable action with an explanation linked to it for assistive
-technology. If the browser refuses an opening, View stays open with permission guidance and the manual action available
+When this browser can’t float a call, More keeps the unavailable action with an explanation linked to it for assistive
+technology. If the browser refuses an opening, More stays open with permission guidance and the manual action available
 to try again. Nothing retries by itself, and the call keeps running in this tab.
 
 See [Floating call](../engineering/floating-call.md) for browser capabilities and verification coverage.
@@ -678,7 +744,7 @@ See [Floating call](../engineering/floating-call.md) for browser capabilities an
 ### The call's workspace
 
 1. **Workspace**, at the top right, or **W**, opens the workspace on your stage, just for you: nobody else's screen changes,
-   and the people sit beside it as View says. **Open**, at the top of Notes, opens it on the call's notes. The count on the
+   and the people sit beside it. **Open**, at the top of Notes, opens it on the call's notes. The count on the
    button is what's been brought to this call. Every call has a home, where its notes and transcript go: the workspace it
    was scheduled with, as a continuation, or the one its series has; else, the first time anyone opens it, a new one made
    for the call, named after it and the day (**Launch check-in · 5 Nov**), with the organizer and everyone invited in it. At
@@ -703,7 +769,7 @@ See [Floating call](../engineering/floating-call.md) for browser capabilities an
      closing either leaves the other.
    - **Focus** (**⌘⇧F**, or "Fill your window with it" on the frame's bar): the bars slide off, everyone drops to
      arches on the horizon, and your microphone, camera, **Show everything** and Leave stay. You still see who's talking and
-     who has a hand up, and Attention’s counts stay at the top right. **Show everything**, **⌘⇧F** or **Esc** brings it all back as it was, with the caret where you left it.
+     who has a hand up, and the faces at the top right still count anyone asking to join. **Show everything**, **⌘⇧F** or **Esc** brings it all back as it was, with the caret where you left it.
    - **Working together:** with the workspace open, hovering someone's tile offers **Follow** if they're in it (an arch has it in
      its menu, and People has it beside where each person is); the tile says **Following**, and shows a pen while they write.
      On a phone, tapping someone's arch opens their card as a sheet: **Follow** (or **Stop following**), **Go to where
@@ -1389,7 +1455,7 @@ the page still works. Journey **11.23** shows Detailed → Short → Detailed wh
   again**. **Play test sound** plays through the chosen speaker; a browser that can't choose one says it uses the
   system's. The camera is a list only, never opened here, and until the browser has allowed a camera on the join
   screen it says it isn't allowed yet; **Reduce background noise**. They're kept in this browser only.
-- **Notifications**: choose **Enable browser notifications** in Settings or **More → Sounds and notifications → Browser alerts** in a call. Only that action asks browser permission. The row explains whether the browser allows, blocks or cannot show alerts, with guidance and persistent unread/action indicators in Alcove. A global switch and separate private-message, room reply/mention, hand, question, host admission and timer switches control call alerts. Existing call reminders, notes ready/shared/requested, document mentions and due follow-ups use the same preferences. Guests keep their explicit choices in this browser.
+- **Notifications**: choose **Enable browser notifications** in Settings or **More → Settings → Notifications** in a call. Only that action asks browser permission. The row explains whether the browser allows, blocks or cannot show alerts, with guidance and persistent unread/action indicators in Alcove. A global switch and separate private-message, room reply/mention, hand, question, host admission and timer switches control call alerts. Existing call reminders, notes ready/shared/requested, document mentions and due follow-ups use the same preferences. Guests keep their explicit choices in this browser.
   Alerts arrive while Alcove stays open in a background tab/window; there is no delivery service after every tab closes. They always hide names, messages and call/workspace details, including on lock screens. Browser alerts are silent; sound preferences remain independent. **Show reply alerts** controls local on-screen replies separately from browser permission.
   The relevant focused conversation/action suppresses a redundant alert. Events deduplicate across tabs and reconnects, bursts share one alert per category, and handling/reading/withdrawing an event closes or replaces its alert where supported. Enabling a category or joining a thread does not replay old messages. Clicking focuses an existing tab, preferring the original call connection, checks current access, then opens the exact conversation, thread, pending action or timer. An ended private session or handled action says it is no longer available. Sign-out, removal and revoked permission stop delivery and close the applicable alerts. Other-device preference changes arrive through background refresh.
 - **Appearance**: system, light or dark, each shown as a small evening in its own colours, kept in this browser.
@@ -1427,7 +1493,7 @@ Signing in again starts a new, empty account with 10,000 credits.
 
 ### 11.20 Choose call sounds
 
-Open **Settings → Sounds** for master sound, volume, quiet mode and separate microphone, people, hands, questions, admissions, board timer and incoming call switches. Preview each phrase at your chosen volume. These controls work even when browser notifications are blocked. **More → Sounds and notifications → Sounds** in a call offers the same choices, including for guests. Quiet mode keeps your microphone confirmations and requests to join when you host. Signed-in choices follow your account; guests keep theirs in this browser.
+Open **Settings → Sounds** for master sound, volume, quiet mode and separate microphone, people, hands, questions, admissions, board timer and incoming call switches. Preview each phrase at your chosen volume. These controls work even when browser notifications are blocked. **More → Settings → Sounds** in a call offers the same choices, including for guests. Quiet mode keeps your microphone confirmations and requests to join when you host. Signed-in choices follow your account; guests keep theirs in this browser.
 
 ## 12. The Drive and the workspace
 

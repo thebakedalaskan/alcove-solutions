@@ -1,9 +1,11 @@
 /*
  * Before the call (user-flows 5): the organizer's lobby, and the page everyone else waits on. The camera preview is the
- * browser's made-up camera; the microphone's level is its murmur. Stories that ask to join play the click, and the call
- * answers as its script says: let in, or not.
+ * browser's made-up camera; the microphone's level is its murmur. Under the preview, a picker for each device opens its
+ * menu (the device stories open them), and Background opens its window (Calls/Camera effects). Stories that ask to join
+ * play the click, and the call answers as its script says: let in, or not.
  */
 import type { Meta } from '@storybook/react-vite';
+import { screen } from 'storybook/test';
 import { at } from '../../src/api/script';
 import { atTheDoor, phone } from '../../src/call';
 import { page, pages, type PageArgs } from '../../src/page';
@@ -21,7 +23,38 @@ export const StartedNowPhone = phone(StartedNow);
 export const Scheduled = atTheDoor({ scenario: 'call-soon', call: REVIEW });
 export const ScheduledPhone = phone(Scheduled);
 
-/** On your own, the link comes first: send it, and let people in as they ask. */
+/** The microphone's picker opens its menu: each microphone, a tick and the level on the one in use, Test your microphone, and noise reduction. */
+export const MicrophoneMenu = atTheDoor({ scenario: 'call-soon', call: REVIEW }, {
+  play: async ({ canvas, userEvent, step }) => {
+    await step('Open the microphone’s picker', async () => {
+      await userEvent.click(await canvas.findByRole('button', { name: /^Microphone:/ }, { timeout: 10_000 }));
+    });
+  }
+});
+export const MicrophoneMenuPhone = phone(MicrophoneMenu);
+
+/** Test your microphone, in its menu: it listens for three seconds, the bar filling, then plays them back. Nothing is kept. */
+export const TestingYourMicrophone = atTheDoor({ scenario: 'call-soon', call: REVIEW }, {
+  play: async ({ canvas, userEvent, step }) => {
+    await step('Open the microphone’s picker', async () => {
+      await userEvent.click(await canvas.findByRole('button', { name: /^Microphone:/ }, { timeout: 10_000 }));
+    });
+    await step('Test your microphone. Say something, and it plays back here', async () => {
+      await userEvent.click(await screen.findByRole('button', { name: 'Test your microphone' }, { timeout: 8000 }));
+    });
+  }
+});
+
+/** The speaker's picker: each speaker, and Play a test sound through the one chosen. */
+export const SpeakerMenu = atTheDoor({ scenario: 'call-soon', call: REVIEW }, {
+  play: async ({ canvas, userEvent, step }) => {
+    await step('Open the speaker’s picker', async () => {
+      await userEvent.click(await canvas.findByRole('button', { name: /^Speaker:/ }, { timeout: 10_000 }));
+    });
+  }
+});
+
+/** On your own: Copy link, quietly under Join, for anyone you'd ask in. The address you're on is the call's link too. */
 export const OnYourOwn = atTheDoor({ scenario: 'on-their-own', call: { id: 'm-solo', title: 'Art’s call', startsAt: iso(0, 16, 12), minutes: 30, code: 'art-solo-now', guests: [], instant: true } });
 
 /** You left the roadmap planning to Priya: she hosts until you're back, and joining makes you the host again. */

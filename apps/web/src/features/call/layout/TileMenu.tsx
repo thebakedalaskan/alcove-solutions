@@ -1,101 +1,144 @@
 /*
- * A tile's ⋯ menu: everything you can do to your view with the mouse, with the key that does it from a focused tile.
- * Every choice changes only your view, except the organizer's spotlight, which says Everyone. Each row has an id: what a menu
- * offers can change while it's open (someone joins you on the board, a board opens), and for a moment after its rows move a
- * press does nothing, so it never lands on a row that moved under it.
+ * A person's ⋯ menu, on their tile and in People: what you can do about them, kept short. On your own: your status, Pin for me,
+ * where you see yourself, and for whoever hosts, Spotlight for everyone. On someone else's: Pin for me, a private message, a
+ * nudge only they see, how loud they are for you, and for whoever hosts, spotlighting, lowering their hand, muting them and
+ * taking them out of the call. Each row has an id: what a menu offers can change while it's open (someone joins you on the
+ * board, a status takes its place), and for a moment after its rows move a press does nothing, so it never lands on a row that
+ * moved under it.
  */
-import type { Person, SelfView } from '@alcove/api';
-import { Avatar, Icon, Kbd, Popover, Scope, VolumeControl, cn, useSettledPress, type IconName } from '@alcove/ui';
-import type { ReactNode } from 'react';
+import type { CallNudgeKind, CallStatus, CallStatusKind, CallStatusMinutes, Person, SelfView } from '@alcove/api';
+import { Avatar, CallMenuChips, Icon, Popover, VolumeControl, cn, useSettledPress, type IconName } from '@alcove/ui';
+import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
 import { callName } from '~/lib/people';
+import { NUDGES, NUDGE_KINDS } from './nudges';
+import { STATUS, STATUS_KINDS, STATUS_MINUTES, statusMinutes } from './status';
 
-/** What a person's menu offers. A choice left out isn't offered on this tile. */
+/** What a person's menu offers. A choice left out isn't offered there. */
 export interface PersonMenu {
   privateMessage?: (() => void) | undefined;
   pinned?: { on: boolean; toggle: () => void } | undefined;
-  spotlight?: { on: boolean; toggle: () => void } | undefined;
-  earlier?: (() => void) | null | undefined;
-  later?: (() => void) | null | undefined;
-  size?: { big: boolean; toggle: () => void } | undefined;
+  /** Your own: your status, and changing it (null clears it; `minutes` sets when it goes, and none keeps a time already set). */
+  status?: { now: CallStatus | null; set: (kind: CallStatusKind | null, minutes?: CallStatusMinutes | undefined) => void } | undefined;
   /** Your own tile: where you see yourself. */
   self?: { where: SelfView; set: (w: SelfView) => void } | undefined;
-  /** Someone else's tile: how loud they are for you (your playback only), where the browser can set it. */
+  /** Someone else in your room: a nudge only they see. */
+  nudge?: ((kind: CallNudgeKind) => void) | undefined;
+  /** Someone else's: how loud they are for you (your playback only), where the browser can set it. */
   volume?: { level: number; set: (level: number) => void; toggle: () => void } | undefined;
   /** Someone in the workspace with you: going where they go. An arch has no room for the button a tile has. */
   following?: { on: boolean; toggle: () => void } | undefined;
   /** Someone on the board with you: going once to where they're looking, or keeping with them until you stop. */
   board?: { goTo: () => void; follow: { on: boolean; toggle: () => void } } | undefined;
+  /** Whoever hosts: everyone's main stage. */
+  spotlight?: { on: boolean; toggle: () => void } | undefined;
+  /** Whoever hosts, on someone else: lower their raised hand, mute them for everyone while their microphone is on, take them out of the call. */
+  host?: { lowerHand: (() => void) | null; mute: (() => void) | null; remove: () => void } | undefined;
 }
 
-const SELF: { where: SelfView; icon: IconName; label: string }[] = [
-  { where: 'grid', icon: 'grid', label: 'In the grid' },
-  { where: 'corner', icon: 'pip', label: 'In a corner' },
-  { where: 'hidden', icon: 'eyeOff', label: 'Hidden' }
+const SELF: { where: SelfView; label: string }[] = [
+  { where: 'grid', label: 'Grid' },
+  { where: 'corner', label: 'Corner' },
+  { where: 'hidden', label: 'Hidden' }
 ];
 
-function Item({ icon, label, kb, keys, onPick, disabled = false, end }: {
-  icon: IconName; label: string; kb?: string | undefined; keys?: string | undefined; onPick: () => void; disabled?: boolean; end?: ReactNode;
-}) {
-  return (
-    <button type="button" className="mi" disabled={disabled} aria-keyshortcuts={keys} onClick={onPick}>
-      <Icon name={icon} size={17} /><span className="t">{label}</span>{end}{kb && <Kbd>{kb}</Kbd>}
-    </button>
-  );
+function Item({ icon, label, onPick, end, disabled = false }: { icon: IconName; label: string; onPick: () => void; end?: ReactNode; disabled?: boolean }) {
+  return <button type="button" className="mi" disabled={disabled} onClick={onPick}><Icon name={icon} size={17} /><span className="t">{label}</span>{end}</button>;
 }
 
-export function TileMenu({ who, me, open, onOpenChange, organizer, menu }: {
-  who: Person; me: boolean; open: boolean; onOpenChange: (o: boolean) => void; organizer: boolean; menu: PersonMenu;
+export function TileMenu({ who, me, open, onOpenChange, menu, row = false }: {
+  who: Person; me: boolean; open: boolean; onOpenChange: (o: boolean) => void; menu: PersonMenu;
+  /** In People: the row's ⋯, a tab stop with a tooltip, rather than the tile's, which the tile's keys open. */
+  row?: boolean;
 }) {
-  const name = `${who.name}${me ? ' (you)' : ''}`;
-  const { pinned, spotlight, earlier, later, size, self, volume, following, board } = menu;
-  const moves = earlier !== undefined || later !== undefined;
+  const name = callName(who);
+  const label = `Options for ${who.name}${me ? ' (you)' : ''}`;
+  const { pinned, status, self, nudge, volume, following, board, spotlight, host } = menu;
+  /** The menu, or its nudge step: "Only Kofi sees it". */
+  const [step, setStep] = useState<'menu' | 'nudge'>('menu');
+  const body = useRef<HTMLDivElement>(null);
+  const moved = useRef(false);
   const press = useSettledPress([
-    ...(board ? ['go-to', 'follow-on-board'] : []), ...(following ? ['follow'] : []), ...(pinned ? ['pin'] : []), ...(moves ? ['earlier', 'later'] : []),
-    ...(size ? ['size'] : []), ...(self ? [...SELF.map((s) => `self-${s.where}`), ...(self.where === 'hidden' ? ['self-hint'] : [])] : []),
-    ...(volume ? ['volume'] : []), ...(menu.privateMessage ? ['private-message'] : []), ...(organizer && spotlight ? ['spotlight'] : [])
+    step, ...(status ? ['status'] : []), ...(pinned ? ['pin'] : []), ...(self ? ['self'] : []),
+    ...(menu.privateMessage ? ['private-message'] : []), ...(nudge ? ['nudge'] : []), ...(volume ? ['volume'] : []), ...(board ? ['go-to', 'follow-on-board'] : []),
+    ...(following ? ['follow'] : []), ...(spotlight ? ['spotlight'] : []), ...(host ? ['host', ...(host.lowerHand ? ['lower'] : []), ...(host.mute ? ['mute'] : [])] : [])
   ].join('\n'), open);
   const pick = (f: () => void) => press(() => { onOpenChange(false); f(); });
-  return (
-    <Popover open={open} onOpenChange={onOpenChange} side="bottom" align="end" label={`Options for ${name}`} className="ic-menu ic-tmenu"
-      anchor={<button type="button" tabIndex={-1} className={cn('ic-more', open && 'is-on')} aria-label={`Options for ${name}`} aria-haspopup="menu"><Icon name="more" size={16} /></button>}>
-      <div className="mh"><Avatar person={who} size={22} /><b>{name}</b></div>
-      <p className="scope">Only your view changes</p>
-      {menu.privateMessage && <Item key="private-message" icon="lock" label={`Message ${callName(who)} privately`} onPick={pick(menu.privateMessage)} />}
-      {board && (
-        <>
-          <Item key="go-to" icon="locate" label={`Go to ${callName(who)}`} onPick={pick(board.goTo)} />
-          <Item key="follow-on-board" icon="eye" label={board.follow.on ? `Stop following ${callName(who)}` : `Follow ${callName(who)}`} onPick={pick(board.follow.toggle)} />
-          <div className="ic-msep" />
-        </>
-      )}
-      {following && <Item key="follow" icon="navigate" label={following.on ? 'Stop following' : `Follow ${callName(who)}`} onPick={pick(following.toggle)} />}
-      {pinned && <Item key="pin" icon={pinned.on ? 'pinOff' : 'pin'} label={pinned.on ? 'Unpin for me' : 'Pin for me'} kb="P" keys="P" onPick={pick(pinned.toggle)} />}
-      {moves && (
-        <>
-          <Item key="earlier" icon="left" label="Move earlier" kb="⇧←" keys="Shift+ArrowLeft" disabled={!earlier} onPick={pick(() => earlier?.())} />
-          <Item key="later" icon="right" label="Move later" kb="⇧→" keys="Shift+ArrowRight" disabled={!later} onPick={pick(() => later?.())} />
-        </>
-      )}
-      {size && <Item key="size" icon={size.big ? 'shrink' : 'grow'} label={size.big ? 'Make smaller' : 'Make bigger'} kb={size.big ? '−' : '+'} keys={size.big ? '-' : '+'} onPick={pick(size.toggle)} />}
+  const stay = (f: () => void) => press(f);
+  const go = (to: 'menu' | 'nudge') => { moved.current = true; setStep(to); };
+  // Each step starts on its first choice, as the menu does when it opens; going back lands on Nudge again.
+  useEffect(() => {
+    if (!moved.current) return;
+    moved.current = false;
+    body.current?.querySelector<HTMLElement>(step === 'nudge' ? '.mi' : '[data-row="nudge"]')?.focus();
+  }, [step]);
+  // However it closes (Escape, a press away, a choice, whoever opened it), it opens again on the menu, not a step into it.
+  useEffect(() => { if (!open) { moved.current = false; setStep('menu'); } }, [open]);
+  const timed = statusMinutes(status?.now ?? null);
+  /** The menu's parts, each only where it has something, with a hairline between them. */
+  const groups: { key: string; node: ReactNode }[] = [];
+  if (status) groups.push({ key: 'status', node: (
+    <div role="group" aria-label="Set a status">
+      {/* I'm back sits in the heading, so having a status moves no row under a press. */}
+      <div className="ic-mhead"><span className="ac-eyebrow">Set a status</span>{status.now && <button type="button" onClick={pick(() => status.set(null))}>I’m back</button>}</div>
+      {STATUS_KINDS.map((k) => (
+        <button key={k} type="button" className="mi" role="menuitemradio" aria-checked={status.now?.kind === k} onClick={stay(() => status.set(k))}>
+          <Icon name={STATUS[k].icon} size={17} /><span className="t">{STATUS[k].label}</span><Icon name="check" size={16} className="tick" />
+        </button>
+      ))}
+      <div className="ac-eyebrow">Back in</div>
+      <CallMenuChips label="Back in" options={STATUS_MINUTES.map((m) => ({ value: m, label: `${m} min` }))} chosen={timed}
+        onPick={(m) => pick(() => status.set(status.now?.kind ?? 'away', m))()} />
+    </div>
+  ) });
+  if (pinned || self || menu.privateMessage || nudge || volume) groups.push({ key: 'yours', node: (
+    <>
+      {pinned && <Item icon={pinned.on ? 'pinOff' : 'pin'} label={pinned.on ? 'Unpin for me' : 'Pin for me'} onPick={pick(pinned.toggle)} />}
       {self && (
-        <div className="ic-mgrp" role="group" aria-label="See yourself">
-          <div className="ac-eyebrow">See yourself</div>
-          {SELF.map((s) => (
-            <button key={`self-${s.where}`} type="button" className="mi" role="menuitemradio" aria-checked={self.where === s.where} onClick={pick(() => self.set(s.where))}>
-              <Icon name={s.icon} size={17} /><span className="t">{s.label}</span><Icon name="check" size={16} className="tick" />
-            </button>
-          ))}
-          {self.where === 'hidden' && <p className="hint">Everyone else still sees you.</p>}
-        </div>
-      )}
-      {volume && <><div className="ic-msep" /><VolumeControl name={callName(who)} level={volume.level} onChange={volume.set} onToggle={volume.toggle} /></>}
-      {(organizer && spotlight) ? (
         <>
-          <div className="ic-msep" />
-          <Item key="spotlight" icon="spotlight" label={spotlight.on ? 'Stop spotlight' : 'Spotlight for everyone'} onPick={pick(spotlight.toggle)} end={<Scope everyone>Everyone</Scope>} />
-          <p className="hint">Only the organizer can spotlight. You’re the organizer.</p>
+          <div className="ac-eyebrow">See yourself</div>
+          <CallMenuChips label="See yourself" options={SELF.map((x) => ({ value: x.where, label: x.label }))} chosen={self.where} onPick={(w) => pick(() => self.set(w))()} />
         </>
-      ) : !me && <p className="hint">Only the organizer can spotlight.</p>}
+      )}
+      {menu.privateMessage && <Item icon="lock" label={`Message ${name} privately`} onPick={pick(menu.privateMessage)} />}
+      {nudge && (
+        <button type="button" className="mi" data-row="nudge" aria-haspopup="menu" onClick={stay(() => go('nudge'))}>
+          <Icon name="nudge" size={17} /><span className="t">Nudge {name}</span><Icon name="chevron" size={15} className="end" />
+        </button>
+      )}
+      {volume && <VolumeControl name={name} level={volume.level} onChange={volume.set} onToggle={volume.toggle} />}
+    </>
+  ) });
+  if (board || following) groups.push({ key: 'find', node: (
+    <>
+      {board && <Item icon="locate" label={`Go to ${name}`} onPick={pick(board.goTo)} />}
+      {board && <Item icon="eye" label={board.follow.on ? `Stop following ${name}` : `Follow ${name}`} onPick={pick(board.follow.toggle)} />}
+      {following && <Item icon="navigate" label={following.on ? 'Stop following' : `Follow ${name}`} onPick={pick(following.toggle)} />}
+    </>
+  ) });
+  if (spotlight || host) groups.push({ key: 'host', node: (
+    <>
+      {spotlight && <Item icon="spotlight" label={spotlight.on ? 'Stop spotlight' : 'Spotlight for everyone'} onPick={pick(spotlight.toggle)} />}
+      {host?.lowerHand && <Item icon="hand" label="Lower hand" onPick={pick(host.lowerHand)} />}
+      {host?.mute && <Item icon="micOff" label="Mute for everyone" onPick={pick(host.mute)} />}
+      {host && <Item icon="leave" label="Remove from the call" onPick={pick(host.remove)} />}
+    </>
+  ) });
+  const anchor = row
+    ? <button type="button" className="ac-icon-btn ic-pmore" aria-label={label} title={label} aria-haspopup="menu"><Icon name="more" size={18} /></button>
+    : <button type="button" tabIndex={-1} className={cn('ic-more', open && 'is-on')} aria-label={label} aria-haspopup="menu"><Icon name="more" size={16} /></button>;
+  return (
+    <Popover open={open} onOpenChange={onOpenChange} side="bottom" align="end" label={label} className="ic-menu ic-tmenu" anchor={anchor}>
+      <div ref={body}>
+        {step === 'nudge' && nudge ? (
+          <>
+            <div className="ic-mstep">
+              <button type="button" className="b" aria-label="Back" onClick={() => go('menu')}><Icon name="chevronLeft" size={16} /></button>
+              <span>Only {name} sees it</span>
+            </div>
+            {NUDGE_KINDS.map((k) => <Item key={k} icon={NUDGES[k].icon} label={NUDGES[k].label} onPick={pick(() => nudge(k))} />)}
+          </>
+        ) : groups.map((g, i) => <Fragment key={g.key}>{i > 0 && <div className="ic-msep" />}{g.node}</Fragment>)}
+      </div>
     </Popover>
   );
 }
@@ -117,10 +160,9 @@ export function ThingMenu({ name, by, open, onOpenChange, go, onJoin, beside, so
     <Popover open={open} onOpenChange={onOpenChange} side="bottom" align="end" label={`Options for ${name}`} className="ic-menu ic-tmenu"
       anchor={<button type="button" tabIndex={-1} className={cn('ic-more', open && 'is-on')} aria-label={`Options for ${name}`} aria-haspopup="menu"><Icon name="more" size={16} /></button>}>
       <div className="mh"><Avatar person={by} size={22} /><b>{name}</b></div>
-      <p className="scope">Only your view changes</p>
-      <Item key="join" icon="grow" label={go === 'Open' ? 'Go back to it' : 'Show it'} kb="P" keys="P" onPick={pick(onJoin)} />
-      {beside && <Item key="beside" icon="panelRight" label="Show beside" onPick={pick(beside)} />}
-      {sound && <Item key="sound" icon={sound.muted ? 'speaker' : 'speakerOff'} label={sound.muted ? 'Play its sound for you' : 'Mute its sound for you'} onPick={pick(sound.toggle)} />}
+      <Item icon="grow" label={go === 'Open' ? 'Go back to it' : 'Show it'} onPick={pick(onJoin)} />
+      {beside && <Item icon="panelRight" label="Show beside" onPick={pick(beside)} />}
+      {sound && <Item icon={sound.muted ? 'speaker' : 'speakerOff'} label={sound.muted ? 'Play its sound for you' : 'Mute its sound for you'} onPick={pick(sound.toggle)} />}
     </Popover>
   );
 }

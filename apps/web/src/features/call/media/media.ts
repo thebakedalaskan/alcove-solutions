@@ -46,7 +46,7 @@ export interface MediaSnapshot {
   speakerId: string | null;
   /** Whether the browser lets Alcove use each, and what's wrong with one that isn't working. */
   access: Record<Capture, DeviceAccess>;
-  /** The latest changes nobody pressed a button for (a few at most): the last under the preview before the call, each as a toast in it. */
+  /** The latest changes nobody pressed a button for (a few at most): before the call, the last of each kind under its picker; in it, each as a toast. */
   changes: readonly DeviceChange[];
   /** The browser cleans up the microphone (noise suppression). */
   noiseReduction: boolean;
@@ -166,6 +166,11 @@ export class LocalMedia {
   private ctx: AudioContext | null = null;
   private analyser: AnalyserNode | null = null;
   private source: MediaStreamAudioSourceNode | null = null;
+  /**
+   * A copy of the microphone for the level meter alone, which stays on while the microphone is muted: it never leaves this
+   * browser, and it's how a muted microphone can still tell you you're talking on mute.
+   */
+  private heard: MediaStreamTrack | null = null;
   private buf: Float32Array<ArrayBuffer> = new Float32Array(new ArrayBuffer(4096));
   /**
    * What the person asked for last, and what a device that opens starts as. Before the call, a device that becomes
@@ -211,7 +216,7 @@ export class LocalMedia {
     for (const t of opened) t?.stop();
     return true;
   }
-  private changed(kind: DeviceChange['kind'], text: string): readonly DeviceChange[] { return [...this.snap.changes, { n: ++this.said, kind, text }].slice(-4); }
+  private changed(kind: DeviceChange['kind'], text: string, after: readonly DeviceChange[] = this.snap.changes): readonly DeviceChange[] { return [...after, { n: ++this.said, kind, text }].slice(-4); }
   private access(kind: Capture, a: Partial<DeviceAccess>): Record<Capture, DeviceAccess> {
     return { ...this.snap.access, [kind]: { ...this.snap.access[kind], ...a } };
   }
@@ -246,10 +251,12 @@ export class LocalMedia {
       this.listed = await enumerate().catch(() => []);
       const micId = deviceOf(this.audio);
       const camId = deviceOf(this.video);
-      // A remembered device that isn't available: the browser picked another, and the screen says which.
+      // A remembered device that isn't available: the browser picked another, which its picker shows, with this under it.
       const micSub = Boolean(prefs.mic && micId && prefs.mic !== micId);
       const camSub = Boolean(prefs.cam && camId && prefs.cam !== camId);
-      const missing = [micSub ? `microphone (now ${plainName(this.audio?.label ?? '') || 'the default'})` : '', camSub ? `camera (now ${plainName(this.video?.label ?? '') || 'the default'})` : ''].filter(Boolean);
+      let changes = this.snap.changes;
+      if (micSub) changes = this.changed('mic', 'The microphone you chose before isn’t available.', changes);
+      if (camSub) changes = this.changed('cam', 'The camera you chose before isn’t available.', changes);
       const problem = (kind: Capture, has: boolean, asked: boolean, err: unknown): DeviceProblem | null =>
         has ? null : perms[kind] === 'denied' ? 'blocked' : asked ? problemOf(err, perms[kind], got.quick) : null;
       this.set({
@@ -258,11 +265,11 @@ export class LocalMedia {
           mic: { permission: this.audio ? granted(perms.mic) : perms.mic, problem: problem('mic', Boolean(this.audio), 'audioError' in got, got.audioError) },
           cam: { permission: this.video ? granted(perms.cam) : perms.cam, problem: problem('cam', Boolean(this.video), 'videoError' in got, got.videoError) }
         },
-        ...(missing.length ? { changes: this.changed(micSub ? 'mic' : 'cam', `The ${missing.join(' and ')} you chose before isn’t available, so Alcove is using another.`) } : {})
+        ...(micSub || camSub ? { changes } : {})
       });
       mlog.info('devices started', {
         mic: Boolean(this.audio), cam: Boolean(this.video), micProblem: this.snap.access.mic.problem, camProblem: this.snap.access.cam.problem,
-        micPermission: perms.mic, camPermission: perms.cam, remembered: Boolean(prefs.mic || prefs.cam), substituted: missing.length
+        micPermission: perms.mic, camPermission: perms.cam, remembered: Boolean(prefs.mic || prefs.cam), substituted: Number(micSub) + Number(camSub)
       });
     });
   }
@@ -950,7 +957,14 @@ export class LocalMedia {
   }
   /** Microphone level, 0..1. */
   level(): number {
-    if (!this.analyser || !this.snap.mic) return 0;
+    return this.snap.mic ? this.loudness() : 0;
+  }
+  /** How loud the microphone is while it's muted, 0..1, for you alone: nothing of it goes anywhere. 0 while it's on. */
+  mutedLevel(): number {
+    return this.snap.mic || !this.audio ? 0 : this.loudness();
+  }
+  private loudness(): number {
+    if (!this.analyser) return 0;
     this.analyser.getFloatTimeDomainData(this.buf);
     let sum = 0;
     for (const v of this.buf) sum += v * v;
@@ -961,6 +975,8 @@ export class LocalMedia {
   private meter() {
     this.source?.disconnect();
     this.source = null;
+    this.heard?.stop();
+    this.heard = null;
     if (!this.audio) return;
     if (!this.ctx || !this.analyser) {
       this.ctx = new AudioContext();
@@ -968,7 +984,9 @@ export class LocalMedia {
       this.analyser.fftSize = 2048;
       this.buf = new Float32Array(new ArrayBuffer(this.analyser.fftSize * 4));
     }
-    this.source = this.ctx.createMediaStreamSource(new MediaStream([this.audio]));
+    this.heard = this.audio.clone();
+    this.heard.enabled = true;
+    this.source = this.ctx.createMediaStreamSource(new MediaStream([this.heard]));
     this.source.connect(this.analyser);
   }
   stop() {
@@ -982,9 +1000,10 @@ export class LocalMedia {
     if (this.soon) clearTimeout(this.soon);
     this.soon = null;
     for (const t of [this.audio, this.video]) { t?.removeEventListener('ended', this.onEnded); t?.stop(); }
+    this.heard?.stop();
     this.stopScreen();
     void this.ctx?.close();
-    this.audio = null; this.video = null; this.shown = null; this.analyser = null; this.ctx = null; this.source = null;
+    this.audio = null; this.video = null; this.shown = null; this.analyser = null; this.ctx = null; this.source = null; this.heard = null;
     this.dropBackdrop();
     this.set({ camera: null });
   }

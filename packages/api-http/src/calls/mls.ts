@@ -202,7 +202,7 @@ export type Applied = 'applied' | 'skipped' | 'refused' | 'removed' | 'behind';
 /** Chat from the log, read: who sent it as MLS vouches for it, or why it can't be read here. */
 export type Read =
   | { kind: 'direct-key'; from: string; announcement: DirectKeyAnnouncement }
-  | { kind: 'chat'; from: string; text: string; mentions: CallChatMention[]; thread: CallChatThread | null; at: number }
+  | { kind: 'chat'; from: string; text: string; mentions: CallChatMention[]; thread: CallChatThread | null; broadcast: boolean; at: number }
   | { kind: 'react'; from: string; target: string; reaction: CallReaction; on: boolean; at: number }
   | { kind: 'before' }
   | { kind: 'unreadable' };
@@ -390,7 +390,7 @@ export class MlsGroup {
         if ('text' in p.data) {
           const members = new Set(leaves(current ? st.ratchetTree : past?.ratchetTree ?? []).values());
           if (p.data.mentions.some((m) => !members.has(m.identity))) return { kind: 'unreadable' };
-          return { kind: 'chat', from, text: p.data.text, mentions: p.data.mentions, thread: p.data.thread, at: p.data.at };
+          return { kind: 'chat', from, text: p.data.text, mentions: p.data.mentions, thread: p.data.thread, broadcast: p.data.broadcast, at: p.data.at };
         }
         return { kind: 'react', from, ...p.data.react, at: p.data.at };
       } catch {

@@ -29,7 +29,7 @@ import type { HttpRuntime } from '../../http/runtime';
 
 export function registerCallRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
   const { d } = runtime;
-  const { cardLimiter, pickLimiter, carryLimiter, callLimiter, moveOpenLimiter, moveSecretChangeLimiter, moveCheckLimiter, moveSecretCheckLimiter, spaceLimiter, followUpsLimiter, followUpLimiter, askNotesLimiter, othersPointLimiter, ringLimiter, askSpaceLimiter, chatLimiter, rejoinLimiter, moveLimiter, voiceLimiter, speechLimiter, videoLimiter, shareLimiter, askLimiter, notesWatchLimiter, ideasWatchLimiter, momentLimiter, personalLimiter, captionLimiter } = runtime.limits;
+  const { cardLimiter, pickLimiter, carryLimiter, callLimiter, moveOpenLimiter, moveSecretChangeLimiter, moveCheckLimiter, moveSecretCheckLimiter, spaceLimiter, followUpsLimiter, followUpLimiter, askNotesLimiter, othersPointLimiter, nudgeLimiter, statusLimiter, ringLimiter, askSpaceLimiter, chatLimiter, rejoinLimiter, moveLimiter, voiceLimiter, speechLimiter, videoLimiter, shareLimiter, askLimiter, notesWatchLimiter, ideasWatchLimiter, momentLimiter, personalLimiter, captionLimiter } = runtime.limits;
   const { optionalOwner, signedIn } = runtime.context;
 
   /* LiveKit's webhooks: outside /v1 (no Origin, no session); trusted only by their signature. */
@@ -153,7 +153,7 @@ export function registerCallRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
   };
 
   /** What whoever hosts may do while standing in for the organizer: keep the call running, but not change its notes or rooms' plan. */
-  const HOST_ACTIONS: ReadonlySet<CallAction['type']> = new Set(['deny', 'mute', 'remove', 'lock', 'spotlight', 'rooms-close', 'unavailable', 'hand-lower', 'hands-clear', 'question-resolve', 'question-pin']);
+  const HOST_ACTIONS: ReadonlySet<CallAction['type']> = new Set(['deny', 'mute', 'remove', 'lock', 'spotlight', 'rooms-close', 'unavailable', 'hand-lower', 'question-resolve', 'question-pin']);
 
   app.get('/v1/live/calls/:id', async (c) => c.json(await callsService.state(c.get('viewer'), c.req.param('id'))));
 
@@ -205,6 +205,9 @@ export function registerCallRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
     // Each ask reaches the organizer, so nobody can keep asking.
     if (a.type === 'request-notes') askNotesLimiter(c.get('viewer').pass.person, 'request-notes');
     if (a.type === 'others-point') othersPointLimiter(c.get('viewer').pass.person, 'others-point');
+    // A nudge reaches the person nudged, and a status every browser in the call, so nobody can keep sending either.
+    if (a.type === 'nudge') nudgeLimiter(c.get('viewer').pass.person, 'nudge');
+    if (a.type === 'status') statusLimiter(c.get('viewer').pass.person, 'status');
     if (a.type === 'ring') ringLimiter(c.get('viewer').organizer.ownerId, 'ring');
     if (a.type === 'follow-up' || a.type === 'follow-up-add' || a.type === 'follow-up-edit' || a.type === 'follow-up-review') followUpLimiter(c.get('viewer').pass.person, 'follow-up');
     if (a.type === 'workspace-ask') askSpaceLimiter(c.get('viewer').pass.person, 'workspace-ask');

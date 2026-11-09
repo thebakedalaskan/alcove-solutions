@@ -91,6 +91,27 @@ describe('call conversation threads', () => {
     await host.leave();
   });
 
+  it('also sends a reply to everyone only when asked to, and only from inside a thread', async () => {
+    const { host, code } = await start();
+    const sam = await guest(host, code, 'Sam');
+    await host.sendChat('Original for a reply to everyone');
+    await until(() => sam.crypto.getSnapshot().chat.some((m) => m.text === 'Original for a reply to everyone' && !m.sending), 'original at the guest');
+    const original = sam.crypto.getSnapshot().chat.find((m) => m.text === 'Original for a reply to everyone');
+    if (!original) throw new Error('No original message');
+    await sam.sendChat('Also for everyone', [], { root: original.id, replyTo: original.id }, true);
+    await sam.sendChat('Only in the thread', [], { root: original.id, replyTo: original.id });
+    await until(() => host.crypto.getSnapshot().chat.filter((m) => m.thread?.root === original.id && !m.sending).length === 2, 'both replies at the host');
+    for (const c of [host, sam]) {
+      const chat = c.crypto.getSnapshot().chat;
+      expect(chat.find((m) => m.text === 'Also for everyone')).toMatchObject({ broadcast: true, thread: { root: original.id, replyTo: original.id } });
+      expect(chat.find((m) => m.text === 'Only in the thread')).toMatchObject({ broadcast: false, thread: { root: original.id, replyTo: original.id } });
+      expect(chat.find((m) => m.id === original.id)).toMatchObject({ broadcast: false, thread: null });
+    }
+    // Sending to everyone is a choice about a reply: a message that answers nothing can't make it.
+    await expect(sam.sendChat('Not a reply', [], null, true)).rejects.toMatchObject({ code: 'invalid' });
+    await host.leave();
+  });
+
   it('keeps a late arrival’s original unavailable while allowing replies they are now authorized to read', async () => {
     const { host, code } = await start();
     const sam = await guest(host, code, 'Sam');

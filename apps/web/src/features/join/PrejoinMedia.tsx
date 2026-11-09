@@ -1,6 +1,6 @@
 /*
  * The camera, microphone and device pickers before joining, the same for the organizer and everyone else: what starts
- * them, and the self-view with its two switches.
+ * them, the self-view with its two switches, and under it a picker for each device and Background.
  */
 import type { Person } from '@alcove/api';
 import { Avatar, CallDock, DockButton, cn } from '@alcove/ui';
@@ -42,7 +42,7 @@ export function usePrejoinMedia(go: boolean, muted: boolean) {
 }
 export type Prejoining = ReturnType<typeof usePrejoinMedia>;
 
-/** The self-view, its two switches and the device pickers. */
+/** The self-view, its two switches, the device pickers and Background. */
 export function PrejoinMain({ media: { media, m, levels, devices }, me, className }: { media: Prejoining; me: Person; className?: string | undefined }) {
   return (
     <div className={cn('pj-main', className)}>
@@ -54,7 +54,7 @@ export function PrejoinMain({ media: { media, m, levels, devices }, me, classNam
           <DockButton icon={m.cam ? 'video' : 'videoOff'} off={!m.cam} alert={!!m.access.cam.problem} label={m.cam ? 'Turn camera off' : 'Turn camera on'} onClick={() => void media.setCam(!m.cam)} />
         </CallDock>
       </div>
-      <PrejoinDevices media={media} m={m} devices={devices} />
+      <PrejoinDevices media={media} m={m} devices={devices} me={me} />
     </div>
   );
 }

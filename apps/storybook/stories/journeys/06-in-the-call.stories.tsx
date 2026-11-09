@@ -10,7 +10,7 @@
  */
 import type { Meta } from '@storybook/react-vite';
 import { screen, waitFor, within } from 'storybook/test';
-import { at, chats, knocks, presentsWorkspace, shares, stopsPresenting, type CallScript, type Present } from '../../src/api/script';
+import { asks, at, chats, knocks, nudges, presentsWorkspace, shares, stopsPresenting, type CallScript, type Present } from '../../src/api/script';
 import { MORE, inCall, phone, reach } from '../../src/call';
 import { pages, type PageArgs, type PageStory } from '../../src/page';
 import {
@@ -254,13 +254,21 @@ export const EverythingElse: PageStory = {
   name: '6.6 Everything else',
   ...launchReview({ cues: at(8, shares(PRIYA, CHECKLIST)) }),
   play: async ({ userEvent, step }) => {
-    await step('Click More. Captions, marking a moment, catching up, breakout rooms and your devices', async () => {
+    await step('Click More. Captions, marking a moment, catching up and breakout rooms, then a floating call, another device and Settings', async () => {
       await userEvent.click(await within(await dock()).findByRole('button', { name: MORE }, SOON));
       await screen.findByRole('button', { name: 'Catch up on what you missed' }, SOON);
     });
-    await step('Click View, at the top right. Your layout, for your screen alone: Auto, Speaker or Grid, how people sit beside what’s open, and where you see yourself', async () => {
-      await userEvent.click(await screen.findByRole('button', { name: 'Your view' }, SOON));
-      await screen.findByRole('group', { name: 'The people' }, SOON);
+    await step('Click Settings. One window: Audio and video, Video quality, Sounds, Notifications, and Call, which is the organizer’s', async () => {
+      await userEvent.click(await screen.findByRole('button', { name: 'Settings' }, SOON));
+      await screen.findByRole('dialog', { name: 'Settings' }, SOON);
+    });
+    await step('Click Call. Lock the call, and pointing at shared screens, for everyone here', async () => {
+      await userEvent.click(await screen.findByRole('tab', { name: 'Call' }, SOON));
+      await screen.findByRole('switch', { name: 'Lock the call' }, SOON);
+    });
+    await step('Close Settings. The stage lays itself out: drag a tile to move it, or its corner to make it bigger', async () => {
+      await userEvent.click(await screen.findByRole('button', { name: 'Close settings' }, SOON));
+      await away('dialog', 'Settings');
     });
     await step('Click the faces. People opens on your side: who’s here and who’s asking to join. The organizer starts breakout rooms here too', async () => {
       await userEvent.click(await screen.findByRole('button', { name: /^People in this call/ }, SOON));
@@ -403,55 +411,126 @@ export const CatchUp: PageStory = {
   }
 };
 
-/* ---------- shared attention, distinct from private AI Ask ---------- */
-const attentionReview = () => inCall({
-  scenario: 'busy', call: LAUNCH_REVIEW,
-  script: {
-    here: [{ who: PRIYA, hand: true }, { who: KOFI, hand: true }, { who: AIKO }],
-    cues: [...at(.2, { do: 'question', who: PRIYA, text: 'Which teams are included in the first launch?', votes: 3 }), ...at(.3, { do: 'feedback', who: AIKO, kind: 'slow-down' })]
-  }
-});
-const openAttention = async ({ userEvent }: Context) => { await userEvent.click(await screen.findByRole('button', { name: /^Attention,/ }, LATER)); };
-export const HandQueue: PageStory = {
-  ...attentionReview(), name: '6.14 Take turns with the hand queue',
+/* ---------- the people: a raised hand, a nudge, a status, and People ---------- */
+
+/** The dock's Raise your hand, or on a phone the same row in More. */
+async function raiseHand({ userEvent }: Context): Promise<void> {
+  const [hand] = screen.queryAllByRole('button', { name: 'Raise your hand' });
+  if (hand) { await userEvent.click(hand); return; }
+  await userEvent.click(await screen.findByRole('button', { name: /^More/ }, SOON));
+  await userEvent.click(await screen.findByRole('button', { name: 'Raise your hand' }, SOON));
+}
+/** Someone's ⋯, on their tile, or in their row in People once that's open: their menu, once its rows are still. */
+async function optionsFor({ userEvent }: Context, name: string | RegExp): Promise<void> {
+  const people = screen.queryByRole('complementary', { name: 'People' });
+  const [more] = people ? await within(people).findAllByRole('button', { name }, SOON) : await screen.findAllByRole('button', { name }, LATER);
+  if (more) await userEvent.click(more);
+  await still(await screen.findByRole('dialog', { name }, SOON));
+}
+export const RaiseYourHand: PageStory = {
+  ...inCall({ scenario: 'busy', call: LAUNCH_REVIEW, script: { here: [{ who: PRIYA, hand: true }, { who: KOFI, hand: true }, { who: AIKO }] } }),
+  name: '6.14 Raise your hand, and take turns',
   play: async (c) => {
-    await c.step('Open Attention; the queue shows hands in the order raised', async () => { await openAttention(c); await screen.findByText('In order raised', {}, SOON); });
-    await c.step('Raise your own hand; the confirmed queue includes you', async () => { await c.userEvent.click(await within(await screen.findByRole('complementary', { name: 'Attention' }, SOON)).findByRole('button', { name: 'Raise your hand' }, SOON)); await screen.findByRole('button', { name: 'Lower yours' }, SOON); });
-    await c.step('Lower your hand without changing anyone else’s place', async () => { await c.userEvent.click(await screen.findByRole('button', { name: 'Lower yours' }, SOON)); });
-    await c.step('As host, clear the queue after everyone has had a turn', async () => { await c.userEvent.click(await screen.findByRole('button', { name: 'Lower all' }, SOON)); await screen.findByText('No hands raised', {}, SOON); });
+    await c.step('Priya and Kofi have their hands up. People lists them first, in the order they went up', async () => { await reach('People')(c); await screen.findAllByText(/Hand raised/, {}, SOON); });
+    await c.step('As the host, lower Priya’s hand from her ⋯ once she’s had her turn', async () => {
+      await optionsFor(c, 'Options for Priya Raman');
+      await c.userEvent.click(await screen.findByRole('button', { name: 'Lower hand' }, SOON));
+    });
+    await c.step('Raise your own hand. Everyone sees it on your tile, and you go to the top of People after Kofi', async () => {
+      await raiseHand(c);
+      await screen.findAllByRole('button', { name: 'Lower your hand' }, SOON);
+    });
   }
 };
-export const HandQueuePhone = phone(HandQueue);
+export const RaiseYourHandPhone = phone(RaiseYourHand);
 export const SharedQuestions: PageStory = {
-  ...attentionReview(), name: '6.15 Ask, vote and resolve shared questions',
+  ...launchReview({ cues: at(.2, asks(PRIYA, 'Which teams are included in the first launch?', { votes: 3 }), asks(KOFI, 'Can the status page go out before the announcement?', { votes: 1, anonymous: true })) }),
+  name: '6.15 Ask, vote and resolve questions in Chat',
   play: async (c) => {
-    await openAttention(c);
-    await c.step('Q&A is shared with this room; Notes’ Ask stays private', async () => { await c.userEvent.click(await screen.findByRole('tab', { name: /^Q&A/ }, SOON)); });
-    await c.step('Post a question with an explicit send', async () => { await c.userEvent.type(await screen.findByRole('textbox', { name: 'Post a question to everyone in this room' }, SOON), 'Who will follow up after the first rollout?'); await c.userEvent.click(await screen.findByRole('button', { name: 'Post question' }, SOON)); await screen.findByText('Who will follow up after the first rollout?', {}, SOON); });
-    await c.step('Vote for Priya’s question; the current reading order stays put', async () => { await c.userEvent.click(await screen.findByRole('button', { name: /^Vote for question from Priya/ }, SOON)); });
-    await c.step('As host, pin a question and then mark it answered', async () => { const [pin] = await screen.findAllByRole('button', { name: 'Pin question' }, SOON); if (pin) await c.userEvent.click(pin); const [answer] = await screen.findAllByRole('button', { name: 'Mark question answered' }, SOON); if (answer) await c.userEvent.click(answer); });
-    await c.step('See the resolved question and its answered state', async () => { await c.userEvent.click(await screen.findByRole('button', { name: 'Show resolved questions' }, SOON)); await screen.findByText('Answered', {}, SOON); });
+    await c.step('Open Chat, then Questions: the room’s questions, the most voted first. Notes’ Ask stays private', async () => {
+      await reach('Chat')(c);
+      await c.userEvent.click(await screen.findByRole('tab', { name: /^Questions/ }, SOON));
+    });
+    await c.step('Ask anonymously: nobody is told it’s yours, whoever hosts included, and only you see Take back', async () => {
+      await c.userEvent.type(await screen.findByRole('textbox', { name: 'Ask everyone in this room a question' }, SOON), 'Who will follow up after the first rollout?');
+      await c.userEvent.click(await screen.findByRole('switch', { name: 'Ask anonymously' }, SOON));
+      await c.userEvent.click(await screen.findByRole('button', { name: 'Ask anonymously' }, SOON));
+      await screen.findByRole('button', { name: 'Take back your question' }, SOON);
+    });
+    await c.step('Vote for Priya’s question; the order you’re reading in stays put', async () => {
+      const [vote] = await screen.findAllByRole('button', { name: /^Vote for this question/ }, SOON);
+      if (vote) await c.userEvent.click(vote);
+    });
+    await c.step('As whoever hosts, pin a question, then mark it answered', async () => {
+      const [pin] = await screen.findAllByRole('button', { name: 'Pin question' }, SOON); if (pin) await c.userEvent.click(pin);
+      const [answer] = await screen.findAllByRole('button', { name: 'Mark question answered' }, SOON); if (answer) await c.userEvent.click(answer);
+    });
+    await c.step('Show answered brings it back, marked Answered', async () => {
+      await c.userEvent.click(await screen.findByRole('button', { name: /^Show answered/ }, SOON));
+      await screen.findByText('Answered', {}, SOON);
+    });
   }
 };
-export const SharedQuestionsPhone = phone(SharedQuestions);
-export const QuietFeedback: PageStory = {
-  ...attentionReview(), name: '6.16 Signal quietly, then clear it',
+export const NudgeSomeone: PageStory = {
+  ...inCall({ scenario: 'busy', call: LAUNCH_REVIEW, script: { here: REVIEWERS, cues: [...at(6, nudges(PRIYA, 'slow-down')), ...at(8, nudges(AIKO, 'slow-down'))] } }),
+  name: '6.16 Nudge someone quietly',
   play: async (c) => {
-    await openAttention(c);
-    await c.step('Open Signals, then ask everyone in this room to slow down', async () => { await c.userEvent.click(await screen.findByRole('tab', { name: 'Signals' }, SOON)); await c.userEvent.click(await screen.findByRole('button', { name: 'Slow down' }, SOON)); });
-    await c.step('Press the same signal again to clear it; otherwise it expires', async () => { await screen.findByText('Signal sent to this room', {}, SOON); await c.userEvent.click(await screen.findByRole('button', { name: 'Slow down' }, SOON)); });
+    await c.step('Kofi is hard to hear. His ⋯ has Nudge Kofi', async () => {
+      await optionsFor(c, 'Options for Kofi Asante');
+      await c.userEvent.click(await screen.findByRole('button', { name: 'Nudge Kofi' }, SOON));
+      await still(await screen.findByRole('dialog', { name: 'Options for Kofi Asante' }, SOON));
+    });
+    await c.step('Only Kofi sees it: tell him you can’t hear him', async () => {
+      await c.userEvent.click(await screen.findByRole('button', { name: 'Can’t hear you' }, SOON));
+      await screen.findByText('Kofi got your nudge: Can’t hear you', {}, SOON);
+    });
+    await c.step('Priya, then Aiko, ask you to slow down. You get one note that says how many', async () => {
+      await screen.findByText('2 people ask you to slow down a little', {}, LATER);
+    });
   }
 };
-export const QuietFeedbackPhone = phone(QuietFeedback);
-export const WaitingAttention: PageStory = {
-  ...inCall({ scenario: 'busy', call: LAUNCH_REVIEW, script: { here: REVIEWERS, cues: at(.2, knocks(DIEGO)) } }), name: '6.17 Let someone in from Attention',
+export const NudgeSomeonePhone = phone(NudgeSomeone);
+export const LetSomeoneIn: PageStory = {
+  ...inCall({ scenario: 'busy', call: LAUNCH_REVIEW, script: { here: REVIEWERS, cues: at(.2, knocks(DIEGO)) } }), name: '6.17 Let someone in from People',
   play: async (c) => {
-    await openAttention(c);
-    await c.step('The host’s Waiting tab shows the current request', async () => { await c.userEvent.click(await screen.findByRole('tab', { name: /^Waiting/ }, SOON)); });
-    await c.step('Let Diego in; resolved requests leave the list', async () => { await c.userEvent.click(await screen.findByRole('button', { name: 'Let in' }, SOON)); });
+    await c.step('The faces at the top right count Diego asking to join. People opens with him first', async () => {
+      await reach('People')(c);
+      await screen.findByText(/^Asking to join/, {}, LATER);
+    });
+    await c.step('Let Diego in; he moves to In this call', async () => { await c.userEvent.click(await screen.findByRole('button', { name: 'Let in' }, SOON)); });
   }
 };
-export const WaitingAttentionPhone = phone(WaitingAttention);
+export const LetSomeoneInPhone = phone(LetSomeoneIn);
+export const SetYourStatus: PageStory = {
+  ...inCall({ scenario: 'busy', call: LAUNCH_REVIEW, script: { here: REVIEWERS } }), name: '6.34 Set your status',
+  play: async (c) => {
+    await c.step('Your own tile’s ⋯ opens Set a status', async () => { await optionsFor(c, /^Options for .+ \(you\)$/); });
+    await c.step('Be right back, back in five minutes', async () => {
+      await c.userEvent.click(await screen.findByRole('menuitemradio', { name: 'Be right back' }, SOON));
+      await still(await screen.findByRole('dialog', { name: /^Options for .+ \(you\)$/ }, SOON));
+      await c.userEvent.click(await screen.findByRole('button', { name: '5 min' }, SOON));
+    });
+    await c.step('Everyone sees it on your tile with the time you’re back, and in People, until it runs out', async () => { await screen.findAllByText(/^Be right back · /, {}, SOON); });
+    await c.step('Back early: I’m back clears it for everyone', async () => {
+      await optionsFor(c, /^Options for .+ \(you\)$/);
+      await c.userEvent.click(await screen.findByRole('button', { name: 'I’m back' }, SOON));
+    });
+  }
+};
+export const SetYourStatusPhone = phone(SetYourStatus);
+export const FindSomeone: PageStory = {
+  ...inCall({ scenario: 'busy', call: LAUNCH_REVIEW, script: { here: REVIEWERS } }), name: '6.35 Find someone, and write to them',
+  play: async (c) => {
+    await c.step('Find someone in People by name', async () => {
+      await reach('People')(c);
+      await c.userEvent.type(await screen.findByRole('searchbox', { name: 'Find someone in this call' }, SOON), 'ko');
+    });
+    await c.step('Message Kofi privately, from his row: Chat opens with only you and Kofi', async () => {
+      await c.userEvent.click(await screen.findByRole('button', { name: 'Message Kofi privately' }, SOON));
+    });
+  }
+};
+export const FindSomeonePhone = phone(FindSomeone);
 
 export const MentionSomeone: PageStory = {
   name: '6.13 Mention someone in chat',

@@ -119,13 +119,12 @@ export class CallNotifications extends Box<CallNotificationState> {
         put('replies', { type: 'thread', root: message.thread.root, message: message.id }, `chat:${message.id}`, Date.parse(state.startedAt) + message.at * 1000, Date.parse(state.startedAt) + message.at * 1000 + FRESH_MS, this.freshChat.has(message.id));
       }
     }
-    const timer = state.timerSequence;
-    const segment = timer?.segments[timer.activeIndex];
-    if (timer?.status === 'running' && timer.startedAt !== null && segment) {
-      const deadline = timer.startedAt + (segment.durationSeconds + timer.addedSeconds) * 1000 - timer.elapsedMs;
+    const timer = state.timer;
+    if (timer?.status === 'running' && timer.startedAt !== null) {
+      const deadline = timer.startedAt + timer.durationSeconds * 1000 - timer.elapsedMs;
       const stage = now >= deadline ? 'end' : 'warning';
       const at = stage === 'end' ? deadline : deadline - 30_000;
-      put('timers', { type: 'timer', timer: 'presenter', id: `${segment.id}:${timer.revision}` }, `timer:${segment.id}:${timer.revision}:${stage}`, Math.max(0, at), deadline + (stage === 'end' ? 30_000 : 0));
+      put('timers', { type: 'timer', timer: 'call', id: `${timer.id}:${timer.revision}` }, `timer:${timer.id}:${timer.revision}:${stage}`, Math.max(0, at), deadline + (stage === 'end' ? 30_000 : 0));
     }
     const board = state.board.timer;
     if (board) {

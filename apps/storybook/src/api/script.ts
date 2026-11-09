@@ -1,4 +1,4 @@
-import type { CallTimerSequence } from '@alcove/api';
+import type { CallTimer } from '@alcove/api';
 /*
  * A call's script: who's in it when you come in, what they say and do and when, how the people you ring answer, and
  * what the call's link says while you wait at the door. The scripted call (call.ts) plays the server's side of it,
@@ -10,7 +10,7 @@ import type { CallTimerSequence } from '@alcove/api';
  * story opened. Everyone in a script is from the demo world, and everything they say is made up.
  */
 import {
-  RING_SECONDS, type AiModels, type CallFeedbackKind, type BoardTemplate, type BoardTimerMinutes, type BoardVotesEach, type BreakoutBoard, type CallCard, type CallReaction, type CallPage, type CaptureMode, type CapturePart,
+  RING_SECONDS, type AiModels, type CallNudgeKind, type CallStatusKind, type CallStatusMinutes, type BoardTemplate, type BoardTimerMinutes, type BoardVotesEach, type BreakoutBoard, type CallCard, type CallReaction, type CallPage, type CaptureMode, type CapturePart, 
   type CaptureState, type LiveFollowUp, type IncomingRing, type Meeting, type Person, type RingReply
 } from '@alcove/api';
 import type * as Y from 'yjs';
@@ -39,6 +39,8 @@ export interface Present {
   /** Their microphone is on, unless this says it's off. */
   mic?: boolean | undefined;
   hand?: boolean | undefined;
+  /** What they say they're up to as you come in, for so many minutes from then, or with no time. */
+  status?: { kind: CallStatusKind; minutes?: CallStatusMinutes | undefined } | undefined;
   /** What they're sharing. */
   sharing?: Screen | undefined;
 }
@@ -71,15 +73,22 @@ export type Beat =
   | { do: 'say'; line: Line }
   | { do: 'mic'; who: Person; on: boolean }
   | { do: 'hand'; who: Person; up: boolean }
-  | { do: 'question'; who: Person; text: string; votes?: number }
-  | { do: 'feedback'; who: Person; kind: CallFeedbackKind | null }
+  /** Someone asks a question for the room, with votes already on it; `anonymous`: it names nobody. */
+  | { do: 'question'; who: Person; text: string; votes?: number; anonymous?: boolean | undefined }
+  /** Someone nudges you: only you see it, and the same nudge from several people within a minute is one note. */
+  | { do: 'nudge'; who: Person; kind: CallNudgeKind }
+  /** Someone sets their status, for so many minutes, or clears it (null). */
+  | { do: 'status'; who: Person; status: CallStatusKind | null; minutes?: CallStatusMinutes | undefined }
   | { do: 'share'; who: Person; screen: Screen }
   | { do: 'stop-sharing'; who: Person }
   | { do: 'chat'; who: Person; text: string; tagged: readonly (Person | 'me')[] }
   | { do: 'unavailable-chat'; text: string }
-  | { do: 'reply'; who: Person; text: string; to: string; tagged: readonly (Person | 'me')[] }
+  /** A reply in the thread of the latest message with `to`'s text; `broadcast`: also sent to everyone, so it shows in the chat too. */
+  | { do: 'reply'; who: Person; text: string; to: string; tagged: readonly (Person | 'me')[]; broadcast?: boolean | undefined }
   /** Someone reacts to the latest chat message with this text. */
   | { do: 'react'; who: Person; text: string; reaction: CallReaction }
+  /** Someone reacts to the latest message with this text in your private conversation with them. */
+  | { do: 'react-privately'; who: Person; text: string; reaction: CallReaction }
   /** Someone asks to join: signed in (their address shows), or by name only. */
   | { do: 'knock'; who: Person; byName?: boolean | undefined }
   | { do: 'ask-for-notes'; who: Person }
@@ -174,8 +183,8 @@ export interface CallScript {
   privateMessages?: readonly { from: Person; text: string; after?: number; replyTo?: string; tagged?: readonly (Person | 'me')[] }[] | undefined;
   /** First sends fail in their original conversation, so a journey can show deliberate retry. */
   chatFailures?: number | undefined;
-  /** Prepared or running presenter sequence, from the same server-clock anchor as the call. */
-  timerSequence?: CallTimerSequence | undefined;
+  /** The call's timer as you find it: one that's running starts its clock as you come in, `elapsedMs` already gone. */
+  timer?: CallTimer | undefined;
   /** Who's in the call when you come in, besides you. */
   here?: readonly Present[] | undefined;
   /** How long the call has been going when you come in, in seconds. */
@@ -233,11 +242,18 @@ export const unmutes = (who: Person): Beat => ({ do: 'mic', who, on: true });
 export const mutes = (who: Person): Beat => ({ do: 'mic', who, on: false });
 export const raisesHand = (who: Person): Beat => ({ do: 'hand', who, up: true });
 export const lowersHand = (who: Person): Beat => ({ do: 'hand', who, up: false });
+export const nudges = (who: Person, kind: CallNudgeKind): Beat => ({ do: 'nudge', who, kind });
+export const setsStatus = (who: Person, status: CallStatusKind | null, minutes?: CallStatusMinutes): Beat => ({ do: 'status', who, status, minutes });
 export const shares = (who: Person, screen: Screen): Beat => ({ do: 'share', who, screen });
 export const stopsSharing = (who: Person): Beat => ({ do: 'stop-sharing', who });
 export const chats = (who: Person, text: string, tagged: readonly (Person | 'me')[] = []): Beat => ({ do: 'chat', who, text, tagged });
 export const replies = (who: Person, to: string, text: string, tagged: readonly (Person | 'me')[] = []): Beat => ({ do: 'reply', who, to, text, tagged });
+/** A reply in a thread that's also sent to everyone. */
+export const repliesToEveryone = (who: Person, to: string, text: string): Beat => ({ do: 'reply', who, to, text, tagged: [], broadcast: true });
+/** Someone asks a question for the room. */
+export const asks = (who: Person, text: string, o: { votes?: number; anonymous?: boolean } = {}): Beat => ({ do: 'question', who, text, ...o });
 export const reacts = (who: Person, text: string, reaction: CallReaction): Beat => ({ do: 'react', who, text, reaction });
+export const reactsPrivately = (who: Person, text: string, reaction: CallReaction): Beat => ({ do: 'react-privately', who, text, reaction });
 export const knocks = (who: Person, o: { byName?: boolean } = {}): Beat => ({ do: 'knock', who, ...o });
 export const asksForNotes = (who: Person): Beat => ({ do: 'ask-for-notes', who });
 export const run = (what: () => void): Beat => ({ do: 'run', what });

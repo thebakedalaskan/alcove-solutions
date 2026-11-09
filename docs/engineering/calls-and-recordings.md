@@ -207,9 +207,11 @@ The call itself stays in the API: who's let in, notes and the transcript.
 - **In the browser** `apps/web/src/features/call/media/livekit.ts` (loaded only by the call screen) wraps the
   room: it publishes `LocalMedia`'s tracks as they are, encrypted, swapping a new microphone or camera (or a
   change of what's shared) into the same publication, plays everyone else's audio on the chosen speaker at each
-  person's volume for this listener, and refetches the call on the server's nudges, arrivals and departures. Nudges are
-  taken only from the server (a packet from no participant): anyone in the room can send data, which carries pointers
-  and marks, and a stream of nudges from one of them would keep every browser fetching the call. Several people can
+  person's volume for this listener, and refetches the call on the server's change pushes (`CallChanged` on `CALL_TOPIC`:
+  what to fetch again, and nothing else), arrivals and departures. Change pushes are taken only from the server (a packet
+  from no participant): anyone in the room can send data, which carries pointers and marks, and a stream of them from one
+  participant would keep every browser fetching the call. The server sends one to everyone in the room, or, when only one
+  person's view changed (someone's nudge, below), to that person's connections alone. Several people can
   share a screen at once ([The call screen › Shares](#the-call-screen)).
 
 ## End-to-end encryption
@@ -484,7 +486,7 @@ call's sealed state (`apps/api/src/features/calls/capture.ts`) and the same for 
   it was open.
 - **Who sees it.** Everyone in the call, and anyone reconnecting, gets it with the call. People asking to join
   and anyone reading the card get it without names: `by` says only "the organizer", and there are no gaps or
-  asks. Every change nudges the room, so browsers fetch the call again.
+  asks. Every change sends the room a change push, so browsers fetch the call again.
 - **Pause** (`{type: "pause"}`, only while notes are on) stops every kind of capture at once. The one gate every
   capturing path goes through, `mayCapture` in `apps/api/src/features/calls/capture.ts`, refuses audio pieces, speech
   clips, caption translations, catch-up and questions with `409 conflict` ("Notes are paused…"), whoever sends
@@ -771,7 +773,7 @@ ever sent to the presenter's computer.
 - **Latency.** Measured on the local stack (three Chromium browsers, two shares, three runs of 40 moves): from a mouse
   move in one browser to the pointer drawn in another, a median of 31 to 39 ms, the 90th percentile 51 to 55 ms and
   the slowest 85 ms. Chat between the same two browsers, which goes through the API as MLS messages (a request, a
-  database write, a nudge through LiveKit and a read by every browser), took a median of 103 to 153 ms there, and
+  database write, a change push through LiveKit and a read by every browser), took a median of 103 to 153 ms there, and
   would load the API and database with every move. Pointers glide between places (90 ms), and lines go out at most
   every 80 ms as they're drawn.
 
@@ -780,7 +782,7 @@ ever sent to the presenter's computer.
 - **A short drop.** LiveKit resumes the connection, or reconnects it under the same identity, and the top bar
   says **Reconnecting** meanwhile, for a dropped signalling connection too (that's how most drops start; LiveKit
   calls it `SignalReconnecting`). The call keeps up over HTTP as before. On coming back, and also as soon as it
-  first connects to the room, the browser fetches the call and its log again: a nudge sent while it was still
+  first connects to the room, the browser fetches the call and its log again: a change push sent while it was still
   connecting reached a room it wasn't in. That was why, after the organizer reloaded, everyone's camera looked off
   for a while: the others' fresh key packages arrived while the organizer's new page was still connecting, so it
   waited for its next check (up to 6 seconds, longer on a slow join) before letting them into its new group. Now
@@ -801,7 +803,7 @@ ever sent to the presenter's computer.
 - **The host away.** Notes are written from what the host's browser hears, so from LiveKit's `participant_left`
   for the connection that hosts (it dropped, is reloading, or is moving) until it or another hosting connection is
   there, the capture state says so for everyone and on the card: recording and transcript `unavailable`, `away`
-  set, the sign **Notes unavailable** ([What's captured](#whats-captured)). The webhook nudges the room both ways,
+  set, the sign **Notes unavailable** ([What's captured](#whats-captured)). The webhook sends the room a change push both ways,
   so screens change at once. If the same connection comes back, its browser kept recording through the drop and
   sends what it held ([Call lifecycle](#call-lifecycle)), so nothing is marked; what others said meanwhile wasn't
   heard. If another connection hosts (a reload, another device, a move, someone standing in, or the organizer back)
@@ -972,7 +974,24 @@ Rings are rows in `call_rings`, in the organizer's vault, found by a keyed hash 
 
 - **Raised hands** are call state, one per person (`{type: "hand", up}`): anyone in the call raises or lowers
   their own, and everyone sees it (`CallState.participants[].hand`). It stays up across a reload, a dropped
-  connection that comes back, and a move to another device: it's the person's, not the connection's.
+  connection that comes back, and a move to another device: it's the person's, not the connection's. Each raise is an
+  entry, in the order they went up (`CallState.attention.hands`): People lists hands first in that order, and whoever
+  hosts lowers one by its entry (`{type: "hand-lower", entryId}`), so an older press can't lower a newer raise.
+- **Nudges** (`{type: "nudge", to, kind}`, `kind` one of `muted`, `cant-hear`, `slow-down` and `louder`): anyone in the
+  call, to someone else in their part of it, by participant ID. Only the person nudged is told: their read alone carries
+  it (`CallState.attention.nudges`), one note for each kind with how many sent it within a minute of the first, and who
+  while that's one person; the same sender again within that minute changes nothing. Nobody else's read has it, whoever
+  hosts included, and only the recipient's browser is told to read the call again. Notes go a minute after they last
+  changed, when their recipient leaves on purpose or changes rooms, and once their connection has been gone for two minutes
+  without leaving. The browser says each note once, as a toast, and again with the new count (`session/nudgeAlerts.ts`);
+  its **Unmute** only ever unmutes.
+- **Statuses** (`{type: "status", status, minutes}`, `status` one of `away`, `listening` and `phone`, or null to clear
+  it): anyone in the call sets their own, for everyone (`CallState.participants[].status`, with `since` and `until` on the
+  server clock), until 2, 5 or 10 minutes from then, or with no `minutes` keeping a time already set. It stays through a
+  reload and a room move, and goes when its time runs out, when they clear it, when they leave on purpose, or once their
+  connection has been gone for two minutes without leaving. Their browser clears it once they talk with their microphone
+  on (`layout/status.ts`, with the call's one talk detector, `useTalking`). Both are sealed in the call's attention
+  record ([Privacy, keys and sessions › Attention during a call](privacy-keys-and-sessions.md#attention-during-a-call)).
 - **Spotlight** (`{type: "spotlight", participantId}`) is the organizer's, and only names someone in the call;
   it puts that tile first on everyone's stage, and goes with that person to a new connection (a reload, a move).
   Opening breakout rooms ends it.
@@ -1191,7 +1210,7 @@ into the call. Being in a call, or organizing it, opens nothing.
     (`ended`, as above). It's found by a read from someone who can open something in the workspace, or from whoever started it,
     never from someone with nothing in it, who's told only that something's being presented until then. A workspace that's
     been deleted is found by any read. While something's showing, a browser reads the call each time it checks its keys, so it
-    never waits on a nudge that isn't coming.
+    never waits on a change push that isn't coming.
 - **Presenting, in the browser** (`apps/web/src/features/call/workspace/presenting.ts`, with what's on each person's stage in
   `layout/onStage.ts`: [The call screen](#the-call-screen)).
   - *The workspace presented* is in its frame on the stage of everyone following it, and the frame's bar says who's
@@ -1282,11 +1301,11 @@ call ID), when it started, whether it's over, and its note's ID once it is (`Sto
   shared. A chosen home's people are its own. A failure is logged, and tried again by the next change or the next call.
 - **Like any folder** otherwise: it can be renamed, moved and sent to Trash. A copy of it is a plain folder.
 
-## Presenter timer sequences
+## The call's timer
 
-Calls have a host-controlled sequence of named presenter slots, separate from any board or breakout-room timer.
-The durable clock, host permissions, concurrent commands, reusable presets and upgrade behavior are documented in
-[Presenter timer sequences](presenter-timers.md).
+A call has one countdown for everyone, which only the host starts, pauses, adds time to and stops, separate from any board
+or breakout-room timer. Its server clock, host permissions, concurrent presses and how the previous release's sealed
+sequences read are in [The call's timer](call-timer.md).
 
 ## A board in a call
 
@@ -1537,7 +1556,7 @@ there, before anything about a timer or a vote is looked at.
   Votes are kept by who someone is to the vote: their account when they're signed in, so it's one set of votes on every device,
   else the person their pass names (`limitKey`, as media counts a guest's uploads), so a reload, or a second tab with the first
   one's pass, is the same person with the same votes; a tab that asks to be let in again, with no pass, is someone new to the
-  call. Only IDs are kept: which stickies, never what they say. A vote cast or taken back is told to nobody else (no nudge), so
+  call. Only IDs are kept: which stickies, never what they say. A vote cast or taken back is told to nobody else (no change push), so
   nobody can count votes by when the call changes. Nothing about a vote is written to the board, and nothing logged names a
   frame or a sticky.
 
@@ -1757,8 +1776,8 @@ link: the organizer's lobby (`features/calls/lobby/Lobby.tsx`) by their account,
   Live, it's read-only and shows what's captured instead. On a team, a call started just now offers arches of
   teammates on Alcove (`LobbyRing.tsx`: free first, busy dimmed where a calendar can be read, Add for the rest), and
   whoever it was started with comes picked. Picks stay in the page, never in an address or storage, and go to
-  `CallSession.ring` once joined; a ring that fails leaves the organizer in the call and says so once. On your own,
-  or with nobody on Alcove to ring, the link comes first. Backing out of a call started just now cancels it, once and
+  `CallSession.ring` once joined; a ring that fails leaves the organizer in the call and says so once. The lobby's
+  only link is **Copy link**, quietly under Join, on a team or not. Backing out of a call started just now cancels it, once and
   best effort, by leaving the page any way but joining; a reload doesn't, and neither does leaving once this tab has
   copied the link (kept in `sessionStorage` for the tab, by code): someone may be on their way, so the call stays until
   starting a new one sweeps it, a day on.
@@ -1783,11 +1802,11 @@ link: the organizer's lobby (`features/calls/lobby/Lobby.tsx`) by their account,
 
 `apps/web/src/routes/call.$code.tsx` is the call for everyone in it; no account is needed, since the call's
 pass is what lets a guest in. It's built from `apps/web/src/features/call/`, put together in `session/InCall.tsx`. The shell
-is `layout/`: the top bar (`TopBar.tsx`) and View (`ViewMenu.tsx`); the call's area (`PanelHost.tsx`), with your side at its
+is `layout/`: the top bar (`TopBar.tsx`) and Settings, from More (`CallSettings.tsx`); the call's area (`PanelHost.tsx`), with your side at its
 right (`side.ts`, drawn by `Panel.tsx`) and its main area shared out by `panels.ts`; what's on your stage (`onStage.ts`), each
 in its frame, with Close's question (`frame.tsx`); the people (`Stage.tsx`, laid out by `stageLayout.ts` from your view in
 `view.ts`, with who's talking settled in `media/speakers.ts`); each tile's menu and a presented tile's (`TileMenu.tsx`); Share's
-steps (`ShareMenu.tsx`); and the call's keys (`KeysSheet.tsx`, from `session/useCallShortcuts.ts`). Presenting the workspace is
+steps (`ShareMenu.tsx`); and the call's keys are `session/useCallShortcuts.ts`. Presenting the workspace is
 `workspace/presenting.ts`, a board, its picker and presenting it are in `boards/`, and a share in its frame is
 `screen-sharing/ShareInFrame.tsx`. Then breakout rooms (`Rooms.tsx`), captions, the leave sheet and the device pickers.
 
@@ -1816,9 +1835,10 @@ steps (`ShareMenu.tsx`); and the call's keys (`KeysSheet.tsx`, from `session/use
   re-reads the meeting when someone with an account is in it and not on the invite yet, and after they remove
   someone with an account, so who's invited (who gets the notes, who can go to a breakout room) includes whoever
   they let in and not whoever they removed.
-- **Host controls** are whoever hosts', in People: mute someone's microphone (LiveKit mutes the track, their
-  dock shows it off, they're told, and only they can unmute), remove someone (they're told and go back to the
-  call's page; nobody removes the organizer), and lock the call.
+- **Host controls** are whoever hosts', on each person's ⋯, on their tile and in People: lower their hand, mute their
+  microphone (LiveKit mutes the track, their dock shows it off, they're told, and only they can unmute), and remove them
+  (they're told and go back to the call's page; nobody removes the organizer). Locking the call and pointing at shared
+  screens are the call's settings, not People's.
 - **Who hosts** (`features/call/rooms/Hosting.tsx`). While someone stands in for the organizer, the status bar says so for
   everyone ("Priya is hosting while Art is away"; to Priya, "You're hosting while Art is away", with **Bring everyone
   back** while breakout rooms are open), and their row in People says it too. Each change arrives once as a notice.
@@ -1851,7 +1871,7 @@ steps (`ShareMenu.tsx`); and the call's keys (`KeysSheet.tsx`, from `session/use
 - **The shell** (`layout/`) has fixed places, each with one job, and nothing in it is dragged, torn off or rearranged:
   what's open is always in the middle, and your side always on the right.
   - *The top bar* (`TopBar.tsx`). On the left, the title, the clock, the notes sign, the shield, Reconnecting, and, when two
-    things on your stage take turns, which is showing. On the right, View, then one group (`CallTopGroup` of
+    things on your stage take turns, which is showing. On the right, one group (`CallTopGroup` of
     `CallTopButton`s, with a `CallTopRule` between kinds): Board, which opens the board picker under it, Workspace (counting
     what's been brought), Notes, Chat (counting what's unread) and the faces, which open People (counting who's asking to
     join, for whoever hosts). Each is lit (`on`) while what it opens is open, and a press on a lit one puts it away: on Board
@@ -1860,10 +1880,17 @@ steps (`ShareMenu.tsx`); and the call's keys (`KeysSheet.tsx`, from `session/use
   - *The dock* (`CallDock`): the microphone and camera with their menus, a hairline, Share (a `DockButton` with a `word`,
     which says Presenting while you present), Raise your hand, More, a hairline, Show everything while in focus, and Leave.
   - *More* is the same on every screen: Turn on captions, Mark this moment (with an account), Catch up on what you missed,
-    Breakout rooms (the organizer's), then Audio and video settings, Video quality, Move to another device and Keyboard
-    shortcuts, which opens `KeysSheet.tsx` on only the keys you have here. On a phone the dock is the microphone, camera,
+    Breakout rooms (the organizer's), then Open floating call, Reset layout (only while `isCustom` in `view.ts` says
+    there's something to put back), Move to another device and Settings. On a phone the dock is the microphone, camera,
     Share, More and Leave, and More starts with a grid (`CallMoreGrid`, `CallMoreTile`) of Board, Workspace, Notes, Chat
-    and People, then Raise your hand and Your view.
+    and People, then Raise your hand.
+  - *Settings* (`CallSettings.tsx`) is one `Modal` from More, its parts a tablist down its left (a strip on a phone, where
+    it's a sheet): Audio and video (`MicOptions` and `CamOptions` from `media/DevicePickers.tsx`, the dock's own menus),
+    Video quality (`media/VideoQuality.tsx`), Sounds and Notifications (`CallSoundControls` and `CallNotificationControls`,
+    Settings' own call-sized controls), and Call, for whoever hosts: Lock the call (`HostControls.lock`, a host action) and,
+    for the organizer alone, Pointing at shared screens (`HostControls.setPointing`, which the API takes from the organizer
+    only). Each switch moves once the call has taken it. The part you were on is kept while the call is open; one that's
+    gone (Call, once you no longer host) shows Audio and video. Closing it hands the keys back to More.
   - *One width makes a phone*: under 600 px (`PHONE_W`), for the layout and the dock alike.
 - **Your side** (`side.ts`, `useSide`) is one view at a time (`SideView`: `notes`, `chat`, `people`, `rooms`, `mine`), on
   the right, 368 px wide (340 px in a window under 1200 px), sliding in as the stage gives way. Where that would leave the
@@ -1882,9 +1909,9 @@ steps (`ShareMenu.tsx`); and the call's keys (`KeysSheet.tsx`, from `session/use
   on a wide screen while notes are on.
 - **The stage** (`Stage.tsx`, `stageLayout.ts`, placed in the main area by `panels.ts`'s `placeMain`) holds the people and
   what you have open (`onStage.ts`: the workspace, the board in the call, a saved board just for you, or someone's screen).
-  With nothing open the people fill it, in Auto, Speaker or Grid. With something open, it sits in its frame, and the people
-  sit beside it as View says: Tiles is a column on the right, about 300, 248, 216 or 176 px wide as the stage narrows; Arches
-  is a row over the frame, which any stage under 760 px gets; Hidden puts them on the horizon by the dock. Your stage holds one
+  With nothing open the people fill it, laid out by the stage itself (Your view, below). With something open, it sits in its
+  frame, and the people sit beside it: a column on the right, about 300, 248, 216 or 176 px wide as the stage narrows; a row
+  of arches over the frame, which any stage under 760 px gets; or, hidden (⇧P), on the horizon by the dock. Your stage holds one
   thing: opening something puts away what was there, so a presentation becomes its tile, and what's open just for you closes
   (the workspace keeping your place, caret and undo). Show beside is the one exception: it puts a second presented thing
   beside the first, side by side where there's 900 px across for them, else one over the other where there's 620 px down,
@@ -2033,10 +2060,9 @@ steps (`ShareMenu.tsx`); and the call's keys (`KeysSheet.tsx`, from `session/use
   with a switcher in the top bar. Under 600 px it's a phone: what's open fills the
   screen under a row of arches, two things take turns with the switcher under the arches, and your side, Share, More, a
   frame's name menu and Close's question are sheets over the call.
-- **The people beside what's open.** Tiles in a column sized to the stage; arches in a row over the frame, their name, mic
-  and menu moved to a click on the arch; or, hidden (**⇧P**, the small toolbar over them, which also folds tiles to arches
-  and back, or View's Beside what's shared), small arches on the horizon beside the dock, in space nothing else uses.
-  Whoever has a hand up, or has been talking a moment (`speakers.ts`, as Speaker view counts it, so a quick "yes" moves
+- **The people beside what's open.** Tiles in a column sized to the stage; arches in a row over the frame on a narrow stage,
+  their name, mic and menu moved to a click on the arch; or, hidden (**⇧P**), small arches on the horizon beside the dock,
+  in space nothing else uses. Whoever has a hand up, or has been talking a moment (`speakers.ts`, so a quick "yes" moves
   nothing), rises 9 px, with a line beside them saying so. As many as fit are shown, then a count that opens People, and the
   speaker and anyone with a hand up always have a place, unless the dock leaves room for nobody: nothing ever stands on it.
   Those there's no room for stay mounted, out of sight. Someone rung waits in a tile among the tiles; among arches or on the
@@ -2053,19 +2079,22 @@ steps (`ShareMenu.tsx`); and the call's keys (`KeysSheet.tsx`, from `session/use
   one thing on your stage (`topic`, `ToastOptions` in the kit's `toast.tsx`), and a newer one about the same thing takes the
   place of the one before, so "Closed for you. While Priya presents, its tile takes you back." never stays up once she's
   stopped.
-- **Your view** (`view.ts`, laid out by `stageLayout.ts`) is each viewer's own and is never sent anywhere: Auto, Speaker or
-  Grid; how the people sit beside what's open (Tiles, Arches or Hidden); up to six pins, which share the main stage (in Grid
-  they come first and bigger); the order you put people in; who you made bigger; and where you see yourself (in the grid, in
-  a corner the layout makes room for so it never covers a tile, or hidden, folded into a chip there). **View** in the top
-  bar holds The people, Beside what's shared, See yourself and **Reset my view**; on a phone it's Your view in More, without
-  Beside what's shared, since what's open fills the screen there under a row of arches. Reset puts everything back as the
-  call starts it (where you see yourself stays as it is, and what's open stays open), with Undo in its toast, as unpinning
-  everyone has.
-- **What's remembered where.** How you like calls (the mode, where you see yourself and its corner: `CallViewPrefsSchema`)
-  is in `localStorage` for your account, `alcove.callView.<ownerId>` (one set for a browser without an account), because
-  it's about you, not about anyone in a call. So is how you like the main area (`CallPanelsSchema`: how the people sit
-  beside what's open, and whether the workspace shows its list), `alcove.callPanels.<ownerId>`, so tomorrow's call starts
-  the way you left this one; it never names a person, a call or a share. Your side isn't part of it: it shows one thing at a
+- **Your view** (`view.ts`, laid out by `stageLayout.ts`) is each viewer's own and is never sent anywhere. There are no layout
+  modes: the stage lays itself out (`arrange`), and what's kept is what you did to it: up to six pins, which share the main
+  stage; the order you dragged people into; who you made bigger from a tile's corner; whether you hid the people beside
+  what's open (⇧P); and where you see yourself (in the grid, in a corner the layout makes room for so it never covers a
+  tile, or hidden, folded into a chip there). Beside what's open the people are a column of tiles, or a row of arches on a
+  stage under 760 px and on a phone (`panels.ts`), whatever was kept. Reset layout, in More while there's something to
+  put back (`isCustom`), puts everything back as the stage lays it out (where you see yourself stays as it is, and what's
+  open stays open), with Undo in its toast, as unpinning everyone has.
+- **What's remembered where.** How you like calls (where you see yourself and its corner: `CallViewPrefsSchema`) is in
+  `localStorage` for your account, `alcove.callView.<ownerId>` (one set for a browser without an account), because it's
+  about you, not about anyone in a call. So is how you like the main area (`CallPanelsSchema`: whether the people beside
+  what's open are hidden, and whether the workspace shows its list), `alcove.callPanels.<ownerId>`, so tomorrow's call
+  starts the way you left this one; it never names a person, a call or a share. Both were written with layout modes
+  before the stage laid itself out: a kept `mode` (Auto, Speaker or Grid) is dropped as the preferences are read, and the
+  people kept as `arches` read as beside what's open (`tiles`), so nobody's kept choices are lost or refused, and the next
+  save writes the current shape. Your side isn't part of it: it shows one thing at a
   time, on the right, at a fixed width. A record that doesn't parse is ignored, a phone starts with your side closed, and a
   call just joined on a wide screen opens Notes while notes are on. How you arranged this call (pins, order, sizes, your
   side, where you were in the workspace: `CallLayoutSchema`) only means something in this call, so it's in `sessionStorage`
@@ -2080,21 +2109,20 @@ steps (`ShareMenu.tsx`); and the call's keys (`KeysSheet.tsx`, from `session/use
   come back to the same seat; you're told both times. With all six pins taken, pinning someone else gives up the
   oldest pin of someone who isn't here, and someone the organizer removes loses the organizer's pin, since they
   can't come back. Everyone keeps their place across reconnections (the order
-  people first came in, by seat). Speaker view hands the main stage to someone only after a moment of talking and
-  leaves it with them while they talk, and in the strip whoever steps down takes the place of whoever steps up.
-  Auto shows one person big only once they've had most of the talk time over the last minute or so (yours
-  counted), and only while you haven't arranged anything. A presentation that starts takes your stage only while you
+  people first came in, by seat). The stage shows one person big only once they've had most of the talk time over the
+  last minute or so (yours counted), and only while you haven't arranged anything; in the strip under them, whoever steps
+  down takes the place of whoever steps up, and moving or sizing a tile there arranges the stage, which is a grid again
+  (`handsOn` in `Stage.tsx`). A presentation that starts takes your stage only while you
   aren't watching another; otherwise it comes in as a tile, and nothing you see moves. Your pins stay first beside what's
   open, and when it closes everything is where it was. Cameras turning off move nothing.
 - **Keyboard.** The stage is one tab stop. Arrow keys move between tiles, Enter (or Shift+F10) opens a tile's menu, P pins
-  or unpins, Shift with an arrow moves a tile earlier or later (your corner picture to another corner), and + and − make it
-  bigger or smaller; on a presented thing's tile, Enter, Space or P puts it on your stage. A share's frame is one tab stop
+  or unpins, and Shift with an arrow moves your corner picture to another corner (tiles move and grow by dragging); on a
+  presented thing's tile, Enter, Space or P puts it on your stage. A share's frame is one tab stop
   too, where L starts pointing at it ([Pointing at shared screens](#pointing-at-shared-screens)). Escape stops pointing;
   then, once no menu or sheet is open, it leaves focus, then unpins everyone, then puts your side away. The call's own keys
   are M and V (microphone and camera), C (Chat), B (Mark this moment), W (Workspace), O (Board), ⇧P (hide the people or
-  bring them back), ⌘K (find in the workspace) and ⌘⇧F (focus); captions have none, the letters sleep while you type, and
-  Keyboard shortcuts in More (`KeysSheet.tsx`) lists the ones you have there, then what works on a tile, on a shared screen
-  and on a board you present (`TILE_KEYS`, `SHARE_KEYS` and `PRESENTING_KEYS` in `useCallShortcuts.ts`). A share you
+  bring them back), ⌘K (find in the workspace) and ⌘⇧F (focus), all in `session/useCallShortcuts.ts`; captions have none,
+  and the letters sleep while you type. There's no sheet listing them: the keys just work. A share you
   bring back from its own window takes the keys back, on its frame or its tile (`useFocusBack`), so focus never drops to the
   page. Nor does it as your stage changes under the keys (`layout/landKeys.ts`): closing what's on it hands them to its
   tile while someone else still presents it, else to what opens it again (Board or Workspace at the top right, More on a
@@ -2103,7 +2131,7 @@ steps (`ShareMenu.tsx`); and the call's keys (`KeysSheet.tsx`, from `session/use
   Keys that have moved on meanwhile stay where they are. On a board you present, ← and → move its frames. On someone
   else's share on your stage, + and − zoom, 0 shows the whole picture, the arrows move around while zoomed in (your pointer,
   while you point), F freezes it or goes back to live, and comma and full stop step through earlier pictures
-  ([below](#looking-closer-at-a-share)). Each tile's menu shows its keys, and on touch screens its ⋯ is always there.
+  ([below](#looking-closer-at-a-share)). On touch screens a tile's ⋯ is always there.
 - **Shares.** Several people can share at once, a screen each, and nobody's share replaces anyone else's. A share
   starts only while fewer than four (`MAX_SHARES`, `share.ts`) are going in your part of the call, yours counted:
   two sit side by side with Show beside and the rest are tiles, and past four the stage would give screens more room than people
@@ -2487,7 +2515,8 @@ uploads), Alcove is asked who's signed in (`GET /v1/session`): only the account 
 - `getUserMedia` with echo cancellation and noise suppression; camera off releases the camera. Noise
   reduction can be switched from the microphone menu (`applyConstraints` on the live track, so the recording
   and transcript carry on).
-- **Backgrounds** (`media/backgrounds`, picked in the camera's menu and before joining): Off, mild/strong blur,
+- **Backgrounds** (`media/backgrounds`, chosen in Background's window, `ChooseBackground.tsx` over `BackgroundModal` in
+  `@alcove/ui`, opened from the pre-join and from Background in the camera's menu): Off, light (`mild`) or strong blur,
   three stable solid colors (Slate, Sand, Rose, from `CAMERA_COLORS` in `@alcove/ui`, shared with their swatches and never changed by theme),
   three of Alcove's pictures (balloons, beach, office; drawn in `packages/ui/src/backgrounds`), or up to six of
   your own. Alcove's matte (`matte.ts`, drawn by `matteGl.ts`) runs MediaPipe's multiclass selfie segmenter
@@ -2521,11 +2550,12 @@ uploads), Alcove is asked who's signed in (`GET /v1/session`): only the account 
   Full quality caps at 30 fps. Two slow two-second measurement windows lower one tier; eight fast windows restore one,
   preventing rapid oscillation. Expensive frames leave equal time for the rest of the call before another frame is processed.
   Skipped frames are closed without enqueueing anything, leaving the last safe processed frame; there is no raw passthrough.
-  Blur spread scales with output resolution so its selected strength stays the same. LocalMedia announces changes and the
-  picker keeps the reduced-quality status visible. No performance or effect preference goes to another service.
+  Blur spread scales with output resolution so its selected strength stays the same. LocalMedia announces changes and
+  Background's window keeps the reduced-quality status under its preview. No performance or effect preference goes to another service.
   Storybook serves the same installed WASM and model and exercises the actual pipeline with its drawn synthetic camera.
 - The microphone, camera and speaker chosen last time are asked for first (`deviceId: { ideal }`). When one
-  isn't plugged in, the browser's default is used and pre-join says so. Choices live in `localStorage`
+  isn't plugged in, the browser's default is used and pre-join says so in a line under that device's picker (one change
+  for each device, in `MediaSnapshot.changes`, until a device of that kind is picked). Choices live in `localStorage`
   (`alcove.devices`, parsed with `DevicePrefsSchema`) in this browser only; nothing about devices is sent.
   Browsers that hand out new device IDs (after clearing site data, say) start from their defaults again.
 - **Permission and device state.** Before asking, `LocalMedia` reads the Permissions API (`microphone`,
@@ -2611,9 +2641,12 @@ uploads), Alcove is asked who's signed in (`GET /v1/session`): only the account 
   (iPhones) don't offer it. There's no going above 100%:
   that needs Web Audio on the way to the speaker, which LiveKit turned off by default because echo cancellation
   doesn't cover it everywhere.
-- The microphone test (`apps/web/src/features/call/media/devices.ts`) records three seconds in memory and plays
-  them back through the chosen speaker. Nothing is uploaded or kept. In the call, **Play test sound** plays a
-  short chime through the chosen speaker.
+- The microphone test (`MicTest` in `apps/web/src/features/call/media/devices.ts`, one for each `LocalMedia`, so a menu
+  that closes and opens again shows where it's got to) records three seconds in memory and plays them back through
+  the chosen speaker. Nothing is uploaded or kept. It's in the microphone's menu before joining only: in the call the
+  microphone is live, published to the room and heard by the notes, so a test there couldn't say nothing leaves.
+  **Play a test sound**, under the speakers (the speaker's own picker before joining, the microphone's menu in the
+  call), plays a short chime through the chosen speaker.
 - `getDisplayMedia` for screen sharing (`shareScreen`), opened on the kind picked in Share › Your screen (a tab, a window or
   your whole screen), from the click itself (Safari and Firefox need that), with the call's own tab left out of the
   browser's picker. It captures nothing but what's picked: sound only when asked for (a tab's, or the computer's on a whole
@@ -2630,7 +2663,10 @@ uploads), Alcove is asked who's signed in (`GET /v1/session`): only the account 
   (the browser picker's own switch was off, or the computer wouldn't share it) is said, with Change.
 - A Web Audio analyser drives the mic meter (in the microphone picker before the call and beside the microphone
   in its menu), the speaking ring and the recorder's voice on the water (`useVoice`, which changes CSS variables
-  and never renders). On Record the page has its own `LocalMedia`, which
+  and never renders). It listens to a copy of the microphone that stays on while the microphone is muted, which goes
+  nowhere but the analyser, so a muted microphone still knows when you talk: a couple of seconds of talking says
+  "You're talking on mute" at the top of the call, with Unmute (`useTalkingOnMute`, in `media/useSpeaking.ts`), and it
+  rests 45 seconds after saying so. The meter itself reads nothing while you're muted. On Record the page has its own `LocalMedia`, which
   opens the microphone only when **Check the level** is pressed and lets it go on **Stop** or when the page is
   left; choosing a microphone while it's closed only remembers it, and one that doesn't start while it's open
   says so and isn't shown as chosen.

@@ -3,7 +3,7 @@
  * exactly as a browser would, encrypting media with the call's MLS-derived key as a browser does, and observe
  * media and data from the other side.
  */
-import { CALL_TOPIC, CALL_VOID_KEY_INDEX, CallNudgeSchema, type CallCrypto, type CallSession, type LiveStore } from '@alcove/api';
+import { CALL_TOPIC, CALL_VOID_KEY_INDEX, CallChangedSchema, type CallCrypto, type CallSession, type LiveStore } from '@alcove/api';
 import {
   AudioFrame, AudioSource, AudioStream, DisconnectReason, EncryptionType, KeyProvider, LocalAudioTrack, LocalVideoTrack, Room, RoomEvent, TrackKind,
   TrackPublishOptions, TrackSource, VideoBufferType, VideoFrame, VideoSource, dispose, type RemoteTrack
@@ -35,8 +35,8 @@ export interface TestParticipant {
   /** Mean absolute sample of `identity`'s audio over `ms` (a tone at our amplitude is about 7600; silence is 0). */
   meanLevelFrom(identity: string, ms?: number): Promise<number>;
   waitFor(pred: () => boolean, what: string, ms?: number): Promise<void>;
-  /** Resolves on the next "the call changed" nudge the server sends to the room. */
-  nextNudge(): Promise<void>;
+  /** Resolves on the next change push ("the call changed") the server sends this participant. */
+  nextChange(): Promise<void>;
   /**
    * Sends data on `topic` as a browser does: from this participant, with its key when it has one (LiveKit encrypts data
    * packets with the participant's media key then), to everyone in the room.
@@ -92,13 +92,13 @@ export async function connect(join: RoomJoin, keys?: Keys): Promise<TestParticip
   const room = new Room();
   let pumps: ReturnType<typeof setInterval>[] = [];
   let reason: DisconnectReason | null = null;
-  let nudges = 0;
+  let changes = 0;
   const data: { topic: string; from: string | null; payload: Uint8Array }[] = [];
   room.on(RoomEvent.DataReceived, (payload, from, _kind, topic) => {
     data.push({ topic: topic ?? '', from: from?.identity ?? null, payload });
-    // Only the server's nudge counts, as in a browser: it comes from no participant.
+    // Only the server's change push counts, as in a browser: it comes from no participant.
     if (topic !== CALL_TOPIC || from) return;
-    try { if (CallNudgeSchema.safeParse(JSON.parse(new TextDecoder().decode(payload))).success) nudges++; } catch { /* not a nudge */ }
+    try { if (CallChangedSchema.safeParse(JSON.parse(new TextDecoder().decode(payload))).success) changes++; } catch { /* not a change push */ }
   });
   room.on(RoomEvent.Disconnected, (r) => { reason = r; });
   // The same frame encryption as a browser's: AES-GCM, keys derived with HKDF, no ratchet, a ring of 256. rtc-node
@@ -207,7 +207,7 @@ export async function connect(join: RoomJoin, keys?: Keys): Promise<TestParticip
       return samples ? energy / samples : 0;
     },
     waitFor,
-    async nextNudge() { const seen = nudges; await waitFor(() => nudges > seen, 'a nudge from the server'); },
+    async nextChange() { const seen = changes; await waitFor(() => changes > seen, 'a change push from the server'); },
     async sendData(payload, topic, reliable = true) {
       const local = room.localParticipant;
       if (!local) throw new Error('not connected');

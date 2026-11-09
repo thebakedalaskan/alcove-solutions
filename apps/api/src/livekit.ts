@@ -1,6 +1,6 @@
 /*
  * LiveKit (group calls). The only module that holds the LiveKit API key and secret, as inference.ts is for
- * NEAR AI. LiveKit carries media, presence, the server's nudges and what browsers send each other (pointers and marks on
+ * NEAR AI. LiveKit carries media, presence, the server's change pushes and what browsers send each other (pointers and marks on
  * shared screens, encrypted end to end like media); the API decides who may join and keeps the call.
  */
 import { AccessToken, DataPacket_Kind, RoomServiceClient, TrackSource, WebhookReceiver } from 'livekit-server-sdk';
@@ -30,14 +30,14 @@ export interface LiveKit {
   /**
    * A join token for one identity in one room. No admin rights: host powers stay in the API. It may send data: browsers
    * send each other pointers and marks on shared screens, encrypted end to end with their own media keys. The API is
-   * never in the room, so it never receives them, and browsers take the call's nudges only from the server.
+   * never in the room, so it never receives them, and browsers take the call's change pushes only from the server.
    */
   token(t: { roomName: string; identity: string }): Promise<string>;
   removeParticipant(roomName: string, identity: string): Promise<void>;
   /** Mutes one published track, a microphone or a share. Never unmutes: remote unmute stays off. */
   muteTrack(roomName: string, identity: string, trackSid: string): Promise<void>;
-  /** Sends a reliable data message to everyone in the room on `topic`. */
-  sendData(roomName: string, data: Uint8Array, topic: string): Promise<void>;
+  /** Sends a reliable data message on `topic` to everyone in the room, or only to the connections in `to`. */
+  sendData(roomName: string, data: Uint8Array, topic: string, to?: readonly string[] | undefined): Promise<void>;
   /** Disconnects everyone. A room that's already gone is fine. */
   deleteRoom(roomName: string): Promise<void>;
   /** Which of these rooms LiveKit still has. */
@@ -97,8 +97,8 @@ export function createLiveKit(cfg: Config): LiveKit {
     async muteTrack(roomName, identity, trackSid) {
       await rooms.mutePublishedTrack(roomName, identity, trackSid, true);
     },
-    async sendData(roomName, data, topic) {
-      await rooms.sendData(roomName, data, DataPacket_Kind.RELIABLE, { topic });
+    async sendData(roomName, data, topic, to) {
+      await rooms.sendData(roomName, data, DataPacket_Kind.RELIABLE, { topic, ...(to ? { destinationIdentities: [...to] } : {}) });
     },
     async deleteRoom(roomName) {
       if ((await rooms.listRooms([roomName])).length) await rooms.deleteRoom(roomName);

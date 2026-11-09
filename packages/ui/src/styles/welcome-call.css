@@ -1,10 +1,11 @@
 /*
  * The welcome page's call (`lp-tour`, `lp-st`), built by CallTour.tsx and TourStage.tsx: seven steps beside a call that
  * loops the scene of the one being read, night in both themes (the part is `.dark`, the stage `.ac-stage`). The stage is
- * drawn at 1120 × 700 design pixels inside Fit, so everything under `.lp-st` is in those pixels. Raw colours appear only
- * where it's always night: on the stage (its shared screen, the board and its sticky notes, the raised surfaces of its
- * menus and the faint whites of its controls) and on the night window around it (the steps' icons and the stage's edge
- * here, the window's own glow in welcome.css). While the tour is off screen (`:not(.is-on)`) the stage's loops hold still.
+ * drawn at 1120 × 700 design pixels inside Fit, so everything under `.lp-st` is in those pixels. It's the call as the app
+ * draws it: its top bar and dock are the kit's own (call.css), and what's drawn here follows the call's look. Raw colours
+ * appear only where it's always night: on the stage (its shared screen, the board and its sticky notes, the raised surfaces
+ * of its menus and the faint whites of its controls) and on the night window around it (the steps' icons and the stage's
+ * edge here, the window's own glow in welcome.css). While the tour is off screen (`:not(.is-on)`) the stage's loops hold still.
  */
 
 /* ---- the steps on one side, the call held in view on the other while they scroll past ---- */
@@ -35,19 +36,35 @@
 
 /* ---- the stage ---- */
 .lp-st { position: absolute; inset: 0; overflow: hidden; border-radius: 26px; background: var(--stage); color: var(--stage-ink); font: 400 14px/1.4 var(--font-sans); user-select: none; }
-.lp-st-top { position: absolute; left: 0; right: 0; top: 0; height: 56px; display: flex; align-items: center; gap: 14px; padding: 0 18px; }
+/* The top bar: the call on the left, what's yours at the top right. In focus it slides away. */
+.lp-st-top { position: absolute; left: 0; right: 0; top: 0; height: 58px; display: flex; align-items: center; gap: 12px; padding: 0 12px 0 18px;
+  transition: transform .5s var(--ease-in-out), opacity .4s var(--ease-out); }
+.lp-st-top.is-away { transform: translateY(-64px); opacity: 0; }
+/* In focus, the host's timer keeps a strip of its own over the frame. */
+.lp-st-ftimer { position: absolute; z-index: 3; left: 14px; top: 14px; opacity: 0; transition: opacity .4s var(--ease-out); }
+.lp-st-ftimer.is-on { opacity: 1; transition-delay: .3s; }
 .lp-st-title { font: 600 15px/1 var(--font-sans); }
 .lp-st-clock { color: var(--stage-ink-2); font: 500 14px/1 var(--font-sans); font-variant-numeric: tabular-nums; }
+.lp-st-vr { flex: none; width: 1px; height: 20px; background: rgb(255 255 255 / .1); }
 .lp-st-top .ac-notes-sign { height: 26px; }
-.lp-st-end { margin-left: auto; display: flex; align-items: center; gap: 8px; }
-.lp-st-count { margin-left: 6px; color: var(--stage-ink-2); font: 600 12.5px/1 var(--font-sans); }
+.lp-st-shield { display: grid; place-items: center; width: 34px; height: 34px; margin: 0 -6px; color: var(--stage-ink-2); }
+.lp-st-end { margin-left: auto; display: flex; align-items: center; }
+/* The stage is the call at its design size, whatever the window's: what's yours at the top right keeps its words. */
+.lp-st .ic-yb .yl, .lp-st .ic-yb.is-faces .n { display: inline; }
+.lp-st .ic-yb.has-word { padding: 0 12px 0 10px; }
 .lp-st-tb { display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 11px; border-radius: 10px; background: rgb(255 255 255 / .06); color: var(--stage-ink); font: 500 13px/1 var(--font-sans); white-space: nowrap; transition: background-color .2s; }
 .lp-st-tb.is-hi { background: rgb(255 255 255 / .14); }
-.lp-st-tb.is-sealed { color: var(--gold); }
 
-/* People: tiles placed in design pixels, gliding when the layout changes. Folded to arches, they stand small on a horizon. */
+/*
+ * People: tiles placed in design pixels, gliding when the layout changes. Folded to arches, they stand small on the horizon.
+ * Carried, a tile is lifted and ringed; pulled by its corner, it's ringed. Either glides with the pointer: its glide is
+ * EASE.inOut over .8s (TourStage.tsx).
+ */
 .lp-st-tile { position: absolute; z-index: 2; transition: left .75s var(--ease-in-out), top .75s var(--ease-in-out), width .75s var(--ease-in-out), height .75s var(--ease-in-out); }
-.lp-st-tile > .ac-tile { position: absolute; inset: 0; border-radius: 14px; background: transparent; transition: border-radius .75s var(--ease-in-out), box-shadow .3s var(--ease-out); }
+.lp-st-tile:is(.is-lift, .is-pull) { z-index: 5; transition-duration: .8s; transition-timing-function: cubic-bezier(.65, 0, .35, 1); }
+.lp-st-tile > .ac-tile { position: absolute; inset: 0; border-radius: 14px; background: transparent; transition: border-radius .75s var(--ease-in-out), box-shadow .3s var(--ease-out), transform .3s var(--ease-out); }
+.lp-st-tile.is-pull > .ac-tile { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--stage-ink) 70%, transparent); }
+.lp-st-tile.is-lift > .ac-tile { transform: scale(1.03); box-shadow: 0 30px 60px -20px rgb(0 0 0 / .85), inset 0 0 0 2px color-mix(in srgb, var(--stage-ink) 70%, transparent); }
 .lp-st-tile > .ac-tile::before { content: ""; position: absolute; inset: 0; background: radial-gradient(120% 90% at 50% 18%, #1B273D, var(--stage-tile)); transition: opacity .5s; }
 .lp-st-tile > .ac-tile::after { transition: opacity .5s; }
 .lp-st-tile .ac-tile-name { transition: opacity .4s; }
@@ -57,7 +74,7 @@
 .lp-st-face .ac-avatar { transition: width .75s var(--ease-in-out), height .75s var(--ease-in-out), border-radius .75s var(--ease-in-out), box-shadow .3s var(--ease-out); }
 .lp-st-tile.is-arch > .ac-tile { overflow: visible; border-radius: 0; box-shadow: none; }
 .lp-st-tile.is-arch > .ac-tile::before, .lp-st-tile.is-arch > .ac-tile::after,
-.lp-st-tile.is-arch :is(.ac-tile-name, .ac-tile-mic, .lp-st-status, .lp-st-more, .lp-st-left, .lp-st-mute) { opacity: 0; }
+.lp-st-tile.is-arch :is(.ac-tile-name, .ac-tile-mic, .lp-st-status, .lp-st-more, .lp-st-rs, .lp-st-left) { opacity: 0; }
 .lp-st-tile.is-arch .lp-st-face { transform: translate(-50%, -50%); }
 /* On a horizon, whoever's talking rises, as they do in the call. */
 .lp-st-tile.is-up .lp-st-face { translate: 0 -8px; }
@@ -80,30 +97,46 @@
 .lp-st-tile.is-away .lp-st-left i { animation-name: lp-st-left; animation-duration: 6.4s; animation-timing-function: linear; animation-fill-mode: forwards; }
 .lp-st.is-still .lp-st-tile.is-away .lp-st-left i { animation-name: none; transform: scaleX(.6); }
 @keyframes lp-st-left { from { transform: scaleX(1); } to { transform: scaleX(.12); } }
-.lp-st-mute { position: absolute; z-index: 4; left: 50%; top: 14px; display: inline-flex; align-items: center; gap: 9px; height: 34px; padding: 0 6px 0 12px; border-radius: 11px;
-  background: #2A3852; box-shadow: 0 10px 24px -8px rgb(0 0 0 / .6), inset 0 0 0 1px rgb(255 255 255 / .1); font: 600 12.5px/1 var(--font-sans); white-space: nowrap;
-  opacity: 0; transform: translate(-50%, -6px); transition: opacity .4s var(--ease-out), transform .4s var(--ease-out); }
-.lp-st-mute .ac-i { color: var(--dusk-sun); }
-.lp-st-mute.is-on { opacity: 1; transform: translate(-50%, 0); }
-.lp-st-unmute { height: 24px; padding: 0 9px; border-radius: 8px; background: var(--stage-ink); color: var(--stage); font: 600 12px/24px var(--font-sans); }
-.lp-st-more { position: absolute; z-index: 3; right: 10px; bottom: 10px; display: grid; place-items: center; width: 28px; height: 24px; border-radius: 8px;
+/* Under the pointer: the tile's ⋯ at its top right (under the microphone's mark when there is one), and its corner to resize it. */
+.lp-st-more { position: absolute; z-index: 3; right: 10px; top: 10px; display: grid; place-items: center; width: 28px; height: 28px; border-radius: 8px;
   background: color-mix(in srgb, var(--stage) 62%, transparent); color: var(--stage-ink); opacity: 0; transition: opacity .25s; }
-.lp-st-tile.is-hover .lp-st-more { opacity: 1; }
-.lp-st-horizon { position: absolute; z-index: 1; left: 0; right: 0; top: 655px; height: 1.5px; opacity: 0; transition: opacity .6s;
-  background: linear-gradient(to right, transparent, color-mix(in srgb, var(--dusk-sun) 50%, transparent) 30%, color-mix(in srgb, var(--dusk-sun) 50%, transparent) 70%, transparent); }
-.lp-st-horizon.is-on { opacity: 1; }
+.lp-st-tile .ac-tile:has(.ac-tile-mic) .lp-st-more { top: 42px; }
+.lp-st-rs { position: absolute; z-index: 3; right: 6px; bottom: 6px; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 8px;
+  background: color-mix(in srgb, var(--stage) 62%, transparent); color: var(--stage-ink); opacity: 0; transition: opacity .25s; }
+.lp-st-tile.is-hover :is(.lp-st-more, .lp-st-rs) { opacity: 1; }
+/* In focus, whoever's talking is said beside the people on the horizon. */
+.lp-st-hz { position: absolute; z-index: 3; color: var(--stage-ink-2); font: 500 12.5px/1 var(--font-sans); white-space: nowrap; opacity: 0; transition: opacity .4s var(--ease-out); }
+.lp-st-hz.is-on { opacity: 1; transition-delay: .5s; }
+/* Talking with your microphone muted, said at the top of the call. */
+.lp-st-pill { position: absolute; z-index: 9; left: 50%; top: 66px; display: inline-flex; align-items: center; gap: 10px; height: 36px; padding: 0 4px 0 12px; border-radius: 12px;
+  background: var(--stage-raised); box-shadow: 0 12px 26px -10px rgb(0 0 0 / .6), inset 0 0 0 1px rgb(255 255 255 / .1); color: var(--stage-ink-2); font: 500 13px/1 var(--font-sans); white-space: nowrap;
+  opacity: 0; transform: translate(-50%, -6px); transition: opacity .4s var(--ease-out), transform .4s var(--ease-out); }
+.lp-st-pill .ac-i { color: var(--stage-ink); }
+.lp-st-pill.is-on { opacity: 1; transform: translate(-50%, 0); }
+.lp-st-unmute { height: 28px; padding: 0 10px; border-radius: 8px; background: var(--stage-ink); color: var(--stage); font: 600 12.5px/28px var(--font-sans); }
 
-/* Kofi's shared screen. */
-.lp-st-share { position: absolute; z-index: 1; border-radius: 14px; overflow: hidden; background: #F3F7FC; opacity: 0;
-  transition: left .75s var(--ease-in-out), top .75s var(--ease-in-out), width .75s var(--ease-in-out), height .75s var(--ease-in-out), opacity .5s; }
-.lp-st-share.is-on { opacity: 1; }
-.lp-st-share svg { display: block; width: 100%; height: 100%; }
-.lp-st-share-tag { position: absolute; left: 10px; bottom: 10px; display: inline-flex; align-items: center; gap: 7px; height: 26px; padding: 0 10px 0 4px; border-radius: 8px;
-  background: color-mix(in srgb, var(--stage) 72%, transparent); color: var(--stage-ink); font: 500 12px/1 var(--font-sans); }
+/* Kofi's screen on your stage, in its frame: its bar, then the screen. It rises in, and grows to fill the window in focus. */
+.lp-st-share { position: absolute; z-index: 1; display: flex; flex-direction: column; overflow: hidden; border-radius: 16px; background: var(--stage-tile);
+  box-shadow: 0 30px 60px -36px rgb(0 0 0 / .9), inset 0 0 0 1px rgb(255 255 255 / .08); opacity: 0; transform: translateY(8px);
+  transition: left .75s var(--ease-in-out), top .75s var(--ease-in-out), width .75s var(--ease-in-out), height .75s var(--ease-in-out), border-radius .75s var(--ease-in-out),
+    opacity .45s var(--ease-out), transform .5s var(--ease-out); }
+.lp-st-share.is-on { opacity: 1; transform: none; }
+.lp-st-share.is-focus { border-radius: 12px; }
+.lp-st-fbar { flex: none; display: flex; align-items: center; gap: 8px; height: 52px; padding: 0 10px 0 12px; background: color-mix(in srgb, var(--stage-tile) 66%, var(--stage-raised)); box-shadow: inset 0 -1px 0 rgb(255 255 255 / .07); }
+.lp-st-fbar > .ac-avatar { --ring: transparent; }
+.lp-st-fname { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 2px 0 4px; font: 600 14px/1.2 var(--font-sans); white-space: nowrap; }
+.lp-st-fname .ac-i { color: var(--stage-ink-2); }
+.lp-st-fmeta { flex: 1; min-width: 0; color: var(--stage-ink-2); font: 500 12.5px/1.2 var(--font-sans); white-space: nowrap; }
+.lp-st-fib { display: grid; place-items: center; flex: none; width: 34px; height: 34px; border-radius: 10px; color: var(--stage-ink-2); transition: background-color .2s, color .2s; }
+.lp-st-fib.is-on { background: color-mix(in srgb, var(--stage-sun) 16%, transparent); color: var(--stage-sun); }
+.lp-st-fclose { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px 0 10px; border-radius: 10px; background: rgb(255 255 255 / .06); font: 600 13px/1 var(--font-sans); white-space: nowrap; }
+.lp-st-fbody { position: relative; flex: 1; min-height: 0; background: #E6ECF4; }
+.lp-st-fbody svg { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
 
-.lp-st-dock { position: absolute; z-index: 12; left: 50%; top: 628px; transform: translateX(-50%); }
+/* The dock, standing on the stage's foot whether it's whole or tucked away in focus. */
+.lp-st-dock { position: absolute; z-index: 12; left: 50%; bottom: 14px; transform: translateX(-50%); }
 
-/* Panels the dock opens, at the stage's right. */
+/* Your side, at the stage's right: the chat, or the breakout rooms. */
 .lp-st-panel { position: absolute; z-index: 10; left: 776px; top: 60px; width: 328px; height: 552px; display: flex; flex-direction: column; overflow: hidden; border-radius: 18px;
   background: var(--stage-raised); box-shadow: inset 0 0 0 1px rgb(255 255 255 / .07); opacity: 0; transform: translateX(26px); transition: opacity .45s var(--ease-out), transform .6s var(--ease-out); }
 .lp-st-panel.is-on { opacity: 1; transform: none; }
@@ -154,6 +187,8 @@
 .lp-st-opt { display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 10px; border-radius: 9px; color: var(--stage-ink); font: 500 13.5px/1 var(--font-sans); white-space: nowrap; transition: background-color .2s; }
 .lp-st-opt > .ac-i { color: var(--stage-ink-2); }
 .lp-st-opt.is-hi { background: rgb(255 255 255 / .1); }
+.lp-st-opt.is-quiet { color: var(--stage-ink-2); }
+.lp-st-sub { color: var(--stage-ink-2); font-weight: 400; }
 .lp-st-opt-end { margin-left: auto; display: inline-flex; color: var(--stage-ink-2); font-size: 12px; }
 .lp-st-opt > .lp-st-tick { margin-left: auto; color: var(--sun); opacity: 0; }
 .lp-st-opt-end + .lp-st-tick { margin-left: 0; }
@@ -161,24 +196,35 @@
 .lp-st-chips { display: flex; gap: 4px; padding: 4px 6px 6px; }
 .lp-st-chips span { flex: 1; display: grid; place-items: center; height: 30px; border-radius: 8px; background: rgb(255 255 255 / .06); color: var(--stage-ink-2); font: 600 12px/1 var(--font-sans); transition: background-color .2s, color .2s; }
 .lp-st-chips span.is-on { background: color-mix(in srgb, var(--sun) 20%, transparent); color: var(--sun); }
+/* A step in place of a menu: back, and what it's about. */
+.lp-st-pop-step { display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 8px; color: var(--stage-ink-2); font: 600 12.5px/1 var(--font-sans); }
+/* How loud someone is for you. */
+.lp-st-vol { display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 10px 2px; color: var(--stage-ink-2); }
+.lp-st-vol-bar { position: relative; flex: 1; height: 4px; border-radius: 2px; background: color-mix(in srgb, var(--stage-ink) 80%, transparent); }
+.lp-st-vol-bar i { position: absolute; right: -6px; top: -5px; width: 14px; height: 14px; border-radius: 50%; background: var(--stage-ink); box-shadow: 0 1px 3px rgb(0 0 0 / .4); }
+.lp-st-vol-n { margin-left: 4px; font: 500 12px/1 var(--font-sans); font-variant-numeric: tabular-nums; }
+/* The captions' languages, with what translating them means under the list. */
+.lp-st-pop.is-lang { width: 272px; }
+.lp-st-pop-hint { margin: 4px 10px 6px; color: var(--stage-ink-2); font: 400 12px/1.45 var(--font-sans); }
 
-/* What the call says over itself: a toast, a caption, a note that only you see the change. */
-.lp-st-toast { position: absolute; z-index: 22; left: 50%; top: 70px; display: inline-flex; align-items: center; gap: 10px; height: 40px; padding: 0 14px 0 10px; border-radius: 12px;
+/* What the call says over itself: a toast, over the stage's foot, and the captions. */
+.lp-st-toast { position: absolute; z-index: 22; left: 50%; top: 568px; display: inline-flex; align-items: center; gap: 10px; height: 40px; padding: 0 14px 0 12px; border-radius: 12px;
   background: #26334B; box-shadow: 0 18px 36px -12px rgb(0 0 0 / .7), inset 0 0 0 1px rgb(255 255 255 / .09); font: 500 13.5px/1 var(--font-sans); white-space: nowrap;
   opacity: 0; transform: translate(-50%, -8px); transition: opacity .35s var(--ease-out), transform .4s var(--ease-out); }
 .lp-st-toast .ac-i { color: var(--dusk-sun); }
 .lp-st-toast.is-on { opacity: 1; transform: translate(-50%, 0); }
-.lp-st-cap { position: absolute; z-index: 15; left: 50%; top: 486px; width: 660px; max-width: none; padding: 14px 18px 15px; opacity: 0; transform: translate(-50%, 8px);
+/* Captions stand on the stage's foot, over the dock, and grow upwards with what's said. */
+.lp-st-cap { position: absolute; z-index: 15; left: 50%; bottom: 106px; width: 660px; max-width: none; padding: 14px 18px 15px; opacity: 0; transform: translate(-50%, 8px);
   transition: opacity .4s var(--ease-out), transform .45s var(--ease-out); }
 .lp-st-cap.is-on { opacity: 1; transform: translate(-50%, 0); }
 .lp-st-cap .who { font-weight: 600; }
-.lp-st-cap .lang { margin-left: auto; }
 .lp-st-cap p { margin-top: 8px; font: 500 19px/1.38 var(--font-sans); }
 .lp-st-cap .orig { margin-top: 5px; font: 400 14px/1.4 var(--font-sans); }
-.lp-st-chip { position: absolute; z-index: 16; left: 50%; top: 586px; height: 28px; padding: 0 12px; border-radius: 999px; background: rgb(255 255 255 / .08); color: var(--stage-ink-2);
-  transform: translateX(-50%); opacity: 0; transition: opacity .4s; }
-.lp-st-chip .ac-i { color: var(--gold); }
-.lp-st-chip.is-on { opacity: 1; }
+.lp-st-cap-wait { color: var(--stage-ink-2); font: 400 15px/1.4 var(--font-sans); }
+/* The language they're in, which picks another. */
+.lp-st-capbtn { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 9px 0 8px; border-radius: 8px; background: rgb(255 255 255 / .07);
+  color: var(--stage-ink-2); font: 500 12px/1 var(--font-sans); transition: background-color .2s, color .2s; }
+.lp-st-capbtn.is-hi { background: rgb(255 255 255 / .13); color: var(--stage-ink); }
 
 /* The pointer that shows each click, and the ring of a press. */
 .lp-st-cur { position: absolute; z-index: 40; left: 0; top: 0; width: 26px; height: 26px; pointer-events: none; filter: drop-shadow(0 3px 5px rgb(0 0 0 / .45)); }

@@ -1,4 +1,4 @@
-import { CallTimerSequenceSchema, MAIN_PLACE, ModelIdSchema, firstName } from '@alcove/api';
+import { CALL_TIMER_MAX_SECONDS, CallTimerSchema, MAIN_PLACE, ModelIdSchema, firstName } from '@alcove/api';
 import { z } from 'zod';
 import type { Owner } from '../../context';
 import { id128, openJson, sealJson, stateKey, toJson } from '../../crypto';
@@ -45,7 +45,34 @@ const LiveShare = z.object({
 type LiveShare = z.infer<typeof LiveShare>;
 
 
-export const Stored = z.preprocess(withHost, z.object({
+/**
+ * Call state written before the call's timer was one countdown keeps `timerSequence`: segments the host stepped through.
+ * The segment it was on reads as the countdown, with the time added to it, and keeps its clock; a sequence still to start or
+ * finished reads as no timer, and so does one that doesn't read. The next save writes `timer` in its place.
+ */
+const BeforeCountdown = z.object({
+  timerSequence: z.object({
+    revision: z.number().int().nonnegative(),
+    segments: z.array(z.object({ id: z.string().min(1).max(64).regex(/^[A-Za-z0-9_-]+$/), durationSeconds: z.number().int().min(1) })),
+    activeIndex: z.number().int().nonnegative(),
+    status: z.enum(['ready', 'running', 'paused', 'finished']),
+    elapsedMs: z.number().nonnegative(),
+    startedAt: z.number().nonnegative().nullable(),
+    addedSeconds: z.number().int().nonnegative()
+  }).nullable()
+});
+
+const withTimer = (v: unknown): unknown => {
+  if (typeof v !== 'object' || v === null || 'timer' in v) return v;
+  const old = BeforeCountdown.safeParse(v).data?.timerSequence;
+  const segment = old?.segments[old.activeIndex];
+  if (!old || !segment || old.status === 'ready' || old.status === 'finished') return v;
+  const running = old.status === 'running' && old.startedAt !== null;
+  const durationSeconds = Math.min(CALL_TIMER_MAX_SECONDS, segment.durationSeconds + old.addedSeconds);
+  return { ...v, timer: { id: segment.id, revision: old.revision, durationSeconds, status: running ? 'running' : 'paused', elapsedMs: old.elapsedMs, startedAt: running ? old.startedAt : null } };
+};
+
+export const Stored = z.preprocess((v) => withTimer(withHost(v)), z.object({
   /**
    * The connection that hosts now (features/calls/hosting.ts): the organizer's, or someone's standing in while the organizer is
    * away. It commits for every part of the call's group (see committerOf). The `host_identity` column says the same,
@@ -113,7 +140,8 @@ export const Stored = z.preprocess(withHost, z.object({
   workspace: CallSpace.default(NO_SPACE),
   /** Which board is open in each part of the call, and which boards it lets everyone into. */
   board: CallBoards.default(NO_BOARDS),
-  timerSequence: CallTimerSequenceSchema.nullable().default(null)
+  /** The call's timer, the same for everyone in it (features/calls/timers.ts), or null while none runs. */
+  timer: CallTimerSchema.nullable().default(null)
 }));
 
 export type Stored = z.infer<typeof Stored>;

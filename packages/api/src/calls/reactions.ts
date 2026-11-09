@@ -1,18 +1,35 @@
 import { AlcoveApiError } from '../errors';
-import { type CallChatMessage, type CallCrypto, type CallReaction } from './session';
+import { z } from '../shared/zod';
+// Types only, so this file never loads the session's module: the session and private messages import the schema from here.
+import type { CallChatMessage, CallCrypto } from './session';
+
+/** The emoji someone can react to a chat message with, by name: the wire never carries a glyph. */
+export const CallReactionSchema = z.enum(['thumbs-up', 'thumbs-down', 'heart', 'smile', 'laugh', 'wow', 'sad', 'party']);
+export type CallReaction = z.infer<typeof CallReactionSchema>;
+export const CALL_REACTIONS = CallReactionSchema.options;
+/** One emoji on a chat message, and who reacted with it (identities, in the order they did), first-reacted first. */
+export interface CallChatReaction { reaction: CallReaction; by: string[] }
 
 /**
- * Chat with `who`'s reaction on one message turned on or off: who reacted stays in the order they did, emoji stay in
- * the order they were first used, and an emoji nobody's left on goes. Turning on what's on, or off what isn't, changes
- * nothing. Only a message in `place` (the part of the call the reaction was sent in) can take it.
+ * Reactions with `who`'s one turned on or off: who reacted stays in the order they did, emoji stay in the order they were
+ * first used, and an emoji nobody's left on goes. Turning on what's on, or off what isn't, changes nothing.
+ */
+export function toggledReaction(reactions: readonly CallChatReaction[], reaction: CallReaction, who: string, on: boolean): CallChatReaction[] {
+  const r = reactions.find((x) => x.reaction === reaction);
+  if ((r?.by.includes(who) ?? false) === on) return [...reactions];
+  if (!on) return reactions.map((x) => (x === r ? { ...x, by: x.by.filter((b) => b !== who) } : x)).filter((x) => x.by.length > 0);
+  return r ? reactions.map((x) => (x === r ? { ...x, by: [...x.by, who] } : x)) : [...reactions, { reaction, by: [who] }];
+}
+
+/**
+ * Chat with `who`'s reaction on one message turned on or off (`toggledReaction`). Only a message in `place` (the part of
+ * the call the reaction was sent in) can take it.
  */
 export function withReaction(chat: CallChatMessage[], target: string, place: string, reaction: CallReaction, who: string, on: boolean): CallChatMessage[] {
   return chat.map((m) => {
     if (m.id !== target || m.place !== place) return m;
-    const r = m.reactions.find((x) => x.reaction === reaction);
-    if ((r?.by.includes(who) ?? false) === on) return m;
-    if (!on) return { ...m, reactions: m.reactions.map((x) => (x === r ? { ...x, by: x.by.filter((b) => b !== who) } : x)).filter((x) => x.by.length > 0) };
-    return { ...m, reactions: r ? m.reactions.map((x) => (x === r ? { ...x, by: [...x.by, who] } : x)) : [...m.reactions, { reaction, by: [who] }] };
+    if ((m.reactions.find((x) => x.reaction === reaction)?.by.includes(who) ?? false) === on) return m;
+    return { ...m, reactions: toggledReaction(m.reactions, reaction, who, on) };
   });
 }
 

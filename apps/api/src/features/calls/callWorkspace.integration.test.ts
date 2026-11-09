@@ -796,18 +796,18 @@ describe('a guest in a call', () => {
     inRoom.push(room);
     // A browser that's only just reached the room can miss what's sent that moment, so this one has heard something first.
     let ready = false;
-    const warm = room.nextNudge().then(() => { ready = true; });
+    const warm = room.nextChange().then(() => { ready = true; });
     while (!ready) { await host.lock(false); await rest(50); }
     await warm;
     const seat = (await settle(host, (s) => s.participants.some((p) => p.id === jamie.call.ticket.identity))).participants.find((p) => p.id === jamie.call.ticket.identity)?.seat ?? '';
     // From the Share sheet, from inside the call: nobody asked, and it opens by itself.
-    const shared = room.nextNudge();
+    const shared = room.nextChange();
     await art.api.workspaces.share.set(id, plan, [{ seat }], 'read', { pass: host.ticket.pass });
     await shared;
     expect(await space(jamie.call)).toMatchObject({ id, canOpen: true });
     // Taken back from anywhere, it closes at once.
     const entry = (await art.api.workspaces.share.list(id, plan)).entries[0];
-    const closed = room.nextNudge();
+    const closed = room.nextChange();
     await art.api.workspaces.share.remove(id, plan, entry?.id ?? '');
     await closed;
     expect(await space(jamie.call)).toMatchObject({ id: null, canOpen: false });

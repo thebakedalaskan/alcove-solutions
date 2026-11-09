@@ -49,6 +49,7 @@ result, and [Changing what's stored](#changing-whats-stored) how it changes with
 | `document_version_parts` | owner (the workspace), document, version, `part` | `state_ciphertext` (256 KiB of its whole Yjs state) |
 | `document_access` | owner (the workspace), document, `access_id` (what the API calls the entry), `kind` (`email`/`seat`), role (`edit`/`read`), `call_id` (a seat's call), created | `principal_index` (an email index, or the `call-seat` index), `person_ciphertext` (the address, or the name in the seat) |
 | `presenter_notes` | owner (the account), the document's workspace (`workspace_owner_id`) and `document_id`: one row for each person and document or board they kept notes beside with an earlier release. Nothing reads or writes it now | `body_ciphertext` ([Presenter notes](#presenter-notes)) |
+| `timer_presets` | owner (the account), `preset_id`, created: timer presets an earlier release kept. Nothing reads or writes it now. Its rows stay, unread, while the previous release may still serve (during a deploy, or after a rollback, when it can still write one); a later migration drops the table, rows and all, once that release is gone. Deleting an account deletes its rows meanwhile | `ciphertext` (a preset's name, segments and presenters, sealed under the account's own keys) |
 | `presenter_frame_notes` | owner (the account), the board's workspace (`workspace_owner_id`), `document_id` (the board) and `frame_index` (a keyed hash of the frame under the account's key): one row for each person and frame they keep notes beside | `body_ciphertext` (the frame and what's kept beside it, [Presenter notes](#presenter-notes)) |
 | `workspace_authors` | owner (the workspace), whether this address made the workspace (`made_workspace`) | `email_index`: every address whose name is on something in the workspace, so deleting that account can reach it after it has left |
 | `workspace_media` | owner (the workspace), `media_id`, `state` (`uploading`/`ready`), what its pieces take up so far (`bytes`), how many pieces the whole file comes to (`pieces`), created | `info_ciphertext` (its name, type, size and dimensions: [Media](#media)) |
@@ -752,11 +753,13 @@ readable.
   during the call is in the call's sealed state (`workspace`: who's asking, what's presented and playing, what's been
   worked on and by whom, and the next agenda while it's being made), and goes when the call ends: what was worked on into the note, if there is one, and nowhere else
   ([Calls and recordings › The call's workspace](calls-and-recordings.md#the-calls-workspace)).
-- **Presenter timers** live in the call’s sealed state, separate from its boards and workspace. The sequence keeps its
-  segment labels, optional presenters and durations, current position, revision and server-clock anchors. Older call
-  records default to no sequence. Named presets keep only definitions, sealed under their account’s keys, with a
-  revision for explicit updates; applying one copies it into the call with a fresh clock. Presets belong only to their
-  account and are physically removed with it. See [Presenter timer sequences](presenter-timers.md).
+- **The call's timer** lives in the call's sealed state (`timer`), separate from its boards and workspace: one countdown's
+  ID, revision, length with time added, whether it's paused, and its clock on the server, numbers only. Call state from the
+  previous release kept an agenda of named segments (`timerSequence`) instead: it reads as the segment it was on, and the
+  next save writes `timer` without the agenda's names. Older call state reads as no timer. The timer presets an earlier
+  release kept in `timer_presets` are gone: nothing reads or writes them, and a later migration drops the table once the
+  previous release no longer serves. See
+  [The call's timer](call-timer.md).
 - **A board in a call** is a document in a workspace like any other. The call's sealed state says which is open in each part
   of the call and which boards it lets everyone into (`board`): where each is, who opened or decided it by their name, address and
   seat, and the seats and addresses each has been worked out for, and nothing about what's on it. An open board's entry keeps its

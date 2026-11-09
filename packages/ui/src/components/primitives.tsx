@@ -1,5 +1,5 @@
 import { motion, useReducedMotion } from 'motion/react';
-import { forwardRef, useEffect, useId, useState, type ButtonHTMLAttributes, type HTMLAttributes, type ReactNode } from 'react';
+import { forwardRef, useEffect, useId, useState, type ButtonHTMLAttributes, type HTMLAttributes, type KeyboardEvent, type ReactNode } from 'react';
 import { cn } from '../cn';
 import { ProviderMark } from './brand';
 import { Icon, type IconName } from './icon';
@@ -222,11 +222,34 @@ export function Segmented<T extends string>({ value, onChange, options, label, d
   );
 }
 
-/** Views of the same thing. The selected tab is ink with a sun underline. Use Segmented for a setting. */
-export function Tabs<T extends string>({ value, onChange, options, label, className }: { value: T; onChange: (v: T) => void; options: Choice<T>[]; label: string; className?: string }) {
+/**
+ * Views of the same thing. The selected tab is ink with a sun underline. Use Segmented for a setting. The keys go through them as
+ * a tablist's do: only the chosen tab is a stop for Tab, and the arrows along the list (Left and Right, or Up and Down when it
+ * stands `vertical`) choose the next or the one before, round from either end, with Home and End to the first and last; each
+ * shows as the keys reach it. With `id`, each tab is `${id}-${value}`, for the part it shows to be labelled by, and `panel` is
+ * that part's ID.
+ */
+export function Tabs<T extends string>({ value, onChange, options, label, className, vertical = false, id, panel }: {
+  value: T; onChange: (v: T) => void; options: Choice<T>[]; label: string; className?: string | undefined;
+  vertical?: boolean | undefined; id?: string | undefined; panel?: string | undefined;
+}) {
+  const keys = (e: KeyboardEvent<HTMLDivElement>) => {
+    const at = options.findIndex((o) => o.value === value);
+    const back = vertical ? 'ArrowUp' : 'ArrowLeft';
+    const on = vertical ? 'ArrowDown' : 'ArrowRight';
+    const to = e.key === on ? options[(at + 1) % options.length] : e.key === back ? options[(at - 1 + options.length) % options.length]
+      : e.key === 'Home' ? options[0] : e.key === 'End' ? options.at(-1) : undefined;
+    if (!to) return;
+    e.preventDefault();
+    onChange(to.value);
+    e.currentTarget.querySelector<HTMLElement>(`[data-tab="${CSS.escape(to.value)}"]`)?.focus();
+  };
   return (
-    <div className={cn('ac-tabs', className)} role="tablist" aria-label={label}>
-      {options.map((o) => <button key={o.value} type="button" role="tab" className="ac-tab" aria-selected={o.value === value} onClick={() => onChange(o.value)}>{o.label}</button>)}
+    <div className={cn('ac-tabs', className)} role="tablist" aria-label={label} aria-orientation={vertical ? 'vertical' : 'horizontal'} onKeyDown={keys}>
+      {options.map((o) => (
+        <button key={o.value} id={id ? `${id}-${o.value}` : undefined} data-tab={o.value} type="button" role="tab" className="ac-tab" aria-selected={o.value === value}
+          aria-controls={panel} tabIndex={o.value === value ? 0 : -1} onClick={() => onChange(o.value)}>{o.label}</button>
+      ))}
     </div>
   );
 }

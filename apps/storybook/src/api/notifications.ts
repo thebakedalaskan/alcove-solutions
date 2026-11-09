@@ -52,11 +52,11 @@ export class ScriptedNotifications extends Pushed<CallNotificationState> {
       for (const question of state.attention.questions) if (!question.own && question.status === 'open') put('questions', { type: 'attention', section: 'questions', id: question.id }, `question:${question.id}`, Date.parse(question.createdAt));
       if (state.isOrganizer && !notesAreOn(state.capture.mode)) for (const request of state.capture.requests) put('notesRequested', { type: 'capture', id: request.id }, `notes-request:${request.id}`, Date.parse(request.at));
       if (state.isHost) for (const asker of state.waiting) { const key = `admission:${asker.id}`; const at = this.first.get(key) ?? now; this.first.set(key, at); put('admissions', { type: 'admission', identity: asker.id }, key, at, at + 1_800_000); }
-      const timer = state.timerSequence, segment = timer?.segments[timer.activeIndex];
-      if (timer?.status === 'running' && timer.startedAt !== null && segment) {
-        const deadline = timer.startedAt + (segment.durationSeconds + timer.addedSeconds) * 1000 - timer.elapsedMs;
+      const timer = state.timer;
+      if (timer?.status === 'running' && timer.startedAt !== null) {
+        const deadline = timer.startedAt + timer.durationSeconds * 1000 - timer.elapsedMs;
         const phase = now >= deadline ? 'end' : 'warning';
-        put('timers', { type: 'timer', timer: 'presenter', id: `${segment.id}:${timer.revision}` }, `timer:${segment.id}:${timer.revision}:${phase}`, deadline - (phase === 'warning' ? 30_000 : 0), deadline + (phase === 'end' ? 30_000 : 0));
+        put('timers', { type: 'timer', timer: 'call', id: `${timer.id}:${timer.revision}` }, `timer:${timer.id}:${timer.revision}:${phase}`, deadline - (phase === 'warning' ? 30_000 : 0), deadline + (phase === 'end' ? 30_000 : 0));
       }
       if (state.board.timer) { const deadline = Date.parse(state.startedAt) + state.board.timer.until * 1000; const phase = now >= deadline ? 'end' : 'warning'; put('timers', { type: 'timer', timer: 'board', id: `${state.board.timer.until}` }, `board-timer:${state.board.timer.until}:${phase}`, deadline - (phase === 'warning' ? 30_000 : 0), deadline + (phase === 'end' ? 30_000 : 0)); }
     }

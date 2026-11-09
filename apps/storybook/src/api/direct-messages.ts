@@ -1,4 +1,4 @@
-import { AlcoveApiError, DirectTextSchema, type CallChatMention, type CallChatThread, type CallCrypto, type CallState, type CallTicket, type DirectMessagesApi, type DirectMessagesState, type LiveStore } from '@alcove/api';
+import { AlcoveApiError, DirectTextSchema, toggledReaction, type CallChatMention, type CallChatThread, type CallCrypto, type CallReaction, type CallState, type CallTicket, type DirectMessagesApi, type DirectMessagesState, type LiveStore } from '@alcove/api';
 import { Pushed } from './live';
 import { nextId } from './state';
 
@@ -43,7 +43,7 @@ export class ScriptedDirectMessages extends Pushed<DirectMessagesState> implemen
     const id = nextId('private');
     const c = this.crypto.getSnapshot();
     if (thread && !this.hasParent(thread, to)) throw new AlcoveApiError('not-found', 'That private conversation isn’t available in this room.');
-    this.update((s) => ({ ...s, messages: [...s.messages, { id, from: this.ticket.identity, to, text: checked.data.text, mentions: checked.data.mentions, thread, place: c.place, generation: this.call.getSnapshot().generation, at: this.call.getSnapshot().elapsed, order: s.messages.length + 1, state: 'sending', error: null }] }));
+    this.update((s) => ({ ...s, messages: [...s.messages, { id, from: this.ticket.identity, to, text: checked.data.text, mentions: checked.data.mentions, thread, reactions: [], place: c.place, generation: this.call.getSnapshot().generation, at: this.call.getSnapshot().elapsed, order: s.messages.length + 1, state: 'sending', error: null }] }));
     await this.retry(id);
   };
   retry = async (id: string): Promise<void> => {
@@ -60,7 +60,24 @@ export class ScriptedDirectMessages extends Pushed<DirectMessagesState> implemen
     const checked = DirectTextSchema.safeParse({ text, mentions, thread });
     if (!checked.success || checked.data.mentions.some((m) => m.identity !== from && m.identity !== this.ticket.identity)) return;
     const id = nextId('private');
-    this.update((s) => ({ ...s, messages: [...s.messages, { id, from, to: this.ticket.identity, text: checked.data.text, mentions: checked.data.mentions, thread, place: this.crypto.getSnapshot().place, generation: this.call.getSnapshot().generation, at: this.call.getSnapshot().elapsed, order: s.messages.length + 1, state: 'delivered', error: null }], unread: [...s.unread, id] }));
+    this.update((s) => ({ ...s, messages: [...s.messages, { id, from, to: this.ticket.identity, text: checked.data.text, mentions: checked.data.mentions, thread, reactions: [], place: this.crypto.getSnapshot().place, generation: this.call.getSnapshot().generation, at: this.call.getSnapshot().elapsed, order: s.messages.length + 1, state: 'delivered', error: null }], unread: [...s.unread, id] }));
+  }
+  /** Yours on a sent or delivered message, as the real conversation's: only while its other person is still here. */
+  react = (id: string, reaction: CallReaction, on: boolean): Promise<void> => {
+    const target = this.getSnapshot().messages.find((m) => m.id === id && (m.state === 'sent' || m.state === 'delivered'));
+    if (!target) return Promise.reject(new AlcoveApiError('not-found', 'That message isn’t here any more.'));
+    const other = target.from === this.ticket.identity ? target.to : target.from;
+    if (!this.getSnapshot().peers.includes(other)) return Promise.reject(new AlcoveApiError('conflict', 'This person is unavailable in this room.'));
+    this.reactsTo(id, reaction, this.ticket.identity, on);
+    return Promise.resolve();
+  };
+  /** The other person's reaction, as the script has them react: to the latest message of yours, or theirs, with this text. */
+  receiveReaction(from: string, text: string, reaction: CallReaction): void {
+    const target = this.getSnapshot().messages.findLast((m) => m.text === text && (m.from === from || m.to === from) && m.state !== 'sending' && m.state !== 'failed');
+    if (target && this.getSnapshot().peers.includes(from)) this.reactsTo(target.id, reaction, from, true);
+  }
+  private reactsTo(id: string, reaction: CallReaction, who: string, on: boolean): void {
+    this.update((s) => ({ ...s, messages: s.messages.map((m) => m.id === id ? { ...m, reactions: toggledReaction(m.reactions, reaction, who, on) } : m) }));
   }
   read = (ids: readonly string[]): void => { this.update((s) => ({ ...s, unread: s.unread.filter((id) => !ids.includes(id)) })); };
   override close(): void {

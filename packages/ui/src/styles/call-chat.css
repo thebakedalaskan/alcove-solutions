@@ -1,0 +1,157 @@
+/*
+ * Chat in a call (`ch-`): the conversations as tabs, messages that sit on the panel without boxes, threads in place,
+ * private conversations and the room's questions. It's your side of the call, which takes your theme, so everything
+ * here uses the page's tokens.
+ */
+
+/* ---------- the conversations, as tabs along the top, and + for a private one ---------- */
+.ch-tabs { flex: none; display: flex; align-items: center; gap: 4px; padding: 0 12px 10px 14px; border-bottom: 1px solid var(--line); }
+.ch-tablist { flex: 1; min-width: 0; display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain; }
+.ch-tablist::-webkit-scrollbar { display: none; }
+.ch-tab { flex: none; display: inline-flex; align-items: center; gap: 6px; max-width: 168px; height: 30px; padding: 0 11px; border-radius: 9px; color: var(--ink-3); font: 600 12.5px/1 var(--font-sans); white-space: nowrap; transition: background-color var(--duration-1), color var(--duration-1); }
+.ch-tab .t { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.ch-tab:hover { color: var(--ink); background: var(--sunk); }
+.ch-tab[aria-selected="true"] { color: var(--ink); background: var(--sunk); box-shadow: inset 0 0 0 1px var(--line); }
+.ch-tab:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.ch-tab .ac-i { flex: none; }
+.ch-tab .lk { color: var(--sun-text); }
+.ch-tab .n { flex: none; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.ch-tab[aria-selected="true"] .n { color: var(--ink-2); }
+/* Something new in a conversation you aren't looking at. */
+.ch-tab .dot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--horizon); }
+.ch-tab.is-muted .t { color: var(--ink-3); }
+.ch-add.ac-icon-btn { flex: none; width: 30px; height: 30px; border-radius: 9px; color: var(--ink-2); }
+.ch-add.ac-icon-btn[data-state="open"] { background: var(--sunk); color: var(--ink); }
+
+/* What a tab shows, under the tabs: a conversation, a thread, or the questions. */
+.ch-pane { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.ch-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+
+/* ---------- messages: no boxes, a run from one person under one name ---------- */
+.ch-list { display: grid; padding: 18px 8px 10px; }
+.ch-msg { position: relative; display: grid; grid-template-columns: 28px minmax(0, 1fr); column-gap: 10px; padding: 3px 10px; border-radius: var(--radius-sm); transition: background-color var(--duration-1); }
+.ch-msg.is-first { margin-top: 12px; padding-top: 6px; }
+.ch-list > .ch-msg.is-first:first-child, .ch-div + .ch-msg.is-first { margin-top: 0; }
+.ch-msg:hover, .ch-msg:has(:focus-visible), .ch-msg.is-menu { background: var(--sunk); }
+.ch-msg:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.ch-gutter { padding-top: 2px; }
+/* A message under the first of its run keeps its time in the margin, shown as you point at it. */
+.ch-at { display: block; padding-top: 3px; color: var(--ink-3); font: 500 10.5px/16px var(--font-sans); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; opacity: 0; transition: opacity var(--duration-1); }
+.ch-msg:hover .ch-at, .ch-msg:has(:focus-visible) .ch-at { opacity: 1; }
+.ch-body { min-width: 0; }
+.ch-head { display: flex; align-items: baseline; gap: 7px; min-width: 0; }
+.ch-head b { min-width: 0; color: var(--ink); font: 600 13.5px/1.3 var(--font-sans); }
+.ch-time { flex: none; color: var(--ink-3); font: 500 12px/1 var(--font-sans); font-variant-numeric: tabular-nums; }
+.ch-text { margin: 1px 0 0; color: var(--ink); font: 400 14px/1.5 var(--font-sans); overflow-wrap: anywhere; white-space: pre-wrap; }
+.ch-read-end { display: block; width: 1px; height: 1px; }
+.ch-state { display: block; margin-top: 2px; color: var(--ink-3); font: 500 12px/1.3 var(--font-sans); }
+.ch-failed { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; margin-top: 4px; color: var(--caution); font: 500 12.5px/1.35 var(--font-sans); }
+.ch-failed .ac-btn { color: var(--caution); }
+.ch-msg.is-failed { box-shadow: inset 2px 0 var(--caution); }
+/* A message that mentions you, until you've seen it. */
+.ch-msg.has-mention { background: color-mix(in oklch, var(--horizon-soft) 55%, transparent); box-shadow: inset 2px 0 var(--horizon); }
+.ch-msg .ac-reacts { margin-top: 5px; }
+/* A reply sent to everyone too: where it came from, over its words. */
+.ch-from { display: inline-flex; align-items: center; gap: 5px; max-width: 100%; margin-top: 1px; color: var(--ink-3); font: 500 12px/1.35 var(--font-sans); text-align: left; }
+.ch-from:hover { color: var(--horizon); }
+.ch-from .ac-i { flex: none; }
+
+/* The bar over a message's top right corner: three reactions, the rest, a thread, a private conversation. */
+.ch-bar { position: absolute; z-index: 2; top: -15px; right: 10px; display: flex; align-items: center; gap: 1px; padding: 3px; border-radius: 10px; background: var(--surface-raised); box-shadow: inset 0 0 0 1px var(--line), var(--shadow-2);
+  opacity: 0; pointer-events: none; transform: translateY(2px); transition: opacity var(--duration-1), transform var(--duration-1) var(--ease-out); }
+.ch-msg:hover .ch-bar, .ch-msg:has(:focus-visible) .ch-bar, .ch-bar:has(.is-on) { opacity: 1; pointer-events: auto; transform: none; }
+.ch-bar > button, .ch-bar .ac-icon-btn { display: grid; place-items: center; width: 30px; height: 28px; border-radius: 7px; color: var(--ink-2); }
+.ch-bar > button:hover, .ch-bar .ac-icon-btn:hover, .ch-bar .ac-icon-btn.is-on { background: var(--sunk); color: var(--ink); }
+.ch-bar > button:focus-visible, .ch-bar .ac-icon-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: -1px; }
+.ch-quick .ac-emoji { transition: transform var(--duration-1) var(--ease-out); }
+.ch-quick:hover .ac-emoji { transform: scale(1.12); }
+.ch-quick[aria-pressed="true"] { background: var(--sun-soft); }
+.ch-bar .sep { width: 1px; height: 16px; margin: 0 3px; background: var(--line); }
+/* On a phone (or a window as narrow), a ⋯ in its place, and pressing and holding the message opens the same. */
+.ch-more.ac-icon-btn { display: none; }
+@media (hover: none), (max-width: 599px) {
+  .ch-bar { display: none; }
+  .ch-msg { padding-right: 34px; }
+  .ch-more.ac-icon-btn { display: grid; position: absolute; top: 2px; right: 2px; width: 30px; height: 30px; color: var(--ink-3); }
+  .ch-at { opacity: 1; }
+}
+.ch-menu-react { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 2px; padding: 2px 2px 6px; margin-bottom: 4px; border-bottom: 1px solid var(--line); }
+.ch-menu-emoji { display: grid; place-items: center; height: 40px; border-radius: var(--radius-sm); }
+.ch-menu-emoji:hover { background: var(--sunk); }
+.ch-menu-emoji.is-mine { background: var(--sun-soft); }
+
+/* Under a message with replies: the faces of who replied, how many, and when the last came. */
+.ch-thread { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; margin: 4px 0 0 -6px; padding: 4px 8px 4px 6px; border-radius: 8px; color: var(--horizon); font: 600 12.5px/1 var(--font-sans); text-align: left; transition: background-color var(--duration-1), box-shadow var(--duration-1); }
+.ch-thread:hover { background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); }
+.ch-thread .fc { display: inline-flex; }
+.ch-thread .fc .ac-avatar { --ring: var(--surface); }
+.ch-thread small { color: var(--ink-3); font-weight: 500; white-space: nowrap; }
+.ch-thread .new { padding: 3px 6px; border-radius: 6px; background: var(--horizon-soft); color: var(--horizon); font-size: 11.5px; }
+.ch-thread:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+
+/* A quiet line across the conversation: how many replies, or another room. */
+.ch-div { display: flex; align-items: center; gap: 10px; margin: 14px 10px 8px; color: var(--ink-3); font: 600 12px/1 var(--font-sans); }
+.ch-div::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+.ch-list > .ch-div:first-child { margin-top: 0; }
+
+/* A thread, open in place: back, and where it is. */
+.ch-thead { flex: none; display: flex; align-items: center; gap: 6px; padding: 0 12px 10px 8px; border-bottom: 1px solid var(--line); }
+.ch-thead > div { min-width: 0; display: grid; gap: 3px; }
+.ch-thead b { color: var(--ink); font: 600 14px/1.2 var(--font-sans); }
+.ch-thead small { color: var(--ink-3); font: 500 12px/1.2 var(--font-sans); }
+.ch-thead .ac-icon-btn { flex: none; width: 32px; height: 32px; border-radius: 50%; color: var(--ink-2); }
+
+/* A private conversation's first line, and what a conversation says before its first message. */
+.ch-lock { display: flex; align-items: center; gap: 8px; margin: 12px 12px 0; padding: 9px 11px; border-radius: 10px; background: var(--sunk); color: var(--ink-2); font: 500 12.5px/1.35 var(--font-sans); }
+.ch-lock .ac-i { flex: none; color: var(--sun-text); }
+.ch-lock + .ch-scroll .ch-list { padding-top: 14px; }
+.ch-quiet { margin: 6px 12px 0; color: var(--ink-3); font: 400 13px/1.45 var(--font-sans); }
+.ch-pane > .ac-notice, .ch-scroll > .ac-notice { margin: 10px 12px 0; }
+.ch-empty { padding: 32px 16px; }
+
+/* Unread mentions, over the conversation, with the way to the first. */
+.ch-unread { flex: none; display: flex; align-items: center; gap: 8px; margin: 8px 12px 0; padding: 4px 4px 4px 10px; border-radius: 10px; background: var(--horizon-soft); color: var(--horizon); font: 600 12.5px/1.2 var(--font-sans); }
+.ch-unread > span { flex: 1; min-width: 0; }
+.ch-unread .ac-btn { color: var(--horizon); }
+
+/* ---------- the composer: words, then its tools, with Send at the end ---------- */
+.ch-compose { flex: none; position: relative; display: grid; gap: 4px; margin: 8px 12px 12px; padding: 6px 6px 6px 12px; border-radius: 12px; background: var(--sunk); box-shadow: inset 0 0 0 1px var(--line); transition: box-shadow var(--duration-1); }
+.ch-compose:focus-within { box-shadow: inset 0 0 0 2px var(--focus); }
+.ch-compose .ch-input { width: 100%; min-width: 0; min-height: 30px; padding: 5px 0 2px; border: 0; outline: 0; background: none; color: var(--ink); font: 400 14px/1.45 var(--font-sans); }
+.ch-compose .ch-input::placeholder { color: var(--ink-3); }
+.ch-compose .ch-input:disabled { cursor: default; }
+.ch-tools { display: flex; align-items: center; gap: 4px; min-height: 30px; }
+.ch-tools > .ac-icon-btn { width: 30px; height: 30px; border-radius: 8px; color: var(--ink-3); }
+.ch-tools > .ac-icon-btn:hover { color: var(--ink); background: var(--surface); }
+.ch-send.ac-btn { width: 32px; height: 32px; margin-left: auto; padding: 0; border-radius: 9px; }
+.ch-also { display: inline-flex; align-items: center; gap: 8px; min-width: 0; padding-left: 2px; color: var(--ink-2); font: 500 12.5px/1.2 var(--font-sans); cursor: pointer; }
+.ch-also .ac-switch { transform: scale(.82); transform-origin: left center; margin-right: -4px; }
+.ch-compose .ic-mention-chosen { padding-top: 2px; }
+.ch-compose .ic-mention-picker { left: 0; right: 0; }
+
+/* ---------- the room's questions ---------- */
+.ch-qbar { flex: none; display: flex; align-items: center; gap: 2px; padding: 8px 12px 4px; color: var(--ink-3); font: 500 12px/1 var(--font-sans); }
+.ch-qbar button { height: 26px; padding: 0 8px; border-radius: 7px; color: var(--ink-3); font: inherit; }
+.ch-qbar button:hover { color: var(--ink); background: var(--sunk); }
+.ch-qbar button[aria-pressed="true"] { color: var(--ink); font-weight: 600; }
+.ch-qbar .end { margin-left: auto; }
+.ch-qbar .sep { width: 1px; height: 14px; margin: 0 4px; background: var(--line); }
+.ch-qs { display: grid; padding: 0 0 10px; }
+.ch-q { display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 12px; padding: 12px 14px 12px 12px; border-bottom: 1px solid var(--line); outline: none; }
+.ch-q:focus-visible { box-shadow: inset 0 0 0 2px var(--focus); }
+.ch-q.is-pinned { background: color-mix(in oklch, var(--rose-soft) 45%, transparent); }
+.ch-vote { display: grid; place-items: center; align-content: center; gap: 2px; width: 40px; height: 46px; border-radius: 10px; background: var(--sunk); color: var(--ink-2); font: 700 13px/1 var(--font-sans); font-variant-numeric: tabular-nums; transition: background-color var(--duration-1), color var(--duration-1); }
+.ch-vote:hover:not(:disabled) { color: var(--ink); background: color-mix(in oklch, var(--ink) 9%, var(--sunk)); }
+.ch-vote[aria-pressed="true"] { background: var(--sun-soft); color: var(--sun-text); box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--sun-text) 40%, transparent); }
+.ch-vote:disabled { cursor: default; opacity: .6; }
+.ch-vote:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.ch-q-body { min-width: 0; }
+.ch-q p { margin: 0; color: var(--ink); font: 400 14px/1.45 var(--font-sans); overflow-wrap: anywhere; }
+.ch-q.is-closed p { color: var(--ink-2); }
+.ch-q .by { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-height: 26px; margin-top: 6px; color: var(--ink-3); font: 500 12px/1.2 var(--font-sans); }
+.ch-q .by .anon { flex: none; color: var(--ink-2); }
+.ch-q .acts { display: flex; gap: 0; margin: -4px -6px -4px auto; }
+.ch-q .acts .ac-icon-btn { width: 28px; height: 28px; color: var(--ink-3); }
+.ch-q .acts .ac-icon-btn:hover { color: var(--ink); background: var(--sunk); }
+.ch-badge { display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 7px; border-radius: 6px; background: var(--sunk); color: var(--ink-2); font: 600 11px/1 var(--font-sans); }
+.ch-badge.is-rose { background: var(--rose-soft); color: var(--rose); }

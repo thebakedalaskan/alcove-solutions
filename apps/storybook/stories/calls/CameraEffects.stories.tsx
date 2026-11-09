@@ -8,26 +8,28 @@ import { REVIEW } from './talk';
 const meta = { title: 'Calls/Camera effects', ...pages } satisfies Meta<PageArgs>;
 export default meta;
 
-const options = async () => screen.findByRole('dialog', { name: 'Background' }, { timeout: 20_000 });
-/** The dock chevron on a wide screen, or the same settings from More on a phone. */
-const openCamera: NonNullable<PageStory['play']> = async ({ canvas, userEvent }) => {
+const backgroundWindow = async () => screen.findByRole('dialog', { name: 'Background' }, { timeout: 20_000 });
+/** Background's window from the camera's menu: its arrow on a wide screen, or the same menu from More on a phone. */
+const openBackground: NonNullable<PageStory['play']> = async ({ canvas, userEvent }) => {
   await canvas.findByRole('toolbar', { name: 'Call controls' }, { timeout: 15_000 });
+  // A phone's dock hides the arrows, so it isn't found there.
   const camera = canvas.queryByRole('button', { name: 'Camera and background' });
-  if (camera) { await userEvent.click(camera); return; }
-  await userEvent.click(await canvas.findByRole('button', { name: 'More: board, workspace, notes, chat, people' }));
-  await userEvent.click(await screen.findByRole('button', { name: 'Audio and video settings' }));
+  if (camera) await userEvent.click(camera);
+  else {
+    await userEvent.click(await canvas.findByRole('button', { name: 'More: board, workspace, notes, chat, people' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Settings' }));
+  }
+  await userEvent.click(await screen.findByRole('button', { name: /^Background/ }));
 };
 
-/** 5.1: preview the effect before joining. LocalMedia processes the same synthetic track the call would send. */
+/** 5.1: preview the effect before joining, large, in Background's window. LocalMedia processes the same synthetic track the call would send. */
 export const BeforeJoining = atTheDoor({ scenario: 'call-soon', call: REVIEW }, {
   play: async ({ canvas, userEvent, step }) => {
-    await step('Open backgrounds without changing the camera state', async () => {
+    await step('Background opens its window, without changing the camera', async () => {
       await userEvent.click(await canvas.findByRole('button', { name: 'Background' }, { timeout: 10_000 }));
     });
-    await step('Choose blur, then its strength, in the live preview', async () => {
-      const dialog = await options();
-      await userEvent.click(await within(dialog).findByRole('button', { name: 'Blur' }, { timeout: 20_000 }));
-      await userEvent.click(await within(dialog).findByRole('button', { name: 'Mild' }));
+    await step('Light blur applies at once, in the big preview', async () => {
+      await userEvent.click(await within(await backgroundWindow()).findByRole('button', { name: 'Light blur' }, { timeout: 20_000 }));
     });
   }
 });
@@ -38,9 +40,9 @@ export const BeforeJoiningLight = light(BeforeJoining);
 export const InTheCall = inCall({ scenario: 'call-soon', call: REVIEW, you: { cam: true, mic: false } }, {
   play: async (context) => {
     const { userEvent, step } = context;
-    await step('Open camera settings during the call', async () => openCamera(context));
+    await step('The camera’s menu has Background, which closes the menu and opens its window', async () => openBackground(context));
     await step('Choose a solid background without leaving the call', async () => {
-      await userEvent.click(await screen.findByRole('button', { name: 'Slate background' }, { timeout: 20_000 }));
+      await userEvent.click(await within(await backgroundWindow()).findByRole('button', { name: 'Slate background' }, { timeout: 20_000 }));
     });
   }
 });
@@ -52,8 +54,8 @@ export const CameraOff = inCall({ scenario: 'call-soon', call: REVIEW, you: { ca
   play: plays(async (context) => {
     const { userEvent, step } = context;
     await step('Choose the next camera background while the camera stays off', async () => {
-      await openCamera(context);
-      await userEvent.click(await screen.findByRole('button', { name: 'Rose background' }, { timeout: 20_000 }));
+      await openBackground(context);
+      await userEvent.click(await within(await backgroundWindow()).findByRole('button', { name: 'Rose background' }, { timeout: 20_000 }));
     });
   })
 });

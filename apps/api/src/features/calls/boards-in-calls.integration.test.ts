@@ -477,10 +477,10 @@ describe('a new board', () => {
     inRoom.push(listening);
     await k.openBoard({ template: 'retro' });
     const board = k.getSnapshot().board.open?.documentId ?? '';
-    const nudged = listening.nextNudge();
+    const pushed = listening.nextChange();
     // As the board's name menu does it: through the workspace, with the call's pass.
     await kofi.api.workspaces.items.rename(id, board, 'Launch retro, November', { pass: k.ticket.pass });
-    await soon(nudged, 'the nudge');
+    await soon(pushed, 'the change push');
     expect(await opened(host)).toMatchObject({ documentId: board, name: 'Launch retro, November' });
     expect(await opened(k)).toMatchObject({ documentId: board, name: 'Launch retro, November' });
   });
@@ -498,21 +498,21 @@ describe('a new board', () => {
     expect(await opened(p)).toMatchObject({ documentId: board, role: 'edit' });
     // From the board's Share in the call, with its pass: kept to the people added, then Priya at read.
     const fromCall = { pass: host.ticket.pass };
-    let nudged = listening.nextNudge();
+    let pushed = listening.nextChange();
     await art.api.workspaces.share.restrict(id, board, true, fromCall);
-    await soon(nudged, 'the room hearing it’s restricted', 1_000);
-    nudged = listening.nextNudge();
+    await soon(pushed, 'the room hearing it’s restricted', 1_000);
+    pushed = listening.nextChange();
     const asked = Date.now();
     await art.api.workspaces.share.set(id, board, [{ email: priya.email }], 'read', fromCall);
-    await soon(nudged, 'the room hearing Priya is at read', 1_000);
+    await soon(pushed, 'the room hearing Priya is at read', 1_000);
     // Her browser reads the call as the room is told: her board is read-only within a second of Art's change.
     expect(await opened(p)).toMatchObject({ documentId: board, role: 'read' });
     expect(Date.now() - asked).toBeLessThan(1_000);
     // Taken off, she's told the same way, and the board is one she can't open.
     const entry = (await art.api.workspaces.share.list(id, board)).entries.find((e) => e.person.email === priya.email)?.id ?? '';
-    nudged = listening.nextNudge();
+    pushed = listening.nextChange();
     await art.api.workspaces.share.remove(id, board, entry, fromCall);
-    await soon(nudged, 'the room hearing Priya is taken off', 1_000);
+    await soon(pushed, 'the room hearing Priya is taken off', 1_000);
     expect(await opened(p)).toMatchObject({ role: null, name: null });
   });
 
@@ -531,13 +531,13 @@ describe('a new board', () => {
     const listening = await connect(await host.room(), { sending: host.crypto });
     inRoom.push(listening);
     // Art, from the Drive and not the call, keeps it to the people added and sets Priya to read. Each is told to the call.
-    let nudged = listening.nextNudge();
+    let pushed = listening.nextChange();
     await art.api.workspaces.share.restrict(id, board, true);
-    await soon(nudged, 'the room hearing it’s restricted elsewhere', 1_000);
-    nudged = listening.nextNudge();
+    await soon(pushed, 'the room hearing it’s restricted elsewhere', 1_000);
+    pushed = listening.nextChange();
     const asked = Date.now();
     await art.api.workspaces.share.set(id, board, [{ email: priya.email }], 'read');
-    await soon(nudged, 'the room hearing of a change made elsewhere', 1_000);
+    await soon(pushed, 'the room hearing of a change made elsewhere', 1_000);
     expect(await opened(p)).toMatchObject({ documentId: board, role: 'read' });
     expect(Date.now() - asked).toBeLessThan(1_000);
     // The guest's seat is an entry restricting leaves, so the guest goes on working on it.

@@ -150,35 +150,63 @@ export function useDevices(since: unknown): Devices {
 
 export type TestPhase = 'idle' | 'listening' | 'playing';
 export const TEST_SECONDS = 3;
+/** Where a microphone test has got to: not running, listening (with whole seconds left), or playing it back. */
+export interface MicTestState { phase: TestPhase; left: number }
 
 /**
- * Records a few seconds from the microphone and plays them straight back, through the chosen
- * speaker where the browser allows it. Nothing is uploaded or kept: the recording lives in memory
- * until it has played.
+ * Records a few seconds from the microphone and plays them straight back, through the chosen speaker where the browser
+ * allows it. Nothing is uploaded or kept: the recording lives in memory until it has played. One test at a time for each
+ * microphone (micTestOf), so a menu that closes and opens again still shows where its test has got to.
  */
-export async function testMicrophone(track: MediaStreamTrack, speaker: string | undefined, onPhase: (p: TestPhase) => void): Promise<void> {
-  const chunks: Blob[] = [];
-  const rec = new MediaRecorder(new MediaStream([track]));
-  rec.addEventListener('dataavailable', (e) => { if (e.data.size) chunks.push(e.data); });
-  const stopped = new Promise<void>((resolve) => rec.addEventListener('stop', () => resolve(), { once: true }));
-  onPhase('listening');
-  rec.start();
-  await new Promise((r) => setTimeout(r, TEST_SECONDS * 1000));
-  rec.stop();
-  await stopped;
-  const url = URL.createObjectURL(new Blob(chunks, { type: rec.mimeType }));
-  try {
-    const audio = new Audio(url);
-    if (speaker && canChooseSpeaker()) await audio.setSinkId(speaker).catch((e: unknown) => dlog.warn('could not play through the chosen speaker', { err: e }));
-    onPhase('playing');
-    await new Promise<void>((resolve) => {
-      audio.addEventListener('ended', () => resolve(), { once: true });
-      audio.addEventListener('error', () => resolve(), { once: true });
-      audio.play().catch((e: unknown) => { dlog.warn('the microphone test could not play', { err: e }); resolve(); });
-    });
-  } finally {
-    URL.revokeObjectURL(url);
-    chunks.length = 0;
-    onPhase('idle');
+export class MicTest {
+  private snap: MicTestState = { phase: 'idle', left: TEST_SECONDS };
+  private listeners = new Set<() => void>();
+  getSnapshot = (): MicTestState => this.snap;
+  subscribe = (l: () => void) => { this.listeners.add(l); return () => { this.listeners.delete(l); }; };
+  private set(p: Partial<MicTestState>) { this.snap = { ...this.snap, ...p }; this.listeners.forEach((l) => l()); }
+
+  async run(track: MediaStreamTrack, speaker: string | undefined): Promise<void> {
+    if (this.snap.phase !== 'idle') return;
+    this.set({ phase: 'listening', left: TEST_SECONDS });
+    const tick = setInterval(() => this.set({ left: Math.max(1, this.snap.left - 1) }), 1000);
+    const chunks: Blob[] = [];
+    let url: string | null = null;
+    try {
+      const rec = new MediaRecorder(new MediaStream([track]));
+      rec.addEventListener('dataavailable', (e) => { if (e.data.size) chunks.push(e.data); });
+      const stopped = new Promise<void>((resolve) => rec.addEventListener('stop', () => resolve(), { once: true }));
+      rec.start();
+      await new Promise((r) => setTimeout(r, TEST_SECONDS * 1000));
+      // The microphone may have gone meanwhile (unplugged, or another chosen), which stops the recorder by itself.
+      if (rec.state !== 'inactive') rec.stop();
+      await stopped;
+      clearInterval(tick);
+      url = URL.createObjectURL(new Blob(chunks, { type: rec.mimeType }));
+      const audio = new Audio(url);
+      if (speaker && canChooseSpeaker()) await audio.setSinkId(speaker).catch((e: unknown) => dlog.warn('could not play through the chosen speaker', { err: e }));
+      this.set({ phase: 'playing' });
+      await new Promise<void>((resolve) => {
+        audio.addEventListener('ended', () => resolve(), { once: true });
+        audio.addEventListener('error', () => resolve(), { once: true });
+        audio.play().catch((e: unknown) => { dlog.warn('the microphone test could not play', { err: e }); resolve(); });
+      });
+    } catch (e) {
+      dlog.warn('the microphone test failed', { err: e });
+    } finally {
+      clearInterval(tick);
+      if (url) URL.revokeObjectURL(url);
+      chunks.length = 0;
+      this.set({ phase: 'idle', left: TEST_SECONDS });
+    }
   }
+}
+
+const tests = new WeakMap<object, MicTest>();
+/** The test for the microphone `owner` holds (its LocalMedia): the same one wherever a menu asks for it. */
+export function micTestOf(owner: object): MicTest {
+  const known = tests.get(owner);
+  if (known) return known;
+  const made = new MicTest();
+  tests.set(owner, made);
+  return made;
 }

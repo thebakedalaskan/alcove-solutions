@@ -110,5 +110,6 @@ export const Wide: Story = { render: (args) => <Box width="min(640px, 100%)" hei
 export const LightTheme: Story = { name: 'Light theme', globals: { theme: 'light' } };
 export const DarkTheme: Story = { name: 'Dark theme', globals: { theme: 'dark' } };
 
-export const SharedTimer: Story = { args: { timer: <CallTimerButton time="1:24" label="Proposal" status="Running" tone="running" on={false} onClick={did('Return and open timer')} /> } };
-export const TimerOverTime: Story = { args: { timer: <CallTimerButton time="+0:24" label="Your time is up" status="Over time" tone="overtime" on={false} onClick={did('Return and open timer')} /> } };
+/** The call's timer, the same for everyone: pressing it returns to the call with Timer for everyone open. */
+export const SharedTimer: Story = { args: { timer: <CallTimerButton time="1:24" label="Timer: 1:24 left" tone="running" onClick={did('Return and open timer')} /> } };
+export const TimerOverTime: Story = { args: { timer: <CallTimerButton time="+0:24" label="Timer: +0:24 over time" tone="overtime" onClick={did('Return and open timer')} /> } };

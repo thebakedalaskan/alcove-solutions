@@ -1,25 +1,27 @@
 /*
  * Your view of a call, which changes your screen only and is never sent anywhere.
  *
- * - How you like to see calls (`CallViewPrefs`: Auto, speaker or grid, where you see yourself) is remembered in this
+ * - Where you see yourself (`CallViewPrefs`: in the grid, in a corner and which one, or hidden) is remembered in this
  *   browser for your account, for every call.
- * - How you like the people beside what's open on your stage (`CallPanels`: tiles, arches or hidden, and whether the
- *   workspace shows its list) is too, so tomorrow's call starts the way you left this one. It names nobody.
- * - How you arranged this call (`CallLayout`: who you pinned, the order you put people in, who you made bigger, where you
- *   are in the workspace, what your side shows) lasts for this call only: it's kept in this tab, so a reload keeps it, and
- *   it's deleted when you leave. It names people by their seat in the call, which is random and means nothing anywhere else.
+ * - Whether the people stand beside what's open on your stage or hide on the horizon (⇧P), and whether the workspace shows
+ *   its list (`CallPanels`), are too, so tomorrow's call starts the way you left this one. It names nobody.
+ * - How you arranged this call (`CallLayout`: who you pinned, the order you dragged people into, who you made bigger, where
+ *   you are in the workspace, what your side shows) lasts for this call only: it's kept in this tab, so a reload keeps it,
+ *   and it's deleted when you leave. It names people by their seat in the call, which is random and means nothing anywhere
+ *   else.
  *
- * Neither holds a name or anything said or shared. The layout engine (stageLayout.ts) turns both into the stage.
+ * Neither holds a name or anything said or shared. The layout engine (stageLayout.ts) turns both into the stage, which
+ * otherwise lays itself out.
  */
 import {
-  CALL_LAYOUT_MAX, CallLayoutSchema, CallPanelsSchema, CallViewPrefsSchema, type CallLayout, type CallPanels, type CallSide, type CallViewMode, type CallViewPrefs, type SelfView, type StageCorner
+  CALL_LAYOUT_MAX, CallLayoutSchema, CallPanelsSchema, CallViewPrefsSchema, type CallLayout, type CallPanels, type CallSide, type CallViewPrefs, type SelfView, type StageCorner
 } from '@alcove/api';
 import { useCallback, useRef, useState } from 'react';
 import { log } from '~/lib/log';
 
 const vlog = log.child({ component: 'call-view' });
 
-export const DEFAULT_PREFS: CallViewPrefs = { mode: 'auto', self: 'grid', corner: 'bottom-right' };
+export const DEFAULT_PREFS: CallViewPrefs = { self: 'grid', corner: 'bottom-right' };
 export const EMPTY_LAYOUT: CallLayout = { pins: [], order: [], arrived: [], big: [], workspace: { open: false, document: null } };
 /** The people as tiles beside what's open, and the workspace with its list. */
 export const DEFAULT_PANELS: CallPanels = { people: 'tiles', list: true };
@@ -67,12 +69,15 @@ function keep(store: 'local' | 'session', key: string, value: unknown) {
   try { (store === 'local' ? localStorage : sessionStorage).setItem(key, JSON.stringify(value)); } catch (e) { vlog.debug('view not remembered', { store, err: e }); }
 }
 
-/** You changed the layout from what Auto gives: View offers a way back. Where you see yourself is a standing choice, not part of it. */
-export const isCustom = (p: CallViewPrefs, l: CallLayout, panels: CallPanels) => p.mode !== 'auto' || l.pins.length > 0 || l.order.length > 0 || l.big.length > 0
+/**
+ * You changed the layout from the one the stage gives itself: More offers Reset layout. Where you see yourself is a standing
+ * choice, not part of it.
+ */
+export const isCustom = (l: CallLayout, panels: CallPanels) => l.pins.length > 0 || l.order.length > 0 || l.big.length > 0
   || panels.people !== DEFAULT_PANELS.people || panels.list !== DEFAULT_PANELS.list;
 
-/** A view to go back to: Undo after a reset. */
-export interface ViewSnapshot { prefs: CallViewPrefs; layout: CallLayout; panels: CallPanels }
+/** A layout to go back to: Undo after a reset. */
+export interface ViewSnapshot { layout: CallLayout; panels: CallPanels }
 
 /**
  * Your view of the call `callId`. `account` is your account's owner ID, null without an account, or undefined while
@@ -117,7 +122,6 @@ export function useCallView(callId: string, account: string | null | undefined) 
   return {
     arrive, forget,
     prefs, layout, panels, arrange,
-    setMode: (mode: CallViewMode) => updatePrefs((p) => ({ ...p, mode })),
     setSelf: (self: SelfView) => updatePrefs((p) => ({ ...p, self })),
     setCorner: (corner: StageCorner) => updatePrefs((p) => ({ ...p, corner })),
     /**
@@ -139,15 +143,17 @@ export function useCallView(callId: string, account: string | null | undefined) 
     keepWorkspace: (workspace: CallLayout['workspace']) => updateLayout((l) => (l.workspace.open === workspace.open && l.workspace.document === workspace.document ? l : { ...l, workspace })),
     /** What your side shows, so a reload finds it as it was. */
     keepSide: (side: CallSide | null) => updateLayout((l) => (l.side === side ? l : { ...l, side })),
-    /** Back to the call's layout: Auto, nobody pinned, the call's order and sizes, the people as tiles. Where you see yourself, and your side, stay as they are. */
+    /**
+     * Back to the layout the stage gives itself: nobody pinned, the call's order and sizes, the people beside what's open and
+     * the workspace with its list. Where you see yourself, and your side, stay as they are.
+     */
     reset: (): ViewSnapshot => {
-      const was = { prefs, layout, panels };
-      updatePrefs((p) => ({ ...p, mode: DEFAULT_PREFS.mode }));
+      const was = { layout, panels };
       updateLayout((l) => ({ ...EMPTY_LAYOUT, arrived: l.arrived, workspace: l.workspace, side: l.side }));
       arrange(() => DEFAULT_PANELS);
       return was;
     },
-    restore: (v: ViewSnapshot) => { updatePrefs(() => v.prefs); updateLayout((l) => ({ ...v.layout, arrived: l.arrived, workspace: l.workspace, side: l.side })); arrange(() => v.panels); }
+    restore: (v: ViewSnapshot) => { updateLayout((l) => ({ ...v.layout, arrived: l.arrived, workspace: l.workspace, side: l.side })); arrange(() => v.panels); }
   };
 }
 export type CallView = ReturnType<typeof useCallView>;

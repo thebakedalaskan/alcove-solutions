@@ -76,7 +76,7 @@ export function NotificationsPart() {
     {OTHER_CATEGORIES.map(alert)}
   </SettingsPart>;
 }
-/** The same master and call categories are reachable from the call's own controls, including guest calls. */
+/** The same master and call categories are in a call's own Settings (More, then Settings), guest calls included. */
 export function CallNotificationControls() {
   const { prefs, update, ready, scope, capturePermissionIntent } = useNotificationPreferences();
   const permission = useNotifyPermission();

@@ -3,7 +3,7 @@ import { screen } from 'storybook/test';
 import { light, phone } from '../../src/call';
 import { pages, type PageArgs } from '../../src/page';
 import { PrivateMentionAlert, SelectedPrivateMention } from '../calls/ChatMentions.stories';
-import { choosePrivateAudience } from '../calls/plays';
+import { talkPrivately, talkToEveryone } from '../calls/plays';
 import { PRIYA } from '../calls/talk';
 
 const meta = { title: 'Journeys/6f Chat mentions', ...pages } satisfies Meta<PageArgs>;
@@ -11,10 +11,10 @@ export default meta;
 export const SelectWithoutMovingTheAudience = { ...SelectedPrivateMention, name: '6.32 Keep a selected mention in its original private draft', play: async (c: Parameters<NonNullable<typeof SelectedPrivateMention.play>>[0]) => {
   await SelectedPrivateMention.play?.(c);
   await c.step('Keep the room draft separate from the tagged private draft', async () => {
-    await choosePrivateAudience(c, 'Room chat'); await c.userEvent.type(await screen.findByRole('combobox', { name: 'Message everyone' }), 'The agenda is ready.');
+    await talkToEveryone(c); await c.userEvent.type(await screen.findByRole('combobox', { name: 'Message everyone' }), 'The agenda is ready.');
   });
   await c.step('Return to the original selected recipient and send only that draft', async () => {
-    await choosePrivateAudience(c, new RegExp(`^${PRIYA.name} · Private`)); await c.userEvent.click(await screen.findByRole('button', { name: `Send only to ${PRIYA.name}` })); await screen.findByText('Delivered');
+    await talkPrivately(c, PRIYA); await c.userEvent.click(await screen.findByRole('button', { name: `Send only to ${PRIYA.name}` })); await screen.findByText('Delivered');
   });
 } };
 export const SelectWithoutMovingTheAudienceLight = light(SelectWithoutMovingTheAudience);

@@ -38,7 +38,8 @@ src/browser.ts            the browser as a story finds it: connection, devices, 
 src/app.tsx               the app's own router at an address, in memory
 src/page.tsx              what page stories share: `pages` and `page()`
 src/component.tsx         what component stories share: `onStage`, `PopSurface`, `ModalFrame`, `Box`, `Row`, `did()`
-src/call.ts               what call stories share: `inCall()`, `atTheDoor()`, `rung()`, `phone()`, `light()`, `press()`, `reach()`
+src/call.ts               what call stories share: `inCall()`, `atTheDoor()`, `rung()`, `phone()`, `light()`, `press()`, `reach()`,
+                          `settings()`
 src/board.tsx             what board stories share: `BoardScene`, the real surface on a board, and `whereItShows`
 stories/foundations/      colour, type, icons, scales, the evening and what passes through
 stories/components/       one file per @alcove/ui component, a story per state, in a folder per group
@@ -277,7 +278,7 @@ and `plays()` runs plays one after another.
 
 A call is one of the scenario's (its link's code) or a `StoryCall` the story puts in the world (`stories/calls/talk.ts`
 has the calls, conversations and shares the call stories share). Times are seconds from joining; the door's, from the
-story opening. A beat (`joins`, `says`, `shares`, `knocks`, `raisesHand`, `{ do: 'host-drops' }`, `{ do: 'reconnect' }`,
+story opening. A beat (`joins`, `says`, `shares`, `knocks`, `raisesHand`, `nudges` (you, as only you see it), `setsStatus`, `{ do: 'host-drops' }`, `{ do: 'reconnect' }`,
 `{ do: 'end' }`...) is anything someone else, the server or LiveKit could do; `run()` is anything else, such as `ringYou()`
 from another call. Rooms the organizer opens (`{ do: 'rooms' }`) can have a board each, or one they share (`board`), and each
 room's people can put stickies on theirs (`work`): the scripted call makes, fills and lands the boards as the server does, in
@@ -343,13 +344,13 @@ departure pending and failure states, narrow and wide
 windows, and both themes. Its buttons update the story's controls and say what was pressed in Actions. The component
 owns no call session, audio or camera. Its pictures are made-up preview content.
 
-**Calls / Floating call** starts the real call on the scripted room, with View open and **Open floating call** ready for
+**Calls / Floating call** starts the real call on the scripted room, with More open and **Open floating call** ready for
 a person to press. The other scenarios change shares, reconnect, receive a hand, chat and someone asking to join, end the
-call, refuse leaving or changing the raised hand, and block devices. Unsupported and Opening blocked show View's visible,
+call, refuse leaving or changing the raised hand, and block devices. Unsupported and Opening blocked show More's visible,
 described fallback and its permission guidance with a manual retry, in light/dark and wide/phone variants. A blocked
-opening keeps View open and leaves the call running. **Journeys / 6 Floating call / 6.22 Open a floating
+opening keeps More open and leaves the call running. **Journeys / 6 Floating call / 6.22 Open a floating
 call** plays up to this same hand-off. Automatic opening follows the browser's native permission, without a separate
-Alcove preference or explanatory control in View. Open the preview
+Alcove preference or explanatory control in More. Open the preview
 as its own tab before clicking: Document Picture-in-Picture requires a top-level document and a real browser gesture.
 Native-opening scenarios return the browser's real API unchanged. Explicit unsupported/refused scenarios only hide the
 capability or reject a request; they never create a replacement window. **6.22 Keep calling when floating is blocked**
@@ -422,14 +423,15 @@ night, folder loading failure and reconnect states. **Journeys / 15 Google Drive
 formats, a shared-drive destination, a per-call override, a retry, independent disconnection and a shared reader’s own exports with organizer-only audio. The stand-in holds no
 provider credentials; Google consent and additional folder authorization stop at the external hand-off.
 
-## Presenter timer sequences
+## The call's timer
 
-**Calls / Presenter timers** renders the real call timer panel and compact countdown in ready, running, paused,
-near-end, over-time, finished, guest and reconnecting states, with phone and light-theme variants. The preset library
-and organizer lobby show preparation before joining. **Components / In a call / PresenterTimer** shows the reusable
-readout and button; **FloatingCall / Shared timer** shows the compact window. **Journeys / 6 Presenter timers**
-(6.26–6.28) plays preparing a preset, controlling a sequence, and following as a guest with a local cue. Stories remain demonstrations;
-the colocated API/client integration suite verifies shared state, permissions, concurrency, encryption and deletion.
+**Calls / Timer** renders the real top-bar timer and Timer for everyone, its popover: the host's lengths before one runs, and
+running, paused, near the end, over time and reconnecting, with phone and light-theme variants, then a participant's and a
+late guest's read-only view. **Components / In a call / CallTimerButton** shows its button in every tone, and
+**Components / In a call / CallTimerCard** the popover with its pieces;
+**FloatingCall / Shared timer** shows it in the floating call. **Journeys / 6 In the call / Timer** (6.26–6.28) plays
+starting one, pausing, adding a minute and stopping it, and following it as a participant. Stories remain demonstrations;
+the colocated API/client integration suite verifies the shared clock, permissions, concurrency and older sealed state.
 
 Calls / Leaving and Journeys / 7 End the call and get the notes show one-press departure for invited participants and
 guests, pending and failed departures, a retry, and the confirmation retained by the current host, including a stand-in.

@@ -1,11 +1,11 @@
 /*
  * How the call's main area, left of your side (side.ts), is shared. With nothing open on your stage, the stage is the
  * people's, and stageLayout.ts places them as it always has. With something open (a screen, a board or the workspace, each in
- * its frame: frame.tsx), the frame takes the room and the people sit beside it, as View says:
+ * its frame: frame.tsx), the frame takes the room and the people sit beside it, as the room left allows:
  *
  * - Tiles: a column on the right, about 300, 248, 216 or 176 px wide as the stage narrows.
- * - Arches: a row over the frame, which is also what happens when the stage is under 760 px, and on a phone.
- * - Hidden: on the horizon by the dock, as ⇧P does.
+ * - Arches: a row over the frame, where the stage is under 760 px, and on a phone.
+ * - On the horizon by the dock, once you hide them (⇧P), in focus, and beside the organizer's rooms.
  *
  * A second thing presented can sit beside the first (Show beside), as two screens do; when there isn't room for both they take
  * turns, and the top bar says which is showing. Focus fills your window with what's in the frame, the people on the horizon.
@@ -19,7 +19,8 @@
 import type { CallPeopleMode } from '@alcove/api';
 import type { Box } from './stageLayout';
 
-export type PeopleMode = CallPeopleMode;
+/** Where the people go beside what's open: a column of tiles, a row of arches, or on the horizon (`hidden`). */
+export type PeopleMode = 'tiles' | 'arches' | 'hidden';
 export interface Size { w: number; h: number }
 
 /** Under this wide, a window is a phone: what's open fills the screen under a row of arches, and your side is a sheet over the call. */
@@ -47,8 +48,8 @@ const roomsWidth = (w: number) => Math.round(Math.min(560, Math.max(340, w * 0.3
 export interface MainFacts {
   /** How many things are on your stage: none, one, or two (Show beside). */
   frames: number;
-  /** View's Beside what's shared. */
-  people: PeopleMode;
+  /** Whether you hid the people beside what's open (⇧P). */
+  people: CallPeopleMode;
   phone: boolean;
   /** Focus: the frame fills your window, past the bars that tuck away. */
   focus: Box | null;
@@ -108,7 +109,7 @@ export function placeMain(size: Size, f: MainFacts): MainPlaced {
     return { ...many(body), people: null, mode: 'hidden', rooms: { x: room.x + body.w + GAP, y: room.y, w, h: room.h } };
   }
   if (f.people === 'hidden') return { ...many(room), people: null, mode: 'hidden', rooms: null };
-  if (f.people === 'arches' || room.w < ARCHES_UNDER) {
+  if (room.w < ARCHES_UNDER) {
     const body: Box = { x: room.x, y: room.y + ARCH_ROW + 10, w: room.w, h: Math.max(0, room.h - ARCH_ROW - 10) };
     return { ...many(body), people: { x: room.x, y: room.y, w: room.w, h: ARCH_ROW }, mode: 'arches', rooms: null };
   }

@@ -39,13 +39,19 @@ export const YourLobby: PageStory = {
       await userEvent.click(await screen.findByRole('switch', { name: 'Notes', checked: false }, SOON));
       await screen.findByText('Everyone invited gets them', {}, SOON);
     });
-    await step('Pick a microphone. Its level moves as you speak', async () => {
-      await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Microphone' }), 'Desk microphone');
+    await step('The microphone’s picker opens its menu. Pick another: the tick moves, and its level moves as you speak', async () => {
+      await userEvent.click(screen.getByRole('button', { name: /^Microphone:/ }));
+      await userEvent.click(await screen.findByRole('menuitemradio', { name: 'Desk microphone' }, SOON));
+      await screen.findByRole('menuitemradio', { name: 'Desk microphone', checked: true }, SOON);
     });
-    await step('Test microphone records three seconds and plays them back, keeping nothing', async () => {
-      await userEvent.click(screen.getByRole('button', { name: 'Test microphone' }));
+    await step('Test your microphone, in the same menu, listens for three seconds and plays them back, keeping nothing', async () => {
+      await userEvent.click(screen.getByRole('button', { name: 'Test your microphone' }));
       await screen.findByText(/Say something/, {}, SOON);
       await screen.findByText('Playing it back', {}, SOON);
+    });
+    await step('Escape closes the menu, and the picker says the microphone you chose', async () => {
+      await userEvent.keyboard('{Escape}');
+      await screen.findByRole('button', { name: 'Microphone: Desk microphone' }, SOON);
     });
     await step('Join. You’re in, and Priya, Kofi and Aiko come in', async () => {
       await userEvent.click(await pressable('button', 'Join'));

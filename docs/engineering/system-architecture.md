@@ -43,7 +43,7 @@ flowchart TB
     Inference -->|TDX collateral, GPU evidence| Verifiers[Intel PCS, NVIDIA NRAS]
     Account -->|OpenID Connect| Google[Google: sign-in and Calendar]
     Calls -->|Calendar API| Google
-    Calls -->|rooms, tokens, metadata, nudges| LK[LiveKit: call media]
+    Calls -->|rooms, tokens, metadata, change pushes| LK[LiveKit: call media]
     LK -->|signed webhooks| Calls
     Media -->|WebRTC audio, video, screens| LK
 ```

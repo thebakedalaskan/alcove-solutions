@@ -171,6 +171,15 @@ export const reach = (what: keyof typeof YOURS, o: Then = {}): Play => async (c)
   await andThen(o)(c);
 };
 
+/** A play that opens Settings from More, as a person would, then one of its parts by its tab (Audio and video shows first). */
+export const settings = (tab?: string): Play => async (c) => {
+  await press(MORE, { then: ['Settings'] })(c);
+  if (!tab) return;
+  await c.step(`Open ${tab}`, async () => {
+    await c.userEvent.click(await screen.findByRole('tab', { name: tab }, { timeout: 8000 }));
+  });
+};
+
 /** Puts your side away, if it's showing anything (Notes opens by itself as a call starts on a wide screen). */
 export const clearSide: Play = async ({ canvas, userEvent, step }) => {
   await step('Put your side away', async () => {

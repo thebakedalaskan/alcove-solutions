@@ -24,7 +24,7 @@ flow. Reconnect preserves the compact view; termination, removal, device displac
 A late browser-window request cannot revive a departed call.
 
 The compact view shows hands, open Q&A, host-only admission requests and a count labelled Chat for new messages. Each
-count returns to its matching full-call panel. Shared controls unlock the existing sound output synchronously from
+count returns to the full call: hands and admission requests open People, and Q&A and Chat open Chat. Shared controls unlock the existing sound output synchronously from
 their user gesture; microphone confirmation still waits for the actual device transition. It does not show message
 bodies or personal notes. The full call supports individual @mentions in room chat, an unread-mention indicator and
 navigation to the exact message; viewing that message updates the person's read state. Those receipts are kept in the
@@ -45,19 +45,20 @@ These are documented API capabilities, not a claim that every version/platform h
 outside this desktop feature. An ordinary popup does not provide the same always-on-top guarantee; normal meeting
 controls remain available when Document PiP is absent or blocked.
 
-View shows a visible unsupported-browser explanation connected to the unavailable action with `aria-describedby`.
-A refused manual opening keeps View open, announces the failure and explains how to check the site's picture-in-picture
-permission before trying the same action again. View closes only once the floating window exists, so a refused keyboard
+More shows a visible unsupported-browser explanation connected to the unavailable action with `aria-describedby`.
+A refused manual opening keeps More open, announces the failure and explains how to check the site's picture-in-picture
+permission before trying the same action again. More closes only once the floating window exists, so a refused keyboard
 action does not lose its recovery controls or focus. Neither failure retries an opening automatically.
 
 Automatic opening is the normal call behavior where the browser permits it. There is no Alcove automatic-opening
-preference or explanatory control in View: the browser owns its permission and may ask when the person first switches
-tabs. View retains the manual opening action and any opening failure. The browser triggers `enterpictureinpicture`;
+preference or explanatory control in More: the browser owns its permission and may ask when the person first switches
+tabs. More holds the manual opening action and any opening failure. The browser triggers `enterpictureinpicture`;
 arbitrary `blur` or `visibilitychange` does not open a window. Visibility is used for returning an automatically opened
 presentation, not for gaining permission to open one.
 
 The former browser-local `autoFloat` field is no longer part of `CallViewPrefsSchema`. The schema ignores that old field
-while preserving mode, self-view and corner; the next normal preference save writes the current shape without it.
+(and the old layout `mode`) while preserving self-view and corner; the next normal preference save writes the current
+shape without them.
 Browser automatic-PiP permission remains the choice that controls opening. No database migration or sealed-record
 upgrade is needed.
 

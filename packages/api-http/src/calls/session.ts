@@ -1,5 +1,5 @@
 import { CallNotifications } from './notifications';
-import { type CallTimerControl, type CallTimerSequenceInput, type CallMessageReceipt, type CallChatMessage } from '@alcove/api';
+import { type CallTimerControl, type CallMessageReceipt, type CallChatMessage } from '@alcove/api';
 import { type DirectKeyAnnouncement, type DirectSend, type DirectEnvelope, type DirectSync } from '@alcove/api';
 import { DirectMessages } from './direct-messages';
 import { b64u, randomBytes } from '../transport/ids';
@@ -26,7 +26,6 @@ interface CallTransport {
   directKey(id: string, m: { generation: number; group: string; epoch: number; message: string }): Promise<void>;
   directSend(id: string, body: DirectSend): Promise<DirectEnvelope>;
   directSync(id: string, ids: string[], after: number): Promise<DirectSync>;
-  setTimerSequence(id: string, input: CallTimerSequenceInput): Promise<CallState>;
   controlTimer(id: string, input: CallTimerControl): Promise<CallState>;
   get(id: string): Promise<CallState>;
   act(id: string, a: CallAction): Promise<CallState>;
@@ -199,7 +198,7 @@ export class HttpCall extends Live<CallState> implements CallSession {
   private again = false;
   private fetching: Promise<void> | null = null;
   private fetchAgain = false;
-  /** A monotonic deadline: log-only chat activity must not postpone recovery of a lost call-state nudge. */
+  /** A monotonic deadline: log-only chat activity must not postpone recovery of a lost change push for the call's state. */
   private nextStateRead = 0;
   private timer: ReturnType<typeof setTimeout> | null = null;
   /** Checks in a row while not in the call's group, so the first come quickly and the rest settle to the usual pace. */
@@ -273,7 +272,7 @@ export class HttpCall extends Live<CallState> implements CallSession {
   refresh = async (what?: { call: boolean; log: boolean } | undefined) => {
     await Promise.all([(what?.call ?? true) ? this.fetchState() : undefined, (what?.log ?? true) ? this.sync() : undefined]);
   };
-  /** One state fetch at a time, and one more straight after if a nudge came meanwhile. */
+  /** One state fetch at a time, and one more straight after if a change push came meanwhile. */
   private fetchState(): Promise<void> {
     if (this.closed) return Promise.resolve();
     if (this.fetching) { this.fetchAgain = true; return this.fetching; }
@@ -293,7 +292,7 @@ export class HttpCall extends Live<CallState> implements CallSession {
 
   /**
    * Says this browser is showing the live notes, and goes on saying so while anything here is. It's what keeps them up
-   * to date; when a look refreshed them, the call is fetched straight away, as a nudge would have it.
+   * to date; when a look refreshed them, the call is fetched straight away, as a change push would have it.
    */
   watchNotes = () => {
     if (++this.notesWatchers === 1) this.lookAtNotes();
@@ -319,7 +318,7 @@ export class HttpCall extends Live<CallState> implements CallSession {
 
   /**
    * Says this browser has the board open, and goes on saying so while anything here does. It's what has ideas from the call
-   * looked for; when a look found some, the call is fetched straight away, as a nudge would have it.
+   * looked for; when a look found some, the call is fetched straight away, as a change push would have it.
    */
   watchIdeas = () => {
     if (++this.ideasWatchers === 1) this.lookForIdeas();
@@ -392,7 +391,7 @@ export class HttpCall extends Live<CallState> implements CallSession {
     if (this.closed) return;
     const st = this.crypto.getSnapshot().status;
     if (st === 'denied' || st === 'removed' || st === 'away' || st === 'failed') return;
-    // While waiting (or moving) there's no group to be nudged through, so this is how the welcome arrives; after that it's a backstop.
+    // While waiting (or moving) there's no room to be told through, so this is how the welcome arrives; after that it's a backstop.
     // Soon after asking it checks often, since the host's browser lets invited people in within moments; a little
     // apart, so many browsers asking at once don't check in step. Rejoining a new group keeps the usual pace.
     this.waits = st === 'waiting' ? this.waits + 1 : 0;
@@ -447,7 +446,7 @@ export class HttpCall extends Live<CallState> implements CallSession {
     if (moved) {
       this.place = log.place;
       this.missedHere = false;
-      this.set({ ...this.state, transcript: [], attention: { ...this.state.attention, place: log.place, hands: [], questions: [], signals: [], cues: [] } });
+      this.set({ ...this.state, transcript: [], attention: { ...this.state.attention, place: log.place, hands: [], questions: [], nudges: [], cues: [] } });
     }
     // Anyone but whoever hosts is in one group at a time: one the API no longer counts them in (they were sent elsewhere, or its room closed) is done with.
     if (!this.hosting) for (const place of [...this.groups.keys()]) if (place !== log.group) await this.drop(place, 'moved');
@@ -575,7 +574,7 @@ export class HttpCall extends Live<CallState> implements CallSession {
           return;
         }
       }
-      this.patch({ chat: orderedChat([...s.chat, { id, from: m.from, isMe: m.from === this.ticket.identity, text: m.text, mentions: m.mentions, thread: m.thread, at: m.at, place, sending: false, failed: false, reactions: [] }]) });
+      this.patch({ chat: orderedChat([...s.chat, { id, from: m.from, isMe: m.from === this.ticket.identity, text: m.text, mentions: m.mentions, thread: m.thread, broadcast: m.broadcast, at: m.at, place, sending: false, failed: false, reactions: [] }]) });
     } else if (m.kind === 'react') {
       // Only to a message of the part of the call it was sent in: one this browser never had (sent before it came in), or
       // one from another part, changes nothing here.
@@ -799,9 +798,9 @@ export class HttpCall extends Live<CallState> implements CallSession {
   private act(a: CallAction, then?: () => void) {
     void this.t.act(this.state.callId, a).then((s) => { this.take(s); then?.(); }, (e: unknown) => this.notify(e instanceof Error ? e.message : 'That didn’t work.'));
   }
-  /** Room changes move people's keys: this browser reads the log straight away rather than waiting to be nudged. */
+  /** Room changes move people's keys: this browser reads the log straight away rather than waiting to be told. */
   private actAndSync(a: CallAction) { this.act(a, () => { void this.sync(); }); }
-  sendChat = async (text: string, mentions: readonly CallChatMention[] = [], thread: import('@alcove/api').CallChatThread | null = null) => {
+  sendChat = async (text: string, mentions: readonly CallChatMention[] = [], thread: import('@alcove/api').CallChatThread | null = null, broadcast = false) => {
     const t = text.trim();
     if (!t) return;
     if (this.closed) throw new AlcoveApiError('forbidden', 'This call has ended.');
@@ -810,7 +809,7 @@ export class HttpCall extends Live<CallState> implements CallSession {
     if (status === 'moving') throw new AlcoveApiError('conflict', 'You’re moving to another room. Send it once you’re there.');
     if (status !== 'in') throw new AlcoveApiError('forbidden', 'Wait until the host lets you in.');
     const leading = text.length - text.trimStart().length;
-    const checked = CallChatTextSchema.safeParse({ text: t, mentions: mentions.map((m) => ({ ...m, start: m.start - leading, end: m.end - leading })), thread, at: this.state.elapsed });
+    const checked = CallChatTextSchema.safeParse({ text: t, mentions: mentions.map((m) => ({ ...m, start: m.start - leading, end: m.end - leading })), thread, broadcast, at: this.state.elapsed });
     const members = new Set(this.groups.get(this.place)?.group.members() ?? []);
     if (!checked.success || checked.data.mentions.some((m) => !members.has(m.identity))) throw new AlcoveApiError('invalid', 'Choose people who are in this part of the call.');
     if (checked.data.thread) {
@@ -820,7 +819,7 @@ export class HttpCall extends Live<CallState> implements CallSession {
     const payload = checked.data;
     const local = `me:${b64u(randomBytes(6))}`;
     const s = this.crypto.getSnapshot();
-    this.patch({ chat: [...s.chat, { id: local, from: this.ticket.identity, isMe: true, text: payload.text, mentions: payload.mentions, thread: payload.thread, at: payload.at, place: this.place, sending: true, failed: false, reactions: [] }] });
+    this.patch({ chat: [...s.chat, { id: local, from: this.ticket.identity, isMe: true, text: payload.text, mentions: payload.mentions, thread: payload.thread, broadcast: payload.broadcast, at: payload.at, place: this.place, sending: true, failed: false, reactions: [] }] });
     this.outbox.push({ local, payload, place: this.place, generation: this.generation, tries: 0, sealed: null });
     await this.sync();
   };
@@ -891,7 +890,6 @@ export class HttpCall extends Live<CallState> implements CallSession {
       this.approved.delete(identity);
     }
   };
-  setTimerSequence = async (input: CallTimerSequenceInput) => { this.take(await this.t.setTimerSequence(this.state.callId, input)); };
   controlTimer = async (input: CallTimerControl) => { this.take(await this.t.controlTimer(this.state.callId, input)); };
   deny = async (identity: string) => { this.take(await this.t.act(this.state.callId, { type: 'deny', identity })); };
   ring = async (emails: string[]) => { this.take(await this.t.act(this.state.callId, { type: 'ring', emails })); };
@@ -950,12 +948,13 @@ export class HttpCall extends Live<CallState> implements CallSession {
   stopRing = async (ringId: string) => { this.take(await this.t.act(this.state.callId, { type: 'stop-ring', ringId })); };
   setHand = (up: boolean) => this.space({ type: 'hand', up, place: this.state.attention.place });
   lowerHand = (entryId: string) => this.space({ type: 'hand-lower', entryId, place: this.state.attention.place });
-  clearHands = () => this.space({ type: 'hands-clear', place: this.state.attention.place });
-  postQuestion = (id: string, text: string) => this.space({ type: 'question-post', id, text, place: this.state.attention.place });
+  postQuestion = (id: string, text: string, anonymous = false) => this.space({ type: 'question-post', id, text, anonymous, place: this.state.attention.place });
+  withdrawQuestion = (id: string) => this.space({ type: 'question-withdraw', id, place: this.state.attention.place });
   voteQuestion = (id: string, on: boolean) => this.space({ type: 'question-vote', id, on, place: this.state.attention.place });
   resolveQuestion: CallSession['resolveQuestion'] = (id, status) => this.space({ type: 'question-resolve', id, status, place: this.state.attention.place });
   pinQuestion = (id: string | null) => this.space({ type: 'question-pin', id, place: this.state.attention.place });
-  setFeedback: CallSession['setFeedback'] = (kind) => this.space({ type: 'feedback', kind, place: this.state.attention.place });
+  nudge: CallSession['nudge'] = (to, kind) => this.space({ type: 'nudge', to, kind, place: this.state.attention.place });
+  setStatus: CallSession['setStatus'] = (status, minutes) => this.space({ type: 'status', status, ...(minutes === undefined ? {} : { minutes }) });
   letOthersPoint = async (on: boolean) => { this.take(await this.t.act(this.state.callId, { type: 'others-point', on })); };
   setPointing = async (on: boolean) => { this.take(await this.t.act(this.state.callId, { type: 'pointing', on })); };
   setSpotlight = (participantId: string | null) => this.act({ type: 'spotlight', participantId });

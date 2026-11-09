@@ -160,11 +160,11 @@ describe('pointing at shared screens', () => {
     changed[changed.length - 1] = (changed.at(-1) ?? 0) ^ 1;
     expect(await guest.openData(CALL_MARKS_TOPIC, host.ticket.identity, changed)).toBeNull();
 
-    // Data does reach the others (the server's nudge, which carries nothing, arrives in the clear), but nothing of the
+    // Data does reach the others (the server's change push, which carries nothing, arrives in the clear), but nothing of the
     // pointer or the mark: LiveKit encrypts the packet as well, and without the host's key it can't be read.
-    const nudged = Promise.all([keyless.nextNudge(), wrongKey.nextNudge()]);
+    const pushed = Promise.all([keyless.nextChange(), wrongKey.nextChange()]);
     await host.setPointing(false);
-    await nudged;
+    await pushed;
     expect(keyless.received(CALL_MARKS_TOPIC)).toEqual([]);
     expect(wrongKey.received(CALL_MARKS_TOPIC)).toEqual([]);
     await host.leave();

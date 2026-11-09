@@ -9,3 +9,5 @@ The conversation view owns local navigation, scroll position and one draft per a
 Read receipts mark only visible messages in a focused conversation. Relevant authors and participating readers receive quiet, configurable local reply attention; #88 integrates OS notifications afterward. Mentions within replies are completed in #107. Private conversation content never enters shared notes, recording, exports or notification previews.
 
 Validation uses multiple real API clients, Postgres and the object store: parent/root identity, concurrent replies, retry deduplication, room and private-recipient isolation, late join, removal/reconnect, cleanup and ciphertext leakage. Storybook documents actual room/private thread states and journeys without assertions. Manual review covers keyboard focus, drafts/scroll, phone/wide and both themes.
+
+Since the call fixes (November 2026), a thread opens in place under Chat's conversation tabs and is flat, as Slack's is: its composer answers the original, with no "Replying to" strip, and Also send to Everyone puts a room reply in the conversation as well (`broadcast` in the encrypted payload, `false` for older messages).

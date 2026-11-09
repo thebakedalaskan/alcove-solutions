@@ -12,5 +12,5 @@ export function asShown(state: CallState, members: string[], self: string): Call
   // A connection on its way out of the group shows as whose it is, and not at all once that person is here again on another.
   const unknown = members.filter((id) => { const l = leaving.get(id); return !here.has(id) && !(l?.now && here.has(l.now)); });
   if (!unknown.length) return state;
-  return { ...state, participants: [...state.participants, ...unknown.map((id) => ({ id, seat: leaving.get(id)?.seat ?? id, person: leaving.get(id)?.person ?? { ...SOMEONE, id }, isMe: id === self, isOrganizer: false, hand: false, othersPoint: true }))] };
+  return { ...state, participants: [...state.participants, ...unknown.map((id) => ({ id, seat: leaving.get(id)?.seat ?? id, person: leaving.get(id)?.person ?? { ...SOMEONE, id }, isMe: id === self, isOrganizer: false, hand: false, status: null, othersPoint: true }))] };
 }

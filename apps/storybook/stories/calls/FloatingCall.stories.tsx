@@ -15,15 +15,15 @@ const meta = {
   ...pages,
   parameters: {
     ...pages.parameters,
-    docs: { description: { component: 'The call floats automatically when the browser permits it, without a separate Alcove preference. View retains Open floating call for manual opening: open the preview as its own browser tab and press it with a real click. The scripted media cannot establish native capture eligibility; automatic opening needs verification in the HTTPS app with browser permission and an already-allowed live device, which can stay muted. Storybook does not replace Document Picture-in-Picture or claim native automatic-opening coverage.' } }
+    docs: { description: { component: 'The call floats automatically when the browser permits it, without a separate Alcove preference. More holds Open floating call for manual opening: open the preview as its own browser tab and press it with a real click. The scripted media cannot establish native capture eligibility; automatic opening needs verification in the HTTPS app with browser permission and an already-allowed live device, which can stay muted. Storybook does not replace Document Picture-in-Picture or claim native automatic-opening coverage.' } }
   }
 } satisfies Meta<PageArgs>;
 export default meta;
 
 const REVIEWERS = [{ who: PRIYA }, { who: KOFI }, { who: AIKO }];
-const ready = { play: press('Your view') };
+const ready = { play: press(MORE) };
 
-/** View exposes manual opening; automatic opening follows the browser's native permission without another control. */
+/** More holds manual opening; automatic opening follows the browser's native permission without another control. */
 export const ReadyToOpen = inCall({
   scenario: 'call-soon', call: REVIEW,
   script: { here: REVIEWERS, talk: { lines: REVIEW_TALK }, summary: REVIEW_SUMMARY }
@@ -34,15 +34,15 @@ export const Unsupported = inCall({
   scenario: 'call-soon', call: REVIEW, script: { here: REVIEWERS, notes: 'off' }, you: { mic: false, cam: false }
 }, { ...ready, parameters: { opening: { browser: { floatingWindow: 'unsupported' } } } });
 export const UnsupportedLight = light(Unsupported);
-export const UnsupportedPhone = phone({ ...Unsupported, play: press(MORE, { then: ['Your view'] }) });
+export const UnsupportedPhone = phone(Unsupported);
 export const UnsupportedPhoneLight = light(UnsupportedPhone);
 
-/** A refusal keeps View open with its explanation and the same manual action available to retry. */
+/** A refusal keeps More open with its explanation and the same manual action available to retry. */
 export const OpeningBlocked = inCall({
   scenario: 'call-soon', call: REVIEW, script: { here: REVIEWERS, notes: 'off' }, you: { mic: false, cam: false }
-}, { play: press('Your view', { then: ['Open floating call'] }), parameters: { opening: { browser: { floatingWindow: 'blocked' } } } });
+}, { play: press(MORE, { then: ['Open floating call'] }), parameters: { opening: { browser: { floatingWindow: 'blocked' } } } });
 export const OpeningBlockedLight = light(OpeningBlocked);
-export const OpeningBlockedPhone = phone({ ...OpeningBlocked, play: press(MORE, { then: ['Your view', 'Open floating call'] }) });
+export const OpeningBlockedPhone = phone(OpeningBlocked);
 export const OpeningBlockedPhoneLight = light(OpeningBlockedPhone);
 /** On a phone, normal call controls remain available whether the browser supports floating calls or not. */
 export const OnAPhone = phone(inCall({ scenario: 'call-soon', call: REVIEW, script: { here: REVIEWERS } }));

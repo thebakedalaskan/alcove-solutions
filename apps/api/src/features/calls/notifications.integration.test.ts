@@ -33,7 +33,9 @@ describe('authorized browser notification candidates', () => {
     await guest.setHand(true);
     await until(() => candidates(host).some((c) => c.category === 'hands'), 'raised hand');
     expect(candidates(guest).some((c) => c.category === 'hands')).toBe(false);
-    await host.clearHands();
+    const raised = host.getSnapshot().attention.hands.find((hand) => hand.participantId === guest.ticket.identity);
+    if (!raised) throw new Error('The host did not see the raised hand');
+    await host.lowerHand(raised.id);
     await until(() => !candidates(host).some((c) => c.category === 'hands'), 'handled hand');
     const question = randomBytes(16).toString('base64url');
     await guest.postQuestion(question, 'CANARY-PRIVATE-NOTIFICATION-QUESTION');
@@ -154,7 +156,7 @@ describe('authorized browser notification candidates', () => {
     await host.leave();
   });
 
-  it('reconciles exact notes requests and both timer lifecycles without exposing timer labels', async () => {
+  it('reconciles exact notes requests and both timer lifecycles', async () => {
     const browser = h.browser();
     await browser.api.auth.signIn('sso', { email: `timed-notifier.${Date.now()}@tests.example` });
     const { code } = await browser.api.calls.startNow({ notes: 'off' });
@@ -170,16 +172,14 @@ describe('authorized browser notification candidates', () => {
     expect(request?.destination.target.type).toBe('capture');
     await guest.requestNotes(false);
     await until(() => !candidates(host).some((candidate) => candidate.category === 'notesRequested'), 'withdrawn notes request');
-    await host.setTimerSequence({ expectedRevision: null, segments: [{ id: 'opening', label: 'CANARY-TIMER-LABEL', durationSeconds: 1, presenter: null }] });
-    await host.controlTimer({ expectedRevision: 0, action: 'start' });
-    await until(() => candidates(guest).some((candidate) => candidate.category === 'timers'), 'authorized presenter warning');
+    await host.controlTimer({ action: 'start', durationSeconds: 1 });
+    await until(() => candidates(guest).some((candidate) => candidate.category === 'timers'), 'authorized call timer warning');
     const warning = candidates(guest).find((candidate) => candidate.category === 'timers');
-    expect(warning?.destination.target).toMatchObject({ type: 'timer', timer: 'presenter' });
-    expect(JSON.stringify(warning)).not.toContain('CANARY');
+    expect(warning?.destination.target).toMatchObject({ type: 'timer', timer: 'call' });
     await until(() => candidates(guest).some((candidate) => candidate.destination.eventId.endsWith(':end')), 'distinct expiry warning');
-    const revision = host.getSnapshot().timerSequence?.revision;
+    const revision = host.getSnapshot().timer?.revision;
     if (revision === undefined) throw new Error('Missing timer revision');
-    await host.controlTimer({ expectedRevision: revision, action: 'pause' });
+    await host.controlTimer({ action: 'pause', expectedRevision: revision });
     await until(() => !candidates(guest).some((candidate) => candidate.category === 'timers'), 'paused timer notification withdrawn');
     await host.openBoard({ template: 'blank' });
     await host.startTimer(3);

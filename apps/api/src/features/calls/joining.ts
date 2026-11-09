@@ -24,7 +24,7 @@ import { anonymousCapture, view } from './read-model';
 import * as models from '../notes/models';
 import { HOST_GRACE_MS, departed, newGeneration, reconcile } from './lifecycle';
 import { syncBoardSeats } from './room-boards';
-import { nudge } from './notifications';
+import { tellRoom } from './notifications';
 import { knownUntil, type Viewer } from './participants';
 import { startNotes } from './recording';
 import { appendMls } from './mls-log';
@@ -141,7 +141,7 @@ async function enter(d: Deps, o: Owner, meeting: Loaded<MeetingManifest>, joined
   // A connection that hosts is in the call from the start, with no commit to let it in. Joining doesn't wait for a workspace:
   // a seat lands a moment later, and the call reads itself again when it does.
   if (j.hosts) void syncBoardSeats({ organizer: o, callId: j.callId });
-  await nudge(o, j.roomName, j.callId, { call: j.hosts, log: true });
+  await tellRoom(o, j.roomName, j.callId, { call: j.hosts, log: true });
   clog.info(role === 'host' ? 'call joined' : 'asked to join a call', { callId: j.callId, meetingId: meeting.itemId, role, admit: j.admit, generation: j.generation, back: Boolean(who.earlier) });
   return ticketFor(d, o, j.callId, { identity, role, name, person: j.person, hosts: j.hosts, owner: who.owner }, j.roomName);
 }
@@ -236,7 +236,7 @@ async function hostJoin(o: Owner, meeting: Loaded<MeetingManifest>, joined: Join
       const callId = id128();
       const roomName = `r_${id128()}`;
       let s: Stored = {
-        host: joined.identity, moving: null, people: [{ ...joined, hosting: [{ from: joined.since, to: null }] }], spotlight: null, breakouts: { open: null, held: [] }, removed: [], pointing: true, othersPointOff: [], chatAt: {}, chatRead: {}, timerSequence: null, notices: [], workspace: NO_SPACE, board: NO_BOARDS,
+        host: joined.identity, moving: null, people: [{ ...joined, hosting: [{ from: joined.since, to: null }] }], spotlight: null, breakouts: { open: null, held: [] }, removed: [], pointing: true, othersPointOff: [], chatAt: {}, chatRead: {}, timer: null, notices: [], workspace: NO_SPACE, board: NO_BOARDS,
         notes: {
           status: 'off', everOn: false, noteId: null, recordingId: null, segment: 0, segmentFrom: 0, history: [], asks: [], unavailable: [], offline: [], screenHistory: [],
           frameCapture: null, model: (await profile(o, c)).preferences.model
@@ -328,7 +328,7 @@ async function guestJoin(o: Owner, meeting: Loaded<MeetingManifest>, joined: Joi
 export async function answerRing(who: Owner, ringId: string, reply: RingReply): Promise<void> {
   const { organizer, meetingId } = await rings.answer(who, ringId, reply);
   const live = await liveCall(organizer, organizer.pool, meetingId);
-  if (live) await nudge(organizer, live.room_name, live.call_id, { call: true, log: false });
+  if (live) await tellRoom(organizer, live.room_name, live.call_id, { call: true, log: false });
 }
 
 /** The series a call is in, by its link: what carries over into it is read for whoever asks (features/notes/series.ts). */

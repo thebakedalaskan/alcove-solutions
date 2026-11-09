@@ -3,16 +3,15 @@
  * the bar that says what's spotlighted, and the captions. It's one layer over the whole of the call's area, so that nothing
  * playing ever remounts as the frames around it (frame.tsx) come and go: tiles sit where the layout engine (stageLayout.ts)
  * puts them and glide there. Your own view (view.ts): drag tiles into another order, make one bigger from its corner, pin
- * people, and see yourself in the grid, in a corner or not at all. Every tile can be focused, then pinned, moved and sized
- * from the keyboard (its ⋯ menu says how). All of that changes your view only. With rooms open, the organizer's stage shows
+ * people, and see yourself in the grid, in a corner or not at all. Every tile can be focused, then pinned or its ⋯ menu opened
+ * from the keyboard. All of that changes your view only. With rooms open, the organizer's stage shows
  * every room, beside what's open on it; everyone else's shows the people in their own room.
  *
- * Beside what's open on your stage, the people sit as View says: as a column of tiles, as arches, or small on the horizon
- * beside the dock, where whoever's talking or has a hand up rises. A small toolbar over them folds them to arches, or hides
- * them.
+ * Beside what's open on your stage, the people sit as a column of tiles, as arches where there's no room for a column, or,
+ * once you hide them (⇧P) or in focus, small on the horizon beside the dock, where whoever's talking or has a hand up rises.
  */
-import type { CallPeopleMode, Person, SelfView, StageCorner } from '@alcove/api';
-import { Avatar, Button, CallTile, CaptureSign, EmptyState, Icon, NotesSign, PresentedTile, Tooltip, WsPersonCard, WsPopover, cn, volumeTag, type IconName } from '@alcove/ui';
+import type { Person, SelfView, StageCorner } from '@alcove/api';
+import { Avatar, Button, CallTile, CaptureSign, EmptyState, Icon, NotesSign, PresentedTile, Tooltip, WsPersonCard, WsPopover, cn, volumeTag, type IconName, type TileStatus } from '@alcove/ui';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { useEffect, useMemo, useRef, useState, type FocusEvent as ReactFocusEvent, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { callName } from '~/lib/people';
@@ -35,7 +34,8 @@ export interface StageParticipant {
   volume: number | null;
   /** In the call, but not yet in this browser's encrypted group, so none of their media plays here yet. */
   connecting: boolean;
-  signal?: ReactNode;
+  /** What they say they're up to, as their tile shows it, or null. */
+  status: TileStatus | null;
 }
 /**
  * What a tile shows of the workspace, by connection: Follow, Following, who's writing, and who was just tagged. On a phone,
@@ -157,9 +157,9 @@ export function useStagePlan({ people, waiting, tiles, spotlight, view, narrow, 
   const tilesKey = tiles.join(' ');
   // `people` changes on every render (who's speaking); the plan only needs who's here, which peopleKey says.
   const raw = useMemo(() => arrange({
-    people: [...people, ...awaited], tiles: tilesKey ? tilesKey.split(' ').map(thingKey) : [], spotlight, speaker: talk.speaker, dominant: talk.dominant, prefs, layout: lay, hold
-  }), [peopleKey, tilesKey, spotlight, talk.speaker, talk.dominant, prefs, lay, hold]);
-  // While Alcove picks who leads (Speaker view), whoever steps down takes the place of whoever steps up.
+    people: [...people, ...awaited], tiles: tilesKey ? tilesKey.split(' ').map(thingKey) : [], spotlight, dominant: talk.dominant, prefs, layout: lay, hold
+  }), [peopleKey, tilesKey, spotlight, talk.dominant, prefs, lay, hold]);
+  // While Alcove picks who leads, whoever steps down takes the place of whoever steps up.
   const strip = useRef<{ order: string; auto: boolean; rest: string[] }>({ order: '', auto: false, rest: [] });
   const orderKey = lay.order.join(' ');
   const auto = raw.shape === 'focus' && raw.auto;
@@ -177,9 +177,13 @@ export interface StageBoard {
   find: (p: StageParticipant) => PersonMenu['board'];
 }
 
-export function Stage({ staged, frame, phone, people, waiting, presented, spotlight, view, organizer, together, bar, caption, rooms, onSpotlight, onPin, onSelf, onCustom, volumes, onPeopleMode, onMorePeople, board = null, privatePeers = [], onPrivateMessage }: {
-  privatePeers?: readonly string[] | undefined;
-  onPrivateMessage?: ((identity: string) => void) | undefined;
+export function Stage({ staged, frame, phone, people, waiting, presented, spotlight, view, organizer, together, bar, caption, rooms, onSpotlight, onPin, onSelf, onCustom, volumes, onMorePeople, board = null, menuOf }: {
+  /**
+   * What someone's ⋯ offers beyond your view of the stage, the same as on their row in People: your status, and on anyone else's a
+   * private message, a nudge, how loud they are for you and whoever hosts' controls. The stage adds pinning, spotlighting, where
+   * you see yourself, and following.
+   */
+  menuOf: (p: StageParticipant) => PersonMenu;
   /** What it shows (`useStagePlan`). */
   staged: StagePlan;
   /** People working together in the workspace, by connection. */
@@ -208,8 +212,6 @@ export function Stage({ staged, frame, phone, people, waiting, presented, spotli
   onCustom: () => void;
   /** How loud someone is for you: your own playback only. */
   volumes: VolumeActions;
-  /** Fold the people to arches, back to tiles, or away. */
-  onPeopleMode: (m: CallPeopleMode) => void;
   /** Everyone there's no room to show: open People. */
   onMorePeople: () => void;
   /** The board on your stage, or null. */
@@ -252,15 +254,14 @@ export function Stage({ staged, frame, phone, people, waiting, presented, spotli
   const pinGroup = plan.leads.filter((id) => pinned.has(id));
   const restGroup = plan.rest.filter((k) => !isThingKey(k) && !isWaitKey(k));
   const groupOf = (id: string) => (pinned.has(id) ? pinGroup : restGroup.includes(id) ? restGroup : null);
-  // Dragging and resizing tiles: not on a phone, nor in a strip, nor among arches, nor while rooms are open.
-  const handsOn = !narrow && plan.shape !== 'focus' && !rooms && (!panels || panels.mode === 'tiles');
+  // Dragging and resizing tiles: not on a phone, nor in a strip under someone you or the organizer chose, nor among arches, nor
+  // while rooms are open. Under whoever Alcove picked, moving or sizing a tile arranges the stage yourself, and it's a grid again.
+  const handsOn = !narrow && (plan.shape !== 'focus' || plan.auto) && !rooms && (!panels || panels.mode === 'tiles');
   // Bigger tiles are the stage's: a column of people keeps them all alike.
   const sizable = handsOn && !panels;
   const self = plan.self ? byId.get(plan.self.id) ?? null : null;
   const cornered = self && plan.self && !plan.self.folded ? self : null;
   const focusables = [...plan.leads, ...plan.rest.filter((k) => !isWaitKey(k)), ...(cornered ? [cornered.id] : [])].filter((k) => !L.off.has(k));
-  // The people's own small toolbar: not on a phone, nor while the rooms hold the stage.
-  const canFold = !phone && !rooms;
 
   const [drag, setDrag] = useState<{ id: string; x: number; y: number } | null>(null);
   const [size, setSize] = useState<{ id: string; w: number; h: number } | null>(null);
@@ -282,18 +283,12 @@ export function Stage({ staged, frame, phone, people, waiting, presented, spotli
       const shown = seats(next);
       view.setPins([...shown, ...lay.pins.filter((s) => !shown.includes(s))]);
     } else {
-      // The group's places in your order, in that order: the strip may show them steadied (Speaker view), not in order.
+      // The group's places in your order, in that order: the strip may show them steadied (under whoever leads), not in order.
       const mine = seats(g);
       view.setOrder(reslot(plan.order, plan.order.filter((s) => mine.includes(s)), seats(next)));
     }
     onCustom();
   };
-  const moveBy = (id: string, d: -1 | 1) => {
-    const g = groupOf(id);
-    const target = g?.[g.indexOf(id) + d];
-    if (g && target !== undefined) reorder(g, id, target);
-  };
-  const toggleBig = (p: StageParticipant) => { view.setBig(p.seat, !lay.big.includes(p.seat)); onCustom(); };
   const focusTo = (k: string | undefined) => { if (k === undefined) return; setFocusKey(k); els.current.get(k)?.focus(); };
 
   const latest = useRef({ L, view, onCustom, reorder, groupOf, fx, fy, w, h });
@@ -372,8 +367,8 @@ export function Stage({ staged, frame, phone, people, waiting, presented, spotli
   };
 
   /**
-   * A focused tile's keys: Enter its menu, P pin, Shift and an arrow move a tile, + and − size it, arrows go to the next tile.
-   * On something presented, Enter or P takes you to it.
+   * A focused tile's keys: Enter its menu, P pin, arrows go to the next tile, and on your picture in a corner Shift and an arrow
+   * move it to another corner. On something presented, Enter or P takes you to it. Tiles move and size by dragging.
    */
   const keysFor = (k: string) => (e: ReactKeyboardEvent<HTMLDivElement>) => {
     if (!(e.target instanceof Node) || !e.currentTarget.contains(e.target) || e.metaKey || e.ctrlKey || e.altKey) return;
@@ -387,13 +382,8 @@ export function Stage({ staged, frame, phone, people, waiting, presented, spotli
     else if ((key === 'Enter' || key === ' ') && onTile) setMenu(k);
     else if (key === 'ContextMenu' || (key === 'F10' && e.shiftKey)) setMenu(k);
     else if ((key === 'p' || key === 'P') && !e.shiftKey) { if (p && !corner) onPin(p); }
-    else if (e.shiftKey && ARROWS.has(key)) {
-      if (corner) view.setCorner(cornerBy(prefs.corner, key));
-      else moveBy(k, key === 'ArrowLeft' || key === 'ArrowUp' ? -1 : 1);
-    } else if (key === '+' || key === '=' || key === '-' || key === '_' || key === '−') {
-      const big = key === '+' || key === '=';
-      if (p && sizable && restGroup.includes(k) && lay.big.includes(p.seat) !== big) toggleBig(p);
-    } else if (ARROWS.has(key)) focusTo(focusables[Math.max(0, Math.min(focusables.length - 1, focusables.indexOf(k) + (key === 'ArrowLeft' || key === 'ArrowUp' ? -1 : 1)))]);
+    else if (e.shiftKey && ARROWS.has(key) && corner) view.setCorner(cornerBy(prefs.corner, key));
+    else if (ARROWS.has(key)) focusTo(focusables[Math.max(0, Math.min(focusables.length - 1, focusables.indexOf(k) + (key === 'ArrowLeft' || key === 'ArrowUp' ? -1 : 1)))]);
     else if (key === 'Home') focusTo(focusables[0]);
     else if (key === 'End') focusTo(focusables.at(-1));
     else done = false;
@@ -402,7 +392,7 @@ export function Stage({ staged, frame, phone, people, waiting, presented, spotli
   /** A tile's group, one tab stop among the tiles: what it says, and the keys it takes. A presented thing's Enter puts it on your stage. */
   const tileProps = (k: string, label: string, thing?: { menu: boolean }) => ({
     ref: setEl(k), tabIndex: k === tabKey ? 0 : -1, role: 'group', 'aria-roledescription': thing ? 'presented' : 'tile', 'aria-label': thing ? label : `${label}. Enter for options`,
-    'aria-keyshortcuts': thing ? `Enter P${thing.menu ? ' Shift+F10' : ''}` : 'Enter P Shift+ArrowLeft Shift+ArrowRight', onKeyDown: keysFor(k),
+    'aria-keyshortcuts': thing ? `Enter P${thing.menu ? ' Shift+F10' : ''}` : 'Enter P', onKeyDown: keysFor(k),
     onFocus: (e: ReactFocusEvent) => { if (e.target === e.currentTarget) setFocusKey(k); }
   });
 
@@ -417,17 +407,12 @@ export function Stage({ staged, frame, phone, people, waiting, presented, spotli
 
   const name = (p: StageParticipant) => (p.isMe ? <>{callName(p.person)} <span className="you">(you)</span></> : callName(p.person));
   const menuFor = (p: StageParticipant, corner: boolean): PersonMenu => {
-    const g = groupOf(p.id);
-    const at = g ? g.indexOf(p.id) : -1;
     const spot = spotlight === p.id;
     return {
-      privateMessage: !p.isMe && privatePeers.includes(p.id) && onPrivateMessage ? () => onPrivateMessage(p.id) : undefined,
+      ...menuOf(p),
       pinned: corner ? undefined : { on: pinned.has(p.id), toggle: () => onPin(p) },
       spotlight: organizer ? { on: spot, toggle: () => onSpotlight(spot ? null : p.id) } : undefined,
-      ...(g && g.length > 1 ? { earlier: at > 0 ? () => moveBy(p.id, -1) : null, later: at < g.length - 1 ? () => moveBy(p.id, 1) : null } : {}),
-      size: sizable && restGroup.includes(p.id) ? { big: lay.big.includes(p.seat), toggle: () => toggleBig(p) } : undefined,
       self: p.isMe ? { where: prefs.self, set: onSelf } : undefined,
-      volume: p.volume === null ? undefined : { level: p.volume, set: (level) => volumes.set(p.id, level), toggle: () => volumes.toggle(p.id) },
       following: together.following === p.id ? { on: true, toggle: together.onStop } : together.followable.includes(p.id) ? { on: false, toggle: () => together.onFollow(p.id) } : undefined,
       board: board?.find(p)
     };
@@ -435,15 +420,13 @@ export function Stage({ staged, frame, phone, people, waiting, presented, spotli
   const nothing = !L.slots.size;
   const instant = reduce;
   const glide = instant ? { duration: 0 } : pace;
-  // Who's said to be talking, on the horizon: someone who's been at it a moment, as Speaker view counts it, so a quick "yes" moves nothing.
+  // Who's said to be talking, on the horizon: someone who's been at it a moment (media/speakers.ts), so a quick "yes" moves nothing.
   const talking = (p: StageParticipant) => p.speaking && p.id === speaker;
   const loudOne = people.find((p) => p.hand) ?? people.find(talking);
   const onHorizon = !!panels && panels.mode === 'hidden';
   const ground = onHorizon ? [...L.slots.entries()].filter(([k]) => !L.off.has(k)).reduce((x, [, r]) => Math.max(x, r[0] + r[2]), 0) : 0;
   // The line saying so stands beside them, or past the dock when there's no room this side of it.
   const hzAt = !panels ? null : ground + 28 + HZ_WORDS < panels.horizon.dock ? ground + 28 : panels.horizon.dockEnd + 16 + HZ_WORDS < w ? panels.horizon.dockEnd + 16 : null;
-  const peopleBar = L.people && canFold && !narrow && panels && panels.mode !== 'hidden' && L.slots.size > 0;
-  const folded = panels?.mode === 'arches';
   const carded = card === null ? null : people.find((p) => p.id === card && !p.isMe) ?? null;
   return (
     <div ref={ref} className="ic-stage">
@@ -506,7 +489,7 @@ export function Stage({ staged, frame, phone, people, waiting, presented, spotli
             } : undefined}
             initial={opens ? { ...box(opens.from), opacity: 1, scale: 1 } : { ...here, opacity: 0, scale: 0.97 }} animate={{ ...here, opacity: 1, scale: dragging && !corner ? 1.03 : 1 }}
             transition={instant || dragging || growing ? { duration: 0 } : { ...pace, opacity: UI, scale: UI }}>
-            <CallTile person={p.person} name={name(p)} label={p.person.name} speaking={p.speaking} muted={!p.mic} hand={p.hand} connecting={p.connecting} signal={p.signal} className={cn(p.isMe && 'is-me', pin && 'is-pinned', spot && 'is-spot', following && 'is-followed', together.lit === p.id && 'is-lit')}
+            <CallTile person={p.person} name={name(p)} label={p.person.name} speaking={p.speaking} muted={!p.mic} hand={p.hand} connecting={p.connecting} status={p.status} className={cn(p.isMe && 'is-me', pin && 'is-pinned', spot && 'is-spot', following && 'is-followed', together.lit === p.id && 'is-lit')}
               chrome={(
                 <>
                   {!corner && (
@@ -533,7 +516,7 @@ export function Stage({ staged, frame, phone, people, waiting, presented, spotli
                   {!following && !mode && !corner && together.followable.includes(p.id) && (
                     <button type="button" className="ic-tfl" tabIndex={-1} aria-label={`Follow ${callName(p.person)}`} onClick={() => together.onFollow(p.id)}><Icon name="navigate" size={13} /><span>Follow</span></button>
                   )}
-                  <TileMenu who={p.person} me={p.isMe} open={menu === p.id} onOpenChange={(o) => setMenu(o ? p.id : null)} organizer={organizer} menu={menuFor(p, corner)} />
+                  <TileMenu who={p.person} me={p.isMe} open={menu === p.id} onOpenChange={(o) => setMenu(o ? p.id : null)} menu={menuFor(p, corner)} />
                   {sizable && restGroup.includes(p.id) && <span className="ic-rs" data-handle aria-hidden="true" onPointerDown={(e) => startGrow(e, p)}><Icon name="resize" size={14} /></span>}
                 </>
               )}>
@@ -562,12 +545,6 @@ export function Stage({ staged, frame, phone, people, waiting, presented, spotli
       {L.more && (
         <motion.button key="more" type="button" className={cn('ic-tmore', `is-${L.more.mode}`)} aria-label={`${L.more.n} more in the call. Open People`} title="Open People" onClick={onMorePeople}
           initial={false} animate={box(L.more.rect)} transition={glide}>+{L.more.n}</motion.button>
-      )}
-      {peopleBar && L.people && (
-        <div className="ic-ppl" role="toolbar" aria-label="People" style={{ left: L.people.x + L.people.w / 2, top: L.people.y + 6 }}>
-          <button type="button" className="b" aria-label={folded ? 'Show as tiles' : 'Fold to arches'} title={folded ? 'Show as tiles' : 'Fold to arches'} onClick={() => onPeopleMode(folded ? 'tiles' : 'arches')}><Icon name={folded ? 'grow' : 'shrink'} size={14} /></button>
-          <button type="button" className="b" aria-label="Hide people" title="Hide people (⇧P)" aria-keyshortcuts="Shift+P" onClick={() => onPeopleMode('hidden')}><Icon name="eyeOff" size={14} /></button>
-        </div>
       )}
       {onHorizon && panels && loudOne && hzAt !== null && (
         <span className={cn('ic-hz', hzAt > panels.horizon.dock && 'is-past')} style={{ left: hzAt, top: panels.horizon.base - 24 }}>{callName(loudOne.person)} {loudOne.hand ? 'raised a hand' : 'is talking'}</span>
@@ -652,7 +629,7 @@ function RoomsStage({ people, rooms, w, h, reduce }: { people: StageParticipant[
         if (!p || !r) return null;
         return (
           <motion.div key={id} className="ic-slot" initial={{ ...box(r), opacity: 0 }} animate={{ ...box(r), opacity: 1 }} transition={reduce ? { duration: 0 } : GLIDE}>
-            <CallTile person={p.person} name={p.isMe ? <>{callName(p.person)} <span className="you">(you)</span></> : callName(p.person)} speaking={p.speaking} muted={!p.mic} hand={p.hand} connecting={p.connecting} signal={p.signal}>
+            <CallTile person={p.person} name={p.isMe ? <>{callName(p.person)} <span className="you">(you)</span></> : callName(p.person)} speaking={p.speaking} muted={!p.mic} hand={p.hand} connecting={p.connecting} status={p.status}>
               {p.video ? <FeedVideo feed={p.video} /> : undefined}
             </CallTile>
           </motion.div>

@@ -340,7 +340,7 @@ describe('a vote', () => {
     inRoom.push(room);
     // A browser that's only just reached the room can miss what's sent that moment, so this one has heard something first.
     let ready = false;
-    const warm = room.nextNudge().then(() => { ready = true; });
+    const warm = room.nextChange().then(() => { ready = true; });
     while (!ready) { await host.lock(false); await rest(50); }
     await warm;
     const nudges = () => room.received(CALL_TOPIC).filter((d) => d.from === null).length;
@@ -352,7 +352,7 @@ describe('a vote', () => {
     await rest(1500);
     expect(nudges()).toBe(quiet);
     // Ending it is everyone's news.
-    const ended = room.nextNudge();
+    const ended = room.nextChange();
     await host.endVote();
     await ended;
     expect((await board(p)).vote).toMatchObject({ on: false, results: { [b.s1]: 1, [b.s3]: 1 }, voters: 2 });

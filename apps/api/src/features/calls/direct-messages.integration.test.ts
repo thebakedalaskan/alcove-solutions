@@ -86,6 +86,79 @@ describe('private messages inside a call', () => {
     await until(() => bob.direct.getSnapshot().messages.length === 0, 'call-end history cleanup');
   });
 
+  it('carries a reaction on a private message to its other person alone, as nothing new to read', async () => {
+    const org = await account();
+    const { code } = await org.api.calls.startNow({ notes: 'off' });
+    const host = await org.api.calls.join(code, { mic: false, cam: false });
+    const alice = await h.browser().api.calls.join(code, { mic: false, cam: false, name: 'Alice' });
+    const bob = await h.browser().api.calls.join(code, { mic: false, cam: false, name: 'Bo' });
+    await admit(host, alice); await admit(host, bob); await peers(alice, bob);
+    await alice.direct.send(bob.ticket.identity, 'The checklist is ready.');
+    await until(() => bob.direct.getSnapshot().messages.some((m) => m.text === 'The checklist is ready.'), 'private message');
+    const message = bob.direct.getSnapshot().messages.find((m) => m.text === 'The checklist is ready.');
+    if (!message) throw new Error('No private message');
+    const reactionsAt = (call: CallSession) => call.direct.getSnapshot().messages.find((m) => m.id === message.id)?.reactions ?? [];
+    await bob.direct.react(message.id, 'heart', true);
+    expect(reactionsAt(bob)).toEqual([{ reaction: 'heart', by: [bob.ticket.identity] }]);
+    await until(() => reactionsAt(alice).length === 1, 'reaction at the sender');
+    expect(reactionsAt(alice)).toEqual([{ reaction: 'heart', by: [bob.ticket.identity] }]);
+    // A reaction is no message: the conversation still has one, and nothing new to read.
+    expect(alice.direct.getSnapshot().messages).toHaveLength(1);
+    await alice.direct.react(message.id, 'heart', true);
+    await until(() => reactionsAt(bob)[0]?.by.length === 2, 'both reactions at the recipient');
+    expect(bob.direct.getSnapshot().messages).toHaveLength(1);
+    expect(bob.direct.getSnapshot().unread).toEqual([message.id]);
+    await bob.direct.react(message.id, 'heart', false);
+    await until(() => reactionsAt(alice)[0]?.by.join() === alice.ticket.identity, 'a reaction taken back');
+    await expect(alice.direct.react('not-a-private-message', 'heart', true)).rejects.toMatchObject({ code: 'not-found' });
+    // Nobody else's inbox, room chat or call state carries any of it.
+    expect(host.direct.getSnapshot().messages).toEqual([]);
+    expect(host.crypto.getSnapshot().chat).toEqual([]);
+    expect(DirectSyncSchema.parse(await (await inbox(host)).json()).messages).toEqual([]);
+    for (const call of [host, alice, bob]) expect(JSON.stringify(call.getSnapshot())).not.toContain('The checklist is ready.');
+    await host.leave();
+  });
+
+  it('takes a private reaction back here when the relay refuses it, and refuses one once rooms have split the two', async () => {
+    let refuse = false;
+    const jar = cookieFetch(ORIGIN);
+    // Bo's browser asks the relay for a connection that isn't in the call: the relay refuses it, as it does once Alice has gone.
+    const bobBrowser = h.browser({ fetch: (input, init) => {
+      if (!refuse || !String(input).endsWith('/direct/messages') || typeof init?.body !== 'string') return jar(input, init);
+      const sent: unknown = JSON.parse(init.body);
+      return jar(input, { ...init, body: JSON.stringify({ ...DirectSendSchema.parse(sent), to: `p_${'A'.repeat(22)}` }) });
+    } });
+    const org = await account();
+    const aliceEmail = `react.alice.${Date.now()}@tests.example`;
+    const bobEmail = `react.bob.${Date.now()}@tests.example`;
+    const a = await account(aliceEmail);
+    await bobBrowser.api.auth.signIn('sso', { email: bobEmail });
+    const { code } = await org.api.calls.startNow({ guests: [aliceEmail, bobEmail], notes: 'off' });
+    const host = await org.api.calls.join(code, { mic: false, cam: false });
+    const alice = await a.api.calls.join(code, { mic: false, cam: false });
+    const bob = await bobBrowser.api.calls.join(code, { mic: false, cam: false });
+    await peers(alice, bob);
+    await alice.direct.send(bob.ticket.identity, 'Can you check the rollout?');
+    await until(() => bob.direct.getSnapshot().messages.length === 1, 'private message');
+    const message = bob.direct.getSnapshot().messages[0];
+    if (!message) throw new Error('No private message');
+    const reactionsAt = (call: CallSession) => call.direct.getSnapshot().messages.find((m) => m.id === message.id)?.reactions ?? [];
+    refuse = true;
+    expect(apiCode(await bob.direct.react(message.id, 'heart', true).catch((e: unknown) => e))).toBe('conflict');
+    refuse = false;
+    expect(reactionsAt(bob)).toEqual([]);
+    await alice.refresh();
+    expect(reactionsAt(alice)).toEqual([]);
+    host.openRooms({ rooms: [{ name: 'Design', emails: [aliceEmail] }, { name: 'Support', emails: [bobEmail] }], minutes: 5, board: { mode: 'none', template: 'blank' } });
+    await until(() => alice.crypto.getSnapshot().place !== 'main' && bob.crypto.getSnapshot().place !== 'main' && alice.crypto.getSnapshot().place !== bob.crypto.getSnapshot().place, 'separate rooms');
+    await until(() => !alice.direct.getSnapshot().peers.includes(bob.ticket.identity), 'conversation unavailable');
+    // Its history stays here to read, but nothing more reaches across rooms, a reaction included.
+    expect(apiCode(await alice.direct.react(message.id, 'heart', true).catch((e: unknown) => e))).toBe('conflict');
+    expect(reactionsAt(alice)).toEqual([]);
+    expect(DirectSyncSchema.parse(await (await inbox(bob)).json()).messages).toEqual([]);
+    await host.leave();
+  });
+
   it('refuses waiting, other-call and removed senders and recipients, without redirecting their conversation', async () => {
     const org = await account();
     const { code } = await org.api.calls.startNow({ notes: 'off' });

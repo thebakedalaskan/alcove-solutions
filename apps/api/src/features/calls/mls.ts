@@ -13,7 +13,7 @@ import { load, mayComeBack, saveSettled, settle, type Row, type Stored, withPers
 import { MlsRow, appendMls, openMls } from './mls-log';
 import { stillHosting } from './permissions';
 import { afterClosing, syncBoardSeats, syncRoomBoards } from './room-boards';
-import { nudge } from './notifications';
+import { tellRoom } from './notifications';
 import { ARRIVAL_MS, arrivals } from './lifecycle';
 
 const clog = log.child({ component: 'calls' });
@@ -185,7 +185,7 @@ export async function mlsCommit(v: Viewer, callId: string, b: z.infer<typeof Cal
   return afterClosing({ organizer: o, callId }, closed, async () => {
     // Letting someone in doesn't wait for a workspace: a seat lands a moment later, and the call reads itself again when it does.
     if (b.added.length) { void syncBoardSeats({ organizer: o, callId }); if (!closed) void syncRoomBoards({ organizer: o, callId }); }
-    await nudge(o, room, callId, { call: closed || b.added.length > 0 || b.removed.length > 0, log: true });
+    await tellRoom(o, room, callId, { call: closed || b.added.length > 0 || b.removed.length > 0, log: true });
     if (b.added.length && room) {
       // Whoever was just let in should reach the room soon; anyone who doesn't (their tab closed while they asked) is taken out.
       const d: Deps = { cfg: o.cfg, pool: o.pool, objects: o.objects, livekit: o.livekit, hub: o.hub, docs: o.docs };
@@ -220,7 +220,7 @@ export async function mlsMessage(v: Viewer, callId: string, b: z.infer<typeof Ca
   });
   // Sizes only: what was said is in the MLS message, which nobody here can read.
   clog.debug('chat relayed', { ...ctx, bytes: b.message.length });
-  await afterClosing({ organizer: o, callId }, closed, () => nudge(o, room, callId, { call: closed, log: true }));
+  await afterClosing({ organizer: o, callId }, closed, () => tellRoom(o, room, callId, { call: closed, log: true }));
   return receipt;
 }
 
@@ -246,7 +246,7 @@ export async function mlsKeyPackage(v: Viewer, callId: string, b: z.infer<typeof
     return { room: row.room_name, moving: groupOf(s, mine) !== null || placeOf(s, mine) !== MAIN_PLACE, closed };
   });
   clog.info('keys sent to join another group', { callId, generation: b.generation, moving: r.moving });
-  await afterClosing({ organizer: o, callId }, r.closed, () => nudge(o, r.room, callId, { call: r.closed, log: true }));
+  await afterClosing({ organizer: o, callId }, r.closed, () => tellRoom(o, r.room, callId, { call: r.closed, log: true }));
 }
 
 /**
@@ -274,7 +274,7 @@ export async function mlsBack(v: Viewer, callId: string, b: z.infer<typeof CallB
     return { room: row.room_name, closed: (await saveSettled(o, c, callId, state, next)).closed };
   });
   clog.info('back in the call after its connection dropped', { callId, generation: b.generation });
-  await afterClosing({ organizer: o, callId }, closed, () => nudge(o, room, callId, { call: true, log: true }));
+  await afterClosing({ organizer: o, callId }, closed, () => tellRoom(o, room, callId, { call: true, log: true }));
 }
 
 /** A LiveKit token, only for someone the host's browser let in. It names nobody. */

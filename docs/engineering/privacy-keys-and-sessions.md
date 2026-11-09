@@ -45,7 +45,7 @@ nobody can sign in as someone who uses Alcove with Google and read the notes giv
 | `Kwrap` | `HKDF(Kowner, salt=ownerId, "alcove/owner-wrap/v1")` | Derived per request; wraps revision and recording keys |
 | `Krecord` | 32 random bytes per item revision | `revisions.key_envelope`, wrapped under `Kwrap` with scope `revision:<id>` |
 | `Krec` | 32 random bytes per recording | `recordings.key_envelope`, wrapped under `Kwrap` with scope `recording:<id>`; seals the recording's audio pieces, its kept shares' video and the frames taken from it |
-| State keys | `HKDF(Kowner, salt=ownerId, "alcove/state/v1/<scope>")`, scopes `document-clients:<id>` (who each Yjs client in a document belongs to, as keyed hashes), `document-deletes:<id>` (a keyed hash of what each row of its log deletes, so the same deletes again cost nothing), `call:<id>` (call state), `call-attention:<id>` (ordered hands, explicit questions, votes, feedback and audience-bound notification cues), `call-mls:<id>` (the call's MLS log, sealed again), `call-seat:<id>` (each person's seat in the call, a MAC of their random per-call `person`, never stored), `call-move:<id>` (moves to other devices in a call), `call-timer-presets` (private timer presets), `call-notes:<id>` (the call's shared live notes), `ring:<meetingId>` (rings in a call), `meeting-answers:<meetingId>` (what people invited to a call answered), `job:<noteId>` (notes jobs), `transcript:<noteId>` (live transcript clips and caption translations, and the keyed tags that find them), `screen-share:<recordingId>` (whose each share in a call was) and `screen:<noteId>` (what's known about each shared-screen frame, and the keyed tags that find them), `note-additions:<noteId>` (what people added to the shared notes). Under the author's own `Kowner`, never the organizer's: `personal:<noteId>` (their own notes on a note), `presenter-notes:<documentId>` (what they kept beside a whole document or board with an earlier release, which nothing opens now), `presenter-frame-notes:<boardId>` (what they keep beside each frame of a board, and the keyed hash that says which frame) and `promotion:<noteId>` (the seal on a preview of adding to the shared notes); and, under a workspace's root, `workspace` (its name and tree, who its people and shares are, and carets and presence on their way between instances), `workspace-person` (what someone's known by in it, a keyed hash of how access knows them), `document:<id>` (what a document or board holds) and `media:<id>` (a file: what's said about it, and its pieces) | Derived per request, or per job in the notes worker |
+| State keys | `HKDF(Kowner, salt=ownerId, "alcove/state/v1/<scope>")`, scopes `document-clients:<id>` (who each Yjs client in a document belongs to, as keyed hashes), `document-deletes:<id>` (a keyed hash of what each row of its log deletes, so the same deletes again cost nothing), `call:<id>` (call state), `call-attention:<id>` (ordered hands, explicit questions, votes, nudges for their one recipient, statuses and audience-bound notification cues), `call-mls:<id>` (the call's MLS log, sealed again), `call-seat:<id>` (each person's seat in the call, a MAC of their random per-call `person`, never stored), `call-move:<id>` (moves to other devices in a call), `call-notes:<id>` (the call's shared live notes), `ring:<meetingId>` (rings in a call), `meeting-answers:<meetingId>` (what people invited to a call answered), `job:<noteId>` (notes jobs), `transcript:<noteId>` (live transcript clips and caption translations, and the keyed tags that find them), `screen-share:<recordingId>` (whose each share in a call was) and `screen:<noteId>` (what's known about each shared-screen frame, and the keyed tags that find them), `note-additions:<noteId>` (what people added to the shared notes). Under the author's own `Kowner`, never the organizer's: `personal:<noteId>` (their own notes on a note), `presenter-notes:<documentId>` (what they kept beside a whole document or board with an earlier release, which nothing opens now), `presenter-frame-notes:<boardId>` (what they keep beside each frame of a board, and the keyed hash that says which frame) and `promotion:<noteId>` (the seal on a preview of adding to the shared notes); and, under a workspace's root, `workspace` (its name and tree, who its people and shares are, and carets and presence on their way between instances), `workspace-person` (what someone's known by in it, a keyed hash of how access knows them), `document:<id>` (what a document or board holds) and `media:<id>` (a file: what's said about it, and its pieces) | Derived per request, or per job in the notes worker |
 | Operation keys | `HKDF(Kowner, salt=ownerId, "alcove/operation-commit/v1")` and `"…/operation-result/v1"` | Derived per request |
 | Index key | `HKDF(KMASTER, "alcove/index/v1")` | Derived per use; keys the [blind indexes](#blind-indexes) |
 | Sign-in attempt key | `HKDF(KMASTER, "alcove/sign-in-attempt/v1")` | Derived per use; seals the [Google sign-in attempt](#google-sign-in-and-calendar-access) a browser carries to Google and back |
@@ -80,8 +80,8 @@ piece of a file is sealed on the one core every call runs on. A `media-piece` is
 | `screen-frame` | `Krec` | recording, frame, object (a JPEG taken from a share's video) |
 | `screen-frame-info` | state key `screen:<noteId>` | note, frame (whose share, when, its size, why it was picked, what was read on it) |
 | `call-state` | state key `call:<id>` | call |
-| `timer-preset` | the account’s state key `timer-preset:<id>` | owner and preset (name and ordered segment definitions; no running clock) |
-| `call-attention` | state key `call-attention:<id>` | call (hands, question text/authors/votes, feedback, original room audiences and cues) |
+| `timer-preset` | the account’s state key `timer-preset:<id>` | owner and preset (an earlier release's timer presets, which nothing opens now; a later migration drops their table) |
+| `call-attention` | state key `call-attention:<id>` | call (hands, question text/authors/votes, nudges, statuses, original room audiences and cues) |
 | `call-mls` | state key `call-mls:<id>` | call, place in the call's log, entry kind, and the part of the call's group it belongs to |
 | `call-move` | state key `call-move:<id>` | call, move |
 | `call-notes` | state key `call-notes:<id>` | call, part of the call (`main`, or a breakout room's random ID), view (`all`, or a digest of the lines it can't read) |
@@ -344,8 +344,8 @@ purpose `invite`.
 
 ### Attention during a call
 
-Explicit Q&A, its votes and pinned question, and feedback are visible only in their room to the people present when
-submitted. Moving into a room later gives no access to earlier questions, counts, pins or feedback; the same check runs
+Explicit Q&A, its votes and pinned question are visible only in their room to the people present when
+submitted. Moving into a room later gives no access to earlier questions, counts or pins; the same check runs
 under the call lock for votes and moderation. Every attention mutation names the room the sender was viewing, so a delayed
 submission is refused after a move. A signed-in account has one vote per question across its devices; an unsigned guest
 has one vote per stable call person. The principal is fixed in the sealed participant record when joining, so omitting
@@ -353,14 +353,38 @@ a cookie, signing out or sending another account's cookie cannot create another 
 moves preserve that principal. Older active calls without it use their sealed account address or guest person consistently,
 including when another browser joins that account during the upgrade. Host powers do not open another room's questions. Pinning an authorized question replaces the room's previous pin, and
 unpinning clears the room's pin, without revealing questions outside the host's original audience. Raised hands
-are different: the host sees every room's queue, so someone in a breakout room can ask the host for help, and can lower one
-entry by its ID or clear all hands. Everyone else sees their room's hands. Reloads and device moves keep queue position;
-intentional departure, removal and moving rooms clear the hand.
+are different: the host sees every room's raised hands, so someone in a breakout room can ask the host for help, and can
+lower one by its entry ID, so an older press can't lower a newer raise. Everyone else sees their room's hands. Reloads and
+device moves keep the order they went up in; intentional departure, removal and moving rooms clear the hand.
+
+A question can be asked anonymously. Its record then keeps nothing that says who asked: in place of the asking connection's
+ID it keeps a placeholder that matches no connection (`anonymous_` and a random ID; connection IDs are `p_…`), and only the
+asker's attention principal (`voter`) says it's theirs. So only their reads say `own`, and only they can post it again (a
+retried post) or take it back; nobody's read names who asked, whoever hosts included, and no cue, log line or error does.
+Taking a question back, named or anonymous, removes it from the sealed record in the same save: nothing of it is kept, its
+votes included. Anonymity fails closed across a deploy: the release before it, which may still serve while the deploy runs
+or after a rollback, opens the record (it ignores the flag it doesn't know) and drops `anonymous` when it saves, but it finds
+nobody by the placeholder, so it names nobody either. This release reads a placeholder as anonymous again and writes the flag
+back on its next save. Questions sealed before anonymity have no flag and their asker's real connection, and read as named.
+
+A nudge is for one person. Someone let in names another person in their own room by participant ID, and one of four kinds
+(`muted`, `cant-hear`, `slow-down`, `louder`); only that person's reads carry it, in the room it was sent in, as one note
+for each kind with how many sent it within a minute of the first, and who sent it while that's one person. The same sender
+again within that minute changes nothing. Nobody else's read carries any of it, whoever hosts included, and no cue, log line
+or error says who nudged whom or what. It's refused for anyone not let in, and for a recipient who isn't in the sender's
+room now, was removed, or is the sender; a participant ID from another call is not in this one, and that call's pass opens
+nothing here. A status is someone's own (`away`, `listening` or `phone`, with an end time 2, 5 or 10 minutes from when it was
+set, or none): everyone in the call reads it on that person's participant, kept under their stable reader through reloads
+and room moves, until its time runs out, they clear it, or they leave on purpose. A nudge's push to read the call again goes
+to its recipient's connections alone; a status's goes to everyone. Nudges are limited to 20 a minute and status changes to
+30 a minute, per person in a call.
 
 `call_attention` holds one sealed record per call, scoped by its organizer and call IDs. Its new `call-attention` header and
 key bind it to that exact owner and call. Questions are at most 1,000 characters, with 200 per call, 200 votes per question,
-200 hands and 200 live feedback entries. Feedback lasts 15 seconds on the server clock and clears on departure or room
-change. At most 64 typed cues from the last minute are retained; admissions are host-only, and hand cues also reach the host
+200 hands, 200 nudge notes and 500 statuses. A nudge note is kept for a minute after it last changed, and goes when its
+recipient leaves on purpose or changes rooms; a status goes when its time runs out on the server clock. Both also go once
+their person's latest connection has been out of the call for two minutes without leaving on purpose (it dropped, or its tab
+closed): a reload's new connection, on its way back in, keeps them, and a later change to the call lets the rest go. At most 64 typed cues from the last minute are retained; admissions are host-only, and hand cues also reach the host
 across rooms. Other cues retain their original room audience. A waiting browser renews its sealed admission heartbeat at
 most every 15 seconds; 90 seconds without it expires the request, including for a delayed MLS approval under the call lock.
 
@@ -369,6 +393,8 @@ cascades it. No Q&A is copied into notes, receipts or logs. Migration `0018_call
 sealed call records still open: admission heartbeats default to zero, using the original join time until renewed, and old
 raised-hand flags become queue entries on the next save, in the old participant order (the earlier release kept no raise
 time). Stable entry IDs avoid changes between reads during that conversion; subsequent saves omit the replaced flags.
+Attention records sealed before nudges and statuses open with neither (both default to empty), and the quiet feedback
+signals they kept are ignored and gone from the next save. No table changed for either.
 
 ## Who can read a note
 
@@ -909,7 +935,7 @@ connection](calls-and-recordings.md#recording-without-a-connection)), and so eac
 | Cloudflare | As the web app's host: each page load and file request, with its address, path (such as `/notes/<id>`), time and browser. The API's traffic doesn't pass through it. As the object store (R2): what the object store row shows. |
 | LiveKit (Cloud in production) | No media: frames are end-to-end encrypted. Each person's address; room names and identities (random, no names); join and leave times; packet sizes and timing; the audio-level header, so who is speaking when; track kinds and mute state, so who has a camera or screen on; each frame's key index, which travels in the clear (the frame trailer), so whose keys change together: who is in the same part of the call, and who is between two; the size and timing of the sealed data browsers send each other, so roughly when someone points at a shared screen, never where, or puts a picture of someone's share on a board (`board-shot/1`), never which |
 | The call's MLS log (`call_mls`) | Sealed MLS messages, while the call runs: how many people asked to join, were added and removed, and how much chat there was, by count and size, for each part of the call (the main room, or a breakout room by its random ID). A room's entries are deleted when it closes, the rest when the call ends |
-| The API (calls) | Who's in each call, asking or turned away, and their names, with the addresses of people signed in whom the notes may go to (sealed at rest, opened per request); whom the organizer rang and how each answered (sealed the same way), and, in memory for as long as a tab holds a stream of rings, which accounts are listening, by owner ID and the hash of their address; who sent each chat message, in which part of the call and when, by size; raised hands, spotlight, breakout rooms, who's in which and whose browser is each room's scribe; whether pointing at shared screens is on, and who doesn't let others point at what they share (never a pointer or a mark); when notes were turned on, off, paused and resumed, in the call or in one room, and who asked for notes; who shared their screen and when, whether each share went in the notes, and when it ended. What's on a shared screen only in memory, and only for the shares presenters put in the notes from the main room: each piece of video is held to seal it as it arrives, and opened again only to join it into one video after the call, take frames from it for the vision model, and play it to the note's people. It's never kept readable. It vouches for who's invited and decides who goes into which room's group: [Calls and recordings › End-to-end encryption](calls-and-recordings.md#end-to-end-encryption) |
+| The API (calls) | Who's in each call, asking or turned away, and their names, with the addresses of people signed in whom the notes may go to (sealed at rest, opened per request); whom the organizer rang and how each answered (sealed the same way), and, in memory for as long as a tab holds a stream of rings, which accounts are listening, by owner ID and the hash of their address; who sent each chat message, in which part of the call and when, by size; raised hands, who nudged whom and how (sealed, for a minute), each person's status, spotlight, breakout rooms, who's in which and whose browser is each room's scribe; whether pointing at shared screens is on, and who doesn't let others point at what they share (never a pointer or a mark); when notes were turned on, off, paused and resumed, in the call or in one room, and who asked for notes; who shared their screen and when, whether each share went in the notes, and when it ended. What's on a shared screen only in memory, and only for the shares presenters put in the notes from the main room: each piece of video is held to seal it as it arrives, and opened again only to join it into one video after the call, take frames from it for the vision model, and play it to the note's people. It's never kept readable. It vouches for who's invited and decides who goes into which room's group: [Calls and recordings › End-to-end encryption](calls-and-recordings.md#end-to-end-encryption) |
 | The API process | Everything, for every account: it holds `KMASTER`. That includes what's in documents, which it opens to send, compact and search, and carets and who's where, which it holds in memory while they're current, as it does what calls show of a workspace's tree (names, and who can open them), kept by the workspace's version until it moves on. It also keeps each account's current Google access token in memory for up to an hour. On Cloud Run, whoever operates the service could read that memory. [In a confidential VM](#moving-to-confidential-computing) the host can't, and the keys go only to builds the app's key policy allows. |
 
 ## Deletion

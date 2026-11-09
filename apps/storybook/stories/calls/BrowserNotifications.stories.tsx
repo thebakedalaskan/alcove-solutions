@@ -2,7 +2,7 @@ import type { Meta } from '@storybook/react-vite';
 import { screen } from 'storybook/test';
 import { at, chats, knocks, raisesHand, type CallScript } from '../../src/api/script';
 import { current } from '../../src/api/state';
-import { MORE, inCall, light, phone, press } from '../../src/call';
+import { inCall, light, phone, settings } from '../../src/call';
 import { App } from '../../src/app';
 import { NotificationReport } from '../../src/notificationReport';
 import { pages, type PageArgs, type PageStory } from '../../src/page';
@@ -10,8 +10,7 @@ import { AIKO, DIEGO, KOFI, LAUNCH_REVIEW, PRIYA } from './talk';
 
 const meta = { title: 'Calls/Browser notifications', ...pages } satisfies Meta<PageArgs>;
 export default meta;
-const soundControls = press(MORE, { then: ['Sounds and notifications'] });
-const controls: NonNullable<PageStory['play']> = async (c) => { await soundControls(c); await c.userEvent.click(await screen.findByRole('tab', { name: 'Browser alerts' })); };
+const controls = settings('Notifications');
 const script: CallScript = { notes: 'off', here: [{ who: PRIYA }, { who: KOFI }, { who: AIKO }],
   privateMessages: [
     { from: PRIYA, text: 'Could you review the release checklist?', after: 20 },

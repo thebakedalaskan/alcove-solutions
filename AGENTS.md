@@ -196,8 +196,10 @@ page is designed, how to make a design canvas from the kit in `docs/design/canva
   `Avatar` and `Faces` (the arch), `GhostArch` (an empty arch where a person will be), `PickList` (people to find and press
   in a popover: one, or several with ticks), `CallTile`, `FloatingCall` (the compact call's picture, controls and attention, with no media ownership), `CallDock` with `DockButton` (its `word` is said beside the icon,
   for Share, the one control the dock names), `CallTopGroup`, `CallTopButton` and `CallTopRule` (the top right's group, its
-  buttons and hairlines), `CallTimerButton` and `CallTimerReadout` (the shared presenter countdown, compact control and current/next readout),
-  `CallMoreGrid` and `CallMoreTile` (More's grid on a phone), `PrivateMessage` and `PrivateChatComposer` (recipient-only call messages and their persistent audience),
+  buttons and hairlines), `CallTimerButton`, `CallTimerCard`, `CallTimerLength` and `CallTimerRun` (the call's one countdown for everyone: its button, and Timer for everyone, the popover it opens, with the lengths to start one, then Pause, +1 min and Stop),
+  `CallMoreGrid` and `CallMoreTile` (More's grid on a phone), `CallMenuChips` (equal choices in a row inside a call's menu, such as Back in), `ChatTabs`, `ChatMessage` (Slack-like, with the bar of reactions, Reply in thread and Message privately over its corner),
+  `ChatThreadLine`, `ChatThreadHead`, `ChatDivider` and `ChatLock` (Chat in a call: its conversations as tabs, threads in place, a private
+  conversation's lock line), `CallQuestion` (a room's question, with its votes),
   `CallFrame` (one frame for a screen, a board or the workspace, with its bar), `PresentedTile` (something presented that isn't on your stage, with Join),
   `CloseAsk` (Close's question: for you or for everyone), `PresentAsk` (Present's question when some people here can't open
   the board), `FramePager` (a board's presenter steps through its frames at the frame's foot, with their notes), Share's
@@ -211,7 +213,7 @@ page is designed, how to make a design canvas from the kit in `docs/design/canva
   the horizon, moved with the microphone by `useVoice`), `RecMeter`, `RecPrint`, `TourDialog`, `Coachmark`,
   `EmptyState`, `Modal` (several questions go one at a time inside one modal; no window ever opens over another),
   `ThemeScope` (one theme for a part of a page, such as your side of a call, so what opens from it takes that theme too),
-  `BackgroundPicker` (what shows behind someone on camera, with `SCENE_PICTURES`), and `Fit` with `useSceneLoop` for scenes drawn at a design size that play while on screen.
+  `BackgroundModal` (Background's window: a big live preview of you beside the choices) with `BackgroundPicker` (what shows behind someone on camera, in groups: Blur, Pictures, Colours and Yours, with `SCENE_PICTURES`), and `Fit` with `useSceneLoop` for scenes drawn at a design size that play while on screen.
   For starting and scheduling a call: `FlowView`, `FlowHead`, `FlowSteps`, `FlowBody`, `FlowFoot`, `FlowNote`, `FlowRow`,
   `SwitchLine`, `NotesSwitches` (whether a call writes notes, and what they keep), `ScopeBar` (this call, or this and later
   calls), `WayCard`, `PersonToken`, `QuadFaces`, `TimeCard`, `WeekGrid`, `Flood` and `useSmoothHeight`.
@@ -251,7 +253,7 @@ page is designed, how to make a design canvas from the kit in `docs/design/canva
   board picker, `pc-` the phone's add sheet; its tokens are `--bd-*`, `--bf-*`, `--note-*`, and `--line-ink` and `--line-rose` beside the existing
   `--line` and `--line-control`; `.bt`, `.bi`, `.bm`, `.swatch`, `.c-*` and `.k-*` are unscoped there, so those names are taken); the welcome
   page in `styles/welcome.css`, with its scenes in `welcome-note.css`, `welcome-call.css`, `welcome-team.css` and
-  `welcome-night.css` (`lp-`); the other screens in `styles/app.css` and `call.css`; shared presenter timer controls in `styles/call-timer.css`.
+  `welcome-night.css` (`lp-`); the other screens in `styles/app.css` and `call.css`; the call's timer in `styles/call-timer.css`; Chat in a call in `styles/call-chat.css` (`ch-`).
   Truncate to one or two lines with `ac-clamp-1` / `ac-clamp-2` (left-aligned): unlike `nowrap`, long text
   can't make a column wider than the screen.
   No raw hex in the app, except on the always-night call stage and in illustrations.

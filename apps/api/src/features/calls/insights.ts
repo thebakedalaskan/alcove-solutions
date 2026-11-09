@@ -30,7 +30,7 @@ import { log } from '../../log';
 import { invitedIn, mayRead, onlyHere, personFor, requireIn, roomsIn, saidIn, speakersIn, type Viewer } from './participants';
 import { capturing, load, saveSettled, secondsIn, settle, tenthsIn, type Row, type Stored } from './state';
 import { landRooms, syncRoomBoards, workedOn } from './room-boards';
-import { nudge } from './notifications';
+import { tellRoom } from './notifications';
 
 const clog = log.child({ component: 'calls' });
 
@@ -347,7 +347,7 @@ export async function watchNotes(v: Viewer, callId: string): Promise<boolean> {
   }
   try {
     // Everyone reading them sees they're being written.
-    await nudge(o, row.room_name, callId, { call: true, log: false });
+    await tellRoom(o, row.room_name, callId, { call: true, log: false });
     const t0 = performance.now();
     const known = liveNotes.knownTo(claim, lines);
     await part.disclose();
@@ -374,11 +374,11 @@ export async function watchNotes(v: Viewer, callId: string): Promise<boolean> {
       return false;
     }
     clog.info('live notes written', { ...ctx, ...done, points: sorted.decided.length + sorted.proposed.length + sorted.open.length + sorted.next.length });
-    await nudge(o, row.room_name, callId, { call: true, log: false });
+    await tellRoom(o, row.room_name, callId, { call: true, log: false });
     return true;
   } catch (e) {
     clog.warn('live notes not refreshed', { ...ctx, err: e });
-    if (await liveNotes.failed(o, callId, place, view, claim)) await nudge(o, row.room_name, callId, { call: true, log: false });
+    if (await liveNotes.failed(o, callId, place, view, claim)) await tellRoom(o, row.room_name, callId, { call: true, log: false });
     return false;
   }
 }
@@ -513,14 +513,14 @@ export async function watchIdeas(v: Viewer, callId: string): Promise<boolean> {
     clog.info('ideas from the call looked for', { ...ctx, lines: lines.length, frames: frames.length, ideas: ideas.length, ms: Math.round(performance.now() - t0) });
     // Rooms that closed meanwhile have their boards kept for everyone invited before anyone's told.
     if (closed) await syncRoomBoards({ organizer: o, callId });
-    if (offered || closed) await nudge(o, row.room_name, callId, { call: true, log: false });
+    if (offered || closed) await tellRoom(o, row.room_name, callId, { call: true, log: false });
     return offered;
   } catch (e) {
     clog.warn('ideas from the call not looked for', { ...ctx, err: e });
     await settleIdeas([]).catch((err: unknown) => clog.warn('a look for ideas not let go', { ...ctx, err }));
     if (closed) {
       await syncRoomBoards({ organizer: o, callId });
-      await nudge(o, row.room_name, callId, { call: true, log: false });
+      await tellRoom(o, row.room_name, callId, { call: true, log: false });
     }
     return false;
   }

@@ -1,4 +1,4 @@
-import { CallTimerSequenceSchema } from './timers';
+import { CallTimerSchema } from './timers';
 import { PersonSchema } from '../identity/people';
 import { SignInProviderSchema } from '../identity/session';
 import { TranscriptLineSchema } from '../notes/transcript';
@@ -11,7 +11,7 @@ import { LiveNotesSchema } from './catchup';
 import { CallCodeSchema } from './entry';
 import { RungSchema } from './rings';
 import { NotesChoicesSchema, NotesSettingSchema } from './settings';
-import { CallAttentionSchema } from './attention';
+import { CallAttentionSchema, CallStatusSchema } from './attention';
 import { CallWorkspaceSchema } from './workspace';
 /* ---------- group calls: who's in the call comes from the API; mic, camera and screen are LiveKit's tracks ---------- */
 
@@ -182,9 +182,10 @@ export type CallMls = z.infer<typeof CallMlsSchema>;
  */
 export const CALL_TOPIC = 'call' as const;
 
-export const CallNudgeSchema = z.object({ v: z.literal(1), kind: z.literal('changed'), call: z.boolean(), log: z.boolean() });
+/** The server's change push on CALL_TOPIC, as above. Nothing to do with someone's nudge (`CallNudgeKind`). */
+export const CallChangedSchema = z.object({ v: z.literal(1), kind: z.literal('changed'), call: z.boolean(), log: z.boolean() });
 
-export type CallNudge = z.infer<typeof CallNudgeSchema>;
+export type CallChanged = z.infer<typeof CallChangedSchema>;
 
 
 export const CallParticipantSchema = z.object({
@@ -200,6 +201,8 @@ export const CallParticipantSchema = z.object({
   person: PersonSchema, isMe: z.boolean(), isOrganizer: z.boolean(),
   /** A raised hand visible in your room, or to the host across rooms. (Mic, camera and screen are LiveKit's tracks, not the server's.) */
   hand: z.boolean(),
+  /** What they say they're up to (Be right back, Listening only, On my phone), for everyone in the call, or null. */
+  status: CallStatusSchema.nullable(),
   /**
    * Whether others may point at and mark what they share: their own choice, kept across their reconnections, on until
    * they turn it off. They can always point at their own share.
@@ -353,7 +356,8 @@ export const CallStateSchema = z.object({
   workspace: CallWorkspaceSchema,
   /** The board open in the part of the call you're in, as you may know it. Nothing for someone waiting to be let in. */
   board: CallBoardSchema,
-  timerSequence: CallTimerSequenceSchema.nullable().default(null),
+  /** The call's timer, the same for everyone in the call, or null while none runs. Nothing for someone waiting to be let in. */
+  timer: CallTimerSchema.nullable(),
   notices: z.array(CallNoticeSchema),
   /**
    * The shares going on now that the server knows of, by whose they are (a participant ID; each person shares one

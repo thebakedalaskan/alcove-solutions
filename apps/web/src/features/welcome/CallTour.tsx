@@ -30,9 +30,8 @@ function menuAt(stage: HTMLElement, pop: string, at: string, where: Where): Poin
   if (!a || !(menu instanceof HTMLElement)) return null;
   const w = menu.offsetWidth, h = menu.offsetHeight;
   const p = where === 'above' ? { x: a.x + a.w / 2 - w / 2, y: a.y - h - 10 }
-    : where === 'above-right' ? { x: a.x + a.w - w, y: a.y - h - 8 }
-      : where === 'right' ? { x: a.x + a.w + 6, y: a.y - 6 }
-        : { x: a.x + a.w - w, y: a.y + a.h + 8 };
+    : where === 'left' ? { x: a.x - w - 6, y: a.y - 6 }
+      : { x: a.x + a.w - w, y: a.y + a.h + 8 };
   return { x: clamp(p.x, 10, STAGE_W - 10 - w), y: clamp(p.y, 10, STAGE_H - 10 - h) };
 }
 
@@ -98,7 +97,7 @@ function useTour(tour: RefObject<HTMLDivElement | null>, stage: RefObject<HTMLDi
             break;
           case 'pop': {
             const at = box && menuAt(box, b.pop, b.at, b.where);
-            setS((x) => opened(x, b.pop, at, b.keep));
+            setS((x) => opened(x, b.pop, at));
             break;
           }
           case 'tick': {

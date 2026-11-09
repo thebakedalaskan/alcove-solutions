@@ -1,9 +1,10 @@
 /*
  * CallTile: one person on the stage, always at night. Their video when it's on; otherwise their illustrated figure on
  * their own colour, or their arch. Whoever speaks gets the speak ring and a level meter, a muted mic shows its mark, a
- * raised hand a gold ring, and someone whose media hasn't reached this browser yet says Connecting.
+ * raised hand a gold ring, someone whose media hasn't reached this browser yet says Connecting, and a status shows at the
+ * top left for everyone: stepping away dims them, and a status with a time counts down along the foot.
  */
-import { CallSignal, CallTile } from '@alcove/ui';
+import { CallTile } from '@alcove/ui';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { Box, onStage } from '../../../src/component';
 import { INES, KOFI, PRIYA } from '../../../src/world/people';
@@ -28,5 +29,12 @@ export const HandRaised: Story = { name: 'Hand raised', args: { person: KOFI, na
 export const Connecting: Story = { args: { connecting: true } };
 /** Someone without a portrait: their arch, with their initial. */
 export const Arch: Story = { args: { person: INES, name: 'Ines Moreau' } };
-/** Quiet feedback shares the tile without replacing its hand or microphone state. */
-export const QuietSignal: Story = { args: { signal: <CallSignal className="ac-tile-signal" icon="pace" label="Slow down" /> } };
+/** Be right back for five minutes, two of them gone: the tile dims, and the line along its foot has three minutes left. */
+export const BeRightBack: Story = {
+  name: 'Be right back',
+  args: { status: { icon: 'away', text: 'Be right back · 14:37', short: '14:37', away: true, time: { since: Date.now() - 2 * 60_000, until: Date.now() + 3 * 60_000 } } }
+};
+/** A status with no time stays until they clear it or talk, and they don't dim. */
+export const ListeningOnly: Story = { name: 'Listening only', args: { person: KOFI, name: 'Kofi Asante', muted: true, status: { icon: 'listening', text: 'Listening only', short: 'Listening only', away: false, time: null } } };
+/** A status beside a raised hand and a muted microphone, each in its own corner. */
+export const StatusWithHand: Story = { name: 'Status with a hand', args: { hand: true, status: { icon: 'phone', text: 'On my phone · 14:40', short: '14:40', away: false, time: { since: Date.now(), until: Date.now() + 10 * 60_000 } } } };
