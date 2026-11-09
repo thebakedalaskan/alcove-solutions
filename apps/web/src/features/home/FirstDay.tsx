@@ -6,7 +6,7 @@ import { Icon, type IconName } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { useId, type ReactNode } from 'react';
-import { calendarConnectUrl, q } from '~/lib/queries';
+import { q } from '~/lib/queries';
 
 function Face({ icon, children }: { icon: IconName; children: ReactNode }) {
   return <><span className="hm-tile-i"><Icon name={icon} size={16} /></span><span className="hm-tile-t">{children}</span><Icon name="right" size={16} /></>;
@@ -23,7 +23,7 @@ export function GetSetUp() {
       <div className="hm-tiles">
         <Link to="/notes/$noteId" params={{ noteId: 'example' }} className="hm-tile hm-setup" data-tour="notes-example"><Face icon="notes">Read an example note</Face></Link>
         {calendar?.needsAccess
-          ? <button type="button" className="hm-tile hm-setup" onClick={() => location.assign(calendarConnectUrl())}>{connect}</button>
+          ? <Link to="/connect-calendar" className="hm-tile hm-setup">{connect}</Link>
           : calendar?.source === 'none' && <Link to="/settings" hash="calendar" className="hm-tile hm-setup">{connect}</Link>}
         {team && <Link to="/team" className="hm-tile hm-setup"><Face icon="people">Invite your team</Face></Link>}
       </div>

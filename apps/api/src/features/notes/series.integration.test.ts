@@ -9,7 +9,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { GoogleUser } from '../../testing/fake-google';
 import { speechWav } from '../../testing/fake-near';
 import { acceptNoteSuggestions } from '../../testing/follow-ups';
-import { ORIGIN, startHarness, type Browser, type Harness } from '../../testing/harness';
+import { connectGoogleCalendar, ORIGIN, startHarness, type Browser, type Harness } from '../../testing/harness';
 
 let h: Harness;
 beforeAll(async () => { h = await startHarness(); });
@@ -75,7 +75,10 @@ async function viaGoogle(b: Browser, user: GoogleUser): Promise<void> {
   h.google.next(user);
   let url = new URL(`${h.baseUrl}/v1/auth/google`);
   for (let hop = 0; hop < 10; hop++) {
-    if (url.origin === new URL(ORIGIN).origin) return;
+    if (url.origin === new URL(ORIGIN).origin) {
+      expect(await connectGoogleCalendar(h, b, user)).toBe(`${ORIGIN}/settings?calendar=connected#calendar`);
+      return;
+    }
     const res = url.origin === h.google.issuer ? await fetch(url, { redirect: 'manual' }) : await b.fetch(url, { redirect: 'manual' });
     url = new URL(res.headers.get('location') ?? '', url);
   }

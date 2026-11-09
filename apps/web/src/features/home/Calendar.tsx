@@ -2,10 +2,10 @@
  * Signed in with Google without sharing the calendar: one card that asks for it. "Not now" puts it away in
  * this browser; Settings can still connect the calendar.
  */
-import { Button, Icon } from '@alcove/ui';
+import { Button, Icon, buttonClass } from '@alcove/ui';
+import { Link } from '@tanstack/react-router';
 import { useId, useState } from 'react';
 import { log } from '~/lib/log';
-import { calendarConnectUrl } from '~/lib/queries';
 
 const KEY = 'alcove-calendar-not-now';
 const clog = log.child({ component: 'home' });
@@ -34,7 +34,7 @@ export function ConnectCalendar({ onNotNow }: { onNotNow: () => void }) {
         <b id={h}>Connect Google Calendar</b>
         <p>See your meetings on Home, and put the calls you schedule on your calendar, with invitations.</p>
         <div className="acts">
-          <Button size="sm" onClick={() => location.assign(calendarConnectUrl())}>Connect</Button>
+          <Link to="/connect-calendar" className={buttonClass({ variant: 'primary', size: 'sm' })}>Connect</Link>
           <Button variant="quiet" size="sm" onClick={onNotNow}>Not now</Button>
         </div>
       </div>

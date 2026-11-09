@@ -19,7 +19,7 @@ export interface GoogleUser { sub: string; email: string; name?: string | undefi
  * Ways the next sign-in goes wrong on Google's side; `no-calendar` is someone unticking calendar access, and
  * `no-freebusy` a grant from before free/busy was asked for.
  */
-export type Spoil = 'deny' | 'wrong-audience' | 'wrong-nonce' | 'expired' | 'no-calendar' | 'no-freebusy' | 'no-drive';
+export type Spoil = 'deny' | 'wrong-audience' | 'wrong-nonce' | 'expired' | 'no-calendar' | 'no-freebusy' | 'no-drive' | 'legacy-calendar';
 /** A calendar event as Google stores it (the fields Alcove uses). */
 export interface FakeEvent {
   id: string; status?: string; summary?: string; description?: string; location?: string; htmlLink?: string; eventType?: string; hangoutLink?: string; transparency?: string;
@@ -55,7 +55,7 @@ export interface FakeGoogle {
   instances(sub: string, eventId: string): FakeEvent[];
   /** Refuses the Calendar API calls that match, with a 500, until this is called again with nothing. */
   refuse(match?: ((call: { method: string; path: string }) => boolean) | undefined): void;
-  /** Keeps the Calendar API calls that match waiting, as a slow Google does, until the function this gives back is called. */
+  /** Holds matching Calendar API calls or refresh requests until released. */
   hold(match: (call: { method: string; path: string }) => boolean): () => void;
   /** As if this person had agreed before: Google then sends no refresh token unless asked again. */
   preconsent(sub: string): void;
@@ -81,6 +81,7 @@ export interface FakeGoogle {
 }
 
 const CALENDAR = 'https://www.googleapis.com/auth/calendar.events';
+const OWNED_CALENDAR = 'https://www.googleapis.com/auth/calendar.events.owned';
 const FREEBUSY = 'https://www.googleapis.com/auth/calendar.events.freebusy';
 /** How many calendars free/busy answers about unless it's asked for more, and the most it can be. */
 const CALENDAR_EXPANSION = { usual: 20, most: 50 };
@@ -224,7 +225,7 @@ export async function startFakeGoogle(): Promise<FakeGoogle> {
     const bearer = (req.headers.authorization ?? '').replace(/^Bearer /, '');
     const who = accessTokens.get(bearer);
     if (!who) return send(res, 401, { error: { code: 401, message: 'Invalid Credentials' } });
-    if (!who.scopes.includes(CALENDAR)) return send(res, 403, { error: { code: 403, message: 'Insufficient Permission' } });
+    if (!who.scopes.includes(CALENDAR) && !who.scopes.includes(OWNED_CALENDAR)) return send(res, 403, { error: { code: 403, message: 'Insufficient Permission' } });
     calls.push({ method: req.method ?? '', path: url.pathname, sendUpdates: url.searchParams.get('sendUpdates') });
     await holds.find((h) => h.match({ method: req.method ?? '', path: url.pathname }))?.open;
     if (refusing?.({ method: req.method ?? '', path: url.pathname })) return send(res, 500, { error: { code: 500, message: 'Backend Error' } });
@@ -361,8 +362,9 @@ export async function startFakeGoogle(): Promise<FakeGoogle> {
       else {
         // Granular consent: someone can untick the calendar. Earlier grants carry over (include_granted_scopes).
         const before = consented.get(who.user.sub);
-        const unticked = who.spoil === 'no-calendar' ? [CALENDAR, FREEBUSY] : who.spoil === 'no-freebusy' ? [FREEBUSY] : who.spoil === 'no-drive' ? [DRIVE_SCOPE] : [];
-        const scopes = [...new Set([...asked.filter((x) => !unticked.includes(x)), ...(q.get('include_granted_scopes') === 'true' ? before ?? [] : [])])];
+        const unticked = who.spoil === 'no-calendar' ? [CALENDAR, OWNED_CALENDAR, FREEBUSY] : who.spoil === 'no-freebusy' ? [FREEBUSY] : who.spoil === 'no-drive' ? [DRIVE_SCOPE] : [];
+        const granted = asked.filter((x) => !unticked.includes(x)).map((scope) => who.spoil === 'legacy-calendar' && scope === OWNED_CALENDAR ? CALENDAR : scope);
+        const scopes = [...new Set([...granted, ...(q.get('include_granted_scopes') === 'true' ? before ?? [] : [])])];
         // Like Google: a refresh token for offline access only the first time someone agrees, or when asked to agree again.
         const refresh = q.get('access_type') === 'offline' && (!before || (q.get('prompt') ?? '').includes('consent'));
         consented.set(who.user.sub, new Set([...(before ?? []), ...scopes]));
@@ -390,6 +392,7 @@ export async function startFakeGoogle(): Promise<FakeGoogle> {
     if (req.method === 'POST' && url.pathname === '/token') {
       const form = new URLSearchParams(await text(req));
       if (form.get('grant_type') === 'refresh_token') {
+        await holds.find((h) => h.match({ method: 'POST', path: url.pathname }))?.open;
         const held = refreshTokens.get(form.get('refresh_token') ?? '');
         if (!held || form.get('client_id') !== clientId || form.get('client_secret') !== clientSecret) return send(res, 400, { error: 'invalid_grant' });
         return send(res, 200, { access_token: issueAccess(held.sub, held.scopes), token_type: 'Bearer', expires_in: 3599, scope: held.scopes.join(' ') });

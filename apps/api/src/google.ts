@@ -3,10 +3,8 @@
  * for Google from /v1/auth/google and comes back to /v1/auth/google/callback with a one-time code.
  * The server swaps the code for an ID token, checks Google's signature, the issuer, the audience,
  * the expiry and the nonce, and accepts only an email address Google has verified, because notes
- * are shared by email. It also asks for the Calendar (events only) with offline access, so Alcove
- * can show someone's meetings and put the calls they schedule on their calendar, and for free/busy on
- * the calendars they can see, to find a time that suits people. Someone can decline the calendar on
- * Google's consent screen and still sign in.
+ * are shared by email. A separate, session-bound attempt asks for Calendar access when a person
+ * connects it from the app.
  */
 import { createRemoteJWKSet, errors as joseErrors, jwtVerify, type JWTVerifyGetKey } from 'jose';
 import { GoogleSignInPopupIdSchema } from '@alcove/api';
@@ -22,10 +20,13 @@ import { masterKey } from './owners';
 const glog = log.child({ component: 'google' });
 /** How long a browser has to come back from Google. */
 export const ATTEMPT_MINUTES = 10;
-export const CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar.events';
+const CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar.events.owned';
+const LEGACY_CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar.events';
+/** Earlier connections received access to all calendars. New consent only asks for owned calendars. */
+export const isCalendarEventScope = (scope: string): boolean => scope === CALENDAR_SCOPE || scope === LEGACY_CALENDAR_SCOPE;
 /** When people are free, on calendars this account can see. Connections from before it was asked for read nobody's. */
 const FREEBUSY_SCOPE = 'https://www.googleapis.com/auth/calendar.events.freebusy';
-const SCOPE = `openid email profile ${CALENDAR_SCOPE} ${FREEBUSY_SCOPE}`;
+const IDENTITY_SCOPES = 'openid email profile';
 
 /** Why a sign-in didn't happen, as the welcome screen explains it. */
 export type Refusal = 'unavailable' | 'cancelled' | 'expired' | 'unverified' | 'failed' | 'busy';
@@ -33,7 +34,7 @@ export type Refusal = 'unavailable' | 'cancelled' | 'expired' | 'unverified' | '
 export interface Grant { accessToken: string; expiresIn: number; refreshToken?: string | undefined; scopes: string[] }
 /** Where the app lands after signing in: the account's first screen, Home, or a move to this device that was waiting on it. */
 export type Next = '/ready' | '/home' | '/move';
-export type Finish = { ok: true; identity: Identity; grant: Grant; consented: boolean; next?: Next | undefined } | { ok: false; reason: Refusal };
+export type Finish = { ok: true; identity: Identity; grant: Grant } | { ok: false; reason: Refusal };
 
 /** Google's discovery document. Only revoking needs `revocation_endpoint`, so signing in never depends on it. */
 const Discovery = z.object({
@@ -53,8 +54,9 @@ const Claims = z.object({
 });
 const Attempt = z.object({
   state: z.string(), nonce: z.string(), verifier: z.string(), until: z.number(),
-  /** A second pass that asked Google for consent again, and where it should land afterwards. */
+  /** Calendar consent can only finish against the Google session that started it. */
   consent: z.boolean().default(false), next: z.enum(['/ready', '/home', '/move']).optional(),
+  calendar: z.object({ ownerId: z.string(), sessionHash: z.string() }).optional(),
   /** A random completion channel, absent from attempts made before popup sign-in was introduced. */
   popup: GoogleSignInPopupIdSchema.nullable().default(null)
 });
@@ -110,23 +112,26 @@ function refuse(reason: Refusal, context: Record<string, string | number | boole
 }
 
 /**
- * Where to send the browser, and the sealed attempt it keeps in a cookie until it comes back. With
- * `consent`, Google asks again even if the person agreed before, which is the only way to get a new
- * refresh token; `hint` picks the account so they aren't asked which one.
+ * Where to send the browser, and the sealed attempt it keeps in a cookie until it comes back.
+ * Only an explicit calendar connection needs a refresh token or asks Google for consent.
  */
-export async function begin(d: Deps, o: { consent?: boolean; hint?: string | undefined; next?: Next | undefined; popup?: string | undefined } = {}): Promise<{ url: string; attempt: string }> {
+export async function begin(d: Deps, o: { calendar?: { ownerId: string; sessionHash: string } | undefined; next?: Next | undefined; popup?: string | undefined }): Promise<{ url: string; attempt: string }> {
   const cfg = d.cfg;
   if (!configured(cfg)) throw new UnavailableError('Google sign-in isn’t set up on this server.');
   const { endpoints } = await provider(cfg.GOOGLE_ISSUER);
-  const a = { state: b64u(random(32)), nonce: b64u(random(32)), verifier: b64u(random(32)), until: Date.now() + ATTEMPT_MINUTES * 60_000, consent: !!o.consent, ...(o.next ? { next: o.next } : {}), popup: o.popup ?? null };
+  const a = {
+    state: b64u(random(32)), nonce: b64u(random(32)), verifier: b64u(random(32)), until: Date.now() + ATTEMPT_MINUTES * 60_000,
+    consent: !!o.calendar, ...(o.next ? { next: o.next } : {}), popup: o.popup ?? null, ...(o.calendar ? { calendar: o.calendar } : {})
+  };
   const url = new URL(endpoints.authorization_endpoint);
   url.search = new URLSearchParams({
-    client_id: cfg.GOOGLE_CLIENT_ID, redirect_uri: redirectUri(cfg), response_type: 'code', scope: SCOPE,
-    access_type: 'offline', include_granted_scopes: 'true', prompt: o.consent ? 'consent' : 'select_account',
-    ...(o.hint ? { login_hint: o.hint } : {}),
+    client_id: cfg.GOOGLE_CLIENT_ID, redirect_uri: redirectUri(cfg), response_type: 'code',
+    ...(o.calendar
+      ? { scope: `${IDENTITY_SCOPES} ${CALENDAR_SCOPE} ${FREEBUSY_SCOPE}`, access_type: 'offline', prompt: 'select_account consent' }
+      : { scope: IDENTITY_SCOPES, prompt: 'select_account' }),
     state: a.state, nonce: a.nonce, code_challenge: b64u(sha(utf8(a.verifier))), code_challenge_method: 'S256'
   }).toString();
-  glog.debug('google sign-in started', { consent: !!o.consent });
+  glog.debug('google sign-in started', { consent: !!o.calendar });
   return { url: url.toString(), attempt: b64u(sealJson(signInAttemptKey(masterKey(d)), HEADER, a)) };
 }
 
@@ -191,20 +196,19 @@ function openAttempt(d: Deps, cookie: string | undefined): z.infer<typeof Attemp
   }
 }
 
-/** Only an authentic attempt with its matching state can choose a completion channel, even for an expired refusal. */
-export function popupFor(d: Deps, q: Record<string, string>, cookie: string | undefined): string | undefined {
+/** Only an authentic attempt with its matching state can choose how to report the result, even an expired refusal. */
+export function attemptFor(d: Deps, q: Record<string, string>, cookie: string | undefined): z.infer<typeof Attempt> | null {
   const attempt = openAttempt(d, cookie);
-  return attempt && same(q['state'] ?? '', attempt.state) ? attempt.popup ?? undefined : undefined;
+  return attempt && same(q['state'] ?? '', attempt.state) ? attempt : null;
 }
 
 /** Checks what came back from Google. Refusals are expected (a cancel, a stale tab) and returned, not thrown. */
-export async function finish(d: Deps, q: Record<string, string>, cookie: string | undefined): Promise<Finish> {
+export async function finish(d: Deps, q: Record<string, string>, attempt: z.infer<typeof Attempt> | null): Promise<Finish> {
   const cfg = d.cfg;
   if (!configured(cfg)) return refuse('unavailable');
   const err = q['error'];
   if (err) return refuse(err === 'access_denied' ? 'cancelled' : 'failed', { googleError: err.slice(0, 60) });
-  const attempt = openAttempt(d, cookie);
-  if (!attempt || attempt.until < Date.now() || !same(q['state'] ?? '', attempt.state)) return refuse('expired', { hadAttempt: !!attempt });
+  if (!attempt || attempt.until < Date.now()) return refuse('expired', { hadAttempt: !!attempt });
   const code = q['code'];
   if (!code) return refuse('failed', { step: 'code' });
 
@@ -235,9 +239,9 @@ export async function finish(d: Deps, q: Record<string, string>, cookie: string 
     accessToken: token.data.access_token, expiresIn: token.data.expires_in, refreshToken: token.data.refresh_token,
     scopes: token.data.scope.split(/\s+/).filter(Boolean)
   };
-  glog.debug('google sign-in checked', { calendar: grant.scopes.includes(CALENDAR_SCOPE), refresh: !!grant.refreshToken });
+  glog.debug('google sign-in checked', { calendar: grant.scopes.some(isCalendarEventScope), refresh: !!grant.refreshToken });
   return {
-    ok: true, grant, consented: attempt.consent, next: attempt.next,
+    ok: true, grant,
     identity: { subject: `google:${claims.data.sub}`, email, name: claims.data.name?.trim() || nameFrom(email), photoUrl: claims.data.picture, sample: false }
   };
 }

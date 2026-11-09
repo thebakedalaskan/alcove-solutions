@@ -1,4 +1,4 @@
-import { DriveConnectResultSchema } from '@alcove/api';
+import { CalendarConnectResultSchema, DriveConnectResultSchema, type CalendarConnectResult } from '@alcove/api';
 /*
  * Settings: change one thing and leave. You stand on the horizon, in the last of the light, with the tour and Sign out
  * beside you. Under the water the page is one long sheet with an index beside it, which on a narrow screen is a strip
@@ -22,9 +22,10 @@ import { useSignOutStep } from '~/features/settings/SignOut';
 import { q } from '~/lib/queries';
 
 export const Route = createFileRoute('/_app/settings')({
-  validateSearch: (search: Record<string, unknown>): { drive?: 'connected' | 'cancelled' | 'failed' | undefined } => {
+  validateSearch: (search: Record<string, unknown>): { calendar?: CalendarConnectResult | undefined; drive?: 'connected' | 'cancelled' | 'failed' | undefined } => {
+    const calendar = CalendarConnectResultSchema.safeParse(search['calendar']);
     const drive = DriveConnectResultSchema.safeParse(search['drive']);
-    return { drive: drive.success ? drive.data : undefined };
+    return { calendar: calendar.success ? calendar.data : undefined, drive: drive.success ? drive.data : undefined };
   },
   // A part that doesn't load leaves the rest of the page (and Sign out) usable. Google can be slow: the calendar gets a
   // moment, so the page doesn't move under the reader, and no longer.
@@ -160,7 +161,7 @@ function useTopBar(): number {
 const readAgain = (read: () => Promise<unknown>, id: string) => void read().then(() => requestAnimationFrame(() => document.getElementById(id)?.focus({ preventScroll: true })));
 
 function Settings() {
-  const { drive } = Route.useSearch();
+  const { calendar, drive } = Route.useSearch();
   const session = useQuery(q.session()).data;
   const prefs = useQuery(q.prefs());
   const credits = useQuery(q.balance());
@@ -200,7 +201,7 @@ function Settings() {
               <>
                 <NotesPart prefs={prefs.data} />
                 <RecordingPart prefs={prefs.data} />
-                <CalendarPart prefs={prefs.data} />
+                <CalendarPart prefs={prefs.data} result={calendar} />
               </>
             ) : prefs.isError && <Unloaded id="notes" title="Notes, recording, calendar and notifications" busy={prefs.isFetching} onRetry={() => readAgain(prefs.refetch, 'notes')} />}
             <DriveExportsPart result={drive} />

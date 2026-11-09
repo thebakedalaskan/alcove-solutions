@@ -36,6 +36,11 @@ export function DriveFolderPicker({ current, onPick, onClose, allowGoogle = true
             </button></li>)}</ul>}
     </div>
     {problem && <p className="set-drive-problem" role="alert"><Icon name="alert" size={16} />{problem}</p>}
-    <footer className="set-drive-picker-foot"><p>The folder’s existing sharing rules apply to every copy. A folder that can’t be written to is refused.</p>{allowGoogle && <Button variant="primary" icon="external" loading={pick.isPending} disabled={busy} onClick={() => void google()}>Choose in Google</Button>}</footer>
+    <footer className="set-drive-picker-foot">
+      <p>{allowGoogle
+        ? 'In Google, choose the account and folder for exports. Google shares the account details and lets Alcove create and manage export files there. The folder’s sharing rules apply to every copy.'
+        : 'The folder’s existing sharing rules apply to every copy. A folder that can’t be written to is refused.'}</p>
+      {allowGoogle && <Button variant="primary" icon="external" loading={pick.isPending} disabled={busy} onClick={() => void google()}>Choose in Google</Button>}
+    </footer>
   </Modal>;
 }

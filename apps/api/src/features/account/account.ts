@@ -88,6 +88,12 @@ const IdentityRow = z.object({ owner_id: z.string(), created_at: timestamp, emai
 /** Signs in a demo identity: Microsoft as Art Vandelay, or single sign-on as the email typed. */
 export const demoSignIn = (d: Deps, body: SignInBody) => signIn(d, demoIdentity(body.provider, body.email), body.provider);
 
+/** An integration granted by Google must belong to the signed-in account's provider identity. */
+export async function hasIdentity(d: Deps, ownerId: string, who: Identity): Promise<boolean> {
+  const subject = blindIndex(masterKey(d), 'subject', who.subject);
+  return (await exec(d.pool, 'SELECT 1 FROM identities WHERE owner_id = $1 AND subject_index = $2', [ownerId, subject])) > 0;
+}
+
 /**
  * Signs a verified identity in and opens a session. The first sign-in creates the account: its keys,
  * its profile from the provider, and its credits; a demo identity also gets the sample calendar.

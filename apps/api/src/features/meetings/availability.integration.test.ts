@@ -10,7 +10,7 @@ import { tx } from '../../db';
 import { updateManifest } from './service';
 import { openOwner } from '../../owners';
 import type { GoogleUser, Spoil } from '../../testing/fake-google';
-import { ORIGIN, startHarness, type Browser, type Harness } from '../../testing/harness';
+import { connectGoogleCalendar, ORIGIN, startHarness, type Browser, type Harness } from '../../testing/harness';
 
 let h: Harness;
 beforeAll(async () => { h = await startHarness(); });
@@ -28,10 +28,14 @@ const art = async () => { const b = h.browser(); const r = await b.api.auth.sign
 const person = (name: string): GoogleUser => { const n = seq++; return { sub: `g-${name}-${n}`, email: `${name}.${n}@acme.example`, name: `${name} Example` }; };
 /** Signs in with Google the way a browser does, following each redirect by hand. */
 async function viaGoogle(b: Browser, user: GoogleUser, spoil?: Spoil): Promise<void> {
-  h.google.next(user, spoil);
+  h.google.next(user);
   let url = new URL(`${h.baseUrl}/v1/auth/google`);
   for (let hop = 0; hop < 10; hop++) {
-    if (url.origin === new URL(ORIGIN).origin) return;
+    if (url.origin === new URL(ORIGIN).origin) {
+      const result = spoil === 'no-calendar' ? 'denied' : 'connected';
+      expect(await connectGoogleCalendar(h, b, user, spoil)).toBe(`${ORIGIN}/settings?calendar=${result}#calendar`);
+      return;
+    }
     const res = url.origin === h.google.issuer ? await fetch(url, { redirect: 'manual' }) : await b.fetch(url, { redirect: 'manual' });
     url = new URL(res.headers.get('location') ?? '', url);
   }

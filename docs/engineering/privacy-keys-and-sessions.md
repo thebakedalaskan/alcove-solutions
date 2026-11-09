@@ -147,8 +147,7 @@ The hash is deterministic, so equal values show the same person across rows and 
 
 1. **Sign in with Google** (`apps/api/src/google.ts`). `GET /v1/auth/google` redirects to Google's
    authorization endpoint, found by OpenID discovery, with a fresh `state`, `nonce` and PKCE verifier (an
-   S256 challenge), the scopes `openid email profile https://www.googleapis.com/auth/calendar.events
-   https://www.googleapis.com/auth/calendar.events.freebusy`, `access_type=offline`, `include_granted_scopes=true` and `prompt=select_account`. Google sends the browser
+   S256 challenge), the scopes `openid email profile` and `prompt=select_account`. Google sends the browser
    back to `GET /v1/auth/google/callback` (`$API_URL/v1/auth/google/callback`). The server deletes the
    attempt cookie, checks that the attempt is under 10 minutes old and that `state` matches, swaps the code
    for tokens with the verifier and the client secret, and verifies the ID token with `jose`: RS256 against
@@ -162,8 +161,7 @@ The hash is deterministic, so equal values show the same person across rows and 
    `/welcome?popup=<id>&signin=<reason>`. The completion page tells the original tab through a same-origin
    `BroadcastChannel`, with only the destination or refusal. The original tab verifies its session with
    the API before leaving Welcome. No tokens or personal information enter the completion URL or channel.
-   A blocked popup falls back to the same-tab redirect, as Calendar's Connect already uses. Someone can
-   untick the calendar on Google's consent screen and still sign in.
+   A blocked popup falls back to the same-tab redirect. Calendar and Drive access each have their own consent flow.
 2. **Demo sign-in.** `POST /v1/auth/sign-in` with `{provider, email?}`, where `provider` is `microsoft` or
    `sso`; `demo.ts` turns the request into an identity (Art Vandelay, or `demo:sso:<email>` with a name
    made from the address), marked as a demo (`sample`). Both ways in share one limit: 30 attempts a minute
@@ -231,22 +229,24 @@ transcript or meeting. See [Agents and MCP](agents-and-mcp.md) for the complete 
 - **The attempt cookie.** `__Host-alcove_google` when `WEB_ORIGIN` is HTTPS (`alcove_google` otherwise):
   HttpOnly, `SameSite=Lax` (Google's redirect back is a cross-site navigation), path `/`, `Secure` over
   HTTPS, max-age 10 minutes. It holds the `state`, `nonce`, PKCE verifier, expiry, whether this pass asked
-  for consent, where to land, and a popup channel UUID (null when there is no popup), sealed as a `sign-in-attempt` record, so
+  for Calendar consent, where to land, and a popup channel UUID (null when there is no popup), sealed as a `sign-in-attempt` record, so
   the browser can neither read nor change it. Older attempt records without a popup channel still open with a null default.
   The callback uses the sealed channel only when its `state` matches, never a channel supplied on the
   callback URL. An expired matching attempt may deliver its refusal to that channel, but cannot sign in.
-  A second consent pass retains the channel and destination. The callback deletes the cookie whatever
-  the outcome.
-- **The refresh token.** Every Google sign-in saves what Google granted as the account's `connection` item, a
-  sealed manifest like any other: the scopes, when, and the refresh token. A new refresh token replaces the
-  old one; without one, the old one stays. Google sends a refresh token only the first time someone agrees,
-  so when the calendar is granted but no refresh token has ever arrived, the callback signs the person in
-  and sends them back to Google once more with `prompt=consent` to get one. The Connect button
-  (`GET /v1/auth/google?consent=1`) asks again for the account already signed in.
+  The callback deletes the cookie whatever the outcome.
+- **Connecting Calendar.** **Connect Google Calendar** explains how Alcove uses event details and
+  availability. **Continue to Google** starts `GET /v1/auth/google?consent=1` with identity,
+  `calendar.events.owned` and `calendar.events.freebusy` scopes, offline access and explicit account selection
+  and consent. Connections with the earlier `calendar.events` grant can still use Calendar.
+  The sealed attempt binds the owner and session hash. The callback requires that session to remain open
+  and the Google identity to match the owner. It returns to Calendar settings with the result.
+- **The refresh token.** Calendar consent saves the scopes, time and refresh token as a sealed
+  `connection` item. An existing refresh token can be reused if Google grants Calendar access again
+  without sending a new one. Ordinary sign-in leaves the Calendar connection alone.
 - **Disconnecting.** `DELETE /v1/calendar` deletes the `connection` item and its revisions from the database
-  (no flag, no tombstone), drops the cached access token, and asks Google to revoke the refresh token (best effort:
-  a failure is logged as a warning with Google's error code, or the timeout or network error, and the disconnect
-  still stands). A Google account with no connection then reads as
+  (no flag, no tombstone) and drops the cached access token. This disconnects Calendar in Alcove while keeping
+  separate Drive access usable. The account holder can remove Alcove's full app grant in their Google Account.
+  A Google account with no connection then reads as
   `needsAccess`, and Connect asks again. Calls scheduled earlier keep their event ids, but with no connection
   nothing is sent to Google when they change or are cancelled.
 - **Keeping calls off the calendar.** The `addToCalendar` preference (default on) is read from the sealed

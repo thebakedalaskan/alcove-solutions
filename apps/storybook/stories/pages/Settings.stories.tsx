@@ -33,6 +33,12 @@ export const NotificationsNight = page('/settings#notifications', 'busy', { glob
 
 /** Signed in with Google without sharing the calendar: Connect. */
 export const NoCalendar = page('/settings#calendar', 'busy', { beforeEach: changing(noCalendar) });
+export const CalendarConnected = page('/settings?calendar=connected#calendar', 'busy');
+export const CalendarAccessDenied = page('/settings?calendar=denied#calendar', 'busy', { beforeEach: changing(noCalendar) });
+export const CalendarWrongAccount = page('/settings?calendar=account#calendar', 'busy', { beforeEach: changing(noCalendar) });
+export const CalendarConnectionFailed = page('/settings?calendar=failed#calendar', 'busy', { beforeEach: changing(noCalendar) });
+export const CalendarConsent = page('/connect-calendar', 'busy', { beforeEach: changing(noCalendar) });
+export const CalendarConsentPhone = phone(CalendarConsent);
 /** The shared demo account: a sample calendar in place of Google's. */
 export const DemoAccount = page('/settings#calendar', 'busy', { beforeEach: changing(sharedDemo) });
 /** Notifications the browser hasn't been asked about: greyed out until Enable browser notifications. */
@@ -124,6 +130,12 @@ export const MentionSoundOff = page('/settings#sounds', 'busy', { beforeEach: ch
 
 /** Drive connects independently of ordinary sign-in and never exposes a provider credential. */
 export const GoogleDriveDisconnected = page('/settings#google-drive', 'busy');
+export const GoogleDrivePermission = page('/settings#google-drive', 'busy', { play: pressing('Connect Google Drive', 'Open the Drive permission disclosure') });
+export const GoogleDrivePermissionPhone = phone(GoogleDrivePermission);
+export const GoogleDriveReconnectPermission = page('/settings#google-drive', 'busy', {
+  beforeEach: changing(withDriveReconnect),
+  play: pressing('Reconnect Google Drive', 'Open the Drive permission disclosure before reconnecting')
+});
 export const GoogleDriveExports = page('/settings#google-drive', 'drive-connected');
 export const GoogleDriveExportsNight = page('/settings#google-drive', 'drive-connected', { globals: { theme: 'dark' } });
 export const GoogleDriveExportsPhone = phone(GoogleDriveExports);

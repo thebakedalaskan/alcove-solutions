@@ -166,11 +166,33 @@ servers live) in `connect-src`.
 
 ## Google provider preparation
 
-Calendar and People APIs have been enabled separately in `alcove-solutions`. The external OAuth app
-`Alcove` is in Testing with three test users and the configured scopes `openid`, `email`, `profile`,
-`calendar.events` and `directory.readonly`. Web client `AlcoveWeb` has local and
-`api.alcove.solutions` callback URIs registered. Keep client credential values and test-user addresses
-out of documentation.
+The external OAuth app `Alcove` in `alcove-solutions` uses the web client `AlcoveWeb`. Enable the
+Google Calendar and Drive APIs and declare the requested scopes in **Google Auth Platform → Data Access**.
+
+| Flow | Scopes |
+| --- | --- |
+| Sign in with Google | `openid`, `email`, `profile` |
+| Connect Google Calendar | Identity scopes, `https://www.googleapis.com/auth/calendar.events.owned`, `https://www.googleapis.com/auth/calendar.events.freebusy` |
+| Connect Google Drive | `https://www.googleapis.com/auth/drive.file` |
+
+Register `https://api.alcove.solutions/v1/auth/google/callback` for sign-in and Calendar, and
+`https://api.alcove.solutions/v1/drive/callback` for Drive. Register the corresponding local callback
+URIs on a development OAuth client. Keep credentials and tester addresses out of documentation.
+
+Verify ownership of `alcove.solutions` in Search Console and set the app homepage and
+`https://alcove.solutions/privacy` in **Branding**. Meet the [production acceptance requirements](../docs/engineering/deployment-and-acceptance.md)
+before deploying identity-only sign-in. Google allows basic identity requests from accounts outside the test-user
+list even when the app is in Testing. Keep `calendar.events` declared while the previous release still requests it.
+Once that release has been replaced, new requests use `calendar.events.owned`. Existing Calendar grants still work.
+
+In **Audience**, publish the external app. In **Verification Center**, submit the Calendar permissions with an
+English-language screen recording of the Google consent screen and the features it enables. Show how
+`calendar.events.owned` reads upcoming events on the primary calendar and creates, edits and cancels the events
+for scheduled Alcove calls. Show how `calendar.events.freebusy` checks availability when picking a time. Show
+Drive's separate `drive.file` consent and a selected export being uploaded. Include the option to disconnect
+from Settings. Calendar consent can show Google's unverified-app warning and hit its new-user cap while
+sensitive permissions are under review. See [Google's audience rules](https://support.google.com/cloud/answer/15549945)
+and [verification requirements](https://support.google.com/cloud/answer/13464321).
 
 Store `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` as versions of `alcove-google-client-id` and
 `alcove-google-client-secret` in Secret Manager. Bootstrap creates the secret resources and grants the
@@ -180,10 +202,8 @@ add versions from private environment variables are printed by bootstrap.
 Set repository variable `GOOGLE_AUTH_ENABLED=true` only after both latest versions are enabled. This
 binds both values into the API service on the next deployment (the migration job gets only the database URL). New installations
 default to `false` or an unset variable, omit both bindings and require no placeholder values; the
-Google button then explains that sign-in isn't set up. Sign-in with Google is implemented (OpenID
-Connect with PKCE, `/v1/auth/google` and `/v1/auth/google/callback`) and asks for `openid email
-profile` and `https://www.googleapis.com/auth/calendar.events` with offline access, so Alcove can show
-someone's week and put the calls they schedule on their calendar. The redirect URI registered for production must be `https://api.alcove.solutions/v1/auth/google/callback`.
+Google button then explains that sign-in isn't set up. Sign-in uses OpenID Connect with PKCE.
+Only explicit Calendar and Drive connections request offline access for their own refresh tokens.
 
 ## Schema changes
 

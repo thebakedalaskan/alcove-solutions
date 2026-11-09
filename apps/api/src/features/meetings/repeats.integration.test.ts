@@ -9,7 +9,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest
 import { z } from 'zod';
 import { openOwner } from '../../owners';
 import type { FakeEvent } from '../../testing/fake-google';
-import { ORIGIN, startHarness, type Harness } from '../../testing/harness';
+import { connectGoogleCalendar, ORIGIN, startHarness, type Harness } from '../../testing/harness';
 import { disposeLiveKit } from '../../testing/livekit';
 import { findItem } from '../../vault';
 
@@ -38,7 +38,8 @@ async function googleAccount(name: string, address?: string | undefined) {
   const n = `${Date.now().toString(36)}${(seq++).toString(36)}`;
   const sub = `google-${n}`;
   const email = address ?? `${name.toLowerCase()}.${n}@example.com`;
-  h.google.next({ sub, email, name });
+  const who = { sub, email, name };
+  h.google.next(who);
   let url = new URL(`${h.baseUrl}/v1/auth/google`);
   for (let hop = 0; hop < 10 && url.origin !== new URL(ORIGIN).origin; hop++) {
     const res = url.origin === h.google.issuer ? await fetch(url, { redirect: 'manual' }) : await b.fetch(url, { redirect: 'manual' });
@@ -46,6 +47,7 @@ async function googleAccount(name: string, address?: string | undefined) {
   }
   const session = await b.api.auth.getSession();
   if (!session) throw new Error('not signed in with Google');
+  expect(await connectGoogleCalendar(h, b, who)).toBe(`${ORIGIN}/settings?calendar=connected#calendar`);
   return { ...b, session, sub, email };
 }
 type Account = Awaited<ReturnType<typeof account>>;

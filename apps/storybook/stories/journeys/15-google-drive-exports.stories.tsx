@@ -94,3 +94,17 @@ export const ExportSharedCallNotes: PageStory = {
     });
   }
 };
+
+export const ReviewDrivePermissions: PageStory = {
+  name: '15.7 Review Drive permissions',
+  ...page('/settings#google-drive', 'busy'),
+  play: async ({ userEvent, step }) => {
+    await step('Connect Google Drive opens a disclosure before opening Google', async () => {
+      await userEvent.click(await screen.findByRole('button', { name: 'Connect Google Drive' }, LATER));
+    });
+    await step('Cancel and stay in Settings without starting consent', async () => {
+      const disclosure = await screen.findByRole('dialog', { name: 'Allow Google Drive exports' }, SOON);
+      await userEvent.click(within(disclosure).getByRole('button', { name: 'Cancel' }));
+    });
+  }
+};

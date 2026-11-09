@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as SplatRouteImport } from './routes/$'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as ConnectRouteImport } from './routes/connect'
+import { Route as ConnectCalendarRouteImport } from './routes/connect-calendar'
 import { Route as MoveRouteImport } from './routes/move'
 import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as ReadyRouteImport } from './routes/ready'
@@ -50,6 +51,11 @@ const AppRoute = AppRouteImport.update({
 const ConnectRoute = ConnectRouteImport.update({
   id: '/connect',
   path: '/connect',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ConnectCalendarRoute = ConnectCalendarRouteImport.update({
+  id: '/connect-calendar',
+  path: '/connect-calendar',
   getParentRoute: () => rootRouteImport,
 } as any)
 const MoveRoute = MoveRouteImport.update({
@@ -155,6 +161,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/$': typeof SplatRoute
   '/connect': typeof ConnectRoute
+  '/connect-calendar': typeof ConnectCalendarRoute
   '/move': typeof MoveRoute
   '/privacy': typeof PrivacyRoute
   '/ready': typeof ReadyRoute
@@ -179,6 +186,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/$': typeof SplatRoute
   '/connect': typeof ConnectRoute
+  '/connect-calendar': typeof ConnectCalendarRoute
   '/move': typeof MoveRoute
   '/privacy': typeof PrivacyRoute
   '/ready': typeof ReadyRoute
@@ -204,6 +212,7 @@ export interface FileRoutesById {
   '/$': typeof SplatRoute
   '/_app': typeof AppRouteWithChildren
   '/connect': typeof ConnectRoute
+  '/connect-calendar': typeof ConnectCalendarRoute
   '/move': typeof MoveRoute
   '/privacy': typeof PrivacyRoute
   '/ready': typeof ReadyRoute
@@ -230,6 +239,7 @@ export interface FileRouteTypes {
     | '/'
     | '/$'
     | '/connect'
+    | '/connect-calendar'
     | '/move'
     | '/privacy'
     | '/ready'
@@ -254,6 +264,7 @@ export interface FileRouteTypes {
     | '/'
     | '/$'
     | '/connect'
+    | '/connect-calendar'
     | '/move'
     | '/privacy'
     | '/ready'
@@ -278,6 +289,7 @@ export interface FileRouteTypes {
     | '/$'
     | '/_app'
     | '/connect'
+    | '/connect-calendar'
     | '/move'
     | '/privacy'
     | '/ready'
@@ -304,6 +316,7 @@ export interface RootRouteChildren {
   SplatRoute: typeof SplatRoute
   AppRoute: typeof AppRouteWithChildren
   ConnectRoute: typeof ConnectRoute
+  ConnectCalendarRoute: typeof ConnectCalendarRoute
   MoveRoute: typeof MoveRoute
   PrivacyRoute: typeof PrivacyRoute
   ReadyRoute: typeof ReadyRoute
@@ -341,6 +354,13 @@ declare module '@tanstack/react-router' {
       path: '/connect'
       fullPath: '/connect'
       preLoaderRoute: typeof ConnectRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/connect-calendar': {
+      id: '/connect-calendar'
+      path: '/connect-calendar'
+      fullPath: '/connect-calendar'
+      preLoaderRoute: typeof ConnectCalendarRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/move': {
@@ -525,6 +545,7 @@ const rootRouteChildren: RootRouteChildren = {
   SplatRoute: SplatRoute,
   AppRoute: AppRouteWithChildren,
   ConnectRoute: ConnectRoute,
+  ConnectCalendarRoute: ConnectCalendarRoute,
   MoveRoute: MoveRoute,
   PrivacyRoute: PrivacyRoute,
   ReadyRoute: ReadyRoute,

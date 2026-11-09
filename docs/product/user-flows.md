@@ -15,8 +15,9 @@ Each flow below is implemented in `apps/web` and exercised end to end by the int
    can see. Each scene plays while it's on screen, and shows a still with reduced motion. Choose **Continue with
    Google**, **Continue with Microsoft** or **Use single sign-on**, at the top or the bottom of the page; single sign-on
    asks for a work email in place. The footer links to the public **Privacy policy**, available without signing in.
-2. **Google** opens its account chooser and consent screen in a popup, keeping Alcove open. It also asks for the calendar (events
-   only); unticking it still signs in. Alcove says **Waiting for Google…**, with **Cancel sign-in** to stop waiting,
+2. **Google** opens its account chooser in a popup, keeping Alcove open. It shares the account's name, email address
+   and profile. Calendar and Drive access are optional and have their own consent screens. Alcove says **Waiting for Google…**,
+   with **Cancel sign-in** to stop waiting,
    including when the popup was closed. On success the popup closes, the waiting tab checks its session, and the welcome
    page fades into the app. If the browser blocks popups or can't pass the result between tabs, Google opens in the current
    tab instead. If the sign-in doesn't happen (cancelled, too slow, an email Google
@@ -150,8 +151,9 @@ visitors: a boat far out, stars after dark and now and then a shooting star. Wit
   everyone on it), and **What carries over** when it's in a series. With **Show my other meetings on Home** off
   (Settings), only Alcove calls count.
 - **Recent notes**: your four newest, one line each, and the heading opens all of them.
-- Signed in with Google without sharing the calendar, a card offers **Connect Google Calendar**; **Not now** puts
-  it away in this browser.
+- With Google Calendar disconnected, a card offers **Connect Google Calendar**. **Not now** puts it away in
+  this browser. Connect explains how Alcove uses Calendar data before sending you to Google for consent,
+  then returns to Calendar settings.
 
 The tiles and the checklist come from the inbox (`GET /v1/notes/inbox`): the follow-ups for you that aren't done
 (taken on, or only suggested); the decisions in written notes that nobody has confirmed or rejected and that you can
@@ -201,8 +203,9 @@ send to anyone".
    on, so everyone joins muted. **Documents** steps to the documents and boards you can open, by workspace, with a
    search; what's shared with you from workspaces you aren't in sits under **Shared with you**. With nothing to bring yet
    it says so, and the call works without. A call can bring 12, and anyone who can't open one is told whose it is, without
-   seeing its name, so they can ask for it. The button says what it will do: **Schedule**, **Schedule 4 calls** or
-   **Get the link**.
+   seeing its name, so they can ask for it. With Google Calendar disconnected, **Connect Google Calendar** opens in
+   a new tab. Your draft stays open, and you can still schedule and share its link yourself. The button says what it
+   will do: **Schedule**, **Schedule 4 calls** or **Get the link**.
 6. Once it's scheduled the modal settles away, the row rises on Home, and a toast says what happened, and only that.
    With Google Calendar connected the call is on it and Google sends the invitations, with **Undo** for a moment. With
    no calendar connected, or with **Put calls I schedule on my calendar** off (Settings), nobody has been told: the
@@ -1442,10 +1445,10 @@ the page still works. Journey **11.23** shows Detailed → Short → Detailed wh
   capture panel) or when you write a note's notes again.
 - **Recording in the room**: **Record without a connection** (on by default), and **On this device**: how many
   recordings, and how much room, wait here to upload, with **See them** (Record's list), or **Nothing waiting**.
-- **Calendar**: Google Calendar, **Connected** with **Disconnect** (it forgets the connection and withdraws Alcove's
-  access at Google), or **Connect**, which goes to Google and comes back to Home; a demo account's sample calendar
-  instead; signed in another way, **Not connected**, since Google Calendar connects when you sign in with Google. A
-  calendar that doesn't answer says why, with **Try again**. Then **Put calls I schedule on my calendar** and
+- **Calendar**: Google Calendar, **Connected** with **Disconnect** (it removes the Calendar connection in
+  Alcove), or **Connect**, which asks for access to the same Google account you signed in with and
+  returns here with the result. A demo account has a sample calendar. Other accounts show **Not connected**.
+  A calendar that doesn't answer says why, with **Try again**. Then **Put calls I schedule on my calendar** and
   **Show my other meetings on Home** (both on by default).
 - **Microphone, speaker and camera**: this browser's choices, the ones the join screen and the call use; choosing
   one doesn't open it. A browser names devices only once they're allowed, so until then the microphone and speaker
@@ -1798,7 +1801,9 @@ and review requested access**. The OAuth journey plays up to the external-client
 ## 15. Google Drive exports
 
 Google Drive is a separate connection in **Settings → Google Drive**. Connect the Google account that should own exported
-files and consent to access only files and folders selected for Alcove. Connecting or disconnecting Drive leaves ordinary
+files and consent to access only files and folders selected for Alcove. **Connect Google Drive** and **Reconnect**
+first open a disclosure explaining what Alcove gets from Google and what it uploads. **Continue to Google** opens
+Google’s consent and folder picker. Connecting or disconnecting Drive leaves ordinary
 Alcove sign-in and Calendar settings alone. Google’s pages are outside Alcove; returning after cancellation or failure says
 what happened and leaves the existing settings in place.
 
@@ -1807,7 +1812,7 @@ what happened and leaves the existing settings in place.
    one type are chosen. Every setting saves as it changes. Pausing exports keeps the choices. Only finalized, retained
    material the exporting account can still access is eligible; a call ending does not promise an export exists.
 2. **Choose a shared-drive folder.** The destination opens a folder picker, showing authorized folders and whether each
-   belongs to a shared drive. **Choose in Google** grants access to another folder and returns to Settings. Choosing a
+   belongs to a shared drive. The picker explains what **Choose in Google** permits before opening Google to authorize another folder and return to Settings. Choosing a
    folder checks current write permission before it is saved. An unavailable destination is refused, with no fallback to
    another folder. The selected folder’s existing sharing rules apply to the readable exported copy; Alcove never adds
    people, makes public links or exports another person’s private notes.
@@ -1829,7 +1834,10 @@ what happened and leaves the existing settings in place.
    when the call retained it; unavailable audio is disabled with the reason beside the format. Global defaults may
    still select retained audio for future calls the person organizes.
 
-Storybook’s journeys use **15.1–15.6** above. The account, folders and file links in the preview are made-up; real Google
+7. **Review Drive permissions.** Open **Connect Google Drive**, read what access the export needs and cancel to stay
+   in Settings without starting consent.
+
+Storybook’s journeys use **15.1–15.7** above. The account, folders and file links in the preview are made-up; real Google
 consent and the provider’s own folder-selection page require manual verification with a supported Google account.
 
 ### 11.24 Add credits

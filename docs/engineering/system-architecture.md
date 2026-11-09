@@ -152,7 +152,7 @@ which browsers edit together through the API ([Data and storage › Documents](d
 | Trusted compute | Plain Node process | Confidential VM (TEE) with remote attestation the client verifies before sending anything |
 | Master key | `KMASTER` from `.env` | Released only to the attested VM, never to operators or the deploy pipeline |
 | Sign-in | Google OpenID Connect when `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are set; stand-ins for Microsoft and SSO in `apps/api/src/demo.ts` | Google, Microsoft OAuth and OIDC single sign-on, all verified |
-| Calendar and directory | Google Calendar for Google accounts; a sample day and week of busy times for demo accounts; a demo directory for `vandelay.industries` | Every provider's calendar and the company's own directory |
+| Calendar and directory | An optional Google Calendar connection for Google accounts, a sample day and week of busy times for demo accounts, and a demo directory for `vandelay.industries` | Every provider's calendar and the company's own directory |
 | Transport | HTTP on localhost behind the Vite proxy | TLS, plus an attested end-to-end channel (HPKE) so the edge sees only ciphertext |
 | Call media | LiveKit in Docker (`infra/livekit/dev.yaml`); LiveKit Cloud in production. End-to-end encrypted: MLS keys made in browsers, frames encrypted before they leave ([Calls and recordings › End-to-end encryption](calls-and-recordings.md#end-to-end-encryption)) | The same |
 | Invitations | Sent by Google Calendar when the organizer's calendar is connected; otherwise none | Email (SMTP) as well |
