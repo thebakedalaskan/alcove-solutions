@@ -14,11 +14,12 @@ export class ScriptedDirectMessages extends Pushed<DirectMessagesState> implemen
     this.follow();
   }
   override set(next: DirectMessagesState): void {
-    const unread = new Set(next.unread); const peers = new Set(next.peers);
-    const unreadMentions = next.ready ? next.messages.filter((m) => m.to === this.ticket.identity && m.state === 'delivered' && unread.has(m.id) && peers.has(m.from)
-      && m.place === this.crypto.getSnapshot().place && m.generation === this.call.getSnapshot().generation && m.mentions.some((mention) => mention.identity === this.ticket.identity)).map((m) => m.id) : [];
+    const unread = new Set(next.unread);
+    const unreadMentions = next.ready ? next.messages.filter((m) => m.to === this.ticket.identity && m.state === 'delivered' && unread.has(m.id)
+      && m.mentions.some((mention) => mention.identity === this.ticket.identity)).map((m) => m.id) : [];
     super.set({ ...next, unreadMentions });
   }
+  override update(change: (now: DirectMessagesState) => DirectMessagesState): void { this.set(change(this.getSnapshot())); }
   private follow() {
     const c = this.crypto.getSnapshot();
     const s = this.call.getSnapshot();

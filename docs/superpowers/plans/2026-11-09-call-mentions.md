@@ -20,7 +20,7 @@
 
 ## Work
 
-- [ ] Add a failing private mention flow for same-name guests, whitespace spans, thread replies and read state; implement shared contract schema, private payload/validation and computed unreadMentions; extend denial/retry/reconnect/leakage flows.
-- [ ] Adapt shared ChatView/ChatComposer to original-pair mentions, preserve draft spans, and reuse exact message/thread navigation and visibility-based read markers.
-- [ ] Add scoped generic local mention alerts and one sound per confirmed message, with independent local visual/sound preferences and browser-notification coordination.
+- [x] Add a failing private mention flow for same-name guests, whitespace spans, thread replies and read state; implement shared contract schema, private payload/validation and computed unreadMentions; extend denial/retry/reconnect/leakage flows.
+- [x] Adapt shared ChatView/ChatComposer to original-pair mentions, preserve draft spans, and reuse exact message/thread navigation and visibility-based read markers.
+- [x] Add scoped generic local mention alerts and one sound per confirmed message, with independent local visual/sound preferences and browser-notification coordination.
 - [ ] Add states and journey 6.32, check keyboard/phone/themes, run meaningful integration and full checks, request independent review, commit/push and hand root the reviewable PR description.

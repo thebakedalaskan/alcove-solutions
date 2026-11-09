@@ -45,7 +45,7 @@ export type Profile = z.infer<typeof Profile>;
 
 const DEFAULT_PREFERENCES: Preferences = {
   notesDefault: 'on', notesLanguage: 'call', summaryLength: 'short', addToCalendar: true, showOtherMeetings: true, recordOffline: true,
-  notifications: { replyAlerts: true, beforeCall: 5, notesReady: true, sharedWithYou: true, notesRequested: true, followUpDue: false, tagged: true },
+  notifications: { replyAlerts: true, mentionAlerts: true, beforeCall: 5, notesReady: true, sharedWithYou: true, notesRequested: true, followUpDue: false, tagged: true },
   sounds: DEFAULT_SOUND_PREFERENCES,
   pinned: [], groups: []
 };

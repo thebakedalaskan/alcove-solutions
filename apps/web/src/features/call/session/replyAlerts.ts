@@ -1,42 +1,8 @@
-import { NotificationPrefsSchema, type CallCrypto, type CallSession, type CallState, type DirectMessagesState } from '@alcove/api';
+import { type CallCrypto, type CallSession, type CallState, type DirectMessagesState } from '@alcove/api';
 import { useToast } from '@alcove/ui';
-import { useQuery } from '@tanstack/react-query';
-import { useEffect, useRef, useState } from 'react';
-import { q, usePreferences } from '~/lib/queries';
-import { log } from '~/lib/log';
+import { useEffect, useRef } from 'react';
 import { type PrivateAudience } from '../layout/PrivateChat';
-
-const rlog = log.child({ component: 'reply-alerts' });
-const GUEST = 'alcove.guest.reply-alerts';
-function guestChoice(): boolean {
-  try { const raw: unknown = JSON.parse(localStorage.getItem(GUEST) ?? 'true'); return NotificationPrefsSchema.shape.replyAlerts.parse(raw); }
-  catch { return true; }
-}
-/** One local visual preference; browser notification permission and sound preferences remain independent. */
-export function useReplyAlertPreference() {
-  const session = useQuery(q.session());
-  const prefs = useQuery({ ...q.prefs(), enabled: Boolean(session.data) });
-  const write = usePreferences();
-  const toast = useToast();
-  const [guest, setGuest] = useState(guestChoice);
-  useEffect(() => {
-    const changed = () => setGuest(guestChoice());
-    addEventListener('storage', changed); addEventListener('alcove-reply-alerts', changed);
-    return () => { removeEventListener('storage', changed); removeEventListener('alcove-reply-alerts', changed); };
-  }, []);
-  const ready = session.isSuccess && (!session.data || prefs.isSuccess);
-  const enabled = session.data ? prefs.data?.notifications.replyAlerts ?? true : guest;
-  const update = (on: boolean) => {
-    if (!ready) return;
-    if (session.data && prefs.data) write.mutate({ notifications: { ...prefs.data.notifications, replyAlerts: on } }, { onError: () => toast('Reply alerts couldn’t be saved.', { icon: 'x' }) });
-    else {
-      setGuest(on);
-      try { localStorage.setItem(GUEST, JSON.stringify(on)); dispatchEvent(new Event('alcove-reply-alerts')); }
-      catch (e) { rlog.debug('reply preference stays in this tab', { err: e }); }
-    }
-  };
-  return { enabled: ready && enabled, update, ready };
-}
+import { useCallAlertPreference } from './alertPreferences';
 
 /** Only authors and people who have taken part follow a thread. Reading a thread never subscribes the room. */
 export function unreadThreadReplies(state: CallState, crypto: CallCrypto, identity: string): string[] {
@@ -52,7 +18,7 @@ export function useReplyAlerts({ session, state, crypto, direct, allowed, onOpen
   session: CallSession; state: CallState; crypto: CallCrypto; direct: DirectMessagesState; allowed: boolean;
   onOpen: (id: string, audience: PrivateAudience | null) => void;
 }) {
-  const preference = useReplyAlertPreference();
+  const preference = useCallAlertPreference('replyAlerts');
   const toast = useToast();
   const latest = useRef({ session, state, crypto, direct, allowed, onOpen });
   latest.current = { session, state, crypto, direct, allowed, onOpen };
@@ -62,11 +28,12 @@ export function useReplyAlerts({ session, state, crypto, direct, allowed, onOpen
   useEffect(() => () => { shown.current?.close(); shown.current = null; }, [session]);
   useEffect(() => {
     const replies = unreadThreadReplies(state, crypto, session.ticket.identity);
-    const relevant = new Set(replies);
+    const mentions = new Set(crypto.chat.filter((m) => m.mentions.some((mention) => mention.identity === session.ticket.identity)).map((m) => m.id));
+    const relevant = new Set(replies.filter((id) => !mentions.has(id)));
     const privateUnread = new Set(direct.unread);
-    const privateReplies = direct.ready ? direct.messages.filter((m) => m.thread && m.to === session.ticket.identity && privateUnread.has(m.id)
+    const privateReplies = direct.ready ? direct.messages.filter((m) => m.thread && m.to === session.ticket.identity && privateUnread.has(m.id) && !m.mentions.some((mention) => mention.identity === session.ticket.identity)
       && m.place === crypto.place && m.generation === state.generation && direct.peers.includes(m.from)) : [];
-    const ids = new Set([...replies, ...privateReplies.map((m) => m.id)]);
+    const ids = new Set([...relevant, ...privateReplies.map((m) => m.id)]);
     const previous = baseline.current;
     // Joining a thread or changing read state does not make an already received message new.
     const received = new Set([...crypto.chat.filter((m) => !m.isMe && !m.sending && !m.failed).map((m) => m.id),

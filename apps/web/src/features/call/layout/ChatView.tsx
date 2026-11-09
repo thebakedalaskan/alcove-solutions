@@ -58,8 +58,9 @@ export function ChatView({ chat, missed, ready, moving, place, here, placeName, 
   }, [draft, thread]);
   const historyReady = readable ?? ready;
   const displayed = original ? [original, ...shown] : shown;
-  const displayedIds = new Set(displayed.map((m) => m.id));
-  const visibleMentions = visible && historyReady ? unreadMentionIds.filter((id) => displayedIds.has(id)) : [];
+  // Retained history can be read after a peer leaves even though it no longer generates mention attention.
+  const visibleMentions = visible && historyReady ? displayed.filter((m) => !m.isMe && !m.sending && !m.failed && !read.has(m.id)
+    && m.mentions.some((mention) => mention.identity === me)).map((m) => m.id) : [];
   useReadMentions(scroll, visibleMentions, onRead);
   const visibleUnread = displayed.filter((m) => visible && historyReady && !m.isMe && !m.sending && !m.failed && !read.has(m.id)
     && !m.mentions.some((mention) => mention.identity === me)).map((m) => m.id);
@@ -152,7 +153,7 @@ export function ChatView({ chat, missed, ready, moving, place, here, placeName, 
       </Fragment>)}</div> : (thread || !missing.length) && <EmptyState title={thread ? 'No replies yet' : 'No messages yet'} className="ic-empty">{thread ? 'Keep this exchange together. Only people in its conversation can read it.' : privateWith ? `Only you and ${privateWith} can read this conversation.` : here ? `Messages are encrypted end to end. Only people in ${here} can read them.` : 'Messages are encrypted end to end. Only people in the call can read them.'}</EmptyState>}
     </div>
     {thread && context?.place !== place && <Notice icon="lock">Return to this conversation’s room to reply.</Notice>}
-    {privateWith && <div className="ac-private-audience ic-private-audience"><Icon name="lock" size={14} /><span>Only you and {privateWith}</span></div>}
+    {privateWith && <div className="ac-private-audience ic-private-audience"><Icon name="lock" size={14} /><span className="ac-clamp-2">Only you and {privateWith}</span></div>}
     {addressed && <div className="ic-replying"><Icon name="reply" size={14} /><span className="ac-clamp-1">Replying to {callName(who(addressed.from))}: {addressed.text}</span>{original && replyTo !== thread && <IconButton icon="x" size={14} label="Reply to the original instead" onClick={() => { draft.replyTo = thread; setReplyTo(thread); }} />}</div>}
     <ChatComposer disabledReason={privateWith && !ready ? 'This conversation is unavailable' : thread && context?.place !== place ? 'Return to this conversation’s room to reply' : undefined} focusRequest={composerFocus} privateWith={privateWith} key={thread ?? 'room'} draft={activeDraft} people={mentionPeople} ready={canSend} moving={moving} to={destination}
       onSend={(text, mentions) => onSend(text, mentions, thread ? { root: thread, replyTo: replyTo ?? thread } : null)} />

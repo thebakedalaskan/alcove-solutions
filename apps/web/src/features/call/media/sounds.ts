@@ -3,6 +3,7 @@ import type { CallSession, CallState, CallCrypto, DirectMessagesState } from '@a
 import { useEffect, useRef } from 'react';
 import { playSound, readyAudioOutput, stopSounds } from '~/lib/audio-output';
 import { unreadThreadReplies } from '../session/replyAlerts';
+import { unreadChatMentions } from '../session/attention';
 import { useSoundPreferences } from '~/lib/sound-preferences';
 
 export function useCallSounds({ call, state, chat, direct, speakerId, connected, presenting }: { call: CallSession; state: CallState; chat: CallCrypto; direct: DirectMessagesState; speakerId: string | null; connected: boolean; presenting: boolean }) {
@@ -36,12 +37,13 @@ export function useCallSounds({ call, state, chat, direct, speakerId, connected,
   useEffect(() => () => stopSounds(owner.current), [prefs, moderatesAttention]);
   useEffect(() => {
     const previous = privateBaseline.current;
-    const ids = new Set(direct.messages.map((m) => m.id));
+    const ids = new Set(direct.messages.filter((m) => m.to === call.ticket.identity && m.state === 'delivered').map((m) => m.id));
+    const unread = new Set(direct.unread); const peers = new Set(direct.peers);
     privateBaseline.current = connected && direct.ready ? { scope, ids } : null;
     if (!previous || previous.scope !== scope || !connected || !direct.ready || state.phase !== 'in-call') return;
     for (const message of direct.messages) {
-      if (message.to !== call.ticket.identity || previous.ids.has(message.id) || state.elapsed - message.at > 5 || message.place !== state.attention.place) continue;
-      playSound({ owner: owner.current, cue: message.thread ? 'reply' : 'message', key: `${state.callId}:${message.id}`, until: Date.now() + 1200, current: () => {
+      if (message.to !== call.ticket.identity || message.state !== 'delivered' || !unread.has(message.id) || !peers.has(message.from) || previous.ids.has(message.id) || state.elapsed - message.at > 5 || message.place !== state.attention.place || message.generation !== state.generation) continue;
+      playSound({ owner: owner.current, cue: message.mentions.some((mention) => mention.identity === call.ticket.identity) ? 'mention' : message.thread ? 'reply' : 'message', key: `${state.callId}:${message.id}`, until: Date.now() + 1200, current: () => {
         const current = playback();
         return { ...current, prefs: { ...current.prefs, enabled: current.prefs.enabled && privateReady.current } };
       } });
@@ -49,12 +51,13 @@ export function useCallSounds({ call, state, chat, direct, speakerId, connected,
   }, [direct, connected, scope, state.phase]);
   useEffect(() => {
     const ids = new Set(unreadThreadReplies(state, chat, call.ticket.identity));
+    const mentions = new Set(unreadChatMentions(state, chat, call.ticket.identity));
     const previous = replyBaseline.current;
     replyBaseline.current = connected && chat.status === 'in' ? { scope, at: Date.now(), ids: new Set(chat.chat.filter((m) => !m.isMe && !m.sending && !m.failed).map((m) => m.id)) } : null;
     if (!previous || previous.scope !== scope || Date.now() - previous.at > 12_000 || !connected || chat.status !== 'in') return;
     for (const message of chat.chat) {
-      if (!ids.has(message.id) || !chat.members.includes(message.from) || previous.ids.has(message.id) || state.elapsed - message.at > 5) continue;
-      playSound({ owner: owner.current, cue: 'reply', key: `${state.callId}:${message.id}`, until: Date.now() + 1200, current: playback });
+      if ((!ids.has(message.id) && !mentions.has(message.id)) || !chat.members.includes(message.from) || previous.ids.has(message.id) || state.elapsed - message.at > 5) continue;
+      playSound({ owner: owner.current, cue: mentions.has(message.id) ? 'mention' : 'reply', key: `${state.callId}:${message.id}`, until: Date.now() + 1200, current: playback });
     }
   }, [chat, state, connected, scope, call]);
   useEffect(() => {

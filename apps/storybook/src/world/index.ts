@@ -133,7 +133,7 @@ export const session = (over: Partial<Session> = {}): Session => ({
 export const PREFS: Preferences = {
   sounds: DEFAULT_SOUND_PREFERENCES,
   notesDefault: 'on', notesLanguage: 'call', summaryLength: 'short', addToCalendar: true, showOtherMeetings: true, recordOffline: true,
-  notifications: { replyAlerts: true, beforeCall: 1, notesReady: true, sharedWithYou: true, notesRequested: true, followUpDue: true, tagged: true },
+  notifications: { replyAlerts: true, mentionAlerts: true, beforeCall: 1, notesReady: true, sharedWithYou: true, notesRequested: true, followUpDue: true, tagged: true },
   pinned: [], groups: []
 };
 
