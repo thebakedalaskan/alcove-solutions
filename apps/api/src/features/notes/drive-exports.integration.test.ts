@@ -55,7 +55,7 @@ async function connected(formats: DriveExportFormat[] = FORMATS) {
   return { ...b, google, destinationId };
 }
 const speech = (text: string): TranscriptClip => ({ data: new Blob([speechWav(text, 4000)], { type: 'audio/wav' }), segment: 0, at: 0, durationMs: 4000 });
-async function completed(b: Browser, title = `CANARY-DRIVE-CALL-${randomUUID()}`) {
+async function completed(b: Browser, title = `CANARY-DRIVE-CALL-${randomUUID()}`, privateMessage = false) {
   const call = await b.api.calls.join((await b.api.calls.startNow({ title, notes: 'on' })).code, { mic: true, cam: false });
   await call.appendAudio({ data: new Blob(['CANARY-DRIVE-AUDIO-CONTENT']), segment: 0, seq: 0, at: 0, durationMs: 5000, mimeType: 'audio/webm' });
   await call.transcribe(speech('The team agreed to launch on Friday. Mira will share the plan.'), call.ticket.identity);
@@ -64,6 +64,15 @@ async function completed(b: Browser, title = `CANARY-DRIVE-CALL-${randomUUID()}`
   const before = await b.api.drive.forNote(noteId);
   expect(before.jobs.every((job) => job.status !== 'uploaded')).toBe(true);
   await b.api.notes.personal(noteId).add({ kind: 'note', text: 'CANARY-PRIVATE-MATERIAL-NEVER-EXPORT' });
+  if (privateMessage) {
+    const guest = await h.browser().api.calls.join(call.getSnapshot().code, { mic: false, cam: false, name: 'Mara' });
+    for (let i = 0; i < 100 && !call.getSnapshot().waiting.some((p) => p.id === guest.ticket.identity); i++) { await call.refresh(); await new Promise((resolve) => setTimeout(resolve, 30)); }
+    await call.admit(guest.ticket.identity);
+    for (let i = 0; i < 100 && !call.direct.getSnapshot().peers.includes(guest.ticket.identity); i++) { await call.refresh(); await new Promise((resolve) => setTimeout(resolve, 30)); }
+    await call.direct.send(guest.ticket.identity, 'CANARY-DIRECT-MESSAGE-NEVER-EXPORT');
+    for (let i = 0; i < 100 && guest.direct.getSnapshot().messages.length === 0; i++) { await guest.refresh(); await new Promise((resolve) => setTimeout(resolve, 30)); }
+    expect(guest.direct.getSnapshot().messages[0]?.text).toBe('CANARY-DIRECT-MESSAGE-NEVER-EXPORT');
+  }
   await call.leave();
   for await (const _progress of b.api.notes.progress(noteId)) { /* the public stream waits for finalization */ }
   return { noteId, title };
@@ -159,7 +168,7 @@ describe('automatic Google Drive call exports', () => {
   });
 
   it('exports only finalized selected shared artifacts, retaining original audio and excluding personal material', async () => {
-    const b = await connected(); const { noteId, title } = await completed(b);
+    const b = await connected(); const { noteId, title } = await completed(b, undefined, true);
     const jobs = await uploaded(b, noteId);
     expect(jobs.map((job) => job.format).sort()).toEqual([...FORMATS].sort());
     expect(jobs.every((job) => job.fileUrl?.startsWith('https://drive.google.com/file/d/'))).toBe(true);
@@ -170,6 +179,8 @@ describe('automatic Google Drive call exports', () => {
     expect(text).toContain(title);
     expect(text).toContain('launch on Friday');
     expect(text).not.toContain('CANARY-PRIVATE-MATERIAL-NEVER-EXPORT');
+    expect(text).not.toContain('CANARY-DIRECT-MESSAGE-NEVER-EXPORT');
+    expect(JSON.stringify(await b.api.notes.get(noteId))).not.toContain('CANARY-DIRECT-MESSAGE-NEVER-EXPORT');
     const recording = files.find((file) => file.mimeType === 'application/zip');
     expect(recording?.bytes.subarray(0, 2).toString()).toBe('PK');
     if (!recording) throw new Error('Expected a retained recording archive.');
@@ -179,6 +190,7 @@ describe('automatic Google Drive call exports', () => {
       await writeFile(archivePath, recording.bytes);
       // An independent ZIP reader checks all archive CRCs and extracts the exact original audio.
       execFileSync('unzip', ['-tqq', archivePath], { stdio: 'pipe' });
+      expect(execFileSync('unzip', ['-p', archivePath], { stdio: 'pipe' }).includes(Buffer.from('CANARY-DIRECT-MESSAGE-NEVER-EXPORT'))).toBe(false);
       const original = execFileSync('unzip', ['-p', archivePath, 'part-001.webm'], { stdio: 'pipe' });
       expect(original.equals(Buffer.from('CANARY-DRIVE-AUDIO-CONTENT'))).toBe(true);
     } finally { await rm(archiveDirectory, { recursive: true, force: true }); }
