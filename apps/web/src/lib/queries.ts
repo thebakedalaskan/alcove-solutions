@@ -1,21 +1,29 @@
 /* Query keys, fetchers and mutations. Screens read data through these, never through `api` directly. */
-import type { AgentDecisionInput, AgentTokenInput } from '@alcove/api';
-import { AlcoveApiError, MAX_SORT_STICKIES, MAX_SORT_STICKY, SORT_TOO_FEW, SORT_TOO_MANY, errorCode, type ActionPatch, type ActionProposal, type ChangeScope, type DecisionPatch, type DecisionProposal, type DemoProvider, type DocumentRole, type Group, type PresenterFrameNotes, type InstantCallInput, type ISODate, type ItemInput, type ItemPlace, type LinePatch, type MeetingInput, type MentionBody, type NoteKind, type NotesSetting, type Patch, type PersonalInput, type PersonalNotes, type Preferences, type PromoteBody, type QuestionPatch, type RingReply, type Rsvp, type Series, type ShareTarget, type WorkspaceRole, type WorkspaceSummary } from '@alcove/api';
-import { queryOptions, replaceEqualDeep, useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import type { AgentDecisionInput, AgentTokenInput, CallTimerPresetInput, CallTimerPresetUpdate, DriveExportInput, FollowUpReview } from '@alcove/api';
+import { AlcoveApiError, MAX_SORT_STICKIES, MAX_SORT_STICKY, SORT_TOO_FEW, SORT_TOO_MANY, errorCode, type ActionProposal, type ChangeScope, type DecisionProposal, type DemoProvider, type DocumentRole, type Group, type PresenterFrameNotes, type InstantCallInput, type ISODate, type ItemInput, type ItemPlace, type LinePatch, type MeetingInput, type MentionBody, type NoteKind, type NotesSetting, type Patch, type PersonalInput, type PersonalNotes, type PromoteBody, type QuestionPatch, type RingReply, type Series, type ShareTarget, type WorkspaceRole, type WorkspaceSummary } from '@alcove/api';
+import { queryOptions, useIsMutating, useMutation, useMutationState, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef } from 'react';
 import { forgetAccount } from '~/features/record/offline';
 import { forgetNotified } from '~/features/shell/notified';
+import { announceMentionsRead } from '~/features/shell/attentionChannel';
 import { forgetEdits } from '~/features/workspace/keep';
 import { forgetPictures, readSessionWithPictureAccess } from '~/features/call/media/backgrounds/backgrounds';
 import { forgetPlaces } from '~/features/workspace/places';
 import { forgetWords } from '~/features/workspace/words';
-import { announceSignIn, announceSignOut } from './signedOut';
+import { accountGeneration, announceSignIn, announceSignOut } from './signedOut';
+import { announceNotificationPreferences, settleNotificationPreferences } from './notification-preference-channel';
 import { api } from './api';
 import { log } from './log';
 import { weekOn } from './time';
 import { openGoogleSignIn, waitForGoogleReturn } from './googleSignIn';
+import { answerCallOptions, preferenceOptions, readMeeting, readPreferences, readWorkspaces, readNote, readInbox, refreshChangedNote, renameWorkspaceOptions, updateActionOptions, updateDecisionOptions, type PreferenceChange } from './queryWrites';
 
 export const qk = {
+  drive: ['google-drive'] as const,
+  driveFolders: ['google-drive', 'folders'] as const,
+  driveJobs: ['google-drive', 'jobs'] as const,
+  driveNote: (id: string) => ['google-drive', 'note', id] as const,
+  timerPresets: ['calls', 'timer-presets'] as const,
   agents: ['agents'] as const,
   agentAuthorization: (id: string, ownerId: string) => ['agent-authorization', id, ownerId] as const,
   session: ['session'] as const,
@@ -95,12 +103,17 @@ export function trustLine(t: Trust | undefined): string {
 }
 
 export const q = {
+  drive: () => queryOptions({ queryKey: qk.drive, queryFn: () => api.drive.get(), retry: false }),
+  driveFolders: () => queryOptions({ queryKey: qk.driveFolders, queryFn: () => api.drive.folders(), staleTime: 0, retry: false }),
+  driveJobs: () => queryOptions({ queryKey: qk.driveJobs, queryFn: () => api.drive.jobs(), refetchInterval: 10_000, retry: false }),
+  driveNote: (id: string) => queryOptions({ queryKey: qk.driveNote(id), queryFn: () => api.drive.forNote(id), refetchInterval: 10_000, retry: false }),
+  timerPresets: () => queryOptions({ queryKey: qk.timerPresets, queryFn: () => api.calls.timerPresets.list() }),
   agents: () => queryOptions({ queryKey: qk.agents, queryFn: () => api.agents.list() }),
   agentAuthorization: (id: string, ownerId: string) => queryOptions({ queryKey: qk.agentAuthorization(id, ownerId), queryFn: () => api.agents.authorization(id), retry: false, staleTime: 0 }),
   session: () => queryOptions({ queryKey: qk.session, queryFn: () => readSessionWithPictureAccess(() => api.auth.getSession()), staleTime: 60_000 }),
-  prefs: () => queryOptions({ queryKey: qk.prefs, queryFn: () => api.account.preferences() }),
+  prefs: () => queryOptions({ queryKey: qk.prefs, queryFn: ({ client }) => readPreferences(api, client), refetchInterval: 30_000, refetchIntervalInBackground: true }),
   team: () => queryOptions({ queryKey: qk.team, queryFn: () => api.people.team(), staleTime: 5 * 60_000 }),
-  workspaces: () => queryOptions({ queryKey: qk.workspaces, queryFn: () => api.workspaces.list() }),
+  workspaces: () => queryOptions({ queryKey: qk.workspaces, queryFn: ({ client }) => readWorkspaces(api, client) }),
   people: (query: string) => queryOptions({ queryKey: qk.people(query), queryFn: () => api.people.search(query), staleTime: 30_000, placeholderData: (prev) => prev }),
   upcoming: () => queryOptions({ queryKey: qk.upcoming, queryFn: () => api.meetings.upcoming(), refetchInterval: 60_000 }),
   byCode: (code: string) => queryOptions({ queryKey: qk.byCode(code), queryFn: () => api.meetings.byCode(code) }),
@@ -128,11 +141,11 @@ export const q = {
   /** Someone's other calendar events; refreshed every few minutes, since they change outside Alcove. */
   calendar: () => queryOptions({ queryKey: qk.calendar, queryFn: () => api.calendar.get(), staleTime: 60_000, refetchInterval: 3 * 60_000, retry: false }),
   notes: (kind?: NoteKind, text?: string) => queryOptions({ queryKey: qk.noteList(kind, text), queryFn: () => api.notes.list({ kind, text }), placeholderData: (prev) => prev }),
-  note: (id: string) => queryOptions({ queryKey: qk.note(id), queryFn: () => api.notes.get(id) }),
+  note: (id: string) => queryOptions({ queryKey: qk.note(id), queryFn: ({ client }) => readNote(api, client, id) }),
   personal: (id: string) => queryOptions({ queryKey: qk.personal(id), queryFn: () => api.notes.personal(id).get(), retry: false }),
   /** What adding an entry to the shared notes would do, read fresh each time it's opened: the people who'd get it can change. */
   addition: (id: string, entryId: string) => queryOptions({ queryKey: qk.addition(id, entryId), queryFn: () => api.notes.previewAddition(id, entryId), staleTime: 0, gcTime: 0, retry: false }),
-  inbox: () => queryOptions({ queryKey: qk.inbox, queryFn: () => api.notes.inbox() }),
+  inbox: () => queryOptions({ queryKey: qk.inbox, queryFn: ({ client }) => readInbox(api, client) }),
   /** What carries over in a series, from the notes you have; put together fresh each time it's asked for. */
   series: (id: string) => queryOptions({ queryKey: qk.series(id), queryFn: () => api.series.get(id), retry: false }),
   /**
@@ -152,7 +165,7 @@ export const q = {
 
   /* Starting and scheduling calls. */
   /** One call as it is now, for its card: the answers people have given change while it's open. */
-  meeting: (id: string) => queryOptions({ queryKey: qk.meeting(id), queryFn: () => api.meetings.get(id), retry: false }),
+  meeting: (id: string) => queryOptions({ queryKey: qk.meeting(id), queryFn: ({ client }) => readMeeting(api, client, id), retry: false }),
   /** When you and these people are busy. Nothing is kept: it's read when it's asked for, and a failed read is said plainly, not retried. */
   busy: (emails: readonly string[], range: { from: ISODate; to: ISODate }) => queryOptions({
     queryKey: qk.busy(emails, range.from, range.to), queryFn: () => api.calendar.busy([...emails], range), staleTime: 60_000, retry: false
@@ -165,6 +178,16 @@ export const q = {
   personIds: (id: string, emails: readonly string[], pass?: string | undefined) => queryOptions({ queryKey: qk.personIds(id, emails), queryFn: () => api.workspaces.ids(id, [...emails], pass ? { pass } : undefined), staleTime: Infinity }),
   /** What you've been tagged in and haven't seen, anywhere. */
   mentions: () => queryOptions({ queryKey: qk.mentions, queryFn: () => api.workspaces.mentions() }),
+  /** The tab indicator never uses a previous account's cached notices or a result arriving after a switch. */
+  attentionMentions: (owner: string) => queryOptions({
+    queryKey: [...qk.mentions, owner],
+    queryFn: async () => {
+      if ((await api.auth.getSession())?.ownerId !== owner) return [];
+      const notices = await api.workspaces.mentions();
+      return (await api.auth.getSession())?.ownerId === owner ? notices : [];
+    },
+    retry: false, refetchInterval: 15_000, refetchIntervalInBackground: true, staleTime: 0
+  }),
   /** Who has a document, for the Share sheet. Someone else may have changed it, so it's read each time the sheet opens. */
   documentShare: (id: string, documentId: string, pass?: string | undefined) => queryOptions({ queryKey: qk.documentShare(id, documentId), queryFn: () => api.workspaces.share.list(id, documentId, pass ? { pass } : undefined), staleTime: 0 }),
   /** What History lists, read afresh each time it opens. `pass`: a guest's. */
@@ -323,88 +346,53 @@ export function useDeleteAccount(onDeleted: () => void) {
     onSuccess: async (owner) => { await forgetHere(owner, true); qc.clear(); qc.setQueryData(qk.session, null); onDeleted(); }
   });
 }
-/*
- * Changes to preferences show at once and reach the server one at a time, in order (two at once would refuse each
- * other there). Each touches only the fields it changes: its answer, or a refusal putting them back, leaves alone a
- * field a later change has set meanwhile. Once none is left on its way, the preferences are read again.
- */
-const PREFS_WRITE = { mutationKey: ['prefs', 'write'], scope: { id: 'prefs' } };
-/** `p`, with the fields `take` names copied from `from` (where `from` has them). */
-function withFields(p: Preferences, from: Patch<Preferences>, take: (k: keyof Preferences) => boolean): Preferences {
-  // A field set to null (model back to the notes model) is a change too: only undefined means not given.
-  const f = <K extends keyof Preferences>(k: K): Preferences[K] => {
-    const v = from[k];
-    return take(k) && v !== undefined ? v : p[k];
-  };
-  return {
-    notesDefault: f('notesDefault'), notesLanguage: f('notesLanguage'), summaryLength: f('summaryLength'), addToCalendar: f('addToCalendar'),
-    showOtherMeetings: f('showOtherMeetings'), recordOffline: f('recordOffline'), notifications: f('notifications'), pinned: f('pinned'), groups: f('groups'),
-    model: f('model')
-  };
-}
-const prefsWrite = (qc: QueryClient) => {
-  const key = q.prefs().queryKey;
-  /** The fields this change set that nothing has changed since. By value: the cache keeps its own copy of what it's given. */
-  const untouched = (p: Preferences, patch: Patch<Preferences>) => (k: keyof Preferences) => patch[k] !== undefined && replaceEqualDeep(p[k], patch[k]) === p[k];
-  return {
-    ...PREFS_WRITE,
-    show: async (patch: Patch<Preferences>) => {
-      await qc.cancelQueries({ queryKey: key });
-      const before = qc.getQueryData(key);
-      qc.setQueryData(key, (p) => p && withFields(p, patch, (k) => patch[k] !== undefined));
-      return { before };
-    },
-    undo: (patch: Patch<Preferences>, before: Preferences | undefined) => { if (before) qc.setQueryData(key, (p) => p && withFields(p, before, untouched(p, patch))); },
-    settle: (patch: Patch<Preferences>, d: Preferences) => qc.setQueryData(key, (p) => p && withFields(p, d, untouched(p, patch))),
-    reread: () => { if (qc.isMutating({ mutationKey: PREFS_WRITE.mutationKey }) <= 1) void qc.invalidateQueries({ queryKey: key }); }
-  };
-};
-/** Changes some preferences: see above. */
+/** Each channel hint belongs to its exact immutable query command, including after this hook re-renders. */
+const notificationWrites = new WeakMap<object, { owner: string; generation: string; nonce: string }>();
+/** Reversible preference fields show at once; the same query owner reconciles serial writes and current reads. */
 export function usePreferences() {
-  const w = prefsWrite(useQueryClient());
+  const qc = useQueryClient();
+  const options = preferenceOptions(api, qc, qk, (p: PreferenceChange) => p);
   return useMutation({
-    mutationKey: w.mutationKey, scope: w.scope,
-    mutationFn: (p: Patch<Preferences>) => api.account.updatePreferences(p),
-    onMutate: w.show,
-    onError: (_e, p, ctx) => w.undo(p, ctx?.before),
-    onSuccess: (d, p) => w.settle(p, d),
-    onSettled: w.reread
+    ...options,
+    onMutate: async (patch, context) => {
+      const session = qc.getQueryData(q.session().queryKey);
+      const generation = session ? accountGeneration(session.ownerId) : null;
+      const owned = await options.onMutate?.(patch, context);
+      if (!owned) throw new AlcoveApiError('unauthenticated', 'Sign in again to save your preferences.');
+      const changes = owned.fields.notifications;
+      if (session && generation !== null && owned.account.valid() && accountGeneration(session.ownerId) === generation && changes && Object.keys(changes).length) {
+        notificationWrites.set(owned.entry, { owner: session.ownerId, generation, nonce: announceNotificationPreferences(session.ownerId, changes) });
+      }
+      return owned;
+    },
+    onError: (error, patch, ctx, context) => {
+      options.onError?.(error, patch, ctx, context);
+      const intent = ctx ? notificationWrites.get(ctx.entry) : undefined;
+      if (!ctx?.account.valid() || !intent || accountGeneration(intent.owner) !== intent.generation) return;
+      const current = qc.getQueryData(q.prefs().queryKey);
+      if (current) settleNotificationPreferences(intent.owner, intent.nonce, current.notifications, 'rollback');
+    },
+    onSuccess: (data, patch, ctx, context) => {
+      options.onSuccess?.(data, patch, ctx, context);
+      const intent = notificationWrites.get(ctx.entry);
+      if (!ctx.account.valid() || !intent || accountGeneration(intent.owner) !== intent.generation) return;
+      const current = qc.getQueryData(q.prefs().queryKey);
+      if (current) settleNotificationPreferences(intent.owner, intent.nonce, current.notifications, 'confirmed');
+    }
   });
 }
-/**
- * Sets which notes are pinned, in the order they were pinned (at most MAX_PINS), as a change to preferences (above).
- * A refusal because a note is gone also refreshes the notes.
- */
+/** Pinning is a preference change too, in the same ordered queue as Settings and groups. */
 export function usePins() {
   const qc = useQueryClient();
-  const w = prefsWrite(qc);
-  return useMutation({
-    mutationKey: w.mutationKey, scope: w.scope,
-    mutationFn: (pinned: string[]) => api.account.updatePreferences({ pinned }),
-    onMutate: (pinned) => w.show({ pinned }),
-    onError: (e, pinned, ctx) => {
-      w.undo({ pinned }, ctx?.before);
-      if (errorCode(e) === 'not-found') void qc.invalidateQueries({ queryKey: ['notes', 'list'] });
-    },
-    onSuccess: (d, pinned) => w.settle({ pinned }, d),
-    onSettled: w.reread
-  });
+  const options = preferenceOptions(api, qc, qk, (pinned: string[]) => ({ pinned }));
+  return useMutation({ ...options, onError: (e, pinned, ctx, context) => {
+    options.onError?.(e, pinned, ctx, context);
+    if (errorCode(e) === 'not-found') void qc.invalidateQueries({ queryKey: ['notes', 'list'] });
+  } });
 }
-/**
- * Saves your groups, all of them in order, as a change to preferences (above): it shows at once, so a second change
- * builds on the first, and it waits its turn behind every other change to them. If the server refuses one, only the
- * groups go back, unless a later change has set them meanwhile.
- */
+/** Groups share that queue, including changes made from another component while one is pending. */
 export function useGroups() {
-  const w = prefsWrite(useQueryClient());
-  return useMutation({
-    mutationKey: w.mutationKey, scope: w.scope,
-    mutationFn: (groups: Group[]) => api.account.updatePreferences({ groups }),
-    onMutate: (groups) => w.show({ groups }),
-    onError: (_e, groups, ctx) => w.undo({ groups }, ctx?.before),
-    onSuccess: (d, groups) => w.settle({ groups }, d),
-    onSettled: w.reread
-  });
+  return useMutation(preferenceOptions(api, useQueryClient(), qk, (groups: Group[]) => ({ groups })));
 }
 export function useInviteTeam() {
   const qc = useQueryClient();
@@ -454,18 +442,13 @@ export function useCancelCall() {
 /** Says whether you're coming to a call you're invited to. The card shows the answer at once, and goes back if it's refused. */
 export function useAnswerCall() {
   const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (v: { id: string; answer: Rsvp }) => api.meetings.answer(v.id, v.answer),
-    onMutate: async (v) => {
-      const key = qk.meeting(v.id);
-      await qc.cancelQueries({ queryKey: key });
-      const before = qc.getQueryData(q.meeting(v.id).queryKey);
-      qc.setQueryData(q.meeting(v.id).queryKey, (m) => m && { ...m, rsvp: v.answer });
-      return { before };
-    },
-    onError: (_e, v, ctx) => { if (ctx?.before) qc.setQueryData(q.meeting(v.id).queryKey, ctx.before); },
-    onSuccess: (m) => { qc.setQueryData(q.meeting(m.id).queryKey, m); void qc.invalidateQueries({ queryKey: qk.upcoming }); }
-  });
+  return useMutation(answerCallOptions(api, qc, qk));
+}
+export function usePendingRsvp(id: string) {
+  return useIsMutating({ mutationKey: ['meetings', 'answer'], predicate: (mutation) => {
+    const v = mutation.state.variables;
+    return !!v && typeof v === 'object' && 'id' in v && v.id === id;
+  } }) > 0;
 }
 export function useStartNow() {
   const qc = useQueryClient();
@@ -483,11 +466,9 @@ export function useScheduleNext() {
 
 /* ---------- notes ---------- */
 
-/** A note changed: its page shows the answer, and lists and series that read it catch up. */
+/** A write's whole-note answer may predate a newer command. Read it afresh through the projection owner. */
 function changed(qc: QueryClient, n: { id: string }) {
-  qc.setQueryData(qk.note(n.id), n);
-  void qc.invalidateQueries({ queryKey: ['notes', 'list'] });
-  void qc.invalidateQueries({ queryKey: qk.allSeries });
+  return refreshChangedNote(api, qc, qk, n.id);
 }
 /**
  * A note that was deleted or removed meanwhile: its notes and inbox items go from the lists. One that changed since it
@@ -505,7 +486,7 @@ export function useProposeDecision() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (v: { noteId: string; proposal: DecisionProposal }) => api.notes.proposeDecision(v.noteId, v.proposal),
-    onSuccess: (n) => { changed(qc, n); void qc.invalidateQueries({ queryKey: qk.inbox }); },
+    onSuccess: (n) => changed(qc, n),
     onError: (e) => gone(qc, e)
   });
 }
@@ -514,7 +495,16 @@ export function useProposeAction() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (v: { noteId: string; proposal: ActionProposal }) => api.notes.proposeAction(v.noteId, v.proposal),
-    onSuccess: (n) => { changed(qc, n); void qc.invalidateQueries({ queryKey: qk.inbox }); },
+    onSuccess: (n) => changed(qc, n),
+    onError: (e) => gone(qc, e)
+  });
+}
+/** Adds or dismisses precisely the conversation suggestion the reader reviewed. */
+export function useReviewAction() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { noteId: string; review: FollowUpReview }) => api.notes.reviewAction(v.noteId, v.review),
+    onSuccess: (n) => changed(qc, n),
     onError: (e) => gone(qc, e)
   });
 }
@@ -522,8 +512,7 @@ export function useProposeAction() {
 export function useUpdateDecision() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (v: { noteId: string; decisionId: string; patch: DecisionPatch }) => api.notes.updateDecision(v.noteId, v.decisionId, v.patch),
-    onSuccess: (n) => { changed(qc, n); void qc.invalidateQueries({ queryKey: qk.inbox }); },
+    ...updateDecisionOptions(api, qc, qk),
     onError: (e) => gone(qc, e)
   });
 }
@@ -546,11 +535,19 @@ export function useUpdateRevisit() {
 /** Takes on, turns down, gives, dates, rewords or ticks a follow-up; the answer is the note as it is now. */
 export function useUpdateAction() {
   const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (v: { noteId: string; actionId: string; patch: ActionPatch }) => api.notes.updateAction(v.noteId, v.actionId, v.patch),
-    onSuccess: (n) => { changed(qc, n); void qc.invalidateQueries({ queryKey: qk.inbox }); },
-    onError: (e) => gone(qc, e)
-  });
+  const options = updateActionOptions(api, qc, qk);
+  return useMutation({ ...options, onError: (e, v, ctx, context) => {
+    options.onError?.(e, v, ctx, context);
+    gone(qc, e);
+  } });
+}
+/** Pending checkboxes are announced by their own row, including writes started from another view. */
+export function usePendingActions() {
+  const pending = useMutationState({ filters: { mutationKey: ['notes', 'action'], status: 'pending' }, select: (mutation) => {
+    const v = mutation.state.variables;
+    return v && typeof v === 'object' && 'noteId' in v && typeof v.noteId === 'string' && 'actionId' in v && typeof v.actionId === 'string' ? `${v.noteId}:${v.actionId}` : null;
+  } });
+  return new Set(pending.filter((key) => key !== null));
 }
 /** Corrects a transcript line's words or speaker, or says it's right as heard; the answer is the note as it is now. */
 export function useCorrectLine() {
@@ -576,7 +573,7 @@ export function useAddToShared(noteId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (v: { entryId: string; body: PromoteBody }) => api.notes.addToShared(noteId, v.entryId, v.body),
-    onSuccess: (n) => { changed(qc, n); void qc.invalidateQueries({ queryKey: qk.personal(noteId) }); },
+    onSuccess: (n) => Promise.all([changed(qc, n), qc.invalidateQueries({ queryKey: qk.personal(noteId) })]),
     onError: (e) => gone(qc, e)
   });
 }
@@ -585,7 +582,7 @@ export function useTakeBack(noteId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (additionId: string) => api.notes.takeBack(noteId, additionId),
-    onSuccess: (n) => { changed(qc, n); void qc.invalidateQueries({ queryKey: qk.personal(noteId) }); },
+    onSuccess: (n) => Promise.all([changed(qc, n), qc.invalidateQueries({ queryKey: qk.personal(noteId) })]),
     onError: (e) => gone(qc, e)
   });
 }
@@ -687,7 +684,23 @@ export function useCreateWorkspace() {
 }
 export function useRenameWorkspace() {
   const qc = useQueryClient();
-  return useMutation({ mutationFn: (v: { id: string; name: string }) => api.workspaces.rename(v.id, v.name), onSuccess: () => qc.invalidateQueries({ queryKey: qk.workspaces, exact: true }) });
+  return useMutation(renameWorkspaceOptions(api, qc, qk));
+}
+/** Only the requested name overlays the live tree. Once that stream acknowledges it, later people’s renames own it. */
+export function useWorkspaceName(id: string, liveName: string, signedIn: boolean) {
+  const list = useQuery({ ...q.workspaces(), enabled: signedIn }).data;
+  const changes = useMutationState({ filters: { mutationKey: ['workspaces', 'rename'] }, select: (mutation) => {
+    const v = mutation.state.variables;
+    return v && typeof v === 'object' && 'id' in v && v.id === id && 'name' in v && typeof v.name === 'string'
+      ? { name: v.name, status: mutation.state.status, n: mutation.mutationId } : null;
+  } }).filter((change) => change !== null);
+  const latest = changes.at(-1);
+  const caught = useRef(0);
+  useEffect(() => { if (latest?.status === 'success' && latest.name === liveName) caught.current = latest.n; }, [latest?.n, latest?.name, latest?.status, liveName]);
+  const pending = changes.some((change) => change.status === 'pending');
+  const waiting = latest?.status === 'success' && latest.n > caught.current && latest.name !== liveName;
+  const name = (pending || waiting) ? list?.find((space) => space.id === id)?.name ?? liveName : liveName;
+  return { name, state: pending ? 'saving' : latest?.status === 'error' ? 'failed' : latest?.status === 'success' ? 'saved' : 'quiet' } as const;
 }
 /** Renames a board open in a call, for anyone who can change it: the call reads its new name from the workspace. `pass`: the call's. */
 export function useRenameBoard(pass: string | undefined) {
@@ -720,20 +733,21 @@ export function useFirstDocument() {
  * Changes to a workspace's tree. Nothing's cached: what changed reaches the list on the workspace's stream. What can be brought
  * to a call is read again after each, as it lists these documents. `pass`: a guest's.
  */
-export function useItemChanges(workspaceId: string, pass?: string | undefined) {
+export function useItemChanges() {
   const qc = useQueryClient();
   const w = api.workspaces;
-  const as = pass ? { pass } : undefined;
+  type Target = { workspaceId: string; pass: string | undefined };
+  const as = (target: Target) => target.pass ? { pass: target.pass } : undefined;
   const library = () => qc.invalidateQueries({ queryKey: qk.documents });
   return {
-    create: useMutation({ mutationFn: (input: ItemInput) => w.items.create(workspaceId, input), onSuccess: library }),
-    // One at a time, so what's typed last is what's kept.
-    rename: useMutation({ scope: { id: `workspace-rename:${workspaceId}` }, mutationFn: (v: { id: string; name: string }) => w.items.rename(workspaceId, v.id, v.name, as), onSuccess: library }),
-    move: useMutation({ mutationFn: (v: { id: string; to: ItemPlace }) => w.items.move(workspaceId, v.id, v.to), onSuccess: library }),
-    duplicate: useMutation({ mutationFn: (id: string) => w.items.duplicate(workspaceId, id), onSuccess: library }),
-    trash: useMutation({ mutationFn: (id: string) => w.items.trash(workspaceId, id), onSuccess: library }),
-    restore: useMutation({ mutationFn: (id: string) => w.items.restore(workspaceId, id, as), onSuccess: library }),
-    deleteForever: useMutation({ mutationFn: (id: string) => w.items.deleteForever(workspaceId, id), onSuccess: library })
+    create: useMutation({ mutationFn: (v: Target & { input: ItemInput }) => w.items.create(v.workspaceId, v.input), onSuccess: library }),
+    // The live owner orders work; explicit targets survive an observer's options changing during navigation.
+    rename: useMutation({ mutationFn: (v: Target & { id: string; name: string }) => w.items.rename(v.workspaceId, v.id, v.name, as(v)), onSuccess: library }),
+    move: useMutation({ mutationFn: (v: Target & { id: string; to: ItemPlace }) => w.items.move(v.workspaceId, v.id, v.to), onSuccess: library }),
+    duplicate: useMutation({ mutationFn: (v: Target & { id: string }) => w.items.duplicate(v.workspaceId, v.id), onSuccess: library }),
+    trash: useMutation({ mutationFn: (v: Target & { id: string }) => w.items.trash(v.workspaceId, v.id), onSuccess: library }),
+    restore: useMutation({ mutationFn: (v: Target & { id: string }) => w.items.restore(v.workspaceId, v.id, as(v)), onSuccess: library }),
+    deleteForever: useMutation({ mutationFn: (v: Target & { id: string }) => w.items.deleteForever(v.workspaceId, v.id), onSuccess: library })
   };
 }
 /** Tells someone they were tagged. `pass`: someone in a call. */
@@ -743,7 +757,11 @@ export function useMention(workspaceId: string, pass?: string | undefined) {
 /** You've heard about a tag. */
 export function useMentionSeen() {
   const qc = useQueryClient();
-  return useMutation({ mutationFn: (v: { workspaceId: string; mention: string }) => api.workspaces.mentionSeen(v.workspaceId, v.mention), onSuccess: () => qc.invalidateQueries({ queryKey: qk.mentions }) });
+  return useMutation({ mutationFn: (v: { workspaceId: string; mention: string }) => api.workspaces.mentionSeen(v.workspaceId, v.mention), onSuccess: () => {
+    const owner = qc.getQueryData(q.session().queryKey)?.ownerId;
+    if (owner) announceMentionsRead(owner);
+    return qc.invalidateQueries({ queryKey: qk.mentions });
+  } });
 }
 /** Keeps your notes beside one frame of a board: what's kept is what the board's notes say from then on. Empty text takes them away. */
 export function useSavePresenterFrameNote(workspaceId: string, boardId: string, pass?: string | undefined) {
@@ -822,4 +840,49 @@ export function useRevokeAgent() {
 }
 export function useAgentDecision(requestId: string) {
   return useMutation({ gcTime: 0, mutationFn: (decision: AgentDecisionInput) => api.agents.decide(requestId, decision) });
+}
+
+/** Drive credentials stay on the server; the browser receives only a one-time consent destination. */
+export function useConnectDrive() {
+  return useMutation({ gcTime: 0, mutationFn: () => api.drive.connect() });
+}
+export function usePickDriveFolder() {
+  return useMutation({ gcTime: 0, mutationFn: () => api.drive.pickFolder() });
+}
+export function useDisconnectDrive() {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: () => api.drive.disconnect(), onSuccess: async (settings) => {
+    qc.setQueryData(qk.drive, settings);
+    await qc.invalidateQueries({ queryKey: qk.drive });
+  } });
+}
+export function useUpdateDrive() {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: (input: DriveExportInput) => api.drive.update(input), onSuccess: async (settings) => {
+    qc.setQueryData(qk.drive, settings);
+    await qc.invalidateQueries({ queryKey: qk.drive });
+  } });
+}
+export function useDriveNote(noteId: string) {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: (input: DriveExportInput | null) => api.drive.setForNote(noteId, input), onSuccess: async (choice) => {
+    qc.setQueryData(qk.driveNote(noteId), choice);
+    await qc.invalidateQueries({ queryKey: qk.driveJobs });
+  } });
+}
+export function useRetryDriveExport() {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: (id: string) => api.drive.retry(id), onSuccess: () => qc.invalidateQueries({ queryKey: qk.drive }) });
+}
+
+/** Reusable timer agendas are owner-scoped; loading one copies its segments into the live call. */
+export function useTimerPresets() {
+  const qc = useQueryClient();
+  const reread = () => qc.invalidateQueries({ queryKey: qk.timerPresets });
+  const failed = (err: unknown) => { if (errorCode(err) === 'conflict' || errorCode(err) === 'not-found') void reread(); };
+  return {
+    create: useMutation({ mutationFn: (input: CallTimerPresetInput) => api.calls.timerPresets.create(input), onSuccess: reread }),
+    update: useMutation({ mutationFn: (v: { id: string; input: CallTimerPresetUpdate }) => api.calls.timerPresets.update(v.id, v.input), onSuccess: reread, onError: failed }),
+    remove: useMutation({ mutationFn: (id: string) => api.calls.timerPresets.remove(id), onSuccess: reread, onError: failed })
+  };
 }

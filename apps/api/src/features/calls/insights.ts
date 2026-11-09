@@ -1,3 +1,4 @@
+import { firstName, type Speaker } from '@alcove/api';
 import { CAPTION_LANGUAGES, MAIN_PLACE, MAX_CALL_IDEAS, type CallAction, type CallBoard, type CallBoardIdea, type CallAnswer, type CallMoment, type CaptionLanguage, type CaptionTranslation, type CaptureGap, type CatchUp, type CatchUpRange, type CatchUpWindow, type Changer, type LiveNotes, type Person, type CallFollowUps, type DocFollowUpTick, type SeriesAnswerPart } from '@alcove/api';
 import type { Owner } from '../../context';
 import type { ChatModel } from '../../inference';
@@ -11,6 +12,7 @@ import * as boards from './boards';
 import * as catchup from './catchup';
 import * as drafting from '../notes/drafting';
 import * as models from '../notes/models';
+import { recordUnencryptedUse } from '../notes/service';
 import * as liveNotes from './live-notes';
 import * as personal from '../notes/personal';
 import { personOf, portraitFor } from '../account/portraits';
@@ -68,7 +70,9 @@ export async function mayAskInCall(v: Viewer): Promise<ChatModel> {
   capture.mayReachAi(call, 'ask', ctx);
   if (!call.noteId) throw new ConflictError('Notes aren’t on in this call, so nothing goes to the AI from it.', { context: ctx });
   // What's asked in a call goes to the model chosen for it.
-  return models.resolveModel(v.organizer.cfg, s.notes.model);
+  const via = await models.resolveModel(v.organizer.cfg, s.notes.model);
+  await recordUnencryptedUse(v.organizer, call.noteId, via);
+  return via;
 }
 
 /**
@@ -103,7 +107,9 @@ export async function translate(v: Viewer, callId: string, language: CaptionLang
   const missing = wanted.filter((l) => !have.has(l.id));
   if (missing.length) {
     const t0 = performance.now();
-    const fresh = await drafting.translate(o.cfg, missing.map((l) => ({ id: l.id, text: l.text })), CAPTION_LANGUAGES.find((x) => x.code === language)?.english ?? language, await models.resolveModel(o.cfg, s.notes.model));
+    const via = await models.resolveModel(o.cfg, s.notes.model);
+    await recordUnencryptedUse(o, into.noteId, via);
+    const fresh = await drafting.translate(o.cfg, missing.map((l) => ({ id: l.id, text: l.text })), CAPTION_LANGUAGES.find((x) => x.code === language)?.english ?? language, via);
     await transcripts.keepTranslations(o, into, language, [...fresh].map(([lineId, text]) => ({ lineId, text })));
     for (const [id, text] of fresh) have.set(id, text);
     clog.info('captions translated', { ...ctx, found: wanted.length, cached: wanted.length - missing.length, translated: fresh.size, ms: Math.round(performance.now() - t0) });
@@ -168,7 +174,7 @@ async function soFarIn(o: Owner, row: Row, s: Stored, into: { noteId: string; re
     title: meeting.manifest.title, kind: 'call', organizer: person, people: meeting.manifest.guests.map((e) => personOf(e)),
     seconds: window.now, lines: transcripts.spoken(ls, speakersIn(s, person), roomsIn(s)), gaps, live: true, via
   });
-  return { all, window, missed: missedIn(row, s, window, place), person, brief };
+  return { all, window, missed: missedIn(row, s, window, place), person, brief, disclose: () => recordUnencryptedUse(o, into.noteId, via) };
 }
 
 /**
@@ -203,12 +209,13 @@ async function stillIn(v: Viewer, callId: string, what: 'catch-up' | 'ask'): Pro
 
 /** Where a stretch of the call has got to, from the live transcript: for the person asking alone, from what they may read. */
 export async function catchUp(v: Viewer, callId: string, range: CatchUpRange): Promise<CatchUp> {
-  const { all, window, missed, brief } = await sofar(v, callId, 'catch-up');
+  const { all, window, missed, brief, disclose } = await sofar(v, callId, 'catch-up');
   const { lines, read } = catchup.readOf(all, range, window, missed, { callId, what: 'catch-up' });
   const ctx = { callId, range: range.kind, lines: lines.length, gaps: read.gaps.length, missed: read.missed.length, whileHere: read.whileHere };
   // Nothing said, nothing sent: an empty stretch never reaches the notes model.
   if (!lines.length) { clog.info('caught up on a stretch with nothing said', ctx); return { summary: '', decided: [], proposed: [], open: [], next: [], read }; }
   const t0 = performance.now();
+  await disclose();
   const sorted = await drafting.catchUp(v.organizer.cfg, brief(lines, read.gaps), catchup.describe(range, read.whileHere));
   await stillIn(v, callId, 'catch-up');
   const cite = (xs: drafting.Cited[]) => xs.map(({ refs, ...x }) => ({ ...x, evidence: catchup.evidenceOf(refs, lines) }));
@@ -219,12 +226,13 @@ export async function catchUp(v: Viewer, callId: string, range: CatchUpRange): P
 
 /** Answers a question from a stretch of the call's live transcript, for the person asking alone, with the moments it comes from. */
 export async function askSoFar(v: Viewer, callId: string, question: string, range: CatchUpRange): Promise<CallAnswer> {
-  const { all, window, missed, person, brief } = await sofar(v, callId, 'ask');
+  const { all, window, missed, person, brief, disclose } = await sofar(v, callId, 'ask');
   const { lines, read } = catchup.readOf(all, range, window, missed, { callId, what: 'ask' });
   const ctx = { callId, range: range.kind, lines: lines.length, whileHere: read.whileHere };
   if (!lines.length) { clog.info('question about a stretch with nothing said', ctx); return { text: '', evidence: [], read }; }
   const asker: Person = v.isOrganizer ? person : { id: v.pass.identity, name: v.pass.name, email: '' };
   const t0 = performance.now();
+  await disclose();
   const a = await drafting.answerSoFar(v.organizer.cfg, brief(lines, read.gaps), asker, question, catchup.describe(range, read.whileHere));
   await stillIn(v, callId, 'ask');
   clog.info('question answered during a call', { ...ctx, cites: a.refs.length, cut: a.cut?.count ?? 0, ms: Math.round(performance.now() - t0) });
@@ -250,7 +258,7 @@ export async function askEarlier(v: Viewer, callId: string, asker: Owner, questi
 /* ---------- the call's shared live notes: kept in features/calls/live-notes.ts; who reads what, and when they're refreshed, is here ---------- */
 
 /** Nothing to read: until notes are written, for someone waiting to be let in, and once the call has ended and they're in the note. */
-export const NO_NOTES: LiveNotes = { notes: null, added: [], writing: false, error: null };
+export const NO_NOTES: LiveNotes = { notes: null, added: [], suggestions: [], writing: false, error: null };
 
 /** As much of a whole call's follow-ups as its live notes keep from one refresh, as many as the notes at the end may have. */
 const FOLLOW_UPS_READ = 20;
@@ -342,12 +350,25 @@ export async function watchNotes(v: Viewer, callId: string): Promise<boolean> {
     await nudge(o, row.room_name, callId, { call: true, log: false });
     const t0 = performance.now();
     const known = liveNotes.knownTo(claim, lines);
+    await part.disclose();
     const sorted = await drafting.catchUp(o.cfg, part.brief(lines, read.gaps), catchup.describe(whole, barred.length > 0), { followUps: FOLLOW_UPS_READ, known });
     const done = {
       lines: lines.length, gaps: read.gaps.length, missed: read.missed.length, uncited: sorted.uncited, known: known.length, same: sorted.next.filter((f) => f.same).length, strays: sorted.strays,
       cut: sorted.cut?.count ?? 0, ms: Math.round(performance.now() - t0)
     };
-    const run = liveNotes.runOf(sorted, lines, barred, { ...catchup.withCut(read, sorted.cut, lines), whileHere: barred.length > 0 });
+    const invitedEmails = new Set([...meeting.manifest.guests, part.person.email].map((email) => email.toLowerCase()));
+    const people = [...new Map([
+      ...meeting.manifest.guests.map((email) => personOf(email)),
+      ...s.people.map((j) => personFor(j, j.identity, j.name, part.person)), part.person
+    ].filter((p) => p.email && invitedEmails.has(p.email.toLowerCase())).map((p) => [p.email.toLowerCase(), p])).values()];
+    const folded = (text: string) => text.normalize('NFKC').trim().toLowerCase();
+    const ownerOf = (name: string): Person | null => {
+      const exact = people.filter((p) => folded(p.name) === folded(name) || folded(p.email) === folded(name));
+      const first = people.filter((p) => folded(firstName(p.name)) === folded(name));
+      const matches = exact.length ? exact : first;
+      return matches.length === 1 ? matches[0] ?? null : null;
+    };
+    const run = liveNotes.runOf(sorted, lines, barred, { ...catchup.withCut(read, sorted.cut, lines), whileHere: barred.length > 0 }, ownerOf);
     if (!await liveNotes.keep(o, callId, place, view, claim, run, reader)) {
       clog.info('live notes written too late to keep', { ...ctx, ...done });
       return false;
@@ -481,6 +502,7 @@ export async function watchIdeas(v: Viewer, callId: string): Promise<boolean> {
     const t0 = performance.now();
     const frames = await boards.framesOf(o, open);
     const brief = part.brief(lines, read.gaps);
+    await part.disclose();
     const found = await drafting.ideasFrom(o.cfg, brief, frames, kept?.list.map((i) => i.text) ?? []);
     const seen = lines.map((l) => ({ ...(l.when === undefined ? {} : { when: l.when }), ...(l.readers ? { readers: l.readers } : {}) }));
     const ideas = found.flatMap((f): StoredIdea[] => {
@@ -530,10 +552,31 @@ export async function tickFollowUp(v: Viewer, c: Db, row: Row, s: Stored, a: Ext
 /** A follow-up nobody said, for whoever adds it. It goes into the note, so there has to be one. */
 export async function addFollowUp(v: Viewer, c: Db, row: Row, s: Stored, a: Extract<CallAction, { type: 'follow-up-add' }>, said: number): Promise<void> {
   const o = v.organizer;
-  const { mine, by, place, reader } = await changing(v, c, row, s, a.type);
+  const { by, place, reader } = await changing(v, c, row, s, a.type);
   if (!s.notes.noteId) throw new ConflictError('Notes haven’t been on in this call, so there’s nowhere for this to go.', { context: { callId: row.call_id, what: a.type } });
-  const person = personFor(mine, mine.identity, mine.name, await me(o));
-  await liveNotes.add(o, c, row.call_id, place, { text: a.text, owner: { name: person.name, person }, by, said }, reader);
+  await liveNotes.add(o, c, row.call_id, place, { text: a.input.text, owner: await ownerFor(v, c, row, s, a.input.owner), due: a.input.due, takenOn: false, by, said }, reader);
+}
+
+
+/** A manual owner names a real invited identity, never a model-supplied display name. */
+async function ownerFor(v: Viewer, c: Db, row: Row, s: Stored, email: string | null): Promise<Speaker | null> {
+  if (email === null) return null;
+  const organizer = await me(v.organizer);
+  const meeting = await getItem(v.organizer, c, 'meeting', row.meeting_item_id, MeetingManifest, 'That meeting');
+  if (organizer.email === email) return { name: organizer.name, person: organizer };
+  if (!meeting.manifest.guests.some((x) => x.toLowerCase() === email)) throw new ForbiddenError('Choose someone invited to this call.', { context: { callId: row.call_id } });
+  const joined = s.people.find((x) => x.email?.toLowerCase() === email);
+  const person = joined ? personFor(joined, joined.identity, joined.name, organizer) : personOf(email);
+  return { name: person.name, person };
+}
+export async function editFollowUp(v: Viewer, c: Db, row: Row, s: Stored, a: Extract<CallAction, { type: 'follow-up-edit' }>): Promise<void> {
+  const { place, reader, by } = await changing(v, c, row, s, a.type);
+  const owner = a.patch.owner === undefined ? undefined : await ownerFor(v, c, row, s, a.patch.owner);
+  await liveNotes.edit(v.organizer, c, row.call_id, place, a.id, a.patch, owner, reader, by);
+}
+export async function reviewFollowUp(v: Viewer, c: Db, row: Row, s: Stored, a: Extract<CallAction, { type: 'follow-up-review' }>): Promise<void> {
+  const { place, reader, by } = await changing(v, c, row, s, a.type);
+  await liveNotes.review(v.organizer, c, row.call_id, place, a.review, reader, by);
 }
 
 /** What this person can catch up on, for choosing what to read. */

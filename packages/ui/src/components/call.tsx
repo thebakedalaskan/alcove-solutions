@@ -30,13 +30,14 @@ export function tileGround(person: AvatarPerson): string | undefined {
  * on their own colour, or their arch. The speaker gets the speak ring and a level meter; a muted
  * person shows the mic-off mark; a raised hand gets a gold ring.
  */
-export function CallTile({ person, name, speaking = false, muted = false, hand = false, connecting = false, className, children, chrome, label }: {
+export function CallTile({ person, name, speaking = false, muted = false, hand = false, connecting = false, className, children, chrome, label, signal }: {
   person: AvatarPerson; name: ReactNode; speaking?: boolean; muted?: boolean; hand?: boolean;
   /** In the call, but this browser can't play their media yet (their keys are on the way): not the same as a camera that's off. */
   connecting?: boolean | undefined;
   className?: string | undefined; children?: ReactNode;
   /** Controls and state drawn over the tile: what's pinned or spotlighted, its options. */
   chrome?: ReactNode; label?: string | undefined;
+  signal?: ReactNode;
 }) {
   const ground = children ? undefined : tileGround(person);
   return (
@@ -52,6 +53,7 @@ export function CallTile({ person, name, speaking = false, muted = false, hand =
       {connecting ? <span className="ac-tile-wait" role="status"><Dots />Connecting</span>
         : muted && !hand && <span className="ac-tile-mic" aria-label="Microphone off"><Icon name="micOff" size={14} /></span>}
       {hand && <span className="ac-tile-hand" aria-label="Hand raised"><Icon name="hand" size={15} /></span>}
+      {signal}
       {chrome}
     </div>
   );

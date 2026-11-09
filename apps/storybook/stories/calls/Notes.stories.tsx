@@ -5,9 +5,10 @@
  * live notes are written again a few seconds after.
  */
 import type { Meta } from '@storybook/react-vite';
-import { at, asksForNotes, UNENCRYPTED_MODEL, type Present } from '../../src/api/script';
+import { at, asksForNotes, says, UNENCRYPTED_MODEL, type Present } from '../../src/api/script';
 import { MORE, inCall, light, phone, plays, press, reach } from '../../src/call';
 import { pages, type PageArgs } from '../../src/page';
+import { FOLLOW_UP_SCRIPT } from './followUps';
 import { AIKO, CHECK_IN, CHECK_IN_SUMMARY, CHECK_IN_TALK, KOFI, MAYA, PRIYA, REVIEW, REVIEW_SUMMARY, REVIEW_TALK } from './talk';
 
 const meta = { title: 'Calls/Notes', ...pages } satisfies Meta<PageArgs>;
@@ -21,7 +22,7 @@ export const NotesOnPhone = phone(NotesOn);
 /** In a light theme your side is light, and the stage, the dock and what's shared stay night. */
 export const NotesOnLight = light(NotesOn);
 
-/** Seven minutes in: two things decided, the follow-ups handed out, and more coming. Anyone who gets the notes can tick one. */
+/** Seven minutes in: two things decided, with follow-up suggestions waiting for review. Adding one makes it an actual task. */
 const LATE = { here: REVIEWERS, since: 7 * 60, earlier: REVIEW_TALK.slice(0, 9), talk: { lines: REVIEW_TALK.slice(9) }, summary: REVIEW_SUMMARY };
 export const DecidedAndFollowUps = inCall({ scenario: 'call-soon', call: REVIEW, script: LATE }, { play: reach('Notes') });
 export const DecidedAndFollowUpsPhone = phone(DecidedAndFollowUps);
@@ -79,3 +80,19 @@ export const PausedByTheOrganizer = inCall({
   scenario: 'busy', call: { ...CHECK_IN, code: 'lch-chck-pse' },
   script: { here: CHECKING_IN, talk: { lines: CHECK_IN_TALK }, summary: CHECK_IN_SUMMARY, cues: [...at(6, { do: 'notes', mode: 'paused' }), ...at(20, { do: 'notes', mode: 'on' })] }
 });
+
+/** One actual task, two optional proposals. The checklist does not grow until someone adds one. */
+export const FollowUpsAndSuggestions = inCall({ scenario: 'call-soon', call: REVIEW, script: FOLLOW_UP_SCRIPT }, { play: reach('Notes') });
+export const FollowUpsAndSuggestionsPhone = phone(FollowUpsAndSuggestions);
+export const FollowUpsAndSuggestionsLight = light(FollowUpsAndSuggestions);
+/** The same review in the workspace's Follow-ups page. */
+export const ReviewInWorkspace = inCall({ scenario: 'call-soon', call: REVIEW, script: FOLLOW_UP_SCRIPT }, {
+  play: plays(reach('Workspace'), press('Follow-ups'), press('2 suggestions from the call'))
+});
+export const ReviewInWorkspacePhone = phone(ReviewInWorkspace);
+export const ReviewInWorkspaceLight = light(ReviewInWorkspace);
+/** Another proposal arrives while this fixed batch is open, waiting behind its own count. */
+export const SuggestionsArriveDuringReview = inCall({
+  scenario: 'call-soon', call: REVIEW,
+  script: { ...FOLLOW_UP_SCRIPT, cues: at(12, says(PRIYA, 'We should check the launch email on Thursday.', { hands: { text: 'Check the launch email', due: 'Thursday' } })) }
+}, { play: plays(reach('Notes'), press('2 suggestions from the call')) });

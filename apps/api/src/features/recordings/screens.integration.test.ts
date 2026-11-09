@@ -155,6 +155,11 @@ describe('shared screens kept for the notes', () => {
     expect(await fails(host.appendScreen(piece(hostUnseen.share, 0)))).toEqual(['forbidden', 'That isn’t a screen you’re sharing in this call.']);
     expect(await ownerRows('screen_pieces', org.session.ownerId)).toHaveLength(0);
 
+    // Ending an unpublished share must not bypass the media server's check through the late-piece allowance.
+    await guest.shareEnded(unseen.share);
+    expect(await fails(guest.appendScreen(piece(unseen.share, 0)))).toEqual(['forbidden', 'That isn’t a screen you’re sharing in this call.']);
+    expect(await ownerRows('screen_pieces', org.session.ownerId)).toHaveLength(0);
+
     // Shared in the room: taken. Leaving ends the share, and the piece their browser hands over as they go is taken too.
     const shown = await sharing(guest, true);
     for (let i = 0; i < 2; i++) await guest.appendScreen(piece(shown.share, i));
@@ -177,6 +182,55 @@ describe('shared screens kept for the notes', () => {
     expect(await fails(host.appendScreen(piece(share, 1, { data: big() })))).toEqual(['conflict', 'This shared screen has sent more video than it could have recorded.']);
     expect(await ownerRows('screen_pieces', org.session.ownerId)).toHaveLength(1);
     await host.leave();
+  });
+
+  it('takes a verified share’s first piece after its screen was unpublished, from another API instance', async () => {
+    const org = await account(unique('organizer'));
+    const host = await org.api.calls.join((await org.api.calls.startNow({ notes: 'on' })).code, { mic: true, cam: false });
+    const presenter = await presentScreen(host, h.deps.livekit);
+    const { share } = await host.startShare({ notes: true });
+    const track = (await h.deps.livekit.screenShares(presenter.room.name ?? '')).find((x) => x.identity === host.ticket.identity);
+    if (!track) throw new Error('the presenter’s screen was not published');
+    await presenter.unpublish(track.sid);
+    await host.shareEnded(share);
+    const other = await h.secondServer();
+    try {
+      const reply = await fetch(`${other.baseUrl}/v1/live/calls/${host.ticket.callId}/shares/${share}/video`, {
+        method: 'POST', headers: {
+          origin: ORIGIN, 'x-alcove-call': host.ticket.pass, 'content-type': MIME,
+          'x-alcove-segment': '0', 'x-alcove-seq': '0', 'x-alcove-at-ms': '0', 'x-alcove-duration-ms': '5000'
+        }, body: pieces[0] ?? new Uint8Array(1)
+      });
+      expect(reply.status).toBe(200);
+      expect(await ownerRows('screen_pieces', org.session.ownerId)).toHaveLength(1);
+    } finally { await other.close(); }
+    // The previous share's cached publication must never authorize a new share after the track is gone.
+    const unseen = await host.startShare({ notes: true });
+    await host.shareEnded(unseen.share);
+    expect(await fails(host.appendScreen(piece(unseen.share, 0)))).toEqual(['forbidden', 'That isn’t a screen you’re sharing in this call.']);
+    await host.leave();
+  });
+
+  it('never replays temporary video when the call does not keep its recording, even while inference is unavailable', async () => {
+    const org = await account(unique('organizer'));
+    const meeting = await org.api.meetings.create({
+      title: 'Supplier review', startsAt: new Date(Date.now() + 3_600_000).toISOString(), durationMinutes: 30, guests: [], notes: 'on',
+      choices: { keepTranscript: true, keepRecording: false, allowScreens: true }
+    });
+    const host = await org.api.calls.join(meeting.code, { mic: true, cam: false });
+    const { share } = await sharing(host, true);
+    for (let i = 0; i < 4; i++) await host.appendScreen(piece(share, i));
+    await host.shareEnded(share);
+    const configured = h.deps.cfg;
+    h.deps.cfg = { ...configured, NEAR_AI_API_KEY: '' };
+    try {
+      const noteId = (await host.leave())?.pendingNoteId ?? '';
+      await h.pool.query(`UPDATE recordings SET ended_at = ended_at - interval '30 seconds' WHERE owner_id = $1`, [org.session.ownerId]);
+      await joinDue(h.deps, org.session.ownerId);
+      expect((await ownerRows('screen_videos', org.session.ownerId)).length).toBeGreaterThan(0);
+      expect((await org.api.notes.get(noteId)).shares).toEqual([]);
+      expect((await org.fetch(org.api.notes.screenVideoUrl(noteId, share, 0))).status).toBe(404);
+    } finally { h.deps.cfg = configured; }
   });
 
   it('holds pieces while notes are paused, carries a share into the next segment, and asks for notes before a share can go in them', async () => {

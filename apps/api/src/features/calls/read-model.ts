@@ -10,7 +10,7 @@ import * as capture from './capture';
 import { MeetingManifest } from '../meetings/service';
 import { getItem } from '../../vault';
 import { standIns } from './hosting';
-import { groupOf, placeOf, type Room } from './places';
+import { admissionFresh, groupOf, placeOf, type Room } from './places';
 import * as rings from './rings';
 import { scribeOf } from './scribes';
 import * as transcripts from '../recordings/transcripts';
@@ -18,7 +18,9 @@ import { hostAway, load, screensOf, secondsIn, settle, type Row, type Stored } f
 import * as models from '../notes/models';
 import { forViewer, invitedIn, mayRead, personFor, roomsIn, seatKey, seatOf, speakersIn, type Viewer } from './participants';
 import { NO_NOTES, boardFor, notesFor } from './insights';
+import { attentionFor, openAttention } from './attention';
 import { stopLost } from './workspace-state';
+import { chatReadFor } from './chat-read';
 
 /**
  * Rooms as the call shows them: the people sent to each, and who's in each now, by identity (the organizer too, in
@@ -53,15 +55,16 @@ export async function view(v: Viewer, db: Db, callId: string): Promise<CallState
   const organizer = await me(o);
   const end = row.ended_at ?? new Date();
   const base = {
-    callId, meetingId: row.meeting_item_id, code: meeting.manifest.code, title: meeting.manifest.title, startedAt: row.started_at.toISOString(),
+    revision: row.version, callId, meetingId: row.meeting_item_id, code: meeting.manifest.code, title: meeting.manifest.title, startedAt: row.started_at.toISOString(),
     elapsed: Math.max(0, Math.round((end.getTime() - row.started_at.getTime()) / 1000)), phase: row.state === 'live' ? 'in-call' as const : 'ended' as const,
-    locked: row.locked, pointing: s.pointing, generation: row.mls_generation, isOrganizer: v.isOrganizer, isHost: v.isHost, role: v.role
+    locked: row.locked, pointing: s.pointing, generation: row.mls_generation, isOrganizer: v.isOrganizer, isHost: v.isHost && s.host === v.pass.identity, role: v.role,
+    chatRead: chatReadFor(v, s)
   };
   // Someone still waiting to be let in learns what's captured, and nothing else: nobody's name, nothing that was said.
   if (!v.inCall) {
     return {
-      ...base, participants: [], waiting: [], ringing: [], leaving: [], spotlight: null, breakouts: { open: null, held: [] }, capture: anonymousCapture(s, row, await models.isPrivate(o.cfg, s.notes.model)), notes: { everOn: false, noteId: null, recording: { segment: 0, pieces: 0, seconds: 0 } },
-      host: { id: null, standIn: false, organizer: { id: 'organizer', name: '', email: '' }, next: [] }, transcript: [], liveNotes: NO_NOTES, workspace: PRIVATE, board: boards.NO_BOARD, notices: [], shares: []
+      ...base, attention: { place: 'main', hands: [], questions: [], signals: [], cues: [], latest: 0, serverNow: end.toISOString() }, participants: [], waiting: [], ringing: [], leaving: [], spotlight: null, breakouts: { open: null, held: [] }, capture: anonymousCapture(s, row, await models.isPrivate(o.cfg, s.notes.model)), notes: { everOn: false, noteId: null, segmentStartedAt: null, recording: { segment: 0, pieces: 0, seconds: 0 } },
+      host: { id: null, standIn: false, organizer: { id: 'organizer', name: '', email: '' }, next: [] }, transcript: [], liveNotes: NO_NOTES, workspace: PRIVATE, board: boards.NO_BOARD, timerSequence: null, notices: [], shares: []
     };
   }
   const rooms = settle(s, row, end.getTime());
@@ -78,6 +81,7 @@ export async function view(v: Viewer, db: Db, callId: string): Promise<CallState
   const seats = seatKey(o, callId);
   const mine = s.notes.asks.find((a) => a.person === v.pass.person);
   const who = hostOf(rooms, v, organizer, row.state === 'live');
+  const attention = attentionFor(v, callId, rooms, openAttention(o, callId, row.attention_ciphertext, { ciphertext: row.state_ciphertext, state: rooms }), organizer, end.getTime());
   // Who's asking to see the workspace, from whoever is in the call now: for the organizer, as they see everyone.
   const asks: CallWorkspaceAsk[] = !v.isOrganizer ? [] : rooms.workspace.asks.flatMap((a) => {
     const j = here.findLast((p) => p.person === a.person);
@@ -86,14 +90,14 @@ export async function view(v: Viewer, db: Db, callId: string): Promise<CallState
   const { shown: workspace, lost } = await space.shownTo({ v, callId, meeting: meeting.manifest, s: rooms, place: where, chosenBy: who.organizer, asks });
   if (lost.present.length || lost.space.length || lost.play.length) await stopLost(o, callId, lost);
   return {
-    ...base,
+    ...base, attention, timerSequence: s.timerSequence,
     participants: here.map((j) => ({
       id: j.identity, seat: seatOf(seats, j), person: forViewer(v, personFor(j, j.identity, j.name, organizer), j.identity), isMe: j.identity === v.pass.identity,
-      isOrganizer: j.role === 'host', hand: j.hand, othersPoint: !s.othersPointOff.includes(j.person)
+      isOrganizer: j.role === 'host', hand: attention.hands.some((h) => h.participantId === j.identity), othersPoint: !s.othersPointOff.includes(j.person)
     })),
     spotlight: s.spotlight && here.some((j) => j.identity === s.spotlight) ? s.spotlight : null,
     breakouts: breakoutsOf(rooms, v, organizer),
-    waiting: v.isHost ? s.people.filter((j) => j.status === 'waiting' && j.admit === 'ask' && j.keysFor === row.mls_generation).map((j) => ({ id: j.identity, person: personFor(j, j.identity, j.name, organizer) })) : [],
+    waiting: v.isHost && s.host === v.pass.identity ? s.people.filter((j) => j.status === 'waiting' && admissionFresh(j) && j.admit === 'ask' && j.keysFor === row.mls_generation).map((j) => ({ id: j.identity, person: personFor(j, j.identity, j.name, organizer) })) : [],
     ringing: v.isOrganizer ? await rings.rungIn(o, db, row.meeting_item_id, here.flatMap((j) => (j.email ? [j.email.toLowerCase()] : []))) : [],
     // Connections on their way out of their group (the host's browser takes them out), shown as who they are.
     leaving: row.state === 'live' ? s.people.filter((j) => j.status === 'left' && groupOf(s, j) !== null && j.role !== 'host').map((j) => ({
@@ -119,7 +123,7 @@ export async function view(v: Viewer, db: Db, callId: string): Promise<CallState
       }) : null
     },
     shares: row.state === 'live' ? s.shares.filter((x) => x.until === null).map((x) => ({ id: x.id, participant: x.identity, keep: x.keep })) : [],
-    notes: { everOn: s.notes.everOn, noteId: s.notes.noteId, recording: { segment: s.notes.segment, pieces: segs.reduce((n, g) => n + g.pieces, 0), seconds: segs.reduce((n, g) => n + g.seconds, 0) } },
+    notes: { everOn: s.notes.everOn, noteId: s.notes.noteId, segmentStartedAt: s.notes.everOn ? new Date(row.started_at.getTime() + s.notes.segmentFrom * 1000).toISOString() : null, recording: { segment: s.notes.segment, pieces: segs.reduce((n, g) => n + g.pieces, 0), seconds: segs.reduce((n, g) => n + g.seconds, 0) } },
     // Lines stay inside their segment once it's over, so what was said before a pause is shown before it.
     transcript: transcripts.spoken(transcripts.placed(heard, segs, s.notes.status === 'on' ? s.notes.segment : undefined), speakersIn(rooms, organizer, v), roomsIn(rooms)),
     liveNotes: await notesFor(v, db, row, rooms, viewing, where, invited),

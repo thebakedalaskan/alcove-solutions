@@ -2,7 +2,7 @@
  * For you: what needs an answer, then your follow-ups to tick off, under one heading. The count is what's still
  * open, the same as the side panel's.
  */
-import type { Inbox, NoteSummary } from '@alcove/api';
+import { isAcceptedFollowUp, type Inbox, type NoteSummary } from '@alcove/api';
 import { EmptyState } from '@alcove/ui';
 import { useId, useState } from 'react';
 import { openCount } from './day';
@@ -14,7 +14,7 @@ export function ForYou({ inbox, notes, now }: { inbox: Inbox; notes: readonly No
   /* What was answered this visit stays on screen, saying so, so the empty state waits until the next visit. */
   const [answered, setAnswered] = useState(false);
   const items = waitingOf(inbox, notes, now);
-  const open = inbox.followUps.filter((a) => a.takenOn);
+  const open = inbox.followUps.filter((a) => isAcceptedFollowUp(a) && a.takenOn);
   const count = openCount(inbox, notes, now);
   const onAnswer = () => setAnswered(true);
   return (

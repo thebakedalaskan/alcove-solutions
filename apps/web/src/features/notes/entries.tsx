@@ -33,6 +33,8 @@ export function changeLine(c: Change, me: string | undefined): string {
   const who = capital(byName(c.by, me));
   switch (c.what) {
     case 'proposed': return `${who} proposed it`;
+    case 'accepted': return `${who} accepted the suggestion`;
+    case 'dismissed': return `${who} dismissed the suggestion`;
     case 'confirmed': return `${who} confirmed it`;
     case 'rejected': return `${who} said it wasn’t decided`;
     case 'superseded': return `${who} said it no longer holds`;

@@ -211,6 +211,9 @@ describe('host hand-off', () => {
     // The notes go on from Priya's browser in a new segment; the organizer's late audio and speech are refused, and a
     // clip sent twice is kept once.
     expect(s.notes.recording.segment).toBe(1);
+    // A new recorder starts at the handoff, independently of the older notes-on capture event.
+    expect(s.notes).toMatchObject({ segmentStartedAt: expect.any(String) });
+    expect(Date.parse(s.notes.segmentStartedAt ?? '')).toBeGreaterThan(Date.parse(s.capture.recording.since ?? ''));
     expect(code(await host.appendAudio(audio('late', 0, 1)).catch((e: unknown) => e))).toBe('conflict');
     expect(code(await host.transcribe(speech('Too late to count.', 0, 6000), host.ticket.identity).catch((e: unknown) => e))).toBe('conflict');
     await priya.call.appendAudio(audio('stand-in', 1, 0));
@@ -263,6 +266,11 @@ describe('host hand-off', () => {
     await drop(host, hostRoom, true);
     await upkeepAfter(HANDOFF_MS);
     const standing = await settle(priya.call, (x) => x.isHost, 'Priya hosting');
+    const waiting = await guestBrowser().calls.join(c, { mic: true, cam: false, name: 'Avery' });
+    expect((await settle(priya.call, (x) => x.waiting.length === 1, 'the stand-in seeing the request')).waiting.map((p) => p.id)).toEqual([waiting.ticket.identity]);
+    await priya.call.refresh();
+    expect(priya.call.getSnapshot().waiting.map((p) => p.id)).toEqual([waiting.ticket.identity]);
+    expect((await settle(guest.call, (x) => x.participants.length === 2, 'Sam seeing the current people')).waiting).toEqual([]);
 
     // The organizer comes back: joining takes the role back at once.
     const back = await org.api.calls.join(c, { mic: true, cam: false });
@@ -272,6 +280,13 @@ describe('host hand-off', () => {
     await inGroup(back);
     // Priya stops hosting and rejoins the organizer's group like everyone else; so does Sam.
     const after = await settle(priya.call, (x) => !x.isHost && x.host.id === back.ticket.identity, 'Priya back to a member');
+    expect(after.waiting).toEqual([]);
+    expect((await settle(back, (x) => x.waiting.length === 1, 'the organizer seeing the unresolved request')).waiting.map((p) => p.id)).toEqual([waiting.ticket.identity]);
+    await expect(priya.call.deny(waiting.ticket.identity)).rejects.toMatchObject({ code: 'conflict' });
+    await back.deny(waiting.ticket.identity);
+    expect((await settle(back, (x) => x.waiting.length === 0, 'the request handled')).waiting).toEqual([]);
+    await priya.call.refresh();
+    expect(priya.call.getSnapshot().waiting).toEqual([]);
     expect(after.notices.map((n) => n.text)).toContain(`${orgName} is back and hosting again.`);
     await waitFor(() => keyOf(priya.call) === keyOf(back) && keyOf(guest.call) === keyOf(back), 'everyone in the organizer’s group');
     expect(members(back)).toEqual([back.ticket.identity, priya.call.ticket.identity, guest.call.ticket.identity].sort());

@@ -289,7 +289,7 @@ window, and what you typed stays. It rings once, in one tab, where the browser a
 pre-join. **Can't now** opens **In 5 minutes**, **In 15 minutes** and **Not this time** in the same card, and a toast
 says what the organizer sees and that Alcove rings you again then. A ring nobody answers leaves by itself after 45
 seconds. On the page
-of the call itself there's no card. From another call, **Join** asks you to leave it first, and leaving carries on to
+of the call itself there's no card. From another call, **Join** asks the current host to leave it first; other participants leave immediately, carrying on to
 the call that rang.
 
 ## 6. In the call
@@ -307,16 +307,18 @@ time, slides in on the right.
   server's hardware check is bound to this browser's request). On the right, what's only yours: **View** (Your view, below);
   **Board** (**O**), which opens the board picker under it, and **Workspace** (**W**, with a count of what's been brought to
   this call), which opens the workspace, each on your stage just for you (Presenting, below); **Notes** and **Chat** (**C**,
-  with a count of what's new), which open your side; and who is here, the faces and the count (and, for whoever hosts, how
+  with a count of what's new), which open your side; **Attention**, with the hands, open questions and host-only waiting count; and who is here, the faces and the count (and, for whoever hosts, how
   many are asking to join), which open People. Each is lit while what it opens is open, and pressing it again puts it away:
   on Board and Workspace that's **Close**, which asks first while you present it. When two things are on your stage and
   there isn't room for both, they take turns, with a switcher in the top bar. On a phone (narrower than 600 px) the top bar
-  is the title, the notes sign, Chat (with its count) and the faces.
+  is the title, the notes sign, compact Attention counts, Chat (with its count) and the faces.
 - **Dock.** Microphone (**M**) and camera (**V**), each with an arrow for its menu: which microphone, which
   speaker, **Play test sound** and **Noise reduction**; your camera's preview, which camera and, where the
-  browser can do it, **Background**: **None**, **Blur**, Alcove's pictures (**Balloons**, **Beach**, **Office**)
-  or up to six of your own (**Add image**; they stay in this browser, and a guest has none). The same choice is on
-  the pre-join screen, so you pick it before anyone sees you. Removing the picture you're using shows blur
+  browser can do it, **Background**: **Off**, **Blur** with **Mild** or **Strong** strength, the solid colors **Slate**, **Sand**
+  and **Rose**, Alcove's pictures (**Balloons**, **Beach**, **Office**), or up to six of your own (**Add image**; JPEG, PNG or
+  WebP up to 20 MB, kept sealed in this browser, and a guest has none). Each custom picture has **Replace** and **Remove**;
+  a failed replacement leaves the old picture. The same choice is on the pre-join screen, so you pick it before anyone sees you.
+  Choosing while the camera is off leaves it off. Removing the picture you're using shows strong blur
   instead. A microphone or camera that can't work has a caution mark, and
   pressing it opens its menu, which says why and how to fix it. Unplugging a device moves to another one,
   muted or not as before, and says which; a device that comes back is used again. Nothing turns your
@@ -324,7 +326,7 @@ time, slides in on the right.
   while you present), **Raise your hand**, **More** and **Leave**, and, in focus, **Show everything**. **More** is the same
   on every screen: **Turn on captions** (or **Turn off captions**), **Mark this moment** (Only you, **B**), **Catch up on
   what you missed**, **Breakout rooms** (the organizer's, once someone else is in the call), then **Audio and video
-  settings**, **Video quality**, **Move to another device** and **Keyboard shortcuts**, which lists the call's keys, then
+  settings**, **Sounds and notifications**, **Video quality**, **Move to another device** and **Keyboard shortcuts**, which lists the call's keys, then
   what works on a tile, on a shared screen and on a board you present. On a phone the dock is microphone, camera,
   **Share**, **More** and **Leave**, and **More** starts with a grid of **Board**, **Workspace**, **Notes**, **Chat** (with
   its count) and **People**, then **Raise your hand**
@@ -335,7 +337,7 @@ time, slides in on the right.
 - **Your side.** One panel at a time, on the right, at a fixed width: it slides in and the stage makes room. In a window
   too narrow for both (under 864 px), it slides in over the stage instead, which keeps its width and dims behind it, and a
   press on the stage puts it away; the top bar and the dock work as ever. **Notes**,
-  **Chat** and the faces (People) open it from the top right; **Your notes** opens there beside a board you present, and
+  **Chat**, **Attention** and the faces (People) open it from the top right; **Your notes** opens there beside a board you present, and
   **Breakout rooms** (in People or **More**) opens the rooms there. A panel's button is lit while it's open, and pressing it
   again, its **×**, or **Esc** (once no menu is open, you're not in focus, and nobody you pinned is here) puts it away. On a
   phone a panel is a sheet over the call. A reload finds your side as it was, and a call you've just joined opens Notes
@@ -472,8 +474,9 @@ time, slides in on the right.
   notes, just for you), the bookmark (**Mark this moment**, **B**) and **×**, over the tabs **Notes**, **Transcript** and
   **Ask**. While notes are on, the Notes tab has what's been decided, the follow-ups (who and when, as said), **From the
   rooms** once breakout rooms have been held, and a summary, read from the transcript as the call goes, the same for
-  everyone in that part of the call; each time opens the transcript at that moment. Anyone who gets the notes can tick a
-  follow-up, and it's done for everyone and in the notes at the end. A guest with the link gets notes written only from what
+  everyone in that part of the call; each time opens the transcript at that moment. The checklist contains accepted
+  tasks; a quiet count opens suggestions to Add, Apply change or Dismiss. Review stays available in the final note. Anyone
+  permitted to change a task can tick it, and it is done for everyone and in the notes at the end. A guest with the link gets notes written only from what
   was said while they were here, and can't tick them. The **⋯** beside the notes sign, at the top of the Notes tab, has the
   organizer's **Pause notes**, **Resume notes** and **Turn notes off** (or **Turn notes on**), or anyone else's **Ask for
   notes**. The notes everyone gets are written when the call ends.
@@ -497,11 +500,21 @@ time, slides in on the right.
   hands, pins and spotlight, who is asking to join, who is ringing and how they answered, and who is invited and not
   here (the organizer can ring anyone in the last two); for the organizer, **Breakout rooms**, which opens the rooms on
   their side.
+- **Private messages (journey 6.30).** Choose someone in **Chat audience**, or **Message privately** on their tile. The composer always says **Only you and [name]**. Each person and room chat keep separate drafts. Private replies have times, unread counts and sending, sent, delivered or failed states; **Retry privately** keeps the original recipient and message. A departed recipient or different room makes that conversation unavailable. Only the original pair can read it, including admitted guests. Private messages never enter the shared chat, recording, transcript, AI notes or shared exports, and history ends with the call. Unread indicators and optional sound do not open over shared work or take focus; notifications show no private preview.
+- **Chat threads (journey 6.31).** Reply opens one discussion under its original message. Replying to a reply keeps that thread and shows the specific context. Counts and unread replies stay on the original; Open new replies moves to the first unread message. Back to chat restores your position and its own draft. Every room, private audience and thread retains its separate draft. Only the original audience can read or reply; unavailable originals show a placeholder, with only the replies you can already read. Failed replies stay in that thread for deliberate retry. Sounds → Replies and Show reply alerts control new-reply cues for authors and people who have participated, without notifying the entire room or revealing private previews. Seeing a message while the call is visible and focused updates its read receipt.
+- **Browser notifications (journey 6.33).** Explicitly enable browser alerts, choose their categories and turn them off independently from sounds and local reply alerts. In a background tab, fresh authorized private messages, relevant replies/mentions and pending call actions can show generic alerts. Click back to the exact original conversation/action after access is checked; handled actions and ended sessions explain their unavailability. Blocked or unsupported browsers retain the same unread counts and pending actions in Alcove.
+
 - **Reacting to chat.** Hover a message (or tab to it) to show **Add reaction**; it opens a picker of eight emoji
   (thumbs up, thumbs down, heart, smile, laughing, surprised, sad, celebrate). Each emoji someone used sits under
   the message with how many, and yours is marked. Press one to add yours, or press yours again to take it back. Its
   tooltip names who reacted, and after about 40 characters says how many more ("Aiko, Maya, Kofi +2"). You can react
   once your own message has gone out. If a reaction doesn't send, it's taken back and a toast says so.
+- **Mentioning someone in chat (journey 6.32).** Type **@** and search the people who can read this room or, in a private conversation, its original two participants. Their address, or a guest's
+  identity, distinguishes people with the same name. Use the arrow keys and **Enter**, or press their row, to select them.
+  Selected people appear beside the composer and stay highlighted in the sent message; changing the tagged words removes
+  that selection. An unread mention counts in Chat and in the browser tab. **Open mention** goes to the exact message;
+  seeing the addressed words in a visible, focused Chat panel marks it read. Room reads reconcile across your open clients; private reads stay with their original connection. Drafts, failed sends and
+  self-mentions do not add unread attention. Sounds → **Mentions** and **Show mention alerts** control the sound and generic local alert independently. A reply that mentions you has one primary mention cue. Retained private history keeps its unread count when its other participant leaves or you move rooms; new alerts require the current audience. Mentioning someone never adds them to a room.
 - **Waiting for people.** Everyone the organizer rings waits on the stage in an empty arch that ripples, then shows
   their answer (**In 5 minutes**, **Not this time**), and opens into their tile when they arrive, while the others make
   room. Someone who says no or doesn't answer stays a moment with **Ring again**, then gives the room back, and stays
@@ -578,6 +591,90 @@ Calls are for groups: invited people join with their accounts, anyone else with 
 organizer lets them in, and video, audio and chat are encrypted end to end between the people in the call
 ([Calls and recordings › Group calls](../engineering/calls-and-recordings.md#group-calls)).
 
+### Shared attention (journeys 6.14–6.17)
+
+**Attention** stays reachable beside a shared screen, document or board, while the people are hidden, and in focus.
+Its hands and open-question counts are for the room you are in. A host also sees the current count waiting to join.
+On a phone the same control opens a sheet. Opening it changes only your own view and never starts presenting anything.
+Requests already outstanding appear after joining or reconnecting without replaying their sounds. New requests update
+counts and a polite screen-reader announcement without moving focus.
+
+14. **Take turns with the hand queue.** Hands lists people in server order. **Raise your hand** and **Lower yours**
+    change only your own hand after confirmation. The current host can **Lower** one request or **Lower all**.
+    Each raise has its own identity, so an old lower cannot remove a newer raise. The queue remains visible after a
+    reconnect or moving to another device. Existing room-help indicators remain on the host's room overview.
+15. **Ask, vote and resolve shared questions.** Q&A is for questions to everyone in this room, separate from Chat and
+    the private AI **Ask** tab under Notes. Type a question, then **Post question**. It shows its author, text and votes;
+    **Vote** switches to **Voted**, and pressing it again removes your vote. One identity has one vote. **Most votes**,
+    **Newest** and **Refresh order** apply a new order deliberately; arriving votes leave the reading order in place.
+    The host can **Pin question**, **Mark question answered** or **Dismiss question**. Resolved questions leave the open
+    count and lose their pin; **Show resolved questions** reveals their answered or dismissed state. Questions remain
+    with their original room audience when rooms close. Another room's questions never become main-room questions.
+16. **Signal quietly, then clear it.** Signals offers **Can’t hear you**, **Slow down**, **Yes**, **No** and **Need a break**.
+    One active signal appears beside your tile. Press the same choice to clear it; it also expires after a moment or clears
+    when you leave or change rooms. The current host and presenter can see counts by kind for their room. Signals are visual.
+17. **Let someone in from Attention.** The host's **Waiting** tab shows the same current requests and **Let in** / turn-away
+    controls as People. A withdrawn, resolved or expired request disappears. A stale press never claims that someone joined.
+
+**Sounds.** Successful microphone on/off transitions and fresh joins, departures, hands, questions and host admissions
+have short speaker cues. Room changes and reconnection synchronize without playing history. **More → Sounds and notifications → Sounds** includes **Play sounds**, **Quiet mode**, volume, individual categories and a preview, also for guests.
+Settings has the same account preferences. Quiet mode retains microphone confirmations and host admission cues; browser
+notification permission is independent. Sound uses your selected speaker and never enters the outgoing call or notes.
+If playback is blocked, Attention and its counts still work.
+
+### Presenter timers (journeys 6.26–6.28)
+
+26. **Prepare reusable timing.** Before joining a call you organize, **Prepare timer presets** opens your private
+    library. Name a preset and add ordered segments with a name, duration and optional presenter. Quick durations
+    include 15 minutes; custom durations are entered in seconds. Duplicate, remove or move a segment with its named
+    controls. The planned total updates as you edit. **Save preset** keeps definitions only. Edit/rename, duplicate
+    and delete are explicit; deleting a preset keeps copies already loaded into calls.
+27. **Run the sequence.** **Timer** opens the call’s timer panel. The current host can **Build sequence**, or open
+    **Your presets** and **Use copy**, then **Save timer plan**. **Start timer** begins the first turn. Current and next
+    segments, the presenter and total planned time remain readable. **Pause**, **Resume**, **Restart segment**,
+    **Add 1 min**, **Skip** and **Next segment** change the shared timer. At zero it says time is up and counts over
+    time; the host explicitly moves on or finishes the sequence. Editing upcoming slots preserves the current turn.
+    Changes to this call stay here; **Replace with this plan** asks before updating a saved preset.
+28. **Follow the timer in your own view.** Every admitted participant, including a guest, sees the same countdown.
+    The compact timer reopens details while a screen, workspace or board is in use, in focus and in the floating call.
+    A named presenter receives an explicit warning at 30 seconds and at zero, using words and an icon as well as colour.
+    **Sound when time is up** is off initially and changes only this browser’s cue; it respects call sound and quiet
+    settings. The visual timer stays visible with sound off. Joining late, reconnecting or backgrounding the tab keeps
+    the existing clock; whoever is authorized to host now can continue controlling it.
+
+**6.29 Choose what others see behind you.** Before joining, open **Background** and preview blur, a solid color or a picture.
+During the call, the arrow beside the camera has the same choices. The preview and outgoing video use the same local effect;
+switching a camera or turning it off/on keeps the choice, remembered on this browser/device. A lower processing quality is
+announced and explained in the picker when the device is busy; the chosen background stays on and quality recovers when it can.
+A browser without effects explains that and offers **Choose Off**. A background that cannot load, is no longer kept here or
+stops processing turns the camera off and says so: choose another background, or **Off**, then deliberately turn the camera on.
+
+### Floating call
+
+**6.22 Keep the call in view.** On a supported desktop browser, **Open floating call** in **View** opens a small,
+movable and resizable window over other apps. It shows the speaker or a selected live shared screen, with the same
+microphone, camera and raised-hand state as the meeting. Its controls act on this call. Closing the window keeps you
+in the call; **Return to call** brings the meeting forward. **Leave** asks only the current host to confirm; other
+participants leave immediately. Both save the last recording pieces before departing, and a failure keeps the call open
+with an explanation and Leave available to retry.
+
+Hands, open Q&A, people asking to enter (for the host), and new chat have compact indicators that return to their matching Attention tab or Chat in the full meeting. The compact and full meeting controls share one confirmed action owner and the same speaker cues.
+The window shows no personal notes or message text. Its Chat count includes unread mentions; opening Chat returns to
+the full call, where **Open mention** finds the exact message and reading it clears its mention attention.
+
+On a supported secure site, the call floats automatically when you switch tabs, subject to the browser's permission.
+There is no separate Alcove preference; the browser controls this choice and may show its permission question.
+An already-allowed live microphone can stay muted. The call never requests camera, microphone or screen access just to
+enable automatic opening. **View** retains **Open floating call** when manual opening is needed. Minimizing Chrome and
+switching tabs are different browser behaviors; an already-open floating window can remain over other apps.
+Unsupported browsers keep the normal call controls.
+
+When this browser can’t float a call, View keeps the unavailable action with an explanation linked to it for assistive
+technology. If the browser refuses an opening, View stays open with permission guidance and the manual action available
+to try again. Nothing retries by itself, and the call keeps running in this tab.
+
+See [Floating call](../engineering/floating-call.md) for browser capabilities and verification coverage.
+
 ### The call's workspace
 
 1. **Workspace**, at the top right, or **W**, opens the workspace on your stage, just for you: nobody else's screen changes,
@@ -606,7 +703,7 @@ organizer lets them in, and video, audio and chat are encrypted end to end betwe
      closing either leaves the other.
    - **Focus** (**⌘⇧F**, or "Fill your window with it" on the frame's bar): the bars slide off, everyone drops to
      arches on the horizon, and your microphone, camera, **Show everything** and Leave stay. You still see who's talking and
-     who has a hand up. **Show everything**, **⌘⇧F** or **Esc** brings it all back as it was, with the caret where you left it.
+     who has a hand up, and Attention’s counts stay at the top right. **Show everything**, **⌘⇧F** or **Esc** brings it all back as it was, with the caret where you left it.
    - **Working together:** with the workspace open, hovering someone's tile offers **Follow** if they're in it (an arch has it in
      its menu, and People has it beside where each person is); the tile says **Following**, and shows a pen while they write.
      On a phone, tapping someone's arch opens their card as a sheet: **Follow** (or **Stop following**), **Go to where
@@ -650,11 +747,16 @@ organizer lets them in, and video, audio and chat are encrypted end to end betwe
    that moment. **Transcript** is the whole call so far, with who's talking at the end, and finds any word. Notes and Transcript
    open on your side, beside the document, from the button on their row, and **Open**, at the top of the Notes panel, goes the
    other way.
-   - **Follow-ups** are what the notes heard, what people added, and the to-dos with a person and a date in the documents worked on
-     in this call, each for whoever can open it, as **Everyone** or **Mine**. Ticking one is done for everyone and ticks the line in
-     its document, and where it came from opens that line. **Add a follow-up** adds one of your own, which anyone can tick and which
-     goes into the note. A guest with the link reads what's written for them and doesn't tick or add. With notes off they come from
-     documents alone, and say so.
+   - **Follow-ups** is a stable shared checklist: what people added or accepted, and the to-dos with a person and a date in the
+     documents worked on in this call, each for whoever can open it, as **Everyone** or **Mine**. Ticking one is done for everyone
+     and ticks the line in its document; its source opens that line. **Add a follow-up** lets someone write the task, choose who it
+     is for or leave it unassigned, and set a date. Tasks can be edited without the notes model changing their words underneath.
+     A quiet count offers **suggestions from the call**. **Review** opens a fixed batch below the list: **Add** or **Dismiss** a new
+     task, or **Apply change** or **Dismiss** proposed changes to an existing task, with the old and new values shown. New arrivals
+     wait behind a separate count. A suggestion resolved by someone else says so; stale words cannot silently be accepted. Adding
+     a task does not mean its owner has said “I'll do it”. Pending suggestions are not unfinished tasks. The same review remains
+     available in the notes after the call, without holding up leaving. A guest with the link reads only what is written for them
+     and cannot add, edit or review for the group. Notes off stops new suggestions; existing tasks stay.
    - **Sending to a document:** the arrow on a line sends it to the document you were last in, if you can edit it: something decided
      as a line, a follow-up as a checklist line tagged with who and when, which is then the same follow-up, and a line of the
      transcript as a quote with who said it and when. It lands where you can see it, or a toast says where it went and **Go there**
@@ -904,13 +1006,27 @@ organizer lets them in, and video, audio and chat are encrypted end to end betwe
    above): "You're in Comms for 5 min.", the organizer's message for a moment in the line over the call ("Art to all rooms:
    Two minutes left"), **Ask for help** on the hand, and "Art joined your room".
 
+### Reviewing follow-ups
+
+Storybook journeys **6.23–6.25** show the review alongside the call:
+
+- **6.23 Review suggestions in the call:** open Follow-ups, review a suggested task, and add it to the shared checklist.
+- **6.24 Keep a fixed review batch:** new suggestions arrive while review is open and wait behind a count, leaving the current controls in place.
+- **6.25 A follow-up changes during review:** another person's change makes the proposal stale; the reviewer sees what happened instead of overwriting it.
+
 ## 7. End the call and get the notes
 
-1. **Leave › End the call** (with others in the call, **End call for everyone**) sends the last audio and
+1. **Leave** immediately leaves for anyone who is not hosting, invited participants and guests alike: no confirmation,
+   on the main stage or in the floating call. The last audio and speech are saved before leaving; while that happens,
+   Leave is disabled. A failed departure keeps the same call open with an explanation and a way to retry. The call goes
+   on for everyone else, and the call’s link is ready to join again. In-app navigation does the same cleanup before
+   continuing, and closing or reloading a participant’s tab does not ask for confirmation.
+   For the current host, **Leave › End the call** (with others in the call, **End call for everyone**) sends the last audio and
    speech and ends the call. **Stay in the call** goes back. With someone invited in the call, whoever hosts can
    also **Leave and keep it going**: the person who'll host is chosen already ("Priya will host until you're back"),
    and **Change** picks someone else. The call goes on, the notes with it, and the organizer takes it back by
-   joining again. Someone standing in sees the same sheet, with leaving it going first.
+   joining again. Someone standing in sees the same sheet, with leaving it going first. The browser still asks the current
+   host to confirm closing or reloading the tab.
 2. The sheet becomes **Call ended**: who gets the notes, and how they're coming along until "Notes are
    ready", then **Read the notes** or **Go to Home**. The note shows the steps so far (call ended, audio
    saved, the transcript's length, the notes being written), playback of the decrypted recording, and who
@@ -926,6 +1042,10 @@ organizer lets them in, and video, audio and chat are encrypted end to end betwe
    While the notes model's evidence can't be checked or doesn't check out, nothing is sent; and while it
    doesn't answer, nothing is lost. Either way notes wait with "Waiting for the notes model. The notes are
    written as soon as it’s verified and answering" and are tried again every five minutes.
+
+**Journeys:** 7.1 ends the call and reads its notes; 7.2 hands hosting over; 7.3 leaves as an invited participant
+(including phone and light theme); 7.4 leaves as a guest; 7.5 retries a participant departure that failed;
+7.6 accepts another call while participating and continues there without a confirmation.
 
 ## 8. Notes
 
@@ -1075,6 +1195,10 @@ organizer lets them in, and video, audio and chat are encrypted end to end betwe
   menu lists every change: who did what, when, and what the words were.
 - **Propose a decision** and **Add a follow-up** add what the notes missed, in your words, to the call's notes or a
   breakout room's section, and the plus on a transcript line starts one from what was said there.
+- **Suggestions from the call** stay separate from the Follow-ups checklist until someone accepts them. **Review** shows a fixed
+  batch, with **Add** / **Dismiss** for a suggested task and **Apply change** / **Dismiss** for a proposed change to a task already
+  there. Later suggestions wait behind a count. Accepted tasks retain their words and identity when notes are written again;
+  dismissed suggestions do not return from the same source material. **I'll do it** remains a separate acceptance of responsibility.
 - Beside a call's notes is the series it's in: **Every Tuesday** when the last three calls in it were a week apart,
   otherwise **In a series**, with the series' other calls (the newest three, with the start of each summary), how much
   is still open across them and, for the organizer, the next call with **Change**; **All** opens the series page. When
@@ -1097,6 +1221,12 @@ organizer lets them in, and video, audio and chat are encrypted end to end betwe
   calls and says how many older ones aren't shown. The organizer also sees the next call, with **Join** and
   **Change this call**, or **Schedule next week’s call**. When the series follows a recurring Google event
   and Google Calendar isn't connected any more, it says so and offers **Connect Google Calendar**.
+
+Storybook journeys **8.44–8.46** continue the same review after the call:
+
+- **8.44 Review suggestions after the call:** accept or dismiss pending suggestions in the note, keeping the checklist separate.
+- **8.45 Apply a proposed change:** review the previous and proposed values before changing an existing task.
+- **8.46 Review a stale suggestion:** a concurrent review or task change is explained in place; unseen words are never silently accepted.
 
 ## 9. Record in the room
 
@@ -1226,9 +1356,11 @@ from this browser."), with **Copy what you wrote** beside them, which copies onl
 other tab open here hears it at once and goes to the welcome page, saying you signed out in another tab. With no connection, signing
 out says so and nothing happens later by itself. Under the water the page is
 one long list of rows, with an index beside it that jumps to each part and moves a small sun to the one in view; on a
-narrow screen the index is a strip that stays at the top. Every control saves as it changes: the row says **Saved** for a
-moment, just left of the control (**Saved for new notes** for the language and the summary), and one the server refuses
-goes back, with a toast saying why. Parts that don't load say so, with **Try again**, and the rest of the page still works.
+narrow screen the index is a strip that stays at the top. Every control changes immediately and says **Saving…** while its
+request is pending. The row says **Saved** for a moment only once its latest choice is confirmed (**Saved for new notes**
+for language and summary). A refusal says **Couldn’t confirm**, with a toast explaining why; it removes only that attempt,
+keeping later choices. Pick the setting again to retry. Parts that don't load say so, with **Try again**, and the rest of
+the page still works. Journey **11.23** shows Detailed → Short → Detailed while the oldest request fails.
 
 - **Profile**: your name and photo, from your sign-in, with a link to change them at Google or Microsoft (they update
   the next time you sign in; with single sign-on they come from your company's sign-in); your company, which opens
@@ -1257,22 +1389,9 @@ goes back, with a toast saying why. Parts that don't load say so, with **Try aga
   again**. **Play test sound** plays through the chosen speaker; a browser that can't choose one says it uses the
   system's. The camera is a list only, never opened here, and until the browser has allowed a camera on the join
   screen it says it isn't allowed yet; **Reduce background noise**. They're kept in this browser only.
-- **Notifications**: browser notifications, shown on this device while Alcove is open in a tab (any page, a call or a
-  recording included; nothing is pushed when no tab is open). Until the browser allows them the choices are greyed
-  out and **Turn on** asks it (only when pressed; focus stays on the row once it answers);
-  when the browser blocks them, the row says to allow them for the site in the browser's settings. Then: before a
-  call you organize starts (1 min, 5 min or off); when notes you have are ready (not while that note's page is on
-  screen, where they arrive anyway); when someone shares notes with you ("Priya shared it with Product"); when
-  someone asks for notes in a call you organize, while you're in another tab or app (in front of you, the call says
-  so itself); when someone tags you in a document you can open, while you're somewhere else (in front of you, the
-  workspace says so itself); and on the due day of a follow-up you've taken on, at 9:00 (off by default; for every due Home shows
-  as a day, so not "next week" or "ASAP"; not when the due day was set after 9:00 that day). One tab in the browser shows them, and the next takes over when it closes. Each shows
-  once, in any tab and across reloads, and several at once (after the computer wakes, or the connection comes back)
-  arrive as one: "3 notes are ready", "2 follow-ups are due today". Clicking one brings Alcove forward: on the
-  call's join page, the note, Notes, Home, the line someone tagged you on, or the call you're in, in the tab already there or else the one used
-  last, asking first if that means leaving a call or a recording. With no tab left, it opens one. Signing out, or
-  deleting the account, closes the ones still showing and forgets which have shown. The choices are saved with your
-  preferences, and one changed in another tab or on another device takes effect within a minute.
+- **Notifications**: choose **Enable browser notifications** in Settings or **More → Sounds and notifications → Browser alerts** in a call. Only that action asks browser permission. The row explains whether the browser allows, blocks or cannot show alerts, with guidance and persistent unread/action indicators in Alcove. A global switch and separate private-message, room reply/mention, hand, question, host admission and timer switches control call alerts. Existing call reminders, notes ready/shared/requested, document mentions and due follow-ups use the same preferences. Guests keep their explicit choices in this browser.
+  Alerts arrive while Alcove stays open in a background tab/window; there is no delivery service after every tab closes. They always hide names, messages and call/workspace details, including on lock screens. Browser alerts are silent; sound preferences remain independent. **Show reply alerts** controls local on-screen replies separately from browser permission.
+  The relevant focused conversation/action suppresses a redundant alert. Events deduplicate across tabs and reconnects, bursts share one alert per category, and handling/reading/withdrawing an event closes or replaces its alert where supported. Enabling a category or joining a thread does not replay old messages. Clicking focuses an existing tab, preferring the original call connection, checks current access, then opens the exact conversation, thread, pending action or timer. An ended private session or handled action says it is no longer available. Sign-out, removal and revoked permission stop delivery and close the applicable alerts. Other-device preference changes arrive through background refresh.
 - **Appearance**: system, light or dark, each shown as a small evening in its own colours, kept in this browser.
 - **Plan and credits**: the time of notes left, with a sun on the line under it: at the end of the line on a new
   account, back along it as notes are written, and set once there's none left. Then the minutes of notes used this month
@@ -1306,7 +1425,15 @@ tries again, and nothing happens later by itself. Once it's deleted you land on 
 if you left Settings meanwhile, and this browser forgets the tour and call view it kept for the account.
 Signing in again starts a new, empty account with 10,000 credits.
 
+### 11.20 Choose call sounds
+
+Open **Settings → Sounds** for master sound, volume, quiet mode and separate microphone, people, hands, questions, admissions, board timer and incoming call switches. Preview each phrase at your chosen volume. These controls work even when browser notifications are blocked. **More → Sounds and notifications → Sounds** in a call offers the same choices, including for guests. Quiet mode keeps your microphone confirmations and requests to join when you host. Signed-in choices follow your account; guests keep theirs in this browser.
+
 ## 12. The Drive and the workspace
+
+Journey **12.1** renames a workspace immediately: the list and breadcrumbs show the requested name with **Saving…**. If it
+cannot be confirmed, **Edit name** restores the entered text; press Enter to retry without retyping or reloading. Later
+choices remain in place while older requests settle. Physical **Delete for good** completes only after Alcove confirms it.
 
 Documents and folders people write in together, between calls as well as in them. Every call has a workspace of its own,
 its home, where its notes, follow-ups and transcript go, and **Drive** in the side panel lists every workspace you're in,
@@ -1564,8 +1691,8 @@ breakout rooms · 10 min**, or **2 of 3 breakout rooms · 10 min** when a room h
 the room's name, what came of it and who was there (**One owner for launch comms. Priya and Theo were here.**), and one click
 opens it. A screen reader hears a room's card by the room's name, then what came of it and who can open it. On a phone the
 rooms' cards stack. Every picture is in your theme, as the board's own page is: dark in dark mode.
-The stickies in the call's board's **Actions** frame come back as follow-ups, under **Follow-ups from the board**, right after
-the boards: with owners, taking on, ticking and the rest, as any follow-up has. The notes read a board, along with what was
+The stickies in the call's board's **Actions** frame come back as suggestions to review. Once accepted they appear under
+**Follow-ups from the board**, right after the boards: with owners, taking on, ticking and the rest, as any follow-up has. The notes read a board, along with what was
 said, only when everyone the notes went to can open it, because one summary goes to all of them; a board someone couldn't open
 says **Not everyone invited can open it, so the summary leaves it out.**, and only to people who can open it. A room's board's
 follow-ups are in that room's section of the notes, and the room's line says it had a board. The next call in a series brings
@@ -1600,3 +1727,40 @@ does not disconnect an agent; Disconnect, expiry and account deletion end its ac
 
 Storybook's journeys use these numbers: **14.1 Create a personal token**, **14.2 Disconnect an agent**, and **14.3 Sign in
 and review requested access**. The OAuth journey plays up to the external-client hand-off; it does not open another app.
+
+## 15. Google Drive exports
+
+Google Drive is a separate connection in **Settings → Google Drive**. Connect the Google account that should own exported
+files and consent to access only files and folders selected for Alcove. Connecting or disconnecting Drive leaves ordinary
+Alcove sign-in and Calendar settings alone. Google’s pages are outside Alcove; returning after cancellation or failure says
+what happened and leaves the existing settings in place.
+
+1. **Choose default files.** Select finalized notes as Markdown, transcripts as plain text, or retained original audio
+   pieces as a ZIP. Each is an explicit choice. **Automatic exports** stays unavailable until a destination and at least
+   one type are chosen. Every setting saves as it changes. Pausing exports keeps the choices. Only finalized, retained
+   material the exporting account can still access is eligible; a call ending does not promise an export exists.
+2. **Choose a shared-drive folder.** The destination opens a folder picker, showing authorized folders and whether each
+   belongs to a shared drive. **Choose in Google** grants access to another folder and returns to Settings. Choosing a
+   folder checks current write permission before it is saved. An unavailable destination is refused, with no fallback to
+   another folder. The selected folder’s existing sharing rules apply to the readable exported copy; Alcove never adds
+   people, makes public links or exports another person’s private notes.
+3. **Override one call.** On a call’s saved notes, your **Google Drive** part says whether it follows the
+   defaults. **Use custom settings** gives this call its own authorized destination, file choices and on/off switch.
+   Returning to defaults removes the override. This changes only that person’s export settings for the call.
+4. **Retry an export.** Recent exports name their source call and show **Pending**, **Uploading**, **Uploaded** with **Open**,
+   or an actionable failure. **Retry** rechecks permission and, with the same destination, keeps the same export identity
+   so an uncertain response does not create a second file. Choosing another destination and retrying a failed export
+   intentionally creates a new copy there; existing copies stay in their original folder. Revoked Google access asks
+   for reconnection instead. Regenerated
+   finalized material updates its export according to the documented export version policy.
+5. **Disconnect Google Drive.** Disconnect stops further queued exports and forgets this connection. Deleting a source or
+   losing permission also stops further exports. Copies already in Drive remain governed by that folder and must be
+   removed in Drive; deleting them from Alcove does not delete the exported copies.
+
+6. **Export shared call notes.** Anyone who can read a call’s notes can manage their own exports and destination. These
+   choices do not affect the organizer or other readers. Original audio is available only to the organizer and only
+   when the call retained it; unavailable audio is disabled with the reason beside the format. Global defaults may
+   still select retained audio for future calls the person organizes.
+
+Storybook’s journeys use **15.1–15.6** above. The account, folders and file links in the preview are made-up; real Google
+consent and the provider’s own folder-selection page require manual verification with a supported Google account.

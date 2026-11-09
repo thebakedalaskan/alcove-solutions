@@ -33,8 +33,8 @@ function sizeFor(aspect: number): { width: number; height: number } {
  * Opens the window, from the click that asked for it: browsers open neither kind without one. Null when the browser
  * wouldn't (a popup blocker); rejects when Document Picture-in-Picture refuses.
  */
-export async function openPop(kind: PopKind, title: string, aspect: number): Promise<Window | null> {
-  const { width, height } = sizeFor(aspect);
+export async function openPop(kind: PopKind, title: string, aspect: number, size?: { width: number; height: number }): Promise<Window | null> {
+  const { width, height } = size ?? sizeFor(aspect);
   let win: Window | null;
   if (kind === 'pip') {
     const pip = window.documentPictureInPicture;

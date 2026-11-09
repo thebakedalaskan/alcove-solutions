@@ -41,6 +41,7 @@
     "@modelcontextprotocol/client": "2.4.0",
     "@peculiar/asn1-schema": "2.11.1",
     "@peculiar/asn1-x509": "2.11.1",
+    "@tanstack/query-core": "5.105.3",
     "@types/node": "^26.6.6",
     "@types/pg": "^8.23.1",
     "esbuild": "^0.28.2",

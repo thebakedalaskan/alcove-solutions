@@ -12,6 +12,7 @@ export function registerAccountSessionRoutes(app: Hono<Env>, runtime: HttpRuntim
   app.post('/v1/session/sign-out', async (c) => {
     await account.signOut(c.get('owner'));
     deleteCookie(c, COOKIE, { path: '/', secure });
+    deleteCookie(c, secure ? '__Host-alcove_drive' : 'alcove_drive', { path: '/', secure });
     return c.json({ signedOut: true });
   });
 

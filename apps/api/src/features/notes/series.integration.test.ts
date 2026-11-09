@@ -8,6 +8,7 @@ import { AlcoveApiError, REQUEST_ID_HEADER, type AlcoveApi, type SeriesAnswerPar
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { GoogleUser } from '../../testing/fake-google';
 import { speechWav } from '../../testing/fake-near';
+import { acceptNoteSuggestions } from '../../testing/follow-ups';
 import { ORIGIN, startHarness, type Browser, type Harness } from '../../testing/harness';
 
 let h: Harness;
@@ -38,6 +39,7 @@ async function hold(api: AlcoveApi, callCode: string, words: string, during?: ()
   if (!end) throw new Error('the organizer’s leave ended nothing');
   const noteId = end.pendingNoteId ?? '';
   for await (const p of api.notes.progress(noteId)) if (p.ready) break;
+  await acceptNoteSuggestions(api, noteId);
   return { noteId, meetingId: end.meetingId };
 }
 /** Joins a call by its code and leaves it again: a call with notes on, in which nothing was said. */

@@ -1,3 +1,4 @@
+import { registerTimerPresetRoutes } from './timer-routes';
 import { InstantCallInputSchema, RingAnswerBodySchema } from '@alcove/api';
 import { Hono } from 'hono';
 import { notFound } from '../../errors';
@@ -11,6 +12,7 @@ import type { HttpRuntime } from '../../http/runtime';
 
 
 export function registerCallOwnerRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
+  registerTimerPresetRoutes(app);
   const { d, stopping } = runtime;
   const { makeLimiter, ringStreamLimiter, ringAnswerLimiter } = runtime.limits;
 

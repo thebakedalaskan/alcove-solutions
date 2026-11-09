@@ -1,3 +1,4 @@
+import { CallTimerSequenceSchema } from './timers';
 import { PersonSchema } from '../identity/people';
 import { SignInProviderSchema } from '../identity/session';
 import { TranscriptLineSchema } from '../notes/transcript';
@@ -10,6 +11,7 @@ import { LiveNotesSchema } from './catchup';
 import { CallCodeSchema } from './entry';
 import { RungSchema } from './rings';
 import { NotesChoicesSchema, NotesSettingSchema } from './settings';
+import { CallAttentionSchema } from './attention';
 import { CallWorkspaceSchema } from './workspace';
 /* ---------- group calls: who's in the call comes from the API; mic, camera and screen are LiveKit's tracks ---------- */
 
@@ -196,7 +198,7 @@ export const CallParticipantSchema = z.object({
   seat: z.string(),
   /** `isOrganizer`: the organizer's connection. Who hosts now is `CallState.host`. */
   person: PersonSchema, isMe: z.boolean(), isOrganizer: z.boolean(),
-  /** A raised hand, which everyone sees. (Mic, camera and screen are LiveKit's tracks, not the server's.) */
+  /** A raised hand visible in your room, or to the host across rooms. (Mic, camera and screen are LiveKit's tracks, not the server's.) */
   hand: z.boolean(),
   /**
    * Whether others may point at and mark what they share: their own choice, kept across their reconnections, on until
@@ -293,6 +295,8 @@ export type CallShare = z.infer<typeof CallShareSchema>;
 
 
 export const CallStateSchema = z.object({
+  revision: z.number().int().nonnegative(),
+  attention: CallAttentionSchema,
   callId: IDSchema,
   meetingId: IDSchema,
   code: z.string(),
@@ -318,10 +322,14 @@ export const CallStateSchema = z.object({
     /** True once notes have been on at any point, so the call produces a note. */
     everOn: z.boolean(),
     noteId: IDSchema.nullable(),
+    /** Server clock start of the current recording segment, including host handoffs. Null before notes begin. */
+    segmentStartedAt: ISODateSchema.nullable().default(null),
     recording: RecordingProgressSchema
   }),
   /** People asking to join, for whoever hosts to let in or turn away; empty for everyone else. */
   waiting: z.array(CallAskerSchema),
+  /** Encrypted chat message IDs read by this person; empty until admitted. */
+  chatRead: z.array(z.string()),
   /** People the organizer rang who aren't in the call, and how each answered; empty for everyone else. */
   ringing: z.array(RungSchema),
   /**
@@ -345,6 +353,7 @@ export const CallStateSchema = z.object({
   workspace: CallWorkspaceSchema,
   /** The board open in the part of the call you're in, as you may know it. Nothing for someone waiting to be let in. */
   board: CallBoardSchema,
+  timerSequence: CallTimerSequenceSchema.nullable().default(null),
   notices: z.array(CallNoticeSchema),
   /**
    * The shares going on now that the server knows of, by whose they are (a participant ID; each person shares one

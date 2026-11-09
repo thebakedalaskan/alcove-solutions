@@ -1,9 +1,9 @@
-import { ActionPatchSchema, ActionProposalSchema, AskBodySchema, DecisionPatchSchema, DecisionProposalSchema, LinePatchSchema, NoteKindSchema, QuestionPatchSchema, RevisitPatchSchema, RewriteBodySchema, SeriesAskBodySchema, ShareInputSchema, PersonalEditSchema, PersonalInputSchema, PromoteBodySchema } from '@alcove/api';
+import { FollowUpReviewSchema, ActionPatchSchema, ActionProposalSchema, AskBodySchema, DecisionPatchSchema, DecisionProposalSchema, LinePatchSchema, NoteKindSchema, QuestionPatchSchema, RevisitPatchSchema, RewriteBodySchema, SeriesAskBodySchema, ShareInputSchema, PersonalEditSchema, PersonalInputSchema, PromoteBodySchema } from '@alcove/api';
 import { Hono, type Context } from 'hono';
 import { stream } from 'hono/streaming';
 import { z } from 'zod';
 import { NotFoundError } from '../../errors';
-import { log } from '../../log';
+import { currentLogContext, log } from '../../log';
 import * as screens from '../recordings/screens';
 import * as models from './models';
 import * as additions from './additions';
@@ -95,13 +95,31 @@ export function registerNoteRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
     }
     const partial = range !== null;
     const data = v.data;
+    // Read once before returning: failures before bytes leave are ordinary request errors.
+    const first = await data.next();
+    const vlog = rlog.child({ ...currentLogContext(), noteId: c.req.param('id'), shareId: share, segment: segment.data });
+    const gone = c.req.raw.signal;
+    let cancelled = false;
+    const stop = () => { void data.return(undefined).catch((e: unknown) => vlog.debug('replay closed after the listener left', { err: e })); };
+    if (gone.aborted) stop(); else gone.addEventListener('abort', stop, { once: true });
     const out = new ReadableStream<Uint8Array>({
+      start(ctl) { if (first.done) { gone.removeEventListener('abort', stop); ctl.close(); } else ctl.enqueue(first.value.slice()); },
       async pull(ctl) {
-        const next = await data.next();
-        if (next.done) ctl.close(); else ctl.enqueue(next.value.slice());
+        try {
+          const next = await data.next();
+          if (cancelled) return;
+          if (next.done) { gone.removeEventListener('abort', stop); ctl.close(); } else ctl.enqueue(next.value.slice());
+        } catch (e) {
+          gone.removeEventListener('abort', stop);
+          if (cancelled || gone.aborted) { vlog.debug('replay read failed after the listener left', { err: e }); if (!cancelled) ctl.close(); return; }
+          vlog.error('shared screen replay stopped partway through', { err: e });
+          // The Node adapter must have sent the first bytes before it sees a broken stream.
+          await new Promise((resolve) => setTimeout(resolve, 5));
+          ctl.error(e);
+        }
       },
-      async cancel() { await data.return(undefined); }
-    });
+      cancel() { cancelled = true; gone.removeEventListener('abort', stop); stop(); }
+    }, { highWaterMark: 0 });
     return new Response(out, {
       status: partial ? 206 : 200,
       headers: { ...headers, 'content-type': v.mimeType, 'content-length': String(v.end - v.start + 1), ...(partial ? { 'content-range': `bytes ${v.start}-${v.end}/${v.total}` } : {}) }
@@ -120,6 +138,8 @@ export function registerNoteRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
   const changing = (c: Context<Env>) => { const o = c.get('owner'); noteChangeLimiter(o.ownerId, 'note-change'); return o; };
 
   app.post('/v1/notes/:id/decisions', async (c) => c.json(await notes.proposeDecision(changing(c), c.req.param('id'), await body(c, DecisionProposalSchema))));
+
+  app.post('/v1/notes/:id/actions/review', async (c) => c.json(await notes.reviewAction(changing(c), c.req.param('id'), await body(c, FollowUpReviewSchema))));
 
   app.post('/v1/notes/:id/actions', async (c) => c.json(await notes.proposeAction(changing(c), c.req.param('id'), await body(c, ActionProposalSchema))));
 

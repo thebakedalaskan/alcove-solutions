@@ -301,6 +301,14 @@ order, and nothing a message carries can stop it: anything unreadable is skipped
   posts into a room they're not in. The sender comes from MLS (the message's sender leaf and signature), not from
   the text. A message that can't be sent after a few tries, or whose sender moved before it went out, is taken
   back, and the sender is told. Messages are at most 4,000 characters.
+- **Chat mentions** are selected MLS identities and UTF-16 spans inside that same encrypted payload. The sender and
+  recipient validate the spans and the destination's MLS membership; a mention never grants access to a room. Older
+  encrypted messages without `mentions` open as an empty list. `read-chat` carries only opaque `generation:seq` message
+  IDs, stored in the existing sealed call state by the checked person's seat (the organizer has one stable seat).
+  Only that viewer receives their `chatRead` list. Waiting/removed callers cannot write receipts, and message IDs must
+  belong to this owner's call log. Older sealed call records default missing `chatRead` to `{}`; no migration or
+  encryption-header change is needed. Receipts live as long as the call, so handled mentions cannot reappear after an
+  arbitrary receipt limit.
 - **Reactions** are a second kind of payload inside the same MLS application message as chat, so the API sees
   nothing new: the same relay, the same sender check, and the same rate limit as a chat message. A reaction names a
   message by its place in the log, `generation:seq`, and an emoji (one of eight, by name; the wire never carries a
@@ -576,6 +584,12 @@ Code: `apps/web/src/features/call/screen-sharing/screenRecord.ts` (the recorder)
   call's sealed state (`screenHistory`); the card, the join page and someone waiting see it without a name. The
   call remembers its latest 200 shares (whose, kept or not, when each started and ended), dropping the oldest
   ended ones first.
+- **Calls already running at deployment.** The previous release's sealed `notes.screens` history and ended-share
+  boundaries are read into `notes.frameCapture` (default `null` for other calls), so a save of a still-live call
+  preserves the frames it already captured. At call end, `recordings/storedFrames.ts` places those existing
+  `screen_frames` on the recording timeline before the notes are queued. The writer reads those frames alongside
+  any video captured after deployment; their original share-end, capture-stop and pause boundaries still apply.
+  Record keys, headers and frame rows remain the same, and the removed frame-upload API stays removed.
 - **Which model reads them.** The same model that writes the notes. The organizer chooses on the capture panel
   (**Notes written by**, `{type: "model", model}`, the organizer's only, `null` for the default model), starting
   from their default in Settings (`Preferences.model`). It is kept in the call's state (`notes.model`) and shown
@@ -1268,6 +1282,12 @@ call ID), when it started, whether it's over, and its note's ID once it is (`Sto
   shared. A chosen home's people are its own. A failure is logged, and tried again by the next change or the next call.
 - **Like any folder** otherwise: it can be renamed, moved and sent to Trash. A copy of it is a plain folder.
 
+## Presenter timer sequences
+
+Calls have a host-controlled sequence of named presenter slots, separate from any board or breakout-room timer.
+The durable clock, host permissions, concurrent commands, reusable presets and upgrade behavior are documented in
+[Presenter timer sequences](presenter-timers.md).
+
 ## A board in a call
 
 A board is a workspace item of kind `board`: what's on it, who can open it and how it's deleted are the workspace's. What's the
@@ -1811,11 +1831,23 @@ steps (`ShareMenu.tsx`); and the call's keys (`KeysSheet.tsx`, from `session/use
   a message goes ("Message Design") while rooms are open. It's off until the browser holds its part's keys (and
   while it's moving), takes up to 4,000 characters, says when there was chat here it can't read, and gives back a
   message that couldn't be sent.
+  Typing @ offers current room members by stable identity, with keyboard selection and clear recipient chips. Chat
+  highlights selected names and offers Open mention for the first unread addressed message. Only an addressed span
+  actually visible in a focused, visible Chat panel writes a read receipt; opening a background tab's panel does not.
   Under a message, `Reactions` shows each emoji with how many used it, yours marked; pressing one adds yours or takes
   it back, and its tooltip lists who reacted. Hovering a message (or focusing it) shows `ReactionAdd`. Your own
   message can't be reacted to until it has gone out (`sending`). If a reaction can't be sent it's reverted and the toast
   says "Your reaction wasn't sent. Try again." The stand-in call in Storybook folds reactions the same way (`react`).
 - **Spotlight** goes through the server and can name anyone in the call. It leads on everyone's stage.
+- **Tab attention** (`features/shell/TabAttention.tsx`) needs no OS notification permission: authorized unread document
+  and chat mentions use a horizon circle, and the current host's pending admissions use a rose square with priority.
+  Counts over nine show +. The Alcove mark stays unchanged underneath. Each call publishes bounded generic counts
+  to sibling tabs, without content or join tokens; a live browser lock keeps a background tab's projection valid when
+  its timers are throttled, and abandoned publishers expire. Current call authorization, account changes and sign-out
+  clear projections. Document notices are read through account-keyed queries in every tab; a read in another tab
+  invalidates them, and periodic background reads reconcile other devices and permissions. Focus alone never handles
+  admission. The root renders a still PNG from the design-system icon and restores the original favicon on clear.
+  Optional chat notifications follow Tagged in Settings and always use a generic title and body, without previews.
 - **The shell** (`layout/`) has fixed places, each with one job, and nothing in it is dragged, torn off or rearranged:
   what's open is always in the middle, and your side always on the right.
   - *The top bar* (`TopBar.tsx`). On the left, the title, the clock, the notes sign, the shield, Reconnecting, and, when two
@@ -2318,6 +2350,14 @@ the coordinates). Your own share has none of this: you have the original.
   into a breakout room; a 6K share held still at 4K; phone and wide stages, keyboard only and reduced motion; and memory
   over ten minutes of a share that changed every frame, which stayed flat once 30 pictures were kept.
 
+## Floating call
+
+The running call can expose a compact Document Picture-in-Picture presentation with the same controls and media ownership.
+Its lifecycle, automatic-opening capability, attention scope and verification requirements are documented in
+[Floating call](floating-call.md). The compact view shows a generic Chat attention count, including unread room-chat mentions,
+and returns to the full call for exact-message navigation and reading. The full call's mention indicators use the person's
+read receipts from the sealed call state.
+
 ## Room recordings
 
 `POST /v1/recordings` creates a private note (`kind: room`, nobody invited) and a recording. In the app, Record
@@ -2447,7 +2487,8 @@ uploads), Alcove is asked who's signed in (`GET /v1/session`): only the account 
 - `getUserMedia` with echo cancellation and noise suppression; camera off releases the camera. Noise
   reduction can be switched from the microphone menu (`applyConstraints` on the live track, so the recording
   and transcript carry on).
-- **Backgrounds** (`backdrop.ts`, `backgrounds.ts`, picked in the camera's menu and before joining): none, blur,
+- **Backgrounds** (`media/backgrounds`, picked in the camera's menu and before joining): Off, mild/strong blur,
+  three stable solid colors (Slate, Sand, Rose, from `CAMERA_COLORS` in `@alcove/ui`, shared with their swatches and never changed by theme),
   three of Alcove's pictures (balloons, beach, office; drawn in `packages/ui/src/backgrounds`), or up to six of
   your own. Alcove's matte (`matte.ts`, drawn by `matteGl.ts`) runs MediaPipe's multiclass selfie segmenter
   (256×256, which counts hair as the person) on this device and LiveKit's `ProcessorWrapper` (`@livekit/track-processors`) makes a new track of what
@@ -2460,17 +2501,29 @@ uploads), Alcove is asked who's signed in (`GET /v1/session`): only the account 
   processor before it's put in, so what's behind someone never goes out for a frame; if the background can't be
   drawn the camera turns off and says so. A failure while processing frames discards those frames and turns the
   camera off too: the unprocessed camera is never a fallback. Turning the camera off or leaving while the model
-  loads stops its input and output at once; the processor stays owned until initialization settles, then is destroyed.
-  The matte's code and its 16 MB model load only once someone has a background (the service worker doesn't keep
-  them), and the
+  loads stops its input and output at once, closes the transformer, and releases the media queue. Late initialization and
+  image/model results are fenced and disposed. A download or update stalled for 15 seconds fails closed too, without
+  blocking a later explicit Off choice or camera restart. WebGL context loss is a processing failure.
+  Support detection loads the processing code without a camera; the 16 MB model loads only when an effect is actually used
+  (the service worker doesn't keep either), and the
   model (`public/mediapipe`) and its WebAssembly (served by a plugin in `vite.config.ts`, the version of
   `@mediapipe/tasks-vision` the app imports) come from Alcove's own origin: nothing is fetched elsewhere, and the policy allows
   `'wasm-unsafe-eval'` for it. The choice is remembered with the devices (`background` in `alcove.devices`; a
-  browser that kept `blur: true` from before keeps blur). Pictures of your own are made into 1920×1080 JPEGs and
+  browser that kept `blur: true`, or a blur without strength, keeps strong blur). Pictures of your own are made into 1920×1080 JPEGs and
   kept sealed in this browser for the account ([Privacy › On this device](privacy-keys-and-sessions.md#on-this-device));
-  one that isn't here for the account using the camera shows blur instead, and a guest has none. Where the
-  browser can't do it (no WebGL2, or no way to make a track from frames) there's no background choice. A background
-  remembered from before keeps the camera off there; choosing None explicitly clears it, then the camera can be turned on.
+  a missing/inaccessible picture turns the camera off, and a guest has none. Replacement validates, prepares and seals a new
+  picture before replacing the original atomically, even at the six-picture limit; failures keep the original. A fresh
+  storage revision invalidates in-flight reads in other tabs. Removing the active picture deliberately selects strong blur.
+  Where the browser can't do it (no WebGL2, or no way to make a track from frames), Background explains that and offers
+  Choose Off. A remembered effect keeps the camera off there; choosing Off clears it without starting the camera.
+- **Effect processing budget** (`media/backgrounds/frameBudget.ts`): camera pixels are capped to a 1920-pixel long edge
+  before GL upload; balanced caps it to 960 (540p landscape) at up to 20 fps, light to 640 (360p) at up to 12 fps.
+  Full quality caps at 30 fps. Two slow two-second measurement windows lower one tier; eight fast windows restore one,
+  preventing rapid oscillation. Expensive frames leave equal time for the rest of the call before another frame is processed.
+  Skipped frames are closed without enqueueing anything, leaving the last safe processed frame; there is no raw passthrough.
+  Blur spread scales with output resolution so its selected strength stays the same. LocalMedia announces changes and the
+  picker keeps the reduced-quality status visible. No performance or effect preference goes to another service.
+  Storybook serves the same installed WASM and model and exercises the actual pipeline with its drawn synthetic camera.
 - The microphone, camera and speaker chosen last time are asked for first (`deviceId: { ideal }`). When one
   isn't plugged in, the browser's default is used and pre-join says so. Choices live in `localStorage`
   (`alcove.devices`, parsed with `DevicePrefsSchema`) in this browser only; nothing about devices is sent.
@@ -2603,3 +2656,7 @@ never touches the encrypted recording.
   10 seconds after LiveKit notices), nothing is captured; the notes don't mark that stretch as a gap yet.
 - **A room committed by one of its own members**, so that whoever hosts holds a breakout room's keys only while in it
   (Zoom's model): each group's committer would be one of its own people, rather than the host's browser for all.
+
+## Call sounds
+
+Short call cues, their audience, output isolation and preference upgrades are documented in [Call sounds](call-sounds.md).

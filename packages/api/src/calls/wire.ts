@@ -1,3 +1,4 @@
+import { FollowUpCreateSchema, FollowUpPatchSchema, FollowUpReviewSchema } from '../notes/follow-ups';
 import { isTimeZone } from '../meetings/schema';
 import { ModelIdSchema } from '../notes/models';
 import { AskBodySchema } from '../notes/wire';
@@ -9,11 +10,14 @@ import { BoardNewSchema, BoardObjectIdSchema, BoardSavedSchema, BoardTimerMinute
 import { CaptionLanguageSchema } from './captions';
 import { CaptureDevicePartSchema } from './capture';
 import { CatchUpRangeSchema } from './catchup';
+import { CallFeedbackKindSchema, CallQuestionStatusSchema } from './attention';
 import { RingReplySchema } from './rings';
 import { CallPlaceSchema } from './state';
 import { PlayMediaSchema, PlayPositionSchema, PresentSectionSchema, PresentStartSchema } from './workspace';
 /** One state change in a call, sent as POST /calls/:id/actions. The server answers with the new CallState. */
 const CallStepSchema = z.discriminatedUnion('type', [
+  /** Opaque encrypted-log IDs this person has read; never chat text or another person's read state. */
+  z.object({ type: z.literal('read-chat'), messages: z.array(z.string().min(1).max(128).regex(/^\d+:\d+$/)).max(200) }),
   z.object({ type: z.literal('notes'), on: z.boolean() }),
   /** The organizer holds every kind of capture, while notes are on, until they resume. */
   z.object({ type: z.literal('pause') }),
@@ -25,16 +29,25 @@ const CallStepSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('decline-notes'), requestId: z.string().min(1).max(64) }),
   /** The host's browser says what it can't capture now (none, when it can again): everyone sees it, so nobody is told they're captured when they aren't. */
   z.object({ type: z.literal('unavailable'), parts: z.array(CaptureDevicePartSchema).max(2) }),
-  /** The organizer chooses the model for the notes (an ID from `models.list()`), or the default model (null). */
+  /** The organizer chooses the model for the notes (an ID from models.list()), or the default model (null). */
   z.object({ type: z.literal('model'), model: ModelIdSchema.nullable() }),
-  /** Anyone in the call: a raised hand, which everyone sees. */
-  z.object({ type: z.literal('hand'), up: z.boolean() }),
+  /** Anyone in the call: a raised hand for their room and the host. Every attention action binds its expected room. */
+  z.object({ type: z.literal('hand'), place: CallPlaceSchema, up: z.boolean() }),
+  z.object({ type: z.literal('hand-lower'), place: CallPlaceSchema, entryId: IDSchema.min(1).max(64) }),
+  z.object({ type: z.literal('hands-clear'), place: CallPlaceSchema }),
+  z.object({ type: z.literal('question-post'), place: CallPlaceSchema, id: IDSchema.min(1).max(64), text: oneLine(1000) }),
+  z.object({ type: z.literal('question-vote'), place: CallPlaceSchema, id: IDSchema.min(1).max(64), on: z.boolean() }),
+  z.object({ type: z.literal('question-resolve'), place: CallPlaceSchema, id: IDSchema.min(1).max(64), status: CallQuestionStatusSchema }),
+  z.object({ type: z.literal('question-pin'), place: CallPlaceSchema, id: IDSchema.min(1).max(64).nullable() }),
+  z.object({ type: z.literal('feedback'), place: CallPlaceSchema, kind: CallFeedbackKindSchema.nullable() }),
   /** Anyone in the call: whether others may point at and mark what they share. On until they turn it off. */
   z.object({ type: z.literal('others-point'), on: z.boolean() }),
   /** Anyone in the call who gets the notes: ticks a follow-up of the live notes of the part of the call they're in, or takes the tick back. Done for everyone there. */
   z.object({ type: z.literal('follow-up'), id: z.string().min(1).max(64), done: z.boolean() }),
   /** Anyone in the call who gets the notes: adds a follow-up nobody said to the part of the call they're in, in their own words, for themselves. Shared and ticked like the rest, and it goes into the note. */
-  z.object({ type: z.literal('follow-up-add'), text: oneLine(300) }),
+  z.object({ type: z.literal('follow-up-add'), input: FollowUpCreateSchema }),
+  z.object({ type: z.literal('follow-up-edit'), id: IDSchema, patch: FollowUpPatchSchema }),
+  z.object({ type: z.literal('follow-up-review'), review: FollowUpReviewSchema }),
   /** The organizer: whether anyone may point at and mark shared screens in this call. On until they turn it off. */
   z.object({ type: z.literal('pointing'), on: z.boolean() }),
   /**
@@ -190,6 +203,9 @@ export const CallCommitBodySchema = z.object({
 
 /** An MLS application message (chat), from someone in the group of the part of the call they're in. */
 export const CallMessageBodySchema = z.object({ generation: z.number().int().nonnegative(), group: CallPlaceSchema, epoch: z.number().int().nonnegative(), message: Mls(65_536) });
+/** Canonical log position of this exact accepted ciphertext, even when its sender moves before reading the log. */
+export const CallMessageReceiptSchema = z.object({ sent: z.literal(true), generation: z.number().int().nonnegative(), seq: z.number().int().positive() });
+export type CallMessageReceipt = z.infer<typeof CallMessageReceiptSchema>;
 
 /** A fresh key package from someone already in the call who's on their way into a group: a new generation (the connection that hosts changed), or another part of the call. */
 export const CallKeyPackageBodySchema = z.object({ generation: z.number().int().nonnegative(), keyPackage: Mls(8192) });

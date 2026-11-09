@@ -15,7 +15,7 @@ import { PinNote, ShareNote } from '~/features/notes/share';
 import { weeklyLabel } from '~/features/series/cards';
 import { sameEmail, spokenName } from '~/lib/people';
 import { isUnencrypted, unencryptedLine } from '~/lib/aiModels';
-import { q, useAiModels, useDeleteNote, useUpdateAction, useUpdateDecision } from '~/lib/queries';
+import { q, useAiModels, useDeleteNote, usePendingActions, useUpdateAction, useUpdateDecision } from '~/lib/queries';
 import { daysFromToday, hm, hoursAndMinutes, noteDay, shortDay } from '~/lib/time';
 import { capital, plural } from '~/lib/words';
 import { MomentChip, byTime, howOf, noSummary, othersIn, type Said } from './parts';
@@ -214,6 +214,7 @@ function Written({ note, me, short }: { note: Note; me: string | undefined; shor
   const decide = useUpdateDecision();
   const act = useUpdateAction();
   const models = useAiModels();
+  const pending = usePendingActions();
   const reader = useNoteReader()(note.received?.role ?? 'organizer');
   /* What you said here wasn't decided stays in place, saying so, with Undo, until you pick another note. */
   const [touched, setTouched] = useState<ReadonlySet<string>>(new Set());
@@ -251,7 +252,7 @@ function Written({ note, me, short }: { note: Note; me: string | undefined; shor
       )}
       {note.actions.length > 0 && (
         <section className="nt-sec" aria-label="Follow-ups">
-          {note.actions.slice(0, FOLLOW_UPS).map((a) => <FollowUp key={a.id} a={a} note={note} me={me} reader={reader} onTick={(x, done) => void tick(x, done)} />)}
+          {note.actions.slice(0, FOLLOW_UPS).map((a) => <FollowUp key={a.id} a={a} note={note} me={me} reader={reader} syncing={pending.has(`${note.id}:${a.id}`)} onTick={(x, done) => void tick(x, done)} />)}
           {more(note.actions.length - FOLLOW_UPS, note.actions.length - FOLLOW_UPS === 1 ? 'follow-up' : 'follow-ups')}
         </section>
       )}
@@ -310,15 +311,15 @@ function DecisionRow({ d, note, me, reader, busy, onChange }: { d: NoteDecision;
 }
 
 /** A follow-up, ticked off where it sits, with when it's due or, when it's someone else's, whose it is. */
-function FollowUp({ a, note, me, reader, onTick }: { a: ActionItem; note: Note; me: string | undefined; reader: NoteReader; onTick: (a: ActionItem, done: boolean) => void }) {
+function FollowUp({ a, note, me, reader, syncing, onTick }: { a: ActionItem; note: Note; me: string | undefined; reader: NoteReader; syncing: boolean; onTick: (a: ActionItem, done: boolean) => void }) {
   const theirs = a.owner && spokenName(a.owner, me) !== 'You' ? firstName(a.owner.name) : undefined;
   const whose = theirs ? `${theirs}${a.takenOn ? '' : '?'}` : a.due ?? '';
   return (
-    <div className={cn('nt-f', a.done && 'is-done')}>
+    <div aria-busy={syncing} className={cn('nt-f', a.done && 'is-done')}>
       <Check checked={a.done} disabled={!mayChangeAction(a, reader)} onChange={(on) => onTick(a, on)} label={`Mark done: ${a.text}`} />
       <span className="nt-f-t ac-clamp-1" title={a.text}>{a.text}</span>
       {a.at !== undefined ? <MomentChip noteId={note.id} noteTitle={note.title} at={a.at} /> : <span />}
-      <span className="nt-f-d ac-clamp-1" title={theirs ? `${a.takenOn ? 'Took it on' : 'Suggested. Hasn’t taken it on yet'}${a.due ? `, ${a.due}` : ''}` : a.due}>{whose}</span>
+      <span className="nt-f-d ac-clamp-1" role={syncing ? 'status' : undefined} title={theirs ? `${a.takenOn ? 'Took it on' : 'Suggested. Hasn’t taken it on yet'}${a.due ? `, ${a.due}` : ''}` : a.due}>{syncing ? 'Saving…' : whose}</span>
     </div>
   );
 }

@@ -100,7 +100,7 @@ export const ServerRefuses: PageStory = {
       await screen.findByRole('switch', { name: 'Show my other meetings on Home', checked: false }, SOON);
     });
     await step('Refused: it goes back, and a toast says why. No Saved', async () => {
-      await screen.findByText('Couldn’t reach Alcove, so Show my other meetings on Home is back as it was.', {}, SOON);
+      await within(await row('Show my other meetings on Home')).findByText('Couldn’t confirm', {}, SOON);
       await screen.findByRole('switch', { name: 'Show my other meetings on Home', checked: true }, SOON);
     });
   }
@@ -216,11 +216,11 @@ export const TurnOnNotifications: PageStory = {
   name: '11.11 Turn on browser notifications',
   ...page('/settings#notifications', 'busy'),
   play: async ({ userEvent, step }) => {
-    await step('The choices wait, greyed out. Click Turn on', async () => {
-      await userEvent.click(within(await row('Browser notifications')).getByRole('button', { name: 'Turn on' }));
+    await step('The choices wait, greyed out. Click Enable browser notifications', async () => {
+      await userEvent.click(within(await row('Browser notifications')).getByRole('button', { name: 'Enable browser notifications' }));
     });
     await step('The browser asks, only now. Allow', async () => {
-      await within(await row('Browser notifications')).findByText('Allowed', {}, SOON);
+      await within(await row('Browser notifications')).findByRole('switch', { name: 'Browser notifications', checked: true }, SOON);
     });
     await step('Allowed. Focus stays on the row and the choices wake up', async () => {
       await pressable('button', '5 min');
@@ -241,12 +241,12 @@ export const NotificationsBlocked: PageStory = {
   beforeEach: () => { openBrowser({ answer: 'denied' }); },
   play: async ({ userEvent, step }) => {
     await step('At the same question, Block', async () => {
-      await userEvent.click(within(await row('Browser notifications')).getByRole('button', { name: 'Turn on' }));
+      await userEvent.click(within(await row('Browser notifications')).getByRole('button', { name: 'Enable browser notifications' }));
     });
     await step('The row says where to allow them, and the choices stay as they are', async () => {
       const notifications = await row('Browser notifications');
       await within(notifications).findByText('Blocked', {}, SOON);
-      await within(notifications).findByText('Allow notifications for this site in your browser’s settings.');
+      await within(notifications).findByText(/Blocked or revoked in this browser/);
     });
   }
 };
@@ -477,7 +477,7 @@ export const FirstDay: PageStory = {
     });
     await step('Nothing asks the browser for anything until you press', async () => {
       await jump('Notifications');
-      await within(await row('Browser notifications')).findByRole('button', { name: 'Turn on' }, SOON);
+      await within(await row('Browser notifications')).findByRole('button', { name: 'Enable browser notifications' }, SOON);
     });
     await step('All of your minutes, with the sun at the end of the line', async () => {
       await jump('Plan and credits');
@@ -485,3 +485,44 @@ export const FirstDay: PageStory = {
     });
   }
 };
+
+/** Sound preferences save independently of notification permissions. */
+export const ChooseSounds: PageStory = {
+  name: '11.20 Choose call sounds',
+  ...page('/settings#sounds', 'busy'),
+  play: async ({ userEvent, step }) => {
+    await step('Choose quiet mode and preview the microphone confirmation', async () => {
+      await userEvent.click(await screen.findByRole('switch', { name: 'Quiet mode' }, LATER));
+      await userEvent.click(await screen.findByRole('button', { name: 'Preview sound' }, LATER));
+    });
+  }
+};
+
+const repeatedChoices = outage(() => {
+  const write = standIn.account.updatePreferences;
+  let n = 0;
+  return swap(standIn.account, 'updatePreferences', async (patch) => {
+    const first = ++n === 1;
+    await pause(first ? 1200 : 200);
+    if (first) throw unreachable();
+    return write(patch);
+  });
+});
+export const RapidRepeatedChoices: PageStory = {
+  name: '11.23 Repeated choices while an older change fails',
+  ...page('/settings#notes', 'busy'),
+  beforeEach: repeatedChoices.begin,
+  play: async ({ userEvent, step }) => {
+    await step('Choose Detailed, Short, then Detailed while the first write is still pending', async () => {
+      const summary = within(await row('Summary'));
+      await userEvent.click(summary.getByRole('button', { name: 'Detailed' }));
+      await userEvent.click(summary.getByRole('button', { name: 'Short' }));
+      await userEvent.click(summary.getByRole('button', { name: 'Detailed' }));
+      await summary.findByText('Saving…', {}, SOON);
+    });
+    await step('The old failure leaves the last choice in place; Saved names only that last confirmed choice', async () => {
+      await within(await row('Summary')).findByText('Saved for new notes', {}, LATER);
+    });
+  }
+};
+export const RapidRepeatedChoicesPhoneNight: PageStory = { ...RapidRepeatedChoices, globals: { viewport: { value: 'phone' }, theme: 'dark' } };

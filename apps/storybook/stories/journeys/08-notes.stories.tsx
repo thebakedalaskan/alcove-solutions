@@ -12,7 +12,8 @@ import { call, changer, writeNote, type NoteSpec } from '../../src/world/build';
 import { iso } from '../../src/world/clock';
 import { ART, ELENA, INES, KOFI, MAYA, NADIA, OMAR, PRIYA, THEO } from '../../src/world/people';
 import type { World } from '../../src/world';
-import { page, pages, type PageArgs, type PageStory } from '../../src/page';
+import { FOLLOW_UP_NEW, FOLLOW_UP_NOTE, FOLLOW_UP_TASK, withFollowUpProposals } from '../../src/world/follow-ups';
+import { changing, page, pages, type PageArgs, type PageStory } from '../../src/page';
 import { away, before, first, holding, LAPTOP, LATER, nth, outage, pause, pressable, reachable, SOON, swap, unreachable } from './play';
 
 const meta = { title: 'Journeys/8 Notes', ...pages, globals: LAPTOP } satisfies Meta<PageArgs>;
@@ -576,7 +577,7 @@ export const AddWhatTheNotesMissed: PageStory = {
     await step('The plus on a transcript line starts one from what was said there', async () => {
       await userEvent.click(await nth(screen.findAllByRole('button', { name: 'Add to the notes from this line' }, SOON), 2));
       await userEvent.click(within(await screen.findByRole('dialog', { name: 'Add to the notes from this line' }, SOON)).getByRole('button', { name: 'Add a follow-up' }));
-      await screen.findByRole('textbox', { name: /follow-up/i }, SOON);
+      await screen.findByRole('textbox', { name: 'What needs doing' }, SOON);
     });
   }
 };
@@ -938,13 +939,13 @@ const ROOMS: NoteRoom[] = [
   {
     id: 'room-support', name: 'Support handover', people: [speaker(PRIYA), speaker(MAYA)], from: 12 * 60 + 2, to: 16 * 60 + 24,
     summary: 'Support is happy as long as the help article comes first, and Priya sends it on Friday.',
-    decisions: [], questions: [], actions: [], chapters: [], gaps: [],
+    decisions: [], questions: [], actions: [], suggestions: [], chapters: [], gaps: [],
     transcript: [
       { id: 'rs-l1', at: 12 * 60 + 30, speaker: speaker(MAYA), room: { id: 'room-support', name: 'Support handover' }, text: 'Support only asked for one thing: the article before the flag.' },
       { id: 'rs-l2', at: 13 * 60 + 10, speaker: speaker(PRIYA), room: { id: 'room-support', name: 'Support handover' }, text: 'Then it goes to them on Friday, a week before.' }
     ]
   },
-  { id: 'room-rollout', name: 'Rollout', people: [speaker(ART), speaker(KOFI)], from: 12 * 60 + 2, to: 16 * 60 + 24, summary: '', decisions: [], questions: [], actions: [], chapters: [], gaps: [], transcript: [] }
+  { id: 'room-rollout', name: 'Rollout', people: [speaker(ART), speaker(KOFI)], from: 12 * 60 + 2, to: 16 * 60 + 24, summary: '', decisions: [], questions: [], actions: [], suggestions: [], chapters: [], gaps: [], transcript: [] }
 ];
 const breakout = before((w) => { noteOf(w, 'n2').rooms = structuredClone(ROOMS); });
 export const BreakoutRooms: PageStory = {
@@ -1014,6 +1015,64 @@ export const FirstDay: PageStory = {
     });
     await step('What it decided, what’s still open and the follow-ups, as your notes will have them', async () => {
       await screen.findByRole('heading', { name: /^Follow-ups/ }, SOON);
+    });
+  }
+};
+
+
+/* ---------- AI proposals stay separate from actual follow-ups ---------- */
+
+const reviewBatch = () => screen.findByRole('region', { name: 'Suggestions from the call' }, SOON);
+
+export const ReviewAfterTheCall: PageStory = {
+  name: '8.44 Review suggestions after the call',
+  ...page(`/notes/${FOLLOW_UP_NOTE}`, 'busy', { beforeEach: changing(withFollowUpProposals) }),
+  play: async ({ userEvent, step }) => {
+    await step('Open optional suggestions below the actual checklist, whenever ready', async () => {
+      await userEvent.click(await screen.findByRole('button', { name: '2 suggestions from the call' }, SOON));
+    });
+    await step('Add the handover as an actual task. Adding it does not say Art will do it', async () => {
+      await userEvent.click(within(await article(FOLLOW_UP_NEW.text)).getByRole('button', { name: 'Add' }));
+      await within(await reviewBatch()).findByText('Added', {}, SOON);
+    });
+    await step('Close review, then choose I’ll do it separately to accept responsibility', async () => {
+      await userEvent.click(within(await reviewBatch()).getByRole('button', { name: 'Close suggestions' }));
+      await userEvent.click(within(await article(FOLLOW_UP_NEW.text)).getByRole('button', { name: 'I’ll do it' }));
+    });
+  }
+};
+
+export const ApplyAProposedChange: PageStory = {
+  name: '8.45 Apply a proposed change',
+  ...page(`/notes/${FOLLOW_UP_NOTE}`, 'busy', { beforeEach: changing(withFollowUpProposals) }),
+  play: async ({ userEvent, step }) => {
+    await step('Open review. The proposed change shows the current and suggested words, owner and due date', async () => {
+      await userEvent.click(await screen.findByRole('button', { name: '2 suggestions from the call' }, SOON));
+    });
+    await step('Apply change updates the same checklist task. Kofi must agree to the changed commitment', async () => {
+      await userEvent.click(within(await article('Send the reviewed launch checklist')).getByRole('button', { name: 'Apply change' }));
+      await within(await reviewBatch()).findByText('Change applied', {}, SOON);
+    });
+    await step('Dismiss the new handover proposal and keep both resolved rows in place', async () => {
+      await userEvent.click(within(await article(FOLLOW_UP_NEW.text)).getByRole('button', { name: 'Dismiss' }));
+      await within(await reviewBatch()).findByText('Dismissed', {}, SOON);
+    });
+  }
+};
+
+export const ReviewAStaleSuggestion: PageStory = {
+  name: '8.46 Review a stale suggestion',
+  ...page(`/notes/${FOLLOW_UP_NOTE}`, 'busy', { beforeEach: changing(withFollowUpProposals) }),
+  play: async ({ userEvent, step }) => {
+    await step('Open a fixed review batch', async () => {
+      await userEvent.click(await screen.findByRole('button', { name: '2 suggestions from the call' }, SOON));
+    });
+    await step('The actual checklist changes while these earlier proposal words remain on screen', async () => {
+      await standIn.notes.updateAction(FOLLOW_UP_NOTE, FOLLOW_UP_TASK.id, { due: 'Thursday' });
+    });
+    await step('The stale proposal cannot overwrite the newer task', async () => {
+      await userEvent.click(within(await article('Send the reviewed launch checklist')).getByRole('button', { name: 'Apply change' }));
+      await within(await reviewBatch()).findByText('That follow-up changed. Close review and open it again.', {}, SOON);
     });
   }
 };

@@ -5,7 +5,7 @@
  * of, and its menu what backs it and every change to it. Only what `grants.ts` lets the reader do is offered.
  */
 import {
-  isAssignee, isBy, mayAssign, mayChangeAction, mayDecide, mayRewordDecision, proposerOf,
+  isAcceptedFollowUp, isAssignee, isBy, mayAssign, mayChangeAction, mayDecide, mayRewordDecision, proposerOf,
   type ActionItem, type ActionPatch, type Change, type Decision, type DecisionPatch, type NoteAction, type NoteDecision, type NoteEvidence, type NoteQuestion, type NoteReader, type Person, type Question, type QuestionPatch
 } from '@alcove/api';
 import { Avatar, Check, Icon, IconButton, Popover, cn, type IconName } from '@alcove/ui';
@@ -270,5 +270,5 @@ export function FollowUps({ actions, reader, people = [], onToggle, onChange, ..
   actions: NoteAction[]; reader?: NoteReader | undefined; people?: Person[] | undefined;
   onToggle?: ((a: ActionItem, done: boolean) => void) | undefined; onChange?: ((a: ActionItem, patch: ActionPatch) => void) | undefined;
 } & RowProps) {
-  return <>{actions.map((a) => <FollowUpRow key={a.id} a={a} reader={reader} people={people} onToggle={onToggle} onChange={onChange} {...row} />)}</>;
+  return <>{actions.filter(isAcceptedFollowUp).map((a) => <FollowUpRow key={a.id} a={a} reader={reader} people={people} onToggle={onToggle} onChange={onChange} {...row} />)}</>;
 }

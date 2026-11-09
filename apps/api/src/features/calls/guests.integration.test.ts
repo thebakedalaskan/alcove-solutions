@@ -487,21 +487,22 @@ describe('what a guest’s pass reaches', () => {
     const MOVES = ['/v1/moves/claim', '/v1/moves/status', '/v1/moves/ready', '/v1/moves/arrive', '/v1/moves/cancel'];
     // A file's URL is public too: its token says who's asking, and it answers for nobody else, a pass included.
     const PUBLIC = new Set(['/health', '/healthz', '/hooks/livekit', '/v1/telemetry', '/v1/attestation', '/v1/session', '/v1/auth/sign-in', '/v1/auth/google', '/v1/auth/google/callback', '/v1/calls/:code/card', '/v1/calls/:code/join', '/v1/media/:token', '/v1/calls/:code/pick', ...MOVES]);
-    // OAuth discovery is public; protocol endpoints validate their own inputs and credentials, never a call pass.
+    // OAuth discovery and callbacks are public; each validates its own inputs and credentials, never a call pass.
     // Match methods and paths exactly so another endpoint cannot inherit this exception by sharing a prefix.
-    const PUBLIC_AGENT_ROUTES = [
+    const PUBLIC_PROTOCOL_ROUTES = [
       { method: 'GET', path: '/.well-known/oauth-authorization-server', status: 200 },
       { method: 'GET', path: '/.well-known/oauth-protected-resource/mcp', status: 200 },
       { method: 'POST', path: '/oauth/register', status: 400 },
       { method: 'GET', path: '/oauth/authorize', status: 400 },
       { method: 'POST', path: '/oauth/token', status: 400 },
-      { method: 'POST', path: '/oauth/revoke', status: 400 }
+      { method: 'POST', path: '/oauth/revoke', status: 400 },
+      { method: 'GET', path: '/v1/drive/callback', status: 302 }
     ];
     const routeKey = (r: { method: string; path: string }) => `${r.method} ${r.path}`;
-    const publicAgentRoutes = new Set(PUBLIC_AGENT_ROUTES.map(routeKey));
+    const publicProtocolRoutes = new Set(PUBLIC_PROTOCOL_ROUTES.map(routeKey));
     const routeTable = createApp(h.deps).routes;
     const table = routeTable.filter((r) => r.method !== 'ALL');
-    expect(table.filter((r) => publicAgentRoutes.has(routeKey(r))).map(routeKey).sort()).toEqual([...publicAgentRoutes].sort());
+    expect(table.filter((r) => publicProtocolRoutes.has(routeKey(r))).map(routeKey).sort()).toEqual([...publicProtocolRoutes].sort());
     // MCP uses an ALL registration, which the account-route enumeration below intentionally omits.
     expect(routeTable.filter((r) => r.path === '/mcp').map(routeKey)).toEqual(['ALL /mcp']);
     // A pass is nothing to them: without a move's secret, they find no move.
@@ -524,7 +525,7 @@ describe('what a guest’s pass reaches', () => {
       'POST /v1/workspaces/:id/documents/:doc/mentions', 'DELETE /v1/workspaces/:id/mentions/:mention', 'POST /v1/workspaces/:id/ids'
     ]);
     const byPass = (r: { method: string; path: string }) => BY_PASS.has(`${r.method} ${r.path}`);
-    const routes = table.filter((r) => !PUBLIC.has(r.path) && !publicAgentRoutes.has(routeKey(r)) && !r.path.startsWith('/v1/live/calls/') && !byPass(r));
+    const routes = table.filter((r) => !PUBLIC.has(r.path) && !publicProtocolRoutes.has(routeKey(r)) && !r.path.startsWith('/v1/live/calls/') && !byPass(r));
     expect(routes.length).toBeGreaterThan(30);
     const fill = (path: string) => {
       const by = path.startsWith('/v1/meetings/') ? { ...ids, ...meetingIds } : path.startsWith('/v1/series/') ? { ...ids, ...seriesIds } : path.startsWith('/v1/workspaces/') ? { ...ids, ...workspaceIds } : ids;
@@ -532,13 +533,14 @@ describe('what a guest’s pass reaches', () => {
     };
     const send = (method: string, path: string, body = '{}') => {
       const mutating = method !== 'GET';
-      return fetch(`${h.baseUrl}${path}`, { method, headers: { 'x-alcove-call': guest.ticket.pass, origin: ORIGIN, ...(mutating ? { 'content-type': 'application/json' } : {}) }, ...(mutating ? { body } : {}) });
+      return fetch(`${h.baseUrl}${path}`, { method, redirect: 'manual', headers: { 'x-alcove-call': guest.ticket.pass, origin: ORIGIN, ...(mutating ? { 'content-type': 'application/json' } : {}) }, ...(mutating ? { body } : {}) });
     };
-    for (const r of PUBLIC_AGENT_ROUTES) {
+    for (const r of PUBLIC_PROTOCOL_ROUTES) {
       const res = await send(r.method, r.path);
       expect(`${routeKey(r)} → ${res.status}`).toBe(`${routeKey(r)} → ${r.status}`);
       expect(await res.text()).not.toContain('Standup');
       if (r.path === '/oauth/authorize') expect(res.headers.get('location')).toBeNull();
+      if (r.path === '/v1/drive/callback') expect(res.headers.get('location')).toBe(`${ORIGIN}/settings?drive=failed`);
     }
     // Neither a call-pass header nor treating that pass as a bearer authenticates an MCP client.
     const mcpRequest = JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'guest', version: '1.0.0' } } });

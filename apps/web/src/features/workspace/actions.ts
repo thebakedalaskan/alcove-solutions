@@ -36,12 +36,13 @@ const titleModule = () => import('./editor/title');
 export const focusRow = (id: string) => { requestAnimationFrame(() => { document.querySelector<HTMLElement>(`[data-row="${CSS.escape(id)}"] .wt-open`)?.focus(); }); };
 
 export function useTreeActions(input: ActionsInput): TreeActions {
-  const changes = useItemChanges(input.workspaceId, input.pass);
+  const changes = useItemChanges();
   const latest = useRef({ ...input, changes });
   latest.current = { ...input, changes };
 
   return useMemo(() => {
     const s = () => latest.current;
+    const target = (source: ActionsInput) => ({ workspaceId: source.workspaceId, pass: source.pass });
     const failed = (e: unknown) => { s().say(wsToast.failed(errorMessage(e))); };
     /** Shows something new in the list before the stream brings it. */
     const arrived = (item: WorkspaceItem, place: ItemPlace) => { void s().change({ kind: 'add', item, place }, () => Promise.resolve()); };
@@ -51,22 +52,28 @@ export function useTreeActions(input: ActionsInput): TreeActions {
       return { id, kind, name, parent, by: me?.portrait ? { name: me.name, portrait: me.portrait } : null, createdAt: at, editedAt: at, trashedAt: null, trashedBy: null, restricted: false, role: 'edit', call: null };
     };
     /** Makes a document's title say `name`, on the page if it's open, and otherwise opened just for that. */
-    const writeTitle = async (id: string, name: string) => {
+    const writeTitle = async (id: string, name: string, source: ActionsInput) => {
       const { setTitle } = await titleModule();
-      const open = s().openDoc.current;
+      const open = source.openDoc.current;
       if (open?.id === id) { setTitle(open.doc, name); return; }
-      await withDocument(s().workspaceId, id, s().owner, s().pass, (doc) => { setTitle(doc, name); });
+      await withDocument(source.workspaceId, id, source.owner, source.pass, (doc) => { setTitle(doc, name); });
     };
     /** One press, one document or board, however quick the second press. */
     let making = false;
-    const place = (id: string, to: ItemPlace) => s().change({ kind: 'move', id, to }, () => s().changes.move.mutateAsync({ id, to })).catch(failed);
-    const restored = (id: string) => s().change({ kind: 'restore', id }, () => s().changes.restore.mutateAsync(id));
+    const place = (id: string, to: ItemPlace) => {
+      const source = s(); const request = { ...target(source), id, to: { ...to } };
+      return source.change({ kind: 'move', id, to: request.to }, () => source.changes.move.mutateAsync(request)).catch(failed);
+    };
+    const restored = (id: string) => {
+      const source = s(); const request = { ...target(source), id };
+      return source.change({ kind: 'restore', id }, () => source.changes.restore.mutateAsync(request));
+    };
 
     return {
       newDocument: (parent) => {
         if (making) return;
         making = true;
-        s().changes.create.mutateAsync({ kind: 'document', parent }).then(({ id }) => {
+        s().changes.create.mutateAsync({ ...target(s()), input: { kind: 'document', parent } }).then(({ id }) => {
           arrived(made(id, 'document', '', parent), { parent });
           s().justMade.current = id;
           if (parent) s().openFolders([parent]);
@@ -78,7 +85,7 @@ export function useTreeActions(input: ActionsInput): TreeActions {
         making = true;
         const one = files.length === 1 ? files[0] : undefined;
         const name = one ? nameFrom(stemOf(one.name)) : '';
-        s().changes.create.mutateAsync({ kind: 'document', name, parent }).then(({ id }) => {
+        s().changes.create.mutateAsync({ ...target(s()), input: { kind: 'document', name, parent } }).then(({ id }) => {
           arrived(made(id, 'document', name, parent), { parent });
           /* Several files make a document with no name: the caret's in its title, as for a new document. */
           if (!name) s().justMade.current = id;
@@ -91,7 +98,7 @@ export function useTreeActions(input: ActionsInput): TreeActions {
         if (making) return Promise.resolve(null);
         making = true;
         const name = 'Untitled board';
-        return s().changes.create.mutateAsync({ kind: 'board', name, parent }).then(({ id }) => {
+        return s().changes.create.mutateAsync({ ...target(s()), input: { kind: 'board', name, parent } }).then(({ id }) => {
           arrived(made(id, 'board', name, parent), { parent });
           if (parent) s().openFolders([parent]);
           if (!how?.stay) s().go({ kind: 'document', id });
@@ -99,7 +106,7 @@ export function useTreeActions(input: ActionsInput): TreeActions {
         }, (e: unknown) => { failed(e); return null; }).finally(() => { making = false; });
       },
       newFolder: (parent, name) => {
-        s().changes.create.mutateAsync({ kind: 'folder', name, parent }).then(({ id }) => {
+        s().changes.create.mutateAsync({ ...target(s()), input: { kind: 'folder', name, parent } }).then(({ id }) => {
           arrived(made(id, 'folder', name, parent), { parent });
           s().openFolders(parent ? [parent, id] : [id]);
           // Named with Enter, the field's gone and the keyboard with it. Someone who clicked away has what they clicked.
@@ -107,17 +114,21 @@ export function useTreeActions(input: ActionsInput): TreeActions {
         }, failed);
       },
       rename: (id, name) => {
-        const item = s().tree.all.get(id);
+        const source = s();
+        const item = source.tree.all.get(id);
         const to = name.trim();
         if (!item || !to || to === item.name) return;
-        void s().change({ kind: 'name', id, name: to }, () => s().changes.rename.mutateAsync({ id, name: to }))
-          .then(() => (item.kind === 'document' ? writeTitle(id, to) : undefined))
+        const request = { ...target(source), id, name: to };
+        void source.change({ kind: 'name', id, name: to }, () => source.changes.rename.mutateAsync(request))
+          .then(() => (item.kind === 'document' ? writeTitle(id, to, source) : undefined))
           .catch(failed);
       },
       titled: (id, title) => {
+        const source = s();
         const name = nameFrom(title);
         // Offline the title is typed all the same: the page says so, and the list catches up when it's back.
-        void s().change({ kind: 'name', id, name }, () => s().changes.rename.mutateAsync({ id, name })).catch((e: unknown) => { if (errorCode(e) !== 'network') failed(e); });
+        const request = { ...target(source), id, name };
+        void source.change({ kind: 'name', id, name }, () => source.changes.rename.mutateAsync(request)).catch((e: unknown) => { if (errorCode(e) !== 'network') failed(e); });
       },
       move: (id, to) => {
         const { tree, spaceName } = s();
@@ -129,21 +140,24 @@ export function useTreeActions(input: ActionsInput): TreeActions {
         s().say(wsToast.moved(into ? nameOf(into) : spaceName, () => { void place(id, back); }));
       },
       duplicate: (id) => {
-        const item = s().tree.all.get(id);
+        const source = s();
+        const item = source.tree.all.get(id);
         if (!item) return;
         const name = item.name ? `${item.name} copy` : '';
-        s().changes.duplicate.mutateAsync(id).then(({ id: copy }) => {
+        source.changes.duplicate.mutateAsync({ ...target(source), id }).then(({ id: copy }) => {
           arrived(made(copy, item.kind, name, item.parent), { parent: item.parent, after: id });
-          if (name && item.kind === 'document') writeTitle(copy, name).catch(failed);
+          if (name && item.kind === 'document') writeTitle(copy, name, source).catch(failed);
         }, failed);
       },
       trash: (id) => {
-        const { tree, at, me } = s();
+        const source = s();
+        const { tree, at, me } = source;
         const item = tree.all.get(id);
         if (!item) return;
         const here = at.kind === 'document' && isWithin(tree, at.id, id) ? at.id : null;
         const next = here === null ? null : nextDocument(tree, id);
-        void s().change({ kind: 'trash', id, at: new Date().toISOString(), by: me?.name ?? '' }, () => s().changes.trash.mutateAsync(id)).catch(failed);
+        const request = { ...target(source), id };
+        void source.change({ kind: 'trash', id, at: new Date().toISOString(), by: me?.name ?? '' }, () => source.changes.trash.mutateAsync(request)).catch(failed);
         if (here !== null) s().go(next ? { kind: 'document', id: next } : { kind: 'home' }, { replace: true });
         s().say(wsToast.trashed(nameOf(item), () => {
           restored(id).catch(failed);
@@ -154,9 +168,11 @@ export function useTreeActions(input: ActionsInput): TreeActions {
         restored(id).then(() => { s().say(wsToast.restored()); }, failed);
       },
       deleteForever: (id) => {
-        const item = s().tree.all.get(id);
+        const source = s();
+        const item = source.tree.all.get(id);
         if (!item) return;
-        s().change({ kind: 'delete', id }, () => s().changes.deleteForever.mutateAsync(id)).then(() => { s().say(wsToast.deleted(nameOf(item))); }, failed);
+        source.changes.deleteForever.mutateAsync({ ...target(source), id }).then(() => source.change({ kind: 'delete', id }, () => Promise.resolve()))
+          .then(() => { s().say(wsToast.deleted(nameOf(item))); }, failed);
       },
       copyLink: (id, block) => {
         const url = `${location.origin}/drive/${s().workspaceId}/${id}${block ? `#${block}` : ''}`;

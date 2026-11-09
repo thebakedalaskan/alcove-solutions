@@ -32,6 +32,8 @@
 .ws-pane.tree-off .wt { margin-left: calc(-1 * var(--wt-w)); visibility: hidden; transition: margin-left var(--duration-2) var(--ease-out), visibility 0s linear var(--duration-2); }
 .ws-pane.tree-off.list-peek .wt { position: absolute; z-index: 6; left: 0; top: 0; bottom: 0; margin-left: 0; visibility: visible; box-shadow: var(--shadow-3); transition: none; }
 .wt-head { flex: none; display: flex; align-items: center; gap: 2px; height: 52px; padding: 0 8px; }
+.wt-name-save { flex: none; max-width: 76px; font: 500 11px/14px var(--font-sans); color: var(--ink-2); }
+.wt-name-save.is-failed { color: var(--caution); }
 .wt-space { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 8px 0 6px; border-radius: 10px; color: var(--ink-3); transition: background-color var(--duration-1); }
 .wt-space:hover, .wt-space[data-state="open"] { background: var(--sunk); }
 .wt-space.is-edit, .wt-space.is-edit:hover { gap: 8px; background: var(--sunk); padding-right: 8px; }
@@ -476,3 +478,8 @@
   .ws-play .bar { position: absolute; left: 16px; right: 16px; bottom: 0; flex: none; height: 3px; }
   .ws-play .v small, .ws-play .vb { display: none; }
 }
+.wl-todo.is-editing { flex-direction: column; }
+.wl-todo > .ac-icon-btn { flex: none; width: 28px; height: 28px; }
+.wl-compact .wl-todo { font-size: 13.5px; }
+.wl-compact .wl-due { font-size: 12px; }
+.wl-compact .wl-todo .who { font-size: 12px; }

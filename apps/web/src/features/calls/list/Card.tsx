@@ -12,7 +12,7 @@ import { useCopyLink } from '~/features/call/session/links';
 import { log } from '~/lib/log';
 import { callName, sameEmail } from '~/lib/people';
 import { useMyModelUnencrypted } from '~/lib/aiModels';
-import { q, useAnswerCall, useCancelCall, useScheduleCall, useUpdateCall } from '~/lib/queries';
+import { q, useAnswerCall, useCancelCall, usePendingRsvp, useScheduleCall, useUpdateCall } from '~/lib/queries';
 import { hm, shortDay, timeZone } from '~/lib/time';
 import { useTimes } from '../scheduling/availability';
 import { localWeekday } from '../scheduling/times';
@@ -147,6 +147,7 @@ function Summary({ m, back, me, onClose, onOpen, onCancelled }: { m: Meeting; ba
   const cancel = useCancelCall();
   const restore = useScheduleCall();
   const answer = useAnswerCall();
+  const answering = usePendingRsvp(m.id);
   const [asking, setAsking] = useState(false);
   const [scope, setScope] = useState<ChangeScope>('this');
   const [failed, setFailed] = useState<unknown>(null);
@@ -202,7 +203,7 @@ function Summary({ m, back, me, onClose, onOpen, onCancelled }: { m: Meeting; ba
             <IconButton icon="x" label="Close" onClick={onClose} />
           </span>
         </div>
-        {!yours && !offered && <Answer value={m.rsvp} onAnswer={(a) => answer.mutate({ id: m.id, answer: a }, { onError: (e) => toast(errorMessage(e), { icon: 'x' }) })} />}
+        {!yours && !offered && <Answer value={m.rsvp} saving={answering} onAnswer={(a) => { void answer.mutateAsync({ id: m.id, answer: a }).catch((e: unknown) => toast(`Couldn’t confirm your answer. ${errorMessage(e)}`, { icon: 'x' })); }} />}
         <div className="cf-rows" style={{ marginTop: 14 }}>
           <FlowRow icon="people" title={m.guestCount ? `${m.guestCount} invited` : 'Just you'} sub={!m.guestCount ? 'Share the link to bring people in' : picking ? undefined : answersLine(m.rsvps)}
             end={faces.length ? <Faces people={faces} size={24} max={4} /> : undefined} onClick={changeable ? () => onOpen('who') : m.guestCount ? () => onOpen('people') : undefined} />
@@ -239,11 +240,11 @@ function Summary({ m, back, me, onClose, onOpen, onCancelled }: { m: Meeting; ba
 }
 
 /** Are you coming? The organizer sees the answer. */
-function Answer({ value, onAnswer }: { value: Rsvp | null; onAnswer: (a: Rsvp) => void }) {
+function Answer({ value, saving, onAnswer }: { value: Rsvp | null; saving: boolean; onAnswer: (a: Rsvp) => void }) {
   const choices: { value: Rsvp; label: string }[] = [{ value: 'yes', label: 'Yes' }, { value: 'maybe', label: 'Maybe' }, { value: 'no', label: 'No' }];
   return (
     <div className="cf-sumrow">
-      <b>Are you coming?</b>
+      <b>Are you coming?{saving && <small className="cf-answer-state" role="status">Saving…</small>}</b>
       <div className="cf-ans" role="group" aria-label="Are you coming?">
         {choices.map((c) => <button key={c.value} type="button" aria-pressed={value === c.value} onClick={() => onAnswer(c.value)}>{c.label}</button>)}
       </div>

@@ -1,3 +1,5 @@
+import { type FollowUpReview } from './follow-ups';
+import type { DriveCallExports, DriveExportInput, DriveExportJob, DriveFolder, DriveSettings } from './drive';
 import { type ID } from '../shared/ids';
 import { type PersonalApi, type PromoteBody, type PromotionPreview } from './personal';
 import { type NoteProgress } from './progress';
@@ -32,12 +34,13 @@ export interface NotesApi {
    * the same words again adds nothing.
    */
   proposeDecision(noteId: ID, proposal: DecisionProposal): Promise<Note>;
-  /** Adds a follow-up the notes didn't hear, as `proposeDecision` does. It's only a suggestion until whoever it's for takes it on. */
+  /** Adds an actual task in your exact words. The assigned person accepts responsibility separately. */
   proposeAction(noteId: ID, proposal: ActionProposal): Promise<Note>;
   /** Confirms a decision, says it wasn't decided, reopens or rewords it, as far as `grants.ts` lets you. */
   updateDecision(noteId: ID, decisionId: ID, patch: DecisionPatch): Promise<Note>;
   /** Takes on or turns down (the person it's for), gives, rewords, dates or ticks a follow-up, as far as `grants.ts` lets you. */
   updateAction(noteId: ID, actionId: ID, patch: ActionPatch): Promise<Note>;
+  reviewAction(noteId: ID, review: FollowUpReview): Promise<Note>;
   /** Says an open question was answered, opens it again, or rewords it. Anyone who has the notes can. */
   updateQuestion(noteId: ID, questionId: ID, patch: QuestionPatch): Promise<Note>;
   /**
@@ -102,4 +105,18 @@ export interface SeriesApi {
    * calls' dates are read in it, so they're the days the asker sees.
    */
   ask(id: ID, question: string, timeZone: string): AsyncIterable<SeriesAnswerPart>;
+}
+
+/** Explicitly authorized readable copies in a person's chosen Google Drive folder. */
+export interface DriveApi {
+  get(): Promise<DriveSettings>;
+  connect(): Promise<{ url: string }>;
+  pickFolder(): Promise<{ url: string }>;
+  disconnect(): Promise<DriveSettings>;
+  folders(): Promise<DriveFolder[]>;
+  update(input: DriveExportInput): Promise<DriveSettings>;
+  jobs(): Promise<DriveExportJob[]>;
+  forNote(noteId: ID): Promise<DriveCallExports>;
+  setForNote(noteId: ID, input: DriveExportInput | null): Promise<DriveCallExports>;
+  retry(jobId: ID): Promise<DriveExportJob>;
 }

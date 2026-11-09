@@ -4,6 +4,8 @@ import { screen } from 'storybook/test';
 import { RETRO_NOTE, afterTheRetro } from '../../src/api/scenarios';
 import { phone } from '../../src/call';
 import { changing, page, pages, type PageArgs, type PageStory } from '../../src/page';
+import { withDriveExports, withSharedCallExports } from '../../src/world/drive-exports';
+import { FOLLOW_UP_NOTE, withFollowUpProposals } from '../../src/world/follow-ups';
 import { STATES, inEveryState } from '../../src/world/states';
 import { longSuggestions, troubled, writtenUnencrypted } from './changes';
 
@@ -67,7 +69,7 @@ export const WrittenAgain = page(`/notes/${STATES.again}`, 'busy', everyState);
 export const Unwritten = page(`/notes/${STATES.unwritten}`, 'busy', everyState);
 /** Nothing was said while notes were on: the water is still, and Play stays on the line for the audio. */
 export const NothingSaid = page(`/notes/${STATES.quiet}`, 'busy', everyState);
-/** The call was set to keep neither its transcript nor its recording: one line says so where each would have been. */
+/** The call was set to keep neither its transcript nor its recording: one line says so where each would have been, and its menu offers no rewrite without a transcript. */
 export const NoTranscriptOrRecording = page(`/notes/${STATES.unkept}`, 'busy', everyState);
 /** Breakout rooms: each room's own section under the call's notes, closed until it's opened. */
 export const Rooms = page(`/notes/${STATES.rooms}`, 'busy', everyState);
@@ -181,3 +183,40 @@ export const WorkedOnNight = page('/notes/n4', 'busy', { play: toWorkedOn, globa
 export const CouldntOpen = page('/notes/n3', 'busy', { beforeEach: changing(troubled({ 'notes.get': (id) => (id === 'n3' ? 'failed' : null) })) });
 /** Opened without a connection: a note needs one, and Record still works. */
 export const Offline = page('/notes/n2', 'offline');
+
+/** Actual tasks stay on the checklist. AI proposals wait behind a quiet count after the call too. */
+export const FollowUpProposals = page(`/notes/${FOLLOW_UP_NOTE}`, 'busy', { beforeEach: changing(withFollowUpProposals) });
+export const FollowUpProposalsPhone = phone(FollowUpProposals);
+export const FollowUpProposalsNight = page(`/notes/${FOLLOW_UP_NOTE}`, 'busy', { beforeEach: changing(withFollowUpProposals), globals: { theme: 'dark' } });
+export const ReviewingFollowUpProposals = page(`/notes/${FOLLOW_UP_NOTE}`, 'busy', {
+  beforeEach: changing(withFollowUpProposals),
+  play: async ({ userEvent, step }) => {
+    await step('Open the optional fixed batch under the actual follow-ups', async () => {
+      await userEvent.click(await screen.findByRole('button', { name: '2 suggestions from the call' }));
+    });
+  }
+});
+
+/** The call's own export destination and files, next to who has the source notes. */
+export const GoogleDriveExports = page('/notes/n2', 'drive-connected');
+export const GoogleDriveExportsPhone = phone(GoogleDriveExports);
+export const GoogleDriveExportsNight = page('/notes/n2', 'drive-connected', { globals: { theme: 'dark' } });
+export const GoogleDriveCustomSettings = page('/notes/n2', 'busy', { beforeEach: changing((w) => {
+  withDriveExports(w);
+  const destination = w.drive.folders[1];
+  if (destination) w.drive.overrides['n2'] = { enabled: true, destination, formats: ['notes-markdown'] };
+}) });
+
+/** A shared reader can choose their own Drive exports, while original audio stays organizer-only. */
+export const GoogleDriveSharedReader = page('/notes/n3', 'busy', { beforeEach: changing(withSharedCallExports) });
+export const GoogleDriveSharedReaderNight = page('/notes/n3', 'busy', { beforeEach: changing(withSharedCallExports), globals: { theme: 'dark' } });
+export const GoogleDriveSharedReaderPhone = phone(GoogleDriveSharedReader);
+export const GoogleDriveSharedReaderChoices = page('/notes/n3', 'busy', { beforeEach: changing((w) => {
+  withSharedCallExports(w);
+  w.drive.overrides['n3'] = { enabled: true, destination: w.drive.settings.destination, formats: ['notes-markdown', 'transcript-text'] };
+}) });
+export const GoogleDriveAudioNotRetained = page(`/notes/${STATES.unkept}`, 'busy', { beforeEach: changing((w) => {
+  inEveryState(w);
+  withDriveExports(w);
+  w.drive.overrides[STATES.unkept] = { enabled: true, destination: w.drive.settings.destination, formats: ['notes-markdown'] };
+}) });

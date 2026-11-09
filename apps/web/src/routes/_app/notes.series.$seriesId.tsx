@@ -1,4 +1,4 @@
-import { errorCode, errorMessage, firstName, mayChangeAction, mayDecide, maySayNotReplaced, minutesLabel, type CarriedAction, type CarriedDecision, type CarriedQuestion, type DecisionPatch, type LaterCall, type Series } from '@alcove/api';
+import { isAcceptedFollowUp, errorCode, errorMessage, firstName, mayChangeAction, mayDecide, maySayNotReplaced, minutesLabel, type CarriedAction, type CarriedDecision, type CarriedQuestion, type DecisionPatch, type LaterCall, type Series } from '@alcove/api';
 import { Button, Check, EmptyState, Evening, Icon, IconButton, buttonClass, cn, useToast } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { Link, createFileRoute, type ErrorComponentProps } from '@tanstack/react-router';
@@ -74,11 +74,11 @@ function SeriesView({ s, me }: { s: Series; me: string | undefined }) {
   const confirmed = s.decisions.filter((d) => d.state === 'confirmed');
   const proposed = s.decisions.filter((d) => d.state === 'proposed');
   const superseded = s.decisions.filter((d) => d.state === 'superseded');
-  const todo = s.actions.filter((a) => !a.done);
+  const todo = s.actions.filter((a) => isAcceptedFollowUp(a) && !a.done);
   const taken = todo.filter((a) => a.takenOn);
   const untaken = todo.filter((a) => !a.takenOn);
-  const done = s.actions.filter((a) => a.done);
-  const empty = !s.decisions.length && !s.questions.length && !s.answered.length && !s.actions.length;
+  const done = s.actions.filter((a) => isAcceptedFollowUp(a) && a.done);
+  const empty = !s.decisions.length && !s.questions.length && !s.answered.length && !s.actions.some(isAcceptedFollowUp);
   const latest = s.notes[0];
   const calls = s.notes.length + s.older;
   const who = s.isOrganizer ? 'Your series' : `${firstName(s.organizer.name)}’s series`;
@@ -144,7 +144,7 @@ function SeriesView({ s, me }: { s: Series; me: string | undefined }) {
                     </div>
                   </Section>
                 )}
-                {s.actions.length > 0 && (
+                {s.actions.some(isAcceptedFollowUp) && (
                   <Section title="Follow-ups" kind="follow" count={`${todo.length} open`}>
                     <div className="carry-list">
                       {taken.map(followUp)}

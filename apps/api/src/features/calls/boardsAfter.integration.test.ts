@@ -14,6 +14,7 @@ import { openJson, sealJson, stateKey, toJson } from '../../crypto';
 import { NoteManifest } from '../notes/service';
 import { openOwner } from '../../owners';
 import { speechWav } from '../../testing/fake-near';
+import { acceptNoteSuggestions } from '../../testing/follow-ups';
 import { startHarness, type Harness } from '../../testing/harness';
 import { disposeLiveKit } from '../../testing/livekit';
 import { getItem, saveRevision } from '../../vault';
@@ -164,9 +165,10 @@ describe('the note after a call with a board', () => {
     expect(note.summary).toContain('Read 1 board.');
     // What was said is a follow-up as ever; each sticky is one from the board, owners and all, and one the model left out is
     // still there, as the board has it, for nobody yet.
-    const spoken = note.actions.filter((a) => a.from === null);
+    expect(note.actions).toEqual([]);
+    const spoken = note.suggestions.filter((a) => a.from === null);
     expect(spoken.map((a) => [a.text, a.owner?.name])).toEqual([['Send the deck by Friday', 'Kofi']]);
-    const fromBoard = note.actions.filter((a) => a.from === 'board');
+    const fromBoard = note.suggestions.filter((a) => a.from === 'board');
     expect(fromBoard.map((a) => a.text)).toEqual(['Write the launch runbook', 'Refresh staging every night', 'Tag the release, forgotten by the model']);
     expect(fromBoard.map((a) => a.owner?.name ?? null)).toEqual(['Kofi', null, null]);
     expect(fromBoard.every((a) => !a.takenOn && !a.done)).toBe(true);
@@ -179,6 +181,9 @@ describe('the note after a call with a board', () => {
     expect((await kofi.api.notes.get(noteId ?? '')).workedOn).toEqual([expect.objectContaining(onNote)]);
     // Kofi takes his on, as any follow-up: the board's are follow-ups like the rest.
     const runbook = fromBoard[0]?.id ?? '';
+    const proposedRunbook = fromBoard[0];
+    if (!proposedRunbook) throw new Error('The board did not suggest its runbook.');
+    await art.api.notes.reviewAction(note.id, { id: runbook, revision: proposedRunbook.revision, decision: 'accept' });
     await kofi.api.notes.updateAction(note.id, runbook, { owner: kofi.email, seen: { text: 'Write the launch runbook', due: null } });
     expect((await art.api.notes.get(note.id)).actions.find((a) => a.id === runbook)).toMatchObject({ takenOn: true, from: 'board' });
   });
@@ -205,7 +210,7 @@ describe('the note after a call with a board', () => {
       expect(sent[0]).not.toContain('CANARY-UNSHARED');
       expect(sent[0]).not.toContain('<board>');
       expect(note.summary).not.toContain('board');
-      expect(note.actions.map((a) => [a.text, a.from])).toEqual([['Check the numbers by Monday', null]]);
+      expect(note.suggestions.map((a) => [a.text, a.from])).toEqual([['Check the numbers by Monday', null]]);
       // Art can open it, so his note has it, saying not everyone can. Kofi's says nothing of it.
       expect(note.workedOn).toEqual([expect.objectContaining({ id: board, kind: 'board', name: 'Pricing', workspace: 'Planning', everyone: false })]);
       expect((await kofi.api.notes.get(noteId ?? '')).workedOn).toEqual([]);
@@ -285,10 +290,10 @@ describe('the note after a call with a board', () => {
     expect(inRoom[0]).not.toContain('CANARY-MAINACTION');
     expect(inMain[0]).toContain('CANARY-MAINBOARD');
     // Each part's follow-ups from its own board, and each board in its own part of the note: the main one, and each room's.
-    expect(note.actions.filter((a) => a.from === 'board').map((a) => a.text)).toEqual(['CANARY-MAINACTION name a comms owner']);
+    expect(note.suggestions.filter((a) => a.from === 'board').map((a) => a.text)).toEqual(['CANARY-MAINACTION name a comms owner']);
     const section = note.rooms.find((r) => r.id === room);
-    expect(section?.actions.filter((a) => a.from === 'board').map((a) => a.text)).toEqual(['CANARY-ROOMACTION repaint the buttons']);
-    expect(section?.actions.filter((a) => a.from === null).map((a) => a.text)).toEqual(['Mock up the new buttons']);
+    expect(section?.suggestions.filter((a) => a.from === 'board').map((a) => a.text)).toEqual(['CANARY-ROOMACTION repaint the buttons']);
+    expect(section?.suggestions.filter((a) => a.from === null).map((a) => a.text)).toEqual(['Mock up the new buttons']);
     const boards = note.workedOn.filter((x) => x.kind === 'board');
     expect(boards.map((x) => [x.id, x.room, x.everyone])).toEqual(expect.arrayContaining([[main, null, true], [design?.documentId, room, true], [expect.any(String), support, true]]));
     expect(boards).toHaveLength(3);
@@ -311,14 +316,15 @@ describe('the note after a call with a board', () => {
       return { ...s, workspace: { ...space, worked: space.worked.map(({ open: _open, ...rest }) => rest) } };
     });
     const noteId = (await host.leave())?.pendingNoteId ?? '';
-    const note = await noteOf(art, noteId);
+    await noteOf(art, noteId);
+    const note = await acceptNoteSuggestions(art.api, noteId);
     // Nothing said where it was open, but it was still open as the call ended, which notes it then: the notes read it.
     expect(note.actions.map((a) => [a.text, a.from])).toEqual([['Review the fix by Tuesday', null], ['Ship the fix', 'board']]);
     expect(note.workedOn.map((x) => [x.kind, x.room])).toEqual([['board', null]]);
     // And the note as that release wrote it: follow-ups without `from`, and what was worked on without where.
     const o = await openOwner(h.deps, art.ownerId, undefined);
     const stored = await getItem(o, o.pool, 'note', noteId, NoteManifest, 'Those notes');
-    const older = { ...stored.manifest, actions: stored.manifest.actions.map(({ from: _from, ...rest }) => rest), workedOn: stored.manifest.workedOn.map(({ open: _open, ...rest }) => rest) };
+    const older = { ...stored.manifest, actions: stored.manifest.actions.map(({ from: _from, review: _review, revision: _revision, changeOf: _changeOf, target: _target, sourceId: _sourceId, ...rest }) => rest), workedOn: stored.manifest.workedOn.map(({ open: _open, ...rest }) => rest) };
     await saveRevision(o, o.pool, stored.itemId, stored.revisionId, older);
     const read = await art.api.notes.get(noteId);
     expect(read.actions.map((a) => [a.text, a.from])).toEqual([['Review the fix by Tuesday', null], ['Ship the fix', null]]);

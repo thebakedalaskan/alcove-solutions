@@ -1,3 +1,4 @@
+import type { CallTimerSequence } from '@alcove/api';
 /*
  * A call's script: who's in it when you come in, what they say and do and when, how the people you ring answer, and
  * what the call's link says while you wait at the door. The scripted call (call.ts) plays the server's side of it,
@@ -9,8 +10,8 @@
  * story opened. Everyone in a script is from the demo world, and everything they say is made up.
  */
 import {
-  RING_SECONDS, type AiModels, type BoardTemplate, type BoardTimerMinutes, type BoardVotesEach, type BreakoutBoard, type CallCard, type CallReaction, type CallPage, type CaptureMode, type CapturePart,
-  type CaptureState, type IncomingRing, type Meeting, type Person, type RingReply
+  RING_SECONDS, type AiModels, type CallFeedbackKind, type BoardTemplate, type BoardTimerMinutes, type BoardVotesEach, type BreakoutBoard, type CallCard, type CallReaction, type CallPage, type CaptureMode, type CapturePart,
+  type CaptureState, type LiveFollowUp, type IncomingRing, type Meeting, type Person, type RingReply
 } from '@alcove/api';
 import type * as Y from 'yjs';
 import type { Screen } from '../media/screens';
@@ -19,6 +20,7 @@ import { current, me } from './state';
 
 /** Something said in the call: by someone in it, or by you (heard through your microphone, while it's on). */
 export interface Line {
+  id?: string | undefined;
   who: Person | 'me';
   text: string;
   /** What the live notes take as decided from it. */
@@ -69,9 +71,13 @@ export type Beat =
   | { do: 'say'; line: Line }
   | { do: 'mic'; who: Person; on: boolean }
   | { do: 'hand'; who: Person; up: boolean }
+  | { do: 'question'; who: Person; text: string; votes?: number }
+  | { do: 'feedback'; who: Person; kind: CallFeedbackKind | null }
   | { do: 'share'; who: Person; screen: Screen }
   | { do: 'stop-sharing'; who: Person }
-  | { do: 'chat'; who: Person; text: string }
+  | { do: 'chat'; who: Person; text: string; tagged: readonly (Person | 'me')[] }
+  | { do: 'unavailable-chat'; text: string }
+  | { do: 'reply'; who: Person; text: string; to: string; tagged: readonly (Person | 'me')[] }
   /** Someone reacts to the latest chat message with this text. */
   | { do: 'react'; who: Person; text: string; reaction: CallReaction }
   /** Someone asks to join: signed in (their address shows), or by name only. */
@@ -162,6 +168,14 @@ export type Beat =
 export interface Cue { at: number; beat: Beat }
 
 export interface CallScript {
+  /** A stable opaque call ID only for the explicit manual cross-tab browser-receipt scene. */
+  notificationId?: string | undefined;
+  privateSendFails?: boolean | undefined;
+  privateMessages?: readonly { from: Person; text: string; after?: number; replyTo?: string; tagged?: readonly (Person | 'me')[] }[] | undefined;
+  /** First sends fail in their original conversation, so a journey can show deliberate retry. */
+  chatFailures?: number | undefined;
+  /** Prepared or running presenter sequence, from the same server-clock anchor as the call. */
+  timerSequence?: CallTimerSequence | undefined;
   /** Who's in the call when you come in, besides you. */
   here?: readonly Present[] | undefined;
   /** How long the call has been going when you come in, in seconds. */
@@ -178,6 +192,8 @@ export interface CallScript {
   cues?: readonly Cue[] | undefined;
   /** How the people you ring answer, by address: after how long, and what. Anyone else comes in after a few seconds. */
   answers?: Readonly<Record<string, { after: number; reply: RingReply | 'missed' }>> | undefined;
+  /** Actual tasks and pending proposals already present when the story opens. */
+  followUps?: readonly LiveFollowUp[] | undefined;
   /** What the live notes sum up, once anything has been said. */
   summary?: string | undefined;
   /** The call's workspace as you come in: what's been brought to the call, and where people are in it. */
@@ -219,7 +235,8 @@ export const raisesHand = (who: Person): Beat => ({ do: 'hand', who, up: true })
 export const lowersHand = (who: Person): Beat => ({ do: 'hand', who, up: false });
 export const shares = (who: Person, screen: Screen): Beat => ({ do: 'share', who, screen });
 export const stopsSharing = (who: Person): Beat => ({ do: 'stop-sharing', who });
-export const chats = (who: Person, text: string): Beat => ({ do: 'chat', who, text });
+export const chats = (who: Person, text: string, tagged: readonly (Person | 'me')[] = []): Beat => ({ do: 'chat', who, text, tagged });
+export const replies = (who: Person, to: string, text: string, tagged: readonly (Person | 'me')[] = []): Beat => ({ do: 'reply', who, to, text, tagged });
 export const reacts = (who: Person, text: string, reaction: CallReaction): Beat => ({ do: 'react', who, text, reaction });
 export const knocks = (who: Person, o: { byName?: boolean } = {}): Beat => ({ do: 'knock', who, ...o });
 export const asksForNotes = (who: Person): Beat => ({ do: 'ask-for-notes', who });

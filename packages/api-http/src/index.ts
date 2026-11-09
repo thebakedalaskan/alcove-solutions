@@ -3,6 +3,7 @@ import { createAccountApi } from './account/api';
 import { createCallsApi } from './calls/api';
 import { createMeetingsApi } from './meetings/api';
 import { createNotesApi } from './notes/api';
+import { createDriveApi } from './notes/drive';
 import { createRecordingsApi } from './recordings/api';
 import { createDiagnosticsApi } from './transport/diagnostics';
 import { createHttpTransport } from './transport/http';
@@ -23,6 +24,7 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
     ...createCallsApi(t, o),
     ...createRecordingsApi(t),
     ...createNotesApi(t),
+    ...createDriveApi(t),
     ...createWorkspacesApi(t, o),
     ...createDiagnosticsApi(t),
   };

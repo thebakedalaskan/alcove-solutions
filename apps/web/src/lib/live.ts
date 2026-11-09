@@ -68,14 +68,14 @@ export function useClosingWithPage(session: CallSession | null) {
 /**
  * Keeps someone on a live screen (a call, a room recording) until they end it. Going back, or
  * anywhere else in the app, opens the screen's own way out instead (`onAttempt`), and closing the
- * tab asks the browser to confirm. Coming back to a screen left half-way would start a second
- * recorder on the same recording, so leaving is always a choice.
+ * tab asks the browser to confirm when `confirmBeforeUnload` is true. Room recordings keep that
+ * confirmation: coming back halfway would start a second recorder on the same recording.
  */
-export function useLeaveGuard(onAttempt: () => void) {
+export function useLeaveGuard(onAttempt: () => void, confirmBeforeUnload = true) {
   const released = useRef(false);
   const attempt = useRef(onAttempt);
   attempt.current = onAttempt;
-  const blocker = useBlocker({ shouldBlockFn: () => !released.current, enableBeforeUnload: () => !released.current, withResolver: true });
+  const blocker = useBlocker({ shouldBlockFn: () => !released.current, enableBeforeUnload: () => confirmBeforeUnload && !released.current, withResolver: true });
   const latest = useRef(blocker);
   latest.current = blocker;
   useEffect(() => { if (blocker.status === 'blocked') attempt.current(); }, [blocker.status]);

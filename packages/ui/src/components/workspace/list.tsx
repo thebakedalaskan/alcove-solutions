@@ -113,8 +113,9 @@ function SpaceName({ name, placeholder, onCommit, onCancel }: WsNaming) {
  * menu makes: `createLabel`). `naming` swaps the name for a field. Whatever isn't given isn't shown: someone who can only read
  * makes nothing.
  */
-export function WsListHead({ name, picker, pickerLabel = 'This call’s workspace', onFind, create, createLabel = 'New document or folder', naming }: {
+export function WsListHead({ name, picker, pickerLabel = 'This call’s workspace', onFind, create, createLabel = 'New document or folder', naming, saveState = 'quiet' }: {
   name: string; picker: WsPop; pickerLabel?: string | undefined; onFind?: (() => void) | undefined; create?: WsPop | undefined; createLabel?: string | undefined; naming?: WsNaming | null | undefined;
+  saveState?: 'quiet' | 'saving' | 'saved' | 'failed' | undefined;
 }) {
   return (
     <div className="wt-head">
@@ -123,6 +124,7 @@ export function WsListHead({ name, picker, pickerLabel = 'This call’s workspac
           <button type="button" className="wt-space"><span className="wt-mark"><Icon name="folders" size={15} /></span><span className="n ac-clamp-1" title={name}>{name}</span><Icon name="chevronsUpDown" size={14} /></button>
         }>{picker.content}</WsPopover>
       )}
+      {saveState !== 'quiet' && <span role="status" className={cn('wt-name-save', saveState === 'failed' && 'is-failed')}>{saveState === 'saving' ? 'Saving…' : saveState === 'saved' ? 'Saved' : 'Couldn’t confirm'}</span>}
       {onFind && <IconButton icon="search" size={16} className="wt-ib" label="Find in this workspace" title="Find (⌘K)" onClick={onFind} />}
       {create && (
         <WsPopover open={create.open} onOpenChange={create.onOpenChange} label="New" anchor={

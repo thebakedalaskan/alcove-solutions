@@ -7,9 +7,11 @@
  *
  * A method nothing renders yet answers with something sensible and empty. When the contract grows, this grows with it.
  */
+import { DriveExportInputSchema, type DriveCallExports, type DriveExportInput } from '@alcove/api';
+import { disconnectedDrive } from '../world/drive-exports';
 import type { BoardSortBody, DocAskBody, DocAskPart } from '@alcove/api';
 import {
-  AlcoveApiError, AgentAuthorizationIdSchema, AgentConnectionIdSchema, AgentDecisionInputSchema, AgentTokenInputSchema, DEFAULT_NOTES_CHOICES, searchOf, termsIn, type ActionPatch, type ActionProposal, type AlcoveApi, type AgentConnection, type AnswerPart, type Busy, type CallCard,
+  CallTimerPresetInputSchema, CallTimerPresetUpdateSchema, type CallTimerPreset, ACCEPTED_FOLLOW_UP, AlcoveApiError, type FollowUpReview, type FollowUpTarget, type NoteAction, AgentAuthorizationIdSchema, AgentConnectionIdSchema, AgentDecisionInputSchema, AgentTokenInputSchema, DEFAULT_NOTES_CHOICES, searchOf, termsIn, type ActionPatch, type ActionProposal, type AlcoveApi, type AgentConnection, type AnswerPart, type Busy, type CallCard,
   type CallDocument, type CallSession, type Change, type ChangeScope, type DecisionPatch, type DecisionProposal, type ID, type Inbox, type IncomingRing,
   type InstantCallInput, type Interval, type LinePatch, type Meeting, type MeetingInput, type Note, type NoteFound, type NoteKind, type NoteProgress,
   type Patch, type Preferences, type PromoteBody, type PromotionPreview, type QuestionPatch, type RecipientRole, type RingReply, type Rsvp, type Series,
@@ -68,6 +70,8 @@ const changeNote = (id: string, change: (n: Note, w: World) => Note) => answer((
   return next;
 });
 const roleIn = (n: Note): RecipientRole => n.recipients.find((r) => r.person.email === me().email)?.role ?? 'shared';
+const reviewedActions = new WeakMap<World, Map<string, FollowUpReview>>();
+const taskTarget = (a: NoteAction): FollowUpTarget => ({ id: a.id, revision: a.revision, text: a.text, owner: a.owner?.person?.email ?? null, due: a.due ?? null });
 const changeBy = (n: Note, what: Change['what'], extra: Partial<Change> = {}): Change => ({ by: changer(me(), roleIn(n)), at: new Date().toISOString(), what, ...extra });
 
 /** A new call's link code, `abc-defg-hij`. */
@@ -76,6 +80,20 @@ function newCode(): string {
   return `${letters(3)}-${letters(4)}-${letters(3)}`;
 }
 const addMinutes = (at: string, minutes: number) => new Date(Date.parse(at) + minutes * 60_000).toISOString();
+
+function driveChoice(w: World, input: DriveExportInput) {
+  const parsed = DriveExportInputSchema.parse(input);
+  const destination = parsed.destinationId === null ? null : w.drive.folders.find((folder) => folder.id === parsed.destinationId);
+  if (destination === undefined) throw refused('invalid', 'Choose a folder you can write to.');
+  if (parsed.enabled && (!destination || !parsed.formats.length)) throw refused('invalid', 'Choose a folder and a file type first.');
+  return { enabled: parsed.enabled, destination, formats: parsed.formats };
+}
+function driveForNote(w: World, id: string): DriveCallExports {
+  noteIn(w, id);
+  const override = w.drive.overrides[id] ?? null;
+  const effective = override ?? { enabled: w.drive.settings.enabled, destination: w.drive.settings.destination, formats: w.drive.settings.formats };
+  return { noteId: id, override, effective, jobs: w.drive.jobs.filter((job) => job.noteId === id) };
+}
 
 /* ---------- what's waiting on you, worked out from the notes ---------- */
 
@@ -307,11 +325,29 @@ export const standIn: AlcoveApi = {
       w.prefs = {
         notesDefault: patch.notesDefault ?? p.notesDefault, notesLanguage: patch.notesLanguage ?? p.notesLanguage, summaryLength: patch.summaryLength ?? p.summaryLength,
         addToCalendar: patch.addToCalendar ?? p.addToCalendar, showOtherMeetings: patch.showOtherMeetings ?? p.showOtherMeetings, recordOffline: patch.recordOffline ?? p.recordOffline,
-        notifications: patch.notifications ?? p.notifications, pinned: patch.pinned ?? p.pinned, groups: patch.groups ?? p.groups, model: patch.model === undefined ? p.model : patch.model
+        sounds: patch.sounds ?? p.sounds, notifications: patch.notifications ?? p.notifications, pinned: patch.pinned ?? p.pinned, groups: patch.groups ?? p.groups, model: patch.model === undefined ? p.model : patch.model
       };
       return w.prefs;
     }),
     delete: () => answer((w) => { forgetAgents(w); w.session = null; w.notes = []; w.meetings = []; })
+  },
+  drive: {
+    get: () => answer((w) => w.drive.settings),
+    connect: () => answer(() => ({ url: new URL('#google-drive-consent', location.href).href })),
+    pickFolder: () => answer(() => ({ url: new URL('#google-drive-folder-selection', location.href).href })),
+    disconnect: () => answer((w) => { w.drive = disconnectedDrive(); return w.drive.settings; }),
+    folders: () => answer((w) => w.drive.folders),
+    update: (input) => answer((w) => { w.drive.settings = { ...w.drive.settings, ...driveChoice(w, input) }; return w.drive.settings; }),
+    jobs: () => answer((w) => w.drive.jobs),
+    forNote: (id) => answer((w) => driveForNote(w, id)),
+    setForNote: (id, input) => answer((w) => { noteIn(w, id); if (input === null) delete w.drive.overrides[id]; else w.drive.overrides[id] = driveChoice(w, input); return driveForNote(w, id); }),
+    retry: (id) => answer((w) => {
+      const job = w.drive.jobs.find((j) => j.id === id);
+      if (!job) throw refused('not-found', 'That export is no longer there.');
+      if (w.drive.settings.connection.status !== 'connected') throw refused('conflict', 'Reconnect Google Drive first.');
+      const next = { ...job, status: 'pending' as const, reason: null, updatedAt: new Date().toISOString() };
+      w.drive.jobs = w.drive.jobs.map((j) => j.id === id ? next : j); return next;
+    })
   },
   agents: {
     list: () => answer((w) => agentsFor(w).connections.toSorted((a, b) => b.createdAt.localeCompare(a.createdAt) || a.id.localeCompare(b.id))),
@@ -416,6 +452,26 @@ export const standIn: AlcoveApi = {
     })
   },
   calls: {
+    timerPresets: {
+      list: () => answer((w) => w.timerPresets ?? []),
+      create: (input) => answer((w) => {
+        const parsed = CallTimerPresetInputSchema.parse(input);
+        const at = new Date().toISOString();
+        const preset: CallTimerPreset = { ...parsed, id: nextId('timer-preset'), revision: 0, createdAt: at, updatedAt: at };
+        w.timerPresets = [...w.timerPresets ?? [], preset];
+        return preset;
+      }),
+      update: (id, input) => answer((w) => {
+        const parsed = CallTimerPresetUpdateSchema.parse(input);
+        const before = w.timerPresets?.find((preset) => preset.id === id);
+        if (!before) throw refused('not-found', 'This timer preset is gone.');
+        if (before.revision !== parsed.expectedRevision) throw refused('conflict', 'This timer preset changed. Read it again before saving.');
+        const preset = { ...before, name: parsed.name, segments: parsed.segments, revision: before.revision + 1, updatedAt: new Date().toISOString() };
+        w.timerPresets = w.timerPresets?.map((old) => old.id === id ? preset : old) ?? [];
+        return preset;
+      }),
+      remove: (id) => answer((w) => { w.timerPresets = w.timerPresets?.filter((preset) => preset.id !== id) ?? []; })
+    },
     // As the server makes one: an hour from now, and scheduled until someone joins, so the lobby can ring people.
     startNow: (input?: InstantCallInput) => answer((w) => {
       const m = { ...meetingFrom(w, { title: input?.title ?? `${me().name.split(' ')[0] ?? 'Your'}’s call`, startsAt: new Date().toISOString(), durationMinutes: 60, guests: input?.guests ?? [], notes: input?.notes ?? w.prefs.notesDefault, documents: input?.documents ?? [] }), instant: true };
@@ -496,9 +552,36 @@ export const standIn: AlcoveApi = {
       return {
         ...n, totalActions: n.totalActions + 1, openActions: n.openActions + 1,
         actions: [...n.actions, {
-          id: nextId('a'), text: p.text, ...(owner ? { owner: { name: owner.name, person: owner } } : {}), takenOn: owner?.email === me().email, ...(p.due ? { due: p.due } : {}),
+          ...ACCEPTED_FOLLOW_UP, revision: nextId('revision'), id: nextId('a'), text: p.text, ...(owner ? { owner: { name: owner.name, person: owner } } : {}), takenOn: false, ...(p.due ? { due: p.due } : {}),
           done: false, lines: p.lines ?? [], against: [], changes: [changeBy(n, 'proposed')], from: null, evidence: { moments: [], flags: p.lines?.length ? [] : ['missing'] }
         }]
+      };
+    }),
+    reviewAction: (noteId: ID, review: FollowUpReview) => changeNote(noteId, (n, w) => {
+      let history = reviewedActions.get(w);
+      if (!history) { history = new Map(); reviewedActions.set(w, history); }
+      const key = `${noteId}:${review.id}`;
+      const previous = history.get(key);
+      if (previous) {
+        if (previous.revision === review.revision && previous.decision === review.decision) return n;
+        throw refused('conflict', 'That suggestion has already been reviewed.');
+      }
+      const room = n.rooms.find((r) => r.suggestions.some((a) => a.id === review.id));
+      const suggestions = room?.suggestions ?? n.suggestions;
+      const actions = room?.actions ?? n.actions;
+      const proposal = suggestions.find((a) => a.id === review.id);
+      if (!proposal || proposal.revision !== review.revision) throw refused('conflict', 'That suggestion changed. Close review and open it again.');
+      const target = proposal.target;
+      const actual = target ? actions.find((a) => a.id === target.id) : undefined;
+      if (target && (!actual || JSON.stringify(taskTarget(actual)) !== JSON.stringify(target))) throw refused('conflict', 'That follow-up changed. Close review and open it again.');
+      const pending = suggestions.filter((a) => a.id !== review.id);
+      const accepted: NoteAction = { ...proposal, ...ACCEPTED_FOLLOW_UP, id: target?.id ?? proposal.id, revision: nextId('revision'), takenOn: false, done: actual?.done ?? false, reviewed: { by: changer(me(), roleIn(n)), at: new Date().toISOString(), decision: review.decision }, changes: [...proposal.changes, changeBy(n, 'accepted')] };
+      const next = review.decision === 'dismiss' ? actions : target ? actions.map((a) => a.id === target.id ? accepted : a) : [...actions, accepted];
+      history.set(key, review);
+      return {
+        ...n,
+        ...(room ? { rooms: n.rooms.map((r) => r.id === room.id ? { ...r, actions: next, suggestions: pending } : r) } : { actions: next, suggestions: pending }),
+        ...(!room ? { totalActions: next.length, openActions: next.filter((a) => !a.done).length } : {})
       };
     }),
     updateDecision: (noteId: ID, decisionId: ID, p: DecisionPatch) => changeNote(noteId, (n) => ({
@@ -521,7 +604,7 @@ export const standIn: AlcoveApi = {
         const { owner: _was, due: _due, ...rest } = a;
         const due = p.due === null ? undefined : p.due ?? a.due;
         return {
-          ...rest, text: p.text ?? a.text, done: p.done ?? a.done, takenOn: p.takeOn ? true : p.owner !== undefined ? owner?.email === me().email && p.owner !== null : a.takenOn,
+          ...rest, revision: nextId('revision'), text: p.text ?? a.text, done: p.done ?? a.done, takenOn: p.takeOn ? true : p.owner !== undefined || (a.owner?.person?.email !== me().email && (p.text !== undefined || p.due !== undefined)) ? false : a.takenOn,
           ...(owner ? { owner: { name: owner.name, person: owner } } : {}), ...(due ? { due } : {}), changes
         };
       });

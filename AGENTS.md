@@ -194,10 +194,11 @@ page is designed, how to make a design canvas from the kit in `docs/design/canva
   links), `IconButton`, `ProviderButton`, `NotesSign`, `Chip`, `GroupChip`, `SealedBadge` and `SealedButton`
   (the badge that opens what was checked), `Notice`, `useToast` (a toast, from the `ToastProvider` at the app's root),
   `Avatar` and `Faces` (the arch), `GhostArch` (an empty arch where a person will be), `PickList` (people to find and press
-  in a popover: one, or several with ticks), `CallTile`, `CallDock` with `DockButton` (its `word` is said beside the icon,
+  in a popover: one, or several with ticks), `CallTile`, `FloatingCall` (the compact call's picture, controls and attention, with no media ownership), `CallDock` with `DockButton` (its `word` is said beside the icon,
   for Share, the one control the dock names), `CallTopGroup`, `CallTopButton` and `CallTopRule` (the top right's group, its
-  buttons and hairlines), `CallMoreGrid` and `CallMoreTile` (More's grid on a phone), `CallFrame` (one frame for a screen, a
-  board or the workspace, with its bar), `PresentedTile` (something presented that isn't on your stage, with Join),
+  buttons and hairlines), `CallTimerButton` and `CallTimerReadout` (the shared presenter countdown, compact control and current/next readout),
+  `CallMoreGrid` and `CallMoreTile` (More's grid on a phone), `PrivateMessage` and `PrivateChatComposer` (recipient-only call messages and their persistent audience),
+  `CallFrame` (one frame for a screen, a board or the workspace, with its bar), `PresentedTile` (something presented that isn't on your stage, with Join),
   `CloseAsk` (Close's question: for you or for everyone), `PresentAsk` (Present's question when some people here can't open
   the board), `FramePager` (a board's presenter steps through its frames at the frame's foot, with their notes), Share's
   steps in one popover over the dock (`ShareKinds`, then `ShareScreenStep`, the `BoardPicker`, or `ShareStopStep` (Close's
@@ -250,7 +251,7 @@ page is designed, how to make a design canvas from the kit in `docs/design/canva
   board picker, `pc-` the phone's add sheet; its tokens are `--bd-*`, `--bf-*`, `--note-*`, and `--line-ink` and `--line-rose` beside the existing
   `--line` and `--line-control`; `.bt`, `.bi`, `.bm`, `.swatch`, `.c-*` and `.k-*` are unscoped there, so those names are taken); the welcome
   page in `styles/welcome.css`, with its scenes in `welcome-note.css`, `welcome-call.css`, `welcome-team.css` and
-  `welcome-night.css` (`lp-`); the other screens in `styles/app.css` and `call.css`.
+  `welcome-night.css` (`lp-`); the other screens in `styles/app.css` and `call.css`; shared presenter timer controls in `styles/call-timer.css`.
   Truncate to one or two lines with `ac-clamp-1` / `ac-clamp-2` (left-aligned): unlike `nowrap`, long text
   can't make a column wider than the screen.
   No raw hex in the app, except on the always-night call stage and in illustrations.

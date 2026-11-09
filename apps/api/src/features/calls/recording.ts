@@ -201,11 +201,14 @@ export async function startShare(v: Viewer, callId: string, notes: boolean): Pro
     const keep = notes && s.notes.status !== 'off' && placeOf(settled, mine) === MAIN_PLACE;
     const id = id128();
     const recordingId = s.notes.recordingId;
+    // A short share may send its first piece only after it ends. Keep the media server's evidence now, while it is
+    // published, so its tail can be accepted after the browser unpublishes it or another API instance takes over.
+    const published = keep && row.room_name !== null && await sharingNow(o, row.room_name, v.pass.identity, id);
     if (recordingId) {
       const presenter = speakersIn(s, await me(o))(v.pass.identity);
       await screens.startShare(o, c, recordingId, id, { keep, meta: { identity: v.pass.identity, ...(presenter ? { presenter } : {}) }, atMs: exact * 1000, segment: s.notes.segment });
     }
-    s = screenChanged(s, { ...s, shares: trimShares([...s.shares, { id, identity: v.pass.identity, keep, recorded: recordingId !== null, from: exact, until: null }]) }, exact);
+    s = screenChanged(s, { ...s, shares: trimShares([...s.shares, { id, identity: v.pass.identity, keep, recorded: recordingId !== null, from: exact, until: null, published }]) }, exact);
     await save(o, c, callId, s);
     clog.info('share started', { ...ctx, keep, segment: s.notes.segment, role: v.pass.role });
     return { id, keep, room: row.room_name };
@@ -214,7 +217,7 @@ export async function startShare(v: Viewer, callId: string, notes: boolean): Pro
   return { share: r.id, keep: r.keep, state: await view(v, o.pool, callId) };
 }
 
-/** Who LiveKit said is sharing a screen, by room and identity, for a few seconds: pieces come every five. */
+/** Who LiveKit said is sharing a screen, by room, identity and share, for a few seconds: pieces come every five. */
 const sharing = new Map<string, number>();
 
 const SHARE_SEEN_MS = 10_000;
@@ -222,8 +225,8 @@ const SHARE_SEEN_MS = 10_000;
 const NOT_YOURS = 'That isn’t a screen you’re sharing in this call.';
 
 /** Whether `identity` has a screen up in the call's room now, as LiveKit sees its tracks. Never a camera. */
-async function sharingNow(o: Owner, roomName: string, identity: string): Promise<boolean> {
-  const id = `${roomName}|${identity}`;
+async function sharingNow(o: Owner, roomName: string, identity: string, shareId: string): Promise<boolean> {
+  const id = `${roomName}|${identity}|${shareId}`;
   if ((sharing.get(id) ?? 0) > Date.now()) return true;
   const shares = await o.livekit.screenShares(roomName).catch((e: unknown) => {
     throw new UnavailableError('We couldn’t check the shared screen with the call’s media server. Try again in a moment.', { cause: e });
@@ -270,6 +273,7 @@ export async function appendScreen(v: Viewer, callId: string, shareId: string, p
     const late = end ? Date.now() - end.at : null;
     if (!end || !end.keep || late === null || late > screens.SHARE_TAIL_MS) throw notFound('That share', { ...ctx, ended: 1, lateMs: late });
     if (piece.segment !== end.segment) throw new ConflictError('That video belongs to an earlier part of the recording.', { context: ctx });
+    if (!share.published) throw new ForbiddenError(NOT_YOURS, { context: { ...ctx, why: 'never shared' } });
     await screens.appendPiece(o, recordingId, shareId, piece, budget(), true);
     clog.debug('share piece taken after it ended', { ...ctx, lateMs: late });
     return answer();
@@ -277,7 +281,13 @@ export async function appendScreen(v: Viewer, callId: string, shareId: string, p
   const into = capture.mayCapture(capturing(row, state), 'screen', ctx);
   if (piece.segment !== state.notes.segment) throw new ConflictError('That video belongs to an earlier part of the recording.', { context: ctx });
   // Going: only while LiveKit lists a screen of theirs, so nobody puts video in the notes without sharing it in the call.
-  if (!row.room_name || !(await sharingNow(o, row.room_name, v.pass.identity))) throw new ForbiddenError(NOT_YOURS, { context: { ...ctx, why: 'not sharing' } });
+  if (!row.room_name || !(await sharingNow(o, row.room_name, v.pass.identity, shareId))) throw new ForbiddenError(NOT_YOURS, { context: { ...ctx, why: 'not sharing' } });
+  if (!share.published) {
+    await tx(o.pool, async (c) => {
+      const latest = await load(o, c, callId, true);
+      await save(o, c, callId, { ...latest.state, shares: latest.state.shares.map((x) => (x.id === shareId ? { ...x, published: true } : x)) });
+    });
+  }
   await screens.appendPiece(o, into.recordingId, shareId, piece, budget());
   return answer();
 }

@@ -301,7 +301,7 @@ const segmentAt = (s: ScreenShare, t: number): ScreenShareSegment | undefined =>
  * to another segment, and is put back in step when it drifts more than `DRIFT`.
  */
 function useReplay(noteId: string, shares: ScreenShare[], player: PlayerState) {
-  const { playing } = player;
+  const { playing, busy } = player;
   const pos = usePlayerAt(player, (p) => p);
   const video = useRef<HTMLVideoElement | null>(null);
   const [picked, setPicked] = useState<string | null>(null);
@@ -310,8 +310,8 @@ function useReplay(noteId: string, shares: ScreenShare[], player: PlayerState) {
   const share = active.find((s) => s.id === picked) ?? latest;
   const seg = share ? segmentAt(share, pos) : undefined;
   const src = share && seg ? api.notes.screenVideoUrl(noteId, share.id, seg.segment) : null;
-  const want = useRef({ pos, playing, at: seg?.at ?? 0, on: src !== null });
-  want.current = { pos, playing, at: seg?.at ?? 0, on: src !== null };
+  const want = useRef({ pos, playing: playing && !busy, at: seg?.at ?? 0, on: src !== null });
+  want.current = { pos, playing: playing && !busy, at: seg?.at ?? 0, on: src !== null };
 
   const follow = useCallback(() => {
     const v = video.current;
@@ -325,7 +325,7 @@ function useReplay(noteId: string, shares: ScreenShare[], player: PlayerState) {
     if (!w.playing && !v.paused) v.pause();
   }, []);
   // Every tick of the audio clock, a seek, play or pause, or another share or segment.
-  useEffect(follow, [follow, pos, playing, src]);
+  useEffect(follow, [follow, pos, playing, busy, src]);
 
   const label = share?.label ?? '';
   const element = (

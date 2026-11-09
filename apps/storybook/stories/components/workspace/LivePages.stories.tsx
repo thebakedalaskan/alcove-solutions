@@ -6,11 +6,11 @@
  * being said at the end, and a field to find a line. With notes off the three pages stay and say so (WsNotesOff). After
  * the call, the note says which documents were worked on (WsWorkedOn).
  */
-import { WsDoc, WsDocHead, WsFollowUps, WsNotesOff, WsNotesPage, WsPane, WsScroll, WsToasts, WsTranscript, WsWorkedOn, wsToast, type WsFollowUp, type WsSave } from '@alcove/ui';
+import { Button, FollowUpEditor, type FollowUpValues, WsDoc, WsDocHead, WsFollowUps, WsNotesOff, WsNotesPage, WsPane, WsScroll, WsToasts, WsTranscript, WsWorkedOn, wsToast, type WsFollowUp, type WsSave } from '@alcove/ui';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useLayoutEffect, useRef, useState, type ComponentProps, type ReactNode } from 'react';
 import { Box, did } from '../../../src/component';
-import { ART } from '../../../src/world/people';
+import { ART, KOFI, PRIYA } from '../../../src/world/people';
 import { CALL, DECIDED, FOLLOW_UPS, LINES, NotesLive, SPEAKING, SUMMARY, first, useToasts } from './parts';
 
 /**
@@ -76,31 +76,34 @@ export const NotesUnencrypted: Story = { name: 'Notes: unencrypted AI model', ar
 
 /* ---------- follow-ups ---------- */
 
-/** Follow-ups that answer: Everyone and Mine switch, ticking works, and Enter on the last line adds one with your name. */
+/** Follow-ups that answer: Everyone and Mine switch, ticking works, and manual additions choose an owner and date. */
 function FollowUps(args: ComponentProps<typeof WsFollowUps>) {
   const [mine, setMine] = useState(args.mine);
   const [rows, setRows] = useState(args.rows);
-  const [draft, setDraft] = useState(args.draft);
+  const [adding, setAdding] = useState(false);
+  const [draft, setDraft] = useState<FollowUpValues>({ text: '', owner: null, due: null });
   const yours = rows.filter((r) => r.person === ART);
   const add = () => {
-    args.onAdd?.();
-    const text = draft.trim();
+    const text = draft.text.trim();
     if (!text) return;
-    setRows((now) => [...now, { id: `f${now.length + 1}`, text, done: false, person: ART, name: first(ART), due: 'No date', source: 'Added by you' }]);
-    setDraft('');
+    const person = [ART, KOFI, PRIYA].find((p) => p.email === draft.owner);
+    setRows((now) => [...now, { id: `f${now.length + 1}`, text, done: false, person: person ?? { name: 'Nobody yet' }, name: person ? first(person) : 'Nobody yet', due: draft.due ?? 'No date', source: 'Added by you' }]);
+    setDraft({ text: '', owner: null, due: null });
+    setAdding(false);
   };
   return (
     <LiveFrame name="Follow-ups">
       <WsFollowUps mine={mine} onMine={(m) => { args.onMine(m); setMine(m); }} everyoneCount={rows.length} mineCount={yours.length} rows={mine ? yours : rows}
         onTick={(id) => { args.onTick(id); setRows((now) => now.map((r) => (r.id === id ? { ...r, done: !r.done } : r))); }}
-        draft={draft} onDraft={(d) => { args.onDraft(d); setDraft(d); }} onAdd={add} />
+        >{adding ? <FollowUpEditor value={draft} people={[ART, KOFI, PRIYA]} onChange={setDraft} onSave={add} onCancel={() => setAdding(false)} saveLabel="Add" />
+          : <Button variant="quiet" size="sm" icon="plus" onClick={() => setAdding(true)}>Add a follow-up</Button>}</WsFollowUps>
     </LiveFrame>
   );
 }
 type FollowStory = StoryObj<typeof WsFollowUps>;
 const FOLLOW = {
-  mine: false, everyoneCount: FOLLOW_UPS.length, mineCount: FOLLOW_UPS.filter((f) => f.person === ART).length, rows: FOLLOW_UPS, draft: '',
-  onMine: did('onMine'), onTick: did('onTick'), onDraft: did('onDraft'), onAdd: did('onAdd')
+  mine: false, everyoneCount: FOLLOW_UPS.length, mineCount: FOLLOW_UPS.filter((f) => f.person === ART).length, rows: FOLLOW_UPS,
+  onMine: did('onMine'), onTick: did('onTick')
 };
 const followTypes: FollowStory['argTypes'] = { rows: { control: false }, everyoneCount: { table: { disable: true } }, mineCount: { table: { disable: true } } };
 const followUps: FollowStory['render'] = (args) => <FollowUps key={`${String(args.mine)}${args.rows.length}`} {...args} />;

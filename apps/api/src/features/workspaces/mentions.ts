@@ -109,8 +109,11 @@ export async function notices(d: Deps, reader: Reader): Promise<MentionNotice[]>
 
 /** They've heard: it isn't kept. Only they can say so, and saying so of something that's gone changes nothing. */
 export async function seen(d: Deps, reader: Reader, workspaceId: string, mentionId: string): Promise<void> {
-  const w = await workspaceFor(d, reader, workspaceId);
-  await exec(d.pool, 'DELETE FROM workspace_mentions WHERE owner_id = $1 AND mention_id = $2 AND principal_index = ANY($3::bytea[])', [w.owner.ownerId, mentionId, reader.principals]);
+  await tx(d.pool, async (c) => {
+    const w = await workspaceFor(d, reader, workspaceId, c, 'hold');
+    await exec(c, 'DELETE FROM workspace_mentions WHERE owner_id = $1 AND mention_id = $2 AND principal_index = ANY($3::bytea[])', [w.owner.ownerId, mentionId, reader.principals]);
+    for (const principal of reader.principals) await publish(c, workspaceId, `${TOLD}${b64u(principal)}`);
+  });
 }
 
 /** Tags nobody came back for. */

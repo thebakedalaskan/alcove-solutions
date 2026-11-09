@@ -21,10 +21,10 @@
 import { InferenceEvidenceSchema, ScreenLegibleSchema, ScreenRegionSchema, ScreenRelevanceSchema, SpeakerSchema, type InferenceEvidence, type ScreenMoment, type ScreenRelevance, type ScreenShare, type TranscriptLine } from '@alcove/api';
 import { z } from 'zod';
 import type { Deps, Owner } from '../../context';
-import { b64u, equalBytes, id128, mac, openJson, openRecord, sealJson, sealRecord, sha, stateKey, toJson, utf8, type RecordHeader } from '../../crypto';
+import { b64u, equalBytes, id128, mac, openJson, openRecord, random, sealJson, sealRecord, sha, stateKey, toJson, utf8, type RecordHeader } from '../../crypto';
 import { bytea, exec, maybeOne, rows, tx, type Db } from '../../db';
 import { IntegrityError, InternalError, MediaError, UnansweredError, UnverifiedError, ValidationError, conflict, notFound } from '../../errors';
-import { frames as takeFrames, remux, videoSlice, videoType, type TakenFrame, type Video, type VideoType } from './ffmpeg';
+import { frames as takeFrames, remux, videoType, type TakenFrame, type Video, type VideoSink, type VideoType } from './ffmpeg';
 import type { ChatModel } from '../../inference';
 import { log } from '../../log';
 import { openOwner } from '../../owners';
@@ -405,7 +405,8 @@ export async function appendPiece(o: Owner, recordingId: string, shareId: string
   let inserted: number | 'joined' | 'over';
   try {
     inserted = await tx(o.pool, async (c): Promise<number | 'joined' | 'over'> => {
-      await exec(c, 'SELECT 1 FROM screen_shares WHERE owner_id = $1 AND recording_id = $2 AND share_id = $3 FOR SHARE', [o.ownerId, recordingId, shareId]);
+      const share = await maybeOne(c, z.object({ keep: z.boolean() }), 'SELECT keep FROM screen_shares WHERE owner_id = $1 AND recording_id = $2 AND share_id = $3 FOR UPDATE', [o.ownerId, recordingId, shareId]);
+      if (!share || !share.keep) return 'joined';
       const video = await maybeOne(c, z.object({ chunk: z.number() }), 'SELECT chunk FROM screen_videos WHERE owner_id = $1 AND recording_id = $2 AND share_id = $3 AND segment = $4 LIMIT 1',
         [o.ownerId, recordingId, shareId, p.segment]);
       if (video) return 'joined';
@@ -462,6 +463,77 @@ export const VIDEO_CHUNK_BYTES = 4 * 1024 * 1024;
 const chunkHeader = (o: Owner, recordingId: string, shareId: string, segment: number, chunk: number, chunks: number, objectId: string): RecordHeader =>
   ({ v: 1, kind: 'screen-video-chunk', ownerId: o.ownerId, recordingId, shareId, segment, chunk, chunks, objectId, keyVersion: '1' });
 
+/**
+ * ffmpeg output staged as encrypted objects, under a fresh key held only for this join. A crash loses the key; the
+ * normal orphan sweep removes the unreadable objects. Successful and failed joins delete them in finally. No
+ * plaintext file is written (Cloud Run's writable filesystem is memory-backed), and one MiB is buffered per sink.
+ */
+function stageVideo(o: Owner, recordingId: string, shareId: string, segment: number): VideoSink & { close: () => Promise<void> } {
+  const key = random(32);
+  const stageId = id128();
+  const chunkBytes = 1024 * 1024;
+  const buffer = new Uint8Array(chunkBytes);
+  const pieces: { objectId: string; digest: Uint8Array; bytes: number }[] = [];
+  const objects: string[] = [];
+  let length = 0;
+  let used = 0;
+  let cached: { chunk: number; plain: Uint8Array } | null = null;
+  const header = (objectId: string, chunk: number): RecordHeader => ({ v: 1, kind: 'screen-video-stage', ownerId: o.ownerId, recordingId, shareId, segment, stageId, objectId, chunk });
+  const flush = async () => {
+    if (!used) return;
+    const objectId = id128();
+    objects.push(objectId);
+    const ct = sealRecord(key, header(objectId, pieces.length), buffer.subarray(0, used));
+    const digest = await putChecked(o, objectId, ct, { recordingId, shareId, segment, stageId, chunk: pieces.length });
+    pieces.push({ objectId, digest, bytes: used });
+    buffer.fill(0);
+    used = 0;
+  };
+  return {
+    append: async (bytes) => {
+      for (let at = 0; at < bytes.length;) {
+        const n = Math.min(chunkBytes - used, bytes.length - at);
+        buffer.set(bytes.subarray(at, at + n), used);
+        used += n;
+        at += n;
+        length += n;
+        if (used === chunkBytes) await flush();
+      }
+    },
+    finish: async () => {
+      await flush();
+      return { length, read: async (from, to) => {
+        if (from < 0 || to < from || to > length || to - from > VIDEO_CHUNK_BYTES) throw new MediaError(undefined, { context: { recordingId, shareId, segment, why: 'staging range', bytes: to - from } });
+        const out = new Uint8Array(to - from);
+        for (let at = from; at < to;) {
+          const chunk = Math.floor(at / chunkBytes);
+          const p = pieces[chunk];
+          if (!p) throw new MediaError(undefined, { context: { recordingId, shareId, segment, why: 'staging chunk', chunk } });
+          if (cached?.chunk !== chunk) {
+            const ct = await o.objects.get(p.objectId);
+            // Staging can be regenerated from the original pieces: do not classify this as an irreparably bad input.
+            if (!equalBytes(sha(ct), p.digest)) throw new InternalError('A staged shared screen failed its integrity check. It will be retried.', { context: { recordingId, shareId, segment, stageId, chunk } });
+            cached?.plain.fill(0);
+            cached = { chunk, plain: openRecord(key, header(p.objectId, chunk), ct) };
+          }
+          const within = at - chunk * chunkBytes;
+          const n = Math.min(p.bytes - within, to - at);
+          out.set(cached.plain.subarray(within, within + n), at - from);
+          at += n;
+        }
+        return out;
+      } };
+    },
+    close: async () => {
+      key.fill(0);
+      buffer.fill(0);
+      cached?.plain.fill(0);
+      cached = null;
+      for (let i = 0; i < objects.length; i += 8) await queueDelete(o, objects.slice(i, i + 8));
+    }
+  };
+}
+
 const Group = z.object({ share_id: z.string(), segment: z.number(), at_ms: z.number(), end_ms: z.coerce.number(), mime_type: z.string(), pieces: z.coerce.number(), bytes: z.coerce.number() });
 type Group = z.infer<typeof Group>;
 /** Kept shares' pieces by share and segment: every one of the recording's, or (`only`) one share's in one segment. */
@@ -486,6 +558,19 @@ export async function finishVideo(o: Owner, recordingId: string): Promise<{ vide
 
 /** Joins going on in this process, by recording: the next one for a recording waits for the one before. */
 const joining = new Map<string, Promise<unknown>>();
+/** Two joins across all owners: ffmpeg and its bounded staging buffers cannot multiply with simultaneous call ends. */
+const waitingJoins: (() => void)[] = [];
+let activeJoins = 0;
+async function withJoinSlot<T>(fn: () => Promise<T>): Promise<T> {
+  if (activeJoins < 2) activeJoins++;
+  else await new Promise<void>((resolve) => waitingJoins.push(resolve));
+  try { return await fn(); }
+  finally {
+    const next = waitingJoins.shift();
+    if (next) next();
+    else activeJoins--;
+  }
+}
 /**
  * Runs `fn` once every join of the same recording started before it in this process is done, so the notes job and
  * joinDue never remux the same pieces at once here: whoever comes second finds the video joined and has nothing to do.
@@ -495,7 +580,7 @@ const joining = new Map<string, Promise<unknown>>();
 async function alone<T>(o: Owner, recordingId: string, fn: () => Promise<T>): Promise<T> {
   const key = `${o.ownerId}:${recordingId}`;
   const before = joining.get(key) ?? Promise.resolve();
-  const run = before.catch(() => undefined).then(fn);
+  const run = before.catch(() => undefined).then(() => withJoinSlot(fn));
   const done = run.catch(() => undefined);
   joining.set(key, done);
   try {
@@ -553,23 +638,28 @@ async function joinVideo(o: Owner, recordingId: string): Promise<{ videos: numbe
     let g: Group | undefined = first;
     for (let pass = 1; g; pass++) {
       const type = videoType(g.mime_type);
-      let video: Video;
+      const stage = stageVideo(o, recordingId, g.share_id, g.segment);
       try {
-        if (!type) throw new MediaError(undefined, { context: { ...ctx, why: 'type' } });
-        video = await remux(piecesOf(o, recordingId, g.share_id, g.segment), g.mime_type);
-      } catch (e) {
-        if (!(e instanceof MediaError) && !(e instanceof IntegrityError)) throw e;
-        slog.at(e instanceof IntegrityError ? 'error' : 'warn', 'a shared screen’s video couldn’t be joined; left out of replay, and its pieces deleted', { ...ctx, err: e });
-        // Both failures are the same every time, so the pieces go rather than being joined again at every upkeep.
-        await dropPieces(o, recordingId, g.share_id, g.segment);
-        failed++;
-        break;
+        let video: Video;
+        try {
+          if (!type) throw new MediaError(undefined, { context: { ...ctx, why: 'type' } });
+          video = await remux(piecesOf(o, recordingId, g.share_id, g.segment), g.mime_type, stage);
+        } catch (e) {
+          if (!(e instanceof MediaError) && !(e instanceof IntegrityError)) throw e;
+          slog.at(e instanceof IntegrityError ? 'error' : 'warn', 'a shared screen’s video couldn’t be joined; left out of replay, and its pieces deleted', { ...ctx, err: e });
+          // Both failures are the same every time, so the pieces go rather than being joined again at every upkeep.
+          await dropPieces(o, recordingId, g.share_id, g.segment);
+          failed++;
+          break;
+        }
+        // More pieces since it was joined: once, it's joined again with them; after that it's kept as it is.
+        const more = await storeVideo(o, recordingId, g, type, video, pass < 2);
+        if (more) { slog.info('a shared screen’s video got more pieces while it was joined; joining again', { ...ctx, pieces: more.pieces }); g = more; continue; }
+        videos++;
+        g = undefined;
+      } finally {
+        await stage.close();
       }
-      // More pieces since it was joined: once, it's joined again with them; after that it's kept as it is.
-      const more = await storeVideo(o, recordingId, g, type, video, pass < 2);
-      if (more) { slog.info('a shared screen’s video got more pieces while it was joined; joining again', { ...ctx, pieces: more.pieces }); g = more; continue; }
-      videos++;
-      g = undefined;
     }
   }
   if (groups.length) slog.info('shared screens joined into video', { recordingId, videos, failed, segments: groups.length });
@@ -602,7 +692,7 @@ async function storeVideo(o: Owner, recordingId: string, g: Group, type: VideoTy
   const { krec } = await krecOf(o, recordingId);
   try {
     for (let chunk = 0; chunk < chunks; chunk++) {
-      const plain = videoSlice(video, chunk * VIDEO_CHUNK_BYTES, (chunk + 1) * VIDEO_CHUNK_BYTES);
+      const plain = await video.read(chunk * VIDEO_CHUNK_BYTES, Math.min(video.length, (chunk + 1) * VIDEO_CHUNK_BYTES));
       const objectId = id128();
       const ct = sealRecord(krec, chunkHeader(o, recordingId, g.share_id, g.segment, chunk, chunks, objectId), plain);
       const digest = await putChecked(o, objectId, ct, { ...where, chunk });
@@ -623,6 +713,9 @@ async function storeVideo(o: Owner, recordingId: string, g: Group, type: VideoTy
         [o.ownerId, recordingId, g.share_id, g.segment]);
       if (had?.n) return { more: null, pieces: [], kept: true };
       const now = (await groupsOf(o, c, recordingId, { share: g.share_id, segment: g.segment }))[0];
+      // The winner may have finished the notes and purged temporary video while this instance was still remuxing.
+      // Keeping a stale result then would resurrect a recording that the organizer asked us to delete.
+      if (!now) return { more: null, pieces: [], kept: true };
       if (again && now && now.pieces !== g.pieces) return { more: now, pieces: [], kept: false };
       for (const x of stored) {
         await exec(c, `INSERT INTO screen_videos (owner_id, recording_id, share_id, segment, chunk, object_id, cipher_sha256, cipher_bytes, plain_bytes, total_bytes, chunks, at_ms, duration_ms, mime_type)
@@ -643,7 +736,7 @@ async function storeVideo(o: Owner, recordingId: string, g: Group, type: VideoTy
   if (out.more) { await queueDelete(o, stored.map((x) => x.objectId)); return out.more; }
   if (out.kept) {
     await queueDelete(o, stored.map((x) => x.objectId));
-    slog.info('shared screen video joined elsewhere first; this one let go', where);
+    slog.info('shared screen video no longer needs this join; this one let go', where);
     return null;
   }
   await queueDelete(o, out.pieces);
@@ -669,10 +762,16 @@ async function dropPieces(o: Owner, recordingId: string, shareId: string, segmen
  * commits (queueDelete).
  */
 export async function purgeVideo(o: Owner, db: Db, recordingId: string): Promise<string[]> {
+  // The same lock as appendPiece/storeVideo, taken before either DELETE: an in-flight join must commit before the
+  // purge, or observe that its source pieces are gone after it. It can never publish after a completed purge.
+  await exec(db, 'SELECT 1 FROM screen_shares WHERE owner_id = $1 AND recording_id = $2 ORDER BY share_id FOR UPDATE', [o.ownerId, recordingId]);
   const gone = [
     ...await rows(db, z.object({ object_id: z.string(), cipher_bytes: z.coerce.number() }), 'DELETE FROM screen_videos WHERE owner_id = $1 AND recording_id = $2 RETURNING object_id, cipher_bytes', [o.ownerId, recordingId]),
     ...await rows(db, z.object({ object_id: z.string(), cipher_bytes: z.coerce.number() }), 'DELETE FROM screen_pieces WHERE owner_id = $1 AND recording_id = $2 RETURNING object_id, cipher_bytes', [o.ownerId, recordingId])
   ];
+  // The source metadata is no longer needed by the saved frames. Removing it also prevents an upload admitted
+  // before the purge from inserting its piece after a slow object write completes.
+  await exec(db, 'DELETE FROM screen_shares WHERE owner_id = $1 AND recording_id = $2', [o.ownerId, recordingId]);
   if (!gone.length) return [];
   await exec(db, 'UPDATE owners SET stored_bytes = greatest(0, stored_bytes - $2), version = version + 1 WHERE owner_id = $1', [o.ownerId, gone.reduce((n, x) => n + x.cipher_bytes, 0)]);
   slog.info('shared screen video deleted, as the call was set to', { recordingId, objects: gone.length });

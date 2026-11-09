@@ -48,13 +48,12 @@ function binary(): string {
  * (the object store, an integrity check) stops ffmpeg and is thrown as it is, so the job tries again rather than
  * taking the video for one that can't be read.
  */
-async function run(what: string, args: string[], input: AsyncIterable<Uint8Array>, out: (chunk: Uint8Array) => void, side?: ((chunk: Uint8Array) => void) | undefined): Promise<{ inBytes: number; outBytes: number; ms: number }> {
+async function run(what: string, args: string[], input: AsyncIterable<Uint8Array>, out: (chunk: Uint8Array) => void | Promise<void>, side?: ((chunk: Uint8Array) => void) | undefined): Promise<{ inBytes: number; outBytes: number; ms: number }> {
   const t0 = performance.now();
   const p = spawn(binary(), ['-hide_banner', '-loglevel', 'error', ...args], { stdio: side ? ['pipe', 'pipe', 'pipe', 'pipe'] : ['pipe', 'pipe', 'pipe'] });
   let inBytes = 0;
   let outBytes = 0;
   let errBytes = 0;
-  p.stdout.on('data', (c: Buffer) => { outBytes += c.length; out(new Uint8Array(c.buffer, c.byteOffset, c.length)); });
   const extra = p.stdio[3];
   if (side && extra instanceof Readable) extra.on('data', (c: Buffer) => { outBytes += c.length; side(new Uint8Array(c.buffer, c.byteOffset, c.length)); });
   // ffmpeg's own messages are read and dropped: only how much it said is logged.
@@ -63,6 +62,8 @@ async function run(what: string, args: string[], input: AsyncIterable<Uint8Array
     p.on('error', reject);
     p.on('close', (code, signal) => resolve({ code, signal }));
   });
+  // Observe spawn failure immediately, even while an input fetch is still pending.
+  void exited.catch(() => undefined);
   // One listener for every wait on stdin below: ffmpeg gone means nothing more will drain.
   let gone = false;
   let wake: (() => void) | null = null;
@@ -85,39 +86,59 @@ async function run(what: string, args: string[], input: AsyncIterable<Uint8Array
       p.stdin.end();
     }
   })();
-  const fed: unknown[] = [];
-  await feed.catch((e: unknown) => { fed.push(e); p.kill('SIGKILL'); });
+  const failed: unknown[] = [];
+  const stop = (e: unknown) => { failed.push(e); p.kill('SIGKILL'); };
+  // Awaiting the sink pauses stdout and ultimately ffmpeg's stdin too: encrypted staging never builds a payload queue.
+  const drain = async () => {
+    for await (const chunk of p.stdout) {
+      const c = z.instanceof(Buffer).parse(chunk);
+      outBytes += c.length;
+      await out(new Uint8Array(c.buffer, c.byteOffset, c.length));
+    }
+  };
+  await Promise.all([feed.catch(stop), drain().catch(stop)]);
   const { code, signal } = await exited.catch((e: unknown) => { throw new MediaError(undefined, { cause: e, context: { what } }); });
   const ms = Math.round(performance.now() - t0);
-  if (fed.length) {
-    flog.debug('ffmpeg stopped: its input failed', { what, inBytes, ms, err: fed[0] });
-    throw fed[0];
+  if (failed.length) {
+    flog.debug('ffmpeg stopped: its input or output failed', { what, inBytes, ms, err: failed[0] });
+    throw failed[0];
   }
   if (code !== 0) throw new MediaError(undefined, { context: { what, code, signal, inBytes, outBytes, errBytes, ms } });
   return { inBytes, outBytes, ms };
 }
 
 /**
- * A video held as the pieces it was made of, in order, so it's never copied whole again to be cut into chunks:
- * `length` is all of them together.
+ * A video read in bounded ranges from encrypted staging. Neither remux nor indexing holds its payload in memory.
  */
-export interface Video { parts: Uint8Array[]; length: number }
-/** Bytes `from` to `to` (exclusive) of a video: a view when one part holds them, otherwise copied from the parts that do. */
-export function videoSlice(v: Video, from: number, to: number): Uint8Array {
-  const end = Math.min(to, v.length);
-  const out = new Uint8Array(Math.max(0, end - from));
-  let at = 0;
-  for (const p of v.parts) {
-    const next = at + p.length;
-    if (next > from && at < end) {
-      if (at <= from && next >= end) return p.subarray(from - at, end - at);
-      const s = Math.max(from, at);
-      out.set(p.subarray(s - at, Math.min(end, next) - at), s - from);
+export interface Video { length: number; read: (from: number, to: number) => Promise<Uint8Array> }
+/** An append-only, backpressured encrypted staging sink, owned and cleaned up by the caller. */
+export interface VideoSink { append: (bytes: Uint8Array) => Promise<void>; finish: () => Promise<Video> }
+type VideoPart = Uint8Array | { from: number; to: number };
+const partLength = (p: VideoPart) => p instanceof Uint8Array ? p.length : p.to - p.from;
+/** Composes a small replacement header and views of encrypted staging without copying the video's payload. */
+function videoFrom(parts: VideoPart[], source: Video): Video {
+  let length = 0;
+  const placed = parts.map((part) => { const at = length; length += partLength(part); return { at, end: length, part }; });
+  return { length, read: async (from, to) => {
+    const end = Math.min(to, length);
+    const out = new Uint8Array(Math.max(0, end - from));
+    // Locate the first part in logarithmic time: a long replay must not rescan all earlier clusters for every chunk.
+    let lo = 0;
+    let hi = placed.length;
+    while (lo < hi) {
+      const mid = Math.floor((lo + hi) / 2);
+      if ((placed[mid]?.end ?? length) <= from) lo = mid + 1;
+      else hi = mid;
     }
-    at = next;
-    if (at >= end) break;
-  }
-  return out;
+    for (let i = lo; i < placed.length; i++) {
+      const p = placed[i];
+      if (!p || p.at >= end) break;
+      const s = Math.max(from, p.at);
+      const e = Math.min(end, p.end);
+      out.set(p.part instanceof Uint8Array ? p.part.subarray(s - p.at, e - p.at) : await source.read(p.part.from + s - p.at, p.part.from + e - p.at), s - from);
+    }
+    return out;
+  } };
 }
 
 /**
@@ -125,23 +146,15 @@ export function videoSlice(v: Video, from: number, to: number): Uint8Array {
  * video a browser can seek, without re-encoding: a WebM with its index and duration, or a fragmented MP4 with its
  * fragment index.
  */
-export async function remux(input: AsyncIterable<Uint8Array>, mime: string): Promise<Video> {
+export async function remux(input: AsyncIterable<Uint8Array>, mime: string, sink: VideoSink): Promise<Video> {
   const type = videoType(mime);
   if (!type) throw new MediaError(undefined, { context: { what: 'remux', why: 'type' } });
-  const parts: Uint8Array[] = [];
   const args = type === 'video/webm'
     ? ['-i', 'pipe:0', '-map', '0:v:0', '-c', 'copy', '-f', 'webm', 'pipe:1']
     : ['-i', 'pipe:0', '-map', '0:v:0', '-c', 'copy', '-f', 'mp4', '-movflags', 'frag_keyframe+empty_moov+default_base_moof', 'pipe:1'];
-  const r = await run('remux', args, input, (c) => parts.push(c));
-  let out: Uint8Array[] = parts;
-  if (type === 'video/webm') {
-    // The WebM is read whole to be indexed; ffmpeg's own pieces go as soon as they're joined, and the clusters are
-    // kept as views of that one copy.
-    const joined = Buffer.concat(parts);
-    parts.length = 0;
-    out = seekableWebm(new Uint8Array(joined.buffer, joined.byteOffset, joined.length));
-  }
-  const video = { parts: out, length: out.reduce((n, x) => n + x.length, 0) };
+  const r = await run('remux', args, input, sink.append);
+  const staged = await sink.finish();
+  const video = type === 'video/webm' ? await seekableWebm(staged) : staged;
   flog.debug('video remuxed', { type, inBytes: r.inBytes, outBytes: video.length, ms: r.ms });
   return video;
 }
@@ -251,6 +264,19 @@ function* children(b: Uint8Array, from: number, to: number): Generator<El> {
     i = e.end;
   }
 }
+/** Reads only an EBML element's header. Payloads stay sealed until their bounded range is needed. */
+async function elementAt(v: Video, at: number, limit: number): Promise<El> {
+  const h = await v.read(at, Math.min(limit, at + 12));
+  const e = element(h, 0, limit - at);
+  return { ...e, start: at, body: at + e.body, end: at + e.end };
+}
+async function* elements(v: Video, from: number, to: number): AsyncGenerator<El> {
+  for (let at = from; at < to;) {
+    const e = await elementAt(v, at, to);
+    yield e;
+    at = e.end;
+  }
+}
 const uint = (b: Uint8Array, e: El) => { let v = 0; for (let i = e.body; i < e.end; i++) v = v * 256 + (b[i] ?? 0); return v; };
 function float(b: Uint8Array, e: El): number {
   const v = new DataView(b.buffer, b.byteOffset + e.body, e.end - e.body);
@@ -260,7 +286,8 @@ function float(b: Uint8Array, e: El): number {
 /** EBML writing, every size and number 8 bytes wide, so how big a part is never depends on the numbers in it. */
 const idOf = (id: number) => { const out: number[] = []; for (let v = id; v > 0; v = Math.floor(v / 256)) out.unshift(v & 0xff); return Uint8Array.from(out); };
 function size8(n: number): Uint8Array { const out = new Uint8Array(8); new DataView(out.buffer).setBigUint64(0, BigInt(n)); out[0] = 0x01; return out; }
-const master = (id: number, ...body: Uint8Array[]) => Buffer.concat([idOf(id), size8(body.reduce((n, x) => n + x.length, 0)), ...body]);
+const masterParts = (id: number, body: Uint8Array[]) => Buffer.concat([idOf(id), size8(body.reduce((n, x) => n + x.length, 0)), ...body]);
+const master = (id: number, ...body: Uint8Array[]) => masterParts(id, body);
 function uint8(id: number, v: number): Uint8Array { const out = new Uint8Array(8); new DataView(out.buffer).setBigUint64(0, BigInt(Math.max(0, Math.round(v)))); return master(id, out); }
 function float8(id: number, v: number): Uint8Array { const out = new Uint8Array(8); new DataView(out.buffer).setFloat64(0, v); return master(id, out); }
 
@@ -271,12 +298,15 @@ interface Cluster { start: number; end: number; keys: number[] }
  * ffmpeg's WebM, written to a pipe, rebuilt so a browser can seek it: the same EBML header, Info (with Duration), Tracks
  * and Tags, then Cues pointing at every cluster with a video keyframe, a SeekHead pointing at all of them, and the
  * clusters as they were. Anything else (Void, the old SeekHead) is dropped. In order, as the pieces it's made of: the
- * new parts, then each cluster as a view of `b`.
+ * new parts, then each cluster as a range of encrypted staging.
  */
-function seekableWebm(b: Uint8Array): Uint8Array[] {
-  const top = [...children(b, 0, b.length)];
-  const header = top.find((e) => e.id === 0x1a45dfa3);
-  const segment = top.find((e) => e.id === ID.segment);
+async function seekableWebm(v: Video): Promise<Video> {
+  let header: El | undefined;
+  let segment: El | undefined;
+  for await (const e of elements(v, 0, v.length)) {
+    if (e.id === 0x1a45dfa3) header = e;
+    if (e.id === ID.segment) { segment = e; break; }
+  }
   if (!header || !segment) throw bad('no segment');
   let scale = 1_000_000;
   const infoKept: Uint8Array[] = [];
@@ -289,17 +319,17 @@ function seekableWebm(b: Uint8Array): Uint8Array[] {
   let lastDuration = 0;
   const gaps: number[] = [];
   let prevTime: number | null = null;
-  for (let i = segment.body; i < segment.end;) {
-    const e = element(b, i, segment.end);
-    i = e.end;
+  for await (const e of elements(v, segment.body, segment.end)) {
     if (e.id === ID.info) {
-      for (const c of children(b, e.body, e.end)) {
+      const b = await v.read(e.body, e.end);
+      for (const c of children(b, 0, b.length)) {
         if (c.id === ID.timecodeScale) scale = uint(b, c) || scale;
         if (c.id !== ID.duration) infoKept.push(b.slice(c.start, c.end));
       }
     } else if (e.id === ID.tracks) {
-      tracks = b.slice(e.start, e.end);
-      for (const t of children(b, e.body, e.end)) {
+      tracks = await v.read(e.start, e.end);
+      const b = await v.read(e.body, e.end);
+      for (const t of children(b, 0, b.length)) {
         if (t.id !== ID.trackEntry) continue;
         let number: number | null = null;
         let type: number | null = null;
@@ -312,31 +342,35 @@ function seekableWebm(b: Uint8Array): Uint8Array[] {
         if (type === 1 && number !== null && video === null) { video = number; frameNs = def; }
       }
     } else if (e.id === ID.tags) {
-      tags = b.slice(e.start, e.end);
+      tags = await v.read(e.start, e.end);
     } else if (e.id === ID.cluster) {
       if (e.unknown) throw bad('cluster size unknown', e.start);
       let time = 0;
       const keys: number[] = [];
-      for (const c of children(b, e.body, e.end)) {
-        if (c.id === ID.timecode) { time = uint(b, c); continue; }
+      for await (const c of elements(v, e.body, e.end)) {
+        if (c.id === ID.timecode) { const b = await v.read(c.body, c.end); time = uint(b, { ...c, body: 0, end: b.length }); continue; }
         let block: El | null = null;
         let key = false;
         let dur: number | null = null;
-        if (c.id === ID.simpleBlock) { block = c; key = ((b[blockFlags(b, c)] ?? 0) & 0x80) !== 0; }
+        if (c.id === ID.simpleBlock) block = c;
         if (c.id === ID.blockGroup) {
           key = true;
-          for (const g of children(b, c.body, c.end)) {
+          for await (const g of elements(v, c.body, c.end)) {
             if (g.id === ID.block) block = g;
             if (g.id === ID.referenceBlock) key = false;
-            if (g.id === ID.blockDuration) dur = uint(b, g);
+            if (g.id === ID.blockDuration) { const b = await v.read(g.body, g.end); dur = uint(b, { ...g, body: 0, end: b.length }); }
           }
         }
         if (!block) continue;
-        const { track, rel } = blockHead(b, block);
+        const b = await v.read(block.body, Math.min(block.end, block.body + 12));
+        const local = { ...block, body: 0 };
+        const { track, rel } = blockHead(b, local);
+        if (c.id === ID.simpleBlock) key = ((b[blockFlags(b, local)] ?? 0) & 0x80) !== 0;
         if (track !== video) continue;
         const t = time + rel;
         if (key) keys.push(t);
-        if (prevTime !== null && t > prevTime) gaps.push(t - prevTime);
+        // A recent sample is enough to infer the final frame's duration when the stream gives none.
+        if (prevTime !== null && t > prevTime) { if (gaps.length === 1024) gaps.shift(); gaps.push(t - prevTime); }
         prevTime = t;
         if (t >= last) { last = t; lastDuration = dur ?? 0; }
       }
@@ -359,7 +393,7 @@ function seekableWebm(b: Uint8Array): Uint8Array[] {
       if (k !== undefined) points.push(master(ID.cuePoint, uint8(ID.cueTime, k), master(ID.cueTrackPositions, uint8(ID.cueTrack, video ?? 1), uint8(ID.cueClusterPosition, at))));
       at += c.end - c.start;
     }
-    return master(ID.cues, ...points);
+    return masterParts(ID.cues, points);
   };
   const parts = [info, tracks, ...(tags ? [tags] : []), cuesFor(0)];
   const seekFor = (positions: number[]) => master(ID.seekHead, ...parts.map((p, i) => master(ID.seek, master(ID.seekId, idBytesOf(p)), uint8(ID.seekPosition, positions[i] ?? 0))));
@@ -371,10 +405,10 @@ function seekableWebm(b: Uint8Array): Uint8Array[] {
   if (cues.length !== parts[parts.length - 1]?.length) throw bad('cues size');
   parts[parts.length - 1] = cues;
   const head = seekFor(positions);
-  const body = [head, ...parts, ...clusters.map((c) => b.subarray(c.start, c.end))];
-  const segmentSize = body.reduce((n, x) => n + x.length, 0);
-  const out = [b.subarray(header.start, header.end), idOf(ID.segment), size8(segmentSize), ...body];
-  flog.debug('webm indexed', { clusters: clusters.length, cues: cued.length, bytes: out.reduce((n, x) => n + x.length, 0) });
+  const body: VideoPart[] = [head, ...parts, ...clusters.map((c) => ({ from: c.start, to: c.end }))];
+  const segmentSize = body.reduce((n, x) => n + partLength(x), 0);
+  const out = videoFrom([await v.read(header.start, header.end), idOf(ID.segment), size8(segmentSize), ...body], v);
+  flog.debug('webm indexed', { clusters: clusters.length, cues: cued.length, bytes: out.length });
   return out;
 }
 /** The ID bytes an element starts with. */

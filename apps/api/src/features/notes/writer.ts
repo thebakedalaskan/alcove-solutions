@@ -35,6 +35,7 @@ import { personOf } from '../account/portraits';
 import * as screens from '../recordings/screens';
 import { standing } from './series';
 import { verificationKey } from '../recordings/transcripts';
+import { mergeActionProposals } from './follow-up-proposals';
 import { boardsToRead, type BoardRead } from './worked-on';
 
 const wlog = log.child({ component: 'writer' });
@@ -113,11 +114,11 @@ function keepTouched<T extends Item>(was: T[], fresh: T[]): T[] {
 }
 /** A part of the notes written again: its decisions, questions and follow-ups, each list kept as people settled it. Any part that has them is merged the same way. */
 const keepSettled = (was: Settled, fresh: Settled): Settled =>
-  ({ decisions: keepTouched(was.decisions, fresh.decisions), questions: keepTouched(was.questions, fresh.questions), actions: keepTouched(was.actions, fresh.actions) });
+  ({ decisions: keepTouched(was.decisions, fresh.decisions), questions: keepTouched(was.questions, fresh.questions), actions: mergeActionProposals(was.actions, fresh.actions) });
 
 /** The boards a part of the call's notes read: the ones open for everyone in it (`main`, or a breakout room's ID). */
 const boardsIn = (read: readonly BoardRead[]) => (place: string): BriefBoard[] =>
-  read.filter((x) => x.place === place).map((x, i) => ({ name: x.name, text: x.text, followUps: x.followUps.map((f) => ({ id: `${i}:${f.id}`, text: f.text })) }));
+  read.filter((x) => x.place === place).map((x) => ({ name: x.name, text: x.text, followUps: x.followUps.map((f) => ({ id: `${x.key}:${f.id}`, text: f.text })) }));
 
 /**
  * Each breakout room's notes, written from what was said in that room alone, and the boards open in it, in the same verified path as the call's:
@@ -434,12 +435,17 @@ async function attempt(d: Deps, job: Claimed): Promise<void> {
         analysed = { shown: done.shown, grids: done.grids, why: done.why, left: done.left };
         ({ shown, grids, why, left } = done);
         screenEvidence = done.evidence;
-      } else if (!shares.length && note.manifest.screens.length) {
+      }
+      if (note.manifest.screens.length) {
         const frames = await screens.readAll(o, noteId, recordingId);
-        // Nothing said picked these, so nothing judged them: each counts as key, as the note showed them all before.
-        shown = screens.withReadings(note.manifest.screens, frames).map((m) => ({ ...m, relevance: 'key' as const }));
-        // Written now, the note shows some of these: the rest go once the notes are saved.
-        left = frames.map((f) => f.id);
+        // A call may span the deployment: retain its earlier frames beside the new video's analysis. Frames already
+        // present in that analysis keep its current judgement; nothing judged the stored-only captures before.
+        const current = new Set(shown.map((m) => m.id));
+        const stored = new Set(frames.filter((f) => f.pick === null).map((f) => f.id));
+        const earlier = screens.withReadings(note.manifest.screens, frames).filter((m) => stored.has(m.id) && !current.has(m.id));
+        shown = [...shown, ...earlier.map((m) => ({ ...m, relevance: 'key' as const }))].sort((a, b) => a.at - b.at || a.id.localeCompare(b.id));
+        left = [...new Set([...left, ...frames.map((f) => f.id)])];
+        if (analysed) analysed = { ...analysed, shown, left };
       }
       // The job's owner is the organizer of a call, or the person who recorded a room: their choices decide, for the
       // call's notes and each breakout room's.

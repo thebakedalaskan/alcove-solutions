@@ -22,12 +22,12 @@ interface MyShare { share: string; keep: boolean; stream: MediaStream; since: nu
 
 /**
  * When the current segment of the recording began, from performance.now(), for a page that opens part-way through one
- * (a reload): from when the call says recording last changed, which is when the segment began unless the host's browser
- * dropped out meanwhile. Otherwise (and when that's in the future here), now.
+ * (a reload): from the segment's server start, including a host handoff or reconnection. If that clock is in the future
+ * here, use now.
  */
 function segmentOrigin(state: CallState): number {
   const now = performance.now();
-  const since = state.capture.recording.mode === 'on' ? state.capture.recording.since : null;
+  const since = state.notes.segmentStartedAt;
   const ago = since ? Date.now() - Date.parse(since) : 0;
   return Number.isFinite(ago) && ago > 0 ? now - ago : now;
 }

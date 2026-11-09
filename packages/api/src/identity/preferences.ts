@@ -1,3 +1,4 @@
+import { DEFAULT_SOUND_PREFERENCES, SoundPreferencesInputSchema, SoundPreferencesSchema } from './sounds';
 import { NotesSettingSchema } from '../calls/settings';
 import { ModelIdSchema } from '../notes/models';
 import { IDSchema, ISODateSchema } from '../shared/ids';
@@ -16,6 +17,19 @@ export type SummaryLength = z.infer<typeof SummaryLengthSchema>;
 
 
 export const NotificationPrefsSchema = z.object({
+  /** Older profiles keep their existing browser opt-in; new profiles explicitly start false. */
+  enabled: z.boolean().default(true),
+  privateMessages: z.boolean().default(false),
+  replies: z.boolean().default(false),
+  /** In-app reply feedback stays independent of OS notifications. */
+  replyAlerts: z.boolean().default(true),
+  chatMentions: z.boolean().default(false),
+  hands: z.boolean().default(false),
+  questions: z.boolean().default(false),
+  admissions: z.boolean().default(false),
+  timers: z.boolean().default(false),
+  /** Local mention toasts are independent of operating-system notification permission. */
+  mentionAlerts: z.boolean().default(true),
   /** Minutes before a call to remind: 0 is off. */
   beforeCall: z.union([z.literal(0), z.literal(1), z.literal(5)]),
   notesReady: z.boolean(),
@@ -27,6 +41,30 @@ export const NotificationPrefsSchema = z.object({
 });
 
 export type NotificationPrefs = z.infer<typeof NotificationPrefsSchema>;
+/** Complete current wire group; stored upgrade defaults must never enable a missing request field. */
+export const NotificationPrefsInputSchema = z.object({
+  enabled: NotificationPrefsSchema.shape.enabled.removeDefault(),
+  privateMessages: NotificationPrefsSchema.shape.privateMessages.removeDefault(),
+  replies: NotificationPrefsSchema.shape.replies.removeDefault(),
+  replyAlerts: NotificationPrefsSchema.shape.replyAlerts.removeDefault(),
+  mentionAlerts: NotificationPrefsSchema.shape.mentionAlerts.removeDefault(),
+  chatMentions: NotificationPrefsSchema.shape.chatMentions.removeDefault(),
+  hands: NotificationPrefsSchema.shape.hands.removeDefault(),
+  questions: NotificationPrefsSchema.shape.questions.removeDefault(),
+  admissions: NotificationPrefsSchema.shape.admissions.removeDefault(),
+  timers: NotificationPrefsSchema.shape.timers.removeDefault(),
+  tagged: NotificationPrefsSchema.shape.tagged.removeDefault(),
+  beforeCall: NotificationPrefsSchema.shape.beforeCall,
+  notesReady: NotificationPrefsSchema.shape.notesReady,
+  sharedWithYou: NotificationPrefsSchema.shape.sharedWithYou,
+  notesRequested: NotificationPrefsSchema.shape.notesRequested,
+  followUpDue: NotificationPrefsSchema.shape.followUpDue,
+} satisfies { [K in keyof NotificationPrefs]: z.ZodType<NotificationPrefs[K]> });
+
+/** New accounts and guests deliberately opt in, independently of existing browser permission. */
+export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPrefs = NotificationPrefsSchema.parse({
+  enabled: false, beforeCall: 5, notesReady: true, sharedWithYou: true, notesRequested: true, followUpDue: false, tagged: true
+});
 
 
 const allUnique = (items: string[]): boolean => new Set(items).size === items.length;
@@ -67,6 +105,8 @@ export const PreferencesSchema = z.object({
   /** Keep recording on this device when the connection drops, and upload afterwards. */
   recordOffline: z.boolean(),
   notifications: NotificationPrefsSchema,
+  /** Older sealed profiles acquire these defaults when opened. */
+  sounds: SoundPreferencesSchema.default(DEFAULT_SOUND_PREFERENCES),
   /** Pinned note IDs, in the order they were pinned. */
   pinned: z.array(IDSchema).max(MAX_PINS).refine(allUnique, 'Pins must be unique'),
   groups: z.array(GroupSchema).max(MAX_GROUPS).refine((g) => allUnique(g.map((x) => x.id)), 'Group IDs must be unique'),
@@ -75,9 +115,11 @@ export const PreferencesSchema = z.object({
 });
 
 export type Preferences = z.infer<typeof PreferencesSchema>;
+/** Flat leaves are optional; an included notification or sound group is complete, with no input defaults. */
+export const PreferencesPatchSchema = PreferencesSchema.extend({ model: ModelIdSchema.nullable() }).partial().extend({
+  notifications: NotificationPrefsInputSchema.optional(), sounds: SoundPreferencesInputSchema.optional()
+});
 
-/** A change to some preferences. Fields left out keep their value: unlike `PreferencesSchema.partial()`, a missing `model` stays missing rather than taking its default. */
-export const PreferencesPatchSchema = PreferencesSchema.extend({ model: ModelIdSchema.nullable() }).partial();
 
 
 /** What the Team page's `group` opens: one of your groups by its ID, or NEW_GROUP to make one. From the address bar too. */

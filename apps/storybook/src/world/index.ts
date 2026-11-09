@@ -1,3 +1,4 @@
+import { type CallTimerPreset, DEFAULT_NOTIFICATION_PREFERENCES, DEFAULT_SOUND_PREFERENCES } from '@alcove/api';
 /*
  * The demo world: everything the stand-in API serves, in the contract's own types. A scenario (src/api/scenarios.ts) makes
  * one for each story, which the story can change as it's clicked through: confirming a decision changes the note here, and
@@ -7,6 +8,7 @@ import type {
   Calendar, CreditBalance, DocRefusal, DocumentLibrary, IncomingRing, Meeting, MentionNotice, MoveIn, MoveMedia, Note, Person, PersonalEntry, Preferences, Session, ShareEntry, Team,
   WorkspaceMedia, WorkspaceSummary, WorkspaceTree
 } from '@alcove/api';
+import type { DriveWorld } from './drive-exports';
 import type * as Y from 'yjs';
 import type { BlockJSON } from '~/features/workspace/editor/types';
 import type { Troubles } from '../api/trouble';
@@ -73,6 +75,8 @@ export interface MoveSpec {
 export interface Kept { workspace: string; media: WorkspaceMedia; body: () => Promise<Blob>; preview?: Blob | undefined }
 
 export interface World {
+  drive: DriveWorld;
+  timerPresets?: CallTimerPreset[];
   /** Who's signed in, or nobody. */
   session: Session | null;
   prefs: Preferences;
@@ -127,8 +131,9 @@ export const session = (over: Partial<Session> = {}): Session => ({
 });
 
 export const PREFS: Preferences = {
+  sounds: DEFAULT_SOUND_PREFERENCES,
   notesDefault: 'on', notesLanguage: 'call', summaryLength: 'short', addToCalendar: true, showOtherMeetings: true, recordOffline: true,
-  notifications: { beforeCall: 1, notesReady: true, sharedWithYou: true, notesRequested: true, followUpDue: true, tagged: true },
+  notifications: { ...DEFAULT_NOTIFICATION_PREFERENCES, enabled: true, beforeCall: 1, followUpDue: true },
   pinned: [], groups: [], model: null
 };
 

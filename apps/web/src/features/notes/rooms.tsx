@@ -14,6 +14,7 @@ import { listNames } from '~/lib/people';
 import type { Correcting, FromLine, LineMarks } from './lines';
 import { Section, TranscriptLines, roomAnchor } from './parts';
 import { Decisions, FollowUps, Questions } from './rows';
+import { NoteFollowUpReview } from './NoteFollowUps';
 
 /** What someone who has the notes does with a room's decisions, questions and follow-ups, as with the call's. */
 export interface Settling {
@@ -37,26 +38,29 @@ export interface Settling {
  * the reader, as with the call's. `open` is the room a link came to, which starts open, at `at` in what was said there
  * when the link came to a moment. `boards` are the call's, each in the room it was open in.
  */
-export function RoomSections({ rooms, boards = [], me, writing, correct, fromLine, settle, tryAgain, marks, open, at }: {
+export function RoomSections({ noteId, rooms, boards = [], me, writing, correct, fromLine, settle, tryAgain, marks, open, at }: {
+  noteId?: string | undefined;
   rooms: NoteRoom[]; boards?: readonly NoteWorkedOn[] | undefined; me: string | undefined; writing: boolean; correct?: Correcting | undefined; fromLine?: FromLine | undefined; settle?: Settling | undefined; tryAgain?: ReactNode; marks?: LineMarks | undefined;
   open?: string | undefined; at?: number | undefined;
 }) {
   return (
     <Section title="Breakout rooms" count={rooms.length} className="nd-rooms">
       {rooms.map((r) => (
-        <RoomFold key={r.id} room={r} boards={boards.filter((b) => b.room === r.id)} me={me} writing={writing} correct={correct} fromLine={fromLine} settle={settle} tryAgain={tryAgain} marks={marks}
+        <RoomFold key={r.id} noteId={noteId} room={r} boards={boards.filter((b) => b.room === r.id)} me={me} writing={writing} correct={correct} fromLine={fromLine} settle={settle} tryAgain={tryAgain} marks={marks}
           open={r.id === open} at={r.id === open ? at : undefined} />
       ))}
     </Section>
   );
 }
 
-function RoomFold({ room, boards, me, writing, correct, fromLine, settle, tryAgain, marks, open, at }: {
+function RoomFold({ noteId, room, boards, me, writing, correct, fromLine, settle, tryAgain, marks, open, at }: {
+  noteId: string | undefined;
   room: NoteRoom; boards: readonly NoteWorkedOn[]; me: string | undefined; writing: boolean; correct?: Correcting | undefined; fromLine?: FromLine | undefined; settle?: Settling | undefined; tryAgain?: ReactNode;
   marks?: LineMarks | undefined; open: boolean; at: number | undefined;
 }) {
   const people = room.people.flatMap((x): Person[] => (x.person ? [x.person] : []));
   const said = room.transcript.length > 0;
+  const hasNotes = room.summary.trim() !== '' || room.actions.length > 0 || room.decisions.length > 0 || room.questions.length > 0;
   const spoken = room.actions.filter((a) => a.from === null);
   const fromBoards = room.actions.filter((a) => a.from === 'board');
   return (
@@ -67,7 +71,8 @@ function RoomFold({ room, boards, me, writing, correct, fromLine, settle, tryAga
         <small>{minutesLabel(Math.max(0, room.to - room.from))}{people.length ? ` · ${listNames(people)}` : ''}{boards.length ? ` · ${boards.length === 1 ? 'a board' : `${boards.length} boards`}` : ''}</small>
       </>
     )}>
-      {!said ? <p className="nd-rs">Nothing was said here while notes were on.</p> : (
+      {noteId && settle && <NoteFollowUpReview noteId={noteId} suggestions={room.suggestions} actions={room.actions} people={settle.people} reader={settle.reader} me={me} />}
+      {!said && !hasNotes ? <p className="nd-rs">Nothing was said here while notes were on.</p> : (
         <>
           {room.summary ? <p className="nd-fold-sum">{room.summary}</p>
             : writing ? <p className="nd-rs">This room’s notes are being written.</p>
@@ -87,10 +92,10 @@ function RoomFold({ room, boards, me, writing, correct, fromLine, settle, tryAga
               <ol className="nd-rch">{room.chapters.map((c) => <li key={`${c.at}-${c.title}`}><b>{c.title}</b>{c.summary && <span>{c.summary}</span>}</li>)}</ol>
             </Part>
           )}
-          <Fold className="nd-fold is-said" open={at !== undefined} summary={<><b>What was said in {room.name}</b><small>{room.transcript.length} {room.transcript.length === 1 ? 'line' : 'lines'}</small></>}>
+          {said && <Fold className="nd-fold is-said" open={at !== undefined} summary={<><b>What was said in {room.name}</b><small>{room.transcript.length} {room.transcript.length === 1 ? 'line' : 'lines'}</small></>}>
             <UnsureKey words={room.transcript.some((l) => l.unsure?.words)} speaker={room.transcript.some((l) => l.unsure?.speaker)} className="nd-key" />
             <TranscriptLines lines={room.transcript} gaps={room.gaps} me={me} focus={at} correct={correct} fromLine={fromLine} marks={marks} className="is-room" />
-          </Fold>
+          </Fold>}
         </>
       )}
     </Fold>

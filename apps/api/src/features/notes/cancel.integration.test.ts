@@ -11,6 +11,7 @@ import { work } from './writer';
 import { NOTES_MODEL, UNENCRYPTED_MODEL, VISION_MODEL, WRAPPED_UP_S, speechWav } from '../../testing/fake-near';
 import { startHarness, type Harness } from '../../testing/harness';
 import { disposeLiveKit } from '../../testing/livekit';
+import { acceptNoteSuggestions } from '../../testing/follow-ups';
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -177,7 +178,7 @@ describe('notes written again', () => {
     const { noteId } = await call(org);
     await org.api.notes.rewrite(noteId, { model: VISION_MODEL });
     await written(org.api, noteId);
-    const note = await org.api.notes.get(noteId);
+    const note = await acceptNoteSuggestions(org.api, noteId);
     // The transcript's verification and the model that wrote these notes, each once: not the one that wrote them first.
     expect(note.inference.map((e) => `${e.task} ${e.model}`).sort()).toEqual(['notes ' + VISION_MODEL, 'transcript openai/whisper-large-v3']);
     expect(note.inference.some((e) => e.model === NOTES_MODEL)).toBe(false);

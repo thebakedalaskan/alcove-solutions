@@ -161,9 +161,12 @@ who has what. Everything happens under the workspace's lock, so nothing's told a
 What's told waits in `workspace_mentions`: the document, the keyed hash access knows them by (their address's if they're
 signed in, even when tagged by their seat, so it reaches them after the call), and a sealed `workspace-mention` record of who
 tagged them, by name and face, and the line. A notice (`told:<hash>`) wakes only that person's streams, which read what's
-waiting, ask access whether they can open each document now, and write a `mention` line. Opening a stream does the same, so
+waiting, ask access whether they can open each document now, and write the complete authorized set in a `mentions` line.
+Opening a stream does the same, so
 a tag is heard on arrival, as often as it takes until someone says they've seen it: `DELETE /v1/workspaces/:id/mentions/:id`
-(`WorkspaceLive.seen`), which only they can do. `GET /v1/mentions` (`api.workspaces.mentions`) is the same across all their
+(`WorkspaceLive.seen`), which only they can do. Reading a tag publishes the same private notice, so every open stream replaces
+its unread set, including with an empty set. Tree changes recompute it too, so losing a document removes its tags.
+`GET /v1/mentions` (`api.workspaces.mentions`) is the same across all their
 workspaces, with what each document's called, for the side panel's count and the browser's notification.
 
 Nobody hears of a tag in something they can't open now, however long it waited. A tag in something they've lost is deleted when
@@ -619,7 +622,7 @@ and this way it runs through the same auth, origin check and tests as everything
   than closing the oldest, so a stream at work is never taken from anyone, and that's decided before anything is read. The
   browser tries again by itself and gets in when one closes.
 - **A workspace's stream** (`GET /v1/workspaces/:id/live`). Lines: `tree`, whole, first and whenever what this reader sees
-  changes; `presence`, everyone here that they can know of, whole, whenever that changes; `mention`, someone tagged them
+  changes; `presence`, everyone here that they can know of, whole, whenever that changes; `mentions`, their authorized unread tags, whole
   ([Tags](#tags)); `access`, when their role changes, just before the `tree` that shows it; `ping`, every 25 seconds; `closed`, when
   they can't open it any more, and it ends. Every stream of a workspace on an instance shares one subscription and one
   read of each change, for the streams behind it: `version` moves on with every change to the tree or to who has what, and
@@ -698,7 +701,7 @@ and this way it runs through the same auth, origin check and tests as everything
   recording, share, segment, piece and object), written to the object store, read back and checked, and only
   then recorded in `screen_pieces`; a piece sent again is stored once, and one whose row doesn't commit queues its
   object for deletion. Once the call is over and the share's tail has passed (a timer set as the call ends, and maintenance as a backstop; no notes service is needed) each share's pieces in each segment are joined into one
-  video, sealed in chunks of at most 4 MiB (`screen-video-chunk`, binding the chunk and the count) into
+  video, with backpressure into temporary encrypted object-store chunks under a fresh per-join key while it is indexed, then sealed in chunks of at most 4 MiB (`screen-video-chunk`, binding the chunk and the count) into
   `screen_videos`, and the pieces' rows are deleted with the chunks' rows written, then their objects. Replay
   (`GET /v1/notes/:id/screen/:share/:segment`) opens only the chunks a range needs, with `nosniff` and `no-store`
   ([Calls and recordings › Shared screens](calls-and-recordings.md#shared-screens)).
@@ -738,6 +741,11 @@ and this way it runs through the same auth, origin check and tests as everything
   during the call is in the call's sealed state (`workspace`: who's asking, what's presented and playing, what's been
   worked on and by whom, and the next agenda while it's being made), and goes when the call ends: what was worked on into the note, if there is one, and nowhere else
   ([Calls and recordings › The call's workspace](calls-and-recordings.md#the-calls-workspace)).
+- **Presenter timers** live in the call’s sealed state, separate from its boards and workspace. The sequence keeps its
+  segment labels, optional presenters and durations, current position, revision and server-clock anchors. Older call
+  records default to no sequence. Named presets keep only definitions, sealed under their account’s keys, with a
+  revision for explicit updates; applying one copies it into the call with a fresh clock. Presets belong only to their
+  account and are physically removed with it. See [Presenter timer sequences](presenter-timers.md).
 - **A board in a call** is a document in a workspace like any other. The call's sealed state says which is open in each part
   of the call and which boards it lets everyone into (`board`): where each is, who opened or decided it by their name, address and
   seat, and the seats and addresses each has been worked out for, and nothing about what's on it. An open board's entry keeps its

@@ -1,5 +1,5 @@
 /*
- * Leaving: one calm sheet whose content changes in place. First the choice. Anyone who doesn't host just leaves.
+ * The host's departure: one calm sheet whose content changes in place. Other participants leave without this sheet.
  * Whoever hosts (the organizer, or someone standing in for them) ends the call for everyone, or leaves and keeps it
  * going with someone else hosting: the best person is chosen already, and Change shows who else could. Once the call
  * has ended, who gets the notes and how they're coming along, until they can be read.
@@ -7,7 +7,7 @@
 import { errorMessage, firstName, minutesLabel, type NoteProgress, type Person } from '@alcove/api';
 import { Avatar, Button, Dots, Faces, Icon, Modal, Unencrypted } from '@alcove/ui';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { api } from '~/lib/api';
 import { log } from '~/lib/log';
 import { callName, listNames } from '~/lib/people';
@@ -19,10 +19,8 @@ export type Ended = { noteId: string | null; duration: number };
 /** Someone who could host after you, by participant ID. */
 export interface NextHost { id: string; person: Person }
 
-export function LeaveSheet({ open, onOpenChange, title, elapsed, hosting, organizer, standingInFor, next, notes, modelPrivate, locked, others, getting, leaving, ended, onEnd, onHandOff, onRead, onHome }: {
+export function LeaveSheet({ open, onOpenChange, title, elapsed, organizer, standingInFor, next, notes, modelPrivate, others, getting, leaving, ended, onEnd, onHandOff, onRead, onHome, inline = false }: {
   open: boolean; onOpenChange: (o: boolean) => void; title: string; elapsed: number;
-  /** You host the call now: leaving ends it for everyone, or hands it to someone. Anyone else just leaves. */
-  hosting: boolean;
   /** You organized the call. */
   organizer: boolean;
   /** You're hosting in someone's place: the organizer, by name. */
@@ -31,18 +29,19 @@ export function LeaveSheet({ open, onOpenChange, title, elapsed, hosting, organi
   next: NextHost[];
   /** Notes have been on at some point, so the call has notes. */
   notes: boolean;
-  /** The call's AI model runs in a secure enclave; when it doesn't, the notes aren't written in confidential compute. */
+  /** Whether the chosen AI model runs in a secure enclave. */
   modelPrivate: boolean;
-  /** Nobody new can join, so someone who leaves can't come back. */
-  locked: boolean;
   /** Anyone else in the call. */
   others: number;
   /** Everyone invited besides you: they get the notes too. */
   getting: Person[];
   leaving: boolean; ended: Ended | null;
   onEnd: () => void; onHandOff: (to: string) => void; onRead: (noteId: string) => void; onHome: () => void;
+  /** A floating call has its own document: the same question replaces its picture, without a main-document modal. */
+  inline?: boolean | undefined;
 }) {
-  const reduce = useReducedMotion();
+  const reducedMotion = useReducedMotion();
+  const reduce = reducedMotion || inline;
   const [progress, setProgress] = useState<NoteProgress | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
   // Who hosts after you: the best person, unless you choose someone else (and they're still here to).
@@ -67,21 +66,19 @@ export function LeaveSheet({ open, onOpenChange, title, elapsed, hosting, organi
 
   const minutes = Math.max(1, Math.floor((ended?.duration ?? elapsed) / 60));
   // Leaving can keep the call going only for someone hosting with somebody here who can take over.
-  const keep = hosting && others > 0 && pick !== null;
+  const keep = others > 0 && pick !== null;
   const back = standingInFor ? firstName(standingInFor) : null;
-  const said = !hosting ? (locked ? 'The call goes on without you. It’s locked, so you can’t join again unless the host unlocks it.' : 'The call goes on without you. You can join again with the link.')
-    : !others ? 'You’re the only one here, so leaving ends the call.'
+  const said = !others ? 'You’re the only one here, so leaving ends the call.'
       : !keep ? `${back ? `You’re hosting while ${back} is away.` : 'You organized this call.'} Nobody else here can host: guests can’t. Leaving ends it for everyone${notes ? ', and the notes go to everyone invited' : ''}.`
         : back ? `You’re hosting while ${back} is away. Someone else can host, or you can end the call for everyone${notes ? ', and the notes go to everyone invited' : ''}.`
           : `You organized this call. End it for everyone${notes ? ', and the notes go to everyone invited' : ''}, or leave it with someone else hosting until you’re back.`;
-  // Anyone who doesn't host only leaves: the call goes on without them.
-  const endLabel = !hosting ? (leaving ? 'Leaving…' : 'Leave the call') : leaving ? 'Ending the call…' : others ? 'End call for everyone' : 'End the call';
+  const endLabel = leaving ? 'Ending the call…' : others ? 'End call for everyone' : 'End the call';
   const endButton = <Button key="end" variant={keep && back ? 'secondary' : 'primary'} loading={leaving && !keep} disabled={leaving} onClick={onEnd} autoFocus={!(keep && back)}>{endLabel}</Button>;
   const keepButton = keep && pick
     ? <Button key="keep" variant={back ? 'primary' : 'secondary'} disabled={leaving} onClick={() => onHandOff(pick.id)} autoFocus={Boolean(back)}>Leave and keep it going</Button>
     : null;
-  return (
-    <Modal open={open} onOpenChange={(o) => { if (!ended && !leaving) onOpenChange(o); }} placement="bottom" label="Leave the call" className="ic-leave">
+  const change = (o: boolean) => { if (!ended && !leaving) onOpenChange(o); };
+  const content = (
       <motion.div layout={!reduce} transition={UI} className="in">
         <AnimatePresence mode="wait" initial={false}>
           {!ended ? (
@@ -141,6 +138,34 @@ export function LeaveSheet({ open, onOpenChange, title, elapsed, hosting, organi
           )}
         </AnimatePresence>
       </motion.div>
-    </Modal>
   );
+  return inline
+    ? open && <InlineLeave onStay={() => change(false)}>{content}</InlineLeave>
+    : <Modal open={open} onOpenChange={change} placement="bottom" label="Leave the call" className="ic-leave">{content}</Modal>;
+}
+
+/** Owns this question's focus within the child document; closing never focuses the opener's document. */
+function InlineLeave({ onStay, children }: { onStay: () => void; children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const stay = useRef(onStay);
+  stay.current = onStay;
+  useLayoutEffect(() => {
+    const root = ref.current;
+    if (!root) return;
+    root.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus();
+    const key = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') { event.preventDefault(); stay.current(); return; }
+      if (event.key !== 'Tab') return;
+      const all = [...root.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')];
+      const first = all[0];
+      const last = all.at(-1);
+      if (!first || !last) { event.preventDefault(); return; }
+      const at = root.ownerDocument.activeElement;
+      if (event.shiftKey && (at === first || !root.contains(at))) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && (at === last || !root.contains(at))) { event.preventDefault(); first.focus(); }
+    };
+    root.addEventListener('keydown', key);
+    return () => root.removeEventListener('keydown', key);
+  }, []);
+  return <div ref={ref} className="ic-leave" role="dialog" aria-label="Leave the call">{children}</div>;
 }

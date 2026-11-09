@@ -34,7 +34,7 @@ export type Changer = z.infer<typeof ChangerSchema>;
 export const ChangeSchema = z.object({
   by: ChangerSchema,
   at: ISODateSchema,
-  what: z.enum(['proposed', 'confirmed', 'rejected', 'superseded', 'reopened', 'reworded', 'answered', 'took-on', 'declined', 'reassigned', 'due', 'done', 'undone', 'disputed', 'undisputed']),
+  what: z.enum(['proposed', 'confirmed', 'rejected', 'superseded', 'reopened', 'reworded', 'answered', 'took-on', 'declined', 'reassigned', 'due', 'done', 'undone', 'disputed', 'undisputed', 'accepted', 'dismissed']),
   /** The wording, owner, speaker or due date before a change to it, and after. */
   before: z.string().optional(),
   after: z.string().optional()

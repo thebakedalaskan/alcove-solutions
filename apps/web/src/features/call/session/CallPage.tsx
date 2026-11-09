@@ -5,5 +5,5 @@ import { InCall } from './InCall';
 export function CallPage({ code }: { code: string }) {
   const active = sessions.call;
   if (!active || active.code !== code) return <Navigate to="/join/$code" params={{ code }} replace />;
-  return <InCall session={active.session} />;
+  return <InCall key={`${active.session.ticket.callId}:${active.session.ticket.identity}`} session={active.session} />;
 }

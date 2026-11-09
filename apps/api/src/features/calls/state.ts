@@ -1,4 +1,4 @@
-import { MAIN_PLACE, ModelIdSchema, firstName } from '@alcove/api';
+import { CallTimerSequenceSchema, MAIN_PLACE, ModelIdSchema, firstName } from '@alcove/api';
 import { z } from 'zod';
 import type { Owner } from '../../context';
 import { id128, openJson, sealJson, stateKey, toJson } from '../../crypto';
@@ -13,7 +13,9 @@ import { BreakoutState, Joined, placesOf, relocate } from './places';
 import { keepRooms } from './scribes';
 import * as screens from '../recordings/screens';
 import { carryModel } from '../notes/carryModel';
+import { carryFrameCapture, FrameCapture } from '../recordings/storedFrames';
 import { log } from '../../log';
+import { syncAttention } from './attention';
 
 const clog = log.child({ component: 'calls' });
 
@@ -34,7 +36,11 @@ const withHost = (v: unknown): unknown => {
   const s = BeforeHandOff.safeParse(v);
   return s.success ? { ...v, host: s.data.people.find((j) => j.role === 'host' && j.status === 'in')?.identity ?? null } : v;
 };
-const LiveShare = z.object({ id: z.string(), identity: z.string(), keep: z.boolean(), recorded: z.boolean(), from: z.number(), until: z.number().nullable() });
+const LiveShare = z.object({
+  id: z.string(), identity: z.string(), keep: z.boolean(), recorded: z.boolean(), from: z.number(), until: z.number().nullable(),
+  /** LiveKit listed this presenter's screen while this share was active. Older shares must verify before sending a tail. */
+  published: z.boolean().default(false)
+});
 
 type LiveShare = z.infer<typeof LiveShare>;
 
@@ -51,7 +57,7 @@ export const Stored = z.preprocess(withHost, z.object({
    * nobody takes over, and the call doesn't end for want of a host, while it can still arrive. Null otherwise.
    */
   moving: z.object({ until: z.number() }).nullable().default(null),
-  notes: z.preprocess(carryModel, z.object({
+  notes: z.preprocess((v) => carryFrameCapture(carryModel(v)), z.object({
     /** What the call captures now (features/calls/capture.ts): notes off, on, or on and paused by the organizer. */
     status: capture.CaptureStatus, everOn: z.boolean(), noteId: z.string().nullable(), recordingId: z.string().nullable(), segment: z.number(),
     /**
@@ -71,6 +77,8 @@ export const Stored = z.preprocess(withHost, z.object({
      * before, or the last one stopped. A call stored before shares were asked about has none.
      */
     screenHistory: z.array(capture.ScreenChange).default([]),
+    /** Captured frames from a previous release's still-live call, until they become note moments when it ends. */
+    frameCapture: FrameCapture.nullable().default(null),
     /** The model the organizer chose for the notes (null: the default model). Goes into the note. */
     model: ModelIdSchema.nullable().default(null),
     /** The stretches with notes on but the host's browser out of the call, until another connection hosted. */
@@ -98,16 +106,20 @@ export const Stored = z.preprocess(withHost, z.object({
   shares: z.array(LiveShare).default([]),
   /** Where in this generation's log each part of the call last had chat, so people who come in later know there was chat they can't read. */
   chatAt: z.record(z.string(), z.number()),
+  /** This person's opaque chat message IDs, sealed with call state and kept across their reconnections. */
+  chatRead: z.record(z.string(), z.array(z.string())).default({}),
   notices: z.array(Notice),
   /** What's going on in the workspace the call uses: who's asking to see it, what's being presented and played, and what's been worked on. */
   workspace: CallSpace.default(NO_SPACE),
   /** Which board is open in each part of the call, and which boards it lets everyone into. */
-  board: CallBoards.default(NO_BOARDS)
+  board: CallBoards.default(NO_BOARDS),
+  timerSequence: CallTimerSequenceSchema.nullable().default(null)
 }));
 
 export type Stored = z.infer<typeof Stored>;
 
 export const Row = z.object({
+  version: z.coerce.number().int().nonnegative(), attention_ciphertext: bytea.nullable(),
   call_id: z.string(), meeting_item_id: z.string(), state: z.enum(['live', 'ended']), started_at: timestamp, ended_at: timestamp.nullable(), state_ciphertext: bytea,
   room_name: z.string().nullable(), host_identity: z.string().nullable(), host_joined_at: timestamp.nullable(), host_left_at: timestamp.nullable(), locked: z.boolean(),
   mls_generation: z.coerce.number().int(), mls_epoch: z.coerce.number().int(), mls_seq: z.coerce.number().int()
@@ -115,7 +127,7 @@ export const Row = z.object({
 
 export type Row = z.infer<typeof Row>;
 
-const COLUMNS = 'call_id, meeting_item_id, state, started_at, ended_at, state_ciphertext, room_name, host_identity, host_joined_at, host_left_at, locked, mls_generation, mls_epoch, mls_seq';
+const COLUMNS = 'version, (SELECT ciphertext FROM call_attention WHERE call_attention.owner_id = calls.owner_id AND call_attention.call_id = calls.call_id) AS attention_ciphertext, call_id, meeting_item_id, state, started_at, ended_at, state_ciphertext, room_name, host_identity, host_joined_at, host_left_at, locked, mls_generation, mls_epoch, mls_seq';
 
 export const key = (o: Owner, callId: string) => stateKey(o.root, o.ownerId, `call:${callId}`);
 
@@ -136,7 +148,9 @@ export async function load(o: Owner, db: Db, callId: string, lock: boolean | 'sh
  * saved, before each room's record.
  */
 export async function save(o: Owner, db: Db, callId: string, s: Stored): Promise<Stored> {
+  const before = await load(o, db, callId);
   const tidy = space.tidied(s, space.ending(o, callId));
+  if (before.row.state === 'live') await syncAttention(o, db, callId, before.state, tidy);
   // A board open in any part of the call goes into the note, for that part's notes to read, whether or not anyone changes it.
   const kept = keepRooms({ ...tidy, workspace: withOpenBoards(tidy.workspace, tidy.board.open) }, Date.now());
   await exec(db, 'UPDATE calls SET state_ciphertext = $3, version = version + 1 WHERE owner_id = $1 AND call_id = $2', [o.ownerId, callId, sealJson(key(o, callId), header(o, callId), toJson(kept))]);

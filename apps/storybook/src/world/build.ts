@@ -4,7 +4,7 @@
  * compiler keeps the world in step with the contract; `parseWorld` (scenarios.ts) also runs it through the schemas.
  */
 import {
-  DEFAULT_NOTES_CHOICES, type ActionItem, type Calendar, type CalendarEvent, type Change, type Changer, type Chapter, type InferenceEvidence, type Meeting,
+  ACCEPTED_FOLLOW_UP, DEFAULT_NOTES_CHOICES, type FollowUpTarget, type ActionItem, type Calendar, type CalendarEvent, type Change, type Changer, type Chapter, type InferenceEvidence, type Meeting,
   type Note, type NoteAction, type NoteDecision, type NoteEvidence, type NoteFound, type NoteKind, type NoteQuestion, type NoteStatus, type NoteSummary,
   type NotesSetting, type Person, type Received, type Recipient, type RecipientRole, type Repeat, type RsvpCounts, type ScreenMoment, type ScreenShare, type TranscriptLine
 } from '@alcove/api';
@@ -25,7 +25,7 @@ interface Entry { id: string; text: string; at?: string | undefined }
 export interface DecisionSpec extends Entry { state: NoteDecision['state']; by?: Person | undefined }
 export interface QuestionSpec extends Entry { answered?: Person | undefined }
 /** `board`: written on a board's Actions frame, so it's under Follow-ups from the board. */
-export interface ActionSpec extends Entry { owner?: Person | undefined; takenOn?: boolean | undefined; due?: string | undefined; done?: boolean | undefined; board?: boolean | undefined }
+export interface ActionSpec extends Entry { owner?: Person | undefined; takenOn?: boolean | undefined; due?: string | undefined; done?: boolean | undefined; board?: boolean | undefined; revision?: string | undefined; target?: FollowUpTarget | undefined; reviewed?: ActionItem['reviewed'] | undefined }
 export interface ShareSpec { person: Person; by: Person; group?: string | undefined; at: string }
 
 export interface NoteSpec {
@@ -50,6 +50,8 @@ export interface NoteSpec {
   decisions?: readonly DecisionSpec[] | undefined;
   questions?: readonly QuestionSpec[] | undefined;
   actions?: readonly ActionSpec[] | undefined;
+  /** AI proposals stay outside the actual checklist until someone adds them. */
+  suggestions?: readonly ActionSpec[] | undefined;
   screens?: readonly ScreenMoment[] | undefined;
   /** Shares kept for the notes, which the note's replay plays in step with the audio. */
   shares?: readonly ScreenShare[] | undefined;
@@ -108,7 +110,7 @@ export function writeNote(s: NoteSpec, me: Person = ART): Note {
     const changes: Change[] = q.answered ? [{ by: changer(q.answered, roleOf(q.answered)), at: addMinutes(settled, 20), what: 'answered' }] : [];
     return { id: q.id, text: q.text, ...(q.at ? { at: mmss(q.at) } : {}), state: q.answered ? 'answered' : 'open', lines, against: [], changes, evidence: evidenceOf(lines) };
   });
-  const actions: NoteAction[] = (s.actions ?? []).map((a) => {
+  const makeActions = (specs: readonly ActionSpec[], review: 'accepted' | 'suggested'): NoteAction[] => specs.map((a) => {
     const lines = groundsOf(a);
     const owner = a.owner;
     const changes: Change[] = [];
@@ -116,6 +118,7 @@ export function writeNote(s: NoteSpec, me: Person = ART): Note {
     if (owner && a.takenOn && a.due) changes.push({ by: changer(owner, roleOf(owner)), at: addMinutes(settled, 11), what: 'due', after: a.due });
     if (owner && a.done) changes.push({ by: changer(owner, roleOf(owner)), at: addMinutes(settled, 60), what: 'done' });
     const item: ActionItem = {
+      ...ACCEPTED_FOLLOW_UP, review, revision: a.revision ?? `${a.id}-v1`, changeOf: a.target?.id ?? null, target: a.target ?? null, reviewed: a.reviewed ?? null,
       id: a.id, text: a.text, ...(owner ? { owner: { name: owner.name, person: owner } } : {}), takenOn: a.takenOn ?? false, ...(a.due ? { due: a.due } : {}),
       ...(a.at ? { at: mmss(a.at) } : {}), done: a.done ?? false, lines, against: [], changes, from: a.board ? 'board' : null
     };
@@ -123,6 +126,8 @@ export function writeNote(s: NoteSpec, me: Person = ART): Note {
     const evidence = evidenceOf(lines);
     return { ...item, evidence: a.board ? { ...evidence, flags: evidence.flags.filter((f) => f !== 'missing') } : evidence };
   });
+  const actions = makeActions(s.actions ?? [], 'accepted');
+  const suggestions = makeActions(s.suggestions ?? [], 'suggested');
   const recipients: Recipient[] = [
     { person: s.organizer, role: 'organizer' },
     ...(s.invited ?? []).map((person): Recipient => ({ person, role: 'invited', at: ended })),
@@ -151,6 +156,7 @@ export function writeNote(s: NoteSpec, me: Person = ART): Note {
     decisions: status === 'ready' ? decisions : [],
     questions: status === 'ready' ? questions : [],
     actions: status === 'ready' ? actions : [],
+    suggestions,
     chapters: status === 'ready' ? (s.chapters ?? []).map(([at, title, summary]): Chapter => ({ at: mmss(at), title, summary })) : [],
     gaps: [],
     screens: status === 'ready' ? [...(s.screens ?? [])] : [],

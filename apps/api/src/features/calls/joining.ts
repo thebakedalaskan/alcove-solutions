@@ -16,6 +16,7 @@ import type { Loaded } from '../../vault';
 import { findItem, getItem } from '../../vault';
 import { mayStandIn } from './hosting';
 import { Joined } from './places';
+import { attentionPrincipalOf } from './attention';
 import * as rings from './rings';
 import { log } from '../../log';
 import { header, hostHere, key, liveCall, load, notice, save, sharesEnd, tenthsIn, type Row, Stored, withPerson } from './state';
@@ -111,10 +112,11 @@ export async function join(d: Deps, code: string, who: { owner?: Owner | undefin
   }
   // Chosen by the browser (its key package names it): random, and new for every connection.
   const identity = who.identity;
+  const person = id128();
   const joined: Joined = {
-    identity, person: id128(), role, name, ...(asker && keepsAddress ? { email: asker.email.toLowerCase(), ...(asker.photoUrl ? { photoUrl: asker.photoUrl } : {}) } : {}),
+    identity, person, attentionPrincipal: who.owner ? `account:${who.owner.ownerId}` : `guest:${person}`, role, name, ...(asker && keepsAddress ? { email: asker.email.toLowerCase(), ...(asker.photoUrl ? { photoUrl: asker.photoUrl } : {}) } : {}),
     status: role === 'host' ? 'in' : 'waiting', admit: role === 'guest' ? 'ask' : 'auto', keysFor: 0, group: role === 'host' ? MAIN_PLACE : null, from: 0,
-    placedAt: Date.now(), placedSeq: 0, wasIn: null, leftAt: {}, replaced: false, chatBefore: false, since: Date.now(), left: null, earlier: [], hand: false, hosting: []
+    placedAt: Date.now(), placedSeq: 0, wasIn: null, leftAt: {}, replaced: false, chatBefore: false, since: Date.now(), left: null, askedAt: Date.now(), earlier: [], hosting: []
   };
   // A pass from this browser's earlier connection to the same call: someone let in before is let in again without asking.
   const earlier = who.previous ? readPass(d.cfg, who.previous) : undefined;
@@ -188,9 +190,9 @@ export async function moveIn(d: Deps, o: Owner, callId: string, from: { identity
   // A new connection of the same person, as a fresh join makes one, keeping only who they are (and their hand): in no group
   // yet, so the host's browser adds it to the group of the part of the call they're in, and takes the old one out.
   const joined: Joined = {
-    identity: to.identity, person: was.person, role: was.role, name: was.name, ...(was.email ? { email: was.email } : {}), ...(was.photoUrl ? { photoUrl: was.photoUrl } : {}),
+    identity: to.identity, person: was.person, attentionPrincipal: attentionPrincipalOf(was), role: was.role, name: was.name, ...(was.email ? { email: was.email } : {}), ...(was.photoUrl ? { photoUrl: was.photoUrl } : {}),
     status: host ? 'in' : 'waiting', admit: 'auto', keysFor: 0, group: host ? MAIN_PLACE : null, from: 0,
-    placedAt: Date.now(), placedSeq: 0, wasIn: null, leftAt: {}, replaced: false, chatBefore: false, since: Date.now(), left: null, earlier: [], hand: was.hand, hosting: []
+    placedAt: Date.now(), placedSeq: 0, wasIn: null, leftAt: {}, replaced: false, chatBefore: false, since: Date.now(), left: null, askedAt: Date.now(), earlier: [], hosting: []
   };
   return enter(d, o, meeting, joined, { ...media, keyPackage: to.keyPackage, ...(host ? { host: from.identity } : { earlier: { callId, identity: from.identity, person: from.person }, moving: true }) });
 }
@@ -234,10 +236,10 @@ async function hostJoin(o: Owner, meeting: Loaded<MeetingManifest>, joined: Join
       const callId = id128();
       const roomName = `r_${id128()}`;
       let s: Stored = {
-        host: joined.identity, moving: null, people: [{ ...joined, hosting: [{ from: joined.since, to: null }] }], spotlight: null, breakouts: { open: null, held: [] }, removed: [], pointing: true, othersPointOff: [], chatAt: {}, notices: [], workspace: NO_SPACE, board: NO_BOARDS,
+        host: joined.identity, moving: null, people: [{ ...joined, hosting: [{ from: joined.since, to: null }] }], spotlight: null, breakouts: { open: null, held: [] }, removed: [], pointing: true, othersPointOff: [], chatAt: {}, chatRead: {}, timerSequence: null, notices: [], workspace: NO_SPACE, board: NO_BOARDS,
         notes: {
           status: 'off', everOn: false, noteId: null, recordingId: null, segment: 0, segmentFrom: 0, history: [], asks: [], unavailable: [], offline: [], screenHistory: [],
-          model: (await profile(o, c)).preferences.model
+          frameCapture: null, model: (await profile(o, c)).preferences.model
         },
         shares: []
       };
@@ -269,7 +271,7 @@ async function hostJoin(o: Owner, meeting: Loaded<MeetingManifest>, joined: Join
     // reload: what's kept by person, such as whether others may point at what they share, holds when they come back,
     // and so does their raised hand.
     const last = state.people.findLast((j) => j.role === 'host');
-    const host: Joined = { ...joined, person: last?.person ?? joined.person, hand: last?.hand ?? false };
+    const host: Joined = { ...joined, person: last?.person ?? joined.person, attentionPrincipal: last ? attentionPrincipalOf(last) : joined.attentionPrincipal };
     const told = standIn ? { change: { kind: 'back' as const, standIn, organizer: joined }, organizer: (await me(o, c)).name } : undefined;
     const gone = [...(earlier ? [earlier.identity] : []), ...(standIn && standInGone ? [standIn.identity] : [])];
     const { state: s, generation, roomName } = await newGeneration(o, c, live, state, { host, joining: true, gone }, told);
@@ -298,7 +300,10 @@ async function guestJoin(o: Owner, meeting: Loaded<MeetingManifest>, joined: Joi
     // A lock keeps new people out, not someone coming back to the place they had.
     if (live.locked && !before) throw new ForbiddenError('The host has locked this call.', { context: { callId: live.call_id, role: joined.role } });
     // Coming back keeps their raised hand, and the spotlight if it was theirs.
-    const me: Joined = { ...joined, keysFor: live.mls_generation, group: null, ...(before ? { admit: 'auto' as const, person: before.person, hand: before.hand } : {}) };
+    // During the stored-data upgrade, a second browser of an old signed-in participant keeps that same principal.
+    const previousAccount = joined.email ? state.people.find((p) => p.attentionPrincipal === null && p.email?.toLowerCase() === joined.email?.toLowerCase()) : undefined;
+    const attentionPrincipal = before ? attentionPrincipalOf(before) : previousAccount ? attentionPrincipalOf(previousAccount) : joined.attentionPrincipal;
+    const me: Joined = { ...joined, attentionPrincipal, keysFor: live.mls_generation, group: null, ...(before ? { admit: 'auto' as const, person: before.person } : {}) };
     // Someone standing in for the organizer who reloads comes back hosting, as the organizer would: the new connection
     // hosts in a new generation, so the call is never left without a host meanwhile, locked or not.
     if (before && before.identity === state.host && mayStandIn({ ...me, status: 'in' })) {

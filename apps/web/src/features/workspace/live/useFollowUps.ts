@@ -3,10 +3,11 @@
  * what's written in documents comes from `CallSession.followUps`. A line in a document that says the same as something said,
  * for the same person, is that follow-up, not another: it's one row, ticking it ticks both, and it's done if either is.
  */
-import { errorMessage, type CallSession, type CallState, type DocFollowUp, type Person } from '@alcove/api';
+import { errorMessage, isAcceptedFollowUp, type CallSession, type CallState, type DocFollowUp, type Person } from '@alcove/api';
 import { wsToast, type WsFollowUp } from '@alcove/ui';
 import { useCallback, useMemo, useState } from 'react';
 import { useLive } from '~/lib/live';
+import { sameEmail } from '~/lib/people';
 import { dayWords, dueWords } from './dates';
 import type { LiveHost } from './host';
 import { earlierIds, type PersonIds } from '../ids';
@@ -26,22 +27,13 @@ const isTheLine = (f: { text: string; owner?: string | undefined }, d: DocFollow
 };
 const tickLine = (session: CallSession, d: DocFollowUp, done: boolean) => session.tickDocumentFollowUp({ workspaceId: d.workspaceId, documentId: d.documentId, block: d.block, done });
 
-/** Ticks something the notes hold from outside the list, as the side panel does, with the line in a document if it's in one. */
-export async function tickEverywhere(session: CallSession, id: string, done: boolean): Promise<void> {
-  const { liveNotes } = session.getSnapshot();
-  const said = [...(liveNotes.notes?.next ?? []), ...liveNotes.added].find((f) => f.id === id);
-  const line = said && session.followUps.getSnapshot()?.items.find((d): d is DocFollowUp => d.from === 'document' && d.canTick && isTheLine(said, d));
-  await Promise.all([session.tickFollowUp(id, done), ...(line ? [tickLine(session, line, done)] : [])]);
-}
-
 /** Whether a document's to-do is for you: by who it tags, as this workspace knows you now or knew you before, or else by name. */
 function isYours(d: DocFollowUp, me: Person | undefined, myId: string | undefined, ids: PersonIds): boolean {
   const mine = new Set([myId, ...(me ? [ids.of(me.email), ...earlierIds(me.email)] : [])].filter((id) => id !== undefined));
   return d.mentions.some((m) => mine.has(m.id) || (me !== undefined && m.name === me.name));
 }
 
-export function useFollowUps({ live, here, workspaceId, go, say, ids }: Pick<LiveHost, 'live' | 'here' | 'workspaceId' | 'go' | 'say' | 'ids'>) {
-  const { session } = live;
+export function useFollowUps({ session, here, workspaceId, go, say, ids }: Pick<LiveHost, 'here' | 'workspaceId' | 'go' | 'say' | 'ids'> & { session: CallSession }) {
   const state = useLive(session);
   const written = useLive(session.followUps);
   /* A tick shows as it's pressed, until the call says so too. */
@@ -55,11 +47,11 @@ export function useFollowUps({ live, here, workspaceId, go, say, ids }: Pick<Liv
   const rows = useMemo((): FollowUpRow[] => {
     const now = new Date();
     const tickSaid = (id: string) => (mayTick ? [(done: boolean) => session.tickFollowUp(id, done)] : []);
-    const said = (notes.notes?.next ?? []).map((f) => ({ f, when: f.evidence[0]?.said ?? 0, source: `Said at ${clockAt(state, f.evidence[0]?.said ?? 0)}` }));
-    const typed = notes.added.map((f) => ({ f, when: f.at, source: 'Added by hand' }));
+    const said = (notes.notes?.next ?? []).filter(isAcceptedFollowUp).map((f) => ({ f, when: f.evidence[0]?.said ?? 0, source: `Said at ${clockAt(state, f.evidence[0]?.said ?? 0)}` }));
+    const typed = notes.added.filter(isAcceptedFollowUp).map((f) => ({ f, when: f.at, source: 'Added by hand' }));
     const spoken = [...said, ...typed].sort((a, b) => a.when - b.when).map(({ f, source }): FollowUpRow => ({
-      id: f.id, text: f.text, done: f.done, person: face(state, f.owner), name: f.owner ? firstOf(f.owner) : '', due: dueWords(f.due, now), source,
-      locked: !mayTick, mine: me !== undefined && f.owner !== undefined && sameName(f.owner, me.name), ticks: tickSaid(f.id), said: { text: f.text, owner: f.owner, due: f.due }
+      id: f.id, text: f.text, done: f.done, person: f.ownerPerson ?? face(state, f.owner), name: f.owner ? firstOf(f.owner) : '', due: dueWords(f.due, now), source,
+      locked: !mayTick, mine: me !== undefined && (f.ownerPerson ? sameEmail(f.ownerPerson, me) : f.owner !== undefined && sameName(f.owner, me.name)), ticks: tickSaid(f.id), said: { text: f.text, owner: f.owner, due: f.due }
     }));
     /* Each thing said is the same as one line at most: a second copy in a document is a to-do of its own. */
     const joined = new Set<string>();

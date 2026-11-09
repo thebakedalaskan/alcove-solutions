@@ -4,11 +4,16 @@
  * keep its recording doesn't keep its screens' video past the notes, a share that can't be joined is let go once, and
  * the model that reads shared screens can be chosen while notes wait.
  */
-import { DEFAULT_NOTES_CHOICES, type AlcoveApi, type AudioPiece, type CallSession, type NoteProgress, type ScreenPiece, type TranscriptClip } from '@alcove/api';
+import { DEFAULT_NOTES_CHOICES, errorCode, type AlcoveApi, type AudioPiece, type CallSession, type NoteProgress, type ScreenPiece, type TranscriptClip } from '@alcove/api';
 import { randomBytes } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
-import { joinDue } from './screens';
+import { joinDue, purgeVideo } from './screens';
+import { openOwner } from '../../owners';
+import { queueDelete } from './audio';
+import { webmDuration } from './ffmpeg';
+import { ObjectStoreError } from '../../errors';
+import { tx } from '../../db';
 import { speechWav } from '../../testing/fake-near';
 import { startHarness, type Harness } from '../../testing/harness';
 import { connect, disposeLiveKit, type TestParticipant } from '../../testing/livekit';
@@ -81,6 +86,211 @@ async function held(org: Account, choices: Partial<typeof DEFAULT_NOTES_CHOICES>
 }
 
 describe('shared screens around the notes', () => {
+  it('enforces one share’s storage budget when several pieces arrive together', async () => {
+    const org = await account(unique('organizer'));
+    const call = await held(org, {});
+    const { share } = await call.startShare({ notes: true });
+    await shareScreen(call);
+    const lock = await h.pool.connect();
+    const results: PromiseSettledResult<void>[] = [];
+    let pending: Promise<PromiseSettledResult<void>[]> | undefined;
+    try {
+      await lock.query('BEGIN');
+      await lock.query('SELECT 1 FROM owners WHERE owner_id = $1 FOR UPDATE', [org.session.ownerId]);
+      const data = new Uint8Array(randomBytes(3 * 1024 * 1024));
+      pending = Promise.allSettled(Array.from({ length: 4 }, (_, i) => call.appendScreen(screenPiece(share, 0, i, data))));
+      await waitFor(async () => {
+        const waiting = await h.pool.query<{ n: string }>(`SELECT count(*) AS n FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'
+          AND (query LIKE 'UPDATE owners SET stored_bytes%' OR query LIKE 'SELECT keep FROM screen_shares%' OR query LIKE 'SELECT 1 FROM screen_shares%')`);
+        return Number(waiting.rows[0]?.n ?? 0) >= 4;
+      }, 'the concurrent pieces to reach their storage transactions', 5000);
+      await lock.query('COMMIT');
+      results.push(...await pending);
+    } finally {
+      await lock.query('ROLLBACK');
+      lock.release();
+      await pending;
+    }
+    expect(results.filter((r) => r.status === 'fulfilled').length).toBeLessThan(4);
+    expect(results.some((r) => r.status === 'rejected')).toBe(true);
+    await call.leave();
+  });
+
+  it('drops an in-flight join when temporary video is deleted before its commit', async () => {
+    const org = await account(unique('organizer'));
+    const ownerId = org.session.ownerId;
+    const call = await held(org, { keepRecording: false });
+    const { share } = await call.startShare({ notes: true });
+    await shareScreen(call);
+    for (const [i, data] of cut(await recordedWebm(10), 2).entries()) await call.appendScreen(screenPiece(share, 0, i, data));
+    await call.shareEnded(share);
+    const configured = h.deps.cfg;
+    h.deps.cfg = { ...configured, NEAR_AI_API_KEY: '' };
+    const lock = await h.pool.connect();
+    const owner = await openOwner(h.deps, ownerId, undefined);
+    let joining: Promise<unknown> | undefined;
+    try {
+      await noteOf(call);
+      await h.pool.query(`UPDATE recordings SET ended_at = ended_at - interval '30 seconds' WHERE owner_id = $1`, [ownerId]);
+      const row = (await h.pool.query<{ recording_id: string }>('SELECT recording_id FROM recordings WHERE owner_id = $1', [ownerId])).rows[0];
+      if (!row) throw new Error('the call left no recording');
+      await lock.query('BEGIN');
+      await lock.query('SELECT 1 FROM screen_shares WHERE owner_id = $1 AND recording_id = $2 FOR UPDATE', [ownerId, row.recording_id]);
+      joining = joinDue(h.deps, ownerId);
+      await waitFor(async () => {
+        const waiting = await h.pool.query(`SELECT 1 FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock' AND query LIKE 'SELECT 1 FROM screen_shares%'`);
+        return Boolean(waiting.rowCount);
+      }, 'the completed remux to wait for its commit');
+      // Another instance finished the notes and purged the temporary recording while this instance was remuxing.
+      const gone = await purgeVideo(owner, lock, row.recording_id);
+      await lock.query('COMMIT');
+      await queueDelete(owner, gone);
+      await joining;
+      expect(await count('screen_pieces', ownerId)).toBe(0);
+      expect(await count('screen_videos', ownerId)).toBe(0);
+    } finally {
+      await lock.query('ROLLBACK');
+      lock.release();
+      await joining;
+      owner.root.fill(0);
+      owner.wrapKey.fill(0);
+      h.deps.cfg = configured;
+    }
+  });
+
+  it('refuses a tail piece whose object write finishes after its temporary recording was purged', async () => {
+    const org = await account(unique('organizer'));
+    const ownerId = org.session.ownerId;
+    const call = await held(org, { keepRecording: false });
+    const { share } = await call.startShare({ notes: true });
+    await shareScreen(call);
+    const video = cut(await recordedWebm(10), 2);
+    const head = video[0];
+    const tail = video[1];
+    if (!head || !tail) throw new Error('the video needs two pieces');
+    await call.appendScreen(screenPiece(share, 0, 0, head));
+    await call.shareEnded(share);
+    const configured = h.deps.cfg;
+    h.deps.cfg = { ...configured, NEAR_AI_API_KEY: '' };
+    const objects = h.deps.objects;
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    let blocked = false;
+    let upload: Promise<string> | undefined;
+    const owner = await openOwner(h.deps, ownerId, undefined);
+    h.deps.objects = { ...objects, put: async (id, bytes) => { blocked = true; await gate; return objects.put(id, bytes); } };
+    try {
+      upload = call.appendScreen(screenPiece(share, 0, 1, tail)).then(() => 'stored', (e: unknown) => errorCode(e));
+      await waitFor(() => blocked, 'the admitted tail piece to wait on its object write');
+      await noteOf(call);
+      const row = (await h.pool.query<{ recording_id: string }>('SELECT recording_id FROM recordings WHERE owner_id = $1', [ownerId])).rows[0];
+      if (!row) throw new Error('the call left no recording');
+      await queueDelete(owner, await tx(h.pool, (c) => purgeVideo(owner, c, row.recording_id)));
+      release();
+      expect(await upload).toBe('not-found');
+      expect(await count('screen_pieces', ownerId)).toBe(0);
+      expect(await count('screen_videos', ownerId)).toBe(0);
+    } finally {
+      release();
+      await upload;
+      owner.root.fill(0);
+      owner.wrapKey.fill(0);
+      h.deps.objects = objects;
+      h.deps.cfg = configured;
+    }
+  });
+
+  it('stages a larger replay while its input is arriving, seals every temporary object and removes them afterwards', async () => {
+    const org = await account(unique('organizer'));
+    const ownerId = org.session.ownerId;
+    const call = await held(org, {});
+    const { share } = await call.startShare({ notes: true });
+    await shareScreen(call);
+    const canary = 'CANARY-screen-remux-stage-private-title';
+    const video = await recordedWebm(90, { size: '960x540', title: canary });
+    expect(video.length).toBeGreaterThan(1024 * 1024);
+    for (const [i, data] of cut(video, 18).entries()) await call.appendScreen(screenPiece(share, 0, i, data));
+    await call.shareEnded(share);
+    const configured = h.deps.cfg;
+    h.deps.cfg = { ...configured, NEAR_AI_API_KEY: '' };
+    const objects = h.deps.objects;
+    const input = new Set((await h.pool.query<{ object_id: string }>('SELECT object_id FROM screen_pieces WHERE owner_id = $1', [ownerId])).rows.map((r) => r.object_id));
+    const fetched = new Set<string>();
+    const created = new Set<string>();
+    let stagedBeforeEnd = false;
+    let plaintext = false;
+    h.deps.objects = {
+      ...objects,
+      get: async (id) => { if (input.has(id)) fetched.add(id); return objects.get(id); },
+      put: async (id, bytes) => {
+        created.add(id);
+        if (fetched.size < input.size) stagedBeforeEnd = true;
+        if (Buffer.from(bytes).includes(Buffer.from(canary))) plaintext = true;
+        return objects.put(id, bytes);
+      }
+    };
+    try {
+      const noteId = await noteOf(call);
+      await h.pool.query(`UPDATE recordings SET ended_at = ended_at - interval '30 seconds' WHERE owner_id = $1`, [ownerId]);
+      await joinDue(h.deps, ownerId);
+      expect(stagedBeforeEnd).toBe(true);
+      expect(plaintext).toBe(false);
+      const response = await org.fetch(org.api.notes.screenVideoUrl(noteId, share, 0));
+      expect(response.status).toBe(200);
+      expect(webmDuration(new Uint8Array(await response.arrayBuffer()))).toBeCloseTo(90, 0);
+      const kept = new Set((await h.pool.query<{ object_id: string }>('SELECT object_id FROM screen_videos WHERE owner_id = $1', [ownerId])).rows.map((r) => r.object_id));
+      const left = new Set<string>();
+      for await (const object of objects.list()) if (created.has(object.id)) left.add(object.id);
+      expect(left).toEqual(kept);
+      expect(created.size).toBeGreaterThan(kept.size);
+    } finally {
+      h.deps.objects = objects;
+      h.deps.cfg = configured;
+    }
+  });
+
+  it('removes failed staging objects and retries from the retained source pieces', async () => {
+    const org = await account(unique('organizer'));
+    const ownerId = org.session.ownerId;
+    const call = await held(org, {});
+    const { share } = await call.startShare({ notes: true });
+    await shareScreen(call);
+    for (const [i, data] of cut(await recordedWebm(10), 2).entries()) await call.appendScreen(screenPiece(share, 0, i, data));
+    await call.shareEnded(share);
+    const configured = h.deps.cfg;
+    h.deps.cfg = { ...configured, NEAR_AI_API_KEY: '' };
+    const objects = h.deps.objects;
+    const created = new Set<string>();
+    let failed = false;
+    h.deps.objects = {
+      ...objects,
+      put: async (id, bytes) => { created.add(id); return objects.put(id, bytes); },
+      get: async (id) => {
+        if (created.has(id) && !failed) { failed = true; throw new ObjectStoreError('The object store is temporarily unavailable.'); }
+        return objects.get(id);
+      }
+    };
+    try {
+      const noteId = await noteOf(call);
+      await h.pool.query(`UPDATE recordings SET ended_at = ended_at - interval '30 seconds' WHERE owner_id = $1`, [ownerId]);
+      expect((await joinDue(h.deps, ownerId)).joined).toBe(0);
+      expect(failed).toBe(true);
+      expect(await count('screen_pieces', ownerId)).toBe(2);
+      expect(await count('screen_videos', ownerId)).toBe(0);
+      const left: string[] = [];
+      for await (const object of objects.list()) if (created.has(object.id)) left.push(object.id);
+      expect(left).toEqual([]);
+      h.deps.objects = objects;
+      expect((await joinDue(h.deps, ownerId)).joined).toBe(1);
+      const response = await org.fetch(org.api.notes.screenVideoUrl(noteId, share, 0));
+      expect(response.status).toBe(200);
+      expect(webmDuration(new Uint8Array(await response.arrayBuffer()))).toBeCloseTo(10, 0);
+    } finally {
+      h.deps.objects = objects;
+      h.deps.cfg = configured;
+    }
+  });
+
   it('keeps a share in its place and deletes its video once the notes are written, when the call doesn’t keep its recording', async () => {
     const org = await account(unique('organizer'));
     const ownerId = org.session.ownerId;

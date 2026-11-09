@@ -30,6 +30,8 @@ export interface SettingRowProps extends Omit<HTMLAttributes<HTMLDivElement>, 'c
   control?: ReactNode;
   /** Beside the axis for a moment once a change is kept. */
   saved?: ReactNode;
+  /** A requested change is not saved until its own answer confirms it. */
+  saveState?: 'saving' | 'saved' | 'failed' | undefined;
   /** The control takes the width, under the label, on a phone. */
   wide?: boolean | undefined;
   /** Something sits under the control: the label stays level with the control itself. */
@@ -56,7 +58,7 @@ function pressed(e: MouseEvent, from: { x: number; y: number }): boolean {
  * the control. A row that keeps focus when its control goes takes `tabIndex={-1}`, and `ref`.
  */
 export const SettingRow = forwardRef<HTMLDivElement, SettingRowProps>(function SettingRow(
-  { label, mark, help, problem = false, control, saved, wide = false, stack = false, off = false, onLabel, children, className, ...rest }, ref
+  { label, mark, help, problem = false, control, saved, saveState, wide = false, stack = false, off = false, onLabel, children, className, ...rest }, ref
 ) {
   const id = useId();
   const from = useRef({ x: 0, y: 0 });
@@ -68,7 +70,7 @@ export const SettingRow = forwardRef<HTMLDivElement, SettingRowProps>(function S
           <p id={`${id}l`} className="set-t">{mark}{label}</p>
           {help !== undefined && <p id={`${id}h`} className={cn('set-h', problem && 'is-no')}>{help}</p>}
         </div>
-        {saved !== undefined && <span className="set-sv" aria-hidden="true"><Icon name="check" size={14} />{saved}</span>}
+        {(saved !== undefined || saveState) && <span className={cn('set-sv', saveState === 'failed' && 'is-failed')} aria-hidden="true">{saveState === 'saving' ? 'Saving…' : saveState === 'failed' ? 'Couldn’t confirm' : <><Icon name="check" size={14} />{saved ?? 'Saved'}</>}</span>}
       </div>
       <div className="set-c">{control}</div>
       {children}

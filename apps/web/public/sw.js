@@ -62,7 +62,7 @@ self.addEventListener('fetch', (event) => {
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  event.waitUntil(open(event.notification.data?.open));
+  event.waitUntil(open(event.notification.data));
 });
 
 /** The page a notification leads to: `open` is the app's NotificationOpenSchema. */
@@ -73,35 +73,72 @@ function pathOf(open) {
   return open?.to === 'notes' ? '/notes' : '/home';
 }
 
-/**
- * Where a window is now, in its own words: its `url` stays the page it loaded while the app moves around inside it. One
- * that doesn't answer in time (still loading, or frozen) counts as being where it loaded.
- */
+/** A window reports opaque account/connection IDs, never content or access credentials. */
 function whereIs(win) {
-  const loaded = new URL(win.url).pathname;
+  const fallback = { path: new URL(win.url).pathname, ownerId: undefined, calls: [] };
   return new Promise((resolve) => {
     const { port1, port2 } = new MessageChannel();
-    port1.onmessage = (event) => resolve(typeof event.data === 'string' ? event.data : loaded);
-    win.postMessage({ type: 'alcove.where' }, [port2]);
-    setTimeout(() => resolve(loaded), 250);
+    let done = false;
+    const finish = (value) => { if (done) return; done = true; clearTimeout(timeout); port1.close(); resolve(value); };
+    const timeout = setTimeout(() => finish(fallback), 500);
+    port1.onmessage = (event) => {
+      const value = event.data;
+      finish(value && typeof value.path === 'string' && (value.ownerId === null || typeof value.ownerId === 'string') && Array.isArray(value.calls) ? value : fallback);
+    };
+    try { win.postMessage({ type: 'alcove.where' }, [port2]); } catch { finish(fallback); }
   });
 }
 
-/** The window already there (for a call, the one in it first), or else the one used last; a new one if there's none. */
-async function open(where) {
+// The click event stays alive until a newly opened app has installed its validated navigation listener. No intent is
+// written into a URL or storage. An unavailable original call connection is explained by the app after session checks.
+const pending = new Map();
+const ready = new Map();
+self.addEventListener('message', (event) => {
+  if (event.data?.type !== 'alcove.ready' || !event.source?.id || new URL(event.source.url).origin !== self.location.origin) return;
+  const id = event.source.id;
+  ready.set(id, Date.now());
+  for (const [key, at] of ready) if (Date.now() - at > 30_000) ready.delete(key);
+  pending.get(id)?.(true);
+});
+function handoff(win, data) {
+  const message = { type: 'alcove.notification', open: data.open, ownerId: data.ownerId };
+  if (ready.has(win.id)) { win.postMessage(message); return Promise.resolve(); }
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = (send) => {
+      if (done) return;
+      done = true; clearTimeout(timeout); if (pending.get(win.id) === finish) pending.delete(win.id);
+      if (send) win.postMessage(message);
+      resolve();
+    };
+    const timeout = setTimeout(() => finish(false), 10_000);
+    pending.get(win.id)?.(false);
+    pending.set(win.id, finish);
+  });
+}
+
+/** Prefer the original live connection, then the same account at the destination, then its last-used window. */
+async function open(data) {
+  if (data?.v !== 1 || !data.open || (data.ownerId !== null && typeof data.ownerId !== 'string')) return;
+  const where = data.open;
   const path = pathOf(where);
-  // Most recently used first.
   const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
   const at = await Promise.all(windows.map(whereIs));
-  const wanted = where?.to === 'call' ? [`/call/${encodeURIComponent(where.code)}`, path] : [path];
-  const win = windows[wanted.map((p) => at.indexOf(p)).find((i) => i >= 0) ?? 0];
+  const account = (value) => value.ownerId === data.ownerId;
+  const original = where.to === 'call' ? where.event : null;
+  const exact = original ? at.findIndex((value) => account(value) && value.calls.some((call) => call?.callId === original.callId && call?.identity === original.connection)) : -1;
+  const paths = where.to === 'call' ? [`/call/${encodeURIComponent(where.code)}`, path] : [path];
+  const destination = at.findIndex((value) => account(value) && paths.includes(value.path));
+  const sameAccount = at.findIndex(account);
+  const win = windows[exact >= 0 ? exact : destination >= 0 ? destination : sameAccount];
   if (!win) {
-    await self.clients.openWindow(path);
+    // Start on an unprotected destination; the page rechecks the current account before following the pending intent.
+    const opened = await self.clients.openWindow('/home');
+    if (opened) await handoff(opened, data);
     return;
   }
-  // Even if it can't come forward, it still goes where the notification leads.
   await win.focus().catch(() => undefined);
-  win.postMessage({ type: 'alcove.notification', open: where });
+  win.postMessage({ type: 'alcove.notification', open: where, ownerId: data.ownerId });
 }
 
 async function page(event) {

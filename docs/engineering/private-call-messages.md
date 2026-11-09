@@ -1,0 +1,33 @@
+# Private messages during a call
+
+Private conversations are text-only, one to one, and scoped to the active call. An admitted guest has the same private-message boundary as an invited participant. The organizer, current host, other participants and agent grants have no extra inbox or decryption access.
+
+## Keys and audience
+
+Each `HttpCall` owns one non-extractable ephemeral P-256 ECDH private key in memory. Its public key is announced in an authenticated MLS application message in the current room. The receiver accepts an announcement only under the exact MLS sender identity, generation and room it authenticated. A room-shared exporter is never a private-message encryption key. A connection that announces a different key in the same scope is quarantined until the scope changes; an earlier generation's announcement cannot activate it. New arrivals cause the existing members to announce again, so they need no access to earlier room chat.
+
+Messages use AES-256-GCM with a fresh random 12-byte nonce. HKDF derives a distinct key from the pair's ECDH secret with the complete message domain: version, call, generation, original room, random message ID, original sender and recipient connection identities, and both authenticated public keys. The same domain is authenticated as associated data. The browser never accepts a public key supplied only by the relay. Substituted keys, changed ciphertext, cross-room envelopes and unbound senders fail closed without becoming chat.
+
+The existing MLS membership trust model still supplies participant identity. This feature does not add an account identity-verification ceremony or an attested notes participant. Private message plaintext never enters the API, inference, recording, transcript, shared notes, personal-note promotion or Google Drive export paths.
+
+## Relay and lifetime
+
+The calls feature owns `direct-messages.ts` and its HTTP registrar. Every send, page and acknowledgment holds the call row lock and rechecks current sender/recipient membership. Both must be admitted in the same original room and generation. Original room-stay stamps also prevent a queued envelope being delivered after a participant leaves and returns. The sender and recipient are exact connection identities, never a name, address or seat remapped onto a new device. A new browser, reload, handoff or replacement connection does not inherit private history or the private key.
+
+The relay uses owner/call-scoped HMAC routing tags under the dedicated `call-private-routing` key purpose. They reveal only anonymous linkage inside that call; they do not contain names or participant identities. Inbox queries select only the authenticated connection's tags, return at most 100 envelopes per page and include an explicit cursor and `more`. The client drains remaining pages and sends recipient acknowledgments in batches of 100. Sender receipt IDs are bounded by the 500-message sender limit; the entire call accepts at most 2,000 messages. The normal call chat rate limit also covers sends and key announcements. Exhaustion is an explicit failed private send with a retry surface, never a public fallback.
+
+An envelope awaiting its authenticated MLS key is deferred in encrypted memory, bounded by the same 2,000-message cap. A permanently invalid binding, ciphertext or payload is skipped with a content-free diagnosis and never acknowledged. Neither case prevents later pages from delivering valid messages.
+
+Every stored envelope, its original routing identities, room-stay stamps, keys, nonce and delivery state are additionally sealed under the organizer's per-call state key with record kind `call-private-message` and a header binding owner, call and message ID. Only the intended recipients possess the ECDH private keys needed for content. The relay logs no DM identities, audience, message IDs, keys or content; normal request IDs and safe route names identify HTTP failures.
+
+Temporary transport reconnects keep in-memory keys and already received history, hide that history while private authorization is unavailable, and show it again only after the relay reauthorizes the same connection. A changed room disables the old conversation. Failed retries reuse the original ID and ciphertext; current scope and peer revisions prevent retargeting after a room/connection change. A successful response lost in transit is reconciled through the original sender envelope and receipt. Delivery means the recipient authenticated and decrypted the envelope and the relay accepted their acknowledgment.
+
+Ending the call physically deletes `call_private_messages` in the same transaction that removes MLS and live-attention records. Deleting the meeting or owner cascades the table. Closing the local call drops its private key, cached messages, unread state and encrypted retry envelopes. No private content is written to localStorage, sessionStorage or IndexedDB. Normal database backup expiry remains the storage policy; an already received or manually copied message cannot be recalled from another person's device.
+
+## UI and verification
+
+Chat's audience picker and each other participant's tile menu start a conversation. The composer persistently says “Only you and [name]”. Public-room drafts and each original private audience have separate in-memory drafts. A room change, recipient departure or key failure cannot move a draft to another audience. Private unread counts contribute to Chat and the compact call without opening a panel, changing shared content or taking focus. Private-message sound has its own defaulted preference, obeys master volume and quiet mode, and uses the existing output-only sound graph. No DM browser notification or message preview is created.
+
+`direct-messages.integration.test.ts` drives real API/client flows against Postgres and the object store: admitted guests, pair-only delivery, host and late-joiner exclusion, replies, waiting/other-call/removal/replacement denials, room transitions, reconnect authorization, simultaneous ordering, unread receipts, relay key substitution, lost responses and byte-identical retry deduplication, bounded pages, sealed storage/log canaries, notes exclusion and call-end cleanup. Storybook renders the actual call with conversation, picker, unread, failed/retry, unavailable, guest and light/dark/phone scenarios plus journey 6.30 for draft separation.
+
+Migration `0021_private_call_messages.sql` adds only the new relay table and indexes. Existing calls, rows, sealed schemas, record headers and key labels are unchanged; the previous release keeps serving while it runs. Existing profile sound records obtain `messages: true` through its schema default and write that shape on their next save.

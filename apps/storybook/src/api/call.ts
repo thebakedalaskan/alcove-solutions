@@ -10,7 +10,7 @@
  * and its timer and vote.
  */
 import {
-  AlcoveApiError, MAX_CALL_IDEAS, RING_SECONDS, notesAreOn, reactionTarget, withReaction, type BreakoutPlan, type CallPage, type CallAnswer, type CallCrypto, type CallEndResult, type CallMoment, type CallMoveOut, type CallParticipant, type CallRole,
+  CallTimerSequenceInputSchema, CallTimerControlSchema, type CallTimerControl, type CallTimerSequenceInput, type CallTimerSequence, type CallAttention, type CallFeedbackKind, type CallQuestionStatus, ACCEPTED_FOLLOW_UP, AlcoveApiError, type FollowUpCreate, type FollowUpPatch, type FollowUpReview, type FollowUpTarget, type LiveFollowUp, MAX_CALL_IDEAS, RING_SECONDS, notesAreOn, reactionTarget, withReaction, type BreakoutPlan, type CallPage, type CallAnswer, type CallChatMention, CallChatTextSchema, type CallCrypto, type CallEndResult, type CallMoment, type CallMoveOut, type CallParticipant, type CallRole,
   type CallReaction, type CallSession, type CallState, type CallTicket, type CaptionLanguage, type CaptionTranslation, type CaptureDevicePart, type CaptureGap, type CaptureMode, type CapturePart,
   type CatchUp, type CatchUpRange, type CatchUpWindow, type AudioPiece, type LineAudio, type Meeting, type MoveMedia, type MoveOutState, type Person, type PersonalApi,
   type RingReply, type RoomCapture, type ScreenPiece, type SeriesAnswerPart, type TranscriptClip, type TranscriptLine
@@ -23,12 +23,14 @@ import { addObject, colourIn, fillTemplate, landBoards, readBoard, roomFrameId, 
 import { sessions } from '~/lib/live';
 import { talking } from '../browser';
 import type { Screen } from '../media/screens';
-import { writeNote } from '../world/build';
+import { changer, writeNote } from '../world/build';
 import { quietAudio } from './media';
 import { personAt } from '../world/people';
 import type { Space } from '../world';
 import { Pushed, Snapshots } from './live';
 import { personalFor } from './personal';
+import { ScriptedDirectMessages } from './direct-messages';
+import { ScriptedNotifications } from './notifications';
 import { captureOf, defaultScript, linkState, modelIsPrivate, part, scriptFor, type Beat, type CallScript, type HeardIdea, type Line, type Present, type RoomPlan } from './script';
 import { current, me as you, nextId } from './state';
 import { boardDoc, createItem, hereIn, moveItem, onTheBoard, peopleIn, removeWorkspace, restrict, shareWith, tagYou, trashItem, treeOf } from './workspaces';
@@ -69,7 +71,9 @@ type Presented = { kind: 'board'; by: CallSeat; key: string; id: string; section
 
 
 export class ScriptedCall extends Snapshots<CallState> implements CallSession {
+  readonly direct: ScriptedDirectMessages;
   readonly ticket: CallTicket;
+  readonly notifications: ScriptedNotifications;
   readonly crypto: Crypto;
   readonly personal: PersonalApi;
   /** LiveKit's side: the scripted room plays it. */
@@ -85,10 +89,13 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
   private connections = 0;
   /** What's been heard while notes were on, with what the notes take from it. */
   private heard: { line: Line; id: string; at: number }[] = [];
-  private ticked = new Set<string>();
+  /** Resolved proposals stay here when notes refresh, so dismissed evidence never returns. */
+  private inferred = new Map<string, LiveFollowUp>();
+  private reviewed = new Map<string, FollowUpReview>();
   private watching = 0;
   private notesFor = -1;
   private writing = false;
+  private chatFailures = 0;
   /** Until when you're saying a line, so your microphone murmurs as a voice does, and until when each of them is. */
   private voiceUntil = 0;
   private speakingUntil = new Map<string, number>();
@@ -110,7 +117,7 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
 
   constructor(private readonly meeting: Meeting, arrival: Arrival) {
     const script = scriptFor(meeting.code) ?? defaultScript(meeting);
-    const callId = nextId('call');
+    const callId = script.notificationId ?? `${nextId('call')}-${crypto.randomUUID()}`;
     const noteId = nextId('note');
     const since = script.since ?? 0;
     const startedAt = new Date(Date.now() - since * 1000).toISOString();
@@ -119,11 +126,12 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     const me: CallParticipant = { id: identity(`me${callId}`), seat: 'seat-me', person, isMe: true, isOrganizer: organizes, hand: false, othersPoint: true };
     const mode = script.notes ?? meeting.notes;
     super({
+      revision: 0, timerSequence: script.timerSequence ? { ...structuredClone(script.timerSequence), startedAt: script.timerSequence.status === 'running' ? Date.now() : null } : null, attention: { place: 'main', hands: [], questions: [], signals: [], cues: [], latest: 0, serverNow: new Date().toISOString() },
       callId, meetingId: meeting.id, code: meeting.code, title: meeting.title, startedAt, elapsed: since, phase: 'in-call', participants: organizes ? [me] : [], locked: false, pointing: true,
       spotlight: null, breakouts: { open: null, held: [] }, capture: captureOf(mode, mode === 'off' ? null : startedAt, meeting.organizer.name, script.model ?? null),
-      notes: { everOn: mode !== 'off', noteId: mode !== 'off' ? noteId : null, recording: { segment: 0, pieces: 0, seconds: mode === 'on' ? since : 0 } }, waiting: [], ringing: [], leaving: [],
+      notes: { everOn: mode !== 'off', noteId: mode !== 'off' ? noteId : null, segmentStartedAt: mode !== 'off' ? startedAt : null, recording: { segment: 0, pieces: 0, seconds: mode === 'on' ? since : 0 } }, waiting: [], ringing: [], leaving: [], chatRead: [],
       host: { id: organizes ? me.id : null, standIn: false, organizer: meeting.organizer, next: [] }, generation: 1, transcript: [],
-      liveNotes: { notes: null, added: [], writing: false, error: null }, notices: mode === 'on' && !since ? [{ id: nextId('notice'), text: 'Notes are on. Everyone here can see that.', kind: 'notes' }] : [],
+      liveNotes: { notes: null, added: [], suggestions: [], writing: false, error: null }, notices: mode === 'on' && !since ? [{ id: nextId('notice'), text: 'Notes are on. Everyone here can see that.', kind: 'notes' }] : [],
       isOrganizer: organizes, isHost: organizes, role: arrival.role,
       workspace: { id: null, home: null, name: null, chosenBy: meeting.organizer, canOpen: false, role: null, documents: [], agenda: null, present: null, ended: null, play: null, asks: [], asked: 'no' },
       board: { open: null, timer: null, vote: null, ideas: [] }, shares: []
@@ -131,24 +139,39 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     this.script = script;
     this.me = me;
     this.noteId = noteId;
+    for (const followUp of script.followUps ?? []) this.inferred.set(followUp.id, structuredClone(followUp));
     this.ticket = { callId, serverUrl: 'wss://livekit.storybook.invalid', roomName: `room-${callId}`, identity: me.id, role: arrival.role, pass: `${callId}.storybook` };
     this.crypto = new Crypto({ status: arrival.asking ? 'waiting' : 'in', place: 'main', members: arrival.asking ? [] : [me.id], everyone: arrival.asking ? [] : [me.id], media: null, chat: [], missedChat: false });
     this.personal = personalFor(noteId);
+    this.direct = new ScriptedDirectMessages(this, this.crypto, this.ticket, script.privateSendFails);
+    this.notifications = new ScriptedNotifications(me.id, this, this.crypto, this.direct);
     this.livekit = new Pushed<RoomSide>({ people: {}, connection: 'connected', endReason: null, mutedYou: 0, sharesStopped: 0 });
 
     // Whoever's here already, the organizer first when it isn't you.
     const here: Present[] = [...(script.here ?? [])];
     if (!organizes && !here.some((p) => p.organizer)) here.unshift({ who: meeting.organizer, organizer: true });
     for (const p of here) this.join(p.who, { organizer: p.organizer, guest: p.guest, mic: p.mic, hand: p.hand, sharing: p.sharing });
+    for (const message of script.privateMessages ?? []) this.after((message.after ?? 2) * 1000, () => {
+      const from = this.find(message.from);
+      const parent = message.replyTo ? this.direct.getSnapshot().messages.find((m) => m.text === message.replyTo) : null;
+      if (message.replyTo && !parent) return;
+      const mentions = (message.tagged ?? []).flatMap((who): CallChatMention[] => {
+        const target = who === 'me' ? this.me : this.find(who);
+        if (!target) return [];
+        const name = `@${target.person.name}`; const start = message.text.indexOf(name);
+        return start < 0 ? [] : [{ identity: target.id, start, end: start + name.length }];
+      });
+      if (from) this.direct.receive(from.id, message.text, mentions, parent ? { root: parent.thread?.root ?? parent.id, replyTo: parent.id } : null);
+    });
     // You come in after them, unless you organized it (or you're asking to be let in).
     if (!organizes && !arrival.asking) this.change((s) => ({ ...s, participants: [...s.participants, me] }));
     // What was said before you came, spread over the time the call has been going.
     const earlier = script.earlier ?? [];
     earlier.forEach((l, i) => this.heardLine(l, Math.round(((i + 1) / (earlier.length + 1)) * since)));
     // Joining late, the call's notes have been written already.
-    if (this.heard.length) {
+    if (this.heard.length || script.followUps?.length) {
       this.notesFor = this.heard.length;
-      this.change((s) => ({ ...s, liveNotes: { ...s.liveNotes, notes: this.notesNow(), writing: false, error: null } }));
+      this.change((s) => ({ ...s, liveNotes: { ...s.liveNotes, notes: this.notesNow(), suggestions: this.suggestionsNow(), writing: false, error: null } }));
     }
     // The organizer back after someone hosted in their place hosts again at once, and hears who did.
     const stoodIn = script.door?.standIn;
@@ -167,7 +190,7 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
 
   private tick(): void {
     this.change((s) => ({
-      ...s, elapsed: s.elapsed + 1, workspace: s.workspace.play ? { ...s.workspace, play: { ...s.workspace.play, nowMs: Date.now() } } : s.workspace,
+      ...s, attention: { ...s.attention, serverNow: new Date().toISOString(), signals: s.attention.signals.filter((f) => Date.parse(f.expiresAt) > Date.now()) }, elapsed: s.elapsed + 1, workspace: s.workspace.play ? { ...s.workspace, play: { ...s.workspace.play, nowMs: Date.now() } } : s.workspace,
       notes: { ...s.notes, recording: s.capture.mode === 'on' ? { ...s.notes.recording, seconds: s.notes.recording.seconds + 1, pieces: Math.floor((s.notes.recording.seconds + 1) / 5) } : s.notes.recording }
     }));
     // The organizer's browser brings everyone back when the rooms' time is up; in the script, the organizer's isn't yours.
@@ -181,12 +204,26 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
       case 'leave': this.goes(b.who); return;
       case 'say': this.say(b.line); return;
       case 'mic': this.them(b.who, (t) => ({ ...t, mic: b.on, speaking: b.on && t.speaking })); return;
-      case 'hand': this.change((s) => ({ ...s, participants: s.participants.map((p) => (!p.isMe && sameAs(p.person, b.who) ? { ...p, hand: b.up } : p)) })); return;
+      case 'hand': { const p = this.find(b.who); if (p) this.handFor(p, b.up); return; }
+      case 'question': { const p = this.find(b.who); if (p) this.questionFor(p, b.text, b.votes ?? 0); return; }
+      case 'feedback': { const p = this.find(b.who); if (p) this.feedbackFor(p, b.kind); return; }
       case 'share': this.them(b.who, (t) => ({ ...t, screen: b.screen })); return;
       case 'stop-sharing': this.them(b.who, (t) => ({ ...t, screen: null })); return;
-      case 'chat': {
+      case 'unavailable-chat': this.crypto.update((c) => ({ ...c, chat: c.chat.filter((m) => m.text !== b.text) })); return;
+      case 'chat':
+      case 'reply': {
         const p = this.find(b.who);
-        if (p) this.crypto.update((c) => ({ ...c, chat: [...c.chat, { id: nextId('chat'), from: p.id, isMe: false, text: b.text, at: this.getSnapshot().elapsed, place: c.place, sending: false, reactions: [] }] }));
+        const parent = b.do === 'reply' ? this.crypto.getSnapshot().chat.findLast((m) => m.text === b.to && m.place === this.crypto.getSnapshot().place) : null;
+        if (b.do === 'reply' && !parent) return;
+        const thread = parent ? { root: parent.thread?.root ?? parent.id, replyTo: parent.id } : null;
+        const mentions = b.tagged.flatMap((who): CallChatMention[] => {
+          const target = who === 'me' ? this.me : this.find(who);
+          if (!target || !this.crypto.getSnapshot().members.includes(target.id)) return [];
+          const name = `@${target.person.name}`;
+          const start = b.text.indexOf(name);
+          return start < 0 ? [] : [{ identity: target.id, start, end: start + name.length }];
+        });
+        if (p) this.crypto.update((c) => ({ ...c, chat: [...c.chat, { id: nextId('chat'), from: p.id, isMe: false, text: b.text, mentions, thread, at: this.getSnapshot().elapsed, place: c.place, sending: false, failed: false, reactions: [] }] }));
         return;
       }
       case 'react': {
@@ -198,6 +235,7 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
       case 'knock': {
         const person: Person = b.byName ? { id: `guest-${b.who.name}`, name: firstOf(b.who), email: '' } : b.who;
         this.change((s) => ({ ...s, waiting: [...s.waiting, { id: identity(`ask${person.name}${this.ticket.callId}`), person }] }));
+        if (this.getSnapshot().isHost) this.cue('admission');
         return;
       }
       case 'ask-for-notes': {
@@ -308,6 +346,8 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     if (o.guest) this.guests.add(id);
     const joined: CallParticipant = { id, seat, person: p, isMe: false, isOrganizer: o.organizer ?? false, hand: o.hand ?? false, othersPoint: true };
     this.change((s) => ({ ...s, participants: [...s.participants, joined], host: o.organizer && !this.away ? { ...s.host, id } : s.host }));
+    if (o.hand) this.handFor(joined, true);
+    this.cue('join');
     this.crypto.update((c) => ({ ...c, members: c.place === 'main' && c.status === 'in' ? [...c.members, id] : c.members, everyone: [...c.everyone, id] }));
     this.livekit.update((r) => ({ ...r, people: { ...r.people, [id]: { mic: o.mic ?? true, speaking: false, screen: o.sharing ?? null, sound: false } } }));
   }
@@ -320,6 +360,7 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     if (!x) return;
     for (const [place, q] of [...this.presented]) if (q.by.seat === x.seat) this.endIt(place, q, false);
     this.drops(x);
+    this.cue('leave');
   }
   /**
    * Someone's connection is gone, as a reload or a dropped connection leaves it: they're gone from the people, and what they
@@ -328,7 +369,7 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
    */
   private drops(x: CallParticipant): void {
     this.change((s) => ({
-      ...s, participants: s.participants.filter((q) => q.id !== x.id), spotlight: s.spotlight === x.id ? null : s.spotlight,
+      ...s, attention: { ...s.attention, hands: s.attention.hands.filter((h) => h.seat !== x.seat), signals: s.attention.signals.filter((f) => f.seat !== x.seat) }, participants: s.participants.filter((q) => q.id !== x.id), spotlight: s.spotlight === x.id ? null : s.spotlight,
       breakouts: s.breakouts.open ? { ...s.breakouts, open: { ...s.breakouts.open, rooms: s.breakouts.open.rooms.map((r) => ({ ...r, members: r.members.filter((m) => m !== x.id) })) } } : s.breakouts
     }));
     this.crypto.update((c) => ({ ...c, members: c.members.filter((m) => m !== x.id), everyone: c.everyone.filter((m) => m !== x.id) }));
@@ -401,7 +442,7 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     const who = l.who === 'me' ? s.participants.find((p) => p.isMe) : this.find(l.who);
     const c = this.crypto.getSnapshot();
     if (!who || here !== 'on' || c.status === 'waiting' || c.status === 'denied' || (!who.isMe && c.status === 'in' && !c.members.includes(who.id))) return;
-    const id = nextId('line');
+    const id = l.id ?? nextId('line');
     const room = s.capture.room ? s.breakouts.open?.rooms.find((r) => r.id === s.capture.room?.id) : undefined;
     const t: TranscriptLine = { id, at, speaker: { name: who.person.name, person: who.person }, text: l.text, ...(room ? { room: { id: room.id, name: room.name } } : {}) };
     this.heard.push({ line: l, id, at });
@@ -420,31 +461,33 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
       this.after(1500, () => {
         this.writing = false;
         this.notesFor = this.heard.length;
-        this.change((s) => ({ ...s, liveNotes: { ...s.liveNotes, notes: this.notesNow(), writing: false, error: null } }));
+        this.change((s) => ({ ...s, liveNotes: { ...s.liveNotes, notes: this.notesNow(), suggestions: this.suggestionsNow(), writing: false, error: null } }));
         this.writeNotesSoon();
       });
     });
   }
-  private named(who: Person | 'me' | undefined): string | undefined {
-    if (!who) return undefined;
-    return who === 'me' ? this.me.person.name : who.name;
-  }
+  private suggestionsNow(): LiveFollowUp[] { return [...this.inferred.values()].filter((f) => f.review === 'suggested'); }
   /** Where the call has got to, from what's been said so far. */
   private notesNow(): NonNullable<CallState['liveNotes']['notes']> {
     const s = this.getSnapshot();
     const evidence = (h: { id: string; at: number }) => [{ kind: 'transcript' as const, lineId: h.id, said: h.at }];
     const decided = this.heard.flatMap((h) => (h.line.decides ? [{ text: h.line.decides, evidence: evidence(h) }] : []));
+    for (const h of this.heard) {
+      const hands = h.line.hands;
+      const id = `fu-${h.id}`;
+      if (!hands || this.inferred.has(id)) continue;
+      const who = hands.owner ?? h.line.who;
+      const ownerPerson = who === 'me' ? this.me.person : who;
+      this.inferred.set(id, {
+        ...ACCEPTED_FOLLOW_UP, review: 'suggested', revision: `${id}-v1`, id, text: hands.text,
+        owner: ownerPerson.name, ownerPerson, ...(hands.due ? { due: hands.due } : {}), evidence: evidence(h), done: false
+      });
+    }
     return {
       summary: this.summaryNow() || decided.map((d) => d.text).join(' '),
       decided,
       proposed: [], open: [],
-      next: this.heard.flatMap((h) => {
-        const hands = h.line.hands;
-        if (!hands) return [];
-        const id = `fu-${h.id}`;
-        const owner = this.named(hands.owner ?? h.line.who);
-        return [{ id, text: hands.text, ...(owner ? { owner } : {}), ...(hands.due ? { due: hands.due } : {}), evidence: evidence(h), done: this.ticked.has(id) }];
-      }),
+      next: [...this.inferred.values()].filter((f) => f.review === 'accepted' && f.changeOf === null),
       read: { from: 0, to: s.elapsed, lines: s.transcript.length, through: s.transcript.at(-1)?.at ?? null, gaps: s.capture.gaps, missed: [], whileHere: false, skipped: null, asOf: s.elapsed }
     };
   }
@@ -476,7 +519,7 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
         ...s.capture, mode, recording: part(mode, at, by), transcript: part(mode, at, by), ai: part(mode === 'off' && !s.notes.everOn ? 'off' : mode === 'off' ? 'on' : mode, at, by),
         screen: mode === 'off' ? part('off', at, by) : s.capture.screen, gaps, requests: mode === 'on' ? [] : s.capture.requests, asked
       },
-      notes: { ...s.notes, everOn: s.notes.everOn || mode === 'on', noteId: s.notes.noteId ?? (mode === 'on' ? this.noteId : null), recording: mode === 'on' && was !== 'on' ? { ...s.notes.recording, segment: s.notes.recording.segment + (s.notes.everOn ? 1 : 0) } : s.notes.recording },
+      notes: { ...s.notes, segmentStartedAt: mode === 'on' && was !== 'on' ? at : s.notes.segmentStartedAt, everOn: s.notes.everOn || mode === 'on', noteId: s.notes.noteId ?? (mode === 'on' ? this.noteId : null), recording: mode === 'on' && was !== 'on' ? { ...s.notes.recording, segment: s.notes.recording.segment + (s.notes.everOn ? 1 : 0) } : s.notes.recording },
       notices: [...s.notices, { id: nextId('notice'), text, kind: 'notes' }]
     });
     linkState(this.meeting.code, (l) => ({ hostHere: true, standIn: null, locked: false, ended: false, ...l, capture: this.getSnapshot().capture }));
@@ -700,6 +743,10 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
   }
   /** Your part of the call changes: a moment between the two (nothing heard or sent), then the new part's keys. */
   private moveTo(place: string, members: string[]): void {
+    const attention = this.getSnapshot().attention;
+    this.attentionRooms.set(attention.place, { ...attention, hands: attention.hands.filter((h) => h.seat !== this.me.seat), signals: [] });
+    const nextAttention = this.attentionRooms.get(place) ?? { place, hands: [], questions: [], signals: [], cues: [], latest: 0, serverNow: new Date().toISOString() };
+    this.change((s) => ({ ...s, attention: nextAttention }));
     this.crypto.update((c) => ({ ...c, status: 'moving', place }));
     this.showBoard();
     this.after(1200, () => this.crypto.update((c) => ({ ...c, status: 'in', members })));
@@ -885,8 +932,29 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     return Promise.resolve({ serverUrl: this.ticket.serverUrl, roomName: this.ticket.roomName, identity: this.ticket.identity, token: 'storybook' });
   }
   refresh(): Promise<void> { return Promise.resolve(); }
-  sendChat(text: string): Promise<void> {
-    this.crypto.update((c) => ({ ...c, chat: [...c.chat, { id: nextId('chat'), from: this.me.id, isMe: true, text, at: this.getSnapshot().elapsed, place: c.place, sending: false, reactions: [] }] }));
+  sendChat(text: string, mentions: readonly CallChatMention[] = [], thread: import('@alcove/api').CallChatThread | null = null): Promise<void> {
+    const leading = text.length - text.trimStart().length;
+    const parsed = CallChatTextSchema.safeParse({ text: text.trim(), mentions: mentions.map((m) => ({ ...m, start: m.start - leading, end: m.end - leading })), thread, at: this.getSnapshot().elapsed });
+    const now = this.crypto.getSnapshot();
+    if (!parsed.success || parsed.data.mentions.some((m) => !now.members.includes(m.identity))) return Promise.reject(new AlcoveApiError('invalid', 'Choose people who are in this part of the call.'));
+    if (parsed.data.thread) {
+      const target = now.chat.find((m) => m.id === parsed.data.thread?.replyTo && m.place === now.place && !m.failed && !m.sending);
+      if (!target || (target.thread?.root ?? target.id) !== parsed.data.thread.root) return Promise.reject(new AlcoveApiError('not-found', 'That conversation isn’t available in this room.'));
+    }
+    const failed = this.chatFailures < (this.script.chatFailures ?? 0);
+    if (failed) this.chatFailures++;
+    this.crypto.update((c) => ({ ...c, chat: [...c.chat, { id: nextId('chat'), from: this.me.id, isMe: true, text: parsed.data.text, mentions: parsed.data.mentions, thread: parsed.data.thread, at: parsed.data.at, place: c.place, sending: false, failed, reactions: [] }] }));
+    return Promise.resolve();
+  }
+  retryChat(messageId: string): Promise<void> {
+    const message = this.crypto.getSnapshot().chat.find((m) => m.id === messageId && m.failed);
+    if (!message || message.place !== this.crypto.getSnapshot().place) return Promise.reject(new AlcoveApiError('conflict', 'Return to the original conversation before retrying this message.'));
+    this.crypto.update((c) => ({ ...c, chat: c.chat.map((m) => m.id === messageId ? { ...m, failed: false } : m) }));
+    return Promise.resolve();
+  }
+  readChat(ids: readonly string[]): Promise<void> {
+    const readable = this.crypto.getSnapshot().chat.filter((m) => ids.includes(m.id)).map((m) => m.id);
+    this.change((s) => ({ ...s, chatRead: [...new Set([...s.chatRead, ...readable])].slice(-200) }));
     return Promise.resolve();
   }
   /** Yours on a message, on or off: the same rules as the real call's. */
@@ -910,7 +978,7 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
 
   /** Whoever's showing the call's follow-ups hears every change to the call that changes them. */
   protected override push(next: CallState): void {
-    super.push(next);
+    super.push({ ...next, revision: next.revision + 1, attention: { ...next.attention, serverNow: new Date().toISOString() } });
     if (this.followWatchers > 0) this.tellFollowUps();
   }
   private space(change: (w: CallWorkspace) => CallWorkspace): void { this.change((s) => ({ ...s, workspace: change(s.workspace) })); }
@@ -1008,7 +1076,7 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
       ...(s.liveNotes.notes?.next ?? []).map((n): CallFollowUp => ({ ...n, from: 'notes' })),
       ...s.liveNotes.added.map((a): CallFollowUp => ({ ...a, from: 'added' }))
     ];
-    const next: CallFollowUps = { items, notes: mode === 'off' ? 'off' : mode === 'paused' ? 'paused' : 'on' };
+    const next: CallFollowUps = { items, suggestions: s.liveNotes.suggestions, notes: mode === 'off' ? 'off' : mode === 'paused' ? 'paused' : 'on' };
     if (JSON.stringify(next) !== JSON.stringify(this.followUps.getSnapshot())) this.followUps.set(next);
   }
   watchFollowUps(): () => void {
@@ -1421,7 +1489,88 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     this.change((s) => ({ ...s, shares: s.shares.filter((x) => x.id !== share) }));
     return Promise.resolve();
   }
-  setHand(up: boolean): void { this.change((s) => ({ ...s, participants: s.participants.map((p) => (p.isMe ? { ...p, hand: up } : p)) })); }
+  private attentionRooms = new Map<string, CallAttention>();
+  private cue(kind: CallAttention['cues'][number]['kind']): void {
+    this.change((s) => { const seq = s.attention.latest + 1; return { ...s, attention: { ...s.attention, latest: seq, cues: [...s.attention.cues, { id: nextId('cue'), seq, kind, at: new Date().toISOString() }].slice(-64) } }; });
+  }
+  private handFor(p: CallParticipant, up: boolean): void {
+    this.change((s) => ({ ...s, participants: s.participants.map((x) => x.seat === p.seat ? { ...x, hand: up } : x), attention: { ...s.attention, hands: up ? s.attention.hands.some((h) => h.seat === p.seat) ? s.attention.hands : [...s.attention.hands, { id: nextId('hand'), participantId: p.id, seat: p.seat, raisedAt: new Date().toISOString() }] : s.attention.hands.filter((h) => h.seat !== p.seat) } }));
+    if (up) this.cue('hand');
+  }
+  setTimerSequence(input: CallTimerSequenceInput): Promise<void> {
+    return Promise.resolve().then(() => {
+      const parsed = CallTimerSequenceInputSchema.parse(input);
+      const s = this.getSnapshot();
+      if (!s.isHost) throw new AlcoveApiError('forbidden', 'Only the host can change the timer.');
+      const was = s.timerSequence;
+      if (parsed.expectedRevision !== (was?.revision ?? null)) throw new AlcoveApiError('conflict', 'The timer changed. Read its latest timing and try again.');
+      if (was && was.status !== 'ready' && was.status !== 'finished' && was.segments.slice(0, was.activeIndex + 1).some((segment, index) => JSON.stringify(segment) !== JSON.stringify(parsed.segments[index]))) throw new AlcoveApiError('conflict', 'The current turn and past segments stay as timed.');
+      const timerSequence: CallTimerSequence = was && was.status !== 'finished' ? { ...was, segments: parsed.segments, revision: was.revision + 1 } : { revision: (was?.revision ?? -1) + 1, segments: parsed.segments, activeIndex: 0, status: 'ready', elapsedMs: 0, startedAt: null, addedSeconds: 0 };
+      this.change((state) => ({ ...state, timerSequence }));
+    });
+  }
+  controlTimer(input: CallTimerControl): Promise<void> {
+    return Promise.resolve().then(() => {
+      const parsed = CallTimerControlSchema.parse(input);
+      const s = this.getSnapshot();
+      if (!s.isHost) throw new AlcoveApiError('forbidden', 'Only the host can control the timer.');
+      const was = s.timerSequence;
+      if (!was || parsed.expectedRevision !== was.revision) throw new AlcoveApiError('conflict', 'The timer changed. Read its latest timing and try again.');
+      const now = Date.now();
+      const elapsedMs = was.elapsedMs + (was.startedAt === null ? 0 : Math.max(0, now - was.startedAt));
+      let timerSequence: CallTimerSequence = { ...was, revision: was.revision + 1 };
+      switch (parsed.action) {
+        case 'start':
+          if (was.status !== 'ready') throw new AlcoveApiError('conflict', 'This timer has started already.');
+          timerSequence = { ...timerSequence, status: 'running', startedAt: now }; break;
+        case 'pause':
+          if (was.status !== 'running') throw new AlcoveApiError('conflict', 'This timer isn’t running.');
+          timerSequence = { ...timerSequence, status: 'paused', startedAt: null, elapsedMs }; break;
+        case 'resume':
+          if (was.status !== 'paused') throw new AlcoveApiError('conflict', 'This timer isn’t paused.');
+          timerSequence = { ...timerSequence, status: 'running', startedAt: now }; break;
+        case 'restart': timerSequence = { ...timerSequence, status: 'running', elapsedMs: 0, startedAt: now, addedSeconds: 0 }; break;
+        case 'add-time': timerSequence = { ...timerSequence, addedSeconds: was.addedSeconds + parsed.seconds }; break;
+        case 'skip': case 'advance':
+          timerSequence = was.activeIndex + 1 < was.segments.length ? { ...timerSequence, activeIndex: was.activeIndex + 1, elapsedMs: 0, startedAt: now, addedSeconds: 0, status: 'running' } : { ...timerSequence, elapsedMs, startedAt: null, status: 'finished' }; break;
+      }
+      this.change((state) => ({ ...state, timerSequence }));
+    });
+  }
+
+  setHand(up: boolean): Promise<void> { this.handFor(this.me, up); return Promise.resolve(); }
+  lowerHand(entryId: string): Promise<void> {
+    const s = this.getSnapshot(); const h = s.attention.hands.find((h) => h.id === entryId);
+    if (!h) return Promise.resolve();
+    if (!s.isHost && h.seat !== this.me.seat) return Promise.reject(new AlcoveApiError('forbidden', 'Only the host can lower someone else’s hand.'));
+    const p = s.participants.find((p) => p.seat === h.seat); if (p) this.handFor(p, false); return Promise.resolve();
+  }
+  clearHands(): Promise<void> {
+    if (!this.getSnapshot().isHost) return Promise.reject(new AlcoveApiError('forbidden', 'Only the host can lower all hands.'));
+    for (const h of this.getSnapshot().attention.hands) { const p = this.getSnapshot().participants.find((p) => p.seat === h.seat); if (p) this.handFor(p, false); }
+    return Promise.resolve();
+  }
+  private questionFor(p: CallParticipant, text: string, votes = 0, id = nextId('question')): void {
+    if (this.getSnapshot().attention.questions.some((q) => q.id === id)) return;
+    this.change((s) => ({ ...s, attention: { ...s.attention, questions: [...s.attention.questions, { id, author: p.person, text, createdAt: new Date().toISOString(), status: 'open', votes, voted: false, own: p.isMe, pinned: false }] } }));
+    this.cue('question');
+  }
+  postQuestion(id: string, text: string): Promise<void> { this.questionFor(this.me, text, 0, id); return Promise.resolve(); }
+  voteQuestion(id: string, on: boolean): Promise<void> {
+    this.change((s) => ({ ...s, attention: { ...s.attention, questions: s.attention.questions.map((q) => q.id === id && q.status === 'open' ? { ...q, voted: on, votes: q.votes + (q.voted === on ? 0 : on ? 1 : -1) } : q) } })); return Promise.resolve();
+  }
+  resolveQuestion(id: string, status: CallQuestionStatus): Promise<void> {
+    if (!this.getSnapshot().isHost) return Promise.reject(new AlcoveApiError('forbidden', 'Only the host can resolve questions.'));
+    this.change((s) => ({ ...s, attention: { ...s.attention, questions: s.attention.questions.map((q) => q.id === id ? { ...q, status, pinned: false } : q) } })); return Promise.resolve();
+  }
+  pinQuestion(id: string | null): Promise<void> {
+    if (!this.getSnapshot().isHost) return Promise.reject(new AlcoveApiError('forbidden', 'Only the host can pin questions.'));
+    this.change((s) => ({ ...s, attention: { ...s.attention, questions: s.attention.questions.map((q) => ({ ...q, pinned: q.id === id && q.status === 'open' })) } })); return Promise.resolve();
+  }
+  private feedbackFor(p: CallParticipant, kind: CallFeedbackKind | null): void {
+    this.change((s) => ({ ...s, attention: { ...s.attention, signals: [...s.attention.signals.filter((f) => f.seat !== p.seat), ...(kind ? [{ participantId: p.id, seat: p.seat, kind, expiresAt: new Date(Date.now() + 30000).toISOString() }] : [])] } }));
+  }
+  setFeedback(kind: CallFeedbackKind | null): Promise<void> { this.feedbackFor(this.me, kind); return Promise.resolve(); }
   letOthersPoint(on: boolean): Promise<void> { this.change((s) => ({ ...s, participants: s.participants.map((p) => (p.isMe ? { ...p, othersPoint: on } : p)) })); return Promise.resolve(); }
   setPointing(on: boolean): Promise<void> { this.change((s) => ({ ...s, pointing: on })); return Promise.resolve(); }
   setSpotlight(participantId: string | null): void { this.change((s) => ({ ...s, spotlight: participantId })); }
@@ -1447,24 +1596,76 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     let stopped = false;
     return () => { if (!stopped) { stopped = true; this.watching -= 1; } };
   }
+  private followUpTarget(row: LiveFollowUp): FollowUpTarget {
+    return { id: row.id, revision: row.revision, text: row.text, owner: row.ownerPerson?.email ?? null, due: row.due ?? null };
+  }
+  private refreshFollowUps(): void {
+    const notes = this.notesNow();
+    this.change((s) => ({ ...s, liveNotes: { ...s.liveNotes, notes, suggestions: this.suggestionsNow() } }));
+  }
+  private followUpOwner(email: string | null): Person | null {
+    if (email === null) return null;
+    const owner = [this.meeting.organizer, ...this.meeting.guests, ...this.getSnapshot().participants.map((p) => p.person)].find((p) => p.email.toLowerCase() === email.toLowerCase());
+    if (!owner) throw new AlcoveApiError('invalid', 'Choose someone invited to the call.');
+    return owner;
+  }
   tickFollowUp(id: string, done: boolean): Promise<void> {
-    if (done) this.ticked.add(id); else this.ticked.delete(id);
-    this.change((s) => {
-      const added = s.liveNotes.added.map((a) => (a.id === id ? { ...a, done } : a));
-      return s.liveNotes.notes
-        ? { ...s, liveNotes: { ...s.liveNotes, added, notes: { ...s.liveNotes.notes, next: s.liveNotes.notes.next.map((n) => (n.id === id ? { ...n, done } : n)) } } }
-        : { ...s, liveNotes: { ...s.liveNotes, added } };
-    });
+    const row = this.inferred.get(id);
+    if (row?.review === 'accepted') this.inferred.set(id, { ...row, done, revision: nextId('revision') });
+    this.change((s) => ({ ...s, liveNotes: { ...s.liveNotes, added: s.liveNotes.added.map((a) => a.id === id ? { ...a, done, revision: nextId('revision') } : a) } }));
+    this.refreshFollowUps();
     return Promise.resolve();
   }
-  /** A follow-up nobody said, in your own words, yours: for everyone who gets the notes. The same words again add nothing. */
-  addFollowUp(text: string): Promise<void> {
+  /** Manual tasks are actual immediately; choosing an owner never claims their agreement. */
+  addFollowUp(input: FollowUpCreate): Promise<void> {
     const s = this.getSnapshot();
-    if (!s.notes.everOn) return Promise.reject(new AlcoveApiError('forbidden', 'Notes have never been on in this call.'));
-    const words = text.replace(/\s+/g, ' ').trim();
+    if (!s.notes.everOn || s.role === 'guest') return Promise.reject(new AlcoveApiError('forbidden', 'Only someone invited can add follow-ups.'));
+    const words = input.text.replace(/\s+/g, ' ').trim();
     if (!words || s.liveNotes.added.some((a) => a.text === words)) return Promise.resolve();
-    const at = Math.max(0, Math.round((Date.now() - Date.parse(s.startedAt)) / 1000));
-    this.change((now) => ({ ...now, liveNotes: { ...now.liveNotes, added: [...now.liveNotes.added, { id: nextId('added'), text: words, owner: this.me.person.name, evidence: [], done: false, at }] } }));
+    try {
+      const ownerPerson = this.followUpOwner(input.owner);
+      const at = Math.max(0, Math.round((Date.now() - Date.parse(s.startedAt)) / 1000));
+      this.change((now) => ({ ...now, liveNotes: { ...now.liveNotes, added: [...now.liveNotes.added, {
+        ...ACCEPTED_FOLLOW_UP, revision: nextId('revision'), id: nextId('added'), text: words, ownerPerson, ...(ownerPerson ? { owner: ownerPerson.name } : {}), ...(input.due ? { due: input.due } : {}), evidence: [], done: false, at
+      }] } }));
+      return Promise.resolve();
+    } catch (e) { return Promise.reject(e); }
+  }
+  updateFollowUp(id: string, patch: FollowUpPatch): Promise<void> {
+    const s = this.getSnapshot();
+    const row = this.inferred.get(id) ?? s.liveNotes.added.find((a) => a.id === id);
+    if (s.role === 'guest') return Promise.reject(new AlcoveApiError('forbidden', 'Only someone invited can edit follow-ups.'));
+    if (!row || row.review !== 'accepted' || JSON.stringify(this.followUpTarget(row)) !== JSON.stringify({ id, ...patch.seen })) return Promise.reject(new AlcoveApiError('conflict', 'That follow-up changed. Open it again.'));
+    try {
+      const ownerPerson = patch.owner === undefined ? row.ownerPerson : this.followUpOwner(patch.owner);
+      const { owner: _owner, due: _due, ...rest } = row;
+      const due = patch.due === undefined ? row.due : patch.due;
+      const next: LiveFollowUp = { ...rest, revision: nextId('revision'), text: patch.text ?? row.text, ownerPerson, ...(ownerPerson ? { owner: ownerPerson.name } : {}), ...(due ? { due } : {}) };
+      if (this.inferred.has(id)) this.inferred.set(id, next);
+      this.change((now) => ({ ...now, liveNotes: { ...now.liveNotes, added: now.liveNotes.added.map((a) => a.id === id ? { ...next, at: a.at } : a) } }));
+      this.refreshFollowUps();
+      return Promise.resolve();
+    } catch (e) { return Promise.reject(e); }
+  }
+  reviewFollowUp(review: FollowUpReview): Promise<void> {
+    if (this.getSnapshot().role === 'guest') return Promise.reject(new AlcoveApiError('forbidden', 'Only someone invited can review follow-ups.'));
+    const previous = this.reviewed.get(review.id);
+    if (previous?.revision === review.revision && previous.decision === review.decision) return Promise.resolve();
+    const proposal = this.inferred.get(review.id);
+    if (previous || !proposal || proposal.review !== 'suggested' || proposal.revision !== review.revision) return Promise.reject(new AlcoveApiError('conflict', 'That suggestion changed or has already been reviewed.'));
+    const target = proposal.target;
+    const actual = target ? this.inferred.get(target.id) ?? this.getSnapshot().liveNotes.added.find((a) => a.id === target.id) : undefined;
+    if (target && (!actual || JSON.stringify(this.followUpTarget(actual)) !== JSON.stringify(target))) return Promise.reject(new AlcoveApiError('conflict', 'That follow-up changed. Close review and open it again.'));
+    this.reviewed.set(review.id, review);
+    const reviewed = { by: changer(this.me.person, this.me.isOrganizer ? 'organizer' : 'invited'), at: new Date().toISOString(), decision: review.decision };
+    if (review.decision === 'dismiss') this.inferred.set(proposal.id, { ...proposal, review: 'dismissed', reviewed });
+    else if (target) {
+      const accepted: LiveFollowUp = { ...proposal, ...ACCEPTED_FOLLOW_UP, id: target.id, reviewed, done: actual?.done ?? false, revision: nextId('revision') };
+      this.inferred.set(proposal.id, { ...proposal, review: 'accepted', reviewed });
+      if (this.inferred.has(target.id)) this.inferred.set(target.id, accepted);
+      this.change((s) => ({ ...s, liveNotes: { ...s.liveNotes, added: s.liveNotes.added.map((a) => a.id === target.id ? { ...accepted, at: a.at } : a) } }));
+    } else this.inferred.set(proposal.id, { ...proposal, review: 'accepted', reviewed, revision: nextId('revision') });
+    this.refreshFollowUps();
     return Promise.resolve();
   }
   catchUp(_range: CatchUpRange): Promise<CatchUp> {
@@ -1544,15 +1745,15 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     linkState(this.meeting.code, (l) => ({ hostHere: false, standIn: null, locked: false, capture: null, ...l, ended: true }));
     if (noteId) {
       const decided = this.heard.flatMap((h) => (h.line.decides ? [{ id: `${noteId}-d${h.id}`, text: h.line.decides, at: clockOf(h.at), state: 'proposed' as const }] : []));
-      const actions = this.heard.flatMap((h) => {
-        const hands = h.line.hands;
-        if (!hands) return [];
-        const owner = hands.owner === 'me' || (!hands.owner && h.line.who === 'me') ? this.me.person : hands.owner ?? (h.line.who === 'me' ? undefined : h.line.who);
-        return [{ id: `${noteId}-a${h.id}`, text: hands.text, at: clockOf(h.at), ...(owner ? { owner } : {}), ...(hands.due ? { due: hands.due } : {}) }];
+      const actionSpec = (row: LiveFollowUp) => ({
+        id: row.id, text: row.text, revision: row.revision, reviewed: row.reviewed, ...(row.ownerPerson ? { owner: row.ownerPerson } : {}), ...(row.due ? { due: row.due } : {}),
+        ...(row.evidence[0] ? { at: clockOf(row.evidence[0].said) } : {}), done: row.done, ...(row.target ? { target: row.target } : {})
       });
+      const actions = [...(s.liveNotes.notes?.next ?? []), ...s.liveNotes.added].map(actionSpec);
+      const suggestions = s.liveNotes.suggestions.map(actionSpec);
       const spec = {
         id: noteId, title: s.title, startedAt: s.startedAt, minutes: Math.max(1, Math.round(s.elapsed / 60)), organizer: this.meeting.organizer, invited: this.meeting.guests,
-        excerpt: this.script.summary ?? 'Notes from the call.', summary: this.script.summary, meetingId: this.meeting.id, decisions: decided, actions,
+        excerpt: this.script.summary ?? 'Notes from the call.', summary: this.script.summary, meetingId: this.meeting.id, decisions: decided, actions, suggestions,
         said: s.transcript.map((l) => ({ at: clockOf(l.at), who: l.speaker?.person, text: l.text }))
       };
       w.notes.unshift(writeNote({ ...spec, status: 'pending' }));
@@ -1568,6 +1769,8 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     return Promise.resolve();
   }
   close(): void {
+    this.notifications.close();
+    this.direct.close();
     this.halt();
     this.crypto.close();
     this.livekit.close();

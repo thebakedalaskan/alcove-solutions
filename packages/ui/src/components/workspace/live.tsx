@@ -1,12 +1,12 @@
 /* The call's own pages at the top of the list: Notes, Follow-ups, Transcript. And what's left of them on the note. */
 import { AnimatePresence, motion } from 'motion/react';
-import type { ReactNode } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import { cn } from '../../cn';
 import { EmptyState } from '../empty';
 import { Icon } from '../icon';
 import { Dots } from '../motion';
 import { Avatar, type AvatarPerson } from '../people';
-import { Button, Unencrypted } from '../primitives';
+import { Button, IconButton, Unencrypted } from '../primitives';
 import { WsArch } from './document';
 import { useMove } from './shared';
 
@@ -48,16 +48,28 @@ export interface WsFollowUp {
   onSource?: (() => void) | undefined;
   /** Someone who can read this and not change it sees the box and can't press it. */
   locked?: boolean | undefined;
+  onEdit?: (() => void) | undefined;
+  editor?: ReactNode;
+  actions?: ReactNode;
 }
 
 function FollowUpRow({ row, onTick, sourced = false }: { row: WsFollowUp; onTick: (id: string) => void; sourced?: boolean | undefined }) {
   const move = useMove();
+  const edit = useRef<HTMLButtonElement>(null);
+  const wasEditing = useRef(false);
+  useEffect(() => {
+    if (wasEditing.current && !row.editor) edit.current?.focus({ preventScroll: true });
+    wasEditing.current = Boolean(row.editor);
+  }, [row.editor]);
+  if (row.editor) return <div className="wl-todo is-editing">{row.editor}</div>;
   return (
     <motion.div className={cn('wl-todo', row.done && 'is-done')} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={move(2)}>
       <button type="button" className="wb-box" role="checkbox" aria-checked={row.done} aria-label="Done" disabled={row.locked} onClick={() => onTick(row.id)}><Icon name="check" size={13} /></button>
       <span className="wl-tx"><span className="wl-w">{row.text}</span>{sourced && (row.onSource ? <button type="button" className="src" onClick={row.onSource}>{row.source}</button> : <span className="src">{row.source}</span>)}</span>
       {row.person && <span className="who"><Avatar person={row.person} size={18} /><span>{row.name}</span></span>}
       <span className="wl-due">{row.due}</span>
+      {row.actions}
+      {row.onEdit && <IconButton ref={edit} icon="pen" label="Edit follow-up" size={14} onClick={row.onEdit} />}
     </motion.div>
   );
 }
@@ -99,16 +111,14 @@ export function WsNotesPage({ summary, decided, followUps, allFollowUps, put, no
 
 /**
  * Follow-ups: everything to do from this call. `mine` filters to yours; `rows` are the ones to show, and the counts are
- * how many there are either way. `draft`, `onDraft` and `onAdd` are the line at the end, and Enter adds it. Left out for
- * someone who can't add one. `notice` says what's holding the notes back.
+ * how many there are either way. `children` holds manual additions and optional review. `notice` says what's holding
+ * the notes back; `compact` uses the same checklist inside the call's Notes panel.
  */
-export function WsFollowUps({ mine, onMine, everyoneCount, mineCount, rows, notice, onTick, draft, onDraft, onAdd }: {
+export function WsFollowUps({ mine, onMine, everyoneCount, mineCount, rows, notice, onTick, children, compact = false }: {
   mine: boolean; onMine: (mine: boolean) => void; everyoneCount: number; mineCount: number; rows: WsFollowUp[]; notice?: ReactNode;
-  onTick: (id: string) => void; draft: string; onDraft: (text: string) => void; onAdd?: (() => void) | undefined;
+  onTick: (id: string) => void; children?: ReactNode; compact?: boolean | undefined;
 }) {
-  return (
-    <LivePage title="Follow-ups">
-      <p className="wl-s">Everything to do from this call, said out loud or written in a document.</p>
+  const body = <>
       {notice}
       <div className="wl-seg" role="group" aria-label="Whose">
         <button type="button" aria-pressed={!mine} onClick={() => onMine(false)}>Everyone <span>{everyoneCount}</span></button>
@@ -116,15 +126,9 @@ export function WsFollowUps({ mine, onMine, everyoneCount, mineCount, rows, noti
       </div>
       <Written>{rows.map((f) => <FollowUpRow key={f.id} row={f} onTick={onTick} sourced />)}</Written>
       {rows.length === 0 && <p className="wl-s">{mine ? 'Nothing with your name on it yet.' : 'Nothing to do yet.'}</p>}
-      {onAdd && (
-        <div className="wl-add">
-          <Icon name="plus" size={16} />
-          <input type="text" placeholder="Add a follow-up" aria-label="Add a follow-up" value={draft} maxLength={300} onChange={(e) => onDraft(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); onAdd(); } }} />
-        </div>
-      )}
-    </LivePage>
-  );
+      {children}
+    </>;
+  return compact ? <div className="wl-compact">{body}</div> : <LivePage title="Follow-ups">{body}</LivePage>;
 }
 
 /** A line of the transcript. `name` is their first name, `at` the time of day. `flash` glows it, 1.6 s, as a time opened it. */

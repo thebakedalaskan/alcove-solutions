@@ -3,6 +3,11 @@
 The record of what's built: the foundations, every component in `@alcove/ui`, every page and the journeys between them,
 rendered by the real components and the real app on made-up data. It shows; it never tests (AGENTS.md › Testing).
 
+Immediate actions have Saving/refusal states for settings, invitation answers, Home follow-ups, the wide note preview and
+workspace names. Phone/wide and light/dark variants use the real app. Journeys **11.23** and **12.1** show rapid repeated
+choices and retained-name retry. See [immediate actions](../../docs/engineering/immediate-actions.md) for ownership and the
+real HTTP integration coverage; scripted delays demonstrate UI behavior rather than browser/device verification.
+
 ```
 pnpm storybook        # from the repo root: http://localhost:6006, no Docker, no API
 pnpm build            # turbo builds it into apps/storybook/dist, as CI's Build job does
@@ -40,7 +45,7 @@ stories/components/       one file per @alcove/ui component, a story per state, 
 stories/pages/            one file per page, a story per state
 stories/calls/            the call: the lobby and waiting, ringing, the call itself and every moment of its canvas (`TheCall`, with the
                           plays it shares in `plays.ts`), how a presentation ends (a reload, a room, closed, replaced, a share
-                          stopped), notes, sharing, rooms with what's open beside them, its workspace, a board (closed for
+                          stopped), floating calls at the native browser hand-off, notes, sharing, rooms with what's open beside them, its workspace, a board (closed for
                           everyone, moved to Trash), leaving
 stories/board/            the board: its surface in each place it shows, its states, and who else is on it
 stories/journeys/         one file per section of docs/product/user-flows.md, and per part of one with steps of its own
@@ -90,6 +95,7 @@ Product, then the follow-ups from the retro board's Actions frame.
 | `lots` | Thirty people on Alcove, three months of notes, eight pins, a dozen groups, long names |
 | `signed-out` | Nobody signed in on this browser: the welcome page; Microsoft or single sign-on signs Art in to the busy afternoon |
 | `unsaved` | The busy afternoon after Alcove wouldn't take some of Art's edits: the pricing copy's last edits, more interview notes than a document holds, and a line in the handbook he can only read now |
+| `drive-connected` | Art has a separate Google Drive connection, authorized personal and shared-drive folders, and exports in pending, uploading, uploaded and failed states |
 | `agents-connected` | Art has a read-only Workspace assistant connected through OAuth and an unused Scheduling assistant personal token; Settings shows their scopes, expiry and last use |
 | `first-sign-in` | Nobody signed in, and no account yet: signing in makes Art's account on screen, his first day, and Home's tour |
 
@@ -237,7 +243,10 @@ says while you wait. The scripted call plays the server's side; the scripted roo
 LiveKit's, and the call screen drives it exactly as it drives LiveKit's room. Your own microphone, camera and screen are
 the browser's made-up ones (`src/browser.ts`): mute, switch a device or share, and the room publishes it. Everyone else's
 camera stays off, so people show in their arches; what they share is drawn. While notes are on, what's said reaches the
-transcript as it's said, and the live notes are written again a few seconds later.
+transcript as it's said, and the live notes are written again a few seconds later. Inferred follow-ups enter a separate
+suggestion list; Add or Apply change makes them actual tasks, and Dismiss keeps the same evidence from returning. Manual
+additions choose an owner and date, and adding a task does not say its owner has taken responsibility. The same proposals
+survive ending the call and appear under the saved note's actual checklist.
 
 ```tsx
 const meta = { title: 'Calls/Sharing', ...pages } satisfies Meta<PageArgs>;
@@ -325,6 +334,35 @@ export const Voting = inCall({
 });
 ```
 
+### Floating calls and the browser hand-off
+
+**Components / In a call / FloatingCall** renders the real compact presentation: a speaker's drawn camera picture, a
+drawn share or an arch, device pending and failure states, reconnecting, attention counts, the call's real leave question,
+departure pending and failure states, narrow and wide
+windows, and both themes. Its buttons update the story's controls and say what was pressed in Actions. The component
+owns no call session, audio or camera. Its pictures are made-up preview content.
+
+**Calls / Floating call** starts the real call on the scripted room, with View open and **Open floating call** ready for
+a person to press. The other scenarios change shares, reconnect, receive a hand, chat and someone asking to join, end the
+call, refuse leaving or changing the raised hand, and block devices. Unsupported and Opening blocked show View's visible,
+described fallback and its permission guidance with a manual retry, in light/dark and wide/phone variants. A blocked
+opening keeps View open and leaves the call running. **Journeys / 6 Floating call / 6.22 Open a floating
+call** plays up to this same hand-off. Automatic opening follows the browser's native permission, without a separate
+Alcove preference or explanatory control in View. Open the preview
+as its own tab before clicking: Document Picture-in-Picture requires a top-level document and a real browser gesture.
+Native-opening scenarios return the browser's real API unchanged. Explicit unsupported/refused scenarios only hide the
+capability or reject a request; they never create a replacement window. **6.22 Keep calling when floating is blocked**
+plays refusal and explicit retry. None claims a synthetic `userEvent` verified native behavior.
+
+Use the top-level preview to manually open, close, reopen and return; switch microphone, camera and hand; try Leave and
+Stay as a host; try the participant scenarios to leave with one press; and resize the window. Use the actual app with a second participant for native focus, one-session/audio/capture
+ownership, capture output privacy, leave failure recovery and browser-driven automatic opening. The scripted room cannot
+establish any of those. Verify automatic opening on the HTTPS app with browser permission and an already-allowed live
+microphone or camera; a muted live microphone remains eligible. HTTP localhost is suitable for manual PiP only. Verify
+tab switching separately from minimizing Chrome; open manually before minimizing when needed. Unsupported browsers
+retain normal call controls. The compact Chat badge counts new messages, including unread mentions; exact-message
+navigation and reading remain in the full call.
+
 ## Extend the stand-in
 
 - **The contract changed.** `standIn` is typed `AlcoveApi`, so the compiler fails until `src/api/standin.ts` answers the new
@@ -367,3 +405,37 @@ Agent connection previews live under **Components / Settings**, **Pages / Connec
 stories. **Journeys / 14 Agent access** shows creating a personal token, disconnecting a connection, and signing in to
 review an OAuth request. The last journey stops at the external-client hand-off. Tokens and request pointers in these
 stories are made-up preview values that cannot connect to a real Alcove account.
+
+## Follow-up review
+
+`src/world/follow-ups.ts` supplies one actual task, a new suggestion and a proposed change, reused before and after the call.
+`Calls/Notes/Review in workspace` and `Pages/A note/Reviewing follow-up proposals` open the real app's review, with phone and
+theme variants beside them. `Journeys/6 Follow-up proposals` (6.23–6.25) plays adding and dismissing, an incoming proposal
+waiting behind a fixed batch, and a changed actual task refusing a stale amendment. Notes' journeys 8.44–8.46 show the same
+review after the call and keep “I'll do it” as a separate choice. The shared editor and review controls have their own
+stories in `Components/Notes and transcript`.
+
+
+Google Drive previews live in **Pages / Settings / Google Drive…** and **Pages / A note / Google Drive…**, including phone,
+night, folder loading failure and reconnect states. **Journeys / 15 Google Drive exports** shows choosing explicit file
+formats, a shared-drive destination, a per-call override, a retry, independent disconnection and a shared reader’s own exports with organizer-only audio. The stand-in holds no
+provider credentials; Google consent and additional folder authorization stop at the external hand-off.
+
+## Presenter timer sequences
+
+**Calls / Presenter timers** renders the real call timer panel and compact countdown in ready, running, paused,
+near-end, over-time, finished, guest and reconnecting states, with phone and light-theme variants. The preset library
+and organizer lobby show preparation before joining. **Components / In a call / PresenterTimer** shows the reusable
+readout and button; **FloatingCall / Shared timer** shows the compact window. **Journeys / 6 Presenter timers**
+(6.26–6.28) plays preparing a preset, controlling a sequence, and following as a guest with a local cue. Stories remain demonstrations;
+the colocated API/client integration suite verifies shared state, permissions, concurrency, encryption and deletion.
+
+Calls / Leaving and Journeys / 7 End the call and get the notes show one-press departure for invited participants and
+guests, pending and failed departures, a retry, and the confirmation retained by the current host, including a stand-in.
+Calls / Floating call / Participant ready to open and Participant leave refused keep the real native window hand-off
+available for manual checks of the same behavior.
+
+
+Browser notifications (#88): Calls/Browser notifications shows explicit opt-in, enabled/blocked/unsupported/refused delivery and phone/light variants on the real controls. Journey 6.33 chooses categories without changing sound or local reply alerts. Native browser is a manual development-origin permission/OS story: Enable explicitly, then switch tabs before the 20–65 second scripted activity. Its separate report observes the actual browser constructor's show/error/close events and the content-free call projection. All media is synthetic. Close/disable alerts when finished. These are demonstrations, never browser tests.
+
+Native two tabs is the explicit browser-receipt scene: open it twice, enable once and background both before20seconds. It preserves opaque browser state and shares one demo-clock anchor, like real tabs share a wall clock. Stable event IDs demonstrate cross-tab/reload deduplication; reopening the same scene does not replay those IDs. Native browser uses a new call ID for a fresh delivery demonstration. The report can start/stop the exact application service worker on this development origin; Stop unregisters it and closes its test alerts. Open delivered alert invokes the native notification's actual click callback for routing checks; this is distinct from an OS notification-centre click.

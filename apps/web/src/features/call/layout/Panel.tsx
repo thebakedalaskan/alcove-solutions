@@ -6,21 +6,24 @@
  * live notes, which come with the call (CallState.liveNotes), so ticking a follow-up is done for everyone there. Chat is
  * end-to-end encrypted in the browsers (CallSession.crypto); the server only relays it.
  */
-import { CALL_CHAT_MAX, clock, errorMessage, firstName, notesAreOn, type CallAsker, type CallChatMessage, type CallReaction, type CallState, type CatchUpItem, type LiveFollowUp, type Person, type Rung, type TranscriptMoment } from '@alcove/api';
-import { Avatar, Button, CaptureSign, Check, Dots, EmptyState, Faces, Icon, IconButton, Notice, Popover, ReactionAdd, Reactions, Scope, Switch, Tabs, VolumeControl, WsPutArrow, cn, useToast, type IconName, type ReactionShown } from '@alcove/ui';
+import { clock, errorMessage, notesAreOn, type CallAsker, type CallState, type CatchUpItem, type CallSession, type Person, type Rung, type TranscriptMoment } from '@alcove/api';
+import { Avatar, Button, CaptureSign, Dots, EmptyState, Faces, Icon, IconButton, Notice, Popover, Scope, Switch, Tabs, VolumeControl, WsPutArrow, cn, useToast, type IconName } from '@alcove/ui';
 import type { StageTogether } from './Stage';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
-import { Fragment, useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { rungWords } from '~/features/calls/ringing/RingWords';
 import { lineClock } from '~/features/workspace/live/lines';
 import type { LivePut } from '~/features/workspace/live/types';
 import { captureHere } from '~/lib/capture';
+import { useLive } from '~/lib/live';
 import { callName, listNames, sameEmail } from '~/lib/people';
 import { hm } from '~/lib/time';
 import { notesBrowser, organizerName, roomScribe, type CaptureControls } from '../notes/Capture';
 import { Moments, callTimes, type CallTimes } from '../notes/CatchUp';
 import { CallLines } from '../notes/LiveLines';
-import { useDraft, type Draft, type NotesTab } from './side';
+import { CallFollowUps } from '../notes/FollowUps';
+import { useActionFocus, type ActionJump } from './actionFocus';
+import type { NotesTab } from './side';
 import type { VolumeActions } from '../media/volume';
 
 const UI = { duration: 0.24, ease: [0.22, 0.8, 0.24, 1] } as const;
@@ -97,28 +100,6 @@ function DecidedRows({ items, times, onSeek, put }: { items: CatchUpItem[]; time
   );
 }
 
-/** What people said they'd do. `onTick`: done for everyone in this part of the call; absent for a guest, who doesn't get the notes, and in notes written for what someone may read of it. */
-function FollowUpRows({ items, times, onSeek, onTick, put }: { items: LiveFollowUp[]; times: CallTimes; onSeek: (e: TranscriptMoment) => void; onTick: ((id: string, done: boolean) => void) | undefined; put: LivePut | null | undefined }) {
-  return (
-    <>
-      {items.map((it) => (
-        <motion.div key={it.id} className={cn('ic-nr', it.done && 'is-done')} layout="position" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={UI}>
-          {onTick ? <Check checked={it.done} onChange={(on) => onTick(it.id, on)} label={`Mark done: ${it.text}`} />
-            : it.done ? <span className="mk"><Icon name="check" size={12} /></span>
-              : it.owner ? <span className="mk av"><Avatar person={{ name: it.owner }} size={18} /></span> : <span className="mk" />}
-          <div>
-            <span className="nr-text">{it.text}</span>
-            {(it.owner || it.due) && (
-              <div className="meta">{it.owner && firstName(it.owner)}{it.due && <span className="nr-due"><Icon name="cal" size={11} />{it.due}</span>}</div>
-            )}
-          </div>
-          {it.evidence.length ? <Moments evidence={it.evidence.slice(0, 1)} times={times} onOpen={onSeek} /> : <span />}
-          {put && <WsPutArrow verb="Add to" target={put.target} onPut={() => put.followUp(it)} />}
-        </motion.div>
-      ))}
-    </>
-  );
-}
 
 function Summary({ text }: { text: string }) {
   const ref = useRef<HTMLParagraphElement>(null);
@@ -163,7 +144,8 @@ function NotesMenu({ state, controls }: { state: CallState; controls: CaptureCon
   );
 }
 
-export function NotesView({ state, getting, problems, controls, carried, yours, put, onSeek, onTick }: {
+export function NotesView({ session, state, getting, problems, controls, carried, yours, put, onSeek }: {
+  session: CallSession;
   state: CallState;
   /** Who gets the notes, as far as you can tell: everyone invited, for the organizer. */
   getting: Person[];
@@ -176,7 +158,7 @@ export function NotesView({ state, getting, problems, controls, carried, yours, 
   yours?: ReactNode;
   /** Sends a line into the document you were last in, while the workspace has one you can edit. */
   put?: LivePut | null | undefined;
-  onSeek: (e: TranscriptMoment) => void; onTick: (id: string, done: boolean) => void;
+  onSeek: (e: TranscriptMoment) => void;
 }) {
   // What the organizer's controls change is the call's. What's said about capture is where you are, as the top bar's
   // sign says: in a breakout room, the room can be heard while the main room can't, and the other way round.
@@ -192,9 +174,10 @@ export function NotesView({ state, getting, problems, controls, carried, yours, 
   const organizer = organizerName(state);
   const live = state.liveNotes;
   const n = live.notes;
+  const written = useLive(session.followUps);
+  useEffect(() => session.watchFollowUps(), [session]);
   /* What people added comes first in nothing: it's listed among what was said, and there may be no notes for it to go with yet. */
-  const followUps: LiveFollowUp[] = [...(n?.next ?? []), ...live.added];
-  const any = n !== null || live.added.length > 0;
+  const any = n !== null || live.added.length > 0 || live.suggestions.length > 0 || (written?.items.length ?? 0) > 0;
   const held = state.breakouts.held;
   const ask = asking
     ? <Button size="sm" variant="quiet" onClick={() => controls.ask(false)}>Take it back</Button>
@@ -247,8 +230,8 @@ export function NotesView({ state, getting, problems, controls, carried, yours, 
           <div className="ic-nb">
             <div><div className="ic-sh"><span className="ac-eyebrow">Decided</span><span className="n">{n?.decided.length ?? 0}</span></div>
               {n?.decided.length ? <DecidedRows items={n.decided} times={callTimes(state.startedAt)} onSeek={onSeek} put={put} /> : <p className="ic-quiet">Nothing decided yet.</p>}</div>
-            <div><div className="ic-sh"><span className="ac-eyebrow">Follow-ups</span><span className="n">{followUps.length}</span></div>
-              {followUps.length ? <FollowUpRows items={followUps} times={callTimes(state.startedAt)} onSeek={onSeek} onTick={state.role === 'guest' || n?.read.whileHere ? undefined : onTick} put={put} /> : <p className="ic-quiet">No follow-ups yet.</p>}</div>
+            <div><div className="ic-sh"><span className="ac-eyebrow">Follow-ups</span></div>
+              <CallFollowUps key={state.capture.room?.id ?? 'main'} session={session} compact put={put} onSeek={onSeek} people={getting} /></div>
             {held.length > 0 && (
               <div><div className="ic-sh"><span className="ac-eyebrow">From the rooms</span><span className="n">{held.reduce((k, h) => k + h.rooms.length, 0)}</span></div>
                 {held.map((h) => (
@@ -315,86 +298,6 @@ export function TranscriptView({ state, me, onMark, put }: { state: CallState; m
  * can't be read here, which the view says. Hovering a message (or reaching it with the keyboard) offers a reaction;
  * pressing one under it adds yours, or takes it back.
  */
-export function ChatView({ chat, missed, ready, moving, place, here, placeName, who, me, draft, onSend, onReact }: {
-  chat: CallChatMessage[];
-  /** There was chat in this part of the call while you weren't in it. */
-  missed: boolean;
-  /** This browser holds the keys of the part of the call it's in, so it can send. */
-  ready: boolean;
-  /** On the way to another part of the call: chat is off until it's there. */
-  moving: boolean;
-  /** Where a message goes, while breakout rooms are open: the room's name, or "the main room". Null when rooms aren't open. */
-  here: string | null;
-  /** A part of the call's name, for marking where the conversation moved: "Design", "the main room". */
-  placeName: (place: string) => string;
-  who: (id: string) => Person;
-  /** The part of the call you're in: only its messages can be reacted to, since only its group reads a reaction. */
-  place: string;
-  /** Your identity in the call, to mark your own reactions. */
-  me: string;
-  draft: Draft;
-  onSend: (text: string) => Promise<void>;
-  onReact: (messageId: string, reaction: CallReaction, on: boolean) => Promise<void>;
-}) {
-  const [text, setText] = useDraft(draft);
-  const toast = useToast();
-  const end = useRef<HTMLDivElement>(null);
-  useEffect(() => { end.current?.scrollIntoView({ block: 'end' }); }, [chat.length]);
-  /* A message that isn't sent is taken back: say so, and give the text back. */
-  const send = (t: string) => {
-    setText('');
-    void onSend(t).catch((e: unknown) => { toast(errorMessage(e), { icon: 'x' }); draft.text ||= t; setText((now) => now || t); });
-  };
-  const react = (id: string) => (r: CallReaction, on: boolean) => { void onReact(id, r, on).catch((e: unknown) => toast(errorMessage(e), { icon: 'x' })); };
-  const shown = (c: CallChatMessage): ReactionShown[] =>
-    c.reactions.map((r) => ({ name: r.reaction, names: r.by.map((id) => (id === me ? 'You' : callName(who(id)))), mine: r.by.includes(me) }));
-  // Marks only matter once the conversation has been in more than one part of the call.
-  const marked = new Set(chat.map((c) => c.place)).size > 1;
-  const to = here ?? 'everyone';
-  return (
-    <>
-      <div className="ic-scroll ic-pad">
-        {missed && <Notice icon="lock" className="ic-missed">Messages sent here before you came aren’t shown. Only people who were here then can read them.</Notice>}
-        {chat.length ? (
-          <div className="ic-chat">
-            {chat.map((c, i) => {
-              const from = who(c.from);
-              const moved = marked && chat[i - 1]?.place !== c.place;
-              const reactions = shown(c);
-              const canReact = ready && !c.sending && c.place === place;
-              return (
-                <Fragment key={c.id}>
-                  {moved && <div className="ic-chatplace"><span className="ac-eyebrow">In {placeName(c.place)}</span></div>}
-                  <motion.div className="ic-msg" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={UI}>
-                    <Avatar person={from} size={28} />
-                    <div>
-                      <div className="meta"><b>{c.isMe ? `${callName(from)} (you)` : callName(from)}</b><span className="ac-time">{clock(c.at)}</span></div><p>{c.text}</p>
-                      <Reactions reactions={reactions} onToggle={react(c.id)} canReact={canReact} />
-                    </div>
-                    {canReact && !reactions.length && <div className="ic-msg-acts"><ReactionAdd mine={reactions.filter((r) => r.mine).map((r) => r.name)} onPick={react(c.id)} /></div>}
-                  </motion.div>
-                </Fragment>
-              );
-            })}
-          </div>
-        ) : !missed && (
-          <EmptyState title="No messages yet" className="ic-empty">
-            {here ? `Messages are encrypted end to end. Only people in ${here} can read them.` : 'Messages are encrypted end to end. Only people in the call can read them.'}
-          </EmptyState>
-        )}
-        <div ref={end} />
-      </div>
-      <form className="ic-foot" autoComplete="off" onSubmit={(e) => { e.preventDefault(); const t = text.trim(); if (t && ready) send(t); }}>
-        <div className="inrow">
-          <input className="ac-input" value={text} maxLength={CALL_CHAT_MAX} disabled={!ready} onChange={(e) => setText(e.target.value)}
-            placeholder={ready ? `Message ${to}` : moving ? 'Moving to another room…' : 'Getting the call’s keys…'} aria-label={`Message ${to}`} />
-          <button type="submit" className="ac-btn is-primary" aria-label={`Send to ${to}`} disabled={!ready || !text.trim()}><Icon name="sendLine" size={18} /></button>
-        </div>
-      </form>
-    </>
-  );
-}
-
 /* ---------- people ---------- */
 
 /**
@@ -427,7 +330,8 @@ function PersonMenu({ p, host, volumes }: { p: PanelPerson; host: HostControls |
   );
 }
 
-export function PeopleView({ here, invited, asking, invites = false, ringing, canRing, onRing, onStopRing, notesAsks, rooms, host, foot, volumes, together }: {
+export function PeopleView({ here, invited, asking, invites = false, ringing, canRing, onRing, onStopRing, notesAsks, rooms, host, foot, volumes, together, jump }: {
+  jump?: ActionJump | undefined;
   here: PanelPerson[]; invited: Person[];
   /** With the workspace open: where each is, and following them. */
   together?: StageTogether | undefined;
@@ -455,6 +359,7 @@ export function PeopleView({ here, invited, asking, invites = false, ringing, ca
 }) {
   const away = invited.filter((g) => !here.some((p) => sameEmail(p.person, g)) && !ringing.some((r) => sameEmail(r.person, g)));
   const now = Date.now();
+  const actionFocus = useActionFocus(jump);
   const roomsSaid = useId();
   const toast = useToast();
   const [busy, setBusy] = useState<string | null>(null);
@@ -464,12 +369,12 @@ export function PeopleView({ here, invited, asking, invites = false, ringing, ca
   };
   return (
     <>
-      <div className="ic-scroll ic-pad">
+      <div ref={actionFocus} className="ic-scroll ic-pad">
         {host && asking.length > 0 && (
           <>
             <div className="ac-eyebrow ic-cap-h">Asking to join · {asking.length}</div>
             {asking.map((w) => (
-              <div key={w.id} className="ic-prow is-asking">
+              <div key={w.id} data-call-action={w.id} tabIndex={-1} className="ic-prow is-asking">
                 <Avatar person={w.person} size={36} />
                 {/* Signed in: who it is, and whether letting them in adds them to the invite. A guest is only a typed name. */}
                 <div className="min-w-0"><b>{w.person.name}</b><small>{w.person.email || 'Guest, by name only'}</small><small>{w.person.email && invites ? 'Gets the notes once let in' : 'Doesn’t get the notes'}</small></div>

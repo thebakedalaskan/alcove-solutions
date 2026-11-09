@@ -3,6 +3,7 @@ import type { Meta } from '@storybook/react-vite';
 import { screen, within } from 'storybook/test';
 import { phone } from '../../src/call';
 import { changing, page, pages, type PageArgs, type PageStory } from '../../src/page';
+import { withDriveReconnect } from '../../src/world/drive-exports';
 import { keptHere, noCalendar, sharedDemo, troubled, unencryptedDefault } from './changes';
 
 const meta = { title: 'Pages/Settings', ...pages } satisfies Meta<PageArgs>;
@@ -33,7 +34,7 @@ export const NotificationsNight = page('/settings#notifications', 'busy', { glob
 export const NoCalendar = page('/settings#calendar', 'busy', { beforeEach: changing(noCalendar) });
 /** The shared demo account: a sample calendar in place of Google's. */
 export const DemoAccount = page('/settings#calendar', 'busy', { beforeEach: changing(sharedDemo) });
-/** Notifications the browser hasn't been asked about: greyed out until Turn on. */
+/** Notifications the browser hasn't been asked about: greyed out until Enable browser notifications. */
 export const NotificationsNotAsked = page('/settings#notifications', 'busy');
 /** Notifications allowed: each one can be chosen. */
 export const NotificationsOn = page('/settings#notifications', 'busy', { parameters: { opening: { browser: { notifications: 'granted' } } } });
@@ -56,6 +57,14 @@ const turningOff: NonNullable<PageStory['play']> = async ({ canvas, userEvent, s
 export const Saved = page('/settings#calendar', 'busy', { play: turningOff });
 /** A change Alcove refuses goes back, and a toast says why. */
 export const SaveRefused = page('/settings#calendar', 'busy', { beforeEach: changing(troubled({ 'account.updatePreferences': 'failed' })), play: turningOff });
+/** The selected setting changes while its own write is still pending. Later choices stay usable. */
+export const Saving = page('/settings#calendar', 'busy', { beforeEach: changing(troubled({ 'account.updatePreferences': 'hold' })), play: turningOff });
+export const SavingNight = { ...Saving, globals: { theme: 'dark' } };
+export const SavingPhone = phone(Saving);
+export const SavingPhoneNight = { ...phone(Saving), globals: { viewport: { value: 'phone' }, theme: 'dark' } };
+export const SaveRefusedNight = { ...SaveRefused, globals: { theme: 'dark' } };
+export const SaveRefusedPhone = phone(SaveRefused);
+export const SaveRefusedPhoneNight = { ...phone(SaveRefused), globals: { viewport: { value: 'phone' }, theme: 'dark' } };
 /** Sign out, with recordings on this device that haven't uploaded: the sky grows to ask first, and Stay signed in is the answer it offers. */
 export const SignOutAsks = page('/settings', 'busy', { beforeEach: changing(keptHere), play: pressing('Sign out', 'Press Sign out. Recordings here haven’t uploaded, so it asks first') });
 export const SignOutAsksPhone = phone(SignOutAsks);
@@ -99,4 +108,63 @@ export const AgentDisconnectRefused = page('/settings#agents', 'agents-connected
       await userEvent.click(within(await screen.findByRole('group', { name: 'Workspace assistant' }, { timeout: 8000 })).getByRole('button', { name: 'Disconnect' }));
     });
   }
+});
+
+/** Sounds remain available when browser notifications are blocked. */
+export const Sounds = page('/settings#sounds', 'busy', { parameters: { opening: { browser: { notifications: 'denied' } } } });
+export const SoundsNight = page('/settings#sounds', 'busy', { globals: { theme: 'dark' } });
+export const SoundsPhone = phone(Sounds);
+export const QuietSounds = page('/settings#sounds', 'busy', { beforeEach: changing((w) => { w.prefs = { ...w.prefs, sounds: { ...w.prefs.sounds, quiet: true } }; }) });
+export const SoundsOff = page('/settings#sounds', 'busy', { beforeEach: changing((w) => { w.prefs = { ...w.prefs, sounds: { ...w.prefs.sounds, enabled: false } }; }) });
+/** Mention visuals and sound stay independent, with persistent unread indicators. */
+export const MentionAlertsOff = page('/settings#sounds', 'busy', { beforeEach: changing((w) => { w.prefs = { ...w.prefs, notifications: { ...w.prefs.notifications, mentionAlerts: false } }; }) });
+export const MentionAlertsOffPhone = phone(MentionAlertsOff);
+export const MentionSoundOff = page('/settings#sounds', 'busy', { beforeEach: changing((w) => { w.prefs = { ...w.prefs, sounds: { ...w.prefs.sounds, mentions: false } }; }) });
+
+/** Drive connects independently of ordinary sign-in and never exposes a provider credential. */
+export const GoogleDriveDisconnected = page('/settings#google-drive', 'busy');
+export const GoogleDriveExports = page('/settings#google-drive', 'drive-connected');
+export const GoogleDriveExportsNight = page('/settings#google-drive', 'drive-connected', { globals: { theme: 'dark' } });
+export const GoogleDriveExportsPhone = phone(GoogleDriveExports);
+export const GoogleDriveReconnect = page('/settings#google-drive', 'busy', { beforeEach: changing(withDriveReconnect) });
+export const GoogleDriveUnavailable = page('/settings#google-drive', 'busy', { beforeEach: changing(troubled({ 'drive.get': 'failed' })) });
+export const GoogleDriveLoading = page('/settings#google-drive', 'busy', { beforeEach: changing(troubled({ 'drive.get': 'hold' })) });
+export const GoogleDriveFolderPicker = page('/settings#google-drive', 'drive-connected', { play: pressing('Choose default Google Drive folder', 'Open the folder picker with the current destination and authorized shared-drive folders') });
+export const GoogleDriveFolderUnavailable = page('/settings#google-drive', 'drive-connected', {
+  beforeEach: changing(troubled({ 'drive.folders': 'failed' })),
+  play: pressing('Choose default Google Drive folder', 'The folder list cannot be loaded; the selected destination remains unchanged')
+});
+
+export const GoogleDriveConsentCancelled = page('/settings?drive=cancelled#google-drive', 'busy');
+export const GoogleDriveConsentFailed = page('/settings?drive=failed#google-drive', 'drive-connected');
+
+/** A callback result says connected only while the current connection still is. */
+export const GoogleDriveConnectedReturn = page('/settings?drive=connected#google-drive', 'drive-connected');
+export const GoogleDriveDisconnectedAfterReturn = page('/settings?drive=connected#google-drive', 'busy');
+export const GoogleDriveDisconnectAfterReturn = page('/settings?drive=connected#google-drive', 'drive-connected', {
+  play: async ({ userEvent, step }) => {
+    await step('Returning from Google shows the successful connection', async () => {
+      await screen.findByText('Google Drive connected. Choose the files to export and turn automatic exports on when you’re ready.', {}, { timeout: 8000 });
+    });
+    await step('Disconnect Drive. The success notice leaves with the connection, even though the callback URL remains', async () => {
+      const drive = await screen.findByRole('region', { name: 'Google Drive' }, { timeout: 8000 });
+      await userEvent.click(within(drive).getByRole('button', { name: 'Disconnect' }));
+      await within(drive).findByRole('button', { name: 'Connect Google Drive' }, { timeout: 8000 });
+    });
+  }
+});
+
+export const NotificationsUnsupported = page('/settings#notifications', 'busy', { parameters: { opening: { browser: { notificationTransport: 'unsupported' } } } });
+export const NotificationsPhone = phone(NotificationsOn);
+export const NotificationsPhoneNight = { ...phone(NotificationsOn), globals: { theme: 'dark' } };
+export const NativeBrowserPermission = page('/settings#notifications', 'first-day', { parameters: { opening: { browser: { notificationTransport: 'native' } } } });
+
+/** Change two different browser categories while the first write waits; only the first is refused. */
+export const NotificationLeafRefused = page('/settings#notifications', 'busy', {
+  parameters: { opening: { latency: 2500, browser: { notifications: 'granted', sharedNotificationBrowser: true } } },
+  beforeEach: changing((world) => {
+    let first = true;
+    world.prefs.notifications = { ...world.prefs.notifications, enabled: true, privateMessages: true, questions: false };
+    world.trouble = { ...world.trouble, 'account.updatePreferences': () => { if (!first) return null; first = false; return 'failed'; } };
+  })
 });

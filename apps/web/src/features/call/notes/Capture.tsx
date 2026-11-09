@@ -229,7 +229,7 @@ export function NotesAsks({ state, controls, decline, after }: {
       {c.requests.map((r) => {
         const p = askerOf(state, r);
         return (
-          <div key={r.id} className="ic-prow is-asking">
+          <div key={r.id} data-call-action={r.id} tabIndex={-1} className="ic-prow is-asking">
             <Avatar person={p} size={36} />
             <div className="min-w-0"><b>{p.name}</b><small>Asked at {hm(r.at)}</small></div>
             <div className="st">

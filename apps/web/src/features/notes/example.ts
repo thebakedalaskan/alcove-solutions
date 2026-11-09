@@ -2,7 +2,7 @@
  * The example note, before you have notes of your own: the call from the welcome screen,
  * written out in full. It isn't stored anywhere; asking about it answers from what's on the page.
  */
-import type { AnswerPart, Note, NoteEvidence, Person } from '@alcove/api';
+import { ACCEPTED_FOLLOW_UP, type AnswerPart, type Note, type NoteEvidence, type Person } from '@alcove/api';
 import { CAST } from './cast';
 
 const cast = (k: keyof typeof CAST): Person => ({ id: `example-${k}`, name: CAST[k].name, email: `${k}@example.com`, portrait: CAST[k].portrait });
@@ -33,11 +33,12 @@ export function exampleNote(me: Person): Note {
     }],
     questions: [{ id: 'press', text: 'Do we tell the press before the 18th?', at: 701, state: 'open', lines: ['l2'], against: [], evidence: said('l2', 701, priya, 'Do we tell the press before the 18th?'), changes: [] }],
     actions: [{
+      ...ACCEPTED_FOLLOW_UP,
       id: 'screens', text: 'Send the new screens', owner: { name: kofi.name, person: kofi }, takenOn: true, due: 'Wed', at: 982, done: false, lines: ['l3'], against: [],
       evidence: said('l3', 982, kofi, 'I’ll send the new screens by Wednesday.'),
       changes: [{ by: { id: null, name: kofi.name, email: kofi.email, as: 'invited' }, at: started.toISOString(), what: 'took-on' }], from: null
     }],
-    gaps: [],
+    suggestions: [], gaps: [],
     chapters: [
       { at: 0, title: 'Sign-ups', summary: 'Back up since the fix.' },
       { at: 510, title: 'The launch date', summary: 'Moves to the 18th.' },

@@ -2,7 +2,7 @@
  * The day as Home tells it: what's ahead (Alcove calls and, unless they're hidden, the other meetings on
  * the calendar), what can be joined right now, and when follow-ups are due.
  */
-import type { CalendarEvent, Inbox, Meeting, NoteSummary, OpenAction, Person } from '@alcove/api';
+import { isAcceptedFollowUp, type CalendarEvent, type Inbox, type Meeting, type NoteSummary, type OpenAction, type Person } from '@alcove/api';
 import { callName, sameEmail, someNames } from '~/lib/people';
 import { daysFromToday, shortDay, weekday } from '~/lib/time';
 import { capital } from '~/lib/words';
@@ -89,7 +89,7 @@ const WEEK_MS = 7 * 86_400_000;
 /** Notes someone shared with you this past week. */
 export const sharedLately = (notes: readonly NoteSummary[], now: number) => notes.filter((n) => n.received?.role === 'shared' && now - new Date(n.received.at).getTime() < WEEK_MS);
 /** How much is waiting on you: For you's count, and the side panel's. */
-export const openCount = (inbox: Inbox, notes: readonly NoteSummary[], now: number) => inbox.decisions.length + inbox.followUps.length + sharedLately(notes, now).length;
+export const openCount = (inbox: Inbox, notes: readonly NoteSummary[], now: number) => inbox.decisions.length + inbox.followUps.filter(isAcceptedFollowUp).length + sharedLately(notes, now).length;
 
 /* ---------- when follow-ups are due ---------- */
 

@@ -3,7 +3,7 @@ import { type CallsApi, type RingsApi } from './calls/api';
 import { type CreditsApi } from './credits/api';
 import { type AccountApi, type AuthApi, type PeopleApi } from './identity/api';
 import { type CalendarApi, type MeetingsApi } from './meetings/api';
-import { type NotesApi, type SeriesApi } from './notes/api';
+import { type DriveApi, type NotesApi, type SeriesApi } from './notes/api';
 import { type ModelsApi } from './notes/models';
 import { type RecordingsApi } from './recordings/api';
 import { type DiagnosticsApi } from './telemetry/api';
@@ -24,6 +24,7 @@ export interface AlcoveApi {
   documents: DocumentsApi;
   recordings: RecordingsApi;
   notes: NotesApi;
+  drive: DriveApi;
   series: SeriesApi;
   workspaces: WorkspacesApi;
   credits: CreditsApi;

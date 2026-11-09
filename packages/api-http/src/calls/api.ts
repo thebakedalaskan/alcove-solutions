@@ -1,3 +1,6 @@
+import { CallMessageReceiptSchema } from '@alcove/api';
+import { CallTimerPresetSchema } from '@alcove/api';
+import { DirectEnvelopeSchema, DirectSyncSchema } from '@alcove/api';
 import { createPersonalApi } from '../notes/personal';
 import { createAudioTransport } from '../transport/audio';
 import { type HttpTransport } from '../transport/http';
@@ -40,6 +43,11 @@ export function createCallsApi(t: HttpTransport, o: HttpOptions): Pick<AlcoveApi
     const live = (id: string) => `/live/calls/${id}`;
     const call = new HttpCall(joined.state, joined.ticket, mls, { pollMs: o.callPollMs ?? 1500, notesMs: o.callNotesMs ?? 5000, ideasMs: o.callIdeasMs ?? 15_000, switchMs: o.callKeySwitchMs ?? 2000, rekeyMs: o.callRekeyMs ?? 10 * 60_000, movePollMs }, {
       get: (id) => req(CallStateSchema, 'GET', live(id), undefined, p),
+      directKey: async (id, message) => { await req(z.object({ sent: z.literal(true) }), 'POST', `${live(id)}/direct/key`, message, p); },
+      directSend: (id, body) => req(DirectEnvelopeSchema, 'POST', `${live(id)}/direct/messages`, body, p),
+      directSync: (id, ids, after) => req(DirectSyncSchema, 'POST', `${live(id)}/direct/sync`, { ids, after }, p),
+      setTimerSequence: (id, input) => req(CallStateSchema, 'PATCH', `${live(id)}/timer/sequence`, input, p),
+      controlTimer: (id, input) => req(CallStateSchema, 'POST', `${live(id)}/timer/control`, input, p),
       act: (id, a) => req(CallStateSchema, 'POST', `${live(id)}/actions`, a, p),
       audio: async (id, piece) => parse(CallStateSchema, await audio(`${live(id)}/audio`, piece, p), 'call state'),
       transcribe: async (id, c, speaker) => parse(CallStateSchema, await clip(`${live(id)}/transcribe`, c, { ...p, [AUDIO_HEADERS.speaker]: speaker, [AUDIO_HEADERS.ago]: ago(c) }), 'call state'),
@@ -73,7 +81,7 @@ export function createCallsApi(t: HttpTransport, o: HttpOptions): Pick<AlcoveApi
       handOff: async (id, to) => { await req(z.object({ left: z.literal(true) }), 'POST', `${live(id)}/hand-off`, { to }, p); },
       mls: (id, after) => req(CallMlsSchema, 'GET', `${live(id)}/mls?after=${after}`, undefined, p),
       commit: (id, c) => req(z.object({ epoch: z.number() }), 'POST', `${live(id)}/mls/commits`, c, p),
-      message: async (id, m) => { await req(z.object({ sent: z.literal(true) }), 'POST', `${live(id)}/mls/messages`, m, p); },
+      message: (id, m) => req(CallMessageReceiptSchema, 'POST', `${live(id)}/mls/messages`, m, p),
       keyPackage: async (id, k) => { await req(z.object({ sent: z.literal(true) }), 'POST', `${live(id)}/mls/keypackages`, k, p); },
       back: async (id, k) => { await req(z.object({ sent: z.literal(true) }), 'POST', `${live(id)}/mls/back`, k, p); },
       room: (id) => req(CallRoomTokenSchema, 'GET', `${live(id)}/room`, undefined, p),
@@ -87,6 +95,12 @@ export function createCallsApi(t: HttpTransport, o: HttpOptions): Pick<AlcoveApi
   };
   return {
     calls: {
+      timerPresets: {
+        list: () => req(z.array(CallTimerPresetSchema), 'GET', '/timer-presets'),
+        create: (input) => req(CallTimerPresetSchema, 'POST', '/timer-presets', input),
+        update: (id, input) => req(CallTimerPresetSchema, 'PATCH', `/timer-presets/${encodeURIComponent(id)}`, input),
+        remove: async (id) => { await req(z.object({ removed: z.literal(true) }), 'DELETE', `/timer-presets/${encodeURIComponent(id)}`); }
+      },
       startNow: (input) => req(z.object({ code: z.string() }), 'POST', '/calls', input ?? {}),
       card: (code) => req(CallCardSchema, 'GET', `/calls/${encodeURIComponent(code)}/card`),
       pick: (code, at) => req(CallCardSchema, 'POST', `/calls/${encodeURIComponent(code)}/pick`, { at }),
