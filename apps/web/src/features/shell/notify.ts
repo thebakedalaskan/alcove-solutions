@@ -17,7 +17,7 @@
 import { DEFAULT_NOTIFICATION_PREFERENCES, WorkerMessageSchema, firstName, notesAreOn, type CallState, type Meeting, type MentionNotice, type NoteStatus, type NotificationOpen, type NotificationPrefs, type OpenAction } from '@alcove/api';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter, useRouterState } from '@tanstack/react-router';
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { askerOf } from '~/features/call/notes/Capture';
 import { dueFrom, dueOf } from '~/features/home/day';
 import { log } from '~/lib/log';
@@ -25,6 +25,7 @@ import { callName } from '~/lib/people';
 import { q } from '~/lib/queries';
 import { hm, minutesUntil, untilLabel } from '~/lib/time';
 import { remember, wasShown } from './notified';
+import { useNotifyPermission } from './notification-permission';
 
 const nlog = log.child({ component: 'notify' });
 
@@ -42,41 +43,6 @@ const RECHECK_MS = 30_000;
 const DUE_HOUR = 9;
 /** A share this old that only now reaches the tab (a connection that came back) isn't news. */
 const SHARE_FRESH_MS = 60 * 60_000;
-
-/* ---------- the browser's permission ---------- */
-
-/** What the browser allows. `unsupported`: it can't show notifications from a page at all. */
-export type NotifyPermission = NotificationPermission | 'unsupported';
-const supported = () => typeof window !== 'undefined' && 'Notification' in window;
-const permissionNow = (): NotifyPermission => (supported() ? Notification.permission : 'unsupported');
-
-const listeners = new Set<() => void>();
-const changed = () => { for (const f of listeners) f(); };
-let watching = false;
-/** It can change in the browser's site settings while Alcove is open, or in another tab. */
-function watchPermission() {
-  if (watching || !supported()) return;
-  watching = true;
-  document.addEventListener('visibilitychange', changed);
-  navigator.permissions?.query({ name: 'notifications' })
-    .then((s) => s.addEventListener('change', changed), (e: unknown) => nlog.debug('notification permission not watched', { err: e }));
-}
-const subscribe = (f: () => void) => { watchPermission(); listeners.add(f); return () => { listeners.delete(f); }; };
-export const useNotifyPermission = (): NotifyPermission => useSyncExternalStore(subscribe, permissionNow, () => 'default');
-
-/** Asks the browser to allow notifications. Only ever on a press: Turn on, in Settings. */
-export async function askToNotify(): Promise<NotifyPermission> {
-  if (!supported()) return 'unsupported';
-  try {
-    await Notification.requestPermission();
-  } catch (e) {
-    nlog.warn('notification permission not asked', { err: e });
-  }
-  changed();
-  const now = permissionNow();
-  nlog.info('notification permission asked', { permission: now });
-  return now;
-}
 
 /* ---------- one tab notifies ---------- */
 
@@ -237,7 +203,7 @@ function beforeCall(m: Meeting, minutes: number, here: string): Timed[] {
     from: starts - minutes * 60_000, until: starts,
     alert: (now) => ({
       key: `call:${m.id}:${m.startsAt}`, kind: 'call', title: m.title,
-      body: `Starts ${untilLabel(minutesUntil(m.startsAt, now))}, at ${hm(m.startsAt)}.`, open: { to: 'call', code: m.code }
+      body: `Starts ${untilLabel(minutesUntil(m.startsAt, now))}, at ${hm(m.startsAt)}.`, open: { to: 'call', code: m.code, event: null }
     })
   }];
 }
@@ -310,7 +276,7 @@ export function useNotifications() {
       const m = WorkerMessageSchema.safeParse(e.data);
       if (!m.success) return;
       if (m.data.type === 'alcove.where') e.ports[0]?.postMessage(location.pathname);
-      else go(m.data.open);
+      else if (m.data.type === 'alcove.notification') go(m.data.open);
     };
     worker.addEventListener('message', heard);
     return () => worker.removeEventListener('message', heard);
@@ -406,7 +372,7 @@ export function useNotesAskedNotifications(state: CallState) {
     const s = latest.current;
     const alerts = s.capture.requests.map((r): Alert => ({
       key: `asked:${r.id}`, kind: 'asked', title: `${callName(askerOf(s, r))} asked for notes`,
-      body: `Notes are ${mode === 'paused' ? 'paused' : 'off'} in ${s.title}.`, open: { to: 'call', code: s.code }
+      body: `Notes are ${mode === 'paused' ? 'paused' : 'off'} in ${s.title}.`, open: { to: 'call', code: s.code, event: null }
     }));
     const away = document.visibilityState === 'hidden' || !document.hasFocus();
     // Seen in the call as it came: not shown again later.
@@ -426,8 +392,8 @@ export function useChatMentionNotifications(state: CallState, unread: readonly s
     if (!allowed || owner === undefined || !on || !unread.length) return;
     if (document.visibilityState === 'visible' && document.hasFocus()) return;
     const alerts = unread.map((id): Alert => ({ key: `chat-tag:${state.callId}:${id}`, kind: 'tagged', title: 'You were mentioned in chat',
-      body: 'Open Alcove to read the message.', open: { to: 'call', code: state.code } }));
+      body: 'Open Alcove to read the message.', open: { to: 'call', code: state.code, event: null } }));
     showOnce(owner, alerts, go, 1, (many) => ({ key: `chat-tags:${state.callId}:${Date.now()}`, kind: 'tagged', title: 'You have unread chat mentions',
-      body: `${many.length} messages mention you.`, open: { to: 'call', code: state.code } }));
+      body: `${many.length} messages mention you.`, open: { to: 'call', code: state.code, event: null } }));
   }, [allowed, owner, on, unread, state.callId, state.code, go]);
 }

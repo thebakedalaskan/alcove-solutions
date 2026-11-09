@@ -1,3 +1,4 @@
+import { CallNotificationDestinationSchema } from '../calls/notifications';
 import { CallCodeSchema } from '../calls/entry';
 import { IDSchema } from '../shared/ids';
 import { z } from '../shared/zod';
@@ -15,7 +16,7 @@ export const NotifiedStoredSchema = z.array(z.object({ key: z.string().max(300),
  * note, Notes or Home. It travels on the notification, so the page parses what the service worker hands back.
  */
 export const NotificationOpenSchema = z.discriminatedUnion('to', [
-  z.object({ to: z.literal('call'), code: CallCodeSchema }),
+  z.object({ to: z.literal('call'), code: CallCodeSchema, event: CallNotificationDestinationSchema.nullable().default(null) }),
   z.object({ to: z.literal('note'), noteId: IDSchema }),
   z.object({ to: z.literal('notes') }),
   z.object({ to: z.literal('home') }),
@@ -31,5 +32,29 @@ export type NotificationOpen = z.infer<typeof NotificationOpenSchema>;
  */
 export const WorkerMessageSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('alcove.where') }),
-  z.object({ type: z.literal('alcove.notification'), open: NotificationOpenSchema })
+  z.object({ type: z.literal('alcove.notification'), open: NotificationOpenSchema, ownerId: IDSchema.nullable().default(null) }),
+  z.object({ type: z.literal('alcove.ready') })
 ]);
+
+/** Minimal OS data; keys, scope and destinations are opaque IDs, never previews or access-bearing links. */
+export const BrowserNotificationDataSchema = z.object({
+  v: z.literal(1), ownerId: IDSchema.nullable(), source: z.string().min(1).max(300), key: z.string().min(1).max(500), open: NotificationOpenSchema
+});
+export type BrowserNotificationData = z.infer<typeof BrowserNotificationDataSchema>;
+/** Atomic browser-only claims, retained only until the corresponding alert can no longer be delivered. */
+export const NotificationReceiptSchema = z.object({
+  id: z.string().max(850), owner: z.string().max(200), key: z.string().max(500), token: z.string().max(100),
+  state: z.enum(['pending', 'shown']), at: z.number(), until: z.number(), lease: z.number()
+});
+export type NotificationReceipt = z.infer<typeof NotificationReceiptSchema>;
+export const NotificationViewSignalSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('view'), tab: z.string().max(100), contexts: z.array(z.string().max(300)).max(10), at: z.number() }),
+  z.object({ type: z.literal('gone'), tab: z.string().max(100) }),
+  z.object({ type: z.literal('look') })
+]);
+export type NotificationViewSignal = z.infer<typeof NotificationViewSignalSchema>;
+/** A worker may prefer the tab holding the exact original call connection; these IDs grant no access. */
+export const NotificationWindowSchema = z.object({
+  path: z.string().max(1000), ownerId: IDSchema.nullable(),
+  calls: z.array(z.object({ callId: IDSchema, identity: z.string().max(100) })).max(5)
+});

@@ -67,3 +67,5 @@ export * from './identity/attention';
 export { CallTimerSegmentSchema, type CallTimerSegment, CallTimerSequenceSchema, type CallTimerSequence, CallTimerSequenceInputSchema, type CallTimerSequenceInput, CallTimerControlSchema, type CallTimerControl, CallTimerPresetInputSchema, type CallTimerPresetInput, CallTimerPresetUpdateSchema, type CallTimerPresetUpdate, CallTimerPresetSchema, type CallTimerPreset, CallTimerCuePreferenceSchema, type CallTimerPresetsApi } from './calls/timers';
 
 export { type CallNotification, type CallNotificationCategory, CallNotificationCategorySchema, type CallNotificationDestination, CallNotificationDestinationSchema, CallNotificationSchema, type CallNotificationState, type CallNotificationsApi, type CallNotificationTarget, CallNotificationTargetSchema } from './calls/notifications';
+
+export { type BrowserNotificationData, BrowserNotificationDataSchema, type NotificationReceipt, NotificationReceiptSchema, type NotificationViewSignal, NotificationViewSignalSchema, NotificationWindowSchema } from './identity/notifications';

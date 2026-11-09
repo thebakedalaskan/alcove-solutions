@@ -3,7 +3,7 @@ import { type NotificationPrefs, type Preferences } from '@alcove/api';
 import { Button, Segmented, SettingFact, SettingRow, SettingsPart, Switch } from '@alcove/ui';
 import { useEffect, useRef, useState } from 'react';
 import { useNotificationPreferences } from '~/lib/notification-preferences';
-import { askToNotify, useNotifyPermission } from '~/features/shell/notify';
+import { askToNotify, useNotifyPermission } from '~/features/shell/notification-permission';
 import { Setting, SwitchSetting, useSave } from './save';
 
 type Category = Exclude<keyof NotificationPrefs, 'beforeCall' | 'enabled' | 'replyAlerts'>;
