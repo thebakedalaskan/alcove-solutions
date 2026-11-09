@@ -226,10 +226,11 @@ export function InCall({ session }: { session: CallSession }) {
   const guard = useLeaveGuard(() => requestLeave(), hosting);
   const guardRef = useRef(guard);
   guardRef.current = guard;
-  const unreadChat = crypto.status === 'in' ? crypto.chat.filter((m) => !m.isMe && !m.sending && !m.failed && m.thread === null && m.place === crypto.place && !state.chatRead.includes(m.id)).length : 0;
+  const readChatIds = useMemo(() => new Set(state.chatRead), [state.chatRead]);
+  const unreadChat = crypto.status === 'in' ? crypto.chat.filter((m) => !m.isMe && !m.sending && !m.failed && m.thread === null && m.place === crypto.place && !readChatIds.has(m.id)).map((m) => m.id) : [];
   const unreadMentions = useMemo(() => unreadChatMentions(state, crypto, self), [state, crypto, self]);
   const unreadReplies = useMemo(() => unreadThreadReplies(state, crypto, self), [state, crypto, self]);
-  const unread = Math.max(unreadChat, new Set([...unreadMentions, ...unreadReplies]).size) + direct.unread.length;
+  const unread = new Set([...unreadChat, ...unreadMentions, ...unreadReplies]).size + direct.unread.length;
   const [chatTarget, setChatTarget] = useState<ReplyJump>();
   const attentionAllowed = useCallAttention(state, crypto, unreadMentions, !leaving && ended === null);
   useChatMentionNotifications(state, attentionAllowed ? unreadMentions : []);

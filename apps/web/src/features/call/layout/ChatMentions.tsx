@@ -31,8 +31,8 @@ function afterEdit(before: string, after: string, mentions: readonly CallChatMen
   });
 }
 
-export function ChatComposer({ draft, people, ready, moving, to, onSend, privateWith, focusRequest = 0 }: {
-  draft: ChatDraft; people: readonly MentionPerson[]; ready: boolean; moving: boolean; to: string; privateWith?: string | undefined; focusRequest?: number | undefined;
+export function ChatComposer({ draft, people, ready, moving, to, onSend, privateWith, focusRequest = 0, disabledReason }: {
+  draft: ChatDraft; people: readonly MentionPerson[]; ready: boolean; moving: boolean; to: string; privateWith?: string | undefined; focusRequest?: number | undefined; disabledReason?: string | undefined;
   onSend: (text: string, mentions?: readonly CallChatMention[]) => Promise<void>;
 }) {
   const [text, setText] = useDraft(draft);
@@ -115,7 +115,7 @@ export function ChatComposer({ draft, people, ready, moving, to, onSend, private
             else if (e.key === 'Escape') { e.preventDefault(); setDismissed(true); }
             else if (e.key === 'Enter' || (e.key === 'Tab' && rows.length)) { e.preventDefault(); const row = rows[at]; if (row) pick(row); }
           }}
-          placeholder={ready ? `Message ${to}${people.length ? ' · @ to mention' : ''}` : moving ? 'Moving to another room…' : 'Getting the call’s keys…'} aria-label={`Message ${to}`} />
+          placeholder={ready ? `Message ${to}${people.length ? ' · @ to mention' : ''}` : disabledReason ?? (moving ? 'Moving to another room…' : 'Getting the call’s keys…')} aria-label={`Message ${to}`} />
         <button type="submit" className="ac-btn is-primary" aria-label={privateWith ? `Send only to ${privateWith}` : `Send to ${to}`} disabled={!ready || !text.trim()}><Icon name="sendLine" size={18} /></button>
       </div>
     </form>

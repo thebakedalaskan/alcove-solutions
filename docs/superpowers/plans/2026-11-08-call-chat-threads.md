@@ -63,3 +63,12 @@ Files: `apps/web/src/features/call/layout/Panel.tsx`, focused thread/composer ow
 - Independent protocol review found and fixed accepted/lost acknowledgements across a room move and canonical ordering. Generation fences prevent re-encrypting older replies.
 - Manual CUA: wide room thread and separate drafts through room/private detours, phone private light, unavailable-original phone dark, keyboard Reply→composer focus, failed Retry→one retained confirmed reply, generic relevant alert→exact thread/message. Current viewport overrides reset.
 - UI and client source review and the complete repository check are pending. This checkpoint is not a release claim.
+
+## UI review follow-up
+
+- Separated permission to send/retry from already-authorized readable private history. A departed peer leaves its retained history readable, and viewing it clears its unread count.
+- Unavailable originals no longer offer a composer action that targets an inaccessible parent. Manual phone verification sent a confirmed reply via its readable parent instead.
+- Retained replies from departed authors continue to count until read; fresh alerts separately check current eligibility.
+- Toast actions recheck the exact captured session and call ID as well as generation, room and readable message.
+- Root/parent and read lookups use maps/sets. Alert/sound baselines observe all confirmed incoming IDs, preventing a viewer’s first participation from alerting about recent old replies.
+- Fresh full-package typechecks pass. Final independent re-review, production build and release checks remain pending.

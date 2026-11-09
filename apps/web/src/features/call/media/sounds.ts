@@ -48,12 +48,12 @@ export function useCallSounds({ call, state, chat, direct, speakerId, connected,
     }
   }, [direct, connected, scope, state.phase]);
   useEffect(() => {
-    const ids = unreadThreadReplies(state, chat, call.ticket.identity);
+    const ids = new Set(unreadThreadReplies(state, chat, call.ticket.identity));
     const previous = replyBaseline.current;
-    replyBaseline.current = connected && chat.status === 'in' ? { scope, at: Date.now(), ids: new Set(ids) } : null;
+    replyBaseline.current = connected && chat.status === 'in' ? { scope, at: Date.now(), ids: new Set(chat.chat.filter((m) => !m.isMe && !m.sending && !m.failed).map((m) => m.id)) } : null;
     if (!previous || previous.scope !== scope || Date.now() - previous.at > 12_000 || !connected || chat.status !== 'in') return;
     for (const message of chat.chat) {
-      if (!ids.includes(message.id) || previous.ids.has(message.id) || state.elapsed - message.at > 5) continue;
+      if (!ids.has(message.id) || !chat.members.includes(message.from) || previous.ids.has(message.id) || state.elapsed - message.at > 5) continue;
       playSound({ owner: owner.current, cue: 'reply', key: `${state.callId}:${message.id}`, until: Date.now() + 1200, current: playback });
     }
   }, [chat, state, connected, scope, call]);
