@@ -11,6 +11,9 @@ import { useNavigate, useRouterState } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { api } from '~/lib/api';
+import { stopSounds } from '~/lib/audio-output';
+import { useSoundPreferences } from '~/lib/sound-preferences';
+import { readPrefs } from '~/features/call/media/devices';
 import { useLive } from '~/lib/live';
 import { log } from '~/lib/log';
 import { q, useRingAnswer } from '~/lib/queries';
@@ -48,6 +51,11 @@ function Signed() {
 
 function Cards({ rings }: { rings: Rings }) {
   const all = useLive(rings);
+  const { prefs, ready } = useSoundPreferences();
+  const owner = useRef({});
+  const current = useRef({ prefs, speakerId: readPrefs().speaker ?? null });
+  current.current = { prefs, speakerId: readPrefs().speaker ?? null };
+  useEffect(() => () => stopSounds(owner.current), [prefs]);
   const path = useRouterState({ select: (s) => s.location.pathname });
   const navigate = useNavigate();
   const toast = useToast();
@@ -59,13 +67,15 @@ function Cards({ rings }: { rings: Rings }) {
 
   const played = useRef(new Set<string>());
   useEffect(() => {
+    if (!ready) return;
     for (const r of shown) {
       const key = keyOf(r);
       if (played.current.has(key)) continue;
       played.current.add(key);
-      void playRing(key, new Date(r.expiresAt).getTime());
+      if (played.current.size > 128) { const first = played.current.values().next().value; if (first) played.current.delete(first); }
+      playRing(key, new Date(r.expiresAt).getTime(), owner.current, () => current.current);
     }
-  }, [shown]);
+  }, [shown, ready]);
 
   const join = (r: IncomingRing) => {
     mark(keyOf(r), true);

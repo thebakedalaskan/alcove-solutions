@@ -1,9 +1,13 @@
+import { CallNotifications } from './notifications';
+import { type CallTimerControl, type CallTimerSequenceInput, type CallMessageReceipt, type CallChatMessage } from '@alcove/api';
+import { type DirectKeyAnnouncement, type DirectSend, type DirectEnvelope, type DirectSync } from '@alcove/api';
+import { DirectMessages } from './direct-messages';
 import { b64u, randomBytes } from '../transport/ids';
 import { Box, Live, unref } from '../transport/live';
 import { type ClientEvent } from '../transport/options';
-import { type ChatPayload, groupName, MlsError, MlsGroup, MlsKeys } from './mls';
+import { groupName, MlsError, MlsGroup, MlsKeys } from './mls';
 import { HttpMoveOut } from './moves';
-import { AlcoveApiError, type AudioPiece, type BoardCheck, type BoardOpen, type BoardTimerMinutes, type BoardVotesEach, type BreakoutPlan, CALL_CHAT_MAX, CALL_DATA_OVERHEAD, CALL_VOID_KEY_INDEX, type CallAction, type CallAnswer, type CallCrypto, CallEndResultSchema, type CallFollowUps, type CallMediaKeys, type CallMls, type CallMoment, type CallMoveOut, type CallReaction, type CallSession, type CallState, type CallTicket, type CallWorkspaceSwitch, type CaptionLanguage, type CaptionTranslation, type CaptureDevicePart, type CatchUp, type CatchUpRange, type CatchUpWindow, type DocFollowUpTick, type DocumentRole, errorCode, isTimeZone, type LineAudio, LIVE_TRANSCRIPT_LINES, MAIN_PLACE, type MoveMedia, type MoveOut, type PersonalApi, type PresentKind, reactionTarget, type ScreenFrame, type ScreenFrameReceipt, type SeriesAnswerPart, type TranscriptClip, withReaction } from '@alcove/api';
+import { type FollowUpCreate, type FollowUpPatch, type FollowUpReview, AlcoveApiError, type AudioPiece, type BoardCheck, type BoardOpen, type BoardTimerMinutes, type BoardVotesEach, type BreakoutPlan, CALL_CHAT_MAX, CALL_DATA_OVERHEAD, CALL_VOID_KEY_INDEX, type CallAction, type CallAnswer, type CallChatMention, type CallChatPayload, CallChatTextSchema, type CallCrypto, CallEndResultSchema, type CallFollowUps, type CallMediaKeys, type CallMls, type CallMoment, type CallMoveOut, type CallReaction, type CallSession, type CallState, type CallTicket, type CallWorkspaceSwitch, type CaptionLanguage, type CaptionTranslation, type CaptureDevicePart, type CatchUp, type CatchUpRange, type CatchUpWindow, type DocFollowUpTick, type DocumentRole, errorCode, isTimeZone, type LineAudio, LIVE_TRANSCRIPT_LINES, MAIN_PLACE, type MoveMedia, type MoveOut, type PersonalApi, type PresentStart, reactionTarget, type ScreenFrame, type ScreenFrameReceipt, type SeriesAnswerPart, type TranscriptClip, withReaction } from '@alcove/api';
 import { type KeyPackage } from 'ts-mls';
 import { z } from 'zod';
 
@@ -19,6 +23,11 @@ function hereZone(): { timeZone?: string } {
 
 /* ---------- live call: server is the source of truth; the client keeps the clock ticking ---------- */
 interface CallTransport {
+  directKey(id: string, m: { generation: number; group: string; epoch: number; message: string }): Promise<void>;
+  directSend(id: string, body: DirectSend): Promise<DirectEnvelope>;
+  directSync(id: string, ids: string[], after: number): Promise<DirectSync>;
+  setTimerSequence(id: string, input: CallTimerSequenceInput): Promise<CallState>;
+  controlTimer(id: string, input: CallTimerControl): Promise<CallState>;
   get(id: string): Promise<CallState>;
   act(id: string, a: CallAction): Promise<CallState>;
   audio(id: string, p: AudioPiece): Promise<CallState>;
@@ -45,7 +54,7 @@ interface CallTransport {
   handOff(id: string, to: string): Promise<void>;
   mls(id: string, after: number): Promise<CallMls>;
   commit(id: string, c: { generation: number; group: string; epoch: number; commit: string; welcome?: string; added: string[]; removed: string[] }): Promise<{ epoch: number }>;
-  message(id: string, m: { generation: number; group: string; epoch: number; message: string }): Promise<void>;
+  message(id: string, m: { generation: number; group: string; epoch: number; message: string }): Promise<CallMessageReceipt>;
   keyPackage(id: string, k: { generation: number; keyPackage: string }): Promise<void>;
   back(id: string, k: { generation: number }): Promise<void>;
   room(id: string): Promise<{ token: string }>;
@@ -53,6 +62,22 @@ interface CallTransport {
   moveCurrent(id: string): Promise<MoveOut | null>;
   moveConfirm(id: string, media: MoveMedia): Promise<void>;
   moveCancel(id: string): Promise<void>;
+}
+
+/** The original destination and sealed bytes stay together across ambiguous delivery and explicit retry. */
+interface PendingChat { local: string; payload: CallChatPayload; place: string; generation: number; tries: number; sealed: { message: string; epoch: number; generation: number } | null }
+
+/** Confirmed log positions sort chronologically; stable sort leaves local drafts in their authored order at the end. */
+function orderedChat(chat: CallChatMessage[]): CallChatMessage[] {
+  const position = (id: string) => {
+    const match = /^(\d+):(\d+)$/.exec(id);
+    const generation = match?.[1]; const seq = match?.[2];
+    return generation === undefined || seq === undefined ? null : { generation: Number(generation), seq: Number(seq) };
+  };
+  return chat.sort((a, b) => {
+    const first = position(a.id); const second = position(b.id);
+    return first && second ? first.generation - second.generation || first.seq - second.seq : first ? -1 : second ? 1 : 0;
+  });
 }
 
 
@@ -136,6 +161,10 @@ const held = (group: MlsGroup, welcome = -1): Held => ({ group, epochs: [], send
 
 
 export class HttpCall extends Live<CallState> implements CallSession {
+  readonly notifications: CallNotifications;
+  readonly direct: DirectMessages;
+  private directAnnouncement: { announcement: DirectKeyAnnouncement; message: string; epoch: number } | null = null;
+  private directAnnouncements = new Set<string>();
   readonly crypto = new Box<CallCrypto>({ status: 'joining', place: MAIN_PLACE, members: [], everyone: [], media: null, chat: [], missedChat: false });
   private hidden = new Set<string>();
   /** How far this browser has read the call's MLS log. */
@@ -161,17 +190,23 @@ export class HttpCall extends Live<CallState> implements CallSession {
    * Chat and reactions waiting to go out (encrypted in the sync loop, so nothing else touches the keys meanwhile), and
    * what was sent, by body, until it shows up in the log. Each goes to the part of the call it was written in, or not at all.
    */
-  private outbox: { local: string; payload: ChatPayload; place: string; tries: number; sealed: { message: string; epoch: number; generation: number } | null }[] = [];
+  private outbox: PendingChat[] = [];
+  private failedSends = new Map<string, PendingChat>();
   private sent = new Map<string, string>();
   private media: CallMediaKeys | null = null;
   private running: Promise<void> | null = null;
   private again = false;
   private fetching: Promise<void> | null = null;
   private fetchAgain = false;
+  /** A monotonic deadline: log-only chat activity must not postpone recovery of a lost call-state nudge. */
+  private nextStateRead = 0;
   private timer: ReturnType<typeof setTimeout> | null = null;
   /** Checks in a row while not in the call's group, so the first come quickly and the rest settle to the usual pace. */
   private waits = 0;
   private closed = false;
+  /** A deliberate departure must follow any return already sent, and never start another meanwhile. */
+  private departures = 0;
+  private returning: Promise<void> | null = null;
   /** When this connection may next ask to come back in, after being taken out while it was away. */
   private backAfter = 0;
   /** How many things here are showing the live notes, the next time this browser says so, and whether it's saying so now. */
@@ -198,6 +233,8 @@ export class HttpCall extends Live<CallState> implements CallSession {
     this.generation = initial.generation;
     this.hosting = initial.isHost;
     this.personal = t.personal(initial.callId);
+    this.direct = new DirectMessages(initial.callId, ticket.identity, { send: (body) => t.directSend(initial.callId, body), sync: (ids, after) => t.directSync(initial.callId, ids, after) }, (why) => this.emit('debug', 'private envelope refused', { why }));
+    this.notifications = new CallNotifications(ticket.identity, this, this.crypto, this.direct);
   }
   /** In the group of the part of the call this browser is in. */
   private get inPlace() { return this.groups.get(this.place)?.group.inGroup ?? false; }
@@ -223,8 +260,13 @@ export class HttpCall extends Live<CallState> implements CallSession {
     this.emit('debug', 'left a part of the call’s group', { why, room: place !== MAIN_PLACE });
   }
 
-  /** The server's state, minus notices this screen has dismissed. */
-  private take(s: CallState) { this.apply({ ...s, notices: s.notices.filter((n) => !this.hidden.has(n.id)) }); }
+  /** The server's state, minus dismissed notices. Confirmed chat reads only grow for this seat. */
+  private take(s: CallState) {
+    // Mutation replies and background reads can cross. A late reply never restores an older queue, vote or room.
+    if (s.revision < this.state.revision) return;
+    if (s.revision === this.state.revision && Date.parse(s.attention.serverNow) < Date.parse(this.state.attention.serverNow)) return;
+    this.apply({ ...s, chatRead: [...new Set([...this.state.chatRead, ...s.chatRead])], notices: s.notices.filter((n) => !this.hidden.has(n.id)) });
+  }
   private notify(text: string) { this.set({ ...this.state, notices: [...this.state.notices, { id: b64u(randomBytes(8)), kind: 'info', text }] }); }
   private patch(p: Partial<CallCrypto>) { this.crypto.set({ ...this.crypto.getSnapshot(), ...p }); }
   refresh = async (what?: { call: boolean; log: boolean } | undefined) => {
@@ -234,10 +276,16 @@ export class HttpCall extends Live<CallState> implements CallSession {
   private fetchState(): Promise<void> {
     if (this.closed) return Promise.resolve();
     if (this.fetching) { this.fetchAgain = true; return this.fetching; }
+    this.nextStateRead = performance.now() + this.timing.pollMs * 4;
     this.fetching = (async () => {
       try {
-        do { this.fetchAgain = false; this.take(await this.t.get(this.state.callId)); } while (this.fetchAgain && !this.closed);
-      } finally { this.fetching = null; }
+        do {
+          this.fetchAgain = false;
+          this.take(await this.t.get(this.state.callId));
+          this.nextStateRead = performance.now() + this.timing.pollMs * 4;
+        } while (this.fetchAgain && !this.closed);
+      } catch (error) { this.notifications.suspend(); this.direct.authorizationLost(); throw error; }
+      finally { this.fetching = null; }
     })();
     return this.fetching;
   }
@@ -320,8 +368,16 @@ export class HttpCall extends Live<CallState> implements CallSession {
     if (this.running) { this.again = true; return this.running; }
     this.running = (async () => {
       try {
-        do { this.again = false; await this.step(); } while (this.again && !this.closed);
+        do {
+          this.again = false;
+          await this.step();
+          const status = this.crypto.getSnapshot().status;
+          if (!this.closed && status !== 'denied' && status !== 'removed' && status !== 'away' && status !== 'failed' && performance.now() >= this.nextStateRead) await this.fetchState();
+          this.notifications.resume();
+        } while (this.again && !this.closed);
       } catch (e) {
+        this.notifications.suspend();
+        this.direct.authorizationLost();
         this.emit('warn', 'call keys not in step', { code: e instanceof MlsError ? 'mls' : errorCode(e) });
       } finally {
         this.running = null;
@@ -342,14 +398,15 @@ export class HttpCall extends Live<CallState> implements CallSession {
     const quick = Math.min(this.timing.pollMs, WAIT_FIRST_MS * 2 ** (this.waits - 1)) * (0.8 + Math.random() * 0.4);
     this.timer = setTimeout(() => {
       void this.sync();
-      // Losing a document says nothing to the call, so while something's presented, playing or open as a board, the call is read as well.
-      const { present, play } = this.state.workspace;
-      if (present || play || this.state.board.open) this.fetchState().catch((e: unknown) => this.emit('debug', 'call not read', { code: errorCode(e) }));
+      // sync checks the independent state deadline even if chat keeps restarting this keys timer.
     }, st === 'in' ? this.timing.pollMs * 4 : st === 'waiting' ? quick : this.timing.pollMs);
     unref(this.timer);
   }
   /** Out of the call (turned away, removed, this call went on elsewhere, or someone else hosts while this organizer's connection was away) or out of step: stop keeping up. */
   private out(status: 'denied' | 'removed' | 'away' | 'failed', why: string) {
+    this.notifications.suspend();
+    if (status !== 'failed') this.direct.close();
+    else this.direct.contextChanged({ generation: this.generation, place: this.place, members: [], ready: false });
     for (const h of this.groups.values()) if (h.switchTimer) clearTimeout(h.switchTimer);
     this.media = null;
     this.patch({ status, media: null });
@@ -386,7 +443,11 @@ export class HttpCall extends Live<CallState> implements CallSession {
     // go with it (below), so nothing heard in one part is ever taken for something said in the other.
     // What was said in the part it's leaving goes off the screen at once: the call's state for the new part follows.
     const moved = log.place !== this.place;
-    if (moved) { this.place = log.place; this.missedHere = false; this.set({ ...this.state, transcript: [] }); }
+    if (moved) {
+      this.place = log.place;
+      this.missedHere = false;
+      this.set({ ...this.state, transcript: [], attention: { ...this.state.attention, place: log.place, hands: [], questions: [], signals: [], cues: [] } });
+    }
     // Anyone but whoever hosts is in one group at a time: one the API no longer counts them in (they were sent elsewhere, or its room closed) is done with.
     if (!this.hosting) for (const place of [...this.groups.keys()]) if (place !== log.group) await this.drop(place, 'moved');
     // To be added to a group (a new generation, or another part of the call) without a key package left: a fresh one.
@@ -455,6 +516,9 @@ export class HttpCall extends Live<CallState> implements CallSession {
     const status: CallCrypto['status'] = inPlace ? 'in' : log.admission === 'waiting' ? 'waiting' : this.lastIn !== null && this.lastIn !== this.place ? 'moving' : 'joining';
     const everyone = [...new Set([...this.groups.values()].flatMap((h) => h.group.members()))];
     this.publish({ status, members: inPlace ? this.groups.get(this.place)?.group.members() ?? [] : [], everyone, missedChat: this.missedHere });
+    this.direct.contextChanged({ generation: this.generation, place: this.place, members: this.groups.get(this.place)?.group.members() ?? [], ready: status === 'in' });
+    await this.announceDirectKey();
+    await this.direct.sync();
     // Let in (or into a new part of the call): who's in it and what's been said there is this browser's to see now. Someone new asking: the host sees them.
     if ((status === 'in' && was !== 'in') || newAsk || moved) await this.fetchState();
   }
@@ -468,39 +532,49 @@ export class HttpCall extends Live<CallState> implements CallSession {
   private async comeBack(log: CallMls): Promise<void> {
     // A closed call never comes back by itself, whatever a check it sent before closing says: its page let go (left,
     // moved or went away), and a slow answer mustn't bring it back in with nobody there.
-    if (this.closed) return;
+    if (this.closed || this.departures > 0) return;
     const now = Date.now();
     if (now < this.backAfter) return;
     this.backAfter = now + BACK_WAIT_MS;
     for (const place of [...this.groups.keys()]) await this.drop(place, 'removed');
+    if (this.closed || this.departures > 0) return;
     this.patch({ status: 'joining' });
+    const returning = this.t.back(this.state.callId, { generation: log.generation });
+    this.returning = returning;
     try {
-      await this.t.back(this.state.callId, { generation: log.generation });
+      await returning;
       this.emit('info', 'back in the call after its connection dropped', { generation: log.generation });
     } catch (e) {
       if (errorCode(e) !== 'conflict') throw e;
       this.emit('debug', 'not back in yet', { code: 'conflict' });
+    } finally {
+      this.returning = null;
     }
   }
 
   /** Chat from the log, in order, from the part of the call this browser is in. The sender's own message takes its place there, so everyone sees chat in the same order. */
   private async read(seq: number, place: string, body: string, generation: number): Promise<void> {
+    if (this.directAnnouncements.delete(body)) return;
     const id = `${generation}:${seq}`;
-    const local = this.sent.get(body);
-    if (local !== undefined) {
-      this.sent.delete(body);
-      const s = this.crypto.getSnapshot();
-      const mine = s.chat.find((m) => m.id === local);
-      if (mine) this.patch({ chat: [...s.chat.filter((m) => m.id !== local), { ...mine, id, sending: false }] });
-      // A reaction of this browser's own is already shown.
-      return;
-    }
+    if (this.confirmChat(body, id, true)) return;
     const h = this.groups.get(place);
     if (!h || place !== this.place) return;
     const m = await h.group.decrypt(body);
-    if (m.kind === 'chat') {
+    if (m.kind === 'direct-key') {
+      this.direct.contextChanged({ generation, place: this.place, members: h.group.members(), ready: this.inPlace });
+      this.direct.acceptKey(m.from, m.announcement);
+    } else if (m.kind === 'chat') {
       const s = this.crypto.getSnapshot();
-      this.patch({ chat: [...s.chat, { id, from: m.from, isMe: m.from === this.ticket.identity, text: m.text, at: m.at, place, sending: false, reactions: [] }] });
+      if (m.thread) {
+        const parent = s.chat.find((message) => message.id === m.thread?.replyTo);
+        const root = s.chat.find((message) => message.id === m.thread?.root);
+        if ((parent && (parent.place !== place || (parent.thread?.root ?? parent.id) !== m.thread.root))
+          || (root && (root.place !== place || root.thread !== null))) {
+          this.emit('debug', 'a reply had an unavailable conversation', { seq });
+          return;
+        }
+      }
+      this.patch({ chat: orderedChat([...s.chat, { id, from: m.from, isMe: m.from === this.ticket.identity, text: m.text, mentions: m.mentions, thread: m.thread, at: m.at, place, sending: false, failed: false, reactions: [] }]) });
     } else if (m.kind === 'react') {
       // Only to a message of the part of the call it was sent in: one this browser never had (sent before it came in), or
       // one from another part, changes nothing here.
@@ -508,6 +582,42 @@ export class HttpCall extends Live<CallState> implements CallSession {
     } else if (m.kind === 'before') {
       this.missedHere = true;
     } else this.emit('debug', 'a chat message couldn’t be read', { seq });
+  }
+
+  /** Own ciphertext confirmation never decrypts or displays another room's history. */
+  private confirmChat(body: string, id: string, fromLog = false): boolean {
+    const local = this.sent.get(body);
+    if (local === undefined) return false;
+    if (fromLog) this.sent.delete(body);
+    const s = this.crypto.getSnapshot();
+    const mine = s.chat.find((m) => m.id === local || m.id === id);
+    this.failedSends.delete(local);
+    this.outbox = this.outbox.filter((m) => m.local !== local);
+    if (mine) this.patch({ chat: orderedChat([...s.chat.filter((m) => m.id !== local && m.id !== id), { ...mine, id, sending: false, failed: false }]) });
+    return true;
+  }
+
+  /** MLS authenticates each ephemeral DM key. Its relay never counts as room chat. */
+  private async announceDirectKey(): Promise<void> {
+    const h = this.groups.get(this.place);
+    if (!h || !this.inPlace) return;
+    if (this.directAnnouncement && (this.directAnnouncement.announcement.generation !== this.generation || this.directAnnouncement.announcement.place !== this.place)) this.directAnnouncement = null;
+    if (!this.directAnnouncement) {
+      const announcement = await this.direct.announcement();
+      if (!announcement) return;
+      this.directAnnouncement = { announcement, ...(await h.group.encrypt({ directKey: announcement, at: this.state.elapsed })) };
+    }
+    const pending = this.directAnnouncement;
+    this.directAnnouncements.add(pending.message);
+    try {
+      await this.t.directKey(this.state.callId, { generation: pending.announcement.generation, group: pending.announcement.place, epoch: pending.epoch, message: pending.message });
+      this.direct.announced(pending.announcement);
+      this.directAnnouncement = null;
+      this.again = true;
+    } catch (e) {
+      if (errorCode(e) === 'conflict') { this.directAnnouncements.delete(pending.message); this.directAnnouncement = null; }
+      this.emit('debug', 'private message key announcement delayed', { code: errorCode(e) });
+    }
   }
 
   /**
@@ -580,6 +690,7 @@ export class HttpCall extends Live<CallState> implements CallSession {
     const id = this.state.callId;
     while (this.outbox[0]) {
       const m = this.outbox[0];
+      if (m.generation !== this.generation) { this.unsend(m.local); continue; }
       const h = this.groups.get(m.place);
       if (m.place !== this.place || !h || !this.inPlace) {
         // Still on the way into the part of the call it was written in: it waits. Moved on since: it's taken back.
@@ -587,14 +698,14 @@ export class HttpCall extends Live<CallState> implements CallSession {
         this.unsend(m.local);
         continue;
       }
-      if (!m.sealed || m.sealed.generation !== this.generation) {
+      if (!m.sealed) {
         try { m.sealed = { ...(await h.group.encrypt(m.payload)), generation: this.generation }; }
         catch { this.unsend(m.local); continue; }
       }
       this.sent.set(m.sealed.message, m.local);
       try {
-        await this.t.message(id, { generation: m.sealed.generation, group: m.place, epoch: m.sealed.epoch, message: m.sealed.message });
-        this.outbox.shift();
+        const receipt = await this.t.message(id, { generation: m.sealed.generation, group: m.place, epoch: m.sealed.epoch, message: m.sealed.message });
+        this.confirmChat(m.sealed.message, `${receipt.generation}:${receipt.seq}`);
         // Read the log again straight away: the message takes its place there, among everyone else's.
         this.again = true;
       } catch (e) {
@@ -602,7 +713,7 @@ export class HttpCall extends Live<CallState> implements CallSession {
         m.tries += 1;
         // The keys moved on under it: encrypted again next time. Lost on the way: the same message is sent again (others read it once).
         if (code === 'conflict') { this.sent.delete(m.sealed.message); m.sealed = null; }
-        if (m.tries >= 3 || code === 'invalid' || code === 'forbidden') { if (m.sealed) this.sent.delete(m.sealed.message); this.unsend(m.local); continue; }
+        if (m.tries >= 3 || code === 'invalid' || code === 'forbidden') { this.unsend(m.local); continue; }
         return;
       }
     }
@@ -612,12 +723,15 @@ export class HttpCall extends Live<CallState> implements CallSession {
     this.outbox = this.outbox.filter((o) => o.local !== local);
     const s = this.crypto.getSnapshot();
     if (m && 'react' in m.payload) {
+      if (m.sealed) this.sent.delete(m.sealed.message);
       const r = m.payload.react;
       this.patch({ chat: withReaction(s.chat, r.target, m.place, r.reaction, this.ticket.identity, !r.on) });
       this.notify('Your reaction wasn’t sent. Try again.');
       return;
     }
-    this.patch({ chat: s.chat.filter((c) => c.id !== local) });
+    if (!m || !('text' in m.payload)) return;
+    this.failedSends.set(local, m);
+    this.patch({ chat: s.chat.map((c) => c.id === local ? { ...c, sending: false, failed: true } : c) });
     this.notify('Your message wasn’t sent. Try again.');
   }
 
@@ -686,18 +800,42 @@ export class HttpCall extends Live<CallState> implements CallSession {
   }
   /** Room changes move people's keys: this browser reads the log straight away rather than waiting to be nudged. */
   private actAndSync(a: CallAction) { this.act(a, () => { void this.sync(); }); }
-  sendChat = async (text: string) => {
+  sendChat = async (text: string, mentions: readonly CallChatMention[] = [], thread: import('@alcove/api').CallChatThread | null = null) => {
     const t = text.trim();
     if (!t) return;
+    if (this.closed) throw new AlcoveApiError('forbidden', 'This call has ended.');
     if (t.length > CALL_CHAT_MAX) throw new AlcoveApiError('invalid', `Messages can be up to ${CALL_CHAT_MAX} characters.`);
     const status = this.crypto.getSnapshot().status;
     if (status === 'moving') throw new AlcoveApiError('conflict', 'You’re moving to another room. Send it once you’re there.');
     if (status !== 'in') throw new AlcoveApiError('forbidden', 'Wait until the host lets you in.');
+    const leading = text.length - text.trimStart().length;
+    const checked = CallChatTextSchema.safeParse({ text: t, mentions: mentions.map((m) => ({ ...m, start: m.start - leading, end: m.end - leading })), thread, at: this.state.elapsed });
+    const members = new Set(this.groups.get(this.place)?.group.members() ?? []);
+    if (!checked.success || checked.data.mentions.some((m) => !members.has(m.identity))) throw new AlcoveApiError('invalid', 'Choose people who are in this part of the call.');
+    if (checked.data.thread) {
+      const target = this.crypto.getSnapshot().chat.find((m) => m.id === checked.data.thread?.replyTo && m.place === this.place && !m.sending && !m.failed);
+      if (!target || (target.thread?.root ?? target.id) !== checked.data.thread.root) throw new AlcoveApiError('not-found', 'That conversation isn’t available in this room.');
+    }
+    const payload = checked.data;
     const local = `me:${b64u(randomBytes(6))}`;
     const s = this.crypto.getSnapshot();
-    this.patch({ chat: [...s.chat, { id: local, from: this.ticket.identity, isMe: true, text: t, at: this.state.elapsed, place: this.place, sending: true, reactions: [] }] });
-    this.outbox.push({ local, payload: { text: t, at: this.state.elapsed }, place: this.place, tries: 0, sealed: null });
+    this.patch({ chat: [...s.chat, { id: local, from: this.ticket.identity, isMe: true, text: payload.text, mentions: payload.mentions, thread: payload.thread, at: payload.at, place: this.place, sending: true, failed: false, reactions: [] }] });
+    this.outbox.push({ local, payload, place: this.place, generation: this.generation, tries: 0, sealed: null });
     await this.sync();
+  };
+  retryChat = async (messageId: string) => {
+    const pending = this.failedSends.get(messageId);
+    const current = this.crypto.getSnapshot();
+    if (this.closed || !pending || current.status !== 'in' || pending.place !== current.place || pending.generation !== this.generation) throw new AlcoveApiError('conflict', 'Return to the original conversation before retrying this message.');
+    this.failedSends.delete(messageId);
+    pending.tries = 0;
+    this.patch({ chat: current.chat.map((m) => m.id === messageId ? { ...m, sending: true, failed: false } : m) });
+    this.outbox.push(pending);
+    await this.sync();
+  };
+  readChat = async (ids: readonly string[]) => {
+    if (!ids.length) return;
+    this.take(await this.t.act(this.state.callId, { type: 'read-chat', messages: [...ids] }));
   };
   react = async (messageId: string, reaction: CallReaction, on: boolean) => {
     const s = this.crypto.getSnapshot();
@@ -705,7 +843,7 @@ export class HttpCall extends Live<CallState> implements CallSession {
     const mine = target.reactions.find((r) => r.reaction === reaction)?.by.includes(this.ticket.identity) ?? false;
     if (mine === on) return;
     this.patch({ chat: withReaction(s.chat, messageId, this.place, reaction, this.ticket.identity, on) });
-    this.outbox.push({ local: `react:${b64u(randomBytes(6))}`, payload: { react: { target: messageId, reaction, on }, at: this.state.elapsed }, place: this.place, tries: 0, sealed: null });
+    this.outbox.push({ local: `react:${b64u(randomBytes(6))}`, payload: { react: { target: messageId, reaction, on }, at: this.state.elapsed }, place: this.place, generation: this.generation, tries: 0, sealed: null });
     await this.sync();
   };
   /** Data keys, one per media key (each sender's, each epoch), made once. */
@@ -737,7 +875,23 @@ export class HttpCall extends Live<CallState> implements CallSession {
       return null;
     }
   };
-  admit = async (identity: string) => { this.approved.add(identity); await this.sync(); };
+  admit = async (identity: string) => {
+    await this.fetchState();
+    if (!this.state.isHost) throw new AlcoveApiError('forbidden', 'Only the person hosting can let someone in.');
+    // An old notification is harmless: its identity is never re-used for a new request.
+    if (!this.state.waiting.some((w) => w.id === identity)) return;
+    this.approved.add(identity);
+    try {
+      await this.sync();
+      await this.fetchState();
+      if (this.state.waiting.some((w) => w.id === identity)) throw new AlcoveApiError('unavailable', 'They haven’t been let in yet. Try again.');
+    } finally {
+      // A failed press must not silently approve a future retry of the keys loop.
+      this.approved.delete(identity);
+    }
+  };
+  setTimerSequence = async (input: CallTimerSequenceInput) => { this.take(await this.t.setTimerSequence(this.state.callId, input)); };
+  controlTimer = async (input: CallTimerControl) => { this.take(await this.t.controlTimer(this.state.callId, input)); };
   deny = async (identity: string) => { this.take(await this.t.act(this.state.callId, { type: 'deny', identity })); };
   ring = async (emails: string[]) => { this.take(await this.t.act(this.state.callId, { type: 'ring', emails })); };
   setNotes = async (on: boolean) => { this.take(await this.t.act(this.state.callId, { type: 'notes', on })); };
@@ -749,7 +903,9 @@ export class HttpCall extends Live<CallState> implements CallSession {
   setUnavailable = async (parts: CaptureDevicePart[]) => { this.take(await this.t.act(this.state.callId, { type: 'unavailable', parts })); };
   setScreens = async (on: boolean) => { this.take(await this.t.act(this.state.callId, { type: 'screens', on })); };
   tickFollowUp = async (id: string, done: boolean) => { this.take(await this.t.act(this.state.callId, { type: 'follow-up', id, done })); };
-  addFollowUp = async (text: string) => { this.take(await this.t.act(this.state.callId, { type: 'follow-up-add', text })); };
+  addFollowUp = async (input: FollowUpCreate) => { this.take(await this.t.act(this.state.callId, { type: 'follow-up-add', input })); };
+  updateFollowUp = async (id: string, patch: FollowUpPatch) => { this.take(await this.t.act(this.state.callId, { type: 'follow-up-edit', id, patch })); };
+  reviewFollowUp = async (review: FollowUpReview) => { this.take(await this.t.act(this.state.callId, { type: 'follow-up-review', review })); };
   private space = async (a: CallAction) => { this.take(await this.t.act(this.state.callId, a)); };
   openWorkspace = () => this.space({ type: 'workspace-open', ...hereZone() });
   previewWorkspace = (workspaceId: string) => this.t.previewWorkspace(this.state.callId, workspaceId);
@@ -759,9 +915,9 @@ export class HttpCall extends Live<CallState> implements CallSession {
   askForWorkspace = (up: boolean) => this.space({ type: 'workspace-ask', up });
   grantWorkspaceAsk = (askId: string, documentId: string, role: DocumentRole) => this.space({ type: 'workspace-grant', askId, documentId, role });
   declineWorkspaceAsk = (askId: string) => this.space({ type: 'workspace-decline', askId });
-  startPresenting = (kind: PresentKind, id: string, section = 0) => this.space({ type: 'present-start', kind, id, section });
+  startPresenting = (what: PresentStart) => this.space({ type: 'present-start', what: what.kind === 'board' ? { kind: 'board', id: what.id, section: what.section ?? 0 } : { kind: 'workspace' } });
   movePresenting = (section: number) => this.space({ type: 'present-move', section });
-  stopPresenting = () => this.space({ type: 'present-stop' });
+  stopPresenting = (close: boolean) => this.space({ type: 'present-stop', close });
   startPlaying = (documentId: string, mediaId: string, positionMs = 0) => this.space({ type: 'play-start', documentId, mediaId, positionMs });
   pausePlaying = (positionMs: number) => this.space({ type: 'play-pause', positionMs });
   resumePlaying = () => this.space({ type: 'play-resume' });
@@ -781,11 +937,19 @@ export class HttpCall extends Live<CallState> implements CallSession {
   shareFrame = (f: ScreenFrame) => this.t.frame(this.state.callId, f);
   shareEnded = (share: string) => this.t.shareEnded(this.state.callId, share);
   mute = async (identity: string, trackSid: string) => { this.take(await this.t.act(this.state.callId, { type: 'mute', identity, trackSid })); };
+  stopShare = async (seat: string) => { this.take(await this.t.act(this.state.callId, { type: 'share-stop', seat })); };
   /** They're disconnected at once; the host's browser then takes them out of their group, so the keys move on without them. */
   remove = async (identity: string) => { this.take(await this.t.act(this.state.callId, { type: 'remove', identity })); await this.sync(); };
   lock = async (on: boolean) => { this.take(await this.t.act(this.state.callId, { type: 'lock', on })); };
   stopRing = async (ringId: string) => { this.take(await this.t.act(this.state.callId, { type: 'stop-ring', ringId })); };
-  setHand = (up: boolean) => this.act({ type: 'hand', up });
+  setHand = (up: boolean) => this.space({ type: 'hand', up, place: this.state.attention.place });
+  lowerHand = (entryId: string) => this.space({ type: 'hand-lower', entryId, place: this.state.attention.place });
+  clearHands = () => this.space({ type: 'hands-clear', place: this.state.attention.place });
+  postQuestion = (id: string, text: string) => this.space({ type: 'question-post', id, text, place: this.state.attention.place });
+  voteQuestion = (id: string, on: boolean) => this.space({ type: 'question-vote', id, on, place: this.state.attention.place });
+  resolveQuestion: CallSession['resolveQuestion'] = (id, status) => this.space({ type: 'question-resolve', id, status, place: this.state.attention.place });
+  pinQuestion = (id: string | null) => this.space({ type: 'question-pin', id, place: this.state.attention.place });
+  setFeedback: CallSession['setFeedback'] = (kind) => this.space({ type: 'feedback', kind, place: this.state.attention.place });
   letOthersPoint = async (on: boolean) => { this.take(await this.t.act(this.state.callId, { type: 'others-point', on })); };
   setPointing = async (on: boolean) => { this.take(await this.t.act(this.state.callId, { type: 'pointing', on })); };
   setSpotlight = (participantId: string | null) => this.act({ type: 'spotlight', participantId });
@@ -827,7 +991,14 @@ export class HttpCall extends Live<CallState> implements CallSession {
   hear = (note: string, line: string) => this.t.hear(this.state.callId, note, line);
   askEarlier = (question: string, timeZone: string) => this.t.askEarlier(this.state.callId, question, timeZone);
   close = () => {
+    this.notifications.close();
+    this.direct.close();
+    this.directAnnouncement = null;
+    this.directAnnouncements.clear();
     this.closed = true;
+    this.outbox = [];
+    this.failedSends.clear();
+    this.sent.clear();
     this.stopTicking();
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
@@ -854,16 +1025,25 @@ export class HttpCall extends Live<CallState> implements CallSession {
    * takes this browser hosting as the call last said and the server agreeing: one that has only just been made host
    * is refused instead (it said "leave", not "end"), and one that has just stopped hosting simply leaves.
    */
-  leave = async () => {
-    this.close();
-    const r = await this.t.leave(this.state.callId, { end: this.state.isHost, onPurpose: true });
-    this.set({ ...this.state, phase: 'ended' });
-    return r;
+  leave = () => {
+    const end = this.state.isHost;
+    return this.depart(() => this.t.leave(this.state.callId, { end, onPurpose: true }));
   };
   /** Whoever hosts leaves, and the call goes on with `to` hosting until the organizer is back. */
-  handOff = async (to: string) => {
-    await this.t.handOff(this.state.callId, to);
-    this.close();
-    this.set({ ...this.state, phase: 'ended' });
-  };
+  handOff = (to: string) => this.depart(() => this.t.handOff(this.state.callId, to));
+  /** Keep ordinary polling alive until departure succeeds, without mistaking the deliberate exit for a dropped connection. */
+  private async depart<T>(send: () => Promise<T>): Promise<T> {
+    this.departures++;
+    try {
+      // A return already on the wire finishes first: it must not arrive after the departure and put us back in.
+      await this.returning?.catch((e: unknown) => this.emit('debug', 'return finished before leaving', { code: errorCode(e) }));
+      const result = await send();
+      this.close();
+      this.set({ ...this.state, phase: 'ended' });
+      return result;
+    } finally {
+      // A refused or failed departure is still a live call: keys, chat and recovery carry on until a retry.
+      this.departures--;
+    }
+  }
 }

@@ -24,8 +24,8 @@ import { log, type LogContext } from '../../log';
 import { findItem } from '../../vault';
 import { profile } from '../account/account';
 import type { Viewer } from './participants';
-import type { BoardLetIn, BoardVote, CallBoards, Controller, Landing, OpenBoard, RoomBoard } from './space-state';
-import { controllerOf } from './workspace';
+import { type BoardLetIn, type BoardVote, type CallBoards, type CallSpace, type Controller, type Landing, type OpenBoard, type RoomBoard } from './space-state';
+import { boardClosed, boardPresentedOver, controllerOf, ending } from './workspace';
 import { MeetingManifest } from '../meetings/service';
 import { boardPlace, type Placing } from './places';
 import {
@@ -49,8 +49,8 @@ const nameOf = (title: string): string => title.replace(/\s+/g, ' ').trim().slic
 export type BoardAction = Extract<CallAction, { type: 'board-open' | 'board-close' }>;
 export const isBoardAction = (a: CallAction): a is BoardAction => a.type === 'board-open' || a.type === 'board-close';
 
-/** What the rules here read of a call. */
-export interface Boarded extends Placing { board: CallBoards; removed: string[] }
+/** What the rules here read of a call: its boards, and what's presented, which a board opening mustn't take off anyone's stage. */
+export interface Boarded extends Placing { board: CallBoards; removed: string[]; workspace: CallSpace }
 /** Someone in the call, as a seat on a board names them. */
 export interface Here { seat: string; name: string; email: string | null }
 
@@ -326,7 +326,7 @@ export interface Changing<S extends Boarded> {
 export interface Changed<S> {
   s: S;
   ended: string[];
-  done: { what: 'board opened'; workspaceId: string; documentId: string; made: boolean; letIn: boolean; invited: number; here: number } | { what: 'board closed'; workspaceId: string; documentId: string };
+  done: { what: 'board opened'; workspaceId: string; documentId: string; made: boolean; letIn: boolean; invited: number; here: number } | { what: 'board closed'; workspaceId: string; documentId: string; presented: number };
 }
 /**
  * The change to what the call keeps, under its row, from the call as it is then. It never needs asking again: a board made and a
@@ -398,8 +398,8 @@ async function madeMain(m: MainBoardFor, workspaceId: string, folderId: string |
   });
 }
 /**
- * Makes the call's main board, as a new board from the Board menu does, and as rooms sharing one board do when nothing they can
- * share is open. One the home can't take is refused, in the words its asker is told.
+ * Makes the call's main board, as a new board from the board picker does (Board, or Share › A board, then New), and as rooms
+ * sharing one board do when nothing they can share is open. One the home can't take is refused, in the words its asker is told.
  */
 export async function makeMainBoard(m: MainBoardFor, workspaceId: string, folderId: string | null): Promise<MadeMain> {
   const made = await madeMain(m, workspaceId, folderId);
@@ -744,7 +744,9 @@ async function prepareSaved<S extends Boarded>(x: Changing<S>, workspaceId: stri
 
 /**
  * Whoever opened it, or the organizer. It closes for everyone there, and that's all: seats stay until the call ends, because
- * people may open it again. In a room on a board every room shares, that's the main room's board.
+ * people may open it again. In a room on a board every room shares, that's the main room's board. Nobody but the organizer closes
+ * it while someone else presents it, as nobody opens a board over theirs (`stageFree`); presented, its presentation ends for
+ * everyone too, said at once (`boardClosed`).
  */
 function closing<S extends Boarded>(y: Changing<S>): Changed<S> {
   const { v, s, callId } = y;
@@ -752,10 +754,19 @@ function closing<S extends Boarded>(y: Changing<S>): Changed<S> {
   const open = s.board.open[place];
   if (!open) throw new ConflictError('No board is open here.', { context: { callId } });
   if (open.by.person !== v.pass.person && !v.isOrganizer) throw new ForbiddenError('Only whoever opened this board, or the organizer, can close it.', { context: { callId, role: v.role } });
-  const { [place]: _closed, ...rest } = s.board.open;
-  // Its ideas from the call were for it: they go with it.
-  const { [place]: _ideas, ...ideas } = s.board.ideas;
-  return { s: { ...s, board: { ...s.board, open: rest, ideas } }, ended: [], done: { what: 'board closed', workspaceId: open.workspaceId, documentId: open.documentId } };
+  if (!v.isOrganizer && boardPresentedOver(s, place, v.pass.person, null)) throw new ConflictError('Someone else is presenting this board. You can close it once they stop.', { context: { callId } });
+  const out = boardClosed(s, place, ending(v.organizer, callId), { person: v.pass.person, organizer: v.isOrganizer });
+  const presented = s.workspace.present.length - out.workspace.present.length;
+  return { s: out, ended: [], done: { what: 'board closed', workspaceId: open.workspaceId, documentId: open.documentId, presented } };
+}
+
+/**
+ * Nobody makes or brings in a board while someone else presents one where it would open: it would take theirs off everyone's
+ * stage. Bringing in the board that's presented (`keeping`) takes nothing off. The call already tells everyone who's presenting,
+ * so this names nobody.
+ */
+function stageFree<S extends Boarded>(y: Changing<S>, keeping: string | null): void {
+  if (boardPresentedOver(y.s, y.place, y.v.pass.person, keeping)) throw new ConflictError('Someone else is presenting a board here. You can start one once they stop.', { context: { callId: y.callId, place: y.place === MAIN_PLACE ? 'main' : 'room' } });
 }
 
 /**
@@ -766,9 +777,12 @@ function closing<S extends Boarded>(y: Changing<S>): Changed<S> {
  */
 export async function prepare<S extends Boarded>(x: Changing<S>, a: BoardAction): Promise<Apply<S>> {
   if (a.type === 'board-close') return closing;
-  if ('template' in a) return x.place === MAIN_PLACE ? prepareNew(x, a.template) : prepareInRoom(x, a.template);
-  requireMainRoom(x.callId, x.place, a.type);
-  return prepareSaved(x, a.workspaceId, a.documentId, a.letIn);
+  if (!('template' in a)) requireMainRoom(x.callId, x.place, a.type);
+  // Asked before anything is made, and again under the call's row, as someone may have started presenting meanwhile.
+  const keeping = 'template' in a ? null : a.documentId;
+  stageFree(x, keeping);
+  const apply = 'template' in a ? await (x.place === MAIN_PLACE ? prepareNew(x, a.template) : prepareInRoom(x, a.template)) : await prepareSaved(x, a.workspaceId, a.documentId, a.letIn);
+  return (y) => { stageFree(y, keeping); return apply(y); };
 }
 
 /* ---------- the session on a board: its timer and its vote ---------- */

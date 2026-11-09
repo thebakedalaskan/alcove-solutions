@@ -4,7 +4,7 @@
  * and whatever they wrote that didn't reach Alcove stays theirs to copy, save as a new document, or let go.
  */
 import { errorMessage, firstName, type DocSession, type DocStatus, type Person, type WorkspaceItem } from '@alcove/api';
-import { WsCantOpen, WsDoc, WsDocBy, WsDocHead, WsDocMenu, WsFade, WsFollowBar, WsGoneBar, WsMentionPrompt, WsMovePicker, WsOfflineBar, WsOfflineEmpty, WsPage, WsPresentPreview, WsPopover, WsReadOnlyBar, WsScroll, WsTemplates, WsVersionBar, WsUnavailable, WsUnsavedBar, Button, wsToast, type WsFace, type WsPop, type WsSave, type WsUnsaved } from '@alcove/ui';
+import { WsCantOpen, WsDoc, WsDocBy, WsDocHead, WsDocMenu, WsFade, WsFollowBar, WsGoneBar, WsMentionPrompt, WsMovePicker, WsOfflineBar, WsOfflineEmpty, WsPage, WsPopover, WsReadOnlyBar, WsScroll, WsTemplates, WsVersionBar, WsUnavailable, WsUnsavedBar, Button, wsToast, type WsFace, type WsPop, type WsSave, type WsUnsaved } from '@alcove/ui';
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { useLive, useNow, useOnline } from '~/lib/live';
 import { agoLabel } from '~/lib/time';
@@ -16,7 +16,6 @@ import { useDocumentMedia } from './DocumentMedia';
 import { Editor } from './editor/lazy';
 import { useHistory } from './History';
 import { TEMPLATES } from './editor/templates';
-import type { DocSection } from './editor/sections';
 import type { BlockDropTarget, EditorHandle, EditorProps, EditorToast, MovingBlock, Point, Rect } from './editor/types';
 import { PersonCard } from './People';
 import { facesIn } from './presence';
@@ -24,7 +23,6 @@ import { KeyboardBar } from './KeyboardBar';
 import { HearIt } from './live/HearIt';
 import { useEditorCall } from './live/useEditorCall';
 import { useVideoHandlers } from './playing';
-import { presentingStrip } from './Presentation';
 import { Rescue, type CopyTo } from './Rescue';
 import { useBackOnline, useOpensAgain, useSession, type Opened } from './opened';
 import { withDocument } from './session';
@@ -40,7 +38,7 @@ export function landOn(editor: EditorHandle, block: string): void {
   editor.scrollToBlock(block, { flash: true });
 }
 
-function Page({ ws, item, session, status, onSections }: { ws: Ws; item: WorkspaceItem; session: DocSession; status: DocStatus; onSections: (sections: readonly DocSection[]) => void }) {
+function Page({ ws, item, session, status }: { ws: Ws; item: WorkspaceItem; session: DocSession; status: DocStatus }) {
   const [editor, setEditor] = useState<EditorHandle | null>(null);
   const now = useNow(60_000);
   const { sections, faces: tagged, tagged: onTagged, ask, answer, notNow } = useTags(ws, item, now);
@@ -209,7 +207,7 @@ function Page({ ws, item, session, status, onSections }: { ws: Ws; item: Workspa
             onComment={readOnly || !ws.self ? undefined : (draft) => setComment({ kind: 'draft', draft })} onOpenThread={(id, rect) => setComment({ kind: 'thread', id, rect })}
             onPresence={(p) => ws.present({ document: item.id, page: null, ...p })}
             media={media.media} onUpload={media.onUpload} onPick={media.onPick} onAttachMedia={media.onAttachMedia}
-            onTitle={(title) => ws.actions.titled(item.id, title)} onToast={toast} onSections={onSections}
+            onTitle={(title) => ws.actions.titled(item.id, title)} onToast={toast}
             onCopyBlockLink={(id) => ws.actions.copyLink(item.id, id)}
             moveTargets={() => others.map((d) => ({ id: d.id, name: nameOf(d) }))} onMoveBlock={moveBlock} blockDrop={blockDrop} onAsk={readOnly ? undefined : alcove.onAsk}
             byline={item.by ? <WsDocBy person={item.by} name={firstName(item.by.name)} edited={`Edited ${agoLabel(item.editedAt, now)}`} /> : undefined}
@@ -249,7 +247,7 @@ export function DocumentPane({ item }: { item: WorkspaceItem }) {
 
 /** The head with nothing to do yet. */
 function Blank({ ws, item }: { ws: Ws; item: WorkspaceItem }) {
-  return presentingStrip(ws.call?.presenting) ?? <WsDocHead crumbs={crumbsOf(ws, item)} save="quiet" onToggleList={ws.toggleList} zen={ws.call?.zen?.on} onZen={ws.call?.zen?.onToggle} />;
+  return <WsDocHead crumbs={crumbsOf(ws, item)} save="quiet" onToggleList={ws.toggleList} />;
 }
 
 const crumbsOf = (ws: Ws, item: WorkspaceItem) => [...(ws.sent.name === null ? [] : [ws.spaceName]), ...foldersAbove(ws.tree, item.id).map(nameOf), nameOf(item)];
@@ -265,13 +263,10 @@ function unsavedOf(status: DocStatus, ready: boolean, guest: boolean): WsUnsaved
 function OpenedPane({ ws, item, opened, reopen }: { ws: Ws; item: WorkspaceItem; opened: Opened; reopen: () => void }) {
   const { session, ready } = opened;
   const status = useLive(session);
-  const [more, setMore] = useState<'menu' | 'move' | 'present' | null>(null);
+  const [more, setMore] = useState<'menu' | 'move' | null>(null);
   const [share, setShare] = useState(false);
   /** Whose face on the head was pressed. */
   const [card, setCard] = useState<string | null>(null);
-  /** Present's preview, and the sections it counts, as the page has them. */
-  const [previewing, setPreviewing] = useState(false);
-  const [sections, setSections] = useState<readonly DocSection[] | null>(null);
   const member = ws.sent.role !== null;
   const canShare = member && item.role === 'edit';
   const changing = ws.canChange && item.role === 'edit' && item.trashedAt === null;
@@ -297,26 +292,21 @@ function OpenedPane({ ws, item, opened, reopen }: { ws: Ws; item: WorkspaceItem;
   if (gone) {
     return (
       <WsDoc>
-        {presentingStrip(ws.call?.presenting) ?? <WsDocHead crumbs={ws.sent.name === null ? [] : [ws.spaceName]} save="quiet" onToggleList={ws.toggleList} zen={ws.call?.zen?.on} onZen={ws.call?.zen?.onToggle} />}
+        <WsDocHead crumbs={ws.sent.name === null ? [] : [ws.spaceName]} save="quiet" onToggleList={ws.toggleList} />
         <WsCantOpen what="document" unsent={rescue !== null}
           action={rescue ?? <Button size="sm" onClick={() => ws.go({ kind: 'home' }, { replace: true })}>Back to {ws.spaceName}</Button>} />
       </WsDoc>
     );
   }
 
-  /* Present is at the top of every document in a call, once the page knows its sections; on a phone it's in ⋯. Something in Trash can't be presented. */
-  const present = ws.call?.presenting;
-  const preview = present && sections && ready && !trashed ? (onStart: () => void) => (
-    <WsPresentPreview name={nameOf(item)} sections={sections.length} onStart={() => { onStart(); present.start(item.id); }} />
-  ) : null;
   const close = () => setMore(null);
   const morePop: WsPop = {
     open: more !== null, onOpenChange: (to) => setMore(to ? 'menu' : null),
     content: more === 'move' ? (
       <WsMovePicker name={nameOf(item)} space={ws.spaceName} folders={foldersFor(ws.tree, item.id)}
         onRoot={() => { close(); ws.actions.move(item.id, { parent: null }); }} onFolder={(id) => { close(); ws.actions.move(item.id, { parent: id }); }} />
-    ) : more === 'present' && preview ? preview(close) : (
-      <WsDocMenu onShare={canShare ? () => { close(); setShare(true); } : undefined} onPresent={preview ? () => setMore('present') : undefined}
+    ) : (
+      <WsDocMenu onShare={canShare ? () => { close(); setShare(true); } : undefined}
         onHistory={() => { close(); history.show(); }}
         onDuplicate={changing ? () => { close(); ws.actions.duplicate(item.id); } : undefined}
         onMove={changing ? () => setMore('move') : undefined}
@@ -330,19 +320,15 @@ function OpenedPane({ ws, item, opened, reopen }: { ws: Ws; item: WorkspaceItem;
   }));
   /* Scrolling or pressing the page stops following: you stay where you are. */
   const stayHere = () => ws.stopFollowing();
-  const presentPop: WsPop | undefined = preview ? { open: previewing, onOpenChange: setPreviewing, content: preview(() => setPreviewing(false)) } : undefined;
   const save: WsSave = status.closed === 'unavailable' || offline ? 'offline' : status.closed === 'session' ? (status.unsent ? 'failed' : 'quiet') : ready ? status.status : 'quiet';
   /* Who to ask to edit: in a call, someone outside the workspace was let in by the organizer, so it's them. */
   const askToEdit = ws.call?.chooser && !member ? ws.call.chooser : item.by ? firstName(item.by.name) : 'whoever shared it';
   return (
     <>
     <WsDoc>
-      {presentingStrip(ws.call?.presenting) ?? (
-        <WsDocHead crumbs={crumbsOf(ws, item)} save={save} onToggleList={ws.toggleList} faces={faces}
-          share={canShare ? { open: share, onOpenChange: setShare, content: <ShareSheet item={item} /> } : undefined} present={presentPop} more={morePop}
-          zen={ws.call?.zen?.on} onZen={ws.call?.zen?.onToggle} />
-      )}
-      <WsFollowBar following={ws.following} onStop={() => ws.stopFollowing()} />
+      <WsDocHead crumbs={crumbsOf(ws, item)} save={save} onToggleList={ws.toggleList} faces={faces}
+        share={canShare ? { open: share, onOpenChange: setShare, content: <ShareSheet item={item} /> } : undefined} more={morePop} />
+      <WsFollowBar following={ws.following?.quiet ? null : ws.following} onStop={() => ws.stopFollowing()} />
       <WsOfflineBar show={offline && ready && status.closed === null} />
       <WsUnsavedBar why={unsaved} saveable={copyTo !== undefined}>{rescue}</WsUnsavedBar>
       <WsGoneBar who={trashed ? who : null} onRestore={item.role === 'edit' ? () => ws.actions.restore(item.id) : undefined} unsent={status.unsent} />
@@ -350,7 +336,7 @@ function OpenedPane({ ws, item, opened, reopen }: { ws: Ws; item: WorkspaceItem;
       <WsVersionBar when={history.reading} />
       {/* The page stays open behind a version: nothing's typed into it, and it's as it was on coming back. */}
       {ready
-        ? <WsScroll hidden={history.reading !== null} inert={history.reading !== null} onWheel={stayHere} onTouchMove={stayHere} onPointerDown={stayHere}><Page key={opened.round} ws={ws} item={item} session={session} status={status} onSections={setSections} /></WsScroll>
+        ? <WsScroll hidden={history.reading !== null} inert={history.reading !== null} onWheel={stayHere} onTouchMove={stayHere} onPointerDown={stayHere}><Page key={opened.round} ws={ws} item={item} session={session} status={status} /></WsScroll>
         : status.closed === 'unavailable' ? <WsUnavailable /> : offline && <WsOfflineEmpty />}
       {history.page}
     </WsDoc>

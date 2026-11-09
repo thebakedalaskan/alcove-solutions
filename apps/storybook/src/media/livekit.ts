@@ -9,8 +9,8 @@
  *     people in this browser's encrypted group, with media only from the part of the call it's in (`playOnly` narrows it
  *     further, as the real room does). A share is drawn (src/media/screens.ts). Nobody else's camera is ever on, so
  *     people show in their arches.
- *   - Your connection reconnecting, dropping, or ending when the host ends the call or removes you, and the host muting
- *     your microphone, come from the script too.
+ *   - Your connection reconnecting, dropping, or ending when the host ends the call or removes you, the host muting
+ *     your microphone, and the organizer stopping what you share, come from the script too.
  *
  * Nothing is ever sent or played: nobody else's browser is here to hear it.
  */
@@ -29,10 +29,10 @@ const PUBLISH_MS = 700;
 /** A track's sid, as LiveKit names them: `TR_` and a kind. */
 const sidOf = (kind: 'AM' | 'CV' | 'SS', seed: string) => `TR_${kind}${seed.replace(/[^A-Za-z0-9]/g, '').slice(-14)}`;
 /** A room nobody scripted: just you. */
-const ALONE: RoomSide = { people: {}, connection: 'connected', endReason: null, mutedYou: 0 };
+const ALONE: RoomSide = { people: {}, connection: 'connected', endReason: null, mutedYou: 0, sharesStopped: 0 };
 
 class ScriptedRoom implements Real.CallRoom {
-  private view: RoomView = { connection: 'connecting', endReason: null, people: {}, hostMuted: 0, audioBlocked: false, screenFailed: null };
+  private view: RoomView = { connection: 'connecting', endReason: null, people: {}, hostMuted: 0, shareStopped: 0, audioBlocked: false, screenFailed: null };
   private listeners = new Set<() => void>();
   private readonly side: LiveStore<RoomSide> | null;
   private ready = false;
@@ -42,8 +42,9 @@ class ScriptedRoom implements Real.CallRoom {
   private only: ((identity: string) => boolean) | null = null;
   /** Shares whose sound this listener muted, by the share's sid. */
   private quiet = new Set<string>();
-  /** How many of the host's mutes this room has carried out. */
+  /** How many of the host's mutes this room has carried out, and of the organizer's stops of what you share. */
   private mutes: number;
+  private shareStops: number;
   /** Your share as published (a change of what's shared keeps its sid), and one on its way. */
   private shared: { stream: MediaStream; sid: string } | null = null;
   private publishing: { stream: MediaStream; timer: ReturnType<typeof setTimeout> } | null = null;
@@ -54,6 +55,7 @@ class ScriptedRoom implements Real.CallRoom {
   constructor(private readonly session: CallSession, private readonly media: LocalMedia) {
     this.side = session instanceof ScriptedCall ? session.livekit : null;
     this.mutes = this.sideNow().mutedYou;
+    this.shareStops = this.sideNow().sharesStopped;
     const follow = () => this.follow();
     this.stops.push(session.crypto.subscribe(follow), media.subscribe(() => { this.publish(); this.follow(); }));
     if (this.side) this.stops.push(this.side.subscribe(follow));
@@ -78,6 +80,14 @@ class ScriptedRoom implements Real.CallRoom {
       if (this.media.getSnapshot().mic) {
         void this.media.setMic(false);
         this.view = { ...this.view, hostMuted: this.view.hostMuted + 1 };
+      }
+    }
+    // The organizer stopped what you share: LiveKit mutes it for everyone, and your browser lets it go.
+    if (side.sharesStopped > this.shareStops) {
+      this.shareStops = side.sharesStopped;
+      if (this.media.getSnapshot().screen) {
+        this.media.stopScreen();
+        this.view = { ...this.view, shareStopped: this.view.shareStopped + 1 };
       }
     }
     const connection: RoomView['connection'] = side.connection === 'ended' ? 'ended' : !this.ready ? 'connecting' : side.connection;

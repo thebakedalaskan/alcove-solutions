@@ -11,9 +11,10 @@ import { personOf, portraitFor } from '../account/portraits';
 import { MeetingManifest } from '../meetings/service';
 import type { Loaded } from '../../vault';
 import { mayStandIn } from './hosting';
-import { Joined, placeOf, readableBy } from './places';
+import { tx } from '../../db';
+import { Joined, admissionFresh, placeOf, readableBy } from './places';
 import * as transcripts from '../recordings/transcripts';
-import { load, settle, type Stored } from './state';
+import { load, save, settle, type Stored } from './state';
 
 /**
  * Who is asking about a call: anyone who joined it, by their call pass. The organizer's keys are opened for
@@ -84,6 +85,16 @@ export async function viewerOf(d: Deps, pass: CallPass, session: () => Promise<O
   // Never more than the pass says, except a guest the organizer let in and so added to the invite.
   const role: CallRole = pass.role === 'guest' && mine?.role === 'invited' ? 'invited' : pass.role;
   if (mine?.status === 'in') asked(pass.callId, pass.identity);
+  // Waiting polls are a durable heartbeat. Expired requests cannot revive or race a host's commit.
+  if (mine?.status === 'waiting' && Date.now() - mine.askedAt >= 15_000) {
+    await tx(organizer.pool, async (c) => {
+      const held = await load(organizer, c, pass.callId, true);
+      const current = held.state.people.find((p) => p.identity === pass.identity);
+      if (held.row.state !== 'live' || current?.status !== 'waiting') return;
+      const fresh = admissionFresh(current);
+      await save(organizer, c, pass.callId, { ...held.state, people: held.state.people.map((p) => p.identity === pass.identity ? { ...p, askedAt: Date.now(), status: fresh ? 'waiting' : 'denied' } : p) });
+    });
+  }
   return { pass, organizer, session, isOrganizer, isHost, stale: (mine?.hosting.length ?? 0) > 0 && s.host !== pass.identity, inCall: isOrganizer || isHost || mine?.status === 'in', role };
 }
 

@@ -12,13 +12,14 @@ import { createHash, randomBytes } from 'node:crypto';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { SignJWT, exportJWK, generateKeyPair } from 'jose';
 import { z } from 'zod';
+import { createFakeDrive, DRIVE_SCOPE, type FakeDrive } from './fake-drive';
 
 export interface GoogleUser { sub: string; email: string; name?: string | undefined; picture?: string | undefined; emailVerified?: boolean | undefined }
 /**
  * Ways the next sign-in goes wrong on Google's side; `no-calendar` is someone unticking calendar access, and
  * `no-freebusy` a grant from before free/busy was asked for.
  */
-export type Spoil = 'deny' | 'wrong-audience' | 'wrong-nonce' | 'expired' | 'no-calendar' | 'no-freebusy';
+export type Spoil = 'deny' | 'wrong-audience' | 'wrong-nonce' | 'expired' | 'no-calendar' | 'no-freebusy' | 'no-drive';
 /** A calendar event as Google stores it (the fields Alcove uses). */
 export interface FakeEvent {
   id: string; status?: string; summary?: string; description?: string; location?: string; htmlLink?: string; eventType?: string; hangoutLink?: string; transparency?: string;
@@ -34,6 +35,7 @@ export interface FakeEvent {
   extendedProperties?: { private?: Record<string, string> };
 }
 export interface FakeGoogle {
+  drive: FakeDrive;
   issuer: string;
   clientId: string;
   clientSecret: string;
@@ -193,7 +195,8 @@ export async function startFakeGoogle(): Promise<FakeGoogle> {
   const unanswered = new Set<ServerResponse>();
   const hangUp = () => { for (const res of unanswered) res.destroy(); unanswered.clear(); };
   let issuer = '';
-  let registered = '';
+  const registered = new Set<string>();
+  const drive = createFakeDrive();
   let pending: { user: GoogleUser; spoil: Spoil | undefined } | null = null;
   const calendarOf = (sub: string) => { let c = calendars.get(sub); if (!c) { c = []; calendars.set(sub, c); } return c; };
   const issueAccess = (sub: string, scopes: string[]) => { const t = randomBytes(16).toString('hex'); accessTokens.set(t, { sub, scopes }); return t; };
@@ -338,30 +341,37 @@ export async function startFakeGoogle(): Promise<FakeGoogle> {
       res.writeHead(200, { 'content-type': 'image/png' });
       return res.end(PNG);
     }
+    if (url.pathname.startsWith('/drive/v3/') || url.pathname.startsWith('/upload/drive/v3/') || url.pathname.startsWith('/drive-upload/')) {
+      const token = accessTokens.get((req.headers.authorization ?? '').replace(/^Bearer /, ''));
+      return drive.handle(req, res, url, token ? { ...token, email: users.get(token.sub) ?? '' } : undefined);
+    }
     if (url.pathname.startsWith('/calendar/v3/calendars/primary/events')) return calendarApi(req, res, url);
     if (req.method === 'POST' && url.pathname === '/calendar/v3/freeBusy') return freeBusy(req, res, url);
     if (req.method === 'GET' && url.pathname === '/authorize') {
       const q = url.searchParams;
       const asked = (q.get('scope') ?? '').split(' ');
-      const valid = q.get('client_id') === clientId && q.get('redirect_uri') === registered && q.get('response_type') === 'code'
-        && ['openid', 'email', 'profile'].every((x) => asked.includes(x)) && q.get('code_challenge_method') === 'S256' && !!q.get('code_challenge') && !!q.get('nonce');
+      const valid = q.get('client_id') === clientId && registered.has(q.get('redirect_uri') ?? '') && q.get('response_type') === 'code'
+        && (['openid', 'email', 'profile'].every((x) => asked.includes(x)) || (asked.length === 1 && asked[0] === DRIVE_SCOPE)) && q.get('code_challenge_method') === 'S256' && !!q.get('code_challenge') && (asked.includes(DRIVE_SCOPE) || !!q.get('nonce'));
       if (!valid) return send(res, 400, { error: 'invalid_request' });
-      const back = new URL(registered);
+      const redirectUri = q.get('redirect_uri') ?? '';
+      const back = new URL(redirectUri);
       back.searchParams.set('state', q.get('state') ?? '');
       const who = pending;
       if (!who || who.spoil === 'deny') back.searchParams.set('error', 'access_denied');
       else {
         // Granular consent: someone can untick the calendar. Earlier grants carry over (include_granted_scopes).
         const before = consented.get(who.user.sub);
-        const unticked = who.spoil === 'no-calendar' ? [CALENDAR, FREEBUSY] : who.spoil === 'no-freebusy' ? [FREEBUSY] : [];
+        const unticked = who.spoil === 'no-calendar' ? [CALENDAR, FREEBUSY] : who.spoil === 'no-freebusy' ? [FREEBUSY] : who.spoil === 'no-drive' ? [DRIVE_SCOPE] : [];
         const scopes = [...new Set([...asked.filter((x) => !unticked.includes(x)), ...(q.get('include_granted_scopes') === 'true' ? before ?? [] : [])])];
         // Like Google: a refresh token for offline access only the first time someone agrees, or when asked to agree again.
         const refresh = q.get('access_type') === 'offline' && (!before || (q.get('prompt') ?? '').includes('consent'));
         consented.set(who.user.sub, new Set([...(before ?? []), ...scopes]));
         users.set(who.user.sub, who.user.email.toLowerCase());
         const code = randomBytes(16).toString('hex');
-        grants.set(code, { user: who.user, nonce: q.get('nonce') ?? '', challenge: q.get('code_challenge') ?? '', redirectUri: registered, spoil: who.spoil, scopes, refresh });
+        grants.set(code, { user: who.user, nonce: q.get('nonce') ?? '', challenge: q.get('code_challenge') ?? '', redirectUri, spoil: who.spoil, scopes, refresh });
         back.searchParams.set('code', code);
+        const picked = drive.picked(who.user.sub);
+        if (q.get('trigger_onepick') === 'true' && picked && scopes.includes(DRIVE_SCOPE)) back.searchParams.set('picked_file_ids', picked);
       }
       res.writeHead(302, { location: back.toString() });
       res.end();
@@ -416,8 +426,8 @@ export async function startFakeGoogle(): Promise<FakeGoogle> {
   const addr = server.address();
   issuer = `http://127.0.0.1:${typeof addr === 'object' && addr ? addr.port : 0}`;
   return {
-    issuer, clientId, clientSecret,
-    register: (uri) => { registered = uri; },
+    issuer, clientId, clientSecret, drive,
+    register: (uri) => { registered.add(uri); },
     next: (user, spoil) => { pending = { user, spoil }; },
     calendar: calendarOf,
     freeBusy: (email, busy) => { availability.set(email, busy); },

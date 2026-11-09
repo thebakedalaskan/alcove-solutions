@@ -25,8 +25,7 @@ afterEach(async () => { await Promise.all(inRoom.splice(0).map((p) => p.disconne
 let seq = 0;
 const unique = (who = 'person') => `${who}.${Date.now().toString(36)}${(seq++).toString(36)}@tests.example`;
 type Account = Browser & { email: string; name: string; ownerId: string };
-async function account(email = unique()): Promise<Account> {
-  const b = h.browser();
+async function account(email = unique(), b = h.browser()): Promise<Account> {
   const { session } = await b.api.auth.signIn('sso', { email });
   return { ...b, email: session.user.email, name: session.user.name, ownerId: session.ownerId };
 }
@@ -771,10 +770,10 @@ describe('who is told of them', () => {
  * A call Art hosts, with a board saved in his workspace brought to it, that Kofi and Priya can edit and Lena can only read,
  * and the retro drawn on it.
  */
-async function savedBoardCall() {
+async function savedBoardCall(priyaBrowser?: Browser) {
   const art = await account();
   const kofi = await account();
-  const priya = await account();
+  const priya = await account(undefined, priyaBrowser);
   const lena = await account();
   const id = await workspace(art, 'Product', [[kofi, 'edit'], [priya, 'edit'], [lena, 'read']]);
   const saved = (await art.api.workspaces.items.create(id, { kind: 'board', name: 'Planning' })).id;
@@ -796,6 +795,50 @@ async function organizerLeaves(host: CallSession, k: CallSession) {
 const cantRead = { code: 'forbidden', status: 403, message: 'You can read this, but not change it.' };
 
 describe('with neither whoever started it nor the organizer in the call', () => {
+  it('keeps the timer’s starter out while their successful departure response is still on its way', async () => {
+    const browser = h.browser();
+    let releaseDeparture = () => {};
+    const departureResponse = new Promise<void>((resolve) => { releaseDeparture = resolve; });
+    let releaseRead = () => {};
+    const readResponse = new Promise<void>((resolve) => { releaseRead = resolve; });
+    let departing = false;
+    let departed = false;
+    let heldReads = 0;
+    let recoveries = 0;
+    const delayed = h.browser({ fetch: async (input, init) => {
+      const path = new URL(input instanceof Request ? input.url : input.toString()).pathname;
+      if (departing && path.endsWith('/mls/back')) recoveries++;
+      const response = await browser.fetch(input, init);
+      // Only slow real responses: the server still processes every request and returns its real answer.
+      if (departing && path.endsWith('/mls')) { heldReads++; await readResponse; }
+      if (departing && path.endsWith('/leave')) { departed = true; await departureResponse; }
+      return response;
+    } });
+    const { host, k, p, l } = await savedBoardCall(delayed);
+    await p.startTimer(10);
+    await organizerLeaves(host, k);
+    departing = true;
+    const leaving = p.leave();
+    try {
+      await until(() => departed, 'the server to accept the departure');
+      await until(() => !k.crypto.getSnapshot().members.includes(p.ticket.identity), 'the new host to move the keys on without the starter');
+      await until(() => heldReads > 0, 'a concurrent keys read while the departure response is delayed');
+      // Another departure can be refused while the successful leave's answer is still in flight.
+      expect(await code(p.handOff(k.ticket.identity))).toBe('forbidden');
+      releaseRead();
+      await p.refresh({ call: false, log: true });
+      expect(recoveries, 'a deliberate departure never automatically asks to come back').toBe(0);
+      expect((await board(k)).timer).toMatchObject({ length: 600, canStop: true });
+      expect(await refusal(l.stopTimer())).toEqual(cantRead);
+    } finally {
+      releaseRead();
+      releaseDeparture();
+      await leaving;
+    }
+    await k.stopTimer();
+    await k.leave();
+  });
+
   it('lets anyone who can edit the board stop the timer, or start it over, until one of them is back', async () => {
     const { code: c, host, k, p, l, priya } = await savedBoardCall();
     await p.startTimer(10);

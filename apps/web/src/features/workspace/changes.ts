@@ -3,8 +3,8 @@
  * change is laid over the tree it sent, and it's taken off again if Alcove refuses it. Applying one to a tree that
  * already has it changes nothing, so it doesn't matter which arrives first.
  */
-import type { ItemPlace, WorkspaceItem, WorkspaceTree } from '@alcove/api';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AlcoveApiError, type ItemPlace, type LiveStore, type WorkspaceItem, type WorkspaceTree, type WorkspaceView } from '@alcove/api';
+import { useLayoutEffect, useMemo, useSyncExternalStore } from 'react';
 
 export type TreeChange =
   | { kind: 'add'; item: WorkspaceItem; place: ItemPlace }
@@ -52,34 +52,63 @@ const caughtUp = (p: Pending, tree: WorkspaceTree | null): boolean => {
 };
 
 /** The tree as it should look now, and `change`, which shows a change while `work` carries it out. */
-export function useLaidOver(tree: WorkspaceTree | null) {
-  const [pending, setPending] = useState<Pending[]>([]);
-  const count = useRef(0);
-  const latest = useRef(tree);
-  latest.current = tree;
-  const timers = useRef(new Set<ReturnType<typeof setTimeout>>());
-  useEffect(() => { const t = timers.current; return () => { t.forEach(clearTimeout); }; }, []);
-  useEffect(() => {
-    setPending((was) => { const kept = was.filter((p) => !caughtUp(p, tree)); return kept.length === was.length ? was : kept; });
-  }, [tree]);
-
-  const items = useMemo(() => pending.reduce((all, p) => withChange(all, p.change), tree?.items ?? []), [tree, pending]);
-
-  const change = useCallback(async <T,>(c: TreeChange, work: () => Promise<T>): Promise<T> => {
-    const n = ++count.current;
-    const drop = () => setPending((was) => was.filter((p) => p.n !== n));
-    setPending((was) => [...was, { n, change: c, answeredAt: undefined }]);
+export class TreeChanges implements LiveStore<WorkspaceItem[]> {
+  private pending: Pending[] = [];
+  private count = 0;
+  private items: WorkspaceItem[];
+  private listeners = new Set<() => void>();
+  private timers = new Set<ReturnType<typeof setTimeout>>();
+  private stop: (() => void) | null = null;
+  private tail: Promise<void> = Promise.resolve();
+  private generation = 0;
+  constructor(private store: LiveStore<WorkspaceView>) { this.items = store.getSnapshot().tree?.items ?? []; }
+  getSnapshot = () => this.items;
+  subscribe = (listener: () => void) => {
+    this.listeners.add(listener);
+    if (!this.stop) { this.stop = this.store.subscribe(this.refresh); this.refresh(); }
+    return () => { this.listeners.delete(listener); if (!this.listeners.size) { this.stop?.(); this.stop = null; } };
+  };
+  private refresh = () => {
+    const tree = this.store.getSnapshot().tree;
+    // An answered newer name must stay over an older pending name, even if the stream already has the newer one.
+    const blocked = (p: Pending) => this.pending.some((before) => before.n < p.n && before.answeredAt === undefined);
+    this.pending = this.pending.filter((p) => blocked(p) || !caughtUp(p, tree));
+    this.items = this.pending.reduce((all, p) => withChange(all, p.change), tree?.items ?? []);
+    this.listeners.forEach((listener) => listener());
+  };
+  close = () => { this.generation++; this.stop?.(); this.stop = null; this.timers.forEach(clearTimeout); this.timers.clear(); this.pending = []; this.items = []; this.tail = Promise.resolve(); };
+  change = async <T,>(c: TreeChange, work: () => Promise<T>): Promise<T> => {
+    const n = ++this.count;
+    const generation = this.generation;
+    const before = this.tail;
+    let release = () => {};
+    this.tail = new Promise<void>((resolve) => { release = resolve; });
+    const drop = () => { this.pending = this.pending.filter((p) => p.n !== n); this.refresh(); };
+    this.pending.push({ n, change: structuredClone(c), answeredAt: undefined });
+    this.refresh();
     try {
+      await before;
+      if (generation !== this.generation) throw new AlcoveApiError('forbidden', 'The workspace closed before this change could be sent. Open it again to retry.');
       const answer = await work();
-      setPending((was) => was.map((p) => (p.n === n ? { ...p, answeredAt: latest.current } : p)));
-      const t = setTimeout(() => { timers.current.delete(t); drop(); }, KEEP_MS);
-      timers.current.add(t);
+      if (generation !== this.generation) return answer;
+      this.pending = this.pending.map((p) => p.n === n ? { ...p, answeredAt: this.store.getSnapshot().tree } : p);
+      const t = setTimeout(() => {
+        this.timers.delete(t);
+        if (!this.pending.some((p) => p.n < n && p.answeredAt === undefined)) drop();
+      }, KEEP_MS);
+      this.timers.add(t);
       return answer;
     } catch (e) {
-      drop();
+      if (generation === this.generation) drop();
       throw e;
-    }
-  }, []);
+    } finally { release(); }
+  };
+}
 
-  return { items, change };
+/** The live stream remains authoritative; React reads just the owner’s projected item list. */
+export function useLaidOver(store: LiveStore<WorkspaceView>) {
+  const owner = useMemo(() => new TreeChanges(store), [store]);
+  const items = useSyncExternalStore(owner.subscribe, owner.getSnapshot, owner.getSnapshot);
+  useLayoutEffect(() => owner.close, [owner]);
+  return { items, change: owner.change };
 }

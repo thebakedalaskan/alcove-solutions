@@ -1,3 +1,7 @@
+import { type CallNotificationsApi } from './notifications';
+import { type CallTimerControl, type CallTimerSequenceInput } from './timers';
+import { type FollowUpCreate, type FollowUpPatch, type FollowUpReview } from '../notes/follow-ups';
+import { type CallFeedbackKind, type CallQuestionStatus } from './attention';
 import { type PersonalApi } from '../notes/personal';
 import { type SeriesAnswerPart } from '../notes/series';
 import { type AudioPiece, type ScreenFrame, type ScreenFrameReceipt, type TranscriptClip } from '../recordings/capture';
@@ -11,13 +15,17 @@ import { type CaptureDevicePart } from './capture';
 import { type CallAnswer, type CallMoment, type CatchUp, type CatchUpRange, type CatchUpWindow } from './catchup';
 import { type CallMoveOut, type MoveMedia } from './moves';
 import { type CallEndResult, type CallState, type CallTicket } from './state';
-import { type CallFollowUps, type CallWorkspaceSwitch, type DocFollowUpTick, type PresentKind } from './workspace';
+import { type CallFollowUps, type CallWorkspaceSwitch, type DocFollowUpTick, type PresentStart } from './workspace';
+import { CallChatMentionSchema, validChatMentions, type CallChatMention } from './chat-mentions';
+import { DirectKeyAnnouncementSchema, type DirectMessagesApi } from './direct-messages';
+import { CallChatThreadSchema, type CallChatThread } from './chat-threads';
+
 /**
  * A chat message, decrypted in this browser. `from` is the sender's identity, as MLS vouches for it; `place` is the
  * part of the call it was sent in (`main`, or a breakout room's ID), whose group alone could read it. `sending`: one of
  * yours that isn't in the log yet, so nobody can react to it.
  */
-export interface CallChatMessage { id: string; from: string; isMe: boolean; text: string; at: number; place: string; sending: boolean; reactions: CallChatReaction[] }
+export interface CallChatMessage { id: string; from: string; isMe: boolean; text: string; mentions: CallChatMention[]; thread: CallChatThread | null; at: number; place: string; sending: boolean; failed: boolean; reactions: CallChatReaction[] }
 
 /** The emoji someone can react to a chat message with, by name: the wire never carries a glyph. */
 export const CallReactionSchema = z.enum(['thumbs-up', 'thumbs-down', 'heart', 'smile', 'laugh', 'wow', 'sad', 'party']);
@@ -29,6 +37,22 @@ export interface CallChatReaction { reaction: CallReaction; by: string[] }
 
 /** The longest chat message in a call, in characters. */
 export const CALL_CHAT_MAX = 4000;
+
+/**
+ * Chat and its selected recipients travel inside the MLS application message, never in server-readable metadata.
+ * Existing encrypted chat has no mentions field and opens with no selected recipients.
+ */
+export const CallChatTextSchema = z.object({
+  text: z.string().min(1).max(CALL_CHAT_MAX), mentions: z.array(CallChatMentionSchema).max(50).default([]), thread: CallChatThreadSchema.nullable().default(null), at: z.number()
+}).refine(validChatMentions, 'Chat mentions must mark separate names in the message.');
+
+/** The application payload, parsed only after authenticated decryption. */
+export const CallChatPayloadSchema = z.union([
+  z.object({ directKey: DirectKeyAnnouncementSchema, at: z.number() }),
+  CallChatTextSchema,
+  z.object({ react: z.object({ target: z.string().min(1).max(64), reaction: CallReactionSchema, on: z.boolean() }), at: z.number() })
+]);
+export type CallChatPayload = z.infer<typeof CallChatPayloadSchema>;
 
 /**
  * How much longer data browsers send each other is once sealed (CallSession.sealData): a version byte, the key's ring
@@ -105,6 +129,12 @@ export interface BreakoutPlan { rooms: { name: string; emails: string[] }[]; min
 
 
 export interface CallSession extends LiveStore<CallState> {
+  /** Content-free candidates from this exact connection’s current authorized snapshots. */
+  readonly notifications: CallNotificationsApi;
+  /** Recipient-only encrypted messages, kept apart from room chat and every shared capture surface. */
+  readonly direct: DirectMessagesApi;
+  setTimerSequence(input: CallTimerSequenceInput): Promise<void>;
+  controlTimer(input: CallTimerControl): Promise<void>;
   /** Who you are in the call, and this person's pass for the call's requests. */
   readonly ticket: CallTicket;
   /** The call's encryption as this browser sees it. */
@@ -119,7 +149,11 @@ export interface CallSession extends LiveStore<CallState> {
   /** Fetches the call and its MLS log again (other people's chat, notes changes, transcript lines and keys arrive this way), or only what a nudge says changed. */
   refresh(what?: { call: boolean; log: boolean } | undefined): Promise<void>;
   /** Encrypted in this browser for everyone in the group of the part of the call you're in. Nobody who comes later can read it. */
-  sendChat(text: string): Promise<void>;
+  sendChat(text: string, mentions?: readonly CallChatMention[], thread?: CallChatThread | null): Promise<void>;
+  /** Retry the same failed encrypted message in its original conversation, never as a new room message. */
+  retryChat(messageId: string): Promise<void>;
+  /** Mark readable chat messages as read for this person's seat, shared with their other clients. */
+  readChat(ids: readonly string[]): Promise<void>;
   /**
    * Adds (`on`) or takes back your reaction to a chat message (by its ID, once it's in the log), encrypted like chat
    * for everyone in the group of the part of the call you're in.
@@ -169,8 +203,22 @@ export interface CallSession extends LiveStore<CallState> {
   shareFrame(frame: ScreenFrame): Promise<ScreenFrameReceipt>;
   /** The presenter's own browser: one of its shares ended, so what it showed last stops there in the notes. */
   shareEnded(share: string): Promise<void>;
-  /** Raises or lowers your hand; everyone in the call sees it. */
-  setHand(up: boolean): void;
+  /** Raises or lowers your hand for your room and the host. Resolves once confirmed. */
+  setHand(up: boolean): Promise<void>;
+  /** Host only: lowers this exact queued entry, so an older click cannot lower a new raise. */
+  lowerHand(entryId: string): Promise<void>;
+  /** Host only: clears raised hands across all rooms. */
+  clearHands(): Promise<void>;
+  /** Posts explicit Q&A for the people here now; reuse the ID to retry the same words. */
+  postQuestion(id: string, text: string): Promise<void>;
+  /** One vote per signed-in account, or per guest call person, within the original audience. */
+  voteQuestion(id: string, on: boolean): Promise<void>;
+  /** Host only, and only for a question in their original audience. */
+  resolveQuestion(id: string, status: CallQuestionStatus): Promise<void>;
+  /** Host only: pins an accessible open question, replacing the room's pin; null clears it. */
+  pinQuestion(id: string | null): Promise<void>;
+  /** Room-only feedback for 15 seconds on the server clock; null clears yours. */
+  setFeedback(kind: CallFeedbackKind | null): Promise<void>;
   /** Whether others may point at and mark what you share; everyone sees it. Resolves once the server has it. */
   letOthersPoint(on: boolean): Promise<void>;
   /** Organizer only: whether anyone may point at and mark shared screens in this call. Resolves once the server has it. */
@@ -226,11 +274,13 @@ export interface CallSession extends LiveStore<CallState> {
    */
   tickFollowUp(id: string, done: boolean): Promise<void>;
   /**
-   * Anyone in the call who gets the notes: adds a follow-up nobody said, in your own words, for you, for everyone in that
-   * part of the call. It's ticked with `tickFollowUp`, comes with the call (`CallState.liveNotes.added`), and is yours in
+   * Anyone in the call who gets the notes: adds an actual follow-up in your own words, with an invited owner or nobody
+   * and an optional date, for everyone in that part of the call. It's ticked with `tickFollowUp`, comes with the call (`CallState.liveNotes.added`), and keeps its identity in
    * the note when the call ends. The same words again add nothing. Refused where ticking is, and where notes have never been on.
    */
-  addFollowUp(text: string): Promise<void>;
+  addFollowUp(input: FollowUpCreate): Promise<void>;
+  updateFollowUp(id: string, patch: FollowUpPatch): Promise<void>;
+  reviewFollowUp(review: FollowUpReview): Promise<void>;
   /**
    * Opening Workspace, for anyone in the call: the first time, it settles the call's home (the meeting's, else a new one
    * named after the call and the day, where this browser is), with the call's folder in it, and the next call in a series
@@ -257,12 +307,19 @@ export interface CallSession extends LiveStore<CallState> {
   grantWorkspaceAsk(askId: string, documentId: string, role: DocumentRole): Promise<void>;
   /** Organizer only: says not now to an ask. Whoever asked is told. */
   declineWorkspaceAsk(askId: string): Promise<void>;
-  /** Anyone who can open it: presents a document or board in the call's workspace to the part of the call they're in. */
-  startPresenting(kind: PresentKind, id: string, section?: number | undefined): Promise<void>;
-  /** Whoever started it, or the organizer. */
+  /**
+   * Anyone who can open it: presents the workspace everyone views, or the board open where you are, to the part of the call
+   * you're in, as a new presentation (`CallPresent.key`). One at a time there: refused while someone else presents either, and
+   * starting while you present one presents this in its place.
+   */
+  startPresenting(what: PresentStart): Promise<void>;
+  /** Whoever started it, or the organizer: everyone goes to another of the board's frames. */
   movePresenting(section: number): Promise<void>;
-  /** Whoever started it, or the organizer. */
-  stopPresenting(): Promise<void>;
+  /**
+   * Whoever started it, or the organizer: it ends for whoever presented it, and everyone following keeps it open on their own;
+   * or for everyone (`close`), which closes a board in the call too. Everyone there is told which (`CallWorkspace.ended`).
+   */
+  stopPresenting(close: boolean): Promise<void>;
   /** Anyone who can open the document: plays a video in it for the part of the call they're in, from `positionMs`. */
   startPlaying(documentId: string, mediaId: string, positionMs?: number | undefined): Promise<void>;
   /** Whoever started it, or the organizer: it holds at `positionMs`. */
@@ -276,7 +333,8 @@ export interface CallSession extends LiveStore<CallState> {
   /**
    * Anyone invited, not a guest: opens a board for everyone in the part of the call they're in, in place of whatever's open
    * there. A new one is saved in the call's home, named after the call; a saved one, from whichever workspace it's in, needs
-   * `edit` on it. Resolves once it's open, with `board` up to date.
+   * `edit` on it. Refused while someone else presents a board there, as nothing takes theirs off everyone's stage. Resolves
+   * once it's open, with `board` up to date.
    */
   openBoard(from: BoardOpen): Promise<void>;
   /** Whoever opened it, or the organizer: closes it for everyone. Nothing is deleted, and nobody loses what the call gave them. */
@@ -334,6 +392,11 @@ export interface CallSession extends LiveStore<CallState> {
   /* Host controls, for whoever hosts (refused for anyone else). */
   /** Mutes one of someone's tracks; they unmute themselves. */
   mute(identity: string, trackSid: string): Promise<void>;
+  /**
+   * Organizer only: stops what someone shares (their screen and its sound), for everyone, by their seat. Everyone else is told
+   * who stopped it. Refused when they share nothing.
+   */
+  stopShare(seat: string): Promise<void>;
   /** Disconnects someone. They can come back with the link unless the call is locked. Nobody removes the organizer. */
   remove(identity: string): Promise<void>;
   /** While locked, nobody new can join except the organizer. */

@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { registerDrivePublicRoutes, registerDriveRoutes } from './features/notes/drive-routes';
 import type { Deps } from './context';
 import type { Env } from './http/context';
 import { createHttpRuntime } from './http/runtime';
@@ -29,6 +30,7 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
   registerAgentPublicRoutes(app, runtime);
   registerSystemRoutes(app, runtime);
   registerAuthRoutes(app, runtime);
+  registerDrivePublicRoutes(app, runtime);
   registerCallRoutes(app, runtime);
   registerWorkspaceReaderRoutes(app, runtime);
   registerOwnerMiddleware(app, runtime);
@@ -41,6 +43,7 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
   registerCallOwnerRoutes(app, runtime);
   registerRecordingRoutes(app, runtime);
   registerNoteRoutes(app, runtime);
+  registerDriveRoutes(app, runtime);
   registerWorkspaceRoutes(app, runtime);
   registerBillingRoutes(app, runtime);
 

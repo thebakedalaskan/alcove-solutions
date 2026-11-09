@@ -1,11 +1,13 @@
 /*
  * In the call (user-flows 6): who's here, from you alone to the whole company, people coming and going, whoever's
  * speaking in the speak ring, raised hands, your own camera, and someone asking to join. Everyone's camera is off, so people show in their arches;
- * yours is the browser's made-up camera when you turn it on.
+ * yours is the browser's made-up camera when you turn it on. Around them, the three places: the top bar (what's only yours at
+ * its right: View, Board, Workspace, Notes, Chat and who's here), your side, and the dock with More.
  */
 import type { Meta } from '@storybook/react-vite';
+import { screen } from 'storybook/test';
 import { at, chats, reacts, joins, knocks, leaves, line, lowersHand, mutes, raisesHand, says, unmutes } from '../../src/api/script';
-import { inCall, phone, press } from '../../src/call';
+import { MORE, clearSide, inCall, light, phone, plays, press, reach } from '../../src/call';
 import { pages, type PageArgs } from '../../src/page';
 import { iso } from '../../src/world/clock';
 import { AIKO, ALL_HANDS, CHECK_IN, DIEGO, EVERYONE, KOFI, KOFI_TALKS, MAYA, ONE_ON_ONE, PRIYA, REVIEW, REVIEW_SUMMARY, REVIEW_TALK, SAM } from './talk';
@@ -54,12 +56,92 @@ export const ComingAndGoing = inCall({
   }
 });
 export const ComingAndGoingPhone = phone(ComingAndGoing);
+/** Chat in your side, alone: Aiko's message lands (Chat at the top right counts it), then Chat opens on it, and the reactions come in. */
+export const Chat = {
+  ...ComingAndGoing, name: 'Chat',
+  play: plays(async ({ canvas, step }) => {
+    await step('Wait for Aiko’s message: Chat at the top right says it’s new', async () => {
+      await canvas.findByRole('button', { name: /^Chat, \d+ new$/ }, { timeout: 30000 });
+    });
+  }, reach('Chat'))
+};
+export const ChatPhone = { ...phone(Chat), name: 'Chat, on a phone' };
 
-/** The design review, everyone there and talking it through while notes are on. */
+/** The design review, everyone there and talking it through while notes are on: Notes opens beside the stage by itself on a wide screen. */
 export const FourOfYou = inCall({ scenario: 'call-soon', call: REVIEW, script: { here: REVIEWERS, talk: { lines: REVIEW_TALK }, summary: REVIEW_SUMMARY } });
 export const FourOfYouPhone = phone(FourOfYou);
-/** A phone's shorter dock: the microphone, the camera, the workspace, More and Leave. Chat, Notes, a hand, captions and sharing are under More. */
-export const MorePhone = { ...phone(FourOfYou, 'More, on a phone'), play: press('More: chat, notes, settings') };
+
+/** A message addressed to Art is highlighted when Chat opens, and viewing it clears its unread attention. */
+export const MentionedInChat = inCall({
+  scenario: 'call-soon', call: REVIEW,
+  script: { here: REVIEWERS, cues: at(2, chats(AIKO, '@Art Vandelay, can you review the launch checklist?', ['me'])) }
+}, {
+  play: plays(async ({ canvas }) => { await canvas.findByRole('button', { name: /^Chat, / }, { timeout: 10000 }); }, reach('Chat'))
+});
+export const MentionedInChatPhone = phone(MentionedInChat);
+
+const LONG_MENTION = `@Art Vandelay ${'The launch checklist has the updated empty states, the welcome copy and the call controls. We can review each screen at the small and wide sizes, then collect the remaining questions in the workspace. '.repeat(16)}`;
+/** The addressed words start a long message: opening its end does not mark those words read. */
+export const MentionInLongMessage = inCall({
+  scenario: 'call-soon', call: REVIEW,
+  script: { here: REVIEWERS, cues: at(2, chats(AIKO, LONG_MENTION, ['me'])) }
+}, {
+  play: plays(
+    async ({ canvas, step }) => {
+      await step('Aiko mentions you at the start of a long design discussion', async () => {
+        await canvas.findByRole('button', { name: /^Chat, / }, { timeout: 10000 });
+      });
+    },
+    reach('Chat'),
+    async ({ userEvent, step }) => {
+      await step('Open mention goes to the addressed words. Seeing them clears the unread mention', async () => {
+        await userEvent.click(await screen.findByRole('button', { name: 'Open mention' }));
+      });
+    }
+  )
+});
+export const MentionInLongMessagePhone = phone(MentionInLongMessage);
+
+/** A tag, then a host decision: answer the card, then read Chat to restore the normal tab icon. */
+export const TabAttentionWithoutNotifications = inCall({
+  scenario: 'first-day', call: { id: 'm-attention', title: 'Design review', startsAt: iso(0, 16, 10), minutes: 30, code: 'attn-call-ana', guests: [] },
+  script: { here: REVIEWERS, cues: [...at(2, chats(AIKO, '@Art Vandelay, can you review the checklist?', ['me'])), ...at(4, knocks(DIEGO))] }
+}, { parameters: { opening: { browser: { notifications: 'denied' } } } });
+
+/** Type @ without leaving the composer: arrows choose someone in this room, Enter inserts their identity. */
+export const MentionPicker = {
+  ...FourOfYou, name: 'Mention someone in chat',
+  play: plays(reach('Chat'), async ({ userEvent }) => {
+    await userEvent.type(await screen.findByRole('combobox', { name: 'Message everyone' }), '@');
+  })
+};
+export const MentionPickerPhone = phone(MentionPicker);
+export const MentionPickerLight = light(MentionPicker);
+export const MentionPickerLightPhone = phone(MentionPickerLight);
+
+/** A selected mention has a chip in the composer as well as its words on the line. */
+export const SelectedMention = {
+  ...FourOfYou, name: 'A selected chat mention',
+  play: plays(reach('Chat'), async ({ userEvent }) => {
+    await userEvent.type(await screen.findByRole('combobox', { name: 'Message everyone' }), '@Pri');
+    await userEvent.keyboard('{Enter}');
+    await userEvent.type(await screen.findByRole('combobox', { name: 'Message everyone' }), 'can you review this?');
+  })
+};
+
+/**
+ * More, above the dock: captions, marking a moment, catching up, breakout rooms (the organizer's), then your devices, video
+ * quality, moving to another device and the keyboard's shortcuts. The same on every screen.
+ */
+export const More = { ...FourOfYou, name: 'More', play: plays(clearSide, press(MORE)) };
+/** On a phone the dock is the microphone, the camera, Share, More and Leave, and More starts with a grid of Board, Workspace, Notes, Chat and People, then the hand and Your view. */
+export const MorePhone = { ...phone(FourOfYou, 'More, on a phone'), play: press(MORE) };
+/** Keyboard shortcuts, from More: the call's keys, and a tile's. */
+export const KeyboardShortcuts = { ...FourOfYou, name: 'Keyboard shortcuts', play: press(MORE, { then: ['Keyboard shortcuts'] }) };
+/** View, at the top right: the people (Auto, Speaker or Grid), how they sit beside what's shared, where you see yourself, and Reset my view. Only your screen changes. */
+export const YourView = { ...FourOfYou, name: 'Your view', play: plays(clearSide, press('Your view')) };
+/** On a phone, Your view is in More, and what's open fills the screen, so there's nothing to choose beside it. */
+export const YourViewPhone = { ...phone(FourOfYou, 'Your view, on a phone'), play: press(MORE, { then: ['Your view'] }) };
 
 /** The all-hands, six minutes in: twenty-four people, most of them muted, Priya talking, and a hand going up. */
 export const Many = inCall({
@@ -112,3 +194,11 @@ export const SomeoneAskingToJoin = inCall({
   script: { here: [{ who: PRIYA }, { who: KOFI }], cues: [...at(2, knocks(DIEGO)), ...at(5, knocks(SAM, { byName: true }))] }
 });
 export const SomeoneAskingToJoinPhone = phone(SomeoneAskingToJoin);
+/** People, from the faces at the top right: who's asking to join, Breakout rooms for you, the organizer, who's here and who's invited and not here. */
+export const People = {
+  ...SomeoneAskingToJoin, name: 'People',
+  play: plays(async ({ step }) => {
+    await step('Wait for Diego and Sam to ask', async () => { await screen.findByRole('button', { name: /^People in this call\. 2 asking/ }, { timeout: 15000 }); });
+  }, reach('People'))
+};
+export const PeoplePhone = { ...phone(People), name: 'People, on a phone' };

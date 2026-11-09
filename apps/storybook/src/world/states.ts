@@ -110,7 +110,7 @@ function room(id: string, name: string, people: readonly Person[], from: string,
   const seconds = (t: string) => t.split(':').reduce((s, p) => s * 60 + Number(p), 0);
   return {
     id, name, people: people.map((p) => ({ name: p.name, person: p })), from: seconds(from), to: seconds(to), summary: n.summary,
-    decisions: n.decisions, questions: n.questions, actions: n.actions, chapters: n.chapters, gaps: [], transcript: (n.transcript ?? []).map((l) => ({ ...l, room: { id, name } }))
+    decisions: n.decisions, questions: n.questions, actions: n.actions, suggestions: n.suggestions, chapters: n.chapters, gaps: [], transcript: (n.transcript ?? []).map((l) => ({ ...l, room: { id, name } }))
   };
 }
 const ROOMS = (): NoteRoom[] => [

@@ -5,6 +5,7 @@ import { RouteError } from './features/shell/OfflinePage';
 import { watchDevice } from './lib/device';
 import { log } from './lib/log';
 import { qk } from './lib/queries';
+import { interactiveWrites } from './lib/queryWrites';
 import { routeTree } from './routeTree.gen';
 
 export function getRouter() {
@@ -20,7 +21,7 @@ export function getRouter() {
     queryCache: new QueryCache({ onError }),
     mutationCache: new MutationCache({ onError }),
     // A request that didn't get through is tried twice more, unless there's no connection at all: then the screen says so at once.
-    defaultOptions: { queries: { staleTime: 20_000, retry: (n, e) => n < 2 && errorCode(e) === 'network' && navigator.onLine, refetchOnWindowFocus: false } }
+    defaultOptions: { mutations: interactiveWrites, queries: { staleTime: 20_000, retry: (n, e) => n < 2 && errorCode(e) === 'network' && navigator.onLine, refetchOnWindowFocus: false } }
   });
   watchDevice(queryClient);
   const router = createRouter({

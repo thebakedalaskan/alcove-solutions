@@ -13,7 +13,7 @@ import pg from 'pg';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import * as Y from 'yjs';
 import { z } from 'zod';
-import { id128, openJson, sealJson, sealRecord, stateKey, toJson, utf8 } from '../../crypto';
+import { id128, openJson, sealJson, stateKey, toJson } from '../../crypto';
 import { tx } from '../../db';
 import { NotFoundError } from '../../errors';
 import { DocFailure } from '../../live/docPool';
@@ -206,7 +206,7 @@ async function seedTree(workspaceId: string, n: number, parent: string | null = 
 /** Connections waiting on a row's lock now, everyone's. */
 const waitingOnLocks = () => count("SELECT count(*)::int AS n FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'");
 /** An action as a browser sends it, whatever the client would make of it. */
-const action = (who: Browser, call: CallSession, a: unknown) => who.fetch(`${h.baseUrl}/v1/live/calls/${call.ticket.callId}/actions`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-alcove-call': call.ticket.pass }, body: JSON.stringify(a) });
+const action = (who: Browser, call: CallSession, a: unknown) => who.fetch(`${h.baseUrl}/v1/live/calls/${call.ticket.callId}/actions`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-alcove-call': call.ticket.pass }, body: JSON.stringify(typeof a === 'object' && a !== null && 'type' in a && a.type === 'hand' ? { ...a, place: call.getSnapshot().attention.place } : a) });
 
 describe('which workspace a call uses', () => {
   it('settles the first time anyone opens it: a new home made for the call, with everyone invited in it, once, however many open it at once', async () => {
@@ -430,7 +430,7 @@ describe('which workspace a call uses', () => {
     expect(waiting.getSnapshot().workspace).toMatchObject({ id: null, name: null, canOpen: false, documents: [], present: null, play: null });
     expect(await code(waiting.openWorkspace())).toBe('forbidden');
     expect(await code(waiting.askForWorkspace(true))).toBe('forbidden');
-    expect(await code(waiting.startPresenting('document', plan))).toBe('forbidden');
+    expect(await code(waiting.startPresenting({ kind: 'workspace' }))).toBe('forbidden');
     expect((await b.fetch(`${h.baseUrl}/v1/live/calls/${waiting.ticket.callId}/follow-ups`, { headers: { 'x-alcove-call': waiting.ticket.pass } })).status).toBe(403);
     expect(await code(b.api.workspaces.get(id, { pass: waiting.ticket.pass }))).toBe('unauthenticated');
     await host.deny(waiting.ticket.identity);
@@ -541,9 +541,9 @@ describe('someone who can’t open it', () => {
     await host.bringDocument(plan, true);
     const jamie = await guest(host, c);
     const pass = { pass: jamie.call.ticket.pass };
-    // Someone's in the workspace, doing things: working on the plan in this call, and presenting it.
+    // Someone's in the workspace, doing things: working on the plan in this call, and presenting the workspace.
     (await type(priya, p, id, plan, ' and more')).close();
-    await p.startPresenting('document', plan, 2);
+    await p.startPresenting({ kind: 'workspace' });
     await host.startPlaying(film, media, 5000);
     const here = priya.api.workspaces.live(id, { pass: p.ticket.pass });
     await until(() => here.getSnapshot().status === 'live', 'Priya’s stream');
@@ -554,7 +554,7 @@ describe('someone who can’t open it', () => {
     const seen = await read(jamie.call);
     expect(seen.workspace).toMatchObject({ id: null, name: null, canOpen: false, role: null, documents: [], agenda: null, play: null, asks: [], asked: 'no' });
     // They're told something's being presented, by whom, and nothing about what it is.
-    expect(seen.workspace.present).toEqual({ kind: null, id: null, name: null, section: null, by: { seat: expect.any(String), name: priya.name }, mine: false, canControl: false });
+    expect(seen.workspace.present).toEqual({ key: expect.any(String), kind: null, id: null, name: null, section: null, by: { seat: expect.any(String), name: priya.name }, mine: false });
     const text = said(seen);
     for (const name of ['CANARY-SPACE', 'CANARY-FOLDER', 'CANARY-DOC', 'CANARY-FILM', id, plan, film, media, folder]) expect(text, name).not.toContain(name);
 
@@ -562,7 +562,8 @@ describe('someone who can’t open it', () => {
     const nothing = madeUp();
     expect(await refusal(jamie.api.workspaces.get(id, pass))).toEqual(await refusal(jamie.api.workspaces.get(nothing, pass)));
     expect(await refusal(jamie.call.bringDocument(plan, true))).toEqual(await refusal(jamie.call.bringDocument(nothing, true)));
-    expect(await refusal(jamie.call.startPresenting('document', plan))).toEqual(await refusal(jamie.call.startPresenting('document', nothing)));
+    expect(await refusal(jamie.call.startPresenting({ kind: 'workspace' }))).toEqual({ code: 'not-found', status: 404, message: 'That workspace doesn’t exist, or you don’t have access to it.' });
+    expect(await refusal(jamie.call.startPresenting({ kind: 'board', id: plan }))).toEqual(await refusal(jamie.call.startPresenting({ kind: 'board', id: nothing })));
     expect(await refusal(jamie.call.startPlaying(film, media))).toEqual(await refusal(jamie.call.startPlaying(nothing, media)));
     expect(await refusal(jamie.call.pausePlaying(0))).toEqual(await refusal(jamie.call.pausePlaying(1)));
     expect(await code(jamie.call.pausePlaying(0))).toBe('conflict');
@@ -570,7 +571,6 @@ describe('someone who can’t open it', () => {
     for (const [workspaceId, documentId] of [[id, plan], [id, film], [id, nothing]] as const) {
       expect(await refusal(jamie.call.tickDocumentFollowUp({ workspaceId, documentId, block: 'first', done: true }))).toEqual(await refusal(jamie.call.tickDocumentFollowUp({ workspaceId: nothing, documentId: nothing, block: 'first', done: true })));
     }
-    expect(await code(jamie.api.workspaces.presenterNotes.get(id, plan, pass))).toBe('not-found');
     expect(await code(collect(jamie.api.workspaces.ask(id, plan, { action: 'shorter', text: 'Words' }, pass)))).toBe('not-found');
     const stream = jamie.api.workspaces.live(id, pass);
     await until(() => stream.getSnapshot().status === 'closed', 'their stream to be refused');
@@ -594,7 +594,7 @@ describe('someone who can’t open it', () => {
     expect(await space(t)).toMatchObject({ canOpen: false });
     // The organizer, and restricted away from them: it isn't brought, presented, or named.
     expect(await code(host.bringDocument(secret, true))).toBe('not-found');
-    expect(await code(host.startPresenting('document', secret))).toBe('not-found');
+    expect(await code(host.startPresenting({ kind: 'board', id: secret }))).toBe('not-found');
     expect((await art.api.workspaces.get(id)).items.map((x) => x.id)).not.toContain(secret);
     // What someone brought, that the organizer can't open, doesn't show to the organizer either.
     await host.bringDocument(plan, true);
@@ -875,7 +875,11 @@ describe('the call’s follow-ups', () => {
     const jamie = await guest(host, c);
     await host.transcribe(speech('Kofi will book the press briefing by Friday.', 0, 0), host.ticket.identity);
     const reading = host.watchNotes();
-    await settle(host, (x) => (x.liveNotes.notes?.next.length ?? 0) > 0);
+    const proposed = await settle(host, (x) => x.liveNotes.suggestions.length > 0);
+    expect(proposed.liveNotes.notes?.next).toEqual([]);
+    const press = proposed.liveNotes.suggestions[0];
+    if (!press) throw new Error('The conversation did not suggest the press briefing.');
+    await host.reviewFollowUp({ id: press.id, revision: press.revision, decision: 'accept' });
     reading();
 
     // Written in a document in this call, with a person and a date. A to-do without both isn't a follow-up.
@@ -1190,155 +1194,306 @@ describe('what was worked on', () => {
   });
 });
 
-describe('presenting', () => {
+describe('presenting the workspace', () => {
+  /** A call Art hosts that views Product, where Priya can edit and Kofi can read: both invited, and in it. */
   async function presented() {
-    const art = await account();
-    const priya = await account();
-    const theo = await account();
-    const id = await workspace(art, 'Product', [[priya, 'edit'], [theo, 'read']]);
+    const art = await account(unique('art'));
+    const priya = await account(unique('priya'));
+    const kofi = await account(unique('kofi'));
+    const id = await workspace(art, 'Product', [[priya, 'edit'], [kofi, 'read']]);
     const plan = await doc(art, id, 'Launch plan');
-    const { host, code: c } = await callBy(art, { guests: [priya.email, theo.email] });
+    const { host, code: c } = await callBy(art, { guests: [priya.email, kofi.email] });
     const p = await invited(host, c, priya);
-    const t = await invited(host, c, theo);
+    const k = await invited(host, c, kofi);
     await host.setWorkspace(id);
-    return { art, priya, theo, id, plan, host, c, p, t };
+    return { art, priya, kofi, id, plan, host, c, p, k };
   }
-  it('is for whoever can open it, moved and stopped by them or the organizer, and tells everyone else only that it’s happening', async () => {
-    const { art, priya, id, plan, host, c, p, t } = await presented();
-    const jamie = await guest(host, c);
-    await p.startPresenting('document', plan);
-    expect(p.getSnapshot().workspace.present).toEqual({ kind: 'document', id: plan, name: 'Launch plan', section: 0, by: { seat: expect.any(String), name: priya.name }, mine: true, canControl: true });
-    expect((await space(host)).present).toMatchObject({ id: plan, mine: false, canControl: true });
-    expect((await space(t)).present).toMatchObject({ id: plan, mine: false, canControl: false });
-    expect((await space(jamie.call)).present).toEqual({ kind: null, id: null, name: null, section: null, by: expect.objectContaining({ name: priya.name }), mine: false, canControl: false });
+  const by = (who: { name: string }) => ({ seat: expect.any(String), name: who.name });
 
-    // Only them or the organizer.
-    await p.movePresenting(2);
-    expect((await space(t)).present?.section).toBe(2);
-    expect(await code(t.movePresenting(3))).toBe('forbidden');
-    expect(await code(jamie.call.movePresenting(3))).toBe('forbidden');
-    expect(await code(t.stopPresenting())).toBe('forbidden');
-    expect(await code(t.startPresenting('document', plan))).toBe('conflict');
-    await host.movePresenting(3);
-    expect((await space(p)).present?.section).toBe(3);
-    // Someone who comes late lands where everyone is.
-    const late = await guest(host, c, 'Late Guest');
-    expect((await space(late.call)).present).toMatchObject({ id: null, name: null, section: null });
+  it('anyone who can open the workspace presents it, and everyone there is told who; only they see which', async () => {
+    const { priya, id, host, c, p, k } = await presented();
+    const jamie = await guest(host, c);
+    await p.startPresenting({ kind: 'workspace' });
+    const mine = p.getSnapshot().workspace.present;
+    expect(mine).toEqual({ key: expect.any(String), kind: 'workspace', id, name: null, section: null, by: by(priya), mine: true });
+    // A random key for this presentation, made of nothing anyone could read.
+    const key = mine?.key ?? '';
+    expect(key).toMatch(/^[A-Za-z0-9_-]{22}$/);
+    expect((await space(k)).present).toEqual({ key, kind: 'workspace', id, name: null, section: null, by: by(priya), mine: false });
+    expect((await space(host)).present).toEqual({ key, kind: 'workspace', id, name: null, section: null, by: by(priya), mine: false });
+    // Someone who can open nothing in it is told who's presenting, and never which workspace.
+    expect((await space(jamie.call)).present).toEqual({ key, kind: null, id: null, name: null, section: null, by: by(priya), mine: false });
+    expect(said(await read(jamie.call))).not.toContain(id);
+    // Nor can they present it: to them it's nothing there.
+    expect(await code(jamie.call.startPresenting({ kind: 'workspace' }))).toBe('not-found');
+    // Priya on another connection is still the one presenting it, and so is she after a reload: it's hers wherever she is.
     const again = await priya.api.calls.join(c, { mic: false, cam: false, previous: p.ticket.pass });
     await inGroup(again);
-    expect((await space(again)).present).toMatchObject({ id: plan, section: 3, mine: true, canControl: true });
-    await host.stopPresenting();
-    expect((await space(again)).present).toBeNull();
-    expect(await code(host.stopPresenting())).toBe('conflict');
-    expect(await code(again.movePresenting(1))).toBe('conflict');
+    expect((await space(again)).present).toMatchObject({ key, kind: 'workspace', id, mine: true });
+    // Nothing is presented that the call doesn't view: a call with no workspace has nothing to present.
+    const elsewhere = await callBy(await account());
+    expect(await code(elsewhere.host.startPresenting({ kind: 'workspace' }))).toBe('not-found');
+    // What can be presented is the workspace or a board, and nothing else.
+    expect((await action(priya, again, { type: 'present-start', what: { kind: 'document', id } })).status).toBe(400);
+    expect((await action(priya, again, { type: 'present-start', kind: 'document', id, section: 0 })).status).toBe(400);
+  });
 
-    // Nothing that isn't in the call's workspace, and nothing but what it says it is.
-    const other = await workspace(art, 'Other');
-    const elsewhere = await doc(art, other, 'Elsewhere');
-    expect(await code(host.startPresenting('document', elsewhere))).toBe('not-found');
-    expect(await code(host.startPresenting('board', plan))).toBe('not-found');
-    // A board is presented where it's open, on the call's stage (boards-in-calls.integration.test.ts), so one that's only in the workspace isn't.
+  it('isn’t opened to a guest by the board the call seats them on: they’re told who, never what, and follow once let into a document', async () => {
+    const { art, priya, id, plan, host, c, p } = await presented();
     const board = (await art.api.workspaces.items.create(id, { kind: 'board', name: 'Board' })).id;
-    expect(await code(host.startPresenting('document', board))).toBe('not-found');
-    expect(await code(host.startPresenting('board', board))).toBe('not-found');
-    const folder = (await art.api.workspaces.items.create(id, { kind: 'folder', name: 'Folder' })).id;
-    expect(await code(host.startPresenting('document', folder))).toBe('not-found');
-    const trashed = await doc(art, id, 'Going');
-    await art.api.workspaces.items.trash(id, trashed);
-    expect(await code(host.startPresenting('document', trashed))).toBe('conflict');
-    expect(await code(host.startPresenting('document', madeUp()))).toBe('not-found');
+    await host.openBoard({ workspaceId: id, documentId: board, letIn: true });
+    const jamie = await guest(host, c);
+    await until(async () => (await read(jamie.call)).board.open?.role === 'edit', 'Jamie to have the board');
+    // The board opens for them, from where it's kept; the workspace doesn't, as boards aren't in its list: it's private, unnamed.
+    expect(await space(jamie.call)).toMatchObject({ id: null, name: null, canOpen: false, role: null });
+    // Nor can they present it.
+    expect(await code(jamie.call.startPresenting({ kind: 'workspace' }))).toBe('not-found');
+    // Presented, it's who and never what, as for anyone with nothing in it.
+    await p.startPresenting({ kind: 'workspace' });
+    const key = p.getSnapshot().workspace.present?.key ?? '';
+    expect((await space(jamie.call)).present).toEqual({ key, kind: null, id: null, name: null, section: null, by: by(priya), mine: false });
+    // They ask, are let into a document, and now it opens for them, presented.
+    await jamie.call.askForWorkspace(true);
+    const ask = (await settle(host, (x) => x.workspace.asks.length === 1)).workspace.asks[0];
+    await host.grantWorkspaceAsk(ask?.id ?? '', plan, 'read');
+    expect(await space(jamie.call)).toMatchObject({ id, canOpen: true, present: { key, kind: 'workspace', id, mine: false } });
   });
 
-  it('changes nobody’s access, and stops for whoever loses the document and for everyone when the presenter does', async () => {
-    const { art, theo, id, plan, host, p, t } = await presented();
-    await host.startPresenting('document', plan, 1);
-    await art.api.workspaces.share.restrict(id, plan, true);
-    // Theo can't open it now: they're told it's on, without its name. Being shown it gave them nothing.
-    expect((await space(t)).present).toEqual({ kind: null, id: null, name: null, section: null, by: expect.objectContaining({ name: art.name }), mine: false, canControl: false });
-    expect(await code(open(theo, id, plan, { pass: t.ticket.pass }))).toBe('not-found');
-    expect((await space(host)).present).toMatchObject({ id: plan, section: 1 });
-    await host.stopPresenting();
-    await art.api.workspaces.share.restrict(id, plan, false);
-
-    // Priya presents it and loses it: it stops for everyone, and doesn't come back when she's given it again.
-    await p.startPresenting('document', plan, 2);
-    await art.api.workspaces.share.restrict(id, plan, true);
-    expect((await space(t)).present).toBeNull();
-    expect((await space(p)).present).toBeNull();
-    expect((await space(host)).present).toBeNull();
-    await art.api.workspaces.share.restrict(id, plan, false);
-    expect((await space(p)).present).toBeNull();
-    // And it's nothing in the way of someone else presenting.
-    await t.startPresenting('document', plan);
-    expect((await space(host)).present).toMatchObject({ id: plan, section: 0 });
+  it('allows one presented board or workspace in a part of the call', async () => {
+    const { priya, kofi, host, p, k } = await presented();
+    await host.openBoard({ template: 'blank' });
+    const board = (await read(host)).board.open?.documentId ?? '';
+    await p.startPresenting({ kind: 'workspace' });
+    // Nobody else starts either over it.
+    expect(await refusal(k.startPresenting({ kind: 'workspace' }))).toMatchObject({ code: 'conflict', message: 'Someone else is presenting here.' });
+    expect(await code(host.startPresenting({ kind: 'board', id: board }))).toBe('conflict');
+    expect((await space(host)).present).toMatchObject({ kind: 'workspace', by: { name: priya.name } });
+    // Nor over a board someone's presenting.
+    await p.stopPresenting(false);
+    await k.startPresenting({ kind: 'board', id: board });
+    expect(await code(p.startPresenting({ kind: 'workspace' }))).toBe('conflict');
+    expect(await code(host.startPresenting({ kind: 'board', id: board }))).toBe('conflict');
+    expect((await space(p)).present).toMatchObject({ kind: 'board', id: board, by: { name: kofi.name } });
+    // Whoever's presenting one presents the other in its place: it's one presentation for everyone, and a new one.
+    const was = (await space(p)).present?.key;
+    await k.startPresenting({ kind: 'workspace' });
+    const now = (await space(p)).present;
+    expect(now).toMatchObject({ kind: 'workspace', by: { name: kofi.name } });
+    expect(now?.key).not.toBe(was);
+    // A board is presented a frame at a time; the workspace isn't.
+    expect(await code(k.movePresenting(1))).toBe('conflict');
   });
 
-  it('stops when the workspace changes, the presenter is removed or moves, and with the call', async () => {
-    const { art, id, plan, host, c, p } = await presented();
-    const other = await workspace(art, 'Other');
-    await p.startPresenting('document', plan);
-    await host.setWorkspace(other);
-    expect((await space(p)).present).toBeNull();
-    await host.setWorkspace(id);
-    expect((await space(p)).present).toBeNull();
-    // Removed.
-    await p.startPresenting('document', plan);
-    await host.remove(p.ticket.identity);
-    expect((await space(host)).present).toBeNull();
-    // The call ending takes it, and someone who stayed to the end isn't left with it.
-    const jamie = await guest(host, c, 'Second Guest');
-    await host.startPresenting('document', plan);
-    expect((await space(jamie.call)).present).toMatchObject({ id: null });
+  it('ends for the presenter or for everyone, and everyone sees how it ended; only the presenter or the organizer closes it for everyone', async () => {
+    const { art, priya, host, c, p, k } = await presented();
+    const jamie = await guest(host, c);
+    await p.startPresenting({ kind: 'workspace' });
+    const first = (await space(k)).present?.key ?? '';
+    expect((await space(k)).ended).toBeNull();
+    // Only Priya, or the organizer.
+    expect(await code(k.stopPresenting(false))).toBe('forbidden');
+    expect(await code(k.stopPresenting(true))).toBe('forbidden');
+    expect(await code(jamie.call.stopPresenting(true))).toBe('forbidden');
+    expect((await space(k)).present?.key).toBe(first);
+
+    // For her alone: it's over, and everyone there is told it ended for her, by whom it was presented, the guest too.
+    await p.stopPresenting(false);
+    for (const call of [p, k, host, jamie.call]) expect(await space(call)).toMatchObject({ present: null, ended: { key: first, close: false, by: by(priya) } });
+    // Starting again is a new presentation, and nothing has ended in it.
+    await p.startPresenting({ kind: 'workspace' });
+    const second = (await space(k)).present?.key ?? '';
+    expect(second).not.toBe(first);
+    expect((await space(k)).ended).toBeNull();
+
+    // The organizer can't end it for her alone: only she chooses that. For everyone, they can.
+    expect(await refusal(host.stopPresenting(false))).toMatchObject({ code: 'forbidden', message: 'Only whoever’s presenting this can end it just for themselves.' });
+    expect((await space(k)).present?.key).toBe(second);
+    await host.stopPresenting(true);
+    // It's still Priya's presentation that ended, as everyone is told, closed for everyone. Only she or the organizer closes hers
+    // for everyone, so that's all her browser needs to say who did it: nobody is sent anything more.
+    for (const call of [p, k, host, jamie.call]) {
+      const s = await read(call);
+      expect(s.workspace).toMatchObject({ present: null, ended: { key: second, close: true, by: by(priya) } });
+      expect(s.notices).toEqual([]);
+    }
+    expect(await refusal(host.stopPresenting(false))).toMatchObject({ code: 'conflict', message: 'Nothing is being presented here.' });
+    expect(await code(p.stopPresenting(true))).toBe('conflict');
+    // How it ended goes with the call.
     await host.leave();
-    expect((await storedCall(art.ownerId, host.ticket.callId)).state['workspace']).toMatchObject({ present: [] });
+    expect((await storedCall(art.ownerId, host.ticket.callId)).state['workspace']).toMatchObject({ space: [], ended: [] });
   });
 
-  it('hides while whoever started it is reloading, and is theirs again when they’re back', async () => {
-    const { priya, plan, host, c, p, t } = await presented();
-    await p.startPresenting('document', plan, 4);
+  it('is a new presentation when its presenter presents something else in its place, with no end said: that’s the end of the last', async () => {
+    const { priya, host, p, k } = await presented();
+    await p.startPresenting({ kind: 'workspace' });
+    const first = (await space(k)).present;
+    expect(first).toMatchObject({ kind: 'workspace', by: by(priya), mine: false });
+    // Share › A board › New › Blank while she presents the workspace: the board is made, and the workspace is still presented.
+    await p.openBoard({ template: 'blank' });
+    const board = (await read(p)).board.open?.documentId ?? '';
+    expect((await space(k)).present).toMatchObject({ kind: 'workspace', key: first?.key });
+    // Then the board is presented in its place. What a follower's browser goes by: a new presentation, by the same person, in
+    // the same part of the call, and nothing said to have ended, as a start clears it. That's the workspace's end for them.
+    await p.startPresenting({ kind: 'board', id: board });
+    const now = await space(k);
+    expect(now.present).toMatchObject({ kind: 'board', id: board, by: by(priya), mine: false });
+    expect(now.present?.key).not.toBe(first?.key);
+    expect(now.ended).toBeNull();
+    expect((await space(host)).present?.key).toBe(now.present?.key);
+    // The same again is the same presentation.
+    await p.startPresenting({ kind: 'board', id: board });
+    expect((await space(k)).present?.key).toBe(now.present?.key);
+  });
+
+  it('waits through the presenter’s reload: hidden while they’re away, nothing said, and theirs again with the same key', async () => {
+    const { priya, kofi, id, host, c, p, k } = await presented();
+    await p.startPresenting({ kind: 'workspace' });
+    const key = (await space(k)).present?.key;
+    // Her page going away sends a leave that isn't on purpose: it's hidden for everyone while she's away, and nothing ended.
     p.closing();
     await settle(host, (s) => !s.participants.some((x) => x.id === p.ticket.identity));
-    expect((await space(t)).present).toBeNull();
+    for (const call of [k, host]) expect(await space(call)).toMatchObject({ present: null, ended: null });
     const back = await priya.api.calls.join(c, { mic: false, cam: false, previous: p.ticket.pass });
     await inGroup(back);
-    expect((await space(t)).present).toMatchObject({ id: plan, section: 4, canControl: false });
-    expect((await space(back)).present).toMatchObject({ mine: true, canControl: true });
-    await back.movePresenting(5);
-    expect((await space(t)).present?.section).toBe(5);
-    await back.leave();
-    // Someone who's gone for good holds nothing up.
+    for (const call of [k, host]) expect(await space(call)).toMatchObject({ present: { key, kind: 'workspace', id, mine: false }, ended: null });
+    expect((await space(back)).present).toMatchObject({ key, mine: true });
+    // Away again, hers is in nobody's way: Kofi presenting in its place ends hers for good, and that's said.
+    back.closing();
     await settle(host, (s) => !s.participants.some((x) => x.id === back.ticket.identity));
-    await host.startPresenting('document', plan);
-    expect((await space(t)).present).toMatchObject({ section: 0 });
+    await k.startPresenting({ kind: 'workspace' });
+    expect(await space(host)).toMatchObject({ present: { kind: 'workspace', by: by(kofi) }, ended: { key, close: false, by: by(priya) } });
+    const again = await priya.api.calls.join(c, { mic: false, cam: false, previous: back.ticket.pass });
+    await inGroup(again);
+    expect((await space(again)).present).toMatchObject({ by: by(kofi), mine: false });
   });
 
-  it('stops for good when whoever started it leaves on purpose, and they don’t bring it back', async () => {
-    const { priya, plan, host, c, p, t } = await presented();
-    await p.startPresenting('document', plan, 4);
+  it('ends for good when the presenter leaves on purpose, and everyone there is told at once', async () => {
+    const { priya, host, c, p, k } = await presented();
+    const jamie = await guest(host, c);
+    await p.startPresenting({ kind: 'workspace' });
+    const key = (await space(k)).present?.key;
+    // Told as she goes, so nobody's browser waits for her to come back: nobody stopped it, so it ended for her, and everyone
+    // following keeps it open on their own.
     await p.leave();
-    await settle(host, (s) => !s.participants.some((x) => x.id === p.ticket.identity));
-    const back = await priya.api.calls.join(c, { mic: false, cam: false, previous: p.ticket.pass });
-    await inGroup(back);
-    await settle(host, (s) => s.participants.some((x) => x.id === back.ticket.identity));
-    expect((await space(t)).present).toBeNull();
-    expect((await space(back)).present).toBeNull();
+    for (const call of [k, host, jamie.call]) expect(await space(call)).toMatchObject({ present: null, ended: { key, close: false, by: by(priya) } });
+    // Coming back doesn't bring it back.
+    const again = await priya.api.calls.join(c, { mic: false, cam: false, previous: p.ticket.pass });
+    await inGroup(again);
+    await settle(host, (s) => s.participants.some((x) => x.id === again.ticket.identity));
+    expect(await space(k)).toMatchObject({ present: null, ended: { key } });
+    expect((await space(again)).present).toBeNull();
   });
 
-  it('stops for good when the host hands the call on and goes', async () => {
-    const { art, plan, host, c, p, t } = await presented();
-    await host.startPresenting('document', plan, 2);
+  it('ends when the presenter is removed, and everyone there is told at once', async () => {
+    const { kofi, host, c, p, k } = await presented();
+    const jamie = await guest(host, c);
+    await k.startPresenting({ kind: 'workspace' });
+    const key = (await space(p)).present?.key;
+    await host.remove(k.ticket.identity);
+    for (const call of [p, host, jamie.call]) expect(await space(call)).toMatchObject({ present: null, ended: { key, close: false, by: by(kofi) } });
+  });
+
+  it('ends when the presenter goes to another part of the call, and everyone still where it was is told at once', async () => {
+    const { art, priya, kofi, host, c, p, k } = await presented();
+    const jamie = await guest(host, c);
+    // Sent to a room as rooms open: everyone left in the main room is told.
+    await p.startPresenting({ kind: 'workspace' });
+    const first = (await space(k)).present?.key;
+    const opened = await action(art, host, { type: 'rooms-open', rooms: [{ name: 'One', emails: [priya.email, kofi.email] }, { name: 'Two', emails: [] }], minutes: 5, board: { mode: 'none', template: 'blank' } });
+    expect(opened.status).toBe(200);
+    for (const call of [host, jamie.call]) expect(await space(call)).toMatchObject({ present: null, ended: { key: first, close: false, by: by(priya) } });
+    const [one, two] = ((await read(host)).breakouts.open?.rooms ?? []).map((r) => r.id);
+    await until(() => p.crypto.getSnapshot().place === one && k.crypto.getSnapshot().place === one, 'Priya and Kofi to be in One');
+    // Moved to another room: everyone in the one she left is told.
+    await p.startPresenting({ kind: 'workspace' });
+    const second = (await space(k)).present?.key;
+    expect((await action(art, host, { type: 'rooms-move', email: priya.email, roomId: two ?? null })).status).toBe(200);
+    expect(await space(k)).toMatchObject({ present: null, ended: { key: second, close: false, by: by(priya) } });
+    // The organizer goes to a room from the main room, where they were presenting: everyone still there is told.
+    await host.startPresenting({ kind: 'workspace' });
+    const third = (await space(jamie.call)).present?.key;
+    expect((await action(art, host, { type: 'rooms-visit', roomId: one ?? null })).status).toBe(200);
+    expect(await space(jamie.call)).toMatchObject({ present: null, ended: { key: third, close: false, by: by(art) } });
+  });
+
+  it('ends in every part of the call when the workspace switches, and everyone is told at once; switching back doesn’t bring it back', async () => {
+    const { art, priya, kofi, id, host, p, k } = await presented();
+    expect((await action(art, host, { type: 'rooms-open', rooms: [{ name: 'One', emails: [priya.email] }, { name: 'Two', emails: [] }], minutes: 5, board: { mode: 'none', template: 'blank' } })).status).toBe(200);
+    await p.startPresenting({ kind: 'workspace' });
+    await k.startPresenting({ kind: 'workspace' });
+    const [hers, his] = [(await space(p)).present?.key, (await space(host)).present?.key];
+    expect(hers).not.toBe(his);
+    const other = await workspace(art, 'Other', [[priya, 'edit'], [kofi, 'read']]);
+    await host.setWorkspace(other);
+    expect(await space(p)).toMatchObject({ present: null, ended: { key: hers, close: false, by: by(priya) } });
+    for (const call of [k, host]) expect(await space(call)).toMatchObject({ present: null, ended: { key: his, close: false, by: by(kofi) } });
+    await host.setWorkspace(id);
+    expect(await space(p)).toMatchObject({ present: null, ended: { key: hers } });
+    expect(await space(k)).toMatchObject({ present: null, ended: { key: his } });
+  });
+
+  it('goes with a room that closes, and how it ended there, and with the call', async () => {
+    const { art, priya, kofi, host, p, k } = await presented();
+    // In rooms, each room's is its own, and a room closing ends what was presented in it, and how it ended there.
+    host.openRooms({ rooms: [{ name: 'One', emails: [priya.email] }, { name: 'Two', emails: [kofi.email] }], minutes: 5, board: { mode: 'none', template: 'blank' } });
+    const rooms = (await settle(host, (s) => s.breakouts.open !== null)).breakouts.open?.rooms ?? [];
+    await until(() => p.crypto.getSnapshot().place === rooms[0]?.id && k.crypto.getSnapshot().place === rooms[1]?.id, 'everyone to be in their rooms');
+    await p.startPresenting({ kind: 'workspace' });
+    await k.startPresenting({ kind: 'workspace' });
+    expect((await space(p)).present).toMatchObject({ kind: 'workspace', mine: true });
+    expect((await space(k)).present).toMatchObject({ kind: 'workspace', mine: true });
+    expect((await space(host)).present).toBeNull();
+    await k.stopPresenting(true);
+    expect((await space(k)).ended).toMatchObject({ close: true, by: by(kofi) });
+    expect((await space(host)).ended).toBeNull();
+    host.closeRooms();
+    await settle(p, (s) => s.breakouts.open === null);
+    await until(() => k.crypto.getSnapshot().place === 'main', 'Kofi to be back');
+    expect(await space(p)).toMatchObject({ present: null, ended: null });
+    expect(await space(k)).toMatchObject({ present: null, ended: null });
+    expect((await storedCall(art.ownerId, host.ticket.callId)).state['workspace']).toMatchObject({ space: [], ended: [] });
+
+    // The call ending takes it from what the call keeps.
+    await p.startPresenting({ kind: 'workspace' });
+    await host.leave();
+    expect((await storedCall(art.ownerId, host.ticket.callId)).state['workspace']).toMatchObject({ present: [], space: [], ended: [] });
+  });
+
+  it('ends for everyone when the presenter can no longer open the workspace, said at once, and doesn’t come back when they can again', async () => {
+    const { art, priya, kofi, id, host, p, k } = await presented();
+    await p.startPresenting({ kind: 'workspace' });
+    const key = (await space(k)).present?.key;
+    const member = (await art.api.workspaces.people(id)).find((x) => x.person.email === priya.email)?.id ?? '';
+    await art.api.workspaces.removePerson(id, member);
+    // It's found by whoever reads the call and can open the workspace: it stops for everyone, nobody stopped it, and the read
+    // that finds it says so, as every read after it does.
+    expect(await space(k)).toMatchObject({ present: null, ended: { key, close: false, by: by(priya) } });
+    expect(await space(host)).toMatchObject({ present: null, ended: { key, close: false, by: by(priya) } });
+    expect(await space(p)).toMatchObject({ id: null, present: null });
+    await art.api.workspaces.addPerson(id, priya.email, 'edit');
+    expect((await space(p)).present).toBeNull();
+    expect((await space(k)).present).toBeNull();
+    // And it's in nobody's way.
+    await k.startPresenting({ kind: 'workspace' });
+    expect((await space(host)).present).toMatchObject({ kind: 'workspace', by: { name: kofi.name } });
+  });
+
+  it('ends for good when the host hands the call on and goes, and that’s said at once', async () => {
+    const { art, host, c, p, k } = await presented();
+    await host.startPresenting({ kind: 'workspace' });
+    const key = (await space(k)).present?.key;
     inRoom.push(await connect(await p.room(), { sending: p.crypto }));
     await host.handOff(p.ticket.identity);
+    expect(await space(k)).toMatchObject({ present: null, ended: { key, close: false, by: by(art) } });
     await settle(p, (s) => s.isHost);
-    expect((await space(t)).present).toBeNull();
     const back = await art.api.calls.join(c, { mic: false, cam: false, previous: host.ticket.pass });
     await inGroup(back);
     expect((await space(back)).present).toBeNull();
   });
 
   it('isn’t shown to a part of the call whoever started it came back to somewhere else from', async () => {
-    const { priya, plan, host, c, p, t } = await presented();
-    await p.startPresenting('document', plan);
+    const { priya, kofi, host, c, p, k } = await presented();
+    await p.startPresenting({ kind: 'workspace' });
     p.closing();
     await settle(host, (s) => !s.participants.some((x) => x.id === p.ticket.identity));
     // Rooms open while she's away, with her in one, so that's where she comes back to.
@@ -1347,86 +1502,49 @@ describe('presenting', () => {
     expect(room).toBeDefined();
     const back = await priya.api.calls.join(c, { mic: false, cam: false, previous: p.ticket.pass });
     await until(() => back.crypto.getSnapshot().place === room, 'her to be in her room');
-    expect((await settle(host, (s) => s.participants.some((x) => x.id === back.ticket.identity))).participants.map((x) => x.id)).toContain(back.ticket.identity);
-    expect((await space(t)).present).toBeNull();
-    expect((await space(host)).present).toBeNull();
-    expect((await space(back)).present).toBeNull();
+    await settle(host, (s) => s.participants.some((x) => x.id === back.ticket.identity));
+    for (const call of [k, host, back]) expect((await space(call)).present).toBeNull();
     // It's in nobody's way there, either.
-    await t.startPresenting('document', plan);
-    expect((await space(host)).present).toMatchObject({ id: plan, mine: false });
+    await k.startPresenting({ kind: 'workspace' });
+    expect((await space(host)).present).toMatchObject({ kind: 'workspace', by: { name: kofi.name }, mine: false });
   });
 
-  it('is for the part of the call it started in', async () => {
-    const { priya, theo, plan, host, p, t } = await presented();
-    host.openRooms({ rooms: [{ name: 'One', emails: [priya.email] }, { name: 'Two', emails: [theo.email] }], minutes: 5, board: { mode: 'none', template: 'blank' } });
-    const rooms = (await settle(host, (s) => s.breakouts.open !== null)).breakouts.open?.rooms ?? [];
-    await until(() => p.crypto.getSnapshot().place === rooms[0]?.id && t.crypto.getSnapshot().place === rooms[1]?.id, 'everyone to be in their rooms');
-    await p.startPresenting('document', plan);
-    await t.startPresenting('document', plan);
-    expect((await space(p)).present).toMatchObject({ id: plan, mine: true });
-    expect((await space(t)).present).toMatchObject({ id: plan, mine: true });
-    expect((await space(host)).present).toBeNull();
-    // A room closing takes what's presented in it.
-    host.closeRooms();
-    await settle(p, (s) => s.breakouts.open === null);
-    expect((await space(p)).present).toBeNull();
-    expect((await space(t)).present).toBeNull();
+  it('reads a document presentation the last release stored as over', async () => {
+    const { art, kofi, id, plan, host, p, k } = await presented();
+    // Who Priya is to what the call keeps, from a presentation of hers.
+    await p.startPresenting({ kind: 'workspace' });
+    const { callId } = host.ticket;
+    const was = await storedCall(art.ownerId, callId);
+    const Space = z.object({ space: z.array(z.object({ by: z.unknown() }).passthrough()) }).passthrough();
+    const kept = Space.parse(was.state['workspace']);
+    const presenter = kept.space[0]?.by;
+    if (!presenter) throw new Error('nothing presented');
+    // As the last release kept one: Priya presenting the plan, from its third section, and nothing else.
+    const older = { ...was.state, workspace: { ...kept, space: [], present: [{ place: 'main', workspaceId: id, kind: 'document', id: plan, section: 2, by: presenter }] } };
+    await h.pool.query('UPDATE calls SET state_ciphertext = $3 WHERE owner_id = $1 AND call_id = $2', [art.ownerId, callId, sealJson(was.key, was.header, toJson(older))]);
+
+    for (const call of [p, k, host]) expect(await space(call)).toMatchObject({ present: null, ended: null });
+    // There's nothing to move or stop, it's in nobody's way, and the next change takes it out of what the call keeps.
+    expect(await code(p.movePresenting(1))).toBe('conflict');
+    expect(await code(host.stopPresenting(false))).toBe('conflict');
+    await k.startPresenting({ kind: 'workspace' });
+    expect((await space(host)).present).toMatchObject({ kind: 'workspace', id, by: { name: kofi.name } });
+    expect(JSON.stringify((await storedCall(art.ownerId, callId)).state['workspace'])).not.toContain(plan);
   });
 });
 
 describe('presenter notes', () => {
-  it('are yours alone, by document, for anyone with an account who can open it, and sealed', async () => {
-    const art = await account();
-    const priya = await account();
-    const id = await workspace(art, 'Product', [[priya, 'edit']]);
-    const plan = await doc(art, id, 'Plan');
-    const other = await workspace(priya, 'Hers');
-    const hers = await doc(priya, other, 'Hers');
-    expect(await art.api.workspaces.presenterNotes.get(id, plan)).toEqual({ text: '' });
-    await art.api.workspaces.presenterNotes.set(id, plan, 'CANARY-PRESENTER thank Aiko');
-    expect(await art.api.workspaces.presenterNotes.get(id, plan)).toEqual({ text: 'CANARY-PRESENTER thank Aiko' });
-    // Someone else who can open it has their own.
-    expect(await priya.api.workspaces.presenterNotes.get(id, plan)).toEqual({ text: '' });
-    await priya.api.workspaces.presenterNotes.set(id, plan, 'Priya’s');
-    expect(await art.api.workspaces.presenterNotes.get(id, plan)).toEqual({ text: 'CANARY-PRESENTER thank Aiko' });
-    // A document they can't open, or that's in another workspace, reads as nothing there.
-    expect(await refusal(art.api.workspaces.presenterNotes.get(other, hers))).toEqual(await refusal(art.api.workspaces.presenterNotes.get(madeUp(), hers)));
-    expect(await code(art.api.workspaces.presenterNotes.set(other, hers, 'No'))).toBe('not-found');
-    expect(await code(art.api.workspaces.presenterNotes.get(id, hers))).toBe('not-found');
-    expect(await code(art.api.workspaces.presenterNotes.set(id, plan, 'x'.repeat(20_001)))).toBe('invalid');
-    // Someone in a call with no account has nowhere to keep them, even with the document open.
-    const { host, code: c } = await callBy(art);
-    await host.setWorkspace(id);
-    const jamie = await guest(host, c);
-    await jamie.call.askForWorkspace(true);
-    const ask = (await settle(host, (x) => x.workspace.asks.length === 1)).workspace.asks[0];
-    await host.grantWorkspaceAsk(ask?.id ?? '', plan, 'edit');
-    expect(await code(jamie.api.workspaces.presenterNotes.get(id, plan, { pass: jamie.call.ticket.pass }))).toBe('forbidden');
-    expect(await code(jamie.api.workspaces.presenterNotes.set(id, plan, 'Mine', { pass: jamie.call.ticket.pass }))).toBe('forbidden');
-    // Losing the document loses the way to them, and the record can't be moved to another place.
-    const lost = await workspace(art, 'Lost', [[priya, 'edit']]);
-    const lostDoc = await doc(art, lost, 'Lost');
-    await priya.api.workspaces.presenterNotes.set(lost, lostDoc, 'Mine');
-    await art.api.workspaces.share.restrict(lost, lostDoc, true);
-    expect(await code(priya.api.workspaces.presenterNotes.get(lost, lostDoc))).toBe('not-found');
-    const row = (await h.pool.query<{ body_ciphertext: Buffer }>('SELECT body_ciphertext FROM presenter_notes WHERE owner_id = $1 AND document_id = $2', [art.ownerId, plan])).rows[0];
-    expect(row?.body_ciphertext.includes(Buffer.from('CANARY-PRESENTER'))).toBe(false);
-    await h.pool.query('UPDATE presenter_notes SET body_ciphertext = $3 WHERE owner_id = $1 AND document_id = $2', [priya.ownerId, plan, row?.body_ciphertext]);
-    expect(await code(priya.api.workspaces.presenterNotes.get(id, plan))).toBe('key-unavailable');
-    // Empty text leaves nothing.
-    await art.api.workspaces.presenterNotes.set(id, plan, '');
-    expect(await count('SELECT count(*)::int AS n FROM presenter_notes WHERE owner_id = $1 AND document_id = $2', [art.ownerId, plan])).toBe(0);
-  });
-
-  it('go with the document, the workspace or the account, leaving no rows', async () => {
+  it('kept beside a whole document or board by an earlier release go with the document, the workspace or the account, leaving no rows', async () => {
     const art = await account();
     const priya = await account();
     const id = await workspace(art, 'Product', [[priya, 'edit']]);
     const one = await doc(art, id, 'One');
     const two = await doc(art, id, 'Two');
+    // Art's and Priya's on each, as an earlier release kept them: nothing reads or writes them now, and nothing here opens them.
     for (const d of [one, two]) {
-      await art.api.workspaces.presenterNotes.set(id, d, 'Art’s');
-      await priya.api.workspaces.presenterNotes.set(id, d, 'Priya’s');
+      for (const who of [art, priya]) {
+        await h.pool.query('INSERT INTO presenter_notes (owner_id, workspace_owner_id, document_id, body_ciphertext) SELECT $1, owner_id, $2, $3 FROM workspaces WHERE workspace_id = $4', [who.ownerId, d, Buffer.from('sealed'), id]);
+      }
     }
     expect(await count('SELECT count(*)::int AS n FROM presenter_notes WHERE document_id = ANY($1::text[])', [[one, two]])).toBe(4);
     await art.api.workspaces.items.trash(id, one);
@@ -1440,7 +1558,7 @@ describe('presenter notes', () => {
     expect(await count('SELECT count(*)::int AS n FROM presenter_notes WHERE owner_id = $1', [art.ownerId])).toBe(0);
   });
 
-  it('on a board are by frame: each frame its own, yours alone, sealed with the frame they’re for, and what was kept for the whole board still opens', async () => {
+  it('on a board are by frame: each frame its own, yours alone, and sealed with the frame they’re for', async () => {
     const art = await account();
     const priya = await account();
     const lena = await account();
@@ -1448,12 +1566,6 @@ describe('presenter notes', () => {
     const board = (await art.api.workspaces.items.create(id, { kind: 'board', name: 'Launch retro' })).id;
     const plan = await doc(art, id, 'Plan');
     const well = 'wentWell0001', fix = 'couldImprove';
-    // What the release before kept for the whole board, the only way it could, sealed as it sealed it.
-    const o = await openOwner(h.deps, art.ownerId, undefined);
-    const space = z.object({ owner_id: z.string() }).parse((await h.pool.query('SELECT owner_id FROM workspaces WHERE workspace_id = $1', [id])).rows[0]);
-    const before = sealRecord(stateKey(o.root, art.ownerId, `presenter-notes:${board}`), { v: 1, kind: 'presenter-notes', ownerId: art.ownerId, workspaceId: id, documentId: board }, utf8('The whole board, kept before'));
-    await h.pool.query('INSERT INTO presenter_notes (owner_id, workspace_owner_id, document_id, body_ciphertext) VALUES ($1, $2, $3, $4)', [art.ownerId, space.owner_id, board, before]);
-    expect(await art.api.workspaces.presenterNotes.get(id, board)).toEqual({ text: 'The whole board, kept before' });
     expect(await art.api.workspaces.presenterNotes.frames(id, board)).toEqual({ frames: {} });
 
     // Each frame its own, and changing one leaves the rest.
@@ -1462,8 +1574,6 @@ describe('presenter notes', () => {
     expect(await art.api.workspaces.presenterNotes.frames(id, board)).toEqual({ frames: { [well]: 'CANARY-FRAMENOTE thank Maya’s team for launch day', [fix]: 'Ask Priya to take the changelog point.' } });
     await art.api.workspaces.presenterNotes.setFrame(id, board, fix, 'Ask Priya first.');
     expect((await art.api.workspaces.presenterNotes.frames(id, board)).frames).toEqual({ [well]: 'CANARY-FRAMENOTE thank Maya’s team for launch day', [fix]: 'Ask Priya first.' });
-    // What was kept for the whole board is as it was.
-    expect(await art.api.workspaces.presenterNotes.get(id, board)).toEqual({ text: 'The whole board, kept before' });
 
     // Yours alone: Priya can open the board and has her own, none of Art's, and hers change nothing of his.
     expect(await priya.api.workspaces.presenterNotes.frames(id, board)).toEqual({ frames: {} });
@@ -2124,7 +2234,7 @@ describe('a live call comes first', () => {
       const status = (r: Response) => r.status;
       const everything = Promise.all([
         ...Array.from({ length: 10 }, (_, i) => action(i % 2 ? jamie : kim, i % 2 ? jamie.call : kim.call, { type: 'hand', up: i % 3 === 0 }).then(status)),
-        action(art, host, { type: 'present-start', kind: 'document', id: plan, section: 0 }).then(status),
+        action(art, host, { type: 'present-start', what: { kind: 'workspace' } }).then(status),
         action(art, host, { type: 'workspace-set', workspaceId: id }).then(status),
         lena.fetch(`${h.baseUrl}/v1/session`).then(status),
         sam.fetch(`${h.baseUrl}/v1/live/calls/${elsewhere.host.ticket.callId}`, { headers: { 'x-alcove-call': elsewhere.host.ticket.pass } }).then(status)
@@ -2209,7 +2319,7 @@ describe('a live call comes first', () => {
 });
 
 describe('reading the call', () => {
-  const LogLine = z.object({ msg: z.string(), requestId: z.string().optional(), sql: z.string().optional() });
+  const LogLine = z.object({ msg: z.string(), requestId: z.string().optional(), sql: z.string().optional(), method: z.string().optional(), path: z.string().optional() });
   /** The statements one read of the call ran, from its log lines: what it cost, in what it did. */
   async function statementsOf(who: Browser, call: CallSession): Promise<string[]> {
     const requestId = `read-${id128()}`;
@@ -2240,14 +2350,24 @@ describe('reading the call', () => {
     // Everyone in it: the first read at a version may open the tree, and no read after it does, whoever's reading.
     await statementsOf(art, host);
     for (let i = 0; i < 3; i++) for (const [who, call] of [[art, host], [priya, p]] as const) expect(opensTree(await statementsOf(who, call))).toBe(0);
-    // A change to the tree is opened once more, for everyone, and what they're told follows it.
+    // Include background recovery reads: one can open the new version before either measured request begins.
+    const from = h.logs.length;
     await art.api.workspaces.items.rename(id, plan, 'Plan, renamed');
-    expect(opensTree(await statementsOf(art, host)) + opensTree(await statementsOf(priya, p))).toBe(1);
+    await until(() => host.getSnapshot().workspace.documents.some((x) => x.name === 'Plan, renamed'), 'the organizer’s background read to see the renamed document');
+    expect(opensTree(await statementsOf(art, host)) + opensTree(await statementsOf(priya, p))).toBe(0);
     expect((await space(p)).documents.map((x) => x.name)).toEqual(['Plan, renamed']);
+    // Exactly one tree open across every call-state read at this version, including automatic recovery. The rename
+    // itself opens the tree to change it, so only GETs of this call count toward the shared read cache’s cost.
+    const statements = h.logs.slice(from).flatMap((l) => {
+      const r = LogLine.safeParse(JSON.parse(l));
+      return r.success && r.data.method === 'GET' && r.data.path === `/v1/live/calls/${host.ticket.callId}`
+        && (r.data.msg === 'query' || r.data.msg === 'slow query') && r.data.sql ? [r.data.sql] : [];
+    });
+    expect(opensTree(statements)).toBe(1);
     // Someone who can open nothing: nothing of it is opened for them, and a read costs the same whether or not something they
     // can't open is being presented and played, so how long it takes says nothing about it either.
     const quiet = await statementsOf(jamie, jamie.call);
-    await p.startPresenting('document', plan, 0);
+    await p.startPresenting({ kind: 'workspace' });
     await host.startPlaying(film, media);
     expect((await read(jamie.call)).workspace).toMatchObject({ present: { id: null }, play: null });
     const busy = await statementsOf(jamie, jamie.call);
@@ -2325,6 +2445,7 @@ describe('every ID from a request', () => {
     const plan = await doc(art, mine, 'Plan');
     const hers = await workspace(lena, 'Hers');
     const herDoc = await doc(lena, hers, 'Hers');
+    const herBoard = (await lena.api.workspaces.items.create(hers, { kind: 'board', name: 'Hers' })).id;
     const herVideo = madeUp();
     const hv = await open(lena, hers, herDoc);
     addVideo(hv, 'v', herVideo);
@@ -2337,7 +2458,7 @@ describe('every ID from a request', () => {
     // Another workspace's document, in this call's actions.
     const fromElsewhere: CallAction[] = [
       { type: 'workspace-set', workspaceId: hers }, { type: 'workspace-bring', documentId: herDoc, brought: true },
-      { type: 'present-start', kind: 'document', id: herDoc, section: 0 }, { type: 'play-start', documentId: herDoc, mediaId: herVideo, positionMs: 0 }
+      { type: 'present-start', what: { kind: 'board', id: herDoc, section: 0 } }, { type: 'play-start', documentId: herDoc, mediaId: herVideo, positionMs: 0 }
     ];
     for (const a of fromElsewhere) expect(`${a.type} → ${(await action(art, host, a)).status}`).toBe(`${a.type} → 404`);
     // Another call's pass on this call's routes.
@@ -2347,8 +2468,8 @@ describe('every ID from a request', () => {
       expect(`${path} → ${res.status}`).toMatch(/→ 40[14]$/);
     }
     // A workspace's routes with a document of another workspace.
-    expect(await code(art.api.workspaces.presenterNotes.get(mine, herDoc))).toBe('not-found');
-    expect(await code(art.api.workspaces.presenterNotes.set(mine, herDoc, 'No'))).toBe('not-found');
+    expect(await code(art.api.workspaces.presenterNotes.frames(mine, herBoard))).toBe('not-found');
+    expect(await code(art.api.workspaces.presenterNotes.setFrame(mine, herBoard, 'wentWell0001', 'No'))).toBe('not-found');
     expect(await code(collect(art.api.workspaces.ask(mine, herDoc, { action: 'shorter', text: 'No' })))).toBe('not-found');
     expect(await code(host.tickDocumentFollowUp({ workspaceId: hers, documentId: herDoc, block: 'v', done: true }))).toBe('not-found');
     // What's in a request that isn't an ID is refused before it reaches anything.
@@ -2384,8 +2505,6 @@ describe('what’s kept', () => {
     const worker = await account('canary-worker@canary.example');
     const id = await workspace(art, 'CANARY-CALLSPACE', [[worker, 'edit']]);
     const agenda = await doc(art, id, 'Agenda CANARY-AGENDANAME');
-    await art.api.workspaces.presenterNotes.set(id, agenda, 'CANARY-PRESENTERNOTE thank the pilot team');
-    await worker.api.workspaces.presenterNotes.set(id, agenda, 'CANARY-THEIRNOTE mention the 20th');
     const retro = (await art.api.workspaces.items.create(id, { kind: 'board', name: 'Retro' })).id;
     await art.api.workspaces.presenterNotes.setFrame(id, retro, 'canaryFrame1', 'CANARY-FRAMENOTE thank the support team');
     const at = Date.now() + 3_600_000;
@@ -2400,7 +2519,7 @@ describe('what’s kept', () => {
     const media = madeUp();
     addVideo(page, 'v1', media);
     await saved(page);
-    await w.startPresenting('document', agenda, 1);
+    await w.startPresenting({ kind: 'workspace' });
     await w.startPlaying(agenda, media, 1000);
     const jamie = await guest(host, m.code, 'CANARY-GUESTNAME Jamie');
     await jamie.call.askForWorkspace(true);
@@ -2420,9 +2539,8 @@ describe('what’s kept', () => {
     await nextCall.leave();
     await until(async () => (await art.api.workspaces.versions(id, agenda)).some((v) => v.reason === 'call'), 'the version');
 
-    const canaries = ['CANARY-CALLSPACE', 'CANARY-AGENDANAME', 'CANARY-PRESENTERNOTE', 'CANARY-THEIRNOTE', 'CANARY-FRAMENOTE', 'canaryFrame1', 'CANARY-CALLTITLE', 'CANARY-OPENTODO', 'CANARY-MENTION', 'canary-mention', 'CANARY-GUESTNAME', 'CANARY-ASKEDSELECTION', 'canary-worker', 'Canary Worker', 'From last time', media];
+    const canaries = ['CANARY-CALLSPACE', 'CANARY-AGENDANAME', 'CANARY-FRAMENOTE', 'canaryFrame1', 'CANARY-CALLTITLE', 'CANARY-OPENTODO', 'CANARY-MENTION', 'canary-mention', 'CANARY-GUESTNAME', 'CANARY-ASKEDSELECTION', 'canary-worker', 'Canary Worker', 'From last time', media];
     const tables = (await h.pool.query<{ table_name: string }>("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE'")).rows.map((r) => r.table_name);
-    expect(tables).toContain('presenter_notes');
     expect(tables).toContain('presenter_frame_notes');
     const dump = await h.pool.query(`SELECT string_agg(t, ' ') AS all FROM (${tables.map((t) => `SELECT row_to_json(x)::text AS t FROM ${t} x`).join(' UNION ALL ')}) q`);
     const rowsText = `${String(dump.rows[0]?.all ?? '')} ${live}`;

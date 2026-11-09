@@ -3,7 +3,7 @@ import type { Meta } from '@storybook/react-vite';
 import { phone } from '../../src/call';
 import { searched } from '../../src/api/trouble';
 import { changing, page, pages, type PageArgs, type PageStory } from '../../src/page';
-import { noRoomNotes, troubled } from './changes';
+import { noRoomNotes, takenOn, troubled } from './changes';
 
 const meta = { title: 'Pages/Notes', ...pages } satisfies Meta<PageArgs>;
 export default meta;
@@ -23,6 +23,17 @@ const showing = (tab: string): NonNullable<PageStory['play']> => async ({ canvas
 
 export const Busy = page('/notes', 'busy');
 export const BusyPhone = phone(Busy);
+/** The wide preview shows the same pending done command as Home and its full note cache. */
+export const FollowUpSaving = page('/notes', 'busy', {
+  beforeEach: changing(takenOn, troubled({ 'notes.updateAction': 'hold' })),
+  play: async ({ canvas, userEvent, step }) => {
+    await step('8. Tick a follow-up in the selected note preview while saving', async () => {
+      const [box] = await canvas.findAllByRole('checkbox', { name: /^Mark done:/ });
+      if (box) await userEvent.click(box);
+    });
+  }
+});
+export const FollowUpSavingNight = { ...FollowUpSaving, globals: { theme: 'dark' } };
 export const FirstDay = page('/notes', 'first-day');
 export const Writing = page('/notes', 'writing');
 export const OnTheirOwn = page('/notes', 'on-their-own');

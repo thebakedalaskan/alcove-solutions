@@ -14,7 +14,7 @@ import { useFollowUps } from './useFollowUps';
 function Rows({ host, depth, area }: { host: LiveHost; depth: number; area: WorkspaceArea }) {
   const { live, at, closed } = host;
   const state = useLive(live.session);
-  const { open } = useFollowUps(host);
+  const { open } = useFollowUps({ ...host, session: live.session });
   /* The count beside Follow-ups takes in what's written in documents, read every few seconds while the workspace is open. */
   useEffect(() => (closed ? undefined : live.session.watchFollowUps()), [closed, live.session]);
 

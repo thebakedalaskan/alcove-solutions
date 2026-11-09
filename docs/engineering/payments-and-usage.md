@@ -80,13 +80,13 @@ support.
    The deposit's route, address, memo, expiry, the amount asked, the quote's `minAmountIn`, the credits promised and
    the rate they were priced at, and the whole signed quote are sealed in a `deposit` record; its row holds only the
    owner, ID, provider, state and when to look again. The top-up says what to send (`asked`), and shows its address
-   only while it's `waiting`: an address is for one payment. Once 1Click reports what was deposited, the top-up says
+   while it's `waiting` or `short`, until its expiry: a short payment can be completed at the same address. Once 1Click reports what was deposited, the top-up says
    so (`received`), with the credits it added once settled.
 3. **Watching.** The watcher (`watch` in `features/billing/deposits.ts`, run every 5 s by `startWatching`, which `server.ts` starts; one pass at a time)
    claims up to 20 due deposits with `FOR UPDATE SKIP LOCKED`, pushing their next check ahead by a lease longer than
    a worst-case pass (5 rounds of 4, each one 1Click call and up to 8 statements at their 15 s timeouts, half as much
    again: about 17 minutes) so another API instance skips them, then asks 1Click's `/v0/status` about each, 4 at a
-   time, and records the answer. `GET /v1/credits/top-ups/:id` checks the same way. 1Click being down leaves a deposit
+   time, and records the answer. `GET /v1/credits/top-ups/:id` checks the same way. Overlapping checks cannot reduce the amount already received or add credits twice. 1Click being down leaves a deposit
    as it was, logged at warn, and it's asked again in a minute. An unknown status is logged at warn and the deposit
    stays as it is (at the deadline it fails); a `SUCCESS` or `REFUNDED` that doesn't read or fails the checks under
    Pricing is logged at error once per reason and the deposit is `arriving`, so its address is no longer shown. An
@@ -137,3 +137,9 @@ The server never holds a key that can move treasury money. By hand, in near.com,
   stablecoin trades below 1 USD people can buy credits below cost with it. Alcove accepts this. When one depegs, turn
   top-ups off (take `TREASURY_INTENTS_ACCOUNT` out of the API's settings in `deploy.yml` and redeploy) until it recovers. While they're off nothing is checked
   or credited; once they're on again the watcher picks up every deposit it still watches.
+
+## Upgrade for stablecoin top-ups
+
+Migration `0022_deposits.sql` follows main's `0021_private_call_messages.sql` and adds only the deposits table and its
+watcher index. Existing migrations are unchanged. The previous API ignores the new table while the deployment migrates.
+Existing sealed billing records keep their shape; credits are positive entries in the existing history format.

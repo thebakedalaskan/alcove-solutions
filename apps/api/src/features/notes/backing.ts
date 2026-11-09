@@ -5,6 +5,7 @@
  * corrected since shows as corrected, a reader who lost the note gets nothing, nobody reads here a transcript that isn't
  * theirs to read, and nothing derived is stored for anyone.
  */
+import { isAcceptedFollowUp, isPendingFollowUp } from '@alcove/api';
 import type { ActionItem, Change, Decision, NoteAction, NoteDecision, NoteEvidence, NoteEvidenceFlag, NoteEvidenceMoment, NoteQuestion, NoteRoom, ScreenMoment, TranscriptLine } from '@alcove/api';
 import type { NoteManifest } from './service';
 
@@ -62,12 +63,12 @@ function evidenceOf(e: Entry, part: TranscriptLine[], lines: Map<string, Transcr
 }
 
 /** A note's decisions, open questions and follow-ups, the call's and each room's, each with what backs it. `m` is the note as this reader may read it (notes.asRead). */
-export function entriesOf(m: NoteManifest): { decisions: NoteDecision[]; questions: NoteQuestion[]; actions: NoteAction[]; rooms: NoteRoom[] } {
+export function entriesOf(m: NoteManifest): { decisions: NoteDecision[]; questions: NoteQuestion[]; actions: NoteAction[]; suggestions: NoteAction[]; rooms: NoteRoom[] } {
   const main = m.transcript ?? [];
   const lines = new Map([...main, ...m.rooms.flatMap((r) => r.transcript)].map((l) => [l.id, l]));
   const back = <T extends Entry>(xs: T[], part: TranscriptLine[]) => xs.map((x) => ({ ...x, evidence: evidenceOf(x, part, lines, m.screens, m.writtenAt) }));
   return {
-    decisions: back(m.decisions, main), questions: back(m.questions, main), actions: back(m.actions, main),
-    rooms: m.rooms.map((r) => ({ ...r, decisions: back(r.decisions, r.transcript), questions: back(r.questions, r.transcript), actions: back(r.actions, r.transcript) }))
+    decisions: back(m.decisions, main), questions: back(m.questions, main), actions: back(m.actions.filter(isAcceptedFollowUp), main), suggestions: back(m.actions.filter(isPendingFollowUp), main),
+    rooms: m.rooms.map((r) => ({ ...r, decisions: back(r.decisions, r.transcript), questions: back(r.questions, r.transcript), actions: back(r.actions.filter(isAcceptedFollowUp), r.transcript), suggestions: back(r.actions.filter(isPendingFollowUp), r.transcript) }))
   };
 }

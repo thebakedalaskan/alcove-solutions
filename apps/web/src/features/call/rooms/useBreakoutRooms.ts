@@ -6,7 +6,7 @@ import { captureHere } from '~/lib/capture';
 import { selfIn } from '~/lib/live';
 import { callName, sameEmail } from '~/lib/people';
 import type { CallRoom, RoomView } from '../media/livekit';
-import type { PanelView } from '../layout/Panel';
+import type { SideView } from '../layout/side';
 import type { StageRooms } from '../layout/Stage';
 import type { RoomActivity, RoomCandidate } from './Rooms';
 
@@ -19,11 +19,12 @@ interface BreakoutRoomsInput {
   room: CallRoom;
   roomView: RoomView;
   invited: Person[];
-  setPanel: (view: PanelView | null) => void;
+  /** Brings up a view in your side: Notes, as everyone comes back from rooms with notes on. */
+  openSide: (view: SideView) => void;
 }
 
 /** Owns room membership playback, timed reminders and transitions back to the main room. */
-export function useBreakoutRooms({ session, state, room, roomView, invited, setPanel }: BreakoutRoomsInput) {
+export function useBreakoutRooms({ session, state, room, roomView, invited, openSide }: BreakoutRoomsInput) {
   const toast = useToast();
   const me = selfIn(state);
   const meId = me?.id ?? session.ticket.identity;
@@ -74,11 +75,11 @@ export function useBreakoutRooms({ session, state, room, roomView, invited, setP
     toast(`${organizerPerson ? callName(organizerPerson) : 'The organizer'}, to every room: ${message.text}`, { icon: 'send', ms: 8000 });
   }, [messageKey]);
   /**
-   * The organizer oversees the rooms from the main room, unless there's a board to be on: the one every room shares, or the
-   * board of the room they're visiting.
+   * The rooms as the organizer oversees them on their stage. While there's a board the rooms are worked on, the one every room
+   * shares or the board of the room they're visiting, that board takes their place whenever it's on the organizer's stage.
    */
-  const onRoomsBoard = state.board.open !== null && (myRoom >= 0 || open?.board === 'shared');
-  const stageRooms: StageRooms | null = open && organizer && !onRoomsBoard ? {
+  const roomsBoard = state.board.open !== null && (myRoom >= 0 || open?.board === 'shared');
+  const roomsView: StageRooms | null = open && organizer ? {
     // Each room's notes: paused while the whole call is, or while the organizer has paused that room.
     rooms: open.rooms.map((r, k) => ({ name: r.name, ids: r.members.filter((id) => byId.has(id)), help: helps[k] ?? null, notes: mode === 'paused' || (on && r.paused) ? 'paused' : on ? 'on' : 'off', board: r.board })),
     main: mainIds, joined: myRoom >= 0 ? myRoom : null, left, boards: roomsOnBoards,
@@ -112,7 +113,7 @@ export function useBreakoutRooms({ session, state, room, roomView, invited, setP
       if (came) backFromRooms.current = Date.now();
       // Each room's board lands on the main board, frame by frame, as it arrives. One every room shared has nothing to land.
       if (came && was && was.board !== 'shared') setLanding({ until: Date.now() + CAME_BACK_MS, rooms: was.rooms.filter((r) => r.board).map((r) => r.id) });
-      if (on) { if (innerWidth >= 1100) setPanel('notes'); toast(came ?? 'Everyone is back in the main room, where notes are on. Each room’s talk goes into the call’s notes as its own section.', { icon: came ? 'door' : 'notesPen' }); }
+      if (on) { if (innerWidth >= 1100) openSide('notes'); toast(came ?? 'Everyone is back in the main room, where notes are on. Each room’s talk goes into the call’s notes as its own section.', { icon: came ? 'door' : 'notesPen' }); }
       else toast(came ?? 'Everyone is back from the rooms', { icon: 'door' });
     } else if (!wasOpen.current && open && !organizer) {
       const minutes = Math.max(1, Math.round((open.until - open.from) / 60));
@@ -189,7 +190,7 @@ export function useBreakoutRooms({ session, state, room, roomView, invited, setP
   };
 
   return {
-    open, left, roomName, placeName, inARoom, unit, unitKey, activity, organizerPerson, message, roomsOnBoards, stageRooms, myRoomId,
+    open, left, roomName, placeName, inARoom, unit, unitKey, activity, organizerPerson, message, roomsOnBoards, roomsView, roomsBoard, myRoomId,
     candidates, guestsHere, visit, renameRoom, moveTo, openRooms, landing, cameBack: () => Date.now() - backFromRooms.current < CAME_BACK_MS
   };
 }

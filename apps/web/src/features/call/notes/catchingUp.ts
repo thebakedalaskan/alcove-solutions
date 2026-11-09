@@ -1,6 +1,6 @@
 /*
  * Catching up during a call, as this screen keeps it: what you've asked and what came back, what questions read
- * (the range), what you can catch up on (the window), the transcript moment you opened, and where the panel was
+ * (the range), what you can catch up on (the window), the transcript moment you opened, and where your side was
  * before you started, so Back to live returns to it. Your own view of the call (pins, layout, sizes) is never touched.
  * Nothing here is sent to anyone else or kept anywhere: it goes with the page.
  */
@@ -10,7 +10,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { log } from '~/lib/log';
 import { timeZone } from '~/lib/time';
 import { WHOLE_CALL, likelyMissed, type AskScope, type Asked, type Moment } from './CatchUp';
-import type { PanelView } from '../layout/Panel';
+import type { SidePlace } from '../layout/side';
 
 const clog = log.child({ component: 'catch-up' });
 
@@ -22,7 +22,7 @@ export interface CatchingUp {
   range: CatchUpRange;
   window: CatchUpWindow | null;
   moment: Moment | null;
-  /** You came to the panel to catch up, from the call: Back to live returns you to where you were. */
+  /** You came to Ask to catch up, from the call: Back to live returns you to where you were. */
   catching: boolean;
   /** What questions read now: this call, or the earlier calls whose notes you have. */
   scope: AskScope;
@@ -36,23 +36,23 @@ export interface CatchingUp {
   askEarlier(question: string, held: string[]): void;
   /** Opens the transcript at a moment a catch-up or an answer pointed at. */
   open(e: TranscriptMoment): void;
-  /** Back to the call as it is now: the moment closes and the panel goes back to how it was before you caught up. */
+  /** Back to the call as it is now: the moment closes and your side goes back to how it was before you caught up. */
   backToLive(): void;
-  /** You moved around the panel yourself: no moment, and no way back to offer. */
+  /** You moved around your side yourself: no moment, and no way back to offer. */
   settle(): void;
 }
 
 /**
- * `panel` is the view you last brought up and `showing` everything the side panels show now; `room` is the breakout room
+ * `place` is where your side is, to the tab, and `setPlace` takes it somewhere (or puts it away); `room` is the breakout room
  * you're in, if any, whose lines alone catching up reads there.
  */
-export function useCatchingUp(session: CallSession, o: { panel: PanelView | null; showing: PanelView[]; setPanel: (v: PanelView | null) => void; narrow: boolean; everOn: boolean; room: string | null }): CatchingUp {
+export function useCatchingUp(session: CallSession, o: { place: SidePlace | null; setPlace: (p: SidePlace | null) => void; narrow: boolean; everOn: boolean; room: string | null }): CatchingUp {
   const toast = useToast();
   const [asks, setAsks] = useState<Asked[]>([]);
   const [range, setRange] = useState<CatchUpRange>(WHOLE_CALL);
   const [win, setWin] = useState<CatchUpWindow | null>(null);
   const [moment, setMoment] = useState<Moment | null>(null);
-  const [before, setBefore] = useState<PanelView | 'closed' | null>(null);
+  const [before, setBefore] = useState<SidePlace | 'closed' | null>(null);
   const [scope, setScope] = useState<AskScope>('call');
   const id = useRef(0);
 
@@ -61,8 +61,8 @@ export function useCatchingUp(session: CallSession, o: { panel: PanelView | null
   }, [session]);
   useEffect(() => { refreshWindow(); }, [refreshWindow]);
 
-  /** Remembers where the panel was, the first time you leave it to catch up. */
-  const leaving = () => setBefore((b) => b ?? o.panel ?? 'closed');
+  /** Remembers where your side was, the first time you leave it to catch up. */
+  const leaving = () => setBefore((b) => b ?? o.place ?? 'closed');
   const failed = (what: string, n: number) => (e: unknown) => {
     clog.warn(`${what} failed`, { err: e });
     setAsks((a) => a.map((x) => (x.id === n ? { ...x, error: errorMessage(e) } : x)));
@@ -75,9 +75,9 @@ export function useCatchingUp(session: CallSession, o: { panel: PanelView | null
     session.catchUp(r).then((c) => setAsks((a) => a.map((x) => (x.id === n && x.kind === 'catch-up' ? { ...x, c } : x))), failed('catch-up', n));
   };
   const catchUp = (r?: CatchUpRange | undefined) => {
-    if (!o.showing.includes('ask')) leaving();
+    if (o.place !== 'ask') leaving();
     setMoment(null);
-    o.setPanel('ask');
+    o.setPlace('ask');
     if (r) { run(r); return; }
     // What you most likely missed depends on now: learn the window again first.
     session.catchUpWindow().then((w) => { setWin(w); run(likelyMissed(w)); }, () => run(likelyMissed(win)));
@@ -96,7 +96,7 @@ export function useCatchingUp(session: CallSession, o: { panel: PanelView | null
   const open = (e: TranscriptMoment) => {
     leaving();
     setMoment({ evidence: e, found: null, error: null });
-    o.setPanel('transcript');
+    o.setPlace('transcript');
     // Opening it asks the server, which checks again what you may read.
     session.moment(e.lineId).then(
       (found) => setMoment((m) => (m?.evidence.lineId === e.lineId ? { ...m, found } : m)),
@@ -107,15 +107,15 @@ export function useCatchingUp(session: CallSession, o: { panel: PanelView | null
     setMoment(null);
     const was = before;
     setBefore(null);
-    // On a phone the panel covers the call; elsewhere it goes back to what it showed (the transcript following along
-    // again, if that was it), unless it was the Ask view you were catching up in.
-    o.setPanel(o.narrow || was === null || was === 'closed' || was === 'ask' ? null : was);
+    // On a phone your side covers the call; elsewhere it goes back to what it showed (the transcript following along
+    // again, if that was it), unless it was Ask you were catching up in.
+    o.setPlace(o.narrow || was === null || was === 'closed' || was === 'ask' ? null : was);
   };
   const settle = () => { setMoment(null); setBefore(null); };
-  // However the panel moves on (Escape, its own buttons), a moment shows only in the transcript view, and a closed
-  // panel has no way back to offer.
-  const transcript = o.showing.includes('transcript');
-  const anyOpen = o.showing.length > 0;
+  // However your side moves on (Escape, its own buttons), a moment shows only in the transcript, and a closed side has
+  // no way back to offer.
+  const transcript = o.place === 'transcript';
+  const anyOpen = o.place !== null;
   useEffect(() => {
     if (!transcript) setMoment(null);
     if (!anyOpen) setBefore(null);

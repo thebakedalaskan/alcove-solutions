@@ -5,7 +5,7 @@
  * of these reach.
  */
 import {
-  FILE_TYPE, CalendarSchema, CreditBalanceSchema, DocumentLibrarySchema, IncomingRingSchema, MeetingSchema, NoteSchema, PersonalEntrySchema, PreferencesSchema,
+  TopUpSchema, TopUpRoutesSchema, ISODateSchema, DriveExportChoiceSchema, DriveExportJobSchema, DriveFolderSchema, DriveSettingsSchema, FILE_TYPE, CalendarSchema, CreditBalanceSchema, DocumentLibrarySchema, IncomingRingSchema, MeetingSchema, NoteSchema, PersonalEntrySchema, PreferencesSchema,
   MentionNoticeSchema, SessionSchema, ShareEntrySchema, TeamSchema, WorkspaceMediaSchema, WorkspaceSummarySchema, WorkspaceTreeSchema, type DocumentLibrary, type DocumentRole,
   type Group, type ItemCall, type MentionNotice, type NoteRoom, type NoteWorkedOn, type Person, type ShareEntry, type WorkspaceItem, type WorkspaceRole
 } from '@alcove/api';
@@ -27,11 +27,13 @@ import { QUIET } from './empty';
 import { forgetKeptHere } from './kept';
 import { drawnPicture, forgetAudio } from './media';
 import { stopLive } from './standin';
+import { paymentsOff, withPayments } from '../world/payments';
+import { disconnectedDrive, withDriveExports } from '../world/drive-exports';
 import { withAgentConnections } from './agents';
 import { serve } from './state';
 import { forgetDocuments } from './workspaces';
 
-export type ScenarioName = 'busy' | 'first-day' | 'on-their-own' | 'offline' | 'writing' | 'call-soon' | 'lots' | 'signed-out' | 'unsaved' | 'first-sign-in' | 'agents-connected';
+export type ScenarioName = 'busy' | 'first-day' | 'on-their-own' | 'offline' | 'writing' | 'call-soon' | 'lots' | 'signed-out' | 'unsaved' | 'first-sign-in' | 'agents-connected' | 'drive-connected' | 'payments';
 
 interface Scenario { title: string; about: string; make: () => { world: World; opening: Partial<Opening> } }
 
@@ -139,7 +141,7 @@ function onTheNote(name: string, people: readonly Person[], room: string | null,
 function retroRoom(id: string, name: string, people: readonly Person[], spec: Pick<NoteSpec, 'summary' | 'said' | 'actions'>): NoteRoom {
   const n = writeNote({ ...spec, id: `${RETRO_NOTE}-${id}`, title: name, startedAt: RETRO_AT, minutes: 45, organizer: ART, excerpt: '' });
   return {
-    id, name, people: people.map((p) => ({ name: p.name, person: p })), from: 12 * 60, to: 22 * 60, summary: n.summary, decisions: n.decisions, questions: n.questions, actions: n.actions,
+    id, name, people: people.map((p) => ({ name: p.name, person: p })), from: 12 * 60, to: 22 * 60, summary: n.summary, decisions: n.decisions, questions: n.questions, actions: n.actions, suggestions: n.suggestions,
     chapters: n.chapters, gaps: [], transcript: (n.transcript ?? []).map((l) => ({ ...l, room: { id, name } }))
   };
 }
@@ -281,7 +283,7 @@ function busy(): World {
     if (n.id === 'n4') n.workedOn = [workedOn('ws-review', homeName('Design review', REVIEW_AT), 'Sidebar screenshots', WORKED.review), workedOn('ws-review', homeName('Design review', REVIEW_AT), 'Review checklist', WORKED.checklist)];
   }
   return {
-    session: session(), prefs: { ...PREFS, pinned: ['n4', 'n6'], groups: GROUPS }, team: teamOf(DIRECTORY), notes, personal: { n2: standupOwn() },
+    drive: disconnectedDrive(), payments: paymentsOff(), session: session(), prefs: { ...PREFS, pinned: ['n4', 'n6'], groups: GROUPS }, team: teamOf(DIRECTORY), notes, personal: { n2: standupOwn() },
     meetings: busyCalls(), calendar: connected(busyEvents()), credits: CREDITS, documents: library(), workspaces: workspaces(), pages: pages(), shares: shares(), boards: boards(),
     mentions: structuredClone(TAGGED), media: files(), rings: [], writing: null
   };
@@ -347,7 +349,7 @@ function onTheirOwn(): World {
     }
   ];
   return {
-    session: session({ user: solo, ownerId: solo.id }), prefs: PREFS, team: null, notes: specs.map((s) => writeNote(s, solo)), personal: {},
+    drive: disconnectedDrive(), payments: paymentsOff(), session: session({ user: solo, ownerId: solo.id }), prefs: PREFS, team: null, notes: specs.map((s) => writeNote(s, solo)), personal: {},
     meetings: [], calendar: connected([]), credits: CREDITS, documents: { workspaces: [{ id: 'own', name: 'Your documents', documents: [] }] },
     workspaces: [], pages: {}, shares: {}, boards: {}, mentions: [], media: [], rings: [], writing: null
   };
@@ -356,6 +358,14 @@ function onTheirOwn(): World {
 /* ---------- the scenarios ---------- */
 
 export const SCENARIOS: Record<ScenarioName, Scenario> = {
+  payments: {
+    title: 'Credit top-ups', about: 'Art can add credits with a stablecoin; every payment address is an invalid Storybook preview.',
+    make: () => { const world = busy(); withPayments(world); return { world, opening: {} }; }
+  },
+  'drive-connected': {
+    title: 'Google Drive exports', about: 'Art sends finalized call files to a chosen folder, with completed, uploading, pending and failed exports.',
+    make: () => { const world = busy(); withDriveExports(world); return { world, opening: {} }; }
+  },
   'agents-connected': {
     title: 'Agents connected', about: 'Art has a read-only Workspace assistant and a Scheduling assistant token that has not been used yet.',
     make: () => { const world = busy(); withAgentConnections(world); return { world, opening: {} }; }
@@ -365,7 +375,7 @@ export const SCENARIOS: Record<ScenarioName, Scenario> = {
     title: 'A first day', about: 'Art has just signed in for the first time: no notes, no calls, a team that isn’t on Alcove yet, and no calendar access.',
     make: () => ({
       world: {
-        session: session({ createdAt: iso(0, 16, 5) }), prefs: PREFS, team: teamOf(DIRECTORY.filter((c) => c.person !== INES && c.person !== AIKO).map((c): Colleague => ({ ...c, onAlcove: false, invited: false }))),
+        drive: disconnectedDrive(), payments: paymentsOff(), session: session({ createdAt: iso(0, 16, 5) }), prefs: PREFS, team: teamOf(DIRECTORY.filter((c) => c.person !== INES && c.person !== AIKO).map((c): Colleague => ({ ...c, onAlcove: false, invited: false }))),
         notes: [], personal: {}, meetings: [], calendar: notConnected, credits: WELCOME_CREDITS, documents: library(), workspaces: [], pages: {}, shares: {}, boards: {}, mentions: [], media: [], rings: [], writing: null
       },
       opening: { tourSeen: false }
@@ -426,8 +436,11 @@ export const isScenario = (v: unknown): v is ScenarioName => typeof v === 'strin
 /** Checks the world against the contract's own schemas, so a story never shows something the API could never send. */
 export function checked(w: World): World {
   const checks = [
+    ['drive settings', DriveSettingsSchema.safeParse(w.drive.settings)], ['drive folders', DriveFolderSchema.array().safeParse(w.drive.folders)],
+    ['drive jobs', DriveExportJobSchema.array().safeParse(w.drive.jobs)], ['drive overrides', DriveExportChoiceSchema.array().safeParse(Object.values(w.drive.overrides))],
     ['session', SessionSchema.nullable().safeParse(w.session)], ['prefs', PreferencesSchema.safeParse(w.prefs)], ['team', TeamSchema.nullable().safeParse(w.team)],
     ['notes', NoteSchema.array().safeParse(w.notes)], ['meetings', MeetingSchema.array().safeParse(w.meetings)], ['calendar', CalendarSchema.safeParse(w.calendar)],
+    ['payment routes', TopUpRoutesSchema.nullable().safeParse(w.payments.routes)], ['top-ups', TopUpSchema.array().safeParse(w.payments.topUps)],
     ['credits', CreditBalanceSchema.safeParse(w.credits)], ['documents', DocumentLibrarySchema.safeParse(w.documents)], ['workspaces', WorkspaceTreeSchema.array().safeParse(w.workspaces)],
     ['rings', IncomingRingSchema.array().safeParse(w.rings)], ['personal', PersonalEntrySchema.array().safeParse(Object.values(w.personal).flat())],
     ['shares', ShareEntrySchema.array().safeParse(Object.values(w.shares).flat())],
@@ -445,7 +458,7 @@ const THEME = 'alcove-theme';
 /** What this browser remembers, as the scenario has it: nothing else from an earlier story (but the theme the toolbar chose). */
 function remember(o: Opening, w: World): void {
   try {
-    for (const k of Object.keys(localStorage)) if (k.startsWith('alcove') && k !== THEME && k !== 'alcove:log') localStorage.removeItem(k);
+    if (!o.browser.sharedNotificationBrowser) for (const k of Object.keys(localStorage)) if (k.startsWith('alcove') && k !== THEME && k !== 'alcove:log') localStorage.removeItem(k);
     sessionStorage.clear();
     const owner = w.session?.ownerId ?? ME_ID;
     if (o.tourSeen) localStorage.setItem(`alcove.tour.${owner}`, JSON.stringify({ seenAt: iso(-30, 9, 0) }));
@@ -474,7 +487,19 @@ export function begin(name: ScenarioName, over: Partial<Opening> = {}): Scenario
   forgetKeptHere();
   const { world, opening } = SCENARIOS[name].make();
   const o: Opening = { ...QUIET, ...opening, ...over, browser: { ...opening.browser, ...over.browser } };
-  setClock(o.now);
+  if (o.browser.sharedNotificationBrowser) {
+    // A real browser shares one wall clock. These explicit two-tab scenes must share their demo-clock anchor too.
+    const wall = performance.timeOrigin + performance.now();
+    let anchor = wall;
+    try {
+      const raw = localStorage.getItem('alcove.storybook.notification-clock');
+      const stored = ISODateSchema.safeParse(raw);
+      const previous = stored.success ? Date.parse(stored.data) : NaN;
+      if (Number.isFinite(previous) && wall >= previous && wall - previous < 3_600_000) anchor = previous;
+      else localStorage.setItem('alcove.storybook.notification-clock', new Date(wall).toISOString());
+    } catch { /* Native delivery still works; this scene needs writable storage to coordinate two tabs. */ }
+    setClock(new Date(o.now.getTime() + wall - anchor));
+  } else setClock(o.now);
   openBrowser(o.browser);
   remember(o, world);
   serve(checked(world), o);

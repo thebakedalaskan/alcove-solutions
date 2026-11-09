@@ -400,7 +400,7 @@ export class ShareLook implements LiveStore<ShareLookState> {
     this.lastSeen = 0;
     if (this.hold && !this.hold.bitmap) this.live();
   }
-  /** Shown as a tile now: back to live, and everything kept goes. The framing stays for when it's big again. */
+  /** Shown as a tile now: back to live, and everything kept goes. The framing stays for when it's on your stage again. */
   rest() {
     if (!this.hold && !this.kept.length) return;
     this.dropKept();
@@ -425,8 +425,8 @@ export interface ShareLooksState {
   /** The share open in its own window, and the window. */
   popped: { id: string; win: Window; kind: PopKind } | null;
   /**
-   * The share you last brought back from its own window (Back to the call, Bring it back, or closing the window), so the
-   * stage puts focus back on its tile; `n` counts up each time.
+   * The share you last brought back from its own window (Back to the call, Bring it back here, or closing the window), so
+   * focus goes back to it, its frame's body or its tile (`useFocusBack` in ShareInFrame.tsx); `n` counts up each time.
    */
   back: { id: string; n: number } | null;
   /** Counts up whenever a share's look is dropped, so the stage takes the fresh one. */
@@ -523,7 +523,7 @@ export class ShareLooks implements LiveStore<ShareLooksState> {
   }
   /**
    * Closes the share's own window: it's back on the stage. `back` when you brought it back yourself, so focus returns
-   * to its tile; not when it closes because the share stopped or you moved, which shouldn't take your focus anywhere.
+   * to it; not when it closes because the share stopped or you moved, which shouldn't take your focus anywhere.
    */
   popIn(back = false) {
     const p = this.state.popped;

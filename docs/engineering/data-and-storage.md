@@ -45,7 +45,7 @@ result, and [Changing what's stored](#changing-whats-stored) how it changes with
 | `document_versions` | owner (the workspace), document, `version_id`, `bytes`, how many `parts`, created | `info_ciphertext` (who changed it, the call it was kept in, why it was kept) |
 | `document_version_parts` | owner (the workspace), document, version, `part` | `state_ciphertext` (256 KiB of its whole Yjs state) |
 | `document_access` | owner (the workspace), document, `access_id` (what the API calls the entry), `kind` (`email`/`seat`), role (`edit`/`read`), `call_id` (a seat's call), created | `principal_index` (an email index, or the `call-seat` index), `person_ciphertext` (the address, or the name in the seat) |
-| `presenter_notes` | owner (the account), the document's workspace (`workspace_owner_id`) and `document_id`: one row for each person and document | `body_ciphertext` ([Presenter notes](#presenter-notes)) |
+| `presenter_notes` | owner (the account), the document's workspace (`workspace_owner_id`) and `document_id`: one row for each person and document or board they kept notes beside with an earlier release. Nothing reads or writes it now | `body_ciphertext` ([Presenter notes](#presenter-notes)) |
 | `presenter_frame_notes` | owner (the account), the board's workspace (`workspace_owner_id`), `document_id` (the board) and `frame_index` (a keyed hash of the frame under the account's key): one row for each person and frame they keep notes beside | `body_ciphertext` (the frame and what's kept beside it, [Presenter notes](#presenter-notes)) |
 | `workspace_authors` | owner (the workspace), whether this address made the workspace (`made_workspace`) | `email_index`: every address whose name is on something in the workspace, so deleting that account can reach it after it has left |
 | `workspace_media` | owner (the workspace), `media_id`, `state` (`uploading`/`ready`), what its pieces take up so far (`bytes`), how many pieces the whole file comes to (`pieces`), created | `info_ciphertext` (its name, type, size and dimensions: [Media](#media)) |
@@ -159,9 +159,12 @@ who has what. Everything happens under the workspace's lock, so nothing's told a
 What's told waits in `workspace_mentions`: the document, the keyed hash access knows them by (their address's if they're
 signed in, even when tagged by their seat, so it reaches them after the call), and a sealed `workspace-mention` record of who
 tagged them, by name and face, and the line. A notice (`told:<hash>`) wakes only that person's streams, which read what's
-waiting, ask access whether they can open each document now, and write a `mention` line. Opening a stream does the same, so
+waiting, ask access whether they can open each document now, and write the complete authorized set in a `mentions` line.
+Opening a stream does the same, so
 a tag is heard on arrival, as often as it takes until someone says they've seen it: `DELETE /v1/workspaces/:id/mentions/:id`
-(`WorkspaceLive.seen`), which only they can do. `GET /v1/mentions` (`api.workspaces.mentions`) is the same across all their
+(`WorkspaceLive.seen`), which only they can do. Reading a tag publishes the same private notice, so every open stream replaces
+its unread set, including with an empty set. Tree changes recompute it too, so losing a document removes its tags.
+`GET /v1/mentions` (`api.workspaces.mentions`) is the same across all their
 workspaces, with what each document's called, for the side panel's count and the browser's notification.
 
 Nobody hears of a tag in something they can't open now, however long it waited. A tag in something they've lost is deleted when
@@ -393,23 +396,21 @@ what's small enough to be typing.
 
 ### Presenter notes
 
-What someone keeps beside a document for presenting it: one `presenter_notes` row for each account and document, sealed
-under the account's own keys (state key `presenter-notes:<documentId>`, record kind `presenter-notes`, whose header binds
-the account, the workspace and the document), so nobody else who can open the document can read them, and a record copied to
-another row doesn't open. `GET` and `POST /v1/workspaces/:id/documents/:doc/presenter-notes`, for anyone who can open the
-document and has an account: someone in a call by its link has nowhere to keep them (`403`). Empty text deletes the row. At
-most 20,000 characters.
+What someone keeps beside each frame of a board for presenting it, a slide's own notes: one `presenter_frame_notes` row for
+each account, board and frame, sealed under the account's own keys (state key `presenter-frame-notes:<boardId>`, record kind
+`presenter-frame-notes`, whose header binds the account, the workspace, the board and the frame), so nobody else who can open
+the board can read them. Which frame a row is for is a keyed hash of the frame's ID under that key (`frame_index`), and the
+frame's ID is inside the record, so nothing a browser named is kept in the clear, and a frame's record put in another frame's
+row doesn't open. `GET /v1/workspaces/:id/documents/:board/presenter-notes/frames` answers them all, by frame, for anyone who
+can open the board and has an account: someone in a call by its link has nowhere to keep them (`403`). `POST` there with
+`{ frame, text }` keeps one frame's, and empty text deletes its row. Only a board has frames: the same for a document is `404`.
+At most 4,000 characters beside a frame, and notes beside 500 frames of a board: past that a new frame is refused (`409`), and
+two at once can take it one past. Notes beside a frame that's been taken off the board stay with the board, and go with it.
 
-Beside a board they're kept frame by frame, a slide's own notes: one `presenter_frame_notes` row for each account, board and
-frame, sealed under the account's own keys (state key `presenter-frame-notes:<boardId>`, record kind `presenter-frame-notes`,
-whose header binds the account, the workspace, the board and the frame). Which frame a row is for is a keyed hash of the frame's
-ID under that key (`frame_index`), and the frame's ID is inside the record, so nothing a browser named is kept in the clear, and
-a frame's record put in another frame's row doesn't open. `GET /v1/workspaces/:id/documents/:board/presenter-notes/frames`
-answers them all, by frame; `POST` there with `{ frame, text }` keeps one frame's, and empty text deletes its row. Only a board
-has frames: the same for a document is `404`. At most 4,000 characters beside a frame, and notes beside 500 frames of a board:
-past that a new frame is refused (`409`), and two at once can take it one past. Notes beside a frame that's been taken off the
-board stay with the board, and go with it. Whatever was kept beside a whole board before frames had their own still opens
-where it was.
+Earlier releases also kept notes beside a whole document or board: one `presenter_notes` row for each account and document,
+sealed the same way (state key `presenter-notes:<documentId>`, record kind `presenter-notes`, whose header binds the account,
+the workspace and the document). Nothing reads or writes them now. The rows already there go with their account or their
+document, by the table's foreign keys, as they always did; a later release can drop the table.
 
 ### In a browser
 
@@ -566,7 +567,7 @@ process readable and is sealed there (`apps/api/src/features/workspaces/media.ts
   to…, has its files attached there first, and its pictures wait for that. A picture that's `not-found` shows as deleted; a file
   or a film does when the workspace's list of files, read after the block was first seen, no longer has it through that
   document, or a player or a download is refused it. Taking a block out (Delete) leaves its file; Delete for good, from the
-  block's menu, is `remove`. A version in History and a presentation in a call draw from the same (`useMediaView` in
+  block's menu, is `remove`. A version in History draws from the same (`useMediaView` in
   `DocumentMedia.tsx`), so a file deleted for good since shows as deleted there too.
 - **What a process takes on.** Every call runs in the same one process, so what a file can hold there is limited
   (`MEDIA_LIMITS` in `features/workspaces/media.ts`). At most 16 pieces are coming in at once, 4 for any one person, counted from before
@@ -619,7 +620,7 @@ and this way it runs through the same auth, origin check and tests as everything
   than closing the oldest, so a stream at work is never taken from anyone, and that's decided before anything is read. The
   browser tries again by itself and gets in when one closes.
 - **A workspace's stream** (`GET /v1/workspaces/:id/live`). Lines: `tree`, whole, first and whenever what this reader sees
-  changes; `presence`, everyone here that they can know of, whole, whenever that changes; `mention`, someone tagged them
+  changes; `presence`, everyone here that they can know of, whole, whenever that changes; `mentions`, their authorized unread tags, whole
   ([Tags](#tags)); `access`, when their role changes, just before the `tree` that shows it; `ping`, every 25 seconds; `closed`, when
   they can't open it any more, and it ends. Every stream of a workspace on an instance shares one subscription and one
   read of each change, for the streams behind it: `version` moves on with every change to the tree or to who has what, and
@@ -727,6 +728,11 @@ readable.
   during the call is in the call's sealed state (`workspace`: who's asking, what's presented and playing, what's been
   worked on and by whom, and the next agenda while it's being made), and goes when the call ends: what was worked on into the note, if there is one, and nowhere else
   ([Calls and recordings › The call's workspace](calls-and-recordings.md#the-calls-workspace)).
+- **Presenter timers** live in the call’s sealed state, separate from its boards and workspace. The sequence keeps its
+  segment labels, optional presenters and durations, current position, revision and server-clock anchors. Older call
+  records default to no sequence. Named presets keep only definitions, sealed under their account’s keys, with a
+  revision for explicit updates; applying one copies it into the call with a fresh clock. Presets belong only to their
+  account and are physically removed with it. See [Presenter timer sequences](presenter-timers.md).
 - **A board in a call** is a document in a workspace like any other. The call's sealed state says which is open in each part
   of the call and which boards it lets everyone into (`board`): where each is, who opened or decided it by their name, address and
   seat, and the seats and addresses each has been worked out for, and nothing about what's on it. An open board's entry keeps its
@@ -777,9 +783,11 @@ readable.
   (see [Privacy › Deletion](privacy-keys-and-sessions.md#deletion)). A deleted account leaves no row keyed by
   its ID, except an `object_gc` entry until maintenance deletes an object the store refused.
 - **Top-ups** are inserted `waiting` when opened and change state only under a row lock, crediting the balance in
-  the same transaction; a final state never changes again. A `cancelled` one is still watched until its deadline, and
-  moves on if a payment reaches it; with nothing then, its next check is set to `infinity`, and back to now if a payment is found on it later. The watcher claims due ones with a one-minute lease
-  (`check_after`) and sets the next check by age.
+  the same transaction; `credited` and `held` never change again. Received amounts for open deposits never decrease,
+  even when overlapping provider checks finish out of order. Cancelled, failed and expired deposits remain watched
+  for 30 days after their address expires, so late settlements still credit. The watcher claims due ones with a lease
+  longer than a worst-case pass (about 17 minutes, `check_after`) and schedules their next check by age; the long tail
+  thins from hourly to every six hours, then daily. Only after the tail ends is `check_after` set to `infinity`.
 - **Credits used this month** are summed from the sealed billing history when the balance is read
   (`GET /v1/credits`): nothing about usage is stored in the clear ([Payments and usage](payments-and-usage.md)).
 
@@ -827,7 +835,8 @@ and for how long](notes-and-inference.md#whats-kept-and-for-how-long)):
 - **What a call keeps of its workspace** (who's asking, what's presented and playing, what's been worked on) lasts while the
   call does. What was worked on goes into its note, and a call with notes off keeps only the versions. Asking Alcove about a
   selection keeps nothing.
-- **Presenter notes** last until their author empties them, or the document, the workspace or the account goes.
+- **Presenter notes** beside a board's frames last until their author empties them, or the board, the workspace or the account
+  goes. The `presenter_notes` rows earlier releases kept last until the document, the workspace or the account goes.
 
 ## Operations
 

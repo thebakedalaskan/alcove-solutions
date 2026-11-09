@@ -10,61 +10,8 @@
 import type { CallSession, CallState } from '@alcove/api';
 import { useEffect, useMemo, useRef } from 'react';
 import type { BoardRun, RunTimer, RunVote } from '~/features/board/tools/run';
-import { log as rootLog } from '~/lib/log';
-import { canChooseSpeaker } from '../media/devices';
-
-const blog = rootLog.child({ component: 'board-run' });
-
-/** How long a tab keeps the chime to itself, so another of this browser's tabs, a second behind, doesn't chime as well. */
-const CHIME_HELD_MS = 10_000;
-
-/** Two soft notes, falling, once. */
-async function chime(speakerId: string | null): Promise<void> {
-  const ctx = new AudioContext();
-  try {
-    const out = ctx.createMediaStreamDestination();
-    const level = ctx.createGain();
-    level.gain.value = 0.1;
-    level.connect(out);
-    const audio = new Audio();
-    audio.srcObject = out.stream;
-    if (speakerId && canChooseSpeaker()) await audio.setSinkId(speakerId).catch((e: unknown) => blog.warn('the timer’s chime couldn’t play through the chosen speaker', { err: e }));
-    await audio.play();
-    const start = ctx.currentTime + 0.05;
-    for (const [at, hz] of [[0, 783.99], [0.18, 523.25]] as const) {
-      const note = ctx.createOscillator();
-      const fall = ctx.createGain();
-      note.frequency.value = hz;
-      fall.gain.setValueAtTime(0.0001, start + at);
-      fall.gain.exponentialRampToValueAtTime(1, start + at + 0.02);
-      fall.gain.exponentialRampToValueAtTime(0.0001, start + at + 0.9);
-      note.connect(fall).connect(level);
-      note.start(start + at);
-      note.stop(start + at + 0.95);
-    }
-    await new Promise((r) => { setTimeout(r, 1300); });
-    audio.pause();
-  } finally {
-    void ctx.close().catch(() => undefined);
-  }
-}
-
-/** Chimes once in this browser for the timer `key`: the first tab there takes it. A tab that can't play is quiet, which is never a problem to report. */
-async function chimeOnce(key: string, speakerId: string | null): Promise<void> {
-  try {
-    if (!('locks' in navigator)) {
-      await chime(speakerId);
-      return;
-    }
-    await navigator.locks.request(`alcove-board-timer:${key}`, { ifAvailable: true }, async (lock) => {
-      if (!lock) return;
-      await chime(speakerId);
-      await new Promise((r) => { setTimeout(r, CHIME_HELD_MS); });
-    });
-  } catch (e) {
-    blog.debug('the timer’s chime made no sound', { err: e });
-  }
-}
+import { playSound, stopSounds } from '~/lib/audio-output';
+import { useSoundPreferences } from '~/lib/sound-preferences';
 
 /**
  * When the timer runs out, on this browser's clock. The call says it in seconds since the call started, and `elapsed` is that
@@ -87,14 +34,19 @@ function useSame<T>(value: T): T {
 
 /** Chimes as the timer runs out, if this browser saw it running. */
 function useChime(endsAt: number | null, key: string, speakerId: string | null): void {
-  const speaker = useRef(speakerId);
-  speaker.current = speakerId;
+  const { prefs, ready } = useSoundPreferences();
+  const owner = useRef({});
+  const current = useRef({ prefs, speakerId });
+  const available = useRef(ready);
+  available.current = ready;
+  current.current = { prefs, speakerId };
+  useEffect(() => () => stopSounds(owner.current), [prefs]);
   useEffect(() => {
     if (endsAt === null) return undefined;
     const ms = endsAt - Date.now();
     if (ms <= 0) return undefined;
-    const at = setTimeout(() => { void chimeOnce(key, speaker.current); }, ms);
-    return () => clearTimeout(at);
+    const at = setTimeout(() => { if (!available.current) return; playSound({ owner: owner.current, cue: 'timer', key: `timer:${key}`, until: Date.now() + 1200, current: () => current.current }); }, ms);
+    return () => { clearTimeout(at); stopSounds(owner.current); };
   }, [endsAt, key]);
 }
 

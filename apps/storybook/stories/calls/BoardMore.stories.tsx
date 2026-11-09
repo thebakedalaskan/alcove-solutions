@@ -3,15 +3,16 @@
  * in the board's own files; something from the board's workspace, named as you know it; a table, typed a cell at a time; a
  * mind map; a comment on what's picked; and a template beside what's there. In the bar: Copy link, Download as an image, Download as a PDF and Night
  * board. You're Art in the launch review, held in Product; Priya opens the launch retro a second in, saved in Product beside
- * the launch plan, and the review fills it as it talks.
+ * the launch plan, you open it from Board's In this call, and the review fills it as it talks.
  */
 import type { Meta } from '@storybook/react-vite';
 import { screen, waitFor, within } from 'storybook/test';
 import { drawnPicture } from '../../src/api/media';
 import { at, opensBoard, type Present } from '../../src/api/script';
-import { inCall, phone } from '../../src/call';
+import { inCall, phone, plays } from '../../src/call';
 import { pages, type PageArgs, type PageStory } from '../../src/page';
 import { retroWith } from './boards';
+import { openCallBoard } from './plays';
 import { AIKO, KOFI, LAUNCH_REVIEW, PRIYA, REVIEW_TALK } from './talk';
 
 const meta = { title: 'Calls/More on a board', ...pages } satisfies Meta<PageArgs>;
@@ -22,11 +23,15 @@ type Context = Parameters<Play>[0];
 const SOON = { timeout: 10000 };
 const LATER = { timeout: 40000 };
 const REVIEWERS: Present[] = [{ who: PRIYA }, { who: KOFI }, { who: AIKO }];
+/** Board, then the board in this call: on your stage, just for you. */
+const onTheBoard: Play = async (c) => {
+  await c.step('Press Board, then the retro in this call: it opens just for you', async () => { await openCallBoard(c, 'Launch review'); });
+};
 /** The launch review with the launch retro open and four stickies on it, and what the story does with More. */
 const withBoard = (play: Play, more: Omit<PageStory, 'args' | 'play'> = {}): PageStory => inCall({
   scenario: 'busy', call: LAUNCH_REVIEW, script: { here: REVIEWERS, notes: 'off', talk: { lines: REVIEW_TALK, every: 6 }, board: retroWith(4), cues: at(1, opensBoard(PRIYA, 'retro')) }
-}, { ...more, play });
-/** The board's name in its bar: the call's, as a new board is named. */
+}, { ...more, play: plays(onTheBoard, play) });
+/** The board's name on its frame: the call's, as a new board is named. */
 const named = () => screen.findByRole('button', { name: 'Launch review' }, LATER);
 const pause = (ms: number) => new Promise((done) => { setTimeout(done, ms); });
 

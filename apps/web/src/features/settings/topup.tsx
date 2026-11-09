@@ -48,7 +48,9 @@ export function topUpLine(t: TopUp, now = Date.now()): string {
   switch (t.state) {
     case 'waiting': return Date.parse(t.expiresAt) > now ? 'Waiting for your payment' : 'Address expired';
     case 'arriving': return 'Payment seen, adding your credits';
-    case 'short': return `${t.received?.amount ?? 'Part'} of ${t.asked.amount} ${token} arrived · send ${rest(t)} more by ${byDay(t.expiresAt, now)}`;
+    case 'short': return Date.parse(t.expiresAt) > now
+      ? `${t.received?.amount ?? 'Part'} of ${t.asked.amount} ${token} arrived · send ${rest(t)} more by ${byDay(t.expiresAt, now)}`
+      : `${t.received?.amount ?? 'Part'} ${token} arrived · address expired, settlement pending`;
     case 'credited': return `Added ${number.format(t.received?.credits ?? 0)} credits`;
     case 'held': return 'Too little arrived to add any credits';
     case 'failed': return 'Something went wrong with this payment. Contact support with this reference:';
@@ -237,6 +239,7 @@ function Paying({ id, onNew, onClose }: { id: string; onNew: () => void; onClose
   // What's sent and what it buys: what's still to send while it can be, what arrived once it's settled.
   const send = done && r ? { label: 'You sent', amount: r.amount, more: null }
     : t.state === 'arriving' ? { label: 'You sent', amount: r?.amount ?? t.asked.amount, more: null }
+    : short && lapsed ? { label: 'You sent', amount: r?.amount ?? '0', more: null }
     : short ? { label: 'Send another', amount: rest(t), more: `${r?.amount ?? 'Part'} of ${t.asked.amount} ${token} arrived` }
     : { label: 'You send', amount: t.asked.amount, more: null };
   const credits = done && r ? r.credits ?? 0 : t.asked.credits;
@@ -252,9 +255,12 @@ function Paying({ id, onNew, onClose }: { id: string; onNew: () => void; onClose
   } else if (t.state === 'waiting') {
     chip = <Chip tone="horizon"><Dots />Waiting for payment</Chip>;
     next = <>Scan with a {chainName} wallet, or copy the address below. Send exactly {t.asked.amount} {token}; if your exchange takes a withdrawal fee, add it on top.</>;
+  } else if (short && lapsed) {
+    chip = <Chip icon="clock">Address expired</Chip>;
+    next = 'Don’t send more to this address. Credits will be added after the payment or refund settles.';
   } else if (short) {
     chip = <Chip tone="caution" icon="alert">Less than asked arrived</Chip>;
-    next = <>Send the other {rest(t)} {token} to the same address for your {number.format(t.asked.credits)} credits. If you don’t, the {r?.amount ?? ''} {token} that arrived is added as credits when the address expires.</>;
+    next = <>Send the other {rest(t)} {token} to the same address for your {number.format(t.asked.credits)} credits. If you don’t, the {r?.amount ?? ''} {token} that arrived is added as credits after the payment or refund settles.</>;
   } else if (t.state === 'arriving') {
     chip = <Chip tone="horizon"><Dots />Payment seen</Chip>;
     next = 'Adding your credits. This usually takes a minute or two.';
@@ -291,9 +297,11 @@ function Paying({ id, onNew, onClose }: { id: string; onNew: () => void; onClose
             {send.more && <p className="so-far">({send.more})</p>}
           </div>
           <div className="get">
-            <span className="ac-eyebrow">{done ? 'You got' : 'You get'}</span>
-            <p className="credits"><b>{number.format(credits)}</b> credits{short && ' in total'}</p>
-            {hours(credits) && <p className="hrs">{hours(credits)}</p>}
+            <span className="ac-eyebrow">{done ? 'You got' : short && lapsed ? 'Your credits' : 'You get'}</span>
+            {short && lapsed ? <p className="credits">Settlement pending</p> : <>
+              <p className="credits"><b>{number.format(credits)}</b> credits{short && ' in total'}</p>
+              {hours(credits) && <p className="hrs">{hours(credits)}</p>}
+            </>}
           </div>
         </div>
         {address !== null ? (

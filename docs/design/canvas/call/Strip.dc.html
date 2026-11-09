@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>A journey, step by step</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="call.css">
+<script src="icons.js"></script>
+<script src="nc.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400..700&amp;family=Newsreader:ital,opsz,wght@0,6..72,300..600;1,6..72,300..600&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<div class="cv st light" style="{{rootStyle}}">
+<div class="st-head"><span class="st-n">{{j.n}}</span><div><h1>{{j.title}}</h1><p>{{j.blurb}}</p></div></div>
+<div class="st-row">
+<sc-for list="{{frames}}" as="f" hint-placeholder-count="5">
+<div class="st-s {{phCls}}">
+<p class="st-did"><i>{{f.k}}</i><span>{{f.did}}</span></p>
+<div class="st-th {{phCls}}"><div class="st-z {{phCls}}"><dc-import name="Call" m="{{f.m}}" hint-size="{{hint}}"></dc-import></div></div>
+<p class="st-see">{{f.see}}</p>
+</div>
+</sc-for>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"journey":{"editor":"enum","options":["ws","board","watch","screen","notes","more","phone"],"default":"ws"},"$preview":{"width":4668,"height":820}}'>
+/* One journey as numbered frames, from what's pressed to what happens. Each frame is the call board at that moment, at half size. */
+class Component extends DCLogic {
+  renderVals() {
+    var NC = window.NC, j = NC.journey(this.props.journey || 'screen'), phone = !!j.phone;
+    var n = j.frames.length, fw = phone ? 250 : 720;
+    return {
+      j: j, phCls: phone ? 'is-ph' : '', hint: phone ? '390px,844px' : '1440px,900px',
+      rootStyle: 'width: ' + (128 + n * fw + (n - 1) * 44) + 'px',
+      frames: j.frames.map(function (f, k) { return { k: String(k + 1), did: f.did, see: f.see, m: NC.step(f.step, f.hot) }; })
+    };
+  }
+}
+</script>
+</body>
+</html>

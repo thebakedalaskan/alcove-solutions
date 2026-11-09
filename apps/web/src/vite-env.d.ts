@@ -16,3 +16,9 @@ interface DocumentPictureInPicture extends EventTarget {
   requestWindow(options?: DocumentPictureInPictureOptions): Promise<Window>;
 }
 interface Window { readonly documentPictureInPicture?: DocumentPictureInPicture }
+
+/* Media Session's browser-invoked PiP action is newer than the DOM types. This overload owns no playback actions. */
+interface MediaSessionPictureActionDetails { enterPictureInPictureReason?: 'useraction' | 'contentoccluded' }
+interface MediaSession {
+  setActionHandler(action: 'enterpictureinpicture', handler: ((details: MediaSessionPictureActionDetails) => void) | null): void;
+}

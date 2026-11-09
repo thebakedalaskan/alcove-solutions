@@ -16,11 +16,13 @@ import { FilesetResolver, ImageSegmenter } from '@mediapipe/tasks-vision';
 import { VideoTransformer, type VideoTransformerInitOptions } from '@livekit/track-processors';
 import { log } from '~/lib/log';
 import { MatteGl, type Edges } from './matteGl';
+import { FrameBudget, type BackgroundQuality } from './frameBudget';
+import type { BlurStrength } from '@alcove/api';
 
 const mlog = log.child({ component: 'matte' });
 
-/** What shows behind someone: blur, or a picture's URL. */
-export type Look = { blur: true } | { picture: string };
+/** What shows behind someone: blur, a local picture URL, or a stable solid color. */
+export type Look = { blur: BlurStrength } | { picture: string } | { color: readonly [number, number, number] };
 export type MatteOptions = { look: Look };
 
 const ASSETS = { wasm: '/mediapipe/wasm', model: '/mediapipe/selfie_multiclass_256x256.tflite' };
@@ -38,7 +40,7 @@ const HI = 0.35;
  * room to person. Leaning low keeps a little room rather than cutting into someone's head. */
 const EDGES: Edges = { colorSigma: 0.1, lo: 0.3, hi: 0.6 };
 /** The blur's spread, in pixels of the camera frame. */
-const BLUR_SIGMA = 14;
+const BLUR_SIGMA = { mild: 7, strong: 14 } as const;
 /** How many frames between debug lines with the time each took. */
 const REPORT_EVERY = 300;
 
@@ -51,15 +53,21 @@ export class Matte extends VideoTransformer<MatteOptions> {
   /** The frame made small for the model. */
   private small: OffscreenCanvas | null = null;
   private smallCtx: OffscreenCanvasRenderingContext2D | null = null;
+  /** Full-frame source pixels are bounded before GL upload, separately from the model's small input. */
+  private source: OffscreenCanvas | null = null;
+  private sourceCtx: OffscreenCanvasRenderingContext2D | null = null;
+  private readonly budget: FrameBudget;
   /** The mask as it's settled so far, MASK_W×MASK_H. */
   private steady: Float32Array | null = null;
   private picture: { path: string; bitmap: ImageBitmap } | null = null;
   private failed = false;
+  private closed = false;
   private timing = { frames: 0, ms: 0 };
 
-  constructor(options: MatteOptions, private readonly onFailure: (error: unknown) => void) {
+  constructor(options: MatteOptions, private readonly onFailure: (error: unknown) => void, onQuality: (quality: BackgroundQuality) => void) {
     super();
     this.options = options;
+    this.budget = new FrameBudget(onQuality);
   }
 
   static get isSupported(): boolean {
@@ -68,6 +76,8 @@ export class Matte extends VideoTransformer<MatteOptions> {
 
   override async init(opts: VideoTransformerInitOptions): Promise<void> {
     try {
+      if (this.closed) throw new Error('The background was stopped.');
+      this.bound(opts);
       await super.init(opts);
       await this.start();
     } catch (e) {
@@ -78,21 +88,25 @@ export class Matte extends VideoTransformer<MatteOptions> {
   }
 
   override async restart(opts: VideoTransformerInitOptions): Promise<void> {
+    if (this.closed) throw new Error('The background was stopped.');
+    this.drop();
+    this.bound(opts);
     this.canvas = opts.outputCanvas;
     this.inputVideo = opts.inputElement;
     this.isDisabled = false;
-    this.drop();
     await this.start();
   }
 
   async update(options: MatteOptions): Promise<void> {
+    if (this.closed) throw new Error('The background was stopped.');
     this.options = options;
     await this.showLook();
   }
 
   override async destroy(): Promise<void> {
-    await super.destroy();
+    this.closed = true;
     this.drop();
+    await super.destroy();
     this.segmenter?.close();
     this.segmenter = null;
     this.picture?.bitmap.close();
@@ -101,28 +115,35 @@ export class Matte extends VideoTransformer<MatteOptions> {
 
   transform(frame: VideoFrame, controller: TransformStreamDefaultController<VideoFrame>): void {
     const canvas = this.canvas;
-    if (this.isDisabled || this.failed || frame.codedWidth === 0) {
+    if (this.closed || this.isDisabled || this.failed || frame.codedWidth === 0) {
       frame.close();
       return;
     }
-    if (!canvas || !this.draw || !this.segmenter || !this.smallCtx || !this.small) {
+    if (!canvas || !this.draw || !this.segmenter || !this.smallCtx || !this.small || !this.source || !this.sourceCtx) {
       frame.close();
       this.fail(new Error('The matte is not ready to draw.'));
       return;
     }
     const started = performance.now();
+    if (!this.budget.take(started)) { frame.close(); return; }
     let output: VideoFrame | null = null;
     try {
-      const width = frame.displayWidth;
-      const height = frame.displayHeight;
+      const { width, height } = this.budget.size(frame.displayWidth, frame.displayHeight);
       if (canvas.width !== width || canvas.height !== height) { canvas.width = width; canvas.height = height; }
+      if (this.source.width !== width || this.source.height !== height) { this.source.width = width; this.source.height = height; }
+      this.sourceCtx.drawImage(frame, 0, 0, width, height);
       this.smallCtx.drawImage(frame, 0, 0, MASK_W, MASK_H);
       const steady = this.settle(this.personIn(this.small, started));
-      this.draw.draw(frame, steady, MASK_W, MASK_H, width, height, BLUR_SIGMA, EDGES);
+      const look = this.options.look;
+      // Keep the chosen blur's visible spread at every processing resolution.
+      const sigma = ('blur' in look ? BLUR_SIGMA[look.blur] : 14) * height / Math.max(frame.displayHeight, 1);
+      this.draw.draw(this.source, steady, MASK_W, MASK_H, width, height, sigma, EDGES);
       output = new VideoFrame(canvas, { timestamp: frame.timestamp });
       controller.enqueue(output);
       output = null;
-      this.timed(performance.now() - started);
+      const finished = performance.now();
+      this.budget.measured(finished - started, finished);
+      this.timed(finished - started);
     } catch (e) {
       output?.close();
       this.fail(e);
@@ -176,7 +197,16 @@ export class Matte extends VideoTransformer<MatteOptions> {
 
   /* ---------- setting up ---------- */
 
+  private bound(opts: VideoTransformerInitOptions): void {
+    const size = this.budget.size(opts.outputCanvas.width, opts.outputCanvas.height);
+    opts.outputCanvas.width = size.width;
+    opts.outputCanvas.height = size.height;
+  }
+
+  private contextLost = () => { this.fail(new Error('The background graphics context was lost.')); };
+
   private async start(): Promise<void> {
+    if (this.closed) throw new Error('The background was stopped.');
     const canvas = this.canvas;
     if (!canvas) throw new Error('The matte has no canvas to draw on.');
     // The base class set up LiveKit's drawing on this canvas; this draws its own instead.
@@ -185,30 +215,44 @@ export class Matte extends VideoTransformer<MatteOptions> {
     const gl = canvas instanceof OffscreenCanvas ? canvas.getContext('webgl2') : canvas.getContext('webgl2');
     if (!(gl instanceof WebGL2RenderingContext)) throw new Error('This browser has no WebGL2 for the matte.');
     this.draw = new MatteGl(gl);
+    canvas.addEventListener('webglcontextlost', this.contextLost);
     this.small = new OffscreenCanvas(MASK_W, MASK_H);
     this.smallCtx = this.small.getContext('2d', { willReadFrequently: false });
+    this.source = new OffscreenCanvas(canvas.width, canvas.height);
+    this.sourceCtx = this.source.getContext('2d');
     this.steady = null;
     this.failed = false;
     if (!this.segmenter) {
       const files = await FilesetResolver.forVisionTasks(ASSETS.wasm);
+      if (this.closed) throw new Error('The background was stopped.');
       // Its own canvas, so MediaPipe's WebGL state never meets the drawing's.
-      this.segmenter = await ImageSegmenter.createFromOptions(files, {
+      const segmenter = await ImageSegmenter.createFromOptions(files, {
         baseOptions: { modelAssetPath: ASSETS.model, delegate: 'GPU' },
         canvas: new OffscreenCanvas(1, 1),
         runningMode: 'VIDEO',
         outputConfidenceMasks: true,
         outputCategoryMask: false
       });
+      if (this.closed) { segmenter.close(); throw new Error('The background was stopped.'); }
+      this.segmenter = segmenter;
     }
     await this.showLook();
   }
 
   private async showLook(): Promise<void> {
+    if (this.closed) throw new Error('The background was stopped.');
     const look = this.options.look;
-    if (!('picture' in look)) { this.draw?.setPicture(null); return; }
+    this.draw?.setColor('color' in look ? look.color : null);
+    if (!('picture' in look)) {
+      this.draw?.setPicture(null);
+      this.picture?.bitmap.close();
+      this.picture = null;
+      return;
+    }
     let picture = this.picture;
     if (picture?.path !== look.picture) {
       const bitmap = await loadPicture(look.picture);
+      if (this.closed) { bitmap.close(); throw new Error('The background was stopped.'); }
       this.picture?.bitmap.close();
       picture = { path: look.picture, bitmap };
       this.picture = picture;
@@ -217,10 +261,13 @@ export class Matte extends VideoTransformer<MatteOptions> {
   }
 
   private drop(): void {
+    this.canvas?.removeEventListener('webglcontextlost', this.contextLost);
     this.draw?.destroy();
     this.draw = null;
     this.small = null;
     this.smallCtx = null;
+    this.source = null;
+    this.sourceCtx = null;
     this.steady = null;
   }
 }

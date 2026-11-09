@@ -7,7 +7,7 @@
  */
 .wd-stop kbd { font-family: var(--font-sans); }
 :where(.ws-pane, .ws-pop, .ws-play, .wv-knock, .ws-toasts, .ws-ghost, .ws-kbar) .ac-i { flex: none; display: block; }
-.wt-in:focus-visible, .wv-fi:focus-visible, .wm-in:focus-visible, .wp-notes:focus-visible, .wl-add input:focus-visible, .wl-find input:focus-visible, .wv-f input:focus-visible { outline: none; }
+.wt-in:focus-visible, .wv-fi:focus-visible, .wm-in:focus-visible, .wl-add input:focus-visible, .wl-find input:focus-visible, .wv-f input:focus-visible { outline: none; }
 
 @keyframes ws-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
 @keyframes ws-flash { 0%, 30% { background: var(--horizon-soft); } 100% { background: transparent; } }
@@ -23,7 +23,6 @@
 /* ------------------------------------------------------------ the pane */
 .ws-pane { container: ws-pane / inline-size; position: relative; display: flex; width: 100%; height: 100%; min-width: 0; min-height: 0; border-radius: var(--radius-lg); background: var(--surface); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line), var(--shadow-2); overflow: hidden; font: 400 15px/22px var(--font-sans); transition: box-shadow var(--duration-2) var(--ease-out); }
 .ws-pane.is-follow { box-shadow: 0 0 0 2px var(--speak), var(--shadow-2); transition-duration: var(--duration-3); }
-.ws-pane.is-away .wd { visibility: hidden; }
 
 /* ------------------------------------------------------------ the list */
 /* The list takes more of a wide pane, so a workspace's name has room to say itself. */
@@ -33,6 +32,8 @@
 .ws-pane.tree-off .wt { margin-left: calc(-1 * var(--wt-w)); visibility: hidden; transition: margin-left var(--duration-2) var(--ease-out), visibility 0s linear var(--duration-2); }
 .ws-pane.tree-off.list-peek .wt { position: absolute; z-index: 6; left: 0; top: 0; bottom: 0; margin-left: 0; visibility: visible; box-shadow: var(--shadow-3); transition: none; }
 .wt-head { flex: none; display: flex; align-items: center; gap: 2px; height: 52px; padding: 0 8px; }
+.wt-name-save { flex: none; max-width: 76px; font: 500 11px/14px var(--font-sans); color: var(--ink-2); }
+.wt-name-save.is-failed { color: var(--caution); }
 .wt-space { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 8px 0 6px; border-radius: 10px; color: var(--ink-3); transition: background-color var(--duration-1); }
 .wt-space:hover, .wt-space[data-state="open"] { background: var(--sunk); }
 .wt-space.is-edit, .wt-space.is-edit:hover { gap: 8px; background: var(--sunk); padding-right: 8px; }
@@ -225,16 +226,6 @@
 .wv-switch .warn .ac-i { margin-top: 2px; }
 /* The question takes the menu's place in the popover that's already open, so it pops in itself, 140 ms. */
 .ws-pop > .wv-switch { animation: ws-pop var(--duration-1) var(--ease-out); }
-.wv-pres { width: 320px; padding: 12px; display: grid; gap: 8px; }
-.wv-pres .wv-pv { position: relative; height: 120px; padding: 14px 16px; border-radius: 10px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); overflow: hidden; }
-.wv-pres .wv-pv b { display: block; font: 450 20px/1.1 var(--font-display); }
-.wv-pres .wv-pv .l { display: block; height: 7px; margin-top: 9px; border-radius: 4px; background: var(--line); }
-.wv-pres .wv-pv .l.a { width: 92%; margin-top: 14px; }
-.wv-pres .wv-pv .l.b { width: 80%; }
-.wv-pres .wv-pv .l.c { width: 60%; }
-.wv-pres .t { font: 600 14.5px/1.25 var(--font-sans); }
-.wv-pres p { font-size: 13.5px; line-height: 1.42; color: var(--ink-2); }
-.wv-pres .ac-btn { width: 100%; margin-top: 2px; }
 .ws-scrim { position: fixed; inset: 0; z-index: 58; background: color-mix(in srgb, var(--stage) 34%, transparent); animation: ws-fade var(--duration-1) var(--ease-out); }
 .wv-find { position: fixed; left: 0; right: 0; top: 13vh; width: 520px; max-width: calc(100vw - 32px); margin: 0 auto; padding: 6px; }
 .wv-find .f { display: flex; align-items: center; gap: 10px; height: 46px; padding: 0 10px; border-bottom: 1px solid var(--line); margin-bottom: 4px; color: var(--ink-3); }
@@ -255,7 +246,8 @@
 .ky-r { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 30px; font-size: 14.5px; line-height: 1.25; }
 .ky-r kbd { flex: none; display: inline-grid; place-items: center; min-width: 24px; height: 24px; padding: 0 7px; border-radius: 6px; background: var(--surface); color: var(--ink-2); font: 500 12px/1 var(--font-mono); box-shadow: inset 0 0 0 1px var(--line), inset 0 -1px 0 var(--line); }
 .ky-note { grid-column: 1 / -1; font-size: 14px; line-height: 1.4; color: var(--ink-3); }
-.wv-knock { position: fixed; z-index: 56; left: 50%; top: 74px; width: 440px; margin-left: -220px; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 10px; padding: 12px; border-radius: 16px; background: var(--surface-raised); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line), var(--shadow-3); }
+/* Below the top bar, the frame's bar and a document's head, so Present, Close and Share stay free while it waits for an answer. */
+.wv-knock { position: fixed; z-index: 56; left: 50%; top: 174px; width: 440px; margin-left: -220px; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 10px; padding: 12px; border-radius: 16px; background: var(--surface-raised); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line), var(--shadow-3); }
 .wv-knock .ac-avatar { align-self: end; }
 .wv-knock b { overflow-wrap: anywhere; font: 600 14.5px/1.25 var(--font-sans); }
 .wv-knock p { font-size: 13.5px; line-height: 1.3; color: var(--ink-2); }
@@ -295,46 +287,10 @@
 .wh-f .ac-btn { width: 100%; }
 .wh-f p { margin-bottom: 8px; padding: 0 2px; font-size: 13px; line-height: 1.4; color: var(--ink-2); }
 .wh-f .ac { display: grid; gap: 4px; }
-.wp-tag { flex: none; display: flex; align-items: center; gap: 8px; height: 44px; padding: 0 16px; background: var(--horizon-soft); color: var(--horizon); font: 500 13.5px/1 var(--font-sans); }
-.wp-tag b { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.3; font-weight: 600; }
-.wp-tag span { color: inherit; opacity: .78; }
-.wp-tag .wp-name { flex: 0 999 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.3; }
-.wp-tag .ac-btn { flex: none; margin-left: auto; }
-.wp-tag .wp-acts { flex: none; display: inline-flex; gap: 4px; margin-left: auto; }
-.wp-tag .wp-acts .ac-btn { margin-left: 0; }
-.ws-live, .wp-tag .ws-live { width: 8px; height: 8px; border-radius: 50%; background: var(--horizon); opacity: 1; animation: ws-pulse 1.8s var(--ease-out) infinite; }
-.ws-pane.is-reading .wt { display: none; }
-.ws-pane.is-reading .wd-page { max-width: 880px; padding: 36px 72px 28px; }
-.ws-pane.is-reading .wd-title { font-size: 46px; }
-.ws-pane.is-reading .wb-t { font-size: 19px; line-height: 31px; }
-.ws-pane.is-reading .wb.is-h2 .wb-t { font: 450 34px/1.15 var(--font-display); letter-spacing: -.02em; }
-.ws-pane.is-reading .wb.is-h2 { margin: 0 0 12px; }
-.ws-pane.is-reading .wb-box { margin-top: 7px; pointer-events: none; }
-.ws-pane.is-reading .wb-th { display: none; }
-.ws-pane.is-reading .wb-cap { pointer-events: none; }
-.ws-pane.is-reading .wn, .ws-pane.is-reading .wdt { font-size: 15px; height: 26px; vertical-align: -6px; }
-.wp { flex: none; width: 288px; display: flex; flex-direction: column; gap: 14px; padding: 14px; border-left: 1px solid var(--line); background: color-mix(in srgb, var(--sunk) 38%, var(--surface)); }
-.wp-sec { display: grid; gap: 8px; }
-.wp-sec.grow { flex: 1; min-height: 0; grid-template-rows: auto minmax(0, 1fr); }
-.wp-sec .ac-eyebrow { font-size: 11px; color: var(--ink-3); }
-.wp-now { display: flex; gap: 12px; align-items: flex-start; }
-.wp-now .n { flex: none; font: 450 30px/1 var(--font-display); }
-.wp-now .n small { display: block; margin-top: 4px; font: 500 11.5px/1 var(--font-sans); font-variant-numeric: tabular-nums; color: var(--ink-3); }
-.wp-now > div { min-width: 0; overflow-wrap: anywhere; }
-.wp-now b { display: block; font: 600 14.5px/1.25 var(--font-sans); }
-.wp-now div small { display: block; margin-top: 3px; font-size: 12.5px; line-height: 1.3; color: var(--ink-3); }
-.wp-go { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px; }
-.wp-notes { width: 100%; height: 100%; min-height: 80px; resize: none; padding: 10px; border: 0; border-radius: 10px; background: var(--surface); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line); font: 400 14px/1.5 var(--font-sans); outline: none; }
-.wp-notes:focus { box-shadow: inset 0 0 0 2px var(--focus); }
-/* What everyone watches sits over your own pane, which waits underneath just as you left it: caret, scroll and all. */
-.ws-over { position: absolute; inset: 0; z-index: 4; display: flex; }
 /* Notes turned off, with the way to ask for them back on the same line, or under it where there's no room. */
 .wl-off > div { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
-/* A page or a presentation that holds focus for someone who was typing when what they were in went: it's where they are, not a control. */
-.ws-over:focus, .ws-over .wd-scroll:focus, .ws-pane .wd-scroll:focus { outline: none; }
-.ws-pane.is-under { visibility: hidden; isolation: isolate; }
-.ws-pane.is-reading .wb.is-out, .ws-pane.is-reading .wd-title.is-out { display: none; }
-.ws-pane.is-reading .wp { animation: ws-side var(--duration-2) var(--ease-out); }
+/* A page that holds focus for someone who was typing when what they were in went: it's where they are, not a control. */
+.ws-pane .wd-scroll:focus { outline: none; }
 
 /* ------------------------------------------------------------ playing a video for everyone */
 .ws-play { position: fixed; z-index: 50; left: 50%; bottom: calc(92px + var(--lift, 0px)); transition: bottom var(--duration-2) var(--ease-out); margin-left: -280px; display: flex; align-items: center; gap: 12px; width: 560px; height: 52px; padding: 0 10px 0 8px; border-radius: 16px; background: var(--stage-raised); color: var(--stage-ink); box-shadow: inset 0 0 0 1px rgb(255 255 255 / .08), 0 18px 36px -14px rgb(0 0 0 / .7); font: 400 15px/22px var(--font-sans); }
@@ -436,7 +392,6 @@
 .ws-put { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 7px; color: var(--ink-3); opacity: 0; transition: opacity var(--duration-1); }
 .wl-r:hover .ws-put, .wl-line:hover .ws-put, .ic-nr:hover .ws-put, .tx-l:hover .ws-put, .ws-put:focus-visible { opacity: 1; }
 .ws-put:hover { background: var(--line); color: var(--ink); }
-.ws-pane.is-zen .wd-page, .ws-pane.is-zen .wl { max-width: 840px; }
 
 /* A narrow document: the page gives up its margins first, then the path. */
 @container (max-width: 640px) {
@@ -448,20 +403,9 @@
 }
 @container (max-width: 470px) { .wd-faces { display: none; } }
 
-/* A pane with little room to spare: a presentation gives up its wide margins before its words get cramped. */
-@container ws-pane (max-width: 900px) {
-  .ws-pane.is-reading .wd-page { padding: 28px 32px 24px; }
-  .ws-pane.is-reading .wd-title { font-size: 38px; }
-  .wp { width: 256px; }
-}
-
 /* A narrow pane: what sits beside the page floats over it instead of squeezing it. */
 @container ws-pane (max-width: 640px) {
   .wh { position: absolute; z-index: 5; top: 0; right: 0; bottom: 0; box-shadow: var(--shadow-3); }
-  .wp { position: absolute; z-index: 5; left: 0; right: 0; bottom: 0; width: auto; height: 46%; overflow: auto; border-left: 0; border-top: 1px solid var(--line); }
-  .ws-pane:has(> .wp) .wd { max-height: 54%; }
-  .ws-pane.is-reading .wd-page { padding: 24px 22px 28px; }
-  .ws-pane.is-reading .wd-title { font-size: 34px; }
 }
 
 /* Nothing to hover on a touch screen, so what hovering shows stays, and there are no keys to list. */
@@ -534,3 +478,8 @@
   .ws-play .bar { position: absolute; left: 16px; right: 16px; bottom: 0; flex: none; height: 3px; }
   .ws-play .v small, .ws-play .vb { display: none; }
 }
+.wl-todo.is-editing { flex-direction: column; }
+.wl-todo > .ac-icon-btn { flex: none; width: 28px; height: 28px; }
+.wl-compact .wl-todo { font-size: 13.5px; }
+.wl-compact .wl-due { font-size: 12px; }
+.wl-compact .wl-todo .who { font-size: 12px; }

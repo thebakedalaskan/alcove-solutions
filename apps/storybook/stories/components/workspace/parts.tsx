@@ -10,8 +10,8 @@
  */
 import type { Person } from '@alcove/api';
 import {
-  Avatar, Icon, WsDoc, WsDocBy, WsDocHead, WsDocMenu, WsEmpty, WsFade, WsFollowBar, WsFollowUps, WsHistory, WsList, WsListHead, WsMovePicker,
-  WsNewMenu, WsNotesPage, WsPage, WsPane, WsPersonCard, WsPresentPreview, WsPresenterView, WsPresentStrip, WsRenameRow, WsRow, WsRowMenu, WsScroll, WsSection, WsShareSheet,
+  Avatar, Button, FollowUpEditor, type FollowUpValues, Icon, WsDoc, WsDocBy, WsDocHead, WsDocMenu, WsEmpty, WsFade, WsFollowBar, WsFollowUps, WsHistory, WsList, WsListHead, WsMovePicker,
+  WsNewMenu, WsNotesPage, WsPage, WsPersonCard, WsRenameRow, WsRow, WsRowMenu, WsScroll, WsSection, WsShareSheet,
   WsSpacePicker, WsSwitchSheet, WsTail, WsTemplates, WsTranscript, cn, wsToast,
   type IconName, type WsDecision, type WsFace, type WsFolderChoice, type WsFollowing, type WsFollowUp, type WsPop, type WsPoint, type WsSaid,
   type WsSave, type WsShareMatch, type WsShareRow, type WsSpaceChoice, type WsToastData, type WsVersion
@@ -117,13 +117,6 @@ const PLAN_QUESTIONS: Line[] = [
   { kind: 'h2', text: 'Open questions' },
   { kind: 'todo', text: <>Do we brief trade press before the 24th? <Tag person={PRIYA} /> <Due day="Fri 6 Nov" /></> },
   { kind: 'todo', text: <>Who signs off the final pricing? <Tag person={ART} /> <Due day="Tue 10 Nov" /></> }
-];
-
-/** Launch plan, one section at a time, as it's presented. */
-export const SECTIONS: { name: string; lines: Line[] }[] = [
-  { name: 'What we’re launching', lines: PLAN_INTRO },
-  { name: 'Messaging', lines: PLAN_MESSAGING },
-  { name: 'Open questions', lines: PLAN_QUESTIONS }
 ];
 
 export const TEXT: ReadonlyMap<string, DocText> = new Map<string, DocText>([
@@ -303,11 +296,9 @@ const toggled = (set: ReadonlySet<string>, id: string): ReadonlySet<string> => {
  * documents brought to it. `organizer`: Art organizes the call, so he chooses its workspace (in Priya's Launch check-in
  * he doesn't). `start`: what's open first. `space`: which workspace.
  */
-export function useWorkspace({ call, organizer = false, start = 'plan', space: startSpace = 'ws-product', opened: startOpened = null, presenting: startPresenting = false, onGo }: {
+export function useWorkspace({ call, organizer = false, start = 'plan', space: startSpace = 'ws-product', opened: startOpened = null, onGo }: {
   call: boolean; organizer?: boolean | undefined; start?: string | undefined; space?: string | undefined;
-  /** Art is presenting Launch plan when the story starts. */
-  presenting?: boolean | undefined;
-  /** A popover that's open when the story starts: `picker`, `new`, `share`, `present`, `more`, `menu:tree:plan`… */
+  /** A popover that's open when the story starts: `picker`, `new`, `share`, `more`, `menu:tree:plan`… */
   opened?: Opened | null | undefined;
   /** Something was opened from the list: following stops, and a phone's list or a peek goes away. */
   onGo?: ((id: string) => void) | undefined;
@@ -325,7 +316,6 @@ export function useWorkspace({ call, organizer = false, start = 'plan', space: s
   const [naming, setNaming] = useState<Naming | null>(null);
   const [flash, setFlash] = useState<string | null>(null);
   const [history, setHistory] = useState<string | null>(null);
-  const [presenting, setPresenting] = useState(startPresenting);
   const made = useRef(0);
 
   useEffect(() => {
@@ -471,9 +461,9 @@ export function useWorkspace({ call, organizer = false, start = 'plan', space: s
     : <WsSpacePicker spaces={spaces} current={space} canChoose {...(call ? {} : { heading: 'Workspaces' })} onPick={pick} onNew={newSpace} />);
 
   return {
-    call, toasts, say, space, spaceName, shown, texts, folders, at, brought, opened, naming, flash, history, presenting,
+    call, toasts, say, space, spaceName, shown, texts, folders, at, brought, opened, naming, flash, history,
     itemOf, nameOf, above, pop, picker, go, twist, newDocument, newFolder, rename, named, duplicate, moveTo, toggleCall, copyLink, exported, trash,
-    fillFrom, switchTo, cancelNaming: () => setNaming(null), open: (o: Opened | null) => setOpened(o), setHistory, setPresenting
+    fillFrom, switchTo, cancelNaming: () => setNaming(null), open: (o: Opened | null) => setOpened(o), setHistory
   };
 }
 export type Workspace = ReturnType<typeof useWorkspace>;
@@ -575,17 +565,23 @@ export function NotesLive({ nothingYet = false, put = 'Launch plan' }: { nothing
 export function FollowUpsLive({ mine: startMine = false, rows: startRows = FOLLOW_UPS }: { mine?: boolean | undefined; rows?: WsFollowUp[] | undefined }) {
   const [mine, setMine] = useState(startMine);
   const [rows, setRows] = useState(startRows);
-  const [draft, setDraft] = useState('');
+  const [adding, setAdding] = useState(false);
+  const [draft, setDraft] = useState<FollowUpValues>({ text: '', owner: null, due: null });
   const mineOnly = rows.filter((r) => r.person === ART);
   const add = () => {
-    const text = draft.trim();
+    const text = draft.text.trim();
     if (!text) return;
-    setRows((now) => [...now, { id: `f-${now.length + 1}`, text, done: false, person: ART, name: 'Art', due: 'No date', source: 'Added by you' }]);
-    setDraft('');
+    const person = [ART, KOFI, PRIYA].find((p) => p.email === draft.owner);
+    setRows((now) => [...now, { id: `f-${now.length + 1}`, text, done: false, person: person ?? { name: 'Nobody yet' }, name: person ? first(person) : 'Nobody yet', due: draft.due ?? 'No date', source: 'Added by you' }]);
+    setDraft({ text: '', owner: null, due: null });
+    setAdding(false);
   };
   return (
     <WsFollowUps mine={mine} onMine={setMine} everyoneCount={rows.length} mineCount={mineOnly.length} rows={mine ? mineOnly : rows}
-      onTick={(id) => setRows((now) => now.map((r) => (r.id === id ? { ...r, done: !r.done } : r)))} draft={draft} onDraft={setDraft} onAdd={add} />
+      onTick={(id) => setRows((now) => now.map((r) => (r.id === id ? { ...r, done: !r.done } : r)))}>
+      {adding ? <FollowUpEditor value={draft} people={[ART, KOFI, PRIYA]} onChange={setDraft} onSave={add} onCancel={() => setAdding(false)} saveLabel="Add" />
+        : <Button variant="quiet" size="sm" icon="plus" onClick={() => setAdding(true)}>Add a follow-up</Button>}
+    </WsFollowUps>
   );
 }
 
@@ -648,23 +644,20 @@ function faceCard(ws: Workspace, person: Person, where: string, following: Perso
  * The document side, as the call and the app put it together: the head, the bars, and the page (or one of the call's
  * pages), with History beside it when it's open. `following`: who you're following, for the bar and the faces.
  */
-export function DocOf({ ws, save = 'saved', quiet = false, zen = false, onZen, following = null, onFollow, onStopFollowing, onToggleList, bars, strip }: {
-  ws: Workspace; save?: WsSave | undefined; quiet?: boolean | undefined; zen?: boolean | undefined; onZen?: (() => void) | undefined;
+export function DocOf({ ws, save = 'saved', quiet = false, following = null, onFollow, onStopFollowing, onToggleList, bars }: {
+  ws: Workspace; save?: WsSave | undefined; quiet?: boolean | undefined;
   following?: WsFollowing | null | undefined; onFollow?: ((person: Person, where: string) => void) | undefined; onStopFollowing?: (() => void) | undefined;
   onToggleList: () => void;
   /** Bars under the head: offline, gone, read only. */
   bars?: ReactNode;
-  /** Someone's presenting and you're working on your own: their strip takes the head's place. */
-  strip?: ReactNode;
 }) {
   const stop = onStopFollowing ?? did('onStop');
   const follow = onFollow ?? did('onFollow');
   const live = LIVE.find((l) => l.id === ws.at.id);
-  const zenFor = ws.call ? { zen, onZen: onZen ?? did('onZen') } : {};
   if (live) {
     return (
       <WsDoc>
-        <WsDocHead crumbs={[CALL.title, live.name]} save={quiet ? 'quiet' : 'live'} onToggleList={onToggleList} {...zenFor} />
+        <WsDocHead crumbs={[CALL.title, live.name]} save={quiet ? 'quiet' : 'live'} onToggleList={onToggleList} />
         <WsFollowBar following={following} onStop={stop} />
         <WsScroll onWheel={following ? stop : undefined}>
           <WsFade id={live.id}>{live.id === '$notes' ? <NotesLive /> : live.id === '$followups' ? <FollowUpsLive /> : <TranscriptLive />}</WsFade>
@@ -676,7 +669,7 @@ export function DocOf({ ws, save = 'saved', quiet = false, zen = false, onZen, f
   if (!item) {
     return (
       <WsDoc>
-        <WsDocHead crumbs={[ws.spaceName]} save="quiet" onToggleList={onToggleList} {...zenFor} />
+        <WsDocHead crumbs={[ws.spaceName]} save="quiet" onToggleList={onToggleList} />
         <WsEmpty space={ws.spaceName} onDocument={() => ws.newDocument(null)} onFolder={() => ws.newFolder(null)} />
       </WsDoc>
     );
@@ -691,15 +684,13 @@ export function DocOf({ ws, save = 'saved', quiet = false, zen = false, onZen, f
   return (
     <>
       <WsDoc>
-        {strip ?? <WsDocHead crumbs={[ws.spaceName, ...ws.above(item.id).map((f) => f.name), name]} save={save} faces={faces} onToggleList={onToggleList}
+        <WsDocHead crumbs={[ws.spaceName, ...ws.above(item.id).map((f) => f.name), name]} save={save} faces={faces} onToggleList={onToggleList}
           share={ws.pop('share', <ShareFor title={`Share ${name}`} call={ws.call} />)}
-          present={ws.call ? ws.pop('present', <WsPresentPreview name={name} sections={item.id === 'plan' ? SECTIONS.length : 1} onStart={() => { ws.open(null); ws.setPresenting(true); }} />) : undefined}
           more={ws.pop('more', moving
             ? <WsMovePicker name={name} space={ws.spaceName} folders={foldersFor(ws, item.id)} onRoot={() => ws.moveTo(item.id, null)} onFolder={(f) => ws.moveTo(item.id, f)} />
-            : <WsDocMenu onShare={() => ws.open({ key: 'share' })} onPresent={ws.call ? () => ws.open({ key: 'present' }) : undefined}
+            : <WsDocMenu onShare={() => ws.open({ key: 'share' })}
               onHistory={() => { ws.open(null); ws.setHistory(VERSIONS[0]?.id ?? null); }} onDuplicate={() => ws.duplicate(item.id)}
-              onMove={() => ws.open({ key: 'more', step: 'move' })} onCopyLink={ws.copyLink} onExport={ws.exported} onTrash={() => ws.trash(item.id)} />)}
-          {...zenFor} />}
+              onMove={() => ws.open({ key: 'more', step: 'move' })} onCopyLink={ws.copyLink} onExport={ws.exported} onTrash={() => ws.trash(item.id)} />)} />
         <WsFollowBar following={following} onStop={stop} />
         {bars}
         <WsScroll onWheel={following ? stop : undefined}>
@@ -716,40 +707,6 @@ export function DocOf({ ws, save = 'saved', quiet = false, zen = false, onZen, f
           onRestore={() => { const v = VERSIONS.find((x) => x.id === ws.history); ws.setHistory(null); if (v) ws.say(wsToast.restoredVersion(v.when, did('onUndo'))); }} />
       )}
     </>
-  );
-}
-
-/* ---------- presenting ---------- */
-
-/** One section of Launch plan, as everyone sees it: the title over the first. */
-export function SectionText({ at }: { at: number }) {
-  const section = SECTIONS[at] ?? { name: 'Launch plan', lines: [] };
-  return <div className="ws-ed"><div className="ws-text">{at === 0 && <h1 className="wd-title">Launch plan</h1>}<Lines lines={section.lines} /></div></div>;
-}
-
-/**
- * Launch plan, presented: what the audience reads (`mine` false), with the strip that lets them work on their own, or
- * the presenter's view, with Back, Next, their notes and Stop presenting beside it. Back and Next move a section.
- */
-export function Presentation({ mine, at: startAt = 0, onStop, onAway }: { mine: boolean; at?: number | undefined; onStop?: (() => void) | undefined; onAway?: (() => void) | undefined }) {
-  const [at, setAt] = useState(startAt);
-  const [notes, setNotes] = useState('Thank Aiko for the pilot numbers. Mention the 20th if legal agrees.');
-  const total = SECTIONS.length;
-  return (
-    <WsPane reading label="Launch plan, presented">
-      <WsDoc>
-        {mine
-          ? <WsPresentStrip mine name="Launch plan" at={at + 1} total={total} />
-          : <WsPresentStrip name="Launch plan" presenter={PRIYA} by={first(PRIYA)} away={false} onToggle={onAway ?? did('onToggle')} />}
-        <WsScroll>
-          <WsFade id={String(at)}><WsPage><SectionText at={at} /></WsPage></WsFade>
-        </WsScroll>
-      </WsDoc>
-      {mine && (
-        <WsPresenterView at={at + 1} total={total} part={SECTIONS[at]?.name ?? 'Launch plan'} next={SECTIONS[at + 1]?.name ?? null} notes={notes} onNotes={setNotes}
-          onBack={() => setAt((n) => Math.max(0, n - 1))} onNext={() => setAt((n) => Math.min(total - 1, n + 1))} onStop={onStop ?? did('onStop')} />
-      )}
-    </WsPane>
   );
 }
 

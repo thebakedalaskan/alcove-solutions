@@ -387,6 +387,11 @@ describe('shared screens in the notes', () => {
     // Back in the main room, his share is read again: leaving it ended his share there by presenter, not by share.
     expect((await kofi.shareFrame(frameOf(kofiShare, CHART))).duplicate).toBe(false);
     expect((await frames(org.session.ownerId)).length).toBe(2);
+    // Call ends are whole seconds, while frames use tenths. Include the confirmed last frame in the recorded
+    // duration before ending; otherwise end rounding can clip it and shorten the room gap this flow verifies.
+    const startedAt = Date.parse(host.getSnapshot().startedAt);
+    const recordedThrough = Math.ceil((Date.now() - startedAt) / 1000);
+    await waitFor(() => Math.round((Date.now() - startedAt) / 1000) >= recordedThrough, 'the recording clock to include its last confirmed frame');
     // In the notes, the frame he took before he went stops where he left the main room, not where he came back: what
     // the main room had on screen while he was in Design was nothing of his.
     const noteId = (await host.leave())?.pendingNoteId ?? '';
@@ -432,7 +437,9 @@ describe('shared screens in the notes', () => {
     const pending = await org.api.notes.get(noteId);
     expect(pending.screens.map((m) => [m.id, m.legible])).toEqual([[chart.id, 'unread'], [slide.id, 'unread'], [blur.id, 'unread']]);
     await written(org.api, noteId);
-    const note = await org.api.notes.get(noteId);
+    const proposal = (await org.api.notes.get(noteId)).suggestions[0];
+    if (!proposal) throw new Error('expected a screen-linked follow-up proposal');
+    const note = await org.api.notes.reviewAction(noteId, { id: proposal.id, revision: proposal.revision, decision: 'accept' });
     const [a, b, u] = note.screens;
     if (!a || !b || !u) throw new Error('expected three screen moments');
 

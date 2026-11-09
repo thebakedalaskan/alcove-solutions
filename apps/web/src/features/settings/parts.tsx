@@ -3,7 +3,7 @@
  * notifications, how Alcove looks and your minutes. Devices and Privacy have their own files. Each control saves as it
  * changes (save.tsx).
  */
-import { errorMessage, type CreditBalance, type TopUp, type NotesLanguage, type NotesSetting, type NotificationPrefs, type Preferences, type Session, type SummaryLength } from '@alcove/api';
+import { errorMessage, type CreditBalance, type TopUp, type NotesLanguage, type NotesSetting, type Preferences, type Session, type SummaryLength } from '@alcove/api';
 import {
   Button, CryptoMark, Icon, IconButton, ProviderMark, Segmented, Select, SettingFact, SettingRow, SettingsPart, SunLine, ThemePreview, useTheme, useToast,
   type SelectOption, type SettingRowProps, type ThemeChoice
@@ -12,9 +12,8 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
 import { uploads } from '~/features/record/uploads';
-import { askToNotify, useNotifyPermission, type NotifyPermission } from '~/features/shell/notify';
 import { useLive } from '~/lib/live';
-import { calendarConnectUrl, q, topUpOpen, useCancelTopUp, useDisconnectCalendar } from '~/lib/queries';
+import { calendarConnectUrl, q, useCancelTopUp, useDisconnectCalendar } from '~/lib/queries';
 import { hoursAndMinutes, timeZone } from '~/lib/time';
 import { plural, sizeLabel } from '~/lib/words';
 import { Setting, SwitchSetting, useSave, useSaved } from './save';
@@ -138,67 +137,6 @@ export function CalendarPart({ prefs }: { prefs: Preferences }) {
   );
 }
 
-type Remind = '1' | '5' | 'off';
-const remindOf = (m: NotificationPrefs['beforeCall']): Remind => (m === 1 ? '1' : m === 5 ? '5' : 'off');
-const minutesOf = (r: Remind): NotificationPrefs['beforeCall'] => (r === '1' ? 1 : r === '5' ? 5 : 0);
-type Alert = Exclude<keyof NotificationPrefs, 'beforeCall'>;
-/** The notifications with one of them turned on or off: they're saved together. */
-const withAlert = (n: NotificationPrefs, a: Alert, on: boolean): NotificationPrefs => ({
-  beforeCall: n.beforeCall,
-  notesReady: a === 'notesReady' ? on : n.notesReady,
-  sharedWithYou: a === 'sharedWithYou' ? on : n.sharedWithYou,
-  notesRequested: a === 'notesRequested' ? on : n.notesRequested,
-  followUpDue: a === 'followUpDue' ? on : n.followUpDue,
-  tagged: a === 'tagged' ? on : n.tagged
-});
-
-/** Whether this browser shows Alcove's notifications, and the way to let it. The browser is asked only on a press. */
-function BrowserNotifications({ permission }: { permission: NotifyPermission }) {
-  const row = useRef<HTMLDivElement>(null);
-  const asked = useRef(false);
-  // Once the browser answers, the button goes: focus stays on this row rather than falling back to the page.
-  useEffect(() => {
-    if (!asked.current || permission === 'default') return;
-    asked.current = false;
-    row.current?.focus();
-  }, [permission]);
-  const ask = () => { asked.current = true; void askToNotify(); };
-  return (
-    <SettingRow ref={row} tabIndex={-1} label="Browser notifications"
-      help={permission === 'denied' ? 'Allow notifications for this site in your browser’s settings.'
-        : permission === 'unsupported' ? 'This browser can’t show them. Chrome, Edge, Firefox and Safari on a computer can.'
-          : permission === 'default' ? 'On this device, while Alcove is open in a tab. Your browser asks first.' : 'On this device, while Alcove is open in a tab.'}
-      control={permission === 'granted' ? <SettingFact icon="check" tone="yes">Allowed</SettingFact>
-        : permission === 'default' ? <Button variant="secondary" size="sm" icon="bell" onClick={ask}>Turn on</Button>
-          : permission === 'denied' ? <SettingFact icon="bellOff" tone="no">Blocked</SettingFact> : <SettingFact icon="bellOff">Not available</SettingFact>} />
-  );
-}
-
-export function NotificationsPart({ prefs }: { prefs: Preferences }) {
-  const save = useSave();
-  const permission = useNotifyPermission();
-  // The choices stay as they're saved, greyed out until the browser shows notifications.
-  const off = permission !== 'granted';
-  const n = prefs.notifications;
-  const alert = (a: Alert, name: string, help?: string | undefined) => (
-    <SwitchSetting label={name} help={help} checked={n[a]} disabled={off} onChange={(on) => save(name, (now) => ({ notifications: withAlert(now.notifications, a, on) }))} />
-  );
-  return (
-    <SettingsPart id="notifications" title="Notifications">
-      <BrowserNotifications permission={permission} />
-      <Setting wide off={off} label="Before a call starts" help="For calls you organize."
-        control={<Segmented<Remind> label="Remind me before a call" value={remindOf(n.beforeCall)} disabled={off}
-          onChange={(r) => save('Before a call starts', (now) => ({ notifications: { ...now.notifications, beforeCall: minutesOf(r) } }))}
-          options={[{ value: '1', label: '1 min' }, { value: '5', label: '5 min' }, { value: 'off', label: 'Off' }]} />} />
-      {alert('notesReady', 'When notes are ready')}
-      {alert('sharedWithYou', 'When someone shares notes with you')}
-      {alert('notesRequested', 'When someone asks for notes', 'In calls you organize, while you’re in another tab or app.')}
-      {alert('followUpDue', 'A follow-up is due', 'At 9:00 on the due day.')}
-      {alert('tagged', 'When someone tags you', 'In a document you can open, while you’re somewhere else.')}
-    </SettingsPart>
-  );
-}
-
 export function AppearancePart() {
   const { theme, setTheme } = useTheme();
   const saved = useSaved();
@@ -212,14 +150,14 @@ export function AppearancePart() {
 }
 
 /**
- * Minutes left, and adding credits when the server takes payments. Top-ups still on their way are listed under them,
+ * Minutes left, and adding credits when the server takes payments. Open and recent top-ups are listed under them,
  * each opening the sheet on it, so closing the sheet loses none; one nothing has reached yet can be cancelled from its
  * row.
  */
 export function PlanPart({ credits }: { credits: CreditBalance }) {
   const routes = useQuery(q.topUpRoutes());
   // Top-ups on their way show whether or not 1Click answers right now; a server without payments has none to show.
-  const open = useQuery(q.topUps()).data?.filter(topUpOpen) ?? [];
+  const open = useQuery(q.topUps()).data ?? [];
   const cancel = useCancelTopUp();
   const toast = useToast();
   const add = useRef<HTMLButtonElement>(null);
@@ -227,13 +165,13 @@ export function PlanPart({ credits }: { credits: CreditBalance }) {
   const show = (topUpId: string | null) => setSheet({ open: true, topUpId });
   /** Only one nothing has reached, whose address can still be paid, can be cancelled: as in the sheet. */
   const cancellable = (t: TopUp) => t.state === 'waiting' && Date.parse(t.expiresAt) > Date.now();
-  /** Cancels a top-up; its row goes, and focus moves to the row after it (or before it), else to Add credits. */
+  /** Cancels a top-up; its cancel control goes, and focus moves to the row after it (or before it), else to Add credits. */
   const cancelRow = (t: TopUp) => {
     const i = open.findIndex((x) => x.id === t.id);
     const near = open[i + 1] ?? open[i - 1];
     cancel.mutate(t.id, {
       onSuccess: () => requestAnimationFrame(() => {
-        // Unless they've moved on: focus still on the cancelled row (it may not have gone yet), or nowhere, is moved.
+        // Unless they've moved on: focus still on the cancelled row, or nowhere, is moved.
         const at = document.activeElement;
         if (at && at !== document.body && at.isConnected && !at.closest(`[data-top-up="${t.id}"]`)) return;
         const row = near ? document.querySelector<HTMLButtonElement>(`[data-top-up="${near.id}"] .set-topup-acts button`) : null;

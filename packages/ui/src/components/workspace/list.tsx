@@ -11,17 +11,16 @@ import { useMove } from './shared';
 /**
  * The workspace itself: the list and the document side by side, on a card. It fills the box it's given: a panel in a
  * call, or the page in the app. `listOff` tucks the list away and `listPeek` brings it back over the page for a moment;
- * `phoneList` slides it in on a phone. `following` draws the frame that says you're going where someone goes. `reading`
- * is the audience's view of a presentation, `zen` Just the document, and `away` hides the page behind a share on a phone.
- * `page` is outside a call. `under`: something's drawn over it, a presentation, and nothing in it can be reached meanwhile.
+ * `phoneList` slides it in on a phone. `following` draws the frame that says you're going where someone goes. `page` is
+ * outside a call.
  */
-export function WsPane({ children, label = 'Workspace', listOff = false, listPeek = false, phoneList = false, following = false, reading = false, zen = false, away = false, page = false, under = false, className, ref }: {
+export function WsPane({ children, label = 'Workspace', listOff = false, listPeek = false, phoneList = false, following = false, page = false, className, ref }: {
   children?: ReactNode; label?: string | undefined; listOff?: boolean | undefined; listPeek?: boolean | undefined; phoneList?: boolean | undefined;
-  following?: boolean | undefined; reading?: boolean | undefined; zen?: boolean | undefined; away?: boolean | undefined; page?: boolean | undefined; under?: boolean | undefined; className?: string | undefined;
+  following?: boolean | undefined; page?: boolean | undefined; className?: string | undefined;
   ref?: Ref<HTMLElement> | undefined;
 }) {
   return (
-    <section ref={ref} aria-label={label} inert={under || undefined} className={cn('ws-pane', listOff && 'tree-off', listPeek && 'list-peek', phoneList && 'phone-tree', following && 'is-follow', reading && 'is-reading', zen && 'is-zen', away && 'is-away', page && 'in-app', under && 'is-under', className)}>
+    <section ref={ref} aria-label={label} className={cn('ws-pane', listOff && 'tree-off', listPeek && 'list-peek', phoneList && 'phone-tree', following && 'is-follow', page && 'in-app', className)}>
       {children}
     </section>
   );
@@ -114,8 +113,9 @@ function SpaceName({ name, placeholder, onCommit, onCancel }: WsNaming) {
  * menu makes: `createLabel`). `naming` swaps the name for a field. Whatever isn't given isn't shown: someone who can only read
  * makes nothing.
  */
-export function WsListHead({ name, picker, pickerLabel = 'This call’s workspace', onFind, create, createLabel = 'New document or folder', naming }: {
+export function WsListHead({ name, picker, pickerLabel = 'This call’s workspace', onFind, create, createLabel = 'New document or folder', naming, saveState = 'quiet' }: {
   name: string; picker: WsPop; pickerLabel?: string | undefined; onFind?: (() => void) | undefined; create?: WsPop | undefined; createLabel?: string | undefined; naming?: WsNaming | null | undefined;
+  saveState?: 'quiet' | 'saving' | 'saved' | 'failed' | undefined;
 }) {
   return (
     <div className="wt-head">
@@ -124,6 +124,7 @@ export function WsListHead({ name, picker, pickerLabel = 'This call’s workspac
           <button type="button" className="wt-space"><span className="wt-mark"><Icon name="folders" size={15} /></span><span className="n ac-clamp-1" title={name}>{name}</span><Icon name="chevronsUpDown" size={14} /></button>
         }>{picker.content}</WsPopover>
       )}
+      {saveState !== 'quiet' && <span role="status" className={cn('wt-name-save', saveState === 'failed' && 'is-failed')}>{saveState === 'saving' ? 'Saving…' : saveState === 'saved' ? 'Saved' : 'Couldn’t confirm'}</span>}
       {onFind && <IconButton icon="search" size={16} className="wt-ib" label="Find in this workspace" title="Find (⌘K)" onClick={onFind} />}
       {create && (
         <WsPopover open={create.open} onOpenChange={create.onOpenChange} label="New" anchor={

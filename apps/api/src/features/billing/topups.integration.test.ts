@@ -67,6 +67,30 @@ async function fifteen() {
 }
 const depositRows = async (ownerId: string) => (await h.pool.query<{ n: number }>('SELECT count(*)::int AS n FROM deposits WHERE owner_id = $1', [ownerId])).rows[0]?.n;
 
+/** Both requests pass the first count and get quotes before either can insert its deposit. */
+async function raceTopUpStarts(ownerId: string, first: AlcoveApi, second: AlcoveApi): Promise<string[]> {
+  const gate = await h.pool.connect();
+  let pending: Promise<string>[] = [];
+  try {
+    await gate.query('BEGIN');
+    await gate.query("SELECT pg_advisory_xact_lock(hashtext('alcove/deposits'), hashtext($1))", [ownerId]);
+    const quotes = h.oneclick.quotes.length;
+    pending = [first, second].map((api) => failure(api.credits.startTopUp(BASE_USDC, 10_000)));
+    await expect.poll(() => h.oneclick.quotes.length - quotes, { timeout: 5000 }).toBe(2);
+    // Both transactions are waiting, so the first count has seen the same last available slot twice.
+    await expect.poll(async () => (await h.pool.query<{ n: number }>(`
+      SELECT count(*)::int AS n FROM pg_stat_activity
+      WHERE datname = current_database() AND wait_event_type = 'Lock' AND wait_event = 'advisory'
+    `)).rows[0]?.n, { timeout: 5000 }).toBe(2);
+    await gate.query('COMMIT');
+    return await Promise.all(pending);
+  } finally {
+    await gate.query('ROLLBACK');
+    gate.release();
+    await Promise.all(pending);
+  }
+}
+
 describe('top-ups', () => {
   it('lists the allowlisted routes with their minimum in credits, the tiers and the presets', async () => {
     const { api } = await account();
@@ -283,6 +307,24 @@ describe('top-ups', () => {
     h.oneclick.set(addr(t), 'REFUNDED', { depositedAmount: '30000000', amountOut: '0', refundedAmount: '30000000', intentHashes: ['h30short'] });
     expect(await api.credits.topUp(t.id)).toMatchObject({ state: 'credited', address: null, received: { amount: '30', credits: 30_000 } });
     expect((await api.credits.balance()).balance).toBe(10_000 + 30_000);
+  });
+
+  it('keeps the amount already received when an older short-payment check arrives later', async () => {
+    const { api } = await account();
+    const t = await api.credits.startTopUp(BASE_USDC, 10_000);
+    h.oneclick.set(addr(t), 'INCOMPLETE_DEPOSIT', { depositedAmount: '7000000' });
+    expect(await api.credits.topUp(t.id)).toMatchObject({ state: 'short', received: { amount: '7', credits: null } });
+
+    // A delayed provider observation can arrive after a newer one from another API instance.
+    await forgetCheck(t.id);
+    h.oneclick.set(addr(t), 'INCOMPLETE_DEPOSIT', { depositedAmount: '3000000' });
+    expect(await api.credits.topUp(t.id)).toMatchObject({ state: 'short', received: { amount: '7', credits: null } });
+    expect(await api.credits.topUps()).toContainEqual(expect.objectContaining({ id: t.id, received: { amount: '7', credits: null } }));
+
+    await forgetCheck(t.id);
+    h.oneclick.set(addr(t), 'SUCCESS', { depositedAmount: '10000000', amountOut: '10000000', intentHashes: ['h-stale-progress'] });
+    expect(await api.credits.topUp(t.id)).toMatchObject({ state: 'credited', received: { amount: '10', credits: 10_000 } });
+    expect((await api.credits.balance()).balance).toBe(20_000);
   });
 
   it('credits what was promised when the rest of a short payment is sent to the same address', async () => {
@@ -587,6 +629,30 @@ describe('top-ups', () => {
       expect(await failure(second.credits.startTopUp(BASE_USDC, 10_000))).toBe('unavailable');
     } finally {
       await close();
+    }
+  });
+
+  it('keeps the 15 waiting limit when two API instances race for the last slot', async () => {
+    const email = unique();
+    const { api, session } = await account(email);
+    const server = await h.secondServer();
+    try {
+      const second: AlcoveApi = createHttpApi({ baseUrl: server.baseUrl, fetch: cookieFetch(ORIGIN) });
+      const other = await second.auth.signIn('sso', { email });
+      expect(other.session.ownerId).toBe(session.ownerId);
+      for (let i = 0; i < 7; i++) {
+        await api.credits.startTopUp(BASE_USDC, 10_000);
+        await second.credits.startTopUp(BASE_USDC, 10_000);
+      }
+      expect(await depositRows(session.ownerId)).toBe(14);
+
+      expect((await raceTopUpStarts(session.ownerId, api, second)).sort()).toEqual(['conflict', 'succeeded']);
+      expect(await depositRows(session.ownerId)).toBe(15);
+      const topUps = await api.credits.topUps();
+      expect(topUps).toHaveLength(15);
+      expect(topUps.every((t) => t.state === 'waiting')).toBe(true);
+    } finally {
+      await server.close();
     }
   });
 
@@ -975,6 +1041,42 @@ describe('top-ups', () => {
       expect((await api.credits.startTopUp(BASE_USDC, 10_000)).state).toBe('waiting');
     } finally {
       await Promise.all(servers.map((s) => s.close()));
+    }
+  });
+
+  it('keeps the 30 a day limit when two API instances race for the last slot', async () => {
+    const email = unique();
+    const { api, session } = await account(email);
+    const servers = await Promise.all([h.secondServer(), h.secondServer(), h.secondServer()]);
+    try {
+      const apis: AlcoveApi[] = [];
+      for (const server of servers) {
+        const other: AlcoveApi = createHttpApi({ baseUrl: server.baseUrl, fetch: cookieFetch(ORIGIN) });
+        const signedIn = await other.auth.signIn('sso', { email });
+        expect(signedIn.session.ownerId).toBe(session.ownerId);
+        apis.push(other);
+      }
+      // Cancel every earlier top-up, so only the daily limit can refuse the concurrent requests.
+      for (const [i, other] of apis.entries()) {
+        for (let j = 0; j < (i === 2 ? 9 : 10); j++) {
+          await other.credits.cancelTopUp((await other.credits.startTopUp(BASE_USDC, 10_000)).id);
+        }
+      }
+      expect(await depositRows(session.ownerId)).toBe(29);
+      const second = apis.at(-1);
+      if (!second) throw new Error('no second API instance');
+
+      expect((await raceTopUpStarts(session.ownerId, api, second)).sort()).toEqual(['conflict', 'succeeded']);
+      const counts = (await h.pool.query<{ total: number; waiting: number; cancelled: number; today: number }>(`
+        SELECT count(*)::int AS total,
+          count(*) FILTER (WHERE state = 'waiting')::int AS waiting,
+          count(*) FILTER (WHERE state = 'cancelled')::int AS cancelled,
+          count(*) FILTER (WHERE created_at > now() - interval '24 hours')::int AS today
+        FROM deposits WHERE owner_id = $1
+      `, [session.ownerId])).rows[0];
+      expect(counts).toEqual({ total: 30, waiting: 1, cancelled: 29, today: 30 });
+    } finally {
+      await Promise.all(servers.map((server) => server.close()));
     }
   });
 

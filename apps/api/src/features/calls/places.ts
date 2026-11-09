@@ -55,7 +55,11 @@ export const Joined = z.preprocess(withHosting, z.object({
   status: z.enum(['waiting', 'in', 'left', 'denied']), admit: z.enum(['auto', 'ask']), keysFor: z.number(), group: z.string().nullable(), from: z.number(),
   placedAt: z.number(), placedSeq: z.number(), wasIn: z.object({ place: z.string(), since: z.number(), until: z.number() }).nullable(),
   leftAt: z.record(z.string(), z.number()), replaced: z.boolean(), chatBefore: z.boolean(), since: z.number(), left: z.number().nullable(),
-  earlier: z.array(z.object({ since: z.number(), left: z.number() })).default([]), hand: z.boolean(),
+  /** Voting identity fixed when joining; null only for records written before attention principals. */
+  attentionPrincipal: z.string().nullable().default(null),
+  /** Last waiting-browser heartbeat; older records start from their join time. */
+  askedAt: z.number().default(0),
+  earlier: z.array(z.object({ since: z.number(), left: z.number() })).default([]),
   hosting: z.array(z.object({ from: z.number(), to: z.number().nullable() })).default([])
 }));
 export type Joined = z.infer<typeof Joined>;
@@ -119,8 +123,11 @@ export const groupOf = (s: Placing, j: Joined): string | null => (j.identity ===
  * their way into this part of the call, in no group, with a key package for this generation. Nobody but whoever hosts
  * is ever in two groups at once.
  */
+/** A waiting request expires 90 seconds after its last durable heartbeat. */
+export const admissionFresh = (j: Joined, now = Date.now()): boolean => j.status !== 'waiting' || now - Math.max(j.since, j.askedAt) <= 90_000;
+
 export const pendingFor = (s: Placing, generation: number, place: string) => (j: Joined): boolean =>
-  j.identity !== s.host && (j.status === 'waiting' || j.status === 'in') && groupOf(s, j) === null && j.keysFor === generation && placeOf(s, j) === place;
+  j.identity !== s.host && admissionFresh(j) && (j.status === 'waiting' || j.status === 'in') && groupOf(s, j) === null && j.keysFor === generation && placeOf(s, j) === place;
 
 /** In `place`'s group and no longer to be: gone, removed, or sent to another part of the call. The host's browser takes them out. */
 export const departedFrom = (s: Placing, place: string) => (j: Joined): boolean =>

@@ -4,13 +4,13 @@
  * (docker-compose.yml) and main's fake Google and NEAR AI. Participants are @livekit/rtc-node rooms joined with
  * the tokens the API hands out, encrypting media with keys from the call's MLS group, so media travels for real.
  */
-import { AlcoveApiError, CallMlsSchema, type AlcoveApi, type AudioPiece, type CallSession, type CallState, type TranscriptClip, type TranscriptLine } from '@alcove/api';
-import type { ClientEvent } from '@alcove/api-http';
+import { AlcoveApiError, CallMlsSchema, firstName, type AlcoveApi, type AudioPiece, type CallSession, type CallState, type TranscriptClip, type TranscriptLine } from '@alcove/api';
+import { createHttpApi, type ClientEvent } from '@alcove/api-http';
 import { DisconnectReason, EncryptionType, TrackKind, TrackSource } from '@livekit/rtc-node';
 import { randomBytes } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { speechWav } from '../../testing/fake-near';
-import { ORIGIN, startHarness, type Harness } from '../../testing/harness';
+import { ORIGIN, cookieFetch, startHarness, type Harness } from '../../testing/harness';
 import { connect, deleteRoomDirectly, disposeLiveKit, participantsDirectly, signWebhook, tokenDirectly, type TestParticipant } from '../../testing/livekit';
 
 // Calls here use real WebRTC through LiveKit, which a busy CI runner can be slow to set up. Every step waits at most
@@ -162,6 +162,149 @@ describe('end-to-end encryption', () => {
     expect(chatOf(late)).toEqual([]);
     await guest.sendChat('after Lee joined');
     await waitFor(() => chatOf(late).includes('after Lee joined'), 'new chat for the late joiner');
+    await host.leave();
+  });
+
+  it('keeps addressed chat spans inside the encrypted group and refuses tags outside it', async () => {
+    const org = await account();
+    const { code: c } = await org.api.calls.startNow({ notes: 'off' });
+    const host = await org.api.calls.join(c, { mic: true, cam: false });
+    await inGroup(host);
+    const sam = await guestBrowser().calls.join(c, { mic: true, cam: false, name: 'Sam' });
+    await letIn(host, sam);
+    const lee = await guestBrowser().calls.join(c, { mic: true, cam: false, name: 'Lee' });
+    await letIn(host, lee);
+    const text = '🙂 @Sam CANARY-ADDRESSED-CHAT';
+    const mentions = [{ identity: sam.ticket.identity, start: 3, end: 7 }];
+    await host.sendChat(text, mentions);
+    await waitFor(() => chatOf(sam).includes(text) && chatOf(lee).includes(text), 'the encrypted addressed message');
+    for (const call of [host, sam, lee]) {
+      expect(call.crypto.getSnapshot().chat.find((m) => m.text === text)).toMatchObject({ text, mentions });
+    }
+    // Typing someone's name alone does not invent a target; self-tags carry the same explicit identity.
+    await sam.sendChat('@Lee is plain text');
+    await lee.sendChat('@Lee checking my own message', [{ identity: lee.ticket.identity, start: 0, end: 4 }]);
+    await readLog(host, () => chatOf(host).length === 3, 'plain and self-tagged chat');
+    expect(host.crypto.getSnapshot().chat.find((m) => m.text === '@Lee is plain text')?.mentions).toEqual([]);
+    expect(host.crypto.getSnapshot().chat.find((m) => m.text === '@Lee checking my own message')?.mentions).toEqual([{ identity: lee.ticket.identity, start: 0, end: 4 }]);
+
+    const outsider = await guestBrowser().calls.join(c, { mic: true, cam: false, name: 'Avery' });
+    await settle(host, (s) => s.waiting.some((w) => w.id === outsider.ticket.identity));
+    for (const invalid of [
+      [{ identity: outsider.ticket.identity, start: 0, end: 4 }],
+      [{ identity: sam.ticket.identity, start: 1, end: 4 }],
+      [{ identity: sam.ticket.identity, start: 0, end: 40 }],
+      [{ identity: sam.ticket.identity, start: 0, end: 4 }, { identity: lee.ticket.identity, start: 0, end: 4 }]
+    ]) await expect(host.sendChat('@Sam hello', invalid)).rejects.toMatchObject({ code: 'invalid' });
+    // A removed target cannot be kept in a draft and tagged after its keys were taken away.
+    await host.remove(sam.ticket.identity);
+    await waitFor(() => !host.crypto.getSnapshot().members.includes(sam.ticket.identity), 'Sam outside the group');
+    await expect(host.sendChat('@Sam hello', mentions.map((m) => ({ ...m, start: 0, end: 4 })))).rejects.toMatchObject({ code: 'invalid' });
+    expect(chatOf(outsider)).toEqual([]);
+    await expectNotInRows(['calls', 'call_mls'], ['CANARY-ADDRESSED-CHAT']);
+    expect(h.logs.join('')).not.toContain('CANARY-ADDRESSED-CHAT');
+    await host.leave();
+  });
+
+  it('keeps chat reads for the same seat across refreshes and reconnects, without clearing anyone else’s', async () => {
+    const org = await account();
+    const { code: c } = await org.api.calls.startNow({ notes: 'off' });
+    const host = await org.api.calls.join(c, { mic: true, cam: false });
+    await inGroup(host);
+    const browser = h.browser();
+    const sam = await browser.api.calls.join(c, { mic: true, cam: false, name: 'Sam' });
+    await letIn(host, sam);
+    const lee = await guestBrowser().calls.join(c, { mic: true, cam: false, name: 'Lee' });
+    await letIn(host, lee);
+    const text = '@Sam @Lee CANARY-READ-CHAT';
+    await host.sendChat(text, [
+      { identity: sam.ticket.identity, start: 0, end: 4 },
+      { identity: lee.ticket.identity, start: 5, end: 9 }
+    ]);
+    await readLog(sam, () => chatOf(sam).includes(text), 'the addressed message to read');
+    const messageId = sam.crypto.getSnapshot().chat.find((m) => m.text === text)?.id ?? '';
+    expect(messageId).not.toBe('');
+    expect(sam.getSnapshot().chatRead).toEqual([]);
+    await sam.readChat([messageId, messageId]);
+    expect(sam.getSnapshot().chatRead).toEqual([messageId]);
+    await expect(sam.readChat(Array.from({ length: 201 }, () => messageId))).rejects.toMatchObject({ code: 'invalid' });
+    await sam.readChat(['0:999999999']);
+    expect(sam.getSnapshot().chatRead).toEqual([messageId]);
+    await sam.refresh();
+    expect(sam.getSnapshot().chatRead).toEqual([messageId]);
+    await lee.refresh();
+    await host.refresh();
+    expect(lee.getSnapshot().chatRead).toEqual([]);
+    expect(host.getSnapshot().chatRead).toEqual([]);
+    // A new connection carries the same person's receipts, rather than replaying an already-read mention.
+    sam.closing();
+    const second = await h.secondServer();
+    const secondApi = createHttpApi({ baseUrl: second.baseUrl, fetch: browser.fetch });
+    const again = await secondApi.calls.join(c, { mic: true, cam: false, name: 'Sam', previous: sam.ticket.pass });
+    await inGroup(again);
+    // MLS enters before its authorized call-state read finishes; the join snapshot carries no private receipts yet.
+    await again.refresh({ call: true, log: false });
+    expect(again.getSnapshot().chatRead).toEqual([messageId]);
+    await again.readChat([messageId]);
+    expect(again.getSnapshot().chatRead).toEqual([messageId]);
+    const outsider = await guestBrowser().calls.join(c, { mic: true, cam: false, name: 'Avery' });
+    expect(outsider.getSnapshot().chatRead).toEqual([]);
+    await expect(outsider.readChat([messageId])).rejects.toMatchObject({ code: 'forbidden' });
+    await host.remove(again.ticket.identity);
+    await expect(again.readChat([messageId])).rejects.toMatchObject({ code: 'forbidden' });
+    await expectNotInRows(['calls', 'call_mls'], ['CANARY-READ-CHAT']);
+    expect(h.logs.join('')).not.toContain('CANARY-READ-CHAT');
+    again.close();
+    await host.leave();
+    await second.close();
+  });
+
+  it('never revives a read mention when an older call response arrives after its read receipt', async () => {
+    const org = await account();
+    const { code: c } = await org.api.calls.startNow({ notes: 'off' });
+    const host = await org.api.calls.join(c, { mic: true, cam: false });
+    await inGroup(host);
+    const transport = h.browser();
+    let holdNext = false;
+    let held = false;
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const browser = h.browser({
+      callPollMs: 600_000,
+      fetch: async (input, init) => {
+        const path = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url).pathname;
+        const method = init?.method ?? (input instanceof Request ? input.method : 'GET');
+        const delay = holdNext && method === 'GET' && path === `/v1/live/calls/${host.ticket.callId}`;
+        if (delay) holdNext = false;
+        const response = await transport.fetch(input, init);
+        if (delay) { held = true; await gate; }
+        return response;
+      }
+    });
+    const sam = await browser.api.calls.join(c, { mic: true, cam: false, name: 'Sam' });
+    await letIn(host, sam);
+    const text = '@Sam please review this';
+    await host.sendChat(text, [{ identity: sam.ticket.identity, start: 0, end: 4 }]);
+    await readLog(sam, () => chatOf(sam).includes(text), 'the mention before its read receipt');
+    const messageId = sam.crypto.getSnapshot().chat.find((m) => m.text === text)?.id ?? '';
+    expect(messageId).not.toBe('');
+    holdNext = true;
+    const older = sam.refresh({ call: true, log: false });
+    await waitFor(() => held, 'the older call response in transit');
+    const snapshots: boolean[] = [];
+    let stop = () => {};
+    try {
+      await sam.readChat([messageId]);
+      expect(sam.getSnapshot().chatRead).toContain(messageId);
+      stop = sam.subscribe(() => snapshots.push(sam.getSnapshot().chatRead.includes(messageId)));
+    } finally {
+      release();
+      await older;
+      stop();
+    }
+    // The older revision is discarded before publication; any concurrent fresh snapshot must keep the receipt too.
+    expect(snapshots.every(Boolean)).toBe(true);
+    expect(sam.getSnapshot().chatRead).toContain(messageId);
     await host.leave();
   });
 
@@ -327,7 +470,10 @@ describe('end-to-end encryption', () => {
     await inGroup(again);
     await waitFor(() => !host.crypto.getSnapshot().members.includes(first.ticket.identity), 'the old connection out of the group');
     expect(host.crypto.getSnapshot().members).toContain(again.ticket.identity);
-    expect((await settle(host, (s) => s.participants.length === 2)).participants.map((p) => p.id).sort()).toEqual([host.ticket.identity, again.ticket.identity].sort());
+    // The MLS and call-state stores converge separately. Both old and new snapshots contain two people;
+    // wait for the actual replacement identity instead of accepting the unchanged old count.
+    const reloaded = await settle(host, (s) => s.participants.length === 2 && s.participants.some((p) => p.id === again.ticket.identity));
+    expect(reloaded.participants.map((p) => p.id).sort()).toEqual([host.ticket.identity, again.ticket.identity].sort());
     await host.leave();
   });
 
@@ -531,10 +677,17 @@ describe('breakout rooms, each with its own keys', () => {
     host.visitRoom(design);
     await inPlace(host, design);
     expect((await settle(kofi.call, (s) => s.breakouts.open?.rooms[0]?.members.includes(host.ticket.identity) === true)).breakouts.open?.rooms[0]?.members).toContain(host.ticket.identity);
-    await kofi.call.sendChat('welcome to Design');
-    await waitFor(() => chatOf(host).includes('welcome to Design'), 'the organizer in Design’s chat');
+    await expect(kofi.call.sendChat('@Lena are you there?', [{ identity: lena.call.ticket.identity, start: 0, end: 5 }])).rejects.toMatchObject({ code: 'invalid' });
+    const addressed = '@Host welcome to Design';
+    const mentions = [{ identity: host.ticket.identity, start: 0, end: 5 }];
+    await kofi.call.sendChat(addressed, mentions);
+    await waitFor(() => chatOf(host).includes(addressed), 'the organizer in Design’s addressed chat');
     expect(chatOf(host)).not.toContain('CANARY-DESIGN for Design only');
-    expect(host.crypto.getSnapshot().chat.find((m) => m.text === 'welcome to Design')?.place).toBe(design);
+    expect(host.crypto.getSnapshot().chat.find((m) => m.text === addressed)).toMatchObject({ place: design, mentions });
+    await lena.call.refresh();
+    await guest.refresh();
+    expect(chatOf(lena.call)).not.toContain(addressed);
+    expect(chatOf(guest)).not.toContain(addressed);
     await host.sendChat('the organizer, in Design');
     await waitFor(() => chatOf(kofi.call).includes('the organizer, in Design'), 'Design reads the organizer');
     await lena.call.refresh();
@@ -542,10 +695,10 @@ describe('breakout rooms, each with its own keys', () => {
     // Reactions stay in their room too: the organizer, in Design, still has the main room's chat but can't react to it.
     const mainId = host.crypto.getSnapshot().chat.find((m) => m.text === 'for the main room')?.id ?? '';
     await expect(host.react(mainId, 'thumbs-up', true)).rejects.toMatchObject({ code: 'not-found' });
-    const designId = host.crypto.getSnapshot().chat.find((m) => m.text === 'welcome to Design')?.id ?? '';
+    const designId = host.crypto.getSnapshot().chat.find((m) => m.text === addressed)?.id ?? '';
     await host.react(designId, 'heart', true);
     await readLog(kofi.call, () => kofi.call.crypto.getSnapshot().chat.some((m) => m.reactions.length > 0), 'the organizer’s reaction in Design');
-    expect(kofi.call.crypto.getSnapshot().chat.find((m) => m.text === 'welcome to Design')?.reactions).toEqual([{ reaction: 'heart', by: [host.ticket.identity] }]);
+    expect(kofi.call.crypto.getSnapshot().chat.find((m) => m.text === addressed)?.reactions).toEqual([{ reaction: 'heart', by: [host.ticket.identity] }]);
     await guest.refresh();
     expect(guest.crypto.getSnapshot().chat.flatMap((m) => m.reactions)).toEqual([]);
     // A room member can't post into another room's chat, nor anyone into a room they're not in.
@@ -1006,10 +1159,12 @@ describe('breakout rooms, each with its own keys', () => {
     expect(d?.summary).toBe('Heard 3 lines. It ended on: Should links be green?');
     expect(d?.decisions.map((x) => x.text)).toEqual(['We agreed on blue buttons.']);
     expect(d?.questions.map((x) => x.text)).toEqual(['Should links be green?']);
-    expect(d?.actions.map((x) => [x.text, x.due])).toEqual([['Draw the icons by Friday', 'Friday']]);
+    expect(d?.actions).toEqual([]);
+    expect(d?.suggestions.map((x) => [x.text, x.due])).toEqual([['Draw the icons by Friday', 'Friday']]);
     expect(d?.chapters.length).toBeGreaterThan(0);
     expect(sp?.summary).toBe('Heard 2 lines. It ended on: Ade will call the bank on Monday.');
-    expect(sp?.actions.map((x) => x.text)).toEqual(['Call the bank on Monday']);
+    expect(sp?.actions).toEqual([]);
+    expect(sp?.suggestions.map((x) => x.text)).toEqual(['Call the bank on Monday']);
     // Each was its own request to the notes model, with that room's lines and nobody else's; the call's had neither.
     const prompts = h.near.prompts.slice(before);
     const forRoom = (name: string) => prompts.filter((x) => x.includes(`the breakout room “${name}”`));
@@ -1032,9 +1187,13 @@ describe('breakout rooms, each with its own keys', () => {
     expect(h.near.prompts.at(-1)).toContain('Mia will draw the icons by Friday.');
     expect(h.near.prompts.at(-1)).toContain('the queue is down to ten');
 
-    // A room's decisions and follow-ups wait on people as the call's do: Design's decision, settled by nobody yet, in
-    // Kofi's inbox, and the room's follow-up for Mia in hers.
+    // A suggested task is not in an inbox until somebody accepts it. Accepting it still cannot claim Mia's consent.
     expect((await kofi.browser.api.notes.inbox()).decisions.map((x) => [x.text, x.noteId])).toContainEqual(['We agreed on blue buttons.', noteId]);
+    expect((await mia.browser.api.notes.inbox()).followUps).toEqual([]);
+    const iconTask = d?.suggestions[0];
+    if (!iconTask) throw new Error('The room did not suggest its icons task.');
+    const acceptedIcons = await org.api.notes.reviewAction(noteId, { id: iconTask.id, revision: iconTask.revision, decision: 'accept' });
+    expect(acceptedIcons.rooms[0]?.actions[0]?.takenOn).toBe(false);
     expect((await mia.browser.api.notes.inbox()).followUps.map((x) => [x.text, x.noteId])).toContainEqual(['Draw the icons by Friday', noteId]);
     // And they're settled like the call's, by anyone invited.
     const blue = d?.decisions[0]?.id ?? '';
@@ -1069,7 +1228,9 @@ describe('breakout rooms, each with its own keys', () => {
     expect(again.writingAgain).toBe(false);
     // What was settled in the room stays as it was, and the room's notes model was told so; the rest is written again.
     expect(again.rooms[0]?.decisions.map((x) => [x.text, x.state])).toEqual([['We agreed on blue buttons.', 'confirmed'], ['The buttons stay blue in dark mode.', 'proposed']]);
-    expect(again.rooms[0]?.actions.map((x) => [x.text, x.due])).toEqual([['Draw the icons by Thursday', 'Thursday']]);
+    expect(again.rooms[0]?.actions.map((x) => [x.id, x.text, x.due])).toEqual([[iconTask.id, 'Draw the icons by Friday', 'Friday']]);
+    expect(again.rooms[0]?.suggestions.map((x) => [x.text, x.due])).toEqual([['Draw the icons by Thursday', 'Thursday']]);
+    expect(again.rooms[0]?.suggestions[0]?.changeOf).toBe(iconTask.id);
     const rewritten = h.near.prompts.slice(sentAgain).find((x) => x.includes('the breakout room “Design”')) ?? '';
     expect(rewritten).toContain('Mia will draw the icons by Thursday.');
     expect(rewritten).toContain('Already settled (don\'t list these again):\n- Decision (confirmed): We agreed on blue buttons.');
@@ -1455,6 +1616,34 @@ describe('keeping in step', () => {
 const mutedAt = (viewer: TestParticipant, identity: string) => [...(viewer.room.remoteParticipants.get(identity)?.trackPublications.values() ?? [])].map((t) => t.muted);
 
 describe('host controls', () => {
+  it('confirms hand changes before resolving and rejects them once the person is out of the call', async () => {
+    const org = await account();
+    const invited = await account();
+    const { code: c } = await org.api.calls.startNow({ notes: 'off', guests: [invited.session.user.email] });
+    const host = await org.api.calls.join(c, { mic: false, cam: false });
+    await joinRoom(host);
+    const person = await invited.api.calls.join(c, { mic: false, cam: false });
+    const personRoom = await joinRoom(person);
+
+    await person.setHand(true);
+    expect(person.getSnapshot().participants.find((p) => p.isMe)?.hand).toBe(true);
+    expect((await settle(host, (s) => s.participants.some((p) => p.id === person.ticket.identity && p.hand))).participants.find((p) => p.id === person.ticket.identity)?.hand).toBe(true);
+
+    await person.setHand(false);
+    expect(person.getSnapshot().participants.find((p) => p.isMe)?.hand).toBe(false);
+    expect((await settle(host, (s) => s.participants.some((p) => p.id === person.ticket.identity && !p.hand))).participants.find((p) => p.id === person.ticket.identity)?.hand).toBe(false);
+
+    await host.remove(person.ticket.identity);
+    expect(await personRoom.disconnectReason()).toBe(DisconnectReason.PARTICIPANT_REMOVED);
+    await expect(person.setHand(true)).rejects.toMatchObject({ code: 'forbidden' });
+    expect(person.getSnapshot().participants.find((p) => p.isMe)?.hand).not.toBe(true);
+    expect(host.getSnapshot().participants.some((p) => p.id === person.ticket.identity)).toBe(false);
+
+    await host.leave();
+    await expect(host.setHand(true)).rejects.toMatchObject({ code: 'conflict' });
+    expect(host.getSnapshot().participants.find((p) => p.isMe)?.hand).not.toBe(true);
+  });
+
   it('lets the organizer mute, remove and lock, and nobody else', async () => {
     const org = await account();
     const invitedEmail = unique('invited');
@@ -1496,6 +1685,48 @@ describe('host controls', () => {
     await host.leave();
     // Once it's over, only the organizer can still read the call. Asked as a browser would: `back` may have heard it's over, and stopped asking.
     expect((await asMember(back, 'GET', '')).status).toBe(409);
+  });
+
+  it('the organizer stops anyone’s share for everyone, and nobody else can', async () => {
+    const org = await account();
+    const { code: c } = await org.api.calls.startNow({});
+    const host = await org.api.calls.join(c, { mic: true, cam: false });
+    const hostRoom = await joinRoom(host);
+    const priya = await guestBrowser().calls.join(c, { mic: true, cam: false, name: 'Priya Raman' });
+    await letIn(host, priya);
+    const kofi = await guestBrowser().calls.join(c, { mic: true, cam: false, name: 'Kofi Asante' });
+    await letIn(host, kofi);
+    const priyaRoom = await joinRoom(priya);
+    const seatOf = async (who: CallSession) => (await settle(host, (s) => s.participants.some((p) => p.id === who.ticket.identity))).participants.find((p) => p.id === who.ticket.identity)?.seat ?? '';
+    const [priyas, kofis] = [await seatOf(priya), await seatOf(kofi)];
+    // Someone sharing nothing has nothing to stop, and nor has someone who isn't in the call.
+    expect(code(await host.stopShare(kofis).catch((e: unknown) => e))).toBe('conflict');
+    expect(code(await host.stopShare('nobody-has-this-seat').catch((e: unknown) => e))).toBe('conflict');
+
+    // Priya shares a tab with its sound: the picture and its sound reach the organizer.
+    const { screen, sound } = await priyaRoom.publishScreen(true);
+    const shared = () => [...(hostRoom.room.remoteParticipants.get(priya.ticket.identity)?.trackPublications.values() ?? [])]
+      .filter((t) => t.source === TrackSource.SOURCE_SCREENSHARE || t.source === TrackSource.SOURCE_SCREENSHARE_AUDIO);
+    await hostRoom.waitFor(() => shared().length === 2, 'Priya’s share and its sound');
+    expect(shared().map((t) => t.sid).sort()).toEqual([screen, sound].sort());
+    // Nobody but the organizer stops it: not Kofi, and not Priya from here either, whose own Stop sharing is in her browser.
+    for (const attempt of [() => kofi.stopShare(priyas), () => priya.stopShare(priyas)]) {
+      expect(code(await attempt().catch((e: unknown) => e))).toBe('forbidden');
+    }
+    expect(shared().every((t) => !t.muted)).toBe(true);
+
+    // The organizer stops it for everyone: LiveKit mutes the picture and its sound, as everyone in the room has them. (Whether
+    // her browser then lets go of the tab is the browser's to say: this LiveKit test participant only shows what the room did.)
+    await host.stopShare(priyas);
+    await hostRoom.waitFor(() => shared().length === 2 && shared().every((t) => t.muted), 'Priya’s share muted for everyone');
+    // Everyone else is told who stopped whose; the organizer has words of their own for it.
+    const told = `${firstName(org.session.user.name)} stopped Priya’s share.`;
+    for (const call of [priya, kofi]) expect((await settle(call, (s) => s.notices.some((n) => n.text === told))).notices).toContainEqual({ id: expect.any(String), text: told, kind: 'people' });
+    await host.refresh();
+    expect(host.getSnapshot().notices.map((n) => n.text)).not.toContain(told);
+    // Stopped, there's nothing left to stop.
+    expect(code(await host.stopShare(priyas).catch((e: unknown) => e))).toBe('conflict');
+    await host.leave();
   });
 
   it('never tells a guest anyone’s email address', async () => {
@@ -1541,6 +1772,85 @@ async function hook(event: string, roomName: string, identity?: string) {
 }
 
 describe('ending', () => {
+  it('keeps Leave as leaving just this connection when hosting changes while a return finishes', async () => {
+    const realFetch = cookieFetch(ORIGIN);
+    let releaseReturn = () => {};
+    const returnResponse = new Promise<void>((resolve) => { releaseReturn = resolve; });
+    let returning = false;
+    const invited = await account(unique('invited'), { fetch: async (input, init) => {
+      const response = await realFetch(input, init);
+      const path = new URL(input instanceof Request ? input.url : input.toString()).pathname;
+      if (path.endsWith('/mls/back') && response.ok) { returning = true; await returnResponse; }
+      return response;
+    } });
+    const org = await account();
+    const { code: c } = await org.api.calls.startNow({ notes: 'off', guests: [invited.session.user.email] });
+    const host = await org.api.calls.join(c, { mic: false, cam: false });
+    await joinRoom(host);
+    const person = await invited.api.calls.join(c, { mic: false, cam: false });
+    await joinRoom(person);
+    // The connection drops, and the real recovery request succeeds, but its response is still on its way.
+    expect((await asMember(person, 'POST', '/leave', { end: false, onPurpose: false })).status).toBe(200);
+    await waitFor(() => returning, 'the successful return response to wait');
+    expect(person.getSnapshot().isHost).toBe(false);
+    const leaving = person.leave().then(() => 'left', (e: unknown) => code(e));
+    try {
+      // Leave was pressed as a participant. Becoming host during its wait must never turn it into End for everyone.
+      await host.handOff(person.ticket.identity);
+      await person.refresh({ call: true, log: false });
+      expect(person.getSnapshot().isHost).toBe(true);
+      releaseReturn();
+      expect(await leaving).toBe('conflict');
+      expect(person.getSnapshot().phase).toBe('in-call');
+      expect(await callState(person.ticket.callId)).toBe('live');
+      expect((await org.api.calls.card(c)).ended).toBe(false);
+    } finally {
+      releaseReturn();
+      await leaving;
+    }
+    await person.leave();
+    expect(await callState(person.ticket.callId)).toBe('ended');
+  });
+
+  it('keeps up with the call after leaving fails, and can leave again', async () => {
+    const realFetch = cookieFetch(ORIGIN);
+    let failLeave = false;
+    const connection: typeof fetch = (input, init) => {
+      if (failLeave && new URL(String(input)).pathname.endsWith('/leave')) {
+        failLeave = false;
+        return Promise.reject(new TypeError('The connection dropped while leaving.'));
+      }
+      return realFetch(input, init);
+    };
+    const org = await account(unique('organizer'), { fetch: connection });
+    const invited = await account();
+    const { code: c } = await org.api.calls.startNow({ notes: 'off', guests: [invited.session.user.email] });
+    const host = await org.api.calls.join(c, { mic: false, cam: false });
+    await joinRoom(host);
+    const person = await invited.api.calls.join(c, { mic: false, cam: false });
+    const personRoom = await joinRoom(person);
+
+    failLeave = true;
+    await expect(host.leave()).rejects.toMatchObject({ code: 'network' });
+    expect(host.getSnapshot().phase).toBe('in-call');
+    expect((await org.api.calls.card(c)).ended).toBe(false);
+
+    // Chat must keep arriving through the session's own polling, without a reload or an explicit refresh.
+    await person.sendChat('The call is still here.');
+    await waitFor(() => chatOf(host).includes('The call is still here.'), 'chat after leaving failed');
+    await person.sendChat('Ready when you are.');
+    await waitFor(() => chatOf(host).includes('Ready when you are.'), 'the next chat after leaving failed');
+    await person.setHand(true);
+    // The browser refreshes this state when its room receives a nudge.
+    await host.refresh({ call: true, log: false });
+    expect(host.getSnapshot().participants.find((p) => p.id === person.ticket.identity)?.hand).toBe(true);
+
+    await host.leave();
+    expect(host.getSnapshot().phase).toBe('ended');
+    expect(await personRoom.disconnectReason()).toBe(DisconnectReason.ROOM_DELETED);
+    expect((await org.api.calls.card(c)).ended).toBe(true);
+  });
+
   it('ends the call for everyone when the organizer leaves, and runs the normal ending', async () => {
     const org = await account();
     const invitedEmail = unique('invited');
@@ -1563,7 +1873,7 @@ describe('ending', () => {
     expect((await invited.api.notes.get(noteId)).id).toBe(noteId);
   });
 
-  it('keeps the call going when someone other than the organizer leaves, and takes them out of the group', async () => {
+  it('keeps the call going when another participant’s browser closes, and takes them out of the group', async () => {
     const org = await account();
     const { code: c } = await org.api.calls.startNow({});
     const host = await org.api.calls.join(c, { mic: true, cam: false });
@@ -1571,6 +1881,7 @@ describe('ending', () => {
     const guest = await guestBrowser().calls.join(c, { mic: true, cam: false, name: 'Sam' });
     await letIn(host, guest);
     const guestRoom = await joinRoom(guest);
+    guest.close();
     await guestRoom.disconnect();
     expect((await hook('participant_left', host.ticket.roomName, guest.ticket.identity)).status).toBe(200);
     await waitFor(() => !host.crypto.getSnapshot().members.includes(guest.ticket.identity), 'the guest out of the group');

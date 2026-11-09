@@ -36,8 +36,9 @@ const crumbsAbove = (ws: Ws, item: WorkspaceItem): string[] => [...(ws.sent.name
 const blog = log.child({ component: 'board-page' });
 
 /**
- * Start a call here: the start flow, with this board brought to the call from your library, and opened for everyone as the
- * call starts when you can add to it. What you can bring is read as the page opens, so it's there by the time you press.
+ * Start a call here: the start flow, with this board brought to the call from your library, and opened on your stage just for
+ * you as the call starts when you can add to it (Present brings everyone). What you can bring is read as the page opens, so it's
+ * there by the time you press.
  */
 function useStartHere(workspaceId: string, item: WorkspaceItem, name: string): () => void {
   const flow = useCallFlow();

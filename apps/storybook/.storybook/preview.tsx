@@ -1,9 +1,9 @@
 /*
  * Every story renders on the app's own stylesheet and fonts, in light or dark (the toolbar's Theme), with or without a
- * connection (its Connection), at any width (its viewports: phone, tablet, laptop, wide). Before a story renders, its
- * scenario starts: a fresh demo world for the stand-in API, the demo clock at the scenario's moment, and the browser as the
- * scenario says (src/api/scenarios.ts). A component story gets the providers the app's root would give it; a page story
- * (`parameters.page`) mounts the app's own root, which brings its own.
+ * connection (its Connection), at any width (its viewports: phone, a narrow window, tablet, laptop, wide). Before a story
+ * renders, its scenario starts: a fresh demo world for the stand-in API, the demo clock at the scenario's moment, and the
+ * browser as the scenario says (src/api/scenarios.ts). A component story gets the providers the app's root would give it; a
+ * page story (`parameters.page`) mounts the app's own root, which brings its own.
  */
 import { ThemeProvider, ToastProvider, TooltipProvider } from '@alcove/ui';
 import type { Decorator, Preview, StoryContext } from '@storybook/react-vite';
@@ -40,6 +40,10 @@ function openingOf(ctx: StoryContext): Partial<Opening> {
     ...(typeof b['online'] === 'boolean' ? { online: b['online'] } : {}),
     ...(b['devices'] === 'granted' || b['devices'] === 'prompt' || b['devices'] === 'denied' ? { devices: b['devices'] } : {}),
     ...(b['notifications'] === 'granted' || b['notifications'] === 'denied' || b['notifications'] === 'default' ? { notifications: b['notifications'] } : {}),
+    ...(typeof b['sharedNotificationBrowser'] === 'boolean' ? { sharedNotificationBrowser: b['sharedNotificationBrowser'] } : {}),
+    ...(b['notificationTransport'] === 'scripted' || b['notificationTransport'] === 'native' || b['notificationTransport'] === 'unsupported' || b['notificationTransport'] === 'failed' ? { notificationTransport: b['notificationTransport'] } : {}),
+    ...(b['answer'] === 'granted' || b['answer'] === 'denied' || b['answer'] === 'default' ? { answer: b['answer'] } : {}),
+    ...(b['floatingWindow'] === 'native' || b['floatingWindow'] === 'unsupported' || b['floatingWindow'] === 'blocked' ? { floatingWindow: b['floatingWindow'] } : {}),
     ...(offlineIn(ctx) ? { online: false } : {})
   };
   return {
@@ -124,6 +128,7 @@ const preview: Preview = {
     viewport: {
       options: {
         phone: { name: 'Phone', styles: { width: '390px', height: '844px' }, type: 'mobile' },
+        narrow: { name: 'Narrow window', styles: { width: '700px', height: '820px' }, type: 'desktop' },
         tablet: { name: 'Tablet', styles: { width: '1024px', height: '768px' }, type: 'tablet' },
         laptop: { name: 'Laptop', styles: { width: '1440px', height: '900px' }, type: 'desktop' },
         wide: { name: 'Wide', styles: { width: '1920px', height: '1080px' }, type: 'desktop' }

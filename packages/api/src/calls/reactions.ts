@@ -24,6 +24,6 @@ export function reactionTarget(crypto: Pick<CallCrypto, 'status' | 'chat'>, plac
   if (crypto.status === 'moving') throw new AlcoveApiError('conflict', 'You’re moving to another room. React once you’re there.');
   if (crypto.status !== 'in') throw new AlcoveApiError('forbidden', 'Wait until the host lets you in.');
   const target = crypto.chat.find((m) => m.id === messageId && m.place === place);
-  if (!target || target.sending) throw new AlcoveApiError('not-found', 'That message isn’t here any more.');
+  if (!target || target.sending || target.failed) throw new AlcoveApiError('not-found', 'That message isn’t here any more.');
   return target;
 }

@@ -25,9 +25,10 @@ export type WorkedDocument = z.infer<typeof WorkedDocument>;
 const Controller = z.object({ person: z.string(), seat: z.string(), name: z.string(), email: z.string().nullable() });
 export type Controller = z.infer<typeof Controller>;
 /**
- * What's being presented in one part of the call. `place` is where it started: it's for the people there. `key` is this one
+ * A board presented in one part of the call. `place` is where it started: it's for the people there. `key` is this one
  * presentation, from its start to its end: starting again is a new key. `since` is when it started, in ms on this server's
- * clock. Both are empty (`''` and 0) in one started before presentations had them.
+ * clock. Both are empty (`''` and 0) in one a release before presentations had them started, which is read with a key made for
+ * it (features/calls/workspace.ts). A `document`, which a release before this one presented a section at a time, is over.
  */
 const Presenting = z.object({
   place: z.string(), workspaceId: z.string(), kind: z.enum(['document', 'board']), id: z.string(), section: z.number(), by: Controller,
@@ -41,9 +42,10 @@ export type Presenting = z.infer<typeof Presenting>;
 const SpacePresenting = z.object({ place: z.string(), workspaceId: z.string(), key: z.string(), since: z.number(), by: Controller });
 export type SpacePresenting = z.infer<typeof SpacePresenting>;
 /**
- * How the last presentation in one part of the call ended, until another starts there: which one it was (`key`), when (`at`, in
- * ms on this server's clock), and whether it closed for everyone (`close`) or only for whoever presented it, so everyone
- * following knows whether to keep it open.
+ * How the last presentation in one part of the call ended, whatever ended it, said as it ended, until another starts there:
+ * which one it was (`key`), who presented it (`by`, whoever stopped it), when (`at`, in ms on this server's clock), and whether
+ * it closed for everyone (`close`) or only for whoever presented it, so everyone following knows whether to keep it open. A start
+ * in the place of someone else's, hidden while they reload, says how theirs ended instead (features/calls/workspace.ts).
  */
 const PresentEnded = z.object({ place: z.string(), key: z.string(), close: z.boolean(), by: Controller, at: z.number() });
 export type PresentEnded = z.infer<typeof PresentEnded>;
@@ -87,9 +89,6 @@ export const CallSpace = z.object({
 });
 export type CallSpace = z.infer<typeof CallSpace>;
 export const NO_SPACE: CallSpace = { asks: [], present: [], space: [], ended: [], play: [], worked: [], agendaLooked: false, agendaDraft: null, viewing: null, home: null, made: [] };
-
-/** Nothing presented or playing is left: everyone views another workspace. */
-export const stopped = (w: CallSpace): CallSpace => ({ ...w, present: [], play: [] });
 
 /** A timer on a board, the same for everyone where it's open: when it runs out, in seconds since the call started, and how long it was set for, in seconds. */
 const BoardTimer = z.object({ until: z.number(), length: z.number(), by: Controller });
@@ -184,6 +183,16 @@ export const CallBoards = z.object({
 export type CallBoards = z.infer<typeof CallBoards>;
 export const NO_BOARDS: CallBoards = { open: {}, letIn: [], rooms: [], landing: null, ideas: {} };
 
+/**
+ * The call's boards with the one open in a part of the call closed for everyone there: its timer and vote, which are that
+ * session's, and its ideas from the call, which were for it, go with it. Nothing on it is deleted.
+ */
+export function withBoardClosed<B extends Pick<CallBoards, 'open' | 'ideas'>>(b: B, place: string): B {
+  const { [place]: _closed, ...open } = b.open;
+  const { [place]: _ideas, ...ideas } = b.ideas;
+  return { ...b, open, ideas };
+}
+
 /** How many documents a call remembers working on, and how many people on each: its sealed state is read on every request. */
 const MAX_WORKED = 100;
 const MAX_WORKED_BY = 50;
@@ -201,7 +210,7 @@ function withBoardOpened(w: CallSpace, at: { workspaceId: string; documentId: st
 
 /**
  * The same, with every board open in the call noted in the part it's open in (`open` is by part: `main`, or a room's ID),
- * however it opened: from the Board menu, with rooms opening, or started in a room.
+ * however it opened: from the board picker, with rooms opening, or started in a room.
  */
 export function withOpenBoards(w: CallSpace, open: Readonly<Record<string, { workspaceId: string; documentId: string }>>): CallSpace {
   return Object.entries(open).reduce((x, [place, at]) => withBoardOpened(x, at, place), w);

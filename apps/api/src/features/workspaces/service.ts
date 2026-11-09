@@ -1122,9 +1122,9 @@ class TreeStream extends LiveStream<WorkspaceLiveEvent> {
   /** Who's here changed since it was last worked out for this reader, and a hash of what they were last told of it. */
   private moved = true;
   private shownHere = NOBODY_HERE;
-  /** Someone tagged this reader since it last looked, as anyone may have before it opened, and what it's told them of. */
+  /** This reader's unread tags changed, and a hash of the complete set last sent to this stream. */
   private tagged = true;
-  private readonly toldOf = new Set<string>();
+  private shownTags: string | null = null;
 
   constructor(d: Deps, room: Room, credentials: Credentials, who: Who, first: WorkspaceTree, standing: Standing, version: number, release: () => void, private readonly callId: string | null) {
     super(d, room, credentials, who, version, release, { workspaceId: room.workspaceId });
@@ -1136,7 +1136,7 @@ class TreeStream extends LiveStream<WorkspaceLiveEvent> {
   override heard(): void { this.moved = true; this.poke(); }
   override told(): void { this.tagged = true; this.poke(); }
 
-  /** What's waiting for this reader that this stream hasn't said. False when there's nothing. */
+  /** The authorized unread set, whole: a read elsewhere or lost access clears what this stream said before. */
   private async tell(line: Line<WorkspaceLiveEvent>): Promise<boolean> {
     this.tagged = false;
     const waiting = await waitingFor(this.d, this.who, this.room.workspaceId).catch((e: unknown) => {
@@ -1144,12 +1144,11 @@ class TreeStream extends LiveStream<WorkspaceLiveEvent> {
       if (e instanceof AppError && e.status < 500) return [];
       throw e;
     });
-    const fresh = waiting.filter((m) => !this.toldOf.has(m.id));
-    for (const mention of fresh) {
-      this.toldOf.add(mention.id);
-      await line({ type: 'mention', mention });
-    }
-    return fresh.length > 0;
+    const hash = shortHash(JSON.stringify(waiting));
+    if (hash === this.shownTags) return false;
+    this.shownTags = hash;
+    await line({ type: 'mentions', mentions: waiting });
+    return true;
   }
 
   /** What this reader sees of a snapshot. False once they can't open the workspace any more. */
@@ -1158,6 +1157,8 @@ class TreeStream extends LiveStream<WorkspaceLiveEvent> {
     const standing = standingIn(s, this.who);
     if (!canOpen(standing)) return this.someoneNew();
     this.standing = standing;
+    // A tree change can restrict, trash or remove a tagged document while the stream remains open.
+    this.tagged = true;
     if (standing.role !== this.role) {
       this.role = standing.role;
       await line({ type: 'access', role: standing.role });

@@ -1,3 +1,4 @@
+import type { CallTimerSequence } from '@alcove/api';
 /*
  * A call's script: who's in it when you come in, what they say and do and when, how the people you ring answer, and
  * what the call's link says while you wait at the door. The scripted call (call.ts) plays the server's side of it,
@@ -9,8 +10,8 @@
  * story opened. Everyone in a script is from the demo world, and everything they say is made up.
  */
 import {
-  RING_SECONDS, type BoardTemplate, type BoardTimerMinutes, type BoardVotesEach, type BreakoutBoard, type CallCard, type CallReaction, type CallPage, type CaptureMode, type CapturePart,
-  type CaptureState, type IncomingRing, type Meeting, type Person, type RingReply
+  RING_SECONDS, type CallFeedbackKind, type BoardTemplate, type BoardTimerMinutes, type BoardVotesEach, type BreakoutBoard, type CallCard, type CallReaction, type CallPage, type CaptureMode, type CapturePart,
+  type CaptureState, type LiveFollowUp, type IncomingRing, type Meeting, type Person, type RingReply
 } from '@alcove/api';
 import type * as Y from 'yjs';
 import type { Screen } from '../media/screens';
@@ -19,6 +20,7 @@ import { current, me } from './state';
 
 /** Something said in the call: by someone in it, or by you (heard through your microphone, while it's on). */
 export interface Line {
+  id?: string | undefined;
   who: Person | 'me';
   text: string;
   /** What the live notes take as decided from it. */
@@ -58,13 +60,24 @@ export interface RoomPlan { name: string; people: readonly (Person | 'me')[]; wo
 /** One thing that happens. */
 export type Beat =
   | { do: 'join'; who: Person; guest?: boolean | undefined; mic?: boolean | undefined }
+  /** Someone leaves on purpose (Leave): what they present ends for good, said at once, as the server says it (`ended`). */
   | { do: 'leave'; who: Person }
+  /**
+   * Someone's page reloads: their connection drops, so they're gone from the people and what they present is hidden, with
+   * nothing said to have ended, and they're back `seconds` later, in the same seat and part of the call, presenting it as it was,
+   * with the same key.
+   */
+  | { do: 'reload'; who: Person; seconds: number }
   | { do: 'say'; line: Line }
   | { do: 'mic'; who: Person; on: boolean }
   | { do: 'hand'; who: Person; up: boolean }
+  | { do: 'question'; who: Person; text: string; votes?: number }
+  | { do: 'feedback'; who: Person; kind: CallFeedbackKind | null }
   | { do: 'share'; who: Person; screen: Screen }
   | { do: 'stop-sharing'; who: Person }
-  | { do: 'chat'; who: Person; text: string }
+  | { do: 'chat'; who: Person; text: string; tagged: readonly (Person | 'me')[] }
+  | { do: 'unavailable-chat'; text: string }
+  | { do: 'reply'; who: Person; text: string; to: string; tagged: readonly (Person | 'me')[] }
   /** Someone reacts to the latest chat message with this text. */
   | { do: 'react'; who: Person; text: string; reaction: CallReaction }
   /** Someone asks to join: signed in (their address shows), or by name only. */
@@ -77,6 +90,11 @@ export type Beat =
   | { do: 'rooms'; rooms: readonly RoomPlan[]; minutes: number; board?: BreakoutBoard | undefined }
   | { do: 'message-rooms'; text: string }
   | { do: 'close-rooms' }
+  /**
+   * The organizer, when it isn't you, moves someone, or you (`me`), to the open room with this name, or back to the main room
+   * (null): what they present where they were ends there, said at once.
+   */
+  | { do: 'move-to-room'; who: Person | 'me'; room: string | null }
   /** Whoever hosts: lets you in from asking, turns you away, mutes your microphone, removes you, ends the call. */
   | { do: 'let-in' }
   | { do: 'turn-away' }
@@ -95,12 +113,18 @@ export type Beat =
    */
   | { do: 'goes-to'; who: Person; document: string | null; typing?: boolean | undefined; page?: CallPage | undefined }
   /**
-   * Someone presents a document in the call's workspace from a section, or with no `document` the board open in the main room
-   * from a frame; moves it on; and stops.
+   * Someone presents the board open in the main room, from a frame, or the workspace as everyone views it; moves the board on;
+   * and stops, for them alone, everyone following keeping it open on their own, or for everyone (`close`), which closes a board
+   * in the call too, as the server lets them. The organizer, when it isn't you, closes what's presented in the main room for
+   * everyone, whoever presents it: yours too, which is how you can tell it was them.
    */
-  | { do: 'present'; who: Person; document?: string | undefined; section?: number | undefined }
+  | { do: 'present'; who: Person; section?: number | undefined }
+  | { do: 'present-workspace'; who: Person }
   | { do: 'move-presenting'; section: number }
-  | { do: 'stop-presenting' }
+  | { do: 'stop-presenting'; close?: boolean | undefined }
+  | { do: 'close-presenting' }
+  /** The organizer, when it isn't you, stops what someone shares, for everyone: yours (`me`), or anyone else's. */
+  | { do: 'stop-share'; who: Person | 'me' }
   /** Someone plays a video in a document of the call's workspace for everyone, and stops it. */
   | { do: 'play'; who: Person; document: string; media: string }
   | { do: 'stop-playing' }
@@ -111,15 +135,22 @@ export type Beat =
   /** Someone tags you in a document of the call's workspace, on a line. */
   | { do: 'tag-you'; who: Person; document: string; block?: string | undefined }
   /**
-   * A board in the call (user-flows 6, A board in the call). Someone opens a new one for everyone in the main room from a
+   * A board in the call (user-flows 6, A board in the call). Someone makes a new one, the board in the main room, from a
    * template, made in the call's home and filled as the server fills it, with what `draw` puts on it, or one you can't open
-   * (`closedToYou`); adds a sticky to one of the frames of the board where you are, by the frame's title, which puts their
-   * pointer by it; and whoever opened it closes it. `standing` opens it here with no connection to it (`offline`), or with
-   * Alcove refusing what's added here (`failed`), while the call carries on.
+   * (`closedToYou`), which opens on their stage alone until they present it; adds a sticky to one of the frames of the board where you are, by the frame's title, which puts their
+   * pointer by it; and whoever opened it closes it, unless someone else presents it. `standing` opens it here with no
+   * connection to it (`offline`), or with Alcove refusing what's added here (`failed`), while the call carries on.
    */
   | { do: 'open-board'; who: Person; template: BoardTemplate; closedToYou?: boolean | undefined; draw?: ((doc: Y.Doc) => void) | undefined; standing?: 'offline' | 'failed' | undefined }
   | { do: 'add-sticky'; who: Person; frame: string; text: string }
   | { do: 'close-board' }
+  /**
+   * The board where you are leaves the call for everyone, as the server takes it out: someone moves it to Trash in the Drive, or
+   * the folder it's in (`folder`: the call's folder, where the server makes a call's board, for one that's in none), or deletes
+   * the workspace it's kept in. Its own connection says which, Trash or deleted, and what presented it ends.
+   */
+  | { do: 'trash-board'; folder?: boolean | undefined }
+  | { do: 'delete-board-workspace' }
   /**
    * The board's timer and vote, run by someone else: a timer (`left`: seconds still to go, for one near its end), a vote on a
    * frame by its title (null: every sticky), ended with everyone else's votes by what each sticky says, and cleared.
@@ -137,6 +168,14 @@ export type Beat =
 export interface Cue { at: number; beat: Beat }
 
 export interface CallScript {
+  /** A stable opaque call ID only for the explicit manual cross-tab browser-receipt scene. */
+  notificationId?: string | undefined;
+  privateSendFails?: boolean | undefined;
+  privateMessages?: readonly { from: Person; text: string; after?: number; replyTo?: string; tagged?: readonly (Person | 'me')[] }[] | undefined;
+  /** First sends fail in their original conversation, so a journey can show deliberate retry. */
+  chatFailures?: number | undefined;
+  /** Prepared or running presenter sequence, from the same server-clock anchor as the call. */
+  timerSequence?: CallTimerSequence | undefined;
   /** Who's in the call when you come in, besides you. */
   here?: readonly Present[] | undefined;
   /** How long the call has been going when you come in, in seconds. */
@@ -151,6 +190,8 @@ export interface CallScript {
   cues?: readonly Cue[] | undefined;
   /** How the people you ring answer, by address: after how long, and what. Anyone else comes in after a few seconds. */
   answers?: Readonly<Record<string, { after: number; reply: RingReply | 'missed' }>> | undefined;
+  /** Actual tasks and pending proposals already present when the story opens. */
+  followUps?: readonly LiveFollowUp[] | undefined;
   /** What the live notes sum up, once anything has been said. */
   summary?: string | undefined;
   /** The call's workspace as you come in: what's been brought to the call, and where people are in it. */
@@ -179,7 +220,12 @@ export interface ScriptWorkspace {
 /** These beats, `seconds` in. */
 export const at = (seconds: number, ...beats: Beat[]): Cue[] => beats.map((beat) => ({ at: seconds, beat }));
 export const joins = (who: Person, o: { guest?: boolean; mic?: boolean } = {}): Beat => ({ do: 'join', who, ...o });
+/** Someone leaves on purpose: what they present ends, said at once. */
 export const leaves = (who: Person): Beat => ({ do: 'leave', who });
+/** Someone's page reloads: gone from the people for `seconds`, what they present hidden meanwhile, then back as it was, with the same key. */
+export const reloads = (who: Person, seconds: number): Beat => ({ do: 'reload', who, seconds });
+/** The organizer, when it isn't you, moves someone, or you, to the open room with this name, or back to the main room (null). */
+export const movesToRoom = (who: Person | 'me', room: string | null): Beat => ({ do: 'move-to-room', who, room });
 export const says = (who: Person | 'me', text: string, more: Omit<Line, 'who' | 'text'> = {}): Beat => ({ do: 'say', line: { who, text, ...more } });
 export const unmutes = (who: Person): Beat => ({ do: 'mic', who, on: true });
 export const mutes = (who: Person): Beat => ({ do: 'mic', who, on: false });
@@ -187,7 +233,8 @@ export const raisesHand = (who: Person): Beat => ({ do: 'hand', who, up: true })
 export const lowersHand = (who: Person): Beat => ({ do: 'hand', who, up: false });
 export const shares = (who: Person, screen: Screen): Beat => ({ do: 'share', who, screen });
 export const stopsSharing = (who: Person): Beat => ({ do: 'stop-sharing', who });
-export const chats = (who: Person, text: string): Beat => ({ do: 'chat', who, text });
+export const chats = (who: Person, text: string, tagged: readonly (Person | 'me')[] = []): Beat => ({ do: 'chat', who, text, tagged });
+export const replies = (who: Person, to: string, text: string, tagged: readonly (Person | 'me')[] = []): Beat => ({ do: 'reply', who, to, text, tagged });
 export const reacts = (who: Person, text: string, reaction: CallReaction): Beat => ({ do: 'react', who, text, reaction });
 export const knocks = (who: Person, o: { byName?: boolean } = {}): Beat => ({ do: 'knock', who, ...o });
 export const asksForNotes = (who: Person): Beat => ({ do: 'ask-for-notes', who });
@@ -195,17 +242,30 @@ export const run = (what: () => void): Beat => ({ do: 'run', what });
 export const goesTo = (who: Person, document: string | null, o: { typing?: boolean; page?: CallPage } = {}): Beat => ({ do: 'goes-to', who, document, ...o });
 /** Someone in the call opens one of the call's own pages: Notes, Follow-ups or the Transcript. */
 export const opensPage = (who: Person, page: CallPage): Beat => ({ do: 'goes-to', who, document: null, page });
-export const presents = (who: Person, document: string, section?: number): Beat => ({ do: 'present', who, document, section });
+/** Someone presents the board open in the main room, from a frame. */
+export const presentsBoard = (who: Person, section?: number): Beat => ({ do: 'present', who, section });
+/** Someone presents the workspace, as everyone in the call views it. */
+export const presentsWorkspace = (who: Person): Beat => ({ do: 'present-workspace', who });
 export const movesPresenting = (section: number): Beat => ({ do: 'move-presenting', section });
-export const stopsPresenting = (): Beat => ({ do: 'stop-presenting' });
+/** Whoever's presenting stops: for them alone, or for everyone (`close`). */
+export const stopsPresenting = (close = false): Beat => ({ do: 'stop-presenting', close });
+/** The organizer, when it isn't you, closes what's presented in the main room for everyone, whoever presents it, you included. */
+export const closesPresenting = (): Beat => ({ do: 'close-presenting' });
+/** The organizer stops what someone shares, yours or theirs, for everyone. */
+export const stopsShare = (who: Person | 'me'): Beat => ({ do: 'stop-share', who });
 export const plays = (who: Person, document: string, media: string): Beat => ({ do: 'play', who, document, media });
 export const asksToSee = (who: Person): Beat => ({ do: 'ask-to-see', who });
 export const tagsYou = (who: Person, document: string, block?: string): Beat => ({ do: 'tag-you', who, document, block });
-/** Someone opens a board from a template for everyone here, or one you can't open, or one that stands badly here. */
+/** Someone makes the board here from a template (on their stage alone until they present it), or one you can't open, or one that stands badly here. */
 export const opensBoard = (who: Person, template: BoardTemplate, o: { closedToYou?: boolean; draw?: (doc: Y.Doc) => void; standing?: 'offline' | 'failed' } = {}): Beat => ({ do: 'open-board', who, template, ...o });
 /** Someone adds a sticky to the frame with this title on the board that's open. */
 export const addsSticky = (who: Person, frame: string, text: string): Beat => ({ do: 'add-sticky', who, frame, text });
+/** Whoever opened the board where you are closes it for everyone there, unless someone else presents it. */
 export const closesBoard = (): Beat => ({ do: 'close-board' });
+/** Someone moves the board where you are to Trash in the Drive, or the folder it's in (`folder`): it leaves the call, and its connection says it's in Trash. */
+export const trashesBoard = (o: { folder?: boolean } = {}): Beat => ({ do: 'trash-board', ...o });
+/** Someone deletes the workspace the board where you are is kept in: it leaves the call, and its connection says it was deleted. */
+export const deletesBoardWorkspace = (): Beat => ({ do: 'delete-board-workspace' });
 export const hears = (...ideas: HeardIdea[]): Beat => ({ do: 'heard', ideas });
 /** Someone starts the board's timer: `left` seconds to go, if it started a while ago. */
 export const startsTimer = (who: Person, minutes: BoardTimerMinutes, left?: number): Beat => ({ do: 'start-timer', who, minutes, left });

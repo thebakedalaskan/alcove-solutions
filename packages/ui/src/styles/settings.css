@@ -94,6 +94,7 @@
 .set-line { display: flex; align-items: center; gap: 10px; width: 100%; min-width: 0; }
 .set-sv { display: inline-flex; align-items: center; gap: 5px; font: 500 13px/1 var(--font-sans); color: var(--ink-2); white-space: nowrap; animation: set-saved var(--duration-2) var(--ease-out) both; }
 .set-sv .ac-i { color: var(--sun-text); }
+.set-sv.is-failed { color: var(--caution); }
 @keyframes set-saved { from { opacity: 0; transform: translateX(6px); } }
 
 /* A list with its test under it: the label sits level with the list, not with the pair. */
@@ -303,7 +304,7 @@
 .set-del > .ac-notice { margin-top: 16px; }
 
 /* ---- Add credits: the sheet (topup.tsx), picking how to pay, then where to send it ---- */
-.ac-sheet.set-topup { display: flex; flex-direction: column; width: min(560px, calc(100vw - 28px)); max-height: calc(100dvh - 13vh - 24px); }
+.ac-sheet.set-topup { font-variant-numeric: tabular-nums; display: flex; flex-direction: column; width: min(560px, calc(100vw - 28px)); max-height: calc(100dvh - 13vh - 24px); }
 .set-topup-h { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-5) var(--space-4) 0 var(--space-6); }
 .set-topup-h h2 { flex: 1; margin: 0; font: 600 18px/24px var(--font-sans); letter-spacing: -.01em; }
 .set-topup-body { display: grid; gap: var(--space-6); min-height: 0; overflow-y: auto; padding: var(--space-2) var(--space-6) var(--space-6); }
@@ -321,10 +322,10 @@
 .set-topup-amt > input { margin: 0; accent-color: var(--ink); }
 .set-topup-amt > input:focus-visible { outline: none; }
 .set-topup-amt .n { display: grid; gap: var(--space-1); min-width: 0; font: 600 14.5px/1.3 var(--font-sans); color: var(--ink); }
-.set-topup-amt .n small { font: 500 12.5px/1.3 var(--font-mono); color: var(--ink-3); }
+.set-topup-amt .n small { font: 500 12.5px/1.3 var(--font-sans); color: var(--ink-3); }
 .set-topup-amt .n .ac-input { width: min(200px, 100%); height: 32px; padding: 0 var(--space-3); font: 600 14.5px/1 var(--font-sans); }
 .set-topup-amt .p { display: flex; align-items: center; gap: var(--space-2); white-space: nowrap; }
-.set-topup-amt .p b { font: 600 14px/1.3 var(--font-mono); color: var(--ink); }
+.set-topup-amt .p b { font: 600 14px/1.3 var(--font-sans); color: var(--ink); }
 .set-topup-amt .p .ac-chip { height: 22px; padding: 0 var(--space-2); font-size: 12px; }
 /* Pay with: the token, then a network it's offered on, side by side. */
 .set-topup-pick { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -344,7 +345,7 @@
 .set-topup-sum .on .ac-crypto { width: 16px; height: 16px; }
 .set-topup-sum .credits { font: 600 17px/1.3 var(--font-sans); color: var(--ink); }
 .set-topup-sum .credits b { font-weight: inherit; color: var(--ink); }
-.set-topup-sum .hrs { font: 500 12.5px/1.3 var(--font-mono); color: var(--ink-3); }
+.set-topup-sum .hrs { font: 500 12.5px/1.3 var(--font-sans); color: var(--ink-3); }
 /* An address that expired with nothing sent: what it was for, struck through. */
 /* An expired top-up: a line through each number at its digits' middle (16px down the 32px amount, 10px down the
    17px credits), and the words beside them greyed. */
@@ -355,7 +356,7 @@
 .set-topup-scan { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: var(--space-5); }
 .set-topup-scan .how, .set-topup-how { display: grid; justify-items: start; gap: var(--space-3); min-width: 0; }
 .set-topup-scan .how p, .set-topup-how p { font-size: 14px; line-height: 1.5; color: var(--ink-2); text-wrap: pretty; }
-.set-topup-scan .how .exp { display: flex; align-items: center; gap: var(--space-2); font: 500 12.5px/1.3 var(--font-mono); color: var(--ink-3); }
+.set-topup-scan .how .exp { display: flex; align-items: center; gap: var(--space-2); font: 500 12.5px/1.3 var(--font-sans); color: var(--ink-3); }
 .set-topup-dest { display: grid; gap: var(--space-2); }
 .set-topup-dest .h { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); font: 600 13.5px/1.2 var(--font-sans); color: var(--ink); }
 .set-topup-dest .h .ac-chip { height: 24px; font-size: 12px; }
@@ -370,3 +371,40 @@
   .set-topup-scan .how { width: 100%; }
   .set-topup-amt { padding-inline: var(--space-3); }
 }
+
+/* Playback volume keeps the same focused control in Settings and the call sound sheet. */
+.set-sound-volume { accent-color: var(--sun); width: min(180px, 100%); min-width: 90px; }
+.set-sound-volume:focus-visible { outline: 2px solid var(--horizon); outline-offset: 4px; border-radius: var(--radius-sm); }
+
+.set-drive-destination { display: flex; justify-content: space-between; align-items: center; width: 100%; min-width: 0; gap: 12px; padding: 9px 11px; border: 1px solid var(--line-control); border-radius: var(--radius-md); background: transparent; color: var(--ink); cursor: pointer; }
+.set-drive-destination:hover { background: var(--surface-raised); }
+.set-drive-destination:disabled { opacity: .5; cursor: default; }
+.set-drive-destination:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+.set-drive-change { font: 500 13px/20px var(--font-sans); color: var(--horizon); flex: none; }
+.set-drive-formats-row { padding-bottom: 12px; }
+.set-part > .ac-drive-formats { margin-bottom: 10px; }
+.set-drive-disclosure { margin-top: 15px; }
+.set-drive-history { margin-top: 28px; }
+.set-drive-history h3 { margin: 0 0 9px; font: 600 14px/20px var(--font-sans); color: var(--ink); }
+.set-drive-wait { display: flex; align-items: center; justify-content: center; gap: 9px; padding: 25px 12px; font: 400 14px/20px var(--font-sans); color: var(--ink-2); }
+.set-drive-picker.ac-modal { width: min(560px, calc(100vw - 32px)); padding: 0; overflow: hidden; }
+.set-drive-picker-head { display: flex; align-items: center; gap: 12px; padding: 24px 24px 18px; }
+.set-drive-picker-head > div { flex: 1; min-width: 0; }
+.set-drive-picker-head h2 { margin: 0; font: 600 18px/25px var(--font-sans); color: var(--ink); }
+.set-drive-picker-head p { margin: 4px 0 0; font: 400 13px/19px var(--font-sans); color: var(--ink-2); }
+.set-drive-picker-icon { display: grid; place-items: center; width: 44px; height: 44px; flex: none; background: var(--horizon-soft); border-radius: var(--radius-lg); color: var(--horizon); }
+.set-drive-folders { max-height: min(420px, 48vh); overflow: auto; padding: 0 24px; }
+.set-drive-folders ul { padding: 0; margin: 0; list-style: none; }
+.set-drive-folder { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 15px; padding: 15px 2px; border: 0; border-top: 1px solid var(--line); color: var(--ink-2); background: transparent; text-align: left; cursor: pointer; }
+.set-drive-folder > .ac-drive-location { flex: 1; }
+.set-drive-folder:hover { color: var(--horizon); }
+.set-drive-folder:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; border-radius: var(--radius-sm); }
+.set-drive-folder:disabled { opacity: .5; cursor: default; }
+.set-drive-picker-foot { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 18px 24px 24px; border-top: 1px solid var(--line); }
+.set-drive-picker-foot p { margin: 0; font: 400 12px/18px var(--font-sans); color: var(--ink-2); text-wrap: pretty; }
+.set-drive-picker-foot .ac-btn { flex: none; }
+.set-drive-problem { display: flex; align-items: start; gap: 7px; padding: 10px 24px; color: var(--caution); font: 400 13px/20px var(--font-sans); }
+.set-drive-problem .ac-i { flex: none; margin-top: 2px; }
+@media (max-width: 620px) { .set-drive-picker-head { padding: 20px 18px 16px; gap: 9px; } .set-drive-folders { padding-inline: 18px; } .set-drive-picker-foot { padding: 16px 18px 20px; flex-wrap: wrap; } .set-drive-picker-foot .ac-btn { width: 100%; } }
+
+.set-drive-history-help { margin: 0 0 12px; color: var(--ink-2); font: 400 13px/20px var(--font-sans); text-wrap: pretty; }

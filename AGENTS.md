@@ -192,9 +192,17 @@ page is designed, how to make a design canvas from the kit in `docs/design/canva
 - Use components from `@alcove/ui` before writing markup. If something is missing and reusable, add it
   to `packages/ui`, not to the app. Components: `Button` (primary, secondary, quiet; `buttonClass()` for
   links), `IconButton`, `ProviderButton`, `NotesSign`, `Chip`, `GroupChip`, `SealedBadge` and `SealedButton`
-  (the badge that opens what was checked), `Notice`, `Toast`,
+  (the badge that opens what was checked), `Notice`, `useToast` (a toast, from the `ToastProvider` at the app's root),
   `Avatar` and `Faces` (the arch), `GhostArch` (an empty arch where a person will be), `PickList` (people to find and press
-  in a popover: one, or several with ticks), `CallTile`, `CallDock`, `VolumeControl` (how loud someone is for you, said
+  in a popover: one, or several with ticks), `CallTile`, `FloatingCall` (the compact call's picture, controls and attention, with no media ownership), `CallDock` with `DockButton` (its `word` is said beside the icon,
+  for Share, the one control the dock names), `CallTopGroup`, `CallTopButton` and `CallTopRule` (the top right's group, its
+  buttons and hairlines), `CallTimerButton` and `CallTimerReadout` (the shared presenter countdown, compact control and current/next readout),
+  `CallMoreGrid` and `CallMoreTile` (More's grid on a phone), `PrivateMessage` and `PrivateChatComposer` (recipient-only call messages and their persistent audience),
+  `CallFrame` (one frame for a screen, a board or the workspace, with its bar), `PresentedTile` (something presented that isn't on your stage, with Join),
+  `CloseAsk` (Close's question: for you or for everyone), `PresentAsk` (Present's question when some people here can't open
+  the board), `FramePager` (a board's presenter steps through its frames at the frame's foot, with their notes), Share's
+  steps in one popover over the dock (`ShareKinds`, then `ShareScreenStep`, the `BoardPicker`, or `ShareStopStep` (Close's
+  question, in Share), with `ShareStepHead`'s way back), `VolumeControl` (how loud someone is for you, said
   beside their name by `volumeTag`),
   `RingArch` and `RingAddArch` (who to ring), `WaitArch`, `WaitTile`, `RingReply` and `RingAgain` (someone rung, waiting on
   the stage), `RingCard` in a `RingShelf` (being rung, on any page, over a modal), `KnockCard` (someone asking to join),
@@ -202,6 +210,7 @@ page is designed, how to make a design canvas from the kit in `docs/design/canva
   `Segmented`, `SettingsPart`, `SettingRow` and `SettingFact` (Settings' sheet: a heading, then a label and a control on one axis), `SunLine` (time left, on a row's hairline), `ThemePreview` (a small evening in a theme's own colours), `MicLevel`, `RecorderSun` (the recorder on
   the horizon, moved with the microphone by `useVoice`), `RecMeter`, `RecPrint`, `TourDialog`, `Coachmark`,
   `EmptyState`, `Modal` (several questions go one at a time inside one modal; no window ever opens over another),
+  `ThemeScope` (one theme for a part of a page, such as your side of a call, so what opens from it takes that theme too),
   `BackgroundPicker` (what shows behind someone on camera, with `SCENE_PICTURES`), and `Fit` with `useSceneLoop` for scenes drawn at a design size that play while on screen.
   For starting and scheduling a call: `FlowView`, `FlowHead`, `FlowSteps`, `FlowBody`, `FlowFoot`, `FlowNote`, `FlowRow`,
   `SwitchLine`, `NotesSwitches` (whether a call writes notes, and what they keep), `ScopeBar` (this call, or this and later
@@ -211,10 +220,10 @@ page is designed, how to make a design canvas from the kit in `docs/design/canva
   `WsSaveState`, `WsFollowBar`, `WsOfflineBar`, `WsUnsavedBar` (with `WsRescue` for what didn't reach Alcove), `WsGoneBar`,
   `WsReadOnlyBar`, `WsVersionBar`, `WsVersionFailed`, `WsScroll`, `WsPage`, `WsDocBy`, `WsTemplates`, `WsTail`, `WsTrash`,
   `WsEmpty`, `WsPickDocument`, `WsCantOpen`, `WsUnavailable`, `WsOfflineEmpty`, `WsNoAccess`, `WsLostSpace`), with
-  `WsHistory` or `WsPresenterView` beside it and `WsPresentStrip` in place of the head.
+  `WsHistory` beside it.
   Anything that opens sits on `WsPopover` (a sheet on a phone by itself, and it hands focus back): `WsMenu` and its
   `WsNewMenu`, `WsRowMenu`, `WsDocMenu`, `WsMovePicker`, `WsSpacePicker`, `WsAskMenu`, `WsAskAnswer`; `WsPersonCard`, `WsMentionPrompt`,
-  `WsCommentCompose`, `WsCommentThread`, `WsShareSheet`, `WsSwitchSheet`, `WsDeleteAsk`, `WsDiscardAsk`, `WsPresentPreview`, `WsUploadPicker`. The call's
+  `WsCommentCompose`, `WsCommentThread`, `WsShareSheet`, `WsSwitchSheet`, `WsDeleteAsk`, `WsDiscardAsk`, `WsUploadPicker`. The call's
   own pages are `WsNotesPage`, `WsFollowUps`, `WsTranscript` and `WsNotesOff`. Over the call: `WsFind`, `WsKeyboard`, `WsKnock`,
   `WsPlayBar`, `WsToasts` (say them with `wsToast`, which has every toast's words), `WsDragGhost`, `WsKeyboardBar`. On the
   note: `WsWorkedOn`. `WsFade` swaps what's inside in place.
@@ -222,7 +231,8 @@ page is designed, how to make a design canvas from the kit in `docs/design/canva
   `BoardWorld` (`moveBoardCamera` writes its one transform), `BoardRail`, `BoardBar`, `BoardPill`, `BoardPop`, `BoardFlyout`,
   `BoardSelectionBar`, `BoardSelectionBox`, `BoardDots`, `BoardMarquee`, `BoardGuide`, `BoardFrame`, `BoardSticky`, `BoardText`, `BoardShape`,
   `BoardPicture`, `BoardPointer`, `BoardComment`, `BoardLines` with `BoardLine` and `BoardStroke`, `BoardEdit`, `BoardHeard`, `BoardTray`,
-  `BoardMap`, `BoardMenu`, `BoardEmpty`, `BoardTile`, `BoardPageActions`, `BoardNoAccess`, `BoardPhoneAdd` and `BoardPhoneSheet`. What's on a
+  `BoardMap`, `BoardPicker` (the board picker, under Board at the top right of a call and as Share's A board: in this call,
+  new, your team's boards), `BoardEmpty`, `BoardPageActions`, `BoardNoAccess`, `BoardPhoneAdd` and `BoardPhoneSheet`. What's on a
   board is `memo`ised and takes no handlers: `data-id`, `data-h` and `data-p` say what was pressed, for one listener on the sheet.
   A row's menu is an `IconButton` as the anchor of a `Popover` with a `tip`.
 - Colours, shadows, radii, fonts and easing come from the tokens in `packages/ui/src/styles.css`: light
@@ -235,13 +245,13 @@ page is designed, how to make a design canvas from the kit in `docs/design/canva
   Settings in `styles/settings.css` (its classes start with `set-`); Record in `styles/record.css` (its classes
   start with `rec-`); starting and scheduling a call in `styles/flow.css` (its classes start with `cf-`); the organizer's
   lobby, ringing and the page for picking a time in `styles/ringing.css` (`rg-`); the workspace in `styles/workspace.css`
-  (`wt-` the list, `wd-` a document, `wm-` menus, `wv-` popovers, `wp-` presenting, `wh-` history, `wl-` the call's live
+  (`wt-` the list, `wd-` a document, `wm-` menus, `wv-` popovers, `wh-` history, `wl-` the call's live
   pages); the board in `styles/board.css` (`bz-` the board and its rail, `bd-` the sheet and its chrome, `bf-` frames,
   `bo-` objects, `bc-` pointers, `bs-` selection, `bx-` the bar on what's selected, `bfly-` a tool's options, `bp-` small menus, `bpg-` its own page, `bl-` the
-  Board menu, `pc-` the phone's add sheet; its tokens are `--bd-*`, `--bf-*`, `--note-*`, and `--line-ink` and `--line-rose` beside the existing
+  board picker, `pc-` the phone's add sheet; its tokens are `--bd-*`, `--bf-*`, `--note-*`, and `--line-ink` and `--line-rose` beside the existing
   `--line` and `--line-control`; `.bt`, `.bi`, `.bm`, `.swatch`, `.c-*` and `.k-*` are unscoped there, so those names are taken); the welcome
   page in `styles/welcome.css`, with its scenes in `welcome-note.css`, `welcome-call.css`, `welcome-team.css` and
-  `welcome-night.css` (`lp-`); the other screens in `styles/app.css` and `call.css`.
+  `welcome-night.css` (`lp-`); the other screens in `styles/app.css` and `call.css`; shared presenter timer controls in `styles/call-timer.css`.
   Truncate to one or two lines with `ac-clamp-1` / `ac-clamp-2` (left-aligned): unlike `nowrap`, long text
   can't make a column wider than the screen.
   No raw hex in the app, except on the always-night call stage and in illustrations.
@@ -257,8 +267,9 @@ page is designed, how to make a design canvas from the kit in `docs/design/canva
   else; Hanken Grotesk for everything you read and operate, times and data included (`tabular-nums`, or `ac-mono`,
   keeps digits in step), and IBM Plex Mono only for code and hashes. Labels and eyebrows are sentence case, never
   uppercase. Fonts are served from `packages/ui/src/fonts`.
-- The call is always night: the stage uses `stage`, `stage-tile`, `stage-raised`, `stage-ink`,
-  `stage-ink-2`, `stage-sun` for what's chosen on night controls whatever theme is round them, and whoever speaks gets the `speak` ring. People appear in the arch, never a circle.
+- The call is always night, but for your side in it, which takes your theme: the stage uses `stage`, `stage-tile`,
+  `stage-raised`, `stage-ink`, `stage-ink-2`, `stage-sun` for what's chosen on night controls whatever theme is round them,
+  and whoever speaks gets the `speak` ring. People appear in the arch, never a circle.
 - Motion: use `motion/react` and the shared helpers (`CountUp`, `Words`, `CheckDraw`, `Dots`, `Reveal`,
   `RevealGroup`, the `EASE` curves) with the `duration-*` and `ease-*` tokens. Respect reduced motion; the global stylesheet already shortens CSS
   animations.

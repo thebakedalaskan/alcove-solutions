@@ -6,7 +6,7 @@
  * only after that check.
  */
 import {
-  ActionItemSchema, CaptureGapSchema, ChangerSchema, ChapterSchema, DecisionSchema, InferenceEvidenceSchema, NoteKindSchema, NoteStatusSchema, QuestionSchema, RoomNoteSchema, ScreenMomentSchema, TranscriptLineSchema,
+  MAX_FOLLOW_UP_PROPOSALS, ACCEPTED_FOLLOW_UP, isAcceptedFollowUp, type FollowUpReview, ActionItemSchema, CaptureGapSchema, ChangerSchema, ChapterSchema, DecisionSchema, InferenceEvidenceSchema, NoteKindSchema, NoteStatusSchema, QuestionSchema, RoomNoteSchema, ScreenMomentSchema, TranscriptLineSchema,
   isAssignee, isBy, isProposer, mayAssign, mayChangeAction, mayDecide, mayDispute, mayRewordDecision, maySayNotReplaced, minutesLabel, searchOf, termsIn,
   type ActionItem, type ActionPatch, type ActionProposal, type AnswerPart, type CaptureGap, type Change, type Chapter, type Decision, type DecisionPatch, type DecisionProposal, type GroupShare, type Inbox, type LinePatch,
   type Note, type NoteFound, type NoteKind, type NoteProgress, type NoteReader, type NoteSaid, type NoteSearch, type NoteSummary, type OpenAction, type PendingDecision, type Person, type Question, type QuestionPatch, type Received, type Recipient, type RecipientRole,
@@ -24,6 +24,7 @@ import { createItem, findItem, getItem, listItems, lockItem, saveRevision, type 
 import { me, profile, unpin } from '../account/account';
 import * as additions from './additions';
 import { noteObjects, purgeAudio, queueDelete, segments } from '../recordings/audio';
+import { actionTarget } from './follow-up-proposals';
 import { entriesOf } from './backing';
 import { WorkedDocument } from '../calls/space-state';
 import { answer, answerFromNotes, briefOf, type NoteBrief } from './drafting';
@@ -123,7 +124,8 @@ export const NoteManifest = z.object({
 });
 export type NoteManifest = z.infer<typeof NoteManifest>;
 /** A note's follow-ups: the call's, then each breakout room's. */
-const actionsOf = (m: NoteManifest): ActionItem[] => [...m.actions, ...m.rooms.flatMap((r) => r.actions)];
+const allActionsOf = (m: NoteManifest): ActionItem[] => [...m.actions, ...m.rooms.flatMap((r) => r.actions)];
+const actionsOf = (m: NoteManifest): ActionItem[] => allActionsOf(m).filter(isAcceptedFollowUp);
 /** A note's decisions: the call's, then each breakout room's. */
 export const decisionsOf = (m: NoteManifest): Decision[] => [...m.decisions, ...m.rooms.flatMap((r) => r.decisions)];
 /** The parts of a note people settle: the call's own, then each breakout room's section, by name. */
@@ -189,17 +191,23 @@ export async function finishRecording(o: Owner, db: Db, noteId: string, duration
   // Each line stays inside its own segment of the recording, so nothing said before a pause comes after it.
   const all = transcripts.placed(await transcripts.lines(o, db, noteId), audio);
   const heard = all.filter((l) => l.room === undefined);
+  const lineAt = new Map(transcripts.spoken(all, speakerOf).map((l) => [l.id, l.at]));
+  const carried = added.map((a) => {
+    const first = a.action.lines.find((id) => lineAt.has(id));
+    const at = first === undefined ? undefined : lineAt.get(first);
+    return { ...a, action: { ...a.action, ...(at === undefined ? {} : { at }) } };
+  });
   // In a call, each line keeps whoever said it; a room recording names nobody.
   const sections: RoomNote[] = rooms.map((r) => ({
     id: r.id, name: r.name, people: r.people, from: r.from, to: r.to, gaps: r.gaps,
-    summary: '', decisions: [], questions: [], actions: added.flatMap((a) => (a.room === r.id ? [a.action] : [])), chapters: [], transcript: transcripts.spoken(all.filter((l) => l.room === r.id), speakerOf)
+    summary: '', decisions: [], questions: [], actions: carried.flatMap((a) => (a.room === r.id ? [a.action] : [])), chapters: [], transcript: transcripts.spoken(all.filter((l) => l.room === r.id), speakerOf)
   }));
   const heardBy = await transcripts.heardBy(o, db, noteId);
   const next = await updateNote(o, db, noteId, (n) => ({
     ...n, status: 'pending', endedAt: new Date().toISOString(), duration: Math.max(n.duration, durationSeconds), breakouts, gaps, screens: shown,
     recorded: audio.reduce((total, s) => total + s.seconds, 0),
     // In a call, each line keeps whoever said it; a room recording names nobody.
-    transcript: transcripts.spoken(heard, speakerOf), rooms: sections, actions: [...n.actions, ...added.flatMap((a) => (sections.some((r) => r.id === a.room) ? [] : [a.action]))],
+    transcript: transcripts.spoken(heard, speakerOf), rooms: sections, actions: [...n.actions, ...carried.flatMap((a) => (sections.some((r) => r.id === a.room) ? [] : [a.action]))],
     inference: heardBy, ticked, workedOn
   }));
   await transcripts.clear(o, db, noteId);
@@ -434,9 +442,9 @@ export async function get(o: Owner, id: string): Promise<Note> {
   const organizer = await me(l.owner);
   const who = await recipients(l, organizer);
   const seriesId = await seriesOf(l);
-  const { decisions, questions, actions, rooms } = entriesOf(read);
+  const { decisions, questions, actions, suggestions, rooms } = entriesOf(read);
   return {
-    ...summaryOf(l, organizer, who), recipients: who, summary: m.summary, decisions, questions, actions, chapters: m.chapters,
+    ...summaryOf(l, organizer, who), recipients: who, summary: m.summary, decisions, questions, actions, suggestions, chapters: m.chapters,
     gaps: m.gaps, screens: m.screens, transcript: read.transcript, rooms, additions: await additions.of(l, o.ownerId), writtenAt: m.writtenAt, writingAgain: m.status === 'ready' && !!(await jobOf(l.owner, l.owner.pool, id)),
     suggestedQuestions: m.suggestedQuestions, audio: await segments(l.owner, m.recordingId), kept: m.keep, inference: m.inference, workedOn: await workedOnFor(o, m.workedOn, everyoneWith(m, organizer.email)), ...(seriesId ? { seriesId } : {})
   };
@@ -661,7 +669,7 @@ export async function updateDecision(o: Owner, noteId: string, decisionId: strin
     }
     made = changes.slice(d.changes.length).map((x) => x.what);
     // Item IDs are the note's own, so the one list that has it changes, the call's or a room's.
-    const swap = (xs: Decision[]) => xs.map((x) => (x.id === decisionId ? { ...next, changes: kept(changes, ENTRY_HISTORY) } : x));
+    const swap = (xs: Decision[]) => xs.map((x) => (x.id === decisionId ? { ...next, revision: id128(), changes: kept(changes, ENTRY_HISTORY) } : x));
     return made.length ? { ...n, decisions: swap(n.decisions), rooms: n.rooms.map((r) => ({ ...r, decisions: swap(r.decisions) })) } : n;
   }));
   nlog.info('decision changed', { noteId, decisionId, changes: made.join(',') || 'none', mine: owner.ownerId === o.ownerId });
@@ -680,7 +688,7 @@ export async function updateQuestion(o: Owner, noteId: string, questionId: strin
     if (patch.text !== undefined && patch.text !== q.text) { changes.push({ by, at, what: 'reworded', before: q.text, after: patch.text }); next = { ...next, text: patch.text }; }
     if (patch.state !== undefined && patch.state !== q.state) { changes.push({ by, at, what: patch.state === 'answered' ? 'answered' : 'reopened' }); next = { ...next, state: patch.state }; }
     made = changes.slice(q.changes.length).map((x) => x.what);
-    const swap = (xs: Question[]) => xs.map((x) => (x.id === questionId ? { ...next, changes: kept(changes, ENTRY_HISTORY) } : x));
+    const swap = (xs: Question[]) => xs.map((x) => (x.id === questionId ? { ...next, revision: id128(), changes: kept(changes, ENTRY_HISTORY) } : x));
     return made.length ? { ...n, questions: swap(n.questions), rooms: n.rooms.map((r) => ({ ...r, questions: swap(r.questions) })) } : n;
   }));
   nlog.info('question changed', { noteId, questionId, changes: made.join(',') || 'none', mine: owner.ownerId === o.ownerId });
@@ -768,11 +776,55 @@ export async function updateAction(o: Owner, noteId: string, actionId: string, p
         next = { ...next, done: patch.done };
       }
       made = changes.slice(a.changes.length).map((x) => x.what);
-      const swap = (xs: ActionItem[]) => xs.map((x) => (x.id === actionId ? { ...next, changes: kept(changes, ENTRY_HISTORY) } : x));
+      const swap = (xs: ActionItem[]) => xs.map((x) => (x.id === actionId ? { ...next, revision: id128(), changes: kept(changes, ENTRY_HISTORY) } : x));
       return made.length ? { ...n, actions: swap(n.actions), rooms: n.rooms.map((r) => ({ ...r, actions: swap(r.actions) })) } : n;
     });
   });
   nlog.info('follow-up changed', { noteId, actionId, changes: made.join(',') || 'none', mine: owner.ownerId === o.ownerId });
+  return get(o, noteId);
+}
+
+
+/** Review is shared and locked, and never claims that the proposed owner agreed to the task. */
+export async function reviewAction(o: Owner, noteId: string, decision: FollowUpReview): Promise<Note> {
+  const { owner, by, at, reader } = await writtenNote(o, noteId);
+  await tx(owner.pool, async (c) => {
+    await lockItem(owner, c, noteId);
+    await updateNote(owner, c, noteId, (n) => {
+      const proposal = allActionsOf(n).find((a) => a.id === decision.id);
+      if (!proposal) throw new NotFoundError('That suggestion doesn’t exist.', { context: { noteId } });
+      const target = proposal.changeOf ? actionsOf(n).find((a) => a.id === proposal.changeOf) : undefined;
+      if (!mayChangeAction(target ?? proposal, reader)) throw new ForbiddenError('You can’t review this suggestion.', { context: { noteId } });
+      if (proposal.revision !== decision.revision) throw new ConflictError('This suggestion changed. Review it again.', { context: { noteId } });
+      const review = decision.decision === 'accept' ? 'accepted' : 'dismissed';
+      if (proposal.review !== 'suggested') {
+        if (proposal.review === review) return n;
+        throw new ConflictError('Someone already reviewed this suggestion.', { context: { noteId } });
+      }
+      const part = n.rooms.find((r) => r.actions.some((a) => a.id === proposal.id)) ?? n;
+      if (review === 'accepted' && proposal.changeOf === null && part.actions.filter(isAcceptedFollowUp).length >= MAX_ENTRIES) throw new ConflictError('These notes have as many follow-ups as they can keep.', { context: { noteId } });
+      if (review === 'accepted' && proposal.changeOf && (!target || JSON.stringify(actionTarget(target)) !== JSON.stringify(proposal.target))) throw new ConflictError('The task changed. Review a new suggestion for it.', { context: { noteId } });
+      if (review === 'accepted' && target && (target.owner?.person?.email ?? null) !== (proposal.owner?.person?.email ?? null) && !mayAssign(target, reader)) throw new ForbiddenError('Only the organizer, or the person it’s for, can change who this is for.', { context: { noteId } });
+      const swap = (xs: ActionItem[]): ActionItem[] => xs.map((a) => {
+        if (a.id === proposal.id) return { ...a, review, reviewed: { by, at, decision: decision.decision }, changes: kept([...a.changes, { by, at, what: decision.decision === 'accept' ? 'accepted' : 'dismissed' }], ENTRY_HISTORY) };
+        if (review !== 'accepted' || !target || a.id !== target.id) return a;
+        const { owner: _owner, due: _due, ...rest } = a;
+        const mine = isAssignee(a, reader);
+        const ownerChanged = (a.owner?.person?.email ?? a.owner?.name ?? null) !== (proposal.owner?.person?.email ?? proposal.owner?.name ?? null);
+        const dueChanged = (a.due ?? null) !== (proposal.due ?? null);
+        const textChanged = a.text !== proposal.text;
+        const takenOn = a.takenOn && !ownerChanged && (mine || (!textChanged && !dueChanged));
+        const events: Change[] = [];
+        if (textChanged) events.push({ by, at, what: 'reworded', before: a.text, after: proposal.text });
+        if (ownerChanged) events.push({ by, at, what: 'reassigned', ...(a.owner ? { before: a.owner.name } : {}), ...(proposal.owner ? { after: proposal.owner.name } : {}) });
+        if (dueChanged) events.push({ by, at, what: 'due', ...(a.due ? { before: a.due } : {}), ...(proposal.due ? { after: proposal.due } : {}) });
+        if (a.takenOn && !takenOn) events.push({ by, at, what: 'reopened' });
+        return { ...rest, text: proposal.text, ...(proposal.owner ? { owner: proposal.owner } : {}), ...(proposal.due ? { due: proposal.due } : {}), lines: proposal.lines, sourceId: proposal.sourceId, sourceVersion: proposal.sourceVersion, revision: id128(), takenOn, changes: kept([...a.changes, ...events], ENTRY_HISTORY) };
+      });
+      return { ...n, actions: swap(n.actions), rooms: n.rooms.map((r) => ({ ...r, actions: swap(r.actions) })) };
+    });
+  });
+  nlog.info('follow-up suggestion reviewed', { noteId, suggestionId: decision.id, decision: decision.decision });
   return get(o, noteId);
 }
 
@@ -820,7 +872,9 @@ export async function proposeDecision(o: Owner, noteId: string, p: DecisionPropo
  * Adds a follow-up the notes didn't hear, as `proposeDecision` does. Who it's for and when it's due are only suggestions
  * until that person takes it on, unless it's for whoever proposed it.
  */
-export async function proposeAction(o: Owner, noteId: string, p: ActionProposal): Promise<Note> {
+export const proposeAction = (o: Owner, noteId: string, p: ActionProposal): Promise<Note> => addAction(o, noteId, p, 'accepted');
+export const suggestAction = (o: Owner, noteId: string, p: ActionProposal): Promise<Note> => addAction(o, noteId, p, 'suggested');
+async function addAction(o: Owner, noteId: string, p: ActionProposal, review: ActionItem['review']): Promise<Note> {
   const { owner, by, at } = await writtenNote(o, noteId);
   const organizer = await me(owner);
   let added = false;
@@ -829,12 +883,17 @@ export async function proposeAction(o: Owner, noteId: string, p: ActionProposal)
     const holding = await holders(owner, c, noteId);
     await updateNote(owner, c, noteId, (n) => {
       const part = partOf(n, noteId, p.room);
-      if (part.actions.some((x) => x.text === p.text)) return n;
-      if (part.actions.length >= MAX_ENTRIES) throw new ConflictError('There are too many follow-ups here to add another.', { context: { noteId } });
       const to = p.owner === undefined ? undefined : assignable(p.owner, organizer, holding, owner, { noteId });
+      const grounds = linesOf(part.lines, p.lines, noteId);
+      const evidence = grounds.lines.slice().sort().join(' ');
+      const repeated = part.actions.some((x) => x.text === p.text && (review === 'accepted'
+        ? isAcceptedFollowUp(x)
+        : (x.owner?.person?.email ?? null) === (to?.person?.email ?? null) && (x.due ?? null) === (p.due ?? null) && x.lines.slice().sort().join(' ') === evidence));
+      if (repeated) return n;
+      if ((review === 'accepted' ? part.actions.filter(isAcceptedFollowUp).length >= MAX_ENTRIES : part.actions.filter((a) => !isAcceptedFollowUp(a)).length >= MAX_FOLLOW_UP_PROPOSALS)) throw new ConflictError('There are too many follow-ups here to add another.', { context: { noteId } });
       const a: ActionItem = {
-        id: id128(), text: p.text, ...(to ? { owner: to } : {}), takenOn: !!p.owner && same(p.owner, by.email), ...(p.due ? { due: p.due } : {}), done: false,
-        ...linesOf(part.lines, p.lines, noteId), against: [], changes: [{ by, at, what: 'proposed' }], from: null
+        ...ACCEPTED_FOLLOW_UP, review, revision: id128(), id: id128(), text: p.text, ...(to ? { owner: to } : {}), takenOn: false, ...(p.due ? { due: p.due } : {}), done: false,
+        ...grounds, against: [], changes: [{ by, at, what: 'proposed' }], from: null
       };
       added = true;
       return part.put({ actions: inOrder([...part.actions, a]) });

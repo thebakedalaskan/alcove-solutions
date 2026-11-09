@@ -9,8 +9,9 @@ object store, logs and network edge see ciphertext, opaque IDs, keyed hashes, si
 Cloud transcribes speech and writes notes, but only in confidential VMs whose hardware evidence Alcove checks
 first, with everything sealed to the key that evidence vouches for
 ([Notes and inference › Verified private inference](notes-and-inference.md#verified-private-inference)).
-One outside service is handed content as it is: Google Calendar carries the calls an organizer schedules
-([What is still visible](#what-is-still-visible)).
+Google Calendar carries the calls an organizer schedules. With separate, explicit consent, Google Drive receives
+readable copies of selected finalized call artifacts in a chosen folder; that folder's permissions apply to those
+copies ([Drive exports](drive-exports.md), [What is still visible](#what-is-still-visible)).
 
 **Trust model.** The API process is the trusted plaintext endpoint (`C01`). It holds the master key
 `KMASTER`, which opens every account's root key, so it can open any account at any time without that person
@@ -44,7 +45,8 @@ nobody can sign in as someone who uses Alcove with Google and read the notes giv
 | `Kwrap` | `HKDF(Kowner, salt=ownerId, "alcove/owner-wrap/v1")` | Derived per request; wraps revision and recording keys |
 | `Krecord` | 32 random bytes per item revision | `revisions.key_envelope`, wrapped under `Kwrap` with scope `revision:<id>` |
 | `Krec` | 32 random bytes per recording | `recordings.key_envelope`, wrapped under `Kwrap` with scope `recording:<id>`; seals the recording's audio pieces and its shared-screen frames |
-| State keys | `HKDF(Kowner, salt=ownerId, "alcove/state/v1/<scope>")`, scopes `document-clients:<id>` (who each Yjs client in a document belongs to, as keyed hashes), `document-deletes:<id>` (a keyed hash of what each row of its log deletes, so the same deletes again cost nothing), `call:<id>` (call state), `call-mls:<id>` (the call's MLS log, sealed again), `call-seat:<id>` (each person's seat in the call, a MAC of their random per-call `person`, never stored), `call-move:<id>` (moves to other devices in a call), `call-notes:<id>` (the call's shared live notes), `ring:<meetingId>` (rings in a call), `meeting-answers:<meetingId>` (what people invited to a call answered), `job:<noteId>` (notes jobs), `transcript:<noteId>` (live transcript clips and caption translations, and the keyed tags that find them) and `screen:<noteId>` (what's known about each shared-screen frame, and the keyed tags that find them), `note-additions:<noteId>` (what people added to the shared notes). Under the author's own `Kowner`, never the organizer's: `personal:<noteId>` (their own notes on a note), `presenter-notes:<documentId>` (what they keep beside a document for presenting it), `presenter-frame-notes:<boardId>` (what they keep beside each frame of a board, and the keyed hash that says which frame) and `promotion:<noteId>` (the seal on a preview of adding to the shared notes); and, under a workspace's root, `workspace` (its name and tree, who its people and shares are, and carets and presence on their way between instances), `workspace-person` (what someone's known by in it, a keyed hash of how access knows them), `document:<id>` (what a document or board holds) and `media:<id>` (a file: what's said about it, and its pieces) | Derived per request, or per job in the notes worker |
+| State keys | `HKDF(Kowner, salt=ownerId, "alcove/state/v1/<scope>")`, scopes `document-clients:<id>` (who each Yjs client in a document belongs to, as keyed hashes), `document-deletes:<id>` (a keyed hash of what each row of its log deletes, so the same deletes again cost nothing), `call:<id>` (call state), `call-attention:<id>` (ordered hands, explicit questions, votes, feedback and audience-bound notification cues), `call-mls:<id>` (the call's MLS log, sealed again), `call-seat:<id>` (each person's seat in the call, a MAC of their random per-call `person`, never stored), `call-move:<id>` (moves to other devices in a call), `call-notes:<id>` (the call's shared live notes), `ring:<meetingId>` (rings in a call), `meeting-answers:<meetingId>` (what people invited to a call answered), `job:<noteId>` (notes jobs), `transcript:<noteId>` (live transcript clips and caption translations, and the keyed tags that find them) and `screen:<noteId>` (what's known about each shared-screen frame, and the keyed tags that find them), `note-additions:<noteId>` (what people added to the shared notes). Under the author's own `Kowner`, never the organizer's: `personal:<noteId>` (their own notes on a note), `presenter-notes:<documentId>` (what they kept beside a whole document or board with an earlier release, which nothing opens now), `presenter-frame-notes:<boardId>` (what they keep beside each frame of a board, and the keyed hash that says which frame) and `promotion:<noteId>` (the seal on a preview of adding to the shared notes); and, under a workspace's root, `workspace` (its name and tree, who its people and shares are, and carets and presence on their way between instances), `workspace-person` (what someone's known by in it, a keyed hash of how access knows them), `document:<id>` (what a document or board holds) and `media:<id>` (a file: what's said about it, and its pieces) | Derived per request, or per job in the notes worker |
+| Timer preset keys | `HKDF(Kowner, salt=ownerId, "alcove/state/v1/timer-preset:<id>")` | Derived per request; seal the account’s named timer presets, including slot labels and optional presenters |
 | Operation keys | `HKDF(Kowner, salt=ownerId, "alcove/operation-commit/v1")` and `"…/operation-result/v1"` | Derived per request |
 | Index key | `HKDF(KMASTER, "alcove/index/v1")` | Derived per use; keys the [blind indexes](#blind-indexes) |
 | Sign-in attempt key | `HKDF(KMASTER, "alcove/sign-in-attempt/v1")` | Derived per use; seals the [Google sign-in attempt](#google-sign-in-and-calendar-access) a browser carries to Google and back |
@@ -75,6 +77,8 @@ piece of a file is sealed on the one core every call runs on. A `media-piece` is
 | `screen-frame` | `Krec` | recording, frame, object (the JPEG of a shared screen) |
 | `screen-frame-info` | state key `screen:<noteId>` | note, frame (whose share, when, its size, what was read on it) |
 | `call-state` | state key `call:<id>` | call |
+| `timer-preset` | the account’s state key `timer-preset:<id>` | owner and preset (name and ordered segment definitions; no running clock) |
+| `call-attention` | state key `call-attention:<id>` | call (hands, question text/authors/votes, feedback, original room audiences and cues) |
 | `call-mls` | state key `call-mls:<id>` | call, place in the call's log, entry kind, and the part of the call's group it belongs to |
 | `call-move` | state key `call-move:<id>` | call, move |
 | `call-notes` | state key `call-notes:<id>` | call, part of the call (`main`, or a breakout room's random ID), view (`all`, or a digest of the lines it can't read) |
@@ -86,6 +90,8 @@ piece of a file is sealed on the one core every call runs on. A `media-piece` is
 | `personal-notes` | the author's state key `personal:<noteId>` | the author (`ownerId`), the note and its organizer |
 | `note-addition` | state key `note-additions:<noteId>` | note, addition |
 | `job` | state key `job:<noteId>` | note |
+| `drive-export` | state key `drive:<scope>` under the exporting account | connection, call or export job's exact scope; credentials, destinations and private export metadata |
+| `drive-oauth-attempt` | sign-in attempt key | independent Drive authorization attempt; the sealed body binds the owner, state, PKCE verifier and expiry |
 | `workspace-state` | state key `workspace` | workspace (its name and tree) |
 | `workspace-member` | state key `workspace` | workspace, member (who someone in it is) |
 | `document-access` | state key `workspace` | workspace, document, entry (who a document is shared with) |
@@ -333,6 +339,34 @@ purpose `invite`.
 - **A call offering times** can be settled by anyone with its link, with no account (`POST /v1/calls/:code/pick`):
   the link is what decides, as it is for the card. The first pick wins, under the call's lock.
 
+### Attention during a call
+
+Explicit Q&A, its votes and pinned question, and feedback are visible only in their room to the people present when
+submitted. Moving into a room later gives no access to earlier questions, counts, pins or feedback; the same check runs
+under the call lock for votes and moderation. Every attention mutation names the room the sender was viewing, so a delayed
+submission is refused after a move. A signed-in account has one vote per question across its devices; an unsigned guest
+has one vote per stable call person. The principal is fixed in the sealed participant record when joining, so omitting
+a cookie, signing out or sending another account's cookie cannot create another vote or change authorship. Reloads and device
+moves preserve that principal. Older active calls without it use their sealed account address or guest person consistently,
+including when another browser joins that account during the upgrade. Host powers do not open another room's questions. Pinning an authorized question replaces the room's previous pin, and
+unpinning clears the room's pin, without revealing questions outside the host's original audience. Raised hands
+are different: the host sees every room's queue, so someone in a breakout room can ask the host for help, and can lower one
+entry by its ID or clear all hands. Everyone else sees their room's hands. Reloads and device moves keep queue position;
+intentional departure, removal and moving rooms clear the hand.
+
+`call_attention` holds one sealed record per call, scoped by its organizer and call IDs. Its new `call-attention` header and
+key bind it to that exact owner and call. Questions are at most 1,000 characters, with 200 per call, 200 votes per question,
+200 hands and 200 live feedback entries. Feedback lasts 15 seconds on the server clock and clears on departure or room
+change. At most 64 typed cues from the last minute are retained; admissions are host-only, and hand cues also reach the host
+across rooms. Other cues retain their original room audience. A waiting browser renews its sealed admission heartbeat at
+most every 15 seconds; 90 seconds without it expires the request, including for a delayed MLS approval under the call lock.
+
+All attention is live-only: ending the call deletes its record in the same transaction, and deleting the meeting or account
+cascades it. No Q&A is copied into notes, receipts or logs. Migration `0018_call_attention.sql` only adds the table. Older
+sealed call records still open: admission heartbeats default to zero, using the original join time until renewed, and old
+raised-hand flags become queue entries on the next save, in the old participant order (the earlier release kept no raise
+time). Stable entry IDs avoid changes between reads during that conversion; subsequent saves omit the replaced flags.
+
 ## Who can read a note
 
 A note lives in its organizer's vault, sealed under their keys. `note_access` lists who else may read it,
@@ -441,6 +475,14 @@ one row per person: `(owner_id, note_item_id, email_index, role)`.
   only for items of notes the reader has, so what a later call did shows only to someone with both notes now
   ([Notes and inference › Series](notes-and-inference.md#series)). Personal material never comes into any of it: only a
   note's own decisions, questions, follow-ups, summary and transcript are read, the call's and its breakout rooms'.
+- **Reviewing follow-ups.** Model-generated tasks and changes are pending suggestions, separate from the accepted checklist.
+  Review decisions, proposal revisions, change targets and suppression evidence stay inside existing sealed call-notes records
+  and note manifests, with the same owner/location headers. No readable review data goes to columns, object names, URLs or logs.
+  A review checks the caller's existing access and mutation rights and compares the proposal revision and target under the lock.
+  It cannot widen a guest's transcript view, expose a private document, or consent to responsibility on another person's behalf.
+  Accepted tasks and review outcomes survive call end and notes written again. Previous-release stored tasks open as accepted
+  through defaulted metadata; there is no database reset, SQL migration or changed record header. Physical deletion removes
+  the containing records and revisions as before.
 - **Removing.** Deleting your own note deletes it for everyone ([Deletion](#deletion)). Removing someone
   else's note deletes your own `note_access` row, which also takes you off the list of who has it, and your own
   notes on it; sharing with you again gives the note back, and nothing else. Deleting your account does both, for
@@ -493,8 +535,11 @@ read every note given to it. That's why the demo SSO sign-in takes only example 
 - **Nothing else opens anything.** Being a call's organizer gives nothing. Joining a call gives nothing. What a call says
   of its workspace is worked out here on every read, for each person, and nothing about who can open what is copied into it.
   Someone who can open nothing is told that it's private and nothing that names anything: not which workspace, not a document, a
-  folder or anyone's whereabouts. That something's being presented, and by whom, is said to everyone in that part of the call,
-  and what it is only to those who can open it. A video playing isn't said to anyone who can't open its document. A board
+  folder or anyone's whereabouts. That something's being presented, by whom, and which presentation it is (a random key that
+  names nothing), is said to everyone in that part of the call, as is how the last one there ended, for its presenter or for
+  everyone; what it is only to those who can open it: which workspace to someone something in it opens for, which board to
+  someone who can open that board. A refusal to open a board while someone else presents one names nobody. A video playing
+  isn't said to anyone who can't open its document. A board
   open in the call is said to everyone in that part of it, and by whom, with nothing that names it for anyone who can't open
   it. What they try reads the same as for something that doesn't exist. Its timer and vote are told only to those who can open
   it, and nothing someone who can't tries says whether either is running; of a vote, each person is told their own votes and
@@ -747,9 +792,10 @@ third-party loads.
   data keys like pointers and marks, which names the share by its track ID and nothing else ([Calls and recordings › Put on
   the board](calls-and-recordings.md#put-on-the-board)).
 
-- **Your view of a call** never leaves the browser. Layout preferences and where the panels sit stay in `localStorage` for the account and
-  the arrangement of the call you're in stays in `sessionStorage` until you leave it, naming people by their
-  random per-call seat and shares by their sharer's random connection ID: no names, addresses or call content ([Calls and recordings › The call
+- **Your view of a call** never leaves the browser, and nor does what's on your stage or whom you follow. Layout preferences and how
+  the people sit beside what's open stay in `localStorage` for the account, and the arrangement of the call you're in (pins,
+  order, sizes, your side, where you are in the workspace) stays in `sessionStorage` until you leave it, naming people by their
+  random per-call seat: no names, addresses or call content ([Calls and recordings › The call
   screen](calls-and-recordings.md#the-call-screen)). How you zoom into a share, and the earlier pictures of it you can
   step back through, live only in the page's memory: at most 30 pictures and 16 MiB a share, taken from what the
   browser already decrypts and shows, never written to any storage, sent or logged, and gone when the share stops,
@@ -846,7 +892,7 @@ connection](calls-and-recordings.md#recording-without-a-connection)), and so eac
 | --- | --- |
 | Postgres | Opaque IDs; item kinds (`profile`, `meeting`, `note`, `connection`, `series`, so which accounts connected Google, and how many series that repeat an account has, though not which calls are in one: that's sealed in each call); while a change to a series goes through, that one is; revision, call and recording times (a room recording uploaded later shows when it really started); that someone in a call is moving to another device, and when the move runs out; while a call runs, how many people its organizer rang, and for each when the ring started and when it stops: so also that someone said "in a little while" (a ring still to come) or answered at all (a ring that stopped early), and when, though never how, and never who; per-piece start, duration, size and codec; while a note records, how many clips were transcribed and their sizes; while a call runs, which parts of it have live notes, how many views of each, when they were last refreshed, and the size of each; how many shared-screen frames a note keeps, and their sizes; each notes job's state, attempts and lease times; which accounts have their own notes on which notes (one row each, so not how many, or of what), and how many additions a note has and when each was made; operation method and time; stored bytes; each session's provider and its created, last-seen and expiry times; when each sign-in identity was last used |
 | Keyed hashes | Equal hashes show the same person. Joining `note_access` to `identities` shows which accounts received which notes from which organizers, and whether by invitation or by sharing. For addresses without an account it still shows the same address receiving several notes. `note_additions.author_index` shows which additions are the same person's, across notes and organizers. It matches no other column, but comparing the notes those additions are on with `note_access` can narrow down who it is. `call_rings` joins to nothing but itself: the same hash in two rows is the same address rung twice, and its rows last as long as the call. `meeting_access` shows how many people are invited to each call that isn't over, whether each has answered (never what), and the same address on several organizers' calls; its hashes have their own purpose, so it can't be joined to `identities` or `note_access` without `KMASTER`. Joining `workspace_members` and `document_access` the same way shows who's in which workspaces and who has how many of a workspace's documents, at what role; `workspace_authors` shows who has had their name on something in one, or made it, even after leaving. |
-| Workspaces | That a workspace exists, how many people and documents it has and when each came, each one's role, that a document is shared and whether with an address or a seat in which call, how often it changes (`version`), when the oldest thing in its Trash went there, and that someone was tagged in a document and when, until they've heard. How many files it has, when each came, how big each is, and which documents share one. Never a name, a folder, how the tree is arranged, or what a file is called or is. `presenter_notes` shows which accounts keep notes on which documents, and so that those accounts could open them: one row each, of a size, and never what they say. `presenter_frame_notes` shows the same for boards, and how many frames of each someone keeps notes beside, never which frames or what they say. Which calls use which workspaces, and what was worked on in them, is sealed in the meeting, the call and the note |
+| Workspaces | That a workspace exists, how many people and documents it has and when each came, each one's role, that a document is shared and whether with an address or a seat in which call, how often it changes (`version`), when the oldest thing in its Trash went there, and that someone was tagged in a document and when, until they've heard. How many files it has, when each came, how big each is, and which documents share one. Never a name, a folder, how the tree is arranged, or what a file is called or is. `presenter_notes`, which nothing writes now, shows which accounts kept notes on which documents with an earlier release, and so that those accounts could open them: one row each, of a size, and never what they say. `presenter_frame_notes` shows the same for boards, and how many frames of each someone keeps notes beside, never which frames or what they say. Which calls use which workspaces, and what was worked on in them, is sealed in the meeting, the call and the note |
 | Documents | When each update was made and roughly how big it was and how many pieces it held, until it compacts, so when a document was being worked on and how hard; how big its state and versions are, how many versions it has and when each was kept; how many Yjs clients have written to it, which is about how many sessions, and how much each wrote, with nothing to link two clients to each other or to anyone. A board started from a template has the server's client for it, 2, with how much the template wrote, so which template it started from, and the row stays if a version from before it takes the board's place. Never a word, a title, a mention or a comment, nor anything on a board. Carets and presence pass through Postgres's notice queue sealed, as notices of a size and at a time, each naming the workspace and, for a caret, the document |
 | Object store | Object count, sizes and timing: a recording writes about one object every 5 seconds, a shared screen one each time it changes (at most every 4 seconds), and a file one for every 4 MiB |
 | Uploads | How many bytes each account uploaded to workspaces each day, today and yesterday, and each guest in a call, under a blind index that can't be matched to the call, the seat or a name. A file's row says which workspace it's in, how big it is and when it came, and not who uploaded it, but on a quiet day an account's bytes can be matched to one file's size and time, which shows that account uploaded it. And the service's limits, which are numbers and nothing of anyone's |

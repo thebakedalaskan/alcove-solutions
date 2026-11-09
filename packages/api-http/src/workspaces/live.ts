@@ -81,7 +81,7 @@ export class HttpWorkspaceLive implements WorkspaceLive {
       this.set({ status: 'live', tree: e.tree });
       if (arrived) this.arrived();
     } else if (e.type === 'presence') this.set({ here: e.here });
-    else if (e.type === 'mention') { if (!this.view.mentions.some((m) => m.id === e.mention.id)) this.set({ mentions: [...this.view.mentions, e.mention] }); }
+    else if (e.type === 'mentions') this.set({ mentions: e.mentions });
     else if (e.type === 'access' && this.view.tree) this.set({ tree: { ...this.view.tree, role: e.role } });
   }
 

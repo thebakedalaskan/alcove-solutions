@@ -6,6 +6,7 @@
  *   - a camera, a microphone and a screen to share that are never real: getUserMedia and getDisplayMedia hand back drawn
  *     and synthesised tracks, enumerateDevices lists made-up devices, and the browser says they're allowed (or not)
  *   - notifications that go nowhere: Notification asks and shows, and what it showed is kept in `shown`
+ *   - floating calls use native Document PiP unless a story explicitly shows an unsupported or refused opening
  *   - no service worker: the app's registration never happens, so nothing is cached between stories
  *   - a page that goes when the story does: recorders and audio it started stop when the next story opens
  */
@@ -19,12 +20,32 @@ export interface BrowserSetup {
   /** What the browser allows for notifications now, and what it answers when Alcove asks. */
   notifications: NotificationPermission;
   answer: NotificationPermission;
+  /** Native permission/OS checks are explicit stories; all camera/microphone tracks stay synthetic. */
+  notificationTransport: 'scripted' | 'native' | 'unsupported' | 'failed';
+  /** Only the explicit two-tab scene shares opaque receipt/revocation/presence state between its windows. */
+  sharedNotificationBrowser: boolean;
+  /** Native floating windows by default; failure stories never open a window. */
+  floatingWindow: 'native' | 'unsupported' | 'blocked';
 }
-export const DEFAULT_BROWSER: BrowserSetup = { online: true, devices: 'granted', notifications: 'default', answer: 'granted' };
+export const DEFAULT_BROWSER: BrowserSetup = { online: true, devices: 'granted', notifications: 'default', answer: 'granted', notificationTransport: 'scripted', sharedNotificationBrowser: false, floatingWindow: 'native' };
 
 const state: BrowserSetup = { ...DEFAULT_BROWSER };
+const NativeNotification = window.Notification;
+const nativeNotifications = new Set<Notification>();
+const nativeWorkers = 'serviceWorker' in navigator ? { register: navigator.serviceWorker.register.bind(navigator.serviceWorker), getRegistration: navigator.serviceWorker.getRegistration.bind(navigator.serviceWorker) } : null;
+let notificationWorker: ServiceWorkerRegistration | null = null;
+const nativePictureInPicture = window.documentPictureInPicture;
+/** Only a refusal is scripted. A successful window always belongs to the real browser. */
+class BlockedPictureInPicture extends EventTarget implements DocumentPictureInPicture {
+  readonly window = null;
+  requestWindow(): Promise<Window> { return Promise.reject(new DOMException('Picture-in-picture is blocked for this story.', 'NotAllowedError')); }
+}
+const blockedPictureInPicture = new BlockedPictureInPicture();
 /** The notifications shown since the story started, oldest first. */
-export const shown: { title: string; body: string }[] = [];
+export const shown: { title: string; body: string; tag: string; silent: boolean | null; data: unknown; closed: boolean; delivery: 'created' | 'shown' | 'accepted' | 'error'; transport: 'scripted' | 'native' | 'worker' }[] = [];
+const scriptedNotifications = new Set<StubNotification>();
+const notificationClicks = new Map<(typeof shown)[number], () => void>();
+export function openShownNotification(index: number): void { const row = shown[index]; if (row) notificationClicks.get(row)?.(); }
 
 /**
  * A story starts: the browser as `setup` says, as if the page had just opened. A page opened without a connection hears no
@@ -33,7 +54,12 @@ export const shown: { title: string; body: string }[] = [];
 export function openBrowser(setup: Partial<BrowserSetup>): void {
   closePage();
   Object.assign(state, DEFAULT_BROWSER, setup);
-  shown.length = 0;
+  shown.length = 0; notificationClicks.clear();
+  for (const item of scriptedNotifications) item.close();
+  scriptedNotifications.clear();
+  for (const item of nativeNotifications) item.close();
+  nativeNotifications.clear();
+  void stopNotificationWorker();
   onlineManager.setOnline(true);
   talking(true);
 }
@@ -140,10 +166,21 @@ function drawn(width: number, height: number, draw: (g: CanvasRenderingContext2D
   const track = canvas.captureStream(8).getVideoTracks()[0];
   if (!track) throw new DOMException('The camera didn’t start.', 'NotReadableError');
   const timer = setInterval(() => draw(g, (performance.now() - started) / 1000), 250);
-  track.addEventListener('ended', () => clearInterval(timer));
-  const stop = track.stop.bind(track);
-  track.stop = () => { clearInterval(timer); stop(); };
-  return as(track, device);
+  // A real camera source lives while any clone does. LocalMedia clones before stopping the raw published track when
+  // an effect is chosen, so stopping that original must not freeze the synthetic camera feeding the processor.
+  const tracks = new Set<MediaStreamTrack>();
+  const keep = (t: MediaStreamTrack): MediaStreamTrack => {
+    if (t.readyState !== 'live') return as(t, device);
+    tracks.add(t);
+    const retire = () => { tracks.delete(t); if (tracks.size === 0) clearInterval(timer); };
+    const stop = t.stop.bind(t);
+    const clone = t.clone.bind(t);
+    t.stop = () => { stop(); retire(); };
+    t.clone = () => keep(clone());
+    t.addEventListener('ended', retire, { once: true });
+    return as(t, device);
+  };
+  return keep(track);
 }
 
 /* A camera looking at a dim room, the light shifting a little: never anyone's face. */
@@ -224,13 +261,84 @@ class StubNotification extends EventTarget {
   onshow: (() => void) | null = null;
   readonly body: string;
   readonly tag: string;
+  readonly data: unknown;
+  private readonly record: (typeof shown)[number];
   constructor(readonly title: string, options: NotificationOptions = {}) {
     super();
+    if (state.notificationTransport === 'failed') throw new DOMException('Notifications are blocked in this story.', 'NotAllowedError');
     this.body = options.body ?? '';
     this.tag = options.tag ?? '';
-    shown.push({ title, body: this.body });
+    const data: unknown = options.data; this.data = data;
+    this.record = { title, body: this.body, tag: this.tag, silent: options.silent ?? null, data, closed: false, delivery: 'created', transport: 'scripted' };
+    for (const item of scriptedNotifications) if (item.tag === this.tag) item.close();
+    scriptedNotifications.add(this); shown.push(this.record); notificationClicks.set(this.record, () => this.onclick?.());
   }
-  close(): void { this.dispatchEvent(new Event('close')); }
+  close(): void { if (this.record.closed) return; this.record.closed = true; scriptedNotifications.delete(this); this.onclose?.(); this.dispatchEvent(new Event('close')); }
+}
+
+/** An explicit manual-only worker check uses the app's exact worker on this development origin, with no cached files. */
+export async function startNotificationWorker(): Promise<void> {
+  if (!nativeWorkers || notificationWorker) return;
+  const existing = await nativeWorkers.getRegistration();
+  if (existing) throw new DOMException('Another worker already uses this development origin.', 'InvalidStateError');
+  const registration = await nativeWorkers.register('/sw.js');
+  notificationWorker = registration;
+  const show = registration.showNotification.bind(registration);
+  const list = registration.getNotifications.bind(registration);
+  registration.showNotification = async (title, options = {}) => {
+    const data: unknown = options.data;
+    const record: (typeof shown)[number] = { title, body: options.body ?? '', tag: options.tag ?? '', silent: options.silent ?? null, data, closed: false, delivery: 'created', transport: 'worker' };
+    shown.push(record);
+    try {
+      await show(title, options);
+      for (const previous of shown) if (previous !== record && previous.transport === 'worker' && previous.tag === record.tag) previous.closed = true;
+      record.delivery = 'accepted';
+    }
+    catch (error) { record.delivery = 'error'; throw error; }
+  };
+  registration.getNotifications = async (options) => {
+    const items = await list(options);
+    for (const item of items) {
+      const data: unknown = item.data;
+      const record = shown.findLast((record) => record.transport === 'worker' && record.tag === item.tag && JSON.stringify(record.data) === JSON.stringify(data));
+      const close = item.close.bind(item);
+      item.close = () => { if (record) record.closed = true; close(); };
+    }
+    return items;
+  };
+  await navigator.serviceWorker.ready;
+}
+export async function stopNotificationWorker(): Promise<void> {
+  const held = notificationWorker;
+  notificationWorker = null;
+  if (!held) return;
+  for (const item of await held.getNotifications()) item.close();
+  await held.unregister();
+  for (const item of shown) if (item.transport === 'worker') item.closed = true;
+  // The dev worker's BUILD.files is empty, so this cache never contains app or API data.
+  await caches.delete('alcove-app-');
+}
+export const hasNotificationWorker = () => notificationWorker !== null;
+
+/** Calls the real browser constructor and records its public delivery/close events for the manual native story. */
+class ObservedNativeNotification extends EventTarget {
+  static get permission(): NotificationPermission { return NativeNotification.permission; }
+  static requestPermission(): Promise<NotificationPermission> { return NativeNotification.requestPermission(); }
+  constructor(title: string, options: NotificationOptions = {}) {
+    super();
+    const notification = new NativeNotification(title, options);
+    nativeNotifications.add(notification);
+    const data: unknown = options.data;
+    const record: (typeof shown)[number] = { title, body: options.body ?? '', tag: options.tag ?? '', silent: options.silent ?? null, data, closed: false, delivery: 'created', transport: 'native' };
+    shown.push(record);
+    notificationClicks.set(record, () => notification.dispatchEvent(new Event('click')));
+    notification.addEventListener('show', () => { record.delivery = 'shown'; });
+    notification.addEventListener('error', () => { record.delivery = 'error'; });
+    const stop = notification.close.bind(notification);
+    notification.close = () => { record.closed = true; nativeNotifications.delete(notification); stop(); };
+    notification.addEventListener('close', () => { record.closed = true; nativeNotifications.delete(notification); });
+    return notification;
+  }
 }
 
 /* ---------- what a page leaves running ---------- */
@@ -264,6 +372,7 @@ export function installBrowser(): void {
   if (installed) return;
   installed = true;
   Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => state.online });
+  Object.defineProperty(window, 'documentPictureInPicture', { configurable: true, get: () => state.floatingWindow === 'unsupported' ? undefined : state.floatingWindow === 'blocked' ? blockedPictureInPicture : nativePictureInPicture });
 
   const media = navigator.mediaDevices;
   media.getUserMedia = getUserMedia;
@@ -274,15 +383,15 @@ export function installBrowser(): void {
   const query = permissions.query.bind(permissions);
   permissions.query = (d) => {
     if (d.name === 'camera' || d.name === 'microphone') return Promise.resolve(new StubPermission(d.name, state.devices));
-    if (d.name === 'notifications') return Promise.resolve(new StubPermission(d.name, state.notifications === 'default' ? 'prompt' : state.notifications));
+    if (d.name === 'notifications' && state.notificationTransport !== 'native') return Promise.resolve(new StubPermission(d.name, state.notifications === 'default' ? 'prompt' : state.notifications));
     return query(d);
   };
 
-  Object.defineProperty(window, 'Notification', { configurable: true, writable: true, value: StubNotification });
+  Object.defineProperty(window, 'Notification', { configurable: true, get: () => state.notificationTransport === 'unsupported' ? undefined : state.notificationTransport === 'native' ? ObservedNativeNotification : StubNotification });
   Object.defineProperty(window, 'MediaRecorder', { configurable: true, writable: true, value: PageRecorder });
   Object.defineProperty(window, 'AudioContext', { configurable: true, writable: true, value: PageAudio });
 
   const workers = navigator.serviceWorker;
   workers.register = () => new Promise<ServiceWorkerRegistration>(() => undefined);
-  workers.getRegistration = () => Promise.resolve(undefined);
+  workers.getRegistration = () => Promise.resolve(notificationWorker ?? undefined);
 }

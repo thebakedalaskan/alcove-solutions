@@ -1,0 +1,12 @@
+# Camera effects
+
+Complete [#90](https://github.com/thebakedalaskan/the-privacy-suite/issues/90) on the existing local, fail-closed camera pipeline. The issue and the implementation instruction authorize this design; ordinary choices below are implementation decisions.
+
+- Off, mild/strong blur, three original preset pictures, Slate/Sand/Rose solid backgrounds and up to six custom JPEG/PNG/WebP pictures (20 MB input limit). The stable solid palette lives with the reusable picker and supplies both swatches and the processed output, independent of surrounding theme. Old stored blur choices read as strong.
+- Prejoin and in-call use the same picker and processed track. Choosing an effect while the camera is off never starts it. Device switches and reconnects retain the choice. A browser without effects explains why and offers an explicit Off choice; an effect that fails stops camera output until someone deliberately retries or chooses Off.
+- Custom pictures remain account-scoped, AES-GCM sealed in this browser. Replace commits a prepared replacement before removing the original; failed replacement retains the original. Removal of the active picture chooses strong blur, keeping the room covered.
+- Effects adapt to measured processing cost: full (up to 1080p, 30 fps), balanced (up to 540p, 20 fps), light (up to 360p, 12 fps). Resolution is capped before pixel upload and processing. Sustained expensive frames lower the tier; sustained spare capacity restores it slowly. Dropped frames are discarded, never sent raw. Selected effect and blur strength remain unchanged. Status explains the reduction in the picker and announces changes beside prejoin/in a call.
+- Process frames and custom pictures locally, fetch model/code only from Alcove, then retain the existing outgoing E2EE path. Release processor/GL/model/bitmap resources on camera-off or leaving. Initialization, loading and processing failures have visible plain explanations; logs carry state/timing only.
+- Reuse native UI tokens, keyboard controls, explicit labels, responsive layout and reduced-motion behavior. Storybook renders actual components/call flows on its existing synthetic camera; no real personal camera/microphone is used for verification.
+
+No HTTP behavior, database migration, server stored record or key label changes. Only browser device preferences gain fields with defaults. Integration-only policy applies; existing real API/LiveKit encryption and privacy flows verify the unchanged backend, while synthetic manual checks verify browser processing and UI.

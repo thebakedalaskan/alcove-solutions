@@ -3,12 +3,13 @@
  * (`CallState`), so there's nothing here to keep in step. Each stays in the list whatever the notes are doing, and with
  * nothing to show and notes off, it says why it's empty and what to do about it.
  */
-import { errorMessage, firstName, type CallState, type CatchUpItem } from '@alcove/api';
-import { Button, Notice, WsDoc, WsDocHead, WsFollowBar, WsFollowUps, WsNotesOff, WsNotesPage, WsScroll, WsTranscript, wsToast, type WsDecision, type WsSaid } from '@alcove/ui';
+import { firstName, type CallState, type CatchUpItem } from '@alcove/api';
+import { Button, Notice, WsDoc, WsDocHead, WsFollowBar, WsNotesOff, WsNotesPage, WsScroll, WsTranscript, type WsDecision, type WsSaid } from '@alcove/ui';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useFollow } from '~/features/call/notes/LiveLines';
 import { organizerName } from '~/features/call/notes/Capture';
 import { captureHere } from '~/lib/capture';
+import { CallFollowUps } from '~/features/call/notes/FollowUps';
 import { useLive } from '~/lib/live';
 import { useLiveHost, type LiveHost } from './host';
 import { clockAt, lineClock, modeHere, notesOnHere, speakerOf } from './lines';
@@ -54,7 +55,7 @@ function Off({ live, state }: { live: LiveCall; state: CallState }) {
 const decidedId = (d: CatchUpItem) => `${d.evidence[0]?.lineId ?? ''}:${d.text}`;
 
 function NotesPage({ host, state }: { host: LiveHost; state: CallState }) {
-  const { rows, tick } = useFollowUps(host);
+  const { rows, tick } = useFollowUps({ ...host, session: host.live.session });
   const n = state.liveNotes.notes;
   if (!n && rows.length === 0 && modeHere(state) === 'off') return <Off live={host.live} state={state} />;
   const items = n?.decided ?? [];
@@ -69,23 +70,9 @@ function NotesPage({ host, state }: { host: LiveHost; state: CallState }) {
 }
 
 function FollowUpsPage({ host, state }: { host: LiveHost; state: CallState }) {
-  const { live, say } = host;
-  const { rows, tick, canAdd } = useFollowUps(host);
-  const [mine, setMine] = useState(false);
-  const [draft, setDraft] = useState('');
-  if (rows.length === 0 && modeHere(state) === 'off') return <Off live={live} state={state} />;
-  const add = () => {
-    const text = draft.trim();
-    if (!text) return;
-    setDraft('');
-    /* What didn't go comes back to be sent again, unless something's been typed since. */
-    live.session.addFollowUp(text).catch((e: unknown) => { setDraft((now) => now || text); say(wsToast.failed(errorMessage(e))); });
-  };
-  const yours = rows.filter((r) => r.mine);
-  return (
-    <WsFollowUps mine={mine} onMine={setMine} everyoneCount={rows.length} mineCount={yours.length} rows={mine ? yours : rows} notice={heldBack(state, host.live)} onTick={tick}
-      draft={draft} onDraft={setDraft} onAdd={canAdd ? add : undefined} />
-  );
+  const { rows } = useFollowUps({ ...host, session: host.live.session });
+  if (rows.length === 0 && state.liveNotes.suggestions.length === 0 && modeHere(state) === 'off') return <Off live={host.live} state={state} />;
+  return <CallFollowUps key={state.capture.room?.id ?? 'main'} session={host.live.session} host={host} notice={heldBack(state, host.live)} />;
 }
 
 function TranscriptPage({ host, state, line }: { host: LiveHost; state: CallState; line: string | undefined }) {
@@ -140,8 +127,8 @@ function Page({ host, page, line }: { host: LiveHost; page: LivePageId; line: st
   useEffect(() => (watching ? live.session.watchNotes() : undefined), [watching, live.session]);
   return (
     <WsDoc>
-      <WsDocHead crumbs={[state.title, NAMES[page]]} save={on ? 'live' : 'quiet'} onToggleList={host.toggleList} zen={host.zen?.on} onZen={host.zen?.onToggle} />
-      <WsFollowBar following={host.following} onStop={host.stopFollowing} />
+      <WsDocHead crumbs={[state.title, NAMES[page]]} save={on ? 'live' : 'quiet'} onToggleList={host.toggleList} />
+      <WsFollowBar following={host.following?.quiet ? null : host.following} onStop={host.stopFollowing} />
       <Body key={page} host={host} state={state} page={page} line={line} />
     </WsDoc>
   );

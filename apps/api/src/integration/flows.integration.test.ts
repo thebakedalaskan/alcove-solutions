@@ -3,7 +3,7 @@
  * tests only). Each test signs in through the API like the web app does. Leakage checks plant
  * canaries and confirm they never reach database rows, stored objects or logs in plaintext.
  */
-import { AlcoveApiError, OPERATION_HEADER, REQUEST_ID_HEADER, firstName, type AlcoveApi, type AnswerPart, type AudioPiece, type CallSession, type CallState, type NoteProgress, type TranscriptClip } from '@alcove/api';
+import { DEFAULT_NOTIFICATION_PREFERENCES, DEFAULT_SOUND_PREFERENCES, AlcoveApiError, OPERATION_HEADER, REQUEST_ID_HEADER, firstName, type AlcoveApi, type AnswerPart, type AudioPiece, type CallSession, type CallState, type NoteProgress, type TranscriptClip } from '@alcove/api';
 import { createHttpApi, type ClientEvent } from '@alcove/api-http';
 import { z } from 'zod';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
@@ -14,6 +14,7 @@ import { b64u, openJson, sealJson, signInAttemptKey, unb64u } from '../crypto';
 import { masterKey } from '../owners';
 import { cookieName } from '../sessions';
 import { startFakeDstack } from '../testing/fake-dstack';
+import { acceptNoteSuggestions } from '../testing/follow-ups';
 import { PNG, type GoogleUser, type Spoil } from '../testing/fake-google';
 import { screenJpeg, speechWav, startFakeNear, type Tamper } from '../testing/fake-near';
 import { ORIGIN, cookieFetch, startHarness, type Browser, type Harness } from '../testing/harness';
@@ -244,19 +245,27 @@ describe('signing in', () => {
     const { api, fetch } = await account();
     const patchRaw = async (body: unknown) => (await fetch(`${h.baseUrl}/v1/account/preferences`, { method: 'PATCH', headers: { 'content-type': 'application/json', origin: ORIGIN }, body: JSON.stringify(body) })).status;
     const defaults = {
+      sounds: DEFAULT_SOUND_PREFERENCES,
       notesDefault: 'on', notesLanguage: 'call', summaryLength: 'short', addToCalendar: true, showOtherMeetings: true, recordOffline: true,
-      notifications: { beforeCall: 5, notesReady: true, sharedWithYou: true, notesRequested: true, followUpDue: false, tagged: true },
+      notifications: DEFAULT_NOTIFICATION_PREFERENCES,
       pinned: [], groups: []
     };
     expect(await api.account.preferences()).toEqual(defaults);
     const patched = await api.account.updatePreferences({
       summaryLength: 'detailed',
-      notifications: { beforeCall: 1, notesReady: true, sharedWithYou: true, notesRequested: true, followUpDue: false, tagged: true }
+      notifications: { ...DEFAULT_NOTIFICATION_PREFERENCES, replyAlerts: false, mentionAlerts: false, beforeCall: 1 }
     });
-    expect(patched).toEqual({ ...defaults, summaryLength: 'detailed', notifications: { ...defaults.notifications, beforeCall: 1 } });
+    expect(patched).toEqual({ ...defaults, summaryLength: 'detailed', notifications: { ...defaults.notifications, replyAlerts: false, mentionAlerts: false, beforeCall: 1 } });
     expect(await api.account.preferences()).toEqual(patched);
+    const sounds = { ...DEFAULT_SOUND_PREFERENCES, enabled: false, quiet: true, volume: 0.25, hands: false, replies: false };
+    expect((await api.account.updatePreferences({ sounds })).sounds).toEqual(sounds);
+    expect((await api.account.preferences()).sounds).toEqual(sounds);
+    const other = await account();
+    expect((await other.api.account.preferences()).sounds).toEqual(DEFAULT_SOUND_PREFERENCES);
+    expect(await patchRaw({ sounds: { ...sounds, volume: 2 } })).toBe(400);
     const grouped = await api.account.updatePreferences({ groups: [{ id: 'g1', name: 'Design', emails: ['sam@example.com'] }] });
     expect(grouped.groups).toHaveLength(1);
+    expect(grouped.sounds).toEqual(sounds);
     expect(await patchRaw({ notesLanguage: 'xx' })).toBe(400);
     expect(await patchRaw({ pinned: ['a', 'a'] })).toBe(400);
     expect(await api.account.preferences()).toEqual(grouped);
@@ -417,7 +426,15 @@ describe('signing in with Google', () => {
       scope: 'openid email profile https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.events.freebusy', access_type: 'offline', code_challenge_method: 'S256'
     });
     for (const k of ['state', 'nonce', 'code_challenge']) expect(to.searchParams.get(k)).toMatch(/^[A-Za-z0-9_-]{43}$/);
-    expect(start.headers.get('set-cookie')).toMatch(/^__Host-alcove_google=[^;]+;.*HttpOnly.*SameSite=Lax/i);
+    const cookies = start.headers.getSetCookie();
+    const googleAttempt = cookies.find((header) => header.startsWith('__Host-alcove_google='));
+    if (!googleAttempt) throw new Error('Google sign-in did not set its attempt cookie.');
+    expect(googleAttempt).toMatch(/^__Host-alcove_google=[^;]+;.*HttpOnly.*SameSite=Lax/i);
+    expect(cookieAttributes(googleAttempt)).toMatchObject({ secure: true, httpOnly: true, pathRoot: true, removed: false });
+    // Starting a sign-in cancels a pending Drive consent before another Alcove account can use this browser.
+    const clearedDriveAttempt = cookies.find((header) => header.startsWith('__Host-alcove_drive='));
+    if (!clearedDriveAttempt) throw new Error('Google sign-in did not clear pending Drive consent.');
+    expect(cookieAttributes(clearedDriveAttempt)).toMatchObject({ secure: true, pathRoot: true, removed: true });
 
     // Someone invites Bram to a call with notes before they've ever used Alcove.
     const bram: GoogleUser = { sub: '104412233445566778899', email: 'Bram.Kay@Example.com', name: 'Bram Kay', picture: `${h.google.issuer}/photo/bram-1` };
@@ -1140,10 +1157,13 @@ describe('live transcript and written notes', () => {
     const lineOf = (said: string) => note.transcript?.find((l) => l.text.startsWith(said))?.id;
     const backedBy = (said: string) => ({ lines: [lineOf(said)], against: [], evidence: { flags: [], moments: [expect.objectContaining({ kind: 'line', id: lineOf(said), against: false, corrected: false })] } });
     expect(note.decisions).toEqual([{ id: expect.any(String), text: 'We agreed to move the launch to the 18th.', at: 0, state: 'proposed', disputes: [], changes: [], ...backedBy('We agreed') }]);
-    expect(note.actions).toEqual([{
+    expect(note.actions).toEqual([]);
+    expect(note).toMatchObject({ openActions: 0, totalActions: 0 });
+    expect(note.suggestions).toEqual([expect.objectContaining({
+      review: 'suggested', changeOf: null, target: null, revision: expect.any(String),
       id: expect.any(String), text: 'Send the new screens by Wednesday', owner: { name: 'Kofi', person: expect.objectContaining({ email: guestEmail }) },
       takenOn: false, due: 'Wednesday', at: 6, done: false, changes: [], from: null, ...backedBy('Kofi will')
-    }]);
+    })]);
     expect(note.chapters.map((x) => x.at)).toEqual([0, 8]);
     expect(note.suggestedQuestions).toHaveLength(3);
     // Each model was verified first, on the dstack image NEAR AI's models boot, and the speech and the
@@ -1359,7 +1379,9 @@ describe('live transcript and written notes', () => {
     const note = await api.notes.get(pendingNoteId);
     expect(note).toMatchObject({ kind: 'room', status: 'ready', decisions: [{ text: 'We decided to keep the darker header.', at: 4, state: 'proposed' }] });
     expect(note.transcript?.map((l) => [l.at, l.text, l.speaker])).toEqual([[0, 'Sam will tidy the spacing by Friday.', undefined], [4, 'We decided to keep the darker header.', undefined]]);
-    expect(note.actions).toMatchObject([{ id: expect.any(String), text: 'Tidy the spacing by Friday', owner: { name: 'Sam' }, takenOn: false, due: 'Friday', at: 0, done: false, changes: [] }]);
+    expect(note.actions).toEqual([]);
+    expect(note).toMatchObject({ openActions: 0, totalActions: 0 });
+    expect(note.suggestions).toMatchObject([{ review: 'suggested', id: expect.any(String), text: 'Tidy the spacing by Friday', owner: { name: 'Sam' }, takenOn: false, due: 'Friday', at: 0, done: false, changes: [] }]);
   });
 
   it('notes are written in the chosen language and length', async () => {
@@ -1526,7 +1548,7 @@ describe('in the call: hands, spotlight, breakout rooms and captions', () => {
     // Someone without the call's pass can't do anything in it.
     const b = await account();
     expect(await act(b, s.callId, { type: 'spotlight', participantId: null })).toBe(401);
-    expect(await act(b, s.callId, { type: 'hand', up: true })).toBe(401);
+    expect(await act(b, s.callId, { type: 'hand', up: true, place: 'main' })).toBe(401);
     expect(await act(b, s.callId, { type: 'rooms-open', rooms: [{ name: 'A', emails: [] }, { name: 'B', emails: [] }], minutes: 5, board: { mode: 'none', template: 'blank' } })).toBe(401);
     // A guest let in raises their own hand, which everyone sees; spotlight and rooms stay the organizer's.
     const guestTab = h.browser();
@@ -1534,12 +1556,12 @@ describe('in the call: hands, spotlight, breakout rooms and captions', () => {
     await settle(call, (x) => x.waiting.some((w) => w.id === guest.ticket.identity));
     await call.admit(guest.ticket.identity);
     for (let i = 0; i < 100 && guest.crypto.getSnapshot().status !== 'in'; i++) await new Promise((r) => setTimeout(r, 30));
-    expect(await act(guestTab, s.callId, { type: 'hand', up: true }, guest.ticket.pass)).toBe(200);
+    expect(await act(guestTab, s.callId, { type: 'hand', up: true, place: 'main' }, guest.ticket.pass)).toBe(200);
     expect((await settle(call, (x) => x.participants.some((p) => p.id === guest.ticket.identity && p.hand))).participants.find((p) => p.id === guest.ticket.identity)?.hand).toBe(true);
     expect(await act(guestTab, s.callId, { type: 'spotlight', participantId: guest.ticket.identity }, guest.ticket.pass)).toBe(403);
     expect(await act(guestTab, s.callId, { type: 'rooms-open', rooms: [{ name: 'A', emails: [] }, { name: 'B', emails: [] }], minutes: 5, board: { mode: 'none', template: 'blank' } }, guest.ticket.pass)).toBe(403);
     await call.leave();
-    expect(await act(a, s.callId, { type: 'hand', up: false }, call.ticket.pass)).toBe(409);
+    expect(await act(a, s.callId, { type: 'hand', up: false, place: 'main' }, call.ticket.pass)).toBe(409);
   });
 
   it('opens breakout rooms for invited people only, messages them, brings them back, and puts the rooms in the notes', async () => {
@@ -1929,7 +1951,8 @@ describe('confirming what the notes say', () => {
     await call.transcribe(speech('We agreed to move the launch to the 18th. // Kofi will send the new screens by Wednesday.', 0, 0), call.ticket.identity);
     const noteId = (await ended(call)).pendingNoteId ?? '';
     await written(org.api, noteId);
-    let note = await org.api.notes.get(noteId);
+    expect((await org.api.notes.get(noteId)).actions).toEqual([]);
+    let note = await acceptNoteSuggestions(org.api, noteId);
     const decision = note.decisions[0]?.id ?? '';
     const action = note.actions[0]?.id ?? '';
     const guest = await account(guestEmail);
@@ -1970,7 +1993,7 @@ describe('confirming what the notes say', () => {
     expect(note.actions[0]?.owner).toBeUndefined();
     expect(note.actions[0]?.due).toBeUndefined();
     expect(who(note.actions[0] ?? { changes: [] })).toEqual([
-      [guestEmail, 'took-on', null], [org.session.user.email, 'took-on', 'Kofi'], [org.session.user.email, 'due', 'Wednesday'],
+      [org.session.user.email, 'accepted', null], [guestEmail, 'took-on', null], [org.session.user.email, 'took-on', 'Kofi'], [org.session.user.email, 'due', 'Wednesday'],
       [org.session.user.email, 'reassigned', org.session.user.name],
       [org.session.user.email, 'reworded', 'Send the new screens by Wednesday'], [org.session.user.email, 'took-on', 'Kofi'], [org.session.user.email, 'done', null],
       [org.session.user.email, 'declined', org.session.user.name], [org.session.user.email, 'due', 'Friday']
@@ -1989,21 +2012,22 @@ describe('confirming what the notes say', () => {
 });
 
 describe('the inbox', () => {
-  /** A written note whose one decision and one follow-up (for the guest, Kofi) are still the notes' suggestions. */
-  async function suggested(org: Awaited<ReturnType<typeof account>>, guestEmail: string, said: string) {
+  /** A written note with one proposed decision and a task someone accepted, whose suggested owner has not agreed. */
+  async function withAcceptedTask(org: Awaited<ReturnType<typeof account>>, guestEmail: string, said: string) {
     const call = await org.api.calls.join((await org.api.calls.startNow({ notes: 'on', guests: [guestEmail] })).code, { mic: true, cam: false });
     await call.transcribe(speech(said, 0, 0), call.ticket.identity);
     const noteId = (await call.leave())?.pendingNoteId ?? '';
     await written(org.api, noteId);
-    const note = await org.api.notes.get(noteId);
+    expect((await org.api.notes.get(noteId)).actions).toEqual([]);
+    const note = await acceptNoteSuggestions(org.api, noteId);
     return { noteId, decision: note.decisions[0]?.id ?? '', action: note.actions[0]?.id ?? '' };
   }
 
   it('the inbox gathers your follow-ups and unconfirmed decisions from every note you have', async () => {
     const org = await account(unique('organizer'));
     const guestEmail = `kofi@g${Date.now().toString(36)}${(seq++).toString(36)}.example`;
-    const first = await suggested(org, guestEmail, 'We agreed to move the launch to the 18th. // Kofi will send the new screens by Wednesday.');
-    const second = await suggested(org, guestEmail, 'We agreed to keep the beta small. // Kofi will write the invite by Friday.');
+    const first = await withAcceptedTask(org, guestEmail, 'We agreed to move the launch to the 18th. // Kofi will send the new screens by Wednesday.');
+    const second = await withAcceptedTask(org, guestEmail, 'We agreed to keep the beta small. // Kofi will write the invite by Friday.');
     const guest = await account(guestEmail);
 
     // The follow-up is Kofi's: it's in his inbox, not yet taken on, and not in the organizer's.
@@ -2034,7 +2058,7 @@ describe('the inbox', () => {
   it('a follow-up can’t be given to someone who removed the note', async () => {
     const org = await account(unique('organizer'));
     const guestEmail = `kofi@g${Date.now().toString(36)}${(seq++).toString(36)}.example`;
-    const { noteId, action } = await suggested(org, guestEmail, 'We agreed to move the launch to the 18th. // Kofi will send the new screens by Wednesday.');
+    const { noteId, action } = await withAcceptedTask(org, guestEmail, 'We agreed to move the launch to the 18th. // Kofi will send the new screens by Wednesday.');
     const guest = await account(guestEmail);
     await org.api.notes.updateAction(noteId, action, { owner: null });
     expect((await org.api.notes.updateAction(noteId, action, { owner: guestEmail })).actions[0]).toMatchObject({ owner: { person: { email: guestEmail } } });
@@ -2560,7 +2584,7 @@ describe('who has the notes', () => {
     await call.transcribe(speech('We agreed to ship on Thursday. // Can we test it first? // Someone will write the release notes.', 0, 0), call.ticket.identity);
     const noteId = (await call.leave())?.pendingNoteId ?? '';
     await written(org.api, noteId);
-    const note = await org.api.notes.get(noteId);
+    const note = await acceptNoteSuggestions(org.api, noteId);
     const guest = await account(guestEmail);
 
     // Everything someone given the notes can change, each with an operation ID, as the app sends it.
@@ -2823,6 +2847,7 @@ describe('deleting an account', () => {
     // scheduled, on her calendar; her own pins and a group.
     const ended = await b.api.calls.join((await b.api.calls.startNow({ notes: 'on', guests: [guest.session.user.email] })).code, { mic: true, cam: false });
     await ended.appendAudio(piece(audioBytes('leaving-call'), 0, 0));
+    await ended.transcribe(speech('We agreed to send the checklist on Friday.', 0, 0), ended.ticket.identity);
     const callNote = (await ended.leave())?.pendingNoteId ?? '';
     await written(b.api, callNote);
     await guest.api.account.updatePreferences({ pinned: [callNote] });
@@ -2852,6 +2877,11 @@ describe('deleting an account', () => {
     // A chat line in it goes into the call's end-to-end encrypted log, and its LiveKit room is open.
     await until(async () => live.crypto.getSnapshot().status === 'in', 'her browser to be in the call’s group');
     await live.sendChat('Still here.');
+    const privateGuest = await h.browser().api.calls.join(live.getSnapshot().code, { mic: false, cam: false, name: 'Mara' });
+    await settle(live, (s) => s.waiting.some((p) => p.id === privateGuest.ticket.identity));
+    await live.admit(privateGuest.ticket.identity);
+    await until(async () => live.direct.getSnapshot().peers.includes(privateGuest.ticket.identity), 'the private guest’s authenticated key');
+    await live.direct.send(privateGuest.ticket.identity, 'Keep the checklist between us.');
     expect((await h.deps.livekit.existingRooms([live.ticket.roomName])).size).toBe(1);
     // She's moving that call to her phone, whose link nobody has opened yet, and ringing Kofi into it.
     const moving = await live.startMove({ mic: true, cam: false });
@@ -2871,11 +2901,12 @@ describe('deleting an account', () => {
     const own = (await b.api.notes.personal(callNote).add({ kind: 'note', text: 'For everyone with it.' })).entries[0]?.id ?? '';
     await b.api.notes.addToShared(callNote, own, { text: 'For everyone with it.', seal: (await b.api.notes.previewAddition(callNote, own)).seal });
 
-    // What she keeps beside a document for presenting it, under her own account.
+    // What she kept beside a document for presenting it, under her own account, as an earlier release kept it: nothing reads or
+    // writes those now, and they still go with her.
     const hers = await b.api.workspaces.create('Hers');
     const plan = await b.api.workspaces.items.create(hers.id, { kind: 'document', name: 'Plan' });
-    await b.api.workspaces.presenterNotes.set(hers.id, plan.id, 'Thank everyone.');
-    // And beside a frame of a board of hers.
+    await h.pool.query('INSERT INTO presenter_notes (owner_id, workspace_owner_id, document_id, body_ciphertext) SELECT $1, owner_id, $2, $3 FROM workspaces WHERE workspace_id = $4', [ownerId, plan.id, Buffer.from('sealed'), hers.id]);
+    // And what she keeps beside a frame of a board of hers.
     const retro = await b.api.workspaces.items.create(hers.id, { kind: 'board', name: 'Retro' });
     const drawn = await b.api.workspaces.document(hers.id, retro.id);
     await drawn.ready;
@@ -2886,11 +2917,23 @@ describe('deleting an account', () => {
 
     // Her named agent goes with the account, too, including its hashed credential.
     await b.api.agents.createToken({ name: 'Lena’s assistant', scopes: ['notes:read'], expiresInDays: 30 });
+    // Her independent Drive credentials, explicit call choice and queued export go with her as well.
+    const driveFolder = `leaving_${ownerId}`;
+    h.google.drive.folder(lena.sub, { id: driveFolder, name: 'Leaving call exports' });
+    h.google.drive.pick(lena.sub, driveFolder);
+    h.google.next(lena);
+    const driveConsent = await fetch((await b.api.drive.connect()).url, { redirect: 'manual' });
+    const driveCallback = driveConsent.headers.get('location');
+    if (!driveCallback) throw new Error('Drive consent did not return to Alcove.');
+    await b.fetch(driveCallback, { redirect: 'manual' });
+    await b.api.drive.update({ enabled: true, destinationId: driveFolder, formats: ['notes-markdown'] });
+    await b.api.drive.setForNote(callNote, { enabled: true, destinationId: driveFolder, formats: ['notes-markdown'] });
+    await b.api.calls.timerPresets.create({ name: 'Lena’s agenda', segments: [{ id: 'opening', label: 'Opening', durationSeconds: 60, presenter: null }] });
     // Every table that keeps an account's rows has some of hers.
     const tables = (await h.pool.query<{ table_name: string }>("SELECT table_name FROM information_schema.columns WHERE table_schema = 'public' AND column_name = 'owner_id' ORDER BY table_name")).rows.map((r) => r.table_name);
     expect(tables).toEqual([
-      'agent_codes', 'agent_grants', 'agent_operations', 'agent_tokens', 'billing_accounts', 'call_codes', 'call_mls', 'call_moves', 'call_notes', 'call_rings', 'calls', 'content_jobs', 'deposits', 'document_access', 'document_clients', 'document_snapshots', 'document_updates', 'document_version_parts', 'document_versions', 'documents', 'identities', 'items', 'media_upload_days', 'meeting_access', 'note_access', 'note_additions',
-      'object_gc', 'operations', 'owners', 'personal_notes', 'presenter_frame_notes', 'presenter_notes', 'recording_pieces', 'recordings', 'revisions', 'screen_frames', 'sessions', 'transcript_clips', 'transcript_translations', 'workspace_authors',
+      'agent_codes', 'agent_grants', 'agent_operations', 'agent_tokens', 'billing_accounts', 'call_attention', 'call_codes', 'call_mls', 'call_moves', 'call_notes', 'call_private_messages', 'call_rings', 'calls', 'content_jobs', 'deposits', 'document_access', 'document_clients', 'document_snapshots', 'document_updates', 'document_version_parts', 'document_versions', 'documents', 'drive_call_exports', 'drive_connections', 'drive_export_jobs', 'identities', 'items', 'media_upload_days', 'meeting_access', 'note_access', 'note_additions',
+      'object_gc', 'operations', 'owners', 'personal_notes', 'presenter_frame_notes', 'presenter_notes', 'recording_pieces', 'recordings', 'revisions', 'screen_frames', 'sessions', 'timer_presets', 'transcript_clips', 'transcript_translations', 'workspace_authors',
       'workspace_media', 'workspace_media_pieces', 'workspace_media_previews', 'workspace_media_uses', 'workspace_members', 'workspace_mentions', 'workspaces'
     ]);
     const counts = async () => Object.fromEntries(await Promise.all(tables.map(async (t) => [t, (await h.pool.query<{ n: number }>(`SELECT count(*)::int AS n FROM ${t} WHERE owner_id = $1`, [ownerId])).rows[0]?.n ?? -1] as const)));
@@ -3186,6 +3229,9 @@ describe('privacy at rest', () => {
     const scribeEmail = 'canary-scribe@canary.example';
     const started = await c.api.calls.startNow({ notes: 'on', guests: [scribeEmail, 'canary-rung@canary.example'] });
     const call = await c.api.calls.join(started.code, { mic: true, cam: true });
+    const timerPreset = await c.api.calls.timerPresets.create({ name: 'CANARY-TIMER-PRESET', segments: [{ id: 'opening', label: 'CANARY-TIMER-SEGMENT', durationSeconds: 60, presenter: 'CANARY-TIMER-PRESENTER' }] });
+    await call.setTimerSequence({ expectedRevision: null, segments: timerPreset.segments });
+    await call.controlTimer({ expectedRevision: 0, action: 'start' });
     await call.appendAudio(piece(audioBytes('CANARY-AUDIO-RAW'), 0, 0));
     await call.transcribe(speech('CANARY-SPEECH the merger closes on Friday.', 0, 0), call.ticket.identity);
     expect(call.getSnapshot().transcript.map((l) => l.text)).toEqual(['CANARY-SPEECH the merger closes on Friday.']);
@@ -3194,9 +3240,12 @@ describe('privacy at rest', () => {
     const watching = call.watchNotes();
     await settle(call, (x) => x.liveNotes.notes !== null && !x.liveNotes.writing);
     watching();
-    const liveFollowUp = call.getSnapshot().liveNotes.notes?.next[0];
+    expect(call.getSnapshot().liveNotes.notes?.next).toEqual([]);
+    const liveFollowUp = call.getSnapshot().liveNotes.suggestions[0];
     expect(liveFollowUp?.text).toContain('CANARY-LIVENOTE');
-    await call.tickFollowUp(liveFollowUp?.id ?? '', true);
+    if (!liveFollowUp) throw new Error('The canary follow-up has no proposal to review.');
+    await call.reviewFollowUp({ id: liveFollowUp.id, revision: liveFollowUp.revision, decision: 'accept' });
+    await call.tickFollowUp(liveFollowUp.id, true);
     const liveNoteRows = String((await h.pool.query(`SELECT string_agg(row_to_json(x)::text, ' ') AS all FROM call_notes x`)).rows[0]?.all ?? '');
     expect(liveNoteRows).not.toBe('');
     // While the call is on, the live transcript is sealed rows too.
@@ -3212,6 +3261,11 @@ describe('privacy at rest', () => {
     await invitee.api.auth.signIn('sso', { email: scribeEmail });
     const scribe = await invitee.api.calls.join(started.code, { mic: true, cam: false });
     await until(async () => scribe.crypto.getSnapshot().status === 'in', 'the invitee in the call’s group');
+    await until(async () => call.direct.getSnapshot().peers.includes(scribe.ticket.identity), 'the private canary recipient’s authenticated key');
+    await call.direct.send(scribe.ticket.identity, 'CANARY-PRIVATE-MESSAGE only these two connections');
+    await until(async () => scribe.direct.getSnapshot().messages.length === 1, 'the private canary to arrive');
+    const privateRows = String((await h.pool.query(`SELECT string_agg(row_to_json(x)::text, ' ') AS all FROM call_private_messages x`)).rows[0]?.all ?? '');
+    expect(privateRows).not.toBe('');
     call.openRooms({ rooms: [{ name: 'CANARY-BREAKOUT one', emails: [scribeEmail] }, { name: 'CANARY-BREAKOUT two', emails: [] }], minutes: 5, board: { mode: 'none', template: 'blank' } });
     await settle(call, (x) => x.breakouts.open !== null);
     await settle(scribe, (x) => x.capture.room?.scribe === scribe.ticket.identity);
@@ -3238,7 +3292,7 @@ describe('privacy at rest', () => {
     await call.ring(['canary-rung@canary.example']);
     const ringRows = String((await h.pool.query(`SELECT string_agg(row_to_json(x)::text, ' ') AS all FROM call_rings x`)).rows[0]?.all ?? '');
     expect(ringRows).not.toBe('');
-    const live = `${liveClips} ${translations} ${callRows} ${moveRows} ${ringRows} ${liveNoteRows}`;
+    const live = `${liveClips} ${translations} ${callRows} ${moveRows} ${ringRows} ${liveNoteRows} ${privateRows}`;
     // Their own notes on the call, sealed under their own keys, and something added from them to the shared notes.
     await call.personal.add({ kind: 'note', text: 'CANARY-OWN-WORDS for nobody else' });
     await call.personal.add({ kind: 'bookmark', label: 'CANARY-OWN-MARK', point: null });
@@ -3396,7 +3450,11 @@ describe('privacy at rest', () => {
     actionsBoard.close();
     const ideasEnded = await ideasCall.leave();
     await written(c.api, ideasEnded?.pendingNoteId ?? '');
-    expect((await c.api.notes.get(ideasEnded?.pendingNoteId ?? '')).actions.filter((a) => a.from === 'board').map((a) => a.text)).toEqual(['CANARY-BOARDACTION order the doors']);
+    const boardProposals = await c.api.notes.get(ideasEnded?.pendingNoteId ?? '');
+    expect(boardProposals.actions.filter((a) => a.from === 'board')).toEqual([]);
+    expect(boardProposals.suggestions.filter((a) => a.from === 'board').map((a) => a.text)).toEqual(['CANARY-BOARDACTION order the doors']);
+    const boardAccepted = await acceptNoteSuggestions(c.api, boardProposals.id);
+    expect(boardAccepted.actions.filter((a) => a.from === 'board').map((a) => a.text)).toEqual(['CANARY-BOARDACTION order the doors']);
     // Breakout rooms with a board each: a room's name names its board, and what's on it lands on a main board made for it as
     // rooms close. Names are in the workspace's sealed state, stickies in its sealed updates, and the call keeps only IDs.
     const roomsCall = await c.api.calls.startNow({ notes: 'off', guests: ['canary-roomie@canary.example'] });
@@ -3450,6 +3508,12 @@ describe('privacy at rest', () => {
     h.oneclick.set(topUp.address ?? '', 'SUCCESS', { depositedAmount: '25000000', amountOut: '25000000', intentHashes: ['canary-intent-hash'] });
     expect((await c.api.credits.topUp(topUp.id)).state).toBe('credited');
 
+    // A live question stays present for the sweep: ending a call physically deletes its attention record.
+    const attentionCall = await c.api.calls.join((await c.api.calls.startNow({ notes: 'off' })).code, { mic: false, cam: false });
+    await until(async () => attentionCall.crypto.getSnapshot().status === 'in', 'the live question author in the call’s group');
+    await attentionCall.postQuestion('CanaryAttentionQuestion01', 'CANARY-LIVEQUESTION who reviews the private launch?');
+    expect(attentionCall.getSnapshot().attention.questions[0]?.text).toContain('CANARY-LIVEQUESTION');
+
     // Every table there is, so a table added later is read here without anyone remembering to list it.
     const everyTable = (await h.pool.query<{ table_name: string }>("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE'")).rows.map((r) => r.table_name);
     expect(everyTable).toEqual(expect.arrayContaining(['workspaces', 'workspace_members', 'workspace_authors', 'documents', 'document_access', 'workspace_media', 'workspace_media_pieces', 'workspace_media_previews', 'workspace_media_uses', 'owners', 'items', 'revisions', 'operations']));
@@ -3459,7 +3523,7 @@ describe('privacy at rest', () => {
     // bytea renders as hex; our records embed base64url; check every encoding a plaintext bug could produce.
     const encodings = (s: string) => [s, Buffer.from(s).toString('hex'), Buffer.from(s).toString('base64').slice(0, 12), Buffer.from(s).toString('base64url').slice(0, 12)];
     const canaries = [
-      'canary-person', 'Canary Person', 'CANARY-TITLE', 'CANARY-EDIT', 'canary-guest', 'CANARY-CHAT', 'CANARY-AUDIO', 'CANARY-ROOM', 'CANARY-SEARCH', 'CANARY-PEOPLE', 'CANARY-SPEECH', 'merger closes',
+      'CANARY-PRIVATE-MESSAGE', 'CANARY-TIMER-PRESET', 'CANARY-TIMER-SEGMENT', 'CANARY-TIMER-PRESENTER', 'canary-person', 'Canary Person', 'CANARY-TITLE', 'CANARY-EDIT', 'canary-guest', 'CANARY-CHAT', 'CANARY-AUDIO', 'CANARY-ROOM', 'CANARY-SEARCH', 'CANARY-PEOPLE', 'CANARY-SPEECH', 'merger closes',
       'CANARY-BREAKOUT', 'CANARY-BROADCAST', 'CANARY-GROUP', 'canary-member', 'CANARY-ASKED', 'canary-rung', 'CANARY-ROOMTALK', 'merger moves', 'canary-scribe', 'CANARY-LIVENOTE',
       'Welcome credits', 'Art Vandelay', 'vandelay', 'Weekly with Theo', 'lumen.health',
       'canary-google-sub', 'canary.googler', 'Canary Googler', 'canary-photo', 'CANARY-GCAL', 'canary-gcal',
@@ -3472,7 +3536,7 @@ describe('privacy at rest', () => {
       'CANARY-WSFRAME', 'CANARY-WSSTICKY', 'CANARY-WSCELL', 'sign by Friday', 'CANARY-WSIDEA', 'pricing tiers', 'CANARY-BOARDPIC-NAME',
       'CANARY-BOARDPIC-BYTES', 'CANARY-BOARDCALL', 'CANARY-BOARDGUEST', 'CANARY-IDEA', 'repaint the lobby', 'CANARY-SORTED',
       'CANARY-BOARDACTION', 'order the doors', 'CANARY-ROOMNAME', 'CANARY-ROOMSTICKY', 'owns the merger', 'canary-roomie', 'CANARY-VOTEFRAME', 'CANARY-VOTESTICKY', voteFrame, voteSticky,
-      'CANARY-NOTEDFRAME', 'CANARY-FRAMENOTE', 'thank the support team', notedFrame,
+      'CANARY-NOTEDFRAME', 'CANARY-FRAMENOTE', 'thank the support team', notedFrame, 'CANARY-LIVEQUESTION', 'private launch',
       'canary-deposit-address', 'Credits added', 'canary-intent-hash'
     ];
     for (const canary of canaries) for (const enc of encodings(canary)) expect(rowsText.includes(enc), `${canary} as ${enc}`).toBe(false);

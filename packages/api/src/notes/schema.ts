@@ -156,7 +156,7 @@ export const RoomNoteSchema = z.object({
 export type RoomNote = z.infer<typeof RoomNoteSchema>;
 
 /** A breakout room's section as someone reading the note gets it. */
-export const NoteRoomSchema = RoomNoteSchema.extend({ decisions: z.array(NoteDecisionSchema), questions: z.array(NoteQuestionSchema), actions: z.array(NoteActionSchema) });
+export const NoteRoomSchema = RoomNoteSchema.extend({ decisions: z.array(NoteDecisionSchema), questions: z.array(NoteQuestionSchema), actions: z.array(NoteActionSchema), suggestions: z.array(NoteActionSchema) });
 
 export type NoteRoom = z.infer<typeof NoteRoomSchema>;
 
@@ -224,6 +224,7 @@ export const NoteSchema = NoteSummarySchema.extend({
   /** What the call asked and didn't settle. */
   questions: z.array(NoteQuestionSchema),
   actions: z.array(NoteActionSchema),
+  suggestions: z.array(NoteActionSchema),
   chapters: z.array(ChapterSchema),
   /** The stretches of the call with nothing captured, oldest first. Room recordings have none. */
   gaps: z.array(CaptureGapSchema),

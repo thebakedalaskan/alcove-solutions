@@ -139,6 +139,7 @@ export async function startHarness(): Promise<Harness> {
   // Only now is the API's address known: it's where Google sends people back to.
   deps.cfg = { ...cfg, API_URL: baseUrl };
   google.register(`${baseUrl}/v1/auth/google/callback`);
+  google.register(`${baseUrl}/v1/drive/callback`);
   // Every call session a browser joins, so a test's sessions can be stopped once it's done instead of polling on.
   const calls: CallSession[] = [];
   const streams: { close(): void }[] = [];

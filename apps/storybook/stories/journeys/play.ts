@@ -54,6 +54,27 @@ export function reachable(el: HTMLElement, wait = SOON): Promise<HTMLElement> {
   }, wait);
 }
 
+/** How long a menu takes no press after its rows move (`useSettledPress` in @alcove/ui says 400 ms), and a little over. */
+const SETTLE = 450;
+
+/**
+ * `menu` once its rows have stopped moving. A menu takes no press for a moment after they move (a list coming in under it, a
+ * row joining it), so that what's under the pointer is what someone aimed at, and nothing on the page says when that moment is
+ * over: this watches the rows, and waits until they've been still for as long as the menu waits. A person's press comes later
+ * anyway.
+ */
+export function still(menu: HTMLElement, wait = SOON): Promise<HTMLElement> {
+  return new Promise((resolve, reject) => {
+    let quiet: ReturnType<typeof setTimeout> | undefined;
+    const end = (): void => { rows.disconnect(); clearTimeout(quiet); clearTimeout(limit); };
+    const calm = (): void => { clearTimeout(quiet); quiet = setTimeout(() => { end(); resolve(menu); }, SETTLE); };
+    const rows = new MutationObserver(calm);
+    const limit = setTimeout(() => { end(); reject(new Error('The menu’s rows kept moving.')); }, wait.timeout);
+    rows.observe(menu, { childList: true, subtree: true });
+    calm();
+  });
+}
+
 /** Waits until nothing with `role` and `name` is on the page any more: a row that left the list. */
 export function away(role: Role, name: string | RegExp, wait = SOON): Promise<void> {
   return waitFor(() => {

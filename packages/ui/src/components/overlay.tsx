@@ -1,11 +1,20 @@
 import { Dialog as RDialog, Popover as RPopover, Tooltip as RTooltip } from 'radix-ui';
-import { forwardRef, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { createContext, forwardRef, useContext, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { cn } from '../cn';
 import { Icon, type IconName } from './icon';
 
 /* Where popovers sit: 8px from what opened them, and at least 12px inside the window's edges. */
 const OFFSET = 8;
 const EDGE = 12;
+
+/**
+ * A part of a page scoped to one theme (`.light` or `.dark` on it), such as your side of a call in the light theme while the
+ * call around it is night: what opens from inside it (a popover, a list of choices) opens out of it, and takes the same theme.
+ */
+const Scoped = createContext<'light' | 'dark' | null>(null);
+export function ThemeScope({ theme, children }: { theme: 'light' | 'dark' | null; children: ReactNode }) {
+  return <Scoped.Provider value={theme}>{children}</Scoped.Provider>;
+}
 
 /**
  * A panel anchored to what opened it. `stage` is for the always-night call stage. `tip` puts a tooltip on
@@ -23,6 +32,7 @@ export function Popover({ open, onOpenChange, anchor, children, align = 'start',
   onCloseFocus?: (() => boolean) | undefined; label: string; tip?: ReactNode; className?: string;
 }) {
   const returning = useRef(false);
+  const scoped = useContext(Scoped);
   const trigger = <RPopover.Trigger asChild>{anchor}</RPopover.Trigger>;
   return (
     <RPopover.Root open={open} onOpenChange={onOpenChange}>
@@ -38,7 +48,7 @@ export function Popover({ open, onOpenChange, anchor, children, align = 'start',
         </RTooltip.Root>
       )}
       <RPopover.Portal>
-        <RPopover.Content side={side} align={align} sideOffset={OFFSET} collisionPadding={EDGE} aria-label={label} className={cn('ac-pop', stage && 'is-stage', className)}
+        <RPopover.Content side={side} align={align} sideOffset={OFFSET} collisionPadding={EDGE} aria-label={label} className={cn('ac-pop', stage && 'is-stage', scoped, className)}
           onOpenAutoFocus={takeFocus ? undefined : (e) => e.preventDefault()}
           // Radix focuses the anchor right after this, synchronously, if it focuses it at all (not when it already has
           // focus, or after a click elsewhere), so the mark lasts only until then.
@@ -76,6 +86,7 @@ export function Select<T extends string>({ value, onChange, options, label, icon
   align?: 'start' | 'center' | 'end' | undefined; stage?: boolean | undefined; disabled?: boolean | undefined; className?: string | undefined;
 }) {
   const [open, setOpen] = useState(false);
+  const scoped = useContext(Scoped);
   const list = useRef<HTMLDivElement>(null);
   /** The option to focus when the list opens, when it isn't the chosen one. */
   const start = useRef<number | null>(null);
@@ -169,7 +180,7 @@ export function Select<T extends string>({ value, onChange, options, label, icon
       </RPopover.Trigger>
       <RPopover.Portal>
         <RPopover.Content ref={list} role="listbox" aria-label={label} side="bottom" align={align} sideOffset={OFFSET} collisionPadding={EDGE} hideWhenDetached
-          className={cn('ac-pop ac-select-list', stage && 'is-stage')} onKeyDown={onListKey}
+          className={cn('ac-pop ac-select-list', stage && 'is-stage', scoped)} onKeyDown={onListKey}
           onOpenAutoFocus={(e) => {
             e.preventDefault();
             const at = start.current ?? chosen;

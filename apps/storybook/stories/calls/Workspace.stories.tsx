@@ -1,17 +1,19 @@
 /*
- * The workspace in a call (user-flows 6): the call's home, with its folder of live Notes, Follow-ups and Transcript; the
- * organizer's picker and switching; following someone, a tag and a comment; Find and History; presenting and Play for
- * everyone; someone who can open nothing in it, and asking to see it; a follow-up added by hand; and the toasts. Everyone
- * else's browser is the script's: where they are in the workspace, what they present and play, and who asks.
+ * The workspace in a call (user-flows 6): the call's home, with its folder of live Notes, Follow-ups and Transcript, open on your
+ * stage just for you; the organizer's Switch workspace, in its name's menu, and switching; following someone, a tag and a
+ * comment; Find and History; presenting it, with everyone following, and Play for everyone; someone who can open nothing in it,
+ * and asking to see it; a follow-up added by hand; and the toasts. Everyone else's browser is the script's: where they are in
+ * the workspace, what they present and play, and who asks.
  */
 import type { CallSession } from '@alcove/api';
 import type { Meta } from '@storybook/react-vite';
-import { screen } from 'storybook/test';
-import { asksToSee, at, goesTo, leaves, movesPresenting, opensPage, plays, presents, tagsYou, type CallScript, type Present } from '../../src/api/script';
+import { screen, waitFor, within } from 'storybook/test';
+import { asksToSee, at, goesTo, leaves, opensPage, plays, presentsWorkspace, tagsYou, type CallScript, type Present } from '../../src/api/script';
 import { current } from '../../src/api/state';
-import { inCall, phone, type InCall, type StoryCall } from '../../src/call';
+import { inCall, phone, reach, type InCall, type StoryCall } from '../../src/call';
 import { iso } from '../../src/world/clock';
 import { pages, type PageArgs, type PageStory } from '../../src/page';
+import { frameMenu, frameOf } from './plays';
 import {
   addWalkthrough, AIKO, CHECK_IN, CHECK_IN_SUMMARY, CHECK_IN_TALK, CHECKLIST_DOC, FILM, KOFI, LAUNCH_REVIEW, MAYA, PLAN, PRIYA, REVIEW, REVIEW_SUMMARY, REVIEW_TALK, SAM, THEO,
   WALKTHROUGH
@@ -30,28 +32,33 @@ const REVIEWERS: Present[] = [{ who: PRIYA }, { who: KOFI }, { who: AIKO }];
  */
 const TALK = { since: 100, earlier: REVIEW_TALK.slice(0, 7), talk: { lines: REVIEW_TALK.slice(7), from: 3, every: 5 }, summary: REVIEW_SUMMARY };
 
-/** Opens the workspace from the dock. */
-async function openWorkspace({ canvas, userEvent, step }: Step): Promise<void> {
-  await step('Press Workspace in the dock. The first time, the call settles its home', async () => {
-    await userEvent.click(await canvas.findByRole('button', { name: /^Workspace/ }, { timeout: 10000 }));
-  });
+/** Opens the workspace: Workspace at the top right, or in More on a phone. The first time, the call settles its home. */
+async function openWorkspace(c: Step): Promise<void> {
+  await reach('Workspace')(c);
 }
+/**
+ * A row of the workspace's list, on your stage: looked for afresh each time, as the workspace draws itself again once the call
+ * has settled its home.
+ */
+const rowIn = (name: RegExp) => waitFor(() => {
+  const [row] = within(screen.getByRole('region', { name: 'Workspace' })).getAllByRole('button', { name });
+  if (!row) throw new Error('Its row isn’t there yet.');
+  return row;
+}, { timeout: 8000 });
 /** Opens one of the call's own pages from its folder. */
 const openPage = (name: string): Play => async (c) => {
   await openWorkspace(c);
   await c.step(`Open ${name} in the call’s folder`, async () => {
     // Its row, with a count beside it when there's something in it.
-    const [row] = await c.canvas.findAllByRole('button', { name: new RegExp(`^${name}\\s?(\\d+)?$`) }, { timeout: 8000 });
-    if (row) await c.userEvent.click(row);
+    await c.userEvent.click(await rowIn(new RegExp(`^${name}\\s?(\\d+)?$`)));
   });
 };
-/** Opens the picker at the top of the list: the organizer's workspaces, with this call's home marked. */
+/** Opens Switch workspace, from the workspace's name on its frame: the organizer's workspaces, with this call's home marked. */
 const openPicker = (home: string): Play => async (c) => {
   await openWorkspace(c);
-  await c.step('Press the workspace’s name at the top of the list', async () => {
-    // The call's folder is named the same: the name at the top comes first.
-    const [top] = await c.canvas.findAllByRole('button', { name: home }, { timeout: 8000 });
-    if (top) await c.userEvent.click(top);
+  await c.step('Press the workspace’s name on its frame, then Switch workspace', async () => {
+    await frameMenu(c, home);
+    await c.userEvent.click(await screen.findByRole('menuitem', { name: 'Switch workspace' }, { timeout: 5000 }));
   });
 };
 /**
@@ -81,7 +88,7 @@ export const JustYou = inCall({
 }, { play: openWorkspace });
 export const JustYouPhone = phone(JustYou);
 
-/** The organizer's picker: their workspaces, the call's home marked "This call's home", and New workspace. */
+/** Switch workspace, the organizer's: their workspaces, the call's home marked "This call's home", and New workspace. */
 export const ThePicker = inCall({ scenario: 'call-soon', call: REVIEW, script: { here: REVIEWERS } }, { play: openPicker('Design review · 4 Nov') });
 export const ThePickerPhone = phone(ThePicker);
 
@@ -115,13 +122,15 @@ export const FolderFollowUpsPhone = phone(FolderFollowUps);
 export const FolderTranscript = inCall({ scenario: 'call-soon', call: REVIEW, script: { here: REVIEWERS, ...TALK } }, { play: openPage('Transcript') });
 export const FolderTranscriptPhone = phone(FolderTranscript);
 
-/** A follow-up nobody said, added by hand: yours, for everyone who gets the notes. */
+/** A follow-up nobody said, added by hand with an optional owner and date, for everyone who gets the notes. */
 export const AddFollowUp = inCall({ scenario: 'call-soon', call: REVIEW, script: { here: REVIEWERS, ...TALK } }, {
   play: async (c) => {
     await openPage('Follow-ups')(c);
-    await c.step('Write one nobody said, and press Enter. It’s yours, ticked like the rest', async () => {
-      const field = await c.canvas.findByRole('textbox', { name: 'Add a follow-up' }, { timeout: 8000 });
-      await c.userEvent.type(field, 'Book the room for the launch retro{Enter}');
+    await c.step('Add one nobody said, with a date and nobody assigned yet', async () => {
+      await c.userEvent.click(await c.canvas.findByRole('button', { name: 'Add a follow-up' }, { timeout: 8000 }));
+      await c.userEvent.type(await c.canvas.findByRole('textbox', { name: 'What needs doing' }), 'Book the room for the launch retro');
+      await c.userEvent.type(await c.canvas.findByRole('textbox', { name: 'Due' }), 'Friday');
+      await c.userEvent.click(c.canvas.getByRole('button', { name: 'Add' }));
     });
   }
 });
@@ -238,31 +247,40 @@ export const HistoryPhone = phone(History);
 
 /* ---------- presenting and playing ---------- */
 
-/** You present the plan: Present, then the button that says how many sections. Everyone sees it a section at a time. */
+/** You press Present on the workspace's frame: everyone follows you, wherever you go in it, and can unfollow to work alongside you. */
 export const Presenting = inCall(reviewing(), {
   play: async (c) => {
     await openWorkspace(c);
-    await c.step('Press Present at the top of the plan, or in its ⋯ on a phone', async () => {
-      const more = await c.canvas.findByRole('button', { name: 'More for this document' }, { timeout: 8000 });
-      // It comes once the page knows its sections; a phone has it in ⋯ instead.
-      const [present] = await c.canvas.findAllByRole('button', { name: 'Present' }, { timeout: 2000 }).catch(() => []);
-      if (present) { await c.userEvent.click(present); return; }
-      await c.userEvent.click(more);
-      await c.userEvent.click(await screen.findByRole('menuitem', { name: /^Present/ }, { timeout: 5000 }));
-    });
-    await c.step('Present it. Everyone in the call sees it, one section at a time', async () => {
-      await c.userEvent.click(await screen.findByRole('button', { name: /^Present \d+ section/ }, { timeout: 5000 }));
+    await c.step('Press Present on its frame: everyone follows you', async () => {
+      await c.userEvent.click(await within(await frameOf('Product')).findByRole('button', { name: 'Present' }, { timeout: 8000 }));
+      await screen.findByText('Everyone follows you in the workspace. They can unfollow to work alongside you.', {}, { timeout: 8000 });
     });
   }
 });
 export const PresentingPhone = phone(Presenting);
 
-/** Priya presents the plan: the workspace opens for it by itself, and she moves it on to the next section. */
-export const Watching = inCall(reviewing({ cues: [...at(2, presents(PRIYA, PLAN)), ...at(6, movesPresenting(1))] }));
+/** Priya presents the workspace: it takes your stage, you follow her into the plan, and its bar says so, with Unfollow. */
+export const Watching = inCall(reviewing({ cues: at(6, presentsWorkspace(PRIYA)) }), {
+  play: async (c) => {
+    await c.step('Priya presents the workspace: you follow her', async () => {
+      await screen.findByText('Priya is presenting the workspace, and you’re following.', {}, { timeout: 20000 });
+    });
+  }
+});
 export const WatchingPhone = phone(Watching);
 
-/** Priya leaves while she's presenting: it ends, and the toast says why. */
-export const PresenterLeft = inCall(reviewing({ cues: [...at(2, presents(PRIYA, PLAN)), ...at(9, leaves(PRIYA))] }));
+/**
+ * Priya leaves while she's presenting the workspace: the call says it ended as she goes, so it ends at once, and the toast says
+ * why. What you had open stays, just for you.
+ */
+export const PresenterLeft = inCall(reviewing({ cues: [...at(6, presentsWorkspace(PRIYA)), ...at(12, leaves(PRIYA))] }), {
+  play: async (c) => {
+    await c.step('Priya presents the workspace, then leaves: it ends, and you’re told why', async () => {
+      await screen.findByText('Priya left the call, so the presentation ended', {}, { timeout: 25000 });
+    });
+    await c.step('What you had open stays, just for you', async () => { await screen.findByText('Open just for you', {}, { timeout: 5000 }); });
+  }
+});
 export const PresenterLeftPhone = phone(PresenterLeft);
 
 /** Aiko plays the onboarding film for everyone: it plays in its block, and the bar above the dock says who started it. */

@@ -1,10 +1,10 @@
 /**
  * A call's shared live notes: one set for each part of the call, kept sealed on the server and refreshed at most every
  * 30 seconds while someone is watching, in one run however many are; who may read what of them (guests, rooms); ticking
- * a follow-up for everyone, through refreshes that reword it and into the note; adding one nobody said; what stops them
+ * an explicitly accepted follow-up for everyone, through model suggestions and into the note; adding one nobody said; what stops them
  * (notes off, paused); and that nothing readable is left anywhere. The real API over HTTP via @alcove/api-http, real Postgres, the object store,
  * the local LiveKit server, and the stand-in NEAR AI, which says which follow-up is which as the real one is asked to,
- * can reword what it wrote before, and can get that wrong.
+ * can propose different wording, without changing an accepted task, and can get matching wrong.
  */
 import { AlcoveApiError, DEFAULT_NOTES_CHOICES, type AudioPiece, type CallSession, type CallState, type LiveFollowUp, type LiveNotes, type Note, type TranscriptClip } from '@alcove/api';
 import { randomBytes } from 'node:crypto';
@@ -101,6 +101,17 @@ const followUp = (xs: LiveFollowUp[], text: string): LiveFollowUp => {
   if (!f) throw new Error(`no follow-up “${text}” among ${JSON.stringify(texts(xs))}`);
   return f;
 };
+/** A user explicitly adds one displayed proposal before exercising actual-task behavior. */
+async function acceptSuggestion(call: CallSession, text: string): Promise<LiveFollowUp> {
+  await call.refresh();
+  const proposal = followUp(call.getSnapshot().liveNotes.suggestions, text);
+  expect(call.getSnapshot().liveNotes.notes?.next.some((x) => x.id === proposal.id)).toBe(false);
+  await call.reviewFollowUp({ id: proposal.id, revision: proposal.revision, decision: 'accept' });
+  const state = await settle(call, (x) => x.liveNotes.notes?.next.some((f) => f.id === proposal.id) === true);
+  return followUp(state.liveNotes.notes?.next ?? [], text);
+}
+/** Pending extraction remains visible without being counted as an actual checklist task. */
+const proposalsOf = (call: CallSession) => call.getSnapshot().liveNotes.suggestions;
 /** Someone in the call saying they're watching, straight to an API instance, with their pass. */
 const look = async (base: string, call: CallSession) => {
   const r = await fetch(`${base}/v1/live/calls/${call.ticket.callId}/notes/watch`, { method: 'POST', headers: { origin: ORIGIN, 'content-type': 'application/json', 'x-alcove-call': call.ticket.pass }, body: '{}' });
@@ -136,7 +147,8 @@ describe('one set of live notes for the call', () => {
     expect((await settle(kofi, (s) => s.liveNotes.writing)).liveNotes.writing).toBe(true);
     const seen = await notesOf(host);
     expect(texts(seen.decided)).toEqual([A]);
-    expect(seen.next).toEqual([expect.objectContaining({ text: B, owner: 'Kofi', due: 'Friday', done: false, id: expect.any(String) })]);
+    expect(seen.next).toEqual([]);
+    expect(proposalsOf(host)).toEqual([expect.objectContaining({ text: B, owner: 'Kofi', due: 'Friday', done: false, id: expect.any(String) })]);
     expect(texts(seen.open)).toEqual([C]);
     expect(seen.summary).toBe('Catching up on 3 lines.');
     expect(seen.read).toMatchObject({ lines: 3, whileHere: false, skipped: null });
@@ -175,7 +187,7 @@ describe('one set of live notes for the call', () => {
     // Nobody is watching: nothing goes to the notes model, and nothing is kept.
     await sleep(300);
     await host.refresh();
-    expect(host.getSnapshot().liveNotes).toEqual({ notes: null, added: [], writing: false, error: null });
+    expect(host.getSnapshot().liveNotes).toEqual({ notes: null, added: [], suggestions: [], writing: false, error: null });
     expect(runs()).toBe(before);
     expect(await notesRows(host.ticket.callId)).toBe(0);
 
@@ -321,7 +333,8 @@ describe('who reads what of them', () => {
     expect(sentSince(before)[0]).toContain(SAID);
     expect(sentSince(before)[0]).not.toContain('budget');
     expect(theirs.summary).toBe('Catching up on 1 lines.');
-    expect(texts(theirs.next)).toEqual([SAID]);
+    expect(theirs.next).toEqual([]);
+    expect(texts(proposalsOf(sam))).toEqual([SAID]);
     expect(theirs.decided).toEqual([]);
     expect(theirs.read).toMatchObject({ lines: 1, whileHere: true });
     expect(JSON.stringify(sam.getSnapshot().liveNotes)).not.toContain('budget');
@@ -335,14 +348,16 @@ describe('who reads what of them', () => {
     expect(sentSince(before)[1]).toContain(BEFORE);
     expect(sentSince(before)[1]).toContain(SAID);
     expect(texts(full.decided)).toEqual([BEFORE]);
-    expect(texts(full.next)).toEqual([SAID]);
+    expect(full.next).toEqual([]);
+    expect(texts(proposalsOf(kofi))).toEqual([SAID]);
     expect(full).toMatchObject({ summary: 'Catching up on 2 lines.', read: { lines: 2, whileHere: false } });
     expect(await notesRows(host.ticket.callId)).toBe(2);
     await sam.refresh();
     expect(sam.getSnapshot().liveNotes.notes).toEqual(theirs);
 
     // Sam's notes are read-only: a guest ticks nothing, and nobody ticks anything of theirs.
-    const [id, samsId] = [full.next[0]?.id ?? '', theirs.next[0]?.id ?? ''];
+    const samsId = proposalsOf(sam)[0]?.id ?? '';
+    const { id } = await acceptSuggestion(kofi, SAID);
     expect(code(await sam.tickFollowUp(id, true).catch((e: unknown) => e))).toBe('forbidden');
     expect(code(await sam.tickFollowUp(samsId, true).catch((e: unknown) => e))).toBe('forbidden');
     expect(code(await kofi.tickFollowUp(samsId, true).catch((e: unknown) => e))).toBe('not-found');
@@ -350,7 +365,8 @@ describe('who reads what of them', () => {
     // What's ticked in everyone's isn't told to the model for Sam, since it comes from what Sam can't read, so Sam's stays as it is.
     await kofi.tickFollowUp(id, true);
     await sam.refresh();
-    expect(sam.getSnapshot().liveNotes.notes?.next).toEqual([expect.objectContaining({ id: samsId, done: false })]);
+    expect(sam.getSnapshot().liveNotes.notes?.next).toEqual([]);
+    expect(proposalsOf(sam)).toEqual([expect.objectContaining({ id: samsId, done: false })]);
     await host.leave();
   });
 
@@ -520,9 +536,17 @@ describe('who reads what of them', () => {
     await gone(g.host, sam);
     await sleep(1200);
     await sayNow(g.host, said, atMs);
+    // Transcript positions and presence both round to tenths. Rejoin on a later server-clock tick, so this line stays away.
+    const awayThrough = (await g.host.catchUpWindow()).now;
+    const until = Date.now() + 15_000;
+    while ((await g.host.catchUpWindow()).now <= awayThrough) {
+      if (Date.now() > until) throw new Error('timed out waiting for a later call-clock tick before rejoining');
+      await sleep(25);
+    }
     const back = await g.browser.calls.join(g.code, { mic: true, cam: false, name: 'Sam', previous: sam.ticket.pass });
     await inGroup(back);
     await sleep(300);
+    expect((await back.catchUpWindow()).here?.at(-1)?.from).toBeGreaterThan(awayThrough);
     return back;
   }
 
@@ -637,7 +661,7 @@ describe('who reads what of them', () => {
     h.near.failNext(1, 'prose');
     const stop = sam.watchNotes();
     const failed = await settle(sam, (s) => s.liveNotes.error !== null);
-    expect(failed.liveNotes).toEqual({ notes: null, added: [], writing: false, error: NOT_UPDATED });
+    expect(failed.liveNotes).toEqual({ notes: null, added: [], suggestions: [], writing: false, error: NOT_UPDATED });
     await later(sam);
     expect(texts((await notesOf(sam)).decided)).toEqual([SAID]);
     await settle(sam, (s) => s.liveNotes.error === null);
@@ -653,7 +677,7 @@ describe('who reads what of them', () => {
     await notesOf(host);
     stop();
     const kim = await guestBrowser().calls.join(c, { mic: true, cam: false, name: 'Kim' });
-    expect(kim.getSnapshot().liveNotes).toEqual({ notes: null, added: [], writing: false, error: null });
+    expect(kim.getSnapshot().liveNotes).toEqual({ notes: null, added: [], suggestions: [], writing: false, error: null });
     expect((await look(h.baseUrl, kim)).status).toBe(403);
     await letIn(host, kim);
     await host.remove(kim.ticket.identity);
@@ -710,11 +734,12 @@ describe('breakout rooms', () => {
     expect(sent.find((p) => p.includes(MAIN))).toContain(MEANWHILE);
     expect(texts(inDesign.decided)).toEqual([DESIGN]);
     expect(inDesign.read.lines).toBe(1);
-    expect(texts(inSupport.next)).toEqual([SUPPORT]);
+    expect(inSupport.next).toEqual([]);
+    expect(texts(proposalsOf(lena))).toEqual([SUPPORT]);
     expect(texts(inMain.decided)).toEqual([MAIN, MEANWHILE]);
 
     // A follow-up is the room's alone: nobody elsewhere finds it, the organizer in the main room included.
-    const id = inSupport.next[0]?.id ?? '';
+    const { id } = await acceptSuggestion(lena, SUPPORT);
     for (const who of [kofi, host]) expect(code(await who.tickFollowUp(id, true).catch((e: unknown) => e))).toBe('not-found');
     await lena.tickFollowUp(id, true);
     await notesOf(lena, (n) => n.next[0]?.done === true);
@@ -771,7 +796,7 @@ describe('breakout rooms', () => {
     // What was ticked in a room is done in the room's section of the note.
     const ended = await host.leave();
     const note = await written(org.api, ended?.pendingNoteId);
-    expect(note.rooms.find((r) => r.name === 'Support')?.actions).toEqual([expect.objectContaining({ text: 'Call the customer by Monday', done: true })]);
+    expect(note.rooms.find((r) => r.name === 'Support')?.actions).toEqual([expect.objectContaining({ text: SUPPORT, done: true })]);
     expect(await notesRows(host.ticket.callId)).toBe(0);
   });
 
@@ -787,7 +812,8 @@ describe('breakout rooms', () => {
     await say(r.host, 'The hall is for Kofi’s surprise party.', 3000);
     h.near.reword(TASK, WORDED);
     const stop = r.host.watchNotes();
-    const task = followUp((await notesOf(r.host)).next, WORDED);
+    await notesOf(r.host);
+    const task = await acceptSuggestion(r.host, WORDED);
     stop();
     expect(task.evidence).toHaveLength(1);
     await r.host.tickFollowUp(task.id, true);
@@ -806,9 +832,11 @@ describe('breakout rooms', () => {
     back();
     expect(after.read.lines).toBe(1);
     expect(JSON.stringify(after)).not.toContain('surprise');
+    expect(JSON.stringify(kofi.getSnapshot().liveNotes)).not.toContain('surprise');
     expect(sentSince(before)[0]).not.toContain('surprise');
     // The model lists it again from what it read, as something new: it wasn't told the one that's ticked.
-    expect(after.next.map((x) => [x.text, x.done])).toEqual([[TASK, false]]);
+    expect(after.next).toEqual([]);
+    expect(proposalsOf(kofi).map((x) => [x.text, x.done])).toEqual([[TASK, false]]);
     // Nor is it told later, when a refresh reads all the last one did.
     await sayNow(host, C, 6000);
     await later(kofi);
@@ -817,10 +845,11 @@ describe('breakout rooms', () => {
     const more = await notesOf(kofi, (n) => n.read.lines === 2);
     again();
     expect(JSON.stringify(more)).not.toContain('surprise');
+    expect(JSON.stringify(kofi.getSnapshot().liveNotes)).not.toContain('surprise');
     expect(sentSince(next)[0]).not.toContain('surprise');
     // The tick still goes to the note, where everyone reads what it rests on.
     const ended = await host.leave();
-    expect((await written(org.api, ended?.pendingNoteId)).actions).toEqual([expect.objectContaining({ text: 'Book the hall by Friday', done: true })]);
+    expect((await written(org.api, ended?.pendingNoteId)).actions).toEqual([expect.objectContaining({ text: WORDED, done: true })]);
   });
 
   it('stops showing it when a long call pushes it off the list too', async () => {
@@ -832,7 +861,8 @@ describe('breakout rooms', () => {
     const back = kofi.watchNotes();
     const after = await notesOf(kofi, (n) => n.read.lines === 21);
     back();
-    expect(texts(after.next)).toEqual(Array.from({ length: 20 }, (_, i) => task(i + 1)));
+    expect(after.next).toEqual([]);
+    expect(texts(proposalsOf(kofi))).toEqual(Array.from({ length: 20 }, (_, i) => task(i + 1)));
     expect(JSON.stringify(after)).not.toContain('surprise');
     await host.leave();
   });
@@ -867,7 +897,8 @@ describe('breakout rooms', () => {
     await inPlace(kofi, design);
     await sayNow(host, TASK, 1000);
     const stop = host.watchNotes();
-    const task = followUp((await notesOf(host)).next, TASK);
+    await notesOf(host);
+    const task = await acceptSuggestion(host, TASK);
     stop();
 
     // Invited, and in the main room, but they came after that was said with the rooms open: those notes aren't theirs.
@@ -913,44 +944,37 @@ describe('breakout rooms', () => {
   });
 });
 
-describe('ticking a follow-up', () => {
+describe('ticking an accepted follow-up', () => {
   const DECK = 'Kofi will send the deck to legal by Friday.';
   const ROOM = 'Priya will book the room by Monday.';
 
-  it('is done for everyone, nudges the room, and stays through a refresh that rewords it', async () => {
+  it('is done for everyone and keeps actual words and ticks while inference offers a change', async () => {
     const { host, kofi } = await twoInCall();
     await say(host, DECK);
     const stop = host.watchNotes();
-    const first = await notesOf(host);
-    const deck = followUp(first.next, DECK);
-    expect(deck.done).toBe(false);
-
-    // Anyone in the call who gets the notes. It reaches the others as every change to the call does.
+    expect((await notesOf(host)).next).toEqual([]);
+    const deck = await acceptSuggestion(host, DECK);
     open.push(await connect(await host.room(), { sending: host.crypto }));
     const nudged = open[0]?.nextNudge();
     await kofi.tickFollowUp(deck.id, true);
     await nudged;
-    expect(followUp(kofi.getSnapshot().liveNotes.notes?.next ?? [], DECK).done).toBe(true);
     expect(followUp((await notesOf(host, (n) => n.next[0]?.done === true)).next, DECK).done).toBe(true);
 
-    // The next run words it differently, and hears something new: the same item keeps its ID and its tick; the new one has its own.
     const SAID = 'Send the deck over to legal before Friday';
     h.near.reword(DECK, SAID);
     await say(host, ROOM, 4000);
     await later(host);
     const second = await notesOf(host, (n) => n.read.lines === 2);
-    expect(texts(second.next)).toEqual([SAID, ROOM]);
-    expect(followUp(second.next, SAID)).toMatchObject({ id: deck.id, done: true });
-    const room = followUp(second.next, ROOM);
-    expect(room).toMatchObject({ done: false });
-    expect(room.id).not.toBe(deck.id);
-
-    // Taking a tick back is done for everyone too, and keeps through a refresh as well.
+    expect(second.next).toEqual([expect.objectContaining({ id: deck.id, text: DECK, done: true })]);
+    expect(proposalsOf(host)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ text: SAID, changeOf: deck.id }), expect.objectContaining({ text: ROOM, changeOf: null })
+    ]));
+    const room = await acceptSuggestion(host, ROOM);
     await host.tickFollowUp(deck.id, false);
-    expect(followUp((await notesOf(kofi, (n) => n.next.find((x) => x.id === deck.id)?.done === false)).next, SAID).id).toBe(deck.id);
+    expect(followUp((await notesOf(kofi, (n) => n.next.find((x) => x.id === deck.id)?.done === false)).next, DECK).id).toBe(deck.id);
     await host.tickFollowUp(deck.id, true);
 
-    // A tick that lands while the notes are being written isn't lost when they're saved.
+    // A person's update during an unlocked model run remains authoritative when the refresh saves.
     h.near.slowNext(900);
     const before = runs();
     await say(host, C, 8000);
@@ -958,46 +982,47 @@ describe('ticking a follow-up', () => {
     await waitFor(() => runs() > before, 'a refresh under way');
     await kofi.tickFollowUp(room.id, true);
     const third = await notesOf(kofi, (n) => n.read.lines === 3);
-    expect(third.next.map((x) => [x.id, x.done])).toEqual([[deck.id, true], [room.id, true]]);
+    expect(third.next.map((x) => [x.id, x.text, x.done])).toEqual([[deck.id, DECK, true], [room.id, ROOM, true]]);
     stop();
-    await host.leave();
     h.near.reword(DECK, null);
+    await host.leave();
   });
 
-  it('keeps a ticked item the model no longer lists, with its ID if it returns, and lets go of one nobody ticked', async () => {
+  it('keeps accepted tasks whether ticked or open when a model omits and later repeats them', async () => {
     const { host, kofi } = await twoInCall();
     await say(host, DECK);
     await say(host, ROOM, 4000);
     const stop = host.watchNotes();
-    const first = await notesOf(host);
-    const [deck, room] = [followUp(first.next, DECK), followUp(first.next, ROOM)];
+    await notesOf(host);
+    const deck = await acceptSuggestion(host, DECK);
+    const room = await acceptSuggestion(host, ROOM);
     await kofi.tickFollowUp(deck.id, true);
     h.near.reword(DECK, '');
     h.near.reword(ROOM, '');
     await say(host, A, 8000);
     await later(host);
     const second = await notesOf(host, (n) => n.read.lines === 3);
-    expect(second.next.map((x) => [x.id, x.text, x.done])).toEqual([[deck.id, DECK, true]]);
+    expect(second.next.map((x) => [x.id, x.text, x.done])).toEqual([[deck.id, DECK, true], [room.id, ROOM, false]]);
     h.near.reword(ROOM, null);
     h.near.reword(DECK, null);
     await say(host, C, 12_000);
     await later(host);
     const third = await notesOf(host, (n) => n.read.lines === 4);
-    expect(third.next.map((x) => [x.text, x.done])).toEqual([[DECK, true], [ROOM, false]]);
-    expect(followUp(third.next, DECK).id).toBe(deck.id);
-    expect(followUp(third.next, ROOM).id).not.toBe(room.id);
+    expect(third.next.map((x) => [x.id, x.text, x.done])).toEqual([[deck.id, DECK, true], [room.id, ROOM, false]]);
+    expect(proposalsOf(host)).toEqual([]);
     stop();
     await host.leave();
   });
 
-  it('knows a follow-up by what the notes model says it is, however it’s worded, in any language', async () => {
+  it('leaves multilingual paraphrases as a stable proposal while the accepted task retains its identity', async () => {
     const { host } = await twoInCall();
     await say(host, DECK);
     const stop = host.watchNotes();
-    const deck = followUp((await notesOf(host)).next, DECK);
+    await notesOf(host);
+    const deck = await acceptSuggestion(host, DECK);
     await host.tickFollowUp(deck.id, true);
-    // Short, or sharing nothing with what it said before: it's told what's there, and says which is which.
     let n = 1;
+    let proposalId = '';
     for (const wording of ['Go to HR', 'रिपोर्ट भेजें', 'Do it', '資料を送る']) {
       const before = runs();
       h.near.reword(DECK, wording);
@@ -1005,7 +1030,11 @@ describe('ticking a follow-up', () => {
       n++;
       await later(host);
       const seen = await notesOf(host, (x) => x.read.lines === n);
-      expect(seen.next).toEqual([expect.objectContaining({ id: deck.id, text: wording, done: true })]);
+      expect(seen.next).toEqual([expect.objectContaining({ id: deck.id, text: DECK, done: true })]);
+      const proposal = proposalsOf(host)[0];
+      expect(proposal).toMatchObject({ text: 'Go to HR', changeOf: deck.id, review: 'suggested' });
+      if (proposalId) expect(proposal?.id).toBe(proposalId);
+      proposalId = proposal?.id ?? '';
       expect(sentSince(before)[0]).toContain('F1 (Kofi) ');
       expect(sentSince(before)[0]).not.toContain(deck.id);
     }
@@ -1014,46 +1043,40 @@ describe('ticking a follow-up', () => {
     await host.leave();
   });
 
-  it('treats an ID it wasn’t told as something new, and gives one used twice to the first', async () => {
+  it('does not let invented or duplicate model identities replace accepted tasks', async () => {
     const { host } = await twoInCall();
     await say(host, DECK);
     await say(host, ROOM, 4000);
     const stop = host.watchNotes();
-    const first = await notesOf(host);
-    const [deck, room] = [followUp(first.next, DECK), followUp(first.next, ROOM)];
+    await notesOf(host);
+    const deck = await acceptSuggestion(host, DECK);
+    const room = await acceptSuggestion(host, ROOM);
     await host.tickFollowUp(deck.id, true);
-
     h.near.identify(ROOM, 'invented');
     await say(host, A, 8000);
     await later(host);
     const second = await notesOf(host, (n) => n.read.lines === 3);
-    expect(second.next.map((x) => [x.text, x.done])).toEqual([[DECK, true], [ROOM, false]]);
-    expect(followUp(second.next, DECK).id).toBe(deck.id);
-    expect(followUp(second.next, ROOM).id).not.toBe(room.id);
-
-    // Both say they're the deck: it stays with the first, and the other is something new.
+    expect(second.next.map((x) => [x.id, x.text, x.done])).toEqual([[deck.id, DECK, true], [room.id, ROOM, false]]);
     h.near.identify(ROOM, DECK);
     await say(host, C, 12_000);
     await later(host);
     const third = await notesOf(host, (n) => n.read.lines === 4);
     stop();
     h.near.identify(ROOM, null);
-    expect(third.next.map((x) => [x.text, x.done])).toEqual([[DECK, true], [ROOM, false]]);
-    expect(followUp(third.next, DECK).id).toBe(deck.id);
-    expect(followUp(third.next, ROOM).id).not.toBe(deck.id);
+    expect(third.next.map((x) => [x.id, x.text, x.done])).toEqual([[deck.id, DECK, true], [room.id, ROOM, false]]);
     await host.leave();
   });
 
-  it('keeps what was ticked whatever the reply says, with anything else that line said beside it', async () => {
+  it('keeps a ticked accepted task while offering another thing from the same sentence', async () => {
     const { host } = await twoInCall();
     const BOTH = 'Kofi will send both of those to legal by Friday.';
     const [REPORT, INVOICE] = ['Send the report to legal by Friday', 'Send the invoice to legal by Friday'];
     await say(host, BOTH);
     h.near.reword(BOTH, REPORT);
     const stop = host.watchNotes();
-    const report = followUp((await notesOf(host)).next, REPORT);
+    await notesOf(host);
+    const report = await acceptSuggestion(host, REPORT);
     await host.tickFollowUp(report.id, true);
-    // The next run lists the other thing that sentence said, and says it's something new.
     h.near.reword(BOTH, INVOICE);
     h.near.identify(BOTH, 'new');
     await say(host, A, 3000);
@@ -1062,42 +1085,41 @@ describe('ticking a follow-up', () => {
     stop();
     h.near.reword(BOTH, null);
     h.near.identify(BOTH, null);
-    expect(n.next.map((x) => [x.text, x.done])).toEqual([[REPORT, true], [INVOICE, false]]);
-    expect(followUp(n.next, REPORT).id).toBe(report.id);
+    expect(n.next).toEqual([expect.objectContaining({ id: report.id, text: REPORT, done: true })]);
+    expect(proposalsOf(host)).toEqual([expect.objectContaining({ text: INVOICE, done: false, review: 'suggested' })]);
     await host.leave();
   });
 
-  it('keeps the newest follow-ups of a long call, and never loses a ticked one', async () => {
+  it('keeps actuals and the open review batch stable as a long call produces newer proposals', async () => {
     const { host } = await twoInCall();
     const task = (n: number) => `Kofi will finish item ${n} by Friday.`;
     for (let n = 1; n <= 25; n++) await say(host, task(n), n * 400);
     const stop = host.watchNotes();
-    const first = await notesOf(host);
-    // At most 20 at a time, and they're the newest.
-    expect(texts(first.next)).toEqual(Array.from({ length: 20 }, (_, i) => task(i + 6)));
-    const oldest = followUp(first.next, task(6));
+    expect((await notesOf(host)).next).toEqual([]);
+    expect(texts(proposalsOf(host))).toEqual(Array.from({ length: 20 }, (_, i) => task(i + 6)));
+    const oldest = await acceptSuggestion(host, task(6));
+    const batch = proposalsOf(host).map((f) => [f.id, f.text]);
     await host.tickFollowUp(oldest.id, true);
     await say(host, task(26), 10_400);
     await say(host, task(27), 10_800);
     await later(host);
     const second = await notesOf(host, (n) => n.read.lines === 27);
     stop();
-    // The two new ones are in, the oldest unticked ones give way, and what was ticked stays where it was.
-    expect(texts(second.next)).toEqual([task(6), ...Array.from({ length: 20 }, (_, i) => task(i + 8))]);
-    expect(followUp(second.next, task(6))).toMatchObject({ id: oldest.id, done: true });
+    expect(second.next).toEqual([expect.objectContaining({ id: oldest.id, text: task(6), done: true })]);
+    expect(proposalsOf(host).map((f) => [f.id, f.text])).toEqual(expect.arrayContaining(batch));
+    expect(texts(proposalsOf(host))).toEqual(expect.arrayContaining([task(26), task(27)]));
     await host.leave();
   });
 
-  it('refuses what isn’t in the notes here: made-up IDs, another call’s, someone asking to join, and an ended call', async () => {
+  it('refuses made-up IDs, another call’s task, someone asking to join, and an ended call', async () => {
     const { org, host, kofi, code: c } = await twoInCall();
     await say(host, DECK);
     const stop = kofi.watchNotes();
-    const deck = followUp((await notesOf(kofi)).next, DECK);
+    await notesOf(kofi);
+    const deck = await acceptSuggestion(kofi, DECK);
     stop();
     expect(code(await kofi.tickFollowUp('AAAAAAAAAAAAAAAAAAAAAA', true).catch((e: unknown) => e))).toBe('not-found');
     expect(code(await kofi.tickFollowUp('x'.repeat(65), true).catch((e: unknown) => e))).toBe('invalid');
-
-    // The same organizer's other call, and another account's: a follow-up of this call isn't theirs to tick.
     const sameOrganizer = await org.api.calls.join((await org.api.calls.startNow({ notes: 'on' })).code, { mic: true, cam: false });
     expect(code(await sameOrganizer.tickFollowUp(deck.id, true).catch((e: unknown) => e))).toBe('not-found');
     await sameOrganizer.leave();
@@ -1112,7 +1134,6 @@ describe('ticking a follow-up', () => {
     const raw = await fetch(`${h.baseUrl}/v1/live/calls/${host.ticket.callId}/actions`, { method: 'POST', headers: { origin: ORIGIN, 'content-type': 'application/json', 'x-alcove-call': theirs.ticket.pass }, body: JSON.stringify({ type: 'follow-up', id: deck.id, done: true }) });
     expect(raw.status).toBe(401);
     await theirs.leave();
-
     const waiting = await guestBrowser().calls.join(c, { mic: true, cam: false, name: 'Kim' });
     expect(code(await waiting.tickFollowUp(deck.id, true).catch((e: unknown) => e))).toBe('forbidden');
     expect((await notesOf(kofi)).next[0]?.done).toBe(false);
@@ -1130,18 +1151,18 @@ describe('adding a follow-up', () => {
     const { host, kofi, email } = await twoInCall();
     open.push(await connect(await host.room(), { sending: host.crypto }));
     const nudged = open[0]?.nextNudge();
-    await kofi.addFollowUp(`  ${MINE}\n`);
+    await kofi.addFollowUp({ text: `  ${MINE}\n`, owner: kofi.getSnapshot().participants.find((p) => p.isMe)?.person.email ?? null, due: null });
     await nudged;
     // For whoever added it, under their name, with nothing behind it, and no notes have been written for it to go in.
     const name = kofi.getSnapshot().participants.find((p) => p.isMe)?.person.name;
-    expect(addedOf(kofi)).toEqual([{ id: expect.any(String), text: MINE, owner: name, evidence: [], done: false, at: expect.any(Number) }]);
+    expect(addedOf(kofi)).toEqual([expect.objectContaining({ id: expect.any(String), text: MINE, owner: name, evidence: [], done: false, at: expect.any(Number), review: 'accepted' })]);
     const seen = await settle(host, (s) => s.liveNotes.added.length === 1);
     expect(seen.liveNotes).toMatchObject({ notes: null, writing: false, error: null, added: addedOf(kofi) });
     expect(email).toContain('kofi');
 
     // The same words again add nothing, however they're spaced: a retry is safe.
-    await kofi.addFollowUp(MINE.replace(' ', '   '));
-    await host.addFollowUp('Book the room');
+    await kofi.addFollowUp({ text: MINE.replace(' ', '   '), owner: kofi.getSnapshot().participants.find((p) => p.isMe)?.person.email ?? null, due: null });
+    await host.addFollowUp({ text: 'Book the room', owner: host.getSnapshot().participants.find((p) => p.isMe)?.person.email ?? null, due: null });
     expect(texts((await settle(kofi, (s) => s.liveNotes.added.length === 2)).liveNotes.added)).toEqual([MINE, 'Book the room']);
 
     // Anyone who gets the notes ticks it, or takes the tick back, for everyone.
@@ -1161,13 +1182,14 @@ describe('adding a follow-up', () => {
 
   it('stays through refreshes in the words it was added, and the notes model is told it as it’s told the rest', async () => {
     const { host, kofi } = await twoInCall();
-    await kofi.addFollowUp(MINE);
+    await kofi.addFollowUp({ text: MINE, owner: kofi.getSnapshot().participants.find((p) => p.isMe)?.person.email ?? null, due: null });
     const id = addedOf(kofi)[0]?.id ?? '';
     await say(host, DECK);
     const before = runs();
     const stop = host.watchNotes();
     const first = await notesOf(host);
-    expect(texts(first.next)).toEqual([DECK]);
+    expect(first.next).toEqual([]);
+    expect(texts(proposalsOf(host))).toEqual([DECK]);
     const told = sentSince(before)[0];
     expect(told).toContain(`(${String(host.getSnapshot().participants.find((p) => !p.isMe)?.person.name)}) ${MINE}`);
     expect(told).not.toContain(id);
@@ -1179,7 +1201,8 @@ describe('adding a follow-up', () => {
     await say(host, SAID, 4000);
     await later(host);
     const second = await notesOf(host, (n) => n.read.lines === 2);
-    expect(texts(second.next)).toEqual([DECK]);
+    expect(second.next).toEqual([]);
+    expect(texts(proposalsOf(host))).toContain(DECK);
     expect((await settle(kofi, (s) => s.liveNotes.notes?.read.lines === 2)).liveNotes.added).toEqual([expect.objectContaining({ id, text: MINE, done: true })]);
 
     // Listed as nothing it knows, it's something the notes wrote, and what was added doesn't go anywhere.
@@ -1187,7 +1210,8 @@ describe('adding a follow-up', () => {
     await say(host, 'Should we cut the travel line?', 8000);
     await later(host);
     const third = await notesOf(host, (n) => n.read.lines === 3);
-    expect(texts(third.next)).toEqual([DECK, SAID]);
+    expect(third.next).toEqual([]);
+    expect(texts(proposalsOf(host))).toEqual(expect.arrayContaining([DECK, SAID]));
     expect(addedOf(host)).toEqual([expect.objectContaining({ id, text: MINE, done: true })]);
     h.near.identify(SAID, null);
     stop();
@@ -1200,7 +1224,7 @@ describe('adding a follow-up', () => {
     h.near.failNext(1, 'prose');
     const stop = host.watchNotes();
     await settle(host, (s) => s.liveNotes.error !== null);
-    await kofi.addFollowUp(MINE);
+    await kofi.addFollowUp({ text: MINE, owner: kofi.getSnapshot().participants.find((p) => p.isMe)?.person.email ?? null, due: null });
     await later(host);
     await notesOf(host);
     await settle(host, (s) => s.liveNotes.added.length === 1);
@@ -1212,7 +1236,7 @@ describe('adding a follow-up', () => {
     await say(host, 'We agreed to start with the budget.', 4000);
     await later(host);
     await waitFor(() => runs() > before, 'a refresh under way');
-    await kofi.addFollowUp('Book the room');
+    await kofi.addFollowUp({ text: 'Book the room', owner: kofi.getSnapshot().participants.find((p) => p.isMe)?.person.email ?? null, due: null });
     await notesOf(host, (n) => n.read.lines === 2);
     expect(texts((await settle(host, (s) => s.liveNotes.added.length === 2)).liveNotes.added)).toEqual([MINE, 'Book the room']);
     stop();
@@ -1221,7 +1245,7 @@ describe('adding a follow-up', () => {
 
   it('is for people who get the notes, in a call that has some: nobody else adds or reads it', async () => {
     const { org, host, kofi, code: c } = await twoInCall();
-    await kofi.addFollowUp(MINE);
+    await kofi.addFollowUp({ text: MINE, owner: kofi.getSnapshot().participants.find((p) => p.isMe)?.person.email ?? null, due: null });
     await say(host, DECK);
     const stop = kofi.watchNotes();
     await notesOf(kofi);
@@ -1229,17 +1253,17 @@ describe('adding a follow-up', () => {
 
     // A guest with the link, here for all of it or not: the note doesn't go to them, so nor does this.
     const sam = await guestBrowser().calls.join(c, { mic: true, cam: false, name: 'Sam' });
-    expect(code(await sam.addFollowUp('Waiting to be let in').catch((e: unknown) => e))).toBe('forbidden');
+    expect(code(await sam.addFollowUp({ text: 'Waiting to be let in', owner: null, due: null }).catch((e: unknown) => e))).toBe('forbidden');
     await letIn(host, sam);
-    expect(code(await sam.addFollowUp('Added by a guest').catch((e: unknown) => e))).toBe('forbidden');
+    expect(code(await sam.addFollowUp({ text: 'Added by a guest', owner: null, due: null }).catch((e: unknown) => e))).toBe('forbidden');
     await sam.refresh();
     expect(sam.getSnapshot().liveNotes.added).toEqual([]);
     expect(JSON.stringify(sam.getSnapshot().liveNotes)).not.toContain('pricing');
     expect(code(await sam.tickFollowUp(addedOf(kofi)[0]?.id ?? '', true).catch((e: unknown) => e))).toBe('forbidden');
 
     // Words that aren't there, or are too many.
-    expect(code(await kofi.addFollowUp('   ').catch((e: unknown) => e))).toBe('invalid');
-    expect(code(await kofi.addFollowUp('x'.repeat(301)).catch((e: unknown) => e))).toBe('invalid');
+    expect(code(await kofi.addFollowUp({ text: '   ', owner: kofi.getSnapshot().participants.find((p) => p.isMe)?.person.email ?? null, due: null }).catch((e: unknown) => e))).toBe('invalid');
+    expect(code(await kofi.addFollowUp({ text: 'x'.repeat(301), owner: kofi.getSnapshot().participants.find((p) => p.isMe)?.person.email ?? null, due: null }).catch((e: unknown) => e))).toBe('invalid');
 
     // Nobody else's call: what's added here isn't there, and its ID finds nothing.
     const sameOrganizer = await org.api.calls.join((await org.api.calls.startNow({ notes: 'on' })).code, { mic: true, cam: false });
@@ -1249,33 +1273,33 @@ describe('adding a follow-up', () => {
 
     // A call that has never had notes has nowhere for it to go; one that has, however they stand now, does.
     const quiet = await twoInCall('off');
-    expect(code(await quiet.kofi.addFollowUp(MINE).catch((e: unknown) => e))).toBe('conflict');
+    expect(code(await quiet.kofi.addFollowUp({ text: MINE, owner: kofi.getSnapshot().participants.find((p) => p.isMe)?.person.email ?? null, due: null }).catch((e: unknown) => e))).toBe('conflict');
     await quiet.host.leave();
     await host.pause();
     await settle(kofi, (s) => s.capture.mode === 'paused');
-    await kofi.addFollowUp('Added while paused');
+    await kofi.addFollowUp({ text: 'Added while paused', owner: kofi.getSnapshot().participants.find((p) => p.isMe)?.person.email ?? null, due: null });
     await host.setNotes(false);
     await settle(kofi, (s) => s.capture.mode === 'off');
-    await kofi.addFollowUp('Added with notes off');
+    await kofi.addFollowUp({ text: 'Added with notes off', owner: kofi.getSnapshot().participants.find((p) => p.isMe)?.person.email ?? null, due: null });
     expect(texts(addedOf(kofi))).toEqual([MINE, 'Added while paused', 'Added with notes off']);
 
     await host.leave();
-    expect(code(await host.addFollowUp('Too late').catch((e: unknown) => e))).toBe('conflict');
+    expect(code(await host.addFollowUp({ text: 'Too late', owner: host.getSnapshot().participants.find((p) => p.isMe)?.person.email ?? null, due: null }).catch((e: unknown) => e))).toBe('conflict');
   });
 
   it('stops at a limit', async () => {
     const { host, kofi } = await twoInCall();
-    for (let i = 0; i < 40; i++) await (i % 2 ? kofi : host).addFollowUp(`Thing ${i}`);
-    expect(code(await kofi.addFollowUp('One too many').catch((e: unknown) => e))).toBe('conflict');
-    await host.addFollowUp('Thing 3');
+    for (let i = 0; i < 40; i++) await (i % 2 ? kofi : host).addFollowUp({ text: `Thing ${i}`, owner: null, due: null });
+    expect(code(await kofi.addFollowUp({ text: 'One too many', owner: kofi.getSnapshot().participants.find((p) => p.isMe)?.person.email ?? null, due: null }).catch((e: unknown) => e))).toBe('conflict');
+    await host.addFollowUp({ text: 'Thing 3', owner: host.getSnapshot().participants.find((p) => p.isMe)?.person.email ?? null, due: null });
     await host.leave();
   });
 
-  it('is its adder’s in the note, done if it was ticked, and stays through every writing of the notes', async () => {
+  it('keeps a manual task’s owner separate from consent and retains it through every writing of the notes', async () => {
     const { org, host, kofi, invited, email } = await twoInCall();
     await say(host, DECK);
-    await kofi.addFollowUp(MINE);
-    await host.addFollowUp('Book the room');
+    await kofi.addFollowUp({ text: MINE, owner: kofi.getSnapshot().participants.find((p) => p.isMe)?.person.email ?? null, due: null });
+    await host.addFollowUp({ text: 'Book the room', owner: host.getSnapshot().participants.find((p) => p.isMe)?.person.email ?? null, due: null });
     await kofi.tickFollowUp(addedOf(kofi)[0]?.id ?? '', true);
     const before = h.near.prompts.length;
     const ended = await host.leave();
@@ -1283,21 +1307,23 @@ describe('adding a follow-up', () => {
 
     // The notes model is told it's settled, so it doesn't list it again.
     const asked = h.near.prompts.slice(before).find((p) => p.includes('Already settled'));
-    expect(asked).toContain(`for ${String(note.actions.find((a) => a.text === MINE)?.owner?.name)}, taken on, done): ${MINE}`);
+    expect(asked).toContain(`for ${String(note.actions.find((a) => a.text === MINE)?.owner?.name)}, done): ${MINE}`);
 
     const mine = note.actions.find((a) => a.text === MINE);
-    expect(mine).toMatchObject({ takenOn: true, done: true, lines: [], owner: { person: { email } } });
+    expect(mine).toMatchObject({ takenOn: false, done: true, lines: [], owner: { person: { email } } });
     expect(mine?.changes).toEqual([
       { by: { id: null, name: expect.any(String), email, as: 'invited' }, at: expect.any(String), what: 'proposed' },
       { by: { id: null, name: expect.any(String), email, as: 'invited' }, at: expect.any(String), what: 'done' }
     ]);
     const room = note.actions.find((a) => a.text === 'Book the room');
-    expect(room).toMatchObject({ takenOn: true, done: false, owner: { person: { id: org.session.ownerId } } });
+    expect(room).toMatchObject({ takenOn: false, done: false, owner: { person: { id: org.session.ownerId } } });
     expect(room?.changes).toEqual([{ by: { id: org.session.ownerId, name: expect.any(String), email: expect.any(String), as: 'organizer' }, at: expect.any(String), what: 'proposed' }]);
-    expect(note.actions.map((a) => a.text)).toContain('Send the deck to legal by Friday');
+    expect(note.actions.map((a) => a.text)).not.toContain('Send the deck to legal by Friday');
+    expect(note.suggestions.map((a) => a.text)).toContain('Send the deck to legal by Friday');
     expect(await notesRows(host.ticket.callId)).toBe(0);
 
-    // It's Kofi's to change, and waits on Kofi like anything they took on.
+    // Ownership consent is still Kofi's separate choice after adding the task.
+    await invited.api.notes.updateAction(note.id, mine?.id ?? '', { takeOn: true, seen: { text: MINE, due: mine?.due ?? null } });
     expect((await invited.api.notes.inbox()).followUps.map((f) => f.text)).not.toContain(MINE);
     await invited.api.notes.updateAction(note.id, mine?.id ?? '', { done: false });
     expect((await invited.api.notes.inbox()).followUps.map((f) => f.text)).toContain(MINE);
@@ -1319,7 +1345,7 @@ describe('adding a follow-up', () => {
     const lena = await (await account(lenaEmail)).api.calls.join(c, { mic: true, cam: false });
     await inGroup(lena);
     await host.appendAudio(piece(audioBytes('rooms'), 0, 0));
-    await host.addFollowUp('Added in the main room');
+    await host.addFollowUp({ text: 'Added in the main room', owner: host.getSnapshot().participants.find((p) => p.isMe)?.person.email ?? null, due: null });
     host.openRooms({ rooms: [{ name: 'Design', emails: [kofiEmail] }, { name: 'Support', emails: [lenaEmail] }], minutes: 10, board: { mode: 'none', template: 'blank' } });
     const [design = ''] = (await settle(host, (s) => s.breakouts.open !== null)).breakouts.open?.rooms.map((r) => r.id) ?? [];
     await inPlace(kofi, design);
@@ -1327,7 +1353,7 @@ describe('adding a follow-up', () => {
     // Each part of the call has its own: what's added in a room stays there.
     await kofi.refresh();
     expect(texts(addedOf(kofi))).toEqual([]);
-    await kofi.addFollowUp('Added in Design');
+    await kofi.addFollowUp({ text: 'Added in Design', owner: kofi.getSnapshot().participants.find((p) => p.isMe)?.person.email ?? null, due: null });
     await settle(host, (s) => s.liveNotes.added.length === 1);
     expect(texts(addedOf(host))).toEqual(['Added in the main room']);
     expect(texts(addedOf(kofi))).toEqual(['Added in Design']);
@@ -1360,7 +1386,7 @@ describe('adding a follow-up', () => {
     await notesOf(host, (n) => n.read.lines === 2);
     stop();
     // Someone who stayed adds what only those who stayed heard.
-    await host.addFollowUp('Order the surprise cake');
+    await host.addFollowUp({ text: 'Order the surprise cake', owner: host.getSnapshot().participants.find((p) => p.isMe)?.person.email ?? null, due: null });
     host.closeRooms();
     await inPlace(kofi, 'main');
     await later(kofi);
@@ -1374,7 +1400,7 @@ describe('adding a follow-up', () => {
     await host.refresh();
     expect(addedOf(host)).toEqual([]);
     // Saying it again adds it for everyone, in full view, as anyone can.
-    await kofi.addFollowUp('Order the surprise cake');
+    await kofi.addFollowUp({ text: 'Order the surprise cake', owner: kofi.getSnapshot().participants.find((p) => p.isMe)?.person.email ?? null, due: null });
     await settle(host, (s) => s.liveNotes.added.length === 1);
     expect(texts(addedOf(host))).toEqual(['Order the surprise cake']);
     const ended = await host.leave();
@@ -1387,6 +1413,7 @@ describe('adding a follow-up', () => {
     const stop = kofi.watchNotes();
     await notesOf(kofi);
     stop();
+    await acceptSuggestion(kofi, DECK);
     const callId = host.ticket.callId;
     const o = await openOwner(h.deps, org.session.ownerId, undefined);
     const key = stateKey(o.root, o.ownerId, `call-notes:${callId}`);
@@ -1399,7 +1426,7 @@ describe('adding a follow-up', () => {
     await kofi.refresh();
     expect(texts(kofi.getSnapshot().liveNotes.notes?.next ?? [])).toEqual([DECK]);
     expect(addedOf(kofi)).toEqual([]);
-    await kofi.addFollowUp(MINE);
+    await kofi.addFollowUp({ text: MINE, owner: kofi.getSnapshot().participants.find((p) => p.isMe)?.person.email ?? null, due: null });
     expect(texts(addedOf(kofi))).toEqual([MINE]);
     await host.leave();
   });
@@ -1415,29 +1442,24 @@ describe('adding a follow-up', () => {
   }
 });
 
-describe('into the note', () => {
+describe('accepted follow-ups into the note', () => {
   const DECK = 'Kofi will send the deck to legal by Friday.';
   const ROOM = 'Kofi will book the room by Monday.';
   const PLANTS = 'Kofi will water the plants by Tuesday.';
   const LATER = 'Kofi will update the plan by Thursday.';
 
-  it('makes what was ticked done in the note, reworded or not, and nothing else, with who ticked it', async () => {
+  it('preserves accepted wording, identity, ownership and ticks through final inference and rewriting', async () => {
     const { org, host, kofi, invited, email } = await twoInCall();
-    await say(host, DECK);
-    await say(host, ROOM, 3000);
-    await say(host, PLANTS, 6000);
-    await say(host, LATER, 9000);
+    for (const [i, words] of [DECK, ROOM, PLANTS, LATER].entries()) await say(host, words, i * 3000);
     const stop = kofi.watchNotes();
-    const seen = await notesOf(kofi);
+    expect((await notesOf(kofi)).next).toEqual([]);
+    const accepted: LiveFollowUp[] = [];
+    for (const text of [DECK, ROOM, PLANTS, LATER]) accepted.push(await acceptSuggestion(kofi, text));
     stop();
-    await kofi.tickFollowUp(followUp(seen.next, DECK).id, true);
-    await kofi.tickFollowUp(followUp(seen.next, PLANTS).id, true);
-    await host.tickFollowUp(followUp(seen.next, ROOM).id, true);
-    await host.tickFollowUp(followUp(seen.next, ROOM).id, false);
-    await host.tickFollowUp(followUp(seen.next, LATER).id, true);
-
-    // The notes word the deck afresh, as a model does, and leave out the plants altogether. Only the moment and a few
-    // words tie the deck to what was ticked. The plan is written as the fake hears it: a few of the same words.
+    for (const text of [DECK, PLANTS]) await kofi.tickFollowUp(followUp(accepted, text).id, true);
+    await host.tickFollowUp(followUp(accepted, ROOM).id, true);
+    await host.tickFollowUp(followUp(accepted, ROOM).id, false);
+    await host.tickFollowUp(followUp(accepted, LATER).id, true);
     const WORDED = 'Legal gets the deck from Kofi by Friday';
     h.near.reword(DECK, WORDED);
     h.near.reword(PLANTS, '');
@@ -1445,54 +1467,43 @@ describe('into the note', () => {
     const note = await written(org.api, ended?.pendingNoteId);
     h.near.reword(DECK, null);
     h.near.reword(PLANTS, null);
-
-    expect(note.actions.map((a) => [a.text, a.done])).toEqual([[WORDED, true], ['Book the room by Monday', false], [PLANTS, true], ['Update the plan by Thursday', true]]);
-    expect(note.actions.find((a) => a.text === 'Update the plan by Thursday')?.changes).toEqual([{ by: { id: org.session.ownerId, name: expect.any(String), email: expect.any(String), as: 'organizer' }, at: expect.any(String), what: 'done' }]);
-    const deck = note.actions.find((a) => a.text === WORDED);
-    expect(deck?.changes).toEqual([{ by: { id: null, name: expect.any(String), email, as: 'invited' }, at: expect.any(String), what: 'done' }]);
-    // The notes never listed the plants: ticked, it's in the note all the same, as it was said, done, with its moment.
+    expect(note.actions.map((a) => [a.id, a.text, a.done])).toEqual(accepted.map((a) => [a.id, a.text, a.text !== ROOM]));
+    const deck = note.actions.find((a) => a.text === DECK);
+    expect(deck?.changes).toEqual(expect.arrayContaining([expect.objectContaining({ by: expect.objectContaining({ email }), what: 'done' })]));
     const plants = note.actions.find((a) => a.text === PLANTS);
-    expect(plants).toMatchObject({ done: true, due: 'Tuesday', owner: { name: 'Kofi' }, takenOn: false, changes: [{ what: 'done' }] });
+    expect(plants).toMatchObject({ done: true, due: 'Tuesday', owner: { name: 'Kofi' }, takenOn: false });
     expect(plants?.at).toBe(note.transcript?.find((l) => l.text === PLANTS)?.at);
     expect(plants?.evidence).toMatchObject({ flags: [], moments: [{ kind: 'line', text: PLANTS }] });
-    // Everyone who has the note reads it so, and it isn't among what's open.
     expect((await invited.api.notes.get(note.id)).actions.map((a) => a.done)).toEqual(note.actions.map((a) => a.done));
     expect((await org.api.notes.list()).find((n) => n.id === note.id)).toMatchObject({ openActions: 1, totalActions: 4 });
-
-    // Writing the notes again keeps them done, as anything someone settled.
     await org.api.notes.correctLine(note.id, note.transcript?.[0]?.id ?? '', { text: DECK.replace('deck', 'slides') });
     await org.api.notes.rewrite(note.id);
-    await settleNote(org.api, note.id, (n) => !n.writingAgain);
-    const again = await org.api.notes.get(note.id);
-    expect(again.actions.filter((a) => a.done).map((a) => a.text)).toEqual(expect.arrayContaining([WORDED, PLANTS]));
-    expect(again.actions.filter((a) => a.done)).toHaveLength(3);
+    const again = await settleNote(org.api, note.id, (n) => !n.writingAgain);
+    expect(again.actions.map((a) => [a.id, a.text, a.done])).toEqual(note.actions.map((a) => [a.id, a.text, a.done]));
   });
 
-  it('takes the notes model’s word for what was ticked, as far as it goes', async () => {
+  it('never lets invented final-model matches transfer a tick or replace accepted task IDs', async () => {
     const { org, host, kofi } = await twoInCall();
-    await say(host, DECK);
-    await say(host, ROOM, 3000);
-    await say(host, PLANTS, 6000);
+    for (const [i, text] of [DECK, ROOM, PLANTS].entries()) await say(host, text, i * 3000);
     const stop = kofi.watchNotes();
-    const seen = await notesOf(kofi);
+    await notesOf(kofi);
+    const deck = await acceptSuggestion(kofi, DECK);
+    const plants = await acceptSuggestion(kofi, PLANTS);
     stop();
-    const deck = followUp(seen.next, DECK);
     await kofi.tickFollowUp(deck.id, true);
-    await kofi.tickFollowUp(followUp(seen.next, PLANTS).id, true);
-    // The room says it's the deck as well: the deck was first. The plants say something it was never told: that's no tick at all.
+    await kofi.tickFollowUp(plants.id, true);
     h.near.identify(ROOM, DECK);
     h.near.identify(PLANTS, 'invented');
     const ended = await host.leave();
     const note = await written(org.api, ended?.pendingNoteId);
     h.near.identify(ROOM, null);
     h.near.identify(PLANTS, null);
-    expect(note.actions.map((a) => [a.text, a.done])).toEqual([['Send the deck to legal by Friday', true], ['Book the room by Monday', false], ['Water the plants by Tuesday', false], [PLANTS, true]]);
-    const told = h.near.prompts.findLast((_, i) => h.near.instructions[i]?.startsWith('You write the notes')) ?? '';
-    expect(told).toContain(`T1 (Kofi) ${DECK}`);
-    expect(told).not.toContain(deck.id);
+    expect(note.actions.map((a) => [a.id, a.text, a.done])).toEqual([[deck.id, DECK, true], [plants.id, PLANTS, true]]);
+    expect(note.suggestions).toEqual(expect.arrayContaining([expect.objectContaining({ text: ROOM, done: false, review: 'suggested' })]));
+    expect(note.totalActions).toBe(2);
   });
 
-  it('finds what was ticked in notes that keep no transcript', async () => {
+  it('retains accepted tasks and ticks when the call does not keep a transcript', async () => {
     const org = await account();
     const email = unique('kofi');
     const { code: c } = await org.api.meetings.create({
@@ -1505,103 +1516,101 @@ describe('into the note', () => {
     for (const at of [0, 1, 2, 3]) await host.appendAudio(piece(audioBytes('no-transcript'), 0, at));
     await say(host, DECK);
     const stop = kofi.watchNotes();
-    const seen = await notesOf(kofi);
+    await notesOf(kofi);
+    const deck = await acceptSuggestion(kofi, DECK);
     stop();
-    await kofi.tickFollowUp(followUp(seen.next, DECK).id, true);
-
-    const WORDED = 'Legal gets the deck from Kofi by Friday';
-    h.near.reword(DECK, WORDED);
+    await kofi.tickFollowUp(deck.id, true);
+    h.near.reword(DECK, 'Legal gets the deck from Kofi by Friday');
     const ended = await host.leave();
     const note = await written(org.api, ended?.pendingNoteId);
     h.near.reword(DECK, null);
-    expect(note.actions.map((a) => [a.text, a.done])).toEqual([[WORDED, true]]);
+    expect(note.actions).toEqual([expect.objectContaining({ id: deck.id, text: DECK, done: true })]);
     expect(note.transcript).toEqual([]);
     const o = await openOwner(h.deps, org.session.ownerId, undefined);
     expect((await getItem(o, h.pool, 'note', note.id, NoteManifest, 'Those notes')).manifest.ticked).toEqual([]);
   });
 
-  it('marks nothing else done when the notes leave out what was ticked', async () => {
+  it('keeps an omitted accepted task and leaves the other inferred task pending', async () => {
     const { org, host, kofi } = await twoInCall();
     const [BANK, CLIENT] = ['Kofi will call the bank by Friday.', 'Kofi will call the client by Friday.'];
     await say(host, BANK);
     await say(host, CLIENT, 1000);
     const stop = kofi.watchNotes();
-    const seen = await notesOf(kofi);
+    await notesOf(kofi);
+    const bank = await acceptSuggestion(kofi, BANK);
     stop();
-    await kofi.tickFollowUp(followUp(seen.next, BANK).id, true);
-    // The notes never list the bank. The client, a second later and worded nothing like what was said, isn't it, whatever else is true of it.
-    const CALLED = 'Appeler le client avant vendredi';
+    await kofi.tickFollowUp(bank.id, true);
     h.near.reword(BANK, '');
-    h.near.reword(CLIENT, CALLED);
+    h.near.reword(CLIENT, 'Appeler le client avant vendredi');
     const ended = await host.leave();
     const note = await written(org.api, ended?.pendingNoteId);
     h.near.reword(BANK, null);
     h.near.reword(CLIENT, null);
-    expect(note.actions.map((a) => [a.text, a.done])).toEqual([[BANK, true], [CALLED, false]]);
+    expect(note.actions).toEqual([expect.objectContaining({ id: bank.id, text: BANK, done: true })]);
+    expect(note.suggestions).toEqual(expect.arrayContaining([expect.objectContaining({ text: CLIENT, done: false })]));
+    expect(note.openActions).toBe(0);
   });
 
-  it('finds what was ticked in notes written in another language', async () => {
+  it('honors the requested notes language without translating accepted task words', async () => {
     const { org, host, kofi } = await twoInCall();
     await org.api.account.updatePreferences({ notesLanguage: 'fr' });
     await say(host, DECK);
     await say(host, ROOM, 6000);
     const stop = kofi.watchNotes();
-    const seen = await notesOf(kofi);
+    await notesOf(kofi);
+    const deck = await acceptSuggestion(kofi, DECK);
     stop();
-    await kofi.tickFollowUp(followUp(seen.next, DECK).id, true);
-    const [SENT, BOOKED] = ['Envoyer la présentation au service juridique avant vendredi', 'Réserver la salle avant lundi'];
-    h.near.reword(DECK, SENT);
-    h.near.reword(ROOM, BOOKED);
+    await kofi.tickFollowUp(deck.id, true);
+    h.near.reword(DECK, 'Envoyer la présentation au service juridique avant vendredi');
+    h.near.reword(ROOM, 'Réserver la salle avant lundi');
     const ended = await host.leave();
     const note = await written(org.api, ended?.pendingNoteId);
     h.near.reword(DECK, null);
     h.near.reword(ROOM, null);
     expect(h.near.instructions.at(-1)).toContain('Write in French.');
-    expect(note.actions.map((a) => [a.text, a.done])).toEqual([[SENT, true], [BOOKED, false]]);
+    expect(note.actions).toEqual([expect.objectContaining({ id: deck.id, text: DECK, done: true })]);
+    expect(note.suggestions.some((a) => a.text === ROOM)).toBe(true);
   });
 
-  it('finds what was ticked in text without spaces', async () => {
+  it('keeps accepted text without spaces through final inference', async () => {
     const { org, host, kofi } = await twoInCall();
     const LINE = '田中さんが金曜日までに資料を法務に送ります。';
     await say(host, LINE);
     const stop = kofi.watchNotes();
-    const seen = await notesOf(kofi);
+    await notesOf(kofi);
+    const task = await acceptSuggestion(kofi, LINE);
     stop();
-    await kofi.tickFollowUp(followUp(seen.next, LINE).id, true);
-    const WORDED = '資料を金曜日までに法務へ送る';
-    h.near.reword(LINE, WORDED);
+    await kofi.tickFollowUp(task.id, true);
+    h.near.reword(LINE, '資料を金曜日までに法務へ送る');
     const ended = await host.leave();
     const note = await written(org.api, ended?.pendingNoteId);
     h.near.reword(LINE, null);
-    expect(note.actions.map((a) => [a.text, a.done])).toEqual([[WORDED, true]]);
+    expect(note.actions).toEqual([expect.objectContaining({ id: task.id, text: LINE, done: true })]);
   });
 
-  it('waits for notes that couldn’t be written, and marks them done when they are', async () => {
+  it('keeps accepted tasks even when writing fails and preserves them when the organizer retries', async () => {
     const { org, host, kofi } = await twoInCall();
     await say(host, DECK);
     const stop = kofi.watchNotes();
-    const deck = followUp((await notesOf(kofi)).next, DECK);
+    await notesOf(kofi);
+    const deck = await acceptSuggestion(kofi, DECK);
     stop();
     await kofi.tickFollowUp(deck.id, true);
-    // Three unusable answers to this organizer's notes, and the note is finished without notes. Theirs alone: the upkeep
-    // below ends any call an earlier test left running and writes its notes, which mustn't take one of the three.
     h.near.failNext(3, 'prose', `Organizer: ${org.session.user.name}`);
     const ended = await host.leave();
     const noteId = ended?.pendingNoteId ?? '';
-    const dueNow = () => h.pool.query(`UPDATE content_jobs SET lease_until = now() - interval '1 second' WHERE owner_id = (SELECT owner_id FROM items WHERE item_id = $1)`, [noteId]);
     const until = Date.now() + 30_000;
     for (;;) {
-      await dueNow();
+      await h.pool.query(`UPDATE content_jobs SET lease_until = now() - interval '1 second' WHERE owner_id = (SELECT owner_id FROM items WHERE item_id = $1)`, [noteId]);
       await maintain(h.deps);
       if ((await org.api.notes.get(noteId)).status === 'ready') break;
       if (Date.now() > until) throw new Error('timed out waiting for the note to finish');
       await sleep(50);
     }
-    expect((await org.api.notes.get(noteId)).actions).toEqual([]);
-    // The organizer has them written after all: what was ticked is done then.
+    expect((await org.api.notes.get(noteId)).actions).toEqual([expect.objectContaining({ id: deck.id, text: DECK, done: true })]);
     await org.api.notes.rewrite(noteId);
-    const n = await settleNote(org.api, noteId, (x) => !x.writingAgain && x.actions.length > 0);
-    expect(n.actions).toEqual([expect.objectContaining({ text: 'Send the deck to legal by Friday', done: true })]);
+    const n = await settleNote(org.api, noteId, (x) => !x.writingAgain);
+    expect(n.actions).toEqual([expect.objectContaining({ id: deck.id, text: DECK, done: true })]);
   });
 
   async function settleNote(api: Awaited<ReturnType<typeof account>>['api'], id: string, pred: (n: Note) => boolean): Promise<Note> {
@@ -1620,6 +1629,8 @@ describe('when notes are off or paused', () => {
     const { host, kofi } = await twoInCall();
     await say(host, 'Kofi will send the deck by Friday.');
     const stop = kofi.watchNotes();
+    await notesOf(kofi);
+    await acceptSuggestion(kofi, 'Kofi will send the deck by Friday.');
     const seen = await notesOf(kofi);
     const id = seen.next[0]?.id ?? '';
     const before = runs();
@@ -1633,7 +1644,7 @@ describe('when notes are off or paused', () => {
     expect(runs()).toBe(before);
     expect(await look(h.baseUrl, kofi)).toEqual({ status: 200, body: { refreshed: false } });
     await kofi.refresh();
-    expect(kofi.getSnapshot().liveNotes).toEqual({ notes: seen, added: [], writing: false, error: null });
+    expect(kofi.getSnapshot().liveNotes).toEqual({ notes: seen, added: [], suggestions: [], writing: false, error: null });
     await kofi.tickFollowUp(id, true);
     await notesOf(host, (n) => n.next[0]?.done === true);
 
@@ -1664,7 +1675,7 @@ describe('when notes are off or paused', () => {
     expect((await look(h.baseUrl, kofi)).body).toEqual({ refreshed: false });
     expect(await notesRows(host.ticket.callId)).toBe(0);
     await kofi.refresh();
-    expect(kofi.getSnapshot().liveNotes).toEqual({ notes: null, added: [], writing: false, error: null });
+    expect(kofi.getSnapshot().liveNotes).toEqual({ notes: null, added: [], suggestions: [], writing: false, error: null });
     expect(code(await kofi.tickFollowUp('AAAAAAAAAAAAAAAAAAAAAA', true).catch((e: unknown) => e))).toBe('not-found');
     expect(runs()).toBe(before);
     await host.leave();
@@ -1684,14 +1695,15 @@ describe('what stays', () => {
     await saveRevision(o, h.pool, noteId, item.revisionId, before);
     expect(await notesRows(host.ticket.callId)).toBe(0);
     await say(host, 'Kofi will send the deck by Friday.');
-    expect((await settle(kofi, (s) => s.transcript.length === 1)).liveNotes).toEqual({ notes: null, added: [], writing: false, error: null });
+    expect((await settle(kofi, (s) => s.transcript.length === 1)).liveNotes).toEqual({ notes: null, added: [], suggestions: [], writing: false, error: null });
     // The first look makes its row, and everything carries on from there.
     const stop = kofi.watchNotes();
-    const seen = await notesOf(kofi);
+    await notesOf(kofi);
     stop();
-    await kofi.tickFollowUp(seen.next[0]?.id ?? '', true);
+    const task = await acceptSuggestion(kofi, 'Kofi will send the deck by Friday.');
+    await kofi.tickFollowUp(task.id, true);
     const ended = await host.leave();
-    expect((await written(org.api, ended?.pendingNoteId)).actions).toEqual([expect.objectContaining({ text: 'Send the deck by Friday', done: true })]);
+    expect((await written(org.api, ended?.pendingNoteId)).actions).toEqual([expect.objectContaining({ text: task.text, id: task.id, done: true })]);
   });
 
   it('won’t delete a note while its call is live, and deletes it as ever once the call has ended', async () => {
@@ -1762,9 +1774,11 @@ describe('what stays', () => {
     const stop = kofi.watchNotes();
     const seen = await notesOf(kofi);
     stop();
-    await kofi.tickFollowUp(seen.next[0]?.id ?? '', true);
-    expect(seen.next[0]?.text).toContain('CANARY-FOLLOWUP');
-    await kofi.addFollowUp('CANARY-ADDED paint the harbour wall');
+    expect(seen.next).toEqual([]);
+    const task = await acceptSuggestion(kofi, 'CANARY-FOLLOWUP Kofi will paint the lighthouse by Friday.');
+    await kofi.tickFollowUp(task.id, true);
+    expect(task.text).toContain('CANARY-FOLLOWUP');
+    await kofi.addFollowUp({ text: 'CANARY-ADDED paint the harbour wall', owner: kofi.getSnapshot().participants.find((p) => p.isMe)?.person.email ?? null, due: null });
 
     const dump = String((await h.pool.query(`SELECT string_agg(t, ' ') AS all FROM (
       SELECT row_to_json(x)::text AS t FROM call_notes x UNION ALL SELECT row_to_json(x)::text FROM calls x UNION ALL
@@ -1804,5 +1818,356 @@ describe('what stays', () => {
     await written(org.api, ended?.pendingNoteId);
     const after = String((await h.pool.query(`SELECT string_agg(row_to_json(x)::text, ' ') AS all FROM revisions x`)).rows[0]?.all ?? '');
     for (const canary of ['CANARY-FOLLOWUP', 'CANARY-ADDED']) for (const enc of encodings(canary)) expect(after.includes(enc)).toBe(false);
+  });
+});
+
+describe('reviewing conversation follow-ups', () => {
+  it('keeps the checklist stable until someone accepts, dismisses durably, and carries pending review into the note', async () => {
+    const { org, host, kofi } = await twoInCall();
+    await say(host, B);
+    const stop = host.watchNotes();
+    await notesOf(host);
+    const first = host.getSnapshot().liveNotes;
+    expect(first.notes?.next).toEqual([]);
+    expect(first.suggestions).toHaveLength(1);
+    const proposal = first.suggestions[0];
+    if (!proposal) throw new Error('No suggestion to review');
+    await kofi.reviewFollowUp({ id: proposal.id, revision: proposal.revision, decision: 'accept' });
+    await settle(host, (s) => s.liveNotes.notes?.next.some((x) => x.id === proposal.id) === true);
+    expect(host.getSnapshot().liveNotes.notes?.next[0]?.done).toBe(false);
+    await kofi.reviewFollowUp({ id: proposal.id, revision: proposal.revision, decision: 'accept' });
+    expect(code(await kofi.reviewFollowUp({ id: proposal.id, revision: proposal.revision, decision: 'dismiss' }).catch((e: unknown) => e))).toBe('conflict');
+    await say(host, 'Kofi will book the room by Monday.', 4000);
+    await later(host);
+    await notesOf(host, (n) => n.read.lines === 2);
+    const pending = host.getSnapshot().liveNotes.suggestions[0];
+    if (!pending) throw new Error('No second suggestion');
+    await host.reviewFollowUp({ id: pending.id, revision: pending.revision, decision: 'dismiss' });
+    await say(host, 'We agreed to review the schedule.', 8000);
+    await later(host);
+    await notesOf(host, (n) => n.read.lines === 3);
+    expect(host.getSnapshot().liveNotes.suggestions.map((x) => x.text)).not.toContain(pending.text);
+    stop();
+    const noteId = host.getSnapshot().notes.noteId;
+    await host.leave();
+    const note = await written(org.api, noteId);
+    expect(note.actions.map((a) => a.id)).toContain(proposal.id);
+    expect(note.actions.map((a) => a.text)).not.toContain(pending.text);
+    expect(note.suggestions.map((a) => a.text)).not.toContain(pending.text);
+  });
+});
+
+describe('reviewing changes without AI editing tasks', () => {
+  it('proposes a change without moving the checklist, applies it once, and refuses a changed target', async () => {
+    const { host } = await twoInCall();
+    await say(host, B);
+    const stop = host.watchNotes();
+    await notesOf(host);
+    const first = host.getSnapshot().liveNotes.suggestions[0];
+    if (!first) throw new Error('No initial proposal');
+    await host.reviewFollowUp({ id: first.id, revision: first.revision, decision: 'accept' });
+    h.near.reword(B, 'Check the launch calendar by Monday');
+    await say(host, A, 4000);
+    await later(host);
+    await notesOf(host, (n) => n.read.lines === 2);
+    const before = host.getSnapshot().liveNotes.notes?.next[0];
+    const change = host.getSnapshot().liveNotes.suggestions[0];
+    expect(before).toMatchObject({ id: first.id, text: B });
+    expect(change).toMatchObject({ changeOf: first.id, text: 'Check the launch calendar by Monday', target: { id: first.id, text: B } });
+    if (!change) throw new Error('No proposed change');
+    await host.reviewFollowUp({ id: change.id, revision: change.revision, decision: 'accept' });
+    await host.reviewFollowUp({ id: change.id, revision: change.revision, decision: 'accept' });
+    expect(host.getSnapshot().liveNotes.notes?.next).toMatchObject([{ id: first.id, text: change.text }]);
+    h.near.reword(B, '');
+    const laterWords = 'Kofi will send the final launch calendar by Tuesday.';
+    h.near.identify(laterWords, change.text);
+    await say(host, laterWords, 8000);
+    await later(host);
+    await notesOf(host, (n) => n.read.lines === 3);
+    const stale = host.getSnapshot().liveNotes.suggestions[0];
+    const actual = host.getSnapshot().liveNotes.notes?.next[0];
+    if (!stale || !actual) throw new Error('Missing change or target');
+    await host.updateFollowUp(actual.id, { seen: { revision: actual.revision, text: actual.text, owner: actual.ownerPerson?.email ?? null, due: actual.due ?? null }, text: 'Our own exact checklist wording' });
+    expect(code(await host.reviewFollowUp({ id: stale.id, revision: stale.revision, decision: 'accept' }).catch((e: unknown) => e))).toBe('conflict');
+    await host.reviewFollowUp({ id: stale.id, revision: stale.revision, decision: 'dismiss' });
+    expect(host.getSnapshot().liveNotes.notes?.next[0]?.text).toBe('Our own exact checklist wording');
+    stop();
+    h.near.reword(B, null);
+    h.near.identify(laterWords, null);
+    await host.leave();
+  });
+
+  it('keeps pending IDs through call end and saved-note rewrites, and protects review from another account', async () => {
+    const { org, host, invited } = await twoInCall();
+    const words = 'CANARY-REVIEW Kofi will check the signed schedule by Friday.';
+    await say(host, words);
+    const stop = host.watchNotes();
+    await notesOf(host);
+    const pending = host.getSnapshot().liveNotes.suggestions[0];
+    if (!pending) throw new Error('Missing pending proposal');
+    stop();
+    const noteId = host.getSnapshot().notes.noteId ?? '';
+    await host.leave();
+    const note = await written(org.api, noteId);
+    expect(note.actions).toEqual([]);
+    expect(note.suggestions).toMatchObject([{ id: pending.id, text: words }]);
+    expect(note.openActions).toBe(0);
+    expect((await invited.api.notes.inbox()).followUps).toEqual([]);
+    const outsider = await account();
+    expect(code(await outsider.api.notes.reviewAction(noteId, { id: pending.id, revision: pending.revision, decision: 'accept' }).catch((e: unknown) => e))).toBe('not-found');
+    expect(code(await invited.api.notes.reviewAction(noteId, { id: pending.id, revision: 'stale', decision: 'accept' }).catch((e: unknown) => e))).toBe('conflict');
+    const results = await Promise.all([
+      org.api.notes.reviewAction(noteId, { id: pending.id, revision: pending.revision, decision: 'dismiss' }),
+      invited.api.notes.reviewAction(noteId, { id: pending.id, revision: pending.revision, decision: 'dismiss' })
+    ]);
+    expect(results.map((n) => n.suggestions.length)).toEqual([0, 0]);
+    h.near.reword(words, 'Review the signed calendar again');
+    await org.api.notes.rewrite(noteId);
+    const rewritten = await reviewFinished(org.api, noteId);
+    expect(rewritten.actions).toEqual([]);
+    expect(rewritten.suggestions).toEqual([]);
+    h.near.reword(words, null);
+    const dump = String((await h.pool.query(`SELECT string_agg(row_to_json(x)::text, ' ') AS all FROM revisions x`)).rows[0]?.all ?? '');
+    expect(dump).not.toContain('CANARY-REVIEW');
+    expect(h.logs.join('')).not.toContain('CANARY-REVIEW');
+  });
+});
+
+describe('durable checklist review', () => {
+  it('preserves review during inference and resolves opposing concurrent reviews only once', async () => {
+    const { host, kofi } = await twoInCall();
+    await say(host, B);
+    const stop = host.watchNotes();
+    await notesOf(host);
+    const proposal = host.getSnapshot().liveNotes.suggestions[0];
+    if (!proposal) throw new Error('No proposal');
+    h.near.slowNext(600);
+    const before = runs();
+    await say(host, A, 4000);
+    await later(host);
+    const refresh = look(h.baseUrl, kofi);
+    await waitFor(() => runs() > before, 'an in-flight refresh');
+    const decisions = await Promise.allSettled([
+      host.reviewFollowUp({ id: proposal.id, revision: proposal.revision, decision: 'accept' }),
+      kofi.reviewFollowUp({ id: proposal.id, revision: proposal.revision, decision: 'dismiss' })
+    ]);
+    expect(decisions.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    expect(decisions.flatMap((r) => r.status === 'rejected' ? [code(r.reason)] : [])).toEqual(['conflict']);
+    await refresh;
+    await host.refresh();
+    expect(host.getSnapshot().liveNotes.suggestions).toEqual([]);
+    expect(host.getSnapshot().liveNotes.notes?.next.length).toBe(decisions[0]?.status === 'fulfilled' ? 1 : 0);
+    stop();
+    await host.leave();
+  });
+
+  it('creates explicit unassigned or other-owned manual tasks, checks stale edits, and opens previous-release records', async () => {
+    const { org, host, kofi, email } = await twoInCall();
+    await host.addFollowUp({ text: 'Keep our own exact task', owner: null, due: '2027-02-01' });
+    const original = host.getSnapshot().liveNotes.added[0];
+    expect(original).toMatchObject({ text: 'Keep our own exact task', ownerPerson: null, due: '2027-02-01' });
+    if (!original) throw new Error('No manual task');
+    const seen = { revision: original.revision, text: original.text, owner: null, due: original.due ?? null };
+    expect(code(await host.updateFollowUp(original.id, { seen, owner: 'outsider@tests.example' }).catch((e: unknown) => e))).toBe('forbidden');
+    await host.updateFollowUp(original.id, { seen, owner: email });
+    expect(code(await kofi.updateFollowUp(original.id, { seen, text: 'A stale overwrite' }).catch((e: unknown) => e))).toBe('conflict');
+    const ended = await host.leave();
+    const noteId = ended?.pendingNoteId ?? '';
+    const note = await written(org.api, noteId);
+    expect(note.actions).toMatchObject([{ id: original.id, text: original.text, takenOn: false, owner: { person: { email } } }]);
+    const owner = await openOwner(h.deps, org.session.ownerId, undefined);
+    const item = await getItem(owner, h.pool, 'note', noteId, NoteManifest, 'Those notes');
+    const actions = item.manifest.actions.map(({ review: _review, changeOf: _change, revision: _revision, target: _target, sourceId: _source, sourceVersion: _version, reviewed: _reviewed, ...old }) => old);
+    await saveRevision(owner, h.pool, noteId, item.revisionId, { ...item.manifest, actions });
+    const upgraded = await org.api.notes.get(noteId);
+    expect(upgraded.actions).toMatchObject([{ id: original.id, text: original.text, review: 'accepted', changeOf: null, revision: '' }]);
+    expect(upgraded.suggestions).toEqual([]);
+  });
+
+  it('retains pending review even when every final-notes attempt fails', async () => {
+    const { org, host } = await twoInCall();
+    await say(host, B);
+    const stop = host.watchNotes();
+    await notesOf(host);
+    const pending = host.getSnapshot().liveNotes.suggestions[0];
+    if (!pending) throw new Error('No pending proposal');
+    stop();
+    h.near.failNext(3, 'prose', `Organizer: ${org.session.user.name}`);
+    const ended = await host.leave();
+    const noteId = ended?.pendingNoteId ?? '';
+    const until = Date.now() + 30_000;
+    for (;;) {
+      await h.pool.query(`UPDATE content_jobs SET lease_until = now() - interval '1 second' WHERE owner_id = $1`, [org.session.ownerId]);
+      await maintain(h.deps);
+      if ((await org.api.notes.get(noteId)).status === 'ready') break;
+      if (Date.now() > until) throw new Error('Timed out finishing failed notes');
+      await sleep(50);
+    }
+    const failed = await org.api.notes.get(noteId);
+    expect(failed.summary).toBe('');
+    expect(failed.actions).toEqual([]);
+    expect(failed.suggestions).toMatchObject([{ id: pending.id, revision: pending.revision, text: pending.text }]);
+    const accepted = await org.api.notes.reviewAction(noteId, { id: pending.id, revision: pending.revision, decision: 'accept' });
+    expect(accepted.actions).toMatchObject([{ id: pending.id, text: pending.text, takenOn: false }]);
+    await org.api.notes.rewrite(noteId);
+    const rewritten = await reviewFinished(org.api, noteId);
+    expect(rewritten.actions.map((a) => a.id)).toEqual([pending.id]);
+  });
+});
+
+async function reviewFinished(api: Awaited<ReturnType<typeof account>>['api'], noteId: string): Promise<Note> {
+  const until = Date.now() + 30_000;
+  for (;;) {
+    const note = await api.notes.get(noteId);
+    if (note.status === 'ready' && !note.writingAgain) return note;
+    if (Date.now() > until) throw new Error('Timed out waiting for rewritten review');
+    await sleep(40);
+  }
+}
+
+describe('authoritative source corrections', () => {
+  it('revises pending review after a transcript correction and allows corrected evidence after dismissal', async () => {
+    const { org, host } = await twoInCall();
+    await say(host, B);
+    const stop = host.watchNotes();
+    await notesOf(host);
+    stop();
+    const ended = await host.leave();
+    const noteId = ended?.pendingNoteId ?? '';
+    const note = await written(org.api, noteId);
+    const original = note.suggestions[0];
+    const line = note.transcript?.[0];
+    if (!original || !line) throw new Error('Missing review source');
+    await org.api.notes.correctLine(noteId, line.id, { text: B.replace('Friday', 'Thursday') });
+    await org.api.notes.rewrite(noteId);
+    const corrected = await reviewFinished(org.api, noteId);
+    const revised = corrected.suggestions.find((a) => a.id === original.id);
+    expect(revised).toMatchObject({ id: original.id, due: 'Thursday' });
+    expect(revised?.revision).not.toBe(original.revision);
+    expect(code(await org.api.notes.reviewAction(noteId, { id: original.id, revision: original.revision, decision: 'accept' }).catch((e: unknown) => e))).toBe('conflict');
+    if (!revised) throw new Error('Missing revised proposal');
+    await org.api.notes.reviewAction(noteId, { id: revised.id, revision: revised.revision, decision: 'dismiss' });
+    await org.api.notes.correctLine(noteId, line.id, { text: B.replace('Friday', 'Wednesday') });
+    await org.api.notes.rewrite(noteId);
+    const fresh = await reviewFinished(org.api, noteId);
+    expect(fresh.suggestions).toMatchObject([{ due: 'Wednesday' }]);
+    const current = fresh.suggestions[0];
+    if (!current) throw new Error('Missing proposal from corrected evidence');
+    expect(current.id).not.toBe(original.id);
+    await org.api.notes.reviewAction(noteId, { id: current.id, revision: current.revision, decision: 'accept' });
+    await org.api.notes.rewrite(noteId);
+    const kept = await reviewFinished(org.api, noteId);
+    expect(kept.actions).toMatchObject([{ id: current.id, due: 'Wednesday', takenOn: false }]);
+    expect(kept.suggestions).toEqual([]);
+  });
+});
+
+describe('separate tasks sharing source evidence', () => {
+  it('preserves two distinct proposals from one line and reviews each identity independently through handover', async () => {
+    const { org, host } = await twoInCall();
+    const line = 'Kofi will draft the timeline and Lena will book the room.';
+    const firstWords = 'Kofi will draft the timeline.';
+    const secondWords = 'Lena will book the room.';
+    h.near.splitActions(line, [firstWords, secondWords]);
+    await say(host, line);
+    const stop = host.watchNotes();
+    await notesOf(host);
+    const suggestions = host.getSnapshot().liveNotes.suggestions;
+    expect(suggestions.map((a) => a.text)).toEqual([firstWords, secondWords]);
+    const first = suggestions[0];
+    const second = suggestions[1];
+    if (!first || !second) throw new Error('Missing distinct source-sharing tasks');
+    expect(first.evidence).toEqual(second.evidence);
+    await host.reviewFollowUp({ id: first.id, revision: first.revision, decision: 'dismiss' });
+    expect(host.getSnapshot().liveNotes.suggestions).toMatchObject([{ id: second.id }]);
+    await say(host, A, 4000);
+    await later(host);
+    await notesOf(host, (n) => n.read.lines === 2);
+    expect(host.getSnapshot().liveNotes.suggestions).toMatchObject([{ id: second.id, text: secondWords }]);
+    await host.reviewFollowUp({ id: second.id, revision: second.revision, decision: 'accept' });
+    expect(host.getSnapshot().liveNotes.notes?.next).toMatchObject([{ id: second.id, text: secondWords }]);
+    stop();
+    const ended = await host.leave();
+    const saved = await written(org.api, ended?.pendingNoteId);
+    expect(saved.actions).toMatchObject([{ id: second.id, text: secondWords }]);
+    expect(saved.actions).toHaveLength(1);
+    expect(saved.suggestions.every((a) => a.changeOf === second.id)).toBe(true);
+    expect(saved.suggestions.some((a) => a.changeOf === first.id || a.text.includes('timeline'))).toBe(false);
+    h.near.splitActions(line, null);
+  });
+});
+
+describe('review identity and capacity', () => {
+  it('retains a uniquely known assignee through promotion and handover without consenting for them', async () => {
+    const { org, host, invited, email } = await twoInCall();
+    await say(host, B);
+    const stop = host.watchNotes();
+    await notesOf(host);
+    const proposed = host.getSnapshot().liveNotes.suggestions[0];
+    expect(proposed?.ownerPerson?.email).toBe(email);
+    if (!proposed) throw new Error('No owner proposal');
+    await host.reviewFollowUp({ id: proposed.id, revision: proposed.revision, decision: 'accept' });
+    expect(host.getSnapshot().liveNotes.notes?.next[0]?.ownerPerson?.email).toBe(email);
+    stop();
+    const ended = await host.leave();
+    const note = await written(org.api, ended?.pendingNoteId);
+    const actual = note.actions.find((a) => a.id === proposed.id);
+    expect(actual).toMatchObject({ owner: { person: { email } }, takenOn: false });
+    expect((await invited.api.notes.inbox()).followUps.map((a) => a.id)).toContain(proposed.id);
+    if (!actual) throw new Error('No accepted task');
+    const taken = await invited.api.notes.updateAction(note.id, actual.id, { takeOn: true, seen: { text: actual.text, due: actual.due ?? null } });
+    expect(taken.actions.find((a) => a.id === actual.id)?.takenOn).toBe(true);
+  });
+
+  it('keeps manual task capacity independent of sixty dismissed proposals', async () => {
+    const { org, host, kofi } = await twoInCall();
+    let stop: (() => void) | undefined;
+    for (let batch = 0; batch < 3; batch++) {
+      const line = `Kofi will discuss follow-up batch ${batch}.`;
+      h.near.splitActions(line, Array.from({ length: 20 }, (_, i) => `Kofi will prepare checklist item ${batch}-${i}.`));
+      await say(host, line, batch * 4000);
+      await later(host);
+      stop ??= host.watchNotes();
+      await look(h.baseUrl, host);
+      await notesOf(host, (n) => n.read.lines === batch + 1);
+      const pending = host.getSnapshot().liveNotes.suggestions;
+      expect(pending).toHaveLength(20);
+      for (const proposal of pending) await host.reviewFollowUp({ id: proposal.id, revision: proposal.revision, decision: 'dismiss' });
+      h.near.splitActions(line, null);
+    }
+    await kofi.addFollowUp({ text: 'The task people chose to add', owner: null, due: null });
+    await host.refresh();
+    expect(host.getSnapshot().liveNotes.added).toMatchObject([{ text: 'The task people chose to add' }]);
+    stop?.();
+    const ended = await host.leave();
+    const note = await written(org.api, ended?.pendingNoteId);
+    const added = await org.api.notes.proposeAction(note.id, { text: 'Another task added by a person' });
+    expect(added.actions.map((a) => a.text)).toContain('Another task added by a person');
+    expect(added.actions).toHaveLength(2);
+  });
+});
+
+describe('follow-up mutation budgets', () => {
+  it('shares the established write budget across add, edit and review while keeping other people independent', async () => {
+    const { host, kofi } = await twoInCall();
+    await host.addFollowUp({ text: 'Our task', owner: null, due: null });
+    await say(host, B);
+    const stop = host.watchNotes();
+    await notesOf(host);
+    const pending = host.getSnapshot().liveNotes.suggestions[0];
+    if (!pending) throw new Error('Missing review proposal');
+    stop();
+    for (let i = 0; i < 59; i++) {
+      const task = host.getSnapshot().liveNotes.added[0];
+      if (!task) throw new Error('Missing manual task');
+      await host.updateFollowUp(task.id, { seen: { revision: task.revision, text: task.text, owner: null, due: null }, text: `Our task revision ${i}` });
+    }
+    const task = host.getSnapshot().liveNotes.added[0];
+    if (!task) throw new Error('Missing task at the write limit');
+    expect(code(await host.updateFollowUp(task.id, { seen: { revision: task.revision, text: task.text, owner: null, due: null }, text: 'Past the write limit' }).catch((e: unknown) => e))).toBe('unavailable');
+    expect(code(await host.reviewFollowUp({ id: pending.id, revision: pending.revision, decision: 'accept' }).catch((e: unknown) => e))).toBe('unavailable');
+    await kofi.reviewFollowUp({ id: pending.id, revision: pending.revision, decision: 'accept' });
+    expect(kofi.getSnapshot().liveNotes.notes?.next.map((a) => a.id)).toContain(pending.id);
+    await host.leave();
   });
 });

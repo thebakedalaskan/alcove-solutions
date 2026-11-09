@@ -2,14 +2,14 @@
  * What opens in a popover in the workspace, and the two things that open over everything. Someone's card (WsPersonCard),
  * the question asked once when you tag someone who can't open the document (WsMentionPrompt), a comment and its thread
  * (WsCommentCompose, WsCommentThread), Share (WsShareSheet), the one question before a call changes workspace
- * (WsSwitchSheet), what presenting will look like (WsPresentPreview), and photos to add (WsUploadPicker). Find (WsFind,
+ * (WsSwitchSheet), and photos to add (WsUploadPicker). Find (WsFind,
  * ⌘K) dims the page and opens over it; someone asking to see the workspace (WsKnock) drops in at the top of the
  * organizer's screen.
  */
 import type { Person } from '@alcove/api';
 import {
   Avatar, Button, Icon, WsCaptionField, WsCommentCompose, WsCommentThread, WsDoc, WsFind, WsKnock, WsMentionPrompt, WsPage, WsPane, WsPersonCard, WsPopover,
-  WsPresentPreview, WsScroll, WsShareSheet, WsSwitchSheet, WsToasts, WsUploadPicker, wsToast, type WsComment, type WsFindHit
+  WsScroll, WsShareSheet, WsSwitchSheet, WsToasts, WsUploadPicker, wsToast, type WsComment, type WsFindHit
 } from '@alcove/ui';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useRef, useState, type ComponentProps } from 'react';
@@ -21,7 +21,7 @@ import { DocOf, GUEST, ListOf, PHOTOS, ShareFor, first, useToasts, useWorkspace 
 const meta = {
   title: 'Components/Workspace/Sheets',
   component: WsShareSheet,
-  subcomponents: { WsCaptionField, WsPersonCard, WsMentionPrompt, WsCommentCompose, WsCommentThread, WsSwitchSheet, WsPresentPreview, WsFind, WsKnock, WsUploadPicker },
+  subcomponents: { WsCaptionField, WsPersonCard, WsMentionPrompt, WsCommentCompose, WsCommentThread, WsSwitchSheet, WsFind, WsKnock, WsUploadPicker },
   parameters: { layout: 'centered' }
 } satisfies Meta<typeof WsShareSheet>;
 export default meta;
@@ -245,17 +245,6 @@ function SwitchInPlace() {
   return <><Box width={244} height={560}><WsPane><ListOf ws={ws} /></WsPane></Box><WsToasts toasts={ws.toasts} /></>;
 }
 export const SwitchOpen: Story = { name: 'Switch sheet: in the picker’s place', parameters: { layout: 'padded', controls: { disable: true } }, args: SHARE, render: () => <SwitchInPlace /> };
-
-/* ---------- presenting ---------- */
-
-type PresentStory = StoryObj<typeof WsPresentPreview>;
-/** What everyone will see, and one button to start: Launch plan has three sections. */
-export const PresentPreview: PresentStory = {
-  name: 'Present preview: several sections', args: { name: 'Launch plan', sections: 3, onStart: did('onStart') }, render: (args) => <PopSurface ws><WsPresentPreview {...args} /></PopSurface>
-};
-export const PresentPreviewOne: PresentStory = {
-  name: 'Present preview: one section', args: { name: 'Pricing page copy', sections: 1, onStart: did('onStart') }, render: (args) => <PopSurface ws><WsPresentPreview {...args} /></PopSurface>
-};
 
 /* ---------- find ---------- */
 

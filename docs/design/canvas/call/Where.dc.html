@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Where everything went</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="call.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400..700&amp;family=Newsreader:ital,opsz,wght@0,6..72,300..600;1,6..72,300..600&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<div class="cv wh light">
+<div class="wh-head"><h1>Where everything went</h1><p>Every control in today’s call, and where it is now. Nothing is dropped; a few things merge.</p></div>
+<div class="wh-cols"><span>What you want to do</span><span>Today</span><span>Now</span></div>
+<sc-for list="{{groups}}" as="g" hint-placeholder-count="5">
+<h2 class="wh-g">{{g.name}}</h2>
+<sc-for list="{{g.rows}}" as="r" hint-placeholder-count="6">
+<div class="wh-r"><span class="w">{{r.w}}</span><span class="t">{{r.t}}</span><span class="n">{{r.n}}</span></div>
+</sc-for>
+</sc-for>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1520,"height":2450}}'>
+/* Every control in the call today, and its place in the redesign. */
+var G = [
+  { name: 'Opening, and presenting', rows: [
+    ['Open the workspace for yourself', 'Workspace, in the dock (W)', 'Workspace, at the top right (W); or Open, at the top of Notes'],
+    ['Open a board for yourself', 'Not possible: a board opens for everyone', 'Board, at the top right (O): a new one, or one your team has'],
+    ['Go back into something you closed', 'The dock\u2019s Board button, or a share\u2019s tile', 'While someone presents it, its tile, with Join. Otherwise Board or Workspace, at the top right'],
+    ['Show a document to everyone', 'Present, at the top of a document', 'Present on the workspace\u2019s bar, or Share \u203a The workspace; then open the document'],
+    ['Open a board for everyone', 'Board, in the dock (O)', 'Present on its bar, or Share \u203a A board'],
+    ['Share your screen', 'Share, in the dock', 'Share \u203a Your screen'],
+    ['Step through a board\u2019s frames', 'Present on the board\u2019s bar, then a pager under it', 'The arrows at the board\u2019s foot, while you present it'],
+    ['Step through a document', 'Present\u2019s preview, then Back and Next in a column', 'Scroll: everyone following you moves with you'],
+    ['Your notes while you present', 'A column beside the board, or under Back and Next', 'Your notes, beside the board\u2019s arrows: they open on your side'],
+    ['Play a video for everyone', 'Play for everyone, then a bar above the dock', 'Play for everyone, on the video in the workspace'],
+    ['Change what you share, let others point, clear marks', 'The bar over the call', 'The name menu on your screen\u2019s frame'],
+    ['Point at a share, freeze it, zoom, open it in its own window, put it on the board', 'A share\u2019s \u22ef menu, and the keys', 'The name menu on their screen\u2019s frame, and the same keys']
+  ] },
+  { name: 'Following, and working alongside', rows: [
+    ['See what whoever presents sees', 'While they present a board or a document', 'Whenever anyone presents anything: you follow them'],
+    ['Look around or edit on your own', 'Look around, or Work on my own', 'Unfollow, or click or scroll in it; Follow brings you back'],
+    ['Write in a document while someone presents', 'Not while they present it', 'Unfollow in the workspace and write; everyone sees your caret'],
+    ['Follow someone who isn\u2019t presenting', 'Follow, on their tile', 'Follow, on their tile']
+  ] },
+  { name: 'Putting things away', rows: [
+    ['Put something away for you alone', 'The dock\u2019s Board button, a share\u2019s \u22ef or \u00d7, Just the document', 'Close, on its bar, or its button at the top right. Someone else\u2019s waits as a tile while they present it'],
+    ['End what you present', 'Close for everyone (under the board\u2019s name), Stop presenting (in two places), Stop sharing (the bar over the call)', 'Close \u203a For you (the others keep it open), or For everyone. Your own screen: Stop sharing'],
+    ['End someone else\u2019s, as the organizer', 'Stop presenting, on their strip or pill', 'Close it for everyone (or Stop it, for a screen), in the name menu of theirs'],
+    ['Fill your window with it', 'The arrows on the page, or View (documents only)', 'Focus, on anything open; Show everything or Esc'],
+    ['Close a side panel', '\u00d7', '\u00d7, or its button at the top right']
+  ] },
+  { name: 'Your side', rows: [
+    ['The call\u2019s notes', 'Notes in the dock, a tab in the side panel, and pages in the workspace', 'Notes, at the top right: this call\u2019s pages of the workspace, for you. Open, at its top, takes you to them there'],
+    ['The transcript', 'A tab in the side panel', 'Notes \u203a Transcript, also a page of the workspace'],
+    ['Ask, and catch up', 'A tab, Catch up in the top bar, and More', 'Notes \u203a Ask (What did I miss?), and More'],
+    ['Your own notes, and marking a moment', 'Yours, a tab; the bookmark in the dock (B)', 'Yours, in Notes; the bookmark in Notes\u2019 head; More; B'],
+    ['Chat', 'Chat, in the dock (C), and a tab', 'Chat, at the top right (C)'],
+    ['People, and who\u2019s asking to join', 'The faces at the top right, and a tab', 'The faces at the top right']
+  ] },
+  { name: 'Everything else', rows: [
+    ['Microphone, camera and their menus', 'The dock', 'The dock, unchanged'],
+    ['Raise your hand', 'The dock', 'The dock'],
+    ['Captions, and their language', 'Captions in the dock, with an arrow for the language', 'More \u203a Captions; the language on the captions'],
+    ['Breakout rooms', 'A button in the dock', 'People \u203a Breakout rooms, and More'],
+    ['Your layout', 'View: four layouts, how you see people, Auto, Speaker or Grid, where you see yourself, two ready-made layouts', 'View: the people, how they sit beside what\u2019s open, where you see yourself. The four layouts go: what\u2019s open is always in the middle, your side always on the right'],
+    ['Reset my view', 'A pill in the top bar, and View', 'View \u203a Reset my view, and Undo on the toast'],
+    ['What confidential compute covers', 'The shield in the top bar', 'The shield, beside the notes sign'],
+    ['Pause, resume or turn off notes, or ask for them', 'The notes sign', 'The notes sign, unchanged'],
+    ['Devices, video quality, move to another device', 'More', 'More'],
+    ['A board\u2019s name, where it\u2019s saved, who can add, copy link, download, night board', 'The board\u2019s name menu, and its \u22ef', 'The name menu on the board\u2019s frame'],
+    ['A board\u2019s tools, timer and votes', 'The board\u2019s rail and its bar', 'The board\u2019s rail']
+  ] }
+];
+class Component extends DCLogic {
+  renderVals() {
+    return { groups: G.map(function (g) { return { name: g.name, rows: g.rows.map(function (r) { return { w: r[0], t: r[1], n: r[2] }; }) }; }) };
+  }
+}
+</script>
+</body>
+</html>

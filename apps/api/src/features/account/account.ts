@@ -3,7 +3,7 @@
  * verified email) is found by keyed hashes; the profile itself is a sealed item. Google sign-in is
  * real (../google.ts); Microsoft and single sign-on are demo identities for now (../demo.ts).
  */
-import { PreferencesSchema, type Patch, type Person, type Preferences, type Session, type SignInBody, type SignInProvider } from '@alcove/api';
+import { DEFAULT_NOTIFICATION_PREFERENCES, DEFAULT_SOUND_PREFERENCES, PreferencesSchema, type Patch, type Person, type Preferences, type Session, type SignInBody, type SignInProvider } from '@alcove/api';
 import { z } from 'zod';
 import type { Deps, Owner } from '../../context';
 import { blindIndex, equalBytes } from '../../crypto';
@@ -45,7 +45,8 @@ export type Profile = z.infer<typeof Profile>;
 
 const DEFAULT_PREFERENCES: Preferences = {
   notesDefault: 'on', notesLanguage: 'call', summaryLength: 'short', addToCalendar: true, showOtherMeetings: true, recordOffline: true,
-  notifications: { beforeCall: 5, notesReady: true, sharedWithYou: true, notesRequested: true, followUpDue: false, tagged: true },
+  notifications: DEFAULT_NOTIFICATION_PREFERENCES,
+  sounds: DEFAULT_SOUND_PREFERENCES,
   pinned: [], groups: []
 };
 
@@ -303,6 +304,7 @@ export async function updatePreferences(o: Owner, patch: Patch<Preferences>): Pr
     showOtherMeetings: patch.showOtherMeetings ?? p.preferences.showOtherMeetings,
     recordOffline: patch.recordOffline ?? p.preferences.recordOffline,
     notifications: patch.notifications ?? p.preferences.notifications,
+    sounds: patch.sounds ?? p.preferences.sounds,
     pinned: patch.pinned ?? p.preferences.pinned,
     groups: patch.groups ?? p.preferences.groups
   } }))).preferences;

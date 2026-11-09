@@ -8,7 +8,7 @@
  * and places everything in parts of it, so it stays on the same spot at any size and however you frame the share: one you
  * look at closer (ShareSurface.tsx) carries it on the picture it zooms and moves, and hides it while a picture is held
  * still, as pointers and marks are about the live one. Where you press goes the other way, through your framing
- * (`toShare`). You point at a share shown big and live: a click leaves a ring, a drag a line, both fading after a few
+ * (`toShare`). You point at a share on your stage, live: a click leaves a ring, a drag a line, both fading after a few
  * seconds; from the keyboard, the arrow keys move your pointer, Enter leaves a ring, Backspace takes back your last mark,
  * and Escape stops. While you point, a drag draws rather than moving the picture; the wheel, a pinch, the share's bar and
  * its keys still zoom and move it.
@@ -21,7 +21,7 @@ import { NO_MARKS, type Mark, type ShareMarks, type ShareMarksView } from './mar
 import { WHOLE, place, toShare, type Framing, type SharePoint, type Size } from './shareFrame';
 import type { ShareLook, ShareLookState } from './shareLook';
 
-/** A focused share's keys while you point on it: Stage hands them here first. True when a key was used. */
+/** A focused share's keys while you point on it: its frame (ShareInFrame.tsx) hands them here first. True when a key was used. */
 export type PointingKeys = (e: ReactKeyboardEvent<HTMLElement>) => boolean;
 
 const quiet = () => () => undefined;
@@ -39,7 +39,7 @@ export function useShareMarkCount(marks: ShareMarks | null, share: string | null
     return v ? (mine ? v.marks.filter((m) => m.mine).length : v.marks.length) : 0;
   });
 }
-/** How you look at a share closer (ShareSurface.tsx), or null for one you don't: your own, or one shown as a tile. */
+/** How you look at a share closer (ShareSurface.tsx), or null for one you don't: your own. */
 function useLook(look: ShareLook | null): ShareLookState | null {
   return useSyncExternalStore(look?.subscribe ?? quiet, () => look?.getSnapshot() ?? null);
 }
@@ -108,7 +108,7 @@ function MarkShape({ m }: { m: Mark }) {
  * reach the surface; otherwise it sits over the video, with the drawing (`children`) placed where the video shows the
  * picture.
  */
-export function SharePointing({ marks, share, look, mine, big, can, active, onActive, onKeys, children }: {
+export function SharePointing({ marks, share, look, mine, can, active, onActive, onKeys, children }: {
   marks: ShareMarks;
   /** The share's picture's track sid: what pointers and marks name it by. */
   share: string;
@@ -116,20 +116,18 @@ export function SharePointing({ marks, share, look, mine, big, can, active, onAc
   look: ShareLook | null;
   /** It's your own share: you can clear everyone's marks on it. */
   mine: boolean;
-  /** Shown big: only there can you point. */
-  big: boolean;
   /** You may point at it now (the call's switch, and its presenter's choice). */
   can: boolean;
   active: boolean;
   onActive: (on: boolean) => void;
-  /** Gives Stage the keys to hand over while you point here, or takes them back (null). */
+  /** Gives the share's frame the keys to hand over while you point here, or takes them back (null). */
   onKeys: (keys: PointingKeys | null) => void;
   /** Without a look: what's drawn on the picture, placed where the video shows it. */
   children?: ReactNode;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const seen = useLook(look);
-  // Without a look, the picture is the video's, as big as it fits the tile (object-fit: contain): the tile's size and the
+  // Without a look, the picture is the video's, as big as it fits the frame (object-fit: contain): the frame's size and the
   // picture's, as either changes (the layout moves, the presenter shares something else).
   const [sizes, setSizes] = useState<{ view: Size; pic: Size }>({ view: { w: 0, h: 0 }, pic: { w: 0, h: 0 } });
   useLayoutEffect(() => {
@@ -146,7 +144,7 @@ export function SharePointing({ marks, share, look, mine, big, can, active, onAc
   }, [look]);
   const frame: { framing: Framing; view: Size; pic: Size } = seen ? { framing: seen.framing, view: seen.view, pic: seen.pic } : { framing: WHOLE, ...sizes };
   const held = seen !== null && seen.held !== null;
-  const pointing = active && can && big && !held;
+  const pointing = active && can && !held;
   // A picture held still while you point ends it: pointers and marks are about the live picture.
   useEffect(() => { if (active && held) onActive(false); }, [active, held, onActive]);
 
@@ -168,7 +166,7 @@ export function SharePointing({ marks, share, look, mine, big, can, active, onAc
     press.current = null;
     if (p?.line) marks.end(p.line);
   };
-  // Stopping (the ×, Escape, a picture held still, the share no longer big or open to you, or the tile going) takes your pointer away.
+  // Stopping (the ×, Escape, a picture held still, the share no longer open to you, or its frame going) takes your pointer away.
   useEffect(() => {
     if (pointing) return;
     finish();
@@ -254,7 +252,7 @@ export function SharePointing({ marks, share, look, mine, big, can, active, onAc
         onClick={pointing ? (e) => e.stopPropagation() : undefined}>
         {box && children && <div className="ic-marks-pic" style={{ left: box.x, top: box.y, width: box.w, height: box.h }}>{children}</div>}
       </div>
-      <PointingBar marks={marks} share={share} mine={mine} offer={big && can && !held && !pointing} pointing={pointing} onActive={onActive} />
+      <PointingBar marks={marks} share={share} mine={mine} offer={can && !held && !pointing} pointing={pointing} onActive={onActive} />
     </>
   );
 }

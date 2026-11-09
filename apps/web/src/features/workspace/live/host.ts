@@ -3,7 +3,7 @@
  * call's notes and transcript are yours all the same: someone who can open nothing has these pages with no workspace at all.
  */
 import { createContext, useContext } from 'react';
-import type { Ws, WorkspaceCall, WorkspacePlace } from '../context';
+import type { Ws, WorkspacePlace } from '../context';
 import type { PersonIds } from '../ids';
 import type { LiveCall, LivePut } from './types';
 
@@ -21,7 +21,6 @@ export interface LiveHost {
   /** The workspace is closed and kept as it was. */
   closed: boolean;
   toggleList: () => void;
-  zen: WorkspaceCall['zen'];
   /** Who's who in the workspace's documents, as far as it's known (../ids.ts). */
   ids: PersonIds;
   /** Who you're following, here too when they open one of these pages. Nobody, with no workspace. */

@@ -310,7 +310,9 @@ export async function apply(d: Deps, ownerId: string, depositId: string, check: 
     }
     // A payment once seen stays seen, and a cancelled top-up stays cancelled: a stale answer never shows the address again.
     const state: TopUpState = r.state !== 'waiting' && check.state === 'waiting' ? r.state : check.state;
-    const seen = check.sentMicroUsd?.toString() ?? rec.seenMicroUsd;
+    // Concurrent provider checks can finish out of order; money already seen cannot become unsent.
+    const previous = rec.seenMicroUsd === null ? 0n : BigInt(rec.seenMicroUsd);
+    const seen = check.sentMicroUsd === undefined || check.sentMicroUsd < previous ? rec.seenMicroUsd : check.sentMicroUsd.toString();
     if (seen !== rec.seenMicroUsd) await save(state, { ...rec, seenMicroUsd: seen });
     else await exec(c, 'UPDATE deposits SET state = $3, checked_at = now() WHERE owner_id = $1 AND deposit_id = $2', [ownerId, depositId, state]);
     if (r.state === 'cancelled' && state !== 'cancelled') await exec(c, 'UPDATE deposits SET check_after = now() WHERE owner_id = $1 AND deposit_id = $2', [ownerId, depositId]);

@@ -1,3 +1,5 @@
+import { registerLiveTimerRoutes } from './timer-routes';
+import { registerDirectMessageRoutes } from './direct-message-routes';
 import { AskSoFarBodySchema, CallActionSchema, CallCommitBodySchema, CallJoinBodySchema, CallKeyPackageBodySchema, CallBackBodySchema, CallMessageBodySchema, CatchUpBodySchema, TranslateBodySchema, MAX_FRAME_BYTES, HEARD_HEADERS, CallHandOffBodySchema, CallLeaveBodySchema, DocFollowUpTickSchema, PickTimeBodySchema, SeriesAskBodySchema, PersonalEditSchema, PersonalInputSchema, ShareEndedBodySchema, MoveByClaimBodySchema, MoveClaimBodySchema, MoveConfirmBodySchema, MoveReadyBodySchema, MoveStartBodySchema, type CallAction } from '@alcove/api';
 import { Hono, type Context } from 'hono';
 import { z } from 'zod';
@@ -148,9 +150,12 @@ export function registerCallRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
   };
 
   /** What whoever hosts may do while standing in for the organizer: keep the call running, but not change its notes or rooms' plan. */
-  const HOST_ACTIONS: ReadonlySet<CallAction['type']> = new Set(['deny', 'mute', 'remove', 'lock', 'spotlight', 'rooms-close', 'unavailable']);
+  const HOST_ACTIONS: ReadonlySet<CallAction['type']> = new Set(['deny', 'mute', 'remove', 'lock', 'spotlight', 'rooms-close', 'unavailable', 'hand-lower', 'hands-clear', 'question-resolve', 'question-pin']);
 
   app.get('/v1/live/calls/:id', async (c) => c.json(await callsService.state(c.get('viewer'), c.req.param('id'))));
+
+  registerLiveTimerRoutes(app, runtime);
+  registerDirectMessageRoutes(app, runtime);
 
   /*
    * The workspace a call uses, beyond what the call's actions do: what changing it would mean, for the organizer to decide,
@@ -198,7 +203,7 @@ export function registerCallRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
     if (a.type === 'request-notes') askNotesLimiter(c.get('viewer').pass.person, 'request-notes');
     if (a.type === 'others-point') othersPointLimiter(c.get('viewer').pass.person, 'others-point');
     if (a.type === 'ring') ringLimiter(c.get('viewer').organizer.ownerId, 'ring');
-    if (a.type === 'follow-up' || a.type === 'follow-up-add') followUpLimiter(c.get('viewer').pass.person, 'follow-up');
+    if (a.type === 'follow-up' || a.type === 'follow-up-add' || a.type === 'follow-up-edit' || a.type === 'follow-up-review') followUpLimiter(c.get('viewer').pass.person, 'follow-up');
     if (a.type === 'workspace-ask') askSpaceLimiter(c.get('viewer').pass.person, 'workspace-ask');
     else if (a.type.startsWith('workspace-') || a.type.startsWith('present-') || a.type.startsWith('play-') || a.type.startsWith('board-')) spaceLimiter(c.get('viewer').pass.person, 'workspace');
     return c.json(await callsService.act(c.get('viewer'), c.req.param('id'), a));
@@ -219,8 +224,7 @@ export function registerCallRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
   app.post('/v1/live/calls/:id/mls/messages', async (c) => {
     const v = c.get('viewer');
     chatLimiter(v.pass.identity, 'chat');
-    await callsMls.mlsMessage(v, c.req.param('id'), await body(c, CallMessageBodySchema));
-    return c.json({ sent: true });
+    return c.json(await callsMls.mlsMessage(v, c.req.param('id'), await body(c, CallMessageBodySchema)));
   });
 
   app.post('/v1/live/calls/:id/mls/keypackages', async (c) => {
