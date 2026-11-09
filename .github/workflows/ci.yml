@@ -59,8 +59,8 @@ jobs:
       - name: API container builds
         run: docker build -f apps/api/Dockerfile -t alcove-api:ci .
 
-  # Whether a pull request changes anything the integration tests run. They test the API, so one that only touches the
-  # web app, the design system, Storybook or docs leaves them as main has them. Pushes to main always run them.
+  # The real-client flow also imports concrete web mutation/LiveStore owners. Their composition/defaults must run shards
+  # even on web-only pull requests. Other presentation, design-system, Storybook and docs changes can reuse main's result.
   scope:
     name: Scope
     runs-on: ubuntu-latest
@@ -75,7 +75,8 @@ jobs:
         run: |
           if [ "$EVENT" != pull_request ]; then echo "api=true" >> "$GITHUB_OUTPUT"; exit 0; fi
           git diff --name-only HEAD^1 HEAD | tee changed.txt
-          if grep -qvE '^(apps/web/|apps/storybook/|packages/ui/|docs/)|^[^/]+\.md$' changed.txt; then echo "api=true"; else echo "api=false"; fi >> "$GITHUB_OUTPUT"
+          client_flow='^apps/web/src/(lib/(queryWrites|queries)\.ts|features/workspace/(changes|actions)\.ts|router\.tsx)$'
+          if grep -qE "$client_flow" changed.txt || grep -qvE '^(apps/web/|apps/storybook/|packages/ui/|docs/)|^[^/]+\.md$' changed.txt; then echo "api=true"; else echo "api=false"; fi >> "$GITHUB_OUTPUT"
 
   # The integration tests, split across ten runners by how long each file takes (scripts/ci-tests.mjs). Each runner has
   # its own Postgres, object store and LiveKit, and runs its share one file at a time, as the whole suite used to run.
@@ -150,7 +151,7 @@ jobs:
         run: exit 1
       - name: Nothing the integration tests run changed
         if: needs.scope.outputs.api != 'true'
-        run: echo "This pull request only changes the web app, the design system, Storybook or docs, so main's integration tests stand."
+        run: echo "No API or real-client flow owner changed; main's integration tests stand for these presentation/docs changes."
       - uses: actions/checkout@v4
         if: needs.scope.outputs.api == 'true'
       - uses: actions/download-artifact@v4

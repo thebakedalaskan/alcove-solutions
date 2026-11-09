@@ -11,6 +11,23 @@ beforeAll(async () => { h = await startHarness(); });
 afterAll(async () => { await h?.close(); });
 
 describe('browser notification preferences', () => {
+  it('refuses incomplete previous-release preference groups instead of applying stored upgrade defaults to an explicit request', async () => {
+    const browser = h.browser();
+    await browser.api.auth.signIn('sso', { email: `old-input.${Date.now()}@tests.example` });
+    const initial = await browser.api.account.preferences();
+    expect(initial.notifications.enabled).toBe(false);
+    const oldNotifications = { beforeCall: 1, notesReady: false, sharedWithYou: true, notesRequested: true, followUpDue: false, tagged: true };
+    const notificationResponse = await browser.fetch(`${h.baseUrl}/v1/account/preferences`, {
+      method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ notifications: oldNotifications })
+    });
+    expect(notificationResponse.status).toBe(400);
+    expect(await browser.api.account.preferences()).toEqual(initial);
+    const soundResponse = await browser.fetch(`${h.baseUrl}/v1/account/preferences`, {
+      method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ sounds: { enabled: false } })
+    });
+    expect(soundResponse.status).toBe(400);
+    expect(await browser.api.account.preferences()).toEqual(initial);
+  });
   it('opens a previous release’s sealed notification choices without losing its explicit category settings', async () => {
     const browser = h.browser();
     const { session } = await browser.api.auth.signIn('sso', { email: `upgrade.${Date.now()}@tests.example` });

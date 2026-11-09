@@ -42,14 +42,14 @@ export function useCallBrowserNotifications({ session, state, crypto, direct, ac
   useEffect(() => watchNotificationViews(() => latest.current.foreground && latest.current.active ? [`${owner}:call:${state.callId}`, ...(ownerId ? [`${ownerId}:meeting:${state.meetingId}`] : [])] : []), [owner, ownerId, state.callId, state.meetingId]);
   useEffect(() => watchNotificationPreferences((signal) => {
     if (signal.ownerId !== latest.current.preferences.ownerId) return;
-    for (const [id, category] of baseline.current.allowed) if (!signal.prefs.enabled || !signal.prefs[category]) baseline.current.allowed.delete(id);
+    for (const [id, category] of baseline.current.allowed) if (signal.patch.enabled === false || signal.patch[category] === false) baseline.current.allowed.delete(id);
   }), []);
   useEffect(() => {
-    if (preferences.ready && (!preferences.prefs.enabled || permission !== 'granted')) void closeOwnerNotifications(ownerId, () => { const current = latest.current; const chosen = notificationPreferenceIntent(ownerId)?.prefs ?? current.preferences.prefs; return current.preferences.ownerId === ownerId && (!chosen.enabled || current.permission !== 'granted'); });
+    if (preferences.ready && (!preferences.prefs.enabled || permission !== 'granted')) void closeOwnerNotifications(ownerId, () => { const current = latest.current; const chosen = { ...current.preferences.prefs, ...notificationPreferenceIntent(ownerId) }; return current.preferences.ownerId === ownerId && (!chosen.enabled || current.permission !== 'granted'); });
   }, [ownerId, preferences.ready, preferences.prefs.enabled, permission]);
   useEffect(() => {
     const token = lifetime.current.token;
-    const prefs = notificationPreferenceIntent(ownerId)?.prefs ?? preferences.prefs;
+    const prefs = { ...preferences.prefs, ...notificationPreferenceIntent(ownerId) };
     const ids = new Set<string>();
     // Every confirmed incoming source is observed, including currently irrelevant replies and disabled categories.
     for (const message of crypto.chat) if (!message.isMe && !message.sending && !message.failed && message.place === crypto.place) ids.add(`room:${message.id}`);
@@ -77,7 +77,7 @@ export function useCallBrowserNotifications({ session, state, crypto, direct, ac
     updateNotificationSource({ token, scope, owner, ownerId, alerts,
       allowed: (kind, key) => {
         const current = latest.current;
-        const currentPrefs = notificationPreferenceIntent(ownerId)?.prefs ?? current.preferences.prefs;
+        const currentPrefs = { ...current.preferences.prefs, ...notificationPreferenceIntent(ownerId) };
         return lifetime.current.scope === scope && lifetime.current.token === token && current.scope === scope && current.active && current.snapshot.ready && current.preferences.ready && current.preferences.ownerId === ownerId
           && current.permission === 'granted' && permits(currentPrefs, kind) && (key === undefined || baseline.current.allowed.has(key));
       },

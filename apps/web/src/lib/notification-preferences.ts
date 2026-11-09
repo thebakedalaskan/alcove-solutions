@@ -2,7 +2,7 @@
 import { DEFAULT_NOTIFICATION_PREFERENCES, NotificationPrefsSchema, errorMessage, type NotificationPrefs, type Session } from '@alcove/api';
 import { useToast } from '@alcove/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { log } from './log';
 import { announceNotificationPreferences, notificationPreferenceIntent, watchNotificationPreferences } from './notification-preference-channel';
 import { accountGeneration } from './signedOut';
@@ -47,12 +47,15 @@ export function useNotificationPreferences() {
   const save = usePreferences();
   const toast = useToast();
   const [guest, setGuest] = useState(guestNotificationPreferences);
-  useEffect(() => watchNotificationPreferences((signal) => {
-    const signedIn = qc.getQueryData(q.session().queryKey);
-    if (signal.ownerId === null) { if (signedIn === null) setGuest(signal.prefs); return; }
-    if (signedIn?.ownerId !== signal.ownerId) return;
-    qc.setQueryData(q.prefs().queryKey, (prefs) => prefs ? { ...prefs, notifications: signal.prefs } : prefs);
-  }), [qc]);
+  const [intentVersion, refreshIntent] = useState(0);
+  useEffect(() => {
+    const refresh = () => refreshIntent((version) => version + 1);
+    const stop = watchNotificationPreferences((signal) => {
+      if (signal.phase !== 'pending' && signal.ownerId !== null && qc.getQueryData(q.session().queryKey)?.ownerId === signal.ownerId) void qc.invalidateQueries({ queryKey: q.prefs().queryKey, exact: true });
+    });
+    addEventListener('alcove-notification-preferences', refresh);
+    return () => { removeEventListener('alcove-notification-preferences', refresh); stop(); };
+  }, [qc]);
   useEffect(() => {
     const changed = () => setGuest(guestNotificationPreferences());
     addEventListener('storage', changed); addEventListener('alcove-guest-notifications', changed);
@@ -65,17 +68,18 @@ export function useNotificationPreferences() {
       if (nowSession?.ownerId !== account.ownerId) return;
       const now = qc.getQueryData(q.prefs().queryKey);
       if (!now) return;
-      save.mutate({ notifications: { ...now.notifications, ...patch } }, { onError: (e) => toast(`Couldn’t save notifications. ${errorMessage(e)}`, { icon: 'x' }) });
+      save.mutate({ notifications: patch }, { onError: (e) => toast(`Couldn’t save notifications. ${errorMessage(e)}`, { icon: 'x' }) });
     } else {
       if (nowSession !== null) return;
       const next = NotificationPrefsSchema.parse({ ...guestNotificationPreferences(), ...patch });
       setGuest(next);
-      announceNotificationPreferences(null, next);
+      announceNotificationPreferences(null, patch);
       try { localStorage.setItem(KEY, JSON.stringify(next)); dispatchEvent(new Event('alcove-guest-notifications')); }
       catch (e) { nlog.debug('guest notification choices stay in this tab', { err: e }); }
     }
   };
-  return { prefs: account ? notificationPreferenceIntent(account.ownerId)?.prefs ?? profile.data?.notifications ?? DEFAULT_NOTIFICATION_PREFERENCES : notificationPreferenceIntent(null)?.prefs ?? guest, update,
+  const prefs = useMemo(() => ({ ...(account ? profile.data?.notifications ?? DEFAULT_NOTIFICATION_PREFERENCES : guest), ...notificationPreferenceIntent(account?.ownerId ?? null) }), [account, profile.data?.notifications, guest, intentVersion]);
+  return { prefs, update,
     scope: `${identityOf(account)}:${identity.current.revision}`, capturePermissionIntent, ownerId: account?.ownerId ?? null,
     ready: !session.isPending && !session.isError && (!account || Boolean(profile.data)) };
 }

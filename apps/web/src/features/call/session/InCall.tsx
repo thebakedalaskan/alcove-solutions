@@ -2,6 +2,7 @@ import { useCallBrowserNotifications } from './browserNotifications';
 import { CallAlertControls } from '~/features/settings/CallAlerts';
 import type { ChatDraft } from '../layout/ChatMentions';
 import { unreadThreadReplies, useReplyAlerts, type ReplyJump } from './replyAlerts';
+import { useMentionAlerts } from './mentionAlerts';
 import { ChatView } from '../layout/ChatView';
 import { useBreakoutRooms } from '../rooms/useBreakoutRooms';
 import { CallCaption, CaptionLanguageMenu, captionLanguageName } from '../notes/CallCaptions';
@@ -227,12 +228,14 @@ export function InCall({ session }: { session: CallSession }) {
   const guard = useLeaveGuard(() => requestLeave(), hosting);
   const guardRef = useRef(guard);
   guardRef.current = guard;
-  const unreadChat = crypto.status === 'in' ? crypto.chat.filter((m) => !m.isMe && !m.sending && !m.failed && m.thread === null && m.place === crypto.place && !state.chatRead.includes(m.id)).length : 0;
+  const readChatIds = useMemo(() => new Set(state.chatRead), [state.chatRead]);
+  const unreadChat = crypto.status === 'in' ? crypto.chat.filter((m) => !m.isMe && !m.sending && !m.failed && m.thread === null && m.place === crypto.place && !readChatIds.has(m.id)).map((m) => m.id) : [];
   const unreadMentions = useMemo(() => unreadChatMentions(state, crypto, self), [state, crypto, self]);
   const unreadReplies = useMemo(() => unreadThreadReplies(state, crypto, self), [state, crypto, self]);
-  const unread = Math.max(unreadChat, new Set([...unreadMentions, ...unreadReplies]).size) + direct.unread.length;
+  const unread = new Set([...unreadChat, ...unreadMentions, ...unreadReplies]).size + direct.unread.length;
   const [chatTarget, setChatTarget] = useState<ReplyJump>();
-  const attentionAllowed = useCallAttention(state, crypto, unreadMentions, !leaving && ended === null);
+  const attentionMentions = useMemo(() => [...unreadMentions, ...direct.unreadMentions], [unreadMentions, direct.unreadMentions]);
+  const attentionAllowed = useCallAttention(state, crypto, attentionMentions, !leaving && ended === null);
   const readingMentions = useRef(new Set<string>());
   const readMentions = useCallback((ids: readonly string[]) => {
     const fresh = ids.filter((id) => !readingMentions.current.has(id));
@@ -1338,8 +1341,10 @@ export function InCall({ session }: { session: CallSession }) {
   const floating = useFloatingWindow(looks.looks, live && ended === null && !outOfGroup && !over.current && roomView.connection !== 'ended',
     media.micTrack()?.readyState === 'live' || media.camSource()?.readyState === 'live');
   const floatingHelp = useId();
-  useReplyAlerts({ session, state, crypto, direct, allowed: attentionAllowed && attentionReady && online && !leaving && ended === null,
-    onOpen: (id, audience) => { setPrivateAudience(audience); setChatTarget((was) => ({ id, request: (was?.request ?? 0) + 1 })); returnToCall(); openSide('chat'); } });
+  const openAddressedMessage = (id: string, audience: PrivateAudience | null) => { setPrivateAudience(audience); setChatTarget((was) => ({ id, request: (was?.request ?? 0) + 1 })); returnToCall(); openSide('chat'); };
+  const alertsAllowed = attentionAllowed && attentionReady && online && !leaving && ended === null;
+  useReplyAlerts({ session, state, crypto, direct, allowed: alertsAllowed, onOpen: openAddressedMessage });
+  useMentionAlerts({ session, state, crypto, direct, allowed: alertsAllowed, onOpen: openAddressedMessage });
   useCallBrowserNotifications({ session, state, crypto, direct, active: attentionAllowed && attentionReady && online && roomView.connection === 'connected' && !leaving && ended === null,
     foreground: floating.mainVisible,
     onOpen: (target) => {

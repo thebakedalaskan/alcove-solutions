@@ -502,12 +502,12 @@ time, slides in on the right.
   the message with how many, and yours is marked. Press one to add yours, or press yours again to take it back. Its
   tooltip names who reacted, and after about 40 characters says how many more ("Aiko, Maya, Kofi +2"). You can react
   once your own message has gone out. If a reaction doesn't send, it's taken back and a toast says so.
-- **Mentioning someone in chat.** Type **@** and search the people who can read this room. Their address, or a guest's
+- **Mentioning someone in chat (journey 6.32).** Type **@** and search the people who can read this room or, in a private conversation, its original two participants. Their address, or a guest's
   identity, distinguishes people with the same name. Use the arrow keys and **Enter**, or press their row, to select them.
   Selected people appear beside the composer and stay highlighted in the sent message; changing the tagged words removes
   that selection. An unread mention counts in Chat and in the browser tab. **Open mention** goes to the exact message;
-  seeing that message in a visible, focused Chat panel marks it read across your open clients. Drafts, failed sends and
-  self-mentions do not add unread attention. Mentioning someone never adds them to a room.
+  seeing the addressed words in a visible, focused Chat panel marks it read. Room reads reconcile across your open clients; private reads stay with their original connection. Drafts, failed sends and
+  self-mentions do not add unread attention. Sounds → **Mentions** and **Show mention alerts** control the sound and generic local alert independently. A reply that mentions you has one primary mention cue. Retained private history keeps its unread count when its other participant leaves or you move rooms; new alerts require the current audience. Mentioning someone never adds them to a room.
 - **Waiting for people.** Everyone the organizer rings waits on the stage in an empty arch that ripples, then shows
   their answer (**In 5 minutes**, **Not this time**), and opens into their tile when they arrive, while the others make
   room. Someone who says no or doesn't answer stays a moment with **Ring again**, then gives the room back, and stays
@@ -1332,9 +1332,11 @@ from this browser."), with **Copy what you wrote** beside them, which copies onl
 other tab open here hears it at once and goes to the welcome page, saying you signed out in another tab. With no connection, signing
 out says so and nothing happens later by itself. Under the water the page is
 one long list of rows, with an index beside it that jumps to each part and moves a small sun to the one in view; on a
-narrow screen the index is a strip that stays at the top. Every control saves as it changes: the row says **Saved** for a
-moment, just left of the control (**Saved for new notes** for the language and the summary), and one the server refuses
-goes back, with a toast saying why. Parts that don't load say so, with **Try again**, and the rest of the page still works.
+narrow screen the index is a strip that stays at the top. Every control changes immediately and says **Saving…** while its
+request is pending. The row says **Saved** for a moment only once its latest choice is confirmed (**Saved for new notes**
+for language and summary). A refusal says **Couldn’t confirm**, with a toast explaining why; it removes only that attempt,
+keeping later choices. Pick the setting again to retry. Parts that don't load say so, with **Try again**, and the rest of
+the page still works. Journey **11.23** shows Detailed → Short → Detailed while the oldest request fails.
 
 - **Profile**: your name and photo, from your sign-in, with a link to change them at Google or Microsoft (they update
   the next time you sign in; with single sign-on they come from your company's sign-in); your company, which opens
@@ -1398,6 +1400,10 @@ Signing in again starts a new, empty account with 10,000 credits.
 Open **Settings → Sounds** for master sound, volume, quiet mode and separate microphone, people, hands, questions, admissions, board timer and incoming call switches. Preview each phrase at your chosen volume. These controls work even when browser notifications are blocked. **More → Sounds and notifications → Sounds** in a call offers the same choices, including for guests. Quiet mode keeps your microphone confirmations and requests to join when you host. Signed-in choices follow your account; guests keep theirs in this browser.
 
 ## 12. The Drive and the workspace
+
+Journey **12.1** renames a workspace immediately: the list and breadcrumbs show the requested name with **Saving…**. If it
+cannot be confirmed, **Edit name** restores the entered text; press Enter to retry without retyping or reloading. Later
+choices remain in place while older requests settle. Physical **Delete for good** completes only after Alcove confirms it.
 
 Documents and folders people write in together, between calls as well as in them. Every call has a workspace of its own,
 its home, where its notes, follow-ups and transcript go, and **Drive** in the side panel lists every workspace you're in,

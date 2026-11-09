@@ -94,7 +94,7 @@ export function useNotifications() {
     return () => removeNotificationSource(scope, owned);
   }, [scope, allowed]);
   useEffect(() => {
-    if (prefs.ready && owner !== null && (!prefs.prefs.enabled || permission !== 'granted')) void closeOwnerNotifications(owner, () => { const latest = context.current; const chosen = notificationPreferenceIntent(owner)?.prefs ?? latest.prefs.prefs; return latest.prefs.ownerId === owner && (!chosen.enabled || latest.permission !== 'granted'); });
+    if (prefs.ready && owner !== null && (!prefs.prefs.enabled || permission !== 'granted')) void closeOwnerNotifications(owner, () => { const latest = context.current; const chosen = { ...latest.prefs.prefs, ...notificationPreferenceIntent(owner) }; return latest.prefs.ownerId === owner && (!chosen.enabled || latest.permission !== 'granted'); });
   }, [owner, prefs.ready, prefs.prefs.enabled, permission]);
   useEffect(() => {
     if (!owner) return;
@@ -106,8 +106,9 @@ export function useNotifications() {
   }, [owner, here]);
   useEffect(() => watchNotificationPreferences((signal) => {
     if (signal.ownerId !== owner) return;
-    for (const [id, event] of noteEvents.current) if (!category(signal.prefs, event.kind)) noteEvents.current.delete(id);
-    if (!signal.prefs.enabled || !signal.prefs.tagged) mentionEvents.current.clear();
+    const chosen = { ...context.current.prefs.prefs, ...notificationPreferenceIntent(owner) };
+    for (const [id, event] of noteEvents.current) if (!category(chosen, event.kind)) noteEvents.current.delete(id);
+    if (!chosen.enabled || !chosen.tagged) mentionEvents.current.clear();
   }), [owner]);
   useEffect(() => {
     if (!allowed) return;
@@ -153,7 +154,7 @@ export function useNotifications() {
     updateNotificationSource({ token: owned, scope, owner, ownerId: owner, alerts,
       allowed: (kind) => {
         const latest = context.current;
-        const chosen = notificationPreferenceIntent(owner)?.prefs ?? latest.prefs.prefs;
+        const chosen = { ...latest.prefs.prefs, ...notificationPreferenceIntent(owner) };
         return latest.allowed && latest.prefs.ownerId === owner && category(chosen, kind);
       },
       open: (data) => context.current.go(data),

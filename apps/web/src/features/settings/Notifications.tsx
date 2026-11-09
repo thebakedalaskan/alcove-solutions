@@ -1,12 +1,12 @@
 /** Browser permission and category choices, shared by Settings and an active call (guests included). */
-import { type NotificationPrefs, type Preferences } from '@alcove/api';
+import { type NotificationPrefs } from '@alcove/api';
 import { Button, Segmented, SettingFact, SettingRow, SettingsPart, Switch } from '@alcove/ui';
 import { useEffect, useRef, useState } from 'react';
 import { useNotificationPreferences } from '~/lib/notification-preferences';
 import { askToNotify, useNotifyPermission } from '~/features/shell/notification-permission';
 import { Setting, SwitchSetting, useSave } from './save';
 
-type Category = Exclude<keyof NotificationPrefs, 'beforeCall' | 'enabled' | 'replyAlerts'>;
+type Category = Exclude<keyof NotificationPrefs, 'beforeCall' | 'enabled' | 'replyAlerts' | 'mentionAlerts'>;
 const CALL_CATEGORIES: readonly { key: Category; label: string; help?: string }[] = [
   { key: 'privateMessages', label: 'Private messages', help: 'Messages and replies sent only to you.' },
   { key: 'replies', label: 'Replies in room chat', help: 'Replies in conversations you started or joined.' },
@@ -59,20 +59,19 @@ function BrowserPermission({ enabled, onChange, ready, scope, capture }: { enabl
       control={<Switch label="Browser notifications" checked disabled={!ready || busy} onChange={onChange} />} />}
   </>;
 }
-export function NotificationsPart({ prefs }: { prefs: Preferences }) {
+export function NotificationsPart() {
   const save = useSave();
   const permission = useNotifyPermission();
-  const { ready, scope, capturePermissionIntent } = useNotificationPreferences();
-  const n = prefs.notifications;
+  const { prefs: n, ready, scope, capturePermissionIntent } = useNotificationPreferences();
   const off = permission !== 'granted' || !n.enabled;
   const alert = ({ key, label, help }: { key: Category; label: string; help?: string }) => <SwitchSetting key={key} label={label} help={help} checked={n[key]} disabled={off}
-    onChange={(on) => save(label, (now) => ({ notifications: { ...now.notifications, [key]: on } }))} />;
+    onChange={(on) => save(label, { notifications: { [key]: on } })} />;
   return <SettingsPart id="notifications" title="Notifications">
-    <BrowserPermission capture={capturePermissionIntent} enabled={n.enabled} ready={ready} scope={scope} onChange={(enabled) => save('Browser notifications', (now) => ({ notifications: { ...now.notifications, enabled } }))} />
+    <BrowserPermission capture={capturePermissionIntent} enabled={n.enabled} ready={ready} scope={scope} onChange={(enabled) => save('Browser notifications', { notifications: { enabled } })} />
     {CALL_CATEGORIES.map(alert)}
     <Setting wide off={off} label="Before a call starts" help="For calls you organize."
       control={<Segmented<'1' | '5' | 'off'> label="Remind me before a call" value={n.beforeCall === 0 ? 'off' : n.beforeCall === 1 ? '1' : '5'} disabled={off}
-        onChange={(value) => save('Before a call starts', (now) => ({ notifications: { ...now.notifications, beforeCall: value === 'off' ? 0 : value === '1' ? 1 : 5 } }))}
+        onChange={(value) => save('Before a call starts', { notifications: { beforeCall: value === 'off' ? 0 : value === '1' ? 1 : 5 } })}
         options={[{ value: '1', label: '1 min' }, { value: '5', label: '5 min' }, { value: 'off', label: 'Off' }]} />} />
     {OTHER_CATEGORIES.map(alert)}
   </SettingsPart>;

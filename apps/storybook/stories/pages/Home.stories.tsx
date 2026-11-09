@@ -3,16 +3,27 @@ import type { Meta } from '@storybook/react-vite';
 import { screen } from 'storybook/test';
 import { setOnline } from '../../src/browser';
 import { phone } from '../../src/call';
-import { changing, page, pages, type PageArgs } from '../../src/page';
+import { changing, page, pages, type PageArgs, type PageStory } from '../../src/page';
 import { on } from '../../src/world/clock';
 import { STATES, withNotes } from '../../src/world/states';
-import { invited, noCalendar, troubled } from './changes';
+import { invited, noCalendar, takenOn, troubled } from './changes';
 
 const meta = { title: 'Pages/Home', ...pages } satisfies Meta<PageArgs>;
 export default meta;
 
 export const Busy = page('/home', 'busy');
 export const BusyPhone = phone(Busy);
+const tickFollowUp: NonNullable<PageStory['play']> = async ({ userEvent, step }) => {
+  await step('3.7 Tick a follow-up while the write is syncing', async () => {
+    const [box] = await screen.findAllByRole('checkbox', { name: /^Mark done:/ });
+    if (box) await userEvent.click(box);
+  });
+};
+const readyFollowUps = changing(takenOn, troubled({ 'notes.updateAction': 'hold' }));
+export const FollowUpSaving = page('/home', 'busy', { beforeEach: readyFollowUps, play: tickFollowUp });
+export const FollowUpSavingNight = { ...FollowUpSaving, globals: { theme: 'dark' } };
+export const FollowUpSavingPhone = phone(FollowUpSaving);
+export const FollowUpSavingPhoneNight = { ...phone(FollowUpSaving), globals: { viewport: { value: 'phone' }, theme: 'dark' } };
 export const FirstDay = page('/home', 'first-day');
 export const FirstDayPhone = phone(FirstDay);
 export const CallSoon = page('/home', 'call-soon');

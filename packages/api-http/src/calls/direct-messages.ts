@@ -48,9 +48,10 @@ export class DirectMessages extends Box<DirectMessagesState> implements DirectMe
   }
   override set(next: DirectMessagesState): void {
     const unread = new Set(next.unread);
-    const peers = new Set(next.peers);
+    // Already decrypted history belongs to this original connection for the active call. Fresh alerts apply
+    // stricter current-room/peer checks; retained unread counts remain readable after a departure or room move.
     const unreadMentions = next.ready ? next.messages.filter((message) => message.to === this.identity && message.state === 'delivered' && unread.has(message.id)
-      && message.place === this.context.place && message.generation === this.context.generation && peers.has(message.from) && message.mentions.some((mention) => mention.identity === this.identity)).map((message) => message.id) : [];
+      && message.mentions.some((mention) => mention.identity === this.identity)).map((message) => message.id) : [];
     super.set({ ...next, unreadMentions });
   }
   contextChanged(next: Context): void {

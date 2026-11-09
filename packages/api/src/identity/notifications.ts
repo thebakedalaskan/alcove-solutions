@@ -1,4 +1,4 @@
-import { NotificationPrefsSchema } from './preferences';
+import { NotificationPrefsInputSchema } from './preferences';
 import { CallNotificationDestinationSchema } from '../calls/notifications';
 import { CallCodeSchema } from '../calls/entry';
 import { IDSchema } from '../shared/ids';
@@ -61,6 +61,6 @@ export const NotificationWindowSchema = z.object({
 });
 /** Boolean choices only; an explicit local change reaches other tabs before their next background poll. */
 export const NotificationPreferenceSignalSchema = z.object({
-  ownerId: IDSchema.nullable(), generation: z.string().min(1).max(200).nullable(), nonce: z.string().max(100), at: z.number(), prefs: NotificationPrefsSchema
+  ownerId: IDSchema.nullable(), generation: z.string().min(1).max(200).nullable(), nonce: z.string().max(100), at: z.number(), phase: z.enum(['pending', 'confirmed', 'rollback']), patch: NotificationPrefsInputSchema.partial()
 });
 export type NotificationPreferenceSignal = z.infer<typeof NotificationPreferenceSignalSchema>;

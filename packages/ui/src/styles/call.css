@@ -1363,9 +1363,10 @@ button.ic-fname:hover, .ic-fname[data-state="open"] { background: rgb(255 255 25
 /* Settings' wide page axis becomes a compact call sheet; its controls keep their own sound/browser views. */
 .ic-alert-controls { --ctl: auto; }
 .ic-alert-controls > .ac-tabs { margin: 4px 6px 12px; }
-.ic-alert-controls .set-r { grid-template-columns: minmax(0, 1fr) auto; column-gap: 12px; }
+.ic-alert-controls .set-r { grid-template-columns: minmax(0, 1fr) auto; column-gap: var(--space-3); padding-inline: var(--space-1); }
 .ic-alert-controls .set-r.is-wide { grid-template-columns: minmax(0, 1fr); row-gap: 10px; }
 .ic-alert-controls .set-tx { display: block; }
-.ic-alert-controls .set-t { font-size: 14px; }
-.ic-alert-controls .set-h { font-size: 12px; line-height: 17px; }
+.ic-alert-controls .set-t { font-size: 14px; line-height: 20px; }
+.ic-alert-controls .set-h { margin-top: 3px; font-size: 12px; line-height: 17px; }
+.ic-alert-controls .set-line { flex-wrap: wrap; }
 .ic-alert-controls .set-r:has(.set-c .ac-btn) { grid-template-columns: minmax(0, 1fr); row-gap: 10px; }

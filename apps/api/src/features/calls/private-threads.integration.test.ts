@@ -109,6 +109,8 @@ describe('private conversation threads', () => {
       await until(() => bob.direct.getSnapshot().messages.some((m) => m.text === 'Previous release payload'), 'valid historical payload after refused parents');
       expect(bob.direct.getSnapshot().messages.map((m) => m.text)).toEqual(['Original pair message.', 'Previous release payload']);
       expect(bob.direct.getSnapshot().messages.at(-1)?.thread).toBeNull();
+      expect(bob.direct.getSnapshot().messages.at(-1)?.mentions).toEqual([]);
+      expect(bob.direct.getSnapshot().unreadMentions).toEqual([]);
       await until(() => alice.direct.getSnapshot().messages.find((m) => m.text === 'Previous release payload')?.state === 'delivered', 'historical payload receipt');
       expect(alice.direct.getSnapshot().messages.filter((m) => m.text.startsWith('Forged')).every((m) => m.state === 'sent')).toBe(true);
       expect(host.direct.getSnapshot().messages).toHaveLength(1);

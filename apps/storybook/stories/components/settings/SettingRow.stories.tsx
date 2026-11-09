@@ -57,6 +57,12 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
+/** The real row's reversible save lifecycle, with no icon claiming success while a request is pending. */
+export const Saving: Story = { args: { saveState: 'saving', control: <Toggle label="Record without a connection" /> } };
+export const CouldntConfirm: Story = { args: { saveState: 'failed', control: <Toggle label="Record without a connection" /> } };
+export const SavingNight: Story = { ...Saving, globals: { theme: 'dark' } };
+export const CouldntConfirmPhone: Story = { ...CouldntConfirm, globals: { viewport: { value: 'phone' } } };
+
 /** A switch on the axis. Pressing the setting's name turns it too (`onLabel`); the help is there to read. Once it's kept, Saved shows for a moment. */
 export const WithASwitch: Story = {
   name: 'With a switch',

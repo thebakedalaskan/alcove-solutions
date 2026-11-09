@@ -189,6 +189,7 @@ export interface Ws {
   canChange: boolean;
   /** What the workspace is called here. */
   spaceName: string;
+  spaceSave: 'quiet' | 'saving' | 'saved' | 'failed';
   /** The folders open in the list. */
   open: ReadonlySet<string>;
   setOpen: (id: string, open: boolean) => void;

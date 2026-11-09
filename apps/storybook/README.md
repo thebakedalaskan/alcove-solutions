@@ -3,6 +3,11 @@
 The record of what's built: the foundations, every component in `@alcove/ui`, every page and the journeys between them,
 rendered by the real components and the real app on made-up data. It shows; it never tests (AGENTS.md › Testing).
 
+Immediate actions have Saving/refusal states for settings, invitation answers, Home follow-ups, the wide note preview and
+workspace names. Phone/wide and light/dark variants use the real app. Journeys **11.23** and **12.1** show rapid repeated
+choices and retained-name retry. See [immediate actions](../../docs/engineering/immediate-actions.md) for ownership and the
+real HTTP integration coverage; scripted delays demonstrate UI behavior rather than browser/device verification.
+
 ```
 pnpm storybook        # from the repo root: http://localhost:6006, no Docker, no API
 pnpm build            # turbo builds it into apps/storybook/dist, as CI's Build job does

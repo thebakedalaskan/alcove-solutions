@@ -207,7 +207,7 @@ function Settings() {
             <DevicesPart />
             <AgentsPart />
             {prefs.data && <SoundsPart prefs={prefs.data} />}
-            {prefs.data && <NotificationsPart prefs={prefs.data} />}
+            {prefs.data && <NotificationsPart />}
             <AppearancePart />
             {credits.data ? <PlanPart credits={credits.data} /> : credits.isError && <Unloaded id="plan" title="Plan and credits" busy={credits.isFetching} onRetry={() => readAgain(credits.refetch, 'plan')} />}
             <PrivacyPart session={session} />

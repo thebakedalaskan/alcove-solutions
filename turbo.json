@@ -19,6 +19,22 @@
     "test": {
       "cache": false
     },
+    "@alcove/server#test": {
+      "cache": false,
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/apps/web/src/lib/queryWrites.ts",
+        "$TURBO_ROOT$/apps/web/src/features/workspace/changes.ts"
+      ]
+    },
+    "@alcove/server#typecheck": {
+      "dependsOn": ["^typecheck"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/apps/web/src/lib/queryWrites.ts",
+        "$TURBO_ROOT$/apps/web/src/features/workspace/changes.ts"
+      ]
+    },
     "dev": {
       "cache": false,
       "persistent": true

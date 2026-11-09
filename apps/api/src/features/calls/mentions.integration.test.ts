@@ -1,5 +1,7 @@
 import { DirectTextSchema, type CallSession } from '@alcove/api';
 import { createHttpApi } from '@alcove/api-http';
+import { MutationObserver, QueryClient } from '@tanstack/query-core';
+import { interactiveWrites, preferenceOptions, readPreferences, type PreferenceChange } from '../../../../web/src/lib/queryWrites';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { cookieFetch, ORIGIN, startHarness, type Harness } from '../../testing/harness';
 
@@ -30,6 +32,41 @@ async function guests(firstBrowser = h.browser(), secondBrowser = h.browser()) {
 }
 
 describe('selected call mentions', () => {
+  it('keeps mention preference leaves with their account and preserves another client’s independent choices through a delayed acknowledgement', async () => {
+    const email = `mentions.prefs.${crypto.randomUUID()}@vandelay.example`;
+    const first = h.browser(); const second = h.browser(); const outsider = h.browser();
+    const signed = await first.api.auth.signIn('sso', { email }); await second.api.auth.signIn('sso', { email });
+    await outsider.api.auth.signIn('sso', { email: `mentions.other.${crypto.randomUUID()}@vandelay.example` });
+    const before = await first.api.account.preferences();
+    expect(before.notifications.mentionAlerts).toBe(true); expect(before.sounds.mentions).toBe(true);
+    let reached = false; let claimed = false; let release = () => {};
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const held = h.browser({ fetch: async (input, init) => {
+      const response = await first.fetch(input, init);
+      if (!claimed && init?.method === 'PATCH' && String(input).endsWith('/account/preferences')) { claimed = true; reached = true; await gate; }
+      return response;
+    } });
+    const client = new QueryClient({ defaultOptions: { mutations: interactiveWrites, queries: { retry: false } } });
+    const keys = { session: ['session'] as const, prefs: ['prefs'] as const };
+    client.setQueryData(keys.session, signed.session); client.setQueryData(keys.prefs, before);
+    const options = preferenceOptions(held.api, client, keys, (change: PreferenceChange) => change);
+    const pending = new MutationObserver(client, options).mutate({ sounds: { mentions: false }, notifications: { mentionAlerts: false } });
+    try {
+      await until(() => reached, 'the confirmed mention preference acknowledgement');
+      expect(client.getQueryData<typeof before>(keys.prefs)).toMatchObject({ sounds: { mentions: false }, notifications: { mentionAlerts: false } });
+      const same = await second.api.account.preferences();
+      expect(same.notifications.mentionAlerts).toBe(false); expect(same.sounds.mentions).toBe(false);
+      await second.api.account.updatePreferences({ sounds: { ...same.sounds, questions: !before.sounds.questions }, notifications: { ...same.notifications, tagged: !before.notifications.tagged } });
+      await client.fetchQuery({ queryKey: keys.prefs, queryFn: () => readPreferences(held.api, client) });
+      const expected = { sounds: { mentions: false, questions: !before.sounds.questions, messages: before.sounds.messages }, notifications: { mentionAlerts: false, tagged: !before.notifications.tagged, replyAlerts: before.notifications.replyAlerts } };
+      expect(client.getQueryData<typeof before>(keys.prefs)).toMatchObject(expected);
+      release(); await pending;
+      expect(client.getQueryData<typeof before>(keys.prefs)).toMatchObject(expected);
+      expect(await first.api.account.preferences()).toMatchObject(expected);
+      const other = await outsider.api.account.preferences();
+      expect(other.notifications.mentionAlerts).toBe(true); expect(other.sounds.mentions).toBe(true);
+    } finally { release(); await pending; client.clear(); }
+  });
   it('keeps matching guest names on stable private identities, rebases whitespace spans and follows exact thread/read state', async () => {
     const { host, first, second } = await guests();
     const text = '   CANARY-MENTION-PRIVATE @Sam   ';
@@ -64,7 +101,7 @@ describe('selected call mentions', () => {
     await until(() => first.direct.getSnapshot().unreadMentions.length === 0, 'private mention cleanup');
   });
 
-  it('drops inaccessible private mention attention during whole-API reconnects and departure without discarding permitted history', async () => {
+  it('reauthorizes retained unread history and lets its recipient read a mention after author departure', async () => {
     let offline = false;
     const jar = cookieFetch(ORIGIN);
     const browser = h.browser({ fetch: (input, init) => offline && String(input).includes('/live/calls/') ? Promise.reject(new TypeError('Offline')) : jar(input, init) });
@@ -87,8 +124,13 @@ describe('selected call mentions', () => {
     await until(() => second.direct.getSnapshot().unreadMentions.length === 1, 'new private mention');
     await host.remove(first.ticket.identity);
     await until(() => !second.direct.getSnapshot().peers.includes(first.ticket.identity), 'author no longer in the audience');
-    expect(second.direct.getSnapshot().unreadMentions).toEqual([]);
+    await until(() => second.direct.getSnapshot().ready, 'remaining recipient authorization');
+    const retained = second.direct.getSnapshot().messages.find((m) => m.text === '@Sam one more question.');
+    if (!retained) throw new Error('No retained mention');
+    expect(second.direct.getSnapshot().unreadMentions).toEqual([retained.id]);
     expect(second.direct.getSnapshot().messages).toHaveLength(2);
+    second.direct.read([retained.id]);
+    expect(second.direct.getSnapshot().unreadMentions).toEqual([]);
     await host.remove(second.ticket.identity);
     await until(() => second.direct.getSnapshot().messages.length === 0, 'revoked history cleanup');
     expect(second.direct.getSnapshot().unreadMentions).toEqual([]);
@@ -160,7 +202,7 @@ describe('selected call mentions', () => {
     await host.leave();
   });
 
-  it('keeps private mention attention and destinations within the original room and authorizes them again on return', async () => {
+  it('keeps original-room retained history readable after a move and preserves its read state on return', async () => {
     const org = h.browser(); const a = h.browser(); const b = h.browser();
     const alice = `mentions.alice.${crypto.randomUUID()}@vandelay.example`; const bob = `mentions.bob.${crypto.randomUUID()}@vandelay.example`;
     await org.api.auth.signIn('sso', { email: `mentions.org.${crypto.randomUUID()}@vandelay.example` });
@@ -176,13 +218,14 @@ describe('selected call mentions', () => {
     host.openRooms({ rooms: [{ name: 'Design', emails: [alice] }, { name: 'Support', emails: [bob] }], minutes: 5, board: { mode: 'none', template: 'blank' } });
     await until(() => first.crypto.getSnapshot().place !== 'main' && second.crypto.getSnapshot().place !== 'main' && first.crypto.getSnapshot().place !== second.crypto.getSnapshot().place, 'separate authorized rooms');
     await until(() => !second.direct.getSnapshot().peers.includes(first.ticket.identity), 'old private audience unavailable');
-    expect(second.direct.getSnapshot().unreadMentions).toEqual([]);
+    await until(() => second.direct.getSnapshot().ready, 'current-room recipient authorization');
+    expect(second.direct.getSnapshot().unreadMentions).toEqual([id]);
     await expect(first.direct.send(second.ticket.identity, '@Sam no cross-room destination.', [{ identity: second.ticket.identity, start: 0, end: 4 }])).rejects.toMatchObject({ code: 'conflict' });
+    second.direct.read([id]);
+    expect(second.direct.getSnapshot().unreadMentions).toEqual([]);
     host.closeRooms();
     await until(() => first.crypto.getSnapshot().place === 'main' && second.crypto.getSnapshot().place === 'main', 'main-room return');
     await pair(first, second);
-    await until(() => second.direct.getSnapshot().unreadMentions.includes(id), 'original authorized unread mention');
-    second.direct.read([id]);
     expect(second.direct.getSnapshot().unreadMentions).toEqual([]);
     await host.leave();
   });
