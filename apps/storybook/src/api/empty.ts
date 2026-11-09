@@ -1,11 +1,12 @@
 /* A world with nobody signed in and nothing in it, served until a story starts its scenario. */
+import { paymentsOff } from '../world/payments';
 import { disconnectedDrive } from '../world/drive-exports';
 import { notConnected } from '../world/build';
 import { on } from '../world/clock';
 import { PREFS, WELCOME_CREDITS, type Opening, type World } from '../world';
 
 export const EMPTY_WORLD = (): World => ({
-  drive: disconnectedDrive(), session: null, prefs: PREFS, team: null, notes: [], personal: {}, meetings: [], calendar: notConnected, credits: WELCOME_CREDITS,
+  drive: disconnectedDrive(), payments: paymentsOff(), session: null, prefs: PREFS, team: null, notes: [], personal: {}, meetings: [], calendar: notConnected, credits: WELCOME_CREDITS,
   documents: { workspaces: [] }, workspaces: [], pages: {}, shares: {}, boards: {}, mentions: [], media: [], rings: [], writing: null
 });
 

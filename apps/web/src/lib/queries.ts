@@ -1,6 +1,6 @@
 /* Query keys, fetchers and mutations. Screens read data through these, never through `api` directly. */
 import type { AgentDecisionInput, AgentTokenInput, CallTimerPresetInput, CallTimerPresetUpdate, DriveExportInput, FollowUpReview } from '@alcove/api';
-import { AlcoveApiError, MAX_SORT_STICKIES, MAX_SORT_STICKY, SORT_TOO_FEW, SORT_TOO_MANY, errorCode, type ActionProposal, type ChangeScope, type DecisionProposal, type DemoProvider, type DocumentRole, type Group, type PresenterFrameNotes, type InstantCallInput, type ISODate, type ItemInput, type ItemPlace, type LinePatch, type MeetingInput, type MentionBody, type NoteKind, type NotesSetting, type Patch, type PersonalInput, type PersonalNotes, type PromoteBody, type QuestionPatch, type RingReply, type Series, type ShareTarget, type WorkspaceRole, type WorkspaceSummary } from '@alcove/api';
+import { AlcoveApiError, MAX_SORT_STICKIES, MAX_SORT_STICKY, SORT_TOO_FEW, SORT_TOO_MANY, errorCode, type ActionProposal, type ChangeScope, type DecisionProposal, type DemoProvider, type DocumentRole, type Group, type PresenterFrameNotes, type InstantCallInput, type ISODate, type ItemInput, type ItemPlace, type LinePatch, type MeetingInput, type MentionBody, type NoteKind, type NotesSetting, type Patch, type PersonalInput, type PersonalNotes, type PromoteBody, type QuestionPatch, type TopUp, type RingReply, type Series, type ShareTarget, type WorkspaceRole, type WorkspaceSummary } from '@alcove/api';
 import { queryOptions, useIsMutating, useMutation, useMutationState, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef } from 'react';
 import { forgetAccount } from '~/features/record/offline';
@@ -51,6 +51,9 @@ export const qk = {
   series: (id: string) => ['series', id] as const,
   callSeries: (code: string) => ['series', 'call', code] as const,
   balance: ['credits'] as const,
+  topUpRoutes: ['top-ups', 'routes'] as const,
+  topUps: ['top-ups', 'list'] as const,
+  topUp: (id: string) => ['top-ups', 'one', id] as const,
   trust: ['trust'] as const,
   workspacePeople: (id: string) => ['workspaces', id, 'people'] as const,
   personIds: (id: string, emails: readonly string[]) => ['workspaces', id, 'ids', ...emails] as const,
@@ -101,6 +104,12 @@ export function trustLine(t: Trust | undefined): string {
   if (t?.tee !== 'dstack') return 'Confidential compute';
   return t.bound ? 'Confidential compute · verified' : 'Confidential compute · not verified';
 }
+
+/** Whether money can still arrive for a top-up: it's waiting, arriving or short. */
+export const topUpOpen = (t: TopUp): boolean => t.state === 'waiting' || t.state === 'arriving' || t.state === 'short';
+
+/** The top-ups list's key, carrying its type, for reading what it held before. */
+const topUpsKey = queryOptions({ queryKey: qk.topUps, queryFn: (): Promise<TopUp[]> => api.credits.topUps() }).queryKey;
 
 export const q = {
   drive: () => queryOptions({ queryKey: qk.drive, queryFn: () => api.drive.get(), retry: false }),
@@ -160,6 +169,42 @@ export const q = {
     retry: false, staleTime: 30_000, refetchInterval: 60_000, refetchOnWindowFocus: true
   }),
   balance: () => queryOptions({ queryKey: qk.balance, queryFn: () => api.credits.balance() }),
+  /**
+   * The ways to pay for credits. A server that can't take payments answers unavailable: nothing says so, the way to
+   * add credits just isn't there, and it isn't asked again for a while.
+   */
+  topUpRoutes: () => queryOptions({ queryKey: qk.topUpRoutes, queryFn: () => api.credits.routes(), staleTime: 10 * 60_000, retry: false }),
+  /**
+   * Top-ups still open, and the last few finished; read again every 30 seconds while one is open, so a payment that
+   * settles with the sheet closed shows on Plan and credits. A server that can't take payments answers unavailable:
+   * there's nothing to show.
+   */
+  topUps: () => queryOptions({
+    queryKey: qk.topUps,
+    queryFn: async ({ client }) => {
+      const was = client.getQueryData(topUpsKey)?.filter(topUpOpen) ?? [];
+      const list = await api.credits.topUps();
+      // One that was on its way has been credited since: the balance catches up.
+      if (list.some((t) => t.state === 'credited' && was.some((w) => w.id === t.id))) void client.invalidateQueries({ queryKey: qk.balance });
+      return list;
+    },
+    refetchInterval: (query) => (query.state.data?.some(topUpOpen) ? 30_000 : false),
+    retry: false
+  }),
+  /**
+   * One top-up, read again every 5 seconds while money can still arrive. Once it has finished, the list catches up,
+   * and the balance too when credits were added.
+   */
+  topUp: (id: string) => queryOptions({
+    queryKey: qk.topUp(id),
+    queryFn: async ({ client }) => {
+      const t = await api.credits.topUp(id);
+      if (!topUpOpen(t)) void client.invalidateQueries({ queryKey: qk.topUps });
+      if (t.state === 'credited') void client.invalidateQueries({ queryKey: qk.balance });
+      return t;
+    },
+    refetchInterval: (query) => (query.state.data && topUpOpen(query.state.data) ? 5000 : false)
+  }),
   /** Checked when the app opens (the side panel and the call both show it), then every ten minutes. */
   trust: () => queryOptions({ queryKey: qk.trust, queryFn: checkTrust, staleTime: 10 * 60_000, refetchInterval: 10 * 60_000, retry: 1 }),
 
@@ -397,6 +442,34 @@ export function useGroups() {
 export function useInviteTeam() {
   const qc = useQueryClient();
   return useMutation({ mutationFn: (emails: string[]) => api.people.inviteToTeam(emails), onSuccess: (t) => qc.setQueryData(qk.team, t) });
+}
+
+/* ---------- credits ---------- */
+
+/** Opens a top-up on a route: the address to pay to. It joins the open ones on Plan and credits. */
+export function useStartTopUp() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ routeId, credits }: { routeId: string; credits: number }) => api.credits.startTopUp(routeId, credits),
+    onSuccess: (t) => { qc.setQueryData(q.topUp(t.id).queryKey, t); void qc.invalidateQueries({ queryKey: qk.topUps }); }
+  });
+}
+
+/** Cancels a top-up nothing has reached: it leaves the open ones on Plan and credits. */
+export function useCancelTopUp() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.credits.cancelTopUp(id),
+    onSuccess: (t) => {
+      qc.setQueryData(q.topUp(t.id).queryKey, t);
+      // It leaves the open ones at once, before the list is read again.
+      qc.setQueryData(topUpsKey, (list) => list?.map((x) => (x.id === t.id ? t : x)));
+      void qc.invalidateQueries({ queryKey: qk.topUps });
+      void qc.invalidateQueries({ queryKey: qk.balance });
+    },
+    // Refused because a payment just reached it, say: read it again, so the address goes now.
+    onError: (_e, id) => { void qc.invalidateQueries({ queryKey: qk.topUp(id) }); void qc.invalidateQueries({ queryKey: qk.topUps }); }
+  });
 }
 
 /* ---------- calls ---------- */

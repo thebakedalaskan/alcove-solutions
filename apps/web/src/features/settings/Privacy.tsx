@@ -4,13 +4,13 @@
  * beside what stays. The shared demo account can't be deleted, so the row says that instead.
  */
 import { errorCode, errorMessage, type Session } from '@alcove/api';
-import { Button, Icon, SettingFact, SettingRow, SettingsPart, Spinner, useToast } from '@alcove/ui';
+import { Button, Icon, Notice, SettingFact, SettingRow, SettingsPart, Spinner, useToast } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { forgetView } from '~/features/call/layout/view';
 import { forgetTour } from '~/features/onboarding/store';
-import { q, useDeleteAccount } from '~/lib/queries';
+import { q, topUpOpen, useDeleteAccount } from '~/lib/queries';
 import { hm, hoursAndMinutes } from '~/lib/time';
 import { plural } from '~/lib/words';
 
@@ -75,6 +75,10 @@ function DeleteStep({ shared, onClose }: { shared: boolean; onClose: () => void 
   const prefs = useQuery(q.prefs()).data;
   const credits = useQuery(q.balance()).data;
   const calendar = useQuery(q.calendar()).data;
+  const topUps = useQuery(q.topUps()).data;
+  const paying = topUps?.some(topUpOpen) ?? false;
+  // 1Click can't cancel a quote: a cancelled top-up's address still takes a payment until it expires.
+  const takesPayment = topUps?.some((t) => t.state === 'cancelled' && Date.parse(t.expiresAt) > Date.now()) ?? false;
   const spaces = useQuery(q.workspaces()).data;
   const navigate = useNavigate();
   const toast = useToast();
@@ -138,6 +142,8 @@ function DeleteStep({ shared, onClose }: { shared: boolean; onClose: () => void 
           <div><p className="set-gh">What goes</p><ul className="set-gl">{goes.map((g) => <li key={g}><Icon name="x" size={15} /><span>{g}</span></li>)}</ul></div>
           <div><p className="set-gh">What stays</p><p className="set-gp">Notes other people gave you stay with them, without you. They keep what you said in the call, and your name and address on what you did in them.</p></div>
         </div>
+        {paying && <Notice tone="caution">You have a payment on its way. If it arrives after you delete your account, it can’t be added to anything.</Notice>}
+        {!paying && takesPayment && <Notice tone="caution">A top-up you cancelled can still take a payment until its address expires. If one arrives after you delete your account, it can’t be added to anything.</Notice>}
         <div role="status">{problem && <p className="set-no"><Icon name="alert" size={16} /><span>{problem.text}</span></p>}</div>
         <div className="set-da">
           {/* aria-disabled, not disabled, while deleting: focus stays on the button pressed. */}

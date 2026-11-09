@@ -75,7 +75,7 @@ const speech = (words: string, segment: number): TranscriptClip => ({ data: new 
 const SAID = 'We agreed to ship on Monday. // As you can see the chart is up. // Thanks everyone, talk soon.';
 const count = async (table: 'screen_pieces' | 'screen_videos', ownerId: string) =>
   z.object({ n: z.coerce.number() }).parse((await h.pool.query(`SELECT count(*) AS n FROM ${table} WHERE owner_id = $1`, [ownerId])).rows[0]).n;
-const logged = (msg: string) => h.logs.filter((l) => l.includes(`"msg":"${msg}`)).length;
+const logged = (msg: string, recordingId: string) => h.logs.filter((l) => l.includes(`"msg":"${msg}`) && l.includes(recordingId)).length;
 const noteOf = async (call: CallSession) => { const end = await call.leave(); if (!end?.pendingNoteId) throw new Error('the call left no note'); return end.pendingNoteId; };
 
 async function held(org: Account, choices: Partial<typeof DEFAULT_NOTES_CHOICES>) {
@@ -339,13 +339,15 @@ describe('shared screens around the notes', () => {
     h.deps.cfg = { ...configured, NEAR_AI_API_KEY: '' };
     try {
       const noteId = await noteOf(call);
+      const recording = (await h.pool.query<{ recording_id: string }>('SELECT recording_id FROM recordings WHERE owner_id = $1', [ownerId])).rows[0];
+      if (!recording) throw new Error('the call left no recording');
       await h.pool.query(`UPDATE recordings SET ended_at = ended_at - interval '30 seconds' WHERE owner_id = $1`, [ownerId]);
       await joinDue(h.deps, ownerId);
       await waitFor(async () => (await count('screen_pieces', ownerId)) === 0, 'the pieces to be deleted');
-      expect(logged('a shared screen’s video couldn’t be joined')).toBe(1);
+      expect(logged('a shared screen’s video couldn’t be joined', recording.recording_id)).toBe(1);
       // Nothing is left to join again, and the note doesn't wait for video that won't come.
       expect(await joinDue(h.deps, ownerId)).toEqual({ joined: 0, waitMs: null });
-      expect(logged('a shared screen’s video couldn’t be joined')).toBe(1);
+      expect(logged('a shared screen’s video couldn’t be joined', recording.recording_id)).toBe(1);
       expect(await count('screen_videos', ownerId)).toBe(0);
       let first: NoteProgress | undefined;
       for await (const p of org.api.notes.progress(noteId)) { first = p; break; }

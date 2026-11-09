@@ -8,6 +8,7 @@ import type {
   Calendar, CreditBalance, DocRefusal, DocumentLibrary, IncomingRing, Meeting, MentionNotice, MoveIn, MoveMedia, Note, Person, PersonalEntry, Preferences, Session, ShareEntry, Team,
   WorkspaceMedia, WorkspaceSummary, WorkspaceTree
 } from '@alcove/api';
+import type { PaymentsWorld } from './payments';
 import type { DriveWorld } from './drive-exports';
 import type * as Y from 'yjs';
 import type { BlockJSON } from '~/features/workspace/editor/types';
@@ -76,6 +77,7 @@ export interface Kept { workspace: string; media: WorkspaceMedia; body: () => Pr
 
 export interface World {
   drive: DriveWorld;
+  payments: PaymentsWorld;
   timerPresets?: CallTimerPreset[];
   /** Who's signed in, or nobody. */
   session: Session | null;

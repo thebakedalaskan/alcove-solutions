@@ -3,6 +3,7 @@ import type { Meta } from '@storybook/react-vite';
 import { screen, within } from 'storybook/test';
 import { phone } from '../../src/call';
 import { changing, page, pages, type PageArgs, type PageStory } from '../../src/page';
+import { withTopUp } from '../../src/world/payments';
 import { withDriveReconnect } from '../../src/world/drive-exports';
 import { keptHere, noCalendar, sharedDemo, troubled, unencryptedDefault } from './changes';
 
@@ -167,4 +168,41 @@ export const NotificationLeafRefused = page('/settings#notifications', 'busy', {
     world.prefs.notifications = { ...world.prefs.notifications, enabled: true, privateMessages: true, questions: false };
     world.trouble = { ...world.trouble, 'account.updatePreferences': () => { if (!first) return null; first = false; return 'failed'; } };
   })
+});
+
+
+/** Payments are separate from the default server-without-a-treasury scenario. Every address is an invalid preview. */
+export const Payments = page('/settings#plan', 'payments');
+export const PaymentsUnavailable = page('/settings#plan', 'busy');
+export const AddCreditsPicker = page('/settings#plan', 'payments', { play: pressing('Add credits', 'Choose how many credits, then a token and network') });
+export const AddCreditsPickerNight = { ...AddCreditsPicker, globals: { theme: 'dark' } };
+export const AddCreditsPickerPhone = phone(AddCreditsPicker);
+export const AddCreditsPickerPhoneNight = { ...phone(AddCreditsPicker), globals: { viewport: { value: 'phone' }, theme: 'dark' } };
+
+const openTopUp: NonNullable<PageStory['play']> = async ({ userEvent, step }) => {
+  await step('Reopen the payment from Plan and credits', async () => {
+    const plan = await screen.findByRole('region', { name: 'Plan and credits' }, { timeout: 8000 });
+    await userEvent.click(await within(plan).findByRole('button', { name: 'Open' }, { timeout: 8000 }));
+  });
+};
+export const PaymentWaiting = page('/settings#plan', 'payments', { beforeEach: changing(withTopUp('waiting')), play: openTopUp });
+export const PaymentWaitingNight = { ...PaymentWaiting, globals: { theme: 'dark' } };
+export const PaymentWaitingPhone = phone(PaymentWaiting);
+export const PaymentWaitingPhoneNight = { ...phone(PaymentWaiting), globals: { viewport: { value: 'phone' }, theme: 'dark' } };
+export const PaymentArriving = page('/settings#plan', 'payments', { beforeEach: changing(withTopUp('arriving')), play: openTopUp });
+export const PaymentShort = page('/settings#plan', 'payments', { beforeEach: changing(withTopUp('short')), play: openTopUp });
+/** The address has expired while 1Click is still reporting the short payment: no instruction to send more. */
+export const PaymentShortExpired = page('/settings#plan', 'payments', { beforeEach: changing(withTopUp('short', true)), play: openTopUp });
+export const PaymentShortExpiredPhoneNight = { ...phone(PaymentShortExpired), globals: { viewport: { value: 'phone' }, theme: 'dark' } };
+export const PaymentCredited = page('/settings#plan', 'payments', { beforeEach: changing(withTopUp('credited')), play: openTopUp });
+/** Finished payments stay reachable so their support reference can be opened after closing the sheet. */
+export const PaymentFailed = page('/settings#plan', 'payments', { beforeEach: changing(withTopUp('failed')), play: openTopUp });
+export const PaymentHeld = page('/settings#plan', 'payments', { beforeEach: changing(withTopUp('held')), play: openTopUp });
+export const PaymentCancelled = page('/settings#plan', 'payments', { beforeEach: changing(withTopUp('cancelled')), play: openTopUp });
+export const PaymentExpired = page('/settings#plan', 'payments', { beforeEach: changing(withTopUp('expired', true)), play: openTopUp });
+export const DeleteWithPaymentOnItsWay = page('/settings#privacy', 'payments', {
+  beforeEach: changing(withTopUp('arriving')), play: pressing('Delete account', 'Deletion warns that an arriving payment cannot be credited after the account is gone')
+});
+export const DeleteWithCancelledAddress = page('/settings#privacy', 'payments', {
+  beforeEach: changing(withTopUp('cancelled')), play: pressing('Delete account', 'A cancelled address can still receive money until it expires')
 });

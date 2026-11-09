@@ -265,7 +265,7 @@ async function settle(o: Owner, jobId: string, noteId: string, was: NotesJob['wa
       wlog.info('transcript deleted, as the call was set to', { noteId, revisions });
     }
     // Shared screens' video is kept only until the notes are written, since the frames are taken from it.
-    const unkept = next.keep.recording ? [] : [...await purgeAudio(o, c, next.recordingId), ...await screens.purgeVideo(o, c, next.recordingId)];
+    const unkept = next.keep.recording ? [] : [...await screens.purgeVideo(o, c, next.recordingId), ...await purgeAudio(o, c, next.recordingId)];
     return [...unkept, ...await screens.dropUnused(o, c, noteId, left, new Set(next.screens.map((m) => m.id)))];
   });
   if (!leftover) return false;

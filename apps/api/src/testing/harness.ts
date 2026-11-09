@@ -1,7 +1,8 @@
 /*
  * Boots the real API against a clean test database and bucket, with a stand-in Google to sign in
- * through and a stand-in NEAR AI Cloud to transcribe and write notes (with stand-ins for the Intel and
- * NVIDIA services that vouch for it, under test roots), and gives tests "browsers":
+ * through, a stand-in NEAR AI Cloud to transcribe and write notes (with stand-ins for the Intel and
+ * NVIDIA services that vouch for it, under test roots) and a stand-in 1Click to pay for credits with,
+ * and gives tests "browsers":
  * each with its own cookie jar, sending the web app's Origin, talking through @alcove/api-http.
  */
 import type { AlcoveApi, CallSession } from '@alcove/api';
@@ -21,6 +22,7 @@ import { migrate } from '../migrate';
 import { createObjectStore, type ObjectStore } from '../objects';
 import { startFakeGoogle, type FakeGoogle } from './fake-google';
 import { startFakeNear, type FakeNear } from './fake-near';
+import { startFakeOneClick, type FakeOneClick } from './fake-oneclick';
 
 // An HTTPS web origin, so the API applies its production cookie rules (__Host- names, Secure) over the test transport.
 export const ORIGIN = 'https://localhost:3000';
@@ -64,6 +66,8 @@ export interface Harness {
   google: FakeGoogle;
   /** The NEAR AI Cloud the API transcribes speech and writes notes with, and the stand-ins that vouch for it. */
   near: FakeNear;
+  /** The NEAR Intents 1Click that quotes deposit addresses for credit top-ups. */
+  oneclick: FakeOneClick;
   /** A fresh browser with its own cookie jar, or one around a fetch the test supplies. */
   browser(o?: { fetch?: typeof fetch | undefined; onEvent?: ((e: ClientEvent) => void) | undefined; callPollMs?: number | undefined; callNotesMs?: number | undefined; callRekeyMs?: number | undefined; ringSilenceMs?: number | undefined }): Browser;
   /** Stops every call session, workspace stream and document this harness's browsers opened from keeping up (nobody leaves). */
@@ -110,6 +114,7 @@ export async function startHarness(): Promise<Harness> {
   configureLogging({ level: 'debug', destination: { write: (line: string) => { logs.push(line); if (process.env['TEST_LOGS']) process.stdout.write(line); } } });
   const google = await startFakeGoogle();
   const near = await startFakeNear();
+  const oneclick = await startFakeOneClick();
   // The bucket follows the test database (alcove_test → alcove-test), so runs against different test
   // databases, as from parallel worktrees, never sweep each other's objects.
   const bucket = name.toLowerCase().replace(/[^a-z0-9-]/g, '-');
@@ -118,6 +123,8 @@ export async function startHarness(): Promise<Harness> {
     GOOGLE_ISSUER: google.issuer, GOOGLE_API_URL: google.issuer, GOOGLE_CLIENT_ID: google.clientId, GOOGLE_CLIENT_SECRET: google.clientSecret,
     // NEAR AI, and the stand-in Intel and NVIDIA roots its evidence is checked against.
     ...near.settings,
+    // 1Click, paying the treasury for credit top-ups.
+    ...oneclick.settings,
     // Sign-in photos come from the stand-in Google here, as they come from lh3.googleusercontent.com in production.
     PHOTO_HOSTS: 'googleusercontent.com,127.0.0.1',
     // A limit a test sets is in force on its next request, and gone once the test is: tests that look at the window set their own.
@@ -138,7 +145,7 @@ export async function startHarness(): Promise<Harness> {
   const streams: { close(): void }[] = [];
   const closeCalls = () => { for (const s of [...calls.splice(0), ...streams.splice(0)]) s.close(); };
   return {
-    baseUrl, pool, objects, deps, logs, google, near,
+    baseUrl, pool, objects, deps, logs, google, near, oneclick,
     browser(o = {}) {
       const f = o.fetch ?? cookieFetch(ORIGIN);
       // Calls keep up with their keys and notes quickly here; browsers wait 1.5 s between checks while nothing nudges them, and 5 s between looks at the notes.
@@ -164,6 +171,7 @@ export async function startHarness(): Promise<Harness> {
       await stop(server);
       await google.close();
       await near.close();
+      await oneclick.close();
       await pool.end();
     }
   };

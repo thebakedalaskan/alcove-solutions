@@ -67,7 +67,7 @@ export function Popover({ open, onOpenChange, anchor, children, align = 'start',
 export const PopoverClose = RPopover.Close;
 
 export interface SelectOption<T extends string> {
-  value: T; label: string; icon?: IconName | undefined;
+  value: T; label: string; icon?: IconName | undefined; mark?: ReactNode | undefined;
   /** Muted text after the label, e.g. "(default)". Type-ahead still matches the label alone. */
   note?: string | undefined;
   /** Shown at the end of the row, before the tick, e.g. an `Unencrypted` badge. */
@@ -180,7 +180,7 @@ export function Select<T extends string>({ value, onChange, options, label, icon
     <RPopover.Root open={open} onOpenChange={setOpen}>
       <RPopover.Trigger aria-haspopup="listbox" aria-label={shown ? `${label}: ${shown}` : label} disabled={disabled} onKeyDown={onButtonKey}
         className={cn('ac-select', stage && 'is-stage', className)}>
-        {icon && <Icon name={icon} size={15} />}
+        {options[chosen]?.mark ?? (icon && <Icon name={icon} size={15} />)}
         <span className="v ac-clamp-1">{shown}</span>
         {picked?.note && <span className="ac-note">{picked.note}</span>}
         {picked?.tag}
@@ -201,7 +201,7 @@ export function Select<T extends string>({ value, onChange, options, label, icon
             <div key={o.value} role="option" tabIndex={-1} aria-selected={i === chosen} className="ac-option"
               onClick={() => choose(i)}
               onPointerMove={(e) => { if (document.activeElement !== e.currentTarget) e.currentTarget.focus({ preventScroll: true }); }}>
-              {o.icon && <Icon name={o.icon} size={16} className="lead" />}
+              {o.mark ?? (o.icon && <Icon name={o.icon} size={16} className="lead" />)}
               <span>{o.label}</span>
               {o.note && <span className="ac-note">{o.note}</span>}
               {o.tag}

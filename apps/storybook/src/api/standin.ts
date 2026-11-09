@@ -7,6 +7,8 @@
  *
  * A method nothing renders yet answers with something sensible and empty. When the contract grows, this grows with it.
  */
+import { StartTopUpBodySchema, type TopUp } from '@alcove/api';
+import { PREVIEW_DEPOSIT_ADDRESS } from '../world/payments';
 import { DriveExportInputSchema, type DriveCallExports, type DriveExportInput } from '@alcove/api';
 import { disconnectedDrive } from '../world/drive-exports';
 import type { BoardSortBody, DocAskBody, DocAskPart } from '@alcove/api';
@@ -36,6 +38,14 @@ import * as spaces from './workspaces';
 /* ---------- how every answer comes back ---------- */
 
 const refused = (code: 'not-found' | 'forbidden' | 'conflict' | 'invalid', message: string) => new AlcoveApiError(code, message, { requestId: nextId('sb-req') });
+const noPayments = () => new AlcoveApiError('unavailable', 'Top-ups aren’t available right now.', { requestId: nextId('sb-req') });
+const paymentRoutes = (w: World) => { if (!w.payments.routes) throw noPayments(); return w.payments.routes; };
+const paymentIn = (w: World, id: string): TopUp => {
+  paymentRoutes(w);
+  const t = w.payments.topUps.find((x) => x.id === id);
+  if (!t) throw refused('not-found', 'That top-up isn’t there any more.');
+  return t;
+};
 const offline = () => new AlcoveApiError('network', 'Can’t reach Alcove. Check your connection.');
 
 /** Answers after a moment, from the world as it is then, as a copy: what the app holds never changes under it. */
@@ -767,10 +777,36 @@ export const standIn: AlcoveApi = {
     restoreVersion: (id: ID) => answer(() => { spaces.treeOf(id); }),
     searchText: (id: ID) => spaces.searchText(id)
   },
-  credits: { balance: () => answer((w) => w.credits) },
-  models: {
-    list: () => answer(() => AI_MODELS)
+  credits: {
+    balance: () => answer((w) => w.credits),
+    routes: () => answer(paymentRoutes),
+    startTopUp: (routeId, credits) => answer((w) => {
+      const choices = paymentRoutes(w);
+      StartTopUpBodySchema.parse({ routeId, credits });
+      const route = choices.routes.find((r) => r.id === routeId);
+      if (!route) throw refused('invalid', 'That way to pay isn’t offered.');
+      if (credits < route.minimumCredits) throw refused('invalid', `Choose at least ${route.minimumCredits.toLocaleString('en-GB')} credits on ${route.chainName}.`);
+      const rate = choices.tiers.reduce((best, t) => credits >= t.fromCredits ? t.creditsPerUsd : best, 1000);
+      const amount = String(Math.ceil(credits * 1_000_000 / rate - 1e-6) / 1_000_000);
+      const t: TopUp = {
+        id: nextId('sb-top-up'), route, address: PREVIEW_DEPOSIT_ADDRESS, memo: null,
+        expiresAt: new Date(Date.now() + 3_600_000).toISOString(), state: 'waiting',
+        asked: { amount, credits }, received: null
+      };
+      w.payments.topUps.unshift(t);
+      return t;
+    }),
+    topUp: (id) => answer((w) => paymentIn(w, id)),
+    cancelTopUp: (id) => answer((w) => {
+      const t = paymentIn(w, id);
+      if (t.state !== 'waiting') throw refused('conflict', 'This top-up can’t be cancelled any more: a payment has already reached it.');
+      const cancelled: TopUp = { ...t, state: 'cancelled', address: null, memo: null };
+      w.payments.topUps = w.payments.topUps.map((x) => x.id === id ? cancelled : x);
+      return cancelled;
+    }),
+    topUps: () => answer((w) => { paymentRoutes(w); return w.payments.topUps; })
   },
+  models: { list: () => answer(() => AI_MODELS) },
   trust: { attestation: attest },
   diagnostics: { report: () => Promise.resolve() }
 };

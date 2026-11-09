@@ -75,6 +75,12 @@ const EnvSchema = z.object({
    * and is sent requests sealed to its attested key; any other is unencrypted (features/notes/models.ts).
    */
   NEAR_AI_ENDPOINTS_URL: z.string().url().default('https://completions.near.ai/endpoints'),
+  /** NEAR Intents 1Click, for credit top-ups: the partner JWT from partners.near-intents.org. Optional: without it 1Click still quotes, with a higher fee. */
+  ONECLICK_API_KEY: optional,
+  /** The NEAR account whose Intents balance receives every top-up, and every refund. Top-ups are off without it. */
+  TREASURY_INTENTS_ACCOUNT: optional,
+  /** 1Click's API. Tests point it at their stand-in. */
+  ONECLICK_BASE_URL: z.string().url().default('https://1click.chaindefuser.com'),
   /** Intel's Provisioning Certification Service: the TCB info, QE identity and revocation lists a TDX quote is checked against. */
   INTEL_PCS_URL: z.string().url().default(INTEL_PCS),
   /** The root every TDX quote and Intel collateral must chain to: Intel's SGX Root CA. Tests set their own. */

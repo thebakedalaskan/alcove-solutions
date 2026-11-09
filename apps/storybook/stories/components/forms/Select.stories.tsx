@@ -5,7 +5,7 @@
  * keeps its own open state, so every story here starts closed: press it to open the list. `placeholder` shows when
  * nothing is chosen, and `stage` is for the night recorder and the call.
  */
-import { ICON_NAMES, Select, Unencrypted, type SelectOption } from '@alcove/ui';
+import { CryptoMark, ICON_NAMES, Select, Unencrypted, type SelectOption } from '@alcove/ui';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useArgs } from 'storybook/preview-api';
 import { did, onStage } from '../../../src/component';
@@ -94,6 +94,26 @@ export const Placeholder: Story = {
 };
 /** No microphone plugged in: there's nothing to pick, and the button says so. */
 export const Disabled: Story = { args: { label: 'Microphone', icon: 'micOff', value: undefined, placeholder: 'No microphone', options: [], disabled: true } };
+/** The same network mark appears in the list and beside the chosen value. */
+export const NetworkMarks: Story = {
+  args: {
+    label: 'Network', value: 'base', options: [
+      { value: 'base', label: 'Base', mark: <CryptoMark name="base" /> },
+      { value: 'sol', label: 'Solana', mark: <CryptoMark name="sol" /> },
+      { value: 'near', label: 'NEAR', mark: <CryptoMark name="near" /> }
+    ]
+  },
+  argTypes: { value: { control: 'select', options: ['base', 'sol', 'near'] } }
+};
+export const TokenMarks: Story = {
+  args: {
+    label: 'Token', value: undefined, placeholder: 'Token', options: [
+      { value: 'USDC', label: 'USDC', mark: <CryptoMark name="USDC" /> },
+      { value: 'USDT', label: 'USDT', mark: <CryptoMark name="USDT" /> }
+    ]
+  },
+  argTypes: { value: { control: 'select', options: ['USDC', 'USDT'] } }
+};
 /** On the night recorder: the microphone to record with, centred under its button. */
 export const OnTheStage: Story = {
   name: 'On the stage',
