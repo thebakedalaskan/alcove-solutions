@@ -426,7 +426,15 @@ describe('signing in with Google', () => {
       scope: 'openid email profile https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.events.freebusy', access_type: 'offline', code_challenge_method: 'S256'
     });
     for (const k of ['state', 'nonce', 'code_challenge']) expect(to.searchParams.get(k)).toMatch(/^[A-Za-z0-9_-]{43}$/);
-    expect(start.headers.get('set-cookie')).toMatch(/^__Host-alcove_google=[^;]+;.*HttpOnly.*SameSite=Lax/i);
+    const cookies = start.headers.getSetCookie();
+    const googleAttempt = cookies.find((header) => header.startsWith('__Host-alcove_google='));
+    if (!googleAttempt) throw new Error('Google sign-in did not set its attempt cookie.');
+    expect(googleAttempt).toMatch(/^__Host-alcove_google=[^;]+;.*HttpOnly.*SameSite=Lax/i);
+    expect(cookieAttributes(googleAttempt)).toMatchObject({ secure: true, httpOnly: true, pathRoot: true, removed: false });
+    // Starting a sign-in cancels a pending Drive consent before another Alcove account can use this browser.
+    const clearedDriveAttempt = cookies.find((header) => header.startsWith('__Host-alcove_drive='));
+    if (!clearedDriveAttempt) throw new Error('Google sign-in did not clear pending Drive consent.');
+    expect(cookieAttributes(clearedDriveAttempt)).toMatchObject({ secure: true, pathRoot: true, removed: true });
 
     // Someone invites Bram to a call with notes before they've ever used Alcove.
     const bram: GoogleUser = { sub: '104412233445566778899', email: 'Bram.Kay@Example.com', name: 'Bram Kay', picture: `${h.google.issuer}/photo/bram-1` };
