@@ -24,7 +24,7 @@ A regenerated artifact replaces the content of its existing export, preserving t
 
 ## Keys, records and deletion
 
-Migration `0019_drive_exports.sql` only adds tables and an index. Existing migrations, rows and sealed source schemas are unchanged, so the previous release keeps reading its data while the migration runs.
+Migration `0020_drive_exports.sql` only adds tables and an index. Existing migrations, rows and sealed source schemas are unchanged, so the previous release keeps reading its data while the migration runs.
 
 Credentials, account details, folder names and references, export configuration, upload-session URLs and private job metadata are sealed under the exporting owner's root, with record kind `drive-export` and an exact scope identifying the connection, call or job. A job's seal also binds its source owner, note and format. The queue's clear columns carry only opaque owner/source/job/lease IDs, artifact format, processing state, attempt count and scheduling/lease timestamps. The provider never receives the Alcove owner keys.
 

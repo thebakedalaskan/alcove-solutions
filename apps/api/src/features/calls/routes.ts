@@ -1,3 +1,4 @@
+import { registerLiveTimerRoutes } from './timer-routes';
 import { AskSoFarBodySchema, CallActionSchema, CallCommitBodySchema, CallJoinBodySchema, CallKeyPackageBodySchema, CallBackBodySchema, CallMessageBodySchema, CatchUpBodySchema, TranslateBodySchema, MAX_FRAME_BYTES, HEARD_HEADERS, CallHandOffBodySchema, CallLeaveBodySchema, DocFollowUpTickSchema, PickTimeBodySchema, SeriesAskBodySchema, PersonalEditSchema, PersonalInputSchema, ShareEndedBodySchema, MoveByClaimBodySchema, MoveClaimBodySchema, MoveConfirmBodySchema, MoveReadyBodySchema, MoveStartBodySchema, type CallAction } from '@alcove/api';
 import { Hono, type Context } from 'hono';
 import { z } from 'zod';
@@ -151,6 +152,8 @@ export function registerCallRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
   const HOST_ACTIONS: ReadonlySet<CallAction['type']> = new Set(['deny', 'mute', 'remove', 'lock', 'spotlight', 'rooms-close', 'unavailable', 'hand-lower', 'hands-clear', 'question-resolve', 'question-pin']);
 
   app.get('/v1/live/calls/:id', async (c) => c.json(await callsService.state(c.get('viewer'), c.req.param('id'))));
+
+  registerLiveTimerRoutes(app, runtime);
 
   /*
    * The workspace a call uses, beyond what the call's actions do: what changing it would mean, for the organizer to decide,

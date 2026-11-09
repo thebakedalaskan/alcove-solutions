@@ -1,3 +1,4 @@
+import type { CallTimerSequence } from '@alcove/api';
 /*
  * A call's script: who's in it when you come in, what they say and do and when, how the people you ring answer, and
  * what the call's link says while you wait at the door. The scripted call (call.ts) plays the server's side of it,
@@ -165,6 +166,8 @@ export type Beat =
 export interface Cue { at: number; beat: Beat }
 
 export interface CallScript {
+  /** Prepared or running presenter sequence, from the same server-clock anchor as the call. */
+  timerSequence?: CallTimerSequence | undefined;
   /** Who's in the call when you come in, besides you. */
   here?: readonly Present[] | undefined;
   /** How long the call has been going when you come in, in seconds. */

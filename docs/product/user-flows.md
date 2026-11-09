@@ -288,7 +288,7 @@ window, and what you typed stays. It rings once, in one tab, where the browser a
 pre-join. **Can't now** opens **In 5 minutes**, **In 15 minutes** and **Not this time** in the same card, and a toast
 says what the organizer sees and that Alcove rings you again then. A ring nobody answers leaves by itself after 45
 seconds. On the page
-of the call itself there's no card. From another call, **Join** asks you to leave it first, and leaving carries on to
+of the call itself there's no card. From another call, **Join** asks the current host to leave it first; other participants leave immediately, carrying on to
 the call that rang.
 
 ## 6. In the call
@@ -609,13 +609,34 @@ Settings has the same account preferences. Quiet mode retains microphone confirm
 notification permission is independent. Sound uses your selected speaker and never enters the outgoing call or notes.
 If playback is blocked, Attention and its counts still work.
 
+### Presenter timers (journeys 6.26–6.28)
+
+26. **Prepare reusable timing.** Before joining a call you organize, **Prepare timer presets** opens your private
+    library. Name a preset and add ordered segments with a name, duration and optional presenter. Quick durations
+    include 15 minutes; custom durations are entered in seconds. Duplicate, remove or move a segment with its named
+    controls. The planned total updates as you edit. **Save preset** keeps definitions only. Edit/rename, duplicate
+    and delete are explicit; deleting a preset keeps copies already loaded into calls.
+27. **Run the sequence.** **Timer** opens the call’s timer panel. The current host can **Build sequence**, or open
+    **Your presets** and **Use copy**, then **Save timer plan**. **Start timer** begins the first turn. Current and next
+    segments, the presenter and total planned time remain readable. **Pause**, **Resume**, **Restart segment**,
+    **Add 1 min**, **Skip** and **Next segment** change the shared timer. At zero it says time is up and counts over
+    time; the host explicitly moves on or finishes the sequence. Editing upcoming slots preserves the current turn.
+    Changes to this call stay here; **Replace with this plan** asks before updating a saved preset.
+28. **Follow the timer in your own view.** Every admitted participant, including a guest, sees the same countdown.
+    The compact timer reopens details while a screen, workspace or board is in use, in focus and in the floating call.
+    A named presenter receives an explicit warning at 30 seconds and at zero, using words and an icon as well as colour.
+    **Sound when time is up** is off initially and changes only this browser’s cue; it respects call sound and quiet
+    settings. The visual timer stays visible with sound off. Joining late, reconnecting or backgrounding the tab keeps
+    the existing clock; whoever is authorized to host now can continue controlling it.
+
 ### Floating call
 
 **6.22 Keep the call in view.** On a supported desktop browser, **Open floating call** in **View** opens a small,
 movable and resizable window over other apps. It shows the speaker or a selected live shared screen, with the same
 microphone, camera and raised-hand state as the meeting. Its controls act on this call. Closing the window keeps you
-in the call; **Return to call** brings the meeting forward. **Leave** follows the call's usual confirmation and
-recording-save flow, and a failure keeps the call open with an explanation.
+in the call; **Return to call** brings the meeting forward. **Leave** asks only the current host to confirm; other
+participants leave immediately. Both save the last recording pieces before departing, and a failure keeps the call open
+with an explanation and Leave available to retry.
 
 Hands, open Q&A, people asking to enter (for the host), and new chat have compact indicators that return to their matching Attention tab or Chat in the full meeting. The compact and full meeting controls share one confirmed action owner and the same speaker cues.
 The window shows no personal notes or message text. Its Chat count includes unread mentions; opening Chat returns to
@@ -971,11 +992,17 @@ Storybook journeys **6.23–6.25** show the review alongside the call:
 
 ## 7. End the call and get the notes
 
-1. **Leave › End the call** (with others in the call, **End call for everyone**) sends the last audio and
+1. **Leave** immediately leaves for anyone who is not hosting, invited participants and guests alike: no confirmation,
+   on the main stage or in the floating call. The last audio and speech are saved before leaving; while that happens,
+   Leave is disabled. A failed departure keeps the same call open with an explanation and a way to retry. The call goes
+   on for everyone else, and the call’s link is ready to join again. In-app navigation does the same cleanup before
+   continuing, and closing or reloading a participant’s tab does not ask for confirmation.
+   For the current host, **Leave › End the call** (with others in the call, **End call for everyone**) sends the last audio and
    speech and ends the call. **Stay in the call** goes back. With someone invited in the call, whoever hosts can
    also **Leave and keep it going**: the person who'll host is chosen already ("Priya will host until you're back"),
    and **Change** picks someone else. The call goes on, the notes with it, and the organizer takes it back by
-   joining again. Someone standing in sees the same sheet, with leaving it going first.
+   joining again. Someone standing in sees the same sheet, with leaving it going first. The browser still asks the current
+   host to confirm closing or reloading the tab.
 2. The sheet becomes **Call ended**: who gets the notes, and how they're coming along until "Notes are
    ready", then **Read the notes** or **Go to Home**. The note shows the steps so far (call ended, audio
    saved, the transcript's length, the notes being written), playback of the decrypted recording, and who
@@ -991,6 +1018,10 @@ Storybook journeys **6.23–6.25** show the review alongside the call:
    While the notes model's evidence can't be checked or doesn't check out, nothing is sent; and while it
    doesn't answer, nothing is lost. Either way notes wait with "Waiting for the notes model. The notes are
    written as soon as it’s verified and answering" and are tried again every five minutes.
+
+**Journeys:** 7.1 ends the call and reads its notes; 7.2 hands hosting over; 7.3 leaves as an invited participant
+(including phone and light theme); 7.4 leaves as a guest; 7.5 retries a participant departure that failed;
+7.6 accepts another call while participating and continues there without a confirmation.
 
 ## 8. Notes
 

@@ -10,7 +10,7 @@
 
 - [x] Inspect existing ownership, key access, Google authorization and note finalization.
 - [x] Define contracts in `packages/api/src/notes/drive.ts`, compose `AlcoveApi.drive`, and implement schema-parsed HTTP methods in `packages/api-http/src/notes/drive.ts`.
-- [x] Implement notes-owned connection, validated folder references, defaults and per-note overrides; add migration `0019_drive_exports.sql`.
+- [x] Implement notes-owned connection, validated folder references, defaults and per-note overrides; add migration `0020_drive_exports.sql`.
 - [x] Implement finalized-artifact discovery, durable jobs, pre-generated provider IDs, reconciliation, bounded retries and cleanup. Original retained recording segments export as a ZIP64 archive; finalized notes as Markdown and transcripts as text. Regeneration updates the existing exported file.
 - [x] Extend the Google fixture and public API integration flows for consent, folder grants/shared drives, independent connection, artifact readiness, retry/uncertainty, cross-owner and guest refusal, source/destination loss, ciphertext/log leakage and physical deletion.
 - [x] Build Settings connection/defaults/job status and note-specific overrides from the existing design kit. Extend Storybook's stand-in and numbered journeys.

@@ -23,8 +23,10 @@ import type { HttpRuntime } from './runtime';
  * would say an account was rung for a day after the ring had gone. What a guest can reach of a workspace
  * comes before receipts altogether, so it isn't listed here: see the routes.
  */
+// Timer presets keep no receipt: deleting one must remove every stored copy of its names and segments.
 const NO_RECEIPT = [
   /^\/v1\/drive(?:\/.*)?$/,
+  /^\/v1\/timer-presets(?:\/[^/]+)?$/,
   /^\/v1\/agents\/tokens$/, /^\/v1\/agents\/authorization\/[^/]+$/,
   /^\/v1\/calendar\/busy$/,
   /^\/v1\/notes\/search$/, /^\/v1\/notes\/(?:[^/]+\/)?ask$/, /^\/v1\/series\/[^/]+\/ask$/, /^\/v1\/live\/calls\/[^/]+\/(?:catch-up|ask|series\/ask|translate|notes\/watch)$/,

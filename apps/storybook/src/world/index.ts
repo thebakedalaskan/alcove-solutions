@@ -1,4 +1,4 @@
-import { DEFAULT_SOUND_PREFERENCES } from '@alcove/api';
+import { type CallTimerPreset, DEFAULT_SOUND_PREFERENCES } from '@alcove/api';
 /*
  * The demo world: everything the stand-in API serves, in the contract's own types. A scenario (src/api/scenarios.ts) makes
  * one for each story, which the story can change as it's clicked through: confirming a decision changes the note here, and
@@ -76,6 +76,7 @@ export interface Kept { workspace: string; media: WorkspaceMedia; body: () => Pr
 
 export interface World {
   drive: DriveWorld;
+  timerPresets?: CallTimerPreset[];
   /** Who's signed in, or nobody. */
   session: Session | null;
   prefs: Preferences;

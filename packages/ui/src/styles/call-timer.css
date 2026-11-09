@@ -1,0 +1,69 @@
+.ac-call-timer-button { display: inline-flex; align-items: center; gap: 7px; flex: none; min-height: 36px; max-width: 210px; padding: 6px 10px; border: 1px solid var(--line-control); border-radius: var(--radius-md); background: var(--surface); color: var(--ink-2); font: 500 12px/1.2 var(--font-sans); cursor: pointer; }
+.ac-call-timer-button b { color: var(--ink); font-size: 13px; flex: none; }
+.ac-call-timer-button .ac-clamp-1 { max-width: 100px; }
+.ac-call-timer-button:hover, .ac-call-timer-button.is-on { background: var(--sun-soft); border-color: var(--sun-text); color: var(--sun-text); }
+.stage .ac-call-timer-button { background: var(--stage-raised); border-color: var(--line-control); color: var(--stage-ink-2); }
+.stage .ac-call-timer-button b { color: var(--stage-ink); }
+.ac-call-timer-button.is-warning, .ac-call-timer-button.is-overtime { color: var(--caution); border-color: var(--caution); }
+.ac-call-timer-button.is-warning b, .ac-call-timer-button.is-overtime b { color: inherit; }
+.ac-call-timer-button.is-compact { padding-inline: 8px; gap: 5px; }
+.ac-call-timer-readout { border: 1px solid var(--line); border-radius: var(--radius-lg); padding: 18px; background: var(--surface); }
+.ac-call-timer-meta, .ac-call-timer-total, .ac-call-timer-next { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--ink-2); font-size: 12px; }
+.ac-call-timer-meta > span:last-child { display: flex; gap: 5px; align-items: center; }
+.ac-call-timer-readout h3 { margin: 15px 0 4px; color: var(--ink); font: 600 17px/1.4 var(--font-sans); }
+.ac-call-timer-clock { font: 500 52px/1.2 var(--font-sans); font-variant-numeric: tabular-nums; letter-spacing: -.04em; color: var(--ink); margin-block: 8px; }
+.ac-call-timer-readout.is-warning .ac-call-timer-clock, .ac-call-timer-readout.is-warning .ac-call-timer-meta > span:last-child,
+.ac-call-timer-readout.is-overtime .ac-call-timer-clock, .ac-call-timer-readout.is-overtime .ac-call-timer-meta > span:last-child { color: var(--caution); }
+.ac-call-timer-presenter { display: flex; align-items: center; gap: 7px; color: var(--ink-2); font-size: 13px; margin: 0 0 15px; }
+.ac-call-timer-next { border-top: 1px solid var(--line); padding-top: 14px; margin-top: 16px; align-items: flex-start; }
+.ac-call-timer-next b { color: var(--ink); text-align: right; }
+.ac-call-timer-total { padding-top: 10px; }
+.ac-timer-panel { overflow-y: auto; min-height: 0; padding: 16px; display: flex; flex-direction: column; gap: 18px; }
+.ac-timer-actions { display: flex; flex-wrap: wrap; gap: 7px; }
+.ac-timer-actions > .ac-btn { flex: 1 1 auto; }
+.ac-timer-actions + .ac-timer-actions { margin-top: 8px; }
+.ac-timer-note { color: var(--ink-2); font-size: 12px; line-height: 1.6; margin: 0; }
+.ac-timer-section { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.ac-timer-section-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.ac-timer-section h3, .ac-timer-section h2 { margin: 0; color: var(--ink); font: 600 14px/1.4 var(--font-sans); }
+.ac-timer-plan { display: flex; flex-direction: column; gap: 10px; }
+.ac-timer-segment { padding: 12px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface); min-width: 0; }
+.ac-timer-segment.is-current { border-color: var(--horizon); }
+.ac-timer-segment .summary { display: flex; align-items: flex-start; gap: 9px; }
+.ac-timer-segment .number { color: var(--ink-3); font-size: 12px; padding-top: 2px; min-width: 14px; }
+.ac-timer-segment .description { display: flex; flex-direction: column; gap: 4px; min-width: 0; flex: 1; }
+.ac-timer-segment .description b { font-size: 13px; color: var(--ink); }
+.ac-timer-segment .description small { font-size: 12px; color: var(--ink-2); }
+.ac-timer-segment .tools { display: flex; justify-content: flex-end; gap: 2px; margin-top: 6px; }
+.ac-timer-segment .tools .ac-icon-btn { width: 30px; height: 30px; }
+.ac-timer-fields { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
+.ac-timer-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; font-size: 12px; color: var(--ink-2); }
+.ac-timer-field.is-wide { grid-column: 1 / -1; }
+.ac-timer-field input { width: 100%; min-width: 0; height: 36px; padding: 7px 10px; border: 1px solid var(--line-control); border-radius: var(--radius-sm); background: var(--ground); color: var(--ink); font: 400 13px/1.4 var(--font-sans); }
+.ac-timer-field .ac-select { max-width: 100%; }
+.ac-timer-cue { display: flex; align-items: center; justify-content: space-between; gap: 14px; border-top: 1px solid var(--line); padding-top: 15px; font-size: 13px; }
+.ac-timer-cue small { display: block; color: var(--ink-2); font-size: 12px; margin-top: 4px; }
+.ac-timer-library { display: flex; flex-direction: column; gap: 12px; }
+.ac-timer-preset { padding: 12px; border: 1px solid var(--line); border-radius: var(--radius-md); }
+.ac-timer-preset-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.ac-timer-preset-head b { color: var(--ink); font-size: 13px; }
+.ac-timer-preset > p { color: var(--ink-2); font-size: 12px; margin: 6px 0 12px; }
+.ac-timer-library-sheet { width: min(520px, calc(100vw - 28px)); max-height: 85dvh; display: flex; flex-direction: column; padding: 0; }
+.ac-timer-library-head { display: flex; align-items: center; justify-content: space-between; padding: 20px 20px 0; gap: 10px; }
+.ac-timer-library-head h2 { margin: 0; color: var(--ink); font: 600 20px/1.3 var(--font-display); }
+.ac-timer-library-body { overflow-y: auto; padding: 20px; }
+.ic-timer-focus { position: absolute; z-index: 15; top: 12px; left: 14px; }
+.ic-call.is-focus .ic-attention-focus { left: auto; right: 14px; }
+.ic-top:has(.ac-call-timer-button) { gap: 10px; }
+@media (max-width: 1100px) { .ic-top .ac-call-timer-button .ac-clamp-1 { display: none; } }
+@media (max-width: 640px) { .ic-top.is-phone { gap: 6px; } .ic-top.is-phone .ttl { flex: 1; } .ic-top.is-phone .end { gap: 3px; } .ac-call-timer-clock { font-size: 46px; } }
+
+.ic-timer-warning { position: absolute; top: 68px; left: 16px; z-index: 14; max-width: min(340px, calc(100% - 32px)); pointer-events: none; }
+.ac-floating-timer { display: flex; justify-content: center; padding: 8px 10px 0; }
+.ac-floating-timer .ac-call-timer-button { max-width: 100%; }
+.ac-call-timer-button small { font-size: 10px; flex: none; }
+.ac-call-timer-button.is-compact small { display: none; }
+
+.ic-timer-focus { max-width: min(320px, calc(100% - 220px)); }
+.ic-timer-focus .ac-clamp-1 { max-width: 200px; }
+.ic-timer-focus small { display: none; }

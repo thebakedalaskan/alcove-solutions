@@ -3,7 +3,7 @@
  * is a drawn camera frame or shared screen here. Native opening, window close and automatic PiP belong to the browser;
  * Calls/Floating call leaves the real call ready for that hand-off instead of replacing the browser's API.
  */
-import { FloatingCall, PortraitArt, ScreenShot, type FloatingCallProps } from '@alcove/ui';
+import { CallTimerButton, FloatingCall, PortraitArt, ScreenShot, type FloatingCallProps } from '@alcove/ui';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useState } from 'react';
 import { useArgs } from 'storybook/preview-api';
@@ -27,8 +27,8 @@ function ConfirmationPreview(args: FloatingCallProps) {
   return (
     <Box width="min(400px, 100%)" height={420}>
       <FloatingCall {...args} onLeave={() => { args.onLeave(); setOpen(true); }}>
-        {open && <LeaveSheet inline open onOpenChange={setOpen} title={args.title} elapsed={720} hosting organizer standingInFor={null}
-          next={[{ id: 'preview-priya', person: PRIYA }, { id: 'preview-kofi', person: KOFI }]} notes locked={false} others={3}
+        {open && <LeaveSheet inline open onOpenChange={setOpen} title={args.title} elapsed={720} organizer standingInFor={null}
+          next={[{ id: 'preview-priya', person: PRIYA }, { id: 'preview-kofi', person: KOFI }]} notes others={3}
           getting={[PRIYA, KOFI, AIKO]} leaving={args.busy} ended={null}
           onEnd={did('End call for everyone')} onHandOff={did('Leave and keep it going')} onRead={did('Read notes')} onHome={did('Home')} />}
       </FloatingCall>
@@ -109,3 +109,6 @@ export const Wide: Story = { render: (args) => <Box width="min(640px, 100%)" hei
 /** The call remains night when the browser's main tab uses the light theme. */
 export const LightTheme: Story = { name: 'Light theme', globals: { theme: 'light' } };
 export const DarkTheme: Story = { name: 'Dark theme', globals: { theme: 'dark' } };
+
+export const SharedTimer: Story = { args: { timer: <CallTimerButton time="1:24" label="Proposal" status="Running" tone="running" on={false} onClick={did('Return and open timer')} /> } };
+export const TimerOverTime: Story = { args: { timer: <CallTimerButton time="+0:24" label="Your time is up" status="Over time" tone="overtime" on={false} onClick={did('Return and open timer')} /> } };
