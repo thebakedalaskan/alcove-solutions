@@ -31,8 +31,8 @@ const EnvSchema = z.object({
   GOOGLE_CLIENT_SECRET: optional,
   /** Local demo sign-in and its sessions. Set to false when serving the public app. */
   DEMO_AUTH_ENABLED: z.enum(['true', 'false']).default('true').transform((value) => value === 'true'),
-  /** Tester mode admits existing Google accounts and permits new accounts only for the listed verified emails. */
-  GOOGLE_SIGNUP_MODE: z.enum(['open', 'testers']).default('open'),
+  /** Public requires Google-hosted addresses. Testers admits new accounts only from the private tester list. */
+  GOOGLE_SIGNUP_MODE: z.enum(['open', 'testers', 'public']).default('open'),
   /** One tester email per line. Blank lines are ignored, and an empty list admits no new accounts. */
   GOOGLE_SIGNUP_TESTERS: z.string().default('').transform((value) => value.split('\n').map((email) => email.trim().toLowerCase()).filter(Boolean))
     .pipe(z.array(z.email().max(254))).readonly(),

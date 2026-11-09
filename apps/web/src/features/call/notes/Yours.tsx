@@ -70,7 +70,7 @@ export function useOwnInCall(session: CallSession, o: { role: CallState['role'];
     if (!o.noteId) { toast('Your own notes go with the call’s, and notes haven’t been on in this call.', { icon: 'bookmark' }); return; }
     session.personal.add({ kind: 'bookmark', label: '', point: lineId ? { kind: 'line', lineId } : null }).then((n) => {
       setNotes(n);
-      toast('Marked. Only you can see it.', { icon: 'bookmark', action: { label: 'Open', onClick: () => open.current() } });
+      toast('Marked in your own notes.', { icon: 'bookmark', action: { label: 'Open', onClick: () => open.current() } });
     }, failed);
   };
   return {
@@ -112,7 +112,7 @@ export function Yours({ own, state, me, shown, onOpen }: { own: OwnInCall; state
               {m.room && <span className="own-room"><Icon name="door" size={12} />{m.room.name}</span>}
             </>
           )} />
-        ) : own.entries && <p className="ic-quiet">Write something for yourself, mark a moment, or keep an answer. After the call they’re beside its notes, and nobody else can read them.</p>}
+        ) : own.entries && <p className="ic-quiet">Write something for yourself, mark a moment, or keep an answer. Find them beside the call’s notes afterwards. Other participants can’t open them.</p>}
       {!noNote && <OwnComposer value={own.draft} onChange={own.setDraft} onSend={own.write} busy={own.busy} said />}
     </section>
   );

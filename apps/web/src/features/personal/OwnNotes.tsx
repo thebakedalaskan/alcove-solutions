@@ -98,7 +98,7 @@ export function useOwn(noteId: string) {
   const bookmarks = (entries ?? []).flatMap((e) => (e.kind === 'bookmark' ? [e] : []));
   const toggle = (found: { id: string } | undefined, point: PersonalPoint) => {
     if (found) own.remove.mutate(found.id, { onError: failed });
-    else own.add.mutate({ kind: 'bookmark', label: '', point }, { onSuccess: () => toast('Bookmarked. Only you can see it.', { icon: 'bookmark' }), onError: failed });
+    else own.add.mutate({ kind: 'bookmark', label: '', point }, { onSuccess: () => toast('Bookmarked in your own notes.', { icon: 'bookmark' }), onError: failed });
   };
   const lineMark = (id: string) => bookmarks.find((b) => b.moment?.line?.id === id);
   const screenMark = (id: string) => bookmarks.find((b) => b.moment?.screen?.id === id && !b.moment.line);
@@ -129,7 +129,7 @@ export function OwnNotesCard({ note, me, entries, own, shown, onSeek }: {
         <OwnEntries entries={entries} me={me} moment={(m) => <NoteMoment noteId={note.id} m={m} shown={shown} onSeek={onSeek} />} away={say} picked={adding}
           actions={{ edit: (entryId, text) => own.edit.mutateAsync({ entryId, text }), remove: (entryId) => own.remove.mutateAsync(entryId) }}
           share={(e) => (ready && !e.shared ? <IconButton icon="share" label="Add to the shared notes" size={15} className="own-share" onClick={() => open(e)} /> : null)} />
-      ) : entries && <p className="nd-own-e">Write something, bookmark a line, or keep an answer. Nobody else can read it, the organizer included.</p>}
+      ) : entries && <p className="nd-own-e">Write something, bookmark a line, or keep an answer. Other participants, including the organizer, can’t open your own notes.</p>}
       {/* In the composer's place, outside the list that scrolls: all of it shows, the people and the button too. */}
       {picked ? <Preview key={picked.id} note={note} entry={picked} me={me} shown={shown} onSeek={onSeek} onClose={close} onAdded={() => { setAdded(true); setAdding(null); }} />
         : <OwnComposer value={draft} onChange={setDraft} onSend={write} busy={own.add.isPending} focus={added} said />}

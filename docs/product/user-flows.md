@@ -20,16 +20,14 @@ Each flow below is implemented in `apps/web` and exercised end to end by the int
    with **Cancel sign-in** to stop waiting,
    including when the popup was closed. On success the popup closes, the waiting tab checks its session, and the welcome
    page fades into the app. If the browser blocks popups or can't pass the result between tabs, Google opens in the current
-   tab instead. If the sign-in doesn't happen (cancelled, too slow, an email Google hasn't verified,
-   a new Google account without access, too many attempts, or Google not set up on this server),
-   the welcome screen says why.
+   tab instead. New accounts use a Gmail or Google Workspace address. Existing accounts can still sign in.
+   If Google sign-in fails, the welcome screen says why.
 3. The first time, the account is created on screen, in about six seconds: an arch draws itself, dawn fills
    it and the sun rises, while what came with the account arrives a row at a time, each with a check. **Signed
    in as** the name, with the provider's mark (a key for single sign-on). **Your calendar**: how many calls are
    left today and which is next, from the connected or sample calendar (no row without calendar access). **Your
    team at** the company, with its size and faces, when it has people in it and has arrived by then (the screen
-   doesn't wait for it). **Notes are encrypted in storage**, with the hosting server’s verification time if this
-   browser verified it. Then
+   doesn't wait for it). **Notes are encrypted in storage** and follow the call’s sharing permissions. Then
    "You’re in" and the arch opens into Home. **Skip**, **Escape** or **Enter** opens it straight away; with
    reduced motion the finished screen shows for a moment and Home follows. After that, signing in goes
    straight to Home. From the welcome page it sails out of the cove: the headlands go by, the horizon comes up to
@@ -74,8 +72,7 @@ Beside every page, dark in both themes:
   pins are for.
 - **Groups**: each of your groups and how many people are in it. Each opens on the Team page, and **+**
   starts a new one there.
-- At the bottom: the confidential-compute check (**Confidential compute · verified** when the server's
-  hardware answer is bound to this browser's request), and the time of notes left, which opens Settings at your
+- At the bottom: the hosting hardware status, and the time of notes left, which opens Settings at your
   minutes.
 - Offline, a notice at the top says recording still works and everything else catches up when you're back
   (with **Record without a connection** off, that recording waits for the connection too). Up next and the
@@ -110,8 +107,7 @@ balloon in the corner; and, slowly along the horizon, boats and ships of six kin
 opens. Every other page is a later moment of the same evening, with less sky the less it's about one action, and quieter
 visitors: a boat far out, stars after dark and now and then a shooting star. With reduced motion on, it's a still picture and nothing passes through.
 
-- The date, top left. On a phone or with the side panel hidden, a **Confidential compute** badge (with the time the
-  hardware was verified when this browser could check it) shows on Home too, since the panel's check isn't there.
+- The date, top left. On a phone or with the side panel hidden, the hosting hardware status shows on Home too, since the panel’s check isn’t there.
 - **Start a call** (**Start your first call** before your first notes). **Start now** goes straight to the lobby
   (flow 5). **Schedule** opens scheduling at Who (flow 4). The third button schedules a call for now and copies its
   link, so it's listed with a card like any other (**Undo** cancels it), and isn't on a phone. Under them, up to three people on your team who use Alcove: pressing one starts a
@@ -316,8 +312,7 @@ time, slides in on the right.
   while someone has asked; the organizer's own says **Pausing…** until their pause lands), the same for everyone, which
   opens what's captured: each kind of capture and its state, who changed it and when, who gets the notes, and the
   organizer's **Pause notes**, **Resume notes** and **Turn off** (or **Turn on notes**) and **Notes written by** (the AI model that writes this call's notes), or
-  anyone else's **Ask for notes**; and the shield, whose hover says what confidential compute covers (verified only when the
-  server's hardware check is bound to this browser's request). On the right, what's only yours: **Board** (**O**), which
+  anyone else's **Ask for notes**; and the shield, whose hover shows hosting hardware status and what Alcove encrypts in storage. On the right, what's only yours: **Board** (**O**), which
   opens the board picker under it, and **Workspace** (**W**, with a count of what's been brought to this call), which
   opens the workspace, each on your stage just for you (Presenting, below); **Notes** and **Chat** (**C**,
   with a count of what's new), which open your side; and who is here, the faces and the count (and, for whoever hosts, how
@@ -1469,7 +1464,7 @@ the page still works. Journey **11.23** shows Detailed → Short → Detailed wh
 - **Agents**: named, revocable connections with explicit permissions, expiry and last use. **Create a token** and
   **Disconnect** are described in flow 14.
 - **Privacy**: what account and call information Alcove processes, how content is encrypted in storage, and whether
-  the browser verified the hosting server’s hardware. The
+  the hosting server reported hardware evidence. The
   **Privacy policy** explains how Alcove uses account and service data and how to disconnect Google services.
 
 **Delete account** opens one step where it is (never a window over the page): the row becomes the question, **Delete

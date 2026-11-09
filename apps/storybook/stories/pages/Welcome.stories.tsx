@@ -82,6 +82,8 @@ export const GoogleCancelled = page('/welcome?signin=cancelled', 'signed-out');
 export const GoogleTookTooLong = page('/welcome?signin=expired', 'signed-out');
 /** Google hasn't verified the account's address. */
 export const GoogleUnverified = page('/welcome?signin=unverified', 'signed-out');
+/** Alcove needs an email hosted by Google for this sign-in. */
+export const GoogleEmailRequired = page('/welcome?signin=google-email-required', 'signed-out');
 /** New Google accounts need an invitation during invite-only access. */
 export const GoogleInviteOnly = page('/welcome?signin=invite-only', 'signed-out');
 /** Google sign-in isn't set up on this server. */

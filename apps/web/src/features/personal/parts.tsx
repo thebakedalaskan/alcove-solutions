@@ -35,8 +35,8 @@ export function OwnComposer({ value, onChange, onSend, busy = false, focus = fal
   };
   return (
     <form className="own-compose" autoComplete="off" onSubmit={(e) => { e.preventDefault(); send(); }}>
-      {!said && <span className="to"><Scope>Only you</Scope>Nobody else reads this</span>}
-      <textarea autoFocus={focus} value={value} rows={rowsFor(value, 34, 5)} maxLength={MAX_PERSONAL_TEXT} placeholder="Write something for yourself" aria-label="Write something only you can read" onChange={(e) => onChange(e.target.value)} onKeyDown={keys} />
+      {!said && <span className="to"><Scope>Your notes</Scope>Other participants can’t open this</span>}
+      <textarea autoFocus={focus} value={value} rows={rowsFor(value, 34, 5)} maxLength={MAX_PERSONAL_TEXT} placeholder="Write something for yourself" aria-label="Write in your own notes" onChange={(e) => onChange(e.target.value)} onKeyDown={keys} />
       <button type="submit" className="ac-btn is-secondary" aria-label="Keep it in your notes" title="Keep it in your notes" disabled={!value.trim() || busy}><Icon name={said ? 'arrowUp' : 'sendLine'} size={said ? 15 : 17} /></button>
     </form>
   );

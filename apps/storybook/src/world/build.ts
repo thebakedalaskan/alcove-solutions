@@ -63,7 +63,7 @@ export interface NoteSpec {
 
 export const changer = (p: Person, as: RecipientRole | null): Changer => ({ id: p.id, name: p.name, email: p.email, as });
 
-/** What the private models did for a note, checked a few minutes after the call: what "Confidential compute · verified" reads. A third read the shared screens, when there are any. */
+/** What the private models did for a note, checked a few minutes after the call: what a note’s model evidence shows. A third read the shared screens, when there are any. */
 export function inferenceAt(verifiedAt: string, screens: boolean): InferenceEvidence[] {
   const hex = (seed: string) => Array.from({ length: 64 }, (_, i) => '0123456789abcdef'.charAt((seed.charCodeAt(i % seed.length) * (i + 7)) % 16)).join('');
   const gateway = { status: 'UpToDate', os: 'dstack-0.5.12', compose: hex('gateway') };

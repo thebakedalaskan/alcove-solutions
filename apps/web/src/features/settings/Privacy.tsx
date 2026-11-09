@@ -10,8 +10,8 @@ import { Link, useNavigate } from '@tanstack/react-router';
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { forgetView } from '~/features/call/layout/view';
 import { forgetTour } from '~/features/onboarding/store';
-import { q, topUpOpen, useDeleteAccount } from '~/lib/queries';
-import { hm, hoursAndMinutes } from '~/lib/time';
+import { q, topUpOpen, trustLine, useDeleteAccount } from '~/lib/queries';
+import { hoursAndMinutes } from '~/lib/time';
 import { plural } from '~/lib/words';
 
 const LEDGER = [
@@ -20,16 +20,13 @@ const LEDGER = [
   ['Who was invited', 'The audio']
 ] as const;
 
-/** Only an answer bound to this browser's own request verifies the hosting server. */
+/** Report the hosting server’s attestation response and explain how storage encryption works. */
 function Compute() {
-  const checked = useQuery(q.trust());
-  const t = checked.data;
+  const trust = useQuery(q.trust());
   return (
     <SettingRow label="Hosting server"
       help="Alcove encrypts call content in storage. The hosting server can decrypt it to provide the service."
-      control={t?.tee === 'dstack' && t.bound ? <SettingFact icon="sealed" tone="yes">Hardware verified {hm(new Date(t.at))}</SettingFact>
-        : checked.isPending ? <SettingFact icon="sealed">Checking the hardware…</SettingFact>
-          : <SettingFact icon="sealed" tone="no">Hardware not verified</SettingFact>} />
+      control={<SettingFact icon="sealed">{trustLine(trust)}</SettingFact>} />
   );
 }
 

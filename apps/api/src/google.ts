@@ -13,7 +13,7 @@ import type { Config } from './config';
 import type { Deps } from './context';
 import { b64u, equalBytes, openJson, random, sealJson, sha, signInAttemptKey, unb64u, utf8 } from './crypto';
 import { UnavailableError } from './errors';
-import { nameFrom, type Identity } from './identity';
+import { nameFrom, type GoogleIdentity } from './identity';
 import { log } from './log';
 import { masterKey } from './owners';
 
@@ -34,7 +34,7 @@ export type Refusal = 'unavailable' | 'cancelled' | 'expired' | 'unverified' | '
 export interface Grant { accessToken: string; expiresIn: number; refreshToken?: string | undefined; scopes: string[] }
 /** Where the app lands after signing in: the account's first screen, Home, or a move to this device that was waiting on it. */
 export type Next = '/ready' | '/home' | '/move';
-export type Finish = { ok: true; identity: Identity; grant: Grant } | { ok: false; reason: Refusal };
+export type Finish = { ok: true; identity: GoogleIdentity; grant: Grant } | { ok: false; reason: Refusal };
 
 /** Google's discovery document. Only revoking needs `revocation_endpoint`, so signing in never depends on it. */
 const Discovery = z.object({
@@ -50,6 +50,7 @@ const RefreshReply = z.object({ access_token: z.string().min(1), expires_in: z.n
 const TokenError = z.object({ error: z.string().max(80) }).catch({ error: 'unknown' });
 const Claims = z.object({
   sub: z.string().min(1).max(255), email: z.string().email().max(254), email_verified: z.boolean().optional(),
+  hd: z.string().trim().min(1).max(253).optional(),
   name: z.string().max(200).optional(), picture: z.string().url().max(2000).optional(), nonce: z.string()
 });
 const Attempt = z.object({
@@ -242,6 +243,9 @@ export async function finish(d: Deps, q: Record<string, string>, attempt: z.infe
   glog.debug('google sign-in checked', { calendar: grant.scopes.some(isCalendarEventScope), refresh: !!grant.refreshToken });
   return {
     ok: true, grant,
-    identity: { subject: `google:${claims.data.sub}`, email, name: claims.data.name?.trim() || nameFrom(email), photoUrl: claims.data.picture, sample: false }
+    identity: {
+      subject: `google:${claims.data.sub}`, email, name: claims.data.name?.trim() || nameFrom(email), photoUrl: claims.data.picture, sample: false,
+      authoritativeEmail: email.endsWith('@gmail.com') || claims.data.hd !== undefined
+    }
   };
 }

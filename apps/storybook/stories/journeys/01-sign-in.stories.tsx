@@ -138,3 +138,14 @@ export const GoogleInviteOnly: PageStory = {
     });
   }
 };
+
+export const GoogleEmailRequired: PageStory = {
+  name: '1.8 Try another Google account',
+  ...page('/welcome?signin=google-email-required', 'signed-out'),
+  play: async ({ step }) => {
+    await step('Alcove explains which Google account can be used and leaves sign-in available', async () => {
+      await screen.findByText('Use a Gmail or Google Workspace account to sign in to Alcove.', {}, SOON);
+      await first(screen.findAllByRole('button', { name: 'Continue with Google' }, SOON));
+    });
+  }
+};

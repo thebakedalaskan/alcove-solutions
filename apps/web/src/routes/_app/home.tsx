@@ -19,8 +19,8 @@ import { SailOutHere } from '~/features/home/SailOut';
 import { Start } from '~/features/home/Start';
 import { overlayOpen, typing } from '~/lib/keys';
 import { useNow } from '~/lib/live';
-import { q } from '~/lib/queries';
-import { hm, longDay } from '~/lib/time';
+import { q, trustLine } from '~/lib/queries';
+import { longDay } from '~/lib/time';
 
 export const Route = createFileRoute('/_app/home')({
   loader: async ({ context: { queryClient: qc } }) => {
@@ -92,11 +92,8 @@ function Home() {
   );
 }
 
-/** Where notes are written, and whether this browser has checked the hardware it runs on. */
+/** Hosting hardware status for phones and when the side panel is hidden. */
 function Compute() {
-  const checked = useQuery(q.trust());
-  const trust = checked.data;
-  const verified = trust?.tee === 'dstack' && trust.bound;
-  const detail = verified && trust ? `Hardware verified ${hm(new Date(trust.at))}` : checked.isPending ? 'Checking the hardware…' : 'Audio, transcripts and notes are sealed';
-  return <SealedBadge title="Confidential compute" detail={detail} className="head-seal" data-tour="sealed" />;
+  const trust = useQuery(q.trust());
+  return <SealedBadge title={trustLine(trust)} className="head-seal" data-tour="sealed" />;
 }

@@ -1,7 +1,8 @@
 # Alcove (the-privacy-suite)
 
-Private video calls with confidential AI notes built in. No note-taker bots in the meeting, no recording
-behind people's backs: notes are a service of the call, written where the operator can't read them.
+Video calls with end-to-end encrypted live media and built-in notes. Stored recordings, transcripts
+and notes are encrypted. The public beta runs on Cloud Run, where the API can decrypt stored content
+to provide the service. It does not run in an attested confidential environment.
 
 Start with the **[docs](docs/README.md)**.
 
@@ -12,8 +13,8 @@ Start with the **[docs](docs/README.md)**.
 | [Roadmap](docs/delivery/roadmap.md) | Done and next |
 | [Deploying](infra/README.md) | GCP + Cloudflare setup, CI/CD, merge rules |
 
-**Status:** real Google sign-in and an optional Google Calendar connection (Microsoft and SSO are still demo identities, with a
-sample calendar and company directory), group calls end-to-end encrypted with MLS on LiveKit, encrypted
+**Status:** real Google sign-in and an optional Google Calendar connection (Microsoft and SSO demo flows are available
+in local development and Storybook), group calls end-to-end encrypted with MLS on LiveKit, encrypted
 notes recordings, a live transcript and written notes from a verified private model on NEAR AI, asking about a
 call, notes that carry across a series, sharing notes with everyone invited, credits charged for notes, CI and
 a deploy pipeline. Every speaker in a call's notes, invite emails, credit purchases and confidential compute

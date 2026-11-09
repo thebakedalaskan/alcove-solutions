@@ -14,7 +14,7 @@ import { SignJWT, exportJWK, generateKeyPair } from 'jose';
 import { z } from 'zod';
 import { createFakeDrive, DRIVE_SCOPE, type FakeDrive } from './fake-drive';
 
-export interface GoogleUser { sub: string; email: string; name?: string | undefined; picture?: string | undefined; emailVerified?: boolean | undefined }
+export interface GoogleUser { sub: string; email: string; name?: string | undefined; picture?: string | undefined; emailVerified?: boolean | undefined; hostedDomain?: string | undefined }
 /**
  * Ways the next sign-in goes wrong on Google's side; `no-calendar` is someone unticking calendar access, and
  * `no-freebusy` a grant from before free/busy was asked for.
@@ -407,6 +407,7 @@ export async function startFakeGoogle(): Promise<FakeGoogle> {
       const issuedAt = grant.spoil === 'expired' ? now - 7200 : now;
       const idToken = await new SignJWT({
         email: grant.user.email, email_verified: grant.user.emailVerified ?? true,
+        ...(grant.user.hostedDomain ? { hd: grant.user.hostedDomain } : {}),
         ...(grant.user.name ? { name: grant.user.name } : {}), ...(grant.user.picture ? { picture: grant.user.picture } : {}),
         nonce: grant.spoil === 'wrong-nonce' ? 'not-the-nonce' : grant.nonce
       })

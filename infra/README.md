@@ -184,8 +184,10 @@ Verify ownership of `alcove.solutions` in Search Console and set the app homepag
 its test-user list even when the OAuth app is in Testing. The Cloud Run beta disables the demo providers on the API
 and web. The workflow defaults to `GOOGLE_SIGNUP_MODE=testers` and binds `GOOGLE_SIGNUP_TESTERS` from
 `alcove-google-signup-testers`, one approved email per line. This admits returning Google accounts and checks
-verified emails for new ones. For the public beta, set repository variable `GOOGLE_SIGNUP_MODE=open` after the
-updated website and privacy policy are live, and apply the same setting to the running API.
+verified emails for new ones. For the public beta, set repository variable `GOOGLE_SIGNUP_MODE=public` after the
+updated website and privacy policy are live, and apply the same setting to the running API. New accounts and
+changes to a returning account’s email require a Gmail address or a verified Google Workspace identity,
+because Alcove uses email to share calls and notes.
 See the [deployment and acceptance requirements](../docs/engineering/deployment-and-acceptance.md) for what the beta
 provides and the remaining confidential-compute work. Keep `calendar.events` declared while a deployed release
 still requests it. New requests use `calendar.events.owned`, and existing Calendar grants still work.

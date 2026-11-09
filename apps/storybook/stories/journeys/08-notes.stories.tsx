@@ -669,7 +669,7 @@ export const AskAboutThisCall: PageStory = {
     await step('The horizon and the transcript go there. Keep the answer if you want it', async () => {
       await userEvent.click(await screen.findByRole('button', { name: /Keep in your notes/ }, SOON));
     });
-    await step('It’s in Your notes. Only you can read it', async () => {
+    await step('It’s in Your notes. Other participants can’t open it', async () => {
       await within(await yours()).findByText(/What did we decide\?/, {}, SOON);
     });
   }
@@ -680,7 +680,7 @@ export const YourNotesThenTheSharedNotes: PageStory = {
   ...page('/notes/n2', 'busy'),
   play: async ({ userEvent, step }) => {
     await step('Write in Your notes. Nobody else reads them, the organizer included', async () => {
-      await userEvent.type(await within(await yours()).findByRole('textbox', { name: 'Write something only you can read' }, SOON), 'The help article should link to the rollout plan.');
+      await userEvent.type(await within(await yours()).findByRole('textbox', { name: 'Write in your own notes' }, SOON), 'The help article should link to the rollout plan.');
       await userEvent.click(within(await yours()).getByRole('button', { name: 'Keep it in your notes' }));
     });
     await step('It’s kept. The arrow adds it to the shared notes', async () => {

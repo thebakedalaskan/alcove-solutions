@@ -306,7 +306,7 @@ export function stopLive(): void {
 /* ---------- what the API runs on ---------- */
 
 const hex = (b: ArrayBuffer) => Array.from(new Uint8Array(b), (x) => x.toString(16).padStart(2, '0')).join('');
-/** As a deployment inside a TEE answers: bound to this browser's nonce, so the app says "Confidential compute · verified". */
+/** As a deployment inside a TEE answers: bound to this browser's nonce, so the app reports receipt of hosting hardware evidence. */
 async function attest(nonce: string) {
   const commit = 'storybook';
   const reportData = hex(await crypto.subtle.digest('SHA-512', new TextEncoder().encode(`alcove-attestation/v1\n${nonce}\n${commit}`)));

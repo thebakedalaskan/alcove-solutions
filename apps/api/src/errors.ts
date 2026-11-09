@@ -56,6 +56,9 @@ export class ForbiddenError extends AppError { constructor(m: string, o?: ErrorO
 export class GoogleSignupInviteRequiredError extends ForbiddenError {
   constructor() { super('An invitation is required to sign up with Google.', { level: 'info' }); }
 }
+export class GoogleEmailRequiredError extends ForbiddenError {
+  constructor() { super('A Gmail or Google Workspace address is required.', { level: 'info' }); }
+}
 export class KeyError extends AppError { constructor(m: string, o?: ErrorOptions) { super('key-unavailable', m, o); } }
 export class NotFoundError extends AppError { constructor(m: string, o?: ErrorOptions) { super('not-found', m, o); } }
 export class ConflictError extends AppError { constructor(m: string, o?: ErrorOptions) { super('conflict', m, o); } }

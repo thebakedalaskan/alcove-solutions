@@ -188,7 +188,7 @@ export function Landing({ auth }: { auth: Auth }) {
           </section>
           <section className="lp-call dark" id="call" aria-labelledby="call-title">
             <div className="lp-wrap">
-              <PartHead id="call-title" title="In the call" className="lp-call-head">All of it runs in the browser, with nothing to install, and the call is end-to-end encrypted.</PartHead>
+              <PartHead id="call-title" title="In the call" className="lp-call-head">Join from your browser. Live audio, video and screen sharing are end-to-end encrypted.</PartHead>
               <CallTour />
             </div>
           </section>

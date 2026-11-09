@@ -4,7 +4,7 @@ import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import { log } from '../../log';
 import * as google from '../../google';
 import { b64u, unb64u } from '../../crypto';
-import { ForbiddenError, GoogleSignupInviteRequiredError } from '../../errors';
+import { ForbiddenError, GoogleEmailRequiredError, GoogleSignupInviteRequiredError } from '../../errors';
 import { openOwner } from '../../owners';
 import { findSession, stillOpen } from '../../sessions';
 import * as account from './account';
@@ -25,7 +25,7 @@ export function registerAuthRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
   /* Carries the sealed sign-in attempt to Google and back. Lax, because Google's redirect back is a cross-site navigation. */
   const ATTEMPT = secure ? '__Host-alcove_google' : 'alcove_google';
 
-  const backToWelcome = (reason: google.Refusal | 'invite-only', popup?: string) => `${d.cfg.WEB_ORIGIN}/welcome?${new URLSearchParams({ ...(popup ? { popup } : {}), signin: reason })}`;
+  const backToWelcome = (reason: google.Refusal | 'invite-only' | 'google-email-required', popup?: string) => `${d.cfg.WEB_ORIGIN}/welcome?${new URLSearchParams({ ...(popup ? { popup } : {}), signin: reason })}`;
   const backToCalendar = (result: CalendarConnectResult) => `${d.cfg.WEB_ORIGIN}/settings?calendar=${result}#calendar`;
 
   /* ---------- public: the session and signing in ---------- */
@@ -100,11 +100,15 @@ export function registerAuthRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
         try { return c.redirect(backToCalendar(await calendar.connect(o, r.grant) ? 'connected' : 'failed'), 302); }
         finally { o.root.fill(0); o.wrapKey.fill(0); }
       }
-      const s = await account.signIn(d, r.identity, 'google');
+      const s = await account.signIn(d, { provider: 'google', who: r.identity });
       startSession(c, s.sessionId);
       const next = attempt?.next ?? (s.isNew ? '/ready' : '/home');
       return c.redirect(popup ? `${d.cfg.WEB_ORIGIN}/welcome?${new URLSearchParams({ popup, next })}` : `${d.cfg.WEB_ORIGIN}${next}`, 302);
     } catch (e) {
+      if (e instanceof GoogleEmailRequiredError) {
+        rlog.info('google sign-in refused', { reason: 'google-email-required' });
+        return c.redirect(backToWelcome('google-email-required', popup), 302);
+      }
       if (e instanceof GoogleSignupInviteRequiredError) {
         rlog.info('google sign-up refused', { reason: 'invite-only' });
         return c.redirect(backToWelcome('invite-only', popup), 302);

@@ -112,6 +112,15 @@ async function viaGoogle(b: Browser, user: GoogleUser, o: { spoil?: Spoil; tampe
   }
   throw new Error('Too many redirects while signing in with Google.');
 }
+/** Both revisions share the deployed callback URL. Send its requests to the revision under test. */
+function browserAt(baseUrl: string): Browser {
+  const jar = cookieFetch(ORIGIN);
+  const forward: typeof fetch = (input, init) => {
+    const url = new URL(input instanceof Request ? input.url : input);
+    return jar(new URL(`${url.pathname}${url.search}`, baseUrl), init);
+  };
+  return { fetch: forward, api: createHttpApi({ baseUrl, fetch: forward }) };
+}
 /** Where a sign-in ended up, without the origin. */
 const landed = (u: URL) => `${u.pathname}${u.search}${u.hash}`;
 async function signInWithCalendar(b: Browser, user: GoogleUser) {
@@ -375,36 +384,67 @@ describe('signing in with Google', () => {
       GOOGLE_SIGNUP_TESTERS: ` \r\n  ${tester.email.toUpperCase()}  \r\n`
     });
     const beta = await h.secondServer({ GOOGLE_SIGNUP_MODE, GOOGLE_SIGNUP_TESTERS });
-    // Both revisions share the deployed callback URL. Send its requests to the beta revision in this browser.
-    const betaBrowser = (): Browser => {
-      const jar = cookieFetch(ORIGIN);
-      const forward: typeof fetch = (input, init) => {
-        const url = new URL(input instanceof Request ? input.url : input);
-        return jar(new URL(`${url.pathname}${url.search}`, beta.baseUrl), init);
-      };
-      return { fetch: forward, api: createHttpApi({ baseUrl: beta.baseUrl, fetch: forward }) };
-    };
     try {
       const outsider = { sub: `outsider-${seq++}`, email: unique('outsider') };
-      const refused = betaBrowser();
+      const refused = browserAt(beta.baseUrl);
       const popup = randomUUID();
       const end = await viaGoogle(refused, outsider, { popup });
       expect([end.pathname, Object.fromEntries(end.searchParams)]).toEqual(['/welcome', { popup, signin: 'invite-only' }]);
       expect(await refused.api.auth.getSession()).toBeNull();
       expect(landed(await viaGoogle(h.browser(), outsider))).toBe('/ready');
 
-      const unverified = betaBrowser();
+      const unverified = browserAt(beta.baseUrl);
       expect(landed(await viaGoogle(unverified, { ...tester, emailVerified: false }))).toBe('/welcome?signin=unverified');
       expect(await unverified.api.auth.getSession()).toBeNull();
-      const invited = betaBrowser();
+      const invited = browserAt(beta.baseUrl);
       expect(landed(await viaGoogle(invited, tester))).toBe('/ready');
       expect(await invited.api.auth.getSession()).toMatchObject({ provider: 'google', user: { email: tester.email } });
 
-      const returning = betaBrowser();
+      const returning = browserAt(beta.baseUrl);
       const newEmail = unique('changed-address');
       expect(landed(await viaGoogle(returning, { ...existing, email: newEmail }))).toBe('/home');
       expect(await returning.api.auth.getSession()).toMatchObject({ ownerId, provider: 'google', user: { email: newEmail } });
     } finally { await beta.close(); }
+  });
+
+  it('requires a Google-hosted email to sign up or change an address on the public app', async () => {
+    const legacy = { sub: `before-public-${seq++}`, email: unique('before-public') };
+    const earlier = h.browser();
+    expect(landed(await viaGoogle(earlier, legacy))).toBe('/ready');
+    const ownerId = (await earlier.api.auth.getSession())?.ownerId;
+    expect(ownerId).toBeTruthy();
+
+    const { DATABASE_URL, OBJECTS_BUCKET, WEB_ORIGIN, API_URL } = h.deps.cfg;
+    const { GOOGLE_SIGNUP_MODE } = loadEnv(process.env, {
+      DATABASE_URL, OBJECTS_BUCKET, WEB_ORIGIN, API_URL, GOOGLE_SIGNUP_MODE: 'public'
+    });
+    const deployed = await h.secondServer({ GOOGLE_SIGNUP_MODE });
+    try {
+      const outsider = { sub: `external-${seq++}`, email: unique('external'), emailVerified: true };
+      const refused = browserAt(deployed.baseUrl);
+      const popup = randomUUID();
+      const end = await viaGoogle(refused, outsider, { popup });
+      expect([end.pathname, Object.fromEntries(end.searchParams)]).toEqual(['/welcome', { popup, signin: 'google-email-required' }]);
+      expect(await refused.api.auth.getSession()).toBeNull();
+      expect(landed(await viaGoogle(h.browser(), outsider))).toBe('/ready');
+
+      const changed = browserAt(deployed.baseUrl);
+      expect(landed(await viaGoogle(changed, { ...legacy, email: unique('external-change') }))).toBe('/welcome?signin=google-email-required');
+      expect(await changed.api.auth.getSession()).toBeNull();
+      const returning = browserAt(deployed.baseUrl);
+      expect(landed(await viaGoogle(returning, legacy))).toBe('/home');
+      expect(await returning.api.auth.getSession()).toMatchObject({ ownerId, provider: 'google', user: { email: legacy.email } });
+
+      const gmail = { sub: `gmail-${seq++}`, email: unique('gmail').replace('@tests.example', '@gmail.com') };
+      const gmailBrowser = browserAt(deployed.baseUrl);
+      expect(landed(await viaGoogle(gmailBrowser, gmail))).toBe('/ready');
+      expect(await gmailBrowser.api.auth.getSession()).toMatchObject({ provider: 'google', user: { email: gmail.email } });
+
+      const workspace = { sub: `workspace-${seq++}`, email: unique('workspace'), hostedDomain: 'tests.example' };
+      const workspaceBrowser = browserAt(deployed.baseUrl);
+      expect(landed(await viaGoogle(workspaceBrowser, workspace))).toBe('/ready');
+      expect(await workspaceBrowser.api.auth.getSession()).toMatchObject({ provider: 'google', user: { email: workspace.email } });
+    } finally { await deployed.close(); }
   });
 
   it('sends a popup cancellation only to the channel sealed into its matching sign-in attempt', async () => {

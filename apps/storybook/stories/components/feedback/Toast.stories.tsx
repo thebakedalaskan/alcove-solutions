@@ -61,7 +61,7 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 /** What happened, in the past tense, with the check. Press the button. */
-export const Confirmation: Story = { render: () => <Say label="Bookmark this moment" icon="bookmark" text="Bookmarked. Only you can see it." /> };
+export const Confirmation: Story = { render: () => <Say label="Bookmark this moment" icon="bookmark" text="Bookmarked in your own notes." /> };
 /** With Undo: pressing it takes the change back and the toast goes. It stays six seconds, to leave time to. */
 export const WithUndo: Story = { name: 'With undo', render: () => <Say label="Schedule" icon="cal" {...SCHEDULED} /> };
 /** Its own icon, for what it's about. */
@@ -75,7 +75,7 @@ export const EveryKind: Story = {
   name: 'Every kind',
   render: () => (
     <Row>
-      <Say label="Bookmark this moment" icon="bookmark" text="Bookmarked. Only you can see it." />
+      <Say label="Bookmark this moment" icon="bookmark" text="Bookmarked in your own notes." />
       <Say label="Schedule" icon="cal" {...SCHEDULED} />
       <Say label="Copy the link" icon="link" text="Link copied. It works once, on one device." o={{ icon: 'link' }} />
       <Say label="Disconnect the calendar" icon="cal" text="Google Calendar is disconnected." o={{ icon: false }} />

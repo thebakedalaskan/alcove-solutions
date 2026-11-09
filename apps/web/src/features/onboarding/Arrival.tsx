@@ -50,7 +50,6 @@ function useRows(): Row[] {
   // out once: it's a row only when it was here as the screen went up.
   const teamNow = useQuery(q.team()).data ?? null;
   const [team] = useState(teamNow);
-  const trust = useQuery(q.trust()).data;
   if (!session) return [];
   const rows: Row[] = [];
   const domain = session.user.email.split('@')[1] ?? '';
@@ -84,11 +83,10 @@ function useRows(): Row[] {
       sub: on.length ? `${listNames(on)} already ${on.length > 1 ? 'use' : 'uses'} Alcove` : 'Invite them from Home'
     });
   }
-  const verified = trust?.tee === 'dstack' && trust.bound;
   rows.push({
     id: 'seal', icon: <Icon name="sealed" size={18} />,
     text: <>Notes are <b>encrypted in storage</b></>,
-    sub: verified && trust ? `Hosting server verified ${hm(new Date(trust.at))}` : 'Your notes follow the call’s sharing permissions'
+    sub: 'Your notes follow the call’s sharing permissions'
   });
   return rows;
 }
