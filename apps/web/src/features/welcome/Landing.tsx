@@ -7,6 +7,7 @@
  * sails out of the hero's cove to Home (lib/sailOut.ts, features/home/SailOut.tsx).
  */
 import { Button, EASE, Icon, IconButton, Logo, cn, useTheme, type IconName } from '@alcove/ui';
+import { Link } from '@tanstack/react-router';
 import { motion, useReducedMotion } from 'motion/react';
 import { Fragment, useEffect, useState, type MouseEvent, type ReactNode } from 'react';
 import { keepSailOut } from '~/lib/sailOut';
@@ -223,7 +224,7 @@ export function Landing({ auth }: { auth: Auth }) {
             <footer className="lp-foot">
               <span>© 2026 Alcove</span>
               <span>Private video calls with notes written in confidential compute.</span>
-              <nav aria-label="More"><Jump to="privacy">Privacy</Jump><Jump to="offline">For therapists</Jump><Jump to="agents">For agents</Jump><Jump to="top">Back to the top</Jump></nav>
+              <nav aria-label="More"><Link to="/privacy">Privacy policy</Link><Jump to="offline">For therapists</Jump><Jump to="agents">For agents</Jump><Jump to="top">Back to the top</Jump></nav>
             </footer>
           </div>
         </Sky>

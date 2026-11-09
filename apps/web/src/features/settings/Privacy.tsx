@@ -4,9 +4,9 @@
  * beside what stays. The shared demo account can't be deleted, so the row says that instead.
  */
 import { errorCode, errorMessage, type Session } from '@alcove/api';
-import { Button, Icon, Notice, SettingFact, SettingRow, SettingsPart, Spinner, useToast } from '@alcove/ui';
+import { Button, Icon, Notice, SettingFact, SettingRow, SettingsPart, Spinner, buttonClass, useToast } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate } from '@tanstack/react-router';
+import { Link, useNavigate } from '@tanstack/react-router';
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { forgetView } from '~/features/call/layout/view';
 import { forgetTour } from '~/features/onboarding/store';
@@ -54,6 +54,8 @@ export function PrivacyPart({ session }: { session: Session }) {
         {LEDGER.map(([knows, cant]) => <div key={knows} className="set-r is-ll" role="row"><p className="set-ll" role="cell">{knows}</p><p className="set-ll" role="cell">{cant}</p></div>)}
       </div>
       <Compute />
+      <SettingRow label="How Alcove uses your information"
+        control={<Link to="/privacy" className={buttonClass({ size: 'sm' })}>Privacy policy</Link>} />
       {confirming ? <DeleteStep shared={session.sharedDemo} onClose={close} /> : (
         <SettingRow data-row="delete" label="Your account"
           control={<Button ref={opener} size="sm" icon="trash" className="set-caution" onClick={() => setConfirming(true)}>Delete account</Button>} />

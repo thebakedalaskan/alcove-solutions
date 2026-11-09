@@ -118,3 +118,13 @@ export const GoogleDidntSignIn: PageStory = {
     });
   }
 };
+
+export const ReadPrivacyPolicy: PageStory = {
+  name: '1.6 Read the privacy policy before signing in',
+  ...page('/welcome', 'signed-out'),
+  play: async ({ canvas, userEvent, step }) => {
+    await step('Open Privacy policy from the welcome footer', async () => {
+      await userEvent.click(await canvas.findByRole('link', { name: 'Privacy policy' }, SOON));
+    });
+  }
+};

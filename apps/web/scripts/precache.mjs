@@ -1,8 +1,7 @@
 // node apps/web/scripts/precache.mjs <dist/client>
-// Runs after `vite build` (the web app's build script). Writes the list of every file this build emitted
-// into dist/client/sw.js, so the service worker caches exactly this build: the shell, index.html, which it
-// asks for as / (Cloudflare Pages redirects /index.html there), and everything else but Pages' _headers and the
-// camera backgrounds' model.
+// Runs after `vite build`. The service worker caches the shell (index.html, requested as /) and build assets.
+// Pages consumes its own config files, and camera backgrounds load on demand. Extra prerendered documents
+// use the shell when opened offline.
 // The version is a hash of every file, the worker included, so any change makes a new worker and a new cache.
 import { createHash } from 'node:crypto';
 import { readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
@@ -29,6 +28,8 @@ if (source.split(PLACEHOLDER).length !== 2) throw new Error(`sw.js needs the lin
 const hash = createHash('sha256');
 for (const path of files) hash.update(path).update('\0').update(readFileSync(join(dir, path))).update('\0');
 const version = hash.digest('hex').slice(0, 16);
-const paths = files.filter((path) => path !== 'sw.js').map((path) => (path === 'index.html' ? '/' : `/${path}`));
+const paths = files
+  .filter((path) => path !== 'sw.js' && (path === 'index.html' || !path.endsWith('.html')))
+  .map((path) => (path === 'index.html' ? '/' : `/${path}`));
 writeFileSync(worker, source.replace(PLACEHOLDER, () => `const BUILD = ${JSON.stringify({ version, files: paths })};`));
 process.stdout.write(`sw.js caches ${paths.length} files as version ${version}\n`);

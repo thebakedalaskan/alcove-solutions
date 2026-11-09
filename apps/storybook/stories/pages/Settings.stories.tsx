@@ -206,3 +206,12 @@ export const DeleteWithPaymentOnItsWay = page('/settings#privacy', 'payments', {
 export const DeleteWithCancelledAddress = page('/settings#privacy', 'payments', {
   beforeEach: changing(withTopUp('cancelled')), play: pressing('Delete account', 'A cancelled address can still receive money until it expires')
 });
+
+/** The Privacy part opens the same policy anyone can read from the welcome page. */
+export const PrivacyPolicy = page('/settings#privacy', 'busy', {
+  play: async ({ canvas, userEvent, step }) => {
+    await step('Open Privacy policy from Settings', async () => {
+      await userEvent.click(await canvas.findByRole('link', { name: 'Privacy policy' }));
+    });
+  }
+});
