@@ -39,7 +39,7 @@
 
 **Files:** docs/engineering/immediate-actions.md, relevant Storybook scenarios/journeys, product user flows.
 
-- [ ] Integrate the completed private-chat/thread work and preserve retained failure rows, retryChat identities and per-draft revisions.
+- [x] Integrate the completed private-chat/thread work and preserve retained failure rows, retryChat identities and per-draft revisions.
 - [x] Document all named flow classifications and before/after latency, including already-local controls and deliberately confirmed operations.
 - [x] Show delay, failure, retry and rapid input in wide/phone and light/dark Storybook, without assertions.
 - [x] Run policies, typecheck/build, affected real integrations and full repository checks against isolated alcove_test_173.
@@ -52,4 +52,8 @@ with private-chat/thread changes. Earlier overlapping interrupted test data is d
 
 Merged actual main37c037c3 (#86), preserving its private-message code, migration and timing entry. The combined tree again
 passed all15 client flows,7 package typechecks,3 builds and all policy guards. Its measured client suite is14.6 seconds.
-The separately reviewed #87 thread/draft foundation lands through main before this issue's final release.
+The separately reviewed #87 head0558df2b is now merged normally, retaining failed ciphertext/outbox identities and session
+draft revisions. Its combined tree passes15/15 optimistic flows,7 package typechecks,3 builds and all policy guards. The
+only merge conflict was the timing manifest; both thread-suite entries and the optimistic-suite entry are preserved.
+Once the identical #87 squash lands, record actual main ancestry without changing this reviewed tree; actual-head CI
+remains the final integration gate.
