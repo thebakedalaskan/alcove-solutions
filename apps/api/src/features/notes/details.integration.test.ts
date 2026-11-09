@@ -89,7 +89,8 @@ describe('the full summary', () => {
     expect(r.note.details).toBe('');
     expect(r.note.summary).not.toBe('');
     expect(r.note.decisions).toHaveLength(1);
-    expect(r.note.actions).toHaveLength(1);
+    expect(r.note.actions).toEqual([]);
+    expect(r.note.suggestions).toHaveLength(1);
     expect(logged(logsFrom, 'full summary written')).toEqual([]);
     expect(logged(logsFrom, 'full summary not written')).toMatchObject([{ level: 40 }]);
     expect(logged(logsFrom, 'notes written')).toHaveLength(1);
