@@ -1,4 +1,10 @@
 {
+ "src/features/calls/direct-messages.integration.test.ts": {
+  "seconds": 12.8,
+  "groups": {
+   "private messages inside a call": 12.8
+  }
+ },
  "src/features/meetings/availability.integration.test.ts": {
   "seconds": 1.6,
   "groups": {

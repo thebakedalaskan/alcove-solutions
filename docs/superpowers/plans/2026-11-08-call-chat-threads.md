@@ -74,3 +74,5 @@ Files: `apps/web/src/features/call/layout/Panel.tsx`, focused thread/composer ow
 - Fresh full-package typechecks pass. Final independent re-review, production build and release checks remain pending.
 
 - Final caller trace: `CallPage` keys `InCall` by call and exact connection identity, explicitly separating draft/scroll/audience memory across calls and replacement connections. Independent reviewer agreed with the boundary; same-connection reconnect retains memory.
+
+- Visible mention-span reads derive from the displayed authorized unread messages, independently of fresh-alert candidates. This prevents retained old-room/private mentions from being excluded from both span and generic read observers.
