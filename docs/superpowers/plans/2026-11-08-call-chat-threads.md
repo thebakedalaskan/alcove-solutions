@@ -72,3 +72,5 @@ Files: `apps/web/src/features/call/layout/Panel.tsx`, focused thread/composer ow
 - Toast actions recheck the exact captured session and call ID as well as generation, room and readable message.
 - Root/parent and read lookups use maps/sets. Alert/sound baselines observe all confirmed incoming IDs, preventing a viewer’s first participation from alerting about recent old replies.
 - Fresh full-package typechecks pass. Final independent re-review, production build and release checks remain pending.
+
+- Final caller trace: `CallPage` keys `InCall` by call and exact connection identity, explicitly separating draft/scroll/audience memory across calls and replacement connections. Independent reviewer agreed with the boundary; same-connection reconnect retains memory.
