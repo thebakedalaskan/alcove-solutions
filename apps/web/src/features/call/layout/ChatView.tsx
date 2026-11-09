@@ -124,7 +124,7 @@ export function ChatView({ chat, missed, ready, moving, place, here, placeName, 
       delivery={message.isMe ? delivery?.(message.id) : undefined} privateMessage={Boolean(privateWith)}
       onRetry={() => retry(message.id)} onReply={() => { focus.current = null; setComposerFocus((n) => n + 1); choose(message.thread?.root ?? message.id, message.id, message.place); }}
       onOpenThread={() => { focus.current = fresh[0]?.id ?? message.id; choose(message.id, message.id, message.place); }} onReact={react(message.id)}
-      text={<MentionText text={message.text} mentions={message.mentions} me={me} />} />;
+      text={<MentionText text={message.text} mentions={message.mentions} me={me} who={who} />} />;
   };
   const marked = new Set(chat.filter((m) => m.thread === null).map((m) => m.place)).size > 1;
   const destination = privateWith ? `only ${privateWith}${thread ? ' in this thread' : ''}` : thread && context ? `this thread in ${placeName(context.place)}` : here ?? 'everyone';

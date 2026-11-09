@@ -1,0 +1,221 @@
+import { DirectTextSchema, type CallSession } from '@alcove/api';
+import { createHttpApi } from '@alcove/api-http';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { cookieFetch, ORIGIN, startHarness, type Harness } from '../../testing/harness';
+
+let h: Harness;
+beforeAll(async () => { h = await startHarness(); });
+afterEach(() => h.closeCalls());
+afterAll(async () => { await h?.close(); });
+async function until(ready: () => boolean, what: string): Promise<void> {
+  const end = Date.now() + 15_000;
+  while (!ready()) { if (Date.now() > end) throw new Error(`Timed out waiting for ${what}`); await new Promise((resolve) => setTimeout(resolve, 30)); }
+}
+async function admit(host: CallSession, guest: CallSession): Promise<void> {
+  await until(() => host.getSnapshot().waiting.some((p) => p.id === guest.ticket.identity), 'guest request');
+  await host.admit(guest.ticket.identity);
+  await until(() => guest.crypto.getSnapshot().status === 'in', 'guest membership');
+}
+async function pair(a: CallSession, b: CallSession): Promise<void> {
+  await until(() => a.direct.getSnapshot().peers.includes(b.ticket.identity) && b.direct.getSnapshot().peers.includes(a.ticket.identity), 'authenticated private audience');
+}
+async function guests(firstBrowser = h.browser(), secondBrowser = h.browser()) {
+  const org = h.browser(); await org.api.auth.signIn('sso', { email: `mentions.${crypto.randomUUID()}@vandelay.example` });
+  const { code } = await org.api.calls.startNow({ notes: 'off' });
+  const host = await org.api.calls.join(code, { mic: false, cam: false });
+  const first = await firstBrowser.api.calls.join(code, { mic: false, cam: false, name: 'Sam' });
+  const second = await secondBrowser.api.calls.join(code, { mic: false, cam: false, name: 'Sam' });
+  await admit(host, first); await admit(host, second); await pair(first, second);
+  return { org, code, host, first, second, firstBrowser, secondBrowser };
+}
+
+describe('selected call mentions', () => {
+  it('keeps matching guest names on stable private identities, rebases whitespace spans and follows exact thread/read state', async () => {
+    const { host, first, second } = await guests();
+    const text = '   CANARY-MENTION-PRIVATE @Sam   ';
+    const start = text.indexOf('@Sam');
+    await first.direct.send(second.ticket.identity, text, [{ identity: second.ticket.identity, start, end: start + 4 }]);
+    await until(() => second.direct.getSnapshot().messages.length === 1, 'selected private mention');
+    const original = second.direct.getSnapshot().messages[0];
+    if (!original) throw new Error('No original private mention');
+    expect(original.text).toBe(text.trim());
+    expect(original.mentions).toEqual([{ identity: second.ticket.identity, start: start - 3, end: start + 1 }]);
+    expect(original.text.slice(original.mentions[0]?.start, original.mentions[0]?.end)).toBe('@Sam');
+    expect(second.direct.getSnapshot().unreadMentions).toEqual([original.id]);
+    expect(first.direct.getSnapshot().unreadMentions).toEqual([]);
+    second.direct.read([original.id]);
+    await second.refresh();
+    expect(second.direct.getSnapshot().unreadMentions).toEqual([]);
+    await second.direct.send(first.ticket.identity, '@Sam understood.', [{ identity: first.ticket.identity, start: 0, end: 4 }], { root: original.id, replyTo: original.id });
+    await until(() => first.direct.getSnapshot().messages.length === 2, 'private threaded mention');
+    const reply = first.direct.getSnapshot().messages.find((m) => m.thread?.root === original.id);
+    expect(reply?.mentions).toEqual([{ identity: first.ticket.identity, start: 0, end: 4 }]);
+    expect(first.direct.getSnapshot().unreadMentions).toEqual([reply?.id]);
+    await first.direct.send(second.ticket.identity, '@Sam is me.', [{ identity: first.ticket.identity, start: 0, end: 4 }]);
+    await until(() => second.direct.getSnapshot().messages.length === 3, 'self-mention without recipient attention');
+    expect(second.direct.getSnapshot().unreadMentions).toEqual([]);
+    expect(host.direct.getSnapshot().messages).toEqual([]);
+    const stored = JSON.stringify((await h.pool.query('SELECT * FROM call_private_messages')).rows);
+    for (const encoded of ['CANARY-MENTION-PRIVATE', Buffer.from('CANARY-MENTION-PRIVATE').toString('hex'), Buffer.from('CANARY-MENTION-PRIVATE').toString('base64url')]) {
+      expect(stored).not.toContain(encoded); expect(h.logs.join('')).not.toContain(encoded);
+    }
+    await host.leave();
+    expect((await h.pool.query('SELECT count(*) FROM call_private_messages')).rows[0]?.count).toBe('0');
+    await until(() => first.direct.getSnapshot().unreadMentions.length === 0, 'private mention cleanup');
+  });
+
+  it('drops inaccessible private mention attention during whole-API reconnects and departure without discarding permitted history', async () => {
+    let offline = false;
+    const jar = cookieFetch(ORIGIN);
+    const browser = h.browser({ fetch: (input, init) => offline && String(input).includes('/live/calls/') ? Promise.reject(new TypeError('Offline')) : jar(input, init) });
+    const { host, first, second } = await guests(h.browser(), browser);
+    await first.direct.send(second.ticket.identity, '@Sam can you review?', [{ identity: second.ticket.identity, start: 0, end: 4 }]);
+    await until(() => second.direct.getSnapshot().unreadMentions.length === 1, 'unread private mention');
+    const id = second.direct.getSnapshot().unreadMentions[0];
+    if (!id) throw new Error('No mention');
+    offline = true;
+    await until(() => !second.direct.getSnapshot().ready, 'private authorization suspended');
+    expect(second.direct.getSnapshot().unreadMentions).toEqual([]);
+    expect(second.direct.getSnapshot().messages).toHaveLength(1);
+    offline = false;
+    await until(() => second.direct.getSnapshot().ready && second.direct.getSnapshot().unreadMentions.length === 1, 'same-connection reauthorization');
+    expect(second.direct.getSnapshot().unreadMentions).toEqual([id]);
+    second.direct.read([id]);
+    await second.refresh();
+    expect(second.direct.getSnapshot().unreadMentions).toEqual([]);
+    await first.direct.send(second.ticket.identity, '@Sam one more question.', [{ identity: second.ticket.identity, start: 0, end: 4 }]);
+    await until(() => second.direct.getSnapshot().unreadMentions.length === 1, 'new private mention');
+    await host.remove(first.ticket.identity);
+    await until(() => !second.direct.getSnapshot().peers.includes(first.ticket.identity), 'author no longer in the audience');
+    expect(second.direct.getSnapshot().unreadMentions).toEqual([]);
+    expect(second.direct.getSnapshot().messages).toHaveLength(2);
+    await host.remove(second.ticket.identity);
+    await until(() => second.direct.getSnapshot().messages.length === 0, 'revoked history cleanup');
+    expect(second.direct.getSnapshot().unreadMentions).toEqual([]);
+    await host.leave();
+  });
+
+  it('refuses selected third-party identities and cryptographically authentic forged private mentions without acknowledging them', async () => {
+    const { host, first, second } = await guests();
+    await expect(first.direct.send(second.ticket.identity, '@Host', [{ identity: host.ticket.identity, start: 0, end: 5 }])).rejects.toMatchObject({ code: 'invalid' });
+    await expect(first.direct.send(second.ticket.identity, '@Sam', [{ identity: second.ticket.identity, start: 0, end: 99 }])).rejects.toMatchObject({ code: 'invalid' });
+    expect(first.direct.getSnapshot().messages).toEqual([]);
+    const real = crypto.subtle.encrypt.bind(crypto.subtle);
+    const malicious = vi.spyOn(crypto.subtle, 'encrypt').mockImplementation((algorithm, key, data) => {
+      if (typeof algorithm !== 'string' && 'additionalData' in algorithm && ArrayBuffer.isView(algorithm.additionalData) && new TextDecoder().decode(algorithm.additionalData).startsWith('["alcove/private-message/v1"')) {
+        const raw: unknown = JSON.parse(new TextDecoder().decode(data));
+        const payload = DirectTextSchema.parse(raw);
+        if (payload.text === 'Forged @Host') return real(algorithm, key, new TextEncoder().encode(JSON.stringify({ ...payload, mentions: [{ identity: host.ticket.identity, start: 7, end: 12 }] })));
+      }
+      return real(algorithm, key, data);
+    });
+    try {
+      await first.direct.send(second.ticket.identity, 'Forged @Host');
+      await first.direct.send(second.ticket.identity, '@Sam this one is for you.', [{ identity: second.ticket.identity, start: 0, end: 4 }]);
+      await until(() => second.direct.getSnapshot().unreadMentions.length === 1, 'valid mention after invalid encrypted payload');
+      expect(second.direct.getSnapshot().messages.map((m) => m.text)).toEqual(['@Sam this one is for you.']);
+      await until(() => first.direct.getSnapshot().messages.find((m) => m.text === '@Sam this one is for you.')?.state === 'delivered', 'valid receipt');
+      expect(first.direct.getSnapshot().messages.find((m) => m.text === 'Forged @Host')?.state).toBe('sent');
+      expect(host.direct.getSnapshot().messages).toEqual([]);
+      expect(host.direct.getSnapshot().unreadMentions).toEqual([]);
+    } finally { malicious.mockRestore(); }
+    await host.leave();
+  });
+
+  it('keeps failed sends silent and reuses the same encrypted mention across uncertain retries without duplicate attention', async () => {
+    let mode: 'before' | 'lost' | 'ok' = 'before'; let paused = false;
+    const wire: string[] = [];
+    const jar = cookieFetch(ORIGIN);
+    const browser = h.browser({ fetch: async (input, init) => {
+      const path = String(input);
+      if (paused && path.endsWith('/direct/sync')) throw new TypeError('Offline');
+      if (path.endsWith('/direct/messages')) {
+        if (typeof init?.body === 'string') wire.push(init.body);
+        if (mode === 'before') { mode = 'lost'; throw new TypeError('Not sent'); }
+        const response = await jar(input, init);
+        if (mode === 'lost') { mode = 'ok'; paused = true; throw new TypeError('Successful response lost'); }
+        return response;
+      }
+      return jar(input, init);
+    } });
+    const { host, first, second } = await guests(browser);
+    await first.direct.send(second.ticket.identity, '@Sam retry only this mention.', [{ identity: second.ticket.identity, start: 0, end: 4 }]);
+    const failed = first.direct.getSnapshot().messages[0];
+    if (!failed) throw new Error('No failed send');
+    expect(failed.state).toBe('failed');
+    expect(first.direct.getSnapshot().unreadMentions).toEqual([]);
+    expect(second.direct.getSnapshot().unreadMentions).toEqual([]);
+    await first.direct.retry(failed.id);
+    await until(() => second.direct.getSnapshot().unreadMentions.length === 1, 'one accepted mention despite lost response');
+    paused = false;
+    await until(() => first.direct.getSnapshot().ready, 'sender reauthorization');
+    await first.direct.retry(failed.id);
+    expect(wire).toHaveLength(3);
+    expect(new Set(wire).size).toBe(1);
+    expect(second.direct.getSnapshot().unreadMentions).toEqual([failed.id]);
+    expect(second.direct.getSnapshot().messages).toHaveLength(1);
+    expect((await h.pool.query('SELECT count(*) FROM call_private_messages')).rows[0]?.count).toBe('1');
+    second.direct.read([failed.id]); await second.refresh();
+    expect(second.direct.getSnapshot().unreadMentions).toEqual([]);
+    await host.leave();
+  });
+
+  it('keeps private mention attention and destinations within the original room and authorizes them again on return', async () => {
+    const org = h.browser(); const a = h.browser(); const b = h.browser();
+    const alice = `mentions.alice.${crypto.randomUUID()}@vandelay.example`; const bob = `mentions.bob.${crypto.randomUUID()}@vandelay.example`;
+    await org.api.auth.signIn('sso', { email: `mentions.org.${crypto.randomUUID()}@vandelay.example` });
+    await a.api.auth.signIn('sso', { email: alice }); await b.api.auth.signIn('sso', { email: bob });
+    const { code } = await org.api.calls.startNow({ guests: [alice, bob], notes: 'off' });
+    const host = await org.api.calls.join(code, { mic: false, cam: false });
+    const first = await a.api.calls.join(code, { mic: false, cam: false }); const second = await b.api.calls.join(code, { mic: false, cam: false });
+    await pair(first, second);
+    await first.direct.send(second.ticket.identity, '@Sam only in the original room.', [{ identity: second.ticket.identity, start: 0, end: 4 }]);
+    await until(() => second.direct.getSnapshot().unreadMentions.length === 1, 'original-room mention');
+    const id = second.direct.getSnapshot().unreadMentions[0];
+    if (!id) throw new Error('No mention');
+    host.openRooms({ rooms: [{ name: 'Design', emails: [alice] }, { name: 'Support', emails: [bob] }], minutes: 5, board: { mode: 'none', template: 'blank' } });
+    await until(() => first.crypto.getSnapshot().place !== 'main' && second.crypto.getSnapshot().place !== 'main' && first.crypto.getSnapshot().place !== second.crypto.getSnapshot().place, 'separate authorized rooms');
+    await until(() => !second.direct.getSnapshot().peers.includes(first.ticket.identity), 'old private audience unavailable');
+    expect(second.direct.getSnapshot().unreadMentions).toEqual([]);
+    await expect(first.direct.send(second.ticket.identity, '@Sam no cross-room destination.', [{ identity: second.ticket.identity, start: 0, end: 4 }])).rejects.toMatchObject({ code: 'conflict' });
+    host.closeRooms();
+    await until(() => first.crypto.getSnapshot().place === 'main' && second.crypto.getSnapshot().place === 'main', 'main-room return');
+    await pair(first, second);
+    await until(() => second.direct.getSnapshot().unreadMentions.includes(id), 'original authorized unread mention');
+    second.direct.read([id]);
+    expect(second.direct.getSnapshot().unreadMentions).toEqual([]);
+    await host.leave();
+  });
+
+  it('keeps room-thread mentions on exact identities and preserves only the same person’s read receipts across a new connection', async () => {
+    const { code, host, first, second, secondBrowser } = await guests();
+    await host.sendChat('@Sam start this conversation.', [{ identity: first.ticket.identity, start: 0, end: 4 }]);
+    await until(() => first.crypto.getSnapshot().chat.length === 1 && second.crypto.getSnapshot().chat.length === 1, 'room mention');
+    const original = first.crypto.getSnapshot().chat[0];
+    if (!original) throw new Error('No room original');
+    expect(original.mentions[0]?.identity).toBe(first.ticket.identity);
+    await first.sendChat('Thread @Sam please review.', [{ identity: second.ticket.identity, start: 7, end: 11 }], { root: original.id, replyTo: original.id });
+    await until(() => second.crypto.getSnapshot().chat.some((m) => m.thread?.root === original.id), 'threaded room mention');
+    const reply = second.crypto.getSnapshot().chat.find((m) => m.thread?.root === original.id);
+    if (!reply) throw new Error('No threaded mention');
+    expect(reply.mentions).toEqual([{ identity: second.ticket.identity, start: 7, end: 11 }]);
+    await second.readChat([reply.id]);
+    expect(second.getSnapshot().chatRead).toContain(reply.id);
+    expect(second.getSnapshot().chatRead).not.toContain(original.id);
+    second.closing();
+    const server = await h.secondServer();
+    const api = createHttpApi({ baseUrl: server.baseUrl, fetch: secondBrowser.fetch });
+    const again = await api.calls.join(code, { mic: false, cam: false, name: 'Sam', previous: second.ticket.pass });
+    try {
+      await until(() => again.crypto.getSnapshot().status === 'in', 'replacement same-person membership');
+      await again.refresh({ call: true, log: false });
+      expect(again.getSnapshot().chatRead).toContain(reply.id);
+      expect(again.crypto.getSnapshot().chat.some((m) => m.id === original.id || m.id === reply.id)).toBe(false);
+      expect(again.direct.getSnapshot().messages).toEqual([]);
+      expect(again.direct.getSnapshot().unreadMentions).toEqual([]);
+      await first.refresh();
+      expect(first.getSnapshot().chatRead).not.toContain(reply.id);
+    } finally { again.close(); await server.close(); }
+    await host.leave();
+  });
+});

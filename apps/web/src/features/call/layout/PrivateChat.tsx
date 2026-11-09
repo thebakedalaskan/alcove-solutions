@@ -1,6 +1,6 @@
 import { type CallChatMessage, type CallSession, type DirectMessagesState, type Person } from '@alcove/api';
 import { Avatar, EmptyState, Icon, Notice, Select } from '@alcove/ui';
-import { type ReactNode } from 'react';
+import { useMemo, type ReactNode } from 'react';
 import { type ChatDraft } from './ChatMentions';
 import { type ReplyJump } from '../session/replyAlerts';
 import { ChatView } from './ChatView';
@@ -14,19 +14,30 @@ export function PrivateChat({ session, state, audience, onAudience, memory, who,
   session: CallSession; state: DirectMessagesState; audience: PrivateAudience | null; onAudience: (a: PrivateAudience | null) => void;
   memory: PrivateChatMemory; who: (identity: string) => Person; place: string; generation: number; visible: boolean; children: ReactNode; jump?: ReplyJump | undefined;
 }) {
-  const conversations = new Map<string, PrivateAudience>();
-  for (const message of state.messages) {
-    const identity = message.from === session.ticket.identity ? message.to : message.from;
-    const a = { identity, place: message.place, generation: message.generation };
-    conversations.set(privateAudienceKey(a), a);
-  }
-  for (const identity of state.peers) { const a = { identity, place, generation }; conversations.set(privateAudienceKey(a), a); }
-  if (audience) conversations.set(privateAudienceKey(audience), audience);
+  const unreadIds = useMemo(() => new Set(state.unread), [state.unread]);
+  const unreadCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const message of state.messages) if (message.from !== session.ticket.identity && unreadIds.has(message.id)) {
+      const key = privateAudienceKey({ identity: message.from, place: message.place, generation: message.generation });
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    return counts;
+  }, [state.messages, unreadIds, session.ticket.identity]);
+  const conversations = useMemo(() => {
+    const all = new Map<string, PrivateAudience>();
+    for (const message of state.messages) {
+      const identity = message.from === session.ticket.identity ? message.to : message.from;
+      const a = { identity, place: message.place, generation: message.generation };
+      all.set(privateAudienceKey(a), a);
+    }
+    for (const identity of state.peers) { const a = { identity, place, generation }; all.set(privateAudienceKey(a), a); }
+    if (audience) all.set(privateAudienceKey(audience), audience);
+    return all;
+  }, [state.messages, state.peers, session.ticket.identity, audience, place, generation]);
   const chosen = audience ? privateAudienceKey(audience) : 'room';
-  const unread = (a: PrivateAudience) => state.messages.filter((m) => m.from === a.identity && m.place === a.place && m.generation === a.generation && state.unread.includes(m.id)).length;
   const available = (a: PrivateAudience) => state.ready && a.place === place && a.generation === generation && state.peers.includes(a.identity);
   const options = [{ value: 'room', label: 'Room chat', icon: 'chat' as const }, ...[...conversations].map(([value, a]) => {
-    const count = unread(a);
+    const count = unreadCounts.get(value) ?? 0;
     return { value, label: `${who(a.identity).name} · Private${count ? ` · ${count} new` : ''}${available(a) ? '' : ' · Unavailable'}`, icon: 'lock' as const };
   })];
   const count = state.unread.length;
@@ -45,17 +56,22 @@ function PrivateThread({ session, state, audience, draft, available, who, visibl
   session: CallSession; state: DirectMessagesState; audience: PrivateAudience; draft: ChatDraft; available: boolean; who: (identity: string) => Person; visible: boolean; jump?: ReplyJump | undefined;
 }) {
   const person = who(audience.identity);
-  const messages = state.messages.filter((m) => m.place === audience.place && m.generation === audience.generation && (m.from === audience.identity || m.to === audience.identity));
-  const chat: CallChatMessage[] = messages.map((m) => ({ id: m.id, from: m.from, text: m.text, at: m.at, place: m.place,
-    isMe: m.from === session.ticket.identity, sending: m.state === 'sending', failed: m.state === 'failed', thread: m.thread, mentions: [], reactions: [] }));
+  const messages = useMemo(() => state.messages.filter((m) => m.place === audience.place && m.generation === audience.generation && (m.from === audience.identity || m.to === audience.identity)), [state.messages, audience.place, audience.generation, audience.identity]);
+  const messageById = useMemo(() => new Map(messages.map((m) => [m.id, m])), [messages]);
+  const unreadIds = useMemo(() => new Set(state.unread), [state.unread]);
+  const readIds = useMemo(() => messages.filter((m) => !unreadIds.has(m.id)).map((m) => m.id), [messages, unreadIds]);
+  const unreadMentions = useMemo(() => state.unreadMentions.filter((id) => messageById.has(id)), [state.unreadMentions, messageById]);
+  const chat: CallChatMessage[] = useMemo(() => messages.map((m) => ({ id: m.id, from: m.from, text: m.text, at: m.at, place: m.place,
+    isMe: m.from === session.ticket.identity, sending: m.state === 'sending', failed: m.state === 'failed', thread: m.thread, mentions: m.mentions, reactions: [] })), [messages, session.ticket.identity]);
+  const mentionPeople = available ? [{ identity: session.ticket.identity, person: who(session.ticket.identity) }, { identity: audience.identity, person }] : [];
   return <>
     <div className="ac-private-heading"><Avatar person={person} size={36} /><div><b>{person.name}</b><span><Icon name="lock" size={12} />Private conversation · This call only</span></div></div>
     {!available && <Notice icon="lock">Unavailable in this room. Your draft stays here.</Notice>}
     {!state.ready ? <div className="ic-scroll ic-pad"><EmptyState art={null} title="Reconnecting privately">Messages return once your place in the call is checked.</EmptyState></div>
       : <ChatView chat={chat} missed={false} ready={available} moving={false} place={audience.place} here={null}
-        placeName={() => 'your private conversation'} who={who} me={session.ticket.identity} draft={draft} mentionPeople={[]}
-        jump={jump} privateWith={person.name} visible={visible} readIds={messages.filter((m) => !state.unread.includes(m.id)).map((m) => m.id)}
-        onRead={(ids) => session.direct.read(ids)} onSend={(text, _mentions, thread) => session.direct.send(audience.identity, text, thread)}
-        onRetry={(id) => session.direct.retry(id)} delivery={(id) => messages.find((m) => m.id === id)?.state === 'delivered' ? 'Delivered' : 'Sent'} />}
+        placeName={() => 'your private conversation'} who={who} me={session.ticket.identity} draft={draft} mentionPeople={mentionPeople} unreadMentionIds={unreadMentions}
+        jump={jump} privateWith={person.name} visible={visible} readIds={readIds}
+        onRead={(ids) => session.direct.read(ids)} onSend={(text, mentions, thread) => session.direct.send(audience.identity, text, mentions, thread)}
+        onRetry={(id) => session.direct.retry(id)} delivery={(id) => messageById.get(id)?.state === 'delivered' ? 'Delivered' : 'Sent'} />}
   </>;
 }
