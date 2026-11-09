@@ -116,7 +116,7 @@ export const JourneyStartABoardInARoom: PageStory = {
   play: (async ({ userEvent, step }) => {
     await step('Told you’re in Rollout, as rooms with no board say it', async () => { await screen.findByText(/You’re in Rollout for 10 min/, {}, LATER); });
     await step('Press Board', async () => { await userEvent.click(await screen.findByRole('button', { name: 'Board' }, SOON)); });
-    await step('The picker says it comes back with you when rooms close', async () => { await screen.findByText('Comes back with you when rooms close. Alcove can’t read it.', {}, SOON); });
+    await step('The picker says it comes back with you when rooms close', async () => { await screen.findByText('Comes back with you when rooms close.', {}, SOON); });
     await step('Press Blank', async () => { await userEvent.click(await screen.findByRole('button', { name: 'Blank' }, SOON)); });
     await step('It opens, sealed to this room', async () => { await screen.findByRole('button', { name: /Sealed to this room/ }, SOON); });
   }) satisfies Play

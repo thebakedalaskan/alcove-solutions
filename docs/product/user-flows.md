@@ -12,22 +12,22 @@ Each flow below is implemented in `apps/web` and exercised end to end by the int
    itself, a feature at a time, each looping while its step is the one being read (Documents and boards, Captions in
    your language, Set your status, Breakout rooms, A quiet nudge, Private messages and threads, Arrange it your way);
    finding a time with your team; your agent using Alcove; recording in the room without a connection; and what Alcove
-   can see. Each scene plays while it's on screen, and shows a still with reduced motion. Choose **Continue with
-   Google**, **Continue with Microsoft** or **Use single sign-on**, at the top or the bottom of the page; single sign-on
-   asks for a work email in place. The footer links to the public **Privacy policy**, available without signing in.
-2. **Google** opens its account chooser and consent screen in a popup, keeping Alcove open. It also asks for the calendar (events
-   only); unticking it still signs in. Alcove says **Waiting for Google…**, with **Cancel sign-in** to stop waiting,
+   can see. Each scene plays while it's on screen, and shows a still with reduced motion. Choose **Continue with Google**
+   at the top or bottom of the page. Local development and Storybook also show the Microsoft and single sign-on demo
+   options. The footer links to the public **Privacy policy**, available without signing in.
+2. **Google** opens its account chooser in a popup, keeping Alcove open. It shares the account's name, email address
+   and profile. Calendar and Drive access are optional and have their own consent screens. Alcove says **Waiting for Google…**,
+   with **Cancel sign-in** to stop waiting,
    including when the popup was closed. On success the popup closes, the waiting tab checks its session, and the welcome
    page fades into the app. If the browser blocks popups or can't pass the result between tabs, Google opens in the current
-   tab instead. If the sign-in doesn't happen (cancelled, too slow, an email Google
-   hasn't verified, too many attempts, or Google not set up on this server), the welcome screen says why.
+   tab instead. New accounts use a Gmail or Google Workspace address. Existing accounts can still sign in.
+   If Google sign-in fails, the welcome screen says why.
 3. The first time, the account is created on screen, in about six seconds: an arch draws itself, dawn fills
    it and the sun rises, while what came with the account arrives a row at a time, each with a check. **Signed
    in as** the name, with the provider's mark (a key for single sign-on). **Your calendar**: how many calls are
    left today and which is next, from the connected or sample calendar (no row without calendar access). **Your
    team at** the company, with its size and faces, when it has people in it and has arrived by then (the screen
-   doesn't wait for it). **Notes are written in
-   confidential compute**, with the time the hardware was verified when this browser could check it. Then
+   doesn't wait for it). **Notes are encrypted in storage** and follow the call’s sharing permissions. Then
    "You’re in" and the arch opens into Home. **Skip**, **Escape** or **Enter** opens it straight away; with
    reduced motion the finished screen shows for a moment and Home follows. After that, signing in goes
    straight to Home. From the welcome page it sails out of the cove: the headlands go by, the horizon comes up to
@@ -44,8 +44,8 @@ Each flow below is implemented in `apps/web` and exercised end to end by the int
    tour** in Settings (flow 11) plays it again.
 
 The first sign-in creates the account: its keys, a profile with the name, email and photo from the sign-in,
-the notes default (on) and 10,000 credits. Later sign-ins bring the name, email and photo up to date. Microsoft
-and SSO are still stand-ins: Microsoft signs in Art Vandelay (art@vandelay.industries), and SSO signs in
+the notes default (on) and 10,000 credits. Later sign-ins bring the name, email and photo up to date. In local
+development and Storybook, Microsoft signs in Art Vandelay (art@vandelay.industries), and SSO signs in
 whoever's email was typed, with a name made from the address, as long as it's an address no real person can
 have (at example.com or another domain reserved for examples, or at vandelay.industries). These demo accounts get a sample day of
 five calls whenever nothing is coming up at sign-in, the first about 12 minutes later.
@@ -72,8 +72,7 @@ Beside every page, dark in both themes:
   pins are for.
 - **Groups**: each of your groups and how many people are in it. Each opens on the Team page, and **+**
   starts a new one there.
-- At the bottom: the confidential-compute check (**Confidential compute · verified** when the server's
-  hardware answer is bound to this browser's request), and the time of notes left, which opens Settings at your
+- At the bottom: the hosting hardware status, and the time of notes left, which opens Settings at your
   minutes.
 - Offline, a notice at the top says recording still works and everything else catches up when you're back
   (with **Record without a connection** off, that recording waits for the connection too). Up next and the
@@ -108,8 +107,7 @@ balloon in the corner; and, slowly along the horizon, boats and ships of six kin
 opens. Every other page is a later moment of the same evening, with less sky the less it's about one action, and quieter
 visitors: a boat far out, stars after dark and now and then a shooting star. With reduced motion on, it's a still picture and nothing passes through.
 
-- The date, top left. On a phone or with the side panel hidden, a **Confidential compute** badge (with the time the
-  hardware was verified when this browser could check it) shows on Home too, since the panel's check isn't there.
+- The date, top left. On a phone or with the side panel hidden, the hosting hardware status shows on Home too, since the panel’s check isn’t there.
 - **Start a call** (**Start your first call** before your first notes). **Start now** goes straight to the lobby
   (flow 5). **Schedule** opens scheduling at Who (flow 4). The third button schedules a call for now and copies its
   link, so it's listed with a card like any other (**Undo** cancels it), and isn't on a phone. Under them, up to three people on your team who use Alcove: pressing one starts a
@@ -150,8 +148,9 @@ visitors: a boat far out, stars after dark and now and then a shooting star. Wit
   everyone on it), and **What carries over** when it's in a series. With **Show my other meetings on Home** off
   (Settings), only Alcove calls count.
 - **Recent notes**: your four newest, one line each, and the heading opens all of them.
-- Signed in with Google without sharing the calendar, a card offers **Connect Google Calendar**; **Not now** puts
-  it away in this browser.
+- With Google Calendar disconnected, a card offers **Connect Google Calendar**. **Not now** puts it away in
+  this browser. Connect explains how Alcove uses Calendar data before sending you to Google for consent,
+  then returns to Calendar settings.
 
 The tiles and the checklist come from the inbox (`GET /v1/notes/inbox`): the follow-ups for you that aren't done
 (taken on, or only suggested); the decisions in written notes that nobody has confirmed or rejected and that you can
@@ -201,8 +200,9 @@ send to anyone".
    on, so everyone joins muted. **Documents** steps to the documents and boards you can open, by workspace, with a
    search; what's shared with you from workspaces you aren't in sits under **Shared with you**. With nothing to bring yet
    it says so, and the call works without. A call can bring 12, and anyone who can't open one is told whose it is, without
-   seeing its name, so they can ask for it. The button says what it will do: **Schedule**, **Schedule 4 calls** or
-   **Get the link**.
+   seeing its name, so they can ask for it. With Google Calendar disconnected, **Connect Google Calendar** opens in
+   a new tab. Your draft stays open, and you can still schedule and share its link yourself. The button says what it
+   will do: **Schedule**, **Schedule 4 calls** or **Get the link**.
 6. Once it's scheduled the modal settles away, the row rises on Home, and a toast says what happened, and only that.
    With Google Calendar connected the call is on it and Google sends the invitations, with **Undo** for a moment. With
    no calendar connected, or with **Put calls I schedule on my calendar** off (Settings), nobody has been told: the
@@ -312,8 +312,7 @@ time, slides in on the right.
   while someone has asked; the organizer's own says **Pausing…** until their pause lands), the same for everyone, which
   opens what's captured: each kind of capture and its state, who changed it and when, who gets the notes, and the
   organizer's **Pause notes**, **Resume notes** and **Turn off** (or **Turn on notes**) and **Notes written by** (the AI model that writes this call's notes), or
-  anyone else's **Ask for notes**; and the shield, whose hover says what confidential compute covers (verified only when the
-  server's hardware check is bound to this browser's request). On the right, what's only yours: **Board** (**O**), which
+  anyone else's **Ask for notes**; and the shield, whose hover shows hosting hardware status and what Alcove encrypts in storage. On the right, what's only yours: **Board** (**O**), which
   opens the board picker under it, and **Workspace** (**W**, with a count of what's been brought to this call), which
   opens the workspace, each on your stage just for you (Presenting, below); **Notes** and **Chat** (**C**,
   with a count of what's new), which open your side; and who is here, the faces and the count (and, for whoever hosts, how
@@ -881,7 +880,7 @@ See [Floating call](../engineering/floating-call.md) for browser capabilities an
    present it." **In this call**, if the call has a board, has its name and who brought it ("Priya · brought it"), or "Priya
    is presenting it". **New** has **Blank**, **Retro**, **Ideas** and **Flow**. **Your team’s boards** has whatever's been
    brought to this call first, then the newest from the workspaces in your Drive, three at most, with whose each is and
-   where it's from. At its foot: "Sealed. Alcove can’t read boards." Anyone invited can start one, in the main room or a
+   where it's from. At its foot: "Boards are encrypted in storage." Anyone invited can start one, in the main room or a
    breakout room; a guest can't ("Guests can’t start a board here."). While someone else presents a board here, nobody can
    start or bring in another, and the picker says "Priya is presenting a board. You can start one once they stop." With a
    board on your stage, Board and **O** close it instead (step 5). **Share › A board** in the dock is the same picker, as
@@ -928,7 +927,7 @@ See [Floating call](../engineering/floating-call.md) for browser capabilities an
    has (step 13), there while you present it too, when the bar isn't; and, for
    the organizer, on a board someone else presents, **Close it for everyone**. Whoever presents it closes it for everyone
    from Close's question (step 11). Closing deletes nothing: the board stays saved where it is. The board's seal says
-   what's true of this board: who can add to it, where it's saved, and that Alcove can't read it. It says
+   what's true of this board: who can add to it, where it's saved, and that it’s encrypted in storage. It says
    how the board stands too, as on its own page:
    - **Reconnecting**, when the board's connection drops while the call carries on. The pill at the top of the board says
      "Keep going. Your changes are safe here." What you add goes up once the connection's back, with nothing lost or doubled.
@@ -1037,7 +1036,7 @@ See [Floating call](../engineering/floating-call.md) for browser capabilities an
    already has its board open: "2 rooms are open. Each one has a board."
 2. **Inside a room.** "Art opened rooms. You're going to Rollout." You arrive on the room's board with its frames ready. Its
    seal says **Sealed to this room**: "Only the people in Rollout can see this board.", "When rooms close it comes back to the
-   main room, and everyone in the call sees it." and "Alcove can't read it, then or later." Whoever's moved to another room
+   main room, and everyone in the call sees it." and "Encrypted in storage." Whoever's moved to another room
    loses it as they go, and finds the new room's. The pill at the top of the board says the room and how long it has left
    (**Comms · 9:12**): in its last minute it turns amber and says **This board comes back with you**, and in the last ten
    seconds **Rooms close in 10 seconds**, counting down. A screen reader hears it at ten seconds and as rooms close, not every
@@ -1046,7 +1045,7 @@ See [Floating call](../engineering/floating-call.md) for browser capabilities an
    "Art, to every room: Two minutes left", so nobody has to leave the board to read it. **Raise your hand** asks Art for help,
    and Art coming in is told as "Art joined this room."
 3. **Start a board in a room.** With none set up, **Board** is where it always is, and the same picker, with no boards your
-   team has, says at its foot "Comes back with you when rooms close. Alcove can't read it." A new board is the room's: it
+   team has, says at its foot "Comes back with you when rooms close." A new board is the room's: it
    opens on your stage, just for you, until you present it, and everyone in the room finds it under **In this call**. Nobody
    outside the room can see it, the organizer included, until they join.
 4. **While rooms are open** the organizer sees who is where: each room on its board says "On their board. Join to see it." in
@@ -1442,10 +1441,10 @@ the page still works. Journey **11.23** shows Detailed → Short → Detailed wh
   capture panel) or when you write a note's notes again.
 - **Recording in the room**: **Record without a connection** (on by default), and **On this device**: how many
   recordings, and how much room, wait here to upload, with **See them** (Record's list), or **Nothing waiting**.
-- **Calendar**: Google Calendar, **Connected** with **Disconnect** (it forgets the connection and withdraws Alcove's
-  access at Google), or **Connect**, which goes to Google and comes back to Home; a demo account's sample calendar
-  instead; signed in another way, **Not connected**, since Google Calendar connects when you sign in with Google. A
-  calendar that doesn't answer says why, with **Try again**. Then **Put calls I schedule on my calendar** and
+- **Calendar**: Google Calendar, **Connected** with **Disconnect** (it removes the Calendar connection in
+  Alcove), or **Connect**, which asks for access to the same Google account you signed in with and
+  returns here with the result. A demo account has a sample calendar. Other accounts show **Not connected**.
+  A calendar that doesn't answer says why, with **Try again**. Then **Put calls I schedule on my calendar** and
   **Show my other meetings on Home** (both on by default).
 - **Microphone, speaker and camera**: this browser's choices, the ones the join screen and the call use; choosing
   one doesn't open it. A browser names devices only once they're allowed, so until then the microphone and speaker
@@ -1464,8 +1463,8 @@ the page still works. Journey **11.23** shows Detailed → Short → Detailed wh
   (since 00:00 UTC on the 1st). Calls without notes are free.
 - **Agents**: named, revocable connections with explicit permissions, expiry and last use. **Create a token** and
   **Disconnect** are described in flow 14.
-- **Privacy**: what Alcove knows beside what it can't read, then confidential compute: the time the hardware was
-  verified when this browser could check it, or where your audio is opened and your notes are written. The
+- **Privacy**: what account and call information Alcove processes, how content is encrypted in storage, and whether
+  the hosting server reported hardware evidence. The
   **Privacy policy** explains how Alcove uses account and service data and how to disconnect Google services.
 
 **Delete account** opens one step where it is (never a window over the page): the row becomes the question, **Delete
@@ -1720,7 +1719,7 @@ everything.
 keeps it, **Esc** puts it back); **Saved in** the workspace, which shows it in the list; **Who can add to it**, the
 workspace's share sheet, where the board can be shared beyond the workspace or closed to **Only people added here**; and
 **Copy link**. Its tip says which of these are yours to do. Pressing the seal says how the board stands, in the seal's own
-word: sealed, and where it's saved, and that Alcove can't read it; or **Reconnecting**, **Couldn’t save** or **View only**,
+word: sealed, where it's saved and how it's encrypted in storage; or **Reconnecting**, **Couldn’t save** or **View only**,
 with what that means, under the pill and never over it. Escape, or **Copy link**, gives the keys back to the board.
 
 **Comments.** Pick a sticky and press **K**, or **Comment** in the **+** under the tools, and a field opens beside it.
@@ -1798,7 +1797,9 @@ and review requested access**. The OAuth journey plays up to the external-client
 ## 15. Google Drive exports
 
 Google Drive is a separate connection in **Settings → Google Drive**. Connect the Google account that should own exported
-files and consent to access only files and folders selected for Alcove. Connecting or disconnecting Drive leaves ordinary
+files and consent to access only files and folders selected for Alcove. **Connect Google Drive** and **Reconnect**
+first open a disclosure explaining what Alcove gets from Google and what it uploads. **Continue to Google** opens
+Google’s consent and folder picker. Connecting or disconnecting Drive leaves ordinary
 Alcove sign-in and Calendar settings alone. Google’s pages are outside Alcove; returning after cancellation or failure says
 what happened and leaves the existing settings in place.
 
@@ -1807,7 +1808,7 @@ what happened and leaves the existing settings in place.
    one type are chosen. Every setting saves as it changes. Pausing exports keeps the choices. Only finalized, retained
    material the exporting account can still access is eligible; a call ending does not promise an export exists.
 2. **Choose a shared-drive folder.** The destination opens a folder picker, showing authorized folders and whether each
-   belongs to a shared drive. **Choose in Google** grants access to another folder and returns to Settings. Choosing a
+   belongs to a shared drive. The picker explains what **Choose in Google** permits before opening Google to authorize another folder and return to Settings. Choosing a
    folder checks current write permission before it is saved. An unavailable destination is refused, with no fallback to
    another folder. The selected folder’s existing sharing rules apply to the readable exported copy; Alcove never adds
    people, makes public links or exports another person’s private notes.
@@ -1829,7 +1830,10 @@ what happened and leaves the existing settings in place.
    when the call retained it; unavailable audio is disabled with the reason beside the format. Global defaults may
    still select retained audio for future calls the person organizes.
 
-Storybook’s journeys use **15.1–15.6** above. The account, folders and file links in the preview are made-up; real Google
+7. **Review Drive permissions.** Open **Connect Google Drive**, read what access the export needs and cancel to stay
+   in Settings without starting consent.
+
+Storybook’s journeys use **15.1–15.7** above. The account, folders and file links in the preview are made-up; real Google
 consent and the provider’s own folder-selection page require manual verification with a supported Google account.
 
 ### 11.24 Add credits

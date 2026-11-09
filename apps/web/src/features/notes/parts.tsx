@@ -259,7 +259,7 @@ export function ChapterList({ chapters, onGo }: { chapters: Chapter[]; onGo: ((c
 
 const COUNTED = ['', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten'];
 /** Who can open a note: "Only these five can open them. Alcove can’t." */
-const onlyThese = (n: number) => (n <= 1 ? 'Only you can open them. Alcove can’t.' : `Only these ${COUNTED[n] ?? n} can open them. Alcove can’t.`);
+const onlyThese = (n: number) => (n <= 1 ? 'Only your account can open them in Alcove.' : `Only these ${COUNTED[n] ?? n} accounts can open them in Alcove.`);
 /* A long list shows its first people until it's opened; the people a share just reached show in it either way. */
 const FIRST_PEOPLE = 8;
 

@@ -20,7 +20,7 @@ import { createLiveKit } from '../livekit';
 import { configureLogging } from '../log';
 import { migrate } from '../migrate';
 import { createObjectStore, type ObjectStore } from '../objects';
-import { startFakeGoogle, type FakeGoogle } from './fake-google';
+import { startFakeGoogle, type FakeGoogle, type GoogleUser, type Spoil } from './fake-google';
 import { startFakeNear, type FakeNear } from './fake-near';
 import { startFakeOneClick, type FakeOneClick } from './fake-oneclick';
 
@@ -55,6 +55,16 @@ export function cookieFetch(origin: string): typeof fetch {
 }
 
 export interface Browser { api: AlcoveApi; fetch: typeof fetch }
+
+/** Follows the explicit Calendar connection from an already signed-in test browser. */
+export async function connectGoogleCalendar(h: Harness, b: Browser, user: GoogleUser, spoil?: Spoil): Promise<string> {
+  h.google.next(user, spoil);
+  const start = await b.fetch(b.api.calendar.connectUrl(), { redirect: 'manual' });
+  const google = await fetch(start.headers.get('location') ?? '', { redirect: 'manual' });
+  const end = await b.fetch(google.headers.get('location') ?? '', { redirect: 'manual' });
+  return end.headers.get('location') ?? '';
+}
+
 export interface Harness {
   baseUrl: string;
   pool: pg.Pool;

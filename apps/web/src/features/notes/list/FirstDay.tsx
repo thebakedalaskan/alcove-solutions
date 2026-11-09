@@ -53,7 +53,7 @@ function Example({ me }: { me: Person }) {
           )}
         </div>
       </div>
-      <p className="nt-ex-cap"><Icon name="sealed" size={15} />Written in confidential compute. Alcove can’t read it.</p>
+      <p className="nt-ex-cap"><Icon name="sealed" size={15} />Written by an AI model in confidential compute.</p>
     </section>
   );
 }

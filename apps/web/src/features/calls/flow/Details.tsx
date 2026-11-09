@@ -3,8 +3,9 @@
  * notes and where they go open in place. The button says what it will do, and the line beside it who will hear about it.
  */
 import type { MeetingInput, Person } from '@alcove/api';
-import { Button, Faces, FlowBody, FlowFoot, FlowRow, NotesSwitches, Select, Switch, SwitchLine } from '@alcove/ui';
+import { Button, Faces, FlowBody, FlowFoot, FlowNote, FlowRow, NotesSwitches, Select, Switch, SwitchLine } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
+import { Link } from '@tanstack/react-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { namesIn } from '~/features/workspace/List';
 import { useMyModelUnencrypted } from '~/lib/aiModels';
@@ -24,10 +25,11 @@ function footLine(draft: Draft, guests: readonly Person[], invites: boolean): st
   return invites ? invitationLine(guests) : 'Nobody’s told until you send them the link.';
 }
 
-export function Details({ draft, change, guests, at, invites, back, returning, saving, onWhen, onWho, onDocs, onSchedule }: {
+export function Details({ draft, change, guests, at, invites, connectCalendar, back, returning, saving, onWhen, onWho, onDocs, onSchedule }: {
   draft: Draft; change: (d: Partial<Draft>) => void; guests: Person[]; at: Date;
   /** A calendar will take this call and invite everyone: it decides what can be promised. */
   invites: boolean;
+  connectCalendar: boolean;
   back: boolean;
   /** Came back from the documents: focus goes to their row. */
   returning: boolean;
@@ -107,6 +109,11 @@ export function Details({ draft, change, guests, at, invites, back, returning, s
           <FlowRow id="cf-docs-row" icon="fileText" onClick={onDocs} disabled={saving} title={draft.documents.length ? `${draft.documents.length} ${draft.documents.length === 1 ? 'document' : 'documents'}` : 'Documents'}
             sub={draft.documents.length ? docNames(draft.documents) : 'Add from a workspace'} />
         </div>
+        {connectCalendar && !offer && !saving && (
+          <FlowNote tone="info" icon="cal">
+            <Link className="lk" to="/connect-calendar" target="_blank" rel="noopener noreferrer">Connect Google Calendar</Link> in a new tab to put this call on your calendar{guests.length > 0 ? ' and send invitations' : ''}.
+          </FlowNote>
+        )}
       </FlowBody>
       {failed !== null && <Failed error={failed} />}
       <FlowFoot summary={footLine(draft, guests, invites)}>

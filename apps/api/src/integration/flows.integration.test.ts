@@ -9,7 +9,7 @@ import { z } from 'zod';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { addObject, boardText, newId, readBoard, tableCell } from '@alcove/board';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { loadConfig } from '../config';
+import { loadConfig, loadEnv } from '../config';
 import { b64u, openJson, sealJson, signInAttemptKey, unb64u } from '../crypto';
 import { masterKey } from '../owners';
 import { cookieName } from '../sessions';
@@ -89,12 +89,12 @@ const SpotlightReply = z.object({ spotlight: z.string().nullable() });
 const SessionReply = z.object({ ownerId: z.string() });
 /**
  * Signs in with Google the way a browser does: off to Google and back, following each redirect by
- * hand so the browser's cookies see every hop (a second pass to Google included). Returns where the
+ * hand so the browser's cookies see every hop. Returns where the
  * API finally sends the browser. `tamper` and `deliverIn` apply to the first return from Google.
  */
 async function viaGoogle(b: Browser, user: GoogleUser, o: { spoil?: Spoil; tamper?: (callback: URL) => void; deliverIn?: Browser; consent?: boolean; popup?: string; next?: '/move' } = {}): Promise<URL> {
   h.google.next(user, o.spoil);
-  let url = new URL(`${h.baseUrl}/v1/auth/google`);
+  let url = new URL(b.api.auth.signInUrl('google'));
   if (o.consent) url.searchParams.set('consent', '1');
   if (o.popup) url.searchParams.set('popup', o.popup);
   if (o.next) url.searchParams.set('next', o.next);
@@ -112,8 +112,22 @@ async function viaGoogle(b: Browser, user: GoogleUser, o: { spoil?: Spoil; tampe
   }
   throw new Error('Too many redirects while signing in with Google.');
 }
+/** Both revisions share the deployed callback URL. Send its requests to the revision under test. */
+function browserAt(baseUrl: string): Browser {
+  const jar = cookieFetch(ORIGIN);
+  const forward: typeof fetch = (input, init) => {
+    const url = new URL(input instanceof Request ? input.url : input);
+    return jar(new URL(`${url.pathname}${url.search}`, baseUrl), init);
+  };
+  return { fetch: forward, api: createHttpApi({ baseUrl, fetch: forward }) };
+}
 /** Where a sign-in ended up, without the origin. */
-const landed = (u: URL) => `${u.pathname}${u.search}`;
+const landed = (u: URL) => `${u.pathname}${u.search}${u.hash}`;
+async function signInWithCalendar(b: Browser, user: GoogleUser) {
+  const end = await viaGoogle(b, user);
+  expect(landed(await viaGoogle(b, user, { consent: true }))).toBe('/settings?calendar=connected#calendar');
+  return end;
+}
 /** Only a cookie's attributes leave this parser, so a failing assertion can't print a session secret. */
 function cookieAttributes(header: string) {
   const attributes = new Set(header.split(';').slice(1).map((a) => a.trim().toLowerCase()));
@@ -211,6 +225,35 @@ describe('signing in', () => {
     }
     // The demo company's addresses still work, so a demo has colleagues to share with.
     expect((await h.browser().api.auth.signIn('sso', { email: 'theo@vandelay.industries' })).session.user.email).toBe('theo@vandelay.industries');
+  });
+
+  it('disables demo sign-in and sessions on a public deployment while preserving accounts', async () => {
+    const demo = await account(unique('demo-before-launch'));
+    await demo.api.account.updatePreferences({ notesDefault: 'off' });
+    const google = h.browser();
+    expect(landed(await viaGoogle(google, { sub: `real-before-launch-${seq++}`, email: unique('real-before-launch') }))).toBe('/ready');
+    const realSession = await google.api.auth.getSession();
+    expect(realSession?.ownerId).toBeTruthy();
+
+    const { DATABASE_URL, OBJECTS_BUCKET, WEB_ORIGIN, API_URL } = h.deps.cfg;
+    const { DEMO_AUTH_ENABLED } = loadEnv(process.env, {
+      DATABASE_URL, OBJECTS_BUCKET, WEB_ORIGIN, API_URL, DEMO_AUTH_ENABLED: 'false'
+    });
+    const deployed = await h.secondServer({ DEMO_AUTH_ENABLED });
+    try {
+      const api = createHttpApi({ baseUrl: deployed.baseUrl, fetch: cookieFetch(ORIGIN) });
+      expect(code(await api.auth.signIn('microsoft').catch((e: unknown) => e))).toBe('forbidden');
+      expect(code(await api.auth.signIn('sso', { email: unique('demo-after-launch') }).catch((e: unknown) => e))).toBe('forbidden');
+      expect(await api.auth.getSession()).toBeNull();
+      expect(await (await demo.fetch(`${deployed.baseUrl}/v1/session`)).json()).toBeNull();
+      expect((await demo.fetch(`${deployed.baseUrl}/v1/meetings`)).status).toBe(401);
+      expect(await (await google.fetch(`${deployed.baseUrl}/v1/session`)).json()).toMatchObject({ ownerId: realSession?.ownerId, provider: 'google' });
+    } finally { await deployed.close(); }
+
+    const restored = h.browser();
+    const signedIn = await restored.api.auth.signIn('sso', { email: demo.session.user.email });
+    expect([signedIn.isNew, signedIn.session.ownerId]).toEqual([false, demo.session.ownerId]);
+    expect((await restored.api.account.preferences()).notesDefault).toBe('off');
   });
 
   it('keeps sessions across a restart and refuses a cookie after sign-out', async () => {
@@ -327,6 +370,83 @@ describe('signing in with Google', () => {
     expect((await later.api.auth.getSession())?.ownerId).toBe(session?.ownerId);
   });
 
+  it('keeps new Google sign-ups invite-only without locking out existing Google accounts', async () => {
+    const existing = { sub: `before-beta-${seq++}`, email: unique('before-beta') };
+    const earlier = h.browser();
+    expect(landed(await viaGoogle(earlier, existing))).toBe('/ready');
+    const ownerId = (await earlier.api.auth.getSession())?.ownerId;
+    expect(ownerId).toBeTruthy();
+
+    const tester = { sub: `tester-${seq++}`, email: unique('tester') };
+    const { DATABASE_URL, OBJECTS_BUCKET, WEB_ORIGIN, API_URL } = h.deps.cfg;
+    const { GOOGLE_SIGNUP_MODE, GOOGLE_SIGNUP_TESTERS } = loadEnv(process.env, {
+      DATABASE_URL, OBJECTS_BUCKET, WEB_ORIGIN, API_URL, GOOGLE_SIGNUP_MODE: 'testers',
+      GOOGLE_SIGNUP_TESTERS: ` \r\n  ${tester.email.toUpperCase()}  \r\n`
+    });
+    const beta = await h.secondServer({ GOOGLE_SIGNUP_MODE, GOOGLE_SIGNUP_TESTERS });
+    try {
+      const outsider = { sub: `outsider-${seq++}`, email: unique('outsider') };
+      const refused = browserAt(beta.baseUrl);
+      const popup = randomUUID();
+      const end = await viaGoogle(refused, outsider, { popup });
+      expect([end.pathname, Object.fromEntries(end.searchParams)]).toEqual(['/welcome', { popup, signin: 'invite-only' }]);
+      expect(await refused.api.auth.getSession()).toBeNull();
+      expect(landed(await viaGoogle(h.browser(), outsider))).toBe('/ready');
+
+      const unverified = browserAt(beta.baseUrl);
+      expect(landed(await viaGoogle(unverified, { ...tester, emailVerified: false }))).toBe('/welcome?signin=unverified');
+      expect(await unverified.api.auth.getSession()).toBeNull();
+      const invited = browserAt(beta.baseUrl);
+      expect(landed(await viaGoogle(invited, tester))).toBe('/ready');
+      expect(await invited.api.auth.getSession()).toMatchObject({ provider: 'google', user: { email: tester.email } });
+
+      const returning = browserAt(beta.baseUrl);
+      const newEmail = unique('changed-address');
+      expect(landed(await viaGoogle(returning, { ...existing, email: newEmail }))).toBe('/home');
+      expect(await returning.api.auth.getSession()).toMatchObject({ ownerId, provider: 'google', user: { email: newEmail } });
+    } finally { await beta.close(); }
+  });
+
+  it('requires a Google-hosted email to sign up or change an address on the public app', async () => {
+    const legacy = { sub: `before-public-${seq++}`, email: unique('before-public') };
+    const earlier = h.browser();
+    expect(landed(await viaGoogle(earlier, legacy))).toBe('/ready');
+    const ownerId = (await earlier.api.auth.getSession())?.ownerId;
+    expect(ownerId).toBeTruthy();
+
+    const { DATABASE_URL, OBJECTS_BUCKET, WEB_ORIGIN, API_URL } = h.deps.cfg;
+    const { GOOGLE_SIGNUP_MODE } = loadEnv(process.env, {
+      DATABASE_URL, OBJECTS_BUCKET, WEB_ORIGIN, API_URL, GOOGLE_SIGNUP_MODE: 'public'
+    });
+    const deployed = await h.secondServer({ GOOGLE_SIGNUP_MODE });
+    try {
+      const outsider = { sub: `external-${seq++}`, email: unique('external'), emailVerified: true };
+      const refused = browserAt(deployed.baseUrl);
+      const popup = randomUUID();
+      const end = await viaGoogle(refused, outsider, { popup });
+      expect([end.pathname, Object.fromEntries(end.searchParams)]).toEqual(['/welcome', { popup, signin: 'google-email-required' }]);
+      expect(await refused.api.auth.getSession()).toBeNull();
+      expect(landed(await viaGoogle(h.browser(), outsider))).toBe('/ready');
+
+      const changed = browserAt(deployed.baseUrl);
+      expect(landed(await viaGoogle(changed, { ...legacy, email: unique('external-change') }))).toBe('/welcome?signin=google-email-required');
+      expect(await changed.api.auth.getSession()).toBeNull();
+      const returning = browserAt(deployed.baseUrl);
+      expect(landed(await viaGoogle(returning, legacy))).toBe('/home');
+      expect(await returning.api.auth.getSession()).toMatchObject({ ownerId, provider: 'google', user: { email: legacy.email } });
+
+      const gmail = { sub: `gmail-${seq++}`, email: unique('gmail').replace('@tests.example', '@gmail.com') };
+      const gmailBrowser = browserAt(deployed.baseUrl);
+      expect(landed(await viaGoogle(gmailBrowser, gmail))).toBe('/ready');
+      expect(await gmailBrowser.api.auth.getSession()).toMatchObject({ provider: 'google', user: { email: gmail.email } });
+
+      const workspace = { sub: `workspace-${seq++}`, email: unique('workspace'), hostedDomain: 'tests.example' };
+      const workspaceBrowser = browserAt(deployed.baseUrl);
+      expect(landed(await viaGoogle(workspaceBrowser, workspace))).toBe('/ready');
+      expect(await workspaceBrowser.api.auth.getSession()).toMatchObject({ provider: 'google', user: { email: workspace.email } });
+    } finally { await deployed.close(); }
+  });
+
   it('sends a popup cancellation only to the channel sealed into its matching sign-in attempt', async () => {
     const b = h.browser();
     const popup = randomUUID();
@@ -355,7 +475,29 @@ describe('signing in with Google', () => {
     expect(await normal.api.auth.getSession()).toMatchObject({ provider: 'google', user: { email: who.email } });
   });
 
-  it('keeps the popup channel and a waiting move through Google’s second consent pass', async () => {
+  it('keeps the newest sign-in attempt when an older tab returns from Google first', async () => {
+    const b = h.browser();
+    const startInTab = async (who: GoogleUser, popup: string) => {
+      h.google.next(who);
+      const start = await b.fetch(`${h.baseUrl}/v1/auth/google?popup=${popup}`, { redirect: 'manual' });
+      const google = await fetch(start.headers.get('location') ?? '', { redirect: 'manual' });
+      return google.headers.get('location') ?? '';
+    };
+    const older = await startInTab({ sub: `first-tab-${seq++}`, email: unique('first-tab') }, randomUUID());
+    const who = { sub: `newer-tab-${seq++}`, email: unique('newer-tab') };
+    const popup = randomUUID();
+    const newer = await startInTab(who, popup);
+
+    const stale = await b.fetch(older, { redirect: 'manual' });
+    expect(stale.headers.get('location')).toBe(`${ORIGIN}/welcome?signin=expired`);
+    expect(await b.api.auth.getSession()).toBeNull();
+    const complete = await b.fetch(newer, { redirect: 'manual' });
+    const end = new URL(complete.headers.get('location') ?? '');
+    expect([end.pathname, Object.fromEntries(end.searchParams)]).toEqual(['/welcome', { popup, next: '/ready' }]);
+    expect(await b.api.auth.getSession()).toMatchObject({ provider: 'google', user: { email: who.email } });
+  });
+
+  it('keeps the popup channel and a waiting move without requesting calendar access', async () => {
     const who: GoogleUser = { sub: `popup-consent-${seq++}`, email: unique('popup-consent') };
     h.google.preconsent(who.sub);
     const b = h.browser();
@@ -363,7 +505,7 @@ describe('signing in with Google', () => {
     const end = await viaGoogle(b, who, { popup, next: '/move' });
     expect([end.pathname, Object.fromEntries(end.searchParams)]).toEqual(['/welcome', { popup, next: '/move' }]);
     expect(await b.api.auth.getSession()).toMatchObject({ provider: 'google', user: { email: who.email } });
-    expect((await b.api.calendar.get()).needsAccess).toBe(false);
+    expect((await b.api.calendar.get()).needsAccess).toBe(true);
   });
 
   it('delivers an expired popup attempt’s refusal without authenticating it', async () => {
@@ -417,7 +559,7 @@ describe('signing in with Google', () => {
     await host.leave();
   });
   it('goes to Google and back, believes only what Google signed, and keeps one account per Google account', async () => {
-    // Off to Google with a fresh state, nonce and PKCE challenge, asking for identity, calendar events and free/busy.
+    // Off to Google with a fresh state, nonce and PKCE challenge, asking only for identity.
     const b = h.browser();
     const start = await b.fetch(`${h.baseUrl}/v1/auth/google`, { redirect: 'manual' });
     expect(start.status).toBe(302);
@@ -425,8 +567,10 @@ describe('signing in with Google', () => {
     expect(to.origin).toBe(h.google.issuer);
     expect(Object.fromEntries(to.searchParams)).toMatchObject({
       client_id: h.google.clientId, redirect_uri: `${h.baseUrl}/v1/auth/google/callback`, response_type: 'code',
-      scope: 'openid email profile https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.events.freebusy', access_type: 'offline', code_challenge_method: 'S256'
+      scope: 'openid email profile', code_challenge_method: 'S256'
     });
+    expect(to.searchParams.get('access_type')).toBeNull();
+    expect(to.searchParams.get('include_granted_scopes')).toBeNull();
     for (const k of ['state', 'nonce', 'code_challenge']) expect(to.searchParams.get(k)).toMatch(/^[A-Za-z0-9_-]{43}$/);
     const cookies = start.headers.getSetCookie();
     const googleAttempt = cookies.find((header) => header.startsWith('__Host-alcove_google='));
@@ -518,6 +662,111 @@ describe('signing in with Google', () => {
 describe('Google Calendar', () => {
   const at = (days: number, hour: number, minute = 0) => { const d = new Date(); d.setDate(d.getDate() + days); d.setHours(hour, minute, 0, 0); return d.toISOString(); };
   const person = (n: string): GoogleUser => ({ sub: `g-cal-${n}-${seq++}`, email: `${n}.${seq}@calendar.example`, name: `Cal ${n}` });
+  function holdCalendarRefresh() {
+    let arrived = false;
+    const release = h.google.hold(({ path }) => {
+      if (path !== '/token') return false;
+      arrived = true;
+      return true;
+    });
+    return { release, wait: () => until(async () => arrived, 'Google to receive the refresh request') };
+  }
+
+  it('connects a calendar for the original signed-in Google account without replacing its session', async () => {
+    const b = h.browser();
+    const who = person('connect');
+    const start = () => b.fetch(b.api.calendar.connectUrl(), { redirect: 'manual' });
+    expect((await start()).headers.get('location')).toBe(`${ORIGIN}/welcome?signin=expired`);
+    expect(landed(await viaGoogle(b, who))).toBe('/ready');
+    const session = await b.api.auth.getSession();
+    expect((await b.api.calendar.get()).needsAccess).toBe(true);
+    expect(landed(await viaGoogle(b, { ...who, sub: 'a-different-google-account' }, { consent: true }))).toBe('/settings?calendar=account#calendar');
+    expect(await b.api.auth.getSession()).toEqual(session);
+    expect((await b.api.calendar.get()).needsAccess).toBe(true);
+
+    h.google.next(who);
+    const res = await start();
+    const to = new URL(res.headers.get('location') ?? '');
+    expect(to.searchParams.get('scope')).toBe('openid email profile https://www.googleapis.com/auth/calendar.events.owned https://www.googleapis.com/auth/calendar.events.freebusy');
+    expect(to.searchParams.get('access_type')).toBe('offline');
+    expect(to.searchParams.get('prompt')?.split(' ')).toEqual(['select_account', 'consent']);
+    const attempt = res.headers.getSetCookie().find((s) => s.startsWith('__Host-alcove_google='))?.split(';')[0];
+    if (!attempt) throw new Error('Calendar consent did not set an attempt cookie.');
+    const google = await fetch(to, { redirect: 'manual' });
+    // Google returns with the Lax attempt cookie. A real browser withholds the Strict session cookie.
+    const end = await fetch(google.headers.get('location') ?? '', { redirect: 'manual', headers: { cookie: attempt } });
+    expect(end.headers.get('location')).toBe(`${ORIGIN}/settings?calendar=connected#calendar`);
+    expect(end.headers.getSetCookie().some((s) => s.startsWith('__Host-alcove_session='))).toBe(false);
+    expect(await b.api.auth.getSession()).toEqual(session);
+    expect((await b.api.calendar.get()).needsAccess).toBe(false);
+
+    const anotherBrowser = h.browser();
+    expect(landed(await viaGoogle(anotherBrowser, who))).toBe('/home');
+    expect((await anotherBrowser.api.calendar.get()).needsAccess).toBe(false);
+    expect(landed(await viaGoogle(b, who, { consent: true, spoil: 'no-calendar' }))).toBe('/settings?calendar=denied#calendar');
+    expect((await b.api.calendar.get()).needsAccess).toBe(false);
+
+    await b.api.calendar.disconnect();
+    h.google.next(who);
+    const stale = await start();
+    const staleAttempt = stale.headers.getSetCookie().find((s) => s.startsWith('__Host-alcove_google='))?.split(';')[0];
+    if (!staleAttempt) throw new Error('Calendar consent did not set an attempt cookie.');
+    const staleGoogle = await fetch(stale.headers.get('location') ?? '', { redirect: 'manual' });
+    await b.api.auth.signOut();
+    const afterSignOut = await fetch(staleGoogle.headers.get('location') ?? '', { redirect: 'manual', headers: { cookie: staleAttempt } });
+    expect(afterSignOut.headers.get('location')).toBe(`${ORIGIN}/settings?calendar=failed#calendar`);
+    expect(await b.api.auth.getSession()).toBeNull();
+    expect((await anotherBrowser.api.calendar.get()).needsAccess).toBe(true);
+  });
+
+  it('disconnects Calendar without revoking the Google grant Drive exports still use', async () => {
+    const b = h.browser();
+    const who = person('calendar-and-drive');
+    await signInWithCalendar(b, who);
+    const folderId = `folder_${randomUUID()}`;
+    h.google.drive.folder(who.sub, { id: folderId, name: 'Call exports' });
+    h.google.drive.pick(who.sub, folderId);
+    h.google.next(who);
+    const consent = await b.api.drive.connect();
+    const google = await fetch(consent.url, { redirect: 'manual' });
+    const connected = await b.fetch(google.headers.get('location') ?? '', { redirect: 'manual' });
+    expect(connected.headers.get('location')).toBe(`${ORIGIN}/settings?drive=connected`);
+    const revocations = h.google.revocations().length;
+    expect((await b.api.calendar.disconnect()).needsAccess).toBe(true);
+    expect(h.google.revocations()).toHaveLength(revocations);
+    expect(await b.api.drive.folders()).toContainEqual(expect.objectContaining({ id: folderId }));
+  });
+
+  it('stops a pending refresh from reading the calendar after disconnect', async () => {
+    const b = h.browser();
+    const who = person('disconnect-during-refresh');
+    await signInWithCalendar(b, who);
+    h.google.expireAccess();
+    const refresh = holdCalendarRefresh();
+    const reading = b.api.calendar.get();
+    const disconnected = { source: 'google', needsAccess: true, events: [] };
+    try {
+      await refresh.wait();
+      expect(await b.api.calendar.disconnect()).toEqual(disconnected);
+    } finally { refresh.release(); }
+    expect(await reading).toEqual(disconnected);
+    expect(await b.api.calendar.get()).toEqual(disconnected);
+  });
+
+  it('leaves a new Calendar connection in place when an old refresh is refused', async () => {
+    const b = h.browser();
+    const who = person('reconnect-during-refresh');
+    await signInWithCalendar(b, who);
+    h.google.revoke(who.sub);
+    const refresh = holdCalendarRefresh();
+    const reading = b.api.calendar.get().catch((e: unknown) => e);
+    try {
+      await refresh.wait();
+      expect(landed(await viaGoogle(b, who, { consent: true }))).toBe('/settings?calendar=connected#calendar');
+    } finally { refresh.release(); }
+    await reading;
+    expect((await b.api.calendar.get()).needsAccess).toBe(false);
+  });
 
   it('shows the coming week’s meetings beside Alcove’s calls, and leaves out what isn’t a call', async () => {
     const ana = person('ana');
@@ -534,7 +783,7 @@ describe('Google Calendar', () => {
       { id: 'far', summary: 'Next month', start: { dateTime: at(20, 10) }, end: { dateTime: at(20, 11) } }
     );
     const b = h.browser();
-    expect(landed(await viaGoogle(b, ana))).toBe('/ready');
+    expect(landed(await signInWithCalendar(b, ana))).toBe('/ready');
     const cal = await b.api.calendar.get();
     expect([cal.source, cal.needsAccess]).toEqual(['google', false]);
     expect(cal.events.map((e) => [e.title, e.isOrganizer, e.join?.label])).toEqual([['Design sync', false, 'Google Meet'], ['1:1 with Kim', true, 'Zoom']]);
@@ -544,7 +793,7 @@ describe('Google Calendar', () => {
   it('puts scheduled calls on the calendar, so Google invites everyone, and keeps the event in step', async () => {
     const bram = person('bram');
     const b = h.browser();
-    await viaGoogle(b, bram);
+    await signInWithCalendar(b, bram);
     const calls = () => h.google.calls.filter((c) => c.method !== 'GET').map((c) => [c.method, c.sendUpdates]);
     const before = h.google.calls.length;
 
@@ -579,7 +828,7 @@ describe('Google Calendar', () => {
       { id: 'theirs', summary: 'Their standup', start: { dateTime: at(1, 9) }, end: { dateTime: at(1, 9, 15) }, organizer: { email: 'boss@example.com' }, attendees: [{ email: cleo.email, self: true }] }
     );
     const b = h.browser();
-    await viaGoogle(b, cleo);
+    await signInWithCalendar(b, cleo);
     const m = await b.api.calendar.adopt('mine', 'on');
     expect(m).toMatchObject({ title: 'Hiring sync', notes: 'on', guests: [{ email: 'sam@example.com' }], calendarUrl: 'https://calendar.google.com/calendar/event?eid=mine' });
     expect(m.startsAt).toBe(new Date(at(1, 11)).toISOString());
@@ -595,7 +844,7 @@ describe('Google Calendar', () => {
   it('with addToCalendar off, scheduled calls stay off Google Calendar', async () => {
     const fay = person('fay');
     const b = h.browser();
-    await viaGoogle(b, fay);
+    await signInWithCalendar(b, fay);
     await b.api.account.updatePreferences({ addToCalendar: false });
     const before = h.google.calls.filter((c) => c.method !== 'GET').length;
     const m = await b.api.meetings.create({ title: 'Just us', startsAt: at(1, 9), durationMinutes: 30, guests: ['kim@example.com'], notes: 'on' });
@@ -617,7 +866,7 @@ describe('Google Calendar', () => {
     const gus = person('gus');
     const tokensBefore = h.google.refreshTokens();
     const b = h.browser();
-    await viaGoogle(b, gus);
+    await signInWithCalendar(b, gus);
     const ownerId = (await b.api.auth.getSession())?.ownerId;
     const kept = await b.api.meetings.create({ title: 'Already on it', startsAt: at(1, 9), durationMinutes: 30, guests: [], notes: 'off' });
     const token = h.google.refreshTokens().filter((t) => !tokensBefore.includes(t));
@@ -627,9 +876,8 @@ describe('Google Calendar', () => {
 
     expect(h.google.revocations()).not.toContain(token[0]);
     expect(await b.api.calendar.disconnect()).toEqual({ source: 'google', needsAccess: true, events: [] });
-    // Alcove's grant is revoked at Google, with the token that was stored.
-    expect(h.google.revocations()).toEqual(expect.arrayContaining(token));
-    expect(token.filter((t) => h.google.honours(t))).toEqual([]);
+    // Alcove discards the Calendar credential without revoking the shared Google app grant.
+    expect(h.google.revocations()).not.toContain(token[0]);
     // Physically gone: no row, no revision, nothing flagged.
     expect(await connections()).toBe(0);
     expect((await h.pool.query('SELECT count(*)::int AS n FROM items WHERE owner_id = $1 AND deleted_at IS NOT NULL', [ownerId])).rows[0]?.n).toBe(0);
@@ -645,30 +893,33 @@ describe('Google Calendar', () => {
 
     // Disconnecting again is fine, and the person can connect again.
     expect((await b.api.calendar.disconnect()).needsAccess).toBe(true);
-    expect(landed(await viaGoogle(b, gus, { consent: true }))).toBe('/home');
+    expect(landed(await viaGoogle(b, gus, { consent: true }))).toBe('/settings?calendar=connected#calendar');
     expect((await b.api.calendar.get()).needsAccess).toBe(false);
     expect(await connections()).toBe(1);
   });
 
-  it('keeps working after the access token expires, asks again when Google forgot, and says when access is gone', async () => {
-    // Google remembered an earlier yes and sends no refresh token: Alcove asks once more, then lands where it was going.
+  it('keeps earlier Calendar grants working after an access token expires, and says when access is gone', async () => {
+    // Earlier releases stored a refresh token with the broader events scope.
     const dee = person('dee');
     h.google.preconsent(dee.sub);
     const b = h.browser();
     expect(landed(await viaGoogle(b, dee))).toBe('/ready');
+    expect(landed(await viaGoogle(b, dee, { consent: true, spoil: 'legacy-calendar' }))).toBe('/settings?calendar=connected#calendar');
+    expect(landed(await viaGoogle(b, dee))).toBe('/home');
     h.google.expireAccess();
     expect((await b.api.calendar.get()).source).toBe('google');
     await b.api.meetings.create({ title: 'After an hour', startsAt: at(1, 9), durationMinutes: 30, guests: [], notes: 'off' });
     expect(h.google.calendar(dee.sub)).toHaveLength(1);
 
-    // Someone who unticks calendar access still signs in; the app can ask for it, and calls stay in Alcove.
+    // Someone can sign in, decline Calendar consent, and keep their calls in Alcove.
     const eli = person('eli');
     const e = h.browser();
-    expect(landed(await viaGoogle(e, eli, { spoil: 'no-calendar' }))).toBe('/ready');
+    expect(landed(await viaGoogle(e, eli))).toBe('/ready');
+    expect(landed(await viaGoogle(e, eli, { consent: true, spoil: 'no-calendar' }))).toBe('/settings?calendar=denied#calendar');
     expect(await e.api.calendar.get()).toEqual({ source: 'google', needsAccess: true, events: [] });
     expect((await e.api.meetings.create({ title: 'Local only', startsAt: at(1, 9), durationMinutes: 30, guests: [], notes: 'off' })).calendarUrl).toBeUndefined();
     expect(e.api.calendar.connectUrl()).toBe(`${h.baseUrl}/v1/auth/google?consent=1`);
-    expect(landed(await viaGoogle(e, eli, { consent: true }))).toBe('/home');
+    expect(landed(await viaGoogle(e, eli, { consent: true }))).toBe('/settings?calendar=connected#calendar');
     expect((await e.api.calendar.get()).needsAccess).toBe(false);
 
     // Access withdrawn at Google: the next read says so instead of failing.
@@ -732,7 +983,7 @@ describe('people and team', () => {
     const events = Array.from({ length: 300 }, (_, i) => busy(`old-${i}`, Date.now() - 20 * day + i * 60_000, 'filler@acme.example'));
     h.google.calendar(me.sub).push(...events, busy('yesterday', Date.now() - day, 'late@acme.example'), busy('tomorrow', Date.now() + day, 'newest@acme.example'));
     const b = h.browser();
-    await viaGoogle(b, me);
+    await signInWithCalendar(b, me);
     expect((await b.api.people.team())?.members.map((m) => m.person.email).sort()).toEqual(['filler@acme.example', 'late@acme.example', 'newest@acme.example']);
   });
 
@@ -755,7 +1006,7 @@ describe('people and team', () => {
       { id: 'soon', summary: 'Plan', start: { dateTime: soon }, end: { dateTime: later }, organizer: { email: me.email, self: true }, attendees: [{ email: me.email, self: true }, { email: 'ANN@acme.example' }, { email: 'room@acme.example', resource: true }] }
     );
     const b = h.browser();
-    await viaGoogle(b, me);
+    await signInWithCalendar(b, me);
     await b.api.meetings.create({ title: 'Call', startsAt: soon, durationMinutes: 30, guests: ['bob@other.example', 'eve@acme.example', me.email], notes: 'off' });
     const team = await b.api.people.team();
     expect(team).toMatchObject({ name: 'Acme', domain: 'acme.example' });
@@ -791,7 +1042,7 @@ describe('people and team', () => {
     const day = 86_400_000;
     h.google.calendar(me.sub).push({ id: 'met', summary: 'Sync', start: { dateTime: new Date(Date.now() - day).toISOString() }, end: { dateTime: new Date(Date.now() - day + 1_800_000).toISOString() }, attendees: [{ email: me.email, self: true }, { email: 'cal@acme.example' }] });
     const b = h.browser();
-    await viaGoogle(b, me);
+    await signInWithCalendar(b, me);
     const ownerId = (await b.api.auth.getSession())?.ownerId;
     await b.api.meetings.create({ title: 'Call', startsAt: new Date(Date.now() + day).toISOString(), durationMinutes: 30, guests: ['eve@acme.example'], notes: 'off' });
     expect((await b.api.people.team())?.members.map((m) => m.person.email).sort()).toEqual(['cal@acme.example', 'eve@acme.example']);
@@ -2865,7 +3116,7 @@ describe('deleting an account', () => {
     const lena: GoogleUser = { sub: `g-leaving-${seq++}`, email: unique('lena'), name: 'Lena Leaving' };
     const tokensBefore = h.google.refreshTokens();
     const b = h.browser();
-    await viaGoogle(b, lena);
+    await signInWithCalendar(b, lena);
     const elsewhere = h.browser();
     await viaGoogle(elsewhere, lena);
     const lenaToken = h.google.refreshTokens().filter((t) => !tokensBefore.includes(t));
@@ -3081,7 +3332,7 @@ describe('deleting an account', () => {
   async function withGoogle(who: GoogleUser) {
     const before = h.google.refreshTokens();
     const b = h.browser();
-    await viaGoogle(b, who);
+    await signInWithCalendar(b, who);
     const [token = ''] = h.google.refreshTokens().filter((t) => !before.includes(t));
     return { ...b, ownerId: (await b.api.auth.getSession())?.ownerId ?? '', token };
   }
@@ -3526,7 +3777,7 @@ describe('privacy at rest', () => {
     // and so does the call they put on their Google Calendar.
     const g = tapped();
     const issuedBefore = h.google.refreshTokens();
-    expect(landed(await viaGoogle(g, { sub: 'canary-google-sub-31337', email: 'canary.googler@canary.example', name: 'Canary Googler', picture: 'https://lh3.googleusercontent.com/a/canary-photo' }))).toBe('/ready');
+    expect(landed(await signInWithCalendar(g, { sub: 'canary-google-sub-31337', email: 'canary.googler@canary.example', name: 'Canary Googler', picture: 'https://lh3.googleusercontent.com/a/canary-photo' }))).toBe('/ready');
     const googlerToken = h.google.refreshTokens().filter((t) => !issuedBefore.includes(t));
     expect(googlerToken).toHaveLength(1);
     expect((await g.api.meetings.create({ title: 'CANARY-GCAL planning', startsAt: new Date(Date.now() + 86_400_000).toISOString(), durationMinutes: 30, guests: ['canary-gcal-guest@canary.example'], notes: 'off' })).calendarUrl).toMatch(/^https:/);

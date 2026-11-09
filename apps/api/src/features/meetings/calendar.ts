@@ -1,5 +1,5 @@
 /*
- * Google Calendar. A Google sign-in that grants the calendar leaves a connection: a refresh token
+ * Google Calendar. Connecting the calendar leaves a refresh token
  * sealed in the account's vault. From it, Alcove reads the coming week's other events, and keeps
  * its own calls on the calendar: an Alcove call is a Google event with the Alcove link and a private
  * marker, and Google sends everyone on it the invitation, every change and the cancellation
@@ -9,10 +9,10 @@
 import { isTimeZone, type Busy, type Calendar, type CalendarEvent, type Interval, type Repeat, type RepeatRule, type Rsvp } from '@alcove/api';
 import { z } from 'zod';
 import type { Owner } from '../../context';
-import { exec, tx } from '../../db';
+import { exec, tx, type Db } from '../../db';
 import { inCompany, sampleWeek } from '../../demo';
 import { ForbiddenError, NotFoundError, UnavailableError, ValidationError } from '../../errors';
-import { CALENDAR_SCOPE, refreshAccess, revokeRefresh, within, type Grant } from '../../google';
+import { isCalendarEventScope, refreshAccess, revokeRefresh, within, type Grant } from '../../google';
 import { log } from '../../log';
 import { createItem, listItems, saveRevision, type Loaded } from '../../vault';
 import { zoned } from '../../zones';
@@ -31,52 +31,59 @@ const Connection = z.object({
 });
 export type Connection = z.infer<typeof Connection>;
 
-const access = new Map<string, { token: string; until: number }>();
-const remember = (ownerId: string, token: string, expiresIn: number) => access.set(ownerId, { token, until: Date.now() + Math.max(30, expiresIn - 60) * 1000 });
+const access = new Map<string, { token: string; until: number; revisionId: string }>();
+const remember = (ownerId: string, revisionId: string, token: string, expiresIn: number) => access.set(ownerId, { token, revisionId, until: Date.now() + Math.max(30, expiresIn - 60) * 1000 });
 
-async function connection(o: Owner): Promise<Connection | undefined> {
-  return (await listItems(o, o.pool, 'connection', Connection))[0]?.manifest;
+async function connectionItem(o: Owner, db: Db = o.pool): Promise<Loaded<Connection> | undefined> {
+  return (await listItems(o, db, 'connection', Connection))[0];
 }
+const connection = async (o: Owner): Promise<Connection | undefined> => (await connectionItem(o))?.manifest;
 
-async function saveConnection(o: Owner, fn: (cur: Connection | undefined) => Connection): Promise<Connection> {
+/** Serialize connection changes, including the first connect and stale refresh responses. */
+async function saveConnection(o: Owner, manifest: Connection, expectedRevision?: string): Promise<string | undefined> {
   return tx(o.pool, async (c) => {
-    const [cur] = await listItems(o, c, 'connection', Connection);
-    const next = fn(cur?.manifest);
-    if (cur) await saveRevision(o, c, cur.itemId, cur.revisionId, next);
-    else await createItem(o, c, 'connection', next);
-    return next;
+    if (!await exec(c, 'SELECT 1 FROM owners WHERE owner_id = $1 FOR UPDATE', [o.ownerId])) return undefined;
+    const cur = await connectionItem(o, c);
+    if (expectedRevision && cur?.revisionId !== expectedRevision) return undefined;
+    if (cur) return saveRevision(o, c, cur.itemId, cur.revisionId, manifest);
+    return (await createItem(o, c, 'connection', manifest)).revisionId;
   });
 }
 
-/** Keeps what a Google sign-in granted. A new refresh token replaces the old; without one, the old one stays. */
-export async function connect(o: Owner, grant: Grant): Promise<Connection> {
-  remember(o.ownerId, grant.accessToken, grant.expiresIn);
-  const conn = await saveConnection(o, (cur) => {
-    const refreshToken = grant.refreshToken ?? cur?.refreshToken;
-    return { provider: 'google', ...(refreshToken ? { refreshToken } : {}), scopes: grant.scopes, connectedAt: new Date().toISOString() };
-  });
-  clog.info('google connected', { ownerId: o.ownerId, calendar: conn.scopes.includes(CALENDAR_SCOPE), refresh: !!conn.refreshToken });
-  return conn;
+/** Saves a durable Calendar grant. If Google returns only a short-lived token, keep the old connection. */
+export async function connect(o: Owner, grant: Grant): Promise<boolean> {
+  const refreshToken = grant.refreshToken;
+  if (!refreshToken) {
+    clog.warn('google calendar refresh token missing', { ownerId: o.ownerId });
+    return connected(o);
+  }
+  const revisionId = await saveConnection(o, { provider: 'google', refreshToken, scopes: grant.scopes, connectedAt: new Date().toISOString() });
+  if (!revisionId) return false;
+  remember(o.ownerId, revisionId, grant.accessToken, grant.expiresIn);
+  clog.info('google connected', { ownerId: o.ownerId, calendar: true, refresh: true });
+  return true;
 }
 
-const usable = (c: Connection | undefined): c is Connection & { refreshToken: string } => !!c?.refreshToken && c.scopes.includes(CALENDAR_SCOPE);
+const usable = (c: Connection | undefined): c is Connection & { refreshToken: string } => !!c?.refreshToken && c.scopes.some(isCalendarEventScope);
 
 /** A valid access token, refreshing it when it's about to expire. Null when the calendar isn't connected (any more). */
 async function token(o: Owner, signal?: AbortSignal | undefined): Promise<string | null> {
+  const item = await connectionItem(o);
+  if (!item || !usable(item.manifest)) return null;
+  const conn = item.manifest;
   const cached = access.get(o.ownerId);
-  if (cached && cached.until > Date.now()) return cached.token;
-  const conn = await connection(o);
-  if (!usable(conn)) return null;
+  if (cached?.revisionId === item.revisionId && cached.until > Date.now()) return cached.token;
   const r = await refreshAccess(o, conn.refreshToken, signal);
   if (r.ok) {
-    // An account deleted while this refreshed must not leave a token in memory.
-    if (await exec(o.pool, 'SELECT 1 FROM owners WHERE owner_id = $1', [o.ownerId])) remember(o.ownerId, r.accessToken, r.expiresIn);
+    // A disconnect, reconnect, or account deletion while Google responded invalidates this refresh.
+    if ((await connectionItem(o))?.revisionId !== item.revisionId) return null;
+    remember(o.ownerId, item.revisionId, r.accessToken, r.expiresIn);
     return r.accessToken;
   }
   if (r.revoked) {
     // Access was withdrawn at Google: forget the token so the app asks again.
-    await saveConnection(o, (cur) => ({ provider: 'google', scopes: (cur?.scopes ?? []).filter((s) => s !== CALENDAR_SCOPE), connectedAt: cur?.connectedAt ?? new Date().toISOString() }));
-    clog.info('google calendar access withdrawn', { ownerId: o.ownerId });
+    const saved = await saveConnection(o, { provider: 'google', scopes: conn.scopes.filter((s) => !isCalendarEventScope(s)), connectedAt: conn.connectedAt }, item.revisionId);
+    if (saved) clog.info('google calendar access withdrawn', { ownerId: o.ownerId });
     return null;
   }
   throw new UnavailableError('Google Calendar can’t be reached right now.', { context: { step: 'refresh' } });
@@ -99,15 +106,16 @@ export async function revokeGrant(o: Owner, refreshToken: string | undefined, si
 }
 
 /**
- * Forgets the Google connection: the sealed refresh token's item and its revisions are deleted, Google is told to
- * revoke the token, and the access token in memory is dropped. Answers with the calendar as `view` reads it now.
+ * Forgets the sealed refresh token and the access token in memory. Revoking at Google would also
+ * revoke the app's Drive grant, so disconnecting either integration only removes its own credentials.
  */
 export async function disconnect(o: Owner, series: () => Promise<ReadonlyMap<string, string>>): Promise<Calendar> {
-  const refreshToken = await grantToRevoke(o);
+  const removed = await tx(o.pool, async (c) => {
+    await exec(c, 'SELECT 1 FROM owners WHERE owner_id = $1 FOR UPDATE', [o.ownerId]);
+    return exec(c, "DELETE FROM items WHERE owner_id = $1 AND kind = 'connection'", [o.ownerId]);
+  });
   forgetAccess(o.ownerId);
-  const removed = await exec(o.pool, "DELETE FROM items WHERE owner_id = $1 AND kind = 'connection'", [o.ownerId]);
   clog.info('google disconnected', { ownerId: o.ownerId, connections: removed });
-  await revokeGrant(o, refreshToken);
   return view(o, series);
 }
 

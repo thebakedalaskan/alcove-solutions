@@ -252,8 +252,8 @@ live transcript and written notes.
 | Files in a workspace: uploaded in pieces and read back whole and by range, a failed piece tried again, an upload carrying on through a lost connection, a dropped upload swept, a reader who loses the document or a guest whose seat ends refused on their next range, a seat reaching only its document's files, the bytes and name absent from every table, object and log line, deleted physically by an editor or when their last document goes, what a process takes on limited, however many ask at once, a read that stopped giving way to someone waiting, a piece that stopped arriving cut, a room opening one board all seeing it, and storage limits, the same for guests as for anyone, changed in the database and in force within the cache window, and refusing without deleting | API integration tests. Play a video over 32 MiB against the deployed API on each release, in Chrome and Safari, pausing it for over 5 seconds while someone waits for a read and playing on: local servers have no response limit, and tests have no player |
 | A failed request's ID leads to its log lines; browser reports reach the server log | API integration tests |
 | More calls ending at once than there are database connections; a call from start to end, a hand-off and the notes on one connection; a request with no connection to be had fails in 10 seconds | API integration tests |
-| Sign in with Google: PKCE, state, nonce, signature, audience, expiry, verified email; refusals | API integration tests against a local OpenID provider; verify the real Google round trip on each release |
-| Google Calendar: the coming week's meetings, scheduled calls placed, changed and cancelled with Google's invitations, an organizer's own event made an Alcove call, when people are busy (a private calendar and a missing scope reading as unknown), expired and withdrawn access | API integration tests against a local Calendar stand-in; verify with a real calendar on each release, a Gmail guest's private calendar included |
+| Sign in with Google: identity-only scopes, PKCE, state, nonce, signature, audience, expiry, verified email, refusals | API integration tests against a local OpenID provider; verify the real Google round trip on each release |
+| Google Calendar: explicit consent with the signed-in Google account, existing connections across sign-in, the coming week's meetings, scheduled calls placed, changed and cancelled with Google's invitations, an organizer's own event made an Alcove call, when people are busy (a private calendar and a missing scope reading as unknown), expired and withdrawn access | API integration tests against a local Calendar stand-in; verify with a real calendar on each release, a Gmail guest's private calendar included |
 | Calls that repeat on Google Calendar: one recurring event and one invitation, a series across a change of the clocks, one call changed or cancelled, this and later calls from the first call and from a later one, a call made to repeat, and cancelling the whole series | API integration tests against a local Calendar stand-in, which expands rules as its authors understand Google to. Verify with a real calendar on each release that touches them: the stand-in can't show that Google accepts a single event turned recurring by `PATCH`, or a recurring event ended early with `recurrence` alone |
 | Real Microsoft and SSO sign-in | **Not implemented** (demo stand-ins in `apps/api/src/demo.ts`) |
 | Public DNS, certificates, CORS, CSP, deep links, JavaScript/CSS asset responses and deployed commit; a signed-in session contacts only Alcove's two origins, and pages carry no inserted beacon | Verify for each public release; assets must not redirect to the SPA shell |
@@ -263,14 +263,14 @@ live transcript and written notes.
 | The model code NEAR AI runs pinned to published provenance | **Not implemented**: the OS image is pinned, but its compose manager starts model code NEAR AI chooses |
 | Multi-party end-to-end encrypted calls: keys only in browsers, commits only from the browser that hosts (the organizer's, or a stand-in's), a new key with every join and leave, chat unreadable to the server and to later joiners, media unreadable without the key (LiveKit included), asking to join, no names to LiveKit | API integration tests against a real LiveKit server, with MLS clients and encrypted media; verify two browsers on each release |
 | Invitation emails from Alcove | **Not implemented** (with a connected Google Calendar, Google sends the invitations) |
-| Attested confidential compute, with `KMASTER` released only to it | **Required before real users**; Cloud Run is not a TEE. Inside dstack: keys from its key service and refused from the environment, and `/v1/attestation` binding a nonce and the build, in API integration tests against a local dstack stand-in. See [Privacy › Moving to confidential computing](privacy-keys-and-sessions.md#moving-to-confidential-computing) |
+| Attested confidential compute, with `KMASTER` released only to it | **Required for the confidential production release**. The public beta on Cloud Run reports `tee: none`. The API can decrypt stored content to provide the service, and its operators can access its keys. Inside dstack: keys from its key service and refused from the environment, and `/v1/attestation` binding a nonce and the build, in API integration tests against a local dstack stand-in. See [Privacy › Moving to confidential computing](privacy-keys-and-sessions.md#moving-to-confidential-computing) |
 
-The Google provider is the external Testing app `Alcove` with its test users and the web client
-`AlcoveWeb`, whose redirect URIs are `$API_URL/v1/auth/google/callback` locally and in production.
-Sign-in asks for `openid email profile`, the Calendar events scope
-(`https://www.googleapis.com/auth/calendar.events`) and free/busy on the calendars the account can see
-(`https://www.googleapis.com/auth/calendar.events.freebusy`), with offline access for a refresh token. Both
-scopes have to be on the consent screen, which is an operator step. Connections made before free/busy was added
-read their own calendar and nobody else's until the person agrees again. Keep
-credential values and test-user addresses out of documentation. Automated tests must remain API
-integration tests; the repository forbids a browser test suite.
+The public beta uses verified Google sign-in. The API and website disable demo sign-in in the Cloud Run release.
+Demo accounts are available in local and Storybook builds.
+
+The Google provider is the external app `Alcove` and the web client `AlcoveWeb`. Sign-in asks for
+`openid email profile`. The Calendar connection asks for events and free/busy access with a refresh
+token when someone chooses **Connect Google Calendar**. Existing Calendar connections keep their
+grants, including connections made before free/busy was added. Drive exports use separate consent for
+per-file access. See [Google provider preparation](../../infra/README.md#google-provider-preparation)
+for callback URLs, scopes and verification. Automated tests exercise the real API over HTTP.

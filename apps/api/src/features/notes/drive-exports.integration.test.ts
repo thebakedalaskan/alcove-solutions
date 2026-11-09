@@ -109,6 +109,8 @@ describe('automatic Google Drive call exports', () => {
     const b = h.browser(); const who = user();
     h.google.next(who);
     await finishConsent(b, b.api.auth.signInUrl('google'));
+    h.google.next(who);
+    await finishConsent(b, b.api.calendar.connectUrl());
     expect((await b.api.calendar.get()).needsAccess).toBe(false);
     const destinationId = `independent_${randomUUID()}`;
     h.google.drive.folder(who.sub, { id: destinationId, name: 'Independent Drive destination' });

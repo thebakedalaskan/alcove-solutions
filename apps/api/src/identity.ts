@@ -10,6 +10,11 @@ export interface Identity {
   sample: boolean;
 }
 
+export interface GoogleIdentity extends Identity {
+  /** The signed claims say Google hosts this verified address. */
+  authoritativeEmail: boolean;
+}
+
 /** A name to show when a provider doesn't give one: "priya.raman@lumen.health" → "Priya Raman". */
 export const nameFrom = (email: string) =>
   (email.split('@')[0] ?? email).split(/[._-]+/).filter(Boolean).map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') || email;

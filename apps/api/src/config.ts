@@ -29,6 +29,13 @@ const EnvSchema = z.object({
   /** Sign-in with Google. Without both, the Google button explains that it isn't set up here. */
   GOOGLE_CLIENT_ID: optional,
   GOOGLE_CLIENT_SECRET: optional,
+  /** Local demo sign-in and its sessions. Set to false when serving the public app. */
+  DEMO_AUTH_ENABLED: z.enum(['true', 'false']).default('true').transform((value) => value === 'true'),
+  /** Public requires Google-hosted addresses. Testers admits new accounts only from the private tester list. */
+  GOOGLE_SIGNUP_MODE: z.enum(['open', 'testers', 'public']).default('open'),
+  /** One tester email per line. Blank lines are ignored, and an empty list admits no new accounts. */
+  GOOGLE_SIGNUP_TESTERS: z.string().default('').transform((value) => value.split('\n').map((email) => email.trim().toLowerCase()).filter(Boolean))
+    .pipe(z.array(z.email().max(254))).readonly(),
   /** Google's OpenID Connect issuer. Tests point it at a local stand-in (src/testing/fake-google.ts). */
   GOOGLE_ISSUER: z.string().url().default('https://accounts.google.com'),
   /** Google's APIs (Calendar). Tests point it at the same local stand-in. */

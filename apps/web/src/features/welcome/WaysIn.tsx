@@ -1,6 +1,6 @@
 /*
- * The ways in. Google signs in in a popup and the waiting page opens the app. Microsoft
- * and single sign-on sign in on the spot; single sign-on asks for a work email first, inline.
+ * The ways in. Google signs in in a popup and the waiting page opens the app. Demo Microsoft
+ * and single sign-on are available in builds that enable them.
  */
 import { errorMessage, type DemoProvider, type SignInProvider } from '@alcove/api';
 import { Button, EASE, Field, ProviderButton, ProviderMark, Spinner, useToast } from '@alcove/ui';
@@ -79,13 +79,14 @@ export function useAuth(o: { call?: string | undefined; agent?: string | undefin
 }
 
 const swap = { initial: { opacity: 0, y: 10 }, animate: { opacity: 1, y: 0 }, exit: { opacity: 0, y: -8 } } as const;
+const demoAuthEnabled = import.meta.env.VITE_ALCOVE_DEMO_AUTH_ENABLED !== 'false';
 
 /**
- * Google, Microsoft and single sign-on, or only those in `only`. `hero` lays them out in a row on the welcome page's sky, Google
- * filled as the one thing to press, with `note` beside single sign-on; `stack` in one column.
+ * The build's sign-in providers, further limited by `only` when signing in from a call. `hero` lays them out in a row
+ * on the welcome page's sky with Google filled; `stack` puts them in one column.
  */
 export function WaysIn({ auth, layout, only, note }: { auth: Auth; layout: 'hero' | 'stack'; only?: SignInProvider[] | undefined; note?: ReactNode }) {
-  const offers = (p: SignInProvider) => !only || only.includes(p);
+  const offers = (provider: SignInProvider) => !only || only.includes(provider);
   const reduce = useReducedMotion() ?? false;
   const [sso, setSso] = useState(false);
   const [email, setEmail] = useState('');
@@ -96,14 +97,14 @@ export function WaysIn({ auth, layout, only, note }: { auth: Auth; layout: 'hero
 
   const google = auth.busy === 'google' ? 'Waiting for Google…' : 'Continue with Google';
   const cancelGoogle = auth.busy === 'google' && auth.cancelGoogle && <Button variant="quiet" size="sm" onClick={auth.cancelGoogle}>Cancel sign-in</Button>;
-  const microsoft = offers('microsoft') && <ProviderButton provider="microsoft" busy={auth.busy === 'microsoft'} disabled={locked} onClick={() => void auth.go('microsoft')}>{auth.busy === 'microsoft' ? 'Opening Microsoft…' : 'Continue with Microsoft'}</ProviderButton>;
+  const microsoft = demoAuthEnabled && offers('microsoft') && <ProviderButton provider="microsoft" busy={auth.busy === 'microsoft'} disabled={locked} onClick={() => void auth.go('microsoft')}>{auth.busy === 'microsoft' ? 'Opening Microsoft…' : 'Continue with Microsoft'}</ProviderButton>;
   const providers = (
     <>
       {offers('google') && <ProviderButton provider="google" busy={auth.busy === 'google'} disabled={locked} onClick={auth.google}>{google}</ProviderButton>}
       {microsoft}
     </>
   );
-  const ssoButton = () => (offers('sso') ? <Button variant="quiet" size={layout === 'hero' ? 'sm' : 'md'} icon="key" disabled={locked} onClick={() => setSso(true)}>Use single sign-on</Button> : null);
+  const ssoButton = demoAuthEnabled && offers('sso') && <Button variant="quiet" size={layout === 'hero' ? 'sm' : 'md'} icon="key" disabled={locked} onClick={() => setSso(true)}>Use single sign-on</Button>;
   /* The sun under the welcome page's buttons lifts a little when you point at Google, as Home's does under Start now. */
   const filled = offers('google') && (
     <Button variant="primary" size="lg" className="lp-go" disabled={locked} onClick={auth.google}>
@@ -114,7 +115,7 @@ export function WaysIn({ auth, layout, only, note }: { auth: Auth; layout: 'hero
 
   return (
     <AnimatePresence mode="wait" initial={false}>
-      {sso ? (
+      {demoAuthEnabled && sso ? (
         <motion.form key="sso" className="lp-sso" {...swap} transition={t} onSubmit={(e) => { e.preventDefault(); if (ok && !locked) void auth.go('sso', email); }}>
           <Field ref={input} label="Work email" type="email" placeholder="you@example.com" autoComplete="off" spellCheck={false} value={email} disabled={locked}
             onChange={(e) => setEmail(e.target.value)} hint="To try single sign-on, use any address at example.com." />
@@ -126,13 +127,13 @@ export function WaysIn({ auth, layout, only, note }: { auth: Auth; layout: 'hero
       ) : layout === 'hero' ? (
         <motion.div key="ways" className="lp-ways-in" {...swap} transition={t}>
           <div className="lp-ways">{filled}{microsoft}</div>
-          <div className="lp-meta">{cancelGoogle || ssoButton()}{note && <span>{note}</span>}</div>
+          <div className="lp-meta">{cancelGoogle || ssoButton}{note && <span>{note}</span>}</div>
         </motion.div>
       ) : (
         <motion.div key="ways" className="ways" {...swap} transition={t}>
           {providers}
           {cancelGoogle}
-          {ssoButton()}
+          {ssoButton}
         </motion.div>
       )}
     </AnimatePresence>

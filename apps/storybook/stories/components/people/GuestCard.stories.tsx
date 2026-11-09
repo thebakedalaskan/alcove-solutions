@@ -45,7 +45,7 @@ function PickATime() {
       <div className="rg-times">
         {TIMES.map((t) => <TimeChoice key={t.when} time={t.time} day={t.day} picked={chosen === t.when} onPick={() => { picked(t.when); setChosen(t.when); }} />)}
       </div>
-      <p className="rg-sealed"><Icon name="sealed" size={14} />This call has notes. You get them after, and Alcove can’t read them.</p>
+      <p className="rg-sealed"><Icon name="sealed" size={14} />This call has notes. You get them after.</p>
       <Button variant="primary" size="lg" disabled={!chosen} onClick={() => { confirmed(chosen); setDone(true); }}>{chosen ? `Confirm ${chosen}` : 'Pick a time'}</Button>
     </>
   );

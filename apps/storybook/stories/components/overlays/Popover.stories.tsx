@@ -46,7 +46,7 @@ const SEALED = (
       <b style={{ flex: 1, fontSize: 14, fontWeight: 600 }}>Confidential compute</b>
       <PopoverClose asChild><IconButton icon="x" size={16} label="Close" /></PopoverClose>
     </div>
-    <p style={{ paddingRight: 8, fontSize: 13.5, lineHeight: 1.45, color: 'var(--ink-2)' }}>Notes are written in confidential compute, sealed hardware that Alcove can’t open. Only the people invited can read them.</p>
+    <p style={{ paddingRight: 8, fontSize: 13.5, lineHeight: 1.45, color: 'var(--ink-2)' }}>Alcove encrypts stored notes and uses the call’s sharing permissions to decide who can open them.</p>
   </div>
 );
 

@@ -70,6 +70,9 @@ jobs:
       LIVEKIT_URL: ${{ vars.LIVEKIT_URL }}
       NEAR_AI_ENABLED: ${{ vars.NEAR_AI_ENABLED }}
       GOOGLE_AUTH_ENABLED: ${{ vars.GOOGLE_AUTH_ENABLED }}
+      # The Cloud Run beta uses verified Google sign-in. Demo identities are local only.
+      GOOGLE_SIGNUP_MODE: ${{ vars.GOOGLE_SIGNUP_MODE || 'testers' }}
+      DEMO_AUTH_ENABLED: 'false'
     steps:
       - uses: actions/checkout@v4
         with: { ref: '${{ needs.prepare.outputs.sha }}', persist-credentials: false }
@@ -101,12 +104,15 @@ jobs:
           fi
           if [ "$GOOGLE_AUTH_ENABLED" = true ]; then
             SECRET_BINDINGS="$SECRET_BINDINGS,GOOGLE_CLIENT_ID=alcove-google-client-id:latest,GOOGLE_CLIENT_SECRET=alcove-google-client-secret:latest"
+            if [ "$GOOGLE_SIGNUP_MODE" = testers ]; then
+              SECRET_BINDINGS="$SECRET_BINDINGS,GOOGLE_SIGNUP_TESTERS=alcove-google-signup-testers:latest"
+            fi
           fi
           gcloud --project="$GCP_PROJECT_ID" run deploy alcove-api --image "$IMAGE" --region "$GCP_REGION" \
             --service-account "$RUNTIME_SERVICE_ACCOUNT" --set-cloudsql-instances "$CLOUDSQL_INSTANCE" \
             --allow-unauthenticated --min 1 --max 1 --concurrency 1000 --session-affinity \
             --execution-environment gen2 --port 8080 --timeout 300s --cpu 1 --memory 2Gi --no-cpu-throttling \
-            --set-env-vars "OBJECTS_ENDPOINT=$OBJECTS_ENDPOINT,OBJECTS_BUCKET=$OBJECTS_BUCKET,WEB_ORIGIN=$WEB_ORIGIN,API_URL=$API_ORIGIN,LIVEKIT_URL=$LIVEKIT_URL,NEAR_AI_BASE_URL=https://cloud-api.near.ai/v1,TREASURY_INTENTS_ACCOUNT=alcove-treasury.near,LOG_FORMAT=json,LOG_LEVEL=info" \
+            --set-env-vars "OBJECTS_ENDPOINT=$OBJECTS_ENDPOINT,OBJECTS_BUCKET=$OBJECTS_BUCKET,WEB_ORIGIN=$WEB_ORIGIN,API_URL=$API_ORIGIN,LIVEKIT_URL=$LIVEKIT_URL,GOOGLE_SIGNUP_MODE=$GOOGLE_SIGNUP_MODE,DEMO_AUTH_ENABLED=$DEMO_AUTH_ENABLED,NEAR_AI_BASE_URL=https://cloud-api.near.ai/v1,TREASURY_INTENTS_ACCOUNT=alcove-treasury.near,LOG_FORMAT=json,LOG_LEVEL=info" \
             --set-secrets "$SECRET_BINDINGS" --quiet
       - name: Health check
         run: |
@@ -129,6 +135,7 @@ jobs:
       - name: Build
         env:
           VITE_ALCOVE_API_URL: ${{ vars.API_ORIGIN }}
+          VITE_ALCOVE_DEMO_AUTH_ENABLED: 'false'
         run: pnpm --filter @alcove/web build
       - name: Content security policy for this API origin
         env:

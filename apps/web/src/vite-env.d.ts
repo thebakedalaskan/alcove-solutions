@@ -2,6 +2,8 @@
 interface ImportMetaEnv {
   /** Base URL of the Alcove API. Defaults to /api, which Vite proxies to the local server in development. */
   readonly VITE_ALCOVE_API_URL?: string;
+  /** Set to false in a public build to offer Google sign-in only. */
+  readonly VITE_ALCOVE_DEMO_AUTH_ENABLED?: string;
 }
 
 /*

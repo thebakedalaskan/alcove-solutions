@@ -90,7 +90,7 @@ function CaptureDetails({ state, role, getting, controls, done, onOpenNotes }: {
       )}
       <div className="cap-facts">
         {call.modelPrivate
-          ? <div className="sealed"><Icon name="sealed" size={15} /><span>Written in confidential compute. Alcove can’t read the notes.</span></div>
+          ? <div className="sealed"><Icon name="sealed" size={15} /><span>Written by an AI model in confidential compute.</span></div>
           : <div className="caution"><Icon name="shieldOff" size={15} /><span>The AI model isn’t in a secure enclave, so Alcove can’t guarantee it keeps what’s said private.</span></div>}
         <div>
           <Icon name="people" size={15} />

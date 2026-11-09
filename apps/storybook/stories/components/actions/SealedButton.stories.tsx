@@ -49,7 +49,7 @@ export const Open: StoryObj<OpenArgs> = {
         anchor={<SealedButton title={title} detail={detail} />}>
         <div className="proof-h">
           <b>Checked before anything was sent</b>
-          <p>Before sending this call’s speech and transcript to a model on NEAR AI, Alcove checked its hardware evidence, then sealed everything to the key that evidence vouches for. Alcove can’t read it.</p>
+          <p>Before sending this call’s speech and transcript to a model on NEAR AI, Alcove checked its hardware evidence, then sealed everything to the key that evidence vouches for.</p>
         </div>
         <section className="proof-m" aria-label="The notes model">
           <div className="proof-mh">

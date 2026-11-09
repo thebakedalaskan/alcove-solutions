@@ -24,7 +24,7 @@ const dayAndTime = (iso: string) => `${shortDay(new Date(iso))}, ${hm(iso)}`;
 /** What the notes will be, for someone deciding on a time, and only what's true of this call. */
 function notesLine(card: CallCard): string {
   if (card.notes === 'off') return `This call isn’t set to have notes. ${firstName(card.organizerName)} can turn them on during it.`;
-  return ['This call has notes.', card.you === 'invited' ? 'You get them after, and Alcove can’t read them.' : 'Everyone invited gets them after, and Alcove can’t read them.', ...keptLines(card.choices)].join(' ');
+  return ['This call has notes.', card.you === 'invited' ? 'You get them after.' : 'Everyone invited gets them after.', ...keptLines(card.choices)].join(' ');
 }
 
 export function PickTime({ card, code }: { card: CallCard; code: string }) {

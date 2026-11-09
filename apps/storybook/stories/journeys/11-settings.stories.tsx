@@ -116,12 +116,12 @@ export const DisconnectGoogleCalendar: PageStory = {
     await step('Click Disconnect', async () => {
       await userEvent.click(within(await row('Google Calendar')).getByRole('button', { name: 'Disconnect' }));
     });
-    await step('It forgets the connection and withdraws Alcove’s access at Google', async () => {
+    await step('Alcove removes its Calendar connection', async () => {
       await within(await row('Google Calendar')).findByRole('button', { name: 'Disconnecting' }, SOON);
     });
     await step('Done. Connect takes its place, and a toast says so', async () => {
       await screen.findByText('Google Calendar is disconnected.', {}, SOON);
-      await within(await row('Google Calendar')).findByRole('button', { name: 'Connect' }, SOON);
+      await within(await row('Google Calendar')).findByRole('link', { name: 'Connect' }, SOON);
     });
   }
 };
@@ -131,11 +131,25 @@ export const ConnectGoogleCalendar: PageStory = {
   ...page('/settings#calendar', 'busy'),
   beforeEach: before((w) => { w.calendar = notConnected; }),
   play: async ({ userEvent, step }) => {
-    await step('Click Connect', async () => {
-      await userEvent.click(within(await row('Google Calendar')).getByRole('button', { name: 'Connect' }));
+    await step('Click Connect and review how Alcove uses calendar data', async () => {
+      await userEvent.click(within(await row('Google Calendar')).getByRole('link', { name: 'Connect' }));
     });
-    await step('The page goes to Google, which asks about the calendar, then sends you back to Home with your meetings on it', async () => {
-      await within(await row('Google Calendar')).findByRole('button', { name: 'Opening Google' }, SOON);
+    await step('Continue to Google. After consent, Google returns you to Calendar settings', async () => {
+      const dialog = await screen.findByRole('dialog', { name: 'Connect Google Calendar' }, SOON);
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Continue to Google' }));
+      await within(dialog).findByRole('button', { name: 'Opening Google' }, SOON);
+    });
+  }
+};
+
+export const CalendarAccessDenied: PageStory = {
+  name: '11.5 Return without granting Calendar access',
+  ...page('/settings?calendar=denied#calendar', 'busy'),
+  beforeEach: before((w) => { w.calendar = notConnected; }),
+  play: async ({ step }) => {
+    await step('The Calendar section explains how to schedule with a link and still offers Connect', async () => {
+      await screen.findByText('Calendar access wasn’t granted. You can still schedule calls and share the link yourself.', {}, SOON);
+      await within(await row('Google Calendar')).findByRole('link', { name: 'Connect' }, SOON);
     });
   }
 };
@@ -454,8 +468,8 @@ export const WhenAPartDoesntLoad: PageStory = {
       await userEvent.click(within(calendar).getByRole('button', { name: 'Try again' }));
       await within(await row('Google Calendar')).findByText('Connected', {}, SOON);
     });
-    await step('With no hardware answer to show, the row just says what it is', async () => {
-      await within(await row('Confidential compute')).findByText('Where your audio is opened and your notes are written.', {}, LATER);
+    await step('If the hardware check fails, Settings says it is unavailable', async () => {
+      await within(await row('Hosting server')).findByText('Hosting hardware check unavailable', {}, LATER);
     });
   }
 };
@@ -471,7 +485,7 @@ export const FirstDay: PageStory = {
     });
     await step('Connect is there when you want it', async () => {
       await jump('Calendar');
-      await within(await row('Google Calendar')).findByRole('button', { name: 'Connect' }, SOON);
+      await within(await row('Google Calendar')).findByRole('link', { name: 'Connect' }, SOON);
     });
     await step('The browser doesn’t name your devices until they’re allowed, so there’s no list yet', async () => {
       await jump('Devices');

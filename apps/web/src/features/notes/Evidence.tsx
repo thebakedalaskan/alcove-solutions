@@ -70,7 +70,7 @@ export function Provenance({ evidence, kind, unencrypted, model, writing }: { ev
           ) : (
             <>
               <b>Checked before anything was sent</b>
-              <p>Before sending this {kind === 'room' ? 'recording’s' : 'call’s'} speech{wrote ? ' and transcript' : ''} to a model on NEAR AI, Alcove checked its hardware evidence, then sealed everything to the key that evidence vouches for. Alcove can’t read it.</p>
+              <p>Before sending this {kind === 'room' ? 'recording’s' : 'call’s'} speech{wrote ? ' and transcript' : ''} to a model on NEAR AI, Alcove checked its hardware evidence, then sealed everything to the key that evidence vouches for.</p>
             </>
           )}
         </div>

@@ -93,7 +93,7 @@ export const MostlyToRead: Story = {
             <IconButton icon="x" label="Close" onClick={() => { args.onOpenChange(false); update({ open: false }); }} />
           </div>
           <div style={{ display: 'grid', gap: 16, padding: '8px 28px 28px' }}>
-            <p style={{ color: 'var(--ink-2)' }}>Design review’s notes were written in confidential compute, sealed hardware that Alcove can’t open. Only the people invited can read them.</p>
+            <p style={{ color: 'var(--ink-2)' }}>A confidential AI model wrote the notes for Design review. Alcove encrypts them in storage and shares them with the invited people.</p>
             <dl style={{ display: 'grid', gridTemplateColumns: 'auto minmax(0, 1fr)', gap: '10px 24px', padding: '14px 16px', borderRadius: 'var(--radius-md)', background: 'var(--sunk)', fontSize: 13.5 }}>
               <dt style={{ color: 'var(--ink-3)' }}>Hardware checked</dt><dd style={{ fontVariantNumeric: 'tabular-nums' }}>Yesterday 11:45</dd>
               <dt style={{ color: 'var(--ink-3)' }}>Sealed</dt><dd>Audio, transcript, notes</dd>

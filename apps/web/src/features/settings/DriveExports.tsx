@@ -1,5 +1,5 @@
 import { errorMessage, type DriveExportInput } from '@alcove/api';
-import { Button, DriveExportDisclosure, DriveExportFormats, DriveExportHistory, DriveFolderLocation, Notice, ProviderMark, SettingFact, SettingRow, SettingsPart, Spinner, Switch, useToast } from '@alcove/ui';
+import { Button, DriveExportDisclosure, DriveExportFormats, DriveExportHistory, DriveFolderLocation, Icon, Modal, Notice, ProviderMark, SettingFact, SettingRow, SettingsPart, Spinner, Switch, useToast } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { useRef, useState } from 'react';
@@ -15,15 +15,24 @@ export function DriveExportsPart({ result }: { result?: string | undefined }) {
   const disconnect = useDisconnectDrive();
   const update = useUpdateDrive();
   const retry = useRetryDriveExport();
-  const [picking, setPicking] = useState(false);
+  const [dialog, setDialog] = useState<'connect' | 'pick' | null>(null);
   const accountRow = useRef<HTMLDivElement>(null);
   const toast = useToast();
   const saved = useSaved();
   const data = settings.data;
   const connected = data?.connection.status === 'connected';
   const busy = update.isPending || disconnect.isPending || connect.isPending;
+  const askToConnect = () => {
+    connect.reset();
+    setDialog('connect');
+  };
   const go = async () => {
-    try { const { url } = await connect.mutateAsync(); location.assign(url); }
+    if (busy) return;
+    try {
+      const { url } = await connect.mutateAsync();
+      setDialog(null);
+      location.assign(url);
+    }
     catch (e) { toast(errorMessage(e), { icon: 'x' }); }
   };
   const off = async () => {
@@ -46,18 +55,33 @@ export function DriveExportsPart({ result }: { result?: string | undefined }) {
       <SettingRow ref={accountRow} tabIndex={-1} mark={<ProviderMark provider="google" />} label={data.connection.email ?? 'Connect Google Drive'}
         help={data.connection.status === 'disconnected' ? 'Choose a Google account for exported calls. This connection is separate from your Alcove sign-in and calendar.' : data.connection.status === 'reconnect' ? 'Google access has ended. Reconnect this account to resume exports.' : 'Connected for exports. Your Alcove sign-in and calendar are separate.'}
         problem={data.connection.status === 'reconnect'} wide
-        control={<div className="set-line">{connected ? <><SettingFact icon="check">Connected</SettingFact><Button size="sm" variant="quiet" loading={disconnect.isPending} disabled={busy} onClick={() => void off()}>Disconnect</Button></> : <Button size="sm" variant={data.connection.status === 'reconnect' ? 'primary' : 'secondary'} loading={connect.isPending} disabled={busy} onClick={() => void go()}>{data.connection.status === 'reconnect' ? 'Reconnect Google Drive' : 'Connect Google Drive'}</Button>}{data.connection.status === 'reconnect' && <Button size="sm" variant="quiet" loading={disconnect.isPending} disabled={busy} onClick={() => void off()}>Disconnect</Button>}</div>} />
+        control={<div className="set-line">{connected ? <><SettingFact icon="check">Connected</SettingFact><Button size="sm" variant="quiet" loading={disconnect.isPending} disabled={busy} onClick={() => void off()}>Disconnect</Button></> : <Button size="sm" variant={data.connection.status === 'reconnect' ? 'primary' : 'secondary'} loading={connect.isPending} disabled={busy} onClick={askToConnect}>{data.connection.status === 'reconnect' ? 'Reconnect Google Drive' : 'Connect Google Drive'}</Button>}{data.connection.status === 'reconnect' && <Button size="sm" variant="quiet" loading={disconnect.isPending} disabled={busy} onClick={() => void off()}>Disconnect</Button>}</div>} />
       {data.connection.status !== 'disconnected' && <>
         <Setting label="Default destination" help="For new exports, unless you choose another folder on a call. Shared-drive folders are supported." wide
-          control={<button type="button" className="set-drive-destination" aria-label="Choose default Google Drive folder" disabled={!connected || busy} onClick={() => setPicking(true)}><DriveFolderLocation folder={data.destination} /><span className="set-drive-change">{data.destination ? 'Change' : 'Choose'}</span></button>} />
+          control={<button type="button" className="set-drive-destination" aria-label="Choose default Google Drive folder" disabled={!connected || busy} onClick={() => setDialog('pick')}><DriveFolderLocation folder={data.destination} /><span className="set-drive-change">{data.destination ? 'Change' : 'Choose'}</span></button>} />
         <Setting label="Files to export" help="Each file uploads only after it is finalized. A recording exports only when the call kept it and you can still read it." className="set-drive-formats-row" />
         <DriveExportFormats selected={data.formats} disabled={!connected || busy} onChange={(formats) => change({ formats }, 'Files to export')} />
         <Setting label="Automatic exports" help={!data.destination ? 'Choose a destination folder first.' : !data.formats.length ? 'Choose at least one file type first.' : 'Completed files upload in the background, even after you leave the call.'} off={!connected || !data.destination || !data.formats.length}
           control={<Switch label="Automatic Google Drive exports" checked={data.enabled} disabled={!connected || !data.destination || !data.formats.length || busy} onChange={(enabled) => change({ enabled }, 'Automatic exports')} />} />
       </>}
       <div className="set-drive-disclosure"><DriveExportDisclosure /></div>
-      {data.connection.status !== 'disconnected' && <div className="set-drive-history"><h3>Recent exports</h3>{jobs.data?.some((job) => job.status === 'failed') && <p className="set-drive-history-help">Existing copies stay in their original folder. Choosing another destination and retrying a failed export creates a new copy there.</p>}{jobs.isPending ? <p className="set-drive-wait"><Spinner />Loading exports…</p> : jobs.isError ? <SettingRow label="Exports couldn’t be loaded" problem help={errorMessage(jobs.error)} control={<Button size="sm" onClick={() => void jobs.refetch()}>Try again</Button>} /> : <DriveExportHistory jobs={jobs.data.slice(0, 8)} source={(id) => <Link to="/notes/$noteId" params={{ noteId: id }} className="ac-clamp-1">{notes.data?.find((note) => note.id === id)?.title ?? 'View call'}</Link>} onRetry={retryJob} retrying={retry.isPending ? retry.variables : undefined} onReconnect={() => void go()} />}</div>}
+      {data.connection.status !== 'disconnected' && <div className="set-drive-history"><h3>Recent exports</h3>{jobs.data?.some((job) => job.status === 'failed') && <p className="set-drive-history-help">Existing copies stay in their original folder. Choosing another destination and retrying a failed export creates a new copy there.</p>}{jobs.isPending ? <p className="set-drive-wait"><Spinner />Loading exports…</p> : jobs.isError ? <SettingRow label="Exports couldn’t be loaded" problem help={errorMessage(jobs.error)} control={<Button size="sm" onClick={() => void jobs.refetch()}>Try again</Button>} /> : <DriveExportHistory jobs={jobs.data.slice(0, 8)} source={(id) => <Link to="/notes/$noteId" params={{ noteId: id }} className="ac-clamp-1">{notes.data?.find((note) => note.id === id)?.title ?? 'View call'}</Link>} onRetry={retryJob} retrying={retry.isPending ? retry.variables : undefined} onReconnect={askToConnect} />}</div>}
     </>}
-    {picking && data && <DriveFolderPicker current={data.destination} onClose={() => setPicking(false)} onPick={(folder) => save({ destinationId: folder.id }, 'Default destination')} />}
+    {dialog === 'connect' && <Modal open onOpenChange={(open) => { if (!open && !connect.isPending) setDialog(null); }} label="Allow Google Drive exports" className="set-drive-picker" focusSelf>
+      <header className="set-drive-picker-head">
+        <span className="set-drive-picker-icon"><Icon name="cloudUpload" size={24} /></span>
+        <h2>Allow Google Drive exports</h2>
+      </header>
+      <div className="set-drive-folders space-y-3 pb-4 text-sm leading-relaxed text-ink-2">
+        <p>Google shares your Drive account details and lets Alcove create export files and manage files you make available to it. In Google, choose the account and folder where exports should go.</p>
+        <p>Alcove sends only the call files you choose to export. If you reconnect the same account, exports you previously enabled can resume.</p>
+        <DriveExportDisclosure />
+      </div>
+      <footer className="set-drive-picker-foot">
+        <Button disabled={connect.isPending} onClick={() => setDialog(null)}>Cancel</Button>
+        <Button variant="primary" icon="external" loading={connect.isPending} disabled={busy} onClick={() => void go()}>Continue to Google</Button>
+      </footer>
+    </Modal>}
+    {dialog === 'pick' && data && <DriveFolderPicker current={data.destination} onClose={() => setDialog(null)} onPick={(folder) => save({ destinationId: folder.id }, 'Default destination')} />}
   </SettingsPart>;
 }

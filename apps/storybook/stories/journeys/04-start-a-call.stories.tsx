@@ -5,7 +5,7 @@
  */
 import type { Meta } from '@storybook/react-vite';
 import { screen, within } from 'storybook/test';
-import { call } from '../../src/world/build';
+import { call, notConnected } from '../../src/world/build';
 import { iso } from '../../src/world/clock';
 import { ART, KOFI, PRIYA } from '../../src/world/people';
 import { page, pages, type PageArgs, type PageStory } from '../../src/page';
@@ -151,6 +151,7 @@ export const LetAGuestPick: PageStory = {
 export const ShareALinkInstead: PageStory = {
   name: '4.6 Share a link instead',
   ...page('/home', 'busy'),
+  beforeEach: before((w) => { w.calendar = notConnected; }),
   play: async ({ userEvent, step }) => {
     await step('Schedule, and Skip, I’ll share a link: nobody is invited', async () => {
       await userEvent.click(await screen.findByRole('button', { name: 'Schedule' }, SOON));
@@ -159,7 +160,8 @@ export const ShareALinkInstead: PageStory = {
     await step('When? Your own free times', async () => {
       await userEvent.click(await screen.findByRole('button', { name: /^Use / }, SOON));
     });
-    await step('Details says you get a link to share. Schedule, and the link is copied to send', async () => {
+    await step('Details offers Connect Google Calendar in a new tab. Leave it disconnected and schedule with a link', async () => {
+      await screen.findByRole('link', { name: 'Connect Google Calendar' }, SOON);
       await screen.findByText('You get a link to share.', {}, SOON);
       await userEvent.click(screen.getByRole('button', { name: 'Schedule' }));
       await screen.findByText(/copied/i, {}, SOON);

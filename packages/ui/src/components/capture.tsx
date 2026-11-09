@@ -150,7 +150,7 @@ export function CaptureSummary({ notes, choices, capture, who, taker = 'the orga
       {mode !== 'off' && keptLines(choices).length > 0 && <p>{keptLines(choices).join(' ')}</p>}
       {mode !== 'off' && (capture && !capture.modelPrivate
         ? <p className="fine"><Icon name="shieldOff" size={15} />Written by an AI model outside a secure enclave, so Alcove can’t guarantee the notes stay private. <Unencrypted compact /> {who ?? 'The people invited get them.'}</p>
-        : <p className="fine"><Icon name="sealed" size={15} />Written in confidential compute, so Alcove can’t read the notes. {who ?? 'The people invited get them.'}</p>)}
+        : <p className="fine"><Icon name="sealed" size={15} />Written by an AI model in confidential compute. {who ?? 'The people invited get them.'}</p>)}
     </div>
   );
 }

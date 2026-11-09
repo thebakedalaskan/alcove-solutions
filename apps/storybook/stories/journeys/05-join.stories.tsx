@@ -118,7 +118,12 @@ export const AsAGuest: PageStory = {
     script: { here: [{ who: KOFI, organizer: true }, { who: DIEGO }], cues: at(5, { do: 'let-in' }) }
   }, {}),
   play: async ({ userEvent, step }) => {
-    await step('Without an account, type a name. One line says guests don’t get the notes, and how to get them', async () => {
+    await step('The link offers Google sign-in for the notes. Return to guest entry without signing in', async () => {
+      await userEvent.click(await screen.findByRole('button', { name: 'Sign in to get them' }, LATER));
+      await screen.findByRole('button', { name: 'Continue with Google' }, SOON);
+      await userEvent.click(screen.getByRole('button', { name: 'Join as a guest instead' }));
+    });
+    await step('Without an account, type a name. One line says guests don’t get the notes', async () => {
       await userEvent.type(await screen.findByRole('textbox', { name: 'Your name' }, LATER), JONAS.name);
       await screen.findByText(/Guests don’t get the notes/, {}, SOON);
     });

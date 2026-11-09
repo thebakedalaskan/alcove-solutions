@@ -3,17 +3,17 @@
  * notifications, how Alcove looks and your minutes. Devices and Privacy have their own files. Each control saves as it
  * changes (save.tsx).
  */
-import { errorMessage, type CreditBalance, type TopUp, type NotesLanguage, type NotesSetting, type Preferences, type Session, type SummaryLength } from '@alcove/api';
+import { errorMessage, type CalendarConnectResult, type CreditBalance, type TopUp, type NotesLanguage, type NotesSetting, type Preferences, type Session, type SummaryLength } from '@alcove/api';
 import {
-  Button, CryptoMark, Icon, IconButton, ProviderMark, Segmented, Select, SettingFact, SettingRow, SettingsPart, SunLine, ThemePreview, useTheme, useToast,
+  Button, CryptoMark, Icon, IconButton, Notice, ProviderMark, Segmented, Select, SettingFact, SettingRow, SettingsPart, SunLine, ThemePreview, buttonClass, useTheme, useToast,
   type SelectOption, type SettingRowProps, type ThemeChoice
 } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { uploads } from '~/features/record/uploads';
 import { useLive } from '~/lib/live';
-import { calendarConnectUrl, q, useCancelTopUp, useDisconnectCalendar, useAiModels } from '~/lib/queries';
+import { q, useCancelTopUp, useDisconnectCalendar, useAiModels } from '~/lib/queries';
 import { modelOf, modelOptions, modelValue } from '~/lib/aiModels';
 import { hoursAndMinutes, timeZone } from '~/lib/time';
 import { plural, sizeLabel } from '~/lib/words';
@@ -96,19 +96,19 @@ export function RecordingPart({ prefs }: { prefs: Preferences }) {
   );
 }
 
-export function CalendarPart({ prefs }: { prefs: Preferences }) {
+const CALENDAR_RESULT = {
+  connected: 'Google Calendar connected. Your meetings can show on Home, and Google can send invitations for calls you schedule.',
+  denied: 'Calendar access wasn’t granted. You can still schedule calls and share the link yourself.',
+  account: 'Choose the Google account you used to sign in to Alcove.',
+  failed: 'Google Calendar couldn’t be connected. Try again when you’re ready.'
+} satisfies Record<CalendarConnectResult, string>;
+
+export function CalendarPart({ prefs, result }: { prefs: Preferences; result?: CalendarConnectResult | undefined }) {
   const calendar = useQuery(q.calendar());
   const disconnect = useDisconnectCalendar();
   const save = useSave();
   const toast = useToast();
-  const [going, setGoing] = useState(false);
   const row = useRef<HTMLDivElement>(null);
-  // Back from Google, the browser can bring this page back just as it was left.
-  useEffect(() => {
-    const back = (e: PageTransitionEvent) => { if (e.persisted) setGoing(false); };
-    addEventListener('pageshow', back);
-    return () => removeEventListener('pageshow', back);
-  }, []);
   const cal = calendar.data;
   const google = cal?.source === 'google' && !cal.needsAccess;
   // Busy, a button can't hold focus, and some of them go: it stays on the row rather than falling back to the page.
@@ -118,7 +118,6 @@ export function CalendarPart({ prefs }: { prefs: Preferences }) {
     onError: (e) => toast(errorMessage(e), { icon: 'x' }),
     onSettled: stay
   });
-  const connect = () => { setGoing(true); location.assign(calendarConnectUrl()); };
   const plain = { mark: <Icon name="cal" />, label: 'Your calendar' };
   const theirs = { mark: <ProviderMark provider="google" />, label: 'Google Calendar' };
   const connection: Pick<SettingRowProps, 'mark' | 'label' | 'help' | 'problem' | 'control'> =
@@ -126,16 +125,21 @@ export function CalendarPart({ prefs }: { prefs: Preferences }) {
       ? { ...plain, help: errorMessage(calendar.error), problem: true, control: <Button variant="secondary" size="sm" icon="retry" loading={calendar.isFetching} onClick={() => void calendar.refetch().then(stay)}>Try again</Button> }
       : { ...plain, control: <SettingFact>Looking…</SettingFact> })
       : cal.source === 'sample' ? { ...plain, label: 'Sample calendar', help: 'A day of calls, placed around when you signed in.', control: <SettingFact>Demo account</SettingFact> }
-        : cal.source === 'none' ? { ...plain, help: 'Google Calendar connects when you sign in with Google.', control: <SettingFact>Not connected</SettingFact> }
-          : cal.needsAccess ? { ...theirs, help: 'Your meetings show on Home, and the calls you schedule go on it.', control: <Button variant="secondary" size="sm" loading={going} onClick={connect}>{going ? 'Opening Google' : 'Connect'}</Button> }
+        : cal.source === 'none' ? { ...plain, help: 'Connect Google Calendar from an Alcove account that uses Google sign-in.', control: <SettingFact>Not connected</SettingFact> }
+          : cal.needsAccess ? { ...theirs, help: 'Your meetings show on Home, and the calls you schedule go on it.', control: <Link to="/connect-calendar" className={buttonClass({ size: 'sm' })}>Connect</Link> }
             : {
               ...theirs,
               control: <div className="set-line"><SettingFact icon="check" tone="yes">Connected</SettingFact><Button variant="quiet" size="sm" loading={disconnect.isPending} onClick={off}>{disconnect.isPending ? 'Disconnecting' : 'Disconnect'}</Button></div>
             };
   return (
     <SettingsPart id="calendar" title="Calendar">
+      {result && (result !== 'connected' || google) && (
+        <Notice tone={result === 'connected' ? 'info' : 'caution'} icon={result === 'connected' ? 'check' : 'alert'}>
+          {CALENDAR_RESULT[result]}
+        </Notice>
+      )}
       <SettingRow ref={row} tabIndex={-1} {...connection} />
-      <SwitchSetting label="Put calls I schedule on my calendar" help={`${google ? 'Google' : 'Your calendar'} sends everyone invited an invitation.`}
+      <SwitchSetting label="Put calls I schedule on my calendar" help={cal?.source === 'sample' ? 'Your sample calendar stands in for Google Calendar.' : 'When Google Calendar is connected, Google sends the invitations.'}
         checked={prefs.addToCalendar} onChange={(on) => save('Put calls I schedule on my calendar', { addToCalendar: on })} />
       <SwitchSetting label="Show my other meetings on Home" checked={prefs.showOtherMeetings} onChange={(on) => save('Show my other meetings on Home', { showOtherMeetings: on })} />
     </SettingsPart>

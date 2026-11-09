@@ -20,6 +20,17 @@ const choseOthers = (): void => { localStorage.setItem('alcove.devices', JSON.st
 
 /** Priya's roadmap review, which Art is invited to: he gets the notes, and Join now. */
 export const Invited = page(`/join/${ROADMAP.code}`, 'busy', { beforeEach: changing(invited), globals: { theme: 'dark' } });
+/** Signed out at a real organizer’s call: Google can get you the notes, and guest entry is still available. */
+export const SignInForNotes = page(`/join/${ROADMAP.code}`, 'signed-out', {
+  beforeEach: changing(invited),
+  globals: { theme: 'dark' },
+  play: async ({ canvas, userEvent, step }) => {
+    await step('Open sign-in for the notes', async () => {
+      await userEvent.click(await canvas.findByRole('button', { name: 'Sign in to get them' }, { timeout: 8000 }));
+      await canvas.findByRole('button', { name: 'Continue with Google' });
+    });
+  }
+});
 /** The next pricing sync in Maya's series: From last time, from the notes Art has of it. */
 export const FromLastTime = page(`/join/${PRICING_NEXT.code}`, 'busy', { beforeEach: changing(invited, inEveryState), globals: { theme: 'dark' } });
 /** Set up to join muted: the microphone and camera start off, and it says so. */

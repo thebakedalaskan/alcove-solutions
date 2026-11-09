@@ -167,7 +167,7 @@ export function ArtSeal() {
         <div className="ta-dst"><Avatar person={CAST.maya} size={22} /><Avatar person={CAST.theo} size={22} /><Avatar person={CAST.priya} size={22} /></div>
         {[...into, ...outOf].map((k, i) => <i key={i} className="ta-pk" style={{ left: k.left, top: k.top, opacity: k.opacity, scale: String(k.scale) }} />)}
       </div>
-      <div className="ta-label"><Icon name="eyeOff" size={12} />Sealed · Alcove can’t read it</div>
+      <div className="ta-label"><Icon name="eyeOff" size={12} />Encrypted in storage</div>
     </div>
   );
 }

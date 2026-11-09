@@ -25,10 +25,10 @@ export interface Standing {
 /** What a board says while all's well: its seal, what that says on hover, and what pressing it says. */
 export interface Sealed { seal: string; title: string; rows: PopRow[] }
 
-export const UNREAD: PopRow = { icon: 'sealed', text: 'Alcove can’t read it.' };
+export const ENCRYPTED: PopRow = { icon: 'sealed', text: 'Encrypted in storage.' };
 
-/** A board's own page while all's well: Sealed, where it's kept for someone who may know, and that Alcove can't read it. */
-export const sealedOnPage = (kept: PopRow | null): Sealed => ({ seal: 'Sealed', title: 'Sealed. Alcove can’t read this board.', rows: [...(kept ? [kept] : []), UNREAD] });
+/** A board's own page while all's well: Sealed, where it's kept for someone who may know, and how it’s stored. */
+export const sealedOnPage = (kept: PopRow | null): Sealed => ({ seal: 'Sealed', title: 'Board encrypted in storage.', rows: [...(kept ? [kept] : []), ENCRYPTED] });
 
 export interface StandingFacts {
   /** How its session is doing, or null while there's none. */
@@ -50,18 +50,18 @@ export interface StandingFacts {
 export function standingOf({ status, offline, readOnly, changes, tryAgain, kept, sealed }: StandingFacts): Standing {
   if (readOnly) {
     const text = 'You can look round and follow people.';
-    return { seal: 'View only', icon: 'eye', title: `View only. ${text}`, pop: { title: 'View only', rows: [{ icon: 'eye', text }, ...(kept ? [kept] : []), UNREAD] } };
+    return { seal: 'View only', icon: 'eye', title: `View only. ${text}`, pop: { title: 'View only', rows: [{ icon: 'eye', text }, ...(kept ? [kept] : []), ENCRYPTED] } };
   }
   if (status && (status.status === 'failed' || (status.closed === 'session' && status.unsent))) {
     const text = changes > 1 ? `Your last ${changes} changes are only here.` : 'Your last change is only here.';
     return {
-      seal: 'Not saved', icon: 'cloudOff', title: `Couldn’t save. ${text}`, pop: { title: 'Couldn’t save', rows: [{ icon: 'cloudOff', text }, UNREAD] },
+      seal: 'Not saved', icon: 'cloudOff', title: `Couldn’t save. ${text}`, pop: { title: 'Couldn’t save', rows: [{ icon: 'cloudOff', text }, ENCRYPTED] },
       pill: { icon: 'cloudOff', title: 'Couldn’t save', text, action: tryAgain && { label: 'Try again', run: tryAgain } }
     };
   }
   if (offline) {
     const text = 'Keep going. Your changes are safe here.';
-    return { seal: 'Reconnecting', icon: 'wifiOff', title: `Reconnecting. ${text}`, pop: { title: 'Reconnecting', rows: [{ icon: 'wifiOff', text }, UNREAD] }, pill: { icon: 'wifiOff', title: 'Reconnecting', text } };
+    return { seal: 'Reconnecting', icon: 'wifiOff', title: `Reconnecting. ${text}`, pop: { title: 'Reconnecting', rows: [{ icon: 'wifiOff', text }, ENCRYPTED] }, pill: { icon: 'wifiOff', title: 'Reconnecting', text } };
   }
   return { seal: sealed.seal, icon: 'sealed', title: sealed.title, pop: { title: sealed.seal, rows: sealed.rows } };
 }

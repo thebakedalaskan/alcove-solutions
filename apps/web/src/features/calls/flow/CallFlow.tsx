@@ -67,7 +67,8 @@ function StartFlow({ open, onClose, people, name, later, documents, board }: {
   const session = useQuery(q.session()).data;
   const team = useQuery(q.team()).data;
   const prefs = useQuery(q.prefs()).data;
-  const calendar = useQuery(q.calendar()).data;
+  // Connecting in another tab keeps this draft. Check again when the scheduler returns to it.
+  const calendar = useQuery({ ...q.calendar(), refetchOnWindowFocus: (query) => open && query.state.data?.needsAccess ? 'always' : false }).data;
   /* Who to suggest is ready by the time Who opens, so the step arrives at its full height. */
   useQuery(q.people(''));
   const toast = useToast();
@@ -127,7 +128,7 @@ function StartFlow({ open, onClose, people, name, later, documents, board }: {
           <When draft={draft} change={change} guests={guests} team={!!team} wide={wide} onWide={setWide} back={back} onNext={(picked) => { change({ at: picked }); go('details'); }} />
         )}
         {view === 'details' && at && (
-          <Details draft={draft} change={change} guests={guests} at={draft.offer?.[0] ?? at} invites={invites} back={back} returning={from === 'documents'} saving={schedule.isPending}
+          <Details draft={draft} change={change} guests={guests} at={draft.offer?.[0] ?? at} invites={invites} connectCalendar={calendar?.needsAccess === true && prefs?.addToCalendar !== false} back={back} returning={from === 'documents'} saving={schedule.isPending}
             onWhen={() => go('when')} onWho={() => go('who')} onDocs={() => go('documents')} onSchedule={save} />
         )}
         {view === 'documents' && (
@@ -207,7 +208,8 @@ export function useScheduled() {
       return;
     }
     if (!guests.length) {
-      const where = `${m.calendarUrl ? 'On your Google Calendar' : 'On your calendar'} for ${shortTime(at, new Date())}.`;
+      const action = m.calendarUrl ? 'On your Google Calendar' : calendar?.source === 'sample' ? 'On your calendar' : 'Scheduled';
+      const where = `${action} for ${shortTime(at, new Date())}.`;
       if (await copied()) toast(`${where} Link copied.`, { icon: 'cal', ms: 6000, action: undo });
       else toast(where, { icon: 'cal', ms: 9000, action: offerLink });
       return;

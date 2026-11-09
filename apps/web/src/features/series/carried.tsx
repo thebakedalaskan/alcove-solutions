@@ -6,14 +6,14 @@
  * change, and who said the notes got a later call wrong.
  */
 import { errorMessage, type CarriedAction, type CarriedDecision, type CarriedQuestion, type LaterCall, type RoomRef, type SeriesNote } from '@alcove/api';
-import { Avatar, Button, Chip, Icon, cn, useToast } from '@alcove/ui';
+import { Avatar, Chip, Icon, buttonClass, cn, useToast } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import type { ReactNode } from 'react';
 import { MomentLink, decisionLine, inNote, useNotesApart } from '~/features/notes/parts';
 import { freshCalls, useCallFlow } from '~/features/shell/context';
 import { listNames, sameEmail, spokenName } from '~/lib/people';
-import { calendarConnectUrl, q, useScheduleNext } from '~/lib/queries';
+import { q, useScheduleNext } from '~/lib/queries';
 import { hm, shortDay } from '~/lib/time';
 
 /** The calls of a series whose notes you have, by note: what an item, and a later call, are looked up in. */
@@ -130,7 +130,7 @@ export function NextOnCalendar({ children }: { children: ReactNode }) {
   return (
     <>
       <p className="nd-c-open">This series follows a repeating event on your Google Calendar, which isn’t connected now. Connect it again to see the next one on Home and make it an Alcove call.</p>
-      <Button size="sm" icon="cal" className="nd-meet" onClick={() => location.assign(calendarConnectUrl())}>Connect Google Calendar</Button>
+      <Link to="/connect-calendar" className={cn('nd-meet', buttonClass({ size: 'sm' }))}><Icon name="cal" />Connect Google Calendar</Link>
     </>
   );
 }

@@ -21,15 +21,15 @@ export default meta;
 
 /**
  * Saved, as it is almost all of the time: the seal says Sealed, and its menu says who can add to it, where it's saved, and
- * that Alcove can't read it.
+ * that it’s encrypted in storage.
  */
 export const Saved: BoardStory = {
   args: {
     children: (
       <BoardPop left={12} top={62} title="Sealed" rows={[
         { icon: 'lock', text: 'Everyone in this call can add to it. Saved in Product.' },
-        { icon: 'notes', text: 'The notes read it in confidential compute.' },
-        { icon: 'sealed', text: 'Alcove can’t read it.' }
+        { icon: 'notes', text: 'The notes can use this board.' },
+        { icon: 'sealed', text: 'Encrypted in storage.' }
       ]} />
     )
   }

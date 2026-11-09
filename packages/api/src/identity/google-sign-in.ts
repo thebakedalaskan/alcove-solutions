@@ -2,7 +2,7 @@ import { z } from '../shared/zod';
 
 /** Correlates a popup with its waiting tab; never a session or an OAuth credential. */
 export const GoogleSignInPopupIdSchema = z.uuid();
-export const GoogleSignInRefusalSchema = z.enum(['cancelled', 'expired', 'unverified', 'unavailable', 'busy', 'failed']);
+export const GoogleSignInRefusalSchema = z.enum(['cancelled', 'expired', 'unverified', 'unavailable', 'busy', 'failed', 'invite-only', 'google-email-required']);
 export const GoogleSignInNextSchema = z.enum(['/ready', '/home', '/move']);
 export const GoogleSignInResultSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('complete'), next: GoogleSignInNextSchema }),

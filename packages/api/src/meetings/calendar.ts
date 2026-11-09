@@ -3,6 +3,10 @@ import { IDSchema, ISODateSchema } from '../shared/ids';
 import { z } from '../shared/zod';
 /* ---------- calendar ---------- */
 
+/** Result in the browser's return from Google Calendar consent. */
+export const CalendarConnectResultSchema = z.enum(['connected', 'denied', 'account', 'failed']);
+export type CalendarConnectResult = z.infer<typeof CalendarConnectResultSchema>;
+
 /** One of someone's other calendar events (not an Alcove call), shown beside Alcove's own. */
 export const CalendarEventSchema = z.object({
   /** The provider's event ID. */

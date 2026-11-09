@@ -11,7 +11,7 @@ import { tx } from '../../db';
 import { MeetingManifest, updateManifest } from '../meetings/service';
 import { openState, sealState, type WorkspaceState } from './access';
 import { findOwner, openOwner } from '../../owners';
-import { ORIGIN, startHarness, type Browser, type Harness } from '../../testing/harness';
+import { connectGoogleCalendar, ORIGIN, startHarness, type Browser, type Harness } from '../../testing/harness';
 import { findItem } from '../../vault';
 
 // Guests need real calls; every wait below is bounded and says what it was waiting for.
@@ -36,7 +36,8 @@ async function withGoogle(who: string): Promise<Account & { sub: string }> {
   const b = h.browser();
   const n = `${Date.now().toString(36)}${(seq++).toString(36)}`;
   const sub = `google-${n}`;
-  h.google.next({ sub, email: `${who}.${n}@acme.example`, name: who });
+  const user = { sub, email: `${who}.${n}@acme.example`, name: who };
+  h.google.next(user);
   let url = new URL(`${h.baseUrl}/v1/auth/google`);
   for (let hop = 0; hop < 10 && url.origin !== new URL(ORIGIN).origin; hop++) {
     const res = url.origin === h.google.issuer ? await fetch(url, { redirect: 'manual' }) : await b.fetch(url, { redirect: 'manual' });
@@ -44,6 +45,7 @@ async function withGoogle(who: string): Promise<Account & { sub: string }> {
   }
   const session = await b.api.auth.getSession();
   if (!session) throw new Error('not signed in with Google');
+  expect(await connectGoogleCalendar(h, b, user)).toBe(`${ORIGIN}/settings?calendar=connected#calendar`);
   return { ...b, sub, email: session.user.email, name: session.user.name, ownerId: session.ownerId };
 }
 const madeUp = () => randomBytes(16).toString('base64url');

@@ -36,12 +36,12 @@ export async function openSession(d: Deps, ownerId: string, provider: SignInProv
   return { id, session };
 }
 
-/** The live session behind a cookie value, or undefined when there is none or it has ended. */
+/** The live session behind a cookie value, if its sign-in method is still enabled. */
 export async function findSession(d: Deps, id: string | undefined): Promise<Session | undefined> {
   if (!id || !/^[A-Za-z0-9_-]{43}$/.test(id)) return undefined;
   const hash = hashOf(id);
   const r = await maybeOne(d.pool, Row, 'SELECT owner_id, provider, created_at, last_seen_at, expires_at FROM sessions WHERE session_hash = $1', [hash]);
-  if (!r) return undefined;
+  if (!r || (!d.cfg.DEMO_AUTH_ENABLED && r.provider !== 'google')) return undefined;
   const now = Date.now();
   const ended = r.expires_at.getTime() <= now ? 'absolute' : now - r.last_seen_at.getTime() > IDLE_MS ? 'idle' : undefined;
   if (ended) {
@@ -55,7 +55,9 @@ export async function findSession(d: Deps, id: string | undefined): Promise<Sess
 
 /** Whether a session found earlier is still open: nobody has signed out of it, and its account is still here. */
 export async function stillOpen(d: Deps, hash: Uint8Array): Promise<boolean> {
-  return (await maybeOne(d.pool, z.object({ n: z.number() }), 'SELECT 1 AS n FROM sessions WHERE session_hash = $1 AND expires_at > now()', [hash])) !== undefined;
+  return (await maybeOne(d.pool, z.object({ n: z.number() }),
+    "SELECT 1 AS n FROM sessions WHERE session_hash = $1 AND expires_at > now() AND ($2::boolean OR provider = 'google')",
+    [hash, d.cfg.DEMO_AUTH_ENABLED])) !== undefined;
 }
 
 export async function closeSession(d: Deps, s: Session): Promise<void> {

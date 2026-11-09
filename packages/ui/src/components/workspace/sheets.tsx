@@ -276,7 +276,7 @@ export function WsShareSheet({ title, query = '', onQuery, onAdd, matches = [], 
         <span className="ac-eyebrow">In this call</span>
         <div className="wv-pr"><Avatar person={guest.person} size={26} /><span className="m"><b>{guest.person.name}</b><small>Guest, can’t open this</small></span><Button size="xs" onClick={guest.onRead}>Let them read</Button></div>
       </>}
-      <div className="wv-foot"><Icon name="sealed" size={14} /><span>Sealed before it leaves your browser. Alcove can’t read it.</span></div>
+      <div className="wv-foot"><Icon name="sealed" size={14} /><span>Encrypted in storage.</span></div>
     </div>
   );
 }

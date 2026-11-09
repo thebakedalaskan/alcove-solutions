@@ -83,7 +83,7 @@ export function WsList({ head, children, empty = false, listKey, label = 'Docume
         {empty && <p className="wt-empty">{EMPTY_WORDS[empty]}</p>}
       </motion.div>
       {foot}
-      <div className="wt-foot"><Icon name="sealed" size={14} /><span>Sealed. Alcove can’t read this.</span></div>
+      <div className="wt-foot"><Icon name="sealed" size={14} /><span>Encrypted in storage.</span></div>
     </aside>
   );
 }

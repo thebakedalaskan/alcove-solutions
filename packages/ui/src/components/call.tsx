@@ -589,7 +589,7 @@ export function ShareKinds({ sharing, screenWhy, onScreen, board, workspace }: {
       <ShareKind icon="screen" title="Your screen" says={screenWhy ?? 'A tab, a window or your whole screen'} onPress={screenWhy === null ? onScreen : null} more />
       <ShareKind icon="presentation" title="A board" says={'why' in board ? board.why : 'Start one, or open one your team has'} onPress={'onPress' in board ? board.onPress : null} more />
       <ShareKind icon="folderOpen" title="The workspace" says={'why' in workspace ? workspace.why : 'This call’s notes and documents'} onPress={'onPress' in workspace ? workspace.onPress : null} more={false} />
-      <div className="ic-sp-foot"><Icon name="sealed" size={15} /><span>Sealed. Alcove can’t read what you share.</span></div>
+      <div className="ic-sp-foot"><Icon name="sealed" size={15} /><span>Live screen sharing is end-to-end encrypted.</span></div>
     </>
   );
 }

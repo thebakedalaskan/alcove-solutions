@@ -5,7 +5,7 @@
  */
 import type { Meta } from '@storybook/react-vite';
 import { screen, within } from 'storybook/test';
-import { calendarEvent } from '../../src/world/build';
+import { calendarEvent, notConnected } from '../../src/world/build';
 import { iso } from '../../src/world/clock';
 import { LENA, MAYA } from '../../src/world/people';
 import { page, pages, type PageArgs, type PageStory } from '../../src/page';
@@ -159,9 +159,16 @@ export const TickOffAFollowUp: PageStory = {
 export const YourFirstDay: PageStory = {
   name: '3.8 Your first day',
   ...page('/home', 'first-day'),
+  beforeEach: before((w) => { w.calendar = notConnected; }),
   play: async ({ userEvent, step }) => {
     await step('Before any notes: start a call, or get set up', async () => {
       await screen.findByRole('region', { name: 'Start your first call' }, SOON);
+      await screen.findByRole('region', { name: 'Get set up' }, SOON);
+    });
+    await step('Connect your calendar explains how Alcove uses it. Choose Not now to return to Home', async () => {
+      await userEvent.click(await screen.findByRole('link', { name: 'Connect your calendar' }, SOON));
+      const disclosure = await screen.findByRole('dialog', { name: 'Connect Google Calendar' }, SOON);
+      await userEvent.click(within(disclosure).getByRole('button', { name: 'Not now' }));
       await screen.findByRole('region', { name: 'Get set up' }, SOON);
     });
     await step('Read an example note, to see what notes look like', async () => {

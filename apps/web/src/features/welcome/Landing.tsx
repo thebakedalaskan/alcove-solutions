@@ -38,9 +38,9 @@ const TOOLS = [
   ['update_action', 'Update your follow-ups and mark them done']
 ] as const;
 const FACTS: readonly (readonly [IconName, string])[] = [
-  ['badgeCheck', 'Each model’s hardware is checked before it gets a word, and every note says what was checked.'],
+  ['badgeCheck', 'Alcove checks the hardware of confidential AI models before sending them call content.'],
   ['lock', 'Titles, names, chat, audio and notes are sealed before they’re stored, under keys for your account.'],
-  ['trash', 'Deleting a note removes its rows, its audio and every copy.']
+  ['trash', 'Deleting a note removes it from Alcove’s live systems. Drive exports stay in Drive.']
 ];
 
 /** A link that glides to a part of this page. */
@@ -134,7 +134,7 @@ function Hero({ auth }: { auth: Auth }) {
         ))}
       </h1>
       <motion.p className="lp-lede" {...rise(0)}>
-        Video calls with the note taker built in. The transcript, the summary and who’s doing what are written inside confidential compute, so Alcove can’t read them.
+        Video calls with the note taker built in. Get a transcript, a summary and follow-ups, with recordings and notes encrypted in storage.
       </motion.p>
       <motion.div {...rise(1)}><WaysIn auth={auth} layout="hero" note="Free to start, with 400 minutes of notes." /></motion.div>
     </div>
@@ -144,7 +144,7 @@ function Hero({ auth }: { auth: Auth }) {
 function Close({ auth }: { auth: Auth }) {
   return (
     <div className="lp-wrap lp-close-in">
-      <PartHead center title="Start your first call">Sign in with Google, Microsoft or your company’s single sign-on. Your calendar and your team come with you.</PartHead>
+      <PartHead center title="Start your first call">Sign in to start a call. Connect Google Calendar separately to check availability and send calendar invitations.</PartHead>
       <WaysIn auth={auth} layout="hero" note="Calls without notes are free." />
     </div>
   );
@@ -188,7 +188,7 @@ export function Landing({ auth }: { auth: Auth }) {
           </section>
           <section className="lp-call dark" id="call" aria-labelledby="call-title">
             <div className="lp-wrap">
-              <PartHead id="call-title" title="In the call" className="lp-call-head">All of it runs in the browser, with nothing to install, and the call is end-to-end encrypted.</PartHead>
+              <PartHead id="call-title" title="In the call" className="lp-call-head">Join from your browser. Live audio, video and screen sharing are end-to-end encrypted.</PartHead>
               <CallTour />
             </div>
           </section>
@@ -209,7 +209,7 @@ export function Landing({ auth }: { auth: Auth }) {
             <section className="lp-wrap lp-sealed" id="privacy" aria-labelledby="privacy-title">
               <div>
                 <PartHead id="privacy-title" title="What Alcove can see">
-                  Calls are end-to-end encrypted. Notes are written inside confidential compute, hardware that proves which code it runs before it’s given anything. Our servers only ever hold sealed records.
+                  Live call audio and video are end-to-end encrypted. When notes are on, Alcove processes call audio and transcripts to write them. The beta’s hosting server can decrypt stored content to provide these features and does not run in an attested confidential environment.
                 </PartHead>
                 <ul className="lp-facts">{FACTS.map(([icon, text]) => <li key={text}><Icon name={icon} size={18} />{text}</li>)}</ul>
               </div>
@@ -223,7 +223,7 @@ export function Landing({ auth }: { auth: Auth }) {
           <div className="lp-wrap lp-close-water">
             <footer className="lp-foot">
               <span>© 2026 Alcove</span>
-              <span>Private video calls with notes written in confidential compute.</span>
+              <span>End-to-end encrypted live calls with built-in notes.</span>
               <nav aria-label="More"><Link to="/privacy">Privacy policy</Link><Jump to="offline">For therapists</Jump><Jump to="agents">For agents</Jump><Jump to="top">Back to the top</Jump></nav>
             </footer>
           </div>

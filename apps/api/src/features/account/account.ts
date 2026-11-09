@@ -3,14 +3,14 @@
  * verified email) is found by keyed hashes; the profile itself is a sealed item. Google sign-in is
  * real (../google.ts); Microsoft and single sign-on are demo identities for now (../demo.ts).
  */
-import { DEFAULT_NOTIFICATION_PREFERENCES, DEFAULT_SOUND_PREFERENCES, PreferencesSchema, type Patch, type Person, type Preferences, type Session, type SignInBody, type SignInProvider } from '@alcove/api';
+import { DEFAULT_NOTIFICATION_PREFERENCES, DEFAULT_SOUND_PREFERENCES, PreferencesSchema, type DemoProvider, type Patch, type Person, type Preferences, type Session, type SignInBody } from '@alcove/api';
 import { z } from 'zod';
 import type { Deps, Owner } from '../../context';
 import { blindIndex, equalBytes } from '../../crypto';
 import { bytea, exec, maybeOne, rows, timestamp, tx, type Db } from '../../db';
 import { demoDay, demoIdentity, isSharedDemo } from '../../demo';
-import type { Identity } from '../../identity';
-import { ForbiddenError, NotFoundError } from '../../errors';
+import type { GoogleIdentity, Identity } from '../../identity';
+import { ForbiddenError, GoogleEmailRequiredError, GoogleSignupInviteRequiredError, NotFoundError } from '../../errors';
 import { log } from '../../log';
 import { createOwner, masterKey, openOwner, ownerFrom } from '../../owners';
 import { closeSession, openSession } from '../../sessions';
@@ -86,13 +86,21 @@ export async function sessionFor(o: Owner): Promise<Session> {
 const IdentityRow = z.object({ owner_id: z.string(), created_at: timestamp, email_index: bytea });
 
 /** Signs in a demo identity: Microsoft as Art Vandelay, or single sign-on as the email typed. */
-export const demoSignIn = (d: Deps, body: SignInBody) => signIn(d, demoIdentity(body.provider, body.email), body.provider);
+export const demoSignIn = (d: Deps, body: SignInBody) => signIn(d, { provider: body.provider, who: demoIdentity(body.provider, body.email) });
+
+/** An integration granted by Google must belong to the signed-in account's provider identity. */
+export async function hasIdentity(d: Deps, ownerId: string, who: Identity): Promise<boolean> {
+  const subject = blindIndex(masterKey(d), 'subject', who.subject);
+  return (await exec(d.pool, 'SELECT 1 FROM identities WHERE owner_id = $1 AND subject_index = $2', [ownerId, subject])) > 0;
+}
+
+type SignIn = { provider: 'google'; who: GoogleIdentity } | { provider: DemoProvider; who: Identity };
 
 /**
  * Signs a verified identity in and opens a session. The first sign-in creates the account: its keys,
  * its profile from the provider, and its credits; a demo identity also gets the sample calendar.
  */
-export async function signIn(d: Deps, who: Identity, provider: SignInProvider): Promise<{ owner: Owner; sessionId: string; isNew: boolean }> {
+export async function signIn(d: Deps, { provider, who }: SignIn): Promise<{ owner: Owner; sessionId: string; isNew: boolean }> {
   const subject = blindIndex(masterKey(d), 'subject', who.subject);
   const email = blindIndex(masterKey(d), 'email', who.email);
 
@@ -100,15 +108,23 @@ export async function signIn(d: Deps, who: Identity, provider: SignInProvider): 
     // Two first sign-ins at once must not make two accounts: serialise on the identity.
     await exec(c, 'SELECT pg_advisory_xact_lock($1)', [Buffer.from(subject.slice(0, 8)).readBigInt64BE()]);
     const existing = await maybeOne(c, IdentityRow, 'SELECT owner_id, created_at, email_index FROM identities WHERE subject_index = $1', [subject]);
+    const emailChanged = existing !== undefined && !equalBytes(existing.email_index, email);
+    // Email grants access to shared data. A historical verification of an external address doesn't prove current ownership.
+    if (provider === 'google' && d.cfg.GOOGLE_SIGNUP_MODE === 'public' && !who.authoritativeEmail && (!existing || emailChanged)) {
+      throw new GoogleEmailRequiredError();
+    }
     if (existing) {
       // The provider's verified email can change; notes shared by email follow the current one.
       await exec(c, 'UPDATE identities SET last_used_at = now(), email_index = $2 WHERE subject_index = $1', [subject, email]);
       // And what the account has in workspaces moves with it, along with the profile, so nothing reads the new rows under the old address.
-      if (!equalBytes(existing.email_index, email)) {
+      if (emailChanged) {
         await changeProfile(await openOwner(d, existing.owner_id, undefined, c), c, (p) => ({ ...p, email: who.email }));
         await moveAddress(d, c, existing.owner_id, existing.email_index, who.email);
       }
       return { ownerId: existing.owner_id, isNew: false };
+    }
+    if (provider === 'google' && d.cfg.GOOGLE_SIGNUP_MODE === 'testers' && !d.cfg.GOOGLE_SIGNUP_TESTERS.includes(who.email)) {
+      throw new GoogleSignupInviteRequiredError();
     }
     const { ownerId, root } = await createOwner(d, c);
     await exec(c, 'INSERT INTO identities (subject_index, owner_id, email_index) VALUES ($1,$2,$3)', [subject, ownerId, email]);

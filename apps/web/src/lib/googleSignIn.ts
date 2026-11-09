@@ -6,6 +6,8 @@ export const GOOGLE_REFUSED = {
   cancelled: 'Google sign-in was cancelled.',
   expired: 'That sign-in took too long or started in another tab. Try again.',
   unverified: 'Google hasn’t verified that account’s email address, so Alcove can’t use it.',
+  'google-email-required': 'Use a Gmail or Google Workspace account to sign in to Alcove.',
+  'invite-only': 'Google sign-up is invite-only. Use a Google account with access to Alcove.',
   unavailable: 'Google sign-in isn’t set up on this server.',
   busy: 'Too many sign-in attempts. Wait a minute and try again.',
   failed: 'Couldn’t sign in with Google. Try again.'

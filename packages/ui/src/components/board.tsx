@@ -229,7 +229,7 @@ function Barred({ icon, size, label, why }: { icon: IconName; size: number; labe
 }
 
 /** Everything about the board that isn't a tool, in one line along the top of the sheet. */
-export function BoardBar({ name, naming, nameTitle = 'Rename, share or copy a link', seal = 'Sealed', sealIcon = 'sealed', sealTitle = 'Sealed. Alcove can’t read this board.', tail, zoom, canUndo = false, canRedo = false, editable = true, acts = true, canAct = true, moreOn = false,
+export function BoardBar({ name, naming, nameTitle = 'Rename, share or copy a link', seal = 'Sealed', sealIcon = 'sealed', sealTitle = 'Board encrypted in storage.', tail, zoom, canUndo = false, canRedo = false, editable = true, acts = true, canAct = true, moreOn = false,
   mapOn = false, faded = false, onName, onSeal, onUndo, onRedo, onZoomOut, onFit, onZoomIn, onMap, onTimer, onVote, onMore, className }: BoardBarProps) {
   return (
     <div className={cn('bd-head', acts && editable && 'is-full', faded && 'is-faded', className)}>
@@ -1014,7 +1014,7 @@ export function BoardPicker({ step, inCall, blocked, inRoom = false, recents, ac
       {access && <AccessAsk access={access} busy={busy} press={press} />}
       <div className="bl-f">
         <Icon name="sealed" size={15} />
-        <span>{inRoom ? 'Comes back with you when rooms close. Alcove can’t read it.' : step ? 'Opens for everyone here. Alcove can’t read boards.' : 'Sealed. Alcove can’t read boards.'}</span>
+        <span>{inRoom ? 'Comes back with you when rooms close.' : step ? 'Opens for everyone here.' : 'Boards are encrypted in storage.'}</span>
       </div>
     </>
   );

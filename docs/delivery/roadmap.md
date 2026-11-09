@@ -10,7 +10,7 @@
   meetings, single-participant calls with real camera, mic and screen sharing, chat, encrypted notes
   recordings in calls and in the room, playback, notes for everyone invited, sharing by email, people search
   and credits display.
-- Real Google sign-in (OpenID Connect with PKCE, verified emails only) and Google Calendar: meetings with other
+- Real Google sign-in (OpenID Connect with PKCE, verified emails only) and optional Google Calendar access: meetings with other
   people in Home's Coming up, scheduled calls on the organizer's calendar with Google's invitations,
   changes and cancellations kept in step, and an organizer's own event made an Alcove call.
 - Live transcript and written notes with NEAR AI Cloud: Whisper transcribes speech while notes are on; when
