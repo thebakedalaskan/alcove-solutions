@@ -470,7 +470,10 @@ describe('end-to-end encryption', () => {
     await inGroup(again);
     await waitFor(() => !host.crypto.getSnapshot().members.includes(first.ticket.identity), 'the old connection out of the group');
     expect(host.crypto.getSnapshot().members).toContain(again.ticket.identity);
-    expect((await settle(host, (s) => s.participants.length === 2)).participants.map((p) => p.id).sort()).toEqual([host.ticket.identity, again.ticket.identity].sort());
+    // The MLS and call-state stores converge separately. Both old and new snapshots contain two people;
+    // wait for the actual replacement identity instead of accepting the unchanged old count.
+    const reloaded = await settle(host, (s) => s.participants.length === 2 && s.participants.some((p) => p.id === again.ticket.identity));
+    expect(reloaded.participants.map((p) => p.id).sort()).toEqual([host.ticket.identity, again.ticket.identity].sort());
     await host.leave();
   });
 

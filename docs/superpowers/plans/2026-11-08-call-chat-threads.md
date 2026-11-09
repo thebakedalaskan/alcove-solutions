@@ -53,8 +53,8 @@ Files: `apps/web/src/features/call/layout/Panel.tsx`, focused thread/composer ow
 
 ### Task 4: Review and release
 
-- [ ] Run all guards, typechecks, builds and meaningful integration flows on unique test database.
-- [ ] Independently review complete diff against every #87 criterion and fix findings.
+- [x] Run all guards, typechecks, builds and meaningful integration flows on unique test database.
+- [x] Independently review complete diff against every #87 criterion and fix findings.
 - [ ] Create separate PR with upgrade/validation notes, pass required CI, merge, deploy and verify matching public web/API release.
 
 ## Verification checkpoint
@@ -76,3 +76,10 @@ Files: `apps/web/src/features/call/layout/Panel.tsx`, focused thread/composer ow
 - Final caller trace: `CallPage` keys `InCall` by call and exact connection identity, explicitly separating draft/scroll/audience memory across calls and replacement connections. Independent reviewer agreed with the boundary; same-connection reconnect retains memory.
 
 - Visible mention-span reads derive from the displayed authorized unread messages, independently of fresh-alert candidates. This prevents retained old-room/private mentions from being excluded from both span and generic read observers.
+
+## Final local verification
+
+- Full repository run: 46/47 suites, 1,253/1,254 tests passed in 36m30s. Its sole failure was the existing reload fixture accepting the old two-person call snapshot before the separate call-state store had replaced the identity.
+- Strengthened that fixture’s wait to require the exact replacement identity, leaving the final participant equality assertion unchanged. No production behavior changed for this fixture correction.
+- With released main #192 integrated, all five affected/related suites passed: 109/109 tests (all 65 calls, six room-thread, four private-thread, 11 screen and 23 Drive export flows), 258.18s on isolated `alcove_test_87` after the full process exited.
+- API protocol, UI/alerts/read lifecycle, exact call/connection boundary and retained mention-span read follow-ups have independent source sign-off. Final actual-head CI is required before merge; deployment remains pending.
