@@ -20,8 +20,8 @@ export function useReplyAlerts({ session, state, crypto, direct, allowed, onOpen
 }) {
   const preference = useCallAlertPreference('replyAlerts');
   const toast = useToast();
-  const latest = useRef({ session, state, crypto, direct, allowed, onOpen });
-  latest.current = { session, state, crypto, direct, allowed, onOpen };
+  const latest = useRef({ session, allowed, onOpen });
+  latest.current = { session, allowed, onOpen };
   const scope = `${state.callId}:${state.generation}:${crypto.place}:${crypto.status}:${direct.ready}`;
   const baseline = useRef<{ scope: string; at: number; ids: Set<string> } | null>(null);
   const shown = useRef<{ id: string; scope: string; close: () => void } | null>(null);
@@ -49,9 +49,13 @@ export function useReplyAlerts({ session, state, crypto, direct, allowed, onOpen
     shown.current?.close();
     const close = toast('New reply in a conversation you follow.', { icon: 'reply', topic: 'call-reply', ms: 5000, action: { label: 'Open reply', onClick: () => {
       const now = latest.current;
-      if (now.session !== session || now.state.callId !== state.callId || !now.allowed || now.state.phase !== 'in-call' || now.state.generation !== state.generation || now.crypto.place !== crypto.place) return;
-      const readable = audience ? now.direct.ready && now.direct.peers.includes(audience.identity) && now.direct.messages.some((m) => m.id === id)
-        : now.crypto.status === 'in' && now.crypto.chat.some((m) => m.id === id && m.place === now.crypto.place);
+      const liveCall = session.getSnapshot(); const liveCrypto = session.crypto.getSnapshot(); const liveDirect = session.direct.getSnapshot();
+      if (now.session !== session || !now.allowed || liveCall.callId !== state.callId || liveCall.phase !== 'in-call'
+        || liveCall.generation !== state.generation || liveCrypto.status !== 'in' || liveCrypto.place !== crypto.place) return;
+      const roomMessage = audience ? undefined : liveCrypto.chat.find((m) => m.id === id);
+      const readable = audience ? liveDirect.ready && liveDirect.unread.includes(id) && liveDirect.peers.includes(audience.identity) && liveCrypto.members.includes(audience.identity)
+        && liveDirect.messages.some((m) => m.id === id && m.state === 'delivered' && m.thread !== null && m.from === audience.identity && m.to === session.ticket.identity && m.place === audience.place && m.generation === audience.generation)
+        : roomMessage !== undefined && liveCrypto.members.includes(roomMessage.from) && unreadThreadReplies(liveCall, liveCrypto, session.ticket.identity).includes(id);
       if (readable) now.onOpen(id, audience);
     } } });
     shown.current = { id, scope, close };

@@ -36,3 +36,5 @@
 - Final manual preference pass: local mention alerts and mention sounds independently toggle and save; unread counts remain, and re-enabling never replays the already-observed private mention. Corrected the inherited Settings-axis leak in the compact call Sounds sheet and verified it at wide 1728px and phone 390px. Browser-notification work owns its later shared tabbed wrapper and will replace these scoped sheet rules on integration.
 
 - Delayed room/private sound playback now rechecks the live store’s original generation/place, current membership, read receipt and call phase as well as the global audio gate. A read or departure between scheduling and playback cancels the cue. Fresh typechecks/builds pass after this UI-only correction.
+
+- Final review tightened mention/reply toast actions to read live call/crypto/direct snapshots at click, fencing store changes before React’s next render. Exact original phase/generation/place, current sender, confirmed unread destination and private pair are rechecked before navigation.
