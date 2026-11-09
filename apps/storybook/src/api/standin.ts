@@ -361,6 +361,7 @@ export const standIn: AlcoveApi = {
   },
   agents: {
     list: () => answer((w) => agentsFor(w).connections.toSorted((a, b) => b.createdAt.localeCompare(a.createdAt) || a.id.localeCompare(b.id))),
+    endpoint: () => answer(() => ({ endpoint: PREVIEW_MCP_ENDPOINT })),
     createToken: (input) => answer((w) => {
       const parsed = AgentTokenInputSchema.parse(input);
       const held = agentsFor(w);

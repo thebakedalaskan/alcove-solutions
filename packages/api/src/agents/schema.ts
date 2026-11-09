@@ -32,6 +32,10 @@ export const AgentTokenInputSchema = z.object({
 });
 export type AgentTokenInput = z.infer<typeof AgentTokenInputSchema>;
 
+/** Where an agent reaches Alcove (its MCP address), for a signed-in person to copy before any token exists. */
+export const AgentEndpointSchema = z.object({ endpoint: z.url() });
+export type AgentEndpoint = z.infer<typeof AgentEndpointSchema>;
+
 /** The bearer appears only in this response. Listing connections never returns it. */
 export const AgentTokenResultSchema = z.object({
   connection: AgentConnectionSchema,

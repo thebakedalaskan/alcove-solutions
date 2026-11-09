@@ -1,26 +1,25 @@
 /*
  * Settings, from More: one window for what you set up and leave, its parts as tabs down its left (a strip along its top on a
- * phone, where it's a sheet). Audio and video holds the menus the dock's arrows open (DevicePickers.tsx); Video quality, Sounds
- * and Notifications are your own, as on Settings' page; and Call, for whoever hosts, changes the call for everyone in it:
- * locking it, and (the organizer's alone) pointing at shared screens. Only one window is ever open over the call.
+ * phone, where it's a sheet). Audio and video holds the menus the dock's arrows open (DevicePickers.tsx); Video quality and
+ * Notifications (the browser's, sounds, quiet mode and what reaches you in a call) are your own, from the same pieces as
+ * Settings' page; and Call, for whoever hosts, changes the call for everyone in it: locking it, and (the organizer's alone)
+ * pointing at shared screens. Only one window is ever open over the call.
  */
 import { errorMessage } from '@alcove/api';
 import { IconButton, Modal, SettingRow, Switch, Tabs, useToast, type AvatarPerson } from '@alcove/ui';
 import { useId, useState } from 'react';
-import { CallNotificationControls } from '~/features/settings/Notifications';
-import { CallSoundControls } from '~/features/settings/Sounds';
+import { CallAlertControls } from '~/features/settings/Notifications';
 import { CamOptions, MicOptions } from '../media/DevicePickers';
 import type { Devices } from '../media/devices';
 import type { LocalMedia, MediaSnapshot } from '../media/media';
 import { VideoQuality } from '../media/VideoQuality';
 import type { HostControls } from './Panel';
 
-export type SettingsTab = 'av' | 'quality' | 'sounds' | 'notifications' | 'call';
+export type SettingsTab = 'av' | 'quality' | 'notifications' | 'call';
 
 const TABS: { value: SettingsTab; label: string }[] = [
   { value: 'av', label: 'Audio and video' },
   { value: 'quality', label: 'Video quality' },
-  { value: 'sounds', label: 'Sounds' },
   { value: 'notifications', label: 'Notifications' },
   { value: 'call', label: 'Call' }
 ];
@@ -70,9 +69,8 @@ export function CallSettings({ open, onOpenChange, tab, onTab, phone, media, m, 
               <CamOptions media={media} m={m} devices={devices} me={me} onBackground={onBackground} onSwitched={onSwitched.cam} />
             </>
           ) : shown === 'quality' ? <VideoQuality media={media} m={m} />
-            : shown === 'sounds' ? <CallSoundControls speakerId={m.speakerId} />
-              : shown === 'notifications' ? <CallNotificationControls />
-                : host && <HostSettings host={host} organizer={organizer} />}
+            : shown === 'notifications' ? <CallAlertControls speakerId={m.speakerId} />
+              : host && <HostSettings host={host} organizer={organizer} />}
         </section>
         <IconButton icon="x" label="Close settings" className="ic-set-x" onClick={() => onOpenChange(false)} />
       </div>
@@ -92,7 +90,7 @@ function HostSettings({ host, organizer }: { host: CallSettingsHost; organizer: 
   // Everyone here is told, the organizer too, as the call says it.
   const point = (on: boolean) => { setBusy('pointing'); host.setPointing(on).catch(failed).finally(() => setBusy(null)); };
   return (
-    <div className="set-parts">
+    <div className="set-groups">
       <SettingRow label="Lock the call" help="Nobody new can ask to join, and anyone who leaves can’t come back."
         control={<Switch checked={host.locked} label="Lock the call" disabled={busy === 'lock'} onChange={lock} />} />
       {organizer && (

@@ -1,12 +1,13 @@
+import type { SoundPreferences } from '@alcove/api';
 import type { Meta } from '@storybook/react-vite';
-import { screen } from 'storybook/test';
 import { at, chats, knocks, raisesHand, type CallScript } from '../../src/api/script';
 import { current } from '../../src/api/state';
 import { inCall, light, phone, settings } from '../../src/call';
 import { App } from '../../src/app';
 import { NotificationReport } from '../../src/notificationReport';
 import { pages, type PageArgs, type PageStory } from '../../src/page';
-import { AIKO, DIEGO, KOFI, LAUNCH_REVIEW, PRIYA } from './talk';
+import { pressable } from '../journeys/play';
+import { AIKO, CHECK_IN, DIEGO, KOFI, LAUNCH_REVIEW, PRIYA } from './talk';
 
 const meta = { title: 'Calls/Browser notifications', ...pages } satisfies Meta<PageArgs>;
 export default meta;
@@ -22,17 +23,28 @@ const script: CallScript = { notes: 'off', here: [{ who: PRIYA }, { who: KOFI },
     ...at(35, raisesHand(KOFI)), ...at(45, knocks(DIEGO)),
     ...at(55, { do: 'ask-for-notes', who: PRIYA })
   ] };
-const preview = (more: Omit<PageStory, 'args'> = {}) => inCall({ scenario: 'busy', call: LAUNCH_REVIEW, script,
-  then: () => { const world = current(); world.prefs.notifications = { ...world.prefs.notifications, enabled: false, privateMessages: true, replies: true, chatMentions: true, hands: true, questions: true, admissions: true, timers: true }; }
+/** The launch review, with browser notifications off for the account and every alert in a call on; `sounds` changes those. */
+const preview = (more: Omit<PageStory, 'args'> = {}, sounds: Partial<SoundPreferences> = {}) => inCall({ scenario: 'busy', call: LAUNCH_REVIEW, script,
+  then: () => {
+    const world = current();
+    world.prefs.notifications = { ...world.prefs.notifications, enabled: false, privateMessages: true, replies: true, chatMentions: true, hands: true, questions: true, admissions: true, timers: true };
+    world.prefs.sounds = { ...world.prefs.sounds, ...sounds };
+  }
 }, more);
-/** Permission is requested only by the explicit action. All media remains synthetic, including native OS stories. */
+/**
+ * Settings' Notifications in the call: the browser's notifications, sounds, quiet mode and what reaches you in a call. Only Turn
+ * on asks the browser. All media remains synthetic, including native OS stories.
+ */
 export const NotEnabled = preview({ play: controls });
 export const NotEnabledLight = light(NotEnabled);
 export const NotEnabledPhone = phone(NotEnabled);
 export const NotEnabledPhoneLight = light(NotEnabledPhone);
+/** The browser allowed them before, so they're a switch: turned on here, for when this tab is out of sight. */
 export const Enabled = preview({ parameters: { opening: { browser: { notifications: 'granted' } } }, play: async (c) => {
   await controls(c);
-  await c.userEvent.click(await screen.findByRole('button', { name: 'Enable browser notifications' }));
+  await c.step('Turn on browser notifications, once the choices have been read', async () => {
+    await c.userEvent.click(await pressable('switch', 'Browser notifications'));
+  });
 } });
 export const EnabledLight = light(Enabled);
 export const EnabledPhone = phone(Enabled);
@@ -43,6 +55,12 @@ export const BlockedPhone = phone(Blocked);
 export const Unsupported = preview({ parameters: { opening: { browser: { notificationTransport: 'unsupported' } } }, play: controls });
 export const UnsupportedLight = light(Unsupported);
 export const UnsupportedPhone = phone(Unsupported);
+/** Sounds off: the Sound column steps back and keeps each choice for when they're on again. */
+export const SoundsOff = preview({ play: controls }, { enabled: false });
+export const SoundsOffPhone = phone(SoundsOff);
+/** A guest's: the same choices, kept in this browser rather than in an account. */
+export const Guest = inCall({ scenario: 'signed-out', call: CHECK_IN, script: { here: [{ who: PRIYA, organizer: true }, { who: KOFI }], cues: at(.1, { do: 'let-in' }) } }, { play: controls });
+export const GuestPhone = phone(Guest);
 /** Switch to another tab before 20 seconds; current unread items stay in Chat when delivery fails. */
 export const DeliveryRefused = preview({ parameters: { opening: { browser: { notifications: 'granted', notificationTransport: 'failed' } } }, play: async (c) => { await Enabled.play?.(c); } });
 /** Real browser permission and OS delivery. Enable explicitly, then switch tabs before the scripted activity starts. */

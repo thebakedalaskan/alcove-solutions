@@ -14,7 +14,8 @@ export const NotifiedStoredSchema = z.array(z.object({ key: z.string().max(300),
 
 /**
  * Where clicking a browser notification leads: a call (its join page, or the call itself for whoever is in it), a
- * note, Notes or Home. It travels on the notification, so the page parses what the service worker hands back.
+ * note, Notes, Home, a document, or a ring (Alcove brought forward, where the ring's card is, on whatever page is open).
+ * It travels on the notification, so the page parses what the service worker hands back.
  */
 export const NotificationOpenSchema = z.discriminatedUnion('to', [
   z.object({ to: z.literal('call'), code: CallCodeSchema, event: CallNotificationDestinationSchema.nullable().default(null) }),
@@ -22,7 +23,8 @@ export const NotificationOpenSchema = z.discriminatedUnion('to', [
   z.object({ to: z.literal('notes') }),
   z.object({ to: z.literal('home') }),
   /** A line in a document, for someone tagged in it. */
-  z.object({ to: z.literal('document'), workspaceId: IDSchema, documentId: IDSchema, block: z.string().nullable() })
+  z.object({ to: z.literal('document'), workspaceId: IDSchema, documentId: IDSchema, block: z.string().nullable() }),
+  z.object({ to: z.literal('ring') })
 ]);
 
 export type NotificationOpen = z.infer<typeof NotificationOpenSchema>;

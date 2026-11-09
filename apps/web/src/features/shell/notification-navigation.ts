@@ -36,6 +36,8 @@ export function useNotificationNavigation(): (data: BrowserNotificationData) => 
     else if (open.to === 'notes') void router.navigate({ to: '/notes' });
     else if (open.to === 'home') void router.navigate({ to: '/home' });
     else if (open.to === 'document') void router.navigate({ to: '/drive/$workspaceId/$documentId', params: { workspaceId: open.workspaceId, documentId: open.documentId }, ...(open.block ? { hash: open.block } : {}) });
+    // A ring's card is on whatever page is open: bringing Alcove forward was all it took.
+    else if (open.to === 'ring') return;
     else {
       const at = router.state.location.pathname;
       if (at !== `/join/${open.code}` && at !== `/call/${open.code}`) void router.navigate({ to: '/join/$code', params: { code: open.code } });

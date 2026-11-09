@@ -31,6 +31,16 @@ export function withDriveExports(w: World) {
     ]
   };
 }
+/**
+ * Back from Google with Drive just connected: Art's account and the folders it let Alcove use, Notes and Transcript ticked
+ * as the server ticks them for a new connection, no folder yet, so nothing exports and nothing has gone.
+ */
+export function withDriveJustConnected(w: World) {
+  w.drive = {
+    settings: { connection: { status: 'connected', email: 'art@vandelay.industries' }, enabled: false, destination: null, formats: ['notes-markdown', 'transcript-text'] },
+    folders: structuredClone(DRIVE_FOLDERS), jobs: [], overrides: {}
+  };
+}
 export function withDriveReconnect(w: World) {
   withDriveExports(w);
   w.drive.settings.connection.status = 'reconnect';

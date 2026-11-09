@@ -21,7 +21,7 @@
 
 **Spec:** `docs/superpowers/specs/2026-11-06-in-call-rethought-design.md`. The canvas is in `docs/design/canvas/call/`; its model `nc.js` holds every string.
 
-**Reference pictures (this session only):** `/private/tmp/claude-501/-Users-benjaminkurrek--paradev-worktrees-the-privacy-suite-ui-ux-more-standardized-42ab204e/e671cf90-d08d-4612-aa72-16f781372f65/scratchpad/ref/`:
+**Reference pictures (this session only):** kept in that session's scratch folder:
 - `frames/` holds every journey frame at full size, with `FRAMES.md` saying what each shows.
 - `steps/` holds every canvas moment.
 - `idea.png`, `where.png`, `sizes.png` and `before.png` are the other boards.

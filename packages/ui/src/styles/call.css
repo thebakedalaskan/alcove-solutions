@@ -840,21 +840,26 @@ button.dev-pick:hover, .dev-pick[data-state="open"] { background: color-mix(in s
 .ic-set-nav .ac-tab:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); color: var(--ink); }
 .ic-set-nav .ac-tab[aria-selected="true"] { background: color-mix(in srgb, var(--ink) 11%, transparent); color: var(--ink); font-weight: 600; }
 .ic-set-nav .ac-tab[aria-selected="true"]::after { display: none; }
-.ic-set-pane { --ctl: auto; min-width: 0; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 22px 24px 28px; }
-.ic-set-ph { margin: 0 52px 14px 4px; font: 600 15px/22px var(--font-sans); color: var(--ink); }
-.ic-set-x { position: absolute; top: 14px; right: 14px; }
+.ic-set-pane { min-width: 0; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 22px 24px 28px; }
+/* A part's heading stays as its rows scroll under it, so Close (×) never sits over a row. */
+.ic-set-ph { position: sticky; top: -22px; z-index: 2; margin: -22px -24px 2px; padding: 22px 76px 12px 28px; background: var(--surface-raised); font: 600 15px/22px var(--font-sans); color: var(--ink); }
+.ic-set-x { position: absolute; z-index: 3; top: 14px; right: 14px; }
 /* What the dock's menus hold, at the pane's width. */
 .ic-set-pane .ac-eyebrow { margin: 2px 4px 6px; }
 .ic-set-pane .ac-eyebrow.mt { margin-top: 16px; }
 .ic-set-pane .hint { margin: 10px 4px 2px; font-size: 12.5px; line-height: 1.45; color: var(--ink-3); }
 .ic-set-pane .ic-cprev { height: 180px; }
-/* Settings' rows at the pane's width: the label, then its control beside it, or under it when it needs the width. */
-.ic-set-pane .set-r { grid-template-columns: minmax(0, 1fr) auto; column-gap: var(--space-4); padding-inline: var(--space-1); }
-.ic-set-pane .set-r.is-wide, .ic-set-pane .set-r:has(.set-c .ac-btn) { grid-template-columns: minmax(0, 1fr); row-gap: 10px; }
-.ic-set-pane .set-tx { display: block; }
+/*
+ * Settings' rows at the pane's width, the label and its control beside it. The window is their panel, so a panel here is only
+ * its heading (What reaches you) and the hairlines between its rows.
+ */
+.ic-set-pane .set-pn { --ctl: 240px; padding: 0; border-radius: 0; background: none; box-shadow: none; }
+.ic-set-pane .set-blk + .set-blk { margin-top: 20px; }
+.ic-set-pane .set-bh { margin-inline: var(--space-1); }
+.ic-set-pane .set-r, .ic-set-pane .set-mx { padding-inline: var(--space-1); }
+.ic-set-pane .set-r { column-gap: var(--space-4); }
 .ic-set-pane .set-t { font-size: 14px; line-height: 20px; }
 .ic-set-pane .set-h { margin-top: 3px; font-size: 12.5px; line-height: 17px; }
-.ic-set-pane .set-line { flex-wrap: wrap; }
 @media (max-width: 599px) {
   .ac-modal.ic-set { inset: auto 0 0; width: 100%; height: calc(100dvh - 64px); transform: none; border-radius: 24px 24px 0 0; animation: ic-sheet-up var(--duration-2) var(--ease-out) both; }
   .ic-set-in { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
@@ -865,7 +870,6 @@ button.dev-pick:hover, .dev-pick[data-state="open"] { background: color-mix(in s
   .ic-set-nav .ac-tab { flex: none; height: 34px; }
   .ic-set-ph { display: none; }
   .ic-set-pane { padding: 14px 16px calc(24px + env(safe-area-inset-bottom, 0px)); }
-  .ic-set-pane > .set-parts > .set-r:first-child { border-top-color: transparent; }
   .ic-set-x { top: 18px; right: 12px; }
 }
 /* No keyboard hints where there's no hover (a touch screen), and the tile menu is always there to tap. */

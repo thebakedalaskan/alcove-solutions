@@ -3,7 +3,7 @@ import { useToast } from '@alcove/ui';
 import { useEffect, useRef } from 'react';
 import { type PrivateAudience } from '../layout/PrivateChat';
 import { unreadChatMentions } from './attention';
-import { useCallAlertPreference } from './alertPreferences';
+import { useNotificationPreferences } from '~/lib/notification-preferences';
 
 interface Baseline { scope: string; at: number; ids: Set<string> }
 /** Local generic attention only. Exact destinations are rechecked on use; no message opens or takes focus itself. */
@@ -11,7 +11,9 @@ export function useMentionAlerts({ session, state, crypto, direct, allowed, onOp
   session: CallSession; state: CallState; crypto: CallCrypto; direct: DirectMessagesState; allowed: boolean;
   onOpen: (id: string, audience: PrivateAudience | null) => void;
 }) {
-  const preference = useCallAlertPreference('mentionAlerts');
+  // The Alert tick for mentions of you: signed in, the profile's; a guest's, kept in their browser.
+  const preferences = useNotificationPreferences();
+  const on = preferences.ready && preferences.prefs.chatMentions;
   const toast = useToast();
   const latest = useRef({ session, allowed, onOpen });
   latest.current = { session, allowed, onOpen };
@@ -31,8 +33,8 @@ export function useMentionAlerts({ session, state, crypto, direct, allowed, onOp
     roomBaseline.current = allowed && crypto.status === 'in' ? { scope: roomScope, at: Date.now(), ids: new Set(crypto.chat.filter((m) => !m.isMe && !m.sending && !m.failed).map((m) => m.id)) } : null;
     privateBaseline.current = allowed && direct.ready ? { scope: privateScope, at: Date.now(), ids: new Set(direct.messages.filter((m) => m.to === session.ticket.identity && m.state === 'delivered').map((m) => m.id)) } : null;
     const active = shown.current;
-    if (active && (!allowed || !preference.enabled || active.scope !== (active.audience ? privateScope : roomScope) || !(active.audience ? privateIds : roomIds).has(active.id))) { active.close(); shown.current = null; }
-    if (!allowed || !preference.enabled) return;
+    if (active && (!allowed || !on || active.scope !== (active.audience ? privateScope : roomScope) || !(active.audience ? privateIds : roomIds).has(active.id))) { active.close(); shown.current = null; }
+    if (!allowed || !on) return;
     const freshRoom = previousRoom?.scope === roomScope && Date.now() - previousRoom.at <= 12_000
       ? crypto.chat.find((m) => roomIds.has(m.id) && crypto.members.includes(m.from) && !previousRoom.ids.has(m.id) && state.elapsed - m.at <= 5) : undefined;
     const freshPrivate = previousPrivate?.scope === privateScope && Date.now() - previousPrivate.at <= 12_000
@@ -53,5 +55,5 @@ export function useMentionAlerts({ session, state, crypto, direct, allowed, onOp
       if (unread) now.onOpen(id, audience);
     } } });
     shown.current = { id, audience, scope: audience ? privateScope : roomScope, close };
-  }, [session, state, crypto, direct, roomScope, privateScope, allowed, preference.enabled, toast]);
+  }, [session, state, crypto, direct, roomScope, privateScope, allowed, on, toast]);
 }

@@ -32,17 +32,20 @@ visible. Covered or inactive call views do not mark messages read.
 Reply sounds and local toasts apply only to original authors or people who have participated in that thread;
 private threads address only their other recipient. Initial/reconnected history and old cues are baselined away.
 The existing sound scheduler handles reply-category volume, quiet mode, coalescing and deduplication. Local
-toasts contain no content, and Open reply rechecks current scope and permission. Sounds → Show reply alerts
-controls toasts independently of sound and browser notification permission. Persistent counts remain available.
-Browser notifications are coordinated by their separate feature.
+toasts contain no content, and Open reply rechecks current scope and permission. The Alert tick for Replies to you
+(`notifications.replies`) controls the toasts whatever the browser's permission, and, once browser notifications are on,
+a reply's browser alert as well; its sound is a separate tick. Persistent counts remain available. Browser delivery is
+described in [Browser notifications](browser-notifications.md).
 
 ## Stored data upgrade
 
 There is no SQL migration or key/header change for threading. Older MLS/private text payloads acquire
 `thread: null` through their stored schema default, and older MLS text acquires `broadcast: false`. Existing `call_mls.party = NULL` rows keep their original
 history rules; new sender metadata uses the existing nullable column. Older sealed profiles acquire
-`sounds.replies = true` and `notifications.replyAlerts = true` through defaults; their other choices survive.
-The next profile save writes the current shape. Private thread rows follow private-message deletion and shared
+`sounds.replies = true` through defaults. A profile from when the toast had its own switch reads
+`replies = replies || replyAlerts`, so a toast that was on stays on; one from before either field reads `replies = true`,
+as its toast was. A guest's switch was kept under its own key (`alcove.guest.reply-alerts`); it is read once in place of
+the guest record's defaulted copy, folded the same way, and removed when the record is written back. Their other choices survive, and the next profile save writes the current shape, without `replyAlerts`. Private thread rows follow private-message deletion and shared
 note/export exclusion exactly; ending the call physically deletes them.
 
 Real API suites cover concurrent canonical replies, replies sent to everyone, unavailable originals, failed and ambiguous sends, room

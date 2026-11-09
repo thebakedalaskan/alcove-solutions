@@ -193,23 +193,32 @@ phone's bars and anything that opens stay night.
 `routes/_app/settings.tsx`, `features/settings/`, `components/settings.tsx`, `styles/settings.css` (`set-`). Moment:
 `settings`. Board: `Settings.dc.html`.
 
-The last of the light, with you in it, then one page. Change one thing and leave.
+The last of the light, with you in it, then seven groups. Change one thing and leave.
 
 - **The band.** You stand on the horizon in your arch, with your name (Newsreader) and address. Take the tour and Sign out
   sit at the right.
-- **The page.** One long sheet with a sticky index beside it: Profile, Notes, Recording, Calendar, Devices, Notifications,
-  Appearance, Agents, Plan and credits, Privacy. A small sun on the index follows the part in view. At 1000px and narrower the index
-  becomes a strip.
-- **No cards.** Below the horizon the water goes still and becomes the page. Every row is a label, with help under it, then
-  a control on one axis, so the eye runs straight down. Saved appears just left of that axis, where you pressed. Nothing is
-  filled at rest.
+- **The index.** It stays beside the page as you scroll, and a small sun on it follows the group in view: You, Calls and
+  notes, Audio and video, Notifications, Connections, Plan and credits, Privacy. At 1000px and narrower it becomes a strip
+  that stays at the top. A group is found by what it's for, so a setting has one obvious home.
+- **Groups of panels.** Each group is a heading over one or two panels (`SettingsGroup`, `SettingsPanel`): `surface`, a
+  hairline edge, rows separated by hairlines inside, never a card per row. A panel is a set of things you'd change
+  together, which is what makes a long page scannable. Every control sits at the panel's right edge, and Saved appears
+  just left of the control you pressed. Help is one short line, only where it's needed; a fact you can't change is the help
+  line of the setting it belongs to, not a row of its own. Nothing is filled at rest.
+- **What reaches you is said once.** Notifications holds the browser's permission, Sounds (silence, volume, play), Quiet
+  mode and the reminder before a call, then one table, `AlertTable`: each thing that can reach you is a row with an Alert
+  tick (inside Alcove, and from the browser when Alcove is in another tab) and a Sound tick, empty where that way doesn't
+  apply. With sounds off, the Sound column steps back and keeps its ticks. The call's own Settings shows the same pieces
+  with the In a call rows.
+- **What you set up once folds away.** Connections holds Google Calendar (its two switches nested under it), Google Drive
+  and agents. Drive is one line that says where notes go until Manage opens its folder, files, recent exports and
+  Disconnect in place. Connect an agent opens in place too: Alcove's address with Copy, or a token for a script, shown
+  once. The shared `AgentPermissions`, `AgentDisclosure`, `AgentAddress` and `AgentTokenReveal` components live in
+  `components/agents.tsx` and `styles/agents.css`.
 - **Sign out** signs you out at once. Only when recordings haven't uploaded does it ask first: the sky grows to hold the
   question, it says they'll be deleted, and Stay signed in is the filled answer.
-- **Delete account** opens in place, with what goes beside what stays. The shared demo account can't be deleted, and says so.
-- **Agents** stays on the same sheet: named connections with their permissions, expiry, last use and Disconnect. Creating
-  a personal token opens its fields in place; the token is shown once, masked, with Copy and Done. The shared
-  `AgentPermissions`, `AgentDisclosure` and `AgentTokenReveal` components live in `components/agents.tsx` and
-  `styles/agents.css`.
+- **Delete account** sits apart, in its own panel at the end, and opens in place, with what goes beside what stays. The
+  shared demo account can't be deleted, and says so.
 
 ## Connecting an agent
 
@@ -271,10 +280,11 @@ circles, and whoever speaks gets the `speak` ring. The camera appears only here 
   then Open floating call, Reset layout while there's a change to put back, Move to another device and Settings. No key
   hints or scope chips in it, and no keyboard shortcuts sheet: the keys still work.
 - **Settings** is one modal from More, with its parts as tabs down its left (on `surface`, the pane on `surface-raised`):
-  Audio and video (the dock's two menus in one place), Video quality, Sounds, Notifications, and Call, which only whoever
-  hosts has (Lock the call; Pointing at shared screens, the organizer's alone). Each part has its heading and its rows,
-  Settings' own label-and-control rows at the modal's width, and the modal keeps its size as the parts change. On a phone
-  it's a sheet, its parts a strip along the top.
+  Audio and video (the dock's two menus in one place), Video quality, Notifications, and Call, which only whoever hosts has
+  (Lock the call; Pointing at shared screens, the organizer's alone). Notifications is Settings' own: the browser's
+  permission, Sounds, Quiet mode and the alert table's In a call rows. Each part has its heading and its rows, Settings'
+  own label-and-control rows at the modal's width, and the modal keeps its size as the parts change. On a phone it's a
+  sheet, its parts a strip along the top.
 - **Share**, in the dock, opens one menu over it, a step at a time: Your screen, A board or The workspace, then the kind of
   screen or the board picker in the same menu, so no window opens over another. While someone else presents a board or the
   workspace, A board and The workspace say who instead. Stop sharing, on a board or the workspace you present, asks for you

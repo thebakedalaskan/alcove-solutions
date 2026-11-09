@@ -16,20 +16,38 @@ export const SummaryLengthSchema = z.enum(['short', 'detailed']);
 export type SummaryLength = z.infer<typeof SummaryLengthSchema>;
 
 
-export const NotificationPrefsSchema = z.object({
+/**
+ * A call's reply and mention toasts once had switches of their own (`replyAlerts`, `mentionAlerts`, on unless turned off)
+ * beside the browser's `replies` and `chatMentions`, which now drive both. A record that still holds one keeps an alert
+ * that was on, and the next save writes it without them.
+ */
+function foldAlerts(v: unknown): unknown {
+  if (typeof v !== 'object' || v === null || Array.isArray(v)) return v;
+  const folded: Record<string, unknown> = { ...v };
+  if ('replyAlerts' in v && typeof v.replyAlerts === 'boolean') folded['replies'] = ('replies' in v && v.replies === true) || v.replyAlerts;
+  if ('mentionAlerts' in v && typeof v.mentionAlerts === 'boolean') folded['chatMentions'] = ('chatMentions' in v && v.chatMentions === true) || v.mentionAlerts;
+  return folded;
+}
+
+/**
+ * Each thing that can reach someone, and whether it does from the browser while Alcove isn't in front, once `enabled` and
+ * the browser allows it. `replies` and `chatMentions` also gate a call's brief alerts on screen, whatever the browser's
+ * permission; the other ticks gate only the browser. The defaults are what a record written before a field existed reads as.
+ */
+const NotificationFields = z.object({
   /** Older profiles keep their existing browser opt-in; new profiles explicitly start false. */
   enabled: z.boolean().default(true),
   privateMessages: z.boolean().default(false),
-  replies: z.boolean().default(false),
-  /** In-app reply feedback stays independent of OS notifications. */
-  replyAlerts: z.boolean().default(true),
-  chatMentions: z.boolean().default(false),
+  /** Replies to you in a call. A record from before both this and `replyAlerts` had the call's reply alert on. */
+  replies: z.boolean().default(true),
+  /** Mentions of you in a call's chat. A record from before both this and `mentionAlerts` had the call's mention alert on. */
+  chatMentions: z.boolean().default(true),
   hands: z.boolean().default(false),
   questions: z.boolean().default(false),
   admissions: z.boolean().default(false),
   timers: z.boolean().default(false),
-  /** Local mention toasts are independent of operating-system notification permission. */
-  mentionAlerts: z.boolean().default(true),
+  /** Someone ringing you: from the browser while Alcove isn't in front (the ring's card and sound are always there). */
+  ringing: z.boolean().default(true),
   /** Minutes before a call to remind: 0 is off. */
   beforeCall: z.union([z.literal(0), z.literal(1), z.literal(5)]),
   notesReady: z.boolean(),
@@ -40,31 +58,34 @@ export const NotificationPrefsSchema = z.object({
   tagged: z.boolean().default(true)
 });
 
+/** As stored, in a profile or a guest's browser: older records fold their call alerts in as they're read. */
+export const NotificationPrefsSchema = z.preprocess(foldAlerts, NotificationFields);
+
 export type NotificationPrefs = z.infer<typeof NotificationPrefsSchema>;
-/** Complete current wire group; stored upgrade defaults must never enable a missing request field. */
+/** Complete current wire group; stored upgrade defaults must never enable a missing request field, and nothing is folded. */
 export const NotificationPrefsInputSchema = z.object({
-  enabled: NotificationPrefsSchema.shape.enabled.removeDefault(),
-  privateMessages: NotificationPrefsSchema.shape.privateMessages.removeDefault(),
-  replies: NotificationPrefsSchema.shape.replies.removeDefault(),
-  replyAlerts: NotificationPrefsSchema.shape.replyAlerts.removeDefault(),
-  mentionAlerts: NotificationPrefsSchema.shape.mentionAlerts.removeDefault(),
-  chatMentions: NotificationPrefsSchema.shape.chatMentions.removeDefault(),
-  hands: NotificationPrefsSchema.shape.hands.removeDefault(),
-  questions: NotificationPrefsSchema.shape.questions.removeDefault(),
-  admissions: NotificationPrefsSchema.shape.admissions.removeDefault(),
-  timers: NotificationPrefsSchema.shape.timers.removeDefault(),
-  tagged: NotificationPrefsSchema.shape.tagged.removeDefault(),
-  beforeCall: NotificationPrefsSchema.shape.beforeCall,
-  notesReady: NotificationPrefsSchema.shape.notesReady,
-  sharedWithYou: NotificationPrefsSchema.shape.sharedWithYou,
-  notesRequested: NotificationPrefsSchema.shape.notesRequested,
-  followUpDue: NotificationPrefsSchema.shape.followUpDue,
+  enabled: NotificationFields.shape.enabled.removeDefault(),
+  privateMessages: NotificationFields.shape.privateMessages.removeDefault(),
+  replies: NotificationFields.shape.replies.removeDefault(),
+  chatMentions: NotificationFields.shape.chatMentions.removeDefault(),
+  hands: NotificationFields.shape.hands.removeDefault(),
+  questions: NotificationFields.shape.questions.removeDefault(),
+  admissions: NotificationFields.shape.admissions.removeDefault(),
+  timers: NotificationFields.shape.timers.removeDefault(),
+  ringing: NotificationFields.shape.ringing.removeDefault(),
+  tagged: NotificationFields.shape.tagged.removeDefault(),
+  beforeCall: NotificationFields.shape.beforeCall,
+  notesReady: NotificationFields.shape.notesReady,
+  sharedWithYou: NotificationFields.shape.sharedWithYou,
+  notesRequested: NotificationFields.shape.notesRequested,
+  followUpDue: NotificationFields.shape.followUpDue,
 } satisfies { [K in keyof NotificationPrefs]: z.ZodType<NotificationPrefs[K]> });
 
-/** New accounts and guests deliberately opt in, independently of existing browser permission. */
-export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPrefs = NotificationPrefsSchema.parse({
-  enabled: false, beforeCall: 5, notesReady: true, sharedWithYou: true, notesRequested: true, followUpDue: false, tagged: true
-});
+/** New accounts and guests: the browser is opt-in; everything else reaches them but new questions and follow-ups. */
+export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPrefs = {
+  enabled: false, privateMessages: true, replies: true, chatMentions: true, hands: true, questions: false, admissions: true, timers: true, ringing: true,
+  beforeCall: 5, notesReady: true, sharedWithYou: true, notesRequested: true, followUpDue: false, tagged: true
+};
 
 
 const allUnique = (items: string[]): boolean => new Set(items).size === items.length;

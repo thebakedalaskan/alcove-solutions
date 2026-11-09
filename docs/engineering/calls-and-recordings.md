@@ -963,7 +963,11 @@ don't hold up the shutdown, and each browser goes to another instance.
 Rings past their time also drop by a timer in the browser, so a card doesn't outstay a dropped stream. That timer trusts
 the server over the browser's own clock: a ring the server just sent is ringing, so a clock that's wrong can't hide it.
 
-**What it can't do.** Reach someone with no Alcove tab open. Browser notifications and Web Push are for later (#88).
+**When Alcove isn't in front.** A tab that shows the card also raises a browser notification that names nobody, once
+browser notifications are on and allowed and rings are ticked (`features/calls/ringing/RingAlert.ts`; see
+[Browser notifications › Rings](browser-notifications.md#rings)): one per ring, closed when the ring ends.
+
+**What it can't do.** Reach someone with no Alcove tab open: there's no Web Push.
 
 Rings are rows in `call_rings`, in the organizer's vault, found by a keyed hash of the address (blind index purpose
 `ring`). The address and the answer are sealed as a `call-ring` record bound to the meeting and the ring;
@@ -1886,8 +1890,9 @@ steps (`ShareMenu.tsx`); and the call's keys are `session/useCallShortcuts.ts`. 
     and People, then Raise your hand.
   - *Settings* (`CallSettings.tsx`) is one `Modal` from More, its parts a tablist down its left (a strip on a phone, where
     it's a sheet): Audio and video (`MicOptions` and `CamOptions` from `media/DevicePickers.tsx`, the dock's own menus),
-    Video quality (`media/VideoQuality.tsx`), Sounds and Notifications (`CallSoundControls` and `CallNotificationControls`,
-    Settings' own call-sized controls), and Call, for whoever hosts: Lock the call (`HostControls.lock`, a host action) and,
+    Video quality (`media/VideoQuality.tsx`), Notifications (`CallAlertControls`, from the same pieces as Settings' own
+    Notifications: Browser notifications, Sounds, Quiet mode and the In a call rows of What reaches you, a guest's kept in
+    this browser), and Call, for whoever hosts: Lock the call (`HostControls.lock`, a host action) and,
     for the organizer alone, Pointing at shared screens (`HostControls.setPointing`, which the API takes from the organizer
     only). Each switch moves once the call has taken it. The part you were on is kept while the call is open; one that's
     gone (Call, once you no longer host) shows Audio and video. Closing it hands the keys back to More.

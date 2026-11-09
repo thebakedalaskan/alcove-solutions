@@ -1,9 +1,11 @@
-import type { AgentAuthorization, AgentConnection, AgentDecisionInput, AgentDecisionResult, AgentTokenInput, AgentTokenResult } from './schema';
+import type { AgentAuthorization, AgentConnection, AgentDecisionInput, AgentDecisionResult, AgentEndpoint, AgentTokenInput, AgentTokenResult } from './schema';
 import type { ID } from '../shared/ids';
 
 export interface AgentsApi {
   /** Active connections, including their permissions, expiry and last use. Credentials are never returned here. */
   list(): Promise<AgentConnection[]>;
+  /** The MCP address an agent connects to: the same for every connection, and shown before any token exists. */
+  endpoint(): Promise<AgentEndpoint>;
   /** Creates a named personal token and reveals its bearer once. */
   createToken(input: AgentTokenInput): Promise<AgentTokenResult>;
   /** Disconnects a connection for good, with its credentials. */

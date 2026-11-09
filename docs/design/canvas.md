@@ -188,7 +188,7 @@ class Component extends DCLogic {
   if no existing moment fits. A moment added only to `scene.js` gets Home's visitors on the canvas, so add it to the app's
   `Horizon` too (see [building.md](building.md#put-the-page-on-the-evening)) and run the sync tool.
 - **Its data.** Put the page's data in `data-<name>.js` under a short name of its own, keyed by the same ids as `AH.D`. The
-  kit uses `AH.NT` for Notes, `AH.TM` for Team, `AH.RC` for Record, `AH.ST2` for Settings and `AH.NOTE` for a note.
+  kit uses `AH.NT` for Notes, `AH.TM` for Team, `AH.RC` for Record, `AH.ST3` for Settings and `AH.NOTE` for a note.
   - Use the demo world's people and notes, so every page tells one story.
   - Every person and every call is made up. Never write a real person's name, the user's included, or copy a real calendar
     or a real call. You are Art Vandelay.
@@ -234,7 +234,7 @@ a page. Each page gets a `Steps<Page>.dc.html` board.
 - **A phone row comes last.**
 - **Journeys are data** in the page's data file. The kit keeps them beside each page's data: `AH.JOURNEYS_HOME`,
   `AH.JOURNEYS_TEAM` with `AH.JOURNEYS_TEAM_PHONE`, `AH.JOURNEYS_NOTE` with `AH.JOURNEYS_NOTE_PHONE`, `AH.RC.JOURNEYS`,
-  `AH.ST2.JOURNEYS`, and inline in `StepsNotes.dc.html`. For a new page:
+  `AH.ST3.JOURNEYS`, and inline in `StepsNotes.dc.html`. For a new page:
 
   ```js
   AH.JOURNEYS_BILLING = [

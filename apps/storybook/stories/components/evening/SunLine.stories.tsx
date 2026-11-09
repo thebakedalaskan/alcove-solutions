@@ -1,17 +1,14 @@
 /*
  * SunLine: how much of your minutes of notes is left, drawn on a row's own hairline as a sun a `share` of the way along
- * it (0 to 1), with the line lit behind it. Settings' Plan and credits puts it on the Notes left row, so the hairline
- * under that row is the horizon. At nothing, the sun has set, and a little of its light is left at the start of the line.
+ * it (0 to 1), with the line lit behind it. Settings' Plan and credits puts it on the Notes left row of its panel, so the
+ * hairline under that row is the horizon. At nothing, the sun has set, and a little of its light is left at the start of the line.
  */
-import { SettingFact, SettingRow, SettingsPart, SunLine } from '@alcove/ui';
+import { Button, SettingFact, SettingRow, SettingsGroup, SettingsPanel, SunLine } from '@alcove/ui';
 import type { Decorator, Meta, StoryObj } from '@storybook/react-vite';
+import { did } from '../../../src/component';
 
-/** Settings' sheet, as the page lays it out: one column of parts, every control on the same axis. */
-const sheet: Decorator = (Story) => (
-  <div className="set" style={{ position: 'relative', isolation: 'isolate', marginTop: 0 }}>
-    <div className="set-parts" style={{ maxWidth: 820 }}><Story /></div>
-  </div>
-);
+/** Settings' column, as the page lays it out. */
+const sheet: Decorator = (Story) => <div className="set-groups" style={{ maxWidth: 940, margin: '0 auto' }}><Story /></div>;
 
 /** The minutes of notes the month started with. */
 const GRANTED = 400;
@@ -32,13 +29,15 @@ const meta = {
   render: (args) => {
     const share = clamp(args.share);
     return (
-      <SettingsPart id="plan" title="Plan and credits">
-        <SettingRow className="is-left" label="Notes left" control={<span className="set-left">{hoursAndMinutes(GRANTED * share)}</span>}>
-          <SunLine {...args} />
-        </SettingRow>
-        <SettingRow label="Used this month" control={<SettingFact title="Since 00:00 UTC on the 1st">{share < 1 ? hoursAndMinutes(GRANTED * (1 - share)) : 'None yet'}</SettingFact>} />
-        <SettingRow label="Calls without notes" control={<SettingFact>Free</SettingFact>} />
-      </SettingsPart>
+      <SettingsGroup id="plan" title="Plan and credits">
+        <SettingsPanel>
+          <SettingRow className="is-left" label="Notes left" help="Calls without notes are free." control={<span className="set-left">{hoursAndMinutes(GRANTED * share)}</span>}>
+            <SunLine {...args} />
+          </SettingRow>
+          <SettingRow label="Used this month" control={<SettingFact title="Since 00:00 UTC on the 1st">{share < 1 ? hoursAndMinutes(GRANTED * (1 - share)) : 'None yet'}</SettingFact>} />
+          <SettingRow label="Add credits" help="Pay with a stablecoin from any wallet or exchange." control={<Button size="sm" icon="plus" onClick={did('onAdd')}>Add credits</Button>} />
+        </SettingsPanel>
+      </SettingsGroup>
     );
   }
 } satisfies Meta<typeof SunLine>;
@@ -51,3 +50,4 @@ export const SomeLeft: Story = { name: 'Some left' };
 export const AllLeft: Story = { name: 'All left', args: { share: 1 } };
 /** None left: the sun has set, and a little of its light stays at the start of the line. */
 export const NoneLeft: Story = { name: 'None left', args: { share: 0 } };
+export const SomeLeftNight: Story = { name: 'Some left, night', globals: { theme: 'dark' } };

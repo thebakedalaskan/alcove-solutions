@@ -2,7 +2,7 @@ import { type CallCrypto, type CallSession, type CallState, type DirectMessagesS
 import { useToast } from '@alcove/ui';
 import { useEffect, useRef } from 'react';
 import { type PrivateAudience } from '../layout/PrivateChat';
-import { useCallAlertPreference } from './alertPreferences';
+import { useNotificationPreferences } from '~/lib/notification-preferences';
 
 /** Only authors and people who have taken part follow a thread. Reading a thread never subscribes the room. */
 export function unreadThreadReplies(state: CallState, crypto: CallCrypto, identity: string): string[] {
@@ -18,7 +18,9 @@ export function useReplyAlerts({ session, state, crypto, direct, allowed, onOpen
   session: CallSession; state: CallState; crypto: CallCrypto; direct: DirectMessagesState; allowed: boolean;
   onOpen: (id: string, audience: PrivateAudience | null) => void;
 }) {
-  const preference = useCallAlertPreference('replyAlerts');
+  // The Alert tick for replies to you: signed in, the profile's; a guest's, kept in their browser.
+  const preferences = useNotificationPreferences();
+  const on = preferences.ready && preferences.prefs.replies;
   const toast = useToast();
   const latest = useRef({ session, allowed, onOpen });
   latest.current = { session, allowed, onOpen };
@@ -39,8 +41,8 @@ export function useReplyAlerts({ session, state, crypto, direct, allowed, onOpen
     const received = new Set([...crypto.chat.filter((m) => !m.isMe && !m.sending && !m.failed).map((m) => m.id),
       ...direct.messages.filter((m) => m.to === session.ticket.identity && m.state === 'delivered').map((m) => m.id)]);
     baseline.current = allowed ? { scope, at: Date.now(), ids: received } : null;
-    if (shown.current && (!allowed || !preference.enabled || shown.current.scope !== scope || !ids.has(shown.current.id))) { shown.current.close(); shown.current = null; }
-    if (!allowed || !preference.enabled || !previous || previous.scope !== scope || Date.now() - previous.at > 12_000) return;
+    if (shown.current && (!allowed || !on || shown.current.scope !== scope || !ids.has(shown.current.id))) { shown.current.close(); shown.current = null; }
+    if (!allowed || !on || !previous || previous.scope !== scope || Date.now() - previous.at > 12_000) return;
     const room = crypto.chat.find((m) => relevant.has(m.id) && crypto.members.includes(m.from) && !previous.ids.has(m.id) && state.elapsed - m.at <= 5);
     const privateMessage = privateReplies.find((m) => !previous.ids.has(m.id) && state.elapsed - m.at <= 5);
     const id = room?.id ?? privateMessage?.id;
@@ -59,5 +61,5 @@ export function useReplyAlerts({ session, state, crypto, direct, allowed, onOpen
       if (readable) now.onOpen(id, audience);
     } } });
     shown.current = { id, scope, close };
-  }, [session, state, crypto, direct, scope, allowed, preference.enabled, toast]);
+  }, [session, state, crypto, direct, scope, allowed, on, toast]);
 }

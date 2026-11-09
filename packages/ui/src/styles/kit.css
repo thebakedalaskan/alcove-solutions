@@ -620,48 +620,63 @@
 .ac-follow-waiting { padding: var(--space-3) 0; border-top: 1px solid var(--line); }
 .ac-follow-evidence { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1); margin-top: var(--space-1); }
 
-/* Google Drive exports: compact choices and one quiet list, in Settings and beside a saved call. */
-.ac-drive-formats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
-.ac-drive-format { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 14px 12px; border: 1px solid var(--line-control); border-radius: var(--radius-md); text-align: left; color: var(--ink-2); background: transparent; cursor: pointer; transition: border-color var(--duration-fast), background var(--duration-fast); }
-.ac-drive-format:hover { background: var(--surface-raised); }
-.ac-drive-format:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
-.ac-drive-format:disabled { opacity: .5; cursor: default; }
-.ac-drive-format.is-on { border-color: var(--horizon); background: var(--horizon-soft); color: var(--ink); }
-.ac-drive-format > .ac-i { flex: none; color: var(--horizon); }
-.ac-drive-format > span:not(.ac-drive-tick) { min-width: 0; flex: 1; }
-.ac-drive-format b, .ac-drive-format small { display: block; }
-.ac-drive-format b { font: 500 14px/20px var(--font-sans); }
-.ac-drive-format small { margin-top: 2px; font: 400 12px/17px var(--font-sans); color: var(--ink-2); }
-.ac-drive-tick { width: 17px; height: 17px; flex: none; border: 1px solid var(--line-control); border-radius: 5px; display: grid; place-items: center; }
-.ac-drive-tick .ac-i { opacity: 0; }
-.ac-drive-format.is-on .ac-drive-tick { border-color: var(--horizon); color: var(--horizon); }
-.ac-drive-format.is-on .ac-drive-tick .ac-i { opacity: 1; }
-.ac-drive-disclosure { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 9px; color: var(--ink-2); font: 400 13px/20px var(--font-sans); }
-.ac-drive-disclosure > .ac-i { margin-top: 2px; color: var(--horizon); }
-.ac-drive-disclosure p { margin: 0; text-wrap: pretty; }
+/* Google Drive exports (drive-exports.tsx): three files to tick, a folder, a few quiet lines, in Settings and beside a saved call. */
+.ac-drive-formats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; width: 100%; }
+.ac-drive-format { display: grid; grid-template-columns: 16px minmax(0, 1fr) 14px; column-gap: 7px; align-items: center; min-width: 0; min-height: 40px; padding: 5px 10px 5px 11px; border-radius: 12px; box-shadow: inset 0 0 0 1px var(--line-control); text-align: left; color: var(--ink-2); transition: background-color var(--duration-1), box-shadow var(--duration-1), color var(--duration-1); }
+.ac-drive-format:hover { color: var(--ink); }
+.ac-drive-format:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.ac-drive-format:disabled { opacity: .5; }
+.ac-drive-format > .ac-i { width: 15px; height: 15px; }
+.ac-drive-format-t { min-width: 0; }
+.ac-drive-format b { display: block; font: 500 13px/16px var(--font-sans); }
+.ac-drive-format small { display: block; font: 400 11.5px/14px var(--font-sans); color: var(--ink-3); }
+.ac-drive-format .ac-drive-tick { stroke-width: 2.6; color: transparent; }
+.ac-drive-format[aria-pressed="true"] { background: color-mix(in oklch, var(--ink) 8%, transparent); box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--ink) 28%, transparent); color: var(--ink); }
+.ac-drive-format[aria-pressed="true"] .ac-drive-tick { color: var(--ink); }
+.ac-drive-format.is-unavailable:disabled { opacity: 1; color: var(--ink-3); box-shadow: inset 0 0 0 1px var(--line); }
+.ac-drive-format small.ac-drive-format-reason { margin-top: 3px; color: var(--ink-2); text-wrap: pretty; }
+@media (max-width: 860px) { .ac-drive-formats { grid-template-columns: minmax(0, 1fr); } }
+/* What happens to the copies, said in one line wherever it stands. */
+.ac-drive-disclosure { text-wrap: pretty; }
 .ac-drive-location { display: flex; align-items: center; gap: 10px; min-width: 0; text-align: left; }
-.ac-drive-location > .ac-i { flex: none; color: var(--horizon); }
+.ac-drive-location > .ac-i { flex: none; color: var(--ink-2); }
 .ac-drive-location > span { min-width: 0; }
 .ac-drive-location b { font: 500 14px/20px var(--font-sans); }
-.ac-drive-location small { display: block; color: var(--ink-2); font: 400 12px/17px var(--font-sans); }
+.ac-drive-location small { display: block; color: var(--ink-3); font: 400 12.5px/17px var(--font-sans); }
+/* The Folder control: where exports go, with Change at its end. Empty, it asks for one. */
+.ac-drive-dest { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; column-gap: 10px; align-items: center; width: 100%; height: 46px; padding: 0 14px 0 13px; border-radius: 13px; background: color-mix(in oklch, var(--ink) 6%, transparent); box-shadow: inset 0 0 0 1px var(--line); text-align: left; transition: background-color var(--duration-1); }
+.ac-drive-dest:hover { background: color-mix(in oklch, var(--ink) 10%, transparent); }
+.ac-drive-dest:disabled { opacity: .5; }
+.ac-drive-dest:disabled:hover { background: color-mix(in oklch, var(--ink) 6%, transparent); }
+.ac-drive-dest > .ac-i { width: 17px; height: 17px; color: var(--ink-2); }
+.ac-drive-dest-t { display: grid; min-width: 0; }
+.ac-drive-dest b { font: 500 14px/18px var(--font-sans); color: var(--ink); }
+.ac-drive-dest small { font: 400 12.5px/16px var(--font-sans); color: var(--ink-3); }
+.ac-drive-dest em { font: 500 13px/1 var(--font-sans); font-style: normal; color: var(--ink-2); }
+.ac-drive-dest.is-empty { background: transparent; box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--ink) 30%, transparent); }
+.ac-drive-dest.is-empty b { color: var(--ink-2); }
+/* What went lately: a line each, under a small heading. */
+.ac-drive-history { padding: 14px 0 6px; }
+.ac-drive-history-h { margin-bottom: 4px; font: 500 13px/18px var(--font-sans); color: var(--ink-2); }
 .ac-drive-jobs { margin: 0; padding: 0; list-style: none; }
-.ac-drive-job { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 13px 0; border-top: 1px solid var(--line); font: 400 13px/19px var(--font-sans); }
-.ac-drive-job-mark { width: 26px; flex: none; display: grid; place-items: center; color: var(--ink-2); }
-.ac-drive-job.is-problem .ac-drive-job-mark { color: var(--caution); }
-.ac-drive-job-copy { flex: 1; min-width: 0; }
-.ac-drive-job-copy > b { display: block; font-weight: 500; font-size: 14px; color: var(--ink); }
-.ac-drive-job-copy > span { color: var(--ink-2); }
-.ac-drive-job-copy > p { margin: 4px 0 0; color: var(--caution); text-wrap: pretty; }
-.ac-drive-open { display: flex; align-items: center; gap: 4px; flex: none; color: var(--horizon); font-weight: 500; }
-.ac-drive-open:hover { text-decoration: underline; }
-.ac-drive-empty.ac-empty { padding: 22px 12px; gap: 5px; text-align: center; border-top: 1px solid var(--line); }
-.ac-drive-empty.ac-empty b { font-size: 14px; }
-.ac-drive-empty.ac-empty p { max-width: 430px; font-size: 13px; line-height: 20px; }
-@media (max-width: 620px) { .ac-drive-formats { grid-template-columns: minmax(0, 1fr); } .ac-drive-format { padding: 12px; } }
-
-.ac-drive-source { margin-block: 1px; color: var(--horizon); font: 400 12px/18px var(--font-sans); }
+.ac-drive-job { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; column-gap: 12px; align-items: center; min-height: 40px; padding-block: 4px; }
+.ac-drive-job + .ac-drive-job { border-top: 1px dashed var(--line); }
+.ac-drive-job:focus { outline: none; }
+.ac-drive-job-mark { display: grid; place-items: center; color: var(--ink-3); }
+.ac-drive-job-copy { min-width: 0; font: 400 13.5px/20px var(--font-sans); color: var(--ink-3); }
+.ac-drive-job-t { display: flex; align-items: baseline; gap: 5px; min-width: 0; }
+.ac-drive-job-t > b { min-width: 0; font: 500 14px/20px var(--font-sans); color: var(--ink); }
+.ac-drive-job-t > span { flex: none; }
 .ac-drive-source a:hover { text-decoration: underline; }
-
-.ac-drive-format.is-unavailable:disabled { opacity: 1; color: var(--ink-2); }
-.ac-drive-format.is-unavailable > .ac-i { color: var(--ink-3); }
-.ac-drive-format small.ac-drive-format-reason { margin-top: 6px; font-size: 12px; line-height: 18px; }
+.ac-drive-why { display: block; font: 400 12.5px/17px var(--font-sans); color: var(--caution); text-wrap: pretty; }
+.ac-drive-s { display: inline-flex; align-items: center; gap: 6px; font: 400 13.5px/20px var(--font-sans); color: var(--ink-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ac-drive-s > .ac-i { color: var(--sun-text); }
+.ac-drive-s.is-wait > .ac-i { color: var(--ink-3); }
+.ac-drive-s.is-open:hover { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
+.ac-drive-s.is-busy .ac-spin { width: 13px; height: 13px; }
+.ac-drive-s.is-no, .ac-drive-s.is-no > .ac-i { color: var(--caution); }
+.ac-drive-job .ac-btn.is-xs { height: 30px; padding: 0 12px; background: transparent; }
+.ac-drive-job .ac-btn.is-xs:hover { background: color-mix(in oklch, var(--ink) 7%, transparent); }
+.ac-drive-empty.ac-empty { justify-items: start; gap: 3px; padding: 6px 0 8px; text-align: left; }
+.ac-drive-empty.ac-empty b { font: 500 14px/20px var(--font-sans); letter-spacing: 0; }
+.ac-drive-empty.ac-empty p { max-width: 62ch; font-size: 13px; line-height: 18px; }

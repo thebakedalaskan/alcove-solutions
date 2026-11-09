@@ -38,7 +38,7 @@ describe('selected call mentions', () => {
     const signed = await first.api.auth.signIn('sso', { email }); await second.api.auth.signIn('sso', { email });
     await outsider.api.auth.signIn('sso', { email: `mentions.other.${crypto.randomUUID()}@vandelay.example` });
     const before = await first.api.account.preferences();
-    expect(before.notifications.mentionAlerts).toBe(true); expect(before.sounds.mentions).toBe(true);
+    expect(before.notifications.chatMentions).toBe(true); expect(before.sounds.mentions).toBe(true);
     let reached = false; let claimed = false; let release = () => {};
     const gate = new Promise<void>((resolve) => { release = resolve; });
     const held = h.browser({ fetch: async (input, init) => {
@@ -50,21 +50,21 @@ describe('selected call mentions', () => {
     const keys = { session: ['session'] as const, prefs: ['prefs'] as const };
     client.setQueryData(keys.session, signed.session); client.setQueryData(keys.prefs, before);
     const options = preferenceOptions(held.api, client, keys, (change: PreferenceChange) => change);
-    const pending = new MutationObserver(client, options).mutate({ sounds: { mentions: false }, notifications: { mentionAlerts: false } });
+    const pending = new MutationObserver(client, options).mutate({ sounds: { mentions: false }, notifications: { chatMentions: false } });
     try {
       await until(() => reached, 'the confirmed mention preference acknowledgement');
-      expect(client.getQueryData<typeof before>(keys.prefs)).toMatchObject({ sounds: { mentions: false }, notifications: { mentionAlerts: false } });
+      expect(client.getQueryData<typeof before>(keys.prefs)).toMatchObject({ sounds: { mentions: false }, notifications: { chatMentions: false } });
       const same = await second.api.account.preferences();
-      expect(same.notifications.mentionAlerts).toBe(false); expect(same.sounds.mentions).toBe(false);
+      expect(same.notifications.chatMentions).toBe(false); expect(same.sounds.mentions).toBe(false);
       await second.api.account.updatePreferences({ sounds: { ...same.sounds, questions: !before.sounds.questions }, notifications: { ...same.notifications, tagged: !before.notifications.tagged } });
       await client.fetchQuery({ queryKey: keys.prefs, queryFn: () => readPreferences(held.api, client) });
-      const expected = { sounds: { mentions: false, questions: !before.sounds.questions, messages: before.sounds.messages }, notifications: { mentionAlerts: false, tagged: !before.notifications.tagged, replyAlerts: before.notifications.replyAlerts } };
+      const expected = { sounds: { mentions: false, questions: !before.sounds.questions, messages: before.sounds.messages }, notifications: { chatMentions: false, tagged: !before.notifications.tagged, replies: before.notifications.replies } };
       expect(client.getQueryData<typeof before>(keys.prefs)).toMatchObject(expected);
       release(); await pending;
       expect(client.getQueryData<typeof before>(keys.prefs)).toMatchObject(expected);
       expect(await first.api.account.preferences()).toMatchObject(expected);
       const other = await outsider.api.account.preferences();
-      expect(other.notifications.mentionAlerts).toBe(true); expect(other.sounds.mentions).toBe(true);
+      expect(other.notifications.chatMentions).toBe(true); expect(other.sounds.mentions).toBe(true);
     } finally { release(); await pending; client.clear(); }
   });
   it('keeps matching guest names on stable private identities, rebases whitespace spans and follows exact thread/read state', async () => {

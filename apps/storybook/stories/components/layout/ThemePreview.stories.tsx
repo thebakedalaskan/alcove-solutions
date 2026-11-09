@@ -3,7 +3,7 @@
  * is (both, split across it, for System), named underneath. `pressed` rings the one in use. Settings' Appearance has
  * the three in a row.
  */
-import { SettingRow, SettingsPart, ThemePreview, type ThemeChoice } from '@alcove/ui';
+import { Icon, SettingRow, SettingsPanel, ThemePreview, type ThemeChoice } from '@alcove/ui';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useEffect, useState } from 'react';
 import { useArgs } from 'storybook/preview-api';
@@ -27,13 +27,11 @@ function Appearance({ theme, onPick }: { theme: ThemeChoice; onPick: (theme: The
   const [saved, say] = useSaved();
   const pick = (t: ThemeChoice) => { if (t === theme) return; onPick(t); say(); };
   return (
-    <div className="set" style={{ position: 'relative', isolation: 'isolate', marginTop: 0 }}>
-      <div className="set-parts" style={{ maxWidth: 820 }}>
-        <SettingsPart id="appearance" title="Appearance" tag="This browser only">
-          <SettingRow wide label="Theme" saved={saved ? 'Saved' : undefined}
-            control={<div className="set-eves" role="group" aria-label="Appearance">{THEMES.map((t) => <ThemePreview key={t} theme={t} pressed={theme === t} onClick={() => pick(t)} />)}</div>} />
-        </SettingsPart>
-      </div>
+    <div className="set-groups" style={{ width: 'min(940px, calc(100vw - 32px))' }}>
+      <SettingsPanel title="Appearance" tag={<><Icon name="laptop" />This browser</>}>
+        <SettingRow wide label="Theme" saved={saved ? 'Saved' : undefined}
+          control={<div className="set-eves" role="group" aria-label="Appearance">{THEMES.map((t) => <ThemePreview key={t} theme={t} pressed={theme === t} onClick={() => pick(t)} />)}</div>} />
+      </SettingsPanel>
     </div>
   );
 }

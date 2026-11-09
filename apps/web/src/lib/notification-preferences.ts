@@ -1,7 +1,7 @@
 /** One sealed account preference model; guests deliberately opt in using the same validated local shape. */
 import { DEFAULT_NOTIFICATION_PREFERENCES, NotificationPrefsSchema, errorMessage, type NotificationPrefs, type Session } from '@alcove/api';
 import { useToast } from '@alcove/ui';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { log } from './log';
 import { announceNotificationPreferences, notificationPreferenceIntent, watchNotificationPreferences } from './notification-preference-channel';
@@ -11,13 +11,41 @@ import { q, usePreferences } from './queries';
 const KEY = 'alcove.guest.notifications';
 const identityOf = (session: Session | null | undefined) => session ? `${session.ownerId}:${session.createdAt}` : session === null ? 'guest' : 'unknown';
 const nlog = log.child({ component: 'notification-preferences' });
+/**
+ * What the previous release stored for a guest's call toasts: switches under keys of their own, on when absent or
+ * unreadable. Its guest record's `replyAlerts` and `mentionAlerts` were only ever the defaults, so these are what count.
+ */
+const PREVIOUS = { replies: 'alcove.guest.reply-alerts', chatMentions: 'alcove.guest.mention-alerts' } as const;
+function previousSwitch(raw: string | null): boolean {
+  if (raw === null) return true;
+  try { const value: unknown = JSON.parse(raw); return typeof value === 'boolean' ? value : true; } catch { return true; }
+}
 export function guestNotificationPreferences(): NotificationPrefs {
   try {
     const raw = localStorage.getItem(KEY);
-    const parsed = raw === null ? null : NotificationPrefsSchema.safeParse(JSON.parse(raw));
-    return parsed?.success ? parsed.data : DEFAULT_NOTIFICATION_PREFERENCES;
+    const stored: unknown = raw === null ? null : JSON.parse(raw);
+    const replySwitch = localStorage.getItem(PREVIOUS.replies);
+    const mentionSwitch = localStorage.getItem(PREVIOUS.chatMentions);
+    const record = typeof stored === 'object' && stored !== null ? stored : null;
+    if (replySwitch === null && mentionSwitch === null && !(record && ('replyAlerts' in record || 'mentionAlerts' in record))) {
+      const parsed = record ? NotificationPrefsSchema.safeParse(record) : null;
+      return parsed?.success ? parsed.data : DEFAULT_NOTIFICATION_PREFERENCES;
+    }
+    // Once: the previous release's switches fold into the Alert ticks they became (in place of its record's own copies,
+    // or over the defaults with no record), the record is written in the current shape, and the old keys go.
+    const replyAlerts = previousSwitch(replySwitch);
+    const mentionAlerts = previousSwitch(mentionSwitch);
+    const parsed = record ? NotificationPrefsSchema.safeParse({ ...record, replyAlerts, mentionAlerts }) : null;
+    const folded = parsed?.success ? parsed.data : { ...DEFAULT_NOTIFICATION_PREFERENCES, replies: replyAlerts, chatMentions: mentionAlerts };
+    try {
+      localStorage.setItem(KEY, JSON.stringify(folded));
+      localStorage.removeItem(PREVIOUS.replies); localStorage.removeItem(PREVIOUS.chatMentions);
+    } catch (e) { nlog.debug('guest call alert choices not moved yet', { err: e }); }
+    return folded;
   } catch { return DEFAULT_NOTIFICATION_PREFERENCES; }
 }
+/** The last settled choice each query client read the account's preferences again for. */
+const refreshedFor = new WeakMap<QueryClient, string>();
 export function useNotificationPreferences() {
   const session = useQuery(q.session());
   const account = session.data;
@@ -51,7 +79,12 @@ export function useNotificationPreferences() {
   useEffect(() => {
     const refresh = () => refreshIntent((version) => version + 1);
     const stop = watchNotificationPreferences((signal) => {
-      if (signal.phase !== 'pending' && signal.ownerId !== null && qc.getQueryData(q.session().queryKey)?.ownerId === signal.ownerId) void qc.invalidateQueries({ queryKey: q.prefs().queryKey, exact: true });
+      if (signal.phase === 'pending' || signal.ownerId === null || qc.getQueryData(q.session().queryKey)?.ownerId !== signal.ownerId) return;
+      // Every instance hears the same settled choice: the first reads the preferences again, the rest leave it be.
+      const settled = `${signal.nonce}:${signal.phase}`;
+      if (refreshedFor.get(qc) === settled) return;
+      refreshedFor.set(qc, settled);
+      void qc.invalidateQueries({ queryKey: q.prefs().queryKey, exact: true });
     });
     addEventListener('alcove-notification-preferences', refresh);
     return () => { removeEventListener('alcove-notification-preferences', refresh); stop(); };
