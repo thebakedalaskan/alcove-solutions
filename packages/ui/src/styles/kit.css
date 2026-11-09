@@ -495,11 +495,20 @@
 
 /* Background picker: what shows behind someone on camera, as small pictures three to a row. */
 .ac-bgpick { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.ac-bgpick-wrap { display: grid; gap: var(--space-3); }
+.ac-bgpick-color { position: absolute; inset: 0; }
+.ac-bgpick-opt > .ac-bgpick-color { position: absolute; }
+.ac-bgpick-caption { background: var(--surface); color: var(--ink); border-radius: var(--radius-xs); padding: 3px 6px; }
+.ac-bgpick-strength { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2); font-size: 12px; color: var(--ink-2); }
+.ac-bgpick-replace { position: absolute; top: 3px; left: 3px; display: grid; place-items: center; width: 22px; height: 22px; border-radius: var(--radius-xs); background: var(--surface-raised); color: var(--ink-2); box-shadow: var(--shadow-1); cursor: pointer; opacity: 0; }
+.ac-bgpick-cell:hover .ac-bgpick-replace, .ac-bgpick-cell:focus-within .ac-bgpick-replace { opacity: 1; }
+.ac-bgpick-replace:focus-within { outline: 2px solid var(--focus); outline-offset: 2px; }
+@media (hover: none) { .ac-bgpick-replace { opacity: 1; } }
 .ac-bgpick-cell { position: relative; min-width: 0; }
 .ac-bgpick-opt { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; width: 100%; aspect-ratio: 16 / 9; padding: 0; border: 0; border-radius: var(--radius-sm); overflow: hidden; background: var(--sunk); color: var(--ink-2); font: 600 11.5px/1.1 var(--font-sans); cursor: pointer; box-shadow: inset 0 0 0 1px var(--line); transition: box-shadow var(--duration-1) var(--ease-out), color var(--duration-1); }
 .ac-bgpick-opt:hover { color: var(--ink); box-shadow: inset 0 0 0 1px var(--line-control); }
 .ac-bgpick-opt img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-.ac-bgpick-opt > :not(img, .ac-bgpick-blur, input) { position: relative; }
+.ac-bgpick-opt > :not(img, .ac-bgpick-blur, .ac-bgpick-color, input) { position: relative; }
 .ac-bgpick-opt.is-on { color: var(--ink); box-shadow: 0 0 0 2px var(--horizon), inset 0 0 0 2px var(--surface); }
 .ac-bgpick-opt:focus-visible, .ac-bgpick-opt.is-add:focus-within { outline: 2px solid var(--focus); outline-offset: 2px; }
 .ac-bgpick-blur { position: absolute; inset: -20%; background: radial-gradient(circle at 30% 40%, var(--horizon-soft), transparent 55%), radial-gradient(circle at 75% 65%, var(--dusk-haze), transparent 55%), var(--sunk); filter: blur(6px); opacity: 0.9; }

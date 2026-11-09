@@ -140,10 +140,21 @@ function drawn(width: number, height: number, draw: (g: CanvasRenderingContext2D
   const track = canvas.captureStream(8).getVideoTracks()[0];
   if (!track) throw new DOMException('The camera didn’t start.', 'NotReadableError');
   const timer = setInterval(() => draw(g, (performance.now() - started) / 1000), 250);
-  track.addEventListener('ended', () => clearInterval(timer));
-  const stop = track.stop.bind(track);
-  track.stop = () => { clearInterval(timer); stop(); };
-  return as(track, device);
+  // A real camera source lives while any clone does. LocalMedia clones before stopping the raw published track when
+  // an effect is chosen, so stopping that original must not freeze the synthetic camera feeding the processor.
+  const tracks = new Set<MediaStreamTrack>();
+  const keep = (t: MediaStreamTrack): MediaStreamTrack => {
+    if (t.readyState !== 'live') return as(t, device);
+    tracks.add(t);
+    const retire = () => { tracks.delete(t); if (tracks.size === 0) clearInterval(timer); };
+    const stop = t.stop.bind(t);
+    const clone = t.clone.bind(t);
+    t.stop = () => { stop(); retire(); };
+    t.clone = () => keep(clone());
+    t.addEventListener('ended', retire, { once: true });
+    return as(t, device);
+  };
+  return keep(track);
 }
 
 /* A camera looking at a dim room, the light shifting a little: never anyone's face. */

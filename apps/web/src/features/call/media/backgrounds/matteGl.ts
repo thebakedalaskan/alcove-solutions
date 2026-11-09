@@ -81,9 +81,11 @@ void main() {
 const COMPOSITE = `${HEAD}${PERSON}
 uniform sampler2D background;
 uniform bool picture;
+uniform bool solid;
+uniform vec3 solidColor;
 uniform vec4 cover;
 void main() {
-  vec3 behind = picture ? texture(background, uv * cover.xy + cover.zw).rgb : texture(background, fb(uv)).rgb;
+  vec3 behind = solid ? solidColor : picture ? texture(background, uv * cover.xy + cover.zw).rgb : texture(background, fb(uv)).rgb;
   color = vec4(mix(behind, texture(frame, uv).rgb, person(uv)), 1.0);
 }`;
 
@@ -137,6 +139,7 @@ export class MatteGl {
   private readonly mask: WebGLTexture;
   private readonly picture: WebGLTexture;
   private pictureSize: { w: number; h: number } | null = null;
+  private solid: readonly [number, number, number] | null = null;
   private targets: [Target, Target] | null = null;
 
   constructor(private readonly gl: WebGL2RenderingContext) {
@@ -168,8 +171,17 @@ export class MatteGl {
     this.pictureSize = { w: bitmap.width, h: bitmap.height };
   }
 
+  setColor(rgb: readonly [number, number, number] | null): void {
+    this.solid = rgb;
+    if (!rgb) return;
+    const gl = this.gl;
+    gl.bindTexture(gl.TEXTURE_2D, this.picture);
+    // A complete texture is required for every active sampler, even when the solid branch doesn't sample it.
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([...rgb, 255]));
+  }
+
   /** Draws `frame` with the person in `mask` (w×h, 0–1, top row first) over the background, at w×h of the canvas. */
-  draw(frame: VideoFrame, mask: Float32Array, maskW: number, maskH: number, width: number, height: number, blurSigma: number, edges: Edges): void {
+  draw(frame: OffscreenCanvas, mask: Float32Array, maskW: number, maskH: number, width: number, height: number, blurSigma: number, edges: Edges): void {
     const gl = this.gl;
     // MediaPipe or LiveKit may have left state behind on a shared context: set everything this draw relies on.
     gl.disable(gl.BLEND);
@@ -189,9 +201,9 @@ export class MatteGl {
 
     const picture = this.pictureSize;
     gl.activeTexture(gl.TEXTURE2);
-    if (picture) {
+    if (picture || this.solid) {
       gl.bindTexture(gl.TEXTURE_2D, this.picture);
-    } else {
+    } else if (!this.solid) {
       const [a, b] = this.targetsFor(Math.max(1, Math.round(width / 2)), Math.max(1, Math.round(height / 2)));
       gl.useProgram(this.blur);
       gl.uniform1i(this.uniform(this.blur, 'mask'), 1);
@@ -225,6 +237,9 @@ export class MatteGl {
     gl.uniform1f(this.uniform(p, 'colorSigma'), edges.colorSigma);
     gl.uniform2f(this.uniform(p, 'edge'), edges.lo, edges.hi);
     gl.uniform1i(this.uniform(p, 'picture'), picture ? 1 : 0);
+    gl.uniform1i(this.uniform(p, 'solid'), this.solid ? 1 : 0);
+    const solid = this.solid ?? [0, 0, 0];
+    gl.uniform3f(this.uniform(p, 'solidColor'), (solid[0] ?? 0) / 255, (solid[1] ?? 0) / 255, (solid[2] ?? 0) / 255);
     if (picture) {
       // Cut to fill, never stretched: the picture's middle, at the frame's shape.
       const frameAspect = width / height;

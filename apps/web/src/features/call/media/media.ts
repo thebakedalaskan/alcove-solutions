@@ -9,10 +9,12 @@
  * wanted it; in the call, nothing turns a microphone or camera on by itself: after a gap with none, it waits for
  * its button.
  */
-import { type CameraBackground, type VideoReceive, type VideoSend } from '@alcove/api';
+import { AlcoveApiError, type CameraBackground, type VideoReceive, type VideoSend } from '@alcove/api';
 import { log } from '~/lib/log';
 import { Backdrop, canBackdrop, type Look } from './backgrounds/backdrop';
 import { SCENES, keptPicture } from './backgrounds/backgrounds';
+import { CAMERA_COLORS } from '@alcove/ui';
+import type { BackgroundQuality } from './backgrounds/frameBudget';
 import { canChooseSpeaker, enumerate, permissions, plainName, readPrefs, rememberDevice, watchPermissions, type Capture, type Permission } from './devices';
 import { canShareScreen, shareProblem, type ShareProblem } from '../screen-sharing/share';
 
@@ -49,7 +51,9 @@ export interface MediaSnapshot {
   /** The browser cleans up the microphone (noise suppression). */
   noiseReduction: boolean;
   /** This browser can show something else behind you on camera (see backdrop.ts), and what shows there now. */
-  canBackground: boolean;
+  backgroundSupport: 'checking' | 'supported' | 'unsupported';
+  backgroundQuality: BackgroundQuality;
+  backgroundBusy: boolean;
   background: CameraBackground;
   /** What's being shared: the browser's name for it, and whether it's a tab, a window or a screen. */
   screenLabel: string | null;
@@ -138,7 +142,7 @@ export class LocalMedia {
   private snap: MediaSnapshot = {
     camera: null, screen: null, mic: true, cam: true, micId: null, camId: null, speakerId: null,
     access: { mic: { permission: 'unknown', problem: null }, cam: { permission: 'unknown', problem: null } }, changes: [],
-    noiseReduction: readPrefs().noiseReduction ?? true, canBackground: false, background: readPrefs().background ?? NO_BACKGROUND, screenLabel: null, screenSurface: null,
+    noiseReduction: readPrefs().noiseReduction ?? true, backgroundSupport: 'checking', backgroundQuality: 'full', backgroundBusy: false, background: readPrefs().background ?? NO_BACKGROUND, screenLabel: null, screenSurface: null,
     sendVideo: readPrefs().sendVideo ?? 'standard', receiveVideo: readPrefs().receiveVideo ?? 'auto'
   };
   private listeners = new Set<() => void>();
@@ -149,6 +153,8 @@ export class LocalMedia {
   private backdrop: Backdrop | null = null;
   /** A camera still preparing its background: off/leave must stop it before initialization finishes. */
   private dressing: MediaStreamTrack | null = null;
+  /** Initial support and local-picture reads can be stopped before a processor exists. */
+  private cancelBackgroundPreparation: (() => void) | null = null;
   /** A press of Off invalidates pending camera work even if On is pressed again before it finishes. */
   private cameraGen = 0;
   /** What's chosen to show behind the camera (what shows can differ: see lookOf), and whose pictures it can be. */
@@ -219,6 +225,8 @@ export class LocalMedia {
       if (gen !== this.gen) return;
       this.want = { ...opts };
       this.watch();
+      // Effects can be chosen with the camera off. Detect support without opening any camera or loading its model.
+      void canBackdrop().then((can) => { if (gen === this.gen) this.set({ backgroundSupport: can ? 'supported' : 'unsupported' }); });
       const perms = await permissions();
       const got = await this.open({ audio: perms.mic !== 'denied', video: opts.cam && perms.cam !== 'denied' }, perms);
       if (this.lateFor(gen, got.audio, got.video)) return;
@@ -325,36 +333,50 @@ export class LocalMedia {
   private dropBackdrop() {
     const b = this.backdrop;
     this.backdrop = null;
+    this.set({ backgroundBusy: false, backgroundQuality: 'full' });
     void b?.stop().catch((e: unknown) => mlog.warn('the background didn’t stop', { err: e }));
   }
+
+  private prepareBackground<T>(work: Promise<T>): Promise<T> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const interrupted = new Promise<never>((_resolve, reject) => {
+      this.cancelBackgroundPreparation = () => reject(new AlcoveApiError('unavailable', 'The background choice changed.'));
+      timer = setTimeout(() => reject(new AlcoveApiError('unavailable', 'The background took too long to prepare.')), 15_000);
+    });
+    return Promise.race([work, interrupted]).finally(() => {
+      clearTimeout(timer);
+      this.cancelBackgroundPreparation = null;
+    });
+  }
   /** Stop both the input and anything already published before announcing a background failure. */
-  private backgroundFailed(camera: MediaStreamTrack, background: CameraBackground, canBackground: boolean): void {
+  private backgroundFailed(camera: MediaStreamTrack, background: CameraBackground, supported: boolean): void {
     camera.stop();
     this.dressing?.stop();
     this.shown?.stop();
     this.cameraGen++;
     this.want.cam = false;
     this.useVideo(null);
-    this.set({ canBackground, background, cam: false, changes: this.changed('cam', 'Your background couldn’t be shown, so your camera is off. Pick another background, or None, then turn your camera on.') });
+    this.set({ backgroundSupport: supported ? 'supported' : 'unsupported', background, backgroundBusy: false, cam: false, changes: this.changed('cam', 'Your background couldn’t be shown, so your camera is off. Pick another background, or Off, then turn your camera on.') });
     this.rebuild();
   }
   /**
    * What `b` shows, ready for the backdrop, and what that is: a picture of their own only when it's kept here for the
-   * account using the camera. One that isn't (deleted, or another account's) shows blurred, so what's behind them
-   * still doesn't show.
+   * account using the camera. One that isn't (deleted, or another account's) fails closed rather than change their choice.
    */
   private async lookOf(b: CameraBackground): Promise<{ look: Look | null; shows: CameraBackground }> {
-    const blur = { look: { blur: true }, shows: { kind: 'blur' } } as const;
+    const blur = { look: { blur: 'strong' }, shows: { kind: 'blur', strength: 'strong' } } as const;
     switch (b.kind) {
       case 'none': return { look: null, shows: b };
-      case 'blur': return blur;
+      case 'blur': return { look: { blur: b.strength }, shows: b };
+      case 'color': return { look: { color: CAMERA_COLORS[b.id].rgb }, shows: b };
       case 'scene': {
         const scene = SCENES.find((s) => s.id === b.id);
         return scene ? { look: { picture: scene.src }, shows: b } : blur;
       }
       case 'custom': {
         const src = this.account ? await keptPicture(this.account, b.id).catch((e: unknown) => { mlog.warn('a kept background didn’t open', { err: e }); return null; }) : null;
-        return src ? { look: { picture: src }, shows: b } : blur;
+        if (!src) throw new AlcoveApiError('unavailable', 'That background isn’t kept here. Pick another background, or Off, then turn your camera on.');
+        return { look: { picture: src }, shows: b };
       }
     }
   }
@@ -366,15 +388,18 @@ export class LocalMedia {
   private async dress(gen: number, camera: MediaStreamTrack): Promise<Dressed> {
     const cameraGen = this.cameraGen;
     const chosen = this.chosen;
+    this.set({ backgroundBusy: chosen.kind !== 'none' });
     const account = this.account;
     this.dressing = camera;
     const late = () => gen !== this.gen || cameraGen !== this.cameraGen || !this.want.cam || camera.readyState !== 'live';
     let backdrop: Backdrop | null = null;
     try {
-      const [{ look, shows }, can] = await Promise.all([this.lookOf(chosen), canBackdrop()]);
+      // Off never waits for processing code, graphics support or picture storage.
+      if (chosen.kind === 'none') { this.set({ background: chosen, backgroundBusy: false }); return camera; }
+      const [{ look, shows }, can] = await this.prepareBackground(Promise.all([this.lookOf(chosen), canBackdrop()]));
       if (late()) { camera.stop(); return 'late'; }
       if (chosen !== this.chosen || account !== this.account) return await this.dress(gen, camera);
-      if (!look) { this.set({ canBackground: can, background: shows }); return camera; }
+      if (!look) { this.set({ backgroundSupport: can ? 'supported' : 'unsupported', background: shows, backgroundBusy: false }); return camera; }
       if (!can) {
         mlog.warn('the requested background is not supported', { kind: shows.kind });
         this.backgroundFailed(camera, shows, false);
@@ -385,26 +410,34 @@ export class LocalMedia {
           if (this.backdrop !== created || gen !== this.gen || cameraGen !== this.cameraGen || !this.want.cam || this.chosen.kind === 'none' || (source !== this.video && source !== this.dressing)) return;
           mlog.warn('the background stopped drawing', { err: error, kind: this.chosen.kind });
           this.backgroundFailed(source, this.chosen, true);
+        }, (quality) => {
+          if (this.backdrop !== created || gen !== this.gen || cameraGen !== this.cameraGen || !this.want.cam || this.chosen.kind === 'none') return;
+          if (this.snap.backgroundQuality === quality) return;
+          const text = quality === 'full' ? 'Your background is back to full quality.' : 'Background quality is reduced to keep your call smooth. Your background stays on.';
+          this.set({ backgroundQuality: quality, changes: this.changed('cam', text) });
+          mlog.info('background processing quality changed', { quality });
         });
         this.backdrop = created;
       }
       backdrop = this.backdrop;
       const out = await backdrop.show(camera, look);
-      if (late() || this.backdrop !== backdrop) {
+      if (late()) {
         camera.stop();
         if (this.backdrop === backdrop) this.dropBackdrop();
         return 'late';
       }
       if (chosen !== this.chosen || account !== this.account) return await this.dress(gen, camera);
-      this.set({ canBackground: true, background: shows });
+      if (this.backdrop !== backdrop) { camera.stop(); return 'late'; }
+      this.set({ backgroundSupport: 'supported', background: shows, backgroundBusy: false });
       return out;
     } catch (e) {
       // An old initialization or processor must never turn off a newer camera or overwrite an intentional Off.
-      if (late() || (backdrop && this.backdrop !== backdrop)) { camera.stop(); return 'late'; }
+      if (late()) { camera.stop(); return 'late'; }
       if (chosen !== this.chosen || account !== this.account) {
         this.dropBackdrop();
         return await this.dress(gen, camera);
       }
+      if (backdrop && this.backdrop !== backdrop) { camera.stop(); return 'late'; }
       mlog.warn('could not draw the background', { err: e, kind: chosen.kind });
       this.backgroundFailed(camera, chosen, true);
       return 'failed';
@@ -443,6 +476,7 @@ export class LocalMedia {
     this.want.cam = on;
     if (!on) {
       this.cameraGen++;
+      this.cancelBackgroundPreparation?.();
       this.dressing?.stop();
       this.useVideo(null);
       this.set({ cam: false, access: this.snap.access.cam.problem === 'blocked' ? this.snap.access : this.access('cam', { problem: null }) });
@@ -807,6 +841,9 @@ export class LocalMedia {
   async setBackground(next: CameraBackground): Promise<void> {
     rememberDevice('background', next);
     this.chosen = next;
+    this.cancelBackgroundPreparation?.();
+    if (next.kind === 'none' || this.snap.backgroundBusy) this.dropBackdrop();
+    this.set({ background: next, backgroundBusy: next.kind !== 'none' && this.want.cam && this.video?.readyState === 'live' });
     if (next.kind !== 'none' && this.video?.readyState === 'live' && this.shown === this.video) {
       // Stop the published raw track at once. Its enabled clone is only an input until the background is ready.
       this.useVideo(this.video.clone(), null);
@@ -817,12 +854,12 @@ export class LocalMedia {
   }
   /**
    * Whose pictures can show behind the camera: the account signed in here, or null for a guest, who has none. A picture
-   * of theirs chosen before the account was known (it showed blurred till then) shows now.
+   * chosen before the account was known can be opened now. An unavailable picture keeps the camera off.
    */
   setAccount(owner: string | null): void {
     if (owner === this.account) return;
     this.account = owner;
-    if (this.chosen.kind === 'custom') void this.redress();
+    if (this.chosen.kind === 'custom') { this.cancelBackgroundPreparation?.(); void this.redress(); }
   }
   /** The camera in use with the chosen background drawn again. */
   private redress(): Promise<void> {
@@ -935,6 +972,7 @@ export class LocalMedia {
     this.begun = false;
     this.gen++;
     this.cameraGen++;
+    this.cancelBackgroundPreparation?.();
     this.dressing?.stop();
     this.stopWatching?.();
     this.stopWatching = null;

@@ -2451,7 +2451,8 @@ uploads), Alcove is asked who's signed in (`GET /v1/session`): only the account 
 - `getUserMedia` with echo cancellation and noise suppression; camera off releases the camera. Noise
   reduction can be switched from the microphone menu (`applyConstraints` on the live track, so the recording
   and transcript carry on).
-- **Backgrounds** (`backdrop.ts`, `backgrounds.ts`, picked in the camera's menu and before joining): none, blur,
+- **Backgrounds** (`media/backgrounds`, picked in the camera's menu and before joining): Off, mild/strong blur,
+  three stable solid colors (Slate, Sand, Rose, from `CAMERA_COLORS` in `@alcove/ui`, shared with their swatches and never changed by theme),
   three of Alcove's pictures (balloons, beach, office; drawn in `packages/ui/src/backgrounds`), or up to six of
   your own. Alcove's matte (`matte.ts`, drawn by `matteGl.ts`) runs MediaPipe's multiclass selfie segmenter
   (256×256, which counts hair as the person) on this device and LiveKit's `ProcessorWrapper` (`@livekit/track-processors`) makes a new track of what
@@ -2464,17 +2465,29 @@ uploads), Alcove is asked who's signed in (`GET /v1/session`): only the account 
   processor before it's put in, so what's behind someone never goes out for a frame; if the background can't be
   drawn the camera turns off and says so. A failure while processing frames discards those frames and turns the
   camera off too: the unprocessed camera is never a fallback. Turning the camera off or leaving while the model
-  loads stops its input and output at once; the processor stays owned until initialization settles, then is destroyed.
-  The matte's code and its 16 MB model load only once someone has a background (the service worker doesn't keep
-  them), and the
+  loads stops its input and output at once, closes the transformer, and releases the media queue. Late initialization and
+  image/model results are fenced and disposed. A download or update stalled for 15 seconds fails closed too, without
+  blocking a later explicit Off choice or camera restart. WebGL context loss is a processing failure.
+  Support detection loads the processing code without a camera; the 16 MB model loads only when an effect is actually used
+  (the service worker doesn't keep either), and the
   model (`public/mediapipe`) and its WebAssembly (served by a plugin in `vite.config.ts`, the version of
   `@mediapipe/tasks-vision` the app imports) come from Alcove's own origin: nothing is fetched elsewhere, and the policy allows
   `'wasm-unsafe-eval'` for it. The choice is remembered with the devices (`background` in `alcove.devices`; a
-  browser that kept `blur: true` from before keeps blur). Pictures of your own are made into 1920×1080 JPEGs and
+  browser that kept `blur: true`, or a blur without strength, keeps strong blur). Pictures of your own are made into 1920×1080 JPEGs and
   kept sealed in this browser for the account ([Privacy › On this device](privacy-keys-and-sessions.md#on-this-device));
-  one that isn't here for the account using the camera shows blur instead, and a guest has none. Where the
-  browser can't do it (no WebGL2, or no way to make a track from frames) there's no background choice. A background
-  remembered from before keeps the camera off there; choosing None explicitly clears it, then the camera can be turned on.
+  a missing/inaccessible picture turns the camera off, and a guest has none. Replacement validates, prepares and seals a new
+  picture before replacing the original atomically, even at the six-picture limit; failures keep the original. A fresh
+  storage revision invalidates in-flight reads in other tabs. Removing the active picture deliberately selects strong blur.
+  Where the browser can't do it (no WebGL2, or no way to make a track from frames), Background explains that and offers
+  Choose Off. A remembered effect keeps the camera off there; choosing Off clears it without starting the camera.
+- **Effect processing budget** (`media/backgrounds/frameBudget.ts`): camera pixels are capped to a 1920-pixel long edge
+  before GL upload; balanced caps it to 960 (540p landscape) at up to 20 fps, light to 640 (360p) at up to 12 fps.
+  Full quality caps at 30 fps. Two slow two-second measurement windows lower one tier; eight fast windows restore one,
+  preventing rapid oscillation. Expensive frames leave equal time for the rest of the call before another frame is processed.
+  Skipped frames are closed without enqueueing anything, leaving the last safe processed frame; there is no raw passthrough.
+  Blur spread scales with output resolution so its selected strength stays the same. LocalMedia announces changes and the
+  picker keeps the reduced-quality status visible. No performance or effect preference goes to another service.
+  Storybook serves the same installed WASM and model and exercises the actual pipeline with its drawn synthetic camera.
 - The microphone, camera and speaker chosen last time are asked for first (`deviceId: { ideal }`). When one
   isn't plugged in, the browser's default is used and pre-join says so. Choices live in `localStorage`
   (`alcove.devices`, parsed with `DevicePrefsSchema`) in this browser only; nothing about devices is sent.

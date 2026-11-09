@@ -116,7 +116,7 @@ export function PrejoinDevices({ media, m, devices }: { media: LocalMedia; m: Me
         : <DeviceSelect kind="mic" devices={devices.mic} value={m.micId} onChange={(id) => void media.chooseMic(id)} meter={<Level media={media} live={m.mic} />} />}
       {cam ? <DeviceState kind="cam" text={stateOf('cam', cam)} /> : <DeviceSelect kind="cam" devices={devices.cam} value={m.camId} onChange={(id) => void media.chooseCam(id)} />}
       {canChooseSpeaker() ? <DeviceSelect kind="speaker" devices={devices.speaker} value={m.speakerId} onChange={(id) => media.chooseSpeaker(id)} /> : <SystemSpeaker />}
-      {m.canBackground ? <PrejoinBackground media={media} m={m} /> : m.background.kind !== 'none' && <BackgroundRecovery media={media} />}
+      <PrejoinBackground media={media} m={m} />
       <button type="button" className={cn('pj-test', phase !== 'idle' && 'on')} disabled={!track || !m.mic || phase !== 'idle'}
         title={!track ? 'Your microphone isn’t working yet' : m.mic ? 'Records a few seconds and plays them back here. Nothing is uploaded or kept.' : 'Turn your microphone on to test it'} onClick={() => void test()}>
         {phase === 'listening' ? <><i className="ac-rec-dot" />Say something… {left}</> : phase === 'playing' ? <><Icon name="speaker" size={15} />Playing it back</> : <><Icon name="mic" size={15} />Test microphone</>}
@@ -137,16 +137,6 @@ function PrejoinBackground({ media, m }: { media: LocalMedia; m: MediaSnapshot }
       <div className="ac-eyebrow">Background</div>
       <BackgroundOptions media={media} m={m} />
     </Popover>
-  );
-}
-
-/** A remembered background can keep an unsupported browser's camera off; removing it is always an explicit choice. */
-function BackgroundRecovery({ media }: { media: LocalMedia }) {
-  return (
-    <Notice tone="caution" icon="videoOff">
-      <p>To use your camera without a background, choose None, then turn your camera on.</p>
-      <Button variant="secondary" size="sm" onClick={() => void media.setBackground({ kind: 'none' })}>Choose None</Button>
-    </Notice>
   );
 }
 
@@ -232,13 +222,9 @@ export function CamOptions({ media, m, devices, me, preview = true, onSwitched }
       {devices.cam.length ? devices.cam.map((d) => (
         <Option key={d.id} on={d.id === cam} label={d.label} onPick={() => { if (d.id !== cam) void media.chooseCam(d.id).then((ok) => { if (ok) onSwitched(d.label); }); }} />
       )) : !trouble && <p className="ic-none">No camera found.</p>}
-      {(m.canBackground || m.background.kind !== 'none') && (
-        <>
-          <div className="ic-msep" />
-          <div className="ac-eyebrow">Background</div>
-          {m.canBackground ? <BackgroundOptions media={media} m={m} /> : <BackgroundRecovery media={media} />}
-        </>
-      )}
+      <div className="ic-msep" />
+      <div className="ac-eyebrow">Background</div>
+      <BackgroundOptions media={media} m={m} />
     </div>
   );
 }
