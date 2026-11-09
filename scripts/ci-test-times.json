@@ -1,4 +1,10 @@
 {
+ "src/features/calls/mentions.integration.test.ts": {
+  "seconds": 12.5,
+  "groups": {
+   "selected call mentions": 12.5
+  }
+ },
  "src/features/calls/direct-messages.integration.test.ts": {
   "seconds": 12.8,
   "groups": {

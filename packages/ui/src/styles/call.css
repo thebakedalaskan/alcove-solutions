@@ -1298,6 +1298,13 @@ button.ic-fname:hover, .ic-fname[data-state="open"] { background: rgb(255 255 25
 .ic-call.is-focus > .ic-attention-focus { pointer-events: auto; }
 @media (max-width: 599px) { .ic-top.is-phone .ttl { min-width: 0; flex: 1; } .ic-top.is-phone .end { gap: 3px; } .ac-attention-button.is-compact .ac-attention-counts { gap: 3px; } }
 .ic-sounds { width: 360px; max-height: min(680px, calc(100dvh - 140px)); overflow-y: auto; overscroll-behavior: contain; }
+/* The sound sheet uses Settings rows within its own compact width at every viewport. */
+.ic-sounds .set-r { grid-template-columns: minmax(0, 1fr) auto; column-gap: var(--space-3); padding-inline: var(--space-1); }
+.ic-sounds .set-tx { display: block; }
+.ic-sounds .set-t { font-size: 14px; line-height: 20px; }
+.ic-sounds .set-h { margin-top: 3px; font-size: 12px; line-height: 17px; }
+.ic-sounds .set-r.is-wide { grid-template-columns: minmax(0, 1fr); row-gap: var(--space-2); }
+.ic-sounds .set-line { flex-wrap: wrap; }
 .ic-attention-sound-head { display: flex; align-items: center; gap: var(--space-4); padding: var(--space-2); }
 .ic-attention-sound-head button { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--ink-2); }
 .ic-attention-sound-head b { font-size: 14px; }
