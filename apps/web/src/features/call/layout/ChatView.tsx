@@ -58,8 +58,9 @@ export function ChatView({ chat, missed, ready, moving, place, here, placeName, 
   }, [draft, thread]);
   const historyReady = readable ?? ready;
   const displayed = original ? [original, ...shown] : shown;
-  const displayedIds = new Set(displayed.map((m) => m.id));
-  const visibleMentions = visible && historyReady ? unreadMentionIds.filter((id) => displayedIds.has(id)) : [];
+  // Retained readable history can outlive a fresh-alert scope. Its addressed span still records a read.
+  const visibleMentions = visible && historyReady ? displayed.filter((m) => !m.isMe && !m.sending && !m.failed && !read.has(m.id)
+    && m.mentions.some((mention) => mention.identity === me)).map((m) => m.id) : [];
   useReadMentions(scroll, visibleMentions, onRead);
   const visibleUnread = displayed.filter((m) => visible && historyReady && !m.isMe && !m.sending && !m.failed && !read.has(m.id)
     && !m.mentions.some((mention) => mention.identity === me)).map((m) => m.id);
