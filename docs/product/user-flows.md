@@ -313,9 +313,11 @@ time, slides in on the right.
   is the title, the notes sign, compact Attention counts, Chat (with its count) and the faces.
 - **Dock.** Microphone (**M**) and camera (**V**), each with an arrow for its menu: which microphone, which
   speaker, **Play test sound** and **Noise reduction**; your camera's preview, which camera and, where the
-  browser can do it, **Background**: **None**, **Blur**, Alcove's pictures (**Balloons**, **Beach**, **Office**)
-  or up to six of your own (**Add image**; they stay in this browser, and a guest has none). The same choice is on
-  the pre-join screen, so you pick it before anyone sees you. Removing the picture you're using shows blur
+  browser can do it, **Background**: **Off**, **Blur** with **Mild** or **Strong** strength, the solid colors **Slate**, **Sand**
+  and **Rose**, Alcove's pictures (**Balloons**, **Beach**, **Office**), or up to six of your own (**Add image**; JPEG, PNG or
+  WebP up to 20 MB, kept sealed in this browser, and a guest has none). Each custom picture has **Replace** and **Remove**;
+  a failed replacement leaves the old picture. The same choice is on the pre-join screen, so you pick it before anyone sees you.
+  Choosing while the camera is off leaves it off. Removing the picture you're using shows strong blur
   instead. A microphone or camera that can't work has a caution mark, and
   pressing it opens its menu, which says why and how to fix it. Unplugging a device moves to another one,
   muted or not as before, and says which; a device that comes back is used again. Nothing turns your
@@ -630,6 +632,13 @@ If playback is blocked, Attention and its counts still work.
     settings. The visual timer stays visible with sound off. Joining late, reconnecting or backgrounding the tab keeps
     the existing clock; whoever is authorized to host now can continue controlling it.
 
+**6.29 Choose what others see behind you.** Before joining, open **Background** and preview blur, a solid color or a picture.
+During the call, the arrow beside the camera has the same choices. The preview and outgoing video use the same local effect;
+switching a camera or turning it off/on keeps the choice, remembered on this browser/device. A lower processing quality is
+announced and explained in the picker when the device is busy; the chosen background stays on and quality recovers when it can.
+A browser without effects explains that and offers **Choose Off**. A background that cannot load, is no longer kept here or
+stops processing turns the camera off and says so: choose another background, or **Off**, then deliberately turn the camera on.
+
 ### Floating call
 
 **6.22 Keep the call in view.** On a supported desktop browser, **Open floating call** in **View** opens a small,
@@ -649,6 +658,10 @@ An already-allowed live microphone can stay muted. The call never requests camer
 enable automatic opening. **View** retains **Open floating call** when manual opening is needed. Minimizing Chrome and
 switching tabs are different browser behaviors; an already-open floating window can remain over other apps.
 Unsupported browsers keep the normal call controls.
+
+When this browser can’t float a call, View keeps the unavailable action with an explanation linked to it for assistive
+technology. If the browser refuses an opening, View stays open with permission guidance and the manual action available
+to try again. Nothing retries by itself, and the call keeps running in this tab.
 
 See [Floating call](../engineering/floating-call.md) for browser capabilities and verification coverage.
 

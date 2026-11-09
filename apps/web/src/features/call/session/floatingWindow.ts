@@ -7,6 +7,7 @@ import type { ShareLooks } from '../screen-sharing/shareLook';
 
 const flog = log.child({ component: 'floating-call' });
 type Origin = 'manual' | 'auto';
+const OPEN_FAILED = 'Your browser didn’t open the floating call. Check this site’s picture-in-picture permission, then try Open floating call again. Your call is still in this tab.';
 interface FloatingWindowState {
   target: Window | null;
   origin: Origin | null;
@@ -111,7 +112,7 @@ class FloatingWindow implements LiveStore<FloatingWindowState> {
     this.set({ pending: true, origin, error: null });
     try {
       const target = await openPop('pip', 'Alcove call', 1.6, { width: 400, height: 360 });
-      if (!target) { if (generation === this.generation) this.set({ pending: false, origin: null, error: 'Your browser didn’t open the floating call. Try again.' }); return; }
+      if (!target) { if (generation === this.generation) this.set({ pending: false, origin: null, error: OPEN_FAILED }); return; }
       if (!this.running || !this.active || generation !== this.generation || this.shares.getSnapshot().popped || window.documentPictureInPicture?.window !== target) {
         target.close();
         if (generation === this.generation) this.set({ pending: false, origin: null });
@@ -131,7 +132,7 @@ class FloatingWindow implements LiveStore<FloatingWindowState> {
       flog.info('floating call opened', { origin });
     } catch (e) {
       flog.info('floating call not opened', { err: e, origin });
-      if (generation === this.generation) this.set({ pending: false, origin: null, error: 'Your browser didn’t open the floating call. Try again from View.' });
+      if (generation === this.generation) this.set({ pending: false, origin: null, error: OPEN_FAILED });
     }
   };
   close = (): void => {

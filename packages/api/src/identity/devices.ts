@@ -19,13 +19,21 @@ export const BackgroundSceneSchema = z.enum(BACKGROUND_SCENES);
 
 export type BackgroundScene = z.infer<typeof BackgroundSceneSchema>;
 
+/** Stable picture colors, shared by the picker and the local camera compositor; never a person's page theme. */
+export const BACKGROUND_COLORS = ['slate', 'sand', 'rose'] as const;
+export const BackgroundColorSchema = z.enum(BACKGROUND_COLORS);
+export type BackgroundColor = z.infer<typeof BackgroundColorSchema>;
+export const BlurStrengthSchema = z.enum(['mild', 'strong']);
+export type BlurStrength = z.infer<typeof BlurStrengthSchema>;
+
 /**
  * What shows behind someone on camera: what's really there, the same blurred, one of Alcove's pictures, or one of
  * their own (kept sealed in their browser, by its ID there).
  */
 export const CameraBackgroundSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('none') }),
-  z.object({ kind: z.literal('blur') }),
+  z.object({ kind: z.literal('blur'), strength: BlurStrengthSchema.default('strong') }),
+  z.object({ kind: z.literal('color'), id: BackgroundColorSchema }),
   z.object({ kind: z.literal('scene'), id: BackgroundSceneSchema }),
   z.object({ kind: z.literal('custom'), id: z.uuid() })
 ]);
