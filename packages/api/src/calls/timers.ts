@@ -1,41 +1,38 @@
-import { ISODateSchema, IDSchema } from '../shared/ids';
 import { z } from '../shared/zod';
 
-export const CallTimerSegmentSchema = z.object({
+/** The longest the call's timer runs, with any time added: a day, in seconds. */
+export const CALL_TIMER_MAX_SECONDS = 86_400;
+const Revision = z.number().int().nonnegative();
+const Seconds = z.number().int().min(1).max(CALL_TIMER_MAX_SECONDS);
+
+/**
+ * The call's timer: one countdown, the same for everyone in the call, which only the host starts and changes. Its clock is
+ * the server's: while it runs, what's left is `durationSeconds` less `elapsedMs` and the time since `startedAt`, so every
+ * browser works out the same second. At zero it carries on, over time, until the host adds time or stops it. Stored in the
+ * call's sealed state as it is here: a field added to it needs a default.
+ */
+export const CallTimerSchema = z.object({
+  /** This countdown, from its start until it's stopped. */
   id: z.string().min(1).max(64).regex(/^[A-Za-z0-9_-]+$/),
-  label: z.string().trim().min(1).max(120),
-  durationSeconds: z.number().int().min(1).max(86_400),
-  presenter: z.string().trim().min(1).max(120).nullable()
-});
-export type CallTimerSegment = z.infer<typeof CallTimerSegmentSchema>;
-const Segments = z.array(CallTimerSegmentSchema).min(1).max(50).refine((segments) => new Set(segments.map((s) => s.id)).size === segments.length, 'Timer segments need distinct IDs.');
-/** The timer is call-wide. Time keeps running beyond zero until the host explicitly advances. */
-export const CallTimerSequenceSchema = z.object({
-  revision: z.number().int().nonnegative(), segments: Segments,
-  activeIndex: z.number().int().nonnegative(), status: z.enum(['ready', 'running', 'paused', 'finished']),
-  /** Milliseconds already elapsed before startedAt, excluding pauses. */
+  /** Counts its changes, so a control made against an older view of it is refused. */
+  revision: Revision,
+  /** How long it runs, with any time added since it started. */
+  durationSeconds: Seconds,
+  status: z.enum(['running', 'paused']),
+  /** Milliseconds it had run before `startedAt`, without its pauses. */
   elapsedMs: z.number().nonnegative(),
-  /** Server milliseconds since epoch, or null while ready, paused or finished. */
-  startedAt: z.number().nonnegative().nullable(), addedSeconds: z.number().int().nonnegative()
-}).refine((s) => s.activeIndex < s.segments.length && (s.status === 'running') === (s.startedAt !== null), 'Timer state must name its current segment and clock.');
-export type CallTimerSequence = z.infer<typeof CallTimerSequenceSchema>;
-export const CallTimerSequenceInputSchema = z.object({ expectedRevision: z.number().int().nonnegative().nullable(), segments: Segments });
-export type CallTimerSequenceInput = z.infer<typeof CallTimerSequenceInputSchema>;
+  /** When it last started or resumed, in the server's milliseconds since the epoch; null while it's paused. */
+  startedAt: z.number().nonnegative().nullable()
+}).refine((t) => (t.status === 'running') === (t.startedAt !== null), 'A running timer has a start, and a paused one has none.');
+export type CallTimer = z.infer<typeof CallTimerSchema>;
+
+/**
+ * What the host does with the timer: start one of a length while none runs, then pause, resume, add time (from now, once
+ * it's over time) or stop it. Each change but a start names the revision it was made against.
+ */
 export const CallTimerControlSchema = z.discriminatedUnion('action', [
-  z.object({ expectedRevision: z.number().int().nonnegative(), action: z.enum(['start', 'pause', 'resume', 'restart', 'advance', 'skip']) }),
-  z.object({ expectedRevision: z.number().int().nonnegative(), action: z.literal('add-time'), seconds: z.number().int().min(1).max(86_400) })
+  z.object({ action: z.literal('start'), durationSeconds: Seconds }),
+  z.object({ action: z.enum(['pause', 'resume', 'stop']), expectedRevision: Revision }),
+  z.object({ action: z.literal('add-time'), expectedRevision: Revision, seconds: Seconds })
 ]);
 export type CallTimerControl = z.infer<typeof CallTimerControlSchema>;
-export const CallTimerPresetInputSchema = z.object({ name: z.string().trim().min(1).max(120), segments: Segments });
-export type CallTimerPresetInput = z.infer<typeof CallTimerPresetInputSchema>;
-export const CallTimerPresetUpdateSchema = CallTimerPresetInputSchema.extend({ expectedRevision: z.number().int().nonnegative() });
-export type CallTimerPresetUpdate = z.infer<typeof CallTimerPresetUpdateSchema>;
-export const CallTimerPresetSchema = CallTimerPresetInputSchema.extend({ id: IDSchema, revision: z.number().int().nonnegative(), createdAt: ISODateSchema, updatedAt: ISODateSchema });
-export type CallTimerPreset = z.infer<typeof CallTimerPresetSchema>;
-export const CallTimerCuePreferenceSchema = z.boolean();
-export interface CallTimerPresetsApi {
-  list(): Promise<CallTimerPreset[]>;
-  create(input: CallTimerPresetInput): Promise<CallTimerPreset>;
-  update(id: string, input: CallTimerPresetUpdate): Promise<CallTimerPreset>;
-  remove(id: string): Promise<void>;
-}

@@ -19,7 +19,7 @@ import { capturing, load, notice, roomPausesOf, roomsOpenAt, save, screenChanged
 import { requireIn, speakersIn, type Viewer } from './participants';
 import { stillHosting } from './permissions';
 import { view } from './read-model';
-import { nudge } from './notifications';
+import { tellRoom } from './notifications';
 
 const clog = log.child({ component: 'calls' });
 
@@ -169,7 +169,7 @@ export async function transcribe(v: Viewer, callId: string, clip: transcripts.Cl
   }
   const readers = roomsOpenAt(s, row, t0) ? readersAt(s, place, t0) : undefined;
   await transcripts.hear(o, into, clip, { speaker, ...(place !== MAIN_PLACE ? { room: place } : {}), ...(readers ? { readers } : {}), began: t0, ...(atMs === undefined ? {} : { atMs }) });
-  await nudge(o, row.room_name, callId, { call: true, log: false });
+  await tellRoom(o, row.room_name, callId, { call: true, log: false });
   return view(v, o.pool, callId);
 }
 
@@ -213,7 +213,7 @@ export async function startShare(v: Viewer, callId: string, notes: boolean): Pro
     clog.info('share started', { ...ctx, keep, segment: s.notes.segment, role: v.pass.role });
     return { id, keep, room: row.room_name };
   });
-  await nudge(o, r.room, callId, { call: true, log: false });
+  await tellRoom(o, r.room, callId, { call: true, log: false });
   return { share: r.id, keep: r.keep, state: await view(v, o.pool, callId) };
 }
 
@@ -308,7 +308,7 @@ export async function shareEnded(v: Viewer, callId: string, shareId: string): Pr
   });
   if (room) {
     clog.debug('share ended', { callId, role: v.pass.role });
-    await nudge(o, room.name, callId, { call: true, log: false });
+    await tellRoom(o, room.name, callId, { call: true, log: false });
   }
   return view(v, o.pool, callId);
 }

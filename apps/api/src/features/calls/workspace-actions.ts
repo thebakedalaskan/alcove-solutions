@@ -16,7 +16,7 @@ import { seatKey, seatOf, type Viewer } from './participants';
 import { load, save, saveSettled, settle } from './state';
 import { anyone, stillHosting } from './permissions';
 import { afterClosing } from './room-boards';
-import { nudge } from './notifications';
+import { tellRoom } from './notifications';
 import { view } from './read-model';
 
 const clog = log.child({ component: 'calls' });
@@ -65,7 +65,7 @@ export async function actOnWorkspace(v: Viewer, callId: string, a: space.SpaceAc
     if (done.ended) await endSeat(o, callId, done.ended);
     if (done.made) await space.followHome(o, done.meetingId, { add: done.made.guests }, [done.made.workspaceId]);
     return afterClosing({ organizer: o, callId }, done.closed, async () => {
-      await nudge(o, done.room, callId, { call: true, log: false });
+      await tellRoom(o, done.room, callId, { call: true, log: false });
       return view(v, o.pool, callId);
     });
   }
@@ -122,7 +122,7 @@ export async function settledHome(o: Owner, callId: string, timeZone?: string | 
     // Everyone invited comes in now the call's row is let go, so a big invite never holds the call up.
     await space.followHome(o, row.meeting_item_id, { add: taken.guests });
     await space.carryForward(o, row.meeting_item_id, taken.was, home.workspaceId);
-    await nudge(o, taken.room, callId, { call: true, log: false });
+    await tellRoom(o, taken.room, callId, { call: true, log: false });
     return home;
   }
   if (!home.made) {
@@ -172,7 +172,7 @@ async function agendaFor(o: Owner, callId: string): Promise<void> {
     });
     if (!made) return;
     clog.info('next agenda made', { callId, workspaceId: plan.workspaceId, documentId: made.documentId, carried: plan.open.length });
-    await nudge(o, row.room_name, callId, { call: true, log: false });
+    await tellRoom(o, row.room_name, callId, { call: true, log: false });
   } catch (e) {
     await tx(o.pool, async (c) => {
       const held = await load(o, c, callId, true);

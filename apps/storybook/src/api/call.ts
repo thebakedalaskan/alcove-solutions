@@ -10,7 +10,7 @@
  * and its timer and vote.
  */
 import {
-  CallTimerSequenceInputSchema, CallTimerControlSchema, type CallTimerControl, type CallTimerSequenceInput, type CallTimerSequence, type CallAttention, type CallFeedbackKind, type CallQuestionStatus, ACCEPTED_FOLLOW_UP, AlcoveApiError, type FollowUpCreate, type FollowUpPatch, type FollowUpReview, type FollowUpTarget, type LiveFollowUp, MAX_CALL_IDEAS, RING_SECONDS, notesAreOn, reactionTarget, withReaction, type BreakoutPlan, type CallPage, type CallAnswer, type CallChatMention, CallChatTextSchema, type CallCrypto, type CallEndResult, type CallMoment, type CallMoveOut, type CallParticipant, type CallRole,
+  CALL_TIMER_MAX_SECONDS, CallTimerControlSchema, type CallTimerControl, type CallTimer, type CallAttention, type CallNudgeKind, type CallQuestionStatus, type CallStatusKind, type CallStatusMinutes, ACCEPTED_FOLLOW_UP, AlcoveApiError, type FollowUpCreate, type FollowUpPatch, type FollowUpReview, type FollowUpTarget, type LiveFollowUp, MAX_CALL_IDEAS, RING_SECONDS, notesAreOn, reactionTarget, withReaction, type BreakoutPlan, type CallPage, type CallAnswer, type CallChatMention, CallChatTextSchema, type CallCrypto, type CallEndResult, type CallMoment, type CallMoveOut, type CallParticipant, type CallRole,
   type CallReaction, type CallSession, type CallState, type CallTicket, type CaptionLanguage, type CaptionTranslation, type CaptureDevicePart, type CaptureGap, type CaptureMode, type CapturePart,
   type CatchUp, type CatchUpRange, type CatchUpWindow, type AudioPiece, type LineAudio, type Meeting, type MoveMedia, type MoveOutState, type Person, type PersonalApi,
   type RingReply, type RoomCapture, type ScreenPiece, type SeriesAnswerPart, type TranscriptClip, type TranscriptLine
@@ -43,6 +43,29 @@ const firstOf = (p: Person) => p.name.split(' ')[0] ?? p.name;
 const sayingMs = (text: string) => Math.min(5600, Math.max(2200, text.length * 55));
 /** How long after the organizer's connection drops someone invited hosts in their place. */
 const TAKE_OVER_MS = 10_000;
+/** The call's timer after one of the host's controls, as the API works it out (features/calls/timers.ts), or why not. */
+function timerAfter(was: CallTimer | null, input: CallTimerControl, now: number): CallTimer | null {
+  if (input.action === 'start') {
+    if (was) throw new AlcoveApiError('conflict', 'A timer is running already. Stop it to start another.');
+    return { id: nextId('timer'), revision: 0, durationSeconds: input.durationSeconds, status: 'running', elapsedMs: 0, startedAt: now };
+  }
+  if (!was || was.revision !== input.expectedRevision) throw new AlcoveApiError('conflict', 'The timer has changed. Look at it again and try once more.');
+  const elapsedMs = was.elapsedMs + (was.startedAt === null ? 0 : Math.max(0, now - was.startedAt));
+  const changed = { ...was, revision: was.revision + 1 };
+  if (input.action === 'stop') return null;
+  if (input.action === 'pause' && was.status === 'running') return { ...changed, status: 'paused', elapsedMs, startedAt: null };
+  if (input.action === 'resume' && was.status === 'paused') return { ...changed, status: 'running', startedAt: now };
+  if (input.action === 'add-time') {
+    const durationSeconds = Math.max(was.durationSeconds, Math.floor(elapsedMs / 1000)) + input.seconds;
+    if (durationSeconds > CALL_TIMER_MAX_SECONDS) throw new AlcoveApiError('conflict', 'A timer runs for a day at most.');
+    return { ...changed, durationSeconds };
+  }
+  throw new AlcoveApiError('conflict', 'That isn’t something the timer can do right now.');
+}
+/** Nudges of one kind within a minute of the first are one note, and a note stays a minute, as the server keeps them. */
+const NUDGE_WINDOW = 60_000;
+/** A status whose time has run out. */
+const ranOut = (status: CallParticipant['status']) => status !== null && status.until !== null && Date.parse(status.until) <= Date.now();
 
 /** What LiveKit says about everyone else's browser, and about your own connection to the room. */
 export interface RoomSide {
@@ -123,10 +146,10 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     const startedAt = new Date(Date.now() - since * 1000).toISOString();
     const organizes = arrival.role === 'host';
     const person: Person = arrival.name ? { id: `guest-${callId}`, name: arrival.name, email: '' } : you();
-    const me: CallParticipant = { id: identity(`me${callId}`), seat: 'seat-me', person, isMe: true, isOrganizer: organizes, hand: false, othersPoint: true };
+    const me: CallParticipant = { id: identity(`me${callId}`), seat: 'seat-me', person, isMe: true, isOrganizer: organizes, hand: false, status: null, othersPoint: true };
     const mode = script.notes ?? meeting.notes;
     super({
-      revision: 0, timerSequence: script.timerSequence ? { ...structuredClone(script.timerSequence), startedAt: script.timerSequence.status === 'running' ? Date.now() : null } : null, attention: { place: 'main', hands: [], questions: [], signals: [], cues: [], latest: 0, serverNow: new Date().toISOString() },
+      revision: 0, timer: script.timer ? { ...script.timer, startedAt: script.timer.status === 'running' ? Date.now() : null } : null, attention: { place: 'main', hands: [], questions: [], nudges: [], cues: [], latest: 0, serverNow: new Date().toISOString() },
       callId, meetingId: meeting.id, code: meeting.code, title: meeting.title, startedAt, elapsed: since, phase: 'in-call', participants: organizes ? [me] : [], locked: false, pointing: true,
       spotlight: null, breakouts: { open: null, held: [] }, capture: captureOf(mode, mode === 'off' ? null : startedAt, meeting.organizer.name, script.model ?? null),
       notes: { everOn: mode !== 'off', noteId: mode !== 'off' ? noteId : null, segmentStartedAt: mode !== 'off' ? startedAt : null, recording: { segment: 0, pieces: 0, seconds: mode === 'on' ? since : 0 } }, waiting: [], ringing: [], leaving: [], chatRead: [],
@@ -150,7 +173,7 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     // Whoever's here already, the organizer first when it isn't you.
     const here: Present[] = [...(script.here ?? [])];
     if (!organizes && !here.some((p) => p.organizer)) here.unshift({ who: meeting.organizer, organizer: true });
-    for (const p of here) this.join(p.who, { organizer: p.organizer, guest: p.guest, mic: p.mic, hand: p.hand, sharing: p.sharing });
+    for (const p of here) this.join(p.who, { organizer: p.organizer, guest: p.guest, mic: p.mic, hand: p.hand, sharing: p.sharing, status: p.status });
     for (const message of script.privateMessages ?? []) this.after((message.after ?? 2) * 1000, () => {
       const from = this.find(message.from);
       const parent = message.replyTo ? this.direct.getSnapshot().messages.find((m) => m.text === message.replyTo) : null;
@@ -190,7 +213,8 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
 
   private tick(): void {
     this.change((s) => ({
-      ...s, attention: { ...s.attention, serverNow: new Date().toISOString(), signals: s.attention.signals.filter((f) => Date.parse(f.expiresAt) > Date.now()) }, elapsed: s.elapsed + 1, workspace: s.workspace.play ? { ...s.workspace, play: { ...s.workspace.play, nowMs: Date.now() } } : s.workspace,
+      ...s, attention: { ...s.attention, serverNow: new Date().toISOString(), nudges: s.attention.nudges.filter((n) => Date.parse(n.at) > Date.now() - NUDGE_WINDOW) },
+      participants: s.participants.some((p) => ranOut(p.status)) ? s.participants.map((p) => (ranOut(p.status) ? { ...p, status: null } : p)) : s.participants, elapsed: s.elapsed + 1, workspace: s.workspace.play ? { ...s.workspace, play: { ...s.workspace.play, nowMs: Date.now() } } : s.workspace,
       notes: { ...s.notes, recording: s.capture.mode === 'on' ? { ...s.notes.recording, seconds: s.notes.recording.seconds + 1, pieces: Math.floor((s.notes.recording.seconds + 1) / 5) } : s.notes.recording }
     }));
     // The organizer's browser brings everyone back when the rooms' time is up; in the script, the organizer's isn't yours.
@@ -205,8 +229,9 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
       case 'say': this.say(b.line); return;
       case 'mic': this.them(b.who, (t) => ({ ...t, mic: b.on, speaking: b.on && t.speaking })); return;
       case 'hand': { const p = this.find(b.who); if (p) this.handFor(p, b.up); return; }
-      case 'question': { const p = this.find(b.who); if (p) this.questionFor(p, b.text, b.votes ?? 0); return; }
-      case 'feedback': { const p = this.find(b.who); if (p) this.feedbackFor(p, b.kind); return; }
+      case 'question': { const p = this.find(b.who); if (p) this.questionFor(p, b.text, b.votes ?? 0, nextId('question'), b.anonymous ?? false); return; }
+      case 'nudge': { const p = this.find(b.who); if (p) this.nudgeFrom(p, b.kind); return; }
+      case 'status': { const p = this.find(b.who); if (p) this.statusFor(p, b.status, b.minutes); return; }
       case 'share': this.them(b.who, (t) => ({ ...t, screen: b.screen })); return;
       case 'stop-sharing': this.them(b.who, (t) => ({ ...t, screen: null })); return;
       case 'unavailable-chat': this.crypto.update((c) => ({ ...c, chat: c.chat.filter((m) => m.text !== b.text) })); return;
@@ -223,7 +248,8 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
           const start = b.text.indexOf(name);
           return start < 0 ? [] : [{ identity: target.id, start, end: start + name.length }];
         });
-        if (p) this.crypto.update((c) => ({ ...c, chat: [...c.chat, { id: nextId('chat'), from: p.id, isMe: false, text: b.text, mentions, thread, at: this.getSnapshot().elapsed, place: c.place, sending: false, failed: false, reactions: [] }] }));
+        const broadcast = b.do === 'reply' && thread !== null && (b.broadcast ?? false);
+        if (p) this.crypto.update((c) => ({ ...c, chat: [...c.chat, { id: nextId('chat'), from: p.id, isMe: false, text: b.text, mentions, thread, broadcast, at: this.getSnapshot().elapsed, place: c.place, sending: false, failed: false, reactions: [] }] }));
         return;
       }
       case 'react': {
@@ -232,6 +258,7 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
         if (p && message) this.crypto.update((c) => ({ ...c, chat: withReaction(c.chat, message.id, message.place, b.reaction, p.id, true) }));
         return;
       }
+      case 'react-privately': { const p = this.find(b.who); if (p) this.direct.receiveReaction(p.id, b.text, b.reaction); return; }
       case 'knock': {
         const person: Person = b.byName ? { id: `guest-${b.who.name}`, name: firstOf(b.who), email: '' } : b.who;
         this.change((s) => ({ ...s, waiting: [...s.waiting, { id: identity(`ask${person.name}${this.ticket.callId}`), person }] }));
@@ -336,7 +363,7 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     if (id && now) this.livekit.update((r) => ({ ...r, people: { ...r.people, [id]: change(now) } }));
   }
 
-  private join(p: Person, o: { organizer?: boolean | undefined; guest?: boolean | undefined; mic?: boolean | undefined; hand?: boolean | undefined; sharing?: Screen | undefined } = {}): void {
+  private join(p: Person, o: { organizer?: boolean | undefined; guest?: boolean | undefined; mic?: boolean | undefined; hand?: boolean | undefined; sharing?: Screen | undefined; status?: Present['status'] } = {}): void {
     if (this.find(p)) return;
     this.connections += 1;
     const key = p.email || p.name;
@@ -344,9 +371,10 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     this.seats.set(key, seat);
     const id = identity(`${key}${this.ticket.callId}${this.connections}`);
     if (o.guest) this.guests.add(id);
-    const joined: CallParticipant = { id, seat, person: p, isMe: false, isOrganizer: o.organizer ?? false, hand: o.hand ?? false, othersPoint: true };
+    const joined: CallParticipant = { id, seat, person: p, isMe: false, isOrganizer: o.organizer ?? false, hand: o.hand ?? false, status: null, othersPoint: true };
     this.change((s) => ({ ...s, participants: [...s.participants, joined], host: o.organizer && !this.away ? { ...s.host, id } : s.host }));
     if (o.hand) this.handFor(joined, true);
+    if (o.status) this.statusFor(joined, o.status.kind, o.status.minutes);
     this.cue('join');
     this.crypto.update((c) => ({ ...c, members: c.place === 'main' && c.status === 'in' ? [...c.members, id] : c.members, everyone: [...c.everyone, id] }));
     this.livekit.update((r) => ({ ...r, people: { ...r.people, [id]: { mic: o.mic ?? true, speaking: false, screen: o.sharing ?? null, sound: false } } }));
@@ -369,7 +397,7 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
    */
   private drops(x: CallParticipant): void {
     this.change((s) => ({
-      ...s, attention: { ...s.attention, hands: s.attention.hands.filter((h) => h.seat !== x.seat), signals: s.attention.signals.filter((f) => f.seat !== x.seat) }, participants: s.participants.filter((q) => q.id !== x.id), spotlight: s.spotlight === x.id ? null : s.spotlight,
+      ...s, attention: { ...s.attention, hands: s.attention.hands.filter((h) => h.seat !== x.seat) }, participants: s.participants.filter((q) => q.id !== x.id), spotlight: s.spotlight === x.id ? null : s.spotlight,
       breakouts: s.breakouts.open ? { ...s.breakouts, open: { ...s.breakouts.open, rooms: s.breakouts.open.rooms.map((r) => ({ ...r, members: r.members.filter((m) => m !== x.id) })) } } : s.breakouts
     }));
     this.crypto.update((c) => ({ ...c, members: c.members.filter((m) => m !== x.id), everyone: c.everyone.filter((m) => m !== x.id) }));
@@ -744,8 +772,8 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
   /** Your part of the call changes: a moment between the two (nothing heard or sent), then the new part's keys. */
   private moveTo(place: string, members: string[]): void {
     const attention = this.getSnapshot().attention;
-    this.attentionRooms.set(attention.place, { ...attention, hands: attention.hands.filter((h) => h.seat !== this.me.seat), signals: [] });
-    const nextAttention = this.attentionRooms.get(place) ?? { place, hands: [], questions: [], signals: [], cues: [], latest: 0, serverNow: new Date().toISOString() };
+    this.attentionRooms.set(attention.place, { ...attention, hands: attention.hands.filter((h) => h.seat !== this.me.seat), nudges: [] });
+    const nextAttention = this.attentionRooms.get(place) ?? { place, hands: [], questions: [], nudges: [], cues: [], latest: 0, serverNow: new Date().toISOString() };
     this.change((s) => ({ ...s, attention: nextAttention }));
     this.crypto.update((c) => ({ ...c, status: 'moving', place }));
     this.showBoard();
@@ -932,9 +960,9 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     return Promise.resolve({ serverUrl: this.ticket.serverUrl, roomName: this.ticket.roomName, identity: this.ticket.identity, token: 'storybook' });
   }
   refresh(): Promise<void> { return Promise.resolve(); }
-  sendChat(text: string, mentions: readonly CallChatMention[] = [], thread: import('@alcove/api').CallChatThread | null = null): Promise<void> {
+  sendChat(text: string, mentions: readonly CallChatMention[] = [], thread: import('@alcove/api').CallChatThread | null = null, broadcast = false): Promise<void> {
     const leading = text.length - text.trimStart().length;
-    const parsed = CallChatTextSchema.safeParse({ text: text.trim(), mentions: mentions.map((m) => ({ ...m, start: m.start - leading, end: m.end - leading })), thread, at: this.getSnapshot().elapsed });
+    const parsed = CallChatTextSchema.safeParse({ text: text.trim(), mentions: mentions.map((m) => ({ ...m, start: m.start - leading, end: m.end - leading })), thread, broadcast, at: this.getSnapshot().elapsed });
     const now = this.crypto.getSnapshot();
     if (!parsed.success || parsed.data.mentions.some((m) => !now.members.includes(m.identity))) return Promise.reject(new AlcoveApiError('invalid', 'Choose people who are in this part of the call.'));
     if (parsed.data.thread) {
@@ -943,7 +971,7 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     }
     const failed = this.chatFailures < (this.script.chatFailures ?? 0);
     if (failed) this.chatFailures++;
-    this.crypto.update((c) => ({ ...c, chat: [...c.chat, { id: nextId('chat'), from: this.me.id, isMe: true, text: parsed.data.text, mentions: parsed.data.mentions, thread: parsed.data.thread, at: parsed.data.at, place: c.place, sending: false, failed, reactions: [] }] }));
+    this.crypto.update((c) => ({ ...c, chat: [...c.chat, { id: nextId('chat'), from: this.me.id, isMe: true, text: parsed.data.text, mentions: parsed.data.mentions, thread: parsed.data.thread, broadcast: parsed.data.broadcast, at: parsed.data.at, place: c.place, sending: false, failed, reactions: [] }] }));
     return Promise.resolve();
   }
   retryChat(messageId: string): Promise<void> {
@@ -1493,48 +1521,19 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
   private cue(kind: CallAttention['cues'][number]['kind']): void {
     this.change((s) => { const seq = s.attention.latest + 1; return { ...s, attention: { ...s.attention, latest: seq, cues: [...s.attention.cues, { id: nextId('cue'), seq, kind, at: new Date().toISOString() }].slice(-64) } }; });
   }
+  /** A hand goes with its seat, as the API's does: someone back on a new connection keeps their place, under that connection. */
   private handFor(p: CallParticipant, up: boolean): void {
-    this.change((s) => ({ ...s, participants: s.participants.map((x) => x.seat === p.seat ? { ...x, hand: up } : x), attention: { ...s.attention, hands: up ? s.attention.hands.some((h) => h.seat === p.seat) ? s.attention.hands : [...s.attention.hands, { id: nextId('hand'), participantId: p.id, seat: p.seat, raisedAt: new Date().toISOString() }] : s.attention.hands.filter((h) => h.seat !== p.seat) } }));
+    this.change((s) => ({ ...s, participants: s.participants.map((x) => x.seat === p.seat ? { ...x, hand: up } : x), attention: { ...s.attention, hands: up ? s.attention.hands.some((h) => h.seat === p.seat) ? s.attention.hands.map((h) => (h.seat === p.seat ? { ...h, participantId: p.id } : h)) : [...s.attention.hands, { id: nextId('hand'), participantId: p.id, seat: p.seat, raisedAt: new Date().toISOString() }] : s.attention.hands.filter((h) => h.seat !== p.seat) } }));
     if (up) this.cue('hand');
   }
-  setTimerSequence(input: CallTimerSequenceInput): Promise<void> {
-    return Promise.resolve().then(() => {
-      const parsed = CallTimerSequenceInputSchema.parse(input);
-      const s = this.getSnapshot();
-      if (!s.isHost) throw new AlcoveApiError('forbidden', 'Only the host can change the timer.');
-      const was = s.timerSequence;
-      if (parsed.expectedRevision !== (was?.revision ?? null)) throw new AlcoveApiError('conflict', 'The timer changed. Read its latest timing and try again.');
-      if (was && was.status !== 'ready' && was.status !== 'finished' && was.segments.slice(0, was.activeIndex + 1).some((segment, index) => JSON.stringify(segment) !== JSON.stringify(parsed.segments[index]))) throw new AlcoveApiError('conflict', 'The current turn and past segments stay as timed.');
-      const timerSequence: CallTimerSequence = was && was.status !== 'finished' ? { ...was, segments: parsed.segments, revision: was.revision + 1 } : { revision: (was?.revision ?? -1) + 1, segments: parsed.segments, activeIndex: 0, status: 'ready', elapsedMs: 0, startedAt: null, addedSeconds: 0 };
-      this.change((state) => ({ ...state, timerSequence }));
-    });
-  }
+  /** The call's timer, as the API keeps it: only whoever hosts changes it, each change but a start against its revision. */
   controlTimer(input: CallTimerControl): Promise<void> {
     return Promise.resolve().then(() => {
       const parsed = CallTimerControlSchema.parse(input);
       const s = this.getSnapshot();
-      if (!s.isHost) throw new AlcoveApiError('forbidden', 'Only the host can control the timer.');
-      const was = s.timerSequence;
-      if (!was || parsed.expectedRevision !== was.revision) throw new AlcoveApiError('conflict', 'The timer changed. Read its latest timing and try again.');
-      const now = Date.now();
-      const elapsedMs = was.elapsedMs + (was.startedAt === null ? 0 : Math.max(0, now - was.startedAt));
-      let timerSequence: CallTimerSequence = { ...was, revision: was.revision + 1 };
-      switch (parsed.action) {
-        case 'start':
-          if (was.status !== 'ready') throw new AlcoveApiError('conflict', 'This timer has started already.');
-          timerSequence = { ...timerSequence, status: 'running', startedAt: now }; break;
-        case 'pause':
-          if (was.status !== 'running') throw new AlcoveApiError('conflict', 'This timer isn’t running.');
-          timerSequence = { ...timerSequence, status: 'paused', startedAt: null, elapsedMs }; break;
-        case 'resume':
-          if (was.status !== 'paused') throw new AlcoveApiError('conflict', 'This timer isn’t paused.');
-          timerSequence = { ...timerSequence, status: 'running', startedAt: now }; break;
-        case 'restart': timerSequence = { ...timerSequence, status: 'running', elapsedMs: 0, startedAt: now, addedSeconds: 0 }; break;
-        case 'add-time': timerSequence = { ...timerSequence, addedSeconds: was.addedSeconds + parsed.seconds }; break;
-        case 'skip': case 'advance':
-          timerSequence = was.activeIndex + 1 < was.segments.length ? { ...timerSequence, activeIndex: was.activeIndex + 1, elapsedMs: 0, startedAt: now, addedSeconds: 0, status: 'running' } : { ...timerSequence, elapsedMs, startedAt: null, status: 'finished' }; break;
-      }
-      this.change((state) => ({ ...state, timerSequence }));
+      if (!s.isHost) throw new AlcoveApiError('forbidden', 'Only the host can change the timer.');
+      const timer = timerAfter(s.timer, parsed, Date.now());
+      this.change((state) => ({ ...state, timer }));
     });
   }
 
@@ -1545,17 +1544,17 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     if (!s.isHost && h.seat !== this.me.seat) return Promise.reject(new AlcoveApiError('forbidden', 'Only the host can lower someone else’s hand.'));
     const p = s.participants.find((p) => p.seat === h.seat); if (p) this.handFor(p, false); return Promise.resolve();
   }
-  clearHands(): Promise<void> {
-    if (!this.getSnapshot().isHost) return Promise.reject(new AlcoveApiError('forbidden', 'Only the host can lower all hands.'));
-    for (const h of this.getSnapshot().attention.hands) { const p = this.getSnapshot().participants.find((p) => p.seat === h.seat); if (p) this.handFor(p, false); }
-    return Promise.resolve();
-  }
-  private questionFor(p: CallParticipant, text: string, votes = 0, id = nextId('question')): void {
+  /** As the server says it: an anonymous question names nobody, and only its asker is told it's theirs. */
+  private questionFor(p: CallParticipant, text: string, votes = 0, id = nextId('question'), anonymous = false): void {
     if (this.getSnapshot().attention.questions.some((q) => q.id === id)) return;
-    this.change((s) => ({ ...s, attention: { ...s.attention, questions: [...s.attention.questions, { id, author: p.person, text, createdAt: new Date().toISOString(), status: 'open', votes, voted: false, own: p.isMe, pinned: false }] } }));
+    this.change((s) => ({ ...s, attention: { ...s.attention, questions: [...s.attention.questions, { id, author: anonymous ? null : p.person, text, createdAt: new Date().toISOString(), status: 'open', votes, voted: false, own: p.isMe, pinned: false }] } }));
     this.cue('question');
   }
-  postQuestion(id: string, text: string): Promise<void> { this.questionFor(this.me, text, 0, id); return Promise.resolve(); }
+  postQuestion(id: string, text: string, anonymous = false): Promise<void> { this.questionFor(this.me, text, 0, id, anonymous); return Promise.resolve(); }
+  withdrawQuestion(id: string): Promise<void> {
+    if (!this.getSnapshot().attention.questions.some((q) => q.id === id && q.own)) return Promise.reject(new AlcoveApiError('forbidden', 'Only whoever asked a question can take it back.'));
+    this.change((s) => ({ ...s, attention: { ...s.attention, questions: s.attention.questions.filter((q) => q.id !== id) } })); return Promise.resolve();
+  }
   voteQuestion(id: string, on: boolean): Promise<void> {
     this.change((s) => ({ ...s, attention: { ...s.attention, questions: s.attention.questions.map((q) => q.id === id && q.status === 'open' ? { ...q, voted: on, votes: q.votes + (q.voted === on ? 0 : on ? 1 : -1) } : q) } })); return Promise.resolve();
   }
@@ -1567,10 +1566,44 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     if (!this.getSnapshot().isHost) return Promise.reject(new AlcoveApiError('forbidden', 'Only the host can pin questions.'));
     this.change((s) => ({ ...s, attention: { ...s.attention, questions: s.attention.questions.map((q) => ({ ...q, pinned: q.id === id && q.status === 'open' })) } })); return Promise.resolve();
   }
-  private feedbackFor(p: CallParticipant, kind: CallFeedbackKind | null): void {
-    this.change((s) => ({ ...s, attention: { ...s.attention, signals: [...s.attention.signals.filter((f) => f.seat !== p.seat), ...(kind ? [{ participantId: p.id, seat: p.seat, kind, expiresAt: new Date(Date.now() + 30000).toISOString() }] : [])] } }));
+  /** Who sent each nudge note you got (by seat), and when its minute began: the same nudge again from them changes nothing. */
+  private nudgeNotes = new Map<string, { first: number; from: string[] }>();
+  /** Someone in the script nudges you: a note of its own, or one more on the same nudge's note within its minute. */
+  private nudgeFrom(p: CallParticipant, kind: CallNudgeKind): void {
+    const now = Date.now();
+    const open = this.getSnapshot().attention.nudges.find((n) => n.kind === kind && (this.nudgeNotes.get(n.id)?.first ?? 0) > now - NUDGE_WINDOW);
+    const kept = open ? this.nudgeNotes.get(open.id) : undefined;
+    if (open && kept) {
+      if (kept.from.includes(p.seat)) return;
+      kept.from.push(p.seat);
+      this.change((s) => ({ ...s, attention: { ...s.attention, nudges: s.attention.nudges.map((n) => (n.id === open.id ? { ...n, count: kept.from.length, from: null, at: new Date(now).toISOString() } : n)) } }));
+      return;
+    }
+    const id = nextId('nudge');
+    this.nudgeNotes.set(id, { first: now, from: [p.seat] });
+    this.change((s) => ({ ...s, attention: { ...s.attention, nudges: [...s.attention.nudges, { id, kind, count: 1, from: p.person, at: new Date(now).toISOString() }] } }));
   }
-  setFeedback(kind: CallFeedbackKind | null): Promise<void> { this.feedbackFor(this.me, kind); return Promise.resolve(); }
+  /** Your nudge goes to someone in your room, and nobody else in the script hears of it. */
+  nudge(to: string, _kind: CallNudgeKind): Promise<void> {
+    if (to === this.me.id || !this.getSnapshot().participants.some((p) => p.id === to) || !this.crypto.getSnapshot().members.includes(to)) {
+      return Promise.reject(new AlcoveApiError('conflict', 'They aren’t in this room any more.'));
+    }
+    return Promise.resolve();
+  }
+  /** Someone's status, as the server keeps it: a new time from now, or the time already set, or none. */
+  private statusFor(p: CallParticipant, kind: CallStatusKind | null, minutes?: CallStatusMinutes | undefined): void {
+    const now = Date.now();
+    this.change((s) => ({
+      ...s, participants: s.participants.map((x) => {
+        if (x.seat !== p.seat) return x;
+        if (!kind) return { ...x, status: null };
+        const was = x.status && !ranOut(x.status) ? x.status : null;
+        const time = minutes !== undefined ? { since: new Date(now).toISOString(), until: new Date(now + minutes * 60_000).toISOString() } : was ? { since: was.since, until: was.until } : { since: new Date(now).toISOString(), until: null };
+        return { ...x, status: { kind, ...time } };
+      })
+    }));
+  }
+  setStatus(status: CallStatusKind | null, minutes?: CallStatusMinutes | undefined): Promise<void> { this.statusFor(this.me, status, minutes); return Promise.resolve(); }
   letOthersPoint(on: boolean): Promise<void> { this.change((s) => ({ ...s, participants: s.participants.map((p) => (p.isMe ? { ...p, othersPoint: on } : p)) })); return Promise.resolve(); }
   setPointing(on: boolean): Promise<void> { this.change((s) => ({ ...s, pointing: on })); return Promise.resolve(); }
   setSpotlight(participantId: string | null): void { this.change((s) => ({ ...s, spotlight: participantId })); }

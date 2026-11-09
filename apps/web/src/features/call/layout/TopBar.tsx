@@ -1,13 +1,13 @@
 /*
  * The call's top bar. On the left, the call: its title and clock, the notes sign everyone sees (which opens what's captured),
  * the confidential-compute shield, Reconnecting while the connection finds its way back, and what's showing when the
- * workspace, the board and the shares have to take turns. On the right, what's only yours: View, then Board and Workspace,
- * which open on your stage, then Notes and Chat, which open in your side, then who's here, which opens People. Each is lit
+ * workspace, the board and the shares have to take turns. On the right, what's only yours: Board and Workspace, which open
+ * on your stage, then Notes and Chat, which open in your side, then who's here, which opens People. Each is lit
  * while it's open, and pressed again puts it away. On a phone it's the title, the notes sign, Chat and who's here: the rest is
  * in More.
  */
 import { clock, type Person } from '@alcove/api';
-import { AttentionButton, BoardPicker, CallTopButton, CallTopGroup, CallTopRule, Dots, Faces, Icon, Popover, Tooltip, cn, type BoardPickerProps } from '@alcove/ui';
+import { BoardPicker, CallTopButton, CallTopGroup, CallTopRule, Dots, Faces, Icon, Popover, Tooltip, cn, type BoardPickerProps } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useRef, useState, type ReactNode } from 'react';
 import { q, trustLine } from '~/lib/queries';
@@ -31,14 +31,12 @@ export interface TopSide { view: SideView | null; toggle: (v: SideView) => void;
 const BOARD_TIP = 'Open a board, just for you · O';
 const WORKSPACE_TIP = 'Open the workspace, just for you · W';
 
-export function TopBar({ title, elapsed, sign, swap, view, people, asking, reconnecting, screens, modelPrivate, phone, board, workspace, side, attention, timer }: {
+export function TopBar({ title, elapsed, sign, swap, people, asking, reconnecting, screens, modelPrivate, phone, board, workspace, side, timer }: {
   title: string; elapsed: number;
   /** The notes sign: what the call captures, the same for everyone. */
   sign: ReactNode;
   /** What's showing, when there isn't room for all of it at once. */
   swap: ReactNode;
-  /** View: your view's controls (ViewMenu). */
-  view: ReactNode;
   people: Person[];
   /** People asking to join (the organizer's to let in). */
   asking: number;
@@ -53,7 +51,6 @@ export function TopBar({ title, elapsed, sign, swap, view, people, asking, recon
   workspace: TopWorkspace;
   side: TopSide;
   timer: ReactNode;
-  attention: { hands: number; questions: number; onPress: () => void };
 }) {
   const peopleOpen = side.view === 'people';
   const chatOpen = side.view === 'chat';
@@ -79,7 +76,7 @@ export function TopBar({ title, elapsed, sign, swap, view, people, asking, recon
         <span className="ttl">{title}</span>
         <div className="nz">{sign}</div>
         {reconnecting && <span className="ic-recon" role="status"><Dots />Reconnecting</span>}
-        <div className="end">{timer}<AttentionButton hands={attention.hands} questions={attention.questions} waiting={asking} on={side.view === 'attention'} onClick={attention.onPress} compact />{chat}{faces}</div>
+        <div className="end">{timer}{chat}{faces}</div>
       </header>
     );
   }
@@ -97,7 +94,6 @@ export function TopBar({ title, elapsed, sign, swap, view, people, asking, recon
       {reconnecting && <span className="ic-recon" role="status"><Dots />Reconnecting</span>}
       {swap}
       <div className="end">
-        {view}
         <CallTopGroup label="Just for you">
           <Popover open={board.menu.open} onOpenChange={(o) => { if (o) board.onPress(); else board.menu.onClose(); }} tip={BOARD_TIP} side="bottom" align="end" label="Open a board" className="bl"
             anchor={boardButton({ onPointerEnter: board.menu.reach })}>
@@ -112,7 +108,6 @@ export function TopBar({ title, elapsed, sign, swap, view, people, asking, recon
             <CallTopButton icon="notesPen" word="Notes" label="Notes" on={notesOpen} data-side="notes" onClick={() => side.toggle('notes')} />
           </Tooltip>
           {chat}
-          <AttentionButton hands={attention.hands} questions={attention.questions} waiting={asking} on={side.view === 'attention'} onClick={attention.onPress} />
           <CallTopRule />
           {faces}
         </CallTopGroup>

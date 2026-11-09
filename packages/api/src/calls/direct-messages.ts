@@ -5,6 +5,7 @@ import { CallIdentity } from './wire';
 import { CallPlaceSchema } from './state';
 import { CallChatThreadSchema, type CallChatThread } from './chat-threads';
 import { CallChatMentionSchema, validChatMentions, type CallChatMention } from './chat-mentions';
+import { CallReactionSchema, type CallChatReaction, type CallReaction } from './reactions';
 
 /** Uncompressed P-256 public key. Private keys never leave the active browser session. */
 export const DirectPublicKeySchema = z.string().regex(/^B[A-Za-z0-9_-]{86}$/);
@@ -12,6 +13,13 @@ export const DirectKeyAnnouncementSchema = z.object({ key: DirectPublicKeySchema
 export type DirectKeyAnnouncement = z.infer<typeof DirectKeyAnnouncementSchema>;
 export const DIRECT_MESSAGE_MAX = 4000;
 export const DirectTextSchema = z.object({ text: z.string().trim().min(1).max(DIRECT_MESSAGE_MAX), thread: CallChatThreadSchema.nullable().default(null), mentions: z.array(CallChatMentionSchema).max(50).default([]) }).refine(validChatMentions, 'Chat mentions must mark separate names in the message.');
+/**
+ * A reaction to a message of the same private conversation, or yours taken back. It's sealed exactly as a message is, so
+ * the relay sees one more envelope between the same two connections and nothing of what it says.
+ */
+export const DirectReactSchema = z.object({ react: z.object({ target: IDSchema.min(1).max(64), reaction: CallReactionSchema, on: z.boolean() }) });
+/** What a private envelope holds once it's opened and authenticated: a message, or a reaction. */
+export const DirectPayloadSchema = z.union([DirectTextSchema, DirectReactSchema]);
 export const DirectSendSchema = z.object({
   id: IDSchema, to: CallIdentity, place: CallPlaceSchema, generation: z.number().int().nonnegative(),
   fromKey: DirectPublicKeySchema, toKey: DirectPublicKeySchema,
@@ -28,6 +36,8 @@ export interface DirectMessage {
   state: 'sending' | 'sent' | 'delivered' | 'failed'; error: string | null;
   thread: CallChatThread | null;
   mentions: CallChatMention[];
+  /** The two people's reactions to it, as on room chat. */
+  reactions: CallChatReaction[];
 }
 export interface DirectMessagesState { ready: boolean; peers: string[]; messages: DirectMessage[]; unread: string[]; unreadMentions: string[] }
 export interface DirectMessagesApi extends LiveStore<DirectMessagesState> {
@@ -36,4 +46,6 @@ export interface DirectMessagesApi extends LiveStore<DirectMessagesState> {
   /** Reuses the original envelope and ID. It never changes its audience. */
   retry(id: string): Promise<void>;
   read(ids: readonly string[]): void;
+  /** Adds your reaction to a sent or delivered message of a conversation you're in (`on`), or takes it back. Only the other person is told. */
+  react(id: string, reaction: CallReaction, on: boolean): Promise<void>;
 }

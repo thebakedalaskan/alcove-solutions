@@ -2964,7 +2964,8 @@ describe('deleting an account', () => {
     await b.fetch(driveCallback, { redirect: 'manual' });
     await b.api.drive.update({ enabled: true, destinationId: driveFolder, formats: ['notes-markdown'] });
     await b.api.drive.setForNote(callNote, { enabled: true, destinationId: driveFolder, formats: ['notes-markdown'] });
-    await b.api.calls.timerPresets.create({ name: 'Lena’s agenda', segments: [{ id: 'opening', label: 'Opening', durationSeconds: 60, presenter: null }] });
+    // A timer preset as the previous release can still write one while a deploy is under way: nothing in this release does.
+    await h.pool.query('INSERT INTO timer_presets (owner_id, preset_id, ciphertext) VALUES ($1, $2, $3)', [ownerId, randomBytes(16).toString('base64url'), randomBytes(64)]);
     // Every table that keeps an account's rows has some of hers.
     const tables = (await h.pool.query<{ table_name: string }>("SELECT table_name FROM information_schema.columns WHERE table_schema = 'public' AND column_name = 'owner_id' ORDER BY table_name")).rows.map((r) => r.table_name);
     expect(tables).toEqual([
@@ -3270,9 +3271,7 @@ describe('privacy at rest', () => {
     const scribeEmail = 'canary-scribe@canary.example';
     const started = await c.api.calls.startNow({ notes: 'on', guests: [scribeEmail, 'canary-rung@canary.example'] });
     const call = await c.api.calls.join(started.code, { mic: true, cam: true });
-    const timerPreset = await c.api.calls.timerPresets.create({ name: 'CANARY-TIMER-PRESET', segments: [{ id: 'opening', label: 'CANARY-TIMER-SEGMENT', durationSeconds: 60, presenter: 'CANARY-TIMER-PRESENTER' }] });
-    await call.setTimerSequence({ expectedRevision: null, segments: timerPreset.segments });
-    await call.controlTimer({ expectedRevision: 0, action: 'start' });
+    await call.controlTimer({ action: 'start', durationSeconds: 60 });
     await call.appendAudio(piece(audioBytes('CANARY-AUDIO-RAW'), 0, 0));
     // Canary Person shares their screen for the notes: its video (titled with a canary) is sealed, and so is their name.
     await presentScreen(call, h.deps.livekit);
@@ -3573,7 +3572,7 @@ describe('privacy at rest', () => {
     // bytea renders as hex; our records embed base64url; check every encoding a plaintext bug could produce.
     const encodings = (s: string) => [s, Buffer.from(s).toString('hex'), Buffer.from(s).toString('base64').slice(0, 12), Buffer.from(s).toString('base64url').slice(0, 12)];
     const canaries = [
-      'CANARY-PRIVATE-MESSAGE', 'CANARY-TIMER-PRESET', 'CANARY-TIMER-SEGMENT', 'CANARY-TIMER-PRESENTER', 'canary-person', 'Canary Person', 'CANARY-TITLE', 'CANARY-EDIT', 'canary-guest', 'CANARY-CHAT', 'CANARY-AUDIO', 'CANARY-ROOM', 'CANARY-SEARCH', 'CANARY-PEOPLE', 'CANARY-SPEECH', 'merger closes',
+      'CANARY-PRIVATE-MESSAGE', 'canary-person', 'Canary Person', 'CANARY-TITLE', 'CANARY-EDIT', 'canary-guest', 'CANARY-CHAT', 'CANARY-AUDIO', 'CANARY-ROOM', 'CANARY-SEARCH', 'CANARY-PEOPLE', 'CANARY-SPEECH', 'merger closes',
       'CANARY-BREAKOUT', 'CANARY-BROADCAST', 'CANARY-GROUP', 'canary-member', 'CANARY-ASKED', 'canary-rung', 'CANARY-ROOMTALK', 'merger moves', 'canary-scribe', 'CANARY-LIVENOTE',
       'Welcome credits', 'Art Vandelay', 'vandelay', 'Weekly with Theo', 'lumen.health',
       'canary-google-sub', 'canary.googler', 'Canary Googler', 'canary-photo', 'CANARY-GCAL', 'canary-gcal',

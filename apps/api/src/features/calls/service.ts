@@ -23,8 +23,8 @@ import { view } from './read-model';
 import { addFollowUp, editFollowUp, reviewFollowUp, tickFollowUp } from './insights';
 import { ROOMS_ON_NEW_BOARD, afterClosing, landRooms, syncBoardSeats, syncRoomBoards } from './room-boards';
 import { changeCapture } from './recording';
-import { nudge } from './notifications';
-import { changeAttention, isAttentionAction } from './attention';
+import { tellRoom } from './notifications';
+import { changeAttention, changeStatus, isAttentionAction } from './attention';
 import { readChat } from './chat-read';
 
 const clog = log.child({ component: 'calls' });
@@ -67,13 +67,17 @@ export async function act(v: Viewer, callId: string, a: CallAction): Promise<Cal
     let gone: string[] = [];
     /** The seat of whoever this takes out of the call. */
     let removed: string | null = null;
+    /** The connections that alone need to read the call again (a nudge's recipient), or null for everyone in the room. */
+    let only: string[] | null = null;
     const ctx = { callId, action: a.type };
     // Under the call's row lock: a stand-in's last click as the organizer takes the call back is refused, not carried out.
     if (!anyone(a)) stillHosting(v, state, ctx);
     if (a.type === 'read-chat') {
       s = await readChat(v, c, callId, s, a.messages);
     } else if (isAttentionAction(a)) {
-      await changeAttention(v, c, callId, s, a);
+      only = await changeAttention(v, c, callId, s, a);
+    } else if (a.type === 'status') {
+      await changeStatus(v, c, callId, s, a);
     } else if (a.type === 'others-point') {
       // Someone's own choice about what they share, by person, so it holds when they come back on another connection.
       const off = s.othersPointOff.filter((p) => p !== v.pass.person);
@@ -199,8 +203,9 @@ export async function act(v: Viewer, callId: string, a: CallAction): Promise<Cal
     if (invite) invite.made = s.workspace.made;
     // Who has each room's board changes only as people move or rooms open or close, by time or by hand.
     const shifted = moved > 0 || a.type === 'rooms-open' || a.type === 'rooms-close' || a.type === 'rooms-move' || a.type === 'rooms-visit' || (state.breakouts.open !== null) !== (s.breakouts.open !== null);
-    return { room: row.room_name, gone, moved, removed, board: s.board, shifted };
-  }).then(async ({ room, gone, moved, removed, board, shifted }) => {
+    // Rooms that closed meanwhile (their time ran out as this was saved) change everyone's view, whatever this was.
+    return { room: row.room_name, gone, moved, removed, board: s.board, shifted, only: shifted ? null : only };
+  }).then(async ({ room, gone, moved, removed, board, shifted, only }) => {
     if (room) for (const who of gone) await o.livekit.removeParticipant(room, who).catch((e: unknown) => clog.info('removed person already gone', { callId, err: e }));
     // What the call gave them in a workspace goes with them.
     if (removed) await endSeat(o, callId, removed);
@@ -211,7 +216,7 @@ export async function act(v: Viewer, callId: string, a: CallAction): Promise<Cal
     // Each room's board goes with whoever's in its room before anyone's told, so whoever's moved out has lost it by then.
     if (shifted) await syncRoomBoards({ organizer: o, callId });
     if (ready?.main) void syncBoardSeats({ organizer: o, callId });
-    await nudge(o, room, callId, { call: true, log: a.type === 'remove' || a.type === 'deny' || moved > 0 });
+    await tellRoom(o, room, callId, { call: true, log: a.type === 'remove' || a.type === 'deny' || moved > 0 }, only ?? undefined);
     if (board.landing) void landRooms({ organizer: o, callId });
   }, async (e: unknown) => {
     if (ready) await boards.dropRoomsReady(o, callId, ready);
@@ -248,7 +253,7 @@ async function stopShare(v: Viewer, callId: string, seat: string): Promise<CallS
   });
   clog.info('host control', { callId, action: 'share-stop', tracks: tracks.length });
   return afterClosing({ organizer: o, callId }, closed, async () => {
-    await nudge(o, row.room_name, callId, { call: true, log: false });
+    await tellRoom(o, row.room_name, callId, { call: true, log: false });
     return view(v, o.pool, callId);
   });
 }

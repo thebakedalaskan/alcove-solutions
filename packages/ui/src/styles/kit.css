@@ -150,6 +150,20 @@
 .ac-dock-chev:hover, .ac-dock-chev.is-on, .ac-dock-chev[data-state="open"] { background: rgba(255, 255, 255, .1); color: var(--stage-ink); }
 .ac-dock-chev:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .ac-tile-hand { position: absolute; z-index: 3; right: 10px; top: 10px; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 8px; background: var(--stage-ink); color: var(--stage); }
+/*
+ * What someone says they're up to, at the tile's top left for everyone (`TileStatus`). Stepping away dims them; a status with a
+ * time counts down as a line along the tile's foot, which shortens until it runs out (none with reduced motion).
+ */
+.ac-tile-status { position: absolute; z-index: 2; left: 10px; top: 10px; display: inline-flex; align-items: center; gap: 7px; min-width: 0; max-width: calc(100% - 56px); height: 26px; padding: 0 10px; border-radius: 8px; background: color-mix(in srgb, var(--stage) 66%, transparent); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); color: var(--stage-ink); font: 500 12px/1.2 var(--font-sans); }
+.ac-tile-status .ac-i { flex: none; color: var(--dusk-sun); }
+.ac-tile-status .ac-clamp-1 { min-width: 0; }
+.ac-tile-status .short { display: none; white-space: nowrap; }
+.ac-tile :is(.ac-figure, .ac-tile-face, video) { transition: opacity var(--duration-3) var(--ease-out), filter var(--duration-3) var(--ease-out); }
+.ac-tile.is-away :is(.ac-figure, .ac-tile-face, video) { opacity: .42; filter: saturate(.4); }
+.ac-tile-left { position: absolute; z-index: 1; left: 14px; right: 14px; bottom: 4px; height: 1.5px; border-radius: 1px; background: color-mix(in srgb, var(--stage-ink) 14%, transparent); pointer-events: none; }
+.ac-tile-left i { position: absolute; inset: 0; border-radius: 1px; background: linear-gradient(to right, color-mix(in srgb, var(--dusk-sun) 35%, transparent), var(--dusk-sun)); transform-origin: 0 50%; animation-name: ac-tile-left; animation-timing-function: linear; animation-fill-mode: forwards; }
+@keyframes ac-tile-left { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+@media (prefers-reduced-motion: reduce) { .ac-tile-left { display: none; } }
 .ac-dock-sep { width: 1px; height: 24px; margin: 0 4px; background: rgba(255, 255, 255, .1); }
 /* A dock with words on a button: what brings the rest back while it's tucked away. */
 .ac-dock-words { display: inline-flex; align-items: center; gap: 7px; height: 36px; padding: 0 12px; border: 0; border-radius: 10px; background: transparent; color: var(--stage-ink); font: 600 13px/1 var(--font-sans); white-space: nowrap; cursor: pointer; transition: background-color var(--duration-1); }
@@ -521,31 +535,69 @@
 /* A QR code: dark modules on a light card in either theme, the way every camera reads them. */
 .ac-qr { display: block; flex: none; border-radius: var(--radius-md); background: var(--stage-ink); color: var(--stage); box-shadow: inset 0 0 0 1px var(--line); }
 
-/* Background picker: what shows behind someone on camera, as small pictures three to a row. */
-.ac-bgpick { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
-.ac-bgpick-wrap { display: grid; gap: var(--space-3); }
-.ac-bgpick-color { position: absolute; inset: 0; }
-.ac-bgpick-opt > .ac-bgpick-color { position: absolute; }
-.ac-bgpick-caption { background: var(--surface); color: var(--ink); border-radius: var(--radius-xs); padding: 3px 6px; }
-.ac-bgpick-strength { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2); font-size: 12px; color: var(--ink-2); }
-.ac-bgpick-replace { position: absolute; top: 3px; left: 3px; display: grid; place-items: center; width: 22px; height: 22px; border-radius: var(--radius-xs); background: var(--surface-raised); color: var(--ink-2); box-shadow: var(--shadow-1); cursor: pointer; opacity: 0; }
-.ac-bgpick-cell:hover .ac-bgpick-replace, .ac-bgpick-cell:focus-within .ac-bgpick-replace { opacity: 1; }
-.ac-bgpick-replace:focus-within { outline: 2px solid var(--focus); outline-offset: 2px; }
-@media (hover: none) { .ac-bgpick-replace { opacity: 1; } }
+/*
+ * Background: what shows behind someone on camera, chosen in a window of its own. A big live preview of them on the left
+ * (mirrored, as their own camera always is) with what shows named on it, the choices on the right in labelled groups, four
+ * to a row, and Done at the foot. Where the window is short the body scrolls and the preview stays in view. On a phone it's
+ * a sheet: the preview on top, the choices scrolling under it.
+ */
+.ac-modal.ac-bgm { width: min(980px, calc(100vw - 32px)); }
+.ac-bgm-h { flex: none; display: flex; align-items: center; gap: 12px; padding: 18px 18px 10px 24px; }
+.ac-bgm-h h2 { flex: 1; margin: 0; }
+.ac-bgm-body { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(280px, 1fr); gap: 24px; padding: 6px 24px; overflow-y: auto; }
+.ac-bgm-look { position: sticky; top: 0; align-self: start; display: grid; gap: 10px; align-content: start; min-width: 0; }
+.ac-bgm-look .hint { font-size: 12.5px; line-height: 1.45; color: var(--ink-3); }
+.ac-bgm-prev { position: relative; aspect-ratio: 16 / 10; border-radius: var(--radius-lg); overflow: hidden; background: var(--stage-tile); box-shadow: inset 0 0 0 1px rgb(255 255 255 / .06); }
+.ac-bgm-prev video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+.ac-bgm-off { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 12px; color: var(--stage-ink-2); font: 500 14px/1 var(--font-sans); }
+.ac-bgm-busy { position: absolute; inset: 0; display: grid; place-items: center; background: color-mix(in srgb, var(--stage) 45%, transparent); color: var(--stage-ink); }
+.ac-bgm-busy .ac-spin { width: 22px; height: 22px; }
+.ac-bgm-shows { position: absolute; left: 12px; top: 12px; display: inline-flex; align-items: center; gap: 6px; max-width: calc(100% - 24px); height: 28px; padding: 0 10px; border-radius: var(--radius-sm); background: color-mix(in srgb, var(--stage) 66%, transparent); color: var(--stage-ink); font: 500 12.5px/1 var(--font-sans); white-space: nowrap; }
+.ac-bgm-shows .ac-i { flex: none; color: var(--stage-ink-2); }
+/* Room round the choices for the rings, which a scrolling sheet would otherwise cut. */
+.ac-bgm-choices { min-width: 0; min-height: 0; margin: -6px; padding: 6px; }
+.ac-bgm-f { flex: none; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 10px 16px; padding: 16px 24px 20px; }
+.ac-bgm-note { display: flex; align-items: flex-start; gap: 7px; margin-right: auto; max-width: 52ch; font-size: 12.5px; line-height: 1.45; color: var(--ink-3); }
+.ac-bgm-note .ac-i { flex: none; margin-top: 2px; }
+@media (max-width: 640px) {
+  .ac-modal.ac-bgm { left: 0; right: 0; top: auto; bottom: 0; transform: none; width: auto; max-height: 92dvh; border-radius: 28px 28px 0 0; animation: ac-bgm-up var(--duration-3) var(--ease-out) both; }
+  .ac-modal.ac-bgm[data-state="closed"] { animation: ac-fade-out 180ms var(--ease-in) forwards; }
+  .ac-bgm-h { padding: 16px 12px 8px 18px; }
+  .ac-bgm-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); gap: 14px; padding: 2px 16px 4px; overflow: hidden; }
+  .ac-bgm-look { position: static; }
+  .ac-bgm-choices { overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+  .ac-bgm-f { padding: 12px 16px calc(16px + env(safe-area-inset-bottom, 0px)); }
+}
+@keyframes ac-bgm-up { from { opacity: 0; transform: translateY(24px); } }
+
+/* The choices: groups of small pictures, the one in use ringed in sun. */
+.ac-bgpick-groups { display: grid; gap: 18px; }
+.ac-bgpick-group { display: grid; gap: 8px; }
+.ac-bgpick-h { margin: 0; font: 600 13px/18px var(--font-sans); color: var(--ink); }
+.ac-bgpick { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.ac-bgpick-note { font-size: 12.5px; line-height: 1.45; color: var(--ink-3); }
+.ac-bgpick-note.is-problem { color: var(--caution); }
 .ac-bgpick-cell { position: relative; min-width: 0; }
-.ac-bgpick-opt { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; width: 100%; aspect-ratio: 16 / 9; padding: 0; border: 0; border-radius: var(--radius-sm); overflow: hidden; background: var(--sunk); color: var(--ink-2); font: 600 11.5px/1.1 var(--font-sans); cursor: pointer; box-shadow: inset 0 0 0 1px var(--line); transition: box-shadow var(--duration-1) var(--ease-out), color var(--duration-1); }
+.ac-bgpick-opt { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; width: 100%; aspect-ratio: 16 / 10; padding: 0; border: 0; border-radius: var(--radius-sm); overflow: hidden; background: var(--sunk); color: var(--ink-2); font: 600 12px/1.1 var(--font-sans); cursor: pointer; box-shadow: inset 0 0 0 1px var(--line); transition: box-shadow var(--duration-1) var(--ease-out), color var(--duration-1); }
 .ac-bgpick-opt:hover { color: var(--ink); box-shadow: inset 0 0 0 1px var(--line-control); }
 .ac-bgpick-opt img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .ac-bgpick-opt > :not(img, .ac-bgpick-blur, .ac-bgpick-color, input) { position: relative; }
-.ac-bgpick-opt.is-on { color: var(--ink); box-shadow: 0 0 0 2px var(--horizon), inset 0 0 0 2px var(--surface); }
-.ac-bgpick-opt:focus-visible, .ac-bgpick-opt.is-add:focus-within { outline: 2px solid var(--focus); outline-offset: 2px; }
-.ac-bgpick-blur { position: absolute; inset: -20%; background: radial-gradient(circle at 30% 40%, var(--horizon-soft), transparent 55%), radial-gradient(circle at 75% 65%, var(--dusk-haze), transparent 55%), var(--sunk); filter: blur(6px); opacity: 0.9; }
+.ac-bgpick-opt.is-on { color: var(--ink); box-shadow: 0 0 0 2px var(--surface-raised), 0 0 0 4px var(--sun); }
+.ac-bgpick-opt:focus-visible, .ac-bgpick-opt.is-add:focus-within { outline: 2px solid var(--focus); outline-offset: 5px; }
+/* Blur, drawn: a soft glow, softer still for Strong. */
+.ac-bgpick-blur { position: absolute; inset: -20%; background: radial-gradient(circle at 30% 40%, var(--horizon-soft), transparent 55%), radial-gradient(circle at 75% 65%, var(--dusk-haze), transparent 55%), var(--sunk); filter: blur(9px); opacity: .9; }
+.ac-bgpick-blur.is-light { filter: blur(3px); }
+.ac-bgpick-color { position: absolute; inset: 0; }
 .ac-bgpick-opt.is-add { border: 1px dashed var(--line-control); box-shadow: none; background: transparent; }
+.ac-bgpick-opt.is-add:hover { border-color: var(--ink-3); }
 .ac-bgpick-opt.is-add.is-busy { cursor: progress; }
 .ac-bgpick-file { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-.ac-bgpick-x.ac-icon-btn { position: absolute; top: 3px; right: 3px; width: 22px; height: 22px; background: var(--surface-raised); color: var(--ink-2); box-shadow: var(--shadow-1); opacity: 0; transition: opacity var(--duration-1); }
+.ac-bgpick-replace { position: absolute; top: 4px; left: 4px; display: grid; place-items: center; width: 22px; height: 22px; border-radius: var(--radius-xs); background: var(--surface-raised); color: var(--ink-2); box-shadow: var(--shadow-1); cursor: pointer; opacity: 0; }
+.ac-bgpick-cell:hover .ac-bgpick-replace, .ac-bgpick-cell:focus-within .ac-bgpick-replace { opacity: 1; }
+.ac-bgpick-replace:focus-within { outline: 2px solid var(--focus); outline-offset: 2px; }
+.ac-bgpick-x.ac-icon-btn { position: absolute; top: 4px; right: 4px; width: 22px; height: 22px; background: var(--surface-raised); color: var(--ink-2); box-shadow: var(--shadow-1); opacity: 0; transition: opacity var(--duration-1); }
 .ac-bgpick-cell:hover .ac-bgpick-x, .ac-bgpick-cell:focus-within .ac-bgpick-x { opacity: 1; }
-@media (hover: none) { .ac-bgpick-x.ac-icon-btn { opacity: 1; } }
+@media (hover: none) { .ac-bgpick-replace, .ac-bgpick-x.ac-icon-btn { opacity: 1; } }
 
 /* Follow-ups: edits and an optional, fixed batch of suggestions. */
 .ac-follow-edit { width: 100%; min-width: 0; padding: var(--space-3) 0; }

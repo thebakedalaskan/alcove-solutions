@@ -4,6 +4,9 @@
  * into the scene's first picture. Its `loop` plays the feature and ends where it started, so it plays again for as long
  * as its step is the one being read. A `still` beat marks the loop's key moment: a step's still is its scene up to there,
  * folded together with no waits, no pointer and every menu shut, and it's what reduced motion shows.
+ *
+ * The call is the app's call: its top bar, dock, tiles and menus say what the real ones say (TourStage.tsx draws them), and
+ * the people stand where the stage's own layout puts them (call/layout/stageLayout.ts and panels.ts), at this size.
  */
 import type { IconName } from '@alcove/ui';
 import type { CastId } from '~/features/notes/cast';
@@ -12,7 +15,7 @@ import type { CastId } from '~/features/notes/cast';
 export const STAGE_W = 1120;
 export const STAGE_H = 700;
 
-/** Who's in the call, in the grid's order. You are Art. */
+/** Who's in the call, in the grid's order. You are Art, and you host. */
 export const ORDER = ['priya', 'kofi', 'aiko', 'maya', 'diego', 'art'] as const satisfies readonly CastId[];
 export type Who = (typeof ORDER)[number];
 
@@ -35,22 +38,22 @@ export const STEPS: readonly [Step, ...Step[]] = [
   {
     id: 'translate', icon: 'translate', title: 'Captions in your language',
     line: 'Read what people say in your own language, with their words underneath. It’s translated in confidential compute, for you alone.',
-    shows: 'Captions show Aiko’s Japanese and Diego’s Spanish in English, with their own words underneath.'
+    shows: 'You turn on captions from More and pick English, then captions show Aiko’s Japanese and Diego’s Spanish in English, with their own words underneath.'
   },
   {
     id: 'status', icon: 'away', title: 'Set your status',
     line: 'Tell people you’ll be right back, you’re only listening, or you’re on your phone. Your tile says so, and the call carries on.',
-    shows: 'You set your status to Be right back for five minutes, and your tile dims with the time you’ll be back while the call carries on.'
+    shows: 'From your tile’s menu you set your status to Be right back for five minutes, and your tile dims with the time you’ll be back while the call carries on.'
   },
   {
     id: 'rooms', icon: 'rooms', title: 'Breakout rooms',
-    line: 'Split into rooms in two clicks. Everyone moves at once, the rooms share one timer, and each room’s notes join the call’s notes.',
-    shows: 'Three breakout rooms open, everyone moves into them at once, a message goes to every room, then everyone comes back.'
+    line: 'Split into rooms from More. Everyone moves at once, the rooms share one timer, and each room’s notes join the call’s notes.',
+    shows: 'Three breakout rooms open from More, everyone moves into them at once, a message goes to every room, then everyone comes back.'
   },
   {
     id: 'nudge', icon: 'nudge', title: 'A quiet nudge',
     line: 'Let someone know they’re muted, hard to hear or going fast, without interrupting. Only they see it, and Alcove tells you when you’re talking on mute.',
-    shows: 'Alcove tells you you’re talking on mute, then you nudge Kofi that you can’t hear them.'
+    shows: 'Alcove tells you you’re talking on mute, then you nudge Kofi from their tile’s menu that you can’t hear them.'
   },
   {
     id: 'chat', icon: 'chat', title: 'Private messages and threads',
@@ -59,8 +62,8 @@ export const STEPS: readonly [Step, ...Step[]] = [
   },
   {
     id: 'layout', icon: 'layout', title: 'Arrange it your way',
-    line: 'Make someone the speaker, give a shared screen the room, or fold everyone into arches on the horizon. Only your screen changes.',
-    shows: 'The View menu turns the call to speaker view, Kofi shares a screen, everyone folds into arches on the horizon, then the call goes back to a grid.'
+    line: 'Drag a tile to move someone, or pull its corner to make them bigger. A shared screen takes the room, and Focus puts everyone on the horizon. Only your view changes.',
+    shows: 'You drag Maya’s tile to the front and pull its corner to make her bigger. Kofi presents their screen and everyone moves beside it, then Focus fills the window with it and everyone stands on the horizon. When Kofi stops, Reset layout in More puts the call back.'
   }
 ];
 
@@ -72,7 +75,7 @@ export const stepOf = (v: string | null): StepId | null => STEPS.find((x) => x.i
 
 /* ---- where everyone stands ---- */
 
-type Layout = 'grid' | 'panel' | 'speaker' | 'share' | 'arches' | 'rooms' | 'work';
+type Layout = 'grid' | 'panel' | 'rooms' | 'work' | 'moved' | 'bigger' | 'beside' | 'focus';
 /** A place on the stage in design pixels. An arch is someone folded down to their face. */
 export interface Box { x: number; y: number; w: number; h: number; arch: boolean }
 
@@ -84,12 +87,47 @@ function grid(n: number, x: number, y: number, w: number, h: number, cols: numbe
   const rows = Math.ceil(n / cols), tw = (w - (cols - 1) * gap) / cols, th = (h - (rows - 1) * gap) / rows;
   return Array.from({ length: n }, (_, i) => tile(x + (i % cols) * (tw + gap), y + Math.floor(i / cols) * (th + gap), tw, th));
 }
-const inOrder = (b: readonly Box[]): Record<Who, Box> => ({
-  priya: b[0] ?? NOWHERE, kofi: b[1] ?? NOWHERE, aiko: b[2] ?? NOWHERE, maya: b[3] ?? NOWHERE, diego: b[4] ?? NOWHERE, art: b[5] ?? NOWHERE
-});
+/** Everyone in `order`, each in the place at their position. */
+function seat(order: readonly Who[], b: readonly Box[]): Record<Who, Box> {
+  const at = { priya: NOWHERE, kofi: NOWHERE, aiko: NOWHERE, maya: NOWHERE, diego: NOWHERE, art: NOWHERE };
+  order.forEach((id, i) => { at[id] = b[i] ?? NOWHERE; });
+  return at;
+}
+const inOrder = (b: readonly Box[]): Record<Who, Box> => seat(ORDER, b);
 
 /** The tiles' area, under the top bar and over the dock. */
 const AREA = { x: 16, y: 60, w: 1088, h: 552 };
+/** Your order once you've dragged Maya to the front: everyone else keeps theirs. */
+const ARRANGED = ['maya', 'priya', 'kofi', 'aiko', 'diego', 'art'] as const satisfies readonly Who[];
+
+/**
+ * Six people with the first at twice the size, as the stage packs them: three columns and three rows of tiles of the call's
+ * shape, the first over two of each, the grid centred in the area.
+ */
+function firstBigger(): Box[] {
+  const gap = 12, th = (AREA.h - 2 * gap) / 3, tw = Math.min((AREA.w - 2 * gap) / 3, th * 1.45 * 1.06);
+  const x = AREA.x + (AREA.w - (3 * tw + 2 * gap)) / 2;
+  const at = (c: number, r: number, span = 1) => tile(x + c * (tw + gap), AREA.y + r * (th + gap), span * tw + (span - 1) * gap, span * th + (span - 1) * gap);
+  return [at(0, 0, 2), at(2, 0), at(2, 1), at(0, 2), at(1, 2), at(2, 2)];
+}
+/** Beside something on your stage: a column of tiles at the right, as tall as six can be. */
+function column(n: number, x: number, y: number, w: number, h: number, gap = 10): Box[] {
+  const th = Math.min(w * 0.74, (h - gap * (n - 1)) / n);
+  return Array.from({ length: n }, (_, i) => tile(x, y + i * (th + gap), w, th));
+}
+/** The column beside what's open, at this stage's width. */
+const COLUMN_W = 216;
+/** In focus, the ground the people stand on at the bottom left, beside the dock, and how far apart they stand. */
+export const GROUND = 686;
+const HORIZON = { x: 24, pitch: 44, w: 38, h: 41 };
+/** Where the line saying who's talking starts, past the last of them. */
+export const HORIZON_SAYS = HORIZON.x + 5 * HORIZON.pitch + HORIZON.w + 22;
+
+/** Kofi's screen on your stage: beside the people, or filling the window in focus, under the strip the host's timer keeps. */
+export const SCREEN = {
+  beside: tile(AREA.x, AREA.y, AREA.w - COLUMN_W - 12, AREA.h),
+  focus: tile(16, 68, STAGE_W - 32, 548)
+};
 
 export const ROOMS = [
   { name: 'Pricing', who: ['maya', 'diego'] },
@@ -101,23 +139,20 @@ export const alcoveX = (room: number) => 70 + room * 340;
 /** Everyone in their room, standing small on its horizon. */
 function inRooms(): Record<Who, Box> {
   const at = inOrder([]);
-  ROOMS.forEach((r, i) => r.who.forEach((id, seat) => { at[id] = arch(alcoveX(i) + 150 + (seat ? 8 : -80), 386, 72, 78); }));
+  ROOMS.forEach((r, i) => r.who.forEach((id, seated) => { at[id] = arch(alcoveX(i) + 150 + (seated ? 8 : -80), 386, 72, 78); }));
   return at;
 }
 
 export const LAYOUTS: Record<Layout, Record<Who, Box>> = {
   grid: inOrder(grid(6, AREA.x, AREA.y, AREA.w, AREA.h, 3)),
   panel: inOrder(grid(6, AREA.x, AREA.y, 748, AREA.h, 2)),
-  speaker: inOrder([tile(AREA.x, AREA.y, AREA.w, 404), ...grid(5, AREA.x, AREA.y + 416, AREA.w, 136, 5)]),
-  share: inOrder(grid(6, AREA.x + 730, AREA.y, AREA.w - 730, AREA.h, 2)),
-  /* On the horizon either side of the dock. */
-  arches: inOrder([108, 156, 204, 876, 924, 972].map((x) => arch(x, 612, 40, 43))),
   rooms: inRooms(),
-  work: inOrder(grid(6, 928, AREA.y, 176, AREA.h, 1, 8))
+  work: inOrder(grid(6, 928, AREA.y, 176, AREA.h, 1, 8)),
+  moved: seat(ARRANGED, grid(6, AREA.x, AREA.y, AREA.w, AREA.h, 3)),
+  bigger: seat(ARRANGED, firstBigger()),
+  beside: seat(ARRANGED, column(6, AREA.x + AREA.w - COLUMN_W, AREA.y, COLUMN_W, AREA.h)),
+  focus: seat(ARRANGED, ARRANGED.map((_, i) => arch(HORIZON.x + i * HORIZON.pitch, GROUND - HORIZON.h, HORIZON.w, HORIZON.h)))
 };
-
-/** Where Kofi's shared screen is: beside everyone, or over the horizon they stand on. */
-export const shareAt = (l: Layout): Box => (l === 'share' ? tile(16, 60, 718, 552) : l === 'arches' ? tile(16, 60, 1088, 512) : tile(16, 60, 700, 552));
 
 /* ---- what's said and written ---- */
 
@@ -139,8 +174,10 @@ export const clock = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padS
 /* ---- the stage ---- */
 
 type Panel = 'chat' | 'rooms';
-type Tool = 'captions' | 'rooms' | 'work' | 'chat';
-export type PopId = 'view' | 'status' | 'lang' | 'tile' | 'nudge';
+/** What's open from the top right, lit while it is: the workspace or the chat. */
+type Tool = 'work' | 'chat';
+/** More, the caption language, your own tile's ⋯ and Kofi's. */
+export type PopId = 'more' | 'lang' | 'self' | 'tile';
 export interface Point { x: number; y: number }
 
 export interface Stage {
@@ -149,32 +186,40 @@ export interface Stage {
   muted: readonly Who[];
   /** Someone who's hard to hear: their level and the ring round their tile are faint. */
   faint: Who | null;
-  /** The tile the pointer is over, showing its ⋯. */
+  /** The tile the pointer is over, showing its ⋯ and the corner that resizes it. */
   hover: Who | null;
+  /** The tile being dragged, lifted, and where its top left is held while it's carried. */
+  lift: Who | null;
+  held: Point | null;
+  /** The tile whose corner is being pulled, and the size it's pulled to. */
+  pull: { who: Who; w: number; h: number } | null;
+  /** You've changed the layout from the one the stage gives itself: More offers Reset layout. */
+  custom: boolean;
   /** Who shows their status on their tile. */
   status: readonly Who[];
   /** You've stepped away: your tile dims, with the time left along its edge. */
   away: boolean;
-  /** "You're talking on mute", over your tile. */
+  /** "You're talking on mute", at the top of the call. */
   onMute: boolean;
   panel: Panel | null;
-  /** The dock's tool that's open. */
   tool: Tool | null;
   /** Your microphone, in the dock. */
   micOff: boolean;
+  /** Kofi's screen on your stage, and focus: it fills your window and the people stand on the horizon. */
+  screen: boolean;
+  focus: boolean;
   /** The menus that are open, and where each one opened. */
   pops: readonly PopId[];
   at: Readonly<Partial<Record<PopId, Point>>>;
+  /** Kofi's menu, or its nudge step in its place: "Only Kofi sees it". */
+  step: 'menu' | 'nudge';
   /** What the pointer is over: a button, a menu's row. */
   hi: readonly string[];
   /** What's chosen in the menus. */
   picked: readonly string[];
-  toast: { on: boolean; say: 'share' | 'unshare' | 'nudge' };
-  caption: { on: boolean; line: 0 | 1; words: number };
-  /** "Only your screen changes". */
-  chip: boolean;
-  horizon: boolean;
-  share: boolean;
+  toast: { on: boolean; say: 'view' | 'share' | 'unshare' | 'nudge' };
+  /** Captions: on (their box shows), in English or as spoken, and the line being said, if any, a word at a time. */
+  caption: { cc: boolean; en: boolean; line: 0 | 1 | null; words: number };
   /** The chat: how much of the conversation is in, the dot on Priya's tab, her tab open, your reply typed and sent. */
   chat: { seen: number; dot: boolean; dm: boolean; typed: string; typing: boolean; sent: boolean };
   rooms: { open: boolean; left: number; told: number };
@@ -184,9 +229,10 @@ export interface Stage {
 }
 
 const BASE: Stage = {
-  layout: 'grid', speaking: null, muted: ['diego'], faint: null, hover: null, status: [], away: false, onMute: false,
-  panel: null, tool: null, micOff: false, pops: [], at: {}, hi: [], picked: [],
-  toast: { on: false, say: 'share' }, caption: { on: false, line: 0, words: 0 }, chip: false, horizon: false, share: false,
+  layout: 'grid', speaking: null, muted: ['diego'], faint: null, hover: null, lift: null, held: null, pull: null, custom: false,
+  status: [], away: false, onMute: false, panel: null, tool: null, micOff: false, screen: false, focus: false,
+  pops: [], at: {}, step: 'menu', hi: [], picked: [],
+  toast: { on: false, say: 'view' }, caption: { cc: false, en: false, line: null, words: 0 },
   chat: { seen: 0, dot: false, dm: false, typed: '', typing: false, sent: false },
   rooms: { open: false, left: ROOM_TIME, told: 0 },
   work: { on: false, board: false, typed: 0, comment: false, drawn: 0, sticky: false, held: false, kofi: { x: 600, y: 150 }, maya: { x: 690, y: 330 }, aiko: { x: 800, y: 120 } },
@@ -196,8 +242,8 @@ const BASE: Stage = {
 /* ---- beats ---- */
 
 type Patch = Partial<Stage> | ((s: Stage) => Partial<Stage>);
-/** Where a menu opens from what opened it: under it (right edges lined up), above it, or beside it. */
-export type Where = 'below' | 'above' | 'above-right' | 'right';
+/** Where a menu opens from what opened it: under it (right edges lined up), above it, or to its left. */
+export type Where = 'below' | 'above' | 'left';
 export type Beat =
   | { t: 'wait'; ms: number }
   | { t: 'set'; patch: Patch }
@@ -205,8 +251,8 @@ export type Beat =
   | { t: 'point'; at: string }
   | { t: 'tap' }
   | { t: 'leave' }
-  /** A menu opens at what's marked `data-at`. `keep` leaves the menu it came from open. */
-  | { t: 'pop'; pop: PopId; at: string; where: Where; keep: boolean }
+  /** A menu opens at what's marked `data-at`, in place of any other. */
+  | { t: 'pop'; pop: PopId; at: string; where: Where }
   /** Every `ms` from here, until `untick` or the end of the beats it's in: so a timer never runs on into the next pass. */
   | { t: 'tick'; ms: number; patch: Patch }
   | { t: 'untick' }
@@ -221,11 +267,8 @@ export interface Scene {
 }
 
 export const apply = (s: Stage, patch: Patch): Stage => ({ ...s, ...(typeof patch === 'function' ? patch(s) : patch) });
-export const opened = (s: Stage, pop: PopId, at: Point | null, keep: boolean): Stage => ({
-  ...s,
-  pops: keep ? [...s.pops.filter((p) => p !== pop), pop] : [pop],
-  hi: s.hi.filter((h) => !h.startsWith(`${pop}:`)),
-  at: at ? { ...s.at, [pop]: at } : s.at
+export const opened = (s: Stage, pop: PopId, at: Point | null): Stage => ({
+  ...s, pops: [pop], hi: s.hi.filter((h) => !h.startsWith(`${pop}:`)), at: at ? { ...s.at, [pop]: at } : s.at
 });
 export const pointed = (s: Stage, p: Point): Stage => ({
   ...s, cur: s.cur.on ? { ...s.cur, x: p.x, y: p.y } : { shows: s.cur.shows + 1, on: true, x: p.x, y: p.y, taps: 0 }
@@ -239,10 +282,11 @@ const leave: Beat = { t: 'leave' };
 const still: Beat = { t: 'still' };
 const untick: Beat = { t: 'untick' };
 const tick = (ms: number, patch: Patch): Beat => ({ t: 'tick', ms, patch });
-const pop = (p: PopId, at: string, where: Where = 'below', keep = false): Beat => ({ t: 'pop', pop: p, at, where, keep });
+const pop = (p: PopId, at: string, where: Where = 'below'): Beat => ({ t: 'pop', pop: p, at, where });
 const chat = (p: Partial<Stage['chat']>): Beat => set((s) => ({ chat: { ...s.chat, ...p } }));
 const rooms = (p: Partial<Stage['rooms']>): Beat => set((s) => ({ rooms: { ...s.rooms, ...p } }));
 const work = (p: Partial<Stage['work']>): Beat => set((s) => ({ work: { ...s.work, ...p } }));
+const caption = (p: Partial<Stage['caption']>): Beat => set((s) => ({ caption: { ...s.caption, ...p } }));
 const toastOff = set((s) => ({ toast: { ...s.toast, on: false } }));
 /** `n` changes `ms` apart, the k-th made by `f(k)`: words appearing, letters typed. */
 const each = (n: number, ms: number, f: (k: number) => Patch): Beat[] => Array.from({ length: n }, (_, i) => [set(f(i + 1)), wait(ms)]).flat();
@@ -250,25 +294,31 @@ const each = (n: number, ms: number, f: (k: number) => Patch): Beat[] => Array.f
 const press = (at: string, lights = 0): Beat[] => [point(at), wait(700), tap, ...(lights ? [set({ hi: [at] }), wait(lights), set({ hi: [] })] : [])];
 /** The pointer goes to a menu's row: it lights, and is pressed. */
 const choose = (at: string): Beat[] => [point(at), wait(600), set((s) => ({ hi: [...s.hi, at] })), tap];
-/** View opens, one of its choices is pressed, and it shuts with what's picked; `then` is what changes as it shuts. */
-const viewTo = (choice: string, picked: readonly string[], then: Partial<Stage>): Beat[] => [
-  ...press('view'), set({ hi: ['viewBtn'] }), pop('view', 'view'),
-  wait(420), ...choose(`view:${choice}`), set({ picked }),
-  wait(320), set({ pops: [], hi: [], ...then }), leave
+/** More opens over the dock, and one of its rows is pressed; it shuts with what `then` changes. */
+const fromMore = (row: string, then: Partial<Stage>): Beat[] => [
+  ...press('more'), pop('more', 'more', 'above'), wait(460), ...choose(`more:${row}`), wait(300), set({ pops: [], hi: [], ...then })
 ];
 /**
  * Every scene starts from the same call: everyone in a grid, nothing open, no pointer. What's on its way out keeps its
- * words as it goes: a toast, a caption, the chat, the rooms and the workspace fade as they were.
+ * words as it goes: a toast, the captions, the chat, the rooms and the workspace fade as they were.
  */
 const reset = (p: Partial<Stage> = {}): Beat => set((s) => ({
-  ...BASE, at: s.at, toast: { ...s.toast, on: false }, caption: { ...s.caption, on: false }, chat: s.chat,
+  ...BASE, at: s.at, toast: { ...s.toast, on: false }, caption: { ...s.caption, cc: false }, chat: s.chat,
   rooms: { ...s.rooms, open: false }, work: { ...s.work, on: false }, cur: { ...s.cur, on: false }, ...p
 }));
 /** Someone speaks, and their caption writes itself in English a word at a time. */
 const say = (line: 0 | 1): Beat[] => [
-  set({ speaking: LINES[line].who, caption: { on: true, line, words: 0 } }),
+  set((s) => ({ speaking: LINES[line].who, caption: { ...s.caption, line, words: 0 } })),
   ...each(words(LINES[line].en), 95, (k) => (s) => ({ caption: { ...s.caption, words: k } }))
 ];
+
+/* The layout step: Maya's tile carried to the front, then pulled from its corner to the size it settles at as the bigger one. */
+const MAYA = { from: LAYOUTS.grid.maya, to: LAYOUTS.moved.maya };
+const PULLED = { w: MAYA.to.w * 1.42, h: MAYA.to.h * 1.42 };
+const mid = (b: Box): Point => ({ x: b.x + b.w / 2, y: b.y + b.h / 2 });
+const topLeft = (b: Box): Point => ({ x: b.x, y: b.y });
+/** The middle of the corner a tile is resized by, on a tile of this size at `b`'s top left (TourStage: `.lp-st-rs`). */
+const cornerOf = (b: Box, w: number, h: number): Point => ({ x: b.x + w - 19, y: b.y + h - 19 });
 
 export const SCENES: Record<StepId, Scene> = {
   /* Priya writes in the document and Kofi comments, then the board fills in with three people on it. */
@@ -289,36 +339,37 @@ export const SCENES: Record<StepId, Scene> = {
       set({ work: { ...BASE.work, on: true }, speaking: null }), wait(700)
     ]
   },
-  /* Captions on in English, once; then Aiko and Diego speak in their own languages. */
+  /* Captions on from More, in English from the captions' own button, once; then Aiko and Diego speak in their own languages. */
   translate: {
     enter: [
       reset({ muted: [] }), wait(450),
-      ...press('tool:captions'), set({ tool: 'captions' }), pop('lang', 'tool:captions', 'above'),
+      ...fromMore('captions', { caption: { cc: true, en: false, line: null, words: 0 } }), wait(650),
+      set({ picked: ['lang:spoken'] }), ...press('cap:lang'), pop('lang', 'cap:lang', 'above'),
       wait(460), ...choose('lang:en'), set({ picked: ['lang:en'] }),
-      wait(380), set({ pops: [], hi: [] }), leave, wait(300)
+      wait(380), set({ pops: [], hi: [] }), caption({ en: true }), leave, wait(600)
     ],
     loop: [
       ...say(0), still, wait(2400), ...say(1), wait(2400),
-      set((s) => ({ caption: { ...s.caption, on: false }, speaking: null })), wait(900)
+      set((s) => ({ caption: { ...s.caption, line: null, words: 0 }, speaking: null })), wait(1400)
     ]
   },
-  /* You step away for five minutes, the call carries on, and you come back. Maya is listening only. */
+  /* From your tile's ⋯ you step away for five minutes, the call carries on, and you come back. Maya is listening only. */
   status: {
     enter: [reset({ status: ['maya'], speaking: 'kofi' }), wait(500)],
     loop: [
-      set({ hover: 'art' }), ...press('more:art'), pop('status', 'more:art', 'above-right'),
-      wait(460), ...choose('status:brb'), set({ picked: ['status:brb'] }),
-      wait(400), point('status:5'), wait(560), tap, set({ picked: ['status:brb', 'status:5'] }),
+      set({ hover: 'art' }), ...press('more:art'), pop('self', 'more:art', 'left'),
+      wait(460), ...choose('self:away'), set({ picked: ['self:away'] }),
+      wait(400), point('self:5'), wait(560), tap, set({ picked: ['self:away', 'self:5'] }),
       wait(380), set({ pops: [], hi: [], hover: null, status: ['maya', 'art'], away: true }), leave,
       still, wait(1300), set({ speaking: 'priya' }), wait(2200), set({ speaking: 'aiko' }), wait(2400),
       set({ status: ['maya'], away: false, picked: [], speaking: 'art' }), wait(2000), set({ speaking: 'kofi' }), wait(900)
     ]
   },
-  /* Two clicks open three rooms and everyone moves, a message reaches every room, and everyone comes back. */
+  /* Breakout rooms from More, and Open rooms moves everyone into three; a message reaches every room, and everyone comes back. */
   rooms: {
     enter: [reset(), wait(500)],
     loop: [
-      ...press('tool:rooms'), set({ tool: 'rooms', panel: 'rooms', layout: 'panel' }), wait(1000),
+      ...fromMore('rooms', { panel: 'rooms', layout: 'panel' }), wait(1000),
       ...press('open-rooms', 220), set({ panel: null, layout: 'rooms' }), rooms({ open: true, left: ROOM_TIME, told: 0 }), leave,
       tick(1000, (s) => ({ rooms: { ...s.rooms, left: Math.max(0, s.rooms.left - 1) } })),
       set({ speaking: 'maya' }), wait(1900),
@@ -326,10 +377,10 @@ export const SCENES: Record<StepId, Scene> = {
       rooms({ told: 1 }), wait(150), rooms({ told: 2 }), wait(150), rooms({ told: 3 }), wait(150),
       still, wait(1500), set({ speaking: 'priya' }), wait(1800), set({ speaking: 'aiko' }), wait(1300),
       ...press('rooms:back', 260), leave, untick,
-      rooms({ open: false }), set({ tool: null, layout: 'grid', speaking: null }), wait(1700)
+      rooms({ open: false }), set({ layout: 'grid', speaking: null }), wait(1700)
     ]
   },
-  /* You talk on mute and Alcove says so; then Kofi is hard to hear, and only Kofi gets your nudge. */
+  /* You talk on mute and Alcove says so; then Kofi is hard to hear, and only Kofi gets your nudge, from their tile's ⋯. */
   nudge: {
     enter: [reset({ muted: ['diego', 'art'], micOff: true }), wait(500)],
     loop: [
@@ -337,11 +388,11 @@ export const SCENES: Record<StepId, Scene> = {
       ...press('unmute'), wait(180), set({ onMute: false, muted: ['diego'], micOff: false, speaking: 'art' }), leave,
       wait(1500), set({ speaking: 'kofi', faint: 'kofi' }), wait(1000),
       set({ hover: 'kofi' }), ...press('more:kofi'), pop('tile', 'more:kofi'),
-      wait(460), ...choose('tile:nudge'), pop('nudge', 'tile:nudge', 'right', true),
-      wait(460), ...choose('nudge:hear'),
+      wait(460), ...choose('tile:nudge'), wait(180), set({ step: 'nudge', hi: [] }),
+      wait(520), ...choose('nudge:cant-hear'),
       wait(320), set({ pops: [], hi: [], hover: null, toast: { on: true, say: 'nudge' } }), leave,
-      still, wait(1500), set({ faint: null }), wait(1300), toastOff,
-      wait(700), ...press('tool:mic'), set({ muted: ['diego', 'art'], micOff: true, speaking: null }), leave, wait(900)
+      still, wait(1500), set({ faint: null }), wait(1300), toastOff, set({ step: 'menu' }),
+      wait(700), ...press('mic'), set({ muted: ['diego', 'art'], micOff: true, speaking: null }), leave, wait(900)
     ]
   },
   /* The conversation and its thread, then Priya writes to you alone and you answer; then it clears for the next pass. */
@@ -358,16 +409,27 @@ export const SCENES: Record<StepId, Scene> = {
       wait(1300), chat({ seen: 0, sent: false }), wait(900)
     ]
   },
-  /* Speaker view, then a shared screen takes the room, everyone folds onto the horizon, and back to the grid. */
+  /*
+   * Maya's tile is carried to the front, the others making room as it nears, and pulled by its corner until she's the bigger
+   * one. Kofi's screen takes the room with everyone beside it, and Focus fills the window with it, everyone on the horizon.
+   * Kofi stops, everyone comes back as you arranged them, and Reset layout puts the call back as the stage lays it out.
+   */
   layout: {
-    enter: [reset({ speaking: 'priya', picked: ['view:grid', 'view:tiles'] }), wait(500)],
+    enter: [reset({ speaking: 'priya' }), wait(500)],
     loop: [
-      ...viewTo('speaker', ['view:speaker', 'view:tiles'], { layout: 'speaker' }), wait(1700),
-      set({ toast: { on: true, say: 'share' }, share: true, layout: 'share', speaking: 'kofi' }), wait(2100), toastOff,
-      ...viewTo('arches', ['view:speaker', 'view:arches'], { layout: 'arches', horizon: true, chip: true }),
-      still, wait(2800), set({ chip: false }),
-      ...viewTo('grid', ['view:grid', 'view:tiles'], { layout: 'share', horizon: false }), wait(1500),
-      set({ toast: { on: true, say: 'unshare' }, share: false, layout: 'grid', speaking: 'priya' }), wait(2000), toastOff, wait(700)
+      set({ hover: 'maya' }), point('tile:maya'), wait(700), tap, set({ lift: 'maya', held: topLeft(MAYA.from) }), wait(260),
+      set((s) => ({ ...pointed(s, mid(MAYA.to)), held: topLeft(MAYA.to) })), wait(380),
+      set({ layout: 'moved' }), wait(620),
+      set({ lift: null, held: null, custom: true, toast: { on: true, say: 'view' } }), wait(500),
+      point('rs:maya'), wait(650), tap, set({ pull: { who: 'maya', w: MAYA.to.w, h: MAYA.to.h } }), wait(200),
+      set((s) => ({ ...pointed(s, cornerOf(MAYA.to, PULLED.w, PULLED.h)), pull: { who: 'maya', ...PULLED } })), wait(420),
+      set({ layout: 'bigger' }), wait(580),
+      set({ pull: null, hover: null }), leave, wait(900), toastOff,
+      still, wait(1600),
+      set({ screen: true, layout: 'beside', speaking: 'kofi', toast: { on: true, say: 'share' } }), wait(2400), toastOff,
+      ...press('focus'), set({ focus: true, layout: 'focus' }), leave, wait(3000),
+      set({ screen: false, focus: false, layout: 'bigger', toast: { on: true, say: 'unshare' } }), wait(500), set({ speaking: 'priya' }), wait(1700), toastOff, wait(400),
+      ...fromMore('reset', { layout: 'grid' }), leave, wait(400), set({ custom: false }), wait(1400)
     ]
   }
 };
@@ -378,9 +440,9 @@ function settle(beats: readonly Beat[]): Stage {
   for (const b of beats) {
     if (b.t === 'still') break;
     if (b.t === 'set') s = apply(s, b.patch);
-    else if (b.t === 'pop') s = opened(s, b.pop, null, b.keep);
+    else if (b.t === 'pop') s = opened(s, b.pop, null);
   }
-  return { ...s, pops: [], hi: [], hover: null, cur: { ...s.cur, on: false } };
+  return { ...s, pops: [], hi: [], hover: null, lift: null, held: null, pull: null, cur: { ...s.cur, on: false } };
 }
 const stillOf = (sc: Scene) => settle([...sc.enter, ...sc.loop]);
 

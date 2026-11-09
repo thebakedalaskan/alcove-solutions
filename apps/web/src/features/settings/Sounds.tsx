@@ -17,7 +17,7 @@ const categories: readonly { key: keyof Pick<SoundPreferences, 'mic' | 'people' 
   { key: 'mentions', label: 'Mentions addressed to me', cue: 'mention', help: 'One cue for a confirmed room or private mention, including in a thread.' },
   { key: 'messages', label: 'Private messages', cue: 'message', help: 'A quiet cue without message previews.' },
   { key: 'admissions', label: 'Requests to join when I host', cue: 'admission' },
-  { key: 'timers', label: 'Board timers', cue: 'timer' },
+  { key: 'timers', label: 'Timers', cue: 'timer', help: 'A soft chime as the call’s timer or a board’s runs out.' },
   { key: 'ringing', label: 'Incoming calls', cue: 'ring' }
 ];
 const previews = [
@@ -27,7 +27,7 @@ const previews = [
   { value: 'reply', label: 'Thread reply' },
   { value: 'mention', label: 'Mention addressed to me' },
   { value: 'message', label: 'Private message' },
-  { value: 'admission', label: 'Request to join' }, { value: 'timer', label: 'Board timer' }, { value: 'ring', label: 'Incoming call' }
+  { value: 'admission', label: 'Request to join' }, { value: 'timer', label: 'Timer runs out' }, { value: 'ring', label: 'Incoming call' }
 ] satisfies { value: SoundCue; label: string }[];
 function SoundPreview({ prefs, speakerId }: { prefs: SoundPreferences; speakerId: string | null }) {
   const [cue, setCue] = useState<SoundCue>('mic-on');
@@ -55,7 +55,7 @@ export function SoundsPart({ prefs }: { prefs: Preferences }) {
     <SettingRow wide label="Listen to a sound" help="Preview plays at your sound volume, even when that category is off. If silent, check your browser and speaker volume." control={<SoundPreview prefs={prefs.sounds} speakerId={readPrefs().speaker ?? null} />} />
   </SettingsPart>;
 }
-/** Reachable from More on wide and phone calls, including signed-out guests. */
+/** A call's own Settings (More, then Settings) has the same choices, on every screen, signed-out guests included. */
 export function CallSoundControls({ speakerId }: { speakerId: string | null }) {
   const { prefs, update, ready } = useSoundPreferences();
   const replies = useCallAlertPreference('replyAlerts');

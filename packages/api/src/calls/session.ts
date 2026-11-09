@@ -1,7 +1,7 @@
 import { type CallNotificationsApi } from './notifications';
-import { type CallTimerControl, type CallTimerSequenceInput } from './timers';
+import { type CallTimerControl } from './timers';
 import { type FollowUpCreate, type FollowUpPatch, type FollowUpReview } from '../notes/follow-ups';
-import { type CallFeedbackKind, type CallQuestionStatus } from './attention';
+import { type CallNudgeKind, type CallQuestionStatus, type CallStatusKind, type CallStatusMinutes } from './attention';
 import { type PersonalApi } from '../notes/personal';
 import { type SeriesAnswerPart } from '../notes/series';
 import { type AudioPiece, type ScreenPiece, type TranscriptClip } from '../recordings/capture';
@@ -19,32 +19,29 @@ import { type CallFollowUps, type CallWorkspaceSwitch, type DocFollowUpTick, typ
 import { CallChatMentionSchema, validChatMentions, type CallChatMention } from './chat-mentions';
 import { DirectKeyAnnouncementSchema, type DirectMessagesApi } from './direct-messages';
 import { CallChatThreadSchema, type CallChatThread } from './chat-threads';
+import { CallReactionSchema, type CallChatReaction, type CallReaction } from './reactions';
 
 /**
  * A chat message, decrypted in this browser. `from` is the sender's identity, as MLS vouches for it; `place` is the
  * part of the call it was sent in (`main`, or a breakout room's ID), whose group alone could read it. `sending`: one of
- * yours that isn't in the log yet, so nobody can react to it.
+ * yours that isn't in the log yet, so nobody can react to it. `broadcast`: a reply in a thread that was also sent to
+ * everyone, so it shows in the conversation as well as in its thread.
  */
-export interface CallChatMessage { id: string; from: string; isMe: boolean; text: string; mentions: CallChatMention[]; thread: CallChatThread | null; at: number; place: string; sending: boolean; failed: boolean; reactions: CallChatReaction[] }
-
-/** The emoji someone can react to a chat message with, by name: the wire never carries a glyph. */
-export const CallReactionSchema = z.enum(['thumbs-up', 'thumbs-down', 'heart', 'smile', 'laugh', 'wow', 'sad', 'party']);
-export type CallReaction = z.infer<typeof CallReactionSchema>;
-export const CALL_REACTIONS = CallReactionSchema.options;
-/** One emoji on a chat message, and who reacted with it (identities, in the order they did), first-reacted first. */
-export interface CallChatReaction { reaction: CallReaction; by: string[] }
-
+export interface CallChatMessage { id: string; from: string; isMe: boolean; text: string; mentions: CallChatMention[]; thread: CallChatThread | null; broadcast: boolean; at: number; place: string; sending: boolean; failed: boolean; reactions: CallChatReaction[] }
 
 /** The longest chat message in a call, in characters. */
 export const CALL_CHAT_MAX = 4000;
 
 /**
  * Chat and its selected recipients travel inside the MLS application message, never in server-readable metadata.
- * Existing encrypted chat has no mentions field and opens with no selected recipients.
+ * Existing encrypted chat has no mentions field and opens with no selected recipients. `broadcast` is only for a reply in
+ * a thread; chat sent before it existed opens as not broadcast.
  */
 export const CallChatTextSchema = z.object({
-  text: z.string().min(1).max(CALL_CHAT_MAX), mentions: z.array(CallChatMentionSchema).max(50).default([]), thread: CallChatThreadSchema.nullable().default(null), at: z.number()
-}).refine(validChatMentions, 'Chat mentions must mark separate names in the message.');
+  text: z.string().min(1).max(CALL_CHAT_MAX), mentions: z.array(CallChatMentionSchema).max(50).default([]), thread: CallChatThreadSchema.nullable().default(null),
+  broadcast: z.boolean().default(false), at: z.number()
+}).refine(validChatMentions, 'Chat mentions must mark separate names in the message.')
+  .refine((m) => !m.broadcast || m.thread !== null, 'Only a reply in a thread is also sent to everyone.');
 
 /** The application payload, parsed only after authenticated decryption. */
 export const CallChatPayloadSchema = z.union([
@@ -133,7 +130,7 @@ export interface CallSession extends LiveStore<CallState> {
   readonly notifications: CallNotificationsApi;
   /** Recipient-only encrypted messages, kept apart from room chat and every shared capture surface. */
   readonly direct: DirectMessagesApi;
-  setTimerSequence(input: CallTimerSequenceInput): Promise<void>;
+  /** Whoever hosts: starts the call's timer for everyone, pauses, resumes, adds time to or stops it. Resolves once the server has. */
   controlTimer(input: CallTimerControl): Promise<void>;
   /** Who you are in the call, and this person's pass for the call's requests. */
   readonly ticket: CallTicket;
@@ -146,10 +143,16 @@ export interface CallSession extends LiveStore<CallState> {
   readonly personal: PersonalApi;
   /** A LiveKit token, once you're let in. Rejected before that. */
   room(): Promise<{ serverUrl: string; roomName: string; identity: string; token: string }>;
-  /** Fetches the call and its MLS log again (other people's chat, notes changes, transcript lines and keys arrive this way), or only what a nudge says changed. */
+  /**
+   * Fetches the call and its MLS log again (other people's chat, notes changes, transcript lines and keys arrive this way), or
+   * only what the server's change push (`CallChanged`) says changed.
+   */
   refresh(what?: { call: boolean; log: boolean } | undefined): Promise<void>;
-  /** Encrypted in this browser for everyone in the group of the part of the call you're in. Nobody who comes later can read it. */
-  sendChat(text: string, mentions?: readonly CallChatMention[], thread?: CallChatThread | null): Promise<void>;
+  /**
+   * Encrypted in this browser for everyone in the group of the part of the call you're in. Nobody who comes later can read it.
+   * `broadcast`, with a thread: the reply shows in the conversation as well as in its thread.
+   */
+  sendChat(text: string, mentions?: readonly CallChatMention[], thread?: CallChatThread | null, broadcast?: boolean): Promise<void>;
   /** Retry the same failed encrypted message in its original conversation, never as a new room message. */
   retryChat(messageId: string): Promise<void>;
   /** Mark readable chat messages as read for this person's seat, shared with their other clients. */
@@ -208,20 +211,32 @@ export interface CallSession extends LiveStore<CallState> {
   shareEnded(share: string): Promise<void>;
   /** Raises or lowers your hand for your room and the host. Resolves once confirmed. */
   setHand(up: boolean): Promise<void>;
-  /** Host only: lowers this exact queued entry, so an older click cannot lower a new raise. */
+  /** Host only: lowers this exact raised hand, so an older click cannot lower a new raise. */
   lowerHand(entryId: string): Promise<void>;
-  /** Host only: clears raised hands across all rooms. */
-  clearHands(): Promise<void>;
-  /** Posts explicit Q&A for the people here now; reuse the ID to retry the same words. */
-  postQuestion(id: string, text: string): Promise<void>;
+  /**
+   * Posts a question for the people here now; reuse the ID to retry the same words. `anonymous`: nobody is told who asked,
+   * whoever hosts included, and only you see that it's yours (`CallQuestion.own`).
+   */
+  postQuestion(id: string, text: string, anonymous?: boolean): Promise<void>;
+  /** Takes back a question you asked, anonymously or not: it goes for everyone. Only whoever asked it can. */
+  withdrawQuestion(id: string): Promise<void>;
   /** One vote per signed-in account, or per guest call person, within the original audience. */
   voteQuestion(id: string, on: boolean): Promise<void>;
   /** Host only, and only for a question in their original audience. */
   resolveQuestion(id: string, status: CallQuestionStatus): Promise<void>;
   /** Host only: pins an accessible open question, replacing the room's pin; null clears it. */
   pinQuestion(id: string | null): Promise<void>;
-  /** Room-only feedback for 15 seconds on the server clock; null clears yours. */
-  setFeedback(kind: CallFeedbackKind | null): Promise<void>;
+  /**
+   * A nudge to someone else in your room (`to`, their participant ID): only they see it. The same nudge from several people
+   * within a minute reaches them as one note with a count, and the same again from you then changes nothing. Resolves once
+   * the server has it.
+   */
+  nudge(to: string, kind: CallNudgeKind): Promise<void>;
+  /**
+   * Your status, for everyone in the call (`participants[].status`), or none (null): it goes `minutes` from now, and with no
+   * `minutes` a time already set stays. Resolves once the server has it.
+   */
+  setStatus(status: CallStatusKind | null, minutes?: CallStatusMinutes | undefined): Promise<void>;
   /** Whether others may point at and mark what you share; everyone sees it. Resolves once the server has it. */
   letOthersPoint(on: boolean): Promise<void>;
   /** Organizer only: whether anyone may point at and mark shared screens in this call. Resolves once the server has it. */

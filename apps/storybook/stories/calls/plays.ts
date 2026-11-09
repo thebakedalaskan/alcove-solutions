@@ -10,13 +10,22 @@ import type { PageStory } from '../../src/page';
 
 export type Play = NonNullable<PageStory['play']>;
 export type Context = Parameters<Play>[0];
-/** Explicitly change the conversation; this never moves a draft between audiences. */
-export async function choosePrivateAudience(c: Context, name: string | RegExp) {
-  await c.userEvent.click(await screen.findByRole('button', { name: /^Chat audience:/ }));
-  await c.userEvent.click(await screen.findByRole('option', { name }));
-}
 /** For what the last press opens. */
 export const SOON = { timeout: 10000 };
+/**
+ * Chat's private conversation with someone here: its tab, when there is one, or + and their name. Changing conversation
+ * never moves a draft between them. `who` is how the picker finds them: their name, or their address where two share one.
+ */
+export async function talkPrivately(c: Context, person: { name: string }, who: RegExp = new RegExp(exactly(person.name))) {
+  const tab = screen.queryByRole('tab', { name: new RegExp(`^${exactly(person.name)}.*, private`) });
+  if (tab) { await c.userEvent.click(tab); return; }
+  await c.userEvent.click(await screen.findByRole('button', { name: 'Message someone privately' }, SOON));
+  await c.userEvent.click(await screen.findByRole('option', { name: who }, SOON));
+}
+/** Chat's conversation with everyone in the room. */
+export async function talkToEveryone(c: Context) { await c.userEvent.click(await screen.findByRole('tab', { name: /^Everyone/ }, SOON)); }
+/** Chat's Questions. */
+export async function openQuestions(c: Context) { await c.userEvent.click(await screen.findByRole('tab', { name: /^Questions/ }, SOON)); }
 /** Long enough for the script to get there: someone presenting, a board opening and filling. */
 export const LATER = { timeout: 40000 };
 

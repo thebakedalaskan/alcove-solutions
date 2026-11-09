@@ -25,7 +25,7 @@ import {
 } from './access';
 import { profile } from '../account/account';
 import { addressesIn, seated } from '../calls/participants';
-import { nudgeCall } from '../calls/notifications';
+import { tellCall } from '../calls/notifications';
 import { roomsOfCalls } from '../calls/room-boards';
 import { collect, copyUses, releaseDocuments, releaseWorkspace } from './media';
 import { personOf, portraitFor } from '../account/portraits';
@@ -557,7 +557,7 @@ export async function renameItem(d: Deps, reader: Reader, workspaceId: string, i
     w.state = withItem(w.state, itemId, { ...it, name, editedAt: new Date().toISOString() });
   });
   // A name changed from a call shows in it, as the board's or what's presented: the call is told to look again.
-  if (reader.seat) await nudgeCall(d, reader.seat.callId);
+  if (reader.seat) await tellCall(d, reader.seat.callId);
 }
 export async function moveItem(d: Deps, reader: Reader, workspaceId: string, itemId: string, to: ItemPlace): Promise<void> {
   await change(d, reader, workspaceId, (w) => {
@@ -744,7 +744,7 @@ async function seatedIn(db: Db, ownerId: string, documentId: string): Promise<st
 async function tellCalls(d: Deps, reader: Reader, seated: readonly string[]): Promise<void> {
   const calls = new Set(seated);
   if (reader.seat) calls.add(reader.seat.callId);
-  for (const callId of calls) await nudgeCall(d, callId);
+  for (const callId of calls) await tellCall(d, callId);
 }
 export async function share(d: Deps, reader: Reader, workspaceId: string, documentId: string, to: ShareTarget[], role: DocumentRole): Promise<void> {
   const grants = await grantsFor(reader, to, role);

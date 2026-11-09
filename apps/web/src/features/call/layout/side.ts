@@ -11,7 +11,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type SetStateAction } from 'react';
 
-export type SideView = 'notes' | 'chat' | 'people' | 'rooms' | 'mine' | 'attention' | 'timer';
+export type SideView = 'notes' | 'chat' | 'people' | 'rooms' | 'mine';
 /** The Notes view's tabs. */
 export type NotesTab = 'notes' | 'transcript' | 'ask';
 /** Where your side is, to the tab: a view, or the Notes view on one of its tabs (`notes` is its first). */

@@ -3,13 +3,13 @@
  * how loud someone is for you. What's open on your stage wears a frame, what someone presents waits as a tile with the
  * people, and Share, in the dock, presents your screen, a board or the workspace in a step or two.
  */
-import { forwardRef, useLayoutEffect, useRef, type ButtonHTMLAttributes, type CSSProperties, type ReactNode } from 'react';
+import { forwardRef, useLayoutEffect, useMemo, useRef, type ButtonHTMLAttributes, type CSSProperties, type ReactNode } from 'react';
 import { cn } from '../cn';
 import { Icon, type IconName } from './icon';
 import { Dots } from './motion';
 import { Popover, Tooltip } from './overlay';
 import { Avatar, PortraitArt, type AvatarPerson } from './people';
-import { Button, IconButton, Notice, RecDot, Scope, Segmented, Slider, Spinner, Switch } from './primitives';
+import { Button, IconButton, Notice, RecDot, Slider, Spinner, Segmented, Switch } from './primitives';
 
 /** "#RRGGBB" at an alpha, for the person's colour as room light. */
 function withAlpha(hex: string, a: number): string {
@@ -26,22 +26,38 @@ export function tileGround(person: AvatarPerson): string | undefined {
 }
 
 /**
+ * What someone says they're up to, over their tile for everyone: its icon and words ("Be right back · 14:37"), what a small
+ * tile has room for ("14:37", or the words with no time), whether they've stepped away (their tile dims), and the time it was
+ * set for (ms), which a line along the tile's foot counts down.
+ */
+export interface TileStatus { icon: IconName; text: string; short: string; away: boolean; time: { since: number; until: number } | null }
+
+/** The status line's countdown: from where it is now to nothing, on the time it was set for. Worked out once per time set. */
+function useLeft(time: TileStatus['time']): CSSProperties | null {
+  const since = time?.since;
+  const until = time?.until;
+  return useMemo(() => (since === undefined || until === undefined || until <= since ? null
+    : { animationDuration: `${(until - since) / 1000}s`, animationDelay: `${-Math.max(0, Date.now() - since) / 1000}s` }), [since, until]);
+}
+
+/**
  * One person on the stage. Their video when it's on (`children`); otherwise their illustrated figure
  * on their own colour, or their arch. The speaker gets the speak ring and a level meter; a muted
- * person shows the mic-off mark; a raised hand gets a gold ring.
+ * person shows the mic-off mark; a raised hand gets a gold ring; a status shows at the top left.
  */
-export function CallTile({ person, name, speaking = false, muted = false, hand = false, connecting = false, className, children, chrome, label, signal }: {
+export function CallTile({ person, name, speaking = false, muted = false, hand = false, connecting = false, className, children, chrome, label, status }: {
   person: AvatarPerson; name: ReactNode; speaking?: boolean; muted?: boolean; hand?: boolean;
   /** In the call, but this browser can't play their media yet (their keys are on the way): not the same as a camera that's off. */
   connecting?: boolean | undefined;
   className?: string | undefined; children?: ReactNode;
   /** Controls and state drawn over the tile: what's pinned or spotlighted, its options. */
   chrome?: ReactNode; label?: string | undefined;
-  signal?: ReactNode;
+  status?: TileStatus | null | undefined;
 }) {
   const ground = children ? undefined : tileGround(person);
+  const left = useLeft(status?.time ?? null);
   return (
-    <div className={cn('ac-tile', speaking && 'is-speaking', hand && 'is-hand', connecting && 'is-connecting', className)} style={ground ? { background: ground } : undefined} aria-label={label}>
+    <div className={cn('ac-tile', speaking && 'is-speaking', hand && 'is-hand', connecting && 'is-connecting', status?.away && 'is-away', className)} style={ground ? { background: ground } : undefined} aria-label={label}>
       {children ?? (person.portrait
         ? <svg className="ac-figure" viewBox="0 20 200 220" preserveAspectRatio="xMidYMax meet" aria-hidden="true"><PortraitArt p={person.portrait} /></svg>
         : <span className="ac-tile-face"><Avatar person={person} size={88} /></span>)}
@@ -53,7 +69,8 @@ export function CallTile({ person, name, speaking = false, muted = false, hand =
       {connecting ? <span className="ac-tile-wait" role="status"><Dots />Connecting</span>
         : muted && !hand && <span className="ac-tile-mic" aria-label="Microphone off"><Icon name="micOff" size={14} /></span>}
       {hand && <span className="ac-tile-hand" aria-label="Hand raised"><Icon name="hand" size={15} /></span>}
-      {signal}
+      {status && <span className="ac-tile-status"><Icon name={status.icon} size={14} /><span className="ac-clamp-1 full">{status.text}</span><span className="short">{status.short}</span></span>}
+      {status && left && <span className="ac-tile-left" aria-hidden="true"><i style={left} /></span>}
       {chrome}
     </div>
   );
@@ -188,13 +205,27 @@ export function VolumeControl({ name, level, onChange, onToggle }: { name: strin
   const muted = level === 0;
   return (
     <div className="ic-vol">
-      <div className="ic-vol-h"><span>Volume for you</span><Scope>Only you</Scope></div>
+      <div className="ic-vol-h"><span>Volume for you</span></div>
       <div className="ic-vol-row">
         <IconButton icon={muted ? 'speakerOff' : level < 0.5 ? 'speakerLow' : 'speaker'} size={17} on={muted}
           label={muted ? `Unmute ${name} for you` : `Mute ${name} for you`} onClick={onToggle} />
         <Slider value={level} step={0.05} label={`How loud ${name} is for you`} valueText={muted ? 'Muted for you' : pct(level)} onChange={onChange} />
         <span className="n">{muted ? 'Off' : pct(level)}</span>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Equal choices in a row, in a menu over the call, one of which may be chosen or none (`chosen` null): the time a status is for,
+ * or where you see yourself. A press is the choice.
+ */
+export function CallMenuChips<T extends string | number>({ label, options, chosen, onPick }: {
+  label: string; options: readonly { value: T; label: string }[]; chosen: T | null; onPick: (value: T) => void;
+}) {
+  return (
+    <div className="ic-mchips" role="group" aria-label={label}>
+      {options.map((o) => <button key={o.value} type="button" aria-pressed={chosen === o.value} onClick={() => onPick(o.value)}>{o.label}</button>)}
     </div>
   );
 }

@@ -11,7 +11,7 @@ import { log } from '../../log';
 import { hereIn, inPlaceOf, knownIn, type Viewer, whereIs } from './participants';
 import { load, saveSettled, secondsIn, settle } from './state';
 import { afterClosing, syncBoardSeats, syncRoomBoards } from './room-boards';
-import { nudge } from './notifications';
+import { tellRoom } from './notifications';
 import { view } from './read-model';
 
 const clog = log.child({ component: 'calls' });
@@ -55,7 +55,7 @@ export async function actOnBoard(v: Viewer, callId: string, a: boards.BoardActio
   // Rooms whose time ran out closed with it, and come back; a board started in a room is everyone's there before anyone's told.
   return afterClosing({ organizer: o, callId }, closed, async () => {
     if (!closed && changed.s.board.rooms.length > roomBoards) await syncRoomBoards({ organizer: o, callId });
-    await nudge(o, room, callId, { call: true, log: false });
+    await tellRoom(o, room, callId, { call: true, log: false });
     return view(v, o.pool, callId);
   });
 }
@@ -89,7 +89,7 @@ export async function runOnBoard(v: Viewer, callId: string, a: boards.RunAction)
   else clog.info(ran.done.what, ran.done.context);
   // Rooms whose time ran out closed with it, and come back. A vote cast still tells nobody: their landing says it itself.
   return afterClosing({ organizer: o, callId }, closed, async () => {
-    if (ran.tell) await nudge(o, room, callId, { call: true, log: false });
+    if (ran.tell) await tellRoom(o, room, callId, { call: true, log: false });
     return view(v, o.pool, callId);
   });
 }

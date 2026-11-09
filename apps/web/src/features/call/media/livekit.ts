@@ -2,7 +2,7 @@
  * The LiveKit room around a call. The call itself (notes, transcript, chat, who's in it) stays in the
  * server-backed CallSession; this carries the media: it publishes LocalMedia's microphone, camera and screen,
  * plays everyone else's audio, says who has their mic on, their camera or screen up and who's speaking, and
- * refetches the call when the server nudges the room or people come and go.
+ * refetches the call when the server sends a change push or people come and go.
  *
  * A device switch replaces the track inside its publication (no unpublish, no gap, mute kept), everyone else's audio
  * plays on the chosen speaker through LiveKit's own output switching, and each person plays as loud as this listener
@@ -24,12 +24,12 @@
  * Browsers also send each other data (pointers and marks on shared screens, `send` and `receive`), end-to-end encrypted
  * too: the session seals it with a key from the sender's own media key (CallSession.sealData), and only what opens with
  * the key of whoever LiveKit says sent it is taken, only from the people whose media would play here. LiveKit's own data
- * encryption runs underneath. The call's nudges are taken only from the server, since anyone in the room can send data.
+ * encryption runs underneath. The call's change pushes are taken only from the server, since anyone in the room can send data.
  *
  * Load it with `await import('~/features/call/media/livekit')` from the call routes only: livekit-client is large and
  * stays out of the first page load.
  */
-import { CALL_KEYRING, CALL_TOPIC, CALL_VOID_KEY_INDEX, CallNudgeSchema, type CallMediaKeys, type CallSession, type LiveStore, type VideoSend } from '@alcove/api';
+import { CALL_KEYRING, CALL_TOPIC, CALL_VOID_KEY_INDEX, CallChangedSchema, type CallMediaKeys, type CallSession, type LiveStore, type VideoSend } from '@alcove/api';
 import {
   BaseKeyProvider, ConnectionState, CryptorError, CryptorErrorReason, DisconnectReason, LoggerNames, RemoteAudioTrack, Room, RoomEvent, Track, VideoPresets, VideoQuality,
   createKeyMaterialFromBuffer, getLogger, isE2EESupported, type Participant, type RemoteTrack, type RemoteTrackPublication, type RemoteParticipant, type TrackPublication,
@@ -269,21 +269,21 @@ class LiveKitRoom implements CallRoom {
       rlog.at(reason === MISSING_KEY || elsewhere ? 'debug' : 'warn', 'media couldn’t be decrypted', { reason, local, elsewhere });
     });
     r.on(RoomEvent.ParticipantConnected, () => refetch());
-    // The server nudges when someone leaves too. Waiting a moment lets a room that's closing (the call ended) close
+    // The server sends a change push when someone leaves too. Waiting a moment lets a room that's closing (the call ended) close
     // first, instead of asking about a call that's over.
     r.on(RoomEvent.ParticipantDisconnected, () => { setTimeout(() => { if (r.state === ConnectionState.Connected) refetch(); }, 400); });
     r.on(RoomEvent.TrackSubscribed, (track, pub, who) => { this.consider(track, pub, who); if (pub.source === Track.Source.Camera) this.receiveCams(); this.emit(); });
     r.on(RoomEvent.TrackUnsubscribed, (track) => { if (track.sid) this.held.delete(track.sid); this.silence(track); this.emit(); });
     r.on(RoomEvent.DataReceived, (payload, _p, _kind, topic, _encryption, from) => {
       if (topic === CALL_TOPIC) {
-        // The server's nudge says what changed, and comes from no participant. Anyone in the room can send data, so one
+        // The server's change push says what changed, and comes from no participant. Anyone in the room can send data, so one
         // from a participant isn't taken: a stream of them would keep every browser fetching the call. LiveKit could
         // send one too: all it can do is make this browser look again.
         if (from) return;
         let n: unknown = null;
-        try { n = JSON.parse(new TextDecoder().decode(payload)); } catch { /* not a nudge */ }
-        const nudge = CallNudgeSchema.safeParse(n);
-        if (nudge.success) refetch({ call: nudge.data.call, log: nudge.data.log });
+        try { n = JSON.parse(new TextDecoder().decode(payload)); } catch { /* not a change push */ }
+        const changed = CallChangedSchema.safeParse(n);
+        if (changed.success) refetch({ call: changed.data.call, log: changed.data.log });
         return;
       }
       const takers = topic ? this.takers.get(topic) : undefined;

@@ -25,7 +25,7 @@ import { findOwner, masterKey, openOwner } from '../../owners';
 import { findSession } from '../../sessions';
 import { profile } from '../account/account';
 import { inSeat, seated, seatedIn, seatOfViewer, viewerOf, type Viewer } from '../calls/participants';
-import { nudgeCall } from '../calls/notifications';
+import { tellCall } from '../calls/notifications';
 import { settledHome } from '../calls/workspace-actions';
 import { personOf, portraitFor } from '../account/portraits';
 
@@ -544,7 +544,7 @@ export async function grantDocumentToCall(d: Deps, workspace: Pick<Workspace, 'w
     if (!w || !item || item.kind === 'folder') throw notFound('That document', { workspaceId: workspace.workspaceId, documentId });
     await grant(w, c, documentId, [...people].map(([seat, name]): Grant => ({ kind: 'seat', callId: call.callId, seat, name, role: opts.role })));
   });
-  await nudgeCall(d, call.callId);
+  await tellCall(d, call.callId);
 }
 
 /** What each of these people can do with a document now, and whether they have an entry on it, which is someone's decision. */

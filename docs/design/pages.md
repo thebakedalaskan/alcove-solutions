@@ -236,44 +236,84 @@ One modal, one question at a time, and a sheet on a phone.
 
 ## A call
 
-`routes/call.$code.tsx`, `features/call/` (the shell in `layout/`), `styles/call.css`, styled with `ic-` classes. Boards:
+`routes/call.$code.tsx`, `features/call/` (the shell in `layout/`), `styles/call.css`, styled with `ic-` classes, and Chat in
+`styles/call-chat.css` (`ch-`). Boards:
 [canvas/call/](canvas/call/README.md).
 
 Always night, in both themes, on the stage tokens, except your side, which takes your theme. People are in arches, never
 circles, and whoever speaks gets the `speak` ring. The camera appears only here and on the join screen.
 
-- **Presenter timing** has a compact countdown beside the call title and a themed side panel for current/next slots,
-  host controls and the ordered plan. Presets live in the same panel and can be prepared in the organizer’s lobby.
-  Focus reserves a strip above the frame for Timer and Attention, keeping the frame’s own title and tools clear.
-  Numbers stay tabular; a warning uses words and an icon as well as caution colour. Guests read the same clock.
+- **The timer** is one countdown for everyone, beside the call's title and the shield. The host's **Timer** opens **Timer
+  for everyone**, a small popover (a sheet on a phone): the length, big and tabular, the usual lengths as chips, a minute
+  less or more, and **Start**, its one filled button. Once it runs, the button is the countdown in `stage-sun`, and the same
+  popover has Pause, +1 min and a quiet Stop. Its last 30 seconds and over time take `caution` with a warning sign as well
+  as the colour. Everyone else reads the same popover, which says only the host can change it. Focus reserves a strip above
+  the frame for the timer, keeping the frame’s own title and tools clear.
 - **Three places, each with one job.**
   - **The stage** holds the people and what you have open.
   - **The dock** holds what you do in the call: the microphone and camera with their arrows, a hairline, Share, Raise your
     hand, More, a hairline, Leave, and in focus Show everything. Share is the one control it names in words.
-  - **The top right** holds what's only yours: View, then one group of Board, Workspace, a hairline, Notes, Chat, a
-    Attention with the hand and open-question counts, a hairline, and the faces with the count, which open People. Each is lit while what it opens is open.
+  - **The top right** holds what's only yours: one group of Board, Workspace, a hairline, Notes, Chat, a
+    hairline, and the faces with the count (and, for whoever hosts, how many are asking to join), which open People. Each is lit while what it opens is open.
 - **Your side** is one panel at a time, on the right, at a fixed width (368px, or 340px in a window under 1200px), and the
   stage gives way as it slides in; where that would leave the stage under 480px (a window under 864px), it slides in over
   the stage, which dims behind it, and toasts keep clear of its foot wherever it is: Notes (with the tabs Notes, Transcript
-  and Ask, and Yours at the foot of Notes), Chat, Attention, People, Your notes beside a presented board, and the rooms. It takes your
+  and Ask, and Yours at the foot of Notes), Chat, People, Your notes beside a presented board, and the rooms. It takes your
   theme, as a board's sheet does unless it's a night board; the stage, the dock, the workspace and screens stay night.
 - **The frame.** A screen, a board and the workspace each sit in one frame with one bar. On the left, the presenter's face
   (or the kind's icon while nobody presents), the name as a menu of the kind's own commands, and a line that says whose it
   is. On the right, only what applies: following or Follow, Present, focus, Stop sharing, or Close. The people sit beside it
-  as View says: a column of tiles on the right, a row of arches over it (which any stage under 760px gets), or on the
-  horizon.
+  in a column of tiles on the right, a row of arches over it on a stage under 760px, or on the horizon once they're hidden
+  (⇧P) and in focus.
+- **No layouts to choose.** The stage lays itself out; you drag a tile to move it and pull its corner to make it bigger,
+  and pin from its menu. Once you've changed it, More has a quiet Reset layout (muted ink, no fill).
+- **More**, in the dock, is what you do in a call (captions, Mark this moment, catching up, breakout rooms), a hairline,
+  then Open floating call, Reset layout while there's a change to put back, Move to another device and Settings. No key
+  hints or scope chips in it, and no keyboard shortcuts sheet: the keys still work.
+- **Settings** is one modal from More, with its parts as tabs down its left (on `surface`, the pane on `surface-raised`):
+  Audio and video (the dock's two menus in one place), Video quality, Sounds, Notifications, and Call, which only whoever
+  hosts has (Lock the call; Pointing at shared screens, the organizer's alone). Each part has its heading and its rows,
+  Settings' own label-and-control rows at the modal's width, and the modal keeps its size as the parts change. On a phone
+  it's a sheet, its parts a strip along the top.
 - **Share**, in the dock, opens one menu over it, a step at a time: Your screen, A board or The workspace, then the kind of
   screen or the board picker in the same menu, so no window opens over another. While someone else presents a board or the
   workspace, A board and The workspace say who instead. Stop sharing, on a board or the workspace you present, asks for you
   or for everyone in the same menu.
 - **A tile only while it's presented.** Something presented that isn't on your stage is a tile first among the people (a
   screen live, a board drawn small, the workspace with where its presenter is), with who's presenting it and Join.
-- **Attention** opens Hands, Q&A, Signals and, for the host, Waiting in your side. The ordered hand queue and explicit shared questions are separate from private AI Ask. Votes do not reorder a question under someone reading; Most votes, Newest and Refresh order apply an order deliberately. Quiet signals sit beside tiles and expire without sound. The host’s Waiting view reuses People’s current admission controls.
+- **People** opens with Find someone, which narrows every list in it by name: who's asking to join first (for whoever
+  hosts, with × and Let in), then who's in the call, hands raised first in the order they went up and each status on its
+  row, then ringing and invited. Each row in the call has Message privately and ⋯ in fixed columns, held in place where a
+  row has neither. Copy link sits at its foot, over how the call is kept private. The call's own settings (locking it,
+  pointing at shared screens) aren't in the list.
+- **A person's ⋯**, on their tile and their row, is short and has no key hints. Your own: Set a status (Be right back,
+  Listening only, On my phone; Back in 2, 5 or 10 min as chips; I'm back in its heading), Pin for me, See yourself (Grid,
+  Corner, Hidden as chips) and whoever hosts' Spotlight for everyone. Someone else's: Pin for me, Message privately, Nudge ▸,
+  Volume for you, then whoever hosts' Spotlight, Lower hand, Mute for everyone and Remove from the call. Nudge is a step in
+  the same menu, headed "Only Kofi sees it". Tiles move and grow by dragging, so there are no rows for that.
+- **A status** sits at a tile's top left for everyone, with the time they're back ("Be right back · 14:37"); Be right back
+  dims the tile, and a timed status counts down as a line along its foot (still, with reduced motion). It goes when its time
+  runs out, when they talk, or with I'm back.
+- **A nudge** reaches only whoever it's for, as a quiet toast on their side ("Kofi can't hear you"), one for the same nudge
+  from everyone within a minute ("3 people can't hear you"); You're muted offers Unmute. Whoever sent it is told "Kofi got
+  your nudge: Can't hear you". Talking with your microphone muted says "You're talking on mute", with Unmute, in the pills
+  at the top of the call.
+- **Just you so far**, at the stage's bottom left while you're on your own, has × and stays closed for the rest of the call.
+- **Chat** is built like Slack's. Its conversations are tabs along the top: Everyone (the room you're in), Questions with
+  how many are open, and a tab for each private conversation with a lock and a dot when something's new; + finds someone in
+  the call to talk to privately. Messages sit on the panel without boxes, a run from one person under one arch and name;
+  the times of the rest show in the margin as you point. Pointing at a message brings a small bar over its top right corner
+  (three reactions, the rest, Reply in thread, Message privately); on a phone a ⋯ or a long press opens the same as a sheet.
+  Reactions are pills under the words, yours outlined. A thread opens in place of its conversation with ← and "In Everyone ·
+  3 people", the original on top, a hairline with the count, and Also send to Everyone beside Send. A private conversation
+  starts with "Only you and Priya can read this." Questions put votes in a column of their own and say Anonymous with a
+  mask where nobody's told who asked; the host's pin, answered and dismiss sit at the end of each question's line. The
+  composer is one box: the words, then @, the thread's or question's one choice, and Send, the one filled button.
 - **Focus** fills the window with what's in the frame. The bars slide off, the people stand on the horizon, and the dock
-  keeps the microphone, camera, Show everything and Leave. Attention’s counts remain at the top right and open the panel without changing what is presented.
-- **On a phone** (under 600px), the top is the title, the notes sign, compact Attention counts, Chat and the faces; the dock is the microphone,
+  keeps the microphone, camera, Show everything and Leave.
+- **On a phone** (under 600px), the top is the title, the notes sign, Chat and the faces; the dock is the microphone,
   camera, Share, More and Leave; what's open fills the screen under a row of arches; More starts with a grid of Board,
-  Workspace, Notes, Chat and People; and your side and Close's question are sheets.
+  Workspace, Notes, Chat and People; and your side, Settings and Close's question are sheets.
 
 ## A board
 
@@ -329,6 +369,14 @@ Signed out, before anything else: what Alcove is, told as one evening on the app
   the scene of the step being read, the one on the reading line half way down the window, with a pointer that shows every
   click; moving to another step carries it straight into that step's scene. Under 1080px the call sticks at the top and
   the reading line is under it.
+  - It's the call as the app draws it, at one size whatever the window: the top bar with Board, Workspace, Notes, Chat
+    and the faces at its right, the dock with Share and More, and menus that say what the call's say. Captions and
+    breakout rooms open from More, the captions' language from their own button, a status from your own tile's ⋯, and a
+    nudge from Kofi's ⋯ as a step in its place. You're talking on mute is said at the top of the call.
+  - Arrange it your way has no layouts to pick. Maya's tile is dragged to the front, the others making room, and pulled
+    by its corner until she's the bigger one. Kofi's screen takes the room in its frame with everyone in a column beside
+    it, and Focus fills the window with it, everyone on the horizon. When Kofi stops, Reset layout, in More, puts the call
+    back.
 - **Find a time** is the Team moment (`TeamScene`): the team stands on the horizon with the sun low past the end of the
   line. Picking people lays their busy hours out across the week, with the times everyone is free.
 - **Your agent** (`AgentScene`) books a call over MCP, beside the tools it can use.

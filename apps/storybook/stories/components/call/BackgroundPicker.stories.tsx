@@ -1,12 +1,14 @@
 /*
- * BackgroundPicker: what shows behind someone on camera: Off, Blur with its strength, stable solid colors, Alcove's
- * pictures (SCENE_PICTURES), then the person's own with replace/remove controls, and Add image. It's stateless: the call's camera menu
- * and the pre-join screen give it the choice and the pictures kept in that browser, and draw the background themselves.
+ * BackgroundPicker: the choices in Background's window, in groups: Blur (Off, Light, Strong), Alcove's Pictures
+ * (SCENE_PICTURES), Colours, and Yours, the person's own pictures with Replace and Remove, then Add. The one in use is ringed.
+ * It's stateless: the window (BackgroundModal) holds it, and the app gives it the choice and the pictures kept in that
+ * browser and draws the background itself. What can't be added is said under Yours, in the refusal's own words.
  */
 import { BACKGROUND_SCENES, type CameraBackground } from '@alcove/api';
-import { BackgroundPicker, BackgroundStatus, SCENE_PICTURES, type PickerPicture } from '@alcove/ui';
+import { BackgroundPicker, SCENE_PICTURES, type PickerPicture } from '@alcove/ui';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useState } from 'react';
+import { ModalFrame, did, onStage } from '../../../src/component';
 
 const SCENES = BACKGROUND_SCENES.map((id) => ({ id, label: SCENE_PICTURES[id].label }));
 /** Two pictures someone added, as made-up stand-ins. */
@@ -19,51 +21,58 @@ const ACCEPT = 'image/jpeg,image/png,image/webp';
 const meta = {
   title: 'Components/In a call/BackgroundPicker',
   component: BackgroundPicker,
-  parameters: { layout: 'centered' },
-  args: { value: { kind: 'none' }, scenes: SCENES, pictures: [], onPick: () => undefined, onAdd: () => undefined, onRemove: () => undefined, accept: ACCEPT },
+  ...onStage,
+  args: { value: { kind: 'none' }, scenes: SCENES, pictures: [], onPick: did('onPick'), onAdd: did('onAdd'), onRemove: did('onRemove'), most: 6, accept: ACCEPT },
   argTypes: {
     value: { control: 'object' },
     adding: { control: 'boolean' },
-    full: { control: 'boolean' },
+    most: { control: 'number' },
+    ownNote: { control: 'text' },
+    problem: { control: 'text' },
     scenes: { control: false },
     pictures: { control: false },
     onPick: { control: false },
     onAdd: { control: false },
     onRemove: { control: false },
+    onReplace: { control: false },
     accept: { control: false }
   },
-  decorators: [(Story) => <div className="ac-pop ic-dmenu"><div className="ac-eyebrow">Background</div><Story /></div>]
+  // In the window's surface, on the night stage the window opens over.
+  decorators: [(Story) => <ModalFrame><div style={{ width: 'min(400px, calc(100vw - 32px))', padding: 24 }}><Story /></div></ModalFrame>, ...onStage.decorators]
 } satisfies Meta<typeof BackgroundPicker>;
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/** Nothing chosen yet, and no pictures of their own: Add image stands in for them. */
-export const Empty: Story = {};
-/** Blur chosen. */
-export const Blurred: Story = { args: { value: { kind: 'blur', strength: 'strong' } } };
-export const MildBlur: Story = { name: 'Mild blur', args: { value: { kind: 'blur', strength: 'mild' } } };
-export const SolidColor: Story = { name: 'A solid color', args: { value: { kind: 'color', id: 'slate' } } };
-/** One of Alcove's pictures chosen. */
-export const Scene: Story = { args: { value: { kind: 'scene', id: 'balloons' } } };
-/** Pictures of their own, one chosen; hovering one shows its remove button. */
-export const OwnPictures: Story = { name: 'Own pictures', args: { pictures: OWN, value: { kind: 'custom', id: OWN[0]?.id ?? '' } } };
+/** Nothing behind you yet, and no pictures of your own: Add stands in for them. */
+export const Off: Story = {};
+export const LightBlur: Story = { name: 'Light blur', args: { value: { kind: 'blur', strength: 'mild' } } };
+export const StrongBlur: Story = { name: 'Strong blur', args: { value: { kind: 'blur', strength: 'strong' } } };
+/** One of Alcove's pictures. */
+export const APicture: Story = { name: 'A picture', args: { value: { kind: 'scene', id: 'beach' } } };
+export const AColour: Story = { name: 'A colour', args: { value: { kind: 'color', id: 'slate' } } };
+/** Pictures of their own, one in use; hovering one shows Replace and Remove. */
+export const YourOwn: Story = { name: 'Your own pictures', args: { pictures: OWN, value: { kind: 'custom', id: OWN[0]?.id ?? '' }, onReplace: did('onReplace') } };
 /** A picture on its way in. */
 export const Adding: Story = { args: { pictures: OWN, adding: true } };
-export const Full: Story = { args: { pictures: Array.from({ length: 6 }, (_, i) => ({ id: `picture-${i}`, src: SCENE_PICTURES.office.thumb })), full: true, onReplace: () => undefined } };
-export const Preparing: Story = { render: (args) => <><BackgroundPicker {...args} /><BackgroundStatus support="supported" quality="full" preparing cameraOn effectOn /></> };
-export const ReducedQuality: Story = { name: 'Reduced quality, still covered', args: { value: { kind: 'color', id: 'sand' } }, render: (args) => <><BackgroundPicker {...args} /><BackgroundStatus support="supported" quality="light" preparing={false} cameraOn effectOn /></> };
-export const CameraOff: Story = { name: 'Choosing with the camera off', args: { value: { kind: 'blur', strength: 'strong' } }, render: (args) => <><BackgroundPicker {...args} /><BackgroundStatus support="supported" quality="full" preparing={false} cameraOn={false} effectOn /></> };
-export const Unsupported: Story = { render: () => <BackgroundStatus support="unsupported" quality="full" preparing={false} cameraOn={false} effectOn /> };
-/** A guest, or a browser that can't keep pictures: no adding. */
-export const Guest: Story = { render: ({ onAdd: _onAdd, ...args }) => <BackgroundPicker {...args} /> };
-/** Choosing and removing, as in the camera's menu. */
+/** Six kept: Add gives way to how many can be kept. */
+export const Full: Story = {
+  name: 'Six kept',
+  args: { pictures: Array.from({ length: 6 }, (_, i) => ({ id: `picture-${i}`, src: (i % 2 ? SCENE_PICTURES.beach : SCENE_PICTURES.office).thumb })), onReplace: did('onReplace') }
+};
+/** A picture that wasn't taken: the refusal says what's allowed, under Yours. */
+export const Refused: Story = { name: 'A picture refused', args: { pictures: OWN, problem: 'That picture is over 20 MB. Pick a smaller one.' } };
+/** Reading the pictures kept in this browser. */
+export const Loading: Story = { name: 'Reading your pictures', args: { pictures: null } };
+/** A guest, signed out: no pictures of their own, and Yours says how to have them. */
+export const Guest: Story = { render: ({ onAdd: _onAdd, ...args }) => <BackgroundPicker {...args} ownNote="Sign in to add pictures of your own." /> };
+/** Choosing, replacing and removing, as in the window. Removing the one in use puts strong blur in its place. */
 export const Live: Story = {
   render: function Render(args) {
     const [value, setValue] = useState<CameraBackground>({ kind: 'none' });
     const [pictures, setPictures] = useState(OWN);
     return (
       <BackgroundPicker {...args} value={value} pictures={pictures} onPick={setValue}
-        onReplace={(id) => setPictures((p) => p.map((x) => x.id === id ? { id, src: SCENE_PICTURES.balloons.thumb } : x))}
+        onReplace={(id) => setPictures((p) => p.map((x) => (x.id === id ? { id, src: SCENE_PICTURES.balloons.thumb } : x)))}
         onRemove={(id) => { setPictures((p) => p.filter((x) => x.id !== id)); if (value.kind === 'custom' && value.id === id) setValue({ kind: 'blur', strength: 'strong' }); }} />
     );
   }

@@ -24,8 +24,8 @@ The hook observes moderator changes, cancels queued playback when that status ch
 the gate at playback time. This policy never broadens the server-filtered room audience.
 `useCallSounds` establishes a baseline on first join, reconnect, generation change and room change; it does
 not replay history. Cues older than five seconds on the server clock are discarded. A snapshot gap over
-twelve seconds is treated as a new baseline. Nothing audible is needed to use the visual hand queue,
-questions, feedback or admission controls.
+twelve seconds is treated as a new baseline. Nothing audible is needed to use raised hands in People,
+questions or admission controls. Nudges have no sound: their recipient is told by a quiet toast alone.
 
 One browser output scheduler serializes phrases with at most four waiting cues, expiring after 0.7–1.2
 seconds. Hand, question and people bursts coalesce by category with a 1.8-second cooldown; admission

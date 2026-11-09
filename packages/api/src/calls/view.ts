@@ -14,12 +14,9 @@ export type CallVolumes = z.infer<typeof CallVolumesSchema>;
 
 /*
  * How someone arranges a call on their own screen. Kept in their browser only: nobody else's view changes, and
- * nothing in it names anyone or carries anything from a call.
+ * nothing in it names anyone or carries anything from a call. The stage lays itself out; what's kept is what they
+ * moved, sized and pinned, and where they see themselves.
  */
-export const CallViewModeSchema = z.enum(['auto', 'speaker', 'grid']);
-
-export type CallViewMode = z.infer<typeof CallViewModeSchema>;
-
 /** Where you see yourself: in the grid with everyone, as a small picture in a corner, or folded away. */
 export const SelfViewSchema = z.enum(['grid', 'corner', 'hidden']);
 
@@ -32,9 +29,12 @@ export type StageCorner = z.infer<typeof StageCornerSchema>;
 /** The most a call's arrangement holds: pins, and the lists kept for the call. The app keeps to them as it writes. */
 export const CALL_LAYOUT_MAX = { pins: 6, order: 200, arrived: 400, big: 200 } as const;
 
-/** How someone likes to see every call: remembered for their account in this browser. */
+/**
+ * How someone likes to see every call: remembered for their account in this browser. A browser that kept a layout mode
+ * (`mode`: Auto, Speaker or Grid) from before the stage laid itself out keeps where its owner sees themselves; the mode
+ * is dropped as it's read, and goes for good the next time this is saved.
+ */
 export const CallViewPrefsSchema = z.object({
-  mode: CallViewModeSchema,
   self: SelfViewSchema,
   /** The corner your own picture sits in. */
   corner: StageCornerSchema
@@ -76,13 +76,17 @@ export type CallLayout = z.infer<typeof CallLayoutSchema>;
  * How someone likes the people beside what's open on their stage: remembered for their account in this browser, so
  * tomorrow's call starts the way they left this one. It names nobody, and says nothing about what's open.
  */
-/** How you see people while something is open on your stage: a column of tiles, a row of arches, or on the horizon. */
-export const CallPeopleModeSchema = z.enum(['tiles', 'arches', 'hidden']);
+/**
+ * The people while something is open on your stage: beside it (a column of tiles, or a row of arches where the stage is
+ * narrow), or hidden on the horizon by the dock (⇧P).
+ */
+export const CallPeopleModeSchema = z.enum(['tiles', 'hidden']);
 
 export type CallPeopleMode = z.infer<typeof CallPeopleModeSchema>;
 
 export const CallPanelsSchema = z.object({
-  people: CallPeopleModeSchema.default('tiles'),
+  /** Arches, once a choice of their own, are what a narrow stage gives anyway: a browser that kept them has the people beside what's open again. */
+  people: z.preprocess((v) => (v === 'arches' ? 'tiles' : v), CallPeopleModeSchema).default('tiles'),
   /** Whether the workspace shows its list of documents. */
   list: z.boolean().default(true)
 });

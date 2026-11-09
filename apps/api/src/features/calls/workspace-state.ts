@@ -4,7 +4,7 @@ import * as space from './workspace';
 import { log } from '../../log';
 import { placesOf } from './places';
 import { load, save } from './state';
-import { nudge } from './notifications';
+import { tellRoom } from './notifications';
 
 const clog = log.child({ component: 'calls' });
 
@@ -21,7 +21,7 @@ export async function stopLost(o: Owner, callId: string, lost: space.Lost): Prom
       return row.room_name;
     });
     clog.info('stopped: whoever started it lost the document', { callId, present: lost.present.length, space: lost.space.length, play: lost.play.length });
-    await nudge(o, room, callId, { call: true, log: false });
+    await tellRoom(o, room, callId, { call: true, log: false });
   } catch (e) {
     clog.warn('what someone lost not stopped', { callId, err: e });
   }

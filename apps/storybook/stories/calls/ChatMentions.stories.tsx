@@ -4,14 +4,14 @@ import { screen } from 'storybook/test';
 import { at, leaves, type CallScript } from '../../src/api/script';
 import { inCall, light, phone, reach } from '../../src/call';
 import { pages, type PageArgs, type PageStory } from '../../src/page';
-import { choosePrivateAudience } from './plays';
+import { SOON, talkPrivately } from './plays';
 import { KOFI, PRIYA, REVIEW } from './talk';
 
 const meta = { title: 'Calls/Chat mentions', ...pages } satisfies Meta<PageArgs>;
 export default meta;
 type Context = Parameters<NonNullable<PageStory['play']>>[0];
 const openChat = reach('Chat');
-const privateChat = async (c: Context) => { await openChat(c); await choosePrivateAudience(c, new RegExp(`^${PRIYA.name} · Private`)); };
+const privateChat = async (c: Context) => { await openChat(c); await talkPrivately(c, PRIYA); };
 const here = [{ who: PRIYA }, { who: KOFI }];
 const privateScript: CallScript = { here, notes: 'off', privateMessages: [
   { from: PRIYA, text: 'Could you review the checklist?', after: .2 },
@@ -31,7 +31,7 @@ export const SelectedPrivateMention = inCall({ scenario: 'call-soon', call: REVI
 export const SelectedPrivateMentionLight = light(SelectedPrivateMention);
 export const SelectedPrivateMentionPhone = phone(SelectedPrivateMention);
 export const PrivateThreadMention = inCall({ scenario: 'call-soon', call: REVIEW, script: privateScript }, { play: async (c) => {
-  await privateChat(c); await c.userEvent.click(await screen.findByRole('button', { name: /^1 reply/ }, { timeout: 10000 }));
+  await privateChat(c); await c.userEvent.click(await screen.findByRole('button', { name: /^1 reply/ }, SOON));
   await screen.findByText('@Art Vandelay', { selector: 'mark' });
 } });
 export const PrivateThreadMentionLight = light(PrivateThreadMention);
@@ -63,7 +63,7 @@ export const MatchingNames = inCall({ scenario: 'call-soon', call: REVIEW, scrip
 export const MatchingNamesLight = light(MatchingNames);
 export const MatchingNamesPhone = phone(MatchingNames);
 export const MatchingPrivateAudience = inCall({ scenario: 'call-soon', call: REVIEW, script: matching }, { play: async (c) => {
-  await openChat(c); await choosePrivateAudience(c, /Sam Reed \(sam\.reed@vandelay\.example\)/);
+  await openChat(c); await talkPrivately(c, SAM_ONE, /sam\.reed@vandelay\.example/);
   await c.userEvent.type(await screen.findByRole('combobox', { name: 'Message only Sam Reed (sam.reed@vandelay.example)' }), '@Sam');
 } });
 export const MatchingPrivateAudienceLight = light(MatchingPrivateAudience);

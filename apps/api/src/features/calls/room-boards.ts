@@ -16,7 +16,7 @@ import { endSeat } from '../workspaces/service';
 import { log } from '../../log';
 import { load, notice, save, settle, type Row, type Stored } from './state';
 import { hereIn, inPlaceOf, knownIn, seatKey, seatOf, type Viewer } from './participants';
-import { nudge } from './notifications';
+import { tellRoom } from './notifications';
 
 const clog = log.child({ component: 'calls' });
 
@@ -67,7 +67,7 @@ export async function syncBoardSeats(call: CallRef): Promise<void> {
       }
     }
     for (const seat of ended) await endSeat(o, callId, seat);
-    if (changed) await nudge(o, row.room_name, callId, { call: true, log: false });
+    if (changed) await tellRoom(o, row.room_name, callId, { call: true, log: false });
   } catch (e) {
     clog.warn('seats on the call’s boards not kept up', { callId, err: e });
   }
@@ -284,7 +284,7 @@ export async function landRooms(call: CallRef): Promise<void> {
         });
         if (told) {
           clog.info('rooms’ boards not landed: the call’s home can’t take a new board', { callId, rooms: l.rooms.length });
-          await nudge(o, row.room_name, callId, { call: true, log: false });
+          await tellRoom(o, row.room_name, callId, { call: true, log: false });
         }
         return;
       }
@@ -322,7 +322,7 @@ export async function landRooms(call: CallRef): Promise<void> {
       return rest.length > 0;
     });
     if (made) void syncBoardSeats(call);
-    await nudge(o, row.room_name, callId, { call: true, log: false });
+    await tellRoom(o, row.room_name, callId, { call: true, log: false });
     if (again) void landRooms(call);
   } catch (e) {
     clog.warn('rooms’ boards not landed', { callId, err: e });

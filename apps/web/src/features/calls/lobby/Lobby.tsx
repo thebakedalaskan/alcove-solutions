@@ -1,15 +1,15 @@
 /*
  * The organizer's lobby: the pre-join on the night stage, where a call is settled before it starts. While it hasn't
  * started, its name and notes can change here; once it's live they're read-only, as the call shows them. On a team you
- * pick who to ring, and they hear it the moment you join. On your own the link comes first. Backing out of a call
- * started just now cancels it: it was never on anyone's calendar, and nobody has been told. Once its link has been
- * copied, somebody may have been: then it stays, for anyone with the link.
+ * pick who to ring, and they hear it the moment you join. Copy link, quietly under Join, is for anyone else: the address
+ * you're on is the call's link too. Backing out of a call started just now cancels it: it was never on anyone's calendar,
+ * and nobody has been told. Once its link has been copied, somebody may have been: then it stays, for anyone with the link.
  */
 import { errorMessage, firstName, type CallSession, type CaptureState, type Meeting, type NotesSetting, type Person, type Team } from '@alcove/api';
-import { Button, Faces, Icon, IconButton, LinkRow, Notice, Switch, keptLines, useRaisedToasts, useToast } from '@alcove/ui';
+import { Button, Faces, Icon, IconButton, Notice, Switch, keptLines, useRaisedToasts, useToast } from '@alcove/ui';
 import { useNavigate } from '@tanstack/react-router';
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
-import { copyUrl, shownUrl, useCopyLink } from '~/features/call/session/links';
+import { useCopyLink } from '~/features/call/session/links';
 import { JoinRefused } from '~/features/join/JoinProblem';
 import { PrejoinCapture } from '~/features/join/PrejoinCapture';
 import { PrejoinCarry } from '~/features/join/PrejoinCarry';
@@ -20,7 +20,6 @@ import { log } from '~/lib/log';
 import { listNames, sameEmail, someNames } from '~/lib/people';
 import { useCancelCall, useUpdateCall } from '~/lib/queries';
 import { daysFromToday, hm, minutesUntil, shortDay } from '~/lib/time';
-import { TimerPresetPreparation } from '~/features/call/layout/TimerPresets';
 import { LobbyRing } from './LobbyRing';
 import { ringable } from '../ringing/RingWords';
 
@@ -173,7 +172,7 @@ export function Lobby({ meeting, me, capture, team, standIn, media }: { meeting:
     };
   }, [cancelCall]);
 
-  const giveLink = (copied: (code: string) => void) => { copied(meeting.code); rememberCopied(meeting.code); };
+  const giveLink = () => { copy(meeting.code); rememberCopied(meeting.code); };
   const { m } = media;
   const join = async () => {
     setJoining(true);
@@ -208,20 +207,12 @@ export function Lobby({ meeting, me, capture, team, standIn, media }: { meeting:
         )}
         {settling ? <LobbyNotes meeting={meeting} who={ringing ? 'Everyone you ring gets them' : 'Everyone invited gets them'} />
           : <PrejoinCapture notes={meeting.notes} choices={meeting.choices} capture={capture} audience={{ kind: 'organizer', guests }} organizerName={me.name} />}
-        <TimerPresetPreparation />
         {meeting.joinMuted && <JoinMuted />}
         {ringing && <LobbyRing people={people} picked={picked} onChange={setPicked} />}
-        {!onATeam && (
-          <div>
-            <div className="rg-k">Your link</div>
-            <LinkRow link={shownUrl(meeting.code)} onCopy={() => giveLink(copyUrl)} />
-            <p className="rg-line">Send it to anyone. They ask to join, and you let them in.</p>
-          </div>
-        )}
         {standIn && <Notice icon="people" className="pj-standin">{firstName(standIn)} is hosting while you’re away. Joining makes you the host again.</Notice>}
         <Button variant="primary" size="lg" icon="video" className="join" loading={joining} onClick={() => void join()}>{standIn ? 'Join and host' : ringing && picked.length ? `Join and ring ${picked.length}` : 'Join'}</Button>
         {problem !== null && <JoinRefused error={problem} />}
-        {onATeam && <div className="pj-sub"><button type="button" onClick={() => giveLink(copy)}><Icon name="link" size={15} />Copy link</button></div>}
+        <div className="pj-sub"><button type="button" onClick={giveLink}><Icon name="link" size={15} />Copy link</button></div>
         <PrejoinCarry code={meeting.code} me={me.email} />
       </div>
     </div>

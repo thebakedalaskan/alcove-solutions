@@ -7,7 +7,7 @@
 import type { Meta } from '@storybook/react-vite';
 import { screen, within } from 'storybook/test';
 import { at, chats, knocks, raisesHand } from '../../src/api/script';
-import { inCall, light, phone } from '../../src/call';
+import { MORE, inCall, light, phone } from '../../src/call';
 import { pages, type PageArgs, type PageStory } from '../../src/page';
 import { AIKO, DIEGO, KOFI, PRIYA, REVIEW } from '../calls/talk';
 import { LAPTOP, LATER, SOON } from './play';
@@ -32,9 +32,8 @@ export const OpenFloatingCall: PageStory = {
     }
   },
   play: async ({ userEvent, step }) => {
-    await step('Open View in the real call', async () => {
-      await screen.findByRole('toolbar', { name: 'Call controls' }, LATER);
-      await userEvent.click(await screen.findByRole('button', { name: 'Your view' }, SOON));
+    await step('Open More in the real call', async () => {
+      await userEvent.click(await within(await screen.findByRole('toolbar', { name: 'Call controls' }, LATER)).findByRole('button', { name: MORE }, SOON));
     });
     await step('Continue in a top-level browser tab: click Open floating call yourself. The browser decides whether opening is available', async () => {
       await screen.findByRole('button', { name: 'Open floating call' }, SOON);
@@ -48,18 +47,13 @@ export const OpeningRefused: PageStory = {
     scenario: 'call-soon', call: REVIEW, script: { here: [{ who: PRIYA }, { who: KOFI }], notes: 'off' }, you: { mic: false, cam: false }
   }, { parameters: { opening: { browser: { floatingWindow: 'blocked' } } } }),
   play: async ({ userEvent, step, canvas }) => {
-    await step('Open View from the call controls', async () => {
+    await step('Open More from the call controls', async () => {
       await screen.findByRole('toolbar', { name: 'Call controls' }, LATER);
-      const view = canvas.queryByRole('button', { name: 'Your view' });
-      if (view) await userEvent.click(view);
-      else {
-        await userEvent.click(await canvas.findByRole('button', { name: /^More:/ }, SOON));
-        await userEvent.click(await screen.findByRole('button', { name: 'Your view' }, SOON));
-      }
+      await userEvent.click(await canvas.findByRole('button', { name: MORE }, SOON));
     });
-    await step('A blocked opening leaves the call and View available', async () => {
+    await step('A blocked opening leaves the call and More available', async () => {
       await userEvent.click(await screen.findByRole('button', { name: 'Open floating call' }, SOON));
-      await within(await screen.findByRole('dialog', { name: 'Your view' }, SOON)).findByText(/Check this site’s picture-in-picture permission/, {}, SOON);
+      await within(await screen.findByRole('dialog', { name: 'More' }, SOON)).findByText(/Check this site’s picture-in-picture permission/, {}, SOON);
     });
     await step('Retry only when explicitly pressed; a second refusal keeps the same recovery path', async () => {
       await userEvent.click(await screen.findByRole('button', { name: 'Open floating call' }, SOON));

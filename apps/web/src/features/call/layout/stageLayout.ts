@@ -1,12 +1,13 @@
 /*
  * The layout engine: where everyone on the stage goes. `arrange` turns the call (who's here, what's presented, who's
- * talking) and your own view (view.ts) into a plan: who leads, in what order, and where you see yourself. `place` turns a
- * plan into rectangles for the stage's size, and `placeFrame` puts them where the stage is, or, once something is open on your
- * stage (panels.ts), beside it. All are pure, so the same call and the same choices always look the same, and nothing moves
- * unless one of them changed.
+ * talking) and your own view (view.ts) into a plan: who leads, in what order, and where you see yourself. There are no modes
+ * to choose: the stage lays itself out, and what you dragged, sized and pinned is kept. `place` turns a plan into rectangles
+ * for the stage's size, and `placeFrame` puts them where the stage is, or, once something is open on your stage (panels.ts),
+ * beside it. All are pure, so the same call and the same choices always look the same, and nothing moves unless one of them
+ * changed.
  */
-import type { CallLayout, CallPeopleMode, CallViewPrefs, StageCorner } from '@alcove/api';
-import { placePeople, type Horizon, type TileMode } from './panels';
+import type { CallLayout, CallViewPrefs, StageCorner } from '@alcove/api';
+import { placePeople, type Horizon, type PeopleMode, type TileMode } from './panels';
 
 export type Rect = [x: number, y: number, w: number, h: number];
 export interface Box { x: number; y: number; w: number; h: number }
@@ -33,8 +34,7 @@ export interface ArrangeInput {
   tiles: string[];
   /** The organizer's spotlight, for everyone: a participant ID. */
   spotlight: string | null;
-  /** Who's been talking (settled, never you), and who has done most of the talking lately. */
-  speaker: string | null;
+  /** Who has done most of the talking lately (settled, yours counted). */
   dominant: string | null;
   prefs: CallViewPrefs;
   layout: CallLayout;
@@ -49,7 +49,7 @@ export interface Plan {
   rest: string[];
   /** Tiles shown at twice the size (grid). */
   big: Set<string>;
-  /** Whoever leads was picked by Alcove (the speaker), not by you or the organizer. */
+  /** Whoever leads was picked by Alcove (whoever does most of the talking), not by you or the organizer. */
   auto: boolean;
   /** Your own picture when it isn't in the grid: in a corner, or folded into a small chip there. */
   self: { id: string; corner: StageCorner; folded: boolean } | null;
@@ -75,18 +75,16 @@ export function arrange(i: ArrangeInput): Plan {
   const idOf = (seat: string) => { const p = bySeat.get(seat); return p && here.has(p.id) ? [p.id] : []; };
   // Who leads: the organizer's spotlight, then your pins in the order you pinned them.
   let leads = [...new Set([...(i.spotlight && here.has(i.spotlight) ? [i.spotlight] : []), ...layout.pins.flatMap(idOf)])];
-  // Nobody chosen and nothing open: Speaker follows whoever talks; Auto follows someone doing most of the talking, but only
-  // while you haven't arranged anything, so what you arranged stays put.
+  // Nobody chosen and nothing open: someone doing most of the talking leads, but only while you haven't arranged anything,
+  // so what you arranged stays put.
   let auto = false;
   if (!leads.length && !i.hold) {
-    const others = people.filter((p) => !p.isMe && !p.waiting).map((p) => p.id);
     const arranged = layout.order.length > 0 || layout.big.length > 0;
-    const pick = prefs.mode === 'speaker' ? (i.speaker && here.has(i.speaker) ? i.speaker : others[0] ?? null)
-      : prefs.mode === 'auto' && !arranged && i.dominant && here.has(i.dominant) ? i.dominant : null;
+    const pick = !arranged && i.dominant && here.has(i.dominant) ? i.dominant : null;
     if (pick) { leads = [pick]; auto = true; }
   }
   const count = people.length + i.tiles.length;
-  const shape: Shape = i.hold ? 'side' : prefs.mode !== 'grid' && leads.length && count > 1 ? 'focus' : 'grid';
+  const shape: Shape = i.hold ? 'side' : leads.length && count > 1 ? 'focus' : 'grid';
   const rest = [...i.tiles, ...people.map((p) => p.id).filter((id) => !leads.includes(id))];
   const big = new Set(shape === 'grid' ? [...leads, ...layout.big.flatMap(idOf)] : []);
   const awaiting = me && !self && alone && awaited > 0 ? me.id : null;
@@ -315,7 +313,7 @@ export interface StageFrame {
   /** The people beside what's open on your stage, or null while the stage is theirs. */
   panels: {
     people: Box | null;
-    mode: CallPeopleMode;
+    mode: PeopleMode;
     horizon: Horizon;
     /** Who's talking or has a hand up: there's always a place for them. */
     loud: ReadonlySet<string>;

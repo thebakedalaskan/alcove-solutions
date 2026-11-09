@@ -1,29 +1,35 @@
 /*
- * The call the tour plays on, drawn at 1120 × 700 and always night: the people in it, the dock, the panels and menus
- * each scene opens, the rooms, the workspace, and the pointer that shows each click. It draws whatever `Stage` says;
- * tourSteps.ts says what changes when. Anything the pointer goes to is marked `data-at`, and each menu `data-pop`.
+ * The call the tour plays on, drawn at 1120 × 700 and always night: the people in it, the top bar and the dock as the call
+ * has them, the panels and menus each scene opens, Kofi's screen in its frame, the rooms, the workspace, and the pointer that
+ * shows each click. It draws whatever `Stage` says; tourSteps.ts says what changes when. Anything the pointer goes to is
+ * marked `data-at`, and each menu `data-pop`. The menus say what the call's own say: a person's ⋯ (TileMenu.tsx), their
+ * statuses and nudges (status.ts, nudges.ts), More, and the captions' languages.
  *
  * While a step types or writes, the stage changes every 50 to 100 ms. So each part of the call is drawn from only the bit
  * of `Stage` it shows, and drawn again only when that bit changes: a letter typed redraws the line it's typed into, and
  * someone starting to speak redraws their tile, not the whole call.
  */
+import { CAPTION_LANGUAGES } from '@alcove/api';
 import {
-  Avatar, Button, CallDock, CallTile, Caption, Chip, DockButton, DockLeave, DockSeparator, EASE, Faces, Icon, NotesSign, PointerTag,
-  SharePointer, cn, type IconName
+  Avatar, Button, CallDock, CallTile, CallTimerButton, CallTopButton, CallTopGroup, CallTopRule, Caption, DockButton, DockChevron, DockLeave,
+  DockSeparator, DockSplit, DockWords, EASE, Faces, Icon, NotesSign, PointerTag, SharePointer, cn, type IconName
 } from '@alcove/ui';
 import { AnimatePresence, motion } from 'motion/react';
 import { Fragment, memo, type ReactNode } from 'react';
+import { NUDGES, NUDGE_KINDS } from '~/features/call/layout/nudges';
+import { STATUS, STATUS_KINDS, STATUS_MINUTES } from '~/features/call/layout/status';
 import { CAST, firstOf } from '~/features/notes/cast';
 import {
-  DOC_LINE, LAYOUTS, LINES, LINKS, ORDER, REPLY, ROOMS, alcoveX, clock, shareAt, type Box, type Point, type PopId, type Stage, type Who
+  DOC_LINE, GROUND, HORIZON_SAYS, LAYOUTS, LINES, LINKS, ORDER, REPLY, ROOMS, SCREEN, alcoveX, clock, type Box, type Point, type PopId, type Stage,
+  type Who
 } from './tourSteps';
 
 const nameOf = (id: Who) => (id === 'art' ? 'You' : firstOf(id));
 /** How big someone's arch is in their tile: a face in the middle of a tile, or the whole of an arch. */
 const faceSize = (b: Box) => Math.round((b.arch ? b.w : Math.min(b.w * 0.36, (b.h * 0.6) / 1.08, 190)) * 10) / 10;
-const STATUS: Partial<Record<Who, { icon: IconName; text: string }>> = {
-  maya: { icon: 'listening', text: 'Listening only' },
-  art: { icon: 'away', text: 'Be right back · 14:37' }
+const SAID: Partial<Record<Who, { icon: IconName; text: string }>> = {
+  maya: { icon: STATUS.listening.icon, text: STATUS.listening.label },
+  art: { icon: STATUS.away.icon, text: `${STATUS.away.label} · 14:37` }
 };
 const BOARD_TOOLS: readonly IconName[] = ['pointer', 'stickyNote', 'shapes', 'spline', 'type', 'pen'];
 const GLIDE = { duration: 0.8, ease: EASE.inOut };
@@ -38,53 +44,58 @@ function Written({ text, shown }: { text: string; shown: number }) {
   ));
 }
 
-const Top = memo(function Top({ viewHi }: { viewHi: boolean }) {
+/** The call's top bar: what the call is, and what's yours at the top right. It slides away in focus. */
+const Top = memo(function Top({ tool, away }: { tool: Stage['tool']; away: boolean }) {
   return (
-    <div className="lp-st-top">
+    <div className={cn('lp-st-top', away && 'is-away')}>
       <span className="lp-st-title">Launch planning</span>
       <span className="lp-st-clock">14:32</span>
+      <span className="lp-st-vr" />
       <NotesSign stage>Notes on</NotesSign>
+      <span className="lp-st-shield"><Icon name="sealed" size={19} /></span>
+      <CallTimerButton time={null} label="Timer for everyone" tone="ready" />
       <div className="lp-st-end">
-        <span className={cn('lp-st-tb', viewHi && 'is-hi')} data-at="view"><Icon name="layout" size={16} />View</span>
-        <span className="lp-st-tb is-sealed"><Icon name="sealed" size={16} /></span>
-        <Faces people={[CAST.priya, CAST.kofi, CAST.aiko, CAST.maya]} size={22} />
-        <span className="lp-st-count">6</span>
+        <CallTopGroup label="Just for you">
+          <CallTopButton icon="presentation" word="Board" label="Board" />
+          <CallTopButton icon="folderOpen" word="Workspace" label="Workspace" on={tool === 'work'} />
+          <CallTopRule />
+          <CallTopButton icon="notesPen" word="Notes" label="Notes" />
+          <CallTopButton icon="chat" word="Chat" label="Chat" on={tool === 'chat'} />
+          <CallTopRule />
+          <span className="ic-yb is-faces"><Faces people={[CAST.priya, CAST.kofi, CAST.aiko, CAST.maya]} size={24} /><span className="n">6</span></span>
+        </CallTopGroup>
       </div>
     </div>
   );
 });
 
-/** Someone in the call, in their tile or folded into an arch, with what their tile says. */
-const Tile = memo(function Tile({ id, b, speaking, muted, faint, hover, status, away, onMute }: {
+/** Someone in the call, in their tile or folded into an arch, with what their tile says and, under the pointer, its ⋯ and corner. */
+const Tile = memo(function Tile({ id, b, speaking, muted, faint, hover, lift, pull, status, away }: {
   id: Who; b: Box; speaking: boolean; muted: boolean;
   /** Hard to hear: their level and their ring are faint. */
   faint: boolean;
-  /** The pointer is over the tile, showing its ⋯. */
+  /** The pointer is over the tile, showing its ⋯ and the corner that resizes it. */
   hover: boolean;
+  /** Carried by the pointer, or pulled by its corner. */
+  lift: boolean;
+  pull: boolean;
   /** Their status shows on their tile. */
   status: boolean;
   /** You've stepped away: only ever your tile. */
   away: boolean;
-  /** "You're talking on mute": only ever your tile. */
-  onMute: boolean;
 }) {
-  const said = STATUS[id];
+  const said = SAID[id];
   return (
-    <div className={cn('lp-st-tile', b.arch && 'is-arch', hover && 'is-hover', away && 'is-away', faint && 'is-faint', b.arch && speaking && 'is-up', !b.arch && b.h < 100 && 'is-short')}
-      style={{ left: b.x, top: b.y, width: b.w, height: b.h }}>
+    <div className={cn('lp-st-tile', b.arch && 'is-arch', hover && 'is-hover', lift && 'is-lift', pull && 'is-pull', away && 'is-away', faint && 'is-faint',
+      b.arch && speaking && 'is-up', !b.arch && b.h < 100 && 'is-short')}
+      style={{ left: b.x, top: b.y, width: b.w, height: b.h }} data-at={`tile:${id}`}>
       <CallTile person={CAST[id]} name={nameOf(id)} speaking={speaking} muted={muted}
         chrome={(
           <>
             {said && <span className={cn('lp-st-status', status && 'is-on')}><Icon name={said.icon} size={14} />{said.text}</span>}
-            {id === 'art' && (
-              <>
-                <span className="lp-st-left"><i /></span>
-                <span className={cn('lp-st-mute', onMute && 'is-on')}>
-                  <Icon name="micOff" size={15} /><span>You’re talking on mute</span><span className="lp-st-unmute" data-at="unmute">Unmute</span>
-                </span>
-              </>
-            )}
+            {id === 'art' && <span className="lp-st-left"><i /></span>}
             <span className="lp-st-more" data-at={`more:${id}`}><Icon name="more" size={16} /></span>
+            <span className="lp-st-rs" data-at={`rs:${id}`}><Icon name="resize" size={14} /></span>
           </>
         )}>
         <span className="lp-st-face"><Avatar person={CAST[id]} size={faceSize(b)} /></span>
@@ -141,12 +152,19 @@ const SharedScreen = memo(function SharedScreen() {
   );
 });
 
-const Share = memo(function Share({ layout, on }: { layout: Stage['layout']; on: boolean }) {
-  const b = shareAt(layout);
+/** Kofi's screen on your stage, in its frame: whose it is and what's so, focus and Close, and the screen under them. */
+const Screen = memo(function Screen({ on, focus }: { on: boolean; focus: boolean }) {
+  const b = focus ? SCREEN.focus : SCREEN.beside;
   return (
-    <div className={cn('lp-st-share', on && 'is-on')} style={{ left: b.x, top: b.y, width: b.w, height: b.h }}>
-      <SharedScreen />
-      <span className="lp-st-share-tag"><Avatar person={CAST.kofi} size={18} />Kofi’s screen</span>
+    <div className={cn('lp-st-share', on && 'is-on', focus && 'is-focus')} style={{ left: b.x, top: b.y, width: b.w, height: b.h }}>
+      <div className="lp-st-fbar">
+        <Avatar person={CAST.kofi} size={24} />
+        <span className="lp-st-fname">Kofi’s screen<Icon name="down" size={14} /></span>
+        <span className="lp-st-fmeta">Kofi is presenting</span>
+        <span className={cn('lp-st-fib', focus && 'is-on')} data-at="focus"><Icon name={focus ? 'shrink' : 'grow'} size={16} /></span>
+        <span className="lp-st-fclose"><Icon name="x" size={15} />Close</span>
+      </div>
+      <div className="lp-st-fbody"><SharedScreen /></div>
     </div>
   );
 });
@@ -268,13 +286,21 @@ const RoomsBar = memo(function RoomsBar({ open, left, msgHi, backHi }: { open: b
   );
 });
 
-/** Captions in your language, a word at a time, with what was said underneath. */
-const Captions = memo(function Captions({ caption }: { caption: Stage['caption'] }) {
-  const line = LINES[caption.line];
-  return (
-    <Caption className={cn('lp-st-cap', caption.on && 'is-on')} who={<><Avatar person={CAST[line.who]} size={20} />{firstOf(line.who)}</>}
-      lang={line.from} original={line.or}>
+/**
+ * Captions, once they're on: what's said in your language a word at a time, with what was said underneath, or while nobody
+ * speaks, that it appears here. The button on them picks the language.
+ */
+const Captions = memo(function Captions({ caption, langHi }: { caption: Stage['caption']; langHi: boolean }) {
+  const line = caption.line === null ? null : LINES[caption.line];
+  const language = <span className={cn('lp-st-capbtn', langHi && 'is-hi')} data-at="cap:lang"><Icon name="translate" size={14} />{caption.en ? 'English' : 'As spoken'}</span>;
+  return line ? (
+    <Caption className={cn('lp-st-cap', caption.cc && 'is-on')}
+      who={<><Avatar person={CAST[line.who]} size={20} />{firstOf(line.who)}<span className="lang">{line.from}</span>{language}</>} original={line.or}>
       <Written text={line.en} shown={caption.words} />
+    </Caption>
+  ) : (
+    <Caption className={cn('lp-st-cap', caption.cc && 'is-on')} who={<><Icon name="captions" size={15} />Captions{language}</>}>
+      <span className="lp-st-cap-wait">What’s said appears here as people talk.</span>
     </Caption>
   );
 });
@@ -348,96 +374,138 @@ const RoomsPanel = memo(function RoomsPanel({ on, hi }: { on: boolean; hi: boole
 /** What's under the pointer in the menus, and what's chosen in them. */
 interface Picks { hi: Stage['hi']; picked: Stage['picked'] }
 
-function Menu({ id, open, at, from, children }: { id: PopId; open: boolean; at: Point | undefined; from: string; children: ReactNode }) {
-  return <div className={cn('lp-st-pop', open && 'is-on')} data-pop={id} style={{ left: at?.x ?? 0, top: at?.y ?? 0, '--from': from }}>{children}</div>;
+function Menu({ id, open, at, from, className, children }: { id: PopId; open: boolean; at: Point | undefined; from: string; className?: string | undefined; children: ReactNode }) {
+  return <div className={cn('lp-st-pop', open && 'is-on', className)} data-pop={id} style={{ left: at?.x ?? 0, top: at?.y ?? 0, '--from': from }}>{children}</div>;
 }
-function Opt({ p, k, icon, end, children }: { p: Picks; k: string; icon?: IconName | undefined; end?: ReactNode; children: ReactNode }) {
+function Opt({ p, k, icon, end, quiet = false, children }: { p: Picks; k: string; icon?: IconName | undefined; end?: ReactNode; quiet?: boolean; children: ReactNode }) {
   return (
-    <div className={cn('lp-st-opt', p.hi.includes(k) && 'is-hi', p.picked.includes(k) && 'is-picked')} data-at={k}>
+    <div className={cn('lp-st-opt', quiet && 'is-quiet', p.hi.includes(k) && 'is-hi', p.picked.includes(k) && 'is-picked')} data-at={k}>
       {icon && <Icon name={icon} size={16} />}<span>{children}</span>{end && <span className="lp-st-opt-end">{end}</span>}
       <Icon name="check" size={16} className="lp-st-tick" />
     </div>
   );
 }
-function Chips({ p, items }: { p: Picks; items: readonly (readonly [string, string])[] }) {
-  return <div className="lp-st-chips">{items.map(([k, label]) => <span key={k} data-at={k} className={cn(p.picked.includes(k) && 'is-on')}>{label}</span>)}</div>;
+/** Equal choices in a row: what's picked, or else what's `chosen` already, is lit. */
+function Chips({ p, items, chosen }: { p: Picks; items: readonly (readonly [string, string])[]; chosen?: string }) {
+  return <div className="lp-st-chips">{items.map(([k, label]) => <span key={k} data-at={k} className={cn((p.picked.includes(k) || chosen === k) && 'is-on')}>{label}</span>)}</div>;
 }
 
-/** The menus the steps open: which are open and where, what's under the pointer in them, and what's chosen. */
-const Menus = memo(function Menus({ pops, at, hi, picked }: { pops: Stage['pops']; at: Stage['at']; hi: Stage['hi']; picked: Stage['picked'] }) {
+/**
+ * The menus the steps open, as the call has them: which are open and where, what's under the pointer in them, and what's
+ * chosen. You host the call, so a person's ⋯ ends with what the host can do.
+ */
+const Menus = memo(function Menus({ pops, at, step, custom, hi, picked }: {
+  pops: Stage['pops']; at: Stage['at']; step: Stage['step']; custom: boolean; hi: Stage['hi']; picked: Stage['picked'];
+}) {
   const p: Picks = { hi, picked };
   const menu = (id: PopId) => ({ id, open: pops.includes(id), at: at[id] });
   return (
     <>
-      <Menu {...menu('view')} from="100% 0">
-        <div className="lp-st-pop-label">Layout</div>
-        <Opt p={p} k="view:auto" icon="viewAuto">Auto</Opt>
-        <Opt p={p} k="view:speaker" icon="viewSpeaker">Speaker</Opt>
-        <Opt p={p} k="view:grid" icon="grid">Grid</Opt>
+      <Menu {...menu('more')} from="50% 100%">
+        <Opt p={p} k="more:captions" icon="captions">Turn on captions</Opt>
+        <Opt p={p} k="more:mark" icon="bookmark">Mark this moment</Opt>
+        <Opt p={p} k="more:catch-up" icon="history">Catch up on what you missed</Opt>
+        <Opt p={p} k="more:rooms" icon="door">Breakout rooms</Opt>
         <div className="lp-st-pop-div" />
-        <div className="lp-st-pop-label">People</div>
-        <Chips p={p} items={[['view:tiles', 'Tiles'], ['view:arches', 'Arches'], ['view:hidden', 'Hidden']]} />
+        <Opt p={p} k="more:float" icon="pip">Open floating call</Opt>
+        {custom && <Opt p={p} k="more:reset" icon="reset" quiet>Reset layout</Opt>}
+        <Opt p={p} k="more:move" icon="phone">Move to another device</Opt>
+        <Opt p={p} k="more:settings" icon="settings">Settings</Opt>
       </Menu>
-      <Menu {...menu('status')} from="100% 100%">
-        <div className="lp-st-pop-label">Set a status</div>
-        <Opt p={p} k="status:brb" icon="away">Be right back</Opt>
-        <Opt p={p} k="status:listen" icon="listening">Listening only</Opt>
-        <Opt p={p} k="status:phone" icon="phone">On my phone</Opt>
-        <div className="lp-st-pop-div" />
-        <div className="lp-st-pop-label">Back in</div>
-        <Chips p={p} items={[['status:2', '2 min'], ['status:5', '5 min'], ['status:10', '10 min']]} />
-      </Menu>
-      <Menu {...menu('lang')} from="50% 100%">
+      <Menu {...menu('lang')} from="100% 100%" className="is-lang">
         <div className="lp-st-pop-label">Captions in</div>
-        <Opt p={p} k="lang:en" end="Yours">English</Opt>
-        <Opt p={p} k="lang:es">Español</Opt>
-        <Opt p={p} k="lang:de">Deutsch</Opt>
-        <Opt p={p} k="lang:ja">日本語</Opt>
-        <Opt p={p} k="lang:pt">Português</Opt>
+        <Opt p={p} k="lang:spoken">As spoken</Opt>
+        {CAPTION_LANGUAGES.map((l) => (
+          <Opt key={l.code} p={p} k={`lang:${l.code}`}>{l.name}{l.name !== l.english && <span className="lp-st-sub"> · {l.english}</span>}</Opt>
+        ))}
+        <p className="lp-st-pop-hint">Translated in confidential compute. Everyone picks their own language. The call is still transcribed for notes when captions are off.</p>
+      </Menu>
+      <Menu {...menu('self')} from="100% 0">
+        <div className="lp-st-pop-label">Set a status</div>
+        {STATUS_KINDS.map((k) => <Opt key={k} p={p} k={`self:${k}`} icon={STATUS[k].icon}>{STATUS[k].label}</Opt>)}
+        <div className="lp-st-pop-label">Back in</div>
+        <Chips p={p} items={STATUS_MINUTES.map((m) => [`self:${m}`, `${m} min`] as const)} />
+        <div className="lp-st-pop-div" />
+        <Opt p={p} k="self:pin" icon="pin">Pin for me</Opt>
+        <div className="lp-st-pop-label">See yourself</div>
+        <Chips p={p} items={[['self:grid', 'Grid'], ['self:corner', 'Corner'], ['self:hidden', 'Hidden']]} chosen="self:grid" />
+        <div className="lp-st-pop-div" />
+        <Opt p={p} k="self:spotlight" icon="spotlight">Spotlight for everyone</Opt>
       </Menu>
       <Menu {...menu('tile')} from="100% 0">
-        <Opt p={p} k="tile:pin" icon="pin">Pin for me</Opt>
-        <Opt p={p} k="tile:vol" icon="speaker">Volume for you</Opt>
-        <Opt p={p} k="tile:nudge" icon="nudge" end={<Icon name="chevron" size={14} />}>Nudge Kofi</Opt>
-      </Menu>
-      <Menu {...menu('nudge')} from="0 0">
-        <div className="lp-st-pop-label">Only Kofi sees it</div>
-        <Opt p={p} k="nudge:muted" icon="micOff">You’re muted</Opt>
-        <Opt p={p} k="nudge:hear" icon="hear">Can’t hear you</Opt>
-        <Opt p={p} k="nudge:slow" icon="pace">Slow down a little</Opt>
-        <Opt p={p} k="nudge:up" icon="speaker">A bit louder</Opt>
+        {step === 'nudge' ? (
+          <>
+            <div className="lp-st-pop-step"><Icon name="chevronLeft" size={16} />Only Kofi sees it</div>
+            {NUDGE_KINDS.map((k) => <Opt key={k} p={p} k={`nudge:${k}`} icon={NUDGES[k].icon}>{NUDGES[k].label}</Opt>)}
+          </>
+        ) : (
+          <>
+            <Opt p={p} k="tile:pin" icon="pin">Pin for me</Opt>
+            <Opt p={p} k="tile:message" icon="lock">Message Kofi privately</Opt>
+            <Opt p={p} k="tile:nudge" icon="nudge" end={<Icon name="chevron" size={15} />}>Nudge Kofi</Opt>
+            <div className="lp-st-pop-label">Volume for you</div>
+            <div className="lp-st-vol"><Icon name="speaker" size={17} /><span className="lp-st-vol-bar"><i /></span><span className="lp-st-vol-n">100%</span></div>
+            <div className="lp-st-pop-div" />
+            <Opt p={p} k="tile:spotlight" icon="spotlight">Spotlight for everyone</Opt>
+            <Opt p={p} k="tile:mute" icon="micOff">Mute for everyone</Opt>
+            <Opt p={p} k="tile:remove" icon="leave">Remove from the call</Opt>
+          </>
+        )}
       </Menu>
     </>
   );
 });
 
-/** What a toast over the call says: Kofi starting and stopping a share, or the nudge Kofi got. */
+/** What a toast over the call says, as the call says it. */
 const TOASTS: Record<Stage['toast']['say'], ReactNode> = {
-  share: <><Avatar person={CAST.kofi} size={22} /><span>Kofi started sharing their screen</span></>,
-  unshare: <><Avatar person={CAST.kofi} size={22} /><span>Kofi stopped sharing</span></>,
-  nudge: <><Icon name="nudge" size={16} /><span>Kofi got your nudge: Can’t hear you</span></>
+  view: <><Icon name="eye" size={16} /><span>Only your view changes. Reset layout, in More, puts it back.</span></>,
+  share: <><Icon name="screen" size={16} /><span>Kofi is presenting their screen.</span></>,
+  unshare: <><Icon name="stopShare" size={16} /><span>Kofi stopped sharing.</span></>,
+  nudge: <><Icon name="nudge" size={16} /><span>Kofi got your nudge: {NUDGES['cant-hear'].label}</span></>
 };
 const Toast = memo(function Toast({ toast }: { toast: Stage['toast'] }) {
   return <div className={cn('lp-st-toast', toast.on && 'is-on')}>{TOASTS[toast.say]}</div>;
 });
 
-const Dock = memo(function Dock({ micOff, tool }: { micOff: boolean; tool: Stage['tool'] }) {
+/** Talking with your microphone muted, said at the top of the call, with Unmute. */
+const MutePill = memo(function MutePill({ on }: { on: boolean }) {
+  return (
+    <div className={cn('lp-st-pill', on && 'is-on')}>
+      <Icon name="micOff" size={15} /><span>You’re talking on mute</span><span className="lp-st-unmute" data-at="unmute">Unmute</span>
+    </div>
+  );
+});
+
+/** In focus, the people stand on the horizon, and whoever's talking is said beside them. */
+const HorizonSays = memo(function HorizonSays({ on, who }: { on: boolean; who: Who | null }) {
+  return <span className={cn('lp-st-hz', on && who && 'is-on')} style={{ left: HORIZON_SAYS, top: GROUND - 24 }}>{who && `${firstOf(who)} is talking`}</span>;
+});
+
+/** In focus the top bar slides away, and the host's timer keeps a strip of its own over the frame. */
+const FocusTimer = memo(function FocusTimer({ on }: { on: boolean }) {
+  return <CallTimerButton time={null} label="Timer for everyone" tone="ready" className={cn('lp-st-ftimer', on && 'is-on')} />;
+});
+
+/** The dock, as the call has it: in focus it keeps the microphone, the camera, Show everything and Leave. */
+const Dock = memo(function Dock({ micOff, focus, more }: { micOff: boolean; focus: boolean; more: boolean }) {
   return (
     <div className="lp-st-dock">
-      <CallDock>
-        <DockButton icon={micOff ? 'micOff' : 'mic'} label={micOff ? 'Unmute' : 'Mute'} off={micOff} data-at="tool:mic" />
-        <DockButton icon="video" label="Turn your camera off" />
+      <CallDock tucked={focus}>
+        <DockSplit className="keep">
+          <DockButton icon={micOff ? 'micOff' : 'mic'} label={micOff ? 'Unmute' : 'Mute'} off={micOff} data-at="mic" />
+          <DockChevron label="Microphone and speaker" />
+        </DockSplit>
+        <DockSplit className="keep">
+          <DockButton icon="video" label="Turn camera off" />
+          <DockChevron label="Camera and background" />
+        </DockSplit>
         <DockSeparator />
-        <DockButton icon="screen" label="Share your screen" />
+        <DockButton icon="screen" label="Share" word="Share" />
         <DockButton icon="hand" label="Raise your hand" />
-        <DockButton icon="captions" label="Captions" on={tool === 'captions'} data-at="tool:captions" />
-        <DockButton icon="rooms" label="Breakout rooms" on={tool === 'rooms'} data-at="tool:rooms" />
-        <DockButton icon="fileText" label="Workspace" on={tool === 'work'} />
-        <DockButton icon="notes" label="Notes" />
-        <DockButton icon="chat" label="Chat" on={tool === 'chat'} />
-        <DockButton icon="more" label="More" />
+        <DockButton icon="more" label="More" on={more} data-at="more" />
         <DockSeparator />
-        <DockLeave />
+        {focus && <DockWords icon="shrink" className="keep">Show everything</DockWords>}
+        <DockLeave className="keep" />
       </CallDock>
     </div>
   );
@@ -459,26 +527,35 @@ const Pointer = memo(function Pointer({ cur }: { cur: Stage['cur'] }) {
   );
 });
 
+/** Where someone is: where the layout puts them, or where the pointer holds them, or as big as their corner is pulled. */
+function placeOf(s: Stage, id: Who): Box {
+  const b = LAYOUTS[s.layout][id];
+  if (s.lift === id && s.held) return { ...b, x: s.held.x, y: s.held.y };
+  if (s.pull?.who === id) return { ...b, w: s.pull.w, h: s.pull.h };
+  return b;
+}
+
 export const TourStage = memo(function TourStage({ s, still }: { s: Stage; still: boolean }) {
   return (
     <div className={cn('lp-st ac-stage', still && 'is-still')}>
-      <Top viewHi={s.hi.includes('viewBtn')} />
-      <Share layout={s.layout} on={s.share} />
+      <Top tool={s.tool} away={s.focus} />
+      <FocusTimer on={s.focus} />
+      <Screen on={s.screen} focus={s.focus} />
       <Workspace work={s.work} docHi={s.hi.includes('ws:doc')} boardHi={s.hi.includes('ws:board')} />
       <Alcoves rooms={s.rooms} />
-      <div className={cn('lp-st-horizon', s.horizon && 'is-on')} />
       {ORDER.map((id) => (
-        <Tile key={id} id={id} b={LAYOUTS[s.layout][id]} speaking={s.speaking === id} muted={s.muted.includes(id)} faint={s.faint === id}
-          hover={s.hover === id} status={s.status.includes(id)} away={id === 'art' && s.away} onMute={id === 'art' && s.onMute} />
+        <Tile key={id} id={id} b={placeOf(s, id)} speaking={s.speaking === id} muted={s.muted.includes(id)} faint={s.faint === id}
+          hover={s.hover === id} lift={s.lift === id} pull={s.pull?.who === id} status={s.status.includes(id)} away={id === 'art' && s.away} />
       ))}
-      <Captions caption={s.caption} />
-      <Chip icon="eye" className={cn('lp-st-chip', s.chip && 'is-on')}>Only your screen changes</Chip>
+      <HorizonSays on={s.focus} who={s.speaking} />
+      <MutePill on={s.onMute} />
+      <Captions caption={s.caption} langHi={s.hi.includes('cap:lang')} />
       <RoomsBar open={s.rooms.open} left={s.rooms.left} msgHi={s.hi.includes('msg-all')} backHi={s.hi.includes('rooms:back')} />
       <ChatPanel on={s.panel === 'chat'} chat={s.chat} />
       <RoomsPanel on={s.panel === 'rooms'} hi={s.hi.includes('open-rooms')} />
-      <Menus pops={s.pops} at={s.at} hi={s.hi} picked={s.picked} />
+      <Menus pops={s.pops} at={s.at} step={s.step} custom={s.custom} hi={s.hi} picked={s.picked} />
       <Toast toast={s.toast} />
-      <Dock micOff={s.micOff} tool={s.tool} />
+      <Dock micOff={s.micOff} focus={s.focus} more={s.pops.includes('more')} />
       <Pointer cur={s.cur} />
     </div>
   );

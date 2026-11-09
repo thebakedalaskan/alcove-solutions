@@ -1,6 +1,6 @@
 import {
-  AlcoveApiError, DirectTextSchema, type DirectEnvelope, type DirectKeyAnnouncement, type DirectMessage,
-  type DirectMessagesApi, type DirectMessagesState, type DirectSend, type DirectSync, type CallChatThread, type CallChatMention, errorCode, fromBase64Url
+  AlcoveApiError, DirectPayloadSchema, DirectTextSchema, type DirectEnvelope, type DirectKeyAnnouncement, type DirectMessage,
+  type DirectMessagesApi, type DirectMessagesState, type DirectSend, type DirectSync, type CallChatThread, type CallChatMention, type CallReaction, errorCode, fromBase64Url, toggledReaction
 } from '@alcove/api';
 import { b64u, randomBytes } from '../transport/ids';
 import { Box } from '../transport/live';
@@ -13,11 +13,17 @@ const utf8 = new TextEncoder();
 const bound = (call: string, m: Pick<DirectEnvelope, 'id' | 'from' | 'to' | 'generation' | 'place' | 'fromKey' | 'toKey'>) =>
   utf8.encode(JSON.stringify(['alcove/private-message/v1', call, m.generation, m.place, m.id, m.from, m.to, m.fromKey, m.toKey]));
 
-/** A parent never grants access to another audience, room or generation. Pending/failed parents have no stable reply target. */
-function availableParent(messages: readonly DirectMessage[], thread: CallChatThread, audience: Pick<DirectMessage, 'from' | 'to' | 'place' | 'generation'>): boolean {
-  const parent = messages.find((message) => message.id === thread.replyTo && message.place === audience.place && message.generation === audience.generation
-    && ((message.from === audience.from && message.to === audience.to) || (message.from === audience.to && message.to === audience.from))
-    && (message.state === 'sent' || message.state === 'delivered'));
+type Audience = Pick<DirectMessage, 'from' | 'to' | 'place' | 'generation'>;
+/**
+ * A message confirmed (sent or delivered) between the same two connections, in the same room and generation, either way round:
+ * the only kind a reply or a reaction may be on. Pending and failed messages have no stable target.
+ */
+const confirmedIn = (m: DirectMessage, a: Audience): boolean => m.place === a.place && m.generation === a.generation
+  && ((m.from === a.from && m.to === a.to) || (m.from === a.to && m.to === a.from)) && (m.state === 'sent' || m.state === 'delivered');
+
+/** A parent never grants access to another audience, room or generation. */
+function availableParent(messages: readonly DirectMessage[], thread: CallChatThread, audience: Audience): boolean {
+  const parent = messages.find((message) => message.id === thread.replyTo && confirmedIn(message, audience));
   return !!parent && (parent.thread?.root ?? parent.id) === thread.root;
 }
 
@@ -101,6 +107,17 @@ export class DirectMessages extends Box<DirectMessagesState> implements DirectMe
       return await crypto.subtle.deriveKey({ name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(0), info: new Uint8Array(aad) }, base, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
     } finally { secret.fill(0); }
   }
+  /**
+   * Seals a payload (a message or a reaction) for one other connection under a new ID, bound to both connections, both keys, the
+   * room and the generation it's sealed in.
+   */
+  private async seal(to: string, toKey: string, at: Pick<Context, 'place' | 'generation'>, payload: unknown): Promise<DirectSend> {
+    const base = { id: b64u(randomBytes(16)), to, place: at.place, generation: at.generation, fromKey: await this.publicKey, toKey };
+    const aad = bound(this.callId, { ...base, from: this.identity });
+    const nonce = randomBytes(12);
+    const ciphertext = b64u(new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv: nonce, additionalData: aad }, await this.key(toKey, aad), utf8.encode(JSON.stringify(payload)))));
+    return { ...base, nonce: b64u(nonce), ciphertext };
+  }
   send = async (to: string, text: string, mentions: readonly CallChatMention[] = [], thread: CallChatThread | null = null): Promise<void> => {
     const leading = text.length - text.trimStart().length;
     const parsed = DirectTextSchema.safeParse({ text: text.trim(), thread, mentions: mentions.map((mention) => ({ ...mention, start: mention.start - leading, end: mention.end - leading })) });
@@ -111,18 +128,38 @@ export class DirectMessages extends Box<DirectMessagesState> implements DirectMe
     const sendScope = { scope: this.scopeRevision, peer: this.peerRevisions.get(to) ?? 0 };
     const { place, generation } = this.context;
     if (parsed.data.thread && !availableParent(this.getSnapshot().messages, parsed.data.thread, { from: this.identity, to, place, generation })) throw new AlcoveApiError('not-found', 'That private conversation isn’t available in this room.');
-    const fromKey = await this.publicKey;
-    const id = b64u(randomBytes(16));
-    const base = { id, to, place, generation, fromKey, toKey };
-    const aad = bound(this.callId, { ...base, from: this.identity });
-    const nonce = randomBytes(12);
-    const ciphertext = b64u(new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv: nonce, additionalData: aad }, await this.key(toKey, aad), utf8.encode(JSON.stringify(parsed.data)))));
+    const sealed = await this.seal(to, toKey, { place, generation }, parsed.data);
     if (this.closed) return;
-    this.envelopes.set(id, { ...base, nonce: b64u(nonce), ciphertext });
-    this.sendScopes.set(id, sendScope);
-    this.set({ ...this.getSnapshot(), messages: [...this.getSnapshot().messages, { ...base, from: this.identity, text: parsed.data.text, thread: parsed.data.thread, mentions: parsed.data.mentions, at: 0, order: 0, state: 'sending', error: null }] });
-    await this.retry(id);
+    this.envelopes.set(sealed.id, sealed);
+    this.sendScopes.set(sealed.id, sendScope);
+    this.set({ ...this.getSnapshot(), messages: [...this.getSnapshot().messages, { id: sealed.id, from: this.identity, to, place, generation, text: parsed.data.text, thread: parsed.data.thread, mentions: parsed.data.mentions, reactions: [], at: 0, order: 0, state: 'sending', error: null }] });
+    await this.retry(sealed.id);
   };
+  /**
+   * Sealed for the same two connections, room and generation as the message it's on, exactly as a message is. It shows at once
+   * and is taken back if the relay doesn't take it; it's never retried, so it can't reach anyone else later.
+   */
+  react = async (id: string, reaction: CallReaction, on: boolean): Promise<void> => {
+    const target = this.getSnapshot().messages.find((m) => m.id === id && (m.state === 'sent' || m.state === 'delivered'));
+    if (!target) throw new AlcoveApiError('not-found', 'That message isn’t here any more.');
+    if ((target.reactions.find((r) => r.reaction === reaction)?.by.includes(this.identity) ?? false) === on) return;
+    const to = target.from === this.identity ? target.to : target.from;
+    const toKey = this.trusted.get(to);
+    const { place, generation } = this.context;
+    if (!this.getSnapshot().ready || !this.getSnapshot().peers.includes(to) || !toKey || !confirmedIn(target, { from: this.identity, to, place, generation })) throw new AlcoveApiError('conflict', 'This person is unavailable in this room.');
+    const sealed = await this.seal(to, toKey, { place, generation }, { react: { target: id, reaction, on } });
+    if (this.closed) return;
+    this.reacted(id, reaction, this.identity, on);
+    try {
+      await this.transport.send(sealed);
+    } catch (error) {
+      this.reacted(id, reaction, this.identity, !on);
+      throw error instanceof AlcoveApiError ? error : new AlcoveApiError('unavailable', 'Your reaction wasn’t sent.');
+    }
+  };
+  private reacted(id: string, reaction: CallReaction, who: string, on: boolean): void {
+    if (!this.closed) this.set({ ...this.getSnapshot(), messages: this.getSnapshot().messages.map((m) => m.id === id ? { ...m, reactions: toggledReaction(m.reactions, reaction, who, on) } : m) });
+  }
   retry = async (id: string): Promise<void> => {
     const b = this.envelopes.get(id);
     if (!b || this.closed) return;
@@ -182,12 +219,20 @@ export class DirectMessages extends Box<DirectMessagesState> implements DirectMe
             const aad = bound(this.callId, envelope);
             const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: new Uint8Array(fromBase64Url(envelope.nonce)), additionalData: aad }, await this.key(envelope.fromKey, aad), new Uint8Array(fromBase64Url(envelope.ciphertext)));
             const raw: unknown = JSON.parse(new TextDecoder().decode(plain));
-            const payload = DirectTextSchema.safeParse(raw);
+            const opened = DirectPayloadSchema.safeParse(raw);
             if (this.closed || scope !== this.context) return;
-            if (!payload.success) { this.refused('ciphertext'); continue; }
-            if (payload.data.mentions.some((mention) => mention.identity !== envelope.from && mention.identity !== envelope.to)) { this.refused('binding'); continue; }
-            if (payload.data.thread && !availableParent(this.getSnapshot().messages, payload.data.thread, envelope)) { this.refused('binding'); continue; }
-            const message: DirectMessage = { id: envelope.id, from: envelope.from, to: envelope.to, place: envelope.place, generation: envelope.generation, text: payload.data.text, thread: payload.data.thread, mentions: payload.data.mentions, at: envelope.at, order: envelope.order, state: 'delivered', error: null };
+            if (!opened.success) { this.refused('ciphertext'); continue; }
+            const payload = opened.data;
+            if ('react' in payload) {
+              // Only on a confirmed message between these same two connections, in this room and generation.
+              const { target, reaction, on } = payload.react;
+              const reactedTo = this.getSnapshot().messages.find((m) => m.id === target && confirmedIn(m, envelope));
+              if (reactedTo) this.reacted(reactedTo.id, reaction, envelope.from, on);
+              continue;
+            }
+            if (payload.mentions.some((mention) => mention.identity !== envelope.from && mention.identity !== envelope.to)) { this.refused('binding'); continue; }
+            if (payload.thread && !availableParent(this.getSnapshot().messages, payload.thread, envelope)) { this.refused('binding'); continue; }
+            const message: DirectMessage = { id: envelope.id, from: envelope.from, to: envelope.to, place: envelope.place, generation: envelope.generation, text: payload.text, thread: payload.thread, mentions: payload.mentions, reactions: [], at: envelope.at, order: envelope.order, state: 'delivered', error: null };
             this.set({ ...this.getSnapshot(), messages: [...this.getSnapshot().messages, message].sort((a, b) => a.order - b.order), unread: this.readIds.has(message.id) ? this.getSnapshot().unread : [...this.getSnapshot().unread, message.id] });
           } catch { this.refused('ciphertext'); }
         }

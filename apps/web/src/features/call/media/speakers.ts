@@ -1,16 +1,16 @@
 /*
  * Who's talking, settled enough to lay the stage out by. A cough or a quick "yes" moves nothing:
  *
- * - The speaker (Speaker view) is someone else who has been talking for a moment. They keep the main stage while they
- *   talk, and for a little while after taking it.
- * - The one doing most of the talking (Auto) has had most of everyone's talk time, yours included, over the last
- *   minute or so; they stop being it only once that's clearly no longer true.
+ * - The speaker is someone else who has been talking for a moment: who the stage says is talking. They stay it while they
+ *   talk, and for a little while after.
+ * - The one doing most of the talking, who leads the stage until you arrange it, has had most of everyone's talk time,
+ *   yours included, over the last minute or so; they stop being it only once that's clearly no longer true.
  *
  * Only whether people are speaking is used (LiveKit's speaker detection, your own microphone level), never what's said.
  */
 import { useEffect, useRef, useState } from 'react';
 
-/** Talking this long takes the main stage in Speaker view. */
+/** Talking this long makes someone the speaker. */
 const SETTLE_MS = 600;
 /** A new speaker keeps it at least this long. */
 const HOLD_MS = 2_000;

@@ -232,14 +232,14 @@ describe('one set of live notes for the call', () => {
     await host.leave();
   });
 
-  it('nudges the room, says when it’s writing, and says when it couldn’t, trying again later with the notes as they were', async () => {
+  it('tells the room, says when it’s writing, and says when it couldn’t, trying again later with the notes as they were', async () => {
     const { host, kofi } = await twoInCall();
     await say(host, A);
     open.push(await connect(await host.room(), { sending: host.crypto }));
     const p = open[0];
-    const nudged = p?.nextNudge();
+    const pushed = p?.nextChange();
     const stop = kofi.watchNotes();
-    await nudged;
+    await pushed;
     const seen = await notesOf(host);
 
     await say(host, B, 4000);
@@ -955,9 +955,9 @@ describe('ticking an accepted follow-up', () => {
     expect((await notesOf(host)).next).toEqual([]);
     const deck = await acceptSuggestion(host, DECK);
     open.push(await connect(await host.room(), { sending: host.crypto }));
-    const nudged = open[0]?.nextNudge();
+    const pushed = open[0]?.nextChange();
     await kofi.tickFollowUp(deck.id, true);
-    await nudged;
+    await pushed;
     expect(followUp((await notesOf(host, (n) => n.next[0]?.done === true)).next, DECK).done).toBe(true);
 
     const SAID = 'Send the deck over to legal before Friday';
@@ -1150,9 +1150,9 @@ describe('adding a follow-up', () => {
   it('is everyone’s at once, before any notes are written, and ticked like the rest', async () => {
     const { host, kofi, email } = await twoInCall();
     open.push(await connect(await host.room(), { sending: host.crypto }));
-    const nudged = open[0]?.nextNudge();
+    const pushed = open[0]?.nextChange();
     await kofi.addFollowUp({ text: `  ${MINE}\n`, owner: kofi.getSnapshot().participants.find((p) => p.isMe)?.person.email ?? null, due: null });
-    await nudged;
+    await pushed;
     // For whoever added it, under their name, with nothing behind it, and no notes have been written for it to go in.
     const name = kofi.getSnapshot().participants.find((p) => p.isMe)?.person.name;
     expect(addedOf(kofi)).toEqual([expect.objectContaining({ id: expect.any(String), text: MINE, owner: name, evidence: [], done: false, at: expect.any(Number), review: 'accepted' })]);

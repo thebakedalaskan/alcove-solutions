@@ -1,6 +1,6 @@
 /* Chat's composer keeps selected people as stable identities and text spans, never as names to match later. */
 import { CALL_CHAT_MAX, errorMessage, type CallChatMention, type Person } from '@alcove/api';
-import { Avatar, Icon, IconButton, cn, useToast } from '@alcove/ui';
+import { Avatar, Icon, IconButton, Switch, cn, useToast } from '@alcove/ui';
 import { Fragment, useEffect, useId, useRef, useState, type RefObject } from 'react';
 import { fold } from '~/lib/people';
 import { draftRevision, useDraft, type Draft } from './side';
@@ -12,7 +12,8 @@ export interface ChatDraft extends Draft {
   threads?: Map<string, ChatDraft>;
   threadRoot?: string | null;
   threadPlace?: string;
-  replyTo?: string | null;
+  /** A thread's reply also goes to everyone in the room (`CallChatMessage.broadcast`). */
+  broadcast?: boolean;
   scrollTop?: number;
 }
 
@@ -31,8 +32,18 @@ function afterEdit(before: string, after: string, mentions: readonly CallChatMen
   });
 }
 
-export function ChatComposer({ draft, people, ready, moving, to, onSend, privateWith, focusRequest = 0, disabledReason }: {
-  draft: ChatDraft; people: readonly MentionPerson[]; ready: boolean; moving: boolean; to: string; privateWith?: string | undefined; focusRequest?: number | undefined; disabledReason?: string | undefined;
+/**
+ * The words, then a row of tools under them: @ to mention someone, a thread's "Also send to Everyone", and Send. Selected
+ * people stay as identities and spans; Enter sends, and a failed send gives its words back to an unchanged draft.
+ */
+export function ChatComposer({ draft, people, ready, moving, placeholder, label, sendLabel, onSend, privateWith, focusRequest = 0, disabledReason, also }: {
+  draft: ChatDraft; people: readonly MentionPerson[]; ready: boolean; moving: boolean;
+  /** What it says while it's empty: "Message everyone", "Reply…". */
+  placeholder: string;
+  /** Its name for a screen reader, and Send's: "Message only Priya", "Send only to Priya". */
+  label: string; sendLabel: string;
+  privateWith?: string | undefined; focusRequest?: number | undefined; disabledReason?: string | undefined;
+  also?: { label: string; checked: boolean; onChange: (on: boolean) => void } | undefined;
   onSend: (text: string, mentions?: readonly CallChatMention[]) => Promise<void>;
 }) {
   const [text, setText] = useDraft(draft);
@@ -71,6 +82,16 @@ export function ChatComposer({ draft, people, ready, moving, to, onSend, private
     setText(next); setCaret(end + 1); setDismissed(true);
     requestAnimationFrame(() => { input.current?.focus(); input.current?.setSelectionRange(end + 1, end + 1); });
   };
+  /** @ in the tools: an @ where the caret is, which opens the people to mention, as typing one does. */
+  const startMention = () => {
+    const from = input.current?.selectionStart ?? caret;
+    const before = text.slice(0, from);
+    const add = before && !/\s$/u.test(before) ? ' @' : '@';
+    if (text.length + add.length > CALL_CHAT_MAX) return;
+    const position = from + add.length;
+    edit(`${before}${add}${text.slice(from)}`, position);
+    requestAnimationFrame(() => { input.current?.focus(); input.current?.setSelectionRange(position, position); });
+  };
   const send = () => {
     if (!text.trim() || !ready) return;
     const sending = text;
@@ -85,7 +106,7 @@ export function ChatComposer({ draft, people, ready, moving, to, onSend, private
     });
   };
   return (
-    <form className="ic-foot ic-chat-compose" autoComplete="off" onSubmit={(e) => { e.preventDefault(); send(); }}>
+    <form className="ch-compose" autoComplete="off" onSubmit={(e) => { e.preventDefault(); send(); }}>
       {choosing && <div className="ic-mention-picker">
         <div className="ic-mention-head">{privateWith ? 'Mention someone in this conversation' : 'Mention someone in this room'}</div>
         <div ref={list} id={id} role="listbox" aria-label="People to mention" className="ic-mention-list">
@@ -102,21 +123,23 @@ export function ChatComposer({ draft, people, ready, moving, to, onSend, private
           {text.slice(m.start, m.end)}<IconButton icon="x" label={`Remove mention ${text.slice(m.start + 1, m.end)}`} onClick={() => { draft.mentions = mentions.filter((other) => other !== m); setText(text); }} />
         </span>)}
       </div>}
-      <div className="inrow">
-        <input ref={input} className="ac-input" value={text} maxLength={CALL_CHAT_MAX} disabled={!ready}
-          role="combobox" aria-autocomplete="list" aria-expanded={choosing} aria-controls={choosing ? id : undefined} aria-activedescendant={choosing && rows.length ? `${id}-${at}` : undefined}
-          onChange={(e) => edit(e.target.value, e.target.selectionStart ?? e.target.value.length)}
-          onSelect={(e) => { setCaret(e.currentTarget.selectionStart ?? text.length); }}
-          onBlur={() => setDismissed(true)}
-          onKeyDown={(e) => {
-            if (!choosing || e.nativeEvent.isComposing) return;
-            if (e.key === 'ArrowDown') { e.preventDefault(); setActive(Math.min(rows.length - 1, at + 1)); }
-            else if (e.key === 'ArrowUp') { e.preventDefault(); setActive(Math.max(0, at - 1)); }
-            else if (e.key === 'Escape') { e.preventDefault(); setDismissed(true); }
-            else if (e.key === 'Enter' || (e.key === 'Tab' && rows.length)) { e.preventDefault(); const row = rows[at]; if (row) pick(row); }
-          }}
-          placeholder={ready ? `Message ${to}${people.length ? ' · @ to mention' : ''}` : disabledReason ?? (moving ? 'Moving to another room…' : 'Getting the call’s keys…')} aria-label={`Message ${to}`} />
-        <button type="submit" className="ac-btn is-primary" aria-label={privateWith ? `Send only to ${privateWith}` : `Send to ${to}`} disabled={!ready || !text.trim()}><Icon name="sendLine" size={18} /></button>
+      <input ref={input} className="ch-input" value={text} maxLength={CALL_CHAT_MAX} disabled={!ready}
+        role="combobox" aria-autocomplete="list" aria-expanded={choosing} aria-controls={choosing ? id : undefined} aria-activedescendant={choosing && rows.length ? `${id}-${at}` : undefined}
+        onChange={(e) => edit(e.target.value, e.target.selectionStart ?? e.target.value.length)}
+        onSelect={(e) => { setCaret(e.currentTarget.selectionStart ?? text.length); }}
+        onBlur={() => setDismissed(true)}
+        onKeyDown={(e) => {
+          if (!choosing || e.nativeEvent.isComposing) return;
+          if (e.key === 'ArrowDown') { e.preventDefault(); setActive(Math.min(rows.length - 1, at + 1)); }
+          else if (e.key === 'ArrowUp') { e.preventDefault(); setActive(Math.max(0, at - 1)); }
+          else if (e.key === 'Escape') { e.preventDefault(); setDismissed(true); }
+          else if (e.key === 'Enter' || (e.key === 'Tab' && rows.length)) { e.preventDefault(); const row = rows[at]; if (row) pick(row); }
+        }}
+        placeholder={ready ? placeholder : disabledReason ?? (moving ? 'Moving to another room…' : 'Getting the call’s keys…')} aria-label={label} />
+      <div className="ch-tools">
+        {people.length > 0 && <IconButton icon="at" size={17} label="Mention someone" disabled={!ready} onClick={startMention} />}
+        {also && <label className="ch-also"><Switch checked={also.checked} disabled={!ready} label={also.label} onChange={also.onChange} />{also.label}</label>}
+        <button type="submit" className="ac-btn is-primary ch-send" aria-label={sendLabel} title={sendLabel} disabled={!ready || !text.trim()}><Icon name="sendLine" size={16} /></button>
       </div>
     </form>
   );

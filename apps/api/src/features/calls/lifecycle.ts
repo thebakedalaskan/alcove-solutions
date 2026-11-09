@@ -30,7 +30,7 @@ import { MlsRow, appendMls, openMls } from './mls-log';
 import { hereIn, knownIn, knownUntil, personFor, speakersIn, type Viewer } from './participants';
 import { afterClosing, keepRoomBoards, landRooms, syncBoardSeats, syncRoomBoards } from './room-boards';
 import { stillHosting } from './permissions';
-import { nudge } from './notifications';
+import { tellRoom } from './notifications';
 import { leaveAttention } from './attention';
 
 const clog = log.child({ component: 'calls' });
@@ -261,7 +261,7 @@ export async function handOff(v: Viewer, callId: string, to: string | null, onPu
     return { room: row.room_name, closed: roomsClosedBetween(state, s) };
   });
   if (r.room) await o.livekit.removeParticipant(r.room, v.pass.identity).catch((e: unknown) => clog.info('host already gone from the room', { callId, err: e }));
-  await afterClosing({ organizer: o, callId }, r.closed, () => nudge(o, r.room, callId, { call: true, log: true }));
+  await afterClosing({ organizer: o, callId }, r.closed, () => tellRoom(o, r.room, callId, { call: true, log: true }));
 }
 
 /**
@@ -295,7 +295,7 @@ export async function departed(o: Owner, callId: string, identity: string, at = 
     clog.info(r.was === 'waiting' ? 'someone stopped asking to join' : 'someone left the call', { callId });
     // Someone who's gone isn't in their room: its board goes with them, and comes back when they do.
     if (r.rooms) await syncRoomBoards({ organizer: o, callId });
-    await nudge(o, r.room, callId, { call: true, log: true });
+    await tellRoom(o, r.room, callId, { call: true, log: true });
   }
 }
 
@@ -380,7 +380,7 @@ export async function onRoomEvent(d: Deps, e: LiveKitEvent): Promise<void> {
     await exec(d.pool, 'UPDATE calls SET host_left_at = NULL WHERE owner_id = $1 AND call_id = $2 AND host_identity = $3', [r.owner_id, r.call_id, e.identity]);
   } else return;
   // Everyone's screen says what's captured: nothing while the host's browser is out of the call.
-  await nudge(await openOwner(d, r.owner_id, undefined), e.roomName, r.call_id, { call: true, log: false });
+  await tellRoom(await openOwner(d, r.owner_id, undefined), e.roomName, r.call_id, { call: true, log: false });
 }
 
 const LiveCall = z.object({ owner_id: z.string(), call_id: z.string(), room_name: z.string(), host_identity: z.string().nullable(), host_joined_at: timestamp.nullable(), host_left_at: timestamp.nullable(), started_at: timestamp });
@@ -476,7 +476,7 @@ async function standInFor(d: Deps, c: LiveCall, connected: ReadonlySet<string>, 
     return { result: 'handed' as const, room: row.room_name, closed: roomsClosedBetween(state, s) };
   });
   return afterClosing({ organizer: o, callId: c.call_id }, r.closed, async () => {
-    if (r.result === 'handed') await nudge(o, r.room, c.call_id, { call: true, log: true });
+    if (r.result === 'handed') await tellRoom(o, r.room, c.call_id, { call: true, log: true });
     return r.result;
   });
 }

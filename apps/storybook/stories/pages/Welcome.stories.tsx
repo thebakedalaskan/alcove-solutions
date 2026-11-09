@@ -2,7 +2,8 @@
  * Welcome and sign-in: signed out, the welcome page shows what Alcove does as one evening on the app's own scene, each part
  * with a scene that plays while it's on screen, and the ways in at the top and the bottom. The hero and the last ask look
  * out of a cove (Components › The evening › Cove), which signing in sails out of to Home (Journeys › 1 Sign in). Each part
- * can be opened scrolled to it. A sign-in that didn't happen says why (user-flows 1).
+ * can be opened scrolled to it, and the call at one of its steps, playing that step's scene. A sign-in that didn't happen says
+ * why (user-flows 1).
  */
 import type { Meta } from '@storybook/react-vite';
 import { screen } from 'storybook/test';
@@ -31,6 +32,29 @@ const at = (id: string, heading: string): PageStory => page('/welcome', 'signed-
 export const TheNote = at('notes', 'Notes that write themselves');
 /** The call, a night window: each feature loops while its step is the one being read, Documents and boards first. */
 export const TheCall = at('call', 'In the call');
+
+/** A step of the call, brought to the reading line, so the call plays its scene. */
+const callStep = (id: string, title: string): PageStory => page('/welcome', 'signed-out', {
+  play: async ({ step }) => {
+    await step(`Bring ${title} to the reading line`, async () => {
+      await screen.findByRole('heading', { name: title }, SOON);
+      document.querySelector(`[data-step="${id}"]`)?.scrollIntoView({ block: 'center' });
+    });
+  }
+});
+/** Captions come on from More, and their own button picks English; then Aiko and Diego are read in it, their words underneath. */
+export const CaptionsInYourLanguage = callStep('translate', 'Captions in your language');
+/** Your tile's ⋯, as the call has it: Be right back for five minutes, and your tile dims with the time you're back. */
+export const SetYourStatus = callStep('status', 'Set your status');
+/** Breakout rooms from More, then Open rooms: everyone moves at once, a message reaches every room, and everyone comes back. */
+export const BreakoutRooms = callStep('rooms', 'Breakout rooms');
+/** You're talking on mute, said at the top of the call; then Kofi's ⋯, and its nudge step in its place: Can't hear you. */
+export const AQuietNudge = callStep('nudge', 'A quiet nudge');
+/**
+ * No layouts to pick: Maya's tile is dragged to the front and pulled by its corner to make her bigger, Kofi's screen takes
+ * the room with everyone beside it, Focus puts everyone on the horizon, and Reset layout, in More, puts the call back.
+ */
+export const ArrangeItYourWay = callStep('layout', 'Arrange it your way');
 /** The team on the horizon, and their week. */
 export const FindATime = at('time', 'Find a time with your team');
 /** An agent books a call over MCP. */
