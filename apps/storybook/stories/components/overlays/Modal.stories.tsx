@@ -47,7 +47,7 @@ export const AQuestion: Story = {
   }
 };
 
-/** Leaving a call: it rises from the bottom, over the night stage. Leave in the dock opens it again. */
+/** The host leaving a call: it rises from the bottom, over the night stage. Leave in the dock opens it again. */
 export const LeavingACall: Story = {
   name: 'Leaving a call',
   ...onStage,
@@ -66,9 +66,9 @@ export const LeavingACall: Story = {
           <div className="in">
             <div className="ac-eyebrow">Design review · 23 min</div>
             <h2 className="ac-display-s">Leave the call?</h2>
-            <p>The call goes on without you. You can join again with the link.</p>
+            <p>You organized this call. Ending it leaves everyone’s notes saved.</p>
             <div className="acts">
-              <Button variant="primary" onClick={() => { did('Leave the call')(); close(); }}>Leave the call</Button>
+              <Button variant="primary" onClick={() => { did('End call for everyone')(); close(); }}>End call for everyone</Button>
               <Button variant="quiet" onClick={close}>Stay in the call</Button>
             </div>
           </div>

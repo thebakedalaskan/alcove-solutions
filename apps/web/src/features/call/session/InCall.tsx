@@ -153,6 +153,7 @@ export function InCall({ session }: { session: CallSession }) {
   const [leaveOpen, setLeaveOpen] = useState(false);
   const [leaveInFloating, setLeaveInFloating] = useState(false);
   const [leaving, setLeaving] = useState(false);
+  const departing = useRef(false);
   const [ended, setEnded] = useState<Ended | null>(null);
   const [cc, setCc] = useState(false);
   const [lang, setLang] = useState<CaptionLanguage | null>(null);
@@ -212,7 +213,7 @@ export function InCall({ session }: { session: CallSession }) {
   const levels = useLive(volumes);
   const [canVolume] = useState(canSetVolume);
   useEffect(() => { volumes.follow(told.participants); }, [volumes, told.participants]);
-  const guard = useLeaveGuard(() => setLeaveOpen(true));
+  const guard = useLeaveGuard(() => requestLeave(), hosting);
   const guardRef = useRef(guard);
   guardRef.current = guard;
   const theirChat = crypto.chat.filter((c) => !c.isMe && c.place === crypto.place).length;
@@ -976,11 +977,19 @@ export function InCall({ session }: { session: CallSession }) {
    * fails, the same recorder carries on, so its pieces stay in order in the same segment (a new one would number its
    * pieces from the start again, and the server keeps the first of each).
    */
-  const end = async () => {
+  const end = async (hostConfirmed = false) => {
+    if (departing.current) return;
+    departing.current = true;
     setLeaving(true);
     const departure = capture.departure('leave');
     try {
       await departure.flush();
+      // Uploading the final audio can outlast a host change. A new host must choose before ending everyone's call.
+      if (!hostConfirmed && session.getSnapshot().isHost) {
+        departure.rollback();
+        setLeaveOpen(true);
+        return;
+      }
       const r = await session.leave();
       departure.finish();
       over.current = true;
@@ -1003,8 +1012,10 @@ export function InCall({ session }: { session: CallSession }) {
       departure.rollback();
       clog.error('leaving the call failed', { err: e });
       callControls.setError(errorMessage(e));
+      guard.stay();
       toast(errorMessage(e), { icon: 'x' });
     } finally {
+      departing.current = false;
       setLeaving(false);
     }
   };
@@ -1014,6 +1025,8 @@ export function InCall({ session }: { session: CallSession }) {
    * paused recorder carries on in the same segment, as when ending fails.
    */
   const handOff = async (to: string) => {
+    if (departing.current) return;
+    departing.current = true;
     setLeaving(true);
     const who = state.participants.find((p) => p.id === to)?.person;
     const departure = capture.departure('hand-off');
@@ -1040,9 +1053,25 @@ export function InCall({ session }: { session: CallSession }) {
       setLeaveOpen(true);
       toast(errorMessage(e), { icon: 'x' });
     } finally {
+      departing.current = false;
       setLeaving(false);
     }
   };
+  // The host decides what happens to everyone; other participants leave through the same capture and media cleanup.
+  const requestLeave = (inFloating = false) => {
+    if (departing.current || ended) return;
+    callControls.setError(null);
+    setLeaveInFloating(inFloating);
+    if (hosting) {
+      setLeaveOpen(true);
+    } else void end();
+  };
+  useEffect(() => {
+    if (!hosting && leaveOpen && !ended) {
+      setLeaveOpen(false);
+      guardRef.current.stay();
+    }
+  }, [hosting, leaveOpen, ended]);
   const away = async (to: { noteId: string } | null) => {
     sessions.call = null;
     if (to) await navigate({ to: '/notes/$noteId', params: { noteId: to.noteId }, replace: true });
@@ -1714,10 +1743,10 @@ export function InCall({ session }: { session: CallSession }) {
     </div>
   };
   const leaveQuestion = (
-    <LeaveSheet inline={leaveInFloating && floating.target !== null} open={leaveOpen || !!ended} onOpenChange={(o) => { setLeaveOpen(o); if (!o) guard.stay(); }} title={state.title} elapsed={state.elapsed}
-        hosting={hosting} organizer={organizer} standingInFor={state.host.standIn && hosting ? state.host.organizer.name : null} next={nextHosts}
-        notes={state.notes.everOn} locked={state.locked} others={others.length}
-        getting={invited} leaving={leaving} ended={ended} onEnd={() => void end()} onHandOff={(to) => void handOff(to)} onRead={(id) => void away({ noteId: id })} onHome={() => void away(null)} />
+    <LeaveSheet inline={leaveInFloating && floating.target !== null} open={(hosting && leaveOpen) || !!ended} onOpenChange={(o) => { setLeaveOpen(o); if (!o) guard.stay(); }} title={state.title} elapsed={state.elapsed}
+        organizer={organizer} standingInFor={state.host.standIn && hosting ? state.host.organizer.name : null} next={nextHosts}
+        notes={state.notes.everOn} others={others.length}
+        getting={invited} leaving={leaving} ended={ended} onEnd={() => void end(true)} onHandOff={(to) => void handOff(to)} onRead={(id) => void away({ noteId: id })} onHome={() => void away(null)} />
   );
 
   const moreBody = pop === 'devices' ? (
@@ -1853,7 +1882,7 @@ export function InCall({ session }: { session: CallSession }) {
             </Popover>
             {!phone && <DockSeparator />}
             {focusOn && <DockWords icon="shrink" className="keep" onClick={toggleFocus}>Show everything</DockWords>}
-            <DockLeave className="keep" disabled={leaving || !!ended} onClick={() => setLeaveOpen(true)}>Leave</DockLeave>
+            <DockLeave className="keep" disabled={leaving || !!ended} onClick={() => requestLeave()}>{leaving ? 'Leaving…' : 'Leave'}</DockLeave>
           </CallDock>
         </footer>
       </div>
@@ -1876,7 +1905,7 @@ export function InCall({ session }: { session: CallSession }) {
         hand: !!me?.hand, handPending: callControls.pending.hand, busy: leaving || !!ended,
         attention: floatAttention, error: crypto.status === 'failed' ? 'This device lost the call’s encryption keys. Return to the call to reload.' : callControls.error, soundBlocked: roomView.audioBlocked, onSound: playSound,
         onMic: () => callControls.mic('floating'), onCam: () => callControls.cam('floating'), onHand: () => callControls.hand(!me?.hand, 'floating'),
-        onLeave: () => { callControls.setError(null); setLeaveInFloating(true); setLeaveOpen(true); },
+        onLeave: () => requestLeave(true),
         onReturn: returnToCall,
         onAttention: (kind) => { returnToCall(); if (kind === 'chat') openSide('chat'); else { setAttentionTab(kind); openSide('attention'); } },
         children: leaveInFloating && leaveOpen ? leaveQuestion : null

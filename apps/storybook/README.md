@@ -345,7 +345,7 @@ as its own tab before clicking: Document Picture-in-Picture requires a top-level
 Storybook does not replace that API, force support, or claim a synthetic `userEvent` verified native behavior.
 
 Use the top-level preview to manually open, close, reopen and return; switch microphone, camera and hand; try Leave and
-Stay; and resize the window. Use the actual app with a second participant for native focus, one-session/audio/capture
+Stay as a host; try the participant scenarios to leave with one press; and resize the window. Use the actual app with a second participant for native focus, one-session/audio/capture
 ownership, capture output privacy, leave failure recovery and browser-driven automatic opening. The scripted room cannot
 establish any of those. Verify automatic opening on the HTTPS app with browser permission and an already-allowed live
 microphone or camera; a muted live microphone remains eligible. HTTP localhost is suitable for manual PiP only. Verify
@@ -413,3 +413,8 @@ and organizer lobby show preparation before joining. **Components / In a call / 
 readout and button; **FloatingCall / Shared timer** shows the compact window. **Journeys / 6 Presenter timers**
 (6.26–6.28) plays preparing a preset, controlling a sequence, and following as a guest with a local cue. Stories remain demonstrations;
 the colocated API/client integration suite verifies shared state, permissions, concurrency, encryption and deletion.
+
+Calls / Leaving and Journeys / 7 End the call and get the notes show one-press departure for invited participants and
+guests, pending and failed departures, a retry, and the confirmation retained by the current host, including a stand-in.
+Calls / Floating call / Participant ready to open and Participant leave refused keep the real native window hand-off
+available for manual checks of the same behavior.

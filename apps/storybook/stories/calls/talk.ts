@@ -31,6 +31,9 @@ export const ONE_ON_ONE: StoryCall = { id: 'm-one-priya', title: '1:1 with Priya
 /** Kofi's Harbourline prep, which Art isn't invited to: he asks to join. */
 export const PREP: StoryCall = { id: 'm-prep', title: 'Harbourline prep', startsAt: iso(0, 16, 0), minutes: 30, code: 'hbr-prep-kfo', organizer: KOFI, guests: [DIEGO, MAYA], status: 'live' };
 
+/** Ines's board prep, which rings Art while he's in another call. */
+export const BOARD_PREP: StoryCall = { id: 'm-board-leave', title: 'Board prep', startsAt: iso(0, 16, 10), minutes: 45, code: 'brd-prep-lve', organizer: INES, guests: [ART, PRIYA], status: 'live' };
+
 /** The all-hands, with everyone at Vandelay. */
 export const EVERYONE: readonly Person[] = MANY.filter((c) => c.onAlcove).map((c) => c.person).slice(0, 23);
 export const ALL_HANDS: StoryCall = { id: 'm-all-hands', title: 'Vandelay all-hands', startsAt: iso(0, 16, 0), minutes: 60, code: 'all-hand-vdl', guests: EVERYONE };
