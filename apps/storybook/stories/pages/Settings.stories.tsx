@@ -123,3 +123,19 @@ export const GoogleDriveFolderUnavailable = page('/settings#google-drive', 'driv
 
 export const GoogleDriveConsentCancelled = page('/settings?drive=cancelled#google-drive', 'busy');
 export const GoogleDriveConsentFailed = page('/settings?drive=failed#google-drive', 'drive-connected');
+
+/** A callback result says connected only while the current connection still is. */
+export const GoogleDriveConnectedReturn = page('/settings?drive=connected#google-drive', 'drive-connected');
+export const GoogleDriveDisconnectedAfterReturn = page('/settings?drive=connected#google-drive', 'busy');
+export const GoogleDriveDisconnectAfterReturn = page('/settings?drive=connected#google-drive', 'drive-connected', {
+  play: async ({ userEvent, step }) => {
+    await step('Returning from Google shows the successful connection', async () => {
+      await screen.findByText('Google Drive connected. Choose the files to export and turn automatic exports on when you’re ready.', {}, { timeout: 8000 });
+    });
+    await step('Disconnect Drive. The success notice leaves with the connection, even though the callback URL remains', async () => {
+      const drive = await screen.findByRole('region', { name: 'Google Drive' }, { timeout: 8000 });
+      await userEvent.click(within(drive).getByRole('button', { name: 'Disconnect' }));
+      await within(drive).findByRole('button', { name: 'Connect Google Drive' }, { timeout: 8000 });
+    });
+  }
+});

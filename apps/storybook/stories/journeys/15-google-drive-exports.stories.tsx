@@ -65,13 +65,16 @@ export const RetryAnExport: PageStory = {
 
 export const DisconnectDrive: PageStory = {
   name: '15.5 Disconnect Google Drive',
-  ...page('/settings#google-drive', 'drive-connected'),
+  ...page('/settings?drive=connected#google-drive', 'drive-connected'),
   play: async ({ userEvent, step }) => {
+    await step('Return from Google with the connection confirmed', async () => {
+      await screen.findByText('Google Drive connected. Choose the files to export and turn automatic exports on when you’re ready.', {}, LATER);
+    });
     await step('Disconnect only Drive. Further exports stop and copies already exported stay there', async () => {
       const drive = await screen.findByRole('region', { name: 'Google Drive' }, LATER);
       await userEvent.click(within(drive).getByRole('button', { name: 'Disconnect' }));
     });
-    await step('Alcove stays signed in and Drive can be connected again', async () => {
+    await step('The callback success notice leaves; Alcove stays signed in and Drive can be connected again', async () => {
       await screen.findByRole('button', { name: 'Connect Google Drive' }, SOON);
     });
   }
