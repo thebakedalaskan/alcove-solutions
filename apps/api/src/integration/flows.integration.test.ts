@@ -2898,11 +2898,12 @@ describe('deleting an account', () => {
 
     // Her named agent goes with the account, too, including its hashed credential.
     await b.api.agents.createToken({ name: 'Lena’s assistant', scopes: ['notes:read'], expiresInDays: 30 });
+    await b.api.calls.timerPresets.create({ name: 'Lena’s agenda', segments: [{ id: 'opening', label: 'Opening', durationSeconds: 60, presenter: null }] });
     // Every table that keeps an account's rows has some of hers.
     const tables = (await h.pool.query<{ table_name: string }>("SELECT table_name FROM information_schema.columns WHERE table_schema = 'public' AND column_name = 'owner_id' ORDER BY table_name")).rows.map((r) => r.table_name);
     expect(tables).toEqual([
       'agent_codes', 'agent_grants', 'agent_operations', 'agent_tokens', 'billing_accounts', 'call_attention', 'call_codes', 'call_mls', 'call_moves', 'call_notes', 'call_rings', 'calls', 'content_jobs', 'document_access', 'document_clients', 'document_snapshots', 'document_updates', 'document_version_parts', 'document_versions', 'documents', 'identities', 'items', 'media_upload_days', 'meeting_access', 'note_access', 'note_additions',
-      'object_gc', 'operations', 'owners', 'personal_notes', 'presenter_frame_notes', 'presenter_notes', 'recording_pieces', 'recordings', 'revisions', 'screen_frames', 'sessions', 'transcript_clips', 'transcript_translations', 'workspace_authors',
+      'object_gc', 'operations', 'owners', 'personal_notes', 'presenter_frame_notes', 'presenter_notes', 'recording_pieces', 'recordings', 'revisions', 'screen_frames', 'sessions', 'timer_presets', 'transcript_clips', 'transcript_translations', 'workspace_authors',
       'workspace_media', 'workspace_media_pieces', 'workspace_media_previews', 'workspace_media_uses', 'workspace_members', 'workspace_mentions', 'workspaces'
     ]);
     const counts = async () => Object.fromEntries(await Promise.all(tables.map(async (t) => [t, (await h.pool.query<{ n: number }>(`SELECT count(*)::int AS n FROM ${t} WHERE owner_id = $1`, [ownerId])).rows[0]?.n ?? -1] as const)));
@@ -3198,6 +3199,9 @@ describe('privacy at rest', () => {
     const scribeEmail = 'canary-scribe@canary.example';
     const started = await c.api.calls.startNow({ notes: 'on', guests: [scribeEmail, 'canary-rung@canary.example'] });
     const call = await c.api.calls.join(started.code, { mic: true, cam: true });
+    const timerPreset = await c.api.calls.timerPresets.create({ name: 'CANARY-TIMER-PRESET', segments: [{ id: 'opening', label: 'CANARY-TIMER-SEGMENT', durationSeconds: 60, presenter: 'CANARY-TIMER-PRESENTER' }] });
+    await call.setTimerSequence({ expectedRevision: null, segments: timerPreset.segments });
+    await call.controlTimer({ expectedRevision: 0, action: 'start' });
     await call.appendAudio(piece(audioBytes('CANARY-AUDIO-RAW'), 0, 0));
     await call.transcribe(speech('CANARY-SPEECH the merger closes on Friday.', 0, 0), call.ticket.identity);
     expect(call.getSnapshot().transcript.map((l) => l.text)).toEqual(['CANARY-SPEECH the merger closes on Friday.']);
@@ -3478,7 +3482,7 @@ describe('privacy at rest', () => {
     // bytea renders as hex; our records embed base64url; check every encoding a plaintext bug could produce.
     const encodings = (s: string) => [s, Buffer.from(s).toString('hex'), Buffer.from(s).toString('base64').slice(0, 12), Buffer.from(s).toString('base64url').slice(0, 12)];
     const canaries = [
-      'canary-person', 'Canary Person', 'CANARY-TITLE', 'CANARY-EDIT', 'canary-guest', 'CANARY-CHAT', 'CANARY-AUDIO', 'CANARY-ROOM', 'CANARY-SEARCH', 'CANARY-PEOPLE', 'CANARY-SPEECH', 'merger closes',
+      'CANARY-TIMER-PRESET', 'CANARY-TIMER-SEGMENT', 'CANARY-TIMER-PRESENTER', 'canary-person', 'Canary Person', 'CANARY-TITLE', 'CANARY-EDIT', 'canary-guest', 'CANARY-CHAT', 'CANARY-AUDIO', 'CANARY-ROOM', 'CANARY-SEARCH', 'CANARY-PEOPLE', 'CANARY-SPEECH', 'merger closes',
       'CANARY-BREAKOUT', 'CANARY-BROADCAST', 'CANARY-GROUP', 'canary-member', 'CANARY-ASKED', 'canary-rung', 'CANARY-ROOMTALK', 'merger moves', 'canary-scribe', 'CANARY-LIVENOTE',
       'Welcome credits', 'Art Vandelay', 'vandelay', 'Weekly with Theo', 'lumen.health',
       'canary-google-sub', 'canary.googler', 'Canary Googler', 'canary-photo', 'CANARY-GCAL', 'canary-gcal',

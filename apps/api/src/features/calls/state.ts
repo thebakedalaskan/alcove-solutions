@@ -1,4 +1,4 @@
-import { MAIN_PLACE, firstName } from '@alcove/api';
+import { CallTimerSequenceSchema, MAIN_PLACE, firstName } from '@alcove/api';
 import { z } from 'zod';
 import type { Owner } from '../../context';
 import { id128, openJson, sealJson, stateKey, toJson } from '../../crypto';
@@ -93,7 +93,8 @@ export const Stored = z.preprocess(withHost, z.object({
   /** What's going on in the workspace the call uses: who's asking to see it, what's being presented and played, and what's been worked on. */
   workspace: CallSpace.default(NO_SPACE),
   /** Which board is open in each part of the call, and which boards it lets everyone into. */
-  board: CallBoards.default(NO_BOARDS)
+  board: CallBoards.default(NO_BOARDS),
+  timerSequence: CallTimerSequenceSchema.nullable().default(null)
 }));
 
 export type Stored = z.infer<typeof Stored>;

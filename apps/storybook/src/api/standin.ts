@@ -9,7 +9,7 @@
  */
 import type { BoardSortBody, DocAskBody, DocAskPart } from '@alcove/api';
 import {
-  ACCEPTED_FOLLOW_UP, AlcoveApiError, type FollowUpReview, type FollowUpTarget, type NoteAction, AgentAuthorizationIdSchema, AgentConnectionIdSchema, AgentDecisionInputSchema, AgentTokenInputSchema, DEFAULT_NOTES_CHOICES, searchOf, termsIn, type ActionPatch, type ActionProposal, type AlcoveApi, type AgentConnection, type AnswerPart, type Busy, type CallCard,
+  CallTimerPresetInputSchema, CallTimerPresetUpdateSchema, type CallTimerPreset, ACCEPTED_FOLLOW_UP, AlcoveApiError, type FollowUpReview, type FollowUpTarget, type NoteAction, AgentAuthorizationIdSchema, AgentConnectionIdSchema, AgentDecisionInputSchema, AgentTokenInputSchema, DEFAULT_NOTES_CHOICES, searchOf, termsIn, type ActionPatch, type ActionProposal, type AlcoveApi, type AgentConnection, type AnswerPart, type Busy, type CallCard,
   type CallDocument, type CallSession, type Change, type ChangeScope, type DecisionPatch, type DecisionProposal, type ID, type Inbox, type IncomingRing,
   type InstantCallInput, type Interval, type LinePatch, type Meeting, type MeetingInput, type Note, type NoteFound, type NoteKind, type NoteProgress,
   type Patch, type Preferences, type PromoteBody, type PromotionPreview, type QuestionPatch, type RecipientRole, type RingReply, type Rsvp, type Series,
@@ -418,6 +418,26 @@ export const standIn: AlcoveApi = {
     })
   },
   calls: {
+    timerPresets: {
+      list: () => answer((w) => w.timerPresets ?? []),
+      create: (input) => answer((w) => {
+        const parsed = CallTimerPresetInputSchema.parse(input);
+        const at = new Date().toISOString();
+        const preset: CallTimerPreset = { ...parsed, id: nextId('timer-preset'), revision: 0, createdAt: at, updatedAt: at };
+        w.timerPresets = [...w.timerPresets ?? [], preset];
+        return preset;
+      }),
+      update: (id, input) => answer((w) => {
+        const parsed = CallTimerPresetUpdateSchema.parse(input);
+        const before = w.timerPresets?.find((preset) => preset.id === id);
+        if (!before) throw refused('not-found', 'This timer preset is gone.');
+        if (before.revision !== parsed.expectedRevision) throw refused('conflict', 'This timer preset changed. Read it again before saving.');
+        const preset = { ...before, name: parsed.name, segments: parsed.segments, revision: before.revision + 1, updatedAt: new Date().toISOString() };
+        w.timerPresets = w.timerPresets?.map((old) => old.id === id ? preset : old) ?? [];
+        return preset;
+      }),
+      remove: (id) => answer((w) => { w.timerPresets = w.timerPresets?.filter((preset) => preset.id !== id) ?? []; })
+    },
     // As the server makes one: an hour from now, and scheduled until someone joins, so the lobby can ring people.
     startNow: (input?: InstantCallInput) => answer((w) => {
       const m = { ...meetingFrom(w, { title: input?.title ?? `${me().name.split(' ')[0] ?? 'Your'}’s call`, startsAt: new Date().toISOString(), durationMinutes: 60, guests: input?.guests ?? [], notes: input?.notes ?? w.prefs.notesDefault, documents: input?.documents ?? [] }), instant: true };

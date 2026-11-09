@@ -609,6 +609,26 @@ Settings has the same account preferences. Quiet mode retains microphone confirm
 notification permission is independent. Sound uses your selected speaker and never enters the outgoing call or notes.
 If playback is blocked, Attention and its counts still work.
 
+### Presenter timers (journeys 6.26–6.28)
+
+26. **Prepare reusable timing.** Before joining a call you organize, **Prepare timer presets** opens your private
+    library. Name a preset and add ordered segments with a name, duration and optional presenter. Quick durations
+    include 15 minutes; custom durations are entered in seconds. Duplicate, remove or move a segment with its named
+    controls. The planned total updates as you edit. **Save preset** keeps definitions only. Edit/rename, duplicate
+    and delete are explicit; deleting a preset keeps copies already loaded into calls.
+27. **Run the sequence.** **Timer** opens the call’s timer panel. The current host can **Build sequence**, or open
+    **Your presets** and **Use copy**, then **Save timer plan**. **Start timer** begins the first turn. Current and next
+    segments, the presenter and total planned time remain readable. **Pause**, **Resume**, **Restart segment**,
+    **Add 1 min**, **Skip** and **Next segment** change the shared timer. At zero it says time is up and counts over
+    time; the host explicitly moves on or finishes the sequence. Editing upcoming slots preserves the current turn.
+    Changes to this call stay here; **Replace with this plan** asks before updating a saved preset.
+28. **Follow the timer in your own view.** Every admitted participant, including a guest, sees the same countdown.
+    The compact timer reopens details while a screen, workspace or board is in use, in focus and in the floating call.
+    A named presenter receives an explicit warning at 30 seconds and at zero, using words and an icon as well as colour.
+    **Sound when time is up** is off initially and changes only this browser’s cue; it respects call sound and quiet
+    settings. The visual timer stays visible with sound off. Joining late, reconnecting or backgrounding the tab keeps
+    the existing clock; whoever is authorized to host now can continue controlling it.
+
 ### Floating call
 
 **6.22 Keep the call in view.** On a supported desktop browser, **Open floating call** in **View** opens a small,

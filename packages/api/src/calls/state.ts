@@ -1,3 +1,4 @@
+import { CallTimerSequenceSchema } from './timers';
 import { PersonSchema } from '../identity/people';
 import { SignInProviderSchema } from '../identity/session';
 import { TranscriptLineSchema } from '../notes/transcript';
@@ -345,6 +346,7 @@ export const CallStateSchema = z.object({
   workspace: CallWorkspaceSchema,
   /** The board open in the part of the call you're in, as you may know it. Nothing for someone waiting to be let in. */
   board: CallBoardSchema,
+  timerSequence: CallTimerSequenceSchema.nullable().default(null),
   notices: z.array(CallNoticeSchema),
   /** Only the organizer can turn notes on or off, pause and resume them. */
   isOrganizer: z.boolean(),

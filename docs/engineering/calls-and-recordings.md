@@ -1248,6 +1248,12 @@ call ID), when it started, whether it's over, and its note's ID once it is (`Sto
   shared. A chosen home's people are its own. A failure is logged, and tried again by the next change or the next call.
 - **Like any folder** otherwise: it can be renamed, moved and sent to Trash. A copy of it is a plain folder.
 
+## Presenter timer sequences
+
+Calls have a host-controlled sequence of named presenter slots, separate from any board or breakout-room timer.
+The durable clock, host permissions, concurrent commands, reusable presets and upgrade behavior are documented in
+[Presenter timer sequences](presenter-timers.md).
+
 ## A board in a call
 
 A board is a workspace item of kind `board`: what's on it, who can open it and how it's deleted are the workspace's. What's the

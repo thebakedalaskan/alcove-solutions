@@ -405,6 +405,15 @@ waiting behind a fixed batch, and a changed actual task refusing a stale amendme
 review after the call and keep “I'll do it” as a separate choice. The shared editor and review controls have their own
 stories in `Components/Notes and transcript`.
 
+## Presenter timer sequences
+
+**Calls / Presenter timers** renders the real call timer panel and compact countdown in ready, running, paused,
+near-end, over-time, finished, guest and reconnecting states, with phone and light-theme variants. The preset library
+and organizer lobby show preparation before joining. **Components / In a call / PresenterTimer** shows the reusable
+readout and button; **FloatingCall / Shared timer** shows the compact window. **Journeys / 6 Presenter timers**
+(6.26–6.28) plays preparing a preset, controlling a sequence, and following as a guest with a local cue. Stories remain demonstrations;
+the colocated API/client integration suite verifies shared state, permissions, concurrency, encryption and deletion.
+
 Calls / Leaving and Journeys / 7 End the call and get the notes show one-press departure for invited participants and
 guests, pending and failed departures, a retry, and the confirmation retained by the current host, including a stand-in.
 Calls / Floating call / Participant ready to open and Participant leave refused keep the real native window hand-off

@@ -1,3 +1,4 @@
+import { type CallTimerControl, type CallTimerSequenceInput } from './timers';
 import { type FollowUpCreate, type FollowUpPatch, type FollowUpReview } from '../notes/follow-ups';
 import { type CallFeedbackKind, type CallQuestionStatus } from './attention';
 import { type PersonalApi } from '../notes/personal';
@@ -134,6 +135,8 @@ export interface BreakoutPlan { rooms: { name: string; emails: string[] }[]; min
 
 
 export interface CallSession extends LiveStore<CallState> {
+  setTimerSequence(input: CallTimerSequenceInput): Promise<void>;
+  controlTimer(input: CallTimerControl): Promise<void>;
   /** Who you are in the call, and this person's pass for the call's requests. */
   readonly ticket: CallTicket;
   /** The call's encryption as this browser sees it. */

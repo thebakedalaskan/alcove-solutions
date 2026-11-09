@@ -15,7 +15,7 @@ import {
   type CaptureMode, type Person, type SelfView
 } from '@alcove/api';
 import {
-  AttentionButton, CallSignal, Avatar, BoardPicker, CallDock, CallMoreGrid, CallMoreTile, DockButton, DockLeave, DockSeparator, DockSplit, DockWords, Dots, Icon, IconButton, Kbd, KnockCard, LinkRow, Popover, RingAgain, RingReply, Scope,
+  AttentionButton, CallTimerButton, Notice, CallSignal, Avatar, BoardPicker, CallDock, CallMoreGrid, CallMoreTile, DockButton, DockLeave, DockSeparator, DockSplit, DockWords, Dots, Icon, IconButton, Kbd, KnockCard, LinkRow, Popover, RingAgain, RingReply, Scope,
   Tooltip, WaitTile, buttonClass, cn, useRaisedToasts, useTheme, useToast, volumeTag, wsToast, type IconName, type PresentAskProps, type WsToastData
 } from '@alcove/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -70,6 +70,8 @@ import { useAttentionSignals } from '~/features/call/layout/useAttentionSignals'
 import { AttentionView, signalChoice, type AttentionTab, type QuestionDraft } from '~/features/call/layout/Attention';
 import { CallSoundControls } from '~/features/settings/Sounds';
 import { useCallSounds } from '~/features/call/media/sounds';
+import { PresenterTimerPanel } from '~/features/call/layout/PresenterTimer';
+import { usePresenterTimer } from '~/features/call/layout/usePresenterTimer';
 import { TopBar } from '~/features/call/layout/TopBar';
 import { FeedVideo, type Feed } from '~/features/call/media/Video';
 import { isCustom, useCallView, type ViewSnapshot } from '~/features/call/layout/view';
@@ -955,6 +957,7 @@ export function InCall({ session }: { session: CallSession }) {
   const online = useOnline();
   const down = !online || roomView.connection === 'reconnecting';
   const attentionReady = crypto.status === 'in' && state.attention.place === crypto.place && live;
+  const presenterTimer = usePresenterTimer(state, attentionReady && online && roomView.connection === 'connected', m.speakerId);
   const callSounds = useCallSounds({ call: session, state, speakerId: m.speakerId, presenting: shares.some((s) => s.mine) || Boolean(presentNow?.mine), connected: attentionReady && online && roomView.connection === 'connected' });
   const wasDown = useRef(false);
   useEffect(() => {
@@ -1273,7 +1276,10 @@ export function InCall({ session }: { session: CallSession }) {
   const shownThings = callOver ? [] : stage.on;
   /** Two on your stage with no room for both take turns: the one you brought to the front. */
   const [front, setFront] = useState<ThingId | null>(null);
-  const focusBox = focusOn ? focusRoom(size, horizon) : null;
+  const focusedRoom = focusOn ? focusRoom(size, horizon) : null;
+  // The shared timer and Attention own a strip above the focused frame, clear of its title and controls.
+  const focusToolbarHeight = focusOn && (presenterTimer.sequence || hosting) ? 52 : 0;
+  const focusBox = focusedRoom ? { ...focusedRoom, y: focusedRoom.y + focusToolbarHeight, h: Math.max(0, focusedRoom.h - focusToolbarHeight) } : null;
   const placed = placeMain({ w: mainW, h: size.h }, { frames: shownThings.length, people: panels.people, phone, focus: focusBox, rooms: !!stageRooms, top, bottom });
   /** The organizer's rooms are in sight: on the whole stage, or beside what's open, rather than under it. */
   const roomsShown = placed.rooms !== null;
@@ -1410,6 +1416,7 @@ export function InCall({ session }: { session: CallSession }) {
           </SideBody>
         </>
       );
+      case 'timer': return <><SideHead title="Timer" sub="Same countdown for everyone" onClose={sideClose} /><PresenterTimerPanel session={session} state={state} timer={presenterTimer} ready={attentionReady && !down} /></>;
       case 'attention': return (
         <>
           <SideHead title="Attention" onClose={sideClose} />
@@ -1447,7 +1454,7 @@ export function InCall({ session }: { session: CallSession }) {
       );
     }
   };
-  const sideNames: Record<SideView, string> = { notes: 'Notes', chat: 'Chat', people: 'People', rooms: open ? 'Rooms are open' : 'Breakout rooms', mine: 'Your notes', attention: 'Attention' };
+  const sideNames: Record<SideView, string> = { notes: 'Notes', chat: 'Chat', people: 'People', rooms: open ? 'Rooms are open' : 'Breakout rooms', mine: 'Your notes', attention: 'Attention', timer: 'Timer' };
   const hostSide: HostSide | null = side.view === null || focusOn ? null
     : { view: side.view, label: sideNames[side.view], width: sideW, phone, over: sideOver, theme, onClose: sideClose, children: sideBody(side.view) };
   /* The workspace's list: beside the page where its frame has the room, and otherwise over the page for now. */
@@ -1794,9 +1801,13 @@ export function InCall({ session }: { session: CallSession }) {
   return (
     <div className="stage ac-stage">
       <div className={cn('ic-call', ended && 'is-ended', focusOn && 'is-focus')}>
+        {focusOn && (presenterTimer.sequence || hosting) && <CallTimerButton className="ic-timer-focus" time={presenterTimer.time} label={presenterTimer.mine && presenterTimer.overtime ? 'Your time is up' : presenterTimer.mine && presenterTimer.warning ? 'Your turn is nearly over' : presenterTimer.segment?.label ?? 'Plan this call'} status={presenterTimer.status} tone={presenterTimer.tone} on={side.view === 'timer'} onClick={() => { if (focusOn) toggleFocus(); openSide('timer'); }} />}
+        {presenterTimer.mine && (presenterTimer.warning || presenterTimer.overtime) && !focusOn && side.view !== 'timer' && <Notice className="ic-timer-warning" icon="alert"><strong>{presenterTimer.overtime ? 'Your time is up' : 'Your turn has 30 seconds or less left'}</strong></Notice>}
+        <span className="sr-only" role="status" aria-live="polite">{presenterTimer.mine && presenterTimer.overtime ? 'Your time is up. The timer is counting over time.' : presenterTimer.mine && presenterTimer.warning ? 'Your turn has 30 seconds or less left.' : presenterTimer.status}</span>
         {focusOn && <AttentionButton className="ic-attention-focus" hands={attentionReady ? state.attention.hands.length : 0} questions={attentionReady ? state.attention.questions.filter((q) => q.status === 'open').length : 0} waiting={hosting ? state.waiting.length : 0} on={side.view === 'attention'} onClick={() => openSide('attention')} />}
         <span className="sr-only" role="status" aria-live="polite">{attentionReady ? `${state.attention.hands.length} hands raised. ${state.attention.questions.filter((q) => q.status === 'open').length} open questions.${hosting ? ` ${state.waiting.length} waiting to join.` : ''}` : 'Connecting to this room.'}</span>
         <TopBar title={state.title} elapsed={state.elapsed} people={stagePeople.map((p) => p.person)} phone={phone}
+          timer={presenterTimer.sequence || hosting ? <CallTimerButton time={presenterTimer.time} label={presenterTimer.segment?.label ?? 'Plan this call'} status={presenterTimer.status} tone={presenterTimer.tone} compact={phone} on={side.view === 'timer'} onClick={() => flipSide('timer')} /> : null}
           sign={<CaptureButton state={state} role={session.ticket.role} getting={getting} controls={controls} pausing={pausing} onOpenNotes={() => openSide('notes')} />}
           asking={hosting ? state.waiting.length : 0} reconnecting={down || (crypto.status === 'joining' && !leaving)} screens={state.capture.screen.mode !== 'off'}
           swap={!phone && swap}
@@ -1884,6 +1895,7 @@ export function InCall({ session }: { session: CallSession }) {
       {!(leaveInFloating && floating.target) && leaveQuestion}
       <FloatingCallPortal target={floating.target} view={{
         title: state.title,
+        timer: presenterTimer.sequence ? <CallTimerButton time={presenterTimer.time} label={presenterTimer.mine && presenterTimer.overtime ? 'Your time is up' : presenterTimer.segment?.label ?? 'Timer'} status={presenterTimer.status} tone={presenterTimer.tone} on={false} onClick={() => { returnToCall(); if (focusOn) toggleFocus(); openSide('timer'); }} /> : null,
         picture: floatFeed ? <FeedVideo feed={floatFeed} className={!floatShare && floatPerson?.isMe ? 'is-self' : undefined} /> : null,
         person: floatShare?.presenter ?? floatPerson?.person ?? null,
         label: crypto.status === 'moving' ? 'Moving between rooms…' : crypto.status !== 'in' ? 'Connecting securely…' : floatShare?.label ?? (floatPerson ? `${callName(floatPerson.person)}${floatPerson.video ? '' : ' · camera off'}` : 'Waiting for someone to join'),

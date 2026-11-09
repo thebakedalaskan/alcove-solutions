@@ -63,7 +63,7 @@ export async function view(v: Viewer, db: Db, callId: string): Promise<CallState
   if (!v.inCall) {
     return {
       ...base, attention: { place: 'main', hands: [], questions: [], signals: [], cues: [], latest: 0, serverNow: end.toISOString() }, participants: [], waiting: [], ringing: [], leaving: [], spotlight: null, breakouts: { open: null, held: [] }, capture: anonymousCapture(s, row), notes: { everOn: false, noteId: null, recording: { segment: 0, pieces: 0, seconds: 0 } },
-      host: { id: null, standIn: false, organizer: { id: 'organizer', name: '', email: '' }, next: [] }, transcript: [], liveNotes: NO_NOTES, workspace: PRIVATE, board: boards.NO_BOARD, notices: []
+      host: { id: null, standIn: false, organizer: { id: 'organizer', name: '', email: '' }, next: [] }, transcript: [], liveNotes: NO_NOTES, workspace: PRIVATE, board: boards.NO_BOARD, timerSequence: null, notices: []
     };
   }
   const rooms = settle(s, row, end.getTime());
@@ -89,7 +89,7 @@ export async function view(v: Viewer, db: Db, callId: string): Promise<CallState
   const { shown: workspace, lost } = await space.shownTo({ v, callId, meeting: meeting.manifest, s: rooms, place: where, chosenBy: who.organizer, asks });
   if (lost.present.length || lost.space.length || lost.play.length) await stopLost(o, callId, lost);
   return {
-    ...base, attention,
+    ...base, attention, timerSequence: s.timerSequence,
     participants: here.map((j) => ({
       id: j.identity, seat: seatOf(seats, j), person: forViewer(v, personFor(j, j.identity, j.name, organizer), j.identity), isMe: j.identity === v.pass.identity,
       isOrganizer: j.role === 'host', hand: attention.hands.some((h) => h.participantId === j.identity), othersPoint: !s.othersPointOff.includes(j.person)
