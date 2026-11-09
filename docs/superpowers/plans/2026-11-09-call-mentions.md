@@ -23,11 +23,11 @@
 - [x] Add a failing private mention flow for same-name guests, whitespace spans, thread replies and read state; implement shared contract schema, private payload/validation and computed unreadMentions; extend denial/retry/reconnect/leakage flows.
 - [x] Adapt shared ChatView/ChatComposer to original-pair mentions, preserve draft spans, and reuse exact message/thread navigation and visibility-based read markers.
 - [x] Add scoped generic local mention alerts and one sound per confirmed message, with independent local visual/sound preferences and browser-notification coordination.
-- [ ] Add states and journey 6.32, check keyboard/phone/themes, run meaningful integration and full checks, request independent review, commit/push and hand root the reviewable PR description.
+- [x] Add states and journey 6.32, check keyboard/phone/themes, run meaningful integration and full checks, request independent review, commit/push and hand root the reviewable PR description.
 
 ## Verification checkpoint
 
-- Real API regression suite: 26 chat flows across private messages, room/private threads and mentions passed. The final seven mention flows passed again after integrating root thread fixes (14.56 seconds total; 12.5 seconds measured assertions for the CI timing key).
+- Real API regression suite: 26 chat flows across private messages, room/private threads and mentions passed. The final seven mention flows passed again after integrating root thread fixes (14.56 seconds total; 12.5 seconds measured assertions in the dedicated report; the later full-run suite took 10.959 seconds, recorded as 11.0 seconds in the CI timing key).
 - Fresh strict package typechecks: 7/7. Production/Storybook builds: 3/3. Structure, test, strict typing and migration policies pass.
 - Manual CUA: original-pair keyboard picker, same-name account identity labels, selected draft through room/private detour, failed mention → one delivered retry row, generic private toast without content/focus theft → exact private thread/message, readable departed-peer mention with disabled composer, phone 390×844 and wide 1440×900, light/dark. Temporary viewport override reset.
 - The stand-in computed unread state now goes through its concrete direct-message update owner, matching the real LiveStore; manual alert navigation verifies the scenario.
@@ -38,3 +38,10 @@
 - Delayed room/private sound playback now rechecks the live store’s original generation/place, current membership, read receipt and call phase as well as the global audio gate. A read or departure between scheduling and playback cancels the cue. Fresh typechecks/builds pass after this UI-only correction.
 
 - Final review tightened mention/reply toast actions to read live call/crypto/direct snapshots at click, fencing store changes before React’s next render. Exact original phase/generation/place, current sender, confirmed unread destination and private pair are rechecked before navigation.
+
+## Full repository result and final integration gate
+
+- Full `pnpm check` passed: 48/48 integration suites and 1,261/1,261 flows; 11/11 tasks, 38m11.886s total. The API/contract/HTTP-client source stayed unchanged throughout. Final UI review changes separately passed fresh 7/7 typechecks and 3/3 production/Storybook builds.
+- The seven mention flows passed inside the full run in 10.959 seconds. CI timing now uses that measured suite duration, rounded to 11.0 seconds.
+- Root independently cleared encrypted protocol, retained reads, preferences, delayed sound playback and live-snapshot mention/reply action checks.
+- Release order is #87 → #173 → #107 → #88. Before release, merge actual main173, migrate added preference writers to explicit requested nested leaves, then rerun affected mention/private/thread/optimistic flows and fresh types/build. Actual combined-head CI and prior production verification remain the release gates. No duplicate full local run is planned.
