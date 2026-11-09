@@ -1,5 +1,5 @@
 import { useCallBrowserNotifications } from './browserNotifications';
-import { CallNotificationControls } from '~/features/settings/Notifications';
+import { CallAlertControls } from '~/features/settings/CallAlerts';
 import type { ChatDraft } from '../layout/ChatMentions';
 import { unreadThreadReplies, useReplyAlerts, type ReplyJump } from './replyAlerts';
 import { ChatView } from '../layout/ChatView';
@@ -73,7 +73,6 @@ import { GLIDE, Stage, useStagePlan, type StageParticipant, type StagePresented,
 import type { Box, StageFrame } from '~/features/call/layout/stageLayout';
 import { useAttentionSignals } from '~/features/call/layout/useAttentionSignals';
 import { AttentionView, signalChoice, type AttentionTab, type QuestionDraft } from '~/features/call/layout/Attention';
-import { CallSoundControls } from '~/features/settings/Sounds';
 import { useCallSounds } from '~/features/call/media/sounds';
 import { PresenterTimerPanel } from '~/features/call/layout/PresenterTimer';
 import { usePresenterTimer } from '~/features/call/layout/usePresenterTimer';
@@ -183,6 +182,7 @@ export function InCall({ session }: { session: CallSession }) {
    * Notes has its tabs; where your side is, to the tab, is what catching up returns to.
    */
   const side = useSide({ phone });
+  const [actionTarget, setActionTarget] = useState<ReplyJump>();
   const [attentionTab, setAttentionTab] = useState<AttentionTab>('hands');
   const [notesTab, setNotesTab] = useState<NotesTab>('notes');
   const place: SidePlace | null = side.view === 'notes' ? notesTab : side.view;
@@ -1349,12 +1349,12 @@ export function InCall({ session }: { session: CallSession }) {
         setChatTarget((was) => ({ id: target.message, request: (was?.request ?? 0) + 1 })); openSide('chat');
       } else if (target.type === 'thread' || target.type === 'chat') {
         setPrivateAudience(null); setChatTarget((was) => ({ id: target.message, request: (was?.request ?? 0) + 1 })); openSide('chat');
-      } else if (target.type === 'attention') { setAttentionTab(target.section); openSide('attention'); }
-      else if (target.type === 'admission') openSide('people');
+      } else if (target.type === 'attention') { setActionTarget((was) => ({ id: target.id, request: (was?.request ?? 0) + 1 })); setAttentionTab(target.section); openSide('attention'); }
+      else if (target.type === 'admission') { setActionTarget((was) => ({ id: target.identity, request: (was?.request ?? 0) + 1 })); openSide('people'); }
       else if (target.type === 'timer') {
         if (target.timer === 'presenter') openSide('timer');
         else { setSaved(null); loadBoard(); stageOpen('board'); setFront('board'); side.close(); setFocus(false); }
-      } else openSide('people');
+      } else { setActionTarget((was) => ({ id: target.id, request: (was?.request ?? 0) + 1 })); openSide('people'); }
     }
   });
   useEffect(() => { if (floating.error) toast('Floating call didn’t open. Check View for help.', { icon: 'pip' }); }, [floating.error, toast]);
@@ -1448,7 +1448,7 @@ export function InCall({ session }: { session: CallSession }) {
       case 'attention': return (
         <>
           <SideHead title="Attention" onClose={sideClose} />
-          <AttentionView key={state.attention.place} session={session} state={state} ready={attentionReady} signals={attentionSignals} presenter={!!m.screen || state.workspace.present?.mine === true} draft={questionDraft} tab={attentionTab} onTab={setAttentionTab}
+          <AttentionView jump={actionTarget} key={state.attention.place} session={session} state={state} ready={attentionReady} signals={attentionSignals} presenter={!!m.screen || state.workspace.present?.mine === true} draft={questionDraft} tab={attentionTab} onTab={setAttentionTab}
             waiting={<PeopleView here={panelPeople} invited={[]} asking={hosting ? state.waiting : []} invites={false} ringing={[]} host={host} foot={privacyLine} volumes={volumes} together={together} canRing={() => false} />} />
         </>
       );
@@ -1456,7 +1456,7 @@ export function InCall({ session }: { session: CallSession }) {
         <>
           <SideHead title="People" onClose={sideClose} />
           <SideBody view="people">
-            <PeopleView here={panelPeople} invited={invited} asking={hosting ? state.waiting : []} invites={organizer} ringing={rung} host={host} foot={privacyLine} volumes={volumes} together={together}
+            <PeopleView jump={actionTarget} here={panelPeople} invited={invited} asking={hosting ? state.waiting : []} invites={organizer} ringing={rung} host={host} foot={privacyLine} volumes={volumes} together={together}
               canRing={(p) => team.data?.members.some((x) => x.onAlcove && sameEmail(x.person, p)) ?? false} onRing={organizer && live ? ring : undefined} onStopRing={organizer && live ? stopRing : undefined}
               notesAsks={organizer && !on && state.capture.requests.length > 0 ? <NotesAsks state={state} controls={controls} decline={(id) => session.declineNotes(id)} after={state.waiting.length > 0} /> : undefined}
               rooms={roomsHere ? { open: !!open, onOpen: () => side.open('rooms') } : undefined} />
@@ -1787,7 +1787,7 @@ export function InCall({ session }: { session: CallSession }) {
       <CamOptions media={media} m={m} devices={devices} me={me?.person ?? { name: 'You' }} preview={false} onSwitched={(label) => toast(`Switched to ${label}`, { icon: 'video' })} />
     </>
   ) : pop === 'sounds' ? (
-    <><div className="ic-attention-sound-head"><button type="button" onClick={() => setPop('more')}><Icon name="left" size={15} />More</button><b>Sounds and notifications</b></div><CallSoundControls speakerId={m.speakerId} /><div className="ic-msep" /><CallNotificationControls /></>
+    <CallAlertControls speakerId={m.speakerId} onBack={() => setPop('more')} />
   ) : pop === 'quality' ? (
     <VideoQuality media={media} m={m} />
   ) : pop === 'board' ? (

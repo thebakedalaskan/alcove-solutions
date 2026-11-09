@@ -1,15 +1,17 @@
 /** Owns one call's OS delivery projection and exact existing-chat/action navigation registration. */
 import { type CallCrypto, type CallNotificationCategory, type CallNotificationTarget, type CallSession, type CallState, type DirectMessagesState, type NotificationPrefs } from '@alcove/api';
 import { useToast } from '@alcove/ui';
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { notificationPreferenceIntent, watchNotificationPreferences } from '~/lib/notification-preference-channel';
 import { useNotificationPreferences } from '~/lib/notification-preferences';
+import { log } from '~/lib/log';
 import { useLive } from '~/lib/live';
 import { closeOwnerNotifications, removeNotificationSource, updateNotificationSource, type BrowserAlert, type BrowserAlertKind } from '~/features/shell/notification-delivery';
 import { registerNotificationCall, routeBrowserNotification } from '~/features/shell/notification-navigation';
 import { useNotifyPermission } from '~/features/shell/notification-permission';
 import { watchNotificationViews } from '~/features/shell/notification-views';
 
+const nlog = log.child({ component: 'call-notifications' });
 interface Baseline { scope: string; active: boolean; ids: Set<string>; allowed: Map<string, CallNotificationCategory> }
 const messageKey = (target: CallNotificationTarget) => target.type === 'private' ? `private:${target.message}` : target.type === 'thread' || target.type === 'chat' ? `room:${target.message}` : null;
 function permits(prefs: NotificationPrefs, kind?: BrowserAlertKind): boolean {
@@ -26,21 +28,27 @@ export function useCallBrowserNotifications({ session, state, crypto, direct, ac
   const owner = ownerId ?? `guest:${session.ticket.identity}`;
   const original = `${state.generation}:${crypto.place}`;
   const scope = `call:${state.callId}:${session.ticket.identity}:${original}:${owner}`;
-  const token = useMemo(() => ({}), [session, scope]);
+  const lifetime = useRef({ scope, token: {} });
+  const trace = useRef('');
   const baseline = useRef<Baseline>({ scope, active: false, ids: new Set(), allowed: new Map() });
   const latest = useRef({ preferences, permission, active, foreground, scope, snapshot, onOpen, state });
   latest.current = { preferences, permission, active, foreground, scope, snapshot, onOpen, state };
-  useEffect(() => registerNotificationCall(session, (target) => latest.current.onOpen(target)), [session]);
-  useEffect(() => () => removeNotificationSource(scope, token), [scope, token]);
+  useEffect(() => registerNotificationCall(session, ownerId, (target) => latest.current.onOpen(target)), [session, ownerId]);
+  useEffect(() => {
+    const token = {};
+    lifetime.current = { scope, token };
+    return () => removeNotificationSource(scope, token);
+  }, [session, scope]);
   useEffect(() => watchNotificationViews(() => latest.current.foreground && latest.current.active ? [`${owner}:call:${state.callId}`, ...(ownerId ? [`${ownerId}:meeting:${state.meetingId}`] : [])] : []), [owner, ownerId, state.callId, state.meetingId]);
   useEffect(() => watchNotificationPreferences((signal) => {
     if (signal.ownerId !== latest.current.preferences.ownerId) return;
     for (const [id, category] of baseline.current.allowed) if (!signal.prefs.enabled || !signal.prefs[category]) baseline.current.allowed.delete(id);
   }), []);
   useEffect(() => {
-    if (preferences.ready && (!preferences.prefs.enabled || permission !== 'granted')) void closeOwnerNotifications(ownerId);
+    if (preferences.ready && (!preferences.prefs.enabled || permission !== 'granted')) void closeOwnerNotifications(ownerId, () => { const current = latest.current; const chosen = notificationPreferenceIntent(ownerId)?.prefs ?? current.preferences.prefs; return current.preferences.ownerId === ownerId && (!chosen.enabled || current.permission !== 'granted'); });
   }, [ownerId, preferences.ready, preferences.prefs.enabled, permission]);
   useEffect(() => {
+    const token = lifetime.current.token;
     const prefs = notificationPreferenceIntent(ownerId)?.prefs ?? preferences.prefs;
     const ids = new Set<string>();
     // Every confirmed incoming source is observed, including currently irrelevant replies and disabled categories.
@@ -55,10 +63,13 @@ export function useCallBrowserNotifications({ session, state, crypto, direct, ac
         const id = messageKey(candidate.destination.target) ?? `event:${candidate.destination.eventId}`;
         if (!before.ids.has(id) && candidate.fresh && permission === 'granted' && permits(prefs, candidate.category)) before.allowed.set(candidate.destination.eventId, candidate.category);
       }
-      for (const id of ids) before.ids.add(id);
+      before.ids = ids;
       for (const [id, category] of before.allowed) if (!permits(prefs, category) || !snapshot.candidates.some((candidate) => candidate.destination.eventId === id && candidate.fresh)) before.allowed.delete(id);
     }
     const chosen = baseline.current;
+    const details = { active, projectionReady: snapshot.ready, preferencesReady: preferences.ready, permission, enabled: prefs.enabled, observed: chosen.ids.size, allowed: chosen.allowed.size };
+    const signature = JSON.stringify(details);
+    if (trace.current !== signature) { trace.current = signature; nlog.debug('call notification eligibility', details); }
     const alerts: BrowserAlert[] = snapshot.candidates.filter((candidate) => chosen.allowed.has(candidate.destination.eventId)).map((candidate) => ({
       key: candidate.destination.eventId, kind: candidate.category, context: `${owner}:call:${state.callId}`, raisedAt: candidate.raisedAt, expiresAt: candidate.expiresAt,
       open: { to: 'call', code: state.code, event: candidate.destination }
@@ -67,11 +78,11 @@ export function useCallBrowserNotifications({ session, state, crypto, direct, ac
       allowed: (kind, key) => {
         const current = latest.current;
         const currentPrefs = notificationPreferenceIntent(ownerId)?.prefs ?? current.preferences.prefs;
-        return current.scope === scope && current.active && current.snapshot.ready && current.preferences.ready && current.preferences.ownerId === ownerId
+        return lifetime.current.scope === scope && lifetime.current.token === token && current.scope === scope && current.active && current.snapshot.ready && current.preferences.ready && current.preferences.ownerId === ownerId
           && current.permission === 'granted' && permits(currentPrefs, kind) && (key === undefined || baseline.current.allowed.has(key));
       },
       open: routeBrowserNotification,
       failed: () => toast('Browser notifications couldn’t be shown. Unread messages and outstanding call actions stay in Alcove.', { icon: 'bellOff' })
     });
-  }, [session, state, crypto, direct, snapshot, preferences.prefs, preferences.ready, owner, ownerId, scope, token, active, permission, toast]);
+  }, [session, state, crypto, direct, snapshot, preferences.prefs, preferences.ready, owner, ownerId, scope, active, permission, toast]);
 }

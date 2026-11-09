@@ -6,7 +6,7 @@ import { useRouterState } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
 import { dueFrom, dueOf } from '~/features/home/day';
 import { log } from '~/lib/log';
-import { notificationPreferenceIntent } from '~/lib/notification-preference-channel';
+import { notificationPreferenceIntent, watchNotificationPreferences } from '~/lib/notification-preference-channel';
 import { useNotificationPreferences } from '~/lib/notification-preferences';
 import { q } from '~/lib/queries';
 import { closeOwnerNotifications, removeNotificationSource, updateNotificationSource, type BrowserAlert, type BrowserAlertKind } from './notification-delivery';
@@ -73,31 +73,42 @@ export function useNotifications() {
   useQuery({ ...q.prefs(), enabled: allowed, ...POLL });
   const calls = useQuery({ ...q.upcoming(), enabled: allowed && prefs.prefs.beforeCall > 0, ...POLL }).data;
   const inbox = useQuery({ ...q.inbox(), enabled: allowed && prefs.prefs.followUpDue, ...POLL }).data;
-  const mentions = useQuery({ ...q.mentions(), enabled: allowed && prefs.prefs.tagged, ...POLL }).data;
-  const notes = useQuery({ ...q.notes(), enabled: allowed && (prefs.prefs.notesReady || prefs.prefs.sharedWithYou), ...POLL });
+  const mentions = useQuery({ ...q.mentions(), enabled: allowed, ...POLL });
+  const notes = useQuery({ ...q.notes(), enabled: allowed, ...POLL });
   const [tab] = useState(() => crypto.randomUUID());
   const token = useRef({});
-  const context = useRef({ prefs, allowed, go, toast });
-  context.current = { prefs, allowed, go, toast };
+  const context = useRef({ prefs, permission, allowed, go, toast });
+  context.current = { prefs, permission, allowed, go, toast };
   const noteEvents = useRef(new Map<string, BrowserAlert>());
   const previous = useRef<Map<string, NoteStatus> | null>(null);
+  const seenMentions = useRef<Set<string> | null>(null);
+  const mentionEvents = useRef(new Map<string, BrowserAlert>());
   const began = useRef(Date.now());
   const [tick, paint] = useState(0);
   const scope = owner ? `account:${owner}:${tab}` : '';
   useEffect(() => {
-    noteEvents.current.clear(); previous.current = null; began.current = Date.now();
+    noteEvents.current.clear(); previous.current = null; seenMentions.current = null; mentionEvents.current.clear(); began.current = Date.now();
     token.current = {};
     const owned = token.current;
     if (!scope || !allowed) return;
     return () => removeNotificationSource(scope, owned);
   }, [scope, allowed]);
   useEffect(() => {
-    if (prefs.ready && owner !== null && (!prefs.prefs.enabled || permission !== 'granted')) void closeOwnerNotifications(owner);
+    if (prefs.ready && owner !== null && (!prefs.prefs.enabled || permission !== 'granted')) void closeOwnerNotifications(owner, () => { const latest = context.current; const chosen = notificationPreferenceIntent(owner)?.prefs ?? latest.prefs.prefs; return latest.prefs.ownerId === owner && (!chosen.enabled || latest.permission !== 'granted'); });
   }, [owner, prefs.ready, prefs.prefs.enabled, permission]);
   useEffect(() => {
     if (!owner) return;
-    return watchNotificationViews(() => here === '/home' ? [`${owner}:home`] : []);
+    return watchNotificationViews(() => {
+      if (here === '/home') return [`${owner}:home`];
+      const parts = here.split('/');
+      return parts[1] === 'drive' && parts[2] && parts[3] ? [`${owner}:document:${parts[2]}:${parts[3]}`] : [];
+    });
   }, [owner, here]);
+  useEffect(() => watchNotificationPreferences((signal) => {
+    if (signal.ownerId !== owner) return;
+    for (const [id, event] of noteEvents.current) if (!category(signal.prefs, event.kind)) noteEvents.current.delete(id);
+    if (!signal.prefs.enabled || !signal.prefs.tagged) mentionEvents.current.clear();
+  }), [owner]);
   useEffect(() => {
     if (!allowed) return;
     const timer = setInterval(() => paint((version) => version + 1), 15_000);
@@ -112,24 +123,32 @@ export function useNotifications() {
       previous.current = new Map(list.map((note) => [note.id, note.status]));
       if (before) for (const note of list) {
         const was = before.get(note.id);
-        if (note.status === 'ready' && was !== undefined && was !== 'ready') noteEvents.current.set(`ready:${note.id}`, {
+        if (prefs.prefs.notesReady && note.status === 'ready' && was !== undefined && was !== 'ready') noteEvents.current.set(`ready:${note.id}`, {
           key: `ready:${note.id}`, kind: 'ready', context: `${owner}:note:${note.id}`, raisedAt: now, expiresAt: now + HOUR, open: { to: 'note', noteId: note.id }
         });
-        else if (was === undefined && note.received?.role === 'shared' && now - Date.parse(note.received.at) < HOUR) noteEvents.current.set(`shared:${note.id}`, {
+        else if (prefs.prefs.sharedWithYou && was === undefined && note.received?.role === 'shared' && now - Date.parse(note.received.at) < HOUR) noteEvents.current.set(`shared:${note.id}`, {
           key: `shared:${note.id}`, kind: 'shared', context: `${owner}:note:${note.id}`, raisedAt: Date.parse(note.received.at), expiresAt: Date.parse(note.received.at) + HOUR, open: { to: 'note', noteId: note.id }
         });
       }
-      for (const [key, event] of noteEvents.current) if (event.expiresAt <= now || !list.some((note) => event.open.to === 'note' && note.id === event.open.noteId && (event.kind !== 'ready' || note.status === 'ready'))) noteEvents.current.delete(key);
+      for (const [key, event] of noteEvents.current) if (!category(prefs.prefs, event.kind) || event.expiresAt <= now || !list.some((note) => event.open.to === 'note' && note.id === event.open.noteId && (event.kind !== 'ready' || note.status === 'ready'))) noteEvents.current.delete(key);
     }
-    const alerts: BrowserAlert[] = [...noteEvents.current.values()];
+    const tagged = mentions.isPlaceholderData || mentions.dataUpdatedAt < began.current ? undefined : mentions.data;
+    if (tagged) {
+      const before = seenMentions.current;
+      seenMentions.current = new Set(tagged.map((mention) => mention.id));
+      if (before && prefs.prefs.tagged) for (const mention of tagged) if (!before.has(mention.id)) mentionEvents.current.set(mention.id, {
+        key: `tagged:${mention.id}`, kind: 'tagged', context: `${owner}:document:${mention.workspaceId}:${mention.document}`, raisedAt: Date.parse(mention.at), expiresAt: Date.parse(mention.at) + HOUR,
+        open: { to: 'document', workspaceId: mention.workspaceId, documentId: mention.document, block: mention.block }
+      });
+      for (const [id, event] of mentionEvents.current) if (!prefs.prefs.tagged || event.expiresAt <= now || !tagged.some((mention) => mention.id === id)) mentionEvents.current.delete(id);
+    }
+    const alerts: BrowserAlert[] = [...noteEvents.current.values(), ...mentionEvents.current.values()];
     if (prefs.prefs.beforeCall) for (const meeting of calls ?? []) {
       if (meeting.status !== 'scheduled' || here === `/join/${meeting.code}` || here === `/call/${meeting.code}`) continue;
       const starts = Date.parse(meeting.startsAt);
       alerts.push({ key: `call:${meeting.id}:${meeting.startsAt}`, kind: 'call', context: `${owner}:meeting:${meeting.id}`, raisedAt: starts - prefs.prefs.beforeCall * 60_000, expiresAt: starts, open: { to: 'call', code: meeting.code, event: null } });
     }
     alerts.push(...(inbox?.followUps ?? []).flatMap((action) => dueAlerts(action, owner)));
-    for (const mention of mentions ?? []) alerts.push({ key: `tagged:${mention.id}`, kind: 'tagged', context: `${owner}:document:${mention.workspaceId}:${mention.document}`, raisedAt: Date.parse(mention.at), expiresAt: Date.parse(mention.at) + HOUR,
-      open: { to: 'document', workspaceId: mention.workspaceId, documentId: mention.document, block: mention.block } });
     const owned = token.current;
     updateNotificationSource({ token: owned, scope, owner, ownerId: owner, alerts,
       allowed: (kind) => {
@@ -140,5 +159,5 @@ export function useNotifications() {
       open: (data) => context.current.go(data),
       failed: () => context.current.toast('Browser notifications couldn’t be shown. Unread messages and outstanding actions stay in Alcove.', { icon: 'bellOff' })
     });
-  }, [owner, allowed, prefs.prefs, calls, inbox, mentions, notes.data, notes.dataUpdatedAt, notes.isPlaceholderData, here, scope, tick]);
+  }, [owner, allowed, prefs.prefs, calls, inbox, mentions.data, mentions.dataUpdatedAt, mentions.isPlaceholderData, notes.data, notes.dataUpdatedAt, notes.isPlaceholderData, here, scope, tick]);
 }

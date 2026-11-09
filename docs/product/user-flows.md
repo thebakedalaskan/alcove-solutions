@@ -325,7 +325,7 @@ time, slides in on the right.
   while you present), **Raise your hand**, **More** and **Leave**, and, in focus, **Show everything**. **More** is the same
   on every screen: **Turn on captions** (or **Turn off captions**), **Mark this moment** (Only you, **B**), **Catch up on
   what you missed**, **Breakout rooms** (the organizer's, once someone else is in the call), then **Audio and video
-  settings**, **Sounds**, **Video quality**, **Move to another device** and **Keyboard shortcuts**, which lists the call's keys, then
+  settings**, **Sounds and notifications**, **Video quality**, **Move to another device** and **Keyboard shortcuts**, which lists the call's keys, then
   what works on a tile, on a shared screen and on a board you present. On a phone the dock is microphone, camera,
   **Share**, **More** and **Leave**, and **More** starts with a grid of **Board**, **Workspace**, **Notes**, **Chat** (with
   its count) and **People**, then **Raise your hand**
@@ -495,6 +495,7 @@ time, slides in on the right.
   their side.
 - **Private messages (journey 6.30).** Choose someone in **Chat audience**, or **Message privately** on their tile. The composer always says **Only you and [name]**. Each person and room chat keep separate drafts. Private replies have times, unread counts and sending, sent, delivered or failed states; **Retry privately** keeps the original recipient and message. A departed recipient or different room makes that conversation unavailable. Only the original pair can read it, including admitted guests. Private messages never enter the shared chat, recording, transcript, AI notes or shared exports, and history ends with the call. Unread indicators and optional sound do not open over shared work or take focus; notifications show no private preview.
 - **Chat threads (journey 6.31).** Reply opens one discussion under its original message. Replying to a reply keeps that thread and shows the specific context. Counts and unread replies stay on the original; Open new replies moves to the first unread message. Back to chat restores your position and its own draft. Every room, private audience and thread retains its separate draft. Only the original audience can read or reply; unavailable originals show a placeholder, with only the replies you can already read. Failed replies stay in that thread for deliberate retry. Sounds → Replies and Show reply alerts control new-reply cues for authors and people who have participated, without notifying the entire room or revealing private previews. Seeing a message while the call is visible and focused updates its read receipt.
+- **Browser notifications (journey 6.33).** Explicitly enable browser alerts, choose their categories and turn them off independently from sounds and local reply alerts. In a background tab, fresh authorized private messages, relevant replies/mentions and pending call actions can show generic alerts. Click back to the exact original conversation/action after access is checked; handled actions and ended sessions explain their unavailability. Blocked or unsupported browsers retain the same unread counts and pending actions in Alcove.
 
 - **Reacting to chat.** Hover a message (or tab to it) to show **Add reaction**; it opens a picker of eight emoji
   (thumbs up, thumbs down, heart, smile, laughing, surprised, sad, celebrate). Each emoji someone used sits under
@@ -609,7 +610,7 @@ counts and a polite screen-reader announcement without moving focus.
     controls as People. A withdrawn, resolved or expired request disappears. A stale press never claims that someone joined.
 
 **Sounds.** Successful microphone on/off transitions and fresh joins, departures, hands, questions and host admissions
-have short speaker cues. Room changes and reconnection synchronize without playing history. **More → Sounds** includes **Play sounds**, **Quiet mode**, volume, individual categories and a preview, also for guests.
+have short speaker cues. Room changes and reconnection synchronize without playing history. **More → Sounds and notifications → Sounds** includes **Play sounds**, **Quiet mode**, volume, individual categories and a preview, also for guests.
 Settings has the same account preferences. Quiet mode retains microphone confirmations and host admission cues; browser
 notification permission is independent. Sound uses your selected speaker and never enters the outgoing call or notes.
 If playback is blocked, Attention and its counts still work.
@@ -1356,22 +1357,9 @@ goes back, with a toast saying why. Parts that don't load say so, with **Try aga
   again**. **Play test sound** plays through the chosen speaker; a browser that can't choose one says it uses the
   system's. The camera is a list only, never opened here, and until the browser has allowed a camera on the join
   screen it says it isn't allowed yet; **Reduce background noise**. They're kept in this browser only.
-- **Notifications**: browser notifications, shown on this device while Alcove is open in a tab (any page, a call or a
-  recording included; nothing is pushed when no tab is open). Until the browser allows them the choices are greyed
-  out and **Turn on** asks it (only when pressed; focus stays on the row once it answers);
-  when the browser blocks them, the row says to allow them for the site in the browser's settings. Then: before a
-  call you organize starts (1 min, 5 min or off); when notes you have are ready (not while that note's page is on
-  screen, where they arrive anyway); when someone shares notes with you ("Priya shared it with Product"); when
-  someone asks for notes in a call you organize, while you're in another tab or app (in front of you, the call says
-  so itself); when someone tags you in a document you can open, while you're somewhere else (in front of you, the
-  workspace says so itself); and on the due day of a follow-up you've taken on, at 9:00 (off by default; for every due Home shows
-  as a day, so not "next week" or "ASAP"; not when the due day was set after 9:00 that day). One tab in the browser shows them, and the next takes over when it closes. Each shows
-  once, in any tab and across reloads, and several at once (after the computer wakes, or the connection comes back)
-  arrive as one: "3 notes are ready", "2 follow-ups are due today". Clicking one brings Alcove forward: on the
-  call's join page, the note, Notes, Home, the line someone tagged you on, or the call you're in, in the tab already there or else the one used
-  last, asking first if that means leaving a call or a recording. With no tab left, it opens one. Signing out, or
-  deleting the account, closes the ones still showing and forgets which have shown. The choices are saved with your
-  preferences, and one changed in another tab or on another device takes effect within a minute.
+- **Notifications**: choose **Enable browser notifications** in Settings or **More → Sounds and notifications → Browser alerts** in a call. Only that action asks browser permission. The row explains whether the browser allows, blocks or cannot show alerts, with guidance and persistent unread/action indicators in Alcove. A global switch and separate private-message, room reply/mention, hand, question, host admission and timer switches control call alerts. Existing call reminders, notes ready/shared/requested, document mentions and due follow-ups use the same preferences. Guests keep their explicit choices in this browser.
+  Alerts arrive while Alcove stays open in a background tab/window; there is no delivery service after every tab closes. They always hide names, messages and call/workspace details, including on lock screens. Browser alerts are silent; sound preferences remain independent. **Show reply alerts** controls local on-screen replies separately from browser permission.
+  The relevant focused conversation/action suppresses a redundant alert. Events deduplicate across tabs and reconnects, bursts share one alert per category, and handling/reading/withdrawing an event closes or replaces its alert where supported. Enabling a category or joining a thread does not replay old messages. Clicking focuses an existing tab, preferring the original call connection, checks current access, then opens the exact conversation, thread, pending action or timer. An ended private session or handled action says it is no longer available. Sign-out, removal and revoked permission stop delivery and close the applicable alerts. Other-device preference changes arrive through background refresh.
 - **Appearance**: system, light or dark, each shown as a small evening in its own colours, kept in this browser.
 - **Plan and credits**: the time of notes left, with a sun on the line under it: at the end of the line on a new
   account, back along it as notes are written, and set once there's none left. Then the minutes of notes used this month
@@ -1407,7 +1395,7 @@ Signing in again starts a new, empty account with 10,000 credits.
 
 ### 11.20 Choose call sounds
 
-Open **Settings → Sounds** for master sound, volume, quiet mode and separate microphone, people, hands, questions, admissions, board timer and incoming call switches. Preview each phrase at your chosen volume. These controls work even when browser notifications are blocked. **More → Sounds** in a call offers the same choices, including for guests. Quiet mode keeps your microphone confirmations and requests to join when you host. Signed-in choices follow your account; guests keep theirs in this browser.
+Open **Settings → Sounds** for master sound, volume, quiet mode and separate microphone, people, hands, questions, admissions, board timer and incoming call switches. Preview each phrase at your chosen volume. These controls work even when browser notifications are blocked. **More → Sounds and notifications → Sounds** in a call offers the same choices, including for guests. Quiet mode keeps your microphone confirmations and requests to join when you host. Signed-in choices follow your account; guests keep theirs in this browser.
 
 ## 12. The Drive and the workspace
 

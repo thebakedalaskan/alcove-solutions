@@ -1,13 +1,15 @@
 /** One sealed account preference model; guests deliberately opt in using the same validated local shape. */
-import { DEFAULT_NOTIFICATION_PREFERENCES, NotificationPrefsSchema, errorMessage, type NotificationPrefs } from '@alcove/api';
+import { DEFAULT_NOTIFICATION_PREFERENCES, NotificationPrefsSchema, errorMessage, type NotificationPrefs, type Session } from '@alcove/api';
 import { useToast } from '@alcove/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { log } from './log';
 import { announceNotificationPreferences, notificationPreferenceIntent, watchNotificationPreferences } from './notification-preference-channel';
+import { accountGeneration } from './signedOut';
 import { q, usePreferences } from './queries';
 
 const KEY = 'alcove.guest.notifications';
+const identityOf = (session: Session | null | undefined) => session ? `${session.ownerId}:${session.createdAt}` : session === null ? 'guest' : 'unknown';
 const nlog = log.child({ component: 'notification-preferences' });
 export function guestNotificationPreferences(): NotificationPrefs {
   try {
@@ -21,6 +23,27 @@ export function useNotificationPreferences() {
   const account = session.data;
   const profile = useQuery({ ...q.prefs(), enabled: Boolean(account) });
   const qc = useQueryClient();
+  const identity = useRef({ key: identityOf(account), revision: 0 });
+  const trackIdentity = () => {
+    const key = identityOf(qc.getQueryData(q.session().queryKey));
+    if (key !== identity.current.key) identity.current = { key, revision: identity.current.revision + 1 };
+  };
+  useEffect(() => {
+    trackIdentity();
+    return qc.getQueryCache().subscribe((event) => { if (event.query.queryKey.length === 1 && event.query.queryKey[0] === 'session') trackIdentity(); });
+  }, [qc]);
+  const capturePermissionIntent = () => {
+    trackIdentity();
+    const before = qc.getQueryData(q.session().queryKey);
+    const key = identityOf(before);
+    const revision = identity.current.revision;
+    const generation = before ? accountGeneration(before.ownerId) : null;
+    return () => {
+      trackIdentity();
+      return key !== 'unknown' && identity.current.key === key && identity.current.revision === revision
+        && (!before || (generation !== null && accountGeneration(before.ownerId) === generation));
+    };
+  };
   const save = usePreferences();
   const toast = useToast();
   const [guest, setGuest] = useState(guestNotificationPreferences);
@@ -53,6 +76,6 @@ export function useNotificationPreferences() {
     }
   };
   return { prefs: account ? notificationPreferenceIntent(account.ownerId)?.prefs ?? profile.data?.notifications ?? DEFAULT_NOTIFICATION_PREFERENCES : notificationPreferenceIntent(null)?.prefs ?? guest, update,
-    scope: account?.ownerId ?? 'guest', ownerId: account?.ownerId ?? null,
+    scope: `${identityOf(account)}:${identity.current.revision}`, capturePermissionIntent, ownerId: account?.ownerId ?? null,
     ready: !session.isPending && !session.isError && (!account || Boolean(profile.data)) };
 }

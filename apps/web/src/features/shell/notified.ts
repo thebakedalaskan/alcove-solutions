@@ -77,10 +77,11 @@ function receiptDb(): Promise<IDBDatabase> {
   const attempt = new Promise<IDBDatabase>((resolve, reject) => {
     const request = indexedDB.open(DB, 1);
     request.onupgradeneeded = () => request.result.createObjectStore('receipts', { keyPath: 'id' });
-    request.onerror = () => reject(request.error);
     let abandoned = false;
-    request.onblocked = () => { abandoned = true; reject(new DOMException('Notification receipts are unavailable.', 'InvalidStateError')); };
-    request.onsuccess = () => { const db = request.result; if (abandoned) { db.close(); return; } db.onversionchange = () => { db.close(); opened = null; }; resolve(db); };
+    const timeout = setTimeout(() => { abandoned = true; reject(new DOMException('Notification receipts did not respond.', 'TimeoutError')); }, 5000);
+    request.onerror = () => { clearTimeout(timeout); reject(request.error); };
+    request.onblocked = () => { clearTimeout(timeout); abandoned = true; reject(new DOMException('Notification receipts are unavailable.', 'InvalidStateError')); };
+    request.onsuccess = () => { clearTimeout(timeout); const db = request.result; if (abandoned) { db.close(); return; } db.onversionchange = () => { db.close(); opened = null; }; resolve(db); };
   });
   opened = attempt;
   void attempt.catch(() => { if (opened === attempt) opened = null; });

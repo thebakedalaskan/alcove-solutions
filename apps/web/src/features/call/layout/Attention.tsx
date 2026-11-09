@@ -2,6 +2,7 @@ import { errorMessage, type CallFeedback, type CallFeedbackKind, type CallQuesti
 import { AttentionHand, AttentionQuestion, AttentionSection, Button, CallSignal, CallSignalChoices, EmptyState, Tabs, useToast, type IconName } from '@alcove/ui';
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { log } from '~/lib/log';
+import { useActionFocus, type ActionJump } from './actionFocus';
 import { useDraft, type Draft } from './side';
 
 const alog = log.child({ component: 'call-attention' });
@@ -18,10 +19,12 @@ export type AttentionTab = 'hands' | 'questions' | 'signals' | 'waiting';
 export interface QuestionDraft extends Draft { submission: { id: string; text: string } | null }
 
 /** Shared call questions, hands and feedback. Ask in Notes remains a private AI conversation. */
-export function AttentionView({ session, state, ready, signals, presenter, draft, waiting, tab, onTab }: {
+export function AttentionView({ session, state, ready, signals, presenter, draft, waiting, tab, onTab, jump }: {
   session: CallSession; state: CallState; ready: boolean; signals: CallFeedback[]; presenter: boolean; draft: QuestionDraft; waiting: ReactNode;
+  jump?: ActionJump | undefined;
   tab: AttentionTab; onTab: (tab: AttentionTab) => void;
 }) {
+  const focus = useActionFocus(jump);
   const toast = useToast();
   const [busy, setBusy] = useState<string | null>(null);
   const pending = useRef(false);
@@ -75,7 +78,7 @@ export function AttentionView({ session, state, ready, signals, presenter, draft
   ];
   const activeTab = tab === 'waiting' && !host ? 'hands' : tab;
   const disabled = busy !== null || !ready;
-  return <div className="ic-attention-body">
+  return <div ref={focus} className="ic-attention-body">
     <Tabs className="ic-attention-tabs" label="Call attention" value={activeTab} onChange={onTab} options={options} />
     {!ready ? <EmptyState art={null} title="Finding this room" >Requests appear once your connection is ready.</EmptyState> : activeTab === 'waiting' ? state.waiting.length ? waiting : <EmptyState art={null} title="No one waiting">New requests to join appear here.</EmptyState> : <>
       <div className="ic-attention-scroll">
@@ -83,13 +86,13 @@ export function AttentionView({ session, state, ready, signals, presenter, draft
           <Button className="ic-attention-mine" variant="secondary" size="sm" icon="hand" disabled={disabled} onClick={() => run('hand', () => session.setHand(!ownHand), ownHand ? 'Your hand is lowered' : 'Your hand is raised. Everyone in this room can see it.')}>{ownHand ? 'Lower your hand' : 'Raise your hand'}</Button>
           {!attention.hands.length ? <EmptyState art={null} title="No hands raised" >Raise a hand when you’d like a turn.</EmptyState> : <ol className="ic-attention-hands">{attention.hands.map((h, i) => {
             const p = state.participants.find((p) => p.id === h.participantId || p.seat === h.seat);
-            return <AttentionHand key={h.id} number={i + 1} person={p?.person ?? { name: 'Someone' }} detail={p?.isMe ? 'Your hand is raised' : 'Waiting for a turn'} busy={disabled} lower={host || p?.isMe ? { label: p?.isMe ? 'Lower yours' : 'Lower', onClick: () => run(h.id, () => p?.isMe ? session.setHand(false) : session.lowerHand(h.id), p?.isMe ? 'Your hand is lowered' : 'Hand lowered') } : null} />;
+            return <AttentionHand key={h.id} actionId={h.id} number={i + 1} person={p?.person ?? { name: 'Someone' }} detail={p?.isMe ? 'Your hand is raised' : 'Waiting for a turn'} busy={disabled} lower={host || p?.isMe ? { label: p?.isMe ? 'Lower yours' : 'Lower', onClick: () => run(h.id, () => p?.isMe ? session.setHand(false) : session.lowerHand(h.id), p?.isMe ? 'Your hand is lowered' : 'Hand lowered') } : null} />;
           })}</ol>}
         </AttentionSection>}
         {activeTab === 'questions' && <AttentionSection title="Questions for this room">
           <div className="ic-attention-sort" role="group" aria-label="Question order"><button type="button" aria-pressed={sort === 'votes'} onClick={() => { setSort('votes'); reorder('votes'); }}>Most votes</button><button type="button" aria-pressed={sort === 'recent'} onClick={() => { setSort('recent'); reorder('recent'); }}>Newest</button><button type="button" onClick={() => reorder(sort)}>Refresh order</button></div>
           {!shown.length && <EmptyState art={null} title="No open questions" >Post a question for the people in this room.</EmptyState>}
-          {shown.map((q) => <AttentionQuestion key={q.id} author={q.author} text={q.text} votes={q.votes} voted={q.voted} status={q.status} pinned={q.pinned} busy={disabled}
+          {shown.map((q) => <AttentionQuestion key={q.id} actionId={q.id} author={q.author} text={q.text} votes={q.votes} voted={q.voted} status={q.status} pinned={q.pinned} busy={disabled}
             onVote={() => run(q.id, () => session.voteQuestion(q.id, !q.voted))}
             actions={host ? { pin: () => run(q.id, () => session.pinQuestion(q.pinned ? null : q.id), q.pinned ? 'Question unpinned' : 'Question pinned'), answer: () => run(q.id, () => session.resolveQuestion(q.id, 'answered'), 'Question marked answered'), dismiss: () => run(q.id, () => session.resolveQuestion(q.id, 'dismissed'), 'Question dismissed') } : undefined} />)}
           {questions.some((q) => q.status !== 'open') && <Button size="sm" variant="quiet" onClick={() => setClosed(!closed)}>{closed ? 'Hide resolved questions' : 'Show resolved questions'}</Button>}

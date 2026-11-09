@@ -106,6 +106,8 @@ export function PanelHost({ area, size, tiles, frames, side, swap }: {
   useEffect(() => {
     if (!view) return;
     const at = document.activeElement;
+    // An exact validated notification target has already taken focus in the mounted panel. Keep that row selected.
+    if (at instanceof Element && sheet.current?.contains(at) && at.closest('[data-call-action]')) return;
     const lost = at === null || at === document.body;
     if (onPhone || lost || (at !== sheet.current && sheet.current?.contains(at))) sheet.current?.focus({ preventScroll: true });
   }, [view, onPhone]);

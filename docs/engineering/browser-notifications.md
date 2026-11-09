@@ -1,0 +1,31 @@
+# Browser notifications
+
+Browser alerts are an optional complement to unread chat, reply counts, Attention, People and timers. Alcove must remain open in at least one tab or window. There is no Web Push provider, server subscription or delivery guarantee after every tab closes. Browsers and operating systems decide whether a permitted alert appears as a banner or in their notification centre. Some mobile browsers require an installed web app or do not support these APIs; the controls explain when notifications are unavailable.
+
+Settings → Notifications and More → Sounds and notifications → Browser alerts use the same account preferences. Guests deliberately opt in using the validated `alcove.guest.notifications` local preference. Only **Enable browser notifications** requests browser permission. Denied/revoked permission is observed through the Permissions API where supported, plus focus/visibility refresh; there is no automatic repeat prompt. Browser master/categories and local reply alerts/sound choices are independent. OS alerts are always silent; the existing sound owner remains the only audible cue.
+
+## Recipients and freshness
+
+`CallSession.notifications` is a content-free, immutable projection of the current authenticated call, MLS and direct-message snapshots. It grants no new access. A successful current synchronization authorizes it; API/MLS failures suspend it. Private events require the exact current recipient, peer, generation and room. Admission events require the current host; notes requests require the organizer. Questions and room messages follow the source snapshots' existing audience. Thread replies are relevant only to authors and participants; a mention takes one room-message category and a private mention remains one private-message event.
+
+The projection and browser observe all confirmed incoming message IDs, including irrelevant messages and disabled categories. A first reply, reading, enabling a category or reconnecting cannot turn an already observed source into a fresh event. Raw unread destinations remain available for navigation, separately from the two-minute delivery window. Initial synchronization is a baseline, not a backlog. Current hands, questions and requests disappear when handled; admission delivery expires after thirty minutes. Timer warnings/expiry have distinct stable event IDs and disappear when the timer pauses or stops.
+
+Focused relevant views publish only opaque account/context IDs through an expiring BroadcastChannel/localStorage presence record. The OS delivery owner consumes observed events without showing another alert. The lookup itself is read-only and never schedules its own reconciliation. Presence expires after 6.5 seconds; abandoned rows are removed. Call presence is for the visible main call; the floating picture alone does not expose a conversation.
+
+## Delivery and cleanup
+
+All OS strings are defined in `features/shell/notification-delivery.ts`; sources cannot provide preview text. Names, messages, titles, workspace details, keys and passes never enter a notification. Data contains opaque destination IDs, the public call code when needed, account ID and a random delivery instance. It contains no credentials or access-bearing invitation URL. Logs contain category/count or failure state only.
+
+Each source groups current events by category into one stable OS tag. Atomic IndexedDB read/write claims deduplicate event IDs across simultaneous tabs even without Web Locks. Short pending leases recover abandoned delivery; shown receipts remain only until the event's delivery expiry, with a bounded store. Existing `alcove.notified.<ownerId>` receipt keys remain readable. Sign-out clears browser receipts and outstanding OS notifications. A late async completion rechecks owner, permission, original context, current event, expiry and focused presence. Worker cleanup closes its exact random delivery instance so an older completion cannot close a replacement.
+
+Read/withdrawn/handled events reconcile the OS handle where the browser supports closing it. Master/category changes propagate through a boolean-only preference channel; polling recovers account changes from other devices. Disable/revoke cleanup checks the latest intent after browser awaits. No notification is the sole record of pending activity. Delivery failure leaves those persistent in-app indicators and explains the failure with a generic toast.
+
+Clicks focus the same account's existing tab, preferring the exact original call connection. The page refreshes session and call access before opening the existing chat/thread, exact focused action row, or timer. A removed/handled destination says it is unavailable. An original private session that ended is never reconstructed in another connection. A new window receives its intent only after the navigation listener is ready, without adding it to a URL or persistent storage. Normal leave/recording guards still apply to page navigation.
+
+## Stored-data upgrade
+
+There is no new SQL migration or sealed record kind. `NotificationPrefs` adds defaulted fields: old sealed profiles preserve explicit browser permission and existing categories (`enabled` defaults to true for those profiles); new accounts explicitly start with the browser master false. New call categories default false. Existing local reply-alert and sound fields retain their independent defaults and keys. Browser-only receipts hold no message content and are physically cleared on sign-out.
+
+## Verification
+
+Real HTTP integration flows cover new-account and prior-profile defaults, account isolation, host admission, read/withdrawal reconciliation, recipient-only private messages, relevant room threads, all-message freshness baselines, whole-API outage/recovery, notes requests, presenter/board timers and breakout boundaries. They use real Postgres/object storage and the public HTTP client. Browser-specific behavior is checked manually; Storybook journeys demonstrate it and contain no assertions. The native browser story uses the real permission/Notification APIs with synthetic media and a stand-in call, and reports public creation/show/error/close events without changing product behavior.

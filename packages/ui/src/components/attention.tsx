@@ -19,18 +19,20 @@ export function CallSignal({ label, icon, count, className }: { label: string; i
   return <span className={cn('ac-call-signal', className)}><Icon name={icon} size={14} /><span>{label}</span>{count !== undefined && <b>{count}</b>}</span>;
 }
 
-export function AttentionHand({ person, number, detail, lower, busy }: {
+export function AttentionHand({ person, number, detail, lower, busy, actionId }: {
+  actionId?: string | undefined;
   person: AvatarPerson; number: number; detail: string; lower: { label: string; onClick: () => void } | null; busy: boolean;
 }) {
-  return <li className="ac-attention-hand"><span className="number">{number}</span><Avatar person={person} size={30} /><div className="person"><b className="ac-clamp-1">{person.name}</b><small>{detail}</small></div>{lower && <Button size="xs" variant="quiet" disabled={busy} onClick={lower.onClick}>{lower.label}</Button>}</li>;
+  return <li className="ac-attention-hand" data-call-action={actionId} tabIndex={actionId ? -1 : undefined}><span className="number">{number}</span><Avatar person={person} size={30} /><div className="person"><b className="ac-clamp-1">{person.name}</b><small>{detail}</small></div>{lower && <Button size="xs" variant="quiet" disabled={busy} onClick={lower.onClick}>{lower.label}</Button>}</li>;
 }
 
 /** One question: stable identity and a separate vote control preserve where someone's reading. */
-export function AttentionQuestion({ author, text, votes, voted, status, pinned, busy, onVote, actions }: {
+export function AttentionQuestion({ author, text, votes, voted, status, pinned, busy, onVote, actions, actionId }: {
+  actionId?: string | undefined;
   author: AvatarPerson; text: string; votes: number; voted: boolean; status: 'open' | 'answered' | 'dismissed'; pinned: boolean; busy: boolean;
   onVote: () => void; actions?: { pin: () => void; answer: () => void; dismiss: () => void } | undefined;
 }) {
-  return <article className={cn('ac-attention-question', pinned && 'is-pinned')} aria-label={`Question from ${author.name}`}>
+  return <article data-call-action={actionId} tabIndex={actionId ? -1 : undefined} className={cn('ac-attention-question', pinned && 'is-pinned')} aria-label={`Question from ${author.name}`}>
     <div className="by"><Avatar person={author} size={22} /><b className="ac-clamp-1">{author.name}</b>{pinned && <span className="state"><Icon name="pin" size={12} />Pinned</span>}{status !== 'open' && <span className="state">{status === 'answered' ? 'Answered' : 'Dismissed'}</span>}</div>
     <p>{text}</p><div className="actions"><button type="button" className="ac-attention-vote" aria-label={`${voted ? 'Remove vote' : 'Vote for question'} from ${author.name}, ${votes} votes`} aria-pressed={voted} disabled={busy || status !== 'open'} onClick={onVote}><Icon name="up" size={15} /><b>{votes}</b>{voted ? 'Voted' : 'Vote'}</button>{actions && status === 'open' && <span className="host-actions"><IconButton icon={pinned ? 'pinOff' : 'pin'} label={pinned ? 'Unpin question' : 'Pin question'} disabled={busy} onClick={actions.pin} /><IconButton icon="check" label="Mark question answered" disabled={busy} onClick={actions.answer} /><IconButton icon="x" label="Dismiss question" disabled={busy} onClick={actions.dismiss} /></span>}</div>
   </article>;

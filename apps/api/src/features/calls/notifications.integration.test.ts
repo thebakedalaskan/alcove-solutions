@@ -154,4 +154,67 @@ describe('authorized browser notification candidates', () => {
     await host.leave();
   });
 
+  it('reconciles exact notes requests and both timer lifecycles without exposing timer labels', async () => {
+    const browser = h.browser();
+    await browser.api.auth.signIn('sso', { email: `timed-notifier.${Date.now()}@tests.example` });
+    const { code } = await browser.api.calls.startNow({ notes: 'off' });
+    const host = await browser.api.calls.join(code, { cam: false, mic: false });
+    const guest = await h.browser().api.calls.join(code, { cam: false, mic: false, name: 'Sam' });
+    await until(() => host.getSnapshot().waiting.length === 1, 'notes requester waiting');
+    await host.admit(guest.ticket.identity);
+    await until(() => guest.notifications.getSnapshot().ready, 'notes requester authorized');
+    await guest.requestNotes(true);
+    await until(() => candidates(host).some((candidate) => candidate.category === 'notesRequested'), 'organizer notes request');
+    expect(candidates(guest).some((candidate) => candidate.category === 'notesRequested')).toBe(false);
+    const request = candidates(host).find((candidate) => candidate.category === 'notesRequested');
+    expect(request?.destination.target.type).toBe('capture');
+    await guest.requestNotes(false);
+    await until(() => !candidates(host).some((candidate) => candidate.category === 'notesRequested'), 'withdrawn notes request');
+    await host.setTimerSequence({ expectedRevision: null, segments: [{ id: 'opening', label: 'CANARY-TIMER-LABEL', durationSeconds: 1, presenter: null }] });
+    await host.controlTimer({ expectedRevision: 0, action: 'start' });
+    await until(() => candidates(guest).some((candidate) => candidate.category === 'timers'), 'authorized presenter warning');
+    const warning = candidates(guest).find((candidate) => candidate.category === 'timers');
+    expect(warning?.destination.target).toMatchObject({ type: 'timer', timer: 'presenter' });
+    expect(JSON.stringify(warning)).not.toContain('CANARY');
+    await until(() => candidates(guest).some((candidate) => candidate.destination.eventId.endsWith(':end')), 'distinct expiry warning');
+    const revision = host.getSnapshot().timerSequence?.revision;
+    if (revision === undefined) throw new Error('Missing timer revision');
+    await host.controlTimer({ expectedRevision: revision, action: 'pause' });
+    await until(() => !candidates(guest).some((candidate) => candidate.category === 'timers'), 'paused timer notification withdrawn');
+    await host.openBoard({ template: 'blank' });
+    await host.startTimer(3);
+    await guest.refresh();
+    expect(candidates(guest).some((candidate) => candidate.destination.target.type === 'timer' && candidate.destination.target.timer === 'board')).toBe(false);
+    await host.stopTimer();
+    await until(() => guest.getSnapshot().board.timer === null, 'stopped board timer');
+    await host.leave();
+  });
+
+  it('keeps private and question destinations inside their original breakout audience and removes old-place candidates', async () => {
+    const organizer = h.browser(), north = h.browser(), south = h.browser();
+    await organizer.api.auth.signIn('sso', { email: `rooms-host.${Date.now()}@tests.example` });
+    const a = await north.api.auth.signIn('sso', { email: `rooms-north.${Date.now()}@tests.example` });
+    const b = await south.api.auth.signIn('sso', { email: `rooms-south.${Date.now()}@tests.example` });
+    const { code } = await organizer.api.calls.startNow({ notes: 'off', guests: [a.session.user.email, b.session.user.email] });
+    const host = await organizer.api.calls.join(code, { cam: false, mic: false });
+    const first = await north.api.calls.join(code, { cam: false, mic: false });
+    const second = await south.api.calls.join(code, { cam: false, mic: false });
+    await until(() => first.direct.getSnapshot().peers.includes(second.ticket.identity), 'original audience');
+    await second.direct.send(first.ticket.identity, 'CANARY-PRIVATE-OLD-ROOM');
+    await until(() => candidates(first).some((candidate) => candidate.category === 'privateMessages'), 'original private unread');
+    host.openRooms({ rooms: [{ name: 'North', emails: [a.session.user.email] }, { name: 'South', emails: [b.session.user.email] }], minutes: 10, board: { mode: 'none', template: 'blank' } });
+    await until(() => first.crypto.getSnapshot().place !== 'main' && second.crypto.getSnapshot().place !== 'main' && first.notifications.getSnapshot().ready, 'separate authorized rooms');
+    expect(candidates(first).some((candidate) => candidate.category === 'privateMessages')).toBe(false);
+    await first.postQuestion('room-question-notification', 'CANARY-ROOM-QUESTION');
+    await second.refresh(); await host.refresh();
+    expect(candidates(second).some((candidate) => candidate.category === 'questions')).toBe(false);
+    expect(candidates(host).some((candidate) => candidate.category === 'questions')).toBe(false);
+    const northPlace = first.crypto.getSnapshot().place;
+    host.visitRoom(northPlace);
+    await until(() => host.crypto.getSnapshot().place === northPlace && host.notifications.getSnapshot().ready, 'host joined original room');
+    // Arriving later never recovers protected question history or a private message from another connection/audience.
+    expect(candidates(host).some((candidate) => candidate.category === 'questions' || candidate.category === 'privateMessages')).toBe(false);
+    await host.leave();
+  });
+
 });

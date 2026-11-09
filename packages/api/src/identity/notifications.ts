@@ -33,13 +33,13 @@ export type NotificationOpen = z.infer<typeof NotificationOpenSchema>;
  */
 export const WorkerMessageSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('alcove.where') }),
-  z.object({ type: z.literal('alcove.notification'), open: NotificationOpenSchema, ownerId: IDSchema.nullable().default(null) }),
+  z.object({ type: z.literal('alcove.notification'), open: NotificationOpenSchema, ownerId: IDSchema.nullable() }),
   z.object({ type: z.literal('alcove.ready') })
 ]);
 
 /** Minimal OS data; keys, scope and destinations are opaque IDs, never previews or access-bearing links. */
 export const BrowserNotificationDataSchema = z.object({
-  v: z.literal(1), ownerId: IDSchema.nullable(), source: z.string().min(1).max(300), key: z.string().min(1).max(500), open: NotificationOpenSchema
+  v: z.literal(1), instance: z.string().min(1).max(100), ownerId: IDSchema.nullable(), source: z.string().min(1).max(300), key: z.string().min(1).max(500), open: NotificationOpenSchema
 });
 export type BrowserNotificationData = z.infer<typeof BrowserNotificationDataSchema>;
 /** Atomic browser-only claims, retained only until the corresponding alert can no longer be delivered. */

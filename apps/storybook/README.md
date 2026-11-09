@@ -429,3 +429,6 @@ Calls / Leaving and Journeys / 7 End the call and get the notes show one-press d
 guests, pending and failed departures, a retry, and the confirmation retained by the current host, including a stand-in.
 Calls / Floating call / Participant ready to open and Participant leave refused keep the real native window hand-off
 available for manual checks of the same behavior.
+
+
+Browser notifications (#88): Calls/Browser notifications shows explicit opt-in, enabled/blocked/unsupported/refused delivery and phone/light variants on the real controls. Journey 6.33 chooses categories without changing sound or local reply alerts. Native browser is a manual development-origin permission/OS story: Enable explicitly, then switch tabs before the 20–65 second scripted activity. Its separate report observes the actual browser constructor's show/error/close events and the content-free call projection. All media is synthetic. Close/disable alerts when finished. These are demonstrations, never browser tests.

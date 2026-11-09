@@ -11,12 +11,14 @@ let tab: string | null = null;
 let channel: BroadcastChannel | null = null;
 let timer: ReturnType<typeof setInterval> | null = null;
 let warned = false;
+let publishedAt = 0;
 const focused = () => document.visibilityState === 'visible' && document.hasFocus();
 const current = () => focused() ? [...new Set([...publishers].flatMap((publish) => [...publish()]))].slice(0, 10) : [];
 function take(signal: NotificationViewSignal, announce = true): void {
   let changed = false;
   if (signal.type === 'view') {
     const before = views.get(signal.tab);
+    if (before && signal.at < before.at) return;
     if (signal.at > Date.now() + 1000 || Date.now() - signal.at >= EXPIRES_MS) changed = views.delete(signal.tab);
     else if (!before || before.at !== signal.at || JSON.stringify(before.contexts) !== JSON.stringify(signal.contexts)) {
       views.set(signal.tab, { contexts: signal.contexts, at: signal.at }); changed = true;
@@ -27,7 +29,8 @@ function take(signal: NotificationViewSignal, announce = true): void {
 }
 function publish(): void {
   if (!tab) return;
-  const signal: NotificationViewSignal = { type: 'view', tab, contexts: current(), at: Date.now() };
+  publishedAt = Math.max(Date.now(), publishedAt + 1);
+  const signal: NotificationViewSignal = { type: 'view', tab, contexts: current(), at: publishedAt };
   take(signal); channel?.postMessage(signal);
   try { localStorage.setItem(`${PREFIX}${tab}`, JSON.stringify(signal)); }
   catch { if (!warned) { warned = true; nlog.debug('focused notification views are not persisted'); } }
@@ -62,7 +65,7 @@ export function watchNotificationViews(publisher: () => readonly string[]): () =
       views.delete(tab);
     }
     if (timer) clearInterval(timer);
-    timer = null; channel?.close(); channel = null; tab = null; views.clear();
+    timer = null; channel?.close(); channel = null; tab = null; publishedAt = 0; views.clear();
     removeEventListener('focus', publish); removeEventListener('blur', publish); removeEventListener('storage', storage);
     document.removeEventListener('visibilitychange', publish);
   };

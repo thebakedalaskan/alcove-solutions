@@ -4,7 +4,7 @@ import { log } from '~/lib/log';
 
 const nlog = log.child({ component: 'notification-permission' });
 export type NotifyPermission = NotificationPermission | 'unsupported';
-const supported = () => typeof window !== 'undefined' && 'Notification' in window;
+const supported = () => typeof window !== 'undefined' && typeof window.Notification !== 'undefined' && window.isSecureContext;
 const snapshot = (): NotifyPermission => supported() ? Notification.permission : 'unsupported';
 const listeners = new Set<() => void>();
 const changed = () => { for (const listener of listeners) listener(); };

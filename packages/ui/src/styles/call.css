@@ -1356,3 +1356,16 @@ button.ic-fname:hover, .ic-fname[data-state="open"] { background: rgb(255 255 25
 .ac-private-audience { display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-2); color: var(--ink-2); font-size: 12px; font-weight: 600; }
 .ac-private-audience span { overflow-wrap: anywhere; }
 .ic-private-audience { padding: var(--space-2) var(--space-4); flex-shrink: 0; border-top: 1px solid var(--line); }
+
+/* A validated notification focuses its exact pending action without changing the tab order. */
+.ic-prow[data-call-action]:focus, .ac-attention-hand[data-call-action]:focus, .ac-attention-question[data-call-action]:focus { outline: 2px solid var(--horizon); outline-offset: 3px; border-radius: var(--radius-sm); }
+
+/* Settings' wide page axis becomes a compact call sheet; its controls keep their own sound/browser views. */
+.ic-alert-controls { --ctl: auto; }
+.ic-alert-controls > .ac-tabs { margin: 4px 6px 12px; }
+.ic-alert-controls .set-r { grid-template-columns: minmax(0, 1fr) auto; column-gap: 12px; }
+.ic-alert-controls .set-r.is-wide { grid-template-columns: minmax(0, 1fr); row-gap: 10px; }
+.ic-alert-controls .set-tx { display: block; }
+.ic-alert-controls .set-t { font-size: 14px; }
+.ic-alert-controls .set-h { font-size: 12px; line-height: 17px; }
+.ic-alert-controls .set-r:has(.set-c .ac-btn) { grid-template-columns: minmax(0, 1fr); row-gap: 10px; }

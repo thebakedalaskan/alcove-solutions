@@ -9,13 +9,14 @@ import { accountGeneration, signedOut } from '~/lib/signedOut';
 import { log } from '~/lib/log';
 
 const nlog = log.child({ component: 'notification-navigation' });
-interface DestinationOwner { readonly token: object; readonly session: CallSession; open(target: CallNotificationTarget): void }
+interface DestinationOwner { readonly token: object; readonly session: CallSession; readonly ownerId: string | null; available(): boolean; open(target: CallNotificationTarget): void }
 const calls = new Map<string, DestinationOwner>();
 let navigation: ((data: BrowserNotificationData) => void) | null = null;
 export function routeBrowserNotification(data: BrowserNotificationData): void { navigation?.(data); }
-export function registerNotificationCall(session: CallSession, open: (target: CallNotificationTarget) => void): () => void {
+export function registerNotificationCall(session: CallSession, ownerId: string | null, open: (target: CallNotificationTarget) => void): () => void {
   const token = {};
-  calls.set(session.ticket.callId, { token, session, open });
+  const original = ownerId === null ? null : accountGeneration(ownerId);
+  calls.set(session.ticket.callId, { token, session, ownerId, available: () => ownerId === null || (original !== null && !signedOut(ownerId) && accountGeneration(ownerId) === original), open });
   return () => { if (calls.get(session.ticket.callId)?.token === token) calls.delete(session.ticket.callId); };
 }
 function bounded<T>(task: Promise<T>, ms: number): Promise<T> {
@@ -49,19 +50,19 @@ export function useNotificationNavigation(): (data: BrowserNotificationData) => 
         if (!validAccount()) { toast('This notification belongs to an account that signed out.', { icon: 'lock' }); return; }
         const current = await bounded(qc.fetchQuery({ ...q.session(), staleTime: 0, retry: false, networkMode: 'always' }), 10_000);
         if (version !== revision.current) return;
-        if (data.ownerId !== null && (current?.ownerId !== data.ownerId || !validAccount())) {
+        if ((current?.ownerId ?? null) !== data.ownerId || !validAccount()) {
           toast('This notification is no longer available for the current account.', { icon: 'lock' }); return;
         }
         const target = data.open;
         if (target.to !== 'call' || target.event === null) { go(target); return; }
         const original = target.event;
         const owner = calls.get(original.callId);
-        if (!owner || owner.session.ticket.identity !== original.connection) {
+        if (!owner || owner.ownerId !== data.ownerId || !owner.available() || owner.session.ticket.identity !== original.connection) {
           go({ to: 'call', code: target.code, event: null });
           toast('This call action is no longer available in its original session. Private history ends with that session.', { icon: 'lock' }); return;
         }
         await bounded(owner.session.refresh({ call: true, log: true }), 10_000);
-        if (version !== revision.current || calls.get(original.callId)?.token !== owner.token || !validAccount()) return;
+        if (version !== revision.current || calls.get(original.callId)?.token !== owner.token || !owner.available() || !validAccount() || (qc.getQueryData(q.session().queryKey)?.ownerId ?? null) !== data.ownerId) return;
         const snapshot = owner.session.notifications.getSnapshot();
         const exact = snapshot.candidates.find((candidate) => candidate.destination.eventId === original.eventId && JSON.stringify(candidate.destination) === JSON.stringify(original));
         // Delivery freshness expires separately; an unread, still-authorized target remains navigable.
@@ -86,7 +87,7 @@ export function useNotificationNavigation(): (data: BrowserNotificationData) => 
       if (message.data.type === 'alcove.where') event.ports[0]?.postMessage({ path: location.pathname, ownerId: qc.getQueryData(q.session().queryKey)?.ownerId ?? null,
         calls: [...calls.values()].map((owner) => ({ callId: owner.session.ticket.callId, identity: owner.session.ticket.identity })).slice(0, 5) });
       else if (message.data.type === 'alcove.notification') {
-        const data = BrowserNotificationDataSchema.parse({ v: 1, source: 'worker', key: 'worker-click', ownerId: message.data.ownerId, open: message.data.open });
+        const data = BrowserNotificationDataSchema.parse({ v: 1, instance: crypto.randomUUID(), source: 'worker', key: 'worker-click', ownerId: message.data.ownerId, open: message.data.open });
         open(data);
       }
     };

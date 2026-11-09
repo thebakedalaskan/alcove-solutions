@@ -98,7 +98,7 @@ self.addEventListener('message', (event) => {
   const id = event.source.id;
   ready.set(id, Date.now());
   for (const [key, at] of ready) if (Date.now() - at > 30_000) ready.delete(key);
-  pending.get(id)?.();
+  pending.get(id)?.(true);
 });
 function handoff(win, data) {
   const message = { type: 'alcove.notification', open: data.open, ownerId: data.ownerId };
@@ -107,12 +107,13 @@ function handoff(win, data) {
     let done = false;
     const finish = (send) => {
       if (done) return;
-      done = true; clearTimeout(timeout); pending.delete(win.id);
+      done = true; clearTimeout(timeout); if (pending.get(win.id) === finish) pending.delete(win.id);
       if (send) win.postMessage(message);
       resolve();
     };
     const timeout = setTimeout(() => finish(false), 10_000);
-    pending.set(win.id, () => finish(true));
+    pending.get(win.id)?.(false);
+    pending.set(win.id, finish);
   });
 }
 
