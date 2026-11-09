@@ -78,8 +78,7 @@ async function written(api: AlcoveApi, noteId: string): Promise<void> {
 }
 
 describe('screen captures through a live-call upgrade', () => {
-  for (const mixed of [false, true]) {
-    it(`keeps a previous release's frames after a live call ends${mixed ? ', alongside new video' : ''}`, async () => {
+  it.each([false, true])("keeps a previous release's frames after a live call ends (new video: %s)", async (mixed) => {
       const org = await account();
       const call = await org.api.calls.join((await org.api.calls.startNow({ notes: 'on' })).code, { mic: true, cam: false });
       await inGroup(call);
@@ -117,6 +116,5 @@ describe('screen captures through a live-call upgrade', () => {
         expect(note.shares).toHaveLength(1);
         expect(note.screens.some((f) => f.id !== before.frameId && f.at >= 10)).toBe(true);
       }
-    });
-  }
+  });
 });

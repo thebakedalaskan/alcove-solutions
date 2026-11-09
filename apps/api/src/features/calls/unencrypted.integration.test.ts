@@ -33,7 +33,7 @@ describe('unencrypted inference history', () => {
       expect(reply.status).toBe(200);
     } }
   ];
-  for (const use of uses) it(`keeps the disclosure for ${use.name} after switching back to a private model`, async () => {
+  it.each(uses)('keeps the disclosure for $name after switching back to a private model', async (use) => {
     const org = await account();
     const host = await org.api.calls.join((await org.api.calls.startNow({ notes: 'on' })).code, { mic: true, cam: false });
     await host.appendAudio(audio);
@@ -56,7 +56,7 @@ describe('unencrypted inference history', () => {
     expect(note.inference.some((e) => e.model === NOTES_MODEL)).toBe(true);
   });
 
-  for (const source of ['across notes', 'a series'] as const) it(`records asking ${source} with an unencrypted model on the private source notes`, async () => {
+  it.each(['across notes', 'a series'] as const)('records asking %s with an unencrypted model on the private source notes', async (source) => {
     const org = await account();
     const host = await org.api.calls.join((await org.api.calls.startNow({ notes: 'on' })).code, { mic: true, cam: false });
     await host.transcribe(speech, host.ticket.identity);
