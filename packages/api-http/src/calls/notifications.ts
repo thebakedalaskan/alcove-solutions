@@ -1,6 +1,6 @@
 import {
   CallNotificationSchema, notesAreOn, type CallCrypto, type CallNotification, type CallNotificationCategory,
-  type CallNotificationState, type CallNotificationTarget, type CallState, type LiveStore
+  type CallNotificationState, type CallNotificationTarget, type CallState, type DirectMessagesState, type LiveStore
 } from '@alcove/api';
 import { Box } from '../transport/live';
 
@@ -12,10 +12,10 @@ export class CallNotifications extends Box<CallNotificationState> {
   private closed = false;
   private authorized: { generation: number; place: string } | null = null;
   private firstSeen = new Map<string, number>();
-  constructor(private readonly identity: string, private readonly call: LiveStore<CallState>, private readonly crypto: LiveStore<CallCrypto>) {
+  constructor(private readonly identity: string, private readonly call: LiveStore<CallState>, private readonly crypto: LiveStore<CallCrypto>, private readonly direct: LiveStore<DirectMessagesState>) {
     super(EMPTY);
     const changed = () => this.project();
-    this.stops = [call.subscribe(changed), crypto.subscribe(changed)];
+    this.stops = [call.subscribe(changed), crypto.subscribe(changed), direct.subscribe(changed)];
   }
   /** A successful current call/MLS round trip, never a stale UI render, restores eligibility. */
   resume(): void {
@@ -57,6 +57,12 @@ export class CallNotifications extends Box<CallNotificationState> {
     }
     if (state.isOrganizer && !notesAreOn(state.capture.mode)) for (const request of state.capture.requests) {
       put('notesRequested', { type: 'capture', id: request.id }, `notes-request:${request.id}`, Date.parse(request.at));
+    }
+    const direct = this.direct.getSnapshot();
+    if (direct.ready) for (const message of direct.messages) {
+      if (message.to !== this.identity || message.from === this.identity || message.place !== crypt.place || message.generation !== state.generation
+        || !direct.unread.includes(message.id) || !direct.peers.includes(message.from)) continue;
+      put('privateMessages', { type: 'private', peer: message.from, message: message.id, root: null }, `private:${message.id}`, Date.parse(state.startedAt) + message.at * 1000);
     }
     const unread = new Set(state.chatRead);
     for (const message of crypt.chat) if (!message.sending && !message.isMe && message.place === crypt.place && !unread.has(message.id) && message.mentions.some((m) => m.identity === this.identity)) {

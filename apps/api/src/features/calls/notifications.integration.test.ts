@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { type CallSession } from '@alcove/api';
-import { startHarness, type Harness } from '../../testing/harness';
+import { cookieFetch, ORIGIN, startHarness, type Harness } from '../../testing/harness';
 
 let h: Harness;
 beforeAll(async () => { h = await startHarness(); });
@@ -44,4 +44,50 @@ describe('authorized browser notification candidates', () => {
     await host.leave();
     await until(() => !host.notifications.getSnapshot().ready && !candidates(host).length && !candidates(guest).length, 'call notification cleanup');
   });
+  it('projects private unread only for the intended current recipient and withdraws it on read or removal', async () => {
+    const browser = h.browser();
+    await browser.api.auth.signIn('sso', { email: `private-notifier.${Date.now()}@tests.example` });
+    const { code } = await browser.api.calls.startNow({ notes: 'off' });
+    const host = await browser.api.calls.join(code, { cam: false, mic: false });
+    const alice = await h.browser().api.calls.join(code, { cam: false, mic: false, name: 'Alice' });
+    const bob = await h.browser().api.calls.join(code, { cam: false, mic: false, name: 'Bo' });
+    await until(() => host.getSnapshot().waiting.length === 2, 'two admitted peers');
+    await host.admit(alice.ticket.identity); await host.admit(bob.ticket.identity);
+    await until(() => alice.direct.getSnapshot().peers.includes(bob.ticket.identity) && bob.direct.getSnapshot().peers.includes(alice.ticket.identity), 'authenticated private peers');
+    await alice.direct.send(bob.ticket.identity, 'CANARY-PRIVATE-NOTIFICATION-MESSAGE');
+    await until(() => candidates(bob).some((c) => c.category === 'privateMessages'), 'recipient private candidate');
+    expect(candidates(host).some((c) => c.category === 'privateMessages')).toBe(false);
+    expect(candidates(alice).some((c) => c.category === 'privateMessages')).toBe(false);
+    expect(JSON.stringify(candidates(bob))).not.toContain('CANARY');
+    const first = candidates(bob).find((c) => c.category === 'privateMessages');
+    expect(first?.destination.connection).toBe(bob.ticket.identity);
+    bob.direct.read(bob.direct.getSnapshot().unread);
+    await until(() => !candidates(bob).some((c) => c.category === 'privateMessages'), 'read private alert withdrawn');
+    await alice.direct.send(bob.ticket.identity, 'Second unread private message.');
+    await until(() => candidates(bob).some((c) => c.category === 'privateMessages'), 'second private candidate');
+    await host.remove(bob.ticket.identity);
+    await until(() => !bob.notifications.getSnapshot().ready && !candidates(bob).length, 'removed recipient cleanup');
+    await host.leave();
+  });
+
+  it('suspends candidates during a whole-API outage and resumes only after the original connection is authorized', async () => {
+    let offline = false;
+    const jar = cookieFetch(ORIGIN);
+    const receiver = h.browser({ fetch: (input, init) => offline && String(input).includes('/v1/live/calls/') ? Promise.reject(new TypeError('Offline')) : jar(input, init) });
+    const browser = h.browser();
+    await browser.api.auth.signIn('sso', { email: `outage-notifier.${Date.now()}@tests.example` });
+    const { code } = await browser.api.calls.startNow({ notes: 'off' });
+    const host = await browser.api.calls.join(code, { cam: false, mic: false });
+    const guest = await receiver.api.calls.join(code, { cam: false, mic: false, name: 'Sam' });
+    await until(() => host.getSnapshot().waiting.length === 1, 'waiting recipient');
+    await host.admit(guest.ticket.identity);
+    await until(() => guest.notifications.getSnapshot().ready, 'original connection authorized');
+    offline = true;
+    await until(() => !guest.notifications.getSnapshot().ready, 'outage suspended');
+    expect(candidates(guest)).toEqual([]);
+    offline = false;
+    await until(() => guest.notifications.getSnapshot().ready, 'relay and call reauthorized');
+    await host.leave();
+  });
+
 });

@@ -216,8 +216,8 @@ export class HttpCall extends Live<CallState> implements CallSession {
     this.generation = initial.generation;
     this.hosting = initial.isHost;
     this.personal = t.personal(initial.callId);
-    this.notifications = new CallNotifications(ticket.identity, this, this.crypto);
     this.direct = new DirectMessages(initial.callId, ticket.identity, { send: (body) => t.directSend(initial.callId, body), sync: (ids, after) => t.directSync(initial.callId, ids, after) }, (why) => this.emit('debug', 'private envelope refused', { why }));
+    this.notifications = new CallNotifications(ticket.identity, this, this.crypto, this.direct);
   }
   /** In the group of the part of the call this browser is in. */
   private get inPlace() { return this.groups.get(this.place)?.group.inGroup ?? false; }
