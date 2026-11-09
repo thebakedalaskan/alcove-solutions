@@ -2,6 +2,8 @@
 
 Alcove exposes a remote MCP server at `$API_URL/mcp`. An agent acts with a person's explicitly granted permissions and their current Alcove access. Browser sessions and agent credentials are separate. This guide describes the implementation; it does not establish which commit is deployed.
 
+Settings shows the address with Copy before any connection exists: `agents.endpoint()` (`GET /v1/agents/endpoint`, signed in only, read by `q.agentEndpoint()`) returns the same `API_URL`-derived address that OAuth uses as its resource and that a new token's one-time view repeats. It is not a secret and grants nothing.
+
 ## Connect with OAuth
 
 Use the MCP URL of the environment you want. Production's configured URL is `https://api.alcove.solutions/mcp`; it is available only after this feature is deployed there. For local work with the normal web proxy it is `http://localhost:3000/api/mcp`.
@@ -21,8 +23,8 @@ OAuth access tokens last up to one hour. Refresh tokens rotate when used. The co
 
 ## Connect with a personal token
 
-1. In Alcove, open **Settings → Agents → Create a token**.
-2. Name the connection, choose permissions and an expiry (1–90 days, 30 by default).
+1. In Alcove, open **Settings → Connections → Agents**, press **Connect an agent**, then **Create a token**.
+2. Name it, choose permissions and when it expires (7, 30 or 90 days; 30 by default).
 3. Copy the token from the one-time view into the client's private credential store. It cannot be displayed again.
 4. Configure the same MCP URL and an `Authorization: Bearer <token>` header. Keep the value out of URLs, source files, screenshots and chat messages.
 

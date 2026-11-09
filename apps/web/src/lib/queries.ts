@@ -24,6 +24,7 @@ export const qk = {
   driveJobs: ['google-drive', 'jobs'] as const,
   driveNote: (id: string) => ['google-drive', 'note', id] as const,
   agents: ['agents'] as const,
+  agentEndpoint: ['agent-endpoint'] as const,
   agentAuthorization: (id: string, ownerId: string) => ['agent-authorization', id, ownerId] as const,
   session: ['session'] as const,
   prefs: ['prefs'] as const,
@@ -118,6 +119,8 @@ export const q = {
   driveJobs: () => queryOptions({ queryKey: qk.driveJobs, queryFn: () => api.drive.jobs(), refetchInterval: 10_000, retry: false }),
   driveNote: (id: string) => queryOptions({ queryKey: qk.driveNote(id), queryFn: () => api.drive.forNote(id), refetchInterval: 10_000, retry: false }),
   agents: () => queryOptions({ queryKey: qk.agents, queryFn: () => api.agents.list() }),
+  /** The MCP address agents connect to: it stays the same while the app is open. */
+  agentEndpoint: () => queryOptions({ queryKey: qk.agentEndpoint, queryFn: () => api.agents.endpoint(), staleTime: Infinity }),
   agentAuthorization: (id: string, ownerId: string) => queryOptions({ queryKey: qk.agentAuthorization(id, ownerId), queryFn: () => api.agents.authorization(id), retry: false, staleTime: 0 }),
   session: () => queryOptions({ queryKey: qk.session, queryFn: () => readSessionWithPictureAccess(() => api.auth.getSession()), staleTime: 60_000 }),
   prefs: () => queryOptions({ queryKey: qk.prefs, queryFn: ({ client }) => readPreferences(api, client), refetchInterval: 30_000, refetchIntervalInBackground: true }),

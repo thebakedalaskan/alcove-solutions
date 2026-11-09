@@ -1,33 +1,35 @@
-import { CalendarConnectResultSchema, DriveConnectResultSchema, type CalendarConnectResult } from '@alcove/api';
+import { CalendarConnectResultSchema, DriveConnectResultSchema, type CalendarConnectResult, type DriveConnectResult } from '@alcove/api';
 /*
  * Settings: change one thing and leave. You stand on the horizon, in the last of the light, with the tour and Sign out
- * beside you. Under the water the page is one long sheet with an index beside it, which on a narrow screen is a strip
- * that stays at the top. Every control saves as it changes. Search and you at the top right, the phone's avatar and its
- * Settings tab open it; the minutes in the side panel open its minutes.
+ * beside you. Under the water the page is seven groups of panels with an index beside them, which on a narrow screen is a
+ * strip that stays at the top. Every control saves as it changes. Search and you at the top right, the phone's avatar and
+ * its Settings tab open it; the minutes in the side panel open Plan and credits, and other pages link to the places in a
+ * group they need (Nav.tsx).
  */
-import { Avatar, Button, Evening } from '@alcove/ui';
+import { Avatar, Button, Evening, SettingRow, SettingsGroup, SettingsPanel } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
-import { createFileRoute, useNavigate, useRouterState } from '@tanstack/react-router';
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
+import { createFileRoute, useRouterState } from '@tanstack/react-router';
+import { Fragment, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { arrival } from '~/features/onboarding/store';
-import { AgentsPart } from '~/features/agents/Settings';
-import { DriveExportsPart } from '~/features/settings/DriveExports';
-import { SoundsPart } from '~/features/settings/Sounds';
-import { DevicesPart } from '~/features/settings/Devices';
-import { NotificationsPart } from '~/features/settings/Notifications';
-import { AppearancePart, CalendarPart, NotesPart, PlanPart, ProfilePart, RecordingPart, Unloaded } from '~/features/settings/parts';
-import { PrivacyPart } from '~/features/settings/Privacy';
+import { AudioGroup } from '~/features/settings/Audio';
+import { CallsGroup } from '~/features/settings/Calls';
+import { ConnectionsGroup } from '~/features/settings/Connections';
+import { GROUPS, Index, Strip, useGroupInView, useJump, type Group } from '~/features/settings/Nav';
+import { NotificationsGroup } from '~/features/settings/Notifications';
+import { PlanGroup } from '~/features/settings/Plan';
+import { PrivacyGroup } from '~/features/settings/Privacy';
 import { SavedProvider } from '~/features/settings/save';
 import { useSignOutStep } from '~/features/settings/SignOut';
+import { YouGroup } from '~/features/settings/You';
 import { q } from '~/lib/queries';
 
 export const Route = createFileRoute('/_app/settings')({
-  validateSearch: (search: Record<string, unknown>): { calendar?: CalendarConnectResult | undefined; drive?: 'connected' | 'cancelled' | 'failed' | undefined } => {
+  validateSearch: (search: Record<string, unknown>): { calendar?: CalendarConnectResult | undefined; drive?: DriveConnectResult | undefined } => {
     const calendar = CalendarConnectResultSchema.safeParse(search['calendar']);
     const drive = DriveConnectResultSchema.safeParse(search['drive']);
     return { calendar: calendar.success ? calendar.data : undefined, drive: drive.success ? drive.data : undefined };
   },
-  // A part that doesn't load leaves the rest of the page (and Sign out) usable. Google can be slow: the calendar gets a
+  // A panel that doesn't load leaves the rest of the page (and Sign out) usable. Google can be slow: the calendar gets a
   // moment, so the page doesn't move under the reader, and no longer.
   loader: async ({ context: { queryClient: qc } }) => {
     const calendar = qc.ensureQueryData(q.calendar()).catch(() => undefined);
@@ -35,112 +37,6 @@ export const Route = createFileRoute('/_app/settings')({
   },
   component: Settings
 });
-
-interface Part { id: string; label: string; needs?: 'prefs' | 'credits' | undefined }
-const PARTS: readonly Part[] = [
-  { id: 'profile', label: 'Profile' },
-  { id: 'notes', label: 'Notes', needs: 'prefs' },
-  { id: 'recording', label: 'Recording', needs: 'prefs' },
-  { id: 'calendar', label: 'Calendar', needs: 'prefs' },
-  { id: 'google-drive', label: 'Google Drive' },
-  { id: 'devices', label: 'Devices' },
-  { id: 'agents', label: 'Agents' },
-  { id: 'sounds', label: 'Sounds', needs: 'prefs' },
-  { id: 'notifications', label: 'Notifications', needs: 'prefs' },
-  { id: 'appearance', label: 'Appearance' },
-  { id: 'plan', label: 'Plan and credits', needs: 'credits' },
-  { id: 'privacy', label: 'Privacy' }
-];
-
-/**
- * The part in view, for the index: the last whose top has passed a quarter of the way down the window, or the last one
- * once the page is scrolled to the end. A part picked in the index (or named in the address) stays picked until the
- * page is scrolled by hand.
- */
-function usePartInView(ids: readonly string[]): [string | undefined, (id: string) => void] {
-  const [current, setCurrent] = useState(ids[0]);
-  const held = useRef(false);
-  /** The part just picked in the index, which is on its way there by itself. */
-  const going = useRef<string | null>(null);
-  const hash = useRouterState({ select: (s) => s.location.hash });
-  useEffect(() => {
-    if (!ids.includes(hash) || going.current === hash) return;
-    held.current = true;
-    setCurrent(hash);
-    // Parts above it may still be loading (the calendar): it stays in place as they arrive, for a moment, unless the
-    // page is scrolled by hand meanwhile.
-    const el = document.getElementById(hash);
-    const column = el?.parentElement;
-    if (!el || !column) return;
-    const keep = new ResizeObserver(() => { if (held.current) el.scrollIntoView({ block: 'start' }); });
-    keep.observe(column);
-    const t = setTimeout(() => keep.disconnect(), 2000);
-    return () => { clearTimeout(t); keep.disconnect(); };
-  }, [hash, ids]);
-  useEffect(() => {
-    let frame = 0;
-    const look = () => {
-      frame = 0;
-      if (held.current) return;
-      const line = innerHeight / 4;
-      let at = ids[0];
-      for (const id of ids) if ((document.getElementById(id)?.getBoundingClientRect().top ?? Infinity) <= line) at = id;
-      if (innerHeight + scrollY >= document.documentElement.scrollHeight - 2) at = ids.at(-1) ?? at;
-      setCurrent(at);
-    };
-    const onScroll = () => { if (!frame) frame = requestAnimationFrame(look); };
-    const byHand = () => { held.current = false; going.current = null; };
-    look();
-    addEventListener('scroll', onScroll, { passive: true });
-    for (const e of ['wheel', 'touchstart', 'keydown']) addEventListener(e, byHand, { passive: true });
-    return () => {
-      cancelAnimationFrame(frame);
-      removeEventListener('scroll', onScroll);
-      for (const e of ['wheel', 'touchstart', 'keydown']) removeEventListener(e, byHand);
-    };
-  }, [ids]);
-  const pick = (id: string) => { held.current = true; going.current = id; setCurrent(id); };
-  return [current, pick];
-}
-
-/** Moves to a part in the index or the strip, and the address follows. A press that opens it elsewhere is left alone. */
-function useJump(pick: (id: string) => void) {
-  const navigate = useNavigate();
-  return (e: MouseEvent<HTMLAnchorElement>, id: string) => {
-    if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
-    e.preventDefault();
-    pick(id);
-    const part = document.getElementById(id);
-    part?.scrollIntoView({ block: 'start', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
-    // As a link would: the next Tab carries on from there.
-    part?.focus({ preventScroll: true });
-    void navigate({ to: '/settings', hash: id, replace: true, resetScroll: false, hashScrollIntoView: false });
-  };
-}
-
-/** The parts, beside the page: a line with a small sun that goes with the part in view. */
-function Index({ parts, current, onJump }: { parts: readonly Part[]; current: string | undefined; onJump: (e: MouseEvent<HTMLAnchorElement>, id: string) => void }) {
-  return (
-    <nav className="set-idx" aria-label="Settings">
-      <ol>{parts.map((p) => <li key={p.id}><a href={`#${p.id}`} className="set-ix" aria-current={current === p.id ? 'true' : undefined} onClick={(e) => onJump(e, p.id)}>{p.label}</a></li>)}</ol>
-      <i className="set-mark" style={{ '--i': Math.max(0, parts.findIndex((p) => p.id === current)) }} aria-hidden="true" />
-    </nav>
-  );
-}
-
-/** The parts on a narrow screen: a strip that stays at the top, keeping the part in view in sight. */
-function Strip({ parts, current, onJump }: { parts: readonly Part[]; current: string | undefined; onJump: (e: MouseEvent<HTMLAnchorElement>, id: string) => void }) {
-  const strip = useRef<HTMLElement>(null);
-  useEffect(() => {
-    const on = strip.current?.querySelector<HTMLElement>('[aria-current="true"]');
-    if (on) strip.current?.scrollTo({ left: on.offsetLeft - 40 });
-  }, [current]);
-  return (
-    <nav ref={strip} className="set-strip" aria-label="Settings">
-      {parts.map((p) => <a key={p.id} href={`#${p.id}`} className="set-sx" aria-current={current === p.id ? 'true' : undefined} onClick={(e) => onJump(e, p.id)}>{p.label}</a>)}
-    </nav>
-  );
-}
 
 /** How tall the phone's top bar is, which the sky runs up under: the offline notice makes it taller. */
 function useTopBar(): number {
@@ -157,23 +53,50 @@ function useTopBar(): number {
   return height;
 }
 
-/** Reads a part again. Whatever comes back stands where Try again was, so focus goes to it rather than falling back to the page. */
+/** Reads a group again. Whatever comes back stands where Try again was, so focus goes to the group rather than falling back to the page. */
 const readAgain = (read: () => Promise<unknown>, id: string) => void read().then(() => requestAnimationFrame(() => document.getElementById(id)?.focus({ preventScroll: true })));
+
+/** What stands in for a group that didn't load: the rest of the page, and Sign out, still work. */
+function Unloaded({ group, busy, onRetry }: { group: Group; busy: boolean; onRetry: () => void }) {
+  return (
+    <SettingsGroup id={group.id} title={group.label}>
+      <SettingsPanel>
+        <SettingRow label="These didn’t load" help="The rest of the page still works." control={<Button variant="secondary" size="sm" icon="retry" loading={busy} onClick={onRetry}>Try again</Button>} />
+      </SettingsPanel>
+    </SettingsGroup>
+  );
+}
 
 function Settings() {
   const { calendar, drive } = Route.useSearch();
+  const hash = useRouterState({ select: (s) => s.location.hash });
   const session = useQuery(q.session()).data;
   const prefs = useQuery(q.prefs());
   const credits = useQuery(q.balance());
   const signOut = useSignOutStep();
-  const has = (p: Part) => (p.needs === 'prefs' ? Boolean(prefs.data) : p.needs === 'credits' ? Boolean(credits.data) || credits.isError : true);
-  const shown = PARTS.filter(has);
-  const key = shown.map((p) => p.id).join(' ');
-  const ids = useMemo(() => key.split(' '), [key]);
-  const [current, pick] = usePartInView(ids);
+  // A group waiting on what it shows comes in once that's here, or once it's failed and says so.
+  const hasPrefs = Boolean(prefs.data) || prefs.isError;
+  const hasCredits = Boolean(credits.data) || credits.isError;
+  const shown = useMemo(() => GROUPS.filter((g) => (g.id === 'calls' || g.id === 'notifications' ? hasPrefs : g.id === 'plan' ? hasCredits : true)), [hasPrefs, hasCredits]);
+  const ids = useMemo(() => shown.map((g) => g.id), [shown]);
+  const column = useRef<HTMLDivElement>(null);
+  // Google's way back lands on what it connected: Drive, or the calendar.
+  const [current, pick] = useGroupInView(ids, hash || (drive ? 'google-drive' : calendar ? 'calendar' : undefined), column);
   const jump = useJump(pick);
   const bar = useTopBar();
   if (!session) return null;
+  /** Each group the index lists, in its order: a group that needs what didn't load says so in its place. */
+  const render = (g: Group) => {
+    switch (g.id) {
+      case 'you': return <YouGroup session={session} />;
+      case 'calls': return prefs.data ? <CallsGroup prefs={prefs.data} /> : <Unloaded group={g} busy={prefs.isFetching} onRetry={() => readAgain(prefs.refetch, g.id)} />;
+      case 'audio': return <AudioGroup />;
+      case 'notifications': return prefs.data ? <NotificationsGroup /> : <Unloaded group={g} busy={prefs.isFetching} onRetry={() => readAgain(prefs.refetch, g.id)} />;
+      case 'connections': return <ConnectionsGroup calendar={calendar} drive={drive} />;
+      case 'plan': return credits.data ? <PlanGroup credits={credits.data} /> : <Unloaded group={g} busy={credits.isFetching} onRetry={() => readAgain(credits.refetch, g.id)} />;
+      case 'privacy': return <PrivacyGroup session={session} />;
+    }
+  };
   return (
     <SavedProvider>
       <Evening moment="settings" className="set" data-out={signOut.asking ? true : undefined} style={{ '--ask': `${signOut.height}px`, '--bar': `${bar}px` }}>
@@ -193,25 +116,10 @@ function Settings() {
           {signOut.step}
         </header>
         <div className="set-body" style={{ '--d': 1 }}>
-          <Index parts={shown} current={current} onJump={jump} />
-          <div className="set-parts">
-            <Strip parts={shown} current={current} onJump={jump} />
-            <ProfilePart session={session} />
-            {prefs.data ? (
-              <>
-                <NotesPart prefs={prefs.data} />
-                <RecordingPart prefs={prefs.data} />
-                <CalendarPart prefs={prefs.data} result={calendar} />
-              </>
-            ) : prefs.isError && <Unloaded id="notes" title="Notes, recording, calendar and notifications" busy={prefs.isFetching} onRetry={() => readAgain(prefs.refetch, 'notes')} />}
-            <DriveExportsPart result={drive} />
-            <DevicesPart />
-            <AgentsPart />
-            {prefs.data && <SoundsPart prefs={prefs.data} />}
-            {prefs.data && <NotificationsPart />}
-            <AppearancePart />
-            {credits.data ? <PlanPart credits={credits.data} /> : credits.isError && <Unloaded id="plan" title="Plan and credits" busy={credits.isFetching} onRetry={() => readAgain(credits.refetch, 'plan')} />}
-            <PrivacyPart session={session} />
+          <Index groups={shown} current={current} onJump={jump} />
+          <div ref={column} className="set-groups">
+            <Strip groups={shown} current={current} onJump={jump} />
+            {shown.map((g) => <Fragment key={g.id}>{render(g)}</Fragment>)}
           </div>
         </div>
       </Evening>

@@ -14,8 +14,9 @@
  * - /api, every other origin (the API's included) and anything but GET go straight to the network: nothing
  *   from the API is ever cached or answered from the cache.
  * - A new version takes over as soon as it has everything, and deletes the caches of the versions before it.
- * - A click on a notification (shown by apps/web/src/features/shell/notify.ts) brings a window forward and tells it
- *   where the notification leads. The page goes there itself, so leaving a call or a recording still asks first.
+ * - A click on a notification (shown by apps/web/src/features/shell/notification-delivery.ts) brings a window forward and
+ *   tells it where the notification leads. The page goes there itself, so leaving a call or a recording still asks first.
+ *   A ring leads nowhere: its card is on whatever page is open, so the account's last-used window comes forward as it is.
  */
 
 // Written by scripts/precache.mjs after the build: a hash of the build's files, and their paths.
@@ -127,7 +128,7 @@ async function open(data) {
   const account = (value) => value.ownerId === data.ownerId;
   const original = where.to === 'call' ? where.event : null;
   const exact = original ? at.findIndex((value) => account(value) && value.calls.some((call) => call?.callId === original.callId && call?.identity === original.connection)) : -1;
-  const paths = where.to === 'call' ? [`/call/${encodeURIComponent(where.code)}`, path] : [path];
+  const paths = where.to === 'call' ? [`/call/${encodeURIComponent(where.code)}`, path] : where.to === 'ring' ? [] : [path];
   const destination = at.findIndex((value) => account(value) && paths.includes(value.path));
   const sameAccount = at.findIndex(account);
   const win = windows[exact >= 0 ? exact : destination >= 0 ? destination : sameAccount];

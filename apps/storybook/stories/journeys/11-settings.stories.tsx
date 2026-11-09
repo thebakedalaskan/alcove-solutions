@@ -19,10 +19,12 @@ import { before, first, LATER, outage, pause, pressable, SOON, swap, unreachable
 const meta = { title: 'Journeys/11 Settings', ...pages } satisfies Meta<PageArgs>;
 export default meta;
 
-/** A row of the sheet, by its label. */
+/** A row of a panel, by its label. */
 const row = (name: string | RegExp) => screen.findByRole('group', { name }, LATER);
-/** A part of the sheet, by its title. */
-const part = (name: string) => screen.findByRole('region', { name }, LATER);
+/** A group of the page, by its heading. */
+const group = (name: string) => screen.findByRole('region', { name }, LATER);
+/** The index beside the page (the strip, on a narrow screen). */
+const index = () => screen.findByRole('navigation', { name: 'Settings' }, LATER);
 /** Waits until `where` doesn't say `text` any more. */
 const goneFrom = (where: HTMLElement, text: string) =>
   waitFor(() => { if (within(where).queryByText(text)) throw new Error(`“${text}” is still there.`); }, SOON);
@@ -75,17 +77,17 @@ export const ChangeASetting: PageStory = {
 
 export const PickFromAList: PageStory = {
   name: '11.2 Pick from a list',
-  ...page('/settings', 'busy'),
+  ...page('/settings#calls', 'busy'),
   play: async ({ userEvent, step }) => {
-    await step('Click the language', async () => {
-      await userEvent.click(within(await row('Language')).getByRole('button', { name: /^Notes language/ }));
+    await step('Click the AI model', async () => {
+      await userEvent.click(within(await row('AI model')).getByRole('button', { name: /^AI model/ }));
     });
-    await step('The list opens under it, on the page. The current one has a tick', async () => {
-      await screen.findByRole('option', { name: 'Same as the call', selected: true }, SOON);
+    await step('The list opens under it. The current one has a tick, and a model outside a secure enclave says Unencrypted', async () => {
+      await screen.findByRole('option', { name: /^DeepSeek/, selected: true }, SOON);
     });
-    await step('Click French. The list closes and the row says Saved for new notes', async () => {
-      await userEvent.click(screen.getByRole('option', { name: 'French' }));
-      await within(await row('Language')).findByText('Saved for new notes', {}, SOON);
+    await step('Click GLM 5.3 Flash. The list closes and the row says Saved', async () => {
+      await userEvent.click(screen.getByRole('option', { name: 'GLM 5.3 Flash' }));
+      await within(await row('AI model')).findByText('Saved', {}, SOON);
     });
   }
 };
@@ -95,7 +97,7 @@ export const ServerRefuses: PageStory = {
   ...page('/settings#calendar', 'busy'),
   beforeEach: saving.begin,
   play: async ({ userEvent, step }) => {
-    await step('Turn off Show my other meetings on Home', async () => {
+    await step('Under Connections, turn off Show my other meetings on Home', async () => {
       await userEvent.click(within(await row('Show my other meetings on Home')).getByRole('switch'));
     });
     await step('The switch moves straight away, while it’s being kept', async () => {
@@ -113,7 +115,7 @@ export const DisconnectGoogleCalendar: PageStory = {
   ...page('/settings#calendar', 'busy'),
   beforeEach: slowGoogle,
   play: async ({ userEvent, step }) => {
-    await step('Click Disconnect', async () => {
+    await step('Under Connections, click Disconnect beside Google Calendar', async () => {
       await userEvent.click(within(await row('Google Calendar')).getByRole('button', { name: 'Disconnect' }));
     });
     await step('Alcove removes its Calendar connection', async () => {
@@ -131,25 +133,13 @@ export const ConnectGoogleCalendar: PageStory = {
   ...page('/settings#calendar', 'busy'),
   beforeEach: before((w) => { w.calendar = notConnected; }),
   play: async ({ userEvent, step }) => {
-    await step('Click Connect and review how Alcove uses calendar data', async () => {
+    await step('Under Connections, click Connect beside Google Calendar, and review how Alcove uses calendar data', async () => {
       await userEvent.click(within(await row('Google Calendar')).getByRole('link', { name: 'Connect' }));
     });
     await step('Continue to Google. After consent, Google returns you to Calendar settings', async () => {
       const dialog = await screen.findByRole('dialog', { name: 'Connect Google Calendar' }, SOON);
       await userEvent.click(within(dialog).getByRole('button', { name: 'Continue to Google' }));
       await within(dialog).findByRole('button', { name: 'Opening Google' }, SOON);
-    });
-  }
-};
-
-export const CalendarAccessDenied: PageStory = {
-  name: '11.5 Return without granting Calendar access',
-  ...page('/settings?calendar=denied#calendar', 'busy'),
-  beforeEach: before((w) => { w.calendar = notConnected; }),
-  play: async ({ step }) => {
-    await step('The Calendar section explains how to schedule with a link and still offers Connect', async () => {
-      await screen.findByText('Calendar access wasn’t granted. You can still schedule calls and share the link yourself.', {}, SOON);
-      await within(await row('Google Calendar')).findByRole('link', { name: 'Connect' }, SOON);
     });
   }
 };
@@ -167,7 +157,7 @@ export const CalendarThatIsntGoogles: PageStory = {
 
 export const CheckTheLevel: PageStory = {
   name: '11.7 Check the level',
-  ...page('/settings#devices', 'busy'),
+  ...page('/settings#audio', 'busy'),
   play: async ({ userEvent, step }) => {
     await step('Click Check the level. Nothing opens until you do', async () => {
       await userEvent.click(within(await row('Microphone')).getByRole('button', { name: 'Check the level' }));
@@ -175,7 +165,7 @@ export const CheckTheLevel: PageStory = {
     await step('The microphone is open for eight seconds. The level moves as you speak', async () => {
       await within(await row('Microphone')).findByText('Speak, and watch it move. Nothing is recorded.', {}, SOON);
     });
-    await step('Click Stop, or scroll this part away, and it closes sooner', async () => {
+    await step('Click Stop, or scroll Audio and video away, and it closes sooner', async () => {
       await userEvent.click(within(await row('Microphone')).getByRole('button', { name: /^Stop · \d+ s$/ }));
     });
     await step('Closed. Nothing was recorded', async () => {
@@ -186,7 +176,7 @@ export const CheckTheLevel: PageStory = {
 
 export const MicrophoneNotAllowedYet: PageStory = {
   name: '11.8 The browser hasn’t allowed the microphone',
-  ...page('/settings#devices', 'busy', { parameters: { opening: { browser: { devices: 'prompt' } } } }),
+  ...page('/settings#audio', 'busy', { parameters: { opening: { browser: { devices: 'prompt' } } } }),
   play: async ({ userEvent, step }) => {
     await step('First time: click Check the level', async () => {
       const mic = await row('Microphone');
@@ -201,7 +191,7 @@ export const MicrophoneNotAllowedYet: PageStory = {
 
 export const PlayTestSound: PageStory = {
   name: '11.9 Play test sound',
-  ...page('/settings#devices', 'busy'),
+  ...page('/settings#audio', 'busy'),
   play: async ({ userEvent, step }) => {
     await step('Click Play test sound', async () => {
       await userEvent.click(within(await row('Speaker')).getByRole('button', { name: 'Play test sound' }));
@@ -215,7 +205,7 @@ export const PlayTestSound: PageStory = {
 
 export const CameraIsAList: PageStory = {
   name: '11.10 The camera is a list',
-  ...page('/settings#devices', 'busy'),
+  ...page('/settings#audio', 'busy'),
   play: async ({ userEvent, step }) => {
     await step('Pick a camera. It never opens here, so there’s no picture', async () => {
       // The browser lists the cameras a moment after the page opens, and the row becomes the list.
@@ -232,20 +222,18 @@ export const TurnOnNotifications: PageStory = {
   name: '11.11 Turn on browser notifications',
   ...page('/settings#notifications', 'busy'),
   play: async ({ userEvent, step }) => {
-    await step('The choices wait, greyed out. Click Enable browser notifications', async () => {
-      await userEvent.click(within(await row('Browser notifications')).getByRole('button', { name: 'Enable browser notifications' }));
+    await step('Alerts already show inside Alcove. To have them reach you in another tab, click Turn on', async () => {
+      await userEvent.click(within(await row('Browser notifications')).getByRole('button', { name: 'Turn on' }));
     });
     await step('The browser asks, only now. Allow', async () => {
       await within(await row('Browser notifications')).findByRole('switch', { name: 'Browser notifications', checked: true }, SOON);
     });
-    await step('Allowed. Focus stays on the row and the choices wake up', async () => {
-      await pressable('button', '5 min');
-    });
-    await step('Pick how long before a call', async () => {
+    await step('They’re on, as a switch, and focus stays on the row. Pick how long before a call', async () => {
       await userEvent.click(await pressable('button', '5 min'));
     });
     await step('Saved, like everything else', async () => {
-      await within(await row('Before a call starts')).findByText('Saved', {}, SOON);
+      // The row, which holds the choices (named the same).
+      await within(await first(screen.findAllByRole('group', { name: 'Before a call starts' }, LATER))).findByText('Saved', {}, SOON);
     });
   }
 };
@@ -257,12 +245,12 @@ export const NotificationsBlocked: PageStory = {
   beforeEach: () => { openBrowser({ answer: 'denied' }); },
   play: async ({ userEvent, step }) => {
     await step('At the same question, Block', async () => {
-      await userEvent.click(within(await row('Browser notifications')).getByRole('button', { name: 'Enable browser notifications' }));
+      await userEvent.click(within(await row('Browser notifications')).getByRole('button', { name: 'Turn on' }));
     });
-    await step('The row says where to allow them, and the choices stay as they are', async () => {
+    await step('The row says where to allow them. Alerts still show inside Alcove, and every tick stays as it is', async () => {
       const notifications = await row('Browser notifications');
       await within(notifications).findByText('Blocked', {}, SOON);
-      await within(notifications).findByText(/Blocked or revoked in this browser/);
+      await within(notifications).findByText(/^Blocked in this browser/);
     });
   }
 };
@@ -305,8 +293,8 @@ export const SignOutWithNothingWaiting: PageStory = {
   name: '11.14 Sign out with nothing waiting',
   ...page('/settings', 'busy'),
   play: async ({ userEvent, step }) => {
-    await step('Nothing on this device, so Sign out asks nothing', async () => {
-      await within(await row('On this device')).findByText('Nothing waiting', {}, SOON);
+    await step('Nothing waits on this device, so Recording in the room has no On this device row, and Sign out asks nothing', async () => {
+      await row('Record without a connection');
       await userEvent.click(screen.getByRole('button', { name: 'Sign out' }));
     });
     await step('The welcome page, signed out', async () => {
@@ -329,10 +317,10 @@ export const DeleteAccount: PageStory = {
   ...page('/settings#privacy', 'busy'),
   beforeEach: slowDelete,
   play: async ({ userEvent, step }) => {
-    await step('At the end of Privacy, click Delete account', async () => {
-      await userEvent.click(within(await part('Privacy')).getByRole('button', { name: 'Delete account' }));
+    await step('At the end of Privacy, in its own panel, click Delete account', async () => {
+      await userEvent.click(within(await group('Privacy')).getByRole('button', { name: 'Delete account' }));
     });
-    await step('The row opens in place: what goes beside what stays. Keep my account has focus', async () => {
+    await step('The panel opens in place: what goes beside what stays. Keep my account has focus', async () => {
       await screen.findByText('What goes', {}, SOON);
       await screen.findByText('What stays');
       await screen.findByRole('button', { name: 'Keep my account' });
@@ -361,12 +349,12 @@ export const WhenItCantBeDeleted: PageStory = {
   beforeEach: demoAccount,
   play: async ({ userEvent, step }) => {
     await step('On the shared demo account, click Delete account', async () => {
-      await userEvent.click(within(await part('Privacy')).getByRole('button', { name: 'Delete account' }));
+      await userEvent.click(within(await group('Privacy')).getByRole('button', { name: 'Delete account' }));
     });
     await step('The row says it can’t be deleted, and offers only Close', async () => {
       await screen.findByText('This is the shared demo account, so it can’t be deleted.', {}, SOON);
       await userEvent.click(screen.getByRole('button', { name: 'Close' }));
-      await within(await part('Privacy')).findByRole('button', { name: 'Delete account' }, SOON);
+      await within(await group('Privacy')).findByRole('button', { name: 'Delete account' }, SOON);
     });
   }
 };
@@ -375,13 +363,12 @@ export const GetAround: PageStory = {
   name: '11.17 Get around',
   ...page('/settings', 'busy'),
   play: async ({ userEvent, step }) => {
-    await step('The index marks the part in view. Click Calendar', async () => {
-      const index = await screen.findByRole('navigation', { name: 'Settings' }, LATER);
-      await within(index).findByRole('link', { name: 'Profile', current: true }, SOON);
-      await userEvent.click(within(index).getByRole('link', { name: 'Calendar' }));
+    await step('Seven groups, and the index marks the one in view. Click Notifications', async () => {
+      await within(await index()).findByRole('link', { name: 'You', current: true }, SOON);
+      await userEvent.click(within(await index()).getByRole('link', { name: 'Notifications' }));
     });
-    await step('The page moves there, and the small sun goes with it', async () => {
-      await within(screen.getByRole('navigation', { name: 'Settings' })).findByRole('link', { name: 'Calendar', current: true }, SOON);
+    await step('The page glides there, and the small sun on the index goes with it', async () => {
+      await within(await index()).findByRole('link', { name: 'Notifications', current: true }, SOON);
     });
     await step('Take the tour, at the top', async () => {
       await userEvent.click(screen.getByRole('button', { name: 'Take the tour' }));
@@ -394,10 +381,10 @@ export const GetAround: PageStory = {
 
 export const Appearance: PageStory = {
   name: '11.18 Appearance',
-  ...page('/settings#appearance', 'busy'),
+  ...page('/settings#you', 'busy'),
   globals: { theme: 'dark' },
   play: async ({ userEvent, step }) => {
-    await step('Each choice is a small evening in its own colours. Click Light', async () => {
+    await step('Under You, Appearance is kept in this browser. Each choice is a small evening in its own colours. Click Light', async () => {
       await userEvent.click(within(await row('Theme')).getByRole('button', { name: 'Light' }));
     });
     await step('The whole page changes at once, and it’s kept in this browser', async () => {
@@ -445,21 +432,22 @@ export const HowYouSignedIn: PageStory = {
   }
 };
 
-export const WhenAPartDoesntLoad: PageStory = {
-  name: '11.21 When a part doesn’t load',
+export const WhenAPanelDoesntLoad: PageStory = {
+  name: '11.21 When a panel doesn’t load',
   ...page('/settings', 'busy'),
   beforeEach: [prefsDown.begin, minutesDown.begin, calendarDown.begin, noHardware.begin],
   play: async ({ userEvent, step }) => {
-    await step('Your preferences didn’t load. The rest of the page, and Sign out, still work', async () => {
-      await within(await part('Notes, recording, calendar and notifications')).findByText('These didn’t load', {}, SOON);
+    await step('Your preferences didn’t load. Calls and notes and Notifications say so in their places; the rest of the page, and Sign out, still work', async () => {
+      await within(await group('Calls and notes')).findByText('These didn’t load', {}, SOON);
+      await within(await group('Notifications')).findByText('These didn’t load', {}, SOON);
       await screen.findByRole('button', { name: 'Sign out' });
-      // Try again brings them back, the calendar with them.
+      // Try again brings them back, the calendar's switches with them.
       prefsDown.end();
-      await userEvent.click(within(await part('Notes, recording, calendar and notifications')).getByRole('button', { name: 'Try again' }));
-      await part('Notes');
+      await userEvent.click(within(await group('Calls and notes')).getByRole('button', { name: 'Try again' }));
+      await row('Language');
     });
-    await step('Your minutes didn’t load. The part stays, and says so', async () => {
-      await within(await part('Plan and credits')).findByText('These didn’t load', {}, SOON);
+    await step('Your minutes didn’t load. Plan and credits stays, and says so', async () => {
+      await within(await group('Plan and credits')).findByText('These didn’t load', {}, SOON);
     });
     await step('The calendar didn’t answer. Try again, in the row', async () => {
       const calendar = await row('Your calendar');
@@ -478,38 +466,26 @@ export const FirstDay: PageStory = {
   name: '11.22 First day',
   ...page('/settings', 'first-day', { parameters: { opening: { browser: { devices: 'prompt' } } } }),
   play: async ({ userEvent, step }) => {
-    const jump = async (to: string) => userEvent.click(within(await screen.findByRole('navigation', { name: 'Settings' }, LATER)).getByRole('link', { name: to }));
-    await step('The same page. Nothing’s waiting and nothing’s used', async () => {
-      await within(await row('On this device')).findByText('Nothing waiting', {}, SOON);
+    const jump = async (to: string) => userEvent.click(within(await index()).getByRole('link', { name: to }));
+    await step('The same page. Nothing waits on this device, and nothing’s used', async () => {
+      await row('Record without a connection');
       await within(await row('Used this month')).findByText('None yet', {}, SOON);
     });
-    await step('Connect is there when you want it', async () => {
-      await jump('Calendar');
+    await step('Under Connections, Connect is there when you want it', async () => {
+      await jump('Connections');
       await within(await row('Google Calendar')).findByRole('link', { name: 'Connect' }, SOON);
     });
     await step('The browser doesn’t name your devices until they’re allowed, so there’s no list yet', async () => {
-      await jump('Devices');
+      await jump('Audio and video');
       await within(await row('Microphone')).findByText('Your browser asks first.', {}, SOON);
     });
     await step('Nothing asks the browser for anything until you press', async () => {
       await jump('Notifications');
-      await within(await row('Browser notifications')).findByRole('button', { name: 'Enable browser notifications' }, SOON);
+      await within(await row('Browser notifications')).findByRole('button', { name: 'Turn on' }, SOON);
     });
     await step('All of your minutes, with the sun at the end of the line', async () => {
       await jump('Plan and credits');
       await within(await row('Notes left')).findByText('6 h 40 min', {}, SOON);
-    });
-  }
-};
-
-/** Sound preferences save independently of notification permissions. */
-export const ChooseSounds: PageStory = {
-  name: '11.20 Choose call sounds',
-  ...page('/settings#sounds', 'busy'),
-  play: async ({ userEvent, step }) => {
-    await step('Choose quiet mode and preview the microphone confirmation', async () => {
-      await userEvent.click(await screen.findByRole('switch', { name: 'Quiet mode' }, LATER));
-      await userEvent.click(await screen.findByRole('button', { name: 'Preview sound' }, LATER));
     });
   }
 };
@@ -526,7 +502,7 @@ const repeatedChoices = outage(() => {
 });
 export const RapidRepeatedChoices: PageStory = {
   name: '11.23 Repeated choices while an older change fails',
-  ...page('/settings#notes', 'busy'),
+  ...page('/settings#calls', 'busy'),
   beforeEach: repeatedChoices.begin,
   play: async ({ userEvent, step }) => {
     await step('Choose Detailed, Short, then Detailed while the first write is still pending', async () => {
@@ -577,8 +553,44 @@ export const AddCredits: PageStory = {
       await userEvent.click(within(await sheet()).getByRole('button', { name: 'Done' }));
     });
     await step('Reopen the completed payment from its row', async () => {
-      await userEvent.click(within(await part('Plan and credits')).getByRole('button', { name: 'Open' }));
+      await userEvent.click(within(await group('Plan and credits')).getByRole('button', { name: 'Open' }));
       await within(await sheet()).findByText('Credits added', {}, SOON);
+    });
+  }
+};
+
+export const ChooseWhatReachesYou: PageStory = {
+  name: '11.25 Choose what reaches you',
+  ...page('/settings', 'busy'),
+  play: async ({ userEvent, step }) => {
+    await step('Click Notifications in the index', async () => {
+      await userEvent.click(within(await index()).getByRole('link', { name: 'Notifications' }));
+    });
+    await step('Each thing that can reach you is one row, with an Alert and a Sound. Untick Sound for People joining and leaving', async () => {
+      await userEvent.click(await screen.findByRole('checkbox', { name: 'People joining and leaving: sound' }, SOON));
+    });
+    await step('It’s kept at once, and Saved shows on the row', async () => {
+      const tick = await screen.findByRole('checkbox', { name: 'People joining and leaving: sound', checked: false }, SOON);
+      const line = tick.closest<HTMLElement>('[data-row]');
+      if (line) await within(line).findByText('Saved', {}, SOON);
+    });
+    await step('To silence everything, press the speaker beside Sounds', async () => {
+      await userEvent.click(within(await row('Sounds')).getByRole('button', { name: 'Turn sounds off' }));
+    });
+    await step('Every sound is off. The Sound column steps back, and keeps your ticks for when you turn them on', async () => {
+      await within(await row('Sounds')).findByText('Off. What each one plays is kept for when you turn them on.', {}, SOON);
+    });
+  }
+};
+
+export const CalendarAccessDenied: PageStory = {
+  name: '11.26 Return without granting Calendar access',
+  ...page('/settings?calendar=denied#calendar', 'busy'),
+  beforeEach: before((w) => { w.calendar = notConnected; }),
+  play: async ({ step }) => {
+    await step('Back from Google, under Connections, Google Calendar explains how to schedule with a link and still offers Connect', async () => {
+      await screen.findByText('Calendar access wasn’t granted. You can still schedule calls and share the link yourself.', {}, SOON);
+      await within(await row('Google Calendar')).findByRole('link', { name: 'Connect' }, SOON);
     });
   }
 };

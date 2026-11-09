@@ -1,18 +1,27 @@
-import type { ReactNode } from 'react';
+/*
+ * Google Drive exports: what goes (three files you can tick), where (a folder), what went lately, and what happens to the
+ * copies, in one line. Used in Settings' Connections and on a call's own note. Stateless. Styles in kit.css (ac-drive-).
+ */
+import { forwardRef, useId, type ButtonHTMLAttributes, type ReactNode } from 'react';
 import type { DriveExportFormat, DriveExportJob, DriveFolder } from '@alcove/api';
 import { cn } from '../cn';
 import { Button, Spinner } from './primitives';
 import { Icon, type IconName } from './icon';
 import { EmptyState } from './empty';
 
-const FORMATS: readonly { value: DriveExportFormat; title: string; detail: string; icon: IconName }[] = [
-  { value: 'notes-markdown', title: 'Finalized notes', detail: 'Markdown · .md', icon: 'notes' },
-  { value: 'transcript-text', title: 'Transcript', detail: 'Plain text · .txt', icon: 'transcript' },
-  { value: 'recording-zip', title: 'Retained recording', detail: 'Original audio pieces · .zip', icon: 'waveform' }
+const FORMATS: readonly { value: DriveExportFormat; title: string; ext: string; icon: IconName }[] = [
+  { value: 'notes-markdown', title: 'Notes', ext: '.md', icon: 'notes' },
+  { value: 'transcript-text', title: 'Transcript', ext: '.txt', icon: 'transcript' },
+  { value: 'recording-zip', title: 'Recording', ext: '.zip', icon: 'waveform' }
 ];
-export const driveFormatLabel = (format: DriveExportFormat): string => FORMATS.find((f) => f.value === format)?.title ?? format;
+const formatOf = (format: DriveExportFormat) => FORMATS.find((f) => f.value === format);
+export const driveFormatLabel = (format: DriveExportFormat): string => formatOf(format)?.title ?? format;
 
-/** The supported formats, chosen explicitly. What is absent or unfinished is never exported. */
+/**
+ * The files to export, three chips in a row (one under another on a phone): each its name and extension, with a tick when
+ * it's on. A file this call can't send says why (`unavailable`) and can't be ticked. What is absent or unfinished is
+ * never exported.
+ */
 export function DriveExportFormats({ selected, onChange, disabled = false, unavailable }: {
   selected: readonly DriveExportFormat[]; onChange: (formats: DriveExportFormat[]) => void; disabled?: boolean | undefined; unavailable?: Partial<Record<DriveExportFormat, string>> | undefined;
 }) {
@@ -20,41 +29,87 @@ export function DriveExportFormats({ selected, onChange, disabled = false, unava
   return <div className="ac-drive-formats" role="group" aria-label="Files to export">{FORMATS.map((format) => {
     const reason = unavailable?.[format.value];
     const on = availableSelected.includes(format.value);
-    return <button key={format.value} type="button" aria-pressed={on} disabled={disabled || reason !== undefined} className={cn('ac-drive-format', on && 'is-on', reason !== undefined && 'is-unavailable')}
+    return <button key={format.value} type="button" aria-pressed={on} disabled={disabled || reason !== undefined} className={cn('ac-drive-format', reason !== undefined && 'is-unavailable')}
       onClick={() => onChange(on ? availableSelected.filter((f) => f !== format.value) : [...availableSelected, format.value])}>
-      <Icon name={format.icon} size={20} /><span><b>{format.title}</b><small>{format.detail}</small>{reason && <small className="ac-drive-format-reason">{reason}</small>}</span><span className="ac-drive-tick"><Icon name="check" size={13} /></span>
+      <Icon name={format.icon} size={15} />
+      <span className="ac-drive-format-t"><b>{format.title}</b><small>{format.ext}</small>{reason && <small className="ac-drive-format-reason">{reason}</small>}</span>
+      <Icon name="check" size={13} className="ac-drive-tick" />
     </button>;
   })}</div>;
 }
 
+/** What happens to the copies, in one line: for the foot of Google Drive in Settings, and a call's own exports. */
 export function DriveExportDisclosure() {
-  return <div className="ac-drive-disclosure"><Icon name="info" size={17} /><p>These copies are readable in Google Drive under the folder’s existing sharing rules. Alcove never changes sharing or includes private participant notes. Disconnecting, deleting the source or losing access stops future exports. Copies already in Drive stay until you delete them there.</p></div>;
+  return <span className="ac-drive-disclosure">Copies follow the folder’s sharing in Drive, and stay there if you disconnect. Alcove never changes who can see them, and never sends private notes.</span>;
 }
 
-/** A stable folder selection: the name is display-only and the ID stays with the caller. */
+/** A folder, to read: its name and which drive it's in. The ID stays with the caller. */
 export function DriveFolderLocation({ folder, fallback = 'Choose a destination folder' }: { folder: DriveFolder | null; fallback?: string | undefined }) {
   return <span className="ac-drive-location"><Icon name={folder?.driveId ? 'building' : 'folder'} size={18} /><span><b className="ac-clamp-1">{folder?.name ?? fallback}</b>{folder && <small>{folder.driveId ? 'Shared drive' : 'Google Drive'}</small>}</span></span>;
 }
 
-const STATUS: Record<DriveExportJob['status'], { label: string; icon: IconName }> = {
-  pending: { label: 'Pending', icon: 'clock' }, uploading: { label: 'Uploading', icon: 'cloudUpload' }, uploaded: { label: 'Uploaded', icon: 'check' },
-  failed: { label: 'Needs attention', icon: 'alert' }, reconnect: { label: 'Reconnect Google Drive', icon: 'key' }
-};
+/**
+ * The Folder control: where exports go, as a box to press for another, with Change at its end. With no folder yet it
+ * asks for one. Name it for screen readers with `aria-label` when its words aren't enough.
+ */
+export const DriveFolderButton = forwardRef<HTMLButtonElement, Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'children'> & { folder: DriveFolder | null }>(
+  function DriveFolderButton({ folder, className, type = 'button', ...rest }, ref) {
+    return (
+      <button ref={ref} type={type} className={cn('ac-drive-dest', !folder && 'is-empty', className)} {...rest}>
+        <Icon name={folder?.driveId ? 'building' : 'folder'} size={17} />
+        <span className="ac-drive-dest-t"><b className="ac-clamp-1">{folder?.name ?? 'Choose a folder'}</b>{folder && <small className="ac-clamp-1">{folder.driveId ? 'Shared drive' : 'Google Drive'}</small>}</span>
+        {folder && <em>Change</em>}
+      </button>
+    );
+  });
 
-/** Recent exports, with the action next to the file it changes. No permission-changing actions. */
-export function DriveExportHistory({ jobs, onRetry, retrying, onReconnect, source, empty = 'No exports yet' }: {
-  jobs: readonly DriveExportJob[]; onRetry: (id: string) => void; retrying?: string | undefined; onReconnect?: (() => void) | undefined; empty?: string | undefined; source?: ((noteId: string) => ReactNode) | undefined;
+/** A job's state at the end of its line: when it went (Open, in Drive), on its way, or the way on from a problem. */
+function JobEnd({ job, when, onRetry, retrying, onReconnect }: { job: DriveExportJob; when: (iso: string) => string; onRetry: (id: string) => void; retrying: string | undefined; onReconnect: (() => void) | undefined }) {
+  const label = driveFormatLabel(job.format);
+  switch (job.status) {
+    case 'uploaded':
+      return job.fileUrl
+        ? <a href={job.fileUrl} target="_blank" rel="noreferrer" className="ac-drive-s is-open"><Icon name="check" size={14} />{when(job.updatedAt)}<span className="sr-only">. Open {label} in Google Drive</span></a>
+        : <span className="ac-drive-s"><Icon name="check" size={14} />{when(job.updatedAt)}</span>;
+    case 'uploading':
+      return <span className="ac-drive-s is-busy" role="status"><Spinner />Uploading</span>;
+    case 'pending':
+      return <span className="ac-drive-s is-wait" role="status"><Icon name="clock" size={14} />Waiting</span>;
+    case 'failed':
+      return <Button size="xs" icon="retry" loading={retrying === job.id} disabled={retrying !== undefined} onClick={(e) => { e.currentTarget.closest('li')?.focus(); onRetry(job.id); }}>Try again</Button>;
+    case 'reconnect':
+      return onReconnect ? <Button size="xs" icon="key" onClick={onReconnect}>Reconnect</Button> : <span className="ac-drive-s is-no"><Icon name="key" size={14} />Reconnect</span>;
+  }
+}
+
+/**
+ * Recent exports, under a small heading: each file a line, which call it's from (`source`, when they're from more than
+ * one) and what it is, and at its end when it went (`when` says a time as the app says times) or the way on from a
+ * problem. No permission-changing actions.
+ */
+export function DriveExportHistory({ jobs, when, onRetry, retrying, onReconnect, source, empty = 'No exports yet' }: {
+  jobs: readonly DriveExportJob[]; when: (iso: string) => string; onRetry: (id: string) => void; retrying?: string | undefined; onReconnect?: (() => void) | undefined; empty?: string | undefined; source?: ((noteId: string) => ReactNode) | undefined;
 }) {
-  if (!jobs.length) return <EmptyState art={null} className="ac-drive-empty" title={empty}>Selected files appear here after they finish. Failed or deleted material is never uploaded.</EmptyState>;
-  return <ul className="ac-drive-jobs" aria-label="Google Drive exports">{jobs.map((job) => {
-    const status = STATUS[job.status];
-    const problem = job.status === 'failed' || job.status === 'reconnect';
-    return <li key={job.id} tabIndex={-1} className={cn('ac-drive-job', problem && 'is-problem')}>
-      <span className="ac-drive-job-mark">{job.status === 'uploading' ? <Spinner /> : <Icon name={status.icon} size={17} />}</span>
-      <div className="ac-drive-job-copy"><b>{driveFormatLabel(job.format)}</b>{source && <div className="ac-drive-source">{source(job.noteId)}</div>}<span role={problem ? undefined : 'status'}>{status.label}<span className="ac-drive-job-date"> · {new Date(job.updatedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span></span>{problem && job.reason && <p>{job.reason}</p>}</div>
-      {job.status === 'uploaded' && job.fileUrl && <a href={job.fileUrl} target="_blank" rel="noreferrer" className="ac-drive-open">Open<Icon name="external" size={14} /><span className="sr-only"> {driveFormatLabel(job.format)} in Google Drive</span></a>}
-      {job.status === 'failed' && <Button size="sm" variant="quiet" icon="retry" loading={retrying === job.id} disabled={retrying !== undefined} onClick={(e) => { e.currentTarget.closest('li')?.focus(); onRetry(job.id); }}>Retry</Button>}
-      {job.status === 'reconnect' && onReconnect && <Button size="sm" variant="quiet" onClick={onReconnect}>Reconnect</Button>}
-    </li>;
-  })}</ul>;
+  const h = useId();
+  return (
+    <div className="ac-drive-history">
+      <p id={h} className="ac-drive-history-h">Recent exports</p>
+      {!jobs.length
+        ? <EmptyState art={null} className="ac-drive-empty" title={empty}>Files show here once they’ve gone. Nothing failed or deleted is ever sent.</EmptyState>
+        : <ul className="ac-drive-jobs" aria-labelledby={h}>{jobs.map((job) => {
+          const problem = job.status === 'failed' || job.status === 'reconnect';
+          const label = driveFormatLabel(job.format);
+          return (
+            <li key={job.id} tabIndex={-1} className={cn('ac-drive-job', problem && 'is-problem')}>
+              <span className="ac-drive-job-mark"><Icon name={formatOf(job.format)?.icon ?? 'fileText'} size={15} /></span>
+              <div className="ac-drive-job-copy">
+                <span className="ac-drive-job-t">{source ? <><b className="ac-drive-source">{source(job.noteId)}</b><span>· {label}</span></> : <b>{label}</b>}</span>
+                {problem && <span className="ac-drive-why">{job.reason ?? (job.status === 'reconnect' ? 'Google access has ended.' : 'This file didn’t go.')}</span>}
+              </div>
+              <JobEnd job={job} when={when} onRetry={onRetry} retrying={retrying} onReconnect={onReconnect} />
+            </li>
+          );
+        })}</ul>}
+    </div>
+  );
 }

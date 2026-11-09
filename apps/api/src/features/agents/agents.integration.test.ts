@@ -43,6 +43,18 @@ async function until(check: () => Promise<boolean>) {
 }
 
 describe('agent connections', () => {
+  it('gives a signed-in person the MCP address before any connection exists, the one a token then works at', async () => {
+    expect((await h.browser().fetch(`${h.baseUrl}/v1/agents/endpoint`)).status).toBe(401);
+    const owner = h.browser();
+    await owner.api.auth.signIn('sso', { email: 'agent-endpoint@tests.example' });
+    expect(await owner.api.agents.list()).toEqual([]);
+    const { endpoint } = await owner.api.agents.endpoint();
+    expect(endpoint).toBe(`${h.baseUrl}/mcp`);
+    const token = await owner.api.agents.createToken({ name: 'Endpoint client', scopes: ['notes:read'], expiresInDays: 1 });
+    expect(token.endpoint).toBe(endpoint);
+    expect((await mcp(h.baseUrl, token.token)).status).toBe(200);
+    expect(await owner.api.agents.endpoint()).toEqual({ endpoint });
+  });
   it('creates a one-time scoped credential and physically disconnects it without touching another account', async () => {
     const owner = h.browser();
     const other = h.browser();

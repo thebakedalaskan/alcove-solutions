@@ -51,3 +51,5 @@ export const DriveCallExportsSchema = z.object({
 export type DriveCallExports = z.infer<typeof DriveCallExportsSchema>;
 export const DriveConnectSchema = z.object({ url: z.string().url() });
 export const DriveConnectResultSchema = z.enum(['connected', 'cancelled', 'failed']);
+/** How Google's way back from connecting Drive went, as Settings' address says it (`?drive=`). */
+export type DriveConnectResult = z.infer<typeof DriveConnectResultSchema>;

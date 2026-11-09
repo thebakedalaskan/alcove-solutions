@@ -86,6 +86,8 @@ export function registerAgentRoutes(app: Hono<Env>, runtime: HttpRuntime): void 
 
   app.get('/v1/agents', async (c) => { c.header('cache-control', 'no-store'); return c.json(await agents.list(c.get('owner'))); });
 
+  app.get('/v1/agents/endpoint', (c) => c.json(agents.endpoint(c.get('owner'))));
+
   app.post('/v1/agents/tokens', async (c) => {
     limiter(c.get('owner').ownerId, 'agent connection');
     c.header('cache-control', 'no-store'); c.header('pragma', 'no-cache');

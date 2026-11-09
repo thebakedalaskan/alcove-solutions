@@ -1,10 +1,11 @@
 /*
- * Privacy: what Alcove processes and stores, the hosting server check (made when the app opens), and
- * deleting the account. Deleting takes one more step, which opens where the row is (never a dialog) and sets what goes
- * beside what stays. The shared demo account can't be deleted, so the row says that instead.
+ * Privacy: what Alcove processes and stores, the hosting server check (made when the app opens) and the privacy policy;
+ * then, in its own panel at the end, deleting the account. Deleting takes one more step, which opens where the row is
+ * (never a dialog) and sets what goes beside what stays. The shared demo account can't be deleted, so the row says that
+ * instead.
  */
 import { errorCode, errorMessage, type Session } from '@alcove/api';
-import { Button, Icon, Notice, SettingFact, SettingRow, SettingsPart, Spinner, buttonClass, useToast } from '@alcove/ui';
+import { Button, Icon, Notice, SettingFact, SettingRow, SettingsGroup, SettingsPanel, Spinner, useToast } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
@@ -30,7 +31,7 @@ function Compute() {
   );
 }
 
-export function PrivacyPart({ session }: { session: Session }) {
+export function PrivacyGroup({ session }: { session: Session }) {
   const [confirming, setConfirming] = useState(false);
   const opener = useRef<HTMLButtonElement>(null);
   const back = useRef(false);
@@ -42,22 +43,31 @@ export function PrivacyPart({ session }: { session: Session }) {
     opener.current?.focus();
   }, [confirming]);
   return (
-    <SettingsPart id="privacy" title="Privacy">
-      <div role="table" aria-label="What Alcove processes">
-        <div className="set-r is-lh" role="row">
-          <p className="set-lh" role="columnheader"><Icon name="server" size={16} />Account and scheduling</p>
-          <p className="set-lh" role="columnheader"><Icon name="lock" size={16} />Call content</p>
+    <SettingsGroup id="privacy" title="Privacy">
+      <SettingsPanel>
+        {/* Two columns on one grid, so each line of one sits level with the other's however they wrap. */}
+        <div className="set-led" role="table" aria-label="What Alcove processes">
+          <div className="contents" role="row">
+            <p className="set-led-h" role="columnheader"><Icon name="server" size={16} />Account and scheduling</p>
+            <p className="set-led-h" role="columnheader"><Icon name="lock" size={16} />Call content</p>
+          </div>
+          {LEDGER.map(([account, content]) => (
+            <div key={account} className="contents" role="row">
+              <p className="set-led-c" role="cell">{account}</p>
+              <p className="set-led-c is-cant" role="cell">{content}</p>
+            </div>
+          ))}
         </div>
-        {LEDGER.map(([account, content]) => <div key={account} className="set-r is-ll" role="row"><p className="set-ll" role="cell">{account}</p><p className="set-ll" role="cell">{content}</p></div>)}
-      </div>
-      <Compute />
-      <SettingRow label="How Alcove uses your information"
-        control={<Link to="/privacy" className={buttonClass({ size: 'sm' })}>Privacy policy</Link>} />
-      {confirming ? <DeleteStep shared={session.sharedDemo} onClose={close} /> : (
-        <SettingRow data-row="delete" label="Your account"
-          control={<Button ref={opener} size="sm" icon="trash" className="set-caution" onClick={() => setConfirming(true)}>Delete account</Button>} />
-      )}
-    </SettingsPart>
+        <Compute />
+        <SettingRow label="How Alcove uses your information" control={<Link to="/privacy" className="set-go">Privacy policy<Icon name="right" size={14} /></Link>} />
+      </SettingsPanel>
+      <SettingsPanel>
+        {confirming ? <DeleteStep shared={session.sharedDemo} onClose={close} /> : (
+          <SettingRow data-row="delete" label="Delete your account" help="Your notes, the calls you scheduled and your sign-in go, for good."
+            control={<Button ref={opener} size="sm" icon="trash" className="set-caution" onClick={() => setConfirming(true)}>Delete account</Button>} />
+        )}
+      </SettingsPanel>
+    </SettingsGroup>
   );
 }
 

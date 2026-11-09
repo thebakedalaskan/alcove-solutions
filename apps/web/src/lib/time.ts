@@ -15,6 +15,8 @@ export const hms = (d: Date | string) => new Date(d).toLocaleTimeString('en-GB',
 export const shortDay = (d: Date) => `${weekday(d).slice(0, 3)} ${d.getDate()} ${month(d).slice(0, 3)}`;
 /** "3 Nov" */
 export const dayMonth = (d: Date) => `${d.getDate()} ${month(d).slice(0, 3)}`;
+/** When something went: "16:40" today, "Thu 17:55" in the week before, then "3 Nov". */
+export const wentAt = (iso: string, now = new Date()): string => { const d = new Date(iso); const n = -daysFromToday(d, now); return n <= 0 ? hm(d) : n < 7 ? `${weekday(d).slice(0, 3)} ${hm(d)}` : dayMonth(d); };
 /** "Tuesday 3 November" */
 export const longDay = (d: Date) => `${weekday(d)} ${d.getDate()} ${month(d)}`;
 /** For lists of notes: "Today", "Yesterday" or "Fri 30 Oct". */

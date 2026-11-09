@@ -11,7 +11,7 @@ import { withPreferenceChange, type PreferenceChange } from '~/lib/queryWrites';
 
 const SAVED_MS = 2200;
 
-type SaveState = 'saving' | 'saved' | 'failed';
+export type SaveState = 'saving' | 'saved' | 'failed';
 interface Save { ticket: number; state: SaveState }
 /** Each row speaks only for its latest requested choice, even across separate useSave callers. */
 const Saved = createContext<{ rows: ReadonlyMap<string, Save>; begin: (name: string) => number; end: (name: string, ticket: number, saved: boolean) => boolean; done: (name: string) => void }>({ rows: new Map(), begin: () => 0, end: () => false, done: () => {} });
@@ -43,6 +43,30 @@ export function SavedProvider({ children }: { children: ReactNode }) {
 /** Says a setting kept only in this browser (a device, say) is saved. */
 export const useSaved = () => useContext(Saved).done;
 
+/** What a setting named `name` says about its latest change, for something that isn't a row of its own (a line of a table). */
+export function useSaveState(): (name: string) => SaveState | undefined {
+  const { rows } = useContext(Saved);
+  return (name) => rows.get(name)?.state;
+}
+
+/**
+ * Runs `write` as the latest change to the setting named `name`, which says Saving… until it's answered, then Saved for a
+ * moment, or Couldn't confirm (and screen readers hear each). Only the latest change to a name speaks for it: its refusal
+ * rejects, for whoever asked to say why, and an older one that was overtaken settles quietly.
+ */
+export function useSaving() {
+  const { begin, end } = useContext(Saved);
+  return async (name: string, write: () => Promise<unknown>): Promise<void> => {
+    const ticket = begin(name);
+    try { await write(); }
+    catch (e) {
+      if (end(name, ticket, false)) throw e;
+      return;
+    }
+    end(name, ticket, true);
+  };
+}
+
 /**
  * Saves a change to preferences under the setting's `name`. A change that depends on the others (the notifications go
  * together) is worked out from the preferences as they are when it's made, so quick changes build on one another.
@@ -51,17 +75,15 @@ export function useSave() {
   const qc = useQueryClient();
   const write = usePreferences();
   const toast = useToast();
-  const { begin, end, rows } = useContext(Saved);
+  const saving = useSaving();
+  const { rows } = useContext(Saved);
   return (name: string, change: PreferenceChange | ((now: Preferences) => PreferenceChange)) => {
     const now = qc.getQueryData(q.prefs().queryKey);
     if (!now) return;
     const patch = typeof change === 'function' ? change(now) : change;
     // The choice already made, picked again: nothing to save.
     if (JSON.stringify(withPreferenceChange(now, patch)) === JSON.stringify(withPreferenceChange(now, {})) && rows.get(name)?.state !== 'failed') return;
-    const ticket = begin(name);
-    write.mutateAsync(patch).then(() => end(name, ticket, true), (e: unknown) => {
-      if (end(name, ticket, false)) toast(errorMessage(e), { icon: 'x' });
-    });
+    void saving(name, () => write.mutateAsync(patch)).catch((e: unknown) => toast(errorMessage(e), { icon: 'x' }));
   };
 }
 
@@ -72,10 +94,10 @@ export function Setting({ label, saying = 'Saved', ...row }: Omit<SettingRowProp
   return <SettingRow {...row} label={label} aria-busy={state === 'saving'} saveState={state} saved={state === 'saved' ? saying : undefined} />;
 }
 
-/** A setting that's on or off. Pressing its words turns it too. */
-export function SwitchSetting({ label, help, checked, disabled = false, onChange }: { label: string; help?: ReactNode; checked: boolean; disabled?: boolean | undefined; onChange: (on: boolean) => void }) {
+/** A setting that's on or off. Pressing its words turns it too. `sub`: nested under the connection above it. */
+export function SwitchSetting({ label, help, checked, disabled = false, sub = false, onChange }: { label: string; help?: ReactNode; checked: boolean; disabled?: boolean | undefined; sub?: boolean | undefined; onChange: (on: boolean) => void }) {
   return (
-    <Setting label={label} help={help} off={disabled} onLabel={disabled ? undefined : () => onChange(!checked)}
+    <Setting label={label} help={help} off={disabled} sub={sub} onLabel={disabled ? undefined : () => onChange(!checked)}
       control={<Switch label={label} checked={checked} disabled={disabled} onChange={onChange} />} />
   );
 }

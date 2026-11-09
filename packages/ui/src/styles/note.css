@@ -710,18 +710,14 @@ button.nd-lt:hover { color: var(--ink); }
 .nd-drive-default > a { margin-top: 9px; }
 .nd-drive-custom { padding-bottom: 7px; }
 .nd-drive-custom > .ac-drive-formats { grid-template-columns: minmax(0, 1fr); gap: 5px; margin-top: 10px; }
-.nd-drive-custom .ac-drive-format { padding: 10px; }
-.nd-drive .ac-drive-job { gap: 6px; }
-.nd-drive .ac-drive-job-date { display: none; }
-.nd-drive .ac-drive-job-mark { width: 20px; }
-.nd-drive .ac-drive-empty.ac-empty { padding-inline: 0; }
+.nd-drive .ac-drive-job { column-gap: 8px; }
 .nd-drive .ac-drive-empty.ac-empty p { font-size: 12px; line-height: 18px; }
 .nd-drive-about { margin-top: 10px; }
 .nd-drive-about summary { display: flex; align-items: center; gap: 5px; width: fit-content; list-style: none; cursor: pointer; color: var(--ink-2); font: 400 12px/20px var(--font-sans); }
 .nd-drive-about summary::-webkit-details-marker { display: none; }
 .nd-drive-about[open] summary { margin-bottom: 10px; }
 .nd-drive-about[open] summary .ac-i { transform: rotate(180deg); }
-.nd-drive-about .ac-drive-disclosure { font-size: 12px; line-height: 18px; gap: 7px; }
+.nd-drive-about .ac-drive-disclosure { display: block; color: var(--ink-2); font: 400 12px/18px var(--font-sans); }
 .nd-drive-wait { display: flex; align-items: center; gap: 8px; font: 400 13px/20px var(--font-sans); color: var(--ink-2); }
 .nd-drive-refused p { color: var(--caution); }
 

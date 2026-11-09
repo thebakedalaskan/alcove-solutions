@@ -2,7 +2,7 @@
  * Being rung: a card on whatever page is open, over a modal too, for anyone signed in. One stream per tab; what it says
  * is read with useLive, and a ring that runs out by itself simply leaves. On the page of the call itself there's nothing
  * to ring about, so the card stays away. Join goes through pre-join; Can't now offers three answers, and the organizer
- * sees whichever is picked.
+ * sees whichever is picked. While Alcove isn't in front, each card is also a browser notification (RingAlert.ts).
  */
 import { errorMessage, firstName, type AlcoveApi, type IncomingRing, type RingReply } from '@alcove/api';
 import { RingCard, RingShelf, useToast, type RingAnswer } from '@alcove/ui';
@@ -17,6 +17,7 @@ import { readPrefs } from '~/features/call/media/devices';
 import { useLive } from '~/lib/live';
 import { log } from '~/lib/log';
 import { q, useRingAnswer } from '~/lib/queries';
+import { useRingAlerts } from './RingAlert';
 import { playRing, readyRingSound } from './RingSound';
 
 const rlog = log.child({ component: 'rings' });
@@ -64,6 +65,7 @@ function Cards({ rings }: { rings: Rings }) {
   const [answered, setAnswered] = useState<ReadonlySet<string>>(new Set());
   const mark = (key: string, on: boolean) => setAnswered((s) => { const n = new Set(s); if (on) n.add(key); else n.delete(key); return n; });
   const shown = all.filter((r) => !answered.has(keyOf(r)) && path !== `/join/${r.code}` && path !== `/call/${r.code}`);
+  useRingAlerts(shown, keyOf);
 
   const played = useRef(new Set<string>());
   useEffect(() => {

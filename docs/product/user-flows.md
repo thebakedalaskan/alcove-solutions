@@ -349,8 +349,9 @@ time, slides in on the right.
   preview, which camera, and its **Background**. **Video quality** sets the most video you send (360p, 720p or HD
   1080p, where your camera has it) and how you see everyone else's cameras: **Auto** (as sharp as each tile on your
   screen), **Data saver**, or **No cameras**, which stays said at the top of the call with **Show cameras**. Both are
-  remembered in this browser, and shared screens are never made smaller. **Sounds** and **Notifications** are the same
-  choices of cues and browser alerts as Settings has (11.20), guests included. **Call** is there for whoever hosts, and
+  remembered in this browser, and shared screens are never made smaller. **Notifications** has the same choices as
+  Settings' Notifications (11.25): browser notifications, Sounds, Quiet mode and the In a call rows of What reaches you,
+  guests included. **Call** is there for whoever hosts, and
   changes the call for everyone in it: **Lock the call** (nobody new can ask to join, and anyone who leaves can't come
   back), and, for the organizer alone, **Pointing at shared screens** (anyone here can point and mark, unless whoever
   shares says only they can). Someone hosting while the organizer is away has Lock the call; anyone else has no Call.
@@ -550,10 +551,10 @@ time, slides in on the right.
   Everyone** sends a reply to the conversation as well, where it says what it answered and opens the thread. **←** restores
   your place and its own draft. Every room, private conversation and thread keeps its separate draft. Only the original
   audience can read or reply; unavailable originals show a placeholder, with only the replies you can already read. Failed
-  replies stay in that thread for deliberate retry. Sounds → Replies and Show reply alerts control new-reply cues for authors
-  and people who have participated, without notifying the entire room or revealing private previews. Seeing a message while
+  replies stay in that thread for deliberate retry. **Replies to you**, in Settings → Notifications (its Alert and Sound
+  ticks), controls new-reply cues for authors and people who have participated, without notifying the entire room or revealing private previews. Seeing a message while
   the call is visible and focused updates its read receipt.
-- **Browser notifications (journey 6.33).** Explicitly enable browser alerts, choose their categories and turn them off independently from sounds and local reply alerts. In a background tab, fresh authorized private messages, relevant replies/mentions and pending call actions can show generic alerts. Click back to the exact original conversation/action after access is checked; handled actions and ended sessions explain their unavailability. Blocked or unsupported browsers retain the same unread counts and pending actions in Alcove.
+- **Browser notifications (journey 6.33).** Explicitly enable browser alerts, then choose what reaches you: each event's Alert tick covers its alert inside Alcove and from the browser, and its Sound tick its sound. In a background tab, fresh authorized private messages, relevant replies/mentions and pending call actions can show generic alerts. Click back to the exact original conversation/action after access is checked; handled actions and ended sessions explain their unavailability. Blocked or unsupported browsers retain the same unread counts and pending actions in Alcove.
 
 - **Reacting to chat.** The bar over a message has thumbs up, heart and laughing at once, and the smiley opens all eight
   (thumbs up, thumbs down, heart, smile, laughing, surprised, sad, celebrate). Each emoji someone used sits under
@@ -575,7 +576,7 @@ time, slides in on the right.
   Selected people appear beside the composer and stay highlighted in the sent message; changing the tagged words removes
   that selection. An unread mention counts in Chat and in the browser tab. **Open mention** goes to the exact message;
   seeing the addressed words in a visible, focused Chat panel marks it read. Room reads reconcile across your open clients; private reads stay with their original connection. Drafts, failed sends and
-  self-mentions do not add unread attention. Sounds → **Mentions** and **Show mention alerts** control the sound and generic local alert independently. A reply that mentions you has one primary mention cue. Retained private history keeps its unread count when its other participant leaves or you move rooms; new alerts require the current audience. Mentioning someone never adds them to a room.
+  self-mentions do not add unread attention. **Mentions**, in Settings → Notifications, has a Sound tick and an Alert tick (a generic alert inside the call, and from the browser when it's on), set independently. A reply that mentions you has one primary mention cue. Retained private history keeps its unread count when its other participant leaves or you move rooms; new alerts require the current audience. Mentioning someone never adds them to a room.
 - **Waiting for people.** Everyone the organizer rings waits on the stage in an empty arch that ripples, then shows
   their answer (**In 5 minutes**, **Not this time**), and opens into their tile when they arrive, while the others make
   room. Someone who says no or doesn't answer stays a moment with **Ring again**, then gives the room back, and stays
@@ -687,7 +688,7 @@ are up, and for whoever hosts how many are waiting, without moving focus.
     privately** on someone's row opens Chat with only you and them.
 
 **Sounds.** Successful microphone on/off transitions and fresh joins, departures, hands, questions and host admissions
-have short speaker cues. Room changes and reconnection synchronize without playing history. **More → Settings → Sounds** includes **Play sounds**, **Quiet mode**, volume, individual categories and a preview, also for guests.
+have short speaker cues. Room changes and reconnection synchronize without playing history. **More → Settings → Notifications** has Sounds (silence, volume, and a sound to play at that volume), **Quiet mode** and a Sound tick for each cue in What reaches you, also for guests.
 Settings has the same account preferences. Quiet mode retains microphone confirmations and host admission cues; browser
 notification permission is independent. Sound uses your selected speaker and never enters the outgoing call or notes.
 If playback is blocked, hands, People and their counts still work.
@@ -1420,52 +1421,71 @@ written in the workspace that hasn't reached Alcove ("Something you wrote hasn't
 from this browser."), with **Copy what you wrote** beside them, which copies only your own words, as plain text. Every
 other tab open here hears it at once and goes to the welcome page, saying you signed out in another tab. With no connection, signing
 out says so and nothing happens later by itself. Under the water the page is
-one long list of rows, with an index beside it that jumps to each part and moves a small sun to the one in view; on a
-narrow screen the index is a strip that stays at the top. Every control changes immediately and says **Saving…** while its
-request is pending. The row says **Saved** for a moment only once its latest choice is confirmed (**Saved for new notes**
-for language and summary). A refusal says **Couldn’t confirm**, with a toast explaining why; it removes only that attempt,
-keeping later choices. Pick the setting again to retry. Parts that don't load say so, with **Try again**, and the rest of
-the page still works. Journey **11.23** shows Detailed → Short → Detailed while the oldest request fails.
+seven groups, each a heading over one or two panels, with an index beside it that stays as you scroll, jumps to each group
+and moves a small sun to the one in view; on a narrow screen the index is a strip that stays at the top. A link into
+Settings can name a group or one of the places other pages point at (**Recording in the room**, **Google Calendar**,
+**Google Drive**, **Agents**); the page lands there and the index lights its group. Every control changes immediately and
+says **Saving…** while its request is pending. **Saved** shows for a moment just left of the control, only once its
+latest choice is confirmed (**Saved for new notes** for language and summary). A refusal says **Couldn’t confirm**, with a
+toast explaining why; it removes only that attempt, keeping later choices. Pick the setting again to retry. Panels that
+don't load say so, with **Try again**, and the rest of the page still works. Journey **11.23** shows Detailed → Short →
+Detailed while the oldest request fails.
 
-- **Profile**: your name and photo, from your sign-in, with a link to change them at Google or Microsoft (they update
+- **You**: your name and photo, from your sign-in, with a link to change them at Google or Microsoft (they update
   the next time you sign in; with single sign-on they come from your company's sign-in); your company, which opens
-  Team (not at a personal address); and the time zone times are shown in, this computer's.
-- **Notes**: notes on or off for new calls (each call can still be set when it's scheduled), that everyone invited
-  always gets them, the language they're written in ("Same as the call", or one of twelve), and how much the
-  summary says (**Short** or **Detailed**), and **AI model**: the model that writes the notes, reads shared
-  screens and answers questions for calls you organize. The default shows as "<name> (default)"; the others are
-  NEAR AI models that take text and images. A model that doesn't run in a secure enclave carries a yellow
-  **Unencrypted** badge ("Not in a secure enclave, so Alcove can't guarantee this model keeps your call
-  private."). Transcription is always private. Language and summary apply to notes written from then on; the
-  model to calls started from then on, and you can change it during a call (**Notes written by**, on the
-  capture panel) or when you write a note's notes again.
-- **Recording in the room**: **Record without a connection** (on by default), and **On this device**: how many
-  recordings, and how much room, wait here to upload, with **See them** (Record's list), or **Nothing waiting**.
-- **Calendar**: Google Calendar, **Connected** with **Disconnect** (it removes the Calendar connection in
-  Alcove), or **Connect**, which asks for access to the same Google account you signed in with and
-  returns here with the result. A demo account has a sample calendar. Other accounts show **Not connected**.
-  A calendar that doesn't answer says why, with **Try again**. Then **Put calls I schedule on my calendar** and
-  **Show my other meetings on Home** (both on by default).
-- **Microphone, speaker and camera**: this browser's choices, the ones the join screen and the call use; choosing
-  one doesn't open it. A browser names devices only once they're allowed, so until then the microphone and speaker
-  have no list. Nothing opens by itself: **Check the level** opens the microphone for eight seconds (the browser asks
-  first if it hasn't been allowed), its level moves as you speak, and **Stop** counts down; it records nothing, and
-  closes sooner when stopped or when this part leaves the screen. A microphone that won't open says why, with **Try
-  again**. **Play test sound** plays through the chosen speaker; a browser that can't choose one says it uses the
-  system's. The camera is a list only, never opened here, and until the browser has allowed a camera on the join
-  screen it says it isn't allowed yet; **Reduce background noise**. They're kept in this browser only.
-- **Notifications**: choose **Enable browser notifications** in Settings or **More → Settings → Notifications** in a call. Only that action asks browser permission. The row explains whether the browser allows, blocks or cannot show alerts, with guidance and persistent unread/action indicators in Alcove. A global switch and separate private-message, room reply/mention, hand, question, host admission and timer switches control call alerts. Existing call reminders, notes ready/shared/requested, document mentions and due follow-ups use the same preferences. Guests keep their explicit choices in this browser.
-  Alerts arrive while Alcove stays open in a background tab/window; there is no delivery service after every tab closes. They always hide names, messages and call/workspace details, including on lock screens. Browser alerts are silent; sound preferences remain independent. **Show reply alerts** controls local on-screen replies separately from browser permission.
-  The relevant focused conversation/action suppresses a redundant alert. Events deduplicate across tabs and reconnects, bursts share one alert per category, and handling/reading/withdrawing an event closes or replaces its alert where supported. Enabling a category or joining a thread does not replay old messages. Clicking focuses an existing tab, preferring the original call connection, checks current access, then opens the exact conversation, thread, pending action or timer. An ended private session or handled action says it is no longer available. Sign-out, removal and revoked permission stop delivery and close the applicable alerts. Other-device preference changes arrive through background refresh.
-- **Appearance**: system, light or dark, each shown as a small evening in its own colours, kept in this browser.
+  Team (not at a personal address); and the time zone times are shown in, this computer's. Then **Appearance**:
+  system, light or dark, each shown as a small evening in its own colours, kept in this browser.
+- **Calls and notes**: notes on or off for new calls (everyone invited gets them; each call can still be set when it's
+  scheduled), the language they're written in ("Same as the call", or one of twelve), how much the summary says
+  (**Short** or **Detailed**), and **AI model**: the model that writes the notes, reads shared screens and answers
+  questions for calls you organize. The default shows as "<name> (default)"; the others are NEAR AI models that take
+  text and images. A model that doesn't run in a secure enclave carries a yellow **Unencrypted** badge ("Not in a secure
+  enclave, so Alcove can't guarantee this model keeps your call private."). Transcription is always private. Language
+  and summary apply to notes written from then on; the model to calls started from then on, and you can change it
+  during a call (**Notes written by**, on the capture panel) or when you write a note's notes again. Then **Recording in
+  the room**: **Record without a connection** (on by default), and, while something waits here to upload, **On this
+  device**: how many recordings, and how much room, with **See them** (Record's list).
+- **Audio and video**: this browser's choices, the ones the join screen and the call use; choosing one doesn't open it.
+  A browser names devices only once they're allowed, so until then the microphone and speaker have no list. Nothing
+  opens by itself: **Check the level** opens the microphone for eight seconds (the browser asks first if it hasn't been
+  allowed), its level moves as you speak, and **Stop** counts down; it records nothing, and closes sooner when stopped
+  or when this group leaves the screen. A microphone that won't open says why, with **Try again**. **Play test sound**
+  plays through the chosen speaker; a browser that can't choose one says it uses the system's. The camera is a list
+  only, never opened here, and until the browser has allowed a camera on the join screen it says it isn't allowed yet;
+  **Reduce background noise**. They're kept in this browser only.
+- **Notifications**: **Browser notifications**: **Turn on** is the only thing that asks the browser's permission; once
+  allowed it's a switch, and a browser that blocks or can't show them says so, with guidance. Then **Sounds**: silence
+  every sound, set the volume, and play a sound at that volume; **Quiet mode** keeps only your microphone and requests to
+  join when you host; and **Before a call starts** (1 min, 5 min or off, for calls you organize). Then **What reaches
+  you**: one row for each thing that can reach you, with an **Alert** tick and a **Sound** tick, empty where that way
+  doesn't apply. In a call: private messages, mentions, replies to you, requests to join (when you host), raised hands
+  and new questions (when you host or present), the timer running out, people joining and leaving (sound only) and your
+  microphone on and off (sound only). Outside a call: someone ringing you, your notes being ready, notes shared with you,
+  someone asking for notes (calls you organize), a follow-up being due (at 9:00 that day) and mentions in documents
+  (alert only). An Alert shows inside Alcove (replies and mentions as a brief alert in the call), and from the browser
+  when Alcove is in another tab, once browser notifications are on. With sounds off the Sound column steps back and keeps
+  its ticks. **More → Settings → Notifications** in a call offers the same, with the In a call rows; guests keep their
+  choices in this browser.
+  Alerts arrive while Alcove stays open in a background tab/window; there is no delivery service after every tab closes. They always hide names, messages and call/workspace details, including on lock screens: a ring says only that someone is calling you. Browser alerts are silent; sounds follow their own ticks.
+  The relevant focused conversation/action suppresses a redundant alert. Events deduplicate across tabs and reconnects, bursts share one alert per category, and handling/reading/withdrawing an event closes or replaces its alert where supported. Enabling a category or joining a thread does not replay old messages. Clicking focuses an existing tab, preferring the original call connection, checks current access, then opens the exact conversation, thread, pending action or timer; a ring's alert brings the tab with the ring forward, and closes when the ring ends. An ended private session or handled action says it is no longer available. Sign-out, removal and revoked permission stop delivery and close the applicable alerts. Other-device preference changes arrive through background refresh.
+- **Connections**: **Google Calendar**, **Connected** with **Disconnect** (it removes the Calendar connection in
+  Alcove), or **Connect**, which first says how Alcove uses Calendar data (the events it reads to show meetings on Home,
+  the guest addresses and time range it sends Google to suggest times, and what it sends Google when you schedule, change
+  or cancel a call), with **Not now** and **Continue to Google**. Google asks for access to the same Google account you
+  signed in with and returns here with the result, said under the row: connected; access not granted, so you can still
+  schedule calls and share the link yourself; the wrong Google account; or a failure, to try again. A demo account has a
+  sample calendar. Other accounts show **Not connected**: Google Calendar connects from an Alcove account that uses Google
+  sign-in. A calendar that doesn't answer says why, with **Try again**. Under it, **Put calls I schedule on my calendar**
+  (when Google Calendar is connected, Google sends the invitations; a sample calendar stands in for it) and **Show my
+  other meetings on Home** (both on by default). Then **Google Drive**, one line that says where notes go until
+  **Manage** opens it in place, where **Connect** and **Reconnect** first say what Google shares and what Alcove uploads
+  (flow 15), and **Agents**: named, revocable connections, then **Connect an agent**, which opens in place (flow 14).
 - **Plan and credits**: the time of notes left, with a sun on the line under it: at the end of the line on a new
-  account, back along it as notes are written, and set once there's none left. Then the minutes of notes used this month
-  (since 00:00 UTC on the 1st). Calls without notes are free.
-- **Agents**: named, revocable connections with explicit permissions, expiry and last use. **Create a token** and
-  **Disconnect** are described in flow 14.
+  account, back along it as notes are written, and set once there's none left. Calls without notes are free. Then the
+  minutes of notes used this month (since 00:00 UTC on the 1st), and **Add credits** (11.24).
 - **Privacy**: what account and call information Alcove processes, how content is encrypted in storage, and whether
-  the hosting server reported hardware evidence. The
-  **Privacy policy** explains how Alcove uses account and service data and how to disconnect Google services.
+  the hosting server reported hardware evidence. The **Privacy policy** explains how Alcove uses account and service
+  data and how to disconnect Google services. Then, in its own panel at the end, **Delete account**.
 
 **Delete account** opens one step where it is (never a window over the page): the row becomes the question, **Delete
 your account for good?**, and what goes sits beside what stays. What goes: the notes you made, with their audio, for
@@ -1491,9 +1511,20 @@ tries again, and nothing happens later by itself. Once it's deleted you land on 
 if you left Settings meanwhile, and this browser forgets the tour and call view it kept for the account.
 Signing in again starts a new, empty account with 10,000 credits.
 
-### 11.20 Choose call sounds
+### 11.25 Choose what reaches you
 
-Open **Settings → Sounds** for master sound, volume, quiet mode and separate microphone, people, hands, questions, admissions, board timer and incoming call switches. Preview each phrase at your chosen volume. These controls work even when browser notifications are blocked. **More → Settings → Sounds** in a call offers the same choices, including for guests. Quiet mode keeps your microphone confirmations and requests to join when you host. Signed-in choices follow your account; guests keep theirs in this browser.
+Open **Settings → Notifications**. In **What reaches you**, untick **Sound** on **People joining and leaving**: it's kept at
+once and **Saved** shows on the row. Press the speaker beside **Sounds** to silence everything: the Sound column steps back
+and keeps your ticks for when you turn sounds on again; the play button plays a sound at your volume. Alert and Sound ticks
+work even when browser notifications are blocked: alerts still show inside Alcove. **More → Settings → Notifications** in a
+call offers the same choices, including for guests. Signed-in choices follow your account; guests keep theirs in this
+browser.
+
+### 11.26 Return without granting Calendar access
+
+From **Connect** beside Google Calendar, untick Calendar access in Google's consent, or cancel it. Google brings you back
+to **Settings → Connections**, and under Google Calendar it says "Calendar access wasn’t granted. You can still schedule
+calls and share the link yourself." **Connect** is still there for when you're ready.
 
 ## 12. The Drive and the workspace
 
@@ -1772,16 +1803,18 @@ are separate choices, as are reading calls, managing calls and reading calendar 
 agent can receive readable information and its provider handles it under its own policies. Signing out of a browser
 does not disconnect an agent; Disconnect, expiry and account deletion end its access.
 
-1. **Create a personal token.** In **Settings → Agents**, press **Create a token**, give the connection a name and choose
-   an expiry from 1–90 days (30 by default). Read permissions start selected. Choose any additional permissions explicitly;
-   sharing and deletion stay separate. **Create token** shows the token once, masked, with the MCP server address and
-   **Copy token**. **Done** removes it from the page and leaves the named connection, its permissions and expiry in the
+1. **Connect an agent, or create a personal token.** In **Settings → Connections → Agents**, press **Connect an agent**.
+   It opens in place with Alcove's MCP address and **Copy**, to paste into the agent's connections; the agent then opens
+   Alcove to sign in (14.3). For a script that can't sign in, press **Create a token**, give the connection a name and choose
+   when it expires: 7, 30 or 90 days (30 by default). Read permissions start selected. Choose any additional permissions explicitly;
+   sharing and deletion stay separate. **Create token** shows the token once, masked, with **Copy**, and Alcove's address under
+   it. **Done** removes it from the page and leaves the named connection, its permissions and expiry in the
    list. If creation fails, the form stays open with the reason. If Copy is unavailable, the same view says so and keeps
    the token available until Done.
 2. **Disconnect an agent.** Each connection lists its permissions, expiry and last use, or **Not used yet**. Press
    **Disconnect** on that connection's row. It leaves the list and a toast says **Agent disconnected.** If the request
-   fails, the connection stays and the toast explains why. With no connections, the part shows **No agents connected**;
-   loading and unavailable states keep the rest of Settings usable.
+   fails, the connection stays and the toast explains why. With no connections, **Connect an agent** says there are none
+   yet; loading and unavailable states keep the rest of Settings usable.
 3. **Sign in and review requested access.** Start connecting from the external agent, which opens `/connect` with an
    opaque request pointer. If signed out, choose an Alcove sign-in method first; the same request resumes afterward.
    The page names the requesting client (a name supplied by that client), the signed-in account and only the requested
@@ -1791,20 +1824,21 @@ does not disconnect an agent; Disconnect, expiry and account deletion end its ac
    `/connect` without a request grants nothing and says to open the connection from the agent. A failed request or decision
    stays on the page with a reason and a way to retry.
 
-Storybook's journeys use these numbers: **14.1 Create a personal token**, **14.2 Disconnect an agent**, and **14.3 Sign in
-and review requested access**. The OAuth journey plays up to the external-client hand-off; it does not open another app.
+Storybook's journeys use these numbers: **14.1 Connect an agent, or create a personal token**, **14.2 Disconnect an
+agent**, and **14.3 Sign in and review requested access**. The OAuth journey plays up to the external-client hand-off; it does not open another app.
 
 ## 15. Google Drive exports
 
-Google Drive is a separate connection in **Settings → Google Drive**. Connect the Google account that should own exported
-files and consent to access only files and folders selected for Alcove. **Connect Google Drive** and **Reconnect**
-first open a disclosure explaining what Alcove gets from Google and what it uploads. **Continue to Google** opens
-Google’s consent and folder picker. Connecting or disconnecting Drive leaves ordinary
-Alcove sign-in and Calendar settings alone. Google’s pages are outside Alcove; returning after cancellation or failure says
-what happened and leaves the existing settings in place.
+Google Drive is a separate connection in **Settings → Connections → Google Drive**: one line that says where notes go
+("After each call: notes and transcript to Call notes.") until **Manage** opens its folder, files, recent exports and
+**Disconnect** in place, and **Done** folds it again. **Connect** the Google account that should own exported files and
+consent to access only files and folders selected for Alcove. **Connect** and **Reconnect** first open a disclosure
+explaining what Alcove gets from Google and what it uploads. **Continue to Google** opens Google’s consent and folder
+picker. Connecting or disconnecting Drive leaves ordinary Alcove sign-in and Calendar settings alone. Google’s pages are outside Alcove; returning lands on Google Drive, open, and says what
+happened, leaving the existing settings in place after cancellation or failure.
 
 1. **Choose default files.** Select finalized notes as Markdown, transcripts as plain text, or retained original audio
-   pieces as a ZIP. Each is an explicit choice. **Automatic exports** stays unavailable until a destination and at least
+   pieces as a ZIP. Each is an explicit choice. **Export after each call** stays unavailable until a folder and at least
    one type are chosen. Every setting saves as it changes. Pausing exports keeps the choices. Only finalized, retained
    material the exporting account can still access is eligible; a call ending does not promise an export exists.
 2. **Choose a shared-drive folder.** The destination opens a folder picker, showing authorized folders and whether each
@@ -1815,8 +1849,8 @@ what happened and leaves the existing settings in place.
 3. **Override one call.** On a call’s saved notes, your **Google Drive** part says whether it follows the
    defaults. **Use custom settings** gives this call its own authorized destination, file choices and on/off switch.
    Returning to defaults removes the override. This changes only that person’s export settings for the call.
-4. **Retry an export.** Recent exports name their source call and show **Pending**, **Uploading**, **Uploaded** with **Open**,
-   or an actionable failure. **Retry** rechecks permission and, with the same destination, keeps the same export identity
+4. **Retry an export.** Recent exports name their source call and end each line with when it went (a link to the file in
+   Drive), **Uploading**, **Waiting**, or why it didn't go, with **Try again**. **Try again** rechecks permission and, with the same destination, keeps the same export identity
    so an uncertain response does not create a second file. Choosing another destination and retrying a failed export
    intentionally creates a new copy there; existing copies stay in their original folder. Revoked Google access asks
    for reconnection instead. Regenerated
@@ -1830,8 +1864,8 @@ what happened and leaves the existing settings in place.
    when the call retained it; unavailable audio is disabled with the reason beside the format. Global defaults may
    still select retained audio for future calls the person organizes.
 
-7. **Review Drive permissions.** Open **Connect Google Drive**, read what access the export needs and cancel to stay
-   in Settings without starting consent.
+7. **Review Drive permissions.** Press **Connect** beside Google Drive, read what access the export needs and cancel to
+   stay in Settings without starting consent.
 
 Storybook’s journeys use **15.1–15.7** above. The account, folders and file links in the preview are made-up; real Google
 consent and the provider’s own folder-selection page require manual verification with a supported Google account.

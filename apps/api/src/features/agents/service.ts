@@ -1,5 +1,5 @@
 /** Revocable delegations. The bearer is returned once; only its hash reaches Postgres. */
-import { AgentConnectionIdSchema, AgentScopesSchema, type AgentConnection, type AgentScope, type AgentTokenInput } from '@alcove/api';
+import { AgentConnectionIdSchema, AgentScopesSchema, type AgentConnection, type AgentEndpoint, type AgentScope, type AgentTokenInput } from '@alcove/api';
 import { z } from 'zod';
 import type { Deps, Owner } from '../../context';
 import { b64u, id128, openJson, random, sealJson, sha, stateKey, toJson, utf8 } from '../../crypto';
@@ -16,6 +16,8 @@ export type Grant = z.infer<typeof GrantRow>;
 export interface AgentPrincipal { owner: Owner; connection: AgentConnection }
 export const issuerUrl = (d: Deps): string => d.cfg.API_URL.replace(/\/+$/, '');
 export const resourceUrl = (d: Deps): string => `${issuerUrl(d)}/mcp`;
+/** Where agents connect, the same for everyone: Settings shows it before any connection exists. */
+export const endpoint = (d: Deps): AgentEndpoint => ({ endpoint: resourceUrl(d) });
 export const tokenHash = (token: string): Uint8Array => sha(utf8(token));
 export const newToken = (kind: 'personal' | 'access' | 'refresh'): string => `alcove_${kind}_${b64u(random(32))}`;
 const header = (ownerId: string, grantId: string) => ({ v: 1 as const, kind: 'agent-grant', ownerId, grantId });

@@ -46,13 +46,15 @@ can only be guaranteed inside the current tab.
 The renderer plays through an output-only media stream and HTML audio element. It uses the call's chosen
 speaker where `setSinkId` is supported, and the system output otherwise or when the chosen device is no
 longer usable. It is never connected to a microphone, call publisher, capture graph, transcription or
-recording mix. Browser/site mute and operating-system volume still apply. Preview is an explicit press
-and plays at the chosen volume even with the master or category switch off; volume zero stays silent.
+recording mix. Browser/site mute and operating-system volume still apply. Play is an explicit press
+and plays one cue at the chosen volume even with that cue's own tick off; it is unavailable while sounds are off, and
+volume zero stays silent.
 
 ## Preferences and stored-data upgrade
 
-Settings → Sounds and the call's More → Sounds offer master enable, volume, quiet mode, per-category
-choices and previews. Quiet mode retains only your own microphone confirmations and host admission
+Settings → Notifications and the call's More → Settings → Notifications offer Sounds (silence, volume, and Play,
+which plays one cue at that volume; unavailable while sounds are off), Quiet mode, and a Sound tick per cue in What
+reaches you. Quiet mode retains only your own microphone confirmations and host admission
 requests, subject to their individual switches. Sound controls never ask for browser notification
 permission. Guests use `alcove.guest.sounds`, validated with the contract's zod schema; an unreadable value
 uses the defaults.

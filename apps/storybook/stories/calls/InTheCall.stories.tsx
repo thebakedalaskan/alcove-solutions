@@ -163,10 +163,13 @@ export const Settings = { ...FourOfYou, name: 'Settings', play: settings() };
 export const SettingsPhone = phone(Settings);
 /** Video quality: the most video you send, and how you see everyone else's cameras. */
 export const SettingsVideoQuality = { ...FourOfYou, name: 'Settings, video quality', play: settings('Video quality') };
-/** Sounds: the call's cues, how loud, quiet mode, the alerts on screen, and one to listen to. */
-export const SettingsSounds = { ...FourOfYou, name: 'Settings, sounds', play: settings('Sounds') };
-/** Notifications: the browser's own, while this tab is out of sight. Only Enable browser notifications asks the browser. */
+/**
+ * Notifications: the browser's own, while this tab is out of sight (only Turn on asks the browser), how loud the sounds are
+ * with one to hear, quiet mode, then what reaches you in a call, each with an Alert and a Sound.
+ */
 export const SettingsNotifications = { ...FourOfYou, name: 'Settings, notifications', play: settings('Notifications') };
+export const SettingsNotificationsPhone = phone(SettingsNotifications);
+export const SettingsNotificationsLight = light(SettingsNotifications);
 /** Call, the organizer's: locking the call, and pointing at shared screens, for everyone in it. */
 export const SettingsCall = { ...FourOfYou, name: 'Settings, the call', play: settings('Call') };
 export const SettingsCallPhone = phone(SettingsCall);

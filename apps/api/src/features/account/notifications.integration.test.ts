@@ -22,6 +22,16 @@ describe('browser notification preferences', () => {
     });
     expect(notificationResponse.status).toBe(400);
     expect(await browser.api.account.preferences()).toEqual(initial);
+    // The release before the Alert ticks sent its own switches and no ringing: a tab still open on it can't save a group.
+    const previousGroup = {
+      enabled: false, privateMessages: false, replies: false, replyAlerts: true, chatMentions: false, mentionAlerts: true, hands: false, questions: false,
+      admissions: false, timers: false, beforeCall: 5, notesReady: true, sharedWithYou: true, notesRequested: true, followUpDue: false, tagged: true
+    };
+    const previousResponse = await browser.fetch(`${h.baseUrl}/v1/account/preferences`, {
+      method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ notifications: previousGroup })
+    });
+    expect(previousResponse.status).toBe(400);
+    expect(await browser.api.account.preferences()).toEqual(initial);
     const soundResponse = await browser.fetch(`${h.baseUrl}/v1/account/preferences`, {
       method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ sounds: { enabled: false } })
     });
@@ -41,18 +51,65 @@ describe('browser notification preferences', () => {
     const choices = { beforeCall: 0, notesReady: false, sharedWithYou: true, notesRequested: false, followUpDue: true, tagged: false };
     await saveRevision(owner, h.pool, item.itemId, item.revisionId, { ...item.manifest, preferences: { ...item.manifest.preferences, notifications: choices } });
     const prefs = await browser.api.account.preferences();
-    expect(prefs.notifications).toMatchObject({ ...choices, enabled: true, privateMessages: false, replies: false, chatMentions: false, hands: false, questions: false, admissions: false, timers: false });
+    // Its reply and mention alerts were on (they had no switch yet), so their Alert ticks are; rings reach it too.
+    expect(prefs.notifications).toEqual({ ...choices, enabled: true, privateMessages: false, replies: true, chatMentions: true, hands: false, questions: false, admissions: false, timers: false, ringing: true });
     const saved = await browser.api.account.updatePreferences({ notifications: { ...prefs.notifications, enabled: false } });
     expect(saved.notifications).toMatchObject({ ...choices, enabled: false });
     expect((await browser.api.account.preferences()).notifications).toEqual(saved.notifications);
+  });
+  it('folds a previous release’s call alert switches into their Alert ticks, then saves the record without them', async () => {
+    const browser = h.browser();
+    const { session } = await browser.api.auth.signIn('sso', { email: `folded.${Date.now()}@tests.example` });
+    const owner = await openOwner(h.deps, session.ownerId, undefined);
+    const stored = z.object({ preferences: z.object({ notifications: z.record(z.string(), z.unknown()) }) });
+    const [item] = await listItems(owner, h.pool, 'profile', Profile);
+    if (!item) throw new Error('No profile to upgrade');
+    // Reply alerts on with the browser's replies off; mention alerts off with its mentions off; the browser's hands on.
+    const choices = { enabled: true, privateMessages: false, replies: false, replyAlerts: true, chatMentions: false, mentionAlerts: false, hands: true, questions: false,
+      admissions: false, timers: true, beforeCall: 1, notesReady: false, sharedWithYou: true, notesRequested: true, followUpDue: true, tagged: false };
+    await saveRevision(owner, h.pool, item.itemId, item.revisionId, { ...item.manifest, preferences: { ...item.manifest.preferences, notifications: choices } });
+    const prefs = await browser.api.account.preferences();
+    expect(prefs.notifications).toEqual({ enabled: true, privateMessages: false, replies: true, chatMentions: false, hands: true, questions: false, admissions: false,
+      timers: true, ringing: true, beforeCall: 1, notesReady: false, sharedWithYou: true, notesRequested: true, followUpDue: true, tagged: false });
+    // Reading alone doesn't write: the sealed record keeps the previous release's shape until something is saved.
+    expect((await listItems(owner, h.pool, 'profile', stored))[0]?.manifest.preferences.notifications).toMatchObject({ replyAlerts: true, mentionAlerts: false });
+    await browser.api.account.updatePreferences({ summaryLength: 'detailed' });
+    const written = (await listItems(owner, h.pool, 'profile', stored))[0]?.manifest.preferences.notifications;
+    expect(written).toEqual(prefs.notifications);
+    expect(written).not.toHaveProperty('replyAlerts'); expect(written).not.toHaveProperty('mentionAlerts');
+    // Written in the new shape, an Alert turned off stays off: nothing is folded in again.
+    const quiet = await browser.api.account.updatePreferences({ notifications: { ...prefs.notifications, replies: false, ringing: false } });
+    expect(quiet.notifications).toMatchObject({ replies: false, chatMentions: false, ringing: false });
+    expect((await browser.api.account.preferences()).notifications).toEqual(quiet.notifications);
+  });
+  it('keeps a previous release’s call alerts that were off, and the browser categories that were on, through the fold', async () => {
+    const browser = h.browser();
+    const { session } = await browser.api.auth.signIn('sso', { email: `kept.${Date.now()}@tests.example` });
+    const owner = await openOwner(h.deps, session.ownerId, undefined);
+    const seal = async (notifications: Record<string, unknown>) => {
+      const [item] = await listItems(owner, h.pool, 'profile', Profile);
+      if (!item) throw new Error('No profile to upgrade');
+      await saveRevision(owner, h.pool, item.itemId, item.revisionId, { ...item.manifest, preferences: { ...item.manifest.preferences, notifications } });
+    };
+    const kept = { beforeCall: 5, notesReady: true, sharedWithYou: true, notesRequested: true, followUpDue: false, tagged: true };
+    // From before the browser's categories: both call alerts turned off, and no replies or chatMentions at all.
+    await seal({ ...kept, replyAlerts: false, mentionAlerts: false });
+    expect((await browser.api.account.preferences()).notifications).toEqual({ ...kept, enabled: true, privateMessages: false, replies: false, chatMentions: false,
+      hands: false, questions: false, admissions: false, timers: false, ringing: true });
+    // The browser's replies and mentions on, the call's alerts for them off: the Alert ticks stay on.
+    await seal({ ...kept, enabled: true, privateMessages: false, replies: true, replyAlerts: false, chatMentions: true, mentionAlerts: false, hands: false, questions: false, admissions: false, timers: false });
+    expect((await browser.api.account.preferences()).notifications).toMatchObject({ replies: true, chatMentions: true });
   });
   it('starts opted out, remembers categories independently of sound, and disables globally without losing choices', async () => {
     const browser = h.browser();
     const email = `notifications.${Date.now()}@tests.example`;
     await browser.api.auth.signIn('sso', { email });
     const initial = await browser.api.account.preferences();
-    expect(initial.notifications).toMatchObject({ enabled: false, privateMessages: false, replies: false, chatMentions: false, hands: false, questions: false, admissions: false, timers: false });
-    const notifications = { ...initial.notifications, enabled: true, privateMessages: true, replies: true, admissions: true };
+    expect(initial.notifications).toEqual({
+      enabled: false, privateMessages: true, replies: true, chatMentions: true, hands: true, questions: false, admissions: true, timers: true, ringing: true,
+      beforeCall: 5, notesReady: true, sharedWithYou: true, notesRequested: true, followUpDue: false, tagged: true
+    });
+    const notifications = { ...initial.notifications, enabled: true, privateMessages: false, questions: true, ringing: false };
     await browser.api.account.updatePreferences({ notifications });
     const anotherTab = h.browser();
     await anotherTab.api.auth.signIn('sso', { email });
@@ -64,6 +121,6 @@ describe('browser notification preferences', () => {
     expect((await browser.api.account.preferences()).notifications).toEqual(disabled);
     const other = h.browser();
     await other.api.auth.signIn('sso', { email: `other.${Date.now()}@tests.example` });
-    expect((await other.api.account.preferences()).notifications).toMatchObject({ enabled: false, privateMessages: false, admissions: false });
+    expect((await other.api.account.preferences()).notifications).toMatchObject({ enabled: false, privateMessages: true, questions: false, ringing: true });
   });
 });

@@ -54,7 +54,7 @@ function Consent({ requestId, authorization }: { requestId: string; authorizatio
   return <AgentConsentFrame title="Connect your agent">
     <p><strong>{authorization.clientName}</strong> wants access to your Alcove account, {authorization.accountEmail}.</p>
     <p className="ac-agent-hint">The client supplies this name. Only continue if you started this connection.</p>
-    <AgentPermissions permissions={PERMISSIONS.filter((p) => authorization.scopes.includes(p.id))} selected={scopes} onChange={choose} disabled={decision.isPending} />
+    <AgentPermissions details permissions={PERMISSIONS.filter((p) => authorization.scopes.includes(p.id))} selected={scopes} onChange={choose} disabled={decision.isPending} />
     <AgentDisclosure />
     <p className="ac-agent-hint">Access ends after 30 days. You can disconnect it sooner in Settings.</p>
     {problem && <p role="alert">{problem}</p>}

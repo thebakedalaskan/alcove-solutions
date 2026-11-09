@@ -83,7 +83,7 @@ export const InSettings: Story = {
     useEffect(() => { if (left <= 0) setChecking(false); }, [left]);
     return (
       <div className="set" style={{ position: 'relative', isolation: 'isolate', marginTop: 0 }}>
-        <div className="set-parts" style={{ maxWidth: 820 }}>
+        <div className="set-groups" style={{ maxWidth: 820 }}>
           <SettingRow stack label="Microphone" help={checking ? 'Speak, and watch it move. Nothing is recorded.' : undefined}
             control={(
               <>
