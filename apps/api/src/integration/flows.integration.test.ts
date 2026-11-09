@@ -247,15 +247,15 @@ describe('signing in', () => {
     const defaults = {
       sounds: DEFAULT_SOUND_PREFERENCES,
       notesDefault: 'on', notesLanguage: 'call', summaryLength: 'short', addToCalendar: true, showOtherMeetings: true, recordOffline: true,
-      notifications: { replyAlerts: true, beforeCall: 5, notesReady: true, sharedWithYou: true, notesRequested: true, followUpDue: false, tagged: true },
+      notifications: { replyAlerts: true, mentionAlerts: true, beforeCall: 5, notesReady: true, sharedWithYou: true, notesRequested: true, followUpDue: false, tagged: true },
       pinned: [], groups: []
     };
     expect(await api.account.preferences()).toEqual(defaults);
     const patched = await api.account.updatePreferences({
       summaryLength: 'detailed',
-      notifications: { replyAlerts: false, beforeCall: 1, notesReady: true, sharedWithYou: true, notesRequested: true, followUpDue: false, tagged: true }
+      notifications: { replyAlerts: false, mentionAlerts: false, beforeCall: 1, notesReady: true, sharedWithYou: true, notesRequested: true, followUpDue: false, tagged: true }
     });
-    expect(patched).toEqual({ ...defaults, summaryLength: 'detailed', notifications: { ...defaults.notifications, replyAlerts: false, beforeCall: 1 } });
+    expect(patched).toEqual({ ...defaults, summaryLength: 'detailed', notifications: { ...defaults.notifications, replyAlerts: false, mentionAlerts: false, beforeCall: 1 } });
     expect(await api.account.preferences()).toEqual(patched);
     const sounds = { ...DEFAULT_SOUND_PREFERENCES, enabled: false, quiet: true, volume: 0.25, hands: false, replies: false };
     expect((await api.account.updatePreferences({ sounds })).sounds).toEqual(sounds);

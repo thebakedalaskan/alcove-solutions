@@ -269,7 +269,7 @@ const tagAlert = (m: MentionNotice): Alert => ({
   open: { to: 'document', workspaceId: m.workspaceId, documentId: m.document, block: m.block }
 });
 
-const NONE: NotificationPrefs = { replyAlerts: false, beforeCall: 0, notesReady: false, sharedWithYou: false, notesRequested: false, followUpDue: false, tagged: false };
+const NONE: NotificationPrefs = { replyAlerts: false, mentionAlerts: false, beforeCall: 0, notesReady: false, sharedWithYou: false, notesRequested: false, followUpDue: false, tagged: false };
 /** A tab that notifies can sit hidden for days with nothing else reading: what it depends on it reads by itself. */
 const KEEP_READING = { refetchInterval: NOTES_MS, refetchIntervalInBackground: true };
 

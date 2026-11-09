@@ -9,7 +9,7 @@ import { onSignedOutElsewhere, signedOut } from '~/lib/signedOut';
 export function unreadChatMentions(state: CallState, crypto: CallCrypto, identity: string): string[] {
   if (state.phase !== 'in-call' || crypto.status !== 'in') return [];
   const read = new Set(state.chatRead);
-  return crypto.chat.filter((message) => !message.sending && !message.isMe && message.place === crypto.place
+  return crypto.chat.filter((message) => !message.sending && !message.failed && !message.isMe && message.place === crypto.place
     && !read.has(message.id) && message.mentions.some((mention) => mention.identity === identity)).map((message) => message.id);
 }
 

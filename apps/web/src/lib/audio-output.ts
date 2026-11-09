@@ -4,20 +4,21 @@ import { canChooseSpeaker } from '~/features/call/media/devices';
 import { log } from './log';
 
 const alog = log.child({ component: 'sound-output' });
-export type SoundCue = 'mic-on' | 'mic-off' | 'join' | 'leave' | 'hand' | 'question' | 'message' | 'reply' | 'admission' | 'timer' | 'ring';
+export type SoundCue = 'mic-on' | 'mic-off' | 'join' | 'leave' | 'hand' | 'question' | 'message' | 'reply' | 'mention' | 'admission' | 'timer' | 'ring';
 const tones: Record<SoundCue, readonly (readonly [number, number])[]> = {
   'mic-on': [[0, 523.25], [0.075, 659.25]], 'mic-off': [[0, 659.25], [0.075, 523.25]],
   join: [[0, 392], [0.1, 523.25]], leave: [[0, 523.25], [0.1, 392]],
   hand: [[0, 587.33], [0.12, 659.25]], question: [[0, 523.25], [0.13, 698.46]],
   message: [[0, 659.25], [0.1, 783.99]],
   reply: [[0, 587.33], [0.1, 783.99]],
+  mention: [[0, 698.46], [0.1, 880]],
   admission: [[0, 392], [0.14, 587.33], [0.28, 659.25]],
   timer: [[0, 783.99], [0.18, 523.25]], ring: [[0, 659.25], [0.16, 880], [0.8, 659.25], [0.96, 880]]
 };
 const category: Record<SoundCue, keyof SoundPreferences> = {
-  'mic-on': 'mic', 'mic-off': 'mic', join: 'people', leave: 'people', hand: 'hands', question: 'questions', message: 'messages', reply: 'replies', admission: 'admissions', timer: 'timers', ring: 'ringing'
+  'mic-on': 'mic', 'mic-off': 'mic', join: 'people', leave: 'people', hand: 'hands', question: 'questions', message: 'messages', reply: 'replies', mention: 'mentions', admission: 'admissions', timer: 'timers', ring: 'ringing'
 };
-const priority = (cue: SoundCue) => cue === 'mic-on' || cue === 'mic-off' ? 4 : cue === 'admission' ? 3 : cue === 'timer' || cue === 'ring' ? 1 : 0;
+const priority = (cue: SoundCue) => cue === 'mic-on' || cue === 'mic-off' ? 4 : cue === 'admission' ? 3 : cue === 'mention' ? 2 : cue === 'timer' || cue === 'ring' ? 1 : 0;
 const cooldown = (cue: SoundCue) => category[cue] === 'mic' ? 0 : cue === 'admission' ? 700 : 1800;
 export function soundAllowed(cue: SoundCue, prefs: SoundPreferences): boolean {
   return prefs.enabled && prefs.volume > 0 && Boolean(prefs[category[cue]]) && (!prefs.quiet || cue === 'mic-on' || cue === 'mic-off' || cue === 'admission');

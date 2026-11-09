@@ -52,7 +52,7 @@ export function ChatComposer({ draft, people, ready, moving, to, onSend, private
   const start = term === undefined ? -1 : caret - term.length - 1;
   const selectedSpan = mentions.some((m) => m.start <= start && m.end > start);
   const choosing = ready && term !== undefined && !selectedSpan && !dismissed;
-  const rows = choosing ? people.filter((p) => fold(`${p.person.name} ${p.person.email}`).includes(fold(term ?? ''))).slice(0, 12) : [];
+  const rows = choosing ? people.filter((p) => fold(`${p.person.name} ${p.person.email} ${p.identity}`).includes(fold(term ?? ''))) : [];
   const at = Math.max(0, Math.min(active, rows.length - 1));
   const chosen = mentions.filter((m) => people.some((p) => p.identity === m.identity));
   useEffect(() => { list.current?.querySelector('[data-active]')?.scrollIntoView({ block: 'nearest' }); }, [at]);
@@ -87,18 +87,18 @@ export function ChatComposer({ draft, people, ready, moving, to, onSend, private
   return (
     <form className="ic-foot ic-chat-compose" autoComplete="off" onSubmit={(e) => { e.preventDefault(); send(); }}>
       {choosing && <div className="ic-mention-picker">
-        <div className="ic-mention-head">Mention someone in this room</div>
+        <div className="ic-mention-head">{privateWith ? 'Mention someone in this conversation' : 'Mention someone in this room'}</div>
         <div ref={list} id={id} role="listbox" aria-label="People to mention" className="ic-mention-list">
-          {rows.map((p, i) => <button key={p.identity} id={`${id}-${i}`} type="button" role="option" aria-selected={i === at} tabIndex={-1}
+          {rows.map((p, i) => <button key={p.identity} id={`${id}-${i}`} type="button" role="option" aria-selected={i === at} tabIndex={-1} title={p.person.email || `Guest connection ${p.identity}`}
             className={cn('ic-mention-option', i === at && 'is-active')} data-active={i === at || undefined}
             onMouseDown={(e) => e.preventDefault()} onMouseMove={() => setActive(i)} onClick={() => pick(p)}>
             <Avatar person={p.person} size={28} /><span><b>{p.person.name || 'Guest'}</b><small>{p.person.email || `Guest · ${p.identity.slice(0, 8)}`}</small></span>
           </button>)}
-          {!rows.length && <p className="ic-mention-none">No one in this room matches.</p>}
+          {!rows.length && <p className="ic-mention-none">{privateWith ? 'No one in this conversation matches.' : 'No one in this room matches.'}</p>}
         </div>
       </div>}
       {!!chosen.length && <div className="ic-mention-chosen" aria-label="Selected mentions">
-        {chosen.map((m) => <span className="ic-mention-token" key={`${m.identity}-${m.start}`}>
+        {chosen.map((m) => <span className="ic-mention-token" key={`${m.identity}-${m.start}`} role="group" aria-label={`Mention ${text.slice(m.start, m.end)}, ${people.find((p) => p.identity === m.identity)?.person.email || `Guest connection ${m.identity}`}`}>
           {text.slice(m.start, m.end)}<IconButton icon="x" label={`Remove mention ${text.slice(m.start + 1, m.end)}`} onClick={() => { draft.mentions = mentions.filter((other) => other !== m); setText(text); }} />
         </span>)}
       </div>}
@@ -123,13 +123,14 @@ export function ChatComposer({ draft, people, ready, moving, to, onSend, private
 }
 
 /** The encrypted text supplies the words; identity controls highlighting even if someone's display name changed. */
-export function MentionText({ text, mentions, me }: { text: string; mentions: readonly CallChatMention[]; me: string }) {
+export function MentionText({ text, mentions, me, who }: { text: string; mentions: readonly CallChatMention[]; me: string; who: (identity: string) => Person }) {
   let end = 0;
   const parts = [...mentions].sort((a, b) => a.start - b.start).flatMap((m) => {
     if (m.start < end || m.start < 0 || m.end > text.length || m.end <= m.start || text[m.start] !== '@') return [];
     const before = text.slice(end, m.start);
     end = m.end;
-    return [<Fragment key={`${m.start}-${m.end}`}>{before}<mark className={cn('ic-mention', m.identity === me && 'is-me')} title={m.identity === me ? 'Mentions you' : undefined}>{text.slice(m.start, m.end)}</mark></Fragment>];
+    const person = who(m.identity);
+    return [<Fragment key={`${m.start}-${m.end}`}>{before}<mark className={cn('ic-mention', m.identity === me && 'is-me')} title={m.identity === me ? 'Mentions you' : `Mentions ${person.name} · ${person.email || m.identity}`}>{text.slice(m.start, m.end)}</mark></Fragment>];
   });
   return <>{parts}{text.slice(end)}</>;
 }

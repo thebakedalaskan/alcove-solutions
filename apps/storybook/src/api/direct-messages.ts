@@ -1,4 +1,4 @@
-import { AlcoveApiError, type CallChatThread, type CallCrypto, type CallState, type CallTicket, type DirectMessagesApi, type DirectMessagesState, type LiveStore } from '@alcove/api';
+import { AlcoveApiError, DirectTextSchema, type CallChatMention, type CallChatThread, type CallCrypto, type CallState, type CallTicket, type DirectMessagesApi, type DirectMessagesState, type LiveStore } from '@alcove/api';
 import { Pushed } from './live';
 import { nextId } from './state';
 
@@ -8,11 +8,18 @@ export class ScriptedDirectMessages extends Pushed<DirectMessagesState> implemen
   private pendingTimers = new Set<ReturnType<typeof setTimeout>>();
   private fail: boolean;
   constructor(private readonly call: LiveStore<CallState>, private readonly crypto: LiveStore<CallCrypto>, private readonly ticket: CallTicket, fail = false) {
-    super({ ready: false, peers: [], messages: [], unread: [] });
+    super({ ready: false, peers: [], messages: [], unread: [], unreadMentions: [] });
     this.fail = fail;
     this.stops = [call.subscribe(() => this.follow()), crypto.subscribe(() => this.follow())];
     this.follow();
   }
+  override set(next: DirectMessagesState): void {
+    const unread = new Set(next.unread);
+    const unreadMentions = next.ready ? next.messages.filter((m) => m.to === this.ticket.identity && m.state === 'delivered' && unread.has(m.id)
+      && m.mentions.some((mention) => mention.identity === this.ticket.identity)).map((m) => m.id) : [];
+    super.set({ ...next, unreadMentions });
+  }
+  override update(change: (now: DirectMessagesState) => DirectMessagesState): void { this.set(change(this.getSnapshot())); }
   private follow() {
     const c = this.crypto.getSnapshot();
     const s = this.call.getSnapshot();
@@ -28,12 +35,15 @@ export class ScriptedDirectMessages extends Pushed<DirectMessagesState> implemen
       && ((m.from === peer && m.to === this.ticket.identity) || (m.to === peer && m.from === this.ticket.identity)) && (m.state === 'sent' || m.state === 'delivered'));
     return !!parent && (parent.thread?.root ?? parent.id) === thread.root;
   }
-  send = async (to: string, text: string, thread: CallChatThread | null = null): Promise<void> => {
+  send = async (to: string, text: string, mentions: readonly CallChatMention[] = [], thread: CallChatThread | null = null): Promise<void> => {
+    const leading = text.length - text.trimStart().length;
+    const checked = DirectTextSchema.safeParse({ text: text.trim(), mentions: mentions.map((m) => ({ ...m, start: m.start - leading, end: m.end - leading })), thread });
+    if (!checked.success || checked.data.mentions.some((m) => m.identity !== this.ticket.identity && m.identity !== to)) throw new AlcoveApiError('invalid', 'Choose names in this private conversation.');
     if (!this.getSnapshot().peers.includes(to)) throw new AlcoveApiError('conflict', 'This person is unavailable in this room.');
     const id = nextId('private');
     const c = this.crypto.getSnapshot();
     if (thread && !this.hasParent(thread, to)) throw new AlcoveApiError('not-found', 'That private conversation isn’t available in this room.');
-    this.update((s) => ({ ...s, messages: [...s.messages, { id, from: this.ticket.identity, to, text, thread, place: c.place, generation: this.call.getSnapshot().generation, at: this.call.getSnapshot().elapsed, order: s.messages.length + 1, state: 'sending', error: null }] }));
+    this.update((s) => ({ ...s, messages: [...s.messages, { id, from: this.ticket.identity, to, text: checked.data.text, mentions: checked.data.mentions, thread, place: c.place, generation: this.call.getSnapshot().generation, at: this.call.getSnapshot().elapsed, order: s.messages.length + 1, state: 'sending', error: null }] }));
     await this.retry(id);
   };
   retry = async (id: string): Promise<void> => {
@@ -44,18 +54,20 @@ export class ScriptedDirectMessages extends Pushed<DirectMessagesState> implemen
     this.update((s) => ({ ...s, messages: s.messages.map((m) => m.id === id ? { ...m, state: 'sending', error: null } : m) }));
     this.later(() => this.update((s) => ({ ...s, messages: s.messages.map((m) => m.id === id ? { ...m, state: failed ? 'failed' : 'delivered', error: failed ? 'This message wasn’t confirmed. Retry sends it only to the same person.' : null } : m) })));
   };
-  receive(from: string, text: string, thread: CallChatThread | null = null): void {
+  receive(from: string, text: string, mentions: readonly CallChatMention[] = [], thread: CallChatThread | null = null): void {
     if (!this.getSnapshot().peers.includes(from)) return;
     if (thread && !this.hasParent(thread, from)) return;
+    const checked = DirectTextSchema.safeParse({ text, mentions, thread });
+    if (!checked.success || checked.data.mentions.some((m) => m.identity !== from && m.identity !== this.ticket.identity)) return;
     const id = nextId('private');
-    this.update((s) => ({ ...s, messages: [...s.messages, { id, from, to: this.ticket.identity, text, thread, place: this.crypto.getSnapshot().place, generation: this.call.getSnapshot().generation, at: this.call.getSnapshot().elapsed, order: s.messages.length + 1, state: 'delivered', error: null }], unread: [...s.unread, id] }));
+    this.update((s) => ({ ...s, messages: [...s.messages, { id, from, to: this.ticket.identity, text: checked.data.text, mentions: checked.data.mentions, thread, place: this.crypto.getSnapshot().place, generation: this.call.getSnapshot().generation, at: this.call.getSnapshot().elapsed, order: s.messages.length + 1, state: 'delivered', error: null }], unread: [...s.unread, id] }));
   }
   read = (ids: readonly string[]): void => { this.update((s) => ({ ...s, unread: s.unread.filter((id) => !ids.includes(id)) })); };
   override close(): void {
     this.stops.splice(0).forEach((stop) => stop());
     for (const timer of this.pendingTimers) clearTimeout(timer);
     this.pendingTimers.clear();
-    this.set({ ready: false, peers: [], messages: [], unread: [] });
+    this.set({ ready: false, peers: [], messages: [], unread: [], unreadMentions: [] });
     super.close();
   }
 }

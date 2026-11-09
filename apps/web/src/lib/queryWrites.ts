@@ -223,8 +223,8 @@ function withFields(p: Preferences, from: PreferenceChange, fields: PreferenceCh
   return {
     notesDefault: f('notesDefault'), notesLanguage: f('notesLanguage'), summaryLength: f('summaryLength'), addToCalendar: f('addToCalendar'),
     showOtherMeetings: f('showOtherMeetings'), recordOffline: f('recordOffline'), pinned: f('pinned'), groups: f('groups'),
-    sounds: { enabled: sound('enabled'), volume: sound('volume'), quiet: sound('quiet'), mic: sound('mic'), people: sound('people'), hands: sound('hands'), questions: sound('questions'), messages: sound('messages'), replies: sound('replies'), admissions: sound('admissions'), timers: sound('timers'), ringing: sound('ringing') },
-    notifications: { replyAlerts: notify('replyAlerts'), beforeCall: notify('beforeCall'), notesReady: notify('notesReady'), sharedWithYou: notify('sharedWithYou'), notesRequested: notify('notesRequested'), followUpDue: notify('followUpDue'), tagged: notify('tagged') }
+    sounds: { enabled: sound('enabled'), volume: sound('volume'), quiet: sound('quiet'), mic: sound('mic'), people: sound('people'), hands: sound('hands'), questions: sound('questions'), messages: sound('messages'), replies: sound('replies'), mentions: sound('mentions'), admissions: sound('admissions'), timers: sound('timers'), ringing: sound('ringing') },
+    notifications: { replyAlerts: notify('replyAlerts'), mentionAlerts: notify('mentionAlerts'), beforeCall: notify('beforeCall'), notesReady: notify('notesReady'), sharedWithYou: notify('sharedWithYou'), notesRequested: notify('notesRequested'), followUpDue: notify('followUpDue'), tagged: notify('tagged') }
   };
 }
 export const withPreferenceChange = (current: Preferences, change: PreferenceChange): Preferences => withFields(current, change, change);

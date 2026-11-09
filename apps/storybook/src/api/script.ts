@@ -169,7 +169,7 @@ export interface Cue { at: number; beat: Beat }
 
 export interface CallScript {
   privateSendFails?: boolean | undefined;
-  privateMessages?: readonly { from: Person; text: string; after?: number; replyTo?: string }[] | undefined;
+  privateMessages?: readonly { from: Person; text: string; after?: number; replyTo?: string; tagged?: readonly (Person | 'me')[] }[] | undefined;
   /** First sends fail in their original conversation, so a journey can show deliberate retry. */
   chatFailures?: number | undefined;
   /** Prepared or running presenter sequence, from the same server-clock anchor as the call. */

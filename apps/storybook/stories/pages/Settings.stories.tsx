@@ -114,6 +114,10 @@ export const SoundsNight = page('/settings#sounds', 'busy', { globals: { theme: 
 export const SoundsPhone = phone(Sounds);
 export const QuietSounds = page('/settings#sounds', 'busy', { beforeEach: changing((w) => { w.prefs = { ...w.prefs, sounds: { ...w.prefs.sounds, quiet: true } }; }) });
 export const SoundsOff = page('/settings#sounds', 'busy', { beforeEach: changing((w) => { w.prefs = { ...w.prefs, sounds: { ...w.prefs.sounds, enabled: false } }; }) });
+/** Mention visuals and sound stay independent, with persistent unread indicators. */
+export const MentionAlertsOff = page('/settings#sounds', 'busy', { beforeEach: changing((w) => { w.prefs = { ...w.prefs, notifications: { ...w.prefs.notifications, mentionAlerts: false } }; }) });
+export const MentionAlertsOffPhone = phone(MentionAlertsOff);
+export const MentionSoundOff = page('/settings#sounds', 'busy', { beforeEach: changing((w) => { w.prefs = { ...w.prefs, sounds: { ...w.prefs.sounds, mentions: false } }; }) });
 
 /** Drive connects independently of ordinary sign-in and never exposes a provider credential. */
 export const GoogleDriveDisconnected = page('/settings#google-drive', 'busy');
