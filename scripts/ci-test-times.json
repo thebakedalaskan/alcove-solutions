@@ -1,8 +1,8 @@
 {
  "src/features/calls/mentions.integration.test.ts": {
-  "seconds": 11.0,
+  "seconds": 10.5,
   "groups": {
-   "selected call mentions": 11.0
+   "selected call mentions": 10.5
   }
  },
  "src/features/calls/direct-messages.integration.test.ts": {
@@ -435,6 +435,12 @@
   "seconds": 7.52,
   "groups": {
    "private conversation threads": 7.52
+  }
+ },
+ "src/integration/optimistic.integration.test.ts": {
+  "seconds": 10.8,
+  "groups": {
+   "immediate query actions through the real API": 10.8
   }
  }
 }

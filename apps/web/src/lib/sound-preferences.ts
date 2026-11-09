@@ -33,7 +33,7 @@ export function useSoundPreferences() {
     if (session) {
       const now = qc.getQueryData(q.prefs().queryKey);
       if (!now) return;
-      save.mutate({ sounds: { ...now.sounds, ...patch } }, { onError: (e) => toast(`Couldn’t save sounds. ${errorMessage(e)}`, { icon: 'x' }) });
+      save.mutate({ sounds: patch }, { onError: (e) => toast(`Couldn’t save sounds. ${errorMessage(e)}`, { icon: 'x' }) });
     } else {
       const next = SoundPreferencesSchema.parse({ ...readGuest(), ...patch });
       setGuest(next);

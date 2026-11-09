@@ -1331,9 +1331,11 @@ from this browser."), with **Copy what you wrote** beside them, which copies onl
 other tab open here hears it at once and goes to the welcome page, saying you signed out in another tab. With no connection, signing
 out says so and nothing happens later by itself. Under the water the page is
 one long list of rows, with an index beside it that jumps to each part and moves a small sun to the one in view; on a
-narrow screen the index is a strip that stays at the top. Every control saves as it changes: the row says **Saved** for a
-moment, just left of the control (**Saved for new notes** for the language and the summary), and one the server refuses
-goes back, with a toast saying why. Parts that don't load say so, with **Try again**, and the rest of the page still works.
+narrow screen the index is a strip that stays at the top. Every control changes immediately and says **Saving…** while its
+request is pending. The row says **Saved** for a moment only once its latest choice is confirmed (**Saved for new notes**
+for language and summary). A refusal says **Couldn’t confirm**, with a toast explaining why; it removes only that attempt,
+keeping later choices. Pick the setting again to retry. Parts that don't load say so, with **Try again**, and the rest of
+the page still works. Journey **11.23** shows Detailed → Short → Detailed while the oldest request fails.
 
 - **Profile**: your name and photo, from your sign-in, with a link to change them at Google or Microsoft (they update
   the next time you sign in; with single sign-on they come from your company's sign-in); your company, which opens
@@ -1410,6 +1412,10 @@ Signing in again starts a new, empty account with 10,000 credits.
 Open **Settings → Sounds** for master sound, volume, quiet mode and separate microphone, people, hands, questions, admissions, board timer and incoming call switches. Preview each phrase at your chosen volume. These controls work even when browser notifications are blocked. **More → Sounds** in a call offers the same choices, including for guests. Quiet mode keeps your microphone confirmations and requests to join when you host. Signed-in choices follow your account; guests keep theirs in this browser.
 
 ## 12. The Drive and the workspace
+
+Journey **12.1** renames a workspace immediately: the list and breadcrumbs show the requested name with **Saving…**. If it
+cannot be confirmed, **Edit name** restores the entered text; press Enter to retry without retyping or reloading. Later
+choices remain in place while older requests settle. Physical **Delete for good** completes only after Alcove confirms it.
 
 Documents and folders people write in together, between calls as well as in them. Every call has a workspace of its own,
 its home, where its notes, follow-ups and transcript go, and **Drive** in the side panel lists every workspace you're in,

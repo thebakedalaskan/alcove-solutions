@@ -100,7 +100,7 @@ export const ServerRefuses: PageStory = {
       await screen.findByRole('switch', { name: 'Show my other meetings on Home', checked: false }, SOON);
     });
     await step('Refused: it goes back, and a toast says why. No Saved', async () => {
-      await screen.findByText('Couldn’t reach Alcove, so Show my other meetings on Home is back as it was.', {}, SOON);
+      await within(await row('Show my other meetings on Home')).findByText('Couldn’t confirm', {}, SOON);
       await screen.findByRole('switch', { name: 'Show my other meetings on Home', checked: true }, SOON);
     });
   }
@@ -497,3 +497,32 @@ export const ChooseSounds: PageStory = {
     });
   }
 };
+
+const repeatedChoices = outage(() => {
+  const write = standIn.account.updatePreferences;
+  let n = 0;
+  return swap(standIn.account, 'updatePreferences', async (patch) => {
+    const first = ++n === 1;
+    await pause(first ? 1200 : 200);
+    if (first) throw unreachable();
+    return write(patch);
+  });
+});
+export const RapidRepeatedChoices: PageStory = {
+  name: '11.23 Repeated choices while an older change fails',
+  ...page('/settings#notes', 'busy'),
+  beforeEach: repeatedChoices.begin,
+  play: async ({ userEvent, step }) => {
+    await step('Choose Detailed, Short, then Detailed while the first write is still pending', async () => {
+      const summary = within(await row('Summary'));
+      await userEvent.click(summary.getByRole('button', { name: 'Detailed' }));
+      await userEvent.click(summary.getByRole('button', { name: 'Short' }));
+      await userEvent.click(summary.getByRole('button', { name: 'Detailed' }));
+      await summary.findByText('Saving…', {}, SOON);
+    });
+    await step('The old failure leaves the last choice in place; Saved names only that last confirmed choice', async () => {
+      await within(await row('Summary')).findByText('Saved for new notes', {}, LATER);
+    });
+  }
+};
+export const RapidRepeatedChoicesPhoneNight: PageStory = { ...RapidRepeatedChoices, globals: { viewport: { value: 'phone' }, theme: 'dark' } };

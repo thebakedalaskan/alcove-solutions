@@ -1,5 +1,7 @@
 import { DirectTextSchema, type CallSession } from '@alcove/api';
 import { createHttpApi } from '@alcove/api-http';
+import { MutationObserver, QueryClient } from '@tanstack/query-core';
+import { interactiveWrites, preferenceOptions, readPreferences, type PreferenceChange } from '../../../../web/src/lib/queryWrites';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { cookieFetch, ORIGIN, startHarness, type Harness } from '../../testing/harness';
 
@@ -30,20 +32,40 @@ async function guests(firstBrowser = h.browser(), secondBrowser = h.browser()) {
 }
 
 describe('selected call mentions', () => {
-  it('keeps local visual and sound choices in the correct account across clients, with independent defaults', async () => {
+  it('keeps mention preference leaves with their account and preserves another client’s independent choices through a delayed acknowledgement', async () => {
     const email = `mentions.prefs.${crypto.randomUUID()}@vandelay.example`;
     const first = h.browser(); const second = h.browser(); const outsider = h.browser();
-    await first.api.auth.signIn('sso', { email }); await second.api.auth.signIn('sso', { email });
+    const signed = await first.api.auth.signIn('sso', { email }); await second.api.auth.signIn('sso', { email });
     await outsider.api.auth.signIn('sso', { email: `mentions.other.${crypto.randomUUID()}@vandelay.example` });
     const before = await first.api.account.preferences();
     expect(before.notifications.mentionAlerts).toBe(true); expect(before.sounds.mentions).toBe(true);
-    await first.api.account.updatePreferences({ notifications: { ...before.notifications, mentionAlerts: false }, sounds: { ...before.sounds, mentions: false } });
-    const same = await second.api.account.preferences();
-    expect(same.notifications.mentionAlerts).toBe(false); expect(same.sounds.mentions).toBe(false);
-    expect(same.notifications.replyAlerts).toBe(before.notifications.replyAlerts);
-    expect(same.sounds.messages).toBe(before.sounds.messages);
-    const other = await outsider.api.account.preferences();
-    expect(other.notifications.mentionAlerts).toBe(true); expect(other.sounds.mentions).toBe(true);
+    let reached = false; let claimed = false; let release = () => {};
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const held = h.browser({ fetch: async (input, init) => {
+      const response = await first.fetch(input, init);
+      if (!claimed && init?.method === 'PATCH' && String(input).endsWith('/account/preferences')) { claimed = true; reached = true; await gate; }
+      return response;
+    } });
+    const client = new QueryClient({ defaultOptions: { mutations: interactiveWrites, queries: { retry: false } } });
+    const keys = { session: ['session'] as const, prefs: ['prefs'] as const };
+    client.setQueryData(keys.session, signed.session); client.setQueryData(keys.prefs, before);
+    const options = preferenceOptions(held.api, client, keys, (change: PreferenceChange) => change);
+    const pending = new MutationObserver(client, options).mutate({ sounds: { mentions: false }, notifications: { mentionAlerts: false } });
+    try {
+      await until(() => reached, 'the confirmed mention preference acknowledgement');
+      expect(client.getQueryData<typeof before>(keys.prefs)).toMatchObject({ sounds: { mentions: false }, notifications: { mentionAlerts: false } });
+      const same = await second.api.account.preferences();
+      expect(same.notifications.mentionAlerts).toBe(false); expect(same.sounds.mentions).toBe(false);
+      await second.api.account.updatePreferences({ sounds: { ...same.sounds, questions: !before.sounds.questions }, notifications: { ...same.notifications, tagged: !before.notifications.tagged } });
+      await client.fetchQuery({ queryKey: keys.prefs, queryFn: () => readPreferences(held.api, client) });
+      const expected = { sounds: { mentions: false, questions: !before.sounds.questions, messages: before.sounds.messages }, notifications: { mentionAlerts: false, tagged: !before.notifications.tagged, replyAlerts: before.notifications.replyAlerts } };
+      expect(client.getQueryData<typeof before>(keys.prefs)).toMatchObject(expected);
+      release(); await pending;
+      expect(client.getQueryData<typeof before>(keys.prefs)).toMatchObject(expected);
+      expect(await first.api.account.preferences()).toMatchObject(expected);
+      const other = await outsider.api.account.preferences();
+      expect(other.notifications.mentionAlerts).toBe(true); expect(other.sounds.mentions).toBe(true);
+    } finally { release(); await pending; client.clear(); }
   });
   it('keeps matching guest names on stable private identities, rebases whitespace spans and follows exact thread/read state', async () => {
     const { host, first, second } = await guests();

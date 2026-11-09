@@ -55,6 +55,14 @@ const turningOff: NonNullable<PageStory['play']> = async ({ canvas, userEvent, s
 export const Saved = page('/settings#calendar', 'busy', { play: turningOff });
 /** A change Alcove refuses goes back, and a toast says why. */
 export const SaveRefused = page('/settings#calendar', 'busy', { beforeEach: changing(troubled({ 'account.updatePreferences': 'failed' })), play: turningOff });
+/** The selected setting changes while its own write is still pending. Later choices stay usable. */
+export const Saving = page('/settings#calendar', 'busy', { beforeEach: changing(troubled({ 'account.updatePreferences': 'hold' })), play: turningOff });
+export const SavingNight = { ...Saving, globals: { theme: 'dark' } };
+export const SavingPhone = phone(Saving);
+export const SavingPhoneNight = { ...phone(Saving), globals: { viewport: { value: 'phone' }, theme: 'dark' } };
+export const SaveRefusedNight = { ...SaveRefused, globals: { theme: 'dark' } };
+export const SaveRefusedPhone = phone(SaveRefused);
+export const SaveRefusedPhoneNight = { ...phone(SaveRefused), globals: { viewport: { value: 'phone' }, theme: 'dark' } };
 /** Sign out, with recordings on this device that haven't uploaded: the sky grows to ask first, and Stay signed in is the answer it offers. */
 export const SignOutAsks = page('/settings', 'busy', { beforeEach: changing(keptHere), play: pressing('Sign out', 'Press Sign out. Recordings here haven’t uploaded, so it asks first') });
 export const SignOutAsksPhone = phone(SignOutAsks);

@@ -42,6 +42,13 @@
 ## Full repository result and final integration gate
 
 - Full `pnpm check` passed: 48/48 integration suites and 1,261/1,261 flows; 11/11 tasks, 38m11.886s total. The API/contract/HTTP-client source stayed unchanged throughout. Final UI review changes separately passed fresh 7/7 typechecks and 3/3 production/Storybook builds.
-- The seven mention flows passed inside the full run in 10.959 seconds. CI timing now uses that measured suite duration, rounded to 11.0 seconds.
+- The seven mention flows passed inside the full run in 10.959 seconds. The first full-run CI estimate was that suite duration, rounded to 11.0 seconds; the later combined revision is measured below.
 - Root independently cleared encrypted protocol, retained reads, preferences, delayed sound playback and live-snapshot mention/reply action checks.
 - Release order is #87 → #173 → #107 → #88. Before release, merge actual main173, migrate added preference writers to explicit requested nested leaves, then rerun affected mention/private/thread/optimistic flows and fresh types/build. Actual combined-head CI and prior production verification remain the release gates. No duplicate full local run is planned.
+
+## Combined preference integration
+
+- Normally merged the reviewed #173 feature head `962defe65382f3332a595bfe4ba1b35a1f1ab625`. Preserved the shared alert preference owner and exact live-snapshot navigation guards. Both new mention fields participate in exhaustive preference projection/settlement; account controls submit only requested nested leaves. Guest storage remains with its existing owner.
+- Extended the existing first mention preference flow through the production mutation owner and real HTTP: missing mention leaves first failed the projected-cache assertion (one red, six skipped). After adding the exact fields, the combined five-suite run passed all 45 flows, including all 19 optimistic flows and another client’s independent preferences through a held real acknowledgement.
+- Fresh combined checks: types 7/7 (4.623s), builds 3/3 (7.514s); integration 45/45 (54.94s). Current CI mention timing is 10.5 seconds, taken from this JSON report’s seven measured assertion durations. Root independently reviewed the merge deltas and the strengthened flow.
+- Still pending: verify actual merged main173 tree equals the imported signed feature head, record that main ancestry without changing this reviewed tree, then run the actual combined-head CI/release gate.

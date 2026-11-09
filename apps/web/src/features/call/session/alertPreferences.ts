@@ -32,7 +32,7 @@ export function useCallAlertPreference(kind: AlertPreference) {
   const enabled = session.data ? prefs.data?.notifications[kind] ?? true : guest;
   const update = (on: boolean) => {
     if (!ready) return;
-    if (session.data && prefs.data) write.mutate({ notifications: { ...prefs.data.notifications, [kind]: on } }, { onError: () => toast('Call alerts couldn’t be saved.', { icon: 'x' }) });
+    if (session.data && prefs.data) write.mutate({ notifications: { [kind]: on } }, { onError: () => toast('Call alerts couldn’t be saved.', { icon: 'x' }) });
     else {
       setGuest(on);
       try { localStorage.setItem(guestKeys[kind].storage, JSON.stringify(on)); dispatchEvent(new Event(guestKeys[kind].event)); }
