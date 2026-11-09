@@ -12,9 +12,9 @@ Each flow below is implemented in `apps/web` and exercised end to end by the int
    itself, a feature at a time, each looping while its step is the one being read (Documents and boards, Captions in
    your language, Set your status, Breakout rooms, A quiet nudge, Private messages and threads, Arrange it your way);
    finding a time with your team; your agent using Alcove; recording in the room without a connection; and what Alcove
-   can see. Each scene plays while it's on screen, and shows a still with reduced motion. Choose **Continue with
-   Google**, **Continue with Microsoft** or **Use single sign-on**, at the top or the bottom of the page; single sign-on
-   asks for a work email in place. The footer links to the public **Privacy policy**, available without signing in.
+   can see. Each scene plays while it's on screen, and shows a still with reduced motion. Choose **Continue with Google**
+   at the top or bottom of the page. Local development and Storybook also show the Microsoft and single sign-on demo
+   options. The footer links to the public **Privacy policy**, available without signing in.
 2. **Google** opens its account chooser in a popup, keeping Alcove open. It shares the account's name, email address
    and profile. Calendar and Drive access are optional and have their own consent screens. Alcove says **Waiting for Google…**,
    with **Cancel sign-in** to stop waiting,
@@ -28,8 +28,8 @@ Each flow below is implemented in `apps/web` and exercised end to end by the int
    in as** the name, with the provider's mark (a key for single sign-on). **Your calendar**: how many calls are
    left today and which is next, from the connected or sample calendar (no row without calendar access). **Your
    team at** the company, with its size and faces, when it has people in it and has arrived by then (the screen
-   doesn't wait for it). **Notes are written in
-   confidential compute**, with the time the hardware was verified when this browser could check it. Then
+   doesn't wait for it). **Notes are encrypted in storage**, with the hosting server’s verification time if this
+   browser verified it. Then
    "You’re in" and the arch opens into Home. **Skip**, **Escape** or **Enter** opens it straight away; with
    reduced motion the finished screen shows for a moment and Home follows. After that, signing in goes
    straight to Home. From the welcome page it sails out of the cove: the headlands go by, the horizon comes up to
@@ -46,8 +46,8 @@ Each flow below is implemented in `apps/web` and exercised end to end by the int
    tour** in Settings (flow 11) plays it again.
 
 The first sign-in creates the account: its keys, a profile with the name, email and photo from the sign-in,
-the notes default (on) and 10,000 credits. Later sign-ins bring the name, email and photo up to date. Microsoft
-and SSO are still stand-ins: Microsoft signs in Art Vandelay (art@vandelay.industries), and SSO signs in
+the notes default (on) and 10,000 credits. Later sign-ins bring the name, email and photo up to date. In local
+development and Storybook, Microsoft signs in Art Vandelay (art@vandelay.industries), and SSO signs in
 whoever's email was typed, with a name made from the address, as long as it's an address no real person can
 have (at example.com or another domain reserved for examples, or at vandelay.industries). These demo accounts get a sample day of
 five calls whenever nothing is coming up at sign-in, the first about 12 minutes later.
@@ -885,7 +885,7 @@ See [Floating call](../engineering/floating-call.md) for browser capabilities an
    present it." **In this call**, if the call has a board, has its name and who brought it ("Priya · brought it"), or "Priya
    is presenting it". **New** has **Blank**, **Retro**, **Ideas** and **Flow**. **Your team’s boards** has whatever's been
    brought to this call first, then the newest from the workspaces in your Drive, three at most, with whose each is and
-   where it's from. At its foot: "Sealed. Alcove can’t read boards." Anyone invited can start one, in the main room or a
+   where it's from. At its foot: "Boards are encrypted in storage." Anyone invited can start one, in the main room or a
    breakout room; a guest can't ("Guests can’t start a board here."). While someone else presents a board here, nobody can
    start or bring in another, and the picker says "Priya is presenting a board. You can start one once they stop." With a
    board on your stage, Board and **O** close it instead (step 5). **Share › A board** in the dock is the same picker, as
@@ -932,7 +932,7 @@ See [Floating call](../engineering/floating-call.md) for browser capabilities an
    has (step 13), there while you present it too, when the bar isn't; and, for
    the organizer, on a board someone else presents, **Close it for everyone**. Whoever presents it closes it for everyone
    from Close's question (step 11). Closing deletes nothing: the board stays saved where it is. The board's seal says
-   what's true of this board: who can add to it, where it's saved, and that Alcove can't read it. It says
+   what's true of this board: who can add to it, where it's saved, and that it’s encrypted in storage. It says
    how the board stands too, as on its own page:
    - **Reconnecting**, when the board's connection drops while the call carries on. The pill at the top of the board says
      "Keep going. Your changes are safe here." What you add goes up once the connection's back, with nothing lost or doubled.
@@ -1041,7 +1041,7 @@ See [Floating call](../engineering/floating-call.md) for browser capabilities an
    already has its board open: "2 rooms are open. Each one has a board."
 2. **Inside a room.** "Art opened rooms. You're going to Rollout." You arrive on the room's board with its frames ready. Its
    seal says **Sealed to this room**: "Only the people in Rollout can see this board.", "When rooms close it comes back to the
-   main room, and everyone in the call sees it." and "Alcove can't read it, then or later." Whoever's moved to another room
+   main room, and everyone in the call sees it." and "Encrypted in storage." Whoever's moved to another room
    loses it as they go, and finds the new room's. The pill at the top of the board says the room and how long it has left
    (**Comms · 9:12**): in its last minute it turns amber and says **This board comes back with you**, and in the last ten
    seconds **Rooms close in 10 seconds**, counting down. A screen reader hears it at ten seconds and as rooms close, not every
@@ -1050,7 +1050,7 @@ See [Floating call](../engineering/floating-call.md) for browser capabilities an
    "Art, to every room: Two minutes left", so nobody has to leave the board to read it. **Raise your hand** asks Art for help,
    and Art coming in is told as "Art joined this room."
 3. **Start a board in a room.** With none set up, **Board** is where it always is, and the same picker, with no boards your
-   team has, says at its foot "Comes back with you when rooms close. Alcove can't read it." A new board is the room's: it
+   team has, says at its foot "Comes back with you when rooms close." A new board is the room's: it
    opens on your stage, just for you, until you present it, and everyone in the room finds it under **In this call**. Nobody
    outside the room can see it, the organizer included, until they join.
 4. **While rooms are open** the organizer sees who is where: each room on its board says "On their board. Join to see it." in
@@ -1468,8 +1468,8 @@ the page still works. Journey **11.23** shows Detailed → Short → Detailed wh
   (since 00:00 UTC on the 1st). Calls without notes are free.
 - **Agents**: named, revocable connections with explicit permissions, expiry and last use. **Create a token** and
   **Disconnect** are described in flow 14.
-- **Privacy**: what Alcove knows beside what it can't read, then confidential compute: the time the hardware was
-  verified when this browser could check it, or where your audio is opened and your notes are written. The
+- **Privacy**: what account and call information Alcove processes, how content is encrypted in storage, and whether
+  the browser verified the hosting server’s hardware. The
   **Privacy policy** explains how Alcove uses account and service data and how to disconnect Google services.
 
 **Delete account** opens one step where it is (never a window over the page): the row becomes the question, **Delete
@@ -1724,7 +1724,7 @@ everything.
 keeps it, **Esc** puts it back); **Saved in** the workspace, which shows it in the list; **Who can add to it**, the
 workspace's share sheet, where the board can be shared beyond the workspace or closed to **Only people added here**; and
 **Copy link**. Its tip says which of these are yours to do. Pressing the seal says how the board stands, in the seal's own
-word: sealed, and where it's saved, and that Alcove can't read it; or **Reconnecting**, **Couldn’t save** or **View only**,
+word: sealed, where it's saved and how it's encrypted in storage; or **Reconnecting**, **Couldn’t save** or **View only**,
 with what that means, under the pill and never over it. Escape, or **Copy link**, gives the keys back to the board.
 
 **Comments.** Pick a sticky and press **K**, or **Comment** in the **+** under the tools, and a field opens beside it.

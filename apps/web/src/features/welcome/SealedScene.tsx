@@ -1,7 +1,7 @@
 /*
- * What Alcove can see: one note, as you see it and as Alcove's servers hold it, in a window on the recorder's night water
- * (welcome-night.css, `lp-pv`). The switch turns each part of the note into the sealed record that's all the servers have
- * of it, its letters scrambling for a moment as it turns. When it first comes well into view it turns to Alcove's view and
+ * One note, as you see it and as Alcove stores it, in a window on the recorder's night water
+ * (welcome-night.css, `lp-pv`). The switch turns each part of the note into the sealed record Alcove stores
+ * of it, its letters scrambling for a moment as it turns. When it first comes well into view it turns to the storage view and
  * back once, unless someone has pressed the switch first. With reduced motion it waits to be pressed, and nothing scrambles.
  */
 import { Faces, Icon, SealedBadge, Segmented, cn, useSceneLoop, type Choice } from '@alcove/ui';
@@ -11,7 +11,7 @@ import { CAST } from '~/features/notes/cast';
 import { HELD } from './night';
 
 type View = 'you' | 'alcove';
-const VIEWS: Choice<View>[] = [{ value: 'you', label: 'What you see' }, { value: 'alcove', label: 'What Alcove sees' }];
+const VIEWS: Choice<View>[] = [{ value: 'you', label: 'What you see' }, { value: 'alcove', label: 'What is stored' }];
 const HEX = '0123456789abcdef';
 const recordOf = (sealed: string) => `sealed · ${sealed}`;
 /** The scramble settles this many letters a beat, a beat this long, until the longest record has settled. */
@@ -81,7 +81,7 @@ export function SealedScene() {
   return (
     <div ref={win} className={cn('lp-pv', sealed && 'is-sealed')}>
       <div className="lp-pv-top">
-        <Segmented value={view} onChange={(v) => { touched.current = true; show(v); }} options={VIEWS} label="Whose view of the note" />
+        <Segmented value={view} onChange={(v) => { touched.current = true; show(v); }} options={VIEWS} label="View of the note" />
         <span className="lp-pv-say">{sealed ? 'Sealed records and their sizes' : 'The note, opened for you'}</span>
       </div>
       <dl className="lp-pv-rows">
@@ -99,7 +99,7 @@ export function SealedScene() {
           </div>
         ))}
       </dl>
-      <p className="lp-pv-foot"><SealedBadge inline title="Confidential compute · hardware verified 11:58" /></p>
+      <p className="lp-pv-foot"><SealedBadge inline title="Example model hardware check · 11:58" /></p>
     </div>
   );
 }

@@ -31,7 +31,7 @@ import { stateOf } from '~/features/call/media/access';
 import { accessAsk, bringAndPresent, presentingWhy, useBoardPicker } from '~/features/call/boards/BoardPicker';
 import type { BoardPager } from '~/features/board/CallBoard';
 import { StandingPill, roomPills, type PillKind } from '~/features/board/pills';
-import { UNREAD, standingOf, useChangesSinceSaved } from '~/features/board/standing';
+import { ENCRYPTED, standingOf, useChangesSinceSaved } from '~/features/board/standing';
 import { BoardLeaf, BoardMenuRows, BoardMine, BoardMini, loadBoard } from '~/features/call/boards/BoardStage';
 import { useBoardRun } from '~/features/call/boards/boardRun';
 import { BOARD_SHOT_TOPIC, keepShot, shotHeard, shotNotice, useCallBoard, type SavedBoard } from '~/features/call/boards/callBoard';
@@ -1591,19 +1591,19 @@ export function InCall({ session }: { session: CallSession }) {
     status: boardStatus, offline: boardStatus !== null && (boardStatus.status === 'offline' || (!online && boardStatus.status !== 'failed')), readOnly: viewOnly,
     changes: boardChanges, tryAgain: board.tryAgain, kept: boardWhere ? { icon: 'lock', text: `Saved in ${boardWhere}.` } : null,
     sealed: {
-      seal: sealed, title: `${sealed}. Alcove can’t read this board.`,
+      seal: sealed, title: `${sealed}. Encrypted in storage.`,
       rows: roomsOwn ? [
         { icon: 'lock', text: `Only the people in ${roomName} can see this board.` },
         { icon: 'door', text: 'When rooms close it comes back to the main room, and everyone in the call sees it.' },
-        { icon: 'sealed', text: 'Alcove can’t read it, then or later.' }
+        ENCRYPTED
       ] : board.savedDrawn ? [
         { icon: 'lock', text: boardWhere ? `Open just for you. Saved in ${boardWhere}.` : 'Open just for you.' },
-        UNREAD
+        ENCRYPTED
       ] : [
         ...(boardOpen?.everyone ? [{ icon: 'lock' as const, text: boardWhere ? `Everyone in this call can add to it. Saved in ${boardWhere}.` : 'Everyone in this call can add to it.' }]
           : boardWhere ? [{ icon: 'lock' as const, text: `Saved in ${boardWhere}.` }] : []),
-        ...(on ? [{ icon: 'notes' as const, text: 'The notes read it in confidential compute.' }] : []),
-        UNREAD
+        ...(on ? [{ icon: 'notes' as const, text: 'The notes can use this board.' }] : []),
+        ENCRYPTED
       ]
     }
   });

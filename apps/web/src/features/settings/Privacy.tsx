@@ -1,5 +1,5 @@
 /*
- * Privacy: what Alcove knows and what it can't read, the confidential-compute check (made when the app opens), and
+ * Privacy: what Alcove processes and stores, the hosting server check (made when the app opens), and
  * deleting the account. Deleting takes one more step, which opens where the row is (never a dialog) and sets what goes
  * beside what stays. The shared demo account can't be deleted, so the row says that instead.
  */
@@ -20,16 +20,16 @@ const LEDGER = [
   ['Who was invited', 'The audio']
 ] as const;
 
-/** What the check made when the app opened found: only an answer bound to this browser's own request counts. With nothing to show, the row just says what it is. */
+/** Only an answer bound to this browser's own request verifies the hosting server. */
 function Compute() {
   const checked = useQuery(q.trust());
   const t = checked.data;
-  if (t?.tee !== 'dstack' && !checked.isPending) return <SettingRow mark={<Icon name="sealed" />} label="Confidential compute" help="Where your audio is opened and your notes are written." />;
   return (
-    <SettingRow label="Confidential compute"
+    <SettingRow label="Hosting server"
+      help="Alcove encrypts call content in storage. The hosting server can decrypt it to provide the service."
       control={t?.tee === 'dstack' && t.bound ? <SettingFact icon="sealed" tone="yes">Hardware verified {hm(new Date(t.at))}</SettingFact>
-        : t?.tee === 'dstack' ? <SettingFact icon="sealed" tone="no">Hardware not verified</SettingFact>
-          : <SettingFact icon="sealed">Checking the hardware…</SettingFact>} />
+        : checked.isPending ? <SettingFact icon="sealed">Checking the hardware…</SettingFact>
+          : <SettingFact icon="sealed" tone="no">Hardware not verified</SettingFact>} />
   );
 }
 
@@ -46,12 +46,12 @@ export function PrivacyPart({ session }: { session: Session }) {
   }, [confirming]);
   return (
     <SettingsPart id="privacy" title="Privacy">
-      <div role="table" aria-label="What Alcove knows and what it can’t read">
+      <div role="table" aria-label="What Alcove processes">
         <div className="set-r is-lh" role="row">
-          <p className="set-lh" role="columnheader"><Icon name="server" size={16} />Alcove knows</p>
-          <p className="set-lh" role="columnheader"><Icon name="lock" size={16} />Alcove can’t read</p>
+          <p className="set-lh" role="columnheader"><Icon name="server" size={16} />Account and scheduling</p>
+          <p className="set-lh" role="columnheader"><Icon name="lock" size={16} />Call content</p>
         </div>
-        {LEDGER.map(([knows, cant]) => <div key={knows} className="set-r is-ll" role="row"><p className="set-ll" role="cell">{knows}</p><p className="set-ll" role="cell">{cant}</p></div>)}
+        {LEDGER.map(([account, content]) => <div key={account} className="set-r is-ll" role="row"><p className="set-ll" role="cell">{account}</p><p className="set-ll" role="cell">{content}</p></div>)}
       </div>
       <Compute />
       <SettingRow label="How Alcove uses your information"

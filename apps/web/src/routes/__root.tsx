@@ -15,7 +15,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { charSet: 'utf-8' },
       { name: 'viewport', content: 'width=device-width, initial-scale=1' },
       { title: 'Alcove' },
-      { name: 'description', content: 'Your meeting superapp, powered by confidential AI: notes that write themselves, live translation and breakout rooms, and nobody else can read a word.' }
+      { name: 'description', content: 'Video calls with built-in transcripts, summaries, live translation and breakout rooms.' }
     ],
     links: [
       { rel: 'stylesheet', href: css },

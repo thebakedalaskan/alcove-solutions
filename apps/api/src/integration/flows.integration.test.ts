@@ -218,6 +218,35 @@ describe('signing in', () => {
     expect((await h.browser().api.auth.signIn('sso', { email: 'theo@vandelay.industries' })).session.user.email).toBe('theo@vandelay.industries');
   });
 
+  it('disables demo sign-in and sessions on a public deployment while preserving accounts', async () => {
+    const demo = await account(unique('demo-before-launch'));
+    await demo.api.account.updatePreferences({ notesDefault: 'off' });
+    const google = h.browser();
+    expect(landed(await viaGoogle(google, { sub: `real-before-launch-${seq++}`, email: unique('real-before-launch') }))).toBe('/ready');
+    const realSession = await google.api.auth.getSession();
+    expect(realSession?.ownerId).toBeTruthy();
+
+    const { DATABASE_URL, OBJECTS_BUCKET, WEB_ORIGIN, API_URL } = h.deps.cfg;
+    const { DEMO_AUTH_ENABLED } = loadEnv(process.env, {
+      DATABASE_URL, OBJECTS_BUCKET, WEB_ORIGIN, API_URL, DEMO_AUTH_ENABLED: 'false'
+    });
+    const deployed = await h.secondServer({ DEMO_AUTH_ENABLED });
+    try {
+      const api = createHttpApi({ baseUrl: deployed.baseUrl, fetch: cookieFetch(ORIGIN) });
+      expect(code(await api.auth.signIn('microsoft').catch((e: unknown) => e))).toBe('forbidden');
+      expect(code(await api.auth.signIn('sso', { email: unique('demo-after-launch') }).catch((e: unknown) => e))).toBe('forbidden');
+      expect(await api.auth.getSession()).toBeNull();
+      expect(await (await demo.fetch(`${deployed.baseUrl}/v1/session`)).json()).toBeNull();
+      expect((await demo.fetch(`${deployed.baseUrl}/v1/meetings`)).status).toBe(401);
+      expect(await (await google.fetch(`${deployed.baseUrl}/v1/session`)).json()).toMatchObject({ ownerId: realSession?.ownerId, provider: 'google' });
+    } finally { await deployed.close(); }
+
+    const restored = h.browser();
+    const signedIn = await restored.api.auth.signIn('sso', { email: demo.session.user.email });
+    expect([signedIn.isNew, signedIn.session.ownerId]).toEqual([false, demo.session.ownerId]);
+    expect((await restored.api.account.preferences()).notesDefault).toBe('off');
+  });
+
   it('keeps sessions across a restart and refuses a cookie after sign-out', async () => {
     const cookies: string[] = [];
     const jar = cookieFetch(ORIGIN);

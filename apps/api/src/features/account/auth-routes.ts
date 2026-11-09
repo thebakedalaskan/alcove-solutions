@@ -4,7 +4,7 @@ import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import { log } from '../../log';
 import * as google from '../../google';
 import { b64u, unb64u } from '../../crypto';
-import { GoogleSignupInviteRequiredError } from '../../errors';
+import { ForbiddenError, GoogleSignupInviteRequiredError } from '../../errors';
 import { openOwner } from '../../owners';
 import { findSession, stillOpen } from '../../sessions';
 import * as account from './account';
@@ -35,6 +35,7 @@ export function registerAuthRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
   });
 
   app.post('/v1/auth/sign-in', async (c) => {
+    if (!d.cfg.DEMO_AUTH_ENABLED) throw new ForbiddenError('Demo sign-in is unavailable.', { level: 'info' });
     deleteCookie(c, secure ? '__Host-alcove_drive' : 'alcove_drive', { path: '/', secure });
     limiter(clientAddress(c), 'sign-in');
     const r = await account.demoSignIn(d, await body(c, SignInBodySchema));

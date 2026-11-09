@@ -137,7 +137,8 @@ jobs:
         env: { REPORTS: '${{ runner.temp }}/reports' }
       - uses: actions/upload-artifact@v4
         if: always()
-        with: { name: 'integration-${{ matrix.shard }}', path: '${{ runner.temp }}/reports', retention-days: 7, if-no-files-found: ignore }
+        # A retried shard replaces its earlier report, so the aggregate reads the latest attempt.
+        with: { name: 'integration-${{ matrix.shard }}', path: '${{ runner.temp }}/reports', overwrite: true, retention-days: 7, if-no-files-found: ignore }
 
   # The one check the branch rules require: every runner passed, and every test vitest lists ran on one of them, once.
   integration:

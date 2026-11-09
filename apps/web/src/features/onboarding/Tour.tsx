@@ -46,7 +46,7 @@ function slidesFor(o: { next: Meeting | undefined; join: Ahead | undefined; firs
     });
   }
   add({ id: 'room', called: 'the room', title: 'Record in the room', art: <ArtRoom />, prefer: ['right', 'below'], target: hook('room'), text: 'Meeting in person? Record on your phone, even offline. Notes are written when you’re back online.' });
-  add({ id: 'sealed', called: 'privacy', title: 'Your notes stay yours', art: <ArtSeal />, prefer: ['left', 'below'], target: hook('sealed'), text: 'Notes are written in confidential compute, sealed hardware that Alcove can’t open. Only the people invited can read them.' });
+  add({ id: 'sealed', called: 'privacy', title: 'Your notes stay yours', art: <ArtSeal />, prefer: ['left', 'below'], target: hook('sealed'), text: 'Alcove encrypts stored notes and uses the call’s sharing permissions to decide who can open them.' });
   add({
     id: 'ready', called: 'where to start', title: 'You’re ready', art: <ArtSun />, prefer: ['right', 'below', 'left'], target: hook('new-call'),
     text: `Start a call now, or schedule one for later.${o.firstDay && o.next?.notes === 'on' ? ` Your first notes arrive after ${o.next.title}.` : ''}`

@@ -87,8 +87,8 @@ function useRows(): Row[] {
   const verified = trust?.tee === 'dstack' && trust.bound;
   rows.push({
     id: 'seal', icon: <Icon name="sealed" size={18} />,
-    text: <>Notes are written in <b>confidential compute</b></>,
-    sub: verified && trust ? `Hardware verified ${hm(new Date(trust.at))} · Alcove can’t read them` : 'Sealed in confidential compute · Alcove can’t read them'
+    text: <>Notes are <b>encrypted in storage</b></>,
+    sub: verified && trust ? `Hosting server verified ${hm(new Date(trust.at))}` : 'Your notes follow the call’s sharing permissions'
   });
   return rows;
 }

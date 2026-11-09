@@ -54,7 +54,7 @@ export const OpenLight = light(Open);
 
 /** Its name's menu, on its frame: Rename, Open where it's saved, Who can add to it, Copy link, Download as an image or a PDF, and Night board. */
 export const TheNameMenu = review(at(1, opensBoard(PRIYA, 'retro')), retroWith(4), onIt(step('Press the board’s name, on its frame', (c) => frameMenu(c, BOARD))));
-/** Its seal says what's true of this board: everyone in the call can add to it, where it's saved, and that Alcove can't read it. */
+/** Its seal says what's true of this board: everyone in the call can add to it, where it's saved, and that it’s encrypted in storage. */
 export const TheSeal = review(at(1, opensBoard(PRIYA, 'retro')), retroWith(4), onIt(step('Press Sealed, on the board’s bar', async (c) => {
   await c.userEvent.click(await screen.findByRole('button', { name: 'Sealed' }, LATER));
 })));

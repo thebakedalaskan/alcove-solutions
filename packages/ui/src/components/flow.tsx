@@ -285,7 +285,7 @@ export function NotesSwitches({ notes, choices, modelPrivate = true, onNotes, on
           <SwitchLine title="Read shared screens" sub="Whoever shares is asked whether it goes in the notes"
             control={<Switch checked={choices.allowScreens} label="Read shared screens" onChange={(allowScreens) => onChoices({ ...choices, allowScreens })} />} />
           {modelPrivate
-            ? <p className="cf-sealed"><Icon name="sealed" size={14} />Written in confidential compute. Alcove can’t read them.</p>
+            ? <p className="cf-sealed"><Icon name="sealed" size={14} />Written by an AI model in confidential compute.</p>
             : <p className="cf-sealed"><Icon name="shieldOff" size={14} />Written by an AI model outside a secure enclave. <Unencrypted compact /></p>}
         </>
       )}

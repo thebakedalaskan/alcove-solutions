@@ -21,8 +21,8 @@ const meta = {
     left: 12, top: 62, title: 'Sealed',
     rows: [
       { icon: 'lock', text: 'Everyone in this call can add to it. Saved in Product.' },
-      { icon: 'notes', text: 'The notes read it in confidential compute.' },
-      { icon: 'sealed', text: 'Alcove can’t read it.' }
+      { icon: 'notes', text: 'The notes can use this board.' },
+      { icon: 'sealed', text: 'Encrypted in storage.' }
     ]
   },
   argTypes: { title: { control: 'text' }, sub: { control: 'text' }, rows: { control: false }, options: { control: false }, items: { control: false }, action: { control: false } },
@@ -43,7 +43,7 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/** The seal's: who can add to the board, where it's saved, and that the notes read it in confidential compute and Alcove can't. */
+/** The seal's: who can add to the board, where it's saved, and that the notes can use it. */
 export const Sealed: Story = {};
 /** A room's board: only the room sees it, and it comes back to everyone when rooms close. */
 export const SealedToThisRoom: Story = {
@@ -53,7 +53,7 @@ export const SealedToThisRoom: Story = {
     rows: [
       { icon: 'lock', text: 'Only the people in Comms can see this board.' },
       { icon: 'door', text: 'When rooms close it comes back to the main room, and everyone in the call sees it.' },
-      { icon: 'sealed', text: 'Alcove can’t read it, then or later.' }
+      { icon: 'sealed', text: 'Encrypted in storage.' }
     ]
   },
   parameters: { board: 'Comms board', seal: 'Sealed to this room' }
