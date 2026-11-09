@@ -1,4 +1,4 @@
-import { type CallNotificationState } from '@alcove/api';
+import { type CallNotificationState, type NotificationPrefs } from '@alcove/api';
 /*
  * A call, played from its script (script.ts). LiveKit can't run in Storybook, so this is the server's side of the
  * script: who's in the call, what it captures, the transcript and the live notes, who's asking to join and who's being
@@ -73,7 +73,9 @@ type Presented = { kind: 'board'; by: CallSeat; key: string; id: string; section
 export class ScriptedCall extends Snapshots<CallState> implements CallSession {
   readonly direct: ScriptedDirectMessages;
   readonly ticket: CallTicket;
-  readonly notifications = new Pushed<CallNotificationState>({ ready: true, candidates: [] });
+  readonly notifications = Object.assign(new Pushed<CallNotificationState>({ ready: true, candidates: [] }), {
+    eligible: (prefs: NotificationPrefs) => { const state = this.notifications.getSnapshot(); return state.ready && prefs.enabled ? state.candidates.filter((candidate) => candidate.fresh && candidate.expiresAt > Date.now() && prefs[candidate.category]) : []; }
+  });
   readonly crypto: Crypto;
   readonly personal: PersonalApi;
   /** LiveKit's side: the scripted room plays it. */

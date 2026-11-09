@@ -1,3 +1,4 @@
+import { type NotificationPrefs } from '../identity/preferences';
 import { IDSchema } from '../shared/ids';
 import { type LiveStore } from '../shared/live';
 import { z } from '../shared/zod';
@@ -25,10 +26,14 @@ export const CallNotificationDestinationSchema = z.object({
 }).readonly();
 export type CallNotificationDestination = z.infer<typeof CallNotificationDestinationSchema>;
 export const CallNotificationSchema = z.object({
-  category: CallNotificationCategorySchema, destination: CallNotificationDestinationSchema,
+  /** Relevance at first authenticated observation. Old unread targets remain navigable without becoming new events. */
+  fresh: z.boolean(), category: CallNotificationCategorySchema, destination: CallNotificationDestinationSchema,
   raisedAt: z.number().nonnegative(), expiresAt: z.number().nonnegative()
 }).readonly();
 export type CallNotification = z.infer<typeof CallNotificationSchema>;
 /** Derived exclusively from this connection's authorized live snapshots, never an independent authority. */
 export interface CallNotificationState { readonly ready: boolean; readonly candidates: readonly CallNotification[] }
-export type CallNotificationsApi = LiveStore<CallNotificationState>;
+export interface CallNotificationsApi extends LiveStore<CallNotificationState> {
+  /** Category selection keeps the same immutable original candidates; permission and focused-view checks stay in the browser. */
+  eligible(prefs: NotificationPrefs): readonly CallNotification[];
+}

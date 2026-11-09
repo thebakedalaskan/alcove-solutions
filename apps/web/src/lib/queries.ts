@@ -10,6 +10,7 @@ import { forgetEdits } from '~/features/workspace/keep';
 import { forgetPictures, readSessionWithPictureAccess } from '~/features/call/media/backgrounds/backgrounds';
 import { forgetPlaces } from '~/features/workspace/places';
 import { forgetWords } from '~/features/workspace/words';
+import { announceNotificationPreferences, notificationPreferenceIntent } from './notification-preference-channel';
 import { announceSignIn, announceSignOut } from './signedOut';
 import { api } from './api';
 import { log } from './log';
@@ -364,10 +365,13 @@ const prefsWrite = (qc: QueryClient) => {
   return {
     ...PREFS_WRITE,
     show: async (patch: Patch<Preferences>) => {
+      const owner = qc.getQueryData(q.session().queryKey)?.ownerId;
+      if (!owner) throw new AlcoveApiError('unauthenticated', 'Sign in again to save your preferences.');
       await qc.cancelQueries({ queryKey: key });
+      if (qc.getQueryData(q.session().queryKey)?.ownerId !== owner) throw new AlcoveApiError('conflict', 'The account changed before these preferences could be saved.');
       const before = qc.getQueryData(key);
       qc.setQueryData(key, (p) => p && withFields(p, patch, (k) => patch[k] !== undefined));
-      return { before };
+      return { before, owner, notificationIntent: patch.notifications ? announceNotificationPreferences(owner, patch.notifications) : null };
     },
     undo: (patch: Patch<Preferences>, before: Preferences | undefined) => { if (before) qc.setQueryData(key, (p) => p && withFields(p, before, untouched(p, patch))); },
     settle: (patch: Patch<Preferences>, d: Preferences) => qc.setQueryData(key, (p) => p && withFields(p, d, untouched(p, patch))),
@@ -375,17 +379,35 @@ const prefsWrite = (qc: QueryClient) => {
   };
 };
 /** Changes some preferences: see above. */
+const preferenceOwners = new WeakMap<Patch<Preferences>, string>();
 export function usePreferences() {
-  const w = prefsWrite(useQueryClient());
+  const qc = useQueryClient();
+  const w = prefsWrite(qc);
+  const active = (owner: string | undefined) => owner !== undefined && qc.getQueryData(q.session().queryKey)?.ownerId === owner;
   return useMutation({
     mutationKey: w.mutationKey, scope: w.scope,
-    mutationFn: (p: Patch<Preferences>) => api.account.updatePreferences(p),
-    onMutate: w.show,
-    onError: (_e, p, ctx) => w.undo(p, ctx?.before),
-    onSuccess: (d, p) => w.settle(p, d),
-    onSettled: w.reread
+    mutationFn: (patch: Patch<Preferences>) => {
+      if (!active(preferenceOwners.get(patch))) throw new AlcoveApiError('conflict', 'The account changed before these preferences could be saved.');
+      return api.account.updatePreferences(patch);
+    },
+    onMutate: async (patch) => {
+      const owner = qc.getQueryData(q.session().queryKey)?.ownerId;
+      if (owner) preferenceOwners.set(patch, owner);
+      return w.show(patch);
+    },
+    onError: (_error, patch, context) => {
+      if (!active(context?.owner)) return;
+      w.undo(patch, context?.before);
+      if (context?.notificationIntent && notificationPreferenceIntent(context.owner)?.nonce === context.notificationIntent) {
+        const prefs = qc.getQueryData(q.prefs().queryKey);
+        if (prefs) announceNotificationPreferences(context.owner, prefs.notifications);
+      }
+    },
+    onSuccess: (data, patch, context) => { if (active(context.owner)) w.settle(patch, data); },
+    onSettled: (_data, _error, _patch, context) => { if (active(context?.owner)) w.reread(); }
   });
 }
+
 /**
  * Sets which notes are pinned, in the order they were pinned (at most MAX_PINS), as a change to preferences (above).
  * A refusal because a note is gone also refreshes the notes.

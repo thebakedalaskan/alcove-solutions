@@ -1,3 +1,5 @@
+import { useCallBrowserNotifications } from './browserNotifications';
+import { CallNotificationControls } from '~/features/settings/Notifications';
 import type { ChatDraft } from '../layout/ChatMentions';
 import { unreadThreadReplies, useReplyAlerts, type ReplyJump } from './replyAlerts';
 import { ChatView } from '../layout/ChatView';
@@ -60,7 +62,6 @@ import { useBoardPresenting } from '~/features/call/boards/boardPresenting';
 import { useWorkspacePresenting } from '~/features/call/workspace/presenting';
 import { GAP, PHONE_W, focusRoom, placeMain } from '~/features/call/layout/panels';
 import { CaptureButton, NotesAsks, askedTag, organizerName, useCaptureAlerts } from '~/features/call/notes/Capture';
-import { useChatMentionNotifications, useNotesAskedNotifications } from '~/features/shell/notify';
 import { unreadChatMentions, useCallAttention } from './attention';
 import { captureHere } from '~/lib/capture';
 import { RoomsLive, RoomsSetup } from '~/features/call/rooms/Rooms';
@@ -232,7 +233,6 @@ export function InCall({ session }: { session: CallSession }) {
   const unread = Math.max(unreadChat, new Set([...unreadMentions, ...unreadReplies]).size) + direct.unread.length;
   const [chatTarget, setChatTarget] = useState<ReplyJump>();
   const attentionAllowed = useCallAttention(state, crypto, unreadMentions, !leaving && ended === null);
-  useChatMentionNotifications(state, attentionAllowed ? unreadMentions : []);
   const readingMentions = useRef(new Set<string>());
   const readMentions = useCallback((ids: readonly string[]) => {
     const fresh = ids.filter((id) => !readingMentions.current.has(id));
@@ -720,7 +720,6 @@ export function InCall({ session }: { session: CallSession }) {
     notesAsked: (up) => toast(up ? `You asked ${organizerName(state)} for notes` : 'You took back your ask', { icon: 'hand' })
   });
   useCaptureAlerts(state, controls);
-  useNotesAskedNotifications(state);
   // Whatever brings your side up gives everything back: nothing else has a place while what's open fills your window.
   const openSide = (p: SidePlace) => { setPop(null); setFocus(false); goTo(p); };
   const flipSide = (v: SideView) => { setPop(null); setFocus(false); side.toggle(v); };
@@ -1341,6 +1340,23 @@ export function InCall({ session }: { session: CallSession }) {
   const floatingHelp = useId();
   useReplyAlerts({ session, state, crypto, direct, allowed: attentionAllowed && attentionReady && online && !leaving && ended === null,
     onOpen: (id, audience) => { setPrivateAudience(audience); setChatTarget((was) => ({ id, request: (was?.request ?? 0) + 1 })); returnToCall(); openSide('chat'); } });
+  useCallBrowserNotifications({ session, state, crypto, direct, active: attentionAllowed && attentionReady && online && roomView.connection === 'connected' && !leaving && ended === null,
+    foreground: floating.mainVisible,
+    onOpen: (target) => {
+      returnToCall();
+      if (target.type === 'private') {
+        setPrivateAudience({ identity: target.peer, place: crypto.place, generation: state.generation });
+        setChatTarget((was) => ({ id: target.message, request: (was?.request ?? 0) + 1 })); openSide('chat');
+      } else if (target.type === 'thread' || target.type === 'chat') {
+        setPrivateAudience(null); setChatTarget((was) => ({ id: target.message, request: (was?.request ?? 0) + 1 })); openSide('chat');
+      } else if (target.type === 'attention') { setAttentionTab(target.section); openSide('attention'); }
+      else if (target.type === 'admission') openSide('people');
+      else if (target.type === 'timer') {
+        if (target.timer === 'presenter') openSide('timer');
+        else { setSaved(null); loadBoard(); stageOpen('board'); setFront('board'); side.close(); setFocus(false); }
+      } else openSide('people');
+    }
+  });
   useEffect(() => { if (floating.error) toast('Floating call didn’t open. Check View for help.', { icon: 'pip' }); }, [floating.error, toast]);
 
   useEffect(() => {
@@ -1771,7 +1787,7 @@ export function InCall({ session }: { session: CallSession }) {
       <CamOptions media={media} m={m} devices={devices} me={me?.person ?? { name: 'You' }} preview={false} onSwitched={(label) => toast(`Switched to ${label}`, { icon: 'video' })} />
     </>
   ) : pop === 'sounds' ? (
-    <><div className="ic-attention-sound-head"><button type="button" onClick={() => setPop('more')}><Icon name="left" size={15} />More</button><b>Sounds</b></div><CallSoundControls speakerId={m.speakerId} /></>
+    <><div className="ic-attention-sound-head"><button type="button" onClick={() => setPop('more')}><Icon name="left" size={15} />More</button><b>Sounds and notifications</b></div><CallSoundControls speakerId={m.speakerId} /><div className="ic-msep" /><CallNotificationControls /></>
   ) : pop === 'quality' ? (
     <VideoQuality media={media} m={m} />
   ) : pop === 'board' ? (
@@ -1801,7 +1817,7 @@ export function InCall({ session }: { session: CallSession }) {
       {roomsHere && moreRow('door', 'Breakout rooms', () => openSide('rooms'), { pressed: side.view === 'rooms' })}
       <div className="ic-msep" />
       {moreRow('speaker', 'Audio and video settings', () => setPop('devices'))}
-      {moreRow('bell', 'Sounds', () => setPop('sounds'))}
+      {moreRow('bell', 'Sounds and notifications', () => setPop('sounds'))}
       {moreRow('sliders', 'Video quality', () => setPop('quality'))}
       {moreRow('phone', 'Move to another device', () => { setPop(null); moving.show(); })}
       {moreRow('keyboard', 'Keyboard shortcuts', () => { setPop(null); setKeysOpen(true); })}
@@ -1889,7 +1905,7 @@ export function InCall({ session }: { session: CallSession }) {
               <DockButton icon="hand" label={handLabel} tip={me?.hand ? 'Lower your hand' : roomName && !organizer ? `Raise your hand to ask ${roomsOnBoards && organizerPerson ? callName(organizerPerson) : 'the organizer'} for help` : 'Raise your hand'}
                 on={!!me?.hand} disabled={callControls.pending.hand || !attentionReady || leaving || !!ended} aria-busy={callControls.pending.hand} onClick={() => setHand(!me?.hand)} />
             )}
-            <Popover open={moreOpen} onOpenChange={(o) => setPop(o ? 'more' : null)} side="top" align="center" label={pop === 'board' ? 'Open a board' : pop === 'sounds' ? 'Sounds' : pop === 'view' ? 'Your view' : 'More'}
+            <Popover open={moreOpen} onOpenChange={(o) => setPop(o ? 'more' : null)} side="top" align="center" label={pop === 'board' ? 'Open a board' : pop === 'sounds' ? 'Sounds and notifications' : pop === 'view' ? 'Your view' : 'More'}
               onCloseFocus={() => { const current = floating.owner.getSnapshot(); return current.pending || current.target !== null; }}
               tip={phone ? undefined : MORE_SAYS}
               className={cn(pop === 'devices' ? 'ic-dmenu ic-devices' : pop === 'sounds' ? 'ic-dmenu ic-sounds' : pop === 'quality' ? 'ic-dmenu' : pop === 'board' ? 'bl' : 'ic-menu ic-morepop', phone && 'is-sheet')}

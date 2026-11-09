@@ -14,7 +14,7 @@ export interface BrowserAlert {
 export interface NotificationSource {
   readonly token: object; readonly scope: string; readonly owner: string; readonly ownerId: string | null;
   readonly alerts: readonly BrowserAlert[];
-  allowed(): boolean;
+  allowed(kind?: BrowserAlertKind, key?: string): boolean;
   open(data: BrowserNotificationData): void;
   failed(): void;
 }
@@ -35,8 +35,8 @@ let cleanup: (() => void) | null = null;
 let epoch = 0;
 
 const permission = () => typeof Notification !== 'undefined' && Notification.permission === 'granted';
-function allowed(source: NotificationSource): boolean {
-  return !revoked.has(source.token) && permission() && (source.ownerId === null || !signedOut(source.ownerId)) && source.allowed();
+function allowed(source: NotificationSource, kind?: BrowserAlertKind, key?: string): boolean {
+  return !revoked.has(source.token) && permission() && (source.ownerId === null || !signedOut(source.ownerId)) && source.allowed(kind, key);
 }
 function current(scope: string, token: object): NotificationSource | null {
   const source = sources.get(scope);
@@ -120,7 +120,7 @@ async function reconcile(): Promise<void> {
     if (!allowed(source)) continue;
     const groups = new Map<BrowserAlertKind, BrowserAlert[]>();
     for (const alert of source.alerts) {
-      if (!alive(alert)) continue;
+      if (!alive(alert) || !allowed(source, alert.kind, alert.key)) continue;
       next = Math.min(next, alert.expiresAt);
       const entries = groups.get(alert.kind) ?? [];
       entries.push(alert); groups.set(alert.kind, entries);
@@ -132,7 +132,7 @@ async function reconcile(): Promise<void> {
       if (!primary) continue;
       const valid = () => {
         const latest = current(source.scope, source.token);
-        return atEpoch === epoch && latest !== null && alive(primary) && latest.alerts.some((item) => item.key === primary.key)
+        return atEpoch === epoch && latest !== null && allowed(latest, primary.kind, primary.key) && alive(primary) && latest.alerts.some((item) => item.key === primary.key)
           && !alerts.some((alert) => notificationOnScreen(alert.context));
       };
       const inFront = alerts.some((alert) => notificationOnScreen(alert.context));
@@ -196,10 +196,10 @@ function install(): void {
     refreshNotifications();
   });
   addEventListener('focus', refreshNotifications); addEventListener('blur', refreshNotifications);
-  addEventListener('alcove-notifications-clear', clear); document.addEventListener('visibilitychange', refreshNotifications);
+  addEventListener('alcove-notifications-clear', clear); addEventListener('alcove-notification-preferences', refreshNotifications); addEventListener('alcove-notification-views', refreshNotifications); document.addEventListener('visibilitychange', refreshNotifications);
   cleanup = () => {
     signedOutElsewhere(); removeEventListener('focus', refreshNotifications); removeEventListener('blur', refreshNotifications);
-    removeEventListener('alcove-notifications-clear', clear); document.removeEventListener('visibilitychange', refreshNotifications);
+    removeEventListener('alcove-notifications-clear', clear); removeEventListener('alcove-notification-preferences', refreshNotifications); removeEventListener('alcove-notification-views', refreshNotifications); document.removeEventListener('visibilitychange', refreshNotifications);
     if (expiration) clearTimeout(expiration); expiration = null; cleanup = null;
   };
 }
@@ -216,4 +216,16 @@ export function removeNotificationSource(scope: string, token: object): void {
   for (const [tag, item] of shown) if (item.data.source === scope) void close(tag);
   refreshNotifications();
   if (!sources.size) cleanup?.();
+}
+
+/** Global disable/revocation closes surviving worker alerts too, including ones from a previous tab. */
+export async function closeOwnerNotifications(ownerId: string | null): Promise<void> {
+  for (const [tag, item] of shown) if (item.data.ownerId === ownerId) await close(tag);
+  try {
+    const registration = await navigator.serviceWorker?.getRegistration();
+    for (const item of await registration?.getNotifications() ?? []) {
+      const data = BrowserNotificationDataSchema.safeParse(item.data);
+      if (!data.success || data.data.ownerId === ownerId) item.close();
+    }
+  } catch (error) { nlog.debug('disabled notifications could not be closed', { err: error }); }
 }

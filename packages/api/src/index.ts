@@ -69,4 +69,4 @@ export { CallTimerSegmentSchema, type CallTimerSegment, CallTimerSequenceSchema,
 
 export { type CallNotification, type CallNotificationCategory, CallNotificationCategorySchema, type CallNotificationDestination, CallNotificationDestinationSchema, CallNotificationSchema, type CallNotificationState, type CallNotificationsApi, type CallNotificationTarget, CallNotificationTargetSchema } from './calls/notifications';
 
-export { type BrowserNotificationData, BrowserNotificationDataSchema, type NotificationReceipt, NotificationReceiptSchema, type NotificationViewSignal, NotificationViewSignalSchema, NotificationWindowSchema } from './identity/notifications';
+export { type BrowserNotificationData, BrowserNotificationDataSchema, type NotificationReceipt, NotificationReceiptSchema, type NotificationViewSignal, NotificationViewSignalSchema, NotificationWindowSchema, NotificationPreferenceSignalSchema, type NotificationPreferenceSignal } from './identity/notifications';

@@ -64,7 +64,8 @@ export function useNotificationNavigation(): (data: BrowserNotificationData) => 
         if (version !== revision.current || calls.get(original.callId)?.token !== owner.token || !validAccount()) return;
         const snapshot = owner.session.notifications.getSnapshot();
         const exact = snapshot.candidates.find((candidate) => candidate.destination.eventId === original.eventId && JSON.stringify(candidate.destination) === JSON.stringify(original));
-        if (!snapshot.ready || !exact || exact.expiresAt <= Date.now()) {
+        // Delivery freshness expires separately; an unread, still-authorized target remains navigable.
+        if (!snapshot.ready || !exact) {
           toast('This call action was handled or is no longer available.', { icon: 'lock' }); return;
         }
         owner.open(exact.destination.target);
@@ -79,6 +80,7 @@ export function useNotificationNavigation(): (data: BrowserNotificationData) => 
     if (!('serviceWorker' in navigator)) return;
     const worker = navigator.serviceWorker;
     const heard = (event: MessageEvent<unknown>) => {
+      if (!(event.source instanceof ServiceWorker) || new URL(event.source.scriptURL).origin !== location.origin) return;
       const message = WorkerMessageSchema.safeParse(event.data);
       if (!message.success) return;
       if (message.data.type === 'alcove.where') event.ports[0]?.postMessage({ path: location.pathname, ownerId: qc.getQueryData(q.session().queryKey)?.ownerId ?? null,
@@ -89,8 +91,9 @@ export function useNotificationNavigation(): (data: BrowserNotificationData) => 
       }
     };
     worker.addEventListener('message', heard);
-    worker.controller?.postMessage({ type: 'alcove.ready' });
-    return () => worker.removeEventListener('message', heard);
+    const ready = () => worker.controller?.postMessage({ type: 'alcove.ready' });
+    ready(); worker.addEventListener('controllerchange', ready);
+    return () => { worker.removeEventListener('message', heard); worker.removeEventListener('controllerchange', ready); };
   }, [open, qc]);
   return open;
 }
