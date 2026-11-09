@@ -83,3 +83,5 @@ Files: `apps/web/src/features/call/layout/Panel.tsx`, focused thread/composer ow
 - Strengthened that fixture’s wait to require the exact replacement identity, leaving the final participant equality assertion unchanged. No production behavior changed for this fixture correction.
 - With released main #192 integrated, all five affected/related suites passed: 109/109 tests (all 65 calls, six room-thread, four private-thread, 11 screen and 23 Drive export flows), 258.18s on isolated `alcove_test_87` after the full process exited.
 - API protocol, UI/alerts/read lifecycle, exact call/connection boundary and retained mention-span read follow-ups have independent source sign-off. Final actual-head CI is required before merge; deployment remains pending.
+
+- Deferred navigation queries only the originating ChatView scroll root. If that view unmounts, its cleared ref prevents an old animation-frame callback from focusing another call’s reused canonical message ID.

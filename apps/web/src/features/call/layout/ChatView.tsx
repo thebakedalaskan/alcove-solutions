@@ -21,6 +21,7 @@ export function ChatView({ chat, missed, ready, moving, place, here, placeName, 
   const [replyTo, setReplyTo] = useState(draft.replyTo ?? null);
   const [composerFocus, setComposerFocus] = useState(0);
   const scroll = useRef<HTMLDivElement>(null);
+  const findMessage = (id: string) => scroll.current?.querySelector<HTMLElement>(`[data-chat-message="${CSS.escape(id)}"]`);
   const bottom = useRef(true);
   const focus = useRef<string | null>(null);
   const read = useMemo(() => new Set(readIds), [readIds]);
@@ -76,7 +77,7 @@ export function ChatView({ chat, missed, ready, moving, place, here, placeName, 
     if (node && bottom.current) node.scrollTop = node.scrollHeight;
     const id = focus.current;
     if (id) {
-      const message = document.getElementById(`chat-message-${id}`);
+      const message = findMessage(id);
       if (message) { message.scrollIntoView({ block: 'center' }); message.focus({ preventScroll: true }); focus.current = null; }
     }
   }, [shown.length, thread]);
@@ -93,14 +94,14 @@ export function ChatView({ chat, missed, ready, moving, place, here, placeName, 
     focus.current = message.id;
     choose(message.thread?.root ?? null, message.thread?.root ?? null, message.place);
     requestAnimationFrame(() => {
-      const node = document.getElementById(`chat-message-${message.id}`);
+      const node = findMessage(message.id);
       node?.scrollIntoView({ block: 'center' }); node?.focus({ preventScroll: true });
     });
   }, [jump?.request]);
   const back = () => {
     const root = thread;
     setComposerFocus(0); choose(null);
-    requestAnimationFrame(() => { if (root) (document.getElementById(`thread-open-${root}`) ?? document.getElementById(`thread-reply-${root}`))?.focus(); });
+    requestAnimationFrame(() => { if (root) scroll.current?.querySelector<HTMLElement>(`#${CSS.escape(`thread-open-${root}`)}, #${CSS.escape(`thread-reply-${root}`)}`)?.focus(); });
   };
   const unreadIn = (messages: readonly CallChatMessage[]) => messages.filter((m) => !m.isMe && !m.sending && !m.failed && !read.has(m.id));
   const openMention = () => {
@@ -109,7 +110,7 @@ export function ChatView({ chat, missed, ready, moving, place, here, placeName, 
     focus.current = target.id;
     choose(target.thread?.root ?? null, target.thread?.root ?? null, target.place);
     requestAnimationFrame(() => {
-      const message = document.getElementById(`chat-message-${target.id}`);
+      const message = findMessage(target.id);
       (message?.querySelector('.ic-mention.is-me') ?? message)?.scrollIntoView({ block: 'center' });
       message?.focus({ preventScroll: true });
     });
