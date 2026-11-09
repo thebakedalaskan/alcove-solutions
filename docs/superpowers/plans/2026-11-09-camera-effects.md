@@ -53,7 +53,7 @@
 - [x] Document device-only persistence, replacement/removal, support, performance feedback and fail-closed behavior.
 - [x] Run repository checks and the integration suite using the isolated database; record exact results.
 - [x] Obtain independent review, fix material findings and re-run affected verification.
-- [ ] Commit/push the issue branch and supply PR body/evidence to the coordinating agent for creation, merge and deployment.
+- [x] Commit/push the issue branch and supply PR body/evidence to the coordinating agent for creation, merge and deployment.
 
 ## Execution record
 
@@ -64,3 +64,5 @@
 - Manual CUA used only Storybook's drawn camera and bundled fixture pictures. Prejoin and in-call blur strengths, stable solids, presets, upload, same-slot replacement, advancing processed frames and same-browser custom-image retention across reloads were verified. Adaptive output reached 960×540 with visible feedback and the selected effect retained.
 - Holding the model request and choosing Off canceled preparation promptly. Blocking the model caused camera-off with the explanatory recovery message; choosing Off alone kept the camera off and deliberately turning it on recovered without loading effects. Camera-off background/device browsing kept it off. Phone (390×844), wide, light and dark views were inspected; the phone journey reaches the same controls through More → Audio and video settings. Unsupported guidance was inspected as a component state; actual unsupported hardware and manual two-browser SFU output remain release spot-checks.
 - Manual QA exposed and fixed two existing Storybook gaps required to exercise the real pipeline: WASM assets were not served, and stopping the original drawn camera froze its native clones. The stand-in now serves the exact installed WASM and retains its draw timer until the last clone stops. The independent reviewer checked this cleanup too.
+
+- Merged current main `7cf87cffe379613ffabd29eaa1abba02ac26a5fd` (#190) into the issue branch. Both native PiP failure scenarios and drawn-camera clone ownership remain. Fresh combined typing (7/7), build (3/3), structure/type/test/migration policies and diff checks passed. Main added no server or contract changes, so the full server suite above remains applicable. PR description prepared at `/tmp/alcove-90-pr-body.md`; coordinator owns PR creation, merge and release verification.
