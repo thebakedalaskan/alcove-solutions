@@ -404,3 +404,12 @@ theme variants beside them. `Journeys/6 Follow-up proposals` (6.23–6.25) plays
 waiting behind a fixed batch, and a changed actual task refusing a stale amendment. Notes' journeys 8.44–8.46 show the same
 review after the call and keep “I'll do it” as a separate choice. The shared editor and review controls have their own
 stories in `Components/Notes and transcript`.
+
+## Presenter timer sequences
+
+**Calls / Presenter timers** renders the real call timer panel and compact countdown in ready, running, paused,
+near-end, over-time, finished, guest and reconnecting states, with phone and light-theme variants. The preset library
+and organizer lobby show preparation before joining. **Components / In a call / PresenterTimer** shows the reusable
+readout and button; **FloatingCall / Shared timer** shows the compact window. **Journeys / 6 Presenter timers**
+(6.26–6.28) plays preparing a preset, controlling a sequence, and following as a guest with a local cue. Stories remain demonstrations;
+the colocated API/client integration suite verifies shared state, permissions, concurrency, encryption and deletion.

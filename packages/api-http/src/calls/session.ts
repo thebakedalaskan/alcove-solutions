@@ -1,3 +1,4 @@
+import { type CallTimerControl, type CallTimerSequenceInput } from '@alcove/api';
 import { b64u, randomBytes } from '../transport/ids';
 import { Box, Live, unref } from '../transport/live';
 import { type ClientEvent } from '../transport/options';
@@ -19,6 +20,8 @@ function hereZone(): { timeZone?: string } {
 
 /* ---------- live call: server is the source of truth; the client keeps the clock ticking ---------- */
 interface CallTransport {
+  setTimerSequence(id: string, input: CallTimerSequenceInput): Promise<CallState>;
+  controlTimer(id: string, input: CallTimerControl): Promise<CallState>;
   get(id: string): Promise<CallState>;
   act(id: string, a: CallAction): Promise<CallState>;
   audio(id: string, p: AudioPiece): Promise<CallState>;
@@ -788,6 +791,8 @@ export class HttpCall extends Live<CallState> implements CallSession {
       this.approved.delete(identity);
     }
   };
+  setTimerSequence = async (input: CallTimerSequenceInput) => { this.take(await this.t.setTimerSequence(this.state.callId, input)); };
+  controlTimer = async (input: CallTimerControl) => { this.take(await this.t.controlTimer(this.state.callId, input)); };
   deny = async (identity: string) => { this.take(await this.t.act(this.state.callId, { type: 'deny', identity })); };
   ring = async (emails: string[]) => { this.take(await this.t.act(this.state.callId, { type: 'ring', emails })); };
   setNotes = async (on: boolean) => { this.take(await this.t.act(this.state.callId, { type: 'notes', on })); };

@@ -1,3 +1,4 @@
+import { CallTimerPresetSchema } from '@alcove/api';
 import { createPersonalApi } from '../notes/personal';
 import { createAudioTransport } from '../transport/audio';
 import { type HttpTransport } from '../transport/http';
@@ -40,6 +41,8 @@ export function createCallsApi(t: HttpTransport, o: HttpOptions): Pick<AlcoveApi
     const live = (id: string) => `/live/calls/${id}`;
     const call = new HttpCall(joined.state, joined.ticket, mls, { pollMs: o.callPollMs ?? 1500, notesMs: o.callNotesMs ?? 5000, ideasMs: o.callIdeasMs ?? 15_000, switchMs: o.callKeySwitchMs ?? 2000, rekeyMs: o.callRekeyMs ?? 10 * 60_000, movePollMs }, {
       get: (id) => req(CallStateSchema, 'GET', live(id), undefined, p),
+      setTimerSequence: (id, input) => req(CallStateSchema, 'PATCH', `${live(id)}/timer/sequence`, input, p),
+      controlTimer: (id, input) => req(CallStateSchema, 'POST', `${live(id)}/timer/control`, input, p),
       act: (id, a) => req(CallStateSchema, 'POST', `${live(id)}/actions`, a, p),
       audio: async (id, piece) => parse(CallStateSchema, await audio(`${live(id)}/audio`, piece, p), 'call state'),
       transcribe: async (id, c, speaker) => parse(CallStateSchema, await clip(`${live(id)}/transcribe`, c, { ...p, [AUDIO_HEADERS.speaker]: speaker, [AUDIO_HEADERS.ago]: ago(c) }), 'call state'),
@@ -85,6 +88,12 @@ export function createCallsApi(t: HttpTransport, o: HttpOptions): Pick<AlcoveApi
   };
   return {
     calls: {
+      timerPresets: {
+        list: () => req(z.array(CallTimerPresetSchema), 'GET', '/timer-presets'),
+        create: (input) => req(CallTimerPresetSchema, 'POST', '/timer-presets', input),
+        update: (id, input) => req(CallTimerPresetSchema, 'PATCH', `/timer-presets/${encodeURIComponent(id)}`, input),
+        remove: async (id) => { await req(z.object({ removed: z.literal(true) }), 'DELETE', `/timer-presets/${encodeURIComponent(id)}`); }
+      },
       startNow: (input) => req(z.object({ code: z.string() }), 'POST', '/calls', input ?? {}),
       card: (code) => req(CallCardSchema, 'GET', `/calls/${encodeURIComponent(code)}/card`),
       pick: (code, at) => req(CallCardSchema, 'POST', `/calls/${encodeURIComponent(code)}/pick`, { at }),

@@ -242,6 +242,10 @@ One modal, one question at a time, and a sheet on a phone.
 Always night, in both themes, on the stage tokens, except your side, which takes your theme. People are in arches, never
 circles, and whoever speaks gets the `speak` ring. The camera appears only here and on the join screen.
 
+- **Presenter timing** has a compact countdown beside the call title and a themed side panel for current/next slots,
+  host controls and the ordered plan. Presets live in the same panel and can be prepared in the organizer’s lobby.
+  Focus reserves a strip above the frame for Timer and Attention, keeping the frame’s own title and tools clear.
+  Numbers stay tabular; a warning uses words and an icon as well as caution colour. Guests read the same clock.
 - **Three places, each with one job.**
   - **The stage** holds the people and what you have open.
   - **The dock** holds what you do in the call: the microphone and camera with their arrows, a hairline, Share, Raise your

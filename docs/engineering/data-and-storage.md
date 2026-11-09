@@ -717,6 +717,11 @@ and this way it runs through the same auth, origin check and tests as everything
   during the call is in the call's sealed state (`workspace`: who's asking, what's presented and playing, what's been
   worked on and by whom, and the next agenda while it's being made), and goes when the call ends: what was worked on into the note, if there is one, and nowhere else
   ([Calls and recordings › The call's workspace](calls-and-recordings.md#the-calls-workspace)).
+- **Presenter timers** live in the call’s sealed state, separate from its boards and workspace. The sequence keeps its
+  segment labels, optional presenters and durations, current position, revision and server-clock anchors. Older call
+  records default to no sequence. Named presets keep only definitions, sealed under their account’s keys, with a
+  revision for explicit updates; applying one copies it into the call with a fresh clock. Presets belong only to their
+  account and are physically removed with it. See [Presenter timer sequences](presenter-timers.md).
 - **A board in a call** is a document in a workspace like any other. The call's sealed state says which is open in each part
   of the call and which boards it lets everyone into (`board`): where each is, who opened or decided it by their name, address and
   seat, and the seats and addresses each has been worked out for, and nothing about what's on it. An open board's entry keeps its

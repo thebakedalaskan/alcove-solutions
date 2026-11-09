@@ -10,6 +10,8 @@ export type FloatingAttention = 'hands' | 'questions' | 'waiting' | 'chat';
 export interface FloatingDevice { on: boolean; pending: boolean; problem: string | null }
 export interface FloatingCallProps {
   title: string;
+  /** Shared countdown; opening it returns to the full call details. */
+  timer?: ReactNode;
   /** A muted live picture, or null for the person's arch. No media is acquired by this component. */
   picture: ReactNode;
   person: Person | null;
@@ -42,7 +44,7 @@ const ATTENTION = [
 ] as const;
 
 /** The call kept in view: presentation only, with the same actions and muted media as its full view. */
-export function FloatingCall({ title, picture, person, label, connection, mic, cam, hand, handPending = false, busy, attention, error, soundBlocked = false, onSound, onMic, onCam, onHand, onLeave, onReturn, onAttention, children }: FloatingCallProps) {
+export function FloatingCall({ title, timer, picture, person, label, connection, mic, cam, hand, handPending = false, busy, attention, error, soundBlocked = false, onSound, onMic, onCam, onHand, onLeave, onReturn, onAttention, children }: FloatingCallProps) {
   const inactive = busy || connection === 'ended';
   const micLabel = mic.pending ? 'Changing microphone…' : mic.problem ? `${mic.problem}. Try the microphone again` : mic.on ? 'Mute microphone' : 'Unmute microphone';
   const camLabel = cam.pending ? 'Changing camera…' : cam.problem ? `${cam.problem}. Try the camera again` : cam.on ? 'Turn off camera' : 'Turn on camera';
@@ -60,6 +62,7 @@ export function FloatingCall({ title, picture, person, label, connection, mic, c
             <span className="ac-floating-label ac-clamp-1">{label}</span>
             {status && <span className="ac-floating-connection" role="status"><Icon name="wifi" size={15} />{status}</span>}
           </div>
+          {timer && <div className="ac-floating-timer">{timer}</div>}
           <div className="ac-floating-attention" aria-label="Call attention">
             {ATTENTION.map(({ kind, icon, word }) => attention[kind] > 0 && (
               <button key={kind} type="button" onClick={() => onAttention(kind)} title={`Open ${word.toLowerCase()} in the call`}>

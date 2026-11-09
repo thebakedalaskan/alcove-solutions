@@ -10,7 +10,7 @@
  * and its timer and vote.
  */
 import {
-  type CallAttention, type CallFeedbackKind, type CallQuestionStatus, ACCEPTED_FOLLOW_UP, AlcoveApiError, type FollowUpCreate, type FollowUpPatch, type FollowUpReview, type FollowUpTarget, type LiveFollowUp, MAX_CALL_IDEAS, RING_SECONDS, notesAreOn, reactionTarget, withReaction, type BreakoutPlan, type CallPage, type CallAnswer, type CallChatMention, CallChatTextSchema, type CallCrypto, type CallEndResult, type CallMoment, type CallMoveOut, type CallParticipant, type CallRole,
+  CallTimerSequenceInputSchema, CallTimerControlSchema, type CallTimerControl, type CallTimerSequenceInput, type CallTimerSequence, type CallAttention, type CallFeedbackKind, type CallQuestionStatus, ACCEPTED_FOLLOW_UP, AlcoveApiError, type FollowUpCreate, type FollowUpPatch, type FollowUpReview, type FollowUpTarget, type LiveFollowUp, MAX_CALL_IDEAS, RING_SECONDS, notesAreOn, reactionTarget, withReaction, type BreakoutPlan, type CallPage, type CallAnswer, type CallChatMention, CallChatTextSchema, type CallCrypto, type CallEndResult, type CallMoment, type CallMoveOut, type CallParticipant, type CallRole,
   type CallReaction, type CallSession, type CallState, type CallTicket, type CaptionLanguage, type CaptionTranslation, type CaptureDevicePart, type CaptureGap, type CaptureMode, type CapturePart,
   type CatchUp, type CatchUpRange, type CatchUpWindow, type AudioPiece, type LineAudio, type Meeting, type MoveMedia, type MoveOutState, type Person, type PersonalApi,
   type RingReply, type RoomCapture, type ScreenFrame, type ScreenFrameReceipt, type SeriesAnswerPart, type TranscriptClip, type TranscriptLine
@@ -121,7 +121,7 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     const me: CallParticipant = { id: identity(`me${callId}`), seat: 'seat-me', person, isMe: true, isOrganizer: organizes, hand: false, othersPoint: true };
     const mode = script.notes ?? meeting.notes;
     super({
-      revision: 0, attention: { place: 'main', hands: [], questions: [], signals: [], cues: [], latest: 0, serverNow: new Date().toISOString() },
+      revision: 0, timerSequence: script.timerSequence ? { ...structuredClone(script.timerSequence), startedAt: script.timerSequence.status === 'running' ? Date.now() : null } : null, attention: { place: 'main', hands: [], questions: [], signals: [], cues: [], latest: 0, serverNow: new Date().toISOString() },
       callId, meetingId: meeting.id, code: meeting.code, title: meeting.title, startedAt, elapsed: since, phase: 'in-call', participants: organizes ? [me] : [], locked: false, pointing: true,
       spotlight: null, breakouts: { open: null, held: [] }, capture: captureOf(mode, mode === 'off' ? null : startedAt, meeting.organizer.name),
       notes: { everOn: mode !== 'off', noteId: mode !== 'off' ? noteId : null, recording: { segment: 0, pieces: 0, seconds: mode === 'on' ? since : 0 } }, waiting: [], ringing: [], leaving: [], chatRead: [],
@@ -1450,6 +1450,47 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     this.change((s) => ({ ...s, participants: s.participants.map((x) => x.seat === p.seat ? { ...x, hand: up } : x), attention: { ...s.attention, hands: up ? s.attention.hands.some((h) => h.seat === p.seat) ? s.attention.hands : [...s.attention.hands, { id: nextId('hand'), participantId: p.id, seat: p.seat, raisedAt: new Date().toISOString() }] : s.attention.hands.filter((h) => h.seat !== p.seat) } }));
     if (up) this.cue('hand');
   }
+  setTimerSequence(input: CallTimerSequenceInput): Promise<void> {
+    return Promise.resolve().then(() => {
+      const parsed = CallTimerSequenceInputSchema.parse(input);
+      const s = this.getSnapshot();
+      if (!s.isHost) throw new AlcoveApiError('forbidden', 'Only the host can change the timer.');
+      const was = s.timerSequence;
+      if (parsed.expectedRevision !== (was?.revision ?? null)) throw new AlcoveApiError('conflict', 'The timer changed. Read its latest timing and try again.');
+      if (was && was.status !== 'ready' && was.status !== 'finished' && was.segments.slice(0, was.activeIndex + 1).some((segment, index) => JSON.stringify(segment) !== JSON.stringify(parsed.segments[index]))) throw new AlcoveApiError('conflict', 'The current turn and past segments stay as timed.');
+      const timerSequence: CallTimerSequence = was && was.status !== 'finished' ? { ...was, segments: parsed.segments, revision: was.revision + 1 } : { revision: (was?.revision ?? -1) + 1, segments: parsed.segments, activeIndex: 0, status: 'ready', elapsedMs: 0, startedAt: null, addedSeconds: 0 };
+      this.change((state) => ({ ...state, timerSequence }));
+    });
+  }
+  controlTimer(input: CallTimerControl): Promise<void> {
+    return Promise.resolve().then(() => {
+      const parsed = CallTimerControlSchema.parse(input);
+      const s = this.getSnapshot();
+      if (!s.isHost) throw new AlcoveApiError('forbidden', 'Only the host can control the timer.');
+      const was = s.timerSequence;
+      if (!was || parsed.expectedRevision !== was.revision) throw new AlcoveApiError('conflict', 'The timer changed. Read its latest timing and try again.');
+      const now = Date.now();
+      const elapsedMs = was.elapsedMs + (was.startedAt === null ? 0 : Math.max(0, now - was.startedAt));
+      let timerSequence: CallTimerSequence = { ...was, revision: was.revision + 1 };
+      switch (parsed.action) {
+        case 'start':
+          if (was.status !== 'ready') throw new AlcoveApiError('conflict', 'This timer has started already.');
+          timerSequence = { ...timerSequence, status: 'running', startedAt: now }; break;
+        case 'pause':
+          if (was.status !== 'running') throw new AlcoveApiError('conflict', 'This timer isn’t running.');
+          timerSequence = { ...timerSequence, status: 'paused', startedAt: null, elapsedMs }; break;
+        case 'resume':
+          if (was.status !== 'paused') throw new AlcoveApiError('conflict', 'This timer isn’t paused.');
+          timerSequence = { ...timerSequence, status: 'running', startedAt: now }; break;
+        case 'restart': timerSequence = { ...timerSequence, status: 'running', elapsedMs: 0, startedAt: now, addedSeconds: 0 }; break;
+        case 'add-time': timerSequence = { ...timerSequence, addedSeconds: was.addedSeconds + parsed.seconds }; break;
+        case 'skip': case 'advance':
+          timerSequence = was.activeIndex + 1 < was.segments.length ? { ...timerSequence, activeIndex: was.activeIndex + 1, elapsedMs: 0, startedAt: now, addedSeconds: 0, status: 'running' } : { ...timerSequence, elapsedMs, startedAt: null, status: 'finished' }; break;
+      }
+      this.change((state) => ({ ...state, timerSequence }));
+    });
+  }
+
   setHand(up: boolean): Promise<void> { this.handFor(this.me, up); return Promise.resolve(); }
   lowerHand(entryId: string): Promise<void> {
     const s = this.getSnapshot(); const h = s.attention.hands.find((h) => h.id === entryId);

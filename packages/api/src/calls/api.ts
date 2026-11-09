@@ -1,3 +1,4 @@
+import { type CallTimerPresetsApi } from './timers';
 import { type Series } from '../notes/series';
 import { type ID, type ISODate } from '../shared/ids';
 import { type LiveStore } from '../shared/live';
@@ -7,6 +8,7 @@ import { type IncomingRing, type RingReply } from './rings';
 import { type CallSession } from './session';
 import { type CallCard } from './state';
 export interface CallsApi {
+  readonly timerPresets: CallTimerPresetsApi;
   /** Creates a call that starts now and returns its code. */
   startNow(input?: InstantCallInput): Promise<{ code: string }>;
   /** What a call's link says before joining, for anyone, signed in or not: its title and organizer, whether notes are on, and where you stand. */

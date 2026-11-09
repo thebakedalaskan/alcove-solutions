@@ -20,6 +20,7 @@ import { log } from '~/lib/log';
 import { listNames, sameEmail, someNames } from '~/lib/people';
 import { useCancelCall, useUpdateCall } from '~/lib/queries';
 import { daysFromToday, hm, minutesUntil, shortDay } from '~/lib/time';
+import { TimerPresetPreparation } from '~/features/call/layout/TimerPresets';
 import { LobbyRing } from './LobbyRing';
 import { ringable } from '../ringing/RingWords';
 
@@ -207,6 +208,7 @@ export function Lobby({ meeting, me, capture, team, standIn, media }: { meeting:
         )}
         {settling ? <LobbyNotes meeting={meeting} who={ringing ? 'Everyone you ring gets them' : 'Everyone invited gets them'} />
           : <PrejoinCapture notes={meeting.notes} choices={meeting.choices} capture={capture} audience={{ kind: 'organizer', guests }} organizerName={me.name} />}
+        <TimerPresetPreparation />
         {meeting.joinMuted && <JoinMuted />}
         {ringing && <LobbyRing people={people} picked={picked} onChange={setPicked} />}
         {!onATeam && (
