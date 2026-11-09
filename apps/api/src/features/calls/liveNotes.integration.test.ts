@@ -536,9 +536,17 @@ describe('who reads what of them', () => {
     await gone(g.host, sam);
     await sleep(1200);
     await sayNow(g.host, said, atMs);
+    // Transcript positions and presence both round to tenths. Rejoin on a later server-clock tick, so this line stays away.
+    const awayThrough = (await g.host.catchUpWindow()).now;
+    const until = Date.now() + 15_000;
+    while ((await g.host.catchUpWindow()).now <= awayThrough) {
+      if (Date.now() > until) throw new Error('timed out waiting for a later call-clock tick before rejoining');
+      await sleep(25);
+    }
     const back = await g.browser.calls.join(g.code, { mic: true, cam: false, name: 'Sam', previous: sam.ticket.pass });
     await inGroup(back);
     await sleep(300);
+    expect((await back.catchUpWindow()).here?.at(-1)?.from).toBeGreaterThan(awayThrough);
     return back;
   }
 

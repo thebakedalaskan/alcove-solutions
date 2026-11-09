@@ -3,10 +3,18 @@ import { CALL_CHAT_MAX, errorMessage, type CallChatMention, type Person } from '
 import { Avatar, Icon, IconButton, cn, useToast } from '@alcove/ui';
 import { Fragment, useEffect, useId, useRef, useState, type RefObject } from 'react';
 import { fold } from '~/lib/people';
-import { useDraft, type Draft } from './side';
+import { draftRevision, useDraft, type Draft } from './side';
 
 export interface MentionPerson { identity: string; person: Person }
-export interface ChatDraft extends Draft { mentions?: CallChatMention[] }
+export interface ChatDraft extends Draft {
+  mentions?: CallChatMention[];
+  /** Session-memory only, separated by conversation and thread; never sent or persisted in readable storage. */
+  threads?: Map<string, ChatDraft>;
+  threadRoot?: string | null;
+  threadPlace?: string;
+  replyTo?: string | null;
+  scrollTop?: number;
+}
 
 /** An edit preserves a tag only when its complete span is outside the changed text. */
 function afterEdit(before: string, after: string, mentions: readonly CallChatMention[]): CallChatMention[] {
@@ -23,21 +31,20 @@ function afterEdit(before: string, after: string, mentions: readonly CallChatMen
   });
 }
 
-export function ChatComposer({ draft, people, ready, moving, to, onSend }: {
-  draft: ChatDraft; people: readonly MentionPerson[]; ready: boolean; moving: boolean; to: string;
+export function ChatComposer({ draft, people, ready, moving, to, onSend, privateWith, focusRequest = 0, disabledReason }: {
+  draft: ChatDraft; people: readonly MentionPerson[]; ready: boolean; moving: boolean; to: string; privateWith?: string | undefined; focusRequest?: number | undefined; disabledReason?: string | undefined;
   onSend: (text: string, mentions?: readonly CallChatMention[]) => Promise<void>;
 }) {
   const [text, setText] = useDraft(draft);
-  const [mentions, setMentions] = useState(draft.mentions ?? []);
+  const mentions = draft.mentions ?? [];
   const [caret, setCaret] = useState(text.length);
   const [active, setActive] = useState(0);
   const [dismissed, setDismissed] = useState(false);
   const input = useRef<HTMLInputElement>(null);
   const list = useRef<HTMLDivElement>(null);
-  const revision = useRef(0);
   const id = useId();
   const toast = useToast();
-  useEffect(() => { draft.mentions = mentions; }, [draft, mentions]);
+  useEffect(() => { if (focusRequest > 0 && ready) input.current?.focus(); }, [focusRequest]);
 
   const prefix = text.slice(0, caret);
   const match = /(?:^|\s)@([^@\n]{0,60})$/.exec(prefix);
@@ -51,8 +58,7 @@ export function ChatComposer({ draft, people, ready, moving, to, onSend }: {
   useEffect(() => { list.current?.querySelector('[data-active]')?.scrollIntoView({ block: 'nearest' }); }, [at]);
 
   const edit = (next: string, position: number) => {
-    revision.current++;
-    setMentions(afterEdit(text, next, mentions));
+    draft.mentions = afterEdit(text, next, mentions);
     setText(next); setCaret(position); setActive(0); setDismissed(false);
   };
   const pick = (p: MentionPerson) => {
@@ -60,9 +66,8 @@ export function ChatComposer({ draft, people, ready, moving, to, onSend }: {
     const name = `@${(p.person.name.trim() || p.person.email || 'Guest').replace(/\s+/gu, ' ')}`;
     const next = `${text.slice(0, start)}${name} ${text.slice(caret)}`;
     if (next.length > CALL_CHAT_MAX) { toast('This message is too long to add a mention.', { icon: 'x' }); return; }
-    revision.current++;
     const end = start + name.length;
-    setMentions([...afterEdit(text, next, mentions), { identity: p.identity, start, end }].sort((a, b) => a.start - b.start));
+    draft.mentions = [...afterEdit(text, next, mentions), { identity: p.identity, start, end }].sort((a, b) => a.start - b.start);
     setText(next); setCaret(end + 1); setDismissed(true);
     requestAnimationFrame(() => { input.current?.focus(); input.current?.setSelectionRange(end + 1, end + 1); });
   };
@@ -70,13 +75,13 @@ export function ChatComposer({ draft, people, ready, moving, to, onSend }: {
     if (!text.trim() || !ready) return;
     const sending = text;
     const tags = chosen;
-    const sentAt = ++revision.current;
-    draft.text = ''; draft.mentions = [];
-    setText(''); setMentions([]); setCaret(0); setDismissed(true);
+    draft.mentions = [];
+    setText(''); setCaret(0); setDismissed(true);
+    const sentAt = draftRevision(draft);
     void onSend(sending, tags).catch((e: unknown) => {
       toast(errorMessage(e), { icon: 'x' });
       // A failed send restores its people with its words only if no new draft has started meanwhile.
-      if (revision.current === sentAt) { draft.text = sending; draft.mentions = tags; setText(sending); setMentions(tags); setCaret(sending.length); }
+      if (draftRevision(draft) === sentAt) { draft.mentions = tags; setText(sending); setCaret(sending.length); }
     });
   };
   return (
@@ -94,7 +99,7 @@ export function ChatComposer({ draft, people, ready, moving, to, onSend }: {
       </div>}
       {!!chosen.length && <div className="ic-mention-chosen" aria-label="Selected mentions">
         {chosen.map((m) => <span className="ic-mention-token" key={`${m.identity}-${m.start}`}>
-          {text.slice(m.start, m.end)}<IconButton icon="x" label={`Remove mention ${text.slice(m.start + 1, m.end)}`} onClick={() => { revision.current++; setMentions(mentions.filter((other) => other !== m)); }} />
+          {text.slice(m.start, m.end)}<IconButton icon="x" label={`Remove mention ${text.slice(m.start + 1, m.end)}`} onClick={() => { draft.mentions = mentions.filter((other) => other !== m); setText(text); }} />
         </span>)}
       </div>}
       <div className="inrow">
@@ -110,8 +115,8 @@ export function ChatComposer({ draft, people, ready, moving, to, onSend }: {
             else if (e.key === 'Escape') { e.preventDefault(); setDismissed(true); }
             else if (e.key === 'Enter' || (e.key === 'Tab' && rows.length)) { e.preventDefault(); const row = rows[at]; if (row) pick(row); }
           }}
-          placeholder={ready ? `Message ${to} · @ to mention` : moving ? 'Moving to another room…' : 'Getting the call’s keys…'} aria-label={`Message ${to}`} />
-        <button type="submit" className="ac-btn is-primary" aria-label={`Send to ${to}`} disabled={!ready || !text.trim()}><Icon name="sendLine" size={18} /></button>
+          placeholder={ready ? `Message ${to}${people.length ? ' · @ to mention' : ''}` : disabledReason ?? (moving ? 'Moving to another room…' : 'Getting the call’s keys…')} aria-label={`Message ${to}`} />
+        <button type="submit" className="ac-btn is-primary" aria-label={privateWith ? `Send only to ${privateWith}` : `Send to ${to}`} disabled={!ready || !text.trim()}><Icon name="sendLine" size={18} /></button>
       </div>
     </form>
   );
@@ -155,7 +160,7 @@ export function useReadMentions(scroll: RefObject<HTMLDivElement | null>, unread
       read();
     }, { root, threshold: [0, 0.5] });
     for (const message of ids.split(' ')) {
-      const el = document.getElementById(`chat-message-${message}`);
+      const el = root.querySelector(`[data-chat-message="${CSS.escape(message)}"]`);
       if (el && root.contains(el)) for (const span of el.querySelectorAll('.ic-mention.is-me')) observer.observe(span);
     }
     document.addEventListener('visibilitychange', read);

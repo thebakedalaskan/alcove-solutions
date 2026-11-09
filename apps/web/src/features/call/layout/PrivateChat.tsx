@@ -1,16 +1,18 @@
-import { clock, errorMessage, type CallSession, type DirectMessagesState, type Person } from '@alcove/api';
-import { Avatar, EmptyState, Icon, PrivateChatComposer, PrivateMessage, Select, useToast } from '@alcove/ui';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { type Draft } from './side';
+import { type CallChatMessage, type CallSession, type DirectMessagesState, type Person } from '@alcove/api';
+import { Avatar, EmptyState, Icon, Notice, Select } from '@alcove/ui';
+import { type ReactNode } from 'react';
+import { type ChatDraft } from './ChatMentions';
+import { type ReplyJump } from '../session/replyAlerts';
+import { ChatView } from './ChatView';
 
 export interface PrivateAudience { identity: string; place: string; generation: number }
 export const privateAudienceKey = (a: PrivateAudience) => JSON.stringify([a.generation, a.place, a.identity]);
-export interface PrivateChatMemory { drafts: Map<string, Draft> }
+export interface PrivateChatMemory { drafts: Map<string, ChatDraft> }
 
 /** Keeps audience choice and every draft above transient side-panel mounts. No message opens this panel itself. */
-export function PrivateChat({ session, state, audience, onAudience, memory, who, place, generation, visible, children }: {
+export function PrivateChat({ session, state, audience, onAudience, memory, who, place, generation, visible, children, jump }: {
   session: CallSession; state: DirectMessagesState; audience: PrivateAudience | null; onAudience: (a: PrivateAudience | null) => void;
-  memory: PrivateChatMemory; who: (identity: string) => Person; place: string; generation: number; visible: boolean; children: ReactNode;
+  memory: PrivateChatMemory; who: (identity: string) => Person; place: string; generation: number; visible: boolean; children: ReactNode; jump?: ReplyJump | undefined;
 }) {
   const conversations = new Map<string, PrivateAudience>();
   for (const message of state.messages) {
@@ -35,45 +37,25 @@ export function PrivateChat({ session, state, audience, onAudience, memory, who,
     <div className="ac-private-picker"><Select label="Chat audience" value={chosen} options={options} onChange={(value) => onAudience(conversations.get(value) ?? null)} />
       <span className="sr-only" role="status" aria-live="polite">{count ? `${count} unread private ${count === 1 ? 'message' : 'messages'}. Open Chat to choose a conversation.` : ''}</span>
     </div>
-    {audience ? <PrivateThread key={draftKey} session={session} state={state} audience={audience} draft={draft} available={available(audience)} who={who} visible={visible} /> : children}
+    {audience ? <PrivateThread key={draftKey} session={session} state={state} audience={audience} draft={draft} available={available(audience)} who={who} visible={visible} jump={jump} /> : children}
   </>;
 }
 
-function PrivateThread({ session, state, audience, draft, available, who, visible }: {
-  session: CallSession; state: DirectMessagesState; audience: PrivateAudience; draft: Draft; available: boolean; who: (identity: string) => Person; visible: boolean;
+function PrivateThread({ session, state, audience, draft, available, who, visible, jump }: {
+  session: CallSession; state: DirectMessagesState; audience: PrivateAudience; draft: ChatDraft; available: boolean; who: (identity: string) => Person; visible: boolean; jump?: ReplyJump | undefined;
 }) {
-  const [text, setText] = useState(draft.text);
-  const toast = useToast();
-  const end = useRef<HTMLDivElement>(null);
   const person = who(audience.identity);
   const messages = state.messages.filter((m) => m.place === audience.place && m.generation === audience.generation && (m.from === audience.identity || m.to === audience.identity));
-  const unread = messages.filter((m) => state.unread.includes(m.id)).map((m) => m.id);
-  const unreadKey = unread.join(',');
-  useEffect(() => { end.current?.scrollIntoView({ block: 'nearest' }); }, [messages.length]);
-  useEffect(() => {
-    const mark = () => { if (visible && state.ready && document.visibilityState === 'visible' && document.hasFocus()) session.direct.read(unread); };
-    mark(); window.addEventListener('focus', mark); document.addEventListener('visibilitychange', mark);
-    return () => { window.removeEventListener('focus', mark); document.removeEventListener('visibilitychange', mark); };
-  }, [session, visible, state.ready, unreadKey]);
-  const send = () => {
-    if (!available || !text.trim()) return;
-    const original = text;
-    draft.text = ''; setText('');
-    void session.direct.send(audience.identity, original).catch((e: unknown) => {
-      toast(errorMessage(e), { icon: 'x' });
-      // A rejected submission belongs to this exact draft, even if the audience switched meanwhile.
-      if (!draft.text) { draft.text = original; setText(original); }
-    });
-  };
+  const chat: CallChatMessage[] = messages.map((m) => ({ id: m.id, from: m.from, text: m.text, at: m.at, place: m.place,
+    isMe: m.from === session.ticket.identity, sending: m.state === 'sending', failed: m.state === 'failed', thread: m.thread, mentions: [], reactions: [] }));
   return <>
     <div className="ac-private-heading"><Avatar person={person} size={36} /><div><b>{person.name}</b><span><Icon name="lock" size={12} />Private conversation · This call only</span></div></div>
-    <div className="ic-scroll ic-pad" role="log" aria-label={`Private conversation with ${person.name}`} aria-live="polite" aria-relevant="additions">
-      <p className="ac-private-history">History ends with this call. Private messages stay out of the recording and notes.</p>
-      {!state.ready ? <EmptyState art={null} title="Reconnecting privately">Messages return once your place in the call is checked.</EmptyState>
-        : messages.length ? <div className="ac-private-messages">{messages.map((message) => <PrivateMessage key={message.id} message={message} person={who(message.from)} mine={message.from === session.ticket.identity} time={clock(message.at)} onRetry={() => { void session.direct.retry(message.id); }} />)}</div>
-          : <EmptyState art={null} title="A word, just between you">Send {person.name} a private message without interrupting the call.</EmptyState>}
-      <div ref={end} />
-    </div>
-    <PrivateChatComposer name={person.name} value={text} available={available} onChange={(next) => { draft.text = next; setText(next); }} onSend={send} />
+    {!available && <Notice icon="lock">Unavailable in this room. Your draft stays here.</Notice>}
+    {!state.ready ? <div className="ic-scroll ic-pad"><EmptyState art={null} title="Reconnecting privately">Messages return once your place in the call is checked.</EmptyState></div>
+      : <ChatView readable={state.ready} chat={chat} missed={false} ready={available} moving={false} place={audience.place} here={null}
+        placeName={() => 'your private conversation'} who={who} me={session.ticket.identity} draft={draft} mentionPeople={[]}
+        jump={jump} privateWith={person.name} visible={visible} readIds={messages.filter((m) => !state.unread.includes(m.id)).map((m) => m.id)}
+        onRead={(ids) => session.direct.read(ids)} onSend={(text, _mentions, thread) => session.direct.send(audience.identity, text, thread)}
+        onRetry={(id) => session.direct.retry(id)} delivery={(id) => messages.find((m) => m.id === id)?.state === 'delivered' ? 'Delivered' : 'Sent'} />}
   </>;
 }

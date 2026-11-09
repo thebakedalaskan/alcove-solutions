@@ -224,8 +224,7 @@ export function registerCallRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
   app.post('/v1/live/calls/:id/mls/messages', async (c) => {
     const v = c.get('viewer');
     chatLimiter(v.pass.identity, 'chat');
-    await callsMls.mlsMessage(v, c.req.param('id'), await body(c, CallMessageBodySchema));
-    return c.json({ sent: true });
+    return c.json(await callsMls.mlsMessage(v, c.req.param('id'), await body(c, CallMessageBodySchema)));
   });
 
   app.post('/v1/live/calls/:id/mls/keypackages', async (c) => {

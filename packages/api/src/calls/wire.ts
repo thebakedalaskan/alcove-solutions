@@ -202,6 +202,9 @@ export const CallCommitBodySchema = z.object({
 
 /** An MLS application message (chat), from someone in the group of the part of the call they're in. */
 export const CallMessageBodySchema = z.object({ generation: z.number().int().nonnegative(), group: CallPlaceSchema, epoch: z.number().int().nonnegative(), message: Mls(65_536) });
+/** Canonical log position of this exact accepted ciphertext, even when its sender moves before reading the log. */
+export const CallMessageReceiptSchema = z.object({ sent: z.literal(true), generation: z.number().int().nonnegative(), seq: z.number().int().positive() });
+export type CallMessageReceipt = z.infer<typeof CallMessageReceiptSchema>;
 
 /** A fresh key package from someone already in the call who's on their way into a group: a new generation (the connection that hosts changed), or another part of the call. */
 export const CallKeyPackageBodySchema = z.object({ generation: z.number().int().nonnegative(), keyPackage: Mls(8192) });

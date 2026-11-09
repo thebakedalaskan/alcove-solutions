@@ -418,5 +418,17 @@
    "the live stream": 15.7,
    "guests in a call": 2.3
   }
+ },
+ "src/features/calls/threads.integration.test.ts": {
+  "seconds": 11.37,
+  "groups": {
+   "call conversation threads": 11.37
+  }
+ },
+ "src/features/calls/private-threads.integration.test.ts": {
+  "seconds": 7.52,
+  "groups": {
+   "private conversation threads": 7.52
+  }
  }
 }
