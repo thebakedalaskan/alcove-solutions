@@ -197,8 +197,8 @@ page is designed, how to make a design canvas from the kit in `docs/design/canva
   in a popover: one, or several with ticks), `CallTile`, `FloatingCall` (the compact call's picture, controls and attention, with no media ownership), `CallDock` with `DockButton` (its `word` is said beside the icon,
   for Share, the one control the dock names), `CallTopGroup`, `CallTopButton` and `CallTopRule` (the top right's group, its
   buttons and hairlines), `CallTimerButton` and `CallTimerReadout` (the shared presenter countdown, compact control and current/next readout),
-  `CallMoreGrid` and `CallMoreTile` (More's grid on a phone), `CallFrame` (one frame for a screen, a
-  board or the workspace, with its bar), `PresentedTile` (something presented that isn't on your stage, with Join),
+  `CallMoreGrid` and `CallMoreTile` (More's grid on a phone), `PrivateMessage` and `PrivateChatComposer` (recipient-only call messages and their persistent audience),
+  `CallFrame` (one frame for a screen, a board or the workspace, with its bar), `PresentedTile` (something presented that isn't on your stage, with Join),
   `CloseAsk` (Close's question: for you or for everyone), `PresentAsk` (Present's question when some people here can't open
   the board), `FramePager` (a board's presenter steps through its frames at the frame's foot, with their notes), Share's
   steps in one popover over the dock (`ShareKinds`, then `ShareScreenStep`, the `BoardPicker`, or `ShareStopStep` (Close's

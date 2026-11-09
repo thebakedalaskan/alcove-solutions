@@ -142,6 +142,7 @@ async function endCall(o: Owner, callId: string, unless?: (r: Row) => boolean): 
       await save(o, c, callId, { ...s, workspace: NO_SPACE, board: NO_BOARDS });
       // The MLS log only matters while the call runs, and nobody is rung into a call that's over.
       await exec(c, 'DELETE FROM call_attention WHERE owner_id = $1 AND call_id = $2', [o.ownerId, callId]);
+      await exec(c, 'DELETE FROM call_private_messages WHERE owner_id = $1 AND call_id = $2', [o.ownerId, callId]);
       await exec(c, 'DELETE FROM call_mls WHERE owner_id = $1 AND call_id = $2', [o.ownerId, callId]);
       await rings.clear(o, c, row.meeting_item_id);
       // Who's invited lasts as long as the call does. Its note has its own list.

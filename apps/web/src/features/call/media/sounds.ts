@@ -1,10 +1,10 @@
 /** Fresh attention events only. Snapshot baselines are reset on join, reconnect, generation and room changes. */
-import type { CallSession, CallState } from '@alcove/api';
+import type { CallSession, CallState, DirectMessagesState } from '@alcove/api';
 import { useEffect, useRef } from 'react';
 import { playSound, readyAudioOutput, stopSounds } from '~/lib/audio-output';
 import { useSoundPreferences } from '~/lib/sound-preferences';
 
-export function useCallSounds({ call, state, speakerId, connected, presenting }: { call: CallSession; state: CallState; speakerId: string | null; connected: boolean; presenting: boolean }) {
+export function useCallSounds({ call, state, direct, speakerId, connected, presenting }: { call: CallSession; state: CallState; direct: DirectMessagesState; speakerId: string | null; connected: boolean; presenting: boolean }) {
   const { prefs, ready } = useSoundPreferences();
   // Presenting comes from actual local screen shares or CallPresent.mine, never inferred from someone else's content.
   const moderatesAttention = state.isHost || presenting;
@@ -15,6 +15,9 @@ export function useCallSounds({ call, state, speakerId, connected, presenting }:
   const current = useRef({ prefs: audiblePrefs, speakerId });
   current.current = { prefs: audiblePrefs, speakerId };
   const baseline = useRef<{ scope: string; latest: number; serverNow: number } | null>(null);
+  const privateBaseline = useRef<{ scope: string; ids: Set<string> } | null>(null);
+  const privateReady = useRef(direct.ready);
+  privateReady.current = direct.ready;
   const scope = `${state.callId}:${state.generation}:${state.attention.place}`;
   allowed.current = { connected, ready, phase: state.phase, scope };
   // Recheck live scope at playback too, including the interval before an effect cleanup runs.
@@ -29,6 +32,19 @@ export function useCallSounds({ call, state, speakerId, connected, presenting }:
     return () => { alive.current = false; stopSounds(owner.current); };
   }, [call, scope]);
   useEffect(() => () => stopSounds(owner.current), [prefs, moderatesAttention]);
+  useEffect(() => {
+    const previous = privateBaseline.current;
+    const ids = new Set(direct.messages.map((m) => m.id));
+    privateBaseline.current = connected && direct.ready ? { scope, ids } : null;
+    if (!previous || previous.scope !== scope || !connected || !direct.ready || state.phase !== 'in-call') return;
+    for (const message of direct.messages) {
+      if (message.to !== call.ticket.identity || previous.ids.has(message.id) || state.elapsed - message.at > 5 || message.place !== state.attention.place) continue;
+      playSound({ owner: owner.current, cue: 'message', key: `${state.callId}:${message.id}`, until: Date.now() + 1200, current: () => {
+        const current = playback();
+        return { ...current, prefs: { ...current.prefs, enabled: current.prefs.enabled && privateReady.current } };
+      } });
+    }
+  }, [direct, connected, scope, state.phase]);
   useEffect(() => {
     const previous = baseline.current;
     const now = Date.parse(state.attention.serverNow);

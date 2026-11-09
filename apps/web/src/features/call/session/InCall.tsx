@@ -45,6 +45,8 @@ import { useShareMarkCount } from '~/features/call/screen-sharing/SharePointing'
 import { MyShareMenuRows, ShareInFrame, ShareMenuRows, ShareWindows, useFocusBack, usePointing, usePopOut, useShareLooks } from '~/features/call/screen-sharing/ShareInFrame';
 import { LocalMedia, type ShareChoice } from '~/features/call/media/media';
 import { ChatView, NotesTabs, NotesView, PeopleView, SideBody, SideHead, TranscriptView, type HostControls, type PanelPerson } from '~/features/call/layout/Panel';
+import { PrivateChat, type PrivateAudience, type PrivateChatMemory } from '~/features/call/layout/PrivateChat';
+import { type ChatDraft } from '~/features/call/layout/ChatMentions';
 import { PanelHost, useCallArea, useHorizon, type HostSide } from '~/features/call/layout/PanelHost';
 import { BoardPagerFoot, Frame, FrameBox, type FrameBar } from '~/features/call/layout/frame';
 import { holding, useLandKeys } from '~/features/call/layout/landKeys';
@@ -115,6 +117,7 @@ export function InCall({ session }: { session: CallSession }) {
   useClosingWithPage(session);
   const told = useLive(session);
   const crypto = useLive(session.crypto);
+  const direct = useLive(session.direct);
   const attentionSignals = useAttentionSignals(told.attention);
   const self = session.ticket.identity;
   const state = useMemo(() => asShown(told, crypto.members, self), [told, crypto.members, self]);
@@ -202,7 +205,12 @@ export function InCall({ session }: { session: CallSession }) {
     // `keepSide` writes through the layout's own updater, which never changes.
   }, [sideKept]);
   /* What's typed in Chat and Ask: moving your side to another view and back keeps it. */
-  const drafts = useRef({ chat: { text: '' }, ask: { text: '' } });
+  const drafts = useRef({ ask: { text: '' } });
+  const roomDrafts = useRef(new Map<string, ChatDraft>());
+  const roomDraft = roomDrafts.current.get(crypto.place) ?? { text: '' };
+  roomDrafts.current.set(crypto.place, roomDraft);
+  const privateMemory = useRef<PrivateChatMemory>({ drafts: new Map() });
+  const [privateAudience, setPrivateAudience] = useState<PrivateAudience | null>(null);
   const questionDrafts = useRef(new Map<string, QuestionDraft>());
   const questionDraft = questionDrafts.current.get(crypto.place) ?? { text: '', submission: null };
   questionDrafts.current.set(crypto.place, questionDraft);
@@ -221,7 +229,7 @@ export function InCall({ session }: { session: CallSession }) {
   if (seenChat.part !== crypto.place) setSeenChat({ part: crypto.place, count: theirChat });
   const unreadChat = Math.max(0, theirChat - (seenChat.part === crypto.place ? seenChat.count : theirChat));
   const unreadMentions = useMemo(() => unreadChatMentions(state, crypto, self), [state, crypto, self]);
-  const unread = Math.max(unreadChat, unreadMentions.length);
+  const unread = Math.max(unreadChat, unreadMentions.length) + direct.unread.length;
   const attentionAllowed = useCallAttention(state, crypto, unreadMentions, !leaving && ended === null);
   useChatMentionNotifications(state, attentionAllowed ? unreadMentions : []);
   const readingMentions = useRef(new Set<string>());
@@ -958,7 +966,7 @@ export function InCall({ session }: { session: CallSession }) {
   const down = !online || roomView.connection === 'reconnecting';
   const attentionReady = crypto.status === 'in' && state.attention.place === crypto.place && live;
   const presenterTimer = usePresenterTimer(state, attentionReady && online && roomView.connection === 'connected', m.speakerId);
-  const callSounds = useCallSounds({ call: session, state, speakerId: m.speakerId, presenting: shares.some((s) => s.mine) || Boolean(presentNow?.mine), connected: attentionReady && online && roomView.connection === 'connected' });
+  const callSounds = useCallSounds({ call: session, state, direct, speakerId: m.speakerId, presenting: shares.some((s) => s.mine) || Boolean(presentNow?.mine), connected: attentionReady && online && roomView.connection === 'connected' });
   const wasDown = useRef(false);
   useEffect(() => {
     if (down) { wasDown.current = true; return; }
@@ -1332,8 +1340,8 @@ export function InCall({ session }: { session: CallSession }) {
   useEffect(() => { if (floating.error) toast(floating.error, { icon: 'pip' }); }, [floating.error, toast]);
   // Selecting Chat in the main call does not read it while that tab is hidden, unfocused or covered by focus view.
   useEffect(() => {
-    if (floating.mainVisible && side.view === 'chat' && !focusOn && !leaveOpen && !ended && !moving.open && !keysOpen && pop === null && seenChat.count !== theirChat) setSeenChat({ part: crypto.place, count: theirChat });
-  }, [floating.mainVisible, side.view, focusOn, leaveOpen, ended, moving.open, keysOpen, pop, crypto.place, theirChat, seenChat.count]);
+    if (floating.mainVisible && side.view === 'chat' && privateAudience === null && !focusOn && !leaveOpen && !ended && !moving.open && !keysOpen && pop === null && seenChat.count !== theirChat) setSeenChat({ part: crypto.place, count: theirChat });
+  }, [floating.mainVisible, side.view, privateAudience, focusOn, leaveOpen, ended, moving.open, keysOpen, pop, crypto.place, theirChat, seenChat.count]);
   useEffect(() => {
     if (floating.target || !leaveInFloating) return;
     setLeaveInFloating(false);
@@ -1408,11 +1416,14 @@ export function InCall({ session }: { session: CallSession }) {
         <>
           <SideHead title="Chat" onClose={sideClose} />
           <SideBody view="chat">
+            <PrivateChat session={session} state={direct} audience={privateAudience} onAudience={setPrivateAudience} memory={privateMemory.current}
+              who={personOf} place={crypto.place} generation={state.generation} visible={floating.mainVisible && !focusOn && !leaveOpen && !ended && !moving.open && !keysOpen && pop === null}>
             <ChatView chat={crypto.chat} missed={crypto.missedChat} ready={crypto.status === 'in'} moving={crypto.status === 'moving'} here={open ? roomName ?? 'the main room' : null} placeName={placeName}
-              who={personOf} place={crypto.place} me={session.ticket.identity} draft={drafts.current.chat}
+              key={crypto.place} who={personOf} place={crypto.place} me={session.ticket.identity} draft={roomDraft}
               mentionPeople={state.participants.filter((person) => crypto.members.includes(person.id)).map((person) => ({ identity: person.id, person: person.person }))}
               unreadMentionIds={unreadMentions} onReadMentions={readMentions}
               onSend={(t, mentions) => session.sendChat(t, mentions)} onReact={(id, r, on) => session.react(id, r, on)} />
+            </PrivateChat>
           </SideBody>
         </>
       );
@@ -1824,7 +1835,8 @@ export function InCall({ session }: { session: CallSession }) {
             <>
               <Stage staged={staged} frame={frame} phone={phone} people={onStage} waiting={waiting} presented={presentedTiles} spotlight={spotlight} view={layout} organizer={hosting}
                 together={together} bar={bar} caption={capNode} rooms={roomsShown ? stageRooms : null} onSpotlight={setSpot} onPin={setPin} onSelf={setSelf} onCustom={onCustom} volumes={volumes}
-                onPeopleMode={setPeopleMode} onMorePeople={() => openSide('people')} board={stageBoard} />
+                onPeopleMode={setPeopleMode} onMorePeople={() => openSide('people')} board={stageBoard} privatePeers={direct.peers}
+                onPrivateMessage={(identity) => { setPrivateAudience({ identity, place: crypto.place, generation: state.generation }); openSide('chat'); }} />
               <motion.div className="ic-frame" initial={false} animate={{ left: 0, top: 0, width: clearW, height: size.h }} transition={reduce ? { duration: 0 } : GLIDE}>
                 {hosting && side.view !== 'people' && side.view !== 'attention' && state.waiting.length > 0 && (
                   <div className="rg-knocks">

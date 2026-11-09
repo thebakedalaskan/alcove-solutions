@@ -1,4 +1,4 @@
-import { CALL_CHAT_MAX, CallChatPayloadSchema, type CallChatMention, type CallChatPayload, type CallReaction } from '@alcove/api';
+import { CALL_CHAT_MAX, CallChatPayloadSchema, type CallChatMention, type CallChatPayload, type CallReaction, type DirectKeyAnnouncement } from '@alcove/api';
 import { type CiphersuiteImpl, type ClientConfig, type ClientState, type IncomingMessageCallback, type KeyPackage, type MLSMessage, type PrivateKeyPackage, type PrivateMessage, type Proposal, type RatchetTree } from 'ts-mls';
 
 const SUITE = 'MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519' as const;
@@ -201,6 +201,7 @@ export type Applied = 'applied' | 'skipped' | 'refused' | 'removed' | 'behind';
 
 /** Chat from the log, read: who sent it as MLS vouches for it, or why it can't be read here. */
 export type Read =
+  | { kind: 'direct-key'; from: string; announcement: DirectKeyAnnouncement }
   | { kind: 'chat'; from: string; text: string; mentions: CallChatMention[]; at: number }
   | { kind: 'react'; from: string; target: string; reaction: CallReaction; on: boolean; at: number }
   | { kind: 'before' }
@@ -385,6 +386,7 @@ export class MlsGroup {
         try { payload = JSON.parse(dec.decode(r.message)); } catch { return { kind: 'unreadable' }; }
         const p = CallChatPayloadSchema.safeParse(payload);
         if (!p.success) return { kind: 'unreadable' };
+        if ('directKey' in p.data) return { kind: 'direct-key', from, announcement: p.data.directKey };
         if ('text' in p.data) {
           const members = new Set(leaves(current ? st.ratchetTree : past?.ratchetTree ?? []).values());
           if (p.data.mentions.some((m) => !members.has(m.identity))) return { kind: 'unreadable' };
