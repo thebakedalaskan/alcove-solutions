@@ -12,7 +12,7 @@ import { api } from '~/lib/api';
 import { overlayOpen, typing, withMod } from '~/lib/keys';
 import { useLive, useMedia } from '~/lib/live';
 import { log } from '~/lib/log';
-import { q, qk } from '~/lib/queries';
+import { q, qk, useWorkspaceName } from '~/lib/queries';
 import { announceMentionsRead } from '~/features/shell/attentionChannel';
 import { useTreeActions } from './actions';
 import { BoardPane } from './BoardPane';
@@ -180,7 +180,7 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
   const session = useQuery(q.session()).data ?? null;
   const owner = session?.ownerId ?? null;
   const me = session?.user ?? null;
-  const { items, change } = useLaidOver(view.tree);
+  const { items, change } = useLaidOver(store);
   const tree = useMemo(() => treeOf(items, mode === 'page'), [items, mode]);
   const { toasts, say: sayHere } = useToasts();
   const say = call?.say ?? sayHere;
@@ -206,7 +206,7 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
   useEffect(() => talkThrough(workspaceId, say), [workspaceId, say]);
   const qc = useQueryClient();
   useEffect(() => onStored((id) => { if (id === workspaceId) void qc.invalidateQueries({ queryKey: qk.workspaceMedia(id) }); }), [qc, workspaceId]);
-  const spaceName = view.tree?.name ?? 'Shared with you';
+  const { name: spaceName, state: spaceSave } = useWorkspaceName(workspaceId, view.tree?.name ?? 'Shared with you', owner !== null);
   const others = useMemo(() => othersIn(view.here), [view.here]);
   const goWith = useCallback((to: WorkspacePlace) => { setPhoneList(false); onGo(to, { replace: true }); }, [onGo]);
   const pane = useRef<HTMLElement>(null);
@@ -394,7 +394,7 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
 
   const ws: Ws = {
     mode, workspaceId, pass, call, sent: view.tree, here: view.here, others, present, following, follow, stopFollowing, items, tree, at, go, switchTo: onSwitch, owner, me,
-    self: view.here.find((h) => h.isMe)?.person ?? me, actions, say, canChange, spaceName,
+    self: view.here.find((h) => h.isMe)?.person ?? me, actions, say, canChange, spaceName, spaceSave,
     open, setOpen, glowing, blockInto, setBlockInto, draft, setDraft, renaming, setRenaming, listOff, toggleList, justMade, openDoc, page, put, lastDocument, openFind: () => find.setFinding(true), pictures, ids
   };
   const host = call ? { live: call.live, at, go, say, here: view.here, workspaceId, put, lastDocument, closed: call.closed, toggleList, ids, following, stopFollowing: () => stopFollowing() } : null;

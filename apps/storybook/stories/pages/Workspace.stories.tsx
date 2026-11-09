@@ -6,7 +6,8 @@
 import type { Meta } from '@storybook/react-vite';
 import { screen } from 'storybook/test';
 import { itemId } from '../../src/api/scenarios';
-import { page, pages, type PageArgs, type PageStory } from '../../src/page';
+import { changing, page, pages, type PageArgs, type PageStory } from '../../src/page';
+import { troubled } from './changes';
 
 const meta = { title: 'Pages/Workspace', ...pages } satisfies Meta<PageArgs>;
 export default meta;
@@ -40,6 +41,26 @@ const share: PageStory['play'] = async ({ canvas, userEvent }) => {
 
 /** Product, which Art runs: the launch plan open beside the list. */
 export const ADocument = page(PLAN, 'busy');
+const renameWorkspace: NonNullable<PageStory['play']> = async ({ canvas, userEvent, step }) => {
+  await step('12. Rename the workspace; its requested name shows while saving', async () => {
+    await userEvent.click(await canvas.findByRole('button', { name: 'Product' }));
+    const rename = await screen.findByRole('menuitem', { name: 'Rename' });
+    await beat(450);
+    await userEvent.click(rename);
+    const field = await screen.findByRole('textbox', { name: 'Name this workspace' });
+    await userEvent.clear(field);
+    await userEvent.type(field, 'Launch planning');
+    await userEvent.keyboard('{Enter}');
+  });
+};
+export const RenameSaving = page(at('ws-product'), 'busy', { beforeEach: changing(troubled({ 'workspaces.rename': 'hold' })), play: renameWorkspace });
+export const RenameRefused = page(at('ws-product'), 'busy', { beforeEach: changing(troubled({ 'workspaces.rename': 'failed' })), play: renameWorkspace });
+export const RenameSavingNight = { ...RenameSaving, globals: { theme: 'dark' } };
+export const RenameSavingPhone = { ...RenameSaving, globals: PHONE };
+export const RenameSavingPhoneNight = { ...RenameSaving, globals: { ...PHONE, theme: 'dark' } };
+export const RenameRefusedNight = { ...RenameRefused, globals: { theme: 'dark' } };
+export const RenameRefusedPhone = { ...RenameRefused, globals: PHONE };
+export const RenameRefusedPhoneNight = { ...RenameRefused, globals: { ...PHONE, theme: 'dark' } };
 /** A document in a folder: the folder opens around it in the list. */
 export const InAFolder = page(at('ws-product', 'Interview notes'), 'busy');
 /** Share: the workspace's people, a designer outside the company who can read it, and someone from sales who can edit. */

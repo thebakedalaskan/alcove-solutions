@@ -430,5 +430,11 @@
   "groups": {
    "private conversation threads": 7.52
   }
+ },
+ "src/integration/optimistic.integration.test.ts": {
+  "seconds": 10.8,
+  "groups": {
+   "immediate query actions through the real API": 10.8
+  }
  }
 }

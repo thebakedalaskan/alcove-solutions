@@ -42,12 +42,12 @@ function SoundPreview({ prefs, speakerId }: { prefs: SoundPreferences; speakerId
 }
 export function SoundsPart({ prefs }: { prefs: Preferences }) {
   const save = useSave();
-  const change = (label: string, patch: Partial<SoundPreferences>) => save(label, (now) => ({ sounds: { ...now.sounds, ...patch } }));
+  const change = (label: string, patch: Partial<SoundPreferences>) => save(label, { sounds: patch });
   return <SettingsPart id="sounds" title="Sounds">
     <SwitchSetting label="Play sounds" help="Short cues on your speaker. These work independently of browser notifications." checked={prefs.sounds.enabled} onChange={(enabled) => change('Play sounds', { enabled })} />
     <Setting label="Sound volume" control={<input aria-label="Sound volume" className="set-sound-volume" type="range" min="0" max="100" step="5" value={Math.round(prefs.sounds.volume * 100)} onChange={(e) => change('Sound volume', { volume: Number(e.currentTarget.value) / 100 })} />} />
     <SwitchSetting label="Quiet mode" help="Keep your microphone confirmations and requests to join when you host. Silence other cues." checked={prefs.sounds.quiet} onChange={(quiet) => change('Quiet mode', { quiet })} />
-    <SwitchSetting label="Show reply alerts" help="A brief message with Open reply. Unread counts stay available when alerts are off." checked={prefs.notifications.replyAlerts} onChange={(replyAlerts) => save('Show reply alerts', (now) => ({ notifications: { ...now.notifications, replyAlerts } }))} />
+    <SwitchSetting label="Show reply alerts" help="A brief message with Open reply. Unread counts stay available when alerts are off." checked={prefs.notifications.replyAlerts} onChange={(replyAlerts) => save('Show reply alerts', { notifications: { replyAlerts } })} />
     {categories.map(({ key, label, help }) => <SwitchSetting key={key} label={label} help={help} checked={prefs.sounds[key]} disabled={!prefs.sounds.enabled} onChange={(on) => change(label, { [key]: on })} />)}
     <SettingRow wide label="Listen to a sound" help="Preview plays at your sound volume, even when that category is off. If silent, check your browser and speaker volume." control={<SoundPreview prefs={prefs.sounds} speakerId={readPrefs().speaker ?? null} />} />
   </SettingsPart>;

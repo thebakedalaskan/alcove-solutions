@@ -102,6 +102,8 @@ export function List({ drags }: { drags: ListDrag }) {
   /** Plus: at the top of the list (null), or on a folder. */
   const [adding, setAdding] = useState<string | null | undefined>(undefined);
   const [naming, setNaming] = useState<'new' | 'rename' | null>(null);
+  const [nameDraft, setNameDraft] = useState<string | null>(null);
+  const nameTurn = useRef(0);
   /** The row whose faces were pressed. */
   const [card, setCard] = useState<string | null>(null);
   const create = useCreateWorkspace();
@@ -196,11 +198,19 @@ export function List({ drags }: { drags: ListDrag }) {
       if (to) create.mutateAsync(to).then(({ id }) => { ws.switchTo(id); }, refused);
     }
   } : {
-    name: ws.spaceName, placeholder: 'Name this workspace', onCancel: () => setNaming(null),
+    name: nameDraft ?? ws.spaceName, placeholder: 'Name this workspace', onCancel: () => { setNaming(null); setNameDraft(null); },
     onCommit: (name) => {
       setNaming(null);
       const to = name.trim();
-      if (to && to !== ws.spaceName) renameSpace.mutateAsync({ id: ws.workspaceId, name: to }).catch(refused);
+      if (to && to !== ws.spaceName) {
+        const turn = ++nameTurn.current;
+        setNameDraft(null);
+        renameSpace.mutateAsync({ id: ws.workspaceId, name: to }).catch((e: unknown) => {
+          if (nameTurn.current !== turn) return;
+          setNameDraft(to);
+          ws.say({ ...wsToast.failed(`Couldn’t confirm the workspace name. ${errorMessage(e)}`), action: { label: 'Edit name', onClick: () => setNaming('rename') }, ms: 12000 });
+        });
+      }
     }
   };
 
@@ -246,7 +256,7 @@ export function List({ drags }: { drags: ListDrag }) {
     <>
     <WsList listKey={ws.workspaceId} onKeyDown={rowKeys} empty={rows.length > 0 ? false : !member ? 'shared' : ws.canChange ? 'yours' : 'others'} foot={<>{member && <WsTrashRow count={trash.length} current={ws.at.kind === 'trash'} into={drag?.spot?.kind === 'trash'} onOpen={() => ws.go({ kind: 'trash' })} />}{call?.foot}</>}
       head={member || ws.mode === 'page' ? (
-        <WsListHead name={ws.spaceName} pickerLabel={ws.mode === 'page' ? 'Workspaces' : undefined} picker={picker} naming={namingField} onFind={ws.openFind} createLabel={tree.boards ? 'New document, folder or board' : undefined}
+        <WsListHead name={ws.spaceName} saveState={ws.spaceSave} pickerLabel={ws.mode === 'page' ? 'Workspaces' : undefined} picker={picker} naming={namingField} onFind={ws.openFind} createLabel={tree.boards ? 'New document, folder or board' : undefined}
           create={canChange ? { open: adding === null, onOpenChange: (to) => setAdding(to ? null : undefined), content: adding === null ? newIn(null) : null } : undefined} />
       ) : undefined}>
       {(top || inCall.length > 0) && <WsSection key="call" label="This call" area="pins" into={drag?.spot?.kind === 'bring'} />}
