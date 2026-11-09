@@ -49,3 +49,7 @@ Full local check: 45 integration files/1,249 tests passed at main12283d78 plus t
 confirmed-note response finding was reproduced red, then fixed across all whole-note callbacks; the enlarged15-case
 real-client suite passed separately, followed by fresh policy/type/build checks. Final combined-head CI verifies integration
 with private-chat/thread changes. Earlier overlapping interrupted test data is discarded and is not completion evidence.
+
+Merged actual main37c037c3 (#86), preserving its private-message code, migration and timing entry. The combined tree again
+passed all15 client flows,7 package typechecks,3 builds and all policy guards. Its measured client suite is14.6 seconds.
+The separately reviewed #87 thread/draft foundation lands through main before this issue's final release.

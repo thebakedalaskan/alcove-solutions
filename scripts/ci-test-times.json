@@ -420,9 +420,9 @@
   }
  },
  "src/integration/optimistic.integration.test.ts": {
-  "seconds": 11.5,
+  "seconds": 14.6,
   "groups": {
-   "immediate query actions through the real API": 11.5
+   "immediate query actions through the real API": 14.6
   }
  }
 }
