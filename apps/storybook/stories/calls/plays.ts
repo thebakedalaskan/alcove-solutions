@@ -10,6 +10,11 @@ import type { PageStory } from '../../src/page';
 
 export type Play = NonNullable<PageStory['play']>;
 export type Context = Parameters<Play>[0];
+/** Explicitly change the conversation; this never moves a draft between audiences. */
+export async function choosePrivateAudience(c: Context, name: string | RegExp) {
+  await c.userEvent.click(await screen.findByRole('button', { name: /^Chat audience:/ }));
+  await c.userEvent.click(await screen.findByRole('option', { name }));
+}
 /** For what the last press opens. */
 export const SOON = { timeout: 10000 };
 /** Long enough for the script to get there: someone presenting, a board opening and filling. */

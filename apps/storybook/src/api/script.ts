@@ -166,6 +166,8 @@ export type Beat =
 export interface Cue { at: number; beat: Beat }
 
 export interface CallScript {
+  privateSendFails?: boolean | undefined;
+  privateMessages?: readonly { from: Person; text: string; after?: number }[] | undefined;
   /** Prepared or running presenter sequence, from the same server-clock anchor as the call. */
   timerSequence?: CallTimerSequence | undefined;
   /** Who's in the call when you come in, besides you. */

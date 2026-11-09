@@ -27,7 +27,7 @@ apps/web/src/features/
     session/         connection ownership, the call screen's composition (InCall.tsx), its keys, lifecycle helpers
     media/           local devices, LiveKit, tracks, speaking and video
     screen-sharing/  what can be shared, a share in its frame (ShareInFrame.tsx), looking closer, marks and pop-out
-    layout/          the shell: top bar and View, your side (side.ts), what's on your stage (onStage.ts) in its frame
+    layout/          the shell, room/private chat presentation and audience drafts: top bar and View, your side (side.ts), what's on your stage (onStage.ts) in its frame
                      (frame.tsx), the people, Share's steps (ShareMenu.tsx), the keys sheet and layout state
     notes/           recorder, live transcript, captions and catch-up
     rooms/           breakout-room controls and hosting
