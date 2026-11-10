@@ -1,8 +1,8 @@
 import { type HttpTransport } from '../transport/http';
-import { type AlcoveApi, AttestationSchema, CreditBalanceSchema, PersonSuggestionSchema, PreferencesSchema, SessionSchema, SignInResultSchema, TeamSchema, TopUpRoutesSchema, TopUpSchema } from '@alcove/api';
+import { type AlcoveApi, AttestationSchema, CreditBalanceSchema, FeatureFlagsSchema, PersonSuggestionSchema, PreferencesSchema, SessionSchema, SignInResultSchema, TeamSchema, TopUpRoutesSchema, TopUpSchema } from '@alcove/api';
 import { z } from 'zod';
 
-export function createAccountApi(t: HttpTransport): Pick<AlcoveApi, 'auth' | 'account' | 'people' | 'credits' | 'trust'> {
+export function createAccountApi(t: HttpTransport): Pick<AlcoveApi, 'auth' | 'account' | 'people' | 'credits' | 'trust' | 'featureFlags'> {
   const { base, req } = t;
   return {
     auth: {
@@ -37,6 +37,9 @@ export function createAccountApi(t: HttpTransport): Pick<AlcoveApi, 'auth' | 'ac
     },
     trust: {
       attestation: (nonce) => req(AttestationSchema, 'GET', `/attestation?nonce=${encodeURIComponent(nonce)}`)
+    },
+    featureFlags: {
+      on: async () => (await req(FeatureFlagsSchema, 'GET', '/feature-flags')).on
     }
   };
 }

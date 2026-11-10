@@ -25,3 +25,5 @@ and `docs/engineering/logging-and-errors.md`.
 
 - Agent grants, OAuth and MCP tools belong in `agents`, including its `mcp/` implementation and integration suites.
   Preserve the public OAuth/MCP registration phase and each tool's scope/owner enforcement; never colocate them under calls.
+- A new feature shown to some people first goes behind a feature flag: `requireFeatureFlag(await featureFlagsFor(d, owner), name)` in each of
+  its handlers ([docs/engineering/feature-flags.md](../../../../docs/engineering/feature-flags.md)).

@@ -114,6 +114,18 @@ jobs:
             --execution-environment gen2 --port 8080 --timeout 300s --cpu 1 --memory 2Gi --no-cpu-throttling \
             --set-env-vars "OBJECTS_ENDPOINT=$OBJECTS_ENDPOINT,OBJECTS_BUCKET=$OBJECTS_BUCKET,WEB_ORIGIN=$WEB_ORIGIN,API_URL=$API_ORIGIN,LIVEKIT_URL=$LIVEKIT_URL,GOOGLE_SIGNUP_MODE=$GOOGLE_SIGNUP_MODE,DEMO_AUTH_ENABLED=$DEMO_AUTH_ENABLED,NEAR_AI_BASE_URL=https://cloud-api.near.ai/v1,TREASURY_INTENTS_ACCOUNT=alcove-treasury.near,LOG_FORMAT=json,LOG_LEVEL=info" \
             --set-secrets "$SECRET_BINDINGS" --quiet
+      - name: Deploy the feature-flags job
+        # Feature flags are switched from this job, never from a laptop: it hashes the addresses it's given, so it needs
+        # KMASTER, and gets that and the database only. Deployed after the API, so it knows the flags the API serves.
+        # Nothing runs it here; an operator does, with the command's words as --args, which replace `list`:
+        # gcloud run jobs execute alcove-feature-flags --args=everyone,<feature-flag>,on (docs: engineering/feature-flags.md).
+        run: |
+          gcloud --project="$GCP_PROJECT_ID" run jobs deploy alcove-feature-flags --image "$IMAGE" --region "$GCP_REGION" \
+            --command node,dist/feature-flags-cli.js --args list \
+            --service-account "$RUNTIME_SERVICE_ACCOUNT" --set-cloudsql-instances "$CLOUDSQL_INSTANCE" \
+            --tasks 1 --parallelism 1 --max-retries 0 --task-timeout 120s --cpu 1 --memory 512Mi \
+            --set-env-vars "LOG_FORMAT=json,LOG_LEVEL=info" \
+            --set-secrets 'DATABASE_URL=alcove-database-url:latest,KMASTER=alcove-kmaster:latest' --quiet
       - name: Health check
         run: |
           SERVICE_URL="$(gcloud --project="$GCP_PROJECT_ID" run services describe alcove-api --region "$GCP_REGION" --format='value(status.url)')"

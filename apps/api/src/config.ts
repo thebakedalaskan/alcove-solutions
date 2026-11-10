@@ -106,6 +106,8 @@ const EnvSchema = z.object({
   MEDIA_READ_MS: z.coerce.number().int().min(10).max(290_000).default(280_000),
   /** How long an instance keeps the service limits it read (limits.ts) before reading them again, in ms: a change made in the database is in force everywhere within this, with no restart. */
   LIMITS_CACHE_MS: z.coerce.number().int().min(0).max(300_000).default(30_000),
+  /** How long an instance keeps the feature flags it read (feature-flags.ts) before reading them again, in ms: a flag switched on or off is in force everywhere within this, with no restart. */
+  FEATURE_FLAGS_CACHE_MS: z.coerce.number().int().min(0).max(300_000).default(30_000),
   /** How often the hub checks its LISTEN connection is alive, in ms, and how long that connection has to answer. */
   HUB_CHECK_MS: z.coerce.number().int().min(10).default(15_000),
   HUB_TIMEOUT_MS: z.coerce.number().int().min(10).default(5_000),

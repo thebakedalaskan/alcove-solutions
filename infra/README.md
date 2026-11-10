@@ -242,9 +242,11 @@ Each deployment:
 2. Runs `alcove-migrate` once, with only `DATABASE_URL`, and waits for success before changing the API.
 3. Deploys `alcove-api`: gen2, port 8080, one CPU, 2 GiB, 300-second request timeout, 1,000 requests at once,
    min/max one instance, session affinity, and CPU between requests for key expiry and object cleanup.
-4. Checks `/health` at the deployed service's `run.app` URL, allowing the first deployment to finish
+4. Deploys the job `alcove-feature-flags` on the same image, with only `DATABASE_URL` and `KMASTER`, for switching feature flags
+   ([Feature flags](../docs/engineering/feature-flags.md)). The deploy never runs it.
+5. Checks `/health` at the deployed service's `run.app` URL, allowing the first deployment to finish
    before custom-domain provisioning, and requires `livekit: reachable`.
-5. Builds the web app against `API_ORIGIN`, writes the CSP for that origin and the LiveKit host with
+6. Builds the web app against `API_ORIGIN`, writes the CSP for that origin and the LiveKit host with
    `apps/web/scripts/csp.mjs` (inline scripts allowed only by the hash of what the build produced; nothing
    third-party but LiveKit), and publishes
    `apps/web/dist/client` to Pages production branch `main` using `pnpm dlx wrangler@4.157.0`.

@@ -1,6 +1,7 @@
 import type { AgentsApi } from './agents/api';
 import { type CallsApi, type RingsApi } from './calls/api';
 import { type CreditsApi } from './credits/api';
+import { type FeatureFlagsApi } from './feature-flags/api';
 import { type AccountApi, type AuthApi, type PeopleApi } from './identity/api';
 import { type CalendarApi, type MeetingsApi } from './meetings/api';
 import { type DriveApi, type NotesApi, type SeriesApi } from './notes/api';
@@ -30,5 +31,6 @@ export interface AlcoveApi {
   credits: CreditsApi;
   models: ModelsApi;
   trust: TrustApi;
+  featureFlags: FeatureFlagsApi;
   diagnostics: DiagnosticsApi;
 }

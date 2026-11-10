@@ -1,6 +1,6 @@
 /* Query keys, fetchers and mutations. Screens read data through these, never through `api` directly. */
 import type { AgentDecisionInput, AgentTokenInput, DriveExportInput, FollowUpReview } from '@alcove/api';
-import { AlcoveApiError, MAX_SORT_STICKIES, MAX_SORT_STICKY, SORT_TOO_FEW, SORT_TOO_MANY, errorCode, type ActionProposal, type ChangeScope, type DecisionProposal, type DemoProvider, type DocumentRole, type Group, type PresenterFrameNotes, type InstantCallInput, type ISODate, type ItemInput, type ItemPlace, type LinePatch, type MeetingInput, type MentionBody, type NoteKind, type NotesSetting, type Patch, type PersonalInput, type PersonalNotes, type PromoteBody, type QuestionPatch, type TopUp, type RingReply, type Series, type ShareTarget, type WorkspaceRole, type WorkspaceSummary } from '@alcove/api';
+import { AlcoveApiError, MAX_SORT_STICKIES, MAX_SORT_STICKY, SORT_TOO_FEW, SORT_TOO_MANY, errorCode, type ActionProposal, type ChangeScope, type DecisionProposal, type DemoProvider, type DocumentRole, type FeatureFlagName, type Group, type PresenterFrameNotes, type InstantCallInput, type ISODate, type ItemInput, type ItemPlace, type LinePatch, type MeetingInput, type MentionBody, type NoteKind, type NotesSetting, type Patch, type PersonalInput, type PersonalNotes, type PromoteBody, type QuestionPatch, type TopUp, type RingReply, type Series, type ShareTarget, type WorkspaceRole, type WorkspaceSummary } from '@alcove/api';
 import { queryOptions, useIsMutating, useMutation, useMutationState, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef } from 'react';
 import { forgetAccount } from '~/features/record/offline';
@@ -55,6 +55,7 @@ export const qk = {
   topUps: ['top-ups', 'list'] as const,
   topUp: (id: string) => ['top-ups', 'one', id] as const,
   trust: ['trust'] as const,
+  featureFlags: ['feature-flags'] as const,
   workspacePeople: (id: string) => ['workspaces', id, 'people'] as const,
   personIds: (id: string, emails: readonly string[]) => ['workspaces', id, 'ids', ...emails] as const,
   workspaceMedia: (id: string) => ['workspaces', id, 'media'] as const,
@@ -210,6 +211,8 @@ export const q = {
   }),
   /** Checked when the app opens (the side panel and the call both show it), then every ten minutes. */
   trust: () => queryOptions({ queryKey: qk.trust, queryFn: checkTrust, staleTime: 10 * 60_000, refetchInterval: 10 * 60_000, retry: 1 }),
+  /** The feature flags on for whoever's here. Signing in or out clears the cache, so they're asked again for the new session. */
+  featureFlags: () => queryOptions({ queryKey: qk.featureFlags, queryFn: () => api.featureFlags.on(), staleTime: 30_000, refetchInterval: 60_000, refetchOnWindowFocus: true }),
 
   /* Starting and scheduling calls. */
   /** One call as it is now, for its card: the answers people have given change while it's open. */
@@ -265,6 +268,17 @@ export const q = {
     queryKey: [...qk.boardsToBring, spaces.slice(0, BOARD_SPACES).map((w) => w.id).join(' ')], queryFn: () => boardsToBring(spaces), staleTime: 30_000
   })
 };
+
+/**
+ * Whether a feature flag is on for whoever's here: undefined until the server has said, so a flagged page or control waits
+ * rather than showing and then vanishing (docs: engineering/feature-flags.md). If it can't say, the flag is off, so nothing
+ * waits for good; the next refresh asks again. The server checks it too.
+ */
+export function useFeatureFlag(name: FeatureFlagName): boolean | undefined {
+  const { data, isError } = useQuery(q.featureFlags());
+  if (data) return data.includes(name);
+  return isError ? false : undefined;
+}
 
 /**
  * What carries over into a call, while `on`. A read that fails keeps the last answer, as queries do, which would keep

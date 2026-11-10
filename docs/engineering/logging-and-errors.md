@@ -122,6 +122,11 @@ throw new KeyError('This key can’t open that data.', { cause: err, context: { 
   clamped` at warn, once, for a row it can't use or had to hold to its bounds, and `service limits not read; keeping what was in
   force` at warn when it can't read them. `limits set` logs `service limit set`, with the old value and the new, and `limit not
   set` at warn with why: a typo is an ordinary refusal.
+- Feature flags log under `component: 'feature-flags'`: `feature flag changed` at info when an instance sees a flag change, with
+  `featureFlag`, `everyone`, how many `groups` have it, and how many `people` directly and `members` through those groups; `feature flag ignored` at warn, once, for a name that isn't
+  a flag; `feature flags not read; keeping what was in force` at warn. Each `feature-flags` command logs what it changed with the flag,
+  group and counts, and `feature flags refused` at warn for a refusal. A flagged endpoint refusing logs at info with its `featureFlag`. No
+  address or hash is ever logged.
 - A piece of a shared screen's video is refused as `403 forbidden` when it isn't the sender's share or the share
   doesn't go in the notes, `404 not-found` when the share is unknown or has ended, and `409 conflict` while notes are
   paused or off, or when a different piece is already stored in its place. ffmpeg failing to join or decode a share's
