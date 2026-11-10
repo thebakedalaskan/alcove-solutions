@@ -4,7 +4,7 @@
  * check against a name that isn't here doesn't compile, and deleting a name finds every check that used it.
  */
 export const FEATURE_FLAGS = {
-  example: 'A placeholder: delete it when the first real flag is added.'
+  'call.bandwidthReduction': 'Calls download less: small camera tiles at 180p, cameras’ 720p at 1 Mbps and microphones as speech.'
 } as const satisfies Record<string, string>;
 export type FeatureFlagName = keyof typeof FEATURE_FLAGS;
 export const isFeatureFlagName = (name: string): name is FeatureFlagName => Object.hasOwn(FEATURE_FLAGS, name);

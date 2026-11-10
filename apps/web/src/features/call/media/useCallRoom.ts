@@ -1,8 +1,10 @@
-import { errorMessage, type CallSession } from '@alcove/api';
+import { errorMessage, type CallSession, type FeatureFlagName } from '@alcove/api';
 import type { useToast } from '@alcove/ui';
+import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import { sessions, useLive, type useLeaveGuard } from '~/lib/live';
 import { log } from '~/lib/log';
+import { q } from '~/lib/queries';
 import { ShareMarks } from '../screen-sharing/marks';
 import { CallReactions } from '../layout/reactions';
 import type { CallRoom, RoomView } from './livekit';
@@ -44,11 +46,18 @@ export function useCallRoom({ session, media, toast, guard: guardRef }: CallRoom
   /* The call's media goes through its LiveKit room (loaded only here); leaving the screen leaves the room. */
   const [room, setRoom] = useState<CallRoom>(NO_ROOM);
   const roomView = useLive(room);
+  const queries = useQueryClient();
   useEffect(() => {
     let gone = false;
     let entry = connections.get(session);
     if (!entry) {
-      entry = { room: import('~/features/call/media/livekit').then(({ openRoom }) => openRoom(session, media)), users: 0 };
+      // The call's feature flags are read once, as the room opens: flags that can't be read are off.
+      const flags = queries.fetchQuery(q.featureFlags()).then((on): FeatureFlagName[] => on, (): FeatureFlagName[] => []);
+      entry = {
+        room: Promise.all([import('~/features/call/media/livekit'), flags]).then(([{ openRoom }, on]) =>
+          openRoom(session, media, { bandwidthReduction: on.includes('call.bandwidthReduction') })),
+        users: 0
+      };
       connections.set(session, entry);
     }
     const e = entry;
@@ -69,7 +78,7 @@ export function useCallRoom({ session, media, toast, guard: guardRef }: CallRoom
         void e.room.then((r) => r.leave(), () => undefined);
       }, 0);
     };
-  }, [session, media, toast]);
+  }, [session, media, toast, queries]);
   /* Pointers and marks on what's shared: kept in this browser only, sent and taken through the room, encrypted end to end. */
   const [marks, setMarks] = useState<ShareMarks | null>(null);
   useEffect(() => {

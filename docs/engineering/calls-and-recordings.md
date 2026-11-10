@@ -2628,6 +2628,17 @@ uploads), Alcove is asked who's signed in (`GET /v1/session`): only the account 
       you", with **Show cameras**, stays at the top of the call, so it isn't taken for everyone's camera being off;
       on a narrow screen it's the icon and the button.
     - Shared screens are never capped: their text has to stay readable.
+  - **With the `call.bandwidthReduction` feature flag** ([Feature flags](feature-flags.md)), read once as the room
+    opens, calls download less:
+    - Cameras under Auto are capped by how big each picture of one is here (`CAMERA_MOST` in `livekit.ts`, from a
+      `ResizeObserver` on each element `attach` plays it in): one under 200 CSS pixels tall (or as tall as its width
+      at 16:9), such as a big grid's or the column beside a share, asks for at most 180p (`setVideoDimensions`, in
+      pixels, since a sender's own low, medium and high depend on the size they send). Each copy is downloaded by
+      everyone who shows it, and 180p costs about 0.15 Mbps against 360p's 0.45.
+    - A camera's 720p copy is sent at 1 Mbps instead of 1.7 (`CAMERA_CUT` in `livekit.ts`), whether it's the top copy
+      (Standard) or the middle one (HD): a still face looks the same, and motion is blockier.
+    - Microphones are published as speech (`AudioPresets.speech`, Opus at up to 24 kbps, with LiveKit's default DTX
+      and RED); a share's sound keeps LiveKit's music default.
 - **Speakers.** Where a page can choose one (`setSinkId` on media elements: Chrome, Edge and Firefox; LiveKit
   doesn't on Safari), the chosen speaker goes through LiveKit's own output switching, so every element plays
   there, now and as people arrive, and LiveKit's device handling knows it. Firefox lists speakers only once the

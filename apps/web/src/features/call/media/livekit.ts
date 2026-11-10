@@ -31,7 +31,7 @@
  */
 import { CALL_KEYRING, CALL_TOPIC, CALL_VOID_KEY_INDEX, CallChangedSchema, type CallMediaKeys, type CallSession, type LiveStore, type VideoSend } from '@alcove/api';
 import {
-  BaseKeyProvider, ConnectionState, CryptorError, CryptorErrorReason, DisconnectReason, LoggerNames, RemoteAudioTrack, Room, RoomEvent, Track, VideoPresets, VideoQuality,
+  AudioPresets, BaseKeyProvider, ConnectionState, CryptorError, CryptorErrorReason, DisconnectReason, LoggerNames, RemoteAudioTrack, Room, RoomEvent, Track, VideoPreset, VideoPresets, VideoQuality,
   createKeyMaterialFromBuffer, getLogger, isE2EESupported, type Participant, type RemoteTrack, type RemoteTrackPublication, type RemoteParticipant, type TrackPublication,
   type TrackPublishOptions
 } from 'livekit-client';
@@ -171,6 +171,29 @@ const CAMERA: Record<VideoSend, TrackPublishOptions> = {
   saver: { videoEncoding: VideoPresets.h360.encoding, videoSimulcastLayers: [VideoPresets.h180] }
 };
 
+/**
+ * With `call.bandwidthReduction`, everything down to PUBLISH. The most of someone's camera a picture here asks for, by how tall that picture is in CSS pixels (or as tall as its
+ * width would be at 16:9, whichever is more): a small tile (a big grid, the column beside a share) takes the 180p copy,
+ * which is about 0.15 Mbps against 360p's 0.45, and anything bigger is as sharp as adaptive stream makes it. In pixels,
+ * not LiveKit's low, medium and high: those name a sender's own copies, and someone sending 1080p has 720p as their medium.
+ */
+const CAMERA_MOST = [{ below: 200, most: { width: 320, height: 180 } }];
+/**
+ * The camera as CAMERA sends it, but its 720p copy at 1 Mbps instead of LiveKit's 1.7: about 60% of the data, a still
+ * face looks the same, and motion gets blockier.
+ */
+const H720_CUT = new VideoPreset(1280, 720, 1_000_000, 30);
+const CAMERA_CUT: Record<VideoSend, TrackPublishOptions> = {
+  standard: { videoEncoding: H720_CUT.encoding, videoSimulcastLayers: [VideoPresets.h180, VideoPresets.h360] },
+  hd: { videoEncoding: VideoPresets.h1080.encoding, videoSimulcastLayers: [VideoPresets.h360, H720_CUT] },
+  saver: CAMERA.saver
+};
+/** Microphones as speech (Opus at up to 24 kbps), not music: a share's sound keeps LiveKit's music default. */
+const MIC: TrackPublishOptions = { audioPreset: AudioPresets.speech };
+const PUBLISH: Record<Kind, TrackPublishOptions> = { mic: MIC, cam: {}, screen: {}, screenAudio: {} };
+/** The feature flags a room follows, read once as it opens (docs: engineering/feature-flags.md). */
+export interface RoomFlags { bandwidthReduction: boolean }
+
 /** How long to wait before the next try of a camera that failed to publish: longer each time it's tried. */
 const CAMERA_RETRY_MS = [1_000, 3_000, 10_000, 30_000];
 
@@ -193,6 +216,8 @@ class LiveKitRoom implements CallRoom {
   /** How loud each person plays here, for this listener only (see volume.ts). */
   private volumes: CallVolumes;
   private stopVolumes: () => void = () => undefined;
+  /** How tall each picture of someone else's camera is here, by track sid (see CAMERA_MOST). */
+  private shown = new Map<string, Map<HTMLMediaElement, number>>();
   /** The size the camera was last published at (see cameraSends), so a change of size sends it again. */
   private camSentAs: VideoSend | null = null;
   /**
@@ -220,7 +245,9 @@ class LiveKitRoom implements CallRoom {
   private dropped = 0;
   private unsent = 0;
 
-  constructor(private readonly session: CallSession, private readonly media: LocalMedia) {
+  private readonly bandwidthReduction: boolean;
+  constructor(private readonly session: CallSession, private readonly media: LocalMedia, flags: RoomFlags) {
+    this.bandwidthReduction = flags.bandwidthReduction;
     this.keys = new CallKeys(session.ticket.identity);
     this.volumes = volumesFor(session);
     // Each video as sharp as its tile on this screen, at up to 1.5 of its pixels to a CSS pixel: a large tile on a
@@ -512,7 +539,7 @@ class LiveKitRoom implements CallRoom {
     if (have?.track) await me.unpublishTrack(have.track, false);
     if (track) {
       try {
-        await me.publishTrack(track, { source: SOURCE[kind], ...(sendAs ? CAMERA[sendAs] : {}) });
+        await me.publishTrack(track, { source: SOURCE[kind], ...(this.bandwidthReduction ? PUBLISH[kind] : {}), ...(sendAs ? (this.bandwidthReduction ? CAMERA_CUT : CAMERA)[sendAs] : {}) });
       } catch (e) {
         if (kind === 'cam') await this.cameraFailed(track);
         throw e;
@@ -550,9 +577,9 @@ class LiveKitRoom implements CallRoom {
 
   /**
    * Everyone else's cameras as chosen here: as sharp as each tile needs (adaptive stream, which also pauses one nobody
-   * here can see), capped at the smallest copy to save data, or not received at all: unsubscribed, so LiveKit stops
-   * sending it. Never `setEnabled`: once called, it overrides adaptive stream's pausing for good. Screens are never
-   * capped: text has to stay readable.
+   * here can see) up to what a tile of its size may ask for (CAMERA_MOST, with `call.bandwidthReduction`), capped at the smallest copy to save data, or
+   * not received at all: unsubscribed, so LiveKit stops sending it. Never `setEnabled`: once called, it overrides
+   * adaptive stream's pausing for good. Screens are never capped: text has to stay readable.
    */
   private receiveCams() {
     const receive = this.media.getSnapshot().receiveVideo;
@@ -561,8 +588,17 @@ class LiveKitRoom implements CallRoom {
       if (!pub) continue;
       if (receive === 'off') { if (pub.isDesired) pub.setSubscribed(false); continue; }
       if (!pub.isDesired) pub.setSubscribed(true);
-      pub.setVideoQuality(receive === 'saver' ? VideoQuality.LOW : VideoQuality.HIGH);
+      if (receive === 'saver') { pub.setVideoQuality(VideoQuality.LOW); continue; }
+      const most = this.bandwidthReduction ? this.mostFor(pub.trackSid) : null;
+      if (most) pub.setVideoDimensions(most); else pub.setVideoQuality(VideoQuality.HIGH);
     }
+  }
+  /** The most of a camera its biggest picture here asks for (see CAMERA_MOST), or null for as much as it needs. */
+  private mostFor(sid: string): { width: number; height: number } | null {
+    const sizes = this.shown.get(sid);
+    if (!sizes?.size) return null;
+    const tallest = Math.max(...sizes.values());
+    return CAMERA_MOST.find((s) => tallest < s.below)?.most ?? null;
   }
 
   /** Everyone else's audio plays through hidden elements, on the chosen speaker, each person as loud as set here. */
@@ -623,7 +659,27 @@ class LiveKitRoom implements CallRoom {
     const track = local ?? remote;
     if (!track) return () => undefined;
     track.attach(el);
-    return () => { track.detach(el); };
+    // Someone else's camera: how big each picture of it is decides how much of it is asked for (receiveCams).
+    const camera = !local && remote?.source === Track.Source.Camera;
+    if (!camera || !this.bandwidthReduction) return () => { track.detach(el); };
+    const sizes = this.shown.get(trackSid) ?? new Map<HTMLMediaElement, number>();
+    this.shown.set(trackSid, sizes);
+    const watch = new ResizeObserver(([entry]) => {
+      if (!entry) return;
+      const { width, height } = entry.contentRect;
+      const tall = Math.round(Math.max(height, (width * 9) / 16));
+      if (sizes.get(el) === tall) return;
+      sizes.set(el, tall);
+      this.receiveCams();
+    });
+    watch.observe(el);
+    return () => {
+      watch.disconnect();
+      sizes.delete(el);
+      if (!sizes.size) this.shown.delete(trackSid);
+      track.detach(el);
+      this.receiveCams();
+    };
   }
 
   muteShare(screenSid: string, muted: boolean): void {
@@ -700,8 +756,8 @@ class LiveKitRoom implements CallRoom {
 }
 
 /** Connects to the call's room. Rejects if LiveKit refuses or can't be reached; nothing is left connected then. */
-export async function openRoom(session: CallSession, media: LocalMedia): Promise<CallRoom> {
-  const room = new LiveKitRoom(session, media);
+export async function openRoom(session: CallSession, media: LocalMedia, flags: RoomFlags): Promise<CallRoom> {
+  const room = new LiveKitRoom(session, media, flags);
   try {
     await room.connect();
   } catch (e) {
