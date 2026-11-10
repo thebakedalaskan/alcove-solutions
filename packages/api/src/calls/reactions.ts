@@ -11,6 +11,19 @@ export const CALL_REACTIONS = CallReactionSchema.options;
 export interface CallChatReaction { reaction: CallReaction; by: string[] }
 
 /**
+ * An emoji someone sends rising over the call (React, in the dock). It travels as marks do, on its own topic, sealed with
+ * the sender's media key, says which of the bundled emoji and nothing else, and is never stored: whoever's there sees it.
+ */
+export const CALL_REACT_TOPIC = 'react/1' as const;
+
+/** The largest such message a browser reads, and how many a sender can say in a burst and then each second: enough to spam. */
+export const CALL_REACT_LIMITS = { bytes: 64, burst: 24, perSecond: 8 } as const;
+
+export const CallReactMessageSchema = z.object({ r: CallReactionSchema });
+
+export type CallReactMessage = z.infer<typeof CallReactMessageSchema>;
+
+/**
  * Reactions with `who`'s one turned on or off: who reacted stays in the order they did, emoji stay in the order they were
  * first used, and an emoji nobody's left on goes. Turning on what's on, or off what isn't, changes nothing.
  */

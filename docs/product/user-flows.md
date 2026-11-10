@@ -336,13 +336,13 @@ time, slides in on the right.
   pressing it opens its menu, which says why and how to fix it. Unplugging a device moves to another one,
   muted or not as before, and says which; a device that comes back is used again. Nothing turns your
   microphone or camera on by itself during a call. Then **Share** (Presenting and Sharing, below; it says **Presenting**
-  while you present), **Raise your hand**, **More** and **Leave**, and, in focus, **Show everything**. **More** is the same
+  while you present), **Raise your hand**, **React**, **More** and **Leave**, and, in focus, **Show everything**. **More** is the same
   on every screen, what you do in a call first: **Turn on captions** (or **Turn off captions**), **Mark this moment**,
   **Catch up on what you missed** and **Breakout rooms** (the organizer's, once someone else is in the call); then, under a
   hairline, **Open floating call** (Keep the call in view, below), **Reset layout** (only once you've changed the layout:
   Your view, below), **Move to another device** and **Settings**. On a phone the dock is microphone, camera, **Share**,
-  **More** and **Leave**, and **More** starts with a grid of **Board**, **Workspace**, **Notes**, **Chat** (with its count)
-  and **People**, then **Raise your hand**; the devices are in Settings.
+  **More** and **Leave**, and **More** starts with a grid of **Board**, **Workspace**, **Notes**, **Chat** (with its count),
+  **React** and **People**, then **Raise your hand**; the devices are in Settings.
 - **Settings**, from **More**, is one window, its parts as tabs down its left (on a phone, a sheet with the parts in a
   strip along its top), and closes with its **×** or **Esc**. **Audio and video** has the dock's two menus in one place:
   which microphone, with its level, which speaker, **Play a test sound** and **Noise reduction**, then your camera's
@@ -556,6 +556,12 @@ time, slides in on the right.
   the call is visible and focused updates its read receipt.
 - **Browser notifications (journey 6.33).** Explicitly enable browser alerts, then choose what reaches you: each event's Alert tick covers its alert inside Alcove and from the browser, and its Sound tick its sound. In a background tab, fresh authorized private messages, relevant replies/mentions and pending call actions can show generic alerts. Click back to the exact original conversation/action after access is checked; handled actions and ended sessions explain their unavailability. Blocked or unsupported browsers retain the same unread counts and pending actions in Alcove.
 
+- **Reacting on screen (journey 6.36).** **React** in the dock opens the same eight emoji. Each one you press rises out of the bottom edge of
+  the screen, somewhere across a strip left of the middle that keeps clear of the sides, slows to a stop part of the way up
+  the stage and fades there within two seconds, for everyone in your part of the call (with reduced motion it rises a
+  shorter way, without swaying). The picker stays open, so you can press as fast as you like: pressed fast, they
+  come several at a time, wider and higher, and everyone's pile up over each other. Nobody's name goes with them, and
+  nothing is kept: they travel browser to browser, sealed like pointers, and the API never sees them.
 - **Reacting to chat.** The bar over a message has thumbs up, heart and laughing at once, and the smiley opens all eight
   (thumbs up, thumbs down, heart, smile, laughing, surprised, sad, celebrate). Each emoji someone used sits under
   the message as a pill with how many, yours outlined. Press one to add yours, or press yours again to take it back; **+**

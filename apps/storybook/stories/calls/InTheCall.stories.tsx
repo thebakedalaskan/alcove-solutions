@@ -6,7 +6,7 @@
  */
 import type { Meta } from '@storybook/react-vite';
 import { screen, within } from 'storybook/test';
-import { at, chats, reacts, joins, knocks, leaves, line, lowersHand, mutes, nudges, raisesHand, says, unmutes } from '../../src/api/script';
+import { at, chats, floats, reacts, joins, knocks, leaves, line, lowersHand, mutes, nudges, raisesHand, says, unmutes } from '../../src/api/script';
 import { MORE, clearSide, inCall, light, phone, plays, press, reach, settings } from '../../src/call';
 import { talking } from '../../src/browser';
 import { pages, type PageArgs, type PageStory } from '../../src/page';
@@ -60,6 +60,18 @@ export const ComingAndGoing = inCall({
   }
 });
 export const ComingAndGoingPhone = phone(ComingAndGoing);
+/** Priya, Kofi and Aiko cheer the decision: their emoji float up over the call a few at a time. React, in the dock, sends yours. */
+export const Reactions = inCall({
+  scenario: 'call-soon', call: REVIEW,
+  script: {
+    here: REVIEWERS,
+    cues: [
+      ...at(3, floats(PRIYA, 'heart')), ...at(3.4, floats(KOFI, 'party')), ...at(3.8, floats(AIKO, 'thumbs-up')),
+      ...at(6, floats(PRIYA, 'laugh'), floats(AIKO, 'heart')), ...at(6.5, floats(KOFI, 'wow')), ...at(9, floats(AIKO, 'party'), floats(PRIYA, 'smile'))
+    ]
+  }
+});
+export const ReactionsPhone = phone(Reactions);
 /** Chat in your side, alone: Aiko's message lands (Chat at the top right counts it), then Chat opens on it, and the reactions come in. */
 export const Chat = {
   ...ComingAndGoing, name: 'Chat',

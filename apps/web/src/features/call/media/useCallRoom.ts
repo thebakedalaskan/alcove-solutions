@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type RefObject } from 'react';
 import { sessions, useLive, type useLeaveGuard } from '~/lib/live';
 import { log } from '~/lib/log';
 import { ShareMarks } from '../screen-sharing/marks';
+import { CallReactions } from '../layout/reactions';
 import type { CallRoom, RoomView } from './livekit';
 import type { LocalMedia } from './media';
 
@@ -77,6 +78,14 @@ export function useCallRoom({ session, media, toast, guard: guardRef }: CallRoom
     setMarks(m);
     return () => { m.dispose(); setMarks(null); };
   }, [room, self]);
+  /* Reactions floating up over the call: the same, and gone in a couple of seconds. */
+  const [reactions, setReactions] = useState<CallReactions | null>(null);
+  useEffect(() => {
+    if (room === NO_ROOM) return;
+    const r = new CallReactions(room);
+    setReactions(r);
+    return () => { r.dispose(); setReactions(null); };
+  }, [room]);
 
-  return { room, roomView, marks };
+  return { room, roomView, marks, reactions };
 }

@@ -5,7 +5,7 @@
  * and picking one you've already used takes it back. The call is always night, so it's shown on the stage.
  */
 import { CALL_REACTIONS } from '@alcove/api';
-import { Emoji, EMOJI_WORDS, ReactionAdd, Reactions, type EmojiName, type ReactionShown } from '@alcove/ui';
+import { Emoji, EMOJI_WORDS, ReactionAdd, ReactPicker, Reactions, type EmojiName, type ReactionShown } from '@alcove/ui';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useState } from 'react';
 import { did, onStage, Row } from '../../../src/component';
@@ -75,4 +75,8 @@ export const LongList: Story = {
 /** The button alone, as it ends a message's reactions or stands by a message with none yet. */
 export const Add: Story = {
   render: () => <Alone />
+};
+/** The eight emoji in their grid, as the dock's React opens it: pressing one sends it. */
+export const Picker: Story = {
+  render: () => <ReactPicker onPick={did('onPick')} />
 };

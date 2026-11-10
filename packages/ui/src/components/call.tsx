@@ -3,10 +3,12 @@
  * how loud someone is for you. What's open on your stage wears a frame, what someone presents waits as a tile with the
  * people, and Share, in the dock, presents your screen, a board or the workspace in a step or two.
  */
-import { forwardRef, useLayoutEffect, useMemo, useRef, type ButtonHTMLAttributes, type CSSProperties, type ReactNode } from 'react';
+import { forwardRef, useLayoutEffect, useMemo, useRef, useSyncExternalStore, type ButtonHTMLAttributes, type CSSProperties, type ReactNode } from 'react';
 import { cn } from '../cn';
 import { Icon, type IconName } from './icon';
-import { Dots } from './motion';
+import { motion, useReducedMotion } from 'motion/react';
+import { Emoji, type EmojiName } from './emoji';
+import { Dots, EASE } from './motion';
 import { Popover, Tooltip } from './overlay';
 import { Avatar, PortraitArt, type AvatarPerson } from './people';
 import { Button, IconButton, Notice, RecDot, Slider, Spinner, Segmented, Switch } from './primitives';
@@ -684,5 +686,53 @@ export function ShareScreenStep({ surface, onSurface, sound, read, keep, onKeep,
         <Button variant="primary" icon="screen" disabled={read !== null && keep === 'unanswered'} onClick={onShare}>{changing ? 'Share this instead' : 'Share'}</Button>
       </div>
     </>
+  );
+}
+
+/** One emoji floating up in a `ReactionBurst`. */
+export interface BurstItem {
+  id: string; name: EmojiName;
+  /** 0..1 across the strip, left to right */
+  x: number;
+  /** How far it rises, as a share of the window's height (0..1): the call fills the window, so it's the same on any screen. */
+  lift: number;
+  /** px it drifts sideways while rising (negative = left) */
+  drift: number;
+  /** px */
+  size: number;
+  /** degrees it turns while rising */
+  turn: number;
+}
+
+/**
+ * Emoji rising over the call, from React in the dock. They come up out of the bottom edge, ease to a peak and fade there
+ * within 2 seconds, so the owner drops an item after 2. With reduced motion they take a short, gentle rise.
+ */
+const onResize = (l: () => void) => { window.addEventListener('resize', l); return () => window.removeEventListener('resize', l); };
+
+export function ReactionBurst({ items, className, clear = 84 }: {
+  items: BurstItem[]; className?: string | undefined;
+  /** px the rise must clear at the foot (the dock bar), so a gentle rise under reduced motion still leaves it. */
+  clear?: number | undefined;
+}) {
+  const reduce = useReducedMotion();
+  const tall = useSyncExternalStore(onResize, () => window.innerHeight, () => 800);
+  return (
+    <div className={cn('ac-burst', className)} aria-hidden="true">
+      {items.map((it) => { const lift = it.lift * tall; return (
+        // The fade and the rise are two elements, each with one transition: a value's own transition loses the duration.
+        <motion.div key={it.id} style={{ left: `calc((100% - ${it.size}px) * ${it.x})` }}
+          animate={{ opacity: [0, 1, 1, 0] }}
+          transition={{ duration: 2, times: [0, 0.08, 0.65, 1], ease: 'linear' }}>
+          <motion.div
+            animate={reduce
+              ? { y: [it.size * 0.3, -(clear + Math.max(0, lift - clear) * 0.45)] }
+              : { y: [it.size, -lift * 0.92, -lift], x: [0, it.drift * 0.6, it.drift], rotate: [0, it.turn * 0.5, it.turn] }}
+            transition={{ duration: 2, ease: EASE.out, times: reduce ? [0, 1] : [0, 0.7, 1] }}>
+            <Emoji name={it.name} size={it.size} />
+          </motion.div>
+        </motion.div>
+      ); })}
+    </div>
   );
 }

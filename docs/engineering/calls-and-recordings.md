@@ -148,7 +148,8 @@ The call itself stays in the API: who's let in, notes and the transcript.
   Google would email everyone on it in the middle of the call.
 - **The room.** `GET /v1/live/calls/:id/room` gives a LiveKit token for that one room (120 seconds, no
   admin rights) to people let in, and to nobody else. It may send data, which browsers use for pointers and marks on
-  shared screens, sealed end to end ([Pointing at shared screens](#pointing-at-shared-screens)); the API is never in the
+  shared screens, sealed end to end ([Pointing at shared screens](#pointing-at-shared-screens)), and for React's emoji
+  (`CALL_REACT_TOPIC`, which emoji and nothing else, at most 8 a second each after a burst of 24); the API is never in the
   room, so it never receives any. Tokens carry no name: LiveKit knows people only by random identity.
 - **The call pass** is an HMAC (a key derived from `KMASTER`) over the call, the organizer, the person's
   LiveKit identity, role and name, valid for 12 hours. It goes in the `x-alcove-call` header on every

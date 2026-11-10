@@ -638,17 +638,20 @@ class LiveKitRoom implements CallRoom {
     rlog.info(muted ? 'a share’s sound muted here' : 'a share’s sound playing here again');
     this.emit();
   }
+  /** Data that wasn't sent, for the log: counted, and said now and then, never what it was. */
+  private notSent(topic: string, why: string, err?: unknown) {
+    this.unsent += 1;
+    if (this.unsent === 1 || this.unsent % 100 === 0) rlog.debug('data not sent', { err, topic, why, unsent: this.unsent });
+  }
   send(topic: string, payload: Uint8Array, o: { reliable: boolean }): void {
     // Sealed by the session with this browser's own media key (none yet: nothing goes), then encrypted again by LiveKit's
     // data encryption, which the room was made with.
-    if (this.room.state !== ConnectionState.Connected) return;
+    if (this.room.state !== ConnectionState.Connected) { this.notSent(topic, 'not connected'); return; }
     void this.session.sealData(topic, payload).then((sealed) => {
-      if (sealed && this.room.state === ConnectionState.Connected) return this.room.localParticipant.publishData(sealed, { reliable: o.reliable, topic });
-      return undefined;
-    }).catch((e: unknown) => {
-      this.unsent += 1;
-      if (this.unsent === 1 || this.unsent % 100 === 0) rlog.debug('data not sent', { err: e, topic, unsent: this.unsent });
-    });
+      if (!sealed) { this.notSent(topic, 'no key'); return undefined; }
+      if (this.room.state !== ConnectionState.Connected) { this.notSent(topic, 'not connected'); return undefined; }
+      return this.room.localParticipant.publishData(sealed, { reliable: o.reliable, topic });
+    }).catch((e: unknown) => this.notSent(topic, 'publish failed', e));
   }
   /** Data that wasn't taken, for the log: counted, and said now and then, never what it was. */
   private notTaken(topic: string, why: string) {
