@@ -486,7 +486,7 @@ describe('what a guest’s pass reaches', () => {
     // The new device's side of a move is public too: it has no account, and the move's secret in the body is what it holds.
     const MOVES = ['/v1/moves/claim', '/v1/moves/status', '/v1/moves/ready', '/v1/moves/arrive', '/v1/moves/cancel'];
     // A file's URL is public too: its token says who's asking, and it answers for nobody else, a pass included.
-    const PUBLIC = new Set(['/health', '/healthz', '/hooks/livekit', '/v1/telemetry', '/v1/attestation', '/v1/session', '/v1/auth/sign-in', '/v1/auth/google', '/v1/auth/google/callback', '/v1/calls/:code/card', '/v1/calls/:code/join', '/v1/media/:token', '/v1/calls/:code/pick', ...MOVES]);
+    const PUBLIC = new Set(['/health', '/healthz', '/hooks/livekit', '/v1/telemetry', '/v1/attestation', '/v1/feature-flags', '/v1/session', '/v1/auth/sign-in', '/v1/auth/google', '/v1/auth/google/callback', '/v1/calls/:code/card', '/v1/calls/:code/join', '/v1/media/:token', '/v1/calls/:code/pick', ...MOVES]);
     // OAuth discovery and callbacks are public; each validates its own inputs and credentials, never a call pass.
     // Match methods and paths exactly so another endpoint cannot inherit this exception by sharing a prefix.
     const PUBLIC_PROTOCOL_ROUTES = [

@@ -27,6 +27,7 @@ import { portraitFor } from './portraits';
 import { collect } from '../workspaces/media';
 import { eventsToWithdraw } from '../meetings/repeats';
 import { forget as forgetRings } from '../calls/rings';
+import { forgetEmail as forgetFeatureFlags } from '../../feature-flags';
 import { carryModel } from '../notes/carryModel';
 import { forgetAccount, moveAddress } from '../workspaces/service';
 
@@ -179,7 +180,7 @@ const REVOKE_MS = 3_000;
  * what it added to other people's shared notes (its own words: a row found by a keyed hash, so nothing of theirs is
  * opened); its access to the notes other people gave its address and what it answered on their calls (unless another
  * account signs in with that address too); its place in every workspace and on every document given to that
- * address, on the same condition, and what its calls gave people's seats in workspaces; and the account's row, which takes its own notes on anyone's notes, sign-in identity, sessions, profile (pins and groups with it),
+ * address, and in feature flags' groups and grants, on the same condition, and what its calls gave people's seats in workspaces; and the account's row, which takes its own notes on anyone's notes, sign-in identity, sessions, profile (pins and groups with it),
  * Google connection, receipts, notes jobs and credits with it. Then the LiveKit rooms of its calls still
  * going are closed, which takes everyone in them out, as ending a call does; the audio and shared-screen
  * objects, and those of any file that went from a workspace, are deleted, and any the store refuses wait in object_gc
@@ -228,12 +229,14 @@ export async function deleteAccount(o: Owner): Promise<void> {
     const answers = await forgetAnswers(o, c, p.manifest.email);
     // Rings to its address, in other people's calls: its own calls' went with its meetings.
     const rings = await forgetRings(o, c, p.manifest.email);
+    // Its address in feature flags' groups and grants, on the same condition as note_access.
+    const featureFlags = await forgetFeatureFlags(c, blindIndex(masterKey(o), 'email', p.manifest.email), o.ownerId);
     const workspaces = await forgetAccount(o, c, p.manifest.email, callIds);
     // Every other table keyed by the account cascades from its row.
     await exec(c, 'DELETE FROM owners WHERE owner_id = $1', [o.ownerId]);
     // After its row: taking its own notes with it waits for anything being added, which is here by now, or fails from now on.
     const added = await takeAllBack(o, c);
-    return { meetings, notes: notes.length, objects, frames, received, answers, rings, added, rooms, workspaces };
+    return { meetings, notes: notes.length, objects, frames, received, answers, rings, featureFlags, added, rooms, workspaces };
   });
   if (!gone) { alog.info('account already deleted', { ownerId: o.ownerId }); return; }
   forgetAccess(o.ownerId);
@@ -245,7 +248,7 @@ export async function deleteAccount(o: Owner): Promise<void> {
   await revokeGrant(o, refreshToken, AbortSignal.timeout(REVOKE_MS));
   alog.info('account deleted', {
     ownerId: o.ownerId, calendarCancelled: calendar.cancelled, calendarKept: calendar.kept, calendarNotCancelled: calendar.notCancelled,
-    meetings: gone.meetings, notes: gone.notes, received: gone.received, answers: gone.answers, rings: gone.rings, added: gone.added, objects: gone.objects.length, frames: gone.frames, rooms: gone.rooms.length,
+    meetings: gone.meetings, notes: gone.notes, received: gone.received, answers: gone.answers, rings: gone.rings, featureFlags: gone.featureFlags, added: gone.added, objects: gone.objects.length, frames: gone.frames, rooms: gone.rooms.length,
     workspaces: gone.workspaces.workspaces, workspacesDeleted: gone.workspaces.deleted, ms: Math.round(performance.now() - t0)
   });
 }

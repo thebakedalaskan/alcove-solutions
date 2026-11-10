@@ -59,14 +59,14 @@ packages/api/src/
   client.ts          aggregate interface
   errors.ts          shared client errors
   identity/ agents/ meetings/ calls/ notes/ recordings/ workspaces/
-  trust/ credits/ telemetry/ shared/
+  trust/ credits/ telemetry/ feature-flags/ shared/
 packages/api-http/src/
   index.ts           public exports and client composition
   transport/         request, parse, stream and client options
   account/ agents/ meetings/ calls/ notes/ recordings/ workspaces/
 ```
 
-Exact filenames follow the responsibility they implement; this map is not a request to fill every directory with scaffolding. Existing shared API infrastructure (`db`, `crypto`, `owners`, `sessions`, `objects`, configuration, logging, inference, attestation and maintenance) keeps its deliberately stable location. Server, migration, limits CLI and document-worker entry paths stay stable.
+Exact filenames follow the responsibility they implement; this map is not a request to fill every directory with scaffolding. Existing shared API infrastructure (`db`, `crypto`, `owners`, `sessions`, `objects`, configuration, logging, inference, attestation, maintenance and feature flags) keeps its deliberately stable location. Server, migration, limits CLI, feature-flags CLI and document-worker entry paths stay stable.
 
 ## Rules for every change
 

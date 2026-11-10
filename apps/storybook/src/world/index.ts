@@ -5,7 +5,7 @@ import { DEFAULT_NOTIFICATION_PREFERENCES, DEFAULT_SOUND_PREFERENCES } from '@al
  * every page reads it from here again.
  */
 import type {
-  Calendar, CreditBalance, DocRefusal, DocumentLibrary, IncomingRing, Meeting, MentionNotice, MoveIn, MoveMedia, Note, Person, PersonalEntry, Preferences, Session, ShareEntry, Team,
+  Calendar, CreditBalance, DocRefusal, DocumentLibrary, FeatureFlagName, IncomingRing, Meeting, MentionNotice, MoveIn, MoveMedia, Note, Person, PersonalEntry, Preferences, Session, ShareEntry, Team,
   WorkspaceMedia, WorkspaceSummary, WorkspaceTree
 } from '@alcove/api';
 import type { PaymentsWorld } from './payments';
@@ -112,6 +112,8 @@ export interface World {
   trouble?: Troubles | undefined;
   /** A call being moved to this device, which this browser holds the claim to (/move). */
   move?: MoveSpec | undefined;
+  /** The feature flags on for whoever's here. None unless a scenario switches one on. */
+  featureFlags?: FeatureFlagName[] | undefined;
 }
 
 /** How a story's page opens: when on the demo day, what the browser is like, and what it remembers. */

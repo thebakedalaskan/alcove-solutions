@@ -19,3 +19,5 @@ Read the repository rules and `docs/engineering/folder-ownership.md` first.
 - Run `pnpm check:structure`, web build/typecheck and the repository checks; document affected manual call paths.
 - Prefer graph discovery, but inspect its excluded-directory report. If it skipped `call/media`, use the documented
   owner path and source search rather than treating an empty graph result as missing implementation.
+- A feature behind a feature flag shows on `useFeatureFlag(name)` from `~/lib/queries`, waiting while it's `undefined`
+  ([docs/engineering/feature-flags.md](../../../../docs/engineering/feature-flags.md)); the server checks it too.

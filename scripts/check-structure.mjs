@@ -21,14 +21,14 @@ const serverHomes = new Set(['account', 'agents', 'meetings', 'calls', 'notes', 
 // Stable infrastructure and deployment entries, not a home for another feature implementation.
 const serverRoot = new Set([
   'app.ts', 'callPass.ts', 'config.ts', 'context.ts', 'crypto.ts', 'db.ts', 'demo.ts', 'dstack-images.ts',
-  'errors.ts', 'evidence.ts', 'google.ts', 'identity.ts', 'inference.ts', 'limits-cli.ts', 'limits.ts',
+  'errors.ts', 'evidence.ts', 'feature-flags-cli.ts', 'feature-flags.ts', 'google.ts', 'identity.ts', 'inference.ts', 'limits-cli.ts', 'limits.ts',
   'livekit.ts', 'log.ts', 'maintenance.ts', 'mediaToken.ts', 'migrate-cli.ts', 'migrate.ts', 'objects.ts',
   'ohttp.ts', 'owners.ts', 'roots.ts', 'server.ts', 'sessions.ts', 'tee.ts', 'vault.ts', 'zones.ts'
 ]);
 const contractRoot = new Set(['index.ts', 'client.ts', 'errors.ts', 'format.ts', 'search.ts']);
 const sourceHomes = {
   'apps/api/src': new Set(['features', 'http', 'integration', 'live', 'testing']),
-  'packages/api/src': new Set(['identity', 'agents', 'meetings', 'calls', 'notes', 'recordings', 'workspaces', 'trust', 'credits', 'telemetry', 'shared']),
+  'packages/api/src': new Set(['identity', 'feature-flags', 'agents', 'meetings', 'calls', 'notes', 'recordings', 'workspaces', 'trust', 'credits', 'telemetry', 'shared']),
   'packages/api-http/src': new Set(['transport', 'account', 'agents', 'meetings', 'calls', 'notes', 'recordings', 'workspaces'])
 };
 const owned = [

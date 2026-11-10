@@ -138,7 +138,9 @@ export async function startHarness(): Promise<Harness> {
     // Sign-in photos come from the stand-in Google here, as they come from lh3.googleusercontent.com in production.
     PHOTO_HOSTS: 'googleusercontent.com,127.0.0.1',
     // A limit a test sets is in force on its next request, and gone once the test is: tests that look at the window set their own.
-    LIMITS_CACHE_MS: '0'
+    LIMITS_CACHE_MS: '0',
+    // Likewise a feature flag switched on or off.
+    FEATURE_FLAGS_CACHE_MS: '0'
   });
   const pool = createPool(url);
   await pool.query('DROP SCHEMA public CASCADE; CREATE SCHEMA public;');
