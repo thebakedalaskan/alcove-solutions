@@ -101,10 +101,6 @@
 /* A list or a choice fills its column; three evenings, a folder or files fill a wider one. A switch, a fact or a button hugs the edge. */
 .set-r:has(> .set-c > .set-ctl > :is(.ac-seg, .ac-select, .set-vol)), .set-r.is-stack { --ctl-col: var(--ctl, 264px); }
 .set-r.is-wide { --ctl-col: minmax(0, var(--ctl-wide, 380px)); }
-/* The gap between a label and its control is wide, so the row lights a little under the pointer to hold them together. */
-.set-r::before { content: ""; position: absolute; inset: 1px -12px 0; z-index: -1; border-radius: 10px; transition: background-color var(--duration-1); }
-.set-r:hover::before { background: color-mix(in oklch, var(--ink) 3.5%, transparent); }
-.set-r.is-off::before, .set-r.is-q::before { display: none; }
 /* Focus kept on a row whose control went. */
 .set-r:focus { outline: none; }
 .set-r:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: var(--radius-sm); }
@@ -236,8 +232,6 @@
 .set-mx-k.is-off { color: var(--ink-3); }
 .set-mx-g { padding: 18px 0 6px; font: 600 13px/18px var(--font-sans); color: var(--ink-2); }
 .set-mx-r { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) repeat(2, var(--mx, 76px)); align-items: center; min-height: 48px; padding-block: 6px; }
-.set-mx-r::before { content: ""; position: absolute; inset: 1px -12px 0; z-index: -1; border-radius: 10px; transition: background-color var(--duration-1); }
-.set-mx-r:hover::before { background: color-mix(in oklch, var(--ink) 3.5%, transparent); }
 .set-mx-t { display: flex; align-items: center; gap: 12px; min-width: 0; font: 400 14.5px/20px var(--font-sans); color: var(--ink); }
 .set-mx-t > .ac-i { flex: none; color: var(--ink-3); }
 .set-mx-n { position: relative; display: block; min-width: 0; }
