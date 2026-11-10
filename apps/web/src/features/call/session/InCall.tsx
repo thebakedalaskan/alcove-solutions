@@ -7,6 +7,8 @@ import { useBreakoutRooms } from '../rooms/useBreakoutRooms';
 import { CallCaption, CaptionLanguageMenu, captionLanguageName } from '../notes/CallCaptions';
 import { useCallShortcuts } from './useCallShortcuts';
 import { useCallRoom } from '../media/useCallRoom';
+import { ReactMenu } from '../layout/ReactMenu';
+import { useBurst } from '../layout/reactions';
 import { useSpeaking, useTalkingOnMute } from '../media/useSpeaking';
 import { useWidth } from '../layout/useWidth';
 import { useNotesCapture } from '../notes/useNotesCapture';
@@ -16,11 +18,11 @@ import { useFloatingWindow } from './floatingWindow';
 import { FloatingCallPortal } from './FloatingCallPortal';
 import { asShown, SOMEONE } from './participants';
 import {
-  BOARD_SHOT_LIMITS, CALL_LAYOUT_MAX, CAPTION_LANGUAGES, MAIN_PLACE, errorCode, errorMessage, firstName, notesAreOn, type CallAsker, type CallSession, type CallState, type CaptionLanguage,
+  BOARD_SHOT_LIMITS, CALL_LAYOUT_MAX, CAPTION_LANGUAGES, MAIN_PLACE, errorCode, errorMessage, firstName, notesAreOn, type CallAsker, type CallReaction, type CallSession, type CallState, type CaptionLanguage,
   type CallNudgeKind, type CallStatusKind, type CallStatusMinutes, type CaptureMode, type Person, type SelfView
 } from '@alcove/api';
 import {
-  CallTimerButton, Avatar, BoardPicker, CallDock, CallMoreGrid, CallMoreTile, DockButton, DockLeave, DockSeparator, DockSplit, DockWords, Dots, Icon, IconButton, KnockCard, LinkRow, Popover, RingAgain, RingReply,
+  CallTimerButton, Avatar, BoardPicker, CallDock, CallMoreGrid, CallMoreTile, DockButton, DockLeave, DockSeparator, DockSplit, DockWords, Dots, Icon, IconButton, KnockCard, LinkRow, Popover, ReactPicker, ReactionBurst, RingAgain, RingReply,
   Tooltip, WaitTile, buttonClass, cn, useRaisedToasts, useTheme, useToast, volumeTag, wsToast, type IconName, type PresentAskProps, type WsToastData
 } from '@alcove/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -101,7 +103,7 @@ const clog = log.child({ component: 'call' });
  * What's open over the call: a device's menu, the captions' language, More and what it leads to (on a phone, the board picker),
  * and Share's steps. Settings, from More, is a window of its own.
  */
-type Pop = 'mic' | 'cam' | 'cap' | 'more' | 'board' | ShareStep | null;
+type Pop = 'mic' | 'cam' | 'cap' | 'more' | 'board' | 'react' | 'reactMore' | ShareStep | null;
 /** Time left in the rooms, as the rooms show it: 4:12. */
 const mmss = (s: number) => `${Math.floor(Math.max(0, s) / 60)}:${String(Math.floor(Math.max(0, s) % 60)).padStart(2, '0')}`;
 /** Whether what someone starts sharing is read for the notes: now, once notes resume, or not. */
@@ -152,6 +154,8 @@ export function InCall({ session }: { session: CallSession }) {
   // One breakpoint for the layout and the dock: under it, it's a phone.
   const phone = width < PHONE_W;
   const [pop, setPop] = useState<Pop>(null);
+  // The picker is the dock's on a wide screen and More's on a phone: it closes when the screen flips between them.
+  useEffect(() => { setPop((p) => (p === 'react' || p === 'reactMore' ? null : p)); }, [phone]);
   /** Focus: what's in the frame fills your window, and everything else tucks away (⌘⇧F, Show everything, Esc). */
   const [focus, setFocus] = useState(false);
   /** Settings, from More: one window, open on the part you last had. */
@@ -247,7 +251,9 @@ export function InCall({ session }: { session: CallSession }) {
     }
   }, [session]);
 
-  const { room, roomView, marks } = useCallRoom({ session, media, toast, guard: guardRef });
+  const { room, roomView, marks, reactions } = useCallRoom({ session, media, toast, guard: guardRef });
+  const burst = useBurst(reactions);
+  const react = (r: CallReaction) => reactions?.fire(r);
 
   const live = state.phase === 'in-call';
   const capture = useNotesCapture({ session, state, crypto, media, room, departing: leaving || ended !== null });
@@ -1814,7 +1820,7 @@ export function InCall({ session }: { session: CallSession }) {
   });
 
   /* ---------- the dock, Share and More: what you do in the call, and everything else ---------- */
-  const moreOpen = pop === 'more' || pop === 'board';
+  const moreOpen = pop === 'more' || pop === 'board' || pop === 'reactMore';
   /** What you present, if anything: Share says so, and its first step offers Stop sharing. */
   const myThing = stage.presented.find((p) => p.mine) ?? null;
   const shareStep = pop === 'share' || pop === 'shareScreen' || pop === 'shareBoard' || pop === 'shareStop' ? pop : null;
@@ -1852,6 +1858,8 @@ export function InCall({ session }: { session: CallSession }) {
   };
   const moreBody = pop === 'board' ? (
     <BoardPicker {...openPicker.picker} />
+  ) : pop === 'reactMore' ? (
+    <ReactPicker label="Send a reaction everyone sees" onPick={react} />
   ) : (
     <>
       {phone && (
@@ -1862,6 +1870,7 @@ export function InCall({ session }: { session: CallSession }) {
               onClick={pressWorkspace} />
             <CallMoreTile icon="notesPen" word="Notes" onClick={() => openSide('notes')} />
             <CallMoreTile icon="chat" word="Chat" label={unread ? `Chat, ${unread} new` : 'Chat'} badge={unread} onClick={() => openSide('chat')} />
+            <CallMoreTile icon="react" word="React" onClick={() => setPop('reactMore')} />
             <CallMoreTile icon="people" word="People" label={hosting && state.waiting.length ? `People in this call. ${state.waiting.length} asking to join` : 'People in this call'} badge={hosting ? state.waiting.length : 0} onClick={() => openSide('people')} />
           </CallMoreGrid>
           <div className="ic-msep" />
@@ -1922,6 +1931,7 @@ export function InCall({ session }: { session: CallSession }) {
           )} />
         <PlayTogetherBar player={player} />
         <footer ref={dockBar} className="ic-dockbar">
+          <ReactionBurst items={burst} />
           <CallDock tucked={focusOn}>
             <DockSplit className="keep">
               <DockButton icon={m.mic ? 'mic' : 'micOff'} label={m.access.mic.problem ? stateOf('mic', m.access.mic.problem) : m.mic ? 'Mute' : 'Unmute'} off={!m.mic} alert={!!m.access.mic.problem} disabled={callControls.pending.mic || leaving || !!ended} aria-busy={callControls.pending.mic} onClick={pressMic}
@@ -1951,11 +1961,12 @@ export function InCall({ session }: { session: CallSession }) {
               <DockButton icon="hand" label={handLabel} tip={me?.hand ? 'Lower your hand' : roomName && !organizer ? `Raise your hand to ask ${roomsOnBoards && organizerPerson ? callName(organizerPerson) : 'the organizer'} for help` : 'Raise your hand'}
                 on={!!me?.hand} disabled={callControls.pending.hand || !attentionReady || leaving || !!ended} aria-busy={callControls.pending.hand} onClick={() => setHand(!me?.hand)} />
             )}
-            <Popover open={moreOpen} onOpenChange={(o) => setPop(o ? 'more' : null)} side="top" align="center" label={pop === 'board' ? 'Open a board' : 'More'}
+            {!phone && <ReactMenu open={pop === 'react'} onOpenChange={(o) => setPop(o ? 'react' : null)} onPick={react} />}
+            <Popover open={moreOpen} onOpenChange={(o) => setPop(o ? 'more' : null)} side="top" align="center" label={pop === 'board' ? 'Open a board' : pop === 'reactMore' ? 'React' : 'More'}
               onCloseFocus={() => { const current = floating.owner.getSnapshot(); return current.pending || current.target !== null; }}
               tip={phone ? undefined : MORE_SAYS}
               className={cn(pop === 'board' ? 'bl' : 'ic-menu ic-morepop', phone && 'is-sheet')}
-              anchor={<DockButton icon="more" label={!phone ? MORE_SAYS : unread ? `More: ${unread} new in Chat` : 'More: board, workspace, notes, chat, people'} title={undefined} data-more="" on={moreOpen} badge={phone ? unread : 0} />}>
+              anchor={<DockButton icon="more" label={!phone ? MORE_SAYS : unread ? `More: ${unread} new in Chat` : 'More: react, board, workspace, notes, chat, people'} title={undefined} data-more="" on={moreOpen} badge={phone ? unread : 0} />}>
               {moreBody}
             </Popover>
             {!phone && <DockSeparator />}

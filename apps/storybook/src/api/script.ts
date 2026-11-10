@@ -10,7 +10,7 @@ import type { CallTimer } from '@alcove/api';
  * story opened. Everyone in a script is from the demo world, and everything they say is made up.
  */
 import {
-  RING_SECONDS, type AiModels, type CallNudgeKind, type CallStatusKind, type CallStatusMinutes, type BoardTemplate, type BoardTimerMinutes, type BoardVotesEach, type BreakoutBoard, type CallCard, type CallReaction, type CallPage, type CaptureMode, type CapturePart, 
+  CALL_REACT_TOPIC, RING_SECONDS, type AiModels, type CallNudgeKind, type CallStatusKind, type CallStatusMinutes, type BoardTemplate, type BoardTimerMinutes, type BoardVotesEach, type BreakoutBoard, type CallCard, type CallReaction, type CallReactMessage, type CallPage, type CaptureMode, type CapturePart, 
   type CaptureState, type LiveFollowUp, type IncomingRing, type Meeting, type Person, type RingReply
 } from '@alcove/api';
 import type * as Y from 'yjs';
@@ -170,6 +170,8 @@ export type Beat =
   | { do: 'end-vote'; votes: Readonly<Record<string, number>>; voters: number }
   | { do: 'clear-vote' }
   /** Ideas from the call: what it heard worth a sticky, offered to whoever can add to the board where you are, while notes are on. */
+  /** Someone's browser sends data to the room on a topic (pointers, marks, emoji): the call screen takes it as it takes LiveKit's. */
+  | { do: 'data'; who: Person; topic: string; payload: Uint8Array }
   | { do: 'heard'; ideas: readonly HeardIdea[] }
   /** Anything else the story needs at that moment, such as someone ringing you to another call. */
   | { do: 'run'; what: () => void };
@@ -256,6 +258,9 @@ export const reacts = (who: Person, text: string, reaction: CallReaction): Beat 
 export const reactsPrivately = (who: Person, text: string, reaction: CallReaction): Beat => ({ do: 'react-privately', who, text, reaction });
 export const knocks = (who: Person, o: { byName?: boolean } = {}): Beat => ({ do: 'knock', who, ...o });
 export const asksForNotes = (who: Person): Beat => ({ do: 'ask-for-notes', who });
+export const sendsData = (who: Person, topic: string, payload: Uint8Array): Beat => ({ do: 'data', who, topic, payload });
+/** Someone presses an emoji in the dock's React, so it floats up over the call. */
+export const floats = (who: Person, reaction: CallReaction): Beat => sendsData(who, CALL_REACT_TOPIC, new TextEncoder().encode(JSON.stringify({ r: reaction } satisfies CallReactMessage)));
 export const run = (what: () => void): Beat => ({ do: 'run', what });
 export const goesTo = (who: Person, document: string | null, o: { typing?: boolean; page?: CallPage } = {}): Beat => ({ do: 'goes-to', who, document, ...o });
 /** Someone in the call opens one of the call's own pages: Notes, Follow-ups or the Transcript. */

@@ -12,7 +12,7 @@
  *   - Your connection reconnecting, dropping, or ending when the host ends the call or removes you, the host muting
  *     your microphone, and the organizer stopping what you share, come from the script too.
  *
- * Nothing is ever sent or played: nobody else's browser is here to hear it.
+ * Nothing is ever sent or played: nobody else's browser is here to hear it. What others send (emoji floating up) comes from the script.
  */
 import type { CallSession, LiveStore } from '@alcove/api';
 import type * as Real from '~/features/call/media/livekit';
@@ -48,6 +48,8 @@ class ScriptedRoom implements Real.CallRoom {
   /** Your share as published (a change of what's shared keeps its sid), and one on its way. */
   private shared: { stream: MediaStream; sid: string } | null = null;
   private publishing: { stream: MediaStream; timer: ReturnType<typeof setTimeout> } | null = null;
+  /** Who takes the data sent on each topic (see `receive`). */
+  private takers = new Map<string, Set<(payload: Uint8Array, from: string) => void>>();
   /** Everyone else's shares: each its own sid, and its picture while anything shows it. */
   private sids = new WeakMap<Screen, string>();
   private pictures = new Map<string, { stream: MediaStream; stop: () => void; users: number }>();
@@ -59,6 +61,7 @@ class ScriptedRoom implements Real.CallRoom {
     const follow = () => this.follow();
     this.stops.push(session.crypto.subscribe(follow), media.subscribe(() => { this.publish(); this.follow(); }));
     if (this.side) this.stops.push(this.side.subscribe(follow));
+    if (session instanceof ScriptedCall) this.stops.push(session.takeData((topic, payload, from) => { for (const on of this.takers.get(topic) ?? []) on(payload, from); }));
     this.publish();
   }
 
@@ -195,9 +198,15 @@ class ScriptedRoom implements Real.CallRoom {
     if (muted) this.quiet.add(screenSid); else this.quiet.delete(screenSid);
     this.follow();
   }
-  /** Pointers and marks go to nobody: nobody else's browser is in the room. */
+  /** What you send goes to nobody: nobody else's browser is in the room. */
   send(): void { /* Nobody else's browser is here to take it. */ }
-  receive(): () => void { return () => undefined; }
+  /** What the script has others send (ScriptedCall.takeData) comes to whoever takes its topic. */
+  receive(topic: string, on: (payload: Uint8Array, from: string) => void): () => void {
+    const set = this.takers.get(topic) ?? new Set<(payload: Uint8Array, from: string) => void>();
+    set.add(on);
+    this.takers.set(topic, set);
+    return () => { set.delete(on); };
+  }
 
   leave(): Promise<void> {
     if (this.left) return Promise.resolve();

@@ -5,7 +5,7 @@
  * key from the call's MLS group. Test participants are @livekit/rtc-node rooms joined with the tokens the API hands out,
  * encrypting with those keys as browsers do.
  */
-import { AlcoveApiError, CALL_MARKS_TOPIC, ShareMarkMessageSchema, type CallSession, type CallState, type ShareMarkMessage } from '@alcove/api';
+import { AlcoveApiError, CALL_MARKS_TOPIC, CALL_REACT_TOPIC, CallReactMessageSchema, ShareMarkMessageSchema, type CallSession, type CallState, type ShareMarkMessage } from '@alcove/api';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { ORIGIN, startHarness, type Harness } from '../../testing/harness';
@@ -167,6 +167,37 @@ describe('pointing at shared screens', () => {
     await pushed;
     expect(keyless.received(CALL_MARKS_TOPIC)).toEqual([]);
     expect(wrongKey.received(CALL_MARKS_TOPIC)).toEqual([]);
+    await host.leave();
+  });
+
+  it('carries reactions from browser to browser, sealed to their sender and topic', async () => {
+    const org = await account();
+    const { code: c } = await org.api.calls.startNow({});
+    const host = await org.api.calls.join(c, { mic: true, cam: false });
+    const hostRoom = await joinRoom(host);
+    const guest = await guestBrowser().calls.join(c, { mic: true, cam: false, name: 'Sam' });
+    await letIn(host, guest);
+    await onLatestKey(host);
+    const guestRoom = await joinRoom(guest, host);
+    await hostRoom.waitFor(() => hostRoom.remoteIdentities().includes(guest.ticket.identity), 'the guest in the room');
+
+    const reactSealed = await host.sealData(CALL_REACT_TOPIC, new TextEncoder().encode(JSON.stringify({ r: 'party' })));
+    if (!reactSealed) throw new Error('no key to seal with');
+    await hostRoom.sendData(reactSealed, CALL_REACT_TOPIC, true);
+    await guestRoom.waitFor(() => guestRoom.received(CALL_REACT_TOPIC).length > 0, 'the reaction');
+    const arrived = guestRoom.received(CALL_REACT_TOPIC);
+    expect(arrived).toHaveLength(1);
+    const first = arrived[0];
+    if (!first?.from) throw new Error('no sender on the reaction');
+    expect(first.from).toBe(host.ticket.identity);
+    const plain = await guest.openData(CALL_REACT_TOPIC, first.from, first.payload);
+    if (!plain) throw new Error('the reaction did not open');
+    expect(CallReactMessageSchema.parse(JSON.parse(new TextDecoder().decode(plain)))).toEqual({ r: 'party' });
+
+    // What's sealed carries nothing readable, and opens only on its own topic, from its sender.
+    expect(Buffer.from(reactSealed).toString('latin1').includes('party')).toBe(false);
+    expect(await guest.openData(CALL_MARKS_TOPIC, host.ticket.identity, reactSealed)).toBeNull();
+    expect(await guest.openData(CALL_REACT_TOPIC, guest.ticket.identity, reactSealed)).toBeNull();
     await host.leave();
   });
 

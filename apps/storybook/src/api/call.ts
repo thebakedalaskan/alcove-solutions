@@ -101,6 +101,8 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
   readonly personal: PersonalApi;
   /** LiveKit's side: the scripted room plays it. */
   readonly livekit: Pushed<RoomSide>;
+  /** Whoever takes the data other browsers send to the room (the scripted room), told the topic, the payload and who from. */
+  private readonly dataTakers = new Set<(topic: string, payload: Uint8Array, from: string) => void>();
   private readonly script: CallScript;
   private readonly me: CallParticipant;
   /** The note this call writes, once notes have been on: your own notes on the call (`personal`) go with it. */
@@ -347,9 +349,20 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
       case 'start-vote': this.theyStartVote(b.who, b.frame, b.per); return;
       case 'end-vote': this.voteEnds(b.votes, b.voters); return;
       case 'clear-vote': void this.session((x) => ({ ...x, vote: null })); return;
+      case 'data': {
+        const from = this.find(b.who)?.id;
+        if (from) for (const take of this.dataTakers) take(b.topic, b.payload, from);
+        return;
+      }
       case 'heard': this.theyAreHeard(b.ideas); return;
       case 'run': b.what(); return;
     }
+  }
+
+  /** The scripted room takes the data others send, until it stops. */
+  takeData(on: (topic: string, payload: Uint8Array, from: string) => void): () => void {
+    this.dataTakers.add(on);
+    return () => { this.dataTakers.delete(on); };
   }
 
   /** Someone in the call, by who they are. */

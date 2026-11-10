@@ -10,7 +10,7 @@
  */
 import type { Meta } from '@storybook/react-vite';
 import { screen, waitFor, within } from 'storybook/test';
-import { asks, at, chats, knocks, nudges, presentsWorkspace, shares, stopsPresenting, type CallScript, type Present } from '../../src/api/script';
+import { asks, at, chats, floats, knocks, nudges, presentsWorkspace, shares, stopsPresenting, type CallScript, type Present } from '../../src/api/script';
 import { MORE, inCall, phone, reach } from '../../src/call';
 import { pages, type PageArgs, type PageStory } from '../../src/page';
 import {
@@ -553,6 +553,21 @@ export const MentionSomeone: PageStory = {
       await userEvent.type(await screen.findByRole('combobox', { name: 'Message everyone' }, SOON), 'I’ll review it now.');
       await userEvent.click(await screen.findByRole('button', { name: 'Send to everyone' }, SOON));
       await screen.findByText(`@${PRIYA.name}`, {}, SOON);
+    });
+  }
+};
+
+export const ReactOnScreen: PageStory = {
+  name: '6.36 React',
+  ...launchReview({ cues: [...at(4, floats(PRIYA, 'party')), ...at(5, floats(KOFI, 'heart'))] }),
+  play: async ({ userEvent, step }) => {
+    await step('Click React, in the dock. The eight emoji open above it, and stay open', async () => {
+      await userEvent.click(await within(await dock()).findByRole('button', { name: 'React' }, SOON));
+      await screen.findByRole('group', { name: 'Send a reaction everyone sees' }, SOON);
+    });
+    await step('Press a few. Each floats up from the foot of the call and fades within two seconds, with the others’, and nobody’s name goes with it', async () => {
+      const picker = await screen.findByRole('group', { name: 'Send a reaction everyone sees' }, SOON);
+      for (const name of ['heart', 'celebrate', 'thumbs up']) await userEvent.click(within(picker).getByRole('button', { name }));
     });
   }
 };

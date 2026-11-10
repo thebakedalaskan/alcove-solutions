@@ -37,6 +37,28 @@ function moveFocus(e: KeyboardEvent<HTMLDivElement>) {
 }
 
 /**
+ * The eight emoji to press, in a grid. `mine` marks the ones already used (and makes each a toggle for assistive
+ * technology); leave it out when pressing just sends one.
+ */
+export function ReactPicker({ onPick, mine, label = 'Reactions', className }: {
+  onPick: (name: EmojiName) => void; mine?: EmojiName[] | undefined; label?: string | undefined; className?: string | undefined;
+}) {
+  return (
+    <div className={cn('ac-react-pick', className)} role="group" aria-label={label} onKeyDown={moveFocus}>
+      {CALL_REACTIONS.map((name) => {
+        const on = mine?.includes(name) ?? false;
+        return (
+          <button key={name} type="button" className={cn('ac-react-opt', on && 'is-mine')} aria-pressed={mine ? on : undefined} aria-label={EMOJI_WORDS[name]} title={EMOJI_WORDS[name]}
+            onClick={() => onPick(name)}>
+            <Emoji name={name} size={24} />
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
  * The button that adds a reaction, and the emoji it offers. Picking one you've already reacted with takes it back.
  * `small` is the one at the end of a message's reactions.
  */
@@ -50,17 +72,7 @@ export function ReactionAdd({ mine, onPick, small = false, className }: {
   return (
     <Popover open={open} onOpenChange={setOpen} label="Add a reaction" side="top" align="end" tip="Add reaction" className="ac-react-pop"
       anchor={<IconButton icon="react" label="Add reaction" title={undefined} size={small ? 15 : 17} on={open} className={cn('ac-react-add', small && 'is-small', className)} />}>
-      <div className="ac-react-pick" role="group" aria-label="Reactions" onKeyDown={moveFocus}>
-        {CALL_REACTIONS.map((name) => {
-          const on = mine.includes(name);
-          return (
-            <button key={name} type="button" className={cn('ac-react-opt', on && 'is-mine')} aria-pressed={on} aria-label={EMOJI_WORDS[name]} title={EMOJI_WORDS[name]}
-              onClick={() => { onPick(name, !on); setOpen(false); }}>
-              <Emoji name={name} size={24} />
-            </button>
-          );
-        })}
-      </div>
+      <ReactPicker mine={mine} onPick={(name) => { onPick(name, !mine.includes(name)); setOpen(false); }} />
     </Popover>
   );
 }
