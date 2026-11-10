@@ -225,6 +225,15 @@ limits, for every one that isn't its default. If it can't read them, it keeps wh
 again next time. A row it can't use, a name that isn't a limit or a value below zero, is ignored with `service limit
 ignored` at warn, and its limit keeps its default. A value past its bounds is held to them, with `service limit clamped`.
 
+## Changing a feature flag
+
+Feature flags switch new features on for everyone, for hand-picked groups or for individual people, with no release and no
+restart. Locally, `pnpm --filter @alcove/server feature-flags …` with `DATABASE_URL` and `KMASTER` from `.env`; in production, the
+Cloud Run job `alcove-feature-flags`, which each deploy keeps on the current image with only those two secrets bound:
+`gcloud run jobs execute alcove-feature-flags --region "$GCP_REGION" --wait --args=everyone,<feature-flag>,on`. Each instance reads the flags
+again every 30 seconds (`FEATURE_FLAGS_CACHE_MS`). Everything else, building behind a flag, every command and retiring a flag, is in
+[Feature flags](feature-flags.md).
+
 ## Acceptance
 
 These journeys describe existing coverage and release checks still required. Passing local integration
@@ -250,6 +259,7 @@ live transcript and written notes.
 | At-rest leakage: canaries (including speech and a Google account's details) and refresh tokens absent from every table, object and log line, in plain, hex, base64 and base64url | API integration tests |
 | Deletion of a note, a meeting or a whole account removes rows, receipts and objects; a call set not to keep its transcript or recording leaves no revision, row, receipt or object of it; maintenance removes ended sessions and orphaned objects and retries refused deletes | API integration tests |
 | Files in a workspace: uploaded in pieces and read back whole and by range, a failed piece tried again, an upload carrying on through a lost connection, a dropped upload swept, a reader who loses the document or a guest whose seat ends refused on their next range, a seat reaching only its document's files, the bytes and name absent from every table, object and log line, deleted physically by an editor or when their last document goes, what a process takes on limited, however many ask at once, a read that stopped giving way to someone waiting, a piece that stopped arriving cut, a room opening one board all seeing it, and storage limits, the same for guests as for anyone, changed in the database and in force within the cache window, and refusing without deleting | API integration tests. Play a video over 32 MiB against the deployed API on each release, in Chrome and Safari, pausing it for over 5 seconds while someone waits for a read and playing on: local servers have no response limit, and tests have no player |
+| Feature flags: off by default; on for everyone, signed in or not, for the members of groups and for people granted directly, all at once; an address matched however it's typed, and granted before its owner signs up; a deleted group taking its members and grants; a name the code doesn't know ignored; a change in force within the cache window with no restart, and what was in force kept when they can't be read; a deleted account's address gone from groups and grants; the CLI and the logs never repeating an address or its hash | API integration tests. After the first deploy with the job, run `gcloud run jobs execute alcove-feature-flags --wait` once: it lists the flags, which shows the job starts with its secrets and reaches the database |
 | A failed request's ID leads to its log lines; browser reports reach the server log | API integration tests |
 | More calls ending at once than there are database connections; a call from start to end, a hand-off and the notes on one connection; a request with no connection to be had fails in 10 seconds | API integration tests |
 | Sign in with Google: identity-only scopes, PKCE, state, nonce, signature, audience, expiry, verified email, refusals | API integration tests against a local OpenID provider; verify the real Google round trip on each release |

@@ -59,6 +59,11 @@ result, and [Changing what's stored](#changing-whats-stored) how it changes with
 | `media_upload_days` | owner (an account), `day` (UTC), `bytes`: what it uploaded to workspaces that day, for the limit on a day ([Media](#media)) | — |
 | `media_guest_upload_days` | `guest_index`, `day` (UTC), `bytes`: what a guest in a call uploaded that day, for the same limit ([Media](#media)) | `guest_index`, a blind index of the person the guest's pass names |
 | `service_limits` | `name`, `value`, `updated_at`: a limit changed while the service runs, which overrides its default ([Deployment › Changing a limit](deployment-and-acceptance.md#changing-a-limit)). Numbers only | — |
+| `feature_flags_everyone` | `name`, `updated_at`: a feature flag switched on for everyone ([Feature flags](feature-flags.md)) | — |
+| `feature_flag_groups` | `name`, created: a hand-picked group for feature flags, an operator's label such as `staff` | — |
+| `feature_flag_group_members` | group, `email_index`, created: who's in a group | `email_index`, the blind index of their address |
+| `feature_flag_group_grants` | `feature_flag`, group, created: a feature flag switched on for a group's members | — |
+| `feature_flag_person_grants` | `feature_flag`, `email_index`, created: a feature flag switched on for one person | `email_index`, the blind index of their address |
 | `object_gc` | object ID, owner, queued time, attempts, last error | — |
 
 The migration runner adds `schema_migrations`, which records each applied file by name.
@@ -858,6 +863,9 @@ and for how long](notes-and-inference.md#whats-kept-and-for-how-long)):
 - **`media_upload_days`** and **`media_guest_upload_days`** keep today and yesterday: upkeep deletes anything older. An account's
   rows also go with the account.
 - **`service_limits`** keeps a value until someone changes or deletes it.
+- **Feature flags** keep a flag on, a group, a member or a grant until someone switches or deletes it with `feature-flags`. Deleting a
+  group deletes its members and grants; deleting an account deletes its address from every group and grant, unless another
+  account signs in with that address too.
 - **Seats** in `document_access` last while their call does.
 - **What a call keeps of its workspace** (who's asking, what's presented and playing, what's been worked on) lasts while the
   call does. What was worked on goes into its note, and a call with notes off keeps only the versions. Asking Alcove about a

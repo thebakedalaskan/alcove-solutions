@@ -789,6 +789,7 @@ export const standIn: AlcoveApi = {
   },
   models: { list: () => answer(() => AI_MODELS) },
   trust: { attestation: attest },
+  featureFlags: { on: () => answer((w) => w.featureFlags ?? []) },
   diagnostics: { report: () => Promise.resolve() }
 };
 

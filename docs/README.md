@@ -13,6 +13,7 @@ behind people's backs, and notes only the people in the call can read.
    [Payments and usage](engineering/payments-and-usage.md), [Logging and errors](engineering/logging-and-errors.md).
    [Agents and MCP](engineering/agents-and-mcp.md) covers connecting clients, permissions and safe retries.
    [Google Drive exports](engineering/drive-exports.md) covers readable copies, folder consent and durable upload jobs.
+   [Feature flags](engineering/feature-flags.md) covers building behind a flag, switching it for people, releasing and retiring it.
 4. **Shipping.** [Deployment and acceptance](engineering/deployment-and-acceptance.md) and [infra/README.md](../infra/README.md).
 5. **Planning.** [Roadmap](delivery/roadmap.md) and [Decisions and provider assumptions](delivery/decisions-and-provider-assumptions.md).
 6. **Background.** [Stack and provider setup](references/stack-and-provider-setup.md) and [Source evidence](references/source-evidence.md),
