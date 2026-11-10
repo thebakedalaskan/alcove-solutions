@@ -27,8 +27,11 @@ interface MyShare { share: string; keep: boolean; stream: MediaStream; since: nu
  */
 function segmentOrigin(state: CallState): number {
   const now = performance.now();
-  const since = state.capture.recording.mode === 'on' ? state.capture.recording.since : null;
-  const ago = since ? Date.now() - Date.parse(since) : 0;
+  const { recording, now: serverNow } = state.capture;
+  const since = recording.mode === 'on' ? recording.since : null;
+  // Both ends are the server's clock, so the presenter's own being off doesn't move a share against the audio. `now` is when
+  // this snapshot was built: the little time it took to arrive isn't counted, so the share is placed that much early.
+  const ago = since ? Date.parse(serverNow) - Date.parse(since) : 0;
   return Number.isFinite(ago) && ago > 0 ? now - ago : now;
 }
 

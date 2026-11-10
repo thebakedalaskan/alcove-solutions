@@ -6,6 +6,7 @@ import { ConflictError, ForbiddenError, UnavailableError, ValidationError, notFo
 import { me } from '../account/account';
 import { appendPiece, createRecording, setRecordingState, type Piece } from '../recordings/audio';
 import * as capture from './capture';
+import * as models from '../notes/models';
 import { MeetingManifest } from '../meetings/service';
 import type { Loaded } from '../../vault';
 import { getItem } from '../../vault';
@@ -96,7 +97,13 @@ export async function changeCapture(v: Viewer, c: Db, row: Row, s: Stored, a: Ca
     if (s.notes.status !== 'on') return s;
     return { ...s, notes: { ...s.notes, unavailable: [...new Set(a.parts)] } };
   }
-  if (a.type === 'model') return { ...s, notes: { ...s.notes, model: a.model } };
+  if (a.type === 'model') {
+    if (a.model === s.notes.model) return s;
+    const changed = { ...s, notes: { ...s.notes, model: a.model } };
+    return notice(changed, (await models.isPrivate(o.cfg, a.model))
+      ? 'The organizer changed the AI model that writes the notes. Everyone here can see that.'
+      : 'The organizer chose an unencrypted AI model for the notes. It runs outside a secure enclave, so what it reads isn’t private. Everyone here can see that.');
+  }
   if (a.type === 'request-notes') {
     if (v.isOrganizer) throw new ValidationError('You can turn notes on yourself.', { context: ctx });
     // One ask each: asking again while asking changes nothing, and taking it back forgets it.
@@ -202,7 +209,7 @@ export async function startShare(v: Viewer, callId: string, notes: boolean): Pro
     const id = id128();
     const recordingId = s.notes.recordingId;
     if (recordingId) {
-      const presenter = speakersIn(s, await me(o))(v.pass.identity);
+      const presenter = speakersIn(s, await me(o, c))(v.pass.identity);
       await screens.startShare(o, c, recordingId, id, { keep, meta: { identity: v.pass.identity, ...(presenter ? { presenter } : {}) }, atMs: exact * 1000, segment: s.notes.segment });
     }
     s = screenChanged(s, { ...s, shares: trimShares([...s.shares, { id, identity: v.pass.identity, keep, recorded: recordingId !== null, from: exact, until: null }]) }, exact);
@@ -263,14 +270,16 @@ export async function appendScreen(v: Viewer, callId: string, shareId: string, p
   const budget = () => screens.shareBudget((share.until ?? (Date.now() - row.started_at.getTime()) / 1000) - share.from);
   // A retry of a piece already stored is fine whatever has happened since.
   if (await screens.pieceStored(o, recordingId, shareId, piece)) return answer();
-  if (!share.keep) throw new ForbiddenError('That share doesn’t go in the notes.', { context: ctx });
-  if (share.until !== null || row.state !== 'live' || !v.inCall) {
+  // Notes turned off mid-share stop keeping it (state) but it was kept, and its presenter's last piece is still its tail.
+  const ended = share.keep ? null : await screens.shareEnd(o, recordingId, shareId, row.started_at);
+  if (!share.keep && !ended?.keep) throw new ForbiddenError('That share doesn’t go in the notes.', { context: ctx });
+  if (!share.keep || share.until !== null || row.state !== 'live' || !v.inCall) {
     // Its tail: the presenter's last piece, arriving just after the share (or the call) ended, or they left.
-    const end = await screens.shareEnd(o, recordingId, shareId, row.started_at);
+    const end = ended ?? await screens.shareEnd(o, recordingId, shareId, row.started_at);
     const late = end ? Date.now() - end.at : null;
     if (!end || !end.keep || late === null || late > screens.SHARE_TAIL_MS) throw notFound('That share', { ...ctx, ended: 1, lateMs: late });
     if (piece.segment !== end.segment) throw new ConflictError('That video belongs to an earlier part of the recording.', { context: ctx });
-    await screens.appendPiece(o, recordingId, shareId, piece, budget(), true);
+    await screens.appendPiece(o, recordingId, shareId, piece, budget(), share.keep ? 'ended' : 'notes-off');
     clog.debug('share piece taken after it ended', { ...ctx, lateMs: late });
     return answer();
   }

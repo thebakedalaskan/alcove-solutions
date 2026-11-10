@@ -68,6 +68,11 @@ export type RoomCapture = z.infer<typeof RoomCaptureSchema>;
 
 export const CaptureStateSchema = z.object({
   /**
+   * The server's clock when this was built, for reading each part's `since` against it rather than the reader's own clock,
+   * which may be off. A view, never stored: set again on every snapshot.
+   */
+  now: ISODateSchema,
+  /**
    * All of it at once: on while notes are on, paused while the organizer holds them, off otherwise, and unavailable
    * when notes are on but the host's browser can neither record nor listen, or is out of the call (`away`).
    */

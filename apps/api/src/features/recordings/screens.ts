@@ -393,11 +393,12 @@ export const shareBudget = (seconds: number) => Math.round((Math.max(0, seconds)
  * take the share's pieces past `budget` bytes (shareBudget, from how long it has been up) is refused (409), so nobody
  * fills the organizer's storage under one share.
  */
-export async function appendPiece(o: Owner, recordingId: string, shareId: string, p: Piece, budget: number, tail = false): Promise<void> {
+export async function appendPiece(o: Owner, recordingId: string, shareId: string, p: Piece, budget: number, tail: false | 'ended' | 'notes-off' = false): Promise<void> {
   const where = { recordingId, shareId, segment: p.segment, seq: p.seq, atMs: p.atMs, tail: tail ? 1 : 0 };
   if (await pieceStored(o, recordingId, shareId, p)) { slog.debug('screen piece already stored', where); return; }
   const { krec, state } = await krecOf(o, recordingId);
-  if (state !== 'recording' && !(tail && state === 'stopped')) { krec.fill(0); throw conflict(state === 'paused' ? 'Notes are paused.' : 'Notes aren’t on right now.', { ...where, state }); }
+  // A tail goes into a stopped recording; and into a paused one only when notes going off ended its share (that pauses it).
+  if (state !== 'recording' && !(tail && state === 'stopped') && !(tail === 'notes-off' && state === 'paused')) { krec.fill(0); throw conflict(state === 'paused' ? 'Notes are paused.' : 'Notes aren’t on right now.', { ...where, state }); }
   const objectId = id128();
   const ct = sealRecord(krec, pieceHeader(o, recordingId, shareId, p.segment, p.seq, objectId), p.bytes);
   krec.fill(0);
@@ -439,10 +440,14 @@ export async function appendPiece(o: Owner, recordingId: string, shareId: string
   else slog.info('screen piece raced its recording being deleted; dropping it', where);
 }
 
-/** Decrypts one share's pieces in one segment, in order: MediaRecorder's pieces join into one stream. */
-async function* piecesOf(o: Owner, recordingId: string, shareId: string, segment: number): AsyncGenerator<Uint8Array> {
-  const pieces = await rows(o.pool, z.object({ seq: z.number(), object_id: z.string(), cipher_sha256: bytea }),
-    'SELECT seq, object_id, cipher_sha256 FROM screen_pieces WHERE owner_id = $1 AND recording_id = $2 AND share_id = $3 AND segment = $4 ORDER BY seq', [o.ownerId, recordingId, shareId, segment]);
+const PieceRef = z.object({ seq: z.number(), object_id: z.string(), cipher_sha256: bytea });
+type PieceRef = z.infer<typeof PieceRef>;
+/** One share's pieces in one segment as they are now, in order. */
+const pieceList = (o: Owner, recordingId: string, shareId: string, segment: number) =>
+  rows(o.pool, PieceRef, 'SELECT seq, object_id, cipher_sha256 FROM screen_pieces WHERE owner_id = $1 AND recording_id = $2 AND share_id = $3 AND segment = $4 ORDER BY seq', [o.ownerId, recordingId, shareId, segment]);
+
+/** Decrypts the given pieces of a share's segment, in order: MediaRecorder's pieces join into one stream. */
+async function* piecesOf(o: Owner, recordingId: string, shareId: string, segment: number, pieces: PieceRef[]): AsyncGenerator<Uint8Array> {
   const { krec } = await krecOf(o, recordingId);
   try {
     for (const p of pieces) {
@@ -549,24 +554,28 @@ async function joinVideo(o: Owner, recordingId: string): Promise<{ videos: numbe
     const ctx = { recordingId, shareId: first.share_id, segment: first.segment, pieces: first.pieces };
     const done = await maybeOne(o.pool, z.object({ n: z.number() }), 'SELECT count(*)::int AS n FROM screen_videos WHERE owner_id = $1 AND recording_id = $2 AND share_id = $3 AND segment = $4',
       [o.ownerId, recordingId, first.share_id, first.segment]);
-    if (done?.n) { await dropPieces(o, recordingId, first.share_id, first.segment); continue; }
+    if (done?.n) { await dropPieces(o, recordingId, first.share_id, first.segment, 'video kept'); continue; }
     let g: Group | undefined = first;
     for (let pass = 1; g; pass++) {
       const type = videoType(g.mime_type);
       let video: Video;
+      let seqs: number[] = [];
       try {
         if (!type) throw new MediaError(undefined, { context: { ...ctx, why: 'type' } });
-        video = await remux(piecesOf(o, recordingId, g.share_id, g.segment), g.mime_type);
+        // The pieces listed here are the ones joined, and the only ones storeVideo deletes: later ones are never lost unjoined.
+        const list = await pieceList(o, recordingId, g.share_id, g.segment);
+        seqs = list.map((x) => x.seq);
+        video = await remux(piecesOf(o, recordingId, g.share_id, g.segment, list), g.mime_type);
       } catch (e) {
         if (!(e instanceof MediaError) && !(e instanceof IntegrityError)) throw e;
         slog.at(e instanceof IntegrityError ? 'error' : 'warn', 'a shared screen’s video couldn’t be joined; left out of replay, and its pieces deleted', { ...ctx, err: e });
         // Both failures are the same every time, so the pieces go rather than being joined again at every upkeep.
-        await dropPieces(o, recordingId, g.share_id, g.segment);
+        await dropPieces(o, recordingId, g.share_id, g.segment, 'unjoinable');
         failed++;
         break;
       }
-      // More pieces since it was joined: once, it's joined again with them; after that it's kept as it is.
-      const more = await storeVideo(o, recordingId, g, type, video, pass < 2);
+      // More pieces since it was joined: twice, it's joined again with them; after that it's kept as it is, and any later piece is dropped (logged).
+      const more = await storeVideo(o, recordingId, g, type, video, seqs, pass < 3);
       if (more) { slog.info('a shared screen’s video got more pieces while it was joined; joining again', { ...ctx, pieces: more.pieces }); g = more; continue; }
       videos++;
       g = undefined;
@@ -592,10 +601,11 @@ export async function videoReady(o: Owner, recordingId: string): Promise<boolean
  * Seals a joined video in chunks, checks each, and keeps their rows in one transaction with the pieces gone (rows, then
  * objects once it commits). The share's row is locked first, so no piece is stored meanwhile (appendPiece), and the
  * pieces counted again: when more came in since it was joined and `again` allows, nothing is kept and the share's
- * pieces are returned, to join again. When another join (on another instance) kept this share's video first, this one
+ * pieces are returned, to join again. Only the pieces joined (`seqs`) are deleted; one that came in after the last pass stays, and
+ * the next run finds the video kept and drops it with a warning. When another join (on another instance) kept this share's video first, this one
  * keeps nothing and its objects go.
  */
-async function storeVideo(o: Owner, recordingId: string, g: Group, type: VideoType, video: Video, again: boolean): Promise<Group | null> {
+async function storeVideo(o: Owner, recordingId: string, g: Group, type: VideoType, video: Video, seqs: number[], again: boolean): Promise<Group | null> {
   const chunks = Math.max(1, Math.ceil(video.length / VIDEO_CHUNK_BYTES));
   const stored: { chunk: number; objectId: string; digest: Uint8Array; bytes: number; plain: number }[] = [];
   const where = { recordingId, shareId: g.share_id, segment: g.segment };
@@ -630,7 +640,7 @@ async function storeVideo(o: Owner, recordingId: string, g: Group, type: VideoTy
           [o.ownerId, recordingId, g.share_id, g.segment, x.chunk, x.objectId, x.digest, x.bytes, x.plain, video.length, chunks, g.at_ms, durationMs, type]);
       }
       const gone = await rows(c, z.object({ object_id: z.string(), cipher_bytes: z.coerce.number() }),
-        'DELETE FROM screen_pieces WHERE owner_id = $1 AND recording_id = $2 AND share_id = $3 AND segment = $4 RETURNING object_id, cipher_bytes', [o.ownerId, recordingId, g.share_id, g.segment]);
+        'DELETE FROM screen_pieces WHERE owner_id = $1 AND recording_id = $2 AND share_id = $3 AND segment = $4 AND seq = ANY($5::int[]) RETURNING object_id, cipher_bytes', [o.ownerId, recordingId, g.share_id, g.segment, seqs]);
       const added = stored.reduce((n, x) => n + x.bytes, 0) - gone.reduce((n, x) => n + x.cipher_bytes, 0);
       await exec(c, 'UPDATE owners SET stored_bytes = greatest(0, stored_bytes + $2), version = version + 1 WHERE owner_id = $1', [o.ownerId, added]);
       return { more: null, pieces: gone.map((x) => x.object_id), kept: false };
@@ -652,11 +662,12 @@ async function storeVideo(o: Owner, recordingId: string, g: Group, type: VideoTy
 }
 
 /** A share's pieces in a segment, once its video is kept: rows (and the bytes they count) in a transaction, then objects. */
-async function dropPieces(o: Owner, recordingId: string, shareId: string, segment: number): Promise<void> {
+async function dropPieces(o: Owner, recordingId: string, shareId: string, segment: number, why: 'unjoinable' | 'video kept'): Promise<void> {
   const gone = await tx(o.pool, async (c) => {
     const del = await rows(c, z.object({ object_id: z.string(), cipher_bytes: z.coerce.number() }),
       'DELETE FROM screen_pieces WHERE owner_id = $1 AND recording_id = $2 AND share_id = $3 AND segment = $4 RETURNING object_id, cipher_bytes', [o.ownerId, recordingId, shareId, segment]);
     const bytes = del.reduce((n, x) => n + x.cipher_bytes, 0);
+    if (del.length) slog.warn('shared screen pieces dropped without being joined', { recordingId, shareId, segment, why, pieces: del.length, bytes });
     if (bytes) await exec(c, 'UPDATE owners SET stored_bytes = greatest(0, stored_bytes - $2), version = version + 1 WHERE owner_id = $1', [o.ownerId, bytes]);
     return del.map((x) => x.object_id);
   });

@@ -63,6 +63,8 @@ async function run(what: string, args: string[], input: AsyncIterable<Uint8Array
     p.on('error', reject);
     p.on('close', (code, signal) => resolve({ code, signal }));
   });
+  // Observed now: `exited` can reject (e.g. ENOENT) while `feed` is still awaited; the await below still sees the rejection.
+  exited.catch(() => undefined);
   // One listener for every wait on stdin below: ffmpeg gone means nothing more will drain.
   let gone = false;
   let wake: (() => void) | null = null;
@@ -196,17 +198,34 @@ export async function frames(input: AsyncIterable<Uint8Array>, mime: string, at:
  * a 0xFF byte is always followed by 0x00 or a restart marker, so an end marker is always the image's end.
  */
 function jpegSplitter(emit: (jpeg: Uint8Array) => void): (chunk: Uint8Array) => void {
-  let held: Uint8Array = new Uint8Array(0);
+  // Chunks of the image being read (or of the bytes before the next start), and whether the last byte seen was 0xFF.
+  let held: Uint8Array[] = [];
+  let inImage = false;
+  let ff = false;
   return (chunk) => {
-    const b = held.length ? Buffer.concat([held, chunk]) : chunk;
-    let start = -1;
-    let from = 0;
-    for (let i = 0; i + 1 < b.length; i++) {
-      if (b[i] !== 0xff) continue;
-      const next = b[i + 1];
-      if (start < 0 && next === 0xd8) { start = i; i++; } else if (start >= 0 && next === 0xd9) { emit(b.slice(start, i + 2)); start = -1; from = i + 2; i++; }
+    let from = 0; // where the part of this chunk still to be kept begins
+    for (let i = 0; i < chunk.length; i++) {
+      const byte = chunk[i];
+      if (ff) {
+        ff = false;
+        if (!inImage && byte === 0xd8) {
+          // The 0xFF before it may be in an earlier chunk, so it's carried on its own.
+          inImage = true;
+          held = [Uint8Array.of(0xff)];
+          from = i;
+          continue;
+        }
+        if (inImage && byte === 0xd9) {
+          emit(Buffer.concat([...held, chunk.subarray(from, i + 1)]));
+          held = [];
+          inImage = false;
+          from = i + 1;
+          continue;
+        }
+      }
+      if (byte === 0xff) ff = true;
     }
-    held = b.slice(start >= 0 ? start : Math.max(from, b.length - 1));
+    if (inImage) held.push(chunk.subarray(from));
   };
 }
 

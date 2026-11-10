@@ -618,7 +618,7 @@ Code: `apps/web/src/features/call/screen-sharing/screenRecord.ts` (the recorder)
   request alone (only the organizer's works for anything else); either way the answer says only that they're out. The notes worker waits until 20 seconds after the last kept share
   ended before it joins the video. A piece is stored holding its share's row (`FOR SHARE`), and refused (`404`,
   its object deleted) once that share's video in its segment is joined; joining locks the row (`FOR UPDATE`) and
-  counts the pieces again, and joins once more if more came in meanwhile. The browser drops a piece refused with `409`, and stops recording a
+  counts the pieces again, and joins again (up to twice) if more came in meanwhile; only the pieces that were joined are deleted, so a piece that arrives after the last pass is dropped on the next run, with a warning. The browser drops a piece refused with `409`, and stops recording a
   share refused with `403` or `404`. What this proves is that the sender is the presenter who started that share,
   said it goes in the notes, and has a screen up in the call: the API can't see what's on it, so the video is the
   presenter's browser's word. A modified browser could send any video under its own kept share while it shares a
@@ -650,6 +650,9 @@ Code: `apps/web/src/features/call/screen-sharing/screenRecord.ts` (the recorder)
   a range needs, with `cache-control: no-store`. The note's player keeps the audio as its clock and a muted video
   follows it, put back in step when it drifts more than 0.3 seconds; with two shares at once it shows the one that
   started last, with a chip for each, and between shares a dark stage that says **Nothing shared**.
+  Joining holds the whole video in memory, about twice over while a WebM is indexed, and `shareBudget` allows roughly
+  250 KB/s, so an hour of sharing can be about 900 MB. Streaming the join into the chunk sealer would remove that; it
+  needs a two-pass `seekableWebm`, and is a follow-up.
 - **Breakout rooms.** What's shared in a room stays in the room, like what's said there: a share started in one is
   never kept, the browser doesn't record while its presenter is in one, and leaving the main room ends the
   presenter's shares there. The main room's shares are kept while rooms are open.

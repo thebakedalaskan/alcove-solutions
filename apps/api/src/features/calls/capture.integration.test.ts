@@ -7,7 +7,7 @@
 import { AlcoveApiError, type AlcoveApi, type AudioPiece, type CallSession, type CallState, type NoteProgress, type TranscriptClip } from '@alcove/api';
 import { randomBytes } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { speechWav } from '../../testing/fake-near';
+import { UNENCRYPTED_MODEL, VISION_MODEL, speechWav } from '../../testing/fake-near';
 import { ORIGIN, startHarness, type Harness } from '../../testing/harness';
 
 // Letting people into a call goes through its MLS group, which a busy CI runner can be slow at; every wait says what it waited for.
@@ -417,13 +417,13 @@ describe('what a call captures', () => {
     // The card, for anyone with the link: the state, and who changed it as a role, never a name.
     const card = await anyone.calls.card(c);
     expect(card.capture).toEqual({
-      mode: 'paused', recording: { mode: 'paused', since: expect.any(String), by: { kind: 'organizer' } }, transcript: { mode: 'paused', since: expect.any(String), by: { kind: 'organizer' } },
+      now: expect.any(String), mode: 'paused', recording: { mode: 'paused', since: expect.any(String), by: { kind: 'organizer' } }, transcript: { mode: 'paused', since: expect.any(String), by: { kind: 'organizer' } },
       ai: { mode: 'paused', since: expect.any(String), by: { kind: 'organizer' } }, screen: { mode: 'off', since: null, by: null }, gaps: [], requests: [], asked: null, room: null, away: false, model: null, modelPrivate: true, allowScreens: false
     });
     // Someone asking to join sees the same, and nobody in the call or anything said in it.
     const waiting = await h.browser().api.calls.join(c, { mic: true, cam: false, name: 'Lee' });
     const w = waiting.getSnapshot();
-    expect(w.capture).toEqual(card.capture);
+    expect(w.capture).toEqual({ ...card.capture, now: expect.any(String) });
     expect(w).toMatchObject({ participants: [], transcript: [], waiting: [], notices: [] });
     for (const shown of [JSON.stringify(card.capture), JSON.stringify(w)]) {
       for (const secret of [org.session.user.name, org.session.user.email, 'Samwise', 'CANARY-CAPTURE', member.ticket.identity]) expect(shown.includes(secret), secret).toBe(false);
@@ -433,6 +433,22 @@ describe('what a call captures', () => {
     for (const secret of ['Samwise', 'CANARY-CAPTURE']) expect(logs.includes(secret), secret).toBe(false);
     const row = String((await h.pool.query('SELECT row_to_json(x)::text AS t FROM calls x WHERE call_id = $1', [host.ticket.callId])).rows[0]?.t ?? '');
     for (const secret of ['Samwise', 'Samwise Canary', 'paused', 'CANARY-CAPTURE']) expect(row.includes(secret), secret).toBe(false);
+    await host.leave();
+  });
+
+  it('tells everyone when the organizer changes the AI model, and says so when it is unencrypted', async () => {
+    const org = await account(unique('organizer'));
+    const { code: c } = await org.api.calls.startNow({ notes: 'on' });
+    const host = await org.api.calls.join(c, { mic: true, cam: false });
+    await host.setModel(VISION_MODEL);
+    expect(host.getSnapshot().notices.at(-1)).toMatchObject({ kind: 'notes', text: 'The organizer changed the AI model that writes the notes. Everyone here can see that.' });
+    // The same choice again changes nothing.
+    const before = host.getSnapshot().notices.length;
+    await host.setModel(VISION_MODEL);
+    expect(host.getSnapshot().notices).toHaveLength(before);
+    await host.setModel(UNENCRYPTED_MODEL);
+    expect(host.getSnapshot().capture.modelPrivate).toBe(false);
+    expect(host.getSnapshot().notices.at(-1)?.text).toMatch(/unencrypted AI model/);
     await host.leave();
   });
 });

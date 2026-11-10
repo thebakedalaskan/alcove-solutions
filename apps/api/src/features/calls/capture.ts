@@ -189,6 +189,7 @@ export function stateFor(c: {
     return { mode: k !== 'ai' && cant.has(k) ? 'unavailable' : current[k], since: h ? when(h.at) : null, by: h ? actor(h.by) : null };
   };
   return {
+    now: new Date().toISOString(),
     mode: cant.has('recording') && cant.has('transcript') ? 'unavailable' : c.status,
     recording: part('recording'), transcript: part('transcript'), ai: part('ai'), screen: screenPart(c, when, actor),
     gaps: c.gaps, requests: c.requests, asked: c.asked, room: null, away: c.away, model: c.model, modelPrivate: c.modelPrivate, allowScreens: c.allowScreens

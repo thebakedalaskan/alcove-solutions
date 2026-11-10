@@ -198,9 +198,13 @@ describe('shared screens kept for the notes', () => {
     await host.setNotes(false);
     expect(host.getSnapshot().shares).toEqual([{ id: share.share, participant: host.ticket.identity, keep: false }]);
     expect(host.getSnapshot().capture.screen.mode).toBe('off');
-    expect(await fails(host.appendScreen(piece(share.share, 1, { segment })))).toEqual(['forbidden', 'That share doesn’t go in the notes.']);
+    // The piece its browser was already sending is still its tail (it was kept until notes went off): it's taken, though notes are now off.
+    await host.appendScreen(piece(share.share, 1, { segment }));
     expect(await fails(host.startShare({ notes: true }))).toEqual(['conflict', NOTES_FIRST]);
-    expect((await sharing(host, false)).keep).toBe(false);
+    // One that was never kept is refused.
+    const plain = await sharing(host, false);
+    expect(plain.keep).toBe(false);
+    expect(await fails(host.appendScreen(piece(plain.share, 0)))).toEqual(['forbidden', 'That share doesn’t go in the notes.']);
     await host.leave();
   });
 

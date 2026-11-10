@@ -62,6 +62,12 @@ export class ScreenRecorder {
   private refused = new Set<string>();
   /** Runs (`share:segment`) whose first piece, the one with the WebM header, was lost for good: the server can't join the rest, so they aren't sent. */
   private headless = new Set<string>();
+  /**
+   * Runs (`share:segment`) that have started: a segment gets one run per share. A second run would restart `seq` at 0 and
+   * collide with the pieces already stored (a conflict), and its header-less pieces can't join the first run's stream.
+   * Resuming within a segment would need a run column on the server (follow-up).
+   */
+  private done = new Set<string>();
 
   constructor(private readonly upload: (p: ScreenPiece) => Promise<void>, private readonly onProblem: (message: string | null) => void) {}
 
@@ -75,6 +81,7 @@ export class ScreenRecorder {
     const r = this.run;
     if (r && r.share === t.share && r.track === track && r.segment === t.segment && r.rec.state !== 'inactive') return;
     if (r) void this.finish();
+    if (this.done.has(`${t.share}:${t.segment}`)) return;
     this.begin(t, track);
   }
 
@@ -156,6 +163,7 @@ export class ScreenRecorder {
       slog.error('shared screen recorder couldn’t start', { err: e, mimeType });
       return;
     }
+    this.done.add(`${share}:${segment}`);
     this.run = { share, track, segment, rec, clone, gen, grace };
     const left = t.since + FIRST_AFTER_MS - performance.now();
     const release = () => {
@@ -207,7 +215,7 @@ export class ScreenRecorder {
         return;
       } catch (e) {
         const code = errorCode(e);
-        if (code === 'conflict') { slog.debug('shared screen piece refused: notes are paused, off or moved on', { ...where, code }); return; }
+        if (code === 'conflict') { slog.info('shared screen piece conflicts with one already stored (or notes are paused, off or moved on); not sent', { ...where, code }); return; }
         if (code === 'forbidden' || code === 'not-found') {
           this.refused.add(p.share);
           if (this.run?.share === p.share) void this.finish();

@@ -146,15 +146,15 @@ export async function list(cfg: Config): Promise<AiModels> {
   return { default: first ? shown(first) : fallback, models: all.map(shown) };
 }
 
-/** Whether a choice goes to a private model: the default does, and so does anything that would fall back to it. */
+/** Whether a choice goes to a private model: the default does, and so does anything that would fall back to it. A model that can't be looked up isn't claimed private. */
 export async function isPrivate(cfg: Config, chosen: string | null): Promise<boolean> {
   if (chosen === null || chosen === cfg.NEAR_AI_NOTES_MODEL || !ready(cfg)) return true;
   try {
     return (await aiModels(cfg)).find((m) => m.id === chosen)?.private ?? true;
   } catch (e) {
     if (!(e instanceof UnansweredError)) throw e;
-    // The lists not answering: a request can't be sent anywhere but the default until they do.
-    return true;
+    // The lists not answering: privacy is only claimed when known, so only the default (or none chosen) is private then.
+    return false;
   }
 }
 

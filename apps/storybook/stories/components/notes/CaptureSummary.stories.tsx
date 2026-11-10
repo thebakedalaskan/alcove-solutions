@@ -17,7 +17,7 @@ interface Parts { recording?: CaptureMode; transcript?: CaptureMode; ai?: Captur
 /** What a call captures: all of it (`mode`), each kind the same unless said, and shared screens not read. */
 function captured(mode: CaptureMode, p: Parts = {}, away = false): CaptureState {
   return {
-    mode, recording: part(p.recording ?? mode), transcript: part(p.transcript ?? mode), ai: part(p.ai ?? (mode === 'unavailable' ? 'on' : mode)),
+    now: SINCE, mode, recording: part(p.recording ?? mode), transcript: part(p.transcript ?? mode), ai: part(p.ai ?? (mode === 'unavailable' ? 'on' : mode)),
     screen: part(p.screen ?? 'off'), gaps: [], requests: [], asked: null, room: null, away, model: null, modelPrivate: true, allowScreens: true
   };
 }
