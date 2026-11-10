@@ -42,6 +42,8 @@
 .nd[data-view="quiet"] .hz-chop { display: none; }
 /* What the keyboard lands on stays clear of the strip above and the bar below. */
 html:has(.nd) { scroll-padding-block: 92px 92px; }
+/* But not while typing in the bar itself: it sits in that room, so each key would scroll the page to bring it clear. */
+html:has(.nd-ask :focus) { scroll-padding-block-end: 0; }
 /* A toast sits above the Ask bar, not on it. */
 body:has(.nd-askdock) .ac-toasts:not(.on-stage) { bottom: 92px; }
 
