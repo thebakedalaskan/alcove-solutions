@@ -554,8 +554,9 @@ process readable and is sealed there (`apps/api/src/features/workspaces/media.ts
   which a player reads by range.
 - **In a document** (`apps/web/src/features/workspace/uploads.ts`). Files go into a document as blocks: photos a browser can
   read as one `gallery`, a film it can play as a `video`, anything else as a `file`, however they come: dropped, pasted, or
-  chosen from **/** → Photos, Video or File, so a picture chosen from File is a photo. Only **Add as a file**, below, makes a
-  picture a `file`. The block holds the space at once, with each
+  chosen from **/** → Photos, Video or File, so a picture chosen from File is a photo. A picture that can't be shown (HEIC,
+  SVG, TIFF, or one this browser can't read) is a `file` when it's chosen from File, which is asked for a file
+  (`prepare`'s `file`); however else it comes, only **Add as a file**, below, makes it one. The block holds the space at once, with each
   file's name and, for a picture or a film, its size in pixels, and says how far it's got (`up`) as pieces go, so everyone sees
   it fill. The block carries the upload's own token (`upload`, random, nothing about the file in it), and the upload follows
   the block by that, not its ID: cut and pasted, the block has a new ID and the upload goes on into it; undone, it has 15
@@ -574,8 +575,9 @@ process readable and is sealed there (`apps/api/src/features/workspaces/media.ts
   list and reads as it always did. A tag counts while its `@First` is still in the words. Whoever's newly tagged is told through
   `mention`, with the gallery's block, or asked about first if they can't open the document, as for a tag in a line. A film's first frame goes first, as a picture of its own
   named `<title> (first frame).jpg`, which the picker never offers as a photo, so there's something to see while the film goes;
-  one whose film never arrives is deleted with its block. A photo the browser can't read isn't sent at all: its block says
-  which file, and the browser that has it offers **Add as a file**, which puts it in as a file in the block's place. What the API
+  one whose film never arrives is deleted with its block. A photo the browser can't read, dropped, pasted or chosen from
+  Photos, isn't sent at all: its block says which file, and the browser that has it offers **Add as a file**, which puts it
+  in as a file in the block's place. What the API
   refuses goes into the block as failed, and the refusal's own words to whoever sent it. That browser says in the document's
   awareness which uploads it's sending (their tokens, nothing else), so a block that says it's uploading with nobody saying so
   for 20 seconds shows as failed. The browser that sent one that failed offers Try again for ten minutes, while it still has the

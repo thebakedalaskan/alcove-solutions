@@ -14,7 +14,7 @@ import { q, qk, useMediaChanges } from '~/lib/queries';
 import type { Ws } from './context';
 import type { BlockJSON, EditorHandle, EditorProps, InsertAt, MediaDeletion, MediaHandlers, MediaPick, Rect } from './editor/types';
 import { fileUrl, type Pictures } from './pictures';
-import { asFile, canAddAsFile, canRetry, discard, FRAME_SUFFIX, isSending, pageTurnedAway, prepare, previewOf, retry, start, stemOf, uploadsStore } from './uploads';
+import { asFile, canAddAsFile, canRetry, discard, FRAME_SUFFIX, isSending, pageTurnedAway, prepare, previewOf, retry, start, stemOf, uploadsStore, type Sorting } from './uploads';
 
 const mlog = log.child({ component: 'workspace-media' });
 
@@ -294,7 +294,7 @@ export function useDocumentMedia(ws: Ws, documentId: string, { session, editor, 
     canAddAsFile: (key) => canAddAsFile(key),
     onAsFile: (key, block) => {
       const file = now.current.readOnly ? null : asFile(key);
-      if (file) sending.current([file], { replace: block }, false, true).catch((err: unknown) => { mlog.warn('a file couldn’t be added', { workspaceId, documentId, err }); });
+      if (file) sending.current([file], { replace: block }, false, 'files').catch((err: unknown) => { mlog.warn('a file couldn’t be added', { workspaceId, documentId, err }); });
     },
     onDuration: (block, seconds) => { if (!now.current.readOnly) now.current.editor?.updateBlock(block, { dur: seconds }); },
     onChoose: (block, rect) => { if (!now.current.readOnly) setPicking({ kind: 'photo', at: { replace: block }, anchor: block, rect }); },
@@ -305,9 +305,9 @@ export function useDocumentMedia(ws: Ws, documentId: string, { session, editor, 
    * Files from the desktop, the clipboard or the picker: their blocks hold the space at once, and they go. What the picker
    * adds has a line after it with the caret in it, as everything `/` adds that isn't text does.
    */
-  const upload = async (files: readonly File[], at: InsertAt, fromPicker = false, asFiles = false) => {
+  const upload = async (files: readonly File[], at: InsertAt, fromPicker = false, as: Sorting = 'found') => {
     if (files.length === 0 || now.current.readOnly) return;
-    const drafts = await prepare(files, asFiles);
+    const drafts = await prepare(files, as);
     const page = now.current.editor;
     if (!page || now.current.readOnly) { discard(drafts); return; }
     const blocks = drafts.map((d) => d.block);
@@ -342,12 +342,15 @@ export function useDocumentMedia(ws: Ws, documentId: string, { session, editor, 
     setPicking(null);
     input.click();
   };
-  /* Whatever was picked for, files go in as a drop puts them: a picture this browser can read is a photo, a film a video. */
+  /*
+   * Whatever was picked for, files go in as a drop puts them: a picture this browser can read is a photo, a film a video.
+   * From File, a picture that can't be shown (HEIC, SVG, TIFF) is attached: a file is what was asked for.
+   */
   const chosen = (e: ChangeEvent<HTMLInputElement>) => {
     const pick = choosingFor.current;
     const files = [...(e.currentTarget.files ?? [])];
     choosingFor.current = null;
-    if (pick) upload(files, pick.at, true).catch((err: unknown) => { mlog.warn('files couldn’t be added', { workspaceId, documentId, err }); });
+    if (pick) upload(files, pick.at, true, pick.kind === 'file' ? 'file' : 'found').catch((err: unknown) => { mlog.warn('files couldn’t be added', { workspaceId, documentId, err }); });
   };
 
   /** Delete for good: every file in the block, from every document that has it, then the block. */
