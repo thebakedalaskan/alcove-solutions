@@ -42,7 +42,7 @@ function RecordPage() {
   const first = read && mine?.length === 0 && !kept.length;
   return (
     <Evening moment="record" className="rec dark" data-first={first ? true : undefined}>
-      <header className="rec-head" style={{ '--d': 0 }}><h1>Record</h1></header>
+      <header className="dusk-top" style={{ '--d': 0 }}><h1 className="dusk-title">Record</h1></header>
       <NightRecorder keeps={keeps} />
       {first && <p className="rec-first" style={{ '--d': 2 }}>Interviews, site visits, meetings around a table: what you record shows up here, with its notes.</p>}
       {(kept.length > 0 || !!mine?.length) && (

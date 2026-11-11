@@ -5,12 +5,19 @@
 .dusk { --hz: 320px; position: relative; isolation: isolate; min-height: 100vh; min-height: 100dvh; }
 .main:has(> .main-in > .dusk) { padding: 0; }
 .main:has(> .main-in > .dusk) .main-in { max-width: none; }
-.main:has(> .main-in > .dusk) .main-top { max-width: calc(1480px + 2 * var(--page-x)); }
+.main:has(> .main-in > .dusk) .main-top { max-width: calc(var(--page-max) + 2 * var(--page-x)); }
 .main:has(> .main-in > .dusk) .top-acts { top: 30px; right: var(--page-x); }
 /* The notice's region is always there; only with something to say does it take room above the sky. */
 .main:has(> .main-in > .dusk) .main-offline:not(:empty) { padding: 30px var(--page-x) 0 max(72px, var(--page-x)); }
 .main-in.enter > .dusk { animation: ac-fade var(--duration-3) var(--ease-out) both; }
-.dusk-in { position: relative; max-width: calc(1480px + 2 * var(--page-x)); margin: 0 auto; padding: 30px var(--page-x) 72px; }
+.dusk-in { position: relative; max-width: calc(var(--page-max) + 2 * var(--page-x)); margin: 0 auto; padding: 30px var(--page-x) 72px; }
+/*
+ * A page's head: its title at the top left, in the same place and the same face on every page, clear of search and you.
+ * A page puts what else its head holds after the title (a note: the way back first, its own name larger).
+ */
+.dusk-top { flex: none; display: flex; align-items: center; gap: 12px; min-height: 40px; padding-right: var(--top-room); }
+.shell.is-bare .dusk-top { padding-left: max(0px, calc(72px - var(--page-x))); }
+.dusk-title { min-width: 0; font: 400 clamp(22px, 2vw, 28px)/1.2 var(--font-display); letter-spacing: -.008em; color: var(--ink); }
 .dusk-in > * { animation: ac-rise var(--duration-3) var(--ease-out) both; animation-delay: calc(var(--d, 0) * 55ms); }
 @media (max-width: 860px) {
   .main:has(> .main-in > .dusk) { padding: 0 0 calc(70px + env(safe-area-inset-bottom, 0px)); }
@@ -21,6 +28,7 @@
    */
   .dusk { --behind: 0px; min-height: calc(100vh - 136px + var(--behind) - env(safe-area-inset-bottom, 0px)); min-height: calc(100dvh - 136px + var(--behind) - env(safe-area-inset-bottom, 0px)); }
   .dusk-in { padding: 6px 20px 28px; }
+  .dusk-top { min-height: 44px; }
 }
 
 /* ------------------------------------------------------------ the colours of each moment */

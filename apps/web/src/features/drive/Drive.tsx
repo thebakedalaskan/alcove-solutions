@@ -67,7 +67,7 @@ export function Drive() {
   const named = namesIn(spaces);
   return (
     <Evening moment="drive" className="dv">
-      <header className="dv-top" style={{ '--d': 0 }}><h1>Drive</h1></header>
+      <header className="dusk-top" style={{ '--d': 0 }}><h1 className="dusk-title">Drive</h1></header>
       <section className="dv-sky" style={{ '--d': 1 }} aria-label="New workspace">
         <p>Every call gets a workspace of its own, with its notes, follow-ups and transcript in a folder. They’re all here, with any you make yourself.</p>
         <Make />

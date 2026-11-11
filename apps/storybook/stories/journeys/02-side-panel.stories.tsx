@@ -93,7 +93,7 @@ export const GroupsAndMinutes: PageStory = {
   play: async ({ userEvent, step }) => {
     await step('Click a group. It opens on the Team page', async () => {
       await userEvent.click(await screen.findByRole('link', { name: 'Product 4 people' }, SOON));
-      await screen.findByRole('heading', { name: 'Vandelay Industries', level: 1 }, SOON);
+      await screen.findByRole('heading', { name: 'Team', level: 1 }, SOON);
     });
     await step('The time of notes left opens Settings at your minutes', async () => {
       await userEvent.click(screen.getByRole('link', { name: /of notes left$/ }));

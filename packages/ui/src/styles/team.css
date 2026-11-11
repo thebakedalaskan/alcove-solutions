@@ -21,8 +21,8 @@
 
 /* ------------------------------------------------------------ the sky: the company in the middle, the people on the line */
 .tp-sky { display: flex; flex-direction: column; height: calc(var(--hz) - 30px); }
-.tp-hero { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 0; padding: 32px 0 6px; text-align: center; }
-.tp-hero h1 { font: 400 clamp(36px, 3.8vw, 56px)/1.1 var(--font-display); letter-spacing: -.012em; color: var(--ink); text-wrap: balance; overflow-wrap: anywhere; }
+.tp-hero { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 0; padding: 0 0 6px; text-align: center; }
+.tp-hero h2 { font: 400 clamp(36px, 3.8vw, 56px)/1.1 var(--font-display); letter-spacing: -.012em; color: var(--ink); text-wrap: balance; overflow-wrap: anywhere; }
 .tp-why { display: inline-flex; align-items: center; gap: 8px; margin-top: 8px; font: 500 15px/1.3 var(--font-sans); color: var(--ink-2); }
 .tp-why .ac-i { flex: none; color: var(--caution); }
 .tp-acts { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px; margin-top: 16px; }
@@ -231,7 +231,7 @@
   .tp-p.has-sun .tp-fig::before { content: ""; position: absolute; left: 50%; bottom: 0; width: 56%; aspect-ratio: 1; border-radius: var(--radius-pill); background: var(--dusk-sun); transform: translate(-50%, 50%); }
   .tp-sky { height: calc(var(--hz) - 6px); }
   .tp-hero { padding: 0 0 8px; }
-  .tp-hero h1 { font-size: 36px; }
+  .tp-hero h2 { font-size: 36px; }
   .tp-row { justify-content: flex-start; margin-inline: -20px; padding: 10px calc(50cqw - 43px) 0; overflow: auto hidden; scroll-snap-type: x proximity; scrollbar-width: none; }
   .tp-gap { display: none; }
   .tp-p { --k: 1 !important; scroll-snap-align: center; }

@@ -12,8 +12,12 @@
 /* The frame: the page scrolls under this rounded edge, so the window's own scrolling carries on as it always has. */
 .shell::after { content: ""; position: fixed; z-index: 6; inset: 8px 8px 8px var(--side); border-radius: 24px; box-shadow: 0 0 0 100vmax var(--frame), inset 0 0 0 1px color-mix(in srgb, var(--ink) 7%, transparent); pointer-events: none; transition: left var(--duration-3) var(--ease-out); }
 .shell.is-bare::after { left: 8px; }
-.main { --top-room: 322px; --page-x: clamp(28px, 3.4vw, 60px); min-width: 0; padding: 30px var(--page-x) 88px; }
-.main-in { max-width: 1480px; margin: 0 auto; }
+/*
+ * Every page is one column, as wide on every page (--page-max) and as far from the frame (--page-x), so going from page to
+ * page leaves its title, search and you where they were.
+ */
+.main { --top-room: 322px; --page-x: clamp(28px, 3.4vw, 60px); --page-max: 1760px; min-width: 0; padding: 30px var(--page-x) 88px; }
+.main-in { max-width: var(--page-max); margin: 0 auto; }
 .main-in.enter > * { animation: ac-rise var(--duration-3) var(--ease-out) both; animation-delay: calc(var(--d, 0) * 55ms); }
 /*
  * A page that fills the frame, like the workspace: it doesn't scroll, it sits 12 px inside the frame, and search and you
@@ -34,7 +38,7 @@
 @media (min-width: 861px) { .shell.is-bare .main:not(:has(> .main-in > .dusk), .is-full) { padding-left: max(72px, var(--page-x)); } }
 .shell.is-bare .main.is-full { --pane-left: 64px; }
 .sb-show { position: fixed; z-index: 20; top: 24px; left: 16px; background: var(--ground); }
-.main-offline { max-width: 1480px; margin: 0 auto; }
+.main-offline { max-width: var(--page-max); margin: 0 auto; }
 .main-offline .sb-status { width: fit-content; max-width: 100%; margin: 0 0 24px; }
 
 /*
@@ -42,11 +46,11 @@
  * them and their focus alone. A page's title keeps clear of them (--top-room), and what a page's header offers sits
  * at the page's right edge beneath them, or beside them on a note's top line (note.css).
  */
-.main-top { position: relative; z-index: 2; height: 0; max-width: 1480px; margin: 0 auto; }
+.main-top { position: relative; z-index: 2; height: 0; max-width: var(--page-max); margin: 0 auto; }
 .top-acts { position: absolute; top: 0; right: 0; display: flex; align-items: center; gap: 12px; }
-.head > :first-child, .rec-head > :first-child { align-self: flex-start; max-width: calc(100% - var(--top-room)); }
+.head > :first-child { align-self: flex-start; max-width: calc(100% - var(--top-room)); }
 @media (min-width: 861px) {
-  .head:has(> :nth-child(2)), .rec-head:has(> :nth-child(2)) { min-height: 92px; }
+  .head:has(> :nth-child(2)) { min-height: 92px; }
 }
 .top-find { display: flex; align-items: center; gap: 10px; width: 250px; height: 38px; padding: 0 8px 0 13px; border-radius: var(--radius-pill); background: color-mix(in srgb, var(--ink) 8%, transparent); color: var(--ink-2); font: 500 14px/1 var(--font-sans); transition: background-color var(--duration-1); }
 .top-find:hover { background: color-mix(in srgb, var(--ink) 13%, transparent); }
