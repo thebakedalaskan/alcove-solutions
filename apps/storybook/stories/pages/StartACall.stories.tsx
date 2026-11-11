@@ -59,8 +59,10 @@ export const WhenPhone = phone(When);
 export const WhenWithoutACalendar = page('/home', 'busy', { beforeEach: changing(noCalendar), play: playing(open, later, priyaAndKofi, findATime) });
 /** Reading the calendars takes a while. */
 export const ReadingCalendars = page('/home', 'busy', { beforeEach: changing(troubled({ 'calendar.busy': 'hold' })), play: playing(open, later, priyaAndKofi, findATime) });
-/** Pick another time: the modal widens around the week, with your own things by name and when anyone is busy. */
+/** Pick another time: the modal widens around the week, Monday to Sunday and the whole day, with your own things by name and when anyone is busy. */
 export const AnotherTime = page('/home', 'busy', { play: playing(open, later, priyaAndKofi, findATime, press('Pick another time', 'Pick another time. The week opens beside the times')) });
+/** On a phone the week sits under the times, all seven days of it. */
+export const AnotherTimePhone = phone(AnotherTime);
 /** How it repeats: every week, every two weeks, every month, or days you pick, with an end date. */
 export const Repeats = page('/home', 'busy', { play: playing(open, later, priyaAndKofi, findATime, press(/Doesn’t repeat/, 'Open Doesn’t repeat'), press(/^Every (Mon|Tues|Wednes|Thurs|Fri)day$/, 'Every week, on the same day')) });
 /** On your own with one guest whose calendar can't be read: Let Ana pick, from times offered. */

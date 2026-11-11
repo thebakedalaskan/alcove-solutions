@@ -9,7 +9,7 @@ import { callName } from '~/lib/people';
 import { dayMonth, hm, shortDay, timeZone, weekday } from '~/lib/time';
 import { useTimes, useWeek } from '../scheduling/availability';
 import { repeatInput, ruleOf, type Draft, type RepeatKind, type Repeating } from './draft';
-import { localDay, localWeekday, workingDays, type Slot } from '../scheduling/times';
+import { localDay, localWeekday, weekDays, weeksTo, type Slot } from '../scheduling/times';
 import { callCount, dayWord, freeLine, repeatLine, shortTime, whenLine } from '../scheduling/words';
 
 const LENGTHS = [30, 45, 60] as const;
@@ -17,7 +17,6 @@ const lengthLabel = (m: number) => (m % 60 ? `${m} min` : `${m / 60} h`);
 /** The week shows the whole day, and opens with nine o'clock at its top (WeekGrid). */
 const WEEK_FROM = 0;
 const WEEK_TO = 24;
-const WEEK_DAYS = 5;
 const DAY_LETTERS = [['M', 1], ['T', 2], ['W', 3], ['T', 4], ['F', 5], ['S', 6], ['S', 0]] as const;
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'] as const;
 /** The most times a guest can be offered, which is also how many cards there are to tick. */
@@ -46,13 +45,19 @@ function Times({ times, shown, on, onPick }: {
   );
 }
 
-/** The week: five working days from today, then the next five, with what's already in them. */
+/**
+ * The week: Monday to Sunday, from this week on, with what's already in them. It turns to the week of the time picked
+ * whenever that changes, from a card or a time typed.
+ */
 export function Week({ emails, chosen, minutes, onPick, except }: { emails: readonly string[]; chosen: Date | null; minutes: number; onPick: (at: Date) => void; except?: Meeting | undefined }) {
-  const [page, setPage] = useState(0);
-  const days = useMemo(() => {
-    const all = workingDays(new Date(), WEEK_DAYS * (page + 1));
-    return all.slice(-WEEK_DAYS);
-  }, [page]);
+  const weekOf = (at: Date | null) => (at ? Math.max(0, weeksTo(new Date(), at)) : 0);
+  const [page, setPage] = useState(() => weekOf(chosen));
+  const [followed, setFollowed] = useState(chosen?.getTime() ?? null);
+  if ((chosen?.getTime() ?? null) !== followed) {
+    setFollowed(chosen?.getTime() ?? null);
+    setPage(weekOf(chosen));
+  }
+  const days = useMemo(() => weekDays(new Date(), page), [page]);
   const week = useWeek(emails, days, except);
   const hoursOf = (at: Date) => at.getHours() + at.getMinutes() / 60;
   const dayIndex = (at: Date) => days.findIndex((d) => d.toDateString() === at.toDateString());
@@ -85,8 +90,8 @@ export function Week({ emails, chosen, minutes, onPick, except }: { emails: read
       <div className="cf-wk-top">
         <span>{first && last ? `${dayMonth(first)} – ${dayMonth(last)}` : ''}</span>
         <span className="cf-wk-nav">
-          <IconButton icon="left" size={16} label="Earlier days" disabled={page === 0} onClick={() => setPage((p) => Math.max(0, p - 1))} />
-          <IconButton icon="right" size={16} label="Later days" onClick={() => setPage((p) => p + 1)} />
+          <IconButton icon="left" size={16} label="The week before" disabled={page === 0} onClick={() => setPage((p) => Math.max(0, p - 1))} />
+          <IconButton icon="right" size={16} label="The week after" onClick={() => setPage((p) => p + 1)} />
         </span>
       </div>
       <WeekGrid label="Pick a time" from={WEEK_FROM} to={WEEK_TO} events={events}

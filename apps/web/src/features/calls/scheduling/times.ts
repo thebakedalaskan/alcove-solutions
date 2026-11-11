@@ -146,7 +146,17 @@ export function slotAt(at: Date, minutes: number, you: readonly Interval[], peop
   return { at, free, of: people.length + 1 };
 }
 
-/** The next working days from `from`, that day included when it is one. */
+/** The Monday a week starts on, for the week `at` falls in, where you are. */
+const mondayOf = (at: Date) => new Date(at.getFullYear(), at.getMonth(), at.getDate() - ((at.getDay() + 6) % 7));
+/** The seven days of a week, Monday to Sunday: the week `from` falls in, `weeks` on. */
+export function weekDays(from: Date, weeks: number): Date[] {
+  const monday = mondayOf(from);
+  return Array.from({ length: 7 }, (_, i) => new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + 7 * weeks + i));
+}
+/** How many weeks on from the week `from` falls in is the week `at` falls in. */
+export const weeksTo = (from: Date, at: Date): number => Math.round((mondayOf(at).getTime() - mondayOf(from).getTime()) / (7 * DAY));
+
+/** The next working days from `from`, that day included when it is one: the suggestions keep to them. */
 export function workingDays(from: Date, count: number): Date[] {
   const out: Date[] = [];
   for (const d = new Date(from.getFullYear(), from.getMonth(), from.getDate()); out.length < count; d.setDate(d.getDate() + 1)) {

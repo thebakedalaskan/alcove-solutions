@@ -192,9 +192,10 @@ send to anyone".
    "All 8 of you are free at these times.", how many are free under each time, that other calendars can't be read and
    the times are free on yours, or with no calendar connected that these are open working hours. The length is 30 min,
    45 min or 1 h. **Pick another time** widens the modal around the week, with your own things by name and when anyone
-   is busy, at their real times. It's the whole day, 00:00 to 24:00, with every hour line labelled, the end included, and
-   it opens with 09:00 at its top. Every half hour can be picked (arrow keys move around it); the arrows go to the next
-   five working days.
+   is busy, at their real times. It's a week, Monday to Sunday, the weekend a day like any other, and the whole day, 00:00
+   to 24:00, with every hour line labelled, the end included; it opens with 09:00 at its top, on the week of the time
+   picked, and turns to it whenever that changes. Every half hour can be picked (arrow keys move around it); the arrows go
+   a week at a time. **Move this call** uses the same week.
    **Doesn't repeat** opens Every Thursday, Every 2 weeks, Every month (on "the third Thursday"; a fifth one is "the
    last") or Days you pick, with an end date, which counts once you leave the field or press Enter. Repeats keep their
    clock time where you are when the clocks change, and one repeat is at most 60 calls. On your own, with one guest whose calendar can't be read, **Let Jamie pick** offers

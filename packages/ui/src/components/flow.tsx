@@ -232,7 +232,7 @@ export function WeekGrid({ days, events, pick, from, to, isBusy, isPast, onPick,
   const clock = (slot: number) => { const h = from + slot / 2; return `${String(Math.floor(h)).padStart(2, '0')}:${h % 1 ? '30' : '00'}`; };
   return (
     <div ref={box} className="wk-scroll" role="group" aria-label={label}>
-      <div className="wk" style={{ '--rows': to - from, '--from': from }}>
+      <div className="wk" style={{ '--rows': to - from, '--from': from, '--days': days.length }}>
         <span className="wk-corner" />
         {days.map((d) => <span key={d.label} className={cn('wk-d', d.today && 'today')} aria-hidden="true">{d.weekday}<b>{d.date}</b></span>)}
         <div className="wk-hrs" aria-hidden="true">{hours.map((h) => <span key={h}>{twoDigits(h)}</span>)}<span>{twoDigits(to)}</span></div>

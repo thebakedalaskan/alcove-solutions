@@ -145,7 +145,8 @@ button.cf-r:enabled:hover b { color: var(--sun-text); }
 .cf-wk-nav { display: flex; gap: 2px; }
 /* --hh is an hour's height, --top the room above the first hour line, so its label clears the sticky days (WeekGrid's HOUR and TOP). */
 .wk-scroll { --hh: 34px; --top: 8px; max-height: calc(9 * var(--hh) + 44px); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
-.wk { display: grid; grid-template-columns: 34px repeat(5, minmax(0, 1fr)); padding-bottom: var(--top); }
+/* A column for each day it's given: a week is seven, Monday to Sunday, every one alike. */
+.wk { display: grid; grid-template-columns: 34px repeat(var(--days), minmax(0, 1fr)); padding-bottom: var(--top); }
 .wk-d { position: sticky; top: 0; z-index: 3; height: 44px; padding-bottom: 8px; background: var(--surface-raised); text-align: center; font: 500 12px/1.2 var(--font-sans); color: var(--ink-3); }
 .wk-d b { display: block; margin-top: 3px; font: 600 15px/1 var(--font-sans); color: var(--ink); }
 .wk-d.today, .wk-d.today b { color: var(--sun-text); }
@@ -236,7 +237,7 @@ button.cf-doc:hover { background: var(--sunk); }
   .cf-confirm { margin: 12px 18px calc(18px + env(safe-area-inset-bottom, 0px)); }
   .cf-more { padding-left: 0; }
   .cf-field input { font-size: 16px; }
-  .wk { grid-template-columns: 28px repeat(5, minmax(0, 1fr)); }
+  .wk { grid-template-columns: 28px repeat(var(--days), minmax(0, 1fr)); }
 }
 
 /* --------------------------------------------------------------- keyframes */
