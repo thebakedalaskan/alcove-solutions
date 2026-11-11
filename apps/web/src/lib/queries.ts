@@ -696,7 +696,10 @@ export function useRevokeNoteLink(noteId: string) {
   const qc = useQueryClient();
   return useMutation({ mutationFn: (linkId: string) => api.notes.revokeLink(noteId, linkId), onSuccess: (links) => qc.setQueryData(qk.noteLinks(noteId), links), onError: (e) => gone(qc, e) });
 }
-/** Opens a link for the account signed in: its notes join theirs, so the lists are read again. */
+/**
+ * Opens a link for the account signed in, only once they've pressed Open the notes on the link's page (it names the
+ * account, since everyone with the notes will see it): its notes join theirs, so the lists are read again.
+ */
 export function useClaimNoteLink() {
   const qc = useQueryClient();
   return useMutation({ mutationFn: (secret: string) => api.notes.claimLink(secret), onSuccess: () => qc.invalidateQueries({ queryKey: qk.notes }) });

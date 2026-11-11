@@ -1243,8 +1243,11 @@ Storybook journeys **6.23–6.25** show the review alongside the call:
   who removed them gets them again. Each share records who shared the notes and when, and the group's name
   when they went to one of the sharer's groups.
 - **Share a link**, under the people in Share, is for someone whose address you don't have: **Make a link** shows a link
-  to copy, once. Whoever opens it while signed in gets the notes, as shared by you, for seven days; the link alone opens
-  nothing, and someone signed out is asked to sign in first (to a real account, unless the organizer's is a demo one).
+  to copy, once. For seven days, whoever opens it can have the notes, as shared by you, and the link alone opens nothing.
+  Signed in, it asks first, because everyone with the notes will see who opened it: "Open them as
+  kofi@vandelay.industries? Everyone who has them will see that you did." Only **Open the notes** gives that account the
+  notes and opens them; **Not now** goes to Home with nothing given. Someone signed out is asked to sign in first (to a
+  real account, unless the organizer's is a demo one), and is then asked the same: signing in never opens them by itself.
   The links that still work are listed there, **Your link** or **Priya's link**, with until when, and whoever made one,
   or the organizer, can **Revoke** it: from then on it opens nothing, and whoever it gave the notes to keeps them. A
   link that's run out or been revoked says so, and to ask for a new one. Notes from a link say **From Priya's link**
@@ -1409,7 +1412,8 @@ Storybook journeys **6.23–6.25** show the review alongside the call:
 
 Storybook journeys **8.47** and **8.48** write straight into the shared notes: posting for everyone in one step, and
 someone getting the notes while the box is open, which it says before posting again. **8.49** shares the notes by a
-link, then revokes it.
+link, then revokes it, and **8.50** opens one signed out: it asks to sign in, then asks before opening the notes as that
+account.
 
 Storybook journeys **8.44–8.46** continue the same review after the call:
 
