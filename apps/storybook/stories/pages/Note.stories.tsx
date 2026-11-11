@@ -7,7 +7,7 @@ import { changing, page, pages, type PageArgs, type PageStory } from '../../src/
 import { withDriveExports, withSharedCallExports } from '../../src/world/drive-exports';
 import { FOLLOW_UP_NOTE, withFollowUpProposals } from '../../src/world/follow-ups';
 import { STATES, inEveryState } from '../../src/world/states';
-import { longSuggestions, troubled, writtenUnencrypted } from './changes';
+import { longSide, longSuggestions, troubled, writtenUnencrypted } from './changes';
 
 const meta = { title: 'Pages/A note', ...pages } satisfies Meta<PageArgs>;
 export default meta;
@@ -132,6 +132,22 @@ export const SharedNotesBox = page('/notes/n2', 'busy', {
 });
 export const SharedNotesBoxNight = page('/notes/n2', 'busy', { globals: { theme: 'dark' } });
 export const SharedNotesBoxPhone = phone(page('/notes/n2', 'busy'));
+/**
+ * A long column beside the note (ten more of Art's notes, more in the shared notes, a dozen people and Google Drive),
+ * with the whole transcript open and the page at its end: the column keeps its place under the line and scrolls by itself.
+ */
+const toTheEnd: PageStory['play'] = async ({ userEvent, step }) => {
+  await step('Open the whole transcript and go to the end of the page', async () => {
+    await userEvent.click(await screen.findByRole('button', { name: /^Show all \d+ minutes/ }, { timeout: 30000 }));
+    window.scrollTo({ top: document.documentElement.scrollHeight });
+  });
+};
+export const LongColumnLaptop = page('/notes/n2', 'busy', { beforeEach: changing(longSide), globals: { viewport: { value: 'laptop', isRotated: false } }, play: toTheEnd });
+export const LongColumnLaptopNight = page('/notes/n2', 'busy', { beforeEach: changing(longSide), globals: { viewport: { value: 'laptop', isRotated: false }, theme: 'dark' }, play: toTheEnd });
+export const LongColumnWide = page('/notes/n2', 'busy', { beforeEach: changing(longSide), globals: { viewport: { value: 'wide', isRotated: false } }, play: toTheEnd });
+/** At 1180 px and narrower, one column: Your notes and the shared notes come before the transcript, two across, and the rest after it. */
+export const LongColumnTablet = page('/notes/n2', 'busy', { beforeEach: changing(longSide), globals: { viewport: { value: 'tablet', isRotated: false } } });
+export const LongColumnPhone = phone(page('/notes/n2', 'busy', { beforeEach: changing(longSide) }));
 /** Something from Art's own notes, on its way to the shared notes: exactly what goes, the moment, and everyone who gets it. */
 export const AddingToTheSharedNotes = page('/notes/n2', 'busy', {
   play: async ({ canvas, userEvent, step }) => {

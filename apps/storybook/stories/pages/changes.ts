@@ -3,6 +3,7 @@
  * that fails or keeps the page waiting, recordings kept on this device, the calendar, the shared demo account, a call on
  * its way here, the calls other people asked Art to, and notes in every state. All made up, in the demo world.
  */
+import type { PersonalEntry } from '@alcove/api';
 import { UNENCRYPTED_MODEL } from '../../src/api/script';
 import type { Troubles } from '../../src/api/trouble';
 import { keepHere, type KeptSpec } from '../../src/api/kept';
@@ -10,7 +11,8 @@ import type { World } from '../../src/world';
 import { connected, notConnected } from '../../src/world/build';
 import { iso } from '../../src/world/clock';
 import { INVITATIONS, MOVING } from '../../src/world/invitations';
-import { ME_ID } from '../../src/world/people';
+import { withDriveExports } from '../../src/world/drive-exports';
+import { AIKO, DIEGO, ELENA, LENA, MAYA, ME_ID, NADIA, OMAR, PRIYA, SAM, THEO } from '../../src/world/people';
 
 /** These parts of Alcove go wrong while the story is open (src/api/trouble.ts). */
 export const troubled = (troubles: Troubles) => (w: World): void => { w.trouble = { ...w.trouble, ...troubles }; };
@@ -98,4 +100,29 @@ export const KEPT: readonly KeptSpec[] = [
 export const keptHere = async (w: World): Promise<void> => {
   w.trouble = { ...w.trouble, 'recordings.start': 'hold' };
   await keepHere(w.session?.ownerId ?? ME_ID, KEPT);
+};
+
+/**
+ * The standup with a long column beside it: ten more of Art's own notes, three more things in the shared notes, eight
+ * more people with the notes and Google Drive connected, so the column is taller than a laptop's window.
+ */
+export const longSide = (w: World): void => {
+  withDriveExports(w);
+  const n = w.notes.find((x) => x.id === 'n2');
+  if (!n) return;
+  const said = [
+    'Check the rollout dates with support before Friday.', 'The flag name needs to match the docs.', 'Ask Maya about the pricing page copy.',
+    'Kofi’s checklist: the empty state and the error copy.', 'Book a room for the design review.', 'Find last quarter’s onboarding numbers.',
+    'Does the help article need screenshots?', 'Write up the beta feedback for Thursday.', 'Send Theo the flag rollout plan.', 'Chase the legal review of the new terms.'
+  ];
+  w.personal['n2'] = [...(w.personal['n2'] ?? []), ...said.map((text, i): PersonalEntry => ({ id: `n2-long-${i}`, at: iso(0, 9, 34 + i), shared: null, kind: 'note', text }))];
+  const at = iso(0, 10, 40);
+  n.additions.push(
+    { id: 'n2-long-x1', text: 'The pricing page copy is in the shared folder too.', by: MAYA, at, moments: [], removable: true },
+    { id: 'n2-long-x2', text: 'Support can start on the article on Monday.', by: LENA, at: iso(0, 11, 5), moments: [], removable: true },
+    { id: 'n2-long-x3', text: 'Two of the checklist items are done now.', by: THEO, at: iso(0, 11, 30), moments: [], removable: true }
+  );
+  const more = [AIKO, LENA, SAM, DIEGO, THEO, NADIA, OMAR, ELENA];
+  n.people.push(...more);
+  n.recipients.push(...more.map((person) => ({ person, role: 'shared' as const, by: PRIYA, at })));
 };

@@ -6,7 +6,7 @@ import { Button, Dots, Evening, Faces, Icon, Modal, Notice, RecDot, Select, cn, 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { createFileRoute, type ErrorComponentProps } from '@tanstack/react-router';
 import { useReducedMotion } from 'motion/react';
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { NoteBoardCards, NoteRoomBoardCards, type RoomBoard } from '~/features/notes/Boards';
 import { CallLine, marksOf } from '~/features/notes/CallLine';
 import { NoteDriveExports } from '~/features/notes/DriveExports';
@@ -131,22 +131,6 @@ function useOpenAt(noteId: string, at: number | undefined, player: PlayerState) 
     done.current = `${noteId}@${at}`;
     seek(at);
   }, [at, noteId, seek, total]);
-}
-
-/**
- * The column beside a long note stays in view: it scrolls with the page until its end is on screen, then waits there.
- * Set on the column, so it needs nothing from the scrolling itself.
- */
-function useStayInView(side: RefObject<HTMLElement | null>) {
-  useEffect(() => {
-    const el = side.current;
-    if (!el) return;
-    const place = () => el.style.setProperty('--nd-stay', `${Math.min(84, innerHeight - el.offsetHeight - 16)}px`);
-    const grew = new ResizeObserver(place);
-    grew.observe(el);
-    addEventListener('resize', place);
-    return () => { grew.disconnect(); removeEventListener('resize', place); };
-  }, [side]);
 }
 
 /** Which lines something in the notes came from. A decision someone said wasn't one no longer counts. */
@@ -343,8 +327,6 @@ function NoteView({ note, me, at, room, onGone }: { note: Note; me: string | und
   const wasReady = useRef(ready);
   const [fresh, setFresh] = useState(false);
   useEffect(() => { if (ready && !wasReady.current) setFresh(true); wasReady.current = ready; }, [ready]);
-  const side = useRef<HTMLElement>(null);
-  useStayInView(side);
 
   const delAsk = mine
     ? `Removes ${asList(['the summary', ...(lines.length ? ['the transcript'] : []), ...(note.rooms.length ? [note.rooms.length === 1 ? 'the breakout room’s section' : `${note.rooms.length} breakout rooms’ sections`] : []), ...(hasAudio ? [`${minutesLabel(note.duration)} of audio`] : []), ...(note.screens.length ? [`${note.screens.length} shared ${note.screens.length === 1 ? 'screen' : 'screens'}`] : []), 'anyone’s own notes on them'])}. Nobody can get them back.`
@@ -437,13 +419,19 @@ function NoteView({ note, me, at, room, onGone }: { note: Note; me: string | und
           </div>
           {ready && (lines.length > 0 || roomsSaid || roomNotes || (written && deleted)) && !going && <AskBar suggestions={note.suggestedQuestions} ask={(question) => api.notes.ask(note.id, question)} onSeek={seek} shown={onScreen} onKeep={keep} />}
         </div>
-        <aside ref={side} className="nd-side" aria-label="About these notes">
-          {showMarks && <ChapterList chapters={note.chapters} onGo={canGo ? goChapter : undefined} />}
-          <OwnNotesCard note={note} me={me} entries={yours.entries} own={yours.own} shown={onScreen} onSeek={seek} />
-          <SharedNotes note={note} me={me} mine={mine} shown={onScreen} onSeek={seek} />
-          <Recipients recipients={note.recipients} me={me} fresh={sharedTo} />
-          {!going && <SeriesCard note={note} />}
-          {!going && note.kind === 'call' && note.id !== 'example' && <NoteDriveExports noteId={note.id} recordingAllowed={mine && note.kept.recording} recordingKept={note.kept.recording} />}
+        {/* Its own scroll area beside the note, so where you write is in reach however long the note is. In one column,
+            where you write comes before the transcript, and the rest after it. */}
+        <aside className="nd-side" aria-label="About these notes">
+          <div className="nd-yours">
+            <OwnNotesCard note={note} me={me} entries={yours.entries} own={yours.own} shown={onScreen} onSeek={seek} />
+            <SharedNotes note={note} me={me} mine={mine} shown={onScreen} onSeek={seek} />
+          </div>
+          <div className="nd-about">
+            {showMarks && <ChapterList chapters={note.chapters} onGo={canGo ? goChapter : undefined} />}
+            <Recipients recipients={note.recipients} me={me} fresh={sharedTo} />
+            {!going && <SeriesCard note={note} />}
+            {!going && note.kind === 'call' && note.id !== 'example' && <NoteDriveExports noteId={note.id} recordingAllowed={mine && note.kept.recording} recordingKept={note.kept.recording} />}
+          </div>
         </aside>
       </div>
       <ScreenViewer noteId={note.id} screens={moments} open={viewer.open} me={me} onOpen={viewer.show} onClose={viewer.close} onPlay={canGo ? playFrom : undefined} onCloseFocus={upToReplay} marks={yours.screens} />
@@ -514,8 +502,6 @@ function Example({ me }: { me: Person }) {
   const [note] = useState(() => exampleNote(me));
   const [actions, setActions] = useState(note.actions);
   const player = usePlayer(note.id, NO_AUDIO, false);
-  const side = useRef<HTMLElement>(null);
-  useStayInView(side);
   return (
     <Evening moment="note" className="nd" data-view="example">
       <PageHead to="Home" title={note.title}>
@@ -535,9 +521,11 @@ function Example({ me }: { me: Person }) {
           </div>
           <AskBar suggestions={note.suggestedQuestions} ask={askExample} />
         </div>
-        <aside ref={side} className="nd-side" aria-label="About these notes">
-          <ChapterList chapters={note.chapters} onGo={undefined} />
-          <Recipients recipients={note.recipients} me={me.email} />
+        <aside className="nd-side" aria-label="About these notes">
+          <div className="nd-about">
+            <ChapterList chapters={note.chapters} onGo={undefined} />
+            <Recipients recipients={note.recipients} me={me.email} />
+          </div>
         </aside>
       </div>
     </Evening>
