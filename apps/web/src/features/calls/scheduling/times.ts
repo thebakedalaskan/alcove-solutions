@@ -117,6 +117,42 @@ export function untilForCalls(rule: RepeatRule, start: Date, timeZone: string, c
   return localDay(new Date(last), timeZone);
 }
 
+/* ---------- a time typed ---------- */
+
+/** The shortest and the longest a call can be, in minutes: the server's limits. */
+export const SHORTEST_CALL = 5;
+export const LONGEST_CALL = 600;
+/** Times are typed in steps of this many minutes. */
+export const TYPED_STEP = 5;
+
+/** Why a time typed can't be used: it's gone, the end comes before the start, or the call is too long or too short. */
+export type Untimely = 'gone' | 'backwards' | 'long' | 'short';
+export type Retimed = { ok: true; at: Date; minutes: number } | { ok: false; why: Untimely };
+
+/**
+ * A call at `at` for `minutes`, with its start or its end typed as a clock time (`HH:MM`, to the nearest 5 minutes), or
+ * null for anything a clock doesn't say. A start moves the call on its own day and keeps its length, and it can't have
+ * gone already. An end sets the length, up to 10 hours: earlier than the start, it's the next day's, for a call that
+ * runs past midnight.
+ */
+export function retime(at: Date, minutes: number, which: 'start' | 'end', typed: string, now: Date): Retimed | null {
+  const m = /^(\d{1,2})[:.]?(\d{2})(?::\d{2})?$/.exec(typed.trim());
+  const hours = Number(m?.[1] ?? Number.NaN);
+  const mins = Number(m?.[2] ?? Number.NaN);
+  if (!(hours >= 0 && hours <= 23 && mins >= 0 && mins <= 59)) return null;
+  const clock = Math.min(24 * 60 - TYPED_STEP, Math.round((hours * 60 + mins) / TYPED_STEP) * TYPED_STEP);
+  const on = (days: number) => new Date(at.getFullYear(), at.getMonth(), at.getDate() + days, Math.floor(clock / 60), clock % 60);
+  if (which === 'start') {
+    const start = on(0);
+    return start.getTime() <= now.getTime() ? { ok: false, why: 'gone' } : { ok: true, at: start, minutes };
+  }
+  const back = on(0).getTime() <= at.getTime();
+  const length = Math.round(((back ? on(1) : on(0)).getTime() - at.getTime()) / MINUTE);
+  if (length > LONGEST_CALL) return { ok: false, why: back ? 'backwards' : 'long' };
+  if (length < SHORTEST_CALL) return { ok: false, why: 'short' };
+  return { ok: true, at, minutes: length };
+}
+
 /* ---------- suggesting times ---------- */
 
 /** The working day suggestions stay inside, in local hours, and how far ahead they look. */
@@ -146,7 +182,17 @@ export function slotAt(at: Date, minutes: number, you: readonly Interval[], peop
   return { at, free, of: people.length + 1 };
 }
 
-/** The next working days from `from`, that day included when it is one. */
+/** The Monday a week starts on, for the week `at` falls in, where you are. */
+const mondayOf = (at: Date) => new Date(at.getFullYear(), at.getMonth(), at.getDate() - ((at.getDay() + 6) % 7));
+/** The seven days of a week, Monday to Sunday: the week `from` falls in, `weeks` on. */
+export function weekDays(from: Date, weeks: number): Date[] {
+  const monday = mondayOf(from);
+  return Array.from({ length: 7 }, (_, i) => new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + 7 * weeks + i));
+}
+/** How many weeks on from the week `from` falls in is the week `at` falls in. */
+export const weeksTo = (from: Date, at: Date): number => Math.round((mondayOf(at).getTime() - mondayOf(from).getTime()) / (7 * DAY));
+
+/** The next working days from `from`, that day included when it is one: the suggestions keep to them. */
 export function workingDays(from: Date, count: number): Date[] {
   const out: Date[] = [];
   for (const d = new Date(from.getFullYear(), from.getMonth(), from.getDate()); out.length < count; d.setDate(d.getDate() + 1)) {

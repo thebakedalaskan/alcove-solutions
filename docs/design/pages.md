@@ -16,7 +16,8 @@ Every signed-in page sits in the same frame (`apps/web/src/features/shell/`, `pa
   - Start a call (N), tinted, never filled
   - the places, each with a count: Home (what's waiting on you), Notes, Record (recordings waiting to upload) and Team
     (people on Alcove), with Team hidden for someone on their own
-  - Up next, the next call with Join (not on Home, which already offers it)
+  - Up next, the next call with Join, on Home too, except while Home's own line offers a call (in its last few minutes,
+    and while it's going), so there's one Join at a time
   - pinned notes and groups
   - at the foot, the confidential-compute check and the minutes of notes left
 - **The page** scrolls under a rounded edge. Search ("Search or ask", ⌘K opens the palette) and you (your arch, which opens
@@ -237,7 +238,9 @@ access**; the design canvas has no board for this page yet.
 One modal, one question at a time, and a sheet on a phone.
 - It opens on Start now (↵) or Schedule for later (S).
 - Scheduling asks Who, then When, then Details.
-  - When opens on three times that work, with the best already picked. Pick another time opens the week.
+  - When opens on three times that work, soonest first, with the best already picked. Under them, the time picked reads
+    as it will, its start and end there to type, on one line; the lengths sit under it. Pick another time opens the week,
+    Monday to Sunday and the whole day.
   - Documents steps out of Details and comes back to it.
 - Back keeps everything picked.
 - Starting floods the screen into the night of the call.

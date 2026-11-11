@@ -423,8 +423,8 @@ export class LocalMedia {
         }, (quality) => {
           if (this.backdrop !== created || gen !== this.gen || cameraGen !== this.cameraGen || !this.want.cam || this.chosen.kind === 'none') return;
           if (this.snap.backgroundQuality === quality) return;
-          const text = quality === 'full' ? 'Your background is back to full quality.' : 'Background quality is reduced to keep your call smooth. Your background stays on.';
-          this.set({ backgroundQuality: quality, changes: this.changed('cam', text) });
+          // Not a change to say: nobody can act on it, and the effect stays on. Background's window explains it under its preview.
+          this.set({ backgroundQuality: quality });
           mlog.info('background processing quality changed', { quality });
         });
         this.backdrop = created;

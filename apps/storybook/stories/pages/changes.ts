@@ -4,6 +4,7 @@
  * its way here, the calls other people asked Art to, and notes in every state. All made up, in the demo world.
  */
 import { UNENCRYPTED_MODEL } from '../../src/api/script';
+import { standIn } from '../../src/api/standin';
 import type { Troubles } from '../../src/api/trouble';
 import { keepHere, type KeptSpec } from '../../src/api/kept';
 import type { World } from '../../src/world';
@@ -11,6 +12,7 @@ import { connected, notConnected } from '../../src/world/build';
 import { iso } from '../../src/world/clock';
 import { INVITATIONS, MOVING } from '../../src/world/invitations';
 import { ME_ID } from '../../src/world/people';
+import { swap } from '../journeys/play';
 
 /** These parts of Alcove go wrong while the story is open (src/api/trouble.ts). */
 export const troubled = (troubles: Troubles) => (w: World): void => { w.trouble = { ...w.trouble, ...troubles }; };
@@ -33,6 +35,12 @@ export const standupTwice = (w: World): void => {
     items: [{ ...folder, id: 'StandupEarlyFolder0000', createdAt: at, editedAt: at, call: { ...folder.call, startedAt: at, noteId: null } }]
   });
 };
+
+/**
+ * The server answers that it doesn't run in confidential compute, as the public beta on Cloud Run does: a story's
+ * `beforeEach`, put back when the next story opens. Everywhere still says Confidential compute, with nothing verified.
+ */
+export const notAttested = (): (() => void) => swap(standIn.trust, 'attestation', async (nonce) => ({ tee: 'none', nonce, build: { commit: 'storybook' } }));
 
 /** Signed in with Google without sharing the calendar. */
 export const noCalendar = (w: World): void => { w.calendar = notConnected; };

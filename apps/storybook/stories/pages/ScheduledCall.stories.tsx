@@ -32,6 +32,11 @@ export const YoursPhone = phone(Yours);
 export const InASeries = page('/home', 'busy', { play: opening(/Team standup/, 'Open next week’s standup, which repeats every Wednesday') });
 /** Change the time: the times that work, and the week. */
 export const ChangeTheTime = page('/home', 'busy', { play: opening(/Design sync/, 'Open the design sync', [[/^Change the time/, 'Press Change the time']]) });
+/** Move this call's week, as scheduling has it: Monday to Sunday and the whole day, the call where it is now. */
+export const ChangeTheTimeWeek = page('/home', 'busy', {
+  play: opening(/Design sync/, 'Open the design sync', [[/^Change the time/, 'Press Change the time'], ['Pick another time', 'Pick another time. The week opens beside the times']])
+});
+export const ChangeTheTimeWeekPhone = phone(ChangeTheTimeWeek);
 /** Cancel this call asks once, in place: it comes off the calendar and everyone invited is told. */
 export const CancelAsks = page('/home', 'busy', { play: opening(/Design sync/, 'Open the design sync', [['Cancel this call', 'Press Cancel this call. It asks first']]) });
 /** Priya's roadmap review, which Art is invited to and hasn't answered: Yes, Maybe or No. */

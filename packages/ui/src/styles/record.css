@@ -88,6 +88,8 @@
 .ac-select.rec-chip > .ac-i:last-child { width: 14px; height: 14px; margin-right: -2px; color: var(--ink-3); }
 .ac-select.rec-chip[disabled] { opacity: 1; }
 .ac-select.rec-chip[disabled] > .ac-i:last-child { display: none; }
+/* The chip names the microphone, as the call's pickers do; its list says which one is the system's. */
+.ac-select.rec-chip > .ac-note { display: none; }
 .ac-select.rec-chip.is-warn, .ac-select.rec-chip.is-warn:hover { color: var(--caution); }
 .rec-meter { display: inline-grid; grid-template-columns: repeat(5, 2.5px); align-items: center; gap: 2px; height: 14px; }
 .rec-meter i { --m: .28; display: block; height: 14px; border-radius: 2px; background: currentColor; transform: scaleY(var(--m)); transition: transform .12s linear; }

@@ -89,24 +89,24 @@ async function boardsToBring(spaces: readonly WorkspaceSummary[]): Promise<Board
     .sort((a, b) => b.editedAt.localeCompare(a.editedAt));
 }
 
-/** What the API says it runs on, and whether its answer is bound to the nonce this browser sent. */
-export interface Trust { tee: 'none' | 'dstack'; bound: boolean }
+/** What the API says it runs on, whether its answer is bound to the nonce this browser sent, and when it answered. */
+export interface Trust { tee: 'none' | 'dstack'; bound: boolean; at: number }
 async function checkTrust(): Promise<Trust> {
   const nonce = Array.from(crypto.getRandomValues(new Uint8Array(32)), (b) => b.toString(16).padStart(2, '0')).join('');
   const a = await api.trust.attestation(nonce);
-  if (a.tee === 'none') return { tee: 'none', bound: false };
+  if (a.tee === 'none') return { tee: 'none', bound: false, at: Date.now() };
   // The quote's report data must be SHA-512 of this request's nonce and the running commit.
   const want = await crypto.subtle.digest('SHA-512', new TextEncoder().encode(`alcove-attestation/v1\n${nonce}\n${a.build.commit}`));
   const hex = Array.from(new Uint8Array(want), (b) => b.toString(16).padStart(2, '0')).join('');
-  return { tee: 'dstack', bound: a.nonce === nonce && a.reportData.toLowerCase() === hex && a.quote.length > 0 };
+  return { tee: 'dstack', bound: a.nonce === nonce && a.reportData.toLowerCase() === hex && a.quote.length > 0, at: Date.now() };
 }
-/** Report evidence and request binding without claiming that this browser authenticated the quote. */
-export function trustLine({ data, isPending, isError }: { data: Trust | undefined; isPending: boolean; isError: boolean }): string {
-  if (isPending) return 'Checking hosting hardware…';
-  if (isError || !data) return 'Hosting hardware check unavailable';
-  if (data.tee === 'none') return 'Hosting hardware not attested';
-  return data.bound ? 'Hosting hardware evidence received' : 'Hosting hardware evidence incomplete';
-}
+/** When the server's hardware answer was bound to this browser's own request, or null: only then is it verified. */
+export const verifiedAt = (t: Trust | undefined): number | null => (t?.tee === 'dstack' && t.bound ? t.at : null);
+/**
+ * The promise in the product's own words, verified only when the hardware answer is bound to this browser's request. No
+ * caveats (docs/design/principles.md › Copy): the engineering docs say what's built.
+ */
+export const trustLine = (t: Trust | undefined): string => (verifiedAt(t) === null ? 'Confidential compute' : 'Confidential compute · verified');
 
 /** Whether money can still arrive for a top-up: it's waiting, arriving or short. */
 export const topUpOpen = (t: TopUp): boolean => t.state === 'waiting' || t.state === 'arriving' || t.state === 'short';

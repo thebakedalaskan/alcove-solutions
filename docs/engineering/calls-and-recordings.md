@@ -571,9 +571,11 @@ Code: `apps/web/src/features/call/screen-sharing/screenRecord.ts` (the recorder)
 - **Asking the presenter.** While notes are on or paused, and the call's `allowScreens` choice (**Read shared
   screens** when it's scheduled, on by default; `CaptureState.allowScreens`) lets shares go in the notes, the share
   steps ask **Include this share in the
-  notes?**, and the share button waits for **Yes** or **No**. It's asked every time a share starts (**Change**
-  included: something else shared is a new share), and never with notes off or in a breakout room, where nothing
-  shared is kept. Once the browser's own picker has returned, the browser tells the call:
+  notes?**, already answered, so the share button never waits: **No** to begin with, then the presenter's last answer
+  in this call (`ShareMenu` keeps it while the call screen is open, so **Change** and a try after a refused one start
+  from it). A share goes in the notes only after a deliberate **Yes**. Each share carries the answer as it stands when it
+  starts (**Change** included: something else shared is a new share), and it's never asked with notes off or in a
+  breakout room, where nothing shared is kept. Once the browser's own picker has returned, the browser tells the call:
   `POST /v1/live/calls/:id/shares {notes}`, answered with `{share, keep, state}`. `share` is a new random ID for
   this share; `keep` is whether it goes in the notes: what the presenter said, with notes on or paused, the call reading shared screens (asking with it off is refused,
   409), and the
@@ -2176,7 +2178,7 @@ steps (`ShareMenu.tsx`); and the call's keys are `session/useCallShortcuts.ts`. 
   LiveKit unpublishes it, so it goes for everyone at once; a presenter who leaves or drops takes their share with
   them when LiveKit says they've gone.
 - **Shared screens in the notes.** While notes are on or paused, the share steps ask **Include this share in the
-  notes?** before it shares. A kept share shows **Read for the notes** to everyone. The organizer chooses the model
+  notes?**, on **No** until the presenter says **Yes** (their last answer in this call after that), without holding Share up. A kept share shows **Read for the notes** to everyone. The organizer chooses the model
   that writes the notes (**Notes written by**) under what's captured. A piece of video that can't reach the notes says so
   in the Notes panel ([Shared screens](#shared-screens)).
 - **Captions** show the newest live transcript line the viewer may read (said in their part of the call while
@@ -2556,14 +2558,23 @@ uploads), Alcove is asked who's signed in (`GET /v1/session`): only the account 
   Full quality caps at 30 fps. Two slow two-second measurement windows lower one tier; eight fast windows restore one,
   preventing rapid oscillation. Expensive frames leave equal time for the rest of the call before another frame is processed.
   Skipped frames are closed without enqueueing anything, leaving the last safe processed frame; there is no raw passthrough.
-  Blur spread scales with output resolution so its selected strength stays the same. LocalMedia announces changes and
-  Background's window keeps the reduced-quality status under its preview. No performance or effect preference goes to another service.
+  Blur spread scales with output resolution so its selected strength stays the same. A tier change isn't one of
+  `MediaSnapshot.changes`, so nothing is said under the pre-join picker or as a toast in the call: nobody can act on it, and
+  the effect stays on. `MediaSnapshot.backgroundQuality` keeps Background's window saying so under its preview while it's
+  below full. No performance or effect preference goes to another service.
   Storybook serves the same installed WASM and model and exercises the actual pipeline with its drawn synthetic camera.
 - The microphone, camera and speaker chosen last time are asked for first (`deviceId: { ideal }`). When one
   isn't plugged in, the browser's default is used and pre-join says so in a line under that device's picker (one change
   for each device, in `MediaSnapshot.changes`, until a device of that kind is picked). Choices live in `localStorage`
   (`alcove.devices`, parsed with `DevicePrefsSchema`) in this browser only; nothing about devices is sent.
   Browsers that hand out new device IDs (after clearing site data, say) start from their defaults again.
+- **What to pick from** (`deviceChoices` in `media/devices.ts`, and `deviceOptions` for a Select): the call's menus,
+  Settings › Audio and video and Record list the same rows. Chrome lists `default` (and on Windows `communications`)
+  beside each real microphone and speaker, under the same device's name; they aren't rows. The device `default` points
+  at (the one in its `groupId`, else the one with its name) says **Your system’s choice**, and is ticked while the device
+  in use is `default` or nothing is chosen yet: the call follows the system then. Picking a device pins it (its own ID is
+  remembered); while one is pinned, **Follow your system** goes last, and picks `default` again. Cameras, Firefox and
+  Safari list no such entries, so their lists are the browser's own.
 - **Permission and device state.** Before asking, `LocalMedia` reads the Permissions API (`microphone`,
   `camera`; Chrome, Firefox 132+, Safari 16+) and never asks for a device the browser already refuses. It asks
   for both together and, if that fails, for each alone, so a blocked, missing or busy camera never costs the

@@ -106,16 +106,28 @@ export const AnotherTimeEveryWeek: PageStory = {
       await userEvent.click(await screen.findByRole('option', { name: /^Kofi Asante/ }, SOON));
       await userEvent.click(screen.getByRole('button', { name: 'Find a time' }));
     });
-    await step('Pick another time. The modal widens around the week, with your own things by name and when anyone is busy', async () => {
+    await step('Pick another time. The modal widens around the week, Monday to Sunday and the whole day, with your own things by name and when anyone is busy', async () => {
       await userEvent.click(await screen.findByRole('button', { name: 'Pick another time' }, SOON));
       await screen.findByRole('group', { name: 'Pick a time' }, SOON);
     });
-    await step('Every half hour can be picked: Friday at 9:30', async () => {
-      await userEvent.click(within(screen.getByRole('group', { name: 'Pick a time' })).getByRole('button', { name: /^Fri 6 Nov, 09:30/ }));
+    await step('Every half hour can be picked, the weekend too: Saturday at 10:00', async () => {
+      await userEvent.click(within(screen.getByRole('group', { name: 'Pick a time' })).getByRole('button', { name: /^Sat 7 Nov, 10:00/ }));
     });
-    await step('Doesn’t repeat opens how it repeats: every Friday', async () => {
+    await step('The line under the times reads Sat 7 Nov, 10:00 – 10:45. Type an end, 11:15: the call is 1 h 15 min, beside the three lengths', async () => {
+      const end = await screen.findByLabelText('Ends', {}, SOON);
+      await userEvent.clear(end);
+      await userEvent.type(end, '11:15');
+      await userEvent.tab();
+      await screen.findByRole('button', { name: '1 h 15 min', pressed: true }, SOON);
+    });
+    await step('In the week, the bar on the call’s bottom edge drags its end, a quarter hour at a time; Shift and the down arrow on it do the same: 11:30', async () => {
+      within(screen.getByRole('group', { name: 'Pick a time' })).getByRole('button', { name: /^Sat 7 Nov, 10:00 to 11:15, picked/ }).focus();
+      await userEvent.keyboard('{Shift>}{ArrowDown}{/Shift}');
+      await screen.findByRole('button', { name: '1 h 30 min', pressed: true }, SOON);
+    });
+    await step('Doesn’t repeat opens how it repeats: every Saturday', async () => {
       await userEvent.click(screen.getByRole('button', { name: 'Doesn’t repeat' }));
-      await userEvent.click(within(await screen.findByRole('group', { name: 'How it repeats' }, SOON)).getByRole('button', { name: /^Every Friday/ }));
+      await userEvent.click(within(await screen.findByRole('group', { name: 'How it repeats' }, SOON)).getByRole('button', { name: /^Every Saturday/ }));
       await userEvent.click(screen.getByRole('button', { name: /^Use / }));
     });
     await step('The button says what it will do, and the calls go on the calendar', async () => {

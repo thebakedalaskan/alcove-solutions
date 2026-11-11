@@ -1,9 +1,9 @@
 /*
  * CaptureParts: each kind of capture in a call (the recording, the transcript, AI notes and shared screens), what it
- * does right now, and whether it's on, paused, unavailable or off. It's in the call's "What's captured" in the page's
- * theme, and `compact`, as a row of small marks, before joining on the night stage. The words follow the call: whose
- * browser takes the notes (`taker`), what that browser can't capture now, AI notes still reading what was transcribed
- * once notes are off, shared screens while they're read, and a breakout room, where nothing is recorded.
+ * does right now, and whether it's on, paused, unavailable or off. It's in the call's "What's captured", in the page's
+ * theme. The words follow the call: whose browser takes the notes (`taker`), what that browser can't capture now, AI
+ * notes still reading what was transcribed once notes are off, shared screens while they're read, and a breakout room,
+ * where nothing is recorded.
  */
 import type { CaptureMode, CapturePart, CaptureState, RoomCapture } from '@alcove/api';
 import { CaptureParts } from '@alcove/ui';
@@ -34,7 +34,7 @@ function inARoom(transcript: CaptureMode): CaptureState {
 const meta = {
   title: 'Components/Notes and transcript/CaptureParts',
   component: CaptureParts,
-  args: { capture: captured('on'), taker: 'the organizer', stage: false, compact: false },
+  args: { capture: captured('on'), taker: 'the organizer', stage: false },
   argTypes: {
     capture: { control: false },
     taker: { control: 'inline-radio', options: ['the organizer', 'the host', 'you', 'Priya'] },
@@ -47,8 +47,6 @@ type Story = StoryObj<typeof meta>;
 
 /** Notes on, through the organizer's browser; shared screens aren't read. */
 export const NotesOn: Story = { name: 'Notes on' };
-/** The same, as a row of small marks. */
-export const Compact: Story = { args: { compact: true } };
 export const Paused: Story = { args: { capture: captured('paused') } };
 /** Notes turned off after they were on: nothing new is recorded or transcribed, and AI notes still read what was. */
 export const OffAfterBeingOn: Story = { name: 'Off after being on', args: { capture: captured('off', { ai: 'on' }) } };
@@ -68,9 +66,5 @@ export const PriyaTakesThem: Story = { name: 'Priya takes them', args: { taker: 
 export const InABreakoutRoom: Story = { name: 'In a breakout room', args: { capture: inARoom('on') } };
 /** In a breakout room where nobody's browser can transcribe right now. */
 export const InARoomNobodyHears: Story = { name: 'In a room nobody hears', args: { capture: inARoom('unavailable') } };
-/** Compact, while the browser can't record and shared screens are read. */
-export const CompactWithAProblem: Story = { name: 'Compact, with a problem', args: { compact: true, capture: captured('on', { recording: 'unavailable', screen: 'on' }) } };
 /** On the night stage. */
 export const OnTheStage: Story = { ...onStage, name: 'On the stage', args: { stage: true } };
-/** Compact on the night stage, as the pre-join shows it. */
-export const CompactOnTheStage: Story = { ...onStage, name: 'Compact on the stage', args: { stage: true, compact: true } };

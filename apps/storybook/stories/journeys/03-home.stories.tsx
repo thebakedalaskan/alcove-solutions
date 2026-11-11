@@ -79,7 +79,7 @@ export const ACallIsAboutToStart: PageStory = {
   name: '3.4 A call is about to start',
   ...page('/home', 'call-soon'),
   play: async ({ userEvent, step }) => {
-    await step('Only in the last few minutes, a slim line offers Join. Click it, or press J', async () => {
+    await step('Only in the last few minutes, a slim line offers Join, and the side panel’s Up next makes way for it. Click it, or press J', async () => {
       const line = await screen.findByRole('region', { name: 'Start a call' }, SOON);
       await within(line).findByText('Design review');
       await userEvent.click(within(line).getByRole('link', { name: 'Join' }));

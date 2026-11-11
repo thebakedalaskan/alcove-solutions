@@ -62,17 +62,19 @@ Beside every page, dark in both themes:
   where you write together (flow 12); **Record**, where recording in the room starts (flow 9), with how many recordings on this
   device are waiting to upload; and **Team** (flow 10), with how many people at your company use Alcove, you among them,
   once anyone besides you does. Someone on their own, at a personal address, has no Team page and no groups here.
-- **Up next**, on every page but Home: the next Alcove call today, or the next meeting on your calendar
+- **Up next**, on every page: the next Alcove call today, or the next meeting on your calendar
   that has a video link (unless **Show my other meetings on Home** is off), when it starts, who's coming,
   and **Join**. With nothing left today it says the next call will show there, except before your first
-  notes, when it says nothing.
+  notes, when it says nothing. On Home it makes way while Home's own line offers a call (from 5 minutes before
+  one with someone else on it, and while one is going), so there's one **Join** at a time.
 - **Pinned**: the notes you pinned, in the order you pinned them, up to 8. A pinned note that was deleted,
   or that you removed from your notes, isn't listed. The pin beside the heading opens the palette to pick
   notes to pin or unpin; with 8 pinned it says to unpin one first. With nothing pinned, a line says what
   pins are for.
 - **Groups**: each of your groups and how many people are in it. Each opens on the Team page, and **+**
   starts a new one there.
-- At the bottom: the hosting hardware status, and the time of notes left, which opens Settings at your
+- At the bottom: the confidential-compute check (**Confidential compute · verified** when the server's
+  hardware answer is bound to this browser's request), and the time of notes left, which opens Settings at your
   minutes.
 - Offline, a notice at the top says recording still works and everything else catches up when you're back
   (with **Record without a connection** off, that recording waits for the connection too). Up next and the
@@ -107,7 +109,8 @@ balloon in the corner; and, slowly along the horizon, boats and ships of six kin
 opens. Every other page is a later moment of the same evening, with less sky the less it's about one action, and quieter
 visitors: a boat far out, stars after dark and now and then a shooting star. With reduced motion on, it's a still picture and nothing passes through.
 
-- The date, top left. On a phone or with the side panel hidden, the hosting hardware status shows on Home too, since the panel’s check isn’t there.
+- The date, top left. On a phone or with the side panel hidden, a **Confidential compute** badge (with the time the
+  hardware was verified when this browser could check it) shows on Home too, since the panel's check isn't there.
 - **Start a call** (**Start your first call** before your first notes). **Start now** goes straight to the lobby
   (flow 5). **Schedule** opens scheduling at Who (flow 4). The third button schedules a call for now and copies its
   link, so it's listed with a card like any other (**Undo** cancels it), and isn't on a phone. Under them, up to three people on your team who use Alcove: pressing one starts a
@@ -115,7 +118,9 @@ visitors: a boat far out, stars after dark and now and then a shooting star. Wit
 - While a call is going, or from 5 minutes before one with someone else on it, a line above **Start a call** names it
   with **Join** (**J**), and says when it starts or **Happening now**. It's the one time a call comes near the top: people
   join from their calendar. A call that's going comes first. A calendar meeting needs a video link to get this line, and
-  its **Join** opens that link in a new tab. **Join** takes the filled button, and **Start now** gives it up.
+  its **Join** opens that link in a new tab. **Join** takes the filled button, and **Start now** gives it up. Until
+  then the side panel's **Up next** has the next call with its countdown and **Join**, as on every page, and it makes way
+  for this line while the line is there.
 - **For you**, with how many things are open: what needs an answer, as tiles, then your follow-ups as a checklist.
   With nothing open, it says so. The side panel's **Home** shows the same count.
 - The tiles, newest first, the first six and then **Show more**. A **Decision** (rose) proposed in any note you organized or
@@ -182,12 +187,30 @@ send to anyone".
    Groups, the company and a list can overlap, and everyone counts once. On an empty field, Backspace selects the last
    token and a second Backspace removes it. A call can invite 300 people; past that it says so and waits, and a list
    is removed whole and pasted again shorter. **Skip, I'll share a link** goes on with nobody invited.
-4. **When** suggests three times, the best already picked: never in the past, inside 9 to 17 on weekdays where you
-   are, never when you're busy, the times that suit the most people first, on different days. It says what's true:
+4. **When** suggests three times, soonest first, with the best already picked: never in the past, inside 9 to 17 on
+   weekdays where you are, never when you're busy. They're the times that suit the most people, on different days while
+   there are days to spread over, the sooner day first and today last (it leaves people the least notice). When that
+   doesn't tell them apart, as with no calendar connected, each day takes an hour the others haven't, from the hours
+   people find easiest (10:00, then 14:00, 11:00, 15:00 and so on). A time picked from the week takes the place of the
+   last of the three, and the other two stay. It says what's true:
    "All 8 of you are free at these times.", how many are free under each time, that other calendars can't be read and
-   the times are free on yours, or with no calendar connected that these are open working hours. The length is 30 min,
-   45 min or 1 h. **Pick another time** widens the modal around the week, with your own things by name and when anyone
-   is busy, and every half hour can be picked (arrow keys move around it); the arrows go to the next five working days.
+   the times are free on yours, or with no calendar connected that these are open working hours. Under the cards the
+   time picked reads as it will, "Thu 5 Nov, [10:00] – [10:45]": its start and its end can be typed, as 24-hour times like
+   every other time here (14:15, or 1415), to the nearest 5 minutes, and count once you leave the field or press Enter;
+   the up and down arrows move one 5 minutes. A start moves the call and keeps its length; an end sets the
+   length, any from 5 minutes to 10 hours (earlier than the start, it's the next day's, for a call past midnight). A
+   start that's gone, an end before the start, or a length past those limits says why under the line, and what was
+   picked stays. A start off the half hour sits in the week where it falls, and its card says how many are free then.
+   A call starts at 45 min; 30 min, 45 min and 1 h are a press away, and any other length shows beside them
+   ("1 h 15 min"). **Pick another time** widens the modal around the week, with your own things by name and when anyone
+   is busy, at their real times. It's a week, Monday to Sunday, the weekend a day like any other, and the whole day, 00:00
+   to 24:00, with every hour line labelled, the end included; it opens with 09:00 at its top, on the week of the time
+   picked, and turns to it whenever that changes. Every half hour can be picked (arrow keys move around it); the arrows go
+   a week at a time. The time picked has a bar on its bottom edge: drag it to change when the call ends, a quarter hour at
+   a time, with the end showing as you drag, as far as 10 hours or the end of the day; Shift with the up and down arrows
+   on its half hour does the same, and a screen reader hears where it ends. On a phone the bar takes a finger, and the
+   week still scrolls anywhere else. **Move this call** (Change the time, on a scheduled call's card) has the same line, lengths and
+   week.
    **Doesn't repeat** opens Every Thursday, Every 2 weeks, Every month (on "the third Thursday"; a fifth one is "the
    last") or Days you pick, with an end date, which counts once you leave the field or press Enter. Repeats keep their
    clock time where you are when the clocks change, and one repeat is at most 60 calls. On your own, with one guest whose calendar can't be read, **Let Jamie pick** offers
@@ -234,8 +257,10 @@ started now don't go on the calendar: share the link. Everyone invited gets the 
 Pre-join (`/join/<code>`) shows your camera and a mic level, mic and camera switches, the title, and what the call
 captures and who gets the notes. Under the preview sit a calm picker each for the microphone, camera and speaker,
 each showing the device in use (the microphone's with its level moving as you speak), then **Background**. A picker
-opens a menu in the call's own style, not the browser's list: the devices with a tick on the one in use, each by its
-full name (the one that follows the system says so). The microphone's menu has **Test your microphone**, which
+opens a menu in the call's own style, not the browser's list: each device once, by its full name, with a tick on the
+one in use, and **Your system’s choice** under the one your computer uses. With nothing picked, that one is ticked and the
+call follows your computer when it switches; picking a device keeps the call on it, and then **Follow your system**, last,
+goes back. The microphone's menu has **Test your microphone**, which
 listens for three seconds (a bar fills, the seconds count down) and plays them back through the speaker you chose,
 without uploading or keeping anything, and **Noise reduction**. The speaker's has **Play a test sound**; where the
 browser can't choose a speaker, its picker says calls play through your system's speaker, and the sound plays there.
@@ -249,10 +274,12 @@ off, and turn them on later. Allowing them in the browser's settings is noticed 
 beside the microphone and camera buttons open the same menus, and switch devices without leaving the call or
 interrupting the notes.
 
-Everyone sees what the call captures before they join and while they wait: whether notes are on, paused or off,
-the recording, transcript, AI notes and shared screens each with its state, that the notes are written in
-confidential compute, who gets them, and what won't be kept ("The transcript is deleted after the notes are written.",
-"The recording is deleted when the call ends."). Never anyone's name or anything said. A call set up to join muted
+Everyone sees what the call captures before they join and while they wait, each fact once: whether notes are on, paused
+or off; one sentence on what happens to what they say, which follows the call (recorded and transcribed, you included;
+only one of the two while the host's browser can't do the other; nothing while notes are paused or that browser is away;
+and, while someone shares a screen they put in the notes, that it's read too); what won't be kept ("The transcript is
+deleted after the notes are written.", "The recording is deleted when the call ends."); and that the notes are written
+in confidential compute, and who gets them. Never anyone's name or anything said. A call set up to join muted
 starts your microphone and camera off, and says so.
 
 When the call is in a series and you're signed in with earlier notes from it, **From last time** sits under the way
@@ -312,7 +339,7 @@ time, slides in on the right.
   while someone has asked; the organizer's own says **Pausing…** until their pause lands), the same for everyone, which
   opens what's captured: each kind of capture and its state, who changed it and when, who gets the notes, and the
   organizer's **Pause notes**, **Resume notes** and **Turn off** (or **Turn on notes**) and **Notes written by** (the AI model that writes this call's notes), or
-  anyone else's **Ask for notes**; and the shield, whose hover shows hosting hardware status and what Alcove encrypts in storage. On the right, what's only yours: **Board** (**O**), which
+  anyone else's **Ask for notes**; and the shield, whose hover says what confidential compute covers (verified only when the server's hardware check is bound to this browser's request). On the right, what's only yours: **Board** (**O**), which
   opens the board picker under it, and **Workspace** (**W**, with a count of what's been brought to this call), which
   opens the workspace, each on your stage just for you (Presenting, below); **Notes** and **Chat** (**C**,
   with a count of what's new), which open your side; and who is here, the faces and the count (and, for whoever hosts, how
@@ -463,9 +490,10 @@ time, slides in on the right.
   Priya is told it was you.", and a notice says who stopped it.
 - **Looking closer at a share.** On someone else's share on your stage, pinch or Ctrl/⌘ and the wheel to zoom where you
 - **A share in the notes.** While notes are on or paused, and the organizer lets shared screens go in them (**Read shared
-  screens** when the call was scheduled, on by default), Share › Your screen asks **Include this share in the notes?** and
-  the share button waits for **Yes** or **No**; it asks again every time, **Change** included, and never with notes off or in
-  a breakout room, where nothing shared is kept. With **Yes**, everyone sees **Read for the notes** on your share, and your
+  screens** when the call was scheduled, on by default), Share › Your screen asks **Include this share in the notes?**,
+  already answered: **No** to begin with, then your last answer in this call (**Change**, and a try after one that didn't
+  start, included), so **Share** never waits on it and a share goes in the notes only after you say **Yes**. It's never asked
+  with notes off or in a breakout room, where nothing shared is kept. With **Yes**, everyone sees **Read for the notes** on your share, and your
   own browser records it (a few frames a second) from the moment it starts, but holds it in your browser: nothing is sent
   until it's been up ten seconds, and a share that ends sooner is dropped. It goes to the notes while notes are on; paused,
   nothing is recorded until they resume. **No** keeps nothing of it. Notes going off stop it there. If your share can't reach
@@ -716,8 +744,9 @@ If playback is blocked, hands, People and their counts still work.
 **6.29 Choose what others see behind you.** Before joining, **Background** opens its window: a big live preview of you, and
 blur, a picture or a colour beside it, applied as you pick. During the call, **Background** in the camera's menu opens the same
 window. The preview and outgoing video use the same local effect;
-switching a camera or turning it off/on keeps the choice, remembered on this browser/device. A lower processing quality is
-announced and explained under the preview when the device is busy; the chosen background stays on and quality recovers when it can.
+switching a camera or turning it off/on keeps the choice, remembered on this browser/device. When the device is busy the effect
+drops to a lower processing quality and recovers when it can, without a word in the call or before joining: the chosen background
+stays on, and while it's below full quality, Background's window says so under its preview.
 A browser without effects explains that and offers **Choose Off**. A background that cannot load, is no longer kept here or
 stops processing turns the camera off and says so: choose another background, or **Off**, then deliberately turn the camera on.
 
@@ -1306,7 +1335,7 @@ Storybook journeys **8.44–8.46** continue the same review after the call:
 last moment of the evening, and the recorder stands on the horizon where the sun would: dark until something is recorded.
 
 - **The recorder**, in the middle of the sky: a name for the recording (left empty, it's "Notes from the room"),
-  **Start recording**, the microphone it will use, from this browser's microphones (the same choice calls use), and
+  **Start recording**, the microphone it will use, from this browser's microphones (the same choice and list calls use), and
   under them the reminder to let everyone here know before you start.
   Choosing one doesn't open it. Until the browser has named them it says **Default microphone**. **Check the level**
   opens the microphone: the orb's rim lights up and its reflection on the water moves with your voice, recording nothing;
@@ -1451,7 +1480,9 @@ Detailed while the oldest request fails.
   during a call (**Notes written by**, on the capture panel) or when you write a note's notes again. Then **Recording in
   the room**: **Record without a connection** (on by default), and, while something waits here to upload, **On this
   device**: how many recordings, and how much room, with **See them** (Record's list).
-- **Audio and video**: this browser's choices, the ones the join screen and the call use; choosing one doesn't open it.
+- **Audio and video**: this browser's choices, the ones the join screen and the call use, listed as the call lists them
+  (each device once, **Your system’s choice** on the one your computer uses, and **Follow your system** while one is
+  picked); choosing one doesn't open it.
   A browser names devices only once they're allowed, so until then the microphone and speaker have no list. Nothing
   opens by itself: **Check the level** opens the microphone for eight seconds (the browser asks first if it hasn't been
   allowed), its level moves as you speak, and **Stop** counts down; it records nothing, and closes sooner when stopped
@@ -1489,8 +1520,8 @@ Detailed while the oldest request fails.
 - **Plan and credits**: the time of notes left, with a sun on the line under it: at the end of the line on a new
   account, back along it as notes are written, and set once there's none left. Calls without notes are free. Then the
   minutes of notes used this month (since 00:00 UTC on the 1st), and **Add credits** (11.24).
-- **Privacy**: what account and call information Alcove processes, how content is encrypted in storage, and whether
-  the hosting server reported hardware evidence. The **Privacy policy** explains how Alcove uses account and service
+- **Privacy**: what account and call information Alcove processes, then confidential compute: the time the hardware
+  was verified when this browser could check it, or where your audio is opened and your notes are written. The **Privacy policy** explains how Alcove uses account and service
   data and how to disconnect Google services. Then, in its own panel at the end, **Delete account**.
 
 **Delete account** opens one step where it is (never a window over the page): the row becomes the question, **Delete

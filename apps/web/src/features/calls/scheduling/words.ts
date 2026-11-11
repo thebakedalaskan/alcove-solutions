@@ -2,7 +2,7 @@
 import type { Meeting, Person, Repeat, RepeatRule, RsvpCounts } from '@alcove/api';
 import { callName, someNames } from '~/lib/people';
 import { daysFromToday, hm, shortDay, timeZone, weekday } from '~/lib/time';
-import { localWeekday, monthlyRule, type Slot } from './times';
+import { localWeekday, monthlyRule, type Slot, type Untimely } from './times';
 
 /** What cancelling a call does, said before it's done, and said once it's done. */
 export const cancelNote = (m: Meeting, many = false) => `${many ? 'They come' : 'It comes'} off your calendar${m.calendarUrl ? ', and everyone invited is told' : ''}.`;
@@ -76,6 +76,15 @@ export function whenLine({ guests, slots, source, failed, unknown }: {
 }
 /** Under a time, when it doesn't suit everyone. */
 export const freeLine = (s: Slot) => (s.of > 1 && s.free < s.of ? `${s.free} of ${s.of} free` : '');
+
+/** Why a time typed can't be used, under it. */
+const UNTIMELY: Record<Untimely, string> = {
+  gone: 'That time has passed. Pick one that’s still to come.',
+  backwards: 'It has to end after it starts.',
+  long: 'A call can last up to 10 hours.',
+  short: 'A call lasts at least 5 minutes.'
+};
+export const untimelyLine = (why: Untimely): string => UNTIMELY[why];
 
 /** "5 coming, 1 maybe, 1 hasn’t answered" */
 export function answersLine(r: RsvpCounts): string {

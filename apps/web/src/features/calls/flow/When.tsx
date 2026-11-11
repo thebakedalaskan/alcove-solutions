@@ -1,30 +1,83 @@
 /*
- * When: three times that work, the best already picked, how long, and how it repeats. Pick another time widens the
- * modal around the week. Changing a call's time uses the same pieces (Times, Week, Length).
+ * When: three times that work, the best already picked, the time picked as it will read (its start and end can be typed),
+ * how long, and how it repeats. Pick another time widens the modal around the week. Changing a call's time uses the same
+ * pieces (StartEnd, Week, Length).
  */
 import { MAX_SERIES_CALLS, type Meeting, type Person } from '@alcove/api';
-import { Button, FlowBody, FlowFoot, FlowRow, IconButton, Segmented, Switch, TimeCard, TimeCardWaiting, WeekGrid, cn, type WeekEvent } from '@alcove/ui';
+import { Button, FlowBody, FlowFoot, FlowNote, FlowRow, IconButton, Segmented, Switch, TimeCard, TimeCardWaiting, WeekGrid, cn, type WeekEvent } from '@alcove/ui';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { callName } from '~/lib/people';
 import { dayMonth, hm, shortDay, timeZone, weekday } from '~/lib/time';
 import { useTimes, useWeek } from '../scheduling/availability';
 import { repeatInput, ruleOf, type Draft, type RepeatKind, type Repeating } from './draft';
-import { localDay, localWeekday, workingDays, type Slot } from '../scheduling/times';
-import { callCount, dayWord, freeLine, repeatLine, shortTime, whenLine } from '../scheduling/words';
+import { LONGEST_CALL, TYPED_STEP, localDay, localWeekday, retime, weekDays, weeksTo, type Slot } from '../scheduling/times';
+import { callCount, dayWord, freeLine, repeatLine, shortTime, untimelyLine, whenLine } from '../scheduling/words';
 
 const LENGTHS = [30, 45, 60] as const;
-const lengthLabel = (m: number) => (m % 60 ? `${m} min` : `${m / 60} h`);
-/** Hours the week shows, and where nine o'clock sits in them. */
-const WEEK_FROM = 7;
-const WEEK_TO = 21;
-const WEEK_DAYS = 5;
+/** "45 min", "1 h", "1 h 15 min" */
+const lengthLabel = (m: number) => (m < 60 ? `${m} min` : m % 60 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${m / 60} h`);
+/** The week shows the whole day, and opens with nine o'clock at its top (WeekGrid). */
+const WEEK_FROM = 0;
+const WEEK_TO = 24;
 const DAY_LETTERS = [['M', 1], ['T', 2], ['W', 3], ['T', 4], ['F', 5], ['S', 6], ['S', 0]] as const;
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'] as const;
 /** The most times a guest can be offered, which is also how many cards there are to tick. */
 const MOST_OFFERED = 3;
 const soonestFirst = (a: Date, b: Date) => a.getTime() - b.getTime();
 
-/** A call's length, offered beside the usual ones when it's something else. */
+/**
+ * The time picked, as it will read: its day, then its start and its end, each typed as a 24-hour time like every other time
+ * here ("14:15", or "1415"), to the nearest 5 minutes; the up and down arrows move it 5 minutes. A start moves the call and
+ * keeps its length; an end sets the length. What's typed counts once it's finished, on leaving the field or with Enter;
+ * a time that can't be used says why, and what was there stays.
+ */
+export function StartEnd({ at, minutes, onChange }: { at: Date; minutes: number; onChange: (c: { at: Date; minutes: number }) => void }) {
+  const [typed, setTyped] = useState<{ start: string | null; end: string | null }>({ start: null, end: null });
+  const [why, setWhy] = useState<string | null>(null);
+  /* Picked anew (a card, the week, a length, or what was typed): what's half typed, and why one couldn't be used, go. */
+  const picked = `${at.getTime()}:${minutes}`;
+  const [seen, setSeen] = useState(picked);
+  if (picked !== seen) {
+    setSeen(picked);
+    setTyped({ start: null, end: null });
+    setWhy(null);
+  }
+  const end = new Date(at.getTime() + minutes * 60_000);
+  const type = (which: 'start' | 'end', value: string | null) => setTyped((t) => (which === 'start' ? { ...t, start: value } : { ...t, end: value }));
+  const use = (which: 'start' | 'end', value: string) => {
+    const next = retime(at, minutes, which, value, new Date());
+    if (!next) return;
+    if (!next.ok) { setWhy(untimelyLine(next.why)); return; }
+    setWhy(null);
+    if (next.at.getTime() !== at.getTime() || next.minutes !== minutes) onChange({ at: next.at, minutes: next.minutes });
+  };
+  const commit = (which: 'start' | 'end') => {
+    const value = typed[which];
+    type(which, null);
+    if (value !== null) use(which, value);
+  };
+  const field = (which: 'start' | 'end', label: string, value: Date) => (
+    <input type="text" inputMode="numeric" autoComplete="off" spellCheck={false} maxLength={5} aria-label={label} value={typed[which] ?? hm(value)}
+      onChange={(e) => type(which, e.target.value)} onFocus={(e) => e.currentTarget.select()} onBlur={() => commit(which)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') { e.preventDefault(); commit(which); }
+        if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+        e.preventDefault();
+        type(which, null);
+        // A start stays on its day; an end past midnight is the next day's, as when it's typed.
+        const next = new Date(value.getTime() + (e.key === 'ArrowUp' ? TYPED_STEP : -TYPED_STEP) * 60_000);
+        if (which === 'end' || next.toDateString() === at.toDateString()) use(which, hm(next));
+      }} />
+  );
+  return (
+    <div className="cf-at">
+      <p className="cf-at-line"><span>{shortDay(at)},</span>{field('start', 'Starts', at)}<span className="to" aria-hidden="true">–</span>{field('end', 'Ends', end)}</p>
+      {why && <FlowNote icon="clock">{why}</FlowNote>}
+    </div>
+  );
+}
+
+/** A call's length, offered beside the usual ones when it's something else (typed, dragged in the week, or the call's own). */
 export function Length({ minutes, onChange }: { minutes: number; onChange: (m: number) => void }) {
   const options = [...new Set<number>([...LENGTHS, minutes])].sort((a, b) => a - b).map((m) => ({ value: String(m), label: lengthLabel(m) }));
   return <Segmented value={String(minutes)} onChange={(v) => onChange(Number(v))} options={options} label="How long" />;
@@ -46,26 +99,37 @@ function Times({ times, shown, on, onPick }: {
   );
 }
 
-/** The week: five working days from today, then the next five, with what's already in them. */
-export function Week({ emails, chosen, minutes, onPick, except }: { emails: readonly string[]; chosen: Date | null; minutes: number; onPick: (at: Date) => void; except?: Meeting | undefined }) {
-  const [page, setPage] = useState(0);
-  const days = useMemo(() => {
-    const all = workingDays(new Date(), WEEK_DAYS * (page + 1));
-    return all.slice(-WEEK_DAYS);
-  }, [page]);
+/**
+ * The week: Monday to Sunday, from this week on, with what's already in them. It turns to the week of the time picked
+ * whenever that changes, from a card or a time typed. Dragging the end of the time picked (or Shift and the arrow keys
+ * on it) changes how long it is (`onMinutes`), up to the longest a call can be.
+ */
+export function Week({ emails, chosen, minutes, onPick, onMinutes, except }: {
+  emails: readonly string[]; chosen: Date | null; minutes: number; onPick: (at: Date) => void; onMinutes: (minutes: number) => void; except?: Meeting | undefined;
+}) {
+  const weekOf = (at: Date | null) => (at ? Math.max(0, weeksTo(new Date(), at)) : 0);
+  const [page, setPage] = useState(() => weekOf(chosen));
+  const [followed, setFollowed] = useState(chosen?.getTime() ?? null);
+  if ((chosen?.getTime() ?? null) !== followed) {
+    setFollowed(chosen?.getTime() ?? null);
+    setPage(weekOf(chosen));
+  }
+  const days = useMemo(() => weekDays(new Date(), page), [page]);
   const week = useWeek(emails, days, except);
   const hoursOf = (at: Date) => at.getHours() + at.getMinutes() / 60;
   const dayIndex = (at: Date) => days.findIndex((d) => d.toDateString() === at.toDateString());
 
   const events = useMemo<WeekEvent[]>(() => {
     const out: WeekEvent[] = [];
+    /* At its real times, on each day of the week it's in: what runs past midnight goes on into the next day. */
     const place = (from: Date, to: Date, kind: WeekEvent['kind'], title?: string | undefined) => {
-      const day = dayIndex(from);
-      if (day < 0) return;
-      const end = to.toDateString() === from.toDateString() ? hoursOf(to) : WEEK_TO;
-      const a = Math.max(WEEK_FROM, hoursOf(from));
-      const b = Math.min(WEEK_TO, end);
-      if (b > a) out.push({ day, from: a, to: b, kind, title });
+      days.forEach((d, day) => {
+        const start = d.getTime();
+        const end = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1).getTime();
+        const a = Math.max(from.getTime(), start);
+        const b = Math.min(to.getTime(), end);
+        if (b > a) out.push({ day, from: a === start ? WEEK_FROM : hoursOf(new Date(a)), to: b === end ? WEEK_TO : hoursOf(new Date(b)), kind, title });
+      });
     };
     for (const e of week.own) place(new Date(e.from), new Date(e.to), 'mine', e.title);
     const isOwn = (from: string) => week.own.some((e) => e.from === from);
@@ -83,15 +147,16 @@ export function Week({ emails, chosen, minutes, onPick, except }: { emails: read
       <div className="cf-wk-top">
         <span>{first && last ? `${dayMonth(first)} – ${dayMonth(last)}` : ''}</span>
         <span className="cf-wk-nav">
-          <IconButton icon="left" size={16} label="Earlier days" disabled={page === 0} onClick={() => setPage((p) => Math.max(0, p - 1))} />
-          <IconButton icon="right" size={16} label="Later days" onClick={() => setPage((p) => p + 1)} />
+          <IconButton icon="left" size={16} label="The week before" disabled={page === 0} onClick={() => setPage((p) => Math.max(0, p - 1))} />
+          <IconButton icon="right" size={16} label="The week after" onClick={() => setPage((p) => p + 1)} />
         </span>
       </div>
       <WeekGrid label="Pick a time" from={WEEK_FROM} to={WEEK_TO} events={events}
         days={days.map((d) => ({ weekday: weekday(d).slice(0, 3), date: d.getDate(), today: d.toDateString() === new Date().toDateString(), label: shortDay(d) }))}
         pick={chosen && pickDay >= 0 ? { day: pickDay, from: hoursOf(chosen), to: hoursOf(chosen) + minutes / 60, label: hm(chosen) } : null}
         isBusy={(day, hour) => events.some((e) => e.day === day && e.from <= hour && e.to > hour)}
-        isPast={(day, hour) => at(day, hour).getTime() <= Date.now()} onPick={(day, hour) => onPick(at(day, hour))} />
+        isPast={(day, hour) => at(day, hour).getTime() <= Date.now()} onPick={(day, hour) => onPick(at(day, hour))}
+        longest={LONGEST_CALL / 60} onEnd={(end) => { if (chosen) onMinutes(Math.round((end - hoursOf(chosen)) * 60)); }} />
     </div>
   );
 }
@@ -188,12 +253,14 @@ export function When({ draft, change, guests, team, wide, onWide, back, onNext }
   const offered = (at: Date) => offer?.some((t) => t.getTime() === at.getTime()) ?? false;
   const known = (at: Date) => times.slots.some((s) => s.at.getTime() === at.getTime());
   /*
-   * What the cards show: the best times, with one picked from the week in front of them. While offering it's every time
-   * offered and then the best others, so what's ticked is what's sent, and there's no card for a time too many.
+   * What the cards show, soonest first, so the tick is all that says which is picked: the best times, with one picked from
+   * the week (or typed) in place of the last of them. While offering it's every time offered and then the best others, so
+   * what's ticked is what's sent, and there's no card for a time too many.
    */
+  const byTime = (a: Slot, b: Slot) => soonestFirst(a.at, b.at);
   const shown: Slot[] = offer
-    ? [...offer.map((at) => times.slot(at)), ...times.slots.filter((s) => !offered(s.at))].slice(0, MOST_OFFERED).sort((a, b) => soonestFirst(a.at, b.at))
-    : chosen && !known(chosen) ? [times.slot(chosen), ...times.slots.slice(0, 2)] : times.slots;
+    ? [...offer.map((at) => times.slot(at)), ...times.slots.filter((s) => !offered(s.at))].slice(0, MOST_OFFERED).sort(byTime)
+    : (chosen && !known(chosen) ? [...times.slots.slice(0, MOST_OFFERED - 1), times.slot(chosen)] : [...times.slots]).sort(byTime);
   const ticked = (at: Date) => (offer ? offered(at) : chosen?.getTime() === at.getTime());
   const pick = (at: Date) => {
     if (!offer) { change({ at }); return; }
@@ -220,12 +287,14 @@ export function When({ draft, change, guests, team, wide, onWide, back, onNext }
         <div className={cn(wide && 'cf-split')}>
           <div className="min-w-0">
             <Times times={times} shown={shown} on={ticked} onPick={pick} />
+            {!offer && chosen && <StartEnd at={chosen} minutes={draft.minutes} onChange={(c) => change({ at: c.at, minutes: c.minutes })} />}
             <div className="cf-bar">
               <Length minutes={draft.minutes} onChange={(minutes) => change({ minutes })} />
               {!wide && !offer && <button type="button" className="lk" onClick={() => onWide(true)}>Pick another time</button>}
             </div>
           </div>
-          {wide && <Week emails={emails} chosen={chosen} minutes={draft.minutes} onPick={(at) => change({ at })} />}
+          {/* Its end dragged, the call keeps the start it has: the best time for a new length doesn't stand in for it any more. */}
+          {wide && <Week emails={emails} chosen={chosen} minutes={draft.minutes} onPick={(at) => change({ at })} onMinutes={(minutes) => change({ at: chosen, minutes })} />}
         </div>
         <div className="cf-rows">
           {!offer && <RepeatRow repeat={draft.repeat} at={chosen} onChange={(repeat) => change({ repeat })} />}
