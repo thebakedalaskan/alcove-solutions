@@ -34,7 +34,11 @@ export interface PageThread { id: string; on: number; quote: string; says: { who
  * the call's ID, or null outside calls. What it says is what the page says.
  */
 export interface PageVersion { at: string; by: Person[]; call: string | null; reason: 'edits' | 'call' }
-export interface Page { blocks: BlockJSON[]; threads?: PageThread[] | undefined; refused?: Refused | undefined; versions?: PageVersion[] | undefined }
+export interface Page {
+  blocks: BlockJSON[]; threads?: PageThread[] | undefined; refused?: Refused | undefined; versions?: PageVersion[] | undefined;
+  /** How it stands for this browser as it opens: its stream can't reach Alcove (`offline`), until Try now, online, brings it back. */
+  standing?: 'offline' | undefined;
+}
 
 /**
  * A board as the story opens: what's on it (drawn with @alcove/board's own writers), who else has it open and where their
@@ -114,6 +118,11 @@ export interface World {
   move?: MoveSpec | undefined;
   /** The feature flags on for whoever's here. None unless a scenario switches one on. */
   featureFlags?: FeatureFlagName[] | undefined;
+  /**
+   * Workspaces whose own stream can't reach Alcove as the story opens, though the browser's online, by ID: their list says
+   * Reconnecting until Try now brings it back.
+   */
+  streamsDown?: string[] | undefined;
 }
 
 /** How a story's page opens: when on the demo day, what the browser is like, and what it remembers. */

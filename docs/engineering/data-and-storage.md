@@ -625,9 +625,24 @@ and this way it runs through the same auth, origin check and tests as everything
 - **How many.** `hub.admit` counts each person's open streams on each instance, with one limit for each kind of stream: 8
   of a workspace and 8 of documents. All of them from one client address stop at 64 (`LIVE_STREAMS_PER_ADDRESS`), because
   accounts are free, which is about 32 people behind one office's address with a workspace and a document open, and everyone's together at 500 an instance (`LIVE_STREAMS_MAX`), because each holds one of the requests
-  an instance can take at once, and rings and calls need them too. The next is refused with `503 unavailable` rather
-  than closing the oldest, so a stream at work is never taken from anyone, and that's decided before anything is read. The
-  browser tries again by itself and gets in when one closes.
+  an instance can take at once, and rings and calls need them too. Past the address or the instance's limit, the next is
+  refused with `503 unavailable`, decided before anything is read, and the browser tries again by itself.
+- **A stream the browser closed.** On Cloud Run the API never hears that a browser closed a stream: it's reached over
+  HTTP/1, which doesn't pass a client's disconnect on to the container, and a ping every 25 seconds never backs up a front
+  end that keeps reading. So a closed stream would hold its place for its 280 seconds, and someone opening pages one after
+  another filled their eight within minutes (115 refusals in one call on 11 Nov). Now the browser says so: it names each
+  stream it opens, 22 characters of base64url it makes up, in `x-alcove-stream` (`LIVE_STREAM_HEADER`, never in a URL),
+  and when it stops reading one for any reason but the API ending it or turning it away (it closed the page or the board,
+  gave up on a quiet or hanging try, or the page went), it sends `POST …/live/end` with that name, as a keepalive request
+  so it goes as the page does. The API ends that stream of the asker's at once and gives its place back (`hub.end`, scoped
+  to the person, so naming someone else's ends nothing, and the answer is the same either way). A name is never logged.
+  It reaches only the instance that has the stream; with more than one instance, one asked elsewhere waits for the rule
+  below.
+- **At a person's limit,** the next of that kind ends their oldest stream of it to make room, as rings do: the one likeliest
+  to be a tab that went without anyone hearing, such as one whose page crashed. It just ends, as on the clock, so a tab
+  that's still there opens another. Only a stream open for 20 seconds makes room (`LIVE_MAKE_ROOM_MS`), so someone with more
+  tabs than places takes turns slowly rather than round and round; until one has been, the next is refused with `503` and
+  its browser tries again.
 - **A workspace's stream** (`GET /v1/workspaces/:id/live`). Lines: `tree`, whole, first and whenever what this reader sees
   changes; `presence`, everyone here that they can know of, whole, whenever that changes; `mentions`, their authorized unread tags, whole
   ([Tags](#tags)); `access`, when their role changes, just before the `tree` that shows it; `ping`, every 25 seconds; `closed`, when

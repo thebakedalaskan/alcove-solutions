@@ -2,8 +2,8 @@
  * One browser's stream of something in a workspace (docs: Data and storage › Live traffic). It holds no keys and nothing of
  * what it shows: only who it's for and what's next, so hundreds fit in a little memory. A stream sleeps until there's a
  * line to write, pings to say it's still there, and checks at each ping that its reader still is. It ends when they lose
- * what it shows, the browser goes or can't keep up, this instance shuts down, or it's time to let go, for the browser to
- * open it again.
+ * what it shows, the browser goes or can't keep up, the browser says it closed it, its person needs its place for another,
+ * this instance shuts down, or it's time to let go, for the browser to open it again.
  */
 import type { StreamingApi } from 'hono/utils/stream';
 import type { Deps } from '../context';
@@ -12,6 +12,7 @@ import { AuthError } from '../errors';
 import { log, type LogContext } from '../log';
 import { readerOf, type Credentials, type Who } from '../features/workspaces/access';
 import { findSession } from '../sessions';
+import type { StreamPlace } from './hub';
 import type { Room, RoomMember, Snapshot } from './room';
 
 const slog = log.child({ component: 'live' });
@@ -57,8 +58,8 @@ export abstract class LiveStream<L> implements RoomMember {
     protected readonly d: Deps, protected readonly room: Room, private readonly credentials: Credentials, protected who: Who,
     /** How far this stream has been shown. -1: it's behind whatever there is. */
     public version: number,
-    /** Gives its place among this person's streams back. */
-    private readonly release: () => void, private readonly context: LogContext
+    /** Its place among this person's streams: given back as it ends, and ended to end it. */
+    private readonly place: StreamPlace, private readonly context: LogContext
   ) {}
 
   get principals(): Uint8Array[] { return this.who.principals; }
@@ -145,12 +146,16 @@ export abstract class LiveStream<L> implements RoomMember {
     const line: Line<L> = Object.assign((e: L) => this.write(out, `${JSON.stringify(e)}\n`), { raw: (text: string | Uint8Array) => this.write(out, text) });
     const { LIVE_PING_MS: pingMs, LIVE_STREAM_MS: streamMs } = this.d.cfg;
     const letGo = t0 + streamMs;
-    let why: 'closed' | 'ended' | 'time' = 'ended';
+    let why: 'closed' | 'ended' | 'time' | 'let-go' = 'ended';
     let session = false;
     out.onAbort(() => this.end());
+    // Its browser said it closed it, or its person needed its place: maybe before it began.
+    const taken = () => { why = 'let-go'; this.end(); };
+    this.place.ended.addEventListener('abort', taken, { once: true });
+    if (this.place.ended.aborted) taken();
     slog.debug('stream opened', this.context);
     try {
-      await this.begin(line);
+      if (!this.over) await this.begin(line);
       let ping = t0 + pingMs;
       // The clock comes first, so a busy stream can't keep from noticing its session ended or its time is up.
       while (!this.over) {
@@ -172,9 +177,10 @@ export abstract class LiveStream<L> implements RoomMember {
     } catch (e) {
       slog.warn('stream failed', { ...this.context, err: e });
     } finally {
+      this.place.ended.removeEventListener('abort', taken);
       this.next = undefined;
       this.leave();
-      this.release();
+      this.place.release();
       slog.debug('stream ended', { ...this.context, why, ms: Date.now() - t0 });
     }
   }
