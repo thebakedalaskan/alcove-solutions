@@ -9,7 +9,7 @@ import { readerInCall } from '../workspaces/access';
 import { endSeat } from '../workspaces/service';
 import { log } from '../../log';
 import { hereIn, inPlaceOf, knownIn, type Viewer, whereIs } from './participants';
-import { load, saveSettled, secondsIn, settle } from './state';
+import { load, saveSettled, settle } from './state';
 import { afterClosing, syncBoardSeats, syncRoomBoards } from './room-boards';
 import { tellRoom } from './notifications';
 import { view } from './read-model';
@@ -61,11 +61,11 @@ export async function actOnBoard(v: Viewer, callId: string, a: boards.BoardActio
 }
 
 /**
- * Someone runs the session on a board: its timer, and a vote. In two steps, as opening one is: what asks the workspace whether
- * they can edit it, and the board what's on it, with nothing of the call held; then the call's row, held only to save what came
- * of it. Everyone where the board is reads the call again, except for a vote cast or taken back, which is told to nobody else.
- * It's the board open where they are: in a room on the one board every room shares, the main room's (`boardPlace`), whose
- * timer and vote they're told of there, so they run and vote in them as everyone else on it does.
+ * Someone runs a vote on a board. In two steps, as opening one is: what asks the workspace whether they can edit it, and the
+ * board what's on it, with nothing of the call held; then the call's row, held only to save what came of it. Everyone where the
+ * board is reads the call again, except for a vote cast or taken back, which is told to nobody else. It's the board open where
+ * they are: in a room on the one board every room shares, the main room's (`boardPlace`), whose vote they're told of there, so
+ * they start it and vote in it as everyone else on it does.
  */
 export async function runOnBoard(v: Viewer, callId: string, a: boards.RunAction): Promise<CallState> {
   const o = v.organizer;
@@ -76,7 +76,7 @@ export async function runOnBoard(v: Viewer, callId: string, a: boards.RunAction)
     const { row, state } = await load(o, db, callId, held);
     if (row.state !== 'live') throw new ConflictError('This call has ended.', { context: ctx });
     const s = settle(state, row);
-    return { row, state, running: { v, reader, callId, s, place: boardPlace(s, whereIs(v, s)), now: secondsIn(row.started_at) } };
+    return { row, state, running: { v, reader, callId, s, place: boardPlace(s, whereIs(v, s)) } };
   };
   const apply = await boards.prepareRun((await read(o.pool, false)).running, a);
   const { room, ran, closed } = await tx(o.pool, async (c) => {

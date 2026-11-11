@@ -62,11 +62,11 @@ export interface CallBoardSheetProps {
   people: readonly BoardPerson[];
   talking: ReadonlySet<string>;
   pictures: BoardPictures;
-  /** The call's own pills, besides the board's (following, someone presenting, a vote, its results, the timer): how it stands, and the rooms' time. */
+  /** The call's own pills, besides the board's (following, a vote, its results): how it stands, and the rooms' time. */
   pills: CallPills;
   /** Which kind of pill shows on it, as that changes: none while it's a tile or sinking. */
   onPill?: ((kind: PillKind | null) => void) | undefined;
-  /** What the call runs on the board: its timer and vote, and what the bar's Timer and Vote do (`useBoardRun`). */
+  /** What the call runs on the board: its vote, and what the bar's Vote does (`useBoardRun`). */
   run?: BoardRun | undefined;
   /** It has just opened, or come back: it rises through the arch. */
   fresh: boolean;

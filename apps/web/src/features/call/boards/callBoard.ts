@@ -1,6 +1,6 @@
 /*
  * The board in a call, as this browser holds it (docs: Calls and recordings › A board in a call): the board in the part of the
- * call you're in (`CallState.board`), which timers, votes, ideas from the call and breakout rooms hang on, or a saved board you
+ * call you're in (`CallState.board`), which votes, ideas from the call and breakout rooms hang on, or a saved board you
  * opened just for you, which touches nothing in the call. Whichever is on your stage (layout/onStage.ts) has its session open
  * while you can open it; so does the call's board while it's in the call, for its presented tile. Who you're following on it,
  * and what you're told as it closes, are here too. What's drawn is features/board/CallBoard.tsx, loaded the first time it's
@@ -379,7 +379,7 @@ export function useCallBoard({ session, stage, saved, state, me, owner, talking,
 
   /* How the call helps: ideas while notes are on here, and Sort into themes unless they're paused. Both are for whoever can add to it. */
   const notes = captureHere(state.capture).mode;
-  // The call's board, open on your stage: a saved board just for you has no ideas from the call, no timer and no vote.
+  // The call's board, open on your stage: a saved board just for you has no ideas from the call and no vote.
   const editing = open?.role === 'edit' && doc !== null && !mineDrawn;
   // Whoever has it open looks for ideas, and the server looks once a minute at most, for everyone here.
   const watching = editing && notes === 'on' && state.phase === 'in-call';

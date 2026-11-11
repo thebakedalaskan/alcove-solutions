@@ -896,9 +896,9 @@ See [Floating call](../engineering/floating-call.md) for browser capabilities an
    in. On a phone, Board is in **More** (step 14).
 2. **It opens just for you.** The board you pick opens on your stage, in the frame ("Open just for you"), with the people
    beside it, and nobody else's screen changes. Opening a saved board this way doesn't touch the call. **New** makes a
-   board, saved in the call's workspace and named after the call, that's the board in this part of the call: the one the
-   timer, votes, ideas from the call, breakout rooms and the note's **Worked on in this call** hang on. It still opens only
-   for you, and everyone else finds it under **In this call**. Timer, Vote and ideas from the call show on the board in the
+   board, saved in the call's workspace and named after the call, that's the board in this part of the call: the one
+   votes, ideas from the call, breakout rooms and the note's **Worked on in this call** hang on. It still opens only
+   for you, and everyone else finds it under **In this call**. Vote and ideas from the call show on the board in the
    call, not on a saved board you opened yourself. Someone else starting a new board while you have the call's open leaves
    yours on your stage, just for you. **Present**, on its bar, brings everyone (step 11).
 3. **Presenting a saved board brings it into the call first.** If some people here can't open it, a question comes first,
@@ -943,11 +943,9 @@ See [Floating call](../engineering/floating-call.md) for browser capabilities an
      again**, which opens the board again and sends them. It tries again by itself as well.
    - Pressing the seal says the same, under the pill. A board that can't be opened right now opens again by itself, a little
      later each time.
-8. **Timer and votes**, on the board's bar, for anyone who can add to it. **Timer** offers 3, 5 or 10 minutes and **Start**:
-   one pill at the top of the board counts down, the same for everyone, turns amber in its last minute and chimes softly at
-   the end, and whoever started it, or the organizer, can **Stop** it. A screen reader hears it start, with how long, then with
-   a minute left, when time's up and when it's stopped, never each second. **Vote** votes on the frame you're looking at (every
-   sticky, with no frame in view), 3, 5 or 10 votes each, and the board glides to it. After **Start the vote**, pressing a
+8. **Votes**, on the board's bar, for anyone who can add to it. A board has no timer of its own: the call's **Timer** is the
+   one countdown, over the board too ([The call's timer](#the-calls-timer-journeys-626628)). **Vote** votes on the frame
+   you're looking at (every sticky, with no frame in view), 3, 5 or 10 votes each, and the board glides to it. After **Start the vote**, pressing a
    sticky spends a vote and shows a dot only you can see, and pressing it again takes it back. From the keyboard, Tab from
    the board goes from sticky to sticky in the vote, frame by frame and row by row, with the board gliding to one out of
    view, and on past the last; Shift and Tab go back. Enter or Space votes for the sticky you're on, and again takes the
@@ -956,8 +954,7 @@ See [Floating call](../engineering/floating-call.md) for browser capabilities an
    go back to the board. Nobody sees a count until
    whoever started it, or the organizer, presses **End the vote**: every count appears at once, for everyone, the top three
    stay bright and the rest step back, until **Done**. The pill shows one thing at a time: how the board stands (Reconnecting
-   or Couldn't save), then a vote, its results, following someone, and the timer. Someone presenting is the frame's bar's
-   to say.
+   or Couldn't save), then a vote, its results, and following someone. Someone presenting is the frame's bar's to say.
 9. **Ideas from the call.** While notes are on where you are, the call picks out things people said that are worth a sticky,
    and a pill rises at the foot of the board: **3 ideas from the call**. Nobody has to stop talking to write them down.
    Pressing it opens the tray, **From the call**, written in confidential compute like the notes: each line is what someone
@@ -1027,7 +1024,7 @@ See [Floating call](../engineering/floating-call.md) for browser capabilities an
 14. **On a phone**, **Board** is first in **More**'s grid and opens the same picker, and a board's frame has no Present:
    **Share › A board** presents one. Faces stay on top, under the line over the call when it says anything, and the board
    fills the rest, opening on its first frame at a size it can be read. Drag to look round and pinch to zoom; the bar keeps
-   the name, the seal, **Timer**, **Vote** and **More**, and what the pill says wraps rather than being cut. The one tool is
+   the name, the seal, **Vote** and **More**, and what the pill says wraps rather than being cut. The one tool is
    **+**, at the bottom right: a sheet rises, night as the call is, with one sticky, its colours and a button that says
    where it's going, "Add to Went well" for the frame in the middle of the view, and the sticky goes into that frame's first
    free place, wherever someone has moved the frame meanwhile. Ideas from the call are there too: tap the pill, then **Add**

@@ -90,9 +90,6 @@ export const CallSpace = z.object({
 export type CallSpace = z.infer<typeof CallSpace>;
 export const NO_SPACE: CallSpace = { asks: [], present: [], space: [], ended: [], play: [], worked: [], agendaLooked: false, agendaDraft: null, viewing: null, home: null, made: [] };
 
-/** A timer on a board, the same for everyone where it's open: when it runs out, in seconds since the call started, and how long it was set for, in seconds. */
-const BoardTimer = z.object({ until: z.number(), length: z.number(), by: Controller });
-export type BoardTimer = z.infer<typeof BoardTimer>;
 /**
  * A vote on a board, on one of its frames or with none on every sticky. Each person's votes are kept by who they are to it:
  * their account when they're signed in, so it's one set of votes on every device, else the person they are in the call, which
@@ -104,12 +101,12 @@ const BoardVote = z.object({
 });
 export type BoardVote = z.infer<typeof BoardVote>;
 /**
- * A board open in one part of the call: where it is, who opened it, and its timer and vote, which are this session's and end
- * when it closes. What it's called and what's on it stay in its workspace.
+ * A board open in one part of the call: where it is, who opened it, and its vote, which is this session's and ends when it
+ * closes. What it's called and what's on it stay in its workspace. A call stored while boards had timers of their own keeps a
+ * `timer` here, which nothing reads: zod leaves it out, and the next save drops it.
  */
 const OpenBoard = z.object({
   workspaceId: z.string(), documentId: z.string(), by: Controller,
-  timer: BoardTimer.nullable().default(null),
   vote: BoardVote.nullable().default(null)
 });
 export type OpenBoard = z.infer<typeof OpenBoard>;
@@ -184,8 +181,8 @@ export type CallBoards = z.infer<typeof CallBoards>;
 export const NO_BOARDS: CallBoards = { open: {}, letIn: [], rooms: [], landing: null, ideas: {} };
 
 /**
- * The call's boards with the one open in a part of the call closed for everyone there: its timer and vote, which are that
- * session's, and its ideas from the call, which were for it, go with it. Nothing on it is deleted.
+ * The call's boards with the one open in a part of the call closed for everyone there: its vote, which is that session's, and
+ * its ideas from the call, which were for it, go with it. Nothing on it is deleted.
  */
 export function withBoardClosed<B extends Pick<CallBoards, 'open' | 'ideas'>>(b: B, place: string): B {
   const { [place]: _closed, ...open } = b.open;

@@ -24,7 +24,7 @@ import { JustPut } from './landing';
 import { BoardOverlay } from './overlay';
 import type { PillKind } from './pills';
 import { MOUNT_ALL, NO_GUIDES, drawn, everything, hangsOff, reachHolds, reachOf, sameIds } from './selection';
-import { BOARD_LOOKS, type BoardFly, type BoardLook, type BoardMode, type BoardMoreItems, type BoardRunMenu, type BoardState } from './state';
+import { BOARD_LOOKS, type BoardFly, type BoardLook, type BoardMode, type BoardMoreItems, type BoardState } from './state';
 
 const log = rootLog.child({ component: 'board' });
 
@@ -51,7 +51,7 @@ function landingOf(arrived: readonly BoardObject[], frames: ReadonlySet<string>)
   return waits;
 }
 /** Whatever is open or under way over the sheet, closed. */
-const CLOSED = { fly: null, picking: false, menu: false, runMenu: null, barMenu: false, draft: null, lineFrom: null } satisfies Partial<BoardState>;
+const CLOSED = { fly: null, picking: false, menu: false, voteMenu: false, barMenu: false, draft: null, lineFrom: null } satisfies Partial<BoardState>;
 /** The tools with options to pick, which open as the tool is picked. */
 const OPTIONS: Partial<Record<BoardTool, BoardFly>> = { note: 'note', shape: 'shape', line: 'line', pen: 'pen' };
 /** What a board with nothing on it frames: the canvas's working space. */
@@ -161,7 +161,7 @@ export class Board implements LiveStore<BoardState> {
     this.mode = mode;
     this.written = readBoard(doc);
     this.state = {
-      view: this.written, tool: 'select', colour: 'butter', shape: 'rect', line: 'elbow', pen: 'pen', fly: null, sel: [], edit: null, cell: null, picking: false, menu: false, runMenu: null, barMenu: false, night: boardNight(doc), hover: null,
+      view: this.written, tool: 'select', colour: 'butter', shape: 'rect', line: 'elbow', pen: 'pen', fly: null, sel: [], edit: null, cell: null, picking: false, menu: false, voteMenu: false, barMenu: false, night: boardNight(doc), hover: null,
       draft: null, lineFrom: null, pressing: false, map: false, marquee: null, guides: NO_GUIDES, space: false, panning: false, glide: false, settling: NOTHING, landed: NOTHING, landing: NONE_LANDING,
       near: null, following: null, slide: null, sorting: false, canUndo: false, canRedo: false
     };
@@ -484,8 +484,8 @@ export class Board implements LiveStore<BoardState> {
 
   /** A press on the sheet closes whatever is open over it. */
   closeOver(): void {
-    const { fly, picking, menu, runMenu, barMenu } = this.state;
-    if (fly || picking || menu || runMenu || barMenu) this.set({ fly: null, picking: false, menu: false, runMenu: null, barMenu: false });
+    const { fly, picking, menu, voteMenu, barMenu } = this.state;
+    if (fly || picking || menu || voteMenu || barMenu) this.set({ fly: null, picking: false, menu: false, voteMenu: false, barMenu: false });
   }
 
   /** The bar's More: opens it, in place of anything else open over the sheet, or closes it. */
@@ -493,9 +493,9 @@ export class Board implements LiveStore<BoardState> {
     this.set({ ...CLOSED, barMenu: !this.state.barMenu });
   }
 
-  /** The bar's Timer or Vote: opens its menu, in place of anything else open over the sheet, or closes it if it's open. */
-  toggleRunMenu(menu: BoardRunMenu): void {
-    this.set({ ...CLOSED, runMenu: this.state.runMenu === menu ? null : menu });
+  /** The bar's Vote: opens its menu, in place of anything else open over the sheet, or closes it if it's open. */
+  toggleVoteMenu(): void {
+    this.set({ ...CLOSED, voteMenu: !this.state.voteMenu });
   }
 
   /* ---------- sort into themes ---------- */
@@ -543,8 +543,8 @@ export class Board implements LiveStore<BoardState> {
   /** Back to Select, dropping anything held. Says whether there was anything to go back from, so that Esc can otherwise be the call's. */
   escape(): boolean {
     const held = this.letGo();
-    const { tool, sel, following, fly, runMenu, barMenu } = this.state;
-    if (!held && tool === 'select' && !sel.length && !following && !fly && !runMenu && !barMenu) return false;
+    const { tool, sel, following, fly, voteMenu, barMenu } = this.state;
+    if (!held && tool === 'select' && !sel.length && !following && !fly && !voteMenu && !barMenu) return false;
     this.stopFollow();
     this.set({ ...CLOSED, tool: 'select', sel: [] });
     return true;

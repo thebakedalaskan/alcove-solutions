@@ -47,8 +47,6 @@ export const BOARD_LOOKS: Record<BoardMode, BoardLook> = {
 
 /** What can open beside the rail: a tool's options, More, and what two of More's items offer: templates, and the workspace's items. */
 export type BoardFly = 'note' | 'shape' | 'line' | 'pen' | 'more' | 'templates' | 'items';
-/** What can open from the bar to run the session: the Timer's menu, or the Vote's. */
-export type BoardRunMenu = 'timer' | 'vote';
 
 /** What More's items do, where the world round the board does them: one given here takes the place of the board's own. */
 export type BoardMoreItems = Partial<Record<BoardMoreItem, (() => void) | undefined>>;
@@ -82,8 +80,8 @@ export interface BoardState {
   picking: boolean;
   /** The selection bar's More is open. */
   menu: boolean;
-  /** The bar's Timer or Vote menu is open. */
-  runMenu: BoardRunMenu | null;
+  /** The bar's Vote menu is open. */
+  voteMenu: boolean;
   /** What the pointer is near, whose dots are showing. */
   hover: string | null;
   /** What's being drawn, which only this person sees until it's let go. */

@@ -1,8 +1,8 @@
 /*
  * BoardPop: a small menu on the sheet, opened from the bar and hanging under what opened it. Lines to read (the seal's),
- * things to do (the name's, More's), or a choice of up to three with one button (the timer's and the vote's). The name's
- * and the seal's sit under them on the left; the timer's, the vote's and More's under them on the right. Every word here is
- * the design canvas's. Pick a length and it's the one picked.
+ * things to do (the name's, More's), or a choice of up to three with one button (the vote's). The name's and the seal's sit
+ * under them on the left; the vote's and More's under them on the right. Every word here is the design canvas's. Pick how
+ * many votes and it's the one picked.
  */
 import { BoardBar, BoardPop, type BoardPopProps } from '@alcove/ui';
 import type { Meta, StoryObj } from '@storybook/react-vite';
@@ -69,15 +69,6 @@ export const TheName: Story = {
       { id: 'share', icon: 'people', label: 'Who can add to it', onPick: did('Who can add to it') },
       { id: 'close', icon: 'x', label: 'Close for everyone', onPick: did('Close for everyone') }
     ]
-  }
-};
-/** The timer: everyone sees it count down. */
-export const Timer: Story = {
-  args: {
-    left: undefined, right: 14, top: 60, title: 'Timer', rows: undefined,
-    sub: 'Everyone sees it count down. It chimes softly at the end.',
-    options: choices(['3 min', '5 min', '10 min'], '5 min'),
-    action: { label: 'Start', onPick: did('Start') }
   }
 };
 /** A vote on a frame: how many votes each, and that nobody sees the count until it ends. */

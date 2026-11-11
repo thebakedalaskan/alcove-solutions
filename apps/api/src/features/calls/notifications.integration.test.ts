@@ -156,7 +156,7 @@ describe('authorized browser notification candidates', () => {
     await host.leave();
   });
 
-  it('reconciles exact notes requests and both timer lifecycles', async () => {
+  it('reconciles exact notes requests and the call timer’s warning and end', async () => {
     const browser = h.browser();
     await browser.api.auth.signIn('sso', { email: `timed-notifier.${Date.now()}@tests.example` });
     const { code } = await browser.api.calls.startNow({ notes: 'off' });
@@ -175,18 +175,12 @@ describe('authorized browser notification candidates', () => {
     await host.controlTimer({ action: 'start', durationSeconds: 1 });
     await until(() => candidates(guest).some((candidate) => candidate.category === 'timers'), 'authorized call timer warning');
     const warning = candidates(guest).find((candidate) => candidate.category === 'timers');
-    expect(warning?.destination.target).toMatchObject({ type: 'timer', timer: 'call' });
+    expect(warning?.destination.target).toMatchObject({ type: 'timer' });
     await until(() => candidates(guest).some((candidate) => candidate.destination.eventId.endsWith(':end')), 'distinct expiry warning');
     const revision = host.getSnapshot().timer?.revision;
     if (revision === undefined) throw new Error('Missing timer revision');
     await host.controlTimer({ action: 'pause', expectedRevision: revision });
     await until(() => !candidates(guest).some((candidate) => candidate.category === 'timers'), 'paused timer notification withdrawn');
-    await host.openBoard({ template: 'blank' });
-    await host.startTimer(3);
-    await guest.refresh();
-    expect(candidates(guest).some((candidate) => candidate.destination.target.type === 'timer' && candidate.destination.target.timer === 'board')).toBe(false);
-    await host.stopTimer();
-    await until(() => guest.getSnapshot().board.timer === null, 'stopped board timer');
     await host.leave();
   });
 

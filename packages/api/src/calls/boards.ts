@@ -11,11 +11,6 @@ export type BoardTemplate = z.infer<typeof BoardTemplateSchema>;
 /** Something on a board, by its ID there: 12 base64url characters, as `@alcove/board` makes them. */
 export const BoardObjectIdSchema = z.string().regex(/^[A-Za-z0-9_-]{12}$/);
 
-/** How long a timer on a board runs, in minutes. */
-export const BoardTimerMinutesSchema = z.union([z.literal(3), z.literal(5), z.literal(10)]);
-
-export type BoardTimerMinutes = z.infer<typeof BoardTimerMinutesSchema>;
-
 /** How many votes each person has in a vote on a board. */
 export const BoardVotesEachSchema = z.union([z.literal(3), z.literal(5), z.literal(10)]);
 
@@ -75,21 +70,6 @@ export const CallBoardIdeaSchema = z.object({
 export type CallBoardIdea = z.infer<typeof CallBoardIdeaSchema>;
 
 
-/** The timer on the board open where you are, the same for everyone there. */
-export const CallBoardTimerSchema = z.object({
-  /** When it runs out, in seconds since the call started, as `elapsed` counts. Once that's passed it says so until it's stopped. */
-  until: z.number(),
-  /** How long it was set for, in seconds. */
-  length: z.number(),
-  /** What it's for, beside the time on the pill. */
-  text: z.string(),
-  /** You can stop it: you started it, or you're the organizer. */
-  canStop: z.boolean()
-});
-
-export type CallBoardTimer = z.infer<typeof CallBoardTimerSchema>;
-
-
 /** A vote on the board open where you are. Your own votes are yours alone, and every count comes at once, when it ends. */
 export const CallBoardVoteSchema = z.object({
   /** It's still open. False once it's ended, with `results` for everyone, until it's cleared. */
@@ -113,8 +93,8 @@ export const CallBoardVoteSchema = z.object({
 export type CallBoardVote = z.infer<typeof CallBoardVoteSchema>;
 
 
-/** The board in the part of the call you're in, its timer and vote, and ideas from the call for it. None is told to anyone who can't open it. */
-export const CallBoardSchema = z.object({ open: CallBoardOpenSchema.nullable(), timer: CallBoardTimerSchema.nullable(), vote: CallBoardVoteSchema.nullable(), ideas: z.array(CallBoardIdeaSchema).max(MAX_CALL_IDEAS) });
+/** The board in the part of the call you're in, its vote, and ideas from the call for it. None is told to anyone who can't open it. */
+export const CallBoardSchema = z.object({ open: CallBoardOpenSchema.nullable(), vote: CallBoardVoteSchema.nullable(), ideas: z.array(CallBoardIdeaSchema).max(MAX_CALL_IDEAS) });
 
 export type CallBoard = z.infer<typeof CallBoardSchema>;
 

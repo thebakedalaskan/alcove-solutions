@@ -93,11 +93,10 @@ const asked = did('sort into themes');
 const MORE = { image: did('image'), workspace: did('from your workspace') };
 /** The board's own link, which Copy link copies. */
 const LINK = 'https://alcove.example/drive/ws-design/launch-retro';
-/** What a call runs on its board, for a board story in a call: nothing yet, and Timer and Vote open their menus, which say what was asked. */
+/** What a call runs on its board, for a board story in a call: nothing yet, and Vote opens its menu, which says what was asked. */
 const said = (name: string) => (...args: unknown[]): Promise<void> => { did(name)(...args); return Promise.resolve(); };
 const RUN: BoardRun = {
-  timer: null, vote: null, startTimer: said('start timer'), stopTimer: said('stop timer'), startVote: said('start vote'), castVote: said('vote'),
-  takeBackVote: said('take back a vote'), endVote: said('end the vote'), clearVote: said('clear the vote')
+  vote: null, startVote: said('start vote'), castVote: said('vote'), takeBackVote: said('take back a vote'), endVote: said('end the vote'), clearVote: said('clear the vote')
 };
 
 /** The real surface on a story's board. Everything outside the board (the bar's menus, Start a call here) says it was pressed. */

@@ -570,10 +570,10 @@ read every note given to it. That's why the demo SSO sign-in takes only example 
   someone who can open that board. A refusal to open a board while someone else presents one names nobody. A video playing
   isn't said to anyone who can't open its document. A board
   open in the call is said to everyone in that part of it, and by whom, with nothing that names it for anyone who can't open
-  it. What they try reads the same as for something that doesn't exist. Its timer and vote are told only to those who can open
-  it, and nothing someone who can't tries says whether either is running; of a vote, each person is told their own votes and
-  nobody a count until it ends; a vote being cast tells nobody else
-  ([Calls and recordings › A board's timer and vote](calls-and-recordings.md#a-boards-timer-and-vote)).
+  it. What they try reads the same as for something that doesn't exist. Its vote is told only to those who can open it, and
+  nothing someone who can't tries says whether one is on; each person is told their own votes and nobody a count until it
+  ends; a vote being cast tells nobody else
+  ([Calls and recordings › A board's vote](calls-and-recordings.md#a-boards-vote)).
 - **A call adds and lets in only as far as the workspace says.** Anyone invited can make a board in the call's home, while
   its organizer can edit there ([Calls and recordings › A board in a call](calls-and-recordings.md#a-board-in-a-call)). Letting
   people into a saved board needs the right to share it, asked again for everyone who comes later, and each seat ends with the call.

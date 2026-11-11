@@ -30,7 +30,7 @@ export interface BoardLeafProps {
   pills: CallPills;
   /** Which kind of pill shows on the board, as that changes. */
   onPill: (kind: PillKind | null) => void;
-  /** The board's timer and vote, and what Timer and Vote do: `useBoardRun`. Not on a saved board just for you. */
+  /** The board's vote, and what Vote does: `useBoardRun`. Not on a saved board just for you. */
   run: BoardRun | undefined;
   theme: 'light' | 'dark';
   /** On a phone: the board opens where it can be read, and adds a sticky through +. */

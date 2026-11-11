@@ -297,13 +297,13 @@ function withRoomsReady(board: CallBoards, ready: boards.RoomsReady, ids: string
     const made = ids.flatMap((room, k) => { const documentId = each.documentIds[k]; return documentId ? [{ room, documentId }] : []; });
     return {
       ...board,
-      open: { ...board.open, ...Object.fromEntries(made.map((m) => [m.room, { workspaceId: each.workspaceId, documentId: m.documentId, by: ready.by, timer: null, vote: null }])) },
+      open: { ...board.open, ...Object.fromEntries(made.map((m) => [m.room, { workspaceId: each.workspaceId, documentId: m.documentId, by: ready.by, vote: null }])) },
       rooms: [...board.rooms, ...made.map((m) => ({ workspaceId: each.workspaceId, documentId: m.documentId, room: m.room, kept: false }))]
     };
   }
   const main = ready.main;
   if (!main) return board;
-  return { ...board, open: { ...board.open, [MAIN_PLACE]: { workspaceId: main.workspaceId, documentId: main.documentId, by: ready.by, timer: null, vote: null } }, letIn: [...board.letIn, main.entry] };
+  return { ...board, open: { ...board.open, [MAIN_PLACE]: { workspaceId: main.workspaceId, documentId: main.documentId, by: ready.by, vote: null } }, letIn: [...board.letIn, main.entry] };
 }
 
 export const state = (v: Viewer, callId: string) => view(v, v.organizer.pool, callId);

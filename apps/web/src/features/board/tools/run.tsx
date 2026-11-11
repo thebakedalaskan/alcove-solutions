@@ -1,8 +1,8 @@
 /*
- * Running the session: the bar's Timer and Vote, what they put in the pill at the top of the board, and a vote's dots and
- * counts on the stickies. They're the call's, not the board's, so the call hands them in (`BoardRun`), the same for everyone
- * in that part of it, and says what pressing does. Nobody's browser is told a count before a vote ends, so until then all a
- * vote draws here is this person's own dots.
+ * Running a vote: the bar's Vote, what it puts in the pill at the top of the board, and a vote's dots and counts on the
+ * stickies. A vote is the call's, not the board's, so the call hands it in (`BoardRun`), the same for everyone in that part of
+ * it, and says what pressing does. Nobody's browser is told a count before a vote ends, so until then all a vote draws here is
+ * this person's own dots.
  */
 import { errorMessage } from '@alcove/api';
 import { contains, type BoardView, type Box, type FrameObject } from '@alcove/board';
@@ -11,23 +11,10 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { Pills } from '../pills';
 import { CLEAR, useBoardState, type Board } from '../useBoard';
 
-/** How long a timer runs, in minutes, and how many votes each a vote gives: the canvas's three of each. */
-export const TIMER_MINUTES = [3, 5, 10] as const;
+/** How many votes each a vote gives: the canvas's three. */
 export const VOTES_EACH = [3, 5, 10] as const;
-export type TimerMinutes = (typeof TIMER_MINUTES)[number];
 export type VotesEach = (typeof VOTES_EACH)[number];
 
-/** The call's timer on this board. */
-export interface RunTimer {
-  /** When it runs out, on this browser's clock (ms since the epoch). */
-  endsAt: number;
-  /** How long it was set for. */
-  minutes: number;
-  /** What it's for, beside the time. */
-  text: string;
-  /** This person can stop it, and start it over while it runs. */
-  canStop: boolean;
-}
 /** The call's vote on this board, as this person is told it: their own votes, and every count once it's ended. */
 export interface RunVote {
   /** Votes can be cast. False once it's ended, with the counts, until it's cleared. */
@@ -43,10 +30,7 @@ export interface RunVote {
 }
 /** What the call runs on a board, and what pressing does. Each resolves once the call has it, and a refusal says why. */
 export interface BoardRun {
-  timer: RunTimer | null;
   vote: RunVote | null;
-  startTimer(minutes: TimerMinutes): Promise<void>;
-  stopTimer(): Promise<void>;
   startVote(frame: string | null, per: VotesEach): Promise<void>;
   castVote(sticky: string): Promise<void>;
   takeBackVote(sticky: string): Promise<void>;
@@ -173,31 +157,8 @@ export function useBallot(board: Board, run: BoardRun | undefined, editable: boo
 
 /* ---------- the pill ---------- */
 
-/** The last minute of a timer turns the pill amber, as a room's does in its last minute. */
-const SOON_S = 60;
-/** The time as the pill shows it: 4:59. */
-const minutesAndSeconds = (s: number): string => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 const votesLeft = (left: number, per: number): string => `${left} of ${per} votes left`;
 const voted = (n: number): string => (n === 0 ? 'Nobody voted' : n === 1 ? '1 person voted' : `${n} people voted`);
-
-/**
- * Whole seconds until `endsAt`. It's read from the clock as it draws, so a timer that starts long after this mounted shows its
- * own time from the first frame; the state only draws it again as each second goes.
- */
-function useSecondsLeft(endsAt: number): number {
-  const [, setSecond] = useState(0);
-  useEffect(() => {
-    let wait: ReturnType<typeof setTimeout> | undefined;
-    const tick = (): void => {
-      const ms = endsAt - Date.now();
-      setSecond(Math.ceil(ms / 1000));
-      if (ms > 0) wait = setTimeout(tick, (ms % 1000 || 1000) + 5);
-    };
-    tick();
-    return () => clearTimeout(wait);
-  }, [endsAt]);
-  return Math.max(0, Math.ceil((endsAt - Date.now()) / 1000));
-}
 
 /** Does what the pill's button says. A refusal is said, and the sheet keeps the keys. */
 function pressed(board: Board, act: () => Promise<void>): () => void {
@@ -218,50 +179,22 @@ function ResultsPill({ board, run, vote }: { board: Board; run: BoardRun; vote: 
   return <BoardPill icon="vote" title="Results" text={voted(vote.voters)} action={vote.canEnd ? 'Done' : undefined} onAction={pressed(board, () => run.clearVote())} />;
 }
 
-/**
- * The timer: what it's for and the time left, amber in its last minute, then Time's up. Only this draws again as the seconds go.
- * The time changes on screen only: a screen reader is told with a minute left and as it runs out, never each second, and
- * `TimerSaid` tells it as the timer starts and stops, when this isn't there to.
- */
-function TimerPill({ board, run, timer }: { board: Board; run: BoardRun; timer: RunTimer }) {
-  const left = useSecondsLeft(timer.endsAt);
-  const said = left <= 0 ? 'Time’s up.' : left <= SOON_S ? '1 minute left.' : '';
-  return <BoardPill icon="timer" text={left > 0 ? timer.text : 'Time’s up'} time={minutesAndSeconds(left)} soon={left <= SOON_S} said={said}
-    action={timer.canStop ? 'Stop' : undefined} onAction={pressed(board, () => run.stopTimer())} />;
-}
-
-/**
- * What a screen reader is told as the timer comes and goes, which its pill can't say, being there only while it is: that it
- * started, for how long and what for, each time one does, and that it stopped. This is there before either, under the sheet's
- * pill, so each is read out. Another board coming in says nothing.
- */
-export function TimerSaid({ board, timer }: { board: Board; timer: RunTimer | null }) {
-  const [heard, setHeard] = useState({ board, timer, said: '' });
-  if (heard.board !== board || heard.timer?.endsAt !== timer?.endsAt) {
-    const said = heard.board !== board ? '' : timer ? `Timer started: ${timer.minutes} ${timer.minutes === 1 ? 'minute' : 'minutes'}. ${timer.text}.` : 'Timer stopped.';
-    // Words are read out as they change, so the same ones again, as another timer like the last starts, end in a space.
-    setHeard({ board, timer, said: said !== '' && said === heard.said ? `${said}\u00a0` : said });
-  }
-  return <p className="sr-only" role="status">{heard.said}</p>;
-}
-
 /** What the call's run puts in the board's pill. */
-export type RunPills = Pick<Pills, 'voting' | 'results' | 'timer'>;
+export type RunPills = Pick<Pills, 'voting' | 'results'>;
 /**
- * What the call's run puts in the board's pill: a vote that's on, a vote's results, the timer. Which of everything there is
- * shows is `pills.tsx`'s to say. `ballot` has the votes you've just pressed, so what's left says so at once.
+ * What the call's run puts in the board's pill: a vote that's on, or a vote's results. Which of everything there is shows is
+ * `pills.tsx`'s to say. `ballot` has the votes you've just pressed, so what's left says so at once.
  */
 export function runPills(board: Board, run: BoardRun | undefined, ballot: Ballot, editable: boolean): RunPills {
   if (!run) return {};
-  const { vote, timer } = run;
+  const { vote } = run;
   return {
     voting: vote?.on ? <VotingPill board={board} run={run} vote={vote} left={ballot.left} editable={editable} /> : undefined,
-    results: vote && !vote.on ? <ResultsPill board={board} run={run} vote={vote} /> : undefined,
-    timer: timer ? <TimerPill board={board} run={run} timer={timer} /> : undefined
+    results: vote && !vote.on ? <ResultsPill board={board} run={run} vote={vote} /> : undefined
   };
 }
 
-/* ---------- the bar's menus ---------- */
+/* ---------- the bar's Vote ---------- */
 
 /** Where the bar's menus open: under its right end. */
 const AT = { right: 14, top: 60 } as const;
@@ -306,21 +239,10 @@ function useFocusedMenu(board: Board) {
 /** Starts something from a menu: the menu closes, the sheet keeps the keys, and a refusal is said. */
 function starting(board: Board, start: () => Promise<void>): () => void {
   return () => {
-    board.set({ runMenu: null });
+    board.set({ voteMenu: false });
     board.focusSheet();
     start().catch((e: unknown) => board.tell(errorMessage(e)));
   };
-}
-
-/** Three lengths and Start. No form. */
-function TimerMenu({ board, run }: { board: Board; run: BoardRun }) {
-  const [minutes, setMinutes] = useState<TimerMinutes>(5);
-  const ref = useFocusedMenu(board);
-  return (
-    <BoardPop ref={ref} {...AT} title="Timer" sub="Everyone sees it count down. It chimes softly at the end."
-      options={TIMER_MINUTES.map((m) => ({ id: `${m}`, label: `${m} min`, on: m === minutes, onPick: () => setMinutes(m) }))}
-      action={{ label: 'Start', onPick: starting(board, () => run.startTimer(minutes)) }} />
-  );
 }
 
 /** It votes on the frame you're looking at, and the board glides to it. With no frame in view, it's on every sticky. */
@@ -343,10 +265,10 @@ function VoteMenu({ board, run }: { board: Board; run: BoardRun }) {
   );
 }
 
-/** The bar's Timer and Vote menus, while one is open and the view is this person's own. */
+/** The bar's Vote menu, while it's open and the view is this person's own. */
 export function RunMenus({ board, run }: { board: Board; run: BoardRun }) {
-  const menu = useBoardState(board, (s) => s.runMenu);
+  const open = useBoardState(board, (s) => s.voteMenu);
   const following = useBoardState(board, (s) => s.following !== null);
-  if (!menu || following) return null;
-  return menu === 'timer' ? <TimerMenu board={board} run={run} /> : <VoteMenu board={board} run={run} />;
+  if (!open || following) return null;
+  return <VoteMenu board={board} run={run} />;
 }

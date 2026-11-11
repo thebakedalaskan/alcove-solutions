@@ -319,9 +319,8 @@ its home, named after the call and filled from its template as the server fills 
 as the server passes them on, their pointer and view with them, so their tiles find them. A board you can't open
 (`closedToYou`) says who brought it and nothing else. The script's `board` says what the others put on whatever board opens,
 a sticky at a time on a frame by its title, and how they vote when a vote ends; `addsSticky` puts one on at a moment of its
-own. The timer and the vote run as the server keeps them (`startsTimer`, `startsVote`, `endsVote`, `clearsVote`), and
-whatever you do on the board (open one, close it, start a timer or a vote, vote, end it) changes the call as the server
-would. `stories/calls/boards.ts` has the launch retro the board stories share, for any call story to put on its stage.
+own. The vote runs as the server keeps it (`startsVote`, `endsVote`, `clearsVote`), and whatever you do on the board (open
+one, close it, start a vote, vote, end it) changes the call as the server would. `stories/calls/boards.ts` has the launch retro the board stories share, for any call story to put on its stage.
 What More puts on a board works here as it does in the app: a picture goes into the board's own files (`media.upload`) and
 back through `media.picture`, From your workspace lists the board's workspace as the stand-in's tree has it, and the
 downloads save a file. `stories/calls/BoardMore.stories.tsx` has each of More's items on the launch review, held in Product so

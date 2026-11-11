@@ -35,7 +35,7 @@ import { Flyouts } from './tools/flyouts';
 import { dotsOn, lineRoute } from './tools/line';
 import { Minimap } from './tools/map';
 import { strokePath } from './tools/pen';
-import { inVote, RunMenus, runPills, TimerSaid, useBallot, voteMarks, type Ballot, type BoardRun, type RunPills, type RunVote, type VoteMarks } from './tools/run';
+import { inVote, RunMenus, runPills, useBallot, voteMarks, type Ballot, type BoardRun, type RunPills, type RunVote, type VoteMarks } from './tools/run';
 import { useBoard, useBoardState, type Board, type SortAsk } from './useBoard';
 
 const log = rootLog.child({ component: 'board' });
@@ -108,9 +108,6 @@ export type BoardPictures = (media: string, signal: AbortSignal) => Promise<stri
 export interface BoardHandlers {
   onName?: (() => void) | undefined;
   onSeal?: (() => void) | undefined;
-  /** What the bar's Timer and Vote do where there's no `run` to open their menus, as in a story of the kit. */
-  onTimer?: (() => void) | undefined;
-  onVote?: (() => void) | undefined;
   /** Start a call here, on a board's page. */
   onCall?: (() => void) | undefined;
   /** Following stopped from this side: a scroll, a zoom or Esc, Stop, or the person going. */
@@ -159,11 +156,11 @@ export interface BoardSurfaceProps extends BoardHandlers {
   /** Comments: who's writing, and whose faces go on them. Without it there are none to see or add. */
   comments?: BoardCommenting | undefined;
   /**
-   * Timer, Vote and Present in the bar, each where it has something to do. On by default in a call, on a phone or not, and
-   * nowhere else: someone with view access in a call has them too, disabled, saying why.
+   * Vote in the bar, where it has something to do. On by default in a call, on a phone or not, and nowhere else: someone with
+   * view access in a call has it too, disabled, saying why.
    */
   acts?: boolean | undefined;
-  /** What the call runs on this board, its timer and vote, and what the bar's Timer and Vote do. Only a call has them. */
+  /** What the call runs on this board, its vote, and what the bar's Vote does. Only a call has them. */
   run?: BoardRun | undefined;
   people?: readonly BoardPerson[] | undefined;
   /** The call identities of whoever is talking. */
@@ -193,7 +190,7 @@ export interface BoardSurfaceProps extends BoardHandlers {
   pictures?: BoardPictures | undefined;
   /**
    * The pills at the top of the sheet, for whoever has more to show there: given who's being followed, how to stop, and what
-   * the call runs on the board (a vote, its results, the timer), every pill there is, of which `BoardPills` shows the one that
+   * the call runs on the board (a vote, its results), every pill there is, of which `BoardPills` shows the one that
    * matters most, so their order is said in one place. Without it, the surface has following and the run's pills alone.
    */
   pill?: ((following: BoardPerson | null, stop: () => void, run: RunPills) => Pills) | undefined;
@@ -397,7 +394,7 @@ function Bar({ board, surface, more }: { board: Board; surface: BoardSurfaceProp
       acts={acts && !following} canAct={look.edit || look.phone} moreOn={moreOn} mapOn={mapOn} faded={faded}
       onName={onName} onSeal={() => onSeal?.()} onUndo={() => board.undo()} onRedo={() => board.redo()}
       onZoomOut={board.zoomOut} onFit={board.showEverything} onZoomIn={board.zoomIn} onMap={() => board.set({ map: !mapOn })}
-      onTimer={run && (() => board.toggleRunMenu('timer'))} onVote={run && (() => board.toggleRunMenu('vote'))}
+      onVote={run && (() => board.toggleVoteMenu())}
       onMore={more ? () => board.toggleBarMenu() : undefined}
       tail={look.page && <BoardPageActions people={faces} onCall={() => onCall?.()} />} />
   );
@@ -409,8 +406,7 @@ const byItself: NonNullable<BoardSurfaceProps['pill']> = (person, stop, run) => 
 /**
  * The pill at the top of the sheet: told who's being followed, how to stop, and what the call runs on the board (`runPills`,
  * with the votes you've just pressed in what's left), `pill` says every pill there is, and `BoardPills` shows the one that
- * matters most. The board frames itself clear of it, and `onPill` hears which kind it is. Under it, what's said as a timer
- * starts and stops.
+ * matters most. The board frames itself clear of it, and `onPill` hears which kind it is.
  */
 function SheetPill({ board, people, pill, run, ballot, editable, onPill }: {
   board: Board; people: readonly BoardPerson[]; pill: NonNullable<BoardSurfaceProps['pill']>; run: BoardRun | undefined; ballot: Ballot; editable: boolean; onPill: BoardSurfaceProps['onPill'];
@@ -420,12 +416,7 @@ function SheetPill({ board, people, pill, run, ballot, editable, onPill }: {
     board.stopFollow();
     board.focusSheet();
   }, runPills(board, run, ballot, editable));
-  return (
-    <>
-      <BoardPills pills={pills} onShown={(kind) => { board.setPill(kind); onPill?.(kind); }} />
-      {run && <TimerSaid board={board} timer={run.timer} />}
-    </>
-  );
+  return <BoardPills pills={pills} onShown={(kind) => { board.setPill(kind); onPill?.(kind); }} />;
 }
 
 /** Download as an image, or as a PDF: what this person's board shows them, drawn here and saved here. */

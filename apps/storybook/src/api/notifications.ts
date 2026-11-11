@@ -56,9 +56,8 @@ export class ScriptedNotifications extends Pushed<CallNotificationState> {
       if (timer?.status === 'running' && timer.startedAt !== null) {
         const deadline = timer.startedAt + timer.durationSeconds * 1000 - timer.elapsedMs;
         const phase = now >= deadline ? 'end' : 'warning';
-        put('timers', { type: 'timer', timer: 'call', id: `${timer.id}:${timer.revision}` }, `timer:${timer.id}:${timer.revision}:${phase}`, deadline - (phase === 'warning' ? 30_000 : 0), deadline + (phase === 'end' ? 30_000 : 0));
+        put('timers', { type: 'timer', id: `${timer.id}:${timer.revision}` }, `timer:${timer.id}:${timer.revision}:${phase}`, deadline - (phase === 'warning' ? 30_000 : 0), deadline + (phase === 'end' ? 30_000 : 0));
       }
-      if (state.board.timer) { const deadline = Date.parse(state.startedAt) + state.board.timer.until * 1000; const phase = now >= deadline ? 'end' : 'warning'; put('timers', { type: 'timer', timer: 'board', id: `${state.board.timer.until}` }, `board-timer:${state.board.timer.until}:${phase}`, deadline - (phase === 'warning' ? 30_000 : 0), deadline + (phase === 'end' ? 30_000 : 0)); }
     }
     this.started = ready;
     const next = { ready, candidates };

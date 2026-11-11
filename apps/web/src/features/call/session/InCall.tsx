@@ -584,7 +584,7 @@ export function InCall({ session }: { session: CallSession }) {
     stageOpen('saved');
   }, [callBoardDoc]);
   const boardStatus = board.status;
-  const boardRun = useBoardRun(session, state, m.speakerId);
+  const boardRun = useBoardRun(session, state);
   /*
    * Your role on the open board changed, by Share in this call or anywhere else: the board's own document hears it first, so the
    * call is read again then, and the board turns read-only, or back, in a moment rather than at the next read.
@@ -1220,7 +1220,7 @@ export function InCall({ session }: { session: CallSession }) {
   /*
    * The rooms' time on the board, in its one pill: the room you're in, or how many rooms share the main board, and how long is
    * left. While that's the pill the board on the stage shows, it's said there, and the rooms line above says nothing more. While
-   * the board's pill says something more pressing (how it stands, a vote, following, the timer), the line says it: the board
+   * the board's pill says something more pressing (how it stands, a vote, following), the line says it: the board
    * hands up which kind it shows (`BoardPills`).
    */
   const roomsPill = roomPills(open ? { name: roomName, rooms: open.rooms.length, shared: open.board === 'shared', left } : null);
@@ -1432,10 +1432,8 @@ export function InCall({ session }: { session: CallSession }) {
         setActionTarget((was) => ({ id: target.id, request: (was?.request ?? 0) + 1 })); openSide('people');
       }
       else if (target.type === 'admission') { setActionTarget((was) => ({ id: target.identity, request: (was?.request ?? 0) + 1 })); openSide('people'); }
-      else if (target.type === 'timer') {
-        if (target.timer === 'call') setTimerOpen(true);
-        else { setSaved(null); loadBoard(); stageOpen('board'); setFront('board'); side.close(); setFocus(false); }
-      } else { setActionTarget((was) => ({ id: target.id, request: (was?.request ?? 0) + 1 })); openSide('people'); }
+      else if (target.type === 'timer') setTimerOpen(true);
+      else { setActionTarget((was) => ({ id: target.id, request: (was?.request ?? 0) + 1 })); openSide('people'); }
     }
   });
   useEffect(() => { if (floating.error) toast('Floating call didn’t open. More says why.', { icon: 'pip' }); }, [floating.error, toast]);

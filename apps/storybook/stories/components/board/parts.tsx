@@ -129,5 +129,5 @@ export function SupportRoom({ hide = [], land = false }: { hide?: readonly numbe
 /** The bar's buttons, each saying it was pressed in the Actions panel. */
 export const BAR = {
   onName: did('onName'), onSeal: did('onSeal'), onUndo: did('onUndo'), onRedo: did('onRedo'), onZoomOut: did('onZoomOut'), onFit: did('onFit'),
-  onZoomIn: did('onZoomIn'), onMap: did('onMap'), onTimer: did('onTimer'), onVote: did('onVote'), onPresent: did('onPresent'), onMore: did('onMore')
+  onZoomIn: did('onZoomIn'), onMap: did('onMap'), onVote: did('onVote'), onMore: did('onMore')
 };

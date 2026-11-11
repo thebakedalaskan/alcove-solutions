@@ -9,7 +9,7 @@ import { IDSchema } from '../shared/ids';
 import { type LiveStore } from '../shared/live';
 import { z } from '../shared/zod';
 import { type DocumentRole } from '../workspaces/schema';
-import { type BoardCheck, type BoardOpen, type BoardTimerMinutes, type BoardVotesEach, type BreakoutBoard } from './boards';
+import { type BoardCheck, type BoardOpen, type BoardVotesEach, type BreakoutBoard } from './boards';
 import { type CaptionLanguage } from './captions';
 import { type CaptureDevicePart } from './capture';
 import { type CallAnswer, type CallMoment, type CatchUp, type CatchUpRange, type CatchUpWindow } from './catchup';
@@ -367,14 +367,6 @@ export interface CallSession extends LiveStore<CallState> {
   watchIdeas(): () => void;
   /** Ideas from the call that were added to the board, or put aside: they go for everyone in that part of the call. */
   ideasDone(ids: string[]): Promise<void>;
-  /**
-   * Anyone who can edit the board open here: a timer everyone there sees count down, of 3, 5 or 10 minutes from now. While
-   * one is still running, starting another starts it over, and is only for whoever started it or the organizer, or while
-   * neither of them is in the call, anyone who can edit the board.
-   */
-  startTimer(minutes: BoardTimerMinutes): Promise<void>;
-  /** Whoever started it, or the organizer, or while neither is in the call anyone who can edit the board: it goes for everyone. */
-  stopTimer(): Promise<void>;
   /**
    * Anyone who can edit the board open here: a vote on one of its frames, or on every sticky on it with no frame, with `per`
    * votes each. Nobody is told a count until it ends. Never on top of another, nor of one whose results haven't been cleared.

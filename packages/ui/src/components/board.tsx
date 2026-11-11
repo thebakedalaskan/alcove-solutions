@@ -176,9 +176,9 @@ export interface BoardBarProps {
   canRedo?: boolean | undefined;
   /** Undo and Redo: false for someone who can only look. */
   editable?: boolean | undefined;
-  /** Timer and Vote, each shown only with its handler: false where there's no session to run. More shows whenever it's given. */
+  /** Vote, shown only with its handler: false where there's no session to run. More shows whenever it's given. */
   acts?: boolean | undefined;
-  /** Whether this person can start a timer, a vote or present: false for someone who can only look, who sees them disabled, saying why. More stays theirs. */
+  /** Whether this person can start a vote: false for someone who can only look, who sees it disabled, saying why. More stays theirs. */
   canAct?: boolean | undefined;
   /** More is open, so its button says so. */
   moreOn?: boolean | undefined;
@@ -187,7 +187,7 @@ export interface BoardBarProps {
   onName?: (() => void) | undefined; onSeal: () => void;
   onUndo?: (() => void) | undefined; onRedo?: (() => void) | undefined;
   onZoomOut: () => void; onFit: () => void; onZoomIn: () => void; onMap: () => void;
-  onTimer?: (() => void) | undefined; onVote?: (() => void) | undefined; onMore?: (() => void) | undefined;
+  onVote?: (() => void) | undefined; onMore?: (() => void) | undefined;
   className?: string | undefined;
 }
 
@@ -217,11 +217,8 @@ function NameField({ naming }: { naming: BoardNaming }) {
   );
 }
 
-/** Why Timer and Vote can't be pressed by someone who can only look at a board. */
-const ONLY_EDITORS = {
-  timer: 'Only people who can add to this board can start a timer',
-  vote: 'Only people who can add to this board can vote'
-} as const;
+/** Why Vote can't be pressed by someone who can only look at a board. */
+const ONLY_EDITORS_VOTE = 'Only people who can add to this board can vote';
 
 /** A button on the bar that someone who can only look sees, disabled, with why in its tip: a disabled button can't show a tip. */
 function Barred({ icon, size, label, why }: { icon: IconName; size: number; label: string; why: string }) {
@@ -230,7 +227,7 @@ function Barred({ icon, size, label, why }: { icon: IconName; size: number; labe
 
 /** Everything about the board that isn't a tool, in one line along the top of the sheet. */
 export function BoardBar({ name, naming, nameTitle = 'Rename, share or copy a link', seal = 'Sealed', sealIcon = 'sealed', sealTitle = 'Board encrypted in storage.', tail, zoom, canUndo = false, canRedo = false, editable = true, acts = true, canAct = true, moreOn = false,
-  mapOn = false, faded = false, onName, onSeal, onUndo, onRedo, onZoomOut, onFit, onZoomIn, onMap, onTimer, onVote, onMore, className }: BoardBarProps) {
+  mapOn = false, faded = false, onName, onSeal, onUndo, onRedo, onZoomOut, onFit, onZoomIn, onMap, onVote, onMore, className }: BoardBarProps) {
   return (
     <div className={cn('bd-head', acts && editable && 'is-full', faded && 'is-faded', className)}>
       {naming ? <NameField naming={naming} />
@@ -249,15 +246,14 @@ export function BoardBar({ name, naming, nameTitle = 'Rename, share or copy a li
       <IconButton className="bt zm" icon="plus" size={16} label="Zoom in" onClick={onZoomIn} />
       <IconButton className="bt zm mp" icon="map" size={16} label="Map" aria-pressed={mapOn} onClick={onMap} />
       {/*
-        * Each is there only with something to do: no button does nothing. Someone who can only look sees Timer and Vote
-        * where they're offered, disabled, saying why. More changes nothing on the board, so it's there for them, and while
-        * following someone, too.
+        * Each is there only with something to do: no button does nothing. Someone who can only look sees Vote where it's
+        * offered, disabled, saying why. More changes nothing on the board, so it's there for them, and while following
+        * someone, too.
         */}
-      {((acts && (onTimer || onVote)) || onMore) && (
+      {((acts && onVote) || onMore) && (
         <>
           <span className="vr" />
-          {acts && onTimer && (canAct ? <IconButton className="bt run" icon="timer" size={17} label="Timer" onClick={onTimer} /> : <Barred icon="timer" size={17} label="Timer" why={ONLY_EDITORS.timer} />)}
-          {acts && onVote && (canAct ? <IconButton className="bt run" icon="vote" size={17} label="Vote" onClick={onVote} /> : <Barred icon="vote" size={17} label="Vote" why={ONLY_EDITORS.vote} />)}
+          {acts && onVote && (canAct ? <IconButton className="bt run" icon="vote" size={17} label="Vote" onClick={onVote} /> : <Barred icon="vote" size={17} label="Vote" why={ONLY_EDITORS_VOTE} />)}
           {onMore && <IconButton className="bt" icon="more" size={17} label="More" aria-expanded={moreOn} onClick={onMore} />}
         </>
       )}
@@ -267,8 +263,8 @@ export function BoardBar({ name, naming, nameTitle = 'Rename, share or copy a li
 }
 
 /**
- * Anything the whole board shares, in one place: how it stands, a timer, a vote, following, a room's time. Someone presenting
- * is the call's frame's bar's to say. `soon` turns it amber. It says what it says as it arrives and as its words change; a time
+ * Anything the whole board shares, in one place: how it stands, a vote, following, a room's time. Someone presenting is the
+ * call's frame's bar's to say. `soon` turns it amber. It says what it says as it arrives and as its words change; a time
  * ticking isn't read out every second, and is there to read.
  */
 export function BoardPill({ icon = 'clock', title, text, time, soon = false, action, onAction, said, className }: {

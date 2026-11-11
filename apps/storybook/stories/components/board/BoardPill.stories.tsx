@@ -1,9 +1,8 @@
 /*
- * BoardPill: anything the whole board shares, in one place under the bar, one thing at a time: a timer, a vote and its results,
- * who you're following, a room's time and the connection. Who's presenting is the frame's bar's to say, not the pill's. At night
- * on any sheet, with its one action at the end, for whoever can use it: Stop and End the vote for whoever started them or the
- * organizer, Done for them too. `soon` turns it amber in a timer's last minute and as a room's time runs out. Every word here is
- * the design canvas's.
+ * BoardPill: anything the whole board shares, in one place under the bar, one thing at a time: a vote and its results, who
+ * you're following, a room's time and the connection. Who's presenting is the frame's bar's to say, not the pill's. At night on
+ * any sheet, with its one action at the end, for whoever can use it: End the vote for whoever started it or the organizer, Done
+ * for them too. `soon` turns it amber as a room's time runs out. Every word here is the design canvas's.
  */
 import { BoardBar, BoardPill, ICON_NAMES } from '@alcove/ui';
 import type { Meta, StoryObj } from '@storybook/react-vite';
@@ -13,7 +12,7 @@ import { BAR, KitSheet, RetroPiece, SupportRoom } from './parts';
 const meta = {
   title: 'Components/Board/BoardPill',
   component: BoardPill,
-  args: { icon: 'timer', text: 'Add your stickies', time: '4:59', soon: false, action: 'Stop', onAction: did('onAction') },
+  args: { icon: 'vote', title: 'Voting', text: '2 of 3 votes left', soon: false, action: 'End the vote', onAction: did('onAction') },
   argTypes: { icon: { control: 'select', options: ICON_NAMES }, title: { control: 'text' }, text: { control: 'text' }, time: { control: 'text' }, action: { control: 'text' } },
   render: (args) => (
     <KitSheet width={1000} height={300} cam={{ x: 40, y: 140, z: 0.8 }} over={<><BoardBar name="Launch retro" zoom={0.8} {...BAR} /><BoardPill {...args} /></>}>
@@ -24,17 +23,6 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/**
- * A timer everyone sees count down, with what it's for, as whoever started it sees it: with Stop. Its time changes on screen
- * only: a screen reader is told as it starts, with a minute left, as it runs out and as it stops, never each second.
- */
-export const Timer: Story = { args: { said: '' } };
-/** The same timer for everyone else, with nothing to press. */
-export const TimerForEveryoneElse: Story = { name: 'Timer, for everyone else', args: { action: undefined, said: '' } };
-/** Its last minute: the clock and the time turn amber. */
-export const NearItsEnd: Story = { name: 'Near its end', args: { time: '0:48', soon: true, said: '1 minute left.' } };
-/** At the end it says so, and stays until it's stopped or someone starts another. The call chimes once, softly. */
-export const TimesUp: Story = { name: 'Time’s up', args: { text: 'Time’s up', time: '0:00', soon: true, said: 'Time’s up.' } };
 /** A vote: how many of your votes are left, and ending it. Nobody sees the count until it ends. */
 export const Voting: Story = { args: { icon: 'vote', title: 'Voting', text: '2 of 3 votes left', time: undefined, action: 'End the vote' } };
 /** The same vote for everyone else who can add to the board: their own votes left. */

@@ -316,7 +316,7 @@ export async function landRooms(call: CallRef): Promise<void> {
       const there = board.open[MAIN_PLACE];
       if (made && by && (!there || there.documentId === insteadOf)) {
         const { [MAIN_PLACE]: _was, ...ideas } = board.ideas;
-        board = { ...board, open: { ...board.open, [MAIN_PLACE]: { workspaceId: made.workspaceId, documentId: made.documentId, by, timer: null, vote: null } }, letIn: [...board.letIn, made.entry], ideas };
+        board = { ...board, open: { ...board.open, [MAIN_PLACE]: { workspaceId: made.workspaceId, documentId: made.documentId, by, vote: null } }, letIn: [...board.letIn, made.entry], ideas };
       }
       await save(o, c, callId, insteadOf !== null && made ? notice({ ...held.state, board }, LANDED_ELSEWHERE, 'info') : { ...held.state, board });
       return rest.length > 0;

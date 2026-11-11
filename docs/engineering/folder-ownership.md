@@ -32,7 +32,7 @@ apps/web/src/features/
     notes/           recorder, live transcript, captions and catch-up
     rooms/           breakout-room controls and hosting
     workspace/       choosing/accessing/presenting the call workspace
-    boards/          the board in the call: its session, picker (BoardPicker.tsx), presenting, timer and vote
+    boards/          the board in the call: its session, picker (BoardPicker.tsx), presenting and vote
     playback/        synchronized media
   calls/
     flow/            making a call and its details

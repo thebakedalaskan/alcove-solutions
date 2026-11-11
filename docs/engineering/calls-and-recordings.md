@@ -1517,29 +1517,22 @@ them. A saved board open just for you takes none, and your own share's menu does
   burst of 4 from someone, then 1 a second). The sharer's browser says "Art put a picture of your screen on the board.", and
   takes it only from someone in the call, about its own share.
 
-### A board's timer and vote
+### A board's vote
 
-Running the session on a board is the call's, not the board's: a late joiner and a reconnect get both from `CallState.board`,
-and a saved board has neither. On the one board every room shares, they're the main board's: someone in a room is told of
-them as anyone on it is, and starts, stops and votes in them the same, each step addressed to the board where it's open
-(`boardPlace`). They're kept on the open board's entry in the call's sealed state (`timer` and `vote`, each
-`null` by default, so a call stored before them still opens), so closing the board ends them and another board opening in its
-place starts with neither. The same board opened again keeps them. Neither is told to anyone who can't open the board, and
-nothing they try says whether either is running: whatever they ask, they're told what they'd be told of a board that isn't
-there, before anything about a timer or a vote is looked at.
+A vote on a board is the call's, not the board's: a late joiner and a reconnect get it from `CallState.board`, and a saved board
+has none. A board has no timer of its own: the call's one countdown is the timer over a board too ([The call's
+timer](call-timer.md)), and a call stored with a board timer from before keeps it, unread, until it's next saved. On the one
+board every room shares, the vote is the main board's: someone in a room is told of it as anyone on it is, and starts it and
+votes in it the same, each step addressed to the board where it's open (`boardPlace`). It's kept on the open board's entry in
+the call's sealed state (`vote`, `null` by default, so a call stored before votes still opens), so closing the board ends it
+and another board opening in its place starts with none. The same board opened again keeps it. It isn't told to anyone who
+can't open the board, and nothing they try says whether one is on: whatever they ask, they're told what they'd be told of a
+board that isn't there, before anything about a vote is looked at.
 
-- **Who started it.** Whoever started a timer or a vote is the same person to it as to a vote: on any connection of theirs, and,
-  signed in, on any device of their account. While it runs, they or the organizer can start the timer over or stop it, and end
-  and clear the vote; while neither of them is in the call, on any connection or device, anyone who can edit the board can,
-  until one of them is back. They're asked nothing of the board to do it, so the organizer can stop a timer or end a vote on a
-  board they can only read.
-- **The timer** (`board-timer`) runs 3, 5 or 10 minutes from now, the same for everyone there. `CallState.board.timer` is `{
-  until, length, text, canStop }`, with `until` in seconds since the call started, as `elapsed` counts, so every browser counts
-  down from the same moment whatever its own clock says. Anyone who can edit the board starts one; while one runs, starting
-  another is for whoever may stop it. Once it's run out it stays, saying so, until it's stopped, and anyone who can edit can
-  start another. Stopping one that's gone changes nothing (`minutes: null`). On the board its time changes on screen only, never
-  read out each second: the pill's live line (`BoardPill`'s `said`) says when a minute's left and when time's up, and one under
-  the pill (`tools/run.tsx`'s `TimerSaid`), there before either, says each timer starting, for how long, and its stopping.
+- **Who started it.** Whoever started a vote is the same person to it as anyone voting: on any connection of theirs, and,
+  signed in, on any device of their account. While it's on, they or the organizer can end it, and clear its results; while
+  neither of them is in the call, on any connection or device, anyone who can edit the board can, until one of them is back.
+  They're asked nothing of the board to do it, so the organizer can end a vote on a board they can only read.
 - **A vote** (`board-vote`, a step at a time): `start` on a frame, or with `frame` null on every sticky on the board, with 3, 5
   or 10 votes each; `cast` and `take-back` a vote for a sticky; `end`; and `done`, which clears the results. One at a time: a
   vote can't start while another is on, nor while one's results haven't been cleared. Anyone who can edit the board starts one
@@ -1565,8 +1558,8 @@ there, before anything about a timer or a vote is looked at.
   nobody can count votes by when the call changes. Nothing about a vote is written to the board, and nothing logged names a
   frame or a sticky.
 
-Each is two steps as well (`prepareRun` in `callBoards.ts`): whether someone can open the board, then whether they can edit it,
-which the workspace says, and for a vote what's on the board, with nothing of the call held; then the call's row, held only to
+Each step is two steps as well (`prepareRun` in `callBoards.ts`): whether someone can open the board, then whether they can
+edit it, which the workspace says, and what's on the board, with nothing of the call held; then the call's row, held only to
 save it, which asks again whatever could have changed meanwhile: that it's the same board and the same vote, whether another
 vote has started, how many votes are left, and who's in the call. So two people starting a vote at once start one, and someone
 casting their last vote from two devices at once casts one.
@@ -1676,7 +1669,7 @@ says whether it's on a board of its own (`rooms[].board`), which is all anyone o
   board, named for the room with the first names of who was there (from the room's record, the organizer left out), and the board
   to land on: the one open in the main room, or a new one, whose ID is taken under the call's row so it's made once. Rooms close
   by time in whatever saves the call first once their time is up, every save of a settled call going through `saveSettled`: a
-  hand, a board's timer or vote, a board opening or closing, the workspace, an MLS commit, chat or a key package, a hand-off, and
+  hand, a board's vote, a board opening or closing, the workspace, an MLS commit, chat or a key package, a hand-off, and
   a look for ideas. Whatever closed them follows through once the row's let go (`afterClosing`): each room's board is everyone
   invited's before anyone's told, and once it has answered the boards come back. A look for ideas, which nobody did on purpose,
   does the first and leaves their coming back to the next look or whatever's done next in the call. `landRooms` takes the
@@ -1738,7 +1731,7 @@ person's own access where the call uses its pass, and its links open on the page
   can only read. Every picture of the board reads it from the board, so the stage, a tile, a note, presenting and the page
   all follow it: a dark board in any theme. Undo leaves it alone.
 - **On a phone** (a sheet under 600 px), a board opens on its first frame at a size it can be read (`phoneCamera`), not
-  shrunk to all of it. Someone who can add to it gets the phone's board: the bar with its name, seal, Timer, Vote and More, no
+  shrunk to all of it. Someone who can add to it gets the phone's board: the bar with its name, seal, Vote and More, no
   tools beside it, **+** at the bottom right for one sticky at a time, and a tap on a sticky to vote. The sticky goes in the
   first free place of the frame that was in the middle of the view, as that frame is when Add is pressed, wherever someone has
   moved it meanwhile, and the frame the button names holds it. Ideas from the call add there as **+** does, Undo and all. A
@@ -1950,7 +1943,7 @@ steps (`ShareMenu.tsx`); and the call's keys are `session/useCallShortcuts.ts`. 
   window, Put on the board and Show beside (`ShareMenuRows`); and your own screen's Others can point at it, Clear marks and
   Change what you share, saying Read for the notes while it is (`MyShareMenuRows`), as its bar's line does. The organizer's name menu on someone
   else's has, after a line, Close it for everyone, or, on a screen, Stop it for everyone. A board keeps its own controls
-  inside the frame: the seal, Timer, Vote, More, the pill, the rail, zoom and the phone's +; a board you present puts its
+  inside the frame: the seal, Vote, More, the pill, the rail, zoom and the phone's +; a board you present puts its
   pager at its foot, with the button for Your notes (`mine`).
 - **Presented, and not on your stage** (`PresentedTile`, with `ThingMenu` in `TileMenu.tsx`): a tile first among the people,
   with its name, who's presenting it and Join (Open when it's yours), which puts it on your stage, following, as Enter, Space

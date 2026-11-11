@@ -101,14 +101,12 @@ describe('the call timer through the real API', () => {
     expect((await timerOf(call)).durationSeconds).toBe(86_400);
   });
 
-  it('keeps its clock independent of board timers, board replacement and workspace changes', async () => {
+  it('keeps its clock independent of boards, board replacement and workspace changes', async () => {
     const { owner, call } = await joined();
     await call.controlTimer({ action: 'start', durationSeconds: 300 });
     const timer = (await read(call)).timer;
     await call.openBoard({ template: 'blank' });
-    await call.startTimer(3);
     expect((await read(call)).timer).toEqual(timer);
-    await call.stopTimer();
     await call.closeBoard();
     await call.openBoard({ template: 'retro' });
     await call.openWorkspace();
