@@ -9,13 +9,13 @@
  * reading further is a new URL. The note draws all this as its horizon (CallLine.tsx). Where it's got to changes several
  * times a second, so what shows it reads `pos` through `usePlayerAt`, and the rest of the page isn't drawn again for it.
  *
- * Shares kept for the notes play above it, in step (`Replay`). The audio is the clock: the recording's timeline is the audio
- * segments one after another, which is the timeline the server places shares on, so `pos` is a share's time too. A muted
- * video follows it.
+ * Shares kept for the notes play on the sky over the horizon, in step (`Replay`), so the line runs along their foot as their
+ * seek bar. The audio is the clock: the recording's timeline is the audio segments one after another, which is the
+ * timeline the server places shares on, so `pos` is a share's time too. A muted video follows it.
  */
 import { errorCode, type AudioSegment, type ScreenShare, type ScreenShareSegment } from '@alcove/api';
 import { Icon, ReplayScrub, ScreenReplay, useToast, type ReplayState } from '@alcove/ui';
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type RefObject } from 'react';
 import { api } from '~/lib/api';
 import { overlayOpen, typing } from '~/lib/keys';
 import { log } from '~/lib/log';
@@ -325,6 +325,24 @@ export function useSpaceToPlay(player: PlayerState) {
     addEventListener('keyup', up);
     return () => { removeEventListener('keydown', down); removeEventListener('keyup', up); };
   }, [on, toggle]);
+}
+
+/**
+ * The shared screens stand on the sky, over the line along the horizon: the sky grows by their height (`--nd-stage` on the
+ * note's page), so the line still sits on the horizon, along their foot. Measured before the page is drawn, and again
+ * whenever their size changes with the window.
+ */
+export function useStageOnTheSky(stage: RefObject<HTMLElement | null>, on: boolean) {
+  useLayoutEffect(() => {
+    const el = stage.current;
+    const page = el?.closest('.nd');
+    if (!on || !el || !(page instanceof HTMLElement)) return undefined;
+    const measure = () => page.style.setProperty('--nd-stage', `${el.offsetHeight}px`);
+    measure();
+    const watch = new ResizeObserver(measure);
+    watch.observe(el);
+    return () => { watch.disconnect(); page.style.removeProperty('--nd-stage'); };
+  }, [stage, on]);
 }
 
 /** How far the video may drift from the audio before it's put back in step, in seconds. */

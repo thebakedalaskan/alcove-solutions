@@ -1,7 +1,8 @@
 /*
  * The call, drawn on the horizon at the foot of a note's sky. Its chapters stand on the line, what was decided and what's
  * to do sit on it (solid once people have said so), the sun is where the recording has got to, and the light under the
- * line is what was said. It stays at the top of the page as the note is read, so the next jump is one press away. A call
+ * line is what was said. It stays at the top of the page as the note is read, so the next jump is one press away; with
+ * shared screens to replay, they stand on the sky over it and it runs along their foot, as their seek bar. A call
  * that kept no recording has no player; one that kept nothing to go to has a line to look at and no more. While the call
  * is still being recorded, the line ends where it's got to, and what's there so far plays.
  */

@@ -50,8 +50,22 @@ const pointAtAsk: PageStory['play'] = async ({ canvas, userEvent, step }) => {
 /** Pointing at the ask bar while the note is read: its suggested questions show above it, and go again once the pointer leaves. */
 export const PointingAtAsk = page('/notes/n2', 'busy', { play: pointAtAsk });
 export const PointingAtAskNight = page('/notes/n2', 'busy', { play: pointAtAsk, globals: { theme: 'dark' } });
-/** Opened while Kofi's screen is up (9:20): the replay shows his share, and the lines said then carry their frames. */
+/**
+ * Opened while Kofi's screen is up (9:20): his share plays on the sky over the line, which runs along its foot as its seek
+ * bar, and the lines said then carry their frames.
+ */
 export const WhileAScreenIsShared = page('/notes/n2?at=560', 'busy');
+export const WhileAScreenIsSharedPhone = phone(WhileAScreenIsShared);
+export const WhileAScreenIsSharedWide = page('/notes/n2?at=560', 'busy', { globals: { viewport: { value: 'wide', isRotated: false } } });
+export const WhileAScreenIsSharedNight = page('/notes/n2?at=560', 'busy', { globals: { theme: 'dark' } });
+/** Reading on: the shared screen scrolls away above the line, which sticks to the top, clear of the picture. */
+export const ReadingOnPastTheScreen = page('/notes/n2?at=560', 'busy', {
+  play: async ({ canvas, step }) => {
+    await step('Read on to what was decided. The line sticks to the top, and the shared screen has gone above it', async () => {
+      (await canvas.findByRole('heading', { name: 'Decided' })).scrollIntoView({ block: 'start' });
+    });
+  }
+});
 /** Opened at 12:00, after Kofi's share: no shared screen in the notes covers it, and the stage offers his, 8:52–10:40, in one press. */
 export const NoSharedScreenHere = page('/notes/n2?at=720', 'busy');
 /** Kofi's screen couldn't be played (its video won't load here): the stage says so, with Try again. */

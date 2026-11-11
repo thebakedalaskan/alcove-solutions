@@ -95,6 +95,13 @@ A slim band of sky, and the horizon is the call.
   - gaps where notes were off
   - while recording, the line ends in a recording-coloured edge
   - it sticks to the top as you read
+- **The shared screens,** when a share went in the notes, stand on the sky over the line, so the line runs along their foot
+  as their seek bar, one seek bar under the picture. The sky grows to hold them, so the line still sits on the horizon.
+  The stage is night in both themes, as wide as the note's column under it and at most about half the window tall (then
+  narrower, keeping its shape), and it keeps its size whatever it shows: the share playing (chips to switch when two
+  overlap), that it's loading or couldn't be played, or, where no share in the notes covers the moment, when screens were
+  shared, to go there in one press. As you read on, it scrolls away above the line, which sticks clear of it. Its corner
+  fills the screen with it.
 - **The water.** The summary, larger. Then the boards open in the call, when there were any, sized by the column they're in:
   the call's as a card with a picture of all of it, beside its words where the card is 600px wide and above them where it
   isn't, and each breakout room's as a card beside the others', two or three across as there's room (a stack in a narrow

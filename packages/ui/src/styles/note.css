@@ -5,7 +5,9 @@
  * same evening, with its calls on the line. Classes start with nd-.
  */
 .nd {
-  --hz: calc(8px + clamp(158px, 18.5vh, 196px));
+  /* The band of sky the head stands in, and under it the shared screens, when a note has them (--nd-stage, measured). */
+  --nd-sky-h: calc(8px + clamp(158px, 18.5vh, 196px));
+  --hz: calc(var(--nd-sky-h) + var(--nd-stage, 0px));
   --nd-up: 38px;  /* how far above the top of the strip the line sits */
   --nd-hair: color-mix(in oklch, var(--ink) 13%, transparent);
   --nd-bed: var(--surface);
@@ -48,7 +50,7 @@ html:has(.nd-ask input:focus) { scroll-padding-bottom: 0; }
 body:has(.nd-askdock) .ac-toasts:not(.on-stage) { bottom: 92px; }
 
 /* ------------------------------------------------------------ the band */
-.nd-head { position: relative; height: calc(var(--hz) - 30px - var(--nd-up)); }
+.nd-head { position: relative; height: calc(var(--nd-sky-h) - 30px - var(--nd-up)); }
 .nd-top { display: flex; align-items: center; gap: 12px; min-height: 40px; padding-right: var(--top-room); }
 .shell.is-bare .nd-top { padding-left: max(0px, calc(72px - var(--page-x))); }
 .nd-title { display: flex; align-items: baseline; gap: 10px; min-width: 0; margin-right: auto; }
@@ -431,7 +433,7 @@ button.nd-lt:hover { color: var(--ink); }
 .nd-gone li .ac-i { flex: none; color: var(--sun-text); }
 .nd-gone .ac-btn { margin-top: 14px; }
 /* Deleted: the note goes before saying what went. */
-.nd.is-going .nd-head, .nd.is-going .nd-hz, .nd.is-going .nd-cols { animation: nd-going 520ms var(--ease-in) forwards; }
+.nd.is-going .nd-head, .nd.is-going .nd-replay, .nd.is-going .nd-hz, .nd.is-going .nd-cols { animation: nd-going 520ms var(--ease-in) forwards; }
 @keyframes nd-going { to { opacity: 0; transform: translateY(-6px); } }
 
 /* ------------------------------------------------------------ ask */
@@ -601,9 +603,7 @@ button.nd-lt:hover { color: var(--ink); }
   /* Either column can finish last: both keep its controls above Ask's floating suggestions. */
   .nd-main:has(> .nd-askdock) > .nd-read { padding-bottom: 60px; }
   .nd-said .nd-s:first-child { margin-top: 0; }
-  /* A shared screen's replay spans both, over them. */
-  .nd-main:has(> .nd-replay) { grid-template-rows: auto 1fr auto; }
-  .nd-replay, .nd-askdock, .nd-end-mark { grid-column: 1 / -1; }
+  .nd-askdock, .nd-end-mark { grid-column: 1 / -1; }
 }
 
 /* Narrower: everything in one column, and what's beside the note follows it, two across. */
@@ -612,7 +612,6 @@ button.nd-lt:hover { color: var(--ink); }
   .nd-cols { grid-template-columns: minmax(0, 1fr); }
   /* One column: the bar spans all of it, so it stays at the bottom through what's beside the note too. */
   .nd-main { display: contents; }
-  .nd-replay { grid-area: 1 / 1; min-width: 0; }
   .nd-read { grid-area: 2 / 1; min-width: 0; }
   .nd-said { grid-area: 3 / 1; min-width: 0; padding-bottom: 0; }
   .nd-side { grid-area: 4 / 1; position: static; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 28px; align-items: start; padding: 34px 0 calc(70px + var(--nd-chips, 42px)); }
@@ -621,9 +620,9 @@ button.nd-lt:hover { color: var(--ink); }
 }
 
 @media (max-width: 860px) {
-  .nd { --hz: 158px; --nd-side: 100%; }
+  .nd { --nd-sky-h: 158px; --nd-side: 100%; }
   .nd .dusk-in { padding: 6px 16px 28px; }
-  .nd-head { height: calc(var(--hz) - 6px - var(--nd-up)); }
+  .nd-head { height: calc(var(--nd-sky-h) - 6px - var(--nd-up)); }
   .nd-top { gap: 2px; padding-right: 0; }
   .nd-title { flex: 1 1 auto; gap: 8px; }
   .nd-title h1 { font-size: 25px; }
@@ -704,8 +703,17 @@ button.nd-lt:hover { color: var(--ink); }
 .nd-redo-p { font: 400 14.5px/1.5 var(--font-sans); color: var(--ink-2); text-wrap: pretty; }
 .nd-redo-f { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 6px; }
 
-/* The shared screens above the notes: playing from a frame comes up to them, clear of the horizon held at the top. */
-.nd-replay { margin-bottom: 16px; scroll-margin-top: 124px; outline: none; }
+/*
+ * The shared screens, on the sky over the line, which runs along their foot as their seek bar and still sticks to the top
+ * as you read, clear of the picture. As wide as the note's own column under them (.nd-cols), and never taller than about
+ * half the window, keeping its shape: on a wide window it's narrower than the column. The sky grows by this height
+ * (useStageOnTheSky). Playing from a frame comes up to them.
+ */
+.nd-replay { width: calc(100% - var(--nd-side) - clamp(32px, 3.2vw, 56px)); padding-bottom: 8px; scroll-margin-top: 124px; outline: none; }
+.nd-replay .ac-replay { margin: 0; }
+.nd-replay .ac-replay:not(:fullscreen) .ac-replay-stage { max-height: 56vh; }
+/* In one column, the whole of it. */
+@media (max-width: 1180px) { .nd-replay { width: auto; } }
 
 /* Notes written by an unencrypted model: the same quiet button under the title, in caution. */
 .ac-sealed.is-button.nd-seal.is-caution, .ac-sealed.is-button.nd-seal.is-caution:hover { color: var(--caution); }

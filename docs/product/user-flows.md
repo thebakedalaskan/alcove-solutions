@@ -1216,8 +1216,9 @@ Storybook journeys **6.23–6.25** show the review alongside the call:
   it; there whether or not the notes are written yet), the transcript (its first five lines,
   then **Show all 24 minutes**, and how many shared screens are further on, which open from there) and, beside it, Your
   notes, what people added, who has it and its series. On a wide screen the transcript moves beside what was decided, so
-  going to a moment never takes the note away. When a share went in the notes, the recording plays its video above the
-  audio, in step with it, a short while after the call and before the notes are written: the share that started last
+  going to a moment never takes the note away. When a share went in the notes, the recording plays its video in step
+  with the audio, a short while after the call and before the notes are written, on the sky over the horizon: the line
+  runs along its foot as its seek bar, and sticks to the top as you read on, clear of it. It shows the share that started last
   when two overlap, with a chip for each to switch. While a share's picture takes a moment to load, or to get to another
   moment, the dark stage says **Loading Priya’s screen**; if it can't be played, it says so, with **Try again**. Where
   no share in the notes covers the moment (before, between or after them, or a share that wasn't kept), it says **No
