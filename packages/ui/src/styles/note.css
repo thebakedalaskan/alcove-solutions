@@ -435,7 +435,8 @@ button.nd-lt:hover { color: var(--ink); }
 .nd-askdock::before { content: ""; position: absolute; left: -16px; right: -16px; bottom: -24px; height: 92px; background: linear-gradient(to bottom, transparent, color-mix(in oklch, var(--nd-fade) 92%, transparent) 58%); -webkit-mask-image: linear-gradient(to right, transparent, #000 16px, #000 calc(100% - 16px), transparent); mask-image: linear-gradient(to right, transparent, #000 16px, #000 calc(100% - 16px), transparent); pointer-events: none; z-index: -1; }
 .nd-ask { display: flex; align-items: center; gap: 10px; height: 48px; padding: 0 6px 0 16px; border-radius: var(--radius-pill); background: var(--surface-raised); box-shadow: 0 0 0 1px var(--line), 0 18px 40px -22px rgb(0 0 0 / .55); color: var(--ink-3); }
 .nd-ask:focus-within { box-shadow: 0 0 0 1.5px var(--focus), 0 18px 40px -22px rgb(0 0 0 / .55); }
-.nd-ask input { flex: 1; min-width: 0; border: 0; outline: 0; background: none; font: 400 15px/1 var(--font-sans); color: var(--ink); }
+/* Its own line box, as tall as the font's, as "Write something for yourself" has: a caret sized from it is the text's height. */
+.nd-ask input { flex: 1; min-width: 0; border: 0; outline: 0; background: none; font: 400 15px/20px var(--font-sans); color: var(--ink); }
 .nd-ask input::placeholder { color: var(--ink-2); }
 .nd-only { display: inline-flex; align-items: center; gap: 5px; flex: none; font: 500 12.5px/1 var(--font-sans); color: var(--ink-3); white-space: nowrap; }
 .nd-ask-go.ac-icon-btn { background: color-mix(in oklch, var(--ink) 11%, transparent); color: var(--ink); }
