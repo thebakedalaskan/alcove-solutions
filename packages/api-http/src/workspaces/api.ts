@@ -2,7 +2,7 @@ import { type HttpTransport } from '../transport/http';
 import { type HttpOptions } from '../transport/options';
 import { HttpWorkspaceLive, PRESENCE_BEAT_MS, QUIET_MS } from './live';
 import { pictureReader, sendFile } from './media';
-import { type AlcoveApi, AlcoveApiError, BoardThemesSchema, CALL_PASS_HEADER, CreatedSchema, DOC_UPDATE_TYPE, DocAppendedSchema, DocAskPartSchema, DocLiveEventSchema, DocumentLibrarySchema, DocumentShareSchema, DocVersionLineSchema, type DocVersionSummary, DocVersionSummarySchema, fromBase64Url, MediaTokenAnswerSchema, MentionNoticeSchema, PersonIdsSchema, PresenterFrameNotesSchema, SearchDocSchema, WorkspaceItemSchema, WorkspaceLiveEventSchema, WorkspaceMediaSchema, WorkspacePersonSchema, type WorkspaceReadOptions, WorkspaceSummarySchema, WorkspaceTreeSchema } from '@alcove/api';
+import { type AlcoveApi, AlcoveApiError, BoardThemesSchema, CALL_PASS_HEADER, LIVE_STREAM_HEADER, CreatedSchema, DOC_UPDATE_TYPE, DocAppendedSchema, DocAskPartSchema, DocLiveEventSchema, DocumentLibrarySchema, DocumentShareSchema, DocVersionLineSchema, type DocVersionSummary, DocVersionSummarySchema, fromBase64Url, MediaTokenAnswerSchema, MentionNoticeSchema, PersonIdsSchema, PresenterFrameNotesSchema, SearchDocSchema, WorkspaceItemSchema, WorkspaceLiveEventSchema, WorkspaceMediaSchema, WorkspacePersonSchema, type WorkspaceReadOptions, WorkspaceSummarySchema, WorkspaceTreeSchema } from '@alcove/api';
 import { z } from 'zod';
 
 export function createWorkspacesApi(t: HttpTransport, o: HttpOptions): Pick<AlcoveApi, 'documents' | 'workspaces'> {
@@ -55,10 +55,12 @@ export function createWorkspacesApi(t: HttpTransport, o: HttpOptions): Pick<Alco
       ids: async (id, emails, w) => (await req(PersonIdsSchema, 'POST', `${space(id)}/ids`, { emails }, withPass(w))).ids,
       mentions: () => req(z.array(MentionNoticeSchema), 'GET', '/mentions'),
       mentionSeen: async (id, mentionId, w) => { await req(z.unknown(), 'DELETE', `${space(id)}/mentions/${encodeURIComponent(mentionId)}`, undefined, withPass(w)); },
+      // A stream's name goes in a header, never in a URL; saying it's closed goes as the page may be going.
       live: (id, w) => new HttpWorkspaceLive(
-        (signal) => ndjson(WorkspaceLiveEventSchema, `${space(id)}/live`, signal, withPass(w)), o.liveQuietMs ?? QUIET_MS,
+        (signal, stream) => ndjson(WorkspaceLiveEventSchema, `${space(id)}/live`, signal, { ...withPass(w), [LIVE_STREAM_HEADER]: stream }), o.liveQuietMs ?? QUIET_MS,
         (body, keepalive) => req(z.unknown(), 'POST', `${space(id)}/presence`, body, withPass(w), keepalive), o.livePresenceMs ?? PRESENCE_BEAT_MS,
-        (mention) => req(z.unknown(), 'DELETE', `${space(id)}/mentions/${encodeURIComponent(mention)}`, undefined, withPass(w))
+        (mention) => req(z.unknown(), 'DELETE', `${space(id)}/mentions/${encodeURIComponent(mention)}`, undefined, withPass(w)),
+        (stream) => { req(z.unknown(), 'POST', `${space(id)}/live/end`, { stream }, withPass(w), true).catch(() => undefined); }
       ),
       // Yjs comes with the first document anyone opens, and stays out of everything else.
       document: async (id, documentId, opts) => {
@@ -66,7 +68,8 @@ export function createWorkspacesApi(t: HttpTransport, o: HttpOptions): Pick<Alco
         const headers = withPass(opts);
         const { HttpDocSession } = await import('./documents');
         return new HttpDocSession({
-          open: (after, signal) => ndjson(DocLiveEventSchema, `${at}/live?after=${after}`, signal, headers),
+          open: (after, signal, stream) => ndjson(DocLiveEventSchema, `${at}/live?after=${after}`, signal, { ...headers, [LIVE_STREAM_HEADER]: stream }),
+          end: (stream) => { req(z.unknown(), 'POST', `${at}/live/end`, { stream }, headers, true).catch(() => undefined); },
           update: async (update) => parse(DocAppendedSchema, await (await send('POST', `${at}/updates`, new Uint8Array(update), { 'content-type': DOC_UPDATE_TYPE, ...headers })).json(), `response from POST ${at}/updates`),
           awareness: (update, keepalive) => req(z.unknown(), 'POST', `${at}/awareness`, { update }, headers, keepalive)
         }, opts?.keep, o.liveQuietMs ?? QUIET_MS);
@@ -120,7 +123,7 @@ export function createWorkspacesApi(t: HttpTransport, o: HttpOptions): Pick<Alco
           abandon: async (mediaId) => { await req(z.object({ removed: z.literal(true) }), 'DELETE', mediaIn(id, documentId, mediaId), undefined, withPass(w)); }
         }, file, w, (level, msg, context) => emit(level, msg, context), o.mediaPatienceMs),
         // The token comes in an answer and goes in a URL: this is the only place the two meet, and neither is logged.
-        url: async (id, documentId, mediaId, w) => `${base}/media/${await mediaToken(id, documentId, mediaId, w)}`,
+        url: async (id, documentId, mediaId, w) => `${base}/media/${await mediaToken(id, documentId, mediaId, w)}${w?.download ? '?download' : ''}`,
         picture: (id, documentId, mediaId, w) => pictures({ token: () => mediaToken(id, documentId, mediaId, w), read: (token) => send('GET', `/media/${token}`, null, {}, false, w?.signal) }, w?.signal),
         preview: async (id, documentId, mediaId, w) => {
           const res = await send('GET', `${mediaIn(id, documentId, mediaId)}/preview`, null, withPass(w), false, w?.signal);

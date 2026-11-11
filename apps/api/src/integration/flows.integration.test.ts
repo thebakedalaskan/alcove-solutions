@@ -291,16 +291,16 @@ describe('signing in', () => {
     const patchRaw = async (body: unknown) => (await fetch(`${h.baseUrl}/v1/account/preferences`, { method: 'PATCH', headers: { 'content-type': 'application/json', origin: ORIGIN }, body: JSON.stringify(body) })).status;
     const defaults = {
       sounds: DEFAULT_SOUND_PREFERENCES,
-      notesDefault: 'on', notesLanguage: 'call', summaryLength: 'short', addToCalendar: true, showOtherMeetings: true, recordOffline: true,
+      notesDefault: 'on', notesLanguage: 'call', addToCalendar: true, showOtherMeetings: true, recordOffline: true,
       notifications: DEFAULT_NOTIFICATION_PREFERENCES,
       pinned: [], groups: [], model: null
     };
     expect(await api.account.preferences()).toEqual(defaults);
     const patched = await api.account.updatePreferences({
-      summaryLength: 'detailed',
+      notesLanguage: 'de',
       notifications: { ...DEFAULT_NOTIFICATION_PREFERENCES, replies: false, chatMentions: false, ringing: false, beforeCall: 1 }
     });
-    expect(patched).toEqual({ ...defaults, summaryLength: 'detailed', notifications: { ...defaults.notifications, replies: false, chatMentions: false, ringing: false, beforeCall: 1 } });
+    expect(patched).toEqual({ ...defaults, notesLanguage: 'de', notifications: { ...defaults.notifications, replies: false, chatMentions: false, ringing: false, beforeCall: 1 } });
     expect(await api.account.preferences()).toEqual(patched);
     const sounds = { ...DEFAULT_SOUND_PREFERENCES, enabled: false, quiet: true, volume: 0.25, hands: false, replies: false };
     expect((await api.account.updatePreferences({ sounds })).sounds).toEqual(sounds);
@@ -1532,6 +1532,48 @@ describe('live transcript and written notes', () => {
     expect(h.logs.join('')).not.toContain('Siobhan owns the migration plan');
   });
 
+  it('takes the names Whisper says back of its prompt off the start of a clip, and keeps a line that opens with the end of the one before', async () => {
+    const org = await account(unique('organizer'));
+    const guest = `priya.raman@l${Date.now().toString(36)}.example`;
+    const call = await org.api.calls.join((await org.api.calls.startNow({ notes: 'on', guests: [guest] })).code, { mic: true, cam: false });
+    const organizer = org.session.user.name;
+    const names = `${organizer}, Priya Raman.`;
+    const said = ['We should look at the launch plan first.', 'The beta went out to forty customers on Monday.', 'Most of them finished onboarding within a day.'];
+    for (const [i, words] of said.entries()) await call.transcribe(speech(words, 0, i * 4), call.ticket.identity);
+    const from = h.near.transcriptions.length;
+    const logsFrom = h.logs.length;
+    // Clips too short to ask Whisper about the language again, so every one goes with the prompt.
+    const clip = (words: string, at: number) => call.transcribe(speech(words, 0, at, 3000), call.ticket.identity);
+    // The names said back as Whisper starts on the clip, then what was heard: the names go, and what was said stays under its speaker.
+    await clip(`${names} I agree.`, 12);
+    // Nothing but the names: nothing was said, and the clip leaves no line.
+    await clip(names, 16);
+    // One name is someone spoken to, and stays.
+    await clip('Priya Raman, can you take this one?', 20);
+    // Names opening a later segment of the clip were said: Whisper says its prompt back only as it starts on a clip.
+    await clip(`Let me ask you both. // ${organizer}, Priya Raman, does Friday still work?`, 24);
+    // A line that opens with the end of the one before is someone picking it up, as a question: it's kept whole.
+    await clip('I think we should push the launch to the end of March.', 28);
+    await clip('Push the launch to the end of March? That’s too late.', 32);
+    const sent = h.near.transcriptions.slice(from);
+    expect(sent).toHaveLength(6);
+    expect(sent.every((t) => t.language === 'en' && t.prompt?.startsWith(`${names} `))).toBe(true);
+    expect(sent.at(-1)?.prompt?.endsWith('I think we should push the launch to the end of March.')).toBe(true);
+    expect(call.getSnapshot().transcript.map((l) => l.text)).toEqual([
+      ...said, 'I agree.', 'Priya Raman, can you take this one?', 'Let me ask you both.', `${organizer}, Priya Raman, does Friday still work?`,
+      'I think we should push the launch to the end of March.', 'Push the launch to the end of March? That’s too late.'
+    ]);
+    // Only whether a clip lost the names is logged, never its words.
+    const logged = h.logs.slice(logsFrom);
+    const trimmed = logged.flatMap((line) => {
+      const o: unknown = JSON.parse(line);
+      return o && typeof o === 'object' && 'msg' in o && o.msg === 'clip transcribed' && 'namesTrimmed' in o ? [o.namesTrimmed] : [];
+    });
+    expect(trimmed).toEqual([1, 1, 0, 0, 0, 0]);
+    for (const words of ['I agree', 'does Friday still work', 'end of March', 'too late']) expect(logged.join('')).not.toContain(words);
+    await ended(call);
+  });
+
   it('drops the subtitle credits and closing lines Whisper invents in quiet, in its languages, and keeps sentences about the same things', async () => {
     const rec = await (await account(unique('captions'))).api.recordings.start({ title: 'Captions review' });
     const invented = [
@@ -1665,7 +1707,7 @@ describe('live transcript and written notes', () => {
     expect(note.suggestions).toMatchObject([{ review: 'suggested', id: expect.any(String), text: 'Tidy the spacing by Friday', owner: { name: 'Sam' }, takenOn: false, due: 'Friday', at: 0, done: false, changes: [] }]);
   });
 
-  it('notes are written in the chosen language and length', async () => {
+  it('notes are written in the chosen language, with a short summary for everyone', async () => {
     const wrote = async (b: Awaited<ReturnType<typeof account>>, how: 'call' | 'room') => {
       const before = h.near.instructions.length;
       if (how === 'room') {
@@ -1685,16 +1727,17 @@ describe('live transcript and written notes', () => {
     expect((await wrote(standard, 'call'))[0]).toContain('summary: two or three plain sentences');
 
     const chosen = await account();
-    await chosen.api.account.updatePreferences({ notesLanguage: 'es', summaryLength: 'detailed' });
+    await chosen.api.account.updatePreferences({ notesLanguage: 'es' });
     const [call] = await wrote(chosen, 'call');
     expect(call).toContain('Write in Spanish.');
-    expect(call).toContain('summary: a short paragraph for each topic');
-    expect(call).not.toContain('two or three plain sentences');
+    // The summary is always the short one: the full summary is the longer account, under it.
+    expect(call).toContain('summary: two or three plain sentences');
+    expect(call).not.toContain('a short paragraph for each topic');
     // A room recording follows the person who recorded it.
     const [room] = await wrote(chosen, 'room');
     expect(room).toContain('Write in Spanish.');
-    expect(room).toContain('a short paragraph for each topic');
-    // Decisions, follow-ups and chapters are written the same way either way.
+    expect(room).toContain('summary: two or three plain sentences');
+    // Decisions, follow-ups and chapters are written the same way whatever the language.
     expect(call).toContain('decisions: what the people agreed');
     // Someone else's choice doesn't reach a call they only joined: the organizer's decides.
     const guest = await account();
@@ -1845,7 +1888,7 @@ describe('in the call: hands, spotlight, breakout rooms and captions', () => {
     expect(await act(a, s.callId, { type: 'hand', up: false, place: 'main' }, call.ticket.pass)).toBe(409);
   });
 
-  it('opens breakout rooms for invited people only, messages them, brings them back, and puts the rooms in the notes', async () => {
+  it('opens breakout rooms, each person in one, messages them, brings them back, and puts the rooms in the notes', async () => {
     const org = await account(unique('organizer'));
     const kofi = `kofi@g${Date.now().toString(36)}${(seq++).toString(36)}.example`;
     const lena = `lena@g${Date.now().toString(36)}${(seq++).toString(36)}.example`;
@@ -1853,7 +1896,7 @@ describe('in the call: hands, spotlight, breakout rooms and captions', () => {
     const id = call.getSnapshot().callId;
     await call.transcribe(speech('We agreed to split into two rooms.', 0, 0), call.ticket.identity);
 
-    // Only people invited to the call, each in one room, in two to eight rooms.
+    // By address, only people invited to the call; each person in one room, in two to eight rooms.
     expect(await act(org, id, { type: 'rooms-open', rooms: [{ name: 'Design', emails: [kofi] }, { name: 'Support', emails: ['stranger@elsewhere.example'] }], minutes: 5, board: { mode: 'none', template: 'blank' } }, call.ticket.pass)).toBe(400);
     expect(await act(org, id, { type: 'rooms-open', rooms: [{ name: 'Design', emails: [kofi] }, { name: 'Support', emails: [kofi] }], minutes: 5, board: { mode: 'none', template: 'blank' } }, call.ticket.pass)).toBe(400);
     expect(await act(org, id, { type: 'rooms-open', rooms: [{ name: 'Alone', emails: [kofi] }], minutes: 5, board: { mode: 'none', template: 'blank' } }, call.ticket.pass)).toBe(400);
@@ -1887,7 +1930,7 @@ describe('in the call: hands, spotlight, breakout rooms and captions', () => {
     const rooms = note.chapters.filter((c) => c.title === '2 breakout rooms');
     expect(rooms).toHaveLength(2);
     expect(rooms[0]?.summary).toBe('Design: Kofi. Support: Lena. 1 min.');
-    expect(rooms[1]?.summary).toBe('Pairs A: Lena. Pairs B: nobody invited. 1 min.');
+    expect(rooms[1]?.summary).toBe('Pairs A: Lena. Pairs B: nobody. 1 min.');
     expect(note.chapters.map((c) => c.at)).toEqual([...note.chapters.map((c) => c.at)].sort((x, y) => x - y));
   });
 
@@ -3215,6 +3258,8 @@ describe('deleting an account', () => {
     await b.fetch(driveCallback, { redirect: 'manual' });
     await b.api.drive.update({ enabled: true, destinationId: driveFolder, formats: ['notes-markdown'] });
     await b.api.drive.setForNote(callNote, { enabled: true, destinationId: driveFolder, formats: ['notes-markdown'] });
+    // A link she made to her call's notes goes with them, and so with her.
+    await b.api.notes.createLink(callNote);
     // A timer preset as the previous release can still write one while a deploy is under way: nothing in this release does.
     await h.pool.query('INSERT INTO timer_presets (owner_id, preset_id, ciphertext) VALUES ($1, $2, $3)', [ownerId, randomBytes(16).toString('base64url'), randomBytes(64)]);
     // Every table that keeps an account's rows has some of hers.
@@ -3223,7 +3268,7 @@ describe('deleting an account', () => {
       'agent_codes', 'agent_grants', 'agent_operations', 'agent_tokens', 'billing_accounts', 'call_attention', 'call_codes', 'call_mls', 'call_moves', 'call_notes',
       'call_private_messages', 'call_rings', 'calls', 'content_jobs', 'deposits', 'document_access', 'document_clients', 'document_snapshots', 'document_updates', 'document_version_parts',
       'document_versions', 'documents', 'drive_call_exports', 'drive_connections', 'drive_export_jobs', 'identities', 'items', 'media_upload_days', 'meeting_access',
-      'note_access', 'note_additions', 'object_gc', 'operations', 'owners', 'personal_notes', 'presenter_frame_notes', 'presenter_notes', 'recording_pieces', 'recordings',
+      'note_access', 'note_additions', 'note_links', 'object_gc', 'operations', 'owners', 'personal_notes', 'presenter_frame_notes', 'presenter_notes', 'recording_pieces', 'recordings',
       'revisions', 'screen_frames', 'screen_pieces', 'screen_shares', 'screen_videos', 'sessions', 'timer_presets', 'transcript_clips', 'transcript_translations',
       'workspace_authors', 'workspace_media', 'workspace_media_pieces', 'workspace_media_previews', 'workspace_media_uses', 'workspace_members', 'workspace_mentions',
       'workspaces'
@@ -3604,6 +3649,14 @@ describe('privacy at rest', () => {
     const addition = await c.api.notes.previewAddition(ended?.pendingNoteId ?? '', own?.id ?? '');
     expect(addition.text).toBe('CANARY-OWN-WORDS for nobody else');
     await c.api.notes.addToShared(ended?.pendingNoteId ?? '', own?.id ?? '', { text: 'CANARY-ADDED to the notes', seal: addition.seal });
+    // And something written straight into the shared notes, beside them: sealed with the note too.
+    await c.api.notes.writeShared(ended?.pendingNoteId ?? '', { text: 'CANARY-SHARED-WRITE for everyone with the notes', seal: (await c.api.notes.sharedAudience(ended?.pendingNoteId ?? '')).seal });
+    // A link to the notes: only its secret's hash is kept, and opening it gives an account the notes, sealed in them as shared by link.
+    const noteLink = await c.api.notes.createLink(settledNote.id);
+    secrets.push(noteLink.secret);
+    const linked = tapped();
+    await linked.api.auth.signIn('sso', { email: 'canary-linked@canary.example' });
+    expect(await linked.api.notes.claimLink(noteLink.secret)).toEqual({ noteId: settledNote.id });
     // What people add to the notes and say about them is sealed with the rest: proposed, reworded, disputed, dated and handed on,
     // in the call's part and a room's, and so is every wording it had.
     await c.api.notes.proposeDecision(settledNote.id, { text: 'CANARY-PROPOSAL the merger needs a vote.' });
@@ -3703,8 +3756,8 @@ describe('privacy at rest', () => {
     await settle(boardHost, (s) => s.waiting.some((w) => w.id === boardGuest.ticket.identity));
     await boardHost.admit(boardGuest.ticket.identity);
     expect((await settle(boardGuest, (s) => s.board.open?.role === 'edit')).board.open?.name).toBe('CANARY-BOARDCALL merger');
-    // A vote on that board, with its timer running: the frame and sticky are drawn as a browser draws them, the server reads the
-    // board for each vote, and keeps who voted for what with the call. None of it is readable, nor the board's own IDs for them.
+    // A vote on that board: the frame and sticky are drawn as a browser draws them, the server reads the board for each vote, and
+    // keeps who voted for what with the call. None of it is readable, nor the board's own IDs for them.
     const voteBoard = boardHost.getSnapshot().board.open;
     const drawing = await c.api.workspaces.document(voteBoard?.workspaceId ?? '', voteBoard?.documentId ?? '');
     await drawing.ready;
@@ -3712,7 +3765,6 @@ describe('privacy at rest', () => {
     const voteSticky = addObject(drawing.doc, { k: 'note', x: 20, y: 20, w: 150, h: 150, c: 'rose', size: 'm', t: 'CANARY-VOTESTICKY' }, 'drawn') ?? '';
     for (const id of [voteFrame, voteSticky]) expect(id).toMatch(/^[A-Za-z0-9_-]{12}$/);
     await until(async () => drawing.getSnapshot().status === 'saved', 'the vote’s board to reach Alcove');
-    await boardHost.startTimer(5);
     await boardHost.startVote(voteFrame, 3);
     await boardHost.castVote(voteSticky);
     await boardGuest.castVote(voteSticky);
@@ -3829,7 +3881,7 @@ describe('privacy at rest', () => {
       'canary-google-sub', 'canary.googler', 'Canary Googler', 'canary-photo', 'CANARY-GCAL', 'canary-gcal',
       'CANARY-QUESTION', 'CANARY-SERIES-ASK', 'CANARY-ASKED', 'canary-recurring-id', 'canary-theirs-event', 'canary-allday-event', 'canary-missing-event',
       'CANARY-SERIES-TITLE', 'CANARY-SERIES-RENAMED', 'canary-series-guest', 'Pacific/Apia', series.seriesCode ?? 'no series link',
-      '"answer":"maybe"', 'CANARY-OWN-WORDS', 'CANARY-OWN-MARK', 'CANARY-OWN-ASKED', 'CANARY-OWN-ANSWER', 'CANARY-ADDED',
+      '"answer":"maybe"', 'CANARY-OWN-WORDS', 'CANARY-OWN-MARK', 'CANARY-OWN-ASKED', 'CANARY-OWN-ANSWER', 'CANARY-ADDED', 'CANARY-SHARED-WRITE', 'canary-linked',
       'CANARY-PROPOSAL', 'CANARY-ROOMPROPOSAL', 'CANARY-FOLLOWUP', 'CANARY-DUE', 'CANARY-REWORD', 'needs a vote', 'brief the board', 'two votes',
       'CANARY-WORKSPACE', 'CANARY-WSFOLDER', 'CANARY-WSDOC', 'CANARY-WSBOARD', 'CANARY-WSRENAMED', 'CANARY-WSREFUSED', 'canary-ws-member', 'canary-ws-shared',
       'CANARY-MEDIA-NAME', 'CANARY-MEDIA-BYTES', 'CANARY-MEDIA-GONE', 'CANARY-MEDIA-DELETED', 'CANARY-MEDIA-PREVIEW',
@@ -3878,6 +3930,7 @@ describe('privacy at rest', () => {
     for (const canary of canaries) for (const enc of encodings(canary)) expect(logText.includes(enc), `${canary} as ${enc} in logs`).toBe(false);
     for (const secret of secrets) expect(logText.includes(secret), 'a session cookie or move code in logs').toBe(false);
     for (const enc of encodings(moveCode)) expect(rowsText.includes(enc), 'a move code in rows').toBe(false);
+    for (const enc of encodings(noteLink.secret)) expect(rowsText.includes(enc), 'a note link’s secret in rows').toBe(false);
     // Logs are built to leave the confidential VM: no email address of anyone, ever, and no client address.
     expect(logText.match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/g) ?? []).toEqual([]);
     expect(logText.match(/\b10\.1\.\d{1,3}\.\d{1,3}\b/g) ?? []).toEqual([]);

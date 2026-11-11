@@ -7,6 +7,7 @@ import { firstName } from '@alcove/api';
 import type { Mark, Node as PMNode } from 'prosemirror-model';
 import type { Decoration, EditorView, MarkView, MarkViewConstructor, NodeView, NodeViewConstructor, ViewMutationRecord } from 'prosemirror-view';
 import { createElement } from 'react';
+import { codeLang, langName } from '../languages';
 import type { EditorRuntime } from '../runtime';
 import { blockIdOf, headingLevel, indentAttr, isGone, lineKind, numberAttr, textAttr, textOf } from '../schema';
 import { dateLabel } from './dates';
@@ -25,7 +26,7 @@ function solid<T extends HTMLElement>(node: T): T {
   return node;
 }
 
-const onControl = (e: Event): boolean => e.target instanceof Element && e.target.closest('.wb-box, .wb-fold, .wb-th') !== null;
+const onControl = (e: Event): boolean => e.target instanceof Element && e.target.closest('.wb-box, .wb-fold, .wb-th, .wb-lang') !== null;
 
 /** Moves as it arrives, once: left on, the animation would run again each time the page is shown. */
 function arrive(el: HTMLElement): void {
@@ -102,6 +103,9 @@ class TextBlock extends BlockFrame implements NodeView {
   private number: HTMLElement | null = null;
   private lead: HTMLElement | null = null;
   private drawnLead: string | null = null;
+  /** Code's language, in its corner. */
+  private lang: HTMLElement | null = null;
+  private drawnLang: string | null = null;
 
   constructor(node: PMNode, private view: EditorView, private getPos: () => number | undefined, rt: EditorRuntime, decorations: readonly Decoration[]) {
     super(node, rt, textClass(node), decorations);
@@ -113,7 +117,37 @@ class TextBlock extends BlockFrame implements NodeView {
     if (node.type.spec.code) this.text.spellcheck = false;
     col.append(this.text);
     this.dom.insertBefore(col, this.dom.querySelector('.wb-th'));
+    this.setLang(node);
     this.paint(node, decorations);
+  }
+
+  /**
+   * Code says what language it's coloured as in its corner, floated, so the first line goes round it rather than under it.
+   * For someone who can write, it's a button that opens the languages: the same choice its block's menu has. Plain text
+   * shows its button only while the block's pointed at (always on a touch screen), and nothing to someone who can only read.
+   */
+  private setLang(node: PMNode): void {
+    if (!node.type.spec.code) return;
+    const lang = codeLang(node);
+    const key = `${lang}:${this.rt.readOnly}`;
+    if (key === this.drawnLang) return;
+    this.drawnLang = key;
+    this.lang?.remove();
+    const control = solid(el(this.rt.readOnly ? 'span' : 'button', `wb-lang${lang === null ? ' is-plain' : ''}`));
+    control.append(document.createTextNode(langName(lang)));
+    if (control instanceof HTMLButtonElement) {
+      control.type = 'button';
+      control.setAttribute('aria-label', `Language: ${langName(lang)}. Change it`);
+      control.setAttribute('aria-haspopup', 'menu');
+      control.append(iconNode('down'));
+      keepCaret(control);
+      control.addEventListener('click', () => {
+        const id = blockIdOf(this.node);
+        if (id) this.rt.menu.set({ kind: 'lang', block: id, rect: control.getBoundingClientRect() });
+      });
+    } else if (lang === null) control.hidden = true;
+    this.lang = control;
+    this.text.before(control);
   }
 
   private setLead(node: PMNode): void {
@@ -174,6 +208,7 @@ class TextBlock extends BlockFrame implements NodeView {
       this.text.setAttribute('data-ph', placeholderOf(node));
     }
     this.setLead(node);
+    this.setLang(node);
     this.frame(node, decorations);
     this.paint(node, decorations);
     return true;

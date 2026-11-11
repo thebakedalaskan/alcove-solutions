@@ -5,7 +5,7 @@
  * through the workspace's `Pictures`, uploads go through `uploads.ts`, the list of what's in the workspace comes from
  * `media.list`, and Play for everyone from the call (`playing.ts`).
  */
-import { DocUploadsStateSchema, FILE_TYPE, errorCode, errorMessage, type DocSession, type WorkspaceMedia } from '@alcove/api';
+import { DocUploadsStateSchema, errorCode, errorMessage, type DocSession, type WorkspaceMedia } from '@alcove/api';
 import { WsDeleteFileAsk, WsPopover, WsUploadPicker, wsToast, type WsPhoto, type WsStoredFile } from '@alcove/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ChangeEvent, type ReactNode } from 'react';
@@ -14,7 +14,7 @@ import { q, qk, useMediaChanges } from '~/lib/queries';
 import type { Ws } from './context';
 import type { BlockJSON, EditorHandle, EditorProps, InsertAt, MediaDeletion, MediaHandlers, MediaPick, Rect } from './editor/types';
 import { fileUrl, type Pictures } from './pictures';
-import { asFile, canAddAsFile, canRetry, discard, FRAME_SUFFIX, isSending, pageTurnedAway, prepare, previewOf, retry, start, stemOf, uploadsStore } from './uploads';
+import { asFile, canAddAsFile, canRetry, discard, FRAME_SUFFIX, isSending, pageTurnedAway, prepare, previewOf, retry, start, stemOf, uploadsStore, type Sorting } from './uploads';
 
 const mlog = log.child({ component: 'workspace-media' });
 
@@ -26,6 +26,13 @@ const PICKER_ROOM = 300;
 const REUSE = 6;
 /** The list of files is read again at most this often to find out whether a file block's file was deleted. */
 const RELIST_MS = 10_000;
+/**
+ * How long a download's frame stays: long past when the file's answer starts (a read waits 10 seconds at most for its turn),
+ * and time to answer the browser if it asks whether this site may download files. By then the browser has the download.
+ */
+const DOWNLOAD_FRAME_MS = 5 * 60_000;
+/** Downloads start this far apart, so a gallery's photos don't all ask the API to be read at once, past what it lets one person. */
+const DOWNLOAD_GAP_MS = 500;
 
 /** What `/` picked and is choosing for: where it'll go, and what the picker sits against. */
 interface Picking { kind: MediaPick['kind']; at: InsertAt; anchor: string | null; rect: Rect | null }
@@ -61,10 +68,51 @@ function blockOf(kind: MediaPick['kind'], chosen: readonly WorkspaceMedia[], cap
 }
 
 /** The element a block is on the page, to sit something against. */
-const blockRect = (id: string | null): DOMRect | null => (id ? document.querySelector(`.wb[data-b="${CSS.escape(id)}"]`)?.getBoundingClientRect() ?? null : null);
+const blockOn = (id: string | null): Element | null => (id ? document.querySelector(`.wb[data-b="${CSS.escape(id)}"]`) : null);
+const blockRect = (id: string | null): DOMRect | null => blockOn(id)?.getBoundingClientRect() ?? null;
 const toDOMRect = (r: Rect) => new DOMRect(r.left, r.top, r.width, r.height);
+/** Where something about a block sits: against the block, wherever it is now, or where it was, or the middle of the window. */
+const placeOf = (block: string | null, rect: Rect | null): { at: () => DOMRect; within: () => Element | null } => ({
+  at: () => blockRect(block) ?? (rect ? toDOMRect(rect) : new DOMRect(innerWidth / 2, innerHeight / 3, 1, 1)),
+  within: () => blockOn(block)
+});
 /** The line something goes in place of, or under. */
 const lineOf = (at: InsertAt): string | null => (typeof at === 'string' ? null : 'replace' in at ? at.replace : 'after' in at ? at.after : at.before);
+
+let downloadFrames = 0;
+/**
+ * Saves a file, and this page goes nowhere. A URL of the page's own origin (locally, and in Storybook) saves under `name`.
+ * A file's URL in production is the API's, on an origin of its own, where a link's `download` doesn't count: followed here,
+ * it would navigate the page, which the browser takes for leaving it until the answer turns out to be a download, and a
+ * call on the page would go. So the link opens in a hidden frame of its own (the policy's `frame-src` has the API's
+ * origin), where the answer, an attachment under the file's own name, is saved. Every file has its own frame, so one
+ * download never stops another.
+ */
+function saveFile(url: string, name: string): void {
+  const frame = document.createElement('iframe');
+  downloadFrames += 1;
+  frame.name = `alcove-download-${downloadFrames}`;
+  frame.hidden = true;
+  document.body.append(frame);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  a.target = frame.name;
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => { frame.remove(); }, DOWNLOAD_FRAME_MS);
+}
+/** When the next download may start. */
+let nextDownloadAt = 0;
+/** Runs a download's start now, or `DOWNLOAD_GAP_MS` after the one before it. */
+function inDownloadTurn(go: () => void): void {
+  const now = Date.now();
+  const at = Math.max(now, nextDownloadAt);
+  nextDownloadAt = at + DOWNLOAD_GAP_MS;
+  if (at === now) go();
+  else setTimeout(go, at - now);
+}
 
 /** Counts changes from everything the media handlers read from, for the blocks to draw again. */
 interface Changes { bump: () => void; subscribe: (listener: () => void) => () => void; getSnapshot: () => number }
@@ -146,21 +194,18 @@ export function useMediaView(ws: Ws, documentId: string, video?: VideoHandlers |
       if (errorCode(e) === 'not-found') pictures.goneFrom(documentId, media);
       throw e;
     }),
-    onOpenFile: ({ media }) => {
-      fileUrl(workspaceId, documentId, media, pass).then((url) => {
-        const type = now.current.list?.find((m) => m.id === media)?.type;
-        /* What's only ever a download downloads, and the page stays. Anything shown in place opens beside it. */
-        if (type === FILE_TYPE) {
-          const a = document.createElement('a');
-          a.href = url;
-          a.rel = 'noopener';
-          document.body.append(a);
-          a.click();
-          a.remove();
-        } else window.open(url, '_blank', 'noopener');
-      }, (e: unknown) => {
-        if (errorCode(e) === 'not-found') pictures.goneFrom(documentId, media);
-        else now.current.say(wsToast.failed(errorMessage(e)));
+    onDownload: ({ media, name }) => {
+      inDownloadTurn(() => {
+        fileUrl(workspaceId, documentId, media, pass, true).then((url) => {
+          /*
+           * Asked for as a download, it comes as one whatever it is, and the page stays. A URL of this page's own takes the
+           * name here: the file's own, with its ending, which a video's title doesn't have.
+           */
+          saveFile(url, now.current.list?.find((m) => m.id === media)?.name ?? name);
+        }, (e: unknown) => {
+          if (errorCode(e) === 'not-found') pictures.goneFrom(documentId, media);
+          else now.current.say(wsToast.failed(errorMessage(e)));
+        });
       });
     }
   }), [pictures, documentId, workspaceId, pass, bumps, qc]);
@@ -249,7 +294,7 @@ export function useDocumentMedia(ws: Ws, documentId: string, { session, editor, 
     canAddAsFile: (key) => canAddAsFile(key),
     onAsFile: (key, block) => {
       const file = now.current.readOnly ? null : asFile(key);
-      if (file) sending.current([file], { replace: block }, false, true).catch((err: unknown) => { mlog.warn('a file couldn’t be added', { workspaceId, documentId, err }); });
+      if (file) sending.current([file], { replace: block }, false, 'files').catch((err: unknown) => { mlog.warn('a file couldn’t be added', { workspaceId, documentId, err }); });
     },
     onDuration: (block, seconds) => { if (!now.current.readOnly) now.current.editor?.updateBlock(block, { dur: seconds }); },
     onChoose: (block, rect) => { if (!now.current.readOnly) setPicking({ kind: 'photo', at: { replace: block }, anchor: block, rect }); },
@@ -260,9 +305,9 @@ export function useDocumentMedia(ws: Ws, documentId: string, { session, editor, 
    * Files from the desktop, the clipboard or the picker: their blocks hold the space at once, and they go. What the picker
    * adds has a line after it with the caret in it, as everything `/` adds that isn't text does.
    */
-  const upload = async (files: readonly File[], at: InsertAt, fromPicker = false, asFiles = false) => {
+  const upload = async (files: readonly File[], at: InsertAt, fromPicker = false, as: Sorting = 'found') => {
     if (files.length === 0 || now.current.readOnly) return;
-    const drafts = await prepare(files, asFiles);
+    const drafts = await prepare(files, as);
     const page = now.current.editor;
     if (!page || now.current.readOnly) { discard(drafts); return; }
     const blocks = drafts.map((d) => d.block);
@@ -297,11 +342,15 @@ export function useDocumentMedia(ws: Ws, documentId: string, { session, editor, 
     setPicking(null);
     input.click();
   };
+  /*
+   * Whatever was picked for, files go in as a drop puts them: a picture this browser can read is a photo, a film a video.
+   * From File, a picture that can't be shown (HEIC, SVG, TIFF) is attached: a file is what was asked for.
+   */
   const chosen = (e: ChangeEvent<HTMLInputElement>) => {
     const pick = choosingFor.current;
     const files = [...(e.currentTarget.files ?? [])];
     choosingFor.current = null;
-    if (pick) upload(files, pick.at, true, pick.kind === 'file').catch((err: unknown) => { mlog.warn('files couldn’t be added', { workspaceId, documentId, err }); });
+    if (pick) upload(files, pick.at, true, pick.kind === 'file' ? 'file' : 'found').catch((err: unknown) => { mlog.warn('files couldn’t be added', { workspaceId, documentId, err }); });
   };
 
   /** Delete for good: every file in the block, from every document that has it, then the block. */
@@ -324,7 +373,9 @@ export function useDocumentMedia(ws: Ws, documentId: string, { session, editor, 
   const list = listedNow ?? [];
   /* The newest few, in the order they came, so Add all keeps them as they were added. */
   const offered = (kind: MediaPick['kind']) => list.filter((m) => m.documents.length > 0 && !isFrame(m) && (kind === 'photo' ? isPicture(m) : kind === 'video' ? isVideo(m) : !isPicture(m) && !isVideo(m))).slice(0, REUSE).reverse();
-  const anchorOf = (p: { anchor: string | null; rect: Rect | null }) => () => blockRect(p.anchor) ?? (p.rect ? toDOMRect(p.rect) : new DOMRect(innerWidth / 2, innerHeight / 3, 1, 1));
+  /* Each sits against its block, wherever that is now, and follows it as the page scrolls. */
+  const pickerAt = useMemo(() => (picking ? placeOf(picking.anchor, picking.rect) : null), [picking]);
+  const deletingAt = useMemo(() => (deleting ? placeOf(deleting.block, deleting.rect) : null), [deleting]);
   const heading = ws.spaceName;
 
   const pickerFor = (pick: Picking) => {
@@ -337,13 +388,13 @@ export function useDocumentMedia(ws: Ws, documentId: string, { session, editor, 
   const popovers = (
     <>
       <input ref={field} type="file" multiple hidden onChange={chosen} aria-label="Choose files to add" />
-      {picking && (
-        <WsPopover open onOpenChange={(open) => { if (!open) setPicking(null); }} at={anchorOf(picking)} label={picking.kind === 'photo' ? 'Photos' : picking.kind === 'video' ? 'Video' : 'File'}>
+      {picking && pickerAt && (
+        <WsPopover open onOpenChange={(open) => { if (!open) setPicking(null); }} at={pickerAt.at} within={pickerAt.within} label={picking.kind === 'photo' ? 'Photos' : picking.kind === 'video' ? 'Video' : 'File'}>
           {pickerFor(picking)}
         </WsPopover>
       )}
-      {deleting && (
-        <WsPopover open onOpenChange={(open) => { if (!open) setDeleting(null); }} at={anchorOf({ anchor: deleting.block, rect: deleting.rect })} label={`Delete ${deleting.name} for good`}>
+      {deleting && deletingAt && (
+        <WsPopover open onOpenChange={(open) => { if (!open) setDeleting(null); }} at={deletingAt.at} within={deletingAt.within} label={`Delete ${deleting.name} for good`}>
           <WsDeleteFileAsk name={deleting.name} onDelete={() => { void deleteForGood(deleting); }} onKeep={() => setDeleting(null)} />
         </WsPopover>
       )}

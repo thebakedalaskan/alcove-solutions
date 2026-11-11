@@ -6,7 +6,9 @@
  * under someone still typing, by the board or by the page, counts as still being typed in until they click, tap or press Esc
  * (`holdBoardKeys`, `caretTaken`), so the rest of their sentence never makes or deletes anything. A key the board acted on goes
  * no further, so the call and the app don't act on it too, and anything else is left for them. While a vote is on, Tab goes
- * from sticky to sticky in it, and Enter or Space votes (`voteKey`).
+ * from sticky to sticky in it, and Enter or Space votes (`voteKey`). Following whoever presents, a key of the board's is this
+ * person starting on their own: it takes them off following, where they are, and does what it does; Esc takes them back to
+ * their own view, as Unfollow does.
  */
 import type { BoardTool } from '@alcove/ui';
 import { caretTaken, editable, withShortcutKey } from '~/lib/keys';
@@ -136,7 +138,9 @@ export function keyDown(board: Board, e: KeyboardEvent): void {
     return;
   }
   const key = keyFor(e.shiftKey && k === '1' ? '!' : k, mod);
-  if (!key || (key.edits && !board.canEdit) || !key.run(board, e)) return;
+  if (!key || (key.edits && !board.canEdit)) return;
+  if (k !== 'escape') board.ownView();
+  if (!key.run(board, e)) return;
   e.preventDefault();
   e.stopPropagation();
 }

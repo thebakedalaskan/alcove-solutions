@@ -10,7 +10,7 @@ import type { CallTimer } from '@alcove/api';
  * story opened. Everyone in a script is from the demo world, and everything they say is made up.
  */
 import {
-  CALL_REACT_TOPIC, RING_SECONDS, type AiModels, type CallNudgeKind, type CallStatusKind, type CallStatusMinutes, type BoardTemplate, type BoardTimerMinutes, type BoardVotesEach, type BreakoutBoard, type CallCard, type CallReaction, type CallReactMessage, type CallPage, type CaptureMode, type CapturePart, 
+  CALL_REACT_TOPIC, RING_SECONDS, type AiModels, type CallNudgeKind, type CallStatusKind, type CallStatusMinutes, type BoardTemplate, type BoardVotesEach, type BreakoutBoard, type CallCard, type CallReaction, type CallReactMessage, type CallPage, type CaptureMode, type CapturePart, 
   type CaptureState, type LiveFollowUp, type IncomingRing, type Meeting, type Person, type RingReply
 } from '@alcove/api';
 import type * as Y from 'yjs';
@@ -75,6 +75,8 @@ export type Beat =
   | { do: 'hand'; who: Person; up: boolean }
   /** Someone asks a question for the room, with votes already on it; `anonymous`: it names nobody. */
   | { do: 'question'; who: Person; text: string; votes?: number; anonymous?: boolean | undefined }
+  /** Others in the room vote for the open question with these words: so many more votes on it. */
+  | { do: 'question-vote'; text: string; votes: number }
   /** Someone nudges you: only you see it, and the same nudge from several people within a minute is one note. */
   | { do: 'nudge'; who: Person; kind: CallNudgeKind }
   /** Someone sets their status, for so many minutes, or clears it (null). */
@@ -161,11 +163,9 @@ export type Beat =
   | { do: 'trash-board'; folder?: boolean | undefined }
   | { do: 'delete-board-workspace' }
   /**
-   * The board's timer and vote, run by someone else: a timer (`left`: seconds still to go, for one near its end), a vote on a
-   * frame by its title (null: every sticky), ended with everyone else's votes by what each sticky says, and cleared.
+   * The board's vote, run by someone else: a vote on a frame by its title (null: every sticky), ended with everyone else's votes
+   * by what each sticky says, and cleared.
    */
-  | { do: 'start-timer'; who: Person; minutes: BoardTimerMinutes; left?: number | undefined }
-  | { do: 'stop-timer' }
   | { do: 'start-vote'; who: Person; frame: string | null; per: BoardVotesEach }
   | { do: 'end-vote'; votes: Readonly<Record<string, number>>; voters: number }
   | { do: 'clear-vote' }
@@ -216,6 +216,13 @@ export interface CallScript {
   board?: { work?: readonly BoardWork[] | undefined; every?: number | undefined; votes?: Readonly<Record<string, number>> | undefined; voters?: number | undefined } | undefined;
   /** While you're at the door: the organizer isn't in yet (they come this many seconds after the story opened), someone hosts in their place, or it's locked. */
   door?: { hostArrives?: number | undefined; standIn?: Person | undefined; locked?: boolean | undefined } | undefined;
+  /**
+   * What Hear it gets from the call: the line's recording after a moment (`plays`, unless it says); nothing yet the first
+   * time it's asked, the piece still going up (`not-yet`); the API's `not-found`, which for a guest with the link is a line
+   * they weren't there for all of, and for anyone else a part of the recording that can't be played (`not-found`); audio
+   * this browser can't play (`unplayable`); or no answer at all, so it's still fetching (`waits`).
+   */
+  hear?: 'plays' | 'not-yet' | 'not-found' | 'unplayable' | 'waits' | undefined;
 }
 
 /**
@@ -226,6 +233,11 @@ export interface CallScript {
 export interface ScriptWorkspace {
   brought?: readonly string[] | undefined;
   where?: readonly { who: Person; document: string | null; typing?: boolean | undefined; page?: CallPage | undefined }[] | undefined;
+  /**
+   * For you, with the link: the documents of the call's home the organizer has let you see, as their card's Let them see does,
+   * which open to you once you're let in. The rest of the home is as the story's world has it, which is as you see it.
+   */
+  yours?: readonly string[] | undefined;
 }
 
 /* ---------- writing a script ---------- */
@@ -254,6 +266,8 @@ export const replies = (who: Person, to: string, text: string, tagged: readonly 
 export const repliesToEveryone = (who: Person, to: string, text: string): Beat => ({ do: 'reply', who, to, text, tagged: [], broadcast: true });
 /** Someone asks a question for the room. */
 export const asks = (who: Person, text: string, o: { votes?: number; anonymous?: boolean } = {}): Beat => ({ do: 'question', who, text, ...o });
+/** Others vote for the question with these words. */
+export const votesFor = (text: string, votes = 1): Beat => ({ do: 'question-vote', text, votes });
 export const reacts = (who: Person, text: string, reaction: CallReaction): Beat => ({ do: 'react', who, text, reaction });
 export const reactsPrivately = (who: Person, text: string, reaction: CallReaction): Beat => ({ do: 'react-privately', who, text, reaction });
 export const knocks = (who: Person, o: { byName?: boolean } = {}): Beat => ({ do: 'knock', who, ...o });
@@ -290,9 +304,6 @@ export const trashesBoard = (o: { folder?: boolean } = {}): Beat => ({ do: 'tras
 /** Someone deletes the workspace the board where you are is kept in: it leaves the call, and its connection says it was deleted. */
 export const deletesBoardWorkspace = (): Beat => ({ do: 'delete-board-workspace' });
 export const hears = (...ideas: HeardIdea[]): Beat => ({ do: 'heard', ideas });
-/** Someone starts the board's timer: `left` seconds to go, if it started a while ago. */
-export const startsTimer = (who: Person, minutes: BoardTimerMinutes, left?: number): Beat => ({ do: 'start-timer', who, minutes, left });
-export const stopsTimer = (): Beat => ({ do: 'stop-timer' });
 /** Someone starts a vote on the frame with this title (null: on every sticky), with `per` votes each. */
 export const startsVote = (who: Person, frame: string | null, per: BoardVotesEach = 3): Beat => ({ do: 'start-vote', who, frame, per });
 /** The vote ends: everyone else's votes, by what each sticky says, and how many of them voted. Yours count too. */

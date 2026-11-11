@@ -6,14 +6,16 @@
  */
 import { AlcoveApiError, type Note, type NoteRoom, type Person } from '@alcove/api';
 import type { Meta } from '@storybook/react-vite';
-import { screen, within } from 'storybook/test';
+import { screen, waitFor, within } from 'storybook/test';
 import { standIn } from '../../src/api/standin';
 import { call, changer, writeNote, type NoteSpec } from '../../src/world/build';
 import { iso } from '../../src/world/clock';
-import { ART, ELENA, INES, KOFI, MAYA, NADIA, OMAR, PRIYA, THEO } from '../../src/world/people';
+import { ART, ELENA, INES, KOFI, LENA, MAYA, NADIA, OMAR, PRIYA, THEO } from '../../src/world/people';
+import { current } from '../../src/api/state';
 import type { World } from '../../src/world';
 import { FOLLOW_UP_NEW, FOLLOW_UP_NOTE, FOLLOW_UP_TASK, withFollowUpProposals } from '../../src/world/follow-ups';
 import { changing, page, pages, type PageArgs, type PageStory } from '../../src/page';
+import { linkToReadout } from '../pages/changes';
 import { away, before, first, holding, LAPTOP, LATER, nth, outage, pause, pressable, reachable, SOON, swap, unreachable } from './play';
 
 const meta = { title: 'Journeys/8 Notes', ...pages, globals: LAPTOP } satisfies Meta<PageArgs>;
@@ -25,6 +27,7 @@ const line = () => screen.findByRole('textbox', { name: 'Search everything said,
 const preview = (title: string) => screen.findByRole('complementary', { name: title }, SOON);
 const theNote = (title: string) => screen.findByRole('heading', { name: title, level: 1 }, LATER);
 const yours = () => screen.findByRole('region', { name: 'Your notes' }, SOON);
+const shared = () => screen.findByRole('region', { name: 'Shared notes' }, LATER);
 const article = (text: string) => holding('article', text);
 
 /* ---------- what the world needs for some of them ---------- */
@@ -467,9 +470,9 @@ export const JumpToAMoment: PageStory = {
     await step('Point at a mark. It says what happened there', async () => {
       await userEvent.hover((await horizon()).getByRole('button', { name: /^Decision at 3:15/ }));
     });
-    await step('Click it. The sun moves there and the transcript goes to that line', async () => {
+    await step('Click it. The sun moves there, and the page stays where it is', async () => {
       await userEvent.click((await horizon()).getByRole('button', { name: /^Decision at 3:15/ }));
-      await screen.findByText('Then let’s say it. The new onboarding ships behind a flag on 12 November.', {}, SOON);
+      await (await horizon()).findAllByText('3:15', {}, SOON);
     });
     await step('A moment chip does the same, from anywhere on the page', async () => {
       await userEvent.click(within(await article('Write the help article for support')).getByRole('button', { name: 'Go to the moment at 6:20' }));
@@ -479,6 +482,16 @@ export const JumpToAMoment: PageStory = {
     });
     await step('Press play. The sun moves along the line, and the line being said is marked in the transcript', async () => {
       await userEvent.click((await horizon()).getByRole('button', { name: 'Play' }));
+      await (await horizon()).findByRole('button', { name: 'Pause' }, LATER);
+    });
+    await step('Press what was said on a line, or its time. The sun goes there and it plays from that line, marked where it is', async () => {
+      await userEvent.click(await first(screen.findAllByText('Thanks. One is the empty state on the team page, the other is the flag name in the rollout plan.', {}, SOON)));
+      await (await horizon()).findByRole('button', { name: 'Pause' }, LATER);
+    });
+    await step('Space pauses, and plays again, as in any player: anywhere on the note but in a field or on a button', async () => {
+      await userEvent.keyboard(' ');
+      await (await horizon()).findByRole('button', { name: 'Play' }, SOON);
+      await userEvent.keyboard(' ');
       await (await horizon()).findByRole('button', { name: 'Pause' }, LATER);
     });
   }
@@ -654,10 +667,11 @@ export const AskAboutThisCall: PageStory = {
   name: '8.29 Ask about this call',
   ...page('/notes/n2', 'busy'),
   play: async ({ userEvent, step }) => {
-    await step('Click the bar. It stays at the bottom as you read', async () => {
-      await userEvent.click(await screen.findByRole('textbox', { name: 'Ask about this call, for you alone' }, LATER));
+    await step('Point at the bar. It stays at the bottom as you read, and its suggested questions show above it', async () => {
+      await userEvent.hover(await screen.findByRole('textbox', { name: 'Ask about this call, for you alone' }, LATER));
     });
-    await step('Suggested questions show above it. Pick one, or type your own', async () => {
+    await step('Click it, and they stay while you ask. Pick one, or type your own', async () => {
+      await userEvent.click(screen.getByRole('textbox', { name: 'Ask about this call, for you alone' }));
       await userEvent.click(await screen.findByRole('button', { name: 'What did we decide?' }, SOON));
     });
     await step('It reads the call in confidential compute', async () => {
@@ -683,8 +697,9 @@ export const YourNotesThenTheSharedNotes: PageStory = {
       await userEvent.type(await within(await yours()).findByRole('textbox', { name: 'Write in your own notes' }, SOON), 'The help article should link to the rollout plan.');
       await userEvent.click(within(await yours()).getByRole('button', { name: 'Keep it in your notes' }));
     });
-    await step('It’s kept. The arrow adds it to the shared notes', async () => {
+    await step('It’s kept. Point at it: Add to the shared notes shows, with Edit and Delete', async () => {
       const kept = await holding('listitem', 'The help article should link to the rollout plan.');
+      await userEvent.hover(kept);
       await userEvent.click(within(kept).getByRole('button', { name: 'Add to the shared notes' }));
     });
     await step('In place of the box you write in: what goes, where, and who reads it', async () => {
@@ -696,8 +711,8 @@ export const YourNotesThenTheSharedNotes: PageStory = {
       await userEvent.type(box, 'Link the help article to the rollout plan.');
       await userEvent.click(within(screen.getByRole('group', { name: 'Add this to the shared notes' })).getByRole('button', { name: /^Add for \d+ people/ }));
     });
-    await step('It’s in Added by people, for everyone. Your own stays yours', async () => {
-      await screen.findByText('Link the help article to the rollout plan.', {}, SOON);
+    await step('It’s in the shared notes, for everyone. Your own stays yours', async () => {
+      await within(await shared()).findByText('Link the help article to the rollout plan.', {}, SOON);
     });
   }
 };
@@ -737,17 +752,24 @@ export const BookmarkALineOrAScreen: PageStory = {
   ...page('/notes/n2', 'busy'),
   play: async ({ userEvent, step }) => {
     await step('Point at a line and click the bookmark', async () => {
-      await userEvent.click(await nth(screen.findAllByRole('button', { name: 'Bookmark this line, for you alone' }, LATER), 3));
+      await userEvent.click(await nth(screen.findAllByRole('button', { name: 'Bookmark this line in your own notes, which only you see' }, LATER), 3));
     });
     await step('It’s in Your notes, and only you see it', async () => {
       await within(await yours()).findByText(/Put it behind a flag/, {}, SOON);
+    });
+    await step('Its bookmark stays, ticked. Click it again to take it back', async () => {
+      await userEvent.click(await first(screen.findAllByRole('button', { name: 'Remove your bookmark' }, SOON)));
+    });
+    await step('It’s out of Your notes, and the line can be bookmarked again', async () => {
+      const mine = await yours();
+      await waitFor(() => { if (within(mine).queryByText(/Put it behind a flag/)) throw new Error('It’s still in Your notes.'); }, SOON);
     });
     await step('The transcript says when a screen was shared. Click it', async () => {
       await userEvent.click(screen.getByRole('button', { name: '1 shared screen' }));
     });
     await step('It opens over the note, with its own bookmark', async () => {
       const shared = await screen.findByRole('dialog', { name: 'Shared screen: Launch checklist' }, SOON);
-      await userEvent.click(within(shared).getByRole('button', { name: 'Bookmark this screen, for you alone' }));
+      await userEvent.click(within(shared).getByRole('button', { name: 'Bookmark this screen in your own notes, which only you see' }));
     });
     await step('Bookmarked, it’s in Your notes too', async () => {
       await userEvent.keyboard('{Escape}');
@@ -1073,6 +1095,85 @@ export const ReviewAStaleSuggestion: PageStory = {
     await step('The stale proposal cannot overwrite the newer task', async () => {
       await userEvent.click(within(await article('Send the reviewed launch checklist')).getByRole('button', { name: 'Apply change' }));
       await within(await reviewBatch()).findByText('That follow-up changed. Close review and open it again.', {}, SOON);
+    });
+  }
+};
+
+export const WriteInTheSharedNotes: PageStory = {
+  name: '8.47 Write in the shared notes',
+  ...page('/notes/n2', 'busy'),
+  play: async ({ userEvent, step }) => {
+    await step('Under Shared notes, its own box says who reads what goes there, before anything is typed', async () => {
+      await within(await shared()).findByText(/, and anyone they share the notes with$/, {}, LATER);
+    });
+    await step('Write for everyone and press Enter. It goes in one step', async () => {
+      await userEvent.type(await within(await shared()).findByRole('textbox', { name: 'Write in the shared notes' }, SOON), 'Support needs the article by Monday.{Enter}');
+    });
+    await step('It’s in the shared notes for everyone, with who wrote it and when. Take back takes it out again', async () => {
+      await within(await shared()).findByText('Support needs the article by Monday.', {}, SOON);
+      await within(await shared()).findAllByRole('button', { name: 'Take back' }, SOON);
+    });
+  }
+};
+
+export const SomeoneGetsTheNotesWhileYouWrite: PageStory = {
+  name: '8.48 Someone gets the notes while you write',
+  ...page('/notes/n2', 'busy'),
+  play: async ({ userEvent, step }) => {
+    const box = async () => within(await shared()).findByRole('textbox', { name: 'Write in the shared notes' }, LATER);
+    await step('Start writing in the shared notes. The box says who reads it', async () => {
+      await userEvent.type(await box(), 'Support needs the article by Monday.');
+    });
+    await step('Meanwhile Kofi shares the notes with Lena', async () => {
+      const n = current().notes.find((x) => x.id === 'n2');
+      if (n && !n.people.some((p) => p.email === LENA.email)) sharedWith(n, [LENA], KOFI);
+    });
+    await step('Press Enter. It isn’t posted: Lena has the notes now, and the box says she reads it too', async () => {
+      await userEvent.type(await box(), '{Enter}');
+      await within(await shared()).findByText('Lena got the notes since you started, so they read it too.', {}, SOON);
+    });
+    await step('Press Enter again: it goes, for everyone with the notes, Lena included', async () => {
+      await userEvent.type(await box(), '{Enter}');
+      await within(await shared()).findByText('Support needs the article by Monday.', {}, SOON);
+    });
+  }
+};
+
+export const ShareByLink: PageStory = {
+  name: '8.49 Share by link',
+  ...page('/notes/n2', 'busy'),
+  play: async ({ userEvent, step }) => {
+    await step('Press Share. Under the people, Share a link says whoever opens it signed in gets the notes, for 7 days', async () => {
+      await userEvent.click(await screen.findByRole('button', { name: 'Share' }, LATER));
+      await screen.findByText('Whoever opens it signed in gets these notes, for 7 days.', {}, SOON);
+    });
+    await step('Make a link. It shows once, to copy, and it’s listed as yours until it runs out', async () => {
+      await userEvent.click(screen.getByRole('button', { name: 'Make a link' }));
+      await screen.findByRole('group', { name: 'The link to these notes' }, SOON);
+      await screen.findByText('Your link', { exact: false }, SOON);
+    });
+    await step('Revoke it: from now on it opens nothing, and whoever it gave the notes to keeps them', async () => {
+      await userEvent.click(screen.getByRole('button', { name: 'Revoke' }));
+      await away('button', 'Revoke');
+    });
+  }
+};
+
+export const OpenALinkToNotes: PageStory = {
+  name: '8.50 Open a link to notes',
+  ...page('/link', 'signed-out', { beforeEach: changing(linkToReadout()) }),
+  play: async ({ userEvent, step }) => {
+    await step('Priya sent Art a link to her research readout. Signed out, it opens nothing: it asks him to sign in first. Continue with Microsoft', async () => {
+      await userEvent.click(await screen.findByRole('button', { name: 'Continue with Microsoft' }, SOON));
+    });
+    await step('Signed in, it still opens nothing. It asks whether to open them as his address, which everyone with the notes will see', async () => {
+      await screen.findByText(ART.email, {}, SOON);
+      await screen.findByRole('button', { name: 'Open the notes' }, SOON);
+    });
+    await step('Open the notes. The readout joins his notes, from Priya’s link, and opens', async () => {
+      await userEvent.click(screen.getByRole('button', { name: 'Open the notes' }));
+      await theNote('Customer research readout');
+      await screen.findByText('From Priya’s link', {}, SOON);
     });
   }
 };

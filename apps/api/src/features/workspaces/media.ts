@@ -17,7 +17,7 @@
 import { FILE_TYPE, MAX_MEDIA_PREVIEW_BYTES, MEDIA_PIECE_BYTES, MEDIA_PREVIEW_PIXELS, MediaInputSchema, type WorkspaceMedia } from '@alcove/api';
 import { z } from 'zod';
 import type { Deps, Owner } from '../../context';
-import { blindIndex, concat, equalBytes, id128, openBinary, openJson, sealBinary, sealJson, sha, stateKey, toJson, type RecordHeader } from '../../crypto';
+import { b64u, blindIndex, concat, equalBytes, id128, openBinary, openJson, sealBinary, sealJson, sha, stateKey, toJson, type RecordHeader } from '../../crypto';
 import { bigintText, bytea, exec, maybeOne, rows, timestamp, tx, type Db } from '../../db';
 import { ConflictError, ForbiddenError, IntegrityError, InternalError, NotFoundError, UnavailableError, invalid, notFound, toAppError } from '../../errors';
 import { limitsNow, shown, type Limits } from '../../limits';
@@ -671,7 +671,11 @@ async function stillOpens(d: Deps, who: Who, t: MediaToken): Promise<{ w: Worksp
 export interface FileRead {
   session: string | undefined;
   range: string | undefined;
+  /** What a download that stopped says it has part of (`If-Range`): its range counts only while that's still this file's `ETag`. */
+  ifRange: string | undefined;
   head: boolean;
+  /** Asked for as a download: it comes as one under its own name, whatever it is. */
+  download: boolean;
   /** Spends one of someone's reads. Refuses when they have none left. */
   count(who: string): void;
   /** Aborts once the response has gone, however it went, which is when what it held is let go. */
@@ -686,8 +690,9 @@ export interface FileRead {
  * URL nobody made, and a read that goes on for long asks again as it goes. Nothing is counted against anyone until they've
  * shown they're who it names, so a leaked URL can't spend their reads; after that each piece opened counts, because one
  * byte costs a whole piece. A read lasts `MEDIA_READ_MS` at most, and gives way before that if it has stopped and someone's
- * waiting: being cut costs a player nothing, because it asks again from where it got to. What it's served as comes from
- * its sealed info, never the request, and anything off the list only ever downloads.
+ * waiting: being cut costs a player nothing, because it asks again from where it got to, and a browser's download asks for
+ * the rest with the file's `ETag`. What it's served as comes from its sealed info, never the request, and anything off the
+ * list only ever downloads.
  */
 export async function serve(d: Deps, t: MediaToken, r: FileRead): Promise<Response> {
   const { documentId, mediaId } = t;
@@ -710,18 +715,24 @@ export async function serve(d: Deps, t: MediaToken, r: FileRead): Promise<Respon
     if (!now) throw noFile(t, documentId, mediaId);
     const { w, m } = await stillOpens(d, now, t);
     const info = openInfo(w, mediaId, m.info_ciphertext);
+    // A file's bytes never change once it's there, and nor does its sealed info, so a digest of that names them and says
+    // nothing about them: a download that stopped asks for the rest with it (`If-Range`), and picks up where it was.
+    const etag = `"${b64u(sha(m.info_ciphertext)).slice(0, 22)}"`;
     const headers: Record<string, string> = {
-      'content-type': info.type, 'accept-ranges': 'bytes', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff',
+      'content-type': info.type, 'accept-ranges': 'bytes', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', etag,
       // Nothing in a file runs: opened by itself, it's shown or played and that's all.
       'content-security-policy': "default-src 'none'; img-src 'self'; media-src 'self'",
-      'content-disposition': `${info.type === FILE_TYPE ? 'attachment' : 'inline'}; filename*=UTF-8''${headerName(info.name)}`
+      // What can't be shown is only ever a download; anything else is, when that's what was asked for.
+      'content-disposition': `${info.type === FILE_TYPE || r.download ? 'attachment' : 'inline'}; filename*=UTF-8''${headerName(info.name)}`
     };
-    // Only a GET has a range: anything else is answered as if it hadn't asked for one.
-    const at = r.head ? undefined : rangeIn(r.range, info.size);
+    // Only a GET has a range, and only for the file it was asked against: anything else is answered as if it hadn't asked
+    // for one, so what doesn't match gets the whole file.
+    const at = r.head || (r.ifRange !== undefined && r.ifRange !== etag) ? undefined : rangeIn(r.range, info.size);
     if (at === 'past-the-end') return new Response(null, { status: 416, headers: { ...headers, 'content-range': `bytes */${info.size}` } });
     const start = at?.start ?? 0;
-    // An answer to a range stops where a piece does, so the next one starts on a piece and opens none of them twice.
-    const end = at ? Math.min(at.end, (Math.floor(start / MEDIA_PIECE_BYTES) + PIECES_PER_ANSWER) * MEDIA_PIECE_BYTES - 1) : info.size - 1;
+    // An answer to a player's range stops where a piece does, so the next one starts on a piece and opens none of them twice.
+    // A download's goes as far as it asked: one that stopped asks for the rest once, and takes what comes for all of it.
+    const end = !at ? info.size - 1 : r.download ? at.end : Math.min(at.end, (Math.floor(start / MEDIA_PIECE_BYTES) + PIECES_PER_ANSWER) * MEDIA_PIECE_BYTES - 1);
     const length = end - start + 1;
     const sent = { ...headers, ...(length <= MOST_SENT_WITH_A_LENGTH ? { 'content-length': String(length) } : {}), ...(at ? { 'content-range': `bytes ${start}-${end}/${info.size}` } : {}) };
     // Reading on: each piece counts, and a long read asks again as often as a player's next range would.

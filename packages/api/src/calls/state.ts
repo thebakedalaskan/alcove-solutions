@@ -235,12 +235,17 @@ export type CallNotice = z.infer<typeof CallNoticeSchema>;
 export const CallNoticesSeenSchema = z.array(IDSchema.max(64)).max(50);
 
 
-/** One breakout room: its name and the invited people sent to it. */
+/** One breakout room: its name, the invited people sent to it, and anyone else sent to it. */
 export const BreakoutRoomSchema = z.object({
   id: IDSchema, name: z.string(), people: z.array(PersonSchema),
   /**
-   * Who's in it now, by participant ID: the invited people sent there who are in the call, and the organizer
-   * while visiting it. Each room has its own MLS group, so its own media keys and chat.
+   * Anyone else sent to it (a guest with the link), by name only, never an address, under their seat (`CallParticipant.seat`),
+   * which moving them names. A guest sees the others sent to a room only while they're in the call.
+   */
+  guests: z.array(z.object({ seat: z.string(), person: PersonSchema })),
+  /**
+   * Who's in it now, by participant ID: the people sent there who are in the call, and the organizer while visiting it. Each
+   * room has its own MLS group, so its own media keys and chat.
    */
   members: z.array(z.string())
 });
@@ -327,7 +332,12 @@ export const CallStateSchema = z.object({
     noteId: IDSchema.nullable(),
     /** Server clock start of the current recording segment, including host handoffs. Null before notes begin. */
     segmentStartedAt: ISODateSchema.nullable().default(null),
-    recording: RecordingProgressSchema
+    recording: RecordingProgressSchema,
+    /**
+     * Whether the call keeps its recording (the organizer's `keepRecording` choice). Without it there's nothing for Hear
+     * it to play, during the call or after it.
+     */
+    keepsRecording: z.boolean()
   }),
   /** People asking to join, for whoever hosts to let in or turn away; empty for everyone else. */
   waiting: z.array(CallAskerSchema),

@@ -2,8 +2,9 @@
 
 [Docs home](../README.md) · [Calls and recordings](calls-and-recordings.md) · [Data and storage](data-and-storage.md)
 
-A call has one timer: a countdown the host starts for everyone, as in Google Meet. It's independent of a board's timer,
-the breakout rooms' countdown, the workspace and anyone's own layout. There are no presets and no agenda of segments.
+A call has one timer: a countdown the host starts for everyone, as in Google Meet. A board has no timer of its own, so this
+is the one countdown over a board too. It's independent of the breakout rooms' countdown, the workspace and anyone's own
+layout. There are no presets and no agenda of segments.
 
 ## Shared state and time
 

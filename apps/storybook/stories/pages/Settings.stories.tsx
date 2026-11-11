@@ -10,7 +10,7 @@ import { changing, page, pages, type PageArgs, type PageStory } from '../../src/
 import { withTopUp } from '../../src/world/payments';
 import { withDriveJustConnected, withDriveReconnect } from '../../src/world/drive-exports';
 import type { World } from '../../src/world';
-import { keptHere, noCalendar, sharedDemo, troubled, unencryptedDefault } from './changes';
+import { keptHere, noCalendar, notAttested, sharedDemo, troubled, unencryptedDefault } from './changes';
 
 const meta = { title: 'Pages/Settings', ...pages } satisfies Meta<PageArgs>;
 export default meta;
@@ -60,9 +60,13 @@ export const ConnectionsNight = night(Connections);
 /** From the minutes in the side panel. */
 export const PlanAndCredits = page('/settings#plan', 'busy');
 export const PlanAndCreditsNight = night(PlanAndCredits);
+/** Confidential compute, with the time this browser verified the hardware the server runs on. */
 export const Privacy = page('/settings#privacy', 'busy');
 export const PrivacyNight = night(Privacy);
 export const PrivacyPhone = phone(Privacy);
+/** The server says it doesn't run in a TEE: Confidential compute just says what it is, with no caveat. */
+export const PrivacyNotAttested = page('/settings#privacy', 'busy', { beforeEach: notAttested });
+export const PrivacyNotAttestedNight = night(PrivacyNotAttested);
 
 /* ------------------------------------------------------------------ calls and notes */
 /** An AI model that isn't in a secure enclave is the default: Unencrypted shows on the choice and in the list, and the row says what that means. */

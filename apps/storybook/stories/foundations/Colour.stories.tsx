@@ -25,7 +25,8 @@ const ROLES: readonly Role[] = [
   { title: 'The call stage, always night', about: 'The stage, its tiles and what’s raised on it, its ink, the ring round whoever speaks, and pointers on a shared screen.', names: ['stage', 'stage-tile', 'stage-raised', 'stage-ink', 'stage-ink-2', 'speak', 'stage-point'] },
   { title: 'Drawing on the evening', about: 'For what stands in the scene: the low sun, and the haze along the horizon.', names: ['dusk-sun', 'dusk-haze'] },
   { title: 'Illustration, tour art and covers only', about: 'Never behind text. The covers are moments of the one sky.', names: ['dawn-1', 'dawn-2', 'dawn-3', 'dawn-4', 'gold', 'cover-*'] },
-  { title: 'A highlight or comment in a document', about: 'What’s highlighted or commented on in a workspace document.', names: ['hl'] }
+  { title: 'A highlight or comment in a document', about: 'What’s highlighted or commented on in a workspace document.', names: ['hl'] },
+  { title: 'Code in a document', about: 'A code block’s words by what each is: keywords, strings, numbers, the names of functions and types, and comments. A palette of its own, with no green.', names: ['code-*'] }
 ];
 
 const takes = (pattern: string, name: string) => (pattern.endsWith('*') ? name.startsWith(pattern.slice(0, -1)) : pattern === name);

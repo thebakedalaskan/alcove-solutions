@@ -6,14 +6,14 @@ import { Button, Dots, Evening, Faces, Icon, Modal, Notice, RecDot, Select, cn, 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { createFileRoute, type ErrorComponentProps } from '@tanstack/react-router';
 import { useReducedMotion } from 'motion/react';
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { NoteBoardCards, NoteRoomBoardCards, type RoomBoard } from '~/features/notes/Boards';
 import { CallLine, marksOf } from '~/features/notes/CallLine';
 import { NoteDriveExports } from '~/features/notes/DriveExports';
 import { Provenance } from '~/features/notes/Evidence';
 import { GonePage, NoteMenu, PageHead } from '~/features/notes/Head';
 import { Propose, useNoteReader, type Seed } from '~/features/notes/entries';
-import { Replay, usePlayer, type PlayerState } from '~/features/notes/Player';
+import { Replay, usePlayer, useSpaceToPlay, useStageOnTheSky, type PlayerState } from '~/features/notes/Player';
 import type { Answer } from '~/features/notes/answer';
 import { askExample, exampleNote } from '~/features/notes/example';
 import { correctedSince, speakersOf, type Correcting } from '~/features/notes/lines';
@@ -26,7 +26,8 @@ import { ScreenMomentRow, ScreenRefChip, ScreenViewer, useScreenViewer } from '~
 import { WorkedOn } from '~/features/notes/WorkedOn';
 import { PinNote, ShareNote } from '~/features/notes/share';
 import { noteWave } from '~/features/notes/wave';
-import { Additions, OwnNotesCard, useOwn } from '~/features/personal/OwnNotes';
+import { useWhereYouWrite } from '~/features/notes/whereYouWrite';
+import { OwnNotesCard, SharedNotes, useOwn } from '~/features/personal/OwnNotes';
 import { SeriesCard } from '~/features/series/cards';
 import { useNoteOnScreen } from '~/features/shell/notify';
 import { api } from '~/lib/api';
@@ -133,22 +134,6 @@ function useOpenAt(noteId: string, at: number | undefined, player: PlayerState) 
   }, [at, noteId, seek, total]);
 }
 
-/**
- * The column beside a long note stays in view: it scrolls with the page until its end is on screen, then waits there.
- * Set on the column, so it needs nothing from the scrolling itself.
- */
-function useStayInView(side: RefObject<HTMLElement | null>) {
-  useEffect(() => {
-    const el = side.current;
-    if (!el) return;
-    const place = () => el.style.setProperty('--nd-stay', `${Math.min(84, innerHeight - el.offsetHeight - 16)}px`);
-    const grew = new ResizeObserver(place);
-    grew.observe(el);
-    addEventListener('resize', place);
-    return () => { grew.disconnect(); removeEventListener('resize', place); };
-  }, [side]);
-}
-
 /** Which lines something in the notes came from. A decision someone said wasn't one no longer counts. */
 function kindsOf(note: Note): LineKinds {
   const out = new Map<string, 'decide' | 'follow'>();
@@ -172,11 +157,13 @@ function NoteView({ note, me, at, room, onGone }: { note: Note; me: string | und
   const rewrite = useRewriteNotes();
   const cancel = useCancelRewrite();
   const yours = useOwn(note.id);
+  const where = useWhereYouWrite();
   const writtenPrivately = !isUnencrypted(useAiModels().data, note.model);
   // A call that doesn't keep its recording has none to play, whatever is still on its way out.
   const audio = note.kept.recording ? note.audio : NO_AUDIO;
   const player = usePlayer(note.id, audio, note.status === 'recording');
   useOpenAt(note.id, at, player);
+  useSpaceToPlay(player);
   const progress = useProgress(note);
   const [going, setGoing] = useState(false);
   const [sharedTo, setSharedTo] = useState<ReadonlySet<string>>(new Set());
@@ -206,9 +193,14 @@ function NoteView({ note, me, at, room, onGone }: { note: Note; me: string | und
   /** Goes to a moment: the sun moves there, playing on if it was (or from there, with `play`), and the transcript goes to that line. */
   const go = useCallback((s: number, play?: boolean) => { moveTo(s, play); setFocus({ at: s }); }, [moveTo]);
   const seek = canGo ? go : undefined;
-  /* The shared screens playing above the notes, when there are any. Playing the call from a frame goes up to them. */
+  /*
+   * The shared screens, when there are any, on the sky over the line, which runs along their foot as their seek bar.
+   * Playing the call from a frame goes up to them.
+   */
   const reduce = useReducedMotion();
   const replay = useRef<HTMLDivElement>(null);
+  const replaying = player.total > 0 && note.shares.length > 0;
+  useStageOnTheSky(replay, replaying);
   const toReplay = useRef(false);
   const playFrom = (s: number) => {
     if (!replay.current) { go(s, true); return; }
@@ -343,8 +335,6 @@ function NoteView({ note, me, at, room, onGone }: { note: Note; me: string | und
   const wasReady = useRef(ready);
   const [fresh, setFresh] = useState(false);
   useEffect(() => { if (ready && !wasReady.current) setFresh(true); wasReady.current = ready; }, [ready]);
-  const side = useRef<HTMLElement>(null);
-  useStayInView(side);
 
   const delAsk = mine
     ? `Removes ${asList(['the summary', ...(lines.length ? ['the transcript'] : []), ...(note.rooms.length ? [note.rooms.length === 1 ? 'the breakout room’s section' : `${note.rooms.length} breakout rooms’ sections`] : []), ...(hasAudio ? [`${minutesLabel(note.duration)} of audio`] : []), ...(note.screens.length ? [`${note.screens.length} shared ${note.screens.length === 1 ? 'screen' : 'screens'}`] : []), 'anyone’s own notes on them'])}. Nobody can get them back.`
@@ -371,13 +361,13 @@ function NoteView({ note, me, at, room, onGone }: { note: Note; me: string | und
         {live && <span className="nd-rec"><RecDot />Still recording</span>}
         <Provenance evidence={note.inference} kind={note.kind} unencrypted={note.unencrypted} model={note.model} writing={note.status === 'pending' ? 'first' : note.writingAgain ? 'again' : undefined} />
       </PageHead>
+      {replaying && <div ref={replay} tabIndex={-1} className="nd-replay" style={{ '--d': 1 }}><Replay noteId={note.id} shares={note.shares} player={player} /></div>}
       <CallLine player={player} span={span} chapters={showMarks ? note.chapters : []} marks={showMarks ? marks : []} gaps={note.gaps} glints={glints}
         here={focus?.at} edge={live ? heard : undefined} still={ready && !lines.length && !written} fresh={fresh} onScrub={hasAudio ? moveTo : seek} onChapter={hasAudio ? toChapter : canGo || note.rooms.length > 0 ? goChapter : undefined}>
         {!note.kept.recording && !live && <p className="nd-kept"><Icon name="mic" size={15} />The recording was deleted when the call ended.</p>}
       </CallLine>
       <div className="nd-cols" style={{ '--d': 2 }}>
         <div className="nd-main">
-          {player.total > 0 && note.shares.length > 0 && <div ref={replay} tabIndex={-1} className="nd-replay"><Replay noteId={note.id} shares={note.shares} player={player} /></div>}
           <div className="nd-read">
             {ready && written ? (
               <>
@@ -429,6 +419,8 @@ function NoteView({ note, me, at, room, onGone }: { note: Note; me: string | und
             {/* What was worked on, under what was decided and what's to do, whether or not the notes are written yet. */}
             {!going && <WorkedOn worked={note.workedOn} />}
           </div>
+          {/* In one column, where you write goes here, before the transcript, in the page's order as on screen. */}
+          <div ref={where.inMain} className="nd-spot" />
           <div className="nd-said" id="transcript">
             {lines.length > 0 && transcript(ready && written ? again : undefined)}
             {written && deleted && <p className="nd-kept is-doc"><Icon name="transcript" size={15} />The transcript was deleted after the notes were written.</p>}
@@ -437,13 +429,20 @@ function NoteView({ note, me, at, room, onGone }: { note: Note; me: string | und
           </div>
           {ready && (lines.length > 0 || roomsSaid || roomNotes || (written && deleted)) && !going && <AskBar suggestions={note.suggestedQuestions} ask={(question) => api.notes.ask(note.id, question)} onSeek={seek} shown={onScreen} onKeep={keep} />}
         </div>
-        <aside ref={side} className="nd-side" aria-label="About these notes">
-          {showMarks && <ChapterList chapters={note.chapters} onGo={canGo ? goChapter : undefined} />}
-          <OwnNotesCard note={note} me={me} entries={yours.entries} own={yours.own} shown={onScreen} onSeek={seek} />
-          <Additions note={note} me={me} mine={mine} shown={onScreen} onSeek={seek} />
-          <Recipients recipients={note.recipients} me={me} fresh={sharedTo} />
-          {!going && <SeriesCard note={note} />}
-          {!going && note.kind === 'call' && note.id !== 'example' && <NoteDriveExports noteId={note.id} recordingAllowed={mine && note.kept.recording} recordingKept={note.kept.recording} />}
+        {/* Its own scroll area beside the note, so where you write is in reach however long the note is. In one column,
+            where you write comes before the transcript (whereYouWrite.ts), and the rest after it. */}
+        <aside className="nd-side" aria-label="About these notes">
+          <div ref={where.beside} className="nd-spot" />
+          {where.put(<>
+            <OwnNotesCard note={note} me={me} entries={yours.entries} own={yours.own} shown={onScreen} onSeek={seek} />
+            <SharedNotes note={note} me={me} mine={mine} shown={onScreen} onSeek={seek} />
+          </>)}
+          <div className="nd-about">
+            {showMarks && <ChapterList chapters={note.chapters} onGo={canGo ? goChapter : undefined} />}
+            <Recipients recipients={note.recipients} me={me} fresh={sharedTo} />
+            {!going && <SeriesCard note={note} />}
+            {!going && note.kind === 'call' && note.id !== 'example' && <NoteDriveExports noteId={note.id} recordingAllowed={mine && note.kept.recording} recordingKept={note.kept.recording} />}
+          </div>
         </aside>
       </div>
       <ScreenViewer noteId={note.id} screens={moments} open={viewer.open} me={me} onOpen={viewer.show} onClose={viewer.close} onPlay={canGo ? playFrom : undefined} onCloseFocus={upToReplay} marks={yours.screens} />
@@ -514,8 +513,6 @@ function Example({ me }: { me: Person }) {
   const [note] = useState(() => exampleNote(me));
   const [actions, setActions] = useState(note.actions);
   const player = usePlayer(note.id, NO_AUDIO, false);
-  const side = useRef<HTMLElement>(null);
-  useStayInView(side);
   return (
     <Evening moment="note" className="nd" data-view="example">
       <PageHead to="Home" title={note.title}>
@@ -535,9 +532,11 @@ function Example({ me }: { me: Person }) {
           </div>
           <AskBar suggestions={note.suggestedQuestions} ask={askExample} />
         </div>
-        <aside ref={side} className="nd-side" aria-label="About these notes">
-          <ChapterList chapters={note.chapters} onGo={undefined} />
-          <Recipients recipients={note.recipients} me={me.email} />
+        <aside className="nd-side" aria-label="About these notes">
+          <div className="nd-about">
+            <ChapterList chapters={note.chapters} onGo={undefined} />
+            <Recipients recipients={note.recipients} me={me.email} />
+          </div>
         </aside>
       </div>
     </Evening>

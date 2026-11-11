@@ -15,13 +15,15 @@ import type { HttpRuntime } from './runtime';
  * follow-up, changing a note's decisions, open questions, follow-ups and transcript lines, sharing it,
  * and having it written again each set an explicit state (the same words proposed again add nothing),
  * so a retry changes nothing; and their answer is the whole note, which a receipt kept under someone
- * it was given to would still hold after the organizer deleted it. Saying whether you're coming to a
+ * it was given to would still hold after the organizer deleted it. A link to the notes keeps none
+ * either: its answer holds the link's secret, and opening one again changes nothing. Saying whether you're coming to a
  * call is the same: it sets one value, and what comes back is the organizer's call. Someone's own
- * notes, and what they add to the shared notes, keep none either: deleting them must leave no copy of
- * what they said for a day. Deleting the account deletes its receipts, so there is no account left to
+ * notes, and what they add to the shared notes (from them, or written straight in), keep none either:
+ * deleting them must leave no copy of what they said for a day. Deleting the account deletes its receipts, so there is no account left to
  * keep one under. Answering a ring sets an explicit state too, and a receipt's clear method and time
- * would say an account was rung for a day after the ring had gone. What a guest can reach of a workspace
- * comes before receipts altogether, so it isn't listed here: see the routes.
+ * would say an account was rung for a day after the ring had gone. Saying a browser closed one of its live streams ends it,
+ * which a retry can't do twice, and a receipt would be a row for every page someone closed. What a guest can reach of a
+ * workspace comes before receipts altogether, so it isn't listed here: see the routes.
  */
 const NO_RECEIPT = [
   /^\/v1\/drive(?:\/.*)?$/,
@@ -29,8 +31,9 @@ const NO_RECEIPT = [
   /^\/v1\/calendar\/busy$/,
   /^\/v1\/notes\/search$/, /^\/v1\/notes\/(?:[^/]+\/)?ask$/, /^\/v1\/series\/[^/]+\/ask$/, /^\/v1\/live\/calls\/[^/]+\/(?:catch-up|ask|series\/ask|translate|notes\/watch)$/,
   /^\/v1\/(?:live\/calls|recordings)\/[^/]+\/(?:audio|transcribe)$/, /^\/v1\/live\/calls\/[^/]+\/shares\/[^/]+\/video$/,
-  /^\/v1\/notes\/[^/]+\/(?:(?:decisions|questions|actions|lines)(?:\/[^/]+)?|revisits\/[^/]+|share|rewrite)$/, /^\/v1\/meetings\/[^/]+\/answer$/, /^\/v1\/account$/, /^\/v1\/rings\/[^/]+\/answer$/,
-  /^\/v1\/notes\/[^/]+\/(?:personal(?:\/[^/]+(?:\/(?:preview|add))?)?|additions\/[^/]+)$/
+  /^\/v1\/notes\/[^/]+\/(?:(?:decisions|questions|actions|lines|links)(?:\/[^/]+)?|revisits\/[^/]+|share|rewrite)$/, /^\/v1\/note-links\/claim$/, /^\/v1\/meetings\/[^/]+\/answer$/, /^\/v1\/account$/, /^\/v1\/rings\/[^/]+\/answer$/,
+  /^\/v1\/notes\/[^/]+\/(?:personal(?:\/[^/]+(?:\/(?:preview|add))?)?|additions(?:\/[^/]+)?)$/,
+  /^\/v1\/workspaces\/[^/]+\/(?:documents\/[^/]+\/)?live\/end$/
 ];
 
 const keepsReceipt = (path: string) => !NO_RECEIPT.some((r) => r.test(path));

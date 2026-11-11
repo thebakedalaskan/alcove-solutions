@@ -4,8 +4,9 @@
  * playing ever remounts as the frames around it (frame.tsx) come and go: tiles sit where the layout engine (stageLayout.ts)
  * puts them and glide there. Your own view (view.ts): drag tiles into another order, make one bigger from its corner, pin
  * people, and see yourself in the grid, in a corner or not at all. Every tile can be focused, then pinned or its ⋯ menu opened
- * from the keyboard. All of that changes your view only. With rooms open, the organizer's stage shows
- * every room, beside what's open on it; everyone else's shows the people in their own room.
+ * from the keyboard. All of that changes your view only. With rooms open, the organizer's stage in the main room shows
+ * every room, beside what's open on it, a room they fold or nobody's in only as its header; in a room, and for everyone else,
+ * it shows the people in their own part of the call.
  *
  * Beside what's open on your stage, the people sit as a column of tiles, as arches where there's no room for a column, or,
  * once you hide them (⇧P) or in focus, small on the horizon beside the dock, where whoever's talking or has a hand up rises.
@@ -97,20 +98,24 @@ export interface StagePresented {
 /** About how wide "Aiko raised a hand" is. */
 const HZ_WORDS = 150;
 /**
- * Open rooms, as the organizer oversees them: who's in each, who in a room raised a hand for help, and what its notes
- * are doing (on, paused on its own or with the whole call, or off).
+ * Open rooms, as the organizer oversees them from the main room: who's in each, who in a room raised a hand for help, and what
+ * its notes are doing (on, paused on its own or with the whole call, or off, as they are in a room with only guests in it).
  */
 export interface StageRooms {
-  /** Each room: who's in it, who asked for help, its notes, and whether it's on a board of its own, sealed to it. */
-  rooms: { name: string; ids: string[]; help: string | null; notes: 'on' | 'paused' | 'off'; board: boolean }[];
-  /** Everyone in no room: the organizer while there, guests, and anyone not sent to a room. */
+  /**
+   * Each room: who's in it, who asked for help, its notes, whether it's on a board of its own, sealed to it, and whether the
+   * organizer folded it to its header.
+   */
+  rooms: { id: string; name: string; ids: string[]; help: string | null; notes: 'on' | 'paused' | 'off'; board: boolean; folded: boolean }[];
+  /** Everyone in no room: the organizer, and anyone not sent to a room or sent back. */
   main: string[];
-  /** The room you're in, or null for the main room. */
-  joined: number | null;
+  mainFolded: boolean;
   left: number;
   /** The rooms are worked on boards, so they take the board's words. Rooms without say what they always have. */
   boards: boolean;
   message: { from: Person; text: string } | null;
+  /** Folds a part of the call to its header on the organizer's stage, or unfolds it: a room by its ID, or the main room (null). */
+  onFold: (room: string | null) => void;
 }
 
 /** Everything glides to a new place together, panels and tiles alike: --duration-3 on --ease-out. */
@@ -118,6 +123,8 @@ export const GLIDE = { duration: 0.42, ease: [0.22, 0.8, 0.24, 1] } as const;
 /** Someone coming in: the tiles make room slowly enough to see who it's for. */
 const MAKE_ROOM = { duration: 0.9, ease: [0.45, 0, 0.2, 1] } as const;
 const UI = { duration: 0.24, ease: [0.22, 0.8, 0.24, 1] } as const;
+/** How long after a drag ends the browser's click on the tile is still that drag's: at once from a mouse, a moment later from a finger. */
+const DROP_MS = 400;
 const mmss = (s: number) => `${Math.floor(Math.max(0, s) / 60)}:${String(Math.floor(Math.max(0, s) % 60)).padStart(2, '0')}`;
 const box = (r: Rect) => ({ left: r[0], top: r[1], width: r[2], height: r[3] });
 const ARROWS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown']);
@@ -274,6 +281,8 @@ export function Stage({ staged, frame, phone, people, waiting, presented, spotli
   const setEl = (k: string) => (el: HTMLDivElement | null) => { if (el) els.current.set(k, el); else els.current.delete(k); };
   const press = useRef<{ id: string; x: number; y: number; dx: number; dy: number; on: boolean; corner: boolean } | null>(null);
   const grow = useRef<{ id: string; x: number; y: number; w: number; h: number; big: boolean } | null>(null);
+  /** The tile a drag just let go of, and when: the click the browser sends after it isn't a press on the tile. */
+  const dropped = useRef<{ id: string; at: number } | null>(null);
 
   /** Puts `id` where `target` is in its group: your pins in a new order, or your order of everyone else. */
   const reorder = (g: string[], id: string, target: string) => {
@@ -338,6 +347,7 @@ export function Stage({ staged, frame, phone, people, waiting, presented, spotli
       // Your corner is a standing choice, not part of the layout Reset puts back, so moving it isn't "arranging".
       const moved = (d?.on && !d.corner) || grow.current;
       if (d?.on && d.corner) { const p = local(e); const c = latest.current; c.view.setCorner(cornerAt(p.x - c.fx, p.y - c.fy, c.w, c.h)); }
+      if (d?.on) dropped.current = { id: d.id, at: performance.now() };
       press.current = null; grow.current = null;
       setDrag(null); setSize(null);
       if (moved) latest.current.onCustom();
@@ -484,6 +494,10 @@ export function Stage({ staged, frame, phone, people, waiting, presented, spotli
             title={mode ? callName(p.person) : undefined}
             onPointerDown={(e) => startDrag(e, p.id, corner)}
             onClick={mode || (board?.find(p) && !corner) ? (e) => {
+              // Letting go of a tile you dragged only puts it down: a press that moved less than a drag still opens the menu.
+              const drop = dropped.current;
+              dropped.current = null;
+              if (drop?.id === p.id && performance.now() - drop.at < DROP_MS) return;
               if (!(e.target instanceof Node) || !e.currentTarget.contains(e.target) || (e.target instanceof Element && e.target.closest('button'))) return;
               // On a phone, someone you can follow in the workspace gets their card, unless the board is what's open to find them on.
               if (phone && !p.isMe && !board?.find(p) && (together.followable.includes(p.id) || together.following === p.id)) setCard(p.id);
@@ -564,27 +578,58 @@ export function Stage({ staged, frame, phone, people, waiting, presented, spotli
   );
 }
 
-/** Rooms are open: the main room while anyone is in it, and each room with the people in it. */
+/** How tall a room's header is on the stage, its colour above it: a room folded, or with nobody in it, is only that. */
+const HEAD = 55;
+/** On a wide stage, the headers of rooms shown only as their headers sit in rows over the rest: this wide at least, and at most. */
+const SHUT_MIN = 180;
+const SHUT_MAX = 280;
+
+/**
+ * Rooms are open, and you oversee them from the main room: it and each room, with the people in each. A room you fold, or that
+ * nobody's in, is only its header: in rows over the rest on a wide stage, in its place in the column on a tall one. The time
+ * left is said once, in the line over them.
+ */
 function RoomsStage({ people, rooms, w, h, reduce }: { people: StageParticipant[]; rooms: StageRooms; w: number; h: number; reduce: boolean }) {
   const byId = new Map(people.map((p) => [p.id, p]));
   const top = 52;
   const port = w < h * 0.9;
   const gap = port ? 10 : 14;
   const units = [
-    ...(rooms.main.length ? [{ room: -1, weight: rooms.main.length > 1 ? 1 : 0.5, ids: rooms.main }] : []),
-    ...rooms.rooms.map((r, k) => ({ room: k, weight: 1, ids: r.ids }))
-  ];
-  const total = units.reduce((n, u) => n + u.weight, 0);
-  const avail = (port ? h - top : w) - (units.length - 1) * gap;
-  let cur = port ? top : 0;
+    ...(rooms.main.length ? [{ key: 'main', room: -1, ids: rooms.main, weight: rooms.main.length > 1 ? 1 : 0.5, folded: rooms.mainFolded }] : []),
+    ...rooms.rooms.map((r, k) => ({ key: r.id, room: k, ids: r.ids, weight: 1, folded: r.folded }))
+  ].map((u) => ({ ...u, shut: u.folded || !u.ids.length }));
+  const shut = units.filter((u) => u.shut);
+  const open = units.filter((u) => !u.shut);
+  const weights = open.reduce((n, u) => n + u.weight, 0);
+  const cards = new Map<string, Rect>();
+  if (port) {
+    const avail = Math.max(0, h - top - (units.length - 1) * gap - shut.length * HEAD);
+    let y = top;
+    for (const u of units) {
+      const s = u.shut ? HEAD : (avail * u.weight) / Math.max(1, weights);
+      cards.set(u.key, [0, y, w, s]);
+      y += s + gap;
+    }
+  } else {
+    const perRow = Math.max(1, Math.min(shut.length, Math.floor((w + gap) / (SHUT_MIN + gap))));
+    const sw = Math.min(SHUT_MAX, (w - (perRow - 1) * gap) / perRow);
+    shut.forEach((u, i) => cards.set(u.key, [(i % perRow) * (sw + gap), top + Math.floor(i / perRow) * (HEAD + gap), sw, HEAD]));
+    const below = top + Math.ceil(shut.length / perRow) * (HEAD + gap);
+    const avail = w - (open.length - 1) * gap;
+    let x = 0;
+    for (const u of open) {
+      const s = (avail * u.weight) / Math.max(1, weights);
+      cards.set(u.key, [x, below, s, Math.max(0, h - below)]);
+      x += s + gap;
+    }
+  }
+  const none: Rect = [0, top, 0, 0];
   const placed = units.map((u) => {
-    const s = (avail * u.weight) / Math.max(1, total);
-    const card: Rect = port ? [0, cur, w, s] : [cur, top, s, h - top];
-    cur += s + gap;
+    const card = cards.get(u.key) ?? none;
     // A room on its board says so along the bottom, under its people.
     const foot = u.room >= 0 && rooms.rooms[u.room]?.board === true ? 30 : 0;
-    const grid = fitGrid(u.ids.length, card[0] + 12, card[1] + 55, card[2] - 24, card[3] - 67 - foot, port ? 1.3 : 0.9, 10);
-    return { ...u, card, tiles: u.ids.map((id, k) => ({ id, r: grid[k] })) };
+    const grid = u.shut ? [] : fitGrid(u.ids.length, card[0] + 12, card[1] + 55, card[2] - 24, card[3] - 67 - foot, port ? 1.3 : 0.9, 10);
+    return { ...u, card, tiles: u.shut ? [] : u.ids.map((id, k) => ({ id, r: grid[k] })) };
   });
   const soon = rooms.left <= 30;
   const t = mmss(rooms.left);
@@ -599,30 +644,35 @@ function RoomsStage({ people, rooms, w, h, reduce }: { people: StageParticipant[
           ) : (
             <motion.span key="quiet" className={cn('quiet', soon && 'is-soon')} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={UI}>
               <Icon name={soon ? 'timer' : 'door'} size={16} />
-              {soon ? `Rooms close in ${t}. Everyone comes back here.` : `${rooms.joined === null ? 'You’re in the main room' : `You’re in ${rooms.rooms[rooms.joined]?.name ?? 'a room'}`} · everyone comes back in ${t}`}
+              {soon ? `Rooms close in ${t}. Everyone comes back here.` : `You’re in the main room · everyone comes back in ${t}`}
             </motion.span>
           )}
         </AnimatePresence>
       </div>
       {placed.map((u, k) => {
         const room = u.room >= 0 ? rooms.rooms[u.room] : undefined;
-        const here = rooms.joined === (room ? u.room : null);
+        const name = room ? room.name : 'Main room';
         const justMe = !room && u.ids.length === 1 && byId.get(u.ids[0] ?? '')?.isMe === true;
         return (
-          <motion.div key={`card-${u.room}`} className={cn('ic-roomc', u.room < 0 && 'is-main', here && room && 'is-here', room?.help && 'has-help')}
+          <motion.div key={`card-${u.key}`} className={cn('ic-roomc', u.room < 0 && 'is-main', room?.help && 'has-help')}
             initial={{ ...box(u.card), opacity: 0, scale: 0.97 }} animate={{ ...box(u.card), opacity: 1, scale: 1 }} transition={reduce ? { duration: 0 } : { ...GLIDE, delay: k * 0.03 }}>
             {room && <div className="bar" style={{ background: ROOMBAR[u.room % ROOMBAR.length] }} />}
             <div className="h">
-              <b>{room ? room.name : 'Main room'}</b>
-              <span>{justMe ? 'you' : `${u.ids.length} ${u.ids.length === 1 ? 'person' : 'people'}`}</span>
-              {here && !justMe && <span className="here">· you’re here</span>}
+              <b>{name}</b>
+              <span className="n">{!u.ids.length ? 'Nobody here' : justMe ? 'you' : `${u.ids.length} ${u.ids.length === 1 ? 'person' : 'people'}`}</span>
               {room?.help && <span className="hand-chip"><Icon name="hand" size={13} />{callName(byId.get(room.help)?.person ?? { name: 'Someone', email: '' })} asked for help</span>}
-              {room && <span className="ac-time">{t}</span>}
+              <span className="sp" aria-hidden="true" />
               {room?.notes === 'on' && <NotesSign stage>Notes</NotesSign>}
               {room?.notes === 'paused' && <CaptureSign mode="paused" stage />}
+              {u.ids.length > 0 && (
+                <Tooltip label={u.folded ? 'Unfold' : 'Fold'} side="bottom">
+                  <button type="button" className="fold" aria-expanded={!u.folded} aria-label={`${u.folded ? 'Unfold' : 'Fold'} ${name}`} onClick={() => rooms.onFold(room ? room.id : null)}>
+                    <Icon name={u.folded ? 'down' : 'up'} size={16} />
+                  </button>
+                </Tooltip>
+              )}
             </div>
-            {!u.ids.length && <p className="empty">Nobody in this room</p>}
-            {room?.board && <p className="onb"><Icon name="presentation" size={15} /><span>On their board. Join to see it.</span></p>}
+            {room?.board && !u.shut && <p className="onb"><Icon name="presentation" size={15} /><span>On their board. Join to see it.</span></p>}
           </motion.div>
         );
       })}

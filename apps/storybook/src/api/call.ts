@@ -7,19 +7,20 @@
  * The call's workspace is played here too: its home, settled the first time Workspace opens, what's brought, presented and
  * played, who's asking to see it, and where everyone else is in it. So is a board in the call: one you open, or one someone in
  * the script opens, made in the call's home and filled from its template as the server does, with whoever works on it on it,
- * and its timer and vote.
+ * and its vote.
  */
 import {
   CALL_TIMER_MAX_SECONDS, CallTimerControlSchema, type CallTimerControl, type CallTimer, type CallAttention, type CallNudgeKind, type CallQuestionStatus, type CallStatusKind, type CallStatusMinutes, ACCEPTED_FOLLOW_UP, AlcoveApiError, type FollowUpCreate, type FollowUpPatch, type FollowUpReview, type FollowUpTarget, type LiveFollowUp, MAX_CALL_IDEAS, RING_SECONDS, notesAreOn, reactionTarget, withReaction, type BreakoutPlan, type CallPage, type CallAnswer, type CallChatMention, CallChatTextSchema, type CallCrypto, type CallEndResult, type CallMoment, type CallMoveOut, type CallParticipant, type CallRole,
   type CallReaction, type CallSession, type CallState, type CallTicket, type CaptionLanguage, type CaptionTranslation, type CaptureDevicePart, type CaptureGap, type CaptureMode, type CapturePart,
   type CatchUp, type CatchUpRange, type CatchUpWindow, type AudioPiece, type LineAudio, type Meeting, type MoveMedia, type MoveOutState, type Person, type PersonalApi,
-  type RingReply, type RoomCapture, type ScreenPiece, type SeriesAnswerPart, type TranscriptClip, type TranscriptLine
+  type RingReply, type RoomCapture, type RoomPerson, type ScreenPiece, type SeriesAnswerPart, type TranscriptClip, type TranscriptLine
 } from '@alcove/api';
 import type {
-  BoardCheck, BoardOpen, BoardTemplate, BoardTimerMinutes, BoardVotesEach, BreakoutBoard, BreakoutBoardMode, CallBoard, CallBoardIdea, CallFollowUp, CallFollowUps, CallPresent, CallSeat, CallWorkspace,
+  BoardCheck, BoardOpen, BoardTemplate, BoardVotesEach, BreakoutBoard, BreakoutBoardMode, CallBoard, CallBoardIdea, CallFollowUp, CallFollowUps, CallPresent, CallSeat, CallWorkspace,
   CallWorkspaceSwitch, DocFollowUpTick, DocumentRole, PresentStart, WorkspaceHere, WorkspaceItem
 } from '@alcove/api';
-import { addObject, colourIn, fillTemplate, landBoards, readBoard, roomFrameId, roomFrames, type FrameObject } from '@alcove/board';
+import { BOARD_VIEW_WIDTH, addObject, colourIn, fillTemplate, landBoards, readBoard, roomFrameId, roomFrames, type FrameObject } from '@alcove/board';
+import { reading } from '~/features/board/slides';
 import { sessions } from '~/lib/live';
 import { talking } from '../browser';
 import type { Screen } from '../media/screens';
@@ -43,6 +44,10 @@ const firstOf = (p: Person) => p.name.split(' ')[0] ?? p.name;
 const sayingMs = (text: string) => Math.min(5600, Math.max(2200, text.length * 55));
 /** How long after the organizer's connection drops someone invited hosts in their place. */
 const TAKE_OVER_MS = 10_000;
+/** How long Hear it takes to fetch a line of the recording, so pressing it shows it working. */
+const HEAR_MS = 900;
+/** How many times as wide as it's tall someone else presenting a board has their sheet: a laptop's stage. */
+const PRESENTERS_SHEET = 1.8;
 /** The call's timer after one of the host's controls, as the API works it out (features/calls/timers.ts), or why not. */
 function timerAfter(was: CallTimer | null, input: CallTimerControl, now: number): CallTimer | null {
   if (input.action === 'start') {
@@ -104,6 +109,8 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
   /** Whoever takes the data other browsers send to the room (the scripted room), told the topic, the payload and who from. */
   private readonly dataTakers = new Set<(topic: string, payload: Uint8Array, from: string) => void>();
   private readonly script: CallScript;
+  /** Lines Hear it has asked for already. */
+  private asked = new Set<string>();
   private readonly me: CallParticipant;
   /** The note this call writes, once notes have been on: your own notes on the call (`personal`) go with it. */
   private readonly noteId: string;
@@ -154,7 +161,7 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
       revision: 0, timer: script.timer ? { ...script.timer, startedAt: script.timer.status === 'running' ? Date.now() : null } : null, attention: { place: 'main', hands: [], questions: [], nudges: [], cues: [], latest: 0, serverNow: new Date().toISOString() },
       callId, meetingId: meeting.id, code: meeting.code, title: meeting.title, startedAt, elapsed: since, phase: 'in-call', participants: organizes ? [me] : [], locked: false, pointing: true,
       spotlight: null, breakouts: { open: null, held: [] }, capture: captureOf(mode, mode === 'off' ? null : startedAt, meeting.organizer.name, script.model ?? null),
-      notes: { everOn: mode !== 'off', noteId: mode !== 'off' ? noteId : null, segmentStartedAt: mode !== 'off' ? startedAt : null, recording: { segment: 0, pieces: 0, seconds: mode === 'on' ? since : 0 } }, waiting: [], ringing: [], leaving: [], chatRead: [],
+      notes: { everOn: mode !== 'off', noteId: mode !== 'off' ? noteId : null, segmentStartedAt: mode !== 'off' ? startedAt : null, recording: { segment: 0, pieces: 0, seconds: mode === 'on' ? since : 0 }, keepsRecording: meeting.choices.keepRecording }, waiting: [], ringing: [], leaving: [], chatRead: [],
       host: { id: organizes ? me.id : null, standIn: false, organizer: meeting.organizer, next: [] }, generation: 1, transcript: [],
       liveNotes: { notes: null, added: [], suggestions: [], writing: false, error: null }, notices: mode === 'on' && !since ? [{ id: nextId('notice'), text: 'Notes are on. Everyone here can see that.', kind: 'notes' }] : [],
       isOrganizer: organizes, isHost: organizes, role: arrival.role,
@@ -167,7 +174,7 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     for (const followUp of script.followUps ?? []) this.inferred.set(followUp.id, structuredClone(followUp));
     this.ticket = { callId, serverUrl: 'wss://livekit.storybook.invalid', roomName: `room-${callId}`, identity: me.id, role: arrival.role, pass: `${callId}.storybook` };
     this.crypto = new Crypto({ status: arrival.asking ? 'waiting' : 'in', place: 'main', members: arrival.asking ? [] : [me.id], everyone: arrival.asking ? [] : [me.id], media: null, chat: [], missedChat: false });
-    this.personal = personalFor(noteId);
+    this.personal = personalFor(noteId, () => this.getSnapshot().transcript);
     this.direct = new ScriptedDirectMessages(this, this.crypto, this.ticket, script.privateSendFails);
     this.notifications = new ScriptedNotifications(me.id, this, this.crypto, this.direct);
     this.livekit = new Pushed<RoomSide>({ people: {}, connection: 'connected', endReason: null, mutedYou: 0, sharesStopped: 0 });
@@ -232,6 +239,7 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
       case 'mic': this.them(b.who, (t) => ({ ...t, mic: b.on, speaking: b.on && t.speaking })); return;
       case 'hand': { const p = this.find(b.who); if (p) this.handFor(p, b.up); return; }
       case 'question': { const p = this.find(b.who); if (p) this.questionFor(p, b.text, b.votes ?? 0, nextId('question'), b.anonymous ?? false); return; }
+      case 'question-vote': this.change((s) => ({ ...s, attention: { ...s.attention, questions: s.attention.questions.map((q) => (q.text === b.text && q.status === 'open' ? { ...q, votes: q.votes + b.votes } : q)) } })); return;
       case 'nudge': { const p = this.find(b.who); if (p) this.nudgeFrom(p, b.kind); return; }
       case 'status': { const p = this.find(b.who); if (p) this.statusFor(p, b.status, b.minutes); return; }
       case 'share': this.them(b.who, (t) => ({ ...t, screen: b.screen })); return;
@@ -344,8 +352,6 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
         this.boardGoes(this.getSnapshot().participants.find((p) => p.id === opened?.openedBy));
         return;
       }
-      case 'start-timer': this.theyStartTimer(b.who, b.minutes, b.left); return;
-      case 'stop-timer': void this.session((x) => ({ ...x, timer: null })); return;
       case 'start-vote': this.theyStartVote(b.who, b.frame, b.per); return;
       case 'end-vote': this.voteEnds(b.votes, b.voters); return;
       case 'clear-vote': void this.session((x) => ({ ...x, vote: null })); return;
@@ -575,6 +581,20 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     if (signedIn) current().meetings = current().meetings.map((m) => (m.id === this.meeting.id ? { ...m, guests: [...m.guests, this.me.person], guestCount: m.guestCount + 1 } : m));
     this.change((s) => ({ ...s, participants: [...s.participants, this.me], role: signedIn ? 'invited' : 'guest' }));
     this.crypto.update((c) => ({ ...c, status: 'in', members: [...this.getSnapshot().participants.map((p) => p.id)], everyone: this.getSnapshot().participants.map((p) => p.id) }));
+    if (!signedIn) this.letSee();
+  }
+  /**
+   * A guest with the link, let in: what the organizer has let them see of the call's home (`ScriptWorkspace.yours`) opens to
+   * them, and the home is the workspace they view, as the server says it to whoever can open something in it. Its name and
+   * their role in it are as the story's world has them. It's still no home of theirs to make anything in (`homeId`).
+   */
+  private letSee(): void {
+    const home = this.meeting.workspaceId;
+    const yours = home ? (this.script.workspace?.yours ?? []).flatMap((id) => { const item = this.itemIn(home, id); return item ? [item] : []; }) : [];
+    if (!home || !yours.length) return;
+    this.space((w) => ({ ...w, documents: yours.map((item) => this.broughtOf(home, item)) }));
+    this.view(home);
+    this.space((w) => ({ ...w, home }));
   }
 
   /* ---------- the call's boards, in the main room and in rooms ---------- */
@@ -585,7 +605,7 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
   private hereAt(): { workspaceId: string; documentId: string } | null { return this.boards.get(this.shownAt(this.crypto.getSnapshot().place))?.at ?? null; }
   /**
    * The board where you are, as the server says it to you: one you can't open says who brought it and nothing of itself, and one
-   * in Trash or gone has left. The same board keeps its timer, vote and ideas, since its session carries on.
+   * in Trash or gone has left. The same board keeps its vote and ideas, since its session carries on.
    */
   private boardHere(was: CallBoard): CallBoard {
     const place = this.crypto.getSnapshot().place;
@@ -600,7 +620,7 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     const same = was.open?.documentId === b.at.documentId;
     return {
       open: { ...b.at, name: item.name, role: item.role ?? 'edit', everyone: b.made, ...seen },
-      timer: same ? was.timer : null, vote: same ? was.vote : null, ideas: same ? was.ideas : []
+      timer: null, vote: same ? was.vote : null, ideas: same ? was.ideas : []
     };
   }
   /** Where someone is in the call now, by their participant ID: the room they're in, or the main room. */
@@ -700,14 +720,35 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     }));
     this.sayWhoIsOn();
   }
-  /** Who's on the board where you are now, as its awareness says them to whoever has it open. */
+  /**
+   * Who's on the board where you are now, as its awareness says them to whoever has it open: someone else presenting it with their
+   * view on the frame they're on, as their browser says it, which is what everyone following them sees.
+   */
   private sayWhoIsOn(): void {
     const at = this.hereAt();
     if (!at) return;
+    const shown = this.presentersView(at);
     onTheBoard(at.documentId, this.getSnapshot().participants.flatMap((p) => {
+      if (p.isMe) return [];
+      if (shown && p.seat === shown.seat) return [{ callIdentity: p.id, person: p.person, at: shown.at, view: shown.view }];
       const point = this.onIt.get(p.id);
-      return point && !p.isMe ? [{ callIdentity: p.id, person: p.person, at: point }] : [];
+      return point ? [{ callIdentity: p.id, person: p.person, at: point }] : [];
     }));
+  }
+  /**
+   * Someone else presenting the board where you are: their seat, and their pointer and view on the frame they're on, of its frames
+   * in the order they sit, framed with room round it as their sheet would show it: a laptop's stage, `PRESENTERS_SHEET` times as
+   * wide as it's tall, which their view says (`h`), as a browser does, so everyone following sees all of it, whatever their shape.
+   */
+  private presentersView(at: { workspaceId: string; documentId: string }): { seat: string; at: { x: number; y: number }; view: { x: number; y: number; z: number; h: number } } | null {
+    const now = this.presented.get(this.crypto.getSnapshot().place);
+    if (now?.kind !== 'board' || now.id !== at.documentId || this.isMine(now)) return null;
+    const frames = readBoard(boardDoc(at.workspaceId, at.documentId)).frames.filter((f) => !f.f).sort(reading);
+    const f = frames[Math.min(now.section, frames.length - 1)];
+    if (!f) return null;
+    const middle = { x: f.x + f.w / 2, y: f.y + f.h / 2 };
+    const wide = Math.max(f.w + 160, (f.h + 200) * PRESENTERS_SHEET);
+    return { seat: now.by.seat, at: { x: middle.x + 40, y: middle.y + 30 }, view: { ...middle, z: BOARD_VIEW_WIDTH / wide, h: BOARD_VIEW_WIDTH / PRESENTERS_SHEET } };
   }
   /**
    * A new board in the call's home, named as the server names it and filled from its template as the server fills it; a room's
@@ -796,9 +837,14 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
   private opensRooms(plans: readonly RoomPlan[], minutes: number, board?: BreakoutBoard | undefined): void {
     const s = this.getSnapshot();
     const idOf = (p: Person | 'me') => (p === 'me' ? this.me.id : this.find(p)?.id);
+    // Guests (anyone who came in with the link) go by seat, by name only; everyone else by address.
+    const guest = (p: Person | 'me') => { const id = idOf(p); return id !== undefined && this.guests.has(id); };
     const rooms = plans.map((plan, k) => {
       const members = plan.people.flatMap((p) => { const id = idOf(p); return id ? [id] : []; });
-      return { id: this.roomId(k), name: plan.name, people: plan.people.map((p) => (p === 'me' ? this.me.person : p)), members, paused: false, board: false };
+      return {
+        id: this.roomId(k), name: plan.name, people: plan.people.flatMap((p) => (guest(p) ? [] : [p === 'me' ? this.me.person : p])),
+        guests: plan.people.flatMap((p) => { const x = p === 'me' ? this.me : this.find(p); return x && guest(p) ? [this.asGuest(x)] : []; }), members, paused: false, board: false
+      };
     });
     this.boardsForRooms(board, rooms.map((r, k) => ({ ...r, work: plans[k]?.work })));
     const mine = rooms.find((r) => r.members.includes(this.me.id));
@@ -813,17 +859,27 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
   }
   openRooms(plan: BreakoutPlan): void {
     const s = this.getSnapshot();
-    const rooms = plan.rooms.map((r, k) => ({
-      id: this.roomId(k), name: r.name, people: r.emails.map(personAt), paused: false, board: false,
-      members: s.participants.filter((p) => !p.isMe && r.emails.some((e) => e.toLowerCase() === p.person.email.toLowerCase())).map((p) => p.id)
-    }));
+    const rooms = plan.rooms.map((r, k) => {
+      const guests = s.participants.filter((p) => !p.isMe && (r.seats ?? []).includes(p.seat));
+      const invited = s.participants.filter((p) => !p.isMe && r.emails.some((e) => e.toLowerCase() === p.person.email.toLowerCase()));
+      return {
+        id: this.roomId(k), name: r.name, people: r.emails.map(personAt), guests: guests.map((p) => this.asGuest(p)), paused: false, board: false,
+        members: [...invited, ...guests].map((p) => p.id)
+      };
+    });
     this.boardsForRooms(plan.board, rooms);
     this.push({ ...s, breakouts: { ...s.breakouts, open: { rooms, board: this.boardMode, from: s.elapsed, until: s.elapsed + plan.minutes * 60, message: null } } });
     this.endsMoved();
     this.showBoard();
-    // The organizer stays in the main room, and keeps every room's keys.
-    this.crypto.update((c) => ({ ...c, members: s.participants.filter((p) => !rooms.some((r) => r.members.includes(p.id))).map((p) => p.id) }));
+    // The organizer starts in the main room, keeping every room's keys, unless they chose a room to start in: then they visit it.
+    const visiting = plan.visit === undefined ? undefined : rooms[plan.visit];
+    if (visiting) this.visitRoom(visiting.id);
+    else this.crypto.update((c) => ({ ...c, members: s.participants.filter((p) => !rooms.some((r) => r.members.includes(p.id))).map((p) => p.id) }));
     this.hosting();
+  }
+  /** Someone in the call as a room names a guest: by seat, by name only. */
+  private asGuest(p: CallParticipant): { seat: string; person: Person } {
+    return { seat: p.seat, person: { id: p.id, name: p.person.name, email: '', ...(p.person.portrait ? { portrait: p.person.portrait } : {}) } };
   }
   closeRooms(): void {
     const s = this.getSnapshot();
@@ -856,12 +912,19 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
   renameRoom(roomId: string, name: string): void {
     this.change((s) => (s.breakouts.open ? { ...s, breakouts: { ...s.breakouts, open: { ...s.breakouts.open, rooms: s.breakouts.open.rooms.map((r) => (r.id === roomId ? { ...r, name } : r)) } } } : s));
   }
-  moveToRoom(email: string, roomId: string | null): void {
+  moveToRoom(person: RoomPerson, roomId: string | null): void {
     this.change((s) => {
       const open = s.breakouts.open;
-      const who = s.participants.find((p) => p.person.email.toLowerCase() === email.toLowerCase());
+      const who = s.participants.find((p) => (person.email !== undefined ? p.person.email.toLowerCase() === person.email.toLowerCase() : p.seat === person.seat));
       if (!open || !who) return s;
-      return { ...s, breakouts: { ...s.breakouts, open: { ...open, rooms: open.rooms.map((r) => ({ ...r, members: r.id === roomId ? [...r.members.filter((m) => m !== who.id), who.id] : r.members.filter((m) => m !== who.id) })) } } };
+      // A guest goes by seat, so the rooms name them; someone invited by address.
+      const rooms = open.rooms.map((r) => {
+        const to = r.id === roomId;
+        const guests = person.seat === undefined ? r.guests : [...r.guests.filter((g) => g.seat !== person.seat), ...(to ? [this.asGuest(who)] : [])];
+        const people = person.email === undefined ? r.people : [...r.people.filter((p) => p.email.toLowerCase() !== person.email.toLowerCase()), ...(to ? [who.person] : [])];
+        return { ...r, people, guests, members: to ? [...r.members.filter((m) => m !== who.id), who.id] : r.members.filter((m) => m !== who.id) };
+      });
+      return { ...s, breakouts: { ...s.breakouts, open: { ...open, rooms } } };
     });
     // What they were presenting where they were ends there.
     this.endsMoved();
@@ -1340,15 +1403,12 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     this.showBoard();
     return null;
   }
-  private theyStartTimer(who: Person, minutes: BoardTimerMinutes, left: number | undefined): void {
-    if (!this.find(who)) return;
-    void this.session((b) => ({ ...b, timer: { until: this.getSnapshot().elapsed + (left ?? minutes * 60), length: minutes * 60, text: 'Add your stickies', canStop: this.me.isOrganizer } }));
-  }
   private theyStartVote(who: Person, title: string | null, per: BoardVotesEach): void {
-    if (!this.find(who)) return;
+    const p = this.find(who);
+    if (!p) return;
     const at = this.hereAt();
     const frame = this.frameCalled(at ? boardDoc(at.workspaceId, at.documentId) : null, title)?.id ?? null;
-    void this.session((b) => (b.vote ? b : { ...b, vote: { on: true, frame, per, left: per, mine: [], results: {}, voters: 0, canEnd: this.me.isOrganizer } }));
+    void this.session((b) => (b.vote ? b : { ...b, vote: { on: true, frame, per, left: per, mine: [], results: {}, voters: 0, canEnd: this.me.isOrganizer, startedBy: p.id } }));
   }
   /** The vote ends with everyone else's votes, by what each sticky says, and yours: every count at once, and only for what's in it. */
   private voteEnds(votes: Readonly<Record<string, number>>, voters: number): void {
@@ -1407,19 +1467,15 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     return Promise.resolve({ cannot, mayLetIn: treeOf(workspaceId).role !== null && this.itemIn(workspaceId, documentId)?.role === 'edit' });
   }
   /*
-   * The board's session, as the server keeps it: a timer from now, the same for everyone, and a vote whose counts come only
-   * when it ends, everyone else's from the script (`board.votes`) and yours. With no board open, nothing changes.
+   * The board's session, as the server keeps it: a vote whose counts come only when it ends, everyone else's from the script
+   * (`board.votes`) and yours. With no board open, nothing changes.
    */
   private session(change: (b: CallState['board']) => CallState['board']): Promise<void> {
     this.change((s) => (s.board.open ? { ...s, board: change(s.board) } : s));
     return Promise.resolve();
   }
-  startTimer(minutes: BoardTimerMinutes): Promise<void> {
-    return this.session((b) => ({ ...b, timer: { until: this.getSnapshot().elapsed + minutes * 60, length: minutes * 60, text: 'Add your stickies', canStop: true } }));
-  }
-  stopTimer(): Promise<void> { return this.session((b) => ({ ...b, timer: null })); }
   startVote(frame: string | null, per: BoardVotesEach): Promise<void> {
-    return this.session((b) => (b.vote ? b : { ...b, vote: { on: true, frame, per, left: per, mine: [], results: {}, voters: 0, canEnd: true } }));
+    return this.session((b) => (b.vote ? b : { ...b, vote: { on: true, frame, per, left: per, mine: [], results: {}, voters: 0, canEnd: true, startedBy: this.me.id } }));
   }
   castVote(sticky: string): Promise<void> {
     return this.session((b) => (b.vote?.on && !b.vote.mine.includes(sticky) && b.vote.left > 0 ? { ...b, vote: { ...b.vote, mine: [...b.vote.mine, sticky], left: b.vote.left - 1 } } : b));
@@ -1626,13 +1682,22 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
   }
   /**
    * Hear it, as the call plays it: a line in your own transcript, which is only what you were there for, as a few quiet
-   * seconds of the recording around it. Anything else isn't there, as the API says it.
+   * seconds of the recording around it, after a moment's fetching. Anything else isn't there, as the API says it, and so is
+   * whatever the script says Hear it gets (`CallScript.hear`).
    */
   hear(note: string, line: string): Promise<LineAudio> {
     const s = this.getSnapshot();
     const l = s.transcript.find((x) => x.id === line);
-    if (s.notes.noteId !== note || !l || l.room) return Promise.reject(new AlcoveApiError('not-found', 'That moment of the call doesn’t exist, or you don’t have access to it.'));
-    return Promise.resolve({ audio: quietAudio(5), from: 1, seconds: 3 });
+    const missing = () => new AlcoveApiError('not-found', 'That moment of the call doesn’t exist, or you don’t have access to it.');
+    if (s.notes.noteId !== note || !l || l.room || !s.notes.keepsRecording) return Promise.reject(missing());
+    const answer = this.script.hear ?? 'plays';
+    if (answer === 'waits') return new Promise<LineAudio>(() => undefined);
+    return new Promise<LineAudio>((resolve, reject) => this.after(HEAR_MS, () => {
+      if (answer === 'not-found') { reject(missing()); return; }
+      // The recording has the line the second time it's asked for: its piece has gone up by then.
+      if (answer === 'not-yet' && !this.asked.has(line)) { this.asked.add(line); reject(new AlcoveApiError('conflict', 'The recording doesn’t have this line yet. Try again in a few seconds.')); return; }
+      resolve({ audio: answer === 'unplayable' ? new Blob([new Uint8Array(64)], { type: 'audio/webm' }) : quietAudio(5), from: 1, seconds: 3 });
+    }));
   }
   appendAudio(_piece: AudioPiece): Promise<void> { return Promise.resolve(); }
   transcribe(_clip: TranscriptClip, _speaker: string): Promise<void> { return Promise.resolve(); }

@@ -93,6 +93,16 @@
   --gold: #FFB547;
   /* What's highlighted or commented on in a document */
   --hl: rgb(255 181 71 / .28);
+  /*
+   * Code in a document, by what each word is: a palette of its own, since caution, rose, rec and sun mean something else.
+   * Keywords violet, strings blue, numbers and other literals burnt orange, the names of functions and types plum, comments
+   * slate. No green. Each reads at 4.5:1 or more on a code block's `sunk`.
+   */
+  --code-keyword: #6A35C2;
+  --code-string: #1D4F8F;
+  --code-number: #96400F;
+  --code-name: #8C2A6F;
+  --code-comment: #566780;
   /* The call stage: night in both themes */
   --stage: #060D1A;
   --stage-tile: #141E31;
@@ -199,6 +209,11 @@
   --caution-soft: #3A2A0E;
   --gold: #FFC774;
   --hl: rgb(255 199 116 / .2);
+  --code-keyword: #C4AEFF;
+  --code-string: #9CC4F2;
+  --code-number: #F2AA7C;
+  --code-name: #EDA3D8;
+  --code-comment: #8E9FB4;
   --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
   --shadow-2: 0 2px 6px rgba(0, 0, 0, 0.3), 0 18px 40px -18px rgba(0, 0, 0, 0.7);
   --shadow-3: 0 40px 90px -30px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.07);

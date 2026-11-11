@@ -41,6 +41,15 @@ const priyaAndKofi: Step = async (ctx) => {
   await adding('Kof', /^Kofi Asante/, 'Then Kofi')(ctx);
 };
 const findATime = press('Find a time', 'Find a time. Three times that work, the best already picked');
+/** Types a time into the line under the cards, and leaves the field, which is when it counts. */
+const typing = (label: 'Starts' | 'Ends', time: string, said: string): Step => async ({ userEvent, step }) => {
+  await step(said, async () => {
+    const field = await screen.findByLabelText(label, {}, { timeout: 8000 });
+    await userEvent.clear(field);
+    await userEvent.type(field, time);
+    await userEvent.tab();
+  });
+};
 const useIt = press(/^Use /, 'Use the time picked. Details reads like the finished call');
 
 export const Choice = page('/home', 'busy', { play: playing(open) });
@@ -52,15 +61,50 @@ export const Who = page('/home', 'busy', { play: playing(open, later) });
 export const WhoPicked = page('/home', 'busy', { play: playing(open, later, priyaAndKofi) });
 /** On a first day: the company's directory, people not on Alcove yet among them. */
 export const WhoOnAFirstDay = page('/home', 'first-day', { play: playing(open, later) });
-/** When: three times when everyone's free, the best one picked. */
+/** When: three times when everyone's free, soonest first, the best one picked. */
 export const When = page('/home', 'busy', { play: playing(open, later, priyaAndKofi, findATime) });
 export const WhenPhone = phone(When);
-/** With no calendar connected, the times are open working hours. */
+/**
+ * The time picked, typed: a start at 10:15 moves the call on its day and keeps its length, and an end at 11:30 makes it
+ * 1 h 15 min, which shows beside the three lengths. The card for 10:15 takes the place of the last suggestion.
+ */
+export const TypedTimes = page('/home', 'busy', {
+  play: playing(open, later, priyaAndKofi, findATime, typing('Starts', '10:15', 'Type a start, 10:15, and leave the field'), typing('Ends', '11:30', 'Type an end, 11:30, and leave the field'))
+});
+export const TypedTimesPhone = phone(TypedTimes);
+/** An end before the start can't be used: it says why under the line, and the time picked stays as it was. */
+export const TypedTimeRefused = page('/home', 'busy', {
+  play: playing(open, later, priyaAndKofi, findATime, typing('Ends', '08:00', 'Type an end before the start, 08:00, and leave the field'))
+});
+/** A time it can't read, such as 2pm or 9, says how to type one, and the time picked stays as it was. */
+export const TypedTimeUnread = page('/home', 'busy', {
+  play: playing(open, later, priyaAndKofi, findATime, typing('Starts', '2pm', 'Type a start it can’t read, 2pm, and leave the field'))
+});
+/** With no calendar connected, the times are open working hours: a different easy hour on each of the next working days, soonest first. */
 export const WhenWithoutACalendar = page('/home', 'busy', { beforeEach: changing(noCalendar), play: playing(open, later, priyaAndKofi, findATime) });
 /** Reading the calendars takes a while. */
 export const ReadingCalendars = page('/home', 'busy', { beforeEach: changing(troubled({ 'calendar.busy': 'hold' })), play: playing(open, later, priyaAndKofi, findATime) });
-/** Pick another time: the modal widens around the week, with your own things by name and when anyone is busy. */
+/** Pick another time: the modal widens around the week, Monday to Sunday and the whole day, with your own things by name and when anyone is busy. */
 export const AnotherTime = page('/home', 'busy', { play: playing(open, later, priyaAndKofi, findATime, press('Pick another time', 'Pick another time. The week opens beside the times')) });
+/** On a phone the week sits under the times, all seven days of it. */
+export const AnotherTimePhone = phone(AnotherTime);
+/**
+ * Ending later, in the week: the bar on the picked time's bottom edge drags its end a quarter hour at a time, and Shift with
+ * the down arrow on its half hour does the same. Twice makes the 45 minutes 1 h 15 min, which shows beside the three.
+ */
+export const EndingLater = page('/home', 'busy', {
+  play: playing(open, later, priyaAndKofi, findATime, press('Pick another time', 'Pick another time'), async ({ userEvent, step }) => {
+    await step('Once the calendars are read, go to the picked half hour, and press Shift and the down arrow twice', async () => {
+      await screen.findByText('All 3 of you are free at these times.', {}, { timeout: 8000 });
+      (await screen.findByRole('button', { name: /, picked/ }, { timeout: 8000 })).focus();
+      await userEvent.keyboard('{Shift>}{ArrowDown}{ArrowDown}{/Shift}');
+    });
+  })
+});
+/** A time picked from the week takes the place of the last suggestion, and the cards stay soonest first. */
+export const PickedFromTheWeek = page('/home', 'busy', {
+  play: playing(open, later, priyaAndKofi, findATime, press('Pick another time', 'Pick another time'), press(/^Fri 6 Nov, 16:30/, 'Pick Friday at 16:30 in the week'))
+});
 /** How it repeats: every week, every two weeks, every month, or days you pick, with an end date. */
 export const Repeats = page('/home', 'busy', { play: playing(open, later, priyaAndKofi, findATime, press(/Doesn’t repeat/, 'Open Doesn’t repeat'), press(/^Every (Mon|Tues|Wednes|Thurs|Fri)day$/, 'Every week, on the same day')) });
 /** On your own with one guest whose calendar can't be read: Let Ana pick, from times offered. */

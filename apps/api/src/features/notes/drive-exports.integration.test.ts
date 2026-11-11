@@ -1,5 +1,5 @@
 /** Drive exports exercise the real API, persisted jobs, Postgres, objects and an HTTP provider fixture. */
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -11,6 +11,7 @@ import { z } from 'zod';
 import { openJson, stateKey } from '../../crypto';
 import { openOwner } from '../../owners';
 import { maintain } from '../../maintenance';
+import { idle } from './drive-worker';
 import { speechWav } from '../../testing/fake-near';
 import { type GoogleUser } from '../../testing/fake-google';
 import { ORIGIN, startHarness, type Browser, type Harness } from '../../testing/harness';
@@ -38,7 +39,8 @@ async function finishConsent(b: Browser, url: string) {
   }
   throw new Error('Too many consent redirects.');
 }
-async function connected(formats: DriveExportFormat[] = FORMATS) {
+/** Drive connected, its folder picked; with `automatic`, exports after each call turned on. */
+async function connected(formats: DriveExportFormat[] = FORMATS, automatic = true) {
   const b = await account(); const google = user(); const destinationId = `folder_${randomUUID()}`;
   h.google.drive.folder(google.sub, { id: destinationId, name: `CANARY-DRIVE-FOLDER-${randomUUID()}`, driveId: 'shared_drive' });
   h.google.drive.pick(google.sub, destinationId); h.google.next(google);
@@ -51,11 +53,12 @@ async function connected(formats: DriveExportFormat[] = FORMATS) {
   await finishConsent(b, consent.url);
   expect((await b.api.auth.getSession())?.ownerId).toBe(b.session.ownerId);
   expect((await b.api.drive.get()).connection).toEqual({ status: 'connected', email: google.email });
-  await b.api.drive.update({ enabled: true, destinationId, formats });
+  await b.api.drive.update({ enabled: automatic, destinationId, formats });
   return { ...b, google, destinationId };
 }
 const speech = (text: string): TranscriptClip => ({ data: new Blob([speechWav(text, 4000)], { type: 'audio/wav' }), segment: 0, at: 0, durationMs: 4000 });
-async function completed(b: Browser, title = `CANARY-DRIVE-CALL-${randomUUID()}`, privateMessage = false) {
+/** A call with notes, ended and written. Its exports start the moment its notes are final; with `settle`, this waits for them. */
+async function completed(b: Browser, title = `CANARY-DRIVE-CALL-${randomUUID()}`, privateMessage = false, settle = true) {
   const call = await b.api.calls.join((await b.api.calls.startNow({ title, notes: 'on' })).code, { mic: true, cam: false });
   await call.appendAudio({ data: new Blob(['CANARY-DRIVE-AUDIO-CONTENT']), segment: 0, seq: 0, at: 0, durationMs: 5000, mimeType: 'audio/webm' });
   await call.transcribe(speech('The team agreed to launch on Friday. Mira will share the plan.'), call.ticket.identity);
@@ -75,9 +78,11 @@ async function completed(b: Browser, title = `CANARY-DRIVE-CALL-${randomUUID()}`
   }
   await call.leave();
   for await (const _progress of b.api.notes.progress(noteId)) { /* the public stream waits for finalization */ }
+  if (settle) await idle();
   return { noteId, title };
 }
-async function runJobs() { await maintain(h.deps); }
+/** Upkeep, once what started in the background has finished. */
+async function runJobs() { await idle(); await maintain(h.deps); }
 async function uploaded(b: Browser, noteId: string, expected = FORMATS.length) {
   for (let i = 0; i < 8; i++) {
     await runJobs();
@@ -180,6 +185,10 @@ describe('automatic Google Drive call exports', () => {
     const text = files.filter((file) => file.mimeType !== 'application/zip').map((file) => file.bytes.toString('utf8')).join('\n');
     expect(text).toContain(title);
     expect(text).toContain('launch on Friday');
+    // The notes carry the full summary under the short one, as the note page does.
+    const notesFile = files.find((file) => file.mimeType === 'text/markdown')?.bytes.toString('utf8') ?? '';
+    expect(notesFile).toContain('## Full summary');
+    expect(notesFile).toContain('First, The team agreed to launch on Friday.');
     expect(text).not.toContain('CANARY-PRIVATE-MATERIAL-NEVER-EXPORT');
     expect(text).not.toContain('CANARY-DIRECT-MESSAGE-NEVER-EXPORT');
     expect(JSON.stringify(await b.api.notes.get(noteId))).not.toContain('CANARY-DIRECT-MESSAGE-NEVER-EXPORT');
@@ -199,6 +208,118 @@ describe('automatic Google Drive call exports', () => {
     expect(h.google.drive.calls.filter((call) => call.path.startsWith('/upload/')).every((call) => call.supportsAllDrives)).toBe(true);
     await runJobs(); await runJobs();
     expect(h.google.drive.files(b.google.sub)).toHaveLength(3);
+  });
+
+  it('exports a call from its note with one press, and uploads it without waiting for upkeep', async () => {
+    const b = await connected(['notes-markdown', 'transcript-text'], false);
+    const { noteId, title } = await completed(b);
+    const before = await b.api.drive.forNote(noteId);
+    expect(before).toMatchObject({ automatic: 'off', override: null, jobs: [] });
+    // Export to Google Drive: this call's own choice, with the folder and files shown, and the uploads start at once.
+    const pressed = await b.api.drive.setForNote(noteId, { enabled: true, destinationId: b.destinationId, formats: ['notes-markdown', 'transcript-text'] });
+    expect(pressed.override).toMatchObject({ enabled: true, destination: { id: b.destinationId } });
+    await idle();
+    const jobs = (await b.api.drive.forNote(noteId)).jobs;
+    expect(jobs.map((job) => job.status)).toEqual(['uploaded', 'uploaded']);
+    expect(jobs.every((job) => job.nextAt === null && job.fileUrl?.startsWith('https://drive.google.com/file/d/'))).toBe(true);
+    const files = h.google.drive.files(b.google.sub);
+    expect(files.map((file) => file.mimeType).sort()).toEqual(['text/markdown', 'text/plain']);
+    expect(files.every((file) => file.parents[0] === b.destinationId && file.bytes.toString('utf8').includes(title))).toBe(true);
+  });
+
+  it('says a call that ended before automatic exports were on isn’t covered, exports it when asked, and covers the next call', async () => {
+    const b = await connected(['notes-markdown'], false);
+    const earlier = await completed(b);
+    await b.api.drive.update({ enabled: true, destinationId: b.destinationId, formats: ['notes-markdown'] });
+    // The rule the exports follow, said for the call: it ended before they were turned on.
+    expect((await b.api.drive.forNote(earlier.noteId)).automatic).toBe('before');
+    await runJobs();
+    expect((await b.api.drive.forNote(earlier.noteId)).jobs).toEqual([]);
+    expect(h.google.drive.files(b.google.sub)).toHaveLength(0);
+    // Exported on its own, with one press: no upkeep.
+    await b.api.drive.setForNote(earlier.noteId, { enabled: true, destinationId: b.destinationId, formats: ['notes-markdown'] });
+    await idle();
+    expect((await b.api.drive.forNote(earlier.noteId)).jobs.map((job) => job.status)).toEqual(['uploaded']);
+    // A call that ends now is covered, and goes as its notes are final, with no upkeep either.
+    const later = await completed(b);
+    const covered = await b.api.drive.forNote(later.noteId);
+    expect(covered).toMatchObject({ automatic: 'on', override: null });
+    expect(covered.jobs.map((job) => job.status)).toEqual(['uploaded']);
+    expect(h.google.drive.files(b.google.sub)).toHaveLength(2);
+  });
+
+  it('leaves a call’s files in Drive as they are once automatic exports stop covering it, and its own export updates them again', async () => {
+    const b = await connected(['transcript-text']);
+    const { noteId } = await completed(b);
+    await uploaded(b, noteId, 1);
+    const sent = h.google.drive.files(b.google.sub)[0];
+    if (!sent) throw new Error('Expected the call’s transcript in Drive.');
+    expect(sent.updates).toBe(1);
+    // Turned off: they don't cover the call, and what went stays listed, as it is.
+    await b.api.drive.update({ enabled: false, destinationId: b.destinationId, formats: ['transcript-text'] });
+    const off = await b.api.drive.forNote(noteId);
+    expect(off).toMatchObject({ automatic: 'off', override: null });
+    expect(off.jobs.map((job) => job.status)).toEqual(['uploaded']);
+    // On again: they cover calls that end from now on, so this one, which went before, isn't covered any more.
+    await b.api.drive.update({ enabled: true, destinationId: b.destinationId, formats: ['transcript-text'] });
+    const again = await b.api.drive.forNote(noteId);
+    expect(again).toMatchObject({ automatic: 'before', override: null });
+    expect(again.jobs.map((job) => job.status)).toEqual(['uploaded']);
+    // Its notes change, and nothing is sent: the file in Drive stays as it went.
+    const line = (await b.api.notes.get(noteId)).transcript?.[0];
+    if (!line) throw new Error('Expected the call’s transcript.');
+    await b.api.notes.correctLine(noteId, line.id, { text: 'We agreed to launch on Monday.' });
+    await b.api.notes.rewrite(noteId);
+    for await (const _progress of b.api.notes.progress(noteId)) { /* rewritten notes */ }
+    await runJobs();
+    expect((await b.api.drive.forNote(noteId)).jobs.map((job) => job.status)).toEqual(['uploaded']);
+    const kept = h.google.drive.files(b.google.sub);
+    expect(kept).toHaveLength(1);
+    expect(kept[0]?.updates).toBe(1);
+    expect(kept[0]?.bytes.toString('utf8')).not.toContain('launch on Monday');
+    // Exported on its own, the same file follows the notes again.
+    await b.api.drive.setForNote(noteId, { enabled: true, destinationId: b.destinationId, formats: ['transcript-text'] });
+    await uploaded(b, noteId, 1);
+    const updated = h.google.drive.files(b.google.sub);
+    expect(updated).toHaveLength(1);
+    expect(updated[0]?.id).toBe(sent.id);
+    expect(updated[0]?.updates).toBe(2);
+    expect(updated[0]?.bytes.toString('utf8')).toContain('launch on Monday');
+  });
+
+  it('says why a retrying export waits and when it’s tried next, and Try again sends it at once', async () => {
+    const b = await connected(['notes-markdown']);
+    h.google.drive.refuse((call) => call.path.startsWith('/upload/'), 503);
+    const { noteId } = await completed(b);
+    const waiting = (await b.api.drive.forNote(noteId)).jobs[0];
+    if (!waiting) throw new Error('Expected the export waiting to be tried again.');
+    expect(waiting.status).toBe('pending');
+    expect(waiting.reason).toBe('Google Drive could not confirm the upload. It will be checked before trying again.');
+    expect(Date.parse(waiting.nextAt ?? '')).toBeGreaterThan(Date.now());
+    h.google.drive.refuse();
+    const retried = await b.api.drive.retry(waiting.id);
+    expect(retried).toMatchObject({ status: 'pending', reason: null });
+    await idle();
+    expect((await b.api.drive.forNote(noteId)).jobs[0]).toMatchObject({ status: 'uploaded', reason: null, nextAt: null });
+  });
+
+  it('keeps exporting when an earlier step of upkeep fails', async () => {
+    const b = await connected(['notes-markdown']);
+    h.google.drive.refuse((call) => call.path.startsWith('/upload/'), 503);
+    const { noteId } = await completed(b);
+    h.google.drive.refuse();
+    // A notes job nobody can open, on another of the account's items: the notes step of upkeep fails on it, every time.
+    const brokenJob = randomBytes(16).toString('base64url');
+    const inserted = await h.pool.query(`INSERT INTO content_jobs (owner_id, job_id, revision_id, kind, state, attempt, job_ciphertext)
+      SELECT owner_id, $2, revision_id, 'notes', 'queued', 0, $3 FROM revisions WHERE owner_id = $1 AND item_id <> $4 LIMIT 1`, [b.session.ownerId, brokenJob, Buffer.from('not a sealed notes job'), noteId]);
+    expect(inserted.rowCount).toBe(1);
+    try {
+      await h.pool.query('UPDATE drive_export_jobs SET due_at = now() WHERE owner_id = $1', [b.session.ownerId]);
+      await idle();
+      await maintain(h.deps);
+      expect((await b.api.drive.forNote(noteId)).jobs[0]?.status).toBe('uploaded');
+      expect(h.logs.some((line) => line.includes('upkeep step failed') && line.includes('"what":"notes"'))).toBe(true);
+    } finally { await h.pool.query('DELETE FROM content_jobs WHERE owner_id = $1 AND job_id = $2', [b.session.ownerId, brokenJob]); }
   });
 
   it('reconciles a committed upload whose reply was lost and survives a second API process without duplicates', async () => {
@@ -228,9 +349,11 @@ describe('automatic Google Drive call exports', () => {
       await call.appendAudio({ data: new Blob([bytes]), segment: 0, seq, at: seq * 5, durationMs: 5000, mimeType: 'audio/webm' });
     }
     const noteId = call.getSnapshot().notes.noteId ?? '';
-    await call.leave(); for await (const _progress of b.api.notes.progress(noteId)) { /* finalize all retained pieces */ }
     const initiatedBefore = h.google.drive.calls.filter((entry) => entry.path === '/upload/drive/v3/files').length;
-    h.google.drive.loseChunkReply(); await runJobs();
+    // Its export starts as soon as the notes are final, and the first chunk's acknowledgment is lost on the way.
+    h.google.drive.loseChunkReply();
+    await call.leave(); for await (const _progress of b.api.notes.progress(noteId)) { /* finalize all retained pieces */ }
+    await runJobs();
     const job = (await b.api.drive.forNote(noteId)).jobs[0];
     if (!job) throw new Error('Expected the resumable recording job.');
     expect(job.status).toBe('pending');
@@ -320,6 +443,9 @@ describe('automatic Google Drive call exports', () => {
     h.google.next(b.google);
     await finishConsent(b, (await b.api.drive.connect()).url);
     expect((await b.api.drive.get()).connection.status).toBe('connected');
+    // Reconnecting starts what waited on it at once, without upkeep.
+    await idle();
+    expect((await b.api.drive.forNote(noteId)).jobs[0]?.status).toBe('uploaded');
     // Model a previous worker's delayed scheduler result landing after OAuth's resumption scan.
     await h.pool.query("UPDATE drive_export_jobs SET state = 'reconnect' WHERE owner_id = $1 AND job_id = $2", [b.session.ownerId, job.id]);
     const resumed = await uploaded(b, noteId, 1);
@@ -330,17 +456,18 @@ describe('automatic Google Drive call exports', () => {
 
 
   it('keeps freshly reconnected credentials when an older in-flight request later reports unauthorized', async () => {
-    const b = await connected(['notes-markdown']); const { noteId } = await completed(b);
+    const b = await connected(['notes-markdown']);
     const generatedBefore = h.google.drive.calls.filter((call) => call.path === '/drive/v3/files/generateIds').length;
+    // The export starts as the notes are final, in the background: its upload's answer is held, then refused.
     const oldResponse = h.google.drive.holdRefusal((call) => call.method === 'POST' && call.path === '/upload/drive/v3/files', 401);
-    const upkeep = runJobs();
+    const { noteId } = await completed(b, undefined, false, false);
     try {
       await oldResponse.arrived;
       h.google.next(b.google);
       await finishConsent(b, (await b.api.drive.connect()).url);
       expect((await b.api.drive.get()).connection.status).toBe('connected');
     } finally { oldResponse.release(); }
-    await upkeep;
+    await idle();
     expect((await b.api.drive.get()).connection.status).toBe('connected');
     const job = (await b.api.drive.forNote(noteId)).jobs[0];
     expect(job?.status).toBe('pending');
@@ -544,6 +671,8 @@ describe('automatic Google Drive call exports', () => {
     const first = await completed(b, 'Original sealed export source'); await runJobs();
     const job = (await b.api.drive.forNote(first.noteId)).jobs[0]; if (!job) throw new Error('Expected a sealed pending job.');
     const second = await completed(b, 'A different call must not replace the sealed source');
+    // The second call's own export, made as its notes were final, makes way for the tampered row.
+    await h.pool.query('DELETE FROM drive_export_jobs WHERE owner_id = $1 AND note_id = $2', [b.session.ownerId, second.noteId]);
     await h.pool.query('UPDATE drive_export_jobs SET note_id = $3, due_at = now() WHERE owner_id = $1 AND job_id = $2', [b.session.ownerId, job.id, second.noteId]);
     h.google.drive.refuse();
     expect(code(await b.api.drive.retry(job.id).catch((error: unknown) => error))).toBe('key-unavailable');

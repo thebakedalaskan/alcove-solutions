@@ -127,16 +127,16 @@ const RAIL: { tool: BoardTool; icon: IconName; label: string }[] = [
   { tool: 'frame', icon: 'frame', label: 'Frame · F' }
 ];
 
-/** The tools: the call's dock, turned on its side, just off the sheet. `faded` lets them fade out while presenting starts. */
-export function BoardRail({ tool, onTool, more = BOARD_MORE, onMore, moreOpen = false, faded = false, className }: {
+/** The tools: the call's dock, turned on its side, just off the sheet. */
+export function BoardRail({ tool, onTool, more = BOARD_MORE, onMore, moreOpen = false, className }: {
   tool: BoardTool; onTool: (tool: BoardTool) => void;
   /** What More holds. With nothing, there's no More: a button that opens nothing is a dead end. */
   more?: readonly BoardMoreItem[] | undefined;
-  onMore: () => void; moreOpen?: boolean | undefined; faded?: boolean | undefined; className?: string | undefined;
+  onMore: () => void; moreOpen?: boolean | undefined; className?: string | undefined;
 }) {
   const holds = MORE.filter((m) => more.includes(m.id));
   return (
-    <CallDock label="Tools" className={cn('bz-rail', faded && 'is-faded', className)}>
+    <CallDock label="Tools" className={cn('bz-rail', className)}>
       {RAIL.map((t) => <DockButton key={t.tool} icon={t.icon} label={t.label} on={tool === t.tool} aria-pressed={tool === t.tool} data-tool={t.tool} onClick={() => onTool(t.tool)} />)}
       {holds.length > 0 && (
         <>
@@ -170,24 +170,23 @@ export interface BoardBarProps {
   tail?: ReactNode;
   /** What the menu under the name lets this person do, on hover. */
   nameTitle?: string | undefined;
-  /** The camera's zoom, shown as a percentage. */
+  /** The camera's zoom, shown as a percentage beside Show the whole board. */
   zoom: number;
   canUndo?: boolean | undefined;
   canRedo?: boolean | undefined;
   /** Undo and Redo: false for someone who can only look. */
   editable?: boolean | undefined;
-  /** Timer and Vote, each shown only with its handler: false where there's no session to run. More shows whenever it's given. */
+  /** Vote, shown only with its handler: false where there's no session to run. More shows whenever it's given. */
   acts?: boolean | undefined;
-  /** Whether this person can start a timer, a vote or present: false for someone who can only look, who sees them disabled, saying why. More stays theirs. */
+  /** Whether this person can start a vote: false for someone who can only look, who sees it disabled, saying why. More stays theirs. */
   canAct?: boolean | undefined;
   /** More is open, so its button says so. */
   moreOn?: boolean | undefined;
   mapOn?: boolean | undefined;
-  faded?: boolean | undefined;
   onName?: (() => void) | undefined; onSeal: () => void;
   onUndo?: (() => void) | undefined; onRedo?: (() => void) | undefined;
   onZoomOut: () => void; onFit: () => void; onZoomIn: () => void; onMap: () => void;
-  onTimer?: (() => void) | undefined; onVote?: (() => void) | undefined; onMore?: (() => void) | undefined;
+  onVote?: (() => void) | undefined; onMore?: (() => void) | undefined;
   className?: string | undefined;
 }
 
@@ -217,11 +216,8 @@ function NameField({ naming }: { naming: BoardNaming }) {
   );
 }
 
-/** Why Timer and Vote can't be pressed by someone who can only look at a board. */
-const ONLY_EDITORS = {
-  timer: 'Only people who can add to this board can start a timer',
-  vote: 'Only people who can add to this board can vote'
-} as const;
+/** Why Vote can't be pressed by someone who can only look at a board. */
+const ONLY_EDITORS_VOTE = 'Only people who can add to this board can vote';
 
 /** A button on the bar that someone who can only look sees, disabled, with why in its tip: a disabled button can't show a tip. */
 function Barred({ icon, size, label, why }: { icon: IconName; size: number; label: string; why: string }) {
@@ -230,9 +226,9 @@ function Barred({ icon, size, label, why }: { icon: IconName; size: number; labe
 
 /** Everything about the board that isn't a tool, in one line along the top of the sheet. */
 export function BoardBar({ name, naming, nameTitle = 'Rename, share or copy a link', seal = 'Sealed', sealIcon = 'sealed', sealTitle = 'Board encrypted in storage.', tail, zoom, canUndo = false, canRedo = false, editable = true, acts = true, canAct = true, moreOn = false,
-  mapOn = false, faded = false, onName, onSeal, onUndo, onRedo, onZoomOut, onFit, onZoomIn, onMap, onTimer, onVote, onMore, className }: BoardBarProps) {
+  mapOn = false, onName, onSeal, onUndo, onRedo, onZoomOut, onFit, onZoomIn, onMap, onVote, onMore, className }: BoardBarProps) {
   return (
-    <div className={cn('bd-head', acts && editable && 'is-full', faded && 'is-faded', className)}>
+    <div className={cn('bd-head', acts && editable && 'is-full', className)}>
       {naming ? <NameField naming={naming} />
         : name && onName && <button type="button" className="nm" title={nameTitle} aria-haspopup="dialog" onClick={onName}><Icon name="presenter" size={16} /><span>{name}</span><Icon name="down" size={14} /></button>}
       {seal && <button type="button" className="sv" title={sealTitle} onClick={onSeal}><Icon name={sealIcon} size={15} /><span>{seal}</span></button>}
@@ -245,19 +241,23 @@ export function BoardBar({ name, naming, nameTitle = 'Rename, share or copy a li
         </>
       )}
       <IconButton className="bt zm" icon="minus" size={16} label="Zoom out" onClick={onZoomOut} />
-      <button type="button" className="pct" title="Show everything · ⇧1" onClick={onFit}>{Math.round(zoom * 100)}%</button>
+      <span className="pct">{Math.round(zoom * 100)}%</span>
       <IconButton className="bt zm" icon="plus" size={16} label="Zoom in" onClick={onZoomIn} />
+      {/*
+        * Everything on the board in view: on a phone too, where the zoom gives way to a pinch. Named for the board, as the call's
+        * own Show everything, which leaves focus, can be beside it.
+        */}
+      <IconButton className="bt fit" icon="whole" size={16} label="Show the whole board" title="Show the whole board · ⇧1" onClick={onFit} />
       <IconButton className="bt zm mp" icon="map" size={16} label="Map" aria-pressed={mapOn} onClick={onMap} />
       {/*
-        * Each is there only with something to do: no button does nothing. Someone who can only look sees Timer and Vote
-        * where they're offered, disabled, saying why. More changes nothing on the board, so it's there for them, and while
-        * following someone, too.
+        * Each is there only with something to do: no button does nothing. Someone who can only look sees Vote where it's
+        * offered, disabled, saying why. More changes nothing on the board, so it's there for them, and while following
+        * someone, too.
         */}
-      {((acts && (onTimer || onVote)) || onMore) && (
+      {((acts && onVote) || onMore) && (
         <>
           <span className="vr" />
-          {acts && onTimer && (canAct ? <IconButton className="bt run" icon="timer" size={17} label="Timer" onClick={onTimer} /> : <Barred icon="timer" size={17} label="Timer" why={ONLY_EDITORS.timer} />)}
-          {acts && onVote && (canAct ? <IconButton className="bt run" icon="vote" size={17} label="Vote" onClick={onVote} /> : <Barred icon="vote" size={17} label="Vote" why={ONLY_EDITORS.vote} />)}
+          {acts && onVote && (canAct ? <IconButton className="bt run" icon="vote" size={17} label="Vote" onClick={onVote} /> : <Barred icon="vote" size={17} label="Vote" why={ONLY_EDITORS_VOTE} />)}
           {onMore && <IconButton className="bt" icon="more" size={17} label="More" aria-expanded={moreOn} onClick={onMore} />}
         </>
       )}
@@ -267,8 +267,8 @@ export function BoardBar({ name, naming, nameTitle = 'Rename, share or copy a li
 }
 
 /**
- * Anything the whole board shares, in one place: how it stands, a timer, a vote, following, a room's time. Someone presenting
- * is the call's frame's bar's to say. `soon` turns it amber. It says what it says as it arrives and as its words change; a time
+ * Anything the whole board shares, in one place: how it stands, a vote, following, a room's time. Someone presenting is the
+ * call's frame's bar's to say. `soon` turns it amber. It says what it says as it arrives and as its words change; a time
  * ticking isn't read out every second, and is there to read.
  */
 export function BoardPill({ icon = 'clock', title, text, time, soon = false, action, onAction, said, className }: {
@@ -308,9 +308,9 @@ export interface BoardPopProps {
   options?: { id: string; label: string; on: boolean; onPick: () => void }[] | undefined;
   /**
    * Things to do. Each `id` is unique among them, and the same for as long as the item is there, so a press never lands on
-   * another item's action as items come and go. `small` sits at the end of the line.
+   * another item's action as items come and go. `on`: a setting, pressed with a tick at the end of its line while it's on.
    */
-  items?: { id: string; icon: IconName; label: string; small?: string | undefined; onPick: () => void }[] | undefined;
+  items?: { id: string; icon: IconName; label: string; on?: boolean | undefined; onPick: () => void }[] | undefined;
   /** The one button at the bottom. */
   action?: { label: string; onPick: () => void } | undefined;
   /** Moves it from where `left` puts it, as `BoardSelectionBar` does to keep its menu on the sheet. */
@@ -333,7 +333,11 @@ export const BoardPop = forwardRef<HTMLDivElement, BoardPopProps>(function Board
       {sub && <div className="sub">{sub}</div>}
       {rows && <div className="rows">{rows.map((r, i) => <div key={i}><Icon name={r.icon} size={15} /><span>{r.text}</span></div>)}</div>}
       {options && <div className="opts">{options.map((o) => <button key={o.id} type="button" className="opt" aria-pressed={o.on} onClick={settled(o.onPick)}>{o.label}</button>)}</div>}
-      {items?.map((i) => <button key={i.id} type="button" className="mi" onClick={settled(i.onPick)}><Icon name={i.icon} size={17} /><span>{i.label}</span>{i.small && <small>{i.small}</small>}</button>)}
+      {items?.map((i) => (
+        <button key={i.id} type="button" className="mi" aria-pressed={i.on} onClick={settled(i.onPick)}>
+          <Icon name={i.icon} size={17} /><span>{i.label}</span>{i.on !== undefined && <Icon name="check" size={16} className="tick" />}
+        </button>
+      ))}
       {action && <div className="ft"><Button variant="primary" onClick={settled(action.onPick)}>{action.label}</Button></div>}
     </div>
   );
@@ -825,8 +829,9 @@ export function BoardMap({ blocks, bounds, view, className }: { blocks: BoardBox
 }
 
 /**
- * What a blank board says. To someone who can add to it, how to start, and with `everyone`, that everyone here can too: `page` says
- * it of everyone who can open the board, as a page has nobody "here". To someone who can only look, that what's added shows here.
+ * What a blank board says. To someone who can add to it, how to start: a double-click writes, text on open board and a sticky in
+ * a frame. With `everyone`, that everyone here can too: `page` says it of everyone who can open the board, as a page has nobody
+ * "here". To someone who can only look, that what's added shows here.
  */
 export function BoardEmpty({ fading = false, reader = false, everyone = true, page = false, className }: {
   fading?: boolean | undefined; reader?: boolean | undefined; everyone?: boolean | undefined; page?: boolean | undefined; className?: string | undefined;
@@ -835,8 +840,20 @@ export function BoardEmpty({ fading = false, reader = false, everyone = true, pa
   return (
     <div className={cn('bd-empty', fading && 'is-faded', className)}>
       <EmptyArch />
-      {reader ? <b>Nothing on this board yet</b> : <b>Double-click anywhere to add a sticky</b>}
-      <span>{reader ? 'What people add shows up here as they add it.' : `Or press N.${also}`}</span>
+      {reader ? <b>Nothing on this board yet</b> : <b>Double-click to write</b>}
+      <span>{reader ? 'What people add shows up here as they add it.' : `It’s text on the board, and a sticky in a frame. Or press N for a sticky.${also}`}</span>
+    </div>
+  );
+}
+
+/**
+ * What the sheet offers while nothing on the board is in view, though there's something on it, as after a scroll or a drag into
+ * empty space: a quiet way back to all of it, which does what Show the whole board does. It goes once something is in view again.
+ */
+export function BoardLost({ onBack, className }: { onBack: () => void; className?: string | undefined }) {
+  return (
+    <div className={cn('bd-lost', className)}>
+      <Button variant="secondary" size="sm" icon="whole" onClick={onBack}>Back to the board</Button>
     </div>
   );
 }

@@ -136,11 +136,17 @@
 .ch-qbar button[aria-pressed="true"] { color: var(--ink); font-weight: 600; }
 .ch-qbar .end { margin-left: auto; }
 .ch-qbar .sep { width: 1px; height: 14px; margin: 0 4px; background: var(--line); }
+/* The order held while you point at the questions, or one has focus: pressing this sorts them as chosen. */
+.ch-qbar button.is-due { color: var(--sun-text); font-weight: 600; }
+/* What holds the order still: the bar and the questions under it, together. */
+.ch-qhold { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .ch-qs { display: grid; padding: 0 0 10px; }
-.ch-q { display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 12px; padding: 12px 14px 12px 12px; border-bottom: 1px solid var(--line); outline: none; }
+.ch-q { display: grid; grid-template-columns: 46px minmax(0, 1fr); gap: 12px; padding: 12px 14px 12px 12px; border-bottom: 1px solid var(--line); outline: none; }
 .ch-q:focus-visible { box-shadow: inset 0 0 0 2px var(--focus); }
 .ch-q.is-pinned { background: color-mix(in oklch, var(--rose-soft) 45%, transparent); }
-.ch-vote { display: grid; place-items: center; align-content: center; gap: 2px; width: 40px; height: 46px; border-radius: 10px; background: var(--sunk); color: var(--ink-2); font: 700 13px/1 var(--font-sans); font-variant-numeric: tabular-nums; transition: background-color var(--duration-1), color var(--duration-1); }
+/* The vote says what it is: the count, and Vote, or Voted once you have. */
+.ch-vote { display: grid; place-items: center; align-content: center; gap: 3px; width: 46px; height: 58px; border-radius: 10px; background: var(--sunk); color: var(--ink-2); font: 700 13px/1 var(--font-sans); font-variant-numeric: tabular-nums; transition: background-color var(--duration-1), color var(--duration-1); }
+.ch-vote .w { font: 600 11px/1 var(--font-sans); }
 .ch-vote:hover:not(:disabled) { color: var(--ink); background: color-mix(in oklch, var(--ink) 9%, var(--sunk)); }
 .ch-vote[aria-pressed="true"] { background: var(--sun-soft); color: var(--sun-text); box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--sun-text) 40%, transparent); }
 .ch-vote:disabled { cursor: default; opacity: .6; }
@@ -150,8 +156,10 @@
 .ch-q.is-closed p { color: var(--ink-2); }
 .ch-q .by { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-height: 26px; margin-top: 6px; color: var(--ink-3); font: 500 12px/1.2 var(--font-sans); }
 .ch-q .by .anon { flex: none; color: var(--ink-2); }
-.ch-q .acts { display: flex; gap: 0; margin: -4px -6px -4px auto; }
-.ch-q .acts .ac-icon-btn { width: 28px; height: 28px; color: var(--ink-3); }
-.ch-q .acts .ac-icon-btn:hover { color: var(--ink); background: var(--sunk); }
+.ch-q .ch-qmore.ac-icon-btn { flex: none; width: 28px; height: 28px; margin: -4px -6px -4px auto; color: var(--ink-3); }
+.ch-q .ch-qmore.ac-icon-btn:hover, .ch-q .ch-qmore.ac-icon-btn[data-state="open"] { color: var(--ink); background: var(--sunk); }
+/* Whoever hosts and asked it: taking it back, which deletes it for everyone, stands apart from what hosting does. */
+.ch-qmenu .mi.is-apart { position: relative; margin-top: 7px; }
+.ch-qmenu .mi.is-apart::before { content: ""; position: absolute; top: -4px; left: 10px; right: 10px; border-top: 1px solid var(--line); }
 .ch-badge { display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 7px; border-radius: 6px; background: var(--sunk); color: var(--ink-2); font: 600 11px/1 var(--font-sans); }
 .ch-badge.is-rose { background: var(--rose-soft); color: var(--rose); }

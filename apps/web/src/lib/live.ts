@@ -34,10 +34,18 @@ export function useSettled<T>(value: T, ms: number): T {
   return settled;
 }
 
-/** The time now, refreshed every `every` milliseconds, for "in 12 min" and the like. */
+/**
+ * The time now, refreshed every `every` milliseconds, for "in 12 min" and the like. Refreshes fall on the clock's own marks
+ * (every whole 30 seconds, by default), so wherever the time decides something, Home's line and the side panel's Up next
+ * among them, it turns over everywhere at once.
+ */
 export function useNow(every = 30_000): number {
   const [now, setNow] = useState(() => Date.now());
-  useEffect(() => { const t = setInterval(() => setNow(Date.now()), every); return () => clearInterval(t); }, [every]);
+  useEffect(() => {
+    const next = () => every - (Date.now() % every);
+    let t = setTimeout(function tick() { setNow(Date.now()); t = setTimeout(tick, next()); }, next());
+    return () => clearTimeout(t);
+  }, [every]);
   return now;
 }
 

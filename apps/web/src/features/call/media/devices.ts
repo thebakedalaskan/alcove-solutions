@@ -4,6 +4,7 @@
  * few seconds, plays them back and keeps nothing.
  */
 import { DevicePrefsSchema, type DevicePrefs } from '@alcove/api';
+import type { IconName, SelectOption } from '@alcove/ui';
 import { useEffect, useState } from 'react';
 import { log } from '~/lib/log';
 
@@ -102,7 +103,8 @@ export function howToAllowSystem(kinds: Capture[]): string {
 
 /* ---------- what's plugged in ---------- */
 
-export interface Device { id: string; label: string }
+/** A device as the browser lists it: `group` is the physical device it's part of (a headset's microphone and speaker share one). */
+export interface Device { id: string; label: string; group: string }
 export type Devices = Record<DeviceKind, Device[]>;
 const NONE: Devices = { mic: [], cam: [], speaker: [] };
 
@@ -125,9 +127,64 @@ async function list(): Promise<Devices> {
   const of = (kind: DeviceKind): Device[] => {
     const seen = new Set<string>();
     return all.filter((d) => d.kind === BROWSER_KIND[kind] && d.deviceId && !seen.has(d.deviceId) && seen.add(d.deviceId))
-      .map((d, i) => ({ id: d.deviceId, label: d.label || `${kind === 'mic' ? 'Microphone' : kind === 'cam' ? 'Camera' : 'Speaker'} ${i + 1}` }));
+      .map((d, i) => ({ id: d.deviceId, label: d.label || `${kind === 'mic' ? 'Microphone' : kind === 'cam' ? 'Camera' : 'Speaker'} ${i + 1}`, group: d.groupId }));
   };
   return { mic: of('mic'), cam: of('cam'), speaker: canChooseSpeaker() ? of('speaker') : [] };
+}
+
+/* ---------- what to pick from ---------- */
+
+/** Chrome's own entries, listed beside the devices: whatever the system uses (`default`), and on Windows, uses for calls. */
+const STANDS_IN = new Set(['default', 'communications']);
+/** The entry that follows the system: picking it is Follow your system, which unpins whatever was picked. */
+export const SYSTEM_DEVICE = 'default';
+const nameOf = (d: Device): string => plainName(d.label) || d.label;
+
+/** A device to pick: each one once, by the name people know it by. `system`: it's the one the system uses now. */
+export interface DeviceRow { id: string; name: string; system: boolean }
+export interface DeviceChoices {
+  rows: DeviceRow[];
+  /** The row ticked: the device in use, or while the system's choice is (or nothing is yet), the device that is. */
+  on: string | undefined;
+  /** A device is pinned, and this browser can follow the system's choice instead: Follow your system goes last. */
+  follow: boolean;
+}
+
+/** The device one of Chrome's own entries points at: the one in its group, else the one with its name. */
+function pointsAt(real: readonly Device[], stand: Device): Device | undefined {
+  const name = nameOf(stand);
+  const group = real.filter((d) => d.group !== '' && d.group === stand.group);
+  return group.find((d) => nameOf(d) === name) ?? group[0] ?? real.find((d) => nameOf(d) === name);
+}
+
+/**
+ * The rows people pick from, out of what the browser lists, the same in the call's menus, Settings and Record. Chrome lists
+ * `default` (and on Windows `communications`) beside each real microphone and speaker, under the same device's name:
+ * they aren't rows. The device the system uses says so, and with nothing picked (`using` is the system's, or nothing
+ * yet) it's the one ticked while the call follows the system. Picking a device pins it; then Follow your system goes
+ * last, to go back. Cameras, and browsers that list no such entries, are listed as they are.
+ */
+export function deviceChoices(list: readonly Device[], using: string | null | undefined): DeviceChoices {
+  const real = list.filter((d) => !STANDS_IN.has(d.id));
+  // Before devices have names, a browser can list only its own entries: then they're what there is to pick.
+  const shown = real.length ? real : list;
+  const def = list.find((d) => d.id === SYSTEM_DEVICE);
+  const system = def && real.length ? pointsAt(real, def) : undefined;
+  const rows = shown.map((d): DeviceRow => ({ id: d.id, name: nameOf(d), system: d === system }));
+  const stand = list.find((d) => d.id === using && STANDS_IN.has(d.id));
+  const on = rows.find((r) => r.id === using)?.id ?? (stand && real.length ? pointsAt(real, stand)?.id : undefined) ?? system?.id ?? rows[0]?.id;
+  const pinned = rows.some((r) => r.id === using) && !STANDS_IN.has(using ?? '');
+  return { rows, on, follow: def !== undefined && real.length > 0 && pinned };
+}
+
+/** The same choices for a Select: each device once, the system's saying so, then Follow your system while one is pinned. */
+export function deviceOptions(list: readonly Device[], using: string | null | undefined, icon?: IconName | undefined): { value: string | undefined; options: SelectOption<string>[] } {
+  const { rows, on, follow } = deviceChoices(list, using);
+  const back: SelectOption<string> = { value: SYSTEM_DEVICE, label: 'Follow your system', icon: icon ? 'laptop' : undefined };
+  return {
+    value: on,
+    options: [...rows.map((r): SelectOption<string> => ({ value: r.id, label: r.name, icon, note: r.system ? 'Your system’s choice' : undefined })), ...(follow ? [back] : [])]
+  };
 }
 
 /**

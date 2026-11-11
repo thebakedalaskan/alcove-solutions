@@ -44,6 +44,8 @@ export const RecipientSchema = z.object({
   person: PersonSchema, role: RecipientRoleSchema,
   /** Who shared the notes with them. Only on people they were shared with. */
   by: PersonSchema.optional(),
+  /** They opened a link `by` made, rather than being given the notes by their address. */
+  link: z.literal(true).optional(),
   /** The name of the sharer's group they were shared with, when it was a group. */
   group: z.string().optional(),
   /** When they got the notes: when the call ended for people invited to it, or when the notes were shared with them. */
@@ -58,6 +60,8 @@ export const ReceivedSchema = z.object({
   role: z.enum(['invited', 'shared']),
   /** The organizer, for a call you were invited to; otherwise whoever shared the notes with you. */
   by: PersonSchema,
+  /** You opened a link `by` made, rather than being given the notes by your address. */
+  link: z.literal(true).optional(),
   /** The name of their group they shared the notes with, when it was a group. */
   group: z.string().optional(),
   /** When you got the notes. */

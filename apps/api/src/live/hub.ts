@@ -24,8 +24,12 @@ const FIRST_WAIT_MS = 250;
 const LONGEST_WAIT_MS = 5_000;
 /** How long letting go of a connection can take: one that's gone quiet never says goodbye. */
 const LET_GO_MS = 1_000;
-/** How often the hub checks its connection is alive, how long that connection has to answer, and how many streams this instance holds at most, in all and from one address. */
-export interface HubSettings { checkMs: number; timeoutMs: number; maxStreams: number; maxPerAddress: number }
+/**
+ * How often the hub checks its connection is alive, how long that connection has to answer, how many streams this instance
+ * holds at most, in all and from one address, and how long one of someone's streams has been open before it can be ended to
+ * make room for another of theirs, which is also how long after one has been that the next can be.
+ */
+export interface HubSettings { checkMs: number; timeoutMs: number; maxStreams: number; maxPerAddress: number; makeRoomAfterMs: number }
 const after = <T>(ms: number, value: T): { done: Promise<T>; cancel: () => void } => {
   let timer: ReturnType<typeof setTimeout> | undefined;
   return { done: new Promise<T>((resolve) => { timer = setTimeout(() => resolve(value), ms); }), cancel: () => clearTimeout(timer) };
@@ -50,6 +54,13 @@ export type HubListener = (e: HubEvent) => void;
 export type StreamKind = 'workspace' | 'document';
 const STREAM_LIMITS: Record<StreamKind, number> = { workspace: 8, document: 8 };
 
+/**
+ * A stream's place among `who`'s: `release` gives it back, once, however often it's called. `ended` aborts when the stream is
+ * to end though its browser may still be there: the browser said it closed it (`end`), or it was the oldest of theirs and
+ * they needed the place. Its place is given back then and there.
+ */
+export interface StreamPlace { release: () => void; ended: AbortSignal }
+
 export interface Hub {
   /**
    * Hears a workspace's notices until the function it resolves with is called. It resolves once the hub is listening, so
@@ -57,21 +68,38 @@ export interface Hub {
    */
   subscribe(workspaceId: string, listener: HubListener): Promise<() => void>;
   /**
-   * Takes one of `who`'s places for a stream of this kind, or refuses with `unavailable`. Refused rather than closing their
-   * oldest: a stream at work is never taken from them, and refusing costs nothing, which matters to anyone opening streams to
-   * run an instance out of memory. Everyone's streams count towards one limit as well, because each holds a request for as
-   * long as it's open, and calls need the requests left over, and so do all those from one `address`, because accounts are
-   * free, and a few of them mustn't take the lot. A browser refused like this tries again on its own, and gets in when one
-   * closes. The function it returns gives the place back, once, however often it's called.
+   * Takes one of `who`'s places for a stream of this kind, or refuses with `unavailable`. `name`: what the browser calls it
+   * (`LIVE_STREAM_HEADER`), for it to say when it closes it; null from a browser that doesn't.
+   *
+   * At their limit, their oldest stream of the kind ends to make room: on Cloud Run this instance never hears that a browser
+   * closed a stream (HTTP/1 doesn't pass it on), so it's the one likeliest to be a tab that went. If that tab is still there,
+   * it opens another at once, as when any stream ends. Room is made for each of them, for each kind, at most once every
+   * `makeRoomAfterMs`, and only by a stream open that long, so that someone with more tabs open than places takes turns
+   * slowly: the tab that just gave up its place is refused, and backs off, rather than ending the next oldest in turn and
+   * that one the next, round and round through all of them. Refused, a browser tries again by itself, later each time.
+   * Everyone's streams count towards one limit as well, because each holds a request for as long as it's open, and calls
+   * need the requests left over, and so do all those from one `address`, because accounts are free, and a few of them
+   * mustn't take the lot. Past those, it's refused and nothing ends.
    */
-  admit(kind: StreamKind, who: string, address: string): () => void;
+  admit(kind: StreamKind, who: string, address: string, name: string | null): StreamPlace;
+  /** Ends `who`'s stream of this kind that their browser calls `name`, if this instance has it: they closed it. Nobody else's. */
+  end(kind: StreamKind, who: string, name: string): boolean;
   /** Tells every subscriber it's `closing`, then lets go of the connection. Nobody can subscribe after. */
   close(): Promise<void>;
 }
 
+/** A place someone's stream holds: what its browser calls it, where it's from, when it opened, and how to end it. */
+interface Held { name: string | null; address: string; since: number; ended: AbortController; released: boolean }
+
 class ListeningHub implements Hub {
   private readonly listeners = new Map<string, Set<HubListener>>();
-  private readonly streams = new Map<string, number>();
+  /** Each person's places, by kind and person, the oldest first. */
+  private readonly streams = new Map<string, Held[]>();
+  /**
+   * When room was last made among each person's places, by kind and person, for as long as they hold any: someone with none
+   * left can't be at their limit again until a stream of theirs has been open `makeRoomAfterMs`, which is as long a wait.
+   */
+  private readonly madeRoom = new Map<string, number>();
   private readonly addresses = new Map<string, number>();
   private streaming = 0;
   private client: pg.Client | null = null;
@@ -96,28 +124,58 @@ class ListeningHub implements Hub {
     };
   }
 
-  admit(kind: StreamKind, who: string, address: string): () => void {
+  admit(kind: StreamKind, who: string, address: string, name: string | null): StreamPlace {
     const key = `${kind}:${who}`;
-    const open = this.streams.get(key) ?? 0;
-    const fromThere = this.addresses.get(address) ?? 0;
-    if (open >= STREAM_LIMITS[kind]) throw new UnavailableError('You have this open in too many windows. Close one and it will carry on here.', { context: { kind, open } });
+    const theirs = this.streams.get(key) ?? [];
+    const now = Date.now();
+    const full = theirs.length >= STREAM_LIMITS[kind];
+    const oldest = full ? theirs[0] : undefined;
+    const lately = this.madeRoom.get(key);
+    const waited = lately === undefined ? null : now - lately;
+    if (full && (!oldest || now - oldest.since < this.settings.makeRoomAfterMs || (waited !== null && waited < this.settings.makeRoomAfterMs))) {
+      throw new UnavailableError('You have this open in too many windows. Close one and it will carry on here.', { context: { kind, open: theirs.length, sinceRoomMs: waited } });
+    }
+    // What the oldest gives back counts as given back already: ending it is what makes the room.
+    const fromThere = (this.addresses.get(address) ?? 0) - (oldest?.address === address ? 1 : 0);
     if (fromThere >= this.settings.maxPerAddress) throw new UnavailableError('Too much is open from this network. Close something and it will carry on here.', { context: { kind, fromThere } });
-    if (this.streaming >= this.settings.maxStreams) throw new UnavailableError('Alcove is very busy right now. This will carry on by itself in a moment.', { context: { kind, streaming: this.streaming } });
-    this.streams.set(key, open + 1);
-    this.addresses.set(address, fromThere + 1);
+    if (this.streaming - (oldest ? 1 : 0) >= this.settings.maxStreams) throw new UnavailableError('Alcove is very busy right now. This will carry on by itself in a moment.', { context: { kind, streaming: this.streaming } });
+    if (oldest) {
+      this.endHeld(key, oldest);
+      // Its browser, if it's still there, opens it again at once, and is refused until a while has passed.
+      this.madeRoom.set(key, now);
+      hlog.info('a stream ended to make room', { kind, open: theirs.length, openMs: now - oldest.since, sinceRoomMs: waited });
+    }
+    const held: Held = { name, address, since: now, ended: new AbortController(), released: false };
+    this.streams.set(key, [...(this.streams.get(key) ?? []), held]);
+    this.addresses.set(address, (this.addresses.get(address) ?? 0) + 1);
     this.streaming++;
-    let holding = true;
-    return () => {
-      if (!holding) return;
-      holding = false;
-      this.streaming--;
-      const left = (this.streams.get(key) ?? 1) - 1;
-      if (left) this.streams.set(key, left);
-      else this.streams.delete(key);
-      const there = (this.addresses.get(address) ?? 1) - 1;
-      if (there) this.addresses.set(address, there);
-      else this.addresses.delete(address);
-    };
+    return { release: () => this.free(key, held), ended: held.ended.signal };
+  }
+
+  end(kind: StreamKind, who: string, name: string): boolean {
+    const key = `${kind}:${who}`;
+    const held = this.streams.get(key)?.find((h) => h.name === name);
+    if (!held) return false;
+    this.endHeld(key, held);
+    return true;
+  }
+
+  /** Gives a place back now, and tells its stream to end. */
+  private endHeld(key: string, held: Held): void {
+    this.free(key, held);
+    held.ended.abort();
+  }
+
+  private free(key: string, held: Held): void {
+    if (held.released) return;
+    held.released = true;
+    this.streaming--;
+    const left = (this.streams.get(key) ?? []).filter((h) => h !== held);
+    if (left.length) this.streams.set(key, left);
+    else { this.streams.delete(key); this.madeRoom.delete(key); }
+    const there = (this.addresses.get(held.address) ?? 1) - 1;
+    if (there) this.addresses.set(held.address, there);
+    else this.addresses.delete(held.address);
   }
 
   async close(): Promise<void> {

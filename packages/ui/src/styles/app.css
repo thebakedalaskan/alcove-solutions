@@ -34,6 +34,13 @@
 .pick-have { display: flex; align-items: center; gap: 10px; margin: 0 18px; padding: 12px 0 2px; border-top: 1px solid var(--line); font-size: 13px; color: var(--ink-3); }
 .pick-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px 14px 18px; }
 .pick-note { font-size: 12.5px; color: var(--ink-3); line-height: 1.35; }
+/* Sharing notes by link, under who has them: one to make and copy, and the links that still work, each to revoke. */
+.pick-links { display: grid; gap: 8px; margin: 0 18px; padding: 12px 0 2px; border-top: 1px solid var(--line); }
+.pick-links-h { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.pick-links-h b { display: block; font: 600 13.5px/1.3 var(--font-sans); color: var(--ink); }
+.pick-links-h small { display: block; margin-top: 2px; font: 400 12.5px/1.35 var(--font-sans); color: var(--ink-3); }
+.pick-links-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 26px; font: 400 13px/1.3 var(--font-sans); color: var(--ink-2); }
+.pick-links-row small { font-size: 12.5px; color: var(--ink-3); }
 
 /* ---------------------------------------------------------------- series */
 /* What carries over from one call to the next: each thing with the call it came from, and the moment. */

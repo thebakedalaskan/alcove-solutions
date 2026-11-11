@@ -209,13 +209,16 @@ export const inNote = (o: Owner, l: Located): Place => ({
 });
 export const ofNote = async (o: Owner, noteId: string): Promise<Place> => inNote(o, await locate(o, noteId));
 
-/** An entry as its author sees it: what it points at as they may read it now, and whether the shared notes still have a copy. */
+/**
+ * An entry as its author sees it: what kind of thing a bookmark points at, what that is as they may read it now, and
+ * whether the shared notes still have a copy.
+ */
 function shown(e: Entry, reader: Reader | undefined, inNotes: Set<string>): PersonalEntry {
   const base = { id: e.id, at: e.at, shared: e.shared && inNotes.has(e.shared.additionId) ? e.shared : null };
   if (e.kind === 'note') return { ...base, kind: 'note', text: e.text };
   if (e.kind === 'bookmark') {
     const s = reader?.source(e.anchor) ?? NOTHING;
-    return { ...base, kind: 'bookmark', label: e.label, moment: s.moment, reach: s.reach };
+    return { ...base, kind: 'bookmark', label: e.label, target: e.anchor.kind, moment: s.moment, reach: s.reach };
   }
   return { ...base, kind: 'answer', question: e.question, answer: e.answer, moments: e.anchors.flatMap((a) => { const m = reader?.source(a).moment; return m ? [m] : []; }) };
 }

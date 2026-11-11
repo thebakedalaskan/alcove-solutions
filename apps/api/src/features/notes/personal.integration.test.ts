@@ -215,6 +215,15 @@ describe('bookmarks', () => {
     const byLine = bookmark(last(await kofiCall.personal.add({ kind: 'bookmark', label: 'Friday', point: { kind: 'line', lineId: mainLine } })));
     expect(byLine).toMatchObject({ reach: 'open', moment: { line: { id: mainLine } } });
     expect((await kofiCall.personal.add({ kind: 'bookmark', label: 'Again', point: { kind: 'line', lineId: mainLine } })).entries).toHaveLength(2);
+    // The moment and the line's own bookmark open at the same line: what each points at tells them apart.
+    expect([marked.target, byLine.target]).toEqual(['moment', 'line']);
+    // Taking the line's bookmark back leaves the moment marked as it was said, and bookmarking the line again makes a new one.
+    const unmarked = (await kofiCall.personal.remove(byLine.id)).entries.map(bookmark);
+    expect(unmarked.map((b) => [b.id, b.target, b.moment?.line?.id])).toEqual([[marked.id, 'moment', mainLine]]);
+    const again = bookmark(last(await kofiCall.personal.add({ kind: 'bookmark', label: '', point: { kind: 'line', lineId: mainLine } })));
+    expect(again).toMatchObject({ target: 'line', reach: 'open', moment: { line: { id: mainLine } } });
+    expect(again.id).not.toBe(byLine.id);
+    expect(await fails(kofiCall.personal.remove(byLine.id))).toBe('not-found');
 
     // A line that was never said, a shared screen during a call, and a moment by its second aren't there to bookmark.
     expect(await fails(kofiCall.personal.add({ kind: 'bookmark', label: '', point: { kind: 'line', lineId: 'made-up' } }))).toBe('not-found');
@@ -239,9 +248,9 @@ describe('bookmarks', () => {
     expect(await fails(lenaCall.personal.add({ kind: 'bookmark', label: '', point: { kind: 'line', lineId: roomLine } }))).toBe('not-found');
     expect(await fails(host.personal.add({ kind: 'bookmark', label: '', point: { kind: 'line', lineId: roomLine } }))).toBe('not-found');
     const inRoom = bookmark(last(await kofiCall.personal.add({ kind: 'bookmark', label: 'Blue', point: { kind: 'line', lineId: roomLine } })));
-    expect(inRoom).toMatchObject({ reach: 'open', moment: { line: { id: roomLine }, room: { id: design, name: 'Design' } } });
+    expect(inRoom).toMatchObject({ target: 'line', reach: 'open', moment: { line: { id: roomLine }, room: { id: design, name: 'Design' } } });
     const markedInRoom = bookmark(last(await kofiCall.personal.add({ kind: 'bookmark', label: '', point: null })));
-    expect(markedInRoom).toMatchObject({ reach: 'open', moment: { line: { id: roomLine } } });
+    expect(markedInRoom).toMatchObject({ target: 'moment', reach: 'open', moment: { line: { id: roomLine } } });
 
     // Back in the main room it's the other way round, and opening the room's line is refused again.
     host.closeRooms();
@@ -257,6 +266,10 @@ describe('bookmarks', () => {
     expect(after.map((b) => b.reach)).toEqual(['open', 'open', 'open', 'open']);
     expect(after.map((b) => b.moment?.line?.id)).toEqual([mainLine, mainLine, roomLine, roomLine]);
     expect(after.map((b) => b.moment?.room?.name)).toEqual([undefined, undefined, 'Design', 'Design']);
+    expect(after.map((b) => b.target)).toEqual(['moment', 'line', 'line', 'moment']);
+    // On the note too, the line's own bookmark comes off and the moment marked as it was said stays.
+    const left = (await kofi.api.notes.personal(noteId).remove(again.id)).entries.map(bookmark);
+    expect(left.map((b) => [b.target, b.moment?.line?.id])).toEqual([['moment', mainLine], ['line', roomLine], ['moment', roomLine]]);
 
     // Removing the note from yours closes all of it, and takes your own notes with it.
     await kofi.api.notes.delete(noteId);
@@ -286,8 +299,8 @@ describe('bookmarks', () => {
     const lineId = only(note.transcript ?? []).id;
 
     const mine = lena.api.notes.personal(noteId);
-    expect(bookmark(last(await mine.add({ kind: 'bookmark', label: 'The chart', point: { kind: 'screen', frameId } })))).toMatchObject({ reach: 'open', moment: { screen: { id: frameId } } });
-    expect(bookmark(last(await mine.add({ kind: 'bookmark', label: '', point: { kind: 'line', lineId } })))).toMatchObject({ reach: 'open', moment: { line: { id: lineId, text: 'As you can see the chart.' } } });
+    expect(bookmark(last(await mine.add({ kind: 'bookmark', label: 'The chart', point: { kind: 'screen', frameId } })))).toMatchObject({ target: 'screen', reach: 'open', moment: { screen: { id: frameId } } });
+    expect(bookmark(last(await mine.add({ kind: 'bookmark', label: '', point: { kind: 'line', lineId } })))).toMatchObject({ target: 'line', reach: 'open', moment: { line: { id: lineId, text: 'As you can see the chart.' } } });
 
     // Another note's line or screen, or something that isn't there, is not found here. Without a call there's no "now".
     const other = await writtenNote('Something else entirely.');
@@ -594,6 +607,92 @@ describe('adding to the shared notes', () => {
   });
 });
 
+describe('writing straight into the shared notes', () => {
+  it('says who reads it before anything is typed, and posts it in one step, for everyone with the notes', async () => {
+    const kofi = await account(unique('kofi'));
+    const lena = await account(unique('lena'));
+    const { org, noteId } = await writtenNote('The merger closes on Friday.', kofi, lena);
+    const box = await kofi.api.notes.sharedAudience(noteId);
+    expect(box.audience.map((p) => p.email).sort()).toEqual([org.email, kofi.email, lena.email].sort());
+    // Asking who reads it writes nothing.
+    expect(await addedTo(noteId)).toBe(0);
+    const note = await kofi.api.notes.writeShared(noteId, { text: 'Lena, can you send the deck?', seal: box.seal });
+    expect(only(note.additions)).toMatchObject({ text: 'Lena, can you send the deck?', by: { email: kofi.email }, removable: true, moments: [] });
+    expect(only((await lena.api.notes.get(noteId)).additions)).toMatchObject({ text: 'Lena, can you send the deck?', by: { email: kofi.email }, removable: false });
+    expect(only((await org.api.notes.get(noteId)).additions).removable).toBe(true);
+    // It was never private: nothing of it is in anyone's own notes.
+    expect((await kofi.api.notes.personal(noteId).get()).entries).toEqual([]);
+    // Writing for yourself, and adding from your own notes, still work beside it.
+    const own = last(await kofi.api.notes.personal(noteId).add({ kind: 'note', text: 'Just for me.' }));
+    const p = await kofi.api.notes.previewAddition(noteId, own.id);
+    await kofi.api.notes.addToShared(noteId, own.id, { text: 'Just for me, said to all.', seal: p.seal });
+    expect((await lena.api.notes.get(noteId)).additions.map((a) => a.text)).toEqual(['Lena, can you send the deck?', 'Just for me, said to all.']);
+  });
+
+  it('refuses a box opened before someone else got the notes, and says who reads it now', async () => {
+    const kofi = await account(unique('kofi'));
+    const { org, noteId } = await writtenNote('The merger closes on Friday.', kofi);
+    const opened = await kofi.api.notes.sharedAudience(noteId);
+    const newcomer = unique('newcomer');
+    await org.api.notes.share(noteId, { emails: [newcomer] });
+    expect(await fails(kofi.api.notes.writeShared(noteId, { text: 'For everyone.', seal: opened.seal }))).toBe('conflict');
+    expect(await addedTo(noteId)).toBe(0);
+    const now = await kofi.api.notes.sharedAudience(noteId);
+    expect(now.audience.map((p) => p.email)).toContain(newcomer);
+    expect(now.seal).not.toBe(opened.seal);
+    // A made-up seal holds nothing, nor does another account's, nor an entry's preview's.
+    expect(await fails(kofi.api.notes.writeShared(noteId, { text: 'For everyone.', seal: 'made-up' }))).toBe('conflict');
+    expect(await fails(org.api.notes.writeShared(noteId, { text: 'For everyone.', seal: now.seal }))).toBe('conflict');
+    const entry = last(await kofi.api.notes.personal(noteId).add({ kind: 'note', text: 'Mine.' }));
+    const entrySeal = (await kofi.api.notes.previewAddition(noteId, entry.id)).seal;
+    expect(await fails(kofi.api.notes.writeShared(noteId, { text: 'For everyone.', seal: entrySeal }))).toBe('conflict');
+    // Nothing to post, nothing posted.
+    expect(await fails(kofi.api.notes.writeShared(noteId, { text: '   ', seal: now.seal }))).toBe('invalid');
+    expect(await addedTo(noteId)).toBe(0);
+    await kofi.api.notes.writeShared(noteId, { text: 'For everyone.', seal: now.seal });
+    expect(await addedTo(noteId)).toBe(1);
+  });
+
+  it('isn’t there for anyone without the notes or for another account’s notes, and waits for the notes to be written', async () => {
+    const kofi = await account(unique('kofi'));
+    const { noteId } = await writtenNote('The merger closes on Friday.', kofi);
+    const box = await kofi.api.notes.sharedAudience(noteId);
+    const stranger = await account(unique('stranger'));
+    expect(await fails(stranger.api.notes.sharedAudience(noteId))).toBe('not-found');
+    expect(await fails(stranger.api.notes.writeShared(noteId, { text: 'Taken', seal: box.seal }))).toBe('not-found');
+    // Another account's note, by its ID, with the seal of one you have: not found, and nothing written there.
+    const other = await writtenNote('Something else.');
+    expect(await fails(kofi.api.notes.sharedAudience(other.noteId))).toBe('not-found');
+    expect(await fails(kofi.api.notes.writeShared(other.noteId, { text: 'Taken', seal: box.seal }))).toBe('not-found');
+    expect(await addedTo(other.noteId)).toBe(0);
+    // During the call the people who get the notes aren't settled: nothing is written there yet.
+    const { org, host } = await callWith();
+    await host.transcribe(speech('Still talking.', 0, 0), host.ticket.identity);
+    const live = (await settle(host, (s) => s.transcript.length >= 1)).notes.noteId ?? '';
+    expect(await fails(org.api.notes.sharedAudience(live))).toBe('conflict');
+    expect(await fails(org.api.notes.writeShared(live, { text: 'Too soon', seal: box.seal }))).toBe('conflict');
+    expect(await addedTo(live)).toBe(0);
+  });
+
+  it('is taken back for good by whoever wrote it, or by the organizer, and goes with its author’s account', async () => {
+    const kofi = await account(unique('kofi'));
+    const lena = await account(unique('lena'));
+    const { org, noteId } = await writtenNote('The merger closes on Friday.', kofi, lena);
+    const post = async (b: Account, text: string) => only((await b.api.notes.writeShared(noteId, { text, seal: (await b.api.notes.sharedAudience(noteId)).seal })).additions.filter((a) => a.text === text));
+    const kofis = await post(kofi, 'Kofi’s word.');
+    expect(await fails(lena.api.notes.takeBack(noteId, kofis.id))).toBe('forbidden');
+    expect((await kofi.api.notes.takeBack(noteId, kofis.id)).additions).toEqual([]);
+    expect(await addedTo(noteId)).toBe(0);
+    const lenas = await post(lena, 'Lena’s word.');
+    expect((await org.api.notes.takeBack(noteId, lenas.id)).additions).toEqual([]);
+    await post(lena, 'Lena again.');
+    expect(await addedTo(noteId)).toBe(1);
+    await lena.api.account.delete();
+    expect((await org.api.notes.get(noteId)).additions).toEqual([]);
+    expect(await addedTo(noteId)).toBe(0);
+  });
+});
+
 describe('when notes go', () => {
   /** Someone adds something to a note and keeps something of their own on it. */
   async function adds(who: Account, noteId: string, words: string) {
@@ -739,13 +838,15 @@ describe('what’s stored', () => {
     await kofi.api.notes.addToShared(noteId, shareThis.id, { text: 'CANARY-ADDED said to everyone', seal: p.seal });
     const lenaOwn = last(await lena.api.notes.personal(noteId).add({ kind: 'note', text: 'CANARY-PERSONAL-LENA hers.' }));
     expect(lenaOwn.kind).toBe('note');
+    // Written straight into the shared notes: sealed with the note, in no receipt, and to no model.
+    await lena.api.notes.writeShared(noteId, { text: 'CANARY-SHARED-WRITE said straight to everyone', seal: (await lena.api.notes.sharedAudience(noteId)).seal });
 
     // Nothing reads them: asking about the note, across notes, or across a series sends none of it to a model.
     for await (const part of kofi.api.notes.ask(noteId, 'What closes on Friday?')) expect(part.type).toMatch(/text|cite|screen/);
     for await (const part of kofi.api.notes.askAll('What closes on Friday?')) expect(part.type).toMatch(/text|cite/);
 
     const rows = await allRows();
-    const canaries = ['CANARY-PERSONAL-TEXT', 'CANARY-PERSONAL-LABEL', 'CANARY-PERSONAL-QUESTION', 'CANARY-PERSONAL-ANSWER', 'CANARY-PERSONAL-LENA', 'CANARY-ADDED', 'ask about the budget', 'said to everyone'];
+    const canaries = ['CANARY-PERSONAL-TEXT', 'CANARY-PERSONAL-LABEL', 'CANARY-PERSONAL-QUESTION', 'CANARY-PERSONAL-ANSWER', 'CANARY-PERSONAL-LENA', 'CANARY-ADDED', 'ask about the budget', 'said to everyone', 'CANARY-SHARED-WRITE', 'said straight to everyone'];
     const logs = h.logs.join('');
     const wire = Buffer.concat(h.near.received.map((r) => r.body));
     for (const canary of canaries) {

@@ -1,5 +1,5 @@
 /*
- * Privacy: what Alcove processes and stores, the hosting server check (made when the app opens) and the privacy policy;
+ * Privacy: what Alcove processes and stores, the confidential-compute check (made when the app opens) and the privacy policy;
  * then, in its own panel at the end, deleting the account. Deleting takes one more step, which opens where the row is
  * (never a dialog) and sets what goes beside what stays. The shared demo account can't be deleted, so the row says that
  * instead.
@@ -11,8 +11,8 @@ import { Link, useNavigate } from '@tanstack/react-router';
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { forgetView } from '~/features/call/layout/view';
 import { forgetTour } from '~/features/onboarding/store';
-import { q, topUpOpen, trustLine, useDeleteAccount } from '~/lib/queries';
-import { hoursAndMinutes } from '~/lib/time';
+import { q, topUpOpen, useDeleteAccount, verifiedAt } from '~/lib/queries';
+import { hm, hoursAndMinutes } from '~/lib/time';
 import { plural } from '~/lib/words';
 
 const LEDGER = [
@@ -21,13 +21,17 @@ const LEDGER = [
   ['Who was invited', 'The audio']
 ] as const;
 
-/** Report the hosting server’s attestation response and explain how storage encryption works. */
+/**
+ * What the check made when the app opened found: only an answer bound to this browser's own request counts, and says when.
+ * With nothing to show, the row just says what it is.
+ */
 function Compute() {
-  const trust = useQuery(q.trust());
+  const checked = useQuery(q.trust());
+  const verified = verifiedAt(checked.data);
+  if (verified === null && !checked.isPending) return <SettingRow mark={<Icon name="sealed" />} label="Confidential compute" help="Where your audio is opened and your notes are written." />;
   return (
-    <SettingRow label="Hosting server"
-      help="Alcove encrypts call content in storage. The hosting server can decrypt it to provide the service."
-      control={<SettingFact icon="sealed">{trustLine(trust)}</SettingFact>} />
+    <SettingRow label="Confidential compute"
+      control={verified !== null ? <SettingFact icon="sealed" tone="yes">Hardware verified {hm(new Date(verified))}</SettingFact> : <SettingFact icon="sealed">Checking the hardware…</SettingFact>} />
   );
 }
 

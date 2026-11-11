@@ -1,6 +1,6 @@
 /**
- * A board's timer and vote in a call, through browsers talking to the real API over HTTP via @alcove/api-http, on real Postgres,
- * the object store and the local LiveKit server, with the board drawn through `@alcove/board` on a real document session, as a
+ * A vote on a board in a call, through browsers talking to the real API over HTTP via @alcove/api-http, on real Postgres, the
+ * object store and the local LiveKit server, with the board drawn through `@alcove/board` on a real document session, as a
  * browser draws it: what each person is told and when, who may do what, the limits, and what the previous release stored.
  */
 import { AlcoveApiError, CALL_TOPIC, type CallBoardOpen, type CallSession, type CallState, type DocSession, type DocSessionOptions, type WorkspaceRole } from '@alcove/api';
@@ -89,6 +89,11 @@ async function openDoc(who: Browser, id: string, document: string, opts: DocSess
 const stored = (s: DocSession) => until(() => s.getSnapshot().status === 'saved', 'everything to reach Alcove');
 /** Everything the call told this person, as text: what a sticky's ID would be found in. */
 const said = (s: CallState) => JSON.stringify(s);
+/** The board in the call exactly as the server sends it, before any browser reads it through the contract. */
+const sentBoard = async (who: Browser, call: CallSession) => {
+  const res = await who.fetch(`${h.baseUrl}/v1/live/calls/${call.ticket.callId}`, { headers: { 'x-alcove-call': call.ticket.pass } });
+  return z.object({ board: z.record(z.string(), z.unknown()) }).parse(await res.json()).board;
+};
 /** An action as a browser sends it, whatever the client would make of it. */
 const action = (who: Browser, call: CallSession, a: unknown) => who.fetch(`${h.baseUrl}/v1/live/calls/${call.ticket.callId}/actions`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-alcove-call': call.ticket.pass }, body: JSON.stringify(a) });
 /** The call's own record of itself, opened as the server opens it, and how to put it back. */
@@ -183,104 +188,6 @@ async function retro(who: Browser, open: CallBoardOpen | null, opts: DocSessionO
   return { page, fix, s1, s2, s3, s4, inner, deep, act, action1, loose };
 }
 
-describe('the timer', () => {
-  it('runs from now for everyone where the board is, and a late joiner and a reconnect get it', async () => {
-    const art = await account();
-    const kofi = await account();
-    const priya = await account();
-    const { host, code: c } = await callBy(art, [kofi.email, priya.email]);
-    const k = await invited(host, c, kofi);
-    await host.openBoard({ template: 'retro' });
-    expect(await board(k)).toMatchObject({ timer: null, vote: null });
-
-    // Ten minutes in, so from now and from when the call started aren't the same.
-    await h.pool.query("UPDATE calls SET started_at = started_at - interval '10 minutes' WHERE owner_id = $1 AND call_id = $2", [art.ownerId, host.ticket.callId]);
-    const before = (await read(k)).elapsed;
-    expect(before).toBeGreaterThanOrEqual(600);
-    await k.startTimer(5);
-    const timer = k.getSnapshot().board.timer;
-    expect(timer).toEqual({ until: expect.any(Number), length: 300, text: 'Add your stickies', canStop: true });
-    // Five minutes from when it started, as the call counts, which is what everyone's countdown goes by.
-    const until5 = timer?.until ?? 0;
-    expect(until5 - before).toBeGreaterThanOrEqual(300);
-    expect(until5 - before).toBeLessThanOrEqual(302);
-    expect((await board(host)).timer).toEqual(timer);
-
-    // Someone who comes in later is told it, as it is, and can't stop it.
-    const p = await invited(host, c, priya);
-    expect((await board(p)).timer).toEqual({ until: until5, length: 300, text: 'Add your stickies', canStop: false });
-    // Kofi back after a reload still has it, and can still stop it: it's his whichever connection he's on.
-    k.closing();
-    const k2 = await invited(host, c, kofi, k.ticket.pass);
-    expect((await board(k2)).timer).toEqual(timer);
-    await k2.stopTimer();
-    expect((await board(p)).timer).toBeNull();
-    await host.leave();
-  });
-
-  it('is started by anyone who can edit the board, and stopped only by whoever started it or the organizer', async () => {
-    const art = await account();
-    const kofi = await account();
-    const priya = await account();
-    const { host, code: c } = await callBy(art, [kofi.email, priya.email]);
-    const k = await invited(host, c, kofi);
-    const p = await invited(host, c, priya);
-    const jamie = await guest(host, c);
-    // Nothing to run it on.
-    expect(await refusal(k.startTimer(3))).toEqual({ code: 'conflict', status: 409, message: 'No board is open here.' });
-    await host.openBoard({ template: 'blank' });
-
-    await k.startTimer(3);
-    expect(await refusal(p.stopTimer())).toEqual({ code: 'forbidden', status: 403, message: 'Only whoever started the timer, or the organizer, can stop it.' });
-    expect(await refusal(jamie.call.stopTimer())).toMatchObject({ code: 'forbidden' });
-    expect((await board(p)).timer).toMatchObject({ length: 180, canStop: false });
-    // The organizer can stop anyone's.
-    expect((await board(host)).timer?.canStop).toBe(true);
-    await host.stopTimer();
-    expect((await board(k)).timer).toBeNull();
-    // Stopping one that's gone changes nothing, as a second press of Stop finds.
-    expect(await code(host.stopTimer())).toBe('allowed');
-    // A guest who can edit the board starts one too, and stops their own.
-    await jamie.call.startTimer(10);
-    expect((await board(jamie.call)).timer).toMatchObject({ length: 600, canStop: true });
-    await jamie.call.stopTimer();
-    expect((await board(host)).timer).toBeNull();
-    // Only the three lengths, and stopping is null.
-    for (const minutes of [0, 1, 4, 60, '5', undefined]) expect((await action(art, host, { type: 'board-timer', minutes })).status).toBe(400);
-    await host.leave();
-  });
-
-  it('starts over only for whoever started it or the organizer while it runs, and for anyone once it’s run out', async () => {
-    const art = await account();
-    const kofi = await account();
-    const priya = await account();
-    const { host, code: c } = await callBy(art, [kofi.email, priya.email]);
-    const k = await invited(host, c, kofi);
-    const p = await invited(host, c, priya);
-    await host.openBoard({ template: 'blank' });
-    await k.startTimer(10);
-    const first = (await board(k)).timer;
-    expect(await refusal(p.startTimer(3))).toEqual({ code: 'conflict', status: 409, message: 'A timer is running. Whoever started it, or the organizer, can stop it.' });
-    expect((await board(p)).timer).toEqual({ ...first, canStop: false });
-    // Kofi starts it over, and so can the organizer.
-    await k.startTimer(3);
-    expect((await board(p)).timer).toMatchObject({ length: 180, canStop: false });
-    await host.startTimer(5);
-    expect((await board(k)).timer).toMatchObject({ length: 300, canStop: false });
-    expect((await board(host)).timer?.canStop).toBe(true);
-
-    // Once it's run out it says so until it's stopped, and anyone who can edit can start another.
-    const call = await storedCall(art.ownerId, host.ticket.callId);
-    const boards = OpenStored.parse(call.state['board']);
-    await call.put({ ...call.state, board: { ...boards, open: { main: { ...boards.open.main, timer: { ...z.record(z.string(), z.unknown()).parse(boards.open.main['timer']), until: 1 } } } } });
-    expect((await board(p)).timer).toMatchObject({ until: 1, length: 300, canStop: false });
-    await p.startTimer(3);
-    expect((await board(k)).timer).toMatchObject({ length: 180, canStop: false });
-    expect((await board(p)).timer?.canStop).toBe(true);
-    await host.leave();
-  });
-});
-
 describe('a vote', () => {
   it('tells nobody a count while it’s on, and everyone every count at once when it ends', async () => {
     const art = await account();
@@ -294,7 +201,7 @@ describe('a vote', () => {
     const b = await retro(art, host.getSnapshot().board.open);
 
     await k.startVote(b.fix, 3);
-    const started = { on: true, frame: b.fix, per: 3, left: 3, mine: [], results: {}, voters: 0 };
+    const started = { on: true, frame: b.fix, per: 3, left: 3, mine: [], results: {}, voters: 0, startedBy: k.ticket.identity };
     expect((await board(k)).vote).toEqual({ ...started, canEnd: true });
     for (const who of [host, p, jamie.call]) expect((await board(who)).vote).toEqual({ ...started, canEnd: who === host });
 
@@ -316,7 +223,7 @@ describe('a vote', () => {
     await k.endVote();
     const results = { [b.s1]: 2, [b.s2]: 2, [b.s3]: 1, [b.s4]: 1 };
     for (const [who, mine] of theirs) {
-      expect((await board(who)).vote).toEqual({ on: false, frame: b.fix, per: 3, left: 3 - mine.length, mine, results, voters: 3, canEnd: who === host || who === k });
+      expect((await board(who)).vote).toEqual({ on: false, frame: b.fix, per: 3, left: 3 - mine.length, mine, results, voters: 3, canEnd: who === host || who === k, startedBy: k.ticket.identity });
     }
     // Nothing about it was written to the board.
     expect(JSON.stringify(b.page.doc.toJSON())).not.toContain('"votes"');
@@ -375,7 +282,7 @@ describe('a vote', () => {
     // In later, Priya is told the vote is on and has all her votes, and nothing of anyone's.
     const p = await invited(host, c, priya);
     const late = await read(p);
-    expect(late.board.vote).toEqual({ on: true, frame: b.fix, per: 3, left: 3, mine: [], results: {}, voters: 0, canEnd: false });
+    expect(late.board.vote).toEqual({ on: true, frame: b.fix, per: 3, left: 3, mine: [], results: {}, voters: 0, canEnd: false, startedBy: host.ticket.identity });
     expect(said(late)).not.toContain(b.s1);
     // Back after a reload, Kofi and Jamie have what they voted for.
     k.closing();
@@ -480,7 +387,7 @@ describe('a vote', () => {
     await host.leave();
   });
 
-  it('is stopped and ended by whoever started it from any device of theirs, and theirs while any of them is here', async () => {
+  it('is ended by whoever started it from any device of theirs, and theirs while any of them is here', async () => {
     const art = await account();
     const kofi = await account();
     const priya = await account();
@@ -492,21 +399,19 @@ describe('a vote', () => {
     const phone = await invited(host, c, phoneBrowser);
     await host.openBoard({ template: 'retro' });
     const b = await retro(art, host.getSnapshot().board.open);
-    await laptop.startTimer(5);
     await laptop.startVote(b.fix, 3);
     await laptop.castVote(b.s1);
-    // On his phone, which joined without the laptop's pass, it's his: his vote, Stop and End.
-    expect((await board(phone))).toMatchObject({ timer: { canStop: true }, vote: { mine: [b.s1], canEnd: true } });
-    // With the organizer gone and his laptop gone, he's still here on his phone, so it's not Priya's to stop.
+    // On his phone, which joined without the laptop's pass, it's his: his vote, and End.
+    expect((await board(phone))).toMatchObject({ vote: { mine: [b.s1], canEnd: true } });
+    // With the organizer gone and his laptop gone, he's still here on his phone, so it's not Priya's to end.
     inRoom.push(await connect(await p.room(), { sending: p.crypto }));
     await host.handOff(p.ticket.identity);
     await settle(p, (s) => s.isHost);
     await laptop.leave();
-    expect((await board(p)).timer?.canStop).toBe(false);
-    expect(await refusal(p.stopTimer())).toMatchObject({ code: 'forbidden' });
+    expect((await board(p)).vote?.canEnd).toBe(false);
+    expect(await refusal(p.endVote())).toMatchObject({ code: 'forbidden' });
     await phone.endVote();
-    await phone.stopTimer();
-    expect(await board(p)).toMatchObject({ timer: null, vote: { on: false, results: { [b.s1]: 1 }, voters: 1 } });
+    expect(await board(p)).toMatchObject({ vote: { on: false, results: { [b.s1]: 1 }, voters: 1 } });
     await phone.clearVote();
     expect((await board(p)).vote).toBeNull();
     await p.leave();
@@ -533,7 +438,7 @@ describe('a vote', () => {
     expect((await board(host)).vote).toMatchObject({ on: false, results: { [b.s1]: 1 } });
     await k.clearVote();
     await host.startVote(b.act, 5);
-    expect((await board(k)).vote).toEqual({ on: true, frame: b.act, per: 5, left: 5, mine: [], results: {}, voters: 0, canEnd: false });
+    expect((await board(k)).vote).toEqual({ on: true, frame: b.act, per: 5, left: 5, mine: [], results: {}, voters: 0, canEnd: false, startedBy: host.ticket.identity });
     await host.leave();
   });
 
@@ -661,7 +566,7 @@ describe('at the same moment', () => {
 });
 
 describe('who is told of them', () => {
-  it('tells someone who can only read the board, who can’t run either, and someone who can’t open it nothing at all', async () => {
+  it('tells someone who can only read the board, who can’t start one or vote, and someone who can’t open it nothing at all', async () => {
     const art = await account();
     const lena = await account();
     const kofi = await account();
@@ -675,13 +580,11 @@ describe('who is told of them', () => {
     // Brought without letting anyone in: Lena can read it, and Kofi and Jamie can't open it.
     await host.openBoard({ workspaceId: id, documentId: saved, letIn: false });
     const b = await retro(art, host.getSnapshot().board.open);
-    await host.startTimer(5);
     await host.startVote(b.fix, 3);
     await host.castVote(b.s1);
 
-    expect(await board(l)).toMatchObject({ open: { role: 'read' }, timer: { length: 300, canStop: false }, vote: { on: true, frame: b.fix, left: 3, mine: [], results: {}, voters: 0, canEnd: false } });
+    expect(await board(l)).toMatchObject({ open: { role: 'read' }, vote: { on: true, frame: b.fix, left: 3, mine: [], results: {}, voters: 0, canEnd: false } });
     const cantRead = { code: 'forbidden', status: 403, message: 'You can read this, but not change it.' };
-    expect(await refusal(l.startTimer(3))).toEqual(cantRead);
     expect(await refusal(l.castVote(b.s2))).toEqual(cantRead);
     expect(await refusal(l.takeBackVote(b.s1))).toEqual(cantRead);
     for (const who of [k, jamie.call]) {
@@ -690,18 +593,16 @@ describe('who is told of them', () => {
       expect(said(s)).not.toContain(b.fix);
       expect(await code(who.castVote(b.s2))).toBe('not-found');
     }
-    // With nothing running, someone who can only read still can't start either.
-    await host.stopTimer();
+    // With no vote on, someone who can only read still can't start one.
     await host.endVote();
     await host.clearVote();
-    expect(await refusal(l.startTimer(3))).toEqual(cantRead);
     expect(await refusal(l.startVote(b.fix, 3))).toEqual(cantRead);
-    expect(await code(k.startTimer(3))).toBe('not-found');
-    expect((await board(host)).timer).toBeNull();
+    expect(await code(k.startVote(b.fix, 3))).toBe('not-found');
+    expect((await board(host)).vote).toBeNull();
     await host.leave();
   });
 
-  it('answers someone who can’t open the board the same whether a timer runs and a vote is on, has ended, or there’s neither', async () => {
+  it('answers someone who can’t open the board the same whether a vote is on, has ended, or there’s none', async () => {
     const art = await account();
     const kofi = await account();
     const id = await workspace(art, 'Product');
@@ -715,26 +616,24 @@ describe('who is told of them', () => {
     const b = await retro(art, host.getSnapshot().board.open);
     /** Everything someone who can't open it might try, and what each answer is. */
     const tries = async (call: CallSession) => ({
-      stopTimer: await refusal(call.stopTimer()), startTimer: await refusal(call.startTimer(3)), startVote: await refusal(call.startVote(null, 3)),
+      startVote: await refusal(call.startVote(null, 3)),
       castVote: await refusal(call.castVote(b.s1)), takeBack: await refusal(call.takeBackVote(b.s1)), endVote: await refusal(call.endVote()), clearVote: await refusal(call.clearVote())
     });
     for (const who of [k, jamie.call]) {
-      expect(await board(who)).toMatchObject({ open: { role: null, everyone: false }, timer: null, vote: null });
+      expect(await board(who)).toMatchObject({ open: { role: null, everyone: false }, vote: null });
       const nothingRunning = await tries(who);
       expect(Object.values(nothingRunning).every((r) => r !== null && r.code === 'not-found')).toBe(true);
-      await host.startTimer(5);
       await host.startVote(b.fix, 3);
       await host.castVote(b.s1);
       expect(await tries(who)).toEqual(nothingRunning);
       await host.endVote();
       expect(await tries(who)).toEqual(nothingRunning);
       await host.clearVote();
-      await host.stopTimer();
     }
     await host.leave();
   });
 
-  it('keeps them when the same board opens again, and they end when it closes or another opens in its place', async () => {
+  it('keeps it when the same board opens again, and it ends when the board closes or another opens in its place', async () => {
     const art = await account();
     const kofi = await account();
     const { host, code: c } = await callBy(art, [kofi.email]);
@@ -743,7 +642,6 @@ describe('who is told of them', () => {
     const first = host.getSnapshot().board.open;
     const firstId = first?.documentId ?? '';
     const b = await retro(art, first);
-    await k.startTimer(10);
     await k.startVote(b.fix, 3);
     await k.castVote(b.s1);
     const running = await board(k);
@@ -751,17 +649,67 @@ describe('who is told of them', () => {
     // Opening the board that's open carries on with its session.
     await host.openBoard({ workspaceId: first?.workspaceId ?? '', documentId: firstId, letIn: false });
     expect(await board(k)).toEqual(running);
-    // Another board in its place starts with neither, and they don't come back with the first.
+    // Another board in its place starts with none, and it doesn't come back with the first.
     await host.openBoard({ template: 'blank' });
-    expect(await board(k)).toMatchObject({ timer: null, vote: null });
+    expect(await board(k)).toMatchObject({ vote: null });
     await host.openBoard({ workspaceId: first?.workspaceId ?? '', documentId: firstId, letIn: false });
-    expect(await board(k)).toMatchObject({ open: { documentId: firstId }, timer: null, vote: null });
-    // Closing ends them too.
-    await k.startTimer(3);
+    expect(await board(k)).toMatchObject({ open: { documentId: firstId }, vote: null });
+    // Closing ends it too.
+    await k.startVote(null, 3);
     await host.closeBoard();
     expect(await board(k)).toEqual({ open: null, timer: null, vote: null, ideas: [] });
     await host.openBoard({ workspaceId: first?.workspaceId ?? '', documentId: firstId, letIn: false });
-    expect(await board(k)).toMatchObject({ timer: null, vote: null });
+    expect(await board(k)).toMatchObject({ vote: null });
+    await host.leave();
+  });
+
+  it('tells everyone here who can open the board that a vote started, and by whom, whether or not they have the board open', async () => {
+    const art = await account();
+    const kofi = await account();
+    const priya = await account();
+    const { host, code: c } = await callBy(art, [kofi.email, priya.email]);
+    const k = await invited(host, c, kofi);
+    const p = await invited(host, c, priya);
+    const jamie = await guest(host, c);
+    await host.openBoard({ template: 'retro' });
+    // Only Art's browser has the board's document open: nobody else has opened it, in the call or anywhere else.
+    const b = await retro(art, host.getSnapshot().board.open);
+    await k.startVote(b.fix, 3);
+    for (const who of [host, p, jamie.call]) {
+      expect((await board(who)).vote).toEqual({ on: true, frame: b.fix, per: 3, left: 3, mine: [], results: {}, voters: 0, canEnd: who === host, startedBy: k.ticket.identity });
+    }
+    // Back after a reload, it's said to be Kofi on the connection he's on now; once he's gone, by nobody here.
+    k.closing();
+    const k2 = await invited(host, c, kofi, k.ticket.pass);
+    expect((await board(p)).vote?.startedBy).toBe(k2.ticket.identity);
+    await k2.leave();
+    expect((await board(p)).vote).toMatchObject({ on: true, startedBy: null });
+    await host.leave();
+  });
+
+  it('reaches a presented board’s followers: whoever presents starts and ends it on the frame they show, and everyone following votes', async () => {
+    const art = await account();
+    const kofi = await account();
+    const priya = await account();
+    const { host, code: c } = await callBy(art, [kofi.email, priya.email]);
+    const k = await invited(host, c, kofi);
+    const p = await invited(host, c, priya);
+    await host.openBoard({ template: 'retro' });
+    const open = host.getSnapshot().board.open;
+    const b = await retro(art, open);
+    // Art presents the board, and everyone else follows him.
+    await host.startPresenting({ kind: 'board', id: open?.documentId ?? '' });
+    for (const who of [k, p]) expect((await read(who)).workspace.present).toMatchObject({ kind: 'board', id: open?.documentId, mine: false });
+    // On the frame he shows, he starts a vote, and everyone following votes as they go on following.
+    await host.startVote(b.fix, 3);
+    await k.castVote(b.s1);
+    await p.castVote(b.s1);
+    await p.castVote(b.s2);
+    expect((await board(p)).vote).toMatchObject({ on: true, left: 1, mine: [b.s1, b.s2], results: {}, voters: 0, startedBy: host.ticket.identity });
+    // He ends it while he presents: every count at once, for everyone.
+    await host.endVote();
+    for (const who of [host, k, p]) expect((await board(who)).vote).toMatchObject({ on: false, results: { [b.s1]: 2, [b.s2]: 1 }, voters: 2 });
+    expect((await read(k)).workspace.present).toMatchObject({ kind: 'board', mine: false });
     await host.leave();
   });
 });
@@ -795,7 +743,7 @@ async function organizerLeaves(host: CallSession, k: CallSession) {
 const cantRead = { code: 'forbidden', status: 403, message: 'You can read this, but not change it.' };
 
 describe('with neither whoever started it nor the organizer in the call', () => {
-  it('keeps the timer’s starter out while their successful departure response is still on its way', async () => {
+  it('keeps the vote’s starter out while their successful departure response is still on its way', async () => {
     const browser = h.browser();
     let releaseDeparture = () => {};
     const departureResponse = new Promise<void>((resolve) => { releaseDeparture = resolve; });
@@ -814,8 +762,8 @@ describe('with neither whoever started it nor the organizer in the call', () => 
       if (departing && path.endsWith('/leave')) { departed = true; await departureResponse; }
       return response;
     } });
-    const { host, k, p, l } = await savedBoardCall(delayed);
-    await p.startTimer(10);
+    const { host, k, p, l, b } = await savedBoardCall(delayed);
+    await p.startVote(b.fix, 3);
     await organizerLeaves(host, k);
     departing = true;
     const leaving = p.leave();
@@ -828,44 +776,14 @@ describe('with neither whoever started it nor the organizer in the call', () => 
       releaseRead();
       await p.refresh({ call: false, log: true });
       expect(recoveries, 'a deliberate departure never automatically asks to come back').toBe(0);
-      expect((await board(k)).timer).toMatchObject({ length: 600, canStop: true });
-      expect(await refusal(l.stopTimer())).toEqual(cantRead);
+      expect((await board(k)).vote).toMatchObject({ on: true, canEnd: true });
+      expect(await refusal(l.endVote())).toEqual(cantRead);
     } finally {
       releaseRead();
       releaseDeparture();
       await leaving;
     }
-    await k.stopTimer();
-    await k.leave();
-  });
-
-  it('lets anyone who can edit the board stop the timer, or start it over, until one of them is back', async () => {
-    const { code: c, host, k, p, l, priya } = await savedBoardCall();
-    await p.startTimer(10);
-    const notYours = { code: 'forbidden', status: 403, message: 'Only whoever started the timer, or the organizer, can stop it.' };
-    const running = { code: 'conflict', status: 409, message: 'A timer is running. Whoever started it, or the organizer, can stop it.' };
-    // The organizer goes, and Priya, who started it, is still here: it's hers.
-    await organizerLeaves(host, k);
-    expect((await board(k)).timer?.canStop).toBe(false);
-    expect(await refusal(k.stopTimer())).toEqual(notYours);
-    expect(await refusal(k.startTimer(3))).toEqual(running);
-    // Priya goes too: anyone who can edit the board can stop it now, and nobody who can only read it.
-    await p.leave();
-    expect((await board(k)).timer).toMatchObject({ length: 600, canStop: true });
-    expect((await board(l)).timer?.canStop).toBe(false);
-    expect(await refusal(l.stopTimer())).toEqual(cantRead);
-    // Back after a reload, it's Priya's again.
-    const p2 = await invited(k, c, priya, p.ticket.pass);
-    expect((await board(k)).timer?.canStop).toBe(false);
-    expect(await refusal(k.stopTimer())).toEqual(notYours);
-    expect((await board(p2)).timer?.canStop).toBe(true);
-    // Gone again: Kofi starts it over, so the new one is his, and stops it.
-    await p2.leave();
-    await k.startTimer(3);
-    expect((await board(k)).timer).toMatchObject({ length: 180, canStop: true });
-    expect((await board(l)).timer).toMatchObject({ length: 180, canStop: false });
-    await k.stopTimer();
-    expect((await board(l)).timer).toBeNull();
+    await k.endVote();
     await k.leave();
   });
 
@@ -901,7 +819,7 @@ describe('with neither whoever started it nor the organizer in the call', () => 
 });
 
 describe('what a session leaves on the board', () => {
-  it('writes nothing to the board’s log from a timer starting, through a vote, to its results being cleared', async () => {
+  it('writes nothing to the board’s log from a vote starting to its results being cleared', async () => {
     const art = await account();
     const kofi = await account();
     const { host, code: c } = await callBy(art, [kofi.email]);
@@ -915,7 +833,6 @@ describe('what a session leaves on the board', () => {
     const next = () => count('SELECT next_seq::int AS n FROM documents WHERE document_id = $1', [open?.documentId ?? '']);
     const before = await next();
     expect(before).toBeGreaterThan(0);
-    await k.startTimer(5);
     await host.startVote(b.fix, 3);
     await k.castVote(b.s1);
     await host.castVote(b.s2);
@@ -923,7 +840,6 @@ describe('what a session leaves on the board', () => {
     await k.castVote(b.s3);
     await host.endVote();
     await host.clearVote();
-    await k.stopTimer();
     await rest(500);
     expect(await next()).toBe(before);
     await host.leave();
@@ -931,7 +847,7 @@ describe('what a session leaves on the board', () => {
 });
 
 describe('what the previous release stored', () => {
-  it('still opens: a board open with no timer or vote, which then takes both and keeps them in the new shape', async () => {
+  it('still opens: a board open with no vote, which then takes one and keeps it in the new shape', async () => {
     const art = await account();
     const kofi = await account();
     const { host, code: c } = await callBy(art, [kofi.email]);
@@ -939,22 +855,51 @@ describe('what the previous release stored', () => {
     await host.openBoard({ template: 'retro' });
     const b = await retro(art, host.getSnapshot().board.open);
     const { callId } = host.ticket;
-    // Sealed as the release before this one sealed it: an open board with only where it is and who opened it.
+    // Sealed as a release before votes sealed it: an open board with only where it is and who opened it.
     const before = await storedCall(art.ownerId, callId);
     const boards = OpenStored.parse(before.state['board']);
-    expect(boards.open.main).toMatchObject({ timer: null, vote: null });
-    const { timer: _t, vote: _v, ...older } = boards.open.main;
+    expect(boards.open.main).toMatchObject({ vote: null });
+    const { vote: _v, ...older } = boards.open.main;
     await before.put({ ...before.state, board: { ...boards, open: { main: older } } });
     expect(Object.keys(OpenStored.parse((await storedCall(art.ownerId, callId)).state['board']).open.main).sort()).toEqual(['by', 'documentId', 'workspaceId']);
 
-    expect(await board(k)).toMatchObject({ open: { role: 'edit' }, timer: null, vote: null });
-    await k.startTimer(3);
+    expect(await board(k)).toMatchObject({ open: { role: 'edit' }, vote: null });
     await k.startVote(b.fix, 3);
     await k.castVote(b.s1);
-    expect(await board(host)).toMatchObject({ timer: { length: 180, canStop: true }, vote: { on: true, mine: [] } });
+    expect(await board(host)).toMatchObject({ vote: { on: true, mine: [] } });
     // From then on it's stored in the new shape.
     const after = OpenStored.parse((await storedCall(art.ownerId, callId)).state['board']).open.main;
-    expect(after).toMatchObject({ timer: { length: 180 }, vote: { frame: b.fix, per: 3, ended: false } });
+    expect(after).toMatchObject({ vote: { frame: b.fix, per: 3, ended: false } });
+    await host.leave();
+  });
+
+  it('still opens with a board timer the previous release kept running: nobody is told of it, and the next save drops it', async () => {
+    const art = await account();
+    const kofi = await account();
+    const { host, code: c } = await callBy(art, [kofi.email]);
+    const k = await invited(host, c, kofi);
+    await host.openBoard({ template: 'retro' });
+    const b = await retro(art, host.getSnapshot().board.open);
+    const { callId } = host.ticket;
+    // Sealed as the previous release sealed it, with Art's five-minute timer running on the board.
+    const before = await storedCall(art.ownerId, callId);
+    const boards = OpenStored.parse(before.state['board']);
+    const running = { until: (await read(k)).elapsed + 300, length: 300, by: boards.open.main['by'] };
+    await before.put({ ...before.state, board: { ...boards, open: { main: { ...boards.open.main, timer: running } } } });
+    expect(OpenStored.parse((await storedCall(art.ownerId, callId)).state['board']).open.main).toMatchObject({ timer: { length: 300 } });
+
+    // The call opens for everyone, its board as it was, and nothing it sends says a board timer is running. It still sends
+    // `timer`, always null, because the previous release's tabs can't read a call without it.
+    for (const [who, call] of [[art, host], [kofi, k]] as const) {
+      expect((await read(call)).board).toEqual({ open: expect.objectContaining({ role: 'edit' }), timer: null, vote: null, ideas: [] });
+      const sent = await sentBoard(who, call);
+      expect(Object.keys(sent).sort()).toEqual(['ideas', 'open', 'timer', 'vote']);
+      expect(sent['timer']).toBeNull();
+    }
+    await k.startVote(b.fix, 3);
+    expect((await board(host)).vote).toMatchObject({ on: true, frame: b.fix });
+    // Saved again, it's in the new shape: the timer has gone.
+    expect(OpenStored.parse((await storedCall(art.ownerId, callId)).state['board']).open.main).not.toHaveProperty('timer');
     await host.leave();
   });
 });

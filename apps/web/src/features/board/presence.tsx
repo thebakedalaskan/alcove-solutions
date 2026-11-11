@@ -59,7 +59,8 @@ const tidy = (n: number): number => Math.round(n * 10) / 10;
 
 const samePoint = (a: BoardPresence['at'], b: BoardPresence['at']): boolean => a?.x === b?.x && a?.y === b?.y;
 
-const samePresence = (a: BoardPresence, b: BoardPresence): boolean => samePoint(a.at, b.at) && samePoint(a.view, b.view) && a.view?.z === b.view?.z && a.edit === b.edit && a.typing === b.typing && sameIds(a.sel, b.sel);
+const samePresence = (a: BoardPresence, b: BoardPresence): boolean =>
+  samePoint(a.at, b.at) && samePoint(a.view, b.view) && a.view?.z === b.view?.z && a.view?.h === b.view?.h && a.edit === b.edit && a.typing === b.typing && sameIds(a.sel, b.sel);
 
 const samePointers = (a: readonly BoardPeer[], b: readonly BoardPeer[]): boolean => a.length === b.length && a.every((p, i) => {
   const q = b[i];
@@ -228,10 +229,10 @@ export class BoardPresenceStore {
     const { pointer, board: { camera } } = this;
     const { sel, edit } = this.board.getSnapshot();
     const { x, y, z } = camera.getSnapshot();
-    const view = camera.width ? publishedView(camera.place(), camera.width) : null;
+    const view = camera.width ? publishedView(camera.place(), camera.width, camera.height) : null;
     return {
       at: pointer && { x: tidy((pointer.sx - x) / z), y: tidy((pointer.sy - y) / z) },
-      view: view && { x: tidy(view.x), y: tidy(view.y), z: Number(view.z.toPrecision(4)) },
+      view: view && { x: tidy(view.x), y: tidy(view.y), z: Number(view.z.toPrecision(4)), ...(view.h === undefined ? {} : { h: Number(view.h.toPrecision(4)) }) },
       sel: [...sel],
       edit,
       typing: this.typing && edit !== null
@@ -322,12 +323,8 @@ function Pointer({ presence, peer, talking }: { presence: BoardPresenceStore; pe
   return <BoardPointer ref={hold} x={at.x} y={at.y} person={person} name={name} colour={colour} talking={talking} typing={typing} />;
 }
 
-/**
- * Everyone else's pointers, for `BoardWorld`'s `pointers`. With `only`, just that person's, by their call identity, or nobody's
- * for null: presenting, the frame on the sheet is all there is, and the presenter's pointer is all that moves over it.
- */
-export function BoardPointers({ presence, talking, only }: { presence: BoardPresenceStore; talking: ReadonlySet<string> | undefined; only?: string | null | undefined }) {
+/** Everyone else's pointers, for `BoardWorld`'s `pointers`. */
+export function BoardPointers({ presence, talking }: { presence: BoardPresenceStore; talking: ReadonlySet<string> | undefined }) {
   const pointers = useSyncExternalStore(presence.subscribe, presence.getPointers);
-  const shown = only === undefined ? pointers : pointers.filter((peer) => peer.person.id === only);
-  return shown.map((peer) => <Pointer key={peer.client} presence={presence} peer={peer} talking={talking?.has(peer.person.id) ?? false} />);
+  return pointers.map((peer) => <Pointer key={peer.client} presence={presence} peer={peer} talking={talking?.has(peer.person.id) ?? false} />);
 }

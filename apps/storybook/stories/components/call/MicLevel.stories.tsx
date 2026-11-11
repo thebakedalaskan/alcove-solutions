@@ -10,8 +10,9 @@ import { Row } from '../../../src/component';
 
 /** How long Check the level keeps the microphone open. */
 const CHECK_SECONDS = 8;
+/** Each microphone once, by the name people know it by, the system's saying so, as the app lists them. */
 const MICS: SelectOption<string>[] = [
-  { value: 'default', label: 'Same as system (MacBook Pro Microphone)' },
+  { value: 'built-in', label: 'MacBook Pro Microphone', note: 'Your system’s choice' },
   { value: 'usb', label: 'Studio USB Microphone' }
 ];
 
@@ -52,7 +53,7 @@ export const Loud: Story = { args: { level: 1 } };
 export const Live: Story = {
   render: function Render(args) {
     const level = useTalking();
-    const [mic, setMic] = useState('default');
+    const [mic, setMic] = useState('built-in');
     return (
       <Row>
         <Select label="Microphone" icon="mic" value={mic} options={MICS} onChange={setMic} />
@@ -71,7 +72,7 @@ export const InSettings: Story = {
   args: { bars: 26, className: 'set-ticks' },
   render: function Render(args) {
     const level = useTalking();
-    const [mic, setMic] = useState('default');
+    const [mic, setMic] = useState('built-in');
     const [checking, setChecking] = useState(true);
     const [left, setLeft] = useState(CHECK_SECONDS);
     useEffect(() => {

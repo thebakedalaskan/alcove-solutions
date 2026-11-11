@@ -42,6 +42,21 @@ export function useSession(ws: Ws, documentId: string) {
   return { opened, reopen };
 }
 
+/**
+ * In a call, the workspace is kept as it was while it's out of sight (call/workspace/WorkspacePanel.tsx): opening it again
+ * tries a stream that's down at once, rather than leaving it in the middle of its wait (`DocSession.wake`). A try that's
+ * under way carries on: a page still opening may be waiting its turn for a document worker.
+ */
+export function useTriesWhenShown(ws: Ws, session: DocSession): void {
+  const hidden = ws.call?.closed ?? false;
+  const was = useRef(hidden);
+  useEffect(() => {
+    const before = was.current;
+    was.current = hidden;
+    if (before && !hidden) session.wake();
+  }, [hidden, session]);
+}
+
 /** How long a document that can't be opened right now waits before it's opened again, a little longer each time. */
 const UNAVAILABLE_WAITS = [2_000, 5_000, 15_000, 30_000];
 
@@ -61,13 +76,15 @@ export function useOpensAgain(status: Pick<DocStatus, 'closed'> | null, ready: b
 
 /**
  * Back from being offline, and everything's in: in the session that was offline. Not once what was written was refused or
- * the session ended, so a document opened again after Discard doesn't say its edits saved.
+ * the session ended, so a document opened again after Discard doesn't say its edits saved. It says back online only if the
+ * browser was offline (`online`), and otherwise that it's connected again.
  */
-export function useBackOnline(ws: Ws, session: DocSession, offline: boolean, status: DocStatus): void {
+export function useBackOnline(ws: Ws, session: DocSession, offline: boolean, status: DocStatus, online: boolean): void {
   const wasOffline = useRef<DocSession | null>(null);
+  const browserWent = useRef(false);
   useEffect(() => {
-    if (offline) wasOffline.current = session;
-    else if (wasOffline.current !== session || status.status === 'failed' || status.closed !== null) wasOffline.current = null;
-    else if (status.status === 'saved') { wasOffline.current = null; ws.say(wsToast.backOnline()); }
-  }, [offline, session, status.status, status.closed, ws.say]);
+    if (offline) { wasOffline.current = session; if (!online) browserWent.current = true; }
+    else if (wasOffline.current !== session || status.status === 'failed' || status.closed !== null) { wasOffline.current = null; browserWent.current = false; }
+    else if (status.status === 'saved') { wasOffline.current = null; ws.say(wsToast.backOnline(browserWent.current)); browserWent.current = false; }
+  }, [offline, online, session, status.status, status.closed, ws.say]);
 }

@@ -7,8 +7,8 @@
  * A presentation that starts takes the stage of everyone who isn't already watching another one: they follow it, and are
  * told. Someone watching another gets it as a tile, told with Show it. On a board and in the workspace a follower can work on
  * their own (`own`) and follow again; a screen can't be unfollowed. Close is for you: someone else's presentation becomes its
- * tile while they present it. When a presentation ends, its tile goes; what was on a follower's stage stays open just for them,
- * unless it closed for everyone (`CallWorkspace.ended`).
+ * tile while they present it, and so does your own screen, still shared. When a presentation ends, its tile goes; what was on a
+ * follower's stage stays open just for them, unless it closed for everyone (`CallWorkspace.ended`).
  *
  * The call says every end it decides as it happens (`ended`, naming the presentation's key), and that ends it at once. Two more
  * end at once with nothing said: one its presenter replaces with another here (a new key from the same seat), and everything

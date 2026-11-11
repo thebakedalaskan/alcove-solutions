@@ -425,6 +425,21 @@
 @media (max-width: 400px) { .ac-react-pick { grid-template-columns: repeat(4, 40px); } .ac-react-opt { width: 40px; height: 40px; } }
 @keyframes ac-react-in { from { opacity: 0; transform: scale(.85); } }
 
+/* ---- MonthGrid: a month to pick a day from. Today in the warm colour of now, the day picked as WeekGrid marks its pick, the months either side quiet. ---- */
+.ac-cal { display: grid; gap: 4px; width: 100%; }
+.ac-cal-head { display: flex; align-items: center; gap: 2px; padding-left: 8px; }
+.ac-cal-head b { flex: 1; min-width: 0; font: 600 14px/1.2 var(--font-sans); color: var(--ink); }
+.ac-cal-head .ac-icon-btn { width: 32px; height: 32px; }
+.ac-cal-grid { width: 100%; border-collapse: separate; border-spacing: 2px; table-layout: fixed; }
+.ac-cal-grid th { padding: 4px 0 2px; font: 500 11.5px/1 var(--font-sans); color: var(--ink-3); text-align: center; }
+.ac-cal-grid td { padding: 0; }
+.ac-cal-d { display: grid; place-items: center; width: 100%; height: 34px; border-radius: var(--radius-sm); color: var(--ink); font: 500 13.5px/1 var(--font-sans); font-variant-numeric: tabular-nums; transition: background-color var(--duration-1); }
+.ac-cal-d:hover { background: var(--sunk); }
+.ac-cal-d:focus-visible { outline: 2px solid var(--focus); outline-offset: 0; }
+.ac-cal-d.is-out { color: var(--ink-3); }
+.ac-cal-d.is-today { color: var(--sun-text); font-weight: 650; }
+.ac-cal-d.is-on { background: var(--sun-soft); box-shadow: inset 0 0 0 1.5px var(--sun); color: var(--sun-text); font-weight: 650; }
+
 /* ---- EmptyState ---- */
 .ac-empty { display: grid; justify-items: center; gap: 10px; padding: 28px 16px 22px; text-align: center; }
 .ac-empty b { font: 480 22px/1.2 var(--font-display); letter-spacing: -.015em; color: var(--ink); }
@@ -503,6 +518,18 @@
 .ac-dots i { width: 5px; height: 5px; border-radius: 50%; background: currentColor; animation: ac-dots 1.2s ease-in-out infinite; }
 .ac-dots i:nth-child(2) { animation-delay: .15s; }
 .ac-dots i:nth-child(3) { animation-delay: .3s; }
+/*
+ * Something on its way never rests. Reduced motion runs every animation once (styles.css), which would leave a spinner as
+ * an open ring and the dots as three still ones, like a broken icon. Instead they fade slowly in and out, which isn't
+ * movement; the spinner stands as if caught mid-turn. The global rule is !important, so these are too, and more specific.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .ac-spin { transform: rotate(-45deg); animation: ac-breathe 1.6s ease-in-out infinite !important; }
+  .ac-dots i { animation: ac-breathe 1.6s ease-in-out infinite !important; }
+  .ac-dots i:nth-child(2) { animation-delay: .2s !important; }
+  .ac-dots i:nth-child(3) { animation-delay: .4s !important; }
+}
+@keyframes ac-breathe { 50% { opacity: .3; } }
 
 @keyframes ac-fade { from { opacity: 0; } }
 @keyframes ac-fade-out { to { opacity: 0; } }
@@ -669,6 +696,7 @@
 .ac-drive-job-t > span { flex: none; }
 .ac-drive-source a:hover { text-decoration: underline; }
 .ac-drive-why { display: block; font: 400 12.5px/17px var(--font-sans); color: var(--caution); text-wrap: pretty; }
+.ac-drive-why.is-quiet { color: var(--ink-3); }
 .ac-drive-s { display: inline-flex; align-items: center; gap: 6px; font: 400 13.5px/20px var(--font-sans); color: var(--ink-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .ac-drive-s > .ac-i { color: var(--sun-text); }
 .ac-drive-s.is-wait > .ac-i { color: var(--ink-3); }

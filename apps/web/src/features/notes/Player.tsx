@@ -9,14 +9,15 @@
  * reading further is a new URL. The note draws all this as its horizon (CallLine.tsx). Where it's got to changes several
  * times a second, so what shows it reads `pos` through `usePlayerAt`, and the rest of the page isn't drawn again for it.
  *
- * Shares kept for the notes play above it, in step (`Replay`). The audio is the clock: the recording's timeline is the audio
- * segments one after another, which is the timeline the server places shares on, so `pos` is a share's time too. A muted
- * video follows it.
+ * Shares kept for the notes play on the sky over the horizon, in step (`Replay`), so the line runs along their foot as their
+ * seek bar. The audio is the clock: the recording's timeline is the audio segments one after another, which is the
+ * timeline the server places shares on, so `pos` is a share's time too. A muted video follows it.
  */
 import { errorCode, type AudioSegment, type ScreenShare, type ScreenShareSegment } from '@alcove/api';
-import { Icon, ReplayScrub, ScreenReplay, useToast } from '@alcove/ui';
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { Icon, ReplayScrub, ScreenReplay, useToast, type ReplayState } from '@alcove/ui';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type RefObject } from 'react';
 import { api } from '~/lib/api';
+import { overlayOpen, typing } from '~/lib/keys';
 import { log } from '~/lib/log';
 import { useRecheckNote } from '~/lib/queries';
 import { position } from '~/lib/time';
@@ -289,19 +290,80 @@ export function usePlayer(noteId: string, segments: AudioSegment[], live: boolea
   return useMemo(() => ({ total, playing, busy, toggle, seek, pos, subscribe }), [total, playing, busy, toggle, seek, pos, subscribe]);
 }
 
+/** What Space presses by itself when it has focus: a button, a tick box, a field, a fold. */
+const SPACE_PRESSES = 'button, input, select, textarea, summary, [contenteditable="true"], [role="button"], [role="checkbox"], [role="switch"], [role="radio"], '
+  + '[role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"], [role="option"], [role="tab"], [role="slider"], [role="combobox"]';
+/** Space on its own: Shift+Space scrolls up, and with Ctrl, ⌘ or Alt it's the system's. */
+const justSpace = (e: KeyboardEvent) => e.key === ' ' && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey;
+
+/**
+ * Space plays and pauses a note's recording, as in most players, while it has one: with nothing focused, or anything Space
+ * doesn't press by itself, and the page doesn't scroll. It leaves alone typing (and the moment after), anything open over
+ * the page, and a focused control Space presses, such as a tick box or a button, except in the replay's full screen, where
+ * it plays and pauses whatever has focus there and full screen stays. The line along the top plays and pauses with Space
+ * by itself (CallLine.tsx). Holding Space toggles once.
+ */
+export function useSpaceToPlay(player: PlayerState) {
+  const { total, toggle } = player;
+  const on = total > 0;
+  useEffect(() => {
+    if (!on) return undefined;
+    /** The replay fills the screen, and the key is for it: something in it has focus, or nothing does. */
+    const full = (t: EventTarget | null) => {
+      const shown = document.fullscreenElement;
+      return shown !== null && t instanceof Node && (t === document.body || shown.contains(t));
+    };
+    const down = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || !justSpace(e) || typing(e.target)) return;
+      if (!full(e.target) && (overlayOpen() || (e.target instanceof Element && e.target.closest(SPACE_PRESSES)))) return;
+      e.preventDefault();
+      if (!e.repeat) toggle();
+    };
+    // In full screen, some browsers press a focused button as Space comes up, unless that's stopped too.
+    const up = (e: KeyboardEvent) => { if (justSpace(e) && full(e.target) && !typing(e.target)) e.preventDefault(); };
+    addEventListener('keydown', down);
+    addEventListener('keyup', up);
+    return () => { removeEventListener('keydown', down); removeEventListener('keyup', up); };
+  }, [on, toggle]);
+}
+
+/**
+ * The shared screens stand on the sky, over the line along the horizon: the sky grows by their height (`--nd-stage` on the
+ * note's page), so the line still sits on the horizon, along their foot. Measured before the page is drawn, and again
+ * whenever their size changes with the window.
+ */
+export function useStageOnTheSky(stage: RefObject<HTMLElement | null>, on: boolean) {
+  useLayoutEffect(() => {
+    const el = stage.current;
+    const page = el?.closest('.nd');
+    if (!on || !el || !(page instanceof HTMLElement)) return undefined;
+    const measure = () => page.style.setProperty('--nd-stage', `${el.offsetHeight}px`);
+    measure();
+    const watch = new ResizeObserver(measure);
+    watch.observe(el);
+    return () => { watch.disconnect(); page.style.removeProperty('--nd-stage'); };
+  }, [stage, on]);
+}
+
 /** How far the video may drift from the audio before it's put back in step, in seconds. */
 const DRIFT = 0.3;
 
 /** The part of a share's video that covers a moment of the recording, if any. */
 const segmentAt = (s: ScreenShare, t: number): ScreenShareSegment | undefined => s.segments.find((g) => g.at <= t && t < g.until);
 
+/** How many of the note's shares the stage offers to go to while none is at the moment: the nearest. */
+const NEAREST = 4;
+
 /**
  * The shared screen to show with the audio: the shares going on at `pos`, and of those the one picked, or else the
  * one that started last. A muted video follows the audio: it plays and pauses with it, jumps when it seeks or moves
- * to another segment, and is put back in step when it drifts more than `DRIFT`.
+ * to another segment, and is put back in step when it drifts more than `DRIFT`. What its picture is doing comes from
+ * the video's own events: on its way while it loads, goes to a moment or waits for more to play on; there once it can
+ * show this moment; or failed, until it's tried again or another part of a share is loaded. With no share at `pos`,
+ * the nearest of the note's shares, to go to.
  */
 function useReplay(noteId: string, shares: ScreenShare[], player: PlayerState) {
-  const { playing, busy } = player;
+  const { playing, busy, seek } = player;
   const pos = usePlayerAt(player, (p) => p);
   const video = useRef<HTMLVideoElement | null>(null);
   const [picked, setPicked] = useState<string | null>(null);
@@ -327,18 +389,39 @@ function useReplay(noteId: string, shares: ScreenShare[], player: PlayerState) {
   // Every tick of the audio clock, a seek, play or pause, or another share or segment.
   useEffect(follow, [follow, pos, playing, busy, src]);
 
+  const [state, setState] = useState<ReplayState>('loading');
+  /** It stopped while playing for want of more of the video, until it plays on. */
+  const stalled = useRef(false);
+  const look = useCallback(() => {
+    const v = video.current;
+    if (!v) return;
+    if (v.error) { setState('failed'); return; }
+    setState(v.seeking || v.readyState < HTMLMediaElement.HAVE_METADATA || (stalled.current && !v.paused) ? 'loading' : 'shown');
+  }, []);
   const label = share?.label ?? '';
   const element = (
     <video ref={video} src={src ?? undefined} muted playsInline preload="metadata" aria-label={label ? `Shared screen: ${label}` : 'Shared screen'}
-      onLoadedMetadata={follow} onError={() => plog.warn('shared screen could not load', { share: share?.id, segment: seg?.segment })} />
+      onLoadStart={() => { stalled.current = false; look(); }} onLoadedMetadata={() => { follow(); look(); }} onLoadedData={look} onCanPlay={look}
+      onSeeking={look} onSeeked={look} onWaiting={() => { stalled.current = true; look(); }} onPlaying={() => { stalled.current = false; look(); }} onPause={look} onEmptied={look}
+      onError={() => { plog.warn('shared screen could not load', { share: share?.id, segment: seg?.segment }); look(); }} />
   );
+  // Read again from the start of what failed, and put back in step once it's there.
+  const retry = () => {
+    plog.debug('shared screen read again', { share: share?.id, segment: seg?.segment });
+    video.current?.load();
+  };
+  const away = (s: ScreenShare) => (pos < s.at ? s.at - pos : pos - s.until);
+  const elsewhere = src !== null ? [] : [...shares].sort((a, b) => away(a) - away(b)).slice(0, NEAREST).sort((a, b) => a.at - b.at)
+    .map((s) => ({ id: s.id, label: s.label, when: `${position(s.at)}\u2060–\u2060${position(s.until)}` }));
+  // Going to a share moves the sun to its start, playing on if it was playing, as the line does.
+  const go = (id: string) => { const s = shares.find((x) => x.id === id); if (s) seek(s.at); };
   return {
     element, nothing: src === null, current: share?.id ?? null,
-    shares: active.map((s) => ({ id: s.id, label: s.label })), pick: setPicked
+    shares: active.map((s) => ({ id: s.id, label: s.label })), pick: setPicked, state, retry, elsewhere, go
   };
 }
 
-/** The shared screens that went with the recording, drawn in step with it; nothing where none was going on. */
+/** The shared screens that went with the recording, drawn in step with it; where none was going on, when there were, to go to. */
 export function Replay({ noteId, shares, player }: { noteId: string; shares: ScreenShare[]; player: PlayerState }) {
   const r = useReplay(noteId, shares, player);
   const { total, playing, toggle, seek } = player;
@@ -348,11 +431,11 @@ export function Replay({ noteId, shares, player }: { noteId: string; shares: Scr
   // while paused moves the picture without starting the audio.
   const controls = (
     <>
-      <button type="button" className="play" onClick={toggle} aria-label={playing ? 'Pause' : 'Play'}><Icon name={playing ? 'pause' : 'play'} size={18} /></button>
+      <button type="button" className="play" onClick={toggle} aria-label={playing ? 'Pause' : 'Play'} aria-keyshortcuts="Space"><Icon name={playing ? 'pause' : 'play'} size={18} /></button>
       <span>{position(pos)}</span>
       <ReplayScrub pos={pos} total={total} format={position} marks={marks} onSeek={(t) => seek(t, playing)} />
       <span>{position(total)}</span>
     </>
   );
-  return <ScreenReplay video={r.element} nothing={r.nothing} shares={r.shares} current={r.current} onPick={r.pick} controls={controls} playing={playing} />;
+  return <ScreenReplay video={r.element} nothing={r.nothing} shares={r.shares} current={r.current} onPick={r.pick} state={r.state} onRetry={r.retry} elsewhere={r.elsewhere} onGo={r.go} controls={controls} playing={playing} />;
 }

@@ -24,7 +24,7 @@ import { HearIt } from './live/HearIt';
 import { useEditorCall } from './live/useEditorCall';
 import { useVideoHandlers } from './playing';
 import { Rescue, type CopyTo } from './Rescue';
-import { useBackOnline, useOpensAgain, useSession, type Opened } from './opened';
+import { useBackOnline, useOpensAgain, useSession, useTriesWhenShown, type Opened } from './opened';
 import { withDocument } from './session';
 import { ShareSheet } from './Sheets';
 import { tagRect, useTags } from './tags';
@@ -43,7 +43,10 @@ function Page({ ws, item, session, status }: { ws: Ws; item: WorkspaceItem; sess
   const now = useNow(60_000);
   const { sections, faces: tagged, tagged: onTagged, ask, answer, notNow } = useTags(ws, item, now);
   const [comment, setComment] = useState<CommentOpen | null>(null);
-  const [named, setNamed] = useState<{ person: Person; rect: Rect } | null>(null);
+  const [named, setNamed] = useState<{ person: Person; rect: Rect; tag: () => Element | null } | null>(null);
+  /* A person's card sits against their tag, and the question a tag asks against its line, wherever they are now. */
+  const namedAt = useMemo(() => named && { at: () => named.tag()?.getBoundingClientRect() ?? new DOMRect(named.rect.left, named.rect.top, named.rect.width, named.rect.height), within: named.tag }, [named]);
+  const askWithin = useCallback(() => (ask ? document.querySelector(`.wb[data-b="${CSS.escape(ask.block)}"]`) : null), [ask]);
   // A session that's ended takes nothing more: anything typed there would have nowhere to go.
   const readOnly = item.role !== 'edit' || item.trashedAt !== null || status.trashed || status.role === 'read' || status.refused === 'read-only' || status.refused === 'trashed' || status.closed !== null;
   const alcove = useAsk(ws, item);
@@ -122,9 +125,9 @@ function Page({ ws, item, session, status }: { ws: Ws; item: WorkspaceItem; sess
     ws.page.current = { canTag: !readOnly, tag: editor.tag };
     return () => { ws.page.current = null; };
   }, [ws.page, editor, readOnly]);
-  const openPerson: EditorProps['onOpenPerson'] = (id, rect) => {
+  const openPerson: EditorProps['onOpenPerson'] = (id, rect, tag) => {
     const person = ws.others.find((o) => o.person.id === id)?.person;
-    if (person) setNamed({ person, rect });
+    if (person) setNamed({ person, rect, tag });
   };
   const toast = useCallback((t: EditorToast) => {
     const { run, label } = t;
@@ -136,7 +139,7 @@ function Page({ ws, item, session, status }: { ws: Ws; item: WorkspaceItem; sess
     const target = ws.tree.all.get(to);
     if (!target || !editor) return false;
     /* Another document only opens with a connection, and the block can't wait on this page for that. */
-    if (status.status === 'offline' || !navigator.onLine) { ws.say(wsToast.failed('You’re offline, so this can’t go to another document yet.')); return false; }
+    if (status.status === 'offline' || !navigator.onLine) { ws.say(wsToast.failed(navigator.onLine ? 'Alcove can’t be reached right now, so this can’t go to another document yet.' : 'You’re offline, so this can’t go to another document yet.')); return false; }
     const was = editor.placeOf(block.id);
     const [{ appendBlocks, removeBlockFrom }, { mediaOfBlock }] = await Promise.all([import('./editor/ydoc'), import('./editor/blocks/attrs')]);
     /* It gets a new ID where it lands, and that's what Undo takes out of there. */
@@ -224,12 +227,12 @@ function Page({ ws, item, session, status }: { ws: Ws; item: WorkspaceItem; sess
         </Suspense>
       )}
       {ask && (
-        <WsPopover open at={ask.rect} label={`Share ${nameOf(item)}`} onOpenChange={(to) => { if (!to) notNow(); }}>
+        <WsPopover open at={ask.rect} within={askWithin} label={`Share ${nameOf(item)}`} onOpenChange={(to) => { if (!to) notNow(); }}>
           <WsMentionPrompt person={ask.person} document={nameOf(item)} onEdit={() => answer('edit')} onRead={() => answer('read')} onNotNow={notNow} />
         </WsPopover>
       )}
-      {named && (
-        <WsPopover open at={() => new DOMRect(named.rect.left, named.rect.top, named.rect.width, named.rect.height)} label={named.person.name} onOpenChange={(to) => { if (!to) setNamed(null); }}>
+      {named && namedAt && (
+        <WsPopover open at={namedAt.at} within={namedAt.within} label={named.person.name} onOpenChange={(to) => { if (!to) setNamed(null); }}>
           <PersonCard person={named.person} onDone={() => setNamed(null)} />
         </WsPopover>
       )}
@@ -287,7 +290,8 @@ function OpenedPane({ ws, item, opened, reopen }: { ws: Ws; item: WorkspaceItem;
   useOpensAgain(status, ready, reopen);
   const history = useHistory(ws, item, session, item.role === 'edit' && !trashed && !offline && status.role !== 'read');
 
-  useBackOnline(ws, session, offline, status);
+  useBackOnline(ws, session, offline, status, online);
+  useTriesWhenShown(ws, session);
 
   if (gone) {
     return (
@@ -329,7 +333,7 @@ function OpenedPane({ ws, item, opened, reopen }: { ws: Ws; item: WorkspaceItem;
       <WsDocHead crumbs={crumbsOf(ws, item)} save={save} onToggleList={ws.toggleList} faces={faces}
         share={canShare ? { open: share, onOpenChange: setShare, content: <ShareSheet item={item} /> } : undefined} more={morePop} />
       <WsFollowBar following={ws.following?.quiet ? null : ws.following} onStop={() => ws.stopFollowing()} />
-      <WsOfflineBar show={offline && ready && status.closed === null} />
+      <WsOfflineBar show={offline && ready && status.closed === null} online={online} onTry={session.retry} />
       <WsUnsavedBar why={unsaved} saveable={copyTo !== undefined}>{rescue}</WsUnsavedBar>
       <WsGoneBar who={trashed ? who : null} onRestore={item.role === 'edit' ? () => ws.actions.restore(item.id) : undefined} unsent={status.unsent} />
       <WsReadOnlyBar show={!trashed && unsaved !== 'read-only' && (item.role !== 'edit' || status.role === 'read' || status.refused === 'read-only')} organizer={askToEdit} />
@@ -337,7 +341,7 @@ function OpenedPane({ ws, item, opened, reopen }: { ws: Ws; item: WorkspaceItem;
       {/* The page stays open behind a version: nothing's typed into it, and it's as it was on coming back. */}
       {ready
         ? <WsScroll hidden={history.reading !== null} inert={history.reading !== null} onWheel={stayHere} onTouchMove={stayHere} onPointerDown={stayHere}><Page key={opened.round} ws={ws} item={item} session={session} status={status} /></WsScroll>
-        : status.closed === 'unavailable' ? <WsUnavailable /> : offline && <WsOfflineEmpty />}
+        : status.closed === 'unavailable' ? <WsUnavailable /> : offline && <WsOfflineEmpty online={online} onTry={session.retry} />}
       {history.page}
     </WsDoc>
     {history.panel}

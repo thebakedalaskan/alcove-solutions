@@ -131,7 +131,12 @@ export interface Heard { start: number; end: number; text: string; unsure: boole
  * the call and what was said just before (see speechPrompt), so names are spelled right and a clip cut
  * mid-sentence carries on from it.
  */
-export interface SpeechContext { language?: string | undefined; prompt?: string | undefined }
+export interface SpeechContext { language?: string | undefined; prompt?: SpeechPrompt | undefined }
+/**
+ * A prompt as Whisper takes it (`text`), and the names that open it, in its order. What Whisper says back of them at the
+ * start of a clip is taken off it (keepSpeech).
+ */
+export interface SpeechPrompt { text: string; names: string[] }
 
 /** Whisper's codes for its languages ("en", "de", "yue"). It answers 400 to anything else, names included. */
 const LANGUAGE_CODE = /^[a-z]{2,3}$/;
@@ -176,18 +181,21 @@ function endWithin(text: string, bytes: number): string {
  * A prompt as Whisper takes it: the people in the call by name ("Priya Raman, Kofi Mensah."), as many as fit
  * in NAMES_BYTES, then the end of what was said before, up to SAID_BYTES. It reads the prompt as what came
  * before the clip, in the clip's language, so it is only for clips sent with the call's: even names alone,
- * when they read as words ("Measure After"), draw a clip into their language.
+ * when they read as words ("Measure After"), draw a clip into their language. The names it holds come with it,
+ * to take off what Whisper says back of them.
  */
-export function speechPrompt(names: readonly string[], before: string): string {
+export function speechPrompt(names: readonly string[], before: string): SpeechPrompt {
   let named = '';
+  const kept: string[] = [];
   for (const n of new Set(names.map((x) => x.replace(/\s+/g, ' ').trim()).filter(Boolean))) {
     const next = named ? `${named}, ${n}` : n;
     if (utf8(next).length + 1 > NAMES_BYTES) break;
     named = next;
+    kept.push(n);
   }
   const head = named ? `${named}.` : '';
   const said = endWithin(before.replace(/\s+/g, ' ').trim(), SAID_BYTES);
-  return [head, said].filter(Boolean).join(' ');
+  return { text: [head, said].filter(Boolean).join(' '), names: kept };
 }
 
 const Segment = z.object({
@@ -230,6 +238,39 @@ function echoes(told: ReadonlySet<string>, text: string): boolean {
   const own = trigrams(text);
   return own.length >= ECHO_WORDS - 2 && own.filter((t) => told.has(t)).length >= 0.8 * own.length;
 }
+
+/*
+ * Whisper also says back the names its prompt opens with as it starts on a clip, then carries on with what it heard, so
+ * the echo opens a line under the speaker's name ("Priya Raman, Kofi Mensah. I agree."). Those names are taken off, and
+ * a line that was nothing else goes. Words are compared by their letters and digits alone, so Whisper's own punctuation
+ * and capitals don't matter. The end of the words said before, said back at the start of a clip, is left as it is: a
+ * line can rightly open with them ("Push the launch to the end of March? That's too late."), and how long a run has to be
+ * before it's Whisper's and not someone's isn't measured yet.
+ */
+/** A text's words in lower case, each with where it ends in the text. */
+const wordsOf = (s: string): { word: string; end: number }[] => [...s.matchAll(/[\p{L}\p{M}\p{N}']+/gu)].map((m) => ({ word: m[0].toLowerCase(), end: m.index + m[0].length }));
+/** What's left of `text` after its first `n` words, without the punctuation that closed them. */
+const after = (text: string, words: { end: number }[], n: number) => text.slice(words[n - 1]?.end ?? 0).replace(/^[\s.,;:!?…。，、；：！？‐‒–—-]+/u, '');
+/**
+ * `text` without the prompt's names it opens with: two or more of them, one after another as the prompt has them, which
+ * nobody says aloud. One name is kept: people are spoken to by name.
+ */
+function afterNames(names: readonly string[], text: string): string {
+  const said = wordsOf(text);
+  const each = names.map((n) => wordsOf(n).map((w) => w.word));
+  let most = 0;
+  for (let i = 0; i < each.length; i++) {
+    let at = 0;
+    let n = 0;
+    for (const name of each.slice(i)) {
+      if (!name.length || !name.every((w, k) => said[at + k]?.word === w)) break;
+      at += name.length;
+      n++;
+    }
+    if (n >= 2 && at > most) most = at;
+  }
+  return most ? after(text, said, most) : text;
+}
 /**
  * Whisper looping, too rarely to cross the compression ratio: a run of sentences, three words or more in
  * all, said again straight after itself ("Okay. Can you hear me? Okay. Can you hear me?"). The repeat goes.
@@ -250,18 +291,29 @@ function unlooped(text: string): string {
 const unsureOf = (s: z.infer<typeof Segment>) =>
   (s.avg_logprob ?? 0) < UNSURE.logprob || (s.compression_ratio ?? 0) > UNSURE.compression || (s.no_speech_prob ?? 0) > UNSURE.noSpeech;
 
-/** Keeps what was plausibly said: confident, not looping, not a known hallucination, not the prompt said back. */
-function keepSpeech(segments: z.infer<typeof Segment>[], prompt: string | undefined): Heard[] {
-  const told = new Set(prompt ? trigrams(prompt) : []);
+/**
+ * Keeps what was plausibly said: confident, not looping, not a known hallucination, not the prompt said back, and without
+ * the prompt's names at the start of the clip. Whisper says them back only as it starts on a clip, so they're taken off the
+ * first segment it's sure enough of to keep, and nowhere else. `namesTrimmed` says whether they were (1) or not (0).
+ */
+function keepSpeech(segments: z.infer<typeof Segment>[], prompt: SpeechPrompt | undefined): { heard: Heard[]; namesTrimmed: number } {
+  const told = new Set(prompt ? trigrams(prompt.text) : []);
+  let namesTrimmed = 0;
+  const unnamed = (text: string, first: boolean): string => {
+    if (!prompt || !first) return text;
+    const rest = afterNames(prompt.names, text);
+    if (rest !== text) namesTrimmed++;
+    return rest;
+  };
   let previous = '';
   const kept = segments
     .filter((s) => (s.avg_logprob ?? 0) >= -1 && (s.compression_ratio ?? 0) <= 2.4 && !((s.no_speech_prob ?? 0) > 0.6 && (s.avg_logprob ?? 0) < -0.5))
-    .map((s) => ({ start: Math.max(0, s.start), end: Math.max(s.start, s.end), text: unlooped(s.text.replace(/\s+/g, ' ').trim()), unsure: unsureOf(s) }))
+    .map((s, i) => ({ start: Math.max(0, s.start), end: Math.max(s.start, s.end), text: unnamed(unlooped(s.text.replace(/\s+/g, ' ').trim()), i === 0), unsure: unsureOf(s) }))
     .filter((s) => s.text && !CREDITS.test(s.text) && !MARKS_ONLY.test(s.text) && !echoes(told, s.text))
     // A line that only says the one before it again is the same loop, across Whisper's segments.
     .filter((s) => { const p = plain(s.text); const again = p === previous && p.split(' ').length >= 3; previous = p; return !again; });
-  if (SILENCE.has(plain(kept.map((s) => s.text).join(' ')))) return [];
-  return kept;
+  if (SILENCE.has(plain(kept.map((s) => s.text).join(' ')))) return { heard: [], namesTrimmed };
+  return { heard: kept, namesTrimmed };
 }
 
 /**
@@ -272,13 +324,13 @@ function keepSpeech(segments: z.infer<typeof Segment>[], prompt: string | undefi
 export async function transcribe(cfg: Config, wav: Uint8Array, durationMs: number, context: SpeechContext = {}): Promise<{ heard: Heard[]; language: string | null; evidence: InferenceEvidence }> {
   if (!ready(cfg)) throw notConnected('transcribe');
   const language = context.language && LANGUAGE_CODE.test(context.language) ? context.language : undefined;
-  const prompt = context.prompt?.trim() ? endWithin(context.prompt.trim(), PROMPT_BYTES) : undefined;
+  const prompt = context.prompt?.text.trim() ? { ...context.prompt, text: endWithin(context.prompt.text.trim(), PROMPT_BYTES) } : undefined;
   const form = new FormData();
   form.set('model', cfg.NEAR_AI_STT_MODEL);
   form.set('response_format', 'verbose_json');
   form.set('temperature', '0');
   if (language) form.set('language', language);
-  if (prompt) form.set('prompt', prompt);
+  if (prompt) form.set('prompt', prompt.text);
   form.set('file', new Blob([wav.slice()], { type: 'audio/wav' }), 'clip.wav');
   const multipart = new Request(new URL('/v1/audio/transcriptions', cfg.NEAR_AI_STT_URL), { method: 'POST', body: form });
   const body = new Uint8Array(await multipart.arrayBuffer());
@@ -290,15 +342,16 @@ export async function transcribe(cfg: Config, wav: Uint8Array, durationMs: numbe
     const r = Transcription.safeParse(parsed(reply.body));
     if (!r.success) throw new UnavailableError('The notes service sent back something unexpected.', { context: { what: 'transcribe', reply: 'unparseable' } });
     const segments = r.data.segments ?? (r.data.text.trim() ? [{ start: 0, end: durationMs / 1000, text: r.data.text }] : []);
-    const heard = keepSpeech(segments, prompt);
+    const { heard, namesTrimmed } = keepSpeech(segments, prompt);
     const words = heard.reduce((n, h) => n + h.text.split(/\s+/).filter(Boolean).length, 0);
     const sure = segments.length > 0 && segments.reduce((n, s) => n + (s.avg_logprob ?? -9), 0) / segments.length >= SURE.logprob;
     const picked = r.data.language ?? '';
     const detected = !language && LANGUAGE_CODE.test(picked) && words >= SURE.words && sure ? picked : null;
-    // Which language is neither logged nor kept readable: only whether one was sent, found, and the prompt's size.
+    // Which language is neither logged nor kept readable: only whether one was sent, found, and the prompt's size. Of
+    // the names said back from the prompt, only whether they were taken off.
     ilog.debug('clip transcribed', {
       model: v.model, bytes: wav.length, requestBytes: body.length, durationMs, segments: segments.length, kept: heard.length, unsure: heard.filter((h) => h.unsure).length, ms,
-      languageSent: Boolean(language), languageFound: detected !== null, promptBytes: prompt ? utf8(prompt).length : 0
+      languageSent: Boolean(language), languageFound: detected !== null, promptBytes: prompt ? utf8(prompt.text).length : 0, namesTrimmed
     });
     return { heard, language: detected, evidence: v.evidence };
   });

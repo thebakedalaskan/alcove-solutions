@@ -5,13 +5,18 @@
  * its right: Board, Workspace, Notes, Chat and who's here), your side, and the dock with More, and Settings from it.
  */
 import type { Meta } from '@storybook/react-vite';
-import { screen, within } from 'storybook/test';
-import { at, chats, floats, reacts, joins, knocks, leaves, line, lowersHand, mutes, nudges, raisesHand, says, unmutes } from '../../src/api/script';
-import { MORE, clearSide, inCall, light, phone, plays, press, reach, settings } from '../../src/call';
+import { screen, waitFor, within } from 'storybook/test';
+import { tileHintKey } from '~/features/call/layout/view';
+import { at, chats, floats, reacts, joins, knocks, leaves, line, lowersHand, mutes, nudges, opensBoard, raisesHand, says, shares, unmutes } from '../../src/api/script';
+import { MORE, clearSide, inCall, light, narrow, phone, plays, press, reach, settings } from '../../src/call';
 import { talking } from '../../src/browser';
 import { pages, type PageArgs, type PageStory } from '../../src/page';
 import { iso } from '../../src/world/clock';
-import { AIKO, ALL_HANDS, CHECK_IN, DIEGO, EVERYONE, KOFI, KOFI_TALKS, MAYA, ONE_ON_ONE, PRIYA, REVIEW, REVIEW_SUMMARY, REVIEW_TALK, SAM } from './talk';
+import { ME_ID } from '../../src/world/people';
+import { RETRO } from './boards';
+import { notAttested } from '../pages/changes';
+import { close, frameOf, openCallBoard, shareATab, tileOf } from './plays';
+import { AIKO, ALL_HANDS, CHECK_IN, CHECKLIST, DIEGO, EVERYONE, KOFI, KOFI_TALKS, MAYA, ONE_ON_ONE, PRIYA, REVIEW, REVIEW_SUMMARY, REVIEW_TALK, SAM } from './talk';
 
 const meta = { title: 'Calls/In the call', ...pages } satisfies Meta<PageArgs>;
 export default meta;
@@ -86,6 +91,18 @@ export const ChatPhone = { ...phone(Chat), name: 'Chat, on a phone' };
 /** The design review, everyone there and talking it through while notes are on: Notes opens beside the stage by itself on a wide screen. */
 export const FourOfYou = inCall({ scenario: 'call-soon', call: REVIEW, script: { here: REVIEWERS, talk: { lines: REVIEW_TALK }, summary: REVIEW_SUMMARY } });
 export const FourOfYouPhone = phone(FourOfYou);
+/** The shield beside the notes sign: pointing at it says what confidential compute covers in this call, and when this browser verified the hardware. */
+export const Shield = {
+  ...FourOfYou, name: 'The shield',
+  play: plays(clearSide, async ({ canvas, userEvent, step }) => {
+    await step('Point at the shield beside the notes sign', async () => {
+      await userEvent.hover(await canvas.findByRole('button', { name: /^Confidential compute/ }, { timeout: 10000 }));
+    });
+  })
+};
+export const ShieldLight = light(Shield);
+/** The server says it doesn't run in confidential compute yet: the shield states the promise, with nothing verified and no caveat. */
+export const ShieldNotAttested: PageStory = { ...Shield, name: 'The shield, not attested', beforeEach: [notAttested, ...[Shield.beforeEach ?? []].flat()] };
 
 /** A message addressed to Art is highlighted when Chat opens, and viewing it clears its unread attention. */
 export const MentionedInChat = inCall({
@@ -309,3 +326,101 @@ export const FindNobody = {
   ...FourOfYou, name: 'Find someone, nobody by that name',
   play: plays(reach('People'), async ({ userEvent }) => { await userEvent.type(await screen.findByRole('searchbox', { name: 'Find someone in this call' }, { timeout: 8000 }), 'zed'); })
 };
+
+/* ---------- beside what's open ---------- */
+
+/**
+ * Priya shares two seconds in: her screen takes your stage, and the people stand in a column beside it, under the frame's bar.
+ * At the top of the column, level with the bar, Hide the people does what ⇧P does.
+ */
+const SHARING = inCall({ scenario: 'call-soon', call: REVIEW, script: { here: REVIEWERS, cues: at(2, shares(PRIYA, CHECKLIST)), talk: { from: 4, lines: REVIEW_TALK }, summary: REVIEW_SUMMARY } });
+const priyasScreen: Play = async ({ step }) => { await step('Priya shares her screen', async () => { await frameOf('Priya’s screen'); }); };
+export const PeopleBesideWhatsOpen = { ...SHARING, name: 'The people beside what’s open', play: plays(clearSide, priyasScreen) };
+/** On a phone the people are a row of arches over what's open, always: there's no room to hide them into. */
+export const PeopleBesideWhatsOpenPhone = { ...phone(SHARING, 'The people beside what’s open, on a phone'), play: priyasScreen };
+/** Hide the people: they wait small on the horizon by the dock, and Show the people, first there, brings them back. */
+export const HideThePeople = { ...SHARING, name: 'Hide the people', play: plays(clearSide, priyasScreen, press('Hide the people')) };
+/** In a narrow window they're a row of arches over the frame, with Hide the people at its end. */
+export const PeopleBesideWhatsOpenNarrow = { ...narrow(SHARING, 'The people beside what’s open, in a narrow window'), play: plays(clearSide, priyasScreen) };
+export const HideThePeopleNarrow = { ...narrow(SHARING, 'Hide the people, in a narrow window'), play: plays(clearSide, priyasScreen, press('Hide the people')) };
+/** Close says what it does before it's pressed: closed for you, the people fill your stage again, and Priya's tile takes you back. */
+export const CloseSaysThePeopleComeBack = {
+  ...SHARING, name: 'Close, before it’s pressed',
+  play: plays(clearSide, priyasScreen, async ({ userEvent, step }) => {
+    await step('Point at Close', async () => { await userEvent.hover(await within(await frameOf('Priya’s screen')).findByRole('button', { name: 'Close Priya’s screen' })); });
+  })
+};
+/** Your own screen's bar: Stop sharing, for everyone, and Close beside it, which only puts it away for you. (Notes are off here.) */
+export const YourScreensBar = inCall({ scenario: 'call-soon', call: REVIEW, script: { here: REVIEWERS, notes: 'off' } }, {
+  name: 'Your screen’s bar',
+  play: plays(clearSide, async (c) => {
+    await c.step('Share a tab', async () => { await shareATab(c); await frameOf('Your screen'); });
+  })
+});
+/**
+ * Your own screen has Close as well as Stop sharing: Close puts it away for you while everyone still sees it. It's a tile with
+ * the people, who fill your stage again, and the tile brings it back. (Notes are off here, so Share doesn't ask about them.)
+ */
+export const PutYourScreenAway = inCall({ scenario: 'call-soon', call: REVIEW, script: { here: REVIEWERS, notes: 'off' } }, {
+  name: 'Your screen, put away for you',
+  play: plays(clearSide, async (c) => {
+    await c.step('Share a tab, then Close on your screen’s bar', async () => {
+      await shareATab(c);
+      await frameOf('Your screen');
+      await close(c, 'Your screen');
+      await tileOf('Your screen');
+    });
+  })
+});
+
+/** Forgets that this browser was shown what a tile does, so the first tile pointed at says it again. */
+const firstTime = (story: PageStory): PageStory => {
+  const b = story.beforeEach;
+  const forget = () => { for (const k of [tileHintKey(ME_ID), tileHintKey(null)]) localStorage.removeItem(k); };
+  return { ...story, beforeEach: [...(Array.isArray(b) ? b : b ? [b] : []), forget] };
+};
+/** A tile that can be moved, as a pointer finds one: not whoever Alcove picked to lead, nor your own picture in a corner. */
+const movable = () => waitFor(() => {
+  const tile = screen.getAllByRole('group').find((el) => el.classList.contains('can-drag') && !el.classList.contains('is-corner'));
+  if (!tile) throw new Error('No tile can be moved yet.');
+  return tile;
+}, { timeout: 10000 });
+/** The first time you point at a tile, it says what you can do with one: drag it to move it, and pull its corner to make it bigger. */
+export const FirstTimeYouPointAtATile = {
+  ...firstTime(FourOfYou), name: 'The first time you point at a tile',
+  play: plays(clearSide, async ({ userEvent, step }) => {
+    await step('Point at a tile', async () => { await userEvent.hover(await movable()); });
+    await step('It says so, once', async () => { await screen.findByText('Drag a tile to move it', {}, { timeout: 8000 }); });
+  })
+};
+/** Beside what's open, a tile in the column moves, and nothing's made bigger there. */
+export const FirstTimeYouPointAtATileBesideAShare = {
+  ...firstTime(SHARING), name: 'The first time you point at a tile, beside what’s open',
+  play: plays(clearSide, priyasScreen, async ({ userEvent, step }) => {
+    await step('Point at a tile', async () => { await userEvent.hover(await movable()); });
+    await step('It says so, once', async () => { await screen.findByText('Drag a tile to move it', {}, { timeout: 8000 }); });
+  })
+};
+
+/**
+ * Beside a board the people stand in a column: drag someone's tile up or down it, and letting go only puts it there. A press
+ * that doesn't move it opens their ⋯, with Go to and Follow on the board.
+ */
+export const MoveSomeonesTileBesideABoard = inCall({ scenario: 'call-soon', call: REVIEW, script: { here: REVIEWERS, notes: 'off', talk: { lines: REVIEW_TALK, every: 6 }, board: RETRO, cues: at(1, opensBoard(PRIYA, 'retro')) } }, {
+  name: 'Move someone’s tile beside a board',
+  play: async (c) => {
+    await c.step('Open the board in the call, just for you', async () => { await openCallBoard(c, 'Design review'); });
+    await c.step('Drag Priya’s tile down the column, and let go: it moves there, and nothing opens', async () => {
+      const tile = await screen.findByRole('group', { name: /^Priya/ }, { timeout: 10000 });
+      const r = tile.getBoundingClientRect();
+      const x = r.left + r.width / 2;
+      const y = r.top + r.height / 2;
+      await c.userEvent.pointer([
+        { keys: '[MouseLeft>]', target: tile, coords: { clientX: x, clientY: y } },
+        { coords: { clientX: x, clientY: y + 24 } },
+        { coords: { clientX: x, clientY: y + r.height + 24 } },
+        { keys: '[/MouseLeft]' }
+      ]);
+    });
+  }
+});

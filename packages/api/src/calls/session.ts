@@ -9,7 +9,7 @@ import { IDSchema } from '../shared/ids';
 import { type LiveStore } from '../shared/live';
 import { z } from '../shared/zod';
 import { type DocumentRole } from '../workspaces/schema';
-import { type BoardCheck, type BoardOpen, type BoardTimerMinutes, type BoardVotesEach, type BreakoutBoard } from './boards';
+import { type BoardCheck, type BoardOpen, type BoardVotesEach, type BreakoutBoard } from './boards';
 import { type CaptionLanguage } from './captions';
 import { type CaptureDevicePart } from './capture';
 import { type CallAnswer, type CallMoment, type CatchUp, type CatchUpRange, type CatchUpWindow } from './catchup';
@@ -121,8 +121,17 @@ export type CaptionTranslation = z.infer<typeof CaptionTranslationSchema>;
 export interface LineAudio { audio: Blob; from: number; seconds: number }
 
 
-/** Rooms to open: who goes where (invited people, by email), for how long, and what they have to work on. */
-export interface BreakoutPlan { rooms: { name: string; emails: string[] }[]; minutes: number; board: BreakoutBoard }
+/**
+ * Someone to send to a room: someone invited by address, so they land in it from any device, or anyone else in the call (a guest
+ * with the link) by seat (`CallParticipant.seat`).
+ */
+export type RoomPerson = { email: string; seat?: undefined } | { seat: string; email?: undefined };
+
+/**
+ * Rooms to open: who goes where (people invited by address, anyone else in the call by seat), for how long, what they have to
+ * work on, and the room the organizer goes to as they open (`visit`, by its place in `rooms`), if any.
+ */
+export interface BreakoutPlan { rooms: { name: string; emails: string[]; seats?: string[] | undefined }[]; minutes: number; board: BreakoutBoard; visit?: number | undefined }
 
 
 export interface CallSession extends LiveStore<CallState> {
@@ -243,7 +252,7 @@ export interface CallSession extends LiveStore<CallState> {
   setPointing(on: boolean): Promise<void>;
   /** Whoever hosts: puts one participant on everyone's main stage, or nobody (null). */
   setSpotlight(participantId: string | null): void;
-  /** Organizer only: splits the invited people into rooms for a while. */
+  /** Organizer only: splits the people in the call into rooms for a while, and goes to one of them as they open if the plan says so. */
   openRooms(plan: BreakoutPlan): void;
   /** Whoever hosts: brings everyone back from the rooms now. */
   closeRooms(): void;
@@ -253,8 +262,8 @@ export interface CallSession extends LiveStore<CallState> {
   visitRoom(roomId: string | null): void;
   /** Organizer only: renames an open room. */
   renameRoom(roomId: string, name: string): void;
-  /** Organizer only: sends an invited person (by email) to another open room, or back to the main room (null). Their keys move with them. */
-  moveToRoom(email: string, roomId: string | null): void;
+  /** Organizer only: sends someone to another open room, or back to the main room (null). Their keys move with them. */
+  moveToRoom(who: RoomPerson, roomId: string | null): void;
   /**
    * Organizer only: pauses notes in one open room while the call's notes are on, or carries on there (`paused` false).
    * Nothing said in a paused room is transcribed or sent to the AI, and the server refuses whatever arrives for it.
@@ -367,14 +376,6 @@ export interface CallSession extends LiveStore<CallState> {
   watchIdeas(): () => void;
   /** Ideas from the call that were added to the board, or put aside: they go for everyone in that part of the call. */
   ideasDone(ids: string[]): Promise<void>;
-  /**
-   * Anyone who can edit the board open here: a timer everyone there sees count down, of 3, 5 or 10 minutes from now. While
-   * one is still running, starting another starts it over, and is only for whoever started it or the organizer, or while
-   * neither of them is in the call, anyone who can edit the board.
-   */
-  startTimer(minutes: BoardTimerMinutes): Promise<void>;
-  /** Whoever started it, or the organizer, or while neither is in the call anyone who can edit the board: it goes for everyone. */
-  stopTimer(): Promise<void>;
   /**
    * Anyone who can edit the board open here: a vote on one of its frames, or on every sticky on it with no frame, with `per`
    * votes each. Nobody is told a count until it ends. Never on top of another, nor of one whose results haven't been cleared.

@@ -10,22 +10,39 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { log } from '~/lib/log';
 import { callName } from '~/lib/people';
 import { q, useDocumentShare, useMention } from '~/lib/queries';
-import { shortDay } from '~/lib/time';
 import type { Ws } from './context';
+import { dateLabel, isoDay } from './editor/blocks/dates';
 import type { MentionItem, MentionSection, Rect } from './editor/types';
+import { dateOf } from './live/dates';
 import { hashId, withEarlier } from './ids';
 import { documentsIn, nameOf } from './tree';
 
 const tlog = log.child({ component: 'tags' });
 
-/** The dates `@` offers: today, tomorrow and the next Friday after that. */
+/** The dates `@` offers by themselves: today, tomorrow and the next Friday after that. */
 export function dateChoices(now: number): { label: string; date: string }[] {
   const today = new Date(now);
   const day = (add: number) => new Date(today.getFullYear(), today.getMonth(), today.getDate() + add);
-  const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   const toFriday = (12 - today.getDay()) % 7;
-  const friday = day(toFriday > 1 ? toFriday : toFriday + 7);
-  return [{ label: 'Today', date: iso(day(0)) }, { label: 'Tomorrow', date: iso(day(1)) }, { label: shortDay(friday), date: iso(friday) }];
+  const friday = isoDay(day(toFriday > 1 ? toFriday : toFriday + 7));
+  return [{ label: 'Today', date: isoDay(day(0)) }, { label: 'Tomorrow', date: isoDay(day(1)) }, { label: dateLabel(friday, today), date: friday }];
+}
+
+/**
+ * What `@` offers under Dates for what's typed after it: the day it reads as (12dec, friday, 2027-02-05) first, then the
+ * dates it offers by themselves that it finds, then Pick a date…, for any day at all, which the editor opens in the list's
+ * place. A comment or a caption takes the dates as words, and has no calendar.
+ */
+export function datesFor(query: string, now: number): MentionItem[] {
+  const today = new Date(now);
+  const words = query.toLowerCase();
+  const has = (s: string) => s.toLowerCase().includes(words);
+  const typed = words ? dateOf(words, today) : null;
+  const dates: MentionItem[] = [
+    ...(typed ? [{ kind: 'date', date: typed, label: dateLabel(typed, today) } satisfies MentionItem] : []),
+    ...dateChoices(now).filter((d) => d.date !== typed && has(d.label)).map((d): MentionItem => ({ kind: 'date', ...d }))
+  ];
+  return dates.length > 0 || ['pick a date', 'date', 'calendar'].some((w) => w.startsWith(words)) ? [...dates, { kind: 'calendar' }] : dates;
 }
 
 /** Someone as a tag shows them: never by their address, which a tag would carry to everyone who reads it. */
@@ -115,7 +132,7 @@ export function useTags(ws: Ws, item: WorkspaceItem, now: number) {
       { title: ws.spaceName, items: pick(members) },
       { title: team?.name ?? 'Your company', items: pick(company) },
       { title: 'Documents', items: documents },
-      { title: 'Dates', items: dateChoices(now).filter((d) => has(d.label)).map((d) => ({ kind: 'date', ...d })) }
+      { title: 'Dates', items: datesFor(query, now) }
     ];
     return out;
   }, [ws.tree, ws.spaceName, item.id, inCall, invited, members, company, team?.name, myEmail, canOpen, now]);

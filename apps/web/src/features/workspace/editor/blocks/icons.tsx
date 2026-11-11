@@ -1,5 +1,6 @@
 /*
- * The icons drawn inside the text: a tick in a checkbox, the fold on a toggle, the calendar in a date. There can be
+ * The icons drawn inside the text: a tick in a checkbox, the fold on a toggle, the calendar in a date, the arrow on code's
+ * language. There can be
  * hundreds, ProseMirror builds them outside React, and they never change, so each is drawn once with `Icon` when the
  * editor loads and copied from there.
  */
@@ -9,7 +10,7 @@ import { createRoot } from 'react-dom/client';
 
 export const CALLOUT_ICONS = ['bulb', 'megaphone', 'alert'] as const satisfies readonly IconName[];
 
-const SIZES: readonly (readonly [IconName, number])[] = [['check', 13], ['chevron', 14], ['cal', 13], ['fileText', 13], ['comment', 14], ...CALLOUT_ICONS.map((name) => [name, 17] as const)];
+const SIZES: readonly (readonly [IconName, number])[] = [['check', 13], ['chevron', 14], ['cal', 13], ['fileText', 13], ['comment', 14], ['down', 12], ...CALLOUT_ICONS.map((name) => [name, 17] as const)];
 
 const drawn = new Map<string, Element>();
 

@@ -13,7 +13,8 @@ export const CallNotificationTargetSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('chat'), message: ChatId, root: ChatId.nullable() }).readonly(),
   z.object({ type: z.literal('attention'), section: z.enum(['hands', 'questions']), id: IDSchema }).readonly(),
   z.object({ type: z.literal('admission'), identity: CallIdentity }).readonly(),
-  z.object({ type: z.literal('timer'), timer: z.enum(['call', 'board']), id: z.string().min(1).max(200) }).readonly(),
+  /** The call's one countdown. A board's timer, which a notification from an older release names, has gone, and reads as this. */
+  z.object({ type: z.literal('timer'), id: z.string().min(1).max(200) }).readonly(),
   z.object({ type: z.literal('capture'), id: IDSchema }).readonly()
 ]);
 export type CallNotificationTarget = z.infer<typeof CallNotificationTargetSchema>;

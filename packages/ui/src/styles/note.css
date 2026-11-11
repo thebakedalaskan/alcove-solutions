@@ -5,7 +5,9 @@
  * same evening, with its calls on the line. Classes start with nd-.
  */
 .nd {
-  --hz: calc(8px + clamp(158px, 18.5vh, 196px));
+  /* The band of sky the head stands in, and under it the shared screens, when a note has them (--nd-stage, measured). */
+  --nd-sky-h: calc(8px + clamp(158px, 18.5vh, 196px));
+  --hz: calc(var(--nd-sky-h) + var(--nd-stage, 0px));
   --nd-up: 38px;  /* how far above the top of the strip the line sits */
   --nd-hair: color-mix(in oklch, var(--ink) 13%, transparent);
   --nd-bed: var(--surface);
@@ -42,11 +44,16 @@
 .nd[data-view="quiet"] .hz-chop { display: none; }
 /* What the keyboard lands on stays clear of the strip above and the bar below. */
 html:has(.nd) { scroll-padding-block: 92px 92px; }
+/* Except Ask's own caret, which sits in that band at the foot of the window: kept clear of it, every key would scroll the page. */
+html:has(.nd-ask input:focus) { scroll-padding-bottom: 0; }
+/* And, beside the note, the boxes in its own scroll area (Your notes, the shared notes, what would go to them), which
+   keeps their caret in sight itself and can end in that band: the page can't move a column that sticks. */
+@media (min-width: 1181px) { html:has(.nd-side :is(textarea, input):focus) { scroll-padding-bottom: 0; } }
 /* A toast sits above the Ask bar, not on it. */
 body:has(.nd-askdock) .ac-toasts:not(.on-stage) { bottom: 92px; }
 
 /* ------------------------------------------------------------ the band */
-.nd-head { position: relative; height: calc(var(--hz) - 30px - var(--nd-up)); }
+.nd-head { position: relative; height: calc(var(--nd-sky-h) - 30px - var(--nd-up)); }
 .nd-top { display: flex; align-items: center; gap: 12px; min-height: 40px; padding-right: var(--top-room); }
 .shell.is-bare .nd-top { padding-left: max(0px, calc(72px - var(--page-x))); }
 .nd-title { display: flex; align-items: baseline; gap: 10px; min-width: 0; margin-right: auto; }
@@ -188,17 +195,24 @@ body:has(.nd-askdock) .ac-toasts:not(.on-stage) { bottom: 92px; }
 .nd-s.is-decide > h2 { color: var(--rose); }
 .nd-s.is-follow > h2 { color: var(--horizon); }
 /*
- * The boards open in the call, under the summary (NoteBoard, NoteRoomBoard). The call's: a live picture of all of it beside
- * its name, what's on it and who can open it, or above them on a phone; the whole card opens it. Each breakout room's: a card
- * side by side with the others', its picture on top, folding to a stack on a phone; one click opens it.
+ * The boards open in the call, under the summary (NoteBoard, NoteRoomBoard), sized by the room their list has rather than
+ * by the window (a container query): the note shares the page with Your notes, and on a wide screen with the transcript. The
+ * call's: a live picture of all of it, above its name, what's on it and who can open it, or beside them with a share of the
+ * width once the card is 600px wide; the whole card opens it. Each breakout room's: a card beside the others', two or three
+ * across as there's room (a stack in a narrow column), its picture on top in the call card's shape; one click opens it.
  */
+.nd-boards, .nd-rboards { container: nd-boards / inline-size; }
 .nd-boards { display: grid; gap: 12px; }
-.nd-board { position: relative; display: grid; grid-template-columns: minmax(200px, 300px) minmax(0, 1fr); align-items: center; gap: 22px; padding: 12px; border-radius: var(--radius-lg); background: var(--surface); box-shadow: 0 0 0 1px var(--nd-hair); transition: box-shadow var(--duration-1) var(--ease-out); }
+.nd-board { position: relative; display: grid; grid-template-columns: minmax(0, 1fr); align-items: center; gap: 12px; padding: 12px; border-radius: var(--radius-lg); background: var(--surface); box-shadow: 0 0 0 1px var(--nd-hair); transition: box-shadow var(--duration-1) var(--ease-out); }
 .nd-board:hover { box-shadow: 0 0 0 1px color-mix(in oklch, var(--ink) 24%, transparent), var(--shadow-1); }
 .nd-board:has(.nd-board-open:focus-visible) { box-shadow: 0 0 0 2px var(--horizon); }
 .nd-board-pic { position: relative; display: block; overflow: hidden; aspect-ratio: 5 / 3; border-radius: var(--radius-md); background: var(--bd-ground); box-shadow: inset 0 0 0 1px var(--nd-hair); }
 .nd-board-pic > .nd-board-mini { position: absolute; left: 0; top: 0; display: block; transform-origin: 0 0; pointer-events: none; }
-.nd-board-t { display: grid; justify-items: start; gap: 6px; min-width: 0; padding-right: 8px; }
+.nd-board-t { display: grid; justify-items: start; gap: 6px; min-width: 0; padding: 0 4px 4px; }
+@container nd-boards (min-width: 600px) {
+  .nd-board { grid-template-columns: minmax(0, 1.2fr) minmax(220px, 1fr); gap: 22px; }
+  .nd-board-t { padding: 0 8px 0 0; }
+}
 .nd-board-t h3 { font: 600 17px/1.3 var(--font-sans); color: var(--ink); }
 .nd-board-t p { max-width: 36em; font: 400 14.5px/1.5 var(--font-sans); color: var(--ink-2); text-wrap: pretty; }
 .nd-board-open { display: inline-flex; align-items: center; gap: 6px; margin-top: 6px; border-radius: 6px; font: 600 14.5px/1.3 var(--font-sans); color: var(--sun-text); outline: none; }
@@ -207,21 +221,16 @@ body:has(.nd-askdock) .ac-toasts:not(.on-stage) { bottom: 92px; }
 .nd-board-open .ac-i { transition: transform var(--duration-1) var(--ease-out); }
 .nd-rboards { display: grid; gap: 10px; }
 .nd-boards + .nd-rboards { margin-top: 18px; }
-.nd-rboards-h { font: 500 12px/1.3 var(--font-mono); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); }
-.nd-rboards-g { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
+.nd-rboards-h { font: 500 13.5px/1.3 var(--font-sans); color: var(--ink-2); }
+.nd-rboards-g { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+@container nd-boards (min-width: 440px) { .nd-rboards-g { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@container nd-boards (min-width: 760px) { .nd-rboards-g { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 .nd-rboard { display: grid; align-content: start; min-width: 0; padding: 10px; border-radius: var(--radius-lg); background: var(--surface); box-shadow: 0 0 0 1px var(--nd-hair); text-align: left; transition: box-shadow var(--duration-1) var(--ease-out); }
 .nd-rboard:hover { box-shadow: 0 0 0 1px color-mix(in oklch, var(--ink) 24%, transparent), var(--shadow-1); }
 .nd-rboard:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--horizon); }
-.nd-rboard .nd-board-pic { aspect-ratio: 9 / 4; }
 .nd-rboard b { margin-top: 10px; font: 600 14.5px/1.3 var(--font-sans); color: var(--ink); }
 .nd-rboard .ln { margin-top: 3px; font: 400 13px/1.4 var(--font-sans); color: var(--ink-2); }
 .nd-rboard .rc { margin-top: 4px; font: 400 12.5px/1.4 var(--font-sans); color: var(--ink-3); }
-@media (max-width: 640px) {
-  .nd-board { grid-template-columns: minmax(0, 1fr); gap: 12px; }
-  .nd-board-t { padding: 0 4px 4px; }
-  .nd-rboards-g { grid-template-columns: minmax(0, 1fr); }
-  .nd-rboard .nd-board-pic { aspect-ratio: 5 / 2; }
-}
 
 /* What was worked on in the call (WsWorkedOn): its rows between the note's own hairlines. */
 .nd-worked .ws-ndocs, .nd-worked .ws-ndoc { border-color: var(--nd-hair); }
@@ -318,6 +327,10 @@ body:has(.nd-askdock) .ac-toasts:not(.on-stage) { bottom: 92px; }
 .nd-lines.is-nameless .nd-la { display: none; }
 .nd-lt { position: relative; display: block; width: 50px; border-radius: 4px; font: 500 13px/22px var(--font-sans); font-variant-numeric: tabular-nums; color: var(--ink-3); text-align: left; }
 button.nd-lt:hover { color: var(--ink); }
+/* A line that goes to its moment when pressed, as its time does: the time darkens while the line is pointed at. */
+.nd-l.is-press { cursor: pointer; }
+.nd-l.is-press .nd-lx { cursor: auto; }
+.nd-l.is-press:hover:not(.is-on) .nd-lt:not(:hover) { color: var(--ink-2); }
 .nd-l.is-on .nd-lt { color: var(--sun-text); }
 .nd-lk { position: absolute; right: 2px; top: 8px; width: 7px; height: 7px; border-radius: 50%; background: var(--horizon); }
 .nd-lk.is-decide { width: 6.5px; height: 6.5px; border-radius: 1.5px; background: var(--rose); transform: rotate(45deg); }
@@ -392,7 +405,8 @@ button.nd-lt:hover { color: var(--ink); }
 
 /* ------------------------------------------------------------ being written, nothing said, and gone */
 .nd-writing { padding-top: 4px; }
-.nd-read:empty + .nd-said > .nd-s:first-child, .nd-read > .nd-s:first-child { margin-top: 0; }
+/* (Where you write has a place between the two, for one column, so they're siblings but not next to each other.) */
+.nd-read:empty ~ .nd-said > .nd-s:first-child, .nd-read > .nd-s:first-child { margin-top: 0; }
 .nd-writing-t, .nd-quiet h2 { max-width: 40em; font: 400 clamp(17px, 1.34vw, 19px)/1.58 var(--font-sans); color: var(--ink); text-wrap: pretty; }
 .nd-steps { display: grid; margin-top: 20px; max-width: 460px; }
 .nd-steps li { display: flex; align-items: center; gap: 12px; min-height: 44px; border-top: 1px solid var(--nd-hair); font: 400 15px/1.3 var(--font-sans); color: var(--ink-3); }
@@ -423,26 +437,29 @@ button.nd-lt:hover { color: var(--ink); }
 .nd-gone li .ac-i { flex: none; color: var(--sun-text); }
 .nd-gone .ac-btn { margin-top: 14px; }
 /* Deleted: the note goes before saying what went. */
-.nd.is-going .nd-head, .nd.is-going .nd-hz, .nd.is-going .nd-cols { animation: nd-going 520ms var(--ease-in) forwards; }
+.nd.is-going .nd-head, .nd.is-going .nd-replay, .nd.is-going .nd-hz, .nd.is-going .nd-cols { animation: nd-going 520ms var(--ease-in) forwards; }
 @keyframes nd-going { to { opacity: 0; transform: translateY(-6px); } }
 
 /* ------------------------------------------------------------ ask */
 /* A slim bar that stays at the bottom, with the page fading out under it. */
 .nd-askdock { position: sticky; bottom: 24px; z-index: 12; margin-top: auto; }
 /* Room at the end of the note for the suggestions, which sit above the bar: AskBar sets --nd-chips to their height and the gap above the bar (one row until it has measured them). */
-.nd-said, .nd-read:not(:has(+ .nd-said)) { padding-bottom: calc(18px + var(--nd-chips, 42px)); }
-.nd-up { position: absolute; left: 0; right: 0; bottom: calc(100% + 8px); display: grid; gap: 8px; }
+.nd-said, .nd-read:not(:has(~ .nd-said)) { padding-bottom: calc(18px + var(--nd-chips, 42px)); }
+/* The room above the bar is the note's until something shows in it: pointing there neither catches the pointer nor counts as over the bar. */
+.nd-up { position: absolute; left: 0; right: 0; bottom: calc(100% + 8px); display: grid; gap: 8px; pointer-events: none; }
+.nd-up > * { pointer-events: auto; }
 .nd-askdock::before { content: ""; position: absolute; left: -16px; right: -16px; bottom: -24px; height: 92px; background: linear-gradient(to bottom, transparent, color-mix(in oklch, var(--nd-fade) 92%, transparent) 58%); -webkit-mask-image: linear-gradient(to right, transparent, #000 16px, #000 calc(100% - 16px), transparent); mask-image: linear-gradient(to right, transparent, #000 16px, #000 calc(100% - 16px), transparent); pointer-events: none; z-index: -1; }
 .nd-ask { display: flex; align-items: center; gap: 10px; height: 48px; padding: 0 6px 0 16px; border-radius: var(--radius-pill); background: var(--surface-raised); box-shadow: 0 0 0 1px var(--line), 0 18px 40px -22px rgb(0 0 0 / .55); color: var(--ink-3); }
 .nd-ask:focus-within { box-shadow: 0 0 0 1.5px var(--focus), 0 18px 40px -22px rgb(0 0 0 / .55); }
-.nd-ask input { flex: 1; min-width: 0; border: 0; outline: 0; background: none; font: 400 15px/1 var(--font-sans); color: var(--ink); }
+/* Its own line box, as tall as the font's, as "Write something for yourself" has: a caret sized from it is the text's height. */
+.nd-ask input { flex: 1; min-width: 0; border: 0; outline: 0; background: none; font: 400 15px/20px var(--font-sans); color: var(--ink); }
 .nd-ask input::placeholder { color: var(--ink-2); }
 .nd-only { display: inline-flex; align-items: center; gap: 5px; flex: none; font: 500 12.5px/1 var(--font-sans); color: var(--ink-3); white-space: nowrap; }
 .nd-ask-go.ac-icon-btn { background: color-mix(in oklch, var(--ink) 11%, transparent); color: var(--ink); }
 .nd-ask-go.ac-icon-btn:hover { background: color-mix(in oklch, var(--ink) 17%, transparent); }
-.nd-suggs { display: flex; flex-wrap: wrap; gap: 6px; }
-/* Always laid out, so their height is known; out of sight and reach until the end of the note or the bar is in use. */
-.nd-suggs:not(.is-on) { visibility: hidden; pointer-events: none; }
+.nd-suggs { display: flex; flex-wrap: wrap; gap: 6px; transition: opacity var(--duration-1) var(--ease-out), visibility var(--duration-1); }
+/* Always laid out, so their height is known; out of sight and reach until the end of the note, or the bar is pointed at or in use. */
+.nd-suggs:not(.is-on) { opacity: 0; visibility: hidden; pointer-events: none; }
 .nd-suggs[hidden] { display: none; }
 .nd-sugg { height: 34px; padding: 0 13px; border-radius: var(--radius-pill); background: var(--surface-raised); box-shadow: 0 0 0 1px var(--line); font: 500 13.5px/1 var(--font-sans); color: var(--ink); transition: background-color var(--duration-1); }
 .nd-sugg:hover { background: color-mix(in oklch, var(--ink) 15%, var(--surface-raised)); }
@@ -462,10 +479,16 @@ button.nd-lt:hover { color: var(--ink); }
 .nd-ans-f .own-keep .ac-scope { display: none; }
 
 /* ------------------------------------------------------------ beside the note */
-.nd-side { position: sticky; top: var(--nd-stay, 84px); align-self: start; display: grid; row-gap: 30px; min-width: 0; padding-bottom: 24px; }
+/* Its own scroll area under the line, as tall as the window below it: where you write stays in reach however long the
+   note is, and scrolling one column never moves the other. Room at its edges for focus rings. */
+.nd-side { position: sticky; top: 84px; align-self: start; display: grid; row-gap: 30px; min-width: 0; max-height: calc(100vh - 100px); max-height: calc(100dvh - 100px); margin: -4px -6px 0; padding: 4px 6px 24px; overflow-y: auto; overscroll-behavior: contain; scroll-padding-block: 12px 24px; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+/* Where you write (Your notes, then the shared notes), and the rest. */
+.nd-yours, .nd-about { display: grid; row-gap: 30px; min-width: 0; }
+/* The two places where you write is put (whereYouWrite.ts): beside the note, and before the transcript in one column. Neither draws a box. */
+.nd-spot { display: contents; }
 .nd-own.hm-panel { padding: 0 16px 14px; }
 .nd-own .hm-panel-h { height: 48px; }
-.nd-own .own-list { display: grid; gap: 0; max-height: 460px; margin: 0 -4px; padding: 0 4px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+.nd-own .own-list { display: grid; gap: 0; }
 .nd-own .own-row, .nd-own .own-row + .own-row { grid-template-columns: 18px minmax(0, 1fr); column-gap: 9px; padding: 9px 0; border-top: 1px solid var(--line); border-radius: 0; }
 .nd-own .own-row.is-picked { background: none; box-shadow: none; }
 .nd-own .own-mk, .nd-own .own-row.is-bookmark .own-mk { width: 18px; height: 20px; background: none; color: var(--ink-3); }
@@ -476,7 +499,8 @@ button.nd-lt:hover { color: var(--ink); }
 .nd-own .own-m .hm-moment { margin-left: 0; height: 24px; }
 .nd-own .own-acts { opacity: 1; }
 .nd-own .own-acts .ac-icon-btn { width: 26px; height: 26px; opacity: 0; transition: opacity var(--duration-1), background-color var(--duration-1), color var(--duration-1); }
-.nd-own .own-acts .own-share, .nd-own .own-row:hover .own-acts .ac-icon-btn, .nd-own .own-acts .ac-icon-btn:focus-visible { opacity: 1; }
+/* At rest a row shows no actions: Add to the shared notes, Edit and Delete show together on hover or focus, and always on touch screens. */
+.nd-own .own-row:hover .own-acts .ac-icon-btn, .nd-own .own-row:focus-within .own-acts .ac-icon-btn { opacity: 1; }
 @media (hover: none) { .nd-own .own-acts .ac-icon-btn { opacity: 1; } }
 .nd-own .own-compose { grid-template-columns: minmax(0, 1fr) auto; align-items: center; min-height: 40px; margin-top: 6px; padding: 3px 5px 3px 12px; border-radius: 13px; }
 .nd-own .own-compose textarea { min-height: 20px; padding: 0; font: 400 14.5px/20px var(--font-sans); }
@@ -484,7 +508,7 @@ button.nd-lt:hover { color: var(--ink); }
 .nd-own .own-compose:has(textarea:not(:placeholder-shown)) .ac-btn { background: color-mix(in oklch, var(--ink) 12%, transparent); color: var(--ink); opacity: 1; }
 .nd-own-e { padding: 2px 0 6px; font: 400 14px/1.45 var(--font-sans); color: var(--ink-3); text-wrap: pretty; }
 /* What would go to the shared notes, in place of the box you write in. */
-.nd-own .own-pv { gap: 9px; margin-top: 6px; padding: 12px 0 0; scroll-margin-block: 92px 24px; border-top: 1px solid var(--line); border-radius: 0; background: none; box-shadow: none; animation: ac-rise var(--duration-2) var(--ease-out) both; }
+.nd-own .own-pv { gap: 9px; margin-top: 6px; padding: 12px 0 0; scroll-margin-block: 12px 24px; border-top: 1px solid var(--line); border-radius: 0; background: none; box-shadow: none; animation: ac-rise var(--duration-2) var(--ease-out) both; }
 .nd-own .own-pv .h { flex-wrap: wrap; gap: 4px 10px; font: 600 13.5px/1.3 var(--font-sans); }
 .nd-own .own-pv .ac-scope { background: none; padding: 0; color: var(--ink-3); font: 500 12.5px/1 var(--font-sans); }
 .nd-own .own-pv textarea { min-height: 72px; resize: none; border-radius: 11px; font: 400 14.5px/21px var(--font-sans); }
@@ -494,6 +518,15 @@ button.nd-lt:hover { color: var(--ink); }
 .nd-own .own-pv dt, .nd-own .own-pv dt:not(:first-child) { margin: 0; font-size: 13px; }
 .nd-since { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 11px; background: color-mix(in oklch, var(--sun-text) 11%, transparent); font: 400 13px/1.35 var(--font-sans); color: var(--ink); }
 .nd-since .ac-avatar { --ring: transparent; }
+/* The shared notes' own box, on the water under what's in them: who reads it first, then what to write. */
+.nd-shared-box.own-compose { grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 6px 8px; margin-top: 10px; padding: 9px 5px 4px 12px; border-radius: 13px; }
+.nd-shared-box .to { min-width: 0; padding-right: 7px; font: 400 12.5px/1.35 var(--font-sans); color: var(--ink-2); }
+.nd-shared-box .to .ac-faces { flex: none; }
+.nd-shared-box .to .bad { color: var(--caution); }
+.nd-shared-box textarea { min-height: 20px; padding: 0; font: 400 14.5px/20px var(--font-sans); }
+.nd-shared-box .ac-btn { width: 30px; height: 30px; background: none; box-shadow: none; color: var(--ink-3); }
+.nd-shared-box:has(textarea:not(:placeholder-shown)) .ac-btn { background: color-mix(in oklch, var(--ink) 12%, transparent); color: var(--ink); opacity: 1; }
+.nd-shared-box .nd-since { grid-column: 1 / -1; margin-bottom: 4px; }
 
 .nd-b { min-width: 0; }
 .nd-b > h2 { padding-bottom: 10px; }
@@ -590,9 +623,7 @@ button.nd-lt:hover { color: var(--ink); }
   /* Either column can finish last: both keep its controls above Ask's floating suggestions. */
   .nd-main:has(> .nd-askdock) > .nd-read { padding-bottom: 60px; }
   .nd-said .nd-s:first-child { margin-top: 0; }
-  /* A shared screen's replay spans both, over them. */
-  .nd-main:has(> .nd-replay) { grid-template-rows: auto 1fr auto; }
-  .nd-replay, .nd-askdock, .nd-end-mark { grid-column: 1 / -1; }
+  .nd-askdock, .nd-end-mark { grid-column: 1 / -1; }
 }
 
 /* Narrower: everything in one column, and what's beside the note follows it, two across. */
@@ -601,18 +632,23 @@ button.nd-lt:hover { color: var(--ink); }
   .nd-cols { grid-template-columns: minmax(0, 1fr); }
   /* One column: the bar spans all of it, so it stays at the bottom through what's beside the note too. */
   .nd-main { display: contents; }
-  .nd-replay { grid-area: 1 / 1; min-width: 0; }
   .nd-read { grid-area: 2 / 1; min-width: 0; }
-  .nd-said { grid-area: 3 / 1; min-width: 0; padding-bottom: 0; }
-  .nd-side { grid-area: 4 / 1; position: static; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 28px; align-items: start; padding: 34px 0 calc(70px + var(--nd-chips, 42px)); }
-  .nd-end-mark { grid-area: 4 / 1; align-self: end; }
-  .nd-askdock { grid-area: 1 / 1 / 5 / 2; align-self: end; margin-top: 0; }
+  /* Where you write comes before the transcript, two across, so it's in reach without passing all of it; the rest follows it. */
+  .nd-side { display: contents; }
+  .nd-yours { grid-area: 3 / 1; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 28px; align-items: start; padding-top: 34px; }
+  /* Alone (the shared notes show once the notes are written, or once something's added to them), Your notes takes the row. */
+  .nd-yours > :only-child { grid-column: 1 / -1; }
+  .nd-own .own-pv { scroll-margin-block: 92px 24px; }
+  .nd-said { grid-area: 4 / 1; min-width: 0; padding-bottom: 0; }
+  .nd-about { grid-area: 5 / 1; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 28px; align-items: start; padding: 34px 0 calc(70px + var(--nd-chips, 42px)); }
+  .nd-end-mark { grid-area: 5 / 1; align-self: end; }
+  .nd-askdock { grid-area: 1 / 1 / 6 / 2; align-self: end; margin-top: 0; }
 }
 
 @media (max-width: 860px) {
-  .nd { --hz: 158px; --nd-side: 100%; }
+  .nd { --nd-sky-h: 158px; --nd-side: 100%; }
   .nd .dusk-in { padding: 6px 16px 28px; }
-  .nd-head { height: calc(var(--hz) - 6px - var(--nd-up)); }
+  .nd-head { height: calc(var(--nd-sky-h) - 6px - var(--nd-up)); }
   .nd-top { gap: 2px; padding-right: 0; }
   .nd-title { flex: 1 1 auto; gap: 8px; }
   .nd-title h1 { font-size: 25px; }
@@ -633,7 +669,9 @@ button.nd-lt:hover { color: var(--ink); }
   .nd-hz.is-silent .nd-ch.is-on { left: 0; }
   .nd-m > i { width: 8.5px; height: 8.5px; box-shadow: 0 0 0 2px var(--nd-bed); }
   .nd-m.is-decide > i { width: 8px; height: 8px; }
-  .nd-side { grid-template-columns: minmax(0, 1fr); row-gap: 28px; padding-bottom: calc(106px + var(--nd-chips, 42px)); }
+  .nd-yours, .nd-about { grid-template-columns: minmax(0, 1fr); row-gap: 28px; }
+  .nd-yours { padding-top: 28px; }
+  .nd-about { padding-bottom: calc(106px + var(--nd-chips, 42px)); }
   .nd-chapters { display: block; }
   .nd-own .own-pv { scroll-margin-block: 80px 190px; }
   .nd-r { grid-template-columns: 28px minmax(0, 1fr) 30px; row-gap: 8px; }
@@ -662,7 +700,9 @@ button.nd-lt:hover { color: var(--ink); }
   .nd-l .nd-la { grid-column: 1; grid-row: 1 / 3; }
   .nd-l .nd-lb { grid-column: 2; }
   .nd-l .nd-lx { grid-column: 3; grid-row: 1 / 3; flex-direction: column; display: none; opacity: 1; }
-  .nd-l.is-on .nd-lx, .nd-lx:has(.is-on) { display: flex; }
+  /* One line shows its tools: the one pressed, while the call plays on from it, until another is pressed or it's scrolled
+     out of sight; with none, the line being said. A ticked bookmark always shows. */
+  .nd-l.is-picked .nd-lx, .nd-lines:not(:has(.nd-l.is-picked)) .nd-l.is-on .nd-lx, .nd-lx:has(.is-on) { display: flex; }
   /* A room's lines are never lit, so what can be done with one stays under it. */
   .nd-lines.is-room .nd-l .nd-lx, .nd-lines.is-room.is-nameless .nd-l .nd-lx { display: flex; grid-column: 2; grid-row: auto; flex-direction: row; justify-content: flex-start; margin: 2px 0 0 -6px; }
   .nd-lines.is-room.is-nameless .nd-l .nd-lx { grid-column: 1; }
@@ -693,8 +733,17 @@ button.nd-lt:hover { color: var(--ink); }
 .nd-redo-p { font: 400 14.5px/1.5 var(--font-sans); color: var(--ink-2); text-wrap: pretty; }
 .nd-redo-f { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 6px; }
 
-/* The shared screens above the notes: playing from a frame comes up to them, clear of the horizon held at the top. */
-.nd-replay { margin-bottom: 16px; scroll-margin-top: 124px; outline: none; }
+/*
+ * The shared screens, on the sky over the line, which runs along their foot as their seek bar and still sticks to the top
+ * as you read, clear of the picture. As wide as the note's own column under them (.nd-cols), and never taller than about
+ * half the window, keeping its shape: on a wide window it's narrower than the column. The sky grows by this height
+ * (useStageOnTheSky). Playing from a frame comes up to them.
+ */
+.nd-replay { width: calc(100% - var(--nd-side) - clamp(32px, 3.2vw, 56px)); padding-bottom: 8px; scroll-margin-top: 124px; outline: none; }
+.nd-replay .ac-replay { margin: 0; }
+.nd-replay .ac-replay:not(:fullscreen) .ac-replay-stage { max-height: 56vh; }
+/* In one column, the whole of it. */
+@media (max-width: 1180px) { .nd-replay { width: auto; } }
 
 /* Notes written by an unencrypted model: the same quiet button under the title, in caution. */
 .ac-sealed.is-button.nd-seal.is-caution, .ac-sealed.is-button.nd-seal.is-caution:hover { color: var(--caution); }
@@ -722,3 +771,5 @@ button.nd-lt:hover { color: var(--ink); }
 .nd-drive-refused p { color: var(--caution); }
 
 .nd-drive-saving { display: inline-flex; align-items: center; gap: 5px; margin-left: auto; color: var(--ink-2); font: 400 12px/18px var(--font-sans); }
+/* Export to Google Drive: under the folder and files, on its own line. */
+.nd-drive .ac-btn.nd-drive-go { display: flex; width: fit-content; margin-top: 12px; }

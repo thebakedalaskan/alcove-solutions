@@ -125,7 +125,9 @@ is named `content`; comments are the root map `comments`, each thread a `Y.Map` 
 Every kind of line is one node, `line`, with a `kind`: absent for plain text, or `heading` (`level` 1–3), `bullet`,
 `numbered`, `todo` (`done`), `quote`, `callout` (`icon`). `indent` is on list lines. Each of these is absent until it means
 something, so turning a line into another kind is an attribute change that merges with anyone typing in it. The other
-blocks are `toggle`, `divider`, `code`, `table` (prosemirror-tables), `gallery`, `file`, `video`, `doclink`, `live` (`what`:
+blocks are `toggle`, `divider`, `code` (`lang`: absent for plain text, or `javascript`, `python` or `cpp`, coloured with
+decorations from a Lezer tokenizer that loads with the first block in that language; anything else is drawn as plain text and
+kept as it came; it's not in `KEPT_ATTRS`, so a retired code block lets it go), `table` (prosemirror-tables), `gallery`, `file`, `video`, `doclink`, `live` (`what`:
 decided or follow-ups, plus the lines it last showed), `moment` (a quoted transcript line). Inline: `mention`, `dateChip`,
 `docref`, and `hardBreak` for ⇧↵. Marks: `bold`, `italic`, `strike`, `inlineCode` (ProseMirror won't let a mark and a node
 share the name `code`), `link`, `highlight`, `comment`. A `toggle` holds a `toggleSummary` and a `toggleBody`, both inline

@@ -219,7 +219,7 @@ export function closeRooms(s: Stored, to: number, startedMs: number): Stored {
       held: [...s.breakouts.held, {
         // Each room's record goes with it, for its section of the notes. Its scribe's last term ends now: speech said
         // before then that's still on its way is taken, and nothing said after.
-        rooms: open.rooms.map((r) => ({ id: r.id, name: r.name, emails: r.emails, pauses: r.pauses, seen: r.seen, scribes: r.scribes.map((x) => (x.until === null ? { ...x, until: Math.max(x.from, at) } : x)) })),
+        rooms: open.rooms.map((r) => ({ id: r.id, name: r.name, emails: r.emails, guests: r.guests, pauses: r.pauses, seen: r.seen, scribes: r.scribes.map((x) => (x.until === null ? { ...x, until: Math.max(x.from, at) } : x)) })),
         from: open.from, to
       }]
     }

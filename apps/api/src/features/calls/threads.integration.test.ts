@@ -193,7 +193,7 @@ describe('call conversation threads', () => {
       await until(() => host.getSnapshot().breakouts.open !== null, 'organizer room assignment');
       release(); await sending;
       await until(() => alice.crypto.getSnapshot().place !== 'main' && alice.crypto.getSnapshot().status === 'in', 'moved sender');
-      host.moveToRoom(email, null);
+      host.moveToRoom({ email }, null);
       await inRoom(alice, 'main');
       await alice.refresh();
       expect(alice.crypto.getSnapshot().chat.find((m) => m.text === 'Confirmed reply before the move.')).toMatchObject({ id: canonical.id, sending: false, failed: false });

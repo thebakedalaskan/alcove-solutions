@@ -1,6 +1,6 @@
 /*
- * CloseAsk: Close's question while you present a board or the workspace, always at night. For you: you go back to the
- * people and everyone else keeps it open, on their own. For everyone: it closes for everyone in the call. It opens under
+ * CloseAsk: Close's question while you present a board or the workspace, always at night. For you: you stop presenting, go
+ * back to the people, and everyone else keeps it open, on their own. For everyone: it closes for everyone in the call. It opens under
  * Close ▾ on the frame's bar; on a phone it's a sheet from the bottom.
  */
 import { Button, CloseAsk } from '@alcove/ui';

@@ -82,7 +82,7 @@ function JoinPage({ code }: { code: string }) {
 
 /** The stage's top bar: back to Home for someone with an account, and what the call runs on. A guest has only the call. */
 function Top({ home }: { home: boolean }) {
-  const trust = useQuery(q.trust());
+  const trust = useQuery(q.trust()).data;
   return (
     <header className="stg-top">
       {home ? <Link to="/home" className="stg-back"><Icon name="left" size={17} />Home</Link> : <span />}

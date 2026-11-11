@@ -12,7 +12,7 @@
  * story in a light theme as well (`light`): the board is light there, and the stage around it night. The toolbar renders a
  * story again without starting it over: the call carries on.
  */
-import type { CallSession, Meeting, Person } from '@alcove/api';
+import type { CallSession, Meeting, NotesChoices, Person } from '@alcove/api';
 import { screen } from 'storybook/test';
 import { LocalMedia } from '~/features/call/media/media';
 import { sessions } from '~/lib/live';
@@ -25,10 +25,10 @@ import type { World } from './world';
 import { call, type CallSpec } from './world/build';
 
 /**
- * A call the story puts in the world first: a call as `call()` writes it, started just now, set up to join muted, or with a
- * workspace chosen as its home when it was scheduled.
+ * A call the story puts in the world first: a call as `call()` writes it, started just now, set up to join muted, with a
+ * workspace chosen as its home when it was scheduled, or keeping other than everything in its notes.
  */
-export interface StoryCall extends CallSpec { instant?: boolean | undefined; joinMuted?: boolean | undefined; workspaceId?: string | undefined }
+export interface StoryCall extends CallSpec { instant?: boolean | undefined; joinMuted?: boolean | undefined; workspaceId?: string | undefined; choices?: NotesChoices | undefined }
 /** The story's call: one of the scenario's own, by its link's code, or one of its own. */
 type Which = string | StoryCall;
 const codeOf = (c: Which): string => (typeof c === 'string' ? c : c.code);
@@ -38,7 +38,7 @@ function settle(...calls: Which[]): void {
   const w = current();
   for (const c of calls) {
     if (typeof c === 'string' || w.meetings.some((m) => m.code === c.code)) continue;
-    const m: Meeting = { ...call(c, me()), instant: c.instant ?? false, joinMuted: c.joinMuted ?? false, workspaceId: c.workspaceId ?? null };
+    const m: Meeting = { ...call(c, me()), instant: c.instant ?? false, joinMuted: c.joinMuted ?? false, workspaceId: c.workspaceId ?? null, ...(c.choices ? { choices: c.choices } : {}) };
     w.meetings.push(m);
   }
 }

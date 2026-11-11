@@ -1,6 +1,7 @@
 /*
  * Dots: three dots that rise and fade in turn, for "listening" and other waits. They take the text's colour, so they sit
- * in a line of words that says what's being waited for.
+ * in a line of words that says what's being waited for. With reduced motion they don't rise: they only fade in and out in
+ * turn, slowly, so they never stand still (to see it, emulate `prefers-reduced-motion: reduce` in the browser).
  */
 import { Dots } from '@alcove/ui';
 import type { Meta, StoryObj } from '@storybook/react-vite';

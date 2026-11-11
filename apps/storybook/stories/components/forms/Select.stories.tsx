@@ -24,10 +24,9 @@ const MICROPHONES: SelectOption<string>[] = [
   { value: 'mic-headset', label: 'Headset microphone', icon: 'mic' }
 ];
 
-/** A meeting room's inputs: more than the list shows at once. */
+/** A meeting room's inputs, each once with the system's saying so, as the app lists devices: more than the list shows at once. */
 const ROOM_INPUTS: SelectOption<string>[] = [
-  { value: 'default', label: 'Same as system (Built-in microphone)', icon: 'mic' },
-  ...MICROPHONES,
+  ...MICROPHONES.map((m) => (m.value === 'mic-built-in' ? { ...m, note: 'Your system’s choice' } : m)),
   { value: 'cam-desk', label: 'Desk camera', icon: 'video' },
   { value: 'display', label: 'Display', icon: 'monitor' },
   { value: 'phone', label: 'Phone, through this computer', icon: 'phone' },

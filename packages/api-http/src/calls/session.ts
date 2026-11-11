@@ -7,7 +7,7 @@ import { Box, Live, unref } from '../transport/live';
 import { type ClientEvent } from '../transport/options';
 import { groupName, MlsError, MlsGroup, MlsKeys } from './mls';
 import { HttpMoveOut } from './moves';
-import { type FollowUpCreate, type FollowUpPatch, type FollowUpReview, AlcoveApiError, type AudioPiece, type ScreenPiece, type ShareStarted, type BoardCheck, type BoardOpen, type BoardTimerMinutes, type BoardVotesEach, type BreakoutPlan, CALL_CHAT_MAX, CALL_DATA_OVERHEAD, CALL_VOID_KEY_INDEX, type CallAction, type CallAnswer, type CallChatMention, type CallChatPayload, CallChatTextSchema, type CallCrypto, CallEndResultSchema, type CallFollowUps, type CallMediaKeys, type CallMls, type CallMoment, type CallMoveOut, type CallReaction, type CallSession, type CallState, type CallTicket, type CallWorkspaceSwitch, type CaptionLanguage, type CaptionTranslation, type CaptureDevicePart, type CatchUp, type CatchUpRange, type CatchUpWindow, type DocFollowUpTick, type DocumentRole, errorCode, isTimeZone, type LineAudio, LIVE_TRANSCRIPT_LINES, MAIN_PLACE, type MoveMedia, type MoveOut, type PersonalApi, type PresentStart, reactionTarget, type SeriesAnswerPart, type TranscriptClip, withReaction } from '@alcove/api';
+import { type FollowUpCreate, type FollowUpPatch, type FollowUpReview, AlcoveApiError, type AudioPiece, type ScreenPiece, type ShareStarted, type BoardCheck, type BoardOpen, type BoardVotesEach, type BreakoutPlan, CALL_CHAT_MAX, CALL_DATA_OVERHEAD, CALL_VOID_KEY_INDEX, type CallAction, type CallAnswer, type CallChatMention, type CallChatPayload, CallChatTextSchema, type CallCrypto, CallEndResultSchema, type CallFollowUps, type CallMediaKeys, type CallMls, type CallMoment, type CallMoveOut, type CallReaction, type CallSession, type CallState, type CallTicket, type CallWorkspaceSwitch, type CaptionLanguage, type CaptionTranslation, type CaptureDevicePart, type CatchUp, type CatchUpRange, type CatchUpWindow, type DocFollowUpTick, type DocumentRole, errorCode, isTimeZone, type LineAudio, LIVE_TRANSCRIPT_LINES, MAIN_PLACE, type MoveMedia, type MoveOut, type PersonalApi, type PresentStart, reactionTarget, type RoomPerson, type SeriesAnswerPart, type TranscriptClip, withReaction } from '@alcove/api';
 import { type KeyPackage } from 'ts-mls';
 import { z } from 'zod';
 
@@ -924,8 +924,6 @@ export class HttpCall extends Live<CallState> implements CallSession {
   openBoard = (from: BoardOpen) => this.space({ type: 'board-open', ...from });
   closeBoard = () => this.space({ type: 'board-close' });
   boardCheck = (workspaceId: string, documentId: string) => this.t.boardCheck(this.state.callId, workspaceId, documentId);
-  startTimer = (minutes: BoardTimerMinutes) => this.space({ type: 'board-timer', minutes });
-  stopTimer = () => this.space({ type: 'board-timer', minutes: null });
   startVote = (frame: string | null, per: BoardVotesEach) => this.space({ type: 'board-vote', step: 'start', frame, per });
   castVote = (sticky: string) => this.space({ type: 'board-vote', step: 'cast', sticky });
   takeBackVote = (sticky: string) => this.space({ type: 'board-vote', step: 'take-back', sticky });
@@ -958,12 +956,14 @@ export class HttpCall extends Live<CallState> implements CallSession {
   letOthersPoint = async (on: boolean) => { this.take(await this.t.act(this.state.callId, { type: 'others-point', on })); };
   setPointing = async (on: boolean) => { this.take(await this.t.act(this.state.callId, { type: 'pointing', on })); };
   setSpotlight = (participantId: string | null) => this.act({ type: 'spotlight', participantId });
-  openRooms = (plan: BreakoutPlan) => this.actAndSync({ type: 'rooms-open', rooms: plan.rooms, minutes: plan.minutes, board: plan.board });
+  openRooms = (plan: BreakoutPlan) => this.actAndSync({
+    type: 'rooms-open', rooms: plan.rooms.map((r) => ({ name: r.name, emails: r.emails, seats: r.seats ?? [] })), minutes: plan.minutes, board: plan.board, ...(plan.visit === undefined ? {} : { visit: plan.visit })
+  });
   closeRooms = () => this.actAndSync({ type: 'rooms-close' });
   messageRooms = (text: string) => { if (text.trim()) this.act({ type: 'rooms-message', text }); };
   visitRoom = (roomId: string | null) => this.actAndSync({ type: 'rooms-visit', roomId });
   renameRoom = (roomId: string, name: string) => { if (name.trim()) this.act({ type: 'rooms-rename', roomId, name }); };
-  moveToRoom = (email: string, roomId: string | null) => this.actAndSync({ type: 'rooms-move', email, roomId });
+  moveToRoom = (who: RoomPerson, roomId: string | null) => this.actAndSync({ type: 'rooms-move', ...who, roomId });
   pauseRoom = async (roomId: string, paused: boolean) => { this.take(await this.t.act(this.state.callId, { type: 'rooms-pause', roomId, paused })); };
   translate = (lineIds: string[], language: CaptionLanguage) => this.t.translate(this.state.callId, lineIds, language);
   dismissNotice = (id: string) => { this.hidden.add(id); this.set({ ...this.state, notices: this.state.notices.filter((n) => n.id !== id) }); };

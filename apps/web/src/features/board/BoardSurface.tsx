@@ -8,9 +8,9 @@
  * and what the bars offer is in `tools/`, and what More adds in `more/`.
  */
 import { errorCode } from '@alcove/api';
-import { addObject, addStickies, bounds, hasBox, roomFrameId, setNight, shapePath, type Added, type BoardStep, type BoardView, type Landing, type PlacedObject } from '@alcove/board';
+import { addObject, addStickies, bounds, hasBox, roomFrameId, shapePath, type Added, type BoardStep, type BoardView, type Landing, type PlacedObject } from '@alcove/board';
 import {
-  BOARD_MORE, BoardBar, BoardDots, BoardEmpty, BoardFrame, BoardGuide, BoardLayout, BoardLine, BoardLines, BoardMarquee, BoardPageActions, BoardPicture, BoardRail, BoardSelectionBox, BoardShape, BoardSheet, BoardSticky,
+  BOARD_MORE, BoardBar, BoardDots, BoardEmpty, BoardFrame, BoardGuide, BoardLayout, BoardLine, BoardLines, BoardLost, BoardMarquee, BoardPageActions, BoardPicture, BoardRail, BoardSelectionBox, BoardShape, BoardSheet, BoardSticky,
   BoardStroke, BoardText, BoardWorld, DURATION, useToast, type AvatarPerson, type BoardNaming, type IconName
 } from '@alcove/ui';
 import { createContext, forwardRef, memo, useContext, useEffect, useId, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ComponentProps, type ReactNode } from 'react';
@@ -35,7 +35,7 @@ import { Flyouts } from './tools/flyouts';
 import { dotsOn, lineRoute } from './tools/line';
 import { Minimap } from './tools/map';
 import { strokePath } from './tools/pen';
-import { inVote, RunMenus, runPills, TimerSaid, useBallot, voteMarks, type Ballot, type BoardRun, type RunPills, type RunVote, type VoteMarks } from './tools/run';
+import { inVote, RunMenus, runPills, useBallot, voteMarks, type Ballot, type BoardRun, type RunPills, type RunVote, type VoteMarks } from './tools/run';
 import { useBoard, useBoardState, type Board, type SortAsk } from './useBoard';
 
 const log = rootLog.child({ component: 'board' });
@@ -67,6 +67,8 @@ export interface BoardHandle {
   follow(id: string | null): void;
   /** Fills the sheet with a frame. */
   focusFrame(id: string): void;
+  /** Whoever presents, stepping through frames: glides to one, clear of the bar, the pill and the pager at the frame's foot. */
+  toFrame(id: string): void;
   /** Fills the sheet with the frames of these breakout rooms, on the board every room shares. */
   showRooms(roomIds: readonly string[]): void;
   /**
@@ -92,8 +94,8 @@ export interface BoardHandle {
   /** Whether it's a night board: dark in any theme, for everyone. */
   night(): boolean;
   /**
-   * Night board on or off, for everyone, as the bar's More has it. It's for whoever can change the board, which whoever offers it
-   * makes sure of: someone presenting a board they can change draws nothing on it, but can still make it a night board.
+   * Night board on or off, for everyone, as the bar's More has it, saying what it did. It's for whoever can change the board, which
+   * whoever offers it makes sure of.
    */
   setNight(on: boolean): void;
 }
@@ -108,15 +110,18 @@ export type BoardPictures = (media: string, signal: AbortSignal) => Promise<stri
 export interface BoardHandlers {
   onName?: (() => void) | undefined;
   onSeal?: (() => void) | undefined;
-  /** What the bar's Timer and Vote do where there's no `run` to open their menus, as in a story of the kit. */
-  onTimer?: (() => void) | undefined;
-  onVote?: (() => void) | undefined;
   /** Start a call here, on a board's page. */
   onCall?: (() => void) | undefined;
-  /** Following stopped from this side: a scroll, a zoom or Esc, Stop, or the person going. */
+  /**
+   * Following stopped from this side: a scroll, a zoom or Esc, Stop, or the person going; or, following whoever presents, this
+   * person starting something of their own.
+   */
   onFollow?: ((id: string | null) => void) | undefined;
-  /** This person took the camera from a frame presented to them, with a scroll, a drag or a pinch: they're looking around. */
-  onLook?: (() => void) | undefined;
+  /**
+   * Whoever presents the board, as it comes to rest after they move it: which of its outermost frames is in the middle of their
+   * view, or null for none, so their pager says where they are.
+   */
+  onRest?: ((frame: string | null) => void) | undefined;
   /** Something to tell this person, such as what they were typing in being deleted, with the icon that says what it's about. */
   onSay?: ((text: string, icon: IconName) => void) | undefined;
   /**
@@ -159,11 +164,11 @@ export interface BoardSurfaceProps extends BoardHandlers {
   /** Comments: who's writing, and whose faces go on them. Without it there are none to see or add. */
   comments?: BoardCommenting | undefined;
   /**
-   * Timer, Vote and Present in the bar, each where it has something to do. On by default in a call, on a phone or not, and
-   * nowhere else: someone with view access in a call has them too, disabled, saying why.
+   * Vote in the bar, where it has something to do. On by default in a call, on a phone or not, and nowhere else: someone with
+   * view access in a call has it too, disabled, saying why.
    */
   acts?: boolean | undefined;
-  /** What the call runs on this board, its timer and vote, and what the bar's Timer and Vote do. Only a call has them. */
+  /** What the call runs on this board, its vote, and what the bar's Vote does. Only a call has them. */
   run?: BoardRun | undefined;
   people?: readonly BoardPerson[] | undefined;
   /** The call identities of whoever is talking. */
@@ -173,15 +178,18 @@ export interface BoardSurfaceProps extends BoardHandlers {
   /** Rooms (by id) whose boards are coming back to this one, and until when (ms): each lands as its frame, one after another. */
   landing?: BoardLanding | null | undefined;
   /**
-   * What's presented: a frame, by id, alone on the sheet and filling it, or null for everything, held there as the sheet and the
-   * frame change. In `present` mode it's what everyone watching sees; on a `tile`, a picture of that frame alone, as the next one
-   * beside the presenter is. Before it's given, the camera is this person's.
+   * On a `tile`, a picture of one frame, by id, alone and filling it, held there as the sheet and the frame change, as the next
+   * frame beside whoever presents is; or null for everything.
    */
   slide?: string | null | undefined;
-  /** The camera is the board's to put: nothing this person does moves it. The presenter's own frame, as everyone sees it, is. */
-  still?: boolean | undefined;
-  /** The bar and the rail fade out, as they do before a presentation takes the sheet. */
-  faded?: boolean | undefined;
+  /**
+   * Whoever presents this board, while it's presented to this person: their call identity (null while they aren't in the call),
+   * and whether this person follows them. Following, this person's view is theirs, held where it was while they're away from the
+   * board, with every tool still to hand: anything of their own (a press, a key, a scroll, a drag) takes them off it, from where
+   * it is, and does what they did. Not following, their own view comes back; once it isn't presented, they stay where it left
+   * them.
+   */
+  presenter?: { id: string | null; following: boolean } | null | undefined;
   /**
    * The person's theme, which the sheet takes whatever is round it. The stage is night for everything else, so the call passes
    * `useTheme().resolved`. Elsewhere the sheet is what the page is. A night board (the board's own setting) is dark in any theme.
@@ -193,7 +201,7 @@ export interface BoardSurfaceProps extends BoardHandlers {
   pictures?: BoardPictures | undefined;
   /**
    * The pills at the top of the sheet, for whoever has more to show there: given who's being followed, how to stop, and what
-   * the call runs on the board (a vote, its results, the timer), every pill there is, of which `BoardPills` shows the one that
+   * the call runs on the board (a vote, its results), every pill there is, of which `BoardPills` shows the one that
    * matters most, so their order is said in one place. Without it, the surface has following and the run's pills alone.
    */
   pill?: ((following: BoardPerson | null, stop: () => void, run: RunPills) => Pills) | undefined;
@@ -280,7 +288,7 @@ function drawObject(o: PlacedObject, board: Board, selected: boolean, pop: numbe
 
 /**
  * Everything on the board, in the order it stacks: frames, then lines and ink in one drawing, then objects. A vote marks the
- * stickies it's on, and presenting, the frame on the sheet is all there is.
+ * stickies it's on, and on a picture of one frame, that frame is all there is.
  */
 const Objects = memo(function Objects({ board, presence, mode, vote, mine, left }: {
   board: Board; presence: BoardPresenceStore; mode: BoardMode; vote: RunVote | null; mine: ReadonlySet<string>;
@@ -295,13 +303,13 @@ const Objects = memo(function Objects({ board, presence, mode, vote, mine, left 
   const landed = useBoardState(board, (s) => s.landed);
   const landing = useBoardState(board, (s) => s.landing);
   const settling = useBoardState(board, (s) => s.settling);
-  const presented = useBoardState(board, (s) => s.slide);
-  const slide = mode === 'present' || mode === 'tile' ? presented : null;
+  const pictured = useBoardState(board, (s) => s.slide);
+  const slide = mode === 'tile' ? pictured : null;
   const others = useOthersEditing(presence);
   const picked = useMemo(() => new Set(sel), [sel]);
   // What landed together pops in one after another, in the order it came.
   const popAt = useMemo(() => new Map([...landed].map((id, i) => [id, landed.size <= STAGGER_UP_TO ? i * STAGGER_MS : 0])), [landed]);
-  // Presenting, the frame on the sheet is all there is, and on a picture of one: nothing of the next one shows at its edge.
+  // On a picture of one frame, the frame is all there is: nothing of the next one shows at its edge.
   const shown = useMemo(() => {
     const all = mounted(view, near, edit);
     if (!slide || !view.byId.has(slide)) return all;
@@ -381,6 +389,12 @@ function Blank({ board, look, everyone }: { board: Board; look: BoardLook; every
   return here ? <BoardEmpty fading={!empty} reader={!look.edit} everyone={everyone} page={look.page} /> : null;
 }
 
+/** The way back to all of the board, while nothing on it is in view: Show the whole board, and the keys stay with the sheet. */
+function Lost({ board }: { board: Board }) {
+  const lost = useBoardState(board, (s) => s.lost);
+  return lost ? <BoardLost onBack={() => { board.showEverything(); board.focusSheet(); }} /> : null;
+}
+
 function Bar({ board, surface, more }: { board: Board; surface: BoardSurfaceProps; more: boolean }) {
   // To the percent the bar shows, so a pinch draws it only when the number changes.
   const zoom = useSyncExternalStore(board.camera.subscribe, () => Math.round(board.camera.getSnapshot().z * 100) / 100);
@@ -389,15 +403,15 @@ function Bar({ board, surface, more }: { board: Board; surface: BoardSurfaceProp
   const mapOn = useBoardState(board, (s) => s.map);
   const moreOn = useBoardState(board, (s) => s.barMenu);
   const following = useBoardState(board, (s) => s.following !== null);
-  const { name, nameTitle, naming, seal, sealIcon, sealTitle, mode, acts = mode === 'call' || mode === 'phone', faded = false, people = NO_PEOPLE, run, onName, onSeal, onCall } = surface;
+  const { name, nameTitle, naming, seal, sealIcon, sealTitle, mode, acts = mode === 'call' || mode === 'phone', people = NO_PEOPLE, run, onName, onSeal, onCall } = surface;
   const look = BOARD_LOOKS[mode];
   const faces = useMemo(() => people.map((p) => p.person), [people]);
   return (
     <BoardBar name={name} nameTitle={nameTitle} naming={naming} seal={seal} sealIcon={sealIcon} sealTitle={sealTitle} zoom={zoom} canUndo={canUndo} canRedo={canRedo} editable={look.edit}
-      acts={acts && !following} canAct={look.edit || look.phone} moreOn={moreOn} mapOn={mapOn} faded={faded}
+      acts={acts && !following} canAct={look.edit || look.phone} moreOn={moreOn} mapOn={mapOn}
       onName={onName} onSeal={() => onSeal?.()} onUndo={() => board.undo()} onRedo={() => board.redo()}
       onZoomOut={board.zoomOut} onFit={board.showEverything} onZoomIn={board.zoomIn} onMap={() => board.set({ map: !mapOn })}
-      onTimer={run && (() => board.toggleRunMenu('timer'))} onVote={run && (() => board.toggleRunMenu('vote'))}
+      onVote={run && (() => board.toggleVoteMenu())}
       onMore={more ? () => board.toggleBarMenu() : undefined}
       tail={look.page && <BoardPageActions people={faces} onCall={() => onCall?.()} />} />
   );
@@ -409,23 +423,18 @@ const byItself: NonNullable<BoardSurfaceProps['pill']> = (person, stop, run) => 
 /**
  * The pill at the top of the sheet: told who's being followed, how to stop, and what the call runs on the board (`runPills`,
  * with the votes you've just pressed in what's left), `pill` says every pill there is, and `BoardPills` shows the one that
- * matters most. The board frames itself clear of it, and `onPill` hears which kind it is. Under it, what's said as a timer
- * starts and stops.
+ * matters most. The board frames itself clear of it, and `onPill` hears which kind it is.
  */
 function SheetPill({ board, people, pill, run, ballot, editable, onPill }: {
   board: Board; people: readonly BoardPerson[]; pill: NonNullable<BoardSurfaceProps['pill']>; run: BoardRun | undefined; ballot: Ballot; editable: boolean; onPill: BoardSurfaceProps['onPill'];
 }) {
-  const following = useBoardState(board, (s) => s.following);
+  // Following whoever presents is the frame's bar's to say: the pill is for following anyone else.
+  const following = useBoardState(board, (s) => (s.watching ? null : s.following));
   const pills = pill(people.find((p) => p.id === following) ?? null, () => {
     board.stopFollow();
     board.focusSheet();
   }, runPills(board, run, ballot, editable));
-  return (
-    <>
-      <BoardPills pills={pills} onShown={(kind) => { board.setPill(kind); onPill?.(kind); }} />
-      {run && <TimerSaid board={board} timer={run.timer} />}
-    </>
-  );
+  return <BoardPills pills={pills} onShown={(kind) => { board.setPill(kind); onPill?.(kind); }} />;
 }
 
 /** Download as an image, or as a PDF: what this person's board shows them, drawn here and saved here. */
@@ -471,8 +480,8 @@ function addLanded(board: Board, stickies: readonly Landing[]): { added: Added[]
 
 export const BoardSurface = forwardRef<BoardHandle, BoardSurfaceProps>(function BoardSurface(props, ref) {
   const {
-    doc, awareness, mode, people = NO_PEOPLE, talking, fresh = false, landing, slide, still = false, faded = false, theme, name, pictures, pill, onPill, everyone = true, comments,
-    run, onFollow, onLook, onSay, onSort, moreItems = NO_ITEMS, upload, workspace, links, link, children, className
+    doc, awareness, mode, people = NO_PEOPLE, talking, fresh = false, landing, slide, presenter, theme, name, pictures, pill, onPill, everyone = true, comments,
+    run, onFollow, onRest, onSay, onSort, moreItems = NO_ITEMS, upload, workspace, links, link, children, className
   } = props;
   const sheetId = useId();
   const board = useBoard(doc, mode);
@@ -484,7 +493,8 @@ export const BoardSurface = forwardRef<BoardHandle, BoardSurfaceProps>(function 
   const moreOpen = useBoardState(board, (s) => s.fly === 'more');
   const glide = useBoardState(board, (s) => s.glide);
   const pan = useBoardState(board, (s) => s.space || s.panning);
-  const following = useBoardState(board, (s) => s.following);
+  // Whose view this is, when it's someone's this person follows from a tile's menu: a ring in their colour says so.
+  const ringed = useBoardState(board, (s) => (s.watching ? null : s.following));
   const said = useMemo(() => new BoardCommentsStore(board, `${sheetId}comment`), [board, sheetId]);
   /** Whoever can change the board can vote on it (on a phone, an editor votes with a tap) and make it a night board. */
   const canChange = look.edit || look.phone;
@@ -516,21 +526,33 @@ export const BoardSurface = forwardRef<BoardHandle, BoardSurfaceProps>(function 
     // A refusal carries the cross every refusal does, never a tick; what happened says what it's about, with what to press.
     board.tell = (text, o) => { toast(text, o ?? { icon: 'x' }); };
     board.onFollow = onFollow;
-    board.onLook = onLook;
+    board.onRest = onRest;
     // Where nothing round the board says it for it, the board says it itself, as it says a refusal.
     board.onSay = onSay ?? ((text, icon) => { toast(text, { icon }); });
     board.moreItems = moreRun;
-    board.still = still;
-  }, [board, toast, onFollow, onLook, onSay, moreRun, still]);
-  // After the mode, so a presentation that's just begun keeps where this person was. Again with each mode: Back to them is one.
+  }, [board, toast, onFollow, onRest, onSay, moreRun]);
   useLayoutEffect(() => { if (slide !== undefined) board.present(slide); }, [board, slide, mode]);
+  /*
+   * Following whoever presents: their view while this person follows them, and held where it was while there's nobody to follow,
+   * as they reload. Unfollow brings this person's own view back; a presentation that ends leaves them where it left them.
+   */
+  const watch = presenter?.following ? presenter.id : null;
+  const holding = presenter?.following === true && presenter.id === null;
+  const presented = presenter !== null && presenter !== undefined;
+  useLayoutEffect(() => {
+    if (watch !== null) board.follow(watch, true);
+    else if (!holding && board.getSnapshot().watching) {
+      if (presented) board.follow(null);
+      else board.ownView();
+    }
+  }, [board, watch, holding, presented]);
   useLayoutEffect(() => {
     const s = sheet.current, w = world.current;
     if (!s || !w) return undefined;
     const stopBoard = board.attach(s, w);
     const stopSheet = watchSheet(board, s);
-    // "Or press N" should be true from the start, unless someone is busy elsewhere: typing a moment ago, or in a field the page
-    // took from them, the rest of their sentence isn't for the board.
+    // "Or press N for a sticky" should be true from the start, unless someone is busy elsewhere: typing a moment ago, or in a
+    // field the page took from them, the rest of their sentence isn't for the board.
     if (board.canEdit && document.activeElement === document.body && !typing(document.body)) board.focusSheet();
     return () => {
       stopSheet();
@@ -543,6 +565,7 @@ export const BoardSurface = forwardRef<BoardHandle, BoardSurfaceProps>(function 
     goTo: (id) => presence.following.goTo(id),
     follow: (id) => board.follow(id),
     focusFrame: (id) => board.focusFrame(id),
+    toFrame: (id) => board.toFrame(id),
     showRooms: (roomIds) => board.showFrames(roomIds.map(roomFrameId)),
     addShot: ({ media, caption }) => {
       const { x, y } = landingSpot(board, SHOT.w, SHOT.h);
@@ -556,24 +579,25 @@ export const BoardSurface = forwardRef<BoardHandle, BoardSurfaceProps>(function 
     saveImage: () => barItems.image?.(),
     savePdf: () => barItems.pdf?.(),
     night: () => board.getSnapshot().night,
-    setNight: (on) => setNight(board.doc, on, board.origin)
+    setNight: (on) => board.nightBoard(on)
   }), [board, presence, barItems]);
 
   return (
     <Pictures.Provider value={pictures}>
      <Links.Provider value={links ?? null}>
       <BoardLayout page={look.page} phone={look.phone} className={className}>
-        {look.rail && <BoardRail tool={tool} more={more} moreOpen={moreOpen} faded={faded} onTool={(t) => { board.pickTool(t); board.focusSheet(); }} onMore={() => { board.toggleMore(); board.focusSheet(); }} />}
-        <BoardSheet ref={sheet} tool={tool} clean={look.clean} fresh={fresh} page={look.page} mini={look.mini} glide={glide} pan={pan} theme={theme} night={night} follow={people.find((p) => p.id === following)?.colour}
+        {look.rail && <BoardRail tool={tool} more={more} moreOpen={moreOpen} onTool={(t) => { board.pickTool(t); board.focusSheet(); }} onMore={() => { board.toggleMore(); board.focusSheet(); }} />}
+        <BoardSheet ref={sheet} tool={tool} clean={look.clean} fresh={fresh} page={look.page} mini={look.mini} glide={glide} pan={pan} theme={theme} night={night} follow={people.find((p) => p.id === ringed)?.colour}
           tabIndex={look.mini ? -1 : 0} role={look.mini ? undefined : 'application'} aria-label={name} aria-hidden={look.mini || undefined}>
           {/* Beside the rail, but first on the sheet: what a tool's key opens is the next thing Tab reaches. */}
           {look.rail && <Flyouts board={board} more={more} />}
           {look.rail && <MoreLists board={board} workspace={workspace} />}
-          <BoardWorld ref={world} pointers={<>{comments && !look.mini && <CommentPins board={board} store={said} commenting={comments} mode={mode} />}<BoardPointers presence={presence} talking={talking} only={mode === 'present' ? following : undefined} /></>}>
+          <BoardWorld ref={world} pointers={<>{comments && !look.mini && <CommentPins board={board} store={said} commenting={comments} />}<BoardPointers presence={presence} talking={talking} /></>}>
             <Objects board={board} presence={presence} mode={mode} vote={run?.vote ?? null} mine={ballot.mine} left={canChange && run?.vote?.on ? ballot.left : null} />
           </BoardWorld>
           {!look.mini && <Over board={board} onSort={onSort} />}
           {!look.mini && <Blank board={board} look={look} everyone={everyone} />}
+          {!look.mini && <Lost board={board} />}
           {look.bar && <Bar board={board} surface={props} more={anyIn(barItems)} />}
           {look.bar && <BarMenu board={board} items={barItems} night={night} />}
           {look.bar && !look.phone && <Minimap board={board} />}

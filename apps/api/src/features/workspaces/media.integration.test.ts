@@ -313,6 +313,43 @@ describe('a file in a document', () => {
     expect(await refused(theo, url, `bytes=${4 * PIECE}-`)).toEqual(await nothing());
   });
 
+  it('lets a download that stopped pick up where it was, with the file’s ETag, and starts it again for anything else', async () => {
+    const ann = await account();
+    const id = await workspace(ann, 'Ours');
+    const doc = await make(ann, id, 'document', 'Plan');
+    const bytes = bytesOf(5 * PIECE + 100);
+    const size = bytes.length;
+    const m = await ann.api.workspaces.media.upload(id, doc, fileOf(bytes, 'walkthrough.mp4', 'video/mp4'));
+    const url = await ann.api.workspaces.media.url(id, doc, m.id, { download: true });
+    const asking = async (headers: Record<string, string>) => {
+      const res = await ann.fetch(url, { headers });
+      return { status: res.status, headers: res.headers, bytes: new Uint8Array(await res.arrayBuffer()) };
+    };
+
+    // The whole file says what it is with a strong ETag, made from nothing readable, the same however it's asked for.
+    const whole = await read(ann, url);
+    const etag = whole.headers.get('etag') ?? '';
+    expect([whole.status, same(whole.bytes, bytes)]).toEqual([200, true]);
+    expect(etag).toMatch(/^"[A-Za-z0-9_-]{22}"$/);
+    const again = await read(ann, await ann.api.workspaces.media.url(id, doc, m.id), 'bytes=0-0');
+    expect(again.headers.get('etag')).toBe(etag);
+
+    // Cut off part way, it asks for the rest against that ETag, and the rest comes in one answer, past four pieces and
+    // without a length, where a player's range would stop at four.
+    const from = PIECE + 7;
+    const rest = await asking({ range: `bytes=${from}-`, 'if-range': etag });
+    expect([rest.status, rest.headers.get('content-range'), rest.headers.get('content-length'), rest.headers.get('etag')]).toEqual([206, `bytes ${from}-${size - 1}/${size}`, null, etag]);
+    expect(same(rest.bytes, bytes.subarray(from))).toBe(true);
+    const played = await read(ann, await ann.api.workspaces.media.url(id, doc, m.id), `bytes=${from}-`);
+    expect(played.headers.get('content-range')).toBe(`bytes ${from}-${5 * PIECE - 1}/${size}`);
+
+    // Against anything but this file's ETag, a weak one included, the range doesn't count: it gets the whole file again.
+    for (const other of ['"another-file"', `W/${etag}`, 'Wed, 11 Nov 2026 09:00:00 GMT']) {
+      const r = await asking({ range: `bytes=${from}-`, 'if-range': other });
+      expect([other, r.status, r.headers.get('content-range'), same(r.bytes, bytes)]).toEqual([other, 200, null, true]);
+    }
+  });
+
   it('opens only a few pieces at a time, however many are asked for at once, and gets to all of them', async () => {
     const ann = await account();
     const id = await workspace(ann, 'Ours');
@@ -341,7 +378,7 @@ describe('a file in a document', () => {
     expect(most).toBeLessThanOrEqual(MEDIA_LIMITS.working);
   });
 
-  it('is served as what it says only if that’s on the list: anything else is a download', async () => {
+  it('is served as what it says only if that’s on the list: anything else is a download, and so is anything asked for as one', async () => {
     const ann = await account();
     const id = await workspace(ann, 'Ours');
     const doc = await make(ann, id, 'document', 'Plan');
@@ -355,7 +392,18 @@ describe('a file in a document', () => {
       expect([declared, m.type]).toEqual([declared, served]);
       const r = await read(ann, await ann.api.workspaces.media.url(id, doc, m.id));
       expect([declared, r.headers.get('content-type'), r.headers.get('content-disposition')?.split(';')[0]]).toEqual([declared, served, 'inline']);
+      // Asked for as a download (a photo's or a video's Download), it's one, under the name it came with, and still what it is.
+      const saved = await read(ann, await ann.api.workspaces.media.url(id, doc, m.id, { download: true }));
+      expect([declared, saved.status, saved.headers.get('content-type'), saved.headers.get('content-disposition')]).toEqual([declared, 200, served, `attachment; filename*=UTF-8''${encodeURIComponent(name)}`]);
     }
+    // The app saves a download in a hidden frame on its own page: the API is on an origin of its own, where a link's
+    // `download` doesn't count, and following the link in the page would navigate it and end a call on it. So nothing in
+    // the answer to that frame keeps it out of one.
+    const framedFile = await ann.api.workspaces.media.upload(id, doc, fileOf(bytesOf(16), 'harbour.png', 'image/png'));
+    const framed = await ann.fetch(await ann.api.workspaces.media.url(id, doc, framedFile.id, { download: true }), { headers: { 'sec-fetch-dest': 'iframe', 'sec-fetch-mode': 'navigate', 'sec-fetch-site': 'same-site' } });
+    await framed.arrayBuffer();
+    expect([framed.status, framed.headers.get('content-disposition'), framed.headers.get('x-frame-options')]).toEqual([200, 'attachment; filename*=UTF-8\'\'harbour.png', null]);
+    expect(framed.headers.get('content-security-policy') ?? '').not.toContain('frame-ancestors');
     // What could run in a page, and whatever nobody can show, only ever downloads, under the name it came with.
     for (const [name, declared] of [['page.html', 'text/html'], ['logo.svg', 'image/svg+xml'], ['app.js', 'text/javascript'], ['notes.pdf', 'application/pdf'], ['clip.mov', 'video/quicktime'], ['mystery', '']] as const) {
       const m = await ann.api.workspaces.media.upload(id, doc, fileOf(new TextEncoder().encode('<script>alert(1)</script>'), name, declared));

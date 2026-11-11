@@ -5,8 +5,10 @@
  */
 import type { Meta } from '@storybook/react-vite';
 import { screen } from 'storybook/test';
+import { drawnPicture } from '../../src/api/media';
 import { itemId } from '../../src/api/scenarios';
-import { changing, page, pages, type PageArgs, type PageStory } from '../../src/page';
+import { caretAtEnd, changing, page, pages, type PageArgs, type PageStory } from '../../src/page';
+import type { World } from '../../src/world';
 import { troubled } from './changes';
 
 const meta = { title: 'Pages/Workspace', ...pages } satisfies Meta<PageArgs>;
@@ -86,6 +88,104 @@ export const ACommentThread = page(FIXES, 'busy', {
 });
 export const TagsAndCommentsPhone = page(FIXES, 'busy', { globals: PHONE });
 
+/** The pricing sync's draft: long enough to scroll, with a thread on its first line. */
+const DRAFT = at('ws-pricing', 'Pricing draft');
+/** Opens the thread on the first line from its count in the margin, then scrolls the page down by `by` pixels. */
+const scrollThread = (by: number, said: string): NonNullable<PageStory['play']> => async ({ canvas, canvasElement, userEvent, step }) => {
+  await step('Open the thread on the first line, from its count in the margin', async () => {
+    const [count] = await canvas.findAllByRole('button', { name: 'Open the comments' }, { timeout: 8000 });
+    if (count) await userEvent.click(count);
+    await screen.findByRole('dialog', { name: /^Comments on/ }, { timeout: 5000 });
+  });
+  await step(said, async () => {
+    const scroller = canvasElement.querySelector('.wd-scroll');
+    if (scroller) scroller.scrollTop = by;
+    await beat(300);
+  });
+};
+/** Scrolled a little: the thread moves with the words it's on. */
+export const ThreadFollowsItsWords = page(DRAFT, 'busy', { play: scrollThread(90, 'Scroll the page down a little. The thread moves with its words') });
+export const ThreadFollowsItsWordsNight = page(DRAFT, 'busy', { globals: { theme: 'dark' }, play: scrollThread(90, 'Scroll the page down a little. The thread moves with its words') });
+/** Scrolled past the words: the thread goes out of view with them, and comes back when they do. */
+export const ThreadGoesWithItsWords = page(DRAFT, 'busy', { play: scrollThread(400, 'Scroll on, past the words. The thread goes out of view with them') });
+/** On a phone the thread is a sheet at the foot of the window, wherever its words have scrolled to. */
+export const ThreadAsThePageScrollsPhone = page(DRAFT, 'busy', { globals: PHONE, play: scrollThread(400, 'Scroll past the words. The sheet stays at the foot of the window') });
+
+/*
+ * Dates in a document: `@` offers Today, Tomorrow and the next Friday, a day typed with its month first, and Pick a date…,
+ * a month to pick any day from in the list's place. A date tag outside this year says its year (the draft's prices hold
+ * until Sun 31 Jan 2027), and pressing one opens the month to change it.
+ */
+const startTagging = (typed: string): NonNullable<PageStory['play']> => async ({ canvas, userEvent, step }) => {
+  await step(`Start a line under “The team plan”, and type @${typed}`, async () => {
+    const line = await canvas.findByText('The team plan', {}, { timeout: 8000 });
+    await userEvent.click(line);
+    caretAtEnd(line);
+    await userEvent.keyboard(`{Enter}@${typed}`);
+    await screen.findByRole('listbox', { name: 'People, documents and dates' }, { timeout: 5000 });
+  });
+};
+const pickADate: NonNullable<PageStory['play']> = async (c) => {
+  await startTagging('')(c);
+  await c.step('Press Pick a date…. A month takes the list’s place, with the keyboard on today', async () => {
+    await c.userEvent.click(await screen.findByRole('option', { name: 'Pick a date…' }, { timeout: 5000 }));
+    await screen.findByRole('grid', {}, { timeout: 5000 });
+  });
+};
+const changeADate: NonNullable<PageStory['play']> = async ({ canvasElement, userEvent, step }) => {
+  await step('Press the follow-up’s date, Fri 13 Nov. The month opens against it, on that day', async () => {
+    let tag: Element | null = null;
+    for (let tries = 0; !tag && tries < 50; tries++) { tag = canvasElement.querySelector('.ws-ed .wdt[data-d="2026-11-13"]'); if (!tag) await beat(200); }
+    if (!tag) return;
+    tag.scrollIntoView({ block: 'center' });
+    await userEvent.click(tag);
+  });
+};
+/** `@` on a new line: Dates at the foot of the list, with Pick a date… under them. */
+export const DatesInTheList = page(DRAFT, 'busy', { play: startTagging('') });
+export const DatesInTheListNight = page(DRAFT, 'busy', { globals: { theme: 'dark' }, play: startTagging('') });
+export const DatesInTheListPhone = page(DRAFT, 'busy', { globals: PHONE, play: startTagging('') });
+/** A day typed with its month, run together: @12dec offers Sat 12 Dec first. */
+export const ATypedDate = page(DRAFT, 'busy', { play: startTagging('12dec') });
+export const ATypedDatePhone = page(DRAFT, 'busy', { globals: PHONE, play: startTagging('12dec') });
+/** Pick a date…: the month, in the list's place. */
+export const PickADate = page(DRAFT, 'busy', { play: pickADate });
+export const PickADateNight = page(DRAFT, 'busy', { globals: { theme: 'dark' }, play: pickADate });
+export const PickADatePhone = page(DRAFT, 'busy', { globals: PHONE, play: pickADate });
+export const PickADatePhoneNight = page(DRAFT, 'busy', { globals: { ...PHONE, theme: 'dark' }, play: pickADate });
+/** Pressing a date tag: the month against it, on its day, to pick another. */
+export const ChangeADate = page(DRAFT, 'busy', { play: changeADate });
+export const ChangeADatePhone = page(DRAFT, 'busy', { globals: PHONE, play: changeADate });
+
+/*
+ * Code in a document: the draft's bill in JavaScript, Python and C++, each coloured as its language, which its corner says
+ * and changes, as its block's menu does.
+ */
+const toTheCode = (): NonNullable<PageStory['play']> => async ({ canvasElement, step }) => {
+  await step('Scroll to the bill, worked out in code in each language', async () => {
+    let block: Element | null = null;
+    for (let tries = 0; !block && tries < 50; tries++) { block = canvasElement.querySelector('.ws-ed .wb.is-code'); if (!block) await beat(200); }
+    block?.scrollIntoView({ block: 'start' });
+    /* Each language's colours come the first time a block in it is drawn. */
+    await beat(600);
+  });
+};
+export const CodeBlocks = page(DRAFT, 'busy', { play: toTheCode() });
+export const CodeBlocksNight = page(DRAFT, 'busy', { globals: { theme: 'dark' }, play: toTheCode() });
+export const CodeBlocksPhone = page(DRAFT, 'busy', { globals: PHONE, play: toTheCode() });
+export const CodeBlocksPhoneNight = page(DRAFT, 'busy', { globals: { ...PHONE, theme: 'dark' }, play: toTheCode() });
+/** The Python block's corner: its languages, Python ticked. Picking one changes it for everyone with the document. */
+const pickALanguage: NonNullable<PageStory['play']> = async (c) => {
+  await toTheCode()(c);
+  await c.step('Press Python, in the second block’s corner', async () => {
+    const [, python] = c.canvasElement.querySelectorAll('.ws-ed .wb.is-code .wb-lang');
+    if (python) await c.userEvent.click(python);
+  });
+};
+export const CodeLanguages = page(DRAFT, 'busy', { play: pickALanguage });
+export const CodeLanguagesNight = page(DRAFT, 'busy', { globals: { theme: 'dark' }, play: pickALanguage });
+export const CodeLanguagesPhone = page(DRAFT, 'busy', { globals: PHONE, play: pickALanguage });
+
 /** In the design review's home: its screenshots side by side, the walkthrough to play, and the spec to download. */
 export const PhotosVideoAndAFile = page(SHOTS, 'busy');
 export const PhotosVideoAndAFileNight = page(SHOTS, 'busy', { globals: { theme: 'dark' } });
@@ -126,8 +226,58 @@ const reusePhotos: PageStory['play'] = async ({ canvas, userEvent, step }) => {
 export const ReusePhotos = page(SHOTS, 'busy', { play: reusePhotos });
 export const ReusePhotosNight = page(SHOTS, 'busy', { globals: { theme: 'dark' }, play: reusePhotos });
 export const ReusePhotosPhone = page(SHOTS, 'busy', { globals: PHONE, play: reusePhotos });
-/** On a phone, holding a block opens its menu as a sheet: here the screenshots', with Delete the photos for good. */
+/** On a phone, holding a block opens its menu as a sheet: here the screenshots', with Download the photos and Delete the photos for good. */
 export const HoldingABlockPhone = page(SHOTS, 'busy', { globals: PHONE, play: hold('.ws-ed .wb.is-gallery') });
+/** Opens a block's menu from its handle: points at the first block of this kind, and presses the handle beside it. */
+const menuOf = (selector: string, said: string): NonNullable<PageStory['play']> => async ({ canvasElement, userEvent, step }) => {
+  await step(said, async () => {
+    let block: Element | null = null;
+    for (let tries = 0; !block && tries < 50; tries++) { block = canvasElement.querySelector(selector); if (!block) await beat(200); }
+    if (!block) return;
+    await userEvent.hover(block);
+    await userEvent.click(await screen.findByRole('button', { name: 'Drag to move, click for options' }, { timeout: 5000 }));
+  });
+};
+/** The screenshots' menu: Download the photos saves each one as it was added, beside Delete the photos for good. */
+export const PhotosMenu = page(SHOTS, 'busy', { play: menuOf('.ws-ed .wb.is-gallery', 'Point at the screenshots and press the handle beside them. Download the photos saves the originals') });
+export const PhotosMenuNight = page(SHOTS, 'busy', { globals: { theme: 'dark' }, play: menuOf('.ws-ed .wb.is-gallery', 'Point at the screenshots and press the handle beside them. Download the photos saves the originals') });
+/** The walkthrough's menu: Download saves the film itself. */
+export const VideoMenu = page(SHOTS, 'busy', { play: menuOf('.ws-ed .wb.is-video', 'Point at the walkthrough and press the handle beside it. Download saves the film') });
+/**
+ * `/` → File: a picture chosen there goes on the page as a photo, as Photos and a drop put it, and anything that isn't a
+ * picture or a film is a file, whose arrow downloads it. So is a picture Alcove can't show, such as a phone's HEIC photo:
+ * File was asked for a file, so it isn't a photo that failed.
+ */
+const fileFrom = (make: () => Promise<File>, said: string): NonNullable<PageStory['play']> => async ({ canvas, userEvent, step }) => {
+  await step('Go to the end of “What goes out”, start a line under it, type / and pick File', async () => {
+    const line = await canvas.findByText('What goes out', {}, { timeout: 8000 });
+    await userEvent.click(line);
+    caretAtEnd(line);
+    await userEvent.keyboard('{Enter}/');
+    await userEvent.click(await screen.findByRole('option', { name: /^File/ }, { timeout: 5000 }));
+  });
+  await step(said, async () => {
+    await userEvent.click(await screen.findByRole('button', { name: 'Choose from this computer' }, { timeout: 5000 }));
+    await userEvent.upload(screen.getByLabelText('Choose files to add'), await make());
+  });
+};
+const aPicture = async () => new File([await drawnPicture('Offsite whiteboard', 205, 1600, 1000)], 'Offsite whiteboard.png', { type: 'image/png' });
+const aPdf = async () => new File(['%PDF-1.4\n% Launch timeline\n'], 'Launch timeline.pdf', { type: 'application/pdf' });
+const aHeic = async () => new File([new Uint8Array(2048)], 'IMG_2041.HEIC', { type: 'image/heic' });
+const PICTURE = fileFrom(aPicture, 'Choose a picture. It goes on the page as a photo');
+const PDF = fileFrom(aPdf, 'Choose a PDF. It goes on the page as a file, with its arrow to download it');
+const HEIC = fileFrom(aHeic, 'Choose a phone’s HEIC photo. Alcove can’t show one, so it goes on the page as a file, with its arrow to download it');
+export const FileAPicture = page(PLAN, 'busy', { play: PICTURE });
+export const FileAPictureNight = page(PLAN, 'busy', { globals: { theme: 'dark' }, play: PICTURE });
+export const FileAPicturePhone = page(PLAN, 'busy', { globals: PHONE, play: PICTURE });
+export const FileAPicturePhoneNight = page(PLAN, 'busy', { globals: { ...PHONE, theme: 'dark' }, play: PICTURE });
+export const FileAPdf = page(PLAN, 'busy', { play: PDF });
+export const FileAPdfNight = page(PLAN, 'busy', { globals: { theme: 'dark' }, play: PDF });
+export const FileAPdfPhone = page(PLAN, 'busy', { globals: PHONE, play: PDF });
+export const FileAPdfPhoneNight = page(PLAN, 'busy', { globals: { ...PHONE, theme: 'dark' }, play: PDF });
+export const FileAHeicPhoto = page(PLAN, 'busy', { play: HEIC });
+export const FileAHeicPhotoNight = page(PLAN, 'busy', { globals: { theme: 'dark' }, play: HEIC });
+export const FileAHeicPhotoPhone = page(PLAN, 'busy', { globals: PHONE, play: HEIC });
 /** Aiko's walkthrough still uploading, a recording too big to keep here, and a photo deleted for good. */
 export const UploadingAndWhatDidnt = page(UPLOADS, 'busy');
 export const UploadingAndWhatDidntNight = page(UPLOADS, 'busy', { globals: { theme: 'dark' } });
@@ -153,6 +303,33 @@ export const TooBig = page(at('ws-product', 'Interview notes'), 'unsaved');
 /** Made a reader with words not yet saved: they can be copied or discarded. */
 export const ReaderNow = page(at('ws-handbook', 'Expenses'), 'unsaved');
 export const Offline = page(PLAN, 'offline');
+/**
+ * The browser's online, but Alcove can't be reached from it: the page says so rather than offline, keeps what's written here
+ * until it saves, and Try now, on its bar, tries again at once rather than after the wait. The list's own connection is down
+ * too, so it says Reconnecting, with Try now, rather than look up to date.
+ */
+const unreachable = (w: World) => {
+  const id = itemId('Launch plan');
+  w.pages[id] = { blocks: w.pages[id]?.blocks ?? [], ...w.pages[id], standing: 'offline' };
+  w.streamsDown = ['ws-product'];
+};
+export const Unreachable = page(PLAN, 'busy', { beforeEach: changing(unreachable) });
+export const UnreachableNight = page(PLAN, 'busy', { beforeEach: changing(unreachable), globals: { theme: 'dark' } });
+export const UnreachablePhone = page(PLAN, 'busy', { beforeEach: changing(unreachable), globals: PHONE });
+export const UnreachableWide = page(PLAN, 'busy', { beforeEach: changing(unreachable), globals: { viewport: { value: 'wide' } } });
+/** Try now, on the page's bar and on the list: each is back at once. */
+export const UnreachableTryNow = page(PLAN, 'busy', {
+  beforeEach: changing(unreachable),
+  play: async ({ canvas, userEvent, step }) => {
+    /** Try now in what's under the page's head (`.wd-off`) or the list's (`.wt-off`). */
+    const tryNow = async (under: string) => {
+      const found = (await canvas.findAllByRole('button', { name: 'Try now' })).find((b) => b.closest(under) !== null);
+      if (found) await userEvent.click(found);
+    };
+    await step('Press Try now, on the bar under the page’s head: it’s back at once', () => tryNow('.wd-off'));
+    await step('Press Try now, under the list’s head: the list is up to date again', () => tryNow('.wt-off'));
+  }
+});
 export const Night = page(PLAN, 'busy', { globals: { theme: 'dark' } });
 export const Phone = page(PLAN, 'busy', { globals: PHONE });
 /** Writing on a phone: the bar over the keyboard, for blocks, styles, @, photos and checklists. */

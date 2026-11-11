@@ -62,17 +62,19 @@ Beside every page, dark in both themes:
   where you write together (flow 12); **Record**, where recording in the room starts (flow 9), with how many recordings on this
   device are waiting to upload; and **Team** (flow 10), with how many people at your company use Alcove, you among them,
   once anyone besides you does. Someone on their own, at a personal address, has no Team page and no groups here.
-- **Up next**, on every page but Home: the next Alcove call today, or the next meeting on your calendar
+- **Up next**, on every page: the next Alcove call today, or the next meeting on your calendar
   that has a video link (unless **Show my other meetings on Home** is off), when it starts, who's coming,
   and **Join**. With nothing left today it says the next call will show there, except before your first
-  notes, when it says nothing.
+  notes, when it says nothing. On Home it makes way while Home's own line offers a call (from 5 minutes before
+  one with someone else on it, and while one is going), so there's one **Join** at a time.
 - **Pinned**: the notes you pinned, in the order you pinned them, up to 8. A pinned note that was deleted,
   or that you removed from your notes, isn't listed. The pin beside the heading opens the palette to pick
   notes to pin or unpin; with 8 pinned it says to unpin one first. With nothing pinned, a line says what
   pins are for.
 - **Groups**: each of your groups and how many people are in it. Each opens on the Team page, and **+**
   starts a new one there.
-- At the bottom: the hosting hardware status, and the time of notes left, which opens Settings at your
+- At the bottom: the confidential-compute check (**Confidential compute · verified** when the server's
+  hardware answer is bound to this browser's request), and the time of notes left, which opens Settings at your
   minutes.
 - Offline, a notice at the top says recording still works and everything else catches up when you're back
   (with **Record without a connection** off, that recording waits for the connection too). Up next and the
@@ -107,7 +109,8 @@ balloon in the corner; and, slowly along the horizon, boats and ships of six kin
 opens. Every other page is a later moment of the same evening, with less sky the less it's about one action, and quieter
 visitors: a boat far out, stars after dark and now and then a shooting star. With reduced motion on, it's a still picture and nothing passes through.
 
-- The date, top left. On a phone or with the side panel hidden, the hosting hardware status shows on Home too, since the panel’s check isn’t there.
+- The date, top left. On a phone or with the side panel hidden, a **Confidential compute** badge (with the time the
+  hardware was verified when this browser could check it) shows on Home too, since the panel's check isn't there.
 - **Start a call** (**Start your first call** before your first notes). **Start now** goes straight to the lobby
   (flow 5). **Schedule** opens scheduling at Who (flow 4). The third button schedules a call for now and copies its
   link, so it's listed with a card like any other (**Undo** cancels it), and isn't on a phone. Under them, up to three people on your team who use Alcove: pressing one starts a
@@ -115,7 +118,9 @@ visitors: a boat far out, stars after dark and now and then a shooting star. Wit
 - While a call is going, or from 5 minutes before one with someone else on it, a line above **Start a call** names it
   with **Join** (**J**), and says when it starts or **Happening now**. It's the one time a call comes near the top: people
   join from their calendar. A call that's going comes first. A calendar meeting needs a video link to get this line, and
-  its **Join** opens that link in a new tab. **Join** takes the filled button, and **Start now** gives it up.
+  its **Join** opens that link in a new tab. **Join** takes the filled button, and **Start now** gives it up. Until
+  then the side panel's **Up next** has the next call with its countdown and **Join**, as on every page, and it makes way
+  for this line while the line is there.
 - **For you**, with how many things are open: what needs an answer, as tiles, then your follow-ups as a checklist.
   With nothing open, it says so. The side panel's **Home** shows the same count.
 - The tiles, newest first, the first six and then **Show more**. A **Decision** (rose) proposed in any note you organized or
@@ -182,12 +187,32 @@ send to anyone".
    Groups, the company and a list can overlap, and everyone counts once. On an empty field, Backspace selects the last
    token and a second Backspace removes it. A call can invite 300 people; past that it says so and waits, and a list
    is removed whole and pasted again shorter. **Skip, I'll share a link** goes on with nobody invited.
-4. **When** suggests three times, the best already picked: never in the past, inside 9 to 17 on weekdays where you
-   are, never when you're busy, the times that suit the most people first, on different days. It says what's true:
+4. **When** suggests three times, soonest first, with the best already picked: never in the past, inside 9 to 17 on
+   weekdays where you are, never when you're busy. They're the times that suit the most people, on different days while
+   there are days to spread over, the sooner day first and today last (it leaves people the least notice). When that
+   doesn't tell them apart, as with no calendar connected, each day takes an hour the others haven't, from the hours
+   people find easiest (10:00, then 14:00, 11:00, 15:00 and so on). A time picked from the week takes the place of the
+   last of the three, and the other two stay. It says what's true:
    "All 8 of you are free at these times.", how many are free under each time, that other calendars can't be read and
-   the times are free on yours, or with no calendar connected that these are open working hours. The length is 30 min,
-   45 min or 1 h. **Pick another time** widens the modal around the week, with your own things by name and when anyone
-   is busy, and every half hour can be picked (arrow keys move around it); the arrows go to the next five working days.
+   the times are free on yours, or with no calendar connected that these are open working hours. Under the cards the
+   time picked reads as it will, "Thu 5 Nov, [10:00] – [10:45]": its start and its end can be typed, as 24-hour times like
+   every other time here (14:15, or 1415), to the nearest 5 minutes, and count once you leave the field or press Enter;
+   the up and down arrows move one 5 minutes. A start moves the call and keeps its length; an end sets the
+   length, any from 5 minutes to 10 hours (earlier than the start, it's the next day's, for a call past midnight). A
+   start that's gone, an end before the start, or a length past those limits says why under the line, and what was
+   picked stays; so does anything a 24-hour clock doesn't say ("9", "2pm", "25:00"), with "Type a 24-hour time, like
+   14:15.", and a field left empty goes back to what was picked. A start off the half hour sits in the week where it
+   falls, and its card says how many are free then.
+   A call starts at 45 min; 30 min, 45 min and 1 h are a press away, and any other length shows beside them
+   ("1 h 15 min"). **Pick another time** widens the modal around the week, with your own things by name and when anyone
+   is busy, at their real times. It's a week, Monday to Sunday, the weekend a day like any other, and the whole day, 00:00
+   to 24:00, with every hour line labelled, the end included; it opens with 09:00 at its top, on the week of the time
+   picked, and turns to it whenever that changes. Every half hour can be picked (arrow keys move around it); the arrows go
+   a week at a time. The time picked has a bar on its bottom edge: drag it to change when the call ends, a quarter hour at
+   a time, with the end showing as you drag, as far as 10 hours or the end of the day; Shift with the up and down arrows
+   on its half hour does the same, and a screen reader hears where it ends. On a phone the bar takes a finger, and the
+   week still scrolls anywhere else. **Move this call** (Change the time, on a scheduled call's card) has the same line, lengths and
+   week.
    **Doesn't repeat** opens Every Thursday, Every 2 weeks, Every month (on "the third Thursday"; a fifth one is "the
    last") or Days you pick, with an end date, which counts once you leave the field or press Enter. Repeats keep their
    clock time where you are when the clocks change, and one repeat is at most 60 calls. On your own, with one guest whose calendar can't be read, **Let Jamie pick** offers
@@ -234,8 +259,10 @@ started now don't go on the calendar: share the link. Everyone invited gets the 
 Pre-join (`/join/<code>`) shows your camera and a mic level, mic and camera switches, the title, and what the call
 captures and who gets the notes. Under the preview sit a calm picker each for the microphone, camera and speaker,
 each showing the device in use (the microphone's with its level moving as you speak), then **Background**. A picker
-opens a menu in the call's own style, not the browser's list: the devices with a tick on the one in use, each by its
-full name (the one that follows the system says so). The microphone's menu has **Test your microphone**, which
+opens a menu in the call's own style, not the browser's list: each device once, by its full name, with a tick on the
+one in use, and **Your system’s choice** under the one your computer uses. With nothing picked, that one is ticked and the
+call follows your computer when it switches; picking a device keeps the call on it, and then **Follow your system**, last,
+goes back. The microphone's menu has **Test your microphone**, which
 listens for three seconds (a bar fills, the seconds count down) and plays them back through the speaker you chose,
 without uploading or keeping anything, and **Noise reduction**. The speaker's has **Play a test sound**; where the
 browser can't choose a speaker, its picker says calls play through your system's speaker, and the sound plays there.
@@ -249,10 +276,12 @@ off, and turn them on later. Allowing them in the browser's settings is noticed 
 beside the microphone and camera buttons open the same menus, and switch devices without leaving the call or
 interrupting the notes.
 
-Everyone sees what the call captures before they join and while they wait: whether notes are on, paused or off,
-the recording, transcript, AI notes and shared screens each with its state, that the notes are written in
-confidential compute, who gets them, and what won't be kept ("The transcript is deleted after the notes are written.",
-"The recording is deleted when the call ends."). Never anyone's name or anything said. A call set up to join muted
+Everyone sees what the call captures before they join and while they wait, each fact once: whether notes are on, paused
+or off; one sentence on what happens to what they say, which follows the call (recorded and transcribed, you included;
+only one of the two while the host's browser can't do the other; nothing while notes are paused or that browser is away;
+and, while someone shares a screen they put in the notes, that it's read too); what won't be kept ("The transcript is
+deleted after the notes are written.", "The recording is deleted when the call ends."); and that the notes are written
+in confidential compute, and who gets them. Never anyone's name or anything said. A call set up to join muted
 starts your microphone and camera off, and says so.
 
 When the call is in a series and you're signed in with earlier notes from it, **From last time** sits under the way
@@ -312,7 +341,7 @@ time, slides in on the right.
   while someone has asked; the organizer's own says **Pausing…** until their pause lands), the same for everyone, which
   opens what's captured: each kind of capture and its state, who changed it and when, who gets the notes, and the
   organizer's **Pause notes**, **Resume notes** and **Turn off** (or **Turn on notes**) and **Notes written by** (the AI model that writes this call's notes), or
-  anyone else's **Ask for notes**; and the shield, whose hover shows hosting hardware status and what Alcove encrypts in storage. On the right, what's only yours: **Board** (**O**), which
+  anyone else's **Ask for notes**; and the shield, whose hover says what confidential compute covers (verified only when the server's hardware check is bound to this browser's request). On the right, what's only yours: **Board** (**O**), which
   opens the board picker under it, and **Workspace** (**W**, with a count of what's been brought to this call), which
   opens the workspace, each on your stage just for you (Presenting, below); **Notes** and **Chat** (**C**,
   with a count of what's new), which open your side; and who is here, the faces and the count (and, for whoever hosts, how
@@ -365,10 +394,15 @@ time, slides in on the right.
   beside the stage on a wide screen while notes are on. Nothing on your side changes anyone else's screen.
 - **Your view.** There are no layouts to choose: the stage lays itself out, everyone in a grid, and someone doing most
   of the talking on the main stage over a strip of everyone else until you arrange anything yourself. Drag a tile to
-  move it, and pull its corner to make it bigger; once you do, the stage is a grid again and stays as you left it.
-  Beside what's open the people stand in a column of tiles on the right that narrows with the stage, or a row of
-  arches over it on a narrow stage and on a phone; **⇧P** hides them, standing small on the horizon beside the dock,
-  where whoever's talking or has a hand up rises, with a line saying so, and brings them back. Once you've changed the
+  move it, and pull its corner to make it bigger; once you do, the stage is a grid again and stays as you left it. The
+  first time you point at a tile you can move, it says so under the tile ("Drag a tile to move it", and in the grid "Pull
+  its corner to make it bigger"), once in this browser.
+  Beside what's open the people stand in a column of tiles on the right that narrows with the stage, under the frame's
+  bar, or a row of arches over it on a narrow stage and on a phone. **Hide the people**, at the top of the column (or the
+  end of the row), and **⇧P** hide them, standing small on the horizon beside the dock, where whoever's talking or has a
+  hand up rises, with a line saying so; **Show the people**, first on the horizon, or **⇧P** again, brings them back. On a
+  phone the arches stay. Closing the last thing on your stage gives it back to everyone, and **Close** says so before
+  it's pressed ("Close it, and the people fill your stage again"). Once you've changed the
   layout (moved, sized or pinned someone, or hidden the people), **Reset layout** in **More** puts it back, with
   **Undo**; where you see yourself stays as it is. Only your screen changes. A tile's **⋯** menu is short, with no key
   hints. On your own tile: **Set a status** (journey 6.34), **Pin for me** (up to six people, who share the main
@@ -421,7 +455,8 @@ time, slides in on the right.
     they are ("Priya is in Launch plan") with **Follow Priya**, which takes you back. A screen can't be unfollowed.
   - **Close is for you.** On something open just for you, **Close** closes it. On someone else's presentation, it closes
     it for you: "Closed for you. While Priya presents, its tile takes you back." While you present a board or the
-    workspace, Close asks first: **For you** ("Everyone else keeps it open, on their own.") or **For everyone** ("It
+    workspace, Close asks first: **For you** ("You stop presenting. Everyone else keeps it open, on their own.", and
+    then "You stopped presenting. The others keep it open, on their own.") or **For everyone** ("It
     closes for everyone in the call.", or in a breakout room "It closes for everyone in this room.", where it does, unless
     it's the board every room shares and you opened it or you're the organizer), as a sheet on a phone, and so do the lit
     **Board** and **Workspace** (**O**, **W**). On the call's board while nobody presents it, whoever opened it and the
@@ -429,7 +464,9 @@ time, slides in on the right.
     leaves the call for everyone, and stays saved in Product."), which takes it out of the call for everyone, who are
     told "Launch retro was closed for everyone. It's saved in Product."; while rooms share it, only the organizer is;
     **Stop sharing** in Share's first step, which says what you're presenting, asks the same in Share itself, wherever what
-    you present is. Your own screen has **Stop sharing** instead of Close. The organizer can close anyone's presented
+    you present is. Your own screen has **Stop sharing**, which stops it for everyone, and **Close**, which puts it away
+    for you while everyone still sees it: "Put away for you. Everyone still sees your screen, and its tile brings it
+    back." It's a tile with the people, who fill your stage again. The organizer can close anyone's presented
     board or workspace for everyone (**Close it for everyone**), and stop anyone's screen (**Stop it for everyone**), from
     its name; whoever presented it is told who did ("Art closed Launch retro for everyone.").
   - **A tile only while it's presented.** Something presented that isn't on your stage is a tile first among the people:
@@ -463,9 +500,10 @@ time, slides in on the right.
   Priya is told it was you.", and a notice says who stopped it.
 - **Looking closer at a share.** On someone else's share on your stage, pinch or Ctrl/⌘ and the wheel to zoom where you
 - **A share in the notes.** While notes are on or paused, and the organizer lets shared screens go in them (**Read shared
-  screens** when the call was scheduled, on by default), Share › Your screen asks **Include this share in the notes?** and
-  the share button waits for **Yes** or **No**; it asks again every time, **Change** included, and never with notes off or in
-  a breakout room, where nothing shared is kept. With **Yes**, everyone sees **Read for the notes** on your share, and your
+  screens** when the call was scheduled, on by default), Share › Your screen asks **Include this share in the notes?**,
+  already answered: **No** to begin with, then your last answer in this call (**Change**, and a try after one that didn't
+  start, included), so **Share** never waits on it and a share goes in the notes only after you say **Yes**. It's never asked
+  with notes off or in a breakout room, where nothing shared is kept. With **Yes**, everyone sees **Read for the notes** on your share, and your
   own browser records it (a few frames a second) from the moment it starts, but holds it in your browser: nothing is sent
   until it's been up ten seconds, and a share that ends sooner is dropped. It goes to the notes while notes are on; paused,
   nothing is recorded until they resume. **No** keeps nothing of it. Notes going off stop it there. If your share can't reach
@@ -506,7 +544,11 @@ time, slides in on the right.
   notes**. The notes everyone gets are written when the call ends.
 - **Yours**, at the foot of the Notes tab: your own notes on the call, which say **Only you** before you type. Write
   something for yourself, or **Mark this** to bookmark what was just said (**B**, the bookmark at the top of Notes, or
-  **Mark this moment** in **More**; the bookmark on a transcript line marks that line). Under an answer in **Ask**, **Keep in your notes**
+  **Mark this moment** in **More**). The bookmark on a line of the **Transcript** (**Bookmark this line in your own
+  notes, which only you see**) bookmarks that line, as on the note: once it's on, it stays in sight, ticked, and says
+  **Remove your bookmark**, which takes it back out of Yours. A toast says each time it goes in or comes out, and nothing
+  when a press changes nothing. A moment marked as a line was said opens at the same line, but it's a moment, not that
+  line's bookmark: taking the line's bookmark back leaves it. Under an answer in **Ask**, **Keep in your notes**
   keeps it here; nothing else keeps one. A bookmark of something said where you aren't now (the main room, from a
   breakout room) says so, and opens once you're back there or in the notes after the call. Someone with only the link
   doesn't have this: there's no account to keep it under. It goes with the call's notes, so it starts when notes do.
@@ -571,12 +613,21 @@ time, slides in on the right.
 - **Questions (journey 6.15).** **Questions** in Chat holds the room's questions, separate from chat and from the private AI
   **Ask** under Notes; its tab says how many are open. Type in **Ask a question** and press Send; switch on **Ask
   anonymously** first and the question says **Anonymous** to everyone, whoever hosts included, and only you see **You,
-  anonymously** and **Take back your question**. Each question shows its votes in a column: press it to vote, again to take
-  your vote back; one identity has one vote. **Most votes** or **Newest** sets the order; votes arriving while you read don't
-  move anything, and **Reorder** applies the current ranking. Whoever hosts can **Pin question** (it leads the list),
-  **Mark question answered** or **Dismiss question**; answered and dismissed questions leave the open count and the list,
-  and **Show answered** brings them back, marked. Whoever asked can take a question back, and it goes for everyone.
-  Questions belong to the room they were asked in, and stay with that audience when rooms close.
+  anonymously** and **Take back your question**, in its ⋯. Each question shows its votes in a column that says **Vote**,
+  or **Voted** once you have: press it to vote, again to take your vote back; one identity has one vote, and there's no
+  voting down. **Most votes** or **Newest** sets the order, and the list follows it whenever the pointer is away from the
+  questions and nothing in them has keyboard focus: votes coming in move them, gliding to their places (without gliding
+  with reduced motion), and under **Newest** a question just asked comes in at the top. While you point at them, or a
+  question's ⋯ is open, nothing moves: the order you're reading in holds, **Most votes** (or **Newest**) stops looking
+  chosen, and **Sort by votes** (or **Sort by newest**) sorts them now. On a touch screen, where a finger leaves the list as
+  it lifts, it holds while your finger is on the questions and for a couple of seconds after you last touch or scroll them,
+  so the question you just voted for doesn't move from under your next tap. This replaces the call attention spec's
+  "Sorting preserves the reader's place while votes change" (`docs/superpowers/specs/2026-11-08-call-attention-design.md`).
+  Whoever hosts uses a question's ⋯: **Pin to the top** (it leads the list) or **Unpin**, **Mark answered** and
+  **Dismiss**; answered and dismissed questions leave the open count and the list, their toast offering **Undo**, and
+  **Show answered** brings them back, marked, where their ⋯ has **Reopen**. Whoever asked can take a question back from
+  its ⋯, and it goes for everyone. Questions belong to the room they were asked in, and stay with that audience when rooms
+  close.
 - **Mentioning someone in chat (journey 6.32).** Type **@** and search the people who can read this room or, in a private conversation, its original two participants. Their address, or a guest's
   identity, distinguishes people with the same name. Use the arrow keys and **Enter**, or press their row, to select them.
   Selected people appear beside the composer and stay highlighted in the sent message; changing the tagged words removes
@@ -605,13 +656,21 @@ time, slides in on the right.
   been on. A guest with
   the link can catch up on what was said while they were in the call; the notes go to the people invited.
 - **Breakout rooms.** The organizer opens them on their side, from **Breakout rooms** in People or **More**. Pick two
-  or three rooms and how long, drag people between rooms and rename them, then
-  **Open rooms**. While they're open: a shared timer, each room and who is in it (rename a room in place, or
-  move someone to another room or back to the main room from their name), **Join room** and **Back to main
-  room**, **Message every room**, and **Bring everyone back now**. Each room has its own encryption keys and
+  or three rooms and how long. Everyone in the call is on the board, guests who joined with the link too, dealt into the
+  rooms with people invited first, and you're **You**, in the **Main room** over them: drag anyone between the main room
+  and the rooms, yourself too, rename rooms, then **Open rooms**. You start in the room you put yourself in, or in the
+  main room. Only someone invited transcribes a room, so with notes on, the board says when a room has nobody invited in
+  it (nothing said there will be transcribed), and, while you've put yourself in a room, that nothing said in the main
+  room goes into the notes meanwhile. While they're open: a shared timer, the main room and each room and who is in it
+  (rename a room in place, move someone to another room or back to the main room from their name, or send someone in the
+  main room, such as someone who came late or a guest, to a room), **Join room** and **Back to main room**, **Message
+  every room**, and **Bring everyone back now**. From the main room, your stage shows every room; one with nobody in it,
+  and any you fold (the main room too), is only its name, and the time left is said once, over them. With notes on, a
+  room says **Notes** only while someone invited is in it: one with only guests, or nobody, in it isn't transcribed.
+  In a room, your stage is that room's people, as it is for everyone in it. Each room has its own encryption keys and
   chat, so what's seen, heard and written in a room reaches only the people in it; the room sees the organizer
   come and go, and someone moved is told. Captions and catching up in a room cover that room only. With notes on,
-  what's said in a room is transcribed by one browser there (someone sent to the room, told when it's theirs),
+  what's said in a room is transcribed by one browser there (someone invited sent to the room, told when it's theirs),
   never recorded, and goes into the call's notes as the room's own section, for everyone who gets the notes:
   everyone is told so when the rooms open, and each room's notes sign says whose browser transcribes it. Inside a
   room, the organizer can **Pause notes here** (that room alone is told, and its card says **Notes paused**) and
@@ -716,8 +775,9 @@ If playback is blocked, hands, People and their counts still work.
 **6.29 Choose what others see behind you.** Before joining, **Background** opens its window: a big live preview of you, and
 blur, a picture or a colour beside it, applied as you pick. During the call, **Background** in the camera's menu opens the same
 window. The preview and outgoing video use the same local effect;
-switching a camera or turning it off/on keeps the choice, remembered on this browser/device. A lower processing quality is
-announced and explained under the preview when the device is busy; the chosen background stays on and quality recovers when it can.
+switching a camera or turning it off/on keeps the choice, remembered on this browser/device. When the device is busy the effect
+drops to a lower processing quality and recovers when it can, without a word in the call or before joining: the chosen background
+stays on, and while it's below full quality, Background's window says so under its preview.
 A browser without effects explains that and offers **Choose Off**. A background that cannot load, is no longer kept here or
 stops processing turns the camera off and says so: choose another background, or **Off**, then deliberately turn the camera on.
 
@@ -784,11 +844,11 @@ See [Floating call](../engineering/floating-call.md) for browser capabilities an
      the call lights their tile for a moment. Tagged while the workspace isn't open, you get the same toast, a little later:
      **Go there** opens it on the line. Putting the workspace away, or opening something else on your stage, stops
      following, and for everyone else you've left it.
-   - **While breakout rooms are open** the organizer's stage shows the rooms, and the workspace stands beside them, as
-     anything else open there does, the rooms where the people would be; Workspace, **W**, Find and the notes' **Open**
-     all open it there, and so does **Open the workspace** for someone in the main room asking to see it. On a phone, or a
-     window too narrow for both, the workspace goes over the rooms until it's closed. Focus isn't on offer until the rooms
-     close.
+   - **While breakout rooms are open** the organizer's stage, in the main room, shows the rooms, and the workspace stands
+     beside them, as anything else open there does, the rooms where the people would be; Workspace, **W**, Find and the
+     notes' **Open** all open it there, and so does **Open the workspace** for someone in the main room asking to see it. On
+     a phone, or a window too narrow for both, the workspace goes over the rooms until it's closed. Focus isn't on offer
+     there until the rooms close; in a room, it is, as for anyone.
    - **An organizer taken out of the workspace** everyone's viewing is told so, and **New workspace** has everyone view one
      of their own. Everyone else carries on.
 2. **Only the organizer switches what everyone views**, from the name at the top of the list, or **Switch workspace** in the
@@ -833,12 +893,18 @@ See [Floating call](../engineering/floating-call.md) for browser capabilities an
      as a line, a follow-up as a checklist line tagged with who and when, which is then the same follow-up, and a line of the
      transcript as a quote with who said it and when. It lands where you can see it, or a toast says where it went and **Go there**
      opens it. With no document to send to, there are no arrows.
-   - **From the call** in **/**: **Decided so far** and **Follow-ups so far** fill in as the notes do, for everyone in the document,
+   - **From the call** in **/**, first in the list during a call, before Write and Add: **Decided so far** and **Follow-ups so far** fill in as the notes do, for everyone in the document,
      and nobody types them. When the call ends they stay as they were. **Quote what was said** picks from the last few lines. With
      notes off they say so.
    - **Hear it** on a quote plays that moment, when the call keeps its recording: during the call for anyone in it who was
      there for that moment, guests included (a guest never hears what was said while they were away), and after it for
-     everyone with the notes.
+     everyone with the notes. It plays on the speaker chosen for the call, and turns while the recording comes. When it can't
+     play, it says why beside the button: "Not in the recording yet. Try again in a few seconds." for a line just said, whose
+     piece of the recording is still on its way, and pressing it again then plays it; "This browser couldn't play it.";
+     "You can only hear what you were there for." for a guest with the link, who hears only what they were there for; or,
+     for anyone else, "This part of the recording can't be played.". A quote from a call that doesn't keep its recording
+     says "This call doesn't keep its recording.", and one said in a breakout room, which is never recorded, "Breakout rooms
+     aren't recorded.", with no Hear it.
 5. **Present the workspace**, from **Present** on its bar while it's open just for you (on a phone too), or with **Share ›
    The workspace** in the dock, for anyone in the workspace, while nobody else presents a board or the workspace (Share
    says "Priya is presenting. You can present once they stop."). Everyone in your part of the call who isn't watching
@@ -851,8 +917,9 @@ See [Floating call](../engineering/floating-call.md) for browser capabilities an
      own: to open another document and write alongside Priya, with her face showing where she is. **Follow Priya** ("Priya
      is in Launch plan") takes them back to her page and line. **Close** closes it for them: while Priya presents it's a
      tile among the people, saying where she is, and **Join** takes them back in, following.
-   - **Ending it.** While you present, **Close** (or the lit **Workspace**, or **W**) asks: **For you**, and everyone
-     following stays in it, working on their own; or **For everyone**, and it closes for everyone in the call. The
+   - **Ending it.** While you present, **Close** (or the lit **Workspace**, or **W**) asks: **For you** ("You stop
+     presenting."), and everyone following stays in it, working on their own; or **For everyone**, and it closes for
+     everyone in the call. With nobody presenting it, Close closes it at once: there's nobody else to close it for. The
      organizer can close anyone's for everyone from its name, and whoever presented it is told who did ("Art closed the
      workspace for everyone."). It also ends when the presenter leaves the call for good
      ("Priya left the call, so the presentation ended"), is removed or moved to another part of the call ("Priya stopped
@@ -896,9 +963,9 @@ See [Floating call](../engineering/floating-call.md) for browser capabilities an
    in. On a phone, Board is in **More** (step 14).
 2. **It opens just for you.** The board you pick opens on your stage, in the frame ("Open just for you"), with the people
    beside it, and nobody else's screen changes. Opening a saved board this way doesn't touch the call. **New** makes a
-   board, saved in the call's workspace and named after the call, that's the board in this part of the call: the one the
-   timer, votes, ideas from the call, breakout rooms and the note's **Worked on in this call** hang on. It still opens only
-   for you, and everyone else finds it under **In this call**. Timer, Vote and ideas from the call show on the board in the
+   board, saved in the call's workspace and named after the call, that's the board in this part of the call: the one
+   votes, ideas from the call, breakout rooms and the note's **Worked on in this call** hang on. It still opens only
+   for you, and everyone else finds it under **In this call**. Vote and ideas from the call show on the board in the
    call, not on a saved board you opened yourself. Someone else starting a new board while you have the call's open leaves
    yours on your stage, just for you. **Present**, on its bar, brings everyone (step 11).
 3. **Presenting a saved board brings it into the call first.** If some people here can't open it, a question comes first,
@@ -925,30 +992,38 @@ See [Floating call](../engineering/floating-call.md) for browser capabilities an
    screen, 14:05", and Priya is told. It's kept in the board's files, whether or not the share is in the notes. It's for whoever
    can add to the board, and isn't offered for your own screen.
 7. **The board's name**, on the frame's bar, is a menu. It has **Rename**, for anyone who can change it, and everyone sees
-   the new name at once; **Open where it’s saved**, which brings up that workspace if it's the one the call is viewing and
-   opens any other in a tab of its own;
+   the new name at once, wherever it's named: a saved board renamed while it's open just for you is under its new name in
+   **Board**'s list once it's closed, and opens again with it (journey 6.37); **Open where it’s saved**, which brings up
+   that workspace if it's the one the call is viewing and opens any other in a tab of its own;
    **Who can add to it**, for someone in that workspace who can edit the board, which opens the workspace's own **Share** for
    it under the name (add people by name or address, change what each can do, or keep it to the people added; someone it
    becomes read-only to sees it as **View only** at once, and once it's kept to the people added, nobody's told everyone here
    can add to it); **Copy link**, **Download as an image**, **Download as a PDF** and **Night board**, as the bar's **More**
-   has (step 13), there while you present it too, when the bar isn't; and, for
+   has (step 13); and, for
    the organizer, on a board someone else presents, **Close it for everyone**. Whoever presents it closes it for everyone
    from Close's question (step 11). Closing deletes nothing: the board stays saved where it is. The board's seal says
    what's true of this board: who can add to it, where it's saved, and that it’s encrypted in storage. It says
    how the board stands too, as on its own page:
    - **Reconnecting**, when the board's connection drops while the call carries on. The pill at the top of the board says
      "Keep going. Your changes are safe here." What you add goes up once the connection's back, with nothing lost or doubled.
+     While the browser is online, the pill and the seal have **Try now**, which tries the connection again at once rather
+     than after the wait. It tries by itself, a little later each time up to every 10 seconds, and, between tries, at once
+     when the browser comes back online, the tab comes back into view, or the board goes back on your stage.
    - **Not saved**, when Alcove won't take what was added. The pill says **Couldn't save** and how many changes are only on
      this screen ("Your last 3 changes are only here."). For anyone signed in, whose browser keeps them, it has **Try
      again**, which opens the board again and sends them. It tries again by itself as well.
    - Pressing the seal says the same, under the pill. A board that can't be opened right now opens again by itself, a little
      later each time.
-8. **Timer and votes**, on the board's bar, for anyone who can add to it. **Timer** offers 3, 5 or 10 minutes and **Start**:
-   one pill at the top of the board counts down, the same for everyone, turns amber in its last minute and chimes softly at
-   the end, and whoever started it, or the organizer, can **Stop** it. A screen reader hears it start, with how long, then with
-   a minute left, when time's up and when it's stopped, never each second. **Vote** votes on the frame you're looking at (every
-   sticky, with no frame in view), 3, 5 or 10 votes each, and the board glides to it. After **Start the vote**, pressing a
-   sticky spends a vote and shows a dot only you can see, and pressing it again takes it back. From the keyboard, Tab from
+8. **Votes**, on the board's bar, for anyone who can add to it. A board has no timer of its own: the call's **Timer** is the
+   one countdown, over the board too ([The call's timer](#the-calls-timer-journeys-626628)). **Vote** votes on the frame
+   you're looking at (every sticky, with no frame in view), 3, 5 or 10 votes each, and the board glides to it. Its menu
+   names the frame, "Vote on Could improve", and where frames share a name, which of them, in the order they sit: "Vote on
+   Could improve, the second of two". Whoever presents the board votes on the frame they show (step 11). A vote reaches
+   everyone in this part of the call who can add to the board, and so vote in it: anyone without it on their stage is told
+   "Priya started a vote on Launch retro." with **Vote**, which opens it there on the vote's frame, and everyone following a
+   presentation of it votes as they follow. Someone who can only look at the board isn't told, as they can't vote. After
+   **Start the vote**, pressing a sticky spends a vote and shows a dot only you can see, and pressing it again takes it
+   back. From the keyboard, Tab from
    the board goes from sticky to sticky in the vote, frame by frame and row by row, with the board gliding to one out of
    view, and on past the last; Shift and Tab go back. Enter or Space votes for the sticky you're on, and again takes the
    vote back. A screen reader hears each sticky's words as a toggle button, pressed once it has your vote and dimmed while
@@ -956,8 +1031,7 @@ See [Floating call](../engineering/floating-call.md) for browser capabilities an
    go back to the board. Nobody sees a count until
    whoever started it, or the organizer, presses **End the vote**: every count appears at once, for everyone, the top three
    stay bright and the rest step back, until **Done**. The pill shows one thing at a time: how the board stands (Reconnecting
-   or Couldn't save), then a vote, its results, following someone, and the timer. Someone presenting is the frame's bar's
-   to say.
+   or Couldn't save), then a vote, its results, and following someone. Someone presenting is the frame's bar's to say.
 9. **Ideas from the call.** While notes are on where you are, the call picks out things people said that are worth a sticky,
    and a pill rises at the foot of the board: **3 ideas from the call**. Nobody has to stop talking to write them down.
    Pressing it opens the tray, **From the call**, written in confidential compute like the notes: each line is what someone
@@ -977,33 +1051,47 @@ See [Floating call](../engineering/floating-call.md) for browser capabilities an
    Fewer than two stickies with words says "Pick at least two stickies with words to sort.", and more than 80 "Sort up to 80
    stickies at a time."
 11. **Present.** **Present**, on the frame's bar of a board you can add to while it's open just for you, or **Share › A
-   board** in the dock, brings everyone with you, and the board's frames become slides, in order, with nothing to prepare.
-   Neither is offered while someone else presents a board or the workspace here.
-   The frame's bar has no Present on a phone, where **Share › A board** presents one. A saved board comes into the call
+   board** in the dock, brings everyone with you, following your view, with nothing to prepare. It's still the board, tools
+   and all, for everyone: nothing turns into slides. Neither is offered while someone else presents a board or the workspace
+   here. The frame's bar has no Present on a phone, where **Share › A board** presents one. A saved board comes into the call
    first (step 3).
-   - **Whoever presents** is told "Everyone follows you on Launch retro. They can unfollow to add to it.", and the bar says
-     "You’re presenting · 3 following". They see the frame alone, as everyone following does, and it stays on the frame. At
-     its foot, for them alone, the pager has the arrows on either side of "1 of 3" and the frame's name, and, with an
-     account, the notes button, which opens **Your notes** on their side: where they are ("1 of 3 · you’re sharing it"),
-     their own notes beside this frame, each frame its own and kept for next time ("Kept for next time. Only you see
-     them."), and the next frame, drawn small ("Next: Could improve", or "That’s the last one"). Their pointer shows to
-     everyone. Opening something else on their stage puts the board away as a tile with **Open**, and they go on presenting.
-   - **From the keyboard**, **→** and **←**, and a clicker's Page Down and Page Up, move the frames while the presentation
-     has the keys: the frame itself, or the pager's arrows, where the keys go as it starts (**Next frame**, as soon as the
-     pager shows, so **→** moves on straight after **Present**). Anywhere else they move
-     nothing: in Your notes, on a tile on the stage, in the rooms' setup, or on the page with nothing chosen.
-   - **Everyone else** follows: their tools fade, and they see the presenter's frame alone as it changes, with "Art is
-     presenting" and "Following Art" on the bar. **Unfollow** gives you your own view back, as you left it, tools and all,
-     and a scroll, drag or pinch on the board starts working on your own from where it takes you; **Follow Art** ("Art is in
-     Could improve") takes you back. Art moving on never pulls you back. Someone who comes in late lands on the frame
-     everyone's on.
-   - **Close**, while you present it (or the lit **Board**, or **O**), asks: **For you** ("Everyone else keeps it open, on
-     their own."), and everyone following stays on it, working on their own, and it's still the board in the call; or **For
+   - **Whoever presents** is told "Everyone follows you on Launch retro. They can add to it as you go.", and the bar says
+     "You’re presenting · 3 following". The board glides to its first frame as it starts, and from there it's yours to move
+     round: drag, scroll, zoom and **Show the whole board** as ever, add to it, start a vote (step 8), and everyone following
+     sees all of what you see, whatever's outside the frames and the lines between them included, whatever the shape of their
+     screen: a wider or taller one shows more round it, never less of it. At its foot, for you alone, the pager steps through
+     the frames in the order they sit on the board, top to bottom and left to right, so the order can be told from the board:
+     the arrows on either side of "1 of 3" and the frame's name glide your view, and everyone with it, to the frame before or
+     after. The frame stays fitted to your screen as that changes size (**Your notes** opening beside it, say) until you move
+     off it, and when your own view comes to rest in a frame, the pager says that's where you are. Someone moving frames round
+     meanwhile never changes which frame you're on: the pager, Your notes and "Art is in Could improve" stay with it, at its
+     new place in the order. With an account the pager has the notes button, which opens **Your notes** on your side: where
+     you are ("1 of 3 · you’re sharing it"), your own notes beside this frame, each frame its own and kept for next time
+     ("Kept for next time. Only you see them."), and the next frame, drawn small ("Next: Could improve", or "That’s the last
+     one"). A board with no frames has no pager. Your pointer shows to everyone. Opening something else on your stage puts
+     the board away as a tile with **Open**, and you go on presenting; everyone following stays where you left them until
+     you're back.
+   - **From the keyboard**, **→** and **←**, and a clicker's Page Down and Page Up, glide to the next or the last frame while
+     the presentation has the keys: the board itself, or the pager's arrows, where the keys go as it starts (**Next frame**,
+     as soon as the pager shows, so **→** moves on straight after **Present**; the board itself, on a board with no frames).
+     Anywhere else they move nothing: while you type, in Your notes, on a tile on the stage, in the rooms' setup, or on the
+     page with nothing chosen.
+   - **Everyone else** follows: they see the presenter's view as it moves, with their own tools to hand, and "Art is
+     presenting" and "Following Art" on the bar. Anything of their own on the board (a press, a key, a scroll, a drag) is
+     theirs: it takes them off following, from where they are, and does what they did, so a double-click in a frame is a
+     sticky there and the first press is never lost. A vote on a sticky (step 8) changes nothing on the board, so they vote
+     and go on following. **Unfollow** gives you your own view back, as you left it; **Follow Art** ("Art is in Could
+     improve") takes you back to Art's view. Art moving on never pulls you back, and only you stop following: the board
+     opening again under you (**Try again**, or by itself once it can) keeps you with Art. Someone who comes in late follows
+     Art from wherever Art is. Someone who can only look at the board follows the same way, looks round, and changes nothing.
+   - **Close**, while you present it (or the lit **Board**, or **O**), asks: **For you** ("You stop presenting. Everyone else
+     keeps it open, on their own."), and everyone following stays on it, working on their own, and it's still the board in the call; or **For
      everyone** ("It closes for everyone in the call."), which closes the board in the call too: "Closed for everyone." The
      organizer can close anyone's for everyone, from the board's name, and whoever presented it is told who did ("Art
      closed Launch retro for everyone."). **Stop sharing**, in Share, asks the same, wherever the board is: on your stage,
-     a tile, or out of sight. If the presenter leaves the call, it ends too, and
-     its tile goes. Nobody's access changes: someone who can't open the board is told who's presenting, never what.
+     a tile, or out of sight. If the presenter leaves the call, it ends too, and its tile goes. When it ends, whoever was
+     following stays where it left them. Nobody's access changes: someone who can't open the board is told who's presenting,
+     never what.
 12. **More**, at the foot of the tools, for anyone who can add to the board. **Image** puts a picture from this computer
    where you're looking, kept in the board's own files and sealed as the board is; everyone who can open the board sees it,
    and nobody else. **From your workspace** lists what you can open in the board's own workspace, the board aside, and puts one
@@ -1021,13 +1109,18 @@ See [Floating call](../engineering/floating-call.md) for browser capabilities an
 13. **More**, at the end of the board's bar. **Copy link** copies the board's address, which opens it for whoever can open
    it. **Download as an image** and **Download as a PDF** save the board as you see it, every linked document named as you
    know it or "A document you can't open"; it's drawn and saved in your browser, and comments aren't in it. Those three
-   change nothing, so someone who can only look has them too. **Night board**, for whoever can change the board, makes it a
-   dark board in any theme, a dark board by day, for everyone and everywhere it shows: on the stage, as a tile, on the note,
-   presenting and on its page. It says **On** while it is, and pressing it again lets the board follow each person's theme.
+   change nothing, so someone who can only look has them too. **Night board**, with the moon, for whoever can change the
+   board, makes it a dark board in any theme, a dark board by day, for everyone and everywhere it shows: on the stage, as a
+   tile, on the note, presenting and on its page. A toast says what it did, for whom: "Night board is on. The board is dark for
+   everyone, whatever their theme.", which is how someone whose own theme is dark knows it worked. It has a tick while it's
+   on, here and in the board's name menu (step 7) alike, and pressing it again lets the board follow each person's theme:
+   "Night board is off. The board follows each person's theme."
 14. **On a phone**, **Board** is first in **More**'s grid and opens the same picker, and a board's frame has no Present:
    **Share › A board** presents one. Faces stay on top, under the line over the call when it says anything, and the board
    fills the rest, opening on its first frame at a size it can be read. Drag to look round and pinch to zoom; the bar keeps
-   the name, the seal, **Timer**, **Vote** and **More**, and what the pill says wraps rather than being cut. The one tool is
+   the name, the seal, **Show the whole board**, which shows all of it however big, further out than a pinch goes,
+   **Vote** and **More**, and what the pill says wraps rather than being cut. Dragged off into empty space, the board offers
+   **Back to the board**, as anywhere. The one tool is
    **+**, at the bottom right: a sheet rises, night as the call is, with one sticky, its colours and a button that says
    where it's going, "Add to Went well" for the frame in the middle of the view, and the sticky goes into that frame's first
    free place, wherever someone has moved the frame meanwhile. Ideas from the call are there too: tap the pill, then **Add**
@@ -1066,7 +1159,8 @@ See [Floating call](../engineering/floating-call.md) for browser capabilities an
    board. The one that was open can't take them." When the call's workspace can't take a new board, they stay where they are:
    "The rooms' boards didn't come back: this call's home can't take a new board any more. Each one is still saved there."
    Afterwards a room's board is a saved board like any other, everyone invited's, and nothing to a teammate who wasn't invited.
-   **Present** then makes each room's frame a slide: the room reports back, and the organizer moves on.
+   **Present** then makes each room's frame a stop on the pager, in the order they sit: the room reports back, and the
+   organizer moves on.
 6. **One board for every room.** With Shared, the board comes onto the organizer's stage as the rooms open, and they watch
    every frame fill up (closed just for them, the rooms take its place until they open it again); when the one
    open can't take the rooms' frames (whoever brought it can't edit it now), the rooms share a new one in its place: "The rooms
@@ -1103,8 +1197,9 @@ Storybook journeys **6.23–6.25** show the review alongside the call:
    ready", then **Read the notes** or **Go to Home**. The note shows the steps so far (call ended, audio
    saved, the transcript's length, the notes being written), playback of the decrypted recording, and who
    has it. Without notes, the sheet says there's nothing to send.
-   Notes are written in the language and summary length set in settings by the organizer (or, for a room
-   recording, by whoever recorded): "Same as the call" by default, with a short summary of two or three sentences, and a longer full summary under it.
+   Notes are written in the language set in settings by the organizer (or, for a room recording, by whoever recorded):
+   "Same as the call" by default. Every note gets a short summary of two or three sentences, and a longer full summary
+   under it.
 3. Everyone invited gets the notes as the call ends, including people signed in whom the organizer let in
    from the link (letting them in added them to the invite; removing them took them off it). They find them
    under Notes when they sign in with that address, marked as from the organizer. Guests who joined with only
@@ -1161,26 +1256,50 @@ Storybook journeys **6.23–6.25** show the review alongside the call:
   the call has ended or the room recording has stopped. Anyone who has the notes can share them; people who have them already are skipped, and someone
   who removed them gets them again. Each share records who shared the notes and when, and the group's name
   when they went to one of the sharer's groups.
+- **Share a link**, under the people in Share, is for someone whose address you don't have: **Make a link** shows a link
+  to copy, once. For seven days, whoever opens it can have the notes, as shared by you, and the link alone opens nothing.
+  Signed in, it asks first, because everyone with the notes will see who opened it: "Open them as
+  kofi@vandelay.industries? Everyone who has them will see that you did." Only **Open the notes** gives that account the
+  notes and opens them; **Not now** goes to Home with nothing given. Someone signed out is asked to sign in first (to a
+  real account, unless the organizer's is a demo one), and is then asked the same: signing in never opens them by itself.
+  The links that still work are listed there, **Your link** or **Priya's link**, with until when, and whoever made one,
+  or the organizer, can **Revoke** it: from then on it opens nothing, and whoever it gave the notes to keeps them. A
+  link that's run out or been revoked says so, and to ask for a new one. Notes from a link say **From Priya's link**
+  beside their title, and **Who has these notes** says **By Priya's link**.
 - Someone else's notes say how you got them, beside their title: **From Priya’s call** when you were invited,
   **Shared by Theo** when someone shared them afterwards, or **Shared by Theo with Leads** when it was to one of
   their groups. Notes lists them under the call they came from, and **Who has these notes** says how each person
   got them: organizer, invited, or shared afterwards by whom (and with which group). A long list shows its
   first eight people until **Show all** opens it.
-- **More** has **Copy as text**, once the notes are written, and **Delete notes**, which deletes your own notes for everyone, audio included, with anyone's own notes on them, once you say so,
+- **More** has **Copy as text**, once the notes are written (the summary, the full summary, what was decided, what's
+  still open, the follow-ups and the shared notes), and **Delete notes**, which deletes your own notes for everyone, audio included, with anyone's own notes on them, once you say so,
   and then lists what went. For notes from someone else it's **Remove from your notes**: everyone else keeps them, and
   you're no longer listed as having them. Your own notes on them go for good, and what you added to the shared notes stays.
   Beside the list it asks in place, and the row leaves the list. While the call is going, it waits until the call ends.
 - **Your notes**, beside the note, is what you kept in the call and more: write something, bookmark a line (the bookmark
-  beside it) or a shared screen, or **Keep in your notes** under an answer. It says **Only you**, and the note itself
-  says **Everyone with the notes**: nobody else reads Your notes, the organizer included.
+  beside it, **Bookmark this line in your own notes, which only you see**) or a shared screen, or **Keep in your notes**
+  under an answer. A bookmarked line's bookmark stays in sight, ticked; **Remove your bookmark** takes that line's own
+  bookmark back and leaves a moment marked near it in the call. It says **Only you**, and the note itself
+  says **Everyone with the notes**: nobody else reads Your notes, the organizer included. Each row starts with its kind
+  (lines of text for something you wrote, a bookmark, a question for a kept answer); pointing at a row, or moving the
+  keyboard into it, shows **Add to the shared notes**, **Change what you wrote** and **Delete**, which a touch screen
+  always shows.
+- The column beside the note scrolls by itself, under the line along the top: however far down the note you are, Your
+  notes and its box are in reach without scrolling back up, and scrolling one column doesn't move the other. In one
+  column (1180px wide and narrower, and phones), Your notes and **Shared notes** come before the transcript, two across
+  until a phone puts them one under the other; who has the notes, the series and Google Drive come after it.
 - **Add to the shared notes** on anything in Your notes shows, in place of the box you write in, exactly what goes:
-  the words, which you can cut down, the moment they point at, **Added by people** on this note, and everyone who
+  the words, which you can cut down, the moment they point at, **Shared notes** on this note, and everyone who
   has the notes. Nothing goes until **Add for 3 people**; only what's in the box goes, and never a question you asked.
   If someone got the notes since, it says so and shows them. An answer goes only if the moments behind it are in the
   notes. Once the notes are written is when this can be done: until then the people who'll get them aren't settled.
-- **Added by people** shows what people added, with who and when, for everyone with the notes. **Take back** removes
-  yours for everyone, once you say so in the row, and it stays in Your notes; the organizer can **Remove** any of them
-  the same way.
+- **Shared notes** (**Everyone with the notes**) shows what people wrote there or added from their own notes, with who
+  and when, for everyone with the notes, and once the notes are written, a box of its own: before anything is typed it
+  says who reads it (their faces and names, "and anyone they share the notes with"), and Enter posts it for all of them
+  in one step. If someone got the notes after the box showed, posting is refused, the words stay in the box, and it says
+  who got them since; Enter again posts it for them too. What's posted can't be changed. **Take back** removes yours for
+  everyone, once you say so in the row; something added from Your notes stays there. The organizer can **Remove** any
+  of them the same way. During a call the shared place to write is the call's workspace pages.
 - A note's page is a slim band of sky, with the call drawn along the horizon. The band has a way back (**Notes /** its
   title), the pin (**Pin these notes**, at most eight pinned), **Share**, **More**, and one line under the title: when
   it was, who has it, how you got it, and **Written in confidential compute** with when the hardware was checked (or, in
@@ -1193,12 +1312,20 @@ Storybook journeys **6.23–6.25** show the review alongside the call:
   what's to do sitting on it (hollow until people have said so), where nothing was captured, and light under it drawn
   from what was said, still where nobody spoke. Pointing at a chapter or a mark says what it is. Pressing one moves the sun
   there without moving the page, as pressing along the line does, and the line being said is still marked; a chapter
-  that's breakout rooms opens them instead. Without a recording, pressing one goes to its line in the transcript. A moment chip anywhere else on the page, or the time of a transcript line,
+  that's breakout rooms opens them instead. Without a recording, pressing one goes to its line in the transcript. A moment chip anywhere else on the page
   still goes to that line: the sun moves, and the transcript goes there and marks it, opening the rest if it has to.
+  Pressing a line of the transcript, its words or its time, goes to its moment and plays from there, and marks the line
+  where it is; selecting its words to copy them doesn't, a double or triple click included (a press on the words waits a
+  quarter of a second for it), and its own tools only do what they do. On a phone, where one line at a time shows its
+  tools, the line pressed keeps them while the call plays on past it, until another is pressed or it's scrolled out of
+  sight. Its time is still the keyboard's way in. A breakout room's lines have no moment to go to, since a room isn't in the recording.
   The line shows at most 10 decisions and follow-ups, spaced apart, decisions first; a follow-up said at the same moment as a decision sits just beside it; the rest are in the notes. A shared screen opened from the transcript has its time in the corner, which closes it and plays the
   call from there, with the page going up to the shared screens' video (or, without one, to that line). **Play** starts as soon as the first of the recording arrives; until it's pressed, moving along the line
   reads nothing. Whatever was pressed last wins, even while the recording is on its way. As it plays the sun moves and
-  the line being said is marked. If part of it won't play, it says so, and **Play** tries again from there. The horizon
+  the line being said is marked. **Space** plays and pauses it, as in most players, with nothing focused or the line
+  itself, and the page doesn't scroll; in a field it types, a focused button or tick box is pressed as ever, and with a
+  menu or window open over the page it does nothing new. In the shared screen's full screen it plays and pauses whatever
+  has focus there. Shift+Space still scrolls up, and Page Down pages down. If part of it won't play, it says so, and **Play** tries again from there. The horizon
   stays at the top of the page as you read. On a phone it shows the chapter you're in, and the chapters are listed
   beside the note. While a call is still recording, the line ends where it has got to, and **Play** plays what's there
   so far and carries on as more is recorded; at the very edge it stops, and says that's all so far. A call that didn't
@@ -1210,17 +1337,22 @@ Storybook journeys **6.23–6.25** show the review alongside the call:
   it; there whether or not the notes are written yet), the transcript (its first five lines,
   then **Show all 24 minutes**, and how many shared screens are further on, which open from there) and, beside it, Your
   notes, what people added, who has it and its series. On a wide screen the transcript moves beside what was decided, so
-  going to a moment never takes the note away. When a share went in the notes, the recording plays its video above the
-  audio, in step with it, a short while after the call and before the notes are written: the share that started last
-  when two overlap, with a chip for each to switch, and a dark **Nothing shared** between shares. A button in its
+  going to a moment never takes the note away. When a share went in the notes, the recording plays its video in step
+  with the audio, a short while after the call and before the notes are written, on the sky over the horizon: the line
+  runs along its foot as its seek bar, and sticks to the top as you read on, clear of it. It shows the share that started last
+  when two overlap, with a chip for each to switch. While a share's picture takes a moment to load, or to get to another
+  moment, the dark stage says **Loading Priya’s screen**; if it can't be played, it says so, with **Try again**. Where
+  no share in the notes covers the moment (before, between or after them, or a share that wasn't kept), it says **No
+  shared screen in the notes here**, with when screens were shared (**Priya’s screen 2:10–14:40**), each going there in
+  one press. The stage keeps its size whatever it shows, so nothing below it moves. A button in its
   corner fills the screen with it, with play, the time and a bar to scrub through the recording along the foot (it
   hides while playing until the pointer moves); Escape leaves. The transcript shows a frame of a share beside the line
   said when what was shown mattered to what was said: only a screen the AI judged key, where what was said refers to it
   or relies on what it holds, at most one a line, and never the same screen twice in a row. A share's first frame isn't
   shown unless it was key, and the screen from before a change is only used to see what changed. The notes point at those
   screens; frames that weren't shown only went into what the notes say, and aren't kept. It takes questions about the call: a suggested question or your own, in
-  a bar that stays at the bottom while you read (suggestions show at the end of the note). Answers cite the moments in
-  the recording they come from.
+  a bar that stays at the bottom while you read (suggestions show above it at the end of the note, while the pointer is
+  over it, and while you're in it). Answers cite the moments in the recording they come from.
 - Until the notes are written, the page says the audio is saved and encrypted (or, when the call doesn't keep its
   recording, that the call has ended) and the notes are being written
   in confidential compute, and ticks off each step (the call ended, the audio saved, the transcript, and shared screens ready to replay when a share was kept) with the
@@ -1294,6 +1426,11 @@ Storybook journeys **6.23–6.25** show the review alongside the call:
   **Change this call**, or **Schedule next week’s call**. When the series follows a recurring Google event
   and Google Calendar isn't connected any more, it says so and offers **Connect Google Calendar**.
 
+Storybook journeys **8.47** and **8.48** write straight into the shared notes: posting for everyone in one step, and
+someone getting the notes while the box is open, which it says before posting again. **8.49** shares the notes by a
+link, then revokes it, and **8.50** opens one signed out: it asks to sign in, then asks before opening the notes as that
+account.
+
 Storybook journeys **8.44–8.46** continue the same review after the call:
 
 - **8.44 Review suggestions after the call:** accept or dismiss pending suggestions in the note, keeping the checklist separate.
@@ -1306,7 +1443,7 @@ Storybook journeys **8.44–8.46** continue the same review after the call:
 last moment of the evening, and the recorder stands on the horizon where the sun would: dark until something is recorded.
 
 - **The recorder**, in the middle of the sky: a name for the recording (left empty, it's "Notes from the room"),
-  **Start recording**, the microphone it will use, from this browser's microphones (the same choice calls use), and
+  **Start recording**, the microphone it will use, from this browser's microphones (the same choice and list calls use), and
   under them the reminder to let everyone here know before you start.
   Choosing one doesn't open it. Until the browser has named them it says **Default microphone**. **Check the level**
   opens the microphone: the orb's rim lights up and its reflection on the water moves with your voice, recording nothing;
@@ -1432,26 +1569,29 @@ and moves a small sun to the one in view; on a narrow screen the index is a stri
 Settings can name a group or one of the places other pages point at (**Recording in the room**, **Google Calendar**,
 **Google Drive**, **Agents**); the page lands there and the index lights its group. Every control changes immediately and
 says **Saving…** while its request is pending. **Saved** shows for a moment just left of the control, only once its
-latest choice is confirmed (**Saved for new notes** for language and summary). A refusal says **Couldn’t confirm**, with a
+latest choice is confirmed (**Saved for new notes** for the language). A refusal says **Couldn’t confirm**, with a
 toast explaining why; it removes only that attempt, keeping later choices. Pick the setting again to retry. Panels that
-don't load say so, with **Try again**, and the rest of the page still works. Journey **11.23** shows Detailed → Short →
-Detailed while the oldest request fails.
+don't load say so, with **Try again**, and the rest of the page still works. Journey **11.23** shows Off → On → Off for
+notes on new calls while the oldest request fails.
 
 - **You**: your name and photo, from your sign-in, with a link to change them at Google or Microsoft (they update
   the next time you sign in; with single sign-on they come from your company's sign-in); your company, which opens
   Team (not at a personal address); and the time zone times are shown in, this computer's. Then **Appearance**:
   system, light or dark, each shown as a small evening in its own colours, kept in this browser.
 - **Calls and notes**: notes on or off for new calls (everyone invited gets them; each call can still be set when it's
-  scheduled), the language they're written in ("Same as the call", or one of twelve), how much the summary says
-  (**Short** or **Detailed**), and **AI model**: the model that writes the notes, reads shared screens and answers
+  scheduled), the language they're written in ("Same as the call", or one of twelve), and **AI model**: the model that
+  writes the notes, reads shared screens and answers
   questions for calls you organize. The default shows as "<name> (default)"; the others are NEAR AI models that take
   text and images. A model that doesn't run in a secure enclave carries a yellow **Unencrypted** badge ("Not in a secure
-  enclave, so Alcove can't guarantee this model keeps your call private."). Transcription is always private. Language
-  and summary apply to notes written from then on; the model to calls started from then on, and you can change it
+  enclave, so Alcove can't guarantee this model keeps your call private."). Transcription is always private. There's no
+  choice of how long the summary is: every note has the short summary with the full summary under it. The language
+  applies to notes written from then on; the model to calls started from then on, and you can change it
   during a call (**Notes written by**, on the capture panel) or when you write a note's notes again. Then **Recording in
   the room**: **Record without a connection** (on by default), and, while something waits here to upload, **On this
   device**: how many recordings, and how much room, with **See them** (Record's list).
-- **Audio and video**: this browser's choices, the ones the join screen and the call use; choosing one doesn't open it.
+- **Audio and video**: this browser's choices, the ones the join screen and the call use, listed as the call lists them
+  (each device once, **Your system’s choice** on the one your computer uses, and **Follow your system** while one is
+  picked); choosing one doesn't open it.
   A browser names devices only once they're allowed, so until then the microphone and speaker have no list. Nothing
   opens by itself: **Check the level** opens the microphone for eight seconds (the browser asks first if it hasn't been
   allowed), its level moves as you speak, and **Stop** counts down; it records nothing, and closes sooner when stopped
@@ -1489,8 +1629,8 @@ Detailed while the oldest request fails.
 - **Plan and credits**: the time of notes left, with a sun on the line under it: at the end of the line on a new
   account, back along it as notes are written, and set once there's none left. Calls without notes are free. Then the
   minutes of notes used this month (since 00:00 UTC on the 1st), and **Add credits** (11.24).
-- **Privacy**: what account and call information Alcove processes, how content is encrypted in storage, and whether
-  the hosting server reported hardware evidence. The **Privacy policy** explains how Alcove uses account and service
+- **Privacy**: what account and call information Alcove processes, then confidential compute: the time the hardware
+  was verified when this browser could check it, or where your audio is opened and your notes are written. The **Privacy policy** explains how Alcove uses account and service
   data and how to disconnect Google services. Then, in its own panel at the end, **Delete account**.
 
 **Delete account** opens one step where it is (never a window over the page): the row becomes the question, **Delete
@@ -1569,14 +1709,22 @@ line.
 **Enter**. **Esc**, or leaving it empty, makes nothing. A document's title is its name: the list and the path above the
 page follow as you type, for everyone.
 
+**Code.** **/** then **Code**, or ```` ``` ```` and a space on a line, makes a block of code; ```` ```js ````, ```` ```py ```` or
+```` ```cpp ```` makes one in that language. Its corner says its language and changes it, as **Language** in its menu does:
+**Plain text**, **JavaScript**, **Python** or **C++**, the same for everyone with the document. Keywords, strings, numbers,
+names and comments take their colours, in both themes. Copied into another document it keeps its language, and code pasted
+from a page that says its language takes it; nothing is guessed from the code itself.
+
 **Photos, videos and files.** **+** beside a line, or **/**, offers **Photos**, **Video** and **File**. Photos opens a space at
 once, "Drop photos here, or choose them", with a picker under it: **Choose from this computer**, or the photos already in the
 workspace, one at a time or **Add all three**; Video and File offer films and files the same way. Files dropped on the page
-land where a line shows, "Drop to add here", and pasted ones under the caret. Several photos make a gallery, one makes a picture
-across the page, a film shows its first frame with **Play**, and anything else is a file that downloads, or opens in a tab when
-the browser can show it. Everyone sees the space a file will take straight away and the ring fill as it uploads, and the
+land where a line shows, "Drop to add here", and pasted ones under the caret. Whichever way they come, and from **File** too,
+several photos make a gallery, one makes a picture across the page, a film shows its first frame with **Play**, and anything
+else is a file, whose arrow downloads it. **Download**, in a photo's or a video's menu (**Download the photos** for a gallery),
+saves the original, each photo as a file of its own, and the page stays as it is, with a call on it. Everyone sees the space a file will take straight away and the ring fill as it uploads, and the
 pictures sharpen when it's done; a caption starts as the file's name and is one click to change. A photo the browser can't read
-says which file, with **Add as a file** and **Delete**. One Alcove refuses says which file and why ("This file is bigger than
+says which file, with **Add as a file** and **Delete**; chosen with **File**, a picture Alcove can't show (a phone's HEIC photo,
+say) goes in as a file straight away. One Alcove refuses says which file and why ("This file is bigger than
 512 MiB, the most a file can be.", "This workspace is full, so it can't take more files.", "That's all you can upload today. You
 can upload more tomorrow."), with **Try again** and **Delete**, and nothing else in the document changes. A block that's
 uploading can be cut and pasted in its document, or undone and done again, and the upload goes on into it. Leaving the page doesn't stop
@@ -1647,7 +1795,10 @@ and a toast offers **Follow again**. In a call, **Esc** anywhere else is the cal
 
 **Tagging.** **@** anywhere in a line lists people, then documents and dates, narrowing as you type: the workspace's people
 first, then your company (in a call, who's in it first, then who's invited). The list says who **Can’t open this yet**
-before you pick. Whoever can open the document hears about it; if they can't, Alcove asks once, right by the name: **Let them
+before you pick. Dates are **Today**, **Tomorrow** and the next Friday, with a day typed after **@** with its month first
+among them (**@12dec** offers Sat 12 Dec), and then **Pick a date…**: a month to pick any day from, past ones too, in the
+list's place, with the pointer or with the arrow keys and **Enter**, and **Esc** goes back to the text. Pressing a date tag
+opens the same month, to pick another day for it. A date outside this year says its year (Fri 5 Feb 2027). Whoever can open the document hears about it; if they can't, Alcove asks once, right by the name: **Let them
 edit**, **Read only** or **Not now**. A tag never shares anything by itself, and someone who can't open it isn't told. Being
 tagged is a toast saying who and where, and nothing moves until **Go there**, which lands on the line. Someone away hears when
 they're back: **Drive** in the side panel counts what's waiting, and a browser notification says so, if they've allowed them.
@@ -1668,7 +1819,14 @@ into a field: type, then **Enter**. A workspace always keeps an admin.
 
 - The connection drops: you keep writing. A bar says your edits are safe in this browser. They're kept there, sealed,
   through a reload, and send when you're back, even if you never open that document again; everyone's words merge, with
-  nothing to resolve, and a toast says so.
+  nothing to resolve, and a toast says so. "You're offline" only when the browser is; while it's online and Alcove can't be
+  reached, the bar says "Alcove can't be reached right now. Keep writing: what you write is kept here until it saves.", with
+  **Try now**, which tries again at once rather than after the wait, and a document that hasn't opened yet says the same with
+  **Try now**. It tries by itself, a little later each time up to every 10 seconds, and, between tries, at once when the
+  browser comes back online, the tab comes back into view, or, in a call, the workspace is opened again. A page that's still
+  opening keeps its place: none of those starts it over. The list has a connection of its own:
+  while it's down, a line under its name says **Reconnecting**, with **Try now**, so a list that's stopped changing isn't
+  taken for current.
 - Someone moves the document you're in to Trash: you aren't thrown out. A bar says who, the page stops taking edits, and
   **Restore it** brings it back for everyone, where it was. Whoever moved it goes on to the next document, with **Undo**.
 - It stops being yours (taken off it, or closed to the workspace) or it's deleted: the page says you can't open it, the
@@ -1702,7 +1860,7 @@ On a phone the list and the page take turns: the list until something's open, an
 brings it back. Menus and sheets rise from the bottom, and **Share** is in the document's **⋯**. Rows don't drag on a
 touch screen: **Move to…** does that. While you write, a bar rides on the keyboard with a block (as **/** does), the text's
 style, **@**, photos, a checklist and Done; sheets open above it. Holding a finger on a block opens its menu, the one its
-handle opens on a laptop, with **Delete for good** on a photo, video or file. Someone's card and a comment are sheets too, and faces are on the list's rows. A bar's buttons go under its words.
+handle opens on a laptop, with **Download** on a photo or a video, and **Delete for good** on a photo, video or file. Someone's card and a comment are sheets too, and faces are on the list's rows. A bar's buttons go under its words.
 
 ## 13. Boards
 
@@ -1723,13 +1881,14 @@ can't open it. A board you can only look at comes with the call too, with no suc
 later, and the board is brought to that call, first in its board picker's boards, and opens only when someone opens it. The
 bar's **More** has **Download as an image**, **Download as a PDF** and, for whoever can add to the board, **Night board**,
 as in a call; a night board is dark on its page by day too. Everyone else on it has a pointer with their face and name, in a
-colour of their own; you in another window aren't someone else. A blank board says **Double-click anywhere to add a
-sticky**, or press **N**, and that everyone who can open it can add to it too, when that's so. To someone who can only look,
-it says **Nothing on this board yet**. What's added reaches everyone on it as it happens.
+colour of their own; you in another window aren't someone else. A blank board says **Double-click to write**: "It's text
+on the board, and a sticky in a frame. Or press N for a sticky.", and that everyone who can open it can add to it too, when
+that's so. To someone who can only look, it says **Nothing on this board yet**. What's added reaches everyone on it as it happens.
 
-**Adding to it.** Double-click anywhere for a sticky, ready to type; in a frame it takes the frame's colour. **Tab** starts
-the next one beside it, and **Esc** finishes. The tools are down the side: **Select** (Esc), **Sticky** (N) in six colours,
-**Text** (T) in three sizes, **Shape** (S; drag to size it, or click once, then type on it), **Line** (L), **Pen** (P; press
+**Adding to it.** Double-click to write, ready to type: inside a frame, where votes, the frame's count and follow-ups look,
+it's a sticky in the frame's colour, and **Tab** starts the next one beside it; anywhere else, on open board, it's plain text
+with no box round it, as **Text** puts it, for labelling a diagram. **Esc** finishes either.
+The tools are down the side: **Select** (Esc), **Sticky** (N) in six colours, **Text** (T) in three sizes, **Shape** (S; drag to size it, or click once, then type on it), **Line** (L), **Pen** (P; press
 it again for the highlighter) and **Frame** (F). **More**, the **+** under them, holds what it holds in a call ([A board in the
 call](#a-board-in-the-call), step 12): **Image**, **From your workspace**, **Table**, **Mind map**, **Comment** and **Templates**, and
 a link on the board opens its document here.
@@ -1749,8 +1908,9 @@ themes**, on stickies picked together, sorts them into named columns when its an
 whatever you've started meanwhile, and the toast's **Undo** takes the sort back even after you've done something else.
 
 **Looking round.** Scroll, or two fingers, to move; pinch or **⌘** and scroll to zoom; or hold **Space** and drag. The bar has
-**−**, how near you are and **+**, and **Map**, which shows where you are on a board too big for the sheet; **⇧1** shows
-everything.
+**−**, how near you are and **+**, **Show the whole board** (its tip says **⇧1**, which does the same), and **Map**, which shows
+where you are on a board too big for the sheet. Scroll or drag off into empty space, so that nothing on the board is in view,
+and the sheet offers **Back to the board** in its middle, which shows everything again; it goes as soon as something's in view.
 
 **Under its name.** Pressing the board's name offers **Rename**, where the name becomes a field in its place (**Enter**
 keeps it, **Esc** puts it back); **Saved in** the workspace, which shows it in the list; **Who can add to it**, the
@@ -1764,13 +1924,13 @@ With nothing picked, **K** comments on what the pointer is on, or on the next th
 pins its writer's face to the corner of what it's on, with how many have replied since, hanging under the corner where it
 would cover a frame's title and count; pressing the pin opens the thread, with **Reply** and **Resolve**, which a toast can
 take back. Comments aren't on the board: nobody's Undo takes one back, and a sticky that's deleted takes its comments with
-it, and brings them back with it. Presenting a frame, only its own comments and the presenter's pointer show.
+it, and brings them back with it. A board presented in a call shows everyone following it every comment and pointer, as ever.
 
 **When things go wrong.** The seal says how the board stands, and the pill at the top of the sheet says the rest.
 
 - The connection drops: the seal says **Reconnecting**, and the pill **Keep going. Your changes are safe here.** What's
   added is kept in this browser, sealed, through a reload, and goes when the connection's back, once, with nothing lost
-  or doubled. A toast says so.
+  or doubled. A toast says so. While the browser is online, the pill and the seal have **Try now**, which tries again at once.
 - Alcove won't take what was added: the seal says **Not saved**, and the pill says how many changes are only on this
   screen, with **Try again**. It tries again by itself as well.
 - Someone given view only: the tools go and the seal says **View only**. They can still look round, follow people and
@@ -1787,13 +1947,15 @@ with one sticky, its colours and a button that says where it's going, and the st
 place. Someone who can only look has it to look round. Drawing and moving things stay on bigger screens.
 
 **After the call.** Right under the note's summary are the boards that were open for everyone in the call, the ones you can
-open. The call's board is a wide card: a small picture of all of it, as it is now, with its name, what's on it (**3 frames, 13
+open. The call's board is a card: a picture of all of it, as it is now, with its name, what's on it (**3 frames, 13
 stickies, saved in Product.**) and who can open it, and **Open the board**, which goes to its page. Anywhere on the card opens
-it too. Each breakout room's board is a card beside the other rooms', under how many rooms there were and for how long (**3
+it too. The cards take the room their column has: where the call's card is 600px wide the picture sits beside the words, and
+narrower (on a wide screen, where what was said sits beside the notes) it goes above them. Each breakout room's board is a
+card beside the other rooms', two or three across as there's room, under how many rooms there were and for how long (**3
 breakout rooms · 10 min**, or **2 of 3 breakout rooms · 10 min** when a room had no board or one you can't open): its picture,
 the room's name, what came of it and who was there (**One owner for launch comms. Priya and Theo were here.**), and one click
-opens it. A screen reader hears a room's card by the room's name, then what came of it and who can open it. On a phone the
-rooms' cards stack. Every picture is in your theme, as the board's own page is: dark in dark mode.
+opens it. A screen reader hears a room's card by the room's name, then what came of it and who can open it. In a narrow
+column, as on a phone, the rooms' cards stack. Every picture is in your theme, as the board's own page is: dark in dark mode.
 The stickies in the call's board's **Actions** frame come back as suggestions to review. Once accepted they appear under
 **Follow-ups from the board**, right after the boards: with owners, taking on, ticking and the rest, as any follow-up has. The notes read a board, along with what was
 said, only when everyone the notes went to can open it, because one summary goes to all of them; a board someone couldn't open
@@ -1843,20 +2005,31 @@ explaining what Alcove gets from Google and what it uploads. **Continue to Googl
 picker. Connecting or disconnecting Drive leaves ordinary Alcove sign-in and Calendar settings alone. Google’s pages are outside Alcove; returning lands on Google Drive, open, and says what
 happened, leaving the existing settings in place after cancellation or failure.
 
-1. **Choose default files.** Select finalized notes as Markdown, transcripts as plain text, or retained original audio
-   pieces as a ZIP. Each is an explicit choice. **Export after each call** stays unavailable until a folder and at least
-   one type are chosen. Every setting saves as it changes. Pausing exports keeps the choices. Only finalized, retained
+1. **Choose default files.** Select finalized notes as Markdown (with the full summary under the short one), transcripts
+   as plain text, or retained original audio pieces as a ZIP. Each is an explicit choice. **Export after each call** stays
+   unavailable until a folder and at least one type are chosen, and covers calls that end after it's turned on: its help
+   says so. A call's files go as soon as its notes are final, not at the next upkeep. Every setting saves as it changes. Pausing exports keeps the choices. Only finalized, retained
    material the exporting account can still access is eligible; a call ending does not promise an export exists.
 2. **Choose a shared-drive folder.** The destination opens a folder picker, showing authorized folders and whether each
    belongs to a shared drive. The picker explains what **Choose in Google** permits before opening Google to authorize another folder and return to Settings. Choosing a
    folder checks current write permission before it is saved. An unavailable destination is refused, with no fallback to
    another folder. The selected folder’s existing sharing rules apply to the readable exported copy; Alcove never adds
    people, makes public links or exports another person’s private notes.
-3. **Override one call.** On a call’s saved notes, your **Google Drive** part says whether it follows the
-   defaults. **Use custom settings** gives this call its own authorized destination, file choices and on/off switch.
-   Returning to defaults removes the override. This changes only that person’s export settings for the call.
+3. **Override one call.** On a call’s saved notes, your **Google Drive** part says whether automatic exports cover it:
+   "Uses your automatic export settings.", "This call ended before automatic exports were on, so it isn’t exported." for a
+   call that ended before they were turned on, or "Automatic exports are off, so this call isn’t exported.". When a call
+   they don't cover has files in Drive already (it went while they covered it, before they were turned off, or off and
+   on again, or by its own export, since stopped), it says they don't cover it, and that its files already in Drive stay
+   there and changes to the notes aren't sent. A call they
+   don't cover has **Export to Google Drive** under its folder: it saves this call's own choice with the folder and files
+   shown, and the files upload straight away, **Uploading**, then when they went. **Use custom settings** gives this call
+   its own authorized destination and file choices, with **Export to Google Drive**, and once it's exporting, "Goes to
+   this folder. The copies follow the notes when they change." with **Stop exporting**. Returning to defaults removes the
+   override. This changes only that person’s export settings for the call.
 4. **Retry an export.** Recent exports name their source call and end each line with when it went (a link to the file in
-   Drive), **Uploading**, **Waiting**, or why it didn't go, with **Try again**. **Try again** rechecks permission and, with the same destination, keeps the same export identity
+   Drive), **Uploading**, **Waiting to upload**, or why it didn't go, with **Try again**. One that went wrong in a way
+   that may pass (Google busy, the network) says why, quietly, and when it's tried next (**Next try 16:52**). **Try again**
+   sends it at once, not at the next upkeep. It rechecks permission and, with the same destination, keeps the same export identity
    so an uncertain response does not create a second file. Choosing another destination and retrying a failed export
    intentionally creates a new copy there; existing copies stay in their original folder. Revoked Google access asks
    for reconnection instead. Regenerated
@@ -1872,8 +2045,11 @@ happened, leaving the existing settings in place after cancellation or failure.
 
 7. **Review Drive permissions.** Press **Connect** beside Google Drive, read what access the export needs and cancel to
    stay in Settings without starting consent.
+8. **Export a call from before automatic exports.** A call that ended before automatic exports went on says it isn't
+   exported. **Export to Google Drive** sends it to the folder shown, with the files ticked in Settings, and they upload
+   straight away.
 
-Storybook’s journeys use **15.1–15.7** above. The account, folders and file links in the preview are made-up; real Google
+Storybook’s journeys use **15.1–15.8** above. The account, folders and file links in the preview are made-up; real Google
 consent and the provider’s own folder-selection page require manual verification with a supported Google account.
 
 ### 11.24 Add credits

@@ -8,6 +8,7 @@ import { AuthError, UnavailableError } from '../../errors';
 import { maybeOne, rows } from '../../db';
 import { connection, saveConnection, JobRow, jobState, saveJob } from './drive-state';
 import { folder, request, DriveFailure } from './drive-provider';
+import { kick } from './drive-worker';
 
 export const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
 const Attempt = z.object({ state: z.string(), verifier: z.string(), ownerId: z.string(), sessionHash: z.string(), until: z.number() });
@@ -67,10 +68,13 @@ export async function finish(d: Deps, query: Record<string, string>, cookie: str
     if (!refreshToken) return 'failed';
     await saveConnection(owner, { email: person.data.user.emailAddress, permissionId: person.data.user.permissionId, refreshToken, credentialVersion: id128(), generation: same ? previous.generation : id128(), status: 'connected', enabled: same ? previous.enabled : false, formats: previous?.formats ?? ['notes-markdown', 'transcript-text'], destination, enabledAt: same ? previous.enabledAt : new Date().toISOString() });
     const waiting = await rows(owner.pool, JobRow, "SELECT job_id, source_owner_id, note_id, format, state, attempt, state_ciphertext, lease_id FROM drive_export_jobs WHERE owner_id = $1 AND state = 'reconnect'", [owner.ownerId]);
+    let resumed = 0;
     for (const job of waiting) {
       const state = jobState(owner, job);
-      if (same && state.generation === previous.generation) await saveJob(owner, job, { ...state, reason: null }, 'pending');
+      if (same && state.generation === previous.generation) { await saveJob(owner, job, { ...state, reason: null }, 'pending'); resumed++; }
     }
+    // What waited on this connection goes now, in the background: not at the next upkeep.
+    if (resumed) kick(d, owner.ownerId);
     return 'connected';
   } finally { owner.root.fill(0); owner.wrapKey.fill(0); }
 }

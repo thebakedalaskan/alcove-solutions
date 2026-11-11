@@ -13,8 +13,6 @@ import { firstName } from '@alcove/api';
 import { BoardComment, WsCommentCompose, WsCommentThread, WsPopover, type AvatarPerson, type WsComment } from '@alcove/ui';
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore, type PointerEvent as ReactPointerEvent } from 'react';
 import type * as Y from 'yjs';
-import { inSlide } from './selection';
-import type { BoardMode } from './state';
 import { useBoardState, type Board } from './useBoard';
 
 /** What a board's comments need from wherever it is. */
@@ -158,23 +156,18 @@ function overATitle(x: number, y: number, view: BoardView, z: number): boolean {
     && left < f.x + Math.min(f.w + TITLE.wider, titleRow(f.title, besideTitle(view, f))));
 }
 
-/**
- * The pins, in the layer over the board that stays one size, under everyone's pointers. Presenting, only what's on the slide has
- * its pin: nothing points at what nobody can see.
- */
-export function CommentPins({ board, store, commenting, mode }: { board: Board; store: BoardCommentsStore; commenting: BoardCommenting; mode: BoardMode }) {
+/** The pins, in the layer over the board that stays one size, under everyone's pointers. */
+export function CommentPins({ board, store, commenting }: { board: Board; store: BoardCommentsStore; commenting: BoardCommenting }) {
   const view = useBoardState(board, (s) => s.view);
-  const presented = useBoardState(board, (s) => s.slide);
   // To the percent, so a pinch draws the pins again only when it has to.
   const z = useSyncExternalStore(board.camera.subscribe, () => Math.round(board.camera.getSnapshot().z * 100) / 100);
   const threads = useThreads(board);
   const open = useOpen(store);
   const shown = open !== null && open !== 'picking' && 'thread' in open ? open.thread : null;
-  const slide = mode === 'present' && presented !== null && view.byId.has(presented) ? inSlide(view, presented) : null;
   return threads.flatMap((t) => {
     const o = view.byId.get(t.on);
     const first = t.replies[0];
-    if (t.resolved || !first || !commentable(o) || (slide && !slide.has(o.id))) return [];
+    if (t.resolved || !first || !commentable(o)) return [];
     const x = o.x + o.w, y = o.y;
     return [<BoardComment key={t.id} id={t.id} x={x} y={y} person={commenting.face(first)} name={first.name || 'Someone'} text={first.text}
       count={t.replies.length - 1} expanded={shown === t.id} controls={store.sheetId} under={overATitle(x, y, view, z || 1)} onOpen={(id) => store.set(shown === id ? null : { thread: id })} />];

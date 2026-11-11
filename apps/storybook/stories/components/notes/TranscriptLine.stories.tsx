@@ -2,7 +2,10 @@
  * TranscriptLine: one spoken line of a note's transcript: when it was said (`time`, here a chip that plays from there),
  * the speaker's arch, their name, what they said, and `tools` for what can be done with it, which wait under the
  * pointer. The same speaker again leaves the arch's place empty and isn't named; a room recording names nobody. The
- * line being said as the note plays is lit (`is-on`). `id` makes it a place a link can go to.
+ * line being said as the note plays is lit (`is-on`). `id` makes it a place a link can go to. With `onPress`, pressing
+ * the line does what its time does (on a note: go to its moment and play from there), anywhere but on its tools or a
+ * marker with a tip of its own, and not when the press ends selecting its words; its time darkens while it's pointed at,
+ * and stays the keyboard's way in.
  */
 import { IconButton, TimeChip, TranscriptLine, Unsure, UnsureKey, cn, type AvatarPerson } from '@alcove/ui';
 import type { Meta, StoryObj } from '@storybook/react-vite';
@@ -11,6 +14,7 @@ import { did } from '../../../src/component';
 import { ART, KOFI, PRIYA } from '../../../src/world/people';
 
 const seek = did('onSeek');
+const press = did('onPress');
 /** "1:10" as seconds. */
 const at = (mmss: string): number => {
   const [m = 0, s = 0] = mmss.split(':').map(Number);
@@ -21,7 +25,7 @@ const time = (mmss: string) => <TimeChip seconds={at(mmss)} onSeek={seek} />;
 const Tools = ({ marked = false }: { marked?: boolean | undefined }) => (
   <>
     <IconButton icon="pen" label="Correct this line" size={15} className="nd-tool" onClick={did('onCorrect')} />
-    <IconButton icon={marked ? 'bookmarked' : 'bookmark'} label={marked ? 'Remove your bookmark' : 'Bookmark this line, for you alone'} size={15} className="nd-tool" on={marked} onClick={did('onBookmark')} />
+    <IconButton icon={marked ? 'bookmarked' : 'bookmark'} label={marked ? 'Remove your bookmark' : 'Bookmark this line in your own notes, which only you see'} size={15} className="nd-tool" on={marked} onClick={did('onBookmark')} />
   </>
 );
 
@@ -32,7 +36,7 @@ function Lines({ nameless = false, children }: { nameless?: boolean | undefined;
 /** A line from the standup, said by someone named: `more` when they said the line before it too. */
 function Line({ mmss, who, name, more = false, children }: { mmss: string; who: AvatarPerson; name: ReactNode; more?: boolean | undefined; children: ReactNode }) {
   return (
-    <TranscriptLine time={time(mmss)} person={more ? undefined : who} name={more ? undefined : name} tools={<Tools />} className={cn(more && 'is-more')}>
+    <TranscriptLine time={time(mmss)} person={more ? undefined : who} name={more ? undefined : name} tools={<Tools />} className={cn(more && 'is-more')} onPress={press}>
       {children}
     </TranscriptLine>
   );
@@ -46,19 +50,34 @@ const meta = {
     person: PRIYA,
     name: 'Priya',
     tools: <Tools />,
-    children: 'I’d still rather not turn it on for everyone at once. If the first run breaks, it’s the first thing anyone sees.'
+    children: 'I’d still rather not turn it on for everyone at once. If the first run breaks, it’s the first thing anyone sees.',
+    onPress: press
   },
   argTypes: {
     name: { control: 'text' }, children: { control: 'text' },
-    time: { control: false }, person: { control: false }, tools: { control: false }, className: { control: false }, id: { control: false }
+    time: { control: false }, person: { control: false }, tools: { control: false }, className: { control: false }, id: { control: false }, onPress: { control: false }
   },
   render: (args) => <Lines><TranscriptLine {...args} /></Lines>
 } satisfies Meta<typeof TranscriptLine>;
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/** Someone's line: when, their arch and name, and what they said. Point at it for its tools. */
+/** Someone's line: when, their arch and name, and what they said. Point at it for its tools; press it to go to its moment. */
 export const Spoken: Story = {};
+/** Pointed at: its tools show, and its time darkens, since pressing the line goes where its time does. */
+export const PointedAt: Story = {
+  name: 'Pointed at',
+  play: async ({ canvas, userEvent, step }) => {
+    await step('Point at what was said', async () => {
+      await userEvent.hover(await canvas.findByText(/I’d still rather not turn it on/));
+    });
+  }
+};
+/** A breakout room's line: what's said in a room isn't in the recording, so its time is plain and pressing it does nothing. */
+export const InABreakoutRoom: Story = {
+  name: 'In a breakout room',
+  render: (args) => <Lines><TranscriptLine {...args} time={<span className="nd-lt">16:58</span>} onPress={undefined} /></Lines>
+};
 /** The same speaker again: the arch's place stays empty and the name isn't said twice. */
 export const SameSpeakerAgain: Story = {
   name: 'The same speaker again',
@@ -80,9 +99,9 @@ export const RoomRecording: Story = {
   name: 'A room recording',
   render: () => (
     <Lines nameless>
-      <TranscriptLine time={time('11:30')} tools={<Tools />}>Most of my work has been distributed systems: consensus, storage, the boring parts.</TranscriptLine>
-      <TranscriptLine time={time('38:05')} tools={<Tools />}>I want to stay close to customers, not disappear into a platform team.</TranscriptLine>
-      <TranscriptLine time={time('49:20')} tools={<Tools />}>I’ll send the take-home tomorrow.</TranscriptLine>
+      <TranscriptLine time={time('11:30')} tools={<Tools />} onPress={press}>Most of my work has been distributed systems: consensus, storage, the boring parts.</TranscriptLine>
+      <TranscriptLine time={time('38:05')} tools={<Tools />} onPress={press}>I want to stay close to customers, not disappear into a platform team.</TranscriptLine>
+      <TranscriptLine time={time('49:20')} tools={<Tools />} onPress={press}>I’ll send the take-home tomorrow.</TranscriptLine>
     </Lines>
   )
 };
@@ -93,10 +112,10 @@ export const NotSure: Story = {
     <div style={{ width: 'min(720px, 100%)' }}>
       <div className="nd-sh"><h2>Transcript</h2><UnsureKey words speaker className="nd-key" /></div>
       <Lines>
-        <TranscriptLine time={time('0:21')} person={PRIYA} name="Priya" tools={<Tools />}>
+        <TranscriptLine time={time('0:21')} person={PRIYA} name="Priya" tools={<Tools />} onPress={press}>
           <Unsure of="words">The new onboarding is done. Design signed off last night and the last coffee changes went in first thing.</Unsure>
         </TranscriptLine>
-        <TranscriptLine time={time('16:58')} person={KOFI} name={<Unsure of="speaker">Kofi</Unsure>} tools={<Tools />}>
+        <TranscriptLine time={time('16:58')} person={KOFI} name={<Unsure of="speaker">Kofi</Unsure>} tools={<Tools />} onPress={press}>
           Rollout’s fine. We start with one per cent and go from there.
         </TranscriptLine>
       </Lines>

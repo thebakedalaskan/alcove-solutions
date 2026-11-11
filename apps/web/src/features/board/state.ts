@@ -11,7 +11,7 @@ import type { BoardDraft } from './tools/draft';
  * `read`: in a call or a note, for someone who can only look. `pageRead`: a board's own page, for someone who can only look.
  * `phone` and `pagePhone`: the call's board and a board's own page, on a phone, for someone who can add to it.
  */
-export type BoardMode = 'call' | 'page' | 'pageRead' | 'pagePhone' | 'tile' | 'present' | 'phone' | 'read';
+export type BoardMode = 'call' | 'page' | 'pageRead' | 'pagePhone' | 'tile' | 'phone' | 'read';
 
 /** What each mode has. */
 export interface BoardLook {
@@ -37,7 +37,6 @@ export const BOARD_LOOKS: Record<BoardMode, BoardLook> = {
   page: { ...LOOK, page: true },
   pageRead: { ...LOOK, page: true, rail: false, edit: false },
   read: { ...LOOK, rail: false, edit: false },
-  present: BARE,
   tile: { ...BARE, mini: true },
   /** On a phone: look round, follow, vote with a tap, and add a sticky from the sheet. Moving and drawing stay on bigger screens. */
   phone: { ...LOOK, rail: false, edit: false, clean: true, phone: true },
@@ -47,8 +46,6 @@ export const BOARD_LOOKS: Record<BoardMode, BoardLook> = {
 
 /** What can open beside the rail: a tool's options, More, and what two of More's items offer: templates, and the workspace's items. */
 export type BoardFly = 'note' | 'shape' | 'line' | 'pen' | 'more' | 'templates' | 'items';
-/** What can open from the bar to run the session: the Timer's menu, or the Vote's. */
-export type BoardRunMenu = 'timer' | 'vote';
 
 /** What More's items do, where the world round the board does them: one given here takes the place of the board's own. */
 export type BoardMoreItems = Partial<Record<BoardMoreItem, (() => void) | undefined>>;
@@ -82,8 +79,8 @@ export interface BoardState {
   picking: boolean;
   /** The selection bar's More is open. */
   menu: boolean;
-  /** The bar's Timer or Vote menu is open. */
-  runMenu: BoardRunMenu | null;
+  /** The bar's Vote menu is open. */
+  voteMenu: boolean;
   /** What the pointer is near, whose dots are showing. */
   hover: string | null;
   /** What's being drawn, which only this person sees until it's let go. */
@@ -103,6 +100,8 @@ export interface BoardState {
   panning: boolean;
   /** The camera is easing to where it was last put. */
   glide: boolean;
+  /** Nothing on the board is in view, though there's something on it: the sheet offers a way back to all of it. */
+  lost: boolean;
   /** Objects travelling to new places together, as they do after an undo. */
   settling: ReadonlySet<string>;
   /** Objects that have just landed, which pop in. */
@@ -113,7 +112,12 @@ export interface BoardState {
   near: Box | null;
   /** Whose view this is, if it isn't your own. */
   following: string | null;
-  /** The frame on the sheet while presenting, which is all a presented board shows. */
+  /**
+   * That's whoever presents the board: held where they last were while they're away from it, said on the frame's bar rather
+   * than the pill, and anything this person starts on the board takes them off it, from where it is.
+   */
+  watching: boolean;
+  /** On a picture of the board, the one frame it shows (the next one beside whoever presents), or null for all of it. */
   slide: string | null;
   /** Sort into themes is waiting for its answer. */
   sorting: boolean;

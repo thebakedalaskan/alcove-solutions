@@ -1,18 +1,22 @@
 /*
  * What opens over the page: the `/` and `@` lists at the caret, a block's menu, the bar over a selection and the link
  * field. They sit outside the scrolling page, so nothing clips them, in a layer that takes the page's theme. Focus
- * stays in the text the whole time: keys reach these first, and pressing one never moves the caret.
+ * stays in the text the whole time: keys reach these first, and pressing one never moves the caret. The one exception is
+ * the calendar, which takes the keyboard for its arrow keys and gives it back to the text when it's done.
  */
-import { Avatar, Icon, cn, type IconName } from '@alcove/ui';
+import { Avatar, Icon, MonthGrid, cn, type IconName } from '@alcove/ui';
 import { toggleMark } from 'prosemirror-commands';
 import { addColumn, addRow, removeColumn, removeRow, TableMap, type TableRect } from 'prosemirror-tables';
 import { useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  applyLink, askAboutSelection, commentOnBlock, deleteFromMenu, duplicateBlock, openLinkField, pickDocument, pickMention, pickMoment, pickSlash, sendBlock, startComment, turnInto
+  applyLink, askAboutSelection, commentOnBlock, deleteFromMenu, duplicateBlock, openLinkField, pickDate, pickDocument, pickMention, pickMoment, pickSlash, putDateAway, sendBlock, setCodeLang, startComment, turnInto
 } from '../actions';
+import { CODE_LANGS, codeLang, langName } from '../languages';
 import type { Node as PMNode } from 'prosemirror-model';
 import { galleryItems, mediaIn } from '../blocks/attrs';
+import { isoDay } from '../blocks/dates';
+import { rangeOf } from '../plugins/decor';
 import { evenTables, findBlock, kindOf, scrollerOf } from '../commands';
 import { clockOf } from '../../live/dates';
 import type { EditorRuntime, OpenMenu, Store } from '../runtime';
@@ -29,7 +33,7 @@ type Row =
   | { kind: 'sep' }
   | { kind: 'text'; label: string }
   | { kind: 'turn'; current: BlockKind | null; pick: (kind: BlockKind) => void }
-  | { kind: 'item'; key: string; label: string; icon?: IconName | undefined; face?: { name: string; photoUrl?: string | undefined; portrait?: Parameters<typeof Avatar>[0]['person']['portrait'] } | undefined; sub?: string | undefined; hint?: string | undefined; className?: string | undefined; run: () => void };
+  | { kind: 'item'; key: string; label: string; icon?: IconName | undefined; face?: { name: string; photoUrl?: string | undefined; portrait?: Parameters<typeof Avatar>[0]['person']['portrait'] } | undefined; sub?: string | undefined; hint?: string | undefined; className?: string | undefined; ticked?: boolean | undefined; run: () => void };
 
 type Item = Extract<Row, { kind: 'item' }>;
 const isItem = (r: Row): r is Item => r.kind === 'item';
@@ -81,14 +85,17 @@ function TurnRow({ current, pick }: { current: BlockKind | null; pick: (kind: Bl
 /**
  * A list you can move through with the arrow keys. `reset` starts it over when what it lists changes. A list at the `caret`
  * is one focus never enters, so the text says which row is active, for screen readers, and a live region says what it is.
+ * The active row is the one highlighted: the keys move it, and so does the pointer, moving over a row. Only the keys
+ * scroll the list, since a row the pointer's over is in view already.
  */
 function ListMenu({ rt, rows, anchor, className, label, start, reset, caret, onClose }: { rt: EditorRuntime; rows: Row[]; anchor: Rect; className: string; label: string; start: number; reset: string; caret: boolean; onClose: () => void }) {
   const [index, setIndex] = useState(start);
+  const pointed = useRef(false);
   const list = useRef<HTMLDivElement>(null);
   const items = rows.filter(isItem);
   const name = useId();
   const rowId = (r: Item) => `${name}-${r.key}`;
-  useEffect(() => setIndex(start), [reset, start]);
+  useEffect(() => { pointed.current = false; setIndex(start); }, [reset, start]);
 
   const active = items[index];
   const activeId = active ? rowId(active) : null;
@@ -108,6 +115,7 @@ function ListMenu({ rt, rows, anchor, className, label, start, reset, caret, onC
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
         stop();
         const down = e.key === 'ArrowDown';
+        pointed.current = false;
         if (items.length > 0) setIndex((i) => ((i < 0 ? (down ? -1 : 0) : i) + (down ? 1 : -1) + items.length) % items.length);
       } else if (e.key === 'Enter' || (e.key === 'Tab' && caret)) {
         const item = items[Math.max(0, index)];
@@ -129,7 +137,7 @@ function ListMenu({ rt, rows, anchor, className, label, start, reset, caret, onC
 
   useLayoutEffect(() => {
     const box = list.current, on = box?.querySelector<HTMLElement>('.is-sel');
-    if (!box || !on) return;
+    if (!box || !on || pointed.current) return;
     if (on.offsetTop < box.scrollTop) box.scrollTop = on.offsetTop - 34;
     else if (on.offsetTop + on.offsetHeight > box.scrollTop + box.clientHeight) box.scrollTop = on.offsetTop + on.offsetHeight - box.clientHeight + 6;
   }, [index]);
@@ -144,12 +152,17 @@ function ListMenu({ rt, rows, anchor, className, label, start, reset, caret, onC
             if (r.kind === 'sep') return <div key={`sep-${i}`} className="wm-s" role="presentation" />;
             if (r.kind === 'text') return <p key={`text-${i}`} className="wm-x" role="presentation">{r.label}</p>;
             if (r.kind === 'turn') return <TurnRow key="turn" current={r.current} pick={r.pick} />;
+            const at = items.indexOf(r);
+            const point = () => { if (at !== index) { pointed.current = true; setIndex(at); } };
+            const choice = !caret && r.ticked !== undefined;
             return (
-              <button key={r.key} id={rowId(r)} type="button" role={caret ? 'option' : 'menuitem'} aria-selected={caret ? r === active : undefined} className={cn('wm-r', r === active && 'is-sel', r.className)} onClick={r.run}>
+              <button key={r.key} id={rowId(r)} type="button" role={caret ? 'option' : choice ? 'menuitemradio' : 'menuitem'} aria-selected={caret ? r === active : undefined} aria-checked={choice ? r.ticked : undefined}
+                className={cn('wm-r', r === active && 'is-sel', r.ticked && 'is-on', r.className)} onClick={r.run} onPointerMove={point}>
                 {r.face && <Avatar person={r.face} size={24} />}
                 {r.icon && <Icon name={r.icon} size={16} />}
                 <span className="t"><span className="l">{r.label}</span>{r.sub && <small>{r.sub}</small>}</span>
                 {r.hint && <kbd className="ac-kbd">{r.hint}</kbd>}
+                {r.ticked && <Icon name="check" size={15} />}
               </button>
             );
           })}
@@ -176,6 +189,7 @@ function slashRows(rt: EditorRuntime, menu: Extract<OpenMenu, { kind: 'slash' }>
 function mentionRow(item: MentionItem, pick: (item: MentionItem) => void): Row {
   if (item.kind === 'person') return { kind: 'item', key: `p:${item.person.id}`, label: item.person.name, face: item.person, sub: item.sub, className: 'is-person', run: () => pick(item) };
   if (item.kind === 'document') return { kind: 'item', key: `d:${item.id}`, label: item.name, icon: 'fileText', run: () => pick(item) };
+  if (item.kind === 'calendar') return { kind: 'item', key: 'calendar', label: 'Pick a date…', icon: 'cal', run: () => pick(item) };
   return { kind: 'item', key: `t:${item.date}`, label: item.label, icon: 'cal', run: () => pick(item) };
 }
 
@@ -226,6 +240,17 @@ function tableRows(rt: EditorRuntime, block: string): Row[] {
   ];
 }
 
+/** A code block's languages: Plain text, then each one it can be coloured as, the one it's in ticked. */
+function langRows(rt: EditorRuntime, block: string): Row[] {
+  const ref = rt.view ? findBlock(rt.view.state.doc, block) : null;
+  if (!ref || ref.node.type !== schema.nodes.code) return [];
+  const current = codeLang(ref.node);
+  return [
+    { kind: 'head', label: 'Language' },
+    ...[null, ...CODE_LANGS.map((l) => l.id)].map((lang): Row => ({ kind: 'item', key: lang ?? 'plain', label: langName(lang), ticked: lang === current, run: () => setCodeLang(rt, block, lang) }))
+  ];
+}
+
 function blockRows(rt: EditorRuntime, block: string, rect: Rect, keyboard: boolean): Row[] {
   const ref = rt.view ? findBlock(rt.view.state.doc, block) : null;
   if (!ref) return [];
@@ -236,16 +261,42 @@ function blockRows(rt: EditorRuntime, block: string, rect: Rect, keyboard: boole
   if (kind && keyboard) out.push(...TURN.filter((t) => t.kind !== kind).map((t): Row => ({ kind: 'item', key: `turn-${t.kind}`, icon: t.icon, label: `Turn into ${t.label.toLowerCase()}`, run: () => turn(t.kind) })), { kind: 'sep' });
   else if (kind) out.push({ kind: 'turn', current: kind, pick: turn }, { kind: 'sep' });
   out.push(...tableRows(rt, block));
+  /* Code's language, as its corner has it: the languages take the menu's place. */
+  if (ref.node.type === schema.nodes.code && !rt.readOnly) {
+    out.push({ kind: 'item', key: 'lang', icon: 'code', label: 'Language', sub: langName(codeLang(ref.node)), run: () => rt.menu.set({ kind: 'lang', block, rect, keyboard }) }, { kind: 'sep' });
+  }
   if (rt.props.onComment && kind) out.push({ kind: 'item', key: 'comment', icon: 'comment', label: 'Comment', run: () => commentOnBlock(rt, block) });
   const known = ref.node.type !== schema.nodes.unsupported;
   if (known) out.push({ kind: 'item', key: 'dup', icon: 'copy', label: 'Duplicate', run: () => { rt.menu.set(null); duplicateBlock(rt, block); } });
   const copyLink = rt.props.onCopyBlockLink;
   if (copyLink) out.push({ kind: 'item', key: 'link', icon: 'link', label: 'Copy link', run: () => { rt.menu.set(null); copyLink(block); } });
+  const downloads = downloadsOf(rt, ref.node);
+  if (downloads) out.push({ kind: 'item', key: 'download', icon: 'download', label: downloads.label, run: () => { rt.menu.set(null); for (const f of downloads.files) rt.props.media?.onDownload?.(f); } });
   if (known && rt.props.moveTargets && rt.props.onMoveBlock) out.push({ kind: 'item', key: 'move', icon: 'folderInput', label: 'Move to…', run: () => rt.menu.set({ kind: 'move', block, rect }) });
   out.push({ kind: 'sep' }, { kind: 'item', key: 'delete', icon: 'trash', label: 'Delete', className: 'is-caution', run: () => deleteFromMenu(rt, block) });
   const files = filesOf(rt, ref.node, block, rect);
   if (files) out.push({ kind: 'item', key: 'files', icon: 'trash', label: FOR_GOOD[files.what], className: 'is-caution', run: () => { rt.menu.set(null); rt.props.media?.onDeleteFiles?.(files); } });
   return out;
+}
+
+/**
+ * What Download, in a block's menu, saves: a photo's file, a gallery's, or a video's, once they're stored, each under its own
+ * name. A file block has its own arrow for it.
+ */
+function downloadsOf(rt: EditorRuntime, node: PMNode): { label: string; files: { media: string; name: string }[] } | null {
+  const media = rt.props.media;
+  if (!media?.onDownload || numberAttr(node, 'up') !== null) return null;
+  switch (node.type) {
+    case schema.nodes.gallery: {
+      const files = galleryItems(node).flatMap((i) => (i.media !== null && media.state?.(i.media).kind !== 'gone' ? [{ media: i.media, name: i.name }] : []));
+      return files.length === 0 ? null : { label: files.length === 1 ? 'Download' : 'Download the photos', files };
+    }
+    case schema.nodes.video: {
+      const file = textAttr(node, 'media');
+      return file && media.gone?.(file) !== true ? { label: 'Download', files: [{ media: file, name: textAttr(node, 'title') || 'Video' }] } : null;
+    }
+    default: return null;
+  }
 }
 
 /** Delete takes a block out and leaves its files in the workspace. This deletes them, everywhere, so it says so. */
@@ -316,6 +367,34 @@ function LinkField({ rt, menu }: { rt: EditorRuntime; menu: Extract<OpenMenu, { 
   );
 }
 
+/**
+ * The calendar, in the `@` list's place at the caret, or against a date tag that was pressed. It has the keyboard: the arrow
+ * keys move between days, Enter picks, and Esc goes back to the text. A press anywhere else puts it away.
+ */
+function DateMenu({ rt, menu }: { rt: EditorRuntime; menu: Extract<OpenMenu, { kind: 'date' }> }) {
+  useEffect(() => {
+    /* Before anything else hears Esc, wherever focus is in it, as the lists' keys do. */
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); putDateAway(rt, menu); } };
+    const onPress = (e: PointerEvent) => { if (!(e.target instanceof Element && e.target.closest('.ws-pop'))) rt.menu.set(null); };
+    window.addEventListener('keydown', onKey, true);
+    window.addEventListener('pointerdown', onPress, true);
+    return () => {
+      window.removeEventListener('keydown', onKey, true);
+      window.removeEventListener('pointerdown', onPress, true);
+    };
+  }, [rt, menu]);
+  const view = rt.view;
+  const range = view ? rangeOf(view.state, menu.held) : null;
+  const tag = range && menu.chip ? view?.nodeDOM(range.from) : null;
+  const anchor = tag instanceof Element ? tag.getBoundingClientRect() : range ? caretRect(rt, range.to) : null;
+  if (!anchor) return null;
+  return (
+    <Popover anchor={anchor} className="wm is-date" label={menu.chip ? 'Change the date' : 'Pick a date'} role="dialog">
+      <MonthGrid value={menu.date} today={isoDay(new Date())} autoFocus label={menu.chip ? 'Change the date' : 'Pick a date'} onPick={(date) => pickDate(rt, menu, date)} />
+    </Popover>
+  );
+}
+
 function FormatBar({ rt }: { rt: EditorRuntime }) {
   const bar = useStore(rt.bar);
   const box = useRef<HTMLDivElement>(null);
@@ -354,7 +433,7 @@ function OpenList({ rt, menu }: { rt: EditorRuntime; menu: OpenMenu }) {
     if (menu.kind === 'slash' || menu.kind === 'mention') rt.dismissed = menu.from;
     rt.menu.set(null);
     /* Someone without a pointer goes back to the text, not to a handle that may have gone. */
-    if (menu.kind === 'block' && menu.keyboard) rt.view?.focus();
+    if ((menu.kind === 'block' || menu.kind === 'lang') && menu.keyboard) rt.view?.focus();
   };
   switch (menu.kind) {
     case 'slash': {
@@ -378,8 +457,12 @@ function OpenList({ rt, menu }: { rt: EditorRuntime; menu: OpenMenu }) {
       return <ListMenu rt={rt} rows={blockRows(rt, menu.block, menu.rect, menu.keyboard === true)} anchor={menu.rect} className="is-block" label="Block" start={menu.keyboard ? 0 : -1} reset={menu.block} caret={false} onClose={close} />;
     case 'move':
       return <ListMenu rt={rt} rows={moveRows(rt, menu.block)} anchor={menu.rect} className="is-block" label="Move this block to" start={0} reset={menu.block} caret={false} onClose={close} />;
+    case 'lang':
+      return <ListMenu rt={rt} rows={langRows(rt, menu.block)} anchor={menu.rect} className="is-block" label="Language" start={menu.keyboard ? 0 : -1} reset={menu.block} caret={false} onClose={close} />;
     case 'link':
       return <LinkField rt={rt} menu={menu} />;
+    case 'date':
+      return <DateMenu rt={rt} menu={menu} />;
     default:
       return null;
   }

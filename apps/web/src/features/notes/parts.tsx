@@ -7,7 +7,7 @@ import {
 import { Avatar, CaptureGapMark, Icon, IconButton, ReadMore, UnsureKey, cn } from '@alcove/ui';
 import { Link } from '@tanstack/react-router';
 import { useReducedMotion } from 'motion/react';
-import { Fragment, createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import { Fragment, createContext, useContext, useEffect, useRef, useState, type PointerEvent, type ReactNode } from 'react';
 import { KeepAnswer } from '~/features/personal/parts';
 import { gapLabel, gapsAfter, gapsBefore } from '~/lib/capture';
 import { ariaShortcut, withMod } from '~/lib/keys';
@@ -115,25 +115,51 @@ const lineAt = (lines: TranscriptLine[], at: number) => Math.max(0, lines.findLa
  * further on. `player` marks the line being said as the recording plays. Pauses and shared screens after the lines shown
  * wait too, and `onScreens` opens the first of them from here meanwhile. `live`: the call is still going. With `correct`, whoever may
  * corrects lines in place (lines.tsx); with `marks`, they bookmark lines for themselves. `kinds` says which lines
- * something in the notes came from. `top` is what goes above the lines.
+ * something in the notes came from. `top` is what goes above the lines. Pressing a line (its words or its time) goes to
+ * its moment and plays from there (`onSeek` with `play`), and the line is marked where it is: it's in view already. On a
+ * phone, where only one line shows its tools, the line pressed keeps them while the line being said moves on, until
+ * another is pressed or it's scrolled out of sight.
  */
 export function Transcript({ lines, gaps, seconds, me, onSeek, focus, player, live = false, screens, onScreens, correct, fromLine, marks, kinds, top }: {
-  lines: TranscriptLine[]; gaps: CaptureGap[]; seconds: number; me: string | undefined; onSeek?: ((s: number) => void) | undefined; focus?: Focus | undefined; player: PlayerState; live?: boolean | undefined;
+  lines: TranscriptLine[]; gaps: CaptureGap[]; seconds: number; me: string | undefined; onSeek?: ((s: number, play?: boolean) => void) | undefined; focus?: Focus | undefined; player: PlayerState; live?: boolean | undefined;
   screens?: ScreensShown | undefined; onScreens?: ((m: ScreenMoment) => void) | undefined; correct?: Correcting | undefined; fromLine?: FromLine | undefined; marks?: LineMarks | undefined; kinds?: LineKinds | undefined; top?: ReactNode;
 }) {
   const reduce = useReducedMotion();
   const [open, setOpen] = useState(false);
   const [went, setWent] = useState<Focus | undefined>(undefined);
+  /** The moment of the line just pressed, which the page then goes to. */
+  const pressed = useRef<number | null>(null);
   // Going to a line further on opens the rest, in the same drawing, so the line is there to scroll to.
   if (focus !== went) { setWent(focus); if (focus && lineAt(lines, focus.at) >= FIRST_LINES) setOpen(true); }
   useEffect(() => {
     if (!focus) return;
-    document.getElementById(MOMENT)?.scrollIntoView({ block: 'center', behavior: reduce ? 'auto' : 'smooth' });
+    // A line that was pressed only scrolls if it's under the strip at the top or the bar at the bottom.
+    const near = pressed.current === focus.at;
+    pressed.current = null;
+    document.getElementById(MOMENT)?.scrollIntoView({ block: near ? 'nearest' : 'center', behavior: reduce ? 'auto' : 'smooth' });
   }, [focus, reduce]);
+  const plays = player.total > 0;
+  /** The line pressed last, by its ID, until another is pressed or it's out of sight. */
+  const [picked, setPicked] = useState<string | null>(null);
+  const press = onSeek && ((at: number, line: string) => { pressed.current = at; setPicked(line); onSeek(at, plays); });
   // The line being said, once anyone has gone anywhere or pressed play.
   const said = usePlayerAt(player, (p) => (p > 0 ? lineAt(lines, p) : -1));
   const lit = said >= 0 ? said : focus ? lineAt(lines, focus.at) : -1;
   const all = open || lines.length <= FIRST_LINES;
+  /* Watches the line pressed (this owns the observer, and stops it when another is pressed or the lines change), and lets
+     it go once it has been in sight and isn't any more: a line pressed under the bar is scrolled up into sight first. */
+  const section = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const el = picked ? section.current?.querySelector('.nd-l.is-picked') : null;
+    if (!el) return;
+    let seen = false;
+    const io = new IntersectionObserver(([e]) => {
+      if (e?.isIntersecting) seen = true;
+      else if (seen) setPicked(null);
+    });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [picked, all]);
   const shown = all ? lines : lines.slice(0, FIRST_LINES);
   const last = shown.at(-1)?.at ?? 0;
   const upTo = <T extends { at: number }>(xs: T[]) => (all ? xs : xs.filter((x) => x.at <= last));
@@ -144,10 +170,10 @@ export function Transcript({ lines, gaps, seconds, me, onSeek, focus, player, li
   const hidden = (screens?.moments ?? []).filter((m) => !all && !waiting(m));
   const [nextHidden] = hidden;
   return (
-    <section className="nd-s nd-tr">
+    <section ref={section} className="nd-s nd-tr">
       <div className="nd-sh"><h2>Transcript</h2><UnsureKey words={lines.some((l) => l.unsure?.words)} speaker={lines.some((l) => l.unsure?.speaker)} className="nd-key" /></div>
       {top}
-      <TranscriptLines lines={shown} gaps={upTo(gaps)} me={me} onSeek={onSeek} focus={focus?.at} lit={lit} screens={screens && { ...screens, moments: all ? screens.moments : screens.moments.filter(waiting) }} correct={correct} fromLine={fromLine} marks={marks} kinds={kinds} />
+      <TranscriptLines lines={shown} gaps={upTo(gaps)} me={me} onSeek={press} plays={plays} focus={focus?.at} lit={lit} picked={picked} screens={screens && { ...screens, moments: all ? screens.moments : screens.moments.filter(waiting) }} correct={correct} fromLine={fromLine} marks={marks} kinds={kinds} />
       {(lines.length > FIRST_LINES || nextHidden) && (
         <div className="nd-allrow">
           {lines.length > FIRST_LINES && (
@@ -196,12 +222,13 @@ export interface ScreensShown { moments: ScreenMoment[]; row: (m: ScreenMoment) 
  * What was said, line by line, with the stretches nothing was captured in marked where they fall, and what was on a
  * shared screen right after the line it's attached to (or, for one attached to no line shown, just before the lines
  * said while it was up). A speaker's lines in a row share one name; a room recording names nobody. With `focus`, the line
- * said at that moment is where a moment's link lands, and `lit` is the line to mark.
- * With `correct`, whoever may corrects lines in place (lines.tsx). With `marks`, they bookmark lines for themselves.
+ * said at that moment is where a moment's link lands, and `lit` is the line to mark. With `onSeek`, pressing a line goes to
+ * it, playing from there with `plays`, and `picked` is the line pressed last, by its ID. With `correct`, whoever may
+ * corrects lines in place (lines.tsx). With `marks`, they bookmark lines for themselves.
  */
-export function TranscriptLines({ lines, gaps = [], me, onSeek, focus, lit, screens, correct, fromLine, marks, kinds, className }: {
-  lines: TranscriptLine[]; gaps?: CaptureGap[] | undefined; me: string | undefined; onSeek?: ((s: number) => void) | undefined; focus?: number | undefined; lit?: number | undefined;
-  screens?: ScreensShown | undefined; correct?: Correcting | undefined; fromLine?: FromLine | undefined; marks?: LineMarks | undefined; kinds?: LineKinds | undefined; className?: string | undefined;
+export function TranscriptLines({ lines, gaps = [], me, onSeek, plays = false, focus, lit, picked, screens, correct, fromLine, marks, kinds, className }: {
+  lines: TranscriptLine[]; gaps?: CaptureGap[] | undefined; me: string | undefined; onSeek?: ((s: number, lineId: string) => void) | undefined; plays?: boolean | undefined; focus?: number | undefined; lit?: number | undefined;
+  picked?: string | null | undefined; screens?: ScreensShown | undefined; correct?: Correcting | undefined; fromLine?: FromLine | undefined; marks?: LineMarks | undefined; kinds?: LineKinds | undefined; className?: string | undefined;
 }) {
   const here = focus === undefined ? -1 : lineAt(lines, focus);
   const on = lit ?? here;
@@ -222,7 +249,7 @@ export function TranscriptLines({ lines, gaps = [], me, onSeek, focus, lit, scre
         const after = attached.get(l.id) ?? [];
         // After a gap, or a screen, the speaker is named again: it's a new part of the call.
         const more = !!l.speaker && voiceOf(lines[i - 1]?.speaker) === voiceOf(l.speaker) && !before.length && !up.length && !(prev && attached.has(prev.id));
-        return <Fragment key={l.id}>{before.map(gap)}{up.map(shown)}<LineRow line={l} more={more} id={i === here ? MOMENT : undefined} on={i === on} kind={kinds?.get(l.id)} onSeek={onSeek} me={me} correct={correct} fromLine={fromLine} marks={marks} />{after.map(shown)}</Fragment>;
+        return <Fragment key={l.id}>{before.map(gap)}{up.map(shown)}<LineRow line={l} more={more} id={i === here ? MOMENT : undefined} on={i === on} picked={l.id === picked} kind={kinds?.get(l.id)} onSeek={onSeek} plays={plays} me={me} correct={correct} fromLine={fromLine} marks={marks} />{after.map(shown)}</Fragment>;
       })}
       {gapsAfter(gaps, lines).map(gap)}
       {gapsAfter(byTime, lines).map(shown)}
@@ -334,13 +361,20 @@ export function AskBar({ suggestions, ask, onSeek, shown, label = 'Ask about thi
   const suggs = useRef<HTMLDivElement>(null);
   const [focus, setFocus] = useState(false);
   const [atEnd, setAtEnd] = useState(false);
+  const [over, setOver] = useState(false);
+  const leaving = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [text, setText] = useState('');
   const [keptFor, setKeptFor] = useState<string | null>(null);
   const { answer, ask: start, reset } = useAnswer(ask);
   /*
-   * The bar stays in view while the note is read; its suggestions show at the end of the note, or while asking. The
-   * end is marked just above the bar, so the suggestions appearing (below the mark) can't push it out of view again.
+   * The bar stays in view while the note is read; its suggestions show at the end of the note, while the pointer is over
+   * the bar, or while asking, so nothing covers the note as it's read. They go a moment after the pointer leaves, so it
+   * can cross to them; a finger or the keyboard gets them on focus. The end is marked just above the bar, so the
+   * suggestions appearing (below the mark) can't push it out of view again.
    */
+  const pointIn = (e: PointerEvent<HTMLElement>) => { if (e.pointerType === 'touch') return; clearTimeout(leaving.current); setOver(true); };
+  const pointOut = (e: PointerEvent<HTMLElement>) => { if (e.pointerType === 'touch') return; clearTimeout(leaving.current); leaving.current = setTimeout(() => setOver(false), 240); };
+  useEffect(() => () => clearTimeout(leaving.current), []);
   useEffect(() => {
     const el = end.current;
     if (!el) return;
@@ -367,8 +401,9 @@ export function AskBar({ suggestions, ask, onSeek, shown, label = 'Ask about thi
     watch.observe(el);
     return () => { watch.disconnect(); page.style.removeProperty('--nd-chips'); };
   }, [room]);
+  // The bar is in view wherever the page is, so going to it never moves the page.
   useEffect(() => {
-    const on = (e: KeyboardEvent) => { if (withMod(e) && e.key.toLowerCase() === 'j') { e.preventDefault(); input.current?.focus(); } };
+    const on = (e: KeyboardEvent) => { if (withMod(e) && e.key.toLowerCase() === 'j') { e.preventDefault(); input.current?.focus({ preventScroll: true }); } };
     addEventListener('keydown', on);
     return () => removeEventListener('keydown', on);
   }, []);
@@ -381,10 +416,10 @@ export function AskBar({ suggestions, ask, onSeek, shown, label = 'Ask about thi
   return (
     <>
       <div ref={end} className="nd-end-mark" aria-hidden="true" />
-      <div className="nd-askdock">
+      <div className="nd-askdock" onPointerEnter={pointIn} onPointerLeave={pointOut}>
         <div className="nd-up">
           {answer && (
-            <AnswerView answer={answer} waiting={waiting} onClose={() => { reset(); input.current?.focus(); }} className="nd-ans">
+            <AnswerView answer={answer} waiting={waiting} onClose={() => { reset(); input.current?.focus({ preventScroll: true }); }} className="nd-ans">
               {(answer.cites.length > 0 || (onKeep && answer.done && answer.text)) && (
                 <div className="nd-ans-f">
                   {answer.cites.map((c) => (c.type === 'cite' ? <Moment key={citeKey(c)} at={c.at} onSeek={onSeek} />
@@ -396,7 +431,7 @@ export function AskBar({ suggestions, ask, onSeek, shown, label = 'Ask about thi
             </AnswerView>
           )}
           {room && (
-            <div ref={suggs} className={cn('nd-suggs', !answer && (atEnd || focus) && 'is-on')} hidden={!!answer}>
+            <div ref={suggs} className={cn('nd-suggs', !answer && (atEnd || focus || over) && 'is-on')} hidden={!!answer}>
               {suggestions.slice(0, 3).map((s) => <button key={s} type="button" className="nd-sugg" onMouseDown={(e) => e.preventDefault()} onClick={() => run(s)}>{s}</button>)}
             </div>
           )}

@@ -12,6 +12,7 @@ import { KEPT_ATTRS, STRUCTURE, TAGS } from '@alcove/api/retire';
 import { tableNodes } from 'prosemirror-tables';
 import { log } from '~/lib/log';
 import { clockOf } from '../live/dates';
+import { codeLang, langOfElement } from './languages';
 import type { BlockJSON } from './types';
 
 const elog = log.child({ component: 'editor-schema' });
@@ -125,8 +126,15 @@ const nodes: Record<NodeName, NodeSpec> = {
   toggleSummary: { content: 'inline*', defining: true, parseDOM: [{ tag: 'summary' }], toDOM: () => ['summary', 0] },
   toggleBody: { content: 'inline*', parseDOM: [{ tag: 'div[data-alcove="body"]' }], toDOM: () => ['div', { 'data-alcove': 'body' }, 0] },
   divider: { group: 'block', atom: true, attrs: block, parseDOM: [{ tag: 'hr' }], toDOM: () => ['hr'] },
-  /* Words a comment hangs on stay on them here too. */
-  code: { group: 'block', content: 'text*', marks: 'comment', code: true, defining: true, attrs: block, parseDOM: [{ tag: 'pre', preserveWhitespace: 'full' }], toDOM: () => ['pre', ['code', 0]] },
+  /*
+   * Words a comment hangs on stay on them here too. `lang` is absent until someone picks a language: one of languages.ts's
+   * short names. It copies out as the class most sites use, and a pasted one sets it.
+   */
+  code: {
+    group: 'block', content: 'text*', marks: 'comment', code: true, defining: true, attrs: { ...block, lang: { default: null } },
+    parseDOM: [{ tag: 'pre', preserveWhitespace: 'full', getAttrs: (el) => ({ lang: langOfElement(el) }) }],
+    toDOM: (node) => { const lang = codeLang(node); return ['pre', ['code', lang ? { class: `language-${lang}` } : {}, 0]]; }
+  },
 
   table: { ...tables.table, attrs: block },
   table_row: tables.table_row,

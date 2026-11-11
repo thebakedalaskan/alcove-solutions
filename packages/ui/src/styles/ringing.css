@@ -145,6 +145,8 @@
 .rg-gcard { width: min(480px, 100%); min-width: 0; display: grid; justify-items: center; gap: 14px; padding: 34px 34px 28px; border-radius: var(--radius-xl); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line), var(--shadow-2); text-align: center; animation: rg-rise var(--duration-3) var(--ease-out) both; }
 .rg-gcard h1 { font: 450 30px/1.12 var(--font-display); letter-spacing: -0.018em; font-variation-settings: 'opsz' 32; }
 .rg-gcard > p { color: var(--ink-2); font-size: 14.5px; line-height: 1.45; }
+/* What a card's words name, such as the account a link to notes would open as: in ink, and a long address wraps in the card. */
+.rg-gcard > p b { color: var(--ink); font-weight: 600; overflow-wrap: anywhere; }
 .rg-gcard > .ac-btn, .rg-gcard > .rg-link { width: 100%; }
 .rg-times { width: 100%; display: grid; gap: 10px; margin-top: 4px; }
 .rg-time { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 3px; width: 100%; padding: 13px 14px; border-radius: var(--radius-md); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line), var(--shadow-1); text-align: left; transition: background-color var(--duration-1), box-shadow var(--duration-1); }
@@ -158,6 +160,9 @@ button.rg-time:focus-visible { outline: 2px solid var(--focus); outline-offset: 
 .rg-gcard > .rg-sealed { display: flex; align-items: flex-start; gap: 8px; width: 100%; margin: 2px 0 4px; font-size: 13px; line-height: 1.45; color: var(--ink-3); text-align: left; }
 .rg-sealed .ac-i { flex: none; margin-top: 2px; color: var(--sun-text); }
 .rg-done { display: grid; place-items: center; width: 52px; height: 52px; border-radius: 16px; background: var(--sun-soft); color: var(--sun-text); }
+/* A card that says something didn't open, quietly; and the ways to sign in, one under another, the card's width. */
+.rg-done.is-quiet { background: var(--sunk); color: var(--ink-2); }
+.rg-gcard > .ways { display: grid; gap: 10px; width: 100%; }
 
 @keyframes rg-rise { from { opacity: 0; transform: translateY(8px); } }
 @keyframes rg-pop { from { opacity: 0; transform: translateY(4px) scale(.96); } }

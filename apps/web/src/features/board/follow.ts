@@ -3,6 +3,10 @@
  * `Board` knows every stop there is, so this only watches `following` go. Stop and Esc go back to where you were, because
  * the view you were following was never your own, and so does that person leaving. Moving the board yourself leaves you
  * where you are, because you've started looking around from there: `takeCamera` drops `home` first, so there's nowhere to go.
+ * Following whoever presents the board (`watching`) is held instead while they're away from it, as they open something else or
+ * reload: the camera stays where they left it until their view comes back. Only this person stops it: the board going (its
+ * session opened again, say) doesn't, and the board drawn in its place follows them on. Their view is fitted whole, as wide and
+ * as tall as theirs, whatever the shape of this sheet (`viewHere`).
  *
  * It starts with the board's glide. After that a person's view arrives ten times a second, and a glide starting again each
  * time would stutter and trail, so the camera eases towards the latest one a frame at a time, and stops when it gets there.
@@ -25,13 +29,15 @@ const NEAR_ZOOM = 0.0005;
 const BACK = 'Back to your own view.';
 
 /**
- * Someone's view, whatever the size of their sheet: the point in the middle, and how wide a stretch of the board it shows.
- * It has no zoom, so it can't reach the camera until `viewHere` has fitted it to this sheet.
+ * Someone's view, whatever the size of their sheet: the point in the middle, and how wide and how tall a stretch of the board it
+ * shows (`high` is null from a browser that says only how wide). It has no zoom, so it can't reach the camera until `viewHere`
+ * has fitted it to this sheet.
  */
 export interface SharedView {
   x: number;
   y: number;
   wide: number;
+  high: number | null;
 }
 
 type PublishedView = NonNullable<BoardPresence['view']>;
@@ -43,16 +49,23 @@ export interface FollowedPeople {
   nameOf(id: string): string | undefined;
 }
 
-/** This view as it's published, from a sheet `width` wide. See `BOARD_VIEW_WIDTH`. */
-export const publishedView = ({ x, y, z }: BoardPlace, width: number): PublishedView => ({ x, y, z: z * BOARD_VIEW_WIDTH / width });
+/** This view as it's published, from a sheet `width` by `height` (see `BOARD_VIEW_WIDTH`): one with no height yet says only how wide. */
+export const publishedView = ({ x, y, z }: BoardPlace, width: number, height: number): PublishedView => ({
+  x, y, z: z * BOARD_VIEW_WIDTH / width, ...(height > 0 ? { h: BOARD_VIEW_WIDTH * height / width } : {})
+});
 
 /** A view as it arrives. */
-export const sharedView = ({ x, y, z }: PublishedView): SharedView => ({ x, y, wide: BOARD_VIEW_WIDTH / z });
+export const sharedView = ({ x, y, z, h }: PublishedView): SharedView => ({ x, y, wide: BOARD_VIEW_WIDTH / z, high: h === undefined ? null : h / z });
 
-/** Someone's view on this sheet, `width` wide: the same middle, at the zoom that shows the same width of the board. What the height shows depends on the sheet. */
-export const viewHere = ({ x, y, wide }: SharedView, width: number): BoardPlace => ({ x, y, z: width / wide });
+/**
+ * Someone's view on this sheet, `width` by `height`: the same middle, at the zoom that shows all of what they see, its width and
+ * its height, so a sheet of another shape shows more round it, never less of it. A view that says only how wide shows that width.
+ */
+export const viewHere = ({ x, y, wide, high }: SharedView, width: number, height: number): BoardPlace => ({
+  x, y, z: high === null || height <= 0 ? width / wide : Math.min(width / wide, height / high)
+});
 
-const sameView = (a: SharedView | null, b: SharedView | null): boolean => a?.x === b?.x && a?.y === b?.y && a?.wide === b?.wide;
+const sameView = (a: SharedView | null, b: SharedView | null): boolean => a?.x === b?.x && a?.y === b?.y && a?.wide === b?.wide && a?.high === b?.high;
 
 /** Part of the way from `a` to `b`. Zoom goes by ratio, which is how a change of zoom looks. */
 const between = (a: BoardPlace, b: BoardPlace, k: number): BoardPlace => ({ x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k, z: a.z * (b.z / a.z) ** k });
@@ -89,8 +102,9 @@ export class BoardFollowing {
   attach(sheet: HTMLElement): () => void {
     const stopBoard = this.board.subscribe(this.boardChanged);
     // A menu on someone's tile starts this, so the keyboard can well be somewhere else. Inside the sheet, the board's own keys see Esc.
+    // Following whoever presents is the call's to stop from outside the sheet (Unfollow), so an Esc that closes a popover elsewhere never does.
     const escape = (e: KeyboardEvent): void => {
-      if (e.key !== 'Escape' || !this.who || editable(e.target) || overlayOpen()) return;
+      if (e.key !== 'Escape' || !this.who || this.board.getSnapshot().watching || editable(e.target) || overlayOpen()) return;
       if (e.target instanceof Node && sheet.contains(e.target)) return;
       e.preventDefault();
       e.stopPropagation();
@@ -104,7 +118,9 @@ export class BoardFollowing {
       this.halt();
       this.who = null;
       this.board.home = null;
-      this.board.stopFollow();
+      // The board going isn't this person stopping. Following whoever presents goes on with whatever board is drawn in its place
+      // (its session opened again, as Try again does), so nobody's told; following anyone else ends with it, and that's said.
+      this.board.stopFollow(!this.board.getSnapshot().watching);
     };
   }
 
@@ -119,7 +135,7 @@ export class BoardFollowing {
     }
     board.home = null;
     board.stopFollow();
-    board.goTo(viewHere(view, board.camera.width));
+    board.goTo(viewHere(view, board.camera.width, board.camera.height));
   }
 
   /** Someone on the board said something, or this sheet changed size. */
@@ -128,6 +144,7 @@ export class BoardFollowing {
     if (!who) return;
     const view = this.people.viewOf(who);
     if (!view) {
+      if (this.board.getSnapshot().watching) return;
       this.parting = `${this.name ?? 'They'} left the board. ${BACK}`;
       this.board.stopFollow();
     } else if (!sameView(view, this.seen)) {
@@ -136,7 +153,7 @@ export class BoardFollowing {
     }
   };
 
-  /** This sheet changed size, so what shows the same width has too. */
+  /** This sheet changed size, so what shows all of their view has too. */
   refit(): void {
     this.seen = null;
     this.heard();
@@ -159,18 +176,20 @@ export class BoardFollowing {
       return;
     }
     const view = this.people.viewOf(next);
-    if (!view) {
+    const { board } = this;
+    if (!view && !board.getSnapshot().watching) {
       this.parting = this.notHere(next);
-      this.board.stopFollow();
+      board.stopFollow();
       return;
     }
-    const { board } = this;
     this.halt();
     this.name = this.people.nameOf(next);
     // Going from one person straight to another, where you were is still where you were.
     board.home ??= board.camera.place();
+    // Whoever presents, not on the board yet: the camera waits where it is, and goes to them once they are (`heard`).
+    if (!view) return;
     this.seen = view;
-    board.goTo(viewHere(view, board.camera.width));
+    board.goTo(viewHere(view, board.camera.width, board.camera.height));
   }
 
   private back(): void {
@@ -193,9 +212,10 @@ export class BoardFollowing {
 
   private head(view: SharedView): void {
     const { camera } = this.board;
-    const here = viewHere(view, camera.width);
+    const here = viewHere(view, camera.width, camera.height);
     // What this sheet can reach, which is as near as the camera will ever get.
     this.goal = { ...here, z: camera.centred(here).z };
+    this.board.viewTaken();
     this.ease();
   }
 

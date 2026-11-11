@@ -1,5 +1,5 @@
-import { DocAwarenessBodySchema, ItemRenameSchema, MediaInputSchema, MAX_DOC_AWARENESS_BYTES, MAX_DOC_BYTES, MAX_DOC_UPDATE_BYTES, MentionBodySchema, PersonIdsBodySchema, PresenceBodySchema, MAX_MEDIA_PREVIEW_BYTES, DocAskBodySchema, BoardSortBodySchema, PresenterFrameNoteBodySchema } from '@alcove/api';
-import { Hono } from 'hono';
+import { DocAwarenessBodySchema, ItemRenameSchema, LIVE_STREAM_HEADER, LiveStreamNameSchema, MediaInputSchema, MAX_DOC_AWARENESS_BYTES, MAX_DOC_BYTES, MAX_DOC_UPDATE_BYTES, MentionBodySchema, PersonIdsBodySchema, PresenceBodySchema, MAX_MEDIA_PREVIEW_BYTES, DocAskBodySchema, BoardSortBodySchema, PresenterFrameNoteBodySchema } from '@alcove/api';
+import { Hono, type Context } from 'hono';
 import { getCookie } from 'hono/cookie';
 import { bodyLimit } from 'hono/body-limit';
 import { stream } from 'hono/streaming';
@@ -22,6 +22,8 @@ export function registerWorkspaceReaderRoutes(app: Hono<Env>, runtime: HttpRunti
   const { d } = runtime;
   const { liveLimiter, presenceLimiter, mentionLimiter, idsLimiter, documentLiveLimiter, updateLimiter, updateBytesLimiter, awarenessLimiter, versionLimiter, treeLimiter, presenterLimiter, askLimiter, sortLimiter, searchLimiter, pieceLimiter, mediaLimiter } = runtime.limits;
   const { readerOf, credentials, COOKIE } = runtime.context;
+  /** What the browser calls the stream it's opening, for it to say when it closes it: none from a browser that doesn't. */
+  const streamName = (c: Context<Env>): string | null => LiveStreamNameSchema.safeParse(c.req.header(LIVE_STREAM_HEADER)).data ?? null;
 
   app.use('/v1/workspaces', capped(32 * 1024));
 
@@ -35,7 +37,7 @@ export function registerWorkspaceReaderRoutes(app: Hono<Env>, runtime: HttpRunti
   app.get('/v1/workspaces/:id/live', async (c) => {
     const r = await readerOf(c);
     liveLimiter(access.limitKey(r), 'workspace stream');
-    const run = await workspaces.open(d, credentials(c), r, c.req.param('id'), clientAddress(c));
+    const run = await workspaces.open(d, credentials(c), r, c.req.param('id'), clientAddress(c), streamName(c));
     c.header('content-type', 'application/x-ndjson');
     c.header('cache-control', 'no-store');
     return stream(c, run);
@@ -98,7 +100,7 @@ export function registerWorkspaceReaderRoutes(app: Hono<Env>, runtime: HttpRunti
     documentLiveLimiter(access.limitKey(r), 'document stream');
     const after = z.coerce.number().int().min(0).max(Number.MAX_SAFE_INTEGER).safeParse(c.req.query('after') ?? '0');
     if (!after.success) throw new ValidationError('Ask from a place in the document.');
-    const run = await workspaceDocuments.open(d, credentials(c), r, c.req.param('id'), c.req.param('doc'), after.data, clientAddress(c));
+    const run = await workspaceDocuments.open(d, credentials(c), r, c.req.param('id'), c.req.param('doc'), after.data, clientAddress(c), streamName(c));
     c.header('content-type', 'application/x-ndjson');
     c.header('cache-control', 'no-store');
     return stream(c, run);
@@ -280,7 +282,7 @@ export function registerWorkspaceReaderRoutes(app: Hono<Env>, runtime: HttpRunti
     if (outgoing.destroyed) closed.abort();
     else outgoing.once('close', () => { closed.abort(); });
     return media.serve(d, media.tokenIn(d, c.req.param('token')), {
-      session: getCookie(c, COOKIE), range: c.req.header('range'), head: c.req.method === 'HEAD',
+      session: getCookie(c, COOKIE), range: c.req.header('range'), ifRange: c.req.header('if-range'), head: c.req.method === 'HEAD', download: c.req.query('download') !== undefined,
       count: (who) => mediaLimiter(who, 'media'),
       closed: closed.signal,
       cut: () => { outgoing.destroy(); }

@@ -1,7 +1,8 @@
 /*
  * The call, drawn on the horizon at the foot of a note's sky. Its chapters stand on the line, what was decided and what's
  * to do sit on it (solid once people have said so), the sun is where the recording has got to, and the light under the
- * line is what was said. It stays at the top of the page as the note is read, so the next jump is one press away. A call
+ * line is what was said. It stays at the top of the page as the note is read, so the next jump is one press away; with
+ * shared screens to replay, they stand on the sky over it and it runs along their foot, as their seek bar. A call
  * that kept no recording has no player; one that kept nothing to go to has a line to look at and no more. While the call
  * is still being recorded, the line ends where it's got to, and what's there so far plays.
  */
@@ -163,6 +164,12 @@ export function CallLine({ player, span, chapters, marks, gaps, glints, here = 0
     onScrub?.(((e.clientX - r.left) / r.width) * end);
   };
   const keys = (e: KeyboardEvent<HTMLElement>) => {
+    // Space plays and pauses, as it does anywhere on the note (Player.tsx), rather than press the line at no place on it.
+    if (e.key === ' ' && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      e.preventDefault();
+      if (!e.repeat) player.toggle();
+      return;
+    }
     const to = e.key === 'ArrowRight' ? Math.min(end, pos + 10) : e.key === 'ArrowLeft' ? Math.max(0, pos - 10) : e.key === 'Home' ? 0 : e.key === 'End' ? end : undefined;
     if (to === undefined) return;
     e.preventDefault();
@@ -174,7 +181,7 @@ export function CallLine({ player, span, chapters, marks, gaps, glints, here = 0
   return (
     <LineStrip className={cn(!hasAudio && 'is-silent', !onScrub && 'is-fixed', still && 'is-still', live && 'is-live', fresh && 'is-fresh')} label={live ? 'The call so far' : 'The call'}>
       <div className="nd-hz-in" style={{ '--p': percent(p), '--edge': percent(share(end, span)) }}>
-        {hasAudio && <button type="button" className="nd-play" aria-label={player.playing ? 'Pause' : 'Play'} title={player.playing ? 'Pause' : 'Play'} aria-busy={player.busy} onClick={player.toggle}>{player.busy ? <Spinner /> : <Icon name={player.playing ? 'pause' : 'play'} size={16} />}</button>}
+        {hasAudio && <button type="button" className="nd-play" aria-label={player.playing ? 'Pause' : 'Play'} title={player.playing ? 'Pause' : 'Play'} aria-keyshortcuts="Space" aria-busy={player.busy} onClick={player.toggle}>{player.busy ? <Spinner /> : <Icon name={player.playing ? 'pause' : 'play'} size={16} />}</button>}
         {hasAudio && <span className="nd-now">{position(pos)}</span>}
         <div className="nd-track">
           {hasAudio && (

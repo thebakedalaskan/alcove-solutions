@@ -4,7 +4,7 @@
  * hairline takes `is-flush`. A panel with an open list rises over the panels after it. With `id` the address can jump to
  * it (Recording in the room, Agents).
  */
-import type { NotesLanguage, NotesSetting, SummaryLength } from '@alcove/api';
+import type { NotesLanguage, NotesSetting } from '@alcove/api';
 import { Icon, Segmented, Select, SettingRow, SettingsGroup, SettingsPanel, Switch, type SelectOption } from '@alcove/ui';
 import type { Decorator, Meta, StoryObj } from '@storybook/react-vite';
 import { useState } from 'react';
@@ -21,14 +21,11 @@ const LANGUAGES: SelectOption<NotesLanguage>[] = [
 function NotesRows() {
   const [notes, setNotes] = useState<NotesSetting>('on');
   const [language, setLanguage] = useState<NotesLanguage>('call');
-  const [summary, setSummary] = useState<SummaryLength>('short');
   return (
     <>
       <SettingRow label="Notes for new calls" help="Everyone invited gets them. You can change it for each call."
         control={<Segmented<NotesSetting> label="Notes for new calls" value={notes} onChange={setNotes} options={[{ value: 'on', label: 'On' }, { value: 'off', label: 'Off' }]} />} />
       <SettingRow label="Language" control={<Select<NotesLanguage> label="Notes language" value={language} options={LANGUAGES} onChange={setLanguage} />} />
-      <SettingRow label="Summary"
-        control={<Segmented<SummaryLength> label="Summary length" value={summary} onChange={setSummary} options={[{ value: 'short', label: 'Short' }, { value: 'detailed', label: 'Detailed' }]} />} />
     </>
   );
 }

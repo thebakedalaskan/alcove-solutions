@@ -17,6 +17,7 @@ import { closeSession, openSession } from '../../sessions';
 import { createItem, listItems, saveRevision, lockItem } from '../../vault';
 import { forgetAnswers } from '../meetings/access';
 import { takeAllBack } from '../notes/additions';
+import { forgetAllMade } from '../notes/links';
 import { queueDelete } from '../recordings/audio';
 import { openAccount } from '../billing/service';
 import { forgetAccess, grantToRevoke, revokeGrant, unreachable, withdraw } from '../meetings/calendar';
@@ -33,19 +34,29 @@ import { forgetAccount, moveAddress } from '../workspaces/service';
 
 const alog = log.child({ component: 'account' });
 
+/**
+ * Preferences as a profile keeps them, and as GET and PATCH /v1/account/preferences send them. How long a summary is
+ * stopped being a choice (every note gets the short summary, with the full summary under it), but the release before
+ * this one opens a profile, and reads the preferences it's sent, only when they have `summaryLength`: its app may still
+ * be open in a tab, or served while this one deploys. So it's still written, as it was, and still sent. This release's
+ * app doesn't declare it, so its schema drops it. The next release takes it off the wire and out of the profile together.
+ */
+const StoredPreferences = PreferencesSchema.extend({ summaryLength: z.enum(['short', 'detailed']).default('short') });
+type StoredPreferences = z.infer<typeof StoredPreferences>;
+
 export const Profile = z.object({
   name: z.string(),
   email: z.string(),
   photoUrl: z.string().optional(),
   /** A demo account, with a sample calendar and company directory. */
   sample: z.boolean(),
-  preferences: z.preprocess(carryModel, PreferencesSchema),
+  preferences: z.preprocess(carryModel, StoredPreferences),
   /** Colleagues this person has invited to Alcove. */
   invited: z.array(z.string())
 });
 export type Profile = z.infer<typeof Profile>;
 
-const DEFAULT_PREFERENCES: Preferences = {
+const DEFAULT_PREFERENCES: StoredPreferences = {
   notesDefault: 'on', notesLanguage: 'call', summaryLength: 'short', addToCalendar: true, showOtherMeetings: true, recordOffline: true,
   notifications: DEFAULT_NOTIFICATION_PREFERENCES,
   sounds: DEFAULT_SOUND_PREFERENCES,
@@ -236,7 +247,9 @@ export async function deleteAccount(o: Owner): Promise<void> {
     await exec(c, 'DELETE FROM owners WHERE owner_id = $1', [o.ownerId]);
     // After its row: taking its own notes with it waits for anything being added, which is here by now, or fails from now on.
     const added = await takeAllBack(o, c);
-    return { meetings, notes: notes.length, objects, frames, received, answers, rings, featureFlags, added, rooms, workspaces };
+    // And every link it made to anyone's notes: they hand on only what their maker has.
+    const links = await forgetAllMade(o, c);
+    return { meetings, notes: notes.length, objects, frames, received, answers, rings, featureFlags, added, links, rooms, workspaces };
   });
   if (!gone) { alog.info('account already deleted', { ownerId: o.ownerId }); return; }
   forgetAccess(o.ownerId);
@@ -248,7 +261,7 @@ export async function deleteAccount(o: Owner): Promise<void> {
   await revokeGrant(o, refreshToken, AbortSignal.timeout(REVOKE_MS));
   alog.info('account deleted', {
     ownerId: o.ownerId, calendarCancelled: calendar.cancelled, calendarKept: calendar.kept, calendarNotCancelled: calendar.notCancelled,
-    meetings: gone.meetings, notes: gone.notes, received: gone.received, answers: gone.answers, rings: gone.rings, featureFlags: gone.featureFlags, added: gone.added, objects: gone.objects.length, frames: gone.frames, rooms: gone.rooms.length,
+    meetings: gone.meetings, notes: gone.notes, received: gone.received, answers: gone.answers, rings: gone.rings, featureFlags: gone.featureFlags, added: gone.added, links: gone.links, objects: gone.objects.length, frames: gone.frames, rooms: gone.rooms.length,
     workspaces: gone.workspaces.workspaces, workspacesDeleted: gone.workspaces.deleted, ms: Math.round(performance.now() - t0)
   });
 }
@@ -296,8 +309,11 @@ async function withdrawCalls(o: Owner): Promise<{ cancelled: number; kept: numbe
   return out;
 }
 
-/** Preferences as they stand. Pins that point at notes this person no longer has are dropped here and the cleaned list is saved. */
-export async function preferences(o: Owner): Promise<Preferences> {
+/**
+ * Preferences as they stand, with the `summaryLength` the release before reads (StoredPreferences). Pins that point at
+ * notes this person no longer has are dropped here and the cleaned list is saved.
+ */
+export async function preferences(o: Owner): Promise<StoredPreferences> {
   const prefs = (await profile(o)).preferences;
   if (!prefs.pinned.length) return prefs;
   const held = await heldNoteIds(o);
@@ -311,7 +327,8 @@ export async function unpin(o: Owner, noteId: string): Promise<void> {
   if (!(await profile(o)).preferences.pinned.includes(noteId)) return;
   await updateProfile(o, (p) => ({ ...p, preferences: { ...p.preferences, pinned: p.preferences.pinned.filter((id) => id !== noteId) } }));
 }
-export async function updatePreferences(o: Owner, patch: Patch<Preferences>): Promise<Preferences> {
+/** Changes what the patch has, and answers with the preferences as they stand then, `summaryLength` included (StoredPreferences). */
+export async function updatePreferences(o: Owner, patch: Patch<Preferences>): Promise<StoredPreferences> {
   if (patch.pinned?.length) {
     const held = await heldNoteIds(o);
     if (patch.pinned.some((id) => !held.has(id))) throw new NotFoundError('Those notes don’t exist.', { context: { pins: patch.pinned.length } });
@@ -319,7 +336,8 @@ export async function updatePreferences(o: Owner, patch: Patch<Preferences>): Pr
   return (await updateProfile(o, (p) => ({ ...p, preferences: {
     notesDefault: patch.notesDefault ?? p.preferences.notesDefault,
     notesLanguage: patch.notesLanguage ?? p.preferences.notesLanguage,
-    summaryLength: patch.summaryLength ?? p.preferences.summaryLength,
+    // Not a choice any more: kept as it was, and not changed by a tab on the release before that sends it (StoredPreferences).
+    summaryLength: p.preferences.summaryLength,
     addToCalendar: patch.addToCalendar ?? p.preferences.addToCalendar,
     showOtherMeetings: patch.showOtherMeetings ?? p.preferences.showOtherMeetings,
     recordOffline: patch.recordOffline ?? p.preferences.recordOffline,

@@ -1,6 +1,6 @@
 /* Query keys, fetchers and mutations. Screens read data through these, never through `api` directly. */
 import type { AgentDecisionInput, AgentTokenInput, DriveExportInput, FollowUpReview } from '@alcove/api';
-import { AlcoveApiError, MAX_SORT_STICKIES, MAX_SORT_STICKY, SORT_TOO_FEW, SORT_TOO_MANY, errorCode, type ActionProposal, type ChangeScope, type DecisionProposal, type DemoProvider, type DocumentRole, type FeatureFlagName, type Group, type PresenterFrameNotes, type InstantCallInput, type ISODate, type ItemInput, type ItemPlace, type LinePatch, type MeetingInput, type MentionBody, type NoteKind, type NotesSetting, type Patch, type PersonalInput, type PersonalNotes, type PromoteBody, type QuestionPatch, type TopUp, type RingReply, type Series, type ShareTarget, type WorkspaceRole, type WorkspaceSummary } from '@alcove/api';
+import { AlcoveApiError, MAX_SORT_STICKIES, MAX_SORT_STICKY, SORT_TOO_FEW, SORT_TOO_MANY, errorCode, type ActionProposal, type ChangeScope, type DecisionProposal, type DemoProvider, type DocumentRole, type FeatureFlagName, type Group, type PresenterFrameNotes, type InstantCallInput, type ISODate, type ItemInput, type ItemPlace, type LinePatch, type MeetingInput, type MentionBody, type NoteKind, type NotesSetting, type Patch, type PersonalInput, type PersonalNotes, type PromoteBody, type QuestionPatch, type TopUp, type RingReply, type Series, type SharedWrite, type ShareTarget, type DocumentLibrary, type WorkspaceRole, type WorkspaceSummary, type WorkspaceTree } from '@alcove/api';
 import { queryOptions, useIsMutating, useMutation, useMutationState, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef } from 'react';
 import { forgetAccount } from '~/features/record/offline';
@@ -45,6 +45,8 @@ export const qk = {
   /** Your own notes on a note: never anyone else's, so nothing here is ever shown to someone who signs in after you (signing in starts the cache over). */
   personal: (id: string) => ['notes', 'personal', id] as const,
   addition: (id: string, entryId: string) => ['notes', 'addition', id, entryId] as const,
+  sharedAudience: (id: string) => ['notes', 'shared-audience', id] as const,
+  noteLinks: (id: string) => ['notes', 'links', id] as const,
   inbox: ['notes', 'inbox'] as const,
   /** Everything about series: what carries over changes whenever a note or a call in one does. */
   allSeries: ['series'] as const,
@@ -89,24 +91,24 @@ async function boardsToBring(spaces: readonly WorkspaceSummary[]): Promise<Board
     .sort((a, b) => b.editedAt.localeCompare(a.editedAt));
 }
 
-/** What the API says it runs on, and whether its answer is bound to the nonce this browser sent. */
-export interface Trust { tee: 'none' | 'dstack'; bound: boolean }
+/** What the API says it runs on, whether its answer is bound to the nonce this browser sent, and when it answered. */
+export interface Trust { tee: 'none' | 'dstack'; bound: boolean; at: number }
 async function checkTrust(): Promise<Trust> {
   const nonce = Array.from(crypto.getRandomValues(new Uint8Array(32)), (b) => b.toString(16).padStart(2, '0')).join('');
   const a = await api.trust.attestation(nonce);
-  if (a.tee === 'none') return { tee: 'none', bound: false };
+  if (a.tee === 'none') return { tee: 'none', bound: false, at: Date.now() };
   // The quote's report data must be SHA-512 of this request's nonce and the running commit.
   const want = await crypto.subtle.digest('SHA-512', new TextEncoder().encode(`alcove-attestation/v1\n${nonce}\n${a.build.commit}`));
   const hex = Array.from(new Uint8Array(want), (b) => b.toString(16).padStart(2, '0')).join('');
-  return { tee: 'dstack', bound: a.nonce === nonce && a.reportData.toLowerCase() === hex && a.quote.length > 0 };
+  return { tee: 'dstack', bound: a.nonce === nonce && a.reportData.toLowerCase() === hex && a.quote.length > 0, at: Date.now() };
 }
-/** Report evidence and request binding without claiming that this browser authenticated the quote. */
-export function trustLine({ data, isPending, isError }: { data: Trust | undefined; isPending: boolean; isError: boolean }): string {
-  if (isPending) return 'Checking hosting hardware…';
-  if (isError || !data) return 'Hosting hardware check unavailable';
-  if (data.tee === 'none') return 'Hosting hardware not attested';
-  return data.bound ? 'Hosting hardware evidence received' : 'Hosting hardware evidence incomplete';
-}
+/** When the server's hardware answer was bound to this browser's own request, or null: only then is it verified. */
+export const verifiedAt = (t: Trust | undefined): number | null => (t?.tee === 'dstack' && t.bound ? t.at : null);
+/**
+ * The promise in the product's own words, verified only when the hardware answer is bound to this browser's request. No
+ * caveats (docs/design/principles.md › Copy): the engineering docs say what's built.
+ */
+export const trustLine = (t: Trust | undefined): string => (verifiedAt(t) === null ? 'Confidential compute' : 'Confidential compute · verified');
 
 /** Whether money can still arrive for a top-up: it's waiting, arriving or short. */
 export const topUpOpen = (t: TopUp): boolean => t.state === 'waiting' || t.state === 'arriving' || t.state === 'short';
@@ -118,7 +120,11 @@ export const q = {
   drive: () => queryOptions({ queryKey: qk.drive, queryFn: () => api.drive.get(), retry: false }),
   driveFolders: () => queryOptions({ queryKey: qk.driveFolders, queryFn: () => api.drive.folders(), staleTime: 0, retry: false }),
   driveJobs: () => queryOptions({ queryKey: qk.driveJobs, queryFn: () => api.drive.jobs(), refetchInterval: 10_000, retry: false }),
-  driveNote: (id: string) => queryOptions({ queryKey: qk.driveNote(id), queryFn: () => api.drive.forNote(id), refetchInterval: 10_000, retry: false }),
+  // Read again every 10 s, and every 2 s while a file is on its way, so a press shows Uploading, then its link, within seconds.
+  driveNote: (id: string) => queryOptions({
+    queryKey: qk.driveNote(id), queryFn: () => api.drive.forNote(id), retry: false,
+    refetchInterval: (query) => (query.state.data?.jobs.some((job) => job.status === 'uploading' || (job.status === 'pending' && job.reason === null)) ? 2_000 : 10_000)
+  }),
   agents: () => queryOptions({ queryKey: qk.agents, queryFn: () => api.agents.list() }),
   /** The MCP address agents connect to: it stays the same while the app is open. */
   agentEndpoint: () => queryOptions({ queryKey: qk.agentEndpoint, queryFn: () => api.agents.endpoint(), staleTime: Infinity }),
@@ -158,6 +164,10 @@ export const q = {
   personal: (id: string) => queryOptions({ queryKey: qk.personal(id), queryFn: () => api.notes.personal(id).get(), retry: false }),
   /** What adding an entry to the shared notes would do, read fresh each time it's opened: the people who'd get it can change. */
   addition: (id: string, entryId: string) => queryOptions({ queryKey: qk.addition(id, entryId), queryFn: () => api.notes.previewAddition(id, entryId), staleTime: 0, gcTime: 0, retry: false }),
+  /** Who reads what's written straight into the shared notes, and the seal that holds it to them: read fresh each time the box shows. */
+  sharedAudience: (id: string) => queryOptions({ queryKey: qk.sharedAudience(id), queryFn: () => api.notes.sharedAudience(id), staleTime: 0, gcTime: 0, retry: false }),
+  /** The links to a note that still work, read fresh whenever Share opens. */
+  noteLinks: (id: string) => queryOptions({ queryKey: qk.noteLinks(id), queryFn: () => api.notes.links(id), staleTime: 0, retry: false }),
   inbox: () => queryOptions({ queryKey: qk.inbox, queryFn: ({ client }) => readInbox(api, client) }),
   /** What carries over in a series, from the notes you have; put together fresh each time it's asked for. */
   series: (id: string) => queryOptions({ queryKey: qk.series(id), queryFn: () => api.series.get(id), retry: false }),
@@ -667,6 +677,33 @@ export function useAddToShared(noteId: string) {
     onError: (e) => gone(qc, e)
   });
 }
+/** Writes straight into the shared notes, for everyone with them, with the seal of who the box said reads it. The answer is the note. */
+export function useWriteShared(noteId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: SharedWrite) => api.notes.writeShared(noteId, body),
+    onSuccess: (n) => changed(qc, n),
+    onError: (e) => gone(qc, e)
+  });
+}
+/** Makes a link to a note. Its secret is in the answer, said once, for showing where it was made; the list is read again. */
+export function useCreateNoteLink(noteId: string) {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: () => api.notes.createLink(noteId), onSuccess: () => qc.invalidateQueries({ queryKey: qk.noteLinks(noteId) }), onError: (e) => gone(qc, e) });
+}
+/** Revokes a link to a note: the answer is the links that still work. */
+export function useRevokeNoteLink(noteId: string) {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: (linkId: string) => api.notes.revokeLink(noteId, linkId), onSuccess: (links) => qc.setQueryData(qk.noteLinks(noteId), links), onError: (e) => gone(qc, e) });
+}
+/**
+ * Opens a link for the account signed in, only once they've pressed Open the notes on the link's page (it names the
+ * account, since everyone with the notes will see it): its notes join theirs, so the lists are read again.
+ */
+export function useClaimNoteLink() {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: (secret: string) => api.notes.claimLink(secret), onSuccess: () => qc.invalidateQueries({ queryKey: qk.notes }) });
+}
 /** Takes something out of the shared notes, for everyone. */
 export function useTakeBack(noteId: string) {
   const qc = useQueryClient();
@@ -792,9 +829,23 @@ export function useWorkspaceName(id: string, liveName: string, signedIn: boolean
   const name = (pending || waiting) ? list?.find((space) => space.id === id)?.name ?? liveName : liveName;
   return { name, state: pending ? 'saving' : latest?.status === 'error' ? 'failed' : latest?.status === 'success' ? 'saved' : 'quiet' } as const;
 }
-/** Renames a board open in a call, for anyone who can change it: the call reads its new name from the workspace. `pass`: the call's. */
+/**
+ * Renames a board open in a call, for anyone who can change it: the call reads its new name from the workspace. What names
+ * boards outside the call takes the new name at once, so nothing brings the old one back: the board's workspace as the call
+ * reads it (which a saved board open just for you is named from), the item, the board picker's Your team's boards and the
+ * Drive's library, each read again too. `pass`: the call's.
+ */
 export function useRenameBoard(pass: string | undefined) {
-  return useMutation({ mutationFn: (v: { workspaceId: string; id: string; name: string }) => api.workspaces.items.rename(v.workspaceId, v.id, v.name, pass ? { pass } : undefined) });
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { workspaceId: string; id: string; name: string }) => api.workspaces.items.rename(v.workspaceId, v.id, v.name, pass ? { pass } : undefined),
+    onSuccess: (_, v) => {
+      qc.setQueryData<WorkspaceTree>(qk.workspaceTree(v.workspaceId), (t) => t && { ...t, items: t.items.map((i) => (i.id === v.id ? { ...i, name: v.name } : i)) });
+      qc.setQueriesData<BoardToBring[]>({ queryKey: qk.boardsToBring }, (list) => list?.map((b) => (b.workspaceId === v.workspaceId && b.id === v.id ? { ...b, name: v.name } : b)));
+      qc.setQueryData<DocumentLibrary>(qk.documents, (lib) => lib && { workspaces: lib.workspaces.map((w) => (w.id !== v.workspaceId ? w : { ...w, documents: w.documents.map((d) => (d.id === v.id ? { ...d, name: v.name } : d)) })) });
+      for (const queryKey of [qk.workspaceTree(v.workspaceId), qk.workspaceItem(v.workspaceId, v.id), qk.boardsToBring, qk.documents]) void qc.invalidateQueries({ queryKey });
+    }
+  });
 }
 /**
  * Sort into themes on a board: what the stickies picked say goes to confidential compute through the board's document, and

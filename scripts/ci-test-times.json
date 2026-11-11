@@ -39,10 +39,9 @@
    "what More adds": 0.8
   }
  },
- "src/features/calls/board-timer-votes.integration.test.ts": {
-  "seconds": 33.7,
+ "src/features/calls/board-votes.integration.test.ts": {
+  "seconds": 28.8,
   "groups": {
-   "the timer": 4.9,
    "a vote": 16.4,
    "at the same moment": 1.7,
    "who is told of them": 4.0,

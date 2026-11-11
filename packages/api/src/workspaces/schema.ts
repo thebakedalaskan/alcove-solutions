@@ -262,6 +262,25 @@ export type MentionNotice = z.infer<typeof MentionNoticeSchema>;
 
 
 /**
+ * What a browser calls one of its streams of a workspace or a document: 22 characters of base64url it makes up as it opens
+ * the stream, and sends with it in `LIVE_STREAM_HEADER`, never in a URL. It says when it closes the stream by the same name
+ * (`LiveStreamEndBodySchema`), so the API lets go of it at once, which it couldn't otherwise hear through Cloud Run. Nobody
+ * else's browser can end it, and it's never written anywhere.
+ */
+export const LiveStreamNameSchema = z.string().regex(/^[A-Za-z0-9_-]{22}$/);
+
+export const LIVE_STREAM_HEADER = 'x-alcove-stream' as const;
+
+/**
+ * A browser closed its stream by this name: `POST …/live/end`, sent as the page may be going (keepalive). It takes an
+ * account: a guest's call pass alone is refused, and their stream is let go of as any other the API doesn't hear closed.
+ */
+export const LiveStreamEndBodySchema = z.object({ stream: LiveStreamNameSchema });
+
+export type LiveStreamEndBody = z.infer<typeof LiveStreamEndBodySchema>;
+
+
+/**
  * One line of a workspace's stream. `tree` comes first and then whenever it changes for you, whole. `presence`: everyone
  * here that you can know of, whole, whenever that changes. `mentions`: the tags you haven't seen, whole, on opening and
  * whenever they change, including when another window reads one. `access`: your role changed, just before the `tree`
@@ -290,12 +309,26 @@ export interface WorkspaceView {
   mentions: WorkspaceMention[];
 }
 
-/** A workspace, kept up to date. Read it with useLive(). */
+/**
+ * A workspace, kept up to date. Read it with useLive(). While its stream is down it tries again by itself, a little later
+ * each time up to every 10 seconds, and, waiting to, at once when the browser comes back online or the tab back into view
+ * (`wake`).
+ */
 export interface WorkspaceLive extends LiveStore<WorkspaceView> {
   /** Says where this browser is. It's here with nothing open from the moment the stream opens, and for as long as it stays open. */
   present(where: WorkspaceWhere): void;
   /** You've heard about this tag, so it isn't kept for you any more, on any device. Done once that's said, or couldn't be: the next stream says it again. */
   seen(mention: string): Promise<void>;
+  /**
+   * Try now: while the stream is down, it opens again at once rather than after the wait, and a try that's hanging is given
+   * up. Nothing while it's live or closed. For someone who asked.
+   */
+  retry(): void;
+  /**
+   * There's reason to think it would connect now (it's shown again, say): waiting to try again, it tries now. A try that's
+   * under way, the first one included, carries on however long it's taking. Nothing while it's live or closed.
+   */
+  wake(): void;
   close(): void;
 }
 

@@ -80,6 +80,19 @@
 .wb-ci { flex: none; padding-top: 4px; color: var(--ink-3); }
 .wb.is-code { margin: 8px 0; padding: 10px 14px; border-radius: 12px; background: var(--sunk); }
 .wb.is-code .wb-t { font: 400 13.5px/22px var(--font-mono); }
+/* Code's colours, from decorations (never marks), in the syntax palette's tokens. */
+.wb.is-code .wb-tk-k { color: var(--code-keyword); }
+.wb.is-code .wb-tk-s { color: var(--code-string); }
+.wb.is-code .wb-tk-n { color: var(--code-number); }
+.wb.is-code .wb-tk-f { color: var(--code-name); }
+.wb.is-code .wb-tk-c { color: var(--code-comment); font-style: italic; }
+/* Its language, in the corner: floated, so the first line goes round it rather than under it. */
+.wb-lang { float: right; display: inline-flex; align-items: center; gap: 3px; height: 22px; margin: 0 -6px 0 12px; padding: 0 6px; border-radius: 7px; color: var(--ink-3); font: 500 12px/1 var(--font-sans); user-select: none; transition: opacity var(--duration-1), background-color var(--duration-1), color var(--duration-1); }
+button.wb-lang:hover, button.wb-lang:focus-visible { background: color-mix(in srgb, var(--ink) 7%, transparent); color: var(--ink-2); }
+/* Plain text says so only while the block's pointed at, so code from before languages looks as it did. */
+.wb-lang.is-plain { opacity: 0; }
+.wb.is-code:hover .wb-lang.is-plain, .wb-lang.is-plain:focus-visible { opacity: 1; }
+@media (hover: none) { .wb-lang.is-plain { opacity: 1; } }
 .wb-hr { flex: 1; height: 1px; margin: 16px 0; border: 0; background: var(--line); }
 .wb-th { position: absolute; left: 100%; top: 2px; margin-left: 10px; display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 7px; border-radius: 7px; background: var(--hl); color: var(--ink-2); font: 600 12px/1 var(--font-sans); }
 .wb-line { position: absolute; left: 0; right: 0; height: 3px; margin-top: -1.5px; border-radius: 3px; background: var(--horizon); pointer-events: none; }
@@ -203,13 +216,18 @@ button.wb-drop:hover { color: var(--ink-2); box-shadow: inset 0 0 0 1.5px var(--
 .wb-lr .tx { flex: 1; min-width: 0; padding: 0; overflow: visible; } .wb-lr .ac-time { flex: none; font-size: 12px; color: var(--ink-3); }
 .wb-mom { flex: 1; min-width: 0; display: flex; gap: 10px; margin: 8px 0; padding: 12px 14px; border-radius: 12px; background: color-mix(in srgb, var(--rec-soft) 40%, var(--surface)); }
 .wb-mom p { font: 500 15px/1.45 var(--font-sans); color: var(--ink); }
-.wb-mom .m { display: inline-flex; align-items: center; gap: 4px; margin-top: 4px; font-size: 12.5px; color: var(--ink-3); }
+.wb-mom .m { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 4px; font-size: 12.5px; color: var(--ink-3); }
 .wb-mom .ac-time { font-size: 12px; }
 .wb-mom .pl { display: inline-flex; align-items: center; gap: 3px; margin-left: 8px; color: var(--rec); font-weight: 600; }
+.wb-mom .pl .ac-spin { width: 11px; height: 11px; border-width: 1.5px; }
+/* Why Hear it can't play: after it, or in its place. */
+.wb-mom .why { margin-left: 8px; color: var(--ink-3); }
 .wb-unknown { flex: 1; padding: 10px 14px; border-radius: 12px; box-shadow: inset 0 0 0 1px var(--line); font-size: 14px; color: var(--ink-3); }
 
 /* menus */
 .wm.is-slash { width: 300px; } .wm.is-mention { width: 288px; } .wm.is-moment { width: 340px; } .wm.is-block { width: 240px; }
+/* The calendar takes the `@` list's place, as wide as it was. */
+.wm.is-date { width: 288px; }
 .wm-r.is-rec > .ac-i { color: var(--rec); }
 .wm-r.is-line .l { white-space: normal; }
 .wm-turn { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 2px; padding: 2px; }

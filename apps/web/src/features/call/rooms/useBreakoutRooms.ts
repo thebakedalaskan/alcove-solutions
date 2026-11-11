@@ -1,4 +1,4 @@
-import { MAIN_PLACE, notesAreOn, type BreakoutBoard, type CallSession, type CallState, type Person } from '@alcove/api';
+import { MAIN_PLACE, notesAreOn, type BreakoutBoard, type CallSession, type CallState, type Person, type RoomPerson } from '@alcove/api';
 import { useToast } from '@alcove/ui';
 import { useEffect, useRef, useState } from 'react';
 import type { BoardLanding } from '~/features/board/BoardSurface';
@@ -8,7 +8,7 @@ import { callName, sameEmail } from '~/lib/people';
 import type { CallRoom, RoomView } from '../media/livekit';
 import type { SideView } from '../layout/side';
 import type { StageRooms } from '../layout/Stage';
-import type { RoomActivity, RoomCandidate } from './Rooms';
+import type { RoomActivity, RoomCandidate, RoomChip } from './Rooms';
 
 /** How long after rooms close a returned board is still the rooms' news. */
 const CAME_BACK_MS = 8_000;
@@ -75,14 +75,30 @@ export function useBreakoutRooms({ session, state, room, roomView, invited, open
     toast(`${organizerPerson ? callName(organizerPerson) : 'The organizer'}, to every room: ${message.text}`, { icon: 'send', ms: 8000 });
   }, [messageKey]);
   /**
-   * The rooms as the organizer oversees them on their stage. While there's a board the rooms are worked on, the one every room
-   * shares or the board of the room they're visiting, that board takes their place whenever it's on the organizer's stage.
+   * The rooms as the organizer oversees them on their stage, from the main room: in a room, their stage shows that room's people,
+   * as everyone else's does. While there's a board the rooms are worked on, the one every room shares or the board of the room
+   * they're visiting, that board takes their place whenever it's on the organizer's stage. What they fold there is their own
+   * view's, for as long as the rooms are open.
    */
   const roomsBoard = state.board.open !== null && (myRoom >= 0 || open?.board === 'shared');
-  const roomsView: StageRooms | null = open && organizer ? {
-    // Each room's notes: paused while the whole call is, or while the organizer has paused that room.
-    rooms: open.rooms.map((r, k) => ({ name: r.name, ids: r.members.filter((id) => byId.has(id)), help: helps[k] ?? null, notes: mode === 'paused' || (on && r.paused) ? 'paused' : on ? 'on' : 'off', board: r.board })),
-    main: mainIds, joined: myRoom >= 0 ? myRoom : null, left, boards: roomsOnBoards,
+  const [folded, setFolded] = useState<readonly string[]>([]);
+  useEffect(() => { if (!open) setFolded([]); }, [open === null]);
+  const fold = (room: string | null) => {
+    const place = room ?? MAIN_PLACE;
+    setFolded((f) => (f.includes(place) ? f.filter((x) => x !== place) : [...f, place]));
+  };
+  /*
+   * Someone invited is in the room now. Only then is anything said there transcribed: its scribe is always someone invited, so
+   * a room with only guests from the link in it has none.
+   */
+  const invitedIn = (r: { people: readonly Person[]; members: readonly string[] }) =>
+    r.members.some((id) => { const p = byId.get(id); return !!p && p.email !== '' && r.people.some((x) => sameEmail(x, p)); });
+  const roomsView: StageRooms | null = open && organizer && myRoom < 0 ? {
+    // Each room's notes: paused while the whole call is, or while the organizer has paused that room, and on only while someone invited is there.
+    rooms: open.rooms.map((r, k) => ({
+      id: r.id, name: r.name, ids: r.members.filter((id) => byId.has(id)), help: helps[k] ?? null, notes: mode === 'paused' || (on && r.paused) ? 'paused' : on && invitedIn(r) ? 'on' : 'off', board: r.board, folded: folded.includes(r.id)
+    })),
+    main: mainIds, mainFolded: folded.includes(MAIN_PLACE), left, boards: roomsOnBoards, onFold: fold,
     message: message && me ? { from: me.person, text: message.text } : null
   } : null;
   const visit = (k: number | null) => {
@@ -165,32 +181,56 @@ export function useBreakoutRooms({ session, state, room, roomView, invited, open
       toast(`${r.name} asked for help`, { icon: 'hand', ms: 8000, action: { label: 'Join', onClick: () => visitRef.current(k) } });
     }
   }, [helpKey, organizer, myRoom, state.breakouts.open, toast]);
-  /* Rooms for the organizer to fill: invited people in the call, once each, by their email address. */
+  /*
+   * Everyone the organizer can send to a room: everyone in the call but them, once each, on the board by their seat, which holds
+   * across reloads. Someone invited goes to their room by their address, so they land in it from any device; anyone else (a
+   * guest with the link) by their seat.
+   */
   const invitedEmails = new Set(invited.map((g) => g.email.toLowerCase()));
   const candidates: RoomCandidate[] = [];
-  for (const p of state.participants) {
+  for (const p of others) {
     const email = p.person.email.toLowerCase();
-    if (p.isMe || p.isOrganizer || !email || !invitedEmails.has(email) || candidates.some((c) => c.id === email)) continue;
-    candidates.push({ id: email, person: p.person });
+    const onInvite = email !== '' && invitedEmails.has(email);
+    if (p.isOrganizer || (onInvite && candidates.some((c) => c.by.email === email))) continue;
+    candidates.push({ id: p.seat, person: p.person, by: onInvite ? { email } : { seat: p.seat }, guest: !onInvite });
   }
-  const guestsHere = others.filter((p) => !candidates.some((c) => sameEmail(c.person, p.person))).length;
+  /* While rooms are open: whoever's in the main room besides the organizer (a late arrival, a guest, someone moved back), to send on. */
+  const mainPeople = open ? candidates.filter((c) => others.some((p) => p.seat === c.id && !inARoom(p.id))) : [];
+  /* Everyone sent to each open room, as its card in your side shows them: as the call knows them once they're here. */
+  const roomChips: RoomChip[][] = open ? open.rooms.map((r) => [
+    ...r.people.map((p): RoomChip => {
+      const known = state.participants.find((x) => x.person.email !== '' && sameEmail(x.person, p));
+      return { key: p.email, person: known?.person ?? p, here: known !== undefined && r.members.includes(known.id), by: { email: p.email.toLowerCase() } };
+    }),
+    ...r.guests.map((g): RoomChip => {
+      const known = state.participants.find((x) => x.seat === g.seat);
+      return { key: g.seat, person: known?.person ?? g.person, here: known !== undefined && r.members.includes(known.id), by: { seat: g.seat } };
+    })
+  ]) : [];
   const renameRoom = (k: number, name: string) => {
     const r = open?.rooms[k];
     if (r) session.renameRoom(r.id, name);
   };
-  const moveTo = (email: string, k: number | null) => {
+  const moveTo = (who: RoomPerson, k: number | null) => {
     const r = k === null ? null : open?.rooms[k] ?? null;
-    session.moveToRoom(email, r ? r.id : null);
-    const who = candidates.find((c) => c.id === email.toLowerCase())?.person ?? open?.rooms.flatMap((x) => x.people).find((p) => sameEmail(p, { email }));
-    toast(`${who ? callName(who) : 'They'} ${r ? `will be in ${r.name}` : 'will be back in the main room'}. Their keys move with them.`, { icon: 'door' });
+    session.moveToRoom(who, r ? r.id : null);
+    const them = [...candidates.map((c) => ({ by: c.by, person: c.person })), ...roomChips.flat()].find((c) => (who.email !== undefined ? c.by.email === who.email : c.by.seat === who.seat))?.person;
+    toast(`${them ? callName(them) : 'They'} ${r ? `will be in ${r.name}` : 'will be back in the main room'}. Their keys move with them.`, { icon: 'door' });
   };
-  const openRooms = (rooms: { name: string; ids: string[] }[], minutes: number, roomBoard: BreakoutBoard) => {
-    session.openRooms({ rooms: rooms.map((r) => ({ name: r.name, emails: r.ids })), minutes, board: roomBoard });
-    toast(roomBoard.mode === 'each' ? `${rooms.length} rooms are open. Each one has a board.` : `${rooms.length} rooms are open for ${minutes} min`, { icon: 'door' });
+  /** Opens the rooms with the people in each (by their place on the board), and you in one of them (`visit`), or in the main room. */
+  const openRooms = (rooms: { name: string; ids: string[] }[], minutes: number, roomBoard: BreakoutBoard, visit: number | null) => {
+    const people = (ids: string[]) => ids.flatMap((id) => { const c = candidates.find((x) => x.id === id); return c ? [c.by] : []; });
+    session.openRooms({
+      rooms: rooms.map((r) => ({ name: r.name, emails: people(r.ids).flatMap((b) => (b.email !== undefined ? [b.email] : [])), seats: people(r.ids).flatMap((b) => (b.seat !== undefined ? [b.seat] : [])) })),
+      minutes, board: roomBoard, ...(visit === null ? {} : { visit })
+    });
+    const opened = roomBoard.mode === 'each' ? `${rooms.length} rooms are open. Each one has a board.` : `${rooms.length} rooms are open for ${minutes} min`;
+    const going = visit === null ? undefined : rooms[visit]?.name;
+    toast(going === undefined ? opened : `${roomBoard.mode === 'each' ? opened : `${opened}.`} You’re in ${going}. Everyone in it can see and hear you.`, { icon: 'door' });
   };
 
   return {
     open, left, roomName, placeName, inARoom, unit, unitKey, activity, organizerPerson, message, roomsOnBoards, roomsView, roomsBoard, myRoomId,
-    candidates, guestsHere, visit, renameRoom, moveTo, openRooms, landing, cameBack: () => Date.now() - backFromRooms.current < CAME_BACK_MS
+    candidates, mainPeople, roomChips, visit, renameRoom, moveTo, openRooms, landing, cameBack: () => Date.now() - backFromRooms.current < CAME_BACK_MS
   };
 }

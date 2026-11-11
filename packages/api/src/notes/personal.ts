@@ -67,12 +67,22 @@ export const PersonalSharedSchema = z.object({ additionId: IDSchema, at: ISODate
 export type PersonalShared = z.infer<typeof PersonalSharedSchema>;
 
 
+/**
+ * What a bookmark points at: a line of the transcript or a shared screen, bookmarked where it shows, or a moment (Mark
+ * this moment), which opens at whatever was said then. A line's bookmark and a moment marked as it was said open at the
+ * same line, and only this tells them apart.
+ */
+export const PersonalTargetSchema = z.enum(['line', 'screen', 'moment']);
+
+export type PersonalTarget = z.infer<typeof PersonalTargetSchema>;
+
+
 const Entry = { id: IDSchema, at: ISODateSchema, shared: PersonalSharedSchema.nullable() };
 
 /** One thing in your own notes, in the order you kept them. What it points at is read for you each time you read it. */
 export const PersonalEntrySchema = z.discriminatedUnion('kind', [
   z.object({ ...Entry, kind: z.literal('note'), text: z.string() }),
-  z.object({ ...Entry, kind: z.literal('bookmark'), label: z.string(), moment: SourceMomentSchema.nullable(), reach: PersonalReachSchema }),
+  z.object({ ...Entry, kind: z.literal('bookmark'), label: z.string(), target: PersonalTargetSchema, moment: SourceMomentSchema.nullable(), reach: PersonalReachSchema }),
   /** `moments`: the ones behind the answer that you can read from where you are. */
   z.object({ ...Entry, kind: z.literal('answer'), question: z.string(), answer: z.string(), moments: z.array(SourceMomentSchema) })
 ]);
@@ -121,3 +131,19 @@ export type PromotionPreview = z.infer<typeof PromotionPreviewSchema>;
 export const PromoteBodySchema = z.object({ text: z.string().trim().max(MAX_ADDITION_TEXT), seal: z.string().min(1).max(200) });
 
 export type PromoteBody = z.infer<typeof PromoteBodySchema>;
+
+
+/**
+ * Who reads what's written straight into the shared notes, shown before anything is typed: everyone who has the notes
+ * now, organizer first, and anyone they share them with later. `seal` holds writing to them: if anyone gets the notes
+ * before it's posted, posting is refused, and the box shows who reads it now.
+ */
+export const SharedAudienceSchema = z.object({ audience: z.array(PersonSchema), seal: z.string() });
+
+export type SharedAudience = z.infer<typeof SharedAudienceSchema>;
+
+
+/** Something written straight into the shared notes, as it's posted: its words, and the seal of who it was going to. */
+export const SharedWriteSchema = z.object({ text: z.string().trim().min(1).max(MAX_ADDITION_TEXT), seal: z.string().min(1).max(200) });
+
+export type SharedWrite = z.infer<typeof SharedWriteSchema>;

@@ -101,11 +101,12 @@ function todoOf(el: Y.XmlElement): DocTodo {
   };
 }
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-/** A date tag as it reads in a sentence: 6 Nov. */
+/** A date tag as it reads in a sentence: 6 Nov, or 5 Feb 2027 outside this year, as the tag itself says it. */
 function dayWords(date: string): string {
-  const [, month, day] = /^\d{4}-(\d{2})-(\d{2})$/.exec(date) ?? [];
+  const [, year, month, day] = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date) ?? [];
   const name = MONTHS[Number(month) - 1];
-  return name && day ? `${Number(day)} ${name}` : date;
+  if (!name || !day) return date;
+  return Number(year) === new Date().getUTCFullYear() ? `${Number(day)} ${name}` : `${Number(day)} ${name} ${year}`;
 }
 /**
  * What a to-do says, read apart from its line, where who and when show beside it. Tags side by side at the end of the line

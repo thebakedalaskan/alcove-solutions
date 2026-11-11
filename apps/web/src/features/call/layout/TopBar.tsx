@@ -1,6 +1,6 @@
 /*
  * The call's top bar. On the left, the call: its title and clock, the notes sign everyone sees (which opens what's captured),
- * the hosting-status shield, Reconnecting while the connection finds its way back, and what's showing when the
+ * the confidential-compute shield, Reconnecting while the connection finds its way back, and what's showing when the
  * workspace, the board and the shares have to take turns. On the right, what's only yours: Board and Workspace, which open
  * on your stage, then Notes and Chat, which open in your side, then who's here, which opens People. Each is lit
  * while it's open, and pressed again puts it away. On a phone it's the title, the notes sign, Chat and who's here: the rest is
@@ -10,7 +10,8 @@ import { clock, type Person } from '@alcove/api';
 import { BoardPicker, CallTopButton, CallTopGroup, CallTopRule, Dots, Faces, Icon, Popover, Tooltip, cn, type BoardPickerProps } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useRef, useState, type ReactNode } from 'react';
-import { q, trustLine } from '~/lib/queries';
+import { q, trustLine, verifiedAt } from '~/lib/queries';
+import { hm } from '~/lib/time';
 import type { SideView } from './side';
 
 /** Board, at the top right. */
@@ -115,30 +116,31 @@ export function TopBar({ title, elapsed, sign, swap, people, asking, reconnectin
   );
 }
 
-/** The shield: hover or focus shows hosting and storage details; a click keeps it open. */
+/** The shield: hover or focus says what confidential compute covers here; a click keeps it open. */
 function Shield({ screens, modelPrivate }: { screens: boolean; modelPrivate: boolean }) {
-  const trust = useQuery(q.trust());
+  const trust = useQuery(q.trust()).data;
   const [open, setOpen] = useState(false);
   const pinned = useRef(false);
   const later = useRef<ReturnType<typeof setTimeout> | null>(null);
   const show = () => { if (later.current) clearTimeout(later.current); setOpen(true); };
   const hide = () => { if (later.current) clearTimeout(later.current); later.current = setTimeout(() => { if (!pinned.current) setOpen(false); }, 160); };
+  const verified = verifiedAt(trust);
   return (
-    <Popover open={open} onOpenChange={(o) => { pinned.current = o; setOpen(o); }} side="bottom" align="start" label="Hosting and storage" className="ic-seal" takeFocus={false}
+    <Popover open={open} onOpenChange={(o) => { pinned.current = o; setOpen(o); }} side="bottom" align="start" label="Confidential compute" className="ic-seal" takeFocus={false}
       anchor={(
-        <button type="button" className={cn('ic-sicon', open && 'is-on')} aria-label="Hosting and storage"
+        <button type="button" className={cn('ic-sicon', open && 'is-on')} aria-label={verified === null ? 'Confidential compute' : 'Confidential compute, verified'}
           onPointerEnter={(e) => { if (e.pointerType !== 'touch') show(); }} onPointerLeave={hide} onFocus={show} onBlur={hide}>
           <Icon name="sealed" size={19} />
         </button>
       )}>
       <div onPointerEnter={show} onPointerLeave={hide}>
-        <div className="hd"><Icon name="sealed" size={17} />Hosting and storage</div>
+        <div className="hd"><Icon name="sealed" size={17} />{trustLine(trust)}</div>
         <div className="rows">
-          <div><span>Server</span><b>{trustLine(trust)}</b></div>
-          <div><span>Encrypted in storage</span>{screens ? 'Audio, transcript, shared screens, notes' : 'Audio, transcript, notes'}</div>
+          {verified !== null && <div><span>Hardware checked</span><b className="ac-time">{hm(new Date(verified))}</b></div>}
+          <div><span>Sealed</span>{modelPrivate ? (screens ? 'Audio, transcript, shared screens, notes' : 'Audio, transcript, notes') : (screens ? 'Audio, transcript, shared screens' : 'Audio, transcript')}</div>
         </div>
-        {!modelPrivate && <div className="last"><Icon name="shieldOff" size={14} /> The notes and AI answers in this call use an unencrypted AI model, outside a secure enclave. Speech transcription still uses confidential compute.</div>}
-        <div className="last">The hosting server can decrypt stored call content to provide the service.</div>
+        {!modelPrivate && <div className="last"><Icon name="shieldOff" size={14} /> The notes and AI answers in this call use an unencrypted AI model, outside a secure enclave. Audio and transcript stay sealed.</div>}
+        <div className="last">{verified === null ? 'Everything stays sealed.' : 'Alcove can’t read this call.'}</div>
       </div>
     </Popover>
   );

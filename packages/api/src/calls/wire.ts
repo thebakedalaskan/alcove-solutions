@@ -6,7 +6,7 @@ import { IDSchema } from '../shared/ids';
 import { oneLine } from '../shared/validation';
 import { z } from '../shared/zod';
 import { DocumentRoleSchema, ItemIdSchema } from '../workspaces/schema';
-import { BoardNewSchema, BoardObjectIdSchema, BoardSavedSchema, BoardTimerMinutesSchema, BoardVotesEachSchema, BreakoutBoardSchema } from './boards';
+import { BoardNewSchema, BoardObjectIdSchema, BoardSavedSchema, BoardVotesEachSchema, BreakoutBoardSchema } from './boards';
 import { CaptionLanguageSchema } from './captions';
 import { CaptureDevicePartSchema } from './capture';
 import { CatchUpRangeSchema } from './catchup';
@@ -14,6 +14,8 @@ import { CallNudgeKindSchema, CallQuestionStatusSchema, CallStatusKindSchema, Ca
 import { RingReplySchema } from './rings';
 import { CallPlaceSchema } from './state';
 import { PlayMediaSchema, PlayPositionSchema, PresentSectionSchema, PresentStartSchema } from './workspace';
+/** Someone's seat in the call (`CallParticipant.seat`), as an action names them by it. */
+const SeatSchema = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/);
 /** One state change in a call, sent as POST /calls/:id/actions. The server answers with the new CallState. */
 const CallStepSchema = z.discriminatedUnion('type', [
   /** Opaque encrypted-log IDs this person has read; never chat text or another person's read state. */
@@ -76,25 +78,37 @@ const CallStepSchema = z.discriminatedUnion('type', [
    * The organizer stops what someone shares, for everyone: their screen and its sound, by their seat (`CallParticipant.seat`),
    * whichever connection it's on. They're told who stopped it.
    */
-  z.object({ type: z.literal('share-stop'), seat: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/) }),
+  z.object({ type: z.literal('share-stop'), seat: SeatSchema }),
   z.object({ type: z.literal('remove'), identity: z.string().min(1).max(64) }),
   z.object({ type: z.literal('lock'), on: z.boolean() }),
   /** Puts someone in the call on everyone's main stage, or nobody. */
   z.object({ type: z.literal('spotlight'), participantId: z.string().max(64).nullable() }),
+  /**
+   * Who goes to each room: people invited by address, so they land in it from any device, and anyone else in the call (a guest
+   * with the link) by seat. `visit`: the room the organizer goes to as they open, by its place in `rooms`; left out, they stay in
+   * the main room.
+   */
   z.object({
     type: z.literal('rooms-open'),
-    rooms: z.array(z.object({ name: z.string().trim().min(1).max(40), emails: z.array(z.string().trim().toLowerCase().max(254)).max(50) })).min(2).max(8),
+    rooms: z.array(z.object({
+      name: z.string().trim().min(1).max(40), emails: z.array(z.string().trim().toLowerCase().max(254)).max(50), seats: z.array(SeatSchema).max(50).default([])
+    })).min(2).max(8),
     minutes: z.number().int().min(1).max(60),
     /** What the rooms have to work on: the panel's Board row. */
-    board: BreakoutBoardSchema
+    board: BreakoutBoardSchema,
+    visit: z.number().int().min(0).max(7).optional()
   }),
   z.object({ type: z.literal('rooms-close') }),
   z.object({ type: z.literal('rooms-message'), text: z.string().trim().min(1).max(300) }),
   /** The organizer going to one of the open rooms, or back to the main room (null): the people in that room see and hear them. */
   z.object({ type: z.literal('rooms-visit'), roomId: z.string().max(64).nullable() }),
   z.object({ type: z.literal('rooms-rename'), roomId: z.string().max(64), name: z.string().trim().min(1).max(40) }),
-  /** Sends an invited person to another open room, or back to the main room (null). Their keys move with them: out of the old room's group, into the new one's. */
-  z.object({ type: z.literal('rooms-move'), email: z.string().trim().toLowerCase().max(254), roomId: z.string().max(64).nullable() }),
+  /**
+   * Sends someone to another open room, or back to the main room (null): someone invited by address, or anyone else in the call
+   * by seat, one of the two. Their keys move with them: out of the old room's group, into the new one's.
+   */
+  z.object({ type: z.literal('rooms-move'), email: z.string().trim().toLowerCase().max(254).optional(), seat: SeatSchema.optional(), roomId: z.string().max(64).nullable() })
+    .refine((a) => (a.email === undefined) !== (a.seat === undefined), 'Name one person to move: by address, or by seat.'),
   /** The organizer pausing notes in one open room while the call's are on, or carrying on there: the call's notes are unchanged. */
   z.object({ type: z.literal('rooms-pause'), roomId: z.string().max(64), paused: z.boolean() }),
   /**
@@ -139,13 +153,7 @@ const CallStepSchema = z.discriminatedUnion('type', [
   /** Whoever opened the board open here, or the organizer: it closes for everyone there, and nothing is deleted. */
   z.object({ type: z.literal('board-close') }),
   /** Anyone in the part of the call the ideas are from: they were added to the board, or put aside, so they go for everyone there. */
-  z.object({ type: z.literal('board-ideas-done'), ids: z.array(IDSchema).min(1).max(20) }),
-  /**
-   * The timer on the board open here, the same for everyone there: 3, 5 or 10 minutes from now, from anyone who can edit the
-   * board. While one is still running, only whoever started it or the organizer can start it over. Null stops it, which is for
-   * them too.
-   */
-  z.object({ type: z.literal('board-timer'), minutes: BoardTimerMinutesSchema.nullable() })
+  z.object({ type: z.literal('board-ideas-done'), ids: z.array(IDSchema).min(1).max(20) })
 ]);
 
 /**

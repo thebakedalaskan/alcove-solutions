@@ -48,11 +48,11 @@ export function CaptureModeMark({ mode, stage = false }: { mode: CaptureMode; st
 const whose = (taker: string) => (taker === 'you' ? 'your' : `${taker}’s`);
 const hears = (taker: string) => (taker === 'you' ? 'you hear' : `${taker} hears`);
 
-const PARTS: { key: 'recording' | 'transcript' | 'ai' | 'screen'; icon: IconName; label: string; short: string; detail: (taker: string) => string }[] = [
-  { key: 'recording', icon: 'mic', label: 'Recording', short: 'Recording', detail: (t) => `Everyone ${hears(t)}, encrypted` },
-  { key: 'transcript', icon: 'transcript', label: 'Transcript', short: 'Transcript', detail: (t) => `Everyone ${hears(t)}, as text` },
-  { key: 'ai', icon: 'sealed', label: 'AI notes', short: 'AI notes', detail: () => 'Written from the transcript' },
-  { key: 'screen', icon: 'screen', label: 'Shared screens', short: 'Screens', detail: () => 'Not read' }
+const PARTS: { key: 'recording' | 'transcript' | 'ai' | 'screen'; icon: IconName; label: string; detail: (taker: string) => string }[] = [
+  { key: 'recording', icon: 'mic', label: 'Recording', detail: (t) => `Everyone ${hears(t)}, encrypted` },
+  { key: 'transcript', icon: 'transcript', label: 'Transcript', detail: (t) => `Everyone ${hears(t)}, as text` },
+  { key: 'ai', icon: 'sealed', label: 'AI notes', detail: () => 'Written from the transcript' },
+  { key: 'screen', icon: 'screen', label: 'Shared screens', detail: () => 'Not read' }
 ];
 /**
  * What a kind of capture does now: what the browser taking the notes can't capture says so, the notes model keeps reading
@@ -72,30 +72,13 @@ function detailOf(p: (typeof PARTS)[number], c: CaptureState, taker: string): st
   if (p.key === 'screen' && c.screen.mode !== 'off') return 'Read for the notes, never cameras';
   return p.detail(taker);
 }
-/**
- * Each kind of capture, what it is, and whether it's on, paused, unavailable or off right now. `compact` says it in a
- * row of small marks, for where there's little room (before joining, on a phone).
- */
-export function CaptureParts({ capture, taker = 'the organizer', stage = false, compact = false, className }: {
+/** Each kind of capture, what it is, and whether it's on, paused, unavailable or off right now. */
+export function CaptureParts({ capture, taker = 'the organizer', stage = false, className }: {
   capture: CaptureState;
   /** Whose browser takes the notes, as said in a sentence: "the organizer" (the default), "the host", a first name, or "you". */
   taker?: string | undefined;
-  stage?: boolean; compact?: boolean; className?: string | undefined;
+  stage?: boolean; className?: string | undefined;
 }) {
-  if (compact) {
-    return (
-      <ul className={cn('ac-capture-chips', stage && 'is-stage', className)} aria-label="What’s captured">
-        {PARTS.map((p) => {
-          const mode = capture[p.key].mode;
-          return (
-            <li key={p.key} className={cn('ac-capture-chip', `is-${mode}`)}>
-              {mode === 'on' ? <RecDot /> : <Icon name={mode === 'paused' ? 'pause' : mode === 'unavailable' ? 'alert' : p.icon} size={12} />}{p.short} {MODE[mode].toLowerCase()}
-            </li>
-          );
-        })}
-      </ul>
-    );
-  }
   return (
     <ul className={cn('ac-capture-parts', stage && 'is-stage', className)} aria-label="What’s captured">
       {PARTS.map((p) => (
@@ -115,8 +98,8 @@ export function keptLines(c: NotesChoices): string[] {
 }
 
 /**
- * What a call captures, for someone about to join it, on the night stage: the sign, what happens to what they say,
- * each kind of capture once the call has started, what won't be kept, and who gets the notes. Before the organizer
+ * What a call captures, for someone about to join it, on the night stage, each fact once: the sign, one sentence on what
+ * happens to what they say (it follows every state), what won't be kept, and who gets the notes. Before the organizer
  * starts the call it says what will happen. Never anyone's name or anything that was said.
  */
 export function CaptureSummary({ notes, choices, capture, who, taker = 'the organizer', className }: {
@@ -146,7 +129,6 @@ export function CaptureSummary({ notes, choices, capture, who, taker = 'the orga
     <div className={cn('ac-capture-sum', className)}>
       <CaptureSign mode={mode} stage />
       <p>{said}</p>
-      {capture && mode !== 'off' && <CaptureParts capture={capture} taker={taker} stage compact />}
       {mode !== 'off' && keptLines(choices).length > 0 && <p>{keptLines(choices).join(' ')}</p>}
       {mode !== 'off' && (capture && !capture.modelPrivate
         ? <p className="fine"><Icon name="shieldOff" size={15} />Written by an AI model outside a secure enclave, so Alcove can’t guarantee the notes stay private. <Unencrypted compact /> {who ?? 'The people invited get them.'}</p>

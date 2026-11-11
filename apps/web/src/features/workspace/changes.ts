@@ -1,7 +1,8 @@
 /*
  * A change to the tree shows at once and reaches everyone on the workspace's stream. Until the stream brings it back, the
- * change is laid over the tree it sent, and it's taken off again if Alcove refuses it. Applying one to a tree that
- * already has it changes nothing, so it doesn't matter which arrives first.
+ * change is laid over the tree it sent, however long that takes (the stream may be down, and the list then says so), and
+ * it's taken off again if Alcove refuses it. Applying one to a tree that already has it changes nothing, so it doesn't
+ * matter which arrives first.
  */
 import { AlcoveApiError, type ItemPlace, type LiveStore, type WorkspaceItem, type WorkspaceTree, type WorkspaceView } from '@alcove/api';
 import { useLayoutEffect, useMemo, useSyncExternalStore } from 'react';
@@ -40,9 +41,6 @@ export function withChange(items: WorkspaceItem[], c: TreeChange): WorkspaceItem
   }
 }
 
-/** How long a change Alcove has taken stays laid over the tree, for a stream that's slow to bring it back. */
-const KEEP_MS = 2000;
-
 interface Pending { n: number; change: TreeChange; answeredAt: WorkspaceTree | null | undefined }
 
 /** Whether `tree` is what came after the answer, so it shows the change by now. */
@@ -57,7 +55,6 @@ export class TreeChanges implements LiveStore<WorkspaceItem[]> {
   private count = 0;
   private items: WorkspaceItem[];
   private listeners = new Set<() => void>();
-  private timers = new Set<ReturnType<typeof setTimeout>>();
   private stop: (() => void) | null = null;
   private tail: Promise<void> = Promise.resolve();
   private generation = 0;
@@ -76,7 +73,7 @@ export class TreeChanges implements LiveStore<WorkspaceItem[]> {
     this.items = this.pending.reduce((all, p) => withChange(all, p.change), tree?.items ?? []);
     this.listeners.forEach((listener) => listener());
   };
-  close = () => { this.generation++; this.stop?.(); this.stop = null; this.timers.forEach(clearTimeout); this.timers.clear(); this.pending = []; this.items = []; this.tail = Promise.resolve(); };
+  close = () => { this.generation++; this.stop?.(); this.stop = null; this.pending = []; this.items = []; this.tail = Promise.resolve(); };
   change = async <T,>(c: TreeChange, work: () => Promise<T>): Promise<T> => {
     const n = ++this.count;
     const generation = this.generation;
@@ -91,12 +88,8 @@ export class TreeChanges implements LiveStore<WorkspaceItem[]> {
       if (generation !== this.generation) throw new AlcoveApiError('forbidden', 'The workspace closed before this change could be sent. Open it again to retry.');
       const answer = await work();
       if (generation !== this.generation) return answer;
+      // Alcove has it: it stays laid over the tree until the stream brings a tree from after this answer, which has it.
       this.pending = this.pending.map((p) => p.n === n ? { ...p, answeredAt: this.store.getSnapshot().tree } : p);
-      const t = setTimeout(() => {
-        this.timers.delete(t);
-        if (!this.pending.some((p) => p.n < n && p.answeredAt === undefined)) drop();
-      }, KEEP_MS);
-      this.timers.add(t);
       return answer;
     } catch (e) {
       if (generation === this.generation) drop();

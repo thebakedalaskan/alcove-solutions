@@ -14,7 +14,7 @@ import type { Deps, Owner } from '../../context';
 import { b64u, blindIndex, id128, openJson, sealJson, sha, toJson, utf8, type RecordHeader } from '../../crypto';
 import { bytea, exec, maybeOne, rows, timestamp, tx, type Db } from '../../db';
 import { AppError, ConflictError, invalid, notFound } from '../../errors';
-import { publish } from '../../live/hub';
+import { publish, type StreamPlace } from '../../live/hub';
 import { announce, roomFor, type Room, type Snapshot } from '../../live/room';
 import { LiveStream, type Line, type Step } from '../../live/stream';
 import { log } from '../../log';
@@ -1126,8 +1126,8 @@ class TreeStream extends LiveStream<WorkspaceLiveEvent> {
   private tagged = true;
   private shownTags: string | null = null;
 
-  constructor(d: Deps, room: Room, credentials: Credentials, who: Who, first: WorkspaceTree, standing: Standing, version: number, release: () => void, private readonly callId: string | null) {
-    super(d, room, credentials, who, version, release, { workspaceId: room.workspaceId });
+  constructor(d: Deps, room: Room, credentials: Credentials, who: Who, first: WorkspaceTree, standing: Standing, version: number, place: StreamPlace, private readonly callId: string | null) {
+    super(d, room, credentials, who, version, place, { workspaceId: room.workspaceId });
     this.first = first;
     this.shown = shortHash(JSON.stringify(first));
     this.role = first.role;
@@ -1198,15 +1198,17 @@ class TreeStream extends LiveStream<WorkspaceLiveEvent> {
  * Opens a stream, if this person has a place for one: that's asked first, because it costs nothing and a tree doesn't. It
  * hears of changes before it relies on what it read, so nothing falls between them, and anyone who can't open the workspace
  * is refused here, before a line is written, as they would be for anything else. Runs until the reader loses it, the
- * browser goes, this instance shuts down, or it's time to let go.
+ * browser goes or says it closed it (`name`, as it calls it), its place is needed, this instance shuts down, or it's time to
+ * let go.
  */
-export async function open(d: Deps, credentials: Credentials, reader: Reader, workspaceId: string, address: string): Promise<(out: StreamingApi) => Promise<void>> {
-  const release = d.hub.admit('workspace', limitKey(reader), address);
+export async function open(d: Deps, credentials: Credentials, reader: Reader, workspaceId: string, address: string, name: string | null): Promise<(out: StreamingApi) => Promise<void>> {
+  const place = d.hub.admit('workspace', limitKey(reader), address, name);
+  const release = place.release;
   try {
     const known = await workspaceFor(d, reader, workspaceId);
     const callId = reader.seat?.callId ?? null;
     const room = roomFor(d, workspaceId);
-    const stream = new TreeStream(d, room, credentials, { email: reader.email, principals: reader.principals }, treeFor(reader, known, await callsIn(d.pool, reader, callId, known.state)), { role: known.role, grants: known.grants, lasting: known.lasting }, known.version, release, callId);
+    const stream = new TreeStream(d, room, credentials, { email: reader.email, principals: reader.principals }, treeFor(reader, known, await callsIn(d.pool, reader, callId, known.state)), { role: known.role, grants: known.grants, lasting: known.lasting }, known.version, place, callId);
     room.join(stream);
     try {
       await room.ready;
@@ -1221,6 +1223,11 @@ export async function open(d: Deps, credentials: Credentials, reader: Reader, wo
     release();
     throw e;
   }
+}
+
+/** A browser says it closed its stream of a workspace, by what it called it: it ends now, and its place is free. Only the asker's own. */
+export function endStream(d: Deps, reader: Reader, name: string): void {
+  d.hub.end('workspace', limitKey(reader), name);
 }
 
 /** Says where a browser is, for everyone who may know. Nobody can be placed in something they can't open. */

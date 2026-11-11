@@ -1,6 +1,6 @@
 /*
  * The one pill at the top of a board. Everything the whole board shares goes in it, and only one shows at a time, the most
- * pressing first: how the board stands when that needs saying (Reconnecting, Couldn't save), a vote under way, a vote's results, the rooms closing, following someone, the timer, then the room you're in. Each pill is built by
+ * pressing first: how the board stands when that needs saying (Reconnecting, Couldn't save), a vote under way, a vote's results, the rooms closing, following someone, then the room you're in. Each pill is built by
  * whatever it's about; this alone decides which shows, and says which kind that is to whatever needs to know, so whoever adds a
  * kind adds it here and nowhere else.
  */
@@ -10,7 +10,7 @@ import type { BoardPerson } from './BoardSurface';
 import type { Standing } from './standing';
 
 /** What can be in the pill, the most pressing first. */
-export const PILL_ORDER = ['standing', 'voting', 'results', 'closing', 'following', 'timer', 'room'] as const;
+export const PILL_ORDER = ['standing', 'voting', 'results', 'closing', 'following', 'room'] as const;
 export type PillKind = (typeof PILL_ORDER)[number];
 /** The pills there are now, by kind. Only the first in `PILL_ORDER` shows. */
 export type Pills = Partial<Record<PillKind, ReactNode>>;

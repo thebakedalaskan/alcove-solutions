@@ -33,6 +33,19 @@ export type PageStory = StoryObj<PageArgs>;
 /** A page story: the app at `path`, on `scenario`, and anything else a story needs (`parameters`, `globals`, `play`). */
 export const page = (path: string, scenario: ScenarioName, more: Omit<PageStory, 'args'> = {}): PageStory => ({ ...more, args: { path, scenario } });
 
+/**
+ * Puts the caret at the end of a line in a document. user-event can't press End inside the editor (it logs "Not
+ * implemented" and does nothing), so a play clicks the line, calls this, then types.
+ */
+export const caretAtEnd = (line: Element): void => {
+  const range = document.createRange();
+  range.selectNodeContents(line);
+  range.collapse(false);
+  const selection = window.getSelection();
+  selection?.removeAllRanges();
+  selection?.addRange(range);
+};
+
 /** The worlds a story has changed already: the toolbar renders a story again, and it isn't changed twice. */
 const changed = new WeakSet<World>();
 /**

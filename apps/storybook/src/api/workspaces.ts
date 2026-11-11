@@ -218,9 +218,21 @@ function hereNow(id: string): WorkspaceHere[] {
 
 class LiveWorkspace extends Pushed<WorkspaceView> implements WorkspaceLive {
   constructor(private readonly id: string) {
-    super({ status: 'live', tree: structuredClone(treeFor(id)), here: hereNow(id), mentions: mentionsIn(id) });
+    super({ status: current().streamsDown?.includes(id) ? 'reconnecting' : 'live', tree: structuredClone(treeFor(id)), here: hereNow(id), mentions: mentionsIn(id) });
     watching.add(this);
   }
+  /**
+   * Try now: a stream that couldn't reach Alcove does now, once the browser's online, and stays so for the rest of the story.
+   * An arrow property, as `getSnapshot` is: the app hands it to a button unbound.
+   */
+  retry = (): void => {
+    if (this.getSnapshot().status !== 'reconnecting' || !isOnline()) return;
+    const w = current();
+    w.streamsDown = w.streamsDown?.filter((s) => s !== this.id);
+    this.update((v) => ({ ...v, status: 'live', tree: structuredClone(treeFor(this.id)), here: hereNow(this.id), mentions: mentionsIn(this.id) }));
+  };
+  /** Shown again: nothing here is ever under way, so a stream that's down is only waiting, and tries now, as Try now does. */
+  wake = (): void => { this.retry(); };
   refresh(id: string): void { if (id === this.id) this.update((v) => ({ ...v, tree: structuredClone(treeFor(id)), here: hereNow(id), mentions: mentionsIn(id) })); }
   present(_where: WorkspaceWhere): void { /* Nobody else is here to see where you are. */ }
   async seen(mentionId: string): Promise<void> {
@@ -405,6 +417,7 @@ function statusOf(item: WorkspaceItem): DocStatus {
   const base: DocStatus = { status: 'saved', refused: null, role: item.role, trashed: item.trashedAt !== null, closed: null, unsent: false };
   const refused = current().pages[item.id]?.refused ?? null;
   if (refused) return { ...base, status: 'failed', refused: refused.why, unsent: true };
+  if (item.kind !== 'board' && current().pages[item.id]?.standing === 'offline') return { ...base, status: 'offline' };
   const standing = item.kind === 'board' ? current().boards[item.id]?.standing : undefined;
   if (standing === 'offline') return { ...base, status: 'offline', unsent: true };
   if (standing === 'failed') return { ...base, status: 'failed', refused: 'too-large', unsent: true };
@@ -415,7 +428,8 @@ function statusOf(item: WorkspaceItem): DocStatus {
 /* ---------- who else is on a board ---------- */
 
 /** Someone else on a board in a call: their connection to the call, who they are, where their pointer is, and whether they're typing. */
-export interface OnTheBoard { callIdentity: string; person: Person; at: { x: number; y: number }; typing?: boolean | undefined }
+/** Someone on a board in a call: their pointer, and their view where it isn't round their pointer, as whoever presents it has. */
+export interface OnTheBoard { callIdentity: string; person: Person; at: { x: number; y: number }; typing?: boolean | undefined; view?: { x: number; y: number; z: number; h?: number | undefined } | undefined }
 /** Who's on each board, by its ID, as the call that has it open puts them there. */
 const onBoards = new Map<string, readonly OnTheBoard[]>();
 /** Each open session of a board, told when that changes. */
@@ -438,9 +452,9 @@ const DRIFT_MS = 3_500;
  */
 function othersOn(item: WorkspaceItem, awareness: Awareness): () => void {
   const documentId = item.id;
-  const placed = (current().boards[documentId]?.here ?? []).map(({ who, x, y }) => ({ key: `world:${who.id}`, user: { id: who.id, name: who.name }, at: { x, y }, typing: false }));
+  const placed = (current().boards[documentId]?.here ?? []).map(({ who, x, y }) => ({ key: `world:${who.id}`, user: { id: who.id, name: who.name }, at: { x, y }, typing: false, view: null }));
   const inCall = (people: readonly OnTheBoard[]) => people.map((p) => ({
-    key: p.callIdentity, user: { id: p.person.id, name: p.person.name, callIdentity: p.callIdentity }, at: p.at, typing: p.typing ?? false
+    key: p.callIdentity, user: { id: p.person.id, name: p.person.name, callIdentity: p.callIdentity }, at: p.at, typing: p.typing ?? false, view: p.view ?? null
   }));
   let everyone = [...placed, ...inCall(onBoards.get(documentId) ?? [])];
   const theirs = new Map<string, Awareness>();
@@ -458,7 +472,7 @@ function othersOn(item: WorkspaceItem, awareness: Awareness): () => void {
       theirs.set(p.key, a);
       const d = ((beat + i) % 3) * 6;
       const at = { x: p.at.x + d, y: p.at.y + d / 2 };
-      a.setLocalState({ ...NO_PRESENCE, at, view: { x: at.x, y: at.y, z: 1 }, typing: p.typing, user: p.user });
+      a.setLocalState({ ...NO_PRESENCE, at, view: p.view ?? { x: at.x, y: at.y, z: 1 }, typing: p.typing, user: p.user });
       applyAwarenessUpdate(awareness, encodeAwarenessUpdate(a, [a.clientID]), 'standin');
     });
     beat += 1;
@@ -478,6 +492,8 @@ function othersOn(item: WorkspaceItem, awareness: Awareness): () => void {
 
 /** Each open session of a document, by the document's ID: what happens to it in its workspace reaches them, as the server's stream says it. */
 const sessions = new Map<string, Set<Document>>();
+/** How long what was kept here takes to go once a stream's back. */
+const SAVING_MS = 700;
 /** Every open session of these documents hears what changed: in Trash, back, or gone with their workspace. */
 function sessionsHear(ids: readonly string[], change: (s: DocStatus) => DocStatus): void {
   for (const id of ids) for (const d of sessions.get(id) ?? []) d.update(change);
@@ -521,6 +537,23 @@ class Document extends Pushed<DocStatus> implements DocSession {
     this.close();
     return Promise.resolve();
   }
+  /**
+   * Try now: a stream that couldn't reach Alcove does now, once the browser's online, and stays so for the rest of the story.
+   * What was kept here goes, a moment later. An arrow property, as `getSnapshot` is: the app hands it to a button unbound.
+   */
+  retry = (): void => {
+    const now = this.getSnapshot();
+    if (now.status !== 'offline' || !isOnline()) return;
+    const w = current();
+    const page = w.pages[this.id];
+    if (page?.standing) w.pages[this.id] = { ...page, standing: undefined };
+    const board = w.boards[this.id];
+    if (board?.standing === 'offline') w.boards[this.id] = { ...board, standing: undefined };
+    this.update((s) => ({ ...s, status: s.unsent ? 'saving' : 'saved' }));
+    if (now.unsent) this.after(SAVING_MS, () => this.update((s) => ({ ...s, status: 'saved', unsent: false })));
+  };
+  /** Shown again: nothing here is ever under way, so a stream that's down is only waiting, and tries now, as Try now does. */
+  wake = (): void => { this.retry(); };
   override close(): void { sessions.get(this.id)?.delete(this); this.leave(); this.awareness.destroy(); super.close(); }
 }
 /**

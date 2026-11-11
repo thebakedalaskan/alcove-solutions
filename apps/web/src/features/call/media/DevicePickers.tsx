@@ -11,7 +11,7 @@ import { useCallback, useState, type KeyboardEvent, type ReactNode } from 'react
 import { useLive } from '~/lib/live';
 import { stateOf, troubles, type Trouble } from './access';
 import { ChooseBackground } from './backgrounds/ChooseBackground';
-import { TEST_SECONDS, canChooseSpeaker, micTestOf, plainName, type Capture, type Device, type DeviceKind, type Devices } from './devices';
+import { SYSTEM_DEVICE, TEST_SECONDS, canChooseSpeaker, deviceChoices, micTestOf, type Capture, type Device, type DeviceKind, type DeviceRow, type Devices } from './devices';
 import type { LocalMedia, MediaSnapshot } from './media';
 import { Video, useLevels } from './Video';
 
@@ -20,20 +20,16 @@ const ICON: Record<DeviceKind, IconName> = { mic: 'mic', cam: 'video', speaker: 
 const OFF: Record<Capture, IconName> = { mic: 'micOff', cam: 'videoOff' };
 const SYSTEM_SPEAKER = 'This browser plays calls through the speaker your system uses. Change it in your computer’s sound settings.';
 
-/** The device in use, else the first one listed (the browser's default comes first). */
-const current = (devices: Device[], id: string | null) => (id && devices.some((d) => d.id === id) ? id : devices[0]?.id ?? '');
-/** A device's name as people know it, without what the browser adds to it. */
-const nameOf = (d: Device | undefined): string => (d ? plainName(d.label) || d.label : '');
-/** The name of the device in use. */
-const inUse = (devices: Device[], id: string | null): string => nameOf(devices.find((d) => d.id === current(devices, id)));
-/** The entries that follow whatever the system chooses, which Chrome lists alongside the device itself. */
-const systemsChoice = (d: Device): string | null => (d.id === 'default' || d.label.startsWith('Default - ') ? 'Your system’s choice'
-  : d.label.startsWith('Communications - ') ? 'Your system’s choice for calls' : null);
+/** The name of the device in use: the one the system uses while that's what's in use. */
+const inUse = (devices: Device[], id: string | null): string => {
+  const { rows, on } = deviceChoices(devices, id);
+  return rows.find((r) => r.id === on)?.name ?? '';
+};
 /** What a device is, from its name where that says (headphones, a phone), else what kind it is. */
-function iconOf(kind: DeviceKind, d: Device): IconName {
-  if (kind !== 'cam' && /airpods|headphone|headset|earbud|earphone|\bbuds\b/i.test(d.label)) return 'listening';
+function iconOf(kind: DeviceKind, name: string): IconName {
+  if (kind !== 'cam' && /airpods|headphone|headset|earbud|earphone|\bbuds\b/i.test(name)) return 'listening';
   // A whole word: a microphone isn't a phone.
-  if (/\b(i?phone|continuity)\b/i.test(d.label)) return 'phone';
+  if (/\b(i?phone|continuity)\b/i.test(name)) return 'phone';
   return ICON[kind];
 }
 const clock = (s: number) => `0:${String(s).padStart(2, '0')}`;
@@ -69,22 +65,32 @@ function Choices({ children }: { children: ReactNode }) {
   return <div ref={ref} className="ic-devs" onKeyDown={arrows}>{children}</div>;
 }
 
-/** One device in a menu: what it is, its name, the system's choice said under it, and a tick on the one in use. */
-function Option({ kind, device, on, onPick, extra }: { kind: DeviceKind; device: Device; on: boolean; onPick: () => void; extra?: ReactNode }) {
-  const sub = systemsChoice(device);
+/** One device in a menu: what it is, its name, that it's the system's choice where it is, and a tick on the one in use. */
+function Option({ kind, row, on, onPick, extra }: { kind: DeviceKind; row: DeviceRow; on: boolean; onPick: () => void; extra?: ReactNode }) {
   return (
-    <button type="button" className="ic-opt" role="menuitemradio" aria-checked={on} aria-label={sub ? `${nameOf(device)}, ${sub.toLowerCase()}` : undefined} onClick={onPick}>
-      <Icon name={iconOf(kind, device)} size={16} className="lead" />
-      <span className="nm">{nameOf(device)}{sub && <small>{sub}</small>}</span>{extra}<Icon name="check" size={16} className="tick" />
+    <button type="button" className="ic-opt" role="menuitemradio" aria-checked={on} aria-label={row.system ? `${row.name}, your system’s choice` : undefined} onClick={onPick}>
+      <Icon name={iconOf(kind, row.name)} size={16} className="lead" />
+      <span className="nm">{row.name}{row.system && <small>Your system’s choice</small>}</span>{extra}<Icon name="check" size={16} className="tick" />
     </button>
   );
 }
 
-/** One kind of device, in a group named for it. Picking the one in use again does nothing. */
-function DeviceList({ kind, devices, value, onPick, extra }: { kind: DeviceKind; devices: Device[]; value: string; onPick: (d: Device) => void; extra?: ((d: Device) => ReactNode) | undefined }) {
+/**
+ * One kind of device, in a group named for it: each device once (deviceChoices), the one in use ticked with `extra` beside
+ * it, and while one is pinned, Follow your system last. Picking the one in use again does nothing. `onPick` gets what
+ * was picked and the name of the device it uses.
+ */
+function DeviceList({ kind, devices, using, onPick, extra }: { kind: DeviceKind; devices: Device[]; using: string | null; onPick: (id: string, name: string) => void; extra?: ReactNode }) {
+  const { rows, on, follow } = deviceChoices(devices, using);
+  const system = rows.find((r) => r.system);
   return (
     <div role="group" aria-label={NAME[kind]}>
-      {devices.map((d) => <Option key={d.id} kind={kind} device={d} on={d.id === value} extra={extra?.(d)} onPick={() => { if (d.id !== value) onPick(d); }} />)}
+      {rows.map((r) => <Option key={r.id} kind={kind} row={r} on={r.id === on} extra={r.id === on ? extra : undefined} onPick={() => { if (r.id !== on) onPick(r.id, r.name); }} />)}
+      {follow && (
+        <button type="button" className="ic-opt" role="menuitemradio" aria-checked={false} onClick={() => onPick(SYSTEM_DEVICE, system?.name ?? 'your system’s choice')}>
+          <Icon name="laptop" size={16} className="lead" /><span className="nm">Follow your system</span><Icon name="check" size={16} className="tick" />
+        </button>
+      )}
     </div>
   );
 }
@@ -151,12 +157,11 @@ function SoundTest({ media, on }: { media: LocalMedia; on: string }) {
 
 /** Which speaker, and a sound to check it; or, where the browser can't choose one, that calls play through the system's. */
 function SpeakerChoices({ media, m, devices, onSwitched }: { media: LocalMedia; m: MediaSnapshot; devices: Devices; onSwitched: (label: string) => void }) {
-  const speaker = current(devices.speaker, m.speakerId);
   const chooses = canChooseSpeaker() && devices.speaker.length > 0;
   return (
     <>
       <div className="ac-eyebrow">Speaker</div>
-      {chooses ? <DeviceList kind="speaker" devices={devices.speaker} value={speaker} onPick={(d) => { media.chooseSpeaker(d.id); onSwitched(nameOf(d)); }} />
+      {chooses ? <DeviceList kind="speaker" devices={devices.speaker} using={m.speakerId} onPick={(id, name) => { media.chooseSpeaker(id); onSwitched(name); }} />
         : <p className="ic-none">{canChooseSpeaker() ? 'Sound plays through the speaker your system uses.' : SYSTEM_SPEAKER}</p>}
       <SoundTest media={media} on={chooses ? inUse(devices.speaker, m.speakerId) || 'your speaker' : 'your system’s speaker'} />
     </>
@@ -170,15 +175,14 @@ interface MicProps { media: LocalMedia; m: MediaSnapshot; devices: Devices; live
  * test sound, unless the speaker has a picker of its own (`speaker={false}`, before joining); and noise reduction.
  */
 export function MicOptions({ media, m, devices, live, speaker = true, test = false, onSwitched }: MicProps & { speaker?: boolean | undefined; test?: boolean | undefined }) {
-  const mic = current(devices.mic, m.micId);
   const trouble = troubles(m, ['mic'])[0];
   return (
     <Choices>
       {trouble && <MenuTrouble trouble={trouble} action={trouble.retry ? { label: 'Try again', run: () => media.retry() } : null} />}
       {(devices.mic.length > 0 || !trouble) && <div className="ac-eyebrow">Microphone</div>}
       {devices.mic.length ? (
-        <DeviceList kind="mic" devices={devices.mic} value={mic} extra={(d) => (d.id === mic && !trouble ? <Level media={media} live={live && m.mic} /> : undefined)}
-          onPick={(d) => void media.chooseMic(d.id).then((ok) => { if (ok) onSwitched('mic', nameOf(d)); })} />
+        <DeviceList kind="mic" devices={devices.mic} using={m.micId} extra={trouble ? undefined : <Level media={media} live={live && m.mic} />}
+          onPick={(id, name) => void media.chooseMic(id).then((ok) => { if (ok) onSwitched('mic', name); })} />
       ) : !trouble && <p className="ic-none">No microphone found.</p>}
       {test && !trouble && <MicTest media={media} m={m} />}
       {speaker && <><div className="ic-msep" /><SpeakerChoices media={media} m={m} devices={devices} onSwitched={(label) => onSwitched('speaker', label)} /></>}
@@ -211,7 +215,6 @@ interface CamProps {
 
 /** Your own preview, which camera, and Background, with what shows behind you now. */
 export function CamOptions({ media, m, devices, me, preview = true, onBackground, onSwitched }: CamProps) {
-  const cam = current(devices.cam, m.camId);
   const trouble = troubles(m, ['cam'])[0];
   return (
     <Choices>
@@ -222,7 +225,7 @@ export function CamOptions({ media, m, devices, me, preview = true, onBackground
         </div>
       )}
       {(devices.cam.length > 0 || !trouble) && <div className={cn('ac-eyebrow', (preview || trouble) && 'mt')}>Camera</div>}
-      {devices.cam.length ? <DeviceList kind="cam" devices={devices.cam} value={cam} onPick={(d) => void media.chooseCam(d.id).then((ok) => { if (ok) onSwitched(nameOf(d)); })} />
+      {devices.cam.length ? <DeviceList kind="cam" devices={devices.cam} using={m.camId} onPick={(id, name) => void media.chooseCam(id).then((ok) => { if (ok) onSwitched(name); })} />
         : !trouble && <p className="ic-none">No camera found.</p>}
       {onBackground && (
         <>

@@ -16,7 +16,8 @@ Every signed-in page sits in the same frame (`apps/web/src/features/shell/`, `pa
   - Start a call (N), tinted, never filled
   - the places, each with a count: Home (what's waiting on you), Notes, Record (recordings waiting to upload) and Team
     (people on Alcove), with Team hidden for someone on their own
-  - Up next, the next call with Join (not on Home, which already offers it)
+  - Up next, the next call with Join, on Home too, except while Home's own line offers a call (in its last few minutes,
+    and while it's going), so there's one Join at a time
   - pinned notes and groups
   - at the foot, the confidential-compute check and the minutes of notes left
 - **The page** scrolls under a rounded edge. Search ("Search or ask", ⌘K opens the palette) and you (your arch, which opens
@@ -95,9 +96,17 @@ A slim band of sky, and the horizon is the call.
   - gaps where notes were off
   - while recording, the line ends in a recording-coloured edge
   - it sticks to the top as you read
-- **The water.** The summary, larger. Then the boards open in the call, when there were any: the call's as a wide card with
-  a picture of all of it, each breakout room's as a card beside the others' (a stack on a phone), each opening its board in one
-  click, and the follow-ups from the board. Then Decided (rose, with how many are left to confirm), Still open, and Follow-ups
+- **The shared screens,** when a share went in the notes, stand on the sky over the line, so the line runs along their foot
+  as their seek bar, one seek bar under the picture. The sky grows to hold them, so the line still sits on the horizon.
+  The stage is night in both themes, as wide as the note's column under it and at most about half the window tall (then
+  narrower, keeping its shape), and it keeps its size whatever it shows: the share playing (chips to switch when two
+  overlap), that it's loading or couldn't be played, or, where no share in the notes covers the moment, when screens were
+  shared, to go there in one press. As you read on, it scrolls away above the line, which sticks clear of it. Its corner
+  fills the screen with it.
+- **The water.** The summary, larger. Then the boards open in the call, when there were any, sized by the column they're in:
+  the call's as a card with a picture of all of it, beside its words where the card is 600px wide and above them where it
+  isn't, and each breakout room's as a card beside the others', two or three across as there's room (a stack in a narrow
+  column), its picture in the call card's shape; each opens its board in one click. Then the follow-ups from the board. Then Decided (rose, with how many are left to confirm), Still open, and Follow-ups
   (horizon, with how many are yours). Every row uses one set of columns:
   - the kind's icon, or a tick box for a follow-up
   - the words, with who said or proposed it
@@ -106,10 +115,21 @@ A slim band of sky, and the horizon is the call.
   - a menu: Who it's for, Due, Reword and It wasn't decided, then What was said and Changes
   - Propose a decision and Add a follow-up sit at the foot of their lists
 - **Under that,** the transcript, with a key for the dotted words a transcript isn't sure of, and each breakout room's notes.
-- **Beside it,** Your notes, the only panel, because it's yours alone. You can write, bookmark a line or keep an answer. Then
-  Added by people and Who has these notes. A call in a series shows its series. The organizer of a call in no series gets
-  Meet again. A room recording gets neither.
-- **At the bottom,** "Ask about this call" stays in reach. It's marked Only you.
+  Pressing a line's words does what pressing its time does: it goes to that moment and plays from there. Testers asked for
+  the line to go to its moment (#247), and playing from it too was taken from the issue's suggestion, so the words and the
+  time never do two different things. A press on the words waits a quarter of a second, so a double or triple click
+  selects them to copy instead; the time goes at once. On a phone, where one line at a time shows its tools, the line you
+  pressed keeps them while the call plays on past it, until you press another or scroll it out of sight.
+- **Beside it,** a column that scrolls by itself under the line, so where you write is in reach however long the note is.
+  Your notes first, the only panel, because it's yours alone (Only you): write, bookmark a line or keep an answer. A row's
+  kind is its mark (lines of text for what you wrote, a bookmark, a question for a kept answer), and its actions (Add to
+  the shared notes, Edit, Delete) show only on hover or focus, always on touch screens. Then Shared notes (Everyone with
+  the notes): what people wrote there or added from their own, and once the notes are written a box of its own that says
+  who reads it before anything is typed. Then Who has these notes. A call in a series shows its series. The organizer of a
+  call in no series gets Meet again. A room recording gets neither. In one column, at 1180px and narrower, Your notes and
+  Shared notes come before the transcript, two across, and the rest after it.
+- **At the bottom,** "Ask about this call" stays in reach. It's marked Only you. Its suggested questions show above it at the
+  end of the note, and while it's pointed at or in use, so nothing covers the note while it's read.
 - **States, each with its own look:**
   - recording, being written, written again (Write the notes again), unwritten, nothing said
   - no transcript or recording, rooms, disputed, the example note
@@ -237,7 +257,9 @@ access**; the design canvas has no board for this page yet.
 One modal, one question at a time, and a sheet on a phone.
 - It opens on Start now (↵) or Schedule for later (S).
 - Scheduling asks Who, then When, then Details.
-  - When opens on three times that work, with the best already picked. Pick another time opens the week.
+  - When opens on three times that work, soonest first, with the best already picked. Under them, the time picked reads
+    as it will, its start and end there to type, on one line; the lengths sit under it. Pick another time opens the week,
+    Monday to Sunday and the whole day.
   - Documents steps out of Details and comes back to it.
 - Back keeps everything picked.
 - Starting floods the screen into the night of the call.
@@ -271,11 +293,21 @@ circles, and whoever speaks gets the `speak` ring. The camera appears only here 
   theme, as a board's sheet does unless it's a night board; the stage, the dock, the workspace and screens stay night.
 - **The frame.** A screen, a board and the workspace each sit in one frame with one bar. On the left, the presenter's face
   (or the kind's icon while nobody presents), the name as a menu of the kind's own commands, and a line that says whose it
-  is. On the right, only what applies: following or Follow, Present, focus, Stop sharing, or Close. The people sit beside it
-  in a column of tiles on the right, a row of arches over it on a stage under 760px, or on the horizon once they're hidden
-  (⇧P) and in focus.
+  is. On the right, only what applies: following or Follow, Present, focus, Stop sharing (with Close, on your own screen),
+  or Close. Close says before it's pressed what it does, and when it's the last thing on your stage, that the people fill
+  it again; on your own screen it puts the screen away for you, a tile with the people, while everyone still sees it. A
+  board someone presents keeps every tool for everyone following it: following is a view, not a mode, and anything of your
+  own on it takes you off it, from where you are; the presenter keeps theirs too, with the pager at the frame's foot. The
+  people sit beside it in a column of tiles on the right, under the bar, a row of arches over it on a stage under 760px,
+  or on the horizon once they're hidden and in focus. Their own quiet button (an icon with a tooltip, no fill) does what
+  ⇧P does: Hide the people at the top of the column, level with the bar's buttons, or at the end of the row, and Show the
+  people, first on the horizon. A phone keeps its arches, and has none.
 - **No layouts to choose.** The stage lays itself out; you drag a tile to move it and pull its corner to make it bigger,
-  and pin from its menu. Once you've changed it, More has a quiet Reset layout (muted ink, no fill).
+  and pin from its menu. The first time you point at a tile you can move, a coachmark under it says so, once in that
+  browser. Once you've changed it, More has a quiet Reset layout (muted ink, no fill). Testers asked for preset layouts
+  and for tiles that snap to drop zones (#227); both stay out, as #178 and #197 decided, because choosing layouts made the
+  call hard to understand. What they were missing was a way out of the column and a sign that tiles move, so those were
+  built instead.
 - **More**, in the dock, is what you do in a call (captions, Mark this moment, catching up, breakout rooms), a hairline,
   then Open floating call, Reset layout while there's a change to put back, Move to another device and Settings. No key
   hints or scope chips in it, and no keyboard shortcuts sheet: the keys still work.
@@ -316,8 +348,10 @@ circles, and whoever speaks gets the `speak` ring. The camera appears only here 
   (three reactions, the rest, Reply in thread, Message privately); on a phone a ⋯ or a long press opens the same as a sheet.
   Reactions are pills under the words, yours outlined. A thread opens in place of its conversation with ← and "In Everyone ·
   3 people", the original on top, a hairline with the count, and Also send to Everyone beside Send. A private conversation
-  starts with "Only you and Priya can read this." Questions put votes in a column of their own and say Anonymous with a
-  mask where nobody's told who asked; the host's pin, answered and dismiss sit at the end of each question's line. The
+  starts with "Only you and Priya can read this." Questions put votes in a column of their own, saying Vote or Voted, and
+  say Anonymous with a mask where nobody's told who asked; what whoever hosts or asked can do to a question is in words,
+  in the ⋯ at the end of its line, and the list sorts as chosen whenever the pointer is away from it (on a touch screen, a
+  couple of seconds after the last touch or scroll). The
   composer is one box: the words, then @, the thread's or question's one choice, and Send, the one filled button.
 - **Focus** fills the window with what's in the frame. The bars slide off, the people stand on the horizon, and the dock
   keeps the microphone, camera, Show everything and Leave.

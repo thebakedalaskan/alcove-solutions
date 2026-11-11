@@ -38,7 +38,8 @@ const LANGUAGES: SelectOption<NotesLanguage>[] = [
   { value: 'call', label: 'Same as the call' }, { value: 'en', label: 'English' }, { value: 'es', label: 'Spanish' },
   { value: 'fr', label: 'French' }, { value: 'de', label: 'German' }, { value: 'pt', label: 'Portuguese' }
 ];
-const MICS: SelectOption<string>[] = [{ value: 'default', label: 'Same as system (MacBook Pro Microphone)' }, { value: 'usb', label: 'Studio USB Microphone' }];
+/** Each microphone once, by the name people know it by, the system's saying so, as the app lists them. */
+const MICS: SelectOption<string>[] = [{ value: 'built-in', label: 'MacBook Pro Microphone', note: 'Your system’s choice' }, { value: 'usb', label: 'Studio USB Microphone' }];
 const THEMES: readonly ThemeChoice[] = ['system', 'light', 'dark'];
 
 const meta = {
@@ -134,7 +135,7 @@ export const WithATile: Story = {
 export const Stacked: Story = {
   args: { label: 'Microphone', stack: true },
   render: function Render(args) {
-    const [mic, setMic] = useState('default');
+    const [mic, setMic] = useState('built-in');
     return (
       <SettingRow {...args}
         control={(

@@ -1,6 +1,7 @@
 /*
- * What people add to the shared notes from their own (docs: Notes and inference › Your own notes): the one way anything
- * leaves someone's own notes, and only by them saying so.
+ * What people add to the shared notes (docs: Notes and inference › Your own notes): something from their own notes, the
+ * one way anything leaves them, and only by them saying so; or something written straight into the shared notes, in
+ * their box beside a written note, which says who reads it before anything is typed.
  *
  * A preview says exactly what would go, where and who gets it. Adding it needs the preview's seal, a keyed hash of the
  * entry, its moments and everyone who has the notes, so it can't go further than the person saw. Only that one entry's
@@ -12,7 +13,7 @@
  * reader's moments are read for them, each time. It stays when its author later removes the note, as the notes they
  * shared on do; it goes with the note, and when its author deletes their account, whatever became of their own notes.
  */
-import { MAX_NOTE_ADDITIONS, type NoteAddition, type PromoteBody, type PromotionPreview, type Person } from '@alcove/api';
+import { MAX_NOTE_ADDITIONS, type NoteAddition, type PromoteBody, type PromotionPreview, type Person, type SharedAudience, type SharedWrite } from '@alcove/api';
 import { z } from 'zod';
 import type { Owner } from '../../context';
 import { b64u, blindIndex, equalBytes, id128, jcs, mac, openJson, sealJson, stateKey, toJson, utf8 } from '../../crypto';
@@ -98,6 +99,55 @@ function sealOf(o: Owner, noteId: string, entryId: string, points: Point[], audi
 }
 
 const NOT_WRITTEN = 'These notes are still being written. You can add this once they are.';
+const FULL = 'These notes can’t take any more additions.';
+
+/** Holds what's written straight into the shared notes to everyone who has them now: a keyed hash of who they are, under the writer's keys. */
+function writeSeal(o: Owner, noteId: string, audience: Person[]): string {
+  const people = audience.map((p) => p.email.toLowerCase()).sort();
+  return b64u(mac(stateKey(o.root, o.ownerId, `promotion:${noteId}`), utf8(jcs(toJson({ write: 'shared', people })))));
+}
+
+/** Who'd read something written straight into the shared notes now, once they're written, and the seal that holds it to them. Nothing changes. */
+export async function audience(o: Owner, noteId: string): Promise<SharedAudience> {
+  const l = await locate(o, noteId);
+  const m = l.note.manifest;
+  if (m.status !== 'ready') throw new ConflictError(NOT_WRITTEN, { context: { noteId, status: m.status } });
+  const people = await audienceOf(l);
+  return { audience: people, seal: writeSeal(o, noteId, people) };
+}
+
+/**
+ * Writes straight into the shared notes, under your name, for everyone with them: the words posted, and nothing else.
+ * Read again under the note's lock, so the people the box showed are the people who get it. Stored like anything added
+ * from someone's own notes, with no moments and no entry behind it, so taking it back works the same.
+ */
+export async function write(o: Owner, noteId: string, body: SharedWrite): Promise<void> {
+  const owner = (await locate(o, noteId)).owner;
+  const ctx = { noteId };
+  const additionId = id128();
+  const at = new Date().toISOString();
+  const who = await profile(o);
+  const audience = await tx(o.pool, async (c) => {
+    await lockItem(owner, c, noteId);
+    const l = await locate(o, noteId, c);
+    // Removing the note from theirs waits for this: it can't land in between and leave words behind.
+    await holdAccess(o, l, c);
+    const m = l.note.manifest;
+    if (m.status !== 'ready') throw new ConflictError(NOT_WRITTEN, { context: { ...ctx, status: m.status } });
+    const people = await audienceOf(l, c);
+    // Compared as text, in constant time: it's a keyed hash either way.
+    if (!equalBytes(utf8(writeSeal(o, noteId, people)), utf8(body.seal))) {
+      throw new ConflictError('Someone got these notes since you started writing. Look at who reads it now, then post it.', { context: { ...ctx, audience: people.length } });
+    }
+    const n = await maybeOne(c, z.object({ n: z.number() }), 'SELECT count(*)::int AS n FROM note_additions WHERE owner_id = $1 AND note_item_id = $2', [owner.ownerId, noteId]);
+    if ((n?.n ?? 0) >= MAX_NOTE_ADDITIONS) throw new ConflictError(FULL, { context: ctx });
+    const stored: Stored = { text: body.text, by: { id: o.ownerId, name: who.name, email: who.email }, at, points: [] };
+    await exec(c, 'INSERT INTO note_additions (owner_id, note_item_id, addition_id, author_index, body_ciphertext) VALUES ($1,$2,$3,$4,$5)',
+      [owner.ownerId, noteId, additionId, authorIndex(o), sealJson(key(owner, noteId), header(owner, noteId, additionId), toJson(stored))]);
+    return people.length;
+  });
+  alog.info('written into the shared notes', { ...ctx, additionId, audience, mine: owner.ownerId === o.ownerId });
+}
 
 /** What adding one of your own entries to the shared notes would do. Nothing changes. */
 export async function preview(o: Owner, noteId: string, entryId: string): Promise<PromotionPreview> {
@@ -148,7 +198,7 @@ export async function addToShared(o: Owner, noteId: string, entryId: string, bod
     }
     if (!body.text && !points.length) throw new ValidationError('Say what to add.', { context: ctx });
     const n = await maybeOne(c, z.object({ n: z.number() }), 'SELECT count(*)::int AS n FROM note_additions WHERE owner_id = $1 AND note_item_id = $2', [owner.ownerId, noteId]);
-    if ((n?.n ?? 0) >= MAX_NOTE_ADDITIONS) throw new ConflictError('These notes can’t take any more additions.', { context: ctx });
+    if ((n?.n ?? 0) >= MAX_NOTE_ADDITIONS) throw new ConflictError(FULL, { context: ctx });
     const stored: Stored = { text: body.text, by: { id: o.ownerId, name: who.name, email: who.email }, at, points };
     await exec(c, 'INSERT INTO note_additions (owner_id, note_item_id, addition_id, author_index, body_ciphertext) VALUES ($1,$2,$3,$4,$5)',
       [owner.ownerId, noteId, additionId, authorIndex(o), sealJson(key(owner, noteId), header(owner, noteId, additionId), toJson(stored))]);

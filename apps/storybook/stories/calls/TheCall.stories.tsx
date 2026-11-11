@@ -163,7 +163,7 @@ export const WorkspaceFromNotes: PageStory = {
 const retro = 'Launch retro';
 const openRetro = step('Press Board, then Launch retro, from your team’s boards: it opens just for you', async (c) => { await pickBoard(c, retro); await frameOf(retro); });
 const presentRetro = step('Press Present on its bar: everyone follows you, and its foot steps through its frames', (c) => present(c, retro));
-const boardOn = `Everyone follows you on ${retro}. They can unfollow to add to it.`;
+const boardOn = `Everyone follows you on ${retro}. They can add to it as you go.`;
 const presented = [openRetro, presentRetro, step('Everyone follows you', () => toldThat(boardOn))];
 const nextFrame = step('Press Next frame, at its foot: everyone following you moves with you', async (c) => {
   await c.userEvent.click(await screen.findByRole('button', { name: 'Next frame' }, LATER));
@@ -209,11 +209,11 @@ export const YourNotesBesideItLight: PageStory = { ...light(YourNotesBesideIt), 
 export const CloseWhileYouPresentTheBoard: PageStory = {
   ...moment(yours(), ...presented, nextFrame, step('Press Close on its bar: it asks', (c) => close(c, retro))), name: 'Close, while you present the board'
 };
-/** For you: you're back with the people, and the others keep it open on their own. Nobody presents it, so it has no tile. */
+/** For you: you stop presenting and you're back with the people, and the others keep it open on their own. Nobody presents it, so it has no tile. */
 export const BoardClosedForYou: PageStory = {
   ...moment(yours(), ...presented, nextFrame,
     step('Press Close, then For you', async (c) => { await close(c, retro); await closeFor(c, retro, 'For you'); }),
-    step('The others keep it open', () => toldThat('Closed for you. The others keep it open, on their own.'))),
+    step('You stopped presenting, and the others keep it open', () => toldThat('You stopped presenting. The others keep it open, on their own.'))),
   name: 'Board closed for you'
 };
 /** Its name is a menu: Rename, Open where it's saved, Who can add to it, Copy link, Download as an image or a PDF, and Night board, there while you present it. */
@@ -313,7 +313,10 @@ export const FollowingInFocus: PageStory = {
 const priyaBoard = hers({ board: RETRO, cues: [...at(PRIYA_PRESENTS - 1, { do: 'open-board', who: PRIYA, template: 'retro' }), ...at(PRIYA_PRESENTS, presentsBoard(PRIYA, 1))] });
 const herBoard = 'Launch review';
 const followingHerBoard = step('Priya presents the board she made, from Could improve: you follow her', () => toldThat(`Priya is presenting ${herBoard}, and you’re following.`));
-/** Priya presents a board: you see her frame, and can unfollow to add to it. */
+/**
+ * Priya presents a board: you follow her view, with your tools to hand, and anything of your own on it takes you off following,
+ * from where you are.
+ */
 export const PriyaPresentsABoard: PageStory = { ...moment(priyaBoard, followingHerBoard), name: 'Priya presents a board' };
 /** Close: closed for you, and while she presents it, its tile takes you back. */
 export const PriyasBoardClosedForYou: PageStory = {

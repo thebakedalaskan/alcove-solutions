@@ -10,7 +10,8 @@ const WRITING: WsKeyGroup = {
   name: 'Writing',
   keys: [
     { label: 'All the blocks', key: '/' }, { label: 'Tag a person, document or date', key: '@' }, { label: 'Heading 1, 2, 3', key: '# ## ###' }, { label: 'Bulleted list', key: '-' },
-    { label: 'Numbered list', key: '1.' }, { label: 'Checklist', key: '[]' }, { label: 'Quote', key: '>' }, { label: 'Divider', key: '---' }
+    { label: 'Numbered list', key: '1.' }, { label: 'Checklist', key: '[]' }, { label: 'Quote', key: '>' }, { label: 'Divider', key: '---' },
+    { label: 'Code, in JavaScript, Python or C++', key: '``` ```js ```py ```cpp' }
   ]
 };
 

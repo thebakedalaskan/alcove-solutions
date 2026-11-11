@@ -56,7 +56,8 @@ export const wsToast = {
   toldNotNow: (first: string) => say('check', `${first} was told not now`),
   askedForNotes: (organizer: string) => say('hand', `You asked ${organizer} for notes`),
   notesOn: () => say('check', 'Notes are on for everyone'),
-  backOnline: () => say('check', 'Back online. Your edits are saved.'),
+  /** `wasOffline`: the browser itself was; otherwise only Alcove couldn't be reached. */
+  backOnline: (wasOffline = true) => say('check', wasOffline ? 'Back online. Your edits are saved.' : 'Reconnected. Your edits are saved.'),
   /** The call's connection is back, with nothing of a document's to say about it. */
   reconnected: () => say('check', 'Back online.'),
   copiedText: () => say('copy', 'Copied. Paste it wherever you like.'),
@@ -65,9 +66,11 @@ export const wsToast = {
   /* Presenting in a call, as the canvas says it (docs/design/canvas/call/nc.js, TOAST). */
   screenOn: (what: 'tab' | 'window' | 'screen') => say('screen', `Everyone sees your ${what}.`),
   screenOff: () => say('screen', 'You stopped sharing.'),
-  boardOn: (board: string) => say('presentation', `Everyone follows you on ${board}. They can unfollow to add to it.`),
+  /** Your own screen, closed for you while it's still shared: its tile is with the people. */
+  screenAway: () => say('screen', 'Put away for you. Everyone still sees your screen, and its tile brings it back.'),
+  boardOn: (board: string) => say('presentation', `Everyone follows you on ${board}. They can add to it as you go.`),
   workspaceOn: () => say('folderOpen', 'Everyone follows you in the workspace. They can unfollow to work alongside you.'),
-  closedForYou: () => say('x', 'Closed for you. The others keep it open, on their own.'),
+  closedForYou: () => say('x', 'You stopped presenting. The others keep it open, on their own.'),
   /** `here`: in a room, where it closed for the room alone. */
   closedForAll: (here = false) => say('x', here ? 'Closed for everyone in this room.' : 'Closed for everyone.'),
   closedWhile: (first: string) => say('x', `Closed for you. While ${first} presents, its tile takes you back.`),

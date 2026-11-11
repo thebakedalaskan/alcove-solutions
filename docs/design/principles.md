@@ -124,6 +124,7 @@ page. Blue Hour takes the page and the pressable colour from the logo's own sky 
 | Drawing on the evening | `dusk-sun`, `dusk-haze` |
 | Illustration, tour art and covers only | `dawn-1` to `dawn-4`, `gold`, the `cover-*` gradients |
 | A highlight or comment in a document | `hl` |
+| Code in a document, by what each word is: its own palette, no green | `code-keyword`, `code-string`, `code-number`, `code-name`, `code-comment` |
 
 - Every screen works in light and dark. Design both, and don't simply invert: check contrast (4.5:1 for text) in each.
 - The side panel is dark in both themes. The call is night in both, but for your side in it and a board on its stage,
@@ -202,6 +203,8 @@ Everything comes from the tokens in `styles.css`. Don't invent values.
 - The resting state of every animated element is the still picture. With reduced motion, the global stylesheet runs every
   animation once in a millisecond, so anything that only appears now and then must rest hidden at `opacity: 0`, and
   `Horizon` sends no visitors at all.
+- What says something is on its way never rests, or it reads as a broken icon. With reduced motion, `Spinner` stops turning
+  and `Dots` stop rising: both fade slowly in and out instead (`kit.css`), since opacity isn't movement.
 - What passes through comes at random, one at a time: something quick every 22 to 60 seconds, a ship every 2.5 to 6
   minutes. A ship is sometimes already out there when the page opens. What comes depends on the moment (`LIFE` in
   `horizon.tsx`):
@@ -222,6 +225,9 @@ Everything comes from the tokens in `styles.css`. Don't invent values.
 - Plain and specific: say what happens. No marketing taglines, no slogans.
 - The promise in the product's own words: "Written in confidential compute", "Alcove can't read them", "Confidential compute
   · verified", "Hardware verified 11:58". No hedging or status caveats in the UI; the engineering docs say what's built.
+  The call's shield, the side panel's check, Home's badge, the join page and Settings › Privacy say Confidential compute,
+  adding "· verified" and the time only when this browser's check is bound to the server's hardware, and the tick in a
+  shield never sits beside a negative.
 - Times read `6:12`, `Thu 17:55`, `Yesterday`. Durations read `1 h 12 min`.
 - People: use names or "they". Demo data uses made-up people only (the demo company is Vandelay Industries); never a real
   person's name.
@@ -266,5 +272,6 @@ These came up in design reviews. They're the fastest way to see what "right" mea
 - The first-day empty state, and every other real state: loading, offline, errors, nothing yet, a lot.
 - Every menu, popover and modal opened from where it's used, over the screen it belongs to.
 - No overlap, no stacking bugs, no horizontal scroll, no console errors.
-- Keyboard focus visible and in order; reduced motion shows a still picture.
+- Keyboard focus visible and in order; reduced motion shows a still picture, and anything working (a spinner, dots) fades
+  slowly in and out instead.
 - One filled button per view, each fact once, no green.

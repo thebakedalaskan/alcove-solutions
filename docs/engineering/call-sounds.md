@@ -3,8 +3,8 @@
 Alcove's sounds are short original sine-tone phrases synthesized by `apps/web/src/lib/audio-output.ts`.
 They have no downloaded samples, third-party recordings or external asset licenses. The family uses a quiet
 attack and a short falling envelope: microphone and people pairs rise for on/join and fall for off/leave;
-hands and questions have different rising pairs; admissions use three notes. Board timers and incoming
-rings use the same output and preference gates. Each phrase lasts about 0.3–1.2 seconds.
+hands and questions have different rising pairs; admissions use three notes. The call's timer and
+incoming rings use the same output and preference gates. Each phrase lasts about 0.3–1.2 seconds.
 
 | Cue | Who hears it |
 | --- | --- |
@@ -14,7 +14,6 @@ rings use the same output and preference gates. Each phrase lasts about 0.3–1.
 | New question | The current host or a current presenter, only when already in that question’s permitted room audience. Other peers keep persistent question visuals. Hosting or presenting never grants access to questions outside that audience. Votes, pinning and resolving do not chime. |
 | Private message | Only the intended recipient, for a newly authenticated private envelope. Reconnect history does not chime and no content or sender preview is exposed. The private-message category, master volume and quiet mode apply. |
 | Request to join | The current host, once for that admission request. |
-| Board timer | The browser that saw the timer running, when it expires. |
 | Incoming call | The person being rung, once per ring. |
 
 The server snapshots carry audience-filtered cue IDs, monotonic sequences and server timestamps.

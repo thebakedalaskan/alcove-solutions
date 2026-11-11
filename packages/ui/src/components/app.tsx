@@ -2,7 +2,7 @@
  * The app's building blocks: cards, navigation, the palette's line, fields, notes and transcript lines, Show more, the
  * mic level, and what a transcript isn't sure of.
  */
-import { forwardRef, useId, useState, type CSSProperties, type InputHTMLAttributes, type ReactNode } from 'react';
+import { forwardRef, useEffect, useId, useRef, useState, type CSSProperties, type InputHTMLAttributes, type MouseEvent, type ReactNode } from 'react';
 import { cn } from '../cn';
 import { Icon, type IconName } from './icon';
 import { Tooltip } from './overlay';
@@ -94,16 +94,47 @@ export function NoteRow({ owner, isNew = false, children }: { owner?: AvatarPers
   );
 }
 
+/** What in a line has a press, or a tip, of its own: its time, its tools, a marker. Words it isn't sure of are still words. */
+const OWN_PRESS = 'a, button, input, textarea, select, label, [role="button"], .nd-lx, [tabindex]:not(.ac-unsure)';
+/** How long a press on a line's words waits for a second click, which selects a word to copy instead. */
+const SECOND_CLICK_MS = 250;
+/** Whether some words on the page are selected, to copy. */
+function selecting(): boolean {
+  const picked = getSelection();
+  return !!picked && !picked.isCollapsed && picked.toString().trim() !== '';
+}
+
 /**
  * One spoken line of a note's transcript: when, the speaker's arch, their name, what they said, and `tools` for what can
  * be done with it, which wait under the pointer. Without a person (the same speaker again, or a room recording) the arch's
- * place stays empty. `id` makes it a place a link can go to.
+ * place stays empty. `id` makes it a place a link can go to. With `onPress`, pressing the line does what its time does,
+ * anywhere but on something with a press or a tip of its own, and not when the press ends selecting its words, so they can
+ * still be copied: it waits a quarter of a second, and a double or triple click (a word or the line, selected) calls it
+ * off. Its time goes at once. It takes no tab stop, since its time is the keyboard's way in.
  */
-export function TranscriptLine({ time, person, name, tools, children, className, id }: {
+export function TranscriptLine({ time, person, name, tools, children, className, id, onPress }: {
   time: ReactNode; person?: AvatarPerson | undefined; name?: ReactNode; tools?: ReactNode; children: ReactNode; className?: string | undefined; id?: string | undefined;
+  onPress?: (() => void) | undefined;
 }) {
+  /* The press waiting for a second click, if there is one: this line owns its timer, and it goes with the line. */
+  const waiting = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(waiting.current), []);
+  const press = onPress && ((e: MouseEvent<HTMLDivElement>) => {
+    // What opens from the line (a tool's menu, over the page) passes its presses through it too: they aren't on it.
+    if (!(e.target instanceof Element) || !e.currentTarget.contains(e.target)) return;
+    const own = e.target.closest(OWN_PRESS);
+    if (own && e.currentTarget.contains(own)) return;
+    // A second or third click selects a word, or the line, to copy: the first one's press doesn't happen.
+    window.clearTimeout(waiting.current);
+    waiting.current = undefined;
+    if (e.detail > 1 || selecting()) return;
+    waiting.current = window.setTimeout(() => {
+      waiting.current = undefined;
+      if (!selecting()) onPress();
+    }, SECOND_CLICK_MS);
+  });
   return (
-    <div id={id} className={cn('nd-l', className)}>
+    <div id={id} className={cn('nd-l', onPress && 'is-press', className)} onClick={press}>
       {time}
       <span className="nd-la">{person && <Avatar person={person} size={24} />}</span>
       <div className="nd-lb">{name && <p className="nd-ln">{name}</p>}<p className="nd-lp">{children}</p></div>

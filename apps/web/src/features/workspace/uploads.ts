@@ -169,19 +169,28 @@ function fileDraft(f: File): Draft {
 }
 
 /**
- * The blocks files make, each holding their space. Photos this browser can read go in one block: one photo full width,
- * several a gallery. A photo it can't read gets a block of its own that says so. A video it can play is a video, and
- * anything else, a video it can't play included, is a file you can open. With `asFiles`, everything is a file.
+ * How files go into a document. `found`: as they come (dropped, pasted, or chosen from Photos or Video). `file`: chosen
+ * from File, which is asked for a file, so a picture that can't be shown is attached rather than said to have failed.
+ * `files`: everything a file (Add as a file, on a photo this browser can't read).
  */
-export async function prepare(files: readonly File[], asFiles = false): Promise<Draft[]> {
+export type Sorting = 'found' | 'file' | 'files';
+
+/**
+ * The blocks files make, each holding their space, however they came: dropped, pasted, or chosen from Photos, Video or File.
+ * Photos this browser can read go in one block: one photo full width, several a gallery. A photo it can't read gets a block
+ * of its own that says so, or, chosen from File, is a file. A video it can play is a video, and anything else, a video it
+ * can't play included, is a file you can download.
+ */
+export async function prepare(files: readonly File[], as: Sorting = 'found'): Promise<Draft[]> {
   const photos: Part[] = [];
   const unreadable: Draft[] = [];
   const rest: Draft[] = [];
   for (const f of files) {
-    if (asFiles) rest.push(fileDraft(f));
+    if (as === 'files') rest.push(fileDraft(f));
     else if (f.type.startsWith('image/')) {
       const size = await pictureSize(f);
       if (size) photos.push(partOf(f, size.width, size.height));
+      else if (as === 'file') rest.push(fileDraft(f));
       else {
         const token = newToken();
         unreadable.push({ token, block: { type: 'gallery', attrs: { upload: token, items: [{ media: null, name: f.name, width: null, height: null }], failed: f.name } }, kind: 'gallery', parts: [partOf(f)], poster: null, previews: [null], failed: true });

@@ -254,7 +254,10 @@ export interface CallFrameFollowing {
 
 /** Close, on the frame's bar. */
 export interface CallFrameClose {
-  /** What it does, on hover: "Close it", "Close it for you, or for everyone", "Close it for you. While Priya presents, its tile takes you back". */
+  /**
+   * What it does, on hover: "Close it, and the people fill your stage again", "Close it for you, or for everyone", "Close it
+   * for you. While Priya presents, its tile takes you back", "Put it away for you. It’s still shared, as a tile with the people".
+   */
   tip: string;
   onClose: () => void;
   /** While it asks for whom (`CloseAsk`): Close has a ▾ and opens the question under itself instead of closing. */
@@ -432,7 +435,7 @@ export interface CloseAskProps {
   onOpenChange: (open: boolean) => void;
   /** "Close Launch review · 4 Nov" */
   title: string;
-  /** For you: everyone else keeps it open, on their own, unless `me` says otherwise. */
+  /** For you: your presentation stops, and everyone else keeps it open, on their own, unless `me` says otherwise. */
   onMe: () => void;
   /** For everyone: it closes for everyone in the call, unless `everyone` says otherwise ("It closes for everyone in this room."). */
   onEveryone: () => void;
@@ -443,7 +446,7 @@ export interface CloseAskProps {
 }
 
 /** What closing it can be: for you, or for everyone. Close's question and Share's last step both ask it. */
-function CloseChoices({ onMe, onEveryone, me = 'Everyone else keeps it open, on their own.', everyone = 'It closes for everyone in the call.' }: Pick<CloseAskProps, 'onMe' | 'onEveryone' | 'me' | 'everyone'>) {
+function CloseChoices({ onMe, onEveryone, me = 'You stop presenting. Everyone else keeps it open, on their own.', everyone = 'It closes for everyone in the call.' }: Pick<CloseAskProps, 'onMe' | 'onEveryone' | 'me' | 'everyone'>) {
   return (
     <>
       <button type="button" className="ic-cm" onClick={onMe}>
@@ -631,19 +634,18 @@ const SURFACES: { kind: ShareSurfaceKind; label: string; icon: IconName }[] = [
   { kind: 'monitor', label: 'Your whole screen', icon: 'monitor' }
 ];
 
-/** The answer to "Include this share in the notes?": none until the presenter picks one. */
-export type ShareKeep = 'yes' | 'no' | 'unanswered';
+/** The answer to "Include this share in the notes?": No until the presenter says Yes. */
+export type ShareKeep = 'yes' | 'no';
 const KEEP = [{ value: 'yes', label: 'Yes' }, { value: 'no', label: 'No' }] satisfies { value: ShareKeep; label: string }[];
 /** What the answer means, under the question. */
 function keepLine(read: 'on' | 'paused', keep: ShareKeep): string {
   if (keep === 'no') return 'Only the people here see it. Nothing of it is kept.';
-  if (keep === 'yes') return read === 'paused' ? 'Notes are paused. Once they resume, it’s recorded and read for the notes.' : 'It’s recorded with the call and read for the notes.';
-  return read === 'paused' ? 'Notes are paused. A yes is recorded and read once they resume.' : 'A yes is recorded with the call and read for the notes.';
+  return read === 'paused' ? 'Notes are paused. Once they resume, it’s recorded and read for the notes.' : 'It’s recorded with the call and read for the notes.';
 }
 
 /**
  * Share › Your screen: a tab, a window or your whole screen, its sound where the browser can share it, whether it goes in
- * the notes (asked while they're on or paused, and answered before Share does anything), then Share. The browser asks
+ * the notes (asked while they're on or paused, already answered, so Share never waits on it), then Share. The browser asks
  * which one next.
  */
 export function ShareScreenStep({ surface, onSurface, sound, read, keep, onKeep, trouble, changing = false, onBack, onShare }: {
@@ -653,7 +655,7 @@ export function ShareScreenStep({ surface, onSurface, sound, read, keep, onKeep,
   sound: { label: string; on: boolean; onChange: (on: boolean) => void } | null;
   /** Notes are on, or paused, so the presenter is asked whether this share goes in them. Null asks nothing. */
   read: 'on' | 'paused' | null;
-  /** The answer so far. */
+  /** The answer: No to begin with, and the presenter's own last answer after that. */
   keep: ShareKeep;
   onKeep: (keep: ShareKeep) => void;
   /** Why the last try didn't start, or null. */
@@ -683,7 +685,7 @@ export function ShareScreenStep({ surface, onSurface, sound, read, keep, onKeep,
       )}
       <div className="ic-sp-acts">
         <Button variant="quiet" onClick={onBack}>Back</Button>
-        <Button variant="primary" icon="screen" disabled={read !== null && keep === 'unanswered'} onClick={onShare}>{changing ? 'Share this instead' : 'Share'}</Button>
+        <Button variant="primary" icon="screen" onClick={onShare}>{changing ? 'Share this instead' : 'Share'}</Button>
       </div>
     </>
   );

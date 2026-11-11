@@ -1,8 +1,8 @@
 /*
  * BoardPop: a small menu on the sheet, opened from the bar and hanging under what opened it. Lines to read (the seal's),
- * things to do (the name's, More's), or a choice of up to three with one button (the timer's and the vote's). The name's
- * and the seal's sit under them on the left; the timer's, the vote's and More's under them on the right. Every word here is
- * the design canvas's. Pick a length and it's the one picked.
+ * things to do (the name's, More's), or a choice of up to three with one button (the vote's). The name's and the seal's sit
+ * under them on the left; the vote's and More's under them on the right. Every word here is the design canvas's. Pick how
+ * many votes and it's the one picked.
  */
 import { BoardBar, BoardPop, type BoardPopProps } from '@alcove/ui';
 import type { Meta, StoryObj } from '@storybook/react-vite';
@@ -71,15 +71,6 @@ export const TheName: Story = {
     ]
   }
 };
-/** The timer: everyone sees it count down. */
-export const Timer: Story = {
-  args: {
-    left: undefined, right: 14, top: 60, title: 'Timer', rows: undefined,
-    sub: 'Everyone sees it count down. It chimes softly at the end.',
-    options: choices(['3 min', '5 min', '10 min'], '5 min'),
-    action: { label: 'Start', onPick: did('Start') }
-  }
-};
 /** A vote on a frame: how many votes each, and that nobody sees the count until it ends. */
 export const Vote: Story = {
   args: {
@@ -89,7 +80,7 @@ export const Vote: Story = {
     action: { label: 'Start the vote', onPick: did('Start the vote') }
   }
 };
-/** More: a link, the board as an image or a PDF, and Night board. */
+/** More: a link, the board as an image or a PDF, and Night board, a setting with a tick while it's on. */
 export const More: Story = {
   args: {
     left: undefined, right: 14, top: 60, title: undefined, rows: undefined, label: 'More',
@@ -97,7 +88,15 @@ export const More: Story = {
       { id: 'link', icon: 'link', label: 'Copy link', onPick: did('Copy link') },
       { id: 'image', icon: 'download', label: 'Download as an image', onPick: did('Download as an image') },
       { id: 'pdf', icon: 'fileText', label: 'Download as a PDF', onPick: did('Download as a PDF') },
-      { id: 'night', icon: 'sun', label: 'Night board', onPick: did('Night board') }
+      { id: 'night', icon: 'moon', label: 'Night board', on: false, onPick: did('Night board') }
     ]
+  }
+};
+/** More on a night board: Night board is ticked, as the frame's name menu in a call ticks it. */
+export const MoreOnANightBoard: Story = {
+  name: 'More, on a night board',
+  args: {
+    ...More.args,
+    items: (More.args?.items ?? []).map((i) => (i.id === 'night' ? { ...i, on: true } : i))
   }
 };

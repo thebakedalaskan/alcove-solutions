@@ -1,4 +1,4 @@
-import { unref } from './live';
+import { newName, onChances, stillHeld, unref } from './live';
 import { AlcoveApiError, DOC_FRAGMENT, type DocClosed, type DocCopyToken, type DocLiveEvent, type DocRefusal, type DocSession, type DocSize, type DocStatus, type DocUnsentCopy, errorCode, fromBase64Url, isServerClient, type KeptUpdates, MAX_DOC_ITEMS, MAX_DOC_UPDATE_BYTES, randomClient, toBase64Url } from '@alcove/api';
 import { itemsOnPage, TAGS } from '@alcove/api/retire';
 import * as encoding from 'lib0/encoding';
@@ -45,7 +45,10 @@ const HEARD = Symbol('heard');
 
 
 export interface DocTransport {
-  open(after: number, signal: AbortSignal): AsyncIterable<DocLiveEvent>;
+  /** Opens a stream from `after`, by the name this browser gives it. */
+  open(after: number, signal: AbortSignal, stream: string): AsyncIterable<DocLiveEvent>;
+  /** Tells the API this browser closed the stream it gave this name, which it can't always hear: as the page may be going. */
+  end(stream: string): void;
   /** Sends one update. Resolves once the API has it safe. */
   update(update: Uint8Array): Promise<unknown>;
   awareness(update: string, keepalive: boolean): Promise<unknown>;
@@ -226,7 +229,7 @@ export class HttpDocSession implements DocSession {
   /** Everything Alcove doesn't have yet, the oldest first. */
   private unsent: Unsent[] = [];
   private sending = false;
-  private retry: ReturnType<typeof setTimeout> | undefined;
+  private resend: ReturnType<typeof setTimeout> | undefined;
   private retryWait = FIRST_WAIT_MS;
   /** When Alcove started saying it can't take this yet, though there's a connection. */
   private busySince: number | null = null;
@@ -235,6 +238,12 @@ export class HttpDocSession implements DocSession {
   private caret: ReturnType<typeof setTimeout> | undefined;
   private announcing = false;
   private announceAgain = false;
+
+  /** The stream being read, by the name this browser gave it, while the API may hold it. */
+  private reading: { name: string; held: boolean } | null = null;
+  /** A wait was cut short, or a try given up for Try now: the next try goes at once. */
+  private hurry = false;
+  private stopListening: () => void = () => undefined;
 
   constructor(private readonly net: DocTransport, private readonly keep: KeptUpdates | undefined, private readonly quietMs: number) {
     this.ready = new Promise((resolve, reject) => { this.settle = { resolve, reject }; });
@@ -248,16 +257,44 @@ export class HttpDocSession implements DocSession {
       // Someone new doesn't know where this caret is: nothing keeps it for them.
       if (origin === 'local' || (origin === HEARD && changes.added.length)) this.announceSoon();
     });
+    const stopTrying = onChances(this.wake);
+    // A page going for good takes its stream with it, which the API may not hear: it's told. One put away to come back to carries on.
+    const leaving = (e: PageTransitionEvent) => { if (!e.persisted) this.letGo(); };
+    globalThis.addEventListener?.('pagehide', leaving);
+    this.stopListening = () => { stopTrying(); globalThis.removeEventListener?.('pagehide', leaving); };
     void this.start();
   }
 
   getSnapshot = (): DocStatus => this.view;
   subscribe = (l: () => void) => { this.listeners.add(l); return () => { this.listeners.delete(l); }; };
 
+  /** Try now: a wait is cut short, and a try under way, which may be hanging, is given up for a new one. */
+  retry = () => { this.tryNow(true); };
+  /**
+   * Only a wait is cut short: a try under way may be about to answer, and a first open is often waiting its turn for a document
+   * worker, so giving it up would waste the worker's job and put this at the back again.
+   */
+  wake = () => { this.tryNow(false); };
+
+  private tryNow(giveUp: boolean): void {
+    if (this.stopped) return;
+    // What's waiting to go goes now, rather than after its wait.
+    if (this.resend !== undefined) {
+      clearTimeout(this.resend);
+      this.resend = undefined;
+      this.retryWait = FIRST_WAIT_MS;
+      void this.send();
+    }
+    if (this.live) return;
+    if (this.stopWaiting) { this.hurry = true; this.stopWaiting(); }
+    else if (giveUp && this.connection) { this.hurry = true; this.connection.abort(); }
+  }
+
   close = () => {
     if (this.closed) return;
     this.closed = true;
     clearTimeout(this.stuckTry);
+    this.stopListening();
     if (!this.stopped) {
       this.stopped = true;
       this.connection?.abort();
@@ -455,9 +492,9 @@ export class HttpDocSession implements DocSession {
   }
   private tryAgain(down: boolean): void {
     this.sendDown = down;
-    if (this.retry !== undefined || this.stopped) return;
-    this.retry = setTimeout(() => { this.retry = undefined; void this.send(); }, this.retryWait * (0.8 + Math.random() * 0.4));
-    unref(this.retry);
+    if (this.resend !== undefined || this.stopped) return;
+    this.resend = setTimeout(() => { this.resend = undefined; void this.send(); }, this.retryWait * (0.8 + Math.random() * 0.4));
+    unref(this.resend);
     this.retryWait = Math.min(this.retryWait * 2, LONGEST_WAIT_MS);
   }
   private tryStuck(ms: number): void {
@@ -625,10 +662,12 @@ export class HttpDocSession implements DocSession {
     }
   }
 
-  /** One connection, until it ends. Silence past `quietMs` cuts it. */
+  /** One connection, until it ends. Silence past `quietMs` cuts it. A stream this browser stops reading, it says it's closed. */
   private async follow(): Promise<Ending> {
     const connection = new AbortController();
     this.connection = connection;
+    const reading = { name: newName(), held: true };
+    this.reading = reading;
     let quiet: ReturnType<typeof setTimeout> | undefined;
     const heard = () => {
       clearTimeout(quiet);
@@ -637,13 +676,15 @@ export class HttpDocSession implements DocSession {
     };
     heard();
     try {
-      for await (const e of this.net.open(this.seq, connection.signal)) {
+      for await (const e of this.net.open(this.seq, connection.signal, reading.name)) {
         heard();
-        if (e.type === 'closed') return { over: e.why };
+        if (e.type === 'closed') { reading.held = false; return { over: e.why }; }
         this.take(e);
       }
+      reading.held = false;
       return 'ended';
     } catch (e) {
+      if (!stillHeld(e)) reading.held = false;
       const code = errorCode(e);
       this.settleFailure = e;
       // A record that won't open won't open next time either.
@@ -652,7 +693,22 @@ export class HttpDocSession implements DocSession {
       return 'failed';
     } finally {
       clearTimeout(quiet);
+      this.letGo();
     }
+  }
+  /** Tells the API this browser has stopped reading the stream it's on, if the API may still hold it. Once. */
+  private letGo(): void {
+    const reading = this.reading;
+    if (!reading?.held) return;
+    reading.held = false;
+    this.net.end(reading.name);
+  }
+
+  /** Whether a wait was cut short or a try given up since the last try, which it now takes. */
+  private hurried(): boolean {
+    const was = this.hurry;
+    this.hurry = false;
+    return was;
   }
 
   private wait(ms: number): Promise<void> {
@@ -687,13 +743,14 @@ export class HttpDocSession implements DocSession {
       this.live = false;
       if (this.stopped) return;
       if (typeof ending === 'object') { this.over(ending.over); return; }
-      if (ending === 'failed') { this.streamDown = true; this.publish(); }
+      // A try given up for Try now didn't fail: the next goes at once.
+      if (ending === 'failed' && !this.hurry) { this.streamDown = true; this.publish(); }
       const steady = Date.now() - opened >= STEADY_MS;
-      if (ending === 'ended' && steady) { wait = FIRST_WAIT_MS; continue; }
+      if (this.hurried() || (ending === 'ended' && steady)) { wait = FIRST_WAIT_MS; continue; }
       if (steady) wait = FIRST_WAIT_MS;
       // A little apart, so everyone a restart cut off doesn't come back in the same moment.
       await this.wait(ending === 'ended' ? Math.min(wait, 100) : wait * (0.8 + Math.random() * 0.4));
-      wait = Math.min(wait * 2, LONGEST_WAIT_MS);
+      wait = this.hurried() ? FIRST_WAIT_MS : Math.min(wait * 2, LONGEST_WAIT_MS);
     }
   }
 
@@ -701,8 +758,9 @@ export class HttpDocSession implements DocSession {
   private over(why: DocClosed): void {
     this.stopped = true;
     this.barred = true;
+    this.stopListening();
     this.cut();
-    clearTimeout(this.retry);
+    clearTimeout(this.resend);
     clearTimeout(this.caret);
     clearTimeout(this.stuckTry);
     this.awareness.destroy();

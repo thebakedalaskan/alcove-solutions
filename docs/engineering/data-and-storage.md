@@ -37,6 +37,7 @@ result, and [Changing what's stored](#changing-whats-stored) how it changes with
 | `meeting_access` | owner (the organizer), meeting item | `email_index` (keyed hash of the address, with a purpose of its own), `answer_ciphertext` (whether they're coming, padded to one length, under the meeting's answers key; null until they answer) |
 | `personal_notes` | owner (the author), the note's organizer and item: one row for each person and note | `body_ciphertext` (everything they keep on it: what they wrote, bookmarks and what they point at, kept questions and answers, and which of it was added to the shared notes), sealed under the author's own keys. Replaced with each change, with no earlier versions |
 | `note_additions` | owner (the note's organizer), note item, addition ID, when it was added | `author_index` (keyed hash of who added it, so deleting their account finds their additions on anyone's notes), `body_ciphertext` (the words, who added it, and the lines or shared screens it points at), sealed under the organizer's keys |
+| `note_links` | owner (the note's organizer), note item, link ID, when it runs out | `secret_hash` (SHA-256 of the link's secret, which is only ever in the link's fragment and a POST body), `maker_index` (keyed hash of who made it, so removing the note from theirs or deleting their account finds their links), `body_ciphertext` (who made it, as they were, and when), sealed under the organizer's keys. Deleted when it's revoked, once it's run out (upkeep), with the note, and with its maker's access or account (migration `0025_note_links.sql`) |
 | `billing_accounts` | owner, `version` | `state_ciphertext` (balance and history, under `Kservice`) |
 | `deposits` | owner, deposit, provider (`oneclick`), state (`waiting`/`arriving`/`short`/`credited`/`held`/`failed`/`expired`/`cancelled`), created, when to check next (`check_after`), last checked, when to give up | `record_ciphertext` (a `deposit` record under `Kservice`'s accounting key, below) |
 | `workspaces` | owner, `workspace_id` (the public handle, Id128), `version`, when the oldest thing in its Trash went there (`trash_since`), created | `state_ciphertext` (its name and tree: [Workspaces](#workspaces)) |
@@ -71,7 +72,7 @@ The migration runner adds `schema_migrations`, which records each applied file b
 Constraints: checked domains `alcove_id128` (22 characters) and `alcove_owner_id` (43 characters), composite
 owner-scoped foreign keys, and deferred item-head and parent-revision constraints. Deleting an owner cascades to
 everything it owns; deleting an item cascades to its revisions, its calls, its recording and pieces, its
-transcript clips, its `note_access` or `meeting_access` rows, everyone's `personal_notes` on it and its `note_additions`, and a
+transcript clips, its `note_access` or `meeting_access` rows, everyone's `personal_notes` on it, its `note_additions` and `note_links`, and a
 meeting's rings go with it. The `note_access` rows that give an account other people's notes belong to those notes'
 organizers, so deleting the account deletes them by its email index, unless another account still signs in with that
 address; on the same condition, what it answered in `meeting_access` is cleared, and the invite stays with its
@@ -87,7 +88,7 @@ both an account and a document, so they go with either: by `owner_id`, or by the
 
 | Item kind | Manifest fields |
 | --- | --- |
-| `profile` | name, email, photo URL, whether it's a demo account (`sample`), preferences (notes default, notes language, summary length, calendar and offline-recording switches, notification choices, pinned note IDs (at most eight, only notes the person has; pins to notes they no longer have are dropped when preferences are read), groups (a name and up to 50 email addresses each; sharing notes with one carries only its name into the note), and the AI model chosen by default (`model`, null for the default model; profiles written before hold it as `screenModel`, read as `model`)), colleagues invited to Alcove |
+| `profile` | name, email, photo URL, whether it's a demo account (`sample`), preferences (notes default, notes language, the summary length an earlier release let people choose (still written as it was, unread, because the release before opens a profile only with it, and still sent with the preferences, which its app reads only with it; both go in the next release), calendar and offline-recording switches, notification choices, pinned note IDs (at most eight, only notes the person has; pins to notes they no longer have are dropped when preferences are read), groups (a name and up to 50 email addresses each; sharing notes with one carries only its name into the note), and the AI model chosen by default (`model`, null for the default model; profiles written before hold it as `screenModel`, read as `model`)), colleagues invited to Alcove |
 | `meeting` | title, start, end, guests (email addresses), notes (`on`/`off`), code, status (`scheduled`/`live`/`ended`), the workspace it uses and its agenda there (`workspaceId`, `agenda`: IDs only), duration, note ID (the latest, when it was held more than once; each note names its meeting), when it's on a calendar the Google Calendar event ID and link, whether the event was the organizer's own before it became an Alcove call (adopted), and for a call in a series that repeats, the recurring event it's an occurrence of (`master`), the series it's in (`seriesId`), when that series repeats its link's code (`seriesCode`), for an occurrence of a recurring Google event, that event's ID (`recurringEventId`), which guests were added by being let in from the call's link (`addedFromLink`), once any were, whether it was started now rather than scheduled (`instant`), what the notes keep (`choices`), whether everyone joins muted (`joinMuted`), the documents brought to it by ID, the times offered, until someone picks one (`offer`: the start and end are then those of the first), and while Google is being asked for its event, until when it's claimed for that (`placing`) |
 | `note` | kind (`call`/`room`), title, start, duration, meeting ID, recording ID, status (`recording`/`pending`/`ready`), what was worked on in the call (`workedOn`: document IDs, `kind` and who, and for a board open for everyone the part of the call it was open in, `open`, null in a note stored before boards were noted; read for each person by what they can open), invited emails, when the call ended or the recording stopped (when everyone invited got the note), everyone it was shared with afterwards (each address with who shared it: their account ID, name and email as they were then; the name of their group, when it went to one; and when), summary, full summary (`details`; empty until written), decisions (text, time, state `proposed`/`confirmed`/`rejected`/`superseded`, the IDs of the lines it rests on and of any that cut against it, who disputes it, changes), open questions (text, time, state `open`/`answered`, the lines it rests on, changes), action items (text, owner when known, whether they took it on, due date as said, done, the lines it rests on, where it was written down when that's a board's Actions frame (`from`, null otherwise and in a note stored before), changes; a change says who (account, name and address), how they had the note, when, and what it was before), chapters, gaps (each stretch of the call with notes off or paused: when, and where it falls in the recording), screens (each shared-screen frame the note shows, key ones only and at most one a transcript line: where it falls in the recording and until when, the transcript line it's attached to (`line`; null on notes saved before frames were attached to lines), whose share and which, its size, how legible it was, its title, text (up to 700 characters), what it shows (`shows`, up to 300) and what changed on it (`changed`, up to 200), regions, how much it matters, the words that picked it and what the notes say it shows; the image is in `screen_frames`), the AI model chosen for the note (`model`, null for the default model; read from `screenModel` in older notes), the unencrypted work done on it (`unencrypted`: each model's ID, whether it wrote the notes or read the screens, and when; empty if none), transcript (lines with time, speaker when known, the breakout room by name when said in one, text, what the transcript couldn't vouch for (`unsure`: its words, or who said them), and corrections (`changes`: who changed its words or speaker or said it was heard right, when, and what it was before; the first and the latest 19); null while recording), each breakout room's section (its name, everyone who was in it, when it was open, its gaps, its lines with what the transcript couldn't vouch for and their corrections, and its summary, decisions, open questions, follow-ups and chapters), when the notes last read the transcript to write them (`writtenAt`), suggested questions, breakout rooms (kept with the note, so its chapters include them every time the notes are written), and follow-ups ticked during the call whose notes aren't written yet (`ticked`: each one's ID, words, owner and due date, the IDs of the lines behind it, the room it was in, who ticked it and when; empty in a note stored before calls kept them), what its call was set to keep (`keep`: the transcript and the recording) the seconds of audio recorded (`recorded`, saved when the recording stops, null before then and on a note stopped before it was saved), each segment's seconds of audio by index (`segmentSeconds`, saved then too, so shared screens keep their place once audio the call didn't keep is deleted; empty in a note stored before), and what this call came back to from earlier ones in its series (`revisits`: a decision it replaced, by this note's decision, or a question it answered, at a moment and breakout room; each names the earlier note and item by their IDs, and says who said the notes got it wrong, when someone did) |
 | `connection` | provider (`google`), the Google refresh token, the scopes granted, when it was connected |
@@ -535,8 +536,19 @@ process readable and is sealed there (`apps/api/src/features/workspaces/media.ts
 - **Reading.** `GET …/media/:media/token` gives whoever can open the document a token, and `GET /v1/media/:token` reads the
   file, because a picture or a player can't send a header ([Privacy › Files](privacy-keys-and-sessions.md#files)). Pieces are
   read in order, each digest checked before it's opened, with `Range`, `nosniff`, `no-store` and the type from the sealed
-  info, never the request. An answer to a range sends at most four pieces (16 MiB), stopping where a piece does, and says
-  so with its `Content-Range`: a browser asks again for the rest, and access is asked about again each time. Read without a
+  info, never the request. `GET /v1/media/:token?download` (`url`'s `download`) serves it as an attachment under its name,
+  whatever its type, so a picture or a film saves rather than opening: the arrow on a file and **Download** in a photo's or a
+  video's menu read it so, each file in a hidden frame of its own, half a second apart (`saveFile` in
+  `apps/web/src/features/workspace/DocumentMedia.tsx`; the app's policy has the API's origin in `frame-src`). The page itself
+  never follows the link: the API is on an origin of its own, where a link's `download` doesn't count, so the page would
+  navigate, which the browser takes for leaving it until the answer turns out to be a download, and a call on the page
+  would go. Each frame goes five minutes later, when the browser has long had its download. An answer to a player's range sends at
+  most four pieces (16 MiB), stopping where a piece does, and says so with its `Content-Range`: a browser asks again for
+  the rest, and access is asked about again each time. Every answer has a strong `ETag`, a digest of the file's sealed
+  info, which never changes and says nothing about it. A download that stopped (cut at `MEDIA_READ_MS`, or a connection
+  lost) asks for the rest with it (`If-Range`), and a download's range is answered as far as it asked, past four pieces
+  without a length, so it picks up where it was; against anything but that `ETag` the range doesn't count, and the whole
+  file comes again. Read without a
   range, a file over 16 MiB streams without a length, because Cloud Run refuses an HTTP/1 response that says it's over 32
   MiB, and asks again every four pieces. The first piece is read before anything is sent, so its failure is an ordinary
   answer; a later one breaks the connection, so a file that couldn't be read is never taken for whole.
@@ -545,7 +557,10 @@ process readable and is sealed there (`apps/api/src/features/workspaces/media.ts
   board at once would otherwise overrun what the process takes on, and an `<img>` can't try again. Video and audio use the URL,
   which a player reads by range.
 - **In a document** (`apps/web/src/features/workspace/uploads.ts`). Files go into a document as blocks: photos a browser can
-  read as one `gallery`, a film it can play as a `video`, anything else as a `file`. The block holds the space at once, with each
+  read as one `gallery`, a film it can play as a `video`, anything else as a `file`, however they come: dropped, pasted, or
+  chosen from **/** → Photos, Video or File, so a picture chosen from File is a photo. A picture that can't be shown (HEIC,
+  SVG, TIFF, or one this browser can't read) is a `file` when it's chosen from File, which is asked for a file
+  (`prepare`'s `file`); however else it comes, only **Add as a file**, below, makes it one. The block holds the space at once, with each
   file's name and, for a picture or a film, its size in pixels, and says how far it's got (`up`) as pieces go, so everyone sees
   it fill. The block carries the upload's own token (`upload`, random, nothing about the file in it), and the upload follows
   the block by that, not its ID: cut and pasted, the block has a new ID and the upload goes on into it; undone, it has 15
@@ -564,8 +579,9 @@ process readable and is sealed there (`apps/api/src/features/workspaces/media.ts
   list and reads as it always did. A tag counts while its `@First` is still in the words. Whoever's newly tagged is told through
   `mention`, with the gallery's block, or asked about first if they can't open the document, as for a tag in a line. A film's first frame goes first, as a picture of its own
   named `<title> (first frame).jpg`, which the picker never offers as a photo, so there's something to see while the film goes;
-  one whose film never arrives is deleted with its block. A photo the browser can't read isn't sent at all: its block says
-  which file, and the browser that has it offers **Add as a file**, which puts it in as a file in the block's place. What the API
+  one whose film never arrives is deleted with its block. A photo the browser can't read, dropped, pasted or chosen from
+  Photos, isn't sent at all: its block says which file, and the browser that has it offers **Add as a file**, which puts it
+  in as a file in the block's place. What the API
   refuses goes into the block as failed, and the refusal's own words to whoever sent it. That browser says in the document's
   awareness which uploads it's sending (their tokens, nothing else), so a block that says it's uploading with nobody saying so
   for 20 seconds shows as failed. The browser that sent one that failed offers Try again for ten minutes, while it still has the
@@ -625,9 +641,28 @@ and this way it runs through the same auth, origin check and tests as everything
 - **How many.** `hub.admit` counts each person's open streams on each instance, with one limit for each kind of stream: 8
   of a workspace and 8 of documents. All of them from one client address stop at 64 (`LIVE_STREAMS_PER_ADDRESS`), because
   accounts are free, which is about 32 people behind one office's address with a workspace and a document open, and everyone's together at 500 an instance (`LIVE_STREAMS_MAX`), because each holds one of the requests
-  an instance can take at once, and rings and calls need them too. The next is refused with `503 unavailable` rather
-  than closing the oldest, so a stream at work is never taken from anyone, and that's decided before anything is read. The
-  browser tries again by itself and gets in when one closes.
+  an instance can take at once, and rings and calls need them too. Past the address or the instance's limit, the next is
+  refused with `503 unavailable`, decided before anything is read, and the browser tries again by itself.
+- **A stream the browser closed.** On Cloud Run the API never hears that a browser closed a stream: it's reached over
+  HTTP/1, which doesn't pass a client's disconnect on to the container, and a ping every 25 seconds never backs up a front
+  end that keeps reading. So a closed stream would hold its place for its 280 seconds, and someone opening pages one after
+  another filled their eight within minutes (115 refusals in one call on 11 Nov). Now the browser says so: it names each
+  stream it opens, 22 characters of base64url it makes up, in `x-alcove-stream` (`LIVE_STREAM_HEADER`, never in a URL),
+  and when it stops reading one for any reason but the API ending it or turning it away (it closed the page or the board,
+  gave up on a quiet or hanging try, or the page went), it sends `POST …/live/end` with that name, as a keepalive request
+  so it goes as the page does. The API ends that stream of the asker's at once and gives its place back (`hub.end`, scoped
+  to the person, so naming someone else's ends nothing, and the answer is the same either way). A name is never logged.
+  It takes an account, as every route past the sign-in check does, and keeps no receipt: a guest's call pass alone is
+  refused with `401` before anything's read, so a guest's places come back by the rule below, or when the API lets go.
+  It reaches only the instance that has the stream; with more than one instance, one asked elsewhere waits for the rule
+  below.
+- **At a person's limit,** the next of that kind ends their oldest stream of it to make room, as rings do: the one likeliest
+  to be a tab that went without anyone hearing, such as one whose page crashed. It just ends, as on the clock, so a tab
+  that's still there opens another at once. Only a stream open for 20 seconds makes room (`LIVE_MAKE_ROOM_MS`), and room is
+  made for each person, for each kind, at most once in those 20 seconds: until then the next is refused with `503`, the tab
+  that just gave up its place included, and its browser tries again, later each time. So someone with more tabs than places
+  takes turns slowly, one stream every 20 seconds or so, rather than round and round, each tab opened again ending the next
+  oldest and every one of them a document worker's sync.
 - **A workspace's stream** (`GET /v1/workspaces/:id/live`). Lines: `tree`, whole, first and whenever what this reader sees
   changes; `presence`, everyone here that they can know of, whole, whenever that changes; `mentions`, their authorized unread tags, whole
   ([Tags](#tags)); `access`, when their role changes, just before the `tree` that shows it; `ping`, every 25 seconds; `closed`, when
@@ -675,10 +710,18 @@ and this way it runs through the same auth, origin check and tests as everything
   at most. A notice about the workspace does it at once. A stream that finds nothing left for its reader first asks who
   they are now, because a new address from their provider moves what they have to another hash.
 - **Letting go.** A stream ends without `closed` when the API lets go (after 280 seconds, inside Cloud Run's 300-second
-  request timeout, so it's never cut) or its instance shuts down. The browser opens it again: quietly when it just ended,
-  showing `reconnecting` when it failed, keeping what it last showed either way. A line that can't be written within a ping
-  ends a stream too, which is how one whose browser went as it opened is let go of. A browser that hears nothing for a
-  minute takes the connection for dead.
+  request timeout, so it's never cut), its browser says it closed it, its person needs its place, or its instance shuts
+  down. The browser opens it again: quietly when it just ended, showing `reconnecting` when it failed, keeping what it last
+  showed either way. A line that can't be written within a ping ends a stream too, which is how one whose browser went as it
+  opened is let go of. A browser that hears nothing for a minute takes the connection for dead, and says it closed it.
+- **Trying again.** After a failure a session waits 0.5, 1, 2, 4, 8, then 10 seconds between tries, starting over after
+  any try that lasted a second. Asked to (`DocSession.retry`, `WorkspaceLive.retry`: Try now, in the app), it tries at once,
+  cutting a wait short and giving up a try that's hanging; a try given up this way doesn't count as a failure. When there's
+  only reason to think it would connect now (the browser comes back online, the tab comes back into view, or, in a call,
+  the workspace or the board is opened again: `wake`), it cuts a wait short and nothing more: a try that's under way carries
+  on, because a first open waits its turn for a document worker (two on an instance, shared by everyone, up to 20 seconds
+  a job), and giving it up wastes that job and puts it at the back again, so someone switching tabs while a big page opens
+  could keep it from ever opening. Either way, edits waiting for their own next try go at once.
 
 A credit top-up is a sealed `deposit` record, header `{ v: 1, kind: 'deposit', ownerId, depositId, keyVersion: '1' }`,
 under `Kservice`'s accounting key like the billing state, so the watcher opens it without anyone signed in: the
@@ -768,17 +811,18 @@ readable.
 - **A board in a call** is a document in a workspace like any other. The call's sealed state says which is open in each part
   of the call and which boards it lets everyone into (`board`): where each is, who opened or decided it by their name, address and
   seat, and the seats and addresses each has been worked out for, and nothing about what's on it. An open board's entry keeps its
-  timer (when it runs out, how long it was set for, and who started it) and its vote (which frame, how many votes each, who
-  started it, whether it's ended, and which stickies each person voted for, by their account or their person in the call), only
-  as IDs. It also lists each board made for a breakout room, by room, and whether everyone invited has it by address yet
-  (`rooms`), and what's coming back from rooms that have closed (`landing`), with how many tries at landing it have failed
-  (`tries`). Open rooms keep what they were opened with to work on (`breakouts.open.board`), and a room's board keeps its call
+  vote (which frame, how many votes each, who started it, whether it's ended, and which stickies each person voted for, by
+  their account or their person in the call), only as IDs. It also lists each board made for a breakout room, by room, and
+  whether everyone invited has it by address yet (`rooms`), and what's coming back from rooms that have closed (`landing`),
+  with how many tries at landing it have failed (`tries`). Open rooms keep what they were opened with to work on
+  (`breakouts.open.board`), and a room's board keeps its call
   as an item (`StoredItem.room`) until the call has kept it for everyone invited, so it isn't stranded meanwhile; then the mark
   goes, and it's a restricted board like any other. It all goes when the call ends. A call stored before boards were kept reads
-  as having none, an open board stored before timers and votes reads as having neither, rooms open from before rooms had boards
+  as having none, an open board stored before votes reads as having none, and one stored with a board timer, which boards no
+  longer have, keeps it only until it's next saved, unread; rooms open from before rooms had boards
   read as having none to work on, a landing stored before its tries were counted reads as having failed none, and an item from
   before reads as nobody's room's ([Calls and recordings › A board in a call](calls-and-recordings.md#a-board-in-a-call),
-  [A board's timer and vote](calls-and-recordings.md#a-boards-timer-and-vote)).
+  [A board's vote](calls-and-recordings.md#a-boards-vote)).
 - **Series.** What a series carries over isn't stored: it's read on each request from the meetings that share its
   ID and the notes the reader has ([Notes and inference › Series](notes-and-inference.md#series)). What a later call
   came back to is in that later note's manifest (`revisits`), and notes written before it read as having none. One scheduled to
@@ -852,6 +896,9 @@ and for how long](notes-and-inference.md#whats-kept-and-for-how-long)):
   from theirs, with their account, and at the end of the call if they were taken off the invite.
 - **What's added to the shared notes** (`note_additions`) lasts until it's taken back, the note goes or its author's
   account is deleted. It stays when its author removes the note.
+- **A link to a call's notes** (`note_links`) lasts until it's revoked or runs out (seven days), the note goes, or its
+  maker removes the note from theirs or deletes their account. Whoever it gave the notes to keeps them, as with sharing by
+  address.
 - **What's in a workspace's Trash** stays 30 days, unless someone deletes it for good first.
 - **A document's log** lasts until it compacts, past 200 updates or 1 MiB; what was deleted goes then. **Its versions** last
   until the document does, or until newer ones push them out past 64 MiB.

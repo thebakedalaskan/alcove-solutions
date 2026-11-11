@@ -4,11 +4,11 @@
  * then the microphone it will use and how loud that is. The page never opens the microphone by itself: only "Check the
  * level" does, until Stop is pressed or the page is left. The camera has no part here.
  */
-import { Button, Icon, Kbd, RecMeter, RecorderSun, Select, Tooltip, cn, useVoice, type SelectOption } from '@alcove/ui';
+import { Button, Icon, Kbd, RecMeter, RecorderSun, Select, Tooltip, cn, useVoice } from '@alcove/ui';
 import { useNavigate } from '@tanstack/react-router';
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import { troubles } from '~/features/call/media/access';
-import { plainName, readPrefs, rememberDevice, useDevices, type Device } from '~/features/call/media/devices';
+import { deviceOptions, readPrefs, rememberDevice, useDevices } from '~/features/call/media/devices';
 import { LocalMedia } from '~/features/call/media/media';
 import { overlayOpen, typing } from '~/lib/keys';
 import { sessions, useLive, useOnline } from '~/lib/live';
@@ -71,22 +71,6 @@ export function NightRecorder({ keeps }: { keeps: boolean }) {
   );
 }
 
-/** Chrome lists its default and communications microphones again under those names, beside the real ones. */
-const STANDS_IN = new Set(['default', 'communications']);
-const nameOf = (d: Device) => plainName(d.label) || d.label;
-
-/** The microphones to choose from, each once, by the name people know it by. */
-function micOptions(list: Device[]): SelectOption<string>[] {
-  const real = list.filter((d) => !STANDS_IN.has(d.id));
-  return (real.length ? real : list).map((d) => ({ value: d.id, label: nameOf(d), icon: 'mic' }));
-}
-/** Which option `id` is: itself, or for the browser's default (or no choice yet), the microphone that is the default now. */
-function optionFor(id: string | undefined, list: Device[], options: SelectOption<string>[]): string | undefined {
-  if (id && options.some((o) => o.value === id)) return id;
-  const stand = list.find((d) => d.id === (id && STANDS_IN.has(id) ? id : 'default'));
-  return (stand && options.find((o) => o.label === nameOf(stand))?.value) ?? options[0]?.value;
-}
-
 /**
  * The microphone to record with, chosen in this browser (the stage recorder and calls use the same choice), and its
  * check. Choosing one while it's closed only remembers it; "Check the level" opens it, and Stop lets go of it.
@@ -103,11 +87,11 @@ function useMicCheck() {
   const devices = useDevices(m.camera);
   useEffect(() => () => media.stop(), [media]);
 
-  const options = micOptions(devices.mic);
+  // The same list as the call's: each microphone once, the system's saying so, and Follow your system while one is pinned.
+  const { value, options } = deviceOptions(devices.mic, (checking && m.micId) || chosen, 'mic');
   const newest = () => m.changes.at(-1)?.n ?? 0;
   return {
-    media, checking, options,
-    value: optionFor((checking && m.micId) || chosen, devices.mic, options),
+    media, checking, options, value,
     hearing: checking && m.mic,
     trouble: checking ? troubles(m, ['mic'])[0] : undefined,
     said: checking ? m.changes.filter((c) => c.kind === 'mic' && c.n > seen).at(-1) : undefined,

@@ -4,7 +4,7 @@
  * dropped connections, restarts and compactions, and nothing for anyone who can't open it.
  */
 import {
-  AlcoveApiError, DOC_SEED, DOC_UPDATE_TYPE, DocLiveEventSchema, MAX_DOC_BYTES, MAX_DOC_ITEMS, MAX_DOC_UPDATE_BYTES, OPERATION_HEADER, toBase64Url, type CallState, type DocLiveEvent, type DocSession, type DocSessionOptions, type DocStatus, type ItemKind,
+  AlcoveApiError, DOC_SEED, DOC_UPDATE_TYPE, DocLiveEventSchema, LIVE_STREAM_HEADER, MAX_DOC_BYTES, MAX_DOC_ITEMS, MAX_DOC_UPDATE_BYTES, OPERATION_HEADER, toBase64Url, type CallState, type DocLiveEvent, type DocSession, type DocSessionOptions, type DocStatus, type ItemKind,
   type KeptUpdate, type KeptUpdates, type WorkspaceHere, type WorkspaceLive, type WorkspaceRole
 } from '@alcove/api';
 import { createHttpApi } from '@alcove/api-http';
@@ -160,13 +160,14 @@ function keepStore() {
   };
   return { keep, kept };
 }
-/** Reads a document's stream as a browser does, keeping each line. */
-function stream(base: string, f: typeof fetch, id: string, doc: string, after = 0, pass?: string) {
+/** Reads a document's stream as a browser does, keeping each line. `name`: what the browser calls it, to say when it closes it. */
+function stream(base: string, f: typeof fetch, id: string, doc: string, after = 0, pass?: string, name?: string) {
   const lines: DocLiveEvent[] = [];
   const stop = new AbortController();
   const out = { lines, status: 0, ended: false, stop: () => stop.abort() };
+  const headers: Record<string, string> = { ...(pass ? { 'x-alcove-call': pass } : {}), ...(name ? { [LIVE_STREAM_HEADER]: name } : {}) };
   void (async () => {
-    const res = await f(`${base}/v1/workspaces/${id}/documents/${doc}/live?after=${after}`, { signal: stop.signal, ...(pass ? { headers: { 'x-alcove-call': pass } } : {}) });
+    const res = await f(`${base}/v1/workspaces/${id}/documents/${doc}/live?after=${after}`, { signal: stop.signal, headers });
     out.status = res.status;
     if (!res.body || !res.ok) { out.ended = true; return; }
     const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
@@ -183,6 +184,35 @@ function stream(base: string, f: typeof fetch, id: string, doc: string, after = 
     out.ended = true;
   })().catch(() => { out.ended = true; });
   return out;
+}
+/**
+ * A browser behind a front end that never tells the API it went, as Cloud Run over HTTP/1 doesn't: a stream it stops
+ * reading stays open at the API, which the front end reads to its end whoever's listening.
+ */
+function behindAFrontEnd(f: typeof fetch): typeof fetch {
+  return async (input, init) => {
+    const url = String(input);
+    if (!/\/live(\?|$)/.test(url) || init?.method === 'POST') return f(input, init);
+    const signal = init?.signal ?? null;
+    const res = await f(input, { ...init, signal: null });
+    if (!res.body) return res;
+    const [browser, front] = res.body.tee();
+    void front.pipeTo(new WritableStream()).catch(() => undefined);
+    const reader = browser.getReader();
+    const body = new ReadableStream<Uint8Array>({
+      start(c) {
+        const stopped = () => { try { c.error(new DOMException('This browser stopped reading.', 'AbortError')); } catch { /* it had ended */ } void reader.cancel().catch(() => undefined); };
+        if (signal?.aborted) stopped();
+        else signal?.addEventListener('abort', stopped, { once: true });
+      },
+      async pull(c) {
+        const { value, done } = await reader.read();
+        try { if (done) c.close(); else c.enqueue(value); } catch { /* the browser stopped reading */ }
+      },
+      cancel() { void reader.cancel().catch(() => undefined); }
+    });
+    return new Response(body, { status: res.status, statusText: res.statusText, headers: res.headers });
+  };
 }
 /** Bytes as a request body takes them. */
 const bytesOf = (u: Uint8Array): Uint8Array<ArrayBuffer> => new Uint8Array(u);
@@ -897,21 +927,284 @@ describe('streams', () => {
     }
   });
 
-  it('are capped per person on an instance, and the next opens once one closes', async () => {
+  it('hold eight a person on an instance: the next ends their oldest once it has been open a while, and nobody else’s, once in that while', async () => {
+    const ann = await account();
+    const theo = await account();
+    const id = await workspace(ann, 'Ours', [[theo, 'edit']]);
+    const doc = await make(ann, id, 'document', 'Doc');
+    const second = await h.secondServer({ LIVE_MAKE_ROOM_MS: 8000 });
+    const live = (who: Account) => who.fetch(`${second.baseUrl}/v1${docPath(id, doc)}/live`, { signal: AbortSignal.timeout(4000) }).then((r) => { void r.body?.cancel(); return r.status; });
+    // Eight a browser behind Cloud Run closed without the API hearing: still open, as far as it knows. The first is open before
+    // the rest are asked for, so it's the oldest.
+    const since = Date.now();
+    const first = stream(second.baseUrl, ann.fetch, id, doc);
+    await until(() => first.lines.length > 0, 'the first stream');
+    const held = [first, ...Array.from({ length: 7 }, () => stream(second.baseUrl, ann.fetch, id, doc))];
+    const theirs = stream(second.baseUrl, theo.fetch, id, doc);
+    try {
+      await until(() => [...held, theirs].every((s) => s.lines.length > 0), 'nine streams');
+      const allOpen = Date.now();
+      // None of them has been open long enough to be taken for gone: one more waits, and its browser tries again by itself.
+      expect(await live(ann)).toBe(503);
+      await rest(since + 8100 - Date.now());
+      // Now the oldest makes room, and the ninth opens at once.
+      const ninth = stream(second.baseUrl, ann.fetch, id, doc);
+      await until(() => ninth.lines.length > 0, 'the ninth to open');
+      expect(ninth.status).toBe(200);
+      await until(() => held[0]?.ended === true, 'the oldest to end');
+      // It just ends, as a stream does on the clock, so a tab that's still there opens another.
+      expect(held[0]?.lines.some((l) => l.type === 'closed')).toBe(false);
+      expect(held.slice(1).every((s) => !s.ended)).toBe(true);
+      expect(theirs.ended).toBe(false);
+      // Every other one of theirs has been open a while too now, but room was made a moment ago: the next is refused, and
+      // ends nothing, as the tab that gave up its place is when it opens it again, rather than ending the next oldest in turn.
+      await rest(allOpen + 8100 - Date.now());
+      expect(await live(ann)).toBe(503);
+      await rest(200);
+      expect(held.slice(1).every((s) => !s.ended)).toBe(true);
+      expect(ninth.ended).toBe(false);
+      expect(theirs.ended).toBe(false);
+      ninth.stop();
+    } finally {
+      for (const s of [...held, theirs]) s.stop();
+      await second.close();
+    }
+  });
+
+  it('take turns at a person’s limit: the tab whose stream made room backs off, and nobody else’s ends until a while has passed', async () => {
     const ann = await account();
     const id = await workspace(ann, 'Ours');
     const doc = await make(ann, id, 'document', 'Doc');
-    const second = await h.secondServer();
-    const streams = Array.from({ length: 8 }, () => stream(second.baseUrl, ann.fetch, id, doc));
+    const second = await h.secondServer({ LIVE_MAKE_ROOM_MS: 5000 });
+    // Each of Ann's tabs with the document open is a browser of its own, counting how often it opens the document's stream.
+    const tabs: { s: DocSession; opens: () => number }[] = [];
+    const openTab = async () => {
+      let opens = 0;
+      const counting: typeof fetch = (input, init) => { if (String(input).includes(`/documents/${doc}/live?`)) opens++; return ann.fetch(input, init); };
+      const s = await createHttpApi({ baseUrl: second.baseUrl, fetch: counting }).workspaces.document(id, doc);
+      const tab = { s, opens: () => opens };
+      tabs.push(tab);
+      await s.ready;
+      return tab;
+    };
+    const status = (t: { s: DocSession }) => t.s.getSnapshot().status;
     try {
-      await until(() => streams.every((s) => s.lines.length > 0), 'eight streams');
-      const over = await ann.fetch(`${second.baseUrl}/v1${docPath(id, doc)}/live`);
-      expect(over.status).toBe(503);
-      streams[0]?.stop();
-      await until(async () => (await ann.fetch(`${second.baseUrl}/v1${docPath(id, doc)}/live`, { signal: AbortSignal.timeout(1000) }).then((r) => { void r.body?.cancel(); return r.status; })) === 200, 'a place to free up');
+      // Eight, one after another, so the first is the oldest, then long enough for any of them to make room.
+      for (let i = 0; i < 8; i++) await openTab();
+      const [oldest, next, ...others] = tabs;
+      if (!oldest || !next) throw new Error('no tabs');
+      await rest(5100);
+      // A ninth makes room: the oldest tab's stream ends, and that tab opens it again at once. Room was made a moment ago, so
+      // it's refused, and waits a little longer each time.
+      const ninth = await openTab();
+      await until(() => status(oldest) === 'offline', 'the oldest tab to be turned away');
+      await rest(1000);
+      // Nobody else's stream ended meanwhile: each tab opened its own once, and is up to date.
+      expect(oldest.opens()).toBeGreaterThanOrEqual(2);
+      for (const t of [next, ...others, ninth]) {
+        expect(t.opens()).toBe(1);
+        expect(status(t)).toBe('saved');
+      }
+      // Once a while has passed, it gets back in by making room in its turn, and only the next oldest gives up its place.
+      await until(() => status(oldest) === 'saved', 'the oldest tab to be back');
+      await until(() => status(next) === 'offline', 'the next oldest to be turned away');
+      for (const t of [...others, ninth]) {
+        expect(t.opens()).toBe(1);
+        expect(status(t)).toBe('saved');
+      }
     } finally {
-      for (const s of streams) s.stop();
+      for (const t of tabs) t.s.close();
       await second.close();
+    }
+  });
+
+  it('end at once when their browser says it closed them, by the name it gave them, and only its own', async () => {
+    const ann = await account();
+    const theo = await account();
+    const id = await workspace(ann, 'Ours', [[theo, 'edit']]);
+    const doc = await make(ann, id, 'document', 'Doc');
+    // None is taken for gone: only saying so frees a place.
+    const second = await h.secondServer({ LIVE_MAKE_ROOM_MS: 600_000 });
+    const names = Array.from({ length: 8 }, () => madeUp().slice(0, 22));
+    const held = names.map((name) => stream(second.baseUrl, ann.fetch, id, doc, 0, undefined, name));
+    const ended = (who: Account, name: string | undefined) => post(who, `${docPath(id, doc)}/live/end`, { stream: name }, second.baseUrl);
+    try {
+      await until(() => held.every((s) => s.lines.length > 0), 'eight streams');
+      // Someone else naming it ends nothing, and is told the same as anyone.
+      const theirs = await ended(theo, names[3]);
+      expect(theirs.status).toBe(200);
+      expect(await theirs.json()).toEqual({ said: true });
+      await rest(200);
+      expect(held.every((s) => !s.ended)).toBe(true);
+      // Its own browser does: it ends now, and its place is free for the next.
+      expect((await ended(ann, names[3])).status).toBe(200);
+      await until(() => held[3]?.ended === true, 'the stream it closed to end', 2000);
+      expect(held.filter((s) => s.ended)).toHaveLength(1);
+      const next = stream(second.baseUrl, ann.fetch, id, doc);
+      await until(() => next.lines.length > 0, 'the next to open', 2000);
+      next.stop();
+      // A name is a name a browser makes up, and nothing else.
+      expect((await ended(ann, 'not a name')).status).toBe(400);
+      // The workspace's own stream says so the same way.
+      const space = madeUp().slice(0, 22);
+      const tree = await ann.fetch(`${second.baseUrl}/v1/workspaces/${id}/live`, { headers: { [LIVE_STREAM_HEADER]: space } });
+      const reader = tree.body?.getReader();
+      if (!reader) throw new Error('no stream');
+      await reader.read();
+      expect((await post(ann, `/workspaces/${id}/live/end`, { stream: space }, second.baseUrl)).status).toBe(200);
+      for (; ;) if ((await reader.read()).done) break;
+      const logs = h.logs.join('');
+      for (const name of [...names, space]) expect(logs.includes(name), 'a stream’s name in the logs').toBe(false);
+    } finally {
+      for (const s of held) s.stop();
+      await second.close();
+    }
+  });
+
+  it('free each place as its browser closes the document, though the API never hears the browser go', async () => {
+    const ann = await account();
+    const id = await workspace(ann, 'Ours');
+    const docs = await Promise.all(Array.from({ length: 12 }, (_, i) => make(ann, id, 'document', `Page ${i + 1}`)));
+    // None is taken for gone, so only the browser saying it closed one frees its place, as on Cloud Run before any of it ages.
+    const second = await h.secondServer({ LIVE_MAKE_ROOM_MS: 600_000 });
+    const api = createHttpApi({ baseUrl: second.baseUrl, fetch: behindAFrontEnd(ann.fetch) });
+    try {
+      // Clicking down the list: each page opens, and the last one closes.
+      for (const doc of docs) {
+        const s = await api.workspaces.document(id, doc);
+        const asked = Date.now();
+        await s.ready;
+        expect(Date.now() - asked, 'a page waiting for a place').toBeLessThan(3000);
+        expect(s.getSnapshot().status).toBe('saved');
+        s.close();
+      }
+    } finally {
+      await second.close();
+    }
+  });
+
+  it('try again at once when asked, rather than after their wait, once Alcove will take them', async () => {
+    const ann = await account();
+    const id = await workspace(ann, 'Ours');
+    const doc = await make(ann, id, 'document', 'Doc');
+    const second = await h.secondServer({ LIVE_MAKE_ROOM_MS: 600_000 });
+    let tries = 0;
+    let treeTries = 0;
+    const counting: typeof fetch = (input, init) => {
+      const url = String(input);
+      if (url.includes(`/documents/${doc}/live?`)) tries++;
+      else if (url.endsWith(`/workspaces/${id}/live`)) treeTries++;
+      return ann.fetch(input, init);
+    };
+    const api = createHttpApi({ baseUrl: second.baseUrl, fetch: counting });
+    const held = Array.from({ length: 8 }, () => stream(second.baseUrl, ann.fetch, id, doc));
+    const trees = Array.from({ length: 8 }, () => {
+      const stop = new AbortController();
+      void ann.fetch(`${second.baseUrl}/v1/workspaces/${id}/live`, { signal: stop.signal }).then((r) => r.body?.pipeTo(new WritableStream())).catch(() => undefined);
+      return stop;
+    });
+    let s: DocSession | null = null;
+    let w: WorkspaceLive | null = null;
+    try {
+      await until(() => held.every((x) => x.lines.length > 0), 'eight streams');
+      s = await api.workspaces.document(id, doc);
+      w = api.workspaces.live(id);
+      // Refused, and each tries again a little later each time: after the fourth it waits about four seconds.
+      await until(() => tries >= 4 && s?.getSnapshot().status === 'offline', 'four tries at the document', 10_000);
+      await until(() => treeTries >= 4 && w?.getSnapshot().status === 'reconnecting', 'four tries at the workspace', 10_000);
+      held[0]?.stop();
+      trees[0]?.abort();
+      await rest(100);
+      const asked = Date.now();
+      s.retry();
+      w.retry();
+      await s.ready;
+      await until(() => w?.getSnapshot().status === 'live', 'the workspace to be live', 2000);
+      expect(Date.now() - asked).toBeLessThan(1500);
+      expect(s.getSnapshot().status).toBe('saved');
+      // Live, there's nothing to try: it carries on as it is.
+      const opened = tries;
+      s.retry();
+      await rest(300);
+      expect(tries).toBe(opened);
+    } finally {
+      s?.close();
+      w?.close();
+      for (const x of held) x.stop();
+      for (const t of trees) t.abort();
+      await second.close();
+    }
+  });
+
+  it('try at once when woken while they wait, but leave a try that’s under way to carry on: only Try now gives one up', async () => {
+    const ann = await account();
+    const id = await workspace(ann, 'Ours');
+    const doc = await make(ann, id, 'document', 'Doc');
+    // The streams' network: down, so every try fails at once; up; or holding each try with no answer until it's given up, as
+    // a first open waiting its turn for a document worker looks to a browser, or one that's hanging.
+    let net: 'down' | 'up' | 'holding' = 'down';
+    const tries = { doc: 0, tree: 0 };
+    const streams: typeof fetch = (input, init) => {
+      const url = String(input);
+      const which = url.includes(`/documents/${doc}/live?`) ? 'doc' : url.endsWith(`/workspaces/${id}/live`) ? 'tree' : null;
+      if (!which) return ann.fetch(input, init);
+      tries[which]++;
+      if (net === 'down') return Promise.reject(new TypeError('The network is down.'));
+      if (net === 'up') return ann.fetch(input, init);
+      return new Promise<Response>((_, reject) => { init?.signal?.addEventListener('abort', () => reject(new DOMException('The try was given up.', 'AbortError')), { once: true }); });
+    };
+    const api = createHttpApi({ baseUrl: h.baseUrl, fetch: streams });
+    const opened = new Set<{ close(): void }>();
+    const done = (...xs: { close(): void }[]) => { for (const x of xs) { x.close(); opened.delete(x); } };
+    try {
+      // Down: each fails, and tries again a little later each time. After the fourth, it waits about four seconds.
+      const s = await api.workspaces.document(id, doc);
+      const w = api.workspaces.live(id);
+      opened.add(s).add(w);
+      await until(() => tries.doc >= 4 && tries.tree >= 4, 'four tries at each', 10_000);
+      await rest(50);
+      expect(s.getSnapshot().status).toBe('offline');
+      expect(w.getSnapshot().status).toBe('reconnecting');
+      // The browser's back online, or the tab's back in view: each tries at once rather than after its wait.
+      net = 'up';
+      const woken = Date.now();
+      s.wake();
+      w.wake();
+      await s.ready;
+      await until(() => w.getSnapshot().status === 'live', 'the workspace to be live', 2000);
+      expect(Date.now() - woken).toBeLessThan(1500);
+      expect(s.getSnapshot().status).toBe('saved');
+      done(s, w);
+
+      // Opening again, each try is held with no answer yet. Woken, nothing is given up, whatever the network does meanwhile.
+      net = 'holding';
+      const before = { ...tries };
+      const again = await api.workspaces.document(id, doc);
+      const tree = api.workspaces.live(id);
+      opened.add(again).add(tree);
+      let ready = false;
+      void again.ready.then(() => { ready = true; }, () => undefined);
+      await until(() => tries.doc === before.doc + 1 && tries.tree === before.tree + 1, 'the first tries');
+      again.wake();
+      tree.wake();
+      net = 'up';
+      again.wake();
+      tree.wake();
+      await rest(500);
+      expect([tries.doc, tries.tree]).toEqual([before.doc + 1, before.tree + 1]);
+      expect(ready).toBe(false);
+      expect(again.getSnapshot().status).toBe('saved');
+      expect(tree.getSnapshot().status).toBe('connecting');
+      // Try now gives up the try that's under way, and the next one opens at once.
+      const asked = Date.now();
+      again.retry();
+      tree.retry();
+      await again.ready;
+      await until(() => tree.getSnapshot().status === 'live', 'the workspace to be live', 2000);
+      expect(Date.now() - asked).toBeLessThan(1500);
+      expect([tries.doc, tries.tree]).toEqual([before.doc + 2, before.tree + 2]);
+    } finally {
+      done(...opened);
     }
   });
 
@@ -1753,6 +2046,8 @@ describe('versions', () => {
 });
 
 describe('reading a document on the server', () => {
+  /** A day this year, which a follow-up's words say without its year. */
+  const DAY = `${new Date().getUTCFullYear()}-11-06`;
   /** A document with one of everything that holds words, as y-prosemirror stores it. */
   async function full(who: Account, id: string, name: string) {
     const doc = await make(who, id, 'document', name);
@@ -1766,7 +2061,7 @@ describe('reading a document on the server', () => {
     before.insert(0, 'Send the brief to ');
     const after = new Y.XmlText();
     after.insert(0, ' by ');
-    todo.insert(0, [before, inline('mention', { id: 'p1', name: 'Priya Rao' }), after, inline('dateChip', { date: '2026-11-06' })]);
+    todo.insert(0, [before, inline('mention', { id: 'p1', name: 'Priya Rao' }), after, inline('dateChip', { date: DAY })]);
     const plain = addBlock(s, 'line', 'todo2', { kind: 'todo' });
     const nobodys = new Y.XmlText();
     nobodys.insert(0, 'Nobody’s yet');
@@ -1815,15 +2110,24 @@ describe('reading a document on the server', () => {
     expect(text.title).toBe('Plan title');
     expect(text.blocks).toEqual(expect.arrayContaining([
       { id: 'first', type: 'paragraph', text: 'A first line' }, { id: 'h1', type: 'heading', text: 'A heading' },
-      { id: 'todo1', type: 'todo', text: 'Send the brief to Priya Rao by 2026-11-06' }, { id: 'tg', type: 'toggle', text: 'Toggle summary\nToggle body' },
+      { id: 'todo1', type: 'todo', text: `Send the brief to Priya Rao by ${DAY}` }, { id: 'tg', type: 'toggle', text: 'Toggle summary\nToggle body' },
       { id: 'tb', type: 'table', text: 'Cell one\tCell two' }, { id: 'lv', type: 'live', text: 'Decided: ship it' }, { id: 'mo', type: 'moment', text: 'What was said' },
       { id: 'fi', type: 'file', text: 'brief.pdf' }, { id: 'ga', type: 'gallery', text: 'A caption Another' }, { id: 'lk', type: 'paragraph', text: 'See ' }
     ]));
     expect(documentTodos(read, 'document')).toEqual([
       // A follow-up's words read as a sentence: a tag inside one is part of it, and a date is a day.
-      { block: 'todo1', text: 'Send the brief to Priya Rao by 6 Nov', done: false, mentions: [{ id: 'p1', name: 'Priya Rao' }], dates: ['2026-11-06'] },
+      { block: 'todo1', text: 'Send the brief to Priya Rao by 6 Nov', done: false, mentions: [{ id: 'p1', name: 'Priya Rao' }], dates: [DAY] },
       { block: 'todo2', text: 'Nobody’s yet', done: true, mentions: [], dates: [] }
     ]);
+    // A date outside this year says its year, as its tag does on the page.
+    const ahead = { doc: new Y.Doc() };
+    Y.applyUpdate(ahead.doc, Y.encodeStateAsUpdate(read));
+    const later = addBlock(ahead, 'line', 'todo3', { kind: 'todo' });
+    const words = new Y.XmlText();
+    words.insert(0, 'Renew the domain by ');
+    const next = new Date().getUTCFullYear() + 1;
+    later.insert(0, [words, inline('dateChip', { date: `${next}-02-05` })]);
+    expect(documentTodos(ahead.doc, 'document').find((t) => t.block === 'todo3')?.text).toBe(`Renew the domain by 5 Feb ${next}`);
     // A retired block isn't on the page, and a todo in one isn't anyone's, unless an edit landed in it after: then it's a block.
     const after = await open(ann, id, doc);
     const old = addBlock(after, 'line', 'old', { kind: 'todo', gone: 'first' });
@@ -4198,5 +4502,66 @@ describe('lines nobody reads', () => {
     } finally {
       for (const s of stops) s.abort();
     }
+  });
+});
+
+describe('a code block’s language', () => {
+  /** A block's element by its ID, on the page: what a reader would see. */
+  const elementIn = (s: { doc: Y.Doc }, block: string) => s.doc.getXmlFragment('content').toArray().find((el): el is Y.XmlElement => el instanceof Y.XmlElement && el.getAttribute('id') === block && !isGone(el));
+  const langIn = (s: { doc: Y.Doc }, block: string): unknown => elementIn(s, block)?.getAttribute('lang');
+  /** Code, as the editor writes a block of it: its words, and `lang` once someone's picked a language. */
+  function addCode(s: { doc: Y.Doc }, block: string, text: string, lang?: string): Y.XmlElement {
+    const el = addBlock(s, 'code', block, lang ? { lang } : {});
+    el.insert(0, [new Y.XmlText(text)]);
+    return el;
+  }
+
+  it('keeps it through a version, a restore, Duplicate and a move to another document, and code from before it reads as it did', async () => {
+    const ann = await account();
+    const id = await workspace(ann, 'Ours');
+    const doc = await make(ann, id, 'document', 'Bill');
+    const a = await open(ann, id, doc);
+    const py = addCode(a, 'py', 'def bill(minutes):\n    return minutes * 2', 'python');
+    // Code from before languages: no `lang` at all.
+    addCode(a, 'old', 'plain words, as they were');
+    await saved(a);
+
+    // A version keeps it, as an attribute of the block like any other.
+    const kept = await keepVersion(await heldBy(ann, id), doc, { reason: 'call', callId: madeUp() });
+    if (!kept) throw new Error('no version kept');
+    const past = { doc: new Y.Doc() };
+    Y.applyUpdate(past.doc, (await ann.api.workspaces.version(id, doc, kept)).update);
+    expect([langIn(past, 'py'), langIn(past, 'old')]).toEqual(['python', undefined]);
+
+    // Another language since, and restoring the version brings Python back, for everyone.
+    setAttr(py, 'lang', 'javascript');
+    await saved(a);
+    await ann.api.workspaces.restoreVersion(id, doc, kept);
+    await until(() => langIn(a, 'py') === 'python', 'the version’s language to come back');
+    expect(langIn(await open(ann, id, doc), 'py')).toBe('python');
+
+    // A copy of the document holds it too.
+    const copy = await ann.api.workspaces.items.duplicate(id, doc);
+    expect(langIn(await open(ann, id, copy.id), 'py')).toBe('python');
+
+    // Sent to another document as the editor sends a block: in there with its attributes, and retired here.
+    const other = await make(ann, id, 'document', 'Another');
+    const b = await open(ann, id, other);
+    const here = elementIn(a, 'py');
+    if (!here) throw new Error('no block');
+    const lang: unknown = here.getAttribute('lang');
+    addCode(b, 'moved', words(a, 'py'), typeof lang === 'string' ? lang : undefined);
+    await saved(b);
+    a.doc.transact(() => { retireBlock(here, newBlockId(), ''); });
+    await saved(a);
+    const there = await open(ann, id, other);
+    expect([langIn(there, 'moved'), words(there, 'moved')]).toEqual(['python', 'def bill(minutes):\n    return minutes * 2']);
+    expect(elementIn(await open(ann, id, doc), 'py')).toBeUndefined();
+
+    // What came before languages opens unchanged, and the server reads every code block's words as it always has.
+    const again = await open(ann, id, doc);
+    expect([langIn(again, 'old'), words(again, 'old')]).toEqual([undefined, 'plain words, as they were']);
+    const read = await serverDoc(await heldBy(ann, id), other);
+    expect(documentText(read, 'document').blocks.find((x) => x.id === 'moved')).toEqual({ id: 'moved', type: 'code', text: 'def bill(minutes):\n    return minutes * 2' });
   });
 });

@@ -1,24 +1,26 @@
 /* Home: the sunset with Start a call in the middle, and what's yours on the water (docs/design/pages.md, user-flows 3). */
 import type { Meta } from '@storybook/react-vite';
 import { screen } from 'storybook/test';
-import { standIn } from '../../src/api/standin';
 import { setOnline } from '../../src/browser';
 import { phone } from '../../src/call';
 import { changing, page, pages, type PageArgs, type PageStory } from '../../src/page';
 import { on } from '../../src/world/clock';
 import { STATES, withNotes } from '../../src/world/states';
-import { swap } from '../journeys/play';
-import { invited, noCalendar, takenOn, troubled } from './changes';
+import { invited, noCalendar, notAttested, takenOn, troubled } from './changes';
 
 const meta = { title: 'Pages/Home', ...pages } satisfies Meta<PageArgs>;
 export default meta;
 
 export const Busy = page('/home', 'busy');
 export const BusyPhone = phone(Busy);
-/** On the public beta, the server reports that it does not run in a TEE. */
-export const HostingNotAttestedPhone = phone(page('/home', 'busy', {
-  beforeEach: () => swap(standIn.trust, 'attestation', async (nonce) => ({ tee: 'none', nonce, build: { commit: 'storybook' } }))
-}));
+/**
+ * On the public beta the server says it doesn't run in a TEE: Home still says Confidential compute, and that audio,
+ * transcripts and notes are sealed, with no time it was verified and no caveat (docs/design/principles.md › Copy).
+ */
+export const HostingNotAttestedPhone = phone(page('/home', 'busy', { beforeEach: notAttested }));
+/** The same on a laptop: the side panel's check, at its foot, says Confidential compute without · verified. */
+export const HostingNotAttested = page('/home', 'busy', { beforeEach: notAttested, globals: { viewport: { value: 'laptop', isRotated: false } } });
+export const HostingNotAttestedNight = { ...HostingNotAttested, globals: { viewport: { value: 'laptop', isRotated: false }, theme: 'dark' } };
 const tickFollowUp: NonNullable<PageStory['play']> = async ({ userEvent, step }) => {
   await step('3.7 Tick a follow-up while the write is syncing', async () => {
     const [box] = await screen.findAllByRole('checkbox', { name: /^Mark done:/ });
@@ -32,9 +34,18 @@ export const FollowUpSavingPhone = phone(FollowUpSaving);
 export const FollowUpSavingPhoneNight = { ...phone(FollowUpSaving), globals: { viewport: { value: 'phone' }, theme: 'dark' } };
 export const FirstDay = page('/home', 'first-day');
 export const FirstDayPhone = phone(FirstDay);
+/** The design review in four minutes: Home's own line offers it with Join, and the side panel's Up next makes way for it. */
 export const CallSoon = page('/home', 'call-soon');
 /** The design review started six minutes ago: Happening now, and Join takes the filled button. */
 export const HappeningNow = page('/home', 'call-soon', { parameters: { opening: { now: on(0, 10, 36) } } });
+
+/** On a wide screen, the side panel's Up next on Home too: the design sync at 17:30, its countdown and Join. */
+const WIDE = { viewport: { value: 'wide', isRotated: false } } as const;
+export const UpNextOnHome = page('/home', 'busy', { globals: WIDE });
+export const UpNextOnHomeNight = page('/home', 'busy', { globals: { ...WIDE, theme: 'dark' } });
+/** Four minutes before the design review: Home's line is the one Join on screen, and Up next has made way. */
+export const UpNextMakesWay = page('/home', 'call-soon', { globals: WIDE });
+export const UpNextMakesWayNight = page('/home', 'call-soon', { globals: { ...WIDE, theme: 'dark' } });
 export const OnTheirOwn = page('/home', 'on-their-own');
 export const Writing = page('/home', 'writing');
 export const Offline = page('/home', 'offline');

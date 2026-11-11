@@ -1,6 +1,6 @@
 /* Popovers and menus: what they sit on, one menu for everything, and each menu's rows in the canvas's words. */
 import { Popover as RPopover } from 'radix-ui';
-import { useEffect, useMemo, useRef, type KeyboardEvent, type ReactElement, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, type KeyboardEvent, type PointerEvent, type ReactElement, type ReactNode } from 'react';
 import { cn } from '../../cn';
 import { Icon, type IconName } from '../icon';
 import { Avatar, type AvatarPerson } from '../people';
@@ -22,6 +22,19 @@ export interface WsPop {
 
 const rectOf = (at: WsPoint | (() => DOMRect)): DOMRect => typeof at === 'function' ? at() : new DOMRect(at.x, at.y, 1, 1);
 
+/**
+ * Whether the last thing someone did was press a key, rather than point. A menu opened with a pointer highlights none of its
+ * rows until the pointer or a key picks one; opened from the keyboard, its first row has the keyboard straight away.
+ */
+let byKey = false;
+if (typeof document !== 'undefined') {
+  document.addEventListener('keydown', () => { byKey = true; }, { capture: true, passive: true });
+  document.addEventListener('pointerdown', () => { byKey = false; }, { capture: true, passive: true });
+}
+
+/** Somewhere someone types: a field, or editable text. */
+const isField = (el: HTMLElement): boolean => el.isContentEditable || el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement;
+
 /** The room a popover keeps from the window's edges: more at the foot while the app's tab bar is there, so it never sits on it. */
 function edges(): { top: number; right: number; bottom: number; left: number } {
   const bar = typeof document === 'undefined' ? null : document.querySelector('.tabbar');
@@ -34,18 +47,28 @@ function edges(): { top: number; right: number; bottom: number; left: number } {
  * place (`at`: a point, or a function that says where a caret or a word is now). It flips to stay on screen, pops in
  * over 140 ms, closes on Esc or a click outside, and puts focus back where it was, or leaves it where someone clicked.
  * On a phone it's a sheet at the bottom of the window. `takeFocus={false}` for one that opens while someone's typing.
+ * `within` says what on the page `at` is part of (the words, a tag, a block): the popover follows it as what it's in
+ * scrolls or moves, and hides while it's scrolled out of view, coming back with it.
  */
-export function WsPopover({ id, open, onOpenChange, anchor, at, label, side = 'bottom', align = 'start', takeFocus = true, className, children }: {
+export function WsPopover({ id, open, onOpenChange, anchor, at, within, label, side = 'bottom', align = 'start', takeFocus = true, className, children }: {
   /** For what says it controls this, such as a comment's pin, when that isn't `anchor`. */
   id?: string | undefined;
   open: boolean; onOpenChange: (open: boolean) => void;
   anchor?: ReactElement | undefined; at?: WsPoint | (() => DOMRect) | undefined;
+  /** The element on the page `at` belongs to, as it is now. */
+  within?: (() => Element | null) | undefined;
   /** Names it for assistive tech. */
   label: string;
   side?: 'top' | 'right' | 'bottom' | 'left' | undefined; align?: 'start' | 'center' | 'end' | undefined;
   takeFocus?: boolean | undefined; className?: string | undefined; children: ReactNode;
 }) {
-  const place = useMemo(() => at === undefined ? undefined : { current: { getBoundingClientRect: () => rectOf(at) } }, [at]);
+  /*
+   * Placed against a virtual anchor. Its `contextElement` is what tells the positioner which scrolling boxes and layout
+   * shifts to follow, and what can clip it out of view: without one it only hears the window.
+   */
+  const place = useMemo(() => at === undefined ? undefined : {
+    current: { getBoundingClientRect: () => rectOf(at), get contextElement(): Element | undefined { return within?.() ?? undefined; } }
+  }, [at, within]);
   const back = useRef<HTMLElement | null>(null);
   const away = useRef(false);
   return (
@@ -54,11 +77,15 @@ export function WsPopover({ id, open, onOpenChange, anchor, at, label, side = 'b
       {place && <RPopover.Anchor virtualRef={place} />}
       <RPopover.Portal>
         <RPopover.Content id={id} side={side} align={align} sideOffset={side === 'left' || side === 'right' ? 10 : 6} collisionPadding={open ? edges() : 8} aria-label={label}
+          hideWhenDetached={within !== undefined}
           className={cn('ws-pop', className)} onInteractOutside={() => { away.current = true; }}
           onOpenAutoFocus={(e) => {
             back.current = focusedNow();
             away.current = false;
-            if (!takeFocus) e.preventDefault();
+            if (!takeFocus) { e.preventDefault(); return; }
+            /* Opened with a pointer, a menu takes the keyboard itself rather than its first row, so no row is highlighted yet. */
+            const menu = !byKey && e.currentTarget instanceof Element ? e.currentTarget.querySelector<HTMLElement>('.wm[role="menu"]') : null;
+            if (menu) { e.preventDefault(); menu.focus({ preventScroll: true }); }
           }}
           onCloseAutoFocus={(e) => {
             // What opened as this closed, such as a row being named, has focus by now, and keeps it.
@@ -95,15 +122,17 @@ export interface WsMenuItem {
   tone?: 'caution' | undefined;
   /** Highlighted by what the keyboard's doing somewhere else, such as in a field that keeps focus. */
   selected?: boolean | undefined;
+  /** The pointer moved over it, in such a menu: whatever highlights `selected` makes this the one, so the highlight follows the pointer. */
+  onPoint?: (() => void) | undefined;
   /** Only on a phone, where the head of a document has no room for its buttons. */
   phoneOnly?: boolean | undefined;
   onSelect: () => void;
 }
 export type WsMenuRow = WsMenuItem | { type: 'head'; label: ReactNode } | { type: 'sep' } | { type: 'text'; label: ReactNode; icon?: IconName | undefined };
 
-function Item({ row, onPress }: { row: WsMenuItem; onPress: () => void }) {
+function Item({ row, onPress, onPoint }: { row: WsMenuItem; onPress: () => void; onPoint: (e: PointerEvent<HTMLButtonElement>) => void }) {
   return (
-    <button type="button" role={row.ticked === undefined ? 'menuitem' : 'menuitemradio'} aria-checked={row.ticked} onClick={onPress}
+    <button type="button" role={row.ticked === undefined ? 'menuitem' : 'menuitemradio'} aria-checked={row.ticked} onClick={onPress} onPointerMove={onPoint}
       className={cn('wm-r', row.tone === 'caution' && 'is-caution', row.ticked && !row.fixed && 'is-on', row.selected && 'is-sel', row.phoneOnly && 'is-phone')}>
       {row.person && <Avatar person={row.person} size={24} />}
       {row.icon && <Icon name={row.icon} size={16} />}
@@ -129,22 +158,36 @@ function moveInMenu(e: KeyboardEvent<HTMLDivElement>) {
 /**
  * A menu: rows, headings, separators and lines of text. `className` for a wider one. `swapped`: it took another menu's place
  * in an open popover, so nothing else gives it the keyboard. Rows are told apart by their `id`, and for a moment after they
- * move a press does nothing (`useSettledPress`).
+ * move a press does nothing (`useSettledPress`). One row is highlighted at a time: the one with the keyboard, which the
+ * pointer moves to as it passes over a row, so a pointer resting on one row leaves the arrow keys the only highlight.
  */
 export function WsMenu({ rows, label, className, swapped = false }: { rows: WsMenuRow[]; label: string; className?: string | undefined; swapped?: boolean | undefined }) {
   const box = useRef<HTMLDivElement>(null);
-  useEffect(() => { if (swapped) box.current?.querySelector<HTMLElement>('.wm-r')?.focus(); }, [swapped]);
+  useEffect(() => {
+    if (!swapped) return;
+    /* From the keyboard its first row has it; after a press, the menu does, and nothing's highlighted until the pointer moves. */
+    const to = byKey ? box.current?.querySelector<HTMLElement>('.wm-r') : box.current;
+    to?.focus({ preventScroll: true });
+  }, [swapped]);
   /* Where each row is, by what it is: a change once the menu is open is a move. */
   const settled = useSettledPress(rows.map((row, i) => (row.type === undefined || row.type === 'item' ? `item:${row.id}` : `${row.type}:${i}`)).join('\n'));
   const press = (row: WsMenuItem) => settled(row.onSelect);
+  /* A mouse over a row gives it the keyboard, and so the highlight, unless someone's typing in a field outside the menu. */
+  const point = (row: WsMenuItem) => (e: PointerEvent<HTMLButtonElement>) => {
+    if (e.pointerType !== 'mouse') return;
+    if (row.onPoint) { row.onPoint(); return; }
+    const now = focusedNow();
+    if (now === e.currentTarget || (now && !box.current?.contains(now) && isField(now))) return;
+    e.currentTarget.focus({ preventScroll: true });
+  };
   return (
-    <div ref={box} className={cn('wm', className)} role="menu" aria-label={label} onKeyDown={moveInMenu}>
+    <div ref={box} className={cn('wm', className)} role="menu" aria-label={label} tabIndex={-1} onKeyDown={moveInMenu}>
       <div className="wm-list">
         {rows.map((row, i) => {
           if (row.type === 'head') return <div key={`head:${i}`} className="wm-h">{row.label}</div>;
           if (row.type === 'sep') return <div key={`sep:${i}`} className="wm-s" role="separator" />;
           if (row.type === 'text') return <p key={`text:${i}`} className="wm-x">{row.icon && <Icon name={row.icon} size={13} />}{row.label}</p>;
-          return <Item key={`item:${row.id}`} row={row} onPress={press(row)} />;
+          return <Item key={`item:${row.id}`} row={row} onPress={press(row)} onPoint={point(row)} />;
         })}
       </div>
     </div>

@@ -9,9 +9,9 @@
  * what; this is what's done. A live call comes first, so what touches a workspace is done with nothing of the call held, in
  * the workspace's own transaction, and the call's row is held only to save what came of it.
  *
- * A board's timer and vote are kept with it in the call's state, because they're this session's: closing the board ends them,
- * and a saved board has none. Votes are kept here and nowhere else: each person is told their own, and nobody a count until the
- * vote ends, when everyone is told them all at once. Nothing about a vote is written to the board.
+ * A board's vote is kept with it in the call's state, because it's this session's: closing the board ends it, and a saved
+ * board has none. Votes are kept here and nowhere else: each person is told their own, and nobody a count until the vote ends,
+ * when everyone is told them all at once. Nothing about a vote is written to the board.
  */
 import { MAIN_PLACE, firstName, type BoardCheck, type BoardTemplate, type BreakoutBoard, type CallAction, type CallBoard, type DocumentRole } from '@alcove/api';
 import { roomFrameId } from '@alcove/board';
@@ -64,7 +64,7 @@ const sealOf = (place: string): string => (place === MAIN_PLACE ? 'Sealed' : 'Se
 /** Whether a board is a room's own, made for it or started there: everyone in the room works on it. */
 const roomsOwn = (s: Boarded, documentId: string): boolean => roomBoardsOf(s.board).some((r) => r.documentId === documentId);
 /**
- * The board open in the part of the call someone's in, as they may know it, with its timer and vote for anyone who can open it.
+ * The board open in the part of the call someone's in, as they may know it, with its vote for anyone who can open it.
  * One that's in Trash or gone has left the call for everyone, and comes back with it. One that can't be read reads as one they
  * can't open: a call doesn't depend on what's in a workspace, so nothing here can stop anyone reading the call. In a room on a
  * board every room shares, it says which frame is the room's.
@@ -88,7 +88,7 @@ export async function shownTo(v: Viewer, s: Boarded, place: string): Promise<Cal
     // a room's own board is everyone's in the room.
     const everyone = roomsOwn(s, open.documentId) || (s.board.letIn.some((e) => e.documentId === open.documentId && e.by === null) && await stillTheCalls(v.organizer, w, v.organizer.pool, open.documentId));
     // Ideas from the call are the call's to add (calls.ts), for whoever can add to the board.
-    return { open: { workspaceId: open.workspaceId, documentId: open.documentId, name: item.name, role, ...seen, everyone }, ...sessionFor(v, reader, s, open, role === 'edit'), ideas: [] };
+    return { open: { workspaceId: open.workspaceId, documentId: open.documentId, name: item.name, role, ...seen, everyone }, timer: null, ...sessionFor(v, reader, s, open, role === 'edit'), ideas: [] };
   } catch (e) {
     blog.warn('board not read for someone in a call', { callId: v.pass.callId, err: e });
     return shut;
@@ -102,8 +102,6 @@ export async function framesOf(o: Owner, open: OpenBoard): Promise<{ id: string;
   return readDocument(w, open.documentId, 'frames', {});
 }
 
-/** What the timer is for, beside its time: the canvas's words. */
-const TIMER_TEXT = 'Add your stickies';
 /** The same address, whatever its case. */
 const sameAddress = (a: string | null | undefined, b: string | null): boolean => !!a && !!b && a.toLowerCase() === b.toLowerCase();
 /**
@@ -117,9 +115,9 @@ const startedBy = (v: Viewer, reader: Reader, by: Controller): boolean => isStar
 const keeperHere = (s: Placing, by: Controller): boolean =>
   s.people.some((j) => j.status === 'in' && (j.person === by.person || j.role === 'host' || sameAddress(j.email, by.email)));
 /**
- * Whether someone may stop the timer, or end and clear the vote, that `by` started: whoever started it, or the organizer. While
- * neither of them is in the call, anyone who can edit the board (`edits`) may, so nothing is left running with nobody to stop
- * it; once either is back, it's theirs again.
+ * Whether someone may end and clear the vote that `by` started: whoever started it, or the organizer. While neither of them is
+ * in the call, anyone who can edit the board (`edits`) may, so no vote is left on with nobody to end it; once either is back,
+ * it's theirs again.
  */
 const mayFinish = (v: Viewer, reader: Reader, s: Placing, by: Controller, edits: boolean): boolean => startedBy(v, reader, by) || (edits && !keeperHere(s, by));
 /** How many people have a vote in it. */
@@ -131,19 +129,21 @@ function countsOf(vote: BoardVote): Record<string, number> {
   return counts;
 }
 /**
- * A board's timer and vote, as one person may know them: the timer as it is for everyone, and of a vote, their own votes, and
- * every count only once it's ended. Nobody is told how many have voted, or who, while it's on. `voter` is who they are to the
- * vote (`limitKey`): their account when they're signed in, so it's one set of votes on every device, else the person their pass
- * names, as media counts a guest's uploads. `edits`: they can edit the board.
+ * A board's vote, as one person may know it: their own votes, and every count only once it's ended. Nobody is told how many have
+ * voted, or who, while it's on; who started it is said, as who opened the board is, so everyone who can open the board is told a
+ * vote started there, whether or not they have it open. `voter` is who they are to the vote (`limitKey`): their account when
+ * they're signed in, so it's one set of votes on every device, else the person their pass names, as media counts a guest's
+ * uploads. `edits`: they can edit the board.
  */
-function sessionFor(v: Viewer, reader: Reader, s: Placing, open: OpenBoard, edits: boolean): Pick<CallBoard, 'timer' | 'vote'> {
-  const { timer, vote } = open;
+function sessionFor(v: Viewer, reader: Reader, s: Placing, open: OpenBoard, edits: boolean): Pick<CallBoard, 'vote'> {
+  const { vote } = open;
   const mine = vote?.ballots[limitKey(reader)] ?? [];
+  const starter = vote ? s.people.findLast((j) => j.person === vote.by.person && j.status === 'in') : undefined;
   return {
-    timer: timer && { until: timer.until, length: timer.length, text: TIMER_TEXT, canStop: mayFinish(v, reader, s, timer.by, edits) },
     vote: vote && {
       on: !vote.ended, frame: vote.frame, per: vote.per, left: Math.max(0, vote.per - mine.length), mine,
-      results: vote.ended ? countsOf(vote) : {}, voters: vote.ended ? votersOf(vote) : 0, canEnd: mayFinish(v, reader, s, vote.by, edits)
+      results: vote.ended ? countsOf(vote) : {}, voters: vote.ended ? votersOf(vote) : 0, canEnd: mayFinish(v, reader, s, vote.by, edits),
+      startedBy: starter?.identity ?? null
     }
   };
 }
@@ -336,13 +336,13 @@ export type Apply<S extends Boarded> = (y: Changing<S>) => Changed<S>;
 
 const fullUp = (callId: string) => new ConflictError('This call has as many boards as it can take. Open one it already has.', { context: { callId, boards: MAX_BOARDS } });
 /**
- * The call with a board open in the main room. The same board again keeps its timer and vote, since the session on it carries on,
- * and the ideas from the call there; any other starts with none of them, since those ideas were for the frames of what was open.
+ * The call with a board open in the main room. The same board again keeps its vote, since the session on it carries on, and the
+ * ideas from the call there; any other starts with neither, since those ideas were for the frames of what was open.
  */
-const opening = <S extends Boarded>(s: S, open: Omit<OpenBoard, 'timer' | 'vote'>, letIn: BoardLetIn[] = s.board.letIn): S => {
+const opening = <S extends Boarded>(s: S, open: Omit<OpenBoard, 'vote'>, letIn: BoardLetIn[] = s.board.letIn): S => {
   const was = s.board.open[MAIN_PLACE];
   const same = was !== undefined && was.documentId === open.documentId;
-  const kept = was && same ? { timer: was.timer, vote: was.vote } : { timer: null, vote: null };
+  const kept = { vote: was && same ? was.vote : null };
   const { [MAIN_PLACE]: _was, ...others } = s.board.ideas;
   return { ...s, board: { ...s.board, open: { ...s.board.open, [MAIN_PLACE]: { ...open, ...kept } }, letIn, ideas: same ? s.board.ideas : others } };
 };
@@ -504,7 +504,7 @@ async function prepareInRoom<S extends Boarded>(x: Changing<S>, template: BoardT
     const still = y.s.breakouts.open?.rooms.some((r) => r.id === place) === true;
     const rooms = [...y.s.board.rooms, { workspaceId: made.workspaceId, documentId, room: place, kept: false }];
     // A room that closed meanwhile keeps nothing open; its board is kept for everyone invited all the same.
-    const open = still ? { ...y.s.board.open, [place]: { workspaceId: made.workspaceId, documentId, by, timer: null, vote: null } } : y.s.board.open;
+    const open = still ? { ...y.s.board.open, [place]: { workspaceId: made.workspaceId, documentId, by, vote: null } } : y.s.board.open;
     // Ideas from the call there were for whatever was open: they go with it.
     const { [place]: _was, ...ideas } = y.s.board.ideas;
     return {
@@ -785,13 +785,13 @@ export async function prepare<S extends Boarded>(x: Changing<S>, a: BoardAction)
   return (y) => { stageFree(y, keeping); return apply(y); };
 }
 
-/* ---------- the session on a board: its timer and its vote ---------- */
+/* ---------- the session on a board: its vote ---------- */
 
-export type RunAction = Extract<CallAction, { type: 'board-timer' | 'board-vote' }>;
-export const isRunAction = (a: CallAction): a is RunAction => a.type === 'board-timer' || a.type === 'board-vote';
+export type RunAction = Extract<CallAction, { type: 'board-vote' }>;
+export const isRunAction = (a: CallAction): a is RunAction => a.type === 'board-vote';
 
-/** What a call is when someone runs the session on its board: read with nothing held, and read again under its row. `now` is seconds since the call started. */
-export interface Running<S extends Boarded> { v: Viewer; reader: Reader; callId: string; s: S; place: string; now: number }
+/** What a call is when someone runs the session on its board: read with nothing held, and read again under its row. */
+export interface Running<S extends Boarded> { v: Viewer; reader: Reader; callId: string; s: S; place: string }
 /**
  * What came of it: the call as it is now, which is the call as it was when nothing changed; whether everyone where the board is
  * reads the call again, which a vote cast or taken back never has them do, so nobody can count votes by when the call changes;
@@ -823,18 +823,6 @@ function stillVoting<S extends Boarded>(y: Running<S>, documentId: string, voteI
 }
 
 /**
- * Stops the timer: whoever started it, or the organizer, or with neither of them here anyone who can edit the board (`edits`,
- * the board found to be theirs to edit). Stopping one that's gone already changes nothing, as a second press of Stop would find.
- */
-function stopTimer<S extends Boarded>(y: Running<S>, edits: string | null): Ran<S> {
-  const open = y.s.board.open[y.place];
-  if (!open) throw nothingOpen(y.callId);
-  if (!open.timer) return unchanged(y, 'board timer stopped');
-  if (!mayFinish(y.v, y.reader, y.s, open.timer.by, edits === open.documentId)) throw new ForbiddenError('Only whoever started the timer, or the organizer, can stop it.', { context: { callId: y.callId, role: y.v.role }, level: 'info' });
-  return { s: withOpen(y, { ...open, timer: null }), changed: true, tell: true, done: { what: 'board timer stopped', quiet: false, context: { callId: y.callId, ran: y.now >= open.timer.until } } };
-}
-
-/**
  * Of the stickies a vote had votes for when it was asked to end, the ones still in it: on the board, inside its frame. A sticky
  * deleted, or moved out of the frame, since its votes were cast counts for nothing.
  */
@@ -846,8 +834,8 @@ function counted(ballots: Record<string, string[]>, still: StillIn): Record<stri
 
 /**
  * Ends the vote, so everyone is told every count at once, or clears its results after: whoever started it, or the organizer, or
- * with neither of them here anyone who can edit the board (`edits`, as for the timer). Ending keeps only the votes for stickies
- * still in the vote (`still`). Ending one that's ended, or clearing one that's gone, changes nothing.
+ * with neither of them here anyone who can edit the board (`edits`, the board found to be theirs to edit). Ending keeps only the
+ * votes for stickies still in the vote (`still`). Ending one that's ended, or clearing one that's gone, changes nothing.
  */
 function finishVote<S extends Boarded>(y: Running<S>, step: 'end' | 'done', edits: string | null, still: StillIn | null): Ran<S> {
   const open = y.s.board.open[y.place];
@@ -874,8 +862,8 @@ function finishVote<S extends Boarded>(y: Running<S>, step: 'end' | 'done', edit
 interface Reached { open: OpenBoard; w: Workspace }
 /**
  * The board open here, for someone who can open it. Whether they can is the workspace's to say, so it's asked with nothing of the
- * call held, before anything about its timer or vote: someone it isn't open to is told what they'd be told of a board that isn't
- * there, whatever is running on it, so no refusal says whether a timer runs or a vote is on.
+ * call held, before anything about its vote: someone it isn't open to is told what they'd be told of a board that isn't there,
+ * whatever is running on it, so no refusal says whether a vote is on.
  */
 async function reaching<S extends Boarded>(x: Running<S>): Promise<Reached> {
   const open = x.s.board.open[x.place];
@@ -892,30 +880,14 @@ function editingIt<S extends Boarded>(x: Running<S>, r: Reached): Controller {
 }
 
 /**
- * Whether someone can edit the board, asked only when that's what decides whether they may stop or end what's running there:
- * they didn't start it and aren't the organizer, and neither of those is in the call. So whoever started it and the organizer
- * can stop or end it on a board they can only read. Someone who can't edit it is told why. The board they can edit, or null.
+ * Whether someone can edit the board, asked only when that's what decides whether they may end the vote there: they didn't start
+ * it and aren't the organizer, and neither of those is in the call. So whoever started it and the organizer can end it on a
+ * board they can only read. Someone who can't edit it is told why. The board they can edit, or null.
  */
 function editsWithNobodyHere<S extends Boarded>(x: Running<S>, r: Reached, by: Controller | undefined): string | null {
   if (!by || startedBy(x.v, x.reader, by) || keeperHere(x.s, by)) return null;
   editingIt(x, r);
   return r.open.documentId;
-}
-
-/**
- * A timer of `minutes` from now, for someone who can edit the board: in place of any that's run out, or of a running one they
- * may stop.
- */
-function prepareTimer<S extends Boarded>(x: Running<S>, r: Reached, minutes: number): ApplyRun<S> {
-  const by = editingIt(x, r);
-  const { documentId } = r.open;
-  return (y) => {
-    const open = stillOpen(y, documentId);
-    const running = open.timer;
-    if (running && y.now < running.until && !mayFinish(y.v, y.reader, y.s, running.by, true)) throw new ConflictError('A timer is running. Whoever started it, or the organizer, can stop it.', { context: { callId: y.callId } });
-    const timer = { until: y.now + minutes * 60, length: minutes * 60, by };
-    return { s: withOpen(y, { ...open, timer }), changed: true, tell: true, done: { what: 'board timer started', quiet: false, context: { callId: y.callId, minutes, again: running !== null } } };
-  };
 }
 
 /** A vote on a frame of the board, or on every sticky with no frame, never on top of another. */
@@ -979,7 +951,7 @@ function prepareTakeBack<S extends Boarded>(x: Running<S>, r: Reached, sticky: s
 }
 
 /**
- * Ending a vote: who may, as for the timer, and of the stickies it has votes for, which are still in it, read from the board by
+ * Ending a vote: who may (`mayFinish`), and of the stickies it has votes for, which are still in it, read from the board by
  * whoever may end it. With nothing to ask, nothing is read.
  */
 async function prepareEnd<S extends Boarded>(x: Running<S>, r: Reached): Promise<ApplyRun<S>> {
@@ -992,20 +964,15 @@ async function prepareEnd<S extends Boarded>(x: Running<S>, r: Reached): Promise
 }
 
 /**
- * Whatever someone does to run the session on a board, in two steps, as everything about a board is. This is the first, with
- * nothing of the call held: whether they can open the board at all, before anything about what's running, then whether they
- * can edit it, which is the workspace's to say, and for a vote what's on the board, which is read in a worker as everything in a
- * document is. Stopping, ending and clearing are whoever started it's or the organizer's, and need neither; only while neither is
- * in the call does anyone else's need the board. What it returns is the second, under the call's row, which asks again whatever
- * could have changed meanwhile, who's in the call included. Nothing here logs a frame or a sticky, nor who voted for what.
+ * Whatever someone does to run a vote on a board, in two steps, as everything about a board is. This is the first, with nothing
+ * of the call held: whether they can open the board at all, before anything about a vote, then whether they can edit it, which is
+ * the workspace's to say, and what's on the board, which is read in a worker as everything in a document is. Ending and clearing
+ * are whoever started it's or the organizer's, and need neither; only while neither is in the call does anyone else's need the
+ * board. What it returns is the second, under the call's row, which asks again whatever could have changed meanwhile, who's in
+ * the call included. Nothing here logs a frame or a sticky, nor who voted for what.
  */
 export async function prepareRun<S extends Boarded>(x: Running<S>, a: RunAction): Promise<ApplyRun<S>> {
   const r = await reaching(x);
-  if (a.type === 'board-timer') {
-    if (a.minutes !== null) return prepareTimer(x, r, a.minutes);
-    const edits = editsWithNobodyHere(x, r, r.open.timer?.by);
-    return (y) => stopTimer(y, edits);
-  }
   switch (a.step) {
     case 'start': return prepareVote(x, r, a.frame, a.per);
     case 'cast': return prepareCast(x, r, a.sticky);

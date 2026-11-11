@@ -19,7 +19,7 @@ export const MOUNT_ALL = 500;
  * What floats over the sheet, and an object's own buttons (a table's row and column, a link's Open). Each has its own
  * controls, so the board leaves a press on it alone: taking the pointer for a drag would leave the button without its click.
  */
-export const OVER_THE_SHEET = '.bi, .bx, .bx-sw, .bfly, .bp, .bd-head, .bd-pill, .bd-heard, .bd-tray, .bo-edit, .bo-at, .bo-pick, .bo-add, .bo-open, .pc-add, .pc-sheet, .pc-shade';
+export const OVER_THE_SHEET = '.bi, .bx, .bx-sw, .bfly, .bp, .bd-head, .bd-pill, .bd-heard, .bd-tray, .bd-lost, .bo-edit, .bo-at, .bo-pick, .bo-add, .bo-open, .pc-add, .pc-sheet, .pc-shade';
 /** How far a press can wander, in screen pixels, and still be a click. */
 export const CLICK_SLOP = 3;
 /** The same for a finger, which wanders more than a mouse as it lands and lifts. */

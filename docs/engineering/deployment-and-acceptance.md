@@ -116,10 +116,15 @@ Cloudflare account identifiers are repository variables; `CLOUDFLARE_API_TOKEN` 
 Cloud Run uses one instance, session affinity, gen2, one CPU, 2 GiB, port 8080, a 300-second timeout and 1,000
 requests at once: an open tab holds one for its stream of rings, so at the default of 80 they'd starve live calls.
 The API holds at most 300 of those streams, and 8 for any one account.
-A live stream of a workspace or a document holds a request too, for as long as it's open: at most 8 of a workspace and 16 of
-documents for any one person on an instance, 64 of both from one client address (`LIVE_STREAMS_PER_ADDRESS`), and 500 of both
-together for everyone (`LIVE_STREAMS_MAX`), past which they're refused with `503` and browsers try again, and the API lets go of
-each one after 280 seconds for the browser to open it again (`LIVE_STREAM_MS`; keep it under the timeout). Rings and these are
+A live stream of a workspace or a document holds a request too, for as long as it's open: at most 8 of a workspace and 8 of
+documents for any one person on an instance, where the next ends their oldest once it's been open 20 seconds, at most one
+every 20 seconds (`LIVE_MAKE_ROOM_MS`), 64 of both from one client address (`LIVE_STREAMS_PER_ADDRESS`), and 500 of both together for everyone
+(`LIVE_STREAMS_MAX`), past which they're refused with `503` and browsers try again, and the API lets go of each one after 280
+seconds for the browser to open it again (`LIVE_STREAM_MS`; keep it under the timeout). Cloud Run never tells the API that a
+browser closed a stream (HTTP/1 doesn't pass a disconnect on), so the browser says so itself, with `POST …/live/end` and the
+name it gave the stream, and the API ends it then and there. To check it on the deployed app, open twenty documents from the
+list in two minutes: none should stay on Reconnecting, and the log should have no "You have this open in too many windows"
+warning with `kind: document`. Rings and these are
 counted apart and come to 800 together, which leaves 200 requests for calls and everything else with both full. Raise one of
 them only with that in mind. Node gives its heap about half of the container's memory, so 2 GiB is a
 heap of about 1,120 MiB. Documents are opened in worker threads with memory of their own, 640 MiB for the one that takes big
@@ -134,7 +139,8 @@ connector does, because `LISTEN` doesn't work through a transaction-mode pooler.
 Files in a workspace are shaped by the same limits. Cloud Run refuses an HTTP/1 request or a response that says its length
 over 32 MiB, so a file goes up in pieces of 4 MiB, an answer to a range sends at most 16 MiB, and a whole file over that
 streams without a length ([Data and storage › Media](data-and-storage.md#media)). The API ends a read itself at 280 seconds
-(`MEDIA_READ_MS`), inside the timeout: a player asks on from where it got to, and a download starts again. Files pass through
+(`MEDIA_READ_MS`), inside the timeout: a player asks on from where it got to, and so does a browser's download, with the
+file's `ETag` (`If-Range`). Files pass through
 this one process, so what they hold in it and what they take of its core are limited (`MEDIA_LIMITS` in `features/workspaces/media.ts`),
 and past those limits a request is refused rather than taken on. At most 96 requests at once are files. The limits were set
 for 1 GiB and stayed when the instance went to 2 GiB, because the rest is for documents' worker threads. Measured on the built
@@ -198,8 +204,9 @@ again every 30 seconds (`LIMITS_CACHE_MS`), so a change is in force everywhere w
 | `media.account_day_bytes` | 20 GiB | 200 GiB | What one person uploads in a day (UTC), in every workspace. |
 
 Every floor is 0, and 0 means none: any of them at 0 stops every upload, with "Files can’t be uploaded right now." A ceiling is
-ten times the default, except a file's. A whole file is read in one response, which is cut at 280 seconds and, past 16 MiB,
-can't pick up where it stopped, so a file needs about 15 Mbit/s to download whole at 512 MiB, and about 120 Mbit/s at 4 GiB.
+ten times the default, except a file's. A whole file is read in one response, which is cut at 280 seconds: that's about 15
+Mbit/s for 512 MiB in one answer, and about 120 Mbit/s for 4 GiB. Slower, a download picks up where it stopped when the
+browser resumes it (by itself, or with its Resume), asking for the rest with the file's `ETag`.
 The limits are the same for everyone, guests in a call included. Lowering one deletes nothing: it refuses the next upload, and
 the next piece of one already going ([Data and storage › Media](data-and-storage.md#media)).
 

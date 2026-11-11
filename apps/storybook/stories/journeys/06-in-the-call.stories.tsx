@@ -10,9 +10,11 @@
  */
 import type { Meta } from '@storybook/react-vite';
 import { screen, waitFor, within } from 'storybook/test';
+import { tileHintKey } from '~/features/call/layout/view';
 import { asks, at, chats, floats, knocks, nudges, presentsWorkspace, shares, stopsPresenting, type CallScript, type Present } from '../../src/api/script';
 import { MORE, inCall, phone, reach } from '../../src/call';
 import { pages, type PageArgs, type PageStory } from '../../src/page';
+import { ME_ID } from '../../src/world/people';
 import {
   AIKO, CHECK_IN, CHECK_IN_SUMMARY, CHECK_IN_TALK, CHECKLIST, DIEGO, KOFI, LAUNCH_REVIEW, MAYA, PLAN, PRIYA, REVIEW, REVIEW_SUMMARY, REVIEW_TALK
 } from '../calls/talk';
@@ -104,7 +106,7 @@ export const OpenTheWorkspace: PageStory = {
       await userEvent.click(await onBar(await frame(yours), 'Present'));
       await told('Everyone follows you in the workspace. They can unfollow to work alongside you.');
     });
-    await step('Click Close. While you present, Close asks: just for you, or for everyone', async () => {
+    await step('Click Close. While you present, Close asks: For you, which stops your presentation, or For everyone', async () => {
       await userEvent.click(await onBar(await frame(everyones), /^Close /));
       await forEveryone();
     });
@@ -133,22 +135,25 @@ export const OpenABoard: PageStory = {
     await step('It opens just for you. Look around and add to it on your own. Present, on its bar, brings everyone', async () => {
       await frame('Launch retro, only you see it', LATER);
     });
-    await step('Click Present. Everyone follows you. The arrows at its foot step through its frames', async () => {
+    await step('Click Present. Everyone follows your view, with their tools to hand. The arrows at its foot step through its frames, in the order they sit', async () => {
       await userEvent.click(await onBar(await frame('Launch retro, only you see it'), 'Present'));
-      await told('Everyone follows you on Launch retro. They can unfollow to add to it.');
+      await told('Everyone follows you on Launch retro. They can add to it as you go.');
     });
-    await step('Click the arrow for the next frame. Everyone following you moves with you', async () => {
+    await step('Click the arrow for the next frame. Your view glides there, and everyone following you moves with you', async () => {
       const pager = await screen.findByRole('group', { name: /^Step through its frames/ }, SOON);
       await userEvent.click(within(pager).getByRole('button', { name: 'Next frame' }));
       await within(pager).findByText('Could improve', {}, SOON);
+    });
+    await step('Click Show the whole board, on its bar: all of it, what’s outside the frames too, and everyone following sees it with you', async () => {
+      await userEvent.click(await screen.findByRole('button', { name: 'Show the whole board' }, SOON));
     });
     await step('Click Close. For you, or for everyone', async () => {
       await userEvent.click(await onBar(await frame('Launch retro, everyone sees it'), /^Close /));
       await forYou();
     });
-    await step('Click For you. You’re back with the people. The others keep it open on their own; nobody presents it, so it has no tile', async () => {
+    await step('Click For you. You stop presenting and you’re back with the people. The others keep it open on their own; nobody presents it, so it has no tile', async () => {
       await userEvent.click(await forYou());
-      await told('Closed for you. The others keep it open, on their own.');
+      await told('You stopped presenting. The others keep it open, on their own.');
     });
   }
 };
@@ -209,8 +214,16 @@ export const ShareYourScreen: PageStory = {
       await userEvent.click(await within(menu).findByRole('button', { name: 'A tab' }, SOON));
       await userEvent.click(await within(menu).findByRole('button', { name: 'Share' }, SOON));
     });
-    await step('You’re presenting. Everyone sees what you see. Stop sharing is on your bar; anyone else can close it for themselves', async () => {
+    await step('You’re presenting. Everyone sees what you see. Stop sharing is on your bar, and Close; anyone else can close it for themselves', async () => {
       await told('Everyone sees your tab.');
+      await frame('Your screen, everyone sees it');
+    });
+    await step('Click Close. It’s put away for you and still shared: its tile is with the people, who fill your stage again', async () => {
+      await userEvent.click(await onBar(await frame('Your screen, everyone sees it'), 'Close Your screen'));
+      await told('Put away for you. Everyone still sees your screen, and its tile brings it back.');
+    });
+    await step('Click its tile. It’s back on your stage', async () => {
+      await userEvent.click(await screen.findByRole('button', { name: 'Go back to Your screen' }, SOON));
       await frame('Your screen, everyone sees it');
     });
     await step('Click Stop sharing. It stops for everyone, and the people take the stage back', async () => {
@@ -250,9 +263,22 @@ export const NotesTranscriptAndChat: PageStory = {
   }
 };
 
+/** This browser hasn't been told what a tile does yet: the first tile pointed at says it. */
+function firstTime(story: PageStory): PageStory {
+  const b = story.beforeEach;
+  const forget = () => { for (const k of [tileHintKey(ME_ID), tileHintKey(null)]) localStorage.removeItem(k); };
+  return { ...story, beforeEach: [...(Array.isArray(b) ? b : b ? [b] : []), forget] };
+}
+/** A tile that can be moved, as a pointer finds one: not whoever Alcove picked to lead. */
+const movable = () => waitFor(() => {
+  const tile = screen.getAllByRole('group').find((el) => el.classList.contains('can-drag') && !el.classList.contains('is-corner'));
+  if (!tile) throw new Error('No tile can be moved yet.');
+  return tile;
+}, SOON);
+
 export const EverythingElse: PageStory = {
   name: '6.6 Everything else',
-  ...launchReview({ cues: at(8, shares(PRIYA, CHECKLIST)) }),
+  ...firstTime(launchReview({ cues: at(8, shares(PRIYA, CHECKLIST)) })),
   play: async ({ userEvent, step }) => {
     await step('Click More. Captions, marking a moment, catching up and breakout rooms, then a floating call, another device and Settings', async () => {
       await userEvent.click(await within(await dock()).findByRole('button', { name: MORE }, SOON));
@@ -266,15 +292,27 @@ export const EverythingElse: PageStory = {
       await userEvent.click(await screen.findByRole('tab', { name: 'Call' }, SOON));
       await screen.findByRole('switch', { name: 'Lock the call' }, SOON);
     });
-    await step('Close Settings. The stage lays itself out: drag a tile to move it, or its corner to make it bigger', async () => {
+    await step('Close Settings. The stage lays itself out: there are no layouts to choose', async () => {
       await userEvent.click(await screen.findByRole('button', { name: 'Close settings' }, SOON));
       await away('dialog', 'Settings');
+    });
+    await step('Point at a tile. The first time, it says what you can do with one: drag it to move it, and in the grid, pull its corner to make it bigger', async () => {
+      await userEvent.hover(await movable());
+      await screen.findByText('Drag a tile to move it', {}, SOON);
     });
     await step('Click the faces. People opens on your side: who’s here and who’s asking to join. The organizer starts breakout rooms here too', async () => {
       await userEvent.click(await screen.findByRole('button', { name: /^People in this call/ }, SOON));
       await screen.findByRole('complementary', { name: 'People' }, SOON);
     });
-    await step('Priya shares her screen. As the organizer, click the name of Priya’s share. Priya’s bar has Close for you, like anyone’s', async () => {
+    await step('Priya shares her screen, and the people stand in a column beside it. Hide the people, at its top: they wait small by the dock', async () => {
+      await frame(/^Priya’s screen, everyone sees it$/, LATER);
+      await userEvent.click(await screen.findByRole('button', { name: 'Hide the people' }, SOON));
+    });
+    await step('Show the people, first by the dock, brings them back beside it. Close, on its bar, says it gives the stage back to the people', async () => {
+      await userEvent.click(await screen.findByRole('button', { name: 'Show the people' }, SOON));
+      await screen.findByRole('button', { name: 'Hide the people' }, SOON);
+    });
+    await step('As the organizer, click the name of Priya’s share. Priya’s bar has Close for you, like anyone’s', async () => {
       await userEvent.click(await nameOf(await frame(/^Priya’s screen, everyone sees it$/, LATER)));
     });
     await step('Stop it for everyone is in its menu. Only the organizer has it, apart from Close', async () => {
@@ -451,23 +489,30 @@ export const SharedQuestions: PageStory = {
       await reach('Chat')(c);
       await c.userEvent.click(await screen.findByRole('tab', { name: /^Questions/ }, SOON));
     });
-    await c.step('Ask anonymously: nobody is told it’s yours, whoever hosts included, and only you see Take back', async () => {
+    await c.step('Ask anonymously: nobody is told it’s yours, whoever hosts included, and only you see Take back, in its ⋯', async () => {
       await c.userEvent.type(await screen.findByRole('textbox', { name: 'Ask everyone in this room a question' }, SOON), 'Who will follow up after the first rollout?');
       await c.userEvent.click(await screen.findByRole('switch', { name: 'Ask anonymously' }, SOON));
       await c.userEvent.click(await screen.findByRole('button', { name: 'Ask anonymously' }, SOON));
-      await screen.findByRole('button', { name: 'Take back your question' }, SOON);
+      await screen.findByText('Who will follow up after the first rollout?', {}, SOON);
     });
-    await c.step('Vote for Priya’s question; the order you’re reading in stays put', async () => {
+    /** The ⋯ of the question with these words, then what's pressed in it. */
+    const inMenu = async (text: string, item: string) => {
+      const more = (await screen.findByText(text, {}, SOON)).closest('article')?.querySelector<HTMLButtonElement>('button[aria-label="More for this question"]');
+      if (more) await c.userEvent.click(more);
+      await c.userEvent.click(await screen.findByRole('button', { name: item }, SOON));
+    };
+    await c.step('Vote for Priya’s question: it says Voted, and the list sorts once you move on', async () => {
       const [vote] = await screen.findAllByRole('button', { name: /^Vote for this question/ }, SOON);
       if (vote) await c.userEvent.click(vote);
     });
-    await c.step('As whoever hosts, pin a question, then mark it answered', async () => {
-      const [pin] = await screen.findAllByRole('button', { name: 'Pin question' }, SOON); if (pin) await c.userEvent.click(pin);
-      const [answer] = await screen.findAllByRole('button', { name: 'Mark question answered' }, SOON); if (answer) await c.userEvent.click(answer);
+    await c.step('As whoever hosts, pin a question from its ⋯, then mark it answered: the toast offers Undo', async () => {
+      await inMenu('Which teams are included in the first launch?', 'Pin to the top');
+      await inMenu('Which teams are included in the first launch?', 'Mark answered');
     });
-    await c.step('Show answered brings it back, marked Answered', async () => {
+    await c.step('Show answered brings it back, marked Answered, and its ⋯ has Reopen', async () => {
       await c.userEvent.click(await screen.findByRole('button', { name: /^Show answered/ }, SOON));
       await screen.findByText('Answered', {}, SOON);
+      await inMenu('Which teams are included in the first launch?', 'Reopen');
     });
   }
 };

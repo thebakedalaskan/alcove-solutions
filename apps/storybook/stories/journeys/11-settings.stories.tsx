@@ -63,14 +63,14 @@ export const ChangeASetting: PageStory = {
   name: '11.1 Change a setting',
   ...page('/settings', 'busy'),
   play: async ({ userEvent, step }) => {
-    await step('Click Detailed. There’s nothing to save and nothing else to press', async () => {
-      await userEvent.click(within(await row('Summary')).getByRole('button', { name: 'Detailed' }));
+    await step('Under Notes for new calls, click Off. There’s nothing to save and nothing else to press', async () => {
+      await userEvent.click(within(await row('Notes for new calls')).getByRole('button', { name: 'Off' }));
     });
-    await step('It’s kept. Saved shows in the row, and says it’s for new notes', async () => {
-      await within(await row('Summary')).findByText('Saved for new notes', {}, SOON);
+    await step('It’s kept. Saved shows in the row', async () => {
+      await within(await row('Notes for new calls')).findByText('Saved', {}, SOON);
     });
-    await step('Two seconds later Saved has gone, and the row just says Detailed', async () => {
-      await goneFrom(await row('Summary'), 'Saved for new notes');
+    await step('Two seconds later Saved has gone, and the row just says Off', async () => {
+      await goneFrom(await row('Notes for new calls'), 'Saved');
     });
   }
 };
@@ -456,8 +456,8 @@ export const WhenAPanelDoesntLoad: PageStory = {
       await userEvent.click(within(calendar).getByRole('button', { name: 'Try again' }));
       await within(await row('Google Calendar')).findByText('Connected', {}, SOON);
     });
-    await step('If the hardware check fails, Settings says it is unavailable', async () => {
-      await within(await row('Hosting server')).findByText('Hosting hardware check unavailable', {}, LATER);
+    await step('With no hardware answer to show, Confidential compute just says what it is', async () => {
+      await within(await row('Confidential compute')).findByText('Where your audio is opened and your notes are written.', {}, LATER);
     });
   }
 };
@@ -505,15 +505,15 @@ export const RapidRepeatedChoices: PageStory = {
   ...page('/settings#calls', 'busy'),
   beforeEach: repeatedChoices.begin,
   play: async ({ userEvent, step }) => {
-    await step('Choose Detailed, Short, then Detailed while the first write is still pending', async () => {
-      const summary = within(await row('Summary'));
-      await userEvent.click(summary.getByRole('button', { name: 'Detailed' }));
-      await userEvent.click(summary.getByRole('button', { name: 'Short' }));
-      await userEvent.click(summary.getByRole('button', { name: 'Detailed' }));
-      await summary.findByText('Saving…', {}, SOON);
+    await step('Under Notes for new calls, choose Off, On, then Off while the first write is still pending', async () => {
+      const notes = within(await row('Notes for new calls'));
+      await userEvent.click(notes.getByRole('button', { name: 'Off' }));
+      await userEvent.click(notes.getByRole('button', { name: 'On' }));
+      await userEvent.click(notes.getByRole('button', { name: 'Off' }));
+      await notes.findByText('Saving…', {}, SOON);
     });
     await step('The old failure leaves the last choice in place; Saved names only that last confirmed choice', async () => {
-      await within(await row('Summary')).findByText('Saved for new notes', {}, LATER);
+      await within(await row('Notes for new calls')).findByText('Saved', {}, LATER);
     });
   }
 };

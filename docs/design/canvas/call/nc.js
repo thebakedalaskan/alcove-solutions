@@ -76,7 +76,7 @@
     screenOff: { icon: 'screen', text: 'You stopped sharing.' },
     boardOn: { icon: 'presentation', text: 'Everyone follows you on Launch retro. They can unfollow to add to it.' },
     wsOn: { icon: 'folderOpen', text: 'Everyone follows you in the workspace. They can unfollow to work alongside you.' },
-    closedMe: { icon: 'x', text: 'Closed for you. The others keep it open, on their own.' },
+    closedMe: { icon: 'x', text: 'You stopped presenting. The others keep it open, on their own.' },
     closedAll: { icon: 'x', text: 'Closed for everyone.' },
     closedViewer: closedFor('priya'),
     priyaWs: { icon: 'folderOpen', text: 'Priya is presenting the workspace, and you’re following.' },
@@ -513,7 +513,7 @@
       v.closeMenu = {
         head: 'Close ' + ct.title,
         rows: [
-          { d: I.user, t: 'For you', sub: 'Everyone else keeps it open, on their own.', cls: cx('nc-cm', hot('close.me:' + cid)), click: on('close.me:' + cid) },
+          { d: I.user, t: 'For you', sub: 'You stop presenting. Everyone else keeps it open, on their own.', cls: cx('nc-cm', hot('close.me:' + cid)), click: on('close.me:' + cid) },
           { d: I.people, t: 'For everyone', sub: 'It closes for everyone in the call.', cls: cx('nc-cm', hot('close.all:' + cid)), click: on('close.all:' + cid) }
         ]
       };

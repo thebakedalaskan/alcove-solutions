@@ -300,6 +300,20 @@ sequenceDiagram
    "Thank you.", "Thanks for watching", "To be continued", "¡Gracias!", "Obrigado." or "Продолжение
    следует...". A reply without segments but with text becomes one line.
 
+   Whisper also says back the names its prompt opens with as it starts on a clip, then carries on with
+   what it heard, so the echo opens the clip's first line under its speaker's name. Before the filter
+   above, the clip's first segment (the first Whisper is sure enough of to keep) loses them (`afterNames` in
+   `inference.ts`), with words compared without case or punctuation: two or more of the prompt's names, one
+   after another as the prompt has them, so "Art Vandelay, Priya Raman. I agree." is kept as "I agree.",
+   and a clip that was nothing but the names leaves no line. One name stays, since people are spoken to by
+   name, and so do names opening any later segment of the clip, where Whisper doesn't say them back.
+   Whisper can also open a clip with the end of the words said before, but so do people picking up what
+   was just said ("Push the launch to the end of March? That's too late."), so that's left as it is until a
+   length that tells the two apart is measured against NEAR AI's Whisper, on the synthetic meeting clips
+   below, as the prompt was (issue #228 stays open for it). Only whether a clip lost the names is logged
+   (`namesTrimmed`, 1 or 0), never their words. Lines already stored keep their words; the organizer can
+   correct one on the note.
+
    What's kept but heard with little confidence is marked, never dropped (`UNSURE` in `inference.ts`): a
    segment whose average `avg_logprob` is below −0.4, whose `compression_ratio` is over 2.0, or, where it's
    reported, whose `no_speech_prob` is over 0.5. Measured against NEAR AI's Whisper, through the same verified,
@@ -470,8 +484,8 @@ A call's breakout rooms each get a section of its note (`rooms` in the note's ma
 call's own notes. Everyone is told so when rooms open with notes on, and in each room's notes sign ([Calls and recordings › Breakout rooms](calls-and-recordings.md#hands-spotlight-breakout-rooms-and-captions)).
 
 - **What's in one.** The room's name; everyone who was in it while it was open (the organizer only if it
-  visited), each once; when it was open, in seconds into the recording; its gaps (the call's notes off or paused,
-  and the room's own pauses, the last one until it closed); what was said there, each line under whoever said it;
+  visited, a guest with the link by name only, never an address), each once; when it was open, in seconds into the
+  recording; its gaps (the call's notes off or paused, and the room's own pauses, the last one until it closed); what was said there, each line under whoever said it;
   and its summary, decisions, open questions, follow-ups and chapters, written from those lines alone.
 - **Where it comes from.** Each room's scribe transcribes it during the call. Its lines stay sealed in
   `transcript_clips` until the call ends, and move into the note's sealed manifest when the recording stops, when
@@ -665,7 +679,16 @@ the same way when it is an unencrypted one.
 - **Where it shows.** Under the short summary on the note page, behind a "Full summary" button, closed until pressed; a
   note with none shows no button. A note written before it existed has none until its notes are written again, which
   writes it afresh each time and replaces the old one (or, if that request fails, leaves none). A breakout room's
-  section has a short summary only.
+  section has a short summary only. **Copy as text** and the notes file sent to Google Drive ([Drive
+  exports](drive-exports.md)) carry it too, under the short summary, as "Full summary".
+- **One long account.** The short summary is always two or three sentences: there's no setting for how long it is, so
+  the fold always opens something longer than what's above it, and one person's choice never decides how everyone reads
+  the note. Profiles still keep the `summaryLength` an earlier release let people choose, unread, because the release
+  before this one opens a profile only with it ([Data and storage](data-and-storage.md)). For the same release, GET and
+  PATCH `/v1/account/preferences` still send it, as the profile has it, because its app reads preferences only with it
+  (a tab left open on it, or served while the API deploys); a PATCH that sends it changes nothing, and this release's
+  app doesn't declare it, so its schema drops it. Due to go in the next release: `summaryLength` on the wire and in the
+  profile, together.
 - **Asking.** Asking about the note sends it as "Full summary" after the short summary, so an answer can use what it
   says. Asking across notes, across a series, catching up and live notes don't read it.
 - **Logged.** `full summary written` at info (`chars`, `model`, `encrypted`, `ms`) and `full summary not written; the
@@ -840,7 +863,7 @@ manifest, the call's own lists and each breakout room's, so it has no table of i
 - **Adding to the notes.** `POST /v1/notes/:id/decisions` and `…/actions` with the exact words, optionally the `lines` it
   rests on (at most three, of that part of the note, or `400 invalid`) and a breakout room's section (`room`, or
   `404 not-found`). Nothing asks a model, and the same words again add nothing, so a retry is safe and no receipt is kept.
-  A part holds at most 60 of each (`409 conflict`). Besides the notes model, this and **Added by people**
+  A part holds at most 60 of each (`409 conflict`). Besides the notes model, this and **Shared notes**
   ([Adding to the shared notes](#adding-to-the-shared-notes)) are the only ways anything reaches the shared notes, and both
   take someone sending exactly those words, so nothing someone keeps for themselves gets in by itself. A person's entry has
   `proposed` as its first change, which is also what keeps it when the notes are written again.
@@ -1022,7 +1045,12 @@ notes**.
   note), a shared screen by its frame, or a moment. "Mark this" (**B**, the dock, **More** on a phone, or **Mark this**
   in Yours) keeps when it was pressed, where that falls in the recording, and the breakout room if any, and opens at the
   line just said, up to two minutes back. A mark made while nothing was captured there keeps no place in the recording.
-  You can only bookmark what you may read: anything else is `404 not-found`, whether or not it exists.
+  You can only bookmark what you may read: anything else is `404 not-found`, whether or not it exists. A line or a
+  shared screen is bookmarked once: bookmarking it again changes nothing and answers with the same notes. Each bookmark
+  says what it points at (`target`: `line`, `screen` or `moment`, from what the record keeps, so nothing stored changed
+  shape), because a moment marked as a line was said opens at that same line: the bookmark on a line, in the call's
+  transcript and on the note, is that line's `target: line` bookmark, on or off (`DELETE` takes it back), and leaves
+  moments alone.
 - **Access is read again every time.** What a bookmark points at is resolved on each read and never stored. During a
   call that's the call's one rule ([Catching up › Who reads what](#catching-up-during-a-call)), so a bookmark of the main
   room says nothing of what it points at from a breakout room (`reach: later`), and a room's line can't be opened from
@@ -1047,7 +1075,7 @@ once the notes are written. During a call the people who'll get the notes aren't
 joins the invite), so a preview couldn't say who reads it.
 
 - **Preview.** `POST /v1/notes/:id/personal/:entryId/preview` sends nothing. It says the words that would go, the moments
-  with them, where (**Added by people** on that note) and everyone who has the notes now, and it gives a seal: a keyed
+  with them, where (**Shared notes** on that note) and everyone who has the notes now, and it gives a seal: a keyed
   hash, under the author's keys, of the entry, its moments and those people.
 - **Add.** `POST /v1/notes/:id/personal/:entryId/add` takes the words as they stand in the preview, cut down or changed by
   the person, and the seal. Everything is read again holding the note's lock, and the seal has to match: if anyone
@@ -1075,6 +1103,27 @@ joins the invite), so a preview couldn't say who reads it.
   notes, found by a keyed hash of who added it, so it makes no difference if they'd removed the note or deleted the entry
   by then. The app says what goes, and what stays, before they confirm.
 
+### Writing straight into the shared notes
+
+Beside a written note, **Shared notes** has a box of its own, so something meant for everyone doesn't have to go through
+Your notes first (`write` in `additions.ts`). It's an addition like any other, with no private entry behind it.
+
+- **Who reads it, first.** `GET /v1/notes/:id/additions/audience` sends nothing. It says everyone who has the notes now,
+  organizer first, and gives a seal: a keyed hash, under the writer's keys (`promotion:<noteId>`), of those people. Its
+  shape differs from a preview's (no entry, no moments), so neither seal stands in for the other. The box shows them
+  before anything is typed.
+- **Posting.** `POST /v1/notes/:id/additions` with the words (1 to 8,000 characters) and the seal. Holding the note's
+  lock, who has the notes is read again and the seal has to match: if anyone got the notes since, it's `409 conflict`,
+  and the box says who got them since and keeps the words. It's only once the notes are written (`409 conflict` before),
+  for the same reason as adding from your own notes, under the same `MAX_NOTE_ADDITIONS`. During a call the shared place
+  to write is the call's workspace pages.
+- **Stored** exactly as an addition from someone's own notes is (`note_additions`, sealed under the organizer's keys, with
+  the author's name and address as they were, and the author's keyed hash), with no moments: rows written by the
+  previous release read as before, and no migration was needed. Taking back, the organizer's Remove, deletion with the
+  note and with the author's account all work unchanged. It can't be edited once posted: taking it back is the way to
+  change it.
+- **Kept nowhere else.** Like everything added to the shared notes, it keeps no operation receipt, and its log line has
+  IDs and counts only (`written into the shared notes`).
 ### What happens to your own notes
 
 - **The note is deleted**: everyone's own notes on it and everything added to it go, in the same transaction.
@@ -1511,8 +1560,8 @@ The prompts are in `apps/api/src/features/notes/drafting.ts`; read them there. I
   layout, design, colours, never who someone is), `changed` (what changed since the frame before, only when there was
   one), up to four `regions` (`{label, box: [left, top, right, bottom]}` in fractions of the frame) and `relevance`
   (`key`, `supporting`, `unrelated`).
-- **Writing notes.** One JSON object: `summary` (substance first; two or three plain sentences, or with the
-  detailed setting a short paragraph for each topic), `decisions` (something only suggested isn't one),
+- **Writing notes.** One JSON object: `summary` (substance first; two or three plain sentences, for every note: the
+  full summary is the longer account), `decisions` (something only suggested isn't one),
   `questions` (what someone asked that the meeting didn't answer or settle), `actions` (text that starts with a verb,
   an owner as the transcript names them or null, and a due date as it was said or null), `chapters` (two to six, each
   with the `line` it starts at), three `suggestedQuestions`, and `screens` (for each shared screen given in full in the transcript, a
@@ -1754,8 +1803,9 @@ invented from noise from 3 of 8 sounds to none. Calls in German, French and Span
 
 `inference.ts` logs only models, byte sizes, durations, segment and line counts (and how many lines were unsure), image counts, statuses,
 timings, finish reasons and token counts, at debug (`clip transcribed`, `notes model answered`); for a clip
-also whether a language was sent or found and the prompt's size in bytes (`languageSent`, `languageFound`,
-`promptBytes`), never which language or what the prompt said. Shared screens log counts, sizes and places:
+also whether a language was sent or found, the prompt's size in bytes, and whether the prompt's names were taken
+off its start (`languageSent`, `languageFound`, `promptBytes`, `namesTrimmed`), never which language, what the
+prompt said or what was taken off. Shared screens log counts, sizes and places:
 `screen piece stored`, `shared screen video stored` and `frame kept` at debug, `shared screens joined into video`,
 `screen moments picked` and `shared screens read` at info (how many frames, how many were read with the screen before them, and how many were key, supporting or
 unrelated, with the model), `a shared screen’s video couldn’t be joined; left out of replay` and `a frame
@@ -1769,7 +1819,7 @@ warn. Every chat request's debug line carries `encrypted` (false for an unencryp
 `notes waiting for the notes model to check out` at warn, and one that waits for an answer
 `notes waiting for the notes model to answer`, also at warn. Evidence itself, keys and anything sent are
 never logged. Around it, IDs, attempts, counts and timings: `series read` at debug; `notes job queued`,
-`notes written` (with decision, follow-up and chapter counts, and the notes language and summary length), `full summary written` (its length, the model and whether it was sealed), `full summary not written; the notes stand without it` at warn,
+`notes written` (with decision, follow-up and chapter counts, and the notes language), `full summary written` (its length, the model and whether it was sealed), `full summary not written; the notes stand without it` at warn,
 `question answered`, `question answered across notes` (how many notes the person has, how many are written
 with a transcript, how many were sent, the transcript lines sent, the cites and the time), `asked across
 notes with nothing to answer from` (how many notes, and whether any is still being written), `series

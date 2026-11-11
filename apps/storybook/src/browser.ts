@@ -87,12 +87,15 @@ const DEVICES: readonly Made[] = [
   { kind: 'audiooutput', id: 'speaker-headset', label: 'Headset' }
 ];
 
-/** Which device a constraint asks for, by its ID, or the first of its kind. */
+/**
+ * Which device a constraint asks for, by its ID; else, as Chrome does, the system's own entry (`default`, which follows
+ * the system) where its kind has one, or the first of its kind.
+ */
 function chosen(kind: MediaDeviceKind, c: boolean | MediaTrackConstraints | undefined): Made {
   const want = typeof c === 'object' ? c.deviceId : undefined;
   const ids = typeof want === 'string' ? [want] : Array.isArray(want) ? want : typeof want === 'object' ? [want.exact, want.ideal].flat().filter((x) => typeof x === 'string') : [];
-  const all = DEVICES.filter((d) => d.kind === kind && d.id !== 'default');
-  return all.find((d) => ids.includes(d.id)) ?? all[0] ?? { kind, id: kind, label: kind };
+  const all = DEVICES.filter((d) => d.kind === kind);
+  return all.find((d) => ids.includes(d.id)) ?? all.find((d) => d.id === 'default') ?? all[0] ?? { kind, id: kind, label: kind };
 }
 
 /** A track that says it's from `device`, as a real one would. */

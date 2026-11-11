@@ -5,18 +5,19 @@
 import type { Person } from '@alcove/api';
 import { newBlockId, retire, seenIn } from '@alcove/api/retire';
 import { Fragment, type Node as PMNode } from 'prosemirror-model';
-import { TextSelection, type EditorState, type Transaction } from 'prosemirror-state';
+import { NodeSelection, TextSelection, type EditorState, type Transaction } from 'prosemirror-state';
 import type { EditorView } from 'prosemirror-view';
 import { ySyncPluginKey, yUndoPluginKey } from 'y-prosemirror';
 import type * as Y from 'yjs';
 import { blockAt, blockLabel, caretInto, findBlock, isBlank, leafWords, makeBlock, placeBlocks, selectedBlock, turnBlock, allBlocks, type BlockRef } from './commands';
 import { startThread } from './comments';
+import { codeLang, type CodeLang } from './languages';
 import type { SlashId } from './menus/rows';
 import { appear, decorChange, flash, holding, holdRange, rangeOf } from './plugins/decor';
 import { moveBlock } from './plugins/retire';
 import type { EditorRuntime, HeldWords, OpenMenu } from './runtime';
 import type { HeldRange } from './plugins/decor';
-import { blockFromJSON, captionKey, captionTagsKey, hasBlockId, learnAttrs, lineKind, safeHref, schema, type CaptionTag } from './schema';
+import { blockFromJSON, captionKey, captionTagsKey, hasBlockId, learnAttrs, lineKind, safeHref, schema, textAttr, type CaptionTag } from './schema';
 import type { BlockJSON, BlockKind, InsertAt, LiveLine, LiveWhat, MentionItem, MomentLine, MovingBlock, Rect } from './types';
 import { elementOf, syncOf } from './ydoc';
 
@@ -133,10 +134,15 @@ export function pickSlash(rt: EditorRuntime, menu: Extract<OpenMenu, { kind: 'sl
   }
 }
 
-/** Puts a tag where `@word` was, and tells whoever needs telling. */
+/** Puts a tag where `@word` was, and tells whoever needs telling. Pick a date… opens the calendar in the list's place. */
 export function pickMention(rt: EditorRuntime, menu: Extract<OpenMenu, { kind: 'mention' }>, item: MentionItem): void {
   const view = editing(rt);
   if (!view) return;
+  if (item.kind === 'calendar') {
+    const held = holdRange(view.state, menu.from, menu.to);
+    if (held) rt.menu.set({ kind: 'date', block: menu.block, held, date: null, chip: false });
+    return;
+  }
   rt.menu.set(null);
   const chip = item.kind === 'person' ? n.mention.create({ id: item.person.id, name: item.person.name })
     : item.kind === 'document' ? n.docref.create({ doc: item.id })
@@ -149,6 +155,57 @@ export function pickMention(rt: EditorRuntime, menu: Extract<OpenMenu, { kind: '
     const dom = view.nodeDOM(menu.from);
     rt.props.onTagged?.(item.person, menu.block, dom instanceof Element ? dom.getBoundingClientRect() : null);
   }
+}
+
+/** A date tag, pressed or chosen with the arrow keys and Enter: the calendar opens against it, to pick another day for it. */
+export function openDateTag(rt: EditorRuntime, pos: number): boolean {
+  const view = editing(rt);
+  const node = view?.state.doc.nodeAt(pos);
+  if (!view || node?.type !== n.dateChip) return false;
+  const held = holdRange(view.state, pos, pos + node.nodeSize);
+  const block = blockAt(view.state.doc.resolve(pos))?.id;
+  if (!held || !block) return false;
+  rt.menu.set({ kind: 'date', block, held, date: textAttr(node, 'date'), chip: true });
+  return true;
+}
+
+/** Enter with a date tag selected, as the arrow keys select one: the calendar, to change it. */
+export const changeDateTag = (rt: EditorRuntime): boolean => {
+  const sel = rt.view?.state.selection;
+  return sel instanceof NodeSelection && sel.node.type === n.dateChip ? openDateTag(rt, sel.from) : false;
+};
+
+/**
+ * A day picked from the calendar: a date tag where `@word` was, with the caret after it, or the tag that was pressed, now
+ * saying that day. If what it was for has gone meanwhile, there's nothing to put it in, and the keyboard goes back to the text.
+ */
+export function pickDate(rt: EditorRuntime, menu: Extract<OpenMenu, { kind: 'date' }>, date: string): void {
+  const view = editing(rt);
+  rt.menu.set(null);
+  if (!view) return;
+  view.focus();
+  const range = rangeOf(view.state, menu.held);
+  if (!range) return;
+  if (menu.chip) {
+    if (view.state.doc.nodeAt(range.from)?.type !== n.dateChip) return;
+    const tr = view.state.tr.setNodeAttribute(range.from, 'date', date);
+    view.dispatch(tr.setSelection(TextSelection.create(tr.doc, range.to)).scrollIntoView());
+    return;
+  }
+  const tr = view.state.tr.replaceWith(range.from, range.to, [n.dateChip.create({ date }), schema.text(' ')]);
+  view.dispatch(tr.setSelection(TextSelection.create(tr.doc, range.from + 2)).scrollIntoView());
+}
+
+/** Esc in the calendar: back to the text, after the tag or `@word`, and the `@` list stays shut while the caret's in that word. */
+export function putDateAway(rt: EditorRuntime, menu: Extract<OpenMenu, { kind: 'date' }>): void {
+  rt.menu.set(null);
+  const view = rt.view;
+  if (!view) return;
+  view.focus();
+  const range = rangeOf(view.state, menu.held);
+  if (!range) return;
+  if (!menu.chip) rt.dismissed = range.from;
+  view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, range.to)));
 }
 
 /** Tag someone from their card: on the last line if nothing's written there, or a new one under it. */
@@ -228,6 +285,15 @@ export function turnInto(rt: EditorRuntime, id: string, kind: BlockKind): void {
   const tr = view.state.tr;
   turnBlock(tr, ref, kind);
   view.dispatch(tr);
+}
+
+/** A code block's language, for everyone with the document: one of the short names in languages.ts, or none for plain text. */
+export function setCodeLang(rt: EditorRuntime, id: string, lang: CodeLang | null): void {
+  const view = editing(rt);
+  const ref = view ? findBlock(view.state.doc, id) : null;
+  rt.menu.set(null);
+  if (!view || !ref || ref.node.type !== n.code || codeLang(ref.node) === lang) return;
+  view.dispatch(view.state.tr.setNodeAttribute(ref.pos, 'lang', lang));
 }
 
 /** A copy under the block, with its own ID. Comments stay with the original. */
@@ -488,6 +554,17 @@ const selectionRect = (view: EditorView): Rect => {
   return range && range.rangeCount > 0 ? range.getRangeAt(0).getBoundingClientRect() : view.dom.getBoundingClientRect();
 };
 
+/** The words held on the page now, as they're marked there (`.fs`), however the page has scrolled or changed since. */
+const heldOnPage = (rt: EditorRuntime): Element[] => [...(rt.view?.dom.querySelectorAll('.fs') ?? [])];
+/** Where held words are on screen now, all of them: or `was`, once nothing's held. */
+function heldRect(rt: EditorRuntime, was: Rect): Rect {
+  const boxes = heldOnPage(rt).map((el) => el.getBoundingClientRect()).filter((r) => r.width > 0 || r.height > 0);
+  if (boxes.length === 0) return was;
+  const left = Math.min(...boxes.map((r) => r.left)), top = Math.min(...boxes.map((r) => r.top));
+  const right = Math.max(...boxes.map((r) => r.right)), bottom = Math.max(...boxes.map((r) => r.bottom));
+  return { left, top, right, bottom, width: right - left, height: bottom - top };
+}
+
 /** Holds the selected words for a comment, then hands over a draft. ⌘⇧M and the bar's Comment both come here. */
 export function startComment(rt: EditorRuntime): boolean {
   const view = editing(rt);
@@ -590,6 +667,8 @@ export function askAboutSelection(rt: EditorRuntime): void {
 
   onAsk({
     text, block, rect,
+    where: () => heldRect(rt, rect),
+    within: () => heldOnPage(rt)[0] ?? null,
     wait: () => {
       const live = editing(rt);
       if (!live) return;
