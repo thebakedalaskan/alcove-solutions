@@ -284,7 +284,8 @@ from another call. Rooms the organizer opens (`{ do: 'rooms' }`) can have a boar
 room's people can put stickies on theirs (`work`): the scripted call makes, fills and lands the boards as the server does, in
 the world's first workspace. Someone else can make the board in the call (`{ do: 'open-board' }`, with what `draw` puts on
 it), which opens on their stage alone until they present it (`{ do: 'present' }`), move everyone on (`{ do: 'move-presenting' }`)
-and stop (`{ do: 'stop-presenting' }`); the organizer can close it for everyone (`closesPresenting()`), and whoever opened it
+and stop (`{ do: 'stop-presenting' }`), their view on the board on the frame they're on, as their browser would say it, for
+everyone following them; the organizer can close it for everyone (`closesPresenting()`), and whoever opened it
 can close it (`closesBoard()`) unless someone else presents it. It leaves the call, as the server takes it out, when someone
 moves it to Trash in the Drive, alone or in its folder (`trashesBoard()`, `trashesBoard({ folder: true })`), or deletes the
 workspace it's kept in (`deletesBoardWorkspace()`): its own connection says which. You present the board open where you
