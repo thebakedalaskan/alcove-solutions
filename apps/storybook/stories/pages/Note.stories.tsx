@@ -4,6 +4,7 @@ import { screen } from 'storybook/test';
 import { RETRO_NOTE, afterTheRetro } from '../../src/api/scenarios';
 import { phone } from '../../src/call';
 import { changing, page, pages, type PageArgs, type PageStory } from '../../src/page';
+import { iso } from '../../src/world/clock';
 import { withDriveExports, withSharedCallExports } from '../../src/world/drive-exports';
 import { FOLLOW_UP_NOTE, withFollowUpProposals } from '../../src/world/follow-ups';
 import { STATES, inEveryState } from '../../src/world/states';
@@ -291,6 +292,18 @@ export const GoogleDriveCustomSettings = page('/notes/n2', 'busy', { beforeEach:
 export const GoogleDriveNotCovered = page('/notes/n7', 'drive-connected');
 export const GoogleDriveNotCoveredNight = page('/notes/n7', 'drive-connected', { globals: { theme: 'dark' } });
 export const GoogleDriveNotCoveredPhone = phone(GoogleDriveNotCovered);
+/**
+ * Launch planning went to Drive as it ended, while automatic exports covered it. They were turned off and on again on
+ * Monday, which covers only calls that end after, so they don't cover it now: the panel says its files already in Drive
+ * stay there and changes to the notes aren't sent, over the files that went, with Export to Google Drive.
+ */
+export const GoogleDriveNoLongerCovered = page('/notes/n7', 'drive-connected', { beforeEach: changing((w) => {
+  w.drive.jobs.push(
+    { id: 'drive-launch-notes', noteId: 'n7', format: 'notes-markdown', status: 'uploaded', reason: null, fileUrl: 'https://drive.google.com/file/d/preview_launch_notes/view', updatedAt: iso(-8, 16, 40), nextAt: null },
+    { id: 'drive-launch-transcript', noteId: 'n7', format: 'transcript-text', status: 'uploaded', reason: null, fileUrl: 'https://drive.google.com/file/d/preview_launch_transcript/view', updatedAt: iso(-8, 16, 40), nextAt: null }
+  );
+}) });
+export const GoogleDriveNoLongerCoveredPhone = phone(GoogleDriveNoLongerCovered);
 /** Export to Google Drive pressed: the call has its own choice now, and its files go at once, Uploading, then each with its time. */
 export const GoogleDriveExported = page('/notes/n7', 'drive-connected', {
   play: async ({ userEvent, step }) => {

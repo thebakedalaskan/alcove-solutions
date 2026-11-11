@@ -248,6 +248,45 @@ describe('automatic Google Drive call exports', () => {
     expect(h.google.drive.files(b.google.sub)).toHaveLength(2);
   });
 
+  it('leaves a call’s files in Drive as they are once automatic exports stop covering it, and its own export updates them again', async () => {
+    const b = await connected(['transcript-text']);
+    const { noteId } = await completed(b);
+    await uploaded(b, noteId, 1);
+    const sent = h.google.drive.files(b.google.sub)[0];
+    if (!sent) throw new Error('Expected the call’s transcript in Drive.');
+    expect(sent.updates).toBe(1);
+    // Turned off: they don't cover the call, and what went stays listed, as it is.
+    await b.api.drive.update({ enabled: false, destinationId: b.destinationId, formats: ['transcript-text'] });
+    const off = await b.api.drive.forNote(noteId);
+    expect(off).toMatchObject({ automatic: 'off', override: null });
+    expect(off.jobs.map((job) => job.status)).toEqual(['uploaded']);
+    // On again: they cover calls that end from now on, so this one, which went before, isn't covered any more.
+    await b.api.drive.update({ enabled: true, destinationId: b.destinationId, formats: ['transcript-text'] });
+    const again = await b.api.drive.forNote(noteId);
+    expect(again).toMatchObject({ automatic: 'before', override: null });
+    expect(again.jobs.map((job) => job.status)).toEqual(['uploaded']);
+    // Its notes change, and nothing is sent: the file in Drive stays as it went.
+    const line = (await b.api.notes.get(noteId)).transcript?.[0];
+    if (!line) throw new Error('Expected the call’s transcript.');
+    await b.api.notes.correctLine(noteId, line.id, { text: 'We agreed to launch on Monday.' });
+    await b.api.notes.rewrite(noteId);
+    for await (const _progress of b.api.notes.progress(noteId)) { /* rewritten notes */ }
+    await runJobs();
+    expect((await b.api.drive.forNote(noteId)).jobs.map((job) => job.status)).toEqual(['uploaded']);
+    const kept = h.google.drive.files(b.google.sub);
+    expect(kept).toHaveLength(1);
+    expect(kept[0]?.updates).toBe(1);
+    expect(kept[0]?.bytes.toString('utf8')).not.toContain('launch on Monday');
+    // Exported on its own, the same file follows the notes again.
+    await b.api.drive.setForNote(noteId, { enabled: true, destinationId: b.destinationId, formats: ['transcript-text'] });
+    await uploaded(b, noteId, 1);
+    const updated = h.google.drive.files(b.google.sub);
+    expect(updated).toHaveLength(1);
+    expect(updated[0]?.id).toBe(sent.id);
+    expect(updated[0]?.updates).toBe(2);
+    expect(updated[0]?.bytes.toString('utf8')).toContain('launch on Monday');
+  });
+
   it('says why a retrying export waits and when it’s tried next, and Try again sends it at once', async () => {
     const b = await connected(['notes-markdown']);
     h.google.drive.refuse((call) => call.path.startsWith('/upload/'), 503);

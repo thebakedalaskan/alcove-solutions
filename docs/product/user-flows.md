@@ -1999,7 +1999,10 @@ happened, leaving the existing settings in place after cancellation or failure.
    people, makes public links or exports another person’s private notes.
 3. **Override one call.** On a call’s saved notes, your **Google Drive** part says whether automatic exports cover it:
    "Uses your automatic export settings.", "This call ended before automatic exports were on, so it isn’t exported." for a
-   call that ended before they were turned on, or "Automatic exports are off, so this call isn’t exported.". A call they
+   call that ended before they were turned on, or "Automatic exports are off, so this call isn’t exported.". When a call
+   they don't cover has files in Drive already (it went while they covered it, before they were turned off, or off and
+   on again, or by its own export, since stopped), it says they don't cover it, and that its files already in Drive stay
+   there and changes to the notes aren't sent. A call they
    don't cover has **Export to Google Drive** under its folder: it saves this call's own choice with the folder and files
    shown, and the files upload straight away, **Uploading**, then when they went. **Use custom settings** gives this call
    its own authorized destination and file choices, with **Export to Google Drive**, and once it's exporting, "Goes to
