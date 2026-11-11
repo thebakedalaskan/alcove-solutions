@@ -645,9 +645,11 @@ and this way it runs through the same auth, origin check and tests as everything
   below.
 - **At a person's limit,** the next of that kind ends their oldest stream of it to make room, as rings do: the one likeliest
   to be a tab that went without anyone hearing, such as one whose page crashed. It just ends, as on the clock, so a tab
-  that's still there opens another. Only a stream open for 20 seconds makes room (`LIVE_MAKE_ROOM_MS`), so someone with more
-  tabs than places takes turns slowly rather than round and round; until one has been, the next is refused with `503` and
-  its browser tries again.
+  that's still there opens another at once. Only a stream open for 20 seconds makes room (`LIVE_MAKE_ROOM_MS`), and room is
+  made for each person, for each kind, at most once in those 20 seconds: until then the next is refused with `503`, the tab
+  that just gave up its place included, and its browser tries again, later each time. So someone with more tabs than places
+  takes turns slowly, one stream every 20 seconds or so, rather than round and round, each tab opened again ending the next
+  oldest and every one of them a document worker's sync.
 - **A workspace's stream** (`GET /v1/workspaces/:id/live`). Lines: `tree`, whole, first and whenever what this reader sees
   changes; `presence`, everyone here that they can know of, whole, whenever that changes; `mentions`, their authorized unread tags, whole
   ([Tags](#tags)); `access`, when their role changes, just before the `tree` that shows it; `ping`, every 25 seconds; `closed`, when

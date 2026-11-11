@@ -117,8 +117,8 @@ Cloud Run uses one instance, session affinity, gen2, one CPU, 2 GiB, port 8080, 
 requests at once: an open tab holds one for its stream of rings, so at the default of 80 they'd starve live calls.
 The API holds at most 300 of those streams, and 8 for any one account.
 A live stream of a workspace or a document holds a request too, for as long as it's open: at most 8 of a workspace and 8 of
-documents for any one person on an instance, where the next ends their oldest once it's been open 20 seconds
-(`LIVE_MAKE_ROOM_MS`), 64 of both from one client address (`LIVE_STREAMS_PER_ADDRESS`), and 500 of both together for everyone
+documents for any one person on an instance, where the next ends their oldest once it's been open 20 seconds, at most one
+every 20 seconds (`LIVE_MAKE_ROOM_MS`), 64 of both from one client address (`LIVE_STREAMS_PER_ADDRESS`), and 500 of both together for everyone
 (`LIVE_STREAMS_MAX`), past which they're refused with `503` and browsers try again, and the API lets go of each one after 280
 seconds for the browser to open it again (`LIVE_STREAM_MS`; keep it under the timeout). Cloud Run never tells the API that a
 browser closed a stream (HTTP/1 doesn't pass a disconnect on), so the browser says so itself, with `POST …/live/end` and the

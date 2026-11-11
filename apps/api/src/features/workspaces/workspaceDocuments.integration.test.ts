@@ -927,7 +927,7 @@ describe('streams', () => {
     }
   });
 
-  it('hold eight a person on an instance: the next ends their oldest once it has been open a while, and nobody else’s', async () => {
+  it('hold eight a person on an instance: the next ends their oldest once it has been open a while, and nobody else’s, once in that while', async () => {
     const ann = await account();
     const theo = await account();
     const id = await workspace(ann, 'Ours', [[theo, 'edit']]);
@@ -943,6 +943,7 @@ describe('streams', () => {
     const theirs = stream(second.baseUrl, theo.fetch, id, doc);
     try {
       await until(() => [...held, theirs].every((s) => s.lines.length > 0), 'nine streams');
+      const allOpen = Date.now();
       // None of them has been open long enough to be taken for gone: one more waits, and its browser tries again by itself.
       expect(await live(ann)).toBe(503);
       await rest(since + 8100 - Date.now());
@@ -955,9 +956,64 @@ describe('streams', () => {
       expect(held[0]?.lines.some((l) => l.type === 'closed')).toBe(false);
       expect(held.slice(1).every((s) => !s.ended)).toBe(true);
       expect(theirs.ended).toBe(false);
+      // Every other one of theirs has been open a while too now, but room was made a moment ago: the next is refused, and
+      // ends nothing, as the tab that gave up its place is when it opens it again, rather than ending the next oldest in turn.
+      await rest(allOpen + 8100 - Date.now());
+      expect(await live(ann)).toBe(503);
+      await rest(200);
+      expect(held.slice(1).every((s) => !s.ended)).toBe(true);
+      expect(ninth.ended).toBe(false);
+      expect(theirs.ended).toBe(false);
       ninth.stop();
     } finally {
       for (const s of [...held, theirs]) s.stop();
+      await second.close();
+    }
+  });
+
+  it('take turns at a person’s limit: the tab whose stream made room backs off, and nobody else’s ends until a while has passed', async () => {
+    const ann = await account();
+    const id = await workspace(ann, 'Ours');
+    const doc = await make(ann, id, 'document', 'Doc');
+    const second = await h.secondServer({ LIVE_MAKE_ROOM_MS: 5000 });
+    // Each of Ann's tabs with the document open is a browser of its own, counting how often it opens the document's stream.
+    const tabs: { s: DocSession; opens: () => number }[] = [];
+    const openTab = async () => {
+      let opens = 0;
+      const counting: typeof fetch = (input, init) => { if (String(input).includes(`/documents/${doc}/live?`)) opens++; return ann.fetch(input, init); };
+      const s = await createHttpApi({ baseUrl: second.baseUrl, fetch: counting }).workspaces.document(id, doc);
+      const tab = { s, opens: () => opens };
+      tabs.push(tab);
+      await s.ready;
+      return tab;
+    };
+    const status = (t: { s: DocSession }) => t.s.getSnapshot().status;
+    try {
+      // Eight, one after another, so the first is the oldest, then long enough for any of them to make room.
+      for (let i = 0; i < 8; i++) await openTab();
+      const [oldest, next, ...others] = tabs;
+      if (!oldest || !next) throw new Error('no tabs');
+      await rest(5100);
+      // A ninth makes room: the oldest tab's stream ends, and that tab opens it again at once. Room was made a moment ago, so
+      // it's refused, and waits a little longer each time.
+      const ninth = await openTab();
+      await until(() => status(oldest) === 'offline', 'the oldest tab to be turned away');
+      await rest(1000);
+      // Nobody else's stream ended meanwhile: each tab opened its own once, and is up to date.
+      expect(oldest.opens()).toBeGreaterThanOrEqual(2);
+      for (const t of [next, ...others, ninth]) {
+        expect(t.opens()).toBe(1);
+        expect(status(t)).toBe('saved');
+      }
+      // Once a while has passed, it gets back in by making room in its turn, and only the next oldest gives up its place.
+      await until(() => status(oldest) === 'saved', 'the oldest tab to be back');
+      await until(() => status(next) === 'offline', 'the next oldest to be turned away');
+      for (const t of [...others, ninth]) {
+        expect(t.opens()).toBe(1);
+        expect(status(t)).toBe('saved');
+      }
+    } finally {
+      for (const t of tabs) t.s.close();
       await second.close();
     }
   });
