@@ -47,6 +47,8 @@ const bookmarkALine: NonNullable<PageStory['play']> = async ({ userEvent, step }
 /** A line bookmarked in your own notes: its bookmark stays in sight, ticked, and says Remove your bookmark. It's in Yours, under Notes. */
 export const BookmarkALine = { ...Transcript, name: 'Bookmark a line', play: plays(reach('Notes', { tab: 'Transcript' }), bookmarkALine) };
 export const BookmarkALinePhone = phone(BookmarkALine);
+/** Your side takes your theme: the ticked bookmark stays warm in light too. */
+export const BookmarkALineLight = light(BookmarkALine);
 /** Pressed again, the bookmark comes back off, out of Yours, and the toast says so. */
 export const TakeABookmarkBack = { ...Transcript, name: 'Take a bookmark back', play: plays(reach('Notes', { tab: 'Transcript' }), bookmarkALine, press('Remove your bookmark')) };
 /** Ask, Notes' third tab: catching up and asking about the call, for you alone. */
