@@ -287,7 +287,7 @@ function busy(): World {
     meetings: busyCalls(), calendar: connected(busyEvents()), credits: CREDITS, documents: library(), workspaces: workspaces(), pages: pages(), shares: shares(), boards: boards(),
     mentions: structuredClone(TAGGED), media: files(), rings: [], writing: null,
     // The bandwidth flag is on here and off in every other scenario, so both answers are served.
-    featureFlags: ['call.bandwidthReduction']
+    featureFlags: ['call.bandwidth_reduction']
   };
 }
 

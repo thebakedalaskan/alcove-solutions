@@ -1,6 +1,6 @@
 import { errorCode, firstName, notesAreOn, type CallCard, type CallSession, type Person } from '@alcove/api';
 import { Button, EASE, Icon, Logo, Notice, Spinner, buttonClass, cn, useRaisedToasts } from '@alcove/ui';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, createFileRoute, useNavigate } from '@tanstack/react-router';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
@@ -48,10 +48,16 @@ function JoinPage({ code }: { code: string }) {
   const offers = mine ? Boolean(mine.offer) : Boolean(card.data?.offer);
   const [picking, setPicking] = useState(false);
   if (offers && !picking) setPicking(true);
-  // The camera starts as soon as there's a call to join, while the rest of the page loads; the call's media code comes down meanwhile too.
+  // The camera starts as soon as there's a call to join, while the rest of the page loads; the call's media code comes down
+  // meanwhile too, with the feature flags its room follows, so joining doesn't wait for them.
   const joinable = !lost && !offers && !picking && (Boolean(mine) || (card.data !== undefined && !card.data.ended));
   const media = usePrejoinMedia(joinable, mine?.joinMuted ?? card.data?.joinMuted ?? false);
-  useEffect(() => { if (joinable) void import('~/features/call/media/livekit'); }, [joinable]);
+  const queries = useQueryClient();
+  useEffect(() => {
+    if (!joinable) return;
+    void import('~/features/call/media/livekit');
+    void queries.prefetchQuery(q.featureFlags());
+  }, [joinable, queries]);
   const signedIn = me !== undefined;
   const shell = (body: ReactNode) => <div className="stage ac-stage"><div className="stg"><Top home={signedIn} />{body}</div></div>;
 

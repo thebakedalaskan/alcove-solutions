@@ -5,7 +5,7 @@
  * key from the call's MLS group. Test participants are @livekit/rtc-node rooms joined with the tokens the API hands out,
  * encrypting with those keys as browsers do.
  */
-import { AlcoveApiError, CALL_MARKS_TOPIC, CALL_REACT_TOPIC, CallReactMessageSchema, ShareMarkMessageSchema, type CallSession, type CallState, type ShareMarkMessage } from '@alcove/api';
+import { AlcoveApiError, CALL_CODECS_LIMITS, CALL_CODECS_TOPIC, CALL_MARKS_TOPIC, CALL_REACT_TOPIC, CallCodecsMessageSchema, CallReactMessageSchema, ShareMarkMessageSchema, type CallCodecsMessage, type CallSession, type CallState, type ShareMarkMessage } from '@alcove/api';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { ORIGIN, startHarness, type Harness } from '../../testing/harness';
@@ -198,6 +198,40 @@ describe('pointing at shared screens', () => {
     expect(Buffer.from(reactSealed).toString('latin1').includes('party')).toBe(false);
     expect(await guest.openData(CALL_MARKS_TOPIC, host.ticket.identity, reactSealed)).toBeNull();
     expect(await guest.openData(CALL_REACT_TOPIC, guest.ticket.identity, reactSealed)).toBeNull();
+    await host.leave();
+  });
+
+  it('carries a browser’s word that it can’t decode VP9, sealed to its sender and topic, within the topic’s limit', async () => {
+    const org = await account();
+    const { code: c } = await org.api.calls.startNow({});
+    const host = await org.api.calls.join(c, { mic: true, cam: false });
+    const hostRoom = await joinRoom(host);
+    const guest = await guestBrowser().calls.join(c, { mic: true, cam: false, name: 'Sam' });
+    await letIn(host, guest);
+    await onLatestKey(host);
+    const guestRoom = await joinRoom(guest, host);
+    await hostRoom.waitFor(() => hostRoom.remoteIdentities().includes(guest.ticket.identity), 'the guest in the room');
+
+    // What a browser that can't decode VP9 says, so that whoever shares a screen as VP9 sends VP8 instead. A browser
+    // drops a packet bigger than the topic's limit before opening it, so once sealed it has to fit.
+    const said = await host.sealData(CALL_CODECS_TOPIC, new TextEncoder().encode(JSON.stringify({ vp9: false } satisfies CallCodecsMessage)));
+    if (!said) throw new Error('no key to seal with');
+    expect(said.byteLength).toBeLessThanOrEqual(CALL_CODECS_LIMITS.bytes);
+    await hostRoom.sendData(said, CALL_CODECS_TOPIC, true);
+    await guestRoom.waitFor(() => guestRoom.received(CALL_CODECS_TOPIC).length > 0, 'the codecs message');
+    const arrived = guestRoom.received(CALL_CODECS_TOPIC);
+    expect(arrived).toHaveLength(1);
+    const first = arrived[0];
+    if (!first?.from) throw new Error('no sender on the codecs message');
+    expect(first.from).toBe(host.ticket.identity);
+    const plain = await guest.openData(CALL_CODECS_TOPIC, first.from, first.payload);
+    if (!plain) throw new Error('the codecs message did not open');
+    expect(CallCodecsMessageSchema.parse(JSON.parse(new TextDecoder().decode(plain)))).toEqual({ vp9: false });
+
+    // What's sealed carries nothing readable, and opens only on its own topic, from its sender.
+    expect(Buffer.from(said).toString('latin1').includes('vp9')).toBe(false);
+    expect(await guest.openData(CALL_REACT_TOPIC, host.ticket.identity, said)).toBeNull();
+    expect(await guest.openData(CALL_CODECS_TOPIC, guest.ticket.identity, said)).toBeNull();
     await host.leave();
   });
 
