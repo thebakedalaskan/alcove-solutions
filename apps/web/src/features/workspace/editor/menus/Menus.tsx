@@ -247,11 +247,33 @@ function blockRows(rt: EditorRuntime, block: string, rect: Rect, keyboard: boole
   if (known) out.push({ kind: 'item', key: 'dup', icon: 'copy', label: 'Duplicate', run: () => { rt.menu.set(null); duplicateBlock(rt, block); } });
   const copyLink = rt.props.onCopyBlockLink;
   if (copyLink) out.push({ kind: 'item', key: 'link', icon: 'link', label: 'Copy link', run: () => { rt.menu.set(null); copyLink(block); } });
+  const downloads = downloadsOf(rt, ref.node);
+  if (downloads) out.push({ kind: 'item', key: 'download', icon: 'download', label: downloads.label, run: () => { rt.menu.set(null); for (const f of downloads.files) rt.props.media?.onDownload?.(f); } });
   if (known && rt.props.moveTargets && rt.props.onMoveBlock) out.push({ kind: 'item', key: 'move', icon: 'folderInput', label: 'Move to…', run: () => rt.menu.set({ kind: 'move', block, rect }) });
   out.push({ kind: 'sep' }, { kind: 'item', key: 'delete', icon: 'trash', label: 'Delete', className: 'is-caution', run: () => deleteFromMenu(rt, block) });
   const files = filesOf(rt, ref.node, block, rect);
   if (files) out.push({ kind: 'item', key: 'files', icon: 'trash', label: FOR_GOOD[files.what], className: 'is-caution', run: () => { rt.menu.set(null); rt.props.media?.onDeleteFiles?.(files); } });
   return out;
+}
+
+/**
+ * What Download, in a block's menu, saves: a photo's file, a gallery's, or a video's, once they're stored, each under its own
+ * name. A file block has its own arrow for it.
+ */
+function downloadsOf(rt: EditorRuntime, node: PMNode): { label: string; files: { media: string; name: string }[] } | null {
+  const media = rt.props.media;
+  if (!media?.onDownload || numberAttr(node, 'up') !== null) return null;
+  switch (node.type) {
+    case schema.nodes.gallery: {
+      const files = galleryItems(node).flatMap((i) => (i.media !== null && media.state?.(i.media).kind !== 'gone' ? [{ media: i.media, name: i.name }] : []));
+      return files.length === 0 ? null : { label: files.length === 1 ? 'Download' : 'Download the photos', files };
+    }
+    case schema.nodes.video: {
+      const file = textAttr(node, 'media');
+      return file && media.gone?.(file) !== true ? { label: 'Download', files: [{ media: file, name: textAttr(node, 'title') || 'Video' }] } : null;
+    }
+    default: return null;
+  }
 }
 
 /** Delete takes a block out and leaves its files in the workspace. This deletes them, everywhere, so it says so. */

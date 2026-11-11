@@ -672,6 +672,8 @@ export interface FileRead {
   session: string | undefined;
   range: string | undefined;
   head: boolean;
+  /** Asked for as a download: it comes as one under its own name, whatever it is. */
+  download: boolean;
   /** Spends one of someone's reads. Refuses when they have none left. */
   count(who: string): void;
   /** Aborts once the response has gone, however it went, which is when what it held is let go. */
@@ -714,7 +716,8 @@ export async function serve(d: Deps, t: MediaToken, r: FileRead): Promise<Respon
       'content-type': info.type, 'accept-ranges': 'bytes', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff',
       // Nothing in a file runs: opened by itself, it's shown or played and that's all.
       'content-security-policy': "default-src 'none'; img-src 'self'; media-src 'self'",
-      'content-disposition': `${info.type === FILE_TYPE ? 'attachment' : 'inline'}; filename*=UTF-8''${headerName(info.name)}`
+      // What can't be shown is only ever a download; anything else is, when that's what was asked for.
+      'content-disposition': `${info.type === FILE_TYPE || r.download ? 'attachment' : 'inline'}; filename*=UTF-8''${headerName(info.name)}`
     };
     // Only a GET has a range: anything else is answered as if it hadn't asked for one.
     const at = r.head ? undefined : rangeIn(r.range, info.size);

@@ -535,7 +535,9 @@ process readable and is sealed there (`apps/api/src/features/workspaces/media.ts
 - **Reading.** `GET …/media/:media/token` gives whoever can open the document a token, and `GET /v1/media/:token` reads the
   file, because a picture or a player can't send a header ([Privacy › Files](privacy-keys-and-sessions.md#files)). Pieces are
   read in order, each digest checked before it's opened, with `Range`, `nosniff`, `no-store` and the type from the sealed
-  info, never the request. An answer to a range sends at most four pieces (16 MiB), stopping where a piece does, and says
+  info, never the request. `GET /v1/media/:token?download` (`url`'s `download`) serves it as an attachment under its name,
+  whatever its type, so a picture or a film saves rather than opening: the arrow on a file and **Download** in a photo's or a
+  video's menu read it so. An answer to a range sends at most four pieces (16 MiB), stopping where a piece does, and says
   so with its `Content-Range`: a browser asks again for the rest, and access is asked about again each time. Read without a
   range, a file over 16 MiB streams without a length, because Cloud Run refuses an HTTP/1 response that says it's over 32
   MiB, and asks again every four pieces. The first piece is read before anything is sent, so its failure is an ordinary
@@ -545,7 +547,9 @@ process readable and is sealed there (`apps/api/src/features/workspaces/media.ts
   board at once would otherwise overrun what the process takes on, and an `<img>` can't try again. Video and audio use the URL,
   which a player reads by range.
 - **In a document** (`apps/web/src/features/workspace/uploads.ts`). Files go into a document as blocks: photos a browser can
-  read as one `gallery`, a film it can play as a `video`, anything else as a `file`. The block holds the space at once, with each
+  read as one `gallery`, a film it can play as a `video`, anything else as a `file`, however they come: dropped, pasted, or
+  chosen from **/** → Photos, Video or File, so a picture chosen from File is a photo. Only **Add as a file**, below, makes a
+  picture a `file`. The block holds the space at once, with each
   file's name and, for a picture or a film, its size in pixels, and says how far it's got (`up`) as pieces go, so everyone sees
   it fill. The block carries the upload's own token (`upload`, random, nothing about the file in it), and the upload follows
   the block by that, not its ID: cut and pasted, the block has a new ID and the upload goes on into it; undone, it has 15

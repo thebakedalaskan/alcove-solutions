@@ -169,9 +169,10 @@ function fileDraft(f: File): Draft {
 }
 
 /**
- * The blocks files make, each holding their space. Photos this browser can read go in one block: one photo full width,
- * several a gallery. A photo it can't read gets a block of its own that says so. A video it can play is a video, and
- * anything else, a video it can't play included, is a file you can open. With `asFiles`, everything is a file.
+ * The blocks files make, each holding their space, however they came: dropped, pasted, or chosen from Photos, Video or File.
+ * Photos this browser can read go in one block: one photo full width, several a gallery. A photo it can't read gets a block
+ * of its own that says so. A video it can play is a video, and anything else, a video it can't play included, is a file you
+ * can download. With `asFiles`, everything is a file: Add as a file, on a photo this browser can't read.
  */
 export async function prepare(files: readonly File[], asFiles = false): Promise<Draft[]> {
   const photos: Part[] = [];

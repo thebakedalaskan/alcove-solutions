@@ -83,6 +83,11 @@ export interface MediaPictureOptions extends WorkspaceReadOptions {
   signal?: AbortSignal | undefined;
 }
 
+export interface MediaUrlOptions extends WorkspaceReadOptions {
+  /** It comes as a download, under its own name, whatever it is: a picture or a film saves rather than opening. */
+  download?: boolean | undefined;
+}
+
 
 export interface MediaUploadOptions extends WorkspaceReadOptions {
   /** After each piece: how many bytes of the file are stored. */

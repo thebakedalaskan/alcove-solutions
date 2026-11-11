@@ -5,7 +5,7 @@
  * through the workspace's `Pictures`, uploads go through `uploads.ts`, the list of what's in the workspace comes from
  * `media.list`, and Play for everyone from the call (`playing.ts`).
  */
-import { DocUploadsStateSchema, FILE_TYPE, errorCode, errorMessage, type DocSession, type WorkspaceMedia } from '@alcove/api';
+import { DocUploadsStateSchema, errorCode, errorMessage, type DocSession, type WorkspaceMedia } from '@alcove/api';
 import { WsDeleteFileAsk, WsPopover, WsUploadPicker, wsToast, type WsPhoto, type WsStoredFile } from '@alcove/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ChangeEvent, type ReactNode } from 'react';
@@ -152,18 +152,19 @@ export function useMediaView(ws: Ws, documentId: string, video?: VideoHandlers |
       if (errorCode(e) === 'not-found') pictures.goneFrom(documentId, media);
       throw e;
     }),
-    onOpenFile: ({ media }) => {
-      fileUrl(workspaceId, documentId, media, pass).then((url) => {
-        const type = now.current.list?.find((m) => m.id === media)?.type;
-        /* What's only ever a download downloads, and the page stays. Anything shown in place opens beside it. */
-        if (type === FILE_TYPE) {
-          const a = document.createElement('a');
-          a.href = url;
-          a.rel = 'noopener';
-          document.body.append(a);
-          a.click();
-          a.remove();
-        } else window.open(url, '_blank', 'noopener');
+    onDownload: ({ media, name }) => {
+      fileUrl(workspaceId, documentId, media, pass, true).then((url) => {
+        /*
+         * Asked for as a download, it comes as one whatever it is, and the page stays. A URL of this page's own takes the
+         * name here: the file's own, with its ending, which a video's title doesn't have.
+         */
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = now.current.list?.find((m) => m.id === media)?.name ?? name;
+        a.rel = 'noopener';
+        document.body.append(a);
+        a.click();
+        a.remove();
       }, (e: unknown) => {
         if (errorCode(e) === 'not-found') pictures.goneFrom(documentId, media);
         else now.current.say(wsToast.failed(errorMessage(e)));
@@ -303,11 +304,12 @@ export function useDocumentMedia(ws: Ws, documentId: string, { session, editor, 
     setPicking(null);
     input.click();
   };
+  /* Whatever was picked for, files go in as a drop puts them: a picture this browser can read is a photo, a film a video. */
   const chosen = (e: ChangeEvent<HTMLInputElement>) => {
     const pick = choosingFor.current;
     const files = [...(e.currentTarget.files ?? [])];
     choosingFor.current = null;
-    if (pick) upload(files, pick.at, true, pick.kind === 'file').catch((err: unknown) => { mlog.warn('files couldn’t be added', { workspaceId, documentId, err }); });
+    if (pick) upload(files, pick.at, true).catch((err: unknown) => { mlog.warn('files couldn’t be added', { workspaceId, documentId, err }); });
   };
 
   /** Delete for good: every file in the block, from every document that has it, then the block. */

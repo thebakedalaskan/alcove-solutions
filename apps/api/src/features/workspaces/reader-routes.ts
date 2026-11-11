@@ -280,7 +280,7 @@ export function registerWorkspaceReaderRoutes(app: Hono<Env>, runtime: HttpRunti
     if (outgoing.destroyed) closed.abort();
     else outgoing.once('close', () => { closed.abort(); });
     return media.serve(d, media.tokenIn(d, c.req.param('token')), {
-      session: getCookie(c, COOKIE), range: c.req.header('range'), head: c.req.method === 'HEAD',
+      session: getCookie(c, COOKIE), range: c.req.header('range'), head: c.req.method === 'HEAD', download: c.req.query('download') !== undefined,
       count: (who) => mediaLimiter(who, 'media'),
       closed: closed.signal,
       cut: () => { outgoing.destroy(); }

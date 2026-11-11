@@ -5,6 +5,7 @@
  */
 import type { Meta } from '@storybook/react-vite';
 import { screen } from 'storybook/test';
+import { drawnPicture } from '../../src/api/media';
 import { itemId } from '../../src/api/scenarios';
 import { changing, page, pages, type PageArgs, type PageStory } from '../../src/page';
 import { troubled } from './changes';
@@ -149,8 +150,50 @@ const reusePhotos: PageStory['play'] = async ({ canvas, userEvent, step }) => {
 export const ReusePhotos = page(SHOTS, 'busy', { play: reusePhotos });
 export const ReusePhotosNight = page(SHOTS, 'busy', { globals: { theme: 'dark' }, play: reusePhotos });
 export const ReusePhotosPhone = page(SHOTS, 'busy', { globals: PHONE, play: reusePhotos });
-/** On a phone, holding a block opens its menu as a sheet: here the screenshots', with Delete the photos for good. */
+/** On a phone, holding a block opens its menu as a sheet: here the screenshots', with Download the photos and Delete the photos for good. */
 export const HoldingABlockPhone = page(SHOTS, 'busy', { globals: PHONE, play: hold('.ws-ed .wb.is-gallery') });
+/** Opens a block's menu from its handle: points at the first block of this kind, and presses the handle beside it. */
+const menuOf = (selector: string, said: string): NonNullable<PageStory['play']> => async ({ canvasElement, userEvent, step }) => {
+  await step(said, async () => {
+    let block: Element | null = null;
+    for (let tries = 0; !block && tries < 50; tries++) { block = canvasElement.querySelector(selector); if (!block) await beat(200); }
+    if (!block) return;
+    await userEvent.hover(block);
+    await userEvent.click(await screen.findByRole('button', { name: 'Drag to move, click for options' }, { timeout: 5000 }));
+  });
+};
+/** The screenshots' menu: Download the photos saves each one as it was added, beside Delete the photos for good. */
+export const PhotosMenu = page(SHOTS, 'busy', { play: menuOf('.ws-ed .wb.is-gallery', 'Point at the screenshots and press the handle beside them. Download the photos saves the originals') });
+export const PhotosMenuNight = page(SHOTS, 'busy', { globals: { theme: 'dark' }, play: menuOf('.ws-ed .wb.is-gallery', 'Point at the screenshots and press the handle beside them. Download the photos saves the originals') });
+/** The walkthrough's menu: Download saves the film itself. */
+export const VideoMenu = page(SHOTS, 'busy', { play: menuOf('.ws-ed .wb.is-video', 'Point at the walkthrough and press the handle beside it. Download saves the film') });
+/**
+ * `/` → File: a picture chosen there goes on the page as a photo, as Photos and a drop put it, and anything that isn't a
+ * picture or a film is a file, whose arrow downloads it.
+ */
+const fileFrom = (make: () => Promise<File>, said: string): NonNullable<PageStory['play']> => async ({ canvas, userEvent, step }) => {
+  await step('Go to the end of “What goes out”, start a line under it, type / and pick File', async () => {
+    await userEvent.click(await canvas.findByText('What goes out', {}, { timeout: 8000 }));
+    await userEvent.keyboard('{End}{Enter}/');
+    await userEvent.click(await screen.findByRole('option', { name: /^File/ }, { timeout: 5000 }));
+  });
+  await step(said, async () => {
+    await userEvent.click(await screen.findByRole('button', { name: 'Choose from this computer' }, { timeout: 5000 }));
+    await userEvent.upload(screen.getByLabelText('Choose files to add'), await make());
+  });
+};
+const aPicture = async () => new File([await drawnPicture('Offsite whiteboard', 205, 1600, 1000)], 'Offsite whiteboard.png', { type: 'image/png' });
+const aPdf = async () => new File(['%PDF-1.4\n% Launch timeline\n'], 'Launch timeline.pdf', { type: 'application/pdf' });
+const PICTURE = fileFrom(aPicture, 'Choose a picture. It goes on the page as a photo');
+const PDF = fileFrom(aPdf, 'Choose a PDF. It goes on the page as a file, with its arrow to download it');
+export const FileAPicture = page(PLAN, 'busy', { play: PICTURE });
+export const FileAPictureNight = page(PLAN, 'busy', { globals: { theme: 'dark' }, play: PICTURE });
+export const FileAPicturePhone = page(PLAN, 'busy', { globals: PHONE, play: PICTURE });
+export const FileAPicturePhoneNight = page(PLAN, 'busy', { globals: { ...PHONE, theme: 'dark' }, play: PICTURE });
+export const FileAPdf = page(PLAN, 'busy', { play: PDF });
+export const FileAPdfNight = page(PLAN, 'busy', { globals: { theme: 'dark' }, play: PDF });
+export const FileAPdfPhone = page(PLAN, 'busy', { globals: PHONE, play: PDF });
+export const FileAPdfPhoneNight = page(PLAN, 'busy', { globals: { ...PHONE, theme: 'dark' }, play: PDF });
 /** Aiko's walkthrough still uploading, a recording too big to keep here, and a photo deleted for good. */
 export const UploadingAndWhatDidnt = page(UPLOADS, 'busy');
 export const UploadingAndWhatDidntNight = page(UPLOADS, 'busy', { globals: { theme: 'dark' } });

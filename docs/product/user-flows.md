@@ -1572,9 +1572,10 @@ page follow as you type, for everyone.
 **Photos, videos and files.** **+** beside a line, or **/**, offers **Photos**, **Video** and **File**. Photos opens a space at
 once, "Drop photos here, or choose them", with a picker under it: **Choose from this computer**, or the photos already in the
 workspace, one at a time or **Add all three**; Video and File offer films and files the same way. Files dropped on the page
-land where a line shows, "Drop to add here", and pasted ones under the caret. Several photos make a gallery, one makes a picture
-across the page, a film shows its first frame with **Play**, and anything else is a file that downloads, or opens in a tab when
-the browser can show it. Everyone sees the space a file will take straight away and the ring fill as it uploads, and the
+land where a line shows, "Drop to add here", and pasted ones under the caret. Whichever way they come, and from **File** too,
+several photos make a gallery, one makes a picture across the page, a film shows its first frame with **Play**, and anything
+else is a file, whose arrow downloads it. **Download**, in a photo's or a video's menu (**Download the photos** for a gallery),
+saves the original. Everyone sees the space a file will take straight away and the ring fill as it uploads, and the
 pictures sharpen when it's done; a caption starts as the file's name and is one click to change. A photo the browser can't read
 says which file, with **Add as a file** and **Delete**. One Alcove refuses says which file and why ("This file is bigger than
 512 MiB, the most a file can be.", "This workspace is full, so it can't take more files.", "That's all you can upload today. You
@@ -1702,7 +1703,7 @@ On a phone the list and the page take turns: the list until something's open, an
 brings it back. Menus and sheets rise from the bottom, and **Share** is in the document's **⋯**. Rows don't drag on a
 touch screen: **Move to…** does that. While you write, a bar rides on the keyboard with a block (as **/** does), the text's
 style, **@**, photos, a checklist and Done; sheets open above it. Holding a finger on a block opens its menu, the one its
-handle opens on a laptop, with **Delete for good** on a photo, video or file. Someone's card and a comment are sheets too, and faces are on the list's rows. A bar's buttons go under its words.
+handle opens on a laptop, with **Download** on a photo or a video, and **Delete for good** on a photo, video or file. Someone's card and a comment are sheets too, and faces are on the list's rows. A bar's buttons go under its words.
 
 ## 13. Boards
 

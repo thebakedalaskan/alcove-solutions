@@ -172,8 +172,8 @@ export interface MediaHandlers {
   stream?: ((media: string) => Promise<string>) | undefined;
   /** A video found out how long it is: for a block that didn't say. */
   onDuration?: ((block: string, seconds: number) => void) | undefined;
-  /** The download on a file block. */
-  onOpenFile?: ((file: { media: string; name: string }) => void) | undefined;
+  /** Saves a stored file under its own name, whatever it is: the arrow on a file block, and Download in a photo's or a video's menu. */
+  onDownload?: ((file: { media: string; name: string }) => void) | undefined;
   /** A press on an empty Photos block: offer the picker again, against it. */
   onChoose?: ((block: string, rect: Rect) => void) | undefined;
   /** Delete for good, from a block's menu: the files in the block, for everyone, and everywhere they are. */
