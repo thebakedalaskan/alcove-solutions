@@ -57,11 +57,12 @@ const Why = ({ words }: { words: string }) => <span className="why" role="status
 
 /** A failed Hear it, as it's said: in words, and whether pressing it again might do. */
 interface Unheard { words: string; again: boolean }
-function unheard(code: AlcoveErrorCode, organizer: boolean): Unheard {
+function unheard(code: AlcoveErrorCode, guest: boolean): Unheard {
   switch (code) {
     case 'conflict': return { words: 'Not in the recording yet. Try again in a few seconds.', again: true };
-    // Everyone but the organizer hears only the pieces they were there for; the organizer hears all of it that plays.
-    case 'not-found': return { words: organizer ? 'This part of the recording can’t be played.' : 'You can only hear what you were there for.', again: false };
+    // Only a guest with the link hears just the pieces they were there for; the organizer, whoever hosts and everyone invited
+    // hear all of it that plays, so for them it's the recording that can't play this part.
+    case 'not-found': return { words: guest ? 'You can only hear what you were there for.' : 'This part of the recording can’t be played.', again: false };
     case 'network': return { words: 'Can’t reach Alcove. Try again.', again: true };
     case 'unavailable': return { words: 'Alcove is busy. Try again in a moment.', again: true };
     default: return { words: 'Couldn’t get it. Try again.', again: true };
@@ -132,7 +133,7 @@ function FromTheCall({ call, note, line }: { call: CallSession; note: string; li
       else el.addEventListener('loadedmetadata', play, { once: true });
     }, (err: unknown) => {
       const code = errorCode(err);
-      failed(unheard(code, call.getSnapshot().isOrganizer), { code, requestId: errorRequestId(err) ?? null });
+      failed(unheard(code, call.getSnapshot().role === 'guest'), { code, requestId: errorRequestId(err) ?? null });
     });
   };
   if (typeof state === 'object' && !state.again) return <Why words={state.words} />;

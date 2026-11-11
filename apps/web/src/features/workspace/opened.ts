@@ -44,7 +44,8 @@ export function useSession(ws: Ws, documentId: string) {
 
 /**
  * In a call, the workspace is kept as it was while it's out of sight (call/workspace/WorkspacePanel.tsx): opening it again
- * tries a stream that's down at once, as Try now does, rather than leaving it in the middle of its wait.
+ * tries a stream that's down at once, rather than leaving it in the middle of its wait (`DocSession.wake`). A try that's
+ * under way carries on: a page still opening may be waiting its turn for a document worker.
  */
 export function useTriesWhenShown(ws: Ws, session: DocSession): void {
   const hidden = ws.call?.closed ?? false;
@@ -52,7 +53,7 @@ export function useTriesWhenShown(ws: Ws, session: DocSession): void {
   useEffect(() => {
     const before = was.current;
     was.current = hidden;
-    if (before && !hidden) session.retry();
+    if (before && !hidden) session.wake();
   }, [hidden, session]);
 }
 

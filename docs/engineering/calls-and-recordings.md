@@ -2124,22 +2124,28 @@ steps (`ShareMenu.tsx`); and the call's keys are `session/useCallShortcuts.ts`. 
   keeps its time from the start of the segment. A run that doesn't start the segment is preceded by what the segment's first
   piece says the recording is (a WebM up to its first Cluster, an MP4 up to its first fragment, `moof` with its `mfhd`), with
   none of that piece's sound, and its own first piece starts at its own first Cluster or fragment: the end of the piece before
-  isn't sent. Then every Cluster's Timestamp, and every fragment's decode time (`tfdt`, each track's), is less the first one's,
-  rewritten in place in the width it had, and the file stops after the last element it has all of (a WebM block, or an MP4
-  fragment with its `mdat`), saying how much of a cut-off Cluster there is if it said its size. A run whose own start can't be
-  found, or isn't laid out as a recording is, can't be played from where it starts: `not-found`, logged at `warn`. A run from
-  the segment's start that can't be read through goes as it was recorded. The answers: the audio; `conflict` when none of the
-  segment's pieces reach the line yet and none come after it (the host's browser sends each piece after its 5 seconds, so a
-  line just said isn't there yet: try again in a few seconds); and `not-found` for anything else, a call that doesn't keep
-  its recording and a line said in a breakout room included, which names nothing. The call says whether it keeps its recording
+  isn't sent. Its last piece's sound ends in the next piece's first bytes (the last half second of it, in the test
+  recording), so once the next piece is there, those bytes, up to its own first Cluster or fragment, go on the end: a line
+  said in a piece's last moments keeps its end, and nothing of the next piece's own sound goes. (If they don't read as the
+  rest of the run, they're left off rather than the run.) Then every Cluster's Timestamp, and every fragment's decode time
+  (`tfdt`, each track's), is less the first one's, rewritten in place in the width it had, and the file stops after the last
+  element it has all of (a WebM block, or an MP4 fragment with its `mdat`), saying how much of a cut-off Cluster there is if
+  it said its size. A run whose own start can't be found, or isn't laid out as a recording is, can't be played from where it
+  starts: `not-found`, logged at `warn`. A run from the segment's start that can't be read through goes as it was recorded.
+  The answers: the audio; `conflict` when none of the segment's pieces reach the line yet and none come after it, while that
+  segment is still being recorded, notes on and in it (the host's browser sends each piece after its 5 seconds, so a line
+  just said isn't there yet: try again in a few seconds); and `not-found` for anything else, a call that doesn't keep its
+  recording, a line said in a breakout room, and a piece that will never come (notes paused or off since, or a new segment
+  begun, as when a new host's browser takes over: the server takes no more of that segment) included, which names nothing. The call says whether it keeps its recording
   (`CallState.notes.keepsRecording`), and a live line which room it was said in, so the quote says "This call doesn't keep
   its recording." or "Breakout rooms aren't recorded." instead of offering Hear it. Pressed, the button turns until the sound
   starts; the audio plays on the speaker chosen for the call where the browser can choose one (`setSinkId`, the remembered
   choice, given 200 ms), and seeks to the line's place in the file. Each failure is said beside it in words and logged at
   `warn` with its code and request ID: not in the recording yet, Alcove unreachable or busy, and anything else unknown keep
-  the button to try again; not there for it ("You can only hear what you were there for.", or for the organizer, who hears
-  everything, "This part of the recording can't be played.") and a file the browser can't play (its `error` event, or
-  `play()` refused: "This browser couldn't play it.") take its place. Otherwise, and after the call, it reads the note as the
+  the button to try again; `not-found` ("You can only hear what you were there for." for a guest with the link, the only one
+  held to the pieces they were there for, and for everyone else, who hears all of it that plays, "This part of the
+  recording can't be played.", as `CallState.role` says) and a file the browser can't play (its `error` event, or `play()`
+  refused: "This browser couldn't play it.") take its place. Otherwise, and after the call, it reads the note as the
   note's own page does, so someone without it never sees the button, finds the line in the note's transcript by its ID, and
   plays through `usePlayer` (`notes.audioUrl`) until the next line, or for 8 seconds after the last one. A call that keeps no
   recording has nothing to hear.

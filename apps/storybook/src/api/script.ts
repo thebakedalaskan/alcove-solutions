@@ -218,10 +218,11 @@ export interface CallScript {
   door?: { hostArrives?: number | undefined; standIn?: Person | undefined; locked?: boolean | undefined } | undefined;
   /**
    * What Hear it gets from the call: the line's recording after a moment (`plays`, unless it says); nothing yet the first
-   * time it's asked, the piece still going up (`not-yet`); a line from before you came (`not-there`); audio this browser
-   * can't play (`unplayable`); or no answer at all, so it's still fetching (`waits`).
+   * time it's asked, the piece still going up (`not-yet`); the API's `not-found`, which for a guest with the link is a line
+   * they weren't there for all of, and for anyone else a part of the recording that can't be played (`not-found`); audio
+   * this browser can't play (`unplayable`); or no answer at all, so it's still fetching (`waits`).
    */
-  hear?: 'plays' | 'not-yet' | 'not-there' | 'unplayable' | 'waits' | undefined;
+  hear?: 'plays' | 'not-yet' | 'not-found' | 'unplayable' | 'waits' | undefined;
 }
 
 /**
@@ -232,6 +233,11 @@ export interface CallScript {
 export interface ScriptWorkspace {
   brought?: readonly string[] | undefined;
   where?: readonly { who: Person; document: string | null; typing?: boolean | undefined; page?: CallPage | undefined }[] | undefined;
+  /**
+   * For you, with the link: the documents of the call's home the organizer has let you see, as their card's Let them see does,
+   * which open to you once you're let in. The rest of the home is as the story's world has it, which is as you see it.
+   */
+  yours?: readonly string[] | undefined;
 }
 
 /* ---------- writing a script ---------- */

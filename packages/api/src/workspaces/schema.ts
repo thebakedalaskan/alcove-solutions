@@ -271,7 +271,10 @@ export const LiveStreamNameSchema = z.string().regex(/^[A-Za-z0-9_-]{22}$/);
 
 export const LIVE_STREAM_HEADER = 'x-alcove-stream' as const;
 
-/** A browser closed its stream by this name: `POST …/live/end`, sent as the page may be going (keepalive). */
+/**
+ * A browser closed its stream by this name: `POST …/live/end`, sent as the page may be going (keepalive). It takes an
+ * account: a guest's call pass alone is refused, and their stream is let go of as any other the API doesn't hear closed.
+ */
 export const LiveStreamEndBodySchema = z.object({ stream: LiveStreamNameSchema });
 
 export type LiveStreamEndBody = z.infer<typeof LiveStreamEndBodySchema>;
@@ -308,7 +311,8 @@ export interface WorkspaceView {
 
 /**
  * A workspace, kept up to date. Read it with useLive(). While its stream is down it tries again by itself, a little later
- * each time up to every 10 seconds, and at once when the browser comes back online or the tab back into view.
+ * each time up to every 10 seconds, and, waiting to, at once when the browser comes back online or the tab back into view
+ * (`wake`).
  */
 export interface WorkspaceLive extends LiveStore<WorkspaceView> {
   /** Says where this browser is. It's here with nothing open from the moment the stream opens, and for as long as it stays open. */
@@ -317,9 +321,14 @@ export interface WorkspaceLive extends LiveStore<WorkspaceView> {
   seen(mention: string): Promise<void>;
   /**
    * Try now: while the stream is down, it opens again at once rather than after the wait, and a try that's hanging is given
-   * up. Nothing while it's live or closed.
+   * up. Nothing while it's live or closed. For someone who asked.
    */
   retry(): void;
+  /**
+   * There's reason to think it would connect now (it's shown again, say): waiting to try again, it tries now. A try that's
+   * under way, the first one included, carries on however long it's taking. Nothing while it's live or closed.
+   */
+  wake(): void;
   close(): void;
 }
 

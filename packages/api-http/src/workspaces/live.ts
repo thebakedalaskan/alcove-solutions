@@ -32,15 +32,15 @@ export const newName = () => btoa(String.fromCharCode(...crypto.getRandomValues(
 export const stillHeld = (e: unknown): boolean => !(e instanceof AlcoveApiError && (e.status !== undefined || e.code === 'network'));
 
 /**
- * Tells `retry` when there's reason to think a stream that's down would open now: the browser's back online, or the tab's
+ * Tells `wake` when there's reason to think a stream that's down would open now: the browser's back online, or the tab's
  * back in view. Returns what stops listening. Nothing in Node.
  */
-export function onChances(retry: () => void): () => void {
-  const shown = () => { if (globalThis.document?.visibilityState === 'visible') retry(); };
-  globalThis.addEventListener?.('online', retry);
+export function onChances(wake: () => void): () => void {
+  const shown = () => { if (globalThis.document?.visibilityState === 'visible') wake(); };
+  globalThis.addEventListener?.('online', wake);
   globalThis.document?.addEventListener('visibilitychange', shown);
   return () => {
-    globalThis.removeEventListener?.('online', retry);
+    globalThis.removeEventListener?.('online', wake);
     globalThis.document?.removeEventListener('visibilitychange', shown);
   };
 }
@@ -55,7 +55,7 @@ export class HttpWorkspaceLive implements WorkspaceLive {
   private closed = false;
   private connection: AbortController | null = null;
   private stopWaiting: (() => void) | null = null;
-  /** Try now was asked for: the next try goes at once. */
+  /** A wait was cut short, or a try given up for Try now: the next try goes at once. */
   private hurry = false;
   private readonly stopListening: () => void;
   /** What this browser says about where it is. */
@@ -73,7 +73,7 @@ export class HttpWorkspaceLive implements WorkspaceLive {
     /** Tells the API this browser closed the stream it gave this name, which it can't always hear: as the page may be going. */
     private readonly end: (stream: string) => void
   ) {
-    this.stopListening = onChances(this.retry);
+    this.stopListening = onChances(this.wake);
     void this.run();
   }
 
@@ -90,12 +90,15 @@ export class HttpWorkspaceLive implements WorkspaceLive {
     this.set({ mentions: this.view.mentions.filter((m) => m.id !== mention) });
     await this.heard(mention).catch(() => undefined);
   };
-  retry = () => {
+  /** Try now: a wait is cut short, and a try under way, which may be hanging, is given up for a new one. */
+  retry = () => { this.tryNow(true); };
+  /** Only a wait is cut short: a try under way, the first included, may be one about to answer. */
+  wake = () => { this.tryNow(false); };
+  private tryNow(giveUp: boolean) {
     if (this.closed || this.view.status === 'live') return;
-    this.hurry = true;
-    if (this.stopWaiting) this.stopWaiting();
-    else this.connection?.abort();
-  };
+    if (this.stopWaiting) { this.hurry = true; this.stopWaiting(); }
+    else if (giveUp && this.connection) { this.hurry = true; this.connection.abort(); }
+  }
   close = () => {
     this.closed = true;
     this.stopListening();
@@ -172,7 +175,7 @@ export class HttpWorkspaceLive implements WorkspaceLive {
     }
   }
 
-  /** Whether Try now was asked for since the last try, which it now takes. */
+  /** Whether a wait was cut short or a try given up since the last try, which it now takes. */
   private hurried(): boolean {
     const was = this.hurry;
     this.hurry = false;

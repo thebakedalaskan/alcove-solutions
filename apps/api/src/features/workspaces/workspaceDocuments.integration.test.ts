@@ -927,7 +927,7 @@ describe('streams', () => {
     }
   });
 
-  it('hold eight a person on an instance: the next ends their oldest once it has been open a while, and nobody else’s', async () => {
+  it('hold eight a person on an instance: the next ends their oldest once it has been open a while, and nobody else’s, once in that while', async () => {
     const ann = await account();
     const theo = await account();
     const id = await workspace(ann, 'Ours', [[theo, 'edit']]);
@@ -943,6 +943,7 @@ describe('streams', () => {
     const theirs = stream(second.baseUrl, theo.fetch, id, doc);
     try {
       await until(() => [...held, theirs].every((s) => s.lines.length > 0), 'nine streams');
+      const allOpen = Date.now();
       // None of them has been open long enough to be taken for gone: one more waits, and its browser tries again by itself.
       expect(await live(ann)).toBe(503);
       await rest(since + 8100 - Date.now());
@@ -955,9 +956,64 @@ describe('streams', () => {
       expect(held[0]?.lines.some((l) => l.type === 'closed')).toBe(false);
       expect(held.slice(1).every((s) => !s.ended)).toBe(true);
       expect(theirs.ended).toBe(false);
+      // Every other one of theirs has been open a while too now, but room was made a moment ago: the next is refused, and
+      // ends nothing, as the tab that gave up its place is when it opens it again, rather than ending the next oldest in turn.
+      await rest(allOpen + 8100 - Date.now());
+      expect(await live(ann)).toBe(503);
+      await rest(200);
+      expect(held.slice(1).every((s) => !s.ended)).toBe(true);
+      expect(ninth.ended).toBe(false);
+      expect(theirs.ended).toBe(false);
       ninth.stop();
     } finally {
       for (const s of [...held, theirs]) s.stop();
+      await second.close();
+    }
+  });
+
+  it('take turns at a person’s limit: the tab whose stream made room backs off, and nobody else’s ends until a while has passed', async () => {
+    const ann = await account();
+    const id = await workspace(ann, 'Ours');
+    const doc = await make(ann, id, 'document', 'Doc');
+    const second = await h.secondServer({ LIVE_MAKE_ROOM_MS: 5000 });
+    // Each of Ann's tabs with the document open is a browser of its own, counting how often it opens the document's stream.
+    const tabs: { s: DocSession; opens: () => number }[] = [];
+    const openTab = async () => {
+      let opens = 0;
+      const counting: typeof fetch = (input, init) => { if (String(input).includes(`/documents/${doc}/live?`)) opens++; return ann.fetch(input, init); };
+      const s = await createHttpApi({ baseUrl: second.baseUrl, fetch: counting }).workspaces.document(id, doc);
+      const tab = { s, opens: () => opens };
+      tabs.push(tab);
+      await s.ready;
+      return tab;
+    };
+    const status = (t: { s: DocSession }) => t.s.getSnapshot().status;
+    try {
+      // Eight, one after another, so the first is the oldest, then long enough for any of them to make room.
+      for (let i = 0; i < 8; i++) await openTab();
+      const [oldest, next, ...others] = tabs;
+      if (!oldest || !next) throw new Error('no tabs');
+      await rest(5100);
+      // A ninth makes room: the oldest tab's stream ends, and that tab opens it again at once. Room was made a moment ago, so
+      // it's refused, and waits a little longer each time.
+      const ninth = await openTab();
+      await until(() => status(oldest) === 'offline', 'the oldest tab to be turned away');
+      await rest(1000);
+      // Nobody else's stream ended meanwhile: each tab opened its own once, and is up to date.
+      expect(oldest.opens()).toBeGreaterThanOrEqual(2);
+      for (const t of [next, ...others, ninth]) {
+        expect(t.opens()).toBe(1);
+        expect(status(t)).toBe('saved');
+      }
+      // Once a while has passed, it gets back in by making room in its turn, and only the next oldest gives up its place.
+      await until(() => status(oldest) === 'saved', 'the oldest tab to be back');
+      await until(() => status(next) === 'offline', 'the next oldest to be turned away');
+      for (const t of [...others, ninth]) {
+        expect(t.opens()).toBe(1);
+        expect(status(t)).toBe('saved');
+      }
+    } finally {
+      for (const t of tabs) t.s.close();
       await second.close();
     }
   });
@@ -1077,6 +1133,78 @@ describe('streams', () => {
       for (const x of held) x.stop();
       for (const t of trees) t.abort();
       await second.close();
+    }
+  });
+
+  it('try at once when woken while they wait, but leave a try that’s under way to carry on: only Try now gives one up', async () => {
+    const ann = await account();
+    const id = await workspace(ann, 'Ours');
+    const doc = await make(ann, id, 'document', 'Doc');
+    // The streams' network: down, so every try fails at once; up; or holding each try with no answer until it's given up, as
+    // a first open waiting its turn for a document worker looks to a browser, or one that's hanging.
+    let net: 'down' | 'up' | 'holding' = 'down';
+    const tries = { doc: 0, tree: 0 };
+    const streams: typeof fetch = (input, init) => {
+      const url = String(input);
+      const which = url.includes(`/documents/${doc}/live?`) ? 'doc' : url.endsWith(`/workspaces/${id}/live`) ? 'tree' : null;
+      if (!which) return ann.fetch(input, init);
+      tries[which]++;
+      if (net === 'down') return Promise.reject(new TypeError('The network is down.'));
+      if (net === 'up') return ann.fetch(input, init);
+      return new Promise<Response>((_, reject) => { init?.signal?.addEventListener('abort', () => reject(new DOMException('The try was given up.', 'AbortError')), { once: true }); });
+    };
+    const api = createHttpApi({ baseUrl: h.baseUrl, fetch: streams });
+    const opened = new Set<{ close(): void }>();
+    const done = (...xs: { close(): void }[]) => { for (const x of xs) { x.close(); opened.delete(x); } };
+    try {
+      // Down: each fails, and tries again a little later each time. After the fourth, it waits about four seconds.
+      const s = await api.workspaces.document(id, doc);
+      const w = api.workspaces.live(id);
+      opened.add(s).add(w);
+      await until(() => tries.doc >= 4 && tries.tree >= 4, 'four tries at each', 10_000);
+      await rest(50);
+      expect(s.getSnapshot().status).toBe('offline');
+      expect(w.getSnapshot().status).toBe('reconnecting');
+      // The browser's back online, or the tab's back in view: each tries at once rather than after its wait.
+      net = 'up';
+      const woken = Date.now();
+      s.wake();
+      w.wake();
+      await s.ready;
+      await until(() => w.getSnapshot().status === 'live', 'the workspace to be live', 2000);
+      expect(Date.now() - woken).toBeLessThan(1500);
+      expect(s.getSnapshot().status).toBe('saved');
+      done(s, w);
+
+      // Opening again, each try is held with no answer yet. Woken, nothing is given up, whatever the network does meanwhile.
+      net = 'holding';
+      const before = { ...tries };
+      const again = await api.workspaces.document(id, doc);
+      const tree = api.workspaces.live(id);
+      opened.add(again).add(tree);
+      let ready = false;
+      void again.ready.then(() => { ready = true; }, () => undefined);
+      await until(() => tries.doc === before.doc + 1 && tries.tree === before.tree + 1, 'the first tries');
+      again.wake();
+      tree.wake();
+      net = 'up';
+      again.wake();
+      tree.wake();
+      await rest(500);
+      expect([tries.doc, tries.tree]).toEqual([before.doc + 1, before.tree + 1]);
+      expect(ready).toBe(false);
+      expect(again.getSnapshot().status).toBe('saved');
+      expect(tree.getSnapshot().status).toBe('connecting');
+      // Try now gives up the try that's under way, and the next one opens at once.
+      const asked = Date.now();
+      again.retry();
+      tree.retry();
+      await again.ready;
+      await until(() => tree.getSnapshot().status === 'live', 'the workspace to be live', 2000);
+      expect(Date.now() - asked).toBeLessThan(1500);
+      expect([tries.doc, tries.tree]).toEqual([before.doc + 2, before.tree + 2]);
+    } finally {
+      done(...opened);
     }
   });
 

@@ -652,13 +652,17 @@ and this way it runs through the same auth, origin check and tests as everything
   gave up on a quiet or hanging try, or the page went), it sends `POST …/live/end` with that name, as a keepalive request
   so it goes as the page does. The API ends that stream of the asker's at once and gives its place back (`hub.end`, scoped
   to the person, so naming someone else's ends nothing, and the answer is the same either way). A name is never logged.
+  It takes an account, as every route past the sign-in check does, and keeps no receipt: a guest's call pass alone is
+  refused with `401` before anything's read, so a guest's places come back by the rule below, or when the API lets go.
   It reaches only the instance that has the stream; with more than one instance, one asked elsewhere waits for the rule
   below.
 - **At a person's limit,** the next of that kind ends their oldest stream of it to make room, as rings do: the one likeliest
   to be a tab that went without anyone hearing, such as one whose page crashed. It just ends, as on the clock, so a tab
-  that's still there opens another. Only a stream open for 20 seconds makes room (`LIVE_MAKE_ROOM_MS`), so someone with more
-  tabs than places takes turns slowly rather than round and round; until one has been, the next is refused with `503` and
-  its browser tries again.
+  that's still there opens another at once. Only a stream open for 20 seconds makes room (`LIVE_MAKE_ROOM_MS`), and room is
+  made for each person, for each kind, at most once in those 20 seconds: until then the next is refused with `503`, the tab
+  that just gave up its place included, and its browser tries again, later each time. So someone with more tabs than places
+  takes turns slowly, one stream every 20 seconds or so, rather than round and round, each tab opened again ending the next
+  oldest and every one of them a document worker's sync.
 - **A workspace's stream** (`GET /v1/workspaces/:id/live`). Lines: `tree`, whole, first and whenever what this reader sees
   changes; `presence`, everyone here that they can know of, whole, whenever that changes; `mentions`, their authorized unread tags, whole
   ([Tags](#tags)); `access`, when their role changes, just before the `tree` that shows it; `ping`, every 25 seconds; `closed`, when
@@ -711,10 +715,13 @@ and this way it runs through the same auth, origin check and tests as everything
   showed either way. A line that can't be written within a ping ends a stream too, which is how one whose browser went as it
   opened is let go of. A browser that hears nothing for a minute takes the connection for dead, and says it closed it.
 - **Trying again.** After a failure a session waits 0.5, 1, 2, 4, 8, then 10 seconds between tries, starting over after
-  any try that lasted a second. It tries at once, cutting a wait short and giving up a try that's hanging, when asked
-  (`DocSession.retry`, `WorkspaceLive.retry`: Try now, in the app), when the browser comes back online, when the tab comes
-  back into view, and, in a call, when the workspace or the board is opened again. Try now also sends edits waiting for their
-  own next try. A try given up this way doesn't count as a failure.
+  any try that lasted a second. Asked to (`DocSession.retry`, `WorkspaceLive.retry`: Try now, in the app), it tries at once,
+  cutting a wait short and giving up a try that's hanging; a try given up this way doesn't count as a failure. When there's
+  only reason to think it would connect now (the browser comes back online, the tab comes back into view, or, in a call,
+  the workspace or the board is opened again: `wake`), it cuts a wait short and nothing more: a try that's under way carries
+  on, because a first open waits its turn for a document worker (two on an instance, shared by everyone, up to 20 seconds
+  a job), and giving it up wastes that job and puts it at the back again, so someone switching tabs while a big page opens
+  could keep it from ever opening. Either way, edits waiting for their own next try go at once.
 
 A credit top-up is a sealed `deposit` record, header `{ v: 1, kind: 'deposit', ownerId, depositId, keyVersion: '1' }`,
 under `Kservice`'s accounting key like the billing state, so the watcher opens it without anyone signed in: the

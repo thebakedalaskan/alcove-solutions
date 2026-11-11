@@ -1,4 +1,4 @@
-import { DocAwarenessBodySchema, ItemRenameSchema, LIVE_STREAM_HEADER, LiveStreamEndBodySchema, LiveStreamNameSchema, MediaInputSchema, MAX_DOC_AWARENESS_BYTES, MAX_DOC_BYTES, MAX_DOC_UPDATE_BYTES, MentionBodySchema, PersonIdsBodySchema, PresenceBodySchema, MAX_MEDIA_PREVIEW_BYTES, DocAskBodySchema, BoardSortBodySchema, PresenterFrameNoteBodySchema } from '@alcove/api';
+import { DocAwarenessBodySchema, ItemRenameSchema, LIVE_STREAM_HEADER, LiveStreamNameSchema, MediaInputSchema, MAX_DOC_AWARENESS_BYTES, MAX_DOC_BYTES, MAX_DOC_UPDATE_BYTES, MentionBodySchema, PersonIdsBodySchema, PresenceBodySchema, MAX_MEDIA_PREVIEW_BYTES, DocAskBodySchema, BoardSortBodySchema, PresenterFrameNoteBodySchema } from '@alcove/api';
 import { Hono, type Context } from 'hono';
 import { getCookie } from 'hono/cookie';
 import { bodyLimit } from 'hono/body-limit';
@@ -41,19 +41,6 @@ export function registerWorkspaceReaderRoutes(app: Hono<Env>, runtime: HttpRunti
     c.header('content-type', 'application/x-ndjson');
     c.header('cache-control', 'no-store');
     return stream(c, run);
-  });
-
-  /*
-   * A browser closed one of its streams, by the name it gave it: it ends here at once, as Cloud Run never tells the API a
-   * browser went. Only the asker's own; the same answer whether there was one or not.
-   */
-  app.use('/v1/workspaces/:id/live/end', capped(1024));
-
-  app.post('/v1/workspaces/:id/live/end', async (c) => {
-    const r = await readerOf(c);
-    presenceLimiter(access.limitKey(r), 'stream end');
-    workspaces.endStream(d, r, (await body(c, LiveStreamEndBodySchema)).stream);
-    return c.json({ said: true });
   });
 
   /* Where someone is in the workspace, for whoever may know. A guest in a call is here too, in what they've been given. */
@@ -117,15 +104,6 @@ export function registerWorkspaceReaderRoutes(app: Hono<Env>, runtime: HttpRunti
     c.header('content-type', 'application/x-ndjson');
     c.header('cache-control', 'no-store');
     return stream(c, run);
-  });
-
-  app.use('/v1/workspaces/:id/documents/:doc/live/end', capped(1024));
-
-  app.post('/v1/workspaces/:id/documents/:doc/live/end', async (c) => {
-    const r = await readerOf(c);
-    presenceLimiter(access.limitKey(r), 'stream end');
-    workspaceDocuments.endStream(d, r, (await body(c, LiveStreamEndBodySchema)).stream);
-    return c.json({ said: true });
   });
 
   app.post('/v1/workspaces/:id/documents/:doc/updates', async (c) => {

@@ -221,13 +221,18 @@ class LiveWorkspace extends Pushed<WorkspaceView> implements WorkspaceLive {
     super({ status: current().streamsDown?.includes(id) ? 'reconnecting' : 'live', tree: structuredClone(treeFor(id)), here: hereNow(id), mentions: mentionsIn(id) });
     watching.add(this);
   }
-  /** Try now: a stream that couldn't reach Alcove does now, once the browser's online, and stays so for the rest of the story. */
-  retry(): void {
+  /**
+   * Try now: a stream that couldn't reach Alcove does now, once the browser's online, and stays so for the rest of the story.
+   * An arrow property, as `getSnapshot` is: the app hands it to a button unbound.
+   */
+  retry = (): void => {
     if (this.getSnapshot().status !== 'reconnecting' || !isOnline()) return;
     const w = current();
     w.streamsDown = w.streamsDown?.filter((s) => s !== this.id);
     this.update((v) => ({ ...v, status: 'live', tree: structuredClone(treeFor(this.id)), here: hereNow(this.id), mentions: mentionsIn(this.id) }));
-  }
+  };
+  /** Shown again: nothing here is ever under way, so a stream that's down is only waiting, and tries now, as Try now does. */
+  wake = (): void => { this.retry(); };
   refresh(id: string): void { if (id === this.id) this.update((v) => ({ ...v, tree: structuredClone(treeFor(id)), here: hereNow(id), mentions: mentionsIn(id) })); }
   present(_where: WorkspaceWhere): void { /* Nobody else is here to see where you are. */ }
   async seen(mentionId: string): Promise<void> {
@@ -534,9 +539,9 @@ class Document extends Pushed<DocStatus> implements DocSession {
   }
   /**
    * Try now: a stream that couldn't reach Alcove does now, once the browser's online, and stays so for the rest of the story.
-   * What was kept here goes, a moment later.
+   * What was kept here goes, a moment later. An arrow property, as `getSnapshot` is: the app hands it to a button unbound.
    */
-  retry(): void {
+  retry = (): void => {
     const now = this.getSnapshot();
     if (now.status !== 'offline' || !isOnline()) return;
     const w = current();
@@ -546,7 +551,9 @@ class Document extends Pushed<DocStatus> implements DocSession {
     if (board?.standing === 'offline') w.boards[this.id] = { ...board, standing: undefined };
     this.update((s) => ({ ...s, status: s.unsent ? 'saving' : 'saved' }));
     if (now.unsent) this.after(SAVING_MS, () => this.update((s) => ({ ...s, status: 'saved', unsent: false })));
-  }
+  };
+  /** Shown again: nothing here is ever under way, so a stream that's down is only waiting, and tries now, as Try now does. */
+  wake = (): void => { this.retry(); };
   override close(): void { sessions.get(this.id)?.delete(this); this.leave(); this.awareness.destroy(); super.close(); }
 }
 /**

@@ -263,9 +263,11 @@ type StretchPiece = z.infer<typeof StretchPiece>;
  * whole, in an unbroken run: a piece is never cut short, so what's heard is what was recorded, and one the listener may
  * not hear is never sent, nor anything after it. The run opens on its first piece's own sound (stretchFile.ts): a run
  * that doesn't start the segment leaves out the end of the piece before it, which its first piece starts with, and is
- * preceded by what the segment's first piece says the recording is, without any of its sound. Its times then count from
- * 0, so it plays by itself, from where it starts, in any browser. `pending` when none of the segment's pieces reach the
- * stretch yet: it's still being uploaded. Null when none of it may be heard, or it can't be played from where it starts.
+ * preceded by what the segment's first piece says the recording is, without any of its sound. It ends with the end of
+ * its own last piece's sound, which the next piece starts with, once that's here. Its times then count from 0, so it
+ * plays by itself, from where it starts, in any browser. `pending` when none of the segment's pieces reach the stretch
+ * and none come after it: it may still be on its way, if the segment is still being recorded (the caller knows). Null when
+ * none of it may be heard, or it can't be played from where it starts.
  */
 export async function stretch(o: Owner, recordingId: string, segment: number, fromMs: number, toMs: number, may: (startMs: number, endMs: number) => boolean): Promise<Stretch | 'pending' | null> {
   const found = await rows(o.pool, StretchPiece, `SELECT seq, at_ms, duration_ms, object_id, cipher_sha256, cipher_bytes, mime_type FROM recording_pieces
@@ -288,6 +290,8 @@ export async function stretch(o: Owner, recordingId: string, segment: number, fr
   const cant = (why: string) => { alog.warn('a stretch of a recording can’t be played from where it starts', { recordingId, segment, seq: head.seq, why, mimeType: head.mime_type }); return null; };
   const { krec } = await krecOf(o, recordingId);
   const parts: Uint8Array[] = [];
+  /** The end of the run's last block, from the next piece's first bytes. */
+  let lastEnd: Uint8Array | null = null;
   try {
     const open = async (p: StretchPiece): Promise<Uint8Array> => {
       const location = header(o, recordingId, segment, p.seq, p.object_id);
@@ -311,16 +315,37 @@ export async function stretch(o: Owner, recordingId: string, segment: number, fr
       if (from) plain.fill(0);
       if (from === null) { plain.fill(0); return cant('no sound in its first piece'); }
     }
-    const bytes = new Uint8Array(parts.reduce((n, x) => n + x.length, 0));
-    let at = 0;
-    for (const x of parts) { bytes.set(x, at); at += x.length; }
-    const sound = head.seq === 0 ? soundStarts(bytes, head.mime_type) : setUp;
-    const playable = sound === null ? null : fromZero(bytes, sound, head.mime_type);
+    // The run's last piece ends part way through a block: the rest of it, and of its Cluster or fragment, is what the next
+    // piece starts with, up to that piece's own first Cluster or fragment. Once the next piece is here, that goes too, so a
+    // line said in a piece's last half second keeps its end. It's sound from the last piece's own time, none of the next's.
+    const next = await maybeOne(o.pool, StretchPiece, `SELECT seq, at_ms, duration_ms, object_id, cipher_sha256, cipher_bytes, mime_type FROM recording_pieces
+      WHERE owner_id = $1 AND recording_id = $2 AND segment = $3 AND seq = $4`, [o.ownerId, recordingId, segment, tail.seq + 1]);
+    if (next && next.mime_type === head.mime_type) {
+      const plain = await open(next);
+      const own = soundStarts(plain, next.mime_type);
+      if (own) lastEnd = plain.slice(0, own);
+      plain.fill(0);
+    }
+    const join = (xs: Uint8Array[]): Uint8Array => {
+      const b = new Uint8Array(xs.reduce((n, x) => n + x.length, 0));
+      let at = 0;
+      for (const x of xs) { b.set(x, at); at += x.length; }
+      return b;
+    };
+    const fromItsStart = (b: Uint8Array): Uint8Array | null => {
+      const sound = head.seq === 0 ? soundStarts(b, head.mime_type) : setUp;
+      return sound === null ? null : fromZero(b, sound, head.mime_type);
+    };
+    let bytes = join(lastEnd ? [...parts, lastEnd] : parts);
+    let playable = fromItsStart(bytes);
+    // What the next piece starts with that doesn't read as the end of this one is left out, rather than the whole stretch.
+    if (!playable && lastEnd) { bytes.fill(0); bytes = join(parts); playable = fromItsStart(bytes); }
     // The segment's own start plays as it was recorded, from 0, even where it can't be read through.
     if (!playable && head.seq !== 0) { bytes.fill(0); return cant('not laid out as a recording is'); }
     return { bytes: playable ?? bytes, mimeType: head.mime_type, startMs: head.at_ms, endMs: tail.at_ms + tail.duration_ms };
   } finally {
     for (const x of parts) x.fill(0);
+    lastEnd?.fill(0);
     krec.fill(0);
   }
 }

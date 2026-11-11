@@ -2,9 +2,10 @@
  * Hear it, during a call: anyone in the call hears a quoted line of its recording, but only one they may read, said while
  * they were there, and only the pieces of the recording they were there for. A guest with the link never hears what was
  * said while they were away, however their page went. What's sent is a file of its own that starts at 0, so a line from
- * minutes in plays its own words wherever the browser counts a file from. After the call it's the note's audio, for
- * people with the note. The real API over HTTP via @alcove/api-http, real Postgres, the object store, the local LiveKit
- * server and the stand-in NEAR AI.
+ * minutes in plays its own words wherever the browser counts a file from, and that keeps the end of its last piece, which
+ * the next piece starts with. A line whose piece hasn't come is "not yet" only while it still can come. After the call it's
+ * the note's audio, for people with the note. The real API over HTTP via @alcove/api-http, real Postgres, the object store,
+ * the local LiveKit server and the stand-in NEAR AI.
  */
 import { AlcoveApiError, DEFAULT_NOTES_CHOICES, type AudioPiece, type CallSession, type CallState, type TranscriptClip } from '@alcove/api';
 import { spawn } from 'node:child_process';
@@ -120,6 +121,8 @@ const cat = (...xs: Uint8Array[]) => new Uint8Array(Buffer.concat(xs));
 const setUp = () => toneOf(0).bytes.subarray(0, 146);
 /** A piece from its own first Cluster, without the end of the piece before it. */
 const ownSound = (s: number) => toneOf(s).bytes.subarray(s === 0 ? 0 : 1967);
+/** What a piece starts with, before its own first Cluster: the end of the piece before's last block and Cluster. */
+const leadOf = (s: number) => toneOf(s).bytes.subarray(0, 1967);
 
 /* ---------- reading what's sent: what a decoder plays ---------- */
 
@@ -194,13 +197,14 @@ describe('Hear it during a call', () => {
     expect(all.find((e) => e.id === CLUSTER)?.at).toBe(146);
     expect(clusterTimes(got.bytes)).toEqual([0]);
     expect(whole).toBe(true);
-    // Its sound is that piece's own, all of it there is, and nothing of any other.
-    expect(blocks(got.bytes)).toEqual(blocks(cat(setUp(), ownSound(2))));
+    // Its sound is that piece's own, all of it there is, its end from the next piece's first bytes, and nothing of any other.
+    expect(blocks(got.bytes)).toEqual(blocks(cat(setUp(), ownSound(2), leadOf(3))));
     for (const other of [0, 1, 3]) expect(hasPiece(got.bytes, other)).toBe(false);
     // Played from where the line is in it, it's the tone that was recorded as the line was said.
     expect(pitchIn(await decode(got.bytes), got.from)).toBe(pitchAt(11_800));
 
-    // A line that runs into the next piece: both, their Clusters' times still apart by what they were.
+    // A line that runs into the next piece: both, their Clusters' times still apart by what they were. The second is the
+    // recording's last piece so far, so there's nothing after it to finish its last block with.
     const longer = await sayNow(host, 'And the date, after that.', 14_800);
     const both = await heard(host, note, longer);
     expect(clusterTimes(both.bytes)).toEqual([0, 5040]);
@@ -215,8 +219,26 @@ describe('Hear it during a call', () => {
     expect(elements(start.bytes).all.filter((e) => e.id === EBML_HEADER)).toHaveLength(1);
     expect(clusterTimes(start.bytes)).toEqual([0]);
     expect(elements(start.bytes).whole).toBe(true);
-    expect(blocks(start.bytes)).toEqual(blocks(toneOf(0).bytes));
+    expect(blocks(start.bytes)).toEqual(blocks(cat(toneOf(0).bytes, leadOf(1))));
     expect(pitchIn(await decode(start.bytes), start.from)).toBe(pitchAt(1200));
+    await host.leave();
+  });
+
+  it('keeps the end of a line said in its piece’s last half second, which Chrome put at the start of the next piece', async () => {
+    const { host, note } = await callWithRecording();
+    // From 3 s to 4.8 s into the first piece: Chrome put that piece's sound from 4.56 s on before the next piece's own Cluster.
+    const line = await sayNow(host, 'Said at the end of the first piece.', 3000);
+    const got = await heard(host, note, line);
+    expect(got.from).toBeCloseTo(3, 3);
+    expect(got.seconds).toBeCloseTo(1.8, 1);
+    // The first piece's own sound, then the rest of its last block and Cluster from the next piece, and nothing of that one's own.
+    expect(blocks(got.bytes)).toEqual(blocks(cat(toneOf(0).bytes, leadOf(1))));
+    expect(blocks(got.bytes).length).toBeGreaterThan(blocks(toneOf(0).bytes).length);
+    expect(clusterTimes(got.bytes)).toEqual([0]);
+    expect(elements(got.bytes).whole).toBe(true);
+    expect(hasPiece(got.bytes, 1)).toBe(false);
+    // Played, the line's last moments are the tone recorded then, not the silence after a clip cut short.
+    expect(pitchIn(await decode(got.bytes), 4.7)).toBe(pitchAt(4700));
     await host.leave();
   });
 
@@ -228,6 +250,24 @@ describe('Hear it during a call', () => {
     const got = await heard(host, note, line);
     expect(hasPiece(got.bytes, 2)).toBe(true);
     expect(clusterTimes(got.bytes)).toEqual([0]);
+    await host.leave();
+  });
+
+  it('stops saying a line isn’t in the recording yet once its piece can’t come any more, and says it can’t be played', async () => {
+    const { host, note } = await callWithRecording([], 2);
+    const earlier = await sayNow(host, 'Said while it all went up.', 6000);
+    const line = await sayNow(host, 'Said just before notes were paused.', 11_800);
+    // Notes on, in the segment the line was said in: its piece may still be on its way.
+    expect(code(await host.hear(note, line).catch((e: unknown) => e))).toBe('conflict');
+    // Paused, nothing more of that segment is taken, so the piece that didn't come never will.
+    await host.pause();
+    expect(code(await host.hear(note, line).catch((e: unknown) => e))).toBe('not-found');
+    expect(code(await host.appendAudio(piece(2)).catch((e: unknown) => e))).toBe('conflict');
+    // Nor once notes are on again, in a segment of their own.
+    await host.resume();
+    expect(code(await host.hear(note, line).catch((e: unknown) => e))).toBe('not-found');
+    // What did go up still plays.
+    expect(hasPiece((await heard(host, note, earlier)).bytes, 1)).toBe(true);
     await host.leave();
   });
 

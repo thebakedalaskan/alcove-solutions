@@ -27,7 +27,7 @@ const LET_GO_MS = 1_000;
 /**
  * How often the hub checks its connection is alive, how long that connection has to answer, how many streams this instance
  * holds at most, in all and from one address, and how long one of someone's streams has been open before it can be ended to
- * make room for another of theirs.
+ * make room for another of theirs, which is also how long after one has been that the next can be.
  */
 export interface HubSettings { checkMs: number; timeoutMs: number; maxStreams: number; maxPerAddress: number; makeRoomAfterMs: number }
 const after = <T>(ms: number, value: T): { done: Promise<T>; cancel: () => void } => {
@@ -73,8 +73,10 @@ export interface Hub {
    *
    * At their limit, their oldest stream of the kind ends to make room: on Cloud Run this instance never hears that a browser
    * closed a stream (HTTP/1 doesn't pass it on), so it's the one likeliest to be a tab that went. If that tab is still there,
-   * it opens another, as when any stream ends. Only one open for `makeRoomAfterMs` makes room, so that someone with more
-   * tabs open than places takes turns slowly; while none has, they're refused, and their browser tries again by itself.
+   * it opens another at once, as when any stream ends. Room is made for each of them, for each kind, at most once every
+   * `makeRoomAfterMs`, and only by a stream open that long, so that someone with more tabs open than places takes turns
+   * slowly: the tab that just gave up its place is refused, and backs off, rather than ending the next oldest in turn and
+   * that one the next, round and round through all of them. Refused, a browser tries again by itself, later each time.
    * Everyone's streams count towards one limit as well, because each holds a request for as long as it's open, and calls
    * need the requests left over, and so do all those from one `address`, because accounts are free, and a few of them
    * mustn't take the lot. Past those, it's refused and nothing ends.
@@ -93,6 +95,11 @@ class ListeningHub implements Hub {
   private readonly listeners = new Map<string, Set<HubListener>>();
   /** Each person's places, by kind and person, the oldest first. */
   private readonly streams = new Map<string, Held[]>();
+  /**
+   * When room was last made among each person's places, by kind and person, for as long as they hold any: someone with none
+   * left can't be at their limit again until a stream of theirs has been open `makeRoomAfterMs`, which is as long a wait.
+   */
+  private readonly madeRoom = new Map<string, number>();
   private readonly addresses = new Map<string, number>();
   private streaming = 0;
   private client: pg.Client | null = null;
@@ -123,8 +130,10 @@ class ListeningHub implements Hub {
     const now = Date.now();
     const full = theirs.length >= STREAM_LIMITS[kind];
     const oldest = full ? theirs[0] : undefined;
-    if (full && (!oldest || now - oldest.since < this.settings.makeRoomAfterMs)) {
-      throw new UnavailableError('You have this open in too many windows. Close one and it will carry on here.', { context: { kind, open: theirs.length } });
+    const lately = this.madeRoom.get(key);
+    const waited = lately === undefined ? null : now - lately;
+    if (full && (!oldest || now - oldest.since < this.settings.makeRoomAfterMs || (waited !== null && waited < this.settings.makeRoomAfterMs))) {
+      throw new UnavailableError('You have this open in too many windows. Close one and it will carry on here.', { context: { kind, open: theirs.length, sinceRoomMs: waited } });
     }
     // What the oldest gives back counts as given back already: ending it is what makes the room.
     const fromThere = (this.addresses.get(address) ?? 0) - (oldest?.address === address ? 1 : 0);
@@ -132,7 +141,9 @@ class ListeningHub implements Hub {
     if (this.streaming - (oldest ? 1 : 0) >= this.settings.maxStreams) throw new UnavailableError('Alcove is very busy right now. This will carry on by itself in a moment.', { context: { kind, streaming: this.streaming } });
     if (oldest) {
       this.endHeld(key, oldest);
-      hlog.info('a stream ended to make room', { kind, open: theirs.length, openMs: now - oldest.since });
+      // Its browser, if it's still there, opens it again at once, and is refused until a while has passed.
+      this.madeRoom.set(key, now);
+      hlog.info('a stream ended to make room', { kind, open: theirs.length, openMs: now - oldest.since, sinceRoomMs: waited });
     }
     const held: Held = { name, address, since: now, ended: new AbortController(), released: false };
     this.streams.set(key, [...(this.streams.get(key) ?? []), held]);
@@ -161,7 +172,7 @@ class ListeningHub implements Hub {
     this.streaming--;
     const left = (this.streams.get(key) ?? []).filter((h) => h !== held);
     if (left.length) this.streams.set(key, left);
-    else this.streams.delete(key);
+    else { this.streams.delete(key); this.madeRoom.delete(key); }
     const there = (this.addresses.get(held.address) ?? 1) - 1;
     if (there) this.addresses.set(held.address, there);
     else this.addresses.delete(held.address);

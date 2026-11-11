@@ -117,7 +117,8 @@ const EnvSchema = z.object({
   LIVE_STREAMS_PER_ADDRESS: z.coerce.number().int().min(1).default(64),
   /**
    * How long one of someone's streams has been open, in ms, before it can be ended to make room for another of theirs at their
-   * limit (live/hub.ts): one just opened is likelier a tab that's still there than one that went unheard.
+   * limit (live/hub.ts): one just opened is likelier a tab that's still there than one that went unheard. It's also how often
+   * room is made for them, at most: the tab that gave up its place is refused meanwhile, so tabs take turns slowly.
    */
   LIVE_MAKE_ROOM_MS: z.coerce.number().int().min(0).default(20_000),
   /** How many workers open documents. The first takes big ones. */
