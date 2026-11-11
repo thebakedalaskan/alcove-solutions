@@ -54,7 +54,7 @@ import { MyShareMenuRows, ShareInFrame, ShareMenuRows, ShareWindows, useFocusBac
 import { LocalMedia, type ShareChoice } from '~/features/call/media/media';
 import { NotesTabs, NotesView, PeopleView, SideBody, SideHead, TranscriptView, type HostControls, type PanelPerson } from '~/features/call/layout/Panel';
 import { type PrivateAudience } from '~/features/call/layout/PrivateChat';
-import { PanelHost, useCallArea, useHorizon, type HostSide } from '~/features/call/layout/PanelHost';
+import { PanelHost, useCallArea, useFocusBounds, type HostSide } from '~/features/call/layout/PanelHost';
 import { BoardPagerFoot, Frame, FrameBox, type FrameBar } from '~/features/call/layout/frame';
 import { holding, useLandKeys } from '~/features/call/layout/landKeys';
 import { isScreen, screenOf, sharerOf, useOnStage, type Presented, type ThingId } from '~/features/call/layout/onStage';
@@ -63,8 +63,8 @@ import { STAGE_BESIDE_SIDE, sideWidth, useSide, type NotesTab, type SidePlace, t
 import { PlayTogetherBar, useSharedVideo, useWorkspacePlaying } from '~/features/call/playback/PlayTogether';
 import { useBoardPresenting } from '~/features/call/boards/boardPresenting';
 import { useWorkspacePresenting } from '~/features/call/workspace/presenting';
-import { AFTER_ASIDE, GAP, PHONE_W, asideOnHorizon, focusRoom, inRow, placeMain } from '~/features/call/layout/panels';
-import { PeopleAside } from '~/features/call/layout/PeopleAside';
+import { GAP, PHONE_W, focusRoom, peopleEdge, placeMain } from '~/features/call/layout/panels';
+import { PeopleSeam } from '~/features/call/layout/PeopleSeam';
 import { TileHint } from '~/features/call/layout/TileHint';
 import { CaptureButton, NotesAsks, askedTag, organizerName, useCaptureAlerts } from '~/features/call/notes/Capture';
 import { unreadChatMentions, useCallAttention } from './attention';
@@ -818,9 +818,14 @@ export function InCall({ session }: { session: CallSession }) {
   /* ---------- keys ---------- */
   // Escape unpins only when you can see a pin: someone pinned who's here.
   const pinnedHere = layout.layout.pins.some((seat) => seatKey.split(' ').includes(seat));
-  /** ⇧P: the people beside what's open hide on the horizon by the dock, or come back. It only ever changes your screen. */
+  /**
+   * ⇧P, and the seam beside the people: the people beside what's open fold into a rail of arches at the window's edge, or open
+   * out into their column again. In a window too narrow for a column they're already a row of arches, so it says so instead.
+   * It only ever changes your screen.
+   */
   const togglePeople = () => {
     if (roomsHold()) return;
+    if (!focusOn && shownThings.length > 0 && placed.seam === null) { toast('In a window this narrow, the people stay a row over what’s open', { icon: 'eye' }); return; }
     setFocus(false);
     const hide = panels.people !== 'hidden';
     layout.arrange((p) => ({ ...p, people: hide ? 'hidden' : 'tiles' }));
@@ -1336,7 +1341,7 @@ export function InCall({ session }: { session: CallSession }) {
   const callArea = useCallArea();
   const size = callArea.size;
   const dockBar = useRef<HTMLElement>(null);
-  const horizon = useHorizon(callArea.ref, dockBar, size);
+  const bounds = useFocusBounds(callArea.ref, dockBar, size);
   const reduce = useReducedMotion();
   /*
    * Once the call is over for this tab (it ended, or you're leaving), the workspace goes at once: its streams close and it stops
@@ -1352,24 +1357,36 @@ export function InCall({ session }: { session: CallSession }) {
   const sideOver = !phone && size.w - (sideW + GAP) < STAGE_BESIDE_SIDE;
   const sideRoom = side.view !== null && !phone && !sideOver && !focusOn ? sideW + GAP : 0;
   const sideCovers = side.view !== null && (phone || (sideOver && !focusOn));
-  const mainW = Math.max(0, size.w - sideRoom);
+  const shownThings = callOver ? [] : stage.on;
+  /*
+   * Beside what's open the people stand at the window's right edge, past your side: a column, or made smaller a rail (panels.ts).
+   * Your side opens between them and what's open, which makes room for it; the people never move for it.
+   */
+  const edge = peopleEdge(size.w, { frames: shownThings.length, phone, focus: focusOn, rooms: !!stageRooms, small: panels.people === 'hidden', side: sideRoom });
+  const edgeRoom = edge ? edge.w + GAP : 0;
+  const mainW = Math.max(0, size.w - sideRoom - edgeRoom);
+  /* What your side and the people take at the window's right edge, for toasts to keep to the stage left of them (call.css). */
+  useEffect(() => {
+    const root = document.documentElement;
+    root.style.setProperty('--ic-right', `${sideW + GAP + edgeRoom}px`);
+    return () => { root.style.removeProperty('--ic-right'); };
+  }, [sideW, edgeRoom]);
   /* What your side over the stage leaves clear, at its left: someone asking to join is answered there, never under your side. */
   const clearW = sideOver && side.view !== null && !focusOn ? Math.max(0, mainW - (sideW + GAP)) : mainW;
   const top = bar ? 46 : 0;
   const bottom = capNode ? (mainW < 700 ? 150 : 124) : 0;
-  const shownThings = callOver ? [] : stage.on;
   /** Two on your stage with no room for both take turns: the one you brought to the front. */
   const [front, setFront] = useState<ThingId | null>(null);
-  const focusedRoom = focusOn ? focusRoom(size, horizon) : null;
+  const focusedRoom = focusOn ? focusRoom(size, bounds) : null;
   // The shared timer owns a strip above the focused frame, clear of its title and controls.
   const focusToolbarHeight = focusOn && timerShown ? 52 : 0;
   const focusBox = focusedRoom ? { ...focusedRoom, y: focusedRoom.y + focusToolbarHeight, h: Math.max(0, focusedRoom.h - focusToolbarHeight) } : null;
-  const placed = placeMain({ w: mainW, h: size.h }, { frames: shownThings.length, people: panels.people, phone, focus: focusBox, rooms: !!stageRooms, top, bottom });
+  const placed = placeMain({ w: mainW, h: size.h }, { frames: shownThings.length, people: panels.people, phone, focus: focusBox, rooms: !!stageRooms, top, bottom, edge });
   /** The organizer's rooms are in sight: on the whole stage, or beside what's open, rather than under it. */
   const roomsShown = placed.rooms !== null;
-  /** The people's own button beside what's open (⇧P's, PeopleAside.tsx): over them, or first on the horizon once you've hidden them. */
-  const asideHidden = placed.mode === 'hidden' && placed.frames.length > 0 && !focusOn && !roomsShown && !stageRooms;
-  const aside = asideHidden ? asideOnHorizon(horizon) : stageRooms ? null : placed.aside;
+  /** The seam left of the people at the window's edge (PeopleSeam.tsx): what ⇧P does, to click or drag. */
+  const peopleSmall = panels.people === 'hidden';
+  const seam = stageRooms ? null : placed.seam;
   /* While rooms are open, you see the people in your own room (or the main room), and the organizer overseeing them sees every room. */
   const onStage = unit && !roomsShown ? stagePeople.filter((p) => unit.includes(p.id)) : stagePeople;
   const frontId = placed.turns ? (front && shownThings.includes(front) ? front : shownThings[0] ?? null) : null;
@@ -1395,8 +1412,8 @@ export function InCall({ session }: { session: CallSession }) {
   const placedKey = JSON.stringify([placed.people, placed.mode, placed.frames.length, placed.rooms]);
   const frame = useMemo((): StageFrame => ({
     box: placed.rooms ?? { x: 0, y: 0, w: mainW, h: size.h }, top, bottom,
-    panels: placed.frames.length && !roomsShown ? { people: placed.people, mode: placed.mode, horizon: asideHidden ? { ...horizon, from: AFTER_ASIDE } : horizon, loud: new Set(loudKey.split(' ')), small: phone } : null
-  }), [mainW, size.h, top, bottom, placedKey, horizon, loudKey, phone, asideHidden]);
+    panels: placed.frames.length && !roomsShown ? { people: placed.people, mode: placed.mode, loud: new Set(loudKey.split(' ')), small: phone } : null
+  }), [mainW, size.h, top, bottom, placedKey, loudKey, phone]);
   /** The workspace is on your stage and in sight: what's clear starts at its left, so its list has the bottom left of it. */
   const wsInSight = boxOf('ws') !== null;
   /* When there isn't room for two side by side, they take turns, and the top bar says which is showing. */
@@ -1569,7 +1586,7 @@ export function InCall({ session }: { session: CallSession }) {
   };
   const sideNames: Record<SideView, string> = { notes: 'Notes', chat: 'Chat', people: 'People', rooms: open ? 'Rooms are open' : 'Breakout rooms', mine: 'Your notes' };
   const hostSide: HostSide | null = side.view === null || focusOn ? null
-    : { view: side.view, label: sideNames[side.view], width: sideW, phone, over: sideOver, theme, onClose: sideClose, children: sideBody(side.view) };
+    : { view: side.view, label: sideNames[side.view], width: sideW, phone, over: sideOver, theme, edge: edgeRoom, onClose: sideClose, children: sideBody(side.view) };
   /* The workspace's list: beside the page where its frame has the room, and otherwise over the page for now. */
   const wsBox = boxOf('ws');
   const listFits = wsBox !== null && wsBox.w >= 760 && !phone;
@@ -1930,7 +1947,7 @@ export function InCall({ session }: { session: CallSession }) {
               <Stage staged={staged} frame={frame} phone={phone} people={onStage} waiting={waiting} presented={presentedTiles} spotlight={spotlight} view={layout} organizer={hosting}
                 together={together} bar={bar} caption={capNode} rooms={roomsShown ? stageRooms : null} onSpotlight={setSpot} onPin={setPin} onSelf={setSelf} onCustom={onCustom} volumes={volumes}
                 onMorePeople={() => openSide('people')} board={stageBoard} menuOf={personMenu} />
-              {aside && <PeopleAside box={aside} hidden={asideHidden} row={inRow(mainW, phone)} onToggle={togglePeople} />}
+              {seam && <PeopleSeam box={seam} small={peopleSmall} onToggle={togglePeople} />}
               <TileHint area={callArea.ref} account={owner} />
               <motion.div className="ic-frame" initial={false} animate={{ left: 0, top: 0, width: clearW, height: size.h }} transition={reduce ? { duration: 0 } : GLIDE}>
                 {hosting && side.view !== 'people' && state.waiting.length > 0 && (

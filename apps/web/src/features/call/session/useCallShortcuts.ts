@@ -23,7 +23,7 @@ interface CallShortcuts {
 
 /**
  * The call's keys, handled here: M and V (microphone and camera), C (Chat), B (Mark this moment), W (Workspace), O (Board),
- * ⇧P (hide the people beside what's open, or bring them back), ⌘K (find in the workspace) and ⌘⇧F (focus). The letters sleep
+ * ⇧P (make the people beside what's open smaller, or bigger again), ⌘K (find in the workspace) and ⌘⇧F (focus). The letters sleep
  * while you type, in a field or in a document, and a moment after. Captions have none: C is Chat. Escape goes in the call's
  * order: an open menu or sheet takes it first, then pointing at a share (SharePointing.tsx), then focus, then pins, then your
  * side. `current` is the call as it is now, read as each key comes; `workspace` its find and its toggle.

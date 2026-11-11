@@ -397,13 +397,15 @@ time, slides in on the right.
   stage over a strip of everyone else. Drag a tile to move it, and pull its corner to make it bigger; the stage stays as
   you left it. The first time you point at a tile you can move, it says so under the tile ("Drag a tile to move it", and
   in the grid "Pull its corner to make it bigger"), once in this browser.
-  Beside what's open the people stand in a column of tiles on the right that narrows with the stage, under the frame's
-  bar, or a row of arches over it on a narrow stage and on a phone. **Hide the people**, at the top of the column (or the
-  end of the row), and **⇧P** hide them, standing small on the horizon beside the dock, where whoever's talking or has a
-  hand up rises, with a line saying so; **Show the people**, first on the horizon, or **⇧P** again, brings them back. On a
-  phone the arches stay. Closing the last thing on your stage gives it back to everyone, and **Close** says so before
-  it's pressed ("Close it, and the people fill your stage again"). Once you've changed the
-  layout (moved, sized or pinned someone, or hidden the people), **Reset layout** in **More** puts it back, with
+  Beside what's open the people stand at the window's right edge, in a column of tiles that narrows with the window, or a
+  row of arches over it on a narrow stage and on a phone. **Notes**, **Chat** and **People** open between what's open and
+  them: what's open makes room, and the people stay where they are. The seam left of them, a faint grip until you point at
+  it, makes them smaller: click it, drag it right, or press **⇧P**, and the column folds into a rail of arches in the same
+  place, where whoever's talking has the ring and anyone with a hand up keeps a place. Click it again, drag it left, or
+  press **⇧P** again, and it opens back out. On a narrow stage and a phone the arches stay. Closing the last thing on your
+  stage gives it back to everyone, and **Close** says so before it's pressed ("Close it, and the people fill your stage
+  again"). Once you've changed the layout (moved, sized or pinned someone, or made the people smaller), **Reset layout**
+  in **More** puts it back, with
   **Undo**; where you see yourself stays as it is. Only your screen changes. A tile's **⋯** menu is short, with no key
   hints. On your own tile: **Set a status** (journey 6.34), **Pin for me** (up to six people, who share the main
   stage), **See yourself**: **Grid**, **Corner** (drag it, or Shift and an arrow, to another corner) or **Hidden** (a
@@ -833,8 +835,8 @@ See [Floating call](../engineering/floating-call.md) for browser capabilities an
      exactly where you were. If you're watching someone else's presentation, it comes in as a tile among the people
      instead, with **Join**, and a toast offers **Show it**; **Show beside** puts it beside the one you're watching, and
      closing either leaves the other.
-   - **Focus** (**⌘⇧F**, or "Fill your window with it" on the frame's bar): the bars slide off, everyone drops to
-     arches on the horizon, and your microphone, camera, **Show everything** and Leave stay. You still see who's talking and
+   - **Focus** (**⌘⇧F**, or "Fill your window with it" on the frame's bar): the bars slide off, the people keep a rail
+     of arches at the right, and your microphone, camera, **Show everything** and Leave stay. You still see who's talking and
      who has a hand up, and the faces at the top right still count anyone asking to join. **Show everything**, **⌘⇧F** or **Esc** brings it all back as it was, with the caret where you left it.
    - **Working together:** with the workspace open, hovering someone's tile offers **Follow** if they're in it (an arch has it in
      its menu, and People has it beside where each person is); the tile says **Following**, and shows a pen while they write.

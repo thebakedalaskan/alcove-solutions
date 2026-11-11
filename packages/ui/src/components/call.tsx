@@ -384,7 +384,7 @@ export function CallFrame({ who, icon, name, meta, menu, following, present, foc
 /**
  * What someone presents while it isn't on your stage: a tile with the people, saying who presents it. The whole tile is one
  * button, which takes you there. `children` is its live miniature (a screen's video, a board drawn small); without one it
- * shows the kind and where its presenter is, calmly. `small` is an arch among arches, or on the horizon: the kind's icon and
+ * shows the kind and where its presenter is, calmly. `small` is an arch among arches, in a rail or a row: the kind's icon and
  * the presenter's face, and nothing else. It fills the box it's given.
  */
 export function PresentedTile({ name, icon, sub, by, go, onPress, label, where, small = false, tabIndex, children, className }: {

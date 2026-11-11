@@ -299,10 +299,12 @@ circles, and whoever speaks gets the `speak` ring. The camera appears only here 
   it again; on your own screen it puts the screen away for you, a tile with the people, while everyone still sees it. A
   board someone presents keeps every tool for everyone following it: following is a view, not a mode, and anything of your
   own on it takes you off it, from where you are; the presenter keeps theirs too, with the pager at the frame's foot. The
-  people sit beside it in a column of tiles on the right, under the bar, a row of arches over it on a stage under 760px,
-  or on the horizon once they're hidden and in focus. Their own quiet button (an icon with a tooltip, no fill) does what
-  ⇧P does: Hide the people at the top of the column, level with the bar's buttons, or at the end of the row, and Show the
-  people, first on the horizon. A phone keeps its arches, and has none.
+  people stand at the window's right edge, level with it and in the middle of their edge: a column of tiles, or a rail of
+  arches once they're smaller and in focus, and a row of arches over it on a stage under 760px. Notes, Chat and People open
+  between it and them, and it makes room; the people never move for them. Their one control is the seam left of them: a
+  faint grip in the gap until you point at it, when the whole seam lights up. Click it, or drag it right to make the people
+  smaller and left to make them bigger, as ⇧P does. Nothing floats over them. A narrow stage and a phone keep their arches,
+  and have none.
 - **No layouts to choose.** The stage lays itself out, and talking moves nobody: the speak ring says who's talking, and
   only a pin or the organizer's spotlight puts someone on the main stage. You drag a tile to move it and pull its corner
   to make it bigger, and pin from its menu. The first time you point at a tile you can move, a coachmark under it says

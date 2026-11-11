@@ -77,8 +77,8 @@ export type CallLayout = z.infer<typeof CallLayoutSchema>;
  * tomorrow's call starts the way they left this one. It names nobody, and says nothing about what's open.
  */
 /**
- * The people while something is open on your stage: beside it (a column of tiles, or a row of arches where the stage is
- * narrow), or hidden on the horizon by the dock (⇧P).
+ * The people while something is open on your stage, at the window's right edge: a column of tiles, or made smaller (⇧P) a
+ * rail of arches, kept as `hidden`, the name it has always been stored under. A narrow stage has a row of arches either way.
  */
 export const CallPeopleModeSchema = z.enum(['tiles', 'hidden']);
 
