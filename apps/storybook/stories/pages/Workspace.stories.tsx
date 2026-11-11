@@ -7,7 +7,7 @@ import type { Meta } from '@storybook/react-vite';
 import { screen } from 'storybook/test';
 import { drawnPicture } from '../../src/api/media';
 import { itemId } from '../../src/api/scenarios';
-import { changing, page, pages, type PageArgs, type PageStory } from '../../src/page';
+import { caretAtEnd, changing, page, pages, type PageArgs, type PageStory } from '../../src/page';
 import type { World } from '../../src/world';
 import { troubled } from './changes';
 
@@ -118,8 +118,10 @@ export const ThreadAsThePageScrollsPhone = page(DRAFT, 'busy', { globals: PHONE,
  */
 const startTagging = (typed: string): NonNullable<PageStory['play']> => async ({ canvas, userEvent, step }) => {
   await step(`Start a line under “The team plan”, and type @${typed}`, async () => {
-    await userEvent.click(await canvas.findByText('The team plan', {}, { timeout: 8000 }));
-    await userEvent.keyboard(`{End}{Enter}@${typed}`);
+    const line = await canvas.findByText('The team plan', {}, { timeout: 8000 });
+    await userEvent.click(line);
+    caretAtEnd(line);
+    await userEvent.keyboard(`{Enter}@${typed}`);
     await screen.findByRole('listbox', { name: 'People, documents and dates' }, { timeout: 5000 });
   });
 };
@@ -247,8 +249,10 @@ export const VideoMenu = page(SHOTS, 'busy', { play: menuOf('.ws-ed .wb.is-video
  */
 const fileFrom = (make: () => Promise<File>, said: string): NonNullable<PageStory['play']> => async ({ canvas, userEvent, step }) => {
   await step('Go to the end of “What goes out”, start a line under it, type / and pick File', async () => {
-    await userEvent.click(await canvas.findByText('What goes out', {}, { timeout: 8000 }));
-    await userEvent.keyboard('{End}{Enter}/');
+    const line = await canvas.findByText('What goes out', {}, { timeout: 8000 });
+    await userEvent.click(line);
+    caretAtEnd(line);
+    await userEvent.keyboard('{Enter}/');
     await userEvent.click(await screen.findByRole('option', { name: /^File/ }, { timeout: 5000 }));
   });
   await step(said, async () => {

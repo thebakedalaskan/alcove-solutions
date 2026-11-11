@@ -12,7 +12,7 @@ import { asksToSee, at, goesTo, leaves, opensPage, plays, presentsWorkspace, tag
 import { current } from '../../src/api/state';
 import { inCall, light, phone, reach, type InCall, type StoryCall } from '../../src/call';
 import { iso } from '../../src/world/clock';
-import { pages, type PageArgs, type PageStory } from '../../src/page';
+import { caretAtEnd, pages, type PageArgs, type PageStory } from '../../src/page';
 import { frameMenu, frameOf } from './plays';
 import {
   addWalkthrough, AIKO, CHECK_IN, CHECK_IN_SUMMARY, CHECK_IN_TALK, CHECKLIST_DOC, FILM, KOFI, LAUNCH_REVIEW, MAYA, PLAN, PRIYA, REVIEW, REVIEW_SUMMARY, REVIEW_TALK, SAM, THEO,
@@ -254,8 +254,10 @@ export const SlashMenu = inCall(reviewing(), {
   play: async (c) => {
     await openWorkspace(c);
     await c.step('Go to the end of “What goes out”, start a line under it, and type /', async () => {
-      await c.userEvent.click(await c.canvas.findByText('What goes out', {}, { timeout: 8000 }));
-      await c.userEvent.keyboard('{End}{Enter}/');
+      const line = await c.canvas.findByText('What goes out', {}, { timeout: 8000 });
+      await c.userEvent.click(line);
+      caretAtEnd(line);
+      await c.userEvent.keyboard('{Enter}/');
       await screen.findByRole('listbox', { name: 'Blocks' }, { timeout: 5000 });
     });
   }
