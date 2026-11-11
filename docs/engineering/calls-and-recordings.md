@@ -1612,15 +1612,20 @@ call, open on everyone's stage who followed, on their own; For everyone closes i
 - **It's still the board.** Nothing about presenting changes how anyone's board is drawn: whoever presents and everyone
   following keep their own mode (`call`, `phone` or `read`), tools, bar, dots, comments and every pointer included. What's
   presented is the presenter's view, which their board already publishes on its awareness ten times a second (`view`, as for
-  Follow); nothing more goes to the server.
+  Follow); nothing more goes to the server. The view says how tall it is as well as how wide (`h`, beside the zoom, both for
+  a sheet `BOARD_VIEW_WIDTH` wide), and a follower fits all of it into their own sheet (`viewHere`), so a sheet of another
+  shape, a phone's or one narrowed by its side, shows more round it, never less of it. `h` is optional: a browser from
+  before it says only the width, which is followed as before, and one that never heard of it drops it as it parses.
 - **Frames are the presenter's stops.** The board's top-level frames, in the order they sit, top to bottom and left to right
   (`slides.ts`, the same reading order as a vote's Tab), so the order can be told from the board, and moving a frame moves it
   in the order. A frame held in another is part of it. `section` is the presenter's place in that order, kept by the call for
   their pager, their notes and a reload; past the last it's the last, and a board with no frames has no pager.
 - **Whoever's presenting** moves round the board freely, with every tool. As it starts, and each time they step to a frame
   (the pager, → and ←, or the organizer moving it), their camera glides to the frame (`Board.toFrame`), clear of the bar, the
-  pill and the pager at its foot (`PRESENTING_PAD`); when their own camera comes to rest with an outermost frame in the middle
-  of their view (`onRest`), `section` follows it, with no glide, so the pager says where they are and → goes on from there.
+  pill and the pager at its foot (`PRESENTING_PAD`), and stays fitted to it as their sheet changes size (Your notes opening
+  beside it, the window resized) until they move the view themselves (`takeCamera`); when their own camera comes to rest with
+  an outermost frame in the middle of their view (`onRest`), `section` follows it, with no glide, so the pager says where they
+  are and → goes on from there.
   Their pointer shows to everyone. At the frame's foot, for them alone, the pager (`FramePager`) has Back a frame and Next
   frame on either side of where they are ("1 of 3", with the frame's name), and, for an account, the button for Your notes,
   which opens `mine` on their side: where they are, their notes beside this frame, each frame its own, kept under their account
@@ -1636,7 +1641,9 @@ call, open on everyone's stage who followed, on their own; For everyone closes i
   keys that were lost go to the sheet. Anyone typing keeps their place.
 - **Everyone else** follows the presenter's view (`BoardSurface`'s `presenter`, `Board.follow` with `watching`), found by their
   connection in the call (`BoardPresentation.who`) as Follow finds anyone, eased to as it moves, and held where it was while
-  there's none to follow, as the presenter opens something else or reloads. The frame's bar says who's presenting and
+  there's none to follow, as the presenter opens something else or reloads. Only they stop following: the board's session
+  opening again under them (Try again, opening again by itself, their account arriving after it opened) draws a new board,
+  which follows on, and the old one going tells nobody (`stopFollow(false)` in `follow.ts`). The frame's bar says who's presenting and
   Following them, with Unfollow, which gives them their own view back, as they left it; the pill doesn't, and no ring goes
   round the sheet. Their tools stay: anything of their own on the board takes them off following, where they are, and does
   what they did (`Board.ownView`): a press that picks or changes something (`gestures.ts`), a key of the board's (`keys.ts`),
