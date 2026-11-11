@@ -6,11 +6,13 @@
  */
 import type { Meta } from '@storybook/react-vite';
 import { screen, within } from 'storybook/test';
-import { at, chats, floats, reacts, joins, knocks, leaves, line, lowersHand, mutes, nudges, raisesHand, says, unmutes } from '../../src/api/script';
+import { at, chats, floats, reacts, joins, knocks, leaves, line, lowersHand, mutes, nudges, opensBoard, raisesHand, says, unmutes } from '../../src/api/script';
 import { MORE, clearSide, inCall, light, phone, plays, press, reach, settings } from '../../src/call';
 import { talking } from '../../src/browser';
 import { pages, type PageArgs, type PageStory } from '../../src/page';
 import { iso } from '../../src/world/clock';
+import { RETRO } from './boards';
+import { openCallBoard } from './plays';
 import { AIKO, ALL_HANDS, CHECK_IN, DIEGO, EVERYONE, KOFI, KOFI_TALKS, MAYA, ONE_ON_ONE, PRIYA, REVIEW, REVIEW_SUMMARY, REVIEW_TALK, SAM } from './talk';
 
 const meta = { title: 'Calls/In the call', ...pages } satisfies Meta<PageArgs>;
@@ -309,3 +311,26 @@ export const FindNobody = {
   ...FourOfYou, name: 'Find someone, nobody by that name',
   play: plays(reach('People'), async ({ userEvent }) => { await userEvent.type(await screen.findByRole('searchbox', { name: 'Find someone in this call' }, { timeout: 8000 }), 'zed'); })
 };
+
+/**
+ * Beside a board the people stand in a column: drag someone's tile up or down it, and letting go only puts it there. A press
+ * that doesn't move it opens their ⋯, with Go to and Follow on the board.
+ */
+export const MoveSomeonesTileBesideABoard = inCall({ scenario: 'call-soon', call: REVIEW, script: { here: REVIEWERS, notes: 'off', talk: { lines: REVIEW_TALK, every: 6 }, board: RETRO, cues: at(1, opensBoard(PRIYA, 'retro')) } }, {
+  name: 'Move someone’s tile beside a board',
+  play: async (c) => {
+    await c.step('Open the board in the call, just for you', async () => { await openCallBoard(c, 'Design review'); });
+    await c.step('Drag Priya’s tile down the column, and let go: it moves there, and nothing opens', async () => {
+      const tile = await screen.findByRole('group', { name: /^Priya/ }, { timeout: 10000 });
+      const r = tile.getBoundingClientRect();
+      const x = r.left + r.width / 2;
+      const y = r.top + r.height / 2;
+      await c.userEvent.pointer([
+        { keys: '[MouseLeft>]', target: tile, coords: { clientX: x, clientY: y } },
+        { coords: { clientX: x, clientY: y + 24 } },
+        { coords: { clientX: x, clientY: y + r.height + 24 } },
+        { keys: '[/MouseLeft]' }
+      ]);
+    });
+  }
+});
