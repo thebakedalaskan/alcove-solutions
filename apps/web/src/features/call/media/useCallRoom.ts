@@ -1,14 +1,33 @@
-import { errorMessage, type CallSession } from '@alcove/api';
+import { errorMessage, type CallSession, type FeatureFlagName } from '@alcove/api';
 import type { useToast } from '@alcove/ui';
+import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import { sessions, useLive, type useLeaveGuard } from '~/lib/live';
 import { log } from '~/lib/log';
+import { q } from '~/lib/queries';
 import { ShareMarks } from '../screen-sharing/marks';
 import { CallReactions } from '../layout/reactions';
 import type { CallRoom, RoomView } from './livekit';
 import type { LocalMedia } from './media';
 
 const clog = log.child({ component: 'call' });
+/** How long opening a call waits for its feature flags before treating them as off. */
+const FLAGS_WAIT_MS = 1500;
+/**
+ * The feature flags a call's room follows, read once as it opens: what the lobby read as the call's media code came down,
+ * or else the server's answer. Flags that can't be read, or take longer than FLAGS_WAIT_MS, are off for this call, so a
+ * slow answer holds up joining by that at most; either is said in the log, and the room logs the flags it opened with.
+ */
+function roomFlags(queries: QueryClient): Promise<readonly FeatureFlagName[]> {
+  return new Promise((resolve) => {
+    const late = setTimeout(() => { clog.info('feature flags not read in time: the call opens without them', { waitMs: FLAGS_WAIT_MS }); resolve([]); }, FLAGS_WAIT_MS);
+    void queries.ensureQueryData(q.featureFlags()).then((on) => { clearTimeout(late); resolve(on); }, (err: unknown) => {
+      clearTimeout(late);
+      clog.info('feature flags not read: the call opens without them', { err });
+      resolve([]);
+    });
+  });
+}
 
 /** Before the room has connected: nobody's media yet. */
 const NO_VIEW: RoomView = { connection: 'connecting', endReason: null, people: {}, hostMuted: 0, shareStopped: 0, audioBlocked: false, screenFailed: null };
@@ -44,11 +63,12 @@ export function useCallRoom({ session, media, toast, guard: guardRef }: CallRoom
   /* The call's media goes through its LiveKit room (loaded only here); leaving the screen leaves the room. */
   const [room, setRoom] = useState<CallRoom>(NO_ROOM);
   const roomView = useLive(room);
+  const queries = useQueryClient();
   useEffect(() => {
     let gone = false;
     let entry = connections.get(session);
     if (!entry) {
-      entry = { room: import('~/features/call/media/livekit').then(({ openRoom }) => openRoom(session, media)), users: 0 };
+      entry = { room: Promise.all([import('~/features/call/media/livekit'), roomFlags(queries)]).then(([{ openRoom }, on]) => openRoom(session, media, new Set(on))), users: 0 };
       connections.set(session, entry);
     }
     const e = entry;
@@ -69,7 +89,7 @@ export function useCallRoom({ session, media, toast, guard: guardRef }: CallRoom
         void e.room.then((r) => r.leave(), () => undefined);
       }, 0);
     };
-  }, [session, media, toast]);
+  }, [session, media, toast, queries]);
   /* Pointers and marks on what's shared: kept in this browser only, sent and taken through the room, encrypted end to end. */
   const [marks, setMarks] = useState<ShareMarks | null>(null);
   useEffect(() => {

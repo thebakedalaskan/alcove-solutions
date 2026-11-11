@@ -148,9 +148,10 @@ The call itself stays in the API: who's let in, notes and the transcript.
   Google would email everyone on it in the middle of the call.
 - **The room.** `GET /v1/live/calls/:id/room` gives a LiveKit token for that one room (120 seconds, no
   admin rights) to people let in, and to nobody else. It may send data, which browsers use for pointers and marks on
-  shared screens, sealed end to end ([Pointing at shared screens](#pointing-at-shared-screens)), and for React's emoji
-  (`CALL_REACT_TOPIC`, which emoji and nothing else, at most 8 a second each after a burst of 24); the API is never in the
-  room, so it never receives any. Tokens carry no name: LiveKit knows people only by random identity.
+  shared screens, sealed end to end ([Pointing at shared screens](#pointing-at-shared-screens)), for React's emoji
+  (`CALL_REACT_TOPIC`, which emoji and nothing else, at most 8 a second each after a burst of 24), and for a browser that
+  can't decode VP9 to say so (`CALL_CODECS_TOPIC`, that and nothing else, every 10 s whatever its flags, at most 1 a
+  second after a burst of 3; see Video quality); the API is never in the room, so it never receives any. Tokens carry no name: LiveKit knows people only by random identity.
 - **The call pass** is an HMAC (a key derived from `KMASTER`) over the call, the organizer, the person's
   LiveKit identity, role and name, valid for 12 hours. It goes in the `x-alcove-call` header on every
   `/v1/live/calls/:id` request, never in a URL or log. The live routes open the organizer's keys for it
@@ -2628,6 +2629,55 @@ uploads), Alcove is asked who's signed in (`GET /v1/session`): only the account 
       you", with **Show cameras**, stays at the top of the call, so it isn't taken for everyone's camera being off;
       on a narrow screen it's the icon and the button.
     - Shared screens are never capped: their text has to stay readable.
+  - **Two feature flags** ([Feature flags](feature-flags.md)) change how a call's media goes, for whoever has them. The
+    room reads them once, as it opens (`openRoom` takes their names, so retiring one finds every check): what the lobby
+    read as the call's media code came down, or else the server's answer, waited for at most 1.5 s (`FLAGS_WAIT_MS` in
+    `useCallRoom.ts`). Flags not read by then are off for that call, so joining is never held up by more; the log says
+    so, and `joined the room` names the flags the room opened with.
+  - **With `call.bandwidth_reduction`**, calls download less:
+    - Cameras under Auto are capped by how big each picture of one is here (`CAMERA_MOST` in `livekit.ts`: each element
+      `attach` plays it in is measured then, and after by the `ResizeObserver` of the window it's in, so the floating
+      call's picture counts while the tab is hidden): one under 200 CSS pixels tall (or as tall as its width
+      at 16:9), such as a big grid's or the column beside a share, asks for at most 180p (`setVideoDimensions`, in
+      pixels, since a sender's own low, medium and high depend on the size they send; 180×180, so an upright camera
+      is capped too). Only a picture crossing that step asks again. Each copy is downloaded by
+      everyone who shows it, and 180p costs about 0.15 Mbps against 360p's 0.45.
+    - A camera's 720p copy is sent at 1 Mbps instead of 1.7 (`CAMERA_CUT` in `livekit.ts`), whether it's the top copy
+      (Standard) or the middle one (HD): a still face looks the same, and motion is blockier.
+    - Microphones are published as speech (`AudioPresets.speech`, Opus at up to 24 kbps, with LiveKit's default DTX;
+      LiveKit turns RED off under end-to-end encryption); a share's sound keeps LiveKit's music default.
+  - **With `call.screen_share_quality`**, a shared screen is sent at up to 30 fps instead of LiveKit's 15, at LiveKit's
+    own 2.5 Mbps and priority over cameras (its 1080p screen preset; `SCREEN` in `livekit.ts`), and with LiveKit's
+    `maintain-resolution` for screens: scrolling that outruns the rate drops frames and text stays sharp, since blurred
+    text shows more than a choppy scroll. It's sent as one copy at the screen's full size (`simulcast: false`), not
+    LiveKit's full and half-size pair: adaptive stream counts at most 1.5 pixels to a CSS pixel, so with the pair a share
+    frame under about 1000 CSS pixels wide on a Retina screen takes the half-size copy and blurs its text. A still screen
+    costs the same; while it moves, a viewer with a small frame downloads up to the full rate. It's sent as VP9
+    (`videoCodec: 'vp9'`), about 30% fewer bits than VP8 for the same picture; a sharer whose browser LiveKit won't send
+    VP9 from (Firefox) sends VP8. LiveKit sends a VP9 screen as one layer (`L1T3`) with `contentHint: 'motion'`, working
+    round Chrome's own path for screens, which holds that layer to 5 fps. LiveKit sets the hint only as it publishes, so
+    sharing something else in place hands it on to the new track.
+    - The screen sent is a clone of LocalMedia's track (`publishScreen`), so that a change of codec can put up a second
+      copy of the same capture. Stopping LocalMedia's track doesn't end a clone, so the room stops it itself the moment
+      its track isn't the one shared any more (`follow`), a clone still being published included: a share stopped or
+      swapped stops being sent at once, as it does without the flag.
+  - **VP8 while anyone can't decode VP9.** Under end-to-end encryption LiveKit sends no second codec beside the first, so
+    a viewer that can't decode VP9 (Safari or iOS before 16) would see nothing. Such a browser says so on its own data
+    topic (`CALL_CODECS_TOPIC` in `packages/api/src/calls/codecs.ts`, sealed like marks, every 10 s, whatever its flags;
+    browsers that decode VP9 say nothing). It's the one thing said there (`{ vp9: false }`), and whoever says it counts
+    until they leave the room, so nobody can make a share go back and forth. While anyone it hears can't decode VP9, a
+    sharer with the flag sends its screen as VP8 with LiveKit's own screen settings, as a screen goes without the flag
+    (unless LiveKit is sending it as VP8 already). A change of codec publishes the new copy before taking the old one
+    down, and the sharer isn't asked to pick a screen again; it goes back to VP9 once they leave. A switch that failed is
+    tried again when they next say it, and a full reconnect, which LiveKit starts by saying everyone left, forgets nobody:
+    someone counts as gone only once they're still gone with the room connected, and a browser that can't decode VP9
+    says so again as soon as it's back. A viewer still sees the share stop for a moment (the stage's end
+    animation) and come back, since it drops the old copy before the new one arrives. The picture's track sid changes, so
+    pointers and marks on it start afresh, and a viewer who muted the share's sound hears it again.
+    - **Switching it on.** A browser on an earlier release never says it can't decode VP9, so switch
+      `call.screen_share_quality` on only once nobody can still be on one: Safari or iOS before 16 would see a flagged
+      share black. A viewer without VP9 who has just joined can see a VP9 share black for up to 10 s, until what it says
+      gets through.
 - **Speakers.** Where a page can choose one (`setSinkId` on media elements: Chrome, Edge and Firefox; LiveKit
   doesn't on Safari), the chosen speaker goes through LiveKit's own output switching, so every element plays
   there, now and as people arrive, and LiveKit's device handling knows it. Firefox lists speakers only once the

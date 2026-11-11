@@ -286,8 +286,8 @@ function busy(): World {
     drive: disconnectedDrive(), payments: paymentsOff(), session: session(), prefs: { ...PREFS, pinned: ['n4', 'n6'], groups: GROUPS }, team: teamOf(DIRECTORY), notes, personal: { n2: standupOwn() },
     meetings: busyCalls(), calendar: connected(busyEvents()), credits: CREDITS, documents: library(), workspaces: workspaces(), pages: pages(), shares: shares(), boards: boards(),
     mentions: structuredClone(TAGGED), media: files(), rings: [], writing: null,
-    // The placeholder flag is on here and off in every other scenario, so both answers are served.
-    featureFlags: ['example']
+    // The bandwidth flag is on here and off in every other scenario, so both answers are served.
+    featureFlags: ['call.bandwidth_reduction']
   };
 }
 
