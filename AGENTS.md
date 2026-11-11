@@ -262,7 +262,8 @@ page is designed, how to make a design canvas from the kit in `docs/design/canva
 - Every screen must work in light and dark. Check both, and check phone and wide screens.
 - `sun` is the only colour you can press: primary buttons are a solid `sun` fill with `on-sun` text and no
   shadow, one per view. It's navy by day and cream by night, so it never glows against the page. The side panel's
-  Start a call is tinted, so the page's own action is the one filled button in view. The warmth lives in `sun-text` and `sun-soft`.
+  Start a call is a row like the places under it, its camera in a warm circle, so the page's own action is the one filled
+  button in view and the place you're on is the one shaded row. The warmth lives in `sun-text` and `sun-soft`.
   `rec` only ever means notes or recording (`NotesSign`, `RecDot`). Problems use `caution`,
   information and focus use `horizon`, and a decision waiting on someone uses `rose`. The mark (`Mark`, `Logo`) is branding, never state. No green.
 - Type: Newsreader (`font-display`) for page-level headings, a board's name and its frame titles, and nothing

@@ -16,8 +16,8 @@ import { Avatar, Button, CallTile, CaptureSign, EmptyState, Icon, NotesSign, Pre
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { useEffect, useMemo, useRef, useState, type FocusEvent as ReactFocusEvent, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { callName } from '~/lib/people';
-import { useSettledSpeakers } from '../media/speakers';
-import { arrange, fitGrid, isThingKey, isWaitKey, placeFrame, reslot, steady, thingKey, waitKey, type Rect, type StageFrame } from './stageLayout';
+import { useSettledSpeaker } from '../media/speakers';
+import { arrange, fitGrid, isThingKey, isWaitKey, placeFrame, reslot, thingKey, waitKey, type Rect, type StageFrame } from './stageLayout';
 import { ThingMenu, TileMenu, type PersonMenu } from './TileMenu';
 import { FeedVideo, type Feed } from '../media/Video';
 import type { CallView } from './view';
@@ -156,7 +156,7 @@ export function useStagePlan({ people, waiting, tiles, spotlight, view, narrow, 
   hold: boolean;
 }) {
   const { prefs, layout: lay } = view;
-  const talk = useSettledSpeakers(people);
+  const speaker = useSettledSpeaker(people);
   // The layout is worked out again only when something it depends on changes, not on every render (who's
   // speaking right now, a drag's pointer): in a big call it isn't free.
   const awaited = waiting.map((w) => ({ id: waitKey(w.id), seat: waitKey(w.id), isMe: false, waiting: true }));
@@ -164,17 +164,10 @@ export function useStagePlan({ people, waiting, tiles, spotlight, view, narrow, 
   const tilesKey = tiles.join(' ');
   // `people` changes on every render (who's speaking); the plan only needs who's here, which peopleKey says.
   const raw = useMemo(() => arrange({
-    people: [...people, ...awaited], tiles: tilesKey ? tilesKey.split(' ').map(thingKey) : [], spotlight, dominant: talk.dominant, prefs, layout: lay, hold
-  }), [peopleKey, tilesKey, spotlight, talk.dominant, prefs, lay, hold]);
-  // While Alcove picks who leads, whoever steps down takes the place of whoever steps up.
-  const strip = useRef<{ order: string; auto: boolean; rest: string[] }>({ order: '', auto: false, rest: [] });
-  const orderKey = lay.order.join(' ');
-  const auto = raw.shape === 'focus' && raw.auto;
-  const rest = auto && strip.current.auto && strip.current.order === orderKey ? steady(strip.current.rest, raw.rest) : raw.rest;
-  strip.current = { order: orderKey, auto, rest };
-  const restKey = rest.join(' ');
-  const plan = useMemo(() => ({ ...raw, rest: restKey ? restKey.split(' ') : [], big: narrow ? new Set<string>() : raw.big }), [raw, restKey, narrow]);
-  return { plan, narrow, speaker: talk.speaker };
+    people: [...people, ...awaited], tiles: tilesKey ? tilesKey.split(' ').map(thingKey) : [], spotlight, prefs, layout: lay, hold
+  }), [peopleKey, tilesKey, spotlight, prefs, lay, hold]);
+  const plan = useMemo(() => ({ ...raw, big: narrow ? new Set<string>() : raw.big }), [raw, narrow]);
+  return { plan, narrow, speaker };
 }
 export type StagePlan = ReturnType<typeof useStagePlan>;
 
@@ -257,13 +250,13 @@ export function Stage({ staged, frame, phone, people, waiting, presented, spotli
   const seatOf = (id: string) => byId.get(id)?.seat;
   const seats = (ids: string[]) => ids.flatMap((id) => { const s = seatOf(id); return s ? [s] : []; });
   const pinned = new Set(plan.leads.filter((id) => lay.pins.includes(seatOf(id) ?? '')));
-  // What a move rearranges: your pins among themselves, or everyone else in your order. A spotlight or Alcove's pick stays put.
+  // What a move rearranges: your pins among themselves, or everyone else in your order. A spotlight stays put.
   const pinGroup = plan.leads.filter((id) => pinned.has(id));
   const restGroup = plan.rest.filter((k) => !isThingKey(k) && !isWaitKey(k));
   const groupOf = (id: string) => (pinned.has(id) ? pinGroup : restGroup.includes(id) ? restGroup : null);
-  // Dragging and resizing tiles: not on a phone, nor in a strip under someone you or the organizer chose, nor among arches, nor
-  // while rooms are open. Under whoever Alcove picked, moving or sizing a tile arranges the stage yourself, and it's a grid again.
-  const handsOn = !narrow && (plan.shape !== 'focus' || plan.auto) && !rooms && (!panels || panels.mode === 'tiles');
+  // Dragging and resizing tiles: not on a phone, nor in the strip under someone you or the organizer chose, nor among arches,
+  // nor while rooms are open.
+  const handsOn = !narrow && plan.shape !== 'focus' && !rooms && (!panels || panels.mode === 'tiles');
   // Bigger tiles are the stage's: a column of people keeps them all alike.
   const sizable = handsOn && !panels;
   const self = plan.self ? byId.get(plan.self.id) ?? null : null;
@@ -292,7 +285,7 @@ export function Stage({ staged, frame, phone, people, waiting, presented, spotli
       const shown = seats(next);
       view.setPins([...shown, ...lay.pins.filter((s) => !shown.includes(s))]);
     } else {
-      // The group's places in your order, in that order: the strip may show them steadied (under whoever leads), not in order.
+      // The group's places in your order, in that order, take its new order: everyone else keeps theirs.
       const mine = seats(g);
       view.setOrder(reslot(plan.order, plan.order.filter((s) => mine.includes(s)), seats(next)));
     }

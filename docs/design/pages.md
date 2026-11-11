@@ -13,7 +13,8 @@ Every signed-in page sits in the same frame (`apps/web/src/features/shell/`, `pa
 
 - **The side panel**, on the left, is dark in both themes. From the top:
   - the logo, and a button to hide the panel
-  - Start a call (N), tinted, never filled
+  - Start a call (N): a row like the places, its name in line with theirs and its camera in a warm circle. It's never
+    filled or shaded, so the place you're on is the one shaded row
   - the places, each with a count: Home (what's waiting on you), Notes, Record (recordings waiting to upload) and Team
     (people on Alcove), with Team hidden for someone on their own
   - Up next, the next call with Join, on Home too, except while Home's own line offers a call (in its last few minutes,
@@ -35,7 +36,7 @@ Every signed-in page sits in the same frame (`apps/web/src/features/shell/`, `pa
 Home is for starting a call and for what's yours. It's nearly all sky.
 
 - **The sky.** The date, small, at the top left. In the middle, Start a call (Newsreader), then:
-  - Start now (filled), Schedule, and an icon button that copies a link for a new call
+  - Start now (filled) and Schedule
   - up to three people to ring, each a chip with their arch, then a plus
   - from 5 minutes before a call with someone else on it, and while it's going, a slim line above the title with its faces,
     its name, "Starts in 4 min" or "Happening now", and Join (J), which takes the filled button
@@ -302,9 +303,10 @@ circles, and whoever speaks gets the `speak` ring. The camera appears only here 
   or on the horizon once they're hidden and in focus. Their own quiet button (an icon with a tooltip, no fill) does what
   ⇧P does: Hide the people at the top of the column, level with the bar's buttons, or at the end of the row, and Show the
   people, first on the horizon. A phone keeps its arches, and has none.
-- **No layouts to choose.** The stage lays itself out; you drag a tile to move it and pull its corner to make it bigger,
-  and pin from its menu. The first time you point at a tile you can move, a coachmark under it says so, once in that
-  browser. Once you've changed it, More has a quiet Reset layout (muted ink, no fill). Testers asked for preset layouts
+- **No layouts to choose.** The stage lays itself out, and talking moves nobody: the speak ring says who's talking, and
+  only a pin or the organizer's spotlight puts someone on the main stage. You drag a tile to move it and pull its corner
+  to make it bigger, and pin from its menu. The first time you point at a tile you can move, a coachmark under it says
+  so, once in that browser. Once you've changed it, More has a quiet Reset layout (muted ink, no fill). Testers asked for preset layouts
   and for tiles that snap to drop zones (#227); both stay out, as #178 and #197 decided, because choosing layouts made the
   call hard to understand. What they were missing was a way out of the column and a sign that tiles move, so those were
   built instead.
@@ -440,8 +442,8 @@ Signed out, before anything else: what Alcove is, told as one evening on the app
 
   A new account has its arrival instead, and with reduced motion Home just opens. It's decorative: it takes no focus, and
   a press, a key or the wheel clears it at once.
-- The nav is fixed over the sky. It turns night over the night windows, and its Get started is tinted, like the side
-  panel's Start a call. The logo appears once, in the nav.
+- The nav is fixed over the sky. It turns night over the night windows, and its Get started is tinted, leaving the
+  filled button to what's on the page. The logo appears once, in the nav.
 
 ## Not yet on the canvas
 

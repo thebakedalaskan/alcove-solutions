@@ -2220,11 +2220,11 @@ steps (`ShareMenu.tsx`); and the call's keys are `session/useCallShortcuts.ts`. 
   come back to the same seat; you're told both times. With all six pins taken, pinning someone else gives up the
   oldest pin of someone who isn't here, and someone the organizer removes loses the organizer's pin, since they
   can't come back. Everyone keeps their place across reconnections (the order
-  people first came in, by seat). The stage shows one person big only once they've had most of the talk time over the
-  last minute or so (yours counted), and only while you haven't arranged anything; in the strip under them, whoever steps
-  down takes the place of whoever steps up, and moving or sizing a tile there arranges the stage, which is a grid again
-  (`handsOn` in `Stage.tsx`). A presentation that starts takes your stage only while you
-  aren't watching another; otherwise it comes in as a tile, and nothing you see moves. Your pins stay first beside what's
+  people first came in, by seat). Talking moves nobody: only a pin or the organizer's spotlight puts someone on the main
+  stage (`arrange`), and whoever's talking has the speak ring. The stage used to put whoever had most of the last 45
+  seconds' talk time there by itself; it switched between that and the grid well after anyone started or stopped
+  talking, which read as the layout changing for no reason, so it went. A presentation that starts takes your stage
+  only while you aren't watching another; otherwise it comes in as a tile, and nothing you see moves. Your pins stay first beside what's
   open, and when it closes everything is where it was. Cameras turning off move nothing.
 - **Keyboard.** The stage is one tab stop. Arrow keys move between tiles, Enter (or Shift+F10) opens a tile's menu, P pins
   or unpins, and Shift with an arrow moves your corner picture to another corner (tiles move and grow by dragging); on a

@@ -47,7 +47,7 @@ const panel: Decorator = (Story) => (
     <div className="sb-in">
       <div className="sb-top"><span className="sb-home"><Logo /></span></div>
       <button type="button" className={cn(buttonClass(), 'sb-new')} aria-keyshortcuts="N" onClick={did('onNew')}>
-        <Icon name="video" size={18} /><span>Start a call</span><Kbd>N</Kbd>
+        <span className="sb-new-ic"><Icon name="video" size={16} /></span><span>Start a call</span><Kbd>N</Kbd>
       </button>
       <Story />
     </div>

@@ -269,7 +269,7 @@ function firstTime(story: PageStory): PageStory {
   const forget = () => { for (const k of [tileHintKey(ME_ID), tileHintKey(null)]) localStorage.removeItem(k); };
   return { ...story, beforeEach: [...(Array.isArray(b) ? b : b ? [b] : []), forget] };
 }
-/** A tile that can be moved, as a pointer finds one: not whoever Alcove picked to lead. */
+/** A tile that can be moved, as a pointer finds one: not your own picture in a corner. */
 const movable = () => waitFor(() => {
   const tile = screen.getAllByRole('group').find((el) => el.classList.contains('can-drag') && !el.classList.contains('is-corner'));
   if (!tile) throw new Error('No tile can be moved yet.');

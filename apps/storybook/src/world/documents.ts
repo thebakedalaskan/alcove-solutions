@@ -187,7 +187,7 @@ export const UPLOADING = 'up-aiko-pricing-walkthrough';
 
 /** What the review's screenshots and walkthrough show, drawn. */
 export const SHOWN: Record<'light' | 'dark' | 'pricing' | 'walkthrough', Screen> = {
-  light: { title: 'Sidebar, light', accent: '#215DB3', pages: [{ heading: 'The sidebar, by day', lines: ['Start a call, tinted, so the page’s own action is the one filled button', 'Home, Notes, Drive, Record and Team', 'Up next, then what’s pinned'] }] },
+  light: { title: 'Sidebar, light', accent: '#215DB3', pages: [{ heading: 'The sidebar, by day', lines: ['Start a call, a row with a warm circle, so the page’s own action is the one filled button', 'Home, Notes, Drive, Record and Team', 'Up next, then what’s pinned'] }] },
   dark: { title: 'Sidebar, dark', accent: '#7A5BD6', pages: [{ heading: 'The sidebar, by night', lines: ['It reads better dark, in both themes', 'The same order, the same words', 'Pinned notes keep their arches'] }] },
   pricing: { title: 'Pricing page', kind: 'doc', accent: '#C0587A', pages: [{ heading: 'Pricing', lines: ['Start free', 'Talk to us', 'Buy minutes: three filled buttons, where one would do'] }] },
   walkthrough: {

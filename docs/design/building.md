@@ -71,7 +71,7 @@ export function Billing() {
 | `--ground`, `--surface`, `--line`, `--ink`, `--ink-2`, `--ink-3` | The same names |
 | `--serif`, `--sans` | `--font-display`, `--font-sans` |
 | `b-press` | `<Button variant="primary">`, the one filled button |
-| `b-tint`, `b-line` | `<Button variant="secondary">`, a surface fill with a `line-control` ring. On the canvas `b-line` is a bare ring and `b-tint` an ink tint; the app's only tinted button is the side panel's Start a call |
+| `b-tint`, `b-line` | `<Button variant="secondary">`, a surface fill with a `line-control` ring. On the canvas `b-line` is a bare ring and `b-tint` an ink tint; the app tints a button only where the view already has its filled one, as with Ask on Notes and Get started on the welcome page |
 | `b-quiet` | `<Button variant="quiet">` |
 | `b-lg`, `b-sm` | `size="lg"`, `size="sm"`. The app's buttons are taller: 44, 52 and 36px against the canvas's 40, 46 and 32 |
 | `--rec`, `--caution`, `--rec-soft`, `--caution-soft` (from `tokens.js`; some boards still set their own, such as Team's `--tm-caution`) | The same names |

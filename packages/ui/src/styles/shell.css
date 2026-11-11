@@ -84,9 +84,14 @@
 .sb-status { flex: none; display: flex; align-items: flex-start; gap: 9px; margin: -4px 0 10px; padding: 10px 12px; border-radius: var(--radius-md); background: var(--horizon-soft); color: var(--horizon); font: 500 12.5px/1.4 var(--font-sans); }
 .sb-status .ac-i { margin-top: 1px; }
 .sb-status b { display: block; font-weight: 600; }
-/* Tinted, so the page's own action is the one filled button in view. */
-.ac-btn.sb-new { flex: none; width: 100%; justify-content: flex-start; gap: 10px; padding: 0 12px 0 14px; background: color-mix(in srgb, var(--ink) 10%, transparent); box-shadow: none; color: var(--ink); }
-.ac-btn.sb-new:hover { background: color-mix(in srgb, var(--ink) 15%, transparent); }
+/*
+ * A row like the places under it, neither filled nor shaded, so the page's own action is the one filled button in view
+ * and the place you're on is the one shaded row. Its camera sits in a warm circle centred on the places' icons, and its
+ * name lines up with theirs, so it reads as something to press rather than somewhere to go.
+ */
+.ac-btn.sb-new { flex: none; width: 100%; height: 40px; margin-bottom: 6px; justify-content: flex-start; gap: 7px; padding: 0 12px 0 8px; border-radius: 11px; background: transparent; box-shadow: none; color: var(--ink); font-size: 14.5px; }
+.ac-btn.sb-new:hover { background: color-mix(in srgb, var(--ink) 7%, transparent); }
+.sb-new-ic { flex: none; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: var(--sun-soft); color: var(--sun-text); }
 .sb-new .ac-kbd { margin-left: auto; background: color-mix(in srgb, var(--ink) 12%, transparent); color: var(--ink); box-shadow: none; opacity: .8; }
 .sb .ac-nav { flex: none; }
 /*

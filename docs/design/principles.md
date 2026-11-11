@@ -84,7 +84,9 @@ colour per kind and shape.
 so it never glows against the page. Each view has at most one filled button: the thing you came to do. Everything else is
 secondary, quiet or a link.
 
-- The side panel's Start a call is tinted, so a page's own action is the one filled button in view.
+- The side panel's Start a call is a row like the places under it, its camera in a warm circle (`sun-soft` behind
+  `sun-text`). It's neither filled nor shaded, so a page's own action is the one filled button in view and the place
+  you're on is the one shaded row in the panel.
 - When a call is about to start, Join takes the filled button from Start now.
 - A page you read or adjust, like Settings, may have none at rest, and fills a button only when something needs doing.
 - When a page asks a question, the answer that loses nothing is the filled one.
