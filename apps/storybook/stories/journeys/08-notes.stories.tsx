@@ -769,7 +769,7 @@ export const BookmarkALineOrAScreen: PageStory = {
     });
     await step('It opens over the note, with its own bookmark', async () => {
       const shared = await screen.findByRole('dialog', { name: 'Shared screen: Launch checklist' }, SOON);
-      await userEvent.click(within(shared).getByRole('button', { name: 'Bookmark this screen, for you alone' }));
+      await userEvent.click(within(shared).getByRole('button', { name: 'Bookmark this screen in your own notes, which only you see' }));
     });
     await step('Bookmarked, it’s in Your notes too', async () => {
       await userEvent.keyboard('{Escape}');
