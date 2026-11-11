@@ -1648,7 +1648,7 @@ call, open on everyone's stage who followed, on their own; For everyone closes i
   connection in the call (`BoardPresentation.who`) as Follow finds anyone, eased to as it moves, and held where it was while
   there's none to follow, as the presenter opens something else or reloads. Only they stop following: the board's session
   opening again under them (Try again, opening again by itself, their account arriving after it opened) draws a new board,
-  which follows on, and the old one going tells nobody (`stopFollow(false)` in `follow.ts`). The frame's bar says who's presenting and
+  which follows on; the old one going tells nobody (`stopFollow(false)`). The frame's bar says who's presenting and
   Following them, with Unfollow, which gives them their own view back, as they left it; the pill doesn't, and no ring goes
   round the sheet. Their tools stay: anything of their own on the board takes them off following, where they are, and does
   what they did (`Board.ownView`): a press that picks or changes something (`gestures.ts`), a key of the board's (`keys.ts`),
