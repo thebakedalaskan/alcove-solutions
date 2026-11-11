@@ -700,7 +700,9 @@ button.nd-lt:hover { color: var(--ink); }
   .nd-l .nd-la { grid-column: 1; grid-row: 1 / 3; }
   .nd-l .nd-lb { grid-column: 2; }
   .nd-l .nd-lx { grid-column: 3; grid-row: 1 / 3; flex-direction: column; display: none; opacity: 1; }
-  .nd-l.is-on .nd-lx, .nd-lx:has(.is-on) { display: flex; }
+  /* One line shows its tools: the one pressed, while the call plays on from it, until another is pressed or it's scrolled
+     out of sight; with none, the line being said. A ticked bookmark always shows. */
+  .nd-l.is-picked .nd-lx, .nd-lines:not(:has(.nd-l.is-picked)) .nd-l.is-on .nd-lx, .nd-lx:has(.is-on) { display: flex; }
   /* A room's lines are never lit, so what can be done with one stays under it. */
   .nd-lines.is-room .nd-l .nd-lx, .nd-lines.is-room.is-nameless .nd-l .nd-lx { display: flex; grid-column: 2; grid-row: auto; flex-direction: row; justify-content: flex-start; margin: 2px 0 0 -6px; }
   .nd-lines.is-room.is-nameless .nd-l .nd-lx { grid-column: 1; }
