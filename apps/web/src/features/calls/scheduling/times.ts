@@ -125,21 +125,24 @@ export const LONGEST_CALL = 600;
 /** Times are typed in steps of this many minutes. */
 export const TYPED_STEP = 5;
 
-/** Why a time typed can't be used: it's gone, the end comes before the start, or the call is too long or too short. */
-export type Untimely = 'gone' | 'backwards' | 'long' | 'short';
+/**
+ * Why a time typed can't be used: it isn't a time a 24-hour clock says ("9", "2pm", "25:00"), it's gone, the end comes
+ * before the start, or the call is too long or too short.
+ */
+export type Untimely = 'unread' | 'gone' | 'backwards' | 'long' | 'short';
 export type Retimed = { ok: true; at: Date; minutes: number } | { ok: false; why: Untimely };
 
 /**
- * A call at `at` for `minutes`, with its start or its end typed as a clock time (`HH:MM`, to the nearest 5 minutes), or
- * null for anything a clock doesn't say. A start moves the call on its own day and keeps its length, and it can't have
- * gone already. An end sets the length, up to 10 hours: earlier than the start, it's the next day's, for a call that
- * runs past midnight.
+ * A call at `at` for `minutes`, with its start or its end typed as a clock time (`HH:MM`, to the nearest 5 minutes);
+ * anything a 24-hour clock doesn't say is `unread`. A start moves the call on its own day and keeps its length, and it
+ * can't have gone already. An end sets the length, up to 10 hours: earlier than the start, it's the next day's, for a
+ * call that runs past midnight.
  */
-export function retime(at: Date, minutes: number, which: 'start' | 'end', typed: string, now: Date): Retimed | null {
+export function retime(at: Date, minutes: number, which: 'start' | 'end', typed: string, now: Date): Retimed {
   const m = /^(\d{1,2})[:.]?(\d{2})(?::\d{2})?$/.exec(typed.trim());
   const hours = Number(m?.[1] ?? Number.NaN);
   const mins = Number(m?.[2] ?? Number.NaN);
-  if (!(hours >= 0 && hours <= 23 && mins >= 0 && mins <= 59)) return null;
+  if (!(hours >= 0 && hours <= 23 && mins >= 0 && mins <= 59)) return { ok: false, why: 'unread' };
   const clock = Math.min(24 * 60 - TYPED_STEP, Math.round((hours * 60 + mins) / TYPED_STEP) * TYPED_STEP);
   const on = (days: number) => new Date(at.getFullYear(), at.getMonth(), at.getDate() + days, Math.floor(clock / 60), clock % 60);
   if (which === 'start') {

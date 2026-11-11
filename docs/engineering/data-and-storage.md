@@ -793,11 +793,11 @@ readable.
 - **A board in a call** is a document in a workspace like any other. The call's sealed state says which is open in each part
   of the call and which boards it lets everyone into (`board`): where each is, who opened or decided it by their name, address and
   seat, and the seats and addresses each has been worked out for, and nothing about what's on it. An open board's entry keeps its
-  timer (when it runs out, how long it was set for, and who started it) and its vote (which frame, how many votes each, who
-  started it, whether it's ended, and which stickies each person voted for, by their account or their person in the call), only
-  as IDs. It also lists each board made for a breakout room, by room, and whether everyone invited has it by address yet
-  (`rooms`), and what's coming back from rooms that have closed (`landing`), with how many tries at landing it have failed
-  (`tries`). Open rooms keep what they were opened with to work on (`breakouts.open.board`), and a room's board keeps its call
+  vote (which frame, how many votes each, who started it, whether it's ended, and which stickies each person voted for, by
+  their account or their person in the call), only as IDs. It also lists each board made for a breakout room, by room, and
+  whether everyone invited has it by address yet (`rooms`), and what's coming back from rooms that have closed (`landing`),
+  with how many tries at landing it have failed (`tries`). Open rooms keep what they were opened with to work on
+  (`breakouts.open.board`), and a room's board keeps its call
   as an item (`StoredItem.room`) until the call has kept it for everyone invited, so it isn't stranded meanwhile; then the mark
   goes, and it's a restricted board like any other. It all goes when the call ends. A call stored before boards were kept reads
   as having none, an open board stored before votes reads as having none, and one stored with a board timer, which boards no

@@ -87,7 +87,10 @@ export const JoiningARoom = inCall({
     });
   })
 });
-/** Maya, a guest, sent to Pricing by her seat; Aiko, who came after the rooms opened, waits in the main room, to be sent to one from there. */
+/**
+ * Maya, a guest, sent to Pricing by her seat; Aiko, who came after the rooms opened, waits in the main room, to be sent to one
+ * from there. With notes on, Pricing doesn't say Notes: nobody invited is in it, so nothing said there is transcribed.
+ */
 const withAGuest = (s: CallSession) => {
   const maya = s.getSnapshot().participants.find((p) => p.person.email === MAYA.email)?.seat;
   s.openRooms({ ...TWO_ROOMS, rooms: [{ name: 'Empty states', emails: [PRIYA.email, KOFI.email] }, { name: 'Pricing', emails: [], seats: maya ? [maya] : [] }] });

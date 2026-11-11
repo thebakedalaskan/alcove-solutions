@@ -29,7 +29,7 @@ const soonestFirst = (a: Date, b: Date) => a.getTime() - b.getTime();
  * The time picked, as it will read: its day, then its start and its end, each typed as a 24-hour time like every other time
  * here ("14:15", or "1415"), to the nearest 5 minutes; the up and down arrows move it 5 minutes. A start moves the call and
  * keeps its length; an end sets the length. What's typed counts once it's finished, on leaving the field or with Enter;
- * a time that can't be used says why, and what was there stays.
+ * a time that can't be read or used says why, and what was there stays, as it does, saying nothing, for a field left empty.
  */
 export function StartEnd({ at, minutes, onChange }: { at: Date; minutes: number; onChange: (c: { at: Date; minutes: number }) => void }) {
   const [typed, setTyped] = useState<{ start: string | null; end: string | null }>({ start: null, end: null });
@@ -46,7 +46,6 @@ export function StartEnd({ at, minutes, onChange }: { at: Date; minutes: number;
   const type = (which: 'start' | 'end', value: string | null) => setTyped((t) => (which === 'start' ? { ...t, start: value } : { ...t, end: value }));
   const use = (which: 'start' | 'end', value: string) => {
     const next = retime(at, minutes, which, value, new Date());
-    if (!next) return;
     if (!next.ok) { setWhy(untimelyLine(next.why)); return; }
     setWhy(null);
     if (next.at.getTime() !== at.getTime() || next.minutes !== minutes) onChange({ at: next.at, minutes: next.minutes });
@@ -54,7 +53,8 @@ export function StartEnd({ at, minutes, onChange }: { at: Date; minutes: number;
   const commit = (which: 'start' | 'end') => {
     const value = typed[which];
     type(which, null);
-    if (value !== null) use(which, value);
+    if (value?.trim()) use(which, value);
+    else if (value !== null) setWhy(null);
   };
   const field = (which: 'start' | 'end', label: string, value: Date) => (
     <input type="text" inputMode="numeric" autoComplete="off" spellCheck={false} maxLength={5} aria-label={label} value={typed[which] ?? hm(value)}

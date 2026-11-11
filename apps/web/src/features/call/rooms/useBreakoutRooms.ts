@@ -87,10 +87,16 @@ export function useBreakoutRooms({ session, state, room, roomView, invited, open
     const place = room ?? MAIN_PLACE;
     setFolded((f) => (f.includes(place) ? f.filter((x) => x !== place) : [...f, place]));
   };
+  /*
+   * Someone invited is in the room now. Only then is anything said there transcribed: its scribe is always someone invited, so
+   * a room with only guests from the link in it has none.
+   */
+  const invitedIn = (r: { people: readonly Person[]; members: readonly string[] }) =>
+    r.members.some((id) => { const p = byId.get(id); return !!p && p.email !== '' && r.people.some((x) => sameEmail(x, p)); });
   const roomsView: StageRooms | null = open && organizer && myRoom < 0 ? {
-    // Each room's notes: paused while the whole call is, or while the organizer has paused that room.
+    // Each room's notes: paused while the whole call is, or while the organizer has paused that room, and on only while someone invited is there.
     rooms: open.rooms.map((r, k) => ({
-      id: r.id, name: r.name, ids: r.members.filter((id) => byId.has(id)), help: helps[k] ?? null, notes: mode === 'paused' || (on && r.paused) ? 'paused' : on ? 'on' : 'off', board: r.board, folded: folded.includes(r.id)
+      id: r.id, name: r.name, ids: r.members.filter((id) => byId.has(id)), help: helps[k] ?? null, notes: mode === 'paused' || (on && r.paused) ? 'paused' : on && invitedIn(r) ? 'on' : 'off', board: r.board, folded: folded.includes(r.id)
     })),
     main: mainIds, mainFolded: folded.includes(MAIN_PLACE), left, boards: roomsOnBoards, onFold: fold,
     message: message && me ? { from: me.person, text: message.text } : null

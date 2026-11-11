@@ -300,17 +300,19 @@ sequenceDiagram
    "Thank you.", "Thanks for watching", "To be continued", "¡Gracias!", "Obrigado." or "Продолжение
    следует...". A reply without segments but with text becomes one line.
 
-   Whisper also says back the start of its prompt and then carries on with what it heard, so the echo
-   opens a line under its speaker's name. Before the filter above, that start is taken off (`afterNames`
-   and `afterSaid` in `inference.ts`), with words compared without case or punctuation. A line that opens
-   with two or more of the prompt's names, one after another as the prompt has them ("Art Vandelay, Priya
-   Raman. I agree."), loses them, and a line that was nothing but the names goes; one name stays, since
-   people are spoken to by name. A line that opens with the last six words or more of the words before
-   loses them, and what follows stays; fewer are kept whole, as with whole lines, because people agree by
-   saying back what was just said ("on Friday. Sounds good to me."). Six words is a starting point, not a
-   measurement: it should be measured against NEAR AI's Whisper, on the synthetic meeting clips below, as
-   the prompt was. Only how many segments lost a start is logged (`namesTrimmed`, `saidTrimmed`), never
-   their words. Lines already stored keep their words; the organizer can correct one on the note.
+   Whisper also says back the names its prompt opens with as it starts on a clip, then carries on with
+   what it heard, so the echo opens the clip's first line under its speaker's name. Before the filter
+   above, the clip's first segment (the first Whisper is sure enough of to keep) loses them (`afterNames` in
+   `inference.ts`), with words compared without case or punctuation: two or more of the prompt's names, one
+   after another as the prompt has them, so "Art Vandelay, Priya Raman. I agree." is kept as "I agree.",
+   and a clip that was nothing but the names leaves no line. One name stays, since people are spoken to by
+   name, and so do names opening any later segment of the clip, where Whisper doesn't say them back.
+   Whisper can also open a clip with the end of the words said before, but so do people picking up what
+   was just said ("Push the launch to the end of March? That's too late."), so that's left as it is until a
+   length that tells the two apart is measured against NEAR AI's Whisper, on the synthetic meeting clips
+   below, as the prompt was (issue #228 stays open for it). Only whether a clip lost the names is logged
+   (`namesTrimmed`, 1 or 0), never their words. Lines already stored keep their words; the organizer can
+   correct one on the note.
 
    What's kept but heard with little confidence is marked, never dropped (`UNSURE` in `inference.ts`): a
    segment whose average `avg_logprob` is below −0.4, whose `compression_ratio` is over 2.0, or, where it's
@@ -1797,9 +1799,9 @@ invented from noise from 3 of 8 sounds to none. Calls in German, French and Span
 
 `inference.ts` logs only models, byte sizes, durations, segment and line counts (and how many lines were unsure), image counts, statuses,
 timings, finish reasons and token counts, at debug (`clip transcribed`, `notes model answered`); for a clip
-also whether a language was sent or found, the prompt's size in bytes, and how many segments had the prompt's names
-or the words before taken off their start (`languageSent`, `languageFound`, `promptBytes`, `namesTrimmed`,
-`saidTrimmed`), never which language, what the prompt said or what was taken off. Shared screens log counts, sizes and places:
+also whether a language was sent or found, the prompt's size in bytes, and whether the prompt's names were taken
+off its start (`languageSent`, `languageFound`, `promptBytes`, `namesTrimmed`), never which language, what the
+prompt said or what was taken off. Shared screens log counts, sizes and places:
 `screen piece stored`, `shared screen video stored` and `frame kept` at debug, `shared screens joined into video`,
 `screen moments picked` and `shared screens read` at info (how many frames, how many were read with the screen before them, and how many were key, supporting or
 unrelated, with the model), `a shared screen’s video couldn’t be joined; left out of replay` and `a frame

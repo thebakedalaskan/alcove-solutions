@@ -10,7 +10,7 @@ import { type Stored } from './state';
 
 /**
  * Everything in `act` but a raised hand, a nudge, your own status, an ask for notes, your own share's pointing, ticking or adding a follow-up, what goes by
- * what you can open in the workspace, a board and its timer and vote, and ideas from the call done with, is whoever hosts' (the
+ * what you can open in the workspace, a board and its vote, and ideas from the call done with, is whoever hosts' (the
  * organizer's own besides, checked by the API).
  */
 export const anyone = (a: CallAction): boolean =>

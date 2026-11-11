@@ -1,7 +1,7 @@
 /*
  * The room's questions, a tab in Chat: the most voted first, by name or anonymously, with Most votes and Newest as a quiet
  * choice. The order chosen holds whenever the pointer is away from the list: rows glide to their places as votes come in, and
- * hold still while someone points at them, the bar offering to sort. Each vote says Vote or Voted; whoever hosts pins one, marks
+ * hold still while someone points at them, or on a phone touches them and a moment after, the bar offering to sort. Each vote says Vote or Voted; whoever hosts pins one, marks
  * it answered, dismisses it or reopens it from its ⋯, and whoever asked takes theirs back. An anonymous question never says who
  * asked, to anyone, whoever hosts included.
  */
@@ -104,6 +104,21 @@ export const YourVote = inCall({ scenario: 'busy', call: CHECK_IN, script: close
   if (last) await c.userEvent.click(last);
   await c.userEvent.click(await screen.findByRole('textbox', { name: 'Ask everyone in this room a question' }, SOON));
 } });
+/**
+ * On a phone a tap leaves nothing pointing at the list, so the order holds while a finger is on it and for a couple of seconds
+ * after the last touch or scroll: the question you voted for doesn't move from under a second tap. Here your thumb is back on
+ * the list as your vote lands, so it stays where it was, and the bar offers Sort by votes.
+ */
+export const YourVoteOnAPhone = phone(inCall({ scenario: 'busy', call: CHECK_IN, script: close }, { play: async (c) => {
+  await questions(c);
+  const twos = await screen.findAllByRole('button', { name: 'Vote for this question, 2 votes' }, SOON);
+  const last = twos.at(-1);
+  if (!last) return;
+  await c.userEvent.pointer({ keys: '[TouchA]', target: last });
+  await screen.findByRole('button', { name: 'Take back your vote, 3 votes' }, SOON);
+  await c.userEvent.pointer({ keys: '[TouchA>]', target: last.closest('article') ?? last });
+  await screen.findByRole('button', { name: 'Sort by votes' }, SOON);
+} }), 'Your vote on a phone, held while you touch the list');
 /** Newest: a question asked while you read comes in at the top, once you've moved on from the list (here, to ask one). */
 export const NewestFirst = inCall({ scenario: 'busy', call: CHECK_IN, script: { ...script, cues: [...(script.cues ?? []), ...at(4, asks(PRIYA, 'Do we need a second rollout window?'))] } }, { name: 'Newest, with a question just asked', play: async (c) => {
   await questions(c);

@@ -200,7 +200,9 @@ send to anyone".
    the up and down arrows move one 5 minutes. A start moves the call and keeps its length; an end sets the
    length, any from 5 minutes to 10 hours (earlier than the start, it's the next day's, for a call past midnight). A
    start that's gone, an end before the start, or a length past those limits says why under the line, and what was
-   picked stays. A start off the half hour sits in the week where it falls, and its card says how many are free then.
+   picked stays; so does anything a 24-hour clock doesn't say ("9", "2pm", "25:00"), with "Type a 24-hour time, like
+   14:15.", and a field left empty goes back to what was picked. A start off the half hour sits in the week where it
+   falls, and its card says how many are free then.
    A call starts at 45 min; 30 min, 45 min and 1 h are a press away, and any other length shows beside them
    ("1 h 15 min"). **Pick another time** widens the modal around the week, with your own things by name and when anyone
    is busy, at their real times. It's a week, Monday to Sunday, the weekend a day like any other, and the whole day, 00:00
@@ -617,7 +619,9 @@ time, slides in on the right.
   questions and nothing in them has keyboard focus: votes coming in move them, gliding to their places (without gliding
   with reduced motion), and under **Newest** a question just asked comes in at the top. While you point at them, or a
   question's ⋯ is open, nothing moves: the order you're reading in holds, **Most votes** (or **Newest**) stops looking
-  chosen, and **Sort by votes** (or **Sort by newest**) sorts them now. This replaces the call attention spec's
+  chosen, and **Sort by votes** (or **Sort by newest**) sorts them now. On a touch screen, where a finger leaves the list as
+  it lifts, it holds while your finger is on the questions and for a couple of seconds after you last touch or scroll them,
+  so the question you just voted for doesn't move from under your next tap. This replaces the call attention spec's
   "Sorting preserves the reader's place while votes change" (`docs/superpowers/specs/2026-11-08-call-attention-design.md`).
   Whoever hosts uses a question's ⋯: **Pin to the top** (it leads the list) or **Unpin**, **Mark answered** and
   **Dismiss**; answered and dismissed questions leave the open count and the list, their toast offering **Undo**, and
@@ -661,8 +665,9 @@ time, slides in on the right.
   (rename a room in place, move someone to another room or back to the main room from their name, or send someone in the
   main room, such as someone who came late or a guest, to a room), **Join room** and **Back to main room**, **Message
   every room**, and **Bring everyone back now**. From the main room, your stage shows every room; one with nobody in it,
-  and any you fold (the main room too), is only its name, and the time left is said once, over them. In a room, your
-  stage is that room's people, as it is for everyone in it. Each room has its own encryption keys and
+  and any you fold (the main room too), is only its name, and the time left is said once, over them. With notes on, a
+  room says **Notes** only while someone invited is in it: one with only guests, or nobody, in it isn't transcribed.
+  In a room, your stage is that room's people, as it is for everyone in it. Each room has its own encryption keys and
   chat, so what's seen, heard and written in a room reaches only the people in it; the room sees the organizer
   come and go, and someone moved is told. Captions and catching up in a room cover that room only. With notes on,
   what's said in a room is transcribed by one browser there (someone invited sent to the room, told when it's theirs),

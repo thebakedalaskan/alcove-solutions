@@ -79,6 +79,7 @@ export const freeLine = (s: Slot) => (s.of > 1 && s.free < s.of ? `${s.free} of 
 
 /** Why a time typed can't be used, under it. */
 const UNTIMELY: Record<Untimely, string> = {
+  unread: 'Type a 24-hour time, like 14:15.',
   gone: 'That time has passed. Pick one that’s still to come.',
   backwards: 'It has to end after it starts.',
   long: 'A call can last up to 10 hours.',

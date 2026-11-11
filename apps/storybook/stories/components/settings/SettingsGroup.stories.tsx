@@ -13,7 +13,8 @@ const column: Decorator = (Story) => <div className="set-groups" style={{ maxWid
 
 const browserOnly = <><Icon name="laptop" />This browser</>;
 const THEMES: readonly ThemeChoice[] = ['system', 'light', 'dark'];
-const MICS: SelectOption<string>[] = [{ value: 'default', label: 'Same as system (MacBook Pro Microphone)' }, { value: 'usb', label: 'Studio USB Microphone' }];
+/** Each microphone once, by the name people know it by, the system's saying so, as the app lists them. */
+const MICS: SelectOption<string>[] = [{ value: 'built-in', label: 'MacBook Pro Microphone', note: 'Your system’s choice' }, { value: 'usb', label: 'Studio USB Microphone' }];
 
 /** You: who you are, then how Alcove looks in this browser. */
 function You() {
@@ -36,7 +37,7 @@ function You() {
 
 /** Audio and video: the whole group is this browser's. */
 function AudioAndVideo() {
-  const [mic, setMic] = useState('default');
+  const [mic, setMic] = useState('built-in');
   const [noise, setNoise] = useState(true);
   return (
     <SettingsPanel>
