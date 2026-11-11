@@ -302,9 +302,10 @@ circles, and whoever speaks gets the `speak` ring. The camera appears only here 
   or on the horizon once they're hidden and in focus. Their own quiet button (an icon with a tooltip, no fill) does what
   ⇧P does: Hide the people at the top of the column, level with the bar's buttons, or at the end of the row, and Show the
   people, first on the horizon. A phone keeps its arches, and has none.
-- **No layouts to choose.** The stage lays itself out; you drag a tile to move it and pull its corner to make it bigger,
-  and pin from its menu. The first time you point at a tile you can move, a coachmark under it says so, once in that
-  browser. Once you've changed it, More has a quiet Reset layout (muted ink, no fill). Testers asked for preset layouts
+- **No layouts to choose.** The stage lays itself out, and talking moves nobody: the speak ring says who's talking, and
+  only a pin or the organizer's spotlight puts someone on the main stage. You drag a tile to move it and pull its corner
+  to make it bigger, and pin from its menu. The first time you point at a tile you can move, a coachmark under it says
+  so, once in that browser. Once you've changed it, More has a quiet Reset layout (muted ink, no fill). Testers asked for preset layouts
   and for tiles that snap to drop zones (#227); both stay out, as #178 and #197 decided, because choosing layouts made the
   call hard to understand. What they were missing was a way out of the column and a sign that tiles move, so those were
   built instead.

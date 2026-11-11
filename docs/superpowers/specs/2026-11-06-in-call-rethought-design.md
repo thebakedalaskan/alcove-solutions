@@ -87,8 +87,8 @@ Each panel's button at the top right is lit while it's open, and pressing it aga
   - **Arches** is a row over the frame, which is also what happens when the stage is under 760 px.
   - **Hidden** puts the people on the horizon by the dock, as ⇧P does today.
 
-  *Since 9 Nov (#197) there are no modes: the stage lays itself out (a grid, or whoever does most of the talking over a
-  strip until you arrange it), and beside what's open the people are a column, or a row of arches under 760 px. Hiding
+  *Since 9 Nov (#197) there are no modes: the stage lays itself out (a grid; since 11 Nov nobody leads it for doing most
+  of the talking), and beside what's open the people are a column, or a row of arches under 760 px. Hiding
   them is ⇧P or Hide the people, the people's own button at the top of their column (#226), and the first tile you
   point at says it can be dragged (#227). The calls docs (`docs/engineering/calls-and-recordings.md`, Your view) say
   what's built.*
