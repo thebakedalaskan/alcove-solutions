@@ -1136,6 +1136,78 @@ describe('streams', () => {
     }
   });
 
+  it('try at once when woken while they wait, but leave a try that’s under way to carry on: only Try now gives one up', async () => {
+    const ann = await account();
+    const id = await workspace(ann, 'Ours');
+    const doc = await make(ann, id, 'document', 'Doc');
+    // The streams' network: down, so every try fails at once; up; or holding each try with no answer until it's given up, as
+    // a first open waiting its turn for a document worker looks to a browser, or one that's hanging.
+    let net: 'down' | 'up' | 'holding' = 'down';
+    const tries = { doc: 0, tree: 0 };
+    const streams: typeof fetch = (input, init) => {
+      const url = String(input);
+      const which = url.includes(`/documents/${doc}/live?`) ? 'doc' : url.endsWith(`/workspaces/${id}/live`) ? 'tree' : null;
+      if (!which) return ann.fetch(input, init);
+      tries[which]++;
+      if (net === 'down') return Promise.reject(new TypeError('The network is down.'));
+      if (net === 'up') return ann.fetch(input, init);
+      return new Promise<Response>((_, reject) => { init?.signal?.addEventListener('abort', () => reject(new DOMException('The try was given up.', 'AbortError')), { once: true }); });
+    };
+    const api = createHttpApi({ baseUrl: h.baseUrl, fetch: streams });
+    const opened = new Set<{ close(): void }>();
+    const done = (...xs: { close(): void }[]) => { for (const x of xs) { x.close(); opened.delete(x); } };
+    try {
+      // Down: each fails, and tries again a little later each time. After the fourth, it waits about four seconds.
+      const s = await api.workspaces.document(id, doc);
+      const w = api.workspaces.live(id);
+      opened.add(s).add(w);
+      await until(() => tries.doc >= 4 && tries.tree >= 4, 'four tries at each', 10_000);
+      await rest(50);
+      expect(s.getSnapshot().status).toBe('offline');
+      expect(w.getSnapshot().status).toBe('reconnecting');
+      // The browser's back online, or the tab's back in view: each tries at once rather than after its wait.
+      net = 'up';
+      const woken = Date.now();
+      s.wake();
+      w.wake();
+      await s.ready;
+      await until(() => w.getSnapshot().status === 'live', 'the workspace to be live', 2000);
+      expect(Date.now() - woken).toBeLessThan(1500);
+      expect(s.getSnapshot().status).toBe('saved');
+      done(s, w);
+
+      // Opening again, each try is held with no answer yet. Woken, nothing is given up, whatever the network does meanwhile.
+      net = 'holding';
+      const before = { ...tries };
+      const again = await api.workspaces.document(id, doc);
+      const tree = api.workspaces.live(id);
+      opened.add(again).add(tree);
+      let ready = false;
+      void again.ready.then(() => { ready = true; }, () => undefined);
+      await until(() => tries.doc === before.doc + 1 && tries.tree === before.tree + 1, 'the first tries');
+      again.wake();
+      tree.wake();
+      net = 'up';
+      again.wake();
+      tree.wake();
+      await rest(500);
+      expect([tries.doc, tries.tree]).toEqual([before.doc + 1, before.tree + 1]);
+      expect(ready).toBe(false);
+      expect(again.getSnapshot().status).toBe('saved');
+      expect(tree.getSnapshot().status).toBe('connecting');
+      // Try now gives up the try that's under way, and the next one opens at once.
+      const asked = Date.now();
+      again.retry();
+      tree.retry();
+      await again.ready;
+      await until(() => tree.getSnapshot().status === 'live', 'the workspace to be live', 2000);
+      expect(Date.now() - asked).toBeLessThan(1500);
+      expect([tries.doc, tries.tree]).toEqual([before.doc + 2, before.tree + 2]);
+    } finally {
+      done(...opened);
+    }
+  });
+
   it('are capped across everyone on an instance, so open documents leave room for calls', async () => {
     const ann = await account();
     const theo = await account();

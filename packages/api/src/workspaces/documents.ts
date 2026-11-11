@@ -190,7 +190,8 @@ export interface DocSize { bytes: number; items: number }
  * A document being worked on: a `Y.Doc` kept in step with everyone else's, whatever the connection does. Whatever changes
  * `doc` here reaches Alcove and everyone in the document; `awareness` carries where the caret is. Read the status with
  * useLive(). It works the same in a browser and in Node. While its stream is down it tries again by itself, a little later
- * each time up to every 10 seconds, and at once when the browser comes back online or the tab back into view.
+ * each time up to every 10 seconds, and, waiting to, at once when the browser comes back online or the tab back into view
+ * (`wake`).
  */
 export interface DocSession extends LiveStore<DocStatus> {
   readonly doc: Doc;
@@ -201,9 +202,15 @@ export interface DocSession extends LiveStore<DocStatus> {
   close(): void;
   /**
    * Try now: while the stream is down, it opens again at once rather than after the wait, and a try that's hanging is given
-   * up; what's waiting to be sent goes at once too. Nothing once it's ended for good (`closed`).
+   * up; what's waiting to be sent goes at once too. Nothing once it's ended for good (`closed`). For someone who asked.
    */
   retry(): void;
+  /**
+   * There's reason to think it would connect now (it's shown again, say): whatever's waiting to try again tries now, the
+   * stream and what's waiting to be sent alike. A try that's under way carries on, however long it's taking: a first open can
+   * be waiting its turn for a document worker, and giving it up would only put it at the back. Nothing while it's live.
+   */
+  wake(): void;
   /**
    * The words this browser wrote that Alcove hasn't taken, for someone whose words aren't reaching it: what's placed, in page
    * order, a paragraph to a line, then what Yjs has nowhere to put, in the order it was written. Never anything deleted, nor

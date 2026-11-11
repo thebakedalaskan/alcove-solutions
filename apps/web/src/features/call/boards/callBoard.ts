@@ -240,12 +240,15 @@ export function useCallBoard({ session, stage, saved, state, me, owner, talking,
   const mineDrawn = stage === 'saved' && savedOpen !== null;
   const { doc, status, reopen } = useBoardSession(mineDrawn ? savedOpen : open ?? sinking, owner, mineDrawn ? undefined : pass);
   const { people, onBoard } = useBoardPeople(doc, state.participants, me);
-  /* Its session is kept while it's off your stage: putting it back tries its connection at once if it's down, as Try now does. */
+  /*
+   * Its session is kept while it's off your stage: putting it back tries its connection at once if it's down and waiting to
+   * try again (`DocSession.wake`), and leaves a try that's under way to carry on.
+   */
   const shownBefore = useRef(onStage || mineDrawn);
   useEffect(() => {
     const before = shownBefore.current;
     shownBefore.current = onStage || mineDrawn;
-    if (!before && shownBefore.current) doc?.retry();
+    if (!before && shownBefore.current) doc?.wake();
   }, [onStage, mineDrawn, doc]);
   const talkingKey = [...talking].sort().join(' ');
   const talkingSet = useMemo(() => new Set(talkingKey ? talkingKey.split(' ') : []), [talkingKey]);

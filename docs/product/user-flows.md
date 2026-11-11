@@ -1000,8 +1000,8 @@ See [Floating call](../engineering/floating-call.md) for browser capabilities an
    - **Reconnecting**, when the board's connection drops while the call carries on. The pill at the top of the board says
      "Keep going. Your changes are safe here." What you add goes up once the connection's back, with nothing lost or doubled.
      While the browser is online, the pill and the seal have **Try now**, which tries the connection again at once rather
-     than after the wait. It tries by itself, a little later each time up to every 10 seconds, and at once when the browser
-     comes back online, the tab comes back into view, or the board goes back on your stage.
+     than after the wait. It tries by itself, a little later each time up to every 10 seconds, and, between tries, at once
+     when the browser comes back online, the tab comes back into view, or the board goes back on your stage.
    - **Not saved**, when Alcove won't take what was added. The pill says **Couldn't save** and how many changes are only on
      this screen ("Your last 3 changes are only here."). For anyone signed in, whose browser keeps them, it has **Try
      again**, which opens the board again and sends them. It tries again by itself as well.
@@ -1801,8 +1801,9 @@ into a field: type, then **Enter**. A workspace always keeps an admin.
   nothing to resolve, and a toast says so. "You're offline" only when the browser is; while it's online and Alcove can't be
   reached, the bar says "Alcove can't be reached right now. Keep writing: what you write is kept here until it saves.", with
   **Try now**, which tries again at once rather than after the wait, and a document that hasn't opened yet says the same with
-  **Try now**. It tries by itself, a little later each time up to every 10 seconds, and at once when the browser comes back
-  online, the tab comes back into view, or, in a call, the workspace is opened again. The list has a connection of its own:
+  **Try now**. It tries by itself, a little later each time up to every 10 seconds, and, between tries, at once when the
+  browser comes back online, the tab comes back into view, or, in a call, the workspace is opened again. A page that's still
+  opening keeps its place: none of those starts it over. The list has a connection of its own:
   while it's down, a line under its name says **Reconnecting**, with **Try now**, so a list that's stopped changing isn't
   taken for current.
 - Someone moves the document you're in to Trash: you aren't thrown out. A bar says who, the page stops taking edits, and

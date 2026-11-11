@@ -434,14 +434,15 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
 
 /**
  * In a call, the workspace is kept as it was while it's out of sight (call/workspace/WorkspacePanel.tsx): opening it again
- * tries its stream at once if it's down, as Try now does, rather than leaving it in the middle of its wait.
+ * tries its stream at once if it's down, rather than leaving it in the middle of its wait (`WorkspaceLive.wake`). A first
+ * connection that's under way carries on.
  */
 function useListTriesWhenShown(store: WorkspaceLive, hidden: boolean): void {
   const was = useRef(hidden);
   useEffect(() => {
     const before = was.current;
     was.current = hidden;
-    if (before && !hidden) store.retry();
+    if (before && !hidden) store.wake();
   }, [hidden, store]);
 }
 

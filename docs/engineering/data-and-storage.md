@@ -704,10 +704,13 @@ and this way it runs through the same auth, origin check and tests as everything
   showed either way. A line that can't be written within a ping ends a stream too, which is how one whose browser went as it
   opened is let go of. A browser that hears nothing for a minute takes the connection for dead, and says it closed it.
 - **Trying again.** After a failure a session waits 0.5, 1, 2, 4, 8, then 10 seconds between tries, starting over after
-  any try that lasted a second. It tries at once, cutting a wait short and giving up a try that's hanging, when asked
-  (`DocSession.retry`, `WorkspaceLive.retry`: Try now, in the app), when the browser comes back online, when the tab comes
-  back into view, and, in a call, when the workspace or the board is opened again. Try now also sends edits waiting for their
-  own next try. A try given up this way doesn't count as a failure.
+  any try that lasted a second. Asked to (`DocSession.retry`, `WorkspaceLive.retry`: Try now, in the app), it tries at once,
+  cutting a wait short and giving up a try that's hanging; a try given up this way doesn't count as a failure. When there's
+  only reason to think it would connect now (the browser comes back online, the tab comes back into view, or, in a call,
+  the workspace or the board is opened again: `wake`), it cuts a wait short and nothing more: a try that's under way carries
+  on, because a first open waits its turn for a document worker (two on an instance, shared by everyone, up to 20 seconds
+  a job), and giving it up wastes that job and puts it at the back again, so someone switching tabs while a big page opens
+  could keep it from ever opening. Either way, edits waiting for their own next try go at once.
 
 A credit top-up is a sealed `deposit` record, header `{ v: 1, kind: 'deposit', ownerId, depositId, keyVersion: '1' }`,
 under `Kservice`'s accounting key like the billing state, so the watcher opens it without anyone signed in: the

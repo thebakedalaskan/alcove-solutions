@@ -241,7 +241,7 @@ export class HttpDocSession implements DocSession {
 
   /** The stream being read, by the name this browser gave it, while the API may hold it. */
   private reading: { name: string; held: boolean } | null = null;
-  /** Try now was asked for: the next try goes at once. */
+  /** A wait was cut short, or a try given up for Try now: the next try goes at once. */
   private hurry = false;
   private stopListening: () => void = () => undefined;
 
@@ -257,7 +257,7 @@ export class HttpDocSession implements DocSession {
       // Someone new doesn't know where this caret is: nothing keeps it for them.
       if (origin === 'local' || (origin === HEARD && changes.added.length)) this.announceSoon();
     });
-    const stopTrying = onChances(this.retry);
+    const stopTrying = onChances(this.wake);
     // A page going for good takes its stream with it, which the API may not hear: it's told. One put away to come back to carries on.
     const leaving = (e: PageTransitionEvent) => { if (!e.persisted) this.letGo(); };
     globalThis.addEventListener?.('pagehide', leaving);
@@ -268,7 +268,15 @@ export class HttpDocSession implements DocSession {
   getSnapshot = (): DocStatus => this.view;
   subscribe = (l: () => void) => { this.listeners.add(l); return () => { this.listeners.delete(l); }; };
 
-  retry = () => {
+  /** Try now: a wait is cut short, and a try under way, which may be hanging, is given up for a new one. */
+  retry = () => { this.tryNow(true); };
+  /**
+   * Only a wait is cut short: a try under way may be about to answer, and a first open is often waiting its turn for a document
+   * worker, so giving it up would waste the worker's job and put this at the back again.
+   */
+  wake = () => { this.tryNow(false); };
+
+  private tryNow(giveUp: boolean): void {
     if (this.stopped) return;
     // What's waiting to go goes now, rather than after its wait.
     if (this.resend !== undefined) {
@@ -278,10 +286,9 @@ export class HttpDocSession implements DocSession {
       void this.send();
     }
     if (this.live) return;
-    this.hurry = true;
-    if (this.stopWaiting) this.stopWaiting();
-    else this.connection?.abort();
-  };
+    if (this.stopWaiting) { this.hurry = true; this.stopWaiting(); }
+    else if (giveUp && this.connection) { this.hurry = true; this.connection.abort(); }
+  }
 
   close = () => {
     if (this.closed) return;
@@ -697,7 +704,7 @@ export class HttpDocSession implements DocSession {
     this.net.end(reading.name);
   }
 
-  /** Whether Try now was asked for since the last try, which it now takes. */
+  /** Whether a wait was cut short or a try given up since the last try, which it now takes. */
   private hurried(): boolean {
     const was = this.hurry;
     this.hurry = false;
