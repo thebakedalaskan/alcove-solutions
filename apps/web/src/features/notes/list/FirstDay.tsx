@@ -63,7 +63,7 @@ export function FirstDay({ me }: { me: Person | undefined }) {
   const h = useId();
   return (
     <Evening moment="notes" className="nt" data-first>
-      <header className="nt-top" style={{ '--d': 0 }}><h1>Notes</h1></header>
+      <header className="dusk-top" style={{ '--d': 0 }}><h1 className="dusk-title">Notes</h1></header>
       <section className="nt-sky is-first" aria-labelledby={h} style={{ '--d': 1 }}>
         <h2 id={h} className="nt-hero">No notes yet</h2>
         <div className="nt-go">

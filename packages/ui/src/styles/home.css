@@ -10,15 +10,12 @@
 }
 
 /* ------------------------------------------------------------ the top */
-.hm-top { min-height: 38px; padding-right: var(--top-room); }
-.shell.is-bare .hm-top { padding-left: max(0px, calc(72px - var(--page-x))); }
-.hm-date { font: 400 clamp(22px, 2vw, 28px)/1.2 var(--font-display); letter-spacing: -.008em; color: var(--ink); }
 /* The side panel shows this check on wide screens. With the panel hidden it sits beside search, and on a phone at the foot of the page. */
 .hm-seal { display: none; }
 .shell.is-bare .hm-seal { display: block; position: absolute; top: 26px; right: calc(var(--page-x) + var(--top-room)); }
 
 /* ------------------------------------------------------------ starting a call */
-.hm-start { display: flex; flex-direction: column; align-items: center; justify-content: center; height: calc(var(--hz) - 68px); padding-bottom: 96px; text-align: center; }
+.hm-start { display: flex; flex-direction: column; align-items: center; justify-content: center; height: calc(var(--hz) - 70px); padding-bottom: 96px; text-align: center; }
 .hm-start h2 { font: 400 clamp(36px, 3.8vw, 56px)/1.1 var(--font-display); letter-spacing: -.012em; color: var(--ink); }
 .hm-acts { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px; margin-top: 16px; }
 .hm-start .ac-btn.is-secondary { background: color-mix(in oklch, var(--ground) 64%, transparent); box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--ink) 16%, transparent); color: var(--ink); }
@@ -141,7 +138,6 @@ button.hm-row:hover { background: color-mix(in oklch, var(--ink) 6%, transparent
 @media (max-width: 860px) {
   .hm { --hz: 372px; }
   .hm[data-soon] { --hz: 472px; }
-  .hm-top { min-height: 44px; }
   .hm-start { height: calc(var(--hz) - 50px); padding-bottom: 72px; }
   .hm-grid { margin-top: 56px; }
   .hm-acts .hm-link { display: none; }

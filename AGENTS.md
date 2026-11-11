@@ -242,7 +242,7 @@ page is designed, how to make a design canvas from the kit in `docs/design/canva
   `bg-surface`, `bg-frame`, `text-ink-2`, `bg-sun`, `text-sun-text`, `shadow-2`, `rounded-lg`,
   `font-display`, `ease-out` ...). Component classes carry the `ac-` prefix and live in
   `packages/ui/src/styles/kit.css`; the frame around every screen (side panel, the page's rounded edge, search and
-  you at its top right, phone top bar and tab bar, palette) in `styles/shell.css`; the evening behind each page in `styles/horizon.css` (`dusk` the page, `hz-` the scene); the cove the welcome page looks out of, and signing in sailing out of it, in `styles/cove.css` (`cv-`); Home in `styles/home.css` (`hm-`); the Team page in
+  you at its top right, phone top bar and tab bar, palette) in `styles/shell.css`; the evening behind each page in `styles/horizon.css` (`dusk` the page, `dusk-top` and `dusk-title` its head, `hz-` the scene); the cove the welcome page looks out of, and signing in sailing out of it, in `styles/cove.css` (`cv-`); Home in `styles/home.css` (`hm-`); the Team page in
   `styles/team.css` (its classes start with `tp-`); Notes in `styles/notes.css` (`nt-`); the Drive in `styles/drive.css` (`dv-`); a note and a series in `styles/note.css` (`nd-`);
   Settings in `styles/settings.css` (its classes start with `set-`); Record in `styles/record.css` (its classes
   start with `rec-`); starting and scheduling a call in `styles/flow.css` (its classes start with `cf-`); the organizer's

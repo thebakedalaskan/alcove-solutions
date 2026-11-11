@@ -22,7 +22,7 @@ Every signed-in page sits in the same frame (`apps/web/src/features/shell/`, `pa
   - at the foot, the confidential-compute check and the minutes of notes left
 - **The page** scrolls under a rounded edge. Search ("Search or ask", ⌘K opens the palette) and you (your arch, which opens
   Settings) sit at its top right on every page, outside the page itself, so moving between pages leaves them alone. A page's
-  title keeps clear of them with `--top-room`.
+  title sits at its top left, in the same place on every page, and keeps clear of them with `--top-room`.
 - **On a phone** (860px and narrower) a top bar takes the panel's place: the logo, search, Start a call as a plus, and you.
   A tab bar sits at the bottom: Home, Notes, Record (standing up out of the bar as a small night recorder with its red
   light), Team and Settings.
@@ -152,8 +152,8 @@ you choose: It was answered or It's still open.
 
 The sun is low and to the left, behind the people.
 
-- **The sky.** The company's name (Newsreader) and Invite people (filled). Everyone stands in their arch on the horizon,
-  with you in the middle:
+- **The sky.** Team at the top left. In the middle, the company's name (Newsreader) and Invite people (filled). Everyone
+  stands in their arch on the horizon, with you in the middle:
   - someone not on Alcove yet is a dashed arch with their initial
   - the sun stands in an empty arch, or just past the end of the line
   - past 13 people the far ones recede, with the sun behind them, and step forward when you point at them; "All N people"

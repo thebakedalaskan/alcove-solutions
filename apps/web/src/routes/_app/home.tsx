@@ -73,7 +73,7 @@ function Home() {
   return (
     <>
       <Evening ref={evening} moment="home" className="hm" data-soon={soon ? true : undefined}>
-        <header className="hm-top" style={{ '--d': 0 }}><h1 className="hm-date">{longDay(new Date(now))}</h1></header>
+        <header className="dusk-top" style={{ '--d': 0 }}><h1 className="dusk-title">{longDay(new Date(now))}</h1></header>
         <Start first={firstDay} soon={soon} me={me} now={now} />
         <div className="hm-grid" style={{ '--d': 2 }}>
           {firstDay ? <GetSetUp /> : <ForYou inbox={inbox} notes={notes} now={now} />}

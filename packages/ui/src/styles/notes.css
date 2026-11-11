@@ -13,14 +13,10 @@
   --mark: color-mix(in srgb, var(--sun-text) 34%, var(--surface));
   --picked: color-mix(in oklch, var(--surface-raised) 88%, transparent);
 }
-.nt .dusk-in { display: flex; flex-direction: column; height: 100%; max-width: 1780px; padding-bottom: 8px; }
-.main:has(> .main-in > .nt) .main-top { max-width: 1780px; }
+.nt .dusk-in { display: flex; flex-direction: column; height: 100%; padding-bottom: 8px; }
 /* The line in the sky is the search here, and takes ⌘K. */
 .main:has(> .main-in > .nt) .top-find { display: none; }
 .shell:has(> .main > .main-in > .nt) .ph-end > :first-child { display: none; }
-.nt-top { flex: none; display: flex; align-items: center; min-height: 40px; padding-right: var(--top-room); }
-.shell.is-bare .nt-top { padding-left: max(0px, calc(72px - var(--page-x))); }
-.nt-top h1 { font: 400 clamp(22px, 2vw, 28px)/1.2 var(--font-display); letter-spacing: -.008em; color: var(--ink); }
 
 /* ------------------------------------------------------------ the sky: one job, in the middle */
 .nt-sky { position: relative; z-index: 5; flex: none; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; height: calc(var(--hz) - 70px); padding-bottom: 14px; }
@@ -297,8 +293,7 @@ button.nt-pop-row:disabled { opacity: .5; cursor: default; }
   .nt .dusk-in { display: block; height: auto; padding-top: 66px; padding-bottom: 28px; }
   .nt[data-first] .dusk-in { padding-bottom: 28px; }
   .nt .hz > .hz-at, .nt .hz > .hz-light { clip-path: inset(-500px -2400px -30px -2400px); }
-  .nt-top { min-height: 32px; }
-  .nt-sky, .nt-sky.is-first { height: calc(var(--hz) - 98px); gap: 9px; padding-bottom: 8px; }
+  .nt-sky, .nt-sky.is-first { height: calc(var(--hz) - 110px); gap: 9px; padding-bottom: 8px; }
   .nt-sky.is-first { padding-bottom: 12px; }
   .nt-q { height: 52px; padding: 0 8px 0 16px; gap: 10px; }
   .nt-q input { font-size: 20px; }
