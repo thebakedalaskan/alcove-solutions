@@ -49,6 +49,7 @@ const EVERY: { [K in keyof typeof wsToast]: WsToastData } = {
   discarded: wsToast.discarded(),
   screenOn: wsToast.screenOn('tab'),
   screenOff: wsToast.screenOff(),
+  screenAway: wsToast.screenAway(),
   boardOn: wsToast.boardOn('Launch retro'),
   workspaceOn: wsToast.workspaceOn(),
   closedForYou: wsToast.closedForYou(),

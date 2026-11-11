@@ -3,6 +3,7 @@ import type { CaptureGap, Speaker, TranscriptLine } from '@alcove/api';
 import { Avatar, CaptureGapMark, Icon, IconButton, Unsure, UnsureKey, WsPutArrow, cn } from '@alcove/ui';
 import { useReducedMotion } from 'motion/react';
 import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import type { LineMarks } from '~/features/notes/lines';
 import { gapLabel, gapsAfter, gapsBefore } from '~/lib/capture';
 import { spokenName } from '~/lib/people';
 import { position } from '~/lib/time';
@@ -83,11 +84,11 @@ const Gap = ({ g }: { g: CaptureGap }) => <CaptureGapMark label={gapLabel(g)} de
 /**
  * A call's transcript: who spoke ("You" for the reader) and what they said, with the stretches nothing was captured
  * in marked where they fall, and what it isn't sure of dotted (words hard to hear, a line heard on two microphones),
- * explained once at the top. `onMark` bookmarks a line for the reader alone, and `quote` sends one into a document. `when`
- * says when a line was said, which is how far in unless it says otherwise.
+ * explained once at the top. `marks` bookmarks a line in the reader's own notes, or takes it back, as on the note, and
+ * `quote` sends one into a document. `when` says when a line was said, which is how far in unless it says otherwise.
  */
-export function CallLines({ lines, gaps = [], me, onMark, quote, when = position }: {
-  lines: TranscriptLine[]; gaps?: CaptureGap[] | undefined; me: string | undefined; onMark?: ((lineId: string) => void) | undefined;
+export function CallLines({ lines, gaps = [], me, marks, quote, when = position }: {
+  lines: TranscriptLine[]; gaps?: CaptureGap[] | undefined; me: string | undefined; marks?: LineMarks | undefined;
   quote?: { target: string; onQuote: (line: TranscriptLine) => void } | null | undefined;
   when?: ((at: number) => string) | undefined;
 }) {
@@ -102,10 +103,11 @@ export function CallLines({ lines, gaps = [], me, onMark, quote, when = position
           const before = gapsBefore(gaps, lines, i);
           // After a gap the speaker is named again: it's a new part of the call, and so is a speaker in doubt.
           const start = starts.has(l.id) || before.length > 0 || !!l.unsure?.speaker;
+          const marked = marks?.has(l.id) ?? false;
           return (
             <Fragment key={l.id}>
               {before.map((g) => <Gap key={`${g.kind}-${g.from}`} g={g} />)}
-              <div className={cn('tx-l', start && 'tx-start', arrived(l.id) && 'tx-in', onMark && 'has-mark', quote && 'has-put')}>
+              <div className={cn('tx-l', start && 'tx-start', arrived(l.id) && 'tx-in', marks && 'has-mark', quote && 'has-put')}>
                 {start && l.speaker ? <Avatar person={l.speaker.person ?? { name: l.speaker.name }} size={26} /> : <span />}
                 <div className="min-w-0">
                   {start && (
@@ -117,7 +119,7 @@ export function CallLines({ lines, gaps = [], me, onMark, quote, when = position
                   <p>{l.unsure?.words ? <Unsure of="words">{l.text}</Unsure> : l.text}</p>
                 </div>
                 {quote && <WsPutArrow verb="Quote in" target={quote.target} onPut={() => quote.onQuote(l)} />}
-                {onMark && <IconButton icon="bookmark" label="Bookmark this line, for you alone" size={14} className="tx-mark" onClick={() => onMark(l.id)} />}
+                {marks && <IconButton icon={marked ? 'bookmarked' : 'bookmark'} label={marked ? 'Remove your bookmark' : 'Bookmark this line in your own notes, which only you see'} size={14} className="tx-mark" on={marked} onClick={() => marks.toggle(l)} />}
               </div>
             </Fragment>
           );

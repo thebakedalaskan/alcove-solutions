@@ -1979,7 +1979,11 @@ steps (`ShareMenu.tsx`); and the call's keys are `session/useCallShortcuts.ts`. 
   face (or the kind's icon while nobody presents), the name as a menu of the kind's own commands, and a line: Open just for
   you, You're presenting · 3 following (everyone else in your part of the call), You're presenting · a tab with sound
   (Starting to share… until LiveKit has it), or Priya is presenting. On the right, only what applies: Following Priya with
-  Unfollow, or Follow Priya with where she is; Present; focus; Stop sharing, on your own screen; and Close everywhere else.
+  Unfollow, or Follow Priya with where she is; Present; focus; Stop sharing, on your own screen; and Close. On your own
+  screen Close puts it away for you while it's still shared (`closeForMe`): it's a tile with the people (Go back to Your
+  screen), as anyone else's presentation is, and a toast says so (`wsToast.screenAway`). Close's tip says what it does, and
+  when it's the only thing on your stage (`FrameBar.clears`) that the people fill it again ("Close it, and the people fill
+  your stage again").
   Present is on a board you can add to, open just for you on a wider screen, for anyone but a guest (on a saved board,
   `PresentAsk` comes first when someone here can't open it), and on the workspace for anyone in it, on a phone too, each only
   while nobody else presents a board or the workspace there: there's one at a time, and the server refuses another (409).
@@ -2132,9 +2136,13 @@ steps (`ShareMenu.tsx`); and the call's keys are `session/useCallShortcuts.ts`. 
   with a switcher in the top bar. Under 600 px it's a phone: what's open fills the
   screen under a row of arches, two things take turns with the switcher under the arches, and your side, Share, More, a
   frame's name menu and Close's question are sheets over the call.
-- **The people beside what's open.** Tiles in a column sized to the stage; arches in a row over the frame on a narrow stage,
-  their name, mic and menu moved to a click on the arch; or, hidden (**⇧P**), small arches on the horizon beside the dock,
-  in space nothing else uses. Whoever has a hand up, or has been talking a moment (`speakers.ts`, so a quick "yes" moves
+- **The people beside what's open.** Tiles in a column sized to the stage, starting under the frame's bar; arches in a row
+  over the frame on a narrow stage, their name, mic and menu moved to a click on the arch; or, hidden (**⇧P**), small arches
+  on the horizon beside the dock, in space nothing else uses. They have a button of their own for what ⇧P does
+  (`PeopleAside.tsx`, placed by `panels.ts`: `MainPlaced.aside`, `asideOnHorizon`): Hide the people at the top right of
+  the column, level with the bar's buttons, or at the end of the row, and once they're hidden, Show the people, first on
+  the horizon, with the people after it (`Horizon.from`). There's none on a phone, where the arches always stay, in focus,
+  or beside the organizer's rooms. Whoever has a hand up, or has been talking a moment (`speakers.ts`, so a quick "yes" moves
   nothing), rises 9 px, with a line beside them saying so. As many as fit are shown, then a count that opens People, and the
   speaker and anyone with a hand up always have a place, unless the dock leaves room for nobody: nothing ever stands on it.
   Those there's no room for stay mounted, out of sight. Someone rung waits in a tile among the tiles; among arches or on the
@@ -2158,7 +2166,11 @@ steps (`ShareMenu.tsx`); and the call's keys are `session/useCallShortcuts.ts`. 
   tile, or hidden, folded into a chip there). Beside what's open the people are a column of tiles, or a row of arches on a
   stage under 760 px and on a phone (`panels.ts`), whatever was kept. Reset layout, in More while there's something to
   put back (`isCustom`), puts everything back as the stage lays it out (where you see yourself stays as it is, and what's
-  open stays open), with Undo in its toast, as unpinning everyone has.
+  open stays open), with Undo in its toast, as unpinning everyone has. Testers asked for preset layouts or tiles that
+  snap to drop zones again (#227): both stay out, as #178 and #197 decided, and what's there is easier to find instead.
+  The first time the pointer rests on a tile you can move (`TileHint.tsx`, watching the call's area, so `Stage.tsx` is
+  untouched), a `Coachmark` under it says "Drag a tile to move it", and in the grid "Pull its corner to make it bigger";
+  it stays while the pointer does, and goes as it leaves the tile or at the next press.
 - **What's remembered where.** How you like calls (where you see yourself and its corner: `CallViewPrefsSchema`) is in
   `localStorage` for your account, `alcove.callView.<ownerId>` (one set for a browser without an account), because it's
   about you, not about anyone in a call. So is how you like the main area (`CallPanelsSchema`: whether the people beside
@@ -2166,7 +2178,8 @@ steps (`ShareMenu.tsx`); and the call's keys are `session/useCallShortcuts.ts`. 
   starts the way you left this one; it never names a person, a call or a share. Both were written with layout modes
   before the stage laid itself out: a kept `mode` (Auto, Speaker or Grid) is dropped as the preferences are read, and the
   people kept as `arches` read as beside what's open (`tiles`), so nobody's kept choices are lost or refused, and the next
-  save writes the current shape. Your side isn't part of it: it shows one thing at a
+  save writes the current shape. Whether you've been told what a tile does is `alcove.callTileHint.<ownerId>`
+  (`alcove.callTileHint` without an account), only `1` once it has. Your side isn't part of it: it shows one thing at a
   time, on the right, at a fixed width. A record that doesn't parse is ignored, a phone starts with your side closed, and a
   call just joined on a wide screen opens Notes while notes are on. How you arranged this call (pins, order, sizes, your
   side, where you were in the workspace: `CallLayoutSchema`) only means something in this call, so it's in `sessionStorage`

@@ -10,9 +10,11 @@
  */
 import type { Meta } from '@storybook/react-vite';
 import { screen, waitFor, within } from 'storybook/test';
+import { tileHintKey } from '~/features/call/layout/view';
 import { asks, at, chats, floats, knocks, nudges, presentsWorkspace, shares, stopsPresenting, type CallScript, type Present } from '../../src/api/script';
 import { MORE, inCall, phone, reach } from '../../src/call';
 import { pages, type PageArgs, type PageStory } from '../../src/page';
+import { ME_ID } from '../../src/world/people';
 import {
   AIKO, CHECK_IN, CHECK_IN_SUMMARY, CHECK_IN_TALK, CHECKLIST, DIEGO, KOFI, LAUNCH_REVIEW, MAYA, PLAN, PRIYA, REVIEW, REVIEW_SUMMARY, REVIEW_TALK
 } from '../calls/talk';
@@ -212,8 +214,16 @@ export const ShareYourScreen: PageStory = {
       await userEvent.click(await within(menu).findByRole('button', { name: 'A tab' }, SOON));
       await userEvent.click(await within(menu).findByRole('button', { name: 'Share' }, SOON));
     });
-    await step('You’re presenting. Everyone sees what you see. Stop sharing is on your bar; anyone else can close it for themselves', async () => {
+    await step('You’re presenting. Everyone sees what you see. Stop sharing is on your bar, and Close; anyone else can close it for themselves', async () => {
       await told('Everyone sees your tab.');
+      await frame('Your screen, everyone sees it');
+    });
+    await step('Click Close. It’s put away for you and still shared: its tile is with the people, who fill your stage again', async () => {
+      await userEvent.click(await onBar(await frame('Your screen, everyone sees it'), 'Close Your screen'));
+      await told('Put away for you. Everyone still sees your screen, and its tile brings it back.');
+    });
+    await step('Click its tile. It’s back on your stage', async () => {
+      await userEvent.click(await screen.findByRole('button', { name: 'Go back to Your screen' }, SOON));
       await frame('Your screen, everyone sees it');
     });
     await step('Click Stop sharing. It stops for everyone, and the people take the stage back', async () => {
@@ -253,9 +263,22 @@ export const NotesTranscriptAndChat: PageStory = {
   }
 };
 
+/** This browser hasn't been told what a tile does yet: the first tile pointed at says it. */
+function firstTime(story: PageStory): PageStory {
+  const b = story.beforeEach;
+  const forget = () => { for (const k of [tileHintKey(ME_ID), tileHintKey(null)]) localStorage.removeItem(k); };
+  return { ...story, beforeEach: [...(Array.isArray(b) ? b : b ? [b] : []), forget] };
+}
+/** A tile that can be moved, as a pointer finds one: not whoever Alcove picked to lead. */
+const movable = () => waitFor(() => {
+  const tile = screen.getAllByRole('group').find((el) => el.classList.contains('can-drag') && !el.classList.contains('is-corner'));
+  if (!tile) throw new Error('No tile can be moved yet.');
+  return tile;
+}, SOON);
+
 export const EverythingElse: PageStory = {
   name: '6.6 Everything else',
-  ...launchReview({ cues: at(8, shares(PRIYA, CHECKLIST)) }),
+  ...firstTime(launchReview({ cues: at(8, shares(PRIYA, CHECKLIST)) })),
   play: async ({ userEvent, step }) => {
     await step('Click More. Captions, marking a moment, catching up and breakout rooms, then a floating call, another device and Settings', async () => {
       await userEvent.click(await within(await dock()).findByRole('button', { name: MORE }, SOON));
@@ -269,15 +292,27 @@ export const EverythingElse: PageStory = {
       await userEvent.click(await screen.findByRole('tab', { name: 'Call' }, SOON));
       await screen.findByRole('switch', { name: 'Lock the call' }, SOON);
     });
-    await step('Close Settings. The stage lays itself out: drag a tile to move it, or its corner to make it bigger', async () => {
+    await step('Close Settings. The stage lays itself out: there are no layouts to choose', async () => {
       await userEvent.click(await screen.findByRole('button', { name: 'Close settings' }, SOON));
       await away('dialog', 'Settings');
+    });
+    await step('Point at a tile. The first time, it says what you can do with one: drag it to move it, and in the grid, pull its corner to make it bigger', async () => {
+      await userEvent.hover(await movable());
+      await screen.findByText('Drag a tile to move it', {}, SOON);
     });
     await step('Click the faces. People opens on your side: who’s here and who’s asking to join. The organizer starts breakout rooms here too', async () => {
       await userEvent.click(await screen.findByRole('button', { name: /^People in this call/ }, SOON));
       await screen.findByRole('complementary', { name: 'People' }, SOON);
     });
-    await step('Priya shares her screen. As the organizer, click the name of Priya’s share. Priya’s bar has Close for you, like anyone’s', async () => {
+    await step('Priya shares her screen, and the people stand in a column beside it. Hide the people, at its top: they wait small by the dock', async () => {
+      await frame(/^Priya’s screen, everyone sees it$/, LATER);
+      await userEvent.click(await screen.findByRole('button', { name: 'Hide the people' }, SOON));
+    });
+    await step('Show the people, first by the dock, brings them back beside it. Close, on its bar, says it gives the stage back to the people', async () => {
+      await userEvent.click(await screen.findByRole('button', { name: 'Show the people' }, SOON));
+      await screen.findByRole('button', { name: 'Hide the people' }, SOON);
+    });
+    await step('As the organizer, click the name of Priya’s share. Priya’s bar has Close for you, like anyone’s', async () => {
       await userEvent.click(await nameOf(await frame(/^Priya’s screen, everyone sees it$/, LATER)));
     });
     await step('Stop it for everyone is in its menu. Only the organizer has it, apart from Close', async () => {

@@ -2,9 +2,10 @@
  * What's on your stage, each in its frame (docs: Calls and recordings › The call screen): a screen, a board or the workspace,
  * with one bar that works the same way for all three (`CallFrame` in @alcove/ui). On its left, whoever presents it (or the
  * kind's icon while it's open just for you), its name as a menu, and a line of what's so. On its right, only what applies:
- * following whoever presents it, Present, focus, Stop sharing on your own screen, and Close everywhere else, which asks "for
- * you or for everyone" while you present a board or the workspace, and on the call's board nobody presents for whoever opened
- * it or the organizer.
+ * following whoever presents it, Present, focus, Stop sharing on your own screen, and Close, which asks "for you or for
+ * everyone" while you present a board or the workspace, and on the call's board nobody presents for whoever opened it or the
+ * organizer. On your own screen Close puts it away for you while it's still shared, as a tile with the people. Close says
+ * when it's the last thing on your stage, so the people fill it again.
  *
  * The frames sit over the main area where panels.ts puts them, and glide there. The workspace stays here once it's been open,
  * out of sight while it isn't on your stage, so it keeps its place, its caret and its undo.
@@ -52,8 +53,10 @@ export interface FrameBar {
   present: { onPress: () => void; busy: boolean; ask?: PresentAskProps | undefined } | null;
   focus: { on: boolean; onToggle: () => void } | null;
   phone: boolean;
-  /** Close: closes what's open just for you, or someone else's presentation for you. */
+  /** Close: closes what's open just for you, or someone else's presentation, or your own screen, for you. */
   onClose: () => void;
+  /** It's the only thing on your stage: closing it gives the stage back to the people, and Close says so. */
+  clears: boolean;
   /**
    * Close asks, for you or for everyone, while you present a board or the workspace, and on the call's board nobody presents
    * for whoever may take it out of the call.
@@ -70,7 +73,7 @@ export function Frame({ bar, meta, onStop, foot, children }: {
   bar: FrameBar;
   /** What the line beside the name says, in place of who presents it: a screen of yours says how it goes out. */
   meta?: string | undefined;
-  /** Stop sharing, on your own screen: it has no Close. */
+  /** Stop sharing, on your own screen, for everyone: beside Close, which only puts it away for you. */
   onStop?: (() => void) | undefined;
   /** The board's pager, at the foot of the frame, for whoever presents it. */
   foot?: ReactNode;
@@ -81,7 +84,11 @@ export function Frame({ bar, meta, onStop, foot, children }: {
   const theirs = by !== null && !by.mine;
   const line = meta ?? (by === null ? 'Open just for you' : by.mine ? `You’re presenting · ${bar.followers} following` : `${by.first} is presenting`);
   const rows = bar.rows(() => setMenu(false));
-  const tip = bar.ask ? 'Close it for you, or for everyone' : by === null ? 'Close it' : `Close it for you. While ${by.first} presents, its tile takes you back`;
+  const back = bar.clears ? ', and the people fill your stage again' : '';
+  const tip = onStop ? `Put it away for you${back}. It’s still shared, as a tile with the people`
+    : bar.ask ? `Close it for you, or for everyone${back}`
+      : by === null ? `Close it${back}`
+        : `Close it for you${back}. While ${by.first} presents, its tile takes you back`;
   return (
     <CallFrame who={by?.person ?? null} icon={bar.icon} name={bar.name} meta={line} label={`${bar.name}, ${by ? 'everyone sees it' : 'only you see it'}`}
       menu={{
@@ -103,7 +110,7 @@ export function Frame({ bar, meta, onStop, foot, children }: {
       following={theirs && bar.follow ? { person: by.person, name: by.first, on: bar.follow.on, where: `${by.first} is in ${bar.follow.where}`, onToggle: bar.follow.onToggle } : null}
       present={bar.present ? { onPress: bar.present.onPress, busy: bar.present.busy, ask: bar.present.ask } : undefined}
       focus={bar.phone ? null : bar.focus} focused={bar.focus?.on ?? false} phone={bar.phone} onStop={onStop}
-      close={onStop ? null : { tip, onClose: bar.onClose, ask: bar.ask ? { ...bar.ask, title: `Close ${bar.name}` } : undefined }}
+      close={{ tip, onClose: bar.onClose, ask: bar.ask ? { ...bar.ask, title: `Close ${bar.name}` } : undefined }}
       lit={theirs && bar.follow?.on === true} foot={foot}>
       {children}
     </CallFrame>

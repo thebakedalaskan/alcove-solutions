@@ -392,10 +392,15 @@ time, slides in on the right.
   beside the stage on a wide screen while notes are on. Nothing on your side changes anyone else's screen.
 - **Your view.** There are no layouts to choose: the stage lays itself out, everyone in a grid, and someone doing most
   of the talking on the main stage over a strip of everyone else until you arrange anything yourself. Drag a tile to
-  move it, and pull its corner to make it bigger; once you do, the stage is a grid again and stays as you left it.
-  Beside what's open the people stand in a column of tiles on the right that narrows with the stage, or a row of
-  arches over it on a narrow stage and on a phone; **⇧P** hides them, standing small on the horizon beside the dock,
-  where whoever's talking or has a hand up rises, with a line saying so, and brings them back. Once you've changed the
+  move it, and pull its corner to make it bigger; once you do, the stage is a grid again and stays as you left it. The
+  first time you point at a tile you can move, it says so under the tile ("Drag a tile to move it", and in the grid "Pull
+  its corner to make it bigger"), once in this browser.
+  Beside what's open the people stand in a column of tiles on the right that narrows with the stage, under the frame's
+  bar, or a row of arches over it on a narrow stage and on a phone. **Hide the people**, at the top of the column (or the
+  end of the row), and **⇧P** hide them, standing small on the horizon beside the dock, where whoever's talking or has a
+  hand up rises, with a line saying so; **Show the people**, first on the horizon, or **⇧P** again, brings them back. On a
+  phone the arches stay. Closing the last thing on your stage gives it back to everyone, and **Close** says so before
+  it's pressed ("Close it, and the people fill your stage again"). Once you've changed the
   layout (moved, sized or pinned someone, or hidden the people), **Reset layout** in **More** puts it back, with
   **Undo**; where you see yourself stays as it is. Only your screen changes. A tile's **⋯** menu is short, with no key
   hints. On your own tile: **Set a status** (journey 6.34), **Pin for me** (up to six people, who share the main
@@ -457,7 +462,9 @@ time, slides in on the right.
     leaves the call for everyone, and stays saved in Product."), which takes it out of the call for everyone, who are
     told "Launch retro was closed for everyone. It's saved in Product."; while rooms share it, only the organizer is;
     **Stop sharing** in Share's first step, which says what you're presenting, asks the same in Share itself, wherever what
-    you present is. Your own screen has **Stop sharing** instead of Close. The organizer can close anyone's presented
+    you present is. Your own screen has **Stop sharing**, which stops it for everyone, and **Close**, which puts it away
+    for you while everyone still sees it: "Put away for you. Everyone still sees your screen, and its tile brings it
+    back." It's a tile with the people, who fill your stage again. The organizer can close anyone's presented
     board or workspace for everyone (**Close it for everyone**), and stop anyone's screen (**Stop it for everyone**), from
     its name; whoever presented it is told who did ("Art closed Launch retro for everyone.").
   - **A tile only while it's presented.** Something presented that isn't on your stage is a tile first among the people:
@@ -535,7 +542,11 @@ time, slides in on the right.
   notes**. The notes everyone gets are written when the call ends.
 - **Yours**, at the foot of the Notes tab: your own notes on the call, which say **Only you** before you type. Write
   something for yourself, or **Mark this** to bookmark what was just said (**B**, the bookmark at the top of Notes, or
-  **Mark this moment** in **More**; the bookmark on a transcript line marks that line). Under an answer in **Ask**, **Keep in your notes**
+  **Mark this moment** in **More**). The bookmark on a line of the **Transcript** (**Bookmark this line in your own
+  notes, which only you see**) bookmarks that line, as on the note: once it's on, it stays in sight, ticked, and says
+  **Remove your bookmark**, which takes it back out of Yours. A toast says each time it goes in or comes out, and nothing
+  when a press changes nothing. A moment marked as a line was said opens at the same line, but it's a moment, not that
+  line's bookmark: taking the line's bookmark back leaves it. Under an answer in **Ask**, **Keep in your notes**
   keeps it here; nothing else keeps one. A bookmark of something said where you aren't now (the main room, from a
   breakout room) says so, and opens once you're back there or in the notes after the call. Someone with only the link
   doesn't have this: there's no account to keep it under. It goes with the call's notes, so it starts when notes do.
@@ -1249,7 +1260,9 @@ Storybook journeys **6.23–6.25** show the review alongside the call:
   you're no longer listed as having them. Your own notes on them go for good, and what you added to the shared notes stays.
   Beside the list it asks in place, and the row leaves the list. While the call is going, it waits until the call ends.
 - **Your notes**, beside the note, is what you kept in the call and more: write something, bookmark a line (the bookmark
-  beside it) or a shared screen, or **Keep in your notes** under an answer. It says **Only you**, and the note itself
+  beside it, **Bookmark this line in your own notes, which only you see**) or a shared screen, or **Keep in your notes**
+  under an answer. A bookmarked line's bookmark stays in sight, ticked; **Remove your bookmark** takes that line's own
+  bookmark back and leaves a moment marked near it in the call. It says **Only you**, and the note itself
   says **Everyone with the notes**: nobody else reads Your notes, the organizer included. Each row starts with its kind
   (lines of text for something you wrote, a bookmark, a question for a kept answer); pointing at a row, or moving the
   keyboard into it, shows **Add to the shared notes**, **Change what you wrote** and **Delete**, which a touch screen

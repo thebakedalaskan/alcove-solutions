@@ -110,7 +110,7 @@ export function LineRow({ line, more, id, on, kind, onSeek, plays = false, me, c
         <>
           {correct?.can(line) && <IconButton ref={pen} icon="pen" label="Correct this line" size={15} className="nd-tool" onClick={() => setEditing(true)} />}
           {fromLine && <FromThisLine line={line} fromLine={fromLine} />}
-          {marks && <IconButton icon={marked ? 'bookmarked' : 'bookmark'} label={marked ? 'Remove your bookmark' : 'Bookmark this line, for you alone'} size={15} className="nd-tool" on={marked} onClick={() => marks.toggle(line)} />}
+          {marks && <IconButton icon={marked ? 'bookmarked' : 'bookmark'} label={marked ? 'Remove your bookmark' : 'Bookmark this line in your own notes, which only you see'} size={15} className="nd-tool" on={marked} onClick={() => marks.toggle(line)} />}
         </>
       )}>
       {line.unsure?.words ? <Unsure of="words">{line.text}</Unsure> : line.text}

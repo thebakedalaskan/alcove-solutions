@@ -288,13 +288,21 @@ circles, and whoever speaks gets the `speak` ring. The camera appears only here 
   theme, as a board's sheet does unless it's a night board; the stage, the dock, the workspace and screens stay night.
 - **The frame.** A screen, a board and the workspace each sit in one frame with one bar. On the left, the presenter's face
   (or the kind's icon while nobody presents), the name as a menu of the kind's own commands, and a line that says whose it
-  is. On the right, only what applies: following or Follow, Present, focus, Stop sharing, or Close. A board someone presents
-  keeps every tool for everyone following it: following is a view, not a mode, and anything of your own on it takes you off
-  it, from where you are; the presenter keeps theirs too, with the pager at the frame's foot. The people sit beside it
-  in a column of tiles on the right, a row of arches over it on a stage under 760px, or on the horizon once they're hidden
-  (⇧P) and in focus.
+  is. On the right, only what applies: following or Follow, Present, focus, Stop sharing (with Close, on your own screen),
+  or Close. Close says before it's pressed what it does, and when it's the last thing on your stage, that the people fill
+  it again; on your own screen it puts the screen away for you, a tile with the people, while everyone still sees it. A
+  board someone presents keeps every tool for everyone following it: following is a view, not a mode, and anything of your
+  own on it takes you off it, from where you are; the presenter keeps theirs too, with the pager at the frame's foot. The
+  people sit beside it in a column of tiles on the right, under the bar, a row of arches over it on a stage under 760px,
+  or on the horizon once they're hidden and in focus. Their own quiet button (an icon with a tooltip, no fill) does what
+  ⇧P does: Hide the people at the top of the column, level with the bar's buttons, or at the end of the row, and Show the
+  people, first on the horizon. A phone keeps its arches, and has none.
 - **No layouts to choose.** The stage lays itself out; you drag a tile to move it and pull its corner to make it bigger,
-  and pin from its menu. Once you've changed it, More has a quiet Reset layout (muted ink, no fill).
+  and pin from its menu. The first time you point at a tile you can move, a coachmark under it says so, once in that
+  browser. Once you've changed it, More has a quiet Reset layout (muted ink, no fill). Testers asked for preset layouts
+  and for tiles that snap to drop zones (#227); both stay out, as #178 and #197 decided, because choosing layouts made the
+  call hard to understand. What they were missing was a way out of the column and a sign that tiles move, so those were
+  built instead.
 - **More**, in the dock, is what you do in a call (captions, Mark this moment, catching up, breakout rooms), a hairline,
   then Open floating call, Reset layout while there's a change to put back, Move to another device and Settings. No key
   hints or scope chips in it, and no keyboard shortcuts sheet: the keys still work.

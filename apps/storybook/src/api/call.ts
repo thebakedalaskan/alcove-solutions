@@ -172,7 +172,7 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     for (const followUp of script.followUps ?? []) this.inferred.set(followUp.id, structuredClone(followUp));
     this.ticket = { callId, serverUrl: 'wss://livekit.storybook.invalid', roomName: `room-${callId}`, identity: me.id, role: arrival.role, pass: `${callId}.storybook` };
     this.crypto = new Crypto({ status: arrival.asking ? 'waiting' : 'in', place: 'main', members: arrival.asking ? [] : [me.id], everyone: arrival.asking ? [] : [me.id], media: null, chat: [], missedChat: false });
-    this.personal = personalFor(noteId);
+    this.personal = personalFor(noteId, () => this.getSnapshot().transcript);
     this.direct = new ScriptedDirectMessages(this, this.crypto, this.ticket, script.privateSendFails);
     this.notifications = new ScriptedNotifications(me.id, this, this.crypto, this.direct);
     this.livekit = new Pushed<RoomSide>({ people: {}, connection: 'connected', endReason: null, mutedYou: 0, sharesStopped: 0 });

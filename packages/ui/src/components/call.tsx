@@ -254,7 +254,10 @@ export interface CallFrameFollowing {
 
 /** Close, on the frame's bar. */
 export interface CallFrameClose {
-  /** What it does, on hover: "Close it", "Close it for you, or for everyone", "Close it for you. While Priya presents, its tile takes you back". */
+  /**
+   * What it does, on hover: "Close it, and the people fill your stage again", "Close it for you, or for everyone", "Close it
+   * for you. While Priya presents, its tile takes you back", "Put it away for you. It’s still shared, as a tile with the people".
+   */
   tip: string;
   onClose: () => void;
   /** While it asks for whom (`CloseAsk`): Close has a ▾ and opens the question under itself instead of closing. */

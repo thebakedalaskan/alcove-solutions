@@ -4,7 +4,8 @@
  * - Where you see yourself (`CallViewPrefs`: in the grid, in a corner and which one, or hidden) is remembered in this
  *   browser for your account, for every call.
  * - Whether the people stand beside what's open on your stage or hide on the horizon (⇧P), and whether the workspace shows
- *   its list (`CallPanels`), are too, so tomorrow's call starts the way you left this one. It names nobody.
+ *   its list (`CallPanels`), are too, so tomorrow's call starts the way you left this one. It names nobody. So is whether
+ *   you've been told what a tile does (`tileHintKey`), only once you have.
  * - How you arranged this call (`CallLayout`: who you pinned, the order you dragged people into, who you made bigger, where
  *   you are in the workspace, what your side shows) lasts for this call only: it's kept in this tab, so a reload keeps it,
  *   and it's deleted when you leave. It names people by their seat in the call, which is random and means nothing anywhere
@@ -30,6 +31,16 @@ export const DEFAULT_PANELS: CallPanels = { people: 'tiles', list: true };
 const prefsKey = (account: string | null) => (account ? `alcove.callView.${account}` : 'alcove.callView');
 const panelsKey = (account: string | null) => (account ? `alcove.callPanels.${account}` : 'alcove.callPanels');
 const layoutKey = (callId: string) => `alcove.callLayout.${callId}`;
+/** Whether you've been told what a tile does (TileHint.tsx), by account: only `1`, once you have. */
+export const tileHintKey = (account: string | null) => (account ? `alcove.callTileHint.${account}` : 'alcove.callTileHint');
+
+/** You've been told what a tile does, in this browser. A browser that can't say is taken to have told you. */
+export function tileHinted(account: string | null): boolean {
+  try { return localStorage.getItem(tileHintKey(account)) === '1'; } catch (e) { vlog.debug('tile hint not readable', { err: e }); return true; }
+}
+export function keepTileHinted(account: string | null): void {
+  try { localStorage.setItem(tileHintKey(account), '1'); } catch (e) { vlog.debug('tile hint not kept', { err: e }); }
+}
 
 function readPrefs(account: string | null): CallViewPrefs {
   try {
@@ -63,7 +74,7 @@ function readLayout(callId: string): CallLayout {
 }
 /** The account is gone: so is how it liked to see calls in this browser. */
 export function forgetView(account: string) {
-  try { localStorage.removeItem(prefsKey(account)); localStorage.removeItem(panelsKey(account)); } catch (e) { vlog.debug('view not forgotten', { err: e }); }
+  try { for (const k of [prefsKey(account), panelsKey(account), tileHintKey(account)]) localStorage.removeItem(k); } catch (e) { vlog.debug('view not forgotten', { err: e }); }
 }
 function keep(store: 'local' | 'session', key: string, value: unknown) {
   try { (store === 'local' ? localStorage : sessionStorage).setItem(key, JSON.stringify(value)); } catch (e) { vlog.debug('view not remembered', { store, err: e }); }

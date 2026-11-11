@@ -9,6 +9,7 @@ import {
   MentionNoticeSchema, SessionSchema, ShareEntrySchema, TeamSchema, WorkspaceMediaSchema, WorkspaceSummarySchema, WorkspaceTreeSchema, type DocumentLibrary, type DocumentRole,
   type Group, type ItemCall, type MentionNotice, type NoteRoom, type NoteWorkedOn, type Person, type ShareEntry, type WorkspaceItem, type WorkspaceRole
 } from '@alcove/api';
+import { tileHintKey } from '~/features/call/layout/view';
 import { sessions } from '~/lib/live';
 import { openBrowser } from '../browser';
 import { busyCalls, busyEvents, soonCalls } from '../world/calls';
@@ -464,6 +465,8 @@ function remember(o: Opening, w: World): void {
     sessionStorage.clear();
     const owner = w.session?.ownerId ?? ME_ID;
     if (o.tourSeen) localStorage.setItem(`alcove.tour.${owner}`, JSON.stringify({ seenAt: iso(-30, 9, 0) }));
+    // Someone who's seen the tour has pointed at a call's tiles before, too: a story shows what that says by forgetting it.
+    if (o.tourSeen) for (const k of [tileHintKey(owner), tileHintKey(null)]) localStorage.setItem(k, '1');
     if (o.signedInHere) localStorage.setItem('alcove.signedIn', JSON.stringify({ ownerId: owner, until: iso(14, 9, 0), recordOffline: w.prefs.recordOffline }));
   } catch {
     // A browser without storage starts with nothing remembered, as the app does.

@@ -86,6 +86,12 @@ Each panel's button at the top right is lit while it's open, and pressing it aga
   - **Tiles** is a column on the right, about 300, 248, 216 or 176 px wide as the stage narrows.
   - **Arches** is a row over the frame, which is also what happens when the stage is under 760 px.
   - **Hidden** puts the people on the horizon by the dock, as ⇧P does today.
+
+  *Since 9 Nov (#197) there are no modes: the stage lays itself out (a grid, or whoever does most of the talking over a
+  strip until you arrange it), and beside what's open the people are a column, or a row of arches under 760 px. Hiding
+  them is ⇧P or Hide the people, the people's own button at the top of their column (#226), and the first tile you
+  point at says it can be dragged (#227). The calls docs (`docs/engineering/calls-and-recordings.md`, Your view) say
+  what's built.*
 - A presented thing that isn't on your stage is a tile among the people. The tile shows a live miniature, its name, "{First} is presenting", and **Join** ("Open" when it's yours). Pressing it puts it on your stage, following.
 
 **The frame's bar.** On the left: the presenter's face (or the kind's icon when nobody presents), then the name as a menu ▾, then a line of meta:
@@ -159,6 +165,9 @@ A board keeps its own controls inside the frame: the seal, Timer, Vote, More, th
    - **Beside what’s shared**: Tiles, Arches, Hidden
    - **See yourself**: In the grid, In a corner, Hidden
    - **Reset my view**
+
+   *View and its modes went on 9 Nov (#197): See yourself is in your own tile's ⋯, Reset layout in More, and hiding the
+   people beside what's open is ⇧P or Hide the people at the top of their column (#226).*
 10. **More**, the same on every screen:
     - **Turn on captions** (and off), with the language on the captions themselves
     - **Mark this moment** (Only you, **B**)

@@ -62,7 +62,7 @@
 .ic-qa .a .own-keep .lk { font-size: 12.5px; }
 
 /* Bookmarking a line in the call: it has its own room at the end of the line, and shows on hover or focus, always on
-   touch screens. */
+   touch screens and once the line is bookmarked. */
 .tx-l { position: relative; }
 .tx-l.has-mark { padding-right: 30px; }
 .tx-l.has-put { padding-right: 30px; }
@@ -73,6 +73,8 @@
 .tx-l:hover .tx-mark, .tx-l:focus-within .tx-mark { opacity: 1; }
 @media (hover: none) { .tx-l .tx-mark { opacity: 1; } }
 .tx-l .tx-mark:hover { background: var(--sunk); color: var(--ink); }
+/* A bookmarked line keeps its ticked bookmark in sight, warm, as on the note. */
+.tx-l .tx-mark.is-on { opacity: 1; background: none; color: var(--sun-text); }
 /* On a phone the mark is in the More menu, and in the panel's Yours view. Six tabs fit a little closer. */
 @media (max-width: 560px) {
   .ic-side-head .ac-tab { padding: 0 6px; font-size: 13px; }

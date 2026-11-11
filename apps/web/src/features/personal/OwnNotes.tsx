@@ -97,12 +97,18 @@ export function useOwn(noteId: string) {
   const entries = useQuery(q.personal(noteId)).data?.entries;
   const failed = (e: unknown) => toast(errorMessage(e), { icon: 'x' });
   const bookmarks = (entries ?? []).flatMap((e) => (e.kind === 'bookmark' ? [e] : []));
+  /** On or off, said only when it changed something: a bookmark that was already there says nothing. */
   const toggle = (found: { id: string } | undefined, point: PersonalPoint) => {
-    if (found) own.remove.mutate(found.id, { onError: failed });
-    else own.add.mutate({ kind: 'bookmark', label: '', point }, { onSuccess: () => toast('Bookmarked in your own notes.', { icon: 'bookmark' }), onError: failed });
+    if (found) { own.remove.mutate(found.id, { onSuccess: () => toast('Bookmark removed from your own notes.', { icon: 'bookmark' }), onError: failed }); return; }
+    const had = new Set(bookmarks.map((b) => b.id));
+    own.add.mutate({ kind: 'bookmark', label: '', point }, {
+      onSuccess: (n) => { if (n.entries.some((e) => e.kind === 'bookmark' && !had.has(e.id))) toast('Bookmarked in your own notes.', { icon: 'bookmark' }); },
+      onError: failed
+    });
   };
-  const lineMark = (id: string) => bookmarks.find((b) => b.moment?.line?.id === id);
-  const screenMark = (id: string) => bookmarks.find((b) => b.moment?.screen?.id === id && !b.moment.line);
+  // A line's or a screen's own bookmark: a moment marked in the call opens at a line too, and isn't it.
+  const lineMark = (id: string) => bookmarks.find((b) => b.target === 'line' && b.moment?.line?.id === id);
+  const screenMark = (id: string) => bookmarks.find((b) => b.target === 'screen' && b.moment?.screen?.id === id);
   const lines: LineMarks = { has: (id) => !!lineMark(id), toggle: (l) => toggle(lineMark(l.id), { kind: 'line', lineId: l.id }) };
   const screens: ScreenMarks = { has: (id) => !!screenMark(id), toggle: (id) => toggle(screenMark(id), { kind: 'screen', frameId: id }) };
   return { entries, own, lines, screens };

@@ -300,6 +300,18 @@ sequenceDiagram
    "Thank you.", "Thanks for watching", "To be continued", "¡Gracias!", "Obrigado." or "Продолжение
    следует...". A reply without segments but with text becomes one line.
 
+   Whisper also says back the start of its prompt and then carries on with what it heard, so the echo
+   opens a line under its speaker's name. Before the filter above, that start is taken off (`afterNames`
+   and `afterSaid` in `inference.ts`), with words compared without case or punctuation. A line that opens
+   with two or more of the prompt's names, one after another as the prompt has them ("Art Vandelay, Priya
+   Raman. I agree."), loses them, and a line that was nothing but the names goes; one name stays, since
+   people are spoken to by name. A line that opens with the last six words or more of the words before
+   loses them, and what follows stays; fewer are kept whole, as with whole lines, because people agree by
+   saying back what was just said ("on Friday. Sounds good to me."). Six words is a starting point, not a
+   measurement: it should be measured against NEAR AI's Whisper, on the synthetic meeting clips below, as
+   the prompt was. Only how many segments lost a start is logged (`namesTrimmed`, `saidTrimmed`), never
+   their words. Lines already stored keep their words; the organizer can correct one on the note.
+
    What's kept but heard with little confidence is marked, never dropped (`UNSURE` in `inference.ts`): a
    segment whose average `avg_logprob` is below −0.4, whose `compression_ratio` is over 2.0, or, where it's
    reported, whose `no_speech_prob` is over 0.5. Measured against NEAR AI's Whisper, through the same verified,
@@ -1027,7 +1039,12 @@ notes**.
   note), a shared screen by its frame, or a moment. "Mark this" (**B**, the dock, **More** on a phone, or **Mark this**
   in Yours) keeps when it was pressed, where that falls in the recording, and the breakout room if any, and opens at the
   line just said, up to two minutes back. A mark made while nothing was captured there keeps no place in the recording.
-  You can only bookmark what you may read: anything else is `404 not-found`, whether or not it exists.
+  You can only bookmark what you may read: anything else is `404 not-found`, whether or not it exists. A line or a
+  shared screen is bookmarked once: bookmarking it again changes nothing and answers with the same notes. Each bookmark
+  says what it points at (`target`: `line`, `screen` or `moment`, from what the record keeps, so nothing stored changed
+  shape), because a moment marked as a line was said opens at that same line: the bookmark on a line, in the call's
+  transcript and on the note, is that line's `target: line` bookmark, on or off (`DELETE` takes it back), and leaves
+  moments alone.
 - **Access is read again every time.** What a bookmark points at is resolved on each read and never stored. During a
   call that's the call's one rule ([Catching up › Who reads what](#catching-up-during-a-call)), so a bookmark of the main
   room says nothing of what it points at from a breakout room (`reach: later`), and a room's line can't be opened from
@@ -1780,8 +1797,9 @@ invented from noise from 3 of 8 sounds to none. Calls in German, French and Span
 
 `inference.ts` logs only models, byte sizes, durations, segment and line counts (and how many lines were unsure), image counts, statuses,
 timings, finish reasons and token counts, at debug (`clip transcribed`, `notes model answered`); for a clip
-also whether a language was sent or found and the prompt's size in bytes (`languageSent`, `languageFound`,
-`promptBytes`), never which language or what the prompt said. Shared screens log counts, sizes and places:
+also whether a language was sent or found, the prompt's size in bytes, and how many segments had the prompt's names
+or the words before taken off their start (`languageSent`, `languageFound`, `promptBytes`, `namesTrimmed`,
+`saidTrimmed`), never which language, what the prompt said or what was taken off. Shared screens log counts, sizes and places:
 `screen piece stored`, `shared screen video stored` and `frame kept` at debug, `shared screens joined into video`,
 `screen moments picked` and `shared screens read` at info (how many frames, how many were read with the screen before them, and how many were key, supporting or
 unrelated, with the model), `a shared screen’s video couldn’t be joined; left out of replay` and `a frame
