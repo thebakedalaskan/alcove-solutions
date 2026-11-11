@@ -40,14 +40,22 @@ export function ChatQuestions({ session, state, ready, draft, jump }: {
   const [anonymous, setAnonymous] = useState(draft.anonymous);
   const [sort, setSort] = useState<Order>('votes');
   const [order, setOrder] = useState<{ place: string; ids: string[] }>({ place: state.attention.place, ids: [] });
-  const [closed, setClosed] = useState(false);
   /* The order holds while the pointer is on the questions or their bar, while one of them has keyboard focus, and while a question's menu is open. */
   const [pointing, setPointing] = useState(false);
   const [keyed, setKeyed] = useState(false);
   const [menu, setMenu] = useState<string | null>(null);
-  const held = pointing || keyed || menu !== null;
+  const hold = useRef<HTMLDivElement>(null);
   const attention = state.attention;
   const questions = attention.questions;
+  const [closed, setClosed] = useState(false);
+  // A menu holds the order only while its question is listed: one that went (taken back, or answered elsewhere) holds nothing.
+  const menuListed = menu !== null && questions.some((q) => q.id === menu && (closed || q.status === 'open'));
+  const held = pointing || keyed || menuListed;
+  // Nor does focus inside that went with what had it, nor that menu.
+  useEffect(() => {
+    if (keyed && !(document.activeElement && hold.current?.contains(document.activeElement))) setKeyed(false);
+    if (menu !== null && !menuListed) setMenu(null);
+  });
   const host = state.isHost;
   const confirm = (id: string) => {
     const submitted = draft.submission;
@@ -103,7 +111,7 @@ export function ChatQuestions({ session, state, ready, draft, jump }: {
   if (!ready) return <EmptyState art={null} title="Finding this room" className="ch-empty">Questions appear once your connection is ready.</EmptyState>;
   return (
     <>
-      <div className="ch-qhold" onPointerEnter={() => setPointing(true)} onPointerLeave={() => setPointing(false)} onFocus={focusIn} onBlur={focusOut}>
+      <div ref={hold} className="ch-qhold" onPointerEnter={() => setPointing(true)} onPointerLeave={() => setPointing(false)} onFocus={focusIn} onBlur={focusOut}>
         <div className="ch-qbar" role="group" aria-label="Question order">
           <button type="button" aria-pressed={sort === 'votes' && !stale} onClick={() => reorder('votes')}>Most votes</button>
           <button type="button" aria-pressed={sort === 'recent' && !stale} onClick={() => reorder('recent')}>Newest</button>
