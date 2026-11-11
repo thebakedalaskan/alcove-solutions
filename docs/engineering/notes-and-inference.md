@@ -682,7 +682,11 @@ the same way when it is an unencrypted one.
 - **One long account.** The short summary is always two or three sentences: there's no setting for how long it is, so
   the fold always opens something longer than what's above it, and one person's choice never decides how everyone reads
   the note. Profiles still keep the `summaryLength` an earlier release let people choose, unread, because the release
-  before this one opens a profile only with it; a later release drops it ([Data and storage](data-and-storage.md)).
+  before this one opens a profile only with it ([Data and storage](data-and-storage.md)). For the same release, GET and
+  PATCH `/v1/account/preferences` still send it, as the profile has it, because its app reads preferences only with it
+  (a tab left open on it, or served while the API deploys); a PATCH that sends it changes nothing, and this release's
+  app doesn't declare it, so its schema drops it. Due to go in the next release: `summaryLength` on the wire and in the
+  profile, together.
 - **Asking.** Asking about the note sends it as "Full summary" after the short summary, so an answer can use what it
   says. Asking across notes, across a series, catching up and live notes don't read it.
 - **Logged.** `full summary written` at info (`chars`, `model`, `encrypted`, `ms`) and `full summary not written; the
