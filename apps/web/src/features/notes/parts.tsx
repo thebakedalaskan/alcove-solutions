@@ -115,21 +115,29 @@ const lineAt = (lines: TranscriptLine[], at: number) => Math.max(0, lines.findLa
  * further on. `player` marks the line being said as the recording plays. Pauses and shared screens after the lines shown
  * wait too, and `onScreens` opens the first of them from here meanwhile. `live`: the call is still going. With `correct`, whoever may
  * corrects lines in place (lines.tsx); with `marks`, they bookmark lines for themselves. `kinds` says which lines
- * something in the notes came from. `top` is what goes above the lines.
+ * something in the notes came from. `top` is what goes above the lines. Pressing a line (its words or its time) goes to
+ * its moment and plays from there (`onSeek` with `play`), and the line is marked where it is: it's in view already.
  */
 export function Transcript({ lines, gaps, seconds, me, onSeek, focus, player, live = false, screens, onScreens, correct, fromLine, marks, kinds, top }: {
-  lines: TranscriptLine[]; gaps: CaptureGap[]; seconds: number; me: string | undefined; onSeek?: ((s: number) => void) | undefined; focus?: Focus | undefined; player: PlayerState; live?: boolean | undefined;
+  lines: TranscriptLine[]; gaps: CaptureGap[]; seconds: number; me: string | undefined; onSeek?: ((s: number, play?: boolean) => void) | undefined; focus?: Focus | undefined; player: PlayerState; live?: boolean | undefined;
   screens?: ScreensShown | undefined; onScreens?: ((m: ScreenMoment) => void) | undefined; correct?: Correcting | undefined; fromLine?: FromLine | undefined; marks?: LineMarks | undefined; kinds?: LineKinds | undefined; top?: ReactNode;
 }) {
   const reduce = useReducedMotion();
   const [open, setOpen] = useState(false);
   const [went, setWent] = useState<Focus | undefined>(undefined);
+  /** The moment of the line just pressed, which the page then goes to. */
+  const pressed = useRef<number | null>(null);
   // Going to a line further on opens the rest, in the same drawing, so the line is there to scroll to.
   if (focus !== went) { setWent(focus); if (focus && lineAt(lines, focus.at) >= FIRST_LINES) setOpen(true); }
   useEffect(() => {
     if (!focus) return;
-    document.getElementById(MOMENT)?.scrollIntoView({ block: 'center', behavior: reduce ? 'auto' : 'smooth' });
+    // A line that was pressed only scrolls if it's under the strip at the top or the bar at the bottom.
+    const near = pressed.current === focus.at;
+    pressed.current = null;
+    document.getElementById(MOMENT)?.scrollIntoView({ block: near ? 'nearest' : 'center', behavior: reduce ? 'auto' : 'smooth' });
   }, [focus, reduce]);
+  const plays = player.total > 0;
+  const press = onSeek && ((at: number) => { pressed.current = at; onSeek(at, plays); });
   // The line being said, once anyone has gone anywhere or pressed play.
   const said = usePlayerAt(player, (p) => (p > 0 ? lineAt(lines, p) : -1));
   const lit = said >= 0 ? said : focus ? lineAt(lines, focus.at) : -1;
@@ -147,7 +155,7 @@ export function Transcript({ lines, gaps, seconds, me, onSeek, focus, player, li
     <section className="nd-s nd-tr">
       <div className="nd-sh"><h2>Transcript</h2><UnsureKey words={lines.some((l) => l.unsure?.words)} speaker={lines.some((l) => l.unsure?.speaker)} className="nd-key" /></div>
       {top}
-      <TranscriptLines lines={shown} gaps={upTo(gaps)} me={me} onSeek={onSeek} focus={focus?.at} lit={lit} screens={screens && { ...screens, moments: all ? screens.moments : screens.moments.filter(waiting) }} correct={correct} fromLine={fromLine} marks={marks} kinds={kinds} />
+      <TranscriptLines lines={shown} gaps={upTo(gaps)} me={me} onSeek={press} plays={plays} focus={focus?.at} lit={lit} screens={screens && { ...screens, moments: all ? screens.moments : screens.moments.filter(waiting) }} correct={correct} fromLine={fromLine} marks={marks} kinds={kinds} />
       {(lines.length > FIRST_LINES || nextHidden) && (
         <div className="nd-allrow">
           {lines.length > FIRST_LINES && (
@@ -196,11 +204,12 @@ export interface ScreensShown { moments: ScreenMoment[]; row: (m: ScreenMoment) 
  * What was said, line by line, with the stretches nothing was captured in marked where they fall, and what was on a
  * shared screen right after the line it's attached to (or, for one attached to no line shown, just before the lines
  * said while it was up). A speaker's lines in a row share one name; a room recording names nobody. With `focus`, the line
- * said at that moment is where a moment's link lands, and `lit` is the line to mark.
- * With `correct`, whoever may corrects lines in place (lines.tsx). With `marks`, they bookmark lines for themselves.
+ * said at that moment is where a moment's link lands, and `lit` is the line to mark. With `onSeek`, pressing a line goes to
+ * it, playing from there with `plays`. With `correct`, whoever may corrects lines in place (lines.tsx). With `marks`, they
+ * bookmark lines for themselves.
  */
-export function TranscriptLines({ lines, gaps = [], me, onSeek, focus, lit, screens, correct, fromLine, marks, kinds, className }: {
-  lines: TranscriptLine[]; gaps?: CaptureGap[] | undefined; me: string | undefined; onSeek?: ((s: number) => void) | undefined; focus?: number | undefined; lit?: number | undefined;
+export function TranscriptLines({ lines, gaps = [], me, onSeek, plays = false, focus, lit, screens, correct, fromLine, marks, kinds, className }: {
+  lines: TranscriptLine[]; gaps?: CaptureGap[] | undefined; me: string | undefined; onSeek?: ((s: number) => void) | undefined; plays?: boolean | undefined; focus?: number | undefined; lit?: number | undefined;
   screens?: ScreensShown | undefined; correct?: Correcting | undefined; fromLine?: FromLine | undefined; marks?: LineMarks | undefined; kinds?: LineKinds | undefined; className?: string | undefined;
 }) {
   const here = focus === undefined ? -1 : lineAt(lines, focus);
@@ -222,7 +231,7 @@ export function TranscriptLines({ lines, gaps = [], me, onSeek, focus, lit, scre
         const after = attached.get(l.id) ?? [];
         // After a gap, or a screen, the speaker is named again: it's a new part of the call.
         const more = !!l.speaker && voiceOf(lines[i - 1]?.speaker) === voiceOf(l.speaker) && !before.length && !up.length && !(prev && attached.has(prev.id));
-        return <Fragment key={l.id}>{before.map(gap)}{up.map(shown)}<LineRow line={l} more={more} id={i === here ? MOMENT : undefined} on={i === on} kind={kinds?.get(l.id)} onSeek={onSeek} me={me} correct={correct} fromLine={fromLine} marks={marks} />{after.map(shown)}</Fragment>;
+        return <Fragment key={l.id}>{before.map(gap)}{up.map(shown)}<LineRow line={l} more={more} id={i === here ? MOMENT : undefined} on={i === on} kind={kinds?.get(l.id)} onSeek={onSeek} plays={plays} me={me} correct={correct} fromLine={fromLine} marks={marks} />{after.map(shown)}</Fragment>;
       })}
       {gapsAfter(gaps, lines).map(gap)}
       {gapsAfter(byTime, lines).map(shown)}

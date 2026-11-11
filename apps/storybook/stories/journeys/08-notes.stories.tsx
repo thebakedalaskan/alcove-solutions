@@ -481,6 +481,10 @@ export const JumpToAMoment: PageStory = {
       await userEvent.click((await horizon()).getByRole('button', { name: 'Play' }));
       await (await horizon()).findByRole('button', { name: 'Pause' }, LATER);
     });
+    await step('Press what was said on a line, or its time. The sun goes there and it plays from that line, marked where it is', async () => {
+      await userEvent.click(await first(screen.findAllByText('Thanks. One is the empty state on the team page, the other is the flag name in the rollout plan.', {}, SOON)));
+      await (await horizon()).findByRole('button', { name: 'Pause' }, LATER);
+    });
   }
 };
 

@@ -322,6 +322,10 @@ body:has(.nd-askdock) .ac-toasts:not(.on-stage) { bottom: 92px; }
 .nd-lines.is-nameless .nd-la { display: none; }
 .nd-lt { position: relative; display: block; width: 50px; border-radius: 4px; font: 500 13px/22px var(--font-sans); font-variant-numeric: tabular-nums; color: var(--ink-3); text-align: left; }
 button.nd-lt:hover { color: var(--ink); }
+/* A line that goes to its moment when pressed, as its time does: the time darkens while the line is pointed at. */
+.nd-l.is-press { cursor: pointer; }
+.nd-l.is-press .nd-lx { cursor: auto; }
+.nd-l.is-press:hover:not(.is-on) .nd-lt:not(:hover) { color: var(--ink-2); }
 .nd-l.is-on .nd-lt { color: var(--sun-text); }
 .nd-lk { position: absolute; right: 2px; top: 8px; width: 7px; height: 7px; border-radius: 50%; background: var(--horizon); }
 .nd-lk.is-decide { width: 6.5px; height: 6.5px; border-radius: 1.5px; background: var(--rose); transform: rotate(45deg); }
