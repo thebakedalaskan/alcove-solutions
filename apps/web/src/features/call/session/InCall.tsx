@@ -780,7 +780,7 @@ export function InCall({ session }: { session: CallSession }) {
   /* Your own notes, at the foot of the notes: for someone with an account in the call, and for nobody else's eyes. */
   const [yoursShown, setYoursShown] = useState(0);
   const own = useOwnInCall(session, {
-    role: state.role, noteId: state.notes.noteId, showing: place === 'notes', line: state.transcript.at(-1)?.id, place: state.capture.room?.id ?? null,
+    role: state.role, noteId: state.notes.noteId, showing: place === 'notes' || place === 'transcript', line: state.transcript.at(-1)?.id, place: state.capture.room?.id ?? null,
     onOpen: () => { cu.settle(); openSide('notes'); setYoursShown((n) => n + 1); }
   });
   // What carries over is your account's, not the call's: a guest has none, and everyone else reads only their own.
@@ -1487,7 +1487,7 @@ export function InCall({ session }: { session: CallSession }) {
         yours={own.enabled ? <Yours own={own} state={state} me={me?.person.email} shown={yoursShown} onOpen={cu.open} /> : undefined} />;
       case 'transcript': return cu.moment
         ? <MomentView moment={cu.moment} startedAt={state.startedAt} me={me?.person.email} onLive={cu.backToLive} />
-        : <TranscriptView state={state} me={me?.person.email} onMark={own.enabled ? own.mark : undefined} put={put} />;
+        : <TranscriptView state={state} me={me?.person.email} marks={own.enabled ? own.lines : undefined} put={put} />;
       case 'ask': return <AskView asks={cu.asks} modelPrivate={state.capture.modelPrivate} ready={state.notes.everOn && state.transcript.length > 0 && capHere.mode !== 'paused'} paused={capHere.mode === 'paused'} startedAt={state.startedAt} range={cu.range} window={cu.window}
         catching={cu.catching} draft={askDraft.current} earlier={earlierNotes.length ? earlierNotes : null} scope={cu.scope} onScope={cu.setScope} onRange={cu.setRange} onWindow={cu.refreshWindow} onAsk={cu.ask}
         onAskEarlier={(question) => cu.askEarlier(question, earlierNotes)} onCatchUp={() => cu.catchUp(cu.range)} onOpen={cu.open} onLive={cu.backToLive} keeping={own.enabled ? own : undefined} />;

@@ -6,7 +6,7 @@
  */
 import { AlcoveApiError, type Note, type NoteRoom, type Person } from '@alcove/api';
 import type { Meta } from '@storybook/react-vite';
-import { screen, within } from 'storybook/test';
+import { screen, waitFor, within } from 'storybook/test';
 import { standIn } from '../../src/api/standin';
 import { call, changer, writeNote, type NoteSpec } from '../../src/world/build';
 import { iso } from '../../src/world/clock';
@@ -737,10 +737,17 @@ export const BookmarkALineOrAScreen: PageStory = {
   ...page('/notes/n2', 'busy'),
   play: async ({ userEvent, step }) => {
     await step('Point at a line and click the bookmark', async () => {
-      await userEvent.click(await nth(screen.findAllByRole('button', { name: 'Bookmark this line, for you alone' }, LATER), 3));
+      await userEvent.click(await nth(screen.findAllByRole('button', { name: 'Bookmark this line in your own notes, which only you see' }, LATER), 3));
     });
     await step('It’s in Your notes, and only you see it', async () => {
       await within(await yours()).findByText(/Put it behind a flag/, {}, SOON);
+    });
+    await step('Its bookmark stays, ticked. Click it again to take it back', async () => {
+      await userEvent.click(await first(screen.findAllByRole('button', { name: 'Remove your bookmark' }, SOON)));
+    });
+    await step('It’s out of Your notes, and the line can be bookmarked again', async () => {
+      const mine = await yours();
+      await waitFor(() => { if (within(mine).queryByText(/Put it behind a flag/)) throw new Error('It’s still in Your notes.'); }, SOON);
     });
     await step('The transcript says when a screen was shared. Click it', async () => {
       await userEvent.click(screen.getByRole('button', { name: '1 shared screen' }));

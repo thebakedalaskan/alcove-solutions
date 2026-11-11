@@ -21,7 +21,7 @@ const time = (mmss: string) => <TimeChip seconds={at(mmss)} onSeek={seek} />;
 const Tools = ({ marked = false }: { marked?: boolean | undefined }) => (
   <>
     <IconButton icon="pen" label="Correct this line" size={15} className="nd-tool" onClick={did('onCorrect')} />
-    <IconButton icon={marked ? 'bookmarked' : 'bookmark'} label={marked ? 'Remove your bookmark' : 'Bookmark this line, for you alone'} size={15} className="nd-tool" on={marked} onClick={did('onBookmark')} />
+    <IconButton icon={marked ? 'bookmarked' : 'bookmark'} label={marked ? 'Remove your bookmark' : 'Bookmark this line in your own notes, which only you see'} size={15} className="nd-tool" on={marked} onClick={did('onBookmark')} />
   </>
 );
 

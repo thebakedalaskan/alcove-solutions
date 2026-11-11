@@ -5,9 +5,10 @@
  * live notes are written again a few seconds after.
  */
 import type { Meta } from '@storybook/react-vite';
+import { screen } from 'storybook/test';
 import { at, asksForNotes, says, UNENCRYPTED_MODEL, type Present } from '../../src/api/script';
 import { MORE, inCall, light, phone, plays, press, reach } from '../../src/call';
-import { pages, type PageArgs } from '../../src/page';
+import { pages, type PageArgs, type PageStory } from '../../src/page';
 import { FOLLOW_UP_SCRIPT } from './followUps';
 import { AIKO, CHECK_IN, CHECK_IN_SUMMARY, CHECK_IN_TALK, KOFI, MAYA, PRIYA, REVIEW, REVIEW_SUMMARY, REVIEW_TALK } from './talk';
 
@@ -35,6 +36,19 @@ export const MarkAMoment = {
 /** The live transcript, Notes' second tab, each line a moment after it's said. */
 export const Transcript = inCall({ scenario: 'call-soon', call: REVIEW, script: LATE }, { play: reach('Notes', { tab: 'Transcript' }) });
 export const TranscriptPhone = phone(Transcript);
+/** Bookmarks the transcript's second line, as a person would: pointing at it, then its bookmark. */
+const bookmarkALine: NonNullable<PageStory['play']> = async ({ userEvent, step }) => {
+  await step('Bookmark a line in your own notes', async () => {
+    const marks = await screen.findAllByRole('button', { name: 'Bookmark this line in your own notes, which only you see' }, { timeout: 10000 });
+    const mark = marks[1] ?? marks[0];
+    if (mark) await userEvent.click(mark);
+  });
+};
+/** A line bookmarked in your own notes: its bookmark stays in sight, ticked, and says Remove your bookmark. It's in Yours, under Notes. */
+export const BookmarkALine = { ...Transcript, name: 'Bookmark a line', play: plays(reach('Notes', { tab: 'Transcript' }), bookmarkALine) };
+export const BookmarkALinePhone = phone(BookmarkALine);
+/** Pressed again, the bookmark comes back off, out of Yours, and the toast says so. */
+export const TakeABookmarkBack = { ...Transcript, name: 'Take a bookmark back', play: plays(reach('Notes', { tab: 'Transcript' }), bookmarkALine, press('Remove your bookmark')) };
 /** Ask, Notes' third tab: catching up and asking about the call, for you alone. */
 export const Ask = inCall({ scenario: 'call-soon', call: REVIEW, script: LATE }, { play: reach('Notes', { tab: 'Ask' }) });
 export const AskPhone = phone(Ask);

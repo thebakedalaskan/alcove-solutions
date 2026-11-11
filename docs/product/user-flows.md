@@ -506,7 +506,11 @@ time, slides in on the right.
   notes**. The notes everyone gets are written when the call ends.
 - **Yours**, at the foot of the Notes tab: your own notes on the call, which say **Only you** before you type. Write
   something for yourself, or **Mark this** to bookmark what was just said (**B**, the bookmark at the top of Notes, or
-  **Mark this moment** in **More**; the bookmark on a transcript line marks that line). Under an answer in **Ask**, **Keep in your notes**
+  **Mark this moment** in **More**). The bookmark on a line of the **Transcript** (**Bookmark this line in your own
+  notes, which only you see**) bookmarks that line, as on the note: once it's on, it stays in sight, ticked, and says
+  **Remove your bookmark**, which takes it back out of Yours. A toast says each time it goes in or comes out, and nothing
+  when a press changes nothing. A moment marked as a line was said opens at the same line, but it's a moment, not that
+  line's bookmark: taking the line's bookmark back leaves it. Under an answer in **Ask**, **Keep in your notes**
   keeps it here; nothing else keeps one. A bookmark of something said where you aren't now (the main room, from a
   breakout room) says so, and opens once you're back there or in the notes after the call. Someone with only the link
   doesn't have this: there's no account to keep it under. It goes with the call's notes, so it starts when notes do.
@@ -1171,7 +1175,9 @@ Storybook journeys **6.23–6.25** show the review alongside the call:
   you're no longer listed as having them. Your own notes on them go for good, and what you added to the shared notes stays.
   Beside the list it asks in place, and the row leaves the list. While the call is going, it waits until the call ends.
 - **Your notes**, beside the note, is what you kept in the call and more: write something, bookmark a line (the bookmark
-  beside it) or a shared screen, or **Keep in your notes** under an answer. It says **Only you**, and the note itself
+  beside it, **Bookmark this line in your own notes, which only you see**) or a shared screen, or **Keep in your notes**
+  under an answer. A bookmarked line's bookmark stays in sight, ticked; **Remove your bookmark** takes that line's own
+  bookmark back and leaves a moment marked near it in the call. It says **Only you**, and the note itself
   says **Everyone with the notes**: nobody else reads Your notes, the organizer included.
 - **Add to the shared notes** on anything in Your notes shows, in place of the box you write in, exactly what goes:
   the words, which you can cut down, the moment they point at, **Added by people** on this note, and everyone who

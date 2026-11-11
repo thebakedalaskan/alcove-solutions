@@ -1,12 +1,14 @@
 /*
- * Your own notes in a call: Yours, at the foot of the Notes tab, and "mark this" from anywhere in the call. They're your
- * account's, on the call's note, so nothing here is for someone with only the link. Nothing goes into the call or to anyone's
- * screen: they're read from the server while the notes show, and each change answers with all of them. The draft lives here,
- * so moving around your side neither loses it nor carries it anywhere else.
+ * Your own notes in a call: Yours, at the foot of the Notes tab, "mark this" from anywhere in the call, and the bookmark on
+ * each line of the transcript, which takes it back on a second press as it does on the note. They're your account's, on the
+ * call's note, so nothing here is for someone with only the link. Nothing goes into the call or to anyone's screen: they're
+ * read from the server while the notes or the transcript show, and each change answers with all of them. The draft lives
+ * here, so moving around your side neither loses it nor carries it anywhere else.
  */
-import { errorMessage, type CallAnswer, type CallSession, type CallState, type PersonalEntry, type PersonalNotes, type TranscriptMoment } from '@alcove/api';
+import { errorCode, errorMessage, type CallAnswer, type CallSession, type CallState, type PersonalEntry, type PersonalNotes, type TranscriptLine, type TranscriptMoment } from '@alcove/api';
 import { Icon, useToast } from '@alcove/ui';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import type { LineMarks } from '~/features/notes/lines';
 import { OwnComposer, OwnEntries } from '~/features/personal/parts';
 import { log } from '~/lib/log';
 import { Moments, callTimes } from './CatchUp';
@@ -24,8 +26,10 @@ export interface OwnInCall {
   setDraft(text: string): void;
   busy: boolean;
   write(text: string): void;
-  /** Bookmarks now, or one line of what's been said. */
-  mark(lineId?: string | undefined): void;
+  /** Mark this moment: what was just said, each time it's pressed. */
+  mark(): void;
+  /** The transcript's lines you bookmarked, and bookmarking one or taking its bookmark back. */
+  lines: LineMarks;
   edit(entryId: string, text: string): Promise<void>;
   remove(entryId: string): Promise<void>;
   /** Which of your questions this screen has kept, by the question's place in the Ask view. */
@@ -33,9 +37,15 @@ export interface OwnInCall {
   keep(asked: number, question: string, answer: CallAnswer): Promise<void>;
 }
 
+/** A line's own bookmark: not a moment marked as it was said, which opens at the same line. */
+const markOf = (lineId: string) => (e: PersonalEntry) => e.kind === 'bookmark' && e.target === 'line' && e.moment?.line?.id === lineId;
+/** Before notes have been on there's nothing to keep your own notes with. */
+const NO_NOTE = 'Your own notes go with the call’s, and notes haven’t been on in this call.';
+
 /**
- * `showing`: the notes are showing, with Yours at their foot. `line`: the newest line of the transcript, which can fill in a moment you marked.
- * `place`: the part of the call you're in, which decides what your bookmarks may open: they're read again when it changes.
+ * `showing`: the notes are showing, with Yours at their foot, or the transcript, with its bookmarks. `line`: the newest line
+ * of the transcript, which can fill in a moment you marked. `place`: the part of the call you're in, which decides what
+ * your bookmarks may open: they're read again when it changes.
  */
 export function useOwnInCall(session: CallSession, o: { role: CallState['role']; noteId: string | null; showing: boolean; line: string | undefined; place: string | null; onOpen: () => void }): OwnInCall {
   const toast = useToast();
@@ -66,15 +76,44 @@ export function useOwnInCall(session: CallSession, o: { role: CallState['role'];
     setBusy(true);
     session.personal.add({ kind: 'note', text }).then((n) => { setNotes(n); setDraft(''); }, failed).finally(() => setBusy(false));
   };
-  const mark = (lineId?: string | undefined) => {
-    if (!o.noteId) { toast('Your own notes go with the call’s, and notes haven’t been on in this call.', { icon: 'bookmark' }); return; }
-    session.personal.add({ kind: 'bookmark', label: '', point: lineId ? { kind: 'line', lineId } : null }).then((n) => {
+  const opens = { label: 'Open', onClick: () => open.current() };
+  const mark = () => {
+    if (!o.noteId) { toast(NO_NOTE, { icon: 'bookmark' }); return; }
+    session.personal.add({ kind: 'bookmark', label: '', point: null }).then((n) => {
       setNotes(n);
-      toast('Marked in your own notes.', { icon: 'bookmark', action: { label: 'Open', onClick: () => open.current() } });
+      toast('Marked in your own notes.', { icon: 'bookmark', action: opens });
     }, failed);
   };
+  /** Lines whose bookmark is on its way on or off: another press waits for it. */
+  const turning = useRef(new Set<string>());
+  /**
+   * A line's bookmark, on or off, from your own notes as they are (read first if they haven't been yet). Said only when it
+   * changed something: one already there, or already gone, from another tab, is just read again.
+   */
+  const toggleLine = (line: TranscriptLine) => {
+    if (!o.noteId) { toast(NO_NOTE, { icon: 'bookmark' }); return; }
+    if (turning.current.has(line.id)) return;
+    turning.current.add(line.id);
+    const done = () => { turning.current.delete(line.id); };
+    const go = (had: PersonalNotes): Promise<void> => {
+      const found = had.entries.find(markOf(line.id));
+      if (found) {
+        return session.personal.remove(found.id).then((n) => {
+          setNotes(n);
+          toast('Bookmark removed from your own notes.', { icon: 'bookmark' });
+        }, (e: unknown) => { if (errorCode(e) === 'not-found') read(); else failed(e); });
+      }
+      return session.personal.add({ kind: 'bookmark', label: '', point: { kind: 'line', lineId: line.id } }).then((n) => {
+        setNotes(n);
+        const made = n.entries.find(markOf(line.id));
+        if (made && !had.entries.some((e) => e.id === made.id)) toast('Bookmarked in your own notes.', { icon: 'bookmark', action: opens });
+      }, failed);
+    };
+    (notes ? go(notes) : session.personal.get().then((n) => { setNotes(n); return go(n); }, failed)).finally(done);
+  };
+  const marked: LineMarks = { has: (id) => notes?.entries.some(markOf(id)) ?? false, toggle: toggleLine };
   return {
-    enabled, entries: notes?.entries ?? null, draft, setDraft, busy, write, mark, kept,
+    enabled, entries: notes?.entries ?? null, draft, setDraft, busy, write, mark, lines: marked, kept,
     edit: async (entryId, text) => { setNotes(await session.personal.edit(entryId, text)); },
     remove: async (entryId) => { setNotes(await session.personal.remove(entryId)); },
     keep: async (asked, question, a) => {

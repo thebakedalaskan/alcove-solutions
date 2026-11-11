@@ -276,7 +276,7 @@ export function standupOwn(): PersonalEntry[] {
   return [
     { id: 'n2-o1', at: iso(0, 9, 31), shared: null, kind: 'note', text: 'Ask Priya whether the article covers the team plan.' },
     {
-      id: 'n2-o2', at: iso(0, 9, 32), shared: null, kind: 'bookmark', label: 'Launch checklist', reach: 'open',
+      id: 'n2-o2', at: iso(0, 9, 32), shared: null, kind: 'bookmark', label: 'Launch checklist', target: 'line', reach: 'open',
       moment: { at: mmss('08:40'), line: { id: 'l15', text: 'Launch checklist. Two items are still open, and I’d like someone to look before the design review.', speaker: { name: KOFI.name, person: KOFI } } }
     }
   ];

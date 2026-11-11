@@ -1034,7 +1034,12 @@ notes**.
   note), a shared screen by its frame, or a moment. "Mark this" (**B**, the dock, **More** on a phone, or **Mark this**
   in Yours) keeps when it was pressed, where that falls in the recording, and the breakout room if any, and opens at the
   line just said, up to two minutes back. A mark made while nothing was captured there keeps no place in the recording.
-  You can only bookmark what you may read: anything else is `404 not-found`, whether or not it exists.
+  You can only bookmark what you may read: anything else is `404 not-found`, whether or not it exists. A line or a
+  shared screen is bookmarked once: bookmarking it again changes nothing and answers with the same notes. Each bookmark
+  says what it points at (`target`: `line`, `screen` or `moment`, from what the record keeps, so nothing stored changed
+  shape), because a moment marked as a line was said opens at that same line: the bookmark on a line, in the call's
+  transcript and on the note, is that line's `target: line` bookmark, on or off (`DELETE` takes it back), and leaves
+  moments alone.
 - **Access is read again every time.** What a bookmark points at is resolved on each read and never stored. During a
   call that's the call's one rule ([Catching up › Who reads what](#catching-up-during-a-call)), so a bookmark of the main
   room says nothing of what it points at from a breakout room (`reach: later`), and a room's line can't be opened from

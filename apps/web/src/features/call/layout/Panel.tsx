@@ -12,6 +12,7 @@ import type { StageTogether } from './Stage';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { rungWords } from '~/features/calls/ringing/RingWords';
+import type { LineMarks } from '~/features/notes/lines';
 import { lineClock } from '~/features/workspace/live/lines';
 import type { LivePut } from '~/features/workspace/live/types';
 import { captureHere } from '~/lib/capture';
@@ -269,7 +270,7 @@ export function NotesView({ session, state, getting, problems, controls, carried
 
 /* ---------- transcript ---------- */
 
-export function TranscriptView({ state, me, onMark, put }: { state: CallState; me: string | undefined; onMark?: ((lineId: string) => void) | undefined; put?: LivePut | null | undefined }) {
+export function TranscriptView({ state, me, marks, put }: { state: CallState; me: string | undefined; marks?: LineMarks | undefined; put?: LivePut | null | undefined }) {
   // What's said where you are: in a breakout room, the room's lines, under the room's capture.
   const c = captureHere(state.capture);
   const mode = c.mode;
@@ -285,7 +286,7 @@ export function TranscriptView({ state, me, onMark, put }: { state: CallState; m
         )}
         {mode === 'paused' && <Notice icon="pause">{roomHeld ? ROOM_PAUSED : 'Notes are paused. Nothing new is transcribed until they resume.'}</Notice>}
         {mode === 'off' && <Notice icon="notesPen">{state.notes.everOn ? 'Notes are off. Nothing new is written down until they’re back on.' : 'Notes are off, so nothing is being transcribed.'}</Notice>}
-        {state.transcript.length ? <CallLines lines={state.transcript} gaps={c.gaps} me={me} onMark={onMark} quote={put ? { target: put.target, onQuote: put.line } : null} when={(at) => lineClock(state, at)} /> : on && (
+        {state.transcript.length ? <CallLines lines={state.transcript} gaps={c.gaps} me={me} marks={marks} quote={put ? { target: put.target, onQuote: put.line } : null} when={(at) => lineClock(state, at)} /> : on && (
           <EmptyState title="Nothing said yet" className="ic-empty">
             {!state.capture.room ? 'What’s said appears here a few seconds later.'
               : state.capture.room.scribe ? `What’s said here appears a few seconds later, transcribed by ${roomScribe(state)} for this room’s section of the notes.`

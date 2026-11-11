@@ -215,6 +215,15 @@ describe('bookmarks', () => {
     const byLine = bookmark(last(await kofiCall.personal.add({ kind: 'bookmark', label: 'Friday', point: { kind: 'line', lineId: mainLine } })));
     expect(byLine).toMatchObject({ reach: 'open', moment: { line: { id: mainLine } } });
     expect((await kofiCall.personal.add({ kind: 'bookmark', label: 'Again', point: { kind: 'line', lineId: mainLine } })).entries).toHaveLength(2);
+    // The moment and the line's own bookmark open at the same line: what each points at tells them apart.
+    expect([marked.target, byLine.target]).toEqual(['moment', 'line']);
+    // Taking the line's bookmark back leaves the moment marked as it was said, and bookmarking the line again makes a new one.
+    const unmarked = (await kofiCall.personal.remove(byLine.id)).entries.map(bookmark);
+    expect(unmarked.map((b) => [b.id, b.target, b.moment?.line?.id])).toEqual([[marked.id, 'moment', mainLine]]);
+    const again = bookmark(last(await kofiCall.personal.add({ kind: 'bookmark', label: '', point: { kind: 'line', lineId: mainLine } })));
+    expect(again).toMatchObject({ target: 'line', reach: 'open', moment: { line: { id: mainLine } } });
+    expect(again.id).not.toBe(byLine.id);
+    expect(await fails(kofiCall.personal.remove(byLine.id))).toBe('not-found');
 
     // A line that was never said, a shared screen during a call, and a moment by its second aren't there to bookmark.
     expect(await fails(kofiCall.personal.add({ kind: 'bookmark', label: '', point: { kind: 'line', lineId: 'made-up' } }))).toBe('not-found');
@@ -239,9 +248,9 @@ describe('bookmarks', () => {
     expect(await fails(lenaCall.personal.add({ kind: 'bookmark', label: '', point: { kind: 'line', lineId: roomLine } }))).toBe('not-found');
     expect(await fails(host.personal.add({ kind: 'bookmark', label: '', point: { kind: 'line', lineId: roomLine } }))).toBe('not-found');
     const inRoom = bookmark(last(await kofiCall.personal.add({ kind: 'bookmark', label: 'Blue', point: { kind: 'line', lineId: roomLine } })));
-    expect(inRoom).toMatchObject({ reach: 'open', moment: { line: { id: roomLine }, room: { id: design, name: 'Design' } } });
+    expect(inRoom).toMatchObject({ target: 'line', reach: 'open', moment: { line: { id: roomLine }, room: { id: design, name: 'Design' } } });
     const markedInRoom = bookmark(last(await kofiCall.personal.add({ kind: 'bookmark', label: '', point: null })));
-    expect(markedInRoom).toMatchObject({ reach: 'open', moment: { line: { id: roomLine } } });
+    expect(markedInRoom).toMatchObject({ target: 'moment', reach: 'open', moment: { line: { id: roomLine } } });
 
     // Back in the main room it's the other way round, and opening the room's line is refused again.
     host.closeRooms();
@@ -257,6 +266,10 @@ describe('bookmarks', () => {
     expect(after.map((b) => b.reach)).toEqual(['open', 'open', 'open', 'open']);
     expect(after.map((b) => b.moment?.line?.id)).toEqual([mainLine, mainLine, roomLine, roomLine]);
     expect(after.map((b) => b.moment?.room?.name)).toEqual([undefined, undefined, 'Design', 'Design']);
+    expect(after.map((b) => b.target)).toEqual(['moment', 'line', 'line', 'moment']);
+    // On the note too, the line's own bookmark comes off and the moment marked as it was said stays.
+    const left = (await kofi.api.notes.personal(noteId).remove(again.id)).entries.map(bookmark);
+    expect(left.map((b) => [b.target, b.moment?.line?.id])).toEqual([['moment', mainLine], ['line', roomLine], ['moment', roomLine]]);
 
     // Removing the note from yours closes all of it, and takes your own notes with it.
     await kofi.api.notes.delete(noteId);
@@ -286,8 +299,8 @@ describe('bookmarks', () => {
     const lineId = only(note.transcript ?? []).id;
 
     const mine = lena.api.notes.personal(noteId);
-    expect(bookmark(last(await mine.add({ kind: 'bookmark', label: 'The chart', point: { kind: 'screen', frameId } })))).toMatchObject({ reach: 'open', moment: { screen: { id: frameId } } });
-    expect(bookmark(last(await mine.add({ kind: 'bookmark', label: '', point: { kind: 'line', lineId } })))).toMatchObject({ reach: 'open', moment: { line: { id: lineId, text: 'As you can see the chart.' } } });
+    expect(bookmark(last(await mine.add({ kind: 'bookmark', label: 'The chart', point: { kind: 'screen', frameId } })))).toMatchObject({ target: 'screen', reach: 'open', moment: { screen: { id: frameId } } });
+    expect(bookmark(last(await mine.add({ kind: 'bookmark', label: '', point: { kind: 'line', lineId } })))).toMatchObject({ target: 'line', reach: 'open', moment: { line: { id: lineId, text: 'As you can see the chart.' } } });
 
     // Another note's line or screen, or something that isn't there, is not found here. Without a call there's no "now".
     const other = await writtenNote('Something else entirely.');
