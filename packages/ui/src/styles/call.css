@@ -447,21 +447,23 @@ button.dev-pick:hover, .dev-pick[data-state="open"] { background: color-mix(in s
 .ic-roomc { container-type: inline-size; position: absolute; border-radius: var(--radius-lg); background: rgb(255 255 255 / 0.035); box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.09); overflow: hidden; }
 .ic-roomc .bar { height: 3px; }
 .ic-roomc .h { display: flex; align-items: center; gap: 10px; height: 52px; padding: 0 16px 0 18px; font-size: 14px; color: var(--stage-ink); white-space: nowrap; overflow: hidden; }
-.ic-roomc .h b { font-weight: 600; }
+.ic-roomc .h b { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
 .ic-roomc .h > span { color: var(--stage-ink-2); }
-.ic-roomc .h .ac-time { flex: none; margin-left: auto; color: var(--stage-ink); }
-.ic-roomc .empty { position: absolute; inset: 52px 16px 16px; display: grid; place-items: center; font-size: 13.5px; color: var(--stage-ink-2); }
+.ic-roomc .h .sp { flex: 1; min-width: 0; }
+/* Fold a room to its header, or unfold it: the organizer's own view of the rooms. */
+.ic-roomc .h .fold { flex: none; display: grid; place-items: center; width: 30px; height: 30px; margin-right: -6px; border-radius: 9px; color: var(--stage-ink-2); transition: background-color var(--duration-1), color var(--duration-1); }
+.ic-roomc .h .fold:hover { background: rgb(255 255 255 / 0.08); color: var(--stage-ink); }
+.ic-roomc .h .fold:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
 .ic-roomc .h .ac-notes-sign, .ic-roomc .h .ac-capture-sign { height: 24px; }
 .ic-roomc .hand-chip { display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 8px; border-radius: 7px; background: var(--stage-ink); color: var(--stage) !important; font: 600 12px/1 var(--font-sans); }
 .ic-roomc.is-main { background: rgb(255 255 255 / 0.02); box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.07); }
 .ic-roomc .onb { position: absolute; left: 18px; right: 16px; bottom: 0; display: flex; align-items: center; gap: 8px; min-height: 34px; font-size: 12.5px; line-height: 1.3; color: var(--stage-ink-2); }
 .ic-roomc .onb .ac-i { flex: none; color: var(--gold); }
 .ic-roomc .onb span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ic-roomc.is-here { box-shadow: inset 0 0 0 1.5px rgba(238, 237, 248, .4); }
 @container (max-width: 420px) { .ic-roomc .h .ac-notes-sign, .ic-roomc .h .ac-capture-sign { display: none; } }
-@container (max-width: 300px) { .ic-roomc .h > span:not(.hand-chip):not(.ac-time) { display: none; } }
+@container (max-width: 220px) { .ic-roomc .h .n { display: none; } }
 /* A room asking for help says so before it says how many are in it. */
-@container (max-width: 480px) { .ic-roomc.has-help .h > span:not(.hand-chip):not(.ac-time) { display: none; } }
+@container (max-width: 480px) { .ic-roomc.has-help .h .n { display: none; } }
 @container (max-width: 240px) { .ic-roomc .h .hand-chip { display: none; } }
 .ic-lane { position: absolute; z-index: 7; left: 0; right: 0; top: 0; height: 44px; display: flex; align-items: center; justify-content: center; pointer-events: none; }
 .ic-lane .quiet { display: flex; align-items: center; gap: 8px; font: 500 13.5px/1 var(--font-sans); color: var(--stage-ink-2); white-space: nowrap; }
@@ -659,12 +661,18 @@ button.dev-pick:hover, .dev-pick[data-state="open"] { background: color-mix(in s
 .ic-board { display: grid; gap: 8px; }
 .ic-col { display: flex; flex-direction: column; min-width: 0; min-height: 176px; padding: 8px; border-radius: var(--radius-md); background: var(--sunk); box-shadow: inset 0 0 0 1px transparent; transition: box-shadow var(--duration-1), background-color var(--duration-1); }
 .ic-col.is-drop { background: var(--horizon-soft); box-shadow: inset 0 0 0 1.5px var(--horizon); }
+/* The main room, over the rooms: you, and anyone staying with you, in a row. */
+.ic-col.is-main { min-height: 0; margin-bottom: 8px; }
+.ic-col.is-main .rps { display: flex; flex-wrap: wrap; gap: 6px; min-height: 34px; }
+.ic-col.is-main .ic-rp { max-width: 100%; margin-bottom: 0; }
 .ic-col .ch { display: flex; align-items: center; gap: 4px; height: 28px; margin-bottom: 4px; }
 .ic-col .ch .ac-i { flex: none; color: var(--ink-3); }
 .ic-col .cnt { padding-right: 4px; font: 500 11.5px/1 var(--font-sans); font-variant-numeric: tabular-nums; color: var(--ink-3); }
 .ic-rname { flex: 1; min-width: 0; height: 26px; padding: 0 6px; border: 0; border-radius: 6px; background: transparent; color: var(--ink); font: 600 13px/1 var(--font-sans); text-overflow: ellipsis; }
 .ic-rname:hover { background: var(--surface); }
 .ic-rname:focus { outline: none; background: var(--surface); box-shadow: inset 0 0 0 1.5px var(--focus); }
+.ic-rname.is-fixed { display: inline-flex; align-items: center; }
+.ic-rname.is-fixed:hover { background: transparent; }
 .ic-rp { display: flex; align-items: center; gap: 8px; height: 34px; margin-bottom: 4px; padding: 0 6px; border-radius: 8px; background: var(--surface); box-shadow: var(--shadow-1); font: 500 13px/1 var(--font-sans); color: var(--ink); cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; }
 .ic-rp .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ic-rp .ac-i { color: var(--ink-3); opacity: 0; transition: opacity var(--duration-1); }
@@ -681,6 +689,8 @@ button.dev-pick:hover, .dev-pick[data-state="open"] { background: color-mix(in s
 .ic-rline .from.is-fixed .ac-i { color: var(--ink-3); }
 .ic-rnote { display: flex; align-items: flex-start; gap: 8px; margin-top: 14px; font-size: 12.5px; line-height: 1.45; color: var(--ink-3); }
 .ic-rnote .ac-i { flex: none; margin-top: 1px; color: var(--sun-text); }
+.ic-rnote.is-caution { color: var(--ink-2); }
+.ic-rnote.is-caution .ac-i { color: var(--caution); }
 .ic-rnote + .ic-rnote { margin-top: 8px; }
 .ic-rtimer { display: flex; align-items: center; gap: 16px; }
 .ic-rtimer svg { flex: none; }
@@ -700,7 +710,7 @@ button.dev-pick:hover, .dev-pick[data-state="open"] { background: color-mix(in s
 .ic-rcard .line2 .ac-level i { background: var(--horizon); }
 .ic-rcard .line2 .ac-chip { height: 20px; padding: 0 7px; font-size: 11.5px; }
 /* An open room's name, edited where it's shown, and the people sent to it: each opens where else they can go. */
-.ic-rcard .top1 .ic-rname.is-live { height: 30px; margin-left: -6px; font-size: 13.5px; }
+.ic-rcard .top1 .ic-rname:is(.is-live, .is-fixed) { height: 30px; margin-left: -6px; font-size: 13.5px; }
 .ic-rchips { display: flex; flex-wrap: wrap; gap: 6px; }
 .ic-rchip { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; height: 28px; padding: 0 8px 0 4px; border-radius: var(--radius-pill); background: var(--surface); box-shadow: var(--shadow-1); color: var(--ink); font: 500 12.5px/1 var(--font-sans); transition: box-shadow var(--duration-1); }
 .ic-rchip:hover, .ic-rchip[data-state="open"] { box-shadow: var(--shadow-2); }

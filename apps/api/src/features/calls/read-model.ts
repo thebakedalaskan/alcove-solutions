@@ -4,7 +4,7 @@ import { type Db } from '../../db';
 import { me } from '../account/account';
 import * as space from './workspace';
 import * as boards from './boards';
-import { personOf } from '../account/portraits';
+import { personOf, portraitFor } from '../account/portraits';
 import { segments } from '../recordings/audio';
 import * as capture from './capture';
 import { MeetingManifest } from '../meetings/service';
@@ -25,9 +25,9 @@ import { chatReadFor } from './chat-read';
 /**
  * Rooms as the call shows them: the people sent to each, and who's in each now, by identity (the organizer too, in
  * the room they're visiting). A guest has only the link, so of the people sent to a room they see those in the call,
- * by name, and nobody's address.
+ * by name, and nobody's address. A guest sent to a room is shown by name only, to everyone, under their seat.
  */
-function breakoutsOf(s: Stored, v: Viewer, organizer: Person): Breakouts {
+function breakoutsOf(s: Stored, v: Viewer, organizer: Person, seats: Uint8Array): Breakouts {
   const here = s.people.filter((j) => j.status === 'in');
   const open = s.breakouts.open;
   const shown = (e: string): Person[] => {
@@ -35,8 +35,15 @@ function breakoutsOf(s: Stored, v: Viewer, organizer: Person): Breakouts {
     const j = here.find((x) => x.email?.toLowerCase() === e);
     return j ? [forViewer(v, personFor(j, j.identity, j.name, organizer), j.identity)] : [];
   };
+  const guestOf = (g: z.infer<typeof Room>['guests'][number]) => {
+    const j = here.find((x) => x.person === g.person) ?? (v.role === 'guest' ? undefined : s.people.findLast((x) => x.person === g.person));
+    if (!j) return [];
+    const seat = seatOf(seats, j);
+    const id = j.status === 'in' ? j.identity : seat;
+    return [{ seat, person: { id, name: g.name, email: '', portrait: portraitFor(id) } }];
+  };
   const roomOf = (r: z.infer<typeof Room>, live: boolean) => ({
-    id: r.id, name: r.name, people: r.emails.flatMap(shown),
+    id: r.id, name: r.name, people: r.emails.flatMap(shown), guests: r.guests.flatMap(guestOf),
     members: live ? here.filter((j) => placeOf(s, j) === r.id).map((j) => j.identity) : []
   });
   return {
@@ -97,7 +104,7 @@ export async function view(v: Viewer, db: Db, callId: string): Promise<CallState
       isOrganizer: j.role === 'host', hand: attention.hands.some((h) => h.participantId === j.identity), status: statuses.get(readerOf(j)) ?? null, othersPoint: !s.othersPointOff.includes(j.person)
     })),
     spotlight: s.spotlight && here.some((j) => j.identity === s.spotlight) ? s.spotlight : null,
-    breakouts: breakoutsOf(rooms, v, organizer),
+    breakouts: breakoutsOf(rooms, v, organizer, seats),
     waiting: v.isHost && s.host === v.pass.identity ? s.people.filter((j) => j.status === 'waiting' && admissionFresh(j) && j.admit === 'ask' && j.keysFor === row.mls_generation).map((j) => ({ id: j.identity, person: personFor(j, j.identity, j.name, organizer) })) : [],
     ringing: v.isOrganizer ? await rings.rungIn(o, db, row.meeting_item_id, here.flatMap((j) => (j.email ? [j.email.toLowerCase()] : []))) : [],
     // Connections on their way out of their group (the host's browser takes them out), shown as who they are.

@@ -348,6 +348,19 @@ describe('call attention', () => {
     await host.pinQuestion(id);
     await host.resolveQuestion(id, 'answered');
     expect((await read(first.call)).attention.questions[0]).toMatchObject({ status: 'answered', pinned: false });
+    // Answered by mistake: it takes no votes while it's closed, and whoever hosts reopens it, nobody else. Its votes are as they were, and it takes them again.
+    expect(await failure(second.call.voteQuestion(id, false))).toBe('conflict');
+    expect(await failure(first.call.resolveQuestion(id, 'open'))).toBe('forbidden');
+    await host.resolveQuestion(id, 'open');
+    expect((await read(first.call)).attention.questions[0]).toMatchObject({ status: 'open', votes: 1, voted: true });
+    await second.call.voteQuestion(id, false);
+    expect((await read(host)).attention.questions[0]).toMatchObject({ status: 'open', votes: 0 });
+    await first.call.voteQuestion(id, true);
+    // Dismissed, it comes back the same way.
+    await host.resolveQuestion(id, 'dismissed');
+    expect(await failure(second.call.resolveQuestion(id, 'open'))).toBe('forbidden');
+    await host.resolveQuestion(id, 'open');
+    expect((await read(second.call)).attention.questions[0]).toMatchObject({ status: 'open', votes: 1, voted: true, pinned: false });
     const sealed = await h.pool.query<{ ciphertext: Buffer }>('SELECT ciphertext FROM call_attention WHERE owner_id = $1 AND call_id = $2', [organizer.ownerId, host.ticket.callId]);
     expect(sealed.rows).toHaveLength(1);
     expect(sealed.rows[0]?.ciphertext.toString('utf8')).not.toContain(canary);
@@ -507,7 +520,7 @@ describe('call attention', () => {
     await until(async () => (await read(host)).attention.place === north.id);
     expect((await read(host)).attention.questions).toEqual([]);
     expect(await failure(host.pinQuestion('question_room_private_001'))).toBe('not-found');
-    host.moveToRoom(outsider.email, north.id);
+    host.moveToRoom({ email: outsider.email }, north.id);
     await until(async () => (await read(b)).attention.place === north.id);
     expect((await read(b)).attention.questions).toEqual([]);
     expect(await failure(b.voteQuestion('question_room_private_001', true))).toBe('not-found');
