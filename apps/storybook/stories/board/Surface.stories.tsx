@@ -112,14 +112,14 @@ export const RoomsBack: BoardStory = {
 
 /**
  * The same board on its own page, with no call round it: who else is here, and Start a call here. People can keep adding,
- * and the bar has no Timer, Vote or Present, as there's no session to run.
+ * and the bar has no Vote, as there's no call to run one.
  */
 export const OnItsPage: BoardStory = { name: 'On its page', args: { mode: 'page', others: [{ who: 'priya', at: { x: 575, y: 214 } }, { who: 'kofi', at: { x: 980, y: 430 } }], talking: [] } };
 export const OnItsPageDark: BoardStory = { ...OnItsPage, name: 'On its page, dark', globals: { theme: 'dark' } };
 /**
  * For someone given view access, in a call: the tools and undo go away, and they can still look round, follow people, read
- * comments and talk. The bar keeps Timer, Vote and Present where they are, disabled, each saying why in its tip, and More, which
- * has nothing in it that changes the board. The call passes `acts`.
+ * comments and talk. The bar keeps More, which has nothing in it that changes the board. With the call's vote round it, Vote
+ * stays where it is too, disabled, saying why in its tip (Components/Board/BoardBar, View only, in a call).
  */
 export const ViewOnly: BoardStory = { name: 'View only', args: { mode: 'read', seal: 'View only', sealIcon: 'eye', acts: true, board: () => retroWithComments() } };
 /** More, for someone with view access: a link, the board as an image or a PDF, and Night board. */

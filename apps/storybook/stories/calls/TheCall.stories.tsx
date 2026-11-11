@@ -313,7 +313,10 @@ export const FollowingInFocus: PageStory = {
 const priyaBoard = hers({ board: RETRO, cues: [...at(PRIYA_PRESENTS - 1, { do: 'open-board', who: PRIYA, template: 'retro' }), ...at(PRIYA_PRESENTS, presentsBoard(PRIYA, 1))] });
 const herBoard = 'Launch review';
 const followingHerBoard = step('Priya presents the board she made, from Could improve: you follow her', () => toldThat(`Priya is presenting ${herBoard}, and you’re following.`));
-/** Priya presents a board: you see her frame, and can unfollow to add to it. */
+/**
+ * Priya presents a board: you follow her view, with your tools to hand, and anything of your own on it takes you off following,
+ * from where you are.
+ */
 export const PriyaPresentsABoard: PageStory = { ...moment(priyaBoard, followingHerBoard), name: 'Priya presents a board' };
 /** Close: closed for you, and while she presents it, its tile takes you back. */
 export const PriyasBoardClosedForYou: PageStory = {
