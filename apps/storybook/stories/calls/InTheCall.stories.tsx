@@ -337,6 +337,13 @@ export const CloseSaysThePeopleComeBack = {
     await step('Point at Close', async () => { await userEvent.hover(await within(await frameOf('Priya’s screen')).findByRole('button', { name: 'Close Priya’s screen' })); });
   })
 };
+/** Your own screen's bar: Stop sharing, for everyone, and Close beside it, which only puts it away for you. (Notes are off here.) */
+export const YourScreensBar = inCall({ scenario: 'call-soon', call: REVIEW, script: { here: REVIEWERS, notes: 'off' } }, {
+  name: 'Your screen’s bar',
+  play: plays(clearSide, async (c) => {
+    await c.step('Share a tab', async () => { await shareATab(c); await frameOf('Your screen'); });
+  })
+});
 /**
  * Your own screen has Close as well as Stop sharing: Close puts it away for you while everyone still sees it. It's a tile with
  * the people, who fill your stage again, and the tile brings it back. (Notes are off here, so Share doesn't ask about them.)
