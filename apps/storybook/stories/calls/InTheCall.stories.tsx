@@ -141,24 +141,50 @@ export const TabAttentionWithoutNotifications = inCall({
   script: { here: REVIEWERS, cues: [...at(2, chats(AIKO, '@Art Vandelay, can you review the checklist?', ['me'])), ...at(4, knocks(DIEGO))] }
 }, { parameters: { opening: { browser: { notifications: 'denied' } } } });
 
+/**
+ * Writes on Chat's line to everyone once it can take words (it waits for the call's keys first), as typing does: the line's
+ * own value, then the input event it answers. user-event's typing never reaches this line, so its stories showed nothing.
+ */
+const toEveryone = async (words: string) => {
+  const line = await screen.findByRole('combobox', { name: 'Message everyone' });
+  await waitFor(() => { if (line instanceof HTMLInputElement && line.disabled) throw new Error('Chat is still getting the call’s keys.'); }, { timeout: 8000 });
+  if (!(line instanceof HTMLInputElement)) return line;
+  line.focus();
+  Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(line, `${line.value}${words}`);
+  line.setSelectionRange(line.value.length, line.value.length);
+  line.dispatchEvent(new Event('input', { bubbles: true }));
+  return line;
+};
+
 /** Type @ without leaving the composer: arrows choose someone in this room, Enter inserts their identity. */
 export const MentionPicker = {
   ...FourOfYou, name: 'Mention someone in chat',
-  play: plays(reach('Chat'), async ({ userEvent }) => {
-    await userEvent.type(await screen.findByRole('combobox', { name: 'Message everyone' }), '@');
+  play: plays(reach('Chat'), async () => {
+    await toEveryone('@');
   })
 };
 export const MentionPickerPhone = phone(MentionPicker);
 export const MentionPickerLight = light(MentionPicker);
 export const MentionPickerLightPhone = phone(MentionPickerLight);
 
+/**
+ * Each letter after @ narrows the list to the people whose name, a word of it, or their address before the @ starts with
+ * what's typed: @k is Kofi alone. The address everyone shares doesn't count, so one letter of it finds nobody.
+ */
+export const MentionPickerNarrows = {
+  ...FourOfYou, name: 'Mention someone in chat, narrowed as you type',
+  play: plays(reach('Chat'), async () => {
+    await toEveryone('@k');
+  })
+};
+
 /** A selected mention has a chip in the composer as well as its words on the line. */
 export const SelectedMention = {
   ...FourOfYou, name: 'A selected chat mention',
   play: plays(reach('Chat'), async ({ userEvent }) => {
-    await userEvent.type(await screen.findByRole('combobox', { name: 'Message everyone' }), '@Pri');
+    await toEveryone('@Pri');
     await userEvent.keyboard('{Enter}');
-    await userEvent.type(await screen.findByRole('combobox', { name: 'Message everyone' }), 'can you review this?');
+    await toEveryone('can you review this?');
   })
 };
 

@@ -8,6 +8,25 @@ export const isEmail = (s: string) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(s.tri
 export const typedIn = (query: string) => query.trim().replace(/[,;\s]+$/, '').toLowerCase();
 /** Lower case without accents, for matching what's typed against a name. */
 export const fold = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+const spaced = (s: string) => fold(s).trim().replace(/\s+/gu, ' ');
+/**
+ * The people whose name, or a word of it, or their address before the @, starts with what was typed after an `@`, those
+ * whose name starts with it first. "pr", "ram" and "priya r" all find Priya Raman, and a letter of the address everyone
+ * shares finds nobody by itself, so the list narrows with each letter.
+ */
+export function startingWith<T>(typed: string, people: readonly T[], who: (item: T) => Named): T[] {
+  const t = spaced(typed);
+  if (!t) return [...people];
+  const rank = (p: Named): number => {
+    const name = spaced(p.name);
+    if (name.startsWith(t)) return 0;
+    if (name.split(/[\s'\u2019.-]+/u).some((w) => w.startsWith(t))) return 1;
+    const local = fold(p.email.split('@')[0] ?? '');
+    return local.startsWith(t) || local.split(/[._+-]+/u).some((w) => w.startsWith(t)) ? 2 : -1;
+  };
+  return people.map((item, at) => ({ item, at, rank: rank(who(item)) })).filter((r) => r.rank >= 0)
+    .sort((a, b) => a.rank - b.rank || a.at - b.at).map((r) => r.item);
+}
 /** The name in an address, when it starts with one: "jamie.lee@…" is Jamie. */
 const nameInAddress = (email: string) => {
   const word = /^\p{L}{2,}(?=[._+@-])/u.exec(email)?.[0];
