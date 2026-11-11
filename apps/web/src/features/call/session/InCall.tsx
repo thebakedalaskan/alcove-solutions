@@ -40,7 +40,7 @@ import { BOARD_SHOT_TOPIC, keepShot, shotHeard, shotNotice, useCallBoard, type S
 import { useCaptions } from '~/features/call/notes/captions';
 import { CamMenu, MicMenu } from '~/features/call/media/DevicePickers';
 import { ChooseBackground } from '~/features/call/media/backgrounds/ChooseBackground';
-import { useDevices } from '~/features/call/media/devices';
+import { deviceChoices, useDevices } from '~/features/call/media/devices';
 import { HostSpill, organizerFirst } from '~/features/call/rooms/Hosting';
 import { LeaveSheet, type Ended, type NextHost } from '~/features/call/session/LeaveSheet';
 import { copyUrl, shownUrl, useCopyLink } from '~/features/call/session/links';
@@ -1141,7 +1141,9 @@ export function InCall({ session }: { session: CallSession }) {
   };
 
   /* ---------- the panel's people ---------- */
-  const micLabel = devices.mic.find((d) => d.id === m.micId)?.label;
+  /* The microphone in use, named as its menu names it ("AirPods (Bluetooth)", not Chrome's "Default - AirPods (Bluetooth)"). */
+  const micChoices = deviceChoices(devices.mic, m.micId);
+  const micLabel = devices.mic.some((d) => d.id === m.micId) ? micChoices.rows.find((r) => r.id === micChoices.on)?.name : undefined;
   const knownIds = new Set(told.participants.map((p) => p.id));
   const roleOf = (p: CallState['participants'][number]) => (p.isOrganizer ? 'Organizer' : !knownIds.has(p.id) || viewerGuest ? 'In the call' : p.person.email ? 'Invited' : 'Guest');
   const roomOf = (id: string) => open?.rooms.find((r) => r.members.includes(id))?.name;
