@@ -5,10 +5,10 @@
  * group leaves the screen. Choosing a device doesn't open it. The camera is never opened: you see yourself when you
  * join a call, never before.
  */
-import { Button, Icon, MicLevel, Select, SettingFact, SettingRow, SettingsGroup, SettingsPanel, Tooltip, cn, useToast, type SelectOption } from '@alcove/ui';
+import { Button, Icon, MicLevel, Select, SettingFact, SettingRow, SettingsGroup, SettingsPanel, Tooltip, cn, useToast } from '@alcove/ui';
 import { useEffect, useRef, useState } from 'react';
 import { stateOf, troubles } from '~/features/call/media/access';
-import { canChooseSpeaker, permissions, plainName, readPrefs, rememberDevice, useDevices, watchPermissions, type Capture, type Device, type Permission } from '~/features/call/media/devices';
+import { canChooseSpeaker, deviceOptions, permissions, readPrefs, rememberDevice, useDevices, watchPermissions, type Capture, type Permission } from '~/features/call/media/devices';
 import { LocalMedia } from '~/features/call/media/media';
 import { useLive } from '~/lib/live';
 import { Setting, SwitchSetting, useSaved } from './save';
@@ -59,14 +59,6 @@ function useMicLevel(media: LocalMedia, on: boolean): number {
   return on ? level : 0;
 }
 
-/** A device as people know it; the system's own choice says which device that is now. */
-const option = (d: Device): SelectOption<string> => ({
-  value: d.id,
-  label: d.id === 'default' ? `Same as system (${plainName(d.label)})` : d.id === 'communications' ? `Communications (${plainName(d.label)})` : plainName(d.label)
-});
-/** The first of `ids` that's plugged in, else the first listed (the browser's default comes first). */
-const pick = (devices: Device[], ...ids: (string | null | undefined)[]) => ids.find((id) => id && devices.some((d) => d.id === id)) ?? devices[0]?.id;
-
 export function AudioGroup() {
   const [media] = useState(() => new LocalMedia());
   const m = useLive(media);
@@ -101,12 +93,13 @@ export function AudioGroup() {
 
   // What went wrong the last time the level was checked, until it's checked again.
   const trouble = tried ? troubles(m, ['mic'])[0] : undefined;
-  const micId = pick(devices.mic, checking ? m.micId : undefined, mic);
-  const speakerId = pick(devices.speaker, speaker);
-  const camId = pick(devices.cam, cam);
-  const hasMics = devices.mic.length > 0 && micId !== undefined;
+  // The same lists as the call's menus: each device once, the system's saying so, and Follow your system while one is pinned.
+  const mics = deviceOptions(devices.mic, (checking && m.micId) || mic);
+  const speakers = deviceOptions(devices.speaker, speaker);
+  const cams = deviceOptions(devices.cam, cam);
+  const hasMics = devices.mic.length > 0 && mics.value !== undefined;
   const canPick = canChooseSpeaker();
-  const hasSpeakers = canPick && devices.speaker.length > 0 && speakerId !== undefined;
+  const hasSpeakers = canPick && devices.speaker.length > 0 && speakers.value !== undefined;
 
   // A refused microphone takes Check the level with it, and one that starts takes Try again: focus stays on the row.
   const micRow = useRef<HTMLDivElement>(null);
@@ -151,7 +144,7 @@ export function AudioGroup() {
           <Setting ref={micRow} tabIndex={-1} stack label="Microphone" help={checking ? 'Speak, and watch it move. Nothing is recorded.' : perms?.mic === 'prompt' ? 'Your browser asks first.' : undefined}
             control={(
               <>
-                {hasMics && <Select label="Microphone" value={micId} options={devices.mic.map(option)} onChange={chooseMic} />}
+                {hasMics && <Select label="Microphone" value={mics.value} options={mics.options} onChange={chooseMic} />}
                 <div className={cn('set-lvl', checking && 'is-on')}>
                   {checking && <MicLevel level={level} bars={LEVEL_BARS} className="set-ticks" />}
                   <Tooltip label={checking ? 'Stop checking' : `Opens the microphone for ${CHECK_SECONDS} seconds. Nothing is recorded.`}>
@@ -166,15 +159,15 @@ export function AudioGroup() {
         <Setting stack label="Speaker" help={canPick ? undefined : 'This browser uses the speaker your system uses. Change it in your computer’s sound settings.'}
           control={(
             <>
-              {hasSpeakers && <Select label="Speaker" value={speakerId} options={devices.speaker.map(option)} onChange={chooseSpeaker} />}
+              {hasSpeakers && <Select label="Speaker" value={speakers.value} options={speakers.options} onChange={chooseSpeaker} />}
               {!canPick && <SettingFact>System speaker</SettingFact>}
               <button type="button" className={cn('set-test', playing && 'is-busy', !hasSpeakers && 'is-flush')} aria-disabled={playing || undefined} onClick={() => void test()}>
                 <Icon name="speaker" size={15} />{playing ? 'Playing' : 'Play test sound'}
               </button>
             </>
           )} />
-        {devices.cam.length > 0 && camId
-          ? <Setting label="Camera" control={<Select label="Camera" value={camId} options={devices.cam.map(option)} onChange={(id) => { rememberDevice('cam', id); setCam(id); saved('Camera'); }} />} />
+        {devices.cam.length > 0 && cams.value !== undefined
+          ? <Setting label="Camera" control={<Select label="Camera" value={cams.value} options={cams.options} onChange={(id) => { rememberDevice('cam', id); setCam(id); saved('Camera'); }} />} />
           : perms?.cam === 'denied' ? <SettingRow label="Camera" problem help="Allow the camera for this site in your browser’s settings." control={<SettingFact icon="videoOff" tone="no">Blocked</SettingFact>} />
             : perms?.cam === 'granted' ? <SettingRow label="Camera" control={<SettingFact icon="videoOff">No camera</SettingFact>} />
               : <SettingRow label="Camera" help="Allow it when you next join a call, then pick one here." control={<SettingFact icon="videoOff">Not allowed yet</SettingFact>} />}

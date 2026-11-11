@@ -23,7 +23,10 @@ export const StartedNowPhone = phone(StartedNow);
 export const Scheduled = atTheDoor({ scenario: 'call-soon', call: REVIEW });
 export const ScheduledPhone = phone(Scheduled);
 
-/** The microphone's picker opens its menu: each microphone, a tick and the level on the one in use, Test your microphone, and noise reduction. */
+/**
+ * The microphone's picker opens its menu: each microphone once, Your system's choice under the one the computer uses, a tick
+ * and the level on the one in use (the system's, with nothing picked), Test your microphone, and noise reduction.
+ */
 export const MicrophoneMenu = atTheDoor({ scenario: 'call-soon', call: REVIEW }, {
   play: async ({ canvas, userEvent, step }) => {
     await step('Open the microphone’s picker', async () => {
@@ -32,6 +35,18 @@ export const MicrophoneMenu = atTheDoor({ scenario: 'call-soon', call: REVIEW },
   }
 });
 export const MicrophoneMenuPhone = phone(MicrophoneMenu);
+/** Picking a microphone keeps the call on it: the tick moves, and Follow your system goes last, to go back. */
+export const MicrophonePicked = atTheDoor({ scenario: 'call-soon', call: REVIEW }, {
+  play: async ({ canvas, userEvent, step }) => {
+    await step('Open the microphone’s picker', async () => {
+      await userEvent.click(await canvas.findByRole('button', { name: /^Microphone:/ }, { timeout: 10_000 }));
+    });
+    await step('Pick the desk microphone. Follow your system comes in last', async () => {
+      await userEvent.click(await screen.findByRole('menuitemradio', { name: 'Desk microphone' }, { timeout: 8000 }));
+      await screen.findByRole('menuitemradio', { name: 'Follow your system' }, { timeout: 8000 });
+    });
+  }
+});
 
 /** Test your microphone, in its menu: it listens for three seconds, the bar filling, then plays them back. Nothing is kept. */
 export const TestingYourMicrophone = atTheDoor({ scenario: 'call-soon', call: REVIEW }, {
@@ -45,11 +60,23 @@ export const TestingYourMicrophone = atTheDoor({ scenario: 'call-soon', call: RE
   }
 });
 
-/** The speaker's picker: each speaker, and Play a test sound through the one chosen. */
+/** The speaker's picker: each speaker once, Your system's choice ticked with nothing picked, and Play a test sound through it. */
 export const SpeakerMenu = atTheDoor({ scenario: 'call-soon', call: REVIEW }, {
   play: async ({ canvas, userEvent, step }) => {
     await step('Open the speaker’s picker', async () => {
       await userEvent.click(await canvas.findByRole('button', { name: /^Speaker:/ }, { timeout: 10_000 }));
+    });
+  }
+});
+/** Picking a speaker keeps calls on it, and Follow your system goes last. */
+export const SpeakerPicked = atTheDoor({ scenario: 'call-soon', call: REVIEW }, {
+  play: async ({ canvas, userEvent, step }) => {
+    await step('Open the speaker’s picker', async () => {
+      await userEvent.click(await canvas.findByRole('button', { name: /^Speaker:/ }, { timeout: 10_000 }));
+    });
+    await step('Pick the headset. Follow your system comes in last', async () => {
+      await userEvent.click(await screen.findByRole('menuitemradio', { name: 'Headset' }, { timeout: 8000 }));
+      await screen.findByRole('menuitemradio', { name: 'Follow your system' }, { timeout: 8000 });
     });
   }
 });

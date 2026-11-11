@@ -236,8 +236,10 @@ started now don't go on the calendar: share the link. Everyone invited gets the 
 Pre-join (`/join/<code>`) shows your camera and a mic level, mic and camera switches, the title, and what the call
 captures and who gets the notes. Under the preview sit a calm picker each for the microphone, camera and speaker,
 each showing the device in use (the microphone's with its level moving as you speak), then **Background**. A picker
-opens a menu in the call's own style, not the browser's list: the devices with a tick on the one in use, each by its
-full name (the one that follows the system says so). The microphone's menu has **Test your microphone**, which
+opens a menu in the call's own style, not the browser's list: each device once, by its full name, with a tick on the
+one in use, and **Your system’s choice** under the one your computer uses. With nothing picked, that one is ticked and the
+call follows your computer when it switches; picking a device keeps the call on it, and then **Follow your system**, last,
+goes back. The microphone's menu has **Test your microphone**, which
 listens for three seconds (a bar fills, the seconds count down) and plays them back through the speaker you chose,
 without uploading or keeping anything, and **Noise reduction**. The speaker's has **Play a test sound**; where the
 browser can't choose a speaker, its picker says calls play through your system's speaker, and the sound plays there.
@@ -1312,7 +1314,7 @@ Storybook journeys **8.44–8.46** continue the same review after the call:
 last moment of the evening, and the recorder stands on the horizon where the sun would: dark until something is recorded.
 
 - **The recorder**, in the middle of the sky: a name for the recording (left empty, it's "Notes from the room"),
-  **Start recording**, the microphone it will use, from this browser's microphones (the same choice calls use), and
+  **Start recording**, the microphone it will use, from this browser's microphones (the same choice and list calls use), and
   under them the reminder to let everyone here know before you start.
   Choosing one doesn't open it. Until the browser has named them it says **Default microphone**. **Check the level**
   opens the microphone: the orb's rim lights up and its reflection on the water moves with your voice, recording nothing;
@@ -1457,7 +1459,9 @@ Detailed while the oldest request fails.
   during a call (**Notes written by**, on the capture panel) or when you write a note's notes again. Then **Recording in
   the room**: **Record without a connection** (on by default), and, while something waits here to upload, **On this
   device**: how many recordings, and how much room, with **See them** (Record's list).
-- **Audio and video**: this browser's choices, the ones the join screen and the call use; choosing one doesn't open it.
+- **Audio and video**: this browser's choices, the ones the join screen and the call use, listed as the call lists them
+  (each device once, **Your system’s choice** on the one your computer uses, and **Follow your system** while one is
+  picked); choosing one doesn't open it.
   A browser names devices only once they're allowed, so until then the microphone and speaker have no list. Nothing
   opens by itself: **Check the level** opens the microphone for eight seconds (the browser asks first if it hasn't been
   allowed), its level moves as you speak, and **Stop** counts down; it records nothing, and closes sooner when stopped

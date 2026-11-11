@@ -39,10 +39,11 @@ export const YourLobby: PageStory = {
       await userEvent.click(await screen.findByRole('switch', { name: 'Notes', checked: false }, SOON));
       await screen.findByText('Everyone invited gets them', {}, SOON);
     });
-    await step('The microphone’s picker opens its menu. Pick another: the tick moves, and its level moves as you speak', async () => {
+    await step('The microphone’s picker opens its menu, each microphone once. Pick another: the tick and its level move, and Follow your system comes in last', async () => {
       await userEvent.click(screen.getByRole('button', { name: /^Microphone:/ }));
       await userEvent.click(await screen.findByRole('menuitemradio', { name: 'Desk microphone' }, SOON));
       await screen.findByRole('menuitemradio', { name: 'Desk microphone', checked: true }, SOON);
+      await screen.findByRole('menuitemradio', { name: 'Follow your system' }, SOON);
     });
     await step('Test your microphone, in the same menu, listens for three seconds and plays them back, keeping nothing', async () => {
       await userEvent.click(screen.getByRole('button', { name: 'Test your microphone' }));

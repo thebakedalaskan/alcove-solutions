@@ -2568,6 +2568,13 @@ uploads), Alcove is asked who's signed in (`GET /v1/session`): only the account 
   for each device, in `MediaSnapshot.changes`, until a device of that kind is picked). Choices live in `localStorage`
   (`alcove.devices`, parsed with `DevicePrefsSchema`) in this browser only; nothing about devices is sent.
   Browsers that hand out new device IDs (after clearing site data, say) start from their defaults again.
+- **What to pick from** (`deviceChoices` in `media/devices.ts`, and `deviceOptions` for a Select): the call's menus,
+  Settings › Audio and video and Record list the same rows. Chrome lists `default` (and on Windows `communications`)
+  beside each real microphone and speaker, under the same device's name; they aren't rows. The device `default` points
+  at (the one in its `groupId`, else the one with its name) says **Your system’s choice**, and is ticked while the device
+  in use is `default` or nothing is chosen yet: the call follows the system then. Picking a device pins it (its own ID is
+  remembered); while one is pinned, **Follow your system** goes last, and picks `default` again. Cameras, Firefox and
+  Safari list no such entries, so their lists are the browser's own.
 - **Permission and device state.** Before asking, `LocalMedia` reads the Permissions API (`microphone`,
   `camera`; Chrome, Firefox 132+, Safari 16+) and never asks for a device the browser already refuses. It asks
   for both together and, if that fails, for each alone, so a blocked, missing or busy camera never costs the
