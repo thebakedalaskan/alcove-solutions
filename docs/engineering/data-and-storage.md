@@ -542,9 +542,13 @@ process readable and is sealed there (`apps/api/src/features/workspaces/media.ts
   `apps/web/src/features/workspace/DocumentMedia.tsx`; the app's policy has the API's origin in `frame-src`). The page itself
   never follows the link: the API is on an origin of its own, where a link's `download` doesn't count, so the page would
   navigate, which the browser takes for leaving it until the answer turns out to be a download, and a call on the page
-  would go. Each frame goes five minutes later, when the browser has long had its download. An answer to a range sends at
+  would go. Each frame goes five minutes later, when the browser has long had its download. An answer to a player's range sends at
   most four pieces (16 MiB), stopping where a piece does, and says so with its `Content-Range`: a browser asks again for
-  the rest, and access is asked about again each time. Read without a
+  the rest, and access is asked about again each time. Every answer has a strong `ETag`, a digest of the file's sealed
+  info, which never changes and says nothing about it. A download that stopped (cut at `MEDIA_READ_MS`, or a connection
+  lost) asks for the rest with it (`If-Range`), and a download's range is answered as far as it asked, past four pieces
+  without a length, so it picks up where it was; against anything but that `ETag` the range doesn't count, and the whole
+  file comes again. Read without a
   range, a file over 16 MiB streams without a length, because Cloud Run refuses an HTTP/1 response that says it's over 32
   MiB, and asks again every four pieces. The first piece is read before anything is sent, so its failure is an ordinary
   answer; a later one breaks the connection, so a file that couldn't be read is never taken for whole.

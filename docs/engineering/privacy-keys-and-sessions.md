@@ -670,7 +670,7 @@ for (one workspace, document and file), by opaque IDs and nothing else, and it d
 
 Anything off the list of what can be shown in place only downloads, what a file is served as comes from its sealed info and
 never the request, and every answer says `nosniff` and `no-store`, with a Content-Security-Policy that lets nothing run if one is
-opened by itself. Its URL never reaches a log: paths show `/v1/media/:token`, and the [scrubber](logging-and-errors.md#privacy-rules-for-logs)
+opened by itself, and an `ETag` that's a digest of its sealed info, so it names the file without saying anything about it. Its URL never reaches a log: paths show `/v1/media/:token`, and the [scrubber](logging-and-errors.md#privacy-rules-for-logs)
 takes a token out of anything that quotes a file's URL, a browser's report of a picture that failed among them.
 
 ### Brought to a call
@@ -739,7 +739,7 @@ for (one workspace, document and file), by opaque IDs and nothing else, and it d
 
 Anything off the list of what can be shown in place only downloads, what a file is served as comes from its sealed info and
 never the request, and every answer says `nosniff` and `no-store`, with a Content-Security-Policy that lets nothing run if one is
-opened by itself. Its URL never reaches a log: paths show `/v1/media/:token`, and the [scrubber](logging-and-errors.md#privacy-rules-for-logs)
+opened by itself, and an `ETag` that's a digest of its sealed info, so it names the file without saying anything about it. Its URL never reaches a log: paths show `/v1/media/:token`, and the [scrubber](logging-and-errors.md#privacy-rules-for-logs)
 takes a token out of anything that quotes a file's URL, a browser's report of a picture that failed among them.
 
 ## Requests
