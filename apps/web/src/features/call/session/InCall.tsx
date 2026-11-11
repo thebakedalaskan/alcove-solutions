@@ -65,6 +65,7 @@ import { useBoardPresenting } from '~/features/call/boards/boardPresenting';
 import { useWorkspacePresenting } from '~/features/call/workspace/presenting';
 import { AFTER_ASIDE, GAP, PHONE_W, asideOnHorizon, focusRoom, inRow, placeMain } from '~/features/call/layout/panels';
 import { PeopleAside } from '~/features/call/layout/PeopleAside';
+import { TileHint } from '~/features/call/layout/TileHint';
 import { CaptureButton, NotesAsks, askedTag, organizerName, useCaptureAlerts } from '~/features/call/notes/Capture';
 import { unreadChatMentions, useCallAttention } from './attention';
 import { captureHere } from '~/lib/capture';
@@ -1920,6 +1921,7 @@ export function InCall({ session }: { session: CallSession }) {
                 together={together} bar={bar} caption={capNode} rooms={roomsShown ? stageRooms : null} onSpotlight={setSpot} onPin={setPin} onSelf={setSelf} onCustom={onCustom} volumes={volumes}
                 onMorePeople={() => openSide('people')} board={stageBoard} menuOf={personMenu} />
               {aside && <PeopleAside box={aside} hidden={asideHidden} row={inRow(mainW, phone)} onToggle={togglePeople} />}
+              <TileHint area={callArea.ref} account={owner} />
               <motion.div className="ic-frame" initial={false} animate={{ left: 0, top: 0, width: clearW, height: size.h }} transition={reduce ? { duration: 0 } : GLIDE}>
                 {hosting && side.view !== 'people' && state.waiting.length > 0 && (
                   <div className="rg-knocks">

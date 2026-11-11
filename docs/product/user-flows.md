@@ -365,7 +365,9 @@ time, slides in on the right.
   beside the stage on a wide screen while notes are on. Nothing on your side changes anyone else's screen.
 - **Your view.** There are no layouts to choose: the stage lays itself out, everyone in a grid, and someone doing most
   of the talking on the main stage over a strip of everyone else until you arrange anything yourself. Drag a tile to
-  move it, and pull its corner to make it bigger; once you do, the stage is a grid again and stays as you left it.
+  move it, and pull its corner to make it bigger; once you do, the stage is a grid again and stays as you left it. The
+  first time you point at a tile you can move, it says so under the tile ("Drag a tile to move it", and in the grid "Pull
+  its corner to make it bigger"), once in this browser.
   Beside what's open the people stand in a column of tiles on the right that narrows with the stage, under the frame's
   bar, or a row of arches over it on a narrow stage and on a phone. **Hide the people**, at the top of the column (or the
   end of the row), and **⇧P** hide them, standing small on the horizon beside the dock, where whoever's talking or has a

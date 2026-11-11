@@ -5,12 +5,14 @@
  * its right: Board, Workspace, Notes, Chat and who's here), your side, and the dock with More, and Settings from it.
  */
 import type { Meta } from '@storybook/react-vite';
-import { screen, within } from 'storybook/test';
+import { screen, waitFor, within } from 'storybook/test';
+import { tileHintKey } from '~/features/call/layout/view';
 import { at, chats, floats, reacts, joins, knocks, leaves, line, lowersHand, mutes, nudges, opensBoard, raisesHand, says, shares, unmutes } from '../../src/api/script';
 import { MORE, clearSide, inCall, light, narrow, phone, plays, press, reach, settings } from '../../src/call';
 import { talking } from '../../src/browser';
 import { pages, type PageArgs, type PageStory } from '../../src/page';
 import { iso } from '../../src/world/clock';
+import { ME_ID } from '../../src/world/people';
 import { RETRO } from './boards';
 import { close, frameOf, openCallBoard, shareATab, tileOf } from './plays';
 import { AIKO, ALL_HANDS, CHECK_IN, CHECKLIST, DIEGO, EVERYONE, KOFI, KOFI_TALKS, MAYA, ONE_ON_ONE, PRIYA, REVIEW, REVIEW_SUMMARY, REVIEW_TALK, SAM } from './talk';
@@ -350,6 +352,35 @@ export const PutYourScreenAway = inCall({ scenario: 'call-soon', call: REVIEW, s
     });
   })
 });
+
+/** Forgets that this browser was shown what a tile does, so the first tile pointed at says it again. */
+const firstTime = (story: PageStory): PageStory => {
+  const b = story.beforeEach;
+  const forget = () => { for (const k of [tileHintKey(ME_ID), tileHintKey(null)]) localStorage.removeItem(k); };
+  return { ...story, beforeEach: [...(Array.isArray(b) ? b : b ? [b] : []), forget] };
+};
+/** A tile that can be moved, as a pointer finds one: not whoever Alcove picked to lead, nor your own picture in a corner. */
+const movable = () => waitFor(() => {
+  const tile = screen.getAllByRole('group').find((el) => el.classList.contains('can-drag') && !el.classList.contains('is-corner'));
+  if (!tile) throw new Error('No tile can be moved yet.');
+  return tile;
+}, { timeout: 10000 });
+/** The first time you point at a tile, it says what you can do with one: drag it to move it, and pull its corner to make it bigger. */
+export const FirstTimeYouPointAtATile = {
+  ...firstTime(FourOfYou), name: 'The first time you point at a tile',
+  play: plays(clearSide, async ({ userEvent, step }) => {
+    await step('Point at a tile', async () => { await userEvent.hover(await movable()); });
+    await step('It says so, once', async () => { await screen.findByText('Drag a tile to move it', {}, { timeout: 8000 }); });
+  })
+};
+/** Beside what's open, a tile in the column moves, and nothing's made bigger there. */
+export const FirstTimeYouPointAtATileBesideAShare = {
+  ...firstTime(SHARING), name: 'The first time you point at a tile, beside what’s open',
+  play: plays(clearSide, priyasScreen, async ({ userEvent, step }) => {
+    await step('Point at a tile', async () => { await userEvent.hover(await movable()); });
+    await step('It says so, once', async () => { await screen.findByText('Drag a tile to move it', {}, { timeout: 8000 }); });
+  })
+};
 
 /**
  * Beside a board the people stand in a column: drag someone's tile up or down it, and letting go only puts it there. A press

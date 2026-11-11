@@ -2100,7 +2100,11 @@ steps (`ShareMenu.tsx`); and the call's keys are `session/useCallShortcuts.ts`. 
   tile, or hidden, folded into a chip there). Beside what's open the people are a column of tiles, or a row of arches on a
   stage under 760 px and on a phone (`panels.ts`), whatever was kept. Reset layout, in More while there's something to
   put back (`isCustom`), puts everything back as the stage lays it out (where you see yourself stays as it is, and what's
-  open stays open), with Undo in its toast, as unpinning everyone has.
+  open stays open), with Undo in its toast, as unpinning everyone has. Testers asked for preset layouts or tiles that
+  snap to drop zones again (#227): both stay out, as #178 and #197 decided, and what's there is easier to find instead.
+  The first time the pointer rests on a tile you can move (`TileHint.tsx`, watching the call's area, so `Stage.tsx` is
+  untouched), a `Coachmark` under it says "Drag a tile to move it", and in the grid "Pull its corner to make it bigger";
+  it goes after a few seconds or at the next press.
 - **What's remembered where.** How you like calls (where you see yourself and its corner: `CallViewPrefsSchema`) is in
   `localStorage` for your account, `alcove.callView.<ownerId>` (one set for a browser without an account), because it's
   about you, not about anyone in a call. So is how you like the main area (`CallPanelsSchema`: whether the people beside
@@ -2108,7 +2112,8 @@ steps (`ShareMenu.tsx`); and the call's keys are `session/useCallShortcuts.ts`. 
   starts the way you left this one; it never names a person, a call or a share. Both were written with layout modes
   before the stage laid itself out: a kept `mode` (Auto, Speaker or Grid) is dropped as the preferences are read, and the
   people kept as `arches` read as beside what's open (`tiles`), so nobody's kept choices are lost or refused, and the next
-  save writes the current shape. Your side isn't part of it: it shows one thing at a
+  save writes the current shape. Whether you've been told what a tile does is `alcove.callTileHint.<ownerId>`
+  (`alcove.callTileHint` without an account), only `1` once it has. Your side isn't part of it: it shows one thing at a
   time, on the right, at a fixed width. A record that doesn't parse is ignored, a phone starts with your side closed, and a
   call just joined on a wide screen opens Notes while notes are on. How you arranged this call (pins, order, sizes, your
   side, where you were in the workspace: `CallLayoutSchema`) only means something in this call, so it's in `sessionStorage`
