@@ -102,7 +102,7 @@ export const YourNotes: PageStory = {
 };
 /**
  * You present Could improve and press Vote, on the board's bar: it votes on the frame you show, the call tells everyone who can
- * open the board, and everyone following you votes as they follow.
+ * vote in it, and everyone following you votes as they follow.
  */
 export const YouStartAVote: PageStory = {
   ...inCall({ scenario: 'call-soon', call: REVIEW, script: { here: REVIEWERS }, then: presenting(1) }, {

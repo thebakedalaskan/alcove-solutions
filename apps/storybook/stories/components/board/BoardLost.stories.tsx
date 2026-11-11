@@ -1,6 +1,6 @@
 /*
  * BoardLost: what the sheet offers while nothing on the board is in view, though there's something on it, as after a scroll or
- * a drag off into empty space: a quiet way back to all of it, in the middle of the sheet, which does what Show everything does.
+ * a drag off into empty space: a quiet way back to all of it, in the middle of the sheet, which does what Show the whole board does.
  * It isn't filled, as the view's one filled button is someone else's. It goes once something is in view again.
  */
 import { BoardBar, BoardLost } from '@alcove/ui';
@@ -26,7 +26,7 @@ type Story = StoryObj<typeof meta>;
 
 /** In a call, scrolled off into empty space: Back to the board, under the bar, over nothing. */
 export const InACall: Story = { name: 'In a call' };
-/** On a phone, dragged off the board: the same way back, and Show everything stays on the bar. */
+/** On a phone, dragged off the board: the same way back, and Show the whole board stays on the bar. */
 export const OnAPhone: Story = {
   name: 'On a phone',
   globals: { viewport: { value: 'phone', isRotated: false } },

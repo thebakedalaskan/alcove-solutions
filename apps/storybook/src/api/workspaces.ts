@@ -424,7 +424,7 @@ function statusOf(item: WorkspaceItem): DocStatus {
 
 /** Someone else on a board in a call: their connection to the call, who they are, where their pointer is, and whether they're typing. */
 /** Someone on a board in a call: their pointer, and their view where it isn't round their pointer, as whoever presents it has. */
-export interface OnTheBoard { callIdentity: string; person: Person; at: { x: number; y: number }; typing?: boolean | undefined; view?: { x: number; y: number; z: number } | undefined }
+export interface OnTheBoard { callIdentity: string; person: Person; at: { x: number; y: number }; typing?: boolean | undefined; view?: { x: number; y: number; z: number; h?: number | undefined } | undefined }
 /** Who's on each board, by its ID, as the call that has it open puts them there. */
 const onBoards = new Map<string, readonly OnTheBoard[]>();
 /** Each open session of a board, told when that changes. */

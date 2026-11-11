@@ -10,8 +10,8 @@ import {
   type KeptUpdates, type WorkspaceRole
 } from '@alcove/api';
 import {
-  addObject, addReply, addThread, boardText, duplicateObjects, hasBox, makeHistory, moveObjects, newId, objectText, readBoard, readThreads, removeObjects, resolveThread, route, setObjects, tableCell,
-  type Box, type NewObject, type StickyColour
+  BoardPresenceSchema, NO_PRESENCE, addObject, addReply, addThread, boardText, duplicateObjects, hasBox, makeHistory, moveObjects, newId, objectText, readBoard, readThreads, removeObjects, resolveThread, route,
+  setObjects, tableCell, type Box, type NewObject, type StickyColour
 } from '@alcove/board';
 import { randomBytes } from 'node:crypto';
 import pg from 'pg';
@@ -351,6 +351,35 @@ describe('people at a board at once', () => {
     a.s.close();
     t.s.close();
     expect(shown(await open(theo, id, board))).toBe(settled);
+  });
+
+  it('passes on where each person is looking as their board says it, how tall their view is too, and reads one that says only how wide', async () => {
+    const ann = await account();
+    const theo = await account();
+    const id = await workspace(ann, 'Ours', [[theo, 'edit']]);
+    const board = await make(ann, id, 'Launch retro');
+    const [a, t] = await Promise.all([open(ann, id, board), open(theo, id, board)]);
+    /** Where Theo is looking, as Ann's board reads his presence, once it's said anywhere. */
+    const theirs = () => [...a.s.awareness.getStates().entries()]
+      .filter(([client]) => client !== a.s.awareness.clientID)
+      .map(([, state]) => BoardPresenceSchema.safeParse(state).data?.view ?? null)
+      .find((v) => v !== null) ?? null;
+
+    // As a board says it now: the middle of the view, the zoom for a sheet 1000 wide, and how tall that sheet is, so whoever
+    // follows Theo, whatever the shape of their screen, sees all of what he sees.
+    const now = { x: 580, y: 265, z: 0.9, h: 605 };
+    t.s.awareness.setLocalState({ ...NO_PRESENCE, at: { x: 120, y: 80 }, view: now });
+    await until(() => theirs()?.h === now.h, 'Theo’s view, how tall it is included');
+    expect(theirs()).toEqual(now);
+
+    // As a board from before said it, with no height: it reads all the same, and following goes by its width.
+    const before = { x: 600, y: 300, z: 1.2 };
+    t.s.awareness.setLocalState({ ...NO_PRESENCE, at: { x: 120, y: 80 }, view: before });
+    await until(() => theirs()?.x === before.x, 'Theo’s view, as a board from before says it');
+    expect(theirs()).toEqual(before);
+    expect(theirs()?.h).toBeUndefined();
+    a.s.close();
+    t.s.close();
   });
 });
 

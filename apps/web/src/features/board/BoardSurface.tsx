@@ -389,7 +389,7 @@ function Blank({ board, look, everyone }: { board: Board; look: BoardLook; every
   return here ? <BoardEmpty fading={!empty} reader={!look.edit} everyone={everyone} page={look.page} /> : null;
 }
 
-/** The way back to all of the board, while nothing on it is in view: Show everything, and the keys stay with the sheet. */
+/** The way back to all of the board, while nothing on it is in view: Show the whole board, and the keys stay with the sheet. */
 function Lost({ board }: { board: Board }) {
   const lost = useBoardState(board, (s) => s.lost);
   return lost ? <BoardLost onBack={() => { board.showEverything(); board.focusSheet(); }} /> : null;

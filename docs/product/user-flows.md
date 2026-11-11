@@ -991,8 +991,9 @@ See [Floating call](../engineering/floating-call.md) for browser capabilities an
    screen, 14:05", and Priya is told. It's kept in the board's files, whether or not the share is in the notes. It's for whoever
    can add to the board, and isn't offered for your own screen.
 7. **The board's name**, on the frame's bar, is a menu. It has **Rename**, for anyone who can change it, and everyone sees
-   the new name at once; **Open where it’s saved**, which brings up that workspace if it's the one the call is viewing and
-   opens any other in a tab of its own;
+   the new name at once, wherever it's named: a saved board renamed while it's open just for you is under its new name in
+   **Board**'s list once it's closed, and opens again with it (journey 6.37); **Open where it’s saved**, which brings up
+   that workspace if it's the one the call is viewing and opens any other in a tab of its own;
    **Who can add to it**, for someone in that workspace who can edit the board, which opens the workspace's own **Share** for
    it under the name (add people by name or address, change what each can do, or keep it to the people added; someone it
    becomes read-only to sees it as **View only** at once, and once it's kept to the people added, nobody's told everyone here
@@ -1017,10 +1018,11 @@ See [Floating call](../engineering/floating-call.md) for browser capabilities an
    you're looking at (every sticky, with no frame in view), 3, 5 or 10 votes each, and the board glides to it. Its menu
    names the frame, "Vote on Could improve", and where frames share a name, which of them, in the order they sit: "Vote on
    Could improve, the second of two". Whoever presents the board votes on the frame they show (step 11). A vote reaches
-   everyone in this part of the call who can open the board: anyone without it on their stage is told "Priya started a vote on
-   Launch retro." with **Vote**, which opens it there on the vote's frame, and everyone following a presentation of it votes
-   as they follow. After **Start the vote**, pressing a sticky spends a vote and shows a dot only you can see, and pressing it
-   again takes it back. From the keyboard, Tab from
+   everyone in this part of the call who can add to the board, and so vote in it: anyone without it on their stage is told
+   "Priya started a vote on Launch retro." with **Vote**, which opens it there on the vote's frame, and everyone following a
+   presentation of it votes as they follow. Someone who can only look at the board isn't told, as they can't vote. After
+   **Start the vote**, pressing a sticky spends a vote and shows a dot only you can see, and pressing it again takes it
+   back. From the keyboard, Tab from
    the board goes from sticky to sticky in the vote, frame by frame and row by row, with the board gliding to one out of
    view, and on past the last; Shift and Tab go back. Enter or Space votes for the sticky you're on, and again takes the
    vote back. A screen reader hears each sticky's words as a toggle button, pressed once it has your vote and dimmed while
@@ -1054,27 +1056,33 @@ See [Floating call](../engineering/floating-call.md) for browser capabilities an
    first (step 3).
    - **Whoever presents** is told "Everyone follows you on Launch retro. They can add to it as you go.", and the bar says
      "You’re presenting · 3 following". The board glides to its first frame as it starts, and from there it's yours to move
-     round: drag, scroll, zoom and **Show everything** as ever, add to it, start a vote (step 8), and everyone following sees
-     what you see, whatever's outside the frames and the lines between them included. At its foot, for you alone, the pager
-     steps through the frames in the order they sit on the board, top to bottom and left to right, so the order can be told
-     from the board: the arrows on either side of "1 of 3" and the frame's name glide your view, and everyone with it, to the
-     frame before or after, and when your own view comes to rest in a frame, the pager says that's where you are. With an
-     account it has the notes button, which opens **Your notes** on your side: where you are ("1 of 3 · you’re sharing it"),
-     your own notes beside this frame, each frame its own and kept for next time ("Kept for next time. Only you see
-     them."), and the next frame, drawn small ("Next: Could improve", or "That’s the last one"). A board with no frames has
-     no pager. Your pointer shows to everyone. Opening something else on your stage puts the board away as a tile with
-     **Open**, and you go on presenting; everyone following stays where you left them until you're back.
+     round: drag, scroll, zoom and **Show the whole board** as ever, add to it, start a vote (step 8), and everyone following
+     sees all of what you see, whatever's outside the frames and the lines between them included, whatever the shape of their
+     screen: a wider or taller one shows more round it, never less of it. At its foot, for you alone, the pager steps through
+     the frames in the order they sit on the board, top to bottom and left to right, so the order can be told from the board:
+     the arrows on either side of "1 of 3" and the frame's name glide your view, and everyone with it, to the frame before or
+     after. The frame stays fitted to your screen as that changes size (**Your notes** opening beside it, say) until you move
+     off it, and when your own view comes to rest in a frame, the pager says that's where you are. Someone moving frames round
+     meanwhile never changes which frame you're on: the pager, Your notes and "Art is in Could improve" stay with it, at its
+     new place in the order. With an account the pager has the notes button, which opens **Your notes** on your side: where
+     you are ("1 of 3 · you’re sharing it"), your own notes beside this frame, each frame its own and kept for next time
+     ("Kept for next time. Only you see them."), and the next frame, drawn small ("Next: Could improve", or "That’s the last
+     one"). A board with no frames has no pager. Your pointer shows to everyone. Opening something else on your stage puts
+     the board away as a tile with **Open**, and you go on presenting; everyone following stays where you left them until
+     you're back.
    - **From the keyboard**, **→** and **←**, and a clicker's Page Down and Page Up, glide to the next or the last frame while
      the presentation has the keys: the board itself, or the pager's arrows, where the keys go as it starts (**Next frame**,
-     as soon as the pager shows, so **→** moves on straight after **Present**). Anywhere else they move nothing: while you
-     type, in Your notes, on a tile on the stage, in the rooms' setup, or on the page with nothing chosen.
+     as soon as the pager shows, so **→** moves on straight after **Present**; the board itself, on a board with no frames).
+     Anywhere else they move nothing: while you type, in Your notes, on a tile on the stage, in the rooms' setup, or on the
+     page with nothing chosen.
    - **Everyone else** follows: they see the presenter's view as it moves, with their own tools to hand, and "Art is
      presenting" and "Following Art" on the bar. Anything of their own on the board (a press, a key, a scroll, a drag) is
      theirs: it takes them off following, from where they are, and does what they did, so a double-click in a frame is a
      sticky there and the first press is never lost. A vote on a sticky (step 8) changes nothing on the board, so they vote
      and go on following. **Unfollow** gives you your own view back, as you left it; **Follow Art** ("Art is in Could
-     improve") takes you back to Art's view. Art moving on never pulls you back. Someone who comes in late follows Art from
-     wherever Art is. Someone who can only look at the board follows the same way, looks round, and changes nothing.
+     improve") takes you back to Art's view. Art moving on never pulls you back, and only you stop following: the board
+     opening again under you (**Try again**, or by itself once it can) keeps you with Art. Someone who comes in late follows
+     Art from wherever Art is. Someone who can only look at the board follows the same way, looks round, and changes nothing.
    - **Close**, while you present it (or the lit **Board**, or **O**), asks: **For you** ("You stop presenting. Everyone else
      keeps it open, on their own."), and everyone following stays on it, working on their own, and it's still the board in the call; or **For
      everyone** ("It closes for everyone in the call."), which closes the board in the call too: "Closed for everyone." The
@@ -1109,7 +1117,7 @@ See [Floating call](../engineering/floating-call.md) for browser capabilities an
 14. **On a phone**, **Board** is first in **More**'s grid and opens the same picker, and a board's frame has no Present:
    **Share › A board** presents one. Faces stay on top, under the line over the call when it says anything, and the board
    fills the rest, opening on its first frame at a size it can be read. Drag to look round and pinch to zoom; the bar keeps
-   the name, the seal, **Show everything**, which shows all of the board however big, further out than a pinch goes,
+   the name, the seal, **Show the whole board**, which shows all of it however big, further out than a pinch goes,
    **Vote** and **More**, and what the pill says wraps rather than being cut. Dragged off into empty space, the board offers
    **Back to the board**, as anywhere. The one tool is
    **+**, at the bottom right: a sheet rises, night as the call is, with one sticky, its colours and a button that says
@@ -1891,7 +1899,7 @@ themes**, on stickies picked together, sorts them into named columns when its an
 whatever you've started meanwhile, and the toast's **Undo** takes the sort back even after you've done something else.
 
 **Looking round.** Scroll, or two fingers, to move; pinch or **⌘** and scroll to zoom; or hold **Space** and drag. The bar has
-**−**, how near you are and **+**, **Show everything** (its tip says **⇧1**, which does the same), and **Map**, which shows
+**−**, how near you are and **+**, **Show the whole board** (its tip says **⇧1**, which does the same), and **Map**, which shows
 where you are on a board too big for the sheet. Scroll or drag off into empty space, so that nothing on the board is in view,
 and the sheet offers **Back to the board** in its middle, which shows everything again; it goes as soon as something's in view.
 

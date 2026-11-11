@@ -46,6 +46,8 @@ const sayingMs = (text: string) => Math.min(5600, Math.max(2200, text.length * 5
 const TAKE_OVER_MS = 10_000;
 /** How long Hear it takes to fetch a line of the recording, so pressing it shows it working. */
 const HEAR_MS = 900;
+/** How many times as wide as it's tall someone else presenting a board has their sheet: a laptop's stage. */
+const PRESENTERS_SHEET = 1.8;
 /** The call's timer after one of the host's controls, as the API works it out (features/calls/timers.ts), or why not. */
 function timerAfter(was: CallTimer | null, input: CallTimerControl, now: number): CallTimer | null {
   if (input.action === 'start') {
@@ -721,17 +723,18 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
   }
   /**
    * Someone else presenting the board where you are: their seat, and their pointer and view on the frame they're on, of its frames
-   * in the order they sit, framed with room round it as their sheet would show it.
+   * in the order they sit, framed with room round it as their sheet would show it: a laptop's stage, `PRESENTERS_SHEET` times as
+   * wide as it's tall, which their view says (`h`), as a browser does, so everyone following sees all of it, whatever their shape.
    */
-  private presentersView(at: { workspaceId: string; documentId: string }): { seat: string; at: { x: number; y: number }; view: { x: number; y: number; z: number } } | null {
+  private presentersView(at: { workspaceId: string; documentId: string }): { seat: string; at: { x: number; y: number }; view: { x: number; y: number; z: number; h: number } } | null {
     const now = this.presented.get(this.crypto.getSnapshot().place);
     if (now?.kind !== 'board' || now.id !== at.documentId || this.isMine(now)) return null;
     const frames = readBoard(boardDoc(at.workspaceId, at.documentId)).frames.filter((f) => !f.f).sort(reading);
     const f = frames[Math.min(now.section, frames.length - 1)];
     if (!f) return null;
     const middle = { x: f.x + f.w / 2, y: f.y + f.h / 2 };
-    const wide = Math.max(f.w + 160, (f.h + 200) * 1.8);
-    return { seat: now.by.seat, at: { x: middle.x + 40, y: middle.y + 30 }, view: { ...middle, z: BOARD_VIEW_WIDTH / wide } };
+    const wide = Math.max(f.w + 160, (f.h + 200) * PRESENTERS_SHEET);
+    return { seat: now.by.seat, at: { x: middle.x + 40, y: middle.y + 30 }, view: { ...middle, z: BOARD_VIEW_WIDTH / wide, h: BOARD_VIEW_WIDTH / PRESENTERS_SHEET } };
   }
   /**
    * A new board in the call's home, named as the server names it and filled from its template as the server fills it; a room's

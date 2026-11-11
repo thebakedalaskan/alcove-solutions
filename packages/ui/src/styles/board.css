@@ -257,7 +257,7 @@
 .bd-head .sv .ac-i { flex: none; color: var(--sun-text); }
 .bd-head .bt { width: 34px; height: 34px; border-radius: 9px; }
 .bd-head .vr { flex: none; width: 1px; height: 20px; margin: 0 5px; background: var(--bf-ring); }
-/* How near you are, beside Show everything: a readout. */
+/* How near you are, beside Show the whole board: a readout. */
 .bd-head .pct { flex: none; min-width: 44px; height: 34px; text-align: center; font: 500 12px/34px var(--font-sans); font-variant-numeric: tabular-nums; color: var(--ink-2); }
 /*
  * The tools always stay on the sheet. A long name gives way first, and the seal stays whole. A bar with all its tools (`is-full`)
@@ -268,7 +268,7 @@
 @container (max-width: 640px) { .bd-head .nm .ac-i:first-child { display: none; } }
 @container (max-width: 600px) { .bd-head .sv { min-width: 0; } .bd-head .sv span { display: none; } }
 /*
- * Narrow, as on a phone: the name, the seal, Show everything, Vote and More stay, and the name keeps room to be read; undo, the
+ * Narrow, as on a phone: the name, the seal, Show the whole board, Vote and More stay, and the name keeps room to be read; undo, the
  * zoom and the map go, as a pinch zooms. On a board's own page, the page's own button comes in close.
  */
 @container (max-width: 480px) { .bd-head .zm, .bd-head .pct, .bd-head .ur { display: none; } .bd-head .vr { margin: 0 2px; } .bd-head .nm { min-width: 84px; } .bd-head .bpg-acts { margin-left: 2px; } }

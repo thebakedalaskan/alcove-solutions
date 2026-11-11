@@ -150,6 +150,11 @@ export class Board implements LiveStore<BoardState> {
   private wanted: string | null = null;
   /** The kind of pill at the top of the sheet, if one shows: whatever's framed keeps clear of it. */
   private pill: PillKind | null = null;
+  /**
+   * The frame whoever presents last stepped to (`toFrame`): their view stays fitted to it as their sheet changes size, Your notes
+   * opening beside it, say, so everyone following goes on seeing all of it, until they move the view themselves.
+   */
+  private stepped: string | null = null;
   private frame = 0;
   private readonly waits = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly listeners = new Set<() => void>();
@@ -225,12 +230,23 @@ export class Board implements LiveStore<BoardState> {
 
   private measure(sheet: HTMLElement): void {
     this.camera.resize(sheet.offsetWidth, sheet.offsetHeight);
+    // Whoever presents stays on the frame they stepped to, fitted to the sheet's new size, until they move off it.
+    const stepped = this.camera.width ? this.steppedFrame() : null;
+    if (stepped) this.camera.set(this.camera.fitting(stepped, PRESENTING_PAD));
     this.noteLost();
     // Framed once it has a size, and again as that size settles, as the call makes room for it, until someone does something on it;
     // drawn small, whenever it changes.
-    if (!this.camera.width || (this.framed && !this.look.mini && !this.untouched)) return;
+    if (stepped || !this.camera.width || (this.framed && !this.look.mini && !this.untouched)) return;
     this.framed = true;
     this.fitShown(false, true);
+  }
+
+  /** The frame whoever presents stepped to, while their view is still theirs to fit to it and it's still on the board. */
+  private steppedFrame(): Box | null {
+    const frame = this.stepped === null ? undefined : this.state.view.byId.get(this.stepped);
+    if (frame?.k === 'frame') return frame;
+    this.stepped = null;
+    return null;
   }
 
   setMode(mode: BoardMode): void {
@@ -933,6 +949,7 @@ export class Board implements LiveStore<BoardState> {
   takeCamera(): void {
     this.untouched = false;
     this.home = null;
+    this.stepped = null;
     this.stopFollow();
     if (this.state.glide) this.set({ glide: false });
   }
@@ -1025,7 +1042,17 @@ export class Board implements LiveStore<BoardState> {
   };
 
   goTo(place: BoardPlace): void {
+    this.stepped = null;
     this.glideTo(this.camera.centred(place));
+  }
+
+  /**
+   * Someone's view is taking the camera, as following eases it there: from here the board no longer frames itself as the sheet
+   * settles, as it doesn't once `goTo` has glided it, so a sheet changing size doesn't throw it out to all of the board first.
+   */
+  viewTaken(): void {
+    this.untouched = false;
+    this.stepped = null;
   }
 
   /** Fills the sheet with these frames, all of them: everything, when none of them is on the board. */
@@ -1046,12 +1073,13 @@ export class Board implements LiveStore<BoardState> {
 
   /**
    * Whoever presents, stepping through frames: glides to one, clear of the bar, the pill and the pager at the frame's foot, and
-   * everyone following them glides with them.
+   * everyone following them glides with them. It stays fitted to their sheet as that changes size, until they move off it.
    */
   toFrame(id: string): void {
     const frame = this.state.view.byId.get(id);
     if (frame?.k !== 'frame') return;
     this.takeCamera();
+    this.stepped = id;
     this.glideTo(this.camera.fitting(frame, PRESENTING_PAD));
   }
 
@@ -1061,13 +1089,18 @@ export class Board implements LiveStore<BoardState> {
    */
   follow(id: string | null, watching = false): void {
     if (id === null) this.stopFollow();
-    else if (!this.look.mini) this.set({ following: id, watching });
+    else if (!this.look.mini) {
+      // Someone else's view drives the camera from here.
+      this.stepped = null;
+      this.set({ following: id, watching });
+    }
   }
 
-  stopFollow(): void {
+  /** Stops following, and tells whoever's round the board (`onFollow`), unless it isn't for them to hear (`told` false). */
+  stopFollow(told = true): void {
     if (!this.state.following) return;
     this.set({ following: null, watching: false });
-    this.onFollow?.(null);
+    if (told) this.onFollow?.(null);
   }
 
   /**
