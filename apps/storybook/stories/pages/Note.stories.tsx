@@ -207,6 +207,19 @@ export const GoogleDriveCustomSettings = page('/notes/n2', 'busy', { beforeEach:
   if (destination) w.drive.overrides['n2'] = { enabled: true, destination, formats: ['notes-markdown'] };
 }) });
 
+/** Launch planning ended the week before automatic exports went on: the panel says it isn't exported, with Export to Google Drive. */
+export const GoogleDriveNotCovered = page('/notes/n7', 'drive-connected');
+export const GoogleDriveNotCoveredNight = page('/notes/n7', 'drive-connected', { globals: { theme: 'dark' } });
+export const GoogleDriveNotCoveredPhone = phone(GoogleDriveNotCovered);
+/** Export to Google Drive pressed: the call has its own choice now, and its files go at once, Uploading, then each with its time. */
+export const GoogleDriveExported = page('/notes/n7', 'drive-connected', {
+  play: async ({ userEvent, step }) => {
+    await step('Press Export to Google Drive. The files start uploading straight away', async () => {
+      await userEvent.click(await screen.findByRole('button', { name: 'Export to Google Drive' }, { timeout: 30000 }));
+      await screen.findByText('Goes to this folder. The copies follow the notes when they change.', {}, { timeout: 8000 });
+    });
+  }
+});
 /** A shared reader can choose their own Drive exports, while original audio stays organizer-only. */
 export const GoogleDriveSharedReader = page('/notes/n3', 'busy', { beforeEach: changing(withSharedCallExports) });
 export const GoogleDriveSharedReaderNight = page('/notes/n3', 'busy', { beforeEach: changing(withSharedCallExports), globals: { theme: 'dark' } });

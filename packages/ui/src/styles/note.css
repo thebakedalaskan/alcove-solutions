@@ -722,3 +722,5 @@ button.nd-lt:hover { color: var(--ink); }
 .nd-drive-refused p { color: var(--caution); }
 
 .nd-drive-saving { display: inline-flex; align-items: center; gap: 5px; margin-left: auto; color: var(--ink-2); font: 400 12px/18px var(--font-sans); }
+/* Export to Google Drive: under the folder and files, on its own line. */
+.nd-drive .ac-btn.nd-drive-go { display: flex; width: fit-content; margin-top: 12px; }

@@ -118,7 +118,11 @@ export const q = {
   drive: () => queryOptions({ queryKey: qk.drive, queryFn: () => api.drive.get(), retry: false }),
   driveFolders: () => queryOptions({ queryKey: qk.driveFolders, queryFn: () => api.drive.folders(), staleTime: 0, retry: false }),
   driveJobs: () => queryOptions({ queryKey: qk.driveJobs, queryFn: () => api.drive.jobs(), refetchInterval: 10_000, retry: false }),
-  driveNote: (id: string) => queryOptions({ queryKey: qk.driveNote(id), queryFn: () => api.drive.forNote(id), refetchInterval: 10_000, retry: false }),
+  // Read again every 10 s, and every 2 s while a file is on its way, so a press shows Uploading, then its link, within seconds.
+  driveNote: (id: string) => queryOptions({
+    queryKey: qk.driveNote(id), queryFn: () => api.drive.forNote(id), retry: false,
+    refetchInterval: (query) => (query.state.data?.jobs.some((job) => job.status === 'uploading' || (job.status === 'pending' && job.reason === null)) ? 2_000 : 10_000)
+  }),
   agents: () => queryOptions({ queryKey: qk.agents, queryFn: () => api.agents.list() }),
   /** The MCP address agents connect to: it stays the same while the app is open. */
   agentEndpoint: () => queryOptions({ queryKey: qk.agentEndpoint, queryFn: () => api.agents.endpoint(), staleTime: Infinity }),

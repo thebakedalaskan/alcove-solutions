@@ -153,7 +153,7 @@ export function GoogleDrive({ result }: { result?: DriveConnectResult | undefine
           <Setting sub wide label="Files" help="Each goes once the call’s notes are final."
             control={<DriveExportFormats selected={data.formats} disabled={!connected || busy} onChange={(formats) => change({ formats }, 'Files')} />} />
           <Setting sub label="Export after each call" off={!ready}
-            help={!data.destination ? 'Choose a folder first.' : !data.formats.length ? 'Choose at least one file type first.' : 'Files upload in the background, even after you leave.'}
+            help={!data.destination ? 'Choose a folder first.' : !data.formats.length ? 'Choose at least one file type first.' : 'For calls that end after you turn it on. Files upload in the background, even after you leave.'}
             onLabel={ready && !busy ? () => change({ enabled: !data.enabled }, 'Export after each call') : undefined}
             control={<Switch label="Export after each call" checked={data.enabled} disabled={!ready || busy} onChange={(enabled) => change({ enabled }, 'Export after each call')} />} />
           {jobs.isError

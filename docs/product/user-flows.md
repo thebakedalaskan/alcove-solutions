@@ -1846,20 +1846,28 @@ explaining what Alcove gets from Google and what it uploads. **Continue to Googl
 picker. Connecting or disconnecting Drive leaves ordinary Alcove sign-in and Calendar settings alone. Google’s pages are outside Alcove; returning lands on Google Drive, open, and says what
 happened, leaving the existing settings in place after cancellation or failure.
 
-1. **Choose default files.** Select finalized notes as Markdown, transcripts as plain text, or retained original audio
-   pieces as a ZIP. Each is an explicit choice. **Export after each call** stays unavailable until a folder and at least
-   one type are chosen. Every setting saves as it changes. Pausing exports keeps the choices. Only finalized, retained
+1. **Choose default files.** Select finalized notes as Markdown (with the full summary under the short one), transcripts
+   as plain text, or retained original audio pieces as a ZIP. Each is an explicit choice. **Export after each call** stays
+   unavailable until a folder and at least one type are chosen, and covers calls that end after it's turned on: its help
+   says so. A call's files go as soon as its notes are final, not at the next upkeep. Every setting saves as it changes. Pausing exports keeps the choices. Only finalized, retained
    material the exporting account can still access is eligible; a call ending does not promise an export exists.
 2. **Choose a shared-drive folder.** The destination opens a folder picker, showing authorized folders and whether each
    belongs to a shared drive. The picker explains what **Choose in Google** permits before opening Google to authorize another folder and return to Settings. Choosing a
    folder checks current write permission before it is saved. An unavailable destination is refused, with no fallback to
    another folder. The selected folder’s existing sharing rules apply to the readable exported copy; Alcove never adds
    people, makes public links or exports another person’s private notes.
-3. **Override one call.** On a call’s saved notes, your **Google Drive** part says whether it follows the
-   defaults. **Use custom settings** gives this call its own authorized destination, file choices and on/off switch.
-   Returning to defaults removes the override. This changes only that person’s export settings for the call.
+3. **Override one call.** On a call’s saved notes, your **Google Drive** part says whether automatic exports cover it:
+   "Uses your automatic export settings.", "This call ended before automatic exports were on, so it isn’t exported." for a
+   call that ended before they were turned on, or "Automatic exports are off, so this call isn’t exported.". A call they
+   don't cover has **Export to Google Drive** under its folder: it saves this call's own choice with the folder and files
+   shown, and the files upload straight away, **Uploading**, then when they went. **Use custom settings** gives this call
+   its own authorized destination and file choices, with **Export to Google Drive**, and once it's exporting, "Goes to
+   this folder. The copies follow the notes when they change." with **Stop exporting**. Returning to defaults removes the
+   override. This changes only that person’s export settings for the call.
 4. **Retry an export.** Recent exports name their source call and end each line with when it went (a link to the file in
-   Drive), **Uploading**, **Waiting**, or why it didn't go, with **Try again**. **Try again** rechecks permission and, with the same destination, keeps the same export identity
+   Drive), **Uploading**, **Waiting to upload**, or why it didn't go, with **Try again**. One that went wrong in a way
+   that may pass (Google busy, the network) says why, quietly, and when it's tried next (**Next try 16:52**). **Try again**
+   sends it at once, not at the next upkeep. It rechecks permission and, with the same destination, keeps the same export identity
    so an uncertain response does not create a second file. Choosing another destination and retrying a failed export
    intentionally creates a new copy there; existing copies stay in their original folder. Revoked Google access asks
    for reconnection instead. Regenerated
@@ -1875,8 +1883,11 @@ happened, leaving the existing settings in place after cancellation or failure.
 
 7. **Review Drive permissions.** Press **Connect** beside Google Drive, read what access the export needs and cancel to
    stay in Settings without starting consent.
+8. **Export a call from before automatic exports.** A call that ended before automatic exports went on says it isn't
+   exported. **Export to Google Drive** sends it to the folder shown, with the files ticked in Settings, and they upload
+   straight away.
 
-Storybook’s journeys use **15.1–15.7** above. The account, folders and file links in the preview are made-up; real Google
+Storybook’s journeys use **15.1–15.8** above. The account, folders and file links in the preview are made-up; real Google
 consent and the provider’s own folder-selection page require manual verification with a supported Google account.
 
 ### 11.24 Add credits

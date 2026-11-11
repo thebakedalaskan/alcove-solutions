@@ -669,6 +669,7 @@
 .ac-drive-job-t > span { flex: none; }
 .ac-drive-source a:hover { text-decoration: underline; }
 .ac-drive-why { display: block; font: 400 12.5px/17px var(--font-sans); color: var(--caution); text-wrap: pretty; }
+.ac-drive-why.is-quiet { color: var(--ink-3); }
 .ac-drive-s { display: inline-flex; align-items: center; gap: 6px; font: 400 13.5px/20px var(--font-sans); color: var(--ink-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .ac-drive-s > .ac-i { color: var(--sun-text); }
 .ac-drive-s.is-wait > .ac-i { color: var(--ink-3); }
