@@ -433,7 +433,9 @@ button.nd-lt:hover { color: var(--ink); }
 .nd-askdock { position: sticky; bottom: 24px; z-index: 12; margin-top: auto; }
 /* Room at the end of the note for the suggestions, which sit above the bar: AskBar sets --nd-chips to their height and the gap above the bar (one row until it has measured them). */
 .nd-said, .nd-read:not(:has(+ .nd-said)) { padding-bottom: calc(18px + var(--nd-chips, 42px)); }
-.nd-up { position: absolute; left: 0; right: 0; bottom: calc(100% + 8px); display: grid; gap: 8px; }
+/* The room above the bar is the note's until something shows in it: pointing there neither catches the pointer nor counts as over the bar. */
+.nd-up { position: absolute; left: 0; right: 0; bottom: calc(100% + 8px); display: grid; gap: 8px; pointer-events: none; }
+.nd-up > * { pointer-events: auto; }
 .nd-askdock::before { content: ""; position: absolute; left: -16px; right: -16px; bottom: -24px; height: 92px; background: linear-gradient(to bottom, transparent, color-mix(in oklch, var(--nd-fade) 92%, transparent) 58%); -webkit-mask-image: linear-gradient(to right, transparent, #000 16px, #000 calc(100% - 16px), transparent); mask-image: linear-gradient(to right, transparent, #000 16px, #000 calc(100% - 16px), transparent); pointer-events: none; z-index: -1; }
 .nd-ask { display: flex; align-items: center; gap: 10px; height: 48px; padding: 0 6px 0 16px; border-radius: var(--radius-pill); background: var(--surface-raised); box-shadow: 0 0 0 1px var(--line), 0 18px 40px -22px rgb(0 0 0 / .55); color: var(--ink-3); }
 .nd-ask:focus-within { box-shadow: 0 0 0 1.5px var(--focus), 0 18px 40px -22px rgb(0 0 0 / .55); }
@@ -443,9 +445,9 @@ button.nd-lt:hover { color: var(--ink); }
 .nd-only { display: inline-flex; align-items: center; gap: 5px; flex: none; font: 500 12.5px/1 var(--font-sans); color: var(--ink-3); white-space: nowrap; }
 .nd-ask-go.ac-icon-btn { background: color-mix(in oklch, var(--ink) 11%, transparent); color: var(--ink); }
 .nd-ask-go.ac-icon-btn:hover { background: color-mix(in oklch, var(--ink) 17%, transparent); }
-.nd-suggs { display: flex; flex-wrap: wrap; gap: 6px; }
-/* Always laid out, so their height is known; out of sight and reach until the end of the note or the bar is in use. */
-.nd-suggs:not(.is-on) { visibility: hidden; pointer-events: none; }
+.nd-suggs { display: flex; flex-wrap: wrap; gap: 6px; transition: opacity var(--duration-1) var(--ease-out), visibility var(--duration-1); }
+/* Always laid out, so their height is known; out of sight and reach until the end of the note, or the bar is pointed at or in use. */
+.nd-suggs:not(.is-on) { opacity: 0; visibility: hidden; pointer-events: none; }
 .nd-suggs[hidden] { display: none; }
 .nd-sugg { height: 34px; padding: 0 13px; border-radius: var(--radius-pill); background: var(--surface-raised); box-shadow: 0 0 0 1px var(--line); font: 500 13.5px/1 var(--font-sans); color: var(--ink); transition: background-color var(--duration-1); }
 .nd-sugg:hover { background: color-mix(in oklch, var(--ink) 15%, var(--surface-raised)); }

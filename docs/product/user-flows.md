@@ -1219,8 +1219,8 @@ Storybook journeys **6.23–6.25** show the review alongside the call:
   or relies on what it holds, at most one a line, and never the same screen twice in a row. A share's first frame isn't
   shown unless it was key, and the screen from before a change is only used to see what changed. The notes point at those
   screens; frames that weren't shown only went into what the notes say, and aren't kept. It takes questions about the call: a suggested question or your own, in
-  a bar that stays at the bottom while you read (suggestions show at the end of the note). Answers cite the moments in
-  the recording they come from.
+  a bar that stays at the bottom while you read (suggestions show above it at the end of the note, while the pointer is
+  over it, and while you're in it). Answers cite the moments in the recording they come from.
 - Until the notes are written, the page says the audio is saved and encrypted (or, when the call doesn't keep its
   recording, that the call has ended) and the notes are being written
   in confidential compute, and ticks off each step (the call ended, the audio saved, the transcript, and shared screens ready to replay when a share was kept) with the

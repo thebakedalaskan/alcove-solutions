@@ -41,6 +41,15 @@ export const LongSuggestions = phone(page('/notes/n2', 'busy', {
     });
   }
 }));
+/** Points at the ask bar. */
+const pointAtAsk: PageStory['play'] = async ({ canvas, userEvent, step }) => {
+  await step('Point at the ask bar. The suggested questions show above it', async () => {
+    await userEvent.hover(await canvas.findByRole('textbox', { name: /Ask about this call/ }));
+  });
+};
+/** Pointing at the ask bar while the note is read: its suggested questions show above it, and go again once the pointer leaves. */
+export const PointingAtAsk = page('/notes/n2', 'busy', { play: pointAtAsk });
+export const PointingAtAskNight = page('/notes/n2', 'busy', { play: pointAtAsk, globals: { theme: 'dark' } });
 /** Opened while Kofi's screen is up (9:20): the replay shows his share, and the lines said then carry their frames. */
 export const WhileAScreenIsShared = page('/notes/n2?at=560', 'busy');
 /** The standup was written by a model that isn't in a secure enclave: the note says so in caution, with Unencrypted, where it would say Written in confidential compute. */

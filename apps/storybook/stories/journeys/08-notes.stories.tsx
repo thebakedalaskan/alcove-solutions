@@ -654,10 +654,11 @@ export const AskAboutThisCall: PageStory = {
   name: '8.29 Ask about this call',
   ...page('/notes/n2', 'busy'),
   play: async ({ userEvent, step }) => {
-    await step('Click the bar. It stays at the bottom as you read', async () => {
-      await userEvent.click(await screen.findByRole('textbox', { name: 'Ask about this call, for you alone' }, LATER));
+    await step('Point at the bar. It stays at the bottom as you read, and its suggested questions show above it', async () => {
+      await userEvent.hover(await screen.findByRole('textbox', { name: 'Ask about this call, for you alone' }, LATER));
     });
-    await step('Suggested questions show above it. Pick one, or type your own', async () => {
+    await step('Click it, and they stay while you ask. Pick one, or type your own', async () => {
+      await userEvent.click(screen.getByRole('textbox', { name: 'Ask about this call, for you alone' }));
       await userEvent.click(await screen.findByRole('button', { name: 'What did we decide?' }, SOON));
     });
     await step('It reads the call in confidential compute', async () => {

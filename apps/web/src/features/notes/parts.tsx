@@ -7,7 +7,7 @@ import {
 import { Avatar, CaptureGapMark, Icon, IconButton, ReadMore, UnsureKey, cn } from '@alcove/ui';
 import { Link } from '@tanstack/react-router';
 import { useReducedMotion } from 'motion/react';
-import { Fragment, createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import { Fragment, createContext, useContext, useEffect, useRef, useState, type PointerEvent, type ReactNode } from 'react';
 import { KeepAnswer } from '~/features/personal/parts';
 import { gapLabel, gapsAfter, gapsBefore } from '~/lib/capture';
 import { ariaShortcut, withMod } from '~/lib/keys';
@@ -334,13 +334,20 @@ export function AskBar({ suggestions, ask, onSeek, shown, label = 'Ask about thi
   const suggs = useRef<HTMLDivElement>(null);
   const [focus, setFocus] = useState(false);
   const [atEnd, setAtEnd] = useState(false);
+  const [over, setOver] = useState(false);
+  const leaving = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [text, setText] = useState('');
   const [keptFor, setKeptFor] = useState<string | null>(null);
   const { answer, ask: start, reset } = useAnswer(ask);
   /*
-   * The bar stays in view while the note is read; its suggestions show at the end of the note, or while asking. The
-   * end is marked just above the bar, so the suggestions appearing (below the mark) can't push it out of view again.
+   * The bar stays in view while the note is read; its suggestions show at the end of the note, while the pointer is over
+   * the bar, or while asking, so nothing covers the note as it's read. They go a moment after the pointer leaves, so it
+   * can cross to them; a finger or the keyboard gets them on focus. The end is marked just above the bar, so the
+   * suggestions appearing (below the mark) can't push it out of view again.
    */
+  const pointIn = (e: PointerEvent<HTMLElement>) => { if (e.pointerType === 'touch') return; clearTimeout(leaving.current); setOver(true); };
+  const pointOut = (e: PointerEvent<HTMLElement>) => { if (e.pointerType === 'touch') return; clearTimeout(leaving.current); leaving.current = setTimeout(() => setOver(false), 240); };
+  useEffect(() => () => clearTimeout(leaving.current), []);
   useEffect(() => {
     const el = end.current;
     if (!el) return;
@@ -382,7 +389,7 @@ export function AskBar({ suggestions, ask, onSeek, shown, label = 'Ask about thi
   return (
     <>
       <div ref={end} className="nd-end-mark" aria-hidden="true" />
-      <div className="nd-askdock">
+      <div className="nd-askdock" onPointerEnter={pointIn} onPointerLeave={pointOut}>
         <div className="nd-up">
           {answer && (
             <AnswerView answer={answer} waiting={waiting} onClose={() => { reset(); input.current?.focus({ preventScroll: true }); }} className="nd-ans">
@@ -397,7 +404,7 @@ export function AskBar({ suggestions, ask, onSeek, shown, label = 'Ask about thi
             </AnswerView>
           )}
           {room && (
-            <div ref={suggs} className={cn('nd-suggs', !answer && (atEnd || focus) && 'is-on')} hidden={!!answer}>
+            <div ref={suggs} className={cn('nd-suggs', !answer && (atEnd || focus || over) && 'is-on')} hidden={!!answer}>
               {suggestions.slice(0, 3).map((s) => <button key={s} type="button" className="nd-sugg" onMouseDown={(e) => e.preventDefault()} onClick={() => run(s)}>{s}</button>)}
             </div>
           )}

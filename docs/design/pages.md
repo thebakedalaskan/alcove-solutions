@@ -109,7 +109,8 @@ A slim band of sky, and the horizon is the call.
 - **Beside it,** Your notes, the only panel, because it's yours alone. You can write, bookmark a line or keep an answer. Then
   Added by people and Who has these notes. A call in a series shows its series. The organizer of a call in no series gets
   Meet again. A room recording gets neither.
-- **At the bottom,** "Ask about this call" stays in reach. It's marked Only you.
+- **At the bottom,** "Ask about this call" stays in reach. It's marked Only you. Its suggested questions show above it at the
+  end of the note, and while it's pointed at or in use, so nothing covers the note while it's read.
 - **States, each with its own look:**
   - recording, being written, written again (Write the notes again), unwritten, nothing said
   - no transcript or recording, rooms, disputed, the example note
