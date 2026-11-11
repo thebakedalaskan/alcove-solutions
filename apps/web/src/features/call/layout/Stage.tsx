@@ -118,7 +118,9 @@ export const GLIDE = { duration: 0.42, ease: [0.22, 0.8, 0.24, 1] } as const;
 /** Someone coming in: the tiles make room slowly enough to see who it's for. */
 const MAKE_ROOM = { duration: 0.9, ease: [0.45, 0, 0.2, 1] } as const;
 const UI = { duration: 0.24, ease: [0.22, 0.8, 0.24, 1] } as const;
-const mmss = (s: number) => `${Math.floor(Math.max(0, s) / 60)}:${String(Math.floor(Math.max(0, s) % 60)).padStart(2, '0')}`;
+/** How long after a drag ends the browser's click on the tile is still that drag's: at once from a mouse, a moment later from a finger. */
+const DROP_MS = 400;
+const mmss =(s: number) => `${Math.floor(Math.max(0, s) / 60)}:${String(Math.floor(Math.max(0, s) % 60)).padStart(2, '0')}`;
 const box = (r: Rect) => ({ left: r[0], top: r[1], width: r[2], height: r[3] });
 const ARROWS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown']);
 /** The corner a picture dropped at (x, y) goes to, or that Shift and an arrow move it to. */
@@ -274,6 +276,8 @@ export function Stage({ staged, frame, phone, people, waiting, presented, spotli
   const setEl = (k: string) => (el: HTMLDivElement | null) => { if (el) els.current.set(k, el); else els.current.delete(k); };
   const press = useRef<{ id: string; x: number; y: number; dx: number; dy: number; on: boolean; corner: boolean } | null>(null);
   const grow = useRef<{ id: string; x: number; y: number; w: number; h: number; big: boolean } | null>(null);
+  /** The tile a drag just let go of, and when: the click the browser sends after it isn't a press on the tile. */
+  const dropped = useRef<{ id: string; at: number } | null>(null);
 
   /** Puts `id` where `target` is in its group: your pins in a new order, or your order of everyone else. */
   const reorder = (g: string[], id: string, target: string) => {
@@ -338,6 +342,7 @@ export function Stage({ staged, frame, phone, people, waiting, presented, spotli
       // Your corner is a standing choice, not part of the layout Reset puts back, so moving it isn't "arranging".
       const moved = (d?.on && !d.corner) || grow.current;
       if (d?.on && d.corner) { const p = local(e); const c = latest.current; c.view.setCorner(cornerAt(p.x - c.fx, p.y - c.fy, c.w, c.h)); }
+      if (d?.on) dropped.current = { id: d.id, at: performance.now() };
       press.current = null; grow.current = null;
       setDrag(null); setSize(null);
       if (moved) latest.current.onCustom();
@@ -484,6 +489,10 @@ export function Stage({ staged, frame, phone, people, waiting, presented, spotli
             title={mode ? callName(p.person) : undefined}
             onPointerDown={(e) => startDrag(e, p.id, corner)}
             onClick={mode || (board?.find(p) && !corner) ? (e) => {
+              // Letting go of a tile you dragged only puts it down: a press that moved less than a drag still opens the menu.
+              const drop = dropped.current;
+              dropped.current = null;
+              if (drop?.id === p.id && performance.now() - drop.at < DROP_MS) return;
               if (!(e.target instanceof Node) || !e.currentTarget.contains(e.target) || (e.target instanceof Element && e.target.closest('button'))) return;
               // On a phone, someone you can follow in the workspace gets their card, unless the board is what's open to find them on.
               if (phone && !p.isMe && !board?.find(p) && (together.followable.includes(p.id) || together.following === p.id)) setCard(p.id);
