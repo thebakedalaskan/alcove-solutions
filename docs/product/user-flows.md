@@ -617,7 +617,9 @@ time, slides in on the right.
   questions and nothing in them has keyboard focus: votes coming in move them, gliding to their places (without gliding
   with reduced motion), and under **Newest** a question just asked comes in at the top. While you point at them, or a
   question's ⋯ is open, nothing moves: the order you're reading in holds, **Most votes** (or **Newest**) stops looking
-  chosen, and **Sort by votes** (or **Sort by newest**) sorts them now. This replaces the call attention spec's
+  chosen, and **Sort by votes** (or **Sort by newest**) sorts them now. On a touch screen, where a finger leaves the list as
+  it lifts, it holds while your finger is on the questions and for a couple of seconds after you last touch or scroll them,
+  so the question you just voted for doesn't move from under your next tap. This replaces the call attention spec's
   "Sorting preserves the reader's place while votes change" (`docs/superpowers/specs/2026-11-08-call-attention-design.md`).
   Whoever hosts uses a question's ⋯: **Pin to the top** (it leads the list) or **Unpin**, **Mark answered** and
   **Dismiss**; answered and dismissed questions leave the open count and the list, their toast offering **Undo**, and
