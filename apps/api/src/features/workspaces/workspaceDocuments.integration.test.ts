@@ -932,17 +932,20 @@ describe('streams', () => {
     const theo = await account();
     const id = await workspace(ann, 'Ours', [[theo, 'edit']]);
     const doc = await make(ann, id, 'document', 'Doc');
-    const second = await h.secondServer({ LIVE_MAKE_ROOM_MS: 3000 });
-    const live = (who: Account) => who.fetch(`${second.baseUrl}/v1${docPath(id, doc)}/live`, { signal: AbortSignal.timeout(2000) }).then((r) => { void r.body?.cancel(); return r.status; });
-    // Eight a browser behind Cloud Run closed without the API hearing: still open, as far as it knows.
+    const second = await h.secondServer({ LIVE_MAKE_ROOM_MS: 8000 });
+    const live = (who: Account) => who.fetch(`${second.baseUrl}/v1${docPath(id, doc)}/live`, { signal: AbortSignal.timeout(4000) }).then((r) => { void r.body?.cancel(); return r.status; });
+    // Eight a browser behind Cloud Run closed without the API hearing: still open, as far as it knows. The first is open before
+    // the rest are asked for, so it's the oldest.
     const since = Date.now();
-    const held = Array.from({ length: 8 }, () => stream(second.baseUrl, ann.fetch, id, doc));
+    const first = stream(second.baseUrl, ann.fetch, id, doc);
+    await until(() => first.lines.length > 0, 'the first stream');
+    const held = [first, ...Array.from({ length: 7 }, () => stream(second.baseUrl, ann.fetch, id, doc))];
     const theirs = stream(second.baseUrl, theo.fetch, id, doc);
     try {
       await until(() => [...held, theirs].every((s) => s.lines.length > 0), 'nine streams');
       // None of them has been open long enough to be taken for gone: one more waits, and its browser tries again by itself.
       expect(await live(ann)).toBe(503);
-      await rest(since + 3100 - Date.now());
+      await rest(since + 8100 - Date.now());
       // Now the oldest makes room, and the ninth opens at once.
       const ninth = stream(second.baseUrl, ann.fetch, id, doc);
       await until(() => ninth.lines.length > 0, 'the ninth to open');
