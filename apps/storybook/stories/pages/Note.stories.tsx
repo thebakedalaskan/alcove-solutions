@@ -1,6 +1,6 @@
 /* A note: the call as its horizon, then what it decided, what's still open, what's next, and what was said (user-flows 8). */
 import type { Meta } from '@storybook/react-vite';
-import { screen } from 'storybook/test';
+import { screen, within } from 'storybook/test';
 import { RETRO_NOTE, afterTheRetro } from '../../src/api/scenarios';
 import { phone } from '../../src/call';
 import { changing, page, pages, type PageArgs, type PageStory } from '../../src/page';
@@ -19,6 +19,29 @@ const everyState = { beforeEach: changing(inEveryState) };
 /** The team standup, written out in full: decisions, a question, follow-ups, a shared screen (its replay above the player, and its frames beside the lines they belong to) and your own notes. */
 export const Standup = page('/notes/n2', 'busy');
 export const StandupPhone = phone(Standup);
+/**
+ * On a phone, where one line at a time shows its tools: Priya's line, pressed, plays from there with its tools. The sun
+ * then moves on to the next line, as playing on does (here, ten seconds at a time from the keyboard), and the tools stay
+ * on her line, beside the line now being said. (A touch screen always shows them; here the keyboard goes to them.)
+ */
+export const PressALineOnAPhone = phone(page('/notes/n2', 'busy', {
+  play: async ({ userEvent, step }) => {
+    const horizon = async () => within(await screen.findByRole('region', { name: 'The call' }, { timeout: 30000 }));
+    const priya = async () => screen.findByText(/^The new onboarding is done\./, {}, { timeout: 30000 });
+    await step('Press what Priya said. It plays from there', async () => {
+      await userEvent.click(await priya());
+      await (await horizon()).findByRole('button', { name: 'Pause' }, { timeout: 8000 });
+    });
+    await step('The sun moves on past her line, to the next one', async () => {
+      (await horizon()).getByRole('slider', { name: 'Position in the recording' }).focus({ preventScroll: true });
+      await userEvent.keyboard('{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}');
+    });
+    await step('Her line keeps its tools: Bookmark this line is still there to press', async () => {
+      const line = (await priya()).closest('.nd-l');
+      if (line instanceof HTMLElement) within(line).getByRole('button', { name: /^Bookmark this line/ }).focus({ preventScroll: true });
+    });
+  }
+}));
 /** The standup's full summary sits under the short one behind a Full summary button, closed until it's pressed. */
 export const FullSummary = page('/notes/n2', 'busy');
 /** Full summary pressed: several paragraphs open under the short one, in the same type. */

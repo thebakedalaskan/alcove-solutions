@@ -1301,8 +1301,10 @@ Storybook journeys **6.23–6.25** show the review alongside the call:
   that's breakout rooms opens them instead. Without a recording, pressing one goes to its line in the transcript. A moment chip anywhere else on the page
   still goes to that line: the sun moves, and the transcript goes there and marks it, opening the rest if it has to.
   Pressing a line of the transcript, its words or its time, goes to its moment and plays from there, and marks the line
-  where it is; selecting its words to copy them doesn't, and its own tools only do what they do. Its time is still the
-  keyboard's way in. A breakout room's lines have no moment to go to, since a room isn't in the recording.
+  where it is; selecting its words to copy them doesn't, a double or triple click included (a press on the words waits a
+  quarter of a second for it), and its own tools only do what they do. On a phone, where one line at a time shows its
+  tools, the line pressed keeps them while the call plays on past it, until another is pressed or it's scrolled out of
+  sight. Its time is still the keyboard's way in. A breakout room's lines have no moment to go to, since a room isn't in the recording.
   The line shows at most 10 decisions and follow-ups, spaced apart, decisions first; a follow-up said at the same moment as a decision sits just beside it; the rest are in the notes. A shared screen opened from the transcript has its time in the corner, which closes it and plays the
   call from there, with the page going up to the shared screens' video (or, without one, to that line). **Play** starts as soon as the first of the recording arrives; until it's pressed, moving along the line
   reads nothing. Whatever was pressed last wins, even while the recording is on its way. As it plays the sun moves and
