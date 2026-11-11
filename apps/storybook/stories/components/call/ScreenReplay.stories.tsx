@@ -41,7 +41,7 @@ export const NoSharedScreenHere: Story = {
   name: 'No shared screen here',
   args: {
     nothing: true, shares: [], current: null,
-    elsewhere: [{ id: 'a', label: 'Kofi’s screen', when: '8:52⁠–⁠10:40' }, { id: 'b', label: 'Maya’s screen', when: '14:05⁠–⁠16:20' }]
+    elsewhere: [{ id: 'a', label: 'Kofi’s screen', when: '8:52\u2060–\u206010:40' }, { id: 'b', label: 'Maya’s screen', when: '14:05\u2060–\u206016:20' }]
   }
 };
 /** One share going on: its label says whose screen it is. */

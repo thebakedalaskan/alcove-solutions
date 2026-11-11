@@ -412,7 +412,7 @@ function useReplay(noteId: string, shares: ScreenShare[], player: PlayerState) {
   };
   const away = (s: ScreenShare) => (pos < s.at ? s.at - pos : pos - s.until);
   const elsewhere = src !== null ? [] : [...shares].sort((a, b) => away(a) - away(b)).slice(0, NEAREST).sort((a, b) => a.at - b.at)
-    .map((s) => ({ id: s.id, label: s.label, when: `${position(s.at)}⁠–⁠${position(s.until)}` }));
+    .map((s) => ({ id: s.id, label: s.label, when: `${position(s.at)}\u2060–\u2060${position(s.until)}` }));
   // Going to a share moves the sun to its start, playing on if it was playing, as the line does.
   const go = (id: string) => { const s = shares.find((x) => x.id === id); if (s) seek(s.at); };
   return {
