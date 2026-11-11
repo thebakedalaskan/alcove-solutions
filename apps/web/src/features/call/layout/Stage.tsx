@@ -120,7 +120,7 @@ const MAKE_ROOM = { duration: 0.9, ease: [0.45, 0, 0.2, 1] } as const;
 const UI = { duration: 0.24, ease: [0.22, 0.8, 0.24, 1] } as const;
 /** How long after a drag ends the browser's click on the tile is still that drag's: at once from a mouse, a moment later from a finger. */
 const DROP_MS = 400;
-const mmss =(s: number) => `${Math.floor(Math.max(0, s) / 60)}:${String(Math.floor(Math.max(0, s) % 60)).padStart(2, '0')}`;
+const mmss = (s: number) => `${Math.floor(Math.max(0, s) / 60)}:${String(Math.floor(Math.max(0, s) % 60)).padStart(2, '0')}`;
 const box = (r: Rect) => ({ left: r[0], top: r[1], width: r[2], height: r[3] });
 const ARROWS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown']);
 /** The corner a picture dropped at (x, y) goes to, or that Shift and an arrow move it to. */
