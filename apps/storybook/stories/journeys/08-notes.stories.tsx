@@ -467,9 +467,9 @@ export const JumpToAMoment: PageStory = {
     await step('Point at a mark. It says what happened there', async () => {
       await userEvent.hover((await horizon()).getByRole('button', { name: /^Decision at 3:15/ }));
     });
-    await step('Click it. The sun moves there and the transcript goes to that line', async () => {
+    await step('Click it. The sun moves there, and the page stays where it is', async () => {
       await userEvent.click((await horizon()).getByRole('button', { name: /^Decision at 3:15/ }));
-      await screen.findByText('Then let’s say it. The new onboarding ships behind a flag on 12 November.', {}, SOON);
+      await (await horizon()).findAllByText('3:15', {}, SOON);
     });
     await step('A moment chip does the same, from anywhere on the page', async () => {
       await userEvent.click(within(await article('Write the help article for support')).getByRole('button', { name: 'Go to the moment at 6:20' }));
