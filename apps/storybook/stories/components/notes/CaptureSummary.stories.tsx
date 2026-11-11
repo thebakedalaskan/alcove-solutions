@@ -1,6 +1,6 @@
 /*
- * CaptureSummary: what a call captures, for someone about to join it, beside their preview on the night stage. The
- * notes sign, what happens to what they say, each kind of capture once the call has started, what the call won't keep,
+ * CaptureSummary: what a call captures, for someone about to join it, beside their preview on the night stage, each fact
+ * once. The notes sign, one sentence on what happens to what they say (it follows every state), what the call won't keep,
  * and who gets the notes. Before the organizer starts the call it says what will happen. It never names anyone, and
  * never says anything that was said.
  */
@@ -48,7 +48,7 @@ export const BeforeItStartsNotesOff: Story = { name: 'Before it starts, notes of
 export const NotesOn: Story = { name: 'Notes on', args: { capture: captured('on') } };
 /** Notes on, with an AI model outside a secure enclave: the line about confidential compute says so instead. */
 export const UnencryptedModel: Story = { name: 'Unencrypted AI model', args: { capture: { ...captured('on'), modelPrivate: false } } };
-/** Notes on, and the organizer has shared screens read for them too. */
+/** Notes on, and someone is sharing a screen they put in the notes: what's shared is read for them too, while it lasts. */
 export const ScreensRead: Story = { name: 'Screens read', args: { capture: captured('on', { screen: 'on' }) } };
 /** Notes on, but the browser taking them can't record right now: what's said is still transcribed. */
 export const CantRecord: Story = { name: 'Can’t record', args: { capture: captured('on', { recording: 'unavailable' }) } };

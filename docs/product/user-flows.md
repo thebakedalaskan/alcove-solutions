@@ -249,10 +249,12 @@ off, and turn them on later. Allowing them in the browser's settings is noticed 
 beside the microphone and camera buttons open the same menus, and switch devices without leaving the call or
 interrupting the notes.
 
-Everyone sees what the call captures before they join and while they wait: whether notes are on, paused or off,
-the recording, transcript, AI notes and shared screens each with its state, that the notes are written in
-confidential compute, who gets them, and what won't be kept ("The transcript is deleted after the notes are written.",
-"The recording is deleted when the call ends."). Never anyone's name or anything said. A call set up to join muted
+Everyone sees what the call captures before they join and while they wait, each fact once: whether notes are on, paused
+or off; one sentence on what happens to what they say, which follows the call (recorded and transcribed, you included;
+only one of the two while the host's browser can't do the other; nothing while notes are paused or that browser is away;
+and, while someone shares a screen they put in the notes, that it's read too); what won't be kept ("The transcript is
+deleted after the notes are written.", "The recording is deleted when the call ends."); and that the notes are written
+in confidential compute, and who gets them. Never anyone's name or anything said. A call set up to join muted
 starts your microphone and camera off, and says so.
 
 When the call is in a series and you're signed in with earlier notes from it, **From last time** sits under the way
