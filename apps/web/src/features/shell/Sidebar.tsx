@@ -9,6 +9,7 @@ import { ArchThumb, Faces, Icon, IconButton, Kbd, Logo, Meter, NavItemContent, S
 import { useQuery } from '@tanstack/react-query';
 import { Link, useRouterState } from '@tanstack/react-router';
 import { useEffect, useRef, useState, type RefObject } from 'react';
+import { aheadOf, joinable } from '~/features/home/day';
 import { recordOfflineHere } from '~/lib/device';
 import { log } from '~/lib/log';
 import { useNow, useOnline } from '~/lib/live';
@@ -91,7 +92,7 @@ export function Sidebar({ hidden, hideRef, onHide, onNew, onPin }: {
           {places(NAV, team).map((p) => <Link key={p.to} to={p.to} className="ac-nav-item" data-tour={p.tour}><NavItemContent icon={p.icon} label={p.label} count={p.count && counts[p.count]} /></Link>)}
         </SidebarNav>
         <div className="sb-mid">
-          {online && path !== '/home' && <UpNext />}
+          {online && <UpNext home={path === '/home'} />}
           <Pinned onPin={onPin} />
           {team !== null && <Groups />}
         </div>
@@ -120,17 +121,21 @@ function nextToday(calls: Meeting[], events: CalendarEvent[], me: string | undef
 }
 
 /**
- * Up next, with Join. Home offers a call by itself, and offline there's nothing to join. With nothing left today it
- * says where the next call will show, except on the first day, before any notes, when it keeps quiet.
+ * Up next, with Join, on every page. On Home (`home`) it makes way while Home's own line offers a call, from a call's last
+ * few minutes and while one is going, by Home's own rule (`joinable`), so there's one Join at a time. Offline there's
+ * nothing to join. With nothing left today it says where the next call will show, except on the first day, before any
+ * notes, when it keeps quiet.
  */
-function UpNext() {
+function UpNext({ home }: { home: boolean }) {
   const now = useNow();
   const me = useQuery(q.session()).data?.user.email;
   const calls = useQuery(q.upcoming()).data;
   const calendar = useQuery(q.calendar()).data;
   const prefs = useQuery(q.prefs()).data;
   const notes = useQuery(q.notes()).data;
-  const next = nextToday(calls ?? [], prefs?.showOtherMeetings === false ? [] : calendar?.events ?? [], me, now);
+  const events = prefs?.showOtherMeetings === false ? [] : calendar?.events ?? [];
+  const next = nextToday(calls ?? [], events, me, now);
+  if (home && joinable(aheadOf(calls ?? [], events, now), me, now)) return null;
   if (!next && (!calls || !notes?.length)) return null;
   return (
     <div className="sb-sec">

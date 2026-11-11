@@ -34,9 +34,18 @@ export const FollowUpSavingPhone = phone(FollowUpSaving);
 export const FollowUpSavingPhoneNight = { ...phone(FollowUpSaving), globals: { viewport: { value: 'phone' }, theme: 'dark' } };
 export const FirstDay = page('/home', 'first-day');
 export const FirstDayPhone = phone(FirstDay);
+/** The design review in four minutes: Home's own line offers it with Join, and the side panel's Up next makes way for it. */
 export const CallSoon = page('/home', 'call-soon');
 /** The design review started six minutes ago: Happening now, and Join takes the filled button. */
 export const HappeningNow = page('/home', 'call-soon', { parameters: { opening: { now: on(0, 10, 36) } } });
+
+/** On a wide screen, the side panel's Up next on Home too: the design sync at 17:30, its countdown and Join. */
+const WIDE = { viewport: { value: 'wide', isRotated: false } } as const;
+export const UpNextOnHome = page('/home', 'busy', { globals: WIDE });
+export const UpNextOnHomeNight = page('/home', 'busy', { globals: { ...WIDE, theme: 'dark' } });
+/** Four minutes before the design review: Home's line is the one Join on screen, and Up next has made way. */
+export const UpNextMakesWay = page('/home', 'call-soon', { globals: WIDE });
+export const UpNextMakesWayNight = page('/home', 'call-soon', { globals: { ...WIDE, theme: 'dark' } });
 export const OnTheirOwn = page('/home', 'on-their-own');
 export const Writing = page('/home', 'writing');
 export const Offline = page('/home', 'offline');

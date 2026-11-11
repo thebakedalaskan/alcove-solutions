@@ -62,10 +62,11 @@ Beside every page, dark in both themes:
   where you write together (flow 12); **Record**, where recording in the room starts (flow 9), with how many recordings on this
   device are waiting to upload; and **Team** (flow 10), with how many people at your company use Alcove, you among them,
   once anyone besides you does. Someone on their own, at a personal address, has no Team page and no groups here.
-- **Up next**, on every page but Home: the next Alcove call today, or the next meeting on your calendar
+- **Up next**, on every page: the next Alcove call today, or the next meeting on your calendar
   that has a video link (unless **Show my other meetings on Home** is off), when it starts, who's coming,
   and **Join**. With nothing left today it says the next call will show there, except before your first
-  notes, when it says nothing.
+  notes, when it says nothing. On Home it makes way while Home's own line offers a call (from 5 minutes before
+  one with someone else on it, and while one is going), so there's one **Join** at a time.
 - **Pinned**: the notes you pinned, in the order you pinned them, up to 8. A pinned note that was deleted,
   or that you removed from your notes, isn't listed. The pin beside the heading opens the palette to pick
   notes to pin or unpin; with 8 pinned it says to unpin one first. With nothing pinned, a line says what
@@ -117,7 +118,9 @@ visitors: a boat far out, stars after dark and now and then a shooting star. Wit
 - While a call is going, or from 5 minutes before one with someone else on it, a line above **Start a call** names it
   with **Join** (**J**), and says when it starts or **Happening now**. It's the one time a call comes near the top: people
   join from their calendar. A call that's going comes first. A calendar meeting needs a video link to get this line, and
-  its **Join** opens that link in a new tab. **Join** takes the filled button, and **Start now** gives it up.
+  its **Join** opens that link in a new tab. **Join** takes the filled button, and **Start now** gives it up. Until
+  then the side panel's **Up next** has the next call with its countdown and **Join**, as on every page, and it makes way
+  for this line while the line is there.
 - **For you**, with how many things are open: what needs an answer, as tiles, then your follow-ups as a checklist.
   With nothing open, it says so. The side panel's **Home** shows the same count.
 - The tiles, newest first, the first six and then **Show more**. A **Decision** (rose) proposed in any note you organized or
