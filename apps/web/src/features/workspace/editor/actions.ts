@@ -488,6 +488,17 @@ const selectionRect = (view: EditorView): Rect => {
   return range && range.rangeCount > 0 ? range.getRangeAt(0).getBoundingClientRect() : view.dom.getBoundingClientRect();
 };
 
+/** The words held on the page now, as they're marked there (`.fs`), however the page has scrolled or changed since. */
+const heldOnPage = (rt: EditorRuntime): Element[] => [...(rt.view?.dom.querySelectorAll('.fs') ?? [])];
+/** Where held words are on screen now, all of them: or `was`, once nothing's held. */
+function heldRect(rt: EditorRuntime, was: Rect): Rect {
+  const boxes = heldOnPage(rt).map((el) => el.getBoundingClientRect()).filter((r) => r.width > 0 || r.height > 0);
+  if (boxes.length === 0) return was;
+  const left = Math.min(...boxes.map((r) => r.left)), top = Math.min(...boxes.map((r) => r.top));
+  const right = Math.max(...boxes.map((r) => r.right)), bottom = Math.max(...boxes.map((r) => r.bottom));
+  return { left, top, right, bottom, width: right - left, height: bottom - top };
+}
+
 /** Holds the selected words for a comment, then hands over a draft. ⌘⇧M and the bar's Comment both come here. */
 export function startComment(rt: EditorRuntime): boolean {
   const view = editing(rt);
@@ -590,6 +601,8 @@ export function askAboutSelection(rt: EditorRuntime): void {
 
   onAsk({
     text, block, rect,
+    where: () => heldRect(rt, rect),
+    within: () => heldOnPage(rt)[0] ?? null,
     wait: () => {
       const live = editing(rt);
       if (!live) return;

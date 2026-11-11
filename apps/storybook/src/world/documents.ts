@@ -247,14 +247,18 @@ export const REVIEW_CHECKLIST: Page = {
   ]
 };
 
+/* The pricing sync's draft: a thread on its first line, long enough to scroll. */
 export const PRICING_DRAFT: Page = {
   blocks: [
-    line('Minutes of notes are what people pay for. Every seat gets free minutes each month.'),
+    lineOf(['Minutes of notes are what people pay for. Every seat gets ', commented('c-free', 'free minutes each month'), '.']),
     heading('The team plan'),
     bullet('Monthly or yearly'),
     bullet('Minutes shared across the team'),
     heading('Still open'),
     todo('What a minute costs past the free ones')
+  ],
+  threads: [
+    { id: 'c-free', on: 0, quote: 'free minutes each month', says: [{ who: KOFI, text: 'How many, for a team of five?', hoursAgo: 23 }, { who: MAYA, text: '600 each, so 3,000 a month between them.', hoursAgo: 22.5 }] }
   ]
 };
 

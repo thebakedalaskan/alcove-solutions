@@ -47,18 +47,28 @@ function edges(): { top: number; right: number; bottom: number; left: number } {
  * place (`at`: a point, or a function that says where a caret or a word is now). It flips to stay on screen, pops in
  * over 140 ms, closes on Esc or a click outside, and puts focus back where it was, or leaves it where someone clicked.
  * On a phone it's a sheet at the bottom of the window. `takeFocus={false}` for one that opens while someone's typing.
+ * `within` says what on the page `at` is part of (the words, a tag, a block): the popover follows it as what it's in
+ * scrolls or moves, and hides while it's scrolled out of view, coming back with it.
  */
-export function WsPopover({ id, open, onOpenChange, anchor, at, label, side = 'bottom', align = 'start', takeFocus = true, className, children }: {
+export function WsPopover({ id, open, onOpenChange, anchor, at, within, label, side = 'bottom', align = 'start', takeFocus = true, className, children }: {
   /** For what says it controls this, such as a comment's pin, when that isn't `anchor`. */
   id?: string | undefined;
   open: boolean; onOpenChange: (open: boolean) => void;
   anchor?: ReactElement | undefined; at?: WsPoint | (() => DOMRect) | undefined;
+  /** The element on the page `at` belongs to, as it is now. */
+  within?: (() => Element | null) | undefined;
   /** Names it for assistive tech. */
   label: string;
   side?: 'top' | 'right' | 'bottom' | 'left' | undefined; align?: 'start' | 'center' | 'end' | undefined;
   takeFocus?: boolean | undefined; className?: string | undefined; children: ReactNode;
 }) {
-  const place = useMemo(() => at === undefined ? undefined : { current: { getBoundingClientRect: () => rectOf(at) } }, [at]);
+  /*
+   * Placed against a virtual anchor. Its `contextElement` is what tells the positioner which scrolling boxes and layout
+   * shifts to follow, and what can clip it out of view: without one it only hears the window.
+   */
+  const place = useMemo(() => at === undefined ? undefined : {
+    current: { getBoundingClientRect: () => rectOf(at), get contextElement(): Element | undefined { return within?.() ?? undefined; } }
+  }, [at, within]);
   const back = useRef<HTMLElement | null>(null);
   const away = useRef(false);
   return (
@@ -67,6 +77,7 @@ export function WsPopover({ id, open, onOpenChange, anchor, at, label, side = 'b
       {place && <RPopover.Anchor virtualRef={place} />}
       <RPopover.Portal>
         <RPopover.Content id={id} side={side} align={align} sideOffset={side === 'left' || side === 'right' ? 10 : 6} collisionPadding={open ? edges() : 8} aria-label={label}
+          hideWhenDetached={within !== undefined}
           className={cn('ws-pop', className)} onInteractOutside={() => { away.current = true; }}
           onOpenAutoFocus={(e) => {
             back.current = focusedNow();

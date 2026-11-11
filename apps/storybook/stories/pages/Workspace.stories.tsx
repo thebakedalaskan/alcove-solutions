@@ -86,6 +86,29 @@ export const ACommentThread = page(FIXES, 'busy', {
 });
 export const TagsAndCommentsPhone = page(FIXES, 'busy', { globals: PHONE });
 
+/** The pricing sync's draft: long enough to scroll, with a thread on its first line. */
+const DRAFT = at('ws-pricing', 'Pricing draft');
+/** Opens the thread on the first line from its count in the margin, then scrolls the page down by `by` pixels. */
+const scrollThread = (by: number, said: string): NonNullable<PageStory['play']> => async ({ canvas, canvasElement, userEvent, step }) => {
+  await step('Open the thread on the first line, from its count in the margin', async () => {
+    const [count] = await canvas.findAllByRole('button', { name: 'Open the comments' }, { timeout: 8000 });
+    if (count) await userEvent.click(count);
+    await screen.findByRole('dialog', { name: /^Comments on/ }, { timeout: 5000 });
+  });
+  await step(said, async () => {
+    const scroller = canvasElement.querySelector('.wd-scroll');
+    if (scroller) scroller.scrollTop = by;
+    await beat(300);
+  });
+};
+/** Scrolled a little: the thread moves with the words it's on. */
+export const ThreadFollowsItsWords = page(DRAFT, 'busy', { play: scrollThread(90, 'Scroll the page down a little. The thread moves with its words') });
+export const ThreadFollowsItsWordsNight = page(DRAFT, 'busy', { globals: { theme: 'dark' }, play: scrollThread(90, 'Scroll the page down a little. The thread moves with its words') });
+/** Scrolled past the words: the thread goes out of view with them, and comes back when they do. */
+export const ThreadGoesWithItsWords = page(DRAFT, 'busy', { play: scrollThread(400, 'Scroll on, past the words. The thread goes out of view with them') });
+/** On a phone the thread is a sheet at the foot of the window, wherever its words have scrolled to. */
+export const ThreadAsThePageScrollsPhone = page(DRAFT, 'busy', { globals: PHONE, play: scrollThread(400, 'Scroll past the words. The sheet stays at the foot of the window') });
+
 /** In the design review's home: its screenshots side by side, the walkthrough to play, and the spec to download. */
 export const PhotosVideoAndAFile = page(SHOTS, 'busy');
 export const PhotosVideoAndAFileNight = page(SHOTS, 'busy', { globals: { theme: 'dark' } });

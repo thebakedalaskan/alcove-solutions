@@ -61,8 +61,14 @@ function blockOf(kind: MediaPick['kind'], chosen: readonly WorkspaceMedia[], cap
 }
 
 /** The element a block is on the page, to sit something against. */
-const blockRect = (id: string | null): DOMRect | null => (id ? document.querySelector(`.wb[data-b="${CSS.escape(id)}"]`)?.getBoundingClientRect() ?? null : null);
+const blockOn = (id: string | null): Element | null => (id ? document.querySelector(`.wb[data-b="${CSS.escape(id)}"]`) : null);
+const blockRect = (id: string | null): DOMRect | null => blockOn(id)?.getBoundingClientRect() ?? null;
 const toDOMRect = (r: Rect) => new DOMRect(r.left, r.top, r.width, r.height);
+/** Where something about a block sits: against the block, wherever it is now, or where it was, or the middle of the window. */
+const placeOf = (block: string | null, rect: Rect | null): { at: () => DOMRect; within: () => Element | null } => ({
+  at: () => blockRect(block) ?? (rect ? toDOMRect(rect) : new DOMRect(innerWidth / 2, innerHeight / 3, 1, 1)),
+  within: () => blockOn(block)
+});
 /** The line something goes in place of, or under. */
 const lineOf = (at: InsertAt): string | null => (typeof at === 'string' ? null : 'replace' in at ? at.replace : 'after' in at ? at.after : at.before);
 
@@ -324,7 +330,9 @@ export function useDocumentMedia(ws: Ws, documentId: string, { session, editor, 
   const list = listedNow ?? [];
   /* The newest few, in the order they came, so Add all keeps them as they were added. */
   const offered = (kind: MediaPick['kind']) => list.filter((m) => m.documents.length > 0 && !isFrame(m) && (kind === 'photo' ? isPicture(m) : kind === 'video' ? isVideo(m) : !isPicture(m) && !isVideo(m))).slice(0, REUSE).reverse();
-  const anchorOf = (p: { anchor: string | null; rect: Rect | null }) => () => blockRect(p.anchor) ?? (p.rect ? toDOMRect(p.rect) : new DOMRect(innerWidth / 2, innerHeight / 3, 1, 1));
+  /* Each sits against its block, wherever that is now, and follows it as the page scrolls. */
+  const pickerAt = useMemo(() => (picking ? placeOf(picking.anchor, picking.rect) : null), [picking]);
+  const deletingAt = useMemo(() => (deleting ? placeOf(deleting.block, deleting.rect) : null), [deleting]);
   const heading = ws.spaceName;
 
   const pickerFor = (pick: Picking) => {
@@ -337,13 +345,13 @@ export function useDocumentMedia(ws: Ws, documentId: string, { session, editor, 
   const popovers = (
     <>
       <input ref={field} type="file" multiple hidden onChange={chosen} aria-label="Choose files to add" />
-      {picking && (
-        <WsPopover open onOpenChange={(open) => { if (!open) setPicking(null); }} at={anchorOf(picking)} label={picking.kind === 'photo' ? 'Photos' : picking.kind === 'video' ? 'Video' : 'File'}>
+      {picking && pickerAt && (
+        <WsPopover open onOpenChange={(open) => { if (!open) setPicking(null); }} at={pickerAt.at} within={pickerAt.within} label={picking.kind === 'photo' ? 'Photos' : picking.kind === 'video' ? 'Video' : 'File'}>
           {pickerFor(picking)}
         </WsPopover>
       )}
-      {deleting && (
-        <WsPopover open onOpenChange={(open) => { if (!open) setDeleting(null); }} at={anchorOf({ anchor: deleting.block, rect: deleting.rect })} label={`Delete ${deleting.name} for good`}>
+      {deleting && deletingAt && (
+        <WsPopover open onOpenChange={(open) => { if (!open) setDeleting(null); }} at={deletingAt.at} within={deletingAt.within} label={`Delete ${deleting.name} for good`}>
           <WsDeleteFileAsk name={deleting.name} onDelete={() => { void deleteForGood(deleting); }} onKeep={() => setDeleting(null)} />
         </WsPopover>
       )}

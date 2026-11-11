@@ -74,6 +74,10 @@ export interface AskDraft {
   text: string;
   block: string;
   rect: Rect;
+  /** Where the words are now, while they're held, for what opens against them to follow them: `rect` once they've gone. */
+  where: () => Rect;
+  /** What on the page holds the words now, while they're held. */
+  within: () => Element | null;
   /** Alcove's writing: the caret steps off the words, so typing on can't replace them, and dots show beside them. */
   wait: () => void;
   /**
@@ -207,8 +211,8 @@ export interface EditorProps {
   onOpenDocument?: ((id: string) => void) | undefined;
   /** Makes a board beside this document, for `/` Board to show. Resolves with its ID, or null if it wasn't made. Without it, `/` has no Board. */
   onNewBoard?: (() => Promise<string | null>) | undefined;
-  /** A person's name in the text was pressed. */
-  onOpenPerson?: ((id: string, rect: Rect) => void) | undefined;
+  /** A person's name in the text was pressed: where it was, and where its tag is now, for what opens against it to follow it. */
+  onOpenPerson?: ((id: string, rect: Rect, tag: () => Element | null) => void) | undefined;
   /** Someone was just tagged: tell them, or ask before sharing. */
   onTagged?: ((person: Person, block: string, rect: Rect | null) => void) | undefined;
   /** Files were dropped on the page or pasted. `at` is where the line showed, or the empty Photos block they landed on. */

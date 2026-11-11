@@ -455,8 +455,11 @@
   .wd-tpls { grid-template-columns: minmax(0, 1fr); }
   .wh { top: auto; left: 0; width: auto; height: 46%; border-left: 0; border-top: 1px solid var(--line); }
   .ws-pane:has(> .wh) .wd { max-height: 54%; }
-  /* A sheet on a phone, but not a role's menu: that one opens inside a sheet, against the role it changes. */
-  [data-radix-popper-content-wrapper]:has(> .ws-pop):not(:has(.wm.is-role)) { inset: auto 8px calc(8px + var(--kbar, 0px)) !important; min-width: 0 !important; transform: none !important; }
+  /*
+   * A sheet on a phone, but not a role's menu: that one opens inside a sheet, against the role it changes. A sheet isn't
+   * beside what it's about, so it stays when that's scrolled out of view, where a popover beside it would hide.
+   */
+  [data-radix-popper-content-wrapper]:has(> .ws-pop):not(:has(.wm.is-role)) { inset: auto 8px calc(8px + var(--kbar, 0px)) !important; min-width: 0 !important; transform: none !important; visibility: visible !important; pointer-events: auto !important; }
   .ws-pop:not(:has(.wm.is-role)) { border-radius: 22px; animation: ws-sheet var(--duration-2) var(--ease-out); }
   .ws-pop > * { width: auto; }
   /* A phone has no keys to press, and Record stands taller than a short sheet, so it steps back while one's up. */
