@@ -75,6 +75,8 @@ export type Beat =
   | { do: 'hand'; who: Person; up: boolean }
   /** Someone asks a question for the room, with votes already on it; `anonymous`: it names nobody. */
   | { do: 'question'; who: Person; text: string; votes?: number; anonymous?: boolean | undefined }
+  /** Others in the room vote for the open question with these words: so many more votes on it. */
+  | { do: 'vote'; text: string; votes: number }
   /** Someone nudges you: only you see it, and the same nudge from several people within a minute is one note. */
   | { do: 'nudge'; who: Person; kind: CallNudgeKind }
   /** Someone sets their status, for so many minutes, or clears it (null). */
@@ -254,6 +256,8 @@ export const replies = (who: Person, to: string, text: string, tagged: readonly 
 export const repliesToEveryone = (who: Person, to: string, text: string): Beat => ({ do: 'reply', who, to, text, tagged: [], broadcast: true });
 /** Someone asks a question for the room. */
 export const asks = (who: Person, text: string, o: { votes?: number; anonymous?: boolean } = {}): Beat => ({ do: 'question', who, text, ...o });
+/** Others vote for the question with these words. */
+export const votesFor = (text: string, votes = 1): Beat => ({ do: 'vote', text, votes });
 export const reacts = (who: Person, text: string, reaction: CallReaction): Beat => ({ do: 'react', who, text, reaction });
 export const reactsPrivately = (who: Person, text: string, reaction: CallReaction): Beat => ({ do: 'react-privately', who, text, reaction });
 export const knocks = (who: Person, o: { byName?: boolean } = {}): Beat => ({ do: 'knock', who, ...o });

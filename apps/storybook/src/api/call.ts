@@ -232,6 +232,7 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
       case 'mic': this.them(b.who, (t) => ({ ...t, mic: b.on, speaking: b.on && t.speaking })); return;
       case 'hand': { const p = this.find(b.who); if (p) this.handFor(p, b.up); return; }
       case 'question': { const p = this.find(b.who); if (p) this.questionFor(p, b.text, b.votes ?? 0, nextId('question'), b.anonymous ?? false); return; }
+      case 'vote': this.change((s) => ({ ...s, attention: { ...s.attention, questions: s.attention.questions.map((q) => (q.text === b.text && q.status === 'open' ? { ...q, votes: q.votes + b.votes } : q)) } })); return;
       case 'nudge': { const p = this.find(b.who); if (p) this.nudgeFrom(p, b.kind); return; }
       case 'status': { const p = this.find(b.who); if (p) this.statusFor(p, b.status, b.minutes); return; }
       case 'share': this.them(b.who, (t) => ({ ...t, screen: b.screen })); return;
