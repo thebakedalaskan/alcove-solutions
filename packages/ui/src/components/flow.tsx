@@ -168,6 +168,10 @@ export function TimeCard({ day, time, note, picked, ...rest }: Omit<ButtonHTMLAt
 /** Where a time card will be, while calendars are being read. */
 export const TimeCardWaiting = () => <span className="cf-time is-wait" aria-hidden="true"><i /><i /><i /></span>;
 
+/** An hour's height in the week, and the room above its first hour line (flow.css's --hh and --top). */
+const HOUR = 34;
+const TOP = 8;
+
 /** A day in the week. */
 export interface WeekDay { weekday: string; date: number; today: boolean; label: string }
 /** What's already in a day, in hours from midnight. `mine` is yours and can say what it is; `busy` is only that someone is. */
@@ -197,7 +201,7 @@ export function WeekGrid({ days, events, pick, from, to, isBusy, isPast, onPick,
   const top = Math.max(from, Math.min(pick?.from ?? 9, 9));
   useLayoutEffect(() => {
     const el = box.current;
-    if (el) el.scrollTop = (top - from) * 34 - 10;
+    if (el) el.scrollTop = (top - from) * HOUR + TOP - 10;
   }, [from, top]);
   const move = (day: number, slot: number) => {
     const next = { day: Math.max(0, Math.min(days.length - 1, day)), slot: Math.max(0, Math.min(slots - 1, slot)) };

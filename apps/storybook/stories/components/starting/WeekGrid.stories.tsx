@@ -88,3 +88,13 @@ export const ThisWeek: Story = { name: 'This week' };
 export const Picked: Story = { args: { pick: { day: 1, from: 14, to: 14.5, label: '14:00' } } };
 /** An hour picked, early: the view starts at the pick when it's before nine. */
 export const EarlyHour: Story = { name: 'An early hour', args: { pick: { day: 2, from: 8, to: 9, label: '08:00' } } };
+/** Scrolled to the top of the day: the first hour's label reads in full under the days, on its line like the others. */
+export const TopOfTheDay: Story = {
+  name: 'The top of the day',
+  play: async ({ canvasElement, step }) => {
+    await step('Scroll the week to the top', async () => {
+      const week = canvasElement.querySelector('.wk-scroll');
+      if (week) week.scrollTop = 0;
+    });
+  }
+};

@@ -143,21 +143,22 @@ button.cf-r:enabled:hover b { color: var(--sun-text); }
 .cf-wk-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 36px; margin-bottom: 4px; font: 500 12.5px/1 var(--font-sans); color: var(--ink-3); }
 .cf-wk-top .ac-icon-btn { width: 32px; height: 32px; }
 .cf-wk-nav { display: flex; gap: 2px; }
-.wk-scroll { --hh: 34px; max-height: calc(9 * var(--hh) + 44px); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+/* --hh is an hour's height, --top the room above the first hour line, so its label clears the sticky days (WeekGrid's HOUR and TOP). */
+.wk-scroll { --hh: 34px; --top: 8px; max-height: calc(9 * var(--hh) + 44px); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
 .wk { display: grid; grid-template-columns: 34px repeat(5, minmax(0, 1fr)); }
 .wk-d { position: sticky; top: 0; z-index: 3; height: 44px; padding-bottom: 8px; background: var(--surface-raised); text-align: center; font: 500 12px/1.2 var(--font-sans); color: var(--ink-3); }
 .wk-d b { display: block; margin-top: 3px; font: 600 15px/1 var(--font-sans); color: var(--ink); }
 .wk-d.today, .wk-d.today b { color: var(--sun-text); }
 .wk-corner { position: sticky; top: 0; z-index: 3; background: var(--surface-raised); }
-.wk-hrs { display: grid; grid-auto-rows: var(--hh); }
+.wk-hrs { display: grid; grid-auto-rows: var(--hh); padding-top: var(--top); }
 .wk-hrs span { padding-right: 7px; text-align: right; font: 500 11px/1 var(--font-sans); font-variant-numeric: tabular-nums; color: var(--ink-3); transform: translateY(-5px); }
-.wk-c { position: relative; height: calc(var(--rows) * var(--hh)); border-left: 1px solid var(--line); background-image: linear-gradient(var(--line) 1px, transparent 1px); background-size: 100% var(--hh); }
+.wk-c { position: relative; height: calc(var(--rows) * var(--hh) + var(--top)); padding-top: var(--top); border-left: 1px solid var(--line); background-image: linear-gradient(var(--line) 1px, transparent 1px); background-size: 100% var(--hh); background-origin: content-box; }
 .wk-c:last-child { border-right: 1px solid var(--line); }
-.wk-slot { position: absolute; z-index: 1; left: 0; right: 0; top: calc(var(--i) * var(--hh) / 2); height: calc(var(--hh) / 2); cursor: pointer; }
+.wk-slot { position: absolute; z-index: 1; left: 0; right: 0; top: calc(var(--top) + var(--i) * var(--hh) / 2); height: calc(var(--hh) / 2); cursor: pointer; }
 .wk-slot:hover { background: color-mix(in srgb, var(--sun) 10%, transparent); }
 .wk-slot[aria-disabled="true"] { cursor: default; background: none; }
 .wk-slot:focus-visible { z-index: 3; outline: 2px solid var(--focus); outline-offset: -1px; border-radius: 3px; }
-.ev { position: absolute; left: 2px; right: 2px; top: calc((var(--s) - var(--from)) * var(--hh) + 1px); height: calc(var(--d) * var(--hh) - 2px); padding: 3px 5px; border-radius: 6px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font: 500 10.5px/1.2 var(--font-sans); color: var(--ink-3); pointer-events: none; }
+.ev { position: absolute; left: 2px; right: 2px; top: calc(var(--top) + (var(--s) - var(--from)) * var(--hh) + 1px); height: calc(var(--d) * var(--hh) - 2px); padding: 3px 5px; border-radius: 6px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font: 500 10.5px/1.2 var(--font-sans); color: var(--ink-3); pointer-events: none; }
 .ev.mine { background: var(--surface); box-shadow: inset 0 0 0 1px var(--line-control); color: var(--ink-2); }
 .ev.busy { background: color-mix(in srgb, var(--line-control) 22%, transparent); }
 .ev.is-pick { z-index: 2; background: var(--sun-soft); box-shadow: inset 0 0 0 1.5px var(--sun); color: var(--sun-text); font: 600 11px/1.2 var(--font-sans); font-variant-numeric: tabular-nums; animation: cf-pop var(--duration-2) var(--ease-out) both; }
