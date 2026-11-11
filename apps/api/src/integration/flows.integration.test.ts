@@ -1532,46 +1532,45 @@ describe('live transcript and written notes', () => {
     expect(h.logs.join('')).not.toContain('Siobhan owns the migration plan');
   });
 
-  it('takes what Whisper says back of its prompt off the start of a line: two or more of its names, or a long run of the words before', async () => {
+  it('takes the names Whisper says back of its prompt off the start of a clip, and keeps a line that opens with the end of the one before', async () => {
     const org = await account(unique('organizer'));
     const guest = `priya.raman@l${Date.now().toString(36)}.example`;
     const call = await org.api.calls.join((await org.api.calls.startNow({ notes: 'on', guests: [guest] })).code, { mic: true, cam: false });
-    const names = `${org.session.user.name}, Priya Raman.`;
+    const organizer = org.session.user.name;
+    const names = `${organizer}, Priya Raman.`;
     const said = ['We should look at the launch plan first.', 'The beta went out to forty customers on Monday.', 'Most of them finished onboarding within a day.'];
     for (const [i, words] of said.entries()) await call.transcribe(speech(words, 0, i * 4), call.ticket.identity);
     const from = h.near.transcriptions.length;
     const logsFrom = h.logs.length;
     // Clips too short to ask Whisper about the language again, so every one goes with the prompt.
     const clip = (words: string, at: number) => call.transcribe(speech(words, 0, at, 3000), call.ticket.identity);
-    // The names said back, then what was heard: the names go, and what was said stays under its speaker.
+    // The names said back as Whisper starts on the clip, then what was heard: the names go, and what was said stays under its speaker.
     await clip(`${names} I agree.`, 12);
-    // Nothing but the names: nothing was said, and the line goes.
+    // Nothing but the names: nothing was said, and the clip leaves no line.
     await clip(names, 16);
     // One name is someone spoken to, and stays.
     await clip('Priya Raman, can you take this one?', 20);
-    // A short reply that says back the end of the line before is kept whole: people agree to things that way.
-    await clip('Can we ship it on Friday?', 24);
-    await clip('Ship it on Friday.', 28);
-    await clip('on Friday. Sounds good to me.', 32);
-    // A long run of the line before's last words, opening a line, is Whisper carrying on from its prompt: it goes, and the rest stays.
-    await clip('We agreed to move the launch to the eighteenth of March.', 36);
-    await clip('move the launch to the eighteenth of March. Kofi tells the sales team.', 40);
+    // Names opening a later segment of the clip were said: Whisper says its prompt back only as it starts on a clip.
+    await clip(`Let me ask you both. // ${organizer}, Priya Raman, does Friday still work?`, 24);
+    // A line that opens with the end of the one before is someone picking it up, as a question: it's kept whole.
+    await clip('I think we should push the launch to the end of March.', 28);
+    await clip('Push the launch to the end of March? That’s too late.', 32);
     const sent = h.near.transcriptions.slice(from);
-    expect(sent).toHaveLength(8);
+    expect(sent).toHaveLength(6);
     expect(sent.every((t) => t.language === 'en' && t.prompt?.startsWith(`${names} `))).toBe(true);
-    expect(sent.at(-1)?.prompt?.endsWith('We agreed to move the launch to the eighteenth of March.')).toBe(true);
+    expect(sent.at(-1)?.prompt?.endsWith('I think we should push the launch to the end of March.')).toBe(true);
     expect(call.getSnapshot().transcript.map((l) => l.text)).toEqual([
-      ...said, 'I agree.', 'Priya Raman, can you take this one?', 'Can we ship it on Friday?', 'Ship it on Friday.', 'on Friday. Sounds good to me.',
-      'We agreed to move the launch to the eighteenth of March.', 'Kofi tells the sales team.'
+      ...said, 'I agree.', 'Priya Raman, can you take this one?', 'Let me ask you both.', `${organizer}, Priya Raman, does Friday still work?`,
+      'I think we should push the launch to the end of March.', 'Push the launch to the end of March? That’s too late.'
     ]);
-    // Only how many segments lost a start is logged, never their words.
+    // Only whether a clip lost the names is logged, never its words.
     const logged = h.logs.slice(logsFrom);
     const trimmed = logged.flatMap((line) => {
       const o: unknown = JSON.parse(line);
-      return o && typeof o === 'object' && 'msg' in o && o.msg === 'clip transcribed' && 'namesTrimmed' in o && 'saidTrimmed' in o ? [[o.namesTrimmed, o.saidTrimmed]] : [];
+      return o && typeof o === 'object' && 'msg' in o && o.msg === 'clip transcribed' && 'namesTrimmed' in o ? [o.namesTrimmed] : [];
     });
-    expect(trimmed).toEqual([[1, 0], [1, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 1]]);
-    for (const words of ['I agree', 'Kofi tells the sales team', 'eighteenth of March', 'Sounds good to me']) expect(logged.join('')).not.toContain(words);
+    expect(trimmed).toEqual([1, 1, 0, 0, 0, 0]);
+    for (const words of ['I agree', 'does Friday still work', 'end of March', 'too late']) expect(logged.join('')).not.toContain(words);
     await ended(call);
   });
 
