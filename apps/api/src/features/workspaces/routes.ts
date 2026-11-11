@@ -1,4 +1,4 @@
-import { ItemInputSchema, ItemPlaceSchema, MAX_DOC_BYTES, RestrictBodySchema, ShareBodySchema, WorkspaceInputSchema, WorkspacePersonInputSchema, WorkspaceRolePatchSchema } from '@alcove/api';
+import { ItemInputSchema, ItemPlaceSchema, LiveStreamEndBodySchema, MAX_DOC_BYTES, RestrictBodySchema, ShareBodySchema, WorkspaceInputSchema, WorkspacePersonInputSchema, WorkspaceRolePatchSchema } from '@alcove/api';
 import { Hono, type Context } from 'hono';
 import { CALL_PASS_HEADER } from '../../callPass';
 import * as access from './access';
@@ -6,14 +6,14 @@ import * as workspaceDocuments from './documents';
 import * as mentions from './mentions';
 import * as workspaces from './service';
 import { type Env } from '../../http/context';
-import { body } from '../../http/body';
+import { body, capped } from '../../http/body';
 import type { HttpRuntime } from '../../http/runtime';
 
 
 
 export function registerWorkspaceRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
   const { d } = runtime;
-  const { treeLimiter, workspaceListLimiter, workspaceLimiter, updateBytesLimiter } = runtime.limits;
+  const { treeLimiter, workspaceListLimiter, workspaceLimiter, updateBytesLimiter, presenceLimiter } = runtime.limits;
 
   /*
    * workspaces: what's for people in one. Every answer here is an ID or a yes, so the receipts they keep (a retry mustn't
@@ -93,4 +93,29 @@ export function registerWorkspaceRoutes(app: Hono<Env>, runtime: HttpRuntime): v
   app.delete('/v1/workspaces/:id/items/:item/share/:entry', async (c) => { await workspaces.unshare(d, await member(c, c.req.header(CALL_PASS_HEADER)), ws(c), itemOf(c), c.req.param('entry')); return c.json({ removed: true }); });
 
   app.post('/v1/workspaces/:id/items/:item/restrict', async (c) => { await workspaces.restrict(d, await member(c, c.req.header(CALL_PASS_HEADER)), ws(c), itemOf(c), (await body(c, RestrictBodySchema)).restricted); return c.json({ changed: true }); });
+
+  /*
+   * A browser closed one of its streams, a workspace's or a document's, by the name it gave it: it ends here at once, as
+   * Cloud Run never tells the API a browser went. Only the asker's own, counted under their account as their streams are
+   * (`limitKey`); the same answer whether there was one or not. It takes an account, as everything past the sign-in check
+   * does, so a call's pass alone is refused before anything's read: a guest's places come back as their oldest makes room,
+   * or as the API lets go of a stream. It keeps no receipt (http/receipts.ts): ending one twice ends nothing more.
+   */
+  app.use('/v1/workspaces/:id/live/end', capped(1024));
+
+  app.post('/v1/workspaces/:id/live/end', async (c) => {
+    presenceLimiter(c.get('owner').ownerId, 'stream end');
+    const { stream } = await body(c, LiveStreamEndBodySchema);
+    workspaces.endStream(d, await access.accountReader(c.get('owner')), stream);
+    return c.json({ said: true });
+  });
+
+  app.use('/v1/workspaces/:id/documents/:doc/live/end', capped(1024));
+
+  app.post('/v1/workspaces/:id/documents/:doc/live/end', async (c) => {
+    presenceLimiter(c.get('owner').ownerId, 'stream end');
+    const { stream } = await body(c, LiveStreamEndBodySchema);
+    workspaceDocuments.endStream(d, await access.accountReader(c.get('owner')), stream);
+    return c.json({ said: true });
+  });
 }

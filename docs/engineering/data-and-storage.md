@@ -641,6 +641,8 @@ and this way it runs through the same auth, origin check and tests as everything
   gave up on a quiet or hanging try, or the page went), it sends `POST …/live/end` with that name, as a keepalive request
   so it goes as the page does. The API ends that stream of the asker's at once and gives its place back (`hub.end`, scoped
   to the person, so naming someone else's ends nothing, and the answer is the same either way). A name is never logged.
+  It takes an account, as every route past the sign-in check does, and keeps no receipt: a guest's call pass alone is
+  refused with `401` before anything's read, so a guest's places come back by the rule below, or when the API lets go.
   It reaches only the instance that has the stream; with more than one instance, one asked elsewhere waits for the rule
   below.
 - **At a person's limit,** the next of that kind ends their oldest stream of it to make room, as rings do: the one likeliest

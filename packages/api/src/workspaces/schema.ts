@@ -271,7 +271,10 @@ export const LiveStreamNameSchema = z.string().regex(/^[A-Za-z0-9_-]{22}$/);
 
 export const LIVE_STREAM_HEADER = 'x-alcove-stream' as const;
 
-/** A browser closed its stream by this name: `POST …/live/end`, sent as the page may be going (keepalive). */
+/**
+ * A browser closed its stream by this name: `POST …/live/end`, sent as the page may be going (keepalive). It takes an
+ * account: a guest's call pass alone is refused, and their stream is let go of as any other the API doesn't hear closed.
+ */
 export const LiveStreamEndBodySchema = z.object({ stream: LiveStreamNameSchema });
 
 export type LiveStreamEndBody = z.infer<typeof LiveStreamEndBodySchema>;
