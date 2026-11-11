@@ -299,7 +299,7 @@ export function RoomsLive({ open, elapsed, members, chips, main, people, activit
         </div>
         <div className="ic-rcards">
           {/* The main room: whoever's there can be sent to a room while the rooms are open. */}
-          <div className={cn('ic-rcard is-main', inMain && 'is-here')}>
+          <div className={cn('ic-rcard', inMain && 'is-here')}>
             <div className="top1"><span className="ic-rname is-fixed">Main room</span></div>
             <div className="line2"><span>{mainSays}</span></div>
             {main.length > 0 && (
