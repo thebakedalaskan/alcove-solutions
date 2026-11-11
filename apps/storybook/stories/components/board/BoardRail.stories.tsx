@@ -14,7 +14,7 @@ const TOOLS: BoardTool[] = ['select', 'note', 'text', 'shape', 'line', 'pen', 'f
 const meta = {
   title: 'Components/Board/BoardRail',
   component: BoardRail,
-  args: { tool: 'select', moreOpen: false, faded: false, onTool: did('onTool'), onMore: did('onMore') },
+  args: { tool: 'select', moreOpen: false, onTool: did('onTool'), onMore: did('onMore') },
   argTypes: { tool: { control: 'select', options: TOOLS } },
   render: function Render(args) {
     const [, update] = useArgs<typeof args>();

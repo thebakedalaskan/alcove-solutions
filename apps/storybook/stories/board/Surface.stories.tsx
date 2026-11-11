@@ -17,7 +17,7 @@ import { did } from '../../src/component';
 import { AROUND, launchIdeas, launchRetro, onboardingFlow, retroWithComments, roomsBack, templateBoard } from '../../src/world/boards';
 import { PRIYA } from '../../src/world/people';
 
-const MODES = ['call', 'page', 'read', 'tile', 'present', 'phone'] as const;
+const MODES = ['call', 'page', 'read', 'tile', 'phone'] as const;
 const PHONE = { viewport: { value: 'phone', isRotated: false } };
 
 const meta = {
@@ -142,8 +142,6 @@ export const ViewOnlyThread: BoardStory = {
     });
   }
 };
-/** Presenting: no tools, no dots and no handles, just the frame on screen, as everyone sees it, fitted and in the middle with nothing of the next one at its edge. */
-export const Presenting: BoardStory = { args: { mode: 'present', focus: 'Went well', others: [], talking: ['art'] } };
 
 /**
  * While someone presents the board and it isn't on your stage, it's a tile with the people: a picture that keeps up, its name,

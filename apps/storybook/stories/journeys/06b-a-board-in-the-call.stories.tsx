@@ -145,7 +145,7 @@ export const OpenASavedBoard: PageStory = {
     await step('Let them in for this call: everyone can work on it until the call ends, and after that, Sam can’t again. Everyone follows you on it', async () => {
       // Present's question isn't a menu whose rows move: it takes a press once its button can be pressed.
       await userEvent.click(await pressable('button', 'Let them in for this call'));
-      await screen.findByText('Everyone follows you on Onboarding flow. They can unfollow to add to it.', {}, LATER);
+      await screen.findByText('Everyone follows you on Onboarding flow. They can add to it as you go.', {}, LATER);
     });
   }
 };

@@ -11,7 +11,7 @@ import { BAR, KitSheet, RetroPiece } from './parts';
 const meta = {
   title: 'Components/Board/BoardBar',
   component: BoardBar,
-  args: { name: 'Launch retro', seal: 'Sealed', sealIcon: 'sealed', zoom: 0.8, canUndo: true, canRedo: false, editable: true, acts: true, mapOn: false, faded: false, ...BAR },
+  args: { name: 'Launch retro', seal: 'Sealed', sealIcon: 'sealed', zoom: 0.8, canUndo: true, canRedo: false, editable: true, acts: true, mapOn: false, ...BAR },
   argTypes: { name: { control: 'text' }, seal: { control: 'text' }, sealIcon: { control: 'select', options: ICON_NAMES }, zoom: { control: { type: 'range', min: 0.1, max: 4, step: 0.05 } } },
   parameters: { width: 1000 },
   render: (args, { parameters }) => {

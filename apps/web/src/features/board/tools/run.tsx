@@ -9,6 +9,7 @@ import { contains, type BoardView, type Box, type FrameObject } from '@alcove/bo
 import { BoardPill, BoardPop } from '@alcove/ui';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { Pills } from '../pills';
+import { reading } from '../slides';
 import { CLEAR, useBoardState, type Board } from '../useBoard';
 
 /** How many votes each a vote gives: the canvas's three. */
@@ -49,9 +50,6 @@ export function inVote(view: BoardView, frame: string | null, id: string): boole
   for (let left = view.frames.length; at !== frame && at !== '' && left > 0; left -= 1) at = view.byId.get(at)?.f ?? '';
   return at === frame;
 }
-
-/** Whether `a` comes before `b` reading a board: row by row, a row being boxes that overlap by at least half the shorter one's height, and left to right along each. */
-const reading = (a: Box, b: Box): number => (Math.abs(a.y - b.y) < Math.min(a.h, b.h) / 2 ? a.x - b.x : a.y - b.y);
 
 /**
  * The stickies a vote on `frame` takes, in the order Tab goes through them: frame by frame, as the board's outermost frames are

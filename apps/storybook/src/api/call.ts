@@ -19,7 +19,8 @@ import type {
   BoardCheck, BoardOpen, BoardTemplate, BoardVotesEach, BreakoutBoard, BreakoutBoardMode, CallBoard, CallBoardIdea, CallFollowUp, CallFollowUps, CallPresent, CallSeat, CallWorkspace,
   CallWorkspaceSwitch, DocFollowUpTick, DocumentRole, PresentStart, WorkspaceHere, WorkspaceItem
 } from '@alcove/api';
-import { addObject, colourIn, fillTemplate, landBoards, readBoard, roomFrameId, roomFrames, type FrameObject } from '@alcove/board';
+import { BOARD_VIEW_WIDTH, addObject, colourIn, fillTemplate, landBoards, readBoard, roomFrameId, roomFrames, type FrameObject } from '@alcove/board';
+import { reading } from '~/features/board/slides';
 import { sessions } from '~/lib/live';
 import { talking } from '../browser';
 import type { Screen } from '../media/screens';
@@ -698,14 +699,34 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     }));
     this.sayWhoIsOn();
   }
-  /** Who's on the board where you are now, as its awareness says them to whoever has it open. */
+  /**
+   * Who's on the board where you are now, as its awareness says them to whoever has it open: someone else presenting it with their
+   * view on the frame they're on, as their browser says it, which is what everyone following them sees.
+   */
   private sayWhoIsOn(): void {
     const at = this.hereAt();
     if (!at) return;
+    const shown = this.presentersView(at);
     onTheBoard(at.documentId, this.getSnapshot().participants.flatMap((p) => {
+      if (p.isMe) return [];
+      if (shown && p.seat === shown.seat) return [{ callIdentity: p.id, person: p.person, at: shown.at, view: shown.view }];
       const point = this.onIt.get(p.id);
-      return point && !p.isMe ? [{ callIdentity: p.id, person: p.person, at: point }] : [];
+      return point ? [{ callIdentity: p.id, person: p.person, at: point }] : [];
     }));
+  }
+  /**
+   * Someone else presenting the board where you are: their seat, and their pointer and view on the frame they're on, of its frames
+   * in the order they sit, framed with room round it as their sheet would show it.
+   */
+  private presentersView(at: { workspaceId: string; documentId: string }): { seat: string; at: { x: number; y: number }; view: { x: number; y: number; z: number } } | null {
+    const now = this.presented.get(this.crypto.getSnapshot().place);
+    if (now?.kind !== 'board' || now.id !== at.documentId || this.isMine(now)) return null;
+    const frames = readBoard(boardDoc(at.workspaceId, at.documentId)).frames.filter((f) => !f.f).sort(reading);
+    const f = frames[Math.min(now.section, frames.length - 1)];
+    if (!f) return null;
+    const middle = { x: f.x + f.w / 2, y: f.y + f.h / 2 };
+    const wide = Math.max(f.w + 160, (f.h + 200) * 1.8);
+    return { seat: now.by.seat, at: { x: middle.x + 40, y: middle.y + 30 }, view: { ...middle, z: BOARD_VIEW_WIDTH / wide } };
   }
   /**
    * A new board in the call's home, named as the server names it and filled from its template as the server fills it; a room's

@@ -11,7 +11,7 @@ import type { BoardDraft } from './tools/draft';
  * `read`: in a call or a note, for someone who can only look. `pageRead`: a board's own page, for someone who can only look.
  * `phone` and `pagePhone`: the call's board and a board's own page, on a phone, for someone who can add to it.
  */
-export type BoardMode = 'call' | 'page' | 'pageRead' | 'pagePhone' | 'tile' | 'present' | 'phone' | 'read';
+export type BoardMode = 'call' | 'page' | 'pageRead' | 'pagePhone' | 'tile' | 'phone' | 'read';
 
 /** What each mode has. */
 export interface BoardLook {
@@ -37,7 +37,6 @@ export const BOARD_LOOKS: Record<BoardMode, BoardLook> = {
   page: { ...LOOK, page: true },
   pageRead: { ...LOOK, page: true, rail: false, edit: false },
   read: { ...LOOK, rail: false, edit: false },
-  present: BARE,
   tile: { ...BARE, mini: true },
   /** On a phone: look round, follow, vote with a tap, and add a sticky from the sheet. Moving and drawing stay on bigger screens. */
   phone: { ...LOOK, rail: false, edit: false, clean: true, phone: true },
@@ -111,7 +110,12 @@ export interface BoardState {
   near: Box | null;
   /** Whose view this is, if it isn't your own. */
   following: string | null;
-  /** The frame on the sheet while presenting, which is all a presented board shows. */
+  /**
+   * That's whoever presents the board: held where they last were while they're away from it, said on the frame's bar rather
+   * than the pill, and anything this person starts on the board takes them off it, from where it is.
+   */
+  watching: boolean;
+  /** On a picture of the board, the one frame it shows (the next one beside whoever presents), or null for all of it. */
   slide: string | null;
   /** Sort into themes is waiting for its answer. */
   sorting: boolean;

@@ -271,7 +271,9 @@ circles, and whoever speaks gets the `speak` ring. The camera appears only here 
   theme, as a board's sheet does unless it's a night board; the stage, the dock, the workspace and screens stay night.
 - **The frame.** A screen, a board and the workspace each sit in one frame with one bar. On the left, the presenter's face
   (or the kind's icon while nobody presents), the name as a menu of the kind's own commands, and a line that says whose it
-  is. On the right, only what applies: following or Follow, Present, focus, Stop sharing, or Close. The people sit beside it
+  is. On the right, only what applies: following or Follow, Present, focus, Stop sharing, or Close. A board someone presents
+  keeps every tool for everyone following it: following is a view, not a mode, and anything of your own on it takes you off
+  it, from where you are; the presenter keeps theirs too, with the pager at the frame's foot. The people sit beside it
   in a column of tiles on the right, a row of arches over it on a stage under 760px, or on the horizon once they're hidden
   (⇧P) and in focus.
 - **No layouts to choose.** The stage lays itself out; you drag a tile to move it and pull its corner to make it bigger,

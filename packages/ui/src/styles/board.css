@@ -26,11 +26,10 @@
  * Each tool's fill, picked or under the pointer, follows the rail's corner with the same gap all the way round: the rail's
  * radius is the tool's plus the padding between them, both tokens, so the two stay concentric at either end.
  */
-.bz-rail { flex: none; flex-direction: column; align-self: center; gap: 2px; padding: var(--space-1); border-radius: calc(var(--radius-md) + var(--space-1)); transition: opacity var(--duration-2) var(--ease-out); animation: bz-rail var(--duration-3) var(--ease-out) both; }
+.bz-rail { flex: none; flex-direction: column; align-self: center; gap: 2px; padding: var(--space-1); border-radius: calc(var(--radius-md) + var(--space-1)); animation: bz-rail var(--duration-3) var(--ease-out) both; }
 .bz-rail .ac-dock-btn { border-radius: var(--radius-md); }
 .bz-rail .ac-dock-btn[aria-pressed="true"] { background: color-mix(in srgb, var(--stage-sun) 16%, transparent); color: var(--stage-sun); }
 .bz-rail .ac-dock-sep { width: 24px; height: 1px; margin: 3px 0; }
-.bz-rail.is-faded { opacity: 0; pointer-events: none; }
 
 /* On a board's own page there's no night around it, so the rail turns to day. */
 .bz.is-page { padding: 12px; background: var(--ground); }
@@ -241,9 +240,8 @@
 
 /* ---------------------------------------------------------------- the bar along the top */
 /* Everything about the board that isn't a tool: frosted, its name as a heading, and the seal as the app shows it. */
-.bd-head { position: absolute; z-index: 11; left: 0; right: 0; top: 0; display: flex; align-items: center; gap: 2px; height: 46px; padding: 0 8px 0 6px; background: var(--bd-bar); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); box-shadow: 0 1px 0 var(--bf-ring); color: var(--ink-2); container-type: inline-size; transition: opacity var(--duration-2) var(--ease-out); }
-.bd-head.is-faded { opacity: 0; pointer-events: none; }
-/* The bar fades in as it comes, as it does when a presentation gives someone their own view back. */
+.bd-head { position: absolute; z-index: 11; left: 0; right: 0; top: 0; display: flex; align-items: center; gap: 2px; height: 46px; padding: 0 8px 0 6px; background: var(--bd-bar); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); box-shadow: 0 1px 0 var(--bf-ring); color: var(--ink-2); container-type: inline-size; }
+/* The bar fades in as it comes. */
 .bd-head { animation: bd-fade var(--duration-2) var(--ease-out) backwards; }
 .bd-head .sp { flex: 1; min-width: 8px; }
 .bd-head .nm { display: inline-flex; align-items: center; gap: 7px; min-width: 0; height: 34px; padding: 0 7px; border-radius: 9px; font: 450 19px/1 var(--font-display); letter-spacing: -.012em; font-variation-settings: 'opsz' 20; color: var(--ink); white-space: nowrap; }
@@ -293,8 +291,6 @@
  * up to the sheet's width: placed from the middle, it would otherwise have only half the sheet to fit in.
  */
 .bd-pill { position: absolute; z-index: 12; left: 50%; top: 58px; translate: -50% 0; display: inline-flex; align-items: center; gap: 9px; width: max-content; max-width: calc(100% - 24px); height: 38px; padding: 0 16px 0 13px; border-radius: 999px; background: var(--stage-raised); color: var(--stage-ink); font: 500 13.5px/1 var(--font-sans); white-space: nowrap; box-shadow: inset 0 0 0 1px rgb(255 255 255 / .1), 0 14px 28px -12px rgb(6 13 26 / .6); animation: bd-drop var(--duration-3) var(--ease-out) both; }
-/* With no bar, as when presenting, the pill comes up to the top. */
-.bd.is-clean:not(:has(.bd-head)) .bd-pill { top: 14px; }
 .bd-pill .ac-i { flex: none; color: var(--sun); transition: color var(--duration-2) var(--ease-out); }
 .bd-pill b { font-weight: 600; }
 /* What a pill says gives way before its title does, and the title is cut last of all. */

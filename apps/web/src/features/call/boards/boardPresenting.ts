@@ -1,9 +1,10 @@
 /*
  * A board presented in a call, as this browser has it (docs: Calls and recordings › Presenting a board). What's presented, and
- * which frame everyone's on, is the call's (`CallWorkspace.present`): a board is presented from its frame's bar, or straight away
- * from Share, and it's always the board in the call where you are. Whoever presents steps through its frames from the pager at
- * its foot (← and → too), with their own notes beside each frame in the side (`mine`); everyone else sees the frame they're on,
- * until they unfollow to work on their own (layout/onStage.ts). features/board/CallBoard.tsx draws it.
+ * which frame its presenter is on, is the call's (`CallWorkspace.present`): a board is presented from its frame's bar, or straight
+ * away from Share, and it's always the board in the call where you are. Whoever presents moves round it freely and steps through
+ * its frames from the pager at its foot (← and → too), with their own notes beside each frame in the side (`mine`); everyone else
+ * follows their view on the board, by their connection in the call (`presenter`), until anything of their own takes them off it
+ * (layout/onStage.ts keeps whether they follow). features/board/CallBoard.tsx draws it.
  */
 import { errorCode, firstName, type CallPresent, type CallSession } from '@alcove/api';
 import { useCallback, useMemo, useRef, useState } from 'react';
@@ -14,10 +15,12 @@ import type { CallBoard } from './callBoard';
 
 const plog = log.child({ component: 'board-presenting' });
 
-export function useBoardPresenting({ session, present, board, account, following, onFollow, notesOpen, onNotes, failed, notesFailed }: {
+export function useBoardPresenting({ session, present, presenter, board, account, following, onFollow, notesOpen, onNotes, failed, notesFailed }: {
   session: CallSession;
   /** What's presented where you are, as the call says. */
   present: CallPresent | null;
+  /** Whoever presents it, by their connection in the call, while they're in it: their view on the board is what everyone follows. */
+  presenter: string | null;
   board: CallBoard;
   /** You're signed in, so there's somewhere to keep your notes. */
   account: boolean;
@@ -36,7 +39,7 @@ export function useBoardPresenting({ session, present, board, account, following
   /** Your notes beside each of its frames, while you present it; null without an account. */
   notes: Readonly<Record<string, string>> | null;
   setNote: (frame: string, text: string) => void;
-  /** The frame everyone's on now, from 0. */
+  /** The frame whoever presents is on now, from 0. */
   section: number;
   /** Presents the board in the call, from its first frame. */
   start: () => Promise<void>;
@@ -87,8 +90,8 @@ export function useBoardPresenting({ session, present, board, account, following
   }, [session, failed]);
   const watch = useCallback((on: boolean) => onFollow(on), [onFollow]);
   const presentation = useMemo<BoardPresentation | null>(() => (ours ? {
-    by: firstName(ours.by.name), mine: ours.mine, section, watching: !ours.mine && following, onWatch: watch, onMove: move,
+    by: firstName(ours.by.name), who: presenter, mine: ours.mine, section, watching: !ours.mine && following, onWatch: watch, onMove: move,
     notes: ours.mine && account ? { on: notesOpen, onToggle: onNotes } : null
-  } : null), [ours?.by.name, ours?.mine, section, following, watch, move, account, notesOpen, onNotes]);
+  } : null), [ours?.by.name, ours?.mine, presenter, section, following, watch, move, account, notesOpen, onNotes]);
   return { present: presentation, mine, notes, setNote, section, start, stop };
 }

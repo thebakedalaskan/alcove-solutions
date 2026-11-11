@@ -169,7 +169,7 @@ describe('what the next release stores', () => {
     const strip = (x: Record<string, unknown>, ...keys: string[]) => Object.fromEntries(Object.entries(x).filter(([k]) => !keys.includes(k)));
     await was.put({
       ...s,
-      board: { ...strip(s.board, 'rooms', 'landing', 'ideas'), open: Object.fromEntries(Object.entries(s.board.open).map(([k, v]) => [k, strip(v, 'timer', 'vote')])) },
+      board: { ...strip(s.board, 'rooms', 'landing', 'ideas'), open: Object.fromEntries(Object.entries(s.board.open).map(([k, v]) => [k, strip(v, 'vote')])) },
       breakouts: { ...s.breakouts, open: strip(s.breakouts.open, 'board') },
       workspace: { ...s.workspace, worked: [...s.workspace.worked.map((w) => strip(w, 'open')), { workspaceId: open?.workspaceId, documentId: open?.documentId, kind: 'board', by: [] }] }
     });
@@ -177,7 +177,7 @@ describe('what the next release stores', () => {
     expect((await action(art, host, { type: 'hand', up: true, place: 'main' })).status).toBe(200);
     expect((await settle(host, (x) => x.participants.some((p) => p.isMe && p.hand))).board.open?.documentId).toBe(open?.documentId);
     const after = Kept.parse((await storedCall(art.ownerId, host.ticket.callId)).state);
-    expect(after.board).toMatchObject({ open: { main: { timer: null, vote: null } }, rooms: [], landing: null, ideas: {} });
+    expect(after.board).toMatchObject({ open: { main: { vote: null } }, rooms: [], landing: null, ideas: {} });
     expect(after.breakouts.open).toMatchObject({ board: { mode: 'none', template: 'blank' } });
     // A board open in the call is noted in the part it's open in as the call is saved.
     expect(after.workspace.worked).toContainEqual({ workspaceId: open?.workspaceId, documentId: open?.documentId, kind: 'board', by: [], open: 'main' });

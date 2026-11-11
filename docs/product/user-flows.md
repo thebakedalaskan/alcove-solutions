@@ -931,7 +931,7 @@ See [Floating call](../engineering/floating-call.md) for browser capabilities an
    it under the name (add people by name or address, change what each can do, or keep it to the people added; someone it
    becomes read-only to sees it as **View only** at once, and once it's kept to the people added, nobody's told everyone here
    can add to it); **Copy link**, **Download as an image**, **Download as a PDF** and **Night board**, as the bar's **More**
-   has (step 13), there while you present it too, when the bar isn't; and, for
+   has (step 13); and, for
    the organizer, on a board someone else presents, **Close it for everyone**. Whoever presents it closes it for everyone
    from Close's question (step 11). Closing deletes nothing: the board stays saved where it is. The board's seal says
    what's true of this board: who can add to it, where it's saved, and that it’s encrypted in storage. It says
@@ -974,33 +974,41 @@ See [Floating call](../engineering/floating-call.md) for browser capabilities an
    Fewer than two stickies with words says "Pick at least two stickies with words to sort.", and more than 80 "Sort up to 80
    stickies at a time."
 11. **Present.** **Present**, on the frame's bar of a board you can add to while it's open just for you, or **Share › A
-   board** in the dock, brings everyone with you, and the board's frames become slides, in order, with nothing to prepare.
-   Neither is offered while someone else presents a board or the workspace here.
-   The frame's bar has no Present on a phone, where **Share › A board** presents one. A saved board comes into the call
+   board** in the dock, brings everyone with you, following your view, with nothing to prepare. It's still the board, tools
+   and all, for everyone: nothing turns into slides. Neither is offered while someone else presents a board or the workspace
+   here. The frame's bar has no Present on a phone, where **Share › A board** presents one. A saved board comes into the call
    first (step 3).
-   - **Whoever presents** is told "Everyone follows you on Launch retro. They can unfollow to add to it.", and the bar says
-     "You’re presenting · 3 following". They see the frame alone, as everyone following does, and it stays on the frame. At
-     its foot, for them alone, the pager has the arrows on either side of "1 of 3" and the frame's name, and, with an
-     account, the notes button, which opens **Your notes** on their side: where they are ("1 of 3 · you’re sharing it"),
-     their own notes beside this frame, each frame its own and kept for next time ("Kept for next time. Only you see
-     them."), and the next frame, drawn small ("Next: Could improve", or "That’s the last one"). Their pointer shows to
-     everyone. Opening something else on their stage puts the board away as a tile with **Open**, and they go on presenting.
-   - **From the keyboard**, **→** and **←**, and a clicker's Page Down and Page Up, move the frames while the presentation
-     has the keys: the frame itself, or the pager's arrows, where the keys go as it starts (**Next frame**, as soon as the
-     pager shows, so **→** moves on straight after **Present**). Anywhere else they move
-     nothing: in Your notes, on a tile on the stage, in the rooms' setup, or on the page with nothing chosen.
-   - **Everyone else** follows: their tools fade, and they see the presenter's frame alone as it changes, with "Art is
-     presenting" and "Following Art" on the bar. **Unfollow** gives you your own view back, as you left it, tools and all,
-     and a scroll, drag or pinch on the board starts working on your own from where it takes you; **Follow Art** ("Art is in
-     Could improve") takes you back. Art moving on never pulls you back. Someone who comes in late lands on the frame
-     everyone's on.
+   - **Whoever presents** is told "Everyone follows you on Launch retro. They can add to it as you go.", and the bar says
+     "You’re presenting · 3 following". The board glides to its first frame as it starts, and from there it's yours to move
+     round: drag, scroll, zoom and **Show everything** as ever, add to it, start a vote (step 8), and everyone following sees
+     what you see, whatever's outside the frames and the lines between them included. At its foot, for you alone, the pager
+     steps through the frames in the order they sit on the board, top to bottom and left to right, so the order can be told
+     from the board: the arrows on either side of "1 of 3" and the frame's name glide your view, and everyone with it, to the
+     frame before or after, and when your own view comes to rest in a frame, the pager says that's where you are. With an
+     account it has the notes button, which opens **Your notes** on your side: where you are ("1 of 3 · you’re sharing it"),
+     your own notes beside this frame, each frame its own and kept for next time ("Kept for next time. Only you see
+     them."), and the next frame, drawn small ("Next: Could improve", or "That’s the last one"). A board with no frames has
+     no pager. Your pointer shows to everyone. Opening something else on your stage puts the board away as a tile with
+     **Open**, and you go on presenting; everyone following stays where you left them until you're back.
+   - **From the keyboard**, **→** and **←**, and a clicker's Page Down and Page Up, glide to the next or the last frame while
+     the presentation has the keys: the board itself, or the pager's arrows, where the keys go as it starts (**Next frame**,
+     as soon as the pager shows, so **→** moves on straight after **Present**). Anywhere else they move nothing: while you
+     type, in Your notes, on a tile on the stage, in the rooms' setup, or on the page with nothing chosen.
+   - **Everyone else** follows: they see the presenter's view as it moves, with their own tools to hand, and "Art is
+     presenting" and "Following Art" on the bar. Anything of their own on the board (a press, a key, a scroll, a drag) is
+     theirs: it takes them off following, from where they are, and does what they did, so a double-click in a frame is a
+     sticky there and the first press is never lost. A vote on a sticky (step 8) changes nothing on the board, so they vote
+     and go on following. **Unfollow** gives you your own view back, as you left it; **Follow Art** ("Art is in Could
+     improve") takes you back to Art's view. Art moving on never pulls you back. Someone who comes in late follows Art from
+     wherever Art is. Someone who can only look at the board follows the same way, looks round, and changes nothing.
    - **Close**, while you present it (or the lit **Board**, or **O**), asks: **For you** ("Everyone else keeps it open, on
      their own."), and everyone following stays on it, working on their own, and it's still the board in the call; or **For
      everyone** ("It closes for everyone in the call."), which closes the board in the call too: "Closed for everyone." The
      organizer can close anyone's for everyone, from the board's name, and whoever presented it is told who did ("Art
      closed Launch retro for everyone."). **Stop sharing**, in Share, asks the same, wherever the board is: on your stage,
-     a tile, or out of sight. If the presenter leaves the call, it ends too, and
-     its tile goes. Nobody's access changes: someone who can't open the board is told who's presenting, never what.
+     a tile, or out of sight. If the presenter leaves the call, it ends too, and its tile goes. When it ends, whoever was
+     following stays where it left them. Nobody's access changes: someone who can't open the board is told who's presenting,
+     never what.
 12. **More**, at the foot of the tools, for anyone who can add to the board. **Image** puts a picture from this computer
    where you're looking, kept in the board's own files and sealed as the board is; everyone who can open the board sees it,
    and nobody else. **From your workspace** lists what you can open in the board's own workspace, the board aside, and puts one
@@ -1765,7 +1773,7 @@ With nothing picked, **K** comments on what the pointer is on, or on the next th
 pins its writer's face to the corner of what it's on, with how many have replied since, hanging under the corner where it
 would cover a frame's title and count; pressing the pin opens the thread, with **Reply** and **Resolve**, which a toast can
 take back. Comments aren't on the board: nobody's Undo takes one back, and a sticky that's deleted takes its comments with
-it, and brings them back with it. Presenting a frame, only its own comments and the presenter's pointer show.
+it, and brings them back with it. A board presented in a call shows everyone following it every comment and pointer, as ever.
 
 **When things go wrong.** The seal says how the board stands, and the pill at the top of the sheet says the rest.
 

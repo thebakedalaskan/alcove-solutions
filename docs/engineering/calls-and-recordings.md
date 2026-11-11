@@ -1569,7 +1569,7 @@ Each step counts towards the same 240 a minute as what goes on in the workspace.
 ### Presenting a board
 
 Present, on the bar of the board's frame, presents the board open where you are
-(`present-start` with `what: { kind: 'board', id }`, from its first frame), and Share › A board presents what's picked there
+(`present-start` with `what: { kind: 'board', id }`, on its first frame), and Share › A board presents what's picked there
 straight away; what's kept, who may move and stop it, how it ends and what stops it are as for anything presented
 ([Presenting](#the-calls-workspace)). A saved board open just for you is brought into the call first (`board-open`, after
 `boardCheck` and its question), then presented. In the browser: `features/call/boards/boardPresenting.ts` turns the call's
@@ -1577,37 +1577,49 @@ present state into the board's, `features/board/CallBoard.tsx` draws it, and the
 `layout/frame.tsx`'s. Close, while you present it, asks whom it ends for: For you (`close` false) leaves the board in the
 call, open on everyone's stage who followed, on their own; For everyone closes it.
 
-- **Frames are slides.** The board's top-level frames, in the order every browser reads them (`slides.ts`): a frame held in
-  another is part of it. `section` is a slide's place in that order, so it means the same frame everywhere; past the last it
-  shows the last, and a board with no frames is one slide of everything.
-- **Whoever's presenting** sees the frame alone, as everyone following does, with no bar, tools or dots (`mode="present"`,
-  `slide`), held there as their sheet and the frame change. Their camera is the board's to put (`still`): nothing they do moves
-  it off the frame, which it frames clear of the pager at its foot (`PRESENTING_PAD`), so its last sticky shows. Their pointer shows to everyone, on the frame. At the frame's foot, for them alone, the pager
-  (`FramePager`) has Back a frame and Next frame on either side of where they are ("1 of 3", with the frame's name), and, for
-  an account, the button for Your notes, which opens `mine` on their side: where they are, their notes beside this frame,
-  each frame its own, kept under their account ([Data and storage › Presenter notes](data-and-storage.md#presenter-notes)),
-  and the next frame, drawn small. A board with no frames has nothing to keep them beside. Present on the frame's bar is for
-  bigger screens: a phone's frame has no Present, and a board is presented there from Share › A board.
+- **It's still the board.** Nothing about presenting changes how anyone's board is drawn: whoever presents and everyone
+  following keep their own mode (`call`, `phone` or `read`), tools, bar, dots, comments and every pointer included. What's
+  presented is the presenter's view, which their board already publishes on its awareness ten times a second (`view`, as for
+  Follow); nothing more goes to the server.
+- **Frames are the presenter's stops.** The board's top-level frames, in the order they sit, top to bottom and left to right
+  (`slides.ts`, the same reading order as a vote's Tab), so the order can be told from the board, and moving a frame moves it
+  in the order. A frame held in another is part of it. `section` is the presenter's place in that order, kept by the call for
+  their pager, their notes and a reload; past the last it's the last, and a board with no frames has no pager.
+- **Whoever's presenting** moves round the board freely, with every tool. As it starts, and each time they step to a frame
+  (the pager, → and ←, or the organizer moving it), their camera glides to the frame (`Board.toFrame`), clear of the bar, the
+  pill and the pager at its foot (`PRESENTING_PAD`); when their own camera comes to rest with an outermost frame in the middle
+  of their view (`onRest`), `section` follows it, with no glide, so the pager says where they are and → goes on from there.
+  Their pointer shows to everyone. At the frame's foot, for them alone, the pager (`FramePager`) has Back a frame and Next
+  frame on either side of where they are ("1 of 3", with the frame's name), and, for an account, the button for Your notes,
+  which opens `mine` on their side: where they are, their notes beside this frame, each frame its own, kept under their account
+  ([Data and storage › Presenter notes](data-and-storage.md#presenter-notes)), and the next frame, drawn small. Present on the
+  frame's bar is for bigger screens: a phone's frame has no Present, and a board is presented there from Share › A board.
 - **It's on their stage like anything they have open.** Opening something else puts it away and they go on presenting: it's
   a tile among the people, with Open, which takes them back. O, or the lit Board, is Close, and asks the same question.
-- **Their keys.** → and ← (and Page Down and Page Up) move a frame while the presentation has the keys: the sheet, or the
+- **Their keys.** → and ← (and Page Down and Page Up) glide to a frame while the presentation has the keys: the sheet, or the
   pager (`data-pager`), whose keys come by the document (`CallBoard.tsx`). Never from the notes in the side, from any other
   control, while typing (`typing`), or from a key something has already used (`defaultPrevented`). Back a frame and Next
   frame are `aria-disabled` at either end, not `disabled`, so the keys stay on the one pressed. As a presentation starts,
   keys that were on the board, or lost as it changed, go to Next frame (none move on a board of one frame), and as it ends,
   keys that were lost go to the sheet. Anyone typing keeps their place.
-- **Everyone else** follows: their tools fade (240 ms), then they see the frame alone (`mode="present"`, `slide`), held there
-  as their sheet and the frame change, and the board glides to it. The frame's bar says who's presenting and Following them,
-  with Unfollow, which gives them their own view back, as they left it, tools and all (`onWatch`); a scroll, a drag or a pinch
-  on the frame is working on their own too, from wherever it takes them (`onLook`). Follow, on the bar, with the frame the
-  presenter is on, takes them back. Whoever's presenting moving on never pulls them back. The organizer, who can stop
-  anyone's, has Close it for everyone in the board's name menu. Nobody goes to or follows anyone on a board while it's being
-  presented to them, and ideas from the call wait while the frame alone is shown, to whoever's presenting or following.
-- **When it ends**, everyone's own view comes back as they left it. Someone who came in during it gets the whole board.
+- **Everyone else** follows the presenter's view (`BoardSurface`'s `presenter`, `Board.follow` with `watching`), found by their
+  connection in the call (`BoardPresentation.who`) as Follow finds anyone, eased to as it moves, and held where it was while
+  there's none to follow, as the presenter opens something else or reloads. The frame's bar says who's presenting and
+  Following them, with Unfollow, which gives them their own view back, as they left it; the pill doesn't, and no ring goes
+  round the sheet. Their tools stay: anything of their own on the board takes them off following, where they are, and does
+  what they did (`Board.ownView`): a press that picks or changes something (`gestures.ts`), a key of the board's (`keys.ts`),
+  a tool or More from the rail, a scroll, a zoom or a drag, which take the camera. A press on a sticky in a vote votes and
+  leaves them following, as it changes nothing on the board, and Esc is Unfollow. Someone who can only read follows the same
+  way, and a drag takes them off. Follow, on the bar, with the frame the presenter is on, takes them back to the presenter's
+  view. Whoever's presenting moving on never pulls them back. The organizer, who can stop anyone's, has Close it for everyone
+  in the board's name menu. Nobody goes to or follows anyone else on a board while it's being presented to them, and ideas from
+  the call wait while it's presented, to whoever's presenting or following.
+- **When it ends**, whoever was following stays where it left them, quietly.
 - **Rooms' frames.** Once rooms close, each room's board is a frame on the main board, so presenting it, each room's frame is a
-  slide; a board made for what came back has only theirs.
-- **What reaches anyone else** is which board, which frame and who: notes and the next frame are this browser's, and nothing
-  about presenting changes who can open the board.
+  stop, in the order they sit; a board made for what came back has only theirs.
+- **What reaches anyone else** is which board, which frame its presenter is on and who, and on the board's own awareness, as
+  ever, the presenter's view: notes and the next frame are this browser's, and nothing about presenting changes who can open
+  the board.
 
 ### Boards in breakout rooms
 
@@ -1939,8 +1951,8 @@ steps (`ShareMenu.tsx`); and the call's keys are `session/useCallShortcuts.ts`. 
   sharing in Share asks the same in Share itself (`ShareStopStep`), wherever what you present is: on your stage, a tile, or
   out of sight. The name
   menus: a board's Rename, Open where it's saved, Who can add to it, Copy link, Download as an image or as a PDF
-  (`BoardHandle.saveImage`, `savePdf`) and Night board (`BoardMenuRows` in `boards/BoardStage.tsx`), the downloads there while
-  you present it, when the board has no bar; the workspace's Switch workspace (the organizer's), Find in the workspace,
+  (`BoardHandle.saveImage`, `savePdf`) and Night board (`BoardMenuRows` in `boards/BoardStage.tsx`); the workspace's Switch
+  workspace (the organizer's), Find in the workspace,
   Who's in it and Copy link (`WorkspaceMenuRows`); someone else's screen's pointing, looking closer, its sound, its own
   window, Put on the board and Show beside (`ShareMenuRows`); and your own screen's Others can point at it, Clear marks and
   Change what you share, saying Read for the notes while it is (`MyShareMenuRows`), as its bar's line does. The organizer's name menu on someone

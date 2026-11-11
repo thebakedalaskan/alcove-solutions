@@ -856,7 +856,7 @@ export function InCall({ session }: { session: CallSession }) {
   });
   const toggleMine = useCallback(() => side.toggle('mine'), [side]);
   const boardPresenting = useBoardPresenting({
-    session, present: space.present, board, account: (account.data?.ownerId ?? null) !== null, following: stage.following('board'), onFollow: (on) => stage.setFollow('board', on),
+    session, present: space.present, presenter: presenterIn?.id ?? null, board, account: (account.data?.ownerId ?? null) !== null, following: stage.following('board'), onFollow: (on) => stage.setFollow('board', on),
     notesOpen: side.view === 'mine', onNotes: toggleMine, failed, notesFailed: (message) => work.act.say(wsToast.failed(message))
   });
   /* Your notes beside the board go with presenting it. */
@@ -1649,7 +1649,7 @@ export function InCall({ session }: { session: CallSession }) {
   const sayBoard = (text: string, icon: IconName) => { toast(text, { icon }); };
   /** Where whoever presents the board is, for the pager at its frame's foot. */
   const [pager, setPager] = useState<BoardPager | null>(null);
-  /** On a board being presented, the frame is everyone's: nobody goes to or follows anyone on it until they unfollow. */
+  /** On a board being presented, whoever presents it and everyone following them go to and follow nobody else on it until they unfollow. */
   const boardOnFrame = boardPresenting.present !== null && (boardPresenting.present.mine || boardPresenting.present.watching);
   const stageBoard = boardOpen && board.shown && !callOver ? {
     find: (p: StageParticipant) => (!boardOnFrame && !p.isMe && board.onBoard.has(p.id)

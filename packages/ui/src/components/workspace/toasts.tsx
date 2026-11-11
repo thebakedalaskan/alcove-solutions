@@ -65,7 +65,7 @@ export const wsToast = {
   /* Presenting in a call, as the canvas says it (docs/design/canvas/call/nc.js, TOAST). */
   screenOn: (what: 'tab' | 'window' | 'screen') => say('screen', `Everyone sees your ${what}.`),
   screenOff: () => say('screen', 'You stopped sharing.'),
-  boardOn: (board: string) => say('presentation', `Everyone follows you on ${board}. They can unfollow to add to it.`),
+  boardOn: (board: string) => say('presentation', `Everyone follows you on ${board}. They can add to it as you go.`),
   workspaceOn: () => say('folderOpen', 'Everyone follows you in the workspace. They can unfollow to work alongside you.'),
   closedForYou: () => say('x', 'Closed for you. The others keep it open, on their own.'),
   /** `here`: in a room, where it closed for the room alone. */

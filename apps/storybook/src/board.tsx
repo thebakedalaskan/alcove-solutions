@@ -68,7 +68,7 @@ export interface BoardSceneProps {
   talking?: readonly FolkId[] | undefined;
   /** Follows someone as soon as the board is open. */
   follow?: FolkId | undefined;
-  /** Fills the sheet with this frame, by the canvas's name for it, as a phone's room does; presenting, it's the frame presented. */
+  /** Fills the sheet with this frame, by the canvas's name for it, as a phone's room does. */
   focus?: string | undefined;
   /** Night board, the board's own setting, on: it's written on the board before the surface reads it, as it would have been saved. */
   night?: boolean | undefined;
@@ -136,10 +136,10 @@ export function BoardScene({ board, mode, name = 'Launch retro', seal, sealIcon,
   }, [follow]);
   const focused = focus ? made.ids?.get(focus) ?? null : null;
   useEffect(() => {
-    if (focused && mode !== 'present') handle.current?.focusFrame(focused);
+    if (focused) handle.current?.focusFrame(focused);
   }, [focused, mode]);
   return (
-    <BoardSurface ref={handle} doc={made.doc} awareness={awareness} mode={mode} slide={mode === 'present' ? focused : undefined} name={name} seal={seal} sealIcon={sealIcon} acts={acts}
+    <BoardSurface ref={handle} doc={made.doc} awareness={awareness} mode={mode} name={name} seal={seal} sealIcon={sealIcon} acts={acts}
       people={people} comments={comments} talking={speaking} theme={resolved} fresh={fresh}
       onName={did('name')} onSeal={did('seal')} run={mode === 'call' || mode === 'phone' ? RUN : undefined}
       link={LINK} onCall={did('start a call here')} onFollow={did('following')} onSay={did('tell')}

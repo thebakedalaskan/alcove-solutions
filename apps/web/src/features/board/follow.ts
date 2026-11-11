@@ -3,6 +3,8 @@
  * `Board` knows every stop there is, so this only watches `following` go. Stop and Esc go back to where you were, because
  * the view you were following was never your own, and so does that person leaving. Moving the board yourself leaves you
  * where you are, because you've started looking around from there: `takeCamera` drops `home` first, so there's nowhere to go.
+ * Following whoever presents the board (`watching`) is held instead while they're away from it, as they open something else or
+ * reload: the camera stays where they left it until their view comes back.
  *
  * It starts with the board's glide. After that a person's view arrives ten times a second, and a glide starting again each
  * time would stutter and trail, so the camera eases towards the latest one a frame at a time, and stops when it gets there.
@@ -89,8 +91,9 @@ export class BoardFollowing {
   attach(sheet: HTMLElement): () => void {
     const stopBoard = this.board.subscribe(this.boardChanged);
     // A menu on someone's tile starts this, so the keyboard can well be somewhere else. Inside the sheet, the board's own keys see Esc.
+    // Following whoever presents is the call's to stop from outside the sheet (Unfollow), so an Esc that closes a popover elsewhere never does.
     const escape = (e: KeyboardEvent): void => {
-      if (e.key !== 'Escape' || !this.who || editable(e.target) || overlayOpen()) return;
+      if (e.key !== 'Escape' || !this.who || this.board.getSnapshot().watching || editable(e.target) || overlayOpen()) return;
       if (e.target instanceof Node && sheet.contains(e.target)) return;
       e.preventDefault();
       e.stopPropagation();
@@ -128,6 +131,7 @@ export class BoardFollowing {
     if (!who) return;
     const view = this.people.viewOf(who);
     if (!view) {
+      if (this.board.getSnapshot().watching) return;
       this.parting = `${this.name ?? 'They'} left the board. ${BACK}`;
       this.board.stopFollow();
     } else if (!sameView(view, this.seen)) {
@@ -159,16 +163,18 @@ export class BoardFollowing {
       return;
     }
     const view = this.people.viewOf(next);
-    if (!view) {
+    const { board } = this;
+    if (!view && !board.getSnapshot().watching) {
       this.parting = this.notHere(next);
-      this.board.stopFollow();
+      board.stopFollow();
       return;
     }
-    const { board } = this;
     this.halt();
     this.name = this.people.nameOf(next);
     // Going from one person straight to another, where you were is still where you were.
     board.home ??= board.camera.place();
+    // Whoever presents, not on the board yet: the camera waits where it is, and goes to them once they are (`heard`).
+    if (!view) return;
     this.seen = view;
     board.goTo(viewHere(view, board.camera.width));
   }

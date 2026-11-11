@@ -185,15 +185,20 @@ function tapToVote(board: Board, start: SheetPoint, id: string): Gesture {
   };
 }
 
-/** Works out what a press means, in the order the canvas does. */
+/**
+ * Works out what a press means, in the order the canvas does. Following whoever presents, a press that changes or picks anything
+ * is this person starting on their own: it takes them off following, where they are, and does what it does. A vote isn't that,
+ * as it changes nothing on the board, and a press that only looks round takes them off once it drags.
+ */
 function press(board: Board, at: SheetPoint, e: PointerEvent, target: Element): Gesture | null {
   const { sel, tool, space, view, hover } = board.getSnapshot();
   if (!board.canEdit && board.look.phone) {
     const id = pressedId(board, target);
     if (id && board.ballot?.takes(id)) return tapToVote(board, at, id);
   }
-  // A camera that's the board's to put, as a presenter's own frame is, doesn't move by hand.
-  if (e.button === 1 || space || !board.canEdit) return board.still ? null : panGesture(board, at, slopOf(e));
+  if (e.button === 1 || space || !board.canEdit) return panGesture(board, at, slopOf(e));
+  const id = pressedId(board, target);
+  if (!(tool === 'select' && id && board.ballot?.takes(id))) board.ownView();
   const dot = target.closest('[data-p]')?.getAttribute('data-p');
   const from = sel.length === 1 ? sel[0] : hover;
   if (dot && from) return dotPress(board, at, from);
@@ -201,7 +206,6 @@ function press(board: Board, at: SheetPoint, e: PointerEvent, target: Element): 
   const corner = target.closest('[data-h]')?.getAttribute('data-h');
   const only = sel.length === 1 ? view.byId.get(sel[0] ?? '') : undefined;
   if (corner && only && hasBox(only)) return sizeGesture(board, at, only, corner);
-  const id = pressedId(board, target);
   const toolPress = TOOL_PRESSES.get(tool);
   if (toolPress) return toolPress(board, { at, id, target, e });
   // While a vote is on, a press on a sticky it takes is a vote, or takes one back, and the sticky stays where it is.
@@ -298,7 +302,7 @@ export function watchSheet(board: Board, sheet: HTMLElement): () => void {
   /** Two fingers pinch from where they are now. When a third lifts, the pair left starts afresh: the old pair's spread would make the camera jump. */
   const pinchFromHere = (): void => {
     const [p, q] = touches.values();
-    pinch = p && q && !board.still ? pinchGesture(board, p, q) : null;
+    pinch = p && q ? pinchGesture(board, p, q) : null;
   };
 
   /** Takes the gesture off the pointer that's ending, so that nothing can end it twice. */
@@ -397,7 +401,7 @@ export function watchSheet(board: Board, sheet: HTMLElement): () => void {
   sheet.addEventListener('wheel', (e) => {
     e.preventDefault();
     e.stopPropagation();
-    if (safariPinch || board.still) return;
+    if (safariPinch) return;
     board.takeCamera();
     const unit = e.deltaMode === 1 ? LINE_HEIGHT : e.deltaMode === 2 ? camera.height : 1;
     if (e.ctrlKey || e.metaKey) {
@@ -417,7 +421,7 @@ export function watchSheet(board: Board, sheet: HTMLElement): () => void {
     e.preventDefault();
     const scale: unknown = Reflect.get(e, 'scale');
     // Two fingers on the screen are already the pointer's pinch, which keeps them under what they hold: this would fight it.
-    if (!safariPinch || pinch || board.still || typeof scale !== 'number' || !Number.isFinite(scale) || scale <= 0) return;
+    if (!safariPinch || pinch || typeof scale !== 'number' || !Number.isFinite(scale) || scale <= 0) return;
     // As with a drag, a pinch that hasn't really begun leaves the camera where it is: following someone carries on until it does.
     if (!safariPinch.taken) {
       if (Math.abs(scale - 1) < PINCH_SLOP) return;

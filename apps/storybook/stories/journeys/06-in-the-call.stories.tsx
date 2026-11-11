@@ -135,7 +135,7 @@ export const OpenABoard: PageStory = {
     });
     await step('Click Present. Everyone follows you. The arrows at its foot step through its frames', async () => {
       await userEvent.click(await onBar(await frame('Launch retro, only you see it'), 'Present'));
-      await told('Everyone follows you on Launch retro. They can unfollow to add to it.');
+      await told('Everyone follows you on Launch retro. They can add to it as you go.');
     });
     await step('Click the arrow for the next frame. Everyone following you moves with you', async () => {
       const pager = await screen.findByRole('group', { name: /^Step through its frames/ }, SOON);

@@ -127,16 +127,16 @@ const RAIL: { tool: BoardTool; icon: IconName; label: string }[] = [
   { tool: 'frame', icon: 'frame', label: 'Frame · F' }
 ];
 
-/** The tools: the call's dock, turned on its side, just off the sheet. `faded` lets them fade out while presenting starts. */
-export function BoardRail({ tool, onTool, more = BOARD_MORE, onMore, moreOpen = false, faded = false, className }: {
+/** The tools: the call's dock, turned on its side, just off the sheet. */
+export function BoardRail({ tool, onTool, more = BOARD_MORE, onMore, moreOpen = false, className }: {
   tool: BoardTool; onTool: (tool: BoardTool) => void;
   /** What More holds. With nothing, there's no More: a button that opens nothing is a dead end. */
   more?: readonly BoardMoreItem[] | undefined;
-  onMore: () => void; moreOpen?: boolean | undefined; faded?: boolean | undefined; className?: string | undefined;
+  onMore: () => void; moreOpen?: boolean | undefined; className?: string | undefined;
 }) {
   const holds = MORE.filter((m) => more.includes(m.id));
   return (
-    <CallDock label="Tools" className={cn('bz-rail', faded && 'is-faded', className)}>
+    <CallDock label="Tools" className={cn('bz-rail', className)}>
       {RAIL.map((t) => <DockButton key={t.tool} icon={t.icon} label={t.label} on={tool === t.tool} aria-pressed={tool === t.tool} data-tool={t.tool} onClick={() => onTool(t.tool)} />)}
       {holds.length > 0 && (
         <>
@@ -183,7 +183,6 @@ export interface BoardBarProps {
   /** More is open, so its button says so. */
   moreOn?: boolean | undefined;
   mapOn?: boolean | undefined;
-  faded?: boolean | undefined;
   onName?: (() => void) | undefined; onSeal: () => void;
   onUndo?: (() => void) | undefined; onRedo?: (() => void) | undefined;
   onZoomOut: () => void; onFit: () => void; onZoomIn: () => void; onMap: () => void;
@@ -227,9 +226,9 @@ function Barred({ icon, size, label, why }: { icon: IconName; size: number; labe
 
 /** Everything about the board that isn't a tool, in one line along the top of the sheet. */
 export function BoardBar({ name, naming, nameTitle = 'Rename, share or copy a link', seal = 'Sealed', sealIcon = 'sealed', sealTitle = 'Board encrypted in storage.', tail, zoom, canUndo = false, canRedo = false, editable = true, acts = true, canAct = true, moreOn = false,
-  mapOn = false, faded = false, onName, onSeal, onUndo, onRedo, onZoomOut, onFit, onZoomIn, onMap, onVote, onMore, className }: BoardBarProps) {
+  mapOn = false, onName, onSeal, onUndo, onRedo, onZoomOut, onFit, onZoomIn, onMap, onVote, onMore, className }: BoardBarProps) {
   return (
-    <div className={cn('bd-head', acts && editable && 'is-full', faded && 'is-faded', className)}>
+    <div className={cn('bd-head', acts && editable && 'is-full', className)}>
       {naming ? <NameField naming={naming} />
         : name && onName && <button type="button" className="nm" title={nameTitle} aria-haspopup="dialog" onClick={onName}><Icon name="presenter" size={16} /><span>{name}</span><Icon name="down" size={14} /></button>}
       {seal && <button type="button" className="sv" title={sealTitle} onClick={onSeal}><Icon name={sealIcon} size={15} /><span>{seal}</span></button>}
