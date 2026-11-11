@@ -1569,6 +1569,12 @@ line.
 **Enter**. **Esc**, or leaving it empty, makes nothing. A document's title is its name: the list and the path above the
 page follow as you type, for everyone.
 
+**Code.** **/** then **Code**, or ```` ``` ```` and a space on a line, makes a block of code; ```` ```js ````, ```` ```py ```` or
+```` ```cpp ```` makes one in that language. Its corner says its language and changes it, as **Language** in its menu does:
+**Plain text**, **JavaScript**, **Python** or **C++**, the same for everyone with the document. Keywords, strings, numbers,
+names and comments take their colours, in both themes. Copied into another document it keeps its language, and code pasted
+from a page that says its language takes it; nothing is guessed from the code itself.
+
 **Photos, videos and files.** **+** beside a line, or **/**, offers **Photos**, **Video** and **File**. Photos opens a space at
 once, "Drop photos here, or choose them", with a picker under it: **Choose from this computer**, or the photos already in the
 workspace, one at a time or **Add all three**; Video and File offer films and files the same way. Files dropped on the page

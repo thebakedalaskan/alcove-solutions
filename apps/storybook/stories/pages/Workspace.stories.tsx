@@ -133,7 +133,9 @@ const changeADate: NonNullable<PageStory['play']> = async ({ canvasElement, user
   await step('Press the follow-up’s date, Fri 13 Nov. The month opens against it, on that day', async () => {
     let tag: Element | null = null;
     for (let tries = 0; !tag && tries < 50; tries++) { tag = canvasElement.querySelector('.ws-ed .wdt[data-d="2026-11-13"]'); if (!tag) await beat(200); }
-    if (tag) await userEvent.click(tag);
+    if (!tag) return;
+    tag.scrollIntoView({ block: 'center' });
+    await userEvent.click(tag);
   });
 };
 /** `@` on a new line: Dates at the foot of the list, with Pick a date… under them. */
@@ -151,6 +153,35 @@ export const PickADatePhoneNight = page(DRAFT, 'busy', { globals: { ...PHONE, th
 /** Pressing a date tag: the month against it, on its day, to pick another. */
 export const ChangeADate = page(DRAFT, 'busy', { play: changeADate });
 export const ChangeADatePhone = page(DRAFT, 'busy', { globals: PHONE, play: changeADate });
+
+/*
+ * Code in a document: the draft's bill in JavaScript, Python and C++, each coloured as its language, which its corner says
+ * and changes, as its block's menu does.
+ */
+const toTheCode = (): NonNullable<PageStory['play']> => async ({ canvasElement, step }) => {
+  await step('Scroll to the bill, worked out in code in each language', async () => {
+    let block: Element | null = null;
+    for (let tries = 0; !block && tries < 50; tries++) { block = canvasElement.querySelector('.ws-ed .wb.is-code'); if (!block) await beat(200); }
+    block?.scrollIntoView({ block: 'start' });
+    /* Each language's colours come the first time a block in it is drawn. */
+    await beat(600);
+  });
+};
+export const CodeBlocks = page(DRAFT, 'busy', { play: toTheCode() });
+export const CodeBlocksNight = page(DRAFT, 'busy', { globals: { theme: 'dark' }, play: toTheCode() });
+export const CodeBlocksPhone = page(DRAFT, 'busy', { globals: PHONE, play: toTheCode() });
+export const CodeBlocksPhoneNight = page(DRAFT, 'busy', { globals: { ...PHONE, theme: 'dark' }, play: toTheCode() });
+/** The Python block's corner: its languages, Python ticked. Picking one changes it for everyone with the document. */
+const pickALanguage: NonNullable<PageStory['play']> = async (c) => {
+  await toTheCode()(c);
+  await c.step('Press Python, in the second block’s corner', async () => {
+    const [, python] = c.canvasElement.querySelectorAll('.ws-ed .wb.is-code .wb-lang');
+    if (python) await c.userEvent.click(python);
+  });
+};
+export const CodeLanguages = page(DRAFT, 'busy', { play: pickALanguage });
+export const CodeLanguagesNight = page(DRAFT, 'busy', { globals: { theme: 'dark' }, play: pickALanguage });
+export const CodeLanguagesPhone = page(DRAFT, 'busy', { globals: PHONE, play: pickALanguage });
 
 /** In the design review's home: its screenshots side by side, the walkthrough to play, and the spec to download. */
 export const PhotosVideoAndAFile = page(SHOTS, 'busy');

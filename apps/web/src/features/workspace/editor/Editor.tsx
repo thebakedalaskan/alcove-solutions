@@ -32,6 +32,7 @@ import { caretsPlugin } from './plugins/carets';
 import { decorPlugin, flash } from './plugins/decor';
 import { keepInStep } from './plugins/inStep';
 import { retirePlugin } from './plugins/retire';
+import { syntaxPlugin } from './plugins/syntax';
 import { watchPlugin } from './plugins/watch';
 import { EditorRuntime, type FileDragState, type ThreadView } from './runtime';
 import { isGone, safeHref, schema, textAttr } from './schema';
@@ -117,6 +118,7 @@ function createView(rt: EditorRuntime, mount: HTMLElement): EditorView {
     dropCursor({ class: 'ws-dropcaret', color: false, width: 2 }),
     blockIds,
     decorPlugin(rt),
+    syntaxPlugin(rt),
     watchPlugin(rt)
   ];
   const state = EditorState.create(fits ? { schema, doc: start.doc, plugins } : { schema, plugins });

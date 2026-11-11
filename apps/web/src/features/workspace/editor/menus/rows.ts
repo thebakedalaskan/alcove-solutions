@@ -24,7 +24,7 @@ export const SLASH: SlashGroup[] = [
       { id: 'callout', name: 'Callout', icon: 'bulb', alias: 'note highlight box' },
       { id: 'divider', name: 'Divider', icon: 'minus', hint: '---', alias: 'line rule separator' },
       { id: 'table', name: 'Table', icon: 'table', alias: 'grid rows' },
-      { id: 'code', name: 'Code', icon: 'code', alias: 'snippet' }
+      { id: 'code', name: 'Code', icon: 'code', hint: '```', alias: 'snippet javascript python c++ cpp' }
     ]
   },
   {

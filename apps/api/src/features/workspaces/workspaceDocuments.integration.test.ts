@@ -4211,3 +4211,64 @@ describe('lines nobody reads', () => {
     }
   });
 });
+
+describe('a code block’s language', () => {
+  /** A block's element by its ID, on the page: what a reader would see. */
+  const elementIn = (s: { doc: Y.Doc }, block: string) => s.doc.getXmlFragment('content').toArray().find((el): el is Y.XmlElement => el instanceof Y.XmlElement && el.getAttribute('id') === block && !isGone(el));
+  const langIn = (s: { doc: Y.Doc }, block: string): unknown => elementIn(s, block)?.getAttribute('lang');
+  /** Code, as the editor writes a block of it: its words, and `lang` once someone's picked a language. */
+  function addCode(s: { doc: Y.Doc }, block: string, text: string, lang?: string): Y.XmlElement {
+    const el = addBlock(s, 'code', block, lang ? { lang } : {});
+    el.insert(0, [new Y.XmlText(text)]);
+    return el;
+  }
+
+  it('keeps it through a version, a restore, Duplicate and a move to another document, and code from before it reads as it did', async () => {
+    const ann = await account();
+    const id = await workspace(ann, 'Ours');
+    const doc = await make(ann, id, 'document', 'Bill');
+    const a = await open(ann, id, doc);
+    const py = addCode(a, 'py', 'def bill(minutes):\n    return minutes * 2', 'python');
+    // Code from before languages: no `lang` at all.
+    addCode(a, 'old', 'plain words, as they were');
+    await saved(a);
+
+    // A version keeps it, as an attribute of the block like any other.
+    const kept = await keepVersion(await heldBy(ann, id), doc, { reason: 'call', callId: madeUp() });
+    if (!kept) throw new Error('no version kept');
+    const past = { doc: new Y.Doc() };
+    Y.applyUpdate(past.doc, (await ann.api.workspaces.version(id, doc, kept)).update);
+    expect([langIn(past, 'py'), langIn(past, 'old')]).toEqual(['python', undefined]);
+
+    // Another language since, and restoring the version brings Python back, for everyone.
+    setAttr(py, 'lang', 'javascript');
+    await saved(a);
+    await ann.api.workspaces.restoreVersion(id, doc, kept);
+    await until(() => langIn(a, 'py') === 'python', 'the version’s language to come back');
+    expect(langIn(await open(ann, id, doc), 'py')).toBe('python');
+
+    // A copy of the document holds it too.
+    const copy = await ann.api.workspaces.items.duplicate(id, doc);
+    expect(langIn(await open(ann, id, copy.id), 'py')).toBe('python');
+
+    // Sent to another document as the editor sends a block: in there with its attributes, and retired here.
+    const other = await make(ann, id, 'document', 'Another');
+    const b = await open(ann, id, other);
+    const here = elementIn(a, 'py');
+    if (!here) throw new Error('no block');
+    const lang: unknown = here.getAttribute('lang');
+    addCode(b, 'moved', words(a, 'py'), typeof lang === 'string' ? lang : undefined);
+    await saved(b);
+    a.doc.transact(() => { retireBlock(here, newBlockId(), ''); });
+    await saved(a);
+    const there = await open(ann, id, other);
+    expect([langIn(there, 'moved'), words(there, 'moved')]).toEqual(['python', 'def bill(minutes):\n    return minutes * 2']);
+    expect(elementIn(await open(ann, id, doc), 'py')).toBeUndefined();
+
+    // What came before languages opens unchanged, and the server reads every code block's words as it always has.
+    const again = await open(ann, id, doc);
+    expect([langIn(again, 'old'), words(again, 'old')]).toEqual([undefined, 'plain words, as they were']);
+    const read = await serverDoc(await heldBy(ann, id), other);
+    expect(documentText(read, 'document').blocks.find((x) => x.id === 'moved')).toEqual({ id: 'moved', type: 'code', text: 'def bill(minutes):\n    return minutes * 2' });
+  });
+});

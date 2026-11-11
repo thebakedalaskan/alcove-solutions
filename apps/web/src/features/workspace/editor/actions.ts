@@ -11,6 +11,7 @@ import { ySyncPluginKey, yUndoPluginKey } from 'y-prosemirror';
 import type * as Y from 'yjs';
 import { blockAt, blockLabel, caretInto, findBlock, isBlank, leafWords, makeBlock, placeBlocks, selectedBlock, turnBlock, allBlocks, type BlockRef } from './commands';
 import { startThread } from './comments';
+import { codeLang, type CodeLang } from './languages';
 import type { SlashId } from './menus/rows';
 import { appear, decorChange, flash, holding, holdRange, rangeOf } from './plugins/decor';
 import { moveBlock } from './plugins/retire';
@@ -284,6 +285,15 @@ export function turnInto(rt: EditorRuntime, id: string, kind: BlockKind): void {
   const tr = view.state.tr;
   turnBlock(tr, ref, kind);
   view.dispatch(tr);
+}
+
+/** A code block's language, for everyone with the document: one of the short names in languages.ts, or none for plain text. */
+export function setCodeLang(rt: EditorRuntime, id: string, lang: CodeLang | null): void {
+  const view = editing(rt);
+  const ref = view ? findBlock(view.state.doc, id) : null;
+  rt.menu.set(null);
+  if (!view || !ref || ref.node.type !== n.code || codeLang(ref.node) === lang) return;
+  view.dispatch(view.state.tr.setNodeAttribute(ref.pos, 'lang', lang));
 }
 
 /** A copy under the block, with its own ID. Comments stay with the original. */

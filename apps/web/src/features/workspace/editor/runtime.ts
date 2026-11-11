@@ -63,6 +63,8 @@ export type OpenMenu =
   /** `keyboard`: opened without a pointer, so everything in it can be reached with the arrow keys. */
   | { kind: 'block'; block: string; rect: Rect; keyboard?: boolean | undefined }
   | { kind: 'move'; block: string; rect: Rect }
+  /** A code block's languages, from its corner or its menu. */
+  | { kind: 'lang'; block: string; rect: Rect; keyboard?: boolean | undefined }
   /** Link: the words are held, so the link lands on them whatever happens around them while the field is open. */
   | { kind: 'link'; words: HeldWords; href: string; rect: Rect }
   /**

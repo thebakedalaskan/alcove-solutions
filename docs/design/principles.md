@@ -124,6 +124,7 @@ page. Blue Hour takes the page and the pressable colour from the logo's own sky 
 | Drawing on the evening | `dusk-sun`, `dusk-haze` |
 | Illustration, tour art and covers only | `dawn-1` to `dawn-4`, `gold`, the `cover-*` gradients |
 | A highlight or comment in a document | `hl` |
+| Code in a document, by what each word is: its own palette, no green | `code-keyword`, `code-string`, `code-number`, `code-name`, `code-comment` |
 
 - Every screen works in light and dark. Design both, and don't simply invert: check contrast (4.5:1 for text) in each.
 - The side panel is dark in both themes. The call is night in both, but for your side in it and a board on its stage,

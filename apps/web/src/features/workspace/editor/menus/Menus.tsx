@@ -9,8 +9,9 @@ import { addColumn, addRow, removeColumn, removeRow, TableMap, type TableRect } 
 import { useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  applyLink, askAboutSelection, commentOnBlock, deleteFromMenu, duplicateBlock, openLinkField, pickDate, pickDocument, pickMention, pickMoment, pickSlash, putDateAway, sendBlock, startComment, turnInto
+  applyLink, askAboutSelection, commentOnBlock, deleteFromMenu, duplicateBlock, openLinkField, pickDate, pickDocument, pickMention, pickMoment, pickSlash, putDateAway, sendBlock, setCodeLang, startComment, turnInto
 } from '../actions';
+import { CODE_LANGS, codeLang, langName } from '../languages';
 import type { Node as PMNode } from 'prosemirror-model';
 import { galleryItems, mediaIn } from '../blocks/attrs';
 import { isoDay } from '../blocks/dates';
@@ -31,7 +32,7 @@ type Row =
   | { kind: 'sep' }
   | { kind: 'text'; label: string }
   | { kind: 'turn'; current: BlockKind | null; pick: (kind: BlockKind) => void }
-  | { kind: 'item'; key: string; label: string; icon?: IconName | undefined; face?: { name: string; photoUrl?: string | undefined; portrait?: Parameters<typeof Avatar>[0]['person']['portrait'] } | undefined; sub?: string | undefined; hint?: string | undefined; className?: string | undefined; run: () => void };
+  | { kind: 'item'; key: string; label: string; icon?: IconName | undefined; face?: { name: string; photoUrl?: string | undefined; portrait?: Parameters<typeof Avatar>[0]['person']['portrait'] } | undefined; sub?: string | undefined; hint?: string | undefined; className?: string | undefined; ticked?: boolean | undefined; run: () => void };
 
 type Item = Extract<Row, { kind: 'item' }>;
 const isItem = (r: Row): r is Item => r.kind === 'item';
@@ -152,12 +153,15 @@ function ListMenu({ rt, rows, anchor, className, label, start, reset, caret, onC
             if (r.kind === 'turn') return <TurnRow key="turn" current={r.current} pick={r.pick} />;
             const at = items.indexOf(r);
             const point = () => { if (at !== index) { pointed.current = true; setIndex(at); } };
+            const choice = !caret && r.ticked !== undefined;
             return (
-              <button key={r.key} id={rowId(r)} type="button" role={caret ? 'option' : 'menuitem'} aria-selected={caret ? r === active : undefined} className={cn('wm-r', r === active && 'is-sel', r.className)} onClick={r.run} onPointerMove={point}>
+              <button key={r.key} id={rowId(r)} type="button" role={caret ? 'option' : choice ? 'menuitemradio' : 'menuitem'} aria-selected={caret ? r === active : undefined} aria-checked={choice ? r.ticked : undefined}
+                className={cn('wm-r', r === active && 'is-sel', r.ticked && 'is-on', r.className)} onClick={r.run} onPointerMove={point}>
                 {r.face && <Avatar person={r.face} size={24} />}
                 {r.icon && <Icon name={r.icon} size={16} />}
                 <span className="t"><span className="l">{r.label}</span>{r.sub && <small>{r.sub}</small>}</span>
                 {r.hint && <kbd className="ac-kbd">{r.hint}</kbd>}
+                {r.ticked && <Icon name="check" size={15} />}
               </button>
             );
           })}
@@ -235,6 +239,17 @@ function tableRows(rt: EditorRuntime, block: string): Row[] {
   ];
 }
 
+/** A code block's languages: Plain text, then each one it can be coloured as, the one it's in ticked. */
+function langRows(rt: EditorRuntime, block: string): Row[] {
+  const ref = rt.view ? findBlock(rt.view.state.doc, block) : null;
+  if (!ref || ref.node.type !== schema.nodes.code) return [];
+  const current = codeLang(ref.node);
+  return [
+    { kind: 'head', label: 'Language' },
+    ...[null, ...CODE_LANGS.map((l) => l.id)].map((lang): Row => ({ kind: 'item', key: lang ?? 'plain', label: langName(lang), ticked: lang === current, run: () => setCodeLang(rt, block, lang) }))
+  ];
+}
+
 function blockRows(rt: EditorRuntime, block: string, rect: Rect, keyboard: boolean): Row[] {
   const ref = rt.view ? findBlock(rt.view.state.doc, block) : null;
   if (!ref) return [];
@@ -245,6 +260,10 @@ function blockRows(rt: EditorRuntime, block: string, rect: Rect, keyboard: boole
   if (kind && keyboard) out.push(...TURN.filter((t) => t.kind !== kind).map((t): Row => ({ kind: 'item', key: `turn-${t.kind}`, icon: t.icon, label: `Turn into ${t.label.toLowerCase()}`, run: () => turn(t.kind) })), { kind: 'sep' });
   else if (kind) out.push({ kind: 'turn', current: kind, pick: turn }, { kind: 'sep' });
   out.push(...tableRows(rt, block));
+  /* Code's language, as its corner has it: the languages take the menu's place. */
+  if (ref.node.type === schema.nodes.code && !rt.readOnly) {
+    out.push({ kind: 'item', key: 'lang', icon: 'code', label: 'Language', sub: langName(codeLang(ref.node)), run: () => rt.menu.set({ kind: 'lang', block, rect, keyboard }) }, { kind: 'sep' });
+  }
   if (rt.props.onComment && kind) out.push({ kind: 'item', key: 'comment', icon: 'comment', label: 'Comment', run: () => commentOnBlock(rt, block) });
   const known = ref.node.type !== schema.nodes.unsupported;
   if (known) out.push({ kind: 'item', key: 'dup', icon: 'copy', label: 'Duplicate', run: () => { rt.menu.set(null); duplicateBlock(rt, block); } });
@@ -413,7 +432,7 @@ function OpenList({ rt, menu }: { rt: EditorRuntime; menu: OpenMenu }) {
     if (menu.kind === 'slash' || menu.kind === 'mention') rt.dismissed = menu.from;
     rt.menu.set(null);
     /* Someone without a pointer goes back to the text, not to a handle that may have gone. */
-    if (menu.kind === 'block' && menu.keyboard) rt.view?.focus();
+    if ((menu.kind === 'block' || menu.kind === 'lang') && menu.keyboard) rt.view?.focus();
   };
   switch (menu.kind) {
     case 'slash': {
@@ -437,6 +456,8 @@ function OpenList({ rt, menu }: { rt: EditorRuntime; menu: OpenMenu }) {
       return <ListMenu rt={rt} rows={blockRows(rt, menu.block, menu.rect, menu.keyboard === true)} anchor={menu.rect} className="is-block" label="Block" start={menu.keyboard ? 0 : -1} reset={menu.block} caret={false} onClose={close} />;
     case 'move':
       return <ListMenu rt={rt} rows={moveRows(rt, menu.block)} anchor={menu.rect} className="is-block" label="Move this block to" start={0} reset={menu.block} caret={false} onClose={close} />;
+    case 'lang':
+      return <ListMenu rt={rt} rows={langRows(rt, menu.block)} anchor={menu.rect} className="is-block" label="Language" start={menu.keyboard ? 0 : -1} reset={menu.block} caret={false} onClose={close} />;
     case 'link':
       return <LinkField rt={rt} menu={menu} />;
     case 'date':
