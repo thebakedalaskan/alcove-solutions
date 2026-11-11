@@ -1282,12 +1282,18 @@ Storybook journeys **6.23–6.25** show the review alongside the call:
   what's to do sitting on it (hollow until people have said so), where nothing was captured, and light under it drawn
   from what was said, still where nobody spoke. Pointing at a chapter or a mark says what it is. Pressing one moves the sun
   there without moving the page, as pressing along the line does, and the line being said is still marked; a chapter
-  that's breakout rooms opens them instead. Without a recording, pressing one goes to its line in the transcript. A moment chip anywhere else on the page, or the time of a transcript line,
+  that's breakout rooms opens them instead. Without a recording, pressing one goes to its line in the transcript. A moment chip anywhere else on the page
   still goes to that line: the sun moves, and the transcript goes there and marks it, opening the rest if it has to.
+  Pressing a line of the transcript, its words or its time, goes to its moment and plays from there, and marks the line
+  where it is; selecting its words to copy them doesn't, and its own tools only do what they do. Its time is still the
+  keyboard's way in. A breakout room's lines have no moment to go to, since a room isn't in the recording.
   The line shows at most 10 decisions and follow-ups, spaced apart, decisions first; a follow-up said at the same moment as a decision sits just beside it; the rest are in the notes. A shared screen opened from the transcript has its time in the corner, which closes it and plays the
   call from there, with the page going up to the shared screens' video (or, without one, to that line). **Play** starts as soon as the first of the recording arrives; until it's pressed, moving along the line
   reads nothing. Whatever was pressed last wins, even while the recording is on its way. As it plays the sun moves and
-  the line being said is marked. If part of it won't play, it says so, and **Play** tries again from there. The horizon
+  the line being said is marked. **Space** plays and pauses it, as in most players, with nothing focused or the line
+  itself, and the page doesn't scroll; in a field it types, a focused button or tick box is pressed as ever, and with a
+  menu or window open over the page it does nothing new. In the shared screen's full screen it plays and pauses whatever
+  has focus there. Shift+Space still scrolls up, and Page Down pages down. If part of it won't play, it says so, and **Play** tries again from there. The horizon
   stays at the top of the page as you read. On a phone it shows the chapter you're in, and the chapters are listed
   beside the note. While a call is still recording, the line ends where it has got to, and **Play** plays what's there
   so far and carries on as more is recorded; at the very edge it stops, and says that's all so far. A call that didn't
@@ -1299,17 +1305,22 @@ Storybook journeys **6.23–6.25** show the review alongside the call:
   it; there whether or not the notes are written yet), the transcript (its first five lines,
   then **Show all 24 minutes**, and how many shared screens are further on, which open from there) and, beside it, Your
   notes, what people added, who has it and its series. On a wide screen the transcript moves beside what was decided, so
-  going to a moment never takes the note away. When a share went in the notes, the recording plays its video above the
-  audio, in step with it, a short while after the call and before the notes are written: the share that started last
-  when two overlap, with a chip for each to switch, and a dark **Nothing shared** between shares. A button in its
+  going to a moment never takes the note away. When a share went in the notes, the recording plays its video in step
+  with the audio, a short while after the call and before the notes are written, on the sky over the horizon: the line
+  runs along its foot as its seek bar, and sticks to the top as you read on, clear of it. It shows the share that started last
+  when two overlap, with a chip for each to switch. While a share's picture takes a moment to load, or to get to another
+  moment, the dark stage says **Loading Priya’s screen**; if it can't be played, it says so, with **Try again**. Where
+  no share in the notes covers the moment (before, between or after them, or a share that wasn't kept), it says **No
+  shared screen in the notes here**, with when screens were shared (**Priya’s screen 2:10–14:40**), each going there in
+  one press. The stage keeps its size whatever it shows, so nothing below it moves. A button in its
   corner fills the screen with it, with play, the time and a bar to scrub through the recording along the foot (it
   hides while playing until the pointer moves); Escape leaves. The transcript shows a frame of a share beside the line
   said when what was shown mattered to what was said: only a screen the AI judged key, where what was said refers to it
   or relies on what it holds, at most one a line, and never the same screen twice in a row. A share's first frame isn't
   shown unless it was key, and the screen from before a change is only used to see what changed. The notes point at those
   screens; frames that weren't shown only went into what the notes say, and aren't kept. It takes questions about the call: a suggested question or your own, in
-  a bar that stays at the bottom while you read (suggestions show at the end of the note). Answers cite the moments in
-  the recording they come from.
+  a bar that stays at the bottom while you read (suggestions show above it at the end of the note, while the pointer is
+  over it, and while you're in it). Answers cite the moments in the recording they come from.
 - Until the notes are written, the page says the audio is saved and encrypted (or, when the call doesn't keep its
   recording, that the call has ended) and the notes are being written
   in confidential compute, and ticks off each step (the call ended, the audio saved, the transcript, and shared screens ready to replay when a share was kept) with the
@@ -1891,13 +1902,15 @@ with one sticky, its colours and a button that says where it's going, and the st
 place. Someone who can only look has it to look round. Drawing and moving things stay on bigger screens.
 
 **After the call.** Right under the note's summary are the boards that were open for everyone in the call, the ones you can
-open. The call's board is a wide card: a small picture of all of it, as it is now, with its name, what's on it (**3 frames, 13
+open. The call's board is a card: a picture of all of it, as it is now, with its name, what's on it (**3 frames, 13
 stickies, saved in Product.**) and who can open it, and **Open the board**, which goes to its page. Anywhere on the card opens
-it too. Each breakout room's board is a card beside the other rooms', under how many rooms there were and for how long (**3
+it too. The cards take the room their column has: where the call's card is 600px wide the picture sits beside the words, and
+narrower (on a wide screen, where what was said sits beside the notes) it goes above them. Each breakout room's board is a
+card beside the other rooms', two or three across as there's room, under how many rooms there were and for how long (**3
 breakout rooms · 10 min**, or **2 of 3 breakout rooms · 10 min** when a room had no board or one you can't open): its picture,
 the room's name, what came of it and who was there (**One owner for launch comms. Priya and Theo were here.**), and one click
-opens it. A screen reader hears a room's card by the room's name, then what came of it and who can open it. On a phone the
-rooms' cards stack. Every picture is in your theme, as the board's own page is: dark in dark mode.
+opens it. A screen reader hears a room's card by the room's name, then what came of it and who can open it. In a narrow
+column, as on a phone, the rooms' cards stack. Every picture is in your theme, as the board's own page is: dark in dark mode.
 The stickies in the call's board's **Actions** frame come back as suggestions to review. Once accepted they appear under
 **Follow-ups from the board**, right after the boards: with owners, taking on, ticking and the rest, as any follow-up has. The notes read a board, along with what was
 said, only when everyone the notes went to can open it, because one summary goes to all of them; a board someone couldn't open

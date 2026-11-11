@@ -38,9 +38,20 @@
 .ac-replay { position: relative; margin: 14px 0 2px; }
 .ac-replay-stage { position: relative; aspect-ratio: 16 / 9; overflow: hidden; border-radius: var(--radius-sm); background: var(--stage); box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.07); }
 .ac-replay-stage video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: var(--stage); opacity: 1; transition: opacity var(--duration-2) var(--ease-out); }
-.ac-replay.is-nothing .ac-replay-stage video { opacity: 0; visibility: hidden; }
-.ac-replay-none { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 0 16px; font: 500 13.5px/1.3 var(--font-sans); color: var(--stage-ink-2); text-align: center; }
+.ac-replay.is-nothing .ac-replay-stage video, .ac-replay.is-failed .ac-replay-stage video { opacity: 0; visibility: hidden; }
+/* No kept share at this moment: it says so, with the shares there are, each going there in one press. */
+.ac-replay-none { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 16px; font: 500 13.5px/1.3 var(--font-sans); color: var(--stage-ink-2); text-align: center; }
+.ac-replay-none-t { display: inline-flex; align-items: center; gap: 8px; }
 .ac-replay-none .ac-i { flex: none; }
+.ac-replay-gos { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; max-width: 100%; }
+.ac-replay-go, .ac-replay-act { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; min-width: 0; height: 30px; padding: 0 12px; border-radius: var(--radius-pill); background: color-mix(in srgb, var(--stage-raised) 86%, transparent); box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.12); font: 500 12.5px/1 var(--font-sans); color: var(--stage-ink); transition: background-color var(--duration-1) var(--ease-out); }
+.ac-replay-go:hover, .ac-replay-act:hover { background: color-mix(in srgb, var(--stage-ink) 16%, var(--stage-raised)); }
+.ac-replay-go:focus-visible, .ac-replay-act:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.ac-replay-go .ac-mono { flex: none; color: var(--stage-ink-2); }
+/* A picture on its way, or one that couldn't be played: said over the stage, the last picture dimmed under it. */
+.ac-replay-says { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 16px; background: color-mix(in srgb, var(--stage) 62%, transparent); font: 500 13.5px/1.35 var(--font-sans); color: var(--stage-ink); text-align: center; text-wrap: balance; }
+.ac-replay-says.is-loading { flex-direction: row; gap: 10px; animation: ac-fade var(--duration-2) var(--ease-out) both; }
+.ac-replay-says .ac-spin { color: var(--stage-ink-2); }
 .ac-replay-picks, .ac-replay-who { position: absolute; top: 8px; left: 8px; right: 48px; }
 .ac-replay-picks { display: flex; flex-wrap: wrap; gap: 6px; pointer-events: none; }
 .ac-replay-pick { display: inline-flex; max-width: 100%; min-width: 0; border-radius: var(--radius-sm); pointer-events: auto; cursor: pointer; }
@@ -91,4 +102,6 @@
   .ac-replay-picks, .ac-replay-who { top: 6px; left: 6px; right: 44px; }
   .ac-replay-full { top: 6px; right: 6px; }
   .ac-replay-pick .ac-chip { height: 24px; padding: 0 8px; font-size: 12px; }
+  .ac-replay-none, .ac-replay-says { gap: 8px; padding: 12px; font-size: 12.5px; }
+  .ac-replay-go, .ac-replay-act { height: 26px; padding: 0 10px; font-size: 12px; }
 }

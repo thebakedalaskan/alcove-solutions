@@ -573,8 +573,12 @@ export const standIn: AlcoveApi = {
       return audioUrlFor(`${id}:${segment}`, seconds);
     },
     audio: (id: ID, segment: number) => answer((w) => noteIn(w, id).audio.find((a) => a.index === segment)?.seconds ?? 60).then(quietAudio),
-    // The stand-in keeps no video of a share: this address answers 404, so the replay's stage stays dark and the page logs a warning.
-    screenVideoUrl: (id: ID, share: ID, segment: number) => `/storybook-no-screen-video/${id}/${share}/${segment}`,
+    // The stand-in keeps no video of a share: it answers with silence as long as the share's part of the recording, which
+    // the replay loads, goes along and plays in step as it would a video, on a dark stage with no picture.
+    screenVideoUrl: (id: ID, share: ID, segment: number) => {
+      const part = current().notes.find((n) => n.id === id)?.shares.find((s) => s.id === share)?.segments.find((g) => g.segment === segment);
+      return audioUrlFor(`${id}:${share}:${segment}`, part ? part.until - part.at : 60);
+    },
     screenUrl: (id: ID, frameId: ID) => screenImage(current().notes.find((n) => n.id === id)?.screens.find((s) => s.id === frameId)),
     proposeDecision: (noteId: ID, p: DecisionProposal) => changeNote(noteId, (n) => ({
       ...n, decisions: [...n.decisions, { id: nextId('d'), text: p.text, state: 'proposed', lines: p.lines ?? [], against: [], disputes: [], changes: [changeBy(n, 'proposed')], evidence: { moments: [], flags: p.lines?.length ? [] : ['missing'] } }]

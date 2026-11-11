@@ -2,7 +2,8 @@
  * What goes wrong in a story: a part of Alcove that answers with an error, that can't be reached, or that hasn't answered
  * yet and won't while the story is open, by its place in AlcoveApi ('people.team'). The world says which (`trouble`), so a
  * story sets it as it opens, and the app gets the stand-in through this: a page shows its error, its offline look or its
- * loading look exactly as it would with the real API behind it. With no trouble, every call goes straight through.
+ * loading look exactly as it would with the real API behind it. An address the browser reads by itself (a note's
+ * recording, a frame, a share's video) is one that won't load. With no trouble, every call goes straight through.
  *
  *   w.trouble = { 'people.team': 'hold', 'notes.list': (query) => (hasText(query) ? 'failed' : null) };
  */
@@ -20,6 +21,8 @@ export type Troubles = { readonly [C in ApiCall]?: Trouble | ((...args: unknown[
 
 /** The calls that answer a part at a time: what goes wrong goes wrong before the first part. */
 const STREAMS: ReadonlySet<string> = new Set(['notes.progress', 'notes.ask', 'notes.askAll', 'series.ask']);
+/** The calls that answer with an address the browser reads by itself: whatever goes wrong, it's an address that won't load. */
+const ADDRESSES: ReadonlySet<string> = new Set(['notes.audioUrl', 'notes.screenUrl', 'notes.screenVideoUrl']);
 
 /** What's typed into a search, from the query `notes.list` was asked with. */
 export const searched = (query: unknown): string => {
@@ -57,6 +60,7 @@ function part<T extends object>(name: string, target: T): T {
       return (...args: unknown[]): unknown => {
         const how = troubleWith(call, args);
         if (!how) return Reflect.apply(v, t, args);
+        if (ADDRESSES.has(call)) return `/storybook-${how}/${call}`;
         return STREAMS.has(call) ? troubledParts(how) : troubled(how);
       };
     }

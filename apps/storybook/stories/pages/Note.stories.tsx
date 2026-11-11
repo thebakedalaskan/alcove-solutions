@@ -41,8 +41,35 @@ export const LongSuggestions = phone(page('/notes/n2', 'busy', {
     });
   }
 }));
-/** Opened while Kofi's screen is up (9:20): the replay shows his share, and the lines said then carry their frames. */
+/** Points at the ask bar. */
+const pointAtAsk: PageStory['play'] = async ({ canvas, userEvent, step }) => {
+  await step('Point at the ask bar. The suggested questions show above it', async () => {
+    await userEvent.hover(await canvas.findByRole('textbox', { name: /Ask about this call/ }));
+  });
+};
+/** Pointing at the ask bar while the note is read: its suggested questions show above it, and go again once the pointer leaves. */
+export const PointingAtAsk = page('/notes/n2', 'busy', { play: pointAtAsk });
+export const PointingAtAskNight = page('/notes/n2', 'busy', { play: pointAtAsk, globals: { theme: 'dark' } });
+/**
+ * Opened while Kofi's screen is up (9:20): his share plays on the sky over the line, which runs along its foot as its seek
+ * bar, and the lines said then carry their frames.
+ */
 export const WhileAScreenIsShared = page('/notes/n2?at=560', 'busy');
+export const WhileAScreenIsSharedPhone = phone(WhileAScreenIsShared);
+export const WhileAScreenIsSharedWide = page('/notes/n2?at=560', 'busy', { globals: { viewport: { value: 'wide', isRotated: false } } });
+export const WhileAScreenIsSharedNight = page('/notes/n2?at=560', 'busy', { globals: { theme: 'dark' } });
+/** Reading on: the shared screen scrolls away above the line, which sticks to the top, clear of the picture. */
+export const ReadingOnPastTheScreen = page('/notes/n2?at=560', 'busy', {
+  play: async ({ canvas, step }) => {
+    await step('Read on to what was decided. The line sticks to the top, and the shared screen has gone above it', async () => {
+      (await canvas.findByRole('heading', { name: /^Decided/ })).scrollIntoView({ block: 'start' });
+    });
+  }
+});
+/** Opened at 12:00, after Kofi's share: no shared screen in the notes covers it, and the stage offers his, 8:52–10:40, in one press. */
+export const NoSharedScreenHere = page('/notes/n2?at=720', 'busy');
+/** Kofi's screen couldn't be played (its video won't load here): the stage says so, with Try again. */
+export const AScreenThatWontPlay = page('/notes/n2?at=560', 'busy', { beforeEach: changing(troubled({ 'notes.screenVideoUrl': 'failed' })) });
 /** The standup was written by a model that isn't in a secure enclave: the note says so in caution, with Unencrypted, where it would say Written in confidential compute. */
 export const WrittenUnencrypted = page('/notes/n2', 'busy', { beforeEach: changing(writtenUnencrypted) });
 /** Art's call this morning: everything in it still waits on Art. */
@@ -85,6 +112,8 @@ export const Disputed = page(`/notes/${STATES.disputed}`, 'busy', everyState);
 export const WithABoard = page(`/notes/${RETRO_NOTE}`, 'busy', { beforeEach: changing(afterTheRetro) });
 export const WithABoardPhone = phone(WithABoard);
 export const WithABoardNight = page(`/notes/${RETRO_NOTE}`, 'busy', { beforeEach: changing(afterTheRetro), globals: { theme: 'dark' } });
+/** On a wide screen what was said moves beside what was decided, so the boards have half the note's column: the call's picture goes above its words, and the rooms' go two across. */
+export const WithABoardWide = page(`/notes/${RETRO_NOTE}`, 'busy', { beforeEach: changing(afterTheRetro), globals: { viewport: { value: 'wide', isRotated: false } } });
 /** Comms's section, open from a link: its notes, and the follow-ups the notes took from its board. Its board is with the call's, above. */
 export const ARoomsBoard = page(`/notes/${RETRO_NOTE}?room=room-comms&at=800`, 'busy', { beforeEach: changing(afterTheRetro) });
 /** A call in a series: beside the note, the series' other calls and what's still open across them, and the next call. */

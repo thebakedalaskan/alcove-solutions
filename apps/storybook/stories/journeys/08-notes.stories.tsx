@@ -469,9 +469,9 @@ export const JumpToAMoment: PageStory = {
     await step('Point at a mark. It says what happened there', async () => {
       await userEvent.hover((await horizon()).getByRole('button', { name: /^Decision at 3:15/ }));
     });
-    await step('Click it. The sun moves there and the transcript goes to that line', async () => {
+    await step('Click it. The sun moves there, and the page stays where it is', async () => {
       await userEvent.click((await horizon()).getByRole('button', { name: /^Decision at 3:15/ }));
-      await screen.findByText('Then let’s say it. The new onboarding ships behind a flag on 12 November.', {}, SOON);
+      await (await horizon()).findAllByText('3:15', {}, SOON);
     });
     await step('A moment chip does the same, from anywhere on the page', async () => {
       await userEvent.click(within(await article('Write the help article for support')).getByRole('button', { name: 'Go to the moment at 6:20' }));
@@ -481,6 +481,16 @@ export const JumpToAMoment: PageStory = {
     });
     await step('Press play. The sun moves along the line, and the line being said is marked in the transcript', async () => {
       await userEvent.click((await horizon()).getByRole('button', { name: 'Play' }));
+      await (await horizon()).findByRole('button', { name: 'Pause' }, LATER);
+    });
+    await step('Press what was said on a line, or its time. The sun goes there and it plays from that line, marked where it is', async () => {
+      await userEvent.click(await first(screen.findAllByText('Thanks. One is the empty state on the team page, the other is the flag name in the rollout plan.', {}, SOON)));
+      await (await horizon()).findByRole('button', { name: 'Pause' }, LATER);
+    });
+    await step('Space pauses, and plays again, as in any player: anywhere on the note but in a field or on a button', async () => {
+      await userEvent.keyboard(' ');
+      await (await horizon()).findByRole('button', { name: 'Play' }, SOON);
+      await userEvent.keyboard(' ');
       await (await horizon()).findByRole('button', { name: 'Pause' }, LATER);
     });
   }
@@ -656,10 +666,11 @@ export const AskAboutThisCall: PageStory = {
   name: '8.29 Ask about this call',
   ...page('/notes/n2', 'busy'),
   play: async ({ userEvent, step }) => {
-    await step('Click the bar. It stays at the bottom as you read', async () => {
-      await userEvent.click(await screen.findByRole('textbox', { name: 'Ask about this call, for you alone' }, LATER));
+    await step('Point at the bar. It stays at the bottom as you read, and its suggested questions show above it', async () => {
+      await userEvent.hover(await screen.findByRole('textbox', { name: 'Ask about this call, for you alone' }, LATER));
     });
-    await step('Suggested questions show above it. Pick one, or type your own', async () => {
+    await step('Click it, and they stay while you ask. Pick one, or type your own', async () => {
+      await userEvent.click(screen.getByRole('textbox', { name: 'Ask about this call, for you alone' }));
       await userEvent.click(await screen.findByRole('button', { name: 'What did we decide?' }, SOON));
     });
     await step('It reads the call in confidential compute', async () => {

@@ -1,9 +1,10 @@
 /*
- * The boards on a note, after the call, under its summary. The call's board is a wide card: a live picture of all of it, drawn
- * by the board's own surface, then its name, what's on it, where it's saved and who can open it, and the way to it; the whole
- * card opens it, and on a phone the picture goes above the words. Each breakout room's board is a card of its own, side by
- * side with the other rooms' and folding to a stack on a phone: its picture, the room's name and a line about it, and one
- * click opens it. Styles are the note's (note.css, nd-board and nd-rboard).
+ * The boards on a note, after the call, under its summary, sized by the column they're in rather than the window. The call's
+ * board is a card: a live picture of all of it, drawn by the board's own surface, then its name, what's on it, where it's
+ * saved and who can open it, and the way to it; the whole card opens it. From 600px wide the picture takes a share of the
+ * width beside the words; narrower, it goes above them. Each breakout room's board is a card of its own beside the other
+ * rooms', two or three across as there's room and a stack in a narrow column: its picture, the room's name and a line about
+ * it, and one click opens it. Styles are the note's (note.css, nd-board and nd-rboard).
  */
 import { useId, type ReactNode, type Ref } from 'react';
 import { cn } from '../cn';

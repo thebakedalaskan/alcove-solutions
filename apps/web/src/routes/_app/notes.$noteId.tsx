@@ -13,7 +13,7 @@ import { NoteDriveExports } from '~/features/notes/DriveExports';
 import { Provenance } from '~/features/notes/Evidence';
 import { GonePage, NoteMenu, PageHead } from '~/features/notes/Head';
 import { Propose, useNoteReader, type Seed } from '~/features/notes/entries';
-import { Replay, usePlayer, type PlayerState } from '~/features/notes/Player';
+import { Replay, usePlayer, useSpaceToPlay, useStageOnTheSky, type PlayerState } from '~/features/notes/Player';
 import type { Answer } from '~/features/notes/answer';
 import { askExample, exampleNote } from '~/features/notes/example';
 import { correctedSince, speakersOf, type Correcting } from '~/features/notes/lines';
@@ -161,6 +161,7 @@ function NoteView({ note, me, at, room, onGone }: { note: Note; me: string | und
   const audio = note.kept.recording ? note.audio : NO_AUDIO;
   const player = usePlayer(note.id, audio, note.status === 'recording');
   useOpenAt(note.id, at, player);
+  useSpaceToPlay(player);
   const progress = useProgress(note);
   const [going, setGoing] = useState(false);
   const [sharedTo, setSharedTo] = useState<ReadonlySet<string>>(new Set());
@@ -190,9 +191,14 @@ function NoteView({ note, me, at, room, onGone }: { note: Note; me: string | und
   /** Goes to a moment: the sun moves there, playing on if it was (or from there, with `play`), and the transcript goes to that line. */
   const go = useCallback((s: number, play?: boolean) => { moveTo(s, play); setFocus({ at: s }); }, [moveTo]);
   const seek = canGo ? go : undefined;
-  /* The shared screens playing above the notes, when there are any. Playing the call from a frame goes up to them. */
+  /*
+   * The shared screens, when there are any, on the sky over the line, which runs along their foot as their seek bar.
+   * Playing the call from a frame goes up to them.
+   */
   const reduce = useReducedMotion();
   const replay = useRef<HTMLDivElement>(null);
+  const replaying = player.total > 0 && note.shares.length > 0;
+  useStageOnTheSky(replay, replaying);
   const toReplay = useRef(false);
   const playFrom = (s: number) => {
     if (!replay.current) { go(s, true); return; }
@@ -353,13 +359,13 @@ function NoteView({ note, me, at, room, onGone }: { note: Note; me: string | und
         {live && <span className="nd-rec"><RecDot />Still recording</span>}
         <Provenance evidence={note.inference} kind={note.kind} unencrypted={note.unencrypted} model={note.model} writing={note.status === 'pending' ? 'first' : note.writingAgain ? 'again' : undefined} />
       </PageHead>
+      {replaying && <div ref={replay} tabIndex={-1} className="nd-replay" style={{ '--d': 1 }}><Replay noteId={note.id} shares={note.shares} player={player} /></div>}
       <CallLine player={player} span={span} chapters={showMarks ? note.chapters : []} marks={showMarks ? marks : []} gaps={note.gaps} glints={glints}
         here={focus?.at} edge={live ? heard : undefined} still={ready && !lines.length && !written} fresh={fresh} onScrub={hasAudio ? moveTo : seek} onChapter={hasAudio ? toChapter : canGo || note.rooms.length > 0 ? goChapter : undefined}>
         {!note.kept.recording && !live && <p className="nd-kept"><Icon name="mic" size={15} />The recording was deleted when the call ended.</p>}
       </CallLine>
       <div className="nd-cols" style={{ '--d': 2 }}>
         <div className="nd-main">
-          {player.total > 0 && note.shares.length > 0 && <div ref={replay} tabIndex={-1} className="nd-replay"><Replay noteId={note.id} shares={note.shares} player={player} /></div>}
           <div className="nd-read">
             {ready && written ? (
               <>
