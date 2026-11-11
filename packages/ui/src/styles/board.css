@@ -22,7 +22,12 @@
 .bz { position: relative; display: flex; gap: 10px; width: 100%; height: 100%; min-width: 0; }
 .bz > .bd { min-width: 0; }
 .bz .bd { flex: 1; }
-.bz-rail { flex: none; flex-direction: column; align-self: center; gap: 2px; padding: 5px; transition: opacity var(--duration-2) var(--ease-out); animation: bz-rail var(--duration-3) var(--ease-out) both; }
+/*
+ * Each tool's fill, picked or under the pointer, follows the rail's corner with the same gap all the way round: the rail's
+ * radius is the tool's plus the padding between them, both tokens, so the two stay concentric at either end.
+ */
+.bz-rail { flex: none; flex-direction: column; align-self: center; gap: 2px; padding: var(--space-1); border-radius: calc(var(--radius-md) + var(--space-1)); transition: opacity var(--duration-2) var(--ease-out); animation: bz-rail var(--duration-3) var(--ease-out) both; }
+.bz-rail .ac-dock-btn { border-radius: var(--radius-md); }
 .bz-rail .ac-dock-btn[aria-pressed="true"] { background: color-mix(in srgb, var(--stage-sun) 16%, transparent); color: var(--stage-sun); }
 .bz-rail .ac-dock-sep { width: 24px; height: 1px; margin: 3px 0; }
 .bz-rail.is-faded { opacity: 0; pointer-events: none; }
