@@ -136,7 +136,7 @@ function Page({ ws, item, session, status }: { ws: Ws; item: WorkspaceItem; sess
     const target = ws.tree.all.get(to);
     if (!target || !editor) return false;
     /* Another document only opens with a connection, and the block can't wait on this page for that. */
-    if (status.status === 'offline' || !navigator.onLine) { ws.say(wsToast.failed('You’re offline, so this can’t go to another document yet.')); return false; }
+    if (status.status === 'offline' || !navigator.onLine) { ws.say(wsToast.failed(navigator.onLine ? 'Alcove can’t be reached right now, so this can’t go to another document yet.' : 'You’re offline, so this can’t go to another document yet.')); return false; }
     const was = editor.placeOf(block.id);
     const [{ appendBlocks, removeBlockFrom }, { mediaOfBlock }] = await Promise.all([import('./editor/ydoc'), import('./editor/blocks/attrs')]);
     /* It gets a new ID where it lands, and that's what Undo takes out of there. */

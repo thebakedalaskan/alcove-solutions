@@ -107,6 +107,16 @@ export const NightBoard = page(RETRO, 'busy', { beforeEach: changing(night) });
 export const AFlow = page(FLOW, 'busy');
 export const Night = page(RETRO, 'busy', { globals: { theme: 'dark' } });
 export const NightReconnecting = page(RETRO, 'busy', { beforeEach: changing(standing('offline')), globals: { theme: 'dark' } });
+/** Reconnecting while the browser is online: Try now, in the pill, tries again at once rather than after the wait, and what was added here goes. */
+export const ReconnectingTryNow = page(RETRO, 'busy', {
+  beforeEach: changing(standing('offline')),
+  play: async ({ canvas, userEvent, step }) => {
+    await step('Press Try now, in the pill at the top of the board: it’s back at once, and what was added here goes', async () => {
+      await userEvent.click(await canvas.findByRole('button', { name: 'Try now' }, { timeout: 8000 }));
+    });
+  }
+});
+export const PhoneReconnecting = page(RETRO, 'busy', { beforeEach: changing(standing('offline')), globals: PHONE });
 /** On a phone the page is the phone's board: it opens where it can be read, and + is the one tool. */
 export const Phone = page(RETRO, 'busy', { globals: PHONE });
 /** + on a phone: one sticky, its colour, and a button that says where it's going, on a sheet in your own theme. */
