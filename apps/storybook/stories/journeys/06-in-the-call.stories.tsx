@@ -304,13 +304,13 @@ export const EverythingElse: PageStory = {
       await userEvent.click(await screen.findByRole('button', { name: /^People in this call/ }, SOON));
       await screen.findByRole('complementary', { name: 'People' }, SOON);
     });
-    await step('Priya shares her screen, and the people stand in a column beside it. Hide the people, at its top: they wait small by the dock', async () => {
+    await step('Priya shares her screen. The people stand in a column at the window’s right edge, with People between them and her screen. Click the seam left of them: they fold into a rail of arches', async () => {
       await frame(/^Priya’s screen, everyone sees it$/, LATER);
-      await userEvent.click(await screen.findByRole('button', { name: 'Hide the people' }, SOON));
+      await userEvent.click(await screen.findByRole('button', { name: 'Make the people smaller' }, SOON));
     });
-    await step('Show the people, first by the dock, brings them back beside it. Close, on its bar, says it gives the stage back to the people', async () => {
-      await userEvent.click(await screen.findByRole('button', { name: 'Show the people' }, SOON));
-      await screen.findByRole('button', { name: 'Hide the people' }, SOON);
+    await step('Click the seam again, or drag it left: the column opens back out. Close, on her screen’s bar, says it gives the stage back to the people', async () => {
+      await userEvent.click(await screen.findByRole('button', { name: 'Make the people bigger' }, SOON));
+      await screen.findByRole('button', { name: 'Make the people smaller' }, SOON);
     });
     await step('As the organizer, click the name of Priya’s share. Priya’s bar has Close for you, like anyone’s', async () => {
       await userEvent.click(await nameOf(await frame(/^Priya’s screen, everyone sees it$/, LATER)));

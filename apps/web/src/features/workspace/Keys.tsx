@@ -24,7 +24,7 @@ export function Keys({ open, onOpenChange }: { open: boolean; onOpenChange: (ope
         ...(inCall ? [{ label: 'Open or close the workspace', key: 'W' }, { label: 'Open a board', key: 'O' }] : []),
         { label: 'Find anything', key: shortcut('K') },
         { label: 'Show or hide the list', key: shortcut('\\') },
-        ...(inCall ? [{ label: 'Hide or show people', key: '⇧P' }, { label: 'Fill your window with it, and back', key: shortcut('⇧F') }, { label: 'Stop following', key: 'Esc' }] : []),
+        ...(inCall ? [{ label: 'Make the people smaller or bigger', key: '⇧P' }, { label: 'Fill your window with it, and back', key: shortcut('⇧F') }, { label: 'Stop following', key: 'Esc' }] : []),
         { label: 'New document', key: 'N' },
         { label: 'New folder', key: '⇧N' }
       ]

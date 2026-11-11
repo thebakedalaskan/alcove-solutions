@@ -356,19 +356,31 @@ export const FindNobody = {
 /* ---------- beside what's open ---------- */
 
 /**
- * Priya shares two seconds in: her screen takes your stage, and the people stand in a column beside it, under the frame's bar.
- * At the top of the column, level with the bar, Hide the people does what ⇧P does.
+ * Priya shares two seconds in: her screen takes your stage, and the people stand in a column at the window's right edge, level
+ * with it. Left of them is the seam, a faint grip until you point at it, which does what ⇧P does.
  */
 const SHARING = inCall({ scenario: 'call-soon', call: REVIEW, script: { here: REVIEWERS, cues: at(2, shares(PRIYA, CHECKLIST)), talk: { from: 4, lines: REVIEW_TALK }, summary: REVIEW_SUMMARY } });
 const priyasScreen: Play = async ({ step }) => { await step('Priya shares her screen', async () => { await frameOf('Priya’s screen'); }); };
 export const PeopleBesideWhatsOpen = { ...SHARING, name: 'The people beside what’s open', play: plays(clearSide, priyasScreen) };
-/** On a phone the people are a row of arches over what's open, always: there's no room to hide them into. */
+/** A laptop's window, where a call opens Notes by itself while notes are on. */
+const LAPTOP = { ...SHARING.globals, viewport: { value: 'laptop', isRotated: false } };
+/** Notes, which a call opens by itself on a wide screen, stands between what's open and the people: her screen makes room, and they keep the window's edge. */
+export const PeopleBesideWhatsOpenWithNotes = { ...SHARING, name: 'The people beside what’s open, with Notes', globals: LAPTOP, play: priyasScreen };
+/** On a phone the people are a row of arches over what's open, always: they're as small as they get. */
 export const PeopleBesideWhatsOpenPhone = { ...phone(SHARING, 'The people beside what’s open, on a phone'), play: priyasScreen };
-/** Hide the people: they wait small on the horizon by the dock, and Show the people, first there, brings them back. */
-export const HideThePeople = { ...SHARING, name: 'Hide the people', play: plays(clearSide, priyasScreen, press('Hide the people')) };
-/** In a narrow window they're a row of arches over the frame, with Hide the people at its end. */
+/** Pointing at the seam says what it does: click it, or drag it right. */
+export const PointAtTheSeam = {
+  ...SHARING, name: 'Point at the seam', globals: LAPTOP,
+  play: plays(priyasScreen, async ({ userEvent, step }) => {
+    await step('Point at the seam left of the people', async () => { await userEvent.hover(await screen.findByRole('button', { name: 'Make the people smaller' }, { timeout: 10000 })); });
+  })
+};
+/** Make the people smaller (the seam, or ⇧P): the column folds into a rail of arches in the same place, and the seam beside it opens it out again. */
+export const MakeThePeopleSmaller = { ...SHARING, name: 'Make the people smaller', play: plays(clearSide, priyasScreen, press('Make the people smaller')) };
+/** With Notes open the rail keeps the window's edge, Notes beside it, and her screen takes the room the column gave back. */
+export const MakeThePeopleSmallerWithNotes = { ...SHARING, name: 'Make the people smaller, with Notes', globals: LAPTOP, play: plays(priyasScreen, press('Make the people smaller')) };
+/** In a narrow window they're a row of arches over the frame, already as small as they get: there's no seam. */
 export const PeopleBesideWhatsOpenNarrow = { ...narrow(SHARING, 'The people beside what’s open, in a narrow window'), play: plays(clearSide, priyasScreen) };
-export const HideThePeopleNarrow = { ...narrow(SHARING, 'Hide the people, in a narrow window'), play: plays(clearSide, priyasScreen, press('Hide the people')) };
 /** Close says what it does before it's pressed: closed for you, the people fill your stage again, and Priya's tile takes you back. */
 export const CloseSaysThePeopleComeBack = {
   ...SHARING, name: 'Close, before it’s pressed',

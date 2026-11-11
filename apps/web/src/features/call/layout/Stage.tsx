@@ -8,8 +8,8 @@
  * every room, beside what's open on it, a room they fold or nobody's in only as its header; in a room, and for everyone else,
  * it shows the people in their own part of the call.
  *
- * Beside what's open on your stage, the people sit as a column of tiles, as arches where there's no room for a column, or,
- * once you hide them (⇧P) or in focus, small on the horizon beside the dock, where whoever's talking or has a hand up rises.
+ * Beside what's open on your stage, the people stand at the window's right edge as a column of tiles, or, made smaller (⇧P,
+ * or the seam beside them) and in focus, as a rail of arches; where there's no room for a column, as a row of arches over it.
  */
 import type { Person, SelfView, StageCorner } from '@alcove/api';
 import { Avatar, Button, CallTile, CaptureSign, EmptyState, Icon, NotesSign, PresentedTile, Tooltip, WsPersonCard, WsPopover, cn, volumeTag, type IconName, type TileStatus } from '@alcove/ui';
@@ -95,8 +95,6 @@ export interface StagePresented {
   /** It just landed here while you watch something else: it glows where it lands. */
   fresh: boolean;
 }
-/** About how wide "Aiko raised a hand" is. */
-const HZ_WORDS = 150;
 /**
  * Open rooms, as the organizer oversees them from the main room: who's in each, who in a room raised a hand for help, and what
  * its notes are doing (on, paused on its own or with the whole call, or off, as they are in a room with only guests in it).
@@ -219,7 +217,7 @@ export function Stage({ staged, frame, phone, people, waiting, presented, spotli
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const reduce = useReducedMotion();
-  const { plan, narrow, speaker } = staged;
+  const { plan, narrow } = staged;
   const { prefs, layout: lay } = view;
   const { panels } = frame;
   const { x: fx, y: fy, w, h } = frame.box;
@@ -425,13 +423,6 @@ export function Stage({ staged, frame, phone, people, waiting, presented, spotli
   const nothing = !L.slots.size;
   const instant = reduce;
   const glide = instant ? { duration: 0 } : pace;
-  // Who's said to be talking, on the horizon: someone who's been at it a moment (media/speakers.ts), so a quick "yes" moves nothing.
-  const talking = (p: StageParticipant) => p.speaking && p.id === speaker;
-  const loudOne = people.find((p) => p.hand) ?? people.find(talking);
-  const onHorizon = !!panels && panels.mode === 'hidden';
-  const ground = onHorizon ? [...L.slots.entries()].filter(([k]) => !L.off.has(k)).reduce((x, [, r]) => Math.max(x, r[0] + r[2]), 0) : 0;
-  // The line saying so stands beside them, or past the dock when there's no room this side of it.
-  const hzAt = !panels ? null : ground + 28 + HZ_WORDS < panels.horizon.dock ? ground + 28 : panels.horizon.dockEnd + 16 + HZ_WORDS < w ? panels.horizon.dockEnd + 16 : null;
   const carded = card === null ? null : people.find((p) => p.id === card && !p.isMe) ?? null;
   return (
     <div ref={ref} className="ic-stage">
@@ -483,7 +474,7 @@ export function Stage({ staged, frame, phone, people, waiting, presented, spotli
         const said = [p.isMe ? `${callName(p.person)} (you)` : callName(p.person), corner ? 'in your corner' : '', pin ? 'pinned for you' : '', spot ? 'spotlighted for everyone' : '', p.hand ? 'hand raised' : '', p.connecting ? 'connecting' : p.mic ? '' : 'microphone off', p.volume === null ? '' : volumeTag(p.volume)?.toLowerCase() ?? ''];
         return (
           <motion.div key={p.id} {...tileProps(p.id, said.filter(Boolean).join(', '))}
-            className={cn('ic-slot', dragging && 'is-drag', growing && 'is-sizing', (corner || (handsOn && groupOf(p.id))) && 'can-drag', corner && 'is-corner', opens && 'rg-opens', mode && `is-${mode}`, mode === 'horizon' && (p.hand || talking(p)) && 'is-up', L.off.has(p.id) && 'is-off')}
+            className={cn('ic-slot', dragging && 'is-drag', growing && 'is-sizing', (corner || (handsOn && groupOf(p.id))) && 'can-drag', corner && 'is-corner', opens && 'rg-opens', mode && `is-${mode}`, L.off.has(p.id) && 'is-off')}
             title={mode ? callName(p.person) : undefined}
             onPointerDown={(e) => startDrag(e, p.id, corner)}
             onClick={mode || (board?.find(p) && !corner) ? (e) => {
@@ -554,9 +545,6 @@ export function Stage({ staged, frame, phone, people, waiting, presented, spotli
       {L.more && (
         <motion.button key="more" type="button" className={cn('ic-tmore', `is-${L.more.mode}`)} aria-label={`${L.more.n} more in the call. Open People`} title="Open People" onClick={onMorePeople}
           initial={false} animate={box(L.more.rect)} transition={glide}>+{L.more.n}</motion.button>
-      )}
-      {onHorizon && panels && loudOne && hzAt !== null && (
-        <span className={cn('ic-hz', hzAt > panels.horizon.dock && 'is-past')} style={{ left: hzAt, top: panels.horizon.base - 24 }}>{callName(loudOne.person)} {loudOne.hand ? 'raised a hand' : 'is talking'}</span>
       )}
       {carded && (
         <WsPopover open at={() => els.current.get(carded.id)?.getBoundingClientRect() ?? new DOMRect()} label={callName(carded.person)} onOpenChange={(o) => { if (!o) setCard(null); }}>

@@ -299,10 +299,12 @@ circles, and whoever speaks gets the `speak` ring. The camera appears only here 
   it again; on your own screen it puts the screen away for you, a tile with the people, while everyone still sees it. A
   board someone presents keeps every tool for everyone following it: following is a view, not a mode, and anything of your
   own on it takes you off it, from where you are; the presenter keeps theirs too, with the pager at the frame's foot. The
-  people sit beside it in a column of tiles on the right, under the bar, a row of arches over it on a stage under 760px,
-  or on the horizon once they're hidden and in focus. Their own quiet button (an icon with a tooltip, no fill) does what
-  ⇧P does: Hide the people at the top of the column, level with the bar's buttons, or at the end of the row, and Show the
-  people, first on the horizon. A phone keeps its arches, and has none.
+  people stand at the window's right edge, level with it and in the middle of their edge: a column of tiles, or a rail of
+  arches once they're smaller and in focus, and a row of arches over it on a stage under 760px. Notes, Chat and People open
+  between it and them, and it makes room; the people never move for them. Their one control is the seam left of them: a
+  faint grip in the gap until you point at it, when the whole seam lights up. Click it, or drag it right to make the people
+  smaller and left to make them bigger, as ⇧P does. Nothing floats over them. A narrow stage and a phone keep their arches,
+  and have none.
 - **No layouts to choose.** The stage lays itself out, and talking moves nobody: the speak ring says who's talking, and
   only a pin or the organizer's spotlight puts someone on the main stage. You drag a tile to move it and pull its corner
   to make it bigger, and pin from its menu. The first time you point at a tile you can move, a coachmark under it says
@@ -355,8 +357,8 @@ circles, and whoever speaks gets the `speak` ring. The camera appears only here 
   in the ⋯ at the end of its line, and the list sorts as chosen whenever the pointer is away from it (on a touch screen, a
   couple of seconds after the last touch or scroll). The
   composer is one box: the words, then @, the thread's or question's one choice, and Send, the one filled button.
-- **Focus** fills the window with what's in the frame. The bars slide off, the people stand on the horizon, and the dock
-  keeps the microphone, camera, Show everything and Leave.
+- **Focus** fills the window with what's in the frame. The bars slide off, the people keep a rail of arches at the right,
+  and the dock keeps the microphone, camera, Show everything and Leave.
 - **On a phone** (under 600px), the top is the title, the notes sign, Chat and the faces; the dock is the microphone,
   camera, Share, More and Leave; what's open fills the screen under a row of arches; More starts with a grid of Board,
   Workspace, Notes, Chat and People; and your side, Settings and Close's question are sheets.
@@ -421,8 +423,8 @@ Signed out, before anything else: what Alcove is, told as one evening on the app
     nudge from Kofi's ⋯ as a step in its place. You're talking on mute is said at the top of the call.
   - Arrange it your way has no layouts to pick. Maya's tile is dragged to the front, the others making room, and pulled
     by its corner until she's the bigger one. Kofi's screen takes the room in its frame with everyone in a column beside
-    it, and Focus fills the window with it, everyone on the horizon. When Kofi stops, Reset layout, in More, puts the call
-    back.
+    it, and Focus fills the window with it, everyone in a rail of arches at its right. When Kofi stops, Reset layout, in
+    More, puts the call back.
 - **Find a time** is the Team moment (`TeamScene`): the team stands on the horizon with the sun low past the end of the
   line. Picking people lays their busy hours out across the week, with the times everyone is free.
 - **Your agent** (`AgentScene`) books a call over MCP, beside the tools it can use.

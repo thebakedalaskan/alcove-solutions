@@ -52,7 +52,7 @@ export const BreakoutRooms = callStep('rooms', 'Breakout rooms');
 export const AQuietNudge = callStep('nudge', 'A quiet nudge');
 /**
  * No layouts to pick: Maya's tile is dragged to the front and pulled by its corner to make her bigger, Kofi's screen takes
- * the room with everyone beside it, Focus puts everyone on the horizon, and Reset layout, in More, puts the call back.
+ * the room with everyone at its right, Focus keeps them in a rail of arches there, and Reset layout, in More, puts the call back.
  */
 export const ArrangeItYourWay = callStep('layout', 'Arrange it your way');
 /** The team on the horizon, and their week. */

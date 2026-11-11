@@ -1,7 +1,7 @@
 /*
  * PresentedTile: what someone presents, waiting among the people while it isn't on your stage, always at night. It has a
  * tile only while they present it, and pressing it takes you back in, following them. A live miniature fills it; without
- * one it says what it is and where its presenter is. Among arches, or on the horizon, it's an arch: the kind's icon and
+ * one it says what it is and where its presenter is. Among arches, in a rail or a row, it's an arch: the kind's icon and
  * the presenter's face.
  */
 import { ICON_NAMES, PresentedTile } from '@alcove/ui';
@@ -42,15 +42,14 @@ export const Narrow: Story = {
   args: { name: 'Launch review and the pricing follow-up for the whole of November', label: 'Join Launch review and the pricing follow-up for the whole of November' },
   render: (args) => <Box width={260} height={160}><PresentedTile {...args} /></Box>
 };
-/** As an arch among the people's arches, and smaller still on the horizon: the kind's icon and Priya's face. */
+/** As an arch among the people's arches, in a rail or a row, and on a phone: the kind's icon and Priya's face. */
 export const Small: Story = {
   name: 'Small, as an arch',
   args: { small: true },
   render: (args) => (
     <Row>
-      <Box width={72} height={78}><PresentedTile {...args} /></Box>
-      <Box width={48} height={52}><PresentedTile {...args} /></Box>
-      <Box width={36} height={40}><PresentedTile {...args} icon="screen" name="Priya’s screen" label="Join Priya’s screen" /></Box>
+      <Box width={74} height={82}><PresentedTile {...args} /></Box>
+      <Box width={58} height={64}><PresentedTile {...args} icon="screen" name="Priya’s screen" label="Join Priya’s screen" /></Box>
     </Row>
   )
 };

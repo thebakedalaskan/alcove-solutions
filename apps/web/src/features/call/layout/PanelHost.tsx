@@ -1,7 +1,8 @@
 /*
  * The call's area: the main area, where the people and what's open on your stage are (Stage.tsx and frame.tsx, placed by
  * panels.ts), and your side at its right. Your side shows one view at a time at a fixed width, sliding in as the main area
- * makes room for it. Where the stage would be too narrow beside it, it slides in over the stage instead, which dims behind it
+ * makes room for it. While the people stand beside what's open, they keep the window's right edge, and your side opens left of
+ * them, fading in where it lands rather than sliding in over them. Where the stage would be too narrow beside it, it slides in over the stage instead, which dims behind it
  * as a phone's call does, and a press on the stage puts it away; the top bar and the dock stay as they are. On a phone it's a
  * sheet over the whole call, which keeps the keys while it's up: Tab goes round what's in it.
  *
@@ -10,7 +11,7 @@
 import { ThemeScope, cn } from '@alcove/ui';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from 'react';
-import type { Horizon, Size } from './panels';
+import type { FocusBounds, Size } from './panels';
 import { GLIDE } from './Stage';
 import type { Box } from './stageLayout';
 
@@ -34,23 +35,20 @@ export function useCallArea() {
   return { ref, size };
 }
 
-/** Where the horizon is, in the call's area: the ground under the dock, and how far it runs before the dock begins. */
-export function useHorizon(area: RefObject<HTMLDivElement | null>, bar: RefObject<HTMLElement | null>, size: Size): Horizon {
-  const [h, setH] = useState<Horizon>({ dock: 0, dockEnd: 0, base: 0, top: 0, left: 0 });
+/** Where the call's area sits in the window, and the line just under the dock: what focus reaches past the bars to. */
+export function useFocusBounds(area: RefObject<HTMLDivElement | null>, bar: RefObject<HTMLElement | null>, size: Size): FocusBounds {
+  const [h, setH] = useState<FocusBounds>({ base: 0, top: 0, left: 0 });
   useLayoutEffect(() => {
     const a = area.current;
     const b = bar.current;
-    const dock = b?.querySelector('.ac-dock');
-    if (!a || !b || !dock) return;
+    if (!a || !b) return;
     const read = () => {
       const top = a.getBoundingClientRect();
-      const dockBox = dock.getBoundingClientRect();
-      const next = { dock: Math.round(dockBox.left - top.left), dockEnd: Math.round(dockBox.right - top.left), base: Math.round(b.getBoundingClientRect().bottom - top.top - 10), top: Math.round(top.top), left: Math.round(top.left) };
-      setH((was) => (was.dock === next.dock && was.dockEnd === next.dockEnd && was.base === next.base && was.top === next.top && was.left === next.left ? was : next));
+      const next = { base: Math.round(b.getBoundingClientRect().bottom - top.top - 10), top: Math.round(top.top), left: Math.round(top.left) };
+      setH((was) => (was.base === next.base && was.top === next.top && was.left === next.left ? was : next));
     };
     read();
     const ro = new ResizeObserver(read);
-    ro.observe(dock);
     ro.observe(b);
     return () => ro.disconnect();
   }, [area, bar, size]);
@@ -70,6 +68,8 @@ export interface HostSide {
   over: boolean;
   /** Your theme, which the side follows while the call around it stays night. */
   theme: 'light' | 'dark';
+  /** Room the people keep at the window's right edge while they stand beside what's open: your side stands left of it. */
+  edge: number;
   onClose: () => void;
   children: ReactNode;
 }
@@ -94,7 +94,7 @@ export function PanelHost({ area, size, tiles, frames, side, swap }: {
   const slide = reduce ? { duration: 0 } : GLIDE;
 
   /* Your side: at the right of the area, the main area having made room, or on a phone a sheet risen over the call. */
-  const sideBox: Box = { x: size.w - (side?.width ?? 0), y: 0, w: side?.width ?? 0, h: size.h };
+  const sideBox: Box = { x: size.w - (side?.width ?? 0) - (side?.edge ?? 0), y: 0, w: side?.width ?? 0, h: size.h };
   /*
    * A sheet over the call takes the keys as it rises, and as it changes what it shows: what's under it can't be reached. Beside
    * the stage, your side takes them when what it shows changes under them (from inside it, where what had them is going), or
@@ -123,7 +123,8 @@ export function PanelHost({ area, size, tiles, frames, side, swap }: {
     if (e.shiftKey && (at === first || at === e.currentTarget)) { e.preventDefault(); last.focus(); }
     else if (!e.shiftKey && at === last) { e.preventDefault(); first.focus(); }
   };
-  const away = reduce ? { opacity: 0 } : side?.phone ? { y: '100%' } : { x: sideBox.w + 40 };
+  // With the people at the window's edge, your side fades in where it lands, beside them, rather than sliding in over them.
+  const away = reduce ? { opacity: 0 } : side?.phone ? { y: '100%' } : side?.edge ? { opacity: 0, x: 28 } : { x: sideBox.w + 40 };
   const here = side?.phone ? { opacity: 1, y: 0 } : { ...at(sideBox), opacity: 1, x: 0 };
   return (
     <div ref={area} className="ic-main">

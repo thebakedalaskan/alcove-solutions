@@ -7,7 +7,7 @@
  * so the same call and the same choices always look the same, and nothing moves unless one of them changed.
  */
 import type { CallLayout, CallViewPrefs, StageCorner } from '@alcove/api';
-import { placePeople, type Horizon, type PeopleMode, type TileMode } from './panels';
+import { placePeople, type PeopleMode, type TileMode } from './panels';
 
 export type Rect = [x: number, y: number, w: number, h: number];
 export interface Box { x: number; y: number; w: number; h: number }
@@ -200,7 +200,7 @@ export interface Placed {
   self: Rect | null;
   /** Where the people are while something is open on your stage, if they're anywhere. */
   people: Box | null;
-  /** Tiles that aren't tiles: arches, or small arches on the horizon. */
+  /** Tiles that aren't tiles: arches, in a rail or a row. */
   modes: Map<string, TileMode>;
   /** Tiles with no room: kept in place, out of sight. */
   off: Set<string>;
@@ -284,11 +284,10 @@ export interface StageFrame {
   /** The room to keep for the status bar and captions on a stage that holds everyone. */
   top: number;
   bottom: number;
-  /** The people beside what's open on your stage, or null while the stage is theirs. */
+  /** The people beside what's open on your stage, in the call's area (at its right edge, past your side), or null while the stage is theirs. */
   panels: {
     people: Box | null;
     mode: PeopleMode;
-    horizon: Horizon;
     /** Who's talking or has a hand up: there's always a place for them. */
     loud: ReadonlySet<string>;
     /** The row of arches on a phone. */
@@ -312,9 +311,9 @@ export function placeFrame(plan: Plan, f: StageFrame): Placed {
   }
   const folded = plan.self?.folded && p.people && p.mode === 'tiles';
   const people = folded && p.people ? { ...p.people, h: Math.max(0, p.people.h - CHIP_H - GAP) } : p.people;
-  // Someone rung waits in a tile: among arches or on the horizon they're in People, with what they said.
+  // Someone rung waits in a tile: among arches they're in People, with what they said.
   const who = [...plan.leads, ...plan.rest].filter((id) => p.mode === 'tiles' || !isWaitKey(id));
-  const placed = placePeople(people, who.map((id) => ({ id, thing: isThingKey(id) })), p.mode, p.horizon, p.loud, p.small);
+  const placed = placePeople(people, who.map((id) => ({ id, thing: isThingKey(id) })), p.mode, p.loud, p.small);
   const modes = new Map<string, TileMode>();
   const slots = new Map<string, Rect>();
   for (const [k, s] of placed.spots) { slots.set(k, rectOf(s.box)); if (s.mode !== 'tile') modes.set(k, s.mode); }

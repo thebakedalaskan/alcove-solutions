@@ -3,7 +3,7 @@
  *
  * - Where you see yourself (`CallViewPrefs`: in the grid, in a corner and which one, or hidden) is remembered in this
  *   browser for your account, for every call.
- * - Whether the people stand beside what's open on your stage or hide on the horizon (⇧P), and whether the workspace shows
+ * - Whether the people beside what's open on your stage are a column or, made smaller (⇧P), a rail, and whether the workspace shows
  *   its list (`CallPanels`), are too, so tomorrow's call starts the way you left this one. It names nobody. So is whether
  *   you've been told what a tile does (`tileHintKey`), only once you have.
  * - How you arranged this call (`CallLayout`: who you pinned, the order you dragged people into, who you made bigger, where
