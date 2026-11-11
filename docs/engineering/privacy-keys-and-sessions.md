@@ -870,7 +870,7 @@ third-party loads.
   the API fetch a photo, not who looked at whom. Guests in a call aren't signed in, so they're shown
   everyone without photos.
 - **The Content-Security-Policy** allows nothing outside the app's origin and the API's (requests, audio,
-  photos, files), `blob:` for a picture read into the page and for what's played from it, and the LiveKit host for calls (with `*.livekit.cloud`, where LiveKit Cloud's media servers are). Inline scripts run only by the SHA-256 of what the build produced (`apps/web/scripts/csp.mjs`
+  photos, files, and the hidden frame a file downloads in), `blob:` for a picture read into the page and for what's played from it, and the LiveKit host for calls (with `*.livekit.cloud`, where LiveKit Cloud's media servers are). Inline scripts run only by the SHA-256 of what the build produced (`apps/web/scripts/csp.mjs`
   writes the policy at deploy), and nothing may `eval` (the contract configures zod not to compile code at
   runtime). `Permissions-Policy` also opts out of the browser's ad-topics API.
 - **No analytics.** The app has no analytics, error-tracking or tag scripts. Cloudflare Pages inserts its

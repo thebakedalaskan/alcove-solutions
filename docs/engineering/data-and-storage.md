@@ -538,8 +538,13 @@ process readable and is sealed there (`apps/api/src/features/workspaces/media.ts
   read in order, each digest checked before it's opened, with `Range`, `nosniff`, `no-store` and the type from the sealed
   info, never the request. `GET /v1/media/:token?download` (`url`'s `download`) serves it as an attachment under its name,
   whatever its type, so a picture or a film saves rather than opening: the arrow on a file and **Download** in a photo's or a
-  video's menu read it so. An answer to a range sends at most four pieces (16 MiB), stopping where a piece does, and says
-  so with its `Content-Range`: a browser asks again for the rest, and access is asked about again each time. Read without a
+  video's menu read it so, each file in a hidden frame of its own, half a second apart (`saveFile` in
+  `apps/web/src/features/workspace/DocumentMedia.tsx`; the app's policy has the API's origin in `frame-src`). The page itself
+  never follows the link: the API is on an origin of its own, where a link's `download` doesn't count, so the page would
+  navigate, which the browser takes for leaving it until the answer turns out to be a download, and a call on the page
+  would go. Each frame goes five minutes later, when the browser has long had its download. An answer to a range sends at
+  most four pieces (16 MiB), stopping where a piece does, and says so with its `Content-Range`: a browser asks again for
+  the rest, and access is asked about again each time. Read without a
   range, a file over 16 MiB streams without a length, because Cloud Run refuses an HTTP/1 response that says it's over 32
   MiB, and asks again every four pieces. The first piece is read before anything is sent, so its failure is an ordinary
   answer; a later one breaks the connection, so a file that couldn't be read is never taken for whole.

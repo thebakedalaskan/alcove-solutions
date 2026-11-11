@@ -272,6 +272,11 @@ class LiveKitRoom implements CallRoom {
   private screenOut: { from: MediaStreamTrack; clone: MediaStreamTrack; codec: 'vp9' | 'vp8' } | null = null;
   /** A clone of the screen still being published or swapped in (publishScreen), so a share stopped meanwhile stops it too. */
   private screenIn: { from: MediaStreamTrack; clone: MediaStreamTrack } | null = null;
+  /** The page is going (closed, reloaded, or left for another): it leaves the room on its way, as LiveKit's own would. */
+  private pageGone = () => {
+    rlog.info('leaving the room as the page goes');
+    void this.leave().catch((e: unknown) => rlog.debug('could not leave the room as the page went', { err: e }));
+  };
 
   /**
    * `flags` are the feature flags on for whoever's here, read once as the room opens (docs: engineering/feature-flags.md).
@@ -283,7 +288,10 @@ class LiveKitRoom implements CallRoom {
     // Each video as sharp as its tile on this screen, at up to 1.5 of its pixels to a CSS pixel: a large tile on a
     // high-density screen gets 1080p, a grid of small ones keeps to small copies. A video nobody here can see (a
     // background tab, another breakout room) is paused, and no copy anyone isn't watching is sent at all.
-    this.room = new Room({ adaptiveStream: { pixelDensity: Math.min(window.devicePixelRatio || 1, 1.5) }, dynacast: true, encryption: { keyProvider: this.keys, worker: new E2EEWorker() } });
+    // LiveKit would also leave on `beforeunload`, which fires as soon as the page follows a link, before anyone knows
+    // where it leads: a link that turns out to be a download leaves the page where it was, without its call. So the
+    // room leaves only when the page really goes (`pageGone`).
+    this.room = new Room({ adaptiveStream: { pixelDensity: Math.min(window.devicePixelRatio || 1, 1.5) }, dynacast: true, disconnectOnPageLeave: false, encryption: { keyProvider: this.keys, worker: new E2EEWorker() } });
     const r = this.room;
     const changed = () => this.emit();
     const refetch = (what?: { call: boolean; log: boolean }) => { this.emit(); void session.refresh(what).catch((e: unknown) => rlog.warn('call refresh failed', { err: e })); };
@@ -381,6 +389,7 @@ class LiveKitRoom implements CallRoom {
     // Who here can't decode VP9, for a VP9 share (publishScreen). Said by every browser that can't, whatever its flags.
     this.stopCodecs = this.receive(CALL_CODECS_TOPIC, (payload, from) => this.heardCodecs(payload, from), CALL_CODECS_LIMITS);
     r.on(RoomEvent.Disconnected, (why) => {
+      removeEventListener('pagehide', this.pageGone);
       this.stopCameraRetry();
       this.stopCodecs();
       if (this.codecsTimer) clearInterval(this.codecsTimer);
@@ -402,6 +411,8 @@ class LiveKitRoom implements CallRoom {
     await this.room.setE2EEEnabled(true);
     const t = await this.session.room();
     await this.room.connect(t.serverUrl, t.token);
+    // Not once the room has gone meanwhile: Disconnected has already run, and nothing would take this away again.
+    if (this.room.state !== ConnectionState.Disconnected) addEventListener('pagehide', this.pageGone);
     // LiveKit follows plugged-in devices itself, comparing with the list it saw last. Giving it that list now keeps its
     // first comparison from switching the speaker on its own (or, in Safari, failing to): LocalMedia decides devices.
     await Room.getLocalDevices(undefined, false).catch((e: unknown) => rlog.debug('could not list devices for LiveKit', { err: e }));

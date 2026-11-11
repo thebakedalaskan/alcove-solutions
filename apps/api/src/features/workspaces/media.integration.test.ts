@@ -359,6 +359,14 @@ describe('a file in a document', () => {
       const saved = await read(ann, await ann.api.workspaces.media.url(id, doc, m.id, { download: true }));
       expect([declared, saved.status, saved.headers.get('content-type'), saved.headers.get('content-disposition')]).toEqual([declared, 200, served, `attachment; filename*=UTF-8''${encodeURIComponent(name)}`]);
     }
+    // The app saves a download in a hidden frame on its own page: the API is on an origin of its own, where a link's
+    // `download` doesn't count, and following the link in the page would navigate it and end a call on it. So nothing in
+    // the answer to that frame keeps it out of one.
+    const framedFile = await ann.api.workspaces.media.upload(id, doc, fileOf(bytesOf(16), 'harbour.png', 'image/png'));
+    const framed = await ann.fetch(await ann.api.workspaces.media.url(id, doc, framedFile.id, { download: true }), { headers: { 'sec-fetch-dest': 'iframe', 'sec-fetch-mode': 'navigate', 'sec-fetch-site': 'same-site' } });
+    await framed.arrayBuffer();
+    expect([framed.status, framed.headers.get('content-disposition'), framed.headers.get('x-frame-options')]).toEqual([200, 'attachment; filename*=UTF-8\'\'harbour.png', null]);
+    expect(framed.headers.get('content-security-policy') ?? '').not.toContain('frame-ancestors');
     // What could run in a page, and whatever nobody can show, only ever downloads, under the name it came with.
     for (const [name, declared] of [['page.html', 'text/html'], ['logo.svg', 'image/svg+xml'], ['app.js', 'text/javascript'], ['notes.pdf', 'application/pdf'], ['clip.mov', 'video/quicktime'], ['mystery', '']] as const) {
       const m = await ann.api.workspaces.media.upload(id, doc, fileOf(new TextEncoder().encode('<script>alert(1)</script>'), name, declared));

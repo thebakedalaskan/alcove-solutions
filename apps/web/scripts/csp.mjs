@@ -1,8 +1,9 @@
 // node apps/web/scripts/csp.mjs <dist/client> <api origin> <livekit url>
 // Adds the web app's Content-Security-Policy to the /* rule of dist/client/_headers. Nothing
 // third-party but LiveKit, which carries calls: the app's own origin, plus the API's for requests, audio
-// and photos, plus the LiveKit host (and LiveKit Cloud's media servers) for calls; inline
-// scripts only by the hash of exactly what this build produced, so no other inline script can run.
+// and photos, and for the hidden frames a file downloads in (features/workspace/DocumentMedia.tsx), plus the
+// LiveKit host (and LiveKit Cloud's media servers) for calls; inline scripts only by the hash of exactly
+// what this build produced, so no other inline script can run.
 import { createHash } from 'node:crypto';
 import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -27,6 +28,8 @@ const csp = [
   `img-src 'self' data: blob: ${api}`,
   `media-src 'self' blob: ${api}`,
   `connect-src 'self' ${api} ${livekit}`,
+  // A file's download opens in a hidden frame, so the page (and a call on it) never navigates for one.
+  `frame-src 'self' ${api}`,
   "font-src 'self'",
   "worker-src 'self'",
   "object-src 'none'",

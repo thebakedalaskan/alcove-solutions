@@ -26,6 +26,13 @@ const PICKER_ROOM = 300;
 const REUSE = 6;
 /** The list of files is read again at most this often to find out whether a file block's file was deleted. */
 const RELIST_MS = 10_000;
+/**
+ * How long a download's frame stays: long past when the file's answer starts (a read waits 10 seconds at most for its turn),
+ * and time to answer the browser if it asks whether this site may download files. By then the browser has the download.
+ */
+const DOWNLOAD_FRAME_MS = 5 * 60_000;
+/** Downloads start this far apart, so a gallery's photos don't all ask the API to be read at once, past what it lets one person. */
+const DOWNLOAD_GAP_MS = 500;
 
 /** What `/` picked and is choosing for: where it'll go, and what the picker sits against. */
 interface Picking { kind: MediaPick['kind']; at: InsertAt; anchor: string | null; rect: Rect | null }
@@ -71,6 +78,41 @@ const placeOf = (block: string | null, rect: Rect | null): { at: () => DOMRect; 
 });
 /** The line something goes in place of, or under. */
 const lineOf = (at: InsertAt): string | null => (typeof at === 'string' ? null : 'replace' in at ? at.replace : 'after' in at ? at.after : at.before);
+
+let downloadFrames = 0;
+/**
+ * Saves a file, and this page goes nowhere. A URL of the page's own origin (locally, and in Storybook) saves under `name`.
+ * A file's URL in production is the API's, on an origin of its own, where a link's `download` doesn't count: followed here,
+ * it would navigate the page, which the browser takes for leaving it until the answer turns out to be a download, and a
+ * call on the page would go. So the link opens in a hidden frame of its own (the policy's `frame-src` has the API's
+ * origin), where the answer, an attachment under the file's own name, is saved. Every file has its own frame, so one
+ * download never stops another.
+ */
+function saveFile(url: string, name: string): void {
+  const frame = document.createElement('iframe');
+  downloadFrames += 1;
+  frame.name = `alcove-download-${downloadFrames}`;
+  frame.hidden = true;
+  document.body.append(frame);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  a.target = frame.name;
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => { frame.remove(); }, DOWNLOAD_FRAME_MS);
+}
+/** When the next download may start. */
+let nextDownloadAt = 0;
+/** Runs a download's start now, or `DOWNLOAD_GAP_MS` after the one before it. */
+function inDownloadTurn(go: () => void): void {
+  const now = Date.now();
+  const at = Math.max(now, nextDownloadAt);
+  nextDownloadAt = at + DOWNLOAD_GAP_MS;
+  if (at === now) go();
+  else setTimeout(go, at - now);
+}
 
 /** Counts changes from everything the media handlers read from, for the blocks to draw again. */
 interface Changes { bump: () => void; subscribe: (listener: () => void) => () => void; getSnapshot: () => number }
@@ -153,21 +195,17 @@ export function useMediaView(ws: Ws, documentId: string, video?: VideoHandlers |
       throw e;
     }),
     onDownload: ({ media, name }) => {
-      fileUrl(workspaceId, documentId, media, pass, true).then((url) => {
-        /*
-         * Asked for as a download, it comes as one whatever it is, and the page stays. A URL of this page's own takes the
-         * name here: the file's own, with its ending, which a video's title doesn't have.
-         */
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = now.current.list?.find((m) => m.id === media)?.name ?? name;
-        a.rel = 'noopener';
-        document.body.append(a);
-        a.click();
-        a.remove();
-      }, (e: unknown) => {
-        if (errorCode(e) === 'not-found') pictures.goneFrom(documentId, media);
-        else now.current.say(wsToast.failed(errorMessage(e)));
+      inDownloadTurn(() => {
+        fileUrl(workspaceId, documentId, media, pass, true).then((url) => {
+          /*
+           * Asked for as a download, it comes as one whatever it is, and the page stays. A URL of this page's own takes the
+           * name here: the file's own, with its ending, which a video's title doesn't have.
+           */
+          saveFile(url, now.current.list?.find((m) => m.id === media)?.name ?? name);
+        }, (e: unknown) => {
+          if (errorCode(e) === 'not-found') pictures.goneFrom(documentId, media);
+          else now.current.say(wsToast.failed(errorMessage(e)));
+        });
       });
     }
   }), [pictures, documentId, workspaceId, pass, bumps, qc]);
