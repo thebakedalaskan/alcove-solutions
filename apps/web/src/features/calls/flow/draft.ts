@@ -51,7 +51,7 @@ export interface Draft extends Guests {
 
 export const NOT_REPEATING: Repeating = { kind: 'none', days: [], until: null };
 /** How long a call runs until someone says otherwise. */
-export const DEFAULT_MINUTES = 45;
+const DEFAULT_MINUTES = 45;
 /** How many calls a repeat runs for until someone sets an end date. */
 const CALLS_TO_START_WITH = 4;
 /** Past this many people, Details offers big-call settings, already on. */
