@@ -201,7 +201,8 @@ send to anyone".
    length, any from 5 minutes to 10 hours (earlier than the start, it's the next day's, for a call past midnight). A
    start that's gone, an end before the start, or a length past those limits says why under the line, and what was
    picked stays; so does anything a 24-hour clock doesn't say ("9", "2pm", "25:00"), with "Type a 24-hour time, like
-   14:15.", and a field left empty goes back to what was picked. A start off the half hour sits in the week where it falls, and its card says how many are free then.
+   14:15.", and a field left empty goes back to what was picked. A start off the half hour sits in the week where it
+   falls, and its card says how many are free then.
    A call starts at 45 min; 30 min, 45 min and 1 h are a press away, and any other length shows beside them
    ("1 h 15 min"). **Pick another time** widens the modal around the week, with your own things by name and when anyone
    is busy, at their real times. It's a week, Monday to Sunday, the weekend a day like any other, and the whole day, 00:00
