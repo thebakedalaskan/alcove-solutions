@@ -1103,8 +1103,9 @@ Storybook journeys **6.23–6.25** show the review alongside the call:
    ready", then **Read the notes** or **Go to Home**. The note shows the steps so far (call ended, audio
    saved, the transcript's length, the notes being written), playback of the decrypted recording, and who
    has it. Without notes, the sheet says there's nothing to send.
-   Notes are written in the language and summary length set in settings by the organizer (or, for a room
-   recording, by whoever recorded): "Same as the call" by default, with a short summary of two or three sentences, and a longer full summary under it.
+   Notes are written in the language set in settings by the organizer (or, for a room recording, by whoever recorded):
+   "Same as the call" by default. Every note gets a short summary of two or three sentences, and a longer full summary
+   under it.
 3. Everyone invited gets the notes as the call ends, including people signed in whom the organizer let in
    from the link (letting them in added them to the invite; removing them took them off it). They find them
    under Notes when they sign in with that address, marked as from the organizer. Guests who joined with only
@@ -1166,7 +1167,8 @@ Storybook journeys **6.23–6.25** show the review alongside the call:
   their groups. Notes lists them under the call they came from, and **Who has these notes** says how each person
   got them: organizer, invited, or shared afterwards by whom (and with which group). A long list shows its
   first eight people until **Show all** opens it.
-- **More** has **Copy as text**, once the notes are written, and **Delete notes**, which deletes your own notes for everyone, audio included, with anyone's own notes on them, once you say so,
+- **More** has **Copy as text**, once the notes are written (the summary, the full summary, what was decided, what's
+  still open, the follow-ups and the shared notes), and **Delete notes**, which deletes your own notes for everyone, audio included, with anyone's own notes on them, once you say so,
   and then lists what went. For notes from someone else it's **Remove from your notes**: everyone else keeps them, and
   you're no longer listed as having them. Your own notes on them go for good, and what you added to the shared notes stays.
   Beside the list it asks in place, and the row leaves the list. While the call is going, it waits until the call ends.
@@ -1432,22 +1434,23 @@ and moves a small sun to the one in view; on a narrow screen the index is a stri
 Settings can name a group or one of the places other pages point at (**Recording in the room**, **Google Calendar**,
 **Google Drive**, **Agents**); the page lands there and the index lights its group. Every control changes immediately and
 says **Saving…** while its request is pending. **Saved** shows for a moment just left of the control, only once its
-latest choice is confirmed (**Saved for new notes** for language and summary). A refusal says **Couldn’t confirm**, with a
+latest choice is confirmed (**Saved for new notes** for the language). A refusal says **Couldn’t confirm**, with a
 toast explaining why; it removes only that attempt, keeping later choices. Pick the setting again to retry. Panels that
-don't load say so, with **Try again**, and the rest of the page still works. Journey **11.23** shows Detailed → Short →
-Detailed while the oldest request fails.
+don't load say so, with **Try again**, and the rest of the page still works. Journey **11.23** shows Off → On → Off for
+notes on new calls while the oldest request fails.
 
 - **You**: your name and photo, from your sign-in, with a link to change them at Google or Microsoft (they update
   the next time you sign in; with single sign-on they come from your company's sign-in); your company, which opens
   Team (not at a personal address); and the time zone times are shown in, this computer's. Then **Appearance**:
   system, light or dark, each shown as a small evening in its own colours, kept in this browser.
 - **Calls and notes**: notes on or off for new calls (everyone invited gets them; each call can still be set when it's
-  scheduled), the language they're written in ("Same as the call", or one of twelve), how much the summary says
-  (**Short** or **Detailed**), and **AI model**: the model that writes the notes, reads shared screens and answers
+  scheduled), the language they're written in ("Same as the call", or one of twelve), and **AI model**: the model that
+  writes the notes, reads shared screens and answers
   questions for calls you organize. The default shows as "<name> (default)"; the others are NEAR AI models that take
   text and images. A model that doesn't run in a secure enclave carries a yellow **Unencrypted** badge ("Not in a secure
-  enclave, so Alcove can't guarantee this model keeps your call private."). Transcription is always private. Language
-  and summary apply to notes written from then on; the model to calls started from then on, and you can change it
+  enclave, so Alcove can't guarantee this model keeps your call private."). Transcription is always private. There's no
+  choice of how long the summary is: every note has the short summary with the full summary under it. The language
+  applies to notes written from then on; the model to calls started from then on, and you can change it
   during a call (**Notes written by**, on the capture panel) or when you write a note's notes again. Then **Recording in
   the room**: **Record without a connection** (on by default), and, while something waits here to upload, **On this
   device**: how many recordings, and how much room, with **See them** (Record's list).

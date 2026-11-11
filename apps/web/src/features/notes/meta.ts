@@ -41,8 +41,11 @@ export function noteAsText(n: Note): string {
   const said = n.actions.filter((a) => isAcceptedFollowUp(a) && a.from === null);
   const fromBoards = n.actions.filter((a) => isAcceptedFollowUp(a) && a.from === 'board');
   const line = (a: ActionItem) => `- ${a.text}${about(a) ? ` (${about(a)})` : ''}`;
+  // The full summary, under the short one, as the note shows it: its paragraphs a blank line apart.
+  const full = n.details.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
   return [
     n.title, noteWhen(n.startedAt, n.duration), '', n.summary,
+    ...(full.length ? ['', 'Full summary', full.join('\n\n')] : []),
     ...(decided.length ? ['', 'Decisions', ...decided.map((d) => `- ${d.text}${d.state === 'proposed' ? ' (not confirmed yet)' : d.state === 'superseded' ? ' (no longer holds)' : ''}`)] : []),
     ...(open.length ? ['', 'Still open', ...open.map((x) => `- ${x.text}`)] : []),
     ...(said.length ? ['', 'Follow-ups', ...said.map(line)] : []),

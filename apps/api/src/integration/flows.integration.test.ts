@@ -291,16 +291,16 @@ describe('signing in', () => {
     const patchRaw = async (body: unknown) => (await fetch(`${h.baseUrl}/v1/account/preferences`, { method: 'PATCH', headers: { 'content-type': 'application/json', origin: ORIGIN }, body: JSON.stringify(body) })).status;
     const defaults = {
       sounds: DEFAULT_SOUND_PREFERENCES,
-      notesDefault: 'on', notesLanguage: 'call', summaryLength: 'short', addToCalendar: true, showOtherMeetings: true, recordOffline: true,
+      notesDefault: 'on', notesLanguage: 'call', addToCalendar: true, showOtherMeetings: true, recordOffline: true,
       notifications: DEFAULT_NOTIFICATION_PREFERENCES,
       pinned: [], groups: [], model: null
     };
     expect(await api.account.preferences()).toEqual(defaults);
     const patched = await api.account.updatePreferences({
-      summaryLength: 'detailed',
+      notesLanguage: 'de',
       notifications: { ...DEFAULT_NOTIFICATION_PREFERENCES, replies: false, chatMentions: false, ringing: false, beforeCall: 1 }
     });
-    expect(patched).toEqual({ ...defaults, summaryLength: 'detailed', notifications: { ...defaults.notifications, replies: false, chatMentions: false, ringing: false, beforeCall: 1 } });
+    expect(patched).toEqual({ ...defaults, notesLanguage: 'de', notifications: { ...defaults.notifications, replies: false, chatMentions: false, ringing: false, beforeCall: 1 } });
     expect(await api.account.preferences()).toEqual(patched);
     const sounds = { ...DEFAULT_SOUND_PREFERENCES, enabled: false, quiet: true, volume: 0.25, hands: false, replies: false };
     expect((await api.account.updatePreferences({ sounds })).sounds).toEqual(sounds);
@@ -1665,7 +1665,7 @@ describe('live transcript and written notes', () => {
     expect(note.suggestions).toMatchObject([{ review: 'suggested', id: expect.any(String), text: 'Tidy the spacing by Friday', owner: { name: 'Sam' }, takenOn: false, due: 'Friday', at: 0, done: false, changes: [] }]);
   });
 
-  it('notes are written in the chosen language and length', async () => {
+  it('notes are written in the chosen language, with a short summary for everyone', async () => {
     const wrote = async (b: Awaited<ReturnType<typeof account>>, how: 'call' | 'room') => {
       const before = h.near.instructions.length;
       if (how === 'room') {
@@ -1685,16 +1685,17 @@ describe('live transcript and written notes', () => {
     expect((await wrote(standard, 'call'))[0]).toContain('summary: two or three plain sentences');
 
     const chosen = await account();
-    await chosen.api.account.updatePreferences({ notesLanguage: 'es', summaryLength: 'detailed' });
+    await chosen.api.account.updatePreferences({ notesLanguage: 'es' });
     const [call] = await wrote(chosen, 'call');
     expect(call).toContain('Write in Spanish.');
-    expect(call).toContain('summary: a short paragraph for each topic');
-    expect(call).not.toContain('two or three plain sentences');
+    // The summary is always the short one: the full summary is the longer account, under it.
+    expect(call).toContain('summary: two or three plain sentences');
+    expect(call).not.toContain('a short paragraph for each topic');
     // A room recording follows the person who recorded it.
     const [room] = await wrote(chosen, 'room');
     expect(room).toContain('Write in Spanish.');
-    expect(room).toContain('a short paragraph for each topic');
-    // Decisions, follow-ups and chapters are written the same way either way.
+    expect(room).toContain('summary: two or three plain sentences');
+    // Decisions, follow-ups and chapters are written the same way whatever the language.
     expect(call).toContain('decisions: what the people agreed');
     // Someone else's choice doesn't reach a call they only joined: the organizer's decides.
     const guest = await account();

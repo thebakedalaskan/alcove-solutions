@@ -450,9 +450,9 @@ async function attempt(d: Deps, job: Claimed): Promise<void> {
       // The job's owner is the organizer of a call, or the person who recorded a room: their choices decide, for the
       // call's notes and each breakout room's.
       const organizer = await me(o);
-      const { notesLanguage: language, summaryLength: length } = (await profile(o)).preferences;
+      const { notesLanguage: language } = (await profile(o)).preferences;
       // After an attempt that didn't work, which may have been cut off, ask for less rather than the same again.
-      const style: NotesStyle = { language, length, brief: job.tried > 0 };
+      const style: NotesStyle = { language, brief: job.tried > 0 };
       // The boards open for everyone in the call, as they are now, for the notes of the part each was open in: only those
       // everyone the note went to can open, because one summary goes to them all, the people it was shared with since included.
       const boards = boardsIn(await boardsToRead(o, note.manifest.workedOn, everyoneWith(note.manifest, organizer.email), at));
@@ -482,7 +482,7 @@ async function attempt(d: Deps, job: Claimed): Promise<void> {
       }
       if (!(await settle(o, job.job_id, noteId, was, { notes, rooms, readAt, screens: screenEvidence, details }, undefined, left))) { await stopped('saving'); return; }
       wlog.info('notes written', {
-        ...at, language: style.language, length: style.length, decisions: notes.decisions.length, actions: notes.actions.length, chapters: notes.chapters.length, screens: shown.length, attached: notes.screens.length,
+        ...at, language: style.language, decisions: notes.decisions.length, actions: notes.actions.length, chapters: notes.chapters.length, screens: shown.length, attached: notes.screens.length,
         screenRefs: [...notes.decisions, ...notes.questions, ...notes.actions, ...notes.chapters].filter((x) => x.screen).length,
         rooms: note.manifest.rooms.length, roomsWritten: rooms.written, model: via.model, encrypted: via.private, ms: Math.round(performance.now() - t0)
       });

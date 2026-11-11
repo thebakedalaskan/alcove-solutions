@@ -180,6 +180,10 @@ describe('automatic Google Drive call exports', () => {
     const text = files.filter((file) => file.mimeType !== 'application/zip').map((file) => file.bytes.toString('utf8')).join('\n');
     expect(text).toContain(title);
     expect(text).toContain('launch on Friday');
+    // The notes carry the full summary under the short one, as the note page does.
+    const notesFile = files.find((file) => file.mimeType === 'text/markdown')?.bytes.toString('utf8') ?? '';
+    expect(notesFile).toContain('## Full summary');
+    expect(notesFile).toContain('First, The team agreed to launch on Friday.');
     expect(text).not.toContain('CANARY-PRIVATE-MATERIAL-NEVER-EXPORT');
     expect(text).not.toContain('CANARY-DIRECT-MESSAGE-NEVER-EXPORT');
     expect(JSON.stringify(await b.api.notes.get(noteId))).not.toContain('CANARY-DIRECT-MESSAGE-NEVER-EXPORT');

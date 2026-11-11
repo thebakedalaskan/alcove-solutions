@@ -665,7 +665,12 @@ the same way when it is an unencrypted one.
 - **Where it shows.** Under the short summary on the note page, behind a "Full summary" button, closed until pressed; a
   note with none shows no button. A note written before it existed has none until its notes are written again, which
   writes it afresh each time and replaces the old one (or, if that request fails, leaves none). A breakout room's
-  section has a short summary only.
+  section has a short summary only. **Copy as text** and the notes file sent to Google Drive ([Drive
+  exports](drive-exports.md)) carry it too, under the short summary, as "Full summary".
+- **One long account.** The short summary is always two or three sentences: there's no setting for how long it is, so
+  the fold always opens something longer than what's above it, and one person's choice never decides how everyone reads
+  the note. Profiles still keep the `summaryLength` an earlier release let people choose, unread, because the release
+  before this one opens a profile only with it; a later release drops it ([Data and storage](data-and-storage.md)).
 - **Asking.** Asking about the note sends it as "Full summary" after the short summary, so an answer can use what it
   says. Asking across notes, across a series, catching up and live notes don't read it.
 - **Logged.** `full summary written` at info (`chars`, `model`, `encrypted`, `ms`) and `full summary not written; the
@@ -1511,8 +1516,8 @@ The prompts are in `apps/api/src/features/notes/drafting.ts`; read them there. I
   layout, design, colours, never who someone is), `changed` (what changed since the frame before, only when there was
   one), up to four `regions` (`{label, box: [left, top, right, bottom]}` in fractions of the frame) and `relevance`
   (`key`, `supporting`, `unrelated`).
-- **Writing notes.** One JSON object: `summary` (substance first; two or three plain sentences, or with the
-  detailed setting a short paragraph for each topic), `decisions` (something only suggested isn't one),
+- **Writing notes.** One JSON object: `summary` (substance first; two or three plain sentences, for every note: the
+  full summary is the longer account), `decisions` (something only suggested isn't one),
   `questions` (what someone asked that the meeting didn't answer or settle), `actions` (text that starts with a verb,
   an owner as the transcript names them or null, and a due date as it was said or null), `chapters` (two to six, each
   with the `line` it starts at), three `suggestedQuestions`, and `screens` (for each shared screen given in full in the transcript, a
@@ -1769,7 +1774,7 @@ warn. Every chat request's debug line carries `encrypted` (false for an unencryp
 `notes waiting for the notes model to check out` at warn, and one that waits for an answer
 `notes waiting for the notes model to answer`, also at warn. Evidence itself, keys and anything sent are
 never logged. Around it, IDs, attempts, counts and timings: `series read` at debug; `notes job queued`,
-`notes written` (with decision, follow-up and chapter counts, and the notes language and summary length), `full summary written` (its length, the model and whether it was sealed), `full summary not written; the notes stand without it` at warn,
+`notes written` (with decision, follow-up and chapter counts, and the notes language), `full summary written` (its length, the model and whether it was sealed), `full summary not written; the notes stand without it` at warn,
 `question answered`, `question answered across notes` (how many notes the person has, how many are written
 with a transcript, how many were sent, the transcript lines sent, the cites and the time), `asked across
 notes with nothing to answer from` (how many notes, and whether any is still being written), `series

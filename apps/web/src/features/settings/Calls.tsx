@@ -1,9 +1,8 @@
 /*
- * Calls and notes: whether new calls have notes, the language they're written in, how much the summary says and the AI
- * model that writes them; then recording in the room, with what waits on this device to upload. Each control saves as
- * it changes (save.tsx).
+ * Calls and notes: whether new calls have notes, the language they're written in and the AI model that writes them; then
+ * recording in the room, with what waits on this device to upload. Each control saves as it changes (save.tsx).
  */
-import type { NotesLanguage, NotesSetting, Preferences, SummaryLength } from '@alcove/api';
+import type { NotesLanguage, NotesSetting, Preferences } from '@alcove/api';
 import { Icon, Segmented, Select, SettingRow, SettingsGroup, SettingsPanel, type SelectOption } from '@alcove/ui';
 import { Link } from '@tanstack/react-router';
 import { uploads } from '~/features/record/uploads';
@@ -35,9 +34,6 @@ export function CallsGroup({ prefs }: { prefs: Preferences }) {
             options={[{ value: 'on', label: 'On' }, { value: 'off', label: 'Off' }]} />} />
         <Setting label="Language" saying="Saved for new notes"
           control={<Select<NotesLanguage> label="Notes language" value={prefs.notesLanguage} options={LANGUAGES} onChange={(v) => save('Language', { notesLanguage: v })} />} />
-        <Setting label="Summary" saying="Saved for new notes"
-          control={<Segmented<SummaryLength> label="Summary length" value={prefs.summaryLength} onChange={(v) => save('Summary', { summaryLength: v })}
-            options={[{ value: 'short', label: 'Short' }, { value: 'detailed', label: 'Detailed' }]} />} />
         <Setting label="AI model" problem={unencrypted}
           help={unencrypted ? 'Outside a secure enclave, so Alcove can’t guarantee your notes stay private.' : 'Writes your notes and answers questions. You can change it for a call or a note.'}
           control={<Select<string> label="AI model" value={modelValue(prefs.model)} options={modelOptions(models.data, prefs.model)}
