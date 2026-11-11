@@ -62,7 +62,7 @@ export const WhileAScreenIsSharedNight = page('/notes/n2?at=560', 'busy', { glob
 export const ReadingOnPastTheScreen = page('/notes/n2?at=560', 'busy', {
   play: async ({ canvas, step }) => {
     await step('Read on to what was decided. The line sticks to the top, and the shared screen has gone above it', async () => {
-      (await canvas.findByRole('heading', { name: 'Decided' })).scrollIntoView({ block: 'start' });
+      (await canvas.findByRole('heading', { name: /^Decided/ })).scrollIntoView({ block: 'start' });
     });
   }
 });
