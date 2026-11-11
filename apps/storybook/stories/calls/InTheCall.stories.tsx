@@ -339,9 +339,9 @@ export const CloseSaysThePeopleComeBack = {
 };
 /**
  * Your own screen has Close as well as Stop sharing: Close puts it away for you while everyone still sees it. It's a tile with
- * the people, who fill your stage again, and the tile brings it back.
+ * the people, who fill your stage again, and the tile brings it back. (Notes are off here, so Share doesn't ask about them.)
  */
-export const PutYourScreenAway = inCall({ scenario: 'call-soon', call: REVIEW, script: { here: REVIEWERS } }, {
+export const PutYourScreenAway = inCall({ scenario: 'call-soon', call: REVIEW, script: { here: REVIEWERS, notes: 'off' } }, {
   name: 'Your screen, put away for you',
   play: plays(clearSide, async (c) => {
     await c.step('Share a tab, then Close on your screen’s bar', async () => {
