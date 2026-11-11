@@ -26,9 +26,10 @@ const MOST_OFFERED = 3;
 const soonestFirst = (a: Date, b: Date) => a.getTime() - b.getTime();
 
 /**
- * The time picked, as it will read: its day, then its start and its end, typed in 5-minute steps. A start moves the call
- * and keeps its length; an end sets the length. What's typed counts once it's finished, on leaving the field or with
- * Enter; a time that can't be used says why, and what was there stays.
+ * The time picked, as it will read: its day, then its start and its end, each typed as a 24-hour time like every other time
+ * here ("14:15", or "1415"), to the nearest 5 minutes; the up and down arrows move it 5 minutes. A start moves the call and
+ * keeps its length; an end sets the length. What's typed counts once it's finished, on leaving the field or with Enter;
+ * a time that can't be used says why, and what was there stays.
  */
 export function StartEnd({ at, minutes, onChange }: { at: Date; minutes: number; onChange: (c: { at: Date; minutes: number }) => void }) {
   const [typed, setTyped] = useState<{ start: string | null; end: string | null }>({ start: null, end: null });
@@ -41,25 +42,36 @@ export function StartEnd({ at, minutes, onChange }: { at: Date; minutes: number;
     setTyped({ start: null, end: null });
     setWhy(null);
   }
+  const end = new Date(at.getTime() + minutes * 60_000);
   const type = (which: 'start' | 'end', value: string | null) => setTyped((t) => (which === 'start' ? { ...t, start: value } : { ...t, end: value }));
-  const commit = (which: 'start' | 'end') => {
-    const value = typed[which];
-    type(which, null);
-    const next = value === null ? null : retime(at, minutes, which, value, new Date());
+  const use = (which: 'start' | 'end', value: string) => {
+    const next = retime(at, minutes, which, value, new Date());
     if (!next) return;
     if (!next.ok) { setWhy(untimelyLine(next.why)); return; }
     setWhy(null);
     if (next.at.getTime() !== at.getTime() || next.minutes !== minutes) onChange({ at: next.at, minutes: next.minutes });
   };
+  const commit = (which: 'start' | 'end') => {
+    const value = typed[which];
+    type(which, null);
+    if (value !== null) use(which, value);
+  };
   const field = (which: 'start' | 'end', label: string, value: Date) => (
-    <input type="time" step={TYPED_STEP * 60} aria-label={label} value={typed[which] ?? hm(value)} onChange={(e) => type(which, e.target.value)}
-      onBlur={() => commit(which)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commit(which); } }} />
+    <input type="text" inputMode="numeric" autoComplete="off" spellCheck={false} maxLength={5} aria-label={label} value={typed[which] ?? hm(value)}
+      onChange={(e) => type(which, e.target.value)} onFocus={(e) => e.currentTarget.select()} onBlur={() => commit(which)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') { e.preventDefault(); commit(which); }
+        if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+        e.preventDefault();
+        type(which, null);
+        // A start stays on its day; an end past midnight is the next day's, as when it's typed.
+        const next = new Date(value.getTime() + (e.key === 'ArrowUp' ? TYPED_STEP : -TYPED_STEP) * 60_000);
+        if (which === 'end' || next.toDateString() === at.toDateString()) use(which, hm(next));
+      }} />
   );
   return (
     <div className="cf-at">
-      <p className="cf-at-line">
-        <span>{shortDay(at)},</span>{field('start', 'Starts', at)}<span className="to" aria-hidden="true">–</span>{field('end', 'Ends', new Date(at.getTime() + minutes * 60_000))}
-      </p>
+      <p className="cf-at-line"><span>{shortDay(at)},</span>{field('start', 'Starts', at)}<span className="to" aria-hidden="true">–</span>{field('end', 'Ends', end)}</p>
       {why && <FlowNote icon="clock">{why}</FlowNote>}
     </div>
   );
@@ -281,7 +293,8 @@ export function When({ draft, change, guests, team, wide, onWide, back, onNext }
               {!wide && !offer && <button type="button" className="lk" onClick={() => onWide(true)}>Pick another time</button>}
             </div>
           </div>
-          {wide && <Week emails={emails} chosen={chosen} minutes={draft.minutes} onPick={(at) => change({ at })} onMinutes={(minutes) => change({ minutes })} />}
+          {/* Its end dragged, the call keeps the start it has: the best time for a new length doesn't stand in for it any more. */}
+          {wide && <Week emails={emails} chosen={chosen} minutes={draft.minutes} onPick={(at) => change({ at })} onMinutes={(minutes) => change({ at: chosen, minutes })} />}
         </div>
         <div className="cf-rows">
           {!offer && <RepeatRow repeat={draft.repeat} at={chosen} onChange={(repeat) => change({ repeat })} />}

@@ -84,6 +84,18 @@ export const ReadingCalendars = page('/home', 'busy', { beforeEach: changing(tro
 export const AnotherTime = page('/home', 'busy', { play: playing(open, later, priyaAndKofi, findATime, press('Pick another time', 'Pick another time. The week opens beside the times')) });
 /** On a phone the week sits under the times, all seven days of it. */
 export const AnotherTimePhone = phone(AnotherTime);
+/**
+ * Ending later, in the week: the bar on the picked time's bottom edge drags its end a quarter hour at a time, and Shift with
+ * the down arrow on its half hour does the same. Twice makes the 45 minutes 1 h 15 min, which shows beside the three.
+ */
+export const EndingLater = page('/home', 'busy', {
+  play: playing(open, later, priyaAndKofi, findATime, press('Pick another time', 'Pick another time'), async ({ userEvent, step }) => {
+    await step('Go to the picked half hour, and press Shift and the down arrow twice', async () => {
+      (await screen.findByRole('button', { name: /, picked/ }, { timeout: 8000 })).focus();
+      await userEvent.keyboard('{Shift>}{ArrowDown}{ArrowDown}{/Shift}');
+    });
+  })
+});
 /** A time picked from the week takes the place of the last suggestion, and the cards stay soonest first. */
 export const PickedFromTheWeek = page('/home', 'busy', {
   play: playing(open, later, priyaAndKofi, findATime, press('Pick another time', 'Pick another time'), press(/^Fri 6 Nov, 16:30/, 'Pick Friday at 16:30 in the week'))

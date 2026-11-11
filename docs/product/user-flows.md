@@ -195,8 +195,9 @@ send to anyone".
    last of the three, and the other two stay. It says what's true:
    "All 8 of you are free at these times.", how many are free under each time, that other calendars can't be read and
    the times are free on yours, or with no calendar connected that these are open working hours. Under the cards the
-   time picked reads as it will, "Thu 5 Nov, [10:00] – [10:45]": its start and its end can be typed, in 5-minute steps,
-   and count once you leave the field or press Enter. A start moves the call and keeps its length; an end sets the
+   time picked reads as it will, "Thu 5 Nov, [10:00] – [10:45]": its start and its end can be typed, as 24-hour times like
+   every other time here (14:15, or 1415), to the nearest 5 minutes, and count once you leave the field or press Enter;
+   the up and down arrows move one 5 minutes. A start moves the call and keeps its length; an end sets the
    length, any from 5 minutes to 10 hours (earlier than the start, it's the next day's, for a call past midnight). A
    start that's gone, an end before the start, or a length past those limits says why under the line, and what was
    picked stays. A start off the half hour sits in the week where it falls, and its card says how many are free then.
