@@ -7,6 +7,7 @@ import { exec, maybeOne, rows, timestamp, tx, type Db } from '../../db';
 import { ConflictError } from '../../errors';
 import { openOwner } from '../../owners';
 import { me, profile } from '../account/account';
+import { portraitFor } from '../account/portraits';
 import { CallSpace, NO_BOARDS, NO_SPACE, withOpenBoards, type WorkedDocument } from './space-state';
 import * as space from './workspace';
 import * as boards from './boards';
@@ -160,7 +161,7 @@ async function endCall(o: Owner, callId: string, unless?: (r: Row) => boolean): 
         const gone = row.host_left_at && s.notes.status === 'on' ? tenthsIn(row.started_at, row.host_left_at.getTime()) : null;
         const offline = gone !== null && gone < duration ? [...s.notes.offline, { from: gone, to: duration, segment: s.notes.segment }] : s.notes.offline;
         const recorded = (at: number) => capture.recorded(s.notes.history, offline, at, duration);
-        const held = s.breakouts.held.map((h) => ({ rooms: h.rooms.map((r) => ({ id: r.id, name: r.name, emails: r.emails })), from: recorded(h.from), to: recorded(h.to) }));
+        const held = s.breakouts.held.map((h) => ({ rooms: h.rooms.map((r) => ({ id: r.id, name: r.name, emails: r.emails, guests: r.guests })), from: recorded(h.from), to: recorded(h.to) }));
         const segs = s.notes.recordingId ? await segments(o, s.notes.recordingId, c) : [];
         // The stretches nothing was captured in go into the note, so it says so where they fall.
         const gaps = capture.gapsOf(s.notes.history, offline, row.started_at, segs, duration);
@@ -172,10 +173,10 @@ async function endCall(o: Owner, callId: string, unless?: (r: Row) => boolean): 
           });
           await updateNote(o, c, s.notes.noteId, (n) => ({ ...n, screens: shown }));
         }
-        // Each breakout room's section: everyone who was in it (the organizer if it came in), when, and its own gaps.
+        // Each breakout room's section: everyone who was in it (the organizer if it came in, a guest by name only), when, and its own gaps.
         const peopleOf = (seen: string[]): Speaker[] => seen.flatMap((key) => {
           const j = key === 'organizer' ? undefined : s.people.findLast((x) => x.person === key);
-          const p = key === 'organizer' ? organizer : j ? personFor(j, j.identity, j.name, organizer) : undefined;
+          const p = key === 'organizer' ? organizer : j?.role === 'guest' ? { id: j.identity, name: j.name, email: '', portrait: portraitFor(j.identity) } : j ? personFor(j, j.identity, j.name, organizer) : undefined;
           return p ? [{ name: p.name, person: p }] : [];
         });
         const rooms: HeldRoom[] = s.breakouts.held.flatMap((h) => h.rooms.map((r) => ({

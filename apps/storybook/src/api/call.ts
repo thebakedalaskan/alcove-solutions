@@ -13,7 +13,7 @@ import {
   CALL_TIMER_MAX_SECONDS, CallTimerControlSchema, type CallTimerControl, type CallTimer, type CallAttention, type CallNudgeKind, type CallQuestionStatus, type CallStatusKind, type CallStatusMinutes, ACCEPTED_FOLLOW_UP, AlcoveApiError, type FollowUpCreate, type FollowUpPatch, type FollowUpReview, type FollowUpTarget, type LiveFollowUp, MAX_CALL_IDEAS, RING_SECONDS, notesAreOn, reactionTarget, withReaction, type BreakoutPlan, type CallPage, type CallAnswer, type CallChatMention, CallChatTextSchema, type CallCrypto, type CallEndResult, type CallMoment, type CallMoveOut, type CallParticipant, type CallRole,
   type CallReaction, type CallSession, type CallState, type CallTicket, type CaptionLanguage, type CaptionTranslation, type CaptureDevicePart, type CaptureGap, type CaptureMode, type CapturePart,
   type CatchUp, type CatchUpRange, type CatchUpWindow, type AudioPiece, type LineAudio, type Meeting, type MoveMedia, type MoveOutState, type Person, type PersonalApi,
-  type RingReply, type RoomCapture, type ScreenPiece, type SeriesAnswerPart, type TranscriptClip, type TranscriptLine
+  type RingReply, type RoomCapture, type RoomPerson, type ScreenPiece, type SeriesAnswerPart, type TranscriptClip, type TranscriptLine
 } from '@alcove/api';
 import type {
   BoardCheck, BoardOpen, BoardTemplate, BoardVotesEach, BreakoutBoard, BreakoutBoardMode, CallBoard, CallBoardIdea, CallFollowUp, CallFollowUps, CallPresent, CallSeat, CallWorkspace,
@@ -237,6 +237,7 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
       case 'mic': this.them(b.who, (t) => ({ ...t, mic: b.on, speaking: b.on && t.speaking })); return;
       case 'hand': { const p = this.find(b.who); if (p) this.handFor(p, b.up); return; }
       case 'question': { const p = this.find(b.who); if (p) this.questionFor(p, b.text, b.votes ?? 0, nextId('question'), b.anonymous ?? false); return; }
+      case 'question-vote': this.change((s) => ({ ...s, attention: { ...s.attention, questions: s.attention.questions.map((q) => (q.text === b.text && q.status === 'open' ? { ...q, votes: q.votes + b.votes } : q)) } })); return;
       case 'nudge': { const p = this.find(b.who); if (p) this.nudgeFrom(p, b.kind); return; }
       case 'status': { const p = this.find(b.who); if (p) this.statusFor(p, b.status, b.minutes); return; }
       case 'share': this.them(b.who, (t) => ({ ...t, screen: b.screen })); return;
@@ -819,9 +820,14 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
   private opensRooms(plans: readonly RoomPlan[], minutes: number, board?: BreakoutBoard | undefined): void {
     const s = this.getSnapshot();
     const idOf = (p: Person | 'me') => (p === 'me' ? this.me.id : this.find(p)?.id);
+    // Guests (anyone who came in with the link) go by seat, by name only; everyone else by address.
+    const guest = (p: Person | 'me') => { const id = idOf(p); return id !== undefined && this.guests.has(id); };
     const rooms = plans.map((plan, k) => {
       const members = plan.people.flatMap((p) => { const id = idOf(p); return id ? [id] : []; });
-      return { id: this.roomId(k), name: plan.name, people: plan.people.map((p) => (p === 'me' ? this.me.person : p)), members, paused: false, board: false };
+      return {
+        id: this.roomId(k), name: plan.name, people: plan.people.flatMap((p) => (guest(p) ? [] : [p === 'me' ? this.me.person : p])),
+        guests: plan.people.flatMap((p) => { const x = p === 'me' ? this.me : this.find(p); return x && guest(p) ? [this.asGuest(x)] : []; }), members, paused: false, board: false
+      };
     });
     this.boardsForRooms(board, rooms.map((r, k) => ({ ...r, work: plans[k]?.work })));
     const mine = rooms.find((r) => r.members.includes(this.me.id));
@@ -836,17 +842,27 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
   }
   openRooms(plan: BreakoutPlan): void {
     const s = this.getSnapshot();
-    const rooms = plan.rooms.map((r, k) => ({
-      id: this.roomId(k), name: r.name, people: r.emails.map(personAt), paused: false, board: false,
-      members: s.participants.filter((p) => !p.isMe && r.emails.some((e) => e.toLowerCase() === p.person.email.toLowerCase())).map((p) => p.id)
-    }));
+    const rooms = plan.rooms.map((r, k) => {
+      const guests = s.participants.filter((p) => !p.isMe && (r.seats ?? []).includes(p.seat));
+      const invited = s.participants.filter((p) => !p.isMe && r.emails.some((e) => e.toLowerCase() === p.person.email.toLowerCase()));
+      return {
+        id: this.roomId(k), name: r.name, people: r.emails.map(personAt), guests: guests.map((p) => this.asGuest(p)), paused: false, board: false,
+        members: [...invited, ...guests].map((p) => p.id)
+      };
+    });
     this.boardsForRooms(plan.board, rooms);
     this.push({ ...s, breakouts: { ...s.breakouts, open: { rooms, board: this.boardMode, from: s.elapsed, until: s.elapsed + plan.minutes * 60, message: null } } });
     this.endsMoved();
     this.showBoard();
-    // The organizer stays in the main room, and keeps every room's keys.
-    this.crypto.update((c) => ({ ...c, members: s.participants.filter((p) => !rooms.some((r) => r.members.includes(p.id))).map((p) => p.id) }));
+    // The organizer starts in the main room, keeping every room's keys, unless they chose a room to start in: then they visit it.
+    const visiting = plan.visit === undefined ? undefined : rooms[plan.visit];
+    if (visiting) this.visitRoom(visiting.id);
+    else this.crypto.update((c) => ({ ...c, members: s.participants.filter((p) => !rooms.some((r) => r.members.includes(p.id))).map((p) => p.id) }));
     this.hosting();
+  }
+  /** Someone in the call as a room names a guest: by seat, by name only. */
+  private asGuest(p: CallParticipant): { seat: string; person: Person } {
+    return { seat: p.seat, person: { id: p.id, name: p.person.name, email: '', ...(p.person.portrait ? { portrait: p.person.portrait } : {}) } };
   }
   closeRooms(): void {
     const s = this.getSnapshot();
@@ -879,12 +895,19 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
   renameRoom(roomId: string, name: string): void {
     this.change((s) => (s.breakouts.open ? { ...s, breakouts: { ...s.breakouts, open: { ...s.breakouts.open, rooms: s.breakouts.open.rooms.map((r) => (r.id === roomId ? { ...r, name } : r)) } } } : s));
   }
-  moveToRoom(email: string, roomId: string | null): void {
+  moveToRoom(person: RoomPerson, roomId: string | null): void {
     this.change((s) => {
       const open = s.breakouts.open;
-      const who = s.participants.find((p) => p.person.email.toLowerCase() === email.toLowerCase());
+      const who = s.participants.find((p) => (person.email !== undefined ? p.person.email.toLowerCase() === person.email.toLowerCase() : p.seat === person.seat));
       if (!open || !who) return s;
-      return { ...s, breakouts: { ...s.breakouts, open: { ...open, rooms: open.rooms.map((r) => ({ ...r, members: r.id === roomId ? [...r.members.filter((m) => m !== who.id), who.id] : r.members.filter((m) => m !== who.id) })) } } };
+      // A guest goes by seat, so the rooms name them; someone invited by address.
+      const rooms = open.rooms.map((r) => {
+        const to = r.id === roomId;
+        const guests = person.seat === undefined ? r.guests : [...r.guests.filter((g) => g.seat !== person.seat), ...(to ? [this.asGuest(who)] : [])];
+        const people = person.email === undefined ? r.people : [...r.people.filter((p) => p.email.toLowerCase() !== person.email.toLowerCase()), ...(to ? [who.person] : [])];
+        return { ...r, people, guests, members: to ? [...r.members.filter((m) => m !== who.id), who.id] : r.members.filter((m) => m !== who.id) };
+      });
+      return { ...s, breakouts: { ...s.breakouts, open: { ...open, rooms } } };
     });
     // What they were presenting where they were ends there.
     this.endsMoved();

@@ -600,12 +600,19 @@ time, slides in on the right.
 - **Questions (journey 6.15).** **Questions** in Chat holds the room's questions, separate from chat and from the private AI
   **Ask** under Notes; its tab says how many are open. Type in **Ask a question** and press Send; switch on **Ask
   anonymously** first and the question says **Anonymous** to everyone, whoever hosts included, and only you see **You,
-  anonymously** and **Take back your question**. Each question shows its votes in a column: press it to vote, again to take
-  your vote back; one identity has one vote. **Most votes** or **Newest** sets the order; votes arriving while you read don't
-  move anything, and **Reorder** applies the current ranking. Whoever hosts can **Pin question** (it leads the list),
-  **Mark question answered** or **Dismiss question**; answered and dismissed questions leave the open count and the list,
-  and **Show answered** brings them back, marked. Whoever asked can take a question back, and it goes for everyone.
-  Questions belong to the room they were asked in, and stay with that audience when rooms close.
+  anonymously** and **Take back your question**, in its ⋯. Each question shows its votes in a column that says **Vote**,
+  or **Voted** once you have: press it to vote, again to take your vote back; one identity has one vote, and there's no
+  voting down. **Most votes** or **Newest** sets the order, and the list follows it whenever the pointer is away from the
+  questions and nothing in them has keyboard focus: votes coming in move them, gliding to their places (without gliding
+  with reduced motion), and under **Newest** a question just asked comes in at the top. While you point at them, or a
+  question's ⋯ is open, nothing moves: the order you're reading in holds, **Most votes** (or **Newest**) stops looking
+  chosen, and **Sort by votes** (or **Sort by newest**) sorts them now. This replaces the call attention spec's
+  "Sorting preserves the reader's place while votes change" (`docs/superpowers/specs/2026-11-08-call-attention-design.md`).
+  Whoever hosts uses a question's ⋯: **Pin to the top** (it leads the list) or **Unpin**, **Mark answered** and
+  **Dismiss**; answered and dismissed questions leave the open count and the list, their toast offering **Undo**, and
+  **Show answered** brings them back, marked, where their ⋯ has **Reopen**. Whoever asked can take a question back from
+  its ⋯, and it goes for everyone. Questions belong to the room they were asked in, and stay with that audience when rooms
+  close.
 - **Mentioning someone in chat (journey 6.32).** Type **@** and search the people who can read this room or, in a private conversation, its original two participants. Their address, or a guest's
   identity, distinguishes people with the same name. Use the arrow keys and **Enter**, or press their row, to select them.
   Selected people appear beside the composer and stay highlighted in the sent message; changing the tagged words removes
@@ -634,13 +641,20 @@ time, slides in on the right.
   been on. A guest with
   the link can catch up on what was said while they were in the call; the notes go to the people invited.
 - **Breakout rooms.** The organizer opens them on their side, from **Breakout rooms** in People or **More**. Pick two
-  or three rooms and how long, drag people between rooms and rename them, then
-  **Open rooms**. While they're open: a shared timer, each room and who is in it (rename a room in place, or
-  move someone to another room or back to the main room from their name), **Join room** and **Back to main
-  room**, **Message every room**, and **Bring everyone back now**. Each room has its own encryption keys and
+  or three rooms and how long. Everyone in the call is on the board, guests who joined with the link too, dealt into the
+  rooms with people invited first, and you're **You**, in the **Main room** over them: drag anyone between the main room
+  and the rooms, yourself too, rename rooms, then **Open rooms**. You start in the room you put yourself in, or in the
+  main room. Only someone invited transcribes a room, so with notes on, the board says when a room has nobody invited in
+  it (nothing said there will be transcribed), and, while you've put yourself in a room, that nothing said in the main
+  room goes into the notes meanwhile. While they're open: a shared timer, the main room and each room and who is in it
+  (rename a room in place, move someone to another room or back to the main room from their name, or send someone in the
+  main room, such as someone who came late or a guest, to a room), **Join room** and **Back to main room**, **Message
+  every room**, and **Bring everyone back now**. From the main room, your stage shows every room; one with nobody in it,
+  and any you fold (the main room too), is only its name, and the time left is said once, over them. In a room, your
+  stage is that room's people, as it is for everyone in it. Each room has its own encryption keys and
   chat, so what's seen, heard and written in a room reaches only the people in it; the room sees the organizer
   come and go, and someone moved is told. Captions and catching up in a room cover that room only. With notes on,
-  what's said in a room is transcribed by one browser there (someone sent to the room, told when it's theirs),
+  what's said in a room is transcribed by one browser there (someone invited sent to the room, told when it's theirs),
   never recorded, and goes into the call's notes as the room's own section, for everyone who gets the notes:
   everyone is told so when the rooms open, and each room's notes sign says whose browser transcribes it. Inside a
   room, the organizer can **Pause notes here** (that room alone is told, and its card says **Notes paused**) and
@@ -814,11 +828,11 @@ See [Floating call](../engineering/floating-call.md) for browser capabilities an
      the call lights their tile for a moment. Tagged while the workspace isn't open, you get the same toast, a little later:
      **Go there** opens it on the line. Putting the workspace away, or opening something else on your stage, stops
      following, and for everyone else you've left it.
-   - **While breakout rooms are open** the organizer's stage shows the rooms, and the workspace stands beside them, as
-     anything else open there does, the rooms where the people would be; Workspace, **W**, Find and the notes' **Open**
-     all open it there, and so does **Open the workspace** for someone in the main room asking to see it. On a phone, or a
-     window too narrow for both, the workspace goes over the rooms until it's closed. Focus isn't on offer until the rooms
-     close.
+   - **While breakout rooms are open** the organizer's stage, in the main room, shows the rooms, and the workspace stands
+     beside them, as anything else open there does, the rooms where the people would be; Workspace, **W**, Find and the
+     notes' **Open** all open it there, and so does **Open the workspace** for someone in the main room asking to see it. On
+     a phone, or a window too narrow for both, the workspace goes over the rooms until it's closed. Focus isn't on offer
+     there until the rooms close; in a room, it is, as for anyone.
    - **An organizer taken out of the workspace** everyone's viewing is told so, and **New workspace** has everyone view one
      of their own. Everyone else carries on.
 2. **Only the organizer switches what everyone views**, from the name at the top of the list, or **Switch workspace** in the

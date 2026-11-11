@@ -9,6 +9,10 @@ import { createHttpApi, type ClientEvent } from '@alcove/api-http';
 import { DisconnectReason, EncryptionType, TrackKind, TrackSource } from '@livekit/rtc-node';
 import { randomBytes } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
+import { openJson, sealJson, stateKey, toJson } from '../../crypto';
+import { openOwner } from '../../owners';
+import { getItem, saveRevision } from '../../vault';
 import { speechWav } from '../../testing/fake-near';
 import { ORIGIN, cookieFetch, startHarness, type Harness } from '../../testing/harness';
 import { connect, deleteRoomDirectly, disposeLiveKit, participantsDirectly, signWebhook, tokenDirectly, type TestParticipant } from '../../testing/livekit';
@@ -85,6 +89,25 @@ async function expectNotInRows(tables: string[], canaries: string[]) {
   const dump = await h.pool.query(`SELECT string_agg(t, ' ') AS all FROM (${tables.map((t) => `SELECT row_to_json(x)::text AS t FROM ${t} x`).join(' UNION ALL ')}) q`);
   const text = String(dump.rows[0]?.all ?? '');
   for (const canary of canaries) for (const enc of encodings(canary)) expect(text.includes(enc), `${canary} as ${enc}`).toBe(false);
+}
+/** A call's sealed state as the server keeps it, and a way to put it back as another release would have saved it. */
+async function storedCall(ownerId: string, callId: string) {
+  const o = await openOwner(h.deps, ownerId, undefined);
+  const key = stateKey(o.root, ownerId, `call:${callId}`);
+  const header = { v: 1, kind: 'call-state', ownerId, callId } as const;
+  const row = z.object({ state_ciphertext: z.instanceof(Uint8Array) }).parse((await h.pool.query('SELECT state_ciphertext FROM calls WHERE owner_id = $1 AND call_id = $2', [ownerId, callId])).rows[0]);
+  const state = openJson(key, header, row.state_ciphertext, z.record(z.string(), z.unknown()));
+  const put = (next: unknown) => h.pool.query('UPDATE calls SET state_ciphertext = $3, version = version + 1 WHERE owner_id = $1 AND call_id = $2', [ownerId, callId, sealJson(key, header, toJson(next))]);
+  return { state, put };
+}
+/** A breakout room as the release before kept it: nobody sent to it but by address. */
+const noGuests = (room: Record<string, unknown>) => Object.fromEntries(Object.entries(room).filter(([k]) => k !== 'guests'));
+const HeldBreakouts = z.object({ rooms: z.array(z.record(z.string(), z.unknown())) }).loose();
+/** A call's state with its rooms, open and closed, as the release before kept them. */
+function roomsWithoutGuests(state: Record<string, unknown>) {
+  const s = z.object({ breakouts: z.object({ open: HeldBreakouts.nullable(), held: z.array(HeldBreakouts) }).loose() }).loose().parse(state);
+  const open = s.breakouts.open;
+  return { ...s, breakouts: { ...s.breakouts, open: open ? { ...open, rooms: open.rooms.map(noGuests) } : null, held: s.breakouts.held.map((x) => ({ ...x, rooms: x.rooms.map(noGuests) })) } };
 }
 
 /** Rooms a test connected; disconnected after each test so rooms empty out. */
@@ -733,7 +756,7 @@ describe('breakout rooms, each with its own keys', () => {
     const before = latestKeys(kofi.call);
     const held = Object.values(before).map(hex);
 
-    host.moveToRoom(kofi.email, support);
+    host.moveToRoom({ email: kofi.email }, support);
     await inPlace(kofi.call, support);
     await waitFor(() => keyOf(kofi.call) === keyOf(lena.call) && members(lena.call).includes(kofi.call.ticket.identity), 'Kofi on Support’s keys');
     expect(members(kofi.call)).toEqual([host.ticket.identity, kofi.call.ticket.identity, lena.call.ticket.identity].sort());
@@ -762,6 +785,145 @@ describe('breakout rooms, each with its own keys', () => {
     expect((await asMember(lena.call, 'POST', '/actions', { type: 'rooms-move', email: lena.email, roomId: design })).status).toBe(403);
     expect((await asMember(lena.call, 'POST', '/actions', { type: 'rooms-rename', roomId: support, name: 'Ours' })).status).toBe(403);
     await host.leave();
+  });
+
+  it('sends a guest with the link to a room like anyone else: on its keys and chat alone, never its scribe, by name only, and back on the main room’s keys when rooms close', async () => {
+    const { org, host, code: c, people: [kofi] } = await roomsCall(['Kofi'], { notes: 'on' });
+    if (!kofi) throw new Error('one person expected');
+    await host.transcribe(speech('Two rooms, one of them for our guest.', 0, 0), host.ticket.identity);
+    const guest = await guestBrowser().calls.join(c, { mic: true, cam: false, name: 'Sam Quillon' });
+    await letIn(host, guest);
+    const seatOf = (s: CallState, id: string) => s.participants.find((p) => p.id === id)?.seat ?? '';
+    const seat = seatOf(await settle(host, (s) => seatOf(s, guest.ticket.identity) !== ''), guest.ticket.identity);
+    const mine = seatOf(host.getSnapshot(), host.ticket.identity);
+    const other = await roomsCall(['Maya']);
+    const theirs = seatOf(await settle(other.host, (s) => s.participants.length === 2), other.people[0]?.call.ticket.identity ?? '');
+    // A seat names someone in this call, never the organizer, who visits rooms instead: another call's, the organizer's own and one
+    // nobody has open nothing, and nobody goes to two rooms.
+    const board = { mode: 'none', template: 'blank' };
+    for (const seats of [[theirs], [mine], ['nobody-sits-here']]) {
+      expect((await asOrganizer(org, host, { type: 'rooms-open', rooms: [{ name: 'Design', emails: [kofi.email] }, { name: 'Support', emails: [], seats }], minutes: 10, board })).status).toBe(400);
+    }
+    expect((await asOrganizer(org, host, { type: 'rooms-open', rooms: [{ name: 'Design', emails: [kofi.email], seats: [seat] }, { name: 'Support', emails: [], seats: [seat] }], minutes: 10, board })).status).toBe(400);
+    await host.refresh();
+    expect(host.getSnapshot().breakouts.open).toBeNull();
+
+    host.openRooms({ rooms: [{ name: 'Design', emails: [kofi.email] }, { name: 'Support', emails: [], seats: [seat] }], minutes: 10, board: { mode: 'none', template: 'blank' } });
+    const [design = '', support = ''] = await roomIds(host);
+    await inPlace(kofi.call, design);
+    await inPlace(guest, support);
+    // The guest is in Support's group with the organizer, which commits for every group; Kofi in Design's. No key in common.
+    await waitFor(() => members(guest).length === 2 && members(kofi.call).length === 2, 'each room’s group');
+    expect(members(guest)).toEqual([host.ticket.identity, guest.ticket.identity].sort());
+    expect(members(kofi.call)).toEqual([host.ticket.identity, kofi.call.ticket.identity].sort());
+    const designKeys = Object.values(latestKeys(kofi.call)).map(hex);
+    for (const k of Object.values(latestKeys(guest))) expect(designKeys).not.toContain(hex(k));
+    // Everyone sees who was sent where: the guest by name only, under their seat.
+    const shown = await settle(kofi.call, (s) => s.breakouts.open?.rooms[1]?.guests.length === 1);
+    expect(shown.breakouts.open?.rooms.map((r) => [r.name, r.people.map((p) => p.email), r.guests.map((g) => [g.seat, g.person.name, g.person.email]), r.members])).toEqual([
+      ['Design', [kofi.email], [], [kofi.call.ticket.identity]], ['Support', [], [[seat, 'Sam Quillon', '']], [guest.ticket.identity]]
+    ]);
+    // Chat stays in each room.
+    await guest.sendChat('CANARY-GUESTROOM for Support only');
+    await logged(guest, 'CANARY-GUESTROOM for Support only');
+    await kofi.call.sendChat('for Design only');
+    await logged(kofi.call, 'for Design only');
+    for (const call of [guest, kofi.call]) await call.refresh();
+    expect(chatOf(guest)).toEqual(['CANARY-GUESTROOM for Support only']);
+    expect(chatOf(kofi.call)).toEqual(['for Design only']);
+    // Nobody in Support was invited, so it has no scribe and nothing said there is transcribed: a guest's browser never sends a room's speech.
+    expect((await settle(guest, (s) => s.capture.room?.id === support)).capture.room).toMatchObject({ scribe: null, transcript: { mode: 'unavailable' } });
+    expect(code(await guest.transcribe(speech('Not for the notes.', 0, 1000), guest.ticket.identity).catch((e: unknown) => e))).toBe('forbidden');
+    expect(await scribeIn(kofi.call, design)).toBe(kofi.call.ticket.identity);
+
+    // Moved by seat into Design, the guest's keys go with them, and Design's scribe is still Kofi's browser; then back to the main room.
+    host.moveToRoom({ seat }, design);
+    await inPlace(guest, design);
+    await waitFor(() => keyOf(guest) === keyOf(kofi.call) && members(kofi.call).includes(guest.ticket.identity), 'the guest on Design’s keys');
+    expect(await scribeIn(guest, design)).toBe(kofi.call.ticket.identity);
+    host.moveToRoom({ seat }, null);
+    await inPlace(guest, 'main');
+    expect((await settle(host, (s) => s.breakouts.open?.rooms.every((r) => r.guests.length === 0) === true)).breakouts.open?.rooms.map((r) => r.members)).toEqual([[kofi.call.ticket.identity], []]);
+    // Another call's seat moves nobody, and a move names one person, by address or by seat.
+    expect((await asOrganizer(org, host, { type: 'rooms-move', seat: theirs, roomId: design })).status).toBe(400);
+    expect((await asOrganizer(org, host, { type: 'rooms-move', email: kofi.email, seat, roomId: design })).status).toBe(400);
+    expect((await asMember(guest, 'POST', '/actions', { type: 'rooms-move', seat, roomId: support })).status).toBe(403);
+    host.moveToRoom({ seat }, support);
+    await inPlace(guest, support);
+
+    // The rooms close: the guest is back in the main room's group, on keys new to everyone.
+    const roomKey = latestKeys(guest);
+    host.closeRooms();
+    for (const call of [host, guest, kofi.call]) await inPlace(call, 'main');
+    await waitFor(() => members(host).length === 3 && keyOf(guest) === keyOf(host) && keyOf(kofi.call) === keyOf(host), 'everyone on the main room’s keys');
+    for (const k of Object.values(latestKeys(host))) expect(Object.values(roomKey).map(hex)).not.toContain(hex(k));
+    await expectNotInRows(['calls', 'call_mls'], ['CANARY-GUESTROOM', 'Quillon']);
+    expect(h.logs.join('').includes('CANARY-GUESTROOM') || h.logs.join('').includes('Quillon')).toBe(false);
+
+    // The notes say who was in each room, the guest by name only, never an address.
+    const noteId = (await host.leave())?.pendingNoteId ?? '';
+    await other.host.leave();
+    await written(org.api, noteId);
+    const note = await org.api.notes.get(noteId);
+    expect(note.chapters.find((x) => x.title === '2 breakout rooms')?.summary).toContain('Support: Sam Quillon.');
+    expect(note.rooms.map((r) => [r.name, r.people.filter((p) => p.name === 'Sam Quillon').map((p) => p.person?.email)])).toEqual([['Design', ['']], ['Support', ['']]]);
+  });
+
+  it('opens rooms with the organizer in the one it chose, among its members from the start, and refuses one that isn’t opening', async () => {
+    const { org, host, people: [kofi, lena] } = await roomsCall(['Kofi', 'Lena']);
+    if (!kofi || !lena) throw new Error('two people expected');
+    expect((await asOrganizer(org, host, { type: 'rooms-open', rooms: [{ name: 'Design', emails: [kofi.email] }, { name: 'Support', emails: [lena.email] }], minutes: 10, board: { mode: 'none', template: 'blank' }, visit: 2 })).status).toBe(400);
+    await host.refresh();
+    expect(host.getSnapshot().breakouts.open).toBeNull();
+    host.openRooms({ rooms: [{ name: 'Design', emails: [kofi.email] }, { name: 'Support', emails: [lena.email] }], minutes: 10, board: { mode: 'none', template: 'blank' }, visit: 1 });
+    const [design = '', support = ''] = await roomIds(host);
+    await inPlace(host, support);
+    await inPlace(kofi.call, design);
+    await inPlace(lena.call, support);
+    const s = await settle(lena.call, (x) => x.breakouts.open?.rooms[1]?.members.includes(host.ticket.identity) === true);
+    expect(s.breakouts.open?.rooms.map((r) => [...r.members].sort())).toEqual([[kofi.call.ticket.identity], [host.ticket.identity, lena.call.ticket.identity].sort()]);
+    // Support sees and hears the organizer on its own keys, and Design doesn't read what they say.
+    await waitFor(() => keyOf(lena.call) === keyOf(host) && members(lena.call).length === 2, 'the organizer on Support’s keys');
+    await host.sendChat('the organizer, in Support from the start');
+    await waitFor(() => chatOf(lena.call).includes('the organizer, in Support from the start'), 'Support reads the organizer');
+    await kofi.call.refresh();
+    expect(chatOf(kofi.call)).not.toContain('the organizer, in Support from the start');
+    // Back to the main room, as from any visit.
+    host.visitRoom(null);
+    await inPlace(host, 'main');
+    expect((await settle(host, (x) => x.breakouts.open?.rooms[1]?.members.length === 1)).breakouts.open?.rooms.map((r) => r.members)).toEqual([[kofi.call.ticket.identity], [lena.call.ticket.identity]]);
+    await host.leave();
+  });
+
+  it('opens a call and a note the release before stored, whose rooms name no guests, with everyone where they were', async () => {
+    const { org, host, people: [kofi] } = await roomsCall(['Kofi'], { notes: 'on' });
+    if (!kofi) throw new Error('one person expected');
+    await host.transcribe(speech('Before the rooms.', 0, 0), host.ticket.identity);
+    host.openRooms({ rooms: [{ name: 'Design', emails: [kofi.email] }, { name: 'Support', emails: [] }], minutes: 10, board: { mode: 'none', template: 'blank' } });
+    const [design = '', support = ''] = await roomIds(host);
+    await inPlace(kofi.call, design);
+    // Rooms as the release before saved them, with no guests: they read as they did, and saving them again keeps everyone in place.
+    const ownerId = org.session.ownerId;
+    const stored = await storedCall(ownerId, host.ticket.callId);
+    await stored.put(roomsWithoutGuests(stored.state));
+    await kofi.call.refresh();
+    const read = kofi.call.getSnapshot();
+    expect(read.breakouts.open?.rooms.map((r) => [r.name, r.guests, r.members])).toEqual([['Design', [], [kofi.call.ticket.identity]], ['Support', [], []]]);
+    host.moveToRoom({ email: kofi.email }, support);
+    await inPlace(kofi.call, support);
+    host.closeRooms();
+    await inPlace(kofi.call, 'main');
+    const noteId = (await host.leave())?.pendingNoteId ?? '';
+    await written(org.api, noteId);
+    // A note whose rooms name no guests opens, and its rooms' chapter is written as before.
+    const o = await openOwner(h.deps, ownerId, undefined);
+    const raw = await getItem(o, o.pool, 'note', noteId, z.record(z.string(), z.unknown()), 'That note');
+    const kept = z.object({ breakouts: z.array(z.object({ rooms: z.array(z.record(z.string(), z.unknown())) }).loose()) }).loose().parse(raw.manifest);
+    await saveRevision(o, o.pool, raw.itemId, raw.revisionId, { ...kept, breakouts: kept.breakouts.map((b) => ({ ...b, rooms: b.rooms.map(noGuests) })) });
+    expect((await org.api.notes.get(noteId)).rooms.map((r) => r.name)).toEqual(['Design', 'Support']);
+    await org.api.notes.rewrite(noteId);
+    await written(org.api, noteId);
+    expect((await org.api.notes.get(noteId)).chapters.find((x) => x.title === '2 breakout rooms')?.summary).toContain('Design: nobody.');
   });
 
   it('brings everyone back on fresh keys when the rooms close, sends a reload straight back to its room, and keeps what’s said in a room in it', async () => {
@@ -1284,7 +1446,7 @@ describe('breakout rooms, each with its own keys', () => {
     // Mid-sentence, the organizer moves the scribe to Support, and Design passes to the other person there. What the
     // old scribe heard begin before the move (`begun`, with every check above between them) lands in Design, once; the
     // new scribe takes what's said after it.
-    await host.moveToRoom(scribe.email, support);
+    await host.moveToRoom({ email: scribe.email }, support);
     await inPlace(scribe.call, support);
     expect(await scribeIn(other.call, design, other.call.ticket.identity)).toBe(other.call.ticket.identity);
     expect(await taken(scribe.call.transcribe(speech('Last words before the move.', 0, 9500, 4000, 'en', true, begun), other.call.ticket.identity))).toBe('taken');

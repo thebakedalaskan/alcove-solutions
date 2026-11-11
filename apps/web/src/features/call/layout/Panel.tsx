@@ -245,7 +245,10 @@ export function NotesView({ session, state, getting, problems, controls, carried
               <div><div className="ic-sh"><span className="ac-eyebrow">From the rooms</span><span className="n">{held.reduce((k, h) => k + h.rooms.length, 0)}</span></div>
                 {held.map((h) => (
                   <div key={h.from} className="ic-rgrp">
-                    {h.rooms.map((r) => <div key={r.id} className="rn">{r.name}<span>{r.people.length}</span><Faces people={r.people} size={16} /></div>)}
+                    {h.rooms.map((r) => {
+                      const sent = [...r.people, ...r.guests.map((g) => g.person)];
+                      return <div key={r.id} className="rn">{r.name}<span>{sent.length}</span><Faces people={sent} size={16} /></div>;
+                    })}
                     <p className="ic-quiet">{clock(h.from)} to {clock(h.to)}. Each room’s talk goes into the call’s notes as its own section.</p>
                   </div>
                 ))}

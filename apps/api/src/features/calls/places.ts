@@ -64,7 +64,10 @@ export const Joined = z.preprocess(withHosting, z.object({
 }));
 export type Joined = z.infer<typeof Joined>;
 
-/** A breakout room as kept: invited people by email, shown with their names when the call is read. */
+/**
+ * A breakout room as kept: invited people by email, shown with their names when the call is read, and anyone else sent to it
+ * by their person.
+ */
 export const Room = HeldRooms.shape.rooms.element;
 /**
  * One stretch of a breakout room's scribe (features/calls/scribes.ts): the connection that transcribes the room, its turn
@@ -106,13 +109,17 @@ export const placesOf = (s: Placing): string[] => [MAIN_PLACE, ...(s.breakouts.o
 export const boardPlace = (s: Placing & { board: Pick<CallBoards, 'open'> }, place: string): string =>
   place === MAIN_PLACE || s.board.open[place] || s.breakouts.open?.board.mode !== 'shared' ? place : MAIN_PLACE;
 
-/** Where someone is in the call now: the organizer where it's visiting (or the main room); an invited person in the room they were sent to; anyone else in the main room. */
+/**
+ * Where someone is in the call now: the organizer where it's visiting (or the main room); anyone else in the room they were sent
+ * to, someone invited by their address and a guest by their person; anyone not sent to one in the main room.
+ */
 export function placeOf(s: Placing, j: Joined): string {
   const open = s.breakouts.open;
   if (!open) return MAIN_PLACE;
   if (j.role === 'host') return open.visiting ?? MAIN_PLACE;
   const email = j.email?.toLowerCase();
-  return (email ? open.rooms.find((r) => r.emails.includes(email))?.id : undefined) ?? MAIN_PLACE;
+  const room = (email ? open.rooms.find((r) => r.emails.includes(email)) : undefined) ?? open.rooms.find((r) => r.guests.some((g) => g.person === j.person));
+  return room?.id ?? MAIN_PLACE;
 }
 
 /** The group someone is in, if its part of the call is still open (a closed room's group is nobody's any more). Whoever hosts is in every group. */

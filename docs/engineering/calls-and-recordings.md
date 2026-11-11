@@ -228,8 +228,8 @@ order, and nothing a message carries can stop it: anything unreadable is skipped
   organizer's, or a stand-in's: [Host hand-off](#host-hand-off)) creates every group, so it's in all of them; everyone
   else is in exactly one at a time, the group of the part they're in (the API adds only people who are in no group).
   Where someone is comes from the call's state
-  (`CallMls.place`): an invited person sent to a room is in that room, the organizer in the room it's visiting,
-  and everyone else in the main room.
+  (`CallMls.place`): someone sent to a room (invited, by address, or a guest, by person) is in that room, the
+  organizer in the room it's visiting, and everyone else in the main room.
 - **Members and commits.** Joining makes a fresh key package whose credential is the connection's random
   identity. The host's browser is every group's only committer: it adds people (an Add commit, with a
   Welcome carrying the ratchet tree for each) and removes whoever left, was removed, or was sent to another part
@@ -1002,11 +1002,21 @@ Rings are rows in `call_rings`, in the organizer's vault, found by a keyed hash 
 - **Spotlight** (`{type: "spotlight", participantId}`) is the organizer's, and only names someone in the call;
   it puts that tile first on everyone's stage, and goes with that person to a new connection (a reload, a move).
   Opening breakout rooms ends it.
-- **Breakout rooms** (`{type: "rooms-open", rooms: [{name, emails}], minutes}`, `rooms-message`,
-  `rooms-rename`, `rooms-move`, `rooms-close`) are the organizer's. Two to eight rooms; only people invited to
-  the call can be sent to one, each to one room, and moved to another or back to the main room while they're
-  open (`{type: "rooms-move", email, roomId}`, `null` for the main room). `CallState.breakouts.open` carries the
-  rooms (with who of them is in the call now, by participant ID), `from` and `until` (seconds since the call
+- **Breakout rooms** (`{type: "rooms-open", rooms: [{name, emails, seats}], minutes, board, visit}`, `rooms-message`,
+  `rooms-rename`, `rooms-move`, `rooms-close`) are the organizer's. Two to eight rooms, and anyone in the call can be
+  sent to one, each to one room: someone invited by address (`emails`), so they land in their room from any device, and
+  anyone else, a guest with the link, by seat (`seats`, as `CallParticipant.seat` names them), kept in the sealed call
+  state as their `person`, with the name they're in the call under (`HeldRooms.guests`: seats are never stored). A seat
+  names whoever has it, in the call or stepped out for a moment (a reload), and someone on the invite goes by their
+  address all the same; the organizer's own seat, someone removed's, another call's and one nobody here has are refused
+  (400). Guests go to rooms because nothing in the privacy
+  model keeps them out: going into a room's group follows `placeOf` alone, whatever someone's role, and a guest sees,
+  hears and chats in a room as in the main room. They still get no notes, and never transcribe a room (Each room's
+  scribe, below), so a room with only guests in it isn't transcribed, which the setup says before it opens. Anyone can
+  be moved to another room or back to the main room while they're open (`{type: "rooms-move", email, roomId}` or
+  `{type: "rooms-move", seat, roomId}`, one of the two; `null` for the main room). `CallState.breakouts.open` carries the
+  rooms (the invited people sent to each, `people`; the guests, `guests`, by name only, never an address, under their
+  seat; and who of them is in the call now, by participant ID), `from` and `until` (seconds since the call
   started) and the latest message to every room. Each room is a part of the call with its own MLS group, so its
   own media keys and chat, and moving someone moves their keys
   ([End-to-end encryption](#end-to-end-encryption)). Rooms whose time is up close on the next read or action,
@@ -1014,22 +1024,26 @@ Rings are rows in `call_rings`, in the organizer's vault, found by a keyed hash 
   `breakouts.held`, each with its pauses, its scribes and everyone who was in it, and when the call ends each
   becomes its own section of the note ([Notes and inference › Breakout rooms](notes-and-inference.md#breakout-rooms));
   once the notes are written, each time rooms were open is also a chapter ("2 breakout rooms", who was in which
-  room when they closed, and for how long).
+  room when they closed, a guest by name only, and for how long). A call or note stored before guests could be sent to a
+  room reads its rooms with no guests (`guests` defaults to none), and is saved in the new shape the next time it is.
   Room names and messages stay in the sealed call state. The organizer visits one room at a time
-  (`{type: "rooms-visit", roomId}`, `null` for the main room): while visiting, they're one of that room's
-  `members`, and their browser sends, plays and chats with that room's keys, so that room sees and hears them and
-  the main room doesn't.
+  (`{type: "rooms-visit", roomId}`, `null` for the main room), and can start in one as the rooms open (`visit`, by its
+  place in `rooms`; left out, they stay in the main room): while visiting, they're one of that room's `members`, and
+  their browser sends, plays and chats with that room's keys, so that room sees and hears them and the main room
+  doesn't.
 - **Each room's scribe.** The host's browser hears the main room for the notes, and only while it's there; each open
   breakout room has a scribe of its own instead, one browser in the room that hears it (its own microphone and every
   other microphone it plays there, each on its own) and sends what's said there. The server picks it (`scribes.ts`,
-  apart from who commits for each group): someone on the invite (the only people sent to rooms; never a guest with
-  the link, nor whoever hosts), in the call, placed in the room and in its group, the one there longest. It keeps the
+  apart from who commits for each group): someone on the invite (never a guest with the link, though guests are sent
+  to rooms too: a room's lines are only as trustworthy as its scribe's browser, and they go into notes for the people
+  invited; nor whoever hosts), in the call, placed in the room and in its group, the one there longest. It keeps the
   room for as long as it may; otherwise the next one takes over, in the save that saw the change (someone leaving,
   moved, reloading, starting to host, or out of the room's group while its keys move on). Each term (connection,
   number, from, until) is kept in the sealed call state, the ended call's too, and a room's speech is taken only from
   whoever was its scribe when the speech began: a clip still on its way from the scribe before lands once, the next
   one can't send the same speech again, and two browsers never send one room. The main room's is taken only from
-  whoever hosts now (`mainScribeOf`). A room nobody may scribe hears nothing (its `transcript` part says unavailable).
+  whoever hosts now (`mainScribeOf`). A room nobody may scribe, one with only guests in it among them, hears nothing
+  (its `transcript` part says unavailable).
   Everyone in a room sees whose browser it is, and the scribe is told when it starts. Ties for scribe go by what the
   server made (when someone came in, their seat's random person), never the ID a browser chose. A room's lines are
   only as trustworthy as its scribe's browser, which says who spoke each clip, as the host's does in the main room:
@@ -1944,13 +1958,17 @@ steps (`ShareMenu.tsx`); and the call's keys are `session/useCallShortcuts.ts`. 
   thing: opening something puts away what was there, so a presentation becomes its tile, and what's open just for you closes
   (the workspace keeping your place, caret and undo). Show beside is the one exception: it puts a second presented thing
   beside the first, side by side where there's 900 px across for them, else one over the other where there's 620 px down,
-  else taking turns, with a switcher in the top bar (under the arches on a phone). Nothing between them is dragged. The
-  organizer's stage shows every breakout room while they're open (`StageRooms`), and what's open stands beside them, the rooms
-  in place of the people, a little over a third of the stage (340 to 560 px). On a phone, and on a stage under 880 px, what's
+  else taking turns, with a switcher in the top bar (under the arches on a phone). Nothing between them is dragged. From the
+  main room, the organizer's stage shows every breakout room while they're open (`StageRooms`), and what's open stands beside
+  them, the rooms in place of the people, a little over a third of the stage (340 to 560 px). A room nobody's in, and any
+  part of the call they fold (a room, or the main room, for their own view, for as long as the rooms are open), is only its
+  header: in a row over the rest on a wide stage, in its place in the column on a tall one. The time left is said once, in
+  the line over the rooms. In a room, their stage shows that room's people as anyone else's does, with tile menus, dragging,
+  their own view and Focus; Back to main room, in their side, brings every room back. On a phone, and on a stage under 880 px, what's
   open goes over the rooms until it's closed, with whoever's in the organizer's part of the call in arches over it, as anyone
   else's are. A board the rooms are worked on takes the rooms' place while it's on the organizer's stage: the one every room
   shares, which comes onto it as those rooms open (`useCallBoard`'s `arrived`, and again on joining while they're open), or
-  the board of the room they're visiting. Focus isn't on offer while the rooms hold the stage.
+  the board of the room they're visiting. Focus isn't on offer while the rooms hold the stage, nor is arranging your own view.
 - **The frame** (`frame.tsx`, drawing `CallFrame` from the kit) is one for a screen, a board or the workspace, with one bar;
   it rises into its place as it opens, and glides as the room round it changes (`FrameBox`). On the left, the presenter's
   face (or the kind's icon while nobody presents), the name as a menu of the kind's own commands, and a line: Open just for
@@ -2308,12 +2326,18 @@ steps (`ShareMenu.tsx`); and the call's keys are `session/useCallShortcuts.ts`. 
   the organizer says not now. Joining shows only the latest notice as a toast; older ones are history.
 - **Before joining.** Guests and invited people see what the call captures on the join page, before they ask
   and while they wait (`CaptureSummary` in `@alcove/ui`, from the card, refreshed every few seconds).
-- **Breakout rooms.** The organizer opens rooms for the invited people in the call (by email, as the server
-  requires); guests stay in the main room. Who's in each room comes from `breakouts.open.rooms[].members`, and
-  each browser tells the room whose media to play (`CallRoom.playOnly`), on top of holding only its own part's
-  keys. The organizer sees every room: who's in it, who's talking (LiveKit's speaker detection) and a raised hand
-  as that room asking for help; it renames a room in place, and moves someone from their chip to another room or
-  back to the main room; a room it paused says **Notes paused** on its card and on its box on the stage, as every
+- **Breakout rooms.** The organizer opens rooms for anyone in the call. On the setup board in their side, everyone is
+  dealt into the rooms, people invited first, so each room gets someone who can transcribe it where there are enough,
+  and the organizer is **You** in the main room, over the rooms; anyone, You included, is dragged (or moved with the
+  arrow keys) between the main room and the rooms, and opening sends invited people by address and guests by seat, and
+  the organizer to the room You is in, if any (`useBreakoutRooms`, `Rooms.tsx`). With notes on, the board says when
+  a room has nobody invited in it, so nothing said there will be transcribed, and, while You is in a room, that nothing
+  said in the main room goes into the notes meanwhile. Who's in each room comes from `breakouts.open.rooms[].members`,
+  and each browser tells the room whose media to play (`CallRoom.playOnly`), on top of holding only its own part's
+  keys. The organizer sees the main room and every room in their side: who's in each, who's talking (LiveKit's speaker
+  detection) and a raised hand as that room asking for help; it renames a room in place, and moves someone from their
+  chip to another room or back to the main room, and sends whoever's in the main room (someone who came late, a guest,
+  someone moved back) to a room; a room it paused says **Notes paused** on its card and on its box on the stage, as every
   room does while the whole call is paused. Escape in a room's name puts the old one back. Everyone else sees only their own room or the main room, with the time left and the organizer's
   messages, is told when the organizer comes into or leaves their part of the call or moves them, and sees "Moving
   you to…" while their browser changes groups. In a room, the notes sign, its popover, the Notes panel (whose

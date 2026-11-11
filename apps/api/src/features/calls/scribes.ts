@@ -14,9 +14,11 @@ import { groupOf, placeOf, readerOf, type Joined, type Placing, type ScribeTerm 
 type Term = z.infer<typeof ScribeTerm>;
 
 /**
- * Who may be a room's scribe: someone on the invite (only they are sent to rooms, and never a guest with the link), in
- * the call, placed in the room and in its group, so their browser hears the room. Never whoever hosts, the organizer's
- * connection or a stand-in's in that room: the host's browser hears the main room for the notes (mainScribeOf).
+ * Who may be a room's scribe: someone on the invite, in the call, placed in the room and in its group, so their browser hears
+ * the room. Never a guest with the link, though guests are sent to rooms too: a room's lines are only as trustworthy as its
+ * scribe's browser, and they go into notes for the people invited, so a room with only guests in it has no scribe and nothing
+ * said there is transcribed. Never whoever hosts, the organizer's connection or a stand-in's in that room: the host's browser
+ * hears the main room for the notes (mainScribeOf).
  */
 const mayScribe = (s: Placing, room: string) => (j: Joined): boolean =>
   j.role === 'invited' && j.identity !== s.host && j.status === 'in' && placeOf(s, j) === room && groupOf(s, j) === room;

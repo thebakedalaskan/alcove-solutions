@@ -423,7 +423,7 @@ export function InCall({ session }: { session: CallSession }) {
 
   const {
     open, left, roomName, placeName, inARoom, unit, unitKey, activity, organizerPerson, message, roomsOnBoards, roomsView, roomsBoard, myRoomId,
-    candidates, guestsHere, visit, renameRoom, moveTo, openRooms, landing, cameBack
+    candidates, mainPeople, roomChips, visit, renameRoom, moveTo, openRooms, landing, cameBack
   } = useBreakoutRooms({ session, state, room, roomView, invited, openSide: side.open });
 
   /*
@@ -697,8 +697,8 @@ export function InCall({ session }: { session: CallSession }) {
   };
   // You've changed the layout from the one the stage gives itself: More offers Reset layout.
   const custom = isCustom(layout.layout, panels);
-  /** While rooms are open the organizer's stage shows every room; their own view comes back after. */
-  const roomsHold = () => { if (open && organizer) { toast('Your view comes back when the rooms close', { icon: 'door' }); return true; } return false; };
+  /** While the organizer's stage shows every room, their own view waits; in a room, it's their view as ever. */
+  const roomsHold = () => { if (stageRooms) { toast('Your view comes back in a room, or when the rooms close', { icon: 'door' }); return true; } return false; };
   const resetView = () => { if (!roomsHold()) undoable('Your view is back to the call’s layout', 'reset', layout.reset()); };
   const hinted = useRef(false);
   const onCustom = () => { if (!hinted.current) { hinted.current = true; toast('Only your view changes. Reset layout, in More, puts it back.', { icon: 'eye' }); } };
@@ -1230,7 +1230,7 @@ export function InCall({ session }: { session: CallSession }) {
    * In a room (or the main room while rooms are open): where you are and how long for. In rooms without boards, the organizer's
    * message to every room shows here for a moment; with boards it's a toast.
    */
-  const roomBar = open && !organizer && (movingBar || (message && !roomsOnBoards ? (
+  const roomBar = open && (!organizer || roomName !== null) && (movingBar || (message && !roomsOnBoards ? (
     <div className="ic-banner">{organizerPerson && <Avatar person={organizerPerson} size={24} />}<span><b>{organizerPerson ? callName(organizerPerson) : 'The organizer'}</b> to all rooms: {message.text}</span></div>
   ) : !pillSaysRooms && (
     <div className="ic-spill"><Icon name={left <= 30 ? 'timer' : 'door'} size={15} />
@@ -1300,7 +1300,7 @@ export function InCall({ session }: { session: CallSession }) {
   const hostPill = state.host.standIn && live && <HostSpill state={state} onBringBack={open && hosting ? () => { session.closeRooms(); toast('Everyone is coming back to the main room', { icon: 'door' }); } : undefined} />;
   // Built only from what's there, so with nothing to say over the call there's no empty band above it.
   const bar = open
-    ? (organizer ? (mutePill || soundPill || camsPill ? <>{mutePill}{soundPill}{camsPill}</> : null)
+    ? (organizer ? (mutePill || soundPill || camsPill || roomBar ? <>{mutePill}{soundPill}{camsPill}{roomBar}</> : null)
       : [mutePill, soundPill, camsPill, hostPill, roomBar].some(Boolean) ? <>{mutePill}{soundPill}{camsPill}{hostPill}{roomBar}</> : null)
     : (spotlight || alone || mutePill || soundPill || movingBar || camsPill || hostPill) ? (
       <>
@@ -1485,8 +1485,8 @@ export function InCall({ session }: { session: CallSession }) {
   };
   const roomsBody = () => (open && me && activity
     ? <RoomsLive open={open} elapsed={state.elapsed} members={open.rooms.map((r) => r.members.flatMap((id) => { const p = byId.get(id); return p ? [p] : []; }))}
-      people={byId} activity={activity} me={me.person} onJoin={visit} onRename={renameRoom} onMove={moveTo} onMessage={(t) => session.messageRooms(t)} onClose={() => session.closeRooms()} />
-    : <RoomsSetup people={candidates} guests={guestsHere} boardName={state.board.open?.name ?? null} onOpen={openRooms} />);
+      chips={roomChips} main={mainPeople} people={byId} activity={activity} onJoin={visit} onRename={renameRoom} onMove={moveTo} onMessage={(t) => session.messageRooms(t)} onClose={() => session.closeRooms()} />
+    : <RoomsSetup people={candidates} me={me?.person ?? SOMEONE} notes={on} boardName={state.board.open?.name ?? null} onOpen={openRooms} />);
   /* Notes: its tabs, and your own notes at the foot of the notes. */
   const notesTabBody = (t: NotesTab) => {
     switch (t) {

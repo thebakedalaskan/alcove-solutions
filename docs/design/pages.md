@@ -326,8 +326,9 @@ circles, and whoever speaks gets the `speak` ring. The camera appears only here 
   (three reactions, the rest, Reply in thread, Message privately); on a phone a ⋯ or a long press opens the same as a sheet.
   Reactions are pills under the words, yours outlined. A thread opens in place of its conversation with ← and "In Everyone ·
   3 people", the original on top, a hairline with the count, and Also send to Everyone beside Send. A private conversation
-  starts with "Only you and Priya can read this." Questions put votes in a column of their own and say Anonymous with a
-  mask where nobody's told who asked; the host's pin, answered and dismiss sit at the end of each question's line. The
+  starts with "Only you and Priya can read this." Questions put votes in a column of their own, saying Vote or Voted, and
+  say Anonymous with a mask where nobody's told who asked; what whoever hosts or asked can do to a question is in words,
+  in the ⋯ at the end of its line, and the list sorts as chosen whenever the pointer is away from it. The
   composer is one box: the words, then @, the thread's or question's one choice, and Send, the one filled button.
 - **Focus** fills the window with what's in the frame. The bars slide off, the people stand on the horizon, and the dock
   keeps the microphone, camera, Show everything and Leave.

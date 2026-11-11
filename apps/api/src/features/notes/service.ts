@@ -42,11 +42,12 @@ import { workedOnFor } from './worked-on';
 
 const nlog = log.child({ component: 'notes' });
 
-/** The rooms a call held, as chapters of its notes: when they opened, and who was in which room. */
+/** The rooms a call held, as chapters of its notes: when they opened, and who was in which room, a guest by name only. */
 export function roomChapters(held: HeldRooms[]): Chapter[] {
   return held.map((h) => {
     const minutes = Math.max(1, Math.round((h.to - h.from) / 60));
-    const who = h.rooms.map((r) => `${r.name}: ${r.emails.length ? r.emails.map((e) => nameOf(personOf(e))).join(', ') : 'nobody invited'}`).join('. ');
+    const names = (r: HeldRooms['rooms'][number]) => [...r.emails.map((e) => nameOf(personOf(e))), ...r.guests.map((g) => g.name)];
+    const who = h.rooms.map((r) => `${r.name}: ${names(r).join(', ') || 'nobody'}`).join('. ');
     const summary = `${who}. ${minutes} min.`;
     return { at: Math.max(0, Math.round(h.from)), title: `${h.rooms.length} breakout rooms`, summary: summary.length > 160 ? `${summary.slice(0, 159).trimEnd()}…` : summary };
   });

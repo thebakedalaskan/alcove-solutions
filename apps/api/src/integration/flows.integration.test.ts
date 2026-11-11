@@ -1846,7 +1846,7 @@ describe('in the call: hands, spotlight, breakout rooms and captions', () => {
     expect(await act(a, s.callId, { type: 'hand', up: false, place: 'main' }, call.ticket.pass)).toBe(409);
   });
 
-  it('opens breakout rooms for invited people only, messages them, brings them back, and puts the rooms in the notes', async () => {
+  it('opens breakout rooms, each person in one, messages them, brings them back, and puts the rooms in the notes', async () => {
     const org = await account(unique('organizer'));
     const kofi = `kofi@g${Date.now().toString(36)}${(seq++).toString(36)}.example`;
     const lena = `lena@g${Date.now().toString(36)}${(seq++).toString(36)}.example`;
@@ -1854,7 +1854,7 @@ describe('in the call: hands, spotlight, breakout rooms and captions', () => {
     const id = call.getSnapshot().callId;
     await call.transcribe(speech('We agreed to split into two rooms.', 0, 0), call.ticket.identity);
 
-    // Only people invited to the call, each in one room, in two to eight rooms.
+    // By address, only people invited to the call; each person in one room, in two to eight rooms.
     expect(await act(org, id, { type: 'rooms-open', rooms: [{ name: 'Design', emails: [kofi] }, { name: 'Support', emails: ['stranger@elsewhere.example'] }], minutes: 5, board: { mode: 'none', template: 'blank' } }, call.ticket.pass)).toBe(400);
     expect(await act(org, id, { type: 'rooms-open', rooms: [{ name: 'Design', emails: [kofi] }, { name: 'Support', emails: [kofi] }], minutes: 5, board: { mode: 'none', template: 'blank' } }, call.ticket.pass)).toBe(400);
     expect(await act(org, id, { type: 'rooms-open', rooms: [{ name: 'Alone', emails: [kofi] }], minutes: 5, board: { mode: 'none', template: 'blank' } }, call.ticket.pass)).toBe(400);
@@ -1888,7 +1888,7 @@ describe('in the call: hands, spotlight, breakout rooms and captions', () => {
     const rooms = note.chapters.filter((c) => c.title === '2 breakout rooms');
     expect(rooms).toHaveLength(2);
     expect(rooms[0]?.summary).toBe('Design: Kofi. Support: Lena. 1 min.');
-    expect(rooms[1]?.summary).toBe('Pairs A: Lena. Pairs B: nobody invited. 1 min.');
+    expect(rooms[1]?.summary).toBe('Pairs A: Lena. Pairs B: nobody. 1 min.');
     expect(note.chapters.map((c) => c.at)).toEqual([...note.chapters.map((c) => c.at)].sort((x, y) => x - y));
   });
 

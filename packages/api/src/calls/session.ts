@@ -121,8 +121,17 @@ export type CaptionTranslation = z.infer<typeof CaptionTranslationSchema>;
 export interface LineAudio { audio: Blob; from: number; seconds: number }
 
 
-/** Rooms to open: who goes where (invited people, by email), for how long, and what they have to work on. */
-export interface BreakoutPlan { rooms: { name: string; emails: string[] }[]; minutes: number; board: BreakoutBoard }
+/**
+ * Someone to send to a room: someone invited by address, so they land in it from any device, or anyone else in the call (a guest
+ * with the link) by seat (`CallParticipant.seat`).
+ */
+export type RoomPerson = { email: string; seat?: undefined } | { seat: string; email?: undefined };
+
+/**
+ * Rooms to open: who goes where (people invited by address, anyone else in the call by seat), for how long, what they have to
+ * work on, and the room the organizer goes to as they open (`visit`, by its place in `rooms`), if any.
+ */
+export interface BreakoutPlan { rooms: { name: string; emails: string[]; seats?: string[] | undefined }[]; minutes: number; board: BreakoutBoard; visit?: number | undefined }
 
 
 export interface CallSession extends LiveStore<CallState> {
@@ -243,7 +252,7 @@ export interface CallSession extends LiveStore<CallState> {
   setPointing(on: boolean): Promise<void>;
   /** Whoever hosts: puts one participant on everyone's main stage, or nobody (null). */
   setSpotlight(participantId: string | null): void;
-  /** Organizer only: splits the invited people into rooms for a while. */
+  /** Organizer only: splits the people in the call into rooms for a while, and goes to one of them as they open if the plan says so. */
   openRooms(plan: BreakoutPlan): void;
   /** Whoever hosts: brings everyone back from the rooms now. */
   closeRooms(): void;
@@ -253,8 +262,8 @@ export interface CallSession extends LiveStore<CallState> {
   visitRoom(roomId: string | null): void;
   /** Organizer only: renames an open room. */
   renameRoom(roomId: string, name: string): void;
-  /** Organizer only: sends an invited person (by email) to another open room, or back to the main room (null). Their keys move with them. */
-  moveToRoom(email: string, roomId: string | null): void;
+  /** Organizer only: sends someone to another open room, or back to the main room (null). Their keys move with them. */
+  moveToRoom(who: RoomPerson, roomId: string | null): void;
   /**
    * Organizer only: pauses notes in one open room while the call's notes are on, or carries on there (`paused` false).
    * Nothing said in a paused room is transcribed or sent to the AI, and the server refuses whatever arrives for it.

@@ -454,23 +454,30 @@ export const SharedQuestions: PageStory = {
       await reach('Chat')(c);
       await c.userEvent.click(await screen.findByRole('tab', { name: /^Questions/ }, SOON));
     });
-    await c.step('Ask anonymously: nobody is told it’s yours, whoever hosts included, and only you see Take back', async () => {
+    await c.step('Ask anonymously: nobody is told it’s yours, whoever hosts included, and only you see Take back, in its ⋯', async () => {
       await c.userEvent.type(await screen.findByRole('textbox', { name: 'Ask everyone in this room a question' }, SOON), 'Who will follow up after the first rollout?');
       await c.userEvent.click(await screen.findByRole('switch', { name: 'Ask anonymously' }, SOON));
       await c.userEvent.click(await screen.findByRole('button', { name: 'Ask anonymously' }, SOON));
-      await screen.findByRole('button', { name: 'Take back your question' }, SOON);
+      await screen.findByText('Who will follow up after the first rollout?', {}, SOON);
     });
-    await c.step('Vote for Priya’s question; the order you’re reading in stays put', async () => {
+    /** The ⋯ of the question with these words, then what's pressed in it. */
+    const inMenu = async (text: string, item: string) => {
+      const more = (await screen.findByText(text, {}, SOON)).closest('article')?.querySelector<HTMLButtonElement>('button[aria-label="More for this question"]');
+      if (more) await c.userEvent.click(more);
+      await c.userEvent.click(await screen.findByRole('button', { name: item }, SOON));
+    };
+    await c.step('Vote for Priya’s question: it says Voted, and the list sorts once you move on', async () => {
       const [vote] = await screen.findAllByRole('button', { name: /^Vote for this question/ }, SOON);
       if (vote) await c.userEvent.click(vote);
     });
-    await c.step('As whoever hosts, pin a question, then mark it answered', async () => {
-      const [pin] = await screen.findAllByRole('button', { name: 'Pin question' }, SOON); if (pin) await c.userEvent.click(pin);
-      const [answer] = await screen.findAllByRole('button', { name: 'Mark question answered' }, SOON); if (answer) await c.userEvent.click(answer);
+    await c.step('As whoever hosts, pin a question from its ⋯, then mark it answered: the toast offers Undo', async () => {
+      await inMenu('Which teams are included in the first launch?', 'Pin to the top');
+      await inMenu('Which teams are included in the first launch?', 'Mark answered');
     });
-    await c.step('Show answered brings it back, marked Answered', async () => {
+    await c.step('Show answered brings it back, marked Answered, and its ⋯ has Reopen', async () => {
       await c.userEvent.click(await screen.findByRole('button', { name: /^Show answered/ }, SOON));
       await screen.findByText('Answered', {}, SOON);
+      await inMenu('Which teams are included in the first launch?', 'Reopen');
     });
   }
 };

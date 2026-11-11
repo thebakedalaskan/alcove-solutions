@@ -1,4 +1,5 @@
 import { MAIN_PLACE, firstName, type CallAction, type CallState } from '@alcove/api';
+import type { z } from 'zod';
 import { id128 } from '../../crypto';
 import { exec, tx } from '../../db';
 import { ConflictError, ValidationError } from '../../errors';
@@ -9,12 +10,12 @@ import { MeetingManifest } from '../meetings/service';
 import { getItem } from '../../vault';
 import { me } from '../account/account';
 import { addedFromLink, takeOffInvite } from '../meetings/invites';
-import { placeOf, relocate } from './places';
+import { placeOf, relocate, type Room } from './places';
 import * as rings from './rings';
 import { readerInCall } from '../workspaces/access';
 import { endSeat } from '../workspaces/service';
 import { log } from '../../log';
-import { hereIn, knownIn, seatKey, seatOf, seatsOf, type Viewer, whereIs } from './participants';
+import { hereIn, invitedIn, knownIn, seatKey, seatOf, seatsOf, type Viewer, whereIs } from './participants';
 import { actOnWorkspace, openWorkspace } from './workspace-actions';
 import { actOnBoard, runOnBoard } from './board-actions';
 import { closeRooms, load, notice, saveSettled, screensOf, secondsIn, settle, sharesEnd, tenthsIn, type Stored, withPerson } from './state';
@@ -104,11 +105,13 @@ export async function act(v: Viewer, callId: string, a: CallAction): Promise<Cal
       if (a.participantId !== null && !s.people.some((j) => j.identity === a.participantId && j.status === 'in')) throw new ValidationError('That person isn’t in this call.', { context: ctx });
       s = { ...s, spotlight: a.participantId };
     } else if (a.type === 'rooms-open') {
-      checkRooms(s, a, (await getItem(o, c, 'meeting', row.meeting_item_id, MeetingManifest, 'That meeting')).manifest, ctx);
+      const plan = planRooms(v, callId, s, a, (await getItem(o, c, 'meeting', row.meeting_item_id, MeetingManifest, 'That meeting')).manifest, ctx);
       // Each room gets its own MLS group: everyone sent to one leaves the main room's group and joins the room's. What they
-      // have to work on was made before the call's row was taken (`roomsReady`), and opens with them.
-      const rooms = a.rooms.map((r, k) => ({ id: ready?.ids[k] ?? id128(), name: r.name, emails: r.emails, epoch: 0, pauses: [], scribes: [], seen: [] }));
-      s = { ...s, spotlight: null, board: ready ? withRoomsReady(s.board, ready, rooms.map((r) => r.id)) : s.board, breakouts: { ...s.breakouts, open: { rooms, from: exact, until: exact + a.minutes * 60, message: null, visiting: null, board: a.board } } };
+      // have to work on was made before the call's row was taken (`roomsReady`), and opens with them. The organizer goes
+      // straight to the room they chose, as visiting it would take them there.
+      const rooms = plan.map((r, k) => ({ id: ready?.ids[k] ?? id128(), name: r.name, emails: r.emails, guests: r.guests, epoch: 0, pauses: [], scribes: [], seen: [] }));
+      const visiting = a.visit === undefined ? null : rooms[a.visit]?.id ?? null;
+      s = { ...s, spotlight: null, board: ready ? withRoomsReady(s.board, ready, rooms.map((r) => r.id)) : s.board, breakouts: { ...s.breakouts, open: { rooms, from: exact, until: exact + a.minutes * 60, message: null, visiting, board: a.board } } };
       // The board that was open can't take the rooms' frames, so they share a new one in its place: everyone is told why it changed.
       if (ready?.instead) s = notice(s, ROOMS_ON_NEW_BOARD, 'info');
     } else if (a.type === 'rooms-close') {
@@ -119,13 +122,13 @@ export async function act(v: Viewer, callId: string, a: CallAction): Promise<Cal
       if (!open.rooms.some((r) => r.id === a.roomId)) throw new ValidationError('That room isn’t open.', { context: ctx });
       s = { ...s, breakouts: { ...s.breakouts, open: { ...open, rooms: open.rooms.map((r) => (r.id === a.roomId ? { ...r, name: a.name } : r)) } } };
     } else if (a.type === 'rooms-move') {
-      // Someone invited, to another open room or back to the main room: their browser leaves its group and joins the new part's.
+      // Someone, to another open room or back to the main room: their browser leaves its group and joins the new part's.
       const open = s.breakouts.open;
       if (!open) throw new ConflictError('No rooms are open.', { context: ctx });
       if (a.roomId !== null && !open.rooms.some((r) => r.id === a.roomId)) throw new ValidationError('That room isn’t open.', { context: ctx });
       const meeting = await getItem(o, c, 'meeting', row.meeting_item_id, MeetingManifest, 'That meeting');
-      if (!meeting.manifest.guests.some((e) => e.toLowerCase() === a.email)) throw new ValidationError('Only people invited to this call can be sent to a room.', { context: ctx });
-      s = { ...s, breakouts: { ...s.breakouts, open: { ...open, rooms: open.rooms.map((r) => ({ ...r, emails: [...r.emails.filter((e) => e !== a.email), ...(r.id === a.roomId ? [a.email] : [])] })) } } };
+      const who = roomPeople(v, callId, s, invitedIn(meeting), { emails: a.email === undefined ? [] : [a.email], seats: a.seat === undefined ? [] : [a.seat] }, ctx);
+      s = { ...s, breakouts: { ...s.breakouts, open: { ...open, rooms: open.rooms.map((r) => movedIn(s, r, who, r.id === a.roomId)) } } };
     } else if (a.type === 'rooms-message') {
       const open = s.breakouts.open;
       if (!open) throw new ConflictError('No rooms are open.', { context: ctx });
@@ -198,6 +201,7 @@ export async function act(v: Viewer, callId: string, a: CallAction): Promise<Cal
     clog.info('call action', {
       callId, action: a.type, notes: s.notes.status, screens: screensOf(s).live, segment: s.notes.segment, asks: s.notes.asks.filter((x) => x.state === 'asking').length, unavailable: s.notes.unavailable.length,
       connections: gone.length, spotlight: Boolean(s.spotlight), rooms: s.breakouts.open?.rooms.length ?? 0, visiting: Boolean(s.breakouts.open?.visiting), roomsHeld: s.breakouts.held.length, moved,
+      roomGuests: s.breakouts.open?.rooms.reduce((n, r) => n + r.guests.length, 0) ?? 0,
       pointing: s.pointing, othersPointOff: s.othersPointOff.length
     });
     if (invite) invite.made = s.workspace.made;
@@ -258,13 +262,61 @@ async function stopShare(v: Viewer, callId: string, seat: string): Promise<CallS
   });
 }
 
-/** Whether rooms can open as asked: none are open, and everyone sent to one is invited, once. */
-function checkRooms(s: Stored, a: Extract<CallAction, { type: 'rooms-open' }>, meeting: Pick<MeetingManifest, 'guests'>, ctx: Record<string, string>): void {
+/** Someone sent to a room who isn't on the invite, as the room keeps them: their person in the call (seats are never stored), and their name. */
+type RoomGuest = z.infer<typeof Room>['guests'][number];
+/** The people a room names, as it keeps them. */
+interface RoomPeople { emails: string[]; guests: RoomGuest[] }
+
+/**
+ * Who a room names, as it keeps them: someone invited by their address, whether or not they're in the call now; anyone else
+ * by their seat, kept as their person, with the name they're in the call under. A seat names whoever has it, in the call now
+ * or stepped out (a reload, a dropped connection), and someone on the invite goes by their address all the same, so they land
+ * in the same room from any device. Never the organizer, who visits rooms instead, nor anyone removed, nor anyone this call
+ * hasn't had: a seat is this call's own, so another call's names nobody.
+ */
+function roomPeople(v: Viewer, callId: string, s: Stored, invited: Set<string>, named: { emails: readonly string[]; seats: readonly string[] }, ctx: Record<string, string | number>): RoomPeople {
+  if (named.emails.some((e) => !invited.has(e))) throw new ValidationError('Only people invited to this call can be sent to a room by their address.', { context: ctx });
+  const key = seatKey(v.organizer, callId);
+  const emails = [...named.emails];
+  const guests: RoomGuest[] = [];
+  for (const seat of named.seats) {
+    const j = s.people.findLast((x) => (x.status === 'in' || x.status === 'left') && x.role !== 'host' && !s.removed.includes(x.person) && seatOf(key, x) === seat);
+    if (!j) throw new ValidationError('That person isn’t in this call.', { context: ctx });
+    const email = j.email?.toLowerCase();
+    if (email && invited.has(email)) emails.push(email);
+    else guests.push({ person: j.person, name: j.name });
+  }
+  return { emails, guests };
+}
+
+/**
+ * Rooms as they'll open, if they can: none are open now, everyone sent to one is invited (by address) or in the call (by
+ * seat), each person goes to one room, and the room the organizer goes to as they open is one of them.
+ */
+function planRooms(v: Viewer, callId: string, s: Stored, a: Extract<CallAction, { type: 'rooms-open' }>, meeting: Pick<MeetingManifest, 'guests'>, ctx: Record<string, string>): (RoomPeople & { name: string })[] {
   if (s.breakouts.open) throw new ConflictError('Rooms are already open.', { context: ctx });
+  const where = { ...ctx, rooms: a.rooms.length };
+  if (a.visit !== undefined && a.visit >= a.rooms.length) throw new ValidationError('You can only go to one of the rooms you’re opening.', { context: where });
   const invited = new Set(meeting.guests.map((e) => e.toLowerCase()));
-  const placed = a.rooms.flatMap((r) => r.emails);
-  if (placed.some((e) => !invited.has(e))) throw new ValidationError('Only people invited to this call can be sent to a room.', { context: { ...ctx, rooms: a.rooms.length } });
-  if (new Set(placed).size !== placed.length) throw new ValidationError('Someone is in two rooms. Each person goes to one room.', { context: { ...ctx, rooms: a.rooms.length } });
+  const rooms = a.rooms.map((r) => ({ name: r.name, ...roomPeople(v, callId, s, invited, { emails: r.emails, seats: r.seats }, where) }));
+  const placed = rooms.flatMap((r) => [...r.emails, ...r.guests.map((g) => `guest:${g.person}`)]);
+  if (new Set(placed).size !== placed.length) throw new ValidationError('Someone is in two rooms. Each person goes to one room.', { context: where });
+  return rooms;
+}
+
+/**
+ * An open room once someone (`who`, one person) is moved: they leave it, whichever way it named them (a guest's place by
+ * their person goes once they're on the invite too), and they're in it if it's the room they're going to (`to`).
+ */
+function movedIn<R extends RoomPeople>(s: Stored, r: R, who: RoomPeople, to: boolean): R {
+  const email = who.emails[0];
+  const guest = who.guests[0];
+  const theirs = (g: RoomGuest) => g.person === guest?.person || (email !== undefined && s.people.some((j) => j.person === g.person && j.email?.toLowerCase() === email));
+  return {
+    ...r,
+    emails: [...r.emails.filter((e) => e !== email), ...(to && email !== undefined ? [email] : [])],
+    guests: [...r.guests.filter((g) => !theirs(g)), ...(to && guest ? [guest] : [])]
+  };
 }
 
 /**
@@ -280,14 +332,16 @@ async function roomsReady(v: Viewer, callId: string, a: Extract<CallAction, { ty
   const s = settle(state, row);
   stillHosting(v, s, ctx);
   const meeting = await getItem(o, o.pool, 'meeting', row.meeting_item_id, MeetingManifest, 'That meeting');
-  checkRooms(s, a, meeting.manifest, ctx);
-  const going = (emails: string[]) => seatsOf(o, callId, s.people.filter((j) => j.status === 'in' && j.role !== 'host' && j.email !== undefined && emails.includes(j.email.toLowerCase())));
+  const plan = planRooms(v, callId, s, a, meeting.manifest, ctx);
+  // Everyone sent to each room who's in the call; the organizer, visiting, is seated on a room's board as anyone visiting is.
+  const going = (r: RoomPeople) => seatsOf(o, callId, s.people.filter((j) => j.status === 'in' && j.role !== 'host'
+    && ((j.email !== undefined && r.emails.includes(j.email.toLowerCase())) || r.guests.some((g) => g.person === j.person))));
   const reader = await readerInCall(v);
   const mine = s.people.find((j) => j.identity === v.pass.identity);
   const main: boards.MainBoardFor = {
     o, callId, s, meeting: meeting.manifest, here: hereIn(o, callId, s), known: knownIn(o, callId, s), maker: { name: mine?.name ?? v.pass.name, email: mine?.email ?? '' }, asOrganizer: v.isOrganizer
   };
-  return boards.prepareRooms({ rooms: a.rooms.map((r) => ({ name: r.name, people: going(r.emails) })), board: a.board, main, ids: a.rooms.map(() => id128()), by: space.controllerOf(v, reader) });
+  return boards.prepareRooms({ rooms: plan.map((r) => ({ name: r.name, people: going(r) })), board: a.board, main, ids: a.rooms.map(() => id128()), by: space.controllerOf(v, reader) });
 }
 
 /** The call's boards with what rooms opening made: each room's board open in it, and a shared board open in the main room. */
