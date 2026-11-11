@@ -833,7 +833,7 @@ See [Floating call](../engineering/floating-call.md) for browser capabilities an
      as a line, a follow-up as a checklist line tagged with who and when, which is then the same follow-up, and a line of the
      transcript as a quote with who said it and when. It lands where you can see it, or a toast says where it went and **Go there**
      opens it. With no document to send to, there are no arrows.
-   - **From the call** in **/**: **Decided so far** and **Follow-ups so far** fill in as the notes do, for everyone in the document,
+   - **From the call** in **/**, first in the list during a call, before Write and Add: **Decided so far** and **Follow-ups so far** fill in as the notes do, for everyone in the document,
      and nobody types them. When the call ends they stay as they were. **Quote what was said** picks from the last few lines. With
      notes off they say so.
    - **Hear it** on a quote plays that moment, when the call keeps its recording: during the call for anyone in it who was
