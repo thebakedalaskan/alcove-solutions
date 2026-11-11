@@ -21,9 +21,9 @@ Where it lives: the names in `packages/api/src/feature-flags/names.ts`; the serv
 
 ## Building a feature behind a flag
 
-1. **Name it.** Add an entry to `FEATURE_FLAGS` in `packages/api/src/feature-flags/names.ts`, dotted like limits (`board.templates`), with
-   a one-line description of what it switches on. The database can only switch on a name listed there. If the list still
-   has the placeholder `example`, delete it in the same change.
+1. **Name it.** Add an entry to `FEATURE_FLAGS` in `packages/api/src/feature-flags/names.ts`, dotted and lowercase like
+   limits, with underscores between words (`board.templates`, `call.screen_share_quality`), and a one-line description of
+   what it switches on. The database can only switch on a name listed there.
 2. **Gate it on the server.** In every handler the feature adds, before doing anything:
 
    ```ts
@@ -44,6 +44,11 @@ Where it lives: the names in `packages/api/src/feature-flags/names.ts`; the serv
    For a whole route, wait on `undefined` the same way before deciding between the page and not-found. If the flags can't be
    read, `useFeatureFlag` says `false` rather than leaving the page waiting. The app asks again
    every minute and when the window gets focus, and afresh after signing in or out.
+
+   Something that's set up once and lives on, such as a call's media room, reads the flags once as it starts instead, and
+   passes on their names, not booleans, so that retiring a flag still finds every check. It can't wait long: the call's
+   room takes what the lobby read, or waits at most 1.5 s, and is then without them for that call, saying so in the log
+   ([Calls and recordings › Video quality](calls-and-recordings.md)).
 4. **Show it in Storybook.** The stand-in API answers `featureFlags.on()` from the scenario's `World.featureFlags`. Give a scenario the
    flag (`featureFlags: ['board.templates']`) and add the stories that show the feature; scenarios without it are the "off" case.
 5. **Test it.** In the feature's integration suite: refused while off, allowed once granted, using the functions the CLI

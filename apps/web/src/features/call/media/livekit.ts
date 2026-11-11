@@ -29,9 +29,9 @@
  * Load it with `await import('~/features/call/media/livekit')` from the call routes only: livekit-client is large and
  * stays out of the first page load.
  */
-import { CALL_KEYRING, CALL_TOPIC, CALL_VOID_KEY_INDEX, CallChangedSchema, type CallMediaKeys, type CallSession, type LiveStore, type VideoSend } from '@alcove/api';
+import { CALL_CODECS_EVERY_MS, CALL_CODECS_LIMITS, CALL_CODECS_TOPIC, CALL_KEYRING, CALL_TOPIC, CALL_VOID_KEY_INDEX, CallChangedSchema, CallCodecsMessageSchema, type CallCodecsMessage, type CallMediaKeys, type CallSession, type FeatureFlagName, type LiveStore, type VideoSend } from '@alcove/api';
 import {
-  BaseKeyProvider, ConnectionState, CryptorError, CryptorErrorReason, DisconnectReason, LoggerNames, RemoteAudioTrack, Room, RoomEvent, Track, VideoPresets, VideoQuality,
+  AudioPresets, BaseKeyProvider, ConnectionState, CryptorError, CryptorErrorReason, DisconnectReason, LoggerNames, RemoteAudioTrack, Room, RoomEvent, ScreenSharePresets, Track, VideoPreset, VideoPresets, VideoQuality,
   createKeyMaterialFromBuffer, getLogger, isE2EESupported, type Participant, type RemoteTrack, type RemoteTrackPublication, type RemoteParticipant, type TrackPublication,
   type TrackPublishOptions
 } from 'livekit-client';
@@ -171,6 +171,46 @@ const CAMERA: Record<VideoSend, TrackPublishOptions> = {
   saver: { videoEncoding: VideoPresets.h360.encoding, videoSimulcastLayers: [VideoPresets.h180] }
 };
 
+/**
+ * With `call.bandwidth_reduction`, everything down to PUBLISH. The most of someone's camera a picture here asks for, by how tall that picture is in CSS pixels (or as tall as its
+ * width would be at 16:9, whichever is more): a small tile (a big grid, the column beside a share) takes the 180p copy,
+ * which is about 0.15 Mbps against 360p's 0.45, and anything bigger is as sharp as adaptive stream makes it. In pixels,
+ * not LiveKit's low, medium and high: those name a sender's own copies, and someone sending 1080p has 720p as their medium.
+ * Square, so a camera sent upright (a phone's 180×320) is capped the same as one sent across (320×180).
+ */
+const CAMERA_MOST = [{ below: 200, most: { width: 180, height: 180 } }];
+/**
+ * The camera as CAMERA sends it, but its 720p copy at 1 Mbps instead of LiveKit's 1.7: about 60% of the data, a still
+ * face looks the same, and motion gets blockier.
+ */
+const H720_CUT = new VideoPreset(1280, 720, 1_000_000, 30);
+const CAMERA_CUT: Record<VideoSend, TrackPublishOptions> = {
+  standard: { videoEncoding: H720_CUT.encoding, videoSimulcastLayers: [VideoPresets.h180, VideoPresets.h360] },
+  hd: { videoEncoding: VideoPresets.h1080.encoding, videoSimulcastLayers: [VideoPresets.h360, H720_CUT] },
+  saver: CAMERA.saver
+};
+/** Microphones as speech (Opus at up to 24 kbps), not music: a share's sound keeps LiveKit's music default. */
+const MIC: TrackPublishOptions = { audioPreset: AudioPresets.speech };
+const PUBLISH: Record<Kind, TrackPublishOptions> = { mic: MIC, cam: {}, screen: {}, screenAudio: {} };
+/**
+ * With `call.screen_share_quality`: a screen at up to 30 fps rather than LiveKit's 15, so a cursor moves smoothly, at
+ * LiveKit's own 2.5 Mbps and priority over cameras (its 1080p screen preset, at 30 fps). LiveKit's maintain-resolution
+ * for screens stays: when scrolling outruns the rate, frames drop and text stays sharp, since blurred text shows more
+ * than a choppy scroll. One copy at the screen's full size, not LiveKit's full and half-size pair: adaptive stream counts
+ * at most 1.5 pixels to a CSS pixel, so with the pair a share frame under about 1000 CSS pixels wide on a Retina screen
+ * takes the half-size copy and blurs its text. A still screen costs the same. VP9 rather than VP8: about 30% fewer bits
+ * for the same picture; a sharer that can't send it (Firefox, to LiveKit) sends VP8, and while anyone here can't decode
+ * it the screen goes as VP8 with LiveKit's own screen settings, as publish sends a screen without the flag (publishScreen).
+ */
+const SCREEN: TrackPublishOptions = { screenShareEncoding: { ...ScreenSharePresets.h1080fps15.encoding, maxFramerate: 30 }, simulcast: false, videoCodec: 'vp9' };
+/** What a browser that can't decode VP9 says (CALL_CODECS_TOPIC). */
+const NO_VP9 = new TextEncoder().encode(JSON.stringify({ vp9: false } satisfies CallCodecsMessage));
+/** Whether this browser can decode VP9, which a sharer with `call.screen_share_quality` sends. Unknown counts as no. */
+function decodesVp9(): boolean {
+  if (!('getCapabilities' in RTCRtpReceiver)) return false;
+  return RTCRtpReceiver.getCapabilities('video')?.codecs.some((c) => c.mimeType.toLowerCase() === 'video/vp9') ?? false;
+}
+
 /** How long to wait before the next try of a camera that failed to publish: longer each time it's tried. */
 const CAMERA_RETRY_MS = [1_000, 3_000, 10_000, 30_000];
 
@@ -193,6 +233,8 @@ class LiveKitRoom implements CallRoom {
   /** How loud each person plays here, for this listener only (see volume.ts). */
   private volumes: CallVolumes;
   private stopVolumes: () => void = () => undefined;
+  /** How tall each picture of someone else's camera is here, by track sid (see CAMERA_MOST). */
+  private shown = new Map<string, Map<HTMLMediaElement, number>>();
   /** The size the camera was last published at (see cameraSends), so a change of size sends it again. */
   private camSentAs: VideoSend | null = null;
   /**
@@ -220,7 +262,22 @@ class LiveKitRoom implements CallRoom {
   private dropped = 0;
   private unsent = 0;
 
-  constructor(private readonly session: CallSession, private readonly media: LocalMedia) {
+  /** People here whose browser said it can't decode VP9 (CALL_CODECS_TOPIC): a VP9 share goes as VP8 until they leave. */
+  private noVp9 = new Set<string>();
+  private stopCodecs: () => void = () => undefined;
+  /** Says this browser can't decode VP9, while it's here: every CALL_CODECS_EVERY_MS (connect), and again on a reconnect. */
+  private codecsTimer: ReturnType<typeof setInterval> | null = null;
+  private sayNoVp9 = () => this.send(CALL_CODECS_TOPIC, NO_VP9, { reliable: true });
+  /** The screen as published with `call.screen_share_quality` (see publishScreen): LocalMedia's track, the clone sent, its codec. */
+  private screenOut: { from: MediaStreamTrack; clone: MediaStreamTrack; codec: 'vp9' | 'vp8' } | null = null;
+  /** A clone of the screen still being published or swapped in (publishScreen), so a share stopped meanwhile stops it too. */
+  private screenIn: { from: MediaStreamTrack; clone: MediaStreamTrack } | null = null;
+
+  /**
+   * `flags` are the feature flags on for whoever's here, read once as the room opens (docs: engineering/feature-flags.md).
+   * Each check names its flag, so deleting a flag's name finds every one.
+   */
+  constructor(private readonly session: CallSession, private readonly media: LocalMedia, private readonly flags: ReadonlySet<FeatureFlagName>) {
     this.keys = new CallKeys(session.ticket.identity);
     this.volumes = volumesFor(session);
     // Each video as sharp as its tile on this screen, at up to 1.5 of its pixels to a CSS pixel: a large tile on a
@@ -270,8 +327,15 @@ class LiveKitRoom implements CallRoom {
     });
     r.on(RoomEvent.ParticipantConnected, () => refetch());
     // The server sends a change push when someone leaves too. Waiting a moment lets a room that's closing (the call ended) close
-    // first, instead of asking about a call that's over.
-    r.on(RoomEvent.ParticipantDisconnected, () => { setTimeout(() => { if (r.state === ConnectionState.Connected) refetch(); }, 400); });
+    // first, instead of asking about a call that's over. It also lets a full reconnect, which LiveKit starts by saying
+    // everyone left, bring them back: only someone still gone stops counting as unable to decode VP9.
+    r.on(RoomEvent.ParticipantDisconnected, (who) => {
+      setTimeout(() => {
+        if (r.state !== ConnectionState.Connected) return;
+        if (!r.remoteParticipants.has(who.identity) && this.noVp9.delete(who.identity)) this.follow();
+        refetch();
+      }, 400);
+    });
     r.on(RoomEvent.TrackSubscribed, (track, pub, who) => { this.consider(track, pub, who); if (pub.source === Track.Source.Camera) this.receiveCams(); this.emit(); });
     r.on(RoomEvent.TrackUnsubscribed, (track) => { if (track.sid) this.held.delete(track.sid); this.silence(track); this.emit(); });
     r.on(RoomEvent.DataReceived, (payload, _p, _kind, topic, _encryption, from) => {
@@ -304,10 +368,25 @@ class LiveKitRoom implements CallRoom {
     // everything: either way the call isn't keeping up until it's back, and the screen says so.
     r.on(RoomEvent.SignalReconnecting, () => this.set({ connection: 'reconnecting' }));
     r.on(RoomEvent.Reconnecting, () => this.set({ connection: 'reconnecting' }));
-    // Publishing waits while LiveKit reconnects (it republishes everything itself), then catches up with LocalMedia.
-    r.on(RoomEvent.Reconnected, () => { this.set({ connection: 'connected' }); refetch(); this.follow(); });
+    // Publishing waits while LiveKit reconnects (it republishes everything itself), then catches up with LocalMedia. Anyone
+    // who left meanwhile stops counting as unable to decode VP9, and this browser, if it can't, says so again at once: a
+    // sharer took it as gone while it reconnected.
+    r.on(RoomEvent.Reconnected, () => {
+      for (const id of this.noVp9) if (!r.remoteParticipants.has(id)) this.noVp9.delete(id);
+      if (this.codecsTimer) this.sayNoVp9();
+      this.set({ connection: 'connected' });
+      refetch();
+      this.follow();
+    });
+    // Who here can't decode VP9, for a VP9 share (publishScreen). Said by every browser that can't, whatever its flags.
+    this.stopCodecs = this.receive(CALL_CODECS_TOPIC, (payload, from) => this.heardCodecs(payload, from), CALL_CODECS_LIMITS);
     r.on(RoomEvent.Disconnected, (why) => {
       this.stopCameraRetry();
+      this.stopCodecs();
+      if (this.codecsTimer) clearInterval(this.codecsTimer);
+      // What's sent of a screen is a clone (publishScreen): LocalMedia stops only its own track, so the clones stop here.
+      for (const s of [this.screenOut, this.screenIn]) s?.clone.stop();
+      this.screenOut = null;
       this.stopFollowing();
       this.stopKeys();
       this.stopVolumes();
@@ -328,9 +407,15 @@ class LiveKitRoom implements CallRoom {
     await Room.getLocalDevices(undefined, false).catch((e: unknown) => rlog.debug('could not list devices for LiveKit', { err: e }));
     this.stopFollowing = this.media.subscribe(() => this.follow());
     this.follow();
+    // Not once the room has gone meanwhile: Disconnected has already cleared the timer it would start.
+    if (!decodesVp9() && this.room.state !== ConnectionState.Disconnected) {
+      this.sayNoVp9();
+      this.codecsTimer = setInterval(this.sayNoVp9, CALL_CODECS_EVERY_MS);
+      rlog.info('this browser can’t decode VP9: shares here go as VP8');
+    }
     await this.syncing;
     this.set({ connection: 'connected' });
-    rlog.info('joined the room', { role: this.session.ticket.role, others: this.room.remoteParticipants.size, keyIndex: this.keyNow?.send?.index ?? null });
+    rlog.info('joined the room', { role: this.session.ticket.role, others: this.room.remoteParticipants.size, keyIndex: this.keyNow?.send?.index ?? null, flags: [...this.flags].join(' ') });
     // What the call said while this browser was still connecting (people back with fresh keys after the organizer's
     // reload, say) went to a room it wasn't in yet, so it looks again now instead of at its next check.
     void this.session.refresh().catch((e: unknown) => rlog.warn('call refresh failed', { err: e }));
@@ -451,6 +536,11 @@ class LiveKitRoom implements CallRoom {
    * a second copy. Reconnected follows again.
    */
   private follow() {
+    // A share stopped or swapped here stops being sent at once, not when the next sync gets to it: what's sent is a clone
+    // (publishScreen), which stopping LocalMedia's track doesn't end. So a clone of a track that isn't shared any more
+    // stops now, one still being published or swapped in too, and sync takes its publication down after.
+    const shared = this.media.getSnapshot().screen?.getVideoTracks()[0];
+    for (const s of [this.screenOut, this.screenIn]) if (s && (s.from !== shared || s.from.readyState === 'ended')) s.clone.stop();
     if (this.reconnecting()) return;
     this.syncing = this.syncing.then(() => this.sync()).catch((e: unknown) => rlog.warn('publishing to the room failed', { err: e }));
   }
@@ -497,6 +587,7 @@ class LiveKitRoom implements CallRoom {
       if (!this.camRetry) { this.camTries++; void this.media.renewCamera(track); this.retryCameraLater(); }
       return;
     }
+    if (kind === 'screen' && this.flags.has('call.screen_share_quality')) return this.publishScreen(track);
     // After a full reconnect this is the publication LiveKit republished, not the one this browser made.
     const have = me.getTrackPublication(SOURCE[kind]);
     // A camera sent at another size than it's sent at now is sent again: a publication's layers are set when it's
@@ -512,13 +603,102 @@ class LiveKitRoom implements CallRoom {
     if (have?.track) await me.unpublishTrack(have.track, false);
     if (track) {
       try {
-        await me.publishTrack(track, { source: SOURCE[kind], ...(sendAs ? CAMERA[sendAs] : {}) });
+        const cut = this.flags.has('call.bandwidth_reduction');
+        await me.publishTrack(track, { source: SOURCE[kind], ...(cut ? PUBLISH[kind] : {}), ...(sendAs ? (cut ? CAMERA_CUT : CAMERA)[sendAs] : {}) });
       } catch (e) {
         if (kind === 'cam') await this.cameraFailed(track);
         throw e;
       }
     }
     if (kind === 'cam') { this.camSentAs = sendAs; this.camTries = 0; this.stopCameraRetry(); }
+  }
+  /**
+   * With `call.screen_share_quality`: the screen goes as a clone of LocalMedia's track (stopped here as soon as that track
+   * isn't shared any more, see follow; the capture stays LocalMedia's), as VP9 with SCREEN, or, while anyone here can't
+   * decode VP9, as VP8 with LiveKit's own screen settings, as publish sends a screen without the flag. A change of codec
+   * publishes the new copy before taking the old one down, and the sharer isn't asked to pick a screen again; a viewer
+   * still sees the share stop for a moment and come back. The picture's track sid changes, so pointers and marks on it
+   * start afresh, and a viewer who muted its sound hears it again.
+   */
+  private async publishScreen(track: MediaStreamTrack | null) {
+    const me = this.room.localParticipant;
+    const out = this.screenOut;
+    if (!track) { if (out) await this.unpublishScreen(out); return; }
+    const codec = this.noVp9.size ? 'vp8' : 'vp9';
+    const have = out ? [...me.trackPublications.values()].find((p) => p.track?.mediaStreamTrack === out.clone)?.track : undefined;
+    // A screen asked for as VP9 that LiveKit sends as VP8 (from a browser it won't send VP9 from) suits everyone as it is.
+    if (out && have && (out.codec === codec || (codec === 'vp8' && have.codec !== 'vp9'))) {
+      if (out.from === track) return;
+      // Something else shared: the same publication carries it, as in publish. LiveKit gives a VP9 screen the 'motion'
+      // content hint as it publishes it, round Chrome's own path for screens (which holds VP9's one layer to 5 fps), and
+      // not when a track is replaced, so the new clone takes the old one's.
+      const clone = track.clone();
+      clone.contentHint = out.clone.contentHint;
+      this.screenIn = { from: track, clone };
+      try {
+        await have.replaceTrack(clone, true);
+      } catch (e) {
+        clone.stop();
+        throw e;
+      } finally {
+        this.screenIn = null;
+      }
+      out.clone.stop();
+      this.screenOut = { from: track, clone, codec: out.codec };
+      return;
+    }
+    const clone = track.clone();
+    this.screenIn = { from: track, clone };
+    try {
+      await me.publishTrack(clone, { source: Track.Source.ScreenShare, ...(codec === 'vp9' ? SCREEN : {}) });
+    } catch (e) {
+      clone.stop();
+      // Stopped or swapped meanwhile (follow stopped the clone): the next sync follows, and nothing failed.
+      if (this.media.getSnapshot().screen?.getVideoTracks()[0] !== track) return;
+      // A switch of codec that failed keeps the copy that's going, rather than ending a share that works: the next
+      // sync tries again. With nothing going, the share failed.
+      if (!out || !have) throw e;
+      rlog.warn('shared screen not sent again in another codec', { err: e, codec });
+      return;
+    } finally {
+      this.screenIn = null;
+    }
+    this.screenOut = { from: track, clone, codec };
+    if (out) {
+      // The new copy is up, so an old one that won't come down (its clone has stopped) is said, not taken as the share failing.
+      await this.unpublishScreen(out).catch((e: unknown) => rlog.warn('shared screen’s old copy not taken down', { err: e }));
+      rlog.info('shared screen sent again in another codec', { codec, noVp9: this.noVp9.size });
+    }
+  }
+  private async unpublishScreen(old: { clone: MediaStreamTrack }) {
+    const me = this.room.localParticipant;
+    const pub = [...me.trackPublications.values()].find((p) => p.track?.mediaStreamTrack === old.clone);
+    // The clone stops whatever happens, so nothing more of it is sent; a publication left up comes down at the next sync.
+    try {
+      if (pub?.track) await me.unpublishTrack(pub.track, false);
+    } finally {
+      old.clone.stop();
+    }
+    if (this.screenOut === old) this.screenOut = null;
+  }
+  /**
+   * Someone here said their browser can't decode VP9: a VP9 share goes as VP8 until they leave (publishScreen). It's the
+   * one thing said on the topic, so nobody can make a share go back and forth.
+   */
+  private heardCodecs(payload: Uint8Array, from: string) {
+    let said: unknown = null;
+    try { said = JSON.parse(new TextDecoder().decode(payload)); } catch { /* not JSON: it doesn't read, below */ }
+    if (!CallCodecsMessageSchema.safeParse(said).success) { this.notTaken(CALL_CODECS_TOPIC, 'unreadable'); return; }
+    // Opened after they left (opening waits on the key): nobody would take them out again.
+    if (!this.room.remoteParticipants.has(from)) return;
+    if (this.noVp9.has(from)) {
+      // Said again while the screen is still asked for as VP9: a switch to VP8 that failed is tried again.
+      if (this.screenOut?.codec === 'vp9') this.follow();
+      return;
+    }
+    this.noVp9.add(from);
+    rlog.info('someone here can’t decode VP9', { noVp9: this.noVp9.size });
+    this.follow();
   }
   /**
    * After a camera publish failed: what LiveKit made for it is taken out (a sender a failed negotiation can leave in the
@@ -550,9 +730,9 @@ class LiveKitRoom implements CallRoom {
 
   /**
    * Everyone else's cameras as chosen here: as sharp as each tile needs (adaptive stream, which also pauses one nobody
-   * here can see), capped at the smallest copy to save data, or not received at all: unsubscribed, so LiveKit stops
-   * sending it. Never `setEnabled`: once called, it overrides adaptive stream's pausing for good. Screens are never
-   * capped: text has to stay readable.
+   * here can see) up to what a tile of its size may ask for (CAMERA_MOST, with `call.bandwidth_reduction`), capped at the smallest copy to save data, or
+   * not received at all: unsubscribed, so LiveKit stops sending it. Never `setEnabled`: once called, it overrides
+   * adaptive stream's pausing for good. Screens are never capped: text has to stay readable.
    */
   private receiveCams() {
     const receive = this.media.getSnapshot().receiveVideo;
@@ -561,8 +741,17 @@ class LiveKitRoom implements CallRoom {
       if (!pub) continue;
       if (receive === 'off') { if (pub.isDesired) pub.setSubscribed(false); continue; }
       if (!pub.isDesired) pub.setSubscribed(true);
-      pub.setVideoQuality(receive === 'saver' ? VideoQuality.LOW : VideoQuality.HIGH);
+      if (receive === 'saver') { pub.setVideoQuality(VideoQuality.LOW); continue; }
+      const most = this.flags.has('call.bandwidth_reduction') ? this.mostFor(pub.trackSid) : null;
+      if (most) pub.setVideoDimensions(most); else pub.setVideoQuality(VideoQuality.HIGH);
     }
+  }
+  /** The most of a camera its biggest picture here asks for (see CAMERA_MOST), or null for as much as it needs. */
+  private mostFor(sid: string): { width: number; height: number } | null {
+    const sizes = this.shown.get(sid);
+    if (!sizes?.size) return null;
+    const tallest = Math.max(...sizes.values());
+    return CAMERA_MOST.find((s) => tallest < s.below)?.most ?? null;
   }
 
   /** Everyone else's audio plays through hidden elements, on the chosen speaker, each person as loud as set here. */
@@ -623,7 +812,33 @@ class LiveKitRoom implements CallRoom {
     const track = local ?? remote;
     if (!track) return () => undefined;
     track.attach(el);
-    return () => { track.detach(el); };
+    // Someone else's camera: how big each picture of it is decides how much of it is asked for (receiveCams).
+    const camera = !local && remote?.source === Track.Source.Camera;
+    if (!camera || !this.flags.has('call.bandwidth_reduction')) return () => { track.detach(el); };
+    const sizes = this.shown.get(trackSid) ?? new Map<HTMLMediaElement, number>();
+    this.shown.set(trackSid, sizes);
+    const step = (t: number | undefined) => (t === undefined ? -2 : CAMERA_MOST.findIndex((s) => t < s.below));
+    const measured = (width: number, height: number) => {
+      const tall = Math.round(Math.max(height, (width * 9) / 16));
+      const was = sizes.get(el);
+      sizes.set(el, tall);
+      // Only a picture crossing a step of CAMERA_MOST changes what's asked for: resizing within one (a layout's
+      // animation, a window being dragged) asks nothing again.
+      if (step(was) !== step(tall)) this.receiveCams();
+    };
+    // Measured now, then by the observer of the window it's in: the floating call's picture is in a window of its own,
+    // whose observer runs while this page's tab is hidden, when this page's doesn't.
+    measured(el.clientWidth, el.clientHeight);
+    const win = el.ownerDocument.defaultView ?? window;
+    const watch = new win.ResizeObserver(([entry]) => { if (entry) measured(entry.contentRect.width, entry.contentRect.height); });
+    watch.observe(el);
+    return () => {
+      watch.disconnect();
+      sizes.delete(el);
+      if (!sizes.size) this.shown.delete(trackSid);
+      track.detach(el);
+      this.receiveCams();
+    };
   }
 
   muteShare(screenSid: string, muted: boolean): void {
@@ -699,9 +914,12 @@ class LiveKitRoom implements CallRoom {
   }
 }
 
-/** Connects to the call's room. Rejects if LiveKit refuses or can't be reached; nothing is left connected then. */
-export async function openRoom(session: CallSession, media: LocalMedia): Promise<CallRoom> {
-  const room = new LiveKitRoom(session, media);
+/**
+ * Connects to the call's room, following the feature flags on for whoever's here (read once, as it opens). Rejects if
+ * LiveKit refuses or can't be reached; nothing is left connected then.
+ */
+export async function openRoom(session: CallSession, media: LocalMedia, flags: ReadonlySet<FeatureFlagName>): Promise<CallRoom> {
+  const room = new LiveKitRoom(session, media, flags);
   try {
     await room.connect();
   } catch (e) {
