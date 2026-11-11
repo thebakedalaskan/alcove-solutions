@@ -1,7 +1,8 @@
 /*
  * What opens over the page: the `/` and `@` lists at the caret, a block's menu, the bar over a selection and the link
  * field. They sit outside the scrolling page, so nothing clips them, in a layer that takes the page's theme. Focus
- * stays in the text the whole time: keys reach these first, and pressing one never moves the caret.
+ * stays in the text the whole time: keys reach these first, and pressing one never moves the caret. The one exception is
+ * the calendar, which takes the keyboard for its arrow keys and gives it back to the text when it's done.
  */
 import { Avatar, Icon, MonthGrid, cn, type IconName } from '@alcove/ui';
 import { toggleMark } from 'prosemirror-commands';
