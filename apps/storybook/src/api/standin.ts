@@ -16,7 +16,7 @@ import {
   ACCEPTED_FOLLOW_UP, AlcoveApiError, type FollowUpReview, type FollowUpTarget, type NoteAction, AgentAuthorizationIdSchema, AgentConnectionIdSchema, AgentDecisionInputSchema, AgentTokenInputSchema, DEFAULT_NOTES_CHOICES, searchOf, termsIn, type ActionPatch, type ActionProposal, type AlcoveApi, type AgentConnection, type AnswerPart, type Busy, type CallCard,
   type CallDocument, type CallSession, type Change, type ChangeScope, type DecisionPatch, type DecisionProposal, type ID, type Inbox, type IncomingRing,
   type InstantCallInput, type Interval, type LinePatch, type Meeting, type MeetingInput, type Note, type NoteFound, type NoteKind, type NoteProgress,
-  type Patch, type Preferences, type PromoteBody, type PromotionPreview, type QuestionPatch, type RecipientRole, type RingReply, type Rsvp, type Series,
+  type Patch, type Preferences, type PromoteBody, type PromotionPreview, type QuestionPatch, type RecipientRole, type RingReply, type Rsvp, type Series, type SharedAudience, type SharedWrite,
   type SeriesAnswerPart, type SeriesNote, type SignInResult, type DemoProvider, type RoomRecordingInput, type RoomRecording, type CallMoveIn
 } from '@alcove/api';
 import { isOnline } from '../browser';
@@ -98,6 +98,9 @@ function driveChoice(w: World, input: DriveExportInput) {
   if (parsed.enabled && (!destination || !parsed.formats.length)) throw refused('invalid', 'Choose a folder and a file type first.');
   return { enabled: parsed.enabled, destination, formats: parsed.formats };
 }
+/** What holds a box for writing into the shared notes to who had the notes when it opened: if anyone gets them since, it's refused. */
+const audienceSeal = (n: Note) => `shared:${n.people.map((p) => p.email.toLowerCase()).sort().join(' ')}`;
+
 /** Whether automatic exports cover a call, as the server's rule has it: on, and the call ended after they were turned on. */
 function automaticFor(w: World, n: Note): DriveAutomatic {
   const s = w.drive.settings;
@@ -697,6 +700,16 @@ export const standIn: AlcoveApi = {
       const moments = e?.kind === 'bookmark' ? (e.moment ? [e.moment] : []) : e?.kind === 'answer' ? e.moments : [];
       w.personal[id] = (w.personal[id] ?? []).map((x) => (x.id === entryId ? { ...x, shared: { additionId, at } } : x));
       return { ...n, additions: [...n.additions, { id: additionId, text: body.text, by: me(), at, moments, removable: true }] };
+    }),
+    sharedAudience: (id: ID) => answer((w): SharedAudience => {
+      const n = noteIn(w, id);
+      if (n.status !== 'ready') throw refused('conflict', 'These notes are still being written. You can add this once they are.');
+      return { audience: n.people, seal: audienceSeal(n) };
+    }),
+    writeShared: (id: ID, body: SharedWrite) => changeNote(id, (n) => {
+      if (n.status !== 'ready') throw refused('conflict', 'These notes are still being written. You can add this once they are.');
+      if (body.seal !== audienceSeal(n)) throw refused('conflict', 'Someone got these notes since you started writing. Look at who reads it now, then post it.');
+      return { ...n, additions: [...n.additions, { id: nextId('x'), text: body.text, by: me(), at: new Date().toISOString(), moments: [], removable: true }] };
     }),
     takeBack: (id: ID, additionId: ID) => changeNote(id, (n, w) => {
       w.personal[id] = (w.personal[id] ?? []).map((x) => (x.shared?.additionId === additionId ? { ...x, shared: null } : x));

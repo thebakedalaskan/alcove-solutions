@@ -1,7 +1,7 @@
 import { type FollowUpReview } from './follow-ups';
 import type { DriveCallExports, DriveExportInput, DriveExportJob, DriveFolder, DriveSettings } from './drive';
 import { type ID } from '../shared/ids';
-import { type PersonalApi, type PromoteBody, type PromotionPreview } from './personal';
+import { type PersonalApi, type PromoteBody, type PromotionPreview, type SharedAudience, type SharedWrite } from './personal';
 import { type NoteProgress } from './progress';
 import { type AnswerPart, type Inbox, type Note, type NoteFound, type NoteKind } from './schema';
 import { type Series, type SeriesAnswerPart } from './series';
@@ -87,6 +87,13 @@ export interface NotesApi {
   previewAddition(id: ID, entryId: ID): Promise<PromotionPreview>;
   /** Adds it, as previewed, for everyone with the notes. Refused if the people or the moments changed since the preview. */
   addToShared(id: ID, entryId: ID, body: PromoteBody): Promise<Note>;
+  /** Who'd read something written straight into the shared notes now, once they're written, and the seal that holds writing to them. Sends nothing. */
+  sharedAudience(id: ID): Promise<SharedAudience>;
+  /**
+   * Writes straight into the shared notes, under your name, for everyone with the notes, once they're written. Refused
+   * (`conflict`) if anyone got the notes since `sharedAudience`. Like an addition, it can be taken back, not changed.
+   */
+  writeShared(id: ID, body: SharedWrite): Promise<Note>;
   /** Takes something added to the shared notes out of them, for good: your own addition, or any on your own notes. */
   takeBack(id: ID, additionId: ID): Promise<Note>;
   /**

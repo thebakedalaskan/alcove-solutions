@@ -10,7 +10,8 @@ import { screen, within } from 'storybook/test';
 import { standIn } from '../../src/api/standin';
 import { call, changer, writeNote, type NoteSpec } from '../../src/world/build';
 import { iso } from '../../src/world/clock';
-import { ART, ELENA, INES, KOFI, MAYA, NADIA, OMAR, PRIYA, THEO } from '../../src/world/people';
+import { ART, ELENA, INES, KOFI, LENA, MAYA, NADIA, OMAR, PRIYA, THEO } from '../../src/world/people';
+import { current } from '../../src/api/state';
 import type { World } from '../../src/world';
 import { FOLLOW_UP_NEW, FOLLOW_UP_NOTE, FOLLOW_UP_TASK, withFollowUpProposals } from '../../src/world/follow-ups';
 import { changing, page, pages, type PageArgs, type PageStory } from '../../src/page';
@@ -25,6 +26,7 @@ const line = () => screen.findByRole('textbox', { name: 'Search everything said,
 const preview = (title: string) => screen.findByRole('complementary', { name: title }, SOON);
 const theNote = (title: string) => screen.findByRole('heading', { name: title, level: 1 }, LATER);
 const yours = () => screen.findByRole('region', { name: 'Your notes' }, SOON);
+const shared = () => screen.findByRole('region', { name: 'Shared notes' }, LATER);
 const article = (text: string) => holding('article', text);
 
 /* ---------- what the world needs for some of them ---------- */
@@ -697,8 +699,8 @@ export const YourNotesThenTheSharedNotes: PageStory = {
       await userEvent.type(box, 'Link the help article to the rollout plan.');
       await userEvent.click(within(screen.getByRole('group', { name: 'Add this to the shared notes' })).getByRole('button', { name: /^Add for \d+ people/ }));
     });
-    await step('It’s in Added by people, for everyone. Your own stays yours', async () => {
-      await screen.findByText('Link the help article to the rollout plan.', {}, SOON);
+    await step('It’s in the shared notes, for everyone. Your own stays yours', async () => {
+      await within(await shared()).findByText('Link the help article to the rollout plan.', {}, SOON);
     });
   }
 };
@@ -1074,6 +1076,46 @@ export const ReviewAStaleSuggestion: PageStory = {
     await step('The stale proposal cannot overwrite the newer task', async () => {
       await userEvent.click(within(await article('Send the reviewed launch checklist')).getByRole('button', { name: 'Apply change' }));
       await within(await reviewBatch()).findByText('That follow-up changed. Close review and open it again.', {}, SOON);
+    });
+  }
+};
+
+export const WriteInTheSharedNotes: PageStory = {
+  name: '8.47 Write in the shared notes',
+  ...page('/notes/n2', 'busy'),
+  play: async ({ userEvent, step }) => {
+    await step('Under Shared notes, its own box says who reads what goes there, before anything is typed', async () => {
+      await within(await shared()).findByText(/, and anyone they share the notes with$/, {}, LATER);
+    });
+    await step('Write for everyone and press Enter. It goes in one step', async () => {
+      await userEvent.type(await within(await shared()).findByRole('textbox', { name: 'Write in the shared notes' }, SOON), 'Support needs the article by Monday.{Enter}');
+    });
+    await step('It’s in the shared notes for everyone, with who wrote it and when. Take back takes it out again', async () => {
+      await within(await shared()).findByText('Support needs the article by Monday.', {}, SOON);
+      await within(await shared()).findAllByRole('button', { name: 'Take back' }, SOON);
+    });
+  }
+};
+
+export const SomeoneGetsTheNotesWhileYouWrite: PageStory = {
+  name: '8.48 Someone gets the notes while you write',
+  ...page('/notes/n2', 'busy'),
+  play: async ({ userEvent, step }) => {
+    const box = async () => within(await shared()).findByRole('textbox', { name: 'Write in the shared notes' }, LATER);
+    await step('Start writing in the shared notes. The box says who reads it', async () => {
+      await userEvent.type(await box(), 'Support needs the article by Monday.');
+    });
+    await step('Meanwhile Kofi shares the notes with Lena', async () => {
+      const n = current().notes.find((x) => x.id === 'n2');
+      if (n && !n.people.some((p) => p.email === LENA.email)) sharedWith(n, [LENA], KOFI);
+    });
+    await step('Press Enter. It isn’t posted: Lena has the notes now, and the box says she reads it too', async () => {
+      await userEvent.type(await box(), '{Enter}');
+      await within(await shared()).findByText('Lena got the notes since you started, so they read it too.', {}, SOON);
+    });
+    await step('Press Enter again: it goes, for everyone with the notes, Lena included', async () => {
+      await userEvent.type(await box(), '{Enter}');
+      await within(await shared()).findByText('Support needs the article by Monday.', {}, SOON);
     });
   }
 };

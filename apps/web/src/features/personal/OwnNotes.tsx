@@ -1,7 +1,8 @@
 /*
- * Your own notes beside a note, and what you've added from them to the shared notes. Only you read the card. Adding
- * something opens where the entry is: exactly the words that go, where they land and who reads them, and nothing is sent
- * until you say so. The words are yours to cut down first; whatever's left in the box is what goes.
+ * Your own notes beside a note, and the shared notes beside them. Only you read the card. Adding something from it opens
+ * where the entry is: exactly the words that go, where they land and who reads them, and nothing is sent until you say
+ * so. The words are yours to cut down first; whatever's left in the box is what goes. The shared notes have a box of
+ * their own once the notes are written, which says who reads what's written there before anything is typed.
  */
 import { MAX_ADDITION_TEXT, errorCode, errorMessage, type Note, type NoteAddition, type Person, type PersonalEntry, type PersonalPoint, type SourceMoment } from '@alcove/api';
 import { Avatar, Button, Dots, Faces, Icon, IconButton, Scope, useToast } from '@alcove/ui';
@@ -13,11 +14,11 @@ import { peopleLine } from '~/features/notes/meta';
 import { Moment, MomentLink, type ScreenRefShown } from '~/features/notes/parts';
 import type { ScreenMarks } from '~/features/notes/screens';
 import { listNames, sameEmail, spokenName } from '~/lib/people';
-import { q, qk, useAddToShared, useOwnNotes, useTakeBack } from '~/lib/queries';
+import { q, qk, useAddToShared, useOwnNotes, useTakeBack, useWriteShared } from '~/lib/queries';
 import { hm, shortDay } from '~/lib/time';
-import { OwnComposer, OwnEntries, Quote, Sure } from './parts';
+import { OwnComposer, OwnEntries, Quote, Sure, rowsFor } from './parts';
 
-const WHERE = 'Added by people';
+const WHERE = 'Shared notes';
 const say = (reach: 'later' | 'none') => (reach === 'later' ? 'It opens once the notes are written.' : 'Nothing was captured then.');
 
 /** Where a moment is in a note: going there, or the breakout room's name (a room's talk isn't in the recording), and what was on screen. */
@@ -165,18 +166,72 @@ function AdditionRow({ a, noteId, mine, me, shown, onSeek, onTakeBack }: { a: No
   );
 }
 
-/** What people added to the shared notes from their own, for everyone with the notes. */
-export function Additions({ note, me, shown, mine, onSeek }: { note: Note; me: string | undefined; shown: ScreenRefShown; mine: boolean; onSeek?: ((s: number) => void) | undefined }) {
+/**
+ * Writing straight into the shared notes, for everyone with them. Who reads it is in the box before anything is typed,
+ * read fresh, with the seal that holds posting to them: if anyone gets the notes before it's posted, it's refused, and
+ * the box says who got them since. Enter posts it; Shift and Enter starts a new line. Once it's posted it can be taken
+ * back, not changed.
+ */
+function SharedComposer({ note, me }: { note: Note; me: string | undefined }) {
+  const toast = useToast();
+  const qc = useQueryClient();
+  const box = useQuery(q.sharedAudience(note.id));
+  const write = useWriteShared(note.id);
+  const [draft, setDraft] = useState('');
+  const a = box.data;
+  // Who it was going to when the box opened, to say who got the notes since.
+  const first = useRef<Person[] | null>(null);
+  useEffect(() => { if (a) first.current ??= a.audience; }, [a]);
+  const since = a?.audience.filter((x) => first.current && !first.current.some((y) => sameEmail(x, y))) ?? [];
+  const post = () => {
+    const text = draft.trim();
+    if (!a || !text || write.isPending) return;
+    write.mutate({ text, seal: a.seal }, {
+      onSuccess: () => {
+        setDraft('');
+        first.current = null;
+        void qc.invalidateQueries({ queryKey: qk.sharedAudience(note.id) });
+        toast('It’s in the shared notes, for everyone with them.', { icon: 'check' });
+      },
+      onError: (e) => {
+        toast(errorMessage(e), { icon: 'x' });
+        // Someone got the notes since: say who reads it now, and let the person post again.
+        if (errorCode(e) === 'conflict') void qc.invalidateQueries({ queryKey: qk.sharedAudience(note.id) });
+      }
+    });
+  };
+  return (
+    <form className="own-compose nd-shared-box" autoComplete="off" onSubmit={(e) => { e.preventDefault(); post(); }}>
+      <span className="to">
+        {a ? <><Faces people={a.audience} size={18} max={4} /><span>{peopleLine(a.audience, me)}, and anyone they share the notes with</span></>
+          : box.error ? <span className="bad">{errorMessage(box.error)}</span> : <Dots />}
+      </span>
+      <textarea value={draft} rows={rowsFor(draft, 34, 5)} maxLength={MAX_ADDITION_TEXT} placeholder="Write for everyone with the notes" aria-label="Write in the shared notes"
+        onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); post(); } }} />
+      <button type="submit" className="ac-btn is-secondary" aria-label="Post it in the shared notes" title="Post it in the shared notes" disabled={!draft.trim() || !a || write.isPending}><Icon name="arrowUp" size={15} /></button>
+      {since.length > 0 && <p className="nd-since"><Faces people={since} size={20} max={3} /><span>{listNames(since)} got the notes since you started, so they read it too.</span></p>}
+    </form>
+  );
+}
+
+/**
+ * The shared notes, for everyone with the notes: what people wrote straight into them and what they added from their
+ * own, with who and when, and once the notes are written, a box to write in. Nothing shows while they're still being
+ * written, since who gets them isn't settled.
+ */
+export function SharedNotes({ note, me, shown, mine, onSeek }: { note: Note; me: string | undefined; shown: ScreenRefShown; mine: boolean; onSeek?: ((s: number) => void) | undefined }) {
   const toast = useToast();
   const take = useTakeBack(note.id);
-  if (!note.additions.length) return null;
+  const ready = note.status === 'ready';
+  if (!ready && !note.additions.length) return null;
   return (
-    <section className="nd-b">
-      <h2>{WHERE}</h2>
+    <section className="nd-b nd-shared" aria-label={WHERE}>
+      <div className="nd-b-h"><h2>{WHERE}</h2><span className="nd-only"><Icon name="people" size={13} />Everyone with the notes</span></div>
       {note.additions.map((a) => (
         <AdditionRow key={a.id} a={a} noteId={note.id} mine={mine} me={me} shown={shown} onSeek={onSeek}
           onTakeBack={() => take.mutate(a.id, { onSuccess: () => toast('It’s out of the shared notes, for everyone.', { icon: 'check' }), onError: (e) => toast(errorMessage(e), { icon: 'x' }) })} />
       ))}
+      {ready && <SharedComposer note={note} me={me} />}
     </section>
   );
 }

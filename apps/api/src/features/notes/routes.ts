@@ -1,4 +1,4 @@
-import { FollowUpReviewSchema, ActionPatchSchema, ActionProposalSchema, AskBodySchema, DecisionPatchSchema, DecisionProposalSchema, LinePatchSchema, NoteKindSchema, QuestionPatchSchema, RevisitPatchSchema, RewriteBodySchema, SeriesAskBodySchema, ShareInputSchema, PersonalEditSchema, PersonalInputSchema, PromoteBodySchema } from '@alcove/api';
+import { FollowUpReviewSchema, ActionPatchSchema, ActionProposalSchema, AskBodySchema, DecisionPatchSchema, DecisionProposalSchema, LinePatchSchema, NoteKindSchema, QuestionPatchSchema, RevisitPatchSchema, RewriteBodySchema, SeriesAskBodySchema, ShareInputSchema, PersonalEditSchema, PersonalInputSchema, PromoteBodySchema, SharedWriteSchema } from '@alcove/api';
 import { Hono, type Context } from 'hono';
 import { stream } from 'hono/streaming';
 import { z } from 'zod';
@@ -211,6 +211,22 @@ export function registerNoteRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
     const o = c.get('owner');
     personalLimiter(o.ownerId, 'personal');
     await additions.addToShared(o, c.req.param('id'), c.req.param('entryId'), await body(c, PromoteBodySchema));
+    return c.json(await notes.get(o, c.req.param('id')));
+  });
+
+  /* Writing straight into the shared notes: who'd read it first, then posting it with the seal that holds it to them. */
+  app.use('/v1/notes/:id/additions', capped(32 * 1024));
+
+  app.get('/v1/notes/:id/additions/audience', async (c) => {
+    const o = c.get('owner');
+    personalLimiter(o.ownerId, 'personal');
+    return c.json(await additions.audience(o, c.req.param('id')));
+  });
+
+  app.post('/v1/notes/:id/additions', async (c) => {
+    const o = c.get('owner');
+    personalLimiter(o.ownerId, 'personal');
+    await additions.write(o, c.req.param('id'), await body(c, SharedWriteSchema));
     return c.json(await notes.get(o, c.req.param('id')));
   });
 

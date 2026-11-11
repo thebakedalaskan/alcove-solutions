@@ -845,7 +845,7 @@ manifest, the call's own lists and each breakout room's, so it has no table of i
 - **Adding to the notes.** `POST /v1/notes/:id/decisions` and `…/actions` with the exact words, optionally the `lines` it
   rests on (at most three, of that part of the note, or `400 invalid`) and a breakout room's section (`room`, or
   `404 not-found`). Nothing asks a model, and the same words again add nothing, so a retry is safe and no receipt is kept.
-  A part holds at most 60 of each (`409 conflict`). Besides the notes model, this and **Added by people**
+  A part holds at most 60 of each (`409 conflict`). Besides the notes model, this and **Shared notes**
   ([Adding to the shared notes](#adding-to-the-shared-notes)) are the only ways anything reaches the shared notes, and both
   take someone sending exactly those words, so nothing someone keeps for themselves gets in by itself. A person's entry has
   `proposed` as its first change, which is also what keeps it when the notes are written again.
@@ -1052,7 +1052,7 @@ once the notes are written. During a call the people who'll get the notes aren't
 joins the invite), so a preview couldn't say who reads it.
 
 - **Preview.** `POST /v1/notes/:id/personal/:entryId/preview` sends nothing. It says the words that would go, the moments
-  with them, where (**Added by people** on that note) and everyone who has the notes now, and it gives a seal: a keyed
+  with them, where (**Shared notes** on that note) and everyone who has the notes now, and it gives a seal: a keyed
   hash, under the author's keys, of the entry, its moments and those people.
 - **Add.** `POST /v1/notes/:id/personal/:entryId/add` takes the words as they stand in the preview, cut down or changed by
   the person, and the seal. Everything is read again holding the note's lock, and the seal has to match: if anyone
@@ -1080,6 +1080,27 @@ joins the invite), so a preview couldn't say who reads it.
   notes, found by a keyed hash of who added it, so it makes no difference if they'd removed the note or deleted the entry
   by then. The app says what goes, and what stays, before they confirm.
 
+### Writing straight into the shared notes
+
+Beside a written note, **Shared notes** has a box of its own, so something meant for everyone doesn't have to go through
+Your notes first (`write` in `additions.ts`). It's an addition like any other, with no private entry behind it.
+
+- **Who reads it, first.** `GET /v1/notes/:id/additions/audience` sends nothing. It says everyone who has the notes now,
+  organizer first, and gives a seal: a keyed hash, under the writer's keys (`promotion:<noteId>`), of those people. Its
+  shape differs from a preview's (no entry, no moments), so neither seal stands in for the other. The box shows them
+  before anything is typed.
+- **Posting.** `POST /v1/notes/:id/additions` with the words (1 to 8,000 characters) and the seal. Holding the note's
+  lock, who has the notes is read again and the seal has to match: if anyone got the notes since, it's `409 conflict`,
+  and the box says who got them since and keeps the words. It's only once the notes are written (`409 conflict` before),
+  for the same reason as adding from your own notes, under the same `MAX_NOTE_ADDITIONS`. During a call the shared place
+  to write is the call's workspace pages.
+- **Stored** exactly as an addition from someone's own notes is (`note_additions`, sealed under the organizer's keys, with
+  the author's name and address as they were, and the author's keyed hash), with no moments: rows written by the
+  previous release read as before, and no migration was needed. Taking back, the organizer's Remove, deletion with the
+  note and with the author's account all work unchanged. It can't be edited once posted: taking it back is the way to
+  change it.
+- **Kept nowhere else.** Like everything added to the shared notes, it keeps no operation receipt, and its log line has
+  IDs and counts only (`written into the shared notes`).
 ### What happens to your own notes
 
 - **The note is deleted**: everyone's own notes on it and everything added to it go, in the same transaction.

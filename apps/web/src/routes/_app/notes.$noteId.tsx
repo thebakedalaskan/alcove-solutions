@@ -26,7 +26,7 @@ import { ScreenMomentRow, ScreenRefChip, ScreenViewer, useScreenViewer } from '~
 import { WorkedOn } from '~/features/notes/WorkedOn';
 import { PinNote, ShareNote } from '~/features/notes/share';
 import { noteWave } from '~/features/notes/wave';
-import { Additions, OwnNotesCard, useOwn } from '~/features/personal/OwnNotes';
+import { OwnNotesCard, SharedNotes, useOwn } from '~/features/personal/OwnNotes';
 import { SeriesCard } from '~/features/series/cards';
 import { useNoteOnScreen } from '~/features/shell/notify';
 import { api } from '~/lib/api';
@@ -440,7 +440,7 @@ function NoteView({ note, me, at, room, onGone }: { note: Note; me: string | und
         <aside ref={side} className="nd-side" aria-label="About these notes">
           {showMarks && <ChapterList chapters={note.chapters} onGo={canGo ? goChapter : undefined} />}
           <OwnNotesCard note={note} me={me} entries={yours.entries} own={yours.own} shown={onScreen} onSeek={seek} />
-          <Additions note={note} me={me} mine={mine} shown={onScreen} onSeek={seek} />
+          <SharedNotes note={note} me={me} mine={mine} shown={onScreen} onSeek={seek} />
           <Recipients recipients={note.recipients} me={me} fresh={sharedTo} />
           {!going && <SeriesCard note={note} />}
           {!going && note.kind === 'call' && note.id !== 'example' && <NoteDriveExports noteId={note.id} recordingAllowed={mine && note.kept.recording} recordingKept={note.kept.recording} />}

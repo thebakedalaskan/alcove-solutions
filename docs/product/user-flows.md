@@ -1174,15 +1174,26 @@ Storybook journeys **6.23–6.25** show the review alongside the call:
   Beside the list it asks in place, and the row leaves the list. While the call is going, it waits until the call ends.
 - **Your notes**, beside the note, is what you kept in the call and more: write something, bookmark a line (the bookmark
   beside it) or a shared screen, or **Keep in your notes** under an answer. It says **Only you**, and the note itself
-  says **Everyone with the notes**: nobody else reads Your notes, the organizer included.
+  says **Everyone with the notes**: nobody else reads Your notes, the organizer included. Each row starts with its kind
+  (lines of text for something you wrote, a bookmark, a question for a kept answer); pointing at a row, or moving the
+  keyboard into it, shows **Add to the shared notes**, **Change what you wrote** and **Delete**, which a touch screen
+  always shows.
+- The column beside the note scrolls by itself, under the line along the top: however far down the note you are, Your
+  notes and its box are in reach without scrolling back up, and scrolling one column doesn't move the other. In one
+  column (1180px wide and narrower, and phones), Your notes and **Shared notes** come before the transcript, two across
+  until a phone puts them one under the other; who has the notes, the series and Google Drive come after it.
 - **Add to the shared notes** on anything in Your notes shows, in place of the box you write in, exactly what goes:
-  the words, which you can cut down, the moment they point at, **Added by people** on this note, and everyone who
+  the words, which you can cut down, the moment they point at, **Shared notes** on this note, and everyone who
   has the notes. Nothing goes until **Add for 3 people**; only what's in the box goes, and never a question you asked.
   If someone got the notes since, it says so and shows them. An answer goes only if the moments behind it are in the
   notes. Once the notes are written is when this can be done: until then the people who'll get them aren't settled.
-- **Added by people** shows what people added, with who and when, for everyone with the notes. **Take back** removes
-  yours for everyone, once you say so in the row, and it stays in Your notes; the organizer can **Remove** any of them
-  the same way.
+- **Shared notes** (**Everyone with the notes**) shows what people wrote there or added from their own notes, with who
+  and when, for everyone with the notes, and once the notes are written, a box of its own: before anything is typed it
+  says who reads it (their faces and names, "and anyone they share the notes with"), and Enter posts it for all of them
+  in one step. If someone got the notes after the box showed, posting is refused, the words stay in the box, and it says
+  who got them since; Enter again posts it for them too. What's posted can't be changed. **Take back** removes yours for
+  everyone, once you say so in the row; something added from Your notes stays there. The organizer can **Remove** any
+  of them the same way. During a call the shared place to write is the call's workspace pages.
 - A note's page is a slim band of sky, with the call drawn along the horizon. The band has a way back (**Notes /** its
   title), the pin (**Pin these notes**, at most eight pinned), **Share**, **More**, and one line under the title: when
   it was, who has it, how you got it, and **Written in confidential compute** with when the hardware was checked (or, in
@@ -1295,6 +1306,9 @@ Storybook journeys **6.23–6.25** show the review alongside the call:
   calls and says how many older ones aren't shown. The organizer also sees the next call, with **Join** and
   **Change this call**, or **Schedule next week’s call**. When the series follows a recurring Google event
   and Google Calendar isn't connected any more, it says so and offers **Connect Google Calendar**.
+
+Storybook journeys **8.47** and **8.48** write straight into the shared notes: posting for everyone in one step, and
+someone getting the notes while the box is open, which it says before posting again.
 
 Storybook journeys **8.44–8.46** continue the same review after the call:
 

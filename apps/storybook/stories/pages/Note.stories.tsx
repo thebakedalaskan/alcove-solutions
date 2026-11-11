@@ -122,6 +122,16 @@ export const YourNotesPointedAt = page('/notes/n2', 'busy', {
     });
   }
 });
+/** The shared notes beside Your notes: what Priya added, and their own box, which says who reads it before anything is typed. */
+export const SharedNotesBox = page('/notes/n2', 'busy', {
+  play: async ({ userEvent, step }) => {
+    await step('Write in the shared notes', async () => {
+      await userEvent.type(await screen.findByRole('textbox', { name: 'Write in the shared notes' }, { timeout: 30000 }), 'Support needs the article by Monday.');
+    });
+  }
+});
+export const SharedNotesBoxNight = page('/notes/n2', 'busy', { globals: { theme: 'dark' } });
+export const SharedNotesBoxPhone = phone(page('/notes/n2', 'busy'));
 /** Something from Art's own notes, on its way to the shared notes: exactly what goes, the moment, and everyone who gets it. */
 export const AddingToTheSharedNotes = page('/notes/n2', 'busy', {
   play: async ({ canvas, userEvent, step }) => {

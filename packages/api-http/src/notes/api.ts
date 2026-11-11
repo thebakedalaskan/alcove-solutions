@@ -1,6 +1,6 @@
 import { type HttpTransport } from '../transport/http';
 import { createPersonalApi } from './personal';
-import { AiModelsSchema, type AlcoveApi, AlcoveApiError, AnswerPartSchema, InboxSchema, NoteFoundSchema, NoteProgressSchema, NoteSchema, PromotionPreviewSchema, SeriesAnswerPartSchema, SeriesSchema } from '@alcove/api';
+import { AiModelsSchema, type AlcoveApi, AlcoveApiError, AnswerPartSchema, InboxSchema, NoteFoundSchema, NoteProgressSchema, NoteSchema, PromotionPreviewSchema, SeriesAnswerPartSchema, SeriesSchema, SharedAudienceSchema } from '@alcove/api';
 import { z } from 'zod';
 
 const audioPath = (id: string, segment: number, pieces: number) => `/notes/${encodeURIComponent(id)}/audio/${segment}?pieces=${pieces}`;
@@ -49,6 +49,9 @@ export function createNotesApi(t: HttpTransport): Pick<AlcoveApi, 'notes' | 'ser
       personal: (id) => personal(`/notes/${encodeURIComponent(id)}/personal`),
       previewAddition: (id, entryId) => req(PromotionPreviewSchema, 'POST', `/notes/${encodeURIComponent(id)}/personal/${encodeURIComponent(entryId)}/preview`),
       addToShared: (id, entryId, body) => req(NoteSchema, 'POST', `/notes/${encodeURIComponent(id)}/personal/${encodeURIComponent(entryId)}/add`, body),
+      sharedAudience: (id) => req(SharedAudienceSchema, 'GET', `/notes/${encodeURIComponent(id)}/additions/audience`),
+      // The words go in the body, as everything added to the notes does, never in the URL.
+      writeShared: (id, body) => req(NoteSchema, 'POST', `/notes/${encodeURIComponent(id)}/additions`, body),
       takeBack: (id, additionId) => req(NoteSchema, 'DELETE', `/notes/${encodeURIComponent(id)}/additions/${encodeURIComponent(additionId)}`),
       delete: async (id) => { await req(z.unknown(), 'DELETE', `/notes/${encodeURIComponent(id)}`); }
     },

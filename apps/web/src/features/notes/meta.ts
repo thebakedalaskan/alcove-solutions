@@ -50,6 +50,6 @@ export function noteAsText(n: Note): string {
     ...(open.length ? ['', 'Still open', ...open.map((x) => `- ${x.text}`)] : []),
     ...(said.length ? ['', 'Follow-ups', ...said.map(line)] : []),
     ...(fromBoards.length ? ['', 'Follow-ups from the board', ...fromBoards.map(line)] : []),
-    ...(n.additions.some((a) => a.text) ? ['', 'Added by people', ...n.additions.filter((a) => a.text).map((a) => `- ${a.text} (${a.by.name})`)] : [])
+    ...(n.additions.some((a) => a.text) ? ['', 'Shared notes', ...n.additions.filter((a) => a.text).map((a) => `- ${a.text} (${a.by.name})`)] : [])
   ].join('\n');
 }
