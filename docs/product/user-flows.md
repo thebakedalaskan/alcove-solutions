@@ -664,8 +664,9 @@ time, slides in on the right.
   (rename a room in place, move someone to another room or back to the main room from their name, or send someone in the
   main room, such as someone who came late or a guest, to a room), **Join room** and **Back to main room**, **Message
   every room**, and **Bring everyone back now**. From the main room, your stage shows every room; one with nobody in it,
-  and any you fold (the main room too), is only its name, and the time left is said once, over them. In a room, your
-  stage is that room's people, as it is for everyone in it. Each room has its own encryption keys and
+  and any you fold (the main room too), is only its name, and the time left is said once, over them. With notes on, a
+  room says **Notes** only while someone invited is in it: one with only guests, or nobody, in it isn't transcribed.
+  In a room, your stage is that room's people, as it is for everyone in it. Each room has its own encryption keys and
   chat, so what's seen, heard and written in a room reaches only the people in it; the room sees the organizer
   come and go, and someone moved is told. Captions and catching up in a room cover that room only. With notes on,
   what's said in a room is transcribed by one browser there (someone invited sent to the room, told when it's theirs),

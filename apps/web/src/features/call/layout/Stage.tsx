@@ -99,7 +99,7 @@ export interface StagePresented {
 const HZ_WORDS = 150;
 /**
  * Open rooms, as the organizer oversees them from the main room: who's in each, who in a room raised a hand for help, and what
- * its notes are doing (on, paused on its own or with the whole call, or off).
+ * its notes are doing (on, paused on its own or with the whole call, or off, as they are in a room with only guests in it).
  */
 export interface StageRooms {
   /**
