@@ -7,7 +7,7 @@ import type { ScreenLegible, ScreenRegion } from '@alcove/api';
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react';
 import { cn } from '../cn';
 import { Icon } from './icon';
-import { Chip, IconButton } from './primitives';
+import { Chip, IconButton, Spinner } from './primitives';
 
 /**
  * Where a part's label goes: above its box, or under it when the box starts near the frame's top (the frame clips
@@ -70,21 +70,44 @@ const IDLE = 2500;
 
 /** A share replay can switch to: one going on at the moment the recording is at. */
 export interface ReplayShare { id: string; label: string }
+/** A share to go to while none is at this moment: whose it was, and when ("8:52–10:40"). */
+export interface ReplayShareAt { id: string; label: string; when: string }
+/** What the picture is doing: on its way (loading, or going to another moment), there, or it couldn't be played. */
+export type ReplayState = 'loading' | 'shown' | 'failed';
+
+/** How long a picture can take before the stage says it's on its way, so a quick seek doesn't flash. */
+const SLOW_MS = 300;
+/** A share's label as a sentence says it: "Kofi’s screen", or "the shared screen" for one without a name. */
+const spoken = (label: string) => (label.startsWith('Shared screen') ? `the s${label.slice(1)}` : label);
 
 /**
  * A note's shared screens played back in step with its recording, on a black stage (night in both themes, like the
- * call). `video` is the app's own `<video>`, kept mounted so it can follow the audio; with `nothing` it's hidden and
- * the stage says nothing was shared then. When more than one share was going on, chips switch between them; with
+ * call). `video` is the app's own `<video>`, kept mounted so it can follow the audio, and `state` says what its picture
+ * is doing: while it takes a moment to load or to get to a moment, the stage says it's loading that share, and when it
+ * couldn't be played, says so with Try again (`onRetry`). With `nothing` the video is hidden and the stage says no
+ * shared screen in the notes covers this moment, with the shares there are (`elsewhere`) to go to in one press (`onGo`).
+ * The stage keeps its size whatever it says. When more than one share was going on, chips switch between them; with
  * one, its label says whose it is. Where the browser allows it, a button in the corner fills the screen with it;
  * `controls` (play and pause, the time, a `ReplayScrub`) show along its foot only then, since the page's own player is
  * out of view. While `playing`, they slip away after a moment without the pointer moving, and come back on a move,
  * a key, focus or a pause; they stay while one is being pressed or has keyboard focus.
  */
-export function ScreenReplay({ video, nothing, shares, current, onPick, controls, playing = false, className }: {
+export function ScreenReplay({ video, nothing, shares, current, onPick, state = 'shown', onRetry, elsewhere = [], onGo, controls, playing = false, className }: {
   video: ReactNode | null; nothing: boolean; shares: ReplayShare[]; current: string | null; onPick: (id: string) => void;
+  state?: ReplayState | undefined; onRetry?: (() => void) | undefined; elsewhere?: ReplayShareAt[] | undefined; onGo?: ((id: string) => void) | undefined;
   controls?: ReactNode | undefined; playing?: boolean | undefined; className?: string | undefined;
 }) {
   const shown = shares.find((s) => s.id === current);
+  const name = spoken(shown?.label ?? 'Shared screen');
+  // The picture on its way says so once it's taken long enough to notice.
+  const loading = !nothing && state === 'loading';
+  const [slow, setSlow] = useState(false);
+  useEffect(() => {
+    setSlow(false);
+    if (!loading) return undefined;
+    const t = window.setTimeout(() => setSlow(true), SLOW_MS);
+    return () => window.clearTimeout(t);
+  }, [loading]);
   const root = useRef<HTMLDivElement | null>(null);
   const [can, setCan] = useState(false);
   const [full, setFull] = useState(false);
@@ -118,11 +141,31 @@ export function ScreenReplay({ video, nothing, shares, current, onPick, controls
     else void root.current?.requestFullscreen().catch(() => undefined);
   };
   return (
-    <div ref={root} className={cn('ac-replay', nothing && 'is-nothing', full && 'is-full', full && !awake && 'is-idle', className)} role="group" aria-label="Shared screens"
+    <div ref={root} className={cn('ac-replay', nothing && 'is-nothing', !nothing && state === 'failed' && 'is-failed', full && 'is-full', full && !awake && 'is-idle', className)} role="group" aria-label="Shared screens"
       onPointerMove={full ? wake : undefined} onKeyDown={full ? wake : undefined} onFocus={full ? wake : undefined}>
       <div className="ac-replay-stage">
         {video}
-        {nothing && <span className="ac-replay-none"><Icon name="stopShare" size={18} />Nothing shared</span>}
+        {nothing && (
+          <div className="ac-replay-none">
+            <span className="ac-replay-none-t"><Icon name="stopShare" size={18} />No shared screen in the notes here</span>
+            {elsewhere.length > 0 && onGo && (
+              <span className="ac-replay-gos">
+                {elsewhere.map((s) => (
+                  <button key={s.id} type="button" className="ac-replay-go" aria-label={`Go to ${s.label}, ${s.when}`} onClick={() => onGo(s.id)}>
+                    <Icon name="monitor" size={14} /><span className="ac-clamp-1">{s.label}</span><span className="ac-mono">{s.when}</span>
+                  </button>
+                ))}
+              </span>
+            )}
+          </div>
+        )}
+        {loading && slow && <span className="ac-replay-says is-loading"><Spinner />Loading {name}</span>}
+        {!nothing && state === 'failed' && (
+          <span className="ac-replay-says" role="status">
+            This part of {name} couldn’t be played.
+            {onRetry && <button type="button" className="ac-replay-act" onClick={onRetry}>Try again</button>}
+          </span>
+        )}
         {can && <IconButton icon={full ? 'shrink' : 'grow'} label={full ? 'Exit full screen' : 'Full screen'} size={16} className="ac-replay-full" onClick={toggle} />}
         {full && controls && <div className="ac-replay-bar" onPointerDown={hold}>{controls}</div>}
       </div>

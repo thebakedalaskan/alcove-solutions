@@ -14,7 +14,7 @@
  * video follows it.
  */
 import { errorCode, type AudioSegment, type ScreenShare, type ScreenShareSegment } from '@alcove/api';
-import { Icon, ReplayScrub, ScreenReplay, useToast } from '@alcove/ui';
+import { Icon, ReplayScrub, ScreenReplay, useToast, type ReplayState } from '@alcove/ui';
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { api } from '~/lib/api';
 import { overlayOpen, typing } from '~/lib/keys';
@@ -333,13 +333,19 @@ const DRIFT = 0.3;
 /** The part of a share's video that covers a moment of the recording, if any. */
 const segmentAt = (s: ScreenShare, t: number): ScreenShareSegment | undefined => s.segments.find((g) => g.at <= t && t < g.until);
 
+/** How many of the note's shares the stage offers to go to while none is at the moment: the nearest. */
+const NEAREST = 4;
+
 /**
  * The shared screen to show with the audio: the shares going on at `pos`, and of those the one picked, or else the
  * one that started last. A muted video follows the audio: it plays and pauses with it, jumps when it seeks or moves
- * to another segment, and is put back in step when it drifts more than `DRIFT`.
+ * to another segment, and is put back in step when it drifts more than `DRIFT`. What its picture is doing comes from
+ * the video's own events: on its way while it loads, goes to a moment or waits for more to play on; there once it can
+ * show this moment; or failed, until it's tried again or another part of a share is loaded. With no share at `pos`,
+ * the nearest of the note's shares, to go to.
  */
 function useReplay(noteId: string, shares: ScreenShare[], player: PlayerState) {
-  const { playing, busy } = player;
+  const { playing, busy, seek } = player;
   const pos = usePlayerAt(player, (p) => p);
   const video = useRef<HTMLVideoElement | null>(null);
   const [picked, setPicked] = useState<string | null>(null);
@@ -365,18 +371,39 @@ function useReplay(noteId: string, shares: ScreenShare[], player: PlayerState) {
   // Every tick of the audio clock, a seek, play or pause, or another share or segment.
   useEffect(follow, [follow, pos, playing, busy, src]);
 
+  const [state, setState] = useState<ReplayState>('loading');
+  /** It stopped while playing for want of more of the video, until it plays on. */
+  const stalled = useRef(false);
+  const look = useCallback(() => {
+    const v = video.current;
+    if (!v) return;
+    if (v.error) { setState('failed'); return; }
+    setState(v.seeking || v.readyState < HTMLMediaElement.HAVE_METADATA || (stalled.current && !v.paused) ? 'loading' : 'shown');
+  }, []);
   const label = share?.label ?? '';
   const element = (
     <video ref={video} src={src ?? undefined} muted playsInline preload="metadata" aria-label={label ? `Shared screen: ${label}` : 'Shared screen'}
-      onLoadedMetadata={follow} onError={() => plog.warn('shared screen could not load', { share: share?.id, segment: seg?.segment })} />
+      onLoadStart={() => { stalled.current = false; look(); }} onLoadedMetadata={() => { follow(); look(); }} onLoadedData={look} onCanPlay={look}
+      onSeeking={look} onSeeked={look} onWaiting={() => { stalled.current = true; look(); }} onPlaying={() => { stalled.current = false; look(); }} onPause={look} onEmptied={look}
+      onError={() => { plog.warn('shared screen could not load', { share: share?.id, segment: seg?.segment }); look(); }} />
   );
+  // Read again from the start of what failed, and put back in step once it's there.
+  const retry = () => {
+    plog.debug('shared screen read again', { share: share?.id, segment: seg?.segment });
+    video.current?.load();
+  };
+  const away = (s: ScreenShare) => (pos < s.at ? s.at - pos : pos - s.until);
+  const elsewhere = src !== null ? [] : [...shares].sort((a, b) => away(a) - away(b)).slice(0, NEAREST).sort((a, b) => a.at - b.at)
+    .map((s) => ({ id: s.id, label: s.label, when: `${position(s.at)}⁠–⁠${position(s.until)}` }));
+  // Going to a share moves the sun to its start, playing on if it was playing, as the line does.
+  const go = (id: string) => { const s = shares.find((x) => x.id === id); if (s) seek(s.at); };
   return {
     element, nothing: src === null, current: share?.id ?? null,
-    shares: active.map((s) => ({ id: s.id, label: s.label })), pick: setPicked
+    shares: active.map((s) => ({ id: s.id, label: s.label })), pick: setPicked, state, retry, elsewhere, go
   };
 }
 
-/** The shared screens that went with the recording, drawn in step with it; nothing where none was going on. */
+/** The shared screens that went with the recording, drawn in step with it; where none was going on, when there were, to go to. */
 export function Replay({ noteId, shares, player }: { noteId: string; shares: ScreenShare[]; player: PlayerState }) {
   const r = useReplay(noteId, shares, player);
   const { total, playing, toggle, seek } = player;
@@ -392,5 +419,5 @@ export function Replay({ noteId, shares, player }: { noteId: string; shares: Scr
       <span>{position(total)}</span>
     </>
   );
-  return <ScreenReplay video={r.element} nothing={r.nothing} shares={r.shares} current={r.current} onPick={r.pick} controls={controls} playing={playing} />;
+  return <ScreenReplay video={r.element} nothing={r.nothing} shares={r.shares} current={r.current} onPick={r.pick} state={r.state} onRetry={r.retry} elsewhere={r.elsewhere} onGo={r.go} controls={controls} playing={playing} />;
 }

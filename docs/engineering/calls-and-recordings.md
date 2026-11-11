@@ -657,8 +657,8 @@ Code: `apps/web/src/features/call/screen-sharing/screenRecord.ts` (the recorder)
   browser can seek (`finishVideo`: ffmpeg, pipes only, copying the stream, with an index and duration added for
   WebM), sealed in chunks of at most 4 MiB (`screen-video-chunk`, binding the chunk and how many there are) into
   `screen_videos`, and the pieces are deleted, in one transaction with the chunks' rows, so a join that stopped halfway
-  carries on. A share whose pieces won't join (ffmpeg can't read them, or one fails its integrity check) keeps them
-  and is left out of replay; the object store failing fails the join instead, and the next try (the notes job's retry, or maintenance) carries on. `Note.shares` lists each kept
+  carries on. A share whose pieces won't join (ffmpeg can't read them, or one fails its integrity check) has them
+  deleted, since they'd fail the same way at every try, and is left out of replay; the object store failing fails the join instead, and the next try (the notes job's retry, or maintenance) carries on. `Note.shares` lists each kept
   share with video: its label ("Priya’s screen", then "Priya’s screen (2)"), whose it was, and where each segment's
   video falls on the recording's timeline (`at` to `until`, kept inside that segment's audio); it's empty until the
   video is joined. The video is at `GET /v1/notes/:id/screen/:share/:segment`, for anyone who has the note and only
@@ -666,7 +666,12 @@ Code: `apps/web/src/features/call/screen-sharing/screenRecord.ts` (the recorder)
   opening the whole note, since a player asks for many ranges), with one byte range at a time (`206`, `416` for one it can't serve), opening only the chunks
   a range needs, with `cache-control: no-store`. The note's player keeps the audio as its clock and a muted video
   follows it, put back in step when it drifts more than 0.3 seconds; with two shares at once it shows the one that
-  started last, with a chip for each, and between shares a dark stage that says **Nothing shared**.
+  started last, with a chip for each. The stage follows the video element's own events: while it loads, seeks or waits
+  for more data for over 300 ms it says it's loading that share, and an element that errors says this part couldn't be
+  played, with **Try again** (the element loads again; the failure is logged with the share and segment). Where no
+  share in `Note.shares` covers the moment, which is also where a share that wasn't kept (not put in the notes, in a
+  breakout room, under ten seconds, or not joined) would have been, the stage says **No shared screen in the notes
+  here** and offers the nearest four shares, each a press that moves the playhead to its start.
 - **Breakout rooms.** What's shared in a room stays in the room, like what's said there: a share started in one is
   never kept, the browser doesn't record while its presenter is in one, and leaving the main room ends the
   presenter's shares there. The main room's shares are kept while rooms are open.

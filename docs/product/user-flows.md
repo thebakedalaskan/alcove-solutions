@@ -1218,7 +1218,11 @@ Storybook journeys **6.23–6.25** show the review alongside the call:
   notes, what people added, who has it and its series. On a wide screen the transcript moves beside what was decided, so
   going to a moment never takes the note away. When a share went in the notes, the recording plays its video above the
   audio, in step with it, a short while after the call and before the notes are written: the share that started last
-  when two overlap, with a chip for each to switch, and a dark **Nothing shared** between shares. A button in its
+  when two overlap, with a chip for each to switch. While a share's picture takes a moment to load, or to get to another
+  moment, the dark stage says **Loading Priya’s screen**; if it can't be played, it says so, with **Try again**. Where
+  no share in the notes covers the moment (before, between or after them, or a share that wasn't kept), it says **No
+  shared screen in the notes here**, with when screens were shared (**Priya’s screen 2:10–14:40**), each going there in
+  one press. The stage keeps its size whatever it shows, so nothing below it moves. A button in its
   corner fills the screen with it, with play, the time and a bar to scrub through the recording along the foot (it
   hides while playing until the pointer moves); Escape leaves. The transcript shows a frame of a share beside the line
   said when what was shown mattered to what was said: only a screen the AI judged key, where what was said refers to it
