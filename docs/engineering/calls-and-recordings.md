@@ -2633,12 +2633,13 @@ uploads), Alcove is asked who's signed in (`GET /v1/session`): only the account 
     - Cameras under Auto are capped by how big each picture of one is here (`CAMERA_MOST` in `livekit.ts`, from a
       `ResizeObserver` on each element `attach` plays it in): one under 200 CSS pixels tall (or as tall as its width
       at 16:9), such as a big grid's or the column beside a share, asks for at most 180p (`setVideoDimensions`, in
-      pixels, since a sender's own low, medium and high depend on the size they send). Each copy is downloaded by
+      pixels, since a sender's own low, medium and high depend on the size they send; 180×180, so an upright camera
+      is capped too). Only a picture crossing that step asks again. Each copy is downloaded by
       everyone who shows it, and 180p costs about 0.15 Mbps against 360p's 0.45.
     - A camera's 720p copy is sent at 1 Mbps instead of 1.7 (`CAMERA_CUT` in `livekit.ts`), whether it's the top copy
       (Standard) or the middle one (HD): a still face looks the same, and motion is blockier.
-    - Microphones are published as speech (`AudioPresets.speech`, Opus at up to 24 kbps, with LiveKit's default DTX
-      and RED); a share's sound keeps LiveKit's music default.
+    - Microphones are published as speech (`AudioPresets.speech`, Opus at up to 24 kbps, with LiveKit's default DTX;
+      LiveKit turns RED off under end-to-end encryption); a share's sound keeps LiveKit's music default.
   - **With the `call.screenShareQuality` feature flag**, read once as the room opens, a shared screen is sent at up to 30
     fps instead of LiveKit's 15, at LiveKit's own 2.5 Mbps (`SCREEN` in `livekit.ts`), and with
     LiveKit's `maintain-resolution` for screens: scrolling that outruns the rate drops frames and text stays sharp,
@@ -2655,8 +2656,9 @@ uploads), Alcove is asked who's signed in (`GET /v1/session`): only the account 
     browsers that decode VP9 say nothing). A sharer with the flag sends a clone of LocalMedia's screen track
     (`publishScreen`, which stops the clone once its publication goes) and, while anyone it hears can't decode VP9,
     sends it as VP8 with LiveKit's own settings (main's) instead. A change of codec publishes the new copy before taking
-    the old one down, so viewers see the share blink rather than stop and start, and the sharer isn't asked to pick a
-    screen again; it goes back to VP9 once they leave. The picture's track sid changes, so pointers and marks on it
+    the old one down, and the sharer isn't asked to pick a screen again; it goes back to VP9 once they leave. A viewer
+    still sees the share stop for a moment (the stage's end animation) and come back, since it drops the old copy before
+    the new one arrives. The picture's track sid changes, so pointers and marks on it
     start afresh, and a viewer who muted the share's sound hears it again.
 - **Speakers.** Where a page can choose one (`setSinkId` on media elements: Chrome, Edge and Firefox; LiveKit
   doesn't on Safari), the chosen speaker goes through LiveKit's own output switching, so every element plays

@@ -11,6 +11,8 @@ import type { CallRoom, RoomView } from './livekit';
 import type { LocalMedia } from './media';
 
 const clog = log.child({ component: 'call' });
+/** How long opening a call waits for its feature flags before treating them as off. */
+const FLAGS_WAIT_MS = 1500;
 
 /** Before the room has connected: nobody's media yet. */
 const NO_VIEW: RoomView = { connection: 'connecting', endReason: null, people: {}, hostMuted: 0, shareStopped: 0, audioBlocked: false, screenFailed: null };
@@ -51,8 +53,12 @@ export function useCallRoom({ session, media, toast, guard: guardRef }: CallRoom
     let gone = false;
     let entry = connections.get(session);
     if (!entry) {
-      // The call's feature flags are read once, as the room opens: flags that can't be read are off.
-      const flags = queries.fetchQuery(q.featureFlags()).then((on): FeatureFlagName[] => on, (): FeatureFlagName[] => []);
+      // The call's feature flags are read once, as the room opens: flags that can't be read, or take longer than
+      // FLAGS_WAIT_MS, are off, so a slow answer never holds up joining.
+      const flags = Promise.race([
+        queries.fetchQuery(q.featureFlags()).then((on): FeatureFlagName[] => on, (): FeatureFlagName[] => []),
+        new Promise<FeatureFlagName[]>((resolve) => { setTimeout(() => resolve([]), FLAGS_WAIT_MS); })
+      ]);
       entry = {
         room: Promise.all([import('~/features/call/media/livekit'), flags]).then(([{ openRoom }, on]) =>
           openRoom(session, media, { bandwidthReduction: on.includes('call.bandwidthReduction'), screenShareQuality: on.includes('call.screenShareQuality') })),

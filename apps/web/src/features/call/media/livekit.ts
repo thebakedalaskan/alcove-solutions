@@ -176,8 +176,9 @@ const CAMERA: Record<VideoSend, TrackPublishOptions> = {
  * width would be at 16:9, whichever is more): a small tile (a big grid, the column beside a share) takes the 180p copy,
  * which is about 0.15 Mbps against 360p's 0.45, and anything bigger is as sharp as adaptive stream makes it. In pixels,
  * not LiveKit's low, medium and high: those name a sender's own copies, and someone sending 1080p has 720p as their medium.
+ * Square, so a camera sent upright (a phone's 180×320) is capped the same as one sent across (320×180).
  */
-const CAMERA_MOST = [{ below: 200, most: { width: 320, height: 180 } }];
+const CAMERA_MOST = [{ below: 200, most: { width: 180, height: 180 } }];
 /**
  * The camera as CAMERA sends it, but its 720p copy at 1 Mbps instead of LiveKit's 1.7: about 60% of the data, a still
  * face looks the same, and motion gets blockier.
@@ -366,6 +367,9 @@ class LiveKitRoom implements CallRoom {
       this.stopCameraRetry();
       this.stopCodecs();
       if (this.codecsTimer) clearInterval(this.codecsTimer);
+      // The screen sent is a clone (publishScreen): LocalMedia stops only its own track, so the clone goes here.
+      this.screenOut?.clone.stop();
+      this.screenOut = null;
       this.stopFollowing();
       this.stopKeys();
       this.stopVolumes();
@@ -515,6 +519,10 @@ class LiveKitRoom implements CallRoom {
    * a second copy. Reconnected follows again.
    */
   private follow() {
+    // A share stopped here stops being sent at once, not when the next sync gets to it: what's sent is a clone
+    // (publishScreen), which stopping LocalMedia's track doesn't end. Sync takes its publication down after.
+    const out = this.screenOut;
+    if (out && (!this.media.getSnapshot().screen || out.from.readyState === 'ended')) out.clone.stop();
     if (this.reconnecting()) return;
     this.syncing = this.syncing.then(() => this.sync()).catch((e: unknown) => rlog.warn('publishing to the room failed', { err: e }));
   }
@@ -588,8 +596,8 @@ class LiveKitRoom implements CallRoom {
   /**
    * With `call.screenShareQuality`: the screen goes as a clone of LocalMedia's track (stopped here once its publication
    * goes; the capture stays LocalMedia's), as VP9 with SCREEN, or as VP8 with LiveKit's own settings (main's) while anyone
-   * here can't decode VP9. A change of codec publishes the new copy before taking the old one down, so viewers see the
-   * share blink rather than stop and start, and the sharer isn't asked to pick a screen again. The picture's track sid
+   * here can't decode VP9. A change of codec publishes the new copy before taking the old one down, and the sharer isn't
+   * asked to pick a screen again; a viewer still sees the share stop for a moment and come back. The picture's track sid
    * changes, so pointers and marks on it start afresh, and a viewer who muted its sound hears it again.
    */
   private async publishScreen(track: MediaStreamTrack | null) {
@@ -612,7 +620,11 @@ class LiveKitRoom implements CallRoom {
       await me.publishTrack(clone, { source: Track.Source.ScreenShare, ...(codec === 'vp9' ? SCREEN : {}) });
     } catch (e) {
       clone.stop();
-      throw e;
+      // A switch of codec that failed keeps the copy that's going, rather than ending a share that works: the next
+      // sync tries again. With nothing going, the share failed.
+      if (!out || !have) throw e;
+      rlog.warn('shared screen not sent again in another codec', { err: e, codec });
+      return;
     }
     this.screenOut = { from: track, clone, codec };
     if (out) {
@@ -758,9 +770,12 @@ class LiveKitRoom implements CallRoom {
       if (!entry) return;
       const { width, height } = entry.contentRect;
       const tall = Math.round(Math.max(height, (width * 9) / 16));
-      if (sizes.get(el) === tall) return;
+      const was = sizes.get(el);
       sizes.set(el, tall);
-      this.receiveCams();
+      // Only a picture crossing a step of CAMERA_MOST changes what's asked for: resizing within one (a layout's
+      // animation, a window being dragged) asks nothing again.
+      const step = (t: number | undefined) => (t === undefined ? -2 : CAMERA_MOST.findIndex((s) => t < s.below));
+      if (step(was) !== step(tall)) this.receiveCams();
     });
     watch.observe(el);
     return () => {
