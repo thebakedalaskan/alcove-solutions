@@ -35,10 +35,10 @@ const keyOf = (documentId: string, media: string) => `${documentId}:${media}`;
 
 /**
  * Where a player or a download reads a file, asked for afresh: it lasts 12 hours, and each read checks again. It's never
- * logged or kept anywhere: for a guest, the URL is all it takes to read the file.
+ * logged or kept anywhere: for a guest, the URL is all it takes to read the file. With `download`, it saves whatever it is.
  */
-export const fileUrl = (workspaceId: string, documentId: string, media: string, pass: string | undefined): Promise<string> =>
-  api.workspaces.media.url(workspaceId, documentId, media, { pass });
+export const fileUrl = (workspaceId: string, documentId: string, media: string, pass: string | undefined, download = false): Promise<string> =>
+  api.workspaces.media.url(workspaceId, documentId, media, { pass, download });
 
 /** A photo's small picture for the picker: on its way, there (an object URL), or not to be had. */
 type Small = { kind: 'loading' } | { kind: 'ready'; url: string } | { kind: 'none' };

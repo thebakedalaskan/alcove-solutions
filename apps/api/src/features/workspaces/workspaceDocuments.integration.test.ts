@@ -1918,6 +1918,8 @@ describe('versions', () => {
 });
 
 describe('reading a document on the server', () => {
+  /** A day this year, which a follow-up's words say without its year. */
+  const DAY = `${new Date().getUTCFullYear()}-11-06`;
   /** A document with one of everything that holds words, as y-prosemirror stores it. */
   async function full(who: Account, id: string, name: string) {
     const doc = await make(who, id, 'document', name);
@@ -1931,7 +1933,7 @@ describe('reading a document on the server', () => {
     before.insert(0, 'Send the brief to ');
     const after = new Y.XmlText();
     after.insert(0, ' by ');
-    todo.insert(0, [before, inline('mention', { id: 'p1', name: 'Priya Rao' }), after, inline('dateChip', { date: '2026-11-06' })]);
+    todo.insert(0, [before, inline('mention', { id: 'p1', name: 'Priya Rao' }), after, inline('dateChip', { date: DAY })]);
     const plain = addBlock(s, 'line', 'todo2', { kind: 'todo' });
     const nobodys = new Y.XmlText();
     nobodys.insert(0, 'Nobody’s yet');
@@ -1980,15 +1982,24 @@ describe('reading a document on the server', () => {
     expect(text.title).toBe('Plan title');
     expect(text.blocks).toEqual(expect.arrayContaining([
       { id: 'first', type: 'paragraph', text: 'A first line' }, { id: 'h1', type: 'heading', text: 'A heading' },
-      { id: 'todo1', type: 'todo', text: 'Send the brief to Priya Rao by 2026-11-06' }, { id: 'tg', type: 'toggle', text: 'Toggle summary\nToggle body' },
+      { id: 'todo1', type: 'todo', text: `Send the brief to Priya Rao by ${DAY}` }, { id: 'tg', type: 'toggle', text: 'Toggle summary\nToggle body' },
       { id: 'tb', type: 'table', text: 'Cell one\tCell two' }, { id: 'lv', type: 'live', text: 'Decided: ship it' }, { id: 'mo', type: 'moment', text: 'What was said' },
       { id: 'fi', type: 'file', text: 'brief.pdf' }, { id: 'ga', type: 'gallery', text: 'A caption Another' }, { id: 'lk', type: 'paragraph', text: 'See ' }
     ]));
     expect(documentTodos(read, 'document')).toEqual([
       // A follow-up's words read as a sentence: a tag inside one is part of it, and a date is a day.
-      { block: 'todo1', text: 'Send the brief to Priya Rao by 6 Nov', done: false, mentions: [{ id: 'p1', name: 'Priya Rao' }], dates: ['2026-11-06'] },
+      { block: 'todo1', text: 'Send the brief to Priya Rao by 6 Nov', done: false, mentions: [{ id: 'p1', name: 'Priya Rao' }], dates: [DAY] },
       { block: 'todo2', text: 'Nobody’s yet', done: true, mentions: [], dates: [] }
     ]);
+    // A date outside this year says its year, as its tag does on the page.
+    const ahead = { doc: new Y.Doc() };
+    Y.applyUpdate(ahead.doc, Y.encodeStateAsUpdate(read));
+    const later = addBlock(ahead, 'line', 'todo3', { kind: 'todo' });
+    const words = new Y.XmlText();
+    words.insert(0, 'Renew the domain by ');
+    const next = new Date().getUTCFullYear() + 1;
+    later.insert(0, [words, inline('dateChip', { date: `${next}-02-05` })]);
+    expect(documentTodos(ahead.doc, 'document').find((t) => t.block === 'todo3')?.text).toBe(`Renew the domain by 5 Feb ${next}`);
     // A retired block isn't on the page, and a todo in one isn't anyone's, unless an edit landed in it after: then it's a block.
     const after = await open(ann, id, doc);
     const old = addBlock(after, 'line', 'old', { kind: 'todo', gone: 'first' });
@@ -4363,5 +4374,66 @@ describe('lines nobody reads', () => {
     } finally {
       for (const s of stops) s.abort();
     }
+  });
+});
+
+describe('a code block’s language', () => {
+  /** A block's element by its ID, on the page: what a reader would see. */
+  const elementIn = (s: { doc: Y.Doc }, block: string) => s.doc.getXmlFragment('content').toArray().find((el): el is Y.XmlElement => el instanceof Y.XmlElement && el.getAttribute('id') === block && !isGone(el));
+  const langIn = (s: { doc: Y.Doc }, block: string): unknown => elementIn(s, block)?.getAttribute('lang');
+  /** Code, as the editor writes a block of it: its words, and `lang` once someone's picked a language. */
+  function addCode(s: { doc: Y.Doc }, block: string, text: string, lang?: string): Y.XmlElement {
+    const el = addBlock(s, 'code', block, lang ? { lang } : {});
+    el.insert(0, [new Y.XmlText(text)]);
+    return el;
+  }
+
+  it('keeps it through a version, a restore, Duplicate and a move to another document, and code from before it reads as it did', async () => {
+    const ann = await account();
+    const id = await workspace(ann, 'Ours');
+    const doc = await make(ann, id, 'document', 'Bill');
+    const a = await open(ann, id, doc);
+    const py = addCode(a, 'py', 'def bill(minutes):\n    return minutes * 2', 'python');
+    // Code from before languages: no `lang` at all.
+    addCode(a, 'old', 'plain words, as they were');
+    await saved(a);
+
+    // A version keeps it, as an attribute of the block like any other.
+    const kept = await keepVersion(await heldBy(ann, id), doc, { reason: 'call', callId: madeUp() });
+    if (!kept) throw new Error('no version kept');
+    const past = { doc: new Y.Doc() };
+    Y.applyUpdate(past.doc, (await ann.api.workspaces.version(id, doc, kept)).update);
+    expect([langIn(past, 'py'), langIn(past, 'old')]).toEqual(['python', undefined]);
+
+    // Another language since, and restoring the version brings Python back, for everyone.
+    setAttr(py, 'lang', 'javascript');
+    await saved(a);
+    await ann.api.workspaces.restoreVersion(id, doc, kept);
+    await until(() => langIn(a, 'py') === 'python', 'the version’s language to come back');
+    expect(langIn(await open(ann, id, doc), 'py')).toBe('python');
+
+    // A copy of the document holds it too.
+    const copy = await ann.api.workspaces.items.duplicate(id, doc);
+    expect(langIn(await open(ann, id, copy.id), 'py')).toBe('python');
+
+    // Sent to another document as the editor sends a block: in there with its attributes, and retired here.
+    const other = await make(ann, id, 'document', 'Another');
+    const b = await open(ann, id, other);
+    const here = elementIn(a, 'py');
+    if (!here) throw new Error('no block');
+    const lang: unknown = here.getAttribute('lang');
+    addCode(b, 'moved', words(a, 'py'), typeof lang === 'string' ? lang : undefined);
+    await saved(b);
+    a.doc.transact(() => { retireBlock(here, newBlockId(), ''); });
+    await saved(a);
+    const there = await open(ann, id, other);
+    expect([langIn(there, 'moved'), words(there, 'moved')]).toEqual(['python', 'def bill(minutes):\n    return minutes * 2']);
+    expect(elementIn(await open(ann, id, doc), 'py')).toBeUndefined();
+
+    // What came before languages opens unchanged, and the server reads every code block's words as it always has.
+    const again = await open(ann, id, doc);
+    expect([langIn(again, 'old'), words(again, 'old')]).toEqual([undefined, 'plain words, as they were']);
+    const read = await serverDoc(await heldBy(ann, id), other);
+    expect(documentText(read, 'document').blocks.find((x) => x.id === 'moved')).toEqual({ id: 'moved', type: 'code', text: 'def bill(minutes):\n    return minutes * 2' });
   });
 });

@@ -1,7 +1,7 @@
 import { type ID } from '../shared/ids';
 import { type BoardSortBody, type BoardThemes, type DocAskBody, type DocAskPart, type DocSession, type DocSessionOptions, type DocVersion, type DocVersionSummary, type PresenterFrameNotes, type SearchDoc } from './documents';
 import { type DocumentLibrary } from './library';
-import { type MediaPictureOptions, type MediaUploadOptions, type WorkspaceMedia } from './media';
+import { type MediaPictureOptions, type MediaUploadOptions, type MediaUrlOptions, type WorkspaceMedia } from './media';
 import { type DocumentRole, type DocumentShare, type ItemInput, type ItemPlace, type MentionBody, type MentionNotice, type ShareTarget, type WorkspaceItem, type WorkspaceLive, type WorkspacePerson, type WorkspaceReadOptions, type WorkspaceRole, type WorkspaceSummary, type WorkspaceTree } from './schema';
 export interface DocumentsApi {
   /** What you can bring to a call: every document and board you can open, by workspace. */
@@ -80,9 +80,10 @@ export interface WorkspacesApi {
      * hours. It says only who's asking and is no reason to let them: each request looks again, so someone who loses the
      * document gets `not-found`, however good the URL. Someone signed in reads it only with their own session; for a
      * guest the URL is all there is, so never log one or put one anywhere it could be read. For a player or a download:
-     * a picture goes through `picture`. A read can be refused for a moment when too many are going on.
+     * a picture goes through `picture`. A read can be refused for a moment when too many are going on. With `download`,
+     * whatever the file is comes as a download under its own name, so opening the URL saves it and the page stays.
      */
-    url(id: ID, documentId: ID, mediaId: ID, opts?: WorkspaceReadOptions): Promise<string>;
+    url(id: ID, documentId: ID, mediaId: ID, opts?: MediaUrlOptions): Promise<string>;
     /**
      * A picture, for an `<img>`, as an object URL: everything a board or a document shows goes through this, so a whole
      * call opening the same board at once all see it. A browser reads a few at a time, and one the server's too busy for

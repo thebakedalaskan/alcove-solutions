@@ -10,7 +10,7 @@ import type { Meta } from '@storybook/react-vite';
 import { screen, waitFor, within } from 'storybook/test';
 import { asksToSee, at, goesTo, leaves, opensPage, plays, presentsWorkspace, tagsYou, type CallScript, type Present } from '../../src/api/script';
 import { current } from '../../src/api/state';
-import { inCall, phone, reach, type InCall, type StoryCall } from '../../src/call';
+import { inCall, light, phone, reach, type InCall, type StoryCall } from '../../src/call';
 import { iso } from '../../src/world/clock';
 import { pages, type PageArgs, type PageStory } from '../../src/page';
 import { frameMenu, frameOf } from './plays';
@@ -248,6 +248,20 @@ export const Comment = inCall(reviewing(), {
   }
 });
 export const CommentPhone = phone(Comment);
+
+/** `/` in the plan, in the call: From the call comes first, its three rows in view, then Write and Add. */
+export const SlashMenu = inCall(reviewing(), {
+  play: async (c) => {
+    await openWorkspace(c);
+    await c.step('Go to the end of “What goes out”, start a line under it, and type /', async () => {
+      await c.userEvent.click(await c.canvas.findByText('What goes out', {}, { timeout: 8000 }));
+      await c.userEvent.keyboard('{End}{Enter}/');
+      await screen.findByRole('listbox', { name: 'Blocks' }, { timeout: 5000 });
+    });
+  }
+});
+export const SlashMenuLight = light(SlashMenu);
+export const SlashMenuPhone = phone(SlashMenu);
 
 /** Find, from the magnifier: any document, or any line in one, from words already in this tab. */
 export const Find = inCall(reviewing(), {

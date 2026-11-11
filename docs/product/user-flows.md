@@ -888,7 +888,7 @@ See [Floating call](../engineering/floating-call.md) for browser capabilities an
      as a line, a follow-up as a checklist line tagged with who and when, which is then the same follow-up, and a line of the
      transcript as a quote with who said it and when. It lands where you can see it, or a toast says where it went and **Go there**
      opens it. With no document to send to, there are no arrows.
-   - **From the call** in **/**: **Decided so far** and **Follow-ups so far** fill in as the notes do, for everyone in the document,
+   - **From the call** in **/**, first in the list during a call, before Write and Add: **Decided so far** and **Follow-ups so far** fill in as the notes do, for everyone in the document,
      and nobody types them. When the call ends they stay as they were. **Quote what was said** picks from the last few lines. With
      notes off they say so.
    - **Hear it** on a quote plays that moment, when the call keeps its recording: during the call for anyone in it who was
@@ -1689,12 +1689,19 @@ line.
 **Enter**. **Esc**, or leaving it empty, makes nothing. A document's title is its name: the list and the path above the
 page follow as you type, for everyone.
 
+**Code.** **/** then **Code**, or ```` ``` ```` and a space on a line, makes a block of code; ```` ```js ````, ```` ```py ```` or
+```` ```cpp ```` makes one in that language. Its corner says its language and changes it, as **Language** in its menu does:
+**Plain text**, **JavaScript**, **Python** or **C++**, the same for everyone with the document. Keywords, strings, numbers,
+names and comments take their colours, in both themes. Copied into another document it keeps its language, and code pasted
+from a page that says its language takes it; nothing is guessed from the code itself.
+
 **Photos, videos and files.** **+** beside a line, or **/**, offers **Photos**, **Video** and **File**. Photos opens a space at
 once, "Drop photos here, or choose them", with a picker under it: **Choose from this computer**, or the photos already in the
 workspace, one at a time or **Add all three**; Video and File offer films and files the same way. Files dropped on the page
-land where a line shows, "Drop to add here", and pasted ones under the caret. Several photos make a gallery, one makes a picture
-across the page, a film shows its first frame with **Play**, and anything else is a file that downloads, or opens in a tab when
-the browser can show it. Everyone sees the space a file will take straight away and the ring fill as it uploads, and the
+land where a line shows, "Drop to add here", and pasted ones under the caret. Whichever way they come, and from **File** too,
+several photos make a gallery, one makes a picture across the page, a film shows its first frame with **Play**, and anything
+else is a file, whose arrow downloads it. **Download**, in a photo's or a video's menu (**Download the photos** for a gallery),
+saves the original. Everyone sees the space a file will take straight away and the ring fill as it uploads, and the
 pictures sharpen when it's done; a caption starts as the file's name and is one click to change. A photo the browser can't read
 says which file, with **Add as a file** and **Delete**. One Alcove refuses says which file and why ("This file is bigger than
 512 MiB, the most a file can be.", "This workspace is full, so it can't take more files.", "That's all you can upload today. You
@@ -1767,7 +1774,10 @@ and a toast offers **Follow again**. In a call, **Esc** anywhere else is the cal
 
 **Tagging.** **@** anywhere in a line lists people, then documents and dates, narrowing as you type: the workspace's people
 first, then your company (in a call, who's in it first, then who's invited). The list says who **Can’t open this yet**
-before you pick. Whoever can open the document hears about it; if they can't, Alcove asks once, right by the name: **Let them
+before you pick. Dates are **Today**, **Tomorrow** and the next Friday, with a day typed after **@** with its month first
+among them (**@12dec** offers Sat 12 Dec), and then **Pick a date…**: a month to pick any day from, past ones too, in the
+list's place, with the pointer or with the arrow keys and **Enter**, and **Esc** goes back to the text. Pressing a date tag
+opens the same month, to pick another day for it. A date outside this year says its year (Fri 5 Feb 2027). Whoever can open the document hears about it; if they can't, Alcove asks once, right by the name: **Let them
 edit**, **Read only** or **Not now**. A tag never shares anything by itself, and someone who can't open it isn't told. Being
 tagged is a toast saying who and where, and nothing moves until **Go there**, which lands on the line. Someone away hears when
 they're back: **Drive** in the side panel counts what's waiting, and a browser notification says so, if they've allowed them.
@@ -1828,7 +1838,7 @@ On a phone the list and the page take turns: the list until something's open, an
 brings it back. Menus and sheets rise from the bottom, and **Share** is in the document's **⋯**. Rows don't drag on a
 touch screen: **Move to…** does that. While you write, a bar rides on the keyboard with a block (as **/** does), the text's
 style, **@**, photos, a checklist and Done; sheets open above it. Holding a finger on a block opens its menu, the one its
-handle opens on a laptop, with **Delete for good** on a photo, video or file. Someone's card and a comment are sheets too, and faces are on the list's rows. A bar's buttons go under its words.
+handle opens on a laptop, with **Download** on a photo or a video, and **Delete for good** on a photo, video or file. Someone's card and a comment are sheets too, and faces are on the list's rows. A bar's buttons go under its words.
 
 ## 13. Boards
 

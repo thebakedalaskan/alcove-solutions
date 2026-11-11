@@ -1,4 +1,4 @@
-/* What `/` offers, in order. `alias`: other words that find it. `hint`: the typed shortcut. */
+/* What `/` offers, in order (`slashGroups` puts From the call first in a call). `alias`: other words that find it. `hint`: the typed shortcut. */
 import type { IconName } from '@alcove/ui';
 import type { BlockKind } from '../types';
 
@@ -24,7 +24,7 @@ export const SLASH: SlashGroup[] = [
       { id: 'callout', name: 'Callout', icon: 'bulb', alias: 'note highlight box' },
       { id: 'divider', name: 'Divider', icon: 'minus', hint: '---', alias: 'line rule separator' },
       { id: 'table', name: 'Table', icon: 'table', alias: 'grid rows' },
-      { id: 'code', name: 'Code', icon: 'code', alias: 'snippet' }
+      { id: 'code', name: 'Code', icon: 'code', hint: '```', alias: 'snippet javascript python c++ cpp' }
     ]
   },
   {
@@ -49,13 +49,14 @@ export const SLASH: SlashGroup[] = [
 ];
 
 /**
- * The items a typed word finds, under their headings. What's only in a call isn't offered outside one, what needs files chosen
- * isn't offered where nothing can choose them (`canPick`), and what makes something isn't offered where nothing can (`canMake`).
+ * The items a typed word finds, under their headings. What's only in a call isn't offered outside one, and in a call it comes
+ * first, since it's what nothing else can add: so `/` then Enter adds Decided so far there. What needs files chosen isn't
+ * offered where nothing can choose them (`canPick`), and what makes something isn't offered where nothing can (`canMake`).
  */
 export function slashGroups(query: string, inCall: boolean, canPick: boolean, canMake: boolean): SlashGroup[] {
   const q = query.toLowerCase();
-  return SLASH
-    .filter((g) => inCall || !g.call)
+  const groups = inCall ? [...SLASH.filter((g) => g.call), ...SLASH.filter((g) => !g.call)] : SLASH.filter((g) => !g.call);
+  return groups
     .map((g) => ({ ...g, items: g.items.filter((s) => (canPick || !s.picks) && (canMake || !s.makes) && (!q || s.name.toLowerCase().includes(q) || s.alias.includes(q))) }))
     .filter((g) => g.items.length > 0);
 }

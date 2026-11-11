@@ -115,11 +115,12 @@ function ThreadPopover(props: CommentsProps & { id: string; rect: Rect }) {
   const { doc, id, rect, onOpen, hidden } = props;
   const thread = useThread(doc, id);
   const at = useCallback(() => wordsOf(id)?.getBoundingClientRect() ?? rectOf(rect), [id, rect]);
+  const within = useCallback(() => wordsOf(id), [id]);
   /* Resolved by someone else as you read it: the words aren't marked any more, so there's nothing to hang on. */
   useEffect(() => { if (thread?.resolved) onOpen(null); }, [thread?.resolved, onOpen]);
   if (!thread) return null;
   return (
-    <WsPopover open={!hidden} onOpenChange={(to) => { if (!to) onOpen(null); }} at={at} label={`Comments on ${thread.quote}`}>
+    <WsPopover open={!hidden} onOpenChange={(to) => { if (!to) onOpen(null); }} at={at} within={within} label={`Comments on ${thread.quote}`}>
       <ThreadView {...props} thread={thread} />
     </WsPopover>
   );
@@ -127,10 +128,12 @@ function ThreadPopover(props: CommentsProps & { id: string; rect: Rect }) {
 
 function DraftPopover({ open, onOpen, self, sections, onTagged, hidden }: CommentsProps & { open: Extract<CommentOpen, { kind: 'draft' }> }) {
   const { draft } = open;
-  const at = useCallback(() => document.querySelector('.fs')?.getBoundingClientRect() ?? rectOf(draft.rect), [draft.rect]);
+  /* The words are held, and marked, while the comment's written: wherever they are now. */
+  const within = useCallback(() => document.querySelector('.fs'), []);
+  const at = useCallback(() => within()?.getBoundingClientRect() ?? rectOf(draft.rect), [within, draft.rect]);
   if (!self) return null;
   return (
-    <WsPopover open={!hidden} at={at} label={`Comment on ${draft.quote}`} onOpenChange={(to) => { if (!to) { draft.cancel(); onOpen(null); } }}>
+    <WsPopover open={!hidden} at={at} within={within} label={`Comment on ${draft.quote}`} onOpenChange={(to) => { if (!to) { draft.cancel(); onOpen(null); } }}>
       <Compose draft={draft} self={self} sections={sections} onOpen={onOpen} onTagged={onTagged} />
     </WsPopover>
   );

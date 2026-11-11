@@ -343,7 +343,7 @@ function FileRow({ node }: { node: PMNode }) {
   const watch = media?.watch;
   useEffect(() => (file && watch ? watch(file) : undefined), [file, watch]);
   const gone = file !== null && media?.gone?.(file) === true;
-  const open = media?.onOpenFile;
+  const open = media?.onDownload;
   return (
     <div className={cn('wb-file', gone && 'is-gone')}>
       <span className="i"><Icon name="clip" size={17} /></span>

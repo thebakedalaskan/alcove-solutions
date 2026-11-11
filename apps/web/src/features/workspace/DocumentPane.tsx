@@ -43,7 +43,10 @@ function Page({ ws, item, session, status }: { ws: Ws; item: WorkspaceItem; sess
   const now = useNow(60_000);
   const { sections, faces: tagged, tagged: onTagged, ask, answer, notNow } = useTags(ws, item, now);
   const [comment, setComment] = useState<CommentOpen | null>(null);
-  const [named, setNamed] = useState<{ person: Person; rect: Rect } | null>(null);
+  const [named, setNamed] = useState<{ person: Person; rect: Rect; tag: () => Element | null } | null>(null);
+  /* A person's card sits against their tag, and the question a tag asks against its line, wherever they are now. */
+  const namedAt = useMemo(() => named && { at: () => named.tag()?.getBoundingClientRect() ?? new DOMRect(named.rect.left, named.rect.top, named.rect.width, named.rect.height), within: named.tag }, [named]);
+  const askWithin = useCallback(() => (ask ? document.querySelector(`.wb[data-b="${CSS.escape(ask.block)}"]`) : null), [ask]);
   // A session that's ended takes nothing more: anything typed there would have nowhere to go.
   const readOnly = item.role !== 'edit' || item.trashedAt !== null || status.trashed || status.role === 'read' || status.refused === 'read-only' || status.refused === 'trashed' || status.closed !== null;
   const alcove = useAsk(ws, item);
@@ -122,9 +125,9 @@ function Page({ ws, item, session, status }: { ws: Ws; item: WorkspaceItem; sess
     ws.page.current = { canTag: !readOnly, tag: editor.tag };
     return () => { ws.page.current = null; };
   }, [ws.page, editor, readOnly]);
-  const openPerson: EditorProps['onOpenPerson'] = (id, rect) => {
+  const openPerson: EditorProps['onOpenPerson'] = (id, rect, tag) => {
     const person = ws.others.find((o) => o.person.id === id)?.person;
-    if (person) setNamed({ person, rect });
+    if (person) setNamed({ person, rect, tag });
   };
   const toast = useCallback((t: EditorToast) => {
     const { run, label } = t;
@@ -224,12 +227,12 @@ function Page({ ws, item, session, status }: { ws: Ws; item: WorkspaceItem; sess
         </Suspense>
       )}
       {ask && (
-        <WsPopover open at={ask.rect} label={`Share ${nameOf(item)}`} onOpenChange={(to) => { if (!to) notNow(); }}>
+        <WsPopover open at={ask.rect} within={askWithin} label={`Share ${nameOf(item)}`} onOpenChange={(to) => { if (!to) notNow(); }}>
           <WsMentionPrompt person={ask.person} document={nameOf(item)} onEdit={() => answer('edit')} onRead={() => answer('read')} onNotNow={notNow} />
         </WsPopover>
       )}
-      {named && (
-        <WsPopover open at={() => new DOMRect(named.rect.left, named.rect.top, named.rect.width, named.rect.height)} label={named.person.name} onOpenChange={(to) => { if (!to) setNamed(null); }}>
+      {named && namedAt && (
+        <WsPopover open at={namedAt.at} within={namedAt.within} label={named.person.name} onOpenChange={(to) => { if (!to) setNamed(null); }}>
           <PersonCard person={named.person} onDone={() => setNamed(null)} />
         </WsPopover>
       )}

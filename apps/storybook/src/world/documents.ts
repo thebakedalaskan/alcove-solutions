@@ -2,8 +2,9 @@
  * What the busy afternoon's documents say, written the way the canvas writes Vandelay Industries: the launch moves to the
  * 18th, two of the checklist's items are still open, the pricing page keeps one filled button, and Art owes Kofi the
  * pricing draft by Friday. Each page is the editor's own blocks (`BlockJSON`), under the document's title. The calls' homes
- * hold what was worked on in them: the standup's onboarding fixes, with tags and comments, and the design review's
- * screenshots, walkthrough and spec, drawn here (`src/media/screens.ts`), with what's still uploading and what couldn't.
+ * hold what was worked on in them: the standup's onboarding fixes, with tags and comments, the pricing sync's draft, with a
+ * thread, the bill in code in each language and date tags this year and next, and the design review's screenshots,
+ * walkthrough and spec, drawn here (`src/media/screens.ts`), with what's still uploading and what couldn't.
  * Their History has the call they were worked on in, and what was changed after it.
  */
 import type { Person } from '@alcove/api';
@@ -25,6 +26,10 @@ const quote = (text: string): BlockJSON => ({ type: 'line', attrs: { kind: 'quot
 const tag = (p: Person): BlockJSON => ({ type: 'mention', attrs: { id: `@${p.email}`, name: p.name } });
 /** Words a comment thread hangs on. */
 const commented = (thread: string, text: string): BlockJSON => ({ type: 'text', text, marks: [{ type: 'comment', attrs: { id: thread } }] });
+/** A date tag, as `@` puts one in: a day, YYYY-MM-DD, which each reader reads as Today, Fri 13 Nov or Sun 31 Jan 2027. */
+const dated = (date: string): BlockJSON => ({ type: 'dateChip', attrs: { date } });
+/** A block of code, in a language or as plain text. */
+const code = (lang: string | null, text: string): BlockJSON => ({ type: 'code', ...(lang ? { attrs: { lang } } : {}), content: words(text) });
 /** A line of words, tags and commented words. */
 const lineOf = (parts: (string | BlockJSON)[], attrs?: Record<string, unknown>): BlockJSON => ({
   type: 'line', ...(attrs ? { attrs } : {}), content: parts.map((x) => (typeof x === 'string' ? { type: 'text', text: x } : x))
@@ -247,14 +252,46 @@ export const REVIEW_CHECKLIST: Page = {
   ]
 };
 
+/* The same sum, as each of the apps that send a bill has it: code in each language a block can be coloured as. */
+const BILL_JS = `// Minutes past the free ones, at the price of a minute, in cents
+export function bill(minutes, plan) {
+  const paid = Math.max(0, minutes - plan.free);
+  return paid * plan.perMinute + (plan.monthly ? 0 : 500);
+}`;
+const BILL_PY = `def bill(minutes: int, plan: dict) -> int:
+    """Minutes past the free ones, at the price of a minute, in cents."""
+    paid = max(0, minutes - plan["free"])
+    return paid * plan["per_minute"] + (0 if plan["monthly"] else 500)`;
+const BILL_CPP = `#include <algorithm>
+
+// Minutes past the free ones, at the price of a minute, in cents
+int bill(int minutes, const Plan& plan) {
+  int paid = std::max(0, minutes - plan.free);
+  return paid * plan.perMinute + (plan.monthly ? 0 : 500);
+}`;
+
+/*
+ * The pricing sync's draft: a thread on its first line, the bill worked out in code in each language, a follow-up with a
+ * date tag, and a date in another year, which its tag says. Long enough to scroll.
+ */
 export const PRICING_DRAFT: Page = {
   blocks: [
-    line('Minutes of notes are what people pay for. Every seat gets free minutes each month.'),
+    lineOf(['Minutes of notes are what people pay for. Every seat gets ', commented('c-free', 'free minutes each month'), '.']),
     heading('The team plan'),
     bullet('Monthly or yearly'),
     bullet('Minutes shared across the team'),
+    heading('What a bill comes to'),
+    line('Minutes past the free ones, at the price of a minute: the same sum in each app that sends a bill.'),
+    code('javascript', BILL_JS),
+    code('python', BILL_PY),
+    code('cpp', BILL_CPP),
     heading('Still open'),
-    todo('What a minute costs past the free ones')
+    todo('What a minute costs past the free ones'),
+    lineOf(['Settle the price of a minute with ', tag(KOFI), ' by ', dated('2026-11-13')], { kind: 'todo' }),
+    lineOf(['Today’s prices hold until ', dated('2027-01-31'), '.'])
+  ],
+  threads: [
+    { id: 'c-free', on: 0, quote: 'free minutes each month', says: [{ who: KOFI, text: 'How many, for a team of five?', hoursAgo: 23 }, { who: MAYA, text: '600 each, so 3,000 a month between them.', hoursAgo: 22.5 }] }
   ]
 };
 

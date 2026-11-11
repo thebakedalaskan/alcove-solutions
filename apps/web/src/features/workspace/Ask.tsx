@@ -79,14 +79,15 @@ export function useAsk(ws: Ws, item: WorkspaceItem): { onAsk: EditorProps['onAsk
     }
   };
 
+  /* Against the words the editor holds while it answers, wherever they are now. */
   const at = useMemo(() => {
-    const r = draft?.rect;
-    return r ? () => new DOMRect(r.left, r.top, r.width, r.height) : undefined;
+    if (!draft) return undefined;
+    return () => { const r = draft.where(); return new DOMRect(r.left, r.top, r.width, r.height); };
   }, [draft]);
   return {
     onAsk: open,
     menu: draft && (
-      <WsPopover open at={at} label="Ask Alcove" onOpenChange={(to) => { if (!to) putAway(); }}>
+      <WsPopover open at={at} within={draft.within} label="Ask Alcove" onOpenChange={(to) => { if (!to) putAway(); }}>
         {said ? <Said ws={ws} question={questionAbout(draft.text)} onGone={putAway} /> : (
           <WsAskMenu onShorter={() => { void run(draft, 'shorter'); }} onChecklist={() => { void run(draft, 'checklist'); }} onSaid={answers ? () => setSaid(true) : undefined} />
         )}

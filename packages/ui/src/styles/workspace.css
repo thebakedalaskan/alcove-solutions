@@ -155,7 +155,8 @@
 .wm-s { height: 1px; margin: 5px 8px; background: var(--line); }
 .wm-x { display: flex; align-items: center; gap: 6px; padding: 8px 10px; font-size: 12.5px; line-height: 1.4; color: var(--ink-3); }
 .wm-r { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 36px; padding: 5px 10px; border-radius: 10px; text-align: left; color: var(--ink); font: 500 14px/1.25 var(--font-sans); transition: background-color var(--duration-1); }
-.wm-r:hover, .wm-r.is-sel, .wm-r:focus-visible { background: var(--sunk); outline: none; }
+/* A list highlights one row: the active one, which the keys move and the pointer makes by moving over it. A row on its own keeps a hover. */
+.wm-r.is-sel, .wm-list > .wm-r:focus, .wm-r:focus-visible, :not(.wm-list) > .wm-r:hover { background: var(--sunk); outline: none; }
 .wm-r .ac-i { color: var(--ink-2); }
 .wm-r .t { flex: 1; min-width: 0; }
 .wm-r .l { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -461,8 +462,11 @@
   .wd-tpls { grid-template-columns: minmax(0, 1fr); }
   .wh { top: auto; left: 0; width: auto; height: 46%; border-left: 0; border-top: 1px solid var(--line); }
   .ws-pane:has(> .wh) .wd { max-height: 54%; }
-  /* A sheet on a phone, but not a role's menu: that one opens inside a sheet, against the role it changes. */
-  [data-radix-popper-content-wrapper]:has(> .ws-pop):not(:has(.wm.is-role)) { inset: auto 8px calc(8px + var(--kbar, 0px)) !important; min-width: 0 !important; transform: none !important; }
+  /*
+   * A sheet on a phone, but not a role's menu: that one opens inside a sheet, against the role it changes. A sheet isn't
+   * beside what it's about, so it stays when that's scrolled out of view, where a popover beside it would hide.
+   */
+  [data-radix-popper-content-wrapper]:has(> .ws-pop):not(:has(.wm.is-role)) { inset: auto 8px calc(8px + var(--kbar, 0px)) !important; min-width: 0 !important; transform: none !important; visibility: visible !important; pointer-events: auto !important; }
   .ws-pop:not(:has(.wm.is-role)) { border-radius: 22px; animation: ws-sheet var(--duration-2) var(--ease-out); }
   .ws-pop > * { width: auto; }
   /* A phone has no keys to press, and Record stands taller than a short sheet, so it steps back while one's up. */

@@ -341,7 +341,7 @@ describe('a file in a document', () => {
     expect(most).toBeLessThanOrEqual(MEDIA_LIMITS.working);
   });
 
-  it('is served as what it says only if that’s on the list: anything else is a download', async () => {
+  it('is served as what it says only if that’s on the list: anything else is a download, and so is anything asked for as one', async () => {
     const ann = await account();
     const id = await workspace(ann, 'Ours');
     const doc = await make(ann, id, 'document', 'Plan');
@@ -355,6 +355,9 @@ describe('a file in a document', () => {
       expect([declared, m.type]).toEqual([declared, served]);
       const r = await read(ann, await ann.api.workspaces.media.url(id, doc, m.id));
       expect([declared, r.headers.get('content-type'), r.headers.get('content-disposition')?.split(';')[0]]).toEqual([declared, served, 'inline']);
+      // Asked for as a download (a photo's or a video's Download), it's one, under the name it came with, and still what it is.
+      const saved = await read(ann, await ann.api.workspaces.media.url(id, doc, m.id, { download: true }));
+      expect([declared, saved.status, saved.headers.get('content-type'), saved.headers.get('content-disposition')]).toEqual([declared, 200, served, `attachment; filename*=UTF-8''${encodeURIComponent(name)}`]);
     }
     // What could run in a page, and whatever nobody can show, only ever downloads, under the name it came with.
     for (const [name, declared] of [['page.html', 'text/html'], ['logo.svg', 'image/svg+xml'], ['app.js', 'text/javascript'], ['notes.pdf', 'application/pdf'], ['clip.mov', 'video/quicktime'], ['mystery', '']] as const) {

@@ -123,7 +123,7 @@ export function createWorkspacesApi(t: HttpTransport, o: HttpOptions): Pick<Alco
           abandon: async (mediaId) => { await req(z.object({ removed: z.literal(true) }), 'DELETE', mediaIn(id, documentId, mediaId), undefined, withPass(w)); }
         }, file, w, (level, msg, context) => emit(level, msg, context), o.mediaPatienceMs),
         // The token comes in an answer and goes in a URL: this is the only place the two meet, and neither is logged.
-        url: async (id, documentId, mediaId, w) => `${base}/media/${await mediaToken(id, documentId, mediaId, w)}`,
+        url: async (id, documentId, mediaId, w) => `${base}/media/${await mediaToken(id, documentId, mediaId, w)}${w?.download ? '?download' : ''}`,
         picture: (id, documentId, mediaId, w) => pictures({ token: () => mediaToken(id, documentId, mediaId, w), read: (token) => send('GET', `/media/${token}`, null, {}, false, w?.signal) }, w?.signal),
         preview: async (id, documentId, mediaId, w) => {
           const res = await send('GET', `${mediaIn(id, documentId, mediaId)}/preview`, null, withPass(w), false, w?.signal);

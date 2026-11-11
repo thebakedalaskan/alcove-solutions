@@ -6,8 +6,9 @@ import type { Attrs } from 'prosemirror-model';
 import { TextSelection, type Command } from 'prosemirror-state';
 import { redoCommand, undoCommand, yUndoPluginKey } from 'y-prosemirror';
 import type * as Y from 'yjs';
-import { leaveText, nudgeBlock, openBlockMenu, openLinkField, startComment, tickLine } from './actions';
+import { changeDateTag, leaveText, nudgeBlock, openBlockMenu, openLinkField, startComment, tickLine } from './actions';
 import { arrow, backspace, blockAt, deleteForward, enter, indent, lineBreak, selectAll, turnBlock } from './commands';
+import { langNamed } from './languages';
 import { dropSpentSteps } from './retire';
 import type { EditorRuntime } from './runtime';
 import { isPlainLine, schema } from './schema';
@@ -26,7 +27,8 @@ const undoStep: Command = (state, dispatch, view) => {
 };
 
 export const editorKeys = (rt: EditorRuntime): Record<string, Command> => ({
-  Enter: enter,
+  /* On a date tag the arrow keys selected, Enter opens the calendar to change it. */
+  Enter: (state, dispatch, view) => changeDateTag(rt) || enter(state, dispatch, view),
   'Shift-Enter': lineBreak,
   'Mod-Enter': (state, dispatch, view) => tickLine(rt) || exitCode(state, dispatch, view),
   Backspace: backspace,
@@ -80,7 +82,21 @@ const dividerRule = new InputRule(/^---\s$/, (state, _, start, end) => {
   return tr.setSelection(TextSelection.near(tr.doc.resolve(ref.pos + 2)));
 });
 
+/** ``` and a space is code; ```js, ```py or ```cpp, code in that language. A language it doesn't colour is plain code. */
+const codeRule = new InputRule(/^```([\w+#]*)\s$/, (state, match, start, end) => {
+  const $start = state.doc.resolve(start);
+  const ref = blockAt($start);
+  if (!ref || $start.depth !== 1 || !isPlainLine(ref.node)) return null;
+  const tr = state.tr.delete(start, end);
+  const line = blockAt(tr.doc.resolve(start));
+  if (!line) return null;
+  turnBlock(tr, line, 'code');
+  const lang = langNamed(match[1] ?? '');
+  return lang ? tr.setNodeAttribute(line.pos, 'lang', lang) : tr;
+});
+
 export const typedShortcuts: InputRule[] = [
+  codeRule,
   lineRule(/^#\s$/, 'h1'),
   lineRule(/^##\s$/, 'h2'),
   lineRule(/^###\s$/, 'h3'),

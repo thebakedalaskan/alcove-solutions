@@ -18,12 +18,12 @@ import { createPortal } from 'react-dom';
 import { log } from '~/lib/log';
 import { initProseMirrorDoc, ySyncPlugin, ySyncPluginKey, yUndoPlugin } from 'y-prosemirror';
 import * as Y from 'yjs';
-import { hasLive, insertBlocks, movingBlock, pickSlash, removeBlock, setBlockAttrs, setLiveLines, tagAtEnd, turnInto } from './actions';
+import { hasLive, insertBlocks, movingBlock, openDateTag, pickSlash, removeBlock, setBlockAttrs, setLiveLines, tagAtEnd, turnInto } from './actions';
 import { Carets, FileLine, Handles, landing } from './blocks/Handles';
 import { RuntimeContext } from './blocks/Media';
 import { markViews, nodeViews } from './blocks/views';
 import { cleanPastedHTML, cleanSerializer, handlePaste, refuseSlice, refuseText, sliceText, textToSlice, transformCopied, transformPasted } from './clipboard';
-import { allBlocks, blockWords, caretInto, findBlock, isBlank, scrollerOf, selectedBlock } from './commands';
+import { allBlocks, blockAt, blockWords, caretInto, findBlock, isBlank, scrollerOf, selectedBlock } from './commands';
 import { observeThreads, readThreads } from './comments';
 import { editorKeys, typedShortcuts } from './keymap';
 import { Menus, useStore } from './menus/Menus';
@@ -32,6 +32,7 @@ import { caretsPlugin } from './plugins/carets';
 import { decorPlugin, flash } from './plugins/decor';
 import { keepInStep } from './plugins/inStep';
 import { retirePlugin } from './plugins/retire';
+import { syntaxPlugin } from './plugins/syntax';
 import { watchPlugin } from './plugins/watch';
 import { EditorRuntime, type FileDragState, type ThreadView } from './runtime';
 import { isGone, safeHref, schema, textAttr } from './schema';
@@ -117,6 +118,7 @@ function createView(rt: EditorRuntime, mount: HTMLElement): EditorView {
     dropCursor({ class: 'ws-dropcaret', color: false, width: 2 }),
     blockIds,
     decorPlugin(rt),
+    syntaxPlugin(rt),
     watchPlugin(rt)
   ];
   const state = EditorState.create(fits ? { schema, doc: start.doc, plugins } : { schema, plugins });
@@ -134,15 +136,25 @@ function createView(rt: EditorRuntime, mount: HTMLElement): EditorView {
     transformPasted: (slice, view) => transformPasted(rt, slice, view),
     handlePaste: (view, event, slice) => handlePaste(rt, view, event, slice),
     handleDrop: (_, __, slice) => refuseSlice(rt, slice),
-    handleClickOn(_, __, node, ___, event, direct) {
+    handleClickOn(view, _, node, nodePos, event, direct) {
       if (!direct || !(event.target instanceof Element)) return false;
       const rect = event.target.getBoundingClientRect();
-      if (node.type === schema.nodes.mention) { rt.props.onOpenPerson?.(textAttr(node, 'id') ?? '', rect); return true; }
+      if (node.type === schema.nodes.mention) {
+        const id = textAttr(node, 'id') ?? '';
+        const chip = event.target.closest('.wn');
+        const block = blockAt(view.state.doc.resolve(nodePos))?.id;
+        /* The tag that was pressed, or the same person's in its line if that one's been drawn again since. */
+        const tag = () => (chip?.isConnected ? chip : block ? view.dom.querySelector(`.wb[data-b="${CSS.escape(block)}"] .wn[data-p="${CSS.escape(id)}"]`) : null);
+        rt.props.onOpenPerson?.(id, rect, tag);
+        return true;
+      }
       if (node.type === schema.nodes.docref) {
         const id = textAttr(node, 'doc') ?? '';
         if (rt.props.documentName?.(id) !== undefined) rt.props.onOpenDocument?.(id);
         return true;
       }
+      /* A date tag opens the calendar against it, for another day, for someone who can write here. */
+      if (node.type === schema.nodes.dateChip) return openDateTag(rt, nodePos);
       return false;
     },
     handleDOMEvents: {

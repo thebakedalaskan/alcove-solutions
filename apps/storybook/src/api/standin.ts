@@ -774,6 +774,7 @@ export const standIn: AlcoveApi = {
     },
     media: {
       upload: async (id: ID, documentId: ID, file: File, o) => { await answer(() => null); return spaces.upload(id, documentId, file, o); },
+      // A `download` needs nothing more here: the URL is this page's own, so the link the app follows saves it under its name.
       url: async (id: ID, documentId: ID, mediaId: ID) => { await answer(() => null); return spaces.urlOf(id, documentId, mediaId); },
       picture: async (id: ID, documentId: ID, mediaId: ID, o) => { await answer(() => null); return spaces.pictureOf(id, documentId, mediaId, o); },
       preview: async (id: ID, documentId: ID, mediaId: ID, o) => { await answer(() => null); return spaces.previewOf(id, documentId, mediaId, o); },
