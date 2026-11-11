@@ -1005,8 +1005,9 @@ Rings are rows in `call_rings`, in the organizer's vault, found by a keyed hash 
   sent to one, each to one room: someone invited by address (`emails`), so they land in their room from any device, and
   anyone else, a guest with the link, by seat (`seats`, as `CallParticipant.seat` names them), kept in the sealed call
   state as their `person`, with the name they're in the call under (`HeldRooms.guests`: seats are never stored). A seat
-  names whoever's in it now, and someone on the invite in it goes by their address all the same; the organizer's own
-  seat, another call's, and one nobody here has are refused (400). Guests go to rooms because nothing in the privacy
+  names whoever has it, in the call or stepped out for a moment (a reload), and someone on the invite goes by their
+  address all the same; the organizer's own seat, someone removed's, another call's and one nobody here has are refused
+  (400). Guests go to rooms because nothing in the privacy
   model keeps them out: going into a room's group follows `placeOf` alone, whatever someone's role, and a guest sees,
   hears and chats in a room as in the main room. They still get no notes, and never transcribe a room (Each room's
   scribe, below), so a room with only guests in it isn't transcribed, which the setup says before it opens. Anyone can
