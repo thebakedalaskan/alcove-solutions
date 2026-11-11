@@ -170,7 +170,7 @@ export interface BoardBarProps {
   tail?: ReactNode;
   /** What the menu under the name lets this person do, on hover. */
   nameTitle?: string | undefined;
-  /** The camera's zoom, shown as a percentage beside Show everything. */
+  /** The camera's zoom, shown as a percentage beside Show the whole board. */
   zoom: number;
   canUndo?: boolean | undefined;
   canRedo?: boolean | undefined;
@@ -243,8 +243,11 @@ export function BoardBar({ name, naming, nameTitle = 'Rename, share or copy a li
       <IconButton className="bt zm" icon="minus" size={16} label="Zoom out" onClick={onZoomOut} />
       <span className="pct">{Math.round(zoom * 100)}%</span>
       <IconButton className="bt zm" icon="plus" size={16} label="Zoom in" onClick={onZoomIn} />
-      {/* Everything on the board in view: on a phone too, where the zoom gives way to a pinch. */}
-      <IconButton className="bt fit" icon="whole" size={16} label="Show everything" title="Show everything · ⇧1" onClick={onFit} />
+      {/*
+        * Everything on the board in view: on a phone too, where the zoom gives way to a pinch. Named for the board, as the call's
+        * own Show everything, which leaves focus, can be beside it.
+        */}
+      <IconButton className="bt fit" icon="whole" size={16} label="Show the whole board" title="Show the whole board · ⇧1" onClick={onFit} />
       <IconButton className="bt zm mp" icon="map" size={16} label="Map" aria-pressed={mapOn} onClick={onMap} />
       {/*
         * Each is there only with something to do: no button does nothing. Someone who can only look sees Vote where it's
@@ -845,7 +848,7 @@ export function BoardEmpty({ fading = false, reader = false, everyone = true, pa
 
 /**
  * What the sheet offers while nothing on the board is in view, though there's something on it, as after a scroll or a drag into
- * empty space: a quiet way back to all of it, which does what Show everything does. It goes once something is in view again.
+ * empty space: a quiet way back to all of it, which does what Show the whole board does. It goes once something is in view again.
  */
 export function BoardLost({ onBack, className }: { onBack: () => void; className?: string | undefined }) {
   return (

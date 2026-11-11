@@ -144,8 +144,8 @@ export const OpenABoard: PageStory = {
       await userEvent.click(within(pager).getByRole('button', { name: 'Next frame' }));
       await within(pager).findByText('Could improve', {}, SOON);
     });
-    await step('Click Show everything, on the board’s bar: all of it, what’s outside the frames too, and everyone following sees it with you', async () => {
-      await userEvent.click(await screen.findByRole('button', { name: 'Show everything' }, SOON));
+    await step('Click Show the whole board, on its bar: all of it, what’s outside the frames too, and everyone following sees it with you', async () => {
+      await userEvent.click(await screen.findByRole('button', { name: 'Show the whole board' }, SOON));
     });
     await step('Click Close. For you, or for everyone', async () => {
       await userEvent.click(await onBar(await frame('Launch retro, everyone sees it'), /^Close /));

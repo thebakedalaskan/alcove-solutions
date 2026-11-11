@@ -224,7 +224,7 @@ export const AddText: BoardStory = {
 
 /**
  * Dragged off into empty space, nothing on the board is in view: the sheet offers Back to the board, which shows all of it again,
- * as Show everything on the bar does (⇧1 too). It goes as soon as something's in view.
+ * as Show the whole board on the bar does (⇧1 too). It goes as soon as something's in view.
  */
 export const LostAndBack: BoardStory = {
   name: 'Lost, and back',
@@ -247,14 +247,14 @@ export const LostAndBack: BoardStory = {
   }
 };
 
-/** On a phone, Show everything stays on the bar while the zoom gives way to a pinch: one press shows all of the board. */
+/** On a phone, Show the whole board stays on the bar while the zoom gives way to a pinch: one press shows all of the board. */
 export const ShowEverythingOnAPhone: BoardStory = {
-  name: 'Show everything, on a phone',
+  name: 'Show the whole board, on a phone',
   args: { mode: 'phone' },
   globals: PHONE,
   play: async ({ canvas, userEvent, step }) => {
-    await step('Press Show everything, on the bar: all of the board, further out than a pinch goes', async () => {
-      await userEvent.click(await canvas.findByRole('button', { name: 'Show everything' }));
+    await step('Press Show the whole board, on the bar: all of it, further out than a pinch goes', async () => {
+      await userEvent.click(await canvas.findByRole('button', { name: 'Show the whole board' }));
     });
   }
 };

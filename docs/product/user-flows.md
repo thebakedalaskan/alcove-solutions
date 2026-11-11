@@ -1049,7 +1049,7 @@ See [Floating call](../engineering/floating-call.md) for browser capabilities an
    first (step 3).
    - **Whoever presents** is told "Everyone follows you on Launch retro. They can add to it as you go.", and the bar says
      "You’re presenting · 3 following". The board glides to its first frame as it starts, and from there it's yours to move
-     round: drag, scroll, zoom and **Show everything** as ever, add to it, start a vote (step 8), and everyone following
+     round: drag, scroll, zoom and **Show the whole board** as ever, add to it, start a vote (step 8), and everyone following
      sees all of what you see, whatever's outside the frames and the lines between them included, whatever the shape of their
      screen: a wider or taller one shows more round it, never less of it. At its foot, for you alone, the pager steps through
      the frames in the order they sit on the board, top to bottom and left to right, so the order can be told from the board:
@@ -1110,7 +1110,7 @@ See [Floating call](../engineering/floating-call.md) for browser capabilities an
 14. **On a phone**, **Board** is first in **More**'s grid and opens the same picker, and a board's frame has no Present:
    **Share › A board** presents one. Faces stay on top, under the line over the call when it says anything, and the board
    fills the rest, opening on its first frame at a size it can be read. Drag to look round and pinch to zoom; the bar keeps
-   the name, the seal, **Show everything**, which shows all of the board however big, further out than a pinch goes,
+   the name, the seal, **Show the whole board**, which shows all of it however big, further out than a pinch goes,
    **Vote** and **More**, and what the pill says wraps rather than being cut. Dragged off into empty space, the board offers
    **Back to the board**, as anywhere. The one tool is
    **+**, at the bottom right: a sheet rises, night as the call is, with one sticky, its colours and a button that says
@@ -1892,7 +1892,7 @@ themes**, on stickies picked together, sorts them into named columns when its an
 whatever you've started meanwhile, and the toast's **Undo** takes the sort back even after you've done something else.
 
 **Looking round.** Scroll, or two fingers, to move; pinch or **⌘** and scroll to zoom; or hold **Space** and drag. The bar has
-**−**, how near you are and **+**, **Show everything** (its tip says **⇧1**, which does the same), and **Map**, which shows
+**−**, how near you are and **+**, **Show the whole board** (its tip says **⇧1**, which does the same), and **Map**, which shows
 where you are on a board too big for the sheet. Scroll or drag off into empty space, so that nothing on the board is in view,
 and the sheet offers **Back to the board** in its middle, which shows everything again; it goes as soon as something's in view.
 
