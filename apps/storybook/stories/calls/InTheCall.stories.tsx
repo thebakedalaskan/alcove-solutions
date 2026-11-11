@@ -229,7 +229,7 @@ export const Many = inCall({
 });
 export const ManyPhone = phone(Many);
 
-/** Kofi has the floor: the speak ring follows whoever's talking, and the stage settles on him. */
+/** Kofi has the floor: the speak ring follows whoever's talking, and the stage stays as it is. */
 export const SomeoneSpeaking = inCall({
   scenario: 'call-soon', call: REVIEW, you: { mic: false },
   script: {
@@ -379,7 +379,7 @@ const firstTime = (story: PageStory): PageStory => {
   const forget = () => { for (const k of [tileHintKey(ME_ID), tileHintKey(null)]) localStorage.removeItem(k); };
   return { ...story, beforeEach: [...(Array.isArray(b) ? b : b ? [b] : []), forget] };
 };
-/** A tile that can be moved, as a pointer finds one: not whoever Alcove picked to lead, nor your own picture in a corner. */
+/** A tile that can be moved, as a pointer finds one: not your own picture in a corner. */
 const movable = () => waitFor(() => {
   const tile = screen.getAllByRole('group').find((el) => el.classList.contains('can-drag') && !el.classList.contains('is-corner'));
   if (!tile) throw new Error('No tile can be moved yet.');
