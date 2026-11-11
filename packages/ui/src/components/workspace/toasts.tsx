@@ -67,7 +67,7 @@ export const wsToast = {
   screenOff: () => say('screen', 'You stopped sharing.'),
   boardOn: (board: string) => say('presentation', `Everyone follows you on ${board}. They can unfollow to add to it.`),
   workspaceOn: () => say('folderOpen', 'Everyone follows you in the workspace. They can unfollow to work alongside you.'),
-  closedForYou: () => say('x', 'Closed for you. The others keep it open, on their own.'),
+  closedForYou: () => say('x', 'You stopped presenting. The others keep it open, on their own.'),
   /** `here`: in a room, where it closed for the room alone. */
   closedForAll: (here = false) => say('x', here ? 'Closed for everyone in this room.' : 'Closed for everyone.'),
   closedWhile: (first: string) => say('x', `Closed for you. While ${first} presents, its tile takes you back.`),

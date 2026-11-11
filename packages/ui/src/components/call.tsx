@@ -432,7 +432,7 @@ export interface CloseAskProps {
   onOpenChange: (open: boolean) => void;
   /** "Close Launch review · 4 Nov" */
   title: string;
-  /** For you: everyone else keeps it open, on their own, unless `me` says otherwise. */
+  /** For you: your presentation stops, and everyone else keeps it open, on their own, unless `me` says otherwise. */
   onMe: () => void;
   /** For everyone: it closes for everyone in the call, unless `everyone` says otherwise ("It closes for everyone in this room."). */
   onEveryone: () => void;
@@ -443,7 +443,7 @@ export interface CloseAskProps {
 }
 
 /** What closing it can be: for you, or for everyone. Close's question and Share's last step both ask it. */
-function CloseChoices({ onMe, onEveryone, me = 'Everyone else keeps it open, on their own.', everyone = 'It closes for everyone in the call.' }: Pick<CloseAskProps, 'onMe' | 'onEveryone' | 'me' | 'everyone'>) {
+function CloseChoices({ onMe, onEveryone, me = 'You stop presenting. Everyone else keeps it open, on their own.', everyone = 'It closes for everyone in the call.' }: Pick<CloseAskProps, 'onMe' | 'onEveryone' | 'me' | 'everyone'>) {
   return (
     <>
       <button type="button" className="ic-cm" onClick={onMe}>

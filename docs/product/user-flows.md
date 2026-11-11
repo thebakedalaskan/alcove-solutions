@@ -421,7 +421,8 @@ time, slides in on the right.
     they are ("Priya is in Launch plan") with **Follow Priya**, which takes you back. A screen can't be unfollowed.
   - **Close is for you.** On something open just for you, **Close** closes it. On someone else's presentation, it closes
     it for you: "Closed for you. While Priya presents, its tile takes you back." While you present a board or the
-    workspace, Close asks first: **For you** ("Everyone else keeps it open, on their own.") or **For everyone** ("It
+    workspace, Close asks first: **For you** ("You stop presenting. Everyone else keeps it open, on their own.", and
+    then "You stopped presenting. The others keep it open, on their own.") or **For everyone** ("It
     closes for everyone in the call.", or in a breakout room "It closes for everyone in this room.", where it does, unless
     it's the board every room shares and you opened it or you're the organizer), as a sheet on a phone, and so do the lit
     **Board** and **Workspace** (**O**, **W**). On the call's board while nobody presents it, whoever opened it and the
@@ -851,8 +852,9 @@ See [Floating call](../engineering/floating-call.md) for browser capabilities an
      own: to open another document and write alongside Priya, with her face showing where she is. **Follow Priya** ("Priya
      is in Launch plan") takes them back to her page and line. **Close** closes it for them: while Priya presents it's a
      tile among the people, saying where she is, and **Join** takes them back in, following.
-   - **Ending it.** While you present, **Close** (or the lit **Workspace**, or **W**) asks: **For you**, and everyone
-     following stays in it, working on their own; or **For everyone**, and it closes for everyone in the call. The
+   - **Ending it.** While you present, **Close** (or the lit **Workspace**, or **W**) asks: **For you** ("You stop
+     presenting."), and everyone following stays in it, working on their own; or **For everyone**, and it closes for
+     everyone in the call. With nobody presenting it, Close closes it at once: there's nobody else to close it for. The
      organizer can close anyone's for everyone from its name, and whoever presented it is told who did ("Art closed the
      workspace for everyone."). It also ends when the presenter leaves the call for good
      ("Priya left the call, so the presentation ended"), is removed or moved to another part of the call ("Priya stopped
@@ -997,8 +999,8 @@ See [Floating call](../engineering/floating-call.md) for browser capabilities an
      and a scroll, drag or pinch on the board starts working on your own from where it takes you; **Follow Art** ("Art is in
      Could improve") takes you back. Art moving on never pulls you back. Someone who comes in late lands on the frame
      everyone's on.
-   - **Close**, while you present it (or the lit **Board**, or **O**), asks: **For you** ("Everyone else keeps it open, on
-     their own."), and everyone following stays on it, working on their own, and it's still the board in the call; or **For
+   - **Close**, while you present it (or the lit **Board**, or **O**), asks: **For you** ("You stop presenting. Everyone else
+     keeps it open, on their own."), and everyone following stays on it, working on their own, and it's still the board in the call; or **For
      everyone** ("It closes for everyone in the call."), which closes the board in the call too: "Closed for everyone." The
      organizer can close anyone's for everyone, from the board's name, and whoever presented it is told who did ("Art
      closed Launch retro for everyone."). **Stop sharing**, in Share, asks the same, wherever the board is: on your stage,
