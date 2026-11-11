@@ -275,7 +275,8 @@ export const VotingFromTheKeyboard = review([...at(1, opensBoard(PRIYA, 'retro')
 }));
 /**
  * Priya starts a vote while the board isn't on your stage: the call tells you, by whom, with Vote, which opens it on your stage on
- * the vote's frame. Everyone in the call who can open the board is told, whether or not they have it open.
+ * the vote's frame. Everyone in the call who can add to the board, and so vote in it, is told; someone who can only look at it
+ * isn't.
  */
 export const ToldAVoteStarted = review([...at(1, opensBoard(PRIYA, 'retro')), ...at(1 + filledAfter() + 1, startsVote(PRIYA, 'Could improve', 3))], RETRO, {
   name: 'Told a vote started',

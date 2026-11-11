@@ -1,8 +1,8 @@
 /*
  * The vote on the board open in a call, for `<BoardSurface run>`: the vote from the call's state, and what the bar's Vote does.
  * The board knows nothing of the call, so this is where they meet. The call's one countdown is the call's own (useCallTimer.ts).
- * A vote reaches everyone in that part of the call who can open the board: anyone without the board on their stage is told one
- * started, with Vote, which opens it there (`useVoteStarted`).
+ * A vote reaches everyone in that part of the call who can open the board, and anyone who can vote in it (whoever can add to
+ * the board) without the board on their stage is told one started, with Vote, which opens it there (`useVoteStarted`).
  */
 import { firstName, type CallSession, type CallState } from '@alcove/api';
 import { useEffect, useMemo, useRef } from 'react';
@@ -33,8 +33,9 @@ export function useBoardRun(call: CallSession, state: CallState): BoardRun | und
 /**
  * Tells someone a vote started on the board in their part of the call while that board isn't on their stage, and by whom: "Priya
  * started a vote on Launch retro.", with Vote, which opens the board there, on the vote's frame (`join`). Only the call tells them,
- * and only someone who can open the board is told of a vote. A vote that's on as they join, or as they arrive in another part of
- * the call, was already under way, so it says nothing; nor is whoever started it told.
+ * and only someone who can vote in it is told: whoever can add to the board. Someone who can only look at it would land where
+ * they can't vote. A vote that's on as they join, or as they arrive in another part of the call, was already under way, so it
+ * says nothing; nor is whoever started it told.
  */
 export function useVoteStarted({ state, me, place, settled, onStage, say, join }: {
   state: CallState;
@@ -60,7 +61,7 @@ export function useVoteStarted({ state, me, place, settled, onStage, say, join }
     if (!was || was.place !== place || was.on || !on || !latest.current.settled()) return;
     const now = latest.current;
     const started = now.state.board.vote;
-    if (!started || now.onStage || started.startedBy === now.me) return;
+    if (!started || now.onStage || started.startedBy === now.me || now.state.board.open?.role !== 'edit') return;
     const by = now.state.participants.find((p) => p.id === started.startedBy);
     const board = now.state.board.open?.name ?? 'the board';
     const frame = started.frame;

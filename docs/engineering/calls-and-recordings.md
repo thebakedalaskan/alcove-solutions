@@ -1576,9 +1576,10 @@ board that isn't there, before anything about a vote is looked at.
   on a sticky, and once the vote ends, or they can't vote any more, a sticky that had them gives them back to the sheet.
 - **Reaching the call.** A vote is told to everyone in its part of the call who can open the board, whether or not they have it
   open, with who started it (`startedBy`, their connection in the call, as `openedBy` says who opened the board). In the
-  browser, someone without the board on their stage is told a vote started there, by whom, with Vote, which opens it on their
-  stage on the vote's frame (`useVoteStarted` in `boards/boardRun.ts`); a vote already on as they join or arrive says nothing,
-  and whoever started it isn't told. Someone following a presentation of the board votes as they follow, since a vote changes
+  browser, someone who can vote in it (whose `role` on the board is `edit`) without the board on their stage is told a vote
+  started there, by whom, with Vote, which opens it on their stage on the vote's frame (`useVoteStarted` in
+  `boards/boardRun.ts`); someone who can only read the board isn't, as Vote would take them where they can't vote. A vote
+  already on as they join or arrive says nothing, and whoever started it isn't told. Someone following a presentation of the board votes as they follow, since a vote changes
   nothing on the board, and whoever presents starts a vote on the frame they show. The bar's Vote names the frame it will be
   on, and which of several frames of one name, in the order they sit ("Could improve, the second of two").
 - **Votes stay on the server.** `CallState.board.vote` is `{ on, frame, per, left, mine, results, voters, canEnd, startedBy }`.

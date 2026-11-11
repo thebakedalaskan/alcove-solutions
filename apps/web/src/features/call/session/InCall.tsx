@@ -1442,7 +1442,7 @@ export function InCall({ session }: { session: CallSession }) {
       else { setActionTarget((was) => ({ id: target.id, request: (was?.request ?? 0) + 1 })); openSide('people'); }
     }
   });
-  /* A vote started on the board in the call while it isn't on your stage: you're told, and Vote opens it there, on the vote's frame. */
+  /* A vote started on the board in the call while it isn't on your stage: you're told if you can vote in it, and Vote opens it there, on the vote's frame. */
   useVoteStarted({
     state, me: meId, place: myRoomId ?? MAIN_PLACE, settled, onStage: stage.on.includes('board'),
     say: (text, onVote) => { toast(text, { icon: 'vote', action: { label: 'Vote', onClick: onVote }, ms: 12000, topic: 'board-vote' }); },
