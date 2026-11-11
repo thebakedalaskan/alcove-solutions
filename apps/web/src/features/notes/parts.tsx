@@ -367,8 +367,9 @@ export function AskBar({ suggestions, ask, onSeek, shown, label = 'Ask about thi
     watch.observe(el);
     return () => { watch.disconnect(); page.style.removeProperty('--nd-chips'); };
   }, [room]);
+  // The bar is in view wherever the page is, so going to it never moves the page.
   useEffect(() => {
-    const on = (e: KeyboardEvent) => { if (withMod(e) && e.key.toLowerCase() === 'j') { e.preventDefault(); input.current?.focus(); } };
+    const on = (e: KeyboardEvent) => { if (withMod(e) && e.key.toLowerCase() === 'j') { e.preventDefault(); input.current?.focus({ preventScroll: true }); } };
     addEventListener('keydown', on);
     return () => removeEventListener('keydown', on);
   }, []);
@@ -384,7 +385,7 @@ export function AskBar({ suggestions, ask, onSeek, shown, label = 'Ask about thi
       <div className="nd-askdock">
         <div className="nd-up">
           {answer && (
-            <AnswerView answer={answer} waiting={waiting} onClose={() => { reset(); input.current?.focus(); }} className="nd-ans">
+            <AnswerView answer={answer} waiting={waiting} onClose={() => { reset(); input.current?.focus({ preventScroll: true }); }} className="nd-ans">
               {(answer.cites.length > 0 || (onKeep && answer.done && answer.text)) && (
                 <div className="nd-ans-f">
                   {answer.cites.map((c) => (c.type === 'cite' ? <Moment key={citeKey(c)} at={c.at} onSeek={onSeek} />

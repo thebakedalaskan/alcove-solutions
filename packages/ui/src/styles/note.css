@@ -42,6 +42,8 @@
 .nd[data-view="quiet"] .hz-chop { display: none; }
 /* What the keyboard lands on stays clear of the strip above and the bar below. */
 html:has(.nd) { scroll-padding-block: 92px 92px; }
+/* Except Ask's own caret, which sits in that band at the foot of the window: kept clear of it, every key would scroll the page. */
+html:has(.nd-ask input:focus) { scroll-padding-bottom: 0; }
 /* A toast sits above the Ask bar, not on it. */
 body:has(.nd-askdock) .ac-toasts:not(.on-stage) { bottom: 92px; }
 
