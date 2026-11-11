@@ -195,12 +195,14 @@ export function When({ draft, change, guests, team, wide, onWide, back, onNext }
   const offered = (at: Date) => offer?.some((t) => t.getTime() === at.getTime()) ?? false;
   const known = (at: Date) => times.slots.some((s) => s.at.getTime() === at.getTime());
   /*
-   * What the cards show: the best times, with one picked from the week in front of them. While offering it's every time
-   * offered and then the best others, so what's ticked is what's sent, and there's no card for a time too many.
+   * What the cards show, soonest first, so the tick is all that says which is picked: the best times, with one picked from
+   * the week (or typed) in place of the last of them. While offering it's every time offered and then the best others, so
+   * what's ticked is what's sent, and there's no card for a time too many.
    */
+  const byTime = (a: Slot, b: Slot) => soonestFirst(a.at, b.at);
   const shown: Slot[] = offer
-    ? [...offer.map((at) => times.slot(at)), ...times.slots.filter((s) => !offered(s.at))].slice(0, MOST_OFFERED).sort((a, b) => soonestFirst(a.at, b.at))
-    : chosen && !known(chosen) ? [times.slot(chosen), ...times.slots.slice(0, 2)] : times.slots;
+    ? [...offer.map((at) => times.slot(at)), ...times.slots.filter((s) => !offered(s.at))].slice(0, MOST_OFFERED).sort(byTime)
+    : (chosen && !known(chosen) ? [...times.slots.slice(0, MOST_OFFERED - 1), times.slot(chosen)] : [...times.slots]).sort(byTime);
   const ticked = (at: Date) => (offer ? offered(at) : chosen?.getTime() === at.getTime());
   const pick = (at: Date) => {
     if (!offer) { change({ at }); return; }

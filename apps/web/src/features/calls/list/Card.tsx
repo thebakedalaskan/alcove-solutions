@@ -321,14 +321,19 @@ function ChangeTime({ m, scope, scopeBar, fail, told, saving, wide, onWide, onSa
   );
 }
 
-/** The time it's at, then the best others, or what was picked from the week in their place. */
+/**
+ * The time it's at ("Now") and the best others, or what was picked from the week (or typed) in place of the last of them:
+ * soonest first, so the tick is all that says which is picked.
+ */
 function MoveCards({ times, current, chosen, onPick }: { times: ReturnType<typeof useTimes>; current: Date; chosen: Date; onPick: (at: Date) => void }) {
   const others = times.slots.filter((s) => s.at.getTime() !== current.getTime());
   const listed = others.some((s) => s.at.getTime() === chosen.getTime()) || chosen.getTime() === current.getTime();
-  const shown = listed ? others.slice(0, 2) : [times.slot(chosen), ...others.slice(0, 1)];
-  const card = (at: Date, note: string) => <TimeCard key={at.getTime()} day={dayWord(at, times.now)} time={hm(at)} note={note} picked={chosen.getTime() === at.getTime()} onClick={() => onPick(at)} />;
+  const shown = listed ? others.slice(0, 2) : [...others.slice(0, 1), times.slot(chosen)];
   /* "All free" is about everyone, so it takes reading everyone. */
-  return <>{card(current, 'Now')}{shown.map((s) => card(s.at, freeLine(s) || (s.of > 1 && !times.unknown ? 'All free' : '')))}</>;
+  const cards = [{ at: current, note: 'Now' }, ...shown.map((s) => ({ at: s.at, note: freeLine(s) || (s.of > 1 && !times.unknown ? 'All free' : '') }))];
+  return <>{cards.sort((a, b) => a.at.getTime() - b.at.getTime()).map(({ at, note }) => (
+    <TimeCard key={at.getTime()} day={dayWord(at, times.now)} time={hm(at)} note={note} picked={chosen.getTime() === at.getTime()} onClick={() => onPick(at)} />
+  ))}</>;
 }
 
 function ChangeNotes({ m, scopeBar, fail, told, saving, onSave }: Change) {

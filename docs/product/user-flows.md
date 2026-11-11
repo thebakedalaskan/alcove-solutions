@@ -187,8 +187,12 @@ send to anyone".
    Groups, the company and a list can overlap, and everyone counts once. On an empty field, Backspace selects the last
    token and a second Backspace removes it. A call can invite 300 people; past that it says so and waits, and a list
    is removed whole and pasted again shorter. **Skip, I'll share a link** goes on with nobody invited.
-4. **When** suggests three times, the best already picked: never in the past, inside 9 to 17 on weekdays where you
-   are, never when you're busy, the times that suit the most people first, on different days. It says what's true:
+4. **When** suggests three times, soonest first, with the best already picked: never in the past, inside 9 to 17 on
+   weekdays where you are, never when you're busy. They're the times that suit the most people, on different days while
+   there are days to spread over, the sooner day first and today last (it leaves people the least notice). When that
+   doesn't tell them apart, as with no calendar connected, each day takes an hour the others haven't, from the hours
+   people find easiest (10:00, then 14:00, 11:00, 15:00 and so on). A time picked from the week takes the place of the
+   last of the three, and the other two stay. It says what's true:
    "All 8 of you are free at these times.", how many are free under each time, that other calendars can't be read and
    the times are free on yours, or with no calendar connected that these are open working hours. The length is 30 min,
    45 min or 1 h. **Pick another time** widens the modal around the week, with your own things by name and when anyone

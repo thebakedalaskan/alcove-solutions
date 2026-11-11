@@ -52,10 +52,10 @@ export const Who = page('/home', 'busy', { play: playing(open, later) });
 export const WhoPicked = page('/home', 'busy', { play: playing(open, later, priyaAndKofi) });
 /** On a first day: the company's directory, people not on Alcove yet among them. */
 export const WhoOnAFirstDay = page('/home', 'first-day', { play: playing(open, later) });
-/** When: three times when everyone's free, the best one picked. */
+/** When: three times when everyone's free, soonest first, the best one picked. */
 export const When = page('/home', 'busy', { play: playing(open, later, priyaAndKofi, findATime) });
 export const WhenPhone = phone(When);
-/** With no calendar connected, the times are open working hours. */
+/** With no calendar connected, the times are open working hours: a different easy hour on each of the next working days, soonest first. */
 export const WhenWithoutACalendar = page('/home', 'busy', { beforeEach: changing(noCalendar), play: playing(open, later, priyaAndKofi, findATime) });
 /** Reading the calendars takes a while. */
 export const ReadingCalendars = page('/home', 'busy', { beforeEach: changing(troubled({ 'calendar.busy': 'hold' })), play: playing(open, later, priyaAndKofi, findATime) });
@@ -63,6 +63,10 @@ export const ReadingCalendars = page('/home', 'busy', { beforeEach: changing(tro
 export const AnotherTime = page('/home', 'busy', { play: playing(open, later, priyaAndKofi, findATime, press('Pick another time', 'Pick another time. The week opens beside the times')) });
 /** On a phone the week sits under the times, all seven days of it. */
 export const AnotherTimePhone = phone(AnotherTime);
+/** A time picked from the week takes the place of the last suggestion, and the cards stay soonest first. */
+export const PickedFromTheWeek = page('/home', 'busy', {
+  play: playing(open, later, priyaAndKofi, findATime, press('Pick another time', 'Pick another time'), press(/^Fri 6 Nov, 16:30/, 'Pick Friday at 16:30 in the week'))
+});
 /** How it repeats: every week, every two weeks, every month, or days you pick, with an end date. */
 export const Repeats = page('/home', 'busy', { play: playing(open, later, priyaAndKofi, findATime, press(/Doesn’t repeat/, 'Open Doesn’t repeat'), press(/^Every (Mon|Tues|Wednes|Thurs|Fri)day$/, 'Every week, on the same day')) });
 /** On your own with one guest whose calendar can't be read: Let Ana pick, from times offered. */
