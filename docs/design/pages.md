@@ -115,6 +115,11 @@ A slim band of sky, and the horizon is the call.
   - a menu: Who it's for, Due, Reword and It wasn't decided, then What was said and Changes
   - Propose a decision and Add a follow-up sit at the foot of their lists
 - **Under that,** the transcript, with a key for the dotted words a transcript isn't sure of, and each breakout room's notes.
+  Pressing a line's words does what pressing its time does: it goes to that moment and plays from there. Testers asked for
+  the line to go to its moment (#247), and playing from it too was taken from the issue's suggestion, so the words and the
+  time never do two different things. A press on the words waits a quarter of a second, so a double or triple click
+  selects them to copy instead; the time goes at once. On a phone, where one line at a time shows its tools, the line you
+  pressed keeps them while the call plays on past it, until you press another or scroll it out of sight.
 - **Beside it,** a column that scrolls by itself under the line, so where you write is in reach however long the note is.
   Your notes first, the only panel, because it's yours alone (Only you): write, bookmark a line or keep an answer. A row's
   kind is its mark (lines of text for what you wrote, a bookmark, a question for a kept answer), and its actions (Add to

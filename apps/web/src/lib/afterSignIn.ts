@@ -57,8 +57,8 @@ export function takeAgentReturn(): string | null {
 }
 
 /**
- * Signing in to open a link to someone's notes: back to it afterwards. Its secret waits in this tab only, never in a URL,
- * for ten minutes at most.
+ * Signing in to open a link to someone's notes: back to it afterwards, where it asks before opening them. Its secret waits
+ * in this tab only, never in a URL, for ten minutes at most.
  */
 export function returnToLink(secret: string): void {
   try {

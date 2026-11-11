@@ -427,8 +427,13 @@ one row per person: `(owner_id, note_item_id, email_index, role)`.
   by an account that's signed in (`POST /v1/note-links/claim`, the secret in the body), it gives that account the notes
   as sharing by address does, with a `note_access` row with role `shared`, and the note's sealed `shared` list says who
   made the link, that it was a link, and when. So every reader is still an account the note lists ("By Priya's link" in
-  who has it, "From Priya's link" for the reader), and can lose. Signed out, the page asks them to sign in first; someone
-  who joined a call as a guest, by name, gets nothing from the call itself and can open a link only by signing in. The
+  who has it, "From Priya's link" for the reader), and can lose. Being listed shows that account's name and address to
+  everyone with the notes, so the page never claims by itself: it names the account it would open as, says everyone with
+  the notes will see it, and claims only when they press Open the notes, after reading who's signed in again (another tab
+  may have changed it). A link posted somewhere, or opened by another page with `window.open`, puts nobody on the list.
+  Signed out, the page asks them to sign in first, and then asks the same, including after a Google sign-in that took the
+  whole tab; someone who joined a call as a guest, by name, gets nothing from the call itself and can open a link only by
+  signing in. The
   same rule as letting someone in from a call's link decides which accounts it may go to: a real one, or any when the
   organizer's own account is a demo one (`403 forbidden` otherwise). Its secret (128 random bits) is only ever in the
   link's fragment (`<web app>/link#<secret>`), which browsers never send, and in that POST body; only its SHA-256 is

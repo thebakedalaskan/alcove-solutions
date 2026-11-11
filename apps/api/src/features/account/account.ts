@@ -35,14 +35,14 @@ import { forgetAccount, moveAddress } from '../workspaces/service';
 const alog = log.child({ component: 'account' });
 
 /**
- * Preferences as a profile keeps them. How long a summary is stopped being a choice (every note gets the short summary,
- * with the full summary under it), but the release before this one opens a profile only when it has `summaryLength`, so
- * it's still written, as it was, until a later release drops it. It never goes on the wire.
+ * Preferences as a profile keeps them, and as GET and PATCH /v1/account/preferences send them. How long a summary is
+ * stopped being a choice (every note gets the short summary, with the full summary under it), but the release before
+ * this one opens a profile, and reads the preferences it's sent, only when they have `summaryLength`: its app may still
+ * be open in a tab, or served while this one deploys. So it's still written, as it was, and still sent. This release's
+ * app doesn't declare it, so its schema drops it. The next release takes it off the wire and out of the profile together.
  */
 const StoredPreferences = PreferencesSchema.extend({ summaryLength: z.enum(['short', 'detailed']).default('short') });
 type StoredPreferences = z.infer<typeof StoredPreferences>;
-/** Preferences as the wire has them: without what's only kept for the release before. */
-const onWire = ({ summaryLength: _kept, ...p }: StoredPreferences): Preferences => p;
 
 export const Profile = z.object({
   name: z.string(),
@@ -309,30 +309,34 @@ async function withdrawCalls(o: Owner): Promise<{ cancelled: number; kept: numbe
   return out;
 }
 
-/** Preferences as they stand. Pins that point at notes this person no longer has are dropped here and the cleaned list is saved. */
-export async function preferences(o: Owner): Promise<Preferences> {
+/**
+ * Preferences as they stand, with the `summaryLength` the release before reads (StoredPreferences). Pins that point at
+ * notes this person no longer has are dropped here and the cleaned list is saved.
+ */
+export async function preferences(o: Owner): Promise<StoredPreferences> {
   const prefs = (await profile(o)).preferences;
-  if (!prefs.pinned.length) return onWire(prefs);
+  if (!prefs.pinned.length) return prefs;
   const held = await heldNoteIds(o);
-  if (prefs.pinned.every((id) => held.has(id))) return onWire(prefs);
+  if (prefs.pinned.every((id) => held.has(id))) return prefs;
   const next = await updateProfile(o, (p) => ({ ...p, preferences: { ...p.preferences, pinned: p.preferences.pinned.filter((id) => held.has(id)) } }));
   alog.info('stale pins dropped', { ownerId: o.ownerId, pins: next.preferences.pinned.length });
-  return onWire(next.preferences);
+  return next.preferences;
 }
 /** Takes a note off this person's pins, when they delete it or remove it from their notes. */
 export async function unpin(o: Owner, noteId: string): Promise<void> {
   if (!(await profile(o)).preferences.pinned.includes(noteId)) return;
   await updateProfile(o, (p) => ({ ...p, preferences: { ...p.preferences, pinned: p.preferences.pinned.filter((id) => id !== noteId) } }));
 }
-export async function updatePreferences(o: Owner, patch: Patch<Preferences>): Promise<Preferences> {
+/** Changes what the patch has, and answers with the preferences as they stand then, `summaryLength` included (StoredPreferences). */
+export async function updatePreferences(o: Owner, patch: Patch<Preferences>): Promise<StoredPreferences> {
   if (patch.pinned?.length) {
     const held = await heldNoteIds(o);
     if (patch.pinned.some((id) => !held.has(id))) throw new NotFoundError('Those notes don’t exist.', { context: { pins: patch.pinned.length } });
   }
-  return onWire((await updateProfile(o, (p) => ({ ...p, preferences: {
+  return (await updateProfile(o, (p) => ({ ...p, preferences: {
     notesDefault: patch.notesDefault ?? p.preferences.notesDefault,
     notesLanguage: patch.notesLanguage ?? p.preferences.notesLanguage,
-    // Not a choice any more: kept as it was, for the release before (StoredPreferences).
+    // Not a choice any more: kept as it was, and not changed by a tab on the release before that sends it (StoredPreferences).
     summaryLength: p.preferences.summaryLength,
     addToCalendar: patch.addToCalendar ?? p.preferences.addToCalendar,
     showOtherMeetings: patch.showOtherMeetings ?? p.preferences.showOtherMeetings,
@@ -342,5 +346,5 @@ export async function updatePreferences(o: Owner, patch: Patch<Preferences>): Pr
     pinned: patch.pinned ?? p.preferences.pinned,
     groups: patch.groups ?? p.preferences.groups,
     model: patch.model === undefined ? p.preferences.model : patch.model
-  } }))).preferences);
+  } }))).preferences;
 }

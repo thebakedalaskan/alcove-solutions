@@ -57,22 +57,29 @@ describe('browser notification preferences', () => {
     expect(saved.notifications).toMatchObject({ ...choices, enabled: false });
     expect((await browser.api.account.preferences()).notifications).toEqual(saved.notifications);
   });
-  it('keeps writing the summary length a profile had, for the release before, and never sends it', async () => {
+  it('keeps writing and sending the summary length a profile had, for the release before', async () => {
     const browser = h.browser();
     const { session } = await browser.api.auth.signIn('sso', { email: `summary.${Date.now()}@tests.example` });
     const owner = await openOwner(h.deps, session.ownerId, undefined);
-    // The release before opens a profile only with a summary length, short or detailed.
-    const previous = Profile.extend({ preferences: PreferencesSchema.extend({ summaryLength: z.enum(['short', 'detailed']) }) });
+    // The release before opens a profile, and parses the preferences it's sent, only with a summary length.
+    const previousPreferences = PreferencesSchema.extend({ summaryLength: z.enum(['short', 'detailed']) });
+    const previous = Profile.extend({ preferences: previousPreferences });
     const [fresh] = await listItems(owner, h.pool, 'profile', previous);
     if (!fresh) throw new Error('No profile to read');
     expect(fresh.manifest.preferences.summaryLength).toBe('short');
     await saveRevision(owner, h.pool, fresh.itemId, fresh.revisionId, { ...fresh.manifest, preferences: { ...fresh.manifest.preferences, summaryLength: 'detailed' } });
-    // It isn't a choice any more: the wire never carries it.
-    const raw = await (await browser.fetch(`${h.baseUrl}/v1/account/preferences`)).text();
-    expect(raw).not.toContain('summaryLength');
+    // It isn't a choice any more, but a tab on the release before (open since, or served while the API deploys) reads
+    // preferences only with it, so both answers still carry it, as the profile has it. It goes from the wire in the next
+    // release, together with the stored field.
+    const read = await browser.fetch(`${h.baseUrl}/v1/account/preferences`);
+    expect(read.status).toBe(200);
+    expect(previousPreferences.parse(await read.json()).summaryLength).toBe('detailed');
     const saved = await browser.fetch(`${h.baseUrl}/v1/account/preferences`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ notesLanguage: 'fr', summaryLength: 'short' }) });
     expect(saved.status).toBe(200);
-    expect(await saved.text()).not.toContain('summaryLength');
+    // What that tab sends for it changes nothing: the answer says what the profile still has.
+    expect(previousPreferences.parse(await saved.json())).toMatchObject({ notesLanguage: 'fr', summaryLength: 'detailed' });
+    // This release's client doesn't declare it, so it never reaches the app.
+    expect(await browser.api.account.preferences()).not.toHaveProperty('summaryLength');
     // Saved after the change, the profile still opens for the release before, with what it said.
     const [after] = await listItems(owner, h.pool, 'profile', previous);
     expect(after?.manifest.preferences).toMatchObject({ notesLanguage: 'fr', summaryLength: 'detailed' });

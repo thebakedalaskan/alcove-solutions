@@ -7,10 +7,20 @@ import { DriveFolderPicker } from '~/features/settings/DriveFolderPicker';
 import { q, useDriveNote, useRetryDriveExport } from '~/lib/queries';
 import { wentAt } from '~/lib/time';
 
-/** What the panel says of a call that follows the defaults: whether automatic exports cover it, by the rule they follow. */
+/**
+ * What the panel says of a call that follows the defaults: whether automatic exports cover it, by the rule they follow.
+ * A call they don't cover may have gone before: while they covered it (they were turned off, or off and on again, which
+ * covers only calls that end after), or by its own export, since stopped. Those files stay in Drive, and the exports
+ * leave them as they are, so it says that rather than that the call isn't exported.
+ */
 function followsDefaults(data: DriveCallExports, available: number): string {
-  if (data.automatic === 'before') return 'This call ended before automatic exports were on, so it isn’t exported.';
-  if (data.automatic === 'off') return 'Automatic exports are off, so this call isn’t exported.';
+  const sent = data.jobs.some((job) => job.status === 'uploaded');
+  if (data.automatic === 'before') return sent
+    ? 'This call ended before automatic exports were last turned on, so they don’t cover it. Its files already in Drive stay there, and changes to the notes aren’t sent.'
+    : 'This call ended before automatic exports were on, so it isn’t exported.';
+  if (data.automatic === 'off') return sent
+    ? 'Automatic exports are off, so they don’t cover this call. Its files already in Drive stay there, and changes to the notes aren’t sent.'
+    : 'Automatic exports are off, so this call isn’t exported.';
   return available ? 'Uses your automatic export settings.' : 'No selected files are available to export from this call.';
 }
 

@@ -139,8 +139,8 @@ export const longSide = (w: World): void => {
 export const READOUT_SECRET = 'VandelayReadout2026Nov';
 /**
  * Priya made a link to her research readout, which Art doesn't have yet (`expired`: it ran out a minute ago), and Art
- * opened it here: its secret waits in this tab, as it does while signing in from it. Opening it puts the readout in
- * Art's notes, from Priya's link.
+ * opened it here: its secret waits in this tab, as it does while signing in from it. Only Open the notes, once the page
+ * has asked, puts the readout in Art's notes, from Priya's link.
  */
 export const linkToReadout = (expired = false) => (w: World): void => {
   const n = w.notes.find((x) => x.id === 'n9');

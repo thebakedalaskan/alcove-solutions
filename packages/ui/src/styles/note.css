@@ -46,6 +46,9 @@
 html:has(.nd) { scroll-padding-block: 92px 92px; }
 /* Except Ask's own caret, which sits in that band at the foot of the window: kept clear of it, every key would scroll the page. */
 html:has(.nd-ask input:focus) { scroll-padding-bottom: 0; }
+/* And, beside the note, the boxes in its own scroll area (Your notes, the shared notes, what would go to them), which
+   keeps their caret in sight itself and can end in that band: the page can't move a column that sticks. */
+@media (min-width: 1181px) { html:has(.nd-side :is(textarea, input):focus) { scroll-padding-bottom: 0; } }
 /* A toast sits above the Ask bar, not on it. */
 body:has(.nd-askdock) .ac-toasts:not(.on-stage) { bottom: 92px; }
 
@@ -402,7 +405,8 @@ button.nd-lt:hover { color: var(--ink); }
 
 /* ------------------------------------------------------------ being written, nothing said, and gone */
 .nd-writing { padding-top: 4px; }
-.nd-read:empty + .nd-said > .nd-s:first-child, .nd-read > .nd-s:first-child { margin-top: 0; }
+/* (Where you write has a place between the two, for one column, so they're siblings but not next to each other.) */
+.nd-read:empty ~ .nd-said > .nd-s:first-child, .nd-read > .nd-s:first-child { margin-top: 0; }
 .nd-writing-t, .nd-quiet h2 { max-width: 40em; font: 400 clamp(17px, 1.34vw, 19px)/1.58 var(--font-sans); color: var(--ink); text-wrap: pretty; }
 .nd-steps { display: grid; margin-top: 20px; max-width: 460px; }
 .nd-steps li { display: flex; align-items: center; gap: 12px; min-height: 44px; border-top: 1px solid var(--nd-hair); font: 400 15px/1.3 var(--font-sans); color: var(--ink-3); }
@@ -440,7 +444,7 @@ button.nd-lt:hover { color: var(--ink); }
 /* A slim bar that stays at the bottom, with the page fading out under it. */
 .nd-askdock { position: sticky; bottom: 24px; z-index: 12; margin-top: auto; }
 /* Room at the end of the note for the suggestions, which sit above the bar: AskBar sets --nd-chips to their height and the gap above the bar (one row until it has measured them). */
-.nd-said, .nd-read:not(:has(+ .nd-said)) { padding-bottom: calc(18px + var(--nd-chips, 42px)); }
+.nd-said, .nd-read:not(:has(~ .nd-said)) { padding-bottom: calc(18px + var(--nd-chips, 42px)); }
 /* The room above the bar is the note's until something shows in it: pointing there neither catches the pointer nor counts as over the bar. */
 .nd-up { position: absolute; left: 0; right: 0; bottom: calc(100% + 8px); display: grid; gap: 8px; pointer-events: none; }
 .nd-up > * { pointer-events: auto; }
@@ -480,6 +484,8 @@ button.nd-lt:hover { color: var(--ink); }
 .nd-side { position: sticky; top: 84px; align-self: start; display: grid; row-gap: 30px; min-width: 0; max-height: calc(100vh - 100px); max-height: calc(100dvh - 100px); margin: -4px -6px 0; padding: 4px 6px 24px; overflow-y: auto; overscroll-behavior: contain; scroll-padding-block: 12px 24px; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
 /* Where you write (Your notes, then the shared notes), and the rest. */
 .nd-yours, .nd-about { display: grid; row-gap: 30px; min-width: 0; }
+/* The two places where you write is put (whereYouWrite.ts): beside the note, and before the transcript in one column. Neither draws a box. */
+.nd-spot { display: contents; }
 .nd-own.hm-panel { padding: 0 16px 14px; }
 .nd-own .hm-panel-h { height: 48px; }
 .nd-own .own-list { display: grid; gap: 0; }
@@ -630,6 +636,8 @@ button.nd-lt:hover { color: var(--ink); }
   /* Where you write comes before the transcript, two across, so it's in reach without passing all of it; the rest follows it. */
   .nd-side { display: contents; }
   .nd-yours { grid-area: 3 / 1; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 28px; align-items: start; padding-top: 34px; }
+  /* Alone (the shared notes show once the notes are written, or once something's added to them), Your notes takes the row. */
+  .nd-yours > :only-child { grid-column: 1 / -1; }
   .nd-own .own-pv { scroll-margin-block: 92px 24px; }
   .nd-said { grid-area: 4 / 1; min-width: 0; padding-bottom: 0; }
   .nd-about { grid-area: 5 / 1; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 28px; align-items: start; padding: 34px 0 calc(70px + var(--nd-chips, 42px)); }
@@ -692,7 +700,9 @@ button.nd-lt:hover { color: var(--ink); }
   .nd-l .nd-la { grid-column: 1; grid-row: 1 / 3; }
   .nd-l .nd-lb { grid-column: 2; }
   .nd-l .nd-lx { grid-column: 3; grid-row: 1 / 3; flex-direction: column; display: none; opacity: 1; }
-  .nd-l.is-on .nd-lx, .nd-lx:has(.is-on) { display: flex; }
+  /* One line shows its tools: the one pressed, while the call plays on from it, until another is pressed or it's scrolled
+     out of sight; with none, the line being said. A ticked bookmark always shows. */
+  .nd-l.is-picked .nd-lx, .nd-lines:not(:has(.nd-l.is-picked)) .nd-l.is-on .nd-lx, .nd-lx:has(.is-on) { display: flex; }
   /* A room's lines are never lit, so what can be done with one stays under it. */
   .nd-lines.is-room .nd-l .nd-lx, .nd-lines.is-room.is-nameless .nd-l .nd-lx { display: flex; grid-column: 2; grid-row: auto; flex-direction: row; justify-content: flex-start; margin: 2px 0 0 -6px; }
   .nd-lines.is-room.is-nameless .nd-l .nd-lx { grid-column: 1; }

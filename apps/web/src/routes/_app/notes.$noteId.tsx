@@ -26,6 +26,7 @@ import { ScreenMomentRow, ScreenRefChip, ScreenViewer, useScreenViewer } from '~
 import { WorkedOn } from '~/features/notes/WorkedOn';
 import { PinNote, ShareNote } from '~/features/notes/share';
 import { noteWave } from '~/features/notes/wave';
+import { useWhereYouWrite } from '~/features/notes/whereYouWrite';
 import { OwnNotesCard, SharedNotes, useOwn } from '~/features/personal/OwnNotes';
 import { SeriesCard } from '~/features/series/cards';
 import { useNoteOnScreen } from '~/features/shell/notify';
@@ -156,6 +157,7 @@ function NoteView({ note, me, at, room, onGone }: { note: Note; me: string | und
   const rewrite = useRewriteNotes();
   const cancel = useCancelRewrite();
   const yours = useOwn(note.id);
+  const where = useWhereYouWrite();
   const writtenPrivately = !isUnencrypted(useAiModels().data, note.model);
   // A call that doesn't keep its recording has none to play, whatever is still on its way out.
   const audio = note.kept.recording ? note.audio : NO_AUDIO;
@@ -417,6 +419,8 @@ function NoteView({ note, me, at, room, onGone }: { note: Note; me: string | und
             {/* What was worked on, under what was decided and what's to do, whether or not the notes are written yet. */}
             {!going && <WorkedOn worked={note.workedOn} />}
           </div>
+          {/* In one column, where you write goes here, before the transcript, in the page's order as on screen. */}
+          <div ref={where.inMain} className="nd-spot" />
           <div className="nd-said" id="transcript">
             {lines.length > 0 && transcript(ready && written ? again : undefined)}
             {written && deleted && <p className="nd-kept is-doc"><Icon name="transcript" size={15} />The transcript was deleted after the notes were written.</p>}
@@ -426,12 +430,13 @@ function NoteView({ note, me, at, room, onGone }: { note: Note; me: string | und
           {ready && (lines.length > 0 || roomsSaid || roomNotes || (written && deleted)) && !going && <AskBar suggestions={note.suggestedQuestions} ask={(question) => api.notes.ask(note.id, question)} onSeek={seek} shown={onScreen} onKeep={keep} />}
         </div>
         {/* Its own scroll area beside the note, so where you write is in reach however long the note is. In one column,
-            where you write comes before the transcript, and the rest after it. */}
+            where you write comes before the transcript (whereYouWrite.ts), and the rest after it. */}
         <aside className="nd-side" aria-label="About these notes">
-          <div className="nd-yours">
+          <div ref={where.beside} className="nd-spot" />
+          {where.put(<>
             <OwnNotesCard note={note} me={me} entries={yours.entries} own={yours.own} shown={onScreen} onSeek={seek} />
             <SharedNotes note={note} me={me} mine={mine} shown={onScreen} onSeek={seek} />
-          </div>
+          </>)}
           <div className="nd-about">
             {showMarks && <ChapterList chapters={note.chapters} onGo={canGo ? goChapter : undefined} />}
             <Recipients recipients={note.recipients} me={me} fresh={sharedTo} />

@@ -62,10 +62,10 @@ function changeLine(c: Change, me: string | undefined): string {
 }
 
 /** When a line was said, which goes there (and plays from there, with `plays`), with a mark when something in the notes came from it. */
-function LineTime({ line, kind, plays, onSeek }: { line: TranscriptLine; kind: 'decide' | 'follow' | undefined; plays: boolean; onSeek: ((s: number) => void) | undefined }) {
+function LineTime({ line, kind, plays, onGo }: { line: TranscriptLine; kind: 'decide' | 'follow' | undefined; plays: boolean; onGo: (() => void) | undefined }) {
   const mark = kind && <i className={cn('nd-lk', `is-${kind}`)} aria-hidden="true" />;
-  return onSeek
-    ? <button type="button" className="nd-lt" aria-label={`${plays ? 'Play from' : 'Go to'} ${position(line.at)}`} onClick={() => onSeek(line.at)}>{position(line.at)}{mark}</button>
+  return onGo
+    ? <button type="button" className="nd-lt" aria-label={`${plays ? 'Play from' : 'Go to'} ${position(line.at)}`} onClick={onGo}>{position(line.at)}{mark}</button>
     : <span className="nd-lt">{position(line.at)}{mark}</span>;
 }
 
@@ -73,10 +73,12 @@ function LineTime({ line, kind, plays, onSeek }: { line: TranscriptLine; kind: '
  * One line of a transcript. `more`: the same speaker as the line before, so their name isn't said again (a speaker in
  * doubt always is). `id` is where a link to a moment lands, and `on` marks the line being said. `kind`: what in the notes
  * came from it. With `onSeek`, pressing the line's words does what pressing its time does: go to its moment, and play
- * from there when there's a recording (`plays`).
+ * from there when there's a recording (`plays`). `picked`: the line pressed last, which keeps its tools on a phone while
+ * the line being said moves on.
  */
-export function LineRow({ line, more, id, on, kind, onSeek, plays = false, me, correct, fromLine, marks }: {
-  line: TranscriptLine; more: boolean; id: string | undefined; on: boolean; kind: 'decide' | 'follow' | undefined; onSeek: ((s: number) => void) | undefined; plays?: boolean | undefined; me: string | undefined;
+export function LineRow({ line, more, id, on, picked = false, kind, onSeek, plays = false, me, correct, fromLine, marks }: {
+  line: TranscriptLine; more: boolean; id: string | undefined; on: boolean; picked?: boolean | undefined; kind: 'decide' | 'follow' | undefined;
+  onSeek: ((s: number, lineId: string) => void) | undefined; plays?: boolean | undefined; me: string | undefined;
   correct?: Correcting | undefined; fromLine?: FromLine | undefined; marks?: LineMarks | undefined;
 }) {
   const [editing, setEditing] = useState(false);
@@ -93,9 +95,10 @@ export function LineRow({ line, more, id, on, kind, onSeek, plays = false, me, c
   // The first correction says what was heard, so it stays in view with the latest.
   const recent = history.length > 4 ? [history[0] ?? '', '…', ...history.slice(-3)] : history;
   const marked = marks?.has(line.id) ?? false;
+  const go = onSeek && (() => onSeek(line.at, line.id));
   return (
-    <SpokenLine id={id} className={cn(!named && 'is-more', on && 'is-on')} person={named ? person : undefined} time={<LineTime line={line} kind={kind} plays={plays} onSeek={onSeek} />}
-      onPress={onSeek && (() => onSeek(line.at))}
+    <SpokenLine id={id} className={cn(!named && 'is-more', on && 'is-on', picked && 'is-picked')} person={named ? person : undefined} time={<LineTime line={line} kind={kind} plays={plays} onGo={go} />}
+      onPress={go}
       name={(name || history.length > 0) && (
         <>
           {name && (line.unsure?.speaker ? <Unsure of="speaker">{name}</Unsure> : <span>{name}</span>)}

@@ -15,6 +15,7 @@ import { current } from '../../src/api/state';
 import type { World } from '../../src/world';
 import { FOLLOW_UP_NEW, FOLLOW_UP_NOTE, FOLLOW_UP_TASK, withFollowUpProposals } from '../../src/world/follow-ups';
 import { changing, page, pages, type PageArgs, type PageStory } from '../../src/page';
+import { linkToReadout } from '../pages/changes';
 import { away, before, first, holding, LAPTOP, LATER, nth, outage, pause, pressable, reachable, SOON, swap, unreachable } from './play';
 
 const meta = { title: 'Journeys/8 Notes', ...pages, globals: LAPTOP } satisfies Meta<PageArgs>;
@@ -768,7 +769,7 @@ export const BookmarkALineOrAScreen: PageStory = {
     });
     await step('It opens over the note, with its own bookmark', async () => {
       const shared = await screen.findByRole('dialog', { name: 'Shared screen: Launch checklist' }, SOON);
-      await userEvent.click(within(shared).getByRole('button', { name: 'Bookmark this screen, for you alone' }));
+      await userEvent.click(within(shared).getByRole('button', { name: 'Bookmark this screen in your own notes, which only you see' }));
     });
     await step('Bookmarked, it’s in Your notes too', async () => {
       await userEvent.keyboard('{Escape}');
@@ -1154,6 +1155,25 @@ export const ShareByLink: PageStory = {
     await step('Revoke it: from now on it opens nothing, and whoever it gave the notes to keeps them', async () => {
       await userEvent.click(screen.getByRole('button', { name: 'Revoke' }));
       await away('button', 'Revoke');
+    });
+  }
+};
+
+export const OpenALinkToNotes: PageStory = {
+  name: '8.50 Open a link to notes',
+  ...page('/link', 'signed-out', { beforeEach: changing(linkToReadout()) }),
+  play: async ({ userEvent, step }) => {
+    await step('Priya sent Art a link to her research readout. Signed out, it opens nothing: it asks him to sign in first. Continue with Microsoft', async () => {
+      await userEvent.click(await screen.findByRole('button', { name: 'Continue with Microsoft' }, SOON));
+    });
+    await step('Signed in, it still opens nothing. It asks whether to open them as his address, which everyone with the notes will see', async () => {
+      await screen.findByText(ART.email, {}, SOON);
+      await screen.findByRole('button', { name: 'Open the notes' }, SOON);
+    });
+    await step('Open the notes. The readout joins his notes, from Priya’s link, and opens', async () => {
+      await userEvent.click(screen.getByRole('button', { name: 'Open the notes' }));
+      await theNote('Customer research readout');
+      await screen.findByText('From Priya’s link', {}, SOON);
     });
   }
 };

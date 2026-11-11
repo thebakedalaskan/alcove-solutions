@@ -105,7 +105,7 @@ export function ScreenViewer({ noteId, screens, open, me, onOpen, onClose, onPla
           </div>
           <div className="scr-f">
             <span className="ac-mono">{i + 1} of {screens.length}</span>
-            {marks && <IconButton icon={marks.has(m.id) ? 'bookmarked' : 'bookmark'} label={marks.has(m.id) ? 'Remove your bookmark' : 'Bookmark this screen, for you alone'} on={marks.has(m.id)} onClick={() => marks.toggle(m.id)} />}
+            {marks && <IconButton icon={marks.has(m.id) ? 'bookmarked' : 'bookmark'} label={marks.has(m.id) ? 'Remove your bookmark' : 'Bookmark this screen in your own notes, which only you see'} on={marks.has(m.id)} onClick={() => marks.toggle(m.id)} />}
             <Moment at={m.at} plays onSeek={onPlay && ((s) => { onPlay(s); onClose(); })} />
           </div>
         </>
