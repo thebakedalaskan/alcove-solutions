@@ -145,14 +145,15 @@ button.cf-r:enabled:hover b { color: var(--sun-text); }
 .cf-wk-nav { display: flex; gap: 2px; }
 /* --hh is an hour's height, --top the room above the first hour line, so its label clears the sticky days (WeekGrid's HOUR and TOP). */
 .wk-scroll { --hh: 34px; --top: 8px; max-height: calc(9 * var(--hh) + 44px); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
-.wk { display: grid; grid-template-columns: 34px repeat(5, minmax(0, 1fr)); }
+.wk { display: grid; grid-template-columns: 34px repeat(5, minmax(0, 1fr)); padding-bottom: var(--top); }
 .wk-d { position: sticky; top: 0; z-index: 3; height: 44px; padding-bottom: 8px; background: var(--surface-raised); text-align: center; font: 500 12px/1.2 var(--font-sans); color: var(--ink-3); }
 .wk-d b { display: block; margin-top: 3px; font: 600 15px/1 var(--font-sans); color: var(--ink); }
 .wk-d.today, .wk-d.today b { color: var(--sun-text); }
 .wk-corner { position: sticky; top: 0; z-index: 3; background: var(--surface-raised); }
-.wk-hrs { display: grid; grid-auto-rows: var(--hh); padding-top: var(--top); }
+/* A label on every hour line, the grid's end included, which has a row of no height of its own. */
+.wk-hrs { display: grid; grid-template-rows: repeat(var(--rows), var(--hh)) 0; padding-top: var(--top); }
 .wk-hrs span { padding-right: 7px; text-align: right; font: 500 11px/1 var(--font-sans); font-variant-numeric: tabular-nums; color: var(--ink-3); transform: translateY(-5px); }
-.wk-c { position: relative; height: calc(var(--rows) * var(--hh) + var(--top)); padding-top: var(--top); border-left: 1px solid var(--line); background-image: linear-gradient(var(--line) 1px, transparent 1px); background-size: 100% var(--hh); background-origin: content-box; }
+.wk-c { position: relative; height: calc(var(--rows) * var(--hh) + var(--top) + 1px); padding-top: var(--top); border-left: 1px solid var(--line); border-bottom: 1px solid var(--line); background-image: linear-gradient(var(--line) 1px, transparent 1px); background-size: 100% var(--hh); background-origin: content-box; }
 .wk-c:last-child { border-right: 1px solid var(--line); }
 .wk-slot { position: absolute; z-index: 1; left: 0; right: 0; top: calc(var(--top) + var(--i) * var(--hh) / 2); height: calc(var(--hh) / 2); cursor: pointer; }
 .wk-slot:hover { background: color-mix(in srgb, var(--sun) 10%, transparent); }

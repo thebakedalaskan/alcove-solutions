@@ -168,9 +168,11 @@ export function TimeCard({ day, time, note, picked, ...rest }: Omit<ButtonHTMLAt
 /** Where a time card will be, while calendars are being read. */
 export const TimeCardWaiting = () => <span className="cf-time is-wait" aria-hidden="true"><i /><i /><i /></span>;
 
-/** An hour's height in the week, and the room above its first hour line (flow.css's --hh and --top). */
+/** An hour's height in the week, the room above its first hour line, and the row of days (flow.css's --hh, --top and .wk-d). */
 const HOUR = 34;
 const TOP = 8;
+const DAYS_ROW = 44;
+const twoDigits = (h: number) => String(h).padStart(2, '0');
 
 /** A day in the week. */
 export interface WeekDay { weekday: string; date: number; today: boolean; label: string }
@@ -185,7 +187,7 @@ export function WeekGrid({ days, events, pick, from, to, isBusy, isPast, onPick,
   days: WeekDay[]; events: WeekEvent[];
   /** The time picked, when it's on this week. */
   pick: { day: number; from: number; to: number; label: string } | null;
-  /** The hours shown. Nine in the morning is the top of the view; anything earlier is scrolled to. */
+  /** The hours shown, each line labelled, the grid's end too. Nine in the morning is the top of the view as it opens. */
   from: number; to: number;
   isBusy: (day: number, hour: number) => boolean;
   /** It's gone: it can't be picked. */
@@ -196,13 +198,26 @@ export function WeekGrid({ days, events, pick, from, to, isBusy, isPast, onPick,
   const hours = Array.from({ length: to - from }, (_, i) => from + i);
   const slots = (to - from) * 2;
   const box = useRef<HTMLDivElement>(null);
-  const [cursor, setCursor] = useState({ day: pick?.day ?? 0, slot: pick ? Math.round((pick.from - from) * 2) : (9 - from) * 2 });
-  /* Nine o'clock at the top of the view to begin with, or the pick if it's earlier, with its label clear of the days. */
-  const top = Math.max(from, Math.min(pick?.from ?? 9, 9));
+  const [cursor, setCursor] = useState(() => ({ day: pick?.day ?? 0, slot: Math.max(0, Math.min(slots - 1, Math.floor(((pick?.from ?? 9) - from) * 2))) }));
+  /*
+   * Nine o'clock at the top of the view as it opens, or the pick when it's earlier, with its label clear of the days. After
+   * that, a pick out of view (from a card, or a time typed) is brought into it, moving as little as it takes.
+   */
+  const opened = useRef(false);
+  const end = pick ? Math.min(to, pick.to) : null;
   useLayoutEffect(() => {
     const el = box.current;
-    if (el) el.scrollTop = (top - from) * HOUR + TOP - 10;
-  }, [from, top]);
+    if (!el) return;
+    const y = (h: number) => (h - from) * HOUR + TOP;
+    if (!opened.current) {
+      opened.current = true;
+      el.scrollTop = y(Math.max(from, Math.min(pick?.from ?? 9, 9))) - 10;
+    }
+    if (!pick || end === null) return;
+    const view = el.clientHeight - DAYS_ROW;
+    if (y(pick.from) < el.scrollTop + 10) el.scrollTop = y(pick.from) - 10;
+    else if (y(end) > el.scrollTop + view - 10) el.scrollTop = Math.min(y(pick.from) - 10, y(end) - view + 10);
+  }, [from, pick?.day, pick?.from, end]);
   const move = (day: number, slot: number) => {
     const next = { day: Math.max(0, Math.min(days.length - 1, day)), slot: Math.max(0, Math.min(slots - 1, slot)) };
     setCursor(next);
@@ -220,11 +235,11 @@ export function WeekGrid({ days, events, pick, from, to, isBusy, isPast, onPick,
       <div className="wk" style={{ '--rows': to - from, '--from': from }}>
         <span className="wk-corner" />
         {days.map((d) => <span key={d.label} className={cn('wk-d', d.today && 'today')} aria-hidden="true">{d.weekday}<b>{d.date}</b></span>)}
-        <div className="wk-hrs" aria-hidden="true">{hours.map((h) => <span key={h}>{String(h).padStart(2, '0')}</span>)}</div>
+        <div className="wk-hrs" aria-hidden="true">{hours.map((h) => <span key={h}>{twoDigits(h)}</span>)}<span>{twoDigits(to)}</span></div>
         {days.map((d, day) => (
           <div key={d.label} className="wk-c">
             {events.filter((e) => e.day === day).map((e, i) => <span key={i} className={cn('ev', e.kind)} style={{ '--s': e.from, '--d': e.to - e.from }}>{e.title}</span>)}
-            {pick?.day === day && <span className="ev is-pick" style={{ '--s': pick.from, '--d': pick.to - pick.from }}>{pick.label}</span>}
+            {pick?.day === day && end !== null && <span className="ev is-pick" style={{ '--s': pick.from, '--d': end - pick.from }}>{pick.label}</span>}
             {Array.from({ length: slots }, (_, slot) => {
               const hour = from + slot / 2;
               const past = isPast(day, hour);

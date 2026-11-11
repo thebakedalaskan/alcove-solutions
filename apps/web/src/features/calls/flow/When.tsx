@@ -14,9 +14,9 @@ import { callCount, dayWord, freeLine, repeatLine, shortTime, whenLine } from '.
 
 const LENGTHS = [30, 45, 60] as const;
 const lengthLabel = (m: number) => (m % 60 ? `${m} min` : `${m / 60} h`);
-/** Hours the week shows, and where nine o'clock sits in them. */
-const WEEK_FROM = 7;
-const WEEK_TO = 21;
+/** The week shows the whole day, and opens with nine o'clock at its top (WeekGrid). */
+const WEEK_FROM = 0;
+const WEEK_TO = 24;
 const WEEK_DAYS = 5;
 const DAY_LETTERS = [['M', 1], ['T', 2], ['W', 3], ['T', 4], ['F', 5], ['S', 6], ['S', 0]] as const;
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'] as const;
@@ -59,13 +59,15 @@ export function Week({ emails, chosen, minutes, onPick, except }: { emails: read
 
   const events = useMemo<WeekEvent[]>(() => {
     const out: WeekEvent[] = [];
+    /* At its real times, on each day of the week it's in: what runs past midnight goes on into the next day. */
     const place = (from: Date, to: Date, kind: WeekEvent['kind'], title?: string | undefined) => {
-      const day = dayIndex(from);
-      if (day < 0) return;
-      const end = to.toDateString() === from.toDateString() ? hoursOf(to) : WEEK_TO;
-      const a = Math.max(WEEK_FROM, hoursOf(from));
-      const b = Math.min(WEEK_TO, end);
-      if (b > a) out.push({ day, from: a, to: b, kind, title });
+      days.forEach((d, day) => {
+        const start = d.getTime();
+        const end = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1).getTime();
+        const a = Math.max(from.getTime(), start);
+        const b = Math.min(to.getTime(), end);
+        if (b > a) out.push({ day, from: a === start ? WEEK_FROM : hoursOf(new Date(a)), to: b === end ? WEEK_TO : hoursOf(new Date(b)), kind, title });
+      });
     };
     for (const e of week.own) place(new Date(e.from), new Date(e.to), 'mine', e.title);
     const isOwn = (from: string) => week.own.some((e) => e.from === from);
