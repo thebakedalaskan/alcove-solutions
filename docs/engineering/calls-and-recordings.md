@@ -1729,7 +1729,9 @@ person's own access where the call uses its pass, and its links open on the page
 - **Night board** is the board's own setting, kept in its Y.Doc under a fourth root, `settings` (`night`, in
   `@alcove/board`'s `settings.ts`), written by whoever can change the board and refused as any change is from someone who
   can only read. Every picture of the board reads it from the board, so the stage, a tile, a note, presenting and the page
-  all follow it: a dark board in any theme. Undo leaves it alone.
+  all follow it: a dark board in any theme. Undo leaves it alone. Both menus that offer it, the bar's More and the frame's
+  name menu, show it the same way (the moon, ticked while it's on), and either says what it did in a toast (`Board.nightBoard`):
+  in someone's own dark theme nothing on their screen changes, so that's how they know it changed everyone else's.
 - **On a phone** (a sheet under 600 px), a board opens on its first frame at a size it can be read (`phoneCamera`), not
   shrunk to all of it. Someone who can add to it gets the phone's board: the bar with its name, seal, Vote and More, no
   tools beside it, **+** at the bottom right for one sticky at a time, and a tap on a sticky to vote. The sticky goes in the

@@ -8,7 +8,7 @@
  * and what the bars offer is in `tools/`, and what More adds in `more/`.
  */
 import { errorCode } from '@alcove/api';
-import { addObject, addStickies, bounds, hasBox, roomFrameId, setNight, shapePath, type Added, type BoardStep, type BoardView, type Landing, type PlacedObject } from '@alcove/board';
+import { addObject, addStickies, bounds, hasBox, roomFrameId, shapePath, type Added, type BoardStep, type BoardView, type Landing, type PlacedObject } from '@alcove/board';
 import {
   BOARD_MORE, BoardBar, BoardDots, BoardEmpty, BoardFrame, BoardGuide, BoardLayout, BoardLine, BoardLines, BoardMarquee, BoardPageActions, BoardPicture, BoardRail, BoardSelectionBox, BoardShape, BoardSheet, BoardSticky,
   BoardStroke, BoardText, BoardWorld, DURATION, useToast, type AvatarPerson, type BoardNaming, type IconName
@@ -92,8 +92,8 @@ export interface BoardHandle {
   /** Whether it's a night board: dark in any theme, for everyone. */
   night(): boolean;
   /**
-   * Night board on or off, for everyone, as the bar's More has it. It's for whoever can change the board, which whoever offers it
-   * makes sure of: someone presenting a board they can change draws nothing on it, but can still make it a night board.
+   * Night board on or off, for everyone, as the bar's More has it, saying what it did. It's for whoever can change the board, which
+   * whoever offers it makes sure of.
    */
   setNight(on: boolean): void;
 }
@@ -547,7 +547,7 @@ export const BoardSurface = forwardRef<BoardHandle, BoardSurfaceProps>(function 
     saveImage: () => barItems.image?.(),
     savePdf: () => barItems.pdf?.(),
     night: () => board.getSnapshot().night,
-    setNight: (on) => setNight(board.doc, on, board.origin)
+    setNight: (on) => board.nightBoard(on)
   }), [board, presence, barItems]);
 
   return (

@@ -1018,9 +1018,12 @@ See [Floating call](../engineering/floating-call.md) for browser capabilities an
 13. **More**, at the end of the board's bar. **Copy link** copies the board's address, which opens it for whoever can open
    it. **Download as an image** and **Download as a PDF** save the board as you see it, every linked document named as you
    know it or "A document you can't open"; it's drawn and saved in your browser, and comments aren't in it. Those three
-   change nothing, so someone who can only look has them too. **Night board**, for whoever can change the board, makes it a
-   dark board in any theme, a dark board by day, for everyone and everywhere it shows: on the stage, as a tile, on the note,
-   presenting and on its page. It says **On** while it is, and pressing it again lets the board follow each person's theme.
+   change nothing, so someone who can only look has them too. **Night board**, with the moon, for whoever can change the
+   board, makes it a dark board in any theme, a dark board by day, for everyone and everywhere it shows: on the stage, as a
+   tile, on the note, presenting and on its page. A toast says what it did, for whom: "Night board is on. The board is dark for
+   everyone, whatever their theme.", which is how someone whose own theme is dark knows it worked. It has a tick while it's
+   on, here and in the board's name menu (step 7) alike, and pressing it again lets the board follow each person's theme:
+   "Night board is off. The board follows each person's theme."
 14. **On a phone**, **Board** is first in **More**'s grid and opens the same picker, and a board's frame has no Present:
    **Share › A board** presents one. Faces stay on top, under the line over the call when it says anything, and the board
    fills the rest, opening on its first frame at a size it can be read. Drag to look round and pinch to zoom; the bar keeps

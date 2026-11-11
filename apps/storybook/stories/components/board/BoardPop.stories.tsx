@@ -80,7 +80,7 @@ export const Vote: Story = {
     action: { label: 'Start the vote', onPick: did('Start the vote') }
   }
 };
-/** More: a link, the board as an image or a PDF, and Night board. */
+/** More: a link, the board as an image or a PDF, and Night board, a setting with a tick while it's on. */
 export const More: Story = {
   args: {
     left: undefined, right: 14, top: 60, title: undefined, rows: undefined, label: 'More',
@@ -88,7 +88,15 @@ export const More: Story = {
       { id: 'link', icon: 'link', label: 'Copy link', onPick: did('Copy link') },
       { id: 'image', icon: 'download', label: 'Download as an image', onPick: did('Download as an image') },
       { id: 'pdf', icon: 'fileText', label: 'Download as a PDF', onPick: did('Download as a PDF') },
-      { id: 'night', icon: 'sun', label: 'Night board', onPick: did('Night board') }
+      { id: 'night', icon: 'moon', label: 'Night board', on: false, onPick: did('Night board') }
     ]
+  }
+};
+/** More on a night board: Night board is ticked, as the frame's name menu in a call ticks it. */
+export const MoreOnANightBoard: Story = {
+  name: 'More, on a night board',
+  args: {
+    ...More.args,
+    items: (More.args?.items ?? []).map((i) => (i.id === 'night' ? { ...i, on: true } : i))
   }
 };

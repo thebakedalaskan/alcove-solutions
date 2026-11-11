@@ -304,9 +304,9 @@ export interface BoardPopProps {
   options?: { id: string; label: string; on: boolean; onPick: () => void }[] | undefined;
   /**
    * Things to do. Each `id` is unique among them, and the same for as long as the item is there, so a press never lands on
-   * another item's action as items come and go. `small` sits at the end of the line.
+   * another item's action as items come and go. `on`: a setting, pressed with a tick at the end of its line while it's on.
    */
-  items?: { id: string; icon: IconName; label: string; small?: string | undefined; onPick: () => void }[] | undefined;
+  items?: { id: string; icon: IconName; label: string; on?: boolean | undefined; onPick: () => void }[] | undefined;
   /** The one button at the bottom. */
   action?: { label: string; onPick: () => void } | undefined;
   /** Moves it from where `left` puts it, as `BoardSelectionBar` does to keep its menu on the sheet. */
@@ -329,7 +329,11 @@ export const BoardPop = forwardRef<HTMLDivElement, BoardPopProps>(function Board
       {sub && <div className="sub">{sub}</div>}
       {rows && <div className="rows">{rows.map((r, i) => <div key={i}><Icon name={r.icon} size={15} /><span>{r.text}</span></div>)}</div>}
       {options && <div className="opts">{options.map((o) => <button key={o.id} type="button" className="opt" aria-pressed={o.on} onClick={settled(o.onPick)}>{o.label}</button>)}</div>}
-      {items?.map((i) => <button key={i.id} type="button" className="mi" onClick={settled(i.onPick)}><Icon name={i.icon} size={17} /><span>{i.label}</span>{i.small && <small>{i.small}</small>}</button>)}
+      {items?.map((i) => (
+        <button key={i.id} type="button" className="mi" aria-pressed={i.on} onClick={settled(i.onPick)}>
+          <Icon name={i.icon} size={17} /><span>{i.label}</span>{i.on !== undefined && <Icon name="check" size={16} className="tick" />}
+        </button>
+      ))}
       {action && <div className="ft"><Button variant="primary" onClick={settled(action.onPick)}>{action.label}</Button></div>}
     </div>
   );

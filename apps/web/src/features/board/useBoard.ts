@@ -83,6 +83,11 @@ const NEAR_EVERY_MS = 100;
 const REST_MS = 100;
 /** A moment past the transition's own end. */
 const SETTLE_MS = 20;
+/**
+ * What's said as Night board turns on or off: it changes the board for everyone, whatever their theme, so the person pressing it
+ * hears that even when their own dark theme shows them nothing changing.
+ */
+const NIGHT_SAID = { on: 'Night board is on. The board is dark for everyone, whatever their theme.', off: 'Night board is off. The board follows each person’s theme.' } as const;
 /** What's said when what someone is typing in is deleted under them. */
 const DELETED: Partial<Record<BoardObject['k'], string>> = { note: 'This sticky was deleted.', text: 'This text was deleted.', shape: 'This shape was deleted.', frame: 'This frame was deleted.' };
 
@@ -462,10 +467,18 @@ export class Board implements LiveStore<BoardState> {
     this.set({ ...CLOSED, tool, sel: [], hover: null, fly: tool === was && fly === options ? null : options });
   }
 
-  /** Night board: makes the board dark in any theme, for everyone, or lets it follow each person's theme again. */
+  /** Night board, from the bar's More: makes the board dark in any theme, for everyone, or lets it follow each person's theme again. */
   toggleNight(): void {
-    if (!this.canAdd) return;
-    setNight(this.doc, !this.state.night, this.origin);
+    if (this.canAdd) this.nightBoard(!this.state.night);
+  }
+
+  /**
+   * Night board on or off, for everyone, and what that did said to whoever pressed it, the same from either menu. It's for whoever
+   * can change the board, which whoever offers it makes sure of.
+   */
+  nightBoard(on: boolean): void {
+    setNight(this.doc, on, this.origin);
+    this.tell(on ? NIGHT_SAID.on : NIGHT_SAID.off, { icon: 'moon', topic: 'board-night' });
   }
 
   /** More, beside the rail. */

@@ -53,6 +53,22 @@ export const OpenLight = light(Open);
 
 /** Its name's menu, on its frame: Rename, Open where it's saved, Who can add to it, Copy link, Download as an image or a PDF, and Night board. */
 export const TheNameMenu = review(at(1, opensBoard(PRIYA, 'retro')), retroWith(4), onIt(step('Press the board’s name, on its frame', (c) => frameMenu(c, BOARD))));
+/**
+ * Night board, from its name's menu: the moon, ticked while it's on, as the board bar's More shows it. A toast says what changed
+ * and for whom, since in a dark theme your own board was already dark.
+ */
+const nightFromItsName = onIt(
+  step('Press the board’s name, then Night board: the board is dark for everyone, whatever their theme, and a toast says so', async (c) => {
+    await c.userEvent.click(within(await frameMenu(c, BOARD)).getByRole('menuitemcheckbox', { name: 'Night board' }));
+    await toldThat('Night board is on. The board is dark for everyone, whatever their theme.', SOON);
+  }),
+  step('The name’s menu again: Night board is ticked', async (c) => {
+    await settle();
+    await within(await frameMenu(c, BOARD)).findByRole('menuitemcheckbox', { name: 'Night board', checked: true }, SOON);
+  })
+);
+export const NightBoardFromItsName = review(at(1, opensBoard(PRIYA, 'retro')), retroWith(4), { ...nightFromItsName, name: 'Night board, from its name', globals: { theme: 'dark' } });
+export const NightBoardFromItsNameLight = light(NightBoardFromItsName, 'Night board, from its name, in a light theme');
 /** Its seal says what's true of this board: everyone in the call can add to it, where it's saved, and that it’s encrypted in storage. */
 export const TheSeal = review(at(1, opensBoard(PRIYA, 'retro')), retroWith(4), onIt(step('Press Sealed, on the board’s bar', async (c) => {
   await c.userEvent.click(await screen.findByRole('button', { name: 'Sealed' }, LATER));

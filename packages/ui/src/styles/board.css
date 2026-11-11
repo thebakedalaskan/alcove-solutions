@@ -370,7 +370,9 @@
 .bp .mi { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 38px; padding: 0 10px; border-radius: 9px; font: 500 13.5px/1.2 var(--font-sans); color: var(--ink); text-align: left; }
 .bp .mi:hover { background: var(--sunk); }
 .bp .mi .ac-i { flex: none; color: var(--ink-2); }
-.bp .mi small { margin-left: auto; font: 500 12px/1 var(--font-sans); font-variant-numeric: tabular-nums; color: var(--ink-3); }
+/* A setting's tick, at the end of its line while it's on, as the call's menus show one. */
+.bp .mi .tick { margin-left: auto; color: var(--sun-text); opacity: 0; }
+.bp .mi[aria-pressed="true"] .tick { opacity: 1; }
 .bp .opts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; padding: 0 10px 10px; }
 .bp .opt { height: 40px; border-radius: 10px; font: 600 14px/1 var(--font-sans); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line-control); }
 .bp .opt[aria-pressed="true"] { background: color-mix(in srgb, var(--sun) 16%, transparent); color: var(--sun); box-shadow: inset 0 0 0 1.5px var(--sun); }
