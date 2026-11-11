@@ -11,11 +11,6 @@ export const NotesLanguageSchema = z.enum(NOTES_LANGUAGES);
 export type NotesLanguage = z.infer<typeof NotesLanguageSchema>;
 
 
-export const SummaryLengthSchema = z.enum(['short', 'detailed']);
-
-export type SummaryLength = z.infer<typeof SummaryLengthSchema>;
-
-
 /**
  * A call's reply and mention toasts once had switches of their own (`replyAlerts`, `mentionAlerts`, on unless turned off)
  * beside the browser's `replies` and `chatMentions`, which now drive both. A record that still holds one keeps an alert
@@ -118,7 +113,6 @@ export const PreferencesSchema = z.object({
   /** Whether new calls start with notes on. Each call can still be set when it's scheduled. */
   notesDefault: NotesSettingSchema,
   notesLanguage: NotesLanguageSchema,
-  summaryLength: SummaryLengthSchema,
   /** Put the notes link on the calendar event of calls you schedule. */
   addToCalendar: z.boolean(),
   /** Show calendar events that aren't Alcove calls. */

@@ -57,6 +57,26 @@ describe('browser notification preferences', () => {
     expect(saved.notifications).toMatchObject({ ...choices, enabled: false });
     expect((await browser.api.account.preferences()).notifications).toEqual(saved.notifications);
   });
+  it('keeps writing the summary length a profile had, for the release before, and never sends it', async () => {
+    const browser = h.browser();
+    const { session } = await browser.api.auth.signIn('sso', { email: `summary.${Date.now()}@tests.example` });
+    const owner = await openOwner(h.deps, session.ownerId, undefined);
+    // The release before opens a profile only with a summary length, short or detailed.
+    const previous = Profile.extend({ preferences: PreferencesSchema.extend({ summaryLength: z.enum(['short', 'detailed']) }) });
+    const [fresh] = await listItems(owner, h.pool, 'profile', previous);
+    if (!fresh) throw new Error('No profile to read');
+    expect(fresh.manifest.preferences.summaryLength).toBe('short');
+    await saveRevision(owner, h.pool, fresh.itemId, fresh.revisionId, { ...fresh.manifest, preferences: { ...fresh.manifest.preferences, summaryLength: 'detailed' } });
+    // It isn't a choice any more: the wire never carries it.
+    const raw = await (await browser.fetch(`${h.baseUrl}/v1/account/preferences`)).text();
+    expect(raw).not.toContain('summaryLength');
+    const saved = await browser.fetch(`${h.baseUrl}/v1/account/preferences`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ notesLanguage: 'fr', summaryLength: 'short' }) });
+    expect(saved.status).toBe(200);
+    expect(await saved.text()).not.toContain('summaryLength');
+    // Saved after the change, the profile still opens for the release before, with what it said.
+    const [after] = await listItems(owner, h.pool, 'profile', previous);
+    expect(after?.manifest.preferences).toMatchObject({ notesLanguage: 'fr', summaryLength: 'detailed' });
+  });
   it('folds a previous release’s call alert switches into their Alert ticks, then saves the record without them', async () => {
     const browser = h.browser();
     const { session } = await browser.api.auth.signIn('sso', { email: `folded.${Date.now()}@tests.example` });
@@ -73,7 +93,7 @@ describe('browser notification preferences', () => {
       timers: true, ringing: true, beforeCall: 1, notesReady: false, sharedWithYou: true, notesRequested: true, followUpDue: true, tagged: false });
     // Reading alone doesn't write: the sealed record keeps the previous release's shape until something is saved.
     expect((await listItems(owner, h.pool, 'profile', stored))[0]?.manifest.preferences.notifications).toMatchObject({ replyAlerts: true, mentionAlerts: false });
-    await browser.api.account.updatePreferences({ summaryLength: 'detailed' });
+    await browser.api.account.updatePreferences({ notesLanguage: 'fr' });
     const written = (await listItems(owner, h.pool, 'profile', stored))[0]?.manifest.preferences.notifications;
     expect(written).toEqual(prefs.notifications);
     expect(written).not.toHaveProperty('replyAlerts'); expect(written).not.toHaveProperty('mentionAlerts');

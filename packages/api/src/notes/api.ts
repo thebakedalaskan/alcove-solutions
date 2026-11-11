@@ -1,7 +1,8 @@
 import { type FollowUpReview } from './follow-ups';
 import type { DriveCallExports, DriveExportInput, DriveExportJob, DriveFolder, DriveSettings } from './drive';
 import { type ID } from '../shared/ids';
-import { type PersonalApi, type PromoteBody, type PromotionPreview } from './personal';
+import { type PersonalApi, type PromoteBody, type PromotionPreview, type SharedAudience, type SharedWrite } from './personal';
+import { type NewNoteLink, type NoteLink, type NoteLinkClaimed } from './links';
 import { type NoteProgress } from './progress';
 import { type AnswerPart, type Inbox, type Note, type NoteFound, type NoteKind } from './schema';
 import { type Series, type SeriesAnswerPart } from './series';
@@ -81,12 +82,33 @@ export interface NotesApi {
    * Alcove when they sign in.
    */
   share(id: ID, to: { emails: string[]; group?: string | undefined }): Promise<Note>;
+  /** The links to these notes that still work, newest first. Everyone with the notes sees them. */
+  links(id: ID): Promise<NoteLink[]>;
+  /**
+   * Makes a link to these notes, once the call has ended: whoever opens it while signed in gets them, as shared by you,
+   * until it runs out (NOTE_LINK_DAYS) or it's revoked. The link alone reads nothing. Anyone with the notes can make one.
+   */
+  createLink(id: ID): Promise<NewNoteLink>;
+  /** Revokes a link, so it opens nothing from now on: yours, or any on your own notes. Whoever it gave the notes to keeps them. */
+  revokeLink(id: ID, linkId: ID): Promise<NoteLink[]>;
+  /**
+   * Opens a link by its secret: its notes join yours, as shared by whoever made the link, and this says which they are.
+   * One that's run out, been revoked or never was is `not-found`, all alike.
+   */
+  claimLink(secret: string): Promise<NoteLinkClaimed>;
   /** Your own notes on these notes: only ever yours, whoever else has them. */
   personal(id: ID): PersonalApi;
   /** What adding one of your own entries to the shared notes would do: exactly what goes, where, and who gets it. Sends nothing. */
   previewAddition(id: ID, entryId: ID): Promise<PromotionPreview>;
   /** Adds it, as previewed, for everyone with the notes. Refused if the people or the moments changed since the preview. */
   addToShared(id: ID, entryId: ID, body: PromoteBody): Promise<Note>;
+  /** Who'd read something written straight into the shared notes now, once they're written, and the seal that holds writing to them. Sends nothing. */
+  sharedAudience(id: ID): Promise<SharedAudience>;
+  /**
+   * Writes straight into the shared notes, under your name, for everyone with the notes, once they're written. Refused
+   * (`conflict`) if anyone got the notes since `sharedAudience`. Like an addition, it can be taken back, not changed.
+   */
+  writeShared(id: ID, body: SharedWrite): Promise<Note>;
   /** Takes something added to the shared notes out of them, for good: your own addition, or any on your own notes. */
   takeBack(id: ID, additionId: ID): Promise<Note>;
   /**

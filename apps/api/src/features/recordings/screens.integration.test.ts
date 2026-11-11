@@ -262,8 +262,8 @@ describe('shared screens kept for the notes', () => {
     const org = await account(unique('organizer'));
     await org.api.account.updatePreferences({ model: 'vision/default-model' });
     // Saving another preference leaves the choice as it was.
-    await org.api.account.updatePreferences({ summaryLength: 'detailed' });
-    expect(await org.api.account.preferences()).toMatchObject({ model: 'vision/default-model', summaryLength: 'detailed' });
+    await org.api.account.updatePreferences({ notesLanguage: 'de' });
+    expect(await org.api.account.preferences()).toMatchObject({ model: 'vision/default-model', notesLanguage: 'de' });
     const { code: c } = await org.api.calls.startNow({ notes: 'on' });
     const host = await org.api.calls.join(c, { mic: true, cam: false });
     expect(host.getSnapshot().capture.model).toBe('vision/default-model');

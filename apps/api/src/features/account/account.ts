@@ -17,6 +17,7 @@ import { closeSession, openSession } from '../../sessions';
 import { createItem, listItems, saveRevision, lockItem } from '../../vault';
 import { forgetAnswers } from '../meetings/access';
 import { takeAllBack } from '../notes/additions';
+import { forgetAllMade } from '../notes/links';
 import { queueDelete } from '../recordings/audio';
 import { openAccount } from '../billing/service';
 import { forgetAccess, grantToRevoke, revokeGrant, unreachable, withdraw } from '../meetings/calendar';
@@ -33,19 +34,29 @@ import { forgetAccount, moveAddress } from '../workspaces/service';
 
 const alog = log.child({ component: 'account' });
 
+/**
+ * Preferences as a profile keeps them. How long a summary is stopped being a choice (every note gets the short summary,
+ * with the full summary under it), but the release before this one opens a profile only when it has `summaryLength`, so
+ * it's still written, as it was, until a later release drops it. It never goes on the wire.
+ */
+const StoredPreferences = PreferencesSchema.extend({ summaryLength: z.enum(['short', 'detailed']).default('short') });
+type StoredPreferences = z.infer<typeof StoredPreferences>;
+/** Preferences as the wire has them: without what's only kept for the release before. */
+const onWire = ({ summaryLength: _kept, ...p }: StoredPreferences): Preferences => p;
+
 export const Profile = z.object({
   name: z.string(),
   email: z.string(),
   photoUrl: z.string().optional(),
   /** A demo account, with a sample calendar and company directory. */
   sample: z.boolean(),
-  preferences: z.preprocess(carryModel, PreferencesSchema),
+  preferences: z.preprocess(carryModel, StoredPreferences),
   /** Colleagues this person has invited to Alcove. */
   invited: z.array(z.string())
 });
 export type Profile = z.infer<typeof Profile>;
 
-const DEFAULT_PREFERENCES: Preferences = {
+const DEFAULT_PREFERENCES: StoredPreferences = {
   notesDefault: 'on', notesLanguage: 'call', summaryLength: 'short', addToCalendar: true, showOtherMeetings: true, recordOffline: true,
   notifications: DEFAULT_NOTIFICATION_PREFERENCES,
   sounds: DEFAULT_SOUND_PREFERENCES,
@@ -236,7 +247,9 @@ export async function deleteAccount(o: Owner): Promise<void> {
     await exec(c, 'DELETE FROM owners WHERE owner_id = $1', [o.ownerId]);
     // After its row: taking its own notes with it waits for anything being added, which is here by now, or fails from now on.
     const added = await takeAllBack(o, c);
-    return { meetings, notes: notes.length, objects, frames, received, answers, rings, featureFlags, added, rooms, workspaces };
+    // And every link it made to anyone's notes: they hand on only what their maker has.
+    const links = await forgetAllMade(o, c);
+    return { meetings, notes: notes.length, objects, frames, received, answers, rings, featureFlags, added, links, rooms, workspaces };
   });
   if (!gone) { alog.info('account already deleted', { ownerId: o.ownerId }); return; }
   forgetAccess(o.ownerId);
@@ -248,7 +261,7 @@ export async function deleteAccount(o: Owner): Promise<void> {
   await revokeGrant(o, refreshToken, AbortSignal.timeout(REVOKE_MS));
   alog.info('account deleted', {
     ownerId: o.ownerId, calendarCancelled: calendar.cancelled, calendarKept: calendar.kept, calendarNotCancelled: calendar.notCancelled,
-    meetings: gone.meetings, notes: gone.notes, received: gone.received, answers: gone.answers, rings: gone.rings, featureFlags: gone.featureFlags, added: gone.added, objects: gone.objects.length, frames: gone.frames, rooms: gone.rooms.length,
+    meetings: gone.meetings, notes: gone.notes, received: gone.received, answers: gone.answers, rings: gone.rings, featureFlags: gone.featureFlags, added: gone.added, links: gone.links, objects: gone.objects.length, frames: gone.frames, rooms: gone.rooms.length,
     workspaces: gone.workspaces.workspaces, workspacesDeleted: gone.workspaces.deleted, ms: Math.round(performance.now() - t0)
   });
 }
@@ -299,12 +312,12 @@ async function withdrawCalls(o: Owner): Promise<{ cancelled: number; kept: numbe
 /** Preferences as they stand. Pins that point at notes this person no longer has are dropped here and the cleaned list is saved. */
 export async function preferences(o: Owner): Promise<Preferences> {
   const prefs = (await profile(o)).preferences;
-  if (!prefs.pinned.length) return prefs;
+  if (!prefs.pinned.length) return onWire(prefs);
   const held = await heldNoteIds(o);
-  if (prefs.pinned.every((id) => held.has(id))) return prefs;
+  if (prefs.pinned.every((id) => held.has(id))) return onWire(prefs);
   const next = await updateProfile(o, (p) => ({ ...p, preferences: { ...p.preferences, pinned: p.preferences.pinned.filter((id) => held.has(id)) } }));
   alog.info('stale pins dropped', { ownerId: o.ownerId, pins: next.preferences.pinned.length });
-  return next.preferences;
+  return onWire(next.preferences);
 }
 /** Takes a note off this person's pins, when they delete it or remove it from their notes. */
 export async function unpin(o: Owner, noteId: string): Promise<void> {
@@ -316,10 +329,11 @@ export async function updatePreferences(o: Owner, patch: Patch<Preferences>): Pr
     const held = await heldNoteIds(o);
     if (patch.pinned.some((id) => !held.has(id))) throw new NotFoundError('Those notes don’t exist.', { context: { pins: patch.pinned.length } });
   }
-  return (await updateProfile(o, (p) => ({ ...p, preferences: {
+  return onWire((await updateProfile(o, (p) => ({ ...p, preferences: {
     notesDefault: patch.notesDefault ?? p.preferences.notesDefault,
     notesLanguage: patch.notesLanguage ?? p.preferences.notesLanguage,
-    summaryLength: patch.summaryLength ?? p.preferences.summaryLength,
+    // Not a choice any more: kept as it was, for the release before (StoredPreferences).
+    summaryLength: p.preferences.summaryLength,
     addToCalendar: patch.addToCalendar ?? p.preferences.addToCalendar,
     showOtherMeetings: patch.showOtherMeetings ?? p.preferences.showOtherMeetings,
     recordOffline: patch.recordOffline ?? p.preferences.recordOffline,
@@ -328,5 +342,5 @@ export async function updatePreferences(o: Owner, patch: Patch<Preferences>): Pr
     pinned: patch.pinned ?? p.preferences.pinned,
     groups: patch.groups ?? p.preferences.groups,
     model: patch.model === undefined ? p.preferences.model : patch.model
-  } }))).preferences;
+  } }))).preferences);
 }

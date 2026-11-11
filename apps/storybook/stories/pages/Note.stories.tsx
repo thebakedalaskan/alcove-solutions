@@ -7,7 +7,7 @@ import { changing, page, pages, type PageArgs, type PageStory } from '../../src/
 import { withDriveExports, withSharedCallExports } from '../../src/world/drive-exports';
 import { FOLLOW_UP_NOTE, withFollowUpProposals } from '../../src/world/follow-ups';
 import { STATES, inEveryState } from '../../src/world/states';
-import { longSuggestions, troubled, writtenUnencrypted } from './changes';
+import { fromALink, longSide, longSuggestions, troubled, writtenUnencrypted } from './changes';
 
 const meta = { title: 'Pages/A note', ...pages } satisfies Meta<PageArgs>;
 export default meta;
@@ -110,6 +110,44 @@ export const ADecisionsMenu = page('/notes/n2', 'busy', {
     });
   }
 });
+/** Your notes at rest: what Art wrote marked with lines of text, his bookmark with its mark, and no actions on any row. */
+export const YourNotes = page('/notes/n2', 'busy');
+export const YourNotesNight = page('/notes/n2', 'busy', { globals: { theme: 'dark' } });
+/** Pointing at one of Art's own notes: Add to the shared notes, Edit and Delete show together, and nothing else does. */
+export const YourNotesPointedAt = page('/notes/n2', 'busy', {
+  play: async ({ userEvent, step }) => {
+    await step('Point at the first thing Art wrote', async () => {
+      const row = (await screen.findByText('Ask Priya whether the article covers the team plan.', {}, { timeout: 30000 })).closest('li');
+      if (row) await userEvent.hover(row);
+    });
+  }
+});
+/** The shared notes beside Your notes: what Priya added, and their own box, which says who reads it before anything is typed. */
+export const SharedNotesBox = page('/notes/n2', 'busy', {
+  play: async ({ userEvent, step }) => {
+    await step('Write in the shared notes', async () => {
+      await userEvent.type(await screen.findByRole('textbox', { name: 'Write in the shared notes' }, { timeout: 30000 }), 'Support needs the article by Monday.');
+    });
+  }
+});
+export const SharedNotesBoxNight = page('/notes/n2', 'busy', { globals: { theme: 'dark' } });
+export const SharedNotesBoxPhone = phone(page('/notes/n2', 'busy'));
+/**
+ * A long column beside the note (ten more of Art's notes, more in the shared notes, a dozen people and Google Drive),
+ * with the whole transcript open and the page at its end: the column keeps its place under the line and scrolls by itself.
+ */
+const toTheEnd: PageStory['play'] = async ({ userEvent, step }) => {
+  await step('Open the whole transcript and go to the end of the page', async () => {
+    await userEvent.click(await screen.findByRole('button', { name: /^Show all \d+ minutes/ }, { timeout: 30000 }));
+    window.scrollTo({ top: document.documentElement.scrollHeight });
+  });
+};
+export const LongColumnLaptop = page('/notes/n2', 'busy', { beforeEach: changing(longSide), globals: { viewport: { value: 'laptop', isRotated: false } }, play: toTheEnd });
+export const LongColumnLaptopNight = page('/notes/n2', 'busy', { beforeEach: changing(longSide), globals: { viewport: { value: 'laptop', isRotated: false }, theme: 'dark' }, play: toTheEnd });
+export const LongColumnWide = page('/notes/n2', 'busy', { beforeEach: changing(longSide), globals: { viewport: { value: 'wide', isRotated: false } }, play: toTheEnd });
+/** At 1180 px and narrower, one column: Your notes and the shared notes come before the transcript, two across, and the rest after it. */
+export const LongColumnTablet = page('/notes/n2', 'busy', { beforeEach: changing(longSide), globals: { viewport: { value: 'tablet', isRotated: false } } });
+export const LongColumnPhone = phone(page('/notes/n2', 'busy', { beforeEach: changing(longSide) }));
 /** Something from Art's own notes, on its way to the shared notes: exactly what goes, the moment, and everyone who gets it. */
 export const AddingToTheSharedNotes = page('/notes/n2', 'busy', {
   play: async ({ canvas, userEvent, step }) => {
@@ -119,6 +157,19 @@ export const AddingToTheSharedNotes = page('/notes/n2', 'busy', {
     });
   }
 });
+/** Notes that came by a link: beside the title, From Priya’s link; in who has them, By your link for Theo, who opened Art’s. */
+export const FromALink = page('/notes/n9', 'busy', { beforeEach: changing(fromALink) });
+/** Share, then Make a link: the link to copy, shown once, and the links that still work, Art's to revoke. */
+export const SharingByLink = page('/notes/n2', 'busy', {
+  play: async ({ canvas, userEvent, step }) => {
+    await step('Press Share, then Make a link', async () => {
+      await userEvent.click(await canvas.findByRole('button', { name: 'Share' }));
+      await userEvent.click(await screen.findByRole('button', { name: 'Make a link' }, { timeout: 8000 }));
+      await screen.findByRole('group', { name: 'The link to these notes' }, { timeout: 8000 });
+    });
+  }
+});
+export const SharingByLinkNight = page('/notes/n2', 'busy', { ...SharingByLink, globals: { theme: 'dark' } });
 /** Share: to people by email, or to one of Art's groups, offered first. */
 export const Sharing = page('/notes/n2', 'busy', {
   play: async ({ canvas, userEvent, step }) => {
@@ -207,6 +258,19 @@ export const GoogleDriveCustomSettings = page('/notes/n2', 'busy', { beforeEach:
   if (destination) w.drive.overrides['n2'] = { enabled: true, destination, formats: ['notes-markdown'] };
 }) });
 
+/** Launch planning ended the week before automatic exports went on: the panel says it isn't exported, with Export to Google Drive. */
+export const GoogleDriveNotCovered = page('/notes/n7', 'drive-connected');
+export const GoogleDriveNotCoveredNight = page('/notes/n7', 'drive-connected', { globals: { theme: 'dark' } });
+export const GoogleDriveNotCoveredPhone = phone(GoogleDriveNotCovered);
+/** Export to Google Drive pressed: the call has its own choice now, and its files go at once, Uploading, then each with its time. */
+export const GoogleDriveExported = page('/notes/n7', 'drive-connected', {
+  play: async ({ userEvent, step }) => {
+    await step('Press Export to Google Drive. The files start uploading straight away', async () => {
+      await userEvent.click(await screen.findByRole('button', { name: 'Export to Google Drive' }, { timeout: 30000 }));
+      await screen.findByText('Goes to this folder. The copies follow the notes when they change.', {}, { timeout: 8000 });
+    });
+  }
+});
 /** A shared reader can choose their own Drive exports, while original audio stays organizer-only. */
 export const GoogleDriveSharedReader = page('/notes/n3', 'busy', { beforeEach: changing(withSharedCallExports) });
 export const GoogleDriveSharedReaderNight = page('/notes/n3', 'busy', { beforeEach: changing(withSharedCallExports), globals: { theme: 'dark' } });

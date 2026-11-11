@@ -12,6 +12,7 @@ import {
 import type { Decorator, Meta, StoryObj } from '@storybook/react-vite';
 import { useState } from 'react';
 import { wentAt } from '~/lib/time';
+import { iso } from '../../../src/world/clock';
 import { Box, did } from '../../../src/component';
 
 /** Settings' column, as the page lays it out. */
@@ -20,16 +21,18 @@ const column: Decorator = (Story) => <div className="set-groups" style={{ maxWid
 const FOLDER: DriveFolder = { id: 'preview-folder', name: 'Call notes', driveId: 'preview-shared-drive' };
 /** The demo clock's day: 4 November 2026. */
 const jobs: DriveExportJob[] = [
-  { id: 'preview-uploaded', noteId: 'design-review', format: 'notes-markdown', status: 'uploaded', reason: null, fileUrl: 'https://drive.google.com/file/d/alcove_preview/view', updatedAt: '2026-11-04T15:40:00Z' },
-  { id: 'preview-transcript', noteId: 'design-review', format: 'transcript-text', status: 'uploaded', reason: null, fileUrl: null, updatedAt: '2026-11-04T15:40:00Z' },
-  { id: 'preview-failed', noteId: 'pricing-sync', format: 'recording-zip', status: 'failed', reason: 'Too large for the folder’s space.', fileUrl: null, updatedAt: '2026-11-03T13:33:00Z' }
+  { id: 'preview-uploaded', noteId: 'design-review', format: 'notes-markdown', status: 'uploaded', reason: null, fileUrl: 'https://drive.google.com/file/d/alcove_preview/view', updatedAt: '2026-11-04T15:40:00Z', nextAt: null },
+  { id: 'preview-transcript', noteId: 'design-review', format: 'transcript-text', status: 'uploaded', reason: null, fileUrl: null, updatedAt: '2026-11-04T15:40:00Z', nextAt: null },
+  { id: 'preview-failed', noteId: 'pricing-sync', format: 'recording-zip', status: 'failed', reason: 'Too large for the folder’s space.', fileUrl: null, updatedAt: '2026-11-03T13:33:00Z', nextAt: null }
 ];
 const states: DriveExportJob[] = [
-  { id: 'preview-uploaded', noteId: 'design-review', format: 'notes-markdown', status: 'uploaded', reason: null, fileUrl: 'https://drive.google.com/file/d/alcove_preview/view', updatedAt: '2026-11-04T15:40:00Z' },
-  { id: 'preview-uploading', noteId: 'design-review', format: 'transcript-text', status: 'uploading', reason: null, fileUrl: null, updatedAt: '2026-11-04T15:41:00Z' },
-  { id: 'preview-pending', noteId: 'design-review', format: 'recording-zip', status: 'pending', reason: null, fileUrl: null, updatedAt: '2026-11-04T15:42:00Z' },
-  { id: 'preview-failed', noteId: 'pricing-sync', format: 'notes-markdown', status: 'failed', reason: 'The folder can’t be written to. Choose another, then try again.', fileUrl: null, updatedAt: '2026-11-02T13:33:00Z' },
-  { id: 'preview-reconnect', noteId: 'pricing-sync', format: 'transcript-text', status: 'reconnect', reason: 'Google access has ended. Reconnect Google Drive to go on.', fileUrl: null, updatedAt: '2026-11-02T13:34:00Z' }
+  { id: 'preview-uploaded', noteId: 'design-review', format: 'notes-markdown', status: 'uploaded', reason: null, fileUrl: 'https://drive.google.com/file/d/alcove_preview/view', updatedAt: '2026-11-04T15:40:00Z', nextAt: null },
+  { id: 'preview-uploading', noteId: 'design-review', format: 'transcript-text', status: 'uploading', reason: null, fileUrl: null, updatedAt: '2026-11-04T15:41:00Z', nextAt: null },
+  { id: 'preview-pending', noteId: 'design-review', format: 'recording-zip', status: 'pending', reason: null, fileUrl: null, updatedAt: '2026-11-04T15:42:00Z', nextAt: null },
+  // Went wrong in a way that may pass: why, quietly, and when it's tried next.
+  { id: 'preview-retrying', noteId: 'pricing-sync', format: 'recording-zip', status: 'pending', reason: 'Google Drive could not confirm the upload. It will be checked before trying again.', fileUrl: null, updatedAt: iso(0, 16, 10), nextAt: iso(0, 16, 52) },
+  { id: 'preview-failed', noteId: 'pricing-sync', format: 'notes-markdown', status: 'failed', reason: 'The folder can’t be written to. Choose another, then try again.', fileUrl: null, updatedAt: '2026-11-02T13:33:00Z', nextAt: null },
+  { id: 'preview-reconnect', noteId: 'pricing-sync', format: 'transcript-text', status: 'reconnect', reason: 'Google access has ended. Reconnect Google Drive to go on.', fileUrl: null, updatedAt: '2026-11-02T13:34:00Z', nextAt: null }
 ];
 const CALLS: Record<string, string> = { 'design-review': 'Design review', 'pricing-sync': 'Pricing sync' };
 const source = (id: string) => <a href={`#${id}`} className="ac-clamp-1" onClick={(e) => e.preventDefault()}>{CALLS[id] ?? 'View call'}</a>;
@@ -48,7 +51,7 @@ function Manage({ folder: start }: { folder: DriveFolder | null }) {
       <SettingRow sub wide label="Folder" help="For new exports. You can pick another on a call."
         control={<DriveFolderButton folder={folder} aria-label={folder ? `Folder: ${folder.name}. Change` : 'Choose a folder'} onClick={() => setFolder(FOLDER)} />} />
       <SettingRow sub wide label="Files" help="Each goes once the call’s notes are final." control={<DriveExportFormats selected={formats} onChange={setFormats} />} />
-      <SettingRow sub label="Export after each call" help={ready ? 'Files upload in the background, even after you leave.' : 'Choose a folder first.'} off={!ready}
+      <SettingRow sub label="Export after each call" help={ready ? 'For calls that end after you turn it on. Files upload in the background, even after you leave.' : 'Choose a folder first.'} off={!ready}
         onLabel={ready ? () => setAuto(!auto) : undefined} control={<Switch label="Export after each call" checked={ready && auto} disabled={!ready} onChange={setAuto} />} />
       {folder && <DriveExportHistory when={wentAt} jobs={jobs} source={source} onRetry={did('onRetry')} onReconnect={did('onReconnect')} />}
       <SettingFoot sub actions={<Button variant="quiet" onClick={did('onDisconnect')}>Disconnect Google Drive</Button>}><DriveExportDisclosure /></SettingFoot>
@@ -88,7 +91,7 @@ export const OriginalAudioOrganizerOnly: Story = {
   name: 'Original audio, organizer only',
   render: () => <Box width={320} height="auto"><div className="nd-drive-custom"><DriveExportFormats selected={['notes-markdown', 'recording-zip']} unavailable={{ 'recording-zip': 'Only the organizer can export original audio.' }} onChange={did('onChange')} /></div></Box>
 };
-/** Every state a recent export can be in. */
+/** Every state a recent export can be in: gone (its time opens it), uploading, waiting to upload, waiting to be tried again (why, and when), failed, and waiting on reconnecting. */
 export const AllExportStates: Story = { name: 'All export states', render: () => <SettingsPanel><DriveExportHistory when={wentAt} jobs={states} source={source} onRetry={did('onRetry')} onReconnect={did('onReconnect')} /></SettingsPanel> };
 export const AllExportStatesNight: Story = { ...AllExportStates, name: 'All export states, night', globals: { theme: 'dark' } };
 /** Retrying one: the others wait. */

@@ -63,7 +63,13 @@ export const DriveFolderButton = forwardRef<HTMLButtonElement, Omit<ButtonHTMLAt
     );
   });
 
-/** A job's state at the end of its line: when it went (Open, in Drive), on its way, or the way on from a problem. */
+/** Whether a waiting job went wrong in a way that may pass, and waits to be tried again later. */
+const waitsToRetry = (job: DriveExportJob) => job.status === 'pending' && job.reason !== null && job.nextAt !== null && Date.parse(job.nextAt) > Date.now();
+
+/**
+ * A job's state at the end of its line: when it went (Open, in Drive), on its way (waiting to upload, or when it's tried
+ * next), or the way on from a problem.
+ */
 function JobEnd({ job, when, onRetry, retrying, onReconnect }: { job: DriveExportJob; when: (iso: string) => string; onRetry: (id: string) => void; retrying: string | undefined; onReconnect: (() => void) | undefined }) {
   const label = driveFormatLabel(job.format);
   switch (job.status) {
@@ -74,7 +80,7 @@ function JobEnd({ job, when, onRetry, retrying, onReconnect }: { job: DriveExpor
     case 'uploading':
       return <span className="ac-drive-s is-busy" role="status"><Spinner />Uploading</span>;
     case 'pending':
-      return <span className="ac-drive-s is-wait" role="status"><Icon name="clock" size={14} />Waiting</span>;
+      return <span className="ac-drive-s is-wait" role="status"><Icon name="clock" size={14} />{waitsToRetry(job) && job.nextAt ? `Next try ${when(job.nextAt)}` : 'Waiting to upload'}</span>;
     case 'failed':
       return <Button size="xs" icon="retry" loading={retrying === job.id} disabled={retrying !== undefined} onClick={(e) => { e.currentTarget.closest('li')?.focus(); onRetry(job.id); }}>Try again</Button>;
     case 'reconnect':
@@ -84,8 +90,9 @@ function JobEnd({ job, when, onRetry, retrying, onReconnect }: { job: DriveExpor
 
 /**
  * Recent exports, under a small heading: each file a line, which call it's from (`source`, when they're from more than
- * one) and what it is, and at its end when it went (`when` says a time as the app says times) or the way on from a
- * problem. No permission-changing actions.
+ * one) and what it is, and at its end when it went (`when` says a time as the app says times), that it's waiting to upload,
+ * or the way on from a problem. One that went wrong in a way that may pass says why, quietly, and when it's tried next.
+ * No permission-changing actions.
  */
 export function DriveExportHistory({ jobs, when, onRetry, retrying, onReconnect, source, empty = 'No exports yet' }: {
   jobs: readonly DriveExportJob[]; when: (iso: string) => string; onRetry: (id: string) => void; retrying?: string | undefined; onReconnect?: (() => void) | undefined; empty?: string | undefined; source?: ((noteId: string) => ReactNode) | undefined;
@@ -105,6 +112,7 @@ export function DriveExportHistory({ jobs, when, onRetry, retrying, onReconnect,
               <div className="ac-drive-job-copy">
                 <span className="ac-drive-job-t">{source ? <><b className="ac-drive-source">{source(job.noteId)}</b><span>· {label}</span></> : <b>{label}</b>}</span>
                 {problem && <span className="ac-drive-why">{job.reason ?? (job.status === 'reconnect' ? 'Google access has ended.' : 'This file didn’t go.')}</span>}
+                {waitsToRetry(job) && <span className="ac-drive-why is-quiet">{job.reason}</span>}
               </div>
               <JobEnd job={job} when={when} onRetry={onRetry} retrying={retrying} onReconnect={onReconnect} />
             </li>

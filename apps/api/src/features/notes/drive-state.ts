@@ -2,7 +2,7 @@ import { DriveExportChoiceSchema, DriveExportFormatSchema, DriveFolderSchema, ty
 import { z } from 'zod';
 import type { Owner } from '../../context';
 import { openJson, sealJson, stateKey, toJson } from '../../crypto';
-import { bytea, exec, maybeOne, rows, type Db } from '../../db';
+import { bytea, exec, maybeOne, rows, timestamp, type Db } from '../../db';
 
 export const Connection = z.object({
   email: z.string().email(), permissionId: z.string(), refreshToken: z.string().nullable(), credentialVersion: z.string(), generation: z.string(),
@@ -50,13 +50,17 @@ type JobLocation = Pick<JobRow, 'job_id' | 'note_id' | 'source_owner_id' | 'form
 const jobHeader = (o: Owner, row: JobLocation) => ({ ...header(o, `job:${row.job_id}`), noteId: row.note_id, sourceOwnerId: row.source_owner_id, format: row.format });
 export const sealJob = (o: Owner, row: JobLocation, value: JobState): Uint8Array => sealJson(stateKey(o.root, o.ownerId, `drive:job:${row.job_id}`), jobHeader(o, row), toJson(value));
 export const jobState = (o: Owner, row: JobRow): JobState => openJson(stateKey(o.root, o.ownerId, `drive:job:${row.job_id}`), jobHeader(o, row), row.state_ciphertext, JobState);
-export function jobView(o: Owner, row: JobRow): DriveExportJob {
+/** A job as its owner sees it. `due`: when it's next tried, which only a pending one says. */
+export function jobView(o: Owner, row: JobRow, due: Date | null): DriveExportJob {
   const state = jobState(o, row);
-  return { id: row.job_id, noteId: row.note_id, format: row.format, status: row.state, reason: state.reason, fileUrl: state.fileUrl, updatedAt: state.updatedAt };
+  return {
+    id: row.job_id, noteId: row.note_id, format: row.format, status: row.state, reason: state.reason, fileUrl: state.fileUrl, updatedAt: state.updatedAt,
+    nextAt: row.state === 'pending' && due ? due.toISOString() : null
+  };
 }
 export async function jobs(o: Owner, noteId?: string): Promise<DriveExportJob[]> {
-  const found = await rows(o.pool, JobRow, 'SELECT job_id, source_owner_id, note_id, format, state, attempt, state_ciphertext, lease_id FROM drive_export_jobs WHERE owner_id = $1 AND ($2::text IS NULL OR note_id = $2) ORDER BY due_at DESC LIMIT 100', [o.ownerId, noteId ?? null]);
-  return found.map((row) => jobView(o, row));
+  const found = await rows(o.pool, JobRow.extend({ due_at: timestamp }), 'SELECT job_id, source_owner_id, note_id, format, state, attempt, state_ciphertext, lease_id, due_at FROM drive_export_jobs WHERE owner_id = $1 AND ($2::text IS NULL OR note_id = $2) ORDER BY due_at DESC LIMIT 100', [o.ownerId, noteId ?? null]);
+  return found.map((row) => jobView(o, row, row.due_at));
 }
 export async function saveJob(o: Owner, row: JobRow, state: JobState, status: JobRow['state'], delaySeconds = 0): Promise<void> {
   await exec(o.pool, `UPDATE drive_export_jobs SET state = $3, state_ciphertext = $4, lease_until = CASE WHEN $3 = 'uploading' THEN now() + interval '5 minutes' ELSE NULL END, lease_id = CASE WHEN $3 = 'uploading' THEN lease_id ELSE NULL END, due_at = now() + make_interval(secs => $5) WHERE owner_id = $1 AND job_id = $2 AND ($6::text IS NULL OR lease_id = $6) AND ($6::text IS NOT NULL OR state <> 'uploading')`, [o.ownerId, row.job_id, status, sealJob(o, row, { ...state, updatedAt: new Date().toISOString() }), delaySeconds, row.lease_id]);

@@ -121,3 +121,19 @@ export type PromotionPreview = z.infer<typeof PromotionPreviewSchema>;
 export const PromoteBodySchema = z.object({ text: z.string().trim().max(MAX_ADDITION_TEXT), seal: z.string().min(1).max(200) });
 
 export type PromoteBody = z.infer<typeof PromoteBodySchema>;
+
+
+/**
+ * Who reads what's written straight into the shared notes, shown before anything is typed: everyone who has the notes
+ * now, organizer first, and anyone they share them with later. `seal` holds writing to them: if anyone gets the notes
+ * before it's posted, posting is refused, and the box shows who reads it now.
+ */
+export const SharedAudienceSchema = z.object({ audience: z.array(PersonSchema), seal: z.string() });
+
+export type SharedAudience = z.infer<typeof SharedAudienceSchema>;
+
+
+/** Something written straight into the shared notes, as it's posted: its words, and the seal of who it was going to. */
+export const SharedWriteSchema = z.object({ text: z.string().trim().min(1).max(MAX_ADDITION_TEXT), seal: z.string().min(1).max(200) });
+
+export type SharedWrite = z.infer<typeof SharedWriteSchema>;

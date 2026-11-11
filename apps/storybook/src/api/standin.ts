@@ -9,14 +9,14 @@
  */
 import { StartTopUpBodySchema, type TopUp } from '@alcove/api';
 import { PREVIEW_DEPOSIT_ADDRESS } from '../world/payments';
-import { DriveExportInputSchema, type DriveCallExports, type DriveExportInput } from '@alcove/api';
+import { DriveExportInputSchema, NOTE_LINK_DAYS, type DriveAutomatic, type DriveCallExports, type DriveExportFormat, type DriveExportInput, type DriveExportJob, type NewNoteLink, type NoteLink, type NoteLinkClaimed } from '@alcove/api';
 import { disconnectedDrive } from '../world/drive-exports';
 import type { BoardSortBody, DocAskBody, DocAskPart } from '@alcove/api';
 import {
   ACCEPTED_FOLLOW_UP, AlcoveApiError, type FollowUpReview, type FollowUpTarget, type NoteAction, AgentAuthorizationIdSchema, AgentConnectionIdSchema, AgentDecisionInputSchema, AgentTokenInputSchema, DEFAULT_NOTES_CHOICES, searchOf, termsIn, type ActionPatch, type ActionProposal, type AlcoveApi, type AgentConnection, type AnswerPart, type Busy, type CallCard,
   type CallDocument, type CallSession, type Change, type ChangeScope, type DecisionPatch, type DecisionProposal, type ID, type Inbox, type IncomingRing,
   type InstantCallInput, type Interval, type LinePatch, type Meeting, type MeetingInput, type Note, type NoteFound, type NoteKind, type NoteProgress,
-  type Patch, type Preferences, type PromoteBody, type PromotionPreview, type QuestionPatch, type RecipientRole, type RingReply, type Rsvp, type Series,
+  type Patch, type Preferences, type PromoteBody, type PromotionPreview, type QuestionPatch, type RecipientRole, type RingReply, type Rsvp, type Series, type SharedAudience, type SharedWrite,
   type SeriesAnswerPart, type SeriesNote, type SignInResult, type DemoProvider, type RoomRecordingInput, type RoomRecording, type CallMoveIn
 } from '@alcove/api';
 import { isOnline } from '../browser';
@@ -98,11 +98,38 @@ function driveChoice(w: World, input: DriveExportInput) {
   if (parsed.enabled && (!destination || !parsed.formats.length)) throw refused('invalid', 'Choose a folder and a file type first.');
   return { enabled: parsed.enabled, destination, formats: parsed.formats };
 }
+/** The links to a note that still work, newest first. */
+const linksTo = (w: World, noteId: string): NoteLink[] => (w.noteLinks ?? []).filter((x) => x.noteId === noteId && Date.parse(x.link.expiresAt) > Date.now()).map((x) => x.link).reverse();
+
+/** What holds a box for writing into the shared notes to who had the notes when it opened: if anyone gets them since, it's refused. */
+const audienceSeal = (n: Note) => `shared:${n.people.map((p) => p.email.toLowerCase()).sort().join(' ')}`;
+
+/** Whether automatic exports cover a call, as the server's rule has it: on, and the call ended after they were turned on. */
+function automaticFor(w: World, n: Note): DriveAutomatic {
+  const s = w.drive.settings;
+  if (!s.enabled || !s.destination || !s.formats.length) return 'off';
+  const ended = new Date(Date.parse(n.startedAt) + n.duration * 1000).toISOString();
+  return n.status !== 'recording' && ended < w.drive.enabledAt ? 'before' : 'on';
+}
 function driveForNote(w: World, id: string): DriveCallExports {
-  noteIn(w, id);
+  const n = noteIn(w, id);
   const override = w.drive.overrides[id] ?? null;
   const effective = override ?? { enabled: w.drive.settings.enabled, destination: w.drive.settings.destination, formats: w.drive.settings.formats };
-  return { noteId: id, override, effective, jobs: w.drive.jobs.filter((job) => job.noteId === id) };
+  return { noteId: id, override, effective, automatic: automaticFor(w, n), jobs: w.drive.jobs.filter((job) => job.noteId === id) };
+}
+/** Uploads starting at once, as the server starts them: each file Uploading, then, a moment later, with its link in Drive. */
+function uploadNow(w: World, noteId: string, formats: readonly DriveExportFormat[]): DriveExportJob[] {
+  const at = new Date().toISOString();
+  const going = formats.map((format): DriveExportJob => ({
+    id: w.drive.jobs.find((j) => j.noteId === noteId && j.format === format)?.id ?? nextId('drive'), noteId, format, status: 'uploading', reason: null, fileUrl: null, updatedAt: at, nextAt: null
+  }));
+  w.drive.jobs = [...going, ...w.drive.jobs.filter((j) => !going.some((x) => x.id === j.id))];
+  setTimeout(() => {
+    if (current() !== w) return;
+    w.drive.jobs = w.drive.jobs.map((j) => (going.some((x) => x.id === j.id) && j.status === 'uploading'
+      ? { ...j, status: 'uploaded', fileUrl: `https://drive.google.com/file/d/preview_${j.id}/view`, updatedAt: new Date().toISOString() } : j));
+  }, 1600);
+  return going;
 }
 
 /* ---------- what's waiting on you, worked out from the notes ---------- */
@@ -333,7 +360,7 @@ export const standIn: AlcoveApi = {
     updatePreferences: (patch: Patch<Preferences>) => answer((w) => {
       const p = w.prefs;
       w.prefs = {
-        notesDefault: patch.notesDefault ?? p.notesDefault, notesLanguage: patch.notesLanguage ?? p.notesLanguage, summaryLength: patch.summaryLength ?? p.summaryLength,
+        notesDefault: patch.notesDefault ?? p.notesDefault, notesLanguage: patch.notesLanguage ?? p.notesLanguage,
         addToCalendar: patch.addToCalendar ?? p.addToCalendar, showOtherMeetings: patch.showOtherMeetings ?? p.showOtherMeetings, recordOffline: patch.recordOffline ?? p.recordOffline,
         sounds: patch.sounds ?? p.sounds, notifications: patch.notifications ?? p.notifications, pinned: patch.pinned ?? p.pinned, groups: patch.groups ?? p.groups, model: patch.model === undefined ? p.model : patch.model
       };
@@ -347,16 +374,30 @@ export const standIn: AlcoveApi = {
     pickFolder: () => answer(() => ({ url: new URL('#google-drive-folder-selection', location.href).href })),
     disconnect: () => answer((w) => { w.drive = disconnectedDrive(); return w.drive.settings; }),
     folders: () => answer((w) => w.drive.folders),
-    update: (input) => answer((w) => { w.drive.settings = { ...w.drive.settings, ...driveChoice(w, input) }; return w.drive.settings; }),
+    update: (input) => answer((w) => {
+      const next = driveChoice(w, input);
+      if (next.enabled && !w.drive.settings.enabled) w.drive.enabledAt = new Date().toISOString();
+      w.drive.settings = { ...w.drive.settings, ...next };
+      return w.drive.settings;
+    }),
     jobs: () => answer((w) => w.drive.jobs),
     forNote: (id) => answer((w) => driveForNote(w, id)),
-    setForNote: (id, input) => answer((w) => { noteIn(w, id); if (input === null) delete w.drive.overrides[id]; else w.drive.overrides[id] = driveChoice(w, input); return driveForNote(w, id); }),
+    setForNote: (id, input) => answer((w) => {
+      noteIn(w, id);
+      if (input === null) delete w.drive.overrides[id];
+      else {
+        const choice = driveChoice(w, input);
+        w.drive.overrides[id] = choice;
+        if (choice.enabled) uploadNow(w, id, choice.formats);
+      }
+      return driveForNote(w, id);
+    }),
     retry: (id) => answer((w) => {
       const job = w.drive.jobs.find((j) => j.id === id);
       if (!job) throw refused('not-found', 'That export is no longer there.');
       if (w.drive.settings.connection.status !== 'connected') throw refused('conflict', 'Reconnect Google Drive first.');
-      const next = { ...job, status: 'pending' as const, reason: null, updatedAt: new Date().toISOString() };
-      w.drive.jobs = w.drive.jobs.map((j) => j.id === id ? next : j); return next;
+      const [next] = uploadNow(w, job.noteId, [job.format]);
+      return next ?? job;
     })
   },
   agents: {
@@ -662,6 +703,39 @@ export const standIn: AlcoveApi = {
       const moments = e?.kind === 'bookmark' ? (e.moment ? [e.moment] : []) : e?.kind === 'answer' ? e.moments : [];
       w.personal[id] = (w.personal[id] ?? []).map((x) => (x.id === entryId ? { ...x, shared: { additionId, at } } : x));
       return { ...n, additions: [...n.additions, { id: additionId, text: body.text, by: me(), at, moments, removable: true }] };
+    }),
+    links: (id: ID) => answer((w) => { noteIn(w, id); return linksTo(w, id); }),
+    createLink: (id: ID) => answer((w): NewNoteLink => {
+      const n = noteIn(w, id);
+      if (n.status === 'recording') throw refused('invalid', 'These notes can be shared once the call ends.');
+      const at = new Date();
+      const link: NoteLink = { id: nextId('link'), by: me(), at: at.toISOString(), expiresAt: new Date(at.getTime() + NOTE_LINK_DAYS * 86_400_000).toISOString(), revocable: true };
+      // 22 letters and digits, as a real secret is, and made up: it opens nothing outside Storybook.
+      const secret = `Vandelay${String(Date.now()).slice(-6)}${link.id.replace(/\D/g, '').padStart(8, '0')}`.slice(0, 22).padEnd(22, '0');
+      w.noteLinks = [...(w.noteLinks ?? []), { link, noteId: id, secret }];
+      return { link, secret };
+    }),
+    revokeLink: (id: ID, linkId: ID) => answer((w) => {
+      noteIn(w, id);
+      w.noteLinks = (w.noteLinks ?? []).filter((x) => x.link.id !== linkId);
+      return linksTo(w, id);
+    }),
+    claimLink: (secret: string) => answer((w): NoteLinkClaimed => {
+      const found = (w.noteLinks ?? []).find((x) => x.secret === secret && Date.parse(x.link.expiresAt) > Date.now());
+      if (!found) throw refused('not-found', 'This link has run out or been revoked. Ask whoever sent it for a new one.');
+      // Notes you don't have yet join yours, as shared by whoever made the link.
+      if (found.note && !w.notes.some((n) => n.id === found.noteId)) w.notes = [found.note, ...w.notes];
+      return { noteId: found.noteId };
+    }),
+    sharedAudience: (id: ID) => answer((w): SharedAudience => {
+      const n = noteIn(w, id);
+      if (n.status !== 'ready') throw refused('conflict', 'These notes are still being written. You can add this once they are.');
+      return { audience: n.people, seal: audienceSeal(n) };
+    }),
+    writeShared: (id: ID, body: SharedWrite) => changeNote(id, (n) => {
+      if (n.status !== 'ready') throw refused('conflict', 'These notes are still being written. You can add this once they are.');
+      if (body.seal !== audienceSeal(n)) throw refused('conflict', 'Someone got these notes since you started writing. Look at who reads it now, then post it.');
+      return { ...n, additions: [...n.additions, { id: nextId('x'), text: body.text, by: me(), at: new Date().toISOString(), moments: [], removable: true }] };
     }),
     takeBack: (id: ID, additionId: ID) => changeNote(id, (n, w) => {
       w.personal[id] = (w.personal[id] ?? []).map((x) => (x.shared?.additionId === additionId ? { ...x, shared: null } : x));

@@ -32,6 +32,10 @@ export const DriveSettingsSchema = DriveExportChoiceSchema.extend({
   })
 });
 export type DriveSettings = z.infer<typeof DriveSettingsSchema>;
+/**
+ * One file's export. `pending` waits to upload; with a `reason`, it went wrong in a way that may pass (Google busy, the
+ * network) and is tried again at `nextAt`. `nextAt` is only for a pending one.
+ */
 export const DriveExportJobSchema = z.object({
   id: IDSchema,
   noteId: IDSchema,
@@ -39,13 +43,22 @@ export const DriveExportJobSchema = z.object({
   status: z.enum(['pending', 'uploading', 'uploaded', 'failed', 'reconnect']),
   reason: z.string().nullable(),
   fileUrl: z.string().url().nullable(),
-  updatedAt: ISODateSchema
+  updatedAt: ISODateSchema,
+  nextAt: ISODateSchema.nullable()
 });
 export type DriveExportJob = z.infer<typeof DriveExportJobSchema>;
+/**
+ * Whether someone's automatic exports cover a call, by the rule the exports themselves follow: `on`, they're on and the
+ * call ended after they were turned on (or hasn't ended yet); `before`, it ended before they were turned on, so it goes
+ * only if it's exported on its own; `off`, they're off, or have no folder or files.
+ */
+export const DriveAutomaticSchema = z.enum(['on', 'before', 'off']);
+export type DriveAutomatic = z.infer<typeof DriveAutomaticSchema>;
 export const DriveCallExportsSchema = z.object({
   noteId: IDSchema,
   override: DriveExportChoiceSchema.nullable(),
   effective: DriveExportChoiceSchema,
+  automatic: DriveAutomaticSchema,
   jobs: z.array(DriveExportJobSchema)
 });
 export type DriveCallExports = z.infer<typeof DriveCallExportsSchema>;

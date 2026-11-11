@@ -35,7 +35,7 @@ export const ChooseDefaultFiles: PageStory = {
       await userEvent.click(within(await row('Files')).getByRole('button', { name: /^Recording/, pressed: false }));
       await within(await row('Files')).findByText('Saved', {}, SOON);
     });
-    await step('Turn on Export after each call. Files go in the background once a call’s notes are final', async () => {
+    await step('Turn on Export after each call. It covers calls that end from now on, and their files go once their notes are final', async () => {
       await userEvent.click(await screen.findByRole('switch', { name: 'Export after each call', checked: false }, SOON));
       await screen.findByRole('switch', { name: 'Export after each call', checked: true }, SOON);
     });
@@ -88,7 +88,7 @@ export const RetryAnExport: PageStory = {
     await step('Click Try again. It checks access again and keeps the same export, so nothing goes twice', async () => {
       await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
     });
-    await step('The recording waits its turn again, while the notes already sent keep their link', async () => {
+    await step('It goes again at once, not at the next upkeep, while the notes already sent keep their link', async () => {
       await away('button', 'Try again');
     });
   }
@@ -140,6 +140,23 @@ export const ReviewDrivePermissions: PageStory = {
     await step('Cancel and stay in Settings without starting consent', async () => {
       const disclosure = await screen.findByRole('dialog', { name: 'Allow Google Drive exports' }, SOON);
       await userEvent.click(within(disclosure).getByRole('button', { name: 'Cancel' }));
+    });
+  }
+};
+
+export const ExportACallFromBefore: PageStory = {
+  name: '15.8 Export a call from before automatic exports',
+  ...page('/notes/n7', 'drive-connected'),
+  play: async ({ userEvent, step }) => {
+    await step('Launch planning ended the week before automatic exports went on. Its Google Drive panel says it isn’t exported', async () => {
+      await screen.findByText('This call ended before automatic exports were on, so it isn’t exported.', {}, LATER);
+    });
+    await step('Press Export to Google Drive. It goes to the folder shown, with the files ticked in Settings', async () => {
+      await userEvent.click(screen.getByRole('button', { name: 'Export to Google Drive' }));
+      await screen.findByText('Goes to this folder. The copies follow the notes when they change.', {}, SOON);
+    });
+    await step('The files upload straight away, then each shows when it went, which opens it in Drive', async () => {
+      await screen.findByRole('link', { name: /Open Notes in Google Drive/ }, LATER);
     });
   }
 };

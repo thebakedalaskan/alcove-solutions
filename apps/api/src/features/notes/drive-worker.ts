@@ -1,3 +1,4 @@
+import type { DriveAutomatic } from '@alcove/api';
 import { z } from 'zod';
 import type { Deps, Owner } from '../../context';
 import { id128 } from '../../crypto';
@@ -11,6 +12,17 @@ import { heldNoteIds, locate } from './service';
 import * as provider from './drive-provider';
 
 const dlog = log.child({ component: 'drive-exports' });
+
+/**
+ * Whether an account's automatic exports cover a call that ended at `endedAt` (not yet, while it's going): they're on,
+ * with a folder and files, and it ended after they were turned on. Default consent starts then, not at the beginning of
+ * someone's private history. The exports follow this, and a call's Drive panel says it.
+ */
+export function automatic(c: Pick<Connection, 'enabled' | 'destination' | 'formats' | 'enabledAt'> | undefined, endedAt: string | undefined): DriveAutomatic {
+  if (!c || !c.enabled || !c.destination || !c.formats.length) return 'off';
+  return endedAt !== undefined && endedAt < c.enabledAt ? 'before' : 'on';
+}
+
 /** One durable export per selected artifact. Regeneration updates that file; ordinary duplicate events change nothing. */
 export async function synchronize(o: Owner, onlyNoteId?: string): Promise<void> {
   const current = await connection(o);
@@ -24,12 +36,9 @@ export async function synchronize(o: Owner, onlyNoteId?: string): Promise<void> 
       if (found.note.manifest.kind !== 'call') continue;
       const selected = await override(o, noteId);
       const effective = selected ?? current;
-      // Default consent starts now, not at the beginning of someone's private history.
+      // This call's own choice, or the defaults, for a call they cover once it has ended.
       const ended = found.note.manifest.endedAt;
-      if (!effective.enabled || !effective.destination || (!selected && (!ended || ended < current.enabledAt))) {
-
-        continue;
-      }
+      if (!effective.enabled || !effective.destination || (!selected && (!ended || automatic(current, ended) !== 'on'))) continue;
 
       for (const format of effective.formats) {
         const made = await artifact(o, noteId, format);
@@ -114,7 +123,7 @@ async function run(o: Owner, row: JobRow): Promise<void> {
     dlog.warn('export waiting', { jobId: row.job_id, noteId: row.note_id, reason: failure.why, attempt: row.attempt, ...(error instanceof provider.DriveFailure || error instanceof NotFoundError ? {} : { err: error }) });
   }
 }
-/** Opens and wipes the exporting owner's keys for each scan/job, just like the notes writer. */
+/** Upkeep: every connected account's calls looked at again, then the jobs that are due. Opens and wipes each owner's keys for each scan and job, just like the notes writer. */
 export async function work(d: Deps, ownerId?: string): Promise<number> {
   let after = '';
   for (;;) {
@@ -130,6 +139,11 @@ export async function work(d: Deps, ownerId?: string): Promise<number> {
     if (!last || owners.length < 100) break;
     after = last.owner_id;
   }
+  return upload(d, ownerId);
+}
+
+/** Uploads up to 30 jobs that are due, an account's or anyone's, one at a time, each with its owner's keys opened for it and wiped after. */
+async function upload(d: Deps, ownerId?: string): Promise<number> {
   let completed = 0;
   for (let count = 0; count < 30; count++) {
     const row = await maybeOne(d.pool, JobRow.extend({ owner_id: z.string() }), `WITH due AS (
@@ -142,4 +156,70 @@ export async function work(d: Deps, ownerId?: string): Promise<number> {
     finally { owner.root.fill(0); owner.wrapKey.fill(0); }
   }
   return completed;
+}
+
+/** Accounts whose exports are running in the background on this instance, with the calls still to look at in the next round. */
+const busy = new Map<string, Set<string>>();
+/** What's running in the background, for `idle`. */
+const running = new Set<Promise<void>>();
+const track = (p: Promise<void>) => { running.add(p); void p.finally(() => running.delete(p)); };
+
+/**
+ * Starts an account's due uploads in the background, as soon as they're queued: after its own choice for a call, Try
+ * again or reconnecting, and once a call's notes are final (`noteId`, whose exports are worked out first). Takes only the
+ * services from `from`: a request's keys are never kept for later work. Asked again while it runs, it goes round once
+ * more. Upkeep stays the safety net, for whatever this instance didn't get to.
+ */
+export function kick(from: Deps, ownerId: string, noteId?: string): void {
+  const queued = busy.get(ownerId);
+  if (queued) { queued.add(noteId ?? ''); return; }
+  const d: Deps = { cfg: from.cfg, pool: from.pool, objects: from.objects, livekit: from.livekit, hub: from.hub, docs: from.docs };
+  const notes = new Set([noteId ?? '']);
+  busy.set(ownerId, notes);
+  track((async () => {
+    try {
+      while (notes.size) {
+        const now = [...notes].filter(Boolean);
+        notes.clear();
+        if (now.length) {
+          const owner = await findOwner(d, ownerId, undefined);
+          if (!owner) return;
+          try {
+            for (const id of now) {
+              await synchronize(owner, id).catch((error: unknown) => dlog.warn('export scan delayed', { ownerId, noteId: id, code: error instanceof provider.DriveFailure ? error.why : 'unavailable', ...(error instanceof provider.DriveFailure ? {} : { err: error }) }));
+            }
+          } finally { owner.root.fill(0); owner.wrapKey.fill(0); }
+        }
+        const sent = await upload(d, ownerId);
+        dlog.debug('exports run in the background', { ownerId, calls: now.length, jobs: sent });
+      }
+    } catch (e) {
+      dlog.error('exports in the background failed; upkeep tries again', { ownerId, err: e });
+    } finally {
+      busy.delete(ownerId);
+    }
+  })());
+}
+
+/**
+ * A call's notes are final (written, or written again): every account that has them and Drive connected works out its
+ * exports of this call now and sends them, rather than at the next upkeep. Found by IDs and keyed hashes alone, with
+ * nobody's keys opened here.
+ */
+export function noteFinal(from: Deps, noteOwnerId: string, noteId: string): void {
+  track((async () => {
+    try {
+      const found = await rows(from.pool, z.object({ owner_id: z.string() }), `SELECT owner_id FROM drive_connections WHERE owner_id = $1
+        UNION SELECT c.owner_id FROM note_access a JOIN identities i ON i.email_index = a.email_index JOIN drive_connections c ON c.owner_id = i.owner_id
+        WHERE a.owner_id = $1 AND a.note_item_id = $2`, [noteOwnerId, noteId]);
+      for (const r of found) kick(from, r.owner_id, noteId);
+    } catch (e) {
+      dlog.error('exports for final notes not started; upkeep starts them', { noteId, err: e });
+    }
+  })());
+}
+
+/** Settles once nothing started in the background on this instance is still running, whatever came of it. */
+export async function idle(): Promise<void> {
+  while (running.size) await Promise.allSettled([...running]);
 }

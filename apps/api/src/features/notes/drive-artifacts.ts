@@ -17,11 +17,13 @@ function textArtifact(name: string, mimeType: string, text: string): Artifact {
   return { name, mimeType, hash: hash(text), size: utf8(text).length, async *bytes() { yield utf8(text); } };
 }
 const stamp = (at: number) => `${Math.floor(at / 60)}:${String(Math.floor(at % 60)).padStart(2, '0')}`;
+/** The full summary's paragraphs, a blank line apart, as the note page shows them under the summary. */
+const paragraphs = (details: string) => details.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean).join('\n\n');
 function markdown(note: Note): string {
   const section = (title: string, body: string) => body ? `\n## ${title}\n\n${body}\n` : '';
-  const content = (n: Pick<Note, 'summary' | 'decisions' | 'questions' | 'actions'>) =>
-    `${n.summary}\n${section('Decisions', n.decisions.map((d) => `- ${d.text}`).join('\n'))}${section('Follow-ups', n.actions.map((a) => `- [${a.done ? 'x' : ' '}] ${a.text}`).join('\n'))}${section('Open questions', n.questions.map((q) => `- ${q.text}`).join('\n'))}`;
-  return `# ${note.title}\n\n${content(note)}${note.rooms.map((r) => `\n## ${r.name}\n\n${content(r)}`).join('')}`;
+  const content = (n: Pick<Note, 'summary' | 'decisions' | 'questions' | 'actions'>, details = '') =>
+    `${n.summary}\n${section('Full summary', paragraphs(details))}${section('Decisions', n.decisions.map((d) => `- ${d.text}`).join('\n'))}${section('Follow-ups', n.actions.map((a) => `- [${a.done ? 'x' : ' '}] ${a.text}`).join('\n'))}${section('Open questions', n.questions.map((q) => `- ${q.text}`).join('\n'))}`;
+  return `# ${note.title}\n\n${content(note, note.details)}${note.rooms.map((r) => `\n## ${r.name}\n\n${content(r)}`).join('')}`;
 }
 /** The public reader defines the boundary. Personal notes and presenter notes are never inspected. */
 export async function artifact(o: Owner, noteId: string, format: DriveExportFormat): Promise<Artifact | null> {

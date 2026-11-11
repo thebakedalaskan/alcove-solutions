@@ -107,9 +107,14 @@ A slim band of sky, and the horizon is the call.
   - a menu: Who it's for, Due, Reword and It wasn't decided, then What was said and Changes
   - Propose a decision and Add a follow-up sit at the foot of their lists
 - **Under that,** the transcript, with a key for the dotted words a transcript isn't sure of, and each breakout room's notes.
-- **Beside it,** Your notes, the only panel, because it's yours alone. You can write, bookmark a line or keep an answer. Then
-  Added by people and Who has these notes. A call in a series shows its series. The organizer of a call in no series gets
-  Meet again. A room recording gets neither.
+- **Beside it,** a column that scrolls by itself under the line, so where you write is in reach however long the note is.
+  Your notes first, the only panel, because it's yours alone (Only you): write, bookmark a line or keep an answer. A row's
+  kind is its mark (lines of text for what you wrote, a bookmark, a question for a kept answer), and its actions (Add to
+  the shared notes, Edit, Delete) show only on hover or focus, always on touch screens. Then Shared notes (Everyone with
+  the notes): what people wrote there or added from their own, and once the notes are written a box of its own that says
+  who reads it before anything is typed. Then Who has these notes. A call in a series shows its series. The organizer of a
+  call in no series gets Meet again. A room recording gets neither. In one column, at 1180px and narrower, Your notes and
+  Shared notes come before the transcript, two across, and the rest after it.
 - **At the bottom,** "Ask about this call" stays in reach. It's marked Only you.
 - **States, each with its own look:**
   - recording, being written, written again (Write the notes again), unwritten, nothing said

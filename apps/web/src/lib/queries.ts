@@ -1,6 +1,6 @@
 /* Query keys, fetchers and mutations. Screens read data through these, never through `api` directly. */
 import type { AgentDecisionInput, AgentTokenInput, DriveExportInput, FollowUpReview } from '@alcove/api';
-import { AlcoveApiError, MAX_SORT_STICKIES, MAX_SORT_STICKY, SORT_TOO_FEW, SORT_TOO_MANY, errorCode, type ActionProposal, type ChangeScope, type DecisionProposal, type DemoProvider, type DocumentRole, type FeatureFlagName, type Group, type PresenterFrameNotes, type InstantCallInput, type ISODate, type ItemInput, type ItemPlace, type LinePatch, type MeetingInput, type MentionBody, type NoteKind, type NotesSetting, type Patch, type PersonalInput, type PersonalNotes, type PromoteBody, type QuestionPatch, type TopUp, type RingReply, type Series, type ShareTarget, type WorkspaceRole, type WorkspaceSummary } from '@alcove/api';
+import { AlcoveApiError, MAX_SORT_STICKIES, MAX_SORT_STICKY, SORT_TOO_FEW, SORT_TOO_MANY, errorCode, type ActionProposal, type ChangeScope, type DecisionProposal, type DemoProvider, type DocumentRole, type FeatureFlagName, type Group, type PresenterFrameNotes, type InstantCallInput, type ISODate, type ItemInput, type ItemPlace, type LinePatch, type MeetingInput, type MentionBody, type NoteKind, type NotesSetting, type Patch, type PersonalInput, type PersonalNotes, type PromoteBody, type QuestionPatch, type TopUp, type RingReply, type Series, type SharedWrite, type ShareTarget, type WorkspaceRole, type WorkspaceSummary } from '@alcove/api';
 import { queryOptions, useIsMutating, useMutation, useMutationState, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef } from 'react';
 import { forgetAccount } from '~/features/record/offline';
@@ -45,6 +45,8 @@ export const qk = {
   /** Your own notes on a note: never anyone else's, so nothing here is ever shown to someone who signs in after you (signing in starts the cache over). */
   personal: (id: string) => ['notes', 'personal', id] as const,
   addition: (id: string, entryId: string) => ['notes', 'addition', id, entryId] as const,
+  sharedAudience: (id: string) => ['notes', 'shared-audience', id] as const,
+  noteLinks: (id: string) => ['notes', 'links', id] as const,
   inbox: ['notes', 'inbox'] as const,
   /** Everything about series: what carries over changes whenever a note or a call in one does. */
   allSeries: ['series'] as const,
@@ -118,7 +120,11 @@ export const q = {
   drive: () => queryOptions({ queryKey: qk.drive, queryFn: () => api.drive.get(), retry: false }),
   driveFolders: () => queryOptions({ queryKey: qk.driveFolders, queryFn: () => api.drive.folders(), staleTime: 0, retry: false }),
   driveJobs: () => queryOptions({ queryKey: qk.driveJobs, queryFn: () => api.drive.jobs(), refetchInterval: 10_000, retry: false }),
-  driveNote: (id: string) => queryOptions({ queryKey: qk.driveNote(id), queryFn: () => api.drive.forNote(id), refetchInterval: 10_000, retry: false }),
+  // Read again every 10 s, and every 2 s while a file is on its way, so a press shows Uploading, then its link, within seconds.
+  driveNote: (id: string) => queryOptions({
+    queryKey: qk.driveNote(id), queryFn: () => api.drive.forNote(id), retry: false,
+    refetchInterval: (query) => (query.state.data?.jobs.some((job) => job.status === 'uploading' || (job.status === 'pending' && job.reason === null)) ? 2_000 : 10_000)
+  }),
   agents: () => queryOptions({ queryKey: qk.agents, queryFn: () => api.agents.list() }),
   /** The MCP address agents connect to: it stays the same while the app is open. */
   agentEndpoint: () => queryOptions({ queryKey: qk.agentEndpoint, queryFn: () => api.agents.endpoint(), staleTime: Infinity }),
@@ -158,6 +164,10 @@ export const q = {
   personal: (id: string) => queryOptions({ queryKey: qk.personal(id), queryFn: () => api.notes.personal(id).get(), retry: false }),
   /** What adding an entry to the shared notes would do, read fresh each time it's opened: the people who'd get it can change. */
   addition: (id: string, entryId: string) => queryOptions({ queryKey: qk.addition(id, entryId), queryFn: () => api.notes.previewAddition(id, entryId), staleTime: 0, gcTime: 0, retry: false }),
+  /** Who reads what's written straight into the shared notes, and the seal that holds it to them: read fresh each time the box shows. */
+  sharedAudience: (id: string) => queryOptions({ queryKey: qk.sharedAudience(id), queryFn: () => api.notes.sharedAudience(id), staleTime: 0, gcTime: 0, retry: false }),
+  /** The links to a note that still work, read fresh whenever Share opens. */
+  noteLinks: (id: string) => queryOptions({ queryKey: qk.noteLinks(id), queryFn: () => api.notes.links(id), staleTime: 0, retry: false }),
   inbox: () => queryOptions({ queryKey: qk.inbox, queryFn: ({ client }) => readInbox(api, client) }),
   /** What carries over in a series, from the notes you have; put together fresh each time it's asked for. */
   series: (id: string) => queryOptions({ queryKey: qk.series(id), queryFn: () => api.series.get(id), retry: false }),
@@ -666,6 +676,30 @@ export function useAddToShared(noteId: string) {
     onSuccess: (n) => Promise.all([changed(qc, n), qc.invalidateQueries({ queryKey: qk.personal(noteId) })]),
     onError: (e) => gone(qc, e)
   });
+}
+/** Writes straight into the shared notes, for everyone with them, with the seal of who the box said reads it. The answer is the note. */
+export function useWriteShared(noteId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: SharedWrite) => api.notes.writeShared(noteId, body),
+    onSuccess: (n) => changed(qc, n),
+    onError: (e) => gone(qc, e)
+  });
+}
+/** Makes a link to a note. Its secret is in the answer, said once, for showing where it was made; the list is read again. */
+export function useCreateNoteLink(noteId: string) {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: () => api.notes.createLink(noteId), onSuccess: () => qc.invalidateQueries({ queryKey: qk.noteLinks(noteId) }), onError: (e) => gone(qc, e) });
+}
+/** Revokes a link to a note: the answer is the links that still work. */
+export function useRevokeNoteLink(noteId: string) {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: (linkId: string) => api.notes.revokeLink(noteId, linkId), onSuccess: (links) => qc.setQueryData(qk.noteLinks(noteId), links), onError: (e) => gone(qc, e) });
+}
+/** Opens a link for the account signed in: its notes join theirs, so the lists are read again. */
+export function useClaimNoteLink() {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: (secret: string) => api.notes.claimLink(secret), onSuccess: () => qc.invalidateQueries({ queryKey: qk.notes }) });
 }
 /** Takes something out of the shared notes, for everyone. */
 export function useTakeBack(noteId: string) {

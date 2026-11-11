@@ -5,7 +5,7 @@ import { DEFAULT_NOTIFICATION_PREFERENCES, DEFAULT_SOUND_PREFERENCES } from '@al
  * every page reads it from here again.
  */
 import type {
-  Calendar, CreditBalance, DocRefusal, DocumentLibrary, FeatureFlagName, IncomingRing, Meeting, MentionNotice, MoveIn, MoveMedia, Note, Person, PersonalEntry, Preferences, Session, ShareEntry, Team,
+  Calendar, CreditBalance, DocRefusal, DocumentLibrary, FeatureFlagName, IncomingRing, Meeting, MentionNotice, MoveIn, MoveMedia, Note, NoteLink, Person, PersonalEntry, Preferences, Session, ShareEntry, Team,
   WorkspaceMedia, WorkspaceSummary, WorkspaceTree
 } from '@alcove/api';
 import type { PaymentsWorld } from './payments';
@@ -114,7 +114,15 @@ export interface World {
   move?: MoveSpec | undefined;
   /** The feature flags on for whoever's here. None unless a scenario switches one on. */
   featureFlags?: FeatureFlagName[] | undefined;
+  /** Links to notes that still work, with their secrets: none unless a story makes one. */
+  noteLinks?: NoteLinkSpec[] | undefined;
 }
+
+/**
+ * A link to someone's notes: what everyone with them sees of it, its secret, and the note it's to. `note` is the note as
+ * it would be yours, for a link to notes you don't have yet: opening the link puts it in your notes.
+ */
+export interface NoteLinkSpec { link: NoteLink; noteId: string; secret: string; note?: Note | undefined }
 
 /** How a story's page opens: when on the demo day, what the browser is like, and what it remembers. */
 export interface Opening {
@@ -135,7 +143,7 @@ export const session = (over: Partial<Session> = {}): Session => ({
 
 export const PREFS: Preferences = {
   sounds: DEFAULT_SOUND_PREFERENCES,
-  notesDefault: 'on', notesLanguage: 'call', summaryLength: 'short', addToCalendar: true, showOtherMeetings: true, recordOffline: true,
+  notesDefault: 'on', notesLanguage: 'call', addToCalendar: true, showOtherMeetings: true, recordOffline: true,
   notifications: { ...DEFAULT_NOTIFICATION_PREFERENCES, enabled: true, beforeCall: 1, followUpDue: true },
   pinned: [], groups: [], model: null
 };

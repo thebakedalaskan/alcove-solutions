@@ -103,24 +103,24 @@ describe('immediate query actions through the real API', () => {
     client.setQueryData(keys.session, await browser.api.auth.getSession());
     client.setQueryData(keys.prefs, initial);
     const options = preferenceOptions(delayed.api, client, keys, patch);
-    const first = new MutationObserver(client, options).mutate({ summaryLength: 'detailed' }).then(() => false, () => true);
+    const first = new MutationObserver(client, options).mutate({ notesLanguage: 'es' }).then(() => false, () => true);
     try {
       await until(delayed.reached, 'the first preference request');
-      const middle = new MutationObserver(client, options).mutate({ summaryLength: 'short' });
-      const last = new MutationObserver(client, options).mutate({ summaryLength: 'detailed' });
-      await until(() => client.isMutating() === 3 && client.getQueryData<Preferences>(keys.prefs)?.summaryLength === 'detailed', 'all three requested choices');
+      const middle = new MutationObserver(client, options).mutate({ notesLanguage: 'en' });
+      const last = new MutationObserver(client, options).mutate({ notesLanguage: 'es' });
+      await until(() => client.isMutating() === 3 && client.getQueryData<Preferences>(keys.prefs)?.notesLanguage === 'es', 'all three requested choices');
       // A read while the first acknowledgement is held must retain the last queued command.
       const other = h.browser();
       await other.api.auth.signIn('sso', { email: address });
       await other.api.account.updatePreferences({ recordOffline: !initial.recordOffline });
       await client.fetchQuery({ queryKey: keys.prefs, queryFn: () => readPreferences(delayed.api, client) });
-      expect(client.getQueryData<Preferences>(keys.prefs)).toMatchObject({ summaryLength: 'detailed', recordOffline: !initial.recordOffline });
+      expect(client.getQueryData<Preferences>(keys.prefs)).toMatchObject({ notesLanguage: 'es', recordOffline: !initial.recordOffline });
       delayed.release();
       expect(await first).toBe(true);
-      expect(client.getQueryData<Preferences>(keys.prefs)?.summaryLength).toBe('detailed');
+      expect(client.getQueryData<Preferences>(keys.prefs)?.notesLanguage).toBe('es');
       await Promise.all([middle, last]);
-      expect(await browser.api.account.preferences()).toMatchObject({ summaryLength: 'detailed', recordOffline: !initial.recordOffline });
-      expect(client.getQueryData<Preferences>(keys.prefs)).toMatchObject({ summaryLength: 'detailed', recordOffline: !initial.recordOffline });
+      expect(await browser.api.account.preferences()).toMatchObject({ notesLanguage: 'es', recordOffline: !initial.recordOffline });
+      expect(client.getQueryData<Preferences>(keys.prefs)).toMatchObject({ notesLanguage: 'es', recordOffline: !initial.recordOffline });
     } finally { delayed.release(); await first; client.clear(); }
   });
 
@@ -266,16 +266,16 @@ describe('immediate query actions through the real API', () => {
     client.setQueryData(keys.prefs, initial);
     const options = preferenceOptions(unreliable.api, client, keys, patch);
     try {
-      const a = new MutationObserver(client, options).mutate({ summaryLength: 'detailed' }).catch(errorCode);
-      const b = new MutationObserver(client, options).mutate({ summaryLength: 'short' }).catch(errorCode);
+      const a = new MutationObserver(client, options).mutate({ notesLanguage: 'es' }).catch(errorCode);
+      const b = new MutationObserver(client, options).mutate({ notesLanguage: 'en' }).catch(errorCode);
       expect(await Promise.all([a, b])).toEqual(['network', 'network']);
       expect(client.getQueryData<Preferences>(keys.prefs)).toEqual(initial);
       expect(await browser.api.account.preferences()).toEqual(initial);
       expect(writes).toBe(2);
       refusing = false;
-      await new MutationObserver(client, options).mutate({ summaryLength: 'detailed' });
-      expect((await browser.api.account.preferences()).summaryLength).toBe('detailed');
-      expect(client.getQueryData<Preferences>(keys.prefs)?.summaryLength).toBe('detailed');
+      await new MutationObserver(client, options).mutate({ notesLanguage: 'es' });
+      expect((await browser.api.account.preferences()).notesLanguage).toBe('es');
+      expect(client.getQueryData<Preferences>(keys.prefs)?.notesLanguage).toBe('es');
     } finally { client.clear(); }
   });
 
@@ -289,7 +289,7 @@ describe('immediate query actions through the real API', () => {
     client.setQueryData(keys.session, await browser.api.auth.getSession());
     client.setQueryData(keys.prefs, initial);
     const options = preferenceOptions(delayed.api, client, keys, patch);
-    const first = new MutationObserver(client, options).mutate({ summaryLength: 'detailed' });
+    const first = new MutationObserver(client, options).mutate({ notesLanguage: 'es' });
     let queued: Promise<string | Preferences> | undefined;
     try {
       await until(delayed.reached, 'the old account request');
@@ -311,7 +311,7 @@ describe('immediate query actions through the real API', () => {
       expect(await browser.api.account.preferences()).toEqual(fresh);
       const old = h.browser();
       await old.api.auth.signIn('sso', { email: oldAddress });
-      expect(await old.api.account.preferences()).toMatchObject({ summaryLength: 'detailed', recordOffline: initial.recordOffline });
+      expect(await old.api.account.preferences()).toMatchObject({ notesLanguage: 'es', recordOffline: initial.recordOffline });
     } finally { delayed.release(); await first; await queued; client.clear(); }
   });
 
@@ -460,21 +460,21 @@ describe('immediate query actions through the real API', () => {
     client.setQueryData(keys.session, await browser.api.auth.getSession());
     client.setQueryData(keys.prefs, initial);
     const options = preferenceOptions(delayed.api, client, keys, patch);
-    const input: Patch<Preferences> = { summaryLength: 'detailed', notifications: { ...initial.notifications, tagged: false } };
+    const input: Patch<Preferences> = { notesLanguage: 'es', notifications: { ...initial.notifications, tagged: false } };
     const first = new MutationObserver(client, options).mutate(input);
     let last: Promise<Preferences> | undefined;
     try {
       await until(delayed.reached, 'the first immutable command');
-      input.summaryLength = 'short';
+      input.notesLanguage = 'en';
       if (input.notifications) input.notifications.tagged = true;
       last = new MutationObserver(client, options).mutate(input);
-      await until(() => client.getQueryData<Preferences>(keys.prefs)?.summaryLength === 'short', 'the second immutable command');
-      input.summaryLength = 'detailed';
+      await until(() => client.getQueryData<Preferences>(keys.prefs)?.notesLanguage === 'en', 'the second immutable command');
+      input.notesLanguage = 'es';
       if (input.notifications) input.notifications.tagged = false;
       delayed.release();
       await Promise.all([first, last]);
-      expect(await browser.api.account.preferences()).toMatchObject({ summaryLength: 'short', notifications: { tagged: true } });
-      expect(client.getQueryData<Preferences>(keys.prefs)).toMatchObject({ summaryLength: 'short', notifications: { tagged: true } });
+      expect(await browser.api.account.preferences()).toMatchObject({ notesLanguage: 'en', notifications: { tagged: true } });
+      expect(client.getQueryData<Preferences>(keys.prefs)).toMatchObject({ notesLanguage: 'en', notifications: { tagged: true } });
     } finally { delayed.release(); await first; await last; client.clear(); }
   });
 
@@ -511,7 +511,7 @@ describe('immediate query actions through the real API', () => {
     client.setQueryData(keys.session, await browser.api.auth.getSession());
     client.setQueryData(keys.prefs, await browser.api.account.preferences());
     const options = preferenceOptions(browser.api, client, keys, patch);
-    await new MutationObserver(client, options).mutate({ summaryLength: 'detailed' });
+    await new MutationObserver(client, options).mutate({ notesLanguage: 'es' });
     const old = hold(browser, 'GET', '/account/preferences', 'after');
     let readFinished = false;
     const read = client.fetchQuery({ queryKey: keys.prefs, queryFn: async () => {
@@ -521,16 +521,16 @@ describe('immediate query actions through the real API', () => {
     const refused = hold(browser, 'PATCH', '/account/preferences', 'before');
     try {
       await until(old.reached, 'the old real HTTP read');
-      await new MutationObserver(client, options).mutate({ summaryLength: 'short' });
+      await new MutationObserver(client, options).mutate({ notesLanguage: 'en' });
       await client.fetchQuery({ queryKey: keys.prefs, queryFn: () => readPreferences(browser.api, client) });
-      failed = new MutationObserver(client, preferenceOptions(refused.api, client, keys, patch)).mutate({ summaryLength: 'detailed' }).catch(errorCode);
+      failed = new MutationObserver(client, preferenceOptions(refused.api, client, keys, patch)).mutate({ notesLanguage: 'es' }).catch(errorCode);
       await until(refused.reached, 'the unconfirmed later preference');
       old.release();
       await until(() => readFinished, 'the canceled read to finish without changing confirmed data');
       refused.release();
       expect(await failed).toBe('network');
-      expect(client.getQueryData<Preferences>(keys.prefs)?.summaryLength).toBe('short');
-      expect((await browser.api.account.preferences()).summaryLength).toBe('short');
+      expect(client.getQueryData<Preferences>(keys.prefs)?.notesLanguage).toBe('en');
+      expect((await browser.api.account.preferences()).notesLanguage).toBe('en');
     } finally { old.release(); refused.release(); await read; await failed; client.clear(); }
   });
 
@@ -543,15 +543,15 @@ describe('immediate query actions through the real API', () => {
     const observer = new MutationObserver(client, preferenceOptions(browser.api, client, keys, patch));
     let replaced = false;
     const stop = client.getQueryCache().subscribe(() => {
-      if (replaced || client.getQueryData<Preferences>(keys.prefs)?.summaryLength !== 'detailed') return;
+      if (replaced || client.getQueryData<Preferences>(keys.prefs)?.notesLanguage !== 'es') return;
       replaced = true;
       observer.setOptions(preferenceOptions(browser.api, client, keys, patch));
     });
     try {
-      await observer.mutate({ summaryLength: 'detailed' });
+      await observer.mutate({ notesLanguage: 'es' });
       expect(replaced).toBe(true);
-      expect((await browser.api.account.preferences()).summaryLength).toBe('detailed');
-      expect(client.getQueryData<Preferences>(keys.prefs)?.summaryLength).toBe('detailed');
+      expect((await browser.api.account.preferences()).notesLanguage).toBe('es');
+      expect(client.getQueryData<Preferences>(keys.prefs)?.notesLanguage).toBe('es');
     } finally { stop(); client.clear(); }
   });
 

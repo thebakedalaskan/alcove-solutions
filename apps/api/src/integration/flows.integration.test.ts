@@ -291,16 +291,16 @@ describe('signing in', () => {
     const patchRaw = async (body: unknown) => (await fetch(`${h.baseUrl}/v1/account/preferences`, { method: 'PATCH', headers: { 'content-type': 'application/json', origin: ORIGIN }, body: JSON.stringify(body) })).status;
     const defaults = {
       sounds: DEFAULT_SOUND_PREFERENCES,
-      notesDefault: 'on', notesLanguage: 'call', summaryLength: 'short', addToCalendar: true, showOtherMeetings: true, recordOffline: true,
+      notesDefault: 'on', notesLanguage: 'call', addToCalendar: true, showOtherMeetings: true, recordOffline: true,
       notifications: DEFAULT_NOTIFICATION_PREFERENCES,
       pinned: [], groups: [], model: null
     };
     expect(await api.account.preferences()).toEqual(defaults);
     const patched = await api.account.updatePreferences({
-      summaryLength: 'detailed',
+      notesLanguage: 'de',
       notifications: { ...DEFAULT_NOTIFICATION_PREFERENCES, replies: false, chatMentions: false, ringing: false, beforeCall: 1 }
     });
-    expect(patched).toEqual({ ...defaults, summaryLength: 'detailed', notifications: { ...defaults.notifications, replies: false, chatMentions: false, ringing: false, beforeCall: 1 } });
+    expect(patched).toEqual({ ...defaults, notesLanguage: 'de', notifications: { ...defaults.notifications, replies: false, chatMentions: false, ringing: false, beforeCall: 1 } });
     expect(await api.account.preferences()).toEqual(patched);
     const sounds = { ...DEFAULT_SOUND_PREFERENCES, enabled: false, quiet: true, volume: 0.25, hands: false, replies: false };
     expect((await api.account.updatePreferences({ sounds })).sounds).toEqual(sounds);
@@ -1665,7 +1665,7 @@ describe('live transcript and written notes', () => {
     expect(note.suggestions).toMatchObject([{ review: 'suggested', id: expect.any(String), text: 'Tidy the spacing by Friday', owner: { name: 'Sam' }, takenOn: false, due: 'Friday', at: 0, done: false, changes: [] }]);
   });
 
-  it('notes are written in the chosen language and length', async () => {
+  it('notes are written in the chosen language, with a short summary for everyone', async () => {
     const wrote = async (b: Awaited<ReturnType<typeof account>>, how: 'call' | 'room') => {
       const before = h.near.instructions.length;
       if (how === 'room') {
@@ -1685,16 +1685,17 @@ describe('live transcript and written notes', () => {
     expect((await wrote(standard, 'call'))[0]).toContain('summary: two or three plain sentences');
 
     const chosen = await account();
-    await chosen.api.account.updatePreferences({ notesLanguage: 'es', summaryLength: 'detailed' });
+    await chosen.api.account.updatePreferences({ notesLanguage: 'es' });
     const [call] = await wrote(chosen, 'call');
     expect(call).toContain('Write in Spanish.');
-    expect(call).toContain('summary: a short paragraph for each topic');
-    expect(call).not.toContain('two or three plain sentences');
+    // The summary is always the short one: the full summary is the longer account, under it.
+    expect(call).toContain('summary: two or three plain sentences');
+    expect(call).not.toContain('a short paragraph for each topic');
     // A room recording follows the person who recorded it.
     const [room] = await wrote(chosen, 'room');
     expect(room).toContain('Write in Spanish.');
-    expect(room).toContain('a short paragraph for each topic');
-    // Decisions, follow-ups and chapters are written the same way either way.
+    expect(room).toContain('summary: two or three plain sentences');
+    // Decisions, follow-ups and chapters are written the same way whatever the language.
     expect(call).toContain('decisions: what the people agreed');
     // Someone else's choice doesn't reach a call they only joined: the organizer's decides.
     const guest = await account();
@@ -3215,6 +3216,8 @@ describe('deleting an account', () => {
     await b.fetch(driveCallback, { redirect: 'manual' });
     await b.api.drive.update({ enabled: true, destinationId: driveFolder, formats: ['notes-markdown'] });
     await b.api.drive.setForNote(callNote, { enabled: true, destinationId: driveFolder, formats: ['notes-markdown'] });
+    // A link she made to her call's notes goes with them, and so with her.
+    await b.api.notes.createLink(callNote);
     // A timer preset as the previous release can still write one while a deploy is under way: nothing in this release does.
     await h.pool.query('INSERT INTO timer_presets (owner_id, preset_id, ciphertext) VALUES ($1, $2, $3)', [ownerId, randomBytes(16).toString('base64url'), randomBytes(64)]);
     // Every table that keeps an account's rows has some of hers.
@@ -3223,7 +3226,7 @@ describe('deleting an account', () => {
       'agent_codes', 'agent_grants', 'agent_operations', 'agent_tokens', 'billing_accounts', 'call_attention', 'call_codes', 'call_mls', 'call_moves', 'call_notes',
       'call_private_messages', 'call_rings', 'calls', 'content_jobs', 'deposits', 'document_access', 'document_clients', 'document_snapshots', 'document_updates', 'document_version_parts',
       'document_versions', 'documents', 'drive_call_exports', 'drive_connections', 'drive_export_jobs', 'identities', 'items', 'media_upload_days', 'meeting_access',
-      'note_access', 'note_additions', 'object_gc', 'operations', 'owners', 'personal_notes', 'presenter_frame_notes', 'presenter_notes', 'recording_pieces', 'recordings',
+      'note_access', 'note_additions', 'note_links', 'object_gc', 'operations', 'owners', 'personal_notes', 'presenter_frame_notes', 'presenter_notes', 'recording_pieces', 'recordings',
       'revisions', 'screen_frames', 'screen_pieces', 'screen_shares', 'screen_videos', 'sessions', 'timer_presets', 'transcript_clips', 'transcript_translations',
       'workspace_authors', 'workspace_media', 'workspace_media_pieces', 'workspace_media_previews', 'workspace_media_uses', 'workspace_members', 'workspace_mentions',
       'workspaces'
@@ -3604,6 +3607,14 @@ describe('privacy at rest', () => {
     const addition = await c.api.notes.previewAddition(ended?.pendingNoteId ?? '', own?.id ?? '');
     expect(addition.text).toBe('CANARY-OWN-WORDS for nobody else');
     await c.api.notes.addToShared(ended?.pendingNoteId ?? '', own?.id ?? '', { text: 'CANARY-ADDED to the notes', seal: addition.seal });
+    // And something written straight into the shared notes, beside them: sealed with the note too.
+    await c.api.notes.writeShared(ended?.pendingNoteId ?? '', { text: 'CANARY-SHARED-WRITE for everyone with the notes', seal: (await c.api.notes.sharedAudience(ended?.pendingNoteId ?? '')).seal });
+    // A link to the notes: only its secret's hash is kept, and opening it gives an account the notes, sealed in them as shared by link.
+    const noteLink = await c.api.notes.createLink(settledNote.id);
+    secrets.push(noteLink.secret);
+    const linked = tapped();
+    await linked.api.auth.signIn('sso', { email: 'canary-linked@canary.example' });
+    expect(await linked.api.notes.claimLink(noteLink.secret)).toEqual({ noteId: settledNote.id });
     // What people add to the notes and say about them is sealed with the rest: proposed, reworded, disputed, dated and handed on,
     // in the call's part and a room's, and so is every wording it had.
     await c.api.notes.proposeDecision(settledNote.id, { text: 'CANARY-PROPOSAL the merger needs a vote.' });
@@ -3828,7 +3839,7 @@ describe('privacy at rest', () => {
       'canary-google-sub', 'canary.googler', 'Canary Googler', 'canary-photo', 'CANARY-GCAL', 'canary-gcal',
       'CANARY-QUESTION', 'CANARY-SERIES-ASK', 'CANARY-ASKED', 'canary-recurring-id', 'canary-theirs-event', 'canary-allday-event', 'canary-missing-event',
       'CANARY-SERIES-TITLE', 'CANARY-SERIES-RENAMED', 'canary-series-guest', 'Pacific/Apia', series.seriesCode ?? 'no series link',
-      '"answer":"maybe"', 'CANARY-OWN-WORDS', 'CANARY-OWN-MARK', 'CANARY-OWN-ASKED', 'CANARY-OWN-ANSWER', 'CANARY-ADDED',
+      '"answer":"maybe"', 'CANARY-OWN-WORDS', 'CANARY-OWN-MARK', 'CANARY-OWN-ASKED', 'CANARY-OWN-ANSWER', 'CANARY-ADDED', 'CANARY-SHARED-WRITE', 'canary-linked',
       'CANARY-PROPOSAL', 'CANARY-ROOMPROPOSAL', 'CANARY-FOLLOWUP', 'CANARY-DUE', 'CANARY-REWORD', 'needs a vote', 'brief the board', 'two votes',
       'CANARY-WORKSPACE', 'CANARY-WSFOLDER', 'CANARY-WSDOC', 'CANARY-WSBOARD', 'CANARY-WSRENAMED', 'CANARY-WSREFUSED', 'canary-ws-member', 'canary-ws-shared',
       'CANARY-MEDIA-NAME', 'CANARY-MEDIA-BYTES', 'CANARY-MEDIA-GONE', 'CANARY-MEDIA-DELETED', 'CANARY-MEDIA-PREVIEW',
@@ -3877,6 +3888,7 @@ describe('privacy at rest', () => {
     for (const canary of canaries) for (const enc of encodings(canary)) expect(logText.includes(enc), `${canary} as ${enc} in logs`).toBe(false);
     for (const secret of secrets) expect(logText.includes(secret), 'a session cookie or move code in logs').toBe(false);
     for (const enc of encodings(moveCode)) expect(rowsText.includes(enc), 'a move code in rows').toBe(false);
+    for (const enc of encodings(noteLink.secret)) expect(rowsText.includes(enc), 'a note link’s secret in rows').toBe(false);
     // Logs are built to leave the confidential VM: no email address of anyone, ever, and no client address.
     expect(logText.match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/g) ?? []).toEqual([]);
     expect(logText.match(/\b10\.1\.\d{1,3}\.\d{1,3}\b/g) ?? []).toEqual([]);

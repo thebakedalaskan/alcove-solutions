@@ -594,6 +594,92 @@ describe('adding to the shared notes', () => {
   });
 });
 
+describe('writing straight into the shared notes', () => {
+  it('says who reads it before anything is typed, and posts it in one step, for everyone with the notes', async () => {
+    const kofi = await account(unique('kofi'));
+    const lena = await account(unique('lena'));
+    const { org, noteId } = await writtenNote('The merger closes on Friday.', kofi, lena);
+    const box = await kofi.api.notes.sharedAudience(noteId);
+    expect(box.audience.map((p) => p.email).sort()).toEqual([org.email, kofi.email, lena.email].sort());
+    // Asking who reads it writes nothing.
+    expect(await addedTo(noteId)).toBe(0);
+    const note = await kofi.api.notes.writeShared(noteId, { text: 'Lena, can you send the deck?', seal: box.seal });
+    expect(only(note.additions)).toMatchObject({ text: 'Lena, can you send the deck?', by: { email: kofi.email }, removable: true, moments: [] });
+    expect(only((await lena.api.notes.get(noteId)).additions)).toMatchObject({ text: 'Lena, can you send the deck?', by: { email: kofi.email }, removable: false });
+    expect(only((await org.api.notes.get(noteId)).additions).removable).toBe(true);
+    // It was never private: nothing of it is in anyone's own notes.
+    expect((await kofi.api.notes.personal(noteId).get()).entries).toEqual([]);
+    // Writing for yourself, and adding from your own notes, still work beside it.
+    const own = last(await kofi.api.notes.personal(noteId).add({ kind: 'note', text: 'Just for me.' }));
+    const p = await kofi.api.notes.previewAddition(noteId, own.id);
+    await kofi.api.notes.addToShared(noteId, own.id, { text: 'Just for me, said to all.', seal: p.seal });
+    expect((await lena.api.notes.get(noteId)).additions.map((a) => a.text)).toEqual(['Lena, can you send the deck?', 'Just for me, said to all.']);
+  });
+
+  it('refuses a box opened before someone else got the notes, and says who reads it now', async () => {
+    const kofi = await account(unique('kofi'));
+    const { org, noteId } = await writtenNote('The merger closes on Friday.', kofi);
+    const opened = await kofi.api.notes.sharedAudience(noteId);
+    const newcomer = unique('newcomer');
+    await org.api.notes.share(noteId, { emails: [newcomer] });
+    expect(await fails(kofi.api.notes.writeShared(noteId, { text: 'For everyone.', seal: opened.seal }))).toBe('conflict');
+    expect(await addedTo(noteId)).toBe(0);
+    const now = await kofi.api.notes.sharedAudience(noteId);
+    expect(now.audience.map((p) => p.email)).toContain(newcomer);
+    expect(now.seal).not.toBe(opened.seal);
+    // A made-up seal holds nothing, nor does another account's, nor an entry's preview's.
+    expect(await fails(kofi.api.notes.writeShared(noteId, { text: 'For everyone.', seal: 'made-up' }))).toBe('conflict');
+    expect(await fails(org.api.notes.writeShared(noteId, { text: 'For everyone.', seal: now.seal }))).toBe('conflict');
+    const entry = last(await kofi.api.notes.personal(noteId).add({ kind: 'note', text: 'Mine.' }));
+    const entrySeal = (await kofi.api.notes.previewAddition(noteId, entry.id)).seal;
+    expect(await fails(kofi.api.notes.writeShared(noteId, { text: 'For everyone.', seal: entrySeal }))).toBe('conflict');
+    // Nothing to post, nothing posted.
+    expect(await fails(kofi.api.notes.writeShared(noteId, { text: '   ', seal: now.seal }))).toBe('invalid');
+    expect(await addedTo(noteId)).toBe(0);
+    await kofi.api.notes.writeShared(noteId, { text: 'For everyone.', seal: now.seal });
+    expect(await addedTo(noteId)).toBe(1);
+  });
+
+  it('isn’t there for anyone without the notes or for another account’s notes, and waits for the notes to be written', async () => {
+    const kofi = await account(unique('kofi'));
+    const { noteId } = await writtenNote('The merger closes on Friday.', kofi);
+    const box = await kofi.api.notes.sharedAudience(noteId);
+    const stranger = await account(unique('stranger'));
+    expect(await fails(stranger.api.notes.sharedAudience(noteId))).toBe('not-found');
+    expect(await fails(stranger.api.notes.writeShared(noteId, { text: 'Taken', seal: box.seal }))).toBe('not-found');
+    // Another account's note, by its ID, with the seal of one you have: not found, and nothing written there.
+    const other = await writtenNote('Something else.');
+    expect(await fails(kofi.api.notes.sharedAudience(other.noteId))).toBe('not-found');
+    expect(await fails(kofi.api.notes.writeShared(other.noteId, { text: 'Taken', seal: box.seal }))).toBe('not-found');
+    expect(await addedTo(other.noteId)).toBe(0);
+    // During the call the people who get the notes aren't settled: nothing is written there yet.
+    const { org, host } = await callWith();
+    await host.transcribe(speech('Still talking.', 0, 0), host.ticket.identity);
+    const live = (await settle(host, (s) => s.transcript.length >= 1)).notes.noteId ?? '';
+    expect(await fails(org.api.notes.sharedAudience(live))).toBe('conflict');
+    expect(await fails(org.api.notes.writeShared(live, { text: 'Too soon', seal: box.seal }))).toBe('conflict');
+    expect(await addedTo(live)).toBe(0);
+  });
+
+  it('is taken back for good by whoever wrote it, or by the organizer, and goes with its author’s account', async () => {
+    const kofi = await account(unique('kofi'));
+    const lena = await account(unique('lena'));
+    const { org, noteId } = await writtenNote('The merger closes on Friday.', kofi, lena);
+    const post = async (b: Account, text: string) => only((await b.api.notes.writeShared(noteId, { text, seal: (await b.api.notes.sharedAudience(noteId)).seal })).additions.filter((a) => a.text === text));
+    const kofis = await post(kofi, 'Kofi’s word.');
+    expect(await fails(lena.api.notes.takeBack(noteId, kofis.id))).toBe('forbidden');
+    expect((await kofi.api.notes.takeBack(noteId, kofis.id)).additions).toEqual([]);
+    expect(await addedTo(noteId)).toBe(0);
+    const lenas = await post(lena, 'Lena’s word.');
+    expect((await org.api.notes.takeBack(noteId, lenas.id)).additions).toEqual([]);
+    await post(lena, 'Lena again.');
+    expect(await addedTo(noteId)).toBe(1);
+    await lena.api.account.delete();
+    expect((await org.api.notes.get(noteId)).additions).toEqual([]);
+    expect(await addedTo(noteId)).toBe(0);
+  });
+});
+
 describe('when notes go', () => {
   /** Someone adds something to a note and keeps something of their own on it. */
   async function adds(who: Account, noteId: string, words: string) {
@@ -739,13 +825,15 @@ describe('what’s stored', () => {
     await kofi.api.notes.addToShared(noteId, shareThis.id, { text: 'CANARY-ADDED said to everyone', seal: p.seal });
     const lenaOwn = last(await lena.api.notes.personal(noteId).add({ kind: 'note', text: 'CANARY-PERSONAL-LENA hers.' }));
     expect(lenaOwn.kind).toBe('note');
+    // Written straight into the shared notes: sealed with the note, in no receipt, and to no model.
+    await lena.api.notes.writeShared(noteId, { text: 'CANARY-SHARED-WRITE said straight to everyone', seal: (await lena.api.notes.sharedAudience(noteId)).seal });
 
     // Nothing reads them: asking about the note, across notes, or across a series sends none of it to a model.
     for await (const part of kofi.api.notes.ask(noteId, 'What closes on Friday?')) expect(part.type).toMatch(/text|cite|screen/);
     for await (const part of kofi.api.notes.askAll('What closes on Friday?')) expect(part.type).toMatch(/text|cite/);
 
     const rows = await allRows();
-    const canaries = ['CANARY-PERSONAL-TEXT', 'CANARY-PERSONAL-LABEL', 'CANARY-PERSONAL-QUESTION', 'CANARY-PERSONAL-ANSWER', 'CANARY-PERSONAL-LENA', 'CANARY-ADDED', 'ask about the budget', 'said to everyone'];
+    const canaries = ['CANARY-PERSONAL-TEXT', 'CANARY-PERSONAL-LABEL', 'CANARY-PERSONAL-QUESTION', 'CANARY-PERSONAL-ANSWER', 'CANARY-PERSONAL-LENA', 'CANARY-ADDED', 'ask about the budget', 'said to everyone', 'CANARY-SHARED-WRITE', 'said straight to everyone'];
     const logs = h.logs.join('');
     const wire = Buffer.concat(h.near.received.map((r) => r.body));
     for (const canary of canaries) {

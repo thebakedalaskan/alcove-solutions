@@ -5,7 +5,7 @@ import { ConflictError, NotFoundError } from '../../errors';
 import { connection, jobs, JobRow, jobView, override, saveConnection, seal, sealJob, settings, jobState } from './drive-state';
 import * as provider from './drive-provider';
 import { holdAccess, locate } from './service';
-import { synchronize } from './drive-worker';
+import { automatic, kick, synchronize } from './drive-worker';
 
 /** Short policy changes take turns across instances. Network access and pooled reads happen before the transaction. */
 export async function lock(o: Owner, db: Db): Promise<void> { await exec(db, 'SELECT pg_advisory_xact_lock(hashtextextended($1, 9170))', [o.ownerId]); }
@@ -44,6 +44,7 @@ export async function folders(o: Owner) {
   if (!current) return [];
   return provider.folders(o, await provider.token(o, current));
 }
+/** This person's exports of one call: its own choice, if it has one, what applies, whether automatic exports cover it, and its jobs. */
 export async function forNote(o: Owner, noteId: string): Promise<DriveCallExports> {
   const found = await locate(o, noteId);
   try {
@@ -52,7 +53,7 @@ export async function forNote(o: Owner, noteId: string): Promise<DriveCallExport
     const selected = await override(o, noteId);
     const effective = selected ?? (current ? { enabled: current.enabled, destination: current.destination, formats: current.formats } : { enabled: false, destination: null, formats: [] });
     await synchronize(o, noteId);
-    return { noteId, override: selected, effective, jobs: await jobs(o, noteId) };
+    return { noteId, override: selected, effective, automatic: automatic(current, found.note.manifest.endedAt), jobs: await jobs(o, noteId) };
   } finally { if (!found.mine) { found.owner.root.fill(0); found.owner.wrapKey.fill(0); } }
 }
 export async function setForNote(o: Owner, noteId: string, input: DriveExportInput | null): Promise<DriveCallExports> {
@@ -82,14 +83,17 @@ export async function setForNote(o: Owner, noteId: string, input: DriveExportInp
       // Reserved provider IDs survive same-account policy changes, including an upload whose response never arrived.
     });
   } finally { if (!found.mine) { found.owner.root.fill(0); found.owner.wrapKey.fill(0); } }
-  return forNote(o, noteId);
+  // Its jobs are worked out here, and what's due goes now, in the background: not at the next upkeep.
+  const exports = await forNote(o, noteId);
+  kick(o, o.ownerId);
+  return exports;
 }
 export async function retry(o: Owner, jobId: string): Promise<DriveExportJob> {
   const row = await maybeOne(o.pool, JobRow, 'SELECT job_id, source_owner_id, note_id, format, state, attempt, state_ciphertext, lease_id FROM drive_export_jobs WHERE owner_id = $1 AND job_id = $2', [o.ownerId, jobId]);
   if (!row) throw new NotFoundError('That export is no longer available.');
   const found = await locate(o, row.note_id);
   try {
-    if (row.state === 'uploaded') return jobView(o, row);
+    if (row.state === 'uploaded') return jobView(o, row, null);
     if (row.state === 'uploading') throw new ConflictError('This export is uploading. Wait for it to finish.');
     const current = await connection(o);
     if (!current || current.status !== 'connected') throw new ConflictError('Reconnect Google Drive before retrying this upload.');
@@ -108,15 +112,18 @@ export async function retry(o: Owner, jobId: string): Promise<DriveExportJob> {
       if (previous && previous.appProperties['alcoveJob'] !== row.job_id) throw new ConflictError('The previous exported file no longer matches this export.');
     }
     const retried = changed ? { ...state, destination, generation: current.generation, fileId: null, uploadedHash: null, uploadSession: null, fileUrl: null, priorCopies: [...state.priorCopies, ...(state.fileId ? [{ fileId: state.fileId, destination: state.destination }] : [])] } : state;
-    return tx(o.pool, async (db) => {
+    const queued = await tx(o.pool, async (db) => {
       await lock(o, db);
       await holdAccess(o, found, db);
       const latest = await connection(o, db);
       if (!latest || latest.generation !== current.generation) throw new ConflictError('Your Google Drive connection changed. Try again.');
       const next = { ...retried, reason: null, updatedAt: new Date().toISOString() };
       await exec(db, "UPDATE drive_export_jobs SET state = 'pending', state_ciphertext = $3, attempt = 0, lease_until = NULL, lease_id = NULL, due_at = now() WHERE owner_id = $1 AND job_id = $2 AND state IN ('pending', 'failed', 'reconnect')", [o.ownerId, jobId, sealJob(o, row, next)]);
-      return jobView(o, { ...row, state: 'pending', state_ciphertext: sealJob(o, row, next).slice() });
+      return jobView(o, { ...row, state: 'pending', state_ciphertext: sealJob(o, row, next).slice() }, new Date());
     });
+    // Tried again now, in the background: not at the next upkeep.
+    kick(o, o.ownerId);
+    return queued;
   } finally { if (!found.mine) { found.owner.root.fill(0); found.owner.wrapKey.fill(0); } }
 }
 export const listJobs = jobs;

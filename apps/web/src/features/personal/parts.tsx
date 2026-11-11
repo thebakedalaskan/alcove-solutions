@@ -9,10 +9,11 @@ import { Fragment, useEffect, useRef, useState, type KeyboardEvent, type ReactNo
 import { spokenName } from '~/lib/people';
 import { hm } from '~/lib/time';
 
-const ICON: Record<PersonalEntry['kind'], IconName> = { note: 'pen', bookmark: 'bookmark', answer: 'ask' };
+/** Each kind's marker. What you wrote is lines of text: a pencil there would read as the button that changes it. */
+const ICON: Record<PersonalEntry['kind'], IconName> = { note: 'textLines', bookmark: 'bookmark', answer: 'ask' };
 
 /** Lines a text box needs, up to `max`: what was typed, wrapped at about `wide` characters. */
-const rowsFor = (text: string, wide: number, max: number) => Math.min(max, Math.max(1, text.split('\n').reduce((n, l) => n + Math.max(1, Math.ceil(l.length / wide)), 0)));
+export const rowsFor = (text: string, wide: number, max: number) => Math.min(max, Math.max(1, text.split('\n').reduce((n, l) => n + Math.max(1, Math.ceil(l.length / wide)), 0)));
 
 /** What a moment says: who said what. */
 export function Quote({ m, me }: { m: SourceMoment; me: string | undefined }) {

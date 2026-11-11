@@ -1148,8 +1148,9 @@ Storybook journeys **6.23–6.25** show the review alongside the call:
    ready", then **Read the notes** or **Go to Home**. The note shows the steps so far (call ended, audio
    saved, the transcript's length, the notes being written), playback of the decrypted recording, and who
    has it. Without notes, the sheet says there's nothing to send.
-   Notes are written in the language and summary length set in settings by the organizer (or, for a room
-   recording, by whoever recorded): "Same as the call" by default, with a short summary of two or three sentences, and a longer full summary under it.
+   Notes are written in the language set in settings by the organizer (or, for a room recording, by whoever recorded):
+   "Same as the call" by default. Every note gets a short summary of two or three sentences, and a longer full summary
+   under it.
 3. Everyone invited gets the notes as the call ends, including people signed in whom the organizer let in
    from the link (letting them in added them to the invite; removing them took them off it). They find them
    under Notes when they sign in with that address, marked as from the organizer. Guests who joined with only
@@ -1206,26 +1207,45 @@ Storybook journeys **6.23–6.25** show the review alongside the call:
   the call has ended or the room recording has stopped. Anyone who has the notes can share them; people who have them already are skipped, and someone
   who removed them gets them again. Each share records who shared the notes and when, and the group's name
   when they went to one of the sharer's groups.
+- **Share a link**, under the people in Share, is for someone whose address you don't have: **Make a link** shows a link
+  to copy, once. Whoever opens it while signed in gets the notes, as shared by you, for seven days; the link alone opens
+  nothing, and someone signed out is asked to sign in first (to a real account, unless the organizer's is a demo one).
+  The links that still work are listed there, **Your link** or **Priya's link**, with until when, and whoever made one,
+  or the organizer, can **Revoke** it: from then on it opens nothing, and whoever it gave the notes to keeps them. A
+  link that's run out or been revoked says so, and to ask for a new one. Notes from a link say **From Priya's link**
+  beside their title, and **Who has these notes** says **By Priya's link**.
 - Someone else's notes say how you got them, beside their title: **From Priya’s call** when you were invited,
   **Shared by Theo** when someone shared them afterwards, or **Shared by Theo with Leads** when it was to one of
   their groups. Notes lists them under the call they came from, and **Who has these notes** says how each person
   got them: organizer, invited, or shared afterwards by whom (and with which group). A long list shows its
   first eight people until **Show all** opens it.
-- **More** has **Copy as text**, once the notes are written, and **Delete notes**, which deletes your own notes for everyone, audio included, with anyone's own notes on them, once you say so,
+- **More** has **Copy as text**, once the notes are written (the summary, the full summary, what was decided, what's
+  still open, the follow-ups and the shared notes), and **Delete notes**, which deletes your own notes for everyone, audio included, with anyone's own notes on them, once you say so,
   and then lists what went. For notes from someone else it's **Remove from your notes**: everyone else keeps them, and
   you're no longer listed as having them. Your own notes on them go for good, and what you added to the shared notes stays.
   Beside the list it asks in place, and the row leaves the list. While the call is going, it waits until the call ends.
 - **Your notes**, beside the note, is what you kept in the call and more: write something, bookmark a line (the bookmark
   beside it) or a shared screen, or **Keep in your notes** under an answer. It says **Only you**, and the note itself
-  says **Everyone with the notes**: nobody else reads Your notes, the organizer included.
+  says **Everyone with the notes**: nobody else reads Your notes, the organizer included. Each row starts with its kind
+  (lines of text for something you wrote, a bookmark, a question for a kept answer); pointing at a row, or moving the
+  keyboard into it, shows **Add to the shared notes**, **Change what you wrote** and **Delete**, which a touch screen
+  always shows.
+- The column beside the note scrolls by itself, under the line along the top: however far down the note you are, Your
+  notes and its box are in reach without scrolling back up, and scrolling one column doesn't move the other. In one
+  column (1180px wide and narrower, and phones), Your notes and **Shared notes** come before the transcript, two across
+  until a phone puts them one under the other; who has the notes, the series and Google Drive come after it.
 - **Add to the shared notes** on anything in Your notes shows, in place of the box you write in, exactly what goes:
-  the words, which you can cut down, the moment they point at, **Added by people** on this note, and everyone who
+  the words, which you can cut down, the moment they point at, **Shared notes** on this note, and everyone who
   has the notes. Nothing goes until **Add for 3 people**; only what's in the box goes, and never a question you asked.
   If someone got the notes since, it says so and shows them. An answer goes only if the moments behind it are in the
   notes. Once the notes are written is when this can be done: until then the people who'll get them aren't settled.
-- **Added by people** shows what people added, with who and when, for everyone with the notes. **Take back** removes
-  yours for everyone, once you say so in the row, and it stays in Your notes; the organizer can **Remove** any of them
-  the same way.
+- **Shared notes** (**Everyone with the notes**) shows what people wrote there or added from their own notes, with who
+  and when, for everyone with the notes, and once the notes are written, a box of its own: before anything is typed it
+  says who reads it (their faces and names, "and anyone they share the notes with"), and Enter posts it for all of them
+  in one step. If someone got the notes after the box showed, posting is refused, the words stay in the box, and it says
+  who got them since; Enter again posts it for them too. What's posted can't be changed. **Take back** removes yours for
+  everyone, once you say so in the row; something added from Your notes stays there. The organizer can **Remove** any
+  of them the same way. During a call the shared place to write is the call's workspace pages.
 - A note's page is a slim band of sky, with the call drawn along the horizon. The band has a way back (**Notes /** its
   title), the pin (**Pin these notes**, at most eight pinned), **Share**, **More**, and one line under the title: when
   it was, who has it, how you got it, and **Written in confidential compute** with when the hardware was checked (or, in
@@ -1338,6 +1358,10 @@ Storybook journeys **6.23–6.25** show the review alongside the call:
   calls and says how many older ones aren't shown. The organizer also sees the next call, with **Join** and
   **Change this call**, or **Schedule next week’s call**. When the series follows a recurring Google event
   and Google Calendar isn't connected any more, it says so and offers **Connect Google Calendar**.
+
+Storybook journeys **8.47** and **8.48** write straight into the shared notes: posting for everyone in one step, and
+someone getting the notes while the box is open, which it says before posting again. **8.49** shares the notes by a
+link, then revokes it.
 
 Storybook journeys **8.44–8.46** continue the same review after the call:
 
@@ -1477,22 +1501,23 @@ and moves a small sun to the one in view; on a narrow screen the index is a stri
 Settings can name a group or one of the places other pages point at (**Recording in the room**, **Google Calendar**,
 **Google Drive**, **Agents**); the page lands there and the index lights its group. Every control changes immediately and
 says **Saving…** while its request is pending. **Saved** shows for a moment just left of the control, only once its
-latest choice is confirmed (**Saved for new notes** for language and summary). A refusal says **Couldn’t confirm**, with a
+latest choice is confirmed (**Saved for new notes** for the language). A refusal says **Couldn’t confirm**, with a
 toast explaining why; it removes only that attempt, keeping later choices. Pick the setting again to retry. Panels that
-don't load say so, with **Try again**, and the rest of the page still works. Journey **11.23** shows Detailed → Short →
-Detailed while the oldest request fails.
+don't load say so, with **Try again**, and the rest of the page still works. Journey **11.23** shows Off → On → Off for
+notes on new calls while the oldest request fails.
 
 - **You**: your name and photo, from your sign-in, with a link to change them at Google or Microsoft (they update
   the next time you sign in; with single sign-on they come from your company's sign-in); your company, which opens
   Team (not at a personal address); and the time zone times are shown in, this computer's. Then **Appearance**:
   system, light or dark, each shown as a small evening in its own colours, kept in this browser.
 - **Calls and notes**: notes on or off for new calls (everyone invited gets them; each call can still be set when it's
-  scheduled), the language they're written in ("Same as the call", or one of twelve), how much the summary says
-  (**Short** or **Detailed**), and **AI model**: the model that writes the notes, reads shared screens and answers
+  scheduled), the language they're written in ("Same as the call", or one of twelve), and **AI model**: the model that
+  writes the notes, reads shared screens and answers
   questions for calls you organize. The default shows as "<name> (default)"; the others are NEAR AI models that take
   text and images. A model that doesn't run in a secure enclave carries a yellow **Unencrypted** badge ("Not in a secure
-  enclave, so Alcove can't guarantee this model keeps your call private."). Transcription is always private. Language
-  and summary apply to notes written from then on; the model to calls started from then on, and you can change it
+  enclave, so Alcove can't guarantee this model keeps your call private."). Transcription is always private. There's no
+  choice of how long the summary is: every note has the short summary with the full summary under it. The language
+  applies to notes written from then on; the model to calls started from then on, and you can change it
   during a call (**Notes written by**, on the capture panel) or when you write a note's notes again. Then **Recording in
   the room**: **Record without a connection** (on by default), and, while something waits here to upload, **On this
   device**: how many recordings, and how much room, with **See them** (Record's list).
@@ -1892,20 +1917,28 @@ explaining what Alcove gets from Google and what it uploads. **Continue to Googl
 picker. Connecting or disconnecting Drive leaves ordinary Alcove sign-in and Calendar settings alone. Google’s pages are outside Alcove; returning lands on Google Drive, open, and says what
 happened, leaving the existing settings in place after cancellation or failure.
 
-1. **Choose default files.** Select finalized notes as Markdown, transcripts as plain text, or retained original audio
-   pieces as a ZIP. Each is an explicit choice. **Export after each call** stays unavailable until a folder and at least
-   one type are chosen. Every setting saves as it changes. Pausing exports keeps the choices. Only finalized, retained
+1. **Choose default files.** Select finalized notes as Markdown (with the full summary under the short one), transcripts
+   as plain text, or retained original audio pieces as a ZIP. Each is an explicit choice. **Export after each call** stays
+   unavailable until a folder and at least one type are chosen, and covers calls that end after it's turned on: its help
+   says so. A call's files go as soon as its notes are final, not at the next upkeep. Every setting saves as it changes. Pausing exports keeps the choices. Only finalized, retained
    material the exporting account can still access is eligible; a call ending does not promise an export exists.
 2. **Choose a shared-drive folder.** The destination opens a folder picker, showing authorized folders and whether each
    belongs to a shared drive. The picker explains what **Choose in Google** permits before opening Google to authorize another folder and return to Settings. Choosing a
    folder checks current write permission before it is saved. An unavailable destination is refused, with no fallback to
    another folder. The selected folder’s existing sharing rules apply to the readable exported copy; Alcove never adds
    people, makes public links or exports another person’s private notes.
-3. **Override one call.** On a call’s saved notes, your **Google Drive** part says whether it follows the
-   defaults. **Use custom settings** gives this call its own authorized destination, file choices and on/off switch.
-   Returning to defaults removes the override. This changes only that person’s export settings for the call.
+3. **Override one call.** On a call’s saved notes, your **Google Drive** part says whether automatic exports cover it:
+   "Uses your automatic export settings.", "This call ended before automatic exports were on, so it isn’t exported." for a
+   call that ended before they were turned on, or "Automatic exports are off, so this call isn’t exported.". A call they
+   don't cover has **Export to Google Drive** under its folder: it saves this call's own choice with the folder and files
+   shown, and the files upload straight away, **Uploading**, then when they went. **Use custom settings** gives this call
+   its own authorized destination and file choices, with **Export to Google Drive**, and once it's exporting, "Goes to
+   this folder. The copies follow the notes when they change." with **Stop exporting**. Returning to defaults removes the
+   override. This changes only that person’s export settings for the call.
 4. **Retry an export.** Recent exports name their source call and end each line with when it went (a link to the file in
-   Drive), **Uploading**, **Waiting**, or why it didn't go, with **Try again**. **Try again** rechecks permission and, with the same destination, keeps the same export identity
+   Drive), **Uploading**, **Waiting to upload**, or why it didn't go, with **Try again**. One that went wrong in a way
+   that may pass (Google busy, the network) says why, quietly, and when it's tried next (**Next try 16:52**). **Try again**
+   sends it at once, not at the next upkeep. It rechecks permission and, with the same destination, keeps the same export identity
    so an uncertain response does not create a second file. Choosing another destination and retrying a failed export
    intentionally creates a new copy there; existing copies stay in their original folder. Revoked Google access asks
    for reconnection instead. Regenerated
@@ -1921,8 +1954,11 @@ happened, leaving the existing settings in place after cancellation or failure.
 
 7. **Review Drive permissions.** Press **Connect** beside Google Drive, read what access the export needs and cancel to
    stay in Settings without starting consent.
+8. **Export a call from before automatic exports.** A call that ended before automatic exports went on says it isn't
+   exported. **Export to Google Drive** sends it to the folder shown, with the files ticked in Settings, and they upload
+   straight away.
 
-Storybook’s journeys use **15.1–15.7** above. The account, folders and file links in the preview are made-up; real Google
+Storybook’s journeys use **15.1–15.8** above. The account, folders and file links in the preview are made-up; real Google
 consent and the provider’s own folder-selection page require manual verification with a supported Google account.
 
 ### 11.24 Add credits

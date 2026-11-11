@@ -158,6 +158,9 @@ button.rg-time:focus-visible { outline: 2px solid var(--focus); outline-offset: 
 .rg-gcard > .rg-sealed { display: flex; align-items: flex-start; gap: 8px; width: 100%; margin: 2px 0 4px; font-size: 13px; line-height: 1.45; color: var(--ink-3); text-align: left; }
 .rg-sealed .ac-i { flex: none; margin-top: 2px; color: var(--sun-text); }
 .rg-done { display: grid; place-items: center; width: 52px; height: 52px; border-radius: 16px; background: var(--sun-soft); color: var(--sun-text); }
+/* A card that says something didn't open, quietly; and the ways to sign in, one under another, the card's width. */
+.rg-done.is-quiet { background: var(--sunk); color: var(--ink-2); }
+.rg-gcard > .ways { display: grid; gap: 10px; width: 100%; }
 
 @keyframes rg-rise { from { opacity: 0; transform: translateY(8px); } }
 @keyframes rg-pop { from { opacity: 0; transform: translateY(4px) scale(.96); } }
