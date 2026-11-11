@@ -10,7 +10,7 @@ import { callName } from '~/lib/people';
 import { dayMonth, hm, shortDay, timeZone, weekday } from '~/lib/time';
 import { useTimes, useWeek } from '../scheduling/availability';
 import { repeatInput, ruleOf, type Draft, type RepeatKind, type Repeating } from './draft';
-import { TYPED_STEP, localDay, localWeekday, retime, weekDays, weeksTo, type Slot } from '../scheduling/times';
+import { LONGEST_CALL, TYPED_STEP, localDay, localWeekday, retime, weekDays, weeksTo, type Slot } from '../scheduling/times';
 import { callCount, dayWord, freeLine, repeatLine, shortTime, untimelyLine, whenLine } from '../scheduling/words';
 
 const LENGTHS = [30, 45, 60] as const;
@@ -65,7 +65,7 @@ export function StartEnd({ at, minutes, onChange }: { at: Date; minutes: number;
   );
 }
 
-/** A call's length, offered beside the usual ones when it's something else (typed, or the call's own). */
+/** A call's length, offered beside the usual ones when it's something else (typed, dragged in the week, or the call's own). */
 export function Length({ minutes, onChange }: { minutes: number; onChange: (m: number) => void }) {
   const options = [...new Set<number>([...LENGTHS, minutes])].sort((a, b) => a - b).map((m) => ({ value: String(m), label: lengthLabel(m) }));
   return <Segmented value={String(minutes)} onChange={(v) => onChange(Number(v))} options={options} label="How long" />;
@@ -89,9 +89,12 @@ function Times({ times, shown, on, onPick }: {
 
 /**
  * The week: Monday to Sunday, from this week on, with what's already in them. It turns to the week of the time picked
- * whenever that changes, from a card or a time typed.
+ * whenever that changes, from a card or a time typed. Dragging the end of the time picked (or Shift and the arrow keys
+ * on it) changes how long it is (`onMinutes`), up to the longest a call can be.
  */
-export function Week({ emails, chosen, minutes, onPick, except }: { emails: readonly string[]; chosen: Date | null; minutes: number; onPick: (at: Date) => void; except?: Meeting | undefined }) {
+export function Week({ emails, chosen, minutes, onPick, onMinutes, except }: {
+  emails: readonly string[]; chosen: Date | null; minutes: number; onPick: (at: Date) => void; onMinutes: (minutes: number) => void; except?: Meeting | undefined;
+}) {
   const weekOf = (at: Date | null) => (at ? Math.max(0, weeksTo(new Date(), at)) : 0);
   const [page, setPage] = useState(() => weekOf(chosen));
   const [followed, setFollowed] = useState(chosen?.getTime() ?? null);
@@ -140,7 +143,8 @@ export function Week({ emails, chosen, minutes, onPick, except }: { emails: read
         days={days.map((d) => ({ weekday: weekday(d).slice(0, 3), date: d.getDate(), today: d.toDateString() === new Date().toDateString(), label: shortDay(d) }))}
         pick={chosen && pickDay >= 0 ? { day: pickDay, from: hoursOf(chosen), to: hoursOf(chosen) + minutes / 60, label: hm(chosen) } : null}
         isBusy={(day, hour) => events.some((e) => e.day === day && e.from <= hour && e.to > hour)}
-        isPast={(day, hour) => at(day, hour).getTime() <= Date.now()} onPick={(day, hour) => onPick(at(day, hour))} />
+        isPast={(day, hour) => at(day, hour).getTime() <= Date.now()} onPick={(day, hour) => onPick(at(day, hour))}
+        longest={LONGEST_CALL / 60} onEnd={(end) => { if (chosen) onMinutes(Math.round((end - hoursOf(chosen)) * 60)); }} />
     </div>
   );
 }
@@ -277,7 +281,7 @@ export function When({ draft, change, guests, team, wide, onWide, back, onNext }
               {!wide && !offer && <button type="button" className="lk" onClick={() => onWide(true)}>Pick another time</button>}
             </div>
           </div>
-          {wide && <Week emails={emails} chosen={chosen} minutes={draft.minutes} onPick={(at) => change({ at })} />}
+          {wide && <Week emails={emails} chosen={chosen} minutes={draft.minutes} onPick={(at) => change({ at })} onMinutes={(minutes) => change({ minutes })} />}
         </div>
         <div className="cf-rows">
           {!offer && <RepeatRow repeat={draft.repeat} at={chosen} onChange={(repeat) => change({ repeat })} />}

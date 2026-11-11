@@ -120,6 +120,11 @@ export const AnotherTimeEveryWeek: PageStory = {
       await userEvent.tab();
       await screen.findByRole('button', { name: '1 h 15 min', pressed: true }, SOON);
     });
+    await step('In the week, the bar on the call’s bottom edge drags its end, a quarter hour at a time; Shift and the down arrow on it do the same: 11:30', async () => {
+      within(screen.getByRole('group', { name: 'Pick a time' })).getByRole('button', { name: /^Sat 7 Nov, 10:00 to 11:15, picked/ }).focus();
+      await userEvent.keyboard('{Shift>}{ArrowDown}{/Shift}');
+      await screen.findByRole('button', { name: '1 h 30 min', pressed: true }, SOON);
+    });
     await step('Doesn’t repeat opens how it repeats: every Saturday', async () => {
       await userEvent.click(screen.getByRole('button', { name: 'Doesn’t repeat' }));
       await userEvent.click(within(await screen.findByRole('group', { name: 'How it repeats' }, SOON)).getByRole('button', { name: /^Every Saturday/ }));

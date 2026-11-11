@@ -179,11 +179,18 @@ export interface WeekDay { weekday: string; date: number; today: boolean; label:
 /** What's already in a day, in hours from midnight. `mine` is yours and can say what it is; `busy` is only that someone is. */
 export interface WeekEvent { day: number; from: number; to: number; kind: 'mine' | 'busy'; title?: string | undefined }
 
+/** The picked time's end moves a quarter hour at a time, dragged or with Shift and the arrow keys. */
+const SNAP = 0.25;
+/** An hour as a clock says it: 10.25 is "10:15", and the end of the day "24:00". */
+const clockOf = (h: number) => `${twoDigits(Math.floor(h))}:${twoDigits(Math.round((h % 1) * 60))}`;
+
 /**
  * A week to pick a time in: a column for each day, with what's in it. Every half hour can be picked. Tab reaches the
- * grid once and arrow keys move around it, and each half hour says what it is to a screen reader, busy or not.
+ * grid once and arrow keys move around it, and each half hour says what it is to a screen reader, busy or not. With
+ * `onEnd`, the picked time ends where its block's bottom edge is dragged, or Shift and the up and down arrows on its half
+ * hour move the end, a quarter hour at a time, and a screen reader hears where it ends.
  */
-export function WeekGrid({ days, events, pick, from, to, isBusy, isPast, onPick, label }: {
+export function WeekGrid({ days, events, pick, from, to, isBusy, isPast, onPick, onEnd, longest, label }: {
   days: WeekDay[]; events: WeekEvent[];
   /** The time picked, when it's on this week. */
   pick: { day: number; from: number; to: number; label: string } | null;
@@ -193,12 +200,19 @@ export function WeekGrid({ days, events, pick, from, to, isBusy, isPast, onPick,
   /** It's gone: it can't be picked. */
   isPast: (day: number, hour: number) => boolean;
   onPick: (day: number, hour: number) => void;
+  /** A new end for the pick, in hours from the start of its day. Without it the pick's length can't be changed here. */
+  onEnd?: ((end: number) => void) | undefined;
+  /** The longest the pick can be made, in hours. */
+  longest?: number | undefined;
   label: string;
 }) {
   const hours = Array.from({ length: to - from }, (_, i) => from + i);
   const slots = (to - from) * 2;
   const box = useRef<HTMLDivElement>(null);
   const [cursor, setCursor] = useState(() => ({ day: pick?.day ?? 0, slot: Math.max(0, Math.min(slots - 1, Math.floor(((pick?.from ?? 9) - from) * 2))) }));
+  /* Where the pick ends while its edge is being dragged, and what a screen reader last heard of it. */
+  const [drag, setDrag] = useState<number | null>(null);
+  const [said, setSaid] = useState('');
   /*
    * Nine o'clock at the top of the view as it opens, or the pick when it's earlier, with its label clear of the days. After
    * that, a pick out of view (from a card, or a time typed) is brought into it, moving as little as it takes.
@@ -218,20 +232,49 @@ export function WeekGrid({ days, events, pick, from, to, isBusy, isPast, onPick,
     if (y(pick.from) < el.scrollTop + 10) el.scrollTop = y(pick.from) - 10;
     else if (y(end) > el.scrollTop + view - 10) el.scrollTop = Math.min(y(pick.from) - 10, y(end) - view + 10);
   }, [from, pick?.day, pick?.from, end]);
+  /*
+   * Where the pick's end can go: on a quarter hour of the clock, at least 5 minutes after it starts, and no later than the
+   * longest it can be or the grid's end.
+   */
+  const endAt = (h: number) => {
+    if (!pick) return h;
+    const least = Math.ceil((pick.from + 5 / 60) / SNAP) * SNAP;
+    const most = Math.floor(Math.min(to, pick.from + (longest ?? to - from)) / SNAP) * SNAP;
+    return Math.min(most, Math.max(least, Math.round(h / SNAP) * SNAP));
+  };
+  const ended = (next: number) => {
+    setSaid(`Ends ${clockOf(next)}`);
+    if (pick && next !== end) onEnd?.(next);
+  };
+  /* Dragged past the edge of the view, the week scrolls along. */
+  const follow = (y: number) => {
+    const el = box.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    if (y > r.bottom - 20) el.scrollTop += 8;
+    else if (y < r.top + DAYS_ROW + 20) el.scrollTop -= 8;
+  };
+  const pickSlot = pick ? Math.floor((pick.from - from) * 2) : -1;
   const move = (day: number, slot: number) => {
     const next = { day: Math.max(0, Math.min(days.length - 1, day)), slot: Math.max(0, Math.min(slots - 1, slot)) };
     setCursor(next);
     box.current?.querySelector<HTMLElement>(`[data-at="${next.day}-${next.slot}"]`)?.focus();
   };
   const keys = (e: KeyboardEvent<HTMLButtonElement>, day: number, slot: number) => {
+    if (e.shiftKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown') && onEnd && pick?.day === day && slot === pickSlot && end !== null) {
+      e.preventDefault();
+      ended(endAt(end + (e.key === 'ArrowDown' ? SNAP : -SNAP)));
+      return;
+    }
     const next = e.key === 'ArrowUp' ? [day, slot - 1] : e.key === 'ArrowDown' ? [day, slot + 1] : e.key === 'ArrowLeft' ? [day - 1, slot] : e.key === 'ArrowRight' ? [day + 1, slot] : null;
     if (!next) return;
     e.preventDefault();
     move(next[0] ?? day, next[1] ?? slot);
   };
-  const clock = (slot: number) => { const h = from + slot / 2; return `${String(Math.floor(h)).padStart(2, '0')}:${h % 1 ? '30' : '00'}`; };
+  const shown = drag ?? end;
   return (
     <div ref={box} className="wk-scroll" role="group" aria-label={label}>
+      <span className="sr-only" role="status">{said}</span>
       <div className="wk" style={{ '--rows': to - from, '--from': from, '--days': days.length }}>
         <span className="wk-corner" />
         {days.map((d) => <span key={d.label} className={cn('wk-d', d.today && 'today')} aria-hidden="true">{d.weekday}<b>{d.date}</b></span>)}
@@ -239,13 +282,34 @@ export function WeekGrid({ days, events, pick, from, to, isBusy, isPast, onPick,
         {days.map((d, day) => (
           <div key={d.label} className="wk-c">
             {events.filter((e) => e.day === day).map((e, i) => <span key={i} className={cn('ev', e.kind)} style={{ '--s': e.from, '--d': e.to - e.from }}>{e.title}</span>)}
-            {pick?.day === day && end !== null && <span className="ev is-pick" style={{ '--s': pick.from, '--d': end - pick.from }}>{pick.label}</span>}
+            {pick?.day === day && shown !== null && <span className="ev is-pick" style={{ '--s': pick.from, '--d': shown - pick.from }}>{pick.label}</span>}
+            {/* Its bottom edge, to drag: only this takes the pointer, so the week still scrolls under a finger anywhere else. */}
+            {pick?.day === day && shown !== null && onEnd && (
+              <span className={cn('wk-grip', drag !== null && 'is-on')} style={{ '--e': shown }} aria-hidden="true"
+                onPointerDown={(e) => {
+                  if (e.button !== 0) return;
+                  e.preventDefault();
+                  e.currentTarget.setPointerCapture(e.pointerId);
+                  setDrag(shown);
+                }}
+                onPointerMove={(e) => {
+                  const column = e.currentTarget.parentElement;
+                  if (drag === null || !column) return;
+                  setDrag(endAt(from + (e.clientY - column.getBoundingClientRect().top - TOP) / HOUR));
+                  follow(e.clientY);
+                }}
+                onPointerUp={() => { if (drag !== null) ended(drag); setDrag(null); }} onPointerCancel={() => setDrag(null)}>
+                {drag !== null && <b>{clockOf(drag)}</b>}
+              </span>
+            )}
             {Array.from({ length: slots }, (_, slot) => {
               const hour = from + slot / 2;
               const past = isPast(day, hour);
+              const picked = pick?.day === day && slot === pickSlot && end !== null;
               return (
                 <button key={slot} type="button" className="wk-slot" style={{ '--i': slot }} data-at={`${day}-${slot}`} tabIndex={cursor.day === day && cursor.slot === slot ? 0 : -1}
-                  aria-label={`${d.label}, ${clock(slot)}${isBusy(day, hour) ? ', busy' : ''}`} aria-pressed={pick?.day === day && pick.from === hour} aria-disabled={past}
+                  aria-label={picked ? `${d.label}, ${pick.label} to ${clockOf(end)}, picked${onEnd ? '. Shift and the up or down arrow change when it ends' : ''}` : `${d.label}, ${clockOf(hour)}${isBusy(day, hour) ? ', busy' : ''}`}
+                  aria-pressed={picked} aria-keyshortcuts={picked && onEnd ? 'Shift+ArrowUp Shift+ArrowDown' : undefined} aria-disabled={past}
                   onFocus={() => setCursor({ day, slot })} onKeyDown={(e) => keys(e, day, slot)} onClick={() => { if (!past) onPick(day, hour); }} />
               );
             })}

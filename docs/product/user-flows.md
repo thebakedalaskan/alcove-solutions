@@ -205,7 +205,10 @@ send to anyone".
    is busy, at their real times. It's a week, Monday to Sunday, the weekend a day like any other, and the whole day, 00:00
    to 24:00, with every hour line labelled, the end included; it opens with 09:00 at its top, on the week of the time
    picked, and turns to it whenever that changes. Every half hour can be picked (arrow keys move around it); the arrows go
-   a week at a time. **Move this call** (Change the time, on a scheduled call's card) has the same line, lengths and
+   a week at a time. The time picked has a bar on its bottom edge: drag it to change when the call ends, a quarter hour at
+   a time, with the end showing as you drag, as far as 10 hours or the end of the day; Shift with the up and down arrows
+   on its half hour does the same, and a screen reader hears where it ends. On a phone the bar takes a finger, and the
+   week still scrolls anywhere else. **Move this call** (Change the time, on a scheduled call's card) has the same line, lengths and
    week.
    **Doesn't repeat** opens Every Thursday, Every 2 weeks, Every month (on "the third Thursday"; a fifth one is "the
    last") or Days you pick, with an end date, which counts once you leave the field or press Enter. Repeats keep their

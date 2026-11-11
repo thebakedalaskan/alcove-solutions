@@ -3,7 +3,9 @@
  * for each day, Monday to Sunday, the weekend like any other, with what's already in them. Your own events say what they
  * are (`mine`); other people's calendars only say they're busy. The whole day, 00 to 24, every hour line labelled; nine
  * in the morning is the top of the view as it opens. Every half hour can be picked, except those already gone, and the
- * pick shows its time. Tab reaches the grid once and the arrow keys move around it.
+ * pick shows its time. Tab reaches the grid once and the arrow keys move around it. The pick's bottom edge drags to change
+ * when it ends, a quarter hour at a time (`onEnd`), up to `longest` hours; Shift and the up and down arrows on its half
+ * hour do the same, and a screen reader hears where it ends.
  */
 import { FlowBody, FlowView, IconButton, WeekGrid, type WeekDay, type WeekEvent } from '@alcove/ui';
 import type { Meta, StoryObj } from '@storybook/react-vite';
@@ -50,15 +52,16 @@ const clock = (hour: number) => `${String(Math.floor(hour)).padStart(2, '0')}:${
 const meta = {
   title: 'Components/Starting a call/WeekGrid',
   component: WeekGrid,
-  args: { days: DAYS, events: EVENTS, pick: null, from: 0, to: 24, isBusy, isPast, onPick: did('onPick'), label: 'Pick a time' },
+  args: { days: DAYS, events: EVENTS, pick: null, from: 0, to: 24, isBusy, isPast, onPick: did('onPick'), onEnd: did('onEnd'), longest: 10, label: 'Pick a time' },
   argTypes: {
     pick: { control: 'object' },
     from: { control: { type: 'number', min: 0, max: 12, step: 1 } },
     to: { control: { type: 'number', min: 13, max: 24, step: 1 } },
     label: { control: 'text' },
-    days: { control: false }, events: { control: false }, isBusy: { control: false }, isPast: { control: false }, onPick: { control: false }
+    longest: { control: { type: 'number', min: 1, max: 24, step: 1 } },
+    days: { control: false }, events: { control: false }, isBusy: { control: false }, isPast: { control: false }, onPick: { control: false }, onEnd: { control: false }
   },
-  /* Picking a half hour makes it the pick: a 30-minute call from there. */
+  /* Picking a half hour makes it the pick: a 30-minute call from there. Its end moves where it's dragged to. */
   render: function Render(args) {
     const [, update] = useArgs<typeof args>();
     const first = DATES[0];
@@ -76,7 +79,8 @@ const meta = {
                   <IconButton icon="right" size={16} label="The week after" onClick={did('onLater')} />
                 </span>
               </div>
-              <WeekGrid {...args} onPick={(day, hour) => { args.onPick(day, hour); update({ pick: { day, from: hour, to: hour + 0.5, label: clock(hour) } }); }} />
+              <WeekGrid {...args} onPick={(day, hour) => { args.onPick(day, hour); update({ pick: { day, from: hour, to: hour + 0.5, label: clock(hour) } }); }}
+                onEnd={(end) => { args.onEnd?.(end); if (args.pick) update({ pick: { ...args.pick, to: end } }); }} />
             </div>
           </FlowBody>
         </FlowView>
@@ -97,6 +101,20 @@ export const Weekend: Story = { name: 'The weekend', args: { pick: { day: 5, fro
 export const EarlyHour: Story = { name: 'An early hour', args: { pick: { day: 4, from: 8, to: 9, label: '08:00' } } };
 /** A late hour picked, from a card or typed: the view scrolls just far enough to show it. */
 export const LateHour: Story = { name: 'A late hour', args: { pick: { day: 4, from: 21, to: 22, label: '21:00' } } };
+/**
+ * The end of a pick, moved from the keyboard: Shift and the down arrow, three times, on Thursday's 14:00 make it end at
+ * 15:15, a quarter hour at a time, and a screen reader hears "Ends 15:15". Dragging the bar on its bottom edge does the same.
+ */
+export const ChangingTheEnd: Story = {
+  name: 'Changing the end',
+  args: { pick: { day: 3, from: 14, to: 14.5, label: '14:00' } },
+  play: async ({ canvas, userEvent, step }) => {
+    await step('Go to the picked half hour, and press Shift and the down arrow three times', async () => {
+      (await canvas.findByRole('button', { name: /, picked/ })).focus();
+      await userEvent.keyboard('{Shift>}{ArrowDown}{ArrowDown}{ArrowDown}{/Shift}');
+    });
+  }
+};
 /** Scrolled to the top of the day: the first hour's label, 00, reads in full under the days, on its line like the others. */
 export const TopOfTheDay: Story = {
   name: 'The top of the day',

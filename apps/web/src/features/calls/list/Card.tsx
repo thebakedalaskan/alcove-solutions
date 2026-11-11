@@ -309,7 +309,7 @@ function ChangeTime({ m, scope, scopeBar, fail, told, saving, wide, onWide, onSa
               {!wide && <button type="button" className="lk" onClick={() => onWide(true)}>Pick another time</button>}
             </div>
           </div>
-          {wide && <Week emails={emails} chosen={chosen} minutes={minutes} onPick={setPicked} except={m} />}
+          {wide && <Week emails={emails} chosen={chosen} minutes={minutes} onPick={setPicked} onMinutes={setMinutes} except={m} />}
         </div>
         {(!series || scope === 'following') && <div className="cf-rows"><RepeatRow repeat={repeat} at={chosen} zone={zone} keep={series} onChange={setRepeat} /></div>}
       </FlowBody>
