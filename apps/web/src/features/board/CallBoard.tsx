@@ -10,7 +10,7 @@
 import type { DocSession } from '@alcove/api';
 import { readBoard } from '@alcove/board';
 import { BoardHeard, BoardPop, BoardTray, Icon, type BoardNaming, type IconName } from '@alcove/ui';
-import { forwardRef, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { forwardRef, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { BoardIdeas } from '~/features/call/boards/callBoard';
 import { typing } from '~/lib/keys';
 import { BoardSurface, type BoardHandle, type BoardLanding, type BoardPerson, type BoardPictures } from './BoardSurface';
@@ -18,7 +18,7 @@ import type { BoardCommenting } from './comments';
 import type { BoardUpload, BoardWorkspace } from './more/items';
 import type { BoardLinks } from './more/objects';
 import { FollowingPill, type CallPills, type PillKind, type Pills } from './pills';
-import { slideAt, useSlides } from './slides';
+import { usePresentedFrame, useSlides } from './slides';
 import type { Standing } from './standing';
 import type { BoardRun, RunPills } from './tools/run';
 import type { SortAsk } from './useBoard';
@@ -31,7 +31,10 @@ export interface BoardPresentation {
   who: string | null;
   /** You're presenting it. */
   mine: boolean;
-  /** The frame whoever presents is on, from 0, in the order frames sit: what the call says, or where you've just moved it, if you're presenting. */
+  /**
+   * The frame whoever presents is on, from 0, in the order frames sit: what the call says, or where you've just moved it, if you're
+   * presenting. Held by the frame it means as frames move round (`usePresentedFrame`).
+   */
   section: number;
   /** You're following whoever presents it, rather than working on your own. */
   watching: boolean;
@@ -220,7 +223,9 @@ export const CallBoardSheet = forwardRef<BoardHandle, CallBoardSheetProps>(funct
   const slides = useSlides(session.doc);
   const presenting = present?.mine === true;
   const watching = present !== null && !present.mine && present.watching;
-  const on = present ? slideAt(slides, present.section) : null;
+  const section = present?.section ?? null;
+  const placed = usePresentedFrame(slides, section);
+  const on = present ? placed : null;
   /** The board's own handle, here as well as the call's: whoever presents glides from frame to frame through it. */
   const sheetHandle = useRef<BoardHandle | null>(null);
   const handle = useCallback((h: BoardHandle | null) => {
@@ -261,17 +266,25 @@ export const CallBoardSheet = forwardRef<BoardHandle, CallBoardSheetProps>(funct
   useEffect(() => () => toldPager.current?.(null), []);
   /*
    * Whoever presents glides to each frame they step to, from the start of their presentation, and everyone following glides with
-   * them. A frame their own view came to rest in (`onRest`) is where they already are, so nothing moves for that.
+   * them. A frame their own view came to rest in (`onRest`) is where they already are, so nothing moves for that. Nor does it for a
+   * frame moved round (dragged, or one added or taken away before it), which puts the one they're on somewhere else in the order:
+   * it's still the one they're on, and the call is told its new place, so everyone's number means it again.
    */
   const rested = useRef<number | null>(null);
   const stepped = useRef<number | null>(null);
   useEffect(() => {
     if (!presenting) { stepped.current = null; return; }
-    if (onId === null || stepped.current === at) return;
+    if (onId === null) return;
+    if (move && section !== null && at !== section && slides[section] !== undefined) {
+      stepped.current = at;
+      move(at);
+      return;
+    }
+    if (stepped.current === at) return;
     stepped.current = at;
     if (rested.current === at) { rested.current = null; return; }
     sheetHandle.current?.toFrame(onId);
-  }, [presenting, at, onId]);
+  }, [presenting, at, onId, section, slides, move]);
   const onRest = presenting && move ? (frame: string | null) => {
     const k = frame ? slides.indexOf(frame) : -1;
     if (k < 0 || k === at) return;
@@ -289,8 +302,12 @@ export const CallBoardSheet = forwardRef<BoardHandle, CallBoardSheetProps>(funct
   /*
    * Keys lost as a presentation lets the board go (its pager gone from under them, say) go to the sheet; anyone with the keys
    * anywhere else keeps them there, and so does someone typing a moment ago, who is mid-sentence: the rest of it must never press
-   * a button. Where they go as presenting begins is the stage's (layout/landKeys.ts): Next frame, once the pager is drawn.
+   * a button. Where they go as presenting begins is the stage's (layout/landKeys.ts): Next frame, once the pager is drawn, or the
+   * sheet, on a board with no frames, which has no pager (`data-no-pager` says so). That's asked of the board as it is, once
+   * Alcove has said what's on it: the frames' order is read a moment after, and a board still opening may not have them yet.
    */
+  const opened = useSyncExternalStore(session.subscribe, () => session.getSnapshot().role !== null);
+  const pagerless = useMemo(() => presenting && total === 0 && opened && !readBoard(session.doc).frames.some((f) => !f.f), [presenting, total, opened, session.doc]);
   const seat = presenting ? 'presenting' : theirs ? (watching ? 'watching' : 'around') : null;
   const wasSeat = useRef(seat);
   useEffect(() => {
@@ -325,7 +342,7 @@ export const CallBoardSheet = forwardRef<BoardHandle, CallBoardSheetProps>(funct
   useEffect(() => () => toldPill.current?.(null), []);
 
   return (
-    <div ref={wrap} className={sinking ? 'ic-board is-sinking' : 'ic-board'} inert={sinking || undefined}>
+    <div ref={wrap} className={sinking ? 'ic-board is-sinking' : 'ic-board'} inert={sinking || undefined} data-no-pager={pagerless ? '' : undefined}>
       <BoardSurface ref={handle} doc={session.doc} awareness={session.awareness} mode={mode} naming={nameField} presenter={theirs ? { id: theirs.who, following: theirs.watching } : null}
         seal={seal.seal} sealIcon={seal.icon} sealTitle={seal.title} everyone={everyone} people={people} talking={talking} pictures={pictures} fresh={fresh} landing={landing} theme={theme} run={run} pill={pill} onPill={setPillShown}
         upload={upload} workspace={workspace} links={links} link={link} comments={comments}
@@ -374,7 +391,7 @@ export function CallBoardMine({ session, section, notes, onNote, pictures, links
   pictures: BoardPictures; links: BoardLinks; theme: 'light' | 'dark';
 }) {
   const slides = useSlides(session.doc);
-  const on = slideAt(slides, section);
+  const on = usePresentedFrame(slides, section);
   const frames = useMemo(() => new Map(readBoard(session.doc).frames.map((f) => [f.id, f.title])), [slides, session.doc]);
   const next = slides[on.at + 1] ?? null;
   const k = NEXT_W / NEXT.w;

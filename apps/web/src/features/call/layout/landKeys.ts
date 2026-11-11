@@ -13,7 +13,7 @@ export type KeysTo =
   | { to: 'frame'; id: ThingId }
   /** Its tile with the people, which takes you back to it. */
   | { to: 'tile'; id: ThingId }
-  /** Next frame on the pager of the board you present, so → moves it on. */
+  /** Next frame on the pager of the board you present, so → moves it on: on a board with no frames, which has none, the board. */
   | { to: 'pager' }
   /** What opens it again: Board or Workspace at the top right (More on a phone), or Share for your own screen. */
   | { to: 'opener'; id: ThingId };
@@ -28,8 +28,11 @@ function find(to: KeysTo, phone: boolean): HTMLElement | null {
   if (to.to === 'frame') return frameBox(to.id)?.querySelector<HTMLElement>('[data-frame]') ?? null;
   if (to.to === 'tile') return document.querySelector<HTMLElement>(`.ic-stage [data-tile="${CSS.escape(to.id)}"]`);
   if (to.to === 'pager') {
-    const pager = frameBox('board')?.querySelector('[data-pager]');
-    return pager?.querySelector<HTMLElement>('[aria-label="Next frame"]:not([aria-disabled="true"])') ?? pager?.querySelector<HTMLElement>('[aria-label="Back a frame"]') ?? null;
+    const box = frameBox('board');
+    const pager = box?.querySelector('[data-pager]');
+    if (pager) return pager.querySelector<HTMLElement>('[aria-label="Next frame"]:not([aria-disabled="true"])') ?? pager.querySelector<HTMLElement>('[aria-label="Back a frame"]');
+    // Presented with no frames, the board has no pager to wait for (`data-no-pager`): the keys go to the board itself.
+    return box?.querySelector<HTMLElement>('[data-no-pager] [role="application"]') ?? null;
   }
   if (isScreen(to.id)) return document.querySelector<HTMLElement>('.ic-dockbar [data-share]');
   if (phone) return document.querySelector<HTMLElement>('.ic-dockbar [data-more]');

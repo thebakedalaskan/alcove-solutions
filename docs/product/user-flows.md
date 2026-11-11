@@ -1055,16 +1055,19 @@ See [Floating call](../engineering/floating-call.md) for browser capabilities an
      the frames in the order they sit on the board, top to bottom and left to right, so the order can be told from the board:
      the arrows on either side of "1 of 3" and the frame's name glide your view, and everyone with it, to the frame before or
      after. The frame stays fitted to your screen as that changes size (**Your notes** opening beside it, say) until you move
-     off it, and when your own view comes to rest in a frame, the pager says that's where you are. With an account the pager
-     has the notes button, which opens **Your notes** on your side: where you are ("1 of 3 · you’re sharing it"), your own
-     notes beside this frame, each frame its own and kept for next time ("Kept for next time. Only you see them."), and the
-     next frame, drawn small ("Next: Could improve", or "That’s the last one"). A board with no frames has no pager. Your
-     pointer shows to everyone. Opening something else on your stage puts the board away as a tile with **Open**, and you go
-     on presenting; everyone following stays where you left them until you're back.
+     off it, and when your own view comes to rest in a frame, the pager says that's where you are. Someone moving frames round
+     meanwhile never changes which frame you're on: the pager, Your notes and "Art is in Could improve" stay with it, at its
+     new place in the order. With an account the pager has the notes button, which opens **Your notes** on your side: where
+     you are ("1 of 3 · you’re sharing it"), your own notes beside this frame, each frame its own and kept for next time
+     ("Kept for next time. Only you see them."), and the next frame, drawn small ("Next: Could improve", or "That’s the last
+     one"). A board with no frames has no pager. Your pointer shows to everyone. Opening something else on your stage puts
+     the board away as a tile with **Open**, and you go on presenting; everyone following stays where you left them until
+     you're back.
    - **From the keyboard**, **→** and **←**, and a clicker's Page Down and Page Up, glide to the next or the last frame while
      the presentation has the keys: the board itself, or the pager's arrows, where the keys go as it starts (**Next frame**,
-     as soon as the pager shows, so **→** moves on straight after **Present**). Anywhere else they move nothing: while you
-     type, in Your notes, on a tile on the stage, in the rooms' setup, or on the page with nothing chosen.
+     as soon as the pager shows, so **→** moves on straight after **Present**; the board itself, on a board with no frames).
+     Anywhere else they move nothing: while you type, in Your notes, on a tile on the stage, in the rooms' setup, or on the
+     page with nothing chosen.
    - **Everyone else** follows: they see the presenter's view as it moves, with their own tools to hand, and "Art is
      presenting" and "Following Art" on the bar. Anything of their own on the board (a press, a key, a scroll, a drag) is
      theirs: it takes them off following, from where they are, and does what they did, so a double-click in a frame is a

@@ -1619,7 +1619,10 @@ call, open on everyone's stage who followed, on their own; For everyone closes i
 - **Frames are the presenter's stops.** The board's top-level frames, in the order they sit, top to bottom and left to right
   (`slides.ts`, the same reading order as a vote's Tab), so the order can be told from the board, and moving a frame moves it
   in the order. A frame held in another is part of it. `section` is the presenter's place in that order, kept by the call for
-  their pager, their notes and a reload; past the last it's the last, and a board with no frames has no pager.
+  their pager, their notes and a reload; past the last it's the last, and a board with no frames has no pager. A frame
+  moved, added or taken away changes the order, not which frame they're on: every browser holds the frame `section` meant
+  while it stays the same (`usePresentedFrame`), at its new place, for the pager, Your notes and Follow's "Art is in", and
+  the presenter's tells the call that place (`present-move`), with no glide, so everyone's number means the same frame again.
 - **Whoever's presenting** moves round the board freely, with every tool. As it starts, and each time they step to a frame
   (the pager, → and ←, or the organizer moving it), their camera glides to the frame (`Board.toFrame`), clear of the bar, the
   pill and the pager at its foot (`PRESENTING_PAD`), and stays fitted to it as their sheet changes size (Your notes opening
@@ -1637,8 +1640,9 @@ call, open on everyone's stage who followed, on their own; For everyone closes i
   pager (`data-pager`), whose keys come by the document (`CallBoard.tsx`). Never from the notes in the side, from any other
   control, while typing (`typing`), or from a key something has already used (`defaultPrevented`). Back a frame and Next
   frame are `aria-disabled` at either end, not `disabled`, so the keys stay on the one pressed. As a presentation starts,
-  keys that were on the board, or lost as it changed, go to Next frame (none move on a board of one frame), and as it ends,
-  keys that were lost go to the sheet. Anyone typing keeps their place.
+  keys that were on the board, or lost as it changed, go to Next frame (none move on a board of one frame), or to the sheet on
+  a board with no frames, which has no pager to wait for (`data-no-pager`), and as it ends, keys that were lost go to the
+  sheet. Anyone typing keeps their place.
 - **Everyone else** follows the presenter's view (`BoardSurface`'s `presenter`, `Board.follow` with `watching`), found by their
   connection in the call (`BoardPresentation.who`) as Follow finds anyone, eased to as it moves, and held where it was while
   there's none to follow, as the presenter opens something else or reloads. Only they stop following: the board's session
