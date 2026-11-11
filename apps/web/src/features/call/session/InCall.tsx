@@ -28,7 +28,7 @@ import {
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { stateOf } from '~/features/call/media/access';
 import { accessAsk, bringAndPresent, presentingWhy, useBoardPicker } from '~/features/call/boards/BoardPicker';
 import type { BoardPager } from '~/features/board/CallBoard';
@@ -1336,7 +1336,8 @@ export function InCall({ session }: { session: CallSession }) {
 
   /*
    * ---------- the main area (panels.ts): what's on your stage, each in its frame, and the people beside it ----------
-   * Your side takes its width at the right, and the main area makes room for it; in a narrow window it sits over the stage.
+   * The people beside what's open keep the window's right edge, your side takes its width left of them, and the main area makes
+   * room for both; in a narrow window your side sits over the stage.
    */
   const callArea = useCallArea();
   const size = callArea.size;
@@ -1348,25 +1349,27 @@ export function InCall({ session }: { session: CallSession }) {
    * saying where you are, while the sheet says what happened.
    */
   const callOver = ended !== null || leaving;
-  /*
-   * Your side, beside the main area: not on a phone, where it's a sheet over the call, nor where the stage beside it would be too
-   * narrow, where it sits over the stage at the right rather than squeeze it, nor in focus. While it's over what's on your stage,
-   * choosing something there (or the call showing you something there) puts it away.
-   */
-  const sideW = sideWidth(width);
-  const sideOver = !phone && size.w - (sideW + GAP) < STAGE_BESIDE_SIDE;
-  const sideRoom = side.view !== null && !phone && !sideOver && !focusOn ? sideW + GAP : 0;
-  const sideCovers = side.view !== null && (phone || (sideOver && !focusOn));
   const shownThings = callOver ? [] : stage.on;
   /*
-   * Beside what's open the people stand at the window's right edge, past your side: a column, or made smaller a rail (panels.ts).
-   * Your side opens between them and what's open, which makes room for it; the people never move for it.
+   * Beside what's open the people stand at the window's right edge: a column, or made smaller a rail (panels.ts). They come from
+   * the call's whole width, so your side opening or closing never moves or resizes them.
    */
-  const edge = peopleEdge(size.w, { frames: shownThings.length, phone, focus: focusOn, rooms: !!stageRooms, small: panels.people === 'hidden', side: sideRoom });
+  const sideW = sideWidth(width);
+  /** Your side stands beside the stage, if there's room: never on a phone, where it's a sheet over the call, nor in focus. */
+  const sideWanted = side.view !== null && !phone && !focusOn;
+  const edge = peopleEdge(size.w, { frames: shownThings.length, phone, focus: focusOn, rooms: !!stageRooms, small: panels.people === 'hidden', side: sideWanted ? sideW + GAP : 0 });
   const edgeRoom = edge ? edge.w + GAP : 0;
+  /*
+   * Your side opens between what's open and the people, and what's open makes room for it. Where that would leave the stage
+   * too narrow, it sits over the stage instead, left of the people, rather than squeeze it. While it's over what's on your
+   * stage, choosing something there (or the call showing you something there) puts it away.
+   */
+  const sideOver = !phone && size.w - edgeRoom - (sideW + GAP) < STAGE_BESIDE_SIDE;
+  const sideRoom = sideWanted && !sideOver ? sideW + GAP : 0;
+  const sideCovers = side.view !== null && (phone || (sideOver && !focusOn));
   const mainW = Math.max(0, size.w - sideRoom - edgeRoom);
   /* What your side and the people take at the window's right edge, for toasts to keep to the stage left of them (call.css). */
-  useEffect(() => {
+  useLayoutEffect(() => {
     const root = document.documentElement;
     root.style.setProperty('--ic-right', `${sideW + GAP + edgeRoom}px`);
     return () => { root.style.removeProperty('--ic-right'); };
@@ -1381,12 +1384,12 @@ export function InCall({ session }: { session: CallSession }) {
   // The shared timer owns a strip above the focused frame, clear of its title and controls.
   const focusToolbarHeight = focusOn && timerShown ? 52 : 0;
   const focusBox = focusedRoom ? { ...focusedRoom, y: focusedRoom.y + focusToolbarHeight, h: Math.max(0, focusedRoom.h - focusToolbarHeight) } : null;
-  const placed = placeMain({ w: mainW, h: size.h }, { frames: shownThings.length, people: panels.people, phone, focus: focusBox, rooms: !!stageRooms, top, bottom, edge });
+  const placed = placeMain({ w: mainW, h: size.h }, { frames: shownThings.length, phone, focus: focusBox, rooms: !!stageRooms, top, bottom, edge });
   /** The organizer's rooms are in sight: on the whole stage, or beside what's open, rather than under it. */
   const roomsShown = placed.rooms !== null;
-  /** The seam left of the people at the window's edge (PeopleSeam.tsx): what ⇧P does, to click or drag. */
+  /** The seam left of the people at the window's edge (PeopleSeam.tsx): what ⇧P does, to click or drag. Not while your side covers the stage. */
   const peopleSmall = panels.people === 'hidden';
-  const seam = stageRooms ? null : placed.seam;
+  const seam = stageRooms || sideCovers ? null : placed.seam;
   /* While rooms are open, you see the people in your own room (or the main room), and the organizer overseeing them sees every room. */
   const onStage = unit && !roomsShown ? stagePeople.filter((p) => unit.includes(p.id)) : stagePeople;
   const frontId = placed.turns ? (front && shownThings.includes(front) ? front : shownThings[0] ?? null) : null;

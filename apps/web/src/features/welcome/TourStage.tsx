@@ -20,7 +20,7 @@ import { NUDGES, NUDGE_KINDS } from '~/features/call/layout/nudges';
 import { STATUS, STATUS_KINDS, STATUS_MINUTES } from '~/features/call/layout/status';
 import { CAST, firstOf } from '~/features/notes/cast';
 import {
-  DOC_LINE, GROUND, HORIZON_SAYS, LAYOUTS, LINES, LINKS, ORDER, REPLY, ROOMS, SCREEN, alcoveX, clock, type Box, type Point, type PopId, type Stage,
+  DOC_LINE, LAYOUTS, LINES, LINKS, ORDER, REPLY, ROOMS, SCREEN, alcoveX, clock, type Box, type Point, type PopId, type Stage,
   type Who
 } from './tourSteps';
 
@@ -70,8 +70,10 @@ const Top = memo(function Top({ tool, away }: { tool: Stage['tool']; away: boole
 });
 
 /** Someone in the call, in their tile or folded into an arch, with what their tile says and, under the pointer, its ⋯ and corner. */
-const Tile = memo(function Tile({ id, b, speaking, muted, faint, hover, lift, pull, status, away }: {
+const Tile = memo(function Tile({ id, b, speaking, muted, faint, hover, lift, pull, status, away, rise }: {
   id: Who; b: Box; speaking: boolean; muted: boolean;
+  /** Standing small in a breakout room, whoever's talking rises; in focus's rail the ring says it. */
+  rise: boolean;
   /** Hard to hear: their level and their ring are faint. */
   faint: boolean;
   /** The pointer is over the tile, showing its ⋯ and the corner that resizes it. */
@@ -87,7 +89,7 @@ const Tile = memo(function Tile({ id, b, speaking, muted, faint, hover, lift, pu
   const said = SAID[id];
   return (
     <div className={cn('lp-st-tile', b.arch && 'is-arch', hover && 'is-hover', lift && 'is-lift', pull && 'is-pull', away && 'is-away', faint && 'is-faint',
-      b.arch && speaking && 'is-up', !b.arch && b.h < 100 && 'is-short')}
+      b.arch && speaking && rise && 'is-up', !b.arch && b.h < 100 && 'is-short')}
       style={{ left: b.x, top: b.y, width: b.w, height: b.h }} data-at={`tile:${id}`}>
       <CallTile person={CAST[id]} name={nameOf(id)} speaking={speaking} muted={muted}
         chrome={(
@@ -476,11 +478,6 @@ const MutePill = memo(function MutePill({ on }: { on: boolean }) {
   );
 });
 
-/** In focus, the people stand on the horizon, and whoever's talking is said beside them. */
-const HorizonSays = memo(function HorizonSays({ on, who }: { on: boolean; who: Who | null }) {
-  return <span className={cn('lp-st-hz', on && who && 'is-on')} style={{ left: HORIZON_SAYS, top: GROUND - 24 }}>{who && `${firstOf(who)} is talking`}</span>;
-});
-
 /** In focus the top bar slides away, and the host's timer keeps a strip of its own over the frame. */
 const FocusTimer = memo(function FocusTimer({ on }: { on: boolean }) {
   return <CallTimerButton time={null} label="Timer for everyone" tone="ready" className={cn('lp-st-ftimer', on && 'is-on')} />;
@@ -545,9 +542,8 @@ export const TourStage = memo(function TourStage({ s, still }: { s: Stage; still
       <Alcoves rooms={s.rooms} />
       {ORDER.map((id) => (
         <Tile key={id} id={id} b={placeOf(s, id)} speaking={s.speaking === id} muted={s.muted.includes(id)} faint={s.faint === id}
-          hover={s.hover === id} lift={s.lift === id} pull={s.pull?.who === id} status={s.status.includes(id)} away={id === 'art' && s.away} />
+          hover={s.hover === id} lift={s.lift === id} pull={s.pull?.who === id} status={s.status.includes(id)} away={id === 'art' && s.away} rise={s.layout === 'rooms'} />
       ))}
-      <HorizonSays on={s.focus} who={s.speaking} />
       <MutePill on={s.onMute} />
       <Captions caption={s.caption} langHi={s.hi.includes('cap:lang')} />
       <RoomsBar open={s.rooms.open} left={s.rooms.left} msgHi={s.hi.includes('msg-all')} backHi={s.hi.includes('rooms:back')} />

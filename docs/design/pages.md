@@ -357,8 +357,8 @@ circles, and whoever speaks gets the `speak` ring. The camera appears only here 
   in the ⋯ at the end of its line, and the list sorts as chosen whenever the pointer is away from it (on a touch screen, a
   couple of seconds after the last touch or scroll). The
   composer is one box: the words, then @, the thread's or question's one choice, and Send, the one filled button.
-- **Focus** fills the window with what's in the frame. The bars slide off, the people stand on the horizon, and the dock
-  keeps the microphone, camera, Show everything and Leave.
+- **Focus** fills the window with what's in the frame. The bars slide off, the people keep a rail of arches at the right,
+  and the dock keeps the microphone, camera, Show everything and Leave.
 - **On a phone** (under 600px), the top is the title, the notes sign, Chat and the faces; the dock is the microphone,
   camera, Share, More and Leave; what's open fills the screen under a row of arches; More starts with a grid of Board,
   Workspace, Notes, Chat and People; and your side, Settings and Close's question are sheets.
@@ -423,8 +423,8 @@ Signed out, before anything else: what Alcove is, told as one evening on the app
     nudge from Kofi's ⋯ as a step in its place. You're talking on mute is said at the top of the call.
   - Arrange it your way has no layouts to pick. Maya's tile is dragged to the front, the others making room, and pulled
     by its corner until she's the bigger one. Kofi's screen takes the room in its frame with everyone in a column beside
-    it, and Focus fills the window with it, everyone on the horizon. When Kofi stops, Reset layout, in More, puts the call
-    back.
+    it, and Focus fills the window with it, everyone in a rail of arches at its right. When Kofi stops, Reset layout, in
+    More, puts the call back.
 - **Find a time** is the Team moment (`TeamScene`): the team stands on the horizon with the sun low past the end of the
   line. Picking people lays their busy hours out across the week, with the times everyone is free.
 - **Your agent** (`AgentScene`) books a call over MCP, beside the tools it can use.

@@ -104,9 +104,6 @@
 .lp-st-rs { position: absolute; z-index: 3; right: 6px; bottom: 6px; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 8px;
   background: color-mix(in srgb, var(--stage) 62%, transparent); color: var(--stage-ink); opacity: 0; transition: opacity .25s; }
 .lp-st-tile.is-hover :is(.lp-st-more, .lp-st-rs) { opacity: 1; }
-/* In focus, whoever's talking is said beside the people on the horizon. */
-.lp-st-hz { position: absolute; z-index: 3; color: var(--stage-ink-2); font: 500 12.5px/1 var(--font-sans); white-space: nowrap; opacity: 0; transition: opacity .4s var(--ease-out); }
-.lp-st-hz.is-on { opacity: 1; transition-delay: .5s; }
 /* Talking with your microphone muted, said at the top of the call. */
 .lp-st-pill { position: absolute; z-index: 9; left: 50%; top: 66px; display: inline-flex; align-items: center; gap: 10px; height: 36px; padding: 0 4px 0 12px; border-radius: 12px;
   background: var(--stage-raised); box-shadow: 0 12px 26px -10px rgb(0 0 0 / .6), inset 0 0 0 1px rgb(255 255 255 / .1); color: var(--stage-ink-2); font: 500 13px/1 var(--font-sans); white-space: nowrap;

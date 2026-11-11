@@ -62,8 +62,8 @@ export const STEPS: readonly [Step, ...Step[]] = [
   },
   {
     id: 'layout', icon: 'layout', title: 'Arrange it your way',
-    line: 'Drag a tile to move someone, or pull its corner to make them bigger. A shared screen takes the room, and Focus puts everyone on the horizon. Only your view changes.',
-    shows: 'You drag Maya’s tile to the front and pull its corner to make her bigger. Kofi presents their screen and everyone moves beside it, then Focus fills the window with it and everyone stands on the horizon. When Kofi stops, Reset layout in More puts the call back.'
+    line: 'Drag a tile to move someone, or pull its corner to make them bigger. A shared screen takes the room, with everyone at its right. Only your view changes.',
+    shows: 'You drag Maya’s tile to the front and pull its corner to make her bigger. Kofi presents their screen and everyone moves to its right, then Focus fills the window with it and everyone stands in a rail of arches at its edge. When Kofi stops, Reset layout in More puts the call back.'
   }
 ];
 
@@ -117,17 +117,18 @@ function column(n: number, x: number, y: number, w: number, h: number, gap = 10)
 }
 /** The column beside what's open, at this stage's width. */
 const COLUMN_W = 216;
-/** In focus, the ground the people stand on at the bottom left, beside the dock, and how far apart they stand. */
-export const GROUND = 686;
-const HORIZON = { x: 24, pitch: 44, w: 38, h: 41 };
-/** Where the line saying who's talking starts, past the last of them. */
-export const HORIZON_SAYS = HORIZON.x + 5 * HORIZON.pitch + HORIZON.w + 22;
+/** Focus: the window's room under the strip the host's timer keeps, and the people's rail of arches at its right. */
+const FOCUS = { x: 16, y: 68, w: STAGE_W - 32, h: 548 };
+const RAIL = { w: 74, h: 82, pitch: 92 };
 
-/** Kofi's screen on your stage: beside the people, or filling the window in focus, under the strip the host's timer keeps. */
+/** Kofi's screen on your stage: beside the people, or filling the window in focus, left of their rail. */
 export const SCREEN = {
   beside: tile(AREA.x, AREA.y, AREA.w - COLUMN_W - 12, AREA.h),
-  focus: tile(16, 68, STAGE_W - 32, 548)
+  focus: tile(FOCUS.x, FOCUS.y, FOCUS.w - RAIL.w - 12, FOCUS.h)
 };
+/** The rail stands in the middle of its edge, as the call's does. */
+const railAt = (i: number, n: number): Box =>
+  arch(FOCUS.x + FOCUS.w - RAIL.w, FOCUS.y + (FOCUS.h - ((n - 1) * RAIL.pitch + RAIL.h)) / 2 + i * RAIL.pitch, RAIL.w, RAIL.h);
 
 export const ROOMS = [
   { name: 'Pricing', who: ['maya', 'diego'] },
@@ -151,7 +152,7 @@ export const LAYOUTS: Record<Layout, Record<Who, Box>> = {
   moved: seat(ARRANGED, grid(6, AREA.x, AREA.y, AREA.w, AREA.h, 3)),
   bigger: seat(ARRANGED, firstBigger()),
   beside: seat(ARRANGED, column(6, AREA.x + AREA.w - COLUMN_W, AREA.y, COLUMN_W, AREA.h)),
-  focus: seat(ARRANGED, ARRANGED.map((_, i) => arch(HORIZON.x + i * HORIZON.pitch, GROUND - HORIZON.h, HORIZON.w, HORIZON.h)))
+  focus: seat(ARRANGED, ARRANGED.map((_, i) => railAt(i, ARRANGED.length)))
 };
 
 /* ---- what's said and written ---- */
@@ -205,7 +206,7 @@ export interface Stage {
   tool: Tool | null;
   /** Your microphone, in the dock. */
   micOff: boolean;
-  /** Kofi's screen on your stage, and focus: it fills your window and the people stand on the horizon. */
+  /** Kofi's screen on your stage, and focus: it fills your window and the people stand in a rail of arches at its right. */
   screen: boolean;
   focus: boolean;
   /** The menus that are open, and where each one opened. */
@@ -411,7 +412,7 @@ export const SCENES: Record<StepId, Scene> = {
   },
   /*
    * Maya's tile is carried to the front, the others making room as it nears, and pulled by its corner until she's the bigger
-   * one. Kofi's screen takes the room with everyone beside it, and Focus fills the window with it, everyone on the horizon.
+   * one. Kofi's screen takes the room with everyone at its right, and Focus fills the window with it, everyone in a rail.
    * Kofi stops, everyone comes back as you arranged them, and Reset layout puts the call back as the stage lays it out.
    */
   layout: {

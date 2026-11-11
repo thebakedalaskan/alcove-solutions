@@ -16,7 +16,6 @@ import {
   CircleOff, Droplet, Droplets, BellRing, Bot, Coffee, Ear, Gauge, Headphones, SmilePlus, Layers, MessagesSquare, VenetianMask,
   FileCheck, FilePen, HandHelping, Laptop, MessageSquareLock, PhoneIncoming, Share2
 } from 'lucide-react';
-import { PanelRightClose, PanelRightOpen, PanelTopClose, PanelTopOpen } from 'lucide-react';
 import { cn } from '../cn';
 
 /* One icon family: Lucide, 1.8 stroke, round caps and joins, sized by the caller. Filled glyphs say so. */
@@ -52,8 +51,6 @@ const ICONS = {
   circleOff: CircleOff, droplet: Droplet, droplets: Droplets,
   nudge: BellRing, agent: Bot, away: Coffee, hear: Ear, pace: Gauge, listening: Headphones, layers: Layers,
   privateChat: MessageSquareLock, ringIn: PhoneIncoming, fileCheck: FileCheck, shareNodes: Share2, handHelping: HandHelping, filePen: FilePen, laptop: Laptop,
-  /* The people beside what's open in a call, put away and brought back: a column at the right, or a row over the top. */
-  panelRightClose: PanelRightClose, panelRightOpen: PanelRightOpen, panelTopClose: PanelTopClose, panelTopOpen: PanelTopOpen,
   /* Play in outline, beside a level (SoundLevel); `play` is the filled one. */
   playLine: Play
 } satisfies Record<string, LucideIcon>;

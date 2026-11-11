@@ -41,8 +41,7 @@ export function useFocusBounds(area: RefObject<HTMLDivElement | null>, bar: RefO
   useLayoutEffect(() => {
     const a = area.current;
     const b = bar.current;
-    const dock = b?.querySelector('.ac-dock');
-    if (!a || !b || !dock) return;
+    if (!a || !b) return;
     const read = () => {
       const top = a.getBoundingClientRect();
       const next = { base: Math.round(b.getBoundingClientRect().bottom - top.top - 10), top: Math.round(top.top), left: Math.round(top.left) };
@@ -50,7 +49,6 @@ export function useFocusBounds(area: RefObject<HTMLDivElement | null>, bar: RefO
     };
     read();
     const ro = new ResizeObserver(read);
-    ro.observe(dock);
     ro.observe(b);
     return () => ro.disconnect();
   }, [area, bar, size]);

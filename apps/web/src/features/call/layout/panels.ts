@@ -3,10 +3,11 @@
  * (frame.tsx). With nothing open, the stage is the people's, left of your side (side.ts), and stageLayout.ts places them as it
  * always has. With something open, the frame takes the room and the people stand beside it, as the room left allows:
  *
- * - A column of tiles at the window's right edge, about 300, 248, 216 or 176 px wide as the window narrows. Your side (Notes,
- *   Chat, People) opens between what's open and the people: what's open makes room for it, and the people never move for it.
+ * - A column of tiles at the window's right edge, about 300, 248, 216 or 176 px wide as the call's area narrows. Your side
+ *   (Notes, Chat, People) opens between what's open and the people: what's open makes room for it, and the people neither
+ *   move nor change for it. Where what's open would be left under 480 px, your side sits over it instead (InCall.tsx).
  * - Made smaller (⇧P, or the seam beside them), a rail of arches one arch wide in the same place.
- * - A row of arches over the frame, where the stage is under 760 px, and on a phone: already as small as they get.
+ * - A row of arches over the frame, where the call's area is under 760 px, and on a phone: already as small as they get.
  * - In focus, what's open fills your window and the people keep a rail at its right.
  *
  * The column and the rail stand level with what's open, in the middle of their edge. Left of them is the seam (PeopleSeam.tsx):
@@ -21,7 +22,6 @@
  *
  * Everything here is pure: the room and what's open in, rectangles out.
  */
-import type { CallPeopleMode } from '@alcove/api';
 import type { Box } from './stageLayout';
 
 /** How the people stand beside what's open: a column of tiles, or arches (a rail at the window's edge, or a row over it). */
@@ -45,36 +45,33 @@ const STACKED_H = 620;
 /** The rooms stand beside what's open only on a stage this wide: under it, what's open goes over them. */
 const ROOMS_BESIDE = 880;
 /** The people made smaller, and in focus: a rail of arches, one arch wide. */
-export const RAIL = 74;
+const RAIL = 74;
 /** The seam takes in this much either side of the gap, so it's easy to point at. */
 const SEAM_REACH = 3;
 
-/** The people's column beside what's open, by how wide the stage is. */
-export const columnWidth = (w: number) => (w >= 1500 ? 300 : w >= 1300 ? 248 : w >= 980 ? 216 : 176);
+/** The people's column beside what's open, by how wide the call's area is. */
+const columnWidth = (w: number) => (w >= 1500 ? 300 : w >= 1300 ? 248 : w >= 980 ? 216 : 176);
 /** The rooms beside what's open: a little over a third of the stage, enough for every room to say who's in it. */
 const roomsWidth = (w: number) => Math.round(Math.min(560, Math.max(340, w * 0.38)));
 
-/** The people's strip at the window's right edge: where it starts, and how wide it is. */
-export interface Edge { x: number; w: number }
+/** The people's strip at the window's right edge: where it starts, how wide it is, and whether it's their rail. */
+export interface Edge { x: number; w: number; small: boolean }
 
 /**
  * Where the people stand beside what's open: their strip at the window's right edge, past your side, a column or, made smaller,
- * a rail. `area` is the call's whole width and `side` what your side takes beside the stage, its gap included (nothing while
- * it's closed, or over the stage). Null where they stand anywhere else: with nothing open, on a phone, in focus, on a narrow
- * stage, and beside the organizer's rooms.
+ * a rail. It comes from the call's whole width (`area`), so your side opening or closing never moves or resizes them. Null
+ * where they stand anywhere else: with nothing open, on a phone, in focus, in an area too narrow for a column, and beside the
+ * organizer's rooms, which stand beside what's open where the stage left of your side (`side`, its gap included) has room.
  */
 export function peopleEdge(area: number, f: { frames: number; phone: boolean; focus: boolean; rooms: boolean; small: boolean; side: number }): Edge | null {
-  const beside = area - f.side;
-  if (f.frames === 0 || f.phone || f.focus || beside < ARCHES_UNDER || (f.rooms && beside >= ROOMS_BESIDE)) return null;
-  const w = f.small ? RAIL : columnWidth(beside);
-  return { x: area - w, w };
+  if (f.frames === 0 || f.phone || f.focus || area < ARCHES_UNDER || (f.rooms && area - f.side >= ROOMS_BESIDE)) return null;
+  const w = f.small ? RAIL : columnWidth(area);
+  return { x: area - w, w, small: f.small };
 }
 
 export interface MainFacts {
   /** How many things are on your stage: none, one, or two (Show beside). */
   frames: number;
-  /** Whether you made the people beside what's open smaller (⇧P): a rail is stored as `hidden`. */
-  people: CallPeopleMode;
   phone: boolean;
   /** Focus: the frame fills your window, past the bars that tuck away. */
   focus: Box | null;
@@ -83,7 +80,7 @@ export interface MainFacts {
   /** Room kept at the top for the status bar while it says anything, and at the bottom for captions. */
   top: number;
   bottom: number;
-  /** Where the people stand at the window's right edge (`peopleEdge`), or null where they don't. */
+  /** Where the people stand at the window's right edge (`peopleEdge`), a column or their rail, or null where they don't. */
   edge: Edge | null;
 }
 export interface MainPlaced {
@@ -146,7 +143,7 @@ export function placeMain(size: Size, f: MainFacts): MainPlaced {
     // arches in the same place. The seam is the gap left of them.
     const e = f.edge;
     const seam: Box = { x: e.x - GAP - SEAM_REACH, y: room.y, w: GAP + 2 * SEAM_REACH, h: room.h };
-    return { ...many(room), people: { x: e.x, y: room.y, w: e.w, h: room.h }, mode: f.people === 'hidden' ? 'arches' : 'tiles', rooms: null, seam };
+    return { ...many(room), people: { x: e.x, y: room.y, w: e.w, h: room.h }, mode: e.small ? 'arches' : 'tiles', rooms: null, seam };
   }
   // A narrow stage: a row of arches over what's open, already as small as the people get.
   const body: Box = { x: room.x, y: room.y + ARCH_ROW + 10, w: room.w, h: Math.max(0, room.h - ARCH_ROW - 10) };

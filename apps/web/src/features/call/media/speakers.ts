@@ -1,8 +1,8 @@
 /*
  * Who's talking, settled: someone else who has been talking for a moment, so a cough or a quick "yes" changes nothing. They
- * stay it while they talk, and for a little while after. It says who's talking (on the horizon, at the end of the
- * transcript) and keeps them a place beside what's open, but never puts anyone on the main stage: only a pin or the
- * organizer's spotlight does that (stageLayout.ts).
+ * stay it while they talk, and for a little while after. It says who's talking (at the end of the transcript) and keeps
+ * them a place beside what's open, but never puts anyone on the main stage: only a pin or the organizer's spotlight does that
+ * (stageLayout.ts).
  *
  * Only whether people are speaking is used (LiveKit's speaker detection, your own microphone level), never what's said.
  */

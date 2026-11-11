@@ -21,8 +21,8 @@ export type SidePlace = Exclude<SideView, 'notes'> | NotesTab;
 export const sideWidth = (windowWidth: number): number => (windowWidth < 1200 ? 340 : 368);
 /**
  * The narrowest the stage gets beside your side: narrower, and a frame's bar has no room to say what's in it and who presents it.
- * In a window too narrow for both (wider than a phone and under 864 px), your side sits over the stage, at the right, and the
- * stage keeps its whole width under it.
+ * In a window too narrow for both (wider than a phone, with the people beside what's open keeping their room at its edge), your
+ * side sits over the stage, left of the people, and the stage keeps its width under it.
  */
 export const STAGE_BESIDE_SIDE = 480;
 
