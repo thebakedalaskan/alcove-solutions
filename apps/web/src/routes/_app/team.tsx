@@ -107,8 +107,9 @@ function TeamPage() {
     <Evening moment="team" className="tp" data-line={line.arches.length <= 3 ? 'short' : 'long'}
       style={{ '--tp-sum': line.width.toFixed(3), '--tp-sun-x': sun.x.toFixed(3), '--tp-sun-r': sun.r.toFixed(3) }}>
       <div className="tp-sky" style={{ '--d': 0 }}>
+        <header className="dusk-top"><h1 className="dusk-title">Team</h1></header>
         <section className="tp-hero" aria-labelledby="tp-h">
-          <h1 id="tp-h" className="ac-clamp-2">{first ? 'Bring your team to Alcove' : here?.name ?? (trouble === 'offline' ? 'You’re offline' : trouble === 'failed' ? 'Your team didn’t load' : 'Your team')}</h1>
+          <h2 id="tp-h" className="ac-clamp-2">{first ? 'Bring your team to Alcove' : here?.name ?? (trouble === 'offline' ? 'You’re offline' : trouble === 'failed' ? 'Your team didn’t load' : 'Your team')}</h2>
           {trouble && <p className="tp-why"><Icon name={trouble === 'offline' ? 'wifiOff' : 'alert'} size={18} />{trouble === 'offline' ? 'Your team shows here when you’re back.' : errorMessage(team.error)}</p>}
           <div className="tp-acts">
             {here && <InvitePeople me={me} team={here} meets={meets} now={now} anchor={<Button variant={filled ? 'primary' : 'secondary'} size="lg" icon="addUser">Invite people</Button>} />}

@@ -8,7 +8,7 @@ import { wsToast } from '@alcove/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { log } from '~/lib/log';
-import { callName } from '~/lib/people';
+import { callName, startingWith } from '~/lib/people';
 import { q, useDocumentShare, useMention } from '~/lib/queries';
 import type { Ws } from './context';
 import { dateLabel, isoDay } from './editor/blocks/dates';
@@ -120,9 +120,9 @@ export function useTags(ws: Ws, item: WorkspaceItem, now: number) {
     const documents: MentionItem[] = documentsIn(ws.tree).filter((d) => d.kind === 'document' && d.id !== item.id && has(nameOf(d))).slice(0, docsOnly ? 8 : 3).map((d) => ({ kind: 'document', id: d.id, name: nameOf(d) }));
     if (docsOnly) return [{ title: 'Documents', items: documents }];
     const shown = new Set<string>(myEmail ? [myEmail] : []);
-    const pick = (list: readonly Person[]): MentionItem[] => list.filter((p) => {
+    const pick = (list: readonly Person[]): MentionItem[] => startingWith(query, list, (p) => p).filter((p) => {
       const key = p.email || p.id;
-      if (shown.has(key) || !has(p.name)) return false;
+      if (shown.has(key)) return false;
       shown.add(key);
       return true;
     }).slice(0, 8).map((person) => ({ kind: 'person', person, sub: canOpen(person) ? undefined : 'Can’t open this yet' }));

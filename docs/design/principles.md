@@ -172,8 +172,12 @@ Truncate with `ac-clamp-1` or `ac-clamp-2` rather than `nowrap`, so long text ca
 - Signed in, every page sits in the frame: a dark side panel on the left and the page under a rounded edge, scrolling
   beneath it. Search and you sit at the top right of every page. A top nav with a hero reads as a website; don't.
 - Page headers are modest. The page's atmosphere is the scene behind it, not a hero above the content.
-- Most pages run to 1480px wide plus the page's side padding (`--page-x`). Notes (1780px) and a note (1760px) run wider,
-  because a list and a preview need the room. Don't centre a narrow column on a wide screen.
+- Every page runs to the same width, 1760px plus the page's side padding (`--page-max` and `--page-x`, the same on every
+  page), so going from page to page leaves the title, search and you where they were. Don't centre a narrow column on a
+  wide screen.
+- A page's title sits at its top left, in the same place and the same face on every page (`dusk-top`, `dusk-title`):
+  Home's date, Notes, Drive, Record and Team. A note puts the way back first and its own name larger, and Settings starts
+  with you in your arch, both from the same left edge.
 - Grids wrap and lists go to one column on a phone.
 - The breakpoints, widest first:
   - 1241px: narrower than this, Notes stops showing a preview beside the list

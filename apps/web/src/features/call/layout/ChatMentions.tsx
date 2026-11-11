@@ -2,7 +2,7 @@
 import { CALL_CHAT_MAX, errorMessage, type CallChatMention, type Person } from '@alcove/api';
 import { Avatar, Icon, IconButton, Switch, cn, useToast } from '@alcove/ui';
 import { Fragment, useEffect, useId, useRef, useState, type RefObject } from 'react';
-import { fold } from '~/lib/people';
+import { startingWith } from '~/lib/people';
 import { draftRevision, useDraft, type Draft } from './side';
 
 export interface MentionPerson { identity: string; person: Person }
@@ -63,7 +63,7 @@ export function ChatComposer({ draft, people, ready, moving, placeholder, label,
   const start = term === undefined ? -1 : caret - term.length - 1;
   const selectedSpan = mentions.some((m) => m.start <= start && m.end > start);
   const choosing = ready && term !== undefined && !selectedSpan && !dismissed;
-  const rows = choosing ? people.filter((p) => fold(`${p.person.name} ${p.person.email} ${p.identity}`).includes(fold(term ?? ''))) : [];
+  const rows = choosing ? startingWith(term ?? '', people, (p) => ({ name: p.person.name || 'Guest', email: p.person.email })) : [];
   const at = Math.max(0, Math.min(active, rows.length - 1));
   const chosen = mentions.filter((m) => people.some((p) => p.identity === m.identity));
   useEffect(() => { list.current?.querySelector('[data-active]')?.scrollIntoView({ block: 'nearest' }); }, [at]);

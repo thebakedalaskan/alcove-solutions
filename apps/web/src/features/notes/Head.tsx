@@ -10,7 +10,7 @@ import { useState, type ReactNode } from 'react';
 export function PageHead({ to = 'Notes', title, acts, children }: { to?: 'Notes' | 'Home' | undefined; title: string; acts?: ReactNode; children?: ReactNode }) {
   return (
     <header className="nd-head" style={{ '--d': 0 }}>
-      <div className="nd-top">
+      <div className="dusk-top">
         <div className="nd-title">
           <Link to={to === 'Home' ? '/home' : '/notes'} className="nd-back">{to}<i aria-hidden="true">/</i></Link>
           <h1 className="ac-clamp-1" title={title}>{title}</h1>
