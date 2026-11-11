@@ -65,7 +65,8 @@ function tagAt(value: string, caret: number): { from: number; query: string } | 
 
 /**
  * What `@` does in a one-line field: the `@word` the caret is at, the list it opens, and what picking from it writes. Arrows
- * move through the list, Enter or Tab picks, and Esc closes the list and leaves the field. `keys` says whether it took a key.
+ * move through the list, and so does the pointer, over a row; Enter or Tab picks the one highlighted, and Esc closes the list
+ * and leaves the field. `keys` says whether it took a key.
  */
 function useTagList(field: RefObject<HTMLInputElement | null>, value: string, onChange: (v: string) => void, tagging: WsTagging | undefined) {
   const [caret, setCaret] = useState(0);
@@ -114,7 +115,8 @@ function useTagList(field: RefObject<HTMLInputElement | null>, value: string, on
       {sections.map((s) => [
         <div key={s.title} className="wm-h">{s.title}</div>,
         ...s.choices.map((c) => (
-          <button key={c.key} type="button" role="option" aria-selected={choices[index] === c} tabIndex={-1} className={cn('wm-r', choices[index] === c && 'is-sel', c.person && 'is-person')} onMouseDown={(e) => e.preventDefault()} onClick={() => take(c)}>
+          <button key={c.key} type="button" role="option" aria-selected={choices[index] === c} tabIndex={-1} className={cn('wm-r', choices[index] === c && 'is-sel', c.person && 'is-person')} onMouseDown={(e) => e.preventDefault()} onClick={() => take(c)}
+            onPointerMove={() => { const at = choices.indexOf(c); if (at !== index) setIndex(at); }}>
             {c.person && <Avatar person={c.person} size={24} />}
             {c.icon && <Icon name={c.icon} size={16} />}
             <span className="t"><span className="l">{c.label}</span>{c.sub && <small>{c.sub}</small>}</span>

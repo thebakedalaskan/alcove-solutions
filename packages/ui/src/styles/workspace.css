@@ -148,7 +148,8 @@
 .wm-s { height: 1px; margin: 5px 8px; background: var(--line); }
 .wm-x { display: flex; align-items: center; gap: 6px; padding: 8px 10px; font-size: 12.5px; line-height: 1.4; color: var(--ink-3); }
 .wm-r { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 36px; padding: 5px 10px; border-radius: 10px; text-align: left; color: var(--ink); font: 500 14px/1.25 var(--font-sans); transition: background-color var(--duration-1); }
-.wm-r:hover, .wm-r.is-sel, .wm-r:focus-visible { background: var(--sunk); outline: none; }
+/* A list highlights one row: the active one, which the keys move and the pointer makes by moving over it. A row on its own keeps a hover. */
+.wm-r.is-sel, .wm-list > .wm-r:focus, .wm-r:focus-visible, :not(.wm-list) > .wm-r:hover { background: var(--sunk); outline: none; }
 .wm-r .ac-i { color: var(--ink-2); }
 .wm-r .t { flex: 1; min-width: 0; }
 .wm-r .l { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

@@ -81,14 +81,17 @@ function TurnRow({ current, pick }: { current: BlockKind | null; pick: (kind: Bl
 /**
  * A list you can move through with the arrow keys. `reset` starts it over when what it lists changes. A list at the `caret`
  * is one focus never enters, so the text says which row is active, for screen readers, and a live region says what it is.
+ * The active row is the one highlighted: the keys move it, and so does the pointer, moving over a row. Only the keys
+ * scroll the list, since a row the pointer's over is in view already.
  */
 function ListMenu({ rt, rows, anchor, className, label, start, reset, caret, onClose }: { rt: EditorRuntime; rows: Row[]; anchor: Rect; className: string; label: string; start: number; reset: string; caret: boolean; onClose: () => void }) {
   const [index, setIndex] = useState(start);
+  const pointed = useRef(false);
   const list = useRef<HTMLDivElement>(null);
   const items = rows.filter(isItem);
   const name = useId();
   const rowId = (r: Item) => `${name}-${r.key}`;
-  useEffect(() => setIndex(start), [reset, start]);
+  useEffect(() => { pointed.current = false; setIndex(start); }, [reset, start]);
 
   const active = items[index];
   const activeId = active ? rowId(active) : null;
@@ -108,6 +111,7 @@ function ListMenu({ rt, rows, anchor, className, label, start, reset, caret, onC
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
         stop();
         const down = e.key === 'ArrowDown';
+        pointed.current = false;
         if (items.length > 0) setIndex((i) => ((i < 0 ? (down ? -1 : 0) : i) + (down ? 1 : -1) + items.length) % items.length);
       } else if (e.key === 'Enter' || (e.key === 'Tab' && caret)) {
         const item = items[Math.max(0, index)];
@@ -129,7 +133,7 @@ function ListMenu({ rt, rows, anchor, className, label, start, reset, caret, onC
 
   useLayoutEffect(() => {
     const box = list.current, on = box?.querySelector<HTMLElement>('.is-sel');
-    if (!box || !on) return;
+    if (!box || !on || pointed.current) return;
     if (on.offsetTop < box.scrollTop) box.scrollTop = on.offsetTop - 34;
     else if (on.offsetTop + on.offsetHeight > box.scrollTop + box.clientHeight) box.scrollTop = on.offsetTop + on.offsetHeight - box.clientHeight + 6;
   }, [index]);
@@ -144,8 +148,10 @@ function ListMenu({ rt, rows, anchor, className, label, start, reset, caret, onC
             if (r.kind === 'sep') return <div key={`sep-${i}`} className="wm-s" role="presentation" />;
             if (r.kind === 'text') return <p key={`text-${i}`} className="wm-x" role="presentation">{r.label}</p>;
             if (r.kind === 'turn') return <TurnRow key="turn" current={r.current} pick={r.pick} />;
+            const at = items.indexOf(r);
+            const point = () => { if (at !== index) { pointed.current = true; setIndex(at); } };
             return (
-              <button key={r.key} id={rowId(r)} type="button" role={caret ? 'option' : 'menuitem'} aria-selected={caret ? r === active : undefined} className={cn('wm-r', r === active && 'is-sel', r.className)} onClick={r.run}>
+              <button key={r.key} id={rowId(r)} type="button" role={caret ? 'option' : 'menuitem'} aria-selected={caret ? r === active : undefined} className={cn('wm-r', r === active && 'is-sel', r.className)} onClick={r.run} onPointerMove={point}>
                 {r.face && <Avatar person={r.face} size={24} />}
                 {r.icon && <Icon name={r.icon} size={16} />}
                 <span className="t"><span className="l">{r.label}</span>{r.sub && <small>{r.sub}</small>}</span>

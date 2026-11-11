@@ -13,6 +13,7 @@ import {
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useRef, useState, type ComponentProps, type KeyboardEvent } from 'react';
 import { useArgs } from 'storybook/preview-api';
+import { screen } from 'storybook/test';
 import { Box, PopSurface, Row, did } from '../../../src/component';
 import { AIKO, KOFI, MAYA, PRIYA } from '../../../src/world/people';
 import { DocOf, ListOf, NEW_SPACE, PRODUCT_ITEMS, SPACES, first, useWorkspace, type Opened } from './parts';
@@ -90,7 +91,7 @@ function Picking({ label }: { label: string }) {
       </div>
       <WsMenu label={label} rows={people.length === 0
         ? [{ type: 'text', label: `Nobody called “${query}” in this call.` }]
-        : people.map((p, i): WsMenuRow => ({ id: p.id, person: p, label: p.name, sub: 'In this call', selected: i === at, onSelect: () => pressed(p.name) }))} />
+        : people.map((p, i): WsMenuRow => ({ id: p.id, person: p, label: p.name, sub: 'In this call', selected: i === at, onPoint: () => setAt(i), onSelect: () => pressed(p.name) }))} />
     </PopSurface>
   );
 }
@@ -247,3 +248,15 @@ export const AskMenu: StoryObj<typeof WsAskMenu> = {
 };
 /** Against the words it's about, at a place that moves with them. Pressing the words opens it again. */
 export const AskMenuOverWords: Story = { name: 'Ask menu: over a selection', args: { label: 'Ask Alcove', rows: [] }, render: () => <OverWords /> };
+/**
+ * Opened with a pointer, no row is highlighted until the pointer or a key picks one; then only that row is, whichever moved
+ * last. Here the pointer rests on the second row.
+ */
+export const AskMenuPointing: Story = {
+  name: 'Ask menu: the pointer on a row', args: { label: 'Ask Alcove', rows: [] }, render: () => <OverWords />,
+  play: async ({ userEvent, step }) => {
+    await step('Move the pointer onto Turn this into a checklist. It’s the one row highlighted', async () => {
+      await userEvent.hover(await screen.findByRole('menuitem', { name: 'Turn this into a checklist' }));
+    });
+  }
+};
