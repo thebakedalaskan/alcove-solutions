@@ -194,12 +194,19 @@ send to anyone".
    people find easiest (10:00, then 14:00, 11:00, 15:00 and so on). A time picked from the week takes the place of the
    last of the three, and the other two stay. It says what's true:
    "All 8 of you are free at these times.", how many are free under each time, that other calendars can't be read and
-   the times are free on yours, or with no calendar connected that these are open working hours. The length is 30 min,
-   45 min or 1 h. **Pick another time** widens the modal around the week, with your own things by name and when anyone
+   the times are free on yours, or with no calendar connected that these are open working hours. Under the cards the
+   time picked reads as it will, "Thu 5 Nov, [10:00] – [10:45]": its start and its end can be typed, in 5-minute steps,
+   and count once you leave the field or press Enter. A start moves the call and keeps its length; an end sets the
+   length, any from 5 minutes to 10 hours (earlier than the start, it's the next day's, for a call past midnight). A
+   start that's gone, an end before the start, or a length past those limits says why under the line, and what was
+   picked stays. A start off the half hour sits in the week where it falls, and its card says how many are free then.
+   A call starts at 45 min; 30 min, 45 min and 1 h are a press away, and any other length shows beside them
+   ("1 h 15 min"). **Pick another time** widens the modal around the week, with your own things by name and when anyone
    is busy, at their real times. It's a week, Monday to Sunday, the weekend a day like any other, and the whole day, 00:00
    to 24:00, with every hour line labelled, the end included; it opens with 09:00 at its top, on the week of the time
    picked, and turns to it whenever that changes. Every half hour can be picked (arrow keys move around it); the arrows go
-   a week at a time. **Move this call** uses the same week.
+   a week at a time. **Move this call** (Change the time, on a scheduled call's card) has the same line, lengths and
+   week.
    **Doesn't repeat** opens Every Thursday, Every 2 weeks, Every month (on "the third Thursday"; a fifth one is "the
    last") or Days you pick, with an end date, which counts once you leave the field or press Enter. Repeats keep their
    clock time where you are when the clocks change, and one repeat is at most 60 calls. On your own, with one guest whose calendar can't be read, **Let Jamie pick** offers

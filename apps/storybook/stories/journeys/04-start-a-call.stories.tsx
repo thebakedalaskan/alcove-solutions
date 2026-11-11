@@ -113,6 +113,13 @@ export const AnotherTimeEveryWeek: PageStory = {
     await step('Every half hour can be picked, the weekend too: Saturday at 10:00', async () => {
       await userEvent.click(within(screen.getByRole('group', { name: 'Pick a time' })).getByRole('button', { name: /^Sat 7 Nov, 10:00/ }));
     });
+    await step('The line under the times reads Sat 7 Nov, 10:00 – 10:45. Type an end, 11:15: the call is 1 h 15 min, beside the three lengths', async () => {
+      const end = await screen.findByLabelText('Ends', {}, SOON);
+      await userEvent.clear(end);
+      await userEvent.type(end, '11:15');
+      await userEvent.tab();
+      await screen.findByRole('button', { name: '1 h 15 min', pressed: true }, SOON);
+    });
     await step('Doesn’t repeat opens how it repeats: every Saturday', async () => {
       await userEvent.click(screen.getByRole('button', { name: 'Doesn’t repeat' }));
       await userEvent.click(within(await screen.findByRole('group', { name: 'How it repeats' }, SOON)).getByRole('button', { name: /^Every Saturday/ }));

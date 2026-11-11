@@ -571,6 +571,33 @@ describe('making calls', () => {
     expect((await org.api.meetings.update(first.id, { title: 'Still mine' })).title).toBe('Still mine');
     expect((await (await account()).api.meetings.create(call('Mine', []))).title).toBe('Mine');
   });
+
+  it('take a start and a length as they’re typed, any 5 minutes up to 10 hours, and the calendar shows the same', async () => {
+    const org = await googleAccount('Bram');
+    // 10:15 on a day to come, for 75 minutes: off the half hour, and none of the three lengths.
+    const day = new Date(Date.now() + 2 * 86_400_000);
+    const startsAt = new Date(Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate(), 10, 15)).toISOString();
+    const after = (iso: string, minutes: number) => new Date(Date.parse(iso) + minutes * 60_000).toISOString();
+    const onGoogle = () => h.google.calendar(org.sub).filter((e) => e.summary === 'Pricing review').map((e) => [e.start?.dateTime, e.end?.dateTime]);
+    const m = await org.api.meetings.create(call('Pricing review', [unique('guest')], { startsAt, durationMinutes: 75 }));
+    expect([m.startsAt, m.endsAt]).toEqual([startsAt, after(startsAt, 75)]);
+    const read = await org.api.meetings.get(m.id);
+    expect([read.startsAt, read.endsAt]).toEqual([startsAt, after(startsAt, 75)]);
+    expect(listed(await org.api.meetings.upcoming(), m.id)?.endsAt).toBe(after(startsAt, 75));
+    expect(onGoogle()).toEqual([[startsAt, after(startsAt, 75)]]);
+
+    // Moved to 10:20 and made 2 h 25 min long: the call and its event move together.
+    const moved = after(startsAt, 5);
+    const changed = await org.api.meetings.update(m.id, { startsAt: moved, durationMinutes: 145 });
+    expect([changed.startsAt, changed.endsAt]).toEqual([moved, after(moved, 145)]);
+    expect(onGoogle()).toEqual([[moved, after(moved, 145)]]);
+
+    // Past 10 hours, or under 5 minutes, is refused, and nothing changes.
+    expect(await refusal(org.api.meetings.update(m.id, { durationMinutes: 601 }))).toBe('invalid');
+    expect(await refusal(org.api.meetings.update(m.id, { durationMinutes: 4 }))).toBe('invalid');
+    expect((await org.api.meetings.get(m.id)).endsAt).toBe(after(moved, 145));
+    expect(onGoogle()).toEqual([[moved, after(moved, 145)]]);
+  });
 });
 
 describe('changing a scheduled call', () => {

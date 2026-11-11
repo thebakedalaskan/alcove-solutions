@@ -20,7 +20,7 @@ import { BroughtRow, BringFoot, Documents, docNames } from '../flow/Documents';
 import { NOT_REPEATING, guestsOf, repeatInput, tokensFor, type Guests, type Repeating } from '../flow/draft';
 import { Failed, useFloodToCall } from '../flow/parts';
 import { Who } from '../flow/Who';
-import { Length, RepeatRow, Week } from '../flow/When';
+import { Length, RepeatRow, StartEnd, Week } from '../flow/When';
 import { answersLine, cancelNote, cancelledLine, dayWord, freeLine, notesWord, repeatLineHere, restoredLine, shortTime, timeLine, waitingLine, whenLine } from '../scheduling/words';
 
 const clog = log.child({ component: 'call-card' });
@@ -303,6 +303,7 @@ function ChangeTime({ m, scope, scopeBar, fail, told, saving, wide, onWide, onSa
             <div className="cf-times" aria-busy={times.loading}>
               {times.loading ? [0, 1, 2].map((i) => <TimeCardWaiting key={i} />) : <MoveCards times={times} current={current} chosen={chosen} onPick={setPicked} />}
             </div>
+            <StartEnd at={chosen} minutes={minutes} onChange={(c) => { setPicked(c.at); setMinutes(c.minutes); }} />
             <div className="cf-bar">
               <Length minutes={minutes} onChange={setMinutes} />
               {!wide && <button type="button" className="lk" onClick={() => onWide(true)}>Pick another time</button>}

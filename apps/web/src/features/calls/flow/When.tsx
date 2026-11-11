@@ -1,19 +1,21 @@
 /*
- * When: three times that work, the best already picked, how long, and how it repeats. Pick another time widens the
- * modal around the week. Changing a call's time uses the same pieces (Times, Week, Length).
+ * When: three times that work, the best already picked, the time picked as it will read (its start and end can be typed),
+ * how long, and how it repeats. Pick another time widens the modal around the week. Changing a call's time uses the same
+ * pieces (StartEnd, Week, Length).
  */
 import { MAX_SERIES_CALLS, type Meeting, type Person } from '@alcove/api';
-import { Button, FlowBody, FlowFoot, FlowRow, IconButton, Segmented, Switch, TimeCard, TimeCardWaiting, WeekGrid, cn, type WeekEvent } from '@alcove/ui';
+import { Button, FlowBody, FlowFoot, FlowNote, FlowRow, IconButton, Segmented, Switch, TimeCard, TimeCardWaiting, WeekGrid, cn, type WeekEvent } from '@alcove/ui';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { callName } from '~/lib/people';
 import { dayMonth, hm, shortDay, timeZone, weekday } from '~/lib/time';
 import { useTimes, useWeek } from '../scheduling/availability';
 import { repeatInput, ruleOf, type Draft, type RepeatKind, type Repeating } from './draft';
-import { localDay, localWeekday, weekDays, weeksTo, type Slot } from '../scheduling/times';
-import { callCount, dayWord, freeLine, repeatLine, shortTime, whenLine } from '../scheduling/words';
+import { TYPED_STEP, localDay, localWeekday, retime, weekDays, weeksTo, type Slot } from '../scheduling/times';
+import { callCount, dayWord, freeLine, repeatLine, shortTime, untimelyLine, whenLine } from '../scheduling/words';
 
 const LENGTHS = [30, 45, 60] as const;
-const lengthLabel = (m: number) => (m % 60 ? `${m} min` : `${m / 60} h`);
+/** "45 min", "1 h", "1 h 15 min" */
+const lengthLabel = (m: number) => (m < 60 ? `${m} min` : m % 60 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${m / 60} h`);
 /** The week shows the whole day, and opens with nine o'clock at its top (WeekGrid). */
 const WEEK_FROM = 0;
 const WEEK_TO = 24;
@@ -23,7 +25,47 @@ const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Frid
 const MOST_OFFERED = 3;
 const soonestFirst = (a: Date, b: Date) => a.getTime() - b.getTime();
 
-/** A call's length, offered beside the usual ones when it's something else. */
+/**
+ * The time picked, as it will read: its day, then its start and its end, typed in 5-minute steps. A start moves the call
+ * and keeps its length; an end sets the length. What's typed counts once it's finished, on leaving the field or with
+ * Enter; a time that can't be used says why, and what was there stays.
+ */
+export function StartEnd({ at, minutes, onChange }: { at: Date; minutes: number; onChange: (c: { at: Date; minutes: number }) => void }) {
+  const [typed, setTyped] = useState<{ start: string | null; end: string | null }>({ start: null, end: null });
+  const [why, setWhy] = useState<string | null>(null);
+  /* Picked anew (a card, the week, a length, or what was typed): what's half typed, and why one couldn't be used, go. */
+  const picked = `${at.getTime()}:${minutes}`;
+  const [seen, setSeen] = useState(picked);
+  if (picked !== seen) {
+    setSeen(picked);
+    setTyped({ start: null, end: null });
+    setWhy(null);
+  }
+  const type = (which: 'start' | 'end', value: string | null) => setTyped((t) => (which === 'start' ? { ...t, start: value } : { ...t, end: value }));
+  const commit = (which: 'start' | 'end') => {
+    const value = typed[which];
+    type(which, null);
+    const next = value === null ? null : retime(at, minutes, which, value, new Date());
+    if (!next) return;
+    if (!next.ok) { setWhy(untimelyLine(next.why)); return; }
+    setWhy(null);
+    if (next.at.getTime() !== at.getTime() || next.minutes !== minutes) onChange({ at: next.at, minutes: next.minutes });
+  };
+  const field = (which: 'start' | 'end', label: string, value: Date) => (
+    <input type="time" step={TYPED_STEP * 60} aria-label={label} value={typed[which] ?? hm(value)} onChange={(e) => type(which, e.target.value)}
+      onBlur={() => commit(which)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commit(which); } }} />
+  );
+  return (
+    <div className="cf-at">
+      <p className="cf-at-line">
+        <span>{shortDay(at)},</span>{field('start', 'Starts', at)}<span className="to" aria-hidden="true">–</span>{field('end', 'Ends', new Date(at.getTime() + minutes * 60_000))}
+      </p>
+      {why && <FlowNote icon="clock">{why}</FlowNote>}
+    </div>
+  );
+}
+
+/** A call's length, offered beside the usual ones when it's something else (typed, or the call's own). */
 export function Length({ minutes, onChange }: { minutes: number; onChange: (m: number) => void }) {
   const options = [...new Set<number>([...LENGTHS, minutes])].sort((a, b) => a - b).map((m) => ({ value: String(m), label: lengthLabel(m) }));
   return <Segmented value={String(minutes)} onChange={(v) => onChange(Number(v))} options={options} label="How long" />;
@@ -229,6 +271,7 @@ export function When({ draft, change, guests, team, wide, onWide, back, onNext }
         <div className={cn(wide && 'cf-split')}>
           <div className="min-w-0">
             <Times times={times} shown={shown} on={ticked} onPick={pick} />
+            {!offer && chosen && <StartEnd at={chosen} minutes={draft.minutes} onChange={(c) => change({ at: c.at, minutes: c.minutes })} />}
             <div className="cf-bar">
               <Length minutes={draft.minutes} onChange={(minutes) => change({ minutes })} />
               {!wide && !offer && <button type="button" className="lk" onClick={() => onWide(true)}>Pick another time</button>}

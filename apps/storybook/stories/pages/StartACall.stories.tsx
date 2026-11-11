@@ -41,6 +41,15 @@ const priyaAndKofi: Step = async (ctx) => {
   await adding('Kof', /^Kofi Asante/, 'Then Kofi')(ctx);
 };
 const findATime = press('Find a time', 'Find a time. Three times that work, the best already picked');
+/** Types a time into the line under the cards, and leaves the field, which is when it counts. */
+const typing = (label: 'Starts' | 'Ends', time: string, said: string): Step => async ({ userEvent, step }) => {
+  await step(said, async () => {
+    const field = await screen.findByLabelText(label, {}, { timeout: 8000 });
+    await userEvent.clear(field);
+    await userEvent.type(field, time);
+    await userEvent.tab();
+  });
+};
 const useIt = press(/^Use /, 'Use the time picked. Details reads like the finished call');
 
 export const Choice = page('/home', 'busy', { play: playing(open) });
@@ -55,6 +64,18 @@ export const WhoOnAFirstDay = page('/home', 'first-day', { play: playing(open, l
 /** When: three times when everyone's free, soonest first, the best one picked. */
 export const When = page('/home', 'busy', { play: playing(open, later, priyaAndKofi, findATime) });
 export const WhenPhone = phone(When);
+/**
+ * The time picked, typed: a start at 10:15 moves the call on its day and keeps its length, and an end at 11:30 makes it
+ * 1 h 15 min, which shows beside the three lengths. The card for 10:15 takes the place of the last suggestion.
+ */
+export const TypedTimes = page('/home', 'busy', {
+  play: playing(open, later, priyaAndKofi, findATime, typing('Starts', '10:15', 'Type a start, 10:15, and leave the field'), typing('Ends', '11:30', 'Type an end, 11:30, and leave the field'))
+});
+export const TypedTimesPhone = phone(TypedTimes);
+/** An end before the start can't be used: it says why under the line, and the time picked stays as it was. */
+export const TypedTimeRefused = page('/home', 'busy', {
+  play: playing(open, later, priyaAndKofi, findATime, typing('Ends', '08:00', 'Type an end before the start, 08:00, and leave the field'))
+});
 /** With no calendar connected, the times are open working hours: a different easy hour on each of the next working days, soonest first. */
 export const WhenWithoutACalendar = page('/home', 'busy', { beforeEach: changing(noCalendar), play: playing(open, later, priyaAndKofi, findATime) });
 /** Reading the calendars takes a while. */
