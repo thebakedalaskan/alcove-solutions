@@ -2,7 +2,7 @@
  * Journeys through a board in the call (user-flows 6, A board in the call), numbered after the call's own (06), in the
  * whiteboards canvas's words. A board opens on your stage just for you, from Board at the top right: a new one, which is the
  * board in the call, or one your team already has. Present, on its frame's bar, brings everyone. Then working on it together,
- * beside a shared screen, the organizer closing someone's for everyone, its timer and votes, how the call helps: ideas from
+ * beside a shared screen, the organizer closing someone's for everyone, its votes, how the call helps: ideas from
  * what's said, and Sort into themes, and all of it on a phone. You're Art, the organizer, in the design review with Priya,
  * Kofi and Aiko, who fill the board in the call as they talk (stories/calls/boards.ts); their side is the script's.
  */
@@ -145,7 +145,7 @@ export const OpenASavedBoard: PageStory = {
     await step('Let them in for this call: everyone can work on it until the call ends, and after that, Sam can’t again. Everyone follows you on it', async () => {
       // Present's question isn't a menu whose rows move: it takes a press once its button can be pressed.
       await userEvent.click(await pressable('button', 'Let them in for this call'));
-      await screen.findByText('Everyone follows you on Onboarding flow. They can unfollow to add to it.', {}, LATER);
+      await screen.findByText('Everyone follows you on Onboarding flow. They can add to it as you go.', {}, LATER);
     });
   }
 };
@@ -223,8 +223,8 @@ export const CloseItForEveryone: PageStory = {
   }
 };
 
-export const TimerAndVotes: PageStory = {
-  name: '6.18 Timer and votes',
+export const Votes: PageStory = {
+  name: '6.18 Votes',
   ...review({ cues: at(1, opensBoard(PRIYA, 'retro')) }),
   play: async (c) => {
     const { userEvent, step } = c;
@@ -232,17 +232,10 @@ export const TimerAndVotes: PageStory = {
       await openTheCallsBoard(c);
       await screen.findByText('Refresh staging every night', {}, LATER);
     });
-    await step('You want five quiet minutes. Timer, on the board’s bar: three lengths and Start, and no form', async () => {
-      await userEvent.click(await screen.findByRole('button', { name: 'Timer' }, SOON));
-    });
-    await step('Start: one pill at the top of the board, the same for everyone. It chimes softly at the end', async () => {
-      await userEvent.click(await screen.findByRole('button', { name: 'Start' }, SOON));
-      await screen.findByText('Add your stickies', {}, SOON);
-    });
-    await step('Vote: it votes on the frame you’re looking at, and nobody sees a count until you end it', async () => {
+    await step('Vote: it votes on the frame you’re looking at, which it names, and nobody sees a count until you end it', async () => {
       await userEvent.click(await screen.findByRole('button', { name: 'Vote' }, SOON));
     });
-    await step('Start the vote, then press a sticky: each press spends a vote and shows a dot only you can see', async () => {
+    await step('Start the vote: everyone in the call who can open the board is told, with Vote. Press a sticky: each press spends a vote and shows a dot only you can see', async () => {
       await userEvent.click(await screen.findByRole('button', { name: 'Start the vote' }, SOON));
       await screen.findByText(/votes left/, {}, SOON);
       await userEvent.click(await screen.findByText('Nobody owned the status page', {}, SOON));
@@ -331,13 +324,8 @@ export const OnAPhone: PageStory = {
       await userEvent.click(await screen.findByRole('button', { name: 'Add both' }, SOON));
       await screen.findByText('Added 2 stickies from the call.', {}, SOON);
     });
-    await step('Timer and Vote are on the board’s bar on a phone too. Tap Timer, then Start: everyone sees it count down', async () => {
-      // Timer's and Vote's menus keep the same rows while they're open, so they take a press as soon as it's there.
-      await userEvent.click(await screen.findByRole('button', { name: 'Timer' }, SOON));
-      await userEvent.click(await screen.findByRole('button', { name: 'Start' }, SOON));
-      await screen.findByText('Add your stickies', {}, SOON);
-    });
-    await step('Tap Vote, then Start the vote. A tap on a sticky votes for it, and another takes it back', async () => {
+    await step('Vote is on the board’s bar on a phone too. Tap Vote, then Start the vote. A tap on a sticky votes for it, and another takes it back', async () => {
+      // Vote's menu keeps the same rows while it's open, so it takes a press as soon as it's there.
       await userEvent.click(await screen.findByRole('button', { name: 'Vote' }, SOON));
       await userEvent.click(await screen.findByRole('button', { name: 'Start the vote' }, SOON));
       await screen.findByText(/3 of 3 votes left/, {}, SOON);

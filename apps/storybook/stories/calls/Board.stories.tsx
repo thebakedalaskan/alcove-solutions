@@ -4,15 +4,14 @@
  * light theme, light on the night stage; Priya presenting it, closed for you, its tile taking you back; Priya's shared screen
  * as a tile while Kofi presents it, Show beside and P; a board you can't open; closed for everyone, by Priya or by you, moved to
  * Trash or its workspace deleted; a share taking your stage
- * from it; how it stands when its connection drops (Reconnecting) and when Alcove won't take what you add (Couldn't save); its
- * timer, running and in its last minute; a vote, from a press or the keyboard, and its results; and the one pill, which shows the
- * most pressing thing. Everyone else's browser is the script's (stories/calls/boards.ts): who opens it, what they put on it,
+ * from it; how it stands when its connection drops (Reconnecting) and when Alcove won't take what you add (Couldn't save); a
+ * vote, from a press or the keyboard, and its results; and the one pill, which shows the most pressing thing. Everyone else's browser is the script's (stories/calls/boards.ts): who opens it, what they put on it,
  * where their pointer is, and how they vote.
  */
 import type { Meta } from '@storybook/react-vite';
 import { screen, within } from 'storybook/test';
-import { at, clearsVote, closesBoard, deletesBoardWorkspace, endsVote, opensBoard, presentsBoard, shares, startsTimer, startsVote, trashesBoard, type CallScript, type Cue, type Present } from '../../src/api/script';
-import { inCall, light, phone, plays } from '../../src/call';
+import { at, clearsVote, closesBoard, deletesBoardWorkspace, endsVote, opensBoard, presentsBoard, shares, startsVote, trashesBoard, type CallScript, type Cue, type Present } from '../../src/api/script';
+import { inCall, light, phone, plays, press } from '../../src/call';
 import { pages, type PageArgs, type PageStory } from '../../src/page';
 import { RETRO, filledAfter, retroWith } from './boards';
 import { LATER, SOON, boardPicker, close, closeFor, frameMenu, frameOf, openCallBoard, settle, tileOf, toldThat, type Context, type Play } from './plays';
@@ -54,6 +53,22 @@ export const OpenLight = light(Open);
 
 /** Its name's menu, on its frame: Rename, Open where it's saved, Who can add to it, Copy link, Download as an image or a PDF, and Night board. */
 export const TheNameMenu = review(at(1, opensBoard(PRIYA, 'retro')), retroWith(4), onIt(step('Press the board’s name, on its frame', (c) => frameMenu(c, BOARD))));
+/**
+ * Night board, from its name's menu: the moon, ticked while it's on, as the board bar's More shows it. A toast says what changed
+ * and for whom, since in a dark theme your own board was already dark.
+ */
+const nightFromItsName = onIt(
+  step('Press the board’s name, then Night board: the board is dark for everyone, whatever their theme, and a toast says so', async (c) => {
+    await c.userEvent.click(within(await frameMenu(c, BOARD)).getByRole('menuitemcheckbox', { name: 'Night board' }));
+    await toldThat('Night board is on. The board is dark for everyone, whatever their theme.', SOON);
+  }),
+  step('The name’s menu again: Night board is ticked', async (c) => {
+    await settle();
+    await within(await frameMenu(c, BOARD)).findByRole('menuitemcheckbox', { name: 'Night board', checked: true }, SOON);
+  })
+);
+export const NightBoardFromItsName = review(at(1, opensBoard(PRIYA, 'retro')), retroWith(4), { ...nightFromItsName, name: 'Night board, from its name', globals: { theme: 'dark' } });
+export const NightBoardFromItsNameLight = light(NightBoardFromItsName, 'Night board, from its name, in a light theme');
 /** Its seal says what's true of this board: everyone in the call can add to it, where it's saved, and that it’s encrypted in storage. */
 export const TheSeal = review(at(1, opensBoard(PRIYA, 'retro')), retroWith(4), onIt(step('Press Sealed, on the board’s bar', async (c) => {
   await c.userEvent.click(await screen.findByRole('button', { name: 'Sealed' }, LATER));
@@ -202,14 +217,22 @@ export const CouldntSave: PageStory = {
 };
 export const CouldntSavePhone = phone(couldntSave(), 'Couldn’t Save Phone');
 
-/* ---------- its timer and vote ---------- */
+/* ---------- the call's timer over it ---------- */
 
-/** Priya starts a five-minute timer: one pill at the top of the board, the same for everyone, counting down. */
-export const TimerRunning = review([...at(1, opensBoard(PRIYA, 'retro')), ...at(3, startsTimer(PRIYA, 5))], retroWith(4), onIt());
-export const TimerRunningPhone = phone(TimerRunning);
-/** Its last minute: the pill turns amber, and the call chimes once, softly, at the end. */
-export const TimerNearItsEnd = review([...at(1, opensBoard(PRIYA, 'retro')), ...at(2, startsTimer(PRIYA, 5, 50))], retroWith(4), onIt());
-export const TimerNearItsEndPhone = phone(TimerNearItsEnd);
+/**
+ * A board has no timer of its own: the call's one countdown stays in the top bar over it, the same second for everyone, and the
+ * host's Timer opens it there. Five minutes, 78 seconds gone.
+ */
+const countingDown = (more: Omit<PageStory, 'args'>): PageStory => inCall({
+  scenario: 'call-soon', call: REVIEW,
+  script: { here: REVIEWERS, notes: 'off', talk: { lines: REVIEW_TALK, every: 6 }, board: RETRO, cues: at(1, opensBoard(PRIYA, 'retro')), timer: { id: 'review-timer', revision: 0, durationSeconds: 300, status: 'running', elapsedMs: 78_000, startedAt: 0 } }
+}, more);
+export const TheCallsTimerOverIt = countingDown(onIt());
+export const TheCallsTimerOverItPhone = phone(TheCallsTimerOverIt);
+/** In focus, the countdown stands over the stage at the top left, beside the board filling the window. */
+export const TheCallsTimerOverItInFocus = countingDown(onIt(press('Fill your window with it')));
+
+/* ---------- its vote ---------- */
 
 /** Priya starts a vote on Could improve: each press on a sticky there spends one of your votes and shows a dot only you can see. Nobody sees a count. */
 export const Voting = review([...at(1, opensBoard(PRIYA, 'retro')), ...at(1 + filledAfter() + 1, startsVote(PRIYA, 'Could improve', 3))], RETRO, onIt(async ({ canvas, userEvent, step }) => {
@@ -238,22 +261,49 @@ export const VotingFromTheKeyboard = review([...at(1, opensBoard(PRIYA, 'retro')
     await canvas.findByText('2 of 3 votes left', {}, SOON);
   });
 }));
+/**
+ * Priya starts a vote while the board isn't on your stage: the call tells you, by whom, with Vote, which opens it on your stage on
+ * the vote's frame. Everyone in the call who can open the board is told, whether or not they have it open.
+ */
+export const ToldAVoteStarted = review([...at(1, opensBoard(PRIYA, 'retro')), ...at(1 + filledAfter() + 1, startsVote(PRIYA, 'Could improve', 3))], RETRO, {
+  name: 'Told a vote started',
+  play: async ({ userEvent, step }) => {
+    await step('Priya starts a vote on the board in the call, which isn’t on your stage: you’re told, with Vote', async () => {
+      await toldThat(`Priya started a vote on ${BOARD}.`);
+    });
+    await step('Press Vote: the board opens on your stage, on Could improve, with your votes to give', async () => {
+      await userEvent.click(await screen.findByRole('button', { name: 'Vote' }, SOON));
+      await screen.findByText('3 of 3 votes left', {}, LATER);
+    });
+  }
+});
+export const ToldAVoteStartedPhone = phone(ToldAVoteStarted);
+/** Two frames share a name, as after Templates › Retro a second time: the vote's menu says which, as the board glides to it. */
+export const VotingOnOneOfTwo = review(at(1, opensBoard(PRIYA, 'retro')), RETRO, { name: 'Voting on one of two frames with one name', ...onIt(async ({ userEvent, step }) => {
+  await step('More, Templates, Retro: a second retro beside the first, and your view goes to it', async () => {
+    await userEvent.click(await screen.findByRole('button', { name: /^More: / }, SOON));
+    await userEvent.click(await screen.findByRole('button', { name: 'Templates' }, SOON));
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Retro' }, SOON));
+    await settle();
+  });
+  await step('Vote: its menu names the frame in the middle of your view, the second Could improve of two', async () => {
+    await userEvent.click(await screen.findByRole('button', { name: 'Vote' }, SOON));
+    await screen.findByRole('dialog', { name: 'Vote on Could improve, the second of two' }, SOON);
+  });
+}) });
 /** Priya ends it: every count appears at once, for everyone, the top three stay bright and the rest step back. */
 export const Results = review([...at(1, opensBoard(PRIYA, 'retro')), ...at(1 + filledAfter() + 1, startsVote(PRIYA, 'Could improve', 3)), ...at(1 + filledAfter() + 4, endsVote(RETRO.votes ?? {}, 3))], RETRO, onIt());
 export const ResultsPhone = phone(Results);
 
 /**
- * The pill shows one thing at a time, the most pressing: a timer runs, following Priya goes over it, her vote goes over that
- * and then its results, and as each goes, the one under it comes back.
+ * The pill shows one thing at a time, the most pressing: following Priya, her vote goes over it and then its results, and as
+ * each goes, the one under it comes back.
  */
 export const ThePillOrder = review([
-  ...at(1, opensBoard(PRIYA, 'retro')), ...at(3, startsTimer(PRIYA, 10)),
-  ...at(18, startsVote(PRIYA, 'Could improve', 3)), ...at(24, endsVote(RETRO.votes ?? {}, 3)), ...at(30, clearsVote())
+  ...at(1, opensBoard(PRIYA, 'retro')), ...at(18, startsVote(PRIYA, 'Could improve', 3)), ...at(24, endsVote(RETRO.votes ?? {}, 3)), ...at(30, clearsVote())
 ], RETRO, onIt(async ({ canvas, userEvent, step }) => {
-  await step('A timer runs: the pill shows it', async () => {
-    await canvas.findByText('Add your stickies', {}, LATER);
-  });
-  await step('Press Priya’s tile, then Follow Priya: following goes over the timer', async () => {
+  await step('Press Priya’s tile, then Follow Priya: the pill says so', async () => {
+    await canvas.findByText('Nobody owned the status page', {}, LATER);
     await userEvent.click(await canvas.findByRole('group', { name: /^Priya/ }, SOON));
     await userEvent.click(await screen.findByRole('button', { name: 'Follow Priya' }, SOON));
     await canvas.findByText('Following Priya', {}, SOON);
@@ -264,9 +314,9 @@ export const ThePillOrder = review([
   await step('She ends it: its results go over following', async () => {
     await canvas.findByText('Results', {}, LATER);
   });
-  await step('She’s done with them: following comes back. Stop, and the timer is what’s left', async () => {
+  await step('She’s done with them: following comes back, and Stop takes you back to your own view', async () => {
     await canvas.findByText('Following Priya', {}, LATER);
     await userEvent.click(await canvas.findByRole('button', { name: 'Stop' }, SOON));
-    await canvas.findByText('Add your stickies', {}, SOON);
+    await screen.findByText('Back to your own view.', {}, SOON);
   });
 }));

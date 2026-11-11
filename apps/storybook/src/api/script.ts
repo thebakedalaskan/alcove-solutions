@@ -10,7 +10,7 @@ import type { CallTimer } from '@alcove/api';
  * story opened. Everyone in a script is from the demo world, and everything they say is made up.
  */
 import {
-  CALL_REACT_TOPIC, RING_SECONDS, type AiModels, type CallNudgeKind, type CallStatusKind, type CallStatusMinutes, type BoardTemplate, type BoardTimerMinutes, type BoardVotesEach, type BreakoutBoard, type CallCard, type CallReaction, type CallReactMessage, type CallPage, type CaptureMode, type CapturePart, 
+  CALL_REACT_TOPIC, RING_SECONDS, type AiModels, type CallNudgeKind, type CallStatusKind, type CallStatusMinutes, type BoardTemplate, type BoardVotesEach, type BreakoutBoard, type CallCard, type CallReaction, type CallReactMessage, type CallPage, type CaptureMode, type CapturePart, 
   type CaptureState, type LiveFollowUp, type IncomingRing, type Meeting, type Person, type RingReply
 } from '@alcove/api';
 import type * as Y from 'yjs';
@@ -161,11 +161,9 @@ export type Beat =
   | { do: 'trash-board'; folder?: boolean | undefined }
   | { do: 'delete-board-workspace' }
   /**
-   * The board's timer and vote, run by someone else: a timer (`left`: seconds still to go, for one near its end), a vote on a
-   * frame by its title (null: every sticky), ended with everyone else's votes by what each sticky says, and cleared.
+   * The board's vote, run by someone else: a vote on a frame by its title (null: every sticky), ended with everyone else's votes
+   * by what each sticky says, and cleared.
    */
-  | { do: 'start-timer'; who: Person; minutes: BoardTimerMinutes; left?: number | undefined }
-  | { do: 'stop-timer' }
   | { do: 'start-vote'; who: Person; frame: string | null; per: BoardVotesEach }
   | { do: 'end-vote'; votes: Readonly<Record<string, number>>; voters: number }
   | { do: 'clear-vote' }
@@ -290,9 +288,6 @@ export const trashesBoard = (o: { folder?: boolean } = {}): Beat => ({ do: 'tras
 /** Someone deletes the workspace the board where you are is kept in: it leaves the call, and its connection says it was deleted. */
 export const deletesBoardWorkspace = (): Beat => ({ do: 'delete-board-workspace' });
 export const hears = (...ideas: HeardIdea[]): Beat => ({ do: 'heard', ideas });
-/** Someone starts the board's timer: `left` seconds to go, if it started a while ago. */
-export const startsTimer = (who: Person, minutes: BoardTimerMinutes, left?: number): Beat => ({ do: 'start-timer', who, minutes, left });
-export const stopsTimer = (): Beat => ({ do: 'stop-timer' });
 /** Someone starts a vote on the frame with this title (null: on every sticky), with `per` votes each. */
 export const startsVote = (who: Person, frame: string | null, per: BoardVotesEach = 3): Beat => ({ do: 'start-vote', who, frame, per });
 /** The vote ends: everyone else's votes, by what each sticky says, and how many of them voted. Yours count too. */

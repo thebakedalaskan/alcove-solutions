@@ -163,7 +163,7 @@ export const WorkspaceFromNotes: PageStory = {
 const retro = 'Launch retro';
 const openRetro = step('Press Board, then Launch retro, from your team’s boards: it opens just for you', async (c) => { await pickBoard(c, retro); await frameOf(retro); });
 const presentRetro = step('Press Present on its bar: everyone follows you, and its foot steps through its frames', (c) => present(c, retro));
-const boardOn = `Everyone follows you on ${retro}. They can unfollow to add to it.`;
+const boardOn = `Everyone follows you on ${retro}. They can add to it as you go.`;
 const presented = [openRetro, presentRetro, step('Everyone follows you', () => toldThat(boardOn))];
 const nextFrame = step('Press Next frame, at its foot: everyone following you moves with you', async (c) => {
   await c.userEvent.click(await screen.findByRole('button', { name: 'Next frame' }, LATER));

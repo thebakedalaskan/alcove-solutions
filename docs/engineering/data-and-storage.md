@@ -775,10 +775,11 @@ readable.
   (`tries`). Open rooms keep what they were opened with to work on (`breakouts.open.board`), and a room's board keeps its call
   as an item (`StoredItem.room`) until the call has kept it for everyone invited, so it isn't stranded meanwhile; then the mark
   goes, and it's a restricted board like any other. It all goes when the call ends. A call stored before boards were kept reads
-  as having none, an open board stored before timers and votes reads as having neither, rooms open from before rooms had boards
+  as having none, an open board stored before votes reads as having none, and one stored with a board timer, which boards no
+  longer have, keeps it only until it's next saved, unread; rooms open from before rooms had boards
   read as having none to work on, a landing stored before its tries were counted reads as having failed none, and an item from
   before reads as nobody's room's ([Calls and recordings › A board in a call](calls-and-recordings.md#a-board-in-a-call),
-  [A board's timer and vote](calls-and-recordings.md#a-boards-timer-and-vote)).
+  [A board's vote](calls-and-recordings.md#a-boards-vote)).
 - **Series.** What a series carries over isn't stored: it's read on each request from the meetings that share its
   ID and the notes the reader has ([Notes and inference › Series](notes-and-inference.md#series)). What a later call
   came back to is in that later note's manifest (`revisits`), and notes written before it read as having none. One scheduled to

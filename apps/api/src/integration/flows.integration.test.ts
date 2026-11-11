@@ -3703,8 +3703,8 @@ describe('privacy at rest', () => {
     await settle(boardHost, (s) => s.waiting.some((w) => w.id === boardGuest.ticket.identity));
     await boardHost.admit(boardGuest.ticket.identity);
     expect((await settle(boardGuest, (s) => s.board.open?.role === 'edit')).board.open?.name).toBe('CANARY-BOARDCALL merger');
-    // A vote on that board, with its timer running: the frame and sticky are drawn as a browser draws them, the server reads the
-    // board for each vote, and keeps who voted for what with the call. None of it is readable, nor the board's own IDs for them.
+    // A vote on that board: the frame and sticky are drawn as a browser draws them, the server reads the board for each vote, and
+    // keeps who voted for what with the call. None of it is readable, nor the board's own IDs for them.
     const voteBoard = boardHost.getSnapshot().board.open;
     const drawing = await c.api.workspaces.document(voteBoard?.workspaceId ?? '', voteBoard?.documentId ?? '');
     await drawing.ready;
@@ -3712,7 +3712,6 @@ describe('privacy at rest', () => {
     const voteSticky = addObject(drawing.doc, { k: 'note', x: 20, y: 20, w: 150, h: 150, c: 'rose', size: 'm', t: 'CANARY-VOTESTICKY' }, 'drawn') ?? '';
     for (const id of [voteFrame, voteSticky]) expect(id).toMatch(/^[A-Za-z0-9_-]{12}$/);
     await until(async () => drawing.getSnapshot().status === 'saved', 'the vote’s board to reach Alcove');
-    await boardHost.startTimer(5);
     await boardHost.startVote(voteFrame, 3);
     await boardHost.castVote(voteSticky);
     await boardGuest.castVote(voteSticky);

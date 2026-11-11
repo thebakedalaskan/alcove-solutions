@@ -22,10 +22,14 @@
 .bz { position: relative; display: flex; gap: 10px; width: 100%; height: 100%; min-width: 0; }
 .bz > .bd { min-width: 0; }
 .bz .bd { flex: 1; }
-.bz-rail { flex: none; flex-direction: column; align-self: center; gap: 2px; padding: 5px; transition: opacity var(--duration-2) var(--ease-out); animation: bz-rail var(--duration-3) var(--ease-out) both; }
+/*
+ * Each tool's fill, picked or under the pointer, follows the rail's corner with the same gap all the way round: the rail's
+ * radius is the tool's plus the padding between them, both tokens, so the two stay concentric at either end.
+ */
+.bz-rail { flex: none; flex-direction: column; align-self: center; gap: 2px; padding: var(--space-1); border-radius: calc(var(--radius-md) + var(--space-1)); animation: bz-rail var(--duration-3) var(--ease-out) both; }
+.bz-rail .ac-dock-btn { border-radius: var(--radius-md); }
 .bz-rail .ac-dock-btn[aria-pressed="true"] { background: color-mix(in srgb, var(--stage-sun) 16%, transparent); color: var(--stage-sun); }
 .bz-rail .ac-dock-sep { width: 24px; height: 1px; margin: 3px 0; }
-.bz-rail.is-faded { opacity: 0; pointer-events: none; }
 
 /* On a board's own page there's no night around it, so the rail turns to day. */
 .bz.is-page { padding: 12px; background: var(--ground); }
@@ -236,9 +240,8 @@
 
 /* ---------------------------------------------------------------- the bar along the top */
 /* Everything about the board that isn't a tool: frosted, its name as a heading, and the seal as the app shows it. */
-.bd-head { position: absolute; z-index: 11; left: 0; right: 0; top: 0; display: flex; align-items: center; gap: 2px; height: 46px; padding: 0 8px 0 6px; background: var(--bd-bar); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); box-shadow: 0 1px 0 var(--bf-ring); color: var(--ink-2); container-type: inline-size; transition: opacity var(--duration-2) var(--ease-out); }
-.bd-head.is-faded { opacity: 0; pointer-events: none; }
-/* The bar fades in as it comes, as it does when a presentation gives someone their own view back. */
+.bd-head { position: absolute; z-index: 11; left: 0; right: 0; top: 0; display: flex; align-items: center; gap: 2px; height: 46px; padding: 0 8px 0 6px; background: var(--bd-bar); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); box-shadow: 0 1px 0 var(--bf-ring); color: var(--ink-2); container-type: inline-size; }
+/* The bar fades in as it comes. */
 .bd-head { animation: bd-fade var(--duration-2) var(--ease-out) backwards; }
 .bd-head .sp { flex: 1; min-width: 8px; }
 .bd-head .nm { display: inline-flex; align-items: center; gap: 7px; min-width: 0; height: 34px; padding: 0 7px; border-radius: 9px; font: 450 19px/1 var(--font-display); letter-spacing: -.012em; font-variation-settings: 'opsz' 20; color: var(--ink); white-space: nowrap; }
@@ -254,8 +257,8 @@
 .bd-head .sv .ac-i { flex: none; color: var(--sun-text); }
 .bd-head .bt { width: 34px; height: 34px; border-radius: 9px; }
 .bd-head .vr { flex: none; width: 1px; height: 20px; margin: 0 5px; background: var(--bf-ring); }
-.bd-head .pct { flex: none; min-width: 44px; height: 34px; border-radius: 9px; text-align: center; font: 500 12px/34px var(--font-sans); font-variant-numeric: tabular-nums; color: var(--ink-2); }
-.bd-head .pct:hover { background: var(--sunk); }
+/* How near you are, beside Show everything: a readout. */
+.bd-head .pct { flex: none; min-width: 44px; height: 34px; text-align: center; font: 500 12px/34px var(--font-sans); font-variant-numeric: tabular-nums; color: var(--ink-2); }
 /*
  * The tools always stay on the sheet. A long name gives way first, and the seal stays whole. A bar with all its tools (`is-full`)
  * can still be tight: there the name is capped and the two share what's left, and the seal keeps the width of the word "Sealed",
@@ -265,8 +268,8 @@
 @container (max-width: 640px) { .bd-head .nm .ac-i:first-child { display: none; } }
 @container (max-width: 600px) { .bd-head .sv { min-width: 0; } .bd-head .sv span { display: none; } }
 /*
- * Narrow, as on a phone: the name, the seal, the session's Timer and Vote and More stay, and the name keeps room to be read;
- * undo, zoom and the map go, as a pinch zooms. On a board's own page, the page's own button comes in close.
+ * Narrow, as on a phone: the name, the seal, Show everything, Vote and More stay, and the name keeps room to be read; undo, the
+ * zoom and the map go, as a pinch zooms. On a board's own page, the page's own button comes in close.
  */
 @container (max-width: 480px) { .bd-head .zm, .bd-head .pct, .bd-head .ur { display: none; } .bd-head .vr { margin: 0 2px; } .bd-head .nm { min-width: 84px; } .bd-head .bpg-acts { margin-left: 2px; } }
 
@@ -288,8 +291,6 @@
  * up to the sheet's width: placed from the middle, it would otherwise have only half the sheet to fit in.
  */
 .bd-pill { position: absolute; z-index: 12; left: 50%; top: 58px; translate: -50% 0; display: inline-flex; align-items: center; gap: 9px; width: max-content; max-width: calc(100% - 24px); height: 38px; padding: 0 16px 0 13px; border-radius: 999px; background: var(--stage-raised); color: var(--stage-ink); font: 500 13.5px/1 var(--font-sans); white-space: nowrap; box-shadow: inset 0 0 0 1px rgb(255 255 255 / .1), 0 14px 28px -12px rgb(6 13 26 / .6); animation: bd-drop var(--duration-3) var(--ease-out) both; }
-/* With no bar, as when presenting, the pill comes up to the top. */
-.bd.is-clean:not(:has(.bd-head)) .bd-pill { top: 14px; }
 .bd-pill .ac-i { flex: none; color: var(--sun); transition: color var(--duration-2) var(--ease-out); }
 .bd-pill b { font-weight: 600; }
 /* What a pill says gives way before its title does, and the title is cut last of all. */
@@ -365,7 +366,9 @@
 .bp .mi { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 38px; padding: 0 10px; border-radius: 9px; font: 500 13.5px/1.2 var(--font-sans); color: var(--ink); text-align: left; }
 .bp .mi:hover { background: var(--sunk); }
 .bp .mi .ac-i { flex: none; color: var(--ink-2); }
-.bp .mi small { margin-left: auto; font: 500 12px/1 var(--font-sans); font-variant-numeric: tabular-nums; color: var(--ink-3); }
+/* A setting's tick, at the end of its line while it's on, as the call's menus show one. */
+.bp .mi .tick { margin-left: auto; color: var(--sun-text); opacity: 0; }
+.bp .mi[aria-pressed="true"] .tick { opacity: 1; }
 .bp .opts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; padding: 0 10px 10px; }
 .bp .opt { height: 40px; border-radius: 10px; font: 600 14px/1 var(--font-sans); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line-control); }
 .bp .opt[aria-pressed="true"] { background: color-mix(in srgb, var(--sun) 16%, transparent); color: var(--sun); box-shadow: inset 0 0 0 1.5px var(--sun); }
@@ -398,6 +401,8 @@
 }
 
 /* A blank board */
+/* Nothing on the board in view: the way back, in the middle of the sheet, under the bar and over nothing. */
+.bd-lost { position: absolute; z-index: 10; left: 50%; top: 50%; translate: -50% -50%; animation: bd-fade var(--duration-2) var(--ease-out) both; }
 .bd-empty { position: absolute; left: 50%; top: 50%; translate: -50% -50%; display: grid; justify-items: center; gap: 8px; text-align: center; pointer-events: none; color: var(--ink); transition: opacity var(--duration-2) var(--ease-out); }
 .bd-empty.is-faded { opacity: 0; }
 .bd-empty svg { margin-bottom: 8px; }

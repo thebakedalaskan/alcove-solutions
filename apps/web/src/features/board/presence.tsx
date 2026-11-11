@@ -322,12 +322,8 @@ function Pointer({ presence, peer, talking }: { presence: BoardPresenceStore; pe
   return <BoardPointer ref={hold} x={at.x} y={at.y} person={person} name={name} colour={colour} talking={talking} typing={typing} />;
 }
 
-/**
- * Everyone else's pointers, for `BoardWorld`'s `pointers`. With `only`, just that person's, by their call identity, or nobody's
- * for null: presenting, the frame on the sheet is all there is, and the presenter's pointer is all that moves over it.
- */
-export function BoardPointers({ presence, talking, only }: { presence: BoardPresenceStore; talking: ReadonlySet<string> | undefined; only?: string | null | undefined }) {
+/** Everyone else's pointers, for `BoardWorld`'s `pointers`. */
+export function BoardPointers({ presence, talking }: { presence: BoardPresenceStore; talking: ReadonlySet<string> | undefined }) {
   const pointers = useSyncExternalStore(presence.subscribe, presence.getPointers);
-  const shown = only === undefined ? pointers : pointers.filter((peer) => peer.person.id === only);
-  return shown.map((peer) => <Pointer key={peer.client} presence={presence} peer={peer} talking={talking?.has(peer.person.id) ?? false} />);
+  return pointers.map((peer) => <Pointer key={peer.client} presence={presence} peer={peer} talking={talking?.has(peer.person.id) ?? false} />);
 }

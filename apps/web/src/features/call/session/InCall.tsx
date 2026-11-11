@@ -35,7 +35,7 @@ import type { BoardPager } from '~/features/board/CallBoard';
 import { StandingPill, roomPills, type PillKind } from '~/features/board/pills';
 import { ENCRYPTED, standingOf, useChangesSinceSaved } from '~/features/board/standing';
 import { BoardLeaf, BoardMenuRows, BoardMine, BoardMini, loadBoard } from '~/features/call/boards/BoardStage';
-import { useBoardRun } from '~/features/call/boards/boardRun';
+import { useBoardRun, useVoteStarted } from '~/features/call/boards/boardRun';
 import { BOARD_SHOT_TOPIC, keepShot, shotHeard, shotNotice, useCallBoard, type SavedBoard } from '~/features/call/boards/callBoard';
 import { useCaptions } from '~/features/call/notes/captions';
 import { CamMenu, MicMenu } from '~/features/call/media/DevicePickers';
@@ -584,7 +584,7 @@ export function InCall({ session }: { session: CallSession }) {
     stageOpen('saved');
   }, [callBoardDoc]);
   const boardStatus = board.status;
-  const boardRun = useBoardRun(session, state, m.speakerId);
+  const boardRun = useBoardRun(session, state);
   /*
    * Your role on the open board changed, by Share in this call or anywhere else: the board's own document hears it first, so the
    * call is read again then, and the board turns read-only, or back, in a moment rather than at the next read.
@@ -856,7 +856,7 @@ export function InCall({ session }: { session: CallSession }) {
   });
   const toggleMine = useCallback(() => side.toggle('mine'), [side]);
   const boardPresenting = useBoardPresenting({
-    session, present: space.present, board, account: (account.data?.ownerId ?? null) !== null, following: stage.following('board'), onFollow: (on) => stage.setFollow('board', on),
+    session, present: space.present, presenter: presenterIn?.id ?? null, board, account: (account.data?.ownerId ?? null) !== null, following: stage.following('board'), onFollow: (on) => stage.setFollow('board', on),
     notesOpen: side.view === 'mine', onNotes: toggleMine, failed, notesFailed: (message) => work.act.say(wsToast.failed(message))
   });
   /* Your notes beside the board go with presenting it. */
@@ -1220,7 +1220,7 @@ export function InCall({ session }: { session: CallSession }) {
   /*
    * The rooms' time on the board, in its one pill: the room you're in, or how many rooms share the main board, and how long is
    * left. While that's the pill the board on the stage shows, it's said there, and the rooms line above says nothing more. While
-   * the board's pill says something more pressing (how it stands, a vote, following, the timer), the line says it: the board
+   * the board's pill says something more pressing (how it stands, a vote, following), the line says it: the board
    * hands up which kind it shows (`BoardPills`).
    */
   const roomsPill = roomPills(open ? { name: roomName, rooms: open.rooms.length, shared: open.board === 'shared', left } : null);
@@ -1432,10 +1432,18 @@ export function InCall({ session }: { session: CallSession }) {
         setActionTarget((was) => ({ id: target.id, request: (was?.request ?? 0) + 1 })); openSide('people');
       }
       else if (target.type === 'admission') { setActionTarget((was) => ({ id: target.identity, request: (was?.request ?? 0) + 1 })); openSide('people'); }
-      else if (target.type === 'timer') {
-        if (target.timer === 'call') setTimerOpen(true);
-        else { setSaved(null); loadBoard(); stageOpen('board'); setFront('board'); side.close(); setFocus(false); }
-      } else { setActionTarget((was) => ({ id: target.id, request: (was?.request ?? 0) + 1 })); openSide('people'); }
+      else if (target.type === 'timer') setTimerOpen(true);
+      else { setActionTarget((was) => ({ id: target.id, request: (was?.request ?? 0) + 1 })); openSide('people'); }
+    }
+  });
+  /* A vote started on the board in the call while it isn't on your stage: you're told, and Vote opens it there, on the vote's frame. */
+  useVoteStarted({
+    state, me: meId, place: myRoomId ?? MAIN_PLACE, settled, onStage: stage.on.includes('board'),
+    say: (text, onVote) => { toast(text, { icon: 'vote', action: { label: 'Vote', onClick: onVote }, ms: 12000, topic: 'board-vote' }); },
+    join: (frame) => {
+      setSaved(null); loadBoard(); stageOpen('board'); setFront('board'); side.close(); setFocus(false);
+      // Presented, opening it follows whoever presents; otherwise it goes to the vote's frame.
+      if (frame && !stage.presentedOf('board')) board.showFrame(frame);
     }
   });
   useEffect(() => { if (floating.error) toast('Floating call didn’t open. More says why.', { icon: 'pip' }); }, [floating.error, toast]);
@@ -1651,7 +1659,7 @@ export function InCall({ session }: { session: CallSession }) {
   const sayBoard = (text: string, icon: IconName) => { toast(text, { icon }); };
   /** Where whoever presents the board is, for the pager at its frame's foot. */
   const [pager, setPager] = useState<BoardPager | null>(null);
-  /** On a board being presented, the frame is everyone's: nobody goes to or follows anyone on it until they unfollow. */
+  /** On a board being presented, whoever presents it and everyone following them go to and follow nobody else on it until they unfollow. */
   const boardOnFrame = boardPresenting.present !== null && (boardPresenting.present.mine || boardPresenting.present.watching);
   const stageBoard = boardOpen && board.shown && !callOver ? {
     find: (p: StageParticipant) => (!boardOnFrame && !p.isMe && board.onBoard.has(p.id)

@@ -5,9 +5,9 @@
  * here is the design canvas's, written through the board package's own writes: a new board from each template, the launch retro
  * a few minutes in, the ideas before and after sorting, the onboarding flow and what three breakout rooms brought back.
  *
- * Everything on it works: double-click to add a sticky, drag, draw, undo, and the board's own More (a table, a mind map, a
- * template, Copy link, the downloads, Night board). The name and the seal's menus, Image, From your workspace and Start a call
- * here belong to what's round the board, so here they say they were pressed in the Actions panel.
+ * Everything on it works: double-click to write (text on open board, a sticky in a frame), drag, draw, undo, and the board's
+ * own More (a table, a mind map, a template, Copy link, the downloads, Night board). The name and the seal's menus, Image, From
+ * your workspace and Start a call here belong to what's round the board, so here they say they were pressed in the Actions panel.
  */
 import { BoardPhoneAdd, BoardPill, PresentedTile } from '@alcove/ui';
 import type { Meta } from '@storybook/react-vite';
@@ -17,7 +17,7 @@ import { did } from '../../src/component';
 import { AROUND, launchIdeas, launchRetro, onboardingFlow, retroWithComments, roomsBack, templateBoard } from '../../src/world/boards';
 import { PRIYA } from '../../src/world/people';
 
-const MODES = ['call', 'page', 'read', 'tile', 'present', 'phone'] as const;
+const MODES = ['call', 'page', 'read', 'tile', 'phone'] as const;
 const PHONE = { viewport: { value: 'phone', isRotated: false } };
 
 const meta = {
@@ -42,7 +42,7 @@ export default meta;
 export const InTheCall: BoardStory = { name: 'In the call' };
 export const InTheCallDark: BoardStory = { name: 'In the call, dark', globals: { theme: 'dark' } };
 
-/** A new board from Blank: one line says how to start, and fades after the first sticky. */
+/** A new board from Blank: one line says how to start, and fades after the first thing on it. A double-click there writes text. */
 export const Blank: BoardStory = { args: { board: () => ({ doc: templateBoard('blank') }), others: [], talking: [] } };
 /** A new board from Retro: Went well, Could improve and Actions, each saying what goes in it while it's empty. Double-click in one and a sticky appears in its colour. */
 export const Retro: BoardStory = { args: { board: () => ({ doc: templateBoard('retro') }), others: [], talking: [] } };
@@ -142,8 +142,6 @@ export const ViewOnlyThread: BoardStory = {
     });
   }
 };
-/** Presenting: no tools, no dots and no handles, just the frame on screen, as everyone sees it, fitted and in the middle with nothing of the next one at its edge. */
-export const Presenting: BoardStory = { args: { mode: 'present', focus: 'Went well', others: [], talking: ['art'] } };
 
 /**
  * While someone presents the board and it isn't on your stage, it's a tile with the people: a picture that keeps up, its name,
@@ -203,6 +201,60 @@ export const AddASticky: BoardStory = {
     });
     await step('Type what went well', async () => {
       await userEvent.keyboard('Beta sign-ups beat the plan');
+    });
+  }
+};
+
+/** Double-click on open board, in no frame: plain text, ready to type, with no box round it. Esc finishes it. */
+export const AddText: BoardStory = {
+  name: 'Add text',
+  args: { board: () => ({ doc: templateBoard('blank') }), others: [], talking: [] },
+  play: async ({ canvas, userEvent, step }) => {
+    await step('Double-click in the middle of the blank board', async () => {
+      const sheet = canvas.getByRole('application', { name: 'Launch retro' });
+      const r = sheet.getBoundingClientRect();
+      await userEvent.pointer({ keys: '[MouseLeft][MouseLeft]', target: sheet, coords: { clientX: r.x + r.width / 2, clientY: r.y + r.height / 3 } });
+    });
+    await step('Type a label, and Esc: it stays as text, with nothing round it', async () => {
+      await userEvent.keyboard('Launch plan');
+      await userEvent.keyboard('{Escape}');
+    });
+  }
+};
+
+/**
+ * Dragged off into empty space, nothing on the board is in view: the sheet offers Back to the board, which shows all of it again,
+ * as Show everything on the bar does (⇧1 too). It goes as soon as something's in view.
+ */
+export const LostAndBack: BoardStory = {
+  name: 'Lost, and back',
+  play: async ({ canvas, userEvent, step }) => {
+    await step('Hold Space and drag the board off to the left, twice: nothing on it is in view, and the sheet offers Back to the board', async () => {
+      const sheet = canvas.getByRole('application', { name: 'Launch retro' });
+      sheet.focus();
+      const r = sheet.getBoundingClientRect();
+      const y = r.y + r.height / 2;
+      await userEvent.keyboard('[Space>]');
+      for (let i = 0; i < 2; i += 1) {
+        await userEvent.pointer([{ keys: '[MouseLeft>]', target: sheet, coords: { clientX: r.right - 20, clientY: y } }, { coords: { clientX: r.x + 20, clientY: y } }, { keys: '[/MouseLeft]' }]);
+      }
+      await userEvent.keyboard('[/Space]');
+      await canvas.findByRole('button', { name: 'Back to the board' }, { timeout: 4000 });
+    });
+    await step('Press it: all of the board is in view again', async () => {
+      await userEvent.click(canvas.getByRole('button', { name: 'Back to the board' }));
+    });
+  }
+};
+
+/** On a phone, Show everything stays on the bar while the zoom gives way to a pinch: one press shows all of the board. */
+export const ShowEverythingOnAPhone: BoardStory = {
+  name: 'Show everything, on a phone',
+  args: { mode: 'phone' },
+  globals: PHONE,
+  play: async ({ canvas, userEvent, step }) => {
+    await step('Press Show everything, on the bar: all of the board, further out than a pinch goes', async () => {
+      await userEvent.click(await canvas.findByRole('button', { name: 'Show everything' }));
     });
   }
 };

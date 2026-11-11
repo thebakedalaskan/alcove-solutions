@@ -415,7 +415,8 @@ function statusOf(item: WorkspaceItem): DocStatus {
 /* ---------- who else is on a board ---------- */
 
 /** Someone else on a board in a call: their connection to the call, who they are, where their pointer is, and whether they're typing. */
-export interface OnTheBoard { callIdentity: string; person: Person; at: { x: number; y: number }; typing?: boolean | undefined }
+/** Someone on a board in a call: their pointer, and their view where it isn't round their pointer, as whoever presents it has. */
+export interface OnTheBoard { callIdentity: string; person: Person; at: { x: number; y: number }; typing?: boolean | undefined; view?: { x: number; y: number; z: number } | undefined }
 /** Who's on each board, by its ID, as the call that has it open puts them there. */
 const onBoards = new Map<string, readonly OnTheBoard[]>();
 /** Each open session of a board, told when that changes. */
@@ -438,9 +439,9 @@ const DRIFT_MS = 3_500;
  */
 function othersOn(item: WorkspaceItem, awareness: Awareness): () => void {
   const documentId = item.id;
-  const placed = (current().boards[documentId]?.here ?? []).map(({ who, x, y }) => ({ key: `world:${who.id}`, user: { id: who.id, name: who.name }, at: { x, y }, typing: false }));
+  const placed = (current().boards[documentId]?.here ?? []).map(({ who, x, y }) => ({ key: `world:${who.id}`, user: { id: who.id, name: who.name }, at: { x, y }, typing: false, view: null }));
   const inCall = (people: readonly OnTheBoard[]) => people.map((p) => ({
-    key: p.callIdentity, user: { id: p.person.id, name: p.person.name, callIdentity: p.callIdentity }, at: p.at, typing: p.typing ?? false
+    key: p.callIdentity, user: { id: p.person.id, name: p.person.name, callIdentity: p.callIdentity }, at: p.at, typing: p.typing ?? false, view: p.view ?? null
   }));
   let everyone = [...placed, ...inCall(onBoards.get(documentId) ?? [])];
   const theirs = new Map<string, Awareness>();
@@ -458,7 +459,7 @@ function othersOn(item: WorkspaceItem, awareness: Awareness): () => void {
       theirs.set(p.key, a);
       const d = ((beat + i) % 3) * 6;
       const at = { x: p.at.x + d, y: p.at.y + d / 2 };
-      a.setLocalState({ ...NO_PRESENCE, at, view: { x: at.x, y: at.y, z: 1 }, typing: p.typing, user: p.user });
+      a.setLocalState({ ...NO_PRESENCE, at, view: p.view ?? { x: at.x, y: at.y, z: 1 }, typing: p.typing, user: p.user });
       applyAwarenessUpdate(awareness, encodeAwarenessUpdate(a, [a.clientID]), 'standin');
     });
     beat += 1;

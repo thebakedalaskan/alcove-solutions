@@ -124,13 +124,7 @@ export class CallNotifications extends Box<CallNotificationState> {
       const deadline = timer.startedAt + timer.durationSeconds * 1000 - timer.elapsedMs;
       const stage = now >= deadline ? 'end' : 'warning';
       const at = stage === 'end' ? deadline : deadline - 30_000;
-      put('timers', { type: 'timer', timer: 'call', id: `${timer.id}:${timer.revision}` }, `timer:${timer.id}:${timer.revision}:${stage}`, Math.max(0, at), deadline + (stage === 'end' ? 30_000 : 0));
-    }
-    const board = state.board.timer;
-    if (board) {
-      const deadline = Date.parse(state.startedAt) + board.until * 1000;
-      const stage = now >= deadline ? 'end' : 'warning';
-      put('timers', { type: 'timer', timer: 'board', id: `${board.until}` }, `board-timer:${board.until}:${stage}`, Math.max(0, deadline - (stage === 'warning' ? 30_000 : 0)), deadline + (stage === 'end' ? 30_000 : 0));
+      put('timers', { type: 'timer', id: `${timer.id}:${timer.revision}` }, `timer:${timer.id}:${timer.revision}:${stage}`, Math.max(0, at), deadline + (stage === 'end' ? 30_000 : 0));
     }
     const waitingKeys = new Set(state.waiting.map((asker) => `admission:${asker.id}`));
     for (const key of this.firstSeen.keys()) if (!waitingKeys.has(key)) this.firstSeen.delete(key);

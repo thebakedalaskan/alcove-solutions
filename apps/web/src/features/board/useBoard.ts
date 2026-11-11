@@ -23,8 +23,8 @@ import { holdBoardKeys } from './keys';
 import { JustPut } from './landing';
 import { BoardOverlay } from './overlay';
 import type { PillKind } from './pills';
-import { MOUNT_ALL, NO_GUIDES, drawn, everything, hangsOff, reachHolds, reachOf, sameIds } from './selection';
-import { BOARD_LOOKS, type BoardFly, type BoardLook, type BoardMode, type BoardMoreItems, type BoardRunMenu, type BoardState } from './state';
+import { MOUNT_ALL, NO_GUIDES, drawn, everything, hangsOff, reachHolds, reachOf, sameIds, touches } from './selection';
+import { BOARD_LOOKS, type BoardFly, type BoardLook, type BoardMode, type BoardMoreItems, type BoardState } from './state';
 
 const log = rootLog.child({ component: 'board' });
 
@@ -51,7 +51,7 @@ function landingOf(arrived: readonly BoardObject[], frames: ReadonlySet<string>)
   return waits;
 }
 /** Whatever is open or under way over the sheet, closed. */
-const CLOSED = { fly: null, picking: false, menu: false, runMenu: null, barMenu: false, draft: null, lineFrom: null } satisfies Partial<BoardState>;
+const CLOSED = { fly: null, picking: false, menu: false, voteMenu: false, barMenu: false, draft: null, lineFrom: null } satisfies Partial<BoardState>;
 /** The tools with options to pick, which open as the tool is picked. */
 const OPTIONS: Partial<Record<BoardTool, BoardFly>> = { note: 'note', shape: 'shape', line: 'line', pen: 'pen' };
 /** What a board with nothing on it frames: the canvas's working space. */
@@ -60,13 +60,13 @@ const BLANK: Box = { x: 0, y: 0, w: 1160, h: 530 };
 const BARE_PAD: Pad = { l: 40, r: 40, t: 56, b: 40 };
 /** A frame filling the sheet, with room for its title. */
 const SLIDE_PAD: Pad = { l: 40, r: 40, t: 96, b: 40 };
-/** The frame you present: clear of the pager at its foot too (14 px up, 40 px tall), so its last sticky shows. */
-const PRESENTING_PAD: Pad = { ...SLIDE_PAD, b: 72 };
 /**
  * Clear of the bar and of the pill under it, with room for a frame's title above the frame: where a vote frames what it's on
  * (tools/run.tsx), and the top of whatever's framed while a pill shows.
  */
 export const CLEAR: Pad = { l: 36, r: 36, t: 136, b: 30 };
+/** A frame whoever presents steps to: clear of the bar and the pill, and of the pager at the frame's foot (14 px up, 40 px tall). */
+const PRESENTING_PAD: Pad = { ...CLEAR, b: 72 };
 /** A new table's columns and rows, in board units. */
 const TABLE = { col: 160, row: 48 } as const;
 /** What the bar takes at the top of the sheet, and the room `reveal` leaves at its edges, in pixels. */
@@ -83,6 +83,11 @@ const NEAR_EVERY_MS = 100;
 const REST_MS = 100;
 /** A moment past the transition's own end. */
 const SETTLE_MS = 20;
+/**
+ * What's said as Night board turns on or off: it changes the board for everyone, whatever their theme, so the person pressing it
+ * hears that even when their own dark theme shows them nothing changing.
+ */
+const NIGHT_SAID = { on: 'Night board is on. The board is dark for everyone, whatever their theme.', off: 'Night board is off. The board follows each person’s theme.' } as const;
 /** What's said when what someone is typing in is deleted under them. */
 const DELETED: Partial<Record<BoardObject['k'], string>> = { note: 'This sticky was deleted.', text: 'This text was deleted.', shape: 'This shape was deleted.', frame: 'This frame was deleted.' };
 
@@ -124,10 +129,8 @@ export class Board implements LiveStore<BoardState> {
   flushTyping: (() => void) | null = null;
   /** Where this person was when they started following, which is where Stop and Esc take them. */
   home: BoardPlace | null = null;
-  /** The camera is the board's to put: nothing this person does moves it. A presenter's own frame, as everyone sees it, is. */
-  still = false;
-  /** Told when this person takes the camera from a frame presented to them: they're looking around. */
-  onLook: (() => void) | undefined;
+  /** Told, as the board comes to rest, which of its outermost frames is in the middle of this person's view, or null for none. */
+  onRest: ((frame: string | null) => void) | undefined;
 
   private state: BoardState;
   private sheet: HTMLElement | null = null;
@@ -143,12 +146,8 @@ export class Board implements LiveStore<BoardState> {
   private framed = false;
   /** Nobody has moved the camera or changed anything yet, so a board that fills after it opens can frame what arrived. */
   private untouched = true;
-  /** The camera is a presentation's: on the frame presented, or everything, kept there as the sheet and the frame change. */
-  private presented = false;
-  /** The frame a presentation or a picture of one asks for, which may not have arrived yet. */
+  /** The frame a picture of the board asks for, which may not have arrived yet. */
   private wanted: string | null = null;
-  /** Where this person was before a presentation took their sheet, which is where they go back to after. */
-  private ownView: Camera | null = null;
   /** The kind of pill at the top of the sheet, if one shows: whatever's framed keeps clear of it. */
   private pill: PillKind | null = null;
   private frame = 0;
@@ -161,9 +160,9 @@ export class Board implements LiveStore<BoardState> {
     this.mode = mode;
     this.written = readBoard(doc);
     this.state = {
-      view: this.written, tool: 'select', colour: 'butter', shape: 'rect', line: 'elbow', pen: 'pen', fly: null, sel: [], edit: null, cell: null, picking: false, menu: false, runMenu: null, barMenu: false, night: boardNight(doc), hover: null,
-      draft: null, lineFrom: null, pressing: false, map: false, marquee: null, guides: NO_GUIDES, space: false, panning: false, glide: false, settling: NOTHING, landed: NOTHING, landing: NONE_LANDING,
-      near: null, following: null, slide: null, sorting: false, canUndo: false, canRedo: false
+      view: this.written, tool: 'select', colour: 'butter', shape: 'rect', line: 'elbow', pen: 'pen', fly: null, sel: [], edit: null, cell: null, picking: false, menu: false, voteMenu: false, barMenu: false, night: boardNight(doc), hover: null,
+      draft: null, lineFrom: null, pressing: false, map: false, marquee: null, guides: NO_GUIDES, space: false, panning: false, glide: false, lost: false, settling: NOTHING, landed: NOTHING, landing: NONE_LANDING,
+      near: null, following: null, watching: false, slide: null, sorting: false, canUndo: false, canRedo: false
     };
   }
 
@@ -226,18 +225,17 @@ export class Board implements LiveStore<BoardState> {
 
   private measure(sheet: HTMLElement): void {
     this.camera.resize(sheet.offsetWidth, sheet.offsetHeight);
+    this.noteLost();
     // Framed once it has a size, and again as that size settles, as the call makes room for it, until someone does something on it;
-    // drawn small or presented, whenever it changes.
-    if (!this.camera.width || (this.framed && !this.look.mini && !this.presented && !this.untouched)) return;
+    // drawn small, whenever it changes.
+    if (!this.camera.width || (this.framed && !this.look.mini && !this.untouched)) return;
     this.framed = true;
     this.fitShown(false, true);
   }
 
   setMode(mode: BoardMode): void {
     if (mode === this.mode) return;
-    const was = this.mode;
     this.mode = mode;
-    if (was === 'present' && mode !== 'present') this.ownAgain();
     if (this.canEdit) return;
     this.letGo();
     this.editTaken();
@@ -265,11 +263,11 @@ export class Board implements LiveStore<BoardState> {
 
   /**
    * What's landing, brought into view as it lands, as the board every room shares glides out to its rooms' frames: for someone
-   * whose view is still their own, not presented to, following anyone, or in the middle of something on the board.
+   * whose view is still their own, not following anyone, whoever presents included, or in the middle of something on the board.
    */
   private showLanding(): void {
     const { following, edit, pressing, view } = this.state;
-    if (this.look.mini || this.presented || this.still || following !== null || edit !== null || pressing || !this.camera.width) return;
+    if (this.look.mini || following !== null || edit !== null || pressing || !this.camera.width) return;
     const frames = [...this.landingFrames].filter((id) => view.byId.get(id)?.k === 'frame');
     if (frames.length) this.showFrames(frames);
   }
@@ -342,10 +340,11 @@ export class Board implements LiveStore<BoardState> {
     }
     // What first arrives on a board nobody's moved round yet, as a template or a saved board's content does just after it opens,
     // is framed as the canvas frames it, centred on what's there; and anything of yours that runs off the sheet is brought in.
-    // Drawn small or presented, what's shown is all there is.
-    if (this.look.mini || this.presented) this.fitShown(false);
+    // Drawn small, what's shown is all there is.
+    if (this.look.mini) this.fitShown(false);
     else if (!was.objects.length && this.untouched && (heard || !this.allInView(view))) this.fitAll(false, true);
     this.settleNear();
+    this.noteLost();
   };
 
   /* ---------- undo ---------- */
@@ -455,6 +454,7 @@ export class Board implements LiveStore<BoardState> {
 
   /** Picks a tool and opens its options. Picking it again closes them, and the tool stays, and again opens them: the pen stays picked, so that's how to reach the highlighter. */
   pickTool(tool: BoardTool): void {
+    this.ownView();
     this.letGo();
     this.finishEdit();
     const options = OPTIONS[tool] ?? null;
@@ -462,14 +462,23 @@ export class Board implements LiveStore<BoardState> {
     this.set({ ...CLOSED, tool, sel: [], hover: null, fly: tool === was && fly === options ? null : options });
   }
 
-  /** Night board: makes the board dark in any theme, for everyone, or lets it follow each person's theme again. */
+  /** Night board, from the bar's More: makes the board dark in any theme, for everyone, or lets it follow each person's theme again. */
   toggleNight(): void {
-    if (!this.canAdd) return;
-    setNight(this.doc, !this.state.night, this.origin);
+    if (this.canAdd) this.nightBoard(!this.state.night);
+  }
+
+  /**
+   * Night board on or off, for everyone, and what that did said to whoever pressed it, the same from either menu. It's for whoever
+   * can change the board, which whoever offers it makes sure of.
+   */
+  nightBoard(on: boolean): void {
+    setNight(this.doc, on, this.origin);
+    this.tell(on ? NIGHT_SAID.on : NIGHT_SAID.off, { icon: 'moon', topic: 'board-night' });
   }
 
   /** More, beside the rail. */
   toggleMore(): void {
+    this.ownView();
     this.set({ fly: this.state.fly === 'more' ? null : 'more' });
   }
 
@@ -484,8 +493,8 @@ export class Board implements LiveStore<BoardState> {
 
   /** A press on the sheet closes whatever is open over it. */
   closeOver(): void {
-    const { fly, picking, menu, runMenu, barMenu } = this.state;
-    if (fly || picking || menu || runMenu || barMenu) this.set({ fly: null, picking: false, menu: false, runMenu: null, barMenu: false });
+    const { fly, picking, menu, voteMenu, barMenu } = this.state;
+    if (fly || picking || menu || voteMenu || barMenu) this.set({ fly: null, picking: false, menu: false, voteMenu: false, barMenu: false });
   }
 
   /** The bar's More: opens it, in place of anything else open over the sheet, or closes it. */
@@ -493,9 +502,9 @@ export class Board implements LiveStore<BoardState> {
     this.set({ ...CLOSED, barMenu: !this.state.barMenu });
   }
 
-  /** The bar's Timer or Vote: opens its menu, in place of anything else open over the sheet, or closes it if it's open. */
-  toggleRunMenu(menu: BoardRunMenu): void {
-    this.set({ ...CLOSED, runMenu: this.state.runMenu === menu ? null : menu });
+  /** The bar's Vote: opens its menu, in place of anything else open over the sheet, or closes it if it's open. */
+  toggleVoteMenu(): void {
+    this.set({ ...CLOSED, voteMenu: !this.state.voteMenu });
   }
 
   /* ---------- sort into themes ---------- */
@@ -543,8 +552,8 @@ export class Board implements LiveStore<BoardState> {
   /** Back to Select, dropping anything held. Says whether there was anything to go back from, so that Esc can otherwise be the call's. */
   escape(): boolean {
     const held = this.letGo();
-    const { tool, sel, following, fly, runMenu, barMenu } = this.state;
-    if (!held && tool === 'select' && !sel.length && !following && !fly && !runMenu && !barMenu) return false;
+    const { tool, sel, following, fly, voteMenu, barMenu } = this.state;
+    if (!held && tool === 'select' && !sel.length && !following && !fly && !voteMenu && !barMenu) return false;
     this.stopFollow();
     this.set({ ...CLOSED, tool: 'select', sel: [] });
     return true;
@@ -913,70 +922,52 @@ export class Board implements LiveStore<BoardState> {
     this.later('glide', ms, () => {
       this.set({ glide: false });
       this.settleNear();
+      this.noteLost();
     });
   }
 
   /**
-   * The person has taken the camera. They've started looking around from here, so following stops and leaves them here, a glide
-   * ends at once, where it was heading, and a presented frame is no longer all there is to see.
+   * The person has taken the camera. They've started looking around from here, so following stops and leaves them here, whoever
+   * presents included, and a glide ends at once, where it was heading.
    */
   takeCamera(): void {
     this.untouched = false;
     this.home = null;
     this.stopFollow();
-    if (this.state.glide || this.state.slide) this.set({ glide: false, slide: null });
-    this.lookAround();
-  }
-
-  /** Taking the camera from a presentation is looking around: the camera's this person's from here, where they are. */
-  private lookAround(): void {
-    if (!this.presented) return;
-    this.presented = false;
-    this.ownView = null;
-    this.onLook?.();
+    if (this.state.glide) this.set({ glide: false });
   }
 
   /**
-   * What a presentation shows: a frame alone, filling the sheet, or everything, with none, held there as the sheet and the frame
-   * change, and once the frame arrives if it hasn't yet. Coming from a view of their own, where this person was is kept for when
-   * the presentation lets them go. A picture of a frame, such as the next one beside the presenter's, is the same, with no view
-   * of its own to keep.
+   * What a picture of the board shows (`mini`): a frame alone, filling it, or everything, with none, held there as the sheet and
+   * the frame change, and once the frame arrives if it hasn't yet, as the next frame beside whoever presents is.
    */
   present(slide: string | null): void {
-    if (!this.look.mini && !this.presented && this.ownView === null && this.framed) this.ownView = this.camera.getSnapshot();
-    this.stopFollow();
-    this.home = null;
-    this.untouched = false;
-    this.presented = true;
     this.wanted = slide;
-    if (this.camera.width) this.fitShown(this.framed && !this.look.mini);
+    if (this.camera.width) this.fitShown(false);
   }
 
-  /**
-   * A presentation has let this person go: where they were comes back, or everything, if they came in during it. Someone who took
-   * the camera themselves is already where they want to be.
-   */
-  private ownAgain(): void {
-    const own = this.ownView, was = this.presented;
-    this.ownView = null;
-    this.presented = false;
-    this.wanted = null;
-    if (this.state.slide) this.set({ slide: null });
-    if (!was || !this.camera.width) return;
-    if (own) this.glideTo(own);
-    else this.fitAll();
-  }
-
-  /** Fits what's shown: the frame presented, alone, or else everything, or as it opens (`opening`), where it can be read. */
+  /** Fits what's shown: on a picture of the board, the frame it shows, alone, or else everything, or as it opens (`opening`), where it can be read. */
   private fitShown(glide: boolean, opening = false): void {
-    const want = this.presented || this.look.mini ? this.wanted : null;
+    const want = this.look.mini ? this.wanted : null;
     const frame = want ? this.state.view.byId.get(want) : undefined;
     const slide = frame?.k === 'frame' ? frame.id : null;
     if (this.state.slide !== slide) this.set({ slide });
     if (frame?.k !== 'frame') { this.fitAll(glide, opening); return; }
-    const cam = this.camera.fitting(frame, this.still ? PRESENTING_PAD : SLIDE_PAD);
+    const cam = this.camera.fitting(frame, SLIDE_PAD);
     if (glide) this.glideTo(cam);
     else this.camera.set(cam);
+  }
+
+  /**
+   * Whether nothing on the board is in this person's view, though there's something on it, as after a scroll or a drag into empty
+   * space: the sheet offers the way back to all of it while that's so. Asked as the camera comes to rest, and as the board changes.
+   */
+  private noteLost(): void {
+    const { view, glide } = this.state;
+    if (glide) return;
+    const seen = this.camera.visible();
+    const lost = !this.look.mini && this.camera.width > 0 && view.objects.length > 0 && !drawn(view).some((b) => touches(b, seen) || (b.w === 0 && b.h === 0 && contains(seen, b.x, b.y)));
+    if (lost !== this.state.lost) this.set({ lost });
   }
 
   /** Whether all of this is on the sheet. */
@@ -1007,21 +998,20 @@ export class Board implements LiveStore<BoardState> {
 
   /**
    * Which pill shows now, if any. One coming or going frames a board nobody's moved round yet again, clear of it, as the size
-   * of the sheet settling does; not following or being presented to, whose pills come and go with them.
+   * of the sheet settling does; not while following anyone, whoever presents included, whose pills come and go with them.
    */
   setPill(kind: PillKind | null): void {
     const was = this.pill;
     this.pill = kind;
     if ((was === null) === (kind === null)) return;
     const theirs = (k: PillKind | null) => k === 'following';
-    if (!this.framed || !this.untouched || this.presented || this.look.mini || this.state.following !== null || theirs(was) || theirs(kind) || !this.camera.width) return;
+    if (!this.framed || !this.untouched || this.look.mini || this.state.following !== null || theirs(was) || theirs(kind) || !this.camera.width) return;
     this.fitShown(true, true);
     // The board framing itself again isn't anyone touching it: it goes on framing what arrives on it, and as the sheet settles.
     this.untouched = true;
   }
 
   zoomBy(factor: number): void {
-    if (this.still) return;
     this.takeCamera();
     this.glideTo(this.camera.zoomed(factor, this.camera.width / 2, this.camera.height / 2));
   }
@@ -1030,15 +1020,11 @@ export class Board implements LiveStore<BoardState> {
   zoomOut = (): void => this.zoomBy(1 / ZOOM_STEP);
 
   showEverything = (): void => {
-    if (this.still) return;
     this.takeCamera();
     this.fitAll();
   };
 
   goTo(place: BoardPlace): void {
-    if (this.still) return;
-    if (this.state.slide) this.set({ slide: null });
-    this.lookAround();
     this.glideTo(this.camera.centred(place));
   }
 
@@ -1050,29 +1036,68 @@ export class Board implements LiveStore<BoardState> {
     this.glideTo(this.camera.fitting(bounds(frames), this.underPill(SLIDE_PAD)));
   }
 
-  /** Fills the sheet with a frame, in the middle, with room above for its title and the pill. Presenting, it's all the sheet shows. */
+  /** Fills the sheet with a frame, in the middle, with room above for its title and the pill. */
   focusFrame(id: string): void {
     const frame = this.state.view.byId.get(id);
     if (frame?.k !== 'frame') return;
     this.takeCamera();
-    this.set({ slide: id });
     this.glideTo(this.camera.fitting(frame, this.underPill(SLIDE_PAD)));
   }
 
-  /** Follows someone. A tile doesn't: it's a picture of the board, with nothing on it to stop following by. */
-  follow(id: string | null): void {
+  /**
+   * Whoever presents, stepping through frames: glides to one, clear of the bar, the pill and the pager at the frame's foot, and
+   * everyone following them glides with them.
+   */
+  toFrame(id: string): void {
+    const frame = this.state.view.byId.get(id);
+    if (frame?.k !== 'frame') return;
+    this.takeCamera();
+    this.glideTo(this.camera.fitting(frame, PRESENTING_PAD));
+  }
+
+  /**
+   * Follows someone by their call identity, or with `watching`, whoever presents the board. A tile doesn't: it's a picture of the
+   * board, with nothing on it to stop following by.
+   */
+  follow(id: string | null, watching = false): void {
     if (id === null) this.stopFollow();
-    else if (!this.look.mini && !this.still) this.set({ following: id });
+    else if (!this.look.mini) this.set({ following: id, watching });
   }
 
   stopFollow(): void {
     if (!this.state.following) return;
-    this.set({ following: null });
+    this.set({ following: null, watching: false });
     this.onFollow?.(null);
   }
 
+  /**
+   * This person has started something of their own while following whoever presents: they stop following, where they are, and
+   * what they started goes on from there. A vote on a sticky isn't that, as it changes nothing on the board.
+   */
+  ownView(): void {
+    if (!this.state.watching) return;
+    this.home = null;
+    this.stopFollow();
+  }
+
+  /** The outermost frame in the middle of this person's view, or null with none there. */
+  private frameInView(): string | null {
+    const { view } = this.state;
+    const seen = this.camera.visible();
+    let at = frameAt(view, seen.x + seen.w / 2, seen.y + seen.h / 2);
+    for (let left = view.frames.length; at?.f && left > 0; left -= 1) {
+      const up = view.byId.get(at.f);
+      at = up?.k === 'frame' ? up : null;
+    }
+    return at?.id ?? null;
+  }
+
   private cameraMoved = (): void => {
-    this.later('rest', REST_MS, () => this.camera.rest());
+    this.later('rest', REST_MS, () => {
+      this.camera.rest();
+      this.noteLost();
+      this.onRest?.(this.frameInView());
+    });
     if (this.state.view.objects.length > MOUNT_ALL && !this.waits.has('near')) this.later('near', NEAR_EVERY_MS, this.settleNear);
   };
 

@@ -1,17 +1,16 @@
 /*
  * A board in a call, loaded only once one is open, so a call without one pays nothing for it: the board inside its frame on the
  * stage (features/call/layout/frame.tsx, whose bar has its name, its menu, Present and Close), with how it stands (its seal, and
- * Reconnecting and Couldn't save in its pill, as on its page) and the call's one pill, and ideas from the call. Presented, it's a
- * frame at a time: whoever presents steps through them with the pager at the frame's foot, and their notes beside each frame are
- * in their side (`CallBoardMine`); everyone following sees the frame alone, until they unfollow. The same board, drawn small, is
- * its presented tile (`CallBoardMini`). The call (features/call/boards/callBoard.ts) holds the board's session and says what's
- * true; this draws it.
+ * Reconnecting and Couldn't save in its pill, as on its page) and the call's one pill, and ideas from the call. Presented, it's
+ * still the whole board, tools and all, for everyone: whoever presents moves round it freely, and steps from frame to frame with
+ * the pager at the frame's foot, their notes beside each frame in their side (`CallBoardMine`); everyone following sees their view
+ * until anything of their own takes them off it. The same board, drawn small, is its presented tile (`CallBoardMini`). The call
+ * (features/call/boards/callBoard.ts) holds the board's session and says what's true; this draws it.
  */
 import type { DocSession } from '@alcove/api';
 import { readBoard } from '@alcove/board';
 import { BoardHeard, BoardPop, BoardTray, Icon, type BoardNaming, type IconName } from '@alcove/ui';
-import { useReducedMotion } from 'motion/react';
-import { forwardRef, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { forwardRef, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { BoardIdeas } from '~/features/call/boards/callBoard';
 import { typing } from '~/lib/keys';
 import { BoardSurface, type BoardHandle, type BoardLanding, type BoardPerson, type BoardPictures } from './BoardSurface';
@@ -24,17 +23,19 @@ import type { Standing } from './standing';
 import type { BoardRun, RunPills } from './tools/run';
 import type { SortAsk } from './useBoard';
 
-/** This board presented where you are: by whom, which frame, and what you can do about it. */
+/** This board presented where you are: by whom, which frame they're on, and what you can do about it. */
 export interface BoardPresentation {
   /** Whoever's presenting, by first name. */
   by: string;
+  /** Their connection in the call, by which their view on the board is followed: null while they aren't in the call, as they reload. */
+  who: string | null;
   /** You're presenting it. */
   mine: boolean;
-  /** The frame everyone's on, from 0: what the call says, or where you've just moved it, if you're presenting. */
+  /** The frame whoever presents is on, from 0, in the order frames sit: what the call says, or where you've just moved it, if you're presenting. */
   section: number;
   /** You're following whoever presents it, rather than working on your own. */
   watching: boolean;
-  /** Follow, and work on your own: a scroll, a drag or a pinch on the frame does the second. */
+  /** Follow, and work on your own: anything of your own on the board (a press, a key, a scroll, a drag) does the second. */
   onWatch: (watching: boolean) => void;
   /** Whoever's presenting: to a frame. */
   onMove: (section: number) => void;
@@ -43,9 +44,6 @@ export interface BoardPresentation {
 }
 /** Where whoever presents a board is in it, for the pager at the frame's foot. */
 export interface BoardPager { at: number; total: number; part: string }
-
-/** How long the tools take to fade before a presentation takes the sheet: `--duration-2`. */
-const FADE_MS = 240;
 
 export interface CallBoardSheetProps {
   session: DocSession;
@@ -62,11 +60,11 @@ export interface CallBoardSheetProps {
   people: readonly BoardPerson[];
   talking: ReadonlySet<string>;
   pictures: BoardPictures;
-  /** The call's own pills, besides the board's (following, someone presenting, a vote, its results, the timer): how it stands, and the rooms' time. */
+  /** The call's own pills, besides the board's (following, a vote, its results): how it stands, and the rooms' time. */
   pills: CallPills;
   /** Which kind of pill shows on it, as that changes: none while it's a tile or sinking. */
   onPill?: ((kind: PillKind | null) => void) | undefined;
-  /** What the call runs on the board: its timer and vote, and what the bar's Timer and Vote do (`useBoardRun`). */
+  /** What the call runs on the board: its vote, and what the bar's Vote does (`useBoardRun`). */
   run?: BoardRun | undefined;
   /** It has just opened, or come back: it rises through the arch. */
   fresh: boolean;
@@ -74,7 +72,10 @@ export interface CallBoardSheetProps {
   landing: BoardLanding | null;
   /** It's being presented where you are. */
   present: BoardPresentation | null;
-  /** Where whoever presents it is, for their pager at the frame's foot and Follow on everyone else's bar: told as it changes, and null while it isn't presented. */
+  /**
+   * Where whoever presents it is, for their pager at the frame's foot and Follow on everyone else's bar: told as it changes, and
+   * null while it isn't presented or has no frames to step through.
+   */
   onPager?: ((pager: BoardPager | null) => void) | undefined;
   /** It's been closed for everyone: it sinks back through the arch, and takes nothing more. */
   sinking?: boolean | undefined;
@@ -210,27 +211,26 @@ export const CallBoardSheet = forwardRef<BoardHandle, CallBoardSheetProps>(funct
     }
   };
   /*
-   * Presented: frames are slides. Whoever's presenting sees the frame as everyone does, and can't move off it; everyone following
-   * sees it alone, once the tools have faded, until they unfollow. Your own view waits, and comes back when it ends.
+   * Presented, it's the whole board, tools and all, for everyone. Whoever presents moves round it as they like, and everyone
+   * following sees their view, until anything of their own on the board takes them off it (`presenter`). Frames are the
+   * presenter's stops, in the order they sit: the pager at the frame's foot, and → and ←, glide to each in turn, everyone
+   * following with them, and as the presenter's own view comes to rest in one, the pager says that's where they are.
    */
   const slides = useSlides(session.doc);
   const presenting = present?.mine === true;
   const watching = present !== null && !present.mine && present.watching;
   const on = present ? slideAt(slides, present.section) : null;
-  const reduce = useReducedMotion() === true;
-  const [fading, setFading] = useState(false);
-  useEffect(() => {
-    if (!watching || reduce) { setFading(false); return undefined; }
-    setFading(true);
-    const t = setTimeout(() => setFading(false), FADE_MS);
-    return () => clearTimeout(t);
-  }, [watching, reduce]);
-  // A presentation has nothing to open over it: whatever was open closes as it takes the sheet.
-  useEffect(() => { if (presenting || watching) setPop(null); }, [presenting, watching]);
+  /** The board's own handle, here as well as the call's: whoever presents glides from frame to frame through it. */
+  const sheetHandle = useRef<BoardHandle | null>(null);
+  const handle = useCallback((h: BoardHandle | null) => {
+    sheetHandle.current = h;
+    if (typeof ref === 'function') ref(h);
+    else if (ref) ref.current = h;
+  }, [ref]);
   /*
    * Whoever's presenting moves on with → and back with ←, as a clicker's Page Down and Page Up do, while the presentation has the
-   * keys: the frame, or the pager at the frame's foot. Keys anywhere else move nothing, nor does one something else has already
-   * used, nor one aimed at any other control (the notes in the side, the pill).
+   * keys: the board, or the pager at the frame's foot. Keys anywhere else move nothing, nor does one something else has already
+   * used, nor one aimed at any other control (the notes in the side, the pill), nor one while they type.
    */
   const at = on?.at ?? 0;
   const total = slides.length;
@@ -256,19 +256,41 @@ export const CallBoardSheet = forwardRef<BoardHandle, CallBoardSheetProps>(funct
   const part = useMemo(() => (onId ? readBoard(session.doc).frames.find((f) => f.id === onId)?.title ?? '' : ''), [onId, slides, session.doc]);
   const toldPager = useRef(onPager);
   toldPager.current = onPager;
-  useEffect(() => { toldPager.current?.(present && on ? { at: at + 1, total: Math.max(total, 1), part } : null); }, [present !== null, at, total, part]);
+  useEffect(() => { toldPager.current?.(present && onId ? { at: at + 1, total, part } : null); }, [present !== null, onId, at, total, part]);
   useEffect(() => () => toldPager.current?.(null), []);
-  const own = role === 'edit' ? (phone ? 'phone' : 'call') : 'read';
-  const mode = presenting || (watching && !fading) ? 'present' : own;
-  const slide = (presenting || watching) && on ? on.id : undefined;
+  /*
+   * Whoever presents glides to each frame they step to, from the start of their presentation, and everyone following glides with
+   * them. A frame their own view came to rest in (`onRest`) is where they already are, so nothing moves for that.
+   */
+  const rested = useRef<number | null>(null);
+  const stepped = useRef<number | null>(null);
+  useEffect(() => {
+    if (!presenting) { stepped.current = null; return; }
+    if (onId === null || stepped.current === at) return;
+    stepped.current = at;
+    if (rested.current === at) { rested.current = null; return; }
+    sheetHandle.current?.toFrame(onId);
+  }, [presenting, at, onId]);
+  const onRest = presenting && move ? (frame: string | null) => {
+    const k = frame ? slides.indexOf(frame) : -1;
+    if (k < 0 || k === at) return;
+    rested.current = k;
+    move(k);
+  } : undefined;
+  const mode = role === 'edit' ? (phone ? 'phone' : 'call') : 'read';
   const theirs = present && !present.mine ? present : null;
+  /* Following whoever presents stops from the board's side too, as anything of this person's own on it does: the call hears it. */
+  const followed = (id: string | null) => {
+    if (id === null && watching) theirs?.onWatch(false);
+    onFollow(id);
+  };
 
   /*
    * Keys lost as a presentation lets the board go (its pager gone from under them, say) go to the sheet; anyone with the keys
    * anywhere else keeps them there, and so does someone typing a moment ago, who is mid-sentence: the rest of it must never press
    * a button. Where they go as presenting begins is the stage's (layout/landKeys.ts): Next frame, once the pager is drawn.
    */
-  const seat = presenting ? 'presenting' : theirs ? (watching && !fading ? 'watching' : 'around') : null;
+  const seat = presenting ? 'presenting' : theirs ? (watching ? 'watching' : 'around') : null;
   const wasSeat = useRef(seat);
   useEffect(() => {
     const was = wasSeat.current;
@@ -303,14 +325,14 @@ export const CallBoardSheet = forwardRef<BoardHandle, CallBoardSheetProps>(funct
 
   return (
     <div ref={wrap} className={sinking ? 'ic-board is-sinking' : 'ic-board'} inert={sinking || undefined}>
-      <BoardSurface ref={ref} doc={session.doc} awareness={session.awareness} mode={mode} naming={nameField} slide={slide} still={presenting} faded={watching && fading}
+      <BoardSurface ref={handle} doc={session.doc} awareness={session.awareness} mode={mode} naming={nameField} presenter={theirs ? { id: theirs.who, following: theirs.watching } : null}
         seal={seal.seal} sealIcon={seal.icon} sealTitle={seal.title} everyone={everyone} people={people} talking={talking} pictures={pictures} fresh={fresh} landing={landing} theme={theme} run={run} pill={pill} onPill={setPillShown}
         upload={upload} workspace={workspace} links={links} link={link} comments={comments}
         onSeal={() => setPop((p) => (p === 'seal' ? null : 'seal'))}
-        onLook={watching ? () => theirs?.onWatch(false) : undefined} onFollow={onFollow} onSay={onSay} onSort={role === 'edit' ? onSort : undefined}>
+        onRest={onRest} onFollow={followed} onSay={onSay} onSort={role === 'edit' ? onSort : undefined}>
         {pop === 'seal' && <SealPop seal={seal} onClose={() => setPop(null)} from={sealButton} />}
-        {/* Ideas from the call are for working on the board, so they wait while it's presented. */}
-        {role === 'edit' && ideas && mode !== 'present' && (ideas.tray
+        {/* Ideas from the call are for working on the board, so they wait while it's presented, by you or to you. */}
+        {role === 'edit' && ideas && !presenting && !watching && (ideas.tray
           ? <IdeasTray ideas={{ ...ideas, tray: ideas.tray }} onDone={toSheet} />
           : ideas.waiting > 0 && <BoardHeard count={ideas.waiting} onOpen={ideas.open} />)}
       </BoardSurface>

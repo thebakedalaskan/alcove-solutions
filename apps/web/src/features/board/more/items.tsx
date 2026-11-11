@@ -125,13 +125,13 @@ const BAR_ITEMS: readonly { id: BoardBarItem; icon: IconName; label: string }[] 
   { id: 'link', icon: 'link', label: 'Copy link' },
   { id: 'image', icon: 'download', label: 'Download as an image' },
   { id: 'pdf', icon: 'fileText', label: 'Download as a PDF' },
-  { id: 'night', icon: 'sun', label: 'Night board' }
+  { id: 'night', icon: 'moon', label: 'Night board' }
 ];
 
 /**
  * The bar's More, under its button: whichever of its items this board was given. The keys go into it as it opens; picking one
- * gives them back to the board, and Escape to More. `night`: the board is a night board now, which Night board says, and
- * pressing it again turns off.
+ * gives them back to the board, and Escape to More. `night`: the board is a night board now, which Night board shows with a
+ * tick, as the frame's name menu in a call does, and pressing it again turns off.
  */
 export function BarMenu({ board, items, night }: { board: Board; items: BoardBarItems; night: boolean }) {
   const open = useBoardState(board, (s) => s.barMenu);
@@ -155,8 +155,7 @@ export function BarMenu({ board, items, night }: { board: Board; items: BoardBar
   const rows = BAR_ITEMS.flatMap((item) => {
     const run = items[item.id];
     if (!run) return [];
-    const on = item.id === 'night' && night;
-    return [{ id: item.id, icon: item.icon, label: item.label, ...(on ? { small: 'On' } : {}), onPick: () => { board.set({ barMenu: false }); run(); board.focusSheet(); } }];
+    return [{ id: item.id, icon: item.icon, label: item.label, ...(item.id === 'night' ? { on: night } : {}), onPick: () => { board.set({ barMenu: false }); run(); board.focusSheet(); } }];
   });
   return rows.length ? <BoardPop ref={ref} right={14} top={60} label="More" items={rows} /> : null;
 }

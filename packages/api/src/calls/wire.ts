@@ -6,7 +6,7 @@ import { IDSchema } from '../shared/ids';
 import { oneLine } from '../shared/validation';
 import { z } from '../shared/zod';
 import { DocumentRoleSchema, ItemIdSchema } from '../workspaces/schema';
-import { BoardNewSchema, BoardObjectIdSchema, BoardSavedSchema, BoardTimerMinutesSchema, BoardVotesEachSchema, BreakoutBoardSchema } from './boards';
+import { BoardNewSchema, BoardObjectIdSchema, BoardSavedSchema, BoardVotesEachSchema, BreakoutBoardSchema } from './boards';
 import { CaptionLanguageSchema } from './captions';
 import { CaptureDevicePartSchema } from './capture';
 import { CatchUpRangeSchema } from './catchup';
@@ -139,13 +139,7 @@ const CallStepSchema = z.discriminatedUnion('type', [
   /** Whoever opened the board open here, or the organizer: it closes for everyone there, and nothing is deleted. */
   z.object({ type: z.literal('board-close') }),
   /** Anyone in the part of the call the ideas are from: they were added to the board, or put aside, so they go for everyone there. */
-  z.object({ type: z.literal('board-ideas-done'), ids: z.array(IDSchema).min(1).max(20) }),
-  /**
-   * The timer on the board open here, the same for everyone there: 3, 5 or 10 minutes from now, from anyone who can edit the
-   * board. While one is still running, only whoever started it or the organizer can start it over. Null stops it, which is for
-   * them too.
-   */
-  z.object({ type: z.literal('board-timer'), minutes: BoardTimerMinutesSchema.nullable() })
+  z.object({ type: z.literal('board-ideas-done'), ids: z.array(IDSchema).min(1).max(20) })
 ]);
 
 /**

@@ -148,7 +148,7 @@ describe('a new board', () => {
     const p = await invited(host, c, priya);
     const jamie = await guest(host, c);
     const pass = { pass: jamie.call.ticket.pass };
-    expect(host.getSnapshot().board).toEqual({ open: null, timer: null, vote: null, ideas: [] });
+    expect(host.getSnapshot().board).toEqual({ open: null, vote: null, ideas: [] });
     const stream = art.api.workspaces.live(id);
     await until(() => stream.getSnapshot().status === 'live', 'the stream');
 
@@ -340,9 +340,9 @@ describe('a new board', () => {
     expect(await code(waiting.closeBoard())).toBe('forbidden');
     expect(await code(waiting.boardCheck(madeUp(), madeUp()))).toBe('forbidden');
     await host.openBoard({ template: 'blank' });
-    expect(waiting.getSnapshot().board).toEqual({ open: null, timer: null, vote: null, ideas: [] });
+    expect(waiting.getSnapshot().board).toEqual({ open: null, vote: null, ideas: [] });
     await waiting.refresh({ call: true, log: false });
-    expect(waiting.getSnapshot().board).toEqual({ open: null, timer: null, vote: null, ideas: [] });
+    expect(waiting.getSnapshot().board).toEqual({ open: null, vote: null, ideas: [] });
   });
 
   it('reaches whoever comes late or comes back, as a guest’s seat or the board they opened', async () => {
@@ -589,8 +589,8 @@ describe('closing a board', () => {
 
     // Whoever opened it.
     await k.closeBoard();
-    expect(k.getSnapshot().board).toEqual({ open: null, timer: null, vote: null, ideas: [] });
-    expect((await read(jamie.call)).board).toEqual({ open: null, timer: null, vote: null, ideas: [] });
+    expect(k.getSnapshot().board).toEqual({ open: null, vote: null, ideas: [] });
+    expect((await read(jamie.call)).board).toEqual({ open: null, vote: null, ideas: [] });
     expect(inTree(await art.api.workspaces.get(id)).map((x) => x.id)).toEqual([board]);
     expect(await seats(board)).toBe(1);
     expect((await jamie.api.workspaces.get(id, { pass: jamie.call.ticket.pass })).items.map((x) => x.id)).toEqual([board]);
@@ -1843,14 +1843,14 @@ describe('boards in breakout rooms', () => {
     await until(async () => (await mainBoard(r))?.board.frames.some((f) => f.title === 'One') === true, 'One’s board to land');
   });
 
-  it('close by time in a board’s own action: started a timer, they come back with nothing else done', async () => {
+  it('close by time in a board’s own action: a vote started, they come back with nothing else done', async () => {
     const r = await inRooms({ mode: 'each', template: 'blank' }, { main: 'retro' });
     const one = (await opened(r.k))?.documentId ?? '';
     await r.k.leave();
     await r.p.leave();
     await until(async () => (await seats(one)) === 0, 'the seats to go as they leave', 5000);
     await timeIsUp(r);
-    await r.host.startTimer(5);
+    await r.host.startVote(null, 3);
     expect((await keptOf(r)).breakouts.open).toBeNull();
     await until(async () => (await mainBoard(r))?.board.frames.some((f) => f.title === 'One') === true, 'One’s board to land');
     expect(await entries(one)).toBe(3);
@@ -1989,7 +1989,7 @@ describe('boards in breakout rooms', () => {
     expect(frames[3]?.x).toBeGreaterThan(right);
   });
 
-  it('shared: someone in a room runs the timer and votes on it, as everyone on it does', async () => {
+  it('shared: someone in a room votes on it, as everyone on it does', async () => {
     const r = await inRooms({ mode: 'shared', template: 'retro' });
     const shared = await opened(r.k);
     expect(shared).toMatchObject({ role: 'edit', frame: roomFrameId(r.one) });
@@ -1998,12 +1998,6 @@ describe('boards in breakout rooms', () => {
     const mine = addObject(page.doc, sticky('One owner for launch comms', (frame?.x ?? 0) + 20, (frame?.y ?? 0) + 60), null) ?? '';
     await stored(page);
     page.close();
-    // Kofi, in room One, starts the board's timer, and everyone on the board has it, the main room too.
-    await r.k.startTimer(5);
-    expect((await read(r.host)).board.timer).toMatchObject({ length: 300 });
-    expect((await read(r.p)).board.timer).toMatchObject({ length: 300, canStop: false });
-    await r.k.stopTimer();
-    expect((await read(r.host)).board.timer).toBeNull();
     // The organizer, in the main room, starts a vote on every sticky: Kofi votes in it, takes it back and votes again.
     await r.host.startVote(null, 3);
     expect((await read(r.k)).board.vote).toMatchObject({ on: true, left: 3 });
@@ -2614,8 +2608,8 @@ describe('what the previous release stored', () => {
     const { workspaceId: _id, agenda: _a, ...oldMeeting } = meeting.manifest;
     await saveRevision(o, o.pool, meeting.itemId, meeting.revisionId, oldMeeting);
 
-    expect((await read(host)).board).toEqual({ open: null, timer: null, vote: null, ideas: [] });
-    expect((await read(k)).board).toEqual({ open: null, timer: null, vote: null, ideas: [] });
+    expect((await read(host)).board).toEqual({ open: null, vote: null, ideas: [] });
+    expect((await read(k)).board).toEqual({ open: null, vote: null, ideas: [] });
     expect(await code(k.closeBoard())).toBe('conflict');
     await k.openBoard({ template: 'retro' });
     const open1 = await opened(host);

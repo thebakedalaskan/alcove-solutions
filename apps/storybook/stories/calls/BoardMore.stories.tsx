@@ -153,15 +153,33 @@ export const DownloadAsAnImage = withBoard(async (c) => {
   await c.step('Press More, then Download as an image', async () => { await fromTheBar(c, 'Download as an image'); });
 });
 
+/** Night board on: a toast says what changed and for whom, and More shows it ticked, as the frame's name menu does. */
+const nightOn: Play = async (c) => {
+  await c.step('Press More, then Night board: the board goes dark for everyone, whatever their theme, and a toast says so', async () => {
+    await fromTheBar(c, 'Night board');
+    await screen.findByText('Night board is on. The board is dark for everyone, whatever their theme.', {}, SOON);
+  });
+  await c.step('More again: Night board has its tick while it’s on', async () => {
+    await c.userEvent.click(await screen.findByRole('button', { name: 'More' }, SOON));
+    await screen.findByRole('button', { name: 'Night board', pressed: true }, SOON);
+  });
+};
 /**
  * Night board: the board's own setting. It's a dark board in any theme, a dark board by day, for everyone and everywhere it
- * shows, and it says On until it's pressed again. Played in a light theme, where it shows.
+ * shows, ticked in More until it's pressed again. In a light theme the sheet goes dark.
  */
-export const NightBoard = withBoard(async (c) => {
-  await c.step('Press More, then Night board: the board goes dark for everyone, in any theme', async () => { await fromTheBar(c, /^Night board/); });
-  await c.step('More again: Night board says On, and pressing it lets the board follow each person’s theme', async () => {
-    await c.userEvent.click(await screen.findByRole('button', { name: 'More' }, SOON));
-    await screen.findByRole('button', { name: /^Night board\s*On$/ }, SOON);
-  });
-}, { globals: { theme: 'light' } });
+export const NightBoard = withBoard(nightOn, { globals: { theme: 'light' } });
 export const NightBoardPhone = phone(NightBoard);
+/**
+ * In a dark theme your own board is already dark, so nothing on your screen moves: the toast is what says it changed the board
+ * for everyone else, whatever their theme.
+ */
+export const NightBoardDark = withBoard(nightOn, { name: 'Night board, in a dark theme', globals: { theme: 'dark' } });
+/** Pressed again: it's off, and the toast says the board follows each person's theme again. */
+export const NightBoardOffAgain = withBoard(plays(nightOn, async (c) => {
+  await c.step('Press Night board again: off, for everyone, and the toast says so', async () => {
+    await pause(500);
+    await c.userEvent.click(await screen.findByRole('button', { name: 'Night board', pressed: true }, SOON));
+    await screen.findByText('Night board is off. The board follows each person’s theme.', {}, SOON);
+  });
+}), { name: 'Night board, off again', globals: { theme: 'dark' } });

@@ -1,7 +1,7 @@
 /*
- * BoardEmpty: what a blank board says until the first sticky, in the middle of the sheet: how to add one, and that everyone
- * here can add to it when they can. It fades as that sticky lands, and goes on being drawn until it has gone. Someone who can
- * only look is told that what people add shows up here.
+ * BoardEmpty: what a blank board says until the first thing lands, in the middle of the sheet: that a double-click writes, text
+ * on the board and a sticky in a frame, and that everyone here can add to it when they can. It fades as the first thing lands,
+ * and goes on being drawn until it has gone. Someone who can only look is told that what people add shows up here.
  */
 import { BoardBar, BoardEmpty } from '@alcove/ui';
 import type { Meta, StoryObj } from '@storybook/react-vite';

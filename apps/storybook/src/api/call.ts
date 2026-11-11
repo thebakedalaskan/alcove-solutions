@@ -7,7 +7,7 @@
  * The call's workspace is played here too: its home, settled the first time Workspace opens, what's brought, presented and
  * played, who's asking to see it, and where everyone else is in it. So is a board in the call: one you open, or one someone in
  * the script opens, made in the call's home and filled from its template as the server does, with whoever works on it on it,
- * and its timer and vote.
+ * and its vote.
  */
 import {
   CALL_TIMER_MAX_SECONDS, CallTimerControlSchema, type CallTimerControl, type CallTimer, type CallAttention, type CallNudgeKind, type CallQuestionStatus, type CallStatusKind, type CallStatusMinutes, ACCEPTED_FOLLOW_UP, AlcoveApiError, type FollowUpCreate, type FollowUpPatch, type FollowUpReview, type FollowUpTarget, type LiveFollowUp, MAX_CALL_IDEAS, RING_SECONDS, notesAreOn, reactionTarget, withReaction, type BreakoutPlan, type CallPage, type CallAnswer, type CallChatMention, CallChatTextSchema, type CallCrypto, type CallEndResult, type CallMoment, type CallMoveOut, type CallParticipant, type CallRole,
@@ -16,10 +16,11 @@ import {
   type RingReply, type RoomCapture, type ScreenPiece, type SeriesAnswerPart, type TranscriptClip, type TranscriptLine
 } from '@alcove/api';
 import type {
-  BoardCheck, BoardOpen, BoardTemplate, BoardTimerMinutes, BoardVotesEach, BreakoutBoard, BreakoutBoardMode, CallBoard, CallBoardIdea, CallFollowUp, CallFollowUps, CallPresent, CallSeat, CallWorkspace,
+  BoardCheck, BoardOpen, BoardTemplate, BoardVotesEach, BreakoutBoard, BreakoutBoardMode, CallBoard, CallBoardIdea, CallFollowUp, CallFollowUps, CallPresent, CallSeat, CallWorkspace,
   CallWorkspaceSwitch, DocFollowUpTick, DocumentRole, PresentStart, WorkspaceHere, WorkspaceItem
 } from '@alcove/api';
-import { addObject, colourIn, fillTemplate, landBoards, readBoard, roomFrameId, roomFrames, type FrameObject } from '@alcove/board';
+import { BOARD_VIEW_WIDTH, addObject, colourIn, fillTemplate, landBoards, readBoard, roomFrameId, roomFrames, type FrameObject } from '@alcove/board';
+import { reading } from '~/features/board/slides';
 import { sessions } from '~/lib/live';
 import { talking } from '../browser';
 import type { Screen } from '../media/screens';
@@ -159,7 +160,7 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
       liveNotes: { notes: null, added: [], suggestions: [], writing: false, error: null }, notices: mode === 'on' && !since ? [{ id: nextId('notice'), text: 'Notes are on. Everyone here can see that.', kind: 'notes' }] : [],
       isOrganizer: organizes, isHost: organizes, role: arrival.role,
       workspace: { id: null, home: null, name: null, chosenBy: meeting.organizer, canOpen: false, role: null, documents: [], agenda: null, present: null, ended: null, play: null, asks: [], asked: 'no' },
-      board: { open: null, timer: null, vote: null, ideas: [] }, shares: []
+      board: { open: null, vote: null, ideas: [] }, shares: []
     });
     this.script = script;
     this.me = me;
@@ -344,8 +345,6 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
         this.boardGoes(this.getSnapshot().participants.find((p) => p.id === opened?.openedBy));
         return;
       }
-      case 'start-timer': this.theyStartTimer(b.who, b.minutes, b.left); return;
-      case 'stop-timer': void this.session((x) => ({ ...x, timer: null })); return;
       case 'start-vote': this.theyStartVote(b.who, b.frame, b.per); return;
       case 'end-vote': this.voteEnds(b.votes, b.voters); return;
       case 'clear-vote': void this.session((x) => ({ ...x, vote: null })); return;
@@ -585,22 +584,22 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
   private hereAt(): { workspaceId: string; documentId: string } | null { return this.boards.get(this.shownAt(this.crypto.getSnapshot().place))?.at ?? null; }
   /**
    * The board where you are, as the server says it to you: one you can't open says who brought it and nothing of itself, and one
-   * in Trash or gone has left. The same board keeps its timer, vote and ideas, since its session carries on.
+   * in Trash or gone has left. The same board keeps its vote and ideas, since its session carries on.
    */
   private boardHere(was: CallBoard): CallBoard {
     const place = this.crypto.getSnapshot().place;
     const at = this.shownAt(place);
     const b = this.boards.get(at);
-    if (!b) return { open: null, timer: null, vote: null, ideas: [] };
+    if (!b) return { open: null, vote: null, ideas: [] };
     const openedBy = this.getSnapshot().participants.some((p) => p.id === b.openedBy) ? b.openedBy : null;
     const seen = { openedBy, canClose: b.openedBy === this.me.id || this.me.isOrganizer, seal: at === 'main' ? 'Sealed' : 'Sealed to this room', frame: at === place ? null : roomFrameId(place) };
-    if (!b.at) return { open: { workspaceId: null, documentId: null, name: null, role: null, everyone: false, ...seen }, timer: null, vote: null, ideas: [] };
+    if (!b.at) return { open: { workspaceId: null, documentId: null, name: null, role: null, everyone: false, ...seen }, vote: null, ideas: [] };
     const item = this.itemIn(b.at.workspaceId, b.at.documentId);
-    if (!item) return { open: null, timer: null, vote: null, ideas: [] };
+    if (!item) return { open: null, vote: null, ideas: [] };
     const same = was.open?.documentId === b.at.documentId;
     return {
       open: { ...b.at, name: item.name, role: item.role ?? 'edit', everyone: b.made, ...seen },
-      timer: same ? was.timer : null, vote: same ? was.vote : null, ideas: same ? was.ideas : []
+      vote: same ? was.vote : null, ideas: same ? was.ideas : []
     };
   }
   /** Where someone is in the call now, by their participant ID: the room they're in, or the main room. */
@@ -700,14 +699,34 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     }));
     this.sayWhoIsOn();
   }
-  /** Who's on the board where you are now, as its awareness says them to whoever has it open. */
+  /**
+   * Who's on the board where you are now, as its awareness says them to whoever has it open: someone else presenting it with their
+   * view on the frame they're on, as their browser says it, which is what everyone following them sees.
+   */
   private sayWhoIsOn(): void {
     const at = this.hereAt();
     if (!at) return;
+    const shown = this.presentersView(at);
     onTheBoard(at.documentId, this.getSnapshot().participants.flatMap((p) => {
+      if (p.isMe) return [];
+      if (shown && p.seat === shown.seat) return [{ callIdentity: p.id, person: p.person, at: shown.at, view: shown.view }];
       const point = this.onIt.get(p.id);
-      return point && !p.isMe ? [{ callIdentity: p.id, person: p.person, at: point }] : [];
+      return point ? [{ callIdentity: p.id, person: p.person, at: point }] : [];
     }));
+  }
+  /**
+   * Someone else presenting the board where you are: their seat, and their pointer and view on the frame they're on, of its frames
+   * in the order they sit, framed with room round it as their sheet would show it.
+   */
+  private presentersView(at: { workspaceId: string; documentId: string }): { seat: string; at: { x: number; y: number }; view: { x: number; y: number; z: number } } | null {
+    const now = this.presented.get(this.crypto.getSnapshot().place);
+    if (now?.kind !== 'board' || now.id !== at.documentId || this.isMine(now)) return null;
+    const frames = readBoard(boardDoc(at.workspaceId, at.documentId)).frames.filter((f) => !f.f).sort(reading);
+    const f = frames[Math.min(now.section, frames.length - 1)];
+    if (!f) return null;
+    const middle = { x: f.x + f.w / 2, y: f.y + f.h / 2 };
+    const wide = Math.max(f.w + 160, (f.h + 200) * 1.8);
+    return { seat: now.by.seat, at: { x: middle.x + 40, y: middle.y + 30 }, view: { ...middle, z: BOARD_VIEW_WIDTH / wide } };
   }
   /**
    * A new board in the call's home, named as the server names it and filled from its template as the server fills it; a room's
@@ -1340,15 +1359,12 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     this.showBoard();
     return null;
   }
-  private theyStartTimer(who: Person, minutes: BoardTimerMinutes, left: number | undefined): void {
-    if (!this.find(who)) return;
-    void this.session((b) => ({ ...b, timer: { until: this.getSnapshot().elapsed + (left ?? minutes * 60), length: minutes * 60, text: 'Add your stickies', canStop: this.me.isOrganizer } }));
-  }
   private theyStartVote(who: Person, title: string | null, per: BoardVotesEach): void {
-    if (!this.find(who)) return;
+    const p = this.find(who);
+    if (!p) return;
     const at = this.hereAt();
     const frame = this.frameCalled(at ? boardDoc(at.workspaceId, at.documentId) : null, title)?.id ?? null;
-    void this.session((b) => (b.vote ? b : { ...b, vote: { on: true, frame, per, left: per, mine: [], results: {}, voters: 0, canEnd: this.me.isOrganizer } }));
+    void this.session((b) => (b.vote ? b : { ...b, vote: { on: true, frame, per, left: per, mine: [], results: {}, voters: 0, canEnd: this.me.isOrganizer, startedBy: p.id } }));
   }
   /** The vote ends with everyone else's votes, by what each sticky says, and yours: every count at once, and only for what's in it. */
   private voteEnds(votes: Readonly<Record<string, number>>, voters: number): void {
@@ -1407,19 +1423,15 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     return Promise.resolve({ cannot, mayLetIn: treeOf(workspaceId).role !== null && this.itemIn(workspaceId, documentId)?.role === 'edit' });
   }
   /*
-   * The board's session, as the server keeps it: a timer from now, the same for everyone, and a vote whose counts come only
-   * when it ends, everyone else's from the script (`board.votes`) and yours. With no board open, nothing changes.
+   * The board's session, as the server keeps it: a vote whose counts come only when it ends, everyone else's from the script
+   * (`board.votes`) and yours. With no board open, nothing changes.
    */
   private session(change: (b: CallState['board']) => CallState['board']): Promise<void> {
     this.change((s) => (s.board.open ? { ...s, board: change(s.board) } : s));
     return Promise.resolve();
   }
-  startTimer(minutes: BoardTimerMinutes): Promise<void> {
-    return this.session((b) => ({ ...b, timer: { until: this.getSnapshot().elapsed + minutes * 60, length: minutes * 60, text: 'Add your stickies', canStop: true } }));
-  }
-  stopTimer(): Promise<void> { return this.session((b) => ({ ...b, timer: null })); }
   startVote(frame: string | null, per: BoardVotesEach): Promise<void> {
-    return this.session((b) => (b.vote ? b : { ...b, vote: { on: true, frame, per, left: per, mine: [], results: {}, voters: 0, canEnd: true } }));
+    return this.session((b) => (b.vote ? b : { ...b, vote: { on: true, frame, per, left: per, mine: [], results: {}, voters: 0, canEnd: true, startedBy: this.me.id } }));
   }
   castVote(sticky: string): Promise<void> {
     return this.session((b) => (b.vote?.on && !b.vote.mine.includes(sticky) && b.vote.left > 0 ? { ...b, vote: { ...b.vote, mine: [...b.vote.mine, sticky], left: b.vote.left - 1 } } : b));

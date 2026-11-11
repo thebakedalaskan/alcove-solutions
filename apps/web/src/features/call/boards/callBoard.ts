@@ -1,6 +1,6 @@
 /*
  * The board in a call, as this browser holds it (docs: Calls and recordings › A board in a call): the board in the part of the
- * call you're in (`CallState.board`), which timers, votes, ideas from the call and breakout rooms hang on, or a saved board you
+ * call you're in (`CallState.board`), which votes, ideas from the call and breakout rooms hang on, or a saved board you
  * opened just for you, which touches nothing in the call. Whichever is on your stage (layout/onStage.ts) has its session open
  * while you can open it; so does the call's board while it's in the call, for its presented tile. Who you're following on it,
  * and what you're told as it closes, are here too. What's drawn is features/board/CallBoard.tsx, loaded the first time it's
@@ -348,6 +348,25 @@ export function useCallBoard({ session, stage, saved, state, me, owner, talking,
     // `roomIds` is read as the rooms open, with `shared`.
   }, [doc, frame, shared]);
 
+  /*
+   * A frame to bring into view once the board's drawn here, as someone joins a vote on it from the call: its code loads a moment
+   * after it opens, so this waits for it, as landing on a room's frame does.
+   */
+  const [toFrame, setToFrame] = useState<{ id: string; n: number } | null>(null);
+  useEffect(() => {
+    if (!toFrame) return undefined;
+    let raf = 0;
+    let tries = 0;
+    const go = () => {
+      const h = handle.current;
+      if (!h) { if (tries++ < 240) raf = requestAnimationFrame(go); return; }
+      h.focusFrame(toFrame.id);
+    };
+    go();
+    return () => cancelAnimationFrame(raf);
+  }, [toFrame]);
+  const showFrame = useCallback((id: string) => setToFrame((was) => ({ id, n: (was?.n ?? 0) + 1 })), []);
+
   /* Following someone on the board, or going to them once. The board says if they aren't on it. */
   const follow = useCallback((id: string | null) => {
     setFollowing(id);
@@ -379,7 +398,7 @@ export function useCallBoard({ session, stage, saved, state, me, owner, talking,
 
   /* How the call helps: ideas while notes are on here, and Sort into themes unless they're paused. Both are for whoever can add to it. */
   const notes = captureHere(state.capture).mode;
-  // The call's board, open on your stage: a saved board just for you has no ideas from the call, no timer and no vote.
+  // The call's board, open on your stage: a saved board just for you has no ideas from the call and no vote.
   const editing = open?.role === 'edit' && doc !== null && !mineDrawn;
   // Whoever has it open looks for ideas, and the server looks once a minute at most, for everyone here.
   const watching = editing && notes === 'on' && state.phase === 'in-call';
@@ -393,7 +412,7 @@ export function useCallBoard({ session, stage, saved, state, me, owner, talking,
   }, [editing, notes, workspaceId, documentId, sortIn]);
 
   return {
-    open, doc, people, onBoard, talking: talkingSet, handle, following, follow, goTo, onFollow, fresh, rise, pictures, ideas, sort, upload, itemFor, toLink, comments,
+    open, doc, people, onBoard, talking: talkingSet, handle, following, follow, goTo, onFollow, fresh, rise, pictures, ideas, sort, upload, itemFor, toLink, comments, showFrame,
     /** A saved board just for you is what's drawn: the call's board isn't. */
     savedDrawn: mineDrawn,
     /** Goes up each time a board comes to you with the rest of your part of the call, to open on your stage. */
