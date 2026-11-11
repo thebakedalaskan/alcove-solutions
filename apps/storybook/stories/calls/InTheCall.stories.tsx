@@ -87,8 +87,15 @@ export const ChatPhone = { ...phone(Chat), name: 'Chat, on a phone' };
 /** The design review, everyone there and talking it through while notes are on: Notes opens beside the stage by itself on a wide screen. */
 export const FourOfYou = inCall({ scenario: 'call-soon', call: REVIEW, script: { here: REVIEWERS, talk: { lines: REVIEW_TALK }, summary: REVIEW_SUMMARY } });
 export const FourOfYouPhone = phone(FourOfYou);
-/** The shield beside the notes sign: what confidential compute covers in this call, and when this browser verified the hardware. */
-export const Shield = { ...FourOfYou, name: 'The shield', play: plays(clearSide, press(/^Confidential compute/)) };
+/** The shield beside the notes sign: pointing at it says what confidential compute covers in this call, and when this browser verified the hardware. */
+export const Shield = {
+  ...FourOfYou, name: 'The shield',
+  play: plays(clearSide, async ({ canvas, userEvent, step }) => {
+    await step('Point at the shield beside the notes sign', async () => {
+      await userEvent.hover(await canvas.findByRole('button', { name: /^Confidential compute/ }, { timeout: 10000 }));
+    });
+  })
+};
 export const ShieldLight = light(Shield);
 /** The server says it doesn't run in confidential compute yet: the shield states the promise, with nothing verified and no caveat. */
 export const ShieldNotAttested: PageStory = { ...Shield, name: 'The shield, not attested', beforeEach: [notAttested, ...[Shield.beforeEach ?? []].flat()] };
