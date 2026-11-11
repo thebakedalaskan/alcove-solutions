@@ -107,7 +107,7 @@ function FromTheCall({ call, note, line }: { call: CallSession; note: string; li
     a.el.currentTime = a.from;
     void a.el.play().then(() => setState('playing'), (err: unknown) => {
       // Paused again before it started: nothing went wrong.
-      if (err instanceof DOMException && err.name === 'AbortError') return;
+      if (err instanceof DOMException && err.name === 'AbortError') { setState('idle'); return; }
       failed(UNPLAYABLE, { code: err instanceof DOMException ? err.name : 'play' });
     });
   };

@@ -332,7 +332,7 @@ export const CallStateSchema = z.object({
      * Whether the call keeps its recording (the organizer's `keepRecording` choice). Without it there's nothing for Hear
      * it to play, during the call or after it.
      */
-    keepsRecording: z.boolean().default(true)
+    keepsRecording: z.boolean()
   }),
   /** People asking to join, for whoever hosts to let in or turn away; empty for everyone else. */
   waiting: z.array(CallAskerSchema),
