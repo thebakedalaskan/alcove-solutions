@@ -110,6 +110,18 @@ export const ADecisionsMenu = page('/notes/n2', 'busy', {
     });
   }
 });
+/** Your notes at rest: what Art wrote marked with lines of text, his bookmark with its mark, and no actions on any row. */
+export const YourNotes = page('/notes/n2', 'busy');
+export const YourNotesNight = page('/notes/n2', 'busy', { globals: { theme: 'dark' } });
+/** Pointing at one of Art's own notes: Add to the shared notes, Edit and Delete show together, and nothing else does. */
+export const YourNotesPointedAt = page('/notes/n2', 'busy', {
+  play: async ({ userEvent, step }) => {
+    await step('Point at the first thing Art wrote', async () => {
+      const row = (await screen.findByText('Ask Priya whether the article covers the team plan.', {}, { timeout: 30000 })).closest('li');
+      if (row) await userEvent.hover(row);
+    });
+  }
+});
 /** Something from Art's own notes, on its way to the shared notes: exactly what goes, the moment, and everyone who gets it. */
 export const AddingToTheSharedNotes = page('/notes/n2', 'busy', {
   play: async ({ canvas, userEvent, step }) => {

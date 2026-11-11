@@ -128,7 +128,7 @@ export function OwnNotesCard({ note, me, entries, own, shown, onSeek }: {
       {entries && entries.length > 0 ? (
         <OwnEntries entries={entries} me={me} moment={(m) => <NoteMoment noteId={note.id} m={m} shown={shown} onSeek={onSeek} />} away={say} picked={adding}
           actions={{ edit: (entryId, text) => own.edit.mutateAsync({ entryId, text }), remove: (entryId) => own.remove.mutateAsync(entryId) }}
-          share={(e) => (ready && !e.shared ? <IconButton icon="share" label="Add to the shared notes" size={15} className="own-share" onClick={() => open(e)} /> : null)} />
+          share={(e) => (ready && !e.shared ? <IconButton icon="share" label="Add to the shared notes" size={15} onClick={() => open(e)} /> : null)} />
       ) : entries && <p className="nd-own-e">Write something, bookmark a line, or keep an answer. Other participants, including the organizer, can’t open your own notes.</p>}
       {/* In the composer's place, outside the list that scrolls: all of it shows, the people and the button too. */}
       {picked ? <Preview key={picked.id} note={note} entry={picked} me={me} shown={shown} onSeek={onSeek} onClose={close} onAdded={() => { setAdded(true); setAdding(null); }} />

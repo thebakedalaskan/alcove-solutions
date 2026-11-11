@@ -683,8 +683,9 @@ export const YourNotesThenTheSharedNotes: PageStory = {
       await userEvent.type(await within(await yours()).findByRole('textbox', { name: 'Write in your own notes' }, SOON), 'The help article should link to the rollout plan.');
       await userEvent.click(within(await yours()).getByRole('button', { name: 'Keep it in your notes' }));
     });
-    await step('It’s kept. The arrow adds it to the shared notes', async () => {
+    await step('It’s kept. Point at it: Add to the shared notes shows, with Edit and Delete', async () => {
       const kept = await holding('listitem', 'The help article should link to the rollout plan.');
+      await userEvent.hover(kept);
       await userEvent.click(within(kept).getByRole('button', { name: 'Add to the shared notes' }));
     });
     await step('In place of the box you write in: what goes, where, and who reads it', async () => {

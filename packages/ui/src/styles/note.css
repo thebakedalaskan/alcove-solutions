@@ -476,7 +476,8 @@ button.nd-lt:hover { color: var(--ink); }
 .nd-own .own-m .hm-moment { margin-left: 0; height: 24px; }
 .nd-own .own-acts { opacity: 1; }
 .nd-own .own-acts .ac-icon-btn { width: 26px; height: 26px; opacity: 0; transition: opacity var(--duration-1), background-color var(--duration-1), color var(--duration-1); }
-.nd-own .own-acts .own-share, .nd-own .own-row:hover .own-acts .ac-icon-btn, .nd-own .own-acts .ac-icon-btn:focus-visible { opacity: 1; }
+/* At rest a row shows no actions: Add to the shared notes, Edit and Delete show together on hover or focus, and always on touch screens. */
+.nd-own .own-row:hover .own-acts .ac-icon-btn, .nd-own .own-row:focus-within .own-acts .ac-icon-btn { opacity: 1; }
 @media (hover: none) { .nd-own .own-acts .ac-icon-btn { opacity: 1; } }
 .nd-own .own-compose { grid-template-columns: minmax(0, 1fr) auto; align-items: center; min-height: 40px; margin-top: 6px; padding: 3px 5px 3px 12px; border-radius: 13px; }
 .nd-own .own-compose textarea { min-height: 20px; padding: 0; font: 400 14.5px/20px var(--font-sans); }
