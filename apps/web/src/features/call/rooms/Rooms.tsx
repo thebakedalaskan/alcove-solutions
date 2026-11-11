@@ -14,8 +14,8 @@ import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } f
 import { callName } from '~/lib/people';
 
 /**
- * Someone who can be sent to a room: anyone in the call but the organizer, by their place on the board (`id`): someone invited
- * by their address, a guest with the link by their seat (`by`), who can't transcribe a room.
+ * Someone who can be sent to a room: anyone in the call but the organizer, on the board by their seat (`id`), and sent by their
+ * address if they're invited, by their seat if they're a guest with the link (`by`), who can't transcribe a room.
  */
 export interface RoomCandidate { id: string; person: Person; by: RoomPerson; guest: boolean }
 /** Someone sent to an open room, as its card shows them: as the call knows them, whether they're in it now, and how a move names them. */
@@ -182,7 +182,7 @@ export function RoomsSetup({ people, me, notes, boardName, onOpen }: {
         <div className="ic-boardh"><span className="ac-eyebrow">Who goes where</span><IconButton icon="shuffle" label="Shuffle people" onClick={() => setAssign(placed(people, rooms, you))} /></div>
         <div ref={(el) => { cols.current[MAIN] = el; }} className={cn('ic-col is-main', move && move.over === MAIN && colOf(move.id) !== MAIN && 'is-drop')}>
           <div className="ch"><span className="ic-rname is-fixed">Main room</span><span className="cnt">{shown[MAIN]?.length ?? 0}</span></div>
-          <div className="rps">{(shown[MAIN] ?? []).map((id) => chip(id, MAIN))}</div>
+          <div className="rps">{shown[MAIN]?.length ? shown[MAIN].map((id) => chip(id, MAIN)) : <span className="none">Nobody stays in the main room</span>}</div>
         </div>
         <div className="ic-board" style={{ gridTemplateColumns: `repeat(${rooms}, minmax(0, 1fr))` }}>
           {shown.slice(1).map((ids, i) => {

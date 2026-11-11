@@ -269,9 +269,10 @@ interface RoomPeople { emails: string[]; guests: RoomGuest[] }
 
 /**
  * Who a room names, as it keeps them: someone invited by their address, whether or not they're in the call now; anyone else
- * in the call now by their seat, kept as their person, with the name they're in it under. A seat names whoever's in it now, and
- * someone on the invite goes by their address all the same, so they land in the same room from any device. Never the
- * organizer, who visits rooms instead, nor anyone not in this call: a seat is this call's own, so another call's names nobody.
+ * by their seat, kept as their person, with the name they're in the call under. A seat names whoever has it, in the call now
+ * or stepped out (a reload, a dropped connection), and someone on the invite goes by their address all the same, so they land
+ * in the same room from any device. Never the organizer, who visits rooms instead, nor anyone removed, nor anyone this call
+ * hasn't had: a seat is this call's own, so another call's names nobody.
  */
 function roomPeople(v: Viewer, callId: string, s: Stored, invited: Set<string>, named: { emails: readonly string[]; seats: readonly string[] }, ctx: Record<string, string | number>): RoomPeople {
   if (named.emails.some((e) => !invited.has(e))) throw new ValidationError('Only people invited to this call can be sent to a room by their address.', { context: ctx });
@@ -279,7 +280,7 @@ function roomPeople(v: Viewer, callId: string, s: Stored, invited: Set<string>, 
   const emails = [...named.emails];
   const guests: RoomGuest[] = [];
   for (const seat of named.seats) {
-    const j = s.people.find((x) => x.status === 'in' && x.role !== 'host' && !s.removed.includes(x.person) && seatOf(key, x) === seat);
+    const j = s.people.findLast((x) => (x.status === 'in' || x.status === 'left') && x.role !== 'host' && !s.removed.includes(x.person) && seatOf(key, x) === seat);
     if (!j) throw new ValidationError('That person isn’t in this call.', { context: ctx });
     const email = j.email?.toLowerCase();
     if (email && invited.has(email)) emails.push(email);

@@ -176,20 +176,20 @@ export function useBreakoutRooms({ session, state, room, roomView, invited, open
     }
   }, [helpKey, organizer, myRoom, state.breakouts.open, toast]);
   /*
-   * Everyone the organizer can send to a room: everyone in the call but them, once each. Someone invited goes by their address, so
-   * they land in their room from any device; anyone else (a guest with the link) by their seat in the call.
+   * Everyone the organizer can send to a room: everyone in the call but them, once each, on the board by their seat, which holds
+   * across reloads. Someone invited goes to their room by their address, so they land in it from any device; anyone else (a
+   * guest with the link) by their seat.
    */
   const invitedEmails = new Set(invited.map((g) => g.email.toLowerCase()));
   const candidates: RoomCandidate[] = [];
   for (const p of others) {
-    if (p.isOrganizer) continue;
     const email = p.person.email.toLowerCase();
-    const by: RoomPerson = email && invitedEmails.has(email) ? { email } : { seat: p.seat };
-    const id = by.email ?? by.seat;
-    if (id !== undefined && !candidates.some((c) => c.id === id)) candidates.push({ id, person: p.person, by, guest: by.email === undefined });
+    const onInvite = email !== '' && invitedEmails.has(email);
+    if (p.isOrganizer || (onInvite && candidates.some((c) => c.by.email === email))) continue;
+    candidates.push({ id: p.seat, person: p.person, by: onInvite ? { email } : { seat: p.seat }, guest: !onInvite });
   }
   /* While rooms are open: whoever's in the main room besides the organizer (a late arrival, a guest, someone moved back), to send on. */
-  const mainPeople = open ? candidates.filter((c) => others.some((p) => !inARoom(p.id) && (c.by.seat === undefined ? sameEmail(p.person, { email: c.id }) : p.seat === c.by.seat))) : [];
+  const mainPeople = open ? candidates.filter((c) => others.some((p) => p.seat === c.id && !inARoom(p.id))) : [];
   /* Everyone sent to each open room, as its card in your side shows them: as the call knows them once they're here. */
   const roomChips: RoomChip[][] = open ? open.rooms.map((r) => [
     ...r.people.map((p): RoomChip => {
