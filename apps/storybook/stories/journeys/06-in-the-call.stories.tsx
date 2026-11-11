@@ -133,14 +133,17 @@ export const OpenABoard: PageStory = {
     await step('It opens just for you. Look around and add to it on your own. Present, on its bar, brings everyone', async () => {
       await frame('Launch retro, only you see it', LATER);
     });
-    await step('Click Present. Everyone follows you. The arrows at its foot step through its frames', async () => {
+    await step('Click Present. Everyone follows your view, with their tools to hand. The arrows at its foot step through its frames, in the order they sit', async () => {
       await userEvent.click(await onBar(await frame('Launch retro, only you see it'), 'Present'));
       await told('Everyone follows you on Launch retro. They can add to it as you go.');
     });
-    await step('Click the arrow for the next frame. Everyone following you moves with you', async () => {
+    await step('Click the arrow for the next frame. Your view glides there, and everyone following you moves with you', async () => {
       const pager = await screen.findByRole('group', { name: /^Step through its frames/ }, SOON);
       await userEvent.click(within(pager).getByRole('button', { name: 'Next frame' }));
       await within(pager).findByText('Could improve', {}, SOON);
+    });
+    await step('Click Show everything, on the board’s bar: all of it, what’s outside the frames too, and everyone following sees it with you', async () => {
+      await userEvent.click(await screen.findByRole('button', { name: 'Show everything' }, SOON));
     });
     await step('Click Close. For you, or for everyone', async () => {
       await userEvent.click(await onBar(await frame('Launch retro, everyone sees it'), /^Close /));

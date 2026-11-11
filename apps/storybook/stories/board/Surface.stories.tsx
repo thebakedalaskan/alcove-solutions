@@ -222,6 +222,43 @@ export const AddText: BoardStory = {
   }
 };
 
+/**
+ * Dragged off into empty space, nothing on the board is in view: the sheet offers Back to the board, which shows all of it again,
+ * as Show everything on the bar does (⇧1 too). It goes as soon as something's in view.
+ */
+export const LostAndBack: BoardStory = {
+  name: 'Lost, and back',
+  play: async ({ canvas, userEvent, step }) => {
+    await step('Hold Space and drag the board off to the left, twice: nothing on it is in view, and the sheet offers Back to the board', async () => {
+      const sheet = canvas.getByRole('application', { name: 'Launch retro' });
+      sheet.focus();
+      const r = sheet.getBoundingClientRect();
+      const y = r.y + r.height / 2;
+      await userEvent.keyboard('[Space>]');
+      for (let i = 0; i < 2; i += 1) {
+        await userEvent.pointer([{ keys: '[MouseLeft>]', target: sheet, coords: { clientX: r.right - 20, clientY: y } }, { coords: { clientX: r.x + 20, clientY: y } }, { keys: '[/MouseLeft]' }]);
+      }
+      await userEvent.keyboard('[/Space]');
+      await canvas.findByRole('button', { name: 'Back to the board' }, { timeout: 4000 });
+    });
+    await step('Press it: all of the board is in view again', async () => {
+      await userEvent.click(canvas.getByRole('button', { name: 'Back to the board' }));
+    });
+  }
+};
+
+/** On a phone, Show everything stays on the bar while the zoom gives way to a pinch: one press shows all of the board. */
+export const ShowEverythingOnAPhone: BoardStory = {
+  name: 'Show everything, on a phone',
+  args: { mode: 'phone' },
+  globals: PHONE,
+  play: async ({ canvas, userEvent, step }) => {
+    await step('Press Show everything, on the bar: all of the board, further out than a pinch goes', async () => {
+      await userEvent.click(await canvas.findByRole('button', { name: 'Show everything' }));
+    });
+  }
+};
+
 /** The sticky tool's colours, beside the rail and level with the tool. */
 export const StickyColours: BoardStory = {
   name: 'Sticky colours',

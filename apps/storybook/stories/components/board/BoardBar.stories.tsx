@@ -1,7 +1,7 @@
 /*
  * BoardBar: everything about the board that isn't a tool, in one line along the top of the sheet. The board's name opens
  * rename, where it's saved and closing it; the seal says it's sealed, or what's wrong, and opens who can see it. Then undo
- * and redo, the zoom (press the percentage to see everything), the map, and in a call a vote and More.
+ * and redo, the zoom and how near you are, Show everything (also ⇧1), the map, and in a call a vote and More.
  * On a narrow sheet a long name gives way first, and the seal stays whole.
  */
 import { BoardBar, ICON_NAMES } from '@alcove/ui';
@@ -47,3 +47,5 @@ export const NotSaved: Story = { name: 'Not saved', args: { seal: 'Not saved', s
 export const MapOn: Story = { name: 'Map on', args: { mapOn: true } };
 /** On a sheet 640 pixels wide, as beside a shared screen: the name gives way and the seal stays whole, with every button still there. */
 export const Narrow: Story = { args: { name: 'Comms board', seal: 'Sealed to this room' }, parameters: { width: 640 } };
+/** A phone's width: undo, the zoom and the map give way to a pinch, and Show everything stays, so all of the board is a press away. */
+export const OnAPhone: Story = { name: 'On a phone', args: { name: 'Comms board' }, parameters: { width: 390 }, globals: { viewport: { value: 'phone', isRotated: false } } };

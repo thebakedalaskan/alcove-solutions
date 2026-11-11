@@ -23,7 +23,7 @@ import { holdBoardKeys } from './keys';
 import { JustPut } from './landing';
 import { BoardOverlay } from './overlay';
 import type { PillKind } from './pills';
-import { MOUNT_ALL, NO_GUIDES, drawn, everything, hangsOff, reachHolds, reachOf, sameIds } from './selection';
+import { MOUNT_ALL, NO_GUIDES, drawn, everything, hangsOff, reachHolds, reachOf, sameIds, touches } from './selection';
 import { BOARD_LOOKS, type BoardFly, type BoardLook, type BoardMode, type BoardMoreItems, type BoardState } from './state';
 
 const log = rootLog.child({ component: 'board' });
@@ -161,7 +161,7 @@ export class Board implements LiveStore<BoardState> {
     this.written = readBoard(doc);
     this.state = {
       view: this.written, tool: 'select', colour: 'butter', shape: 'rect', line: 'elbow', pen: 'pen', fly: null, sel: [], edit: null, cell: null, picking: false, menu: false, voteMenu: false, barMenu: false, night: boardNight(doc), hover: null,
-      draft: null, lineFrom: null, pressing: false, map: false, marquee: null, guides: NO_GUIDES, space: false, panning: false, glide: false, settling: NOTHING, landed: NOTHING, landing: NONE_LANDING,
+      draft: null, lineFrom: null, pressing: false, map: false, marquee: null, guides: NO_GUIDES, space: false, panning: false, glide: false, lost: false, settling: NOTHING, landed: NOTHING, landing: NONE_LANDING,
       near: null, following: null, watching: false, slide: null, sorting: false, canUndo: false, canRedo: false
     };
   }
@@ -225,6 +225,7 @@ export class Board implements LiveStore<BoardState> {
 
   private measure(sheet: HTMLElement): void {
     this.camera.resize(sheet.offsetWidth, sheet.offsetHeight);
+    this.noteLost();
     // Framed once it has a size, and again as that size settles, as the call makes room for it, until someone does something on it;
     // drawn small, whenever it changes.
     if (!this.camera.width || (this.framed && !this.look.mini && !this.untouched)) return;
@@ -343,6 +344,7 @@ export class Board implements LiveStore<BoardState> {
     if (this.look.mini) this.fitShown(false);
     else if (!was.objects.length && this.untouched && (heard || !this.allInView(view))) this.fitAll(false, true);
     this.settleNear();
+    this.noteLost();
   };
 
   /* ---------- undo ---------- */
@@ -920,6 +922,7 @@ export class Board implements LiveStore<BoardState> {
     this.later('glide', ms, () => {
       this.set({ glide: false });
       this.settleNear();
+      this.noteLost();
     });
   }
 
@@ -953,6 +956,18 @@ export class Board implements LiveStore<BoardState> {
     const cam = this.camera.fitting(frame, SLIDE_PAD);
     if (glide) this.glideTo(cam);
     else this.camera.set(cam);
+  }
+
+  /**
+   * Whether nothing on the board is in this person's view, though there's something on it, as after a scroll or a drag into empty
+   * space: the sheet offers the way back to all of it while that's so. Asked as the camera comes to rest, and as the board changes.
+   */
+  private noteLost(): void {
+    const { view, glide } = this.state;
+    if (glide) return;
+    const seen = this.camera.visible();
+    const lost = !this.look.mini && this.camera.width > 0 && view.objects.length > 0 && !drawn(view).some((b) => touches(b, seen) || (b.w === 0 && b.h === 0 && contains(seen, b.x, b.y)));
+    if (lost !== this.state.lost) this.set({ lost });
   }
 
   /** Whether all of this is on the sheet. */
@@ -1080,6 +1095,7 @@ export class Board implements LiveStore<BoardState> {
   private cameraMoved = (): void => {
     this.later('rest', REST_MS, () => {
       this.camera.rest();
+      this.noteLost();
       this.onRest?.(this.frameInView());
     });
     if (this.state.view.objects.length > MOUNT_ALL && !this.waits.has('near')) this.later('near', NEAR_EVERY_MS, this.settleNear);

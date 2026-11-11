@@ -1040,7 +1040,9 @@ See [Floating call](../engineering/floating-call.md) for browser capabilities an
 14. **On a phone**, **Board** is first in **More**'s grid and opens the same picker, and a board's frame has no Present:
    **Share › A board** presents one. Faces stay on top, under the line over the call when it says anything, and the board
    fills the rest, opening on its first frame at a size it can be read. Drag to look round and pinch to zoom; the bar keeps
-   the name, the seal, **Vote** and **More**, and what the pill says wraps rather than being cut. The one tool is
+   the name, the seal, **Show everything**, which shows all of the board however big, further out than a pinch goes,
+   **Vote** and **More**, and what the pill says wraps rather than being cut. Dragged off into empty space, the board offers
+   **Back to the board**, as anywhere. The one tool is
    **+**, at the bottom right: a sheet rises, night as the call is, with one sticky, its colours and a button that says
    where it's going, "Add to Went well" for the frame in the middle of the view, and the sticky goes into that frame's first
    free place, wherever someone has moved the frame meanwhile. Ideas from the call are there too: tap the pill, then **Add**
@@ -1763,8 +1765,9 @@ themes**, on stickies picked together, sorts them into named columns when its an
 whatever you've started meanwhile, and the toast's **Undo** takes the sort back even after you've done something else.
 
 **Looking round.** Scroll, or two fingers, to move; pinch or **⌘** and scroll to zoom; or hold **Space** and drag. The bar has
-**−**, how near you are and **+**, and **Map**, which shows where you are on a board too big for the sheet; **⇧1** shows
-everything.
+**−**, how near you are and **+**, **Show everything** (its tip says **⇧1**, which does the same), and **Map**, which shows
+where you are on a board too big for the sheet. Scroll or drag off into empty space, so that nothing on the board is in view,
+and the sheet offers **Back to the board** in its middle, which shows everything again; it goes as soon as something's in view.
 
 **Under its name.** Pressing the board's name offers **Rename**, where the name becomes a field in its place (**Enter**
 keeps it, **Esc** puts it back); **Saved in** the workspace, which shows it in the list; **Who can add to it**, the

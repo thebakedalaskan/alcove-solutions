@@ -10,7 +10,7 @@
 import { errorCode } from '@alcove/api';
 import { addObject, addStickies, bounds, hasBox, roomFrameId, shapePath, type Added, type BoardStep, type BoardView, type Landing, type PlacedObject } from '@alcove/board';
 import {
-  BOARD_MORE, BoardBar, BoardDots, BoardEmpty, BoardFrame, BoardGuide, BoardLayout, BoardLine, BoardLines, BoardMarquee, BoardPageActions, BoardPicture, BoardRail, BoardSelectionBox, BoardShape, BoardSheet, BoardSticky,
+  BOARD_MORE, BoardBar, BoardDots, BoardEmpty, BoardFrame, BoardGuide, BoardLayout, BoardLine, BoardLines, BoardLost, BoardMarquee, BoardPageActions, BoardPicture, BoardRail, BoardSelectionBox, BoardShape, BoardSheet, BoardSticky,
   BoardStroke, BoardText, BoardWorld, DURATION, useToast, type AvatarPerson, type BoardNaming, type IconName
 } from '@alcove/ui';
 import { createContext, forwardRef, memo, useContext, useEffect, useId, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ComponentProps, type ReactNode } from 'react';
@@ -389,6 +389,12 @@ function Blank({ board, look, everyone }: { board: Board; look: BoardLook; every
   return here ? <BoardEmpty fading={!empty} reader={!look.edit} everyone={everyone} page={look.page} /> : null;
 }
 
+/** The way back to all of the board, while nothing on it is in view: Show everything, and the keys stay with the sheet. */
+function Lost({ board }: { board: Board }) {
+  const lost = useBoardState(board, (s) => s.lost);
+  return lost ? <BoardLost onBack={() => { board.showEverything(); board.focusSheet(); }} /> : null;
+}
+
 function Bar({ board, surface, more }: { board: Board; surface: BoardSurfaceProps; more: boolean }) {
   // To the percent the bar shows, so a pinch draws it only when the number changes.
   const zoom = useSyncExternalStore(board.camera.subscribe, () => Math.round(board.camera.getSnapshot().z * 100) / 100);
@@ -591,6 +597,7 @@ export const BoardSurface = forwardRef<BoardHandle, BoardSurfaceProps>(function 
           </BoardWorld>
           {!look.mini && <Over board={board} onSort={onSort} />}
           {!look.mini && <Blank board={board} look={look} everyone={everyone} />}
+          {!look.mini && <Lost board={board} />}
           {look.bar && <Bar board={board} surface={props} more={anyIn(barItems)} />}
           {look.bar && <BarMenu board={board} items={barItems} night={night} />}
           {look.bar && !look.phone && <Minimap board={board} />}

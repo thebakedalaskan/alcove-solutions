@@ -1751,8 +1751,12 @@ person's own access where the call uses its pass, and its links open on the page
   all follow it: a dark board in any theme. Undo leaves it alone. Both menus that offer it, the bar's More and the frame's
   name menu, show it the same way (the moon, ticked while it's on), and either says what it did in a toast (`Board.nightBoard`):
   in someone's own dark theme nothing on their screen changes, so that's how they know it changed everyone else's.
+- **Getting back.** The bar's Show everything (⇧1 too) fits all of the board, on a phone as well, where the zoom gives way to a
+  pinch, and further out than a pinch goes. Whenever the camera comes to rest, or the board changes, with nothing on it in view
+  though there's something on it (`Board.noteLost`), the sheet offers Back to the board (`BoardLost`), which does the same,
+  until something's in view again.
 - **On a phone** (a sheet under 600 px), a board opens on its first frame at a size it can be read (`phoneCamera`), not
-  shrunk to all of it. Someone who can add to it gets the phone's board: the bar with its name, seal, Vote and More, no
+  shrunk to all of it. Someone who can add to it gets the phone's board: the bar with its name, seal, Show everything, Vote and More, no
   tools beside it, **+** at the bottom right for one sticky at a time, and a tap on a sticky to vote. The sticky goes in the
   first free place of the frame that was in the middle of the view, as that frame is when Add is pressed, wherever someone has
   moved it meanwhile, and the frame the button names holds it. Ideas from the call add there as **+** does, Undo and all. A

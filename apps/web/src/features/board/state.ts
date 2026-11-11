@@ -100,6 +100,8 @@ export interface BoardState {
   panning: boolean;
   /** The camera is easing to where it was last put. */
   glide: boolean;
+  /** Nothing on the board is in view, though there's something on it: the sheet offers a way back to all of it. */
+  lost: boolean;
   /** Objects travelling to new places together, as they do after an undo. */
   settling: ReadonlySet<string>;
   /** Objects that have just landed, which pop in. */
