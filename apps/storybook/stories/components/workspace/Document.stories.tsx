@@ -211,10 +211,20 @@ export const FollowLost: FollowStory = {
   name: 'Follow bar: somewhere you can’t open', args: { following: { person: PRIYA, name: 'Priya', where: 'Salary bands', lost: true }, onStop: did('onStop') },
   argTypes: { following: { control: false } }, render: (args) => <Follow {...args} />
 };
-/** The connection dropped and writing carries on. Turn `show` off and it closes up. */
+/** The browser has no connection, and writing carries on: it sends when it's back. Turn `show` off and it closes up. */
 export const OfflineBar: StoryObj<typeof WsOfflineBar> = {
   name: 'Offline bar', args: { show: true }, render: ({ show }) => <BarFrame><WsOfflineBar show={show} /></BarFrame>
 };
+/**
+ * The browser has a connection but Alcove can't be reached: it says so rather than offline, and Try now tries again at once
+ * rather than after the wait.
+ */
+export const UnreachableBar: StoryObj<typeof WsOfflineBar> = {
+  name: 'Offline bar: Alcove can’t be reached', args: { show: true, online: true, onTry: did('Try now') },
+  render: ({ show, online, onTry }) => <BarFrame><WsOfflineBar show={show} online={online} onTry={onTry} /></BarFrame>
+};
+export const UnreachableBarPhone: StoryObj<typeof WsOfflineBar> = { ...UnreachableBar, name: 'Offline bar: Alcove can’t be reached, phone', globals: { viewport: { value: 'phone', isRotated: false } } };
+export const UnreachableBarNight: StoryObj<typeof WsOfflineBar> = { ...UnreachableBar, name: 'Offline bar: Alcove can’t be reached, night', globals: { theme: 'dark' } };
 
 /** Someone moved it to Trash while you were in it: keep reading, or Restore it. */
 function Gone(args: ComponentProps<typeof WsGoneBar>) {

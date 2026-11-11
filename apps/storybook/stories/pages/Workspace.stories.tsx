@@ -7,6 +7,7 @@ import type { Meta } from '@storybook/react-vite';
 import { screen } from 'storybook/test';
 import { itemId } from '../../src/api/scenarios';
 import { changing, page, pages, type PageArgs, type PageStory } from '../../src/page';
+import type { World } from '../../src/world';
 import { troubled } from './changes';
 
 const meta = { title: 'Pages/Workspace', ...pages } satisfies Meta<PageArgs>;
@@ -153,6 +154,33 @@ export const TooBig = page(at('ws-product', 'Interview notes'), 'unsaved');
 /** Made a reader with words not yet saved: they can be copied or discarded. */
 export const ReaderNow = page(at('ws-handbook', 'Expenses'), 'unsaved');
 export const Offline = page(PLAN, 'offline');
+/**
+ * The browser's online, but Alcove can't be reached from it: the page says so rather than offline, keeps what's written here
+ * until it saves, and Try now, on its bar, tries again at once rather than after the wait. The list's own connection is down
+ * too, so it says Reconnecting, with Try now, rather than look up to date.
+ */
+const unreachable = (w: World) => {
+  const id = itemId('Launch plan');
+  w.pages[id] = { blocks: w.pages[id]?.blocks ?? [], ...w.pages[id], standing: 'offline' };
+  w.streamsDown = ['ws-product'];
+};
+export const Unreachable = page(PLAN, 'busy', { beforeEach: changing(unreachable) });
+export const UnreachableNight = page(PLAN, 'busy', { beforeEach: changing(unreachable), globals: { theme: 'dark' } });
+export const UnreachablePhone = page(PLAN, 'busy', { beforeEach: changing(unreachable), globals: PHONE });
+export const UnreachableWide = page(PLAN, 'busy', { beforeEach: changing(unreachable), globals: { viewport: { value: 'wide' } } });
+/** Try now, on the page's bar and on the list: each is back at once. */
+export const UnreachableTryNow = page(PLAN, 'busy', {
+  beforeEach: changing(unreachable),
+  play: async ({ canvas, userEvent, step }) => {
+    /** Try now in what's under the page's head (`.wd-off`) or the list's (`.wt-off`). */
+    const tryNow = async (under: string) => {
+      const found = (await canvas.findAllByRole('button', { name: 'Try now' })).find((b) => b.closest(under) !== null);
+      if (found) await userEvent.click(found);
+    };
+    await step('Press Try now, on the bar under the page’s head: it’s back at once', () => tryNow('.wd-off'));
+    await step('Press Try now, under the list’s head: the list is up to date again', () => tryNow('.wt-off'));
+  }
+});
 export const Night = page(PLAN, 'busy', { globals: { theme: 'dark' } });
 export const Phone = page(PLAN, 'busy', { globals: PHONE });
 /** Writing on a phone: the bar over the keyboard, for blocks, styles, @, photos and checklists. */

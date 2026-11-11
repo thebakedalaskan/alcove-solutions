@@ -172,7 +172,8 @@ function SealPop({ seal, onClose, from }: { seal: Standing; onClose: () => void;
     const pill = sheet.querySelector('.bd-pill');
     setTop(pill instanceof HTMLElement ? Math.max(POP_TOP, pill.offsetTop + pill.offsetHeight + UNDER_PILL) : POP_TOP);
   }, [seal.seal]);
-  return <BoardPop ref={ref} left={12} top={top} title={seal.pop.title} rows={seal.pop.rows} />;
+  const action = seal.pop.action;
+  return <BoardPop ref={ref} left={12} top={top} title={seal.pop.title} rows={seal.pop.rows} items={action && [{ id: 'act', icon: 'retry', label: action.label, onPick: () => { onClose(); action.run(); } }]} />;
 }
 
 /** The board on the stage: everyone works on it here. */

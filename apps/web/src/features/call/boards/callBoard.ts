@@ -227,14 +227,26 @@ export function useCallBoard({ session, stage, saved, state, me, owner, talking,
   }, [sinking]);
   /*
    * A saved board just for you is opened as yours, with your account, not the call's pass: the call has nothing to do with it.
-   * It's what's drawn while it's on your stage; otherwise the call's board is, or the one sinking as it closes.
+   * It's what's drawn while it's on your stage; otherwise the call's board is, or the one sinking as it closes. It's named as
+   * its workspace names it now (read as it's drawn, for its links, so it costs nothing more), not as it was named when it
+   * opened: a rename, here or anywhere else, holds.
    */
+  const savedTree = useQuery({ ...q.workspaceTree(saved?.workspaceId ?? ''), enabled: saved !== null }).data;
+  const liveName = saved ? savedTree?.items.find((i) => i.id === saved.documentId)?.name : undefined;
+  const savedName = liveName === undefined ? saved?.name : liveName || 'Untitled board';
   const savedOpen = useMemo((): CallBoardOpen | null => (saved ? {
-    workspaceId: saved.workspaceId, documentId: saved.documentId, name: saved.name, openedBy: me, canClose: true, everyone: false, role: 'edit', seal: 'Sealed', frame: null
-  } : null), [saved?.workspaceId, saved?.documentId, saved?.name, me]);
+    workspaceId: saved.workspaceId, documentId: saved.documentId, name: savedName ?? saved.name, openedBy: me, canClose: true, everyone: false, role: 'edit', seal: 'Sealed', frame: null
+  } : null), [saved?.workspaceId, saved?.documentId, savedName, me]);
   const mineDrawn = stage === 'saved' && savedOpen !== null;
   const { doc, status, reopen } = useBoardSession(mineDrawn ? savedOpen : open ?? sinking, owner, mineDrawn ? undefined : pass);
   const { people, onBoard } = useBoardPeople(doc, state.participants, me);
+  /* Its session is kept while it's off your stage: putting it back tries its connection at once if it's down, as Try now does. */
+  const shownBefore = useRef(onStage || mineDrawn);
+  useEffect(() => {
+    const before = shownBefore.current;
+    shownBefore.current = onStage || mineDrawn;
+    if (!before && shownBefore.current) doc?.retry();
+  }, [onStage, mineDrawn, doc]);
   const talkingKey = [...talking].sort().join(' ');
   const talkingSet = useMemo(() => new Set(talkingKey ? talkingKey.split(' ') : []), [talkingKey]);
   const handle = useRef<BoardHandle | null>(null);
@@ -421,6 +433,8 @@ export function useCallBoard({ session, stage, saved, state, me, owner, talking,
     status,
     /** Try again, for what Alcove refused: it opens again, and what's kept on this device goes again. Only an account keeps it. */
     tryAgain: owner !== null && canKeepEdits() ? reopen : undefined,
+    /** Try now, while its connection is down: it's tried again at once rather than after the wait. */
+    tryNow: doc ? doc.retry : undefined,
     /** What's drawn: a saved board just for you, the call's open board, or the one sinking for a moment as it closes. */
     drawn: drawnOpen,
     sinking: sinking !== null && !mineDrawn,

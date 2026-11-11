@@ -448,7 +448,8 @@ time, slides in on the right.
     they are ("Priya is in Launch plan") with **Follow Priya**, which takes you back. A screen can't be unfollowed.
   - **Close is for you.** On something open just for you, **Close** closes it. On someone else's presentation, it closes
     it for you: "Closed for you. While Priya presents, its tile takes you back." While you present a board or the
-    workspace, Close asks first: **For you** ("Everyone else keeps it open, on their own.") or **For everyone** ("It
+    workspace, Close asks first: **For you** ("You stop presenting. Everyone else keeps it open, on their own.", and
+    then "You stopped presenting. The others keep it open, on their own.") or **For everyone** ("It
     closes for everyone in the call.", or in a breakout room "It closes for everyone in this room.", where it does, unless
     it's the board every room shares and you opened it or you're the organizer), as a sheet on a phone, and so do the lit
     **Board** and **Workspace** (**O**, **W**). On the call's board while nobody presents it, whoever opened it and the
@@ -867,7 +868,12 @@ See [Floating call](../engineering/floating-call.md) for browser capabilities an
      notes off they say so.
    - **Hear it** on a quote plays that moment, when the call keeps its recording: during the call for anyone in it who was
      there for that moment, guests included (a guest never hears what was said while they were away), and after it for
-     everyone with the notes.
+     everyone with the notes. It plays on the speaker chosen for the call, and turns while the recording comes. When it can't
+     play, it says why beside the button: "Not in the recording yet. Try again in a few seconds." for a line just said, whose
+     piece of the recording is still on its way, and pressing it again then plays it; "This browser couldn't play it."; or
+     "You can only hear what you were there for.". A quote from a call that doesn't keep its recording says "This call
+     doesn't keep its recording.", and one said in a breakout room, which is never recorded, "Breakout rooms aren't
+     recorded.", with no Hear it.
 5. **Present the workspace**, from **Present** on its bar while it's open just for you (on a phone too), or with **Share ›
    The workspace** in the dock, for anyone in the workspace, while nobody else presents a board or the workspace (Share
    says "Priya is presenting. You can present once they stop."). Everyone in your part of the call who isn't watching
@@ -880,8 +886,9 @@ See [Floating call](../engineering/floating-call.md) for browser capabilities an
      own: to open another document and write alongside Priya, with her face showing where she is. **Follow Priya** ("Priya
      is in Launch plan") takes them back to her page and line. **Close** closes it for them: while Priya presents it's a
      tile among the people, saying where she is, and **Join** takes them back in, following.
-   - **Ending it.** While you present, **Close** (or the lit **Workspace**, or **W**) asks: **For you**, and everyone
-     following stays in it, working on their own; or **For everyone**, and it closes for everyone in the call. The
+   - **Ending it.** While you present, **Close** (or the lit **Workspace**, or **W**) asks: **For you** ("You stop
+     presenting."), and everyone following stays in it, working on their own; or **For everyone**, and it closes for
+     everyone in the call. With nobody presenting it, Close closes it at once: there's nobody else to close it for. The
      organizer can close anyone's for everyone from its name, and whoever presented it is told who did ("Art closed the
      workspace for everyone."). It also ends when the presenter leaves the call for good
      ("Priya left the call, so the presentation ended"), is removed or moved to another part of the call ("Priya stopped
@@ -967,6 +974,9 @@ See [Floating call](../engineering/floating-call.md) for browser capabilities an
    how the board stands too, as on its own page:
    - **Reconnecting**, when the board's connection drops while the call carries on. The pill at the top of the board says
      "Keep going. Your changes are safe here." What you add goes up once the connection's back, with nothing lost or doubled.
+     While the browser is online, the pill and the seal have **Try now**, which tries the connection again at once rather
+     than after the wait. It tries by itself, a little later each time up to every 10 seconds, and at once when the browser
+     comes back online, the tab comes back into view, or the board goes back on your stage.
    - **Not saved**, when Alcove won't take what was added. The pill says **Couldn't save** and how many changes are only on
      this screen ("Your last 3 changes are only here."). For anyone signed in, whose browser keeps them, it has **Try
      again**, which opens the board again and sends them. It tries again by itself as well.
@@ -1035,8 +1045,8 @@ See [Floating call](../engineering/floating-call.md) for browser capabilities an
      and go on following. **Unfollow** gives you your own view back, as you left it; **Follow Art** ("Art is in Could
      improve") takes you back to Art's view. Art moving on never pulls you back. Someone who comes in late follows Art from
      wherever Art is. Someone who can only look at the board follows the same way, looks round, and changes nothing.
-   - **Close**, while you present it (or the lit **Board**, or **O**), asks: **For you** ("Everyone else keeps it open, on
-     their own."), and everyone following stays on it, working on their own, and it's still the board in the call; or **For
+   - **Close**, while you present it (or the lit **Board**, or **O**), asks: **For you** ("You stop presenting. Everyone else
+     keeps it open, on their own."), and everyone following stays on it, working on their own, and it's still the board in the call; or **For
      everyone** ("It closes for everyone in the call."), which closes the board in the call too: "Closed for everyone." The
      organizer can close anyone's for everyone, from the board's name, and whoever presented it is told who did ("Art
      closed Launch retro for everyone."). **Stop sharing**, in Share, asks the same, wherever the board is: on your stage,
@@ -1740,7 +1750,13 @@ into a field: type, then **Enter**. A workspace always keeps an admin.
 
 - The connection drops: you keep writing. A bar says your edits are safe in this browser. They're kept there, sealed,
   through a reload, and send when you're back, even if you never open that document again; everyone's words merge, with
-  nothing to resolve, and a toast says so.
+  nothing to resolve, and a toast says so. "You're offline" only when the browser is; while it's online and Alcove can't be
+  reached, the bar says "Alcove can't be reached right now. Keep writing: what you write is kept here until it saves.", with
+  **Try now**, which tries again at once rather than after the wait, and a document that hasn't opened yet says the same with
+  **Try now**. It tries by itself, a little later each time up to every 10 seconds, and at once when the browser comes back
+  online, the tab comes back into view, or, in a call, the workspace is opened again. The list has a connection of its own:
+  while it's down, a line under its name says **Reconnecting**, with **Try now**, so a list that's stopped changing isn't
+  taken for current.
 - Someone moves the document you're in to Trash: you aren't thrown out. A bar says who, the page stops taking edits, and
   **Restore it** brings it back for everyone, where it was. Whoever moved it goes on to the next document, with **Undo**.
 - It stops being yours (taken off it, or closed to the workspace) or it's deleted: the page says you can't open it, the
@@ -1844,7 +1860,7 @@ it, and brings them back with it. A board presented in a call shows everyone fol
 
 - The connection drops: the seal says **Reconnecting**, and the pill **Keep going. Your changes are safe here.** What's
   added is kept in this browser, sealed, through a reload, and goes when the connection's back, once, with nothing lost
-  or doubled. A toast says so.
+  or doubled. A toast says so. While the browser is online, the pill and the seal have **Try now**, which tries again at once.
 - Alcove won't take what was added: the seal says **Not saved**, and the pill says how many changes are only on this
   screen, with **Try again**. It tries again by itself as well.
 - Someone given view only: the tools go and the seal says **View only**. They can still look round, follow people and

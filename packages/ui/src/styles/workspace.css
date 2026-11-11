@@ -34,6 +34,11 @@
 .wt-head { flex: none; display: flex; align-items: center; gap: 2px; height: 52px; padding: 0 8px; }
 .wt-name-save { flex: none; max-width: 76px; font: 500 11px/14px var(--font-sans); color: var(--ink-2); }
 .wt-name-save.is-failed { color: var(--caution); }
+/* The list's own connection dropped: under its head, in the words a document's head uses. */
+.wt-off { flex: none; display: flex; align-items: center; gap: 6px; min-height: 28px; margin: -6px 8px 4px; padding: 0 8px; border-radius: var(--radius-sm); background: var(--caution-soft); color: var(--caution); font: 500 12px/1.2 var(--font-sans); }
+.wt-off > span { flex: 1; min-width: 0; }
+.wt-off button { flex: none; padding: 3px 6px; margin-right: -4px; border-radius: var(--radius-sm); color: inherit; font-weight: 600; }
+.wt-off button:hover { background: color-mix(in srgb, var(--caution) 12%, transparent); }
 .wt-space { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 8px 0 6px; border-radius: 10px; color: var(--ink-3); transition: background-color var(--duration-1); }
 .wt-space:hover, .wt-space[data-state="open"] { background: var(--sunk); }
 .wt-space.is-edit, .wt-space.is-edit:hover { gap: 8px; background: var(--sunk); padding-right: 8px; }
@@ -109,6 +114,8 @@
 .wd-stop kbd { display: inline-grid; place-items: center; height: 20px; padding: 0 5px; border-radius: 5px; background: color-mix(in srgb, var(--horizon) 16%, transparent); font-size: 11px; }
 .wd-off, .wd-gone, .wd-ro { flex: none; display: flex; align-items: center; gap: 8px; min-height: 40px; padding: 6px 14px; font: 500 13.5px/1.3 var(--font-sans); }
 .wd-off, .wd-gone { background: var(--caution-soft); color: var(--caution); }
+.wd-off > span { flex: 1; min-width: 0; }
+.wd-off .ac-btn { flex: none; color: inherit; }
 .wd-gone span { flex: 1; min-width: 0; }
 .wd-ro { background: var(--sunk); color: var(--ink-2); }
 /* What didn't save says why, and what can be done with it beside that, under it when there's no room. */

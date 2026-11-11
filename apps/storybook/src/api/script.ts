@@ -214,6 +214,12 @@ export interface CallScript {
   board?: { work?: readonly BoardWork[] | undefined; every?: number | undefined; votes?: Readonly<Record<string, number>> | undefined; voters?: number | undefined } | undefined;
   /** While you're at the door: the organizer isn't in yet (they come this many seconds after the story opened), someone hosts in their place, or it's locked. */
   door?: { hostArrives?: number | undefined; standIn?: Person | undefined; locked?: boolean | undefined } | undefined;
+  /**
+   * What Hear it gets from the call: the line's recording after a moment (`plays`, unless it says); nothing yet the first
+   * time it's asked, the piece still going up (`not-yet`); a line from before you came (`not-there`); audio this browser
+   * can't play (`unplayable`); or no answer at all, so it's still fetching (`waits`).
+   */
+  hear?: 'plays' | 'not-yet' | 'not-there' | 'unplayable' | 'waits' | undefined;
 }
 
 /**

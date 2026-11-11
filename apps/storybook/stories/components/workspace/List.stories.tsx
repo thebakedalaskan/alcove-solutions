@@ -72,6 +72,13 @@ export default meta;
 export const NameSaving: StoryObj<typeof WsListHead> = { render: () => <ListBox height={120}><WsList head={<WsListHead name="Launch planning" saveState="saving" picker={{ open: false, onOpenChange: did('onOpenChange'), content: null }} />} /></ListBox> };
 export const NameFailed: StoryObj<typeof WsListHead> = { render: () => <ListBox height={120}><WsList head={<WsListHead name="Product" saveState="failed" picker={{ open: false, onOpenChange: did('onOpenChange'), content: null }} />} /></ListBox> };
 export const NameSavingNight: StoryObj<typeof WsListHead> = { ...NameSaving, globals: { theme: 'dark' } };
+/** The list's own connection dropped, so it may not be up to date: it says Reconnecting, with Try now while the browser's online. */
+export const ListReconnecting: StoryObj<typeof WsListHead> = {
+  name: 'List reconnecting',
+  render: () => <ListBox height={160}><WsList head={<WsListHead name="Product" reconnecting={{ onTry: did('Try now') }} picker={{ open: false, onOpenChange: did('onOpenChange'), content: null }} />} /></ListBox>
+};
+export const ListReconnectingNight: StoryObj<typeof WsListHead> = { ...ListReconnecting, name: 'List reconnecting, night', globals: { theme: 'dark' } };
+export const ListReconnectingPhone: StoryObj<typeof WsListHead> = { ...ListReconnecting, name: 'List reconnecting, phone', globals: { viewport: { value: 'phone', isRotated: false } } };
 export const NameFailedNight: StoryObj<typeof WsListHead> = { ...NameFailed, globals: { theme: 'dark' } };
 type Story = StoryObj<typeof meta>;
 

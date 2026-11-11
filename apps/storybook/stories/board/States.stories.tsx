@@ -40,6 +40,15 @@ export const Reconnecting: BoardStory = {
   args: { seal: 'Reconnecting', sealIcon: 'wifiOff', children: <BoardPill icon="wifiOff" title="Reconnecting" text="Keep going. Your changes are safe here." /> }
 };
 export const ReconnectingDark: BoardStory = { ...Reconnecting, name: 'Reconnecting, dark', globals: { theme: 'dark' } };
+/**
+ * Reconnecting while the browser is online: it's Alcove that can't be reached, so the pill, and the seal's pop, have Try now,
+ * which tries again at once rather than after the wait.
+ */
+export const ReconnectingTryNow: BoardStory = {
+  name: 'Reconnecting, Try now',
+  args: { seal: 'Reconnecting', sealIcon: 'wifiOff', children: <BoardPill icon="wifiOff" title="Reconnecting" text="Keep going. Your changes are safe here." action="Try now" onAction={did('try now')} /> }
+};
+export const ReconnectingTryNowDark: BoardStory = { ...ReconnectingTryNow, name: 'Reconnecting, Try now, dark', globals: { theme: 'dark' } };
 
 /** Couldn't save: it says how many changes are only on this screen, and retries on its own as well. */
 export const CouldNotSave: BoardStory = {

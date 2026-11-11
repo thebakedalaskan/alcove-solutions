@@ -29,7 +29,7 @@ import { b64u, concat, equalBytes, fromUtf8, id128, mac, openJson, openRecord, s
 import { bigintText, bytea, exec, maybeOne, rows, timestamp, tx, type Db } from '../../db';
 import { AppError, ClientTakenError, ConflictError, ForbiddenError, TooLargeError, UnavailableError, ValidationError, notFound } from '../../errors';
 import { DocFailure } from '../../live/docPool';
-import { publish, type Hub, type HubEvent } from '../../live/hub';
+import { publish, type Hub, type HubEvent, type StreamPlace } from '../../live/hub';
 import { roomFor, type Room, type Snapshot } from '../../live/room';
 import { LiveStream, inPieces, type Line, type Step } from '../../live/stream';
 import { log } from '../../log';
@@ -1248,11 +1248,11 @@ class DocStream extends LiveStream<DocLiveEvent> {
   private shut = false;
 
   constructor(
-    d: Deps, room: Room, private readonly doc: DocRoom, credentials: Credentials, who: Who, version: number, release: () => void, private role: 'edit' | 'read', private trashed: boolean,
+    d: Deps, room: Room, private readonly doc: DocRoom, credentials: Credentials, who: Who, version: number, place: StreamPlace, private role: 'edit' | 'read', private trashed: boolean,
     /** Whose budget what's sent here comes out of, and from where. */
     private readonly sender: string, private readonly address: string
   ) {
-    super(d, room, credentials, who, version, release, { workspaceId: doc.workspaceId, documentId: doc.documentId });
+    super(d, room, credentials, who, version, place, { workspaceId: doc.workspaceId, documentId: doc.documentId });
     this.at = doc.reached;
     this.caretsTold = doc.caretsSoFar;
   }
@@ -1372,11 +1372,13 @@ const saysUnavailable = async (out: StreamingApi) => { await out.write(`${JSON.s
 
 /**
  * Opens a document's stream: it hears of changes first and reads second, so nothing falls between them, and anyone who
- * can't open it is refused here, before a line is written. Runs until the reader loses it, the browser goes or can't keep
- * up, this instance shuts down, or it's time to let go. A document that won't open says so, as its stream's only line.
+ * can't open it is refused here, before a line is written. Runs until the reader loses it, the browser goes, can't keep up
+ * or says it closed it (`name`, as it calls it), its place is needed, this instance shuts down, or it's time to let go. A
+ * document that won't open says so, as its stream's only line.
  */
-export async function open(d: Deps, credentials: Credentials, reader: Reader, workspaceId: string, documentId: string, after: number, address: string): Promise<(out: StreamingApi) => Promise<void>> {
-  const release = d.hub.admit('document', limitKey(reader), address);
+export async function open(d: Deps, credentials: Credentials, reader: Reader, workspaceId: string, documentId: string, after: number, address: string, name: string | null): Promise<(out: StreamingApi) => Promise<void>> {
+  const place = d.hub.admit('document', limitKey(reader), address, name);
+  const release = place.release;
   try {
     const w = await workspaceFor(d, reader, workspaceId);
     const { role, item } = requireDocument(reader, w, documentId, 'read');
@@ -1385,7 +1387,7 @@ export async function open(d: Deps, credentials: Credentials, reader: Reader, wo
     if (item.kind === 'document') await started(w, documentId, row);
     const tree = roomFor(d, workspaceId);
     const room = docRoomFor(d, w, documentId, tree);
-    const stream = new DocStream(d, tree, room, credentials, { email: reader.email, principals: reader.principals }, w.version, release, role, trashOf(w.state, documentId) !== null, limitKey(reader), address);
+    const stream = new DocStream(d, tree, room, credentials, { email: reader.email, principals: reader.principals }, w.version, place, role, trashOf(w.state, documentId) !== null, limitKey(reader), address);
     tree.join(stream);
     room.join(stream);
     try {
@@ -1406,4 +1408,9 @@ export async function open(d: Deps, credentials: Credentials, reader: Reader, wo
     release();
     throw e;
   }
+}
+
+/** A browser says it closed its stream of a document, by what it called it: it ends now, and its place is free. Only the asker's own. */
+export function endStream(d: Deps, reader: Reader, name: string): void {
+  d.hub.end('document', limitKey(reader), name);
 }

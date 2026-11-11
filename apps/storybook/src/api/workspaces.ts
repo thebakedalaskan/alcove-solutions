@@ -218,8 +218,15 @@ function hereNow(id: string): WorkspaceHere[] {
 
 class LiveWorkspace extends Pushed<WorkspaceView> implements WorkspaceLive {
   constructor(private readonly id: string) {
-    super({ status: 'live', tree: structuredClone(treeFor(id)), here: hereNow(id), mentions: mentionsIn(id) });
+    super({ status: current().streamsDown?.includes(id) ? 'reconnecting' : 'live', tree: structuredClone(treeFor(id)), here: hereNow(id), mentions: mentionsIn(id) });
     watching.add(this);
+  }
+  /** Try now: a stream that couldn't reach Alcove does now, once the browser's online, and stays so for the rest of the story. */
+  retry(): void {
+    if (this.getSnapshot().status !== 'reconnecting' || !isOnline()) return;
+    const w = current();
+    w.streamsDown = w.streamsDown?.filter((s) => s !== this.id);
+    this.update((v) => ({ ...v, status: 'live', tree: structuredClone(treeFor(this.id)), here: hereNow(this.id), mentions: mentionsIn(this.id) }));
   }
   refresh(id: string): void { if (id === this.id) this.update((v) => ({ ...v, tree: structuredClone(treeFor(id)), here: hereNow(id), mentions: mentionsIn(id) })); }
   present(_where: WorkspaceWhere): void { /* Nobody else is here to see where you are. */ }
@@ -405,6 +412,7 @@ function statusOf(item: WorkspaceItem): DocStatus {
   const base: DocStatus = { status: 'saved', refused: null, role: item.role, trashed: item.trashedAt !== null, closed: null, unsent: false };
   const refused = current().pages[item.id]?.refused ?? null;
   if (refused) return { ...base, status: 'failed', refused: refused.why, unsent: true };
+  if (item.kind !== 'board' && current().pages[item.id]?.standing === 'offline') return { ...base, status: 'offline' };
   const standing = item.kind === 'board' ? current().boards[item.id]?.standing : undefined;
   if (standing === 'offline') return { ...base, status: 'offline', unsent: true };
   if (standing === 'failed') return { ...base, status: 'failed', refused: 'too-large', unsent: true };
@@ -479,6 +487,8 @@ function othersOn(item: WorkspaceItem, awareness: Awareness): () => void {
 
 /** Each open session of a document, by the document's ID: what happens to it in its workspace reaches them, as the server's stream says it. */
 const sessions = new Map<string, Set<Document>>();
+/** How long what was kept here takes to go once a stream's back. */
+const SAVING_MS = 700;
 /** Every open session of these documents hears what changed: in Trash, back, or gone with their workspace. */
 function sessionsHear(ids: readonly string[], change: (s: DocStatus) => DocStatus): void {
   for (const id of ids) for (const d of sessions.get(id) ?? []) d.update(change);
@@ -521,6 +531,21 @@ class Document extends Pushed<DocStatus> implements DocSession {
     }
     this.close();
     return Promise.resolve();
+  }
+  /**
+   * Try now: a stream that couldn't reach Alcove does now, once the browser's online, and stays so for the rest of the story.
+   * What was kept here goes, a moment later.
+   */
+  retry(): void {
+    const now = this.getSnapshot();
+    if (now.status !== 'offline' || !isOnline()) return;
+    const w = current();
+    const page = w.pages[this.id];
+    if (page?.standing) w.pages[this.id] = { ...page, standing: undefined };
+    const board = w.boards[this.id];
+    if (board?.standing === 'offline') w.boards[this.id] = { ...board, standing: undefined };
+    this.update((s) => ({ ...s, status: s.unsent ? 'saving' : 'saved' }));
+    if (now.unsent) this.after(SAVING_MS, () => this.update((s) => ({ ...s, status: 'saved', unsent: false })));
   }
   override close(): void { sessions.get(this.id)?.delete(this); this.leave(); this.awareness.destroy(); super.close(); }
 }

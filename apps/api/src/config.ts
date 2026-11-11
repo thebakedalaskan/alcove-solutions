@@ -115,6 +115,11 @@ const EnvSchema = z.object({
   LIVE_STREAMS_MAX: z.coerce.number().int().min(1).default(500),
   /** The most of them from one address, whoever's signed in, so a handful of accounts can't take them all. */
   LIVE_STREAMS_PER_ADDRESS: z.coerce.number().int().min(1).default(64),
+  /**
+   * How long one of someone's streams has been open, in ms, before it can be ended to make room for another of theirs at their
+   * limit (live/hub.ts): one just opened is likelier a tab that's still there than one that went unheard.
+   */
+  LIVE_MAKE_ROOM_MS: z.coerce.number().int().min(0).default(20_000),
   /** How many workers open documents. The first takes big ones. */
   DOC_WORKERS: z.coerce.number().int().min(1).max(8).default(2),
   /** How long a worker has for one job on a document, in ms. */

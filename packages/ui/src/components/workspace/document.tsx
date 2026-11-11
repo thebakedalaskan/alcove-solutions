@@ -96,9 +96,19 @@ export function WsFollowBar({ following, onStop }: { following: WsFollowing | nu
   );
 }
 
-/** The connection dropped, and writing carries on. */
-export function WsOfflineBar({ show }: { show: boolean }) {
-  return <Bar show={show} className="wd-off"><Icon name="wifiOff" size={14} /><span>You’re offline. Keep writing: your edits are safe in this browser and send when you’re back.</span></Bar>;
+/**
+ * The document's connection dropped, and writing carries on. `online`: the browser has a connection, so it's Alcove that
+ * can't be reached, and `onTry` (Try now) tries again at once rather than after the wait. Offline, it tries by itself as the
+ * connection comes back.
+ */
+export function WsOfflineBar({ show, online = false, onTry }: { show: boolean; online?: boolean | undefined; onTry?: (() => void) | undefined }) {
+  return (
+    <Bar show={show} className="wd-off">
+      <Icon name="wifiOff" size={14} />
+      <span>{online ? 'Alcove can’t be reached right now. Keep writing: what you write is kept here until it saves.' : 'You’re offline. Keep writing: your edits are safe in this browser and send when you’re back.'}</span>
+      {online && onTry && <Button size="xs" variant="quiet" onClick={onTry}>Try now</Button>}
+    </Bar>
+  );
 }
 
 /**
@@ -294,11 +304,16 @@ export function WsVersionFailed({ why }: { why: string }) {
   );
 }
 
-/** A workspace that hasn't opened, and no connection to open it with. It opens by itself. */
-export function WsOfflineEmpty() {
+/**
+ * A workspace or a document that hasn't opened, with no connection to Alcove to open it with. It opens by itself. `online`:
+ * the browser has a connection, so it's Alcove that can't be reached, and `onTry` (Try now) tries again at once.
+ */
+export function WsOfflineEmpty({ online = false, onTry }: { online?: boolean | undefined; onTry?: (() => void) | undefined }) {
   return (
-    <EmptyState className="wd-none" title="You’re offline" art={<WsArch><path d="M21 47a17 17 0 0 1 24 0M27 53a9 9 0 0 1 12 0" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /><path d="M33 59h.01" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" /></WsArch>}>
-      This opens by itself when you’re back. Anything you wrote offline is safe in this browser.
+    <EmptyState className="wd-none" title={online ? 'Alcove can’t be reached right now' : 'You’re offline'}
+      art={<WsArch><path d="M21 47a17 17 0 0 1 24 0M27 53a9 9 0 0 1 12 0" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /><path d="M33 59h.01" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" /></WsArch>}
+      action={online && onTry ? <Button size="sm" onClick={onTry}>Try now</Button> : undefined}>
+      {online ? 'This opens by itself as soon as it can. Anything you wrote is safe in this browser.' : 'This opens by itself when you’re back. Anything you wrote offline is safe in this browser.'}
     </EmptyState>
   );
 }

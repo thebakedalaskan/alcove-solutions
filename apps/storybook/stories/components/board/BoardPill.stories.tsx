@@ -48,8 +48,10 @@ export const RoomsClose: Story = { name: 'Rooms close', args: { icon: 'door', ti
 export const OnTheSharedBoard: Story = { name: 'On the shared board', args: { icon: 'door', title: 'Comms', text: 'Everyone can see this board', time: '9:12', action: undefined, said: '' } };
 /** Rooms on one shared board: how many, and their time. */
 export const RoomsOnOneBoard: Story = { name: 'Rooms on one board', args: { icon: 'door', title: '3 rooms on this board', text: undefined, time: '9:12', action: undefined, said: '' } };
-/** The connection dropped. You keep working, and what you add goes up when it's back. */
+/** The connection dropped. You keep working, and what you add goes up when it's back. Offline, it tries by itself as the connection comes back. */
 export const Reconnecting: Story = { args: { icon: 'wifiOff', title: 'Reconnecting', text: 'Keep going. Your changes are safe here.', time: undefined, action: undefined } };
+/** Online, it's Alcove that can't be reached: Try now tries again at once rather than after the wait. */
+export const ReconnectingTryNow: Story = { name: 'Reconnecting, Try now', args: { icon: 'wifiOff', title: 'Reconnecting', text: 'Keep going. Your changes are safe here.', time: undefined, action: 'Try now' } };
 /** Changes that couldn't be saved: how many are only on this screen, and Try again. */
 export const CouldNotSave: Story = { name: 'Couldn’t save', args: { icon: 'cloudOff', title: 'Couldn’t save', text: 'Your last 3 changes are only here.', time: undefined, action: 'Try again' } };
 /** On a phone, in a room: the board has no bar there, so the pill sits at the top, and long words give way before the time does. */

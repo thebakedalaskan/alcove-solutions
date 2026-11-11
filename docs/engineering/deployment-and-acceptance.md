@@ -116,10 +116,15 @@ Cloudflare account identifiers are repository variables; `CLOUDFLARE_API_TOKEN` 
 Cloud Run uses one instance, session affinity, gen2, one CPU, 2 GiB, port 8080, a 300-second timeout and 1,000
 requests at once: an open tab holds one for its stream of rings, so at the default of 80 they'd starve live calls.
 The API holds at most 300 of those streams, and 8 for any one account.
-A live stream of a workspace or a document holds a request too, for as long as it's open: at most 8 of a workspace and 16 of
-documents for any one person on an instance, 64 of both from one client address (`LIVE_STREAMS_PER_ADDRESS`), and 500 of both
-together for everyone (`LIVE_STREAMS_MAX`), past which they're refused with `503` and browsers try again, and the API lets go of
-each one after 280 seconds for the browser to open it again (`LIVE_STREAM_MS`; keep it under the timeout). Rings and these are
+A live stream of a workspace or a document holds a request too, for as long as it's open: at most 8 of a workspace and 8 of
+documents for any one person on an instance, where the next ends their oldest once it's been open 20 seconds
+(`LIVE_MAKE_ROOM_MS`), 64 of both from one client address (`LIVE_STREAMS_PER_ADDRESS`), and 500 of both together for everyone
+(`LIVE_STREAMS_MAX`), past which they're refused with `503` and browsers try again, and the API lets go of each one after 280
+seconds for the browser to open it again (`LIVE_STREAM_MS`; keep it under the timeout). Cloud Run never tells the API that a
+browser closed a stream (HTTP/1 doesn't pass a disconnect on), so the browser says so itself, with `POST …/live/end` and the
+name it gave the stream, and the API ends it then and there. To check it on the deployed app, open twenty documents from the
+list in two minutes: none should stay on Reconnecting, and the log should have no "You have this open in too many windows"
+warning with `kind: document`. Rings and these are
 counted apart and come to 800 together, which leaves 200 requests for calls and everything else with both full. Raise one of
 them only with that in mind. Node gives its heap about half of the container's memory, so 2 GiB is a
 heap of about 1,120 MiB. Documents are opened in worker threads with memory of their own, 640 MiB for the one that takes big

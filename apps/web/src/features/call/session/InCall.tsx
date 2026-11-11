@@ -1603,7 +1603,7 @@ export function InCall({ session }: { session: CallSession }) {
   const boardChanges = useChangesSinceSaved(board.doc, boardStatus);
   const boardStanding = standingOf({
     status: boardStatus, offline: boardStatus !== null && (boardStatus.status === 'offline' || (!online && boardStatus.status !== 'failed')), readOnly: viewOnly,
-    changes: boardChanges, tryAgain: board.tryAgain, kept: boardWhere ? { icon: 'lock', text: `Saved in ${boardWhere}.` } : null,
+    changes: boardChanges, tryAgain: board.tryAgain, tryNow: online ? board.tryNow : undefined, kept: boardWhere ? { icon: 'lock', text: `Saved in ${boardWhere}.` } : null,
     sealed: {
       seal: sealed, title: `${sealed}. Encrypted in storage.`,
       rows: roomsOwn ? [

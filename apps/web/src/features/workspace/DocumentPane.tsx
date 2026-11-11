@@ -24,7 +24,7 @@ import { HearIt } from './live/HearIt';
 import { useEditorCall } from './live/useEditorCall';
 import { useVideoHandlers } from './playing';
 import { Rescue, type CopyTo } from './Rescue';
-import { useBackOnline, useOpensAgain, useSession, type Opened } from './opened';
+import { useBackOnline, useOpensAgain, useSession, useTriesWhenShown, type Opened } from './opened';
 import { withDocument } from './session';
 import { ShareSheet } from './Sheets';
 import { tagRect, useTags } from './tags';
@@ -136,7 +136,7 @@ function Page({ ws, item, session, status }: { ws: Ws; item: WorkspaceItem; sess
     const target = ws.tree.all.get(to);
     if (!target || !editor) return false;
     /* Another document only opens with a connection, and the block can't wait on this page for that. */
-    if (status.status === 'offline' || !navigator.onLine) { ws.say(wsToast.failed('You’re offline, so this can’t go to another document yet.')); return false; }
+    if (status.status === 'offline' || !navigator.onLine) { ws.say(wsToast.failed(navigator.onLine ? 'Alcove can’t be reached right now, so this can’t go to another document yet.' : 'You’re offline, so this can’t go to another document yet.')); return false; }
     const was = editor.placeOf(block.id);
     const [{ appendBlocks, removeBlockFrom }, { mediaOfBlock }] = await Promise.all([import('./editor/ydoc'), import('./editor/blocks/attrs')]);
     /* It gets a new ID where it lands, and that's what Undo takes out of there. */
@@ -287,7 +287,8 @@ function OpenedPane({ ws, item, opened, reopen }: { ws: Ws; item: WorkspaceItem;
   useOpensAgain(status, ready, reopen);
   const history = useHistory(ws, item, session, item.role === 'edit' && !trashed && !offline && status.role !== 'read');
 
-  useBackOnline(ws, session, offline, status);
+  useBackOnline(ws, session, offline, status, online);
+  useTriesWhenShown(ws, session);
 
   if (gone) {
     return (
@@ -329,7 +330,7 @@ function OpenedPane({ ws, item, opened, reopen }: { ws: Ws; item: WorkspaceItem;
       <WsDocHead crumbs={crumbsOf(ws, item)} save={save} onToggleList={ws.toggleList} faces={faces}
         share={canShare ? { open: share, onOpenChange: setShare, content: <ShareSheet item={item} /> } : undefined} more={morePop} />
       <WsFollowBar following={ws.following?.quiet ? null : ws.following} onStop={() => ws.stopFollowing()} />
-      <WsOfflineBar show={offline && ready && status.closed === null} />
+      <WsOfflineBar show={offline && ready && status.closed === null} online={online} onTry={session.retry} />
       <WsUnsavedBar why={unsaved} saveable={copyTo !== undefined}>{rescue}</WsUnsavedBar>
       <WsGoneBar who={trashed ? who : null} onRestore={item.role === 'edit' ? () => ws.actions.restore(item.id) : undefined} unsent={status.unsent} />
       <WsReadOnlyBar show={!trashed && unsaved !== 'read-only' && (item.role !== 'edit' || status.role === 'read' || status.refused === 'read-only')} organizer={askToEdit} />
@@ -337,7 +338,7 @@ function OpenedPane({ ws, item, opened, reopen }: { ws: Ws; item: WorkspaceItem;
       {/* The page stays open behind a version: nothing's typed into it, and it's as it was on coming back. */}
       {ready
         ? <WsScroll hidden={history.reading !== null} inert={history.reading !== null} onWheel={stayHere} onTouchMove={stayHere} onPointerDown={stayHere}><Page key={opened.round} ws={ws} item={item} session={session} status={status} /></WsScroll>
-        : status.closed === 'unavailable' ? <WsUnavailable /> : offline && <WsOfflineEmpty />}
+        : status.closed === 'unavailable' ? <WsUnavailable /> : offline && <WsOfflineEmpty online={online} onTry={session.retry} />}
       {history.page}
     </WsDoc>
     {history.panel}

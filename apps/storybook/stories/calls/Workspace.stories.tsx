@@ -5,7 +5,7 @@
  * and asking to see it; a follow-up added by hand; and the toasts. Everyone else's browser is the script's: where they are in
  * the workspace, what they present and play, and who asks.
  */
-import type { CallSession } from '@alcove/api';
+import { DEFAULT_NOTES_CHOICES, type CallSession } from '@alcove/api';
 import type { Meta } from '@storybook/react-vite';
 import { screen, waitFor, within } from 'storybook/test';
 import { asksToSee, at, goesTo, leaves, opensPage, plays, presentsWorkspace, tagsYou, type CallScript, type Present } from '../../src/api/script';
@@ -180,14 +180,46 @@ function quoteTheLatest(session: CallSession): void {
 }
 const hearIt: Play = async (c) => {
   await openWorkspace(c);
-  await c.step('Press Hear it on the quote at the end of the plan', async () => {
+  await c.step('Press Hear it on the quote at the end of the plan. It says it’s working until the sound starts', async () => {
     const hear = await c.canvas.findByRole('button', { name: 'Hear it' }, { timeout: 10000 });
     hear.scrollIntoView({ block: 'center' });
     await c.userEvent.click(hear);
   });
 };
+/** What Hear it says on the quote, once it has said it. */
+const says = (words: string): Play => async (c) => {
+  await hearIt(c);
+  await c.step(`It says: “${words}”`, async () => { await c.canvas.findByText(words, {}, { timeout: 5000 }); });
+};
 export const HearIt = inCall({ ...reviewing(), then: quoteTheLatest }, { play: hearIt });
 export const HearItPhone = phone(HearIt);
+/** Still fetching the line: the button turns while the recording comes, and plays once it has. */
+export const HearItFetching = inCall({ ...reviewing({ hear: 'waits' }), then: quoteTheLatest }, { play: hearIt, name: 'Hear it, fetching' });
+/** The line's piece of the recording hasn't gone up yet: it says so, and pressing again a few seconds later plays it. */
+export const HearItNotYet = inCall({ ...reviewing({ hear: 'not-yet' }), then: quoteTheLatest }, {
+  name: 'Hear it, not in the recording yet',
+  play: async (c) => {
+    await says('Not in the recording yet. Try again in a few seconds.')(c);
+    await c.step('Press Hear it again. The piece has gone up now, so it plays', async () => {
+      await c.userEvent.click(await c.canvas.findByRole('button', { name: 'Hear it' }));
+    });
+  }
+});
+export const HearItNotYetPhone = phone(HearItNotYet);
+/** A line said before you came, which you weren't there for: it says so in place of Hear it. */
+export const HearItNotThere = inCall({ ...reviewing({ hear: 'not-there' }), then: quoteTheLatest }, { play: says('You can only hear what you were there for.'), name: 'Hear it, not there for it' });
+/** Audio this browser can't play: it says so in place of Hear it. */
+export const HearItUnplayable = inCall({ ...reviewing({ hear: 'unplayable' }), then: quoteTheLatest }, { play: says('This browser couldn’t play it.'), name: 'Hear it, can’t play here' });
+/** A call that doesn't keep its recording: a quote of it says so, and offers no Hear it. */
+export const HearItUnkept = inCall({ ...reviewing(), call: { ...LAUNCH_REVIEW, choices: { ...DEFAULT_NOTES_CHOICES, keepRecording: false } }, then: quoteTheLatest }, {
+  name: 'Hear it, no recording kept',
+  play: async (c) => {
+    await openWorkspace(c);
+    await c.step('The quote at the end of the plan says the call doesn’t keep its recording', async () => {
+      (await c.canvas.findByText('This call doesn’t keep its recording.', {}, { timeout: 10000 })).scrollIntoView({ block: 'center' });
+    });
+  }
+});
 
 /** Kofi tags you in the launch checklist while you're in the plan: the toast says so, with Go there. */
 export const Tagged = inCall(reviewing({ cues: at(9, tagsYou(KOFI, CHECKLIST_DOC)) }), { play: openWorkspace });

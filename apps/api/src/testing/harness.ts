@@ -146,7 +146,7 @@ export async function startHarness(): Promise<Harness> {
   await pool.query('DROP SCHEMA public CASCADE; CREATE SCHEMA public;');
   await migrate(pool);
   const objects = await createObjectStore(cfg);
-  const deps: Deps = { cfg, pool, objects, livekit: createLiveKit(cfg), hub: createHub(url, { checkMs: cfg.HUB_CHECK_MS, timeoutMs: cfg.HUB_TIMEOUT_MS, maxStreams: cfg.LIVE_STREAMS_MAX, maxPerAddress: cfg.LIVE_STREAMS_PER_ADDRESS }), docs: docPoolFor(cfg) };
+  const deps: Deps = { cfg, pool, objects, livekit: createLiveKit(cfg), hub: createHub(url, { checkMs: cfg.HUB_CHECK_MS, timeoutMs: cfg.HUB_TIMEOUT_MS, maxStreams: cfg.LIVE_STREAMS_MAX, maxPerAddress: cfg.LIVE_STREAMS_PER_ADDRESS, makeRoomAfterMs: cfg.LIVE_MAKE_ROOM_MS }), docs: docPoolFor(cfg) };
   const { server, baseUrl } = await listen(deps);
   // Only now is the API's address known: it's where Google sends people back to.
   deps.cfg = { ...cfg, API_URL: baseUrl };
@@ -170,7 +170,7 @@ export async function startHarness(): Promise<Harness> {
     closeCalls,
     async secondServer(more = {}, stopping = undefined, own = undefined, hubUrl = undefined) {
       const settings = { ...deps.cfg, ...more };
-      const hub = createHub(hubUrl ?? url, { checkMs: settings.HUB_CHECK_MS, timeoutMs: settings.HUB_TIMEOUT_MS, maxStreams: settings.LIVE_STREAMS_MAX, maxPerAddress: settings.LIVE_STREAMS_PER_ADDRESS });
+      const hub = createHub(hubUrl ?? url, { checkMs: settings.HUB_CHECK_MS, timeoutMs: settings.HUB_TIMEOUT_MS, maxStreams: settings.LIVE_STREAMS_MAX, maxPerAddress: settings.LIVE_STREAMS_PER_ADDRESS, makeRoomAfterMs: settings.LIVE_MAKE_ROOM_MS });
       // Workers take a moment to start, so instances share them, unless a test wants them to behave differently.
       const docs = more.DOC_WORK_MS || more.DOC_HEAP_MB || more.DOC_WORKERS || more.DOC_WAITING_PER_PERSON ? docPoolFor(settings) : deps.docs;
       const second = await listen({ ...deps, hub, docs, cfg: settings, ...(own ? { pool: own } : {}) }, stopping);

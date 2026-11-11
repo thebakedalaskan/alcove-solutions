@@ -209,11 +209,11 @@ export const YourNotesBesideItLight: PageStory = { ...light(YourNotesBesideIt), 
 export const CloseWhileYouPresentTheBoard: PageStory = {
   ...moment(yours(), ...presented, nextFrame, step('Press Close on its bar: it asks', (c) => close(c, retro))), name: 'Close, while you present the board'
 };
-/** For you: you're back with the people, and the others keep it open on their own. Nobody presents it, so it has no tile. */
+/** For you: you stop presenting and you're back with the people, and the others keep it open on their own. Nobody presents it, so it has no tile. */
 export const BoardClosedForYou: PageStory = {
   ...moment(yours(), ...presented, nextFrame,
     step('Press Close, then For you', async (c) => { await close(c, retro); await closeFor(c, retro, 'For you'); }),
-    step('The others keep it open', () => toldThat('Closed for you. The others keep it open, on their own.'))),
+    step('You stopped presenting, and the others keep it open', () => toldThat('You stopped presenting. The others keep it open, on their own.'))),
   name: 'Board closed for you'
 };
 /** Its name is a menu: Rename, Open where it's saved, Who can add to it, Copy link, Download as an image or a PDF, and Night board, there while you present it. */

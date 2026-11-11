@@ -104,7 +104,7 @@ export const OpenTheWorkspace: PageStory = {
       await userEvent.click(await onBar(await frame(yours), 'Present'));
       await told('Everyone follows you in the workspace. They can unfollow to work alongside you.');
     });
-    await step('Click Close. While you present, Close asks: just for you, or for everyone', async () => {
+    await step('Click Close. While you present, Close asks: For you, which stops your presentation, or For everyone', async () => {
       await userEvent.click(await onBar(await frame(everyones), /^Close /));
       await forEveryone();
     });
@@ -149,9 +149,9 @@ export const OpenABoard: PageStory = {
       await userEvent.click(await onBar(await frame('Launch retro, everyone sees it'), /^Close /));
       await forYou();
     });
-    await step('Click For you. You’re back with the people. The others keep it open on their own; nobody presents it, so it has no tile', async () => {
+    await step('Click For you. You stop presenting and you’re back with the people. The others keep it open on their own; nobody presents it, so it has no tile', async () => {
       await userEvent.click(await forYou());
-      await told('Closed for you. The others keep it open, on their own.');
+      await told('You stopped presenting. The others keep it open, on their own.');
     });
   }
 };

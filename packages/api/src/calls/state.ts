@@ -327,7 +327,12 @@ export const CallStateSchema = z.object({
     noteId: IDSchema.nullable(),
     /** Server clock start of the current recording segment, including host handoffs. Null before notes begin. */
     segmentStartedAt: ISODateSchema.nullable().default(null),
-    recording: RecordingProgressSchema
+    recording: RecordingProgressSchema,
+    /**
+     * Whether the call keeps its recording (the organizer's `keepRecording` choice). Without it there's nothing for Hear
+     * it to play, during the call or after it.
+     */
+    keepsRecording: z.boolean()
   }),
   /** People asking to join, for whoever hosts to let in or turn away; empty for everyone else. */
   waiting: z.array(CallAskerSchema),

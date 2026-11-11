@@ -183,17 +183,29 @@ const pause = (ms: number) => new Promise((done) => { setTimeout(done, ms); });
 /** Nobody else adds to it meanwhile, so what's only on your screen is yours. */
 const QUIET: CallScript['board'] = {};
 
-/** The board's connection drops while the call carries on: the seal says Reconnecting, and so does the pill. You keep working. */
+/**
+ * The board's connection drops while the call carries on: the seal says Reconnecting, and so does the pill, with Try now, as
+ * the browser's online and it's Alcove that can't be reached. You keep working.
+ */
 const reconnecting = (play?: Play) => review(at(1, opensBoard(PRIYA, 'retro', { standing: 'offline' })), QUIET, onIt(...(play ? [play] : [])));
 export const Reconnecting: PageStory = reconnecting(async (c) => {
   await c.step('Double-click in Went well and type: you keep working, and it goes up when the connection comes back', async () => {
     await stickyIn(c, 'What should we keep doing?', 'Support ran launch day with no queue');
   });
-  await c.step('Press Reconnecting, on the board’s bar: it says the same', async () => {
+  await c.step('Press Reconnecting, on the board’s bar: it says the same, with Try now', async () => {
     await c.userEvent.click(await c.canvas.findByRole('button', { name: /Reconnecting/ }, SOON));
   });
 });
 export const ReconnectingPhone = phone(reconnecting());
+/** Try now, in the pill: it tries again at once rather than after the wait, and what you added goes up. */
+export const ReconnectingTryNow: PageStory = {
+  ...reconnecting(async (c) => {
+    await c.step('Press Try now, in the pill at the top of the board: it’s back at once, and what was kept here goes', async () => {
+      await c.userEvent.click(await c.canvas.findByRole('button', { name: 'Try now' }, SOON));
+    });
+  }),
+  name: 'Reconnecting, Try now'
+};
 
 /**
  * Alcove won't take what's added here: the seal says Not saved, and the pill says how many changes are only on this screen,

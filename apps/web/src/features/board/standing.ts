@@ -2,8 +2,9 @@
  * How a board stands, as its seal and its pill say it, on its own page and in a call alike: sealed, Reconnecting, Couldn't save,
  * or View only. The seal, what it says on hover and what pressing it says are one standing in the same words, and Reconnecting
  * and Couldn't save take the board's pill too (`standing`, the first of `PILL_ORDER`), with Try again where something kept here
- * can go again. What the board says while all's well is each place's own: on its page where it's saved, and in a call who can
- * add to it, whether the notes read it, and in a room who can see it.
+ * can go again, and Try now where its connection can be tried again at once. What the board says while all's well is each
+ * place's own: on its page where it's saved, and in a call who can add to it, whether the notes read it, and in a room who can
+ * see it.
  */
 import type { DocSession, DocStatus } from '@alcove/api';
 import type { IconName } from '@alcove/ui';
@@ -13,13 +14,16 @@ import type { Transaction } from 'yjs';
 /** A line the seal's pop says. */
 export interface PopRow { icon: IconName; text: string }
 
+/** Something to press where the board says how it stands. */
+export interface StandingAction { label: string; run: () => void }
+
 /** What the seal says, with its icon and what it says on hover; what pressing it says; and the pill, while there's something to say there. */
 export interface Standing {
   seal: string;
   icon: IconName;
   title: string;
-  pop: { title: string; rows: PopRow[] };
-  pill?: { icon: IconName; title: string; text: string; action?: { label: string; run: () => void } | undefined } | undefined;
+  pop: { title: string; rows: PopRow[]; action?: StandingAction | undefined };
+  pill?: { icon: IconName; title: string; text: string; action?: StandingAction | undefined } | undefined;
 }
 
 /** What a board says while all's well: its seal, what that says on hover, and what pressing it says. */
@@ -41,13 +45,15 @@ export interface StandingFacts {
   changes: number;
   /** Opens it again, so what's kept here goes again: only where something's kept. */
   tryAgain: (() => void) | undefined;
+  /** Tries its connection again at once (`DocSession.retry`): while the browser has one, so it's Alcove that can't be reached. */
+  tryNow?: (() => void) | undefined;
   /** Where it's saved, for someone who may know, and null for anyone else. */
   kept: PopRow | null;
   /** What it says while all's well. */
   sealed: Sealed;
 }
 
-export function standingOf({ status, offline, readOnly, changes, tryAgain, kept, sealed }: StandingFacts): Standing {
+export function standingOf({ status, offline, readOnly, changes, tryAgain, tryNow, kept, sealed }: StandingFacts): Standing {
   if (readOnly) {
     const text = 'You can look round and follow people.';
     return { seal: 'View only', icon: 'eye', title: `View only. ${text}`, pop: { title: 'View only', rows: [{ icon: 'eye', text }, ...(kept ? [kept] : []), ENCRYPTED] } };
@@ -61,7 +67,8 @@ export function standingOf({ status, offline, readOnly, changes, tryAgain, kept,
   }
   if (offline) {
     const text = 'Keep going. Your changes are safe here.';
-    return { seal: 'Reconnecting', icon: 'wifiOff', title: `Reconnecting. ${text}`, pop: { title: 'Reconnecting', rows: [{ icon: 'wifiOff', text }, ENCRYPTED] }, pill: { icon: 'wifiOff', title: 'Reconnecting', text } };
+    const action = tryNow && { label: 'Try now', run: tryNow };
+    return { seal: 'Reconnecting', icon: 'wifiOff', title: `Reconnecting. ${text}`, pop: { title: 'Reconnecting', rows: [{ icon: 'wifiOff', text }, ENCRYPTED], action }, pill: { icon: 'wifiOff', title: 'Reconnecting', text, action } };
   }
   return { seal: sealed.seal, icon: 'sealed', title: sealed.title, pop: { title: sealed.seal, rows: sealed.rows } };
 }
