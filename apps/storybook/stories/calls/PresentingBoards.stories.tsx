@@ -100,6 +100,26 @@ export const YourNotes: PageStory = {
   }),
   name: 'Your notes'
 };
+/**
+ * You present Could improve and press Vote, on the board's bar: it votes on the frame you show, the call tells everyone who can
+ * open the board, and everyone following you votes as they follow.
+ */
+export const YouStartAVote: PageStory = {
+  ...inCall({ scenario: 'call-soon', call: REVIEW, script: { here: REVIEWERS }, then: presenting(1) }, {
+    play: plays(
+      step('You present the retro, on Could improve', () => screen.findByText('2 of 3', {}, LATER)),
+      step('Press Vote, on the board’s bar: it votes on the frame you show', async (c) => {
+        await c.userEvent.click(await screen.findByRole('button', { name: 'Vote' }, SOON));
+        await screen.findByRole('dialog', { name: 'Vote on Could improve' }, SOON);
+      }),
+      step('Start the vote: everyone following you votes as they follow, and whoever ends it is you, from the pill', async (c) => {
+        await c.userEvent.click(await screen.findByRole('button', { name: 'Start the vote' }, SOON));
+        await screen.findByText('3 of 3 votes left', {}, SOON);
+      })
+    )
+  }),
+  name: 'You start a vote'
+};
 /** While you present, Board at the top right, or O, is Close: it asks whether it's for you or for everyone, as Close does. */
 export const ClosingItWhileYouPresent: PageStory = {
   ...YouPresent,
@@ -122,6 +142,27 @@ export const Unfollowing: PageStory = {
   play: plays(following, step('Press Unfollow, on its bar', async (c) => { await c.userEvent.click(await screen.findByRole('button', { name: 'Unfollow Priya' }, SOON)); }))
 };
 export const PriyaPresentsPhone = phone(PriyaPresents);
+/** Priya presents Could improve and starts a vote there: you vote as you follow her, and your vote doesn't take you off following. */
+export const PriyaStartsAVote: PageStory = {
+  ...inCall({
+    scenario: 'busy', call: CHECK_IN,
+    script: {
+      here: [{ who: KOFI }, { who: AIKO }, { who: MAYA }],
+      cues: [...at(1, { do: 'open-board', who: PRIYA, template: 'retro', draw: fillRetro }), ...at(2, { do: 'present', who: PRIYA, section: 1 }), ...at(4, { do: 'start-vote', who: PRIYA, frame: 'Could improve', per: 3 })]
+    }
+  }, {
+    play: plays(
+      following,
+      step('She starts a vote on the frame she shows. Press a sticky in it: one of your votes is on it', async (c) => {
+        await screen.findByText('3 of 3 votes left', {}, LATER);
+        await c.userEvent.click(await screen.findByText('Nobody owned the status page', {}, SOON));
+        await screen.findByText('2 of 3 votes left', {}, SOON);
+      }),
+      step('A vote changes nothing on the board, so you’re still following her', () => screen.findByRole('button', { name: 'Unfollow Priya' }, SOON))
+    )
+  }),
+  name: 'Priya starts a vote'
+};
 /** In your own call, Priya presents: as the organizer, its name's menu has Close it for everyone, as anyone's does. */
 export const PriyaPresentsInYourCall = inCall({
   scenario: 'call-soon', call: REVIEW,

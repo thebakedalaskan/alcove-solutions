@@ -261,6 +261,36 @@ export const VotingFromTheKeyboard = review([...at(1, opensBoard(PRIYA, 'retro')
     await canvas.findByText('2 of 3 votes left', {}, SOON);
   });
 }));
+/**
+ * Priya starts a vote while the board isn't on your stage: the call tells you, by whom, with Vote, which opens it on your stage on
+ * the vote's frame. Everyone in the call who can open the board is told, whether or not they have it open.
+ */
+export const ToldAVoteStarted = review([...at(1, opensBoard(PRIYA, 'retro')), ...at(1 + filledAfter() + 1, startsVote(PRIYA, 'Could improve', 3))], RETRO, {
+  name: 'Told a vote started',
+  play: async ({ userEvent, step }) => {
+    await step('Priya starts a vote on the board in the call, which isn’t on your stage: you’re told, with Vote', async () => {
+      await toldThat(`Priya started a vote on ${BOARD}.`);
+    });
+    await step('Press Vote: the board opens on your stage, on Could improve, with your votes to give', async () => {
+      await userEvent.click(await screen.findByRole('button', { name: 'Vote' }, SOON));
+      await screen.findByText('3 of 3 votes left', {}, LATER);
+    });
+  }
+});
+export const ToldAVoteStartedPhone = phone(ToldAVoteStarted);
+/** Two frames share a name, as after Templates › Retro a second time: the vote's menu says which, as the board glides to it. */
+export const VotingOnOneOfTwo = review(at(1, opensBoard(PRIYA, 'retro')), RETRO, { name: 'Voting on one of two frames with one name', ...onIt(async ({ userEvent, step }) => {
+  await step('More, Templates, Retro: a second retro beside the first, and your view goes to it', async () => {
+    await userEvent.click(await screen.findByRole('button', { name: /^More: / }, SOON));
+    await userEvent.click(await screen.findByRole('button', { name: 'Templates' }, SOON));
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Retro' }, SOON));
+    await settle();
+  });
+  await step('Vote: its menu names the frame in the middle of your view, the second Could improve of two', async () => {
+    await userEvent.click(await screen.findByRole('button', { name: 'Vote' }, SOON));
+    await screen.findByRole('dialog', { name: 'Vote on Could improve, the second of two' }, SOON);
+  });
+}) });
 /** Priya ends it: every count appears at once, for everyone, the top three stay bright and the rest step back. */
 export const Results = review([...at(1, opensBoard(PRIYA, 'retro')), ...at(1 + filledAfter() + 1, startsVote(PRIYA, 'Could improve', 3)), ...at(1 + filledAfter() + 4, endsVote(RETRO.votes ?? {}, 3))], RETRO, onIt());
 export const ResultsPhone = phone(Results);

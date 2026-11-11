@@ -104,7 +104,7 @@ const opens = (who: Browser, workspaceId: string, documentId: string) => code(wh
 const entries = async (documentId: string) => (await h.pool.query<{ n: number }>('SELECT count(*)::int AS n FROM document_access WHERE document_id = $1', [documentId])).rows[0]?.n ?? -1;
 
 describe('what the next release stores', () => {
-  it('keeps a call’s rooms’ boards, their landing, ideas, a board’s timer and vote, what rooms work on and boards noted as open, through a save of its own', async () => {
+  it('keeps a call’s rooms’ boards, their landing, ideas, a board’s vote, what rooms work on and boards noted as open, through a save of its own', async () => {
     const art = await account();
     const kofi = await account();
     const { code: c } = await art.api.calls.startNow({ guests: [kofi.email], notes: 'off' });
@@ -122,7 +122,6 @@ describe('what the next release stores', () => {
     const s = Kept.parse(was.state);
     const main = s.board.open['main'];
     if (!main || !s.breakouts.open) throw new Error('no board, or no rooms');
-    const timer = { until: 900, length: 300, by: main.by };
     const vote = { id: madeUp(), frame: onBoard(), per: 3, by: main.by, ballots: { [madeUp()]: [onBoard(), onBoard()] }, ended: false };
     const rooms = [{ workspaceId, documentId: madeUp(), room, kept: false }];
     // A landing someone is doing as the save happens, so nothing takes it on meanwhile.
@@ -134,7 +133,7 @@ describe('what the next release stores', () => {
     const noted = { workspaceId, documentId, kind: 'board', by: [], open: 'main' };
     await was.put({
       ...s,
-      board: { ...s.board, open: { ...s.board.open, main: { ...main, timer, vote } }, rooms, landing, ideas },
+      board: { ...s.board, open: { ...s.board.open, main: { ...main, vote } }, rooms, landing, ideas },
       breakouts: { ...s.breakouts, open: { ...s.breakouts.open, board: working } },
       workspace: { ...s.workspace, worked: [...s.workspace.worked, noted] }
     });
@@ -144,7 +143,7 @@ describe('what the next release stores', () => {
     expect((await settle(host, (x) => x.participants.some((p) => p.isMe && p.hand))).breakouts.open?.rooms.length).toBe(2);
     const after = Kept.parse((await storedCall(art.ownerId, host.ticket.callId)).state);
     // Whether a room's board is kept yet is this release's to decide as it saves, so only what the next release wrote is compared.
-    expect(after.board).toMatchObject({ open: { main: { timer, vote } }, rooms: rooms.map(({ kept: _kept, ...r }) => r), landing, ideas });
+    expect(after.board).toMatchObject({ open: { main: { vote } }, rooms: rooms.map(({ kept: _kept, ...r }) => r), landing, ideas });
     expect(after.breakouts.open).toMatchObject({ board: working });
     expect(after.workspace.worked).toContainEqual(noted);
     await host.leave();

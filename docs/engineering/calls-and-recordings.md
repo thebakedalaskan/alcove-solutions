@@ -1549,8 +1549,15 @@ board that isn't there, before anything about a vote is looked at.
   on past the last; Enter or Space votes or takes the vote back, and so does a screen reader's own press, a click with no
   pointer behind it (`detail` 0), while a pointer's click does nothing more than its press did. A press never puts the keys
   on a sticky, and once the vote ends, or they can't vote any more, a sticky that had them gives them back to the sheet.
-- **Votes stay on the server.** `CallState.board.vote` is `{ on, frame, per, left, mine, results, voters, canEnd }`. `mine` is
-  your own votes alone. `results` is empty and `voters` is 0 until the vote ends, and then everyone is told every count at once.
+- **Reaching the call.** A vote is told to everyone in its part of the call who can open the board, whether or not they have it
+  open, with who started it (`startedBy`, their connection in the call, as `openedBy` says who opened the board). In the
+  browser, someone without the board on their stage is told a vote started there, by whom, with Vote, which opens it on their
+  stage on the vote's frame (`useVoteStarted` in `boards/boardRun.ts`); a vote already on as they join or arrive says nothing,
+  and whoever started it isn't told. Someone following a presentation of the board votes as they follow, since a vote changes
+  nothing on the board, and whoever presents starts a vote on the frame they show. The bar's Vote names the frame it will be
+  on, and which of several frames of one name, in the order they sit ("Could improve, the second of two").
+- **Votes stay on the server.** `CallState.board.vote` is `{ on, frame, per, left, mine, results, voters, canEnd, startedBy }`.
+  `mine` is your own votes alone. `results` is empty and `voters` is 0 until the vote ends, and then everyone is told every count at once.
   Votes are kept by who someone is to the vote: their account when they're signed in, so it's one set of votes on every device,
   else the person their pass names (`limitKey`, as media counts a guest's uploads), so a reload, or a second tab with the first
   one's pass, is the same person with the same votes; a tab that asks to be let in again, with no pass, is someone new to the

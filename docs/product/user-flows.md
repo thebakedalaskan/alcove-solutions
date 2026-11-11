@@ -945,8 +945,13 @@ See [Floating call](../engineering/floating-call.md) for browser capabilities an
      later each time.
 8. **Votes**, on the board's bar, for anyone who can add to it. A board has no timer of its own: the call's **Timer** is the
    one countdown, over the board too ([The call's timer](#the-calls-timer-journeys-626628)). **Vote** votes on the frame
-   you're looking at (every sticky, with no frame in view), 3, 5 or 10 votes each, and the board glides to it. After **Start the vote**, pressing a
-   sticky spends a vote and shows a dot only you can see, and pressing it again takes it back. From the keyboard, Tab from
+   you're looking at (every sticky, with no frame in view), 3, 5 or 10 votes each, and the board glides to it. Its menu
+   names the frame, "Vote on Could improve", and where frames share a name, which of them, in the order they sit: "Vote on
+   Could improve, the second of two". Whoever presents the board votes on the frame they show (step 11). A vote reaches
+   everyone in this part of the call who can open the board: anyone without it on their stage is told "Priya started a vote on
+   Launch retro." with **Vote**, which opens it there on the vote's frame, and everyone following a presentation of it votes
+   as they follow. After **Start the vote**, pressing a sticky spends a vote and shows a dot only you can see, and pressing it
+   again takes it back. From the keyboard, Tab from
    the board goes from sticky to sticky in the vote, frame by frame and row by row, with the board gliding to one out of
    view, and on past the last; Shift and Tab go back. Enter or Space votes for the sticky you're on, and again takes the
    vote back. A screen reader hears each sticky's words as a toggle button, pressed once it has your vote and dimmed while

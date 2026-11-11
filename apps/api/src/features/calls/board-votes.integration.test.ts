@@ -201,7 +201,7 @@ describe('a vote', () => {
     const b = await retro(art, host.getSnapshot().board.open);
 
     await k.startVote(b.fix, 3);
-    const started = { on: true, frame: b.fix, per: 3, left: 3, mine: [], results: {}, voters: 0 };
+    const started = { on: true, frame: b.fix, per: 3, left: 3, mine: [], results: {}, voters: 0, startedBy: k.ticket.identity };
     expect((await board(k)).vote).toEqual({ ...started, canEnd: true });
     for (const who of [host, p, jamie.call]) expect((await board(who)).vote).toEqual({ ...started, canEnd: who === host });
 
@@ -223,7 +223,7 @@ describe('a vote', () => {
     await k.endVote();
     const results = { [b.s1]: 2, [b.s2]: 2, [b.s3]: 1, [b.s4]: 1 };
     for (const [who, mine] of theirs) {
-      expect((await board(who)).vote).toEqual({ on: false, frame: b.fix, per: 3, left: 3 - mine.length, mine, results, voters: 3, canEnd: who === host || who === k });
+      expect((await board(who)).vote).toEqual({ on: false, frame: b.fix, per: 3, left: 3 - mine.length, mine, results, voters: 3, canEnd: who === host || who === k, startedBy: k.ticket.identity });
     }
     // Nothing about it was written to the board.
     expect(JSON.stringify(b.page.doc.toJSON())).not.toContain('"votes"');
@@ -282,7 +282,7 @@ describe('a vote', () => {
     // In later, Priya is told the vote is on and has all her votes, and nothing of anyone's.
     const p = await invited(host, c, priya);
     const late = await read(p);
-    expect(late.board.vote).toEqual({ on: true, frame: b.fix, per: 3, left: 3, mine: [], results: {}, voters: 0, canEnd: false });
+    expect(late.board.vote).toEqual({ on: true, frame: b.fix, per: 3, left: 3, mine: [], results: {}, voters: 0, canEnd: false, startedBy: host.ticket.identity });
     expect(said(late)).not.toContain(b.s1);
     // Back after a reload, Kofi and Jamie have what they voted for.
     k.closing();
@@ -438,7 +438,7 @@ describe('a vote', () => {
     expect((await board(host)).vote).toMatchObject({ on: false, results: { [b.s1]: 1 } });
     await k.clearVote();
     await host.startVote(b.act, 5);
-    expect((await board(k)).vote).toEqual({ on: true, frame: b.act, per: 5, left: 5, mine: [], results: {}, voters: 0, canEnd: false });
+    expect((await board(k)).vote).toEqual({ on: true, frame: b.act, per: 5, left: 5, mine: [], results: {}, voters: 0, canEnd: false, startedBy: host.ticket.identity });
     await host.leave();
   });
 
@@ -660,6 +660,56 @@ describe('who is told of them', () => {
     expect(await board(k)).toEqual({ open: null, vote: null, ideas: [] });
     await host.openBoard({ workspaceId: first?.workspaceId ?? '', documentId: firstId, letIn: false });
     expect(await board(k)).toMatchObject({ vote: null });
+    await host.leave();
+  });
+
+  it('tells everyone here who can open the board that a vote started, and by whom, whether or not they have the board open', async () => {
+    const art = await account();
+    const kofi = await account();
+    const priya = await account();
+    const { host, code: c } = await callBy(art, [kofi.email, priya.email]);
+    const k = await invited(host, c, kofi);
+    const p = await invited(host, c, priya);
+    const jamie = await guest(host, c);
+    await host.openBoard({ template: 'retro' });
+    // Only Art's browser has the board's document open: nobody else has opened it, in the call or anywhere else.
+    const b = await retro(art, host.getSnapshot().board.open);
+    await k.startVote(b.fix, 3);
+    for (const who of [host, p, jamie.call]) {
+      expect((await board(who)).vote).toEqual({ on: true, frame: b.fix, per: 3, left: 3, mine: [], results: {}, voters: 0, canEnd: who === host, startedBy: k.ticket.identity });
+    }
+    // Back after a reload, it's said to be Kofi on the connection he's on now; once he's gone, by nobody here.
+    k.closing();
+    const k2 = await invited(host, c, kofi, k.ticket.pass);
+    expect((await board(p)).vote?.startedBy).toBe(k2.ticket.identity);
+    await k2.leave();
+    expect((await board(p)).vote).toMatchObject({ on: true, startedBy: null });
+    await host.leave();
+  });
+
+  it('reaches a presented board’s followers: whoever presents starts and ends it on the frame they show, and everyone following votes', async () => {
+    const art = await account();
+    const kofi = await account();
+    const priya = await account();
+    const { host, code: c } = await callBy(art, [kofi.email, priya.email]);
+    const k = await invited(host, c, kofi);
+    const p = await invited(host, c, priya);
+    await host.openBoard({ template: 'retro' });
+    const open = host.getSnapshot().board.open;
+    const b = await retro(art, open);
+    // Art presents the board, and everyone else follows him.
+    await host.startPresenting({ kind: 'board', id: open?.documentId ?? '' });
+    for (const who of [k, p]) expect((await read(who)).workspace.present).toMatchObject({ kind: 'board', id: open?.documentId, mine: false });
+    // On the frame he shows, he starts a vote, and everyone following votes as they go on following.
+    await host.startVote(b.fix, 3);
+    await k.castVote(b.s1);
+    await p.castVote(b.s1);
+    await p.castVote(b.s2);
+    expect((await board(p)).vote).toMatchObject({ on: true, left: 1, mine: [b.s1, b.s2], results: {}, voters: 0, startedBy: host.ticket.identity });
+    // He ends it while he presents: every count at once, for everyone.
+    await host.endVote();
+    for (const who of [host, k, p]) expect((await board(who)).vote).toMatchObject({ on: false, results: { [b.s1]: 2, [b.s2]: 1 }, voters: 2 });
+    expect((await read(k)).workspace.present).toMatchObject({ kind: 'board', mine: false });
     await host.leave();
   });
 });

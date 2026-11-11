@@ -232,10 +232,10 @@ export const Votes: PageStory = {
       await openTheCallsBoard(c);
       await screen.findByText('Refresh staging every night', {}, LATER);
     });
-    await step('Vote: it votes on the frame you’re looking at, and nobody sees a count until you end it', async () => {
+    await step('Vote: it votes on the frame you’re looking at, which it names, and nobody sees a count until you end it', async () => {
       await userEvent.click(await screen.findByRole('button', { name: 'Vote' }, SOON));
     });
-    await step('Start the vote, then press a sticky: each press spends a vote and shows a dot only you can see', async () => {
+    await step('Start the vote: everyone in the call who can open the board is told, with Vote. Press a sticky: each press spends a vote and shows a dot only you can see', async () => {
       await userEvent.click(await screen.findByRole('button', { name: 'Start the vote' }, SOON));
       await screen.findByText(/votes left/, {}, SOON);
       await userEvent.click(await screen.findByText('Nobody owned the status page', {}, SOON));

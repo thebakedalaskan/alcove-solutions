@@ -1360,10 +1360,11 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     return null;
   }
   private theyStartVote(who: Person, title: string | null, per: BoardVotesEach): void {
-    if (!this.find(who)) return;
+    const p = this.find(who);
+    if (!p) return;
     const at = this.hereAt();
     const frame = this.frameCalled(at ? boardDoc(at.workspaceId, at.documentId) : null, title)?.id ?? null;
-    void this.session((b) => (b.vote ? b : { ...b, vote: { on: true, frame, per, left: per, mine: [], results: {}, voters: 0, canEnd: this.me.isOrganizer } }));
+    void this.session((b) => (b.vote ? b : { ...b, vote: { on: true, frame, per, left: per, mine: [], results: {}, voters: 0, canEnd: this.me.isOrganizer, startedBy: p.id } }));
   }
   /** The vote ends with everyone else's votes, by what each sticky says, and yours: every count at once, and only for what's in it. */
   private voteEnds(votes: Readonly<Record<string, number>>, voters: number): void {
@@ -1430,7 +1431,7 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     return Promise.resolve();
   }
   startVote(frame: string | null, per: BoardVotesEach): Promise<void> {
-    return this.session((b) => (b.vote ? b : { ...b, vote: { on: true, frame, per, left: per, mine: [], results: {}, voters: 0, canEnd: true } }));
+    return this.session((b) => (b.vote ? b : { ...b, vote: { on: true, frame, per, left: per, mine: [], results: {}, voters: 0, canEnd: true, startedBy: this.me.id } }));
   }
   castVote(sticky: string): Promise<void> {
     return this.session((b) => (b.vote?.on && !b.vote.mine.includes(sticky) && b.vote.left > 0 ? { ...b, vote: { ...b.vote, mine: [...b.vote.mine, sticky], left: b.vote.left - 1 } } : b));

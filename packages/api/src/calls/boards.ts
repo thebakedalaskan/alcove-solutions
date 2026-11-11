@@ -70,7 +70,10 @@ export const CallBoardIdeaSchema = z.object({
 export type CallBoardIdea = z.infer<typeof CallBoardIdeaSchema>;
 
 
-/** A vote on the board open where you are. Your own votes are yours alone, and every count comes at once, when it ends. */
+/**
+ * A vote on the board open where you are, told to everyone there who can open the board, whether or not they have it open. Your
+ * own votes are yours alone, and every count comes at once, when it ends.
+ */
 export const CallBoardVoteSchema = z.object({
   /** It's still open. False once it's ended, with `results` for everyone, until it's cleared. */
   on: z.boolean(),
@@ -87,7 +90,9 @@ export const CallBoardVoteSchema = z.object({
   /** How many people voted: 0 until the vote ends. */
   voters: z.number().int(),
   /** You can end it, and clear it after: you started it, or you're the organizer. */
-  canEnd: z.boolean()
+  canEnd: z.boolean(),
+  /** Whoever started it, by participant ID: the connection they're on now, or null when they aren't in the call. */
+  startedBy: z.string().nullable()
 });
 
 export type CallBoardVote = z.infer<typeof CallBoardVoteSchema>;

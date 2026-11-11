@@ -243,7 +243,27 @@ function starting(board: Board, start: () => Promise<void>): () => void {
   };
 }
 
-/** It votes on the frame you're looking at, and the board glides to it. With no frame in view, it's on every sticky. */
+/** Which of several frames of one name, in words. */
+const ORDINALS = ['first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 'eighth', 'ninth', 'tenth'] as const;
+const COUNTS = ['one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten'] as const;
+
+/**
+ * What the vote's menu calls the frame it's on: its title, and where other frames share it, which of them, in the order they sit
+ * on the board, as the board glides to it: "Could improve, the second of two". A frame with no title is "this frame".
+ */
+function frameNamed(view: BoardView, frame: FrameObject): string {
+  const title = frame.title.trim();
+  if (!title) return 'this frame';
+  const same = view.frames.filter((f) => f.title.trim() === title).sort(reading);
+  if (same.length < 2) return title;
+  const k = same.findIndex((f) => f.id === frame.id);
+  return `${title}, the ${ORDINALS[k] ?? `number ${k + 1}`} of ${COUNTS[same.length - 1] ?? String(same.length)}`;
+}
+
+/**
+ * It votes on the frame you're looking at, which it names, and the board glides to it: whoever presents votes on the frame they
+ * show. With no frame in view, it's on every sticky.
+ */
 function VoteMenu({ board, run }: { board: Board; run: BoardRun }) {
   const [frame] = useState(() => lookingAt(board));
   const [per, setPer] = useState<VotesEach>(3);
@@ -254,9 +274,9 @@ function VoteMenu({ board, run }: { board: Board; run: BoardRun }) {
     board.takeCamera();
     board.glideTo(board.camera.fitting(frame, CLEAR));
   }, [board, frame]);
-  const name = frame?.title.trim() ?? '';
+  const named = useMemo(() => (frame ? frameNamed(board.getSnapshot().view, frame) : null), [board, frame]);
   return (
-    <BoardPop ref={ref} {...AT} title={frame ? (name ? `Vote on ${name}` : 'Vote on this frame') : 'Vote on these stickies'}
+    <BoardPop ref={ref} {...AT} title={named ? `Vote on ${named}` : 'Vote on these stickies'}
       sub={`Everyone gets ${per} votes. Nobody sees the count until you end it.`}
       options={VOTES_EACH.map((n) => ({ id: `${n}`, label: `${n} votes`, on: n === per, onPick: () => setPer(n) }))}
       action={{ label: 'Start the vote', onPick: starting(board, () => run.startVote(frame?.id ?? null, per)) }} />

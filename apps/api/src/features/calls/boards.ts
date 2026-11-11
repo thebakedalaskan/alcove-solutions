@@ -130,17 +130,20 @@ function countsOf(vote: BoardVote): Record<string, number> {
 }
 /**
  * A board's vote, as one person may know it: their own votes, and every count only once it's ended. Nobody is told how many have
- * voted, or who, while it's on. `voter` is who they are to the vote (`limitKey`): their account when they're signed in, so it's
- * one set of votes on every device, else the person their pass names, as media counts a guest's uploads. `edits`: they can edit
- * the board.
+ * voted, or who, while it's on; who started it is said, as who opened the board is, so everyone who can open the board is told a
+ * vote started there, whether or not they have it open. `voter` is who they are to the vote (`limitKey`): their account when
+ * they're signed in, so it's one set of votes on every device, else the person their pass names, as media counts a guest's
+ * uploads. `edits`: they can edit the board.
  */
 function sessionFor(v: Viewer, reader: Reader, s: Placing, open: OpenBoard, edits: boolean): Pick<CallBoard, 'vote'> {
   const { vote } = open;
   const mine = vote?.ballots[limitKey(reader)] ?? [];
+  const starter = vote ? s.people.findLast((j) => j.person === vote.by.person && j.status === 'in') : undefined;
   return {
     vote: vote && {
       on: !vote.ended, frame: vote.frame, per: vote.per, left: Math.max(0, vote.per - mine.length), mine,
-      results: vote.ended ? countsOf(vote) : {}, voters: vote.ended ? votersOf(vote) : 0, canEnd: mayFinish(v, reader, s, vote.by, edits)
+      results: vote.ended ? countsOf(vote) : {}, voters: vote.ended ? votersOf(vote) : 0, canEnd: mayFinish(v, reader, s, vote.by, edits),
+      startedBy: starter?.identity ?? null
     }
   };
 }

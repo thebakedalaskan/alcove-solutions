@@ -35,7 +35,7 @@ import type { BoardPager } from '~/features/board/CallBoard';
 import { StandingPill, roomPills, type PillKind } from '~/features/board/pills';
 import { ENCRYPTED, standingOf, useChangesSinceSaved } from '~/features/board/standing';
 import { BoardLeaf, BoardMenuRows, BoardMine, BoardMini, loadBoard } from '~/features/call/boards/BoardStage';
-import { useBoardRun } from '~/features/call/boards/boardRun';
+import { useBoardRun, useVoteStarted } from '~/features/call/boards/boardRun';
 import { BOARD_SHOT_TOPIC, keepShot, shotHeard, shotNotice, useCallBoard, type SavedBoard } from '~/features/call/boards/callBoard';
 import { useCaptions } from '~/features/call/notes/captions';
 import { CamMenu, MicMenu } from '~/features/call/media/DevicePickers';
@@ -1434,6 +1434,16 @@ export function InCall({ session }: { session: CallSession }) {
       else if (target.type === 'admission') { setActionTarget((was) => ({ id: target.identity, request: (was?.request ?? 0) + 1 })); openSide('people'); }
       else if (target.type === 'timer') setTimerOpen(true);
       else { setActionTarget((was) => ({ id: target.id, request: (was?.request ?? 0) + 1 })); openSide('people'); }
+    }
+  });
+  /* A vote started on the board in the call while it isn't on your stage: you're told, and Vote opens it there, on the vote's frame. */
+  useVoteStarted({
+    state, me: meId, place: myRoomId ?? MAIN_PLACE, settled, onStage: stage.on.includes('board'),
+    say: (text, onVote) => { toast(text, { icon: 'vote', action: { label: 'Vote', onClick: onVote }, ms: 12000, topic: 'board-vote' }); },
+    join: (frame) => {
+      setSaved(null); loadBoard(); stageOpen('board'); setFront('board'); side.close(); setFocus(false);
+      // Presented, opening it follows whoever presents; otherwise it goes to the vote's frame.
+      if (frame && !stage.presentedOf('board')) board.showFrame(frame);
     }
   });
   useEffect(() => { if (floating.error) toast('Floating call didn’t open. More says why.', { icon: 'pip' }); }, [floating.error, toast]);

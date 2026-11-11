@@ -348,6 +348,25 @@ export function useCallBoard({ session, stage, saved, state, me, owner, talking,
     // `roomIds` is read as the rooms open, with `shared`.
   }, [doc, frame, shared]);
 
+  /*
+   * A frame to bring into view once the board's drawn here, as someone joins a vote on it from the call: its code loads a moment
+   * after it opens, so this waits for it, as landing on a room's frame does.
+   */
+  const [toFrame, setToFrame] = useState<{ id: string; n: number } | null>(null);
+  useEffect(() => {
+    if (!toFrame) return undefined;
+    let raf = 0;
+    let tries = 0;
+    const go = () => {
+      const h = handle.current;
+      if (!h) { if (tries++ < 240) raf = requestAnimationFrame(go); return; }
+      h.focusFrame(toFrame.id);
+    };
+    go();
+    return () => cancelAnimationFrame(raf);
+  }, [toFrame]);
+  const showFrame = useCallback((id: string) => setToFrame((was) => ({ id, n: (was?.n ?? 0) + 1 })), []);
+
   /* Following someone on the board, or going to them once. The board says if they aren't on it. */
   const follow = useCallback((id: string | null) => {
     setFollowing(id);
@@ -393,7 +412,7 @@ export function useCallBoard({ session, stage, saved, state, me, owner, talking,
   }, [editing, notes, workspaceId, documentId, sortIn]);
 
   return {
-    open, doc, people, onBoard, talking: talkingSet, handle, following, follow, goTo, onFollow, fresh, rise, pictures, ideas, sort, upload, itemFor, toLink, comments,
+    open, doc, people, onBoard, talking: talkingSet, handle, following, follow, goTo, onFollow, fresh, rise, pictures, ideas, sort, upload, itemFor, toLink, comments, showFrame,
     /** A saved board just for you is what's drawn: the call's board isn't. */
     savedDrawn: mineDrawn,
     /** Goes up each time a board comes to you with the rest of your part of the call, to open on your stage. */
