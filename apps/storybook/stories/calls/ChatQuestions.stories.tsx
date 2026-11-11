@@ -95,7 +95,7 @@ export const VotesArrivingWhilePointing = inCall({ scenario: 'busy', call: CHECK
   await c.userEvent.hover((await screen.findByText(TEAMS, {}, SOON)).closest('article') ?? document.body);
   await screen.findByRole('button', { name: 'Sort by votes' }, { timeout: 12000 });
 } });
-/** Your own vote moves your question once you move on: here, to ask one of your own. */
+/** Your vote moves the question you voted for once you move on, here to ask one of your own: Kofi's climbs past Aiko's. */
 const close: CallScript = { here: script.here, cues: at(.2, asks(PRIYA, TEAMS, { votes: 3 }), asks(KOFI, STATUS, { votes: 2 }), asks(AIKO, SUPPORT, { votes: 2 })) };
 export const YourVote = inCall({ scenario: 'busy', call: CHECK_IN, script: close }, { name: 'Your vote, sorted once you move on', play: async (c) => {
   await questions(c);
@@ -104,10 +104,11 @@ export const YourVote = inCall({ scenario: 'busy', call: CHECK_IN, script: close
   if (last) await c.userEvent.click(last);
   await c.userEvent.click(await screen.findByRole('textbox', { name: 'Ask everyone in this room a question' }, SOON));
 } });
-/** Newest: a question asked while you read comes in at the top. */
+/** Newest: a question asked while you read comes in at the top, once you've moved on from the list (here, to ask one). */
 export const NewestFirst = inCall({ scenario: 'busy', call: CHECK_IN, script: { ...script, cues: [...(script.cues ?? []), ...at(4, asks(PRIYA, 'Do we need a second rollout window?'))] } }, { name: 'Newest, with a question just asked', play: async (c) => {
   await questions(c);
   await c.userEvent.click(await screen.findByRole('button', { name: 'Newest' }, SOON));
+  await c.userEvent.click(await screen.findByRole('textbox', { name: 'Ask everyone in this room a question' }, SOON));
   await screen.findByText('Do we need a second rollout window?', {}, { timeout: 12000 });
 } });
 /** Nothing asked yet. */

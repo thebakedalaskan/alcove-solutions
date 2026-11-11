@@ -645,7 +645,7 @@ function RoomsStage({ people, rooms, w, h, reduce }: { people: StageParticipant[
         const name = room ? room.name : 'Main room';
         const justMe = !room && u.ids.length === 1 && byId.get(u.ids[0] ?? '')?.isMe === true;
         return (
-          <motion.div key={`card-${u.key}`} className={cn('ic-roomc', u.room < 0 && 'is-main', u.shut && 'is-shut', room?.help && 'has-help')}
+          <motion.div key={`card-${u.key}`} className={cn('ic-roomc', u.room < 0 && 'is-main', room?.help && 'has-help')}
             initial={{ ...box(u.card), opacity: 0, scale: 0.97 }} animate={{ ...box(u.card), opacity: 1, scale: 1 }} transition={reduce ? { duration: 0 } : { ...GLIDE, delay: k * 0.03 }}>
             {room && <div className="bar" style={{ background: ROOMBAR[u.room % ROOMBAR.length] }} />}
             <div className="h">
