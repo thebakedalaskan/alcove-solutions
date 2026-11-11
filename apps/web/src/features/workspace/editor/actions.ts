@@ -5,7 +5,7 @@
 import type { Person } from '@alcove/api';
 import { newBlockId, retire, seenIn } from '@alcove/api/retire';
 import { Fragment, type Node as PMNode } from 'prosemirror-model';
-import { TextSelection, type EditorState, type Transaction } from 'prosemirror-state';
+import { NodeSelection, TextSelection, type EditorState, type Transaction } from 'prosemirror-state';
 import type { EditorView } from 'prosemirror-view';
 import { ySyncPluginKey, yUndoPluginKey } from 'y-prosemirror';
 import type * as Y from 'yjs';
@@ -16,7 +16,7 @@ import { appear, decorChange, flash, holding, holdRange, rangeOf } from './plugi
 import { moveBlock } from './plugins/retire';
 import type { EditorRuntime, HeldWords, OpenMenu } from './runtime';
 import type { HeldRange } from './plugins/decor';
-import { blockFromJSON, captionKey, captionTagsKey, hasBlockId, learnAttrs, lineKind, safeHref, schema, type CaptionTag } from './schema';
+import { blockFromJSON, captionKey, captionTagsKey, hasBlockId, learnAttrs, lineKind, safeHref, schema, textAttr, type CaptionTag } from './schema';
 import type { BlockJSON, BlockKind, InsertAt, LiveLine, LiveWhat, MentionItem, MomentLine, MovingBlock, Rect } from './types';
 import { elementOf, syncOf } from './ydoc';
 
@@ -133,10 +133,15 @@ export function pickSlash(rt: EditorRuntime, menu: Extract<OpenMenu, { kind: 'sl
   }
 }
 
-/** Puts a tag where `@word` was, and tells whoever needs telling. */
+/** Puts a tag where `@word` was, and tells whoever needs telling. Pick a date… opens the calendar in the list's place. */
 export function pickMention(rt: EditorRuntime, menu: Extract<OpenMenu, { kind: 'mention' }>, item: MentionItem): void {
   const view = editing(rt);
   if (!view) return;
+  if (item.kind === 'calendar') {
+    const held = holdRange(view.state, menu.from, menu.to);
+    if (held) rt.menu.set({ kind: 'date', block: menu.block, held, date: null, chip: false });
+    return;
+  }
   rt.menu.set(null);
   const chip = item.kind === 'person' ? n.mention.create({ id: item.person.id, name: item.person.name })
     : item.kind === 'document' ? n.docref.create({ doc: item.id })
@@ -149,6 +154,57 @@ export function pickMention(rt: EditorRuntime, menu: Extract<OpenMenu, { kind: '
     const dom = view.nodeDOM(menu.from);
     rt.props.onTagged?.(item.person, menu.block, dom instanceof Element ? dom.getBoundingClientRect() : null);
   }
+}
+
+/** A date tag, pressed or chosen with the arrow keys and Enter: the calendar opens against it, to pick another day for it. */
+export function openDateTag(rt: EditorRuntime, pos: number): boolean {
+  const view = editing(rt);
+  const node = view?.state.doc.nodeAt(pos);
+  if (!view || node?.type !== n.dateChip) return false;
+  const held = holdRange(view.state, pos, pos + node.nodeSize);
+  const block = blockAt(view.state.doc.resolve(pos))?.id;
+  if (!held || !block) return false;
+  rt.menu.set({ kind: 'date', block, held, date: textAttr(node, 'date'), chip: true });
+  return true;
+}
+
+/** Enter with a date tag selected, as the arrow keys select one: the calendar, to change it. */
+export const changeDateTag = (rt: EditorRuntime): boolean => {
+  const sel = rt.view?.state.selection;
+  return sel instanceof NodeSelection && sel.node.type === n.dateChip ? openDateTag(rt, sel.from) : false;
+};
+
+/**
+ * A day picked from the calendar: a date tag where `@word` was, with the caret after it, or the tag that was pressed, now
+ * saying that day. If what it was for has gone meanwhile, there's nothing to put it in, and the keyboard goes back to the text.
+ */
+export function pickDate(rt: EditorRuntime, menu: Extract<OpenMenu, { kind: 'date' }>, date: string): void {
+  const view = editing(rt);
+  rt.menu.set(null);
+  if (!view) return;
+  view.focus();
+  const range = rangeOf(view.state, menu.held);
+  if (!range) return;
+  if (menu.chip) {
+    if (view.state.doc.nodeAt(range.from)?.type !== n.dateChip) return;
+    const tr = view.state.tr.setNodeAttribute(range.from, 'date', date);
+    view.dispatch(tr.setSelection(TextSelection.create(tr.doc, range.to)).scrollIntoView());
+    return;
+  }
+  const tr = view.state.tr.replaceWith(range.from, range.to, [n.dateChip.create({ date }), schema.text(' ')]);
+  view.dispatch(tr.setSelection(TextSelection.create(tr.doc, range.from + 2)).scrollIntoView());
+}
+
+/** Esc in the calendar: back to the text, after the tag or `@word`, and the `@` list stays shut while the caret's in that word. */
+export function putDateAway(rt: EditorRuntime, menu: Extract<OpenMenu, { kind: 'date' }>): void {
+  rt.menu.set(null);
+  const view = rt.view;
+  if (!view) return;
+  view.focus();
+  const range = rangeOf(view.state, menu.held);
+  if (!range) return;
+  if (!menu.chip) rt.dismissed = range.from;
+  view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, range.to)));
 }
 
 /** Tag someone from their card: on the last line if nothing's written there, or a new one under it. */

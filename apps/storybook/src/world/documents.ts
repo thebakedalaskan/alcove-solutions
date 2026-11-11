@@ -25,6 +25,8 @@ const quote = (text: string): BlockJSON => ({ type: 'line', attrs: { kind: 'quot
 const tag = (p: Person): BlockJSON => ({ type: 'mention', attrs: { id: `@${p.email}`, name: p.name } });
 /** Words a comment thread hangs on. */
 const commented = (thread: string, text: string): BlockJSON => ({ type: 'text', text, marks: [{ type: 'comment', attrs: { id: thread } }] });
+/** A date tag, as `@` puts one in: a day, YYYY-MM-DD, which each reader reads as Today, Fri 13 Nov or Sun 31 Jan 2027. */
+const dated = (date: string): BlockJSON => ({ type: 'dateChip', attrs: { date } });
 /** A line of words, tags and commented words. */
 const lineOf = (parts: (string | BlockJSON)[], attrs?: Record<string, unknown>): BlockJSON => ({
   type: 'line', ...(attrs ? { attrs } : {}), content: parts.map((x) => (typeof x === 'string' ? { type: 'text', text: x } : x))
@@ -247,7 +249,10 @@ export const REVIEW_CHECKLIST: Page = {
   ]
 };
 
-/* The pricing sync's draft: a thread on its first line, long enough to scroll. */
+/*
+ * The pricing sync's draft: a thread on its first line, a follow-up with a date tag, and a date in another year, which its
+ * tag says. Long enough to scroll.
+ */
 export const PRICING_DRAFT: Page = {
   blocks: [
     lineOf(['Minutes of notes are what people pay for. Every seat gets ', commented('c-free', 'free minutes each month'), '.']),
@@ -255,7 +260,9 @@ export const PRICING_DRAFT: Page = {
     bullet('Monthly or yearly'),
     bullet('Minutes shared across the team'),
     heading('Still open'),
-    todo('What a minute costs past the free ones')
+    todo('What a minute costs past the free ones'),
+    lineOf(['Settle the price of a minute with ', tag(KOFI), ' by ', dated('2026-11-13')], { kind: 'todo' }),
+    lineOf(['Today’s prices hold until ', dated('2027-01-31'), '.'])
   ],
   threads: [
     { id: 'c-free', on: 0, quote: 'free minutes each month', says: [{ who: KOFI, text: 'How many, for a team of five?', hoursAgo: 23 }, { who: MAYA, text: '600 each, so 3,000 a month between them.', hoursAgo: 22.5 }] }

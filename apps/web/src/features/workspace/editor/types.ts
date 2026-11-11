@@ -34,7 +34,9 @@ export type MentionItem =
   | { kind: 'person'; person: Person; sub?: string | undefined }
   | { kind: 'document'; id: string; name: string }
   /** `date` is YYYY-MM-DD. */
-  | { kind: 'date'; date: string; label: string };
+  | { kind: 'date'; date: string; label: string }
+  /** Pick a date…: a month to pick any day from, which the editor opens in the list's place. */
+  | { kind: 'calendar' };
 
 /** A headed part of the `@` list, in the order it shows. */
 export interface MentionSection { title: string; items: MentionItem[] }

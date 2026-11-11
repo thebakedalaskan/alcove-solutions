@@ -6,7 +6,7 @@ import type { Attrs } from 'prosemirror-model';
 import { TextSelection, type Command } from 'prosemirror-state';
 import { redoCommand, undoCommand, yUndoPluginKey } from 'y-prosemirror';
 import type * as Y from 'yjs';
-import { leaveText, nudgeBlock, openBlockMenu, openLinkField, startComment, tickLine } from './actions';
+import { changeDateTag, leaveText, nudgeBlock, openBlockMenu, openLinkField, startComment, tickLine } from './actions';
 import { arrow, backspace, blockAt, deleteForward, enter, indent, lineBreak, selectAll, turnBlock } from './commands';
 import { dropSpentSteps } from './retire';
 import type { EditorRuntime } from './runtime';
@@ -26,7 +26,8 @@ const undoStep: Command = (state, dispatch, view) => {
 };
 
 export const editorKeys = (rt: EditorRuntime): Record<string, Command> => ({
-  Enter: enter,
+  /* On a date tag the arrow keys selected, Enter opens the calendar to change it. */
+  Enter: (state, dispatch, view) => changeDateTag(rt) || enter(state, dispatch, view),
   'Shift-Enter': lineBreak,
   'Mod-Enter': (state, dispatch, view) => tickLine(rt) || exitCode(state, dispatch, view),
   Backspace: backspace,

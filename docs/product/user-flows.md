@@ -1648,7 +1648,10 @@ and a toast offers **Follow again**. In a call, **Esc** anywhere else is the cal
 
 **Tagging.** **@** anywhere in a line lists people, then documents and dates, narrowing as you type: the workspace's people
 first, then your company (in a call, who's in it first, then who's invited). The list says who **Can’t open this yet**
-before you pick. Whoever can open the document hears about it; if they can't, Alcove asks once, right by the name: **Let them
+before you pick. Dates are **Today**, **Tomorrow** and the next Friday, with a day typed after **@** with its month first
+among them (**@12dec** offers Sat 12 Dec), and then **Pick a date…**: a month to pick any day from, past ones too, in the
+list's place, with the pointer or with the arrow keys and **Enter**, and **Esc** goes back to the text. Pressing a date tag
+opens the same month, to pick another day for it. A date outside this year says its year (Fri 5 Feb 2027). Whoever can open the document hears about it; if they can't, Alcove asks once, right by the name: **Let them
 edit**, **Read only** or **Not now**. A tag never shares anything by itself, and someone who can't open it isn't told. Being
 tagged is a toast saying who and where, and nothing moves until **Go there**, which lands on the line. Someone away hears when
 they're back: **Drive** in the side panel counts what's waiting, and a browser notification says so, if they've allowed them.

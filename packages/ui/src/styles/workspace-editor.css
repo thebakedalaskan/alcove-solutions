@@ -210,6 +210,8 @@ button.wb-drop:hover { color: var(--ink-2); box-shadow: inset 0 0 0 1.5px var(--
 
 /* menus */
 .wm.is-slash { width: 300px; } .wm.is-mention { width: 288px; } .wm.is-moment { width: 340px; } .wm.is-block { width: 240px; }
+/* The calendar takes the `@` list's place, as wide as it was. */
+.wm.is-date { width: 288px; }
 .wm-r.is-rec > .ac-i { color: var(--rec); }
 .wm-r.is-line .l { white-space: normal; }
 .wm-turn { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 2px; padding: 2px; }

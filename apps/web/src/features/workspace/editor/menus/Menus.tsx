@@ -3,16 +3,18 @@
  * field. They sit outside the scrolling page, so nothing clips them, in a layer that takes the page's theme. Focus
  * stays in the text the whole time: keys reach these first, and pressing one never moves the caret.
  */
-import { Avatar, Icon, cn, type IconName } from '@alcove/ui';
+import { Avatar, Icon, MonthGrid, cn, type IconName } from '@alcove/ui';
 import { toggleMark } from 'prosemirror-commands';
 import { addColumn, addRow, removeColumn, removeRow, TableMap, type TableRect } from 'prosemirror-tables';
 import { useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  applyLink, askAboutSelection, commentOnBlock, deleteFromMenu, duplicateBlock, openLinkField, pickDocument, pickMention, pickMoment, pickSlash, sendBlock, startComment, turnInto
+  applyLink, askAboutSelection, commentOnBlock, deleteFromMenu, duplicateBlock, openLinkField, pickDate, pickDocument, pickMention, pickMoment, pickSlash, putDateAway, sendBlock, startComment, turnInto
 } from '../actions';
 import type { Node as PMNode } from 'prosemirror-model';
 import { galleryItems, mediaIn } from '../blocks/attrs';
+import { isoDay } from '../blocks/dates';
+import { rangeOf } from '../plugins/decor';
 import { evenTables, findBlock, kindOf, scrollerOf } from '../commands';
 import { clockOf } from '../../live/dates';
 import type { EditorRuntime, OpenMenu, Store } from '../runtime';
@@ -182,6 +184,7 @@ function slashRows(rt: EditorRuntime, menu: Extract<OpenMenu, { kind: 'slash' }>
 function mentionRow(item: MentionItem, pick: (item: MentionItem) => void): Row {
   if (item.kind === 'person') return { kind: 'item', key: `p:${item.person.id}`, label: item.person.name, face: item.person, sub: item.sub, className: 'is-person', run: () => pick(item) };
   if (item.kind === 'document') return { kind: 'item', key: `d:${item.id}`, label: item.name, icon: 'fileText', run: () => pick(item) };
+  if (item.kind === 'calendar') return { kind: 'item', key: 'calendar', label: 'Pick a date…', icon: 'cal', run: () => pick(item) };
   return { kind: 'item', key: `t:${item.date}`, label: item.label, icon: 'cal', run: () => pick(item) };
 }
 
@@ -344,6 +347,34 @@ function LinkField({ rt, menu }: { rt: EditorRuntime; menu: Extract<OpenMenu, { 
   );
 }
 
+/**
+ * The calendar, in the `@` list's place at the caret, or against a date tag that was pressed. It has the keyboard: the arrow
+ * keys move between days, Enter picks, and Esc goes back to the text. A press anywhere else puts it away.
+ */
+function DateMenu({ rt, menu }: { rt: EditorRuntime; menu: Extract<OpenMenu, { kind: 'date' }> }) {
+  useEffect(() => {
+    /* Before anything else hears Esc, wherever focus is in it, as the lists' keys do. */
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); putDateAway(rt, menu); } };
+    const onPress = (e: PointerEvent) => { if (!(e.target instanceof Element && e.target.closest('.ws-pop'))) rt.menu.set(null); };
+    window.addEventListener('keydown', onKey, true);
+    window.addEventListener('pointerdown', onPress, true);
+    return () => {
+      window.removeEventListener('keydown', onKey, true);
+      window.removeEventListener('pointerdown', onPress, true);
+    };
+  }, [rt, menu]);
+  const view = rt.view;
+  const range = view ? rangeOf(view.state, menu.held) : null;
+  const tag = range && menu.chip ? view?.nodeDOM(range.from) : null;
+  const anchor = tag instanceof Element ? tag.getBoundingClientRect() : range ? caretRect(rt, range.to) : null;
+  if (!anchor) return null;
+  return (
+    <Popover anchor={anchor} className="wm is-date" label={menu.chip ? 'Change the date' : 'Pick a date'} role="dialog">
+      <MonthGrid value={menu.date} today={isoDay(new Date())} autoFocus label={menu.chip ? 'Change the date' : 'Pick a date'} onPick={(date) => pickDate(rt, menu, date)} />
+    </Popover>
+  );
+}
+
 function FormatBar({ rt }: { rt: EditorRuntime }) {
   const bar = useStore(rt.bar);
   const box = useRef<HTMLDivElement>(null);
@@ -408,6 +439,8 @@ function OpenList({ rt, menu }: { rt: EditorRuntime; menu: OpenMenu }) {
       return <ListMenu rt={rt} rows={moveRows(rt, menu.block)} anchor={menu.rect} className="is-block" label="Move this block to" start={0} reset={menu.block} caret={false} onClose={close} />;
     case 'link':
       return <LinkField rt={rt} menu={menu} />;
+    case 'date':
+      return <DateMenu rt={rt} menu={menu} />;
     default:
       return null;
   }

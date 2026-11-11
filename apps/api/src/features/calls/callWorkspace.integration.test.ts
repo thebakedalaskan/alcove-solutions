@@ -115,6 +115,8 @@ async function open(who: Browser, id: string, document: string, opts: DocSession
 const saved = (s: DocSession) => until(() => s.getSnapshot().status === 'saved', 'everything to reach Alcove');
 const inlineNode = (type: string, attrs: Record<string, string>) => { const el = new Y.XmlElement(type); for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v); return el; };
 const textNode = (s: string) => { const t = new Y.XmlText(); t.insert(0, s); return t; };
+/** A day this year, which a follow-up's words say without its year: 6 Nov. */
+const DAY = `${new Date().getUTCFullYear()}-11-06`;
 /**
  * Adds a to-do at the end, as the editor writes one: `who` and `when` give it a mention and a date, which is what joins it to the
  * call's follow-ups. `tags`: they're side by side at the end of the line, as what's sent from the notes lands, not in a sentence.
@@ -884,7 +886,7 @@ describe('the call’s follow-ups', () => {
 
     // Written in a document in this call, with a person and a date. A to-do without both isn't a follow-up.
     const a = await open(art, id, plan, { pass: host.ticket.pass });
-    addTodo(a, 't1', 'Send the brief to ', { who: { id: 'priya', name: priya.name }, when: '2026-11-06' });
+    addTodo(a, 't1', 'Send the brief to ', { who: { id: 'priya', name: priya.name }, when: DAY });
     addTodo(a, 't2', 'Nobody’s yet');
     addTodo(a, 't3', 'No date', { who: { id: 'priya', name: priya.name } });
     addTodo(a, 't4', 'Book the room ', { who: { id: 'priya', name: priya.name }, when: '2026-11-09', tags: true });
@@ -898,7 +900,7 @@ describe('the call’s follow-ups', () => {
     expect(mine.items.filter((x) => x.from === 'notes').map((x) => x.text)).toEqual(['Kofi will book the press briefing by Friday.']);
     expect(mine.items.find((x) => x.from === 'document' && x.block === 't1')).toEqual({
       from: 'document', workspaceId: id, documentId: plan, document: 'Launch plan', block: 't1', text: `Send the brief to ${priya.name} by 6 Nov`,
-      mentions: [{ id: 'priya', name: priya.name }], dates: ['2026-11-06'], done: false, canTick: true
+      mentions: [{ id: 'priya', name: priya.name }], dates: [DAY], done: false, canTick: true
     });
     // Tags side by side at the end are only labels, shown beside it: what it says is the words.
     expect(mine.items.find((x) => x.from === 'document' && x.block === 't4')).toMatchObject({ text: 'Book the room', mentions: [{ name: priya.name }], dates: ['2026-11-09'] });
@@ -945,12 +947,12 @@ describe('the call’s follow-ups', () => {
     const plan = await doc(art, id, 'Plan');
     const other = await doc(art, id, 'Not touched');
     const before = await open(art, id, other);
-    addTodo(before, 'b1', 'From before the call ', { who: { id: 'art', name: art.name }, when: '2026-11-06' });
+    addTodo(before, 'b1', 'From before the call ', { who: { id: 'art', name: art.name }, when: DAY });
     await saved(before);
     const { host } = await callBy(art, { notes: 'off' });
     await host.setWorkspace(id);
     const a = await open(art, id, plan, { pass: host.ticket.pass });
-    addTodo(a, 't1', 'Written in the call ', { who: { id: 'art', name: art.name }, when: '2026-11-06' });
+    addTodo(a, 't1', 'Written in the call ', { who: { id: 'art', name: art.name }, when: DAY });
     await saved(a);
     // The same person in the same document, without the call's pass, wasn't working in the call.
     const f = await read2(host, (x) => inDocuments(x).length === 1);
@@ -962,6 +964,21 @@ describe('the call’s follow-ups', () => {
     expect(await code(elsewhere.host.tickDocumentFollowUp({ workspaceId: id, documentId: plan, block: 't1', done: true }))).toBe('not-found');
     expect(await code(host.tickDocumentFollowUp({ workspaceId: madeUp(), documentId: plan, block: 't1', done: true }))).toBe('not-found');
     expect((await followUps(host)).getSnapshot()?.items).toHaveLength(1);
+  });
+
+  it('take any day a tag says, months ahead too, and say its year when it isn’t this one', async () => {
+    const art = await account();
+    const id = await workspace(art, 'Product');
+    const plan = await doc(art, id, 'Plan');
+    const { host } = await callBy(art, { notes: 'off' });
+    await host.setWorkspace(id);
+    const a = await open(art, id, plan, { pass: host.ticket.pass });
+    // A day picked from the calendar, or typed after @: here one in February next year.
+    const next = new Date().getUTCFullYear() + 1;
+    addTodo(a, 't1', 'Renew the domain ', { who: { id: 'art', name: art.name }, when: `${next}-02-05` });
+    await saved(a);
+    const f = await read2(host, (x) => inDocuments(x).length === 1);
+    expect(inDocuments(f)[0]).toMatchObject({ block: 't1', text: `Renew the domain ${art.name} by 5 Feb ${next}`, dates: [`${next}-02-05`] });
   });
 
   it('aren’t ticked by someone who lost the document on the way: access is asked again as it’s written', async () => {
@@ -1802,7 +1819,7 @@ describe('the next call’s agenda', () => {
     const first = await art.api.calls.join(m.code, { mic: false, cam: false });
     await inGroup(first);
     const page = await open(art, id, agenda, { pass: first.ticket.pass });
-    addTodo(page, 'open1', 'CANARY-AGENDA book the briefing ', { who: { id: 'priya', name: priya.name }, when: '2026-11-06' });
+    addTodo(page, 'open1', 'CANARY-AGENDA book the briefing ', { who: { id: 'priya', name: priya.name }, when: DAY });
     addTodo(page, 'open2', 'Who signs off the pricing? ', { who: { id: 'art', name: art.name } });
     addTodo(page, 'shut1', 'Already settled', { done: true });
     addTodo(page, 'blank', '');
@@ -1840,13 +1857,13 @@ describe('the next call’s agenda', () => {
     expect(title).toBe(item?.name);
     expect(blocks.map((b) => [b.type, b.text])).toEqual([
       ['heading', 'From last time'],
-      ['todo', `CANARY-AGENDA book the briefing ${priya.name} by 2026-11-06`],
+      ['todo', `CANARY-AGENDA book the briefing ${priya.name} by ${DAY}`],
       ['todo', `Who signs off the pricing? ${art.name}`],
       ['heading', 'Today'],
       ['heading', 'Notes']
     ]);
     expect(documentTodos(made.page.doc, 'document').map((t) => [t.done, t.mentions.map((m) => m.name), t.dates])).toEqual([
-      [false, [priya.name], ['2026-11-06']], [false, [art.name], []]
+      [false, [priya.name], [DAY]], [false, [art.name], []]
     ]);
     // The block IDs are the editor's kind, one each, and the fragment holds what the editor's schema says: a title, then lines.
     const fragment = made.page.doc.getXmlFragment('content').toArray();

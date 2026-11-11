@@ -1753,6 +1753,8 @@ describe('versions', () => {
 });
 
 describe('reading a document on the server', () => {
+  /** A day this year, which a follow-up's words say without its year. */
+  const DAY = `${new Date().getUTCFullYear()}-11-06`;
   /** A document with one of everything that holds words, as y-prosemirror stores it. */
   async function full(who: Account, id: string, name: string) {
     const doc = await make(who, id, 'document', name);
@@ -1766,7 +1768,7 @@ describe('reading a document on the server', () => {
     before.insert(0, 'Send the brief to ');
     const after = new Y.XmlText();
     after.insert(0, ' by ');
-    todo.insert(0, [before, inline('mention', { id: 'p1', name: 'Priya Rao' }), after, inline('dateChip', { date: '2026-11-06' })]);
+    todo.insert(0, [before, inline('mention', { id: 'p1', name: 'Priya Rao' }), after, inline('dateChip', { date: DAY })]);
     const plain = addBlock(s, 'line', 'todo2', { kind: 'todo' });
     const nobodys = new Y.XmlText();
     nobodys.insert(0, 'Nobody’s yet');
@@ -1815,15 +1817,24 @@ describe('reading a document on the server', () => {
     expect(text.title).toBe('Plan title');
     expect(text.blocks).toEqual(expect.arrayContaining([
       { id: 'first', type: 'paragraph', text: 'A first line' }, { id: 'h1', type: 'heading', text: 'A heading' },
-      { id: 'todo1', type: 'todo', text: 'Send the brief to Priya Rao by 2026-11-06' }, { id: 'tg', type: 'toggle', text: 'Toggle summary\nToggle body' },
+      { id: 'todo1', type: 'todo', text: `Send the brief to Priya Rao by ${DAY}` }, { id: 'tg', type: 'toggle', text: 'Toggle summary\nToggle body' },
       { id: 'tb', type: 'table', text: 'Cell one\tCell two' }, { id: 'lv', type: 'live', text: 'Decided: ship it' }, { id: 'mo', type: 'moment', text: 'What was said' },
       { id: 'fi', type: 'file', text: 'brief.pdf' }, { id: 'ga', type: 'gallery', text: 'A caption Another' }, { id: 'lk', type: 'paragraph', text: 'See ' }
     ]));
     expect(documentTodos(read, 'document')).toEqual([
       // A follow-up's words read as a sentence: a tag inside one is part of it, and a date is a day.
-      { block: 'todo1', text: 'Send the brief to Priya Rao by 6 Nov', done: false, mentions: [{ id: 'p1', name: 'Priya Rao' }], dates: ['2026-11-06'] },
+      { block: 'todo1', text: 'Send the brief to Priya Rao by 6 Nov', done: false, mentions: [{ id: 'p1', name: 'Priya Rao' }], dates: [DAY] },
       { block: 'todo2', text: 'Nobody’s yet', done: true, mentions: [], dates: [] }
     ]);
+    // A date outside this year says its year, as its tag does on the page.
+    const ahead = { doc: new Y.Doc() };
+    Y.applyUpdate(ahead.doc, Y.encodeStateAsUpdate(read));
+    const later = addBlock(ahead, 'line', 'todo3', { kind: 'todo' });
+    const words = new Y.XmlText();
+    words.insert(0, 'Renew the domain by ');
+    const next = new Date().getUTCFullYear() + 1;
+    later.insert(0, [words, inline('dateChip', { date: `${next}-02-05` })]);
+    expect(documentTodos(ahead.doc, 'document').find((t) => t.block === 'todo3')?.text).toBe(`Renew the domain by 5 Feb ${next}`);
     // A retired block isn't on the page, and a todo in one isn't anyone's, unless an edit landed in it after: then it's a block.
     const after = await open(ann, id, doc);
     const old = addBlock(after, 'line', 'old', { kind: 'todo', gone: 'first' });

@@ -110,6 +110,48 @@ export const ThreadGoesWithItsWords = page(DRAFT, 'busy', { play: scrollThread(4
 /** On a phone the thread is a sheet at the foot of the window, wherever its words have scrolled to. */
 export const ThreadAsThePageScrollsPhone = page(DRAFT, 'busy', { globals: PHONE, play: scrollThread(400, 'Scroll past the words. The sheet stays at the foot of the window') });
 
+/*
+ * Dates in a document: `@` offers Today, Tomorrow and the next Friday, a day typed with its month first, and Pick a date…,
+ * a month to pick any day from in the list's place. A date tag outside this year says its year (the draft's prices hold
+ * until Sun 31 Jan 2027), and pressing one opens the month to change it.
+ */
+const startTagging = (typed: string): NonNullable<PageStory['play']> => async ({ canvas, userEvent, step }) => {
+  await step(`Start a line under “The team plan”, and type @${typed}`, async () => {
+    await userEvent.click(await canvas.findByText('The team plan', {}, { timeout: 8000 }));
+    await userEvent.keyboard(`{End}{Enter}@${typed}`);
+    await screen.findByRole('listbox', { name: 'People, documents and dates' }, { timeout: 5000 });
+  });
+};
+const pickADate: NonNullable<PageStory['play']> = async (c) => {
+  await startTagging('')(c);
+  await c.step('Press Pick a date…. A month takes the list’s place, with the keyboard on today', async () => {
+    await c.userEvent.click(await screen.findByRole('option', { name: 'Pick a date…' }, { timeout: 5000 }));
+    await screen.findByRole('grid', {}, { timeout: 5000 });
+  });
+};
+const changeADate: NonNullable<PageStory['play']> = async ({ canvasElement, userEvent, step }) => {
+  await step('Press the follow-up’s date, Fri 13 Nov. The month opens against it, on that day', async () => {
+    let tag: Element | null = null;
+    for (let tries = 0; !tag && tries < 50; tries++) { tag = canvasElement.querySelector('.ws-ed .wdt[data-d="2026-11-13"]'); if (!tag) await beat(200); }
+    if (tag) await userEvent.click(tag);
+  });
+};
+/** `@` on a new line: Dates at the foot of the list, with Pick a date… under them. */
+export const DatesInTheList = page(DRAFT, 'busy', { play: startTagging('') });
+export const DatesInTheListNight = page(DRAFT, 'busy', { globals: { theme: 'dark' }, play: startTagging('') });
+export const DatesInTheListPhone = page(DRAFT, 'busy', { globals: PHONE, play: startTagging('') });
+/** A day typed with its month, run together: @12dec offers Sat 12 Dec first. */
+export const ATypedDate = page(DRAFT, 'busy', { play: startTagging('12dec') });
+export const ATypedDatePhone = page(DRAFT, 'busy', { globals: PHONE, play: startTagging('12dec') });
+/** Pick a date…: the month, in the list's place. */
+export const PickADate = page(DRAFT, 'busy', { play: pickADate });
+export const PickADateNight = page(DRAFT, 'busy', { globals: { theme: 'dark' }, play: pickADate });
+export const PickADatePhone = page(DRAFT, 'busy', { globals: PHONE, play: pickADate });
+export const PickADatePhoneNight = page(DRAFT, 'busy', { globals: { ...PHONE, theme: 'dark' }, play: pickADate });
+/** Pressing a date tag: the month against it, on its day, to pick another. */
+export const ChangeADate = page(DRAFT, 'busy', { play: changeADate });
+export const ChangeADatePhone = page(DRAFT, 'busy', { globals: PHONE, play: changeADate });
+
 /** In the design review's home: its screenshots side by side, the walkthrough to play, and the spec to download. */
 export const PhotosVideoAndAFile = page(SHOTS, 'busy');
 export const PhotosVideoAndAFileNight = page(SHOTS, 'busy', { globals: { theme: 'dark' } });

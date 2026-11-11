@@ -18,7 +18,7 @@ import { createPortal } from 'react-dom';
 import { log } from '~/lib/log';
 import { initProseMirrorDoc, ySyncPlugin, ySyncPluginKey, yUndoPlugin } from 'y-prosemirror';
 import * as Y from 'yjs';
-import { hasLive, insertBlocks, movingBlock, pickSlash, removeBlock, setBlockAttrs, setLiveLines, tagAtEnd, turnInto } from './actions';
+import { hasLive, insertBlocks, movingBlock, openDateTag, pickSlash, removeBlock, setBlockAttrs, setLiveLines, tagAtEnd, turnInto } from './actions';
 import { Carets, FileLine, Handles, landing } from './blocks/Handles';
 import { RuntimeContext } from './blocks/Media';
 import { markViews, nodeViews } from './blocks/views';
@@ -151,6 +151,8 @@ function createView(rt: EditorRuntime, mount: HTMLElement): EditorView {
         if (rt.props.documentName?.(id) !== undefined) rt.props.onOpenDocument?.(id);
         return true;
       }
+      /* A date tag opens the calendar against it, for another day, for someone who can write here. */
+      if (node.type === schema.nodes.dateChip) return openDateTag(rt, nodePos);
       return false;
     },
     handleDOMEvents: {

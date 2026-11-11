@@ -64,7 +64,12 @@ export type OpenMenu =
   | { kind: 'block'; block: string; rect: Rect; keyboard?: boolean | undefined }
   | { kind: 'move'; block: string; rect: Rect }
   /** Link: the words are held, so the link lands on them whatever happens around them while the field is open. */
-  | { kind: 'link'; words: HeldWords; href: string; rect: Rect };
+  | { kind: 'link'; words: HeldWords; href: string; rect: Rect }
+  /**
+   * A month to pick a day from: in the `@` list's place, for a date tag where `@word` is (`held`), or on a date tag that was
+   * pressed (`chip`, `held` being the tag), for another day. Held, so what others type meanwhile moves it along.
+   */
+  | { kind: 'date'; block: string; held: HeldRange; date: string | null; chip: boolean };
 
 /** The format bar: over the selection, with what's on there. */
 export interface FormatBarState { rect: Rect; bold: boolean; italic: boolean; strike: boolean; link: boolean; highlight: boolean }
