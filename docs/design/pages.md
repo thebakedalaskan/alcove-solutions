@@ -13,7 +13,8 @@ Every signed-in page sits in the same frame (`apps/web/src/features/shell/`, `pa
 
 - **The side panel**, on the left, is dark in both themes. From the top:
   - the logo, and a button to hide the panel
-  - Start a call (N), tinted, never filled
+  - Start a call (N): a row like the places, its name in line with theirs and its camera in a warm circle. It's never
+    filled or shaded, so the place you're on is the one shaded row
   - the places, each with a count: Home (what's waiting on you), Notes, Record (recordings waiting to upload) and Team
     (people on Alcove), with Team hidden for someone on their own
   - Up next, the next call with Join, on Home too, except while Home's own line offers a call (in its last few minutes,
@@ -440,8 +441,8 @@ Signed out, before anything else: what Alcove is, told as one evening on the app
 
   A new account has its arrival instead, and with reduced motion Home just opens. It's decorative: it takes no focus, and
   a press, a key or the wheel clears it at once.
-- The nav is fixed over the sky. It turns night over the night windows, and its Get started is tinted, like the side
-  panel's Start a call. The logo appears once, in the nav.
+- The nav is fixed over the sky. It turns night over the night windows, and its Get started is tinted, leaving the
+  filled button to what's on the page. The logo appears once, in the nav.
 
 ## Not yet on the canvas
 

@@ -86,7 +86,7 @@ export function Sidebar({ hidden, hideRef, onHide, onNew, onPin }: {
         <Offline className="sb-offline" />
         {/* In the workspace, N makes a document. */}
         <button type="button" className={cn(buttonClass(), 'sb-new')} onClick={onNew} aria-label="Start a call" aria-haspopup="dialog" aria-keyshortcuts={inWorkspace(path) ? undefined : 'N'} data-tour="new-call">
-          <Icon name="video" size={18} /><span>Start a call</span>{!inWorkspace(path) && <Kbd>N</Kbd>}
+          <span className="sb-new-ic"><Icon name="video" size={16} /></span><span>Start a call</span>{!inWorkspace(path) && <Kbd>N</Kbd>}
         </button>
         <SidebarNav>
           {places(NAV, team).map((p) => <Link key={p.to} to={p.to} className="ac-nav-item" data-tour={p.tour}><NavItemContent icon={p.icon} label={p.label} count={p.count && counts[p.count]} /></Link>)}
