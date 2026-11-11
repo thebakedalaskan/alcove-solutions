@@ -346,3 +346,34 @@ export const OnAPhone: PageStory = {
     });
   }
 };
+
+export const RenameItAndOpenItAgain: PageStory = {
+  name: '6.22 Rename a board, then open it again',
+  ...review({ board: undefined, then: () => { fillTemplate(boardDoc('ws-design', ONBOARDING), 'flow', null, ONBOARDING); } }),
+  play: async (c) => {
+    const { userEvent, step } = c;
+    await step('Press Board, then Onboarding flow, one of your team’s boards. It opens on your stage, just for you', async () => {
+      await userEvent.click(await screen.findByRole('button', { name: 'Board' }, LATER));
+      await pick(/^Onboarding flow/, c);
+      await board('Onboarding flow');
+    });
+    await step('Press its name, on its bar, then Rename: the name becomes a field on the board’s own bar', async () => {
+      await userEvent.click(nameOf(await board('Onboarding flow')));
+      await userEvent.click(await settledRow('Onboarding flow', 'Rename'));
+    });
+    await step('Type its new name and press Enter: its frame says it at once, and so does everything else that names it', async () => {
+      const field = await screen.findByRole('textbox', { name: 'The board’s name' }, SOON);
+      await userEvent.clear(field);
+      await userEvent.type(field, 'Onboarding, step by step{Enter}');
+      await board('Onboarding, step by step');
+    });
+    await step('Close, on its bar: it closes, just for you', async () => {
+      await userEvent.click(await within(await board('Onboarding, step by step')).findByRole('button', { name: 'Close Onboarding, step by step' }, SOON));
+    });
+    await step('Press Board again: your team’s boards have it under its new name. Press it: it opens again, and keeps it', async () => {
+      await userEvent.click(await screen.findByRole('button', { name: 'Board' }, LATER));
+      await pick(/^Onboarding, step by step/, c);
+      await board('Onboarding, step by step');
+    });
+  }
+};

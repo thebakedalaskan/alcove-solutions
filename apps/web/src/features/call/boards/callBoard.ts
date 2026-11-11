@@ -227,11 +227,16 @@ export function useCallBoard({ session, stage, saved, state, me, owner, talking,
   }, [sinking]);
   /*
    * A saved board just for you is opened as yours, with your account, not the call's pass: the call has nothing to do with it.
-   * It's what's drawn while it's on your stage; otherwise the call's board is, or the one sinking as it closes.
+   * It's what's drawn while it's on your stage; otherwise the call's board is, or the one sinking as it closes. It's named as
+   * its workspace names it now (read as it's drawn, for its links, so it costs nothing more), not as it was named when it
+   * opened: a rename, here or anywhere else, holds.
    */
+  const savedTree = useQuery({ ...q.workspaceTree(saved?.workspaceId ?? ''), enabled: saved !== null }).data;
+  const liveName = saved ? savedTree?.items.find((i) => i.id === saved.documentId)?.name : undefined;
+  const savedName = liveName === undefined ? saved?.name : liveName || 'Untitled board';
   const savedOpen = useMemo((): CallBoardOpen | null => (saved ? {
-    workspaceId: saved.workspaceId, documentId: saved.documentId, name: saved.name, openedBy: me, canClose: true, everyone: false, role: 'edit', seal: 'Sealed', frame: null
-  } : null), [saved?.workspaceId, saved?.documentId, saved?.name, me]);
+    workspaceId: saved.workspaceId, documentId: saved.documentId, name: savedName ?? saved.name, openedBy: me, canClose: true, everyone: false, role: 'edit', seal: 'Sealed', frame: null
+  } : null), [saved?.workspaceId, saved?.documentId, savedName, me]);
   const mineDrawn = stage === 'saved' && savedOpen !== null;
   const { doc, status, reopen } = useBoardSession(mineDrawn ? savedOpen : open ?? sinking, owner, mineDrawn ? undefined : pass);
   const { people, onBoard } = useBoardPeople(doc, state.participants, me);

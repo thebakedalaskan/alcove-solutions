@@ -1342,7 +1342,10 @@ it, by their name, address and seat, and which boards it lets everyone into. Wha
 - **Who can open one.** Anyone invited. Guests add to what's open and don't start one: `board-open`, and `boardCheck`, answer
   them `403` in the same words whatever they asked for, logged at info, before anything is read or settled.
 - **One board per part of the call.** Opening one replaces whatever's open there for everyone, and the old one just closes;
-  a browser that had the old one on its stage keeps it there, just for that person, as a saved board (`InCall.tsx`).
+  a browser that had the old one on its stage keeps it there, just for that person, as a saved board (`InCall.tsx`). A
+  saved board is named as its workspace names it now, from the tree the call reads for its links (`callBoard.ts`), not as it
+  was named when it opened, and a rename in the call (`useRenameBoard`) puts the new name at once in that tree, the board
+  picker's Your team's boards and the Drive's library, and reads each again, so no copy brings the old name back.
   A main board doesn't show in a breakout room, unless rooms share it ([Boards in breakout rooms](#boards-in-breakout-rooms)).
   The call's seats on it are for the whole call, so someone in a room finds it when they come back, and `boardCheck` counts
   them. A new board started in a room is the room's; a saved board is the main room's to bring: `board-open` with one, and

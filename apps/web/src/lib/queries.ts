@@ -1,6 +1,6 @@
 /* Query keys, fetchers and mutations. Screens read data through these, never through `api` directly. */
 import type { AgentDecisionInput, AgentTokenInput, DriveExportInput, FollowUpReview } from '@alcove/api';
-import { AlcoveApiError, MAX_SORT_STICKIES, MAX_SORT_STICKY, SORT_TOO_FEW, SORT_TOO_MANY, errorCode, type ActionProposal, type ChangeScope, type DecisionProposal, type DemoProvider, type DocumentRole, type FeatureFlagName, type Group, type PresenterFrameNotes, type InstantCallInput, type ISODate, type ItemInput, type ItemPlace, type LinePatch, type MeetingInput, type MentionBody, type NoteKind, type NotesSetting, type Patch, type PersonalInput, type PersonalNotes, type PromoteBody, type QuestionPatch, type TopUp, type RingReply, type Series, type ShareTarget, type WorkspaceRole, type WorkspaceSummary } from '@alcove/api';
+import { AlcoveApiError, MAX_SORT_STICKIES, MAX_SORT_STICKY, SORT_TOO_FEW, SORT_TOO_MANY, errorCode, type ActionProposal, type ChangeScope, type DecisionProposal, type DemoProvider, type DocumentRole, type FeatureFlagName, type Group, type PresenterFrameNotes, type InstantCallInput, type ISODate, type ItemInput, type ItemPlace, type LinePatch, type MeetingInput, type MentionBody, type NoteKind, type NotesSetting, type Patch, type PersonalInput, type PersonalNotes, type PromoteBody, type QuestionPatch, type TopUp, type RingReply, type Series, type ShareTarget, type DocumentLibrary, type WorkspaceRole, type WorkspaceSummary, type WorkspaceTree } from '@alcove/api';
 import { queryOptions, useIsMutating, useMutation, useMutationState, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef } from 'react';
 import { forgetAccount } from '~/features/record/offline';
@@ -792,9 +792,23 @@ export function useWorkspaceName(id: string, liveName: string, signedIn: boolean
   const name = (pending || waiting) ? list?.find((space) => space.id === id)?.name ?? liveName : liveName;
   return { name, state: pending ? 'saving' : latest?.status === 'error' ? 'failed' : latest?.status === 'success' ? 'saved' : 'quiet' } as const;
 }
-/** Renames a board open in a call, for anyone who can change it: the call reads its new name from the workspace. `pass`: the call's. */
+/**
+ * Renames a board open in a call, for anyone who can change it: the call reads its new name from the workspace. What names
+ * boards outside the call takes the new name at once, so nothing brings the old one back: the board's workspace as the call
+ * reads it (which a saved board open just for you is named from), the item, the board picker's Your team's boards and the
+ * Drive's library, each read again too. `pass`: the call's.
+ */
 export function useRenameBoard(pass: string | undefined) {
-  return useMutation({ mutationFn: (v: { workspaceId: string; id: string; name: string }) => api.workspaces.items.rename(v.workspaceId, v.id, v.name, pass ? { pass } : undefined) });
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { workspaceId: string; id: string; name: string }) => api.workspaces.items.rename(v.workspaceId, v.id, v.name, pass ? { pass } : undefined),
+    onSuccess: (_, v) => {
+      qc.setQueryData<WorkspaceTree>(qk.workspaceTree(v.workspaceId), (t) => t && { ...t, items: t.items.map((i) => (i.id === v.id ? { ...i, name: v.name } : i)) });
+      qc.setQueriesData<BoardToBring[]>({ queryKey: qk.boardsToBring }, (list) => list?.map((b) => (b.workspaceId === v.workspaceId && b.id === v.id ? { ...b, name: v.name } : b)));
+      qc.setQueryData<DocumentLibrary>(qk.documents, (lib) => lib && { workspaces: lib.workspaces.map((w) => (w.id !== v.workspaceId ? w : { ...w, documents: w.documents.map((d) => (d.id === v.id ? { ...d, name: v.name } : d)) })) });
+      for (const queryKey of [qk.workspaceTree(v.workspaceId), qk.workspaceItem(v.workspaceId, v.id), qk.boardsToBring, qk.documents]) void qc.invalidateQueries({ queryKey });
+    }
+  });
 }
 /**
  * Sort into themes on a board: what the stickies picked say goes to confidential compute through the board's document, and
