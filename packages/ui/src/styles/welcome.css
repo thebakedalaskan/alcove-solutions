@@ -22,7 +22,7 @@
 .lp-links a { padding-block: 8px; transition: color var(--duration-1); }
 .lp-links a:hover, .lp-links a[aria-current="true"] { color: var(--ink); }
 .lp-nav .end { margin-left: auto; display: flex; align-items: center; gap: 4px; }
-/* Tinted, like the side panel's Start a call: the filled button belongs to what's on the page. */
+/* Tinted: the filled button belongs to what's on the page. */
 .lp-nav .lp-start { margin-left: 4px; background: color-mix(in oklch, var(--sun) 13%, transparent); box-shadow: none; color: var(--ink); }
 .lp-nav .lp-start:hover { background: color-mix(in oklch, var(--sun) 21%, transparent); }
 @media (max-width: 1180px) { .lp-links { display: none; } }
