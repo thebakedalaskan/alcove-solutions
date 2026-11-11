@@ -6,7 +6,9 @@
  * time while browsers count the file from 0, so seeking to a line's place in the stretch lands where nothing is: silence.
  *
  * So a stretch opens on its first Cluster (a WebM's) or movie fragment (an MP4's), counts its times from that one, and
- * stops after its last whole element. Each time is rewritten in place, in the width it had, so nothing moves.
+ * stops after its last whole element. Each time is rewritten in place, in the width it had, so nothing moves. The end of
+ * its last piece's sound, in the next piece's first bytes (`soundStarts` says how many), goes on the end of it when the
+ * next piece is there (recordings/audio.ts): it's the rest of the last block and Cluster, with no times of its own to change.
  */
 
 type Container = 'webm' | 'mp4';

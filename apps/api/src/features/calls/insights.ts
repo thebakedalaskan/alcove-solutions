@@ -630,8 +630,9 @@ export interface Heard { audio: Stretch; from: number; seconds: number }
  * without a word ending when it was last heard from), and only the pieces of the recording they were there for: whole
  * pieces, so a guest who came in or went out in the middle of one doesn't hear it. A line said in a breakout room isn't in
  * the recording, and nor is anything of a call that doesn't keep its recording. Once the call ends it's the note's audio,
- * for whoever has the note. A line whose pieces the host's browser hasn't sent yet is a `conflict`, to try again in a few
- * seconds. Everything else is the same `not-found`, which names nothing.
+ * for whoever has the note. A line whose pieces the host's browser hasn't sent yet, while it's still recording that segment,
+ * is a `conflict`, to try again in a few seconds. Everything else, a piece that will never come included, is the same
+ * `not-found`, which names nothing.
  */
 export async function hear(v: Viewer, callId: string, noteId: string, lineId: string): Promise<Heard> {
   requireIn(v, 'hear');
@@ -658,7 +659,14 @@ export async function hear(v: Viewer, callId: string, noteId: string, lineId: st
   const here = onlyHere(v, s, mine, row.started_at, invited);
   const inCall = (ms: number) => said + (ms - fromMs) / 1000;
   const audio = await stretch(o, recordingId, line.segment, fromMs, toMs, (a, b) => catchup.covers(here, inCall(a), inCall(b)));
-  if (audio === 'pending') throw new ConflictError('The recording doesn’t have this line yet. Try again in a few seconds.', { context: { ...ctx, segment: line.segment } });
+  // A piece still to come only comes while its segment is being recorded: notes on, and in that segment. Once they're paused
+  // or off, or a new segment has begun (a new host's browser records its own), the server takes no more of it, so a piece
+  // that never came (the host's tab closed, or it was given up after its tries) never will, and it can't be played.
+  if (audio === 'pending') {
+    if (s.notes.status === 'on' && s.notes.segment === line.segment) throw new ConflictError('The recording doesn’t have this line yet. Try again in a few seconds.', { context: { ...ctx, segment: line.segment } });
+    clog.info('a line’s piece of the recording never came', { callId, segment: line.segment, notes: s.notes.status, currentSegment: s.notes.segment });
+    throw nothing();
+  }
   if (!audio) throw nothing();
   clog.info('a line heard', { callId, segment: line.segment, bytes: audio.bytes.length, guest: here !== null });
   return { audio, from: Math.max(0, (fromMs - audio.startMs) / 1000), seconds: (Math.min(toMs, audio.endMs) - fromMs) / 1000 };
