@@ -2639,6 +2639,25 @@ uploads), Alcove is asked who's signed in (`GET /v1/session`): only the account 
       (Standard) or the middle one (HD): a still face looks the same, and motion is blockier.
     - Microphones are published as speech (`AudioPresets.speech`, Opus at up to 24 kbps, with LiveKit's default DTX
       and RED); a share's sound keeps LiveKit's music default.
+  - **With the `call.screenShareQuality` feature flag**, read once as the room opens, a shared screen is sent at up to 30
+    fps instead of LiveKit's 15, at LiveKit's own 2.5 Mbps (`SCREEN` in `livekit.ts`), and with
+    LiveKit's `maintain-resolution` for screens: scrolling that outruns the rate drops frames and text stays sharp,
+    since blurred text shows more than a choppy scroll. It's sent as one copy at the screen's full size
+    (`simulcast: false`), not LiveKit's full and half-size pair: adaptive stream counts at most 1.5 pixels to a CSS
+    pixel, so a share frame under about 1000 CSS pixels wide on a Retina screen took the half-size copy and blurred
+    its text. A still screen costs the same; while it moves, a viewer with a small frame downloads up to the full rate.
+    It's sent as VP9 (`videoCodec: 'vp9'`), about 30% fewer bits than VP8 for the same picture; a sharer whose browser
+    LiveKit won't send VP9 from (Firefox) sends VP8. LiveKit sends a VP9 screen as one layer (`L1T3`) with
+    `contentHint: 'motion'`, working round Chrome's screen-content path.
+  - **VP8 while anyone can't decode VP9.** Under end-to-end encryption LiveKit sends no second codec beside the first, so
+    a viewer that can't decode VP9 (Safari or iOS before 16) would see nothing. Such a browser says so on its own data
+    topic (`CALL_CODECS_TOPIC` in `packages/api/src/calls/codecs.ts`, sealed like marks, every 10 s, whatever its flags;
+    browsers that decode VP9 say nothing). A sharer with the flag sends a clone of LocalMedia's screen track
+    (`publishScreen`, which stops the clone once its publication goes) and, while anyone it hears can't decode VP9,
+    sends it as VP8 with LiveKit's own settings (main's) instead. A change of codec publishes the new copy before taking
+    the old one down, so viewers see the share blink rather than stop and start, and the sharer isn't asked to pick a
+    screen again; it goes back to VP9 once they leave. The picture's track sid changes, so pointers and marks on it
+    start afresh, and a viewer who muted the share's sound hears it again.
 - **Speakers.** Where a page can choose one (`setSinkId` on media elements: Chrome, Edge and Firefox; LiveKit
   doesn't on Safari), the chosen speaker goes through LiveKit's own output switching, so every element plays
   there, now and as people arrive, and LiveKit's device handling knows it. Firefox lists speakers only once the

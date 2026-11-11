@@ -55,7 +55,7 @@ export function useCallRoom({ session, media, toast, guard: guardRef }: CallRoom
       const flags = queries.fetchQuery(q.featureFlags()).then((on): FeatureFlagName[] => on, (): FeatureFlagName[] => []);
       entry = {
         room: Promise.all([import('~/features/call/media/livekit'), flags]).then(([{ openRoom }, on]) =>
-          openRoom(session, media, { bandwidthReduction: on.includes('call.bandwidthReduction') })),
+          openRoom(session, media, { bandwidthReduction: on.includes('call.bandwidthReduction'), screenShareQuality: on.includes('call.screenShareQuality') })),
         users: 0
       };
       connections.set(session, entry);
