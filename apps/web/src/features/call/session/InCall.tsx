@@ -698,7 +698,7 @@ export function InCall({ session }: { session: CallSession }) {
   // You've changed the layout from the one the stage gives itself: More offers Reset layout.
   const custom = isCustom(layout.layout, panels);
   /** While the organizer's stage shows every room, their own view waits; in a room, it's their view as ever. */
-  const roomsHold = () => { if (stageRooms) { toast('Your view comes back when the rooms close', { icon: 'door' }); return true; } return false; };
+  const roomsHold = () => { if (stageRooms) { toast('Your view comes back in a room, or when the rooms close', { icon: 'door' }); return true; } return false; };
   const resetView = () => { if (!roomsHold()) undoable('Your view is back to the call’s layout', 'reset', layout.reset()); };
   const hinted = useRef(false);
   const onCustom = () => { if (!hinted.current) { hinted.current = true; toast('Only your view changes. Reset layout, in More, puts it back.', { icon: 'eye' }); } };
