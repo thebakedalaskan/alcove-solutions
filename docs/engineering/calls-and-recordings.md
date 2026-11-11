@@ -183,7 +183,11 @@ The call itself stays in the API: who's let in, notes and the transcript.
 - **Leaving and ending.** Anyone but whoever hosts leaving is taken out of their part of the call's group, so
   its keys move on without them. They leave with **Leave** (`POST /v1/live/calls/:id/leave`), or when their page goes away
   (closed, reloaded or left for another), which sends the same request as a keepalive request. A page that is
-  only put in the back-forward cache sends nothing. A browser that dies without a word leaves by LiveKit's
+  only put in the back-forward cache sends nothing. Anyone's page, the host's too, leaves the LiveKit room as it goes
+  (`pagehide`, in `livekit.ts`), and never on `beforeunload`, LiveKit's own way (`disconnectOnPageLeave` is off): that
+  fires as soon as the page follows a link, and a link that turns out to be a download leaves the page where it was. A
+  file in a document downloads in a frame of its own, so the page never follows one ([Data and storage ›
+  Media](data-and-storage.md#media)). A browser that dies without a word leaves by LiveKit's
   `participant_left` webhook. Anyone let in who isn't in the room 90 seconds later is taken out too. That covers
   a tab closed while asking, and a webhook that was missed. It's checked 90 seconds after the commit that let
   them in, and at every upkeep, and 90 seconds leaves time for a tab in the background, which can take a minute

@@ -670,7 +670,7 @@ for (one workspace, document and file), by opaque IDs and nothing else, and it d
 
 Anything off the list of what can be shown in place only downloads, what a file is served as comes from its sealed info and
 never the request, and every answer says `nosniff` and `no-store`, with a Content-Security-Policy that lets nothing run if one is
-opened by itself. Its URL never reaches a log: paths show `/v1/media/:token`, and the [scrubber](logging-and-errors.md#privacy-rules-for-logs)
+opened by itself, and an `ETag` that's a digest of its sealed info, so it names the file without saying anything about it. Its URL never reaches a log: paths show `/v1/media/:token`, and the [scrubber](logging-and-errors.md#privacy-rules-for-logs)
 takes a token out of anything that quotes a file's URL, a browser's report of a picture that failed among them.
 
 ### Brought to a call
@@ -739,7 +739,7 @@ for (one workspace, document and file), by opaque IDs and nothing else, and it d
 
 Anything off the list of what can be shown in place only downloads, what a file is served as comes from its sealed info and
 never the request, and every answer says `nosniff` and `no-store`, with a Content-Security-Policy that lets nothing run if one is
-opened by itself. Its URL never reaches a log: paths show `/v1/media/:token`, and the [scrubber](logging-and-errors.md#privacy-rules-for-logs)
+opened by itself, and an `ETag` that's a digest of its sealed info, so it names the file without saying anything about it. Its URL never reaches a log: paths show `/v1/media/:token`, and the [scrubber](logging-and-errors.md#privacy-rules-for-logs)
 takes a token out of anything that quotes a file's URL, a browser's report of a picture that failed among them.
 
 ## Requests
@@ -870,7 +870,7 @@ third-party loads.
   the API fetch a photo, not who looked at whom. Guests in a call aren't signed in, so they're shown
   everyone without photos.
 - **The Content-Security-Policy** allows nothing outside the app's origin and the API's (requests, audio,
-  photos, files), `blob:` for a picture read into the page and for what's played from it, and the LiveKit host for calls (with `*.livekit.cloud`, where LiveKit Cloud's media servers are). Inline scripts run only by the SHA-256 of what the build produced (`apps/web/scripts/csp.mjs`
+  photos, files, and the hidden frame a file downloads in), `blob:` for a picture read into the page and for what's played from it, and the LiveKit host for calls (with `*.livekit.cloud`, where LiveKit Cloud's media servers are). Inline scripts run only by the SHA-256 of what the build produced (`apps/web/scripts/csp.mjs`
   writes the policy at deploy), and nothing may `eval` (the contract configures zod not to compile code at
   runtime). `Permissions-Policy` also opts out of the browser's ad-topics API.
 - **No analytics.** The app has no analytics, error-tracking or tag scripts. Cloudflare Pages inserts its

@@ -245,7 +245,8 @@ export const PhotosMenuNight = page(SHOTS, 'busy', { globals: { theme: 'dark' },
 export const VideoMenu = page(SHOTS, 'busy', { play: menuOf('.ws-ed .wb.is-video', 'Point at the walkthrough and press the handle beside it. Download saves the film') });
 /**
  * `/` → File: a picture chosen there goes on the page as a photo, as Photos and a drop put it, and anything that isn't a
- * picture or a film is a file, whose arrow downloads it.
+ * picture or a film is a file, whose arrow downloads it. So is a picture Alcove can't show, such as a phone's HEIC photo:
+ * File was asked for a file, so it isn't a photo that failed.
  */
 const fileFrom = (make: () => Promise<File>, said: string): NonNullable<PageStory['play']> => async ({ canvas, userEvent, step }) => {
   await step('Go to the end of “What goes out”, start a line under it, type / and pick File', async () => {
@@ -262,8 +263,10 @@ const fileFrom = (make: () => Promise<File>, said: string): NonNullable<PageStor
 };
 const aPicture = async () => new File([await drawnPicture('Offsite whiteboard', 205, 1600, 1000)], 'Offsite whiteboard.png', { type: 'image/png' });
 const aPdf = async () => new File(['%PDF-1.4\n% Launch timeline\n'], 'Launch timeline.pdf', { type: 'application/pdf' });
+const aHeic = async () => new File([new Uint8Array(2048)], 'IMG_2041.HEIC', { type: 'image/heic' });
 const PICTURE = fileFrom(aPicture, 'Choose a picture. It goes on the page as a photo');
 const PDF = fileFrom(aPdf, 'Choose a PDF. It goes on the page as a file, with its arrow to download it');
+const HEIC = fileFrom(aHeic, 'Choose a phone’s HEIC photo. Alcove can’t show one, so it goes on the page as a file, with its arrow to download it');
 export const FileAPicture = page(PLAN, 'busy', { play: PICTURE });
 export const FileAPictureNight = page(PLAN, 'busy', { globals: { theme: 'dark' }, play: PICTURE });
 export const FileAPicturePhone = page(PLAN, 'busy', { globals: PHONE, play: PICTURE });
@@ -272,6 +275,9 @@ export const FileAPdf = page(PLAN, 'busy', { play: PDF });
 export const FileAPdfNight = page(PLAN, 'busy', { globals: { theme: 'dark' }, play: PDF });
 export const FileAPdfPhone = page(PLAN, 'busy', { globals: PHONE, play: PDF });
 export const FileAPdfPhoneNight = page(PLAN, 'busy', { globals: { ...PHONE, theme: 'dark' }, play: PDF });
+export const FileAHeicPhoto = page(PLAN, 'busy', { play: HEIC });
+export const FileAHeicPhotoNight = page(PLAN, 'busy', { globals: { theme: 'dark' }, play: HEIC });
+export const FileAHeicPhotoPhone = page(PLAN, 'busy', { globals: PHONE, play: HEIC });
 /** Aiko's walkthrough still uploading, a recording too big to keep here, and a photo deleted for good. */
 export const UploadingAndWhatDidnt = page(UPLOADS, 'busy');
 export const UploadingAndWhatDidntNight = page(UPLOADS, 'busy', { globals: { theme: 'dark' } });

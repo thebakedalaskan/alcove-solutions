@@ -1714,9 +1714,10 @@ workspace, one at a time or **Add all three**; Video and File offer films and fi
 land where a line shows, "Drop to add here", and pasted ones under the caret. Whichever way they come, and from **File** too,
 several photos make a gallery, one makes a picture across the page, a film shows its first frame with **Play**, and anything
 else is a file, whose arrow downloads it. **Download**, in a photo's or a video's menu (**Download the photos** for a gallery),
-saves the original. Everyone sees the space a file will take straight away and the ring fill as it uploads, and the
+saves the original, each photo as a file of its own, and the page stays as it is, with a call on it. Everyone sees the space a file will take straight away and the ring fill as it uploads, and the
 pictures sharpen when it's done; a caption starts as the file's name and is one click to change. A photo the browser can't read
-says which file, with **Add as a file** and **Delete**. One Alcove refuses says which file and why ("This file is bigger than
+says which file, with **Add as a file** and **Delete**; chosen with **File**, a picture Alcove can't show (a phone's HEIC photo,
+say) goes in as a file straight away. One Alcove refuses says which file and why ("This file is bigger than
 512 MiB, the most a file can be.", "This workspace is full, so it can't take more files.", "That's all you can upload today. You
 can upload more tomorrow."), with **Try again** and **Delete**, and nothing else in the document changes. A block that's
 uploading can be cut and pasted in its document, or undone and done again, and the upload goes on into it. Leaving the page doesn't stop

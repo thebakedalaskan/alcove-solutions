@@ -538,8 +538,17 @@ process readable and is sealed there (`apps/api/src/features/workspaces/media.ts
   read in order, each digest checked before it's opened, with `Range`, `nosniff`, `no-store` and the type from the sealed
   info, never the request. `GET /v1/media/:token?download` (`url`'s `download`) serves it as an attachment under its name,
   whatever its type, so a picture or a film saves rather than opening: the arrow on a file and **Download** in a photo's or a
-  video's menu read it so. An answer to a range sends at most four pieces (16 MiB), stopping where a piece does, and says
-  so with its `Content-Range`: a browser asks again for the rest, and access is asked about again each time. Read without a
+  video's menu read it so, each file in a hidden frame of its own, half a second apart (`saveFile` in
+  `apps/web/src/features/workspace/DocumentMedia.tsx`; the app's policy has the API's origin in `frame-src`). The page itself
+  never follows the link: the API is on an origin of its own, where a link's `download` doesn't count, so the page would
+  navigate, which the browser takes for leaving it until the answer turns out to be a download, and a call on the page
+  would go. Each frame goes five minutes later, when the browser has long had its download. An answer to a player's range sends at
+  most four pieces (16 MiB), stopping where a piece does, and says so with its `Content-Range`: a browser asks again for
+  the rest, and access is asked about again each time. Every answer has a strong `ETag`, a digest of the file's sealed
+  info, which never changes and says nothing about it. A download that stopped (cut at `MEDIA_READ_MS`, or a connection
+  lost) asks for the rest with it (`If-Range`), and a download's range is answered as far as it asked, past four pieces
+  without a length, so it picks up where it was; against anything but that `ETag` the range doesn't count, and the whole
+  file comes again. Read without a
   range, a file over 16 MiB streams without a length, because Cloud Run refuses an HTTP/1 response that says it's over 32
   MiB, and asks again every four pieces. The first piece is read before anything is sent, so its failure is an ordinary
   answer; a later one breaks the connection, so a file that couldn't be read is never taken for whole.
@@ -549,8 +558,9 @@ process readable and is sealed there (`apps/api/src/features/workspaces/media.ts
   which a player reads by range.
 - **In a document** (`apps/web/src/features/workspace/uploads.ts`). Files go into a document as blocks: photos a browser can
   read as one `gallery`, a film it can play as a `video`, anything else as a `file`, however they come: dropped, pasted, or
-  chosen from **/** → Photos, Video or File, so a picture chosen from File is a photo. Only **Add as a file**, below, makes a
-  picture a `file`. The block holds the space at once, with each
+  chosen from **/** → Photos, Video or File, so a picture chosen from File is a photo. A picture that can't be shown (HEIC,
+  SVG, TIFF, or one this browser can't read) is a `file` when it's chosen from File, which is asked for a file
+  (`prepare`'s `file`); however else it comes, only **Add as a file**, below, makes it one. The block holds the space at once, with each
   file's name and, for a picture or a film, its size in pixels, and says how far it's got (`up`) as pieces go, so everyone sees
   it fill. The block carries the upload's own token (`upload`, random, nothing about the file in it), and the upload follows
   the block by that, not its ID: cut and pasted, the block has a new ID and the upload goes on into it; undone, it has 15
@@ -569,8 +579,9 @@ process readable and is sealed there (`apps/api/src/features/workspaces/media.ts
   list and reads as it always did. A tag counts while its `@First` is still in the words. Whoever's newly tagged is told through
   `mention`, with the gallery's block, or asked about first if they can't open the document, as for a tag in a line. A film's first frame goes first, as a picture of its own
   named `<title> (first frame).jpg`, which the picker never offers as a photo, so there's something to see while the film goes;
-  one whose film never arrives is deleted with its block. A photo the browser can't read isn't sent at all: its block says
-  which file, and the browser that has it offers **Add as a file**, which puts it in as a file in the block's place. What the API
+  one whose film never arrives is deleted with its block. A photo the browser can't read, dropped, pasted or chosen from
+  Photos, isn't sent at all: its block says which file, and the browser that has it offers **Add as a file**, which puts it
+  in as a file in the block's place. What the API
   refuses goes into the block as failed, and the refusal's own words to whoever sent it. That browser says in the document's
   awareness which uploads it's sending (their tokens, nothing else), so a block that says it's uploading with nobody saying so
   for 20 seconds shows as failed. The browser that sent one that failed offers Try again for ten minutes, while it still has the

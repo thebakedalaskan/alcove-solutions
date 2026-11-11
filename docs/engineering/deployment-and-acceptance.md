@@ -139,7 +139,8 @@ connector does, because `LISTEN` doesn't work through a transaction-mode pooler.
 Files in a workspace are shaped by the same limits. Cloud Run refuses an HTTP/1 request or a response that says its length
 over 32 MiB, so a file goes up in pieces of 4 MiB, an answer to a range sends at most 16 MiB, and a whole file over that
 streams without a length ([Data and storage › Media](data-and-storage.md#media)). The API ends a read itself at 280 seconds
-(`MEDIA_READ_MS`), inside the timeout: a player asks on from where it got to, and a download starts again. Files pass through
+(`MEDIA_READ_MS`), inside the timeout: a player asks on from where it got to, and so does a browser's download, with the
+file's `ETag` (`If-Range`). Files pass through
 this one process, so what they hold in it and what they take of its core are limited (`MEDIA_LIMITS` in `features/workspaces/media.ts`),
 and past those limits a request is refused rather than taken on. At most 96 requests at once are files. The limits were set
 for 1 GiB and stayed when the instance went to 2 GiB, because the rest is for documents' worker threads. Measured on the built
@@ -203,8 +204,9 @@ again every 30 seconds (`LIMITS_CACHE_MS`), so a change is in force everywhere w
 | `media.account_day_bytes` | 20 GiB | 200 GiB | What one person uploads in a day (UTC), in every workspace. |
 
 Every floor is 0, and 0 means none: any of them at 0 stops every upload, with "Files can’t be uploaded right now." A ceiling is
-ten times the default, except a file's. A whole file is read in one response, which is cut at 280 seconds and, past 16 MiB,
-can't pick up where it stopped, so a file needs about 15 Mbit/s to download whole at 512 MiB, and about 120 Mbit/s at 4 GiB.
+ten times the default, except a file's. A whole file is read in one response, which is cut at 280 seconds: that's about 15
+Mbit/s for 512 MiB in one answer, and about 120 Mbit/s for 4 GiB. Slower, a download picks up where it stopped when the
+browser resumes it (by itself, or with its Resume), asking for the rest with the file's `ETag`.
 The limits are the same for everyone, guests in a call included. Lowering one deletes nothing: it refuses the next upload, and
 the next piece of one already going ([Data and storage › Media](data-and-storage.md#media)).
 
