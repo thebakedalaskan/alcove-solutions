@@ -90,7 +90,8 @@ export const AnotherTimePhone = phone(AnotherTime);
  */
 export const EndingLater = page('/home', 'busy', {
   play: playing(open, later, priyaAndKofi, findATime, press('Pick another time', 'Pick another time'), async ({ userEvent, step }) => {
-    await step('Go to the picked half hour, and press Shift and the down arrow twice', async () => {
+    await step('Once the calendars are read, go to the picked half hour, and press Shift and the down arrow twice', async () => {
+      await screen.findByText('All 3 of you are free at these times.', {}, { timeout: 8000 });
       (await screen.findByRole('button', { name: /, picked/ }, { timeout: 8000 })).focus();
       await userEvent.keyboard('{Shift>}{ArrowDown}{ArrowDown}{/Shift}');
     });
