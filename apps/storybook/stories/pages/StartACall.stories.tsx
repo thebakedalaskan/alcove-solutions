@@ -76,6 +76,10 @@ export const TypedTimesPhone = phone(TypedTimes);
 export const TypedTimeRefused = page('/home', 'busy', {
   play: playing(open, later, priyaAndKofi, findATime, typing('Ends', '08:00', 'Type an end before the start, 08:00, and leave the field'))
 });
+/** A time it can't read, such as 2pm or 9, says how to type one, and the time picked stays as it was. */
+export const TypedTimeUnread = page('/home', 'busy', {
+  play: playing(open, later, priyaAndKofi, findATime, typing('Starts', '2pm', 'Type a start it can’t read, 2pm, and leave the field'))
+});
 /** With no calendar connected, the times are open working hours: a different easy hour on each of the next working days, soonest first. */
 export const WhenWithoutACalendar = page('/home', 'busy', { beforeEach: changing(noCalendar), play: playing(open, later, priyaAndKofi, findATime) });
 /** Reading the calendars takes a while. */
