@@ -6,14 +6,14 @@
  */
 import type { Meta } from '@storybook/react-vite';
 import { screen, within } from 'storybook/test';
-import { at, chats, floats, reacts, joins, knocks, leaves, line, lowersHand, mutes, nudges, opensBoard, raisesHand, says, unmutes } from '../../src/api/script';
-import { MORE, clearSide, inCall, light, phone, plays, press, reach, settings } from '../../src/call';
+import { at, chats, floats, reacts, joins, knocks, leaves, line, lowersHand, mutes, nudges, opensBoard, raisesHand, says, shares, unmutes } from '../../src/api/script';
+import { MORE, clearSide, inCall, light, narrow, phone, plays, press, reach, settings } from '../../src/call';
 import { talking } from '../../src/browser';
 import { pages, type PageArgs, type PageStory } from '../../src/page';
 import { iso } from '../../src/world/clock';
 import { RETRO } from './boards';
-import { openCallBoard } from './plays';
-import { AIKO, ALL_HANDS, CHECK_IN, DIEGO, EVERYONE, KOFI, KOFI_TALKS, MAYA, ONE_ON_ONE, PRIYA, REVIEW, REVIEW_SUMMARY, REVIEW_TALK, SAM } from './talk';
+import { close, frameOf, openCallBoard, shareATab, tileOf } from './plays';
+import { AIKO, ALL_HANDS, CHECK_IN, CHECKLIST, DIEGO, EVERYONE, KOFI, KOFI_TALKS, MAYA, ONE_ON_ONE, PRIYA, REVIEW, REVIEW_SUMMARY, REVIEW_TALK, SAM } from './talk';
 
 const meta = { title: 'Calls/In the call', ...pages } satisfies Meta<PageArgs>;
 export default meta;
@@ -311,6 +311,45 @@ export const FindNobody = {
   ...FourOfYou, name: 'Find someone, nobody by that name',
   play: plays(reach('People'), async ({ userEvent }) => { await userEvent.type(await screen.findByRole('searchbox', { name: 'Find someone in this call' }, { timeout: 8000 }), 'zed'); })
 };
+
+/* ---------- beside what's open ---------- */
+
+/**
+ * Priya shares two seconds in: her screen takes your stage, and the people stand in a column beside it, under the frame's bar.
+ * At the top of the column, level with the bar, Hide the people does what ⇧P does.
+ */
+const SHARING = inCall({ scenario: 'call-soon', call: REVIEW, script: { here: REVIEWERS, cues: at(2, shares(PRIYA, CHECKLIST)), talk: { from: 4, lines: REVIEW_TALK }, summary: REVIEW_SUMMARY } });
+const priyasScreen: Play = async ({ step }) => { await step('Priya shares her screen', async () => { await frameOf('Priya’s screen'); }); };
+export const PeopleBesideWhatsOpen = { ...SHARING, name: 'The people beside what’s open', play: plays(clearSide, priyasScreen) };
+/** On a phone the people are a row of arches over what's open, always: there's no room to hide them into. */
+export const PeopleBesideWhatsOpenPhone = { ...phone(SHARING, 'The people beside what’s open, on a phone'), play: priyasScreen };
+/** Hide the people: they wait small on the horizon by the dock, and Show the people, first there, brings them back. */
+export const HideThePeople = { ...SHARING, name: 'Hide the people', play: plays(clearSide, priyasScreen, press('Hide the people')) };
+/** In a narrow window they're a row of arches over the frame, with Hide the people at its end. */
+export const PeopleBesideWhatsOpenNarrow = { ...narrow(SHARING, 'The people beside what’s open, in a narrow window'), play: plays(clearSide, priyasScreen) };
+export const HideThePeopleNarrow = { ...narrow(SHARING, 'Hide the people, in a narrow window'), play: plays(clearSide, priyasScreen, press('Hide the people')) };
+/** Close says what it does before it's pressed: closed for you, the people fill your stage again, and Priya's tile takes you back. */
+export const CloseSaysThePeopleComeBack = {
+  ...SHARING, name: 'Close, before it’s pressed',
+  play: plays(clearSide, priyasScreen, async ({ userEvent, step }) => {
+    await step('Point at Close', async () => { await userEvent.hover(await within(await frameOf('Priya’s screen')).findByRole('button', { name: 'Close Priya’s screen' })); });
+  })
+};
+/**
+ * Your own screen has Close as well as Stop sharing: Close puts it away for you while everyone still sees it. It's a tile with
+ * the people, who fill your stage again, and the tile brings it back.
+ */
+export const PutYourScreenAway = inCall({ scenario: 'call-soon', call: REVIEW, script: { here: REVIEWERS } }, {
+  name: 'Your screen, put away for you',
+  play: plays(clearSide, async (c) => {
+    await c.step('Share a tab, then Close on your screen’s bar', async () => {
+      await shareATab(c);
+      await frameOf('Your screen');
+      await close(c, 'Your screen');
+      await tileOf('Your screen');
+    });
+  })
+});
 
 /**
  * Beside a board the people stand in a column: drag someone's tile up or down it, and letting go only puts it there. A press

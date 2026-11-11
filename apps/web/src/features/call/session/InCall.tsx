@@ -63,7 +63,8 @@ import { STAGE_BESIDE_SIDE, sideWidth, useSide, type NotesTab, type SidePlace, t
 import { PlayTogetherBar, useSharedVideo, useWorkspacePlaying } from '~/features/call/playback/PlayTogether';
 import { useBoardPresenting } from '~/features/call/boards/boardPresenting';
 import { useWorkspacePresenting } from '~/features/call/workspace/presenting';
-import { GAP, PHONE_W, focusRoom, placeMain } from '~/features/call/layout/panels';
+import { AFTER_ASIDE, GAP, PHONE_W, asideOnHorizon, focusRoom, inRow, placeMain } from '~/features/call/layout/panels';
+import { PeopleAside } from '~/features/call/layout/PeopleAside';
 import { CaptureButton, NotesAsks, askedTag, organizerName, useCaptureAlerts } from '~/features/call/notes/Capture';
 import { unreadChatMentions, useCallAttention } from './attention';
 import { captureHere } from '~/lib/capture';
@@ -877,18 +878,19 @@ export function InCall({ session }: { session: CallSession }) {
    */
   const closeThing = (id: ThingId) => {
     const p = stage.presentedOf(id);
-    if (p?.mine && isScreen(id)) { land({ to: 'opener', id }, holding()); stopShare(); return; }
-    if (p?.mine || (id === 'board' && !p && boardClosable)) { setFront(id); setAsking(id); return; }
+    if ((p?.mine && !isScreen(id)) || (id === 'board' && !p && boardClosable)) { setFront(id); setAsking(id); return; }
     closeForMe(id);
   };
-  /** It closes on your stage alone: someone else's presentation becomes its tile, and anything else closes. */
+  /** Stop sharing, on your own screen's bar: it stops for everyone. */
+  const stopMine = (id: ThingId) => { land({ to: 'opener', id }, holding()); stopShare(); };
+  /** It closes on your stage alone: a presentation, someone else's or your own screen, becomes its tile, and anything else closes. */
   const closeForMe = (id: ThingId) => {
     const p = stage.presentedOf(id);
     setAsking(null);
     if (stage.on.length <= 1) setFocus(false);
     land(p ? { to: 'tile', id } : { to: 'opener', id }, holding());
     stageClose(id);
-    if (p) sayIt(wsToast.closedWhile(p.first), about(id));
+    if (p) sayIt(p.mine && isScreen(id) ? wsToast.screenAway() : wsToast.closedWhile(p.first), about(id));
   };
   /** The call's board leaves the call for everyone, as whoever opened it or the organizer: the board says so as it goes (callBoard.ts). */
   const closeBoardForAll = () => {
@@ -1362,6 +1364,9 @@ export function InCall({ session }: { session: CallSession }) {
   const placed = placeMain({ w: mainW, h: size.h }, { frames: shownThings.length, people: panels.people, phone, focus: focusBox, rooms: !!stageRooms, top, bottom });
   /** The organizer's rooms are in sight: on the whole stage, or beside what's open, rather than under it. */
   const roomsShown = placed.rooms !== null;
+  /** The people's own button beside what's open (⇧P's, PeopleAside.tsx): over them, or first on the horizon once you've hidden them. */
+  const asideHidden = placed.mode === 'hidden' && placed.frames.length > 0 && !focusOn && !roomsShown && !stageRooms;
+  const aside = asideHidden ? asideOnHorizon(horizon) : stageRooms ? null : placed.aside;
   /* While rooms are open, you see the people in your own room (or the main room), and the organizer overseeing them sees every room. */
   const onStage = unit && !roomsShown ? stagePeople.filter((p) => unit.includes(p.id)) : stagePeople;
   const frontId = placed.turns ? (front && shownThings.includes(front) ? front : shownThings[0] ?? null) : null;
@@ -1387,8 +1392,8 @@ export function InCall({ session }: { session: CallSession }) {
   const placedKey = JSON.stringify([placed.people, placed.mode, placed.frames.length, placed.rooms]);
   const frame = useMemo((): StageFrame => ({
     box: placed.rooms ?? { x: 0, y: 0, w: mainW, h: size.h }, top, bottom,
-    panels: placed.frames.length && !roomsShown ? { people: placed.people, mode: placed.mode, horizon, loud: new Set(loudKey.split(' ')), small: phone } : null
-  }), [mainW, size.h, top, bottom, placedKey, horizon, loudKey, phone]);
+    panels: placed.frames.length && !roomsShown ? { people: placed.people, mode: placed.mode, horizon: asideHidden ? { ...horizon, from: AFTER_ASIDE } : horizon, loud: new Set(loudKey.split(' ')), small: phone } : null
+  }), [mainW, size.h, top, bottom, placedKey, horizon, loudKey, phone, asideHidden]);
   /** The workspace is on your stage and in sight: what's clear starts at its left, so its list has the bottom left of it. */
   const wsInSight = boxOf('ws') !== null;
   /* When there isn't room for two side by side, they take turns, and the top bar says which is showing. */
@@ -1676,6 +1681,8 @@ export function InCall({ session }: { session: CallSession }) {
   const followers = Math.max(0, onStage.length - 1);
   // Focus is on offer only where it can fill your window: not on a phone, nor while the rooms hold the stage beside it.
   const focusFor = focusOffered ? { on: focusOn, onToggle: toggleFocus } : null;
+  /** Only one thing is on your stage: closing it gives the stage back to the people, and Close says so. */
+  const clears = stage.on.length <= 1;
   const askFor = (id: ThingId) => ({ open: asking === id, onOpenChange: (o: boolean) => setAsking(o ? id : null), onMe: () => closeFor(id, false), onEveryone: () => closeFor(id, true), everyone: closesFor(id), phone });
   /**
    * What your presentation's For everyone closes: in a room, it's that room's, unless it's the board every room shares and you
@@ -1729,7 +1736,7 @@ export function InCall({ session }: { session: CallSession }) {
           const pop = !s.mine && popOut ? (isPopped ? () => looks.looks.popIn(true) : () => popOut(s)) : null;
           const bar: FrameBar = {
             icon: 'screen', name: s.mine ? 'Your screen' : s.name, by: { person: s.presenter, first: s.mine ? 'You' : callName(s.presenter), mine: s.mine },
-            followers, follow: null, present: null, focus: focusFor, phone, onClose: () => closeThing(id), ask: null,
+            followers, follow: null, present: null, focus: focusFor, phone, onClose: () => closeThing(id), clears, ask: null,
             rows: (close) => (s.mine
               ? <MyShareMenuRows read={myShareRead} othersPoint={state.pointing ? othersPoint : null} marksOn={marksOnMine} onOthersPoint={flipOthersPoint}
                 onClear={() => { if (myShare) marks?.clear(myShare); }} onChange={() => pickShare()} onDone={close} />
@@ -1739,7 +1746,7 @@ export function InCall({ session }: { session: CallSession }) {
           };
           return (
             <FrameBox key={id} id={id} box={box} shown focused={focusOn}>
-              <Frame bar={bar} meta={s.mine ? myShareMeta : s.kept ? 'Read for the notes' : undefined} onStop={s.mine ? () => closeThing(id) : undefined}>
+              <Frame bar={bar} meta={s.mine ? myShareMeta : s.kept ? 'Read for the notes' : undefined} onStop={s.mine ? () => stopMine(id) : undefined}>
                 <ShareInFrame share={s} look={look} looks={looks.looks} popped={isPopped} marks={marks} me={me?.person ?? SOMEONE} whoIs={personOf} pointing={pointing} onPopOut={pop} />
               </Frame>
             </FrameBox>
@@ -1750,7 +1757,7 @@ export function InCall({ session }: { session: CallSession }) {
           const canPresent = p === null && !phone && canStartBoard && boardOpen?.role === 'edit' && !someoneElse && !board.sinking;
           const where = boardOpen?.workspaceId && boardWhere ? { name: boardWhere, onOpen: () => openSaved(boardOpen.workspaceId ?? '') } : null;
           const bar: FrameBar = {
-            icon: 'presentation', name: boardOpen?.name ?? 'Board', by: byOf(p), followers, phone, focus: focusFor,
+            icon: 'presentation', name: boardOpen?.name ?? 'Board', by: byOf(p), followers, phone, focus: focusFor, clears,
             follow: p && !p.mine ? { on: stage.following('board'), where: pager?.part || 'the board', onToggle: () => stage.setFollow('board', !stage.following('board')) } : null,
             present: canPresent ? { onPress: presentBoardNow, busy: presentBusy, ask: presentAsk ?? undefined } : null,
             onClose: () => closeThing(id), ask: p?.mine ? askFor(id) : id === 'board' && !p && boardClosable ? boardAsk : null,
@@ -1786,7 +1793,7 @@ export function InCall({ session }: { session: CallSession }) {
         const p = stage.presentedOf('ws');
         const shown = wsAt !== null;
         const bar: FrameBar = {
-          icon: 'folderOpen', name: space.name ?? 'Workspace', by: byOf(p), followers, phone, focus: focusFor,
+          icon: 'folderOpen', name: space.name ?? 'Workspace', by: byOf(p), followers, phone, focus: focusFor, clears,
           follow: p && !p.mine ? { on: stage.following('ws'), where: wsPresenting.where ?? 'the workspace', onToggle: () => stage.setFollow('ws', !stage.following('ws')) } : null,
           present: p === null && canPresentWs && !someoneElse ? { onPress: () => { void wsPresenting.start().then(() => land({ to: 'frame', id: 'ws' }, holding()), () => undefined); }, busy: false } : null,
           onClose: () => closeThing('ws'), ask: p?.mine ? askFor('ws') : null,
@@ -1912,6 +1919,7 @@ export function InCall({ session }: { session: CallSession }) {
               <Stage staged={staged} frame={frame} phone={phone} people={onStage} waiting={waiting} presented={presentedTiles} spotlight={spotlight} view={layout} organizer={hosting}
                 together={together} bar={bar} caption={capNode} rooms={roomsShown ? stageRooms : null} onSpotlight={setSpot} onPin={setPin} onSelf={setSelf} onCustom={onCustom} volumes={volumes}
                 onMorePeople={() => openSide('people')} board={stageBoard} menuOf={personMenu} />
+              {aside && <PeopleAside box={aside} hidden={asideHidden} row={inRow(mainW, phone)} onToggle={togglePeople} />}
               <motion.div className="ic-frame" initial={false} animate={{ left: 0, top: 0, width: clearW, height: size.h }} transition={reduce ? { duration: 0 } : GLIDE}>
                 {hosting && side.view !== 'people' && state.waiting.length > 0 && (
                   <div className="rg-knocks">

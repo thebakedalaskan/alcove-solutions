@@ -366,9 +366,12 @@ time, slides in on the right.
 - **Your view.** There are no layouts to choose: the stage lays itself out, everyone in a grid, and someone doing most
   of the talking on the main stage over a strip of everyone else until you arrange anything yourself. Drag a tile to
   move it, and pull its corner to make it bigger; once you do, the stage is a grid again and stays as you left it.
-  Beside what's open the people stand in a column of tiles on the right that narrows with the stage, or a row of
-  arches over it on a narrow stage and on a phone; **⇧P** hides them, standing small on the horizon beside the dock,
-  where whoever's talking or has a hand up rises, with a line saying so, and brings them back. Once you've changed the
+  Beside what's open the people stand in a column of tiles on the right that narrows with the stage, under the frame's
+  bar, or a row of arches over it on a narrow stage and on a phone. **Hide the people**, at the top of the column (or the
+  end of the row), and **⇧P** hide them, standing small on the horizon beside the dock, where whoever's talking or has a
+  hand up rises, with a line saying so; **Show the people**, first on the horizon, or **⇧P** again, brings them back. On a
+  phone the arches stay. Closing the last thing on your stage gives it back to everyone, and **Close** says so before
+  it's pressed ("Close it, and the people fill your stage again"). Once you've changed the
   layout (moved, sized or pinned someone, or hidden the people), **Reset layout** in **More** puts it back, with
   **Undo**; where you see yourself stays as it is. Only your screen changes. A tile's **⋯** menu is short, with no key
   hints. On your own tile: **Set a status** (journey 6.34), **Pin for me** (up to six people, who share the main
@@ -429,7 +432,9 @@ time, slides in on the right.
     leaves the call for everyone, and stays saved in Product."), which takes it out of the call for everyone, who are
     told "Launch retro was closed for everyone. It's saved in Product."; while rooms share it, only the organizer is;
     **Stop sharing** in Share's first step, which says what you're presenting, asks the same in Share itself, wherever what
-    you present is. Your own screen has **Stop sharing** instead of Close. The organizer can close anyone's presented
+    you present is. Your own screen has **Stop sharing**, which stops it for everyone, and **Close**, which puts it away
+    for you while everyone still sees it: "Put away for you. Everyone still sees your screen, and its tile brings it
+    back." It's a tile with the people, who fill your stage again. The organizer can close anyone's presented
     board or workspace for everyone (**Close it for everyone**), and stop anyone's screen (**Stop it for everyone**), from
     its name; whoever presented it is told who did ("Art closed Launch retro for everyone.").
   - **A tile only while it's presented.** Something presented that isn't on your stage is a tile first among the people:

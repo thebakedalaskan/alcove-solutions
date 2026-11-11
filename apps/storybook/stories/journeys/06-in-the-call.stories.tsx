@@ -209,8 +209,16 @@ export const ShareYourScreen: PageStory = {
       await userEvent.click(await within(menu).findByRole('button', { name: 'A tab' }, SOON));
       await userEvent.click(await within(menu).findByRole('button', { name: 'Share' }, SOON));
     });
-    await step('You’re presenting. Everyone sees what you see. Stop sharing is on your bar; anyone else can close it for themselves', async () => {
+    await step('You’re presenting. Everyone sees what you see. Stop sharing is on your bar, and Close; anyone else can close it for themselves', async () => {
       await told('Everyone sees your tab.');
+      await frame('Your screen, everyone sees it');
+    });
+    await step('Click Close. It’s put away for you and still shared: its tile is with the people, who fill your stage again', async () => {
+      await userEvent.click(await onBar(await frame('Your screen, everyone sees it'), 'Close Your screen'));
+      await told('Put away for you. Everyone still sees your screen, and its tile brings it back.');
+    });
+    await step('Click its tile. It’s back on your stage', async () => {
+      await userEvent.click(await screen.findByRole('button', { name: 'Go back to Your screen' }, SOON));
       await frame('Your screen, everyone sees it');
     });
     await step('Click Stop sharing. It stops for everyone, and the people take the stage back', async () => {
@@ -274,7 +282,15 @@ export const EverythingElse: PageStory = {
       await userEvent.click(await screen.findByRole('button', { name: /^People in this call/ }, SOON));
       await screen.findByRole('complementary', { name: 'People' }, SOON);
     });
-    await step('Priya shares her screen. As the organizer, click the name of Priya’s share. Priya’s bar has Close for you, like anyone’s', async () => {
+    await step('Priya shares her screen, and the people stand in a column beside it. Hide the people, at its top: they wait small by the dock', async () => {
+      await frame(/^Priya’s screen, everyone sees it$/, LATER);
+      await userEvent.click(await screen.findByRole('button', { name: 'Hide the people' }, SOON));
+    });
+    await step('Show the people, first by the dock, brings them back beside it. Close, on its bar, says it gives the stage back to the people', async () => {
+      await userEvent.click(await screen.findByRole('button', { name: 'Show the people' }, SOON));
+      await screen.findByRole('button', { name: 'Hide the people' }, SOON);
+    });
+    await step('As the organizer, click the name of Priya’s share. Priya’s bar has Close for you, like anyone’s', async () => {
       await userEvent.click(await nameOf(await frame(/^Priya’s screen, everyone sees it$/, LATER)));
     });
     await step('Stop it for everyone is in its menu. Only the organizer has it, apart from Close', async () => {

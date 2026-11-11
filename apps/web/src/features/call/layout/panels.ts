@@ -7,6 +7,10 @@
  * - Arches: a row over the frame, where the stage is under 760 px, and on a phone.
  * - On the horizon by the dock, once you hide them (⇧P), in focus, and beside the organizer's rooms.
  *
+ * Beside what's open the people have a button of their own that does what ⇧P does (`aside`): Hide the people at the top of
+ * their column, level with the frame's bar, or at the end of their row of arches, and once they're hidden, Show the people,
+ * first on the horizon. Not on a phone, where the arches always stay, in focus, or beside the organizer's rooms.
+ *
  * A second thing presented can sit beside the first (Show beside), as two screens do; when there isn't room for both they take
  * turns, and the top bar says which is showing. Focus fills your window with what's in the frame, the people on the horizon.
  *
@@ -39,6 +43,10 @@ const BESIDE_W = 900;
 const STACKED_H = 620;
 /** The rooms stand beside what's open only on a stage this wide: under it, what's open goes over them. */
 const ROOMS_BESIDE = 880;
+/** The people's own button (Hide the people, Show the people): this square, as the frame's bar buttons are. */
+export const ASIDE = 34;
+/** The frame's bar: the column starts under it, and the people's button sits level with the bar's own. */
+const FRAME_BAR = 52;
 
 /** The people's column beside what's open, by how wide the stage is. */
 export const columnWidth = (w: number) => (w >= 1500 ? 300 : w >= 1300 ? 248 : w >= 980 ? 216 : 176);
@@ -73,9 +81,14 @@ export interface MainPlaced {
    * where what's open goes over them.
    */
   rooms: Box | null;
+  /**
+   * Where the people's own button goes while they're beside what's open: over their column, level with the frame's bar, or
+   * at the end of their row. Null anywhere else; once you've hidden them it stands first on the horizon (`asideOnHorizon`).
+   */
+  aside: Box | null;
 }
 
-const NOTHING: MainPlaced = { frames: [], people: null, mode: 'tiles', turns: false, rooms: null };
+const NOTHING: MainPlaced = { frames: [], people: null, mode: 'tiles', turns: false, rooms: null, aside: null };
 
 /** Two frames in a box: side by side, one over the other, or (no room for either) one at a time. */
 function two(r: Box): { frames: Box[]; turns: boolean } {
@@ -95,28 +108,40 @@ export function placeMain(size: Size, f: MainFacts): MainPlaced {
   if (size.w <= 0) return NOTHING;
   if (f.frames === 0) return f.rooms ? { ...NOTHING, rooms: { x: 0, y: 0, w: size.w, h: size.h } } : NOTHING;
   const many = (r: Box): Pick<MainPlaced, 'frames' | 'turns'> => (f.frames > 1 ? two(r) : { frames: [r], turns: false });
-  if (f.focus) return { ...many(f.focus), people: null, mode: 'hidden', rooms: null };
+  if (f.focus) return { ...many(f.focus), people: null, mode: 'hidden', rooms: null, aside: null };
   const room: Box = { x: 0, y: f.top, w: size.w, h: Math.max(0, size.h - f.top - f.bottom) };
   if (f.phone) {
     // A phone: the faces in a row of arches over one thing at a time.
     const body: Box = { x: 0, y: room.y + ARCH_ROW + 10, w: size.w, h: Math.max(0, room.h - ARCH_ROW - 10) };
-    return { frames: [body, ...(f.frames > 1 ? [body] : [])], turns: f.frames > 1, people: { x: 8, y: room.y + 2, w: size.w - 16, h: ARCH_ROW }, mode: 'arches', rooms: null };
+    return { frames: [body, ...(f.frames > 1 ? [body] : [])], turns: f.frames > 1, people: { x: 8, y: room.y + 2, w: size.w - 16, h: ARCH_ROW }, mode: 'arches', rooms: null, aside: null };
   }
   if (f.rooms && room.w >= ROOMS_BESIDE) {
     // The rooms keep the stage, at its right where the people would be, and what's open stands beside them.
     const w = roomsWidth(room.w);
     const body: Box = { x: room.x, y: room.y, w: room.w - w - GAP, h: room.h };
-    return { ...many(body), people: null, mode: 'hidden', rooms: { x: room.x + body.w + GAP, y: room.y, w, h: room.h } };
+    return { ...many(body), people: null, mode: 'hidden', rooms: { x: room.x + body.w + GAP, y: room.y, w, h: room.h }, aside: null };
   }
-  if (f.people === 'hidden') return { ...many(room), people: null, mode: 'hidden', rooms: null };
+  if (f.people === 'hidden') return { ...many(room), people: null, mode: 'hidden', rooms: null, aside: null };
   if (room.w < ARCHES_UNDER) {
+    // The row of arches keeps its end for the people's own button.
     const body: Box = { x: room.x, y: room.y + ARCH_ROW + 10, w: room.w, h: Math.max(0, room.h - ARCH_ROW - 10) };
-    return { ...many(body), people: { x: room.x, y: room.y, w: room.w, h: ARCH_ROW }, mode: 'arches', rooms: null };
+    const aside: Box = { x: room.x + room.w - ASIDE, y: room.y + (ARCH_ROW - ASIDE) / 2, w: ASIDE, h: ASIDE };
+    return { ...many(body), people: { x: room.x, y: room.y, w: Math.max(0, room.w - ASIDE - GAP), h: ARCH_ROW }, mode: 'arches', rooms: null, aside };
   }
+  // The column starts under the frame's bar, which its button sits level with, at its right.
   const col = columnWidth(room.w);
   const body: Box = { x: room.x, y: room.y, w: room.w - col - GAP, h: room.h };
-  return { ...many(body), people: { x: room.x + body.w + GAP, y: room.y, w: col, h: room.h }, mode: 'tiles', rooms: null };
+  const x = room.x + body.w + GAP;
+  const aside: Box = { x: x + col - ASIDE, y: room.y + (FRAME_BAR - ASIDE) / 2, w: ASIDE, h: ASIDE };
+  return { ...many(body), people: { x, y: room.y + FRAME_BAR, w: col, h: Math.max(0, room.h - FRAME_BAR) }, mode: 'tiles', rooms: null, aside };
 }
+
+/** Beside what's open on a main area this wide, the people sit as a row of arches over it rather than a column at its right. */
+export const inRow = (w: number, phone: boolean) => phone || w < ARCHES_UNDER;
+/** Once you've hidden the people, their button stands first on the horizon, where the people would start, and they start after it. */
+export const asideOnHorizon = (h: Horizon): Box => ({ x: 2, y: h.base - ASIDE - 2, w: ASIDE, h: ASIDE });
+/** Where the people start on the horizon after it. */
+export const AFTER_ASIDE = 2 + ASIDE + 8;
 
 /** Focus: the room it has in the call's area. The bars have tucked away, so it reaches past it. */
 export const focusRoom = (size: Size, h: Horizon): Box => ({
@@ -144,6 +169,8 @@ export interface Horizon {
   /** How far the call's area is from the top and the left of the window. */
   top: number;
   left: number;
+  /** Where the people start along it: after their own button, while it stands first (AFTER_ASIDE). */
+  from?: number | undefined;
 }
 const TILE_GAP = 10;
 /** The smallest a tile gets before the rest wait behind a count. */
@@ -174,17 +201,18 @@ function result(items: TileItem[], kept: TileItem[], at: (it: TileItem, i: numbe
 function onHorizon(items: TileItem[], h: Horizon, loud: ReadonlySet<string>): PeoplePlaced {
   const size = (it: TileItem) => (it.thing ? { w: 54, h: 34 } : { w: 34, h: 38 });
   const room = h.dock - 8;
+  const from = h.from ?? 2;
   /** Where a row of them ends. */
-  const end = (list: TileItem[]) => 2 + sum(list.map((it) => size(it).w + 6)) - 6;
+  const end = (list: TileItem[]) => from + sum(list.map((it) => size(it).w + 6)) - 6;
   let n = items.length;
   while (n > 1 && end(items.slice(0, n)) + (n < items.length ? 40 : 0) > room) n--;
   const kept = keepLoud(items, n, loud);
   // With room for one, it's whoever's talking, with nothing else beside them. With none, nobody: the dock comes first.
   while (kept.length && end(kept) > room) kept.pop();
-  let x = 2;
+  let x = from;
   const xs = kept.map((it) => { const at = x; x += size(it).w + 6; return at; });
   const chip: TileSpot | null = kept.length < items.length && x + 34 <= room ? { box: { x, y: h.base - 38, w: 34, h: 38 }, mode: 'horizon' } : null;
-  return result(items, kept, (it, i) => { const s = size(it); return { box: { x: xs[i] ?? 0, y: h.base - s.h, w: s.w, h: s.h }, mode: 'horizon' }; }, chip, { box: { x: 2, y: h.base - 38, w: 34, h: 38 }, mode: 'horizon' });
+  return result(items, kept, (it, i) => { const s = size(it); return { box: { x: xs[i] ?? 0, y: h.base - s.h, w: s.w, h: s.h }, mode: 'horizon' }; }, chip, { box: { x: from, y: h.base - 38, w: 34, h: 38 }, mode: 'horizon' });
 }
 
 function inArches(r: Box, items: TileItem[], loud: ReadonlySet<string>, small: boolean): PeoplePlaced {
