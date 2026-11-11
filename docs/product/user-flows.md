@@ -895,10 +895,11 @@ See [Floating call](../engineering/floating-call.md) for browser capabilities an
      there for that moment, guests included (a guest never hears what was said while they were away), and after it for
      everyone with the notes. It plays on the speaker chosen for the call, and turns while the recording comes. When it can't
      play, it says why beside the button: "Not in the recording yet. Try again in a few seconds." for a line just said, whose
-     piece of the recording is still on its way, and pressing it again then plays it; "This browser couldn't play it."; or
-     "You can only hear what you were there for.". A quote from a call that doesn't keep its recording says "This call
-     doesn't keep its recording.", and one said in a breakout room, which is never recorded, "Breakout rooms aren't
-     recorded.", with no Hear it.
+     piece of the recording is still on its way, and pressing it again then plays it; "This browser couldn't play it.";
+     "You can only hear what you were there for." for a guest with the link, who hears only what they were there for; or,
+     for anyone else, "This part of the recording can't be played.". A quote from a call that doesn't keep its recording
+     says "This call doesn't keep its recording.", and one said in a breakout room, which is never recorded, "Breakout rooms
+     aren't recorded.", with no Hear it.
 5. **Present the workspace**, from **Present** on its bar while it's open just for you (on a phone too), or with **Share ›
    The workspace** in the dock, for anyone in the workspace, while nobody else presents a board or the workspace (Share
    says "Priya is presenting. You can present once they stop."). Everyone in your part of the call who isn't watching

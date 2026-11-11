@@ -2118,9 +2118,10 @@ steps (`ShareMenu.tsx`); and the call's keys are `session/useCallShortcuts.ts`. 
   starts; the audio plays on the speaker chosen for the call where the browser can choose one (`setSinkId`, the remembered
   choice, given 200 ms), and seeks to the line's place in the file. Each failure is said beside it in words and logged at
   `warn` with its code and request ID: not in the recording yet, Alcove unreachable or busy, and anything else unknown keep
-  the button to try again; not there for it ("You can only hear what you were there for.", or for the organizer, who hears
-  everything, "This part of the recording can't be played.") and a file the browser can't play (its `error` event, or
-  `play()` refused: "This browser couldn't play it.") take its place. Otherwise, and after the call, it reads the note as the
+  the button to try again; `not-found` ("You can only hear what you were there for." for a guest with the link, the only one
+  held to the pieces they were there for, and for everyone else, who hears all of it that plays, "This part of the
+  recording can't be played.", as `CallState.role` says) and a file the browser can't play (its `error` event, or `play()`
+  refused: "This browser couldn't play it.") take its place. Otherwise, and after the call, it reads the note as the
   note's own page does, so someone without it never sees the button, finds the line in the note's transcript by its ID, and
   plays through `usePlayer` (`notes.audioUrl`) until the next line, or for 8 seconds after the last one. A call that keeps no
   recording has nothing to hear.

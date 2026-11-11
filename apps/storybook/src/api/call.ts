@@ -579,6 +579,20 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     if (signedIn) current().meetings = current().meetings.map((m) => (m.id === this.meeting.id ? { ...m, guests: [...m.guests, this.me.person], guestCount: m.guestCount + 1 } : m));
     this.change((s) => ({ ...s, participants: [...s.participants, this.me], role: signedIn ? 'invited' : 'guest' }));
     this.crypto.update((c) => ({ ...c, status: 'in', members: [...this.getSnapshot().participants.map((p) => p.id)], everyone: this.getSnapshot().participants.map((p) => p.id) }));
+    if (!signedIn) this.letSee();
+  }
+  /**
+   * A guest with the link, let in: what the organizer has let them see of the call's home (`ScriptWorkspace.yours`) opens to
+   * them, and the home is the workspace they view, as the server says it to whoever can open something in it. Its name and
+   * their role in it are as the story's world has them. It's still no home of theirs to make anything in (`homeId`).
+   */
+  private letSee(): void {
+    const home = this.meeting.workspaceId;
+    const yours = home ? (this.script.workspace?.yours ?? []).flatMap((id) => { const item = this.itemIn(home, id); return item ? [item] : []; }) : [];
+    if (!home || !yours.length) return;
+    this.space((w) => ({ ...w, documents: yours.map((item) => this.broughtOf(home, item)) }));
+    this.view(home);
+    this.space((w) => ({ ...w, home }));
   }
 
   /* ---------- the call's boards, in the main room and in rooms ---------- */
@@ -1676,7 +1690,7 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     const answer = this.script.hear ?? 'plays';
     if (answer === 'waits') return new Promise<LineAudio>(() => undefined);
     return new Promise<LineAudio>((resolve, reject) => this.after(HEAR_MS, () => {
-      if (answer === 'not-there') { reject(missing()); return; }
+      if (answer === 'not-found') { reject(missing()); return; }
       // The recording has the line the second time it's asked for: its piece has gone up by then.
       if (answer === 'not-yet' && !this.asked.has(line)) { this.asked.add(line); reject(new AlcoveApiError('conflict', 'The recording doesn’t have this line yet. Try again in a few seconds.')); return; }
       resolve({ audio: answer === 'unplayable' ? new Blob([new Uint8Array(64)], { type: 'audio/webm' }) : quietAudio(5), from: 1, seconds: 3 });
