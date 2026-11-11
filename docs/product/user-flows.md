@@ -798,11 +798,11 @@ See [Floating call](../engineering/floating-call.md) for browser capabilities an
      the call lights their tile for a moment. Tagged while the workspace isn't open, you get the same toast, a little later:
      **Go there** opens it on the line. Putting the workspace away, or opening something else on your stage, stops
      following, and for everyone else you've left it.
-   - **While breakout rooms are open** the organizer's stage, in the main room, shows the rooms, and the workspace stands beside them, as
-     anything else open there does, the rooms where the people would be; Workspace, **W**, Find and the notes' **Open**
-     all open it there, and so does **Open the workspace** for someone in the main room asking to see it. On a phone, or a
-     window too narrow for both, the workspace goes over the rooms until it's closed. Focus isn't on offer until the rooms
-     close.
+   - **While breakout rooms are open** the organizer's stage, in the main room, shows the rooms, and the workspace stands
+     beside them, as anything else open there does, the rooms where the people would be; Workspace, **W**, Find and the
+     notes' **Open** all open it there, and so does **Open the workspace** for someone in the main room asking to see it. On
+     a phone, or a window too narrow for both, the workspace goes over the rooms until it's closed. Focus isn't on offer
+     there until the rooms close; in a room, it is, as for anyone.
    - **An organizer taken out of the workspace** everyone's viewing is told so, and **New workspace** has everyone view one
      of their own. Everyone else carries on.
 2. **Only the organizer switches what everyone views**, from the name at the top of the list, or **Switch workspace** in the

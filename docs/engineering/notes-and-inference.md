@@ -470,8 +470,8 @@ A call's breakout rooms each get a section of its note (`rooms` in the note's ma
 call's own notes. Everyone is told so when rooms open with notes on, and in each room's notes sign ([Calls and recordings › Breakout rooms](calls-and-recordings.md#hands-spotlight-breakout-rooms-and-captions)).
 
 - **What's in one.** The room's name; everyone who was in it while it was open (the organizer only if it
-  visited, a guest with the link by name only, never an address), each once; when it was open, in seconds into the recording; its gaps (the call's notes off or paused,
-  and the room's own pauses, the last one until it closed); what was said there, each line under whoever said it;
+  visited, a guest with the link by name only, never an address), each once; when it was open, in seconds into the
+  recording; its gaps (the call's notes off or paused, and the room's own pauses, the last one until it closed); what was said there, each line under whoever said it;
   and its summary, decisions, open questions, follow-ups and chapters, written from those lines alone.
 - **Where it comes from.** Each room's scribe transcribes it during the call. Its lines stay sealed in
   `transcript_clips` until the call ends, and move into the note's sealed manifest when the recording stops, when
