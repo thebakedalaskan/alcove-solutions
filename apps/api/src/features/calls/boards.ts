@@ -57,7 +57,7 @@ export interface Here { seat: string; name: string; email: string | null }
 /* ---------- what each person is told ---------- */
 
 /** Nothing open, and all that someone waiting to be let in is told. */
-export const NO_BOARD: CallBoard = { open: null, vote: null, ideas: [] };
+export const NO_BOARD: CallBoard = { open: null, timer: null, vote: null, ideas: [] };
 
 /** What the part of the call someone's in says about who can see its board. */
 const sealOf = (place: string): string => (place === MAIN_PLACE ? 'Sealed' : 'Sealed to this room');
@@ -75,7 +75,7 @@ export async function shownTo(v: Viewer, s: Boarded, place: string): Promise<Cal
   if (!open) return NO_BOARD;
   const opener = s.people.findLast((j) => j.person === open.by.person && j.status === 'in');
   const seen = { openedBy: opener?.identity ?? null, canClose: open.by.person === v.pass.person || v.isOrganizer, seal: sealOf(at), frame: at === place ? null : roomFrameId(place) };
-  const shut: CallBoard = { open: { workspaceId: null, documentId: null, name: null, role: null, ...seen, everyone: false }, vote: null, ideas: [] };
+  const shut: CallBoard = { open: { workspaceId: null, documentId: null, name: null, role: null, ...seen, everyone: false }, timer: null, vote: null, ideas: [] };
   try {
     const w = await serverWorkspace(v.organizer, open.workspaceId);
     const item = w?.state.items[open.documentId];
@@ -88,7 +88,7 @@ export async function shownTo(v: Viewer, s: Boarded, place: string): Promise<Cal
     // a room's own board is everyone's in the room.
     const everyone = roomsOwn(s, open.documentId) || (s.board.letIn.some((e) => e.documentId === open.documentId && e.by === null) && await stillTheCalls(v.organizer, w, v.organizer.pool, open.documentId));
     // Ideas from the call are the call's to add (calls.ts), for whoever can add to the board.
-    return { open: { workspaceId: open.workspaceId, documentId: open.documentId, name: item.name, role, ...seen, everyone }, ...sessionFor(v, reader, s, open, role === 'edit'), ideas: [] };
+    return { open: { workspaceId: open.workspaceId, documentId: open.documentId, name: item.name, role, ...seen, everyone }, timer: null, ...sessionFor(v, reader, s, open, role === 'edit'), ideas: [] };
   } catch (e) {
     blog.warn('board not read for someone in a call', { callId: v.pass.callId, err: e });
     return shut;
@@ -951,7 +951,7 @@ function prepareTakeBack<S extends Boarded>(x: Running<S>, r: Reached, sticky: s
 }
 
 /**
- * Ending a vote: who may, as for the timer, and of the stickies it has votes for, which are still in it, read from the board by
+ * Ending a vote: who may (`mayFinish`), and of the stickies it has votes for, which are still in it, read from the board by
  * whoever may end it. With nothing to ask, nothing is read.
  */
 async function prepareEnd<S extends Boarded>(x: Running<S>, r: Reached): Promise<ApplyRun<S>> {

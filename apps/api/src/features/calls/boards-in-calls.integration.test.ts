@@ -148,7 +148,7 @@ describe('a new board', () => {
     const p = await invited(host, c, priya);
     const jamie = await guest(host, c);
     const pass = { pass: jamie.call.ticket.pass };
-    expect(host.getSnapshot().board).toEqual({ open: null, vote: null, ideas: [] });
+    expect(host.getSnapshot().board).toEqual({ open: null, timer: null, vote: null, ideas: [] });
     const stream = art.api.workspaces.live(id);
     await until(() => stream.getSnapshot().status === 'live', 'the stream');
 
@@ -340,9 +340,9 @@ describe('a new board', () => {
     expect(await code(waiting.closeBoard())).toBe('forbidden');
     expect(await code(waiting.boardCheck(madeUp(), madeUp()))).toBe('forbidden');
     await host.openBoard({ template: 'blank' });
-    expect(waiting.getSnapshot().board).toEqual({ open: null, vote: null, ideas: [] });
+    expect(waiting.getSnapshot().board).toEqual({ open: null, timer: null, vote: null, ideas: [] });
     await waiting.refresh({ call: true, log: false });
-    expect(waiting.getSnapshot().board).toEqual({ open: null, vote: null, ideas: [] });
+    expect(waiting.getSnapshot().board).toEqual({ open: null, timer: null, vote: null, ideas: [] });
   });
 
   it('reaches whoever comes late or comes back, as a guest’s seat or the board they opened', async () => {
@@ -589,8 +589,8 @@ describe('closing a board', () => {
 
     // Whoever opened it.
     await k.closeBoard();
-    expect(k.getSnapshot().board).toEqual({ open: null, vote: null, ideas: [] });
-    expect((await read(jamie.call)).board).toEqual({ open: null, vote: null, ideas: [] });
+    expect(k.getSnapshot().board).toEqual({ open: null, timer: null, vote: null, ideas: [] });
+    expect((await read(jamie.call)).board).toEqual({ open: null, timer: null, vote: null, ideas: [] });
     expect(inTree(await art.api.workspaces.get(id)).map((x) => x.id)).toEqual([board]);
     expect(await seats(board)).toBe(1);
     expect((await jamie.api.workspaces.get(id, { pass: jamie.call.ticket.pass })).items.map((x) => x.id)).toEqual([board]);
@@ -2608,8 +2608,8 @@ describe('what the previous release stored', () => {
     const { workspaceId: _id, agenda: _a, ...oldMeeting } = meeting.manifest;
     await saveRevision(o, o.pool, meeting.itemId, meeting.revisionId, oldMeeting);
 
-    expect((await read(host)).board).toEqual({ open: null, vote: null, ideas: [] });
-    expect((await read(k)).board).toEqual({ open: null, vote: null, ideas: [] });
+    expect((await read(host)).board).toEqual({ open: null, timer: null, vote: null, ideas: [] });
+    expect((await read(k)).board).toEqual({ open: null, timer: null, vote: null, ideas: [] });
     expect(await code(k.closeBoard())).toBe('conflict');
     await k.openBoard({ template: 'retro' });
     const open1 = await opened(host);

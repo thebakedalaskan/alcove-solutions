@@ -164,7 +164,7 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
       liveNotes: { notes: null, added: [], suggestions: [], writing: false, error: null }, notices: mode === 'on' && !since ? [{ id: nextId('notice'), text: 'Notes are on. Everyone here can see that.', kind: 'notes' }] : [],
       isOrganizer: organizes, isHost: organizes, role: arrival.role,
       workspace: { id: null, home: null, name: null, chosenBy: meeting.organizer, canOpen: false, role: null, documents: [], agenda: null, present: null, ended: null, play: null, asks: [], asked: 'no' },
-      board: { open: null, vote: null, ideas: [] }, shares: []
+      board: { open: null, timer: null, vote: null, ideas: [] }, shares: []
     });
     this.script = script;
     this.me = me;
@@ -595,16 +595,16 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     const place = this.crypto.getSnapshot().place;
     const at = this.shownAt(place);
     const b = this.boards.get(at);
-    if (!b) return { open: null, vote: null, ideas: [] };
+    if (!b) return { open: null, timer: null, vote: null, ideas: [] };
     const openedBy = this.getSnapshot().participants.some((p) => p.id === b.openedBy) ? b.openedBy : null;
     const seen = { openedBy, canClose: b.openedBy === this.me.id || this.me.isOrganizer, seal: at === 'main' ? 'Sealed' : 'Sealed to this room', frame: at === place ? null : roomFrameId(place) };
-    if (!b.at) return { open: { workspaceId: null, documentId: null, name: null, role: null, everyone: false, ...seen }, vote: null, ideas: [] };
+    if (!b.at) return { open: { workspaceId: null, documentId: null, name: null, role: null, everyone: false, ...seen }, timer: null, vote: null, ideas: [] };
     const item = this.itemIn(b.at.workspaceId, b.at.documentId);
-    if (!item) return { open: null, vote: null, ideas: [] };
+    if (!item) return { open: null, timer: null, vote: null, ideas: [] };
     const same = was.open?.documentId === b.at.documentId;
     return {
       open: { ...b.at, name: item.name, role: item.role ?? 'edit', everyone: b.made, ...seen },
-      vote: same ? was.vote : null, ideas: same ? was.ideas : []
+      timer: null, vote: same ? was.vote : null, ideas: same ? was.ideas : []
     };
   }
   /** Where someone is in the call now, by their participant ID: the room they're in, or the main room. */

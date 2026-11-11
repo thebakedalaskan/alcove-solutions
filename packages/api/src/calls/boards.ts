@@ -98,8 +98,12 @@ export const CallBoardVoteSchema = z.object({
 export type CallBoardVote = z.infer<typeof CallBoardVoteSchema>;
 
 
-/** The board in the part of the call you're in, its vote, and ideas from the call for it. None is told to anyone who can't open it. */
-export const CallBoardSchema = z.object({ open: CallBoardOpenSchema.nullable(), vote: CallBoardVoteSchema.nullable(), ideas: z.array(CallBoardIdeaSchema).max(MAX_CALL_IDEAS) });
+/**
+ * The board in the part of the call you're in, its vote, and ideas from the call for it. None is told to anyone who can't open it.
+ * `timer` is always null: a board has no timer of its own now. It's sent only because the previous release's tabs can't read a
+ * call without it, and it goes in the next release.
+ */
+export const CallBoardSchema = z.object({ open: CallBoardOpenSchema.nullable(), timer: z.null(), vote: CallBoardVoteSchema.nullable(), ideas: z.array(CallBoardIdeaSchema).max(MAX_CALL_IDEAS) });
 
 export type CallBoard = z.infer<typeof CallBoardSchema>;
 

@@ -1546,7 +1546,9 @@ them. A saved board open just for you takes none, and your own share's menu does
 
 A vote on a board is the call's, not the board's: a late joiner and a reconnect get it from `CallState.board`, and a saved board
 has none. A board has no timer of its own: the call's one countdown is the timer over a board too ([The call's
-timer](call-timer.md)), and a call stored with a board timer from before keeps it, unread, until it's next saved. On the one
+timer](call-timer.md)), and a call stored with a board timer from before keeps it, unread, until it's next saved.
+`CallState.board` still carries `timer`, always `null`, for this release only: the previous release's web app, still served
+while the API deploys and open in tabs left from before, can't read a call without it. It goes in the next release. On the one
 board every room shares, the vote is the main board's: someone in a room is told of it as anyone on it is, and starts it and
 votes in it the same, each step addressed to the board where it's open (`boardPlace`). It's kept on the open board's entry in
 the call's sealed state (`vote`, `null` by default, so a call stored before votes still opens), so closing the board ends it

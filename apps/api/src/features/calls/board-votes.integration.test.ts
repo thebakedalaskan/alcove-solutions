@@ -589,7 +589,7 @@ describe('who is told of them', () => {
     expect(await refusal(l.takeBackVote(b.s1))).toEqual(cantRead);
     for (const who of [k, jamie.call]) {
       const s = await read(who);
-      expect(s.board).toEqual({ open: expect.objectContaining({ role: null, documentId: null }), vote: null, ideas: [] });
+      expect(s.board).toEqual({ open: expect.objectContaining({ role: null, documentId: null }), timer: null, vote: null, ideas: [] });
       expect(said(s)).not.toContain(b.fix);
       expect(await code(who.castVote(b.s2))).toBe('not-found');
     }
@@ -657,7 +657,7 @@ describe('who is told of them', () => {
     // Closing ends it too.
     await k.startVote(null, 3);
     await host.closeBoard();
-    expect(await board(k)).toEqual({ open: null, vote: null, ideas: [] });
+    expect(await board(k)).toEqual({ open: null, timer: null, vote: null, ideas: [] });
     await host.openBoard({ workspaceId: first?.workspaceId ?? '', documentId: firstId, letIn: false });
     expect(await board(k)).toMatchObject({ vote: null });
     await host.leave();
@@ -888,10 +888,13 @@ describe('what the previous release stored', () => {
     await before.put({ ...before.state, board: { ...boards, open: { main: { ...boards.open.main, timer: running } } } });
     expect(OpenStored.parse((await storedCall(art.ownerId, callId)).state['board']).open.main).toMatchObject({ timer: { length: 300 } });
 
-    // The call opens for everyone, its board as it was, and nothing it sends says a board timer is running.
+    // The call opens for everyone, its board as it was, and nothing it sends says a board timer is running. It still sends
+    // `timer`, always null, because the previous release's tabs can't read a call without it.
     for (const [who, call] of [[art, host], [kofi, k]] as const) {
-      expect((await read(call)).board).toEqual({ open: expect.objectContaining({ role: 'edit' }), vote: null, ideas: [] });
-      expect(Object.keys(await sentBoard(who, call)).sort()).toEqual(['ideas', 'open', 'vote']);
+      expect((await read(call)).board).toEqual({ open: expect.objectContaining({ role: 'edit' }), timer: null, vote: null, ideas: [] });
+      const sent = await sentBoard(who, call);
+      expect(Object.keys(sent).sort()).toEqual(['ideas', 'open', 'timer', 'vote']);
+      expect(sent['timer']).toBeNull();
     }
     await k.startVote(b.fix, 3);
     expect((await board(host)).vote).toMatchObject({ on: true, frame: b.fix });
