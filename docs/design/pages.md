@@ -35,7 +35,7 @@ Every signed-in page sits in the same frame (`apps/web/src/features/shell/`, `pa
 Home is for starting a call and for what's yours. It's nearly all sky.
 
 - **The sky.** The date, small, at the top left. In the middle, Start a call (Newsreader), then:
-  - Start now (filled), Schedule, and an icon button that copies a link for a new call
+  - Start now (filled) and Schedule
   - up to three people to ring, each a chip with their arch, then a plus
   - from 5 minutes before a call with someone else on it, and while it's going, a slim line above the title with its faces,
     its name, "Starts in 4 min" or "Happening now", and Join (J), which takes the filled button
