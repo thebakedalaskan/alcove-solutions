@@ -716,8 +716,9 @@ If playback is blocked, hands, People and their counts still work.
 **6.29 Choose what others see behind you.** Before joining, **Background** opens its window: a big live preview of you, and
 blur, a picture or a colour beside it, applied as you pick. During the call, **Background** in the camera's menu opens the same
 window. The preview and outgoing video use the same local effect;
-switching a camera or turning it off/on keeps the choice, remembered on this browser/device. A lower processing quality is
-announced and explained under the preview when the device is busy; the chosen background stays on and quality recovers when it can.
+switching a camera or turning it off/on keeps the choice, remembered on this browser/device. When the device is busy the effect
+drops to a lower processing quality and recovers when it can, without a word in the call or before joining: the chosen background
+stays on, and while it's below full quality, Background's window says so under its preview.
 A browser without effects explains that and offers **Choose Off**. A background that cannot load, is no longer kept here or
 stops processing turns the camera off and says so: choose another background, or **Off**, then deliberately turn the camera on.
 

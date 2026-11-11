@@ -2556,8 +2556,10 @@ uploads), Alcove is asked who's signed in (`GET /v1/session`): only the account 
   Full quality caps at 30 fps. Two slow two-second measurement windows lower one tier; eight fast windows restore one,
   preventing rapid oscillation. Expensive frames leave equal time for the rest of the call before another frame is processed.
   Skipped frames are closed without enqueueing anything, leaving the last safe processed frame; there is no raw passthrough.
-  Blur spread scales with output resolution so its selected strength stays the same. LocalMedia announces changes and
-  Background's window keeps the reduced-quality status under its preview. No performance or effect preference goes to another service.
+  Blur spread scales with output resolution so its selected strength stays the same. A tier change isn't one of
+  `MediaSnapshot.changes`, so nothing is said under the pre-join picker or as a toast in the call: nobody can act on it, and
+  the effect stays on. `MediaSnapshot.backgroundQuality` keeps Background's window saying so under its preview while it's
+  below full. No performance or effect preference goes to another service.
   Storybook serves the same installed WASM and model and exercises the actual pipeline with its drawn synthetic camera.
 - The microphone, camera and speaker chosen last time are asked for first (`deviceId: { ideal }`). When one
   isn't plugged in, the browser's default is used and pre-join says so in a line under that device's picker (one change
