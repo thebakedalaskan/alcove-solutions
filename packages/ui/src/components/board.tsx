@@ -821,8 +821,9 @@ export function BoardMap({ blocks, bounds, view, className }: { blocks: BoardBox
 }
 
 /**
- * What a blank board says. To someone who can add to it, how to start, and with `everyone`, that everyone here can too: `page` says
- * it of everyone who can open the board, as a page has nobody "here". To someone who can only look, that what's added shows here.
+ * What a blank board says. To someone who can add to it, how to start: a double-click writes, text on open board and a sticky in
+ * a frame. With `everyone`, that everyone here can too: `page` says it of everyone who can open the board, as a page has nobody
+ * "here". To someone who can only look, that what's added shows here.
  */
 export function BoardEmpty({ fading = false, reader = false, everyone = true, page = false, className }: {
   fading?: boolean | undefined; reader?: boolean | undefined; everyone?: boolean | undefined; page?: boolean | undefined; className?: string | undefined;
@@ -831,8 +832,8 @@ export function BoardEmpty({ fading = false, reader = false, everyone = true, pa
   return (
     <div className={cn('bd-empty', fading && 'is-faded', className)}>
       <EmptyArch />
-      {reader ? <b>Nothing on this board yet</b> : <b>Double-click anywhere to add a sticky</b>}
-      <span>{reader ? 'What people add shows up here as they add it.' : `Or press N.${also}`}</span>
+      {reader ? <b>Nothing on this board yet</b> : <b>Double-click to write</b>}
+      <span>{reader ? 'What people add shows up here as they add it.' : `It’s text on the board, and a sticky in a frame. Or press N for a sticky.${also}`}</span>
     </div>
   );
 }

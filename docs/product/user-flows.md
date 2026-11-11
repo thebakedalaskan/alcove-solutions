@@ -1720,13 +1720,14 @@ can't open it. A board you can only look at comes with the call too, with no suc
 later, and the board is brought to that call, first in its board picker's boards, and opens only when someone opens it. The
 bar's **More** has **Download as an image**, **Download as a PDF** and, for whoever can add to the board, **Night board**,
 as in a call; a night board is dark on its page by day too. Everyone else on it has a pointer with their face and name, in a
-colour of their own; you in another window aren't someone else. A blank board says **Double-click anywhere to add a
-sticky**, or press **N**, and that everyone who can open it can add to it too, when that's so. To someone who can only look,
-it says **Nothing on this board yet**. What's added reaches everyone on it as it happens.
+colour of their own; you in another window aren't someone else. A blank board says **Double-click to write**: "It's text
+on the board, and a sticky in a frame. Or press N for a sticky.", and that everyone who can open it can add to it too, when
+that's so. To someone who can only look, it says **Nothing on this board yet**. What's added reaches everyone on it as it happens.
 
-**Adding to it.** Double-click anywhere for a sticky, ready to type; in a frame it takes the frame's colour. **Tab** starts
-the next one beside it, and **Esc** finishes. The tools are down the side: **Select** (Esc), **Sticky** (N) in six colours,
-**Text** (T) in three sizes, **Shape** (S; drag to size it, or click once, then type on it), **Line** (L), **Pen** (P; press
+**Adding to it.** Double-click to write, ready to type: inside a frame, where votes, the frame's count and follow-ups look,
+it's a sticky in the frame's colour, and **Tab** starts the next one beside it; anywhere else, on open board, it's plain text
+with no box round it, as **Text** puts it, for labelling a diagram. **Esc** finishes either.
+The tools are down the side: **Select** (Esc), **Sticky** (N) in six colours, **Text** (T) in three sizes, **Shape** (S; drag to size it, or click once, then type on it), **Line** (L), **Pen** (P; press
 it again for the highlighter) and **Frame** (F). **More**, the **+** under them, holds what it holds in a call ([A board in the
 call](#a-board-in-the-call), step 12): **Image**, **From your workspace**, **Table**, **Mind map**, **Comment** and **Templates**, and
 a link on the board opens its document here.

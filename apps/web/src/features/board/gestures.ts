@@ -8,7 +8,7 @@
  * Everything else, which is two fingers on a trackpad and a mouse wheel alone, moves the board. Safari reports a pinch as
  * gesture events of its own instead, and touch screens as two pointers.
  */
-import { BOARD_LIMITS, bounds, hasBox, type PlacedObject } from '@alcove/board';
+import { BOARD_LIMITS, bounds, frameAt, hasBox, type PlacedObject } from '@alcove/board';
 import type { BoardTool } from '@alcove/ui';
 import { log as rootLog } from '~/lib/log';
 import type { SheetPoint } from './camera';
@@ -20,7 +20,7 @@ import { framePress, settleFrame } from './tools/frame';
 import { dotPress, hoverAt, linePress } from './tools/line';
 import { penPress } from './tools/pen';
 import { shapePress } from './tools/shape';
-import { textPress } from './tools/text';
+import { addText, textPress } from './tools/text';
 import type { Board } from './useBoard';
 
 const log = rootLog.child({ component: 'board' });
@@ -212,7 +212,11 @@ function press(board: Board, at: SheetPoint, e: PointerEvent, target: Element): 
   return id ? moveGesture(board, at, id, e.shiftKey, slopOf(e)) : marqueeGesture(board, at);
 }
 
-/** Double-click: type in what's there, or put a sticky here. It asks what's at the point, because a captured pointer makes the sheet the event's target. */
+/**
+ * Double-click: type in what's there, or put something here to type in. In a frame, where a vote, the frame's count and the
+ * follow-ups look, that's a sticky in the frame's colour; on open board, where people label a diagram, it's plain text, as the
+ * Text tool puts it. It asks what's at the point, because a captured pointer makes the sheet the event's target.
+ */
 function doubleClick(board: Board, e: MouseEvent): void {
   const target = document.elementFromPoint(e.clientX, e.clientY);
   const { tool, view } = board.getSnapshot();
@@ -233,7 +237,8 @@ function doubleClick(board: Board, e: MouseEvent): void {
     return;
   }
   const at = board.camera.point(e);
-  board.newSticky(at.x - STICKY / 2, at.y - STICKY / 2);
+  if (frameAt(view, at.x, at.y)) board.newSticky(at.x - STICKY / 2, at.y - STICKY / 2);
+  else addText(board, at);
 }
 
 interface ClientPoint {

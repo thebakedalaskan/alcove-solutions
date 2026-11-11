@@ -71,13 +71,13 @@ export const MakeABoard: PageStory = {
     });
     await step('New board makes Untitled board in the list and opens it. One line says how to start', async () => {
       await userEvent.click(await screen.findByRole('menuitem', { name: /New board/ }, SOON));
-      await screen.findByText('Double-click anywhere to add a sticky', {}, SOON);
+      await screen.findByText('Double-click to write', {}, SOON);
     });
-    await step('Double-click anywhere: a sticky, ready to type', async () => {
+    await step('Double-click on the blank board: plain text, ready to type. In a frame it would be a sticky', async () => {
       await doubleClick(userEvent, await sheet('Untitled board'), 420, 260);
       await userEvent.keyboard('Who owns the launch post?');
     });
-    await step('Esc when you’re done. The line that said how to start fades as the first sticky lands', async () => {
+    await step('Esc when you’re done. The line that said how to start fades as the first thing lands', async () => {
       await userEvent.keyboard('{Escape}');
       await pause(600);
     });

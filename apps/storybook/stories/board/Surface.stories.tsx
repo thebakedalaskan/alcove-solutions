@@ -5,9 +5,9 @@
  * here is the design canvas's, written through the board package's own writes: a new board from each template, the launch retro
  * a few minutes in, the ideas before and after sorting, the onboarding flow and what three breakout rooms brought back.
  *
- * Everything on it works: double-click to add a sticky, drag, draw, undo, and the board's own More (a table, a mind map, a
- * template, Copy link, the downloads, Night board). The name and the seal's menus, Image, From your workspace and Start a call
- * here belong to what's round the board, so here they say they were pressed in the Actions panel.
+ * Everything on it works: double-click to write (text on open board, a sticky in a frame), drag, draw, undo, and the board's
+ * own More (a table, a mind map, a template, Copy link, the downloads, Night board). The name and the seal's menus, Image, From
+ * your workspace and Start a call here belong to what's round the board, so here they say they were pressed in the Actions panel.
  */
 import { BoardPhoneAdd, BoardPill, PresentedTile } from '@alcove/ui';
 import type { Meta } from '@storybook/react-vite';
@@ -42,7 +42,7 @@ export default meta;
 export const InTheCall: BoardStory = { name: 'In the call' };
 export const InTheCallDark: BoardStory = { name: 'In the call, dark', globals: { theme: 'dark' } };
 
-/** A new board from Blank: one line says how to start, and fades after the first sticky. */
+/** A new board from Blank: one line says how to start, and fades after the first thing on it. A double-click there writes text. */
 export const Blank: BoardStory = { args: { board: () => ({ doc: templateBoard('blank') }), others: [], talking: [] } };
 /** A new board from Retro: Went well, Could improve and Actions, each saying what goes in it while it's empty. Double-click in one and a sticky appears in its colour. */
 export const Retro: BoardStory = { args: { board: () => ({ doc: templateBoard('retro') }), others: [], talking: [] } };
@@ -203,6 +203,23 @@ export const AddASticky: BoardStory = {
     });
     await step('Type what went well', async () => {
       await userEvent.keyboard('Beta sign-ups beat the plan');
+    });
+  }
+};
+
+/** Double-click on open board, in no frame: plain text, ready to type, with no box round it. Esc finishes it. */
+export const AddText: BoardStory = {
+  name: 'Add text',
+  args: { board: () => ({ doc: templateBoard('blank') }), others: [], talking: [] },
+  play: async ({ canvas, userEvent, step }) => {
+    await step('Double-click in the middle of the blank board', async () => {
+      const sheet = canvas.getByRole('application', { name: 'Launch retro' });
+      const r = sheet.getBoundingClientRect();
+      await userEvent.pointer({ keys: '[MouseLeft][MouseLeft]', target: sheet, coords: { clientX: r.x + r.width / 2, clientY: r.y + r.height / 3 } });
+    });
+    await step('Type a label, and Esc: it stays as text, with nothing round it', async () => {
+      await userEvent.keyboard('Launch plan');
+      await userEvent.keyboard('{Escape}');
     });
   }
 };

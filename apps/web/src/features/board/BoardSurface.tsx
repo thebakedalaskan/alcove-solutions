@@ -520,8 +520,8 @@ export const BoardSurface = forwardRef<BoardHandle, BoardSurfaceProps>(function 
     if (!s || !w) return undefined;
     const stopBoard = board.attach(s, w);
     const stopSheet = watchSheet(board, s);
-    // "Or press N" should be true from the start, unless someone is busy elsewhere: typing a moment ago, or in a field the page
-    // took from them, the rest of their sentence isn't for the board.
+    // "Or press N for a sticky" should be true from the start, unless someone is busy elsewhere: typing a moment ago, or in a
+    // field the page took from them, the rest of their sentence isn't for the board.
     if (board.canEdit && document.activeElement === document.body && !typing(document.body)) board.focusSheet();
     return () => {
       stopSheet();
