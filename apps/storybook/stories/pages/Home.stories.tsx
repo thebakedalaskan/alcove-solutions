@@ -1,24 +1,26 @@
 /* Home: the sunset with Start a call in the middle, and what's yours on the water (docs/design/pages.md, user-flows 3). */
 import type { Meta } from '@storybook/react-vite';
 import { screen } from 'storybook/test';
-import { standIn } from '../../src/api/standin';
 import { setOnline } from '../../src/browser';
 import { phone } from '../../src/call';
 import { changing, page, pages, type PageArgs, type PageStory } from '../../src/page';
 import { on } from '../../src/world/clock';
 import { STATES, withNotes } from '../../src/world/states';
-import { swap } from '../journeys/play';
-import { invited, noCalendar, takenOn, troubled } from './changes';
+import { invited, noCalendar, notAttested, takenOn, troubled } from './changes';
 
 const meta = { title: 'Pages/Home', ...pages } satisfies Meta<PageArgs>;
 export default meta;
 
 export const Busy = page('/home', 'busy');
 export const BusyPhone = phone(Busy);
-/** On the public beta, the server reports that it does not run in a TEE. */
-export const HostingNotAttestedPhone = phone(page('/home', 'busy', {
-  beforeEach: () => swap(standIn.trust, 'attestation', async (nonce) => ({ tee: 'none', nonce, build: { commit: 'storybook' } }))
-}));
+/**
+ * On the public beta the server says it doesn't run in a TEE: Home still says Confidential compute, and that audio,
+ * transcripts and notes are sealed, with no time it was verified and no caveat (docs/design/principles.md › Copy).
+ */
+export const HostingNotAttestedPhone = phone(page('/home', 'busy', { beforeEach: notAttested }));
+/** The same on a laptop: the side panel's check, at its foot, says Confidential compute without · verified. */
+export const HostingNotAttested = page('/home', 'busy', { beforeEach: notAttested, globals: { viewport: { value: 'laptop', isRotated: false } } });
+export const HostingNotAttestedNight = { ...HostingNotAttested, globals: { viewport: { value: 'laptop', isRotated: false }, theme: 'dark' } };
 const tickFollowUp: NonNullable<PageStory['play']> = async ({ userEvent, step }) => {
   await step('3.7 Tick a follow-up while the write is syncing', async () => {
     const [box] = await screen.findAllByRole('checkbox', { name: /^Mark done:/ });

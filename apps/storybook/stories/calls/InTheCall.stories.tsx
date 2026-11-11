@@ -11,6 +11,7 @@ import { MORE, clearSide, inCall, light, phone, plays, press, reach, settings } 
 import { talking } from '../../src/browser';
 import { pages, type PageArgs, type PageStory } from '../../src/page';
 import { iso } from '../../src/world/clock';
+import { notAttested } from '../pages/changes';
 import { AIKO, ALL_HANDS, CHECK_IN, DIEGO, EVERYONE, KOFI, KOFI_TALKS, MAYA, ONE_ON_ONE, PRIYA, REVIEW, REVIEW_SUMMARY, REVIEW_TALK, SAM } from './talk';
 
 const meta = { title: 'Calls/In the call', ...pages } satisfies Meta<PageArgs>;
@@ -86,6 +87,11 @@ export const ChatPhone = { ...phone(Chat), name: 'Chat, on a phone' };
 /** The design review, everyone there and talking it through while notes are on: Notes opens beside the stage by itself on a wide screen. */
 export const FourOfYou = inCall({ scenario: 'call-soon', call: REVIEW, script: { here: REVIEWERS, talk: { lines: REVIEW_TALK }, summary: REVIEW_SUMMARY } });
 export const FourOfYouPhone = phone(FourOfYou);
+/** The shield beside the notes sign: what confidential compute covers in this call, and when this browser verified the hardware. */
+export const Shield = { ...FourOfYou, name: 'The shield', play: plays(clearSide, press(/^Confidential compute/)) };
+export const ShieldLight = light(Shield);
+/** The server says it doesn't run in confidential compute yet: the shield states the promise, with nothing verified and no caveat. */
+export const ShieldNotAttested: PageStory = { ...Shield, name: 'The shield, not attested', beforeEach: [notAttested, ...[Shield.beforeEach ?? []].flat()] };
 
 /** A message addressed to Art is highlighted when Chat opens, and viewing it clears its unread attention. */
 export const MentionedInChat = inCall({

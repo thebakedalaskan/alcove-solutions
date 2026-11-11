@@ -13,7 +13,7 @@ import { recordOfflineHere } from '~/lib/device';
 import { log } from '~/lib/log';
 import { useNow, useOnline } from '~/lib/live';
 import { sameEmail } from '~/lib/people';
-import { q, trustLine } from '~/lib/queries';
+import { q, trustLine, verifiedAt } from '~/lib/queries';
 import { daysFromToday, hm, hoursAndMinutes, minutesUntil, untilLabel } from '~/lib/time';
 import { NAV, inWorkspace, places, useCounts } from './places';
 
@@ -201,10 +201,11 @@ function Groups() {
 /** The check, and the minutes of notes left (Settings' minutes). */
 function Foot({ online }: { online: boolean }) {
   const credits = useQuery(q.balance()).data;
-  const trust = useQuery(q.trust());
+  const trust = useQuery(q.trust()).data;
+  const verified = verifiedAt(trust);
   return (
     <div className="sb-foot">
-      {online && <p className="sb-seal" data-tour="sealed"><Icon name="sealed" size={15} />{trustLine(trust)}</p>}
+      {online && <p className="sb-seal" data-tour="sealed" title={verified === null ? undefined : `Hardware checked at ${hm(new Date(verified))}`}><Icon name="sealed" size={15} />{trustLine(trust)}</p>}
       {credits && (
         <Link to="/settings" hash="plan" activeOptions={{ includeHash: true }} className="sb-credits">
           <span><b>{hoursAndMinutes(credits.balance / credits.perMinute)}</b> of notes left</span>

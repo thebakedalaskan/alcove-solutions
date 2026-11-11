@@ -456,8 +456,8 @@ export const WhenAPanelDoesntLoad: PageStory = {
       await userEvent.click(within(calendar).getByRole('button', { name: 'Try again' }));
       await within(await row('Google Calendar')).findByText('Connected', {}, SOON);
     });
-    await step('If the hardware check fails, Settings says it is unavailable', async () => {
-      await within(await row('Hosting server')).findByText('Hosting hardware check unavailable', {}, LATER);
+    await step('With no hardware answer to show, Confidential compute just says what it is', async () => {
+      await within(await row('Confidential compute')).findByText('Where your audio is opened and your notes are written.', {}, LATER);
     });
   }
 };

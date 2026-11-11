@@ -72,7 +72,8 @@ Beside every page, dark in both themes:
   pins are for.
 - **Groups**: each of your groups and how many people are in it. Each opens on the Team page, and **+**
   starts a new one there.
-- At the bottom: the hosting hardware status, and the time of notes left, which opens Settings at your
+- At the bottom: the confidential-compute check (**Confidential compute · verified** when the server's
+  hardware answer is bound to this browser's request), and the time of notes left, which opens Settings at your
   minutes.
 - Offline, a notice at the top says recording still works and everything else catches up when you're back
   (with **Record without a connection** off, that recording waits for the connection too). Up next and the
@@ -107,7 +108,8 @@ balloon in the corner; and, slowly along the horizon, boats and ships of six kin
 opens. Every other page is a later moment of the same evening, with less sky the less it's about one action, and quieter
 visitors: a boat far out, stars after dark and now and then a shooting star. With reduced motion on, it's a still picture and nothing passes through.
 
-- The date, top left. On a phone or with the side panel hidden, the hosting hardware status shows on Home too, since the panel’s check isn’t there.
+- The date, top left. On a phone or with the side panel hidden, a **Confidential compute** badge (with the time the
+  hardware was verified when this browser could check it) shows on Home too, since the panel's check isn't there.
 - **Start a call** (**Start your first call** before your first notes). **Start now** goes straight to the lobby
   (flow 5). **Schedule** opens scheduling at Who (flow 4). The third button schedules a call for now and copies its
   link, so it's listed with a card like any other (**Undo** cancels it), and isn't on a phone. Under them, up to three people on your team who use Alcove: pressing one starts a
@@ -314,7 +316,7 @@ time, slides in on the right.
   while someone has asked; the organizer's own says **Pausing…** until their pause lands), the same for everyone, which
   opens what's captured: each kind of capture and its state, who changed it and when, who gets the notes, and the
   organizer's **Pause notes**, **Resume notes** and **Turn off** (or **Turn on notes**) and **Notes written by** (the AI model that writes this call's notes), or
-  anyone else's **Ask for notes**; and the shield, whose hover shows hosting hardware status and what Alcove encrypts in storage. On the right, what's only yours: **Board** (**O**), which
+  anyone else's **Ask for notes**; and the shield, whose hover says what confidential compute covers (verified only when the server's hardware check is bound to this browser's request). On the right, what's only yours: **Board** (**O**), which
   opens the board picker under it, and **Workspace** (**W**, with a count of what's been brought to this call), which
   opens the workspace, each on your stage just for you (Presenting, below); **Notes** and **Chat** (**C**,
   with a count of what's new), which open your side; and who is here, the faces and the count (and, for whoever hosts, how
@@ -1493,8 +1495,8 @@ Detailed while the oldest request fails.
 - **Plan and credits**: the time of notes left, with a sun on the line under it: at the end of the line on a new
   account, back along it as notes are written, and set once there's none left. Calls without notes are free. Then the
   minutes of notes used this month (since 00:00 UTC on the 1st), and **Add credits** (11.24).
-- **Privacy**: what account and call information Alcove processes, how content is encrypted in storage, and whether
-  the hosting server reported hardware evidence. The **Privacy policy** explains how Alcove uses account and service
+- **Privacy**: what account and call information Alcove processes, then confidential compute: the time the hardware
+  was verified when this browser could check it, or where your audio is opened and your notes are written. The **Privacy policy** explains how Alcove uses account and service
   data and how to disconnect Google services. Then, in its own panel at the end, **Delete account**.
 
 **Delete account** opens one step where it is (never a window over the page): the row becomes the question, **Delete
