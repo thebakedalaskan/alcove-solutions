@@ -9,7 +9,7 @@
  */
 import { StartTopUpBodySchema, type TopUp } from '@alcove/api';
 import { PREVIEW_DEPOSIT_ADDRESS } from '../world/payments';
-import { DriveExportInputSchema, type DriveAutomatic, type DriveCallExports, type DriveExportFormat, type DriveExportInput, type DriveExportJob } from '@alcove/api';
+import { DriveExportInputSchema, NOTE_LINK_DAYS, type DriveAutomatic, type DriveCallExports, type DriveExportFormat, type DriveExportInput, type DriveExportJob, type NewNoteLink, type NoteLink, type NoteLinkClaimed } from '@alcove/api';
 import { disconnectedDrive } from '../world/drive-exports';
 import type { BoardSortBody, DocAskBody, DocAskPart } from '@alcove/api';
 import {
@@ -98,6 +98,9 @@ function driveChoice(w: World, input: DriveExportInput) {
   if (parsed.enabled && (!destination || !parsed.formats.length)) throw refused('invalid', 'Choose a folder and a file type first.');
   return { enabled: parsed.enabled, destination, formats: parsed.formats };
 }
+/** The links to a note that still work, newest first. */
+const linksTo = (w: World, noteId: string): NoteLink[] => (w.noteLinks ?? []).filter((x) => x.noteId === noteId && Date.parse(x.link.expiresAt) > Date.now()).map((x) => x.link).reverse();
+
 /** What holds a box for writing into the shared notes to who had the notes when it opened: if anyone gets them since, it's refused. */
 const audienceSeal = (n: Note) => `shared:${n.people.map((p) => p.email.toLowerCase()).sort().join(' ')}`;
 
@@ -700,6 +703,29 @@ export const standIn: AlcoveApi = {
       const moments = e?.kind === 'bookmark' ? (e.moment ? [e.moment] : []) : e?.kind === 'answer' ? e.moments : [];
       w.personal[id] = (w.personal[id] ?? []).map((x) => (x.id === entryId ? { ...x, shared: { additionId, at } } : x));
       return { ...n, additions: [...n.additions, { id: additionId, text: body.text, by: me(), at, moments, removable: true }] };
+    }),
+    links: (id: ID) => answer((w) => { noteIn(w, id); return linksTo(w, id); }),
+    createLink: (id: ID) => answer((w): NewNoteLink => {
+      const n = noteIn(w, id);
+      if (n.status === 'recording') throw refused('invalid', 'These notes can be shared once the call ends.');
+      const at = new Date();
+      const link: NoteLink = { id: nextId('link'), by: me(), at: at.toISOString(), expiresAt: new Date(at.getTime() + NOTE_LINK_DAYS * 86_400_000).toISOString(), revocable: true };
+      // 22 letters and digits, as a real secret is, and made up: it opens nothing outside Storybook.
+      const secret = `Vandelay${String(Date.now()).slice(-6)}${link.id.replace(/\D/g, '').padStart(8, '0')}`.slice(0, 22).padEnd(22, '0');
+      w.noteLinks = [...(w.noteLinks ?? []), { link, noteId: id, secret }];
+      return { link, secret };
+    }),
+    revokeLink: (id: ID, linkId: ID) => answer((w) => {
+      noteIn(w, id);
+      w.noteLinks = (w.noteLinks ?? []).filter((x) => x.link.id !== linkId);
+      return linksTo(w, id);
+    }),
+    claimLink: (secret: string) => answer((w): NoteLinkClaimed => {
+      const found = (w.noteLinks ?? []).find((x) => x.secret === secret && Date.parse(x.link.expiresAt) > Date.now());
+      if (!found) throw refused('not-found', 'This link has run out or been revoked. Ask whoever sent it for a new one.');
+      // Notes you don't have yet join yours, as shared by whoever made the link.
+      if (found.note && !w.notes.some((n) => n.id === found.noteId)) w.notes = [found.note, ...w.notes];
+      return { noteId: found.noteId };
     }),
     sharedAudience: (id: ID) => answer((w): SharedAudience => {
       const n = noteIn(w, id);

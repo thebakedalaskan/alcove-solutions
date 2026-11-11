@@ -1,9 +1,9 @@
 /*
  * Notes. A note lives in its organizer's vault. Everyone invited to its call gets it when the call
- * ends, and anyone who has it can share it on, by address or with one of their groups; the note
- * keeps, sealed, who shared it with whom, the group's name and when. Who else may read it is kept in
- * note_access as keyed email hashes. Someone else's note is opened with its organizer's keys, and
- * only after that check.
+ * ends, and anyone who has it can share it on, by address, with one of their groups, or by a link
+ * whoever opens signed in (links.ts); the note keeps, sealed, who shared it with whom, the group's
+ * name or that it was a link, and when. Who else may read it is kept in note_access as keyed email
+ * hashes. Someone else's note is opened with its organizer's keys, and only after that check.
  */
 import {
   MAX_FOLLOW_UP_PROPOSALS, ACCEPTED_FOLLOW_UP, isAcceptedFollowUp, type FollowUpReview, ActionItemSchema, CaptureGapSchema, ChangerSchema, ChapterSchema, DecisionSchema, InferenceEvidenceSchema, ModelIdSchema, NoteKindSchema, NoteStatusSchema, QuestionSchema, RoomNoteSchema, ScreenMomentSchema, TranscriptLineSchema, UnencryptedUseSchema,
@@ -34,6 +34,7 @@ import { HeldRooms } from '../calls/held-rooms';
 import { Ticked } from '../calls/live-notes';
 import { MeetingManifest } from '../meetings/service';
 import * as personal from './personal';
+import * as links from './links';
 import { nameOf, personOf } from '../account/portraits';
 import * as screens from '../recordings/screens';
 import * as transcripts from '../recordings/transcripts';
@@ -57,8 +58,10 @@ type Sharer = z.infer<typeof Sharer>;
 /**
  * Someone a note was shared with after the call: their address, who shared it, the name of the
  * sharer's group it went to (nothing else about the group leaves the sharer's profile), and when.
+ * `link`: they opened a link the sharer made, rather than being given it by their address; false on
+ * shares from before links, which were all by address.
  */
-const SharedWith = z.object({ email: z.string(), by: Sharer, group: z.string().optional(), at: z.string() });
+const SharedWith = z.object({ email: z.string(), by: Sharer, group: z.string().optional(), at: z.string(), link: z.boolean().default(false) });
 type SharedWith = z.infer<typeof SharedWith>;
 
 /** What a call's notes keep of what they were written from: without the transcript it's deleted once they're written, and without the recording when the call ends. */
@@ -388,7 +391,7 @@ async function recipients(l: Located, organizer: Person, db: Db = l.owner.pool):
     ...m.invited.filter((e) => !sharedTo.has(e) && (m.status === 'recording' || holds(e)))
       .map((e): Recipient => ({ person: personOf(e), role: 'invited', ...(m.endedAt ? { at: m.endedAt } : {}) })),
     ...m.shared.filter((s) => holds(s.email))
-      .map((s): Recipient => ({ person: personOf(s.email), role: 'shared', by: sharerOf(s.by, organizer), ...(s.group ? { group: s.group } : {}), at: s.at }))
+      .map((s): Recipient => ({ person: personOf(s.email), role: 'shared', by: sharerOf(s.by, organizer), ...(s.group ? { group: s.group } : {}), ...(s.link ? { link: true } : {}), at: s.at }))
   ];
 }
 
@@ -400,7 +403,7 @@ export async function audienceOf(l: Located, db: Db = l.owner.pool): Promise<Per
 /** How someone came to have a note that isn't theirs, from the address they have it under. */
 export function receivedBy(m: NoteManifest, as: string, organizer: Person): Received {
   const s = m.shared.find((x) => same(x.email, as));
-  if (s) return { role: 'shared', by: sharerOf(s.by, organizer), ...(s.group ? { group: s.group } : {}), at: s.at };
+  if (s) return { role: 'shared', by: sharerOf(s.by, organizer), ...(s.group ? { group: s.group } : {}), ...(s.link ? { link: true } : {}), at: s.at };
   // Everyone else who has it was invited to the call, and got it when the call ended.
   return { role: 'invited', by: organizer, at: m.endedAt ?? m.startedAt };
 }
@@ -1176,7 +1179,7 @@ export async function share(o: Owner, id: string, to: { emails: string[]; group?
     const holding = await holders(owner, c, id);
     const fresh = new Set(wanted.filter((e) => !same(e, organizer) && !holding.has(b64u(emailIndex(owner, e)))));
     if (!fresh.size) return 0;
-    const given = [...fresh].map((email): SharedWith => ({ email, by, ...(to.group ? { group: to.group } : {}), at }));
+    const given = [...fresh].map((email): SharedWith => ({ email, by, ...(to.group ? { group: to.group } : {}), at, link: false }));
     // Someone given the notes again, after removing them, is listed once: as they have them now.
     await updateNote(owner, c, id, (n) => ({ ...n, shared: [...n.shared.filter((s) => !fresh.has(s.email)), ...given] }));
     await grant(owner, c, id, [...fresh], 'shared');
@@ -1187,9 +1190,23 @@ export async function share(o: Owner, id: string, to: { emails: string[]; group?
 }
 
 /**
+ * Gives a note to one more account, as shared by `by` through a link they made (links.ts), in the caller's transaction,
+ * holding the note's lock. The organizer, and anyone who has it already, are skipped. Says whether they got it now.
+ */
+export async function giveByLink(owner: Owner, db: Db, noteId: string, email: string, organizerEmail: string, by: Sharer, at: string): Promise<boolean> {
+  const address = email.trim().toLowerCase();
+  if (same(address, organizerEmail) || (await holders(owner, db, noteId)).has(b64u(emailIndex(owner, address)))) return false;
+  // Someone given the notes again, after removing them, is listed once: as they have them now.
+  await updateNote(owner, db, noteId, (n) => ({ ...n, shared: [...n.shared.filter((x) => !same(x.email, address)), { email: address, by, at, link: true }] }));
+  await grant(owner, db, noteId, [address], 'shared');
+  return true;
+}
+
+/**
  * Deletes your own note for everyone (deleteOwnNote), its audio and shared-screen objects after the
  * commit, and your pin to it. Someone else's note is only removed from your notes, with your own notes
- * on it: they can quote it, and you no longer have it. What you added to the shared notes stays with them.
+ * on it and the links you made to it: they can quote it, or hand it on, and you no longer have it.
+ * What you added to the shared notes stays with them.
  * A call's note can't go while the call is on: the call is still writing to it, and everything live hangs
  * off it. Asked holding the note, as ending the call finishes it holding the note.
  */
@@ -1199,6 +1216,7 @@ export async function remove(o: Owner, id: string): Promise<void> {
     await tx(o.pool, async (c) => {
       await exec(c, 'DELETE FROM note_access WHERE owner_id = $1 AND note_item_id = $2 AND email_index = $3', [l.owner.ownerId, id, emailIndex(o, l.as)]);
       await personal.forget(c, o.ownerId, l.owner.ownerId, id);
+      await links.forgetMade(o, c, l.owner.ownerId, id);
     });
     await unpin(o, id);
     nlog.info('shared note removed from my notes', { noteId: id });

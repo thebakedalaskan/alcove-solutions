@@ -1119,3 +1119,23 @@ export const SomeoneGetsTheNotesWhileYouWrite: PageStory = {
     });
   }
 };
+
+export const ShareByLink: PageStory = {
+  name: '8.49 Share by link',
+  ...page('/notes/n2', 'busy'),
+  play: async ({ userEvent, step }) => {
+    await step('Press Share. Under the people, Share a link says whoever opens it signed in gets the notes, for 7 days', async () => {
+      await userEvent.click(await screen.findByRole('button', { name: 'Share' }, LATER));
+      await screen.findByText('Whoever opens it signed in gets these notes, for 7 days.', {}, SOON);
+    });
+    await step('Make a link. It shows once, to copy, and it’s listed as yours until it runs out', async () => {
+      await userEvent.click(screen.getByRole('button', { name: 'Make a link' }));
+      await screen.findByRole('group', { name: 'The link to these notes' }, SOON);
+      await screen.findByText('Your link', { exact: false }, SOON);
+    });
+    await step('Revoke it: from now on it opens nothing, and whoever it gave the notes to keeps them', async () => {
+      await userEvent.click(screen.getByRole('button', { name: 'Revoke' }));
+      await away('button', 'Revoke');
+    });
+  }
+};

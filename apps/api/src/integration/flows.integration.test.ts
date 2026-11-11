@@ -3607,6 +3607,12 @@ describe('privacy at rest', () => {
     await c.api.notes.addToShared(ended?.pendingNoteId ?? '', own?.id ?? '', { text: 'CANARY-ADDED to the notes', seal: addition.seal });
     // And something written straight into the shared notes, beside them: sealed with the note too.
     await c.api.notes.writeShared(ended?.pendingNoteId ?? '', { text: 'CANARY-SHARED-WRITE for everyone with the notes', seal: (await c.api.notes.sharedAudience(ended?.pendingNoteId ?? '')).seal });
+    // A link to the notes: only its secret's hash is kept, and opening it gives an account the notes, sealed in them as shared by link.
+    const noteLink = await c.api.notes.createLink(settledNote.id);
+    secrets.push(noteLink.secret);
+    const linked = tapped();
+    await linked.api.auth.signIn('sso', { email: 'canary-linked@canary.example' });
+    expect(await linked.api.notes.claimLink(noteLink.secret)).toEqual({ noteId: settledNote.id });
     // What people add to the notes and say about them is sealed with the rest: proposed, reworded, disputed, dated and handed on,
     // in the call's part and a room's, and so is every wording it had.
     await c.api.notes.proposeDecision(settledNote.id, { text: 'CANARY-PROPOSAL the merger needs a vote.' });
@@ -3832,7 +3838,7 @@ describe('privacy at rest', () => {
       'canary-google-sub', 'canary.googler', 'Canary Googler', 'canary-photo', 'CANARY-GCAL', 'canary-gcal',
       'CANARY-QUESTION', 'CANARY-SERIES-ASK', 'CANARY-ASKED', 'canary-recurring-id', 'canary-theirs-event', 'canary-allday-event', 'canary-missing-event',
       'CANARY-SERIES-TITLE', 'CANARY-SERIES-RENAMED', 'canary-series-guest', 'Pacific/Apia', series.seriesCode ?? 'no series link',
-      '"answer":"maybe"', 'CANARY-OWN-WORDS', 'CANARY-OWN-MARK', 'CANARY-OWN-ASKED', 'CANARY-OWN-ANSWER', 'CANARY-ADDED', 'CANARY-SHARED-WRITE',
+      '"answer":"maybe"', 'CANARY-OWN-WORDS', 'CANARY-OWN-MARK', 'CANARY-OWN-ASKED', 'CANARY-OWN-ANSWER', 'CANARY-ADDED', 'CANARY-SHARED-WRITE', 'canary-linked',
       'CANARY-PROPOSAL', 'CANARY-ROOMPROPOSAL', 'CANARY-FOLLOWUP', 'CANARY-DUE', 'CANARY-REWORD', 'needs a vote', 'brief the board', 'two votes',
       'CANARY-WORKSPACE', 'CANARY-WSFOLDER', 'CANARY-WSDOC', 'CANARY-WSBOARD', 'CANARY-WSRENAMED', 'CANARY-WSREFUSED', 'canary-ws-member', 'canary-ws-shared',
       'CANARY-MEDIA-NAME', 'CANARY-MEDIA-BYTES', 'CANARY-MEDIA-GONE', 'CANARY-MEDIA-DELETED', 'CANARY-MEDIA-PREVIEW',
@@ -3881,6 +3887,7 @@ describe('privacy at rest', () => {
     for (const canary of canaries) for (const enc of encodings(canary)) expect(logText.includes(enc), `${canary} as ${enc} in logs`).toBe(false);
     for (const secret of secrets) expect(logText.includes(secret), 'a session cookie or move code in logs').toBe(false);
     for (const enc of encodings(moveCode)) expect(rowsText.includes(enc), 'a move code in rows').toBe(false);
+    for (const enc of encodings(noteLink.secret)) expect(rowsText.includes(enc), 'a note link’s secret in rows').toBe(false);
     // Logs are built to leave the confidential VM: no email address of anyone, ever, and no client address.
     expect(logText.match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/g) ?? []).toEqual([]);
     expect(logText.match(/\b10\.1\.\d{1,3}\.\d{1,3}\b/g) ?? []).toEqual([]);

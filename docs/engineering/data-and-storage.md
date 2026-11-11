@@ -37,6 +37,7 @@ result, and [Changing what's stored](#changing-whats-stored) how it changes with
 | `meeting_access` | owner (the organizer), meeting item | `email_index` (keyed hash of the address, with a purpose of its own), `answer_ciphertext` (whether they're coming, padded to one length, under the meeting's answers key; null until they answer) |
 | `personal_notes` | owner (the author), the note's organizer and item: one row for each person and note | `body_ciphertext` (everything they keep on it: what they wrote, bookmarks and what they point at, kept questions and answers, and which of it was added to the shared notes), sealed under the author's own keys. Replaced with each change, with no earlier versions |
 | `note_additions` | owner (the note's organizer), note item, addition ID, when it was added | `author_index` (keyed hash of who added it, so deleting their account finds their additions on anyone's notes), `body_ciphertext` (the words, who added it, and the lines or shared screens it points at), sealed under the organizer's keys |
+| `note_links` | owner (the note's organizer), note item, link ID, when it runs out | `secret_hash` (SHA-256 of the link's secret, which is only ever in the link's fragment and a POST body), `maker_index` (keyed hash of who made it, so removing the note from theirs or deleting their account finds their links), `body_ciphertext` (who made it, as they were, and when), sealed under the organizer's keys. Deleted when it's revoked, once it's run out (upkeep), with the note, and with its maker's access or account (migration `0025_note_links.sql`) |
 | `billing_accounts` | owner, `version` | `state_ciphertext` (balance and history, under `Kservice`) |
 | `deposits` | owner, deposit, provider (`oneclick`), state (`waiting`/`arriving`/`short`/`credited`/`held`/`failed`/`expired`/`cancelled`), created, when to check next (`check_after`), last checked, when to give up | `record_ciphertext` (a `deposit` record under `Kservice`'s accounting key, below) |
 | `workspaces` | owner, `workspace_id` (the public handle, Id128), `version`, when the oldest thing in its Trash went there (`trash_since`), created | `state_ciphertext` (its name and tree: [Workspaces](#workspaces)) |
@@ -71,7 +72,7 @@ The migration runner adds `schema_migrations`, which records each applied file b
 Constraints: checked domains `alcove_id128` (22 characters) and `alcove_owner_id` (43 characters), composite
 owner-scoped foreign keys, and deferred item-head and parent-revision constraints. Deleting an owner cascades to
 everything it owns; deleting an item cascades to its revisions, its calls, its recording and pieces, its
-transcript clips, its `note_access` or `meeting_access` rows, everyone's `personal_notes` on it and its `note_additions`, and a
+transcript clips, its `note_access` or `meeting_access` rows, everyone's `personal_notes` on it, its `note_additions` and `note_links`, and a
 meeting's rings go with it. The `note_access` rows that give an account other people's notes belong to those notes'
 organizers, so deleting the account deletes them by its email index, unless another account still signs in with that
 address; on the same condition, what it answered in `meeting_access` is cleared, and the invite stays with its
@@ -852,6 +853,9 @@ and for how long](notes-and-inference.md#whats-kept-and-for-how-long)):
   from theirs, with their account, and at the end of the call if they were taken off the invite.
 - **What's added to the shared notes** (`note_additions`) lasts until it's taken back, the note goes or its author's
   account is deleted. It stays when its author removes the note.
+- **A link to a call's notes** (`note_links`) lasts until it's revoked or runs out (seven days), the note goes, or its
+  maker removes the note from theirs or deletes their account. Whoever it gave the notes to keeps them, as with sharing by
+  address.
 - **What's in a workspace's Trash** stays 30 days, unless someone deletes it for good first.
 - **A document's log** lasts until it compacts, past 200 updates or 1 MiB; what was deleted goes then. **Its versions** last
   until the document does, or until newer ones push them out past 64 MiB.

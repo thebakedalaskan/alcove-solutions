@@ -1,7 +1,7 @@
 import { errorCode, type Session } from '@alcove/api';
 import type { QueryClient } from '@tanstack/react-query';
 import { redirect } from '@tanstack/react-router';
-import { takeAgentReturn, takeReturn } from './afterSignIn';
+import { linkWaiting, takeAgentReturn, takeReturn } from './afterSignIn';
 import { signedInHere } from './device';
 import { q } from './queries';
 
@@ -44,6 +44,8 @@ export async function requireAccount(qc: QueryClient, preload = false): Promise<
   if (agent) throw redirect({ to: '/connect', search: { request: agent }, replace: true });
   const back = preload ? null : takeReturn();
   if (back) throw redirect({ to: '/join/$code', params: { code: back }, replace: true });
+  // Signed in from a link to someone's notes, Google's way back lands here: back to the link, which opens them.
+  if (!preload && linkWaiting()) throw redirect({ to: '/link', replace: true });
   return { account: { offline: false, session: s } };
 }
 

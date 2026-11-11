@@ -46,6 +46,7 @@ export const qk = {
   personal: (id: string) => ['notes', 'personal', id] as const,
   addition: (id: string, entryId: string) => ['notes', 'addition', id, entryId] as const,
   sharedAudience: (id: string) => ['notes', 'shared-audience', id] as const,
+  noteLinks: (id: string) => ['notes', 'links', id] as const,
   inbox: ['notes', 'inbox'] as const,
   /** Everything about series: what carries over changes whenever a note or a call in one does. */
   allSeries: ['series'] as const,
@@ -165,6 +166,8 @@ export const q = {
   addition: (id: string, entryId: string) => queryOptions({ queryKey: qk.addition(id, entryId), queryFn: () => api.notes.previewAddition(id, entryId), staleTime: 0, gcTime: 0, retry: false }),
   /** Who reads what's written straight into the shared notes, and the seal that holds it to them: read fresh each time the box shows. */
   sharedAudience: (id: string) => queryOptions({ queryKey: qk.sharedAudience(id), queryFn: () => api.notes.sharedAudience(id), staleTime: 0, gcTime: 0, retry: false }),
+  /** The links to a note that still work, read fresh whenever Share opens. */
+  noteLinks: (id: string) => queryOptions({ queryKey: qk.noteLinks(id), queryFn: () => api.notes.links(id), staleTime: 0, retry: false }),
   inbox: () => queryOptions({ queryKey: qk.inbox, queryFn: ({ client }) => readInbox(api, client) }),
   /** What carries over in a series, from the notes you have; put together fresh each time it's asked for. */
   series: (id: string) => queryOptions({ queryKey: qk.series(id), queryFn: () => api.series.get(id), retry: false }),
@@ -682,6 +685,21 @@ export function useWriteShared(noteId: string) {
     onSuccess: (n) => changed(qc, n),
     onError: (e) => gone(qc, e)
   });
+}
+/** Makes a link to a note. Its secret is in the answer, said once, for showing where it was made; the list is read again. */
+export function useCreateNoteLink(noteId: string) {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: () => api.notes.createLink(noteId), onSuccess: () => qc.invalidateQueries({ queryKey: qk.noteLinks(noteId) }), onError: (e) => gone(qc, e) });
+}
+/** Revokes a link to a note: the answer is the links that still work. */
+export function useRevokeNoteLink(noteId: string) {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: (linkId: string) => api.notes.revokeLink(noteId, linkId), onSuccess: (links) => qc.setQueryData(qk.noteLinks(noteId), links), onError: (e) => gone(qc, e) });
+}
+/** Opens a link for the account signed in: its notes join theirs, so the lists are read again. */
+export function useClaimNoteLink() {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: (secret: string) => api.notes.claimLink(secret), onSuccess: () => qc.invalidateQueries({ queryKey: qk.notes }) });
 }
 /** Takes something out of the shared notes, for everyone. */
 export function useTakeBack(noteId: string) {

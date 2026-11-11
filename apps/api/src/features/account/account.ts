@@ -17,6 +17,7 @@ import { closeSession, openSession } from '../../sessions';
 import { createItem, listItems, saveRevision, lockItem } from '../../vault';
 import { forgetAnswers } from '../meetings/access';
 import { takeAllBack } from '../notes/additions';
+import { forgetAllMade } from '../notes/links';
 import { queueDelete } from '../recordings/audio';
 import { openAccount } from '../billing/service';
 import { forgetAccess, grantToRevoke, revokeGrant, unreachable, withdraw } from '../meetings/calendar';
@@ -246,7 +247,9 @@ export async function deleteAccount(o: Owner): Promise<void> {
     await exec(c, 'DELETE FROM owners WHERE owner_id = $1', [o.ownerId]);
     // After its row: taking its own notes with it waits for anything being added, which is here by now, or fails from now on.
     const added = await takeAllBack(o, c);
-    return { meetings, notes: notes.length, objects, frames, received, answers, rings, featureFlags, added, rooms, workspaces };
+    // And every link it made to anyone's notes: they hand on only what their maker has.
+    const links = await forgetAllMade(o, c);
+    return { meetings, notes: notes.length, objects, frames, received, answers, rings, featureFlags, added, links, rooms, workspaces };
   });
   if (!gone) { alog.info('account already deleted', { ownerId: o.ownerId }); return; }
   forgetAccess(o.ownerId);
@@ -258,7 +261,7 @@ export async function deleteAccount(o: Owner): Promise<void> {
   await revokeGrant(o, refreshToken, AbortSignal.timeout(REVOKE_MS));
   alog.info('account deleted', {
     ownerId: o.ownerId, calendarCancelled: calendar.cancelled, calendarKept: calendar.kept, calendarNotCancelled: calendar.notCancelled,
-    meetings: gone.meetings, notes: gone.notes, received: gone.received, answers: gone.answers, rings: gone.rings, featureFlags: gone.featureFlags, added: gone.added, objects: gone.objects.length, frames: gone.frames, rooms: gone.rooms.length,
+    meetings: gone.meetings, notes: gone.notes, received: gone.received, answers: gone.answers, rings: gone.rings, featureFlags: gone.featureFlags, added: gone.added, links: gone.links, objects: gone.objects.length, frames: gone.frames, rooms: gone.rooms.length,
     workspaces: gone.workspaces.workspaces, workspacesDeleted: gone.workspaces.deleted, ms: Math.round(performance.now() - t0)
   });
 }

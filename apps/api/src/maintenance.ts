@@ -6,7 +6,7 @@
  *  - removes objects older than 24 hours that nothing references (audio, shared-screen video, frame or file writes whose SQL commit failed);
  *  - joins shared screens' video that is still in pieces once the share's tail is over (replay doesn't need the notes service);
  *  - writes notes still waiting (after a restart, or once a retry is due);
- *  - deletes moves to other devices that ran out;
+ *  - deletes moves to other devices, and links to call notes, that ran out;
  *  - deletes rings a day after they ran out, in calls that went on that long;
  *  - deletes for good what's been in a workspace's Trash for 30 days, ends seats whose call is over, and lets go of tags
  *    nobody came back for in 30 days;
@@ -27,6 +27,7 @@ import { sweep as sweepLiveNotes } from './features/calls/live-notes';
 import { sweep as sweepAttention } from './features/calls/attention';
 import { pruneUploadDays, sweepUploads } from './features/workspaces/media';
 import { sweep as sweepMoves } from './features/calls/moves';
+import { sweep as sweepNoteLinks } from './features/notes/links';
 import { sweep as sweepRings } from './features/calls/rings';
 import { sweepMentions } from './features/workspaces/mentions';
 import { sweepSeats, sweepTrash } from './features/workspaces/service';
@@ -60,6 +61,7 @@ export async function maintain(d: Deps, opts: { orphanAgeMs?: number; trashAgeMs
   const calls = await step('calls', () => reconcile(d), 0);
   const driveExports = await step('drive exports', () => exportToDrive(d), 0);
   const moves = await step('moves', () => sweepMoves(d), 0);
+  const noteLinks = await step('note links', () => sweepNoteLinks(d), 0);
   const rings = await step('rings', () => sweepRings(d), 0);
   const liveNotes = await step('live notes', () => sweepLiveNotes(d), 0);
   const attention = await step('attention', () => sweepAttention(d), 0);
@@ -70,7 +72,7 @@ export async function maintain(d: Deps, opts: { orphanAgeMs?: number; trashAgeMs
   const uploads = await quietly('uploads', () => sweepUploads(d, opts.uploadAgeMs, started));
   const uploadDays = await quietly('upload days', () => pruneUploadDays(d));
   const mentions = await quietly('mentions', () => sweepMentions(d));
-  return { driveExports, sessions, agents, receipts, retried, orphans, videos, notes, calls, moves, rings, liveNotes, attention, trash, seats, uploads, uploadDays, mentions };
+  return { driveExports, sessions, agents, receipts, retried, orphans, videos, notes, calls, moves, noteLinks, rings, liveNotes, attention, trash, seats, uploads, uploadDays, mentions };
 }
 
 /** Deletes objects older than `cutoff` (ms) that no row points at: writes whose SQL commit failed. */

@@ -1,4 +1,4 @@
-import { FollowUpReviewSchema, ActionPatchSchema, ActionProposalSchema, AskBodySchema, DecisionPatchSchema, DecisionProposalSchema, LinePatchSchema, NoteKindSchema, QuestionPatchSchema, RevisitPatchSchema, RewriteBodySchema, SeriesAskBodySchema, ShareInputSchema, PersonalEditSchema, PersonalInputSchema, PromoteBodySchema, SharedWriteSchema } from '@alcove/api';
+import { FollowUpReviewSchema, ActionPatchSchema, ActionProposalSchema, AskBodySchema, DecisionPatchSchema, DecisionProposalSchema, LinePatchSchema, NoteKindSchema, NoteLinkClaimSchema, QuestionPatchSchema, RevisitPatchSchema, RewriteBodySchema, SeriesAskBodySchema, ShareInputSchema, PersonalEditSchema, PersonalInputSchema, PromoteBodySchema, SharedWriteSchema } from '@alcove/api';
 import { Hono, type Context } from 'hono';
 import { stream } from 'hono/streaming';
 import { z } from 'zod';
@@ -7,6 +7,7 @@ import { currentLogContext, log } from '../../log';
 import * as screens from '../recordings/screens';
 import * as models from './models';
 import * as additions from './additions';
+import * as links from './links';
 import * as audioMod from '../recordings/audio';
 import * as notes from './service';
 import * as personal from './personal';
@@ -180,6 +181,18 @@ export function registerNoteRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
   });
 
   app.post('/v1/notes/:id/share', async (c) => c.json(await notes.share(c.get('owner'), c.req.param('id'), await body(c, ShareInputSchema))));
+
+  /*
+   * Links to the notes: listed, made and revoked on the note, and opened by their secret, which travels in the body and
+   * never in a URL. Opening one needs an account: it gives the notes to whoever's signed in.
+   */
+  app.get('/v1/notes/:id/links', async (c) => c.json(await links.list(c.get('owner'), c.req.param('id'))));
+
+  app.post('/v1/notes/:id/links', async (c) => c.json(await links.create(changing(c), c.req.param('id'))));
+
+  app.delete('/v1/notes/:id/links/:linkId', async (c) => c.json(await links.revoke(changing(c), c.req.param('id'), c.req.param('linkId'))));
+
+  app.post('/v1/note-links/claim', async (c) => c.json(await links.claim(changing(c), (await body(c, NoteLinkClaimSchema)).secret)));
 
   /*
    * Your own notes on a note you have: only ever your own, so there's nothing here to ask for by anyone else's ID. Adding

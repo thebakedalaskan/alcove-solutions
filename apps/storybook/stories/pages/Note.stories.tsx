@@ -7,7 +7,7 @@ import { changing, page, pages, type PageArgs, type PageStory } from '../../src/
 import { withDriveExports, withSharedCallExports } from '../../src/world/drive-exports';
 import { FOLLOW_UP_NOTE, withFollowUpProposals } from '../../src/world/follow-ups';
 import { STATES, inEveryState } from '../../src/world/states';
-import { longSide, longSuggestions, troubled, writtenUnencrypted } from './changes';
+import { fromALink, longSide, longSuggestions, troubled, writtenUnencrypted } from './changes';
 
 const meta = { title: 'Pages/A note', ...pages } satisfies Meta<PageArgs>;
 export default meta;
@@ -157,6 +157,19 @@ export const AddingToTheSharedNotes = page('/notes/n2', 'busy', {
     });
   }
 });
+/** Notes that came by a link: beside the title, From Priya’s link; in who has them, By your link for Theo, who opened Art’s. */
+export const FromALink = page('/notes/n9', 'busy', { beforeEach: changing(fromALink) });
+/** Share, then Make a link: the link to copy, shown once, and the links that still work, Art's to revoke. */
+export const SharingByLink = page('/notes/n2', 'busy', {
+  play: async ({ canvas, userEvent, step }) => {
+    await step('Press Share, then Make a link', async () => {
+      await userEvent.click(await canvas.findByRole('button', { name: 'Share' }));
+      await userEvent.click(await screen.findByRole('button', { name: 'Make a link' }, { timeout: 8000 }));
+      await screen.findByRole('group', { name: 'The link to these notes' }, { timeout: 8000 });
+    });
+  }
+});
+export const SharingByLinkNight = page('/notes/n2', 'busy', { ...SharingByLink, globals: { theme: 'dark' } });
 /** Share: to people by email, or to one of Art's groups, offered first. */
 export const Sharing = page('/notes/n2', 'busy', {
   play: async ({ canvas, userEvent, step }) => {

@@ -1162,6 +1162,13 @@ Storybook journeys **6.23–6.25** show the review alongside the call:
   the call has ended or the room recording has stopped. Anyone who has the notes can share them; people who have them already are skipped, and someone
   who removed them gets them again. Each share records who shared the notes and when, and the group's name
   when they went to one of the sharer's groups.
+- **Share a link**, under the people in Share, is for someone whose address you don't have: **Make a link** shows a link
+  to copy, once. Whoever opens it while signed in gets the notes, as shared by you, for seven days; the link alone opens
+  nothing, and someone signed out is asked to sign in first (to a real account, unless the organizer's is a demo one).
+  The links that still work are listed there, **Your link** or **Priya's link**, with until when, and whoever made one,
+  or the organizer, can **Revoke** it: from then on it opens nothing, and whoever it gave the notes to keeps them. A
+  link that's run out or been revoked says so, and to ask for a new one. Notes from a link say **From Priya's link**
+  beside their title, and **Who has these notes** says **By Priya's link**.
 - Someone else's notes say how you got them, beside their title: **From Priya’s call** when you were invited,
   **Shared by Theo** when someone shared them afterwards, or **Shared by Theo with Leads** when it was to one of
   their groups. Notes lists them under the call they came from, and **Who has these notes** says how each person
@@ -1308,7 +1315,8 @@ Storybook journeys **6.23–6.25** show the review alongside the call:
   and Google Calendar isn't connected any more, it says so and offers **Connect Google Calendar**.
 
 Storybook journeys **8.47** and **8.48** write straight into the shared notes: posting for everyone in one step, and
-someone getting the notes while the box is open, which it says before posting again.
+someone getting the notes while the box is open, which it says before posting again. **8.49** shares the notes by a
+link, then revokes it.
 
 Storybook journeys **8.44–8.46** continue the same review after the call:
 

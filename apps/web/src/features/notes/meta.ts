@@ -10,19 +10,22 @@ export function noteMeta(n: NoteSummary): string {
   return `${where}${n.totalActions ? `${n.totalActions} follow-up${n.totalActions === 1 ? '' : 's'}` : 'No follow-ups'}`;
 }
 
-/** How you came to have someone else's note: "Shared by Theo with Leads", "Shared by Priya", or "From Kofi’s call". */
+/** How you came to have someone else's note: "Shared by Theo with Leads", "Shared by Priya", "From Lena’s link", or "From Kofi’s call". */
 export function receivedLine(r: Received): string {
   const by = firstName(r.by.name);
   if (r.role === 'invited') return `From ${by}’s call`;
+  if (r.link) return `From ${by}’s link`;
   return r.group ? `Shared by ${by} with ${r.group}` : `Shared by ${by}`;
 }
 
-/** How someone has a note: they ran the call, were invited to it, or who shared it with them afterwards (and with which group). */
+/** How someone has a note: they ran the call, were invited to it, opened someone's link, or who shared it with them afterwards (and with which group). */
 export function roleLine(r: Recipient, me: string | undefined): string {
   if (r.role === 'organizer') return 'Organizer';
   if (r.role === 'invited') return 'Invited';
   if (!r.by) return 'Shared afterwards';
-  const by = me && sameEmail(r.by, { email: me }) ? 'you' : firstName(r.by.name);
+  const yours = !!me && sameEmail(r.by, { email: me });
+  if (r.link) return yours ? 'By your link' : `By ${firstName(r.by.name)}’s link`;
+  const by = yours ? 'you' : firstName(r.by.name);
   return r.group ? `Shared by ${by} with ${r.group}` : `Shared afterwards by ${by}`;
 }
 

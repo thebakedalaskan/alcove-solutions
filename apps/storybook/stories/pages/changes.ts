@@ -3,7 +3,7 @@
  * that fails or keeps the page waiting, recordings kept on this device, the calendar, the shared demo account, a call on
  * its way here, the calls other people asked Art to, and notes in every state. All made up, in the demo world.
  */
-import type { PersonalEntry } from '@alcove/api';
+import { NOTE_LINK_DAYS, type PersonalEntry } from '@alcove/api';
 import { UNENCRYPTED_MODEL } from '../../src/api/script';
 import type { Troubles } from '../../src/api/trouble';
 import { keepHere, type KeptSpec } from '../../src/api/kept';
@@ -12,7 +12,7 @@ import { connected, notConnected } from '../../src/world/build';
 import { iso } from '../../src/world/clock';
 import { INVITATIONS, MOVING } from '../../src/world/invitations';
 import { withDriveExports } from '../../src/world/drive-exports';
-import { AIKO, DIEGO, ELENA, LENA, MAYA, ME_ID, NADIA, OMAR, PRIYA, SAM, THEO } from '../../src/world/people';
+import { AIKO, ART, DIEGO, ELENA, LENA, MAYA, ME_ID, NADIA, OMAR, PRIYA, SAM, THEO } from '../../src/world/people';
 
 /** These parts of Alcove go wrong while the story is open (src/api/trouble.ts). */
 export const troubled = (troubles: Troubles) => (w: World): void => { w.trouble = { ...w.trouble, ...troubles }; };
@@ -125,4 +125,37 @@ export const longSide = (w: World): void => {
   const more = [AIKO, LENA, SAM, DIEGO, THEO, NADIA, OMAR, ELENA];
   n.people.push(...more);
   n.recipients.push(...more.map((person) => ({ person, role: 'shared' as const, by: PRIYA, at })));
+};
+
+/** The secret of Priya's link to her research readout: made up, 22 letters and digits as a real one is. */
+export const READOUT_SECRET = 'VandelayReadout2026Nov';
+/**
+ * Priya made a link to her research readout, which Art doesn't have yet (`expired`: it ran out a minute ago), and Art
+ * opened it here: its secret waits in this tab, as it does while signing in from it. Opening it puts the readout in
+ * Art's notes, from Priya's link.
+ */
+export const linkToReadout = (expired = false) => (w: World): void => {
+  const n = w.notes.find((x) => x.id === 'n9');
+  if (!n) return;
+  w.notes = w.notes.filter((x) => x.id !== 'n9');
+  const at = new Date().toISOString();
+  const expiresAt = new Date(Date.now() + (expired ? -60_000 : NOTE_LINK_DAYS * 86_400_000)).toISOString();
+  const art = w.session?.user ?? ART;
+  const recipients = [...n.recipients.filter((r) => r.person.email !== art.email), { person: art, role: 'shared' as const, by: PRIYA, link: true as const, at }];
+  w.noteLinks = [{ link: { id: 'link-readout', by: PRIYA, at, expiresAt, revocable: false }, noteId: 'n9', secret: READOUT_SECRET, note: { ...n, recipients, received: { role: 'shared', by: PRIYA, link: true, at } } }];
+  try { sessionStorage.setItem('alcove.link-after-sign-in', JSON.stringify({ secret: READOUT_SECRET, until: Date.now() + 600_000 })); } catch { /* without storage there's no link to open */ }
+};
+
+/** Art has Priya's research readout from her link, and Theo has it from Art's: the note says so, and so does who has it. */
+export const fromALink = (w: World): void => {
+  const n = w.notes.find((x) => x.id === 'n9');
+  if (!n) return;
+  const at = iso(-1, 9, 30);
+  n.received = { role: 'shared', by: PRIYA, link: true, at };
+  n.recipients = [
+    ...n.recipients.filter((r) => r.person.email !== ART.email && r.person.email !== THEO.email),
+    { person: ART, role: 'shared', by: PRIYA, link: true, at },
+    { person: THEO, role: 'shared', by: ART, link: true, at: iso(0, 11, 0) }
+  ];
+  if (!n.people.some((p) => p.email === THEO.email)) n.people.push(THEO);
 };
