@@ -503,6 +503,18 @@
 .ac-dots i { width: 5px; height: 5px; border-radius: 50%; background: currentColor; animation: ac-dots 1.2s ease-in-out infinite; }
 .ac-dots i:nth-child(2) { animation-delay: .15s; }
 .ac-dots i:nth-child(3) { animation-delay: .3s; }
+/*
+ * Something on its way never rests. Reduced motion runs every animation once (styles.css), which would leave a spinner as
+ * an open ring and the dots as three still ones, like a broken icon. Instead they fade slowly in and out, which isn't
+ * movement; the spinner stands as if caught mid-turn. The global rule is !important, so these are too, and more specific.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .ac-spin { transform: rotate(-45deg); animation: ac-breathe 1.6s ease-in-out infinite !important; }
+  .ac-dots i { animation: ac-breathe 1.6s ease-in-out infinite !important; }
+  .ac-dots i:nth-child(2) { animation-delay: .2s !important; }
+  .ac-dots i:nth-child(3) { animation-delay: .4s !important; }
+}
+@keyframes ac-breathe { 50% { opacity: .3; } }
 
 @keyframes ac-fade { from { opacity: 0; } }
 @keyframes ac-fade-out { to { opacity: 0; } }
