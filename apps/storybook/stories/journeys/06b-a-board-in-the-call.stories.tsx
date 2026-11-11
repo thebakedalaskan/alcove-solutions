@@ -3,8 +3,9 @@
  * whiteboards canvas's words. A board opens on your stage just for you, from Board at the top right: a new one, which is the
  * board in the call, or one your team already has. Present, on its frame's bar, brings everyone. Then working on it together,
  * beside a shared screen, the organizer closing someone's for everyone, its votes, how the call helps: ideas from
- * what's said, and Sort into themes, and all of it on a phone. You're Art, the organizer, in the design review with Priya,
- * Kofi and Aiko, who fill the board in the call as they talk (stories/calls/boards.ts); their side is the script's.
+ * what's said, and Sort into themes, all of it on a phone, and a saved board renamed and opened again. You're Art, the
+ * organizer, in the design review with Priya, Kofi and Aiko, who fill the board in the call as they talk
+ * (stories/calls/boards.ts); their side is the script's.
  */
 import { fillTemplate } from '@alcove/board';
 import type { Meta } from '@storybook/react-vite';
@@ -336,7 +337,7 @@ export const OnAPhone: PageStory = {
 };
 
 export const RenameItAndOpenItAgain: PageStory = {
-  name: '6.22 Rename a board, then open it again',
+  name: '6.37 Rename a board, then open it again',
   ...review({ board: undefined, then: () => { fillTemplate(boardDoc('ws-design', ONBOARDING), 'flow', null, ONBOARDING); } }),
   play: async (c) => {
     const { userEvent, step } = c;

@@ -986,8 +986,9 @@ See [Floating call](../engineering/floating-call.md) for browser capabilities an
    screen, 14:05", and Priya is told. It's kept in the board's files, whether or not the share is in the notes. It's for whoever
    can add to the board, and isn't offered for your own screen.
 7. **The board's name**, on the frame's bar, is a menu. It has **Rename**, for anyone who can change it, and everyone sees
-   the new name at once; **Open where it’s saved**, which brings up that workspace if it's the one the call is viewing and
-   opens any other in a tab of its own;
+   the new name at once, wherever it's named: a saved board renamed while it's open just for you is under its new name in
+   **Board**'s list once it's closed, and opens again with it (journey 6.37); **Open where it’s saved**, which brings up
+   that workspace if it's the one the call is viewing and opens any other in a tab of its own;
    **Who can add to it**, for someone in that workspace who can edit the board, which opens the workspace's own **Share** for
    it under the name (add people by name or address, change what each can do, or keep it to the people added; someone it
    becomes read-only to sees it as **View only** at once, and once it's kept to the people added, nobody's told everyone here
