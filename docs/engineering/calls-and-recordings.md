@@ -2104,7 +2104,7 @@ steps (`ShareMenu.tsx`); and the call's keys are `session/useCallShortcuts.ts`. 
   snap to drop zones again (#227): both stay out, as #178 and #197 decided, and what's there is easier to find instead.
   The first time the pointer rests on a tile you can move (`TileHint.tsx`, watching the call's area, so `Stage.tsx` is
   untouched), a `Coachmark` under it says "Drag a tile to move it", and in the grid "Pull its corner to make it bigger";
-  it goes after a few seconds or at the next press.
+  it stays while the pointer does, and goes as it leaves the tile or at the next press.
 - **What's remembered where.** How you like calls (where you see yourself and its corner: `CallViewPrefsSchema`) is in
   `localStorage` for your account, `alcove.callView.<ownerId>` (one set for a browser without an account), because it's
   about you, not about anyone in a call. So is how you like the main area (`CallPanelsSchema`: whether the people beside
