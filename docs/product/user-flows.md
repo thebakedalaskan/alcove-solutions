@@ -463,9 +463,10 @@ time, slides in on the right.
   Priya is told it was you.", and a notice says who stopped it.
 - **Looking closer at a share.** On someone else's share on your stage, pinch or Ctrl/⌘ and the wheel to zoom where you
 - **A share in the notes.** While notes are on or paused, and the organizer lets shared screens go in them (**Read shared
-  screens** when the call was scheduled, on by default), Share › Your screen asks **Include this share in the notes?** and
-  the share button waits for **Yes** or **No**; it asks again every time, **Change** included, and never with notes off or in
-  a breakout room, where nothing shared is kept. With **Yes**, everyone sees **Read for the notes** on your share, and your
+  screens** when the call was scheduled, on by default), Share › Your screen asks **Include this share in the notes?**,
+  already answered: **No** to begin with, then your last answer in this call (**Change**, and a try after one that didn't
+  start, included), so **Share** never waits on it and a share goes in the notes only after you say **Yes**. It's never asked
+  with notes off or in a breakout room, where nothing shared is kept. With **Yes**, everyone sees **Read for the notes** on your share, and your
   own browser records it (a few frames a second) from the moment it starts, but holds it in your browser: nothing is sent
   until it's been up ten seconds, and a share that ends sooner is dropped. It goes to the notes while notes are on; paused,
   nothing is recorded until they resume. **No** keeps nothing of it. Notes going off stop it there. If your share can't reach

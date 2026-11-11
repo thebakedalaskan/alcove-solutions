@@ -2,7 +2,7 @@
  * Share, in the dock (docs: Calls and recordings › Presenting): everything you can show everyone, one step at a time in one
  * popover, so no window opens over another. First, what to share, with Stop sharing while you present something. Your screen
  * goes on to its own step (a tab, a window or your whole screen, its sound where this browser can share it, and while notes
- * are on or paused whether it goes in them, asked again each time) before the browser's own picker; A board goes on to the board picker, which presents what you pick straight away; the workspace is
+ * are on or paused whether it goes in them: No until you say Yes, then your last answer in this call) before the browser's own picker; A board goes on to the board picker, which presents what you pick straight away; the workspace is
  * presented at once. Stop sharing stops your screen at once, and on a board or the workspace asks Close's question as its own
  * step, so it's asked wherever what you present is: on your stage, a tile, or out of sight. On a phone it's a sheet, and a
  * screen can't be shared there.
@@ -53,13 +53,11 @@ export function ShareMenu({ step, onStep, phone, presenting, screen, board, work
 }) {
   const [kind, setKind] = useState<ShareSurface>('browser');
   const [sound, setSound] = useState(true);
-  // Whether this share goes in the notes: asked again each time Your screen opens.
-  const [keep, setKeep] = useState<ShareKeep>('unanswered');
-  const [stepSeen, setStepSeen] = useState(step);
-  if (step !== stepSeen) {
-    setStepSeen(step);
-    if (step === 'shareScreen') setKeep('unanswered');
-  }
+  /*
+   * Whether a share goes in the notes: No to begin with, so a share is kept only after a deliberate Yes, and then your last
+   * answer for as long as you're in the call, so Change and a try after one that didn't start begin from it. Share never waits.
+   */
+  const [keep, setKeep] = useState<ShareKeep>('no');
   // Your computer wouldn't let the browser share a window or the whole screen: a tab always can, so the choice turns to one.
   const [troubleSeen, setTroubleSeen] = useState(screen.trouble);
   if (screen.trouble !== troubleSeen) {

@@ -571,9 +571,11 @@ Code: `apps/web/src/features/call/screen-sharing/screenRecord.ts` (the recorder)
 - **Asking the presenter.** While notes are on or paused, and the call's `allowScreens` choice (**Read shared
   screens** when it's scheduled, on by default; `CaptureState.allowScreens`) lets shares go in the notes, the share
   steps ask **Include this share in the
-  notes?**, and the share button waits for **Yes** or **No**. It's asked every time a share starts (**Change**
-  included: something else shared is a new share), and never with notes off or in a breakout room, where nothing
-  shared is kept. Once the browser's own picker has returned, the browser tells the call:
+  notes?**, already answered, so the share button never waits: **No** to begin with, then the presenter's last answer
+  in this call (`ShareMenu` keeps it while the call screen is open, so **Change** and a try after a refused one start
+  from it). A share goes in the notes only after a deliberate **Yes**. Each share carries the answer as it stands when it
+  starts (**Change** included: something else shared is a new share), and it's never asked with notes off or in a
+  breakout room, where nothing shared is kept. Once the browser's own picker has returned, the browser tells the call:
   `POST /v1/live/calls/:id/shares {notes}`, answered with `{share, keep, state}`. `share` is a new random ID for
   this share; `keep` is whether it goes in the notes: what the presenter said, with notes on or paused, the call reading shared screens (asking with it off is refused,
   409), and the
@@ -2176,7 +2178,7 @@ steps (`ShareMenu.tsx`); and the call's keys are `session/useCallShortcuts.ts`. 
   LiveKit unpublishes it, so it goes for everyone at once; a presenter who leaves or drops takes their share with
   them when LiveKit says they've gone.
 - **Shared screens in the notes.** While notes are on or paused, the share steps ask **Include this share in the
-  notes?** before it shares. A kept share shows **Read for the notes** to everyone. The organizer chooses the model
+  notes?**, on **No** until the presenter says **Yes** (their last answer in this call after that), without holding Share up. A kept share shows **Read for the notes** to everyone. The organizer chooses the model
   that writes the notes (**Notes written by**) under what's captured. A piece of video that can't reach the notes says so
   in the Notes panel ([Shared screens](#shared-screens)).
 - **Captions** show the newest live transcript line the viewer may read (said in their part of the call while

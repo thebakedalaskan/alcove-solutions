@@ -56,15 +56,17 @@ function OverDock({ phone: asked, children }: { phone: boolean; children: ReactN
 type Step = 'kinds' | 'screen' | 'board' | 'stop';
 
 /** Share's steps as the call keeps them: what you press moves you on, and back returns to the first. */
-function ShareFlow({ kinds, start = 'kinds', phone = false, read = 'on', trouble = null, changing = false, blocked, inCall, access }: {
+function ShareFlow({ kinds, start = 'kinds', phone = false, read = 'on', said = 'no', trouble = null, changing = false, blocked, inCall, access }: {
   kinds: ComponentProps<typeof ShareKinds>; start?: Step | undefined; phone?: boolean | undefined;
   read?: 'on' | 'paused' | null | undefined; trouble?: string | null | undefined; changing?: boolean | undefined;
+  /** Whether a share goes in the notes, as the step opens: No to begin with, or the presenter's last answer in this call. */
+  said?: ShareKeep | undefined;
   blocked?: string | undefined; inCall?: BoardPickerInCall | undefined; access?: BoardPickerAccess | undefined;
 }) {
   const [step, setStep] = useState<Step>(start);
   const [surface, setSurface] = useState<ShareSurfaceKind>('browser');
   const [sound, setSound] = useState(true);
-  const [keep, setKeep] = useState<ShareKeep>('unanswered');
+  const [keep, setKeep] = useState<ShareKeep>(said);
   const back = () => { did('Back to Share')(); setStep('kinds'); };
   const b = kinds.board;
   const toBoard = 'onPress' in b ? b.onPress : null;
@@ -127,8 +129,13 @@ export const KindsOnAPhone: Story = {
   render: (args) => <ShareFlow kinds={args} phone />,
   globals: { viewport: { value: 'phone', isRotated: false } }
 };
-/** Your screen: a tab, with its sound, while notes are on and read what's shared. Then the browser asks which tab. */
+/**
+ * Your screen: a tab, with its sound, while notes are on and read what's shared. Whether it goes in the notes starts on No,
+ * so Share can be pressed straight away. Then the browser asks which tab.
+ */
 export const ScreenStep: Story = { name: 'Screen step', render: (args) => <ShareFlow kinds={args} start="screen" /> };
+/** Sharing again after a Yes earlier in this call: the step starts on that answer, and says what it means. */
+export const ScreenStepAfterAYes: Story = { name: 'Screen step, after a yes', render: (args) => <ShareFlow kinds={args} start="screen" said="yes" /> };
 /** The last try didn't start: why, and what to do, over the same choices. */
 export const ScreenStepTrouble: Story = { name: 'Screen step, with trouble', render: (args) => <ShareFlow kinds={args} start="screen" trouble={SYSTEM} /> };
 /** Sharing already, with notes paused: Share this instead. */
