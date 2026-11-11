@@ -2,8 +2,9 @@
  * What the busy afternoon's documents say, written the way the canvas writes Vandelay Industries: the launch moves to the
  * 18th, two of the checklist's items are still open, the pricing page keeps one filled button, and Art owes Kofi the
  * pricing draft by Friday. Each page is the editor's own blocks (`BlockJSON`), under the document's title. The calls' homes
- * hold what was worked on in them: the standup's onboarding fixes, with tags and comments, and the design review's
- * screenshots, walkthrough and spec, drawn here (`src/media/screens.ts`), with what's still uploading and what couldn't.
+ * hold what was worked on in them: the standup's onboarding fixes, with tags and comments, the pricing sync's draft, with a
+ * thread, the bill in code in each language and date tags this year and next, and the design review's screenshots,
+ * walkthrough and spec, drawn here (`src/media/screens.ts`), with what's still uploading and what couldn't.
  * Their History has the call they were worked on in, and what was changed after it.
  */
 import type { Person } from '@alcove/api';
