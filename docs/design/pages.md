@@ -95,9 +95,10 @@ A slim band of sky, and the horizon is the call.
   - gaps where notes were off
   - while recording, the line ends in a recording-coloured edge
   - it sticks to the top as you read
-- **The water.** The summary, larger. Then the boards open in the call, when there were any: the call's as a wide card with
-  a picture of all of it, each breakout room's as a card beside the others' (a stack on a phone), each opening its board in one
-  click, and the follow-ups from the board. Then Decided (rose, with how many are left to confirm), Still open, and Follow-ups
+- **The water.** The summary, larger. Then the boards open in the call, when there were any, sized by the column they're in:
+  the call's as a card with a picture of all of it, beside its words where the card is 600px wide and above them where it
+  isn't, and each breakout room's as a card beside the others', two or three across as there's room (a stack in a narrow
+  column), its picture in the call card's shape; each opens its board in one click. Then the follow-ups from the board. Then Decided (rose, with how many are left to confirm), Still open, and Follow-ups
   (horizon, with how many are yours). Every row uses one set of columns:
   - the kind's icon, or a tick box for a follow-up
   - the words, with who said or proposed it

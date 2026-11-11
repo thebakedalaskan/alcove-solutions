@@ -1787,13 +1787,15 @@ with one sticky, its colours and a button that says where it's going, and the st
 place. Someone who can only look has it to look round. Drawing and moving things stay on bigger screens.
 
 **After the call.** Right under the note's summary are the boards that were open for everyone in the call, the ones you can
-open. The call's board is a wide card: a small picture of all of it, as it is now, with its name, what's on it (**3 frames, 13
+open. The call's board is a card: a picture of all of it, as it is now, with its name, what's on it (**3 frames, 13
 stickies, saved in Product.**) and who can open it, and **Open the board**, which goes to its page. Anywhere on the card opens
-it too. Each breakout room's board is a card beside the other rooms', under how many rooms there were and for how long (**3
+it too. The cards take the room their column has: where the call's card is 600px wide the picture sits beside the words, and
+narrower (on a wide screen, where what was said sits beside the notes) it goes above them. Each breakout room's board is a
+card beside the other rooms', two or three across as there's room, under how many rooms there were and for how long (**3
 breakout rooms · 10 min**, or **2 of 3 breakout rooms · 10 min** when a room had no board or one you can't open): its picture,
 the room's name, what came of it and who was there (**One owner for launch comms. Priya and Theo were here.**), and one click
-opens it. A screen reader hears a room's card by the room's name, then what came of it and who can open it. On a phone the
-rooms' cards stack. Every picture is in your theme, as the board's own page is: dark in dark mode.
+opens it. A screen reader hears a room's card by the room's name, then what came of it and who can open it. In a narrow
+column, as on a phone, the rooms' cards stack. Every picture is in your theme, as the board's own page is: dark in dark mode.
 The stickies in the call's board's **Actions** frame come back as suggestions to review. Once accepted they appear under
 **Follow-ups from the board**, right after the boards: with owners, taking on, ticking and the rest, as any follow-up has. The notes read a board, along with what was
 said, only when everyone the notes went to can open it, because one summary goes to all of them; a board someone couldn't open

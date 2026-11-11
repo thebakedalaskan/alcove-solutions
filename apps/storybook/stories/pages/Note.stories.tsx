@@ -94,6 +94,8 @@ export const Disputed = page(`/notes/${STATES.disputed}`, 'busy', everyState);
 export const WithABoard = page(`/notes/${RETRO_NOTE}`, 'busy', { beforeEach: changing(afterTheRetro) });
 export const WithABoardPhone = phone(WithABoard);
 export const WithABoardNight = page(`/notes/${RETRO_NOTE}`, 'busy', { beforeEach: changing(afterTheRetro), globals: { theme: 'dark' } });
+/** On a wide screen what was said moves beside what was decided, so the boards have half the note's column: the call's picture goes above its words, and the rooms' go two across. */
+export const WithABoardWide = page(`/notes/${RETRO_NOTE}`, 'busy', { beforeEach: changing(afterTheRetro), globals: { viewport: { value: 'wide', isRotated: false } } });
 /** Comms's section, open from a link: its notes, and the follow-ups the notes took from its board. Its board is with the call's, above. */
 export const ARoomsBoard = page(`/notes/${RETRO_NOTE}?room=room-comms&at=800`, 'busy', { beforeEach: changing(afterTheRetro) });
 /** A call in a series: beside the note, the series' other calls and what's still open across them, and the next call. */
