@@ -1201,7 +1201,10 @@ Storybook journeys **6.23–6.25** show the review alongside the call:
   The line shows at most 10 decisions and follow-ups, spaced apart, decisions first; a follow-up said at the same moment as a decision sits just beside it; the rest are in the notes. A shared screen opened from the transcript has its time in the corner, which closes it and plays the
   call from there, with the page going up to the shared screens' video (or, without one, to that line). **Play** starts as soon as the first of the recording arrives; until it's pressed, moving along the line
   reads nothing. Whatever was pressed last wins, even while the recording is on its way. As it plays the sun moves and
-  the line being said is marked. If part of it won't play, it says so, and **Play** tries again from there. The horizon
+  the line being said is marked. **Space** plays and pauses it, as in most players, with nothing focused or the line
+  itself, and the page doesn't scroll; in a field it types, a focused button or tick box is pressed as ever, and with a
+  menu or window open over the page it does nothing new. In the shared screen's full screen it plays and pauses whatever
+  has focus there. Shift+Space still scrolls up, and Page Down pages down. If part of it won't play, it says so, and **Play** tries again from there. The horizon
   stays at the top of the page as you read. On a phone it shows the chapter you're in, and the chapters are listed
   beside the note. While a call is still recording, the line ends where it has got to, and **Play** plays what's there
   so far and carries on as more is recorded; at the very edge it stops, and says that's all so far. A call that didn't

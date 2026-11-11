@@ -485,6 +485,12 @@ export const JumpToAMoment: PageStory = {
       await userEvent.click(await first(screen.findAllByText('Thanks. One is the empty state on the team page, the other is the flag name in the rollout plan.', {}, SOON)));
       await (await horizon()).findByRole('button', { name: 'Pause' }, LATER);
     });
+    await step('Space pauses, and plays again, as in any player: anywhere on the note but in a field or on a button', async () => {
+      await userEvent.keyboard(' ');
+      await (await horizon()).findByRole('button', { name: 'Play' }, SOON);
+      await userEvent.keyboard(' ');
+      await (await horizon()).findByRole('button', { name: 'Pause' }, LATER);
+    });
   }
 };
 

@@ -13,7 +13,7 @@ import { NoteDriveExports } from '~/features/notes/DriveExports';
 import { Provenance } from '~/features/notes/Evidence';
 import { GonePage, NoteMenu, PageHead } from '~/features/notes/Head';
 import { Propose, useNoteReader, type Seed } from '~/features/notes/entries';
-import { Replay, usePlayer, type PlayerState } from '~/features/notes/Player';
+import { Replay, usePlayer, useSpaceToPlay, type PlayerState } from '~/features/notes/Player';
 import type { Answer } from '~/features/notes/answer';
 import { askExample, exampleNote } from '~/features/notes/example';
 import { correctedSince, speakersOf, type Correcting } from '~/features/notes/lines';
@@ -177,6 +177,7 @@ function NoteView({ note, me, at, room, onGone }: { note: Note; me: string | und
   const audio = note.kept.recording ? note.audio : NO_AUDIO;
   const player = usePlayer(note.id, audio, note.status === 'recording');
   useOpenAt(note.id, at, player);
+  useSpaceToPlay(player);
   const progress = useProgress(note);
   const [going, setGoing] = useState(false);
   const [sharedTo, setSharedTo] = useState<ReadonlySet<string>>(new Set());

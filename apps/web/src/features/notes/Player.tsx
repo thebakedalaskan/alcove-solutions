@@ -17,6 +17,7 @@ import { errorCode, type AudioSegment, type ScreenShare, type ScreenShareSegment
 import { Icon, ReplayScrub, ScreenReplay, useToast } from '@alcove/ui';
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { api } from '~/lib/api';
+import { overlayOpen, typing } from '~/lib/keys';
 import { log } from '~/lib/log';
 import { useRecheckNote } from '~/lib/queries';
 import { position } from '~/lib/time';
@@ -289,6 +290,43 @@ export function usePlayer(noteId: string, segments: AudioSegment[], live: boolea
   return useMemo(() => ({ total, playing, busy, toggle, seek, pos, subscribe }), [total, playing, busy, toggle, seek, pos, subscribe]);
 }
 
+/** What Space presses by itself when it has focus: a button, a tick box, a field, a fold. */
+const SPACE_PRESSES = 'button, input, select, textarea, summary, [contenteditable="true"], [role="button"], [role="checkbox"], [role="switch"], [role="radio"], '
+  + '[role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"], [role="option"], [role="tab"], [role="slider"], [role="combobox"]';
+/** Space on its own: Shift+Space scrolls up, and with Ctrl, ⌘ or Alt it's the system's. */
+const justSpace = (e: KeyboardEvent) => e.key === ' ' && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey;
+
+/**
+ * Space plays and pauses a note's recording, as in most players, while it has one: with nothing focused, or anything Space
+ * doesn't press by itself, and the page doesn't scroll. It leaves alone typing (and the moment after), anything open over
+ * the page, and a focused control Space presses, such as a tick box or a button, except in the replay's full screen, where
+ * it plays and pauses whatever has focus there and full screen stays. The line along the top plays and pauses with Space
+ * by itself (CallLine.tsx). Holding Space toggles once.
+ */
+export function useSpaceToPlay(player: PlayerState) {
+  const { total, toggle } = player;
+  const on = total > 0;
+  useEffect(() => {
+    if (!on) return undefined;
+    /** The replay fills the screen, and the key is for it: something in it has focus, or nothing does. */
+    const full = (t: EventTarget | null) => {
+      const shown = document.fullscreenElement;
+      return shown !== null && t instanceof Node && (t === document.body || shown.contains(t));
+    };
+    const down = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || !justSpace(e) || typing(e.target)) return;
+      if (!full(e.target) && (overlayOpen() || (e.target instanceof Element && e.target.closest(SPACE_PRESSES)))) return;
+      e.preventDefault();
+      if (!e.repeat) toggle();
+    };
+    // In full screen, some browsers press a focused button as Space comes up, unless that's stopped too.
+    const up = (e: KeyboardEvent) => { if (justSpace(e) && full(e.target) && !typing(e.target)) e.preventDefault(); };
+    addEventListener('keydown', down);
+    addEventListener('keyup', up);
+    return () => { removeEventListener('keydown', down); removeEventListener('keyup', up); };
+  }, [on, toggle]);
+}
+
 /** How far the video may drift from the audio before it's put back in step, in seconds. */
 const DRIFT = 0.3;
 
@@ -348,7 +386,7 @@ export function Replay({ noteId, shares, player }: { noteId: string; shares: Scr
   // while paused moves the picture without starting the audio.
   const controls = (
     <>
-      <button type="button" className="play" onClick={toggle} aria-label={playing ? 'Pause' : 'Play'}><Icon name={playing ? 'pause' : 'play'} size={18} /></button>
+      <button type="button" className="play" onClick={toggle} aria-label={playing ? 'Pause' : 'Play'} aria-keyshortcuts="Space"><Icon name={playing ? 'pause' : 'play'} size={18} /></button>
       <span>{position(pos)}</span>
       <ReplayScrub pos={pos} total={total} format={position} marks={marks} onSeek={(t) => seek(t, playing)} />
       <span>{position(total)}</span>
