@@ -124,7 +124,7 @@ class TextBlock extends BlockFrame implements NodeView {
   /**
    * Code says what language it's coloured as in its corner, floated, so the first line goes round it rather than under it.
    * For someone who can write, it's a button that opens the languages: the same choice its block's menu has. Plain text
-   * shows its button only while the block's pointed at or the caret's in it, and nothing to someone who can only read.
+   * shows its button only while the block's pointed at (always on a touch screen), and nothing to someone who can only read.
    */
   private setLang(node: PMNode): void {
     if (!node.type.spec.code) return;
