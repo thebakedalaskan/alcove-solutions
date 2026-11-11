@@ -43,6 +43,8 @@ const firstOf = (p: Person) => p.name.split(' ')[0] ?? p.name;
 const sayingMs = (text: string) => Math.min(5600, Math.max(2200, text.length * 55));
 /** How long after the organizer's connection drops someone invited hosts in their place. */
 const TAKE_OVER_MS = 10_000;
+/** How long Hear it takes to fetch a line of the recording, so pressing it shows it working. */
+const HEAR_MS = 900;
 /** The call's timer after one of the host's controls, as the API works it out (features/calls/timers.ts), or why not. */
 function timerAfter(was: CallTimer | null, input: CallTimerControl, now: number): CallTimer | null {
   if (input.action === 'start') {
@@ -104,6 +106,8 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
   /** Whoever takes the data other browsers send to the room (the scripted room), told the topic, the payload and who from. */
   private readonly dataTakers = new Set<(topic: string, payload: Uint8Array, from: string) => void>();
   private readonly script: CallScript;
+  /** Lines Hear it has asked for already. */
+  private asked = new Set<string>();
   private readonly me: CallParticipant;
   /** The note this call writes, once notes have been on: your own notes on the call (`personal`) go with it. */
   private readonly noteId: string;
@@ -154,7 +158,7 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
       revision: 0, timer: script.timer ? { ...script.timer, startedAt: script.timer.status === 'running' ? Date.now() : null } : null, attention: { place: 'main', hands: [], questions: [], nudges: [], cues: [], latest: 0, serverNow: new Date().toISOString() },
       callId, meetingId: meeting.id, code: meeting.code, title: meeting.title, startedAt, elapsed: since, phase: 'in-call', participants: organizes ? [me] : [], locked: false, pointing: true,
       spotlight: null, breakouts: { open: null, held: [] }, capture: captureOf(mode, mode === 'off' ? null : startedAt, meeting.organizer.name, script.model ?? null),
-      notes: { everOn: mode !== 'off', noteId: mode !== 'off' ? noteId : null, segmentStartedAt: mode !== 'off' ? startedAt : null, recording: { segment: 0, pieces: 0, seconds: mode === 'on' ? since : 0 } }, waiting: [], ringing: [], leaving: [], chatRead: [],
+      notes: { everOn: mode !== 'off', noteId: mode !== 'off' ? noteId : null, segmentStartedAt: mode !== 'off' ? startedAt : null, recording: { segment: 0, pieces: 0, seconds: mode === 'on' ? since : 0 }, keepsRecording: meeting.choices.keepRecording }, waiting: [], ringing: [], leaving: [], chatRead: [],
       host: { id: organizes ? me.id : null, standIn: false, organizer: meeting.organizer, next: [] }, generation: 1, transcript: [],
       liveNotes: { notes: null, added: [], suggestions: [], writing: false, error: null }, notices: mode === 'on' && !since ? [{ id: nextId('notice'), text: 'Notes are on. Everyone here can see that.', kind: 'notes' }] : [],
       isOrganizer: organizes, isHost: organizes, role: arrival.role,
@@ -1626,13 +1630,22 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
   }
   /**
    * Hear it, as the call plays it: a line in your own transcript, which is only what you were there for, as a few quiet
-   * seconds of the recording around it. Anything else isn't there, as the API says it.
+   * seconds of the recording around it, after a moment's fetching. Anything else isn't there, as the API says it, and so is
+   * whatever the script says Hear it gets (`CallScript.hear`).
    */
   hear(note: string, line: string): Promise<LineAudio> {
     const s = this.getSnapshot();
     const l = s.transcript.find((x) => x.id === line);
-    if (s.notes.noteId !== note || !l || l.room) return Promise.reject(new AlcoveApiError('not-found', 'That moment of the call doesn’t exist, or you don’t have access to it.'));
-    return Promise.resolve({ audio: quietAudio(5), from: 1, seconds: 3 });
+    const missing = () => new AlcoveApiError('not-found', 'That moment of the call doesn’t exist, or you don’t have access to it.');
+    if (s.notes.noteId !== note || !l || l.room || !s.notes.keepsRecording) return Promise.reject(missing());
+    const answer = this.script.hear ?? 'plays';
+    if (answer === 'waits') return new Promise<LineAudio>(() => undefined);
+    return new Promise<LineAudio>((resolve, reject) => this.after(HEAR_MS, () => {
+      if (answer === 'not-there') { reject(missing()); return; }
+      // The recording has the line the second time it's asked for: its piece has gone up by then.
+      if (answer === 'not-yet' && !this.asked.has(line)) { this.asked.add(line); reject(new AlcoveApiError('conflict', 'The recording doesn’t have this line yet. Try again in a few seconds.')); return; }
+      resolve({ audio: answer === 'unplayable' ? new Blob([new Uint8Array(64)], { type: 'audio/webm' }) : quietAudio(5), from: 1, seconds: 3 });
+    }));
   }
   appendAudio(_piece: AudioPiece): Promise<void> { return Promise.resolve(); }
   transcribe(_clip: TranscriptClip, _speaker: string): Promise<void> { return Promise.resolve(); }

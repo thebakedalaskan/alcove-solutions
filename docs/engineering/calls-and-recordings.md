@@ -2047,12 +2047,32 @@ steps (`ShareMenu.tsx`); and the call's keys are `session/useCallShortcuts.ts`. 
   whole, and where in them the line starts and how long it lasts (`HEARD_HEADERS`). It takes a line the person may read
   (`mayRead`: their part of the call, and for a guest with the link only while they were in it, a stay that ended without a word
   ending when they were last heard from), not one said in a breakout room, and only pieces the person was there for, placed in
-  the call by where they are from the line: a guest who came in or went out part way through a piece doesn't get it. A run that
-  doesn't start the segment is preceded by what its first piece says the recording is (a WebM up to its first Cluster, an MP4 up
-  to its first fragment), with none of that piece's sound. Anything else, a call that doesn't keep its recording included, is
-  `not-found`. Otherwise, and after the call, it reads the note as the note's own page does, so someone without it never sees
-  the button, finds the line in the note's transcript by its ID, and plays through `usePlayer` (`notes.audioUrl`) until the next
-  line, or for 8 seconds after the last one. A call that keeps no recording has nothing to hear.
+  the call by where they are from the line: a guest who came in or went out part way through a piece doesn't get it. What's sent
+  is a file of its own that starts at 0 (`recordings/stretchFile.ts`), so the line's place in it means the same in every browser.
+  MediaRecorder cuts pieces wherever its timeslice falls: in Chrome each piece after a segment's first starts with the end of
+  the last block of the piece before (1,967 bytes in the test recording), and its own Cluster after that, and every Cluster
+  keeps its time from the start of the segment. A run that doesn't start the segment is preceded by what the segment's first
+  piece says the recording is (a WebM up to its first Cluster, an MP4 up to its first fragment, `moof` with its `mfhd`), with
+  none of that piece's sound, and its own first piece starts at its own first Cluster or fragment: the end of the piece before
+  isn't sent. Then every Cluster's Timestamp, and every fragment's decode time (`tfdt`, each track's), is less the first one's,
+  rewritten in place in the width it had, and the file stops after the last element it has all of (a WebM block, or an MP4
+  fragment with its `mdat`), saying how much of a cut-off Cluster there is if it said its size. A run whose own start can't be
+  found, or isn't laid out as a recording is, can't be played from where it starts: `not-found`, logged at `warn`. A run from
+  the segment's start that can't be read through goes as it was recorded. The answers: the audio; `conflict` when none of the
+  segment's pieces reach the line yet and none come after it (the host's browser sends each piece after its 5 seconds, so a
+  line just said isn't there yet: try again in a few seconds); and `not-found` for anything else, a call that doesn't keep
+  its recording and a line said in a breakout room included, which names nothing. The call says whether it keeps its recording
+  (`CallState.notes.keepsRecording`), and a live line which room it was said in, so the quote says "This call doesn't keep
+  its recording." or "Breakout rooms aren't recorded." instead of offering Hear it. Pressed, the button turns until the sound
+  starts; the audio plays on the speaker chosen for the call where the browser can choose one (`setSinkId`, the remembered
+  choice, given 200 ms), and seeks to the line's place in the file. Each failure is said beside it in words and logged at
+  `warn` with its code and request ID: not in the recording yet, Alcove unreachable or busy, and anything else unknown keep
+  the button to try again; not there for it ("You can only hear what you were there for.", or for the organizer, who hears
+  everything, "This part of the recording can't be played.") and a file the browser can't play (its `error` event, or
+  `play()` refused: "This browser couldn't play it.") take its place. Otherwise, and after the call, it reads the note as the
+  note's own page does, so someone without it never sees the button, finds the line in the note's transcript by its ID, and
+  plays through `usePlayer` (`notes.audioUrl`) until the next line, or for 8 seconds after the last one. A call that keeps no
+  recording has nothing to hear.
 - **Focus** fills your window with what's in the frame (⌘⇧F, or the frame's Fill your window with it): the top bar slides
   off, the people go to the horizon, and the dock tucks to the microphone, camera, Show everything and Leave. Show
   everything, ⌘⇧F or Esc brings it all back. Esc goes in the canvas's order: a menu, a sheet or a drag takes it first (they
