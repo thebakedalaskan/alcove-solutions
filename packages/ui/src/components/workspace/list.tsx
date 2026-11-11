@@ -113,11 +113,17 @@ function SpaceName({ name, placeholder, onCommit, onCancel }: WsNaming) {
  * menu makes: `createLabel`). `naming` swaps the name for a field. Whatever isn't given isn't shown: someone who can only read
  * makes nothing.
  */
-export function WsListHead({ name, picker, pickerLabel = 'This call’s workspace', onFind, create, createLabel = 'New document or folder', naming, saveState = 'quiet' }: {
+export function WsListHead({ name, picker, pickerLabel = 'This call’s workspace', onFind, create, createLabel = 'New document or folder', naming, saveState = 'quiet', reconnecting = null }: {
   name: string; picker: WsPop; pickerLabel?: string | undefined; onFind?: (() => void) | undefined; create?: WsPop | undefined; createLabel?: string | undefined; naming?: WsNaming | null | undefined;
   saveState?: 'quiet' | 'saving' | 'saved' | 'failed' | undefined;
+  /**
+   * The list's own connection dropped, so it may not be up to date: a line under the head says Reconnecting, with Try now
+   * (`onTry`) while the browser has a connection.
+   */
+  reconnecting?: { onTry?: (() => void) | undefined } | null | undefined;
 }) {
   return (
+    <>
     <div className="wt-head">
       {naming ? <SpaceName {...naming} /> : (
         <WsPopover open={picker.open} onOpenChange={picker.onOpenChange} label={pickerLabel} anchor={
@@ -132,6 +138,13 @@ export function WsListHead({ name, picker, pickerLabel = 'This call’s workspac
         }>{create.content}</WsPopover>
       )}
     </div>
+    {reconnecting && (
+      <div className="wt-off" role="status">
+        <Icon name="wifiOff" size={13} /><span className="ac-clamp-1">Reconnecting</span>
+        {reconnecting.onTry && <button type="button" onClick={reconnecting.onTry}>Try now</button>}
+      </div>
+    )}
+    </>
   );
 }
 

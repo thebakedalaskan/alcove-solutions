@@ -18,7 +18,7 @@ import { BoardSurface } from '~/features/board/lazy';
 import type { BoardLinks } from '~/features/board/more/objects';
 import { useBoardPeople } from '~/features/board/people';
 import { FollowingPill, StandingPill } from '~/features/board/pills';
-import { sealedOnPage, standingOf, useChangesSinceSaved, type PopRow } from '~/features/board/standing';
+import { sealedOnPage, standingOf, useChangesSinceSaved, type PopRow, type StandingAction } from '~/features/board/standing';
 import { useCallFlow } from '~/features/shell/context';
 import { useLive, useMedia, useOnline } from '~/lib/live';
 import { log } from '~/lib/log';
@@ -26,7 +26,7 @@ import { q, useSortStickies } from '~/lib/queries';
 import { focusRow } from './actions';
 import { useWs, type Ws } from './context';
 import { canKeepEdits } from './keep';
-import { useBackOnline, useOpensAgain, useSession, type Opened } from './opened';
+import { useBackOnline, useOpensAgain, useSession, useTriesWhenShown, type Opened } from './opened';
 import { ShareSheet } from './Sheets';
 import { foldersAbove, nameOf } from './tree';
 
@@ -70,10 +70,10 @@ function NameMenu({ items, onClose }: { items: { id: string; icon: IconName; lab
   return <BoardPop ref={ref} left={12} top={top} label="The board" items={items} />;
 }
 
-/** What the seal says when it's pressed: how the board stands now. */
-function SealPop({ title, rows, onClose }: { title: string; rows: PopRow[]; onClose: () => void }) {
+/** What the seal says when it's pressed: how the board stands now, and Try now while it's reconnecting. */
+function SealPop({ title, rows, action, onClose }: { title: string; rows: PopRow[]; action?: StandingAction | undefined; onClose: () => void }) {
   const { ref, top } = usePopOnSheet(onClose, '.bd-head .sv', title);
-  return <BoardPop ref={ref} left={12} top={top} title={title} rows={rows} />;
+  return <BoardPop ref={ref} left={12} top={top} title={title} rows={rows} items={action && [{ id: 'act', icon: 'retry', label: action.label, onPick: () => { onClose(); action.run(); } }]} />;
 }
 
 /** Where a pop sits on the sheet: under the bar, or under the pill when there's one, which says what's wrong and holds Try again. */
@@ -140,7 +140,8 @@ function OpenedBoard({ ws, item, opened, reopen }: { ws: Ws; item: WorkspaceItem
   const online = useOnline();
   const offline = status.status === 'offline' || (!online && status.status !== 'failed');
   useOpensAgain(status, ready, reopen);
-  useBackOnline(ws, session, offline, status);
+  useBackOnline(ws, session, offline, status, online);
+  useTriesWhenShown(ws, session);
   const changes = useChangesSinceSaved(opened.session, status);
   const { mutateAsync: sortIn } = useSortStickies(ws.pass);
   const [pop, setPop] = useState<Pop>(null);
@@ -159,7 +160,7 @@ function OpenedBoard({ ws, item, opened, reopen }: { ws: Ws; item: WorkspaceItem
   const tryAgain = ws.owner !== null && canKeepEdits() ? reopen : undefined;
   // Someone it's shared with from outside the workspace isn't told what the workspace is called.
   const kept: PopRow | null = member ? { icon: 'lock', text: `Saved in ${ws.spaceName}.` } : null;
-  const standing = standingOf({ status, offline: offline && ready, readOnly, changes, tryAgain, kept, sealed: sealedOnPage(kept) });
+  const standing = standingOf({ status, offline: offline && ready, readOnly, changes, tryAgain, tryNow: online ? session.retry : undefined, kept, sealed: sealedOnPage(kept) });
 
   /*
    * Who's here, by what they're known by in the workspace: their face from who's in it now, else from its people, else their
@@ -242,7 +243,7 @@ function OpenedBoard({ ws, item, opened, reopen }: { ws: Ws; item: WorkspaceItem
       </WsDoc>
     );
   }
-  if (!ready) return <WsDoc className="is-board"><WsDocHead crumbs={where} save="quiet" onToggleList={ws.toggleList} />{status.closed === 'unavailable' ? <WsUnavailable /> : offline && <WsOfflineEmpty />}</WsDoc>;
+  if (!ready) return <WsDoc className="is-board"><WsDocHead crumbs={where} save="quiet" onToggleList={ws.toggleList} />{status.closed === 'unavailable' ? <WsUnavailable /> : offline && <WsOfflineEmpty online={online} onTry={session.retry} />}</WsDoc>;
 
   const who = item.trashedBy ? firstName(item.trashedBy) : 'Someone';
   return (
@@ -258,7 +259,7 @@ function OpenedBoard({ ws, item, opened, reopen }: { ws: Ws; item: WorkspaceItem
             onCall={startHere} onSort={readOnly ? undefined : (stickies) => sortIn({ workspaceId: ws.workspaceId, documentId: item.id, stickies })}
             pill={(following, stop) => ({ standing: standing.pill && <StandingPill pill={standing.pill} />, following: following && <FollowingPill person={following} onStop={stop} /> })}>
             {pop === 'name' && <NameMenu items={items} onClose={closePop} />}
-            {pop === 'seal' && <SealPop title={standing.pop.title} rows={standing.pop.rows} onClose={closePop} />}
+            {pop === 'seal' && <SealPop title={standing.pop.title} rows={standing.pop.rows} action={standing.pop.action} onClose={closePop} />}
           </BoardSurface>
         </Suspense>
         {pop === 'share' && (

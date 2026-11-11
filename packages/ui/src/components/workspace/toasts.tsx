@@ -56,7 +56,8 @@ export const wsToast = {
   toldNotNow: (first: string) => say('check', `${first} was told not now`),
   askedForNotes: (organizer: string) => say('hand', `You asked ${organizer} for notes`),
   notesOn: () => say('check', 'Notes are on for everyone'),
-  backOnline: () => say('check', 'Back online. Your edits are saved.'),
+  /** `wasOffline`: the browser itself was; otherwise only Alcove couldn't be reached. */
+  backOnline: (wasOffline = true) => say('check', wasOffline ? 'Back online. Your edits are saved.' : 'Reconnected. Your edits are saved.'),
   /** The call's connection is back, with nothing of a document's to say about it. */
   reconnected: () => say('check', 'Back online.'),
   copiedText: () => say('copy', 'Copied. Paste it wherever you like.'),

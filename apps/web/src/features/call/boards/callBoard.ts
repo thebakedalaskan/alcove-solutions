@@ -235,6 +235,13 @@ export function useCallBoard({ session, stage, saved, state, me, owner, talking,
   const mineDrawn = stage === 'saved' && savedOpen !== null;
   const { doc, status, reopen } = useBoardSession(mineDrawn ? savedOpen : open ?? sinking, owner, mineDrawn ? undefined : pass);
   const { people, onBoard } = useBoardPeople(doc, state.participants, me);
+  /* Its session is kept while it's off your stage: putting it back tries its connection at once if it's down, as Try now does. */
+  const shownBefore = useRef(onStage || mineDrawn);
+  useEffect(() => {
+    const before = shownBefore.current;
+    shownBefore.current = onStage || mineDrawn;
+    if (!before && shownBefore.current) doc?.retry();
+  }, [onStage, mineDrawn, doc]);
   const talkingKey = [...talking].sort().join(' ');
   const talkingSet = useMemo(() => new Set(talkingKey ? talkingKey.split(' ') : []), [talkingKey]);
   const handle = useRef<BoardHandle | null>(null);
@@ -402,6 +409,8 @@ export function useCallBoard({ session, stage, saved, state, me, owner, talking,
     status,
     /** Try again, for what Alcove refused: it opens again, and what's kept on this device goes again. Only an account keeps it. */
     tryAgain: owner !== null && canKeepEdits() ? reopen : undefined,
+    /** Try now, while its connection is down: it's tried again at once rather than after the wait. */
+    tryNow: doc ? doc.retry : undefined,
     /** What's drawn: a saved board just for you, the call's open board, or the one sinking for a moment as it closes. */
     drawn: drawnOpen,
     sinking: sinking !== null && !mineDrawn,

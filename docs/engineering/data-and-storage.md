@@ -690,10 +690,15 @@ and this way it runs through the same auth, origin check and tests as everything
   at most. A notice about the workspace does it at once. A stream that finds nothing left for its reader first asks who
   they are now, because a new address from their provider moves what they have to another hash.
 - **Letting go.** A stream ends without `closed` when the API lets go (after 280 seconds, inside Cloud Run's 300-second
-  request timeout, so it's never cut) or its instance shuts down. The browser opens it again: quietly when it just ended,
-  showing `reconnecting` when it failed, keeping what it last showed either way. A line that can't be written within a ping
-  ends a stream too, which is how one whose browser went as it opened is let go of. A browser that hears nothing for a
-  minute takes the connection for dead.
+  request timeout, so it's never cut), its browser says it closed it, its person needs its place, or its instance shuts
+  down. The browser opens it again: quietly when it just ended, showing `reconnecting` when it failed, keeping what it last
+  showed either way. A line that can't be written within a ping ends a stream too, which is how one whose browser went as it
+  opened is let go of. A browser that hears nothing for a minute takes the connection for dead, and says it closed it.
+- **Trying again.** After a failure a session waits 0.5, 1, 2, 4, 8, then 10 seconds between tries, starting over after
+  any try that lasted a second. It tries at once, cutting a wait short and giving up a try that's hanging, when asked
+  (`DocSession.retry`, `WorkspaceLive.retry`: Try now, in the app), when the browser comes back online, when the tab comes
+  back into view, and, in a call, when the workspace or the board is opened again. Try now also sends edits waiting for their
+  own next try. A try given up this way doesn't count as a failure.
 
 A credit top-up is a sealed `deposit` record, header `{ v: 1, kind: 'deposit', ownerId, depositId, keyVersion: '1' }`,
 under `Kservice`'s accounting key like the billing state, so the watcher opens it without anyone signed in: the

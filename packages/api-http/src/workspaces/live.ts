@@ -200,7 +200,8 @@ export class HttpWorkspaceLive implements WorkspaceLive {
         this.set({ status: 'closed', tree: null, here: [], mentions: [] });
         return;
       }
-      if (ending === 'failed') this.set({ status: 'reconnecting' });
+      // A try given up for Try now didn't fail: the next goes at once.
+      if (ending === 'failed' && !this.hurry) this.set({ status: 'reconnecting' });
       const steady = Date.now() - opened >= STEADY_MS;
       if (this.hurried() || (ending === 'ended' && steady)) { wait = FIRST_WAIT_MS; continue; }
       if (steady) wait = FIRST_WAIT_MS;

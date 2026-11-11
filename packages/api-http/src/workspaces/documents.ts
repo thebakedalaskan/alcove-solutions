@@ -736,7 +736,8 @@ export class HttpDocSession implements DocSession {
       this.live = false;
       if (this.stopped) return;
       if (typeof ending === 'object') { this.over(ending.over); return; }
-      if (ending === 'failed') { this.streamDown = true; this.publish(); }
+      // A try given up for Try now didn't fail: the next goes at once.
+      if (ending === 'failed' && !this.hurry) { this.streamDown = true; this.publish(); }
       const steady = Date.now() - opened >= STEADY_MS;
       if (this.hurried() || (ending === 'ended' && steady)) { wait = FIRST_WAIT_MS; continue; }
       if (steady) wait = FIRST_WAIT_MS;

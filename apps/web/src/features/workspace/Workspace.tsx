@@ -10,7 +10,7 @@ import { useNavigate } from '@tanstack/react-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '~/lib/api';
 import { overlayOpen, typing, withMod } from '~/lib/keys';
-import { useLive, useMedia } from '~/lib/live';
+import { useLive, useMedia, useOnline } from '~/lib/live';
 import { log } from '~/lib/log';
 import { q, qk, useWorkspaceName } from '~/lib/queries';
 import { announceMentionsRead } from '~/features/shell/attentionChannel';
@@ -177,6 +177,8 @@ function useFolders(owner: string | null, workspaceId: string) {
 /** The workspace once its stream is open. */
 function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, call }: WorkspaceProps & { store: WorkspaceLive }) {
   const view = useLive(store);
+  const online = useOnline();
+  useListTriesWhenShown(store, call?.closed ?? false);
   const session = useQuery(q.session()).data ?? null;
   const owner = session?.ownerId ?? null;
   const me = session?.user ?? null;
@@ -390,11 +392,11 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
       </>
     );
   }
-  if (!view.tree) return <WsPane page={isPage}>{view.status === 'reconnecting' && <WsDoc><WsOfflineEmpty /></WsDoc>}</WsPane>;
+  if (!view.tree) return <WsPane page={isPage}>{view.status === 'reconnecting' && <WsDoc><WsOfflineEmpty online={online} onTry={store.retry} /></WsDoc>}</WsPane>;
 
   const ws: Ws = {
     mode, workspaceId, pass, call, sent: view.tree, here: view.here, others, present, following, follow, stopFollowing, items, tree, at, go, switchTo: onSwitch, owner, me,
-    self: view.here.find((h) => h.isMe)?.person ?? me, actions, say, canChange, spaceName, spaceSave,
+    self: view.here.find((h) => h.isMe)?.person ?? me, actions, say, canChange, spaceName, spaceSave, listDown: view.status === 'reconnecting' ? { onTry: online ? store.retry : undefined } : null,
     open, setOpen, glowing, blockInto, setBlockInto, draft, setDraft, renaming, setRenaming, listOff, toggleList, justMade, openDoc, page, put, lastDocument, openFind: () => find.setFinding(true), pictures, ids
   };
   const host = call ? { live: call.live, at, go, say, here: view.here, workspaceId, put, lastDocument, closed: call.closed, toggleList, ids, following, stopFollowing: () => stopFollowing() } : null;
@@ -428,6 +430,19 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
      </LiveHostContext>
     </WsContext>
   );
+}
+
+/**
+ * In a call, the workspace is kept as it was while it's out of sight (call/workspace/WorkspacePanel.tsx): opening it again
+ * tries its stream at once if it's down, as Try now does, rather than leaving it in the middle of its wait.
+ */
+function useListTriesWhenShown(store: WorkspaceLive, hidden: boolean): void {
+  const was = useRef(hidden);
+  useEffect(() => {
+    const before = was.current;
+    was.current = hidden;
+    if (before && !hidden) store.retry();
+  }, [hidden, store]);
 }
 
 /** One live stream for as long as this workspace is on screen. */

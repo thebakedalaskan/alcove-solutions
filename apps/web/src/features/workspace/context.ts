@@ -190,6 +190,11 @@ export interface Ws {
   /** What the workspace is called here. */
   spaceName: string;
   spaceSave: 'quiet' | 'saving' | 'saved' | 'failed';
+  /**
+   * The workspace's own stream is down, so the list and who's where may not be up to date: the list says Reconnecting, with
+   * Try now while the browser has a connection. Null while it's live.
+   */
+  listDown: { onTry?: (() => void) | undefined } | null;
   /** The folders open in the list. */
   open: ReadonlySet<string>;
   setOpen: (id: string, open: boolean) => void;
