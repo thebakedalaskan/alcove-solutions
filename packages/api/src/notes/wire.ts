@@ -1,7 +1,23 @@
+import { EmailParamSchema } from '../identity/people';
 import { isTimeZone } from '../meetings/schema';
 import { oneLine } from '../shared/validation';
 import { ModelIdSchema } from './models';
+import { NoteKindSchema } from './schema';
 import { z } from '../shared/zod';
+
+/** The most characters a search's words can be: the server refuses a longer search, so the app sends no more than this. */
+export const MAX_SEARCH_TEXT = 200;
+
+/** The most characters a question can be, about one call, a series or across your notes: a longer one is refused. */
+export const MAX_QUESTION = 500;
+
+/**
+ * Searching your notes: the kind of note, the words (`searchOf` says how they're read) and whose lines to look in (`by`,
+ * someone's address). It all travels in the body, so neither the words nor the address reaches a URL or a log line.
+ */
+export const NoteSearchBodySchema = z.object({ kind: NoteKindSchema.optional(), text: z.string().max(MAX_SEARCH_TEXT).optional(), by: EmailParamSchema.optional() });
+
+
 /**
  * Sharing notes: up to 50 addresses, and the group's name when they're one of the sharer's groups
  * (the app sends the group's addresses; the group itself stays in the sharer's preferences).
@@ -13,7 +29,7 @@ export const ShareInputSchema = z.object({
 
 
 /** Asking about a call: the question travels in the body. */
-export const AskBodySchema = z.object({ question: z.string().trim().min(1).max(500) });
+export const AskBodySchema = z.object({ question: z.string().trim().min(1).max(MAX_QUESTION) });
 
 /** Writing the notes again: optionally with another model (an ID from `models.list()`, or null for the default model). */
 export const RewriteBodySchema = z.object({ model: ModelIdSchema.nullable().optional() });

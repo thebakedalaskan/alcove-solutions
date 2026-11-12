@@ -9,12 +9,12 @@ import { WsAskAnswer, WsAskMenu, WsPopover, wsToast } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { AnswerView, useAnswer } from '~/features/notes/answer';
-import { Sources } from '~/features/shell/Palette';
 import { api } from '~/lib/api';
 import { sessions } from '~/lib/live';
 import { q } from '~/lib/queries';
 import type { Ws } from './context';
 import type { AskDraft, EditorProps } from './editor/types';
+import { Sources } from './Sources';
 
 /** How much of the words a question quotes. */
 const QUOTED = 120;

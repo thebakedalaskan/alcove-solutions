@@ -2,7 +2,7 @@
  * The frame every screen sits in: the side panel on dusk (256px, sticky, dark in both themes, its middle scrolling
  * when it's long) and the page beside it, under a rounded edge the page scrolls beneath. Search and you sit at the
  * top right of every page. At 860px and narrower a top bar that scrolls with the page and a tab bar fixed at the
- * bottom take their place. The palette, which finds notes and asks them, drops from the top.
+ * bottom take their place. The palette that Search or ask opens is in palette.css.
  */
 .world-in { animation: ac-fade var(--duration-3) var(--ease-out) both; }
 
@@ -52,9 +52,11 @@
 @media (min-width: 861px) {
   .head:has(> :nth-child(2)) { min-height: 92px; }
 }
-.top-find { display: flex; align-items: center; gap: 10px; width: 250px; height: 38px; padding: 0 8px 0 13px; border-radius: var(--radius-pill); background: color-mix(in srgb, var(--ink) 8%, transparent); color: var(--ink-2); font: 500 14px/1 var(--font-sans); transition: background-color var(--duration-1); }
-.top-find:hover { background: color-mix(in srgb, var(--ink) 13%, transparent); }
+/* Search or ask is a field, solid over any sky: surface-raised with a hairline, its ⌘K on sunk. */
+.top-find { display: flex; align-items: center; gap: 10px; width: 250px; height: 38px; padding: 0 8px 0 13px; border-radius: var(--radius-pill); background: var(--surface-raised); box-shadow: inset 0 0 0 1px var(--line), var(--shadow-1); color: var(--ink-2); font: 500 14px/1 var(--font-sans); transition: box-shadow var(--duration-1), color var(--duration-1); }
+.top-find:hover { box-shadow: inset 0 0 0 1px var(--line-control), var(--shadow-1); color: var(--ink); }
 .top-find > span { flex: 1; min-width: 0; text-align: left; }
+.top-find .ac-kbd { background: var(--sunk); color: var(--ink-3); box-shadow: none; }
 .top-me { display: inline-flex; border-radius: var(--radius-sm); }
 .top-me[aria-current="page"] { box-shadow: 0 6px 0 -4px var(--ink-2); }
 @media (max-width: 1100px) {
@@ -170,52 +172,3 @@ a.sb-link:hover, a.sb-link[aria-current="page"] { background: color-mix(in srgb,
 .tab-rec { display: grid; place-items: center; width: 56px; height: 56px; margin: -24px auto 2px; border-radius: 50%; background: var(--stage-tile); box-shadow: var(--shadow-2), inset 0 0 0 1px rgb(255 255 255 / 0.1); transition: transform var(--duration-1) var(--ease-out); }
 .tab-rec i { width: 18px; height: 18px; border-radius: 50%; background: radial-gradient(circle at 40% 35%, color-mix(in srgb, var(--rec) 60%, var(--stage-ink)), var(--rec) 60%, color-mix(in srgb, var(--rec) 76%, var(--stage))); box-shadow: 0 0 14px 2px color-mix(in srgb, var(--rec) 45%, transparent); }
 .tab.is-raised:active .tab-rec { transform: scale(.96); }
-
-/* --------------------------------------------------------------- palette */
-.ac-sheet.pal { display: flex; flex-direction: column; width: min(680px, calc(100vw - 28px)); max-height: calc(100dvh - 13vh - 24px); }
-.pal-line { flex: none; margin: 14px 14px 0; box-shadow: inset 0 0 0 1px var(--line); }
-.pal-line .ac-kbd { margin-right: 10px; }
-.pal-body { flex: 1 1 auto; min-height: 0; max-height: 440px; overflow-y: auto; overscroll-behavior: contain; padding: 6px 8px 10px; }
-.pal-grp { padding: 12px 12px 6px; font: 500 12.5px/16px var(--font-sans); color: var(--ink-3); }
-.pal-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 8px 12px; border-radius: 12px; color: var(--ink); cursor: pointer; transition: background-color var(--duration-1); }
-.pal-row.is-active { background: var(--sunk); }
-.pal-row.is-off { cursor: default; }
-.pal-row.is-off .t { opacity: .55; }
-.pal-row .t, .pal-cite .t { min-width: 0; }
-.pal-row b, .pal-cite b { display: block; font: 600 14.5px/1.3 var(--font-sans); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.pal-row small, .pal-cite small { display: block; margin-top: 2px; font-size: 12.5px; line-height: 1.3; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.pal-row mark { background: var(--sun-soft); color: var(--sun-text); border-radius: 4px; padding: 0 2px; }
-.pal-row .go { color: var(--ink-3); opacity: 0; transition: opacity var(--duration-1), transform var(--duration-1); }
-.pal-row.is-active .go { opacity: 1; transform: translateX(2px); }
-/* Pinned notes carry the pin in sun-text, as chosen things do; the row you're on says what Enter does. */
-.pal-pin { display: inline-flex; align-items: center; gap: 8px; font: 600 12.5px/1 var(--font-sans); color: var(--ink-3); white-space: nowrap; }
-.pal-pin > .ac-i { color: var(--sun-text); }
-.pal-act { opacity: 0; transition: opacity var(--duration-1); }
-.pal-row.is-active .pal-act { opacity: 1; }
-[role="listbox"].is-stale { opacity: .6; transition: opacity var(--duration-2); }
-.pal-none { display: grid; justify-items: center; gap: 4px; padding: 26px 18px 22px; font-size: 13.5px; line-height: 1.45; color: var(--ink-3); text-align: center; text-wrap: balance; }
-.pal-none b { font: 600 14.5px/1.4 var(--font-sans); color: var(--ink-2); }
-.pal-none .ac-dots { color: var(--ink-3); }
-/* The answer: the line above already holds the question. */
-.pal .answer { margin: 0; padding: 12px 12px 4px; animation: none; }
-.pal .answer .q { display: none; }
-.pal .answer > p { font-size: 15.5px; line-height: 1.6; color: var(--ink); text-wrap: pretty; }
-.answer .wait { display: inline-flex; align-items: center; gap: 10px; color: var(--ink-3); }
-.pal-src { margin: 12px -12px 0; }
-.pal-src ul { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; margin: 0; padding: 0; list-style: none; }
-.pal-cite { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 8px 12px; border-radius: 12px; }
-.pal-cite .t { border-radius: 6px; }
-.pal-cite .t:hover b { color: var(--sun-text); }
-.pal-cite .at { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; max-width: 220px; }
-.pal-foot { flex: none; display: flex; align-items: center; gap: 12px; padding: 12px 14px 12px 18px; border-top: 1px solid var(--line); }
-.pal-foot .hint { flex: 1; min-width: 0; display: inline-flex; align-items: center; gap: 7px; font-size: 13px; line-height: 1.35; color: var(--ink-3); }
-.pal-foot .hint .ac-i { color: var(--ink-3); }
-.pal-foot .hint.is-sealed .ac-i { color: var(--sun-text); }
-@media (max-width: 600px) {
-  .ac-sheet.pal { top: 12px; max-height: calc(100dvh - 24px); }
-  .pal-body { max-height: none; }
-  .pal-esc, .pal-foot .kb { display: none; }
-  .pal-foot { padding: 12px 12px 12px 16px; }
-  .pal-cite { grid-template-columns: auto minmax(0, 1fr); }
-  .pal-cite .at { grid-column: 2; justify-content: flex-start; max-width: none; }
-}

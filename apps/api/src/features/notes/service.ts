@@ -7,7 +7,7 @@
  */
 import {
   MAX_FOLLOW_UP_PROPOSALS, ACCEPTED_FOLLOW_UP, isAcceptedFollowUp, type FollowUpReview, ActionItemSchema, CaptureGapSchema, ChangerSchema, ChapterSchema, DecisionSchema, InferenceEvidenceSchema, ModelIdSchema, NoteKindSchema, NoteStatusSchema, QuestionSchema, RoomNoteSchema, ScreenMomentSchema, TranscriptLineSchema, UnencryptedUseSchema,
-  isAssignee, isBy, isProposer, mayAssign, mayChangeAction, mayDecide, mayDispute, mayRewordDecision, maySayNotReplaced, minutesLabel, searchOf, termsIn,
+  isAssignee, isBy, isProposer, mayAssign, mayChangeAction, mayDecide, mayDispute, mayRewordDecision, maySayNotReplaced, minutesLabel, nameWords, searchOf, startsName, termsSaidIn,
   type ActionItem, type ActionPatch, type ActionProposal, type AnswerPart, type CaptureGap, type Change, type Chapter, type Decision, type DecisionPatch, type DecisionProposal, type GroupShare, type Inbox, type LinePatch,
   type Note, type NoteFound, type NoteKind, type NoteProgress, type NoteReader, type NoteSaid, type NoteSearch, type NoteSummary, type OpenAction, type PendingDecision, type Person, type Question, type QuestionPatch, type Received, type Recipient, type RecipientRole,
   type RevisitPatch, type RoomNote, type RoomRef, type Speaker, type TranscriptLine
@@ -440,30 +440,63 @@ async function summary(l: Located): Promise<NoteSummary> {
   return summaryOf(l, organizer, await recipients(l, organizer));
 }
 
-/** Lines of what was said that a note's row and its preview show, at most. */
-const SAID_SHOWN = 4;
+/** Lines of what was said a found note quotes, at most: enough for the palette to open a call's other moments in place. */
+const SAID_SHOWN = 10;
 /** Everything said in a note as someone may read it: the main room, then each breakout room's lines, which say which room. */
 const saidIn = (m: NoteManifest): TranscriptLine[] => [...(m.transcript ?? []), ...m.rooms.flatMap((r) => r.transcript.map((l) => ({ ...l, room: { id: r.id, name: r.name } })))];
 
-/** What a search finds in a note as someone may read it: the lines with most of its words, best first, and how many lines have any. Nothing, when the note doesn't match. */
-function foundIn(l: Located, { terms, question }: NoteSearch): Pick<NoteFound, 'said' | 'saidCount'> | undefined {
+/**
+ * What a line became in a note, read in the part of the call it was said in (the main room, or its breakout room's
+ * section): what a decision that isn't rejected rests on, or else what a follow-up rests on.
+ */
+function madeIn(m: NoteManifest): (line: TranscriptLine) => NoteSaid['made'] {
+  const parts = new Map(partsOf(m).map((p) => [p.room?.id ?? '', {
+    decided: new Set(p.decisions.filter((d) => d.state !== 'rejected').flatMap((d) => d.lines)),
+    followed: new Set(p.actions.filter(isAcceptedFollowUp).flatMap((a) => a.lines))
+  }]));
+  return (line) => {
+    const part = parts.get(line.room?.id ?? '');
+    return part?.decided.has(line.id) ? 'decision' : part?.followed.has(line.id) ? 'follow-up' : undefined;
+  };
+}
+
+/**
+ * What a search finds in a note as someone may read it: the lines with most of its words, best first, then the earliest,
+ * and how many lines have any. A word is in the note when it's in its title, summary, decisions, follow-ups or anything
+ * said, or starts a name of someone who spoke. With `by` (an address) only the lines they said count, so the note is found
+ * only through one of them, and with no words it's all of them, in time order. Nothing, when the note doesn't match.
+ */
+function foundIn(l: Located, { terms, question }: NoteSearch, by: string | undefined): Pick<NoteFound, 'said' | 'saidCount'> | undefined {
   const m = asRead(l);
-  const lines = saidIn(m);
-  const has = termsIn(`${m.title} ${m.summary} ${lines.map((t) => t.text).join(' ')}`, terms);
-  if (question ? !has : has < terms.length) return undefined;
-  const matched = lines.flatMap((line) => { const n = termsIn(line.text, terms); return n ? [{ line, n }] : []; });
-  const said = matched.sort((a, b) => b.n - a.n || a.line.at - b.line.at).slice(0, SAID_SHOWN).map(({ line: { id, at, speaker, room, text } }): NoteSaid => (
-    { id, at, text, ...(speaker ? { speaker } : {}), ...(room ? { room } : {}) }
-  ));
+  const all = saidIn(m);
+  const lines = by === undefined ? all : all.filter((line) => line.speaker?.person !== undefined && same(line.speaker.person.email, by));
+  if (by !== undefined && !lines.length) return undefined;
+  const written = by === undefined ? [m.title, m.summary, ...decisionsOf(m).map((d) => d.text), ...actionsOf(m).map((a) => a.text)] : [];
+  // The note is read once: every line's words lower-cased, and each speaker's name split into its words. `searchOf` has
+  // lower-cased the search's words already.
+  const names = new Map<string, string[]>();
+  for (const line of lines) if (line.speaker && !names.has(line.speaker.name)) names.set(line.speaker.name, nameWords(line.speaker.name));
+  const heard = lines.map((line) => ({ line, words: line.text.toLowerCase(), name: line.speaker ? names.get(line.speaker.name) ?? [] : [] }));
+  const note = [...written.map((w) => w.toLowerCase()), ...heard.map((h) => h.words)].join(' ');
+  const speakers = [...names.values()];
+  const has = terms.filter((t) => note.includes(t) || speakers.some((name) => startsName(name, t))).length;
+  if (terms.length && (question ? !has : has < terms.length)) return undefined;
+  const matched = heard.flatMap(({ line, words, name }) => { const n = terms.length ? termsSaidIn(words, name, terms) : 1; return n ? [{ line, n }] : []; });
+  const made = madeIn(m);
+  const said = matched.sort((a, b) => b.n - a.n || a.line.at - b.line.at).slice(0, SAID_SHOWN).map(({ line }): NoteSaid => {
+    const became = made(line);
+    return { id: line.id, at: line.at, text: line.text, ...(line.speaker ? { speaker: line.speaker } : {}), ...(line.room ? { room: line.room } : {}), ...(became ? { made: became } : {}) };
+  });
   return { said, saidCount: matched.length };
 }
 
-export async function list(o: Owner, q: { kind?: NoteKind | undefined; text?: string | undefined }): Promise<NoteFound[]> {
+export async function list(o: Owner, q: { kind?: NoteKind | undefined; text?: string | undefined; by?: string | undefined }): Promise<NoteFound[]> {
   const search = searchOf(q.text ?? '');
+  const by = q.by?.trim().toLowerCase() || undefined;
   const notes = (await everyNote(o, await myEmail(o))).filter((l) => !q.kind || l.note.manifest.kind === q.kind);
   notes.sort((a, b) => b.note.manifest.startedAt.localeCompare(a.note.manifest.startedAt));
   const found = notes.flatMap((l) => {
-    const hit = search.terms.length ? foundIn(l, search) : { said: [], saidCount: 0 };
+    const hit = search.terms.length || by !== undefined ? foundIn(l, search, by) : { said: [], saidCount: 0 };
     return hit ? [{ l, hit }] : [];
   });
   return Promise.all(found.map(async ({ l, hit }) => ({ ...await summary(l), ...hit })));

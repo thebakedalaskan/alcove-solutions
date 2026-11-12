@@ -40,7 +40,8 @@ export const qk = {
   busy: (emails: readonly string[], from: ISODate, to: ISODate) => ['meetings', 'busy', from, to, ...emails] as const,
   documents: ['documents'] as const,
   notes: ['notes'] as const,
-  noteList: (kind?: NoteKind, text?: string) => ['notes', 'list', kind ?? 'all', text ?? ''] as const,
+  /** A list of notes, or a search of them: its words, and whose lines it looks in (`by`, an address, which stays in memory). */
+  noteList: (kind?: NoteKind, text?: string, by?: string) => ['notes', 'list', kind ?? 'all', text ?? '', by?.toLowerCase() ?? ''] as const,
   note: (id: string) => ['notes', 'one', id] as const,
   /** Your own notes on a note: never anyone else's, so nothing here is ever shown to someone who signs in after you (signing in starts the cache over). */
   personal: (id: string) => ['notes', 'personal', id] as const,
@@ -72,6 +73,12 @@ export const qk = {
   boardsToBring: ['workspaces', 'boards'] as const,
   visionModels: ['models', 'vision'] as const
 };
+
+/**
+ * Whether a list of notes' key (`qk.noteList`) is a search: it has words, or someone whose lines it looks in. The plain
+ * list of your notes isn't one, so it's never what a search shows while its answer is on the way.
+ */
+export const isNoteSearch = (key: ReturnType<typeof qk.noteList>): boolean => key[3] !== '' || key[4] !== '';
 
 /** A saved board someone could bring to a call: where it is, what it's called, whose it is, and when it was last changed. */
 export interface BoardToBring { workspaceId: string; workspace: string | null; id: string; name: string; by: string | null; editedAt: ISODate }
@@ -159,7 +166,11 @@ export const q = {
   }),
   /** Someone's other calendar events; refreshed every few minutes, since they change outside Alcove. */
   calendar: () => queryOptions({ queryKey: qk.calendar, queryFn: () => api.calendar.get(), staleTime: 60_000, refetchInterval: 3 * 60_000, retry: false }),
-  notes: (kind?: NoteKind, text?: string) => queryOptions({ queryKey: qk.noteList(kind, text), queryFn: () => api.notes.list({ kind, text }), placeholderData: (prev) => prev }),
+  /**
+   * Your notes, newest first, or what a search finds: notes with the words, and the lines that have them. `by` is someone's
+   * address: only what they said counts. The words and the address travel in the request's body, never its address.
+   */
+  notes: (kind?: NoteKind, text?: string, by?: string) => queryOptions({ queryKey: qk.noteList(kind, text, by), queryFn: () => api.notes.list({ kind, text, by }), placeholderData: (prev) => prev }),
   note: (id: string) => queryOptions({ queryKey: qk.note(id), queryFn: ({ client }) => readNote(api, client, id) }),
   personal: (id: string) => queryOptions({ queryKey: qk.personal(id), queryFn: () => api.notes.personal(id).get(), retry: false }),
   /** What adding an entry to the shared notes would do, read fresh each time it's opened: the people who'd get it can change. */

@@ -1,6 +1,6 @@
 /*
  * Journeys on Home (docs/product/user-flows.md › 3. Home), as the canvas's Home board draws them (docs/design/canvas/home.js,
- * AH.JOURNEYS_HOME and AH.JOURNEYS). Asking your notes from Search or ask is the side panel's (2.1), and Start a call's
+ * AH.JOURNEYS_HOME and AH.JOURNEYS). Asking your notes from Search or ask is the side panel's (2.4), and Start a call's
  * modal is flow 4's.
  */
 import type { Meta } from '@storybook/react-vite';

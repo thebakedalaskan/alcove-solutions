@@ -1,6 +1,8 @@
 /*
- * Answers to questions about notes, as they arrive: one way to ask and follow an answer, and one way to
- * show it. Asking about a note or a series (the ask bar) and asking every note (the palette) all use these.
+ * Answers to questions about notes, as they arrive: one way to ask and follow an answer (`useAnswer`), and one way to
+ * show it (`AnswerView`). Asking about a note or a series (the ask bar) and asking what was said about some words in a
+ * document (the workspace, which lists the notes it comes from with its own Sources) use both. Asking every note, from
+ * the palette or from Notes, uses `useAnswer` alone, and each shows the answer its own way.
  */
 import { errorMessage, type AnswerPart, type SeriesAnswerPart } from '@alcove/api';
 import { Dots, Icon, IconButton, Words, cn, useToast } from '@alcove/ui';

@@ -13,11 +13,11 @@ import { DriveExportInputSchema, NOTE_LINK_DAYS, type DriveAutomatic, type Drive
 import { disconnectedDrive } from '../world/drive-exports';
 import type { BoardSortBody, DocAskBody, DocAskPart, WorkspaceReadOptions } from '@alcove/api';
 import {
-  ACCEPTED_FOLLOW_UP, AlcoveApiError, type FollowUpReview, type FollowUpTarget, type NoteAction, AgentAuthorizationIdSchema, AgentConnectionIdSchema, AgentDecisionInputSchema, AgentTokenInputSchema, DEFAULT_NOTES_CHOICES, searchOf, termsIn, type ActionPatch, type ActionProposal, type AlcoveApi, type AgentConnection, type AnswerPart, type Busy, type CallCard,
+  ACCEPTED_FOLLOW_UP, AlcoveApiError, type FollowUpReview, type FollowUpTarget, type NoteAction, AgentAuthorizationIdSchema, AgentConnectionIdSchema, AgentDecisionInputSchema, AgentTokenInputSchema, DEFAULT_NOTES_CHOICES, searchOf, termsIn, termsSaid, type ActionPatch, type ActionProposal, type AlcoveApi, type AgentConnection, type AnswerPart, type Busy, type CallCard,
   type CallDocument, type CallSession, type Change, type ChangeScope, type DecisionPatch, type DecisionProposal, type ID, type Inbox, type IncomingRing,
-  type InstantCallInput, type Interval, type LinePatch, type Meeting, type MeetingInput, type Note, type NoteFound, type NoteKind, type NoteProgress,
+  type InstantCallInput, type Interval, type LinePatch, type Meeting, type MeetingInput, type Note, type NoteFound, type NoteKind, type NoteProgress, type NoteSaid,
   type Patch, type Preferences, type PromoteBody, type PromotionPreview, type QuestionPatch, type RecipientRole, type RingReply, type Rsvp, type Series, type SharedAudience, type SharedWrite,
-  type SeriesAnswerPart, type SeriesNote, type SignInResult, type DemoProvider, type RoomRecordingInput, type RoomRecording, type CallMoveIn
+  type SeriesAnswerPart, type SeriesNote, type SignInResult, type DemoProvider, type RoomRecordingInput, type RoomRecording, type CallMoveIn, type TranscriptLine
 } from '@alcove/api';
 import { isOnline } from '../browser';
 import { canvasTheme } from '../world/boards';
@@ -164,19 +164,39 @@ function inboxOf(w: World): Inbox {
 
 /* ---------- searching and asking, simply ---------- */
 
-function found(w: World, kind: NoteKind | undefined, text: string | undefined): NoteFound[] {
+/** Lines of what was said a found note shows, at most, as the API has it. */
+const SAID_SHOWN = 10;
+/** Everything said in a note: the main room, then each breakout room's lines, which say which room. */
+const saidIn = (n: Note): TranscriptLine[] => [...(n.transcript ?? []), ...n.rooms.flatMap((r) => r.transcript.map((l) => ({ ...l, room: { id: r.id, name: r.name } })))];
+/** What a line became in its part of the call: what a decision that isn't rejected rests on, or else a follow-up. */
+function madeOf(n: Note, line: TranscriptLine): NoteSaid['made'] {
+  const part = line.room ? n.rooms.find((r) => r.id === line.room?.id) : n;
+  if (part?.decisions.some((d) => d.state !== 'rejected' && d.lines.includes(line.id))) return 'decision';
+  return part?.actions.some((a) => a.lines.includes(line.id)) ? 'follow-up' : undefined;
+}
+
+/**
+ * What a search finds, as the API finds it: a note has a word in its title, summary, decisions, follow-ups or anything
+ * said, or when the word starts a name of someone who spoke in it. With `by` (an address) only their lines count.
+ */
+function found(w: World, kind: NoteKind | undefined, text: string | undefined, by: string | undefined): NoteFound[] {
   const notes = w.notes.filter((n) => !kind || n.kind === kind);
-  if (!text?.trim()) return notes.map(foundOf);
-  const { terms, question } = searchOf(text);
-  if (!terms.length) return notes.map(foundOf);
+  const { terms, question } = searchOf(text ?? '');
+  const whose = by?.trim().toLowerCase();
+  if (!terms.length && !whose) return notes.map(foundOf);
   return notes.flatMap((n) => {
-    const words = [n.title, n.excerpt, n.summary, ...(n.transcript ?? []).map((l) => l.text)].join(' ');
-    const hits = termsIn(words, terms);
-    if (question ? hits === 0 : hits < terms.length) return [];
-    const said = (n.transcript ?? []).map((l) => ({ l, k: termsIn(l.text, terms) })).filter((x) => x.k > 0).sort((a, b) => b.k - a.k).map(({ l }) => ({
-      id: l.id, at: l.at, text: l.text, ...(l.speaker ? { speaker: l.speaker } : {}), ...(l.room ? { room: l.room } : {})
-    }));
-    return [{ ...foundOf(n), said: said.slice(0, 3), saidCount: said.length }];
+    const all = saidIn(n);
+    const lines = whose ? all.filter((l) => l.speaker?.person?.email.toLowerCase() === whose) : all;
+    if (whose && !lines.length) return [];
+    const words = whose ? '' : [n.title, n.excerpt, n.summary, ...[n, ...n.rooms].flatMap((p) => [...p.decisions, ...p.actions].map((e) => e.text))].join(' ');
+    const has = terms.filter((t) => termsIn(words, [t]) || lines.some((l) => termsSaid(l, [t]))).length;
+    if (terms.length && (question ? has === 0 : has < terms.length)) return [];
+    const matched = lines.flatMap((line) => { const k = terms.length ? termsSaid(line, terms) : 1; return k ? [{ line, k }] : []; });
+    const said = matched.sort((a, b) => b.k - a.k || a.line.at - b.line.at).slice(0, SAID_SHOWN).map(({ line }): NoteSaid => {
+      const made = madeOf(n, line);
+      return { id: line.id, at: line.at, text: line.text, ...(line.speaker ? { speaker: line.speaker } : {}), ...(line.room ? { room: line.room } : {}), ...(made ? { made } : {}) };
+    });
+    return [{ ...foundOf(n), said, saidCount: matched.length }];
   });
 }
 
@@ -206,7 +226,7 @@ function answerAbout(n: Note, question: string): AnswerPart[] {
 
 /** An answer across every note: what the notes that match say, citing where. */
 function answerAcross(w: World, question: string): AnswerPart[] {
-  const hits = found(w, undefined, question).filter((n) => n.status === 'ready');
+  const hits = found(w, undefined, question, undefined).filter((n) => n.status === 'ready');
   if (!w.notes.some((n) => n.status === 'ready')) return [{ type: 'text', text: 'There are no written notes to answer from yet.' }];
   if (!hits.length) return [{ type: 'text', text: 'None of your notes say anything about that.' }];
   const top = hits.slice(0, 3);
@@ -576,7 +596,7 @@ export const standIn: AlcoveApi = {
     }
   },
   notes: {
-    list: (query) => answer((w) => found(w, query?.kind, query?.text)),
+    list: (query) => answer((w) => found(w, query?.kind, query?.text, query?.by)),
     get: (id: ID) => answer((w) => noteIn(w, id)),
     progress: (id: ID): AsyncIterable<NoteProgress> => progressOf(id),
     audioUrl: (id: ID, segment: number) => {

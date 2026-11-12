@@ -9,10 +9,13 @@ import { type Series, type SeriesAnswerPart } from './series';
 import { type ActionPatch, type ActionProposal, type DecisionPatch, type DecisionProposal, type LinePatch, type QuestionPatch, type RevisitPatch } from './wire';
 export interface NotesApi {
   /**
-   * Every note you have, newest first, or the ones a search finds (`searchOf` says how `text` is read). A found note
-   * says what was said that matched, from what you may read of it.
+   * Every note you have, newest first, or the ones a search finds (`searchOf` says how `text` is read). A note has a
+   * word when it's in its title, summary, decisions, follow-ups or anything said, or starts a word of the name of
+   * someone who spoke in it. A found note says what was said that matched, from what you may read of it.
+   * `by` is someone's address: then only the lines they said count, a note is found only through one of them, and
+   * with no words it's everything they said.
    */
-  list(query?: { kind?: NoteKind | undefined; text?: string | undefined }): Promise<NoteFound[]>;
+  list(query?: { kind?: NoteKind | undefined; text?: string | undefined; by?: string | undefined }): Promise<NoteFound[]>;
   get(id: ID): Promise<Note>;
   progress(id: ID): AsyncIterable<NoteProgress>;
   /**

@@ -43,6 +43,10 @@
    "name": "Settings step by step"
   },
   {
+   "id": "steps-search",
+   "name": "Search step by step"
+  },
+  {
    "id": "parts",
    "name": "Parts"
   }
@@ -241,6 +245,24 @@
    "page": "app",
    "expand": "fill",
    "is_interactive": true
+  },
+  "Search.dc.html": {
+   "x": 4560,
+   "y": 1340,
+   "w": 1440,
+   "h": 900,
+   "title": "Search",
+   "page": "app",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "StepsSearch.dc.html": {
+   "x": 0,
+   "y": 0,
+   "w": 4668,
+   "h": 5110,
+   "title": "Search, every journey step by step",
+   "page": "steps-search"
   }
  },
  "order": [
@@ -265,7 +287,9 @@
   "Side.dc.html",
   "SkyArt.dc.html",
   "Visitors.dc.html",
-  "Scene.dc.html"
+  "Scene.dc.html",
+  "Search.dc.html",
+  "StepsSearch.dc.html"
  ],
  "notes": {
   "app-title": {

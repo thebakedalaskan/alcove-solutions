@@ -92,12 +92,37 @@ On a phone (860 px wide or narrower) a top bar takes its place, with the brand, 
 you (Settings), and a tab bar runs along the bottom: **Home**, **Notes**, **Record** (raised), **Drive** and **Team**
 when you're on one. Offline, the same notice sits under the top bar.
 
-**The palette** is one line over the page. Before anything is typed it lists your five newest notes. Typing
-lists the notes whose titles, summaries or transcripts match, up to eight, with the match marked. **Enter**
-or **Ask** asks every note you have (flow 8), one question at a time: the answer appears under the line with
-the notes it comes from and the moments in them, and a moment opens its note with the player at that point,
-not playing. **↑** and **↓** pick a note instead, and **Enter** opens it. **Escape**, or the shortcut again,
-closes the palette, and focus goes back where it was. It never opens over another window, such as Start a call, and nothing opens over it.
+**The palette** is a solid window over the page, with the page dimmed behind it and never blurred. On a wide screen what's
+lit in its list shows beside it; under 1100 px the list is alone, and on a phone it takes the screen, with **Cancel**.
+
+- Before anything is typed it shows the five people you have most calls with and your five newest notes. Pressing
+  someone shows everything they said.
+- Typing finds what was said, not just the note. **Ask "…"** comes first, then the people whose names have the words,
+  then every moment with them, call by call, newest call first: who said it, their words with the match marked, and the
+  time. A line that a decision or follow-up rests on says **Decision** or **Follow-up**. A call shows two or three of its
+  moments, and **N more** opens the rest in place; the list shows the eight newest calls. Notes that have the words only
+  in their title, summary, decisions or follow-ups come after, five at most, and **See all N moments in Notes** (or
+  notes), at the end of the list, opens Notes with the same words (flow 8), with every note that has them.
+- **Enter** does what's lit: the first thing found, or **Ask** when what's typed reads as a question. **↑** and **↓**
+  move it, the pointer too, and **Tab** asks about anything typed. **Enter** on someone puts them in the line, and what's
+  typed then searches only what they said; **Backspace** on an empty line takes them out. With them in the line, the
+  list ends with **Calls with Maya in Notes**, with no count: Notes lists the notes you both have, with what's typed in
+  its line, not only what they said. Someone who said nothing you can read (they were invited and stayed quiet, or their
+  lines are the organizer's alone) says so: **Nothing Maya said is in your notes**, with **Calls with Maya**, which opens
+  Notes with the notes you both have.
+- Beside the list: a moment in its transcript, a line before it and three after, with the decision or follow-up made
+  there (one still waiting can be confirmed, or said not to be one, right there), **Open at 3:15** and, when the call
+  kept its audio, **Play from 3:15**, which plays it from there once: going back to the note, or reloading it, opens it
+  at that moment without playing; someone, with the last things they said, **What Maya said** and **Calls with
+  Maya** (Notes, with only the notes you both have); a note's summary and what's open in it, with **Open notes**; or what
+  Ask will do.
+- Asking (flow 8) puts the answer in place of the list, one question at a time, written in confidential compute from
+  your notes only, with the moments it comes from under it, each in its call. A moment opens its note there, not
+  playing. **Escape** goes back to the results, and so does changing the question.
+- When nothing has the words it says what was searched, with **Ask** lit. The first day, a search that didn't go through
+  (**Try again**) and being offline each say so.
+- **Escape**, or the shortcut again, closes the palette, and focus goes back where it was. It never opens over another
+  window, such as Start a call, and nothing opens over it.
 
 ## 3. Home
 
@@ -1283,8 +1308,10 @@ Storybook journeys **6.23–6.25** show the review alongside the call:
   a pin when it's pinned. On a wide screen the list scrolls under the horizon, so the sky stays in view; on a phone the
   page scrolls as one.
 - **Search everything said, or ask** is the line in the middle of the sky (**⌘K** on a Mac, **Ctrl+K** elsewhere goes to
-  it; **↓** goes from it to the list, and **Escape** clears it). It finds the words, not just the note: every word typed
-  has to be somewhere in the note's title, summary or what was said, in any order, breakout rooms included. A row quotes
+  it; **↓** goes from it to the list, and **Escape** clears it). Coming from the palette's **See all in Notes** (flow 2),
+  it already holds the palette's words. It finds the words, not just the note: every word typed has to be somewhere in
+  the note's title, summary, decisions, follow-ups or what was said, or start the name of someone who spoke in it, in any
+  order, breakout rooms included. A row quotes
   the line with most of the words and who said it, unless the summary has them, with a chip for each of the best moments,
   up to three in the order they were said, and the preview lists up to four of them above the summary. A moment opens the note there, not playing. While a question is
   being typed the list shows the notes with any of its words, and all of them when none has. Someone who can't read a
