@@ -17,8 +17,11 @@ type Story = StoryObj<typeof meta>;
 
 /** On their own, where a list is on its way. */
 export const Waiting: Story = { render: (args) => <span className="text-ink-3"><Dots {...args} /></span> };
-/** In a line that says what's being waited for, as the leave sheet does while notes are written. */
+/**
+ * In a line that says what's being waited for, as the page a call leaves you on says the step its notes are on under Notes are
+ * being written (In a call › CallOver).
+ */
 export const InAStatusLine: Story = {
   name: 'In a status line',
-  render: (args) => <p className="flex items-center gap-2.5 text-[13.5px] text-ink-3" role="status"><Dots {...args} />Writing in confidential compute</p>
+  render: (args) => <p className="flex items-center gap-2.5 text-[13.5px] text-ink-3" role="status"><Dots {...args} />Writing the summary, decisions and follow-ups</p>
 };

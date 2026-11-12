@@ -3,14 +3,15 @@
  * front at its own width. A page sets where the horizon falls with --hz in its stylesheet, as tall as the page is one
  * action, and these stories set it the same way. The app's main column gives --page-x, the page's side margin, and on a
  * phone a page gives itself its height; here the story does both. Record's page is night in both themes: the app turns
- * the whole document dark for it, and here the page is scoped dark and takes its text colour from that scope. Whatever
- * passes through comes at random.
+ * the whole document dark for it, and here the page is scoped dark and takes its text colour from that scope. So is the night
+ * after a call, which the page a call leaves you on draws for itself (In a call › CallOver). Whatever passes through comes at
+ * random.
  */
 import { Card, Evening, Faces, type Moment } from '@alcove/ui';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { AIKO, KOFI, PRIYA } from '../../../src/world/people';
 
-const MOMENTS = ['home', 'team', 'agents', 'notes', 'drive', 'note', 'settings', 'record'] as const satisfies readonly Moment[];
+const MOMENTS = ['home', 'team', 'agents', 'notes', 'drive', 'note', 'settings', 'record', 'after'] as const satisfies readonly Moment[];
 /** Where each page has the horizon, as its stylesheet sets --hz. */
 const PAGE_HZ: Record<Moment, string> = {
   home: 'clamp(352px, 45vh, 540px)',
@@ -20,9 +21,12 @@ const PAGE_HZ: Record<Moment, string> = {
   drive: 'calc(8px + clamp(220px, 26vh, 300px))',
   note: 'calc(8px + clamp(158px, 18.5vh, 196px))',
   settings: '136px',
-  record: 'calc(8px + clamp(424px, 55vh, 700px))'
+  record: 'calc(8px + clamp(424px, 55vh, 700px))',
+  after: '84dvh'
 };
-const PAGE: Record<Moment, string> = { home: 'Home', team: 'Team', agents: 'Agents', notes: 'Notes', drive: 'Drive', note: 'Design review', settings: 'Settings', record: 'Record' };
+const PAGE: Record<Moment, string> = { home: 'Home', team: 'Team', agents: 'Agents', notes: 'Notes', drive: 'Drive', note: 'Design review', settings: 'Settings', record: 'Record', after: 'Team standup has ended' };
+/** The night, whatever the theme: Record, and after a call. */
+const NIGHT: ReadonlySet<Moment> = new Set<Moment>(['record', 'after']);
 
 const meta = {
   title: 'Components/The evening/Evening',
@@ -31,7 +35,7 @@ const meta = {
   args: { moment: 'notes', children: null },
   argTypes: { moment: { control: 'inline-radio', options: MOMENTS }, children: { control: false }, className: { control: false } },
   render: (args) => (
-    <Evening {...args} className={args.moment === 'record' ? 'dark' : undefined} style={{ '--hz': PAGE_HZ[args.moment], '--page-x': 'clamp(28px, 3.4vw, 60px)', color: 'var(--ink)', minHeight: '100dvh' }}>
+    <Evening {...args} className={NIGHT.has(args.moment) ? 'dark' : undefined} style={{ '--hz': PAGE_HZ[args.moment], '--page-x': 'clamp(28px, 3.4vw, 60px)', color: 'var(--ink)', minHeight: '100dvh' }}>
       {/* The heading stands in the sky, so the card starts on the horizon: the page's top padding is 30px, 6px on a phone. */}
       <header className="flex min-h-[calc(var(--hz)-6px)] items-end pb-6 min-[861px]:min-h-[calc(var(--hz)-30px)]">
         <h1 className="ac-display-m">{PAGE[args.moment]}</h1>
@@ -60,3 +64,5 @@ export const ANote: Story = { name: 'A note', args: { moment: 'note' } };
 export const Settings: Story = { args: { moment: 'settings' } };
 /** Record: night, in both themes. */
 export const Record: Story = { args: { moment: 'record' } };
+/** After a call: night in both themes, a crescent moon and the glow on the horizon. The page a call leaves you on draws it itself. */
+export const AfterACall: Story = { name: 'After a call', args: { moment: 'after' } };

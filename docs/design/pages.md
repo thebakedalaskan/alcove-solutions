@@ -400,6 +400,11 @@ circles, and whoever speaks gets the `speak` ring. The camera appears only here 
   screen or the board picker in the same menu, so no window opens over another. While someone else presents a board or the
   workspace, A board and The workspace say who instead. Stop sharing, on a board or the workspace you present, asks for you
   or for everyone in the same menu.
+- **Leave** asks only whoever hosts, and only with someone else in the call: a popover over it, as Close's question opens,
+  with **End for everyone** and, when someone here can host, **Leave, Priya hosts**, whose **Change** lists who else could
+  in the same popover. Anyone else is out at once. Alone, pressing it ends the call; going back a page asks instead, End
+  for everyone saying "You're the only one here, so leaving ends the call." However the call is over for you, it eases
+  back as its page rises in ([After the call](#after-the-call)).
 - **A tile only while it's presented.** Something presented that isn't on your stage is a tile first among the people (a
   screen live, a board drawn small, the workspace with where its presenter is), with who's presenting it and Join.
 - **People** opens with Find someone, which narrows every list in it by name: who's asking to join first (for whoever
@@ -436,7 +441,42 @@ circles, and whoever speaks gets the `speak` ring. The camera appears only here 
   and the dock keeps the microphone, camera, Show everything and Leave.
 - **On a phone** (under 600px), the top is the title, the notes sign, Chat and the faces; the dock is the microphone,
   camera, Share, More and Leave; what's open fills the screen under a row of arches; More starts with a grid of Board,
-  Workspace, Notes, Chat and People; and your side, Settings and Close's question are sheets.
+  Workspace, Notes, Chat and People; and your side, Settings, Close's question and Leave's are sheets.
+
+## After the call
+
+`features/call/session/CallOver.tsx` (Rejoin in `rejoin.ts`), drawing `components/call-over.tsx` and
+`styles/call-over.css` (`co-`). Moment: `after`. Boards: [canvas/after/](canvas/after/README.md).
+
+When a call is over for you, its own page takes the call's place, on the call's night: the welcome page's cove after dark
+(`Cove`, seed 17), in both themes, with stars, a crescent moon high on the right and a rose glow on the horizon, its light
+lying on the bay. It's the join page's sibling: the logo once in the middle of the top and what the call runs on at the
+top right, but no Home link, since Go to Home is one of its buttons.
+
+- **One column on the sky,** from the top: who was in the call (or who's still in it) in their arches, the title in
+  Newsreader ("Team standup has ended", "You left Team standup"), one line, the notes, then the buttons. The cove's land
+  keeps clear of the words, as the welcome page's does.
+- **One line** says what happened in a few words: "20 min with Priya, Kofi and Maya", "Priya, Kofi and Maya are still in
+  it" with how long it's run ticking beside it, "Kofi is hosting until you're back". It never says who ended a call you
+  didn't end, since the app can't tell whether whoever hosts did or it ended by itself: that line is the one you'd see had
+  you ended it.
+- **The notes** are a panel: being written (the step they're at, and who gets them, with their faces), then the summary's
+  first lines with what was decided (rose) and the follow-ups (horizon), or, when they take long, that they'll be in
+  Notes. While a call you left goes on, one line says how notes were as you left: on with the `rec` dot, paused with the
+  pause sign, or off, and that the notes, or what was written, come when it ends. Without notes, it says none were taken.
+- **One filled button,** the first: Open the notes (Read the notes once they're written), Rejoin (J) while the call goes
+  on, or Go to Home when there's nothing else. J rejoins with the microphone and camera off; the button brings them back
+  as they were. While Rejoin says Rejoining…, Go to Home can still be pressed: it's the way out while you wait to be let
+  in. Nothing moves on by itself, but signing out in another tab takes the page to the welcome page, as it takes every
+  other tab.
+- **Its states** are the ways a call is over for you, as
+  [user flow 7](../product/user-flows.md#7-end-the-call-and-get-the-notes) lists them. What changes while you're on it
+  (the notes being written, a call you left ending) rises in, in place, and when the page turns its title takes the keys.
+- **In and out.** The call eases back and fades over half a second as the page rises in over it, about a second in all.
+  To Home or the notes, the page fades and the frame settles in, the side panel easing in from the left, in under a
+  second. Rejoin brings the call back up in place, at the same address, as the page fades over it. Only opacity and
+  transform move, and with reduced motion each is a short fade.
+- **On a phone** (under 600px wide) it's the same column, with the buttons across the foot.
 
 ## A board
 

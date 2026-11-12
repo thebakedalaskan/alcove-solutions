@@ -16,7 +16,8 @@
  * (`rec-`); starting and scheduling a call in styles/flow.css (`cf-`); the organizer's lobby, ringing and the page for
  * picking a time in styles/ringing.css (`rg-`); the workspace, in a call and in the app, in styles/workspace.css (`wt-`,
  * `wd-`, `wm-`, `wv-`, `wp-`, `wh-`, `wl-`); the board in styles/board.css; the welcome page in styles/welcome.css and its scenes'
- * welcome-*.css (`lp-`); the other screens in styles/{app,call}.css.
+ * welcome-*.css (`lp-`); the page a call leaves you on in styles/call-over.css (`co-`); the other screens in
+ * styles/{app,call}.css.
  */
 @import "./fonts.css";
 @import "./styles/kit.css";
@@ -34,6 +35,7 @@
 @import "./styles/team.css";
 @import "./styles/record.css";
 @import "./styles/call.css";
+@import "./styles/call-over.css";
 @import "./styles/call-timer.css";
 @import "./styles/call-chat.css";
 @import "./styles/call-notes.css";
@@ -163,9 +165,21 @@
   --duration-3: 420ms;
   --duration-4: 900ms;
   --duration-5: 2400ms;
+  /*
+   * A page taking another's place (a call's own page, and where it goes from there) moves on a slower clock of its own:
+   * what goes fades (page-1), what it takes the place of eases back and its smaller parts come in (page-2), it fades, rises
+   * or slides in (page-3), and the scene behind it settles (page-4).
+   */
+  --duration-page-1: 340ms;
+  --duration-page-2: 500ms;
+  --duration-page-3: 600ms;
+  --duration-page-4: 1100ms;
   --ease-out: cubic-bezier(0.22, 0.8, 0.24, 1);
   --ease-in-out: cubic-bezier(0.45, 0, 0.2, 1);
   --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  /* `expo` for long settles and glides; `soft` for a whole page fading in over another, gentler than ease-out at first. */
+  --ease-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-soft: cubic-bezier(0, 0, 0.58, 1);
 
   --font-display: "Newsreader", Georgia, "Times New Roman", serif;
   --font-sans: "Hanken Grotesk", system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -307,7 +321,7 @@
   --radius-xs: var(--radius-xs); --radius-sm: var(--radius-sm); --radius-md: var(--radius-md); --radius-lg: var(--radius-lg); --radius-xl: var(--radius-xl);
   --radius-arch: var(--radius-arch); --radius-pill: var(--radius-pill);
   --font-display: var(--font-display); --font-sans: var(--font-sans); --font-mono: var(--font-mono);
-  --ease-out: var(--ease-out); --ease-in-out: var(--ease-in-out); --ease-in: var(--ease-in);
+  --ease-out: var(--ease-out); --ease-in-out: var(--ease-in-out); --ease-in: var(--ease-in); --ease-expo: var(--ease-expo); --ease-soft: var(--ease-soft);
 }
 
 *, *::before, *::after { box-sizing: border-box; }

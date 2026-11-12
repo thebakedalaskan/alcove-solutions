@@ -21,6 +21,7 @@ page is one action. A page that's mostly one action is mostly sky; a page you re
 
 | Page | Moment | Sky, as a share of the window |
 |---|---|---|
+| After the call | Night, in both themes, looking out of the welcome page's cove: stars, a crescent moon high on the right, and a rose glow on the horizon with its light on the bay. No sun. | Most of it |
 | Record | Night, in both themes. The recorder is the sun: a dark disc with the last of the light on its rim. | Over half (55%, 68% on the first day) |
 | Home | The sunset. The sun sits half risen in the middle, under Start a call. | About half (45%, 352 to 540px) |
 | Team | The sun low and to the left, behind the people standing on the horizon. | 40% |
@@ -29,7 +30,8 @@ page is one action. A page that's mostly one action is mostly sky; a page you re
 | A note, a series | A slim band. The horizon is the call itself. | About a fifth (18.5%) |
 | Settings | The last of the light. | 136px |
 
-A call isn't part of the evening: it's always night, on the call stage.
+A call isn't part of the evening: it's always night, on the call stage. The page it leaves you on has no frame, like the
+join page, but stands on the evening's night.
 
 Things sit on the water, under the horizon. The colours of each moment, the clouds, the stars and what passes through are in
 `packages/ui/src/styles/horizon.css`. A page sets where its horizon is (`--hz`) and, if it needs to, where its sun is.
@@ -131,7 +133,7 @@ page. Blue Hour takes the page and the pressable colour from the logo's own sky 
 
 - Every screen works in light and dark. Design both, and don't simply invert: check contrast (4.5:1 for text) in each.
 - The side panel is dark in both themes. The call is night in both, but for your side in it and a board on its stage,
-  which take your theme. Record is night in both.
+  which take your theme. Record and the page a call leaves you on are night in both.
 - `.light` and `.dark` on any element scope one theme to that part of a page.
 
 ## Type
@@ -196,8 +198,8 @@ Everything comes from the tokens in `styles.css`. Don't invent values.
 | Spacing | `space-1` 4px, `space-2` 8, `space-3` 12, `space-4` 16, `space-5` 20, `space-6` 24, `space-8` 32, `space-12` 48, `space-16` 64, `space-24` 96, `space-32` 128 |
 | Radii | `radius-xs` 5px, `radius-sm` 9, `radius-md` 13, `radius-lg` 22, `radius-xl` 32, `radius-pill` and `radius-arch` for pills and arches |
 | Shadows | `shadow-1` (a hairline lift), `shadow-2` (a card), `shadow-3` (a window). Filled buttons have none |
-| Durations | `duration-1` 140ms, `duration-2` 240ms, `duration-3` 420ms, `duration-4` 900ms, `duration-5` 2.4s |
-| Easing | `ease-out` for things arriving, `ease-in-out` for things moving, `ease-in` for things leaving |
+| Durations | `duration-1` 140ms, `duration-2` 240ms, `duration-3` 420ms, `duration-4` 900ms, `duration-5` 2.4s; for a page taking another's place, `duration-page-1` to `duration-page-4` (Motion, below) |
+| Easing | `ease-out` for things arriving, `ease-in-out` for things moving, `ease-in` for things leaving; `ease-expo` and `ease-soft` for a page taking another's place |
 | Buttons | 44px tall, 52px `lg`, 36px `sm`, 30px `xs`; icon buttons 36px. The focus ring is a 2px outline in `focus` |
 
 ## Motion
@@ -225,17 +227,24 @@ Everything comes from the tokens in `styles.css`. Don't invent values.
   | A note | A shooting star, only in the dark | Nothing |
   | Settings | Nothing | A sailing boat, a freighter |
   | Record | A shooting star, a fish, a whale's tail | A sailing boat, a tall ship, a fishing boat |
+  | After the call | A shooting star | Nothing |
 - Pages rise in as they open, staggered by `--d`. Use the shared helpers (`CountUp`, `Words`, `CheckDraw`, `Dots`, `Reveal`,
   `RevealGroup`, the `EASE` curves) and the `duration-*` and `ease-*` tokens.
+- A page taking another's place (a call's own page, and Home or the notes after it) moves on a slower clock of its own, so
+  nothing cuts and nothing hurries: `duration-page-1` 340ms for what goes (a fade, `ease-in`), `duration-page-2` 500ms for
+  what it takes the place of easing back and its smaller parts coming in, `duration-page-3` 600ms for it fading, rising or
+  sliding in, and `duration-page-4` 1.1s for the scene behind it settling (`ease-expo`, a long settle). A whole page fading in
+  over another takes `ease-soft`, which starts gentler than `ease-out`, so it doesn't flash in. `EASE` and `DURATION` in
+  `motion.tsx` hold the same values for motion/react and the Web Animations API.
 
 ## Copy
 
 - Plain and specific: say what happens. No marketing taglines, no slogans.
 - The promise in the product's own words: "Written in confidential compute", "Alcove can't read them", "Confidential compute
   · verified", "Hardware verified 11:58". No hedging or status caveats in the UI; the engineering docs say what's built.
-  The call's shield, the side panel's check, Home's badge, the join page and Settings › Privacy say Confidential compute,
-  adding "· verified" and the time only when this browser's check is bound to the server's hardware, and the tick in a
-  shield never sits beside a negative.
+  The call's shield, the side panel's check, Home's badge, the join page, the page a call leaves you on and Settings ›
+  Privacy say Confidential compute, adding "· verified" and the time only when this browser's check is bound to the
+  server's hardware, and the tick in a shield never sits beside a negative.
 - Times read `6:12`, `Thu 17:55`, `Yesterday`. Durations read `1 h 12 min`.
 - People: use names or "they". Demo data uses made-up people only (the demo company is Vandelay Industries); never a real
   person's name.

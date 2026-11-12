@@ -3,15 +3,14 @@
  * is a drawn camera frame or shared screen here. Native opening, window close and automatic PiP belong to the browser;
  * Calls/Floating call leaves the real call ready for that hand-off instead of replacing the browser's API.
  */
-import { CallTimerButton, FloatingCall, PortraitArt, ScreenShot, type FloatingCallProps } from '@alcove/ui';
+import { CallTimerButton, FloatingCall, LeaveChoices, PortraitArt, ScreenShot, type FloatingCallProps } from '@alcove/ui';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useState } from 'react';
 import { useArgs } from 'storybook/preview-api';
-import { LeaveSheet } from '~/features/call/session/LeaveSheet';
 import { screenImage } from '../../../src/api/media';
 import { Box, did, onStage } from '../../../src/component';
 import { LAUNCH_CHECKLIST } from '../../../src/world/notes';
-import { AIKO, INES, KOFI, PRIYA } from '../../../src/world/people';
+import { INES, KOFI, PRIYA } from '../../../src/world/people';
 
 /** The demo world's illustrated person standing in for a camera picture; it never opens a camera. */
 const speakerPicture = PRIYA.portrait ? (
@@ -21,16 +20,18 @@ const speakerPicture = PRIYA.portrait ? (
 ) : null;
 const sharedPicture = <ScreenShot src={screenImage(LAUNCH_CHECKLIST)} alt="The drawn launch checklist, shared by Priya" width={LAUNCH_CHECKLIST.width} height={LAUNCH_CHECKLIST.height} />;
 
-/** The call's own question, in its inline child-document mode. No call is ended by a component story. */
+/**
+ * Leave's question for whoever hosts (`LeaveChoices`, the same as over Leave in the full call), in the window's own document.
+ * Its failure is said under the choices, so the window's own line stays quiet. No call is ended by a component story.
+ */
 function ConfirmationPreview(args: FloatingCallProps) {
   const [open, setOpen] = useState(true);
   return (
     <Box width="min(400px, 100%)" height={420}>
-      <FloatingCall {...args} onLeave={() => { args.onLeave(); setOpen(true); }}>
-        {open && <LeaveSheet inline open onOpenChange={setOpen} title={args.title} elapsed={720} organizer standingInFor={null}
-          next={[{ id: 'preview-priya', person: PRIYA }, { id: 'preview-kofi', person: KOFI }]} notes modelPrivate others={3}
-          getting={[PRIYA, KOFI, AIKO]} leaving={args.busy} ended={null}
-          onEnd={did('End call for everyone')} onHandOff={did('Leave and keep it going')} onRead={did('Read notes')} onHome={did('Home')} />}
+      <FloatingCall {...args} error={null} onLeave={() => { args.onLeave(); setOpen(true); }}>
+        {open && <LeaveChoices title={`Leave ${args.title}`} notes hosts={[{ id: 'preview-kofi', person: KOFI }, { id: 'preview-priya', person: PRIYA }]}
+          busy={args.busy ? 'end' : null} error={args.error ?? null}
+          onEnd={did('End for everyone')} onKeep={did('Leave, someone else hosts')} onStay={() => setOpen(false)} />}
       </FloatingCall>
     </Box>
   );
@@ -94,9 +95,9 @@ export const ManyWaiting: Story = { name: 'Many waiting', args: { attention: { h
 export const SoundBlocked: Story = { name: 'Sound blocked', args: { soundBlocked: true } };
 export const Leaving: Story = { args: { busy: true } };
 export const DepartureFailed: Story = { name: 'Departure failed', args: { error: 'Couldn’t leave the call. Try again.' } };
-/** Leave replaces the picture and controls with the same question the full call uses. Stay returns to the picture. */
+/** Leave replaces the picture and controls with the same question the full call asks over Leave. Stay in the call returns to the picture. */
 export const LeaveConfirmation: Story = { name: 'Leave confirmation', render: (args) => <ConfirmationPreview {...args} /> };
-/** A failed departure retains the question and its retry/stay controls inside the compact presentation. */
+/** A failed departure keeps the question, says why under the choices, and both can be pressed again. */
 export const ConfirmationFailed: Story = { name: 'Confirmation failed', args: { error: 'Couldn’t leave the call. Try again.' }, render: (args) => <ConfirmationPreview {...args} /> };
 export const ConfirmationPending: Story = { name: 'Confirmation pending', args: { busy: true }, render: (args) => <ConfirmationPreview {...args} /> };
 export const Ended: Story = { args: { connection: 'ended', picture: null } };

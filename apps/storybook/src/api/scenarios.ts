@@ -492,6 +492,7 @@ export function begin(name: ScenarioName, over: Partial<Opening> = {}): Scenario
   sessions.media?.stop();
   sessions.media = null;
   sessions.roomTitle = null;
+  sessions.arrive = null;
   // Recordings the last story kept on this device go with it (`remember` deletes them), and Record lists what's here afresh.
   forgetKeptHere();
   const { world, opening } = SCENARIOS[name].make();

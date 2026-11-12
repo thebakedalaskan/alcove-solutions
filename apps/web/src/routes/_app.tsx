@@ -1,7 +1,6 @@
-import { IconButton, WsDoc, WsOfflineEmpty, WsPane, cn, useToast } from '@alcove/ui';
-import { useQueryClient } from '@tanstack/react-query';
-import { Outlet, createFileRoute, useNavigate, useRouter, useRouterState } from '@tanstack/react-router';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { IconButton, WsDoc, WsOfflineEmpty, WsPane, cn } from '@alcove/ui';
+import { Outlet, createFileRoute, useRouter, useRouterState } from '@tanstack/react-router';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { CallFlowHost, useCallFlowHost } from '~/features/calls/flow/CallFlow';
 import { useKeptUploads } from '~/features/record/uploads';
 import { useKeptEdits } from '~/features/workspace/sendKept';
@@ -10,14 +9,13 @@ import { TourHost } from '~/features/onboarding/Tour';
 import { Palette } from '~/features/shell/Palette';
 import { OfflinePage } from '~/features/shell/OfflinePage';
 import { inWorkspace } from '~/features/shell/places';
+import { useSignedOutElsewhere } from '~/features/shell/signedOutElsewhere';
 import { Offline, Sidebar, useSidePanel } from '~/features/shell/Sidebar';
 import { PhoneTop, TabBar } from '~/features/shell/TabBar';
 import { TopActions } from '~/features/shell/TopActions';
 import { CallFlowContext, type PaletteStart } from '~/features/shell/context';
 import { ownerOf, requireAccount } from '~/lib/guards';
-import { log } from '~/lib/log';
-import { q } from '~/lib/queries';
-import { onSignedOutElsewhere } from '~/lib/signedOut';
+import { takeArrival } from '~/lib/live';
 import { overlayOpen, typing, withMod } from '~/lib/keys';
 
 /*
@@ -29,6 +27,16 @@ export const Route = createFileRoute('/_app')({
   beforeLoad: ({ context, preload }) => requireAccount(context.queryClient, preload),
   component: Shell
 });
+
+/**
+ * What the frame's arrival from a call's page moves (`data-arrive` in shell.css): the night lifting off the frame (the shell's own
+ * `::before`), the page, the side panel and the tab bar. Their own animations only, never what plays inside them.
+ */
+function arrivalOf(shell: HTMLElement): Animation[] {
+  const parts = new Set<Element>([shell, ...shell.querySelectorAll(':scope > .main, .sb-in, :scope > .tabbar')]);
+  return shell.getAnimations({ subtree: true })
+    .filter((a) => a instanceof CSSAnimation && a.effect instanceof KeyframeEffect && a.effect.target !== null && parts.has(a.effect.target));
+}
 
 function Shell() {
   const { account } = Route.useRouteContext();
@@ -55,6 +63,22 @@ function Shell() {
   const pathNow = useRef(path);
   pathNow.current = path;
   const full = inWorkspace(path);
+  /*
+   * Come from a call's page (Go to Home, Open the notes), the frame settles in once, its side panel easing in after it, in
+   * place of its usual fade: the fade isn't put back afterwards, or it would play again. The page said so on its way out, and
+   * the frame takes it as it first shows; the arrival ends once what it moves has played out, however long the stylesheet
+   * makes it (short fades with reduced motion).
+   */
+  const shell = useRef<HTMLDivElement>(null);
+  const [arrival, setArrival] = useState<'none' | 'from-call' | 'arrived'>('none');
+  useLayoutEffect(() => { if (takeArrival()) setArrival('from-call'); }, []);
+  useLayoutEffect(() => {
+    const el = shell.current;
+    if (arrival !== 'from-call' || !el) return undefined;
+    let live = true;
+    void Promise.allSettled(arrivalOf(el).map((a) => a.finished)).then(() => { if (live) setArrival('arrived'); });
+    return () => { live = false; };
+  }, [arrival]);
 
   useEffect(() => {
     const on = (e: KeyboardEvent) => {
@@ -77,7 +101,7 @@ function Shell() {
   return (
     <CallFlowContext.Provider value={flow}>
         {/* Behind a new account's arrival screen until it opens; then in again, as the arch opens. */}
-        <div key={opened} className={cn('shell world-in', side.hidden && 'is-bare')} inert={stage === 'creating'}>
+        <div key={opened} ref={shell} className={cn('shell', arrival === 'none' && 'world-in', side.hidden && 'is-bare')} data-arrive={arrival === 'from-call' ? 'call' : undefined} inert={stage === 'creating'}>
           <Sidebar hidden={side.hidden} hideRef={side.hideRef} onHide={side.hide} onNew={() => flow.start()} onPin={() => openPalette({ mode: 'pin' })} />
           {side.hidden && <IconButton ref={side.showRef} icon="panel" label="Show the side panel" className="sb-show" onClick={side.show} />}
           <PhoneTop onSearch={() => openPalette()} onNew={() => flow.start()} />
@@ -96,22 +120,4 @@ function Shell() {
         <TourHost />
     </CallFlowContext.Provider>
   );
-}
-
-/**
- * Signed out in another tab, or the account deleted there: this one goes to the welcome page at once and says why. What it
- * had kept was deleted on purpose there, so it mustn't go on saying that what's written here is safe.
- */
-function useSignedOutElsewhere(owner: string | null) {
-  const qc = useQueryClient();
-  const navigate = useNavigate();
-  const toast = useToast();
-  useEffect(() => onSignedOutElsewhere((who, deleted) => {
-    if (who !== owner) return;
-    log.child({ component: 'account' }).info('signed out in another tab', { deleted });
-    qc.clear();
-    qc.setQueryData(q.session().queryKey, null);
-    void navigate({ to: '/welcome', replace: true });
-    toast(deleted ? 'Your account was deleted in another tab.' : 'You signed out in another tab.', { icon: 'signOut' });
-  }), [owner, qc, navigate, toast]);
 }

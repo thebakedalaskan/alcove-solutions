@@ -1,6 +1,7 @@
 /*
  * Horizon: the evening behind every page, a sky and a sea meeting at --hz, which the page sets. Each page is a moment of
- * the same evening (`moment`): Home is the sunset, then the sun lower and gone, and Record the night, in both themes. It
+ * the same evening (`moment`): Home is the sunset, then the sun lower and gone, Record the night, and after a call the night
+ * with a crescent moon, both in both themes. It
  * moves a little, the water, the light on it, the clouds, the stars, and now and then something passes through: on a
  * page one at a time, at random. `only` is for the scene shown for itself, as here: one kind of visitor (VISITORS lists
  * them all and the moments each comes to) over and over, or nothing. With reduced motion nothing comes, and it's still.
@@ -9,9 +10,9 @@
 import { Horizon, VISITORS, type Moment, type Showing, type Visitor } from '@alcove/ui';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 
-const MOMENTS = ['home', 'team', 'agents', 'notes', 'drive', 'note', 'settings', 'record'] as const satisfies readonly Moment[];
+const MOMENTS = ['home', 'team', 'agents', 'notes', 'drive', 'note', 'settings', 'record', 'after'] as const satisfies readonly Moment[];
 /** Where the sky meets the sea in the story's 480px box, for each moment: about as much of it as each page gives the sky. */
-const HZ: Record<Moment, number> = { home: 300, team: 250, agents: 255, notes: 190, drive: 165, note: 130, settings: 96, record: 330 };
+const HZ: Record<Moment, number> = { home: 300, team: 250, agents: 255, notes: 190, drive: 165, note: 130, settings: 96, record: 330, after: 400 };
 
 /** Boats and ships take minutes to cross a page; shown for themselves, they cross five times as fast. */
 const SHIPS: ReadonlySet<Visitor> = new Set<Visitor>(['sail', 'steamer', 'trawler', 'tall', 'freighter', 'tug']);
@@ -49,3 +50,5 @@ export const AShip: Story = { name: 'A ship', args: { moment: 'team', only: { ki
 export const NothingPassing: Story = { name: 'Nothing passing', args: { moment: 'notes', only: { kind: null } } };
 /** Record is night in both themes; shooting stars come to it. */
 export const RecordAtNight: Story = { name: 'Record at night', args: { moment: 'record', only: { kind: 'star' } } };
+/** After a call: night in both themes, no sun, the glow it left and its light on the bay, a crescent moon. Only shooting stars pass. */
+export const AfterACall: Story = { name: 'After a call', args: { moment: 'after', only: { kind: 'star' } } };

@@ -95,7 +95,8 @@ production), end-to-end encrypted: LiveKit forwards frames it can't read ([below
 The call itself stays in the API: who's let in, notes and the transcript.
 
 - **Joining.** `GET /v1/calls/:code/card` (no account needed; 600 a minute per client address, since every
-  pre-join keeps reading it) gives the title, organizer's name, when it starts, whether the organizer is there,
+  pre-join keeps reading it, as does the page of a call someone left while it goes on) gives the title, the
+  organizer's name, when it starts, whether the organizer is there,
   whether the call is locked, whether it was scheduled with notes and what they keep, whether everyone joins muted,
   once it has started what it captures (`capture`, without anyone's name), whether it has ended (and nobody started
   it again), where the person asking stands (`you`: invited, asking with an account the notes may go to, or a guest),
@@ -197,9 +198,10 @@ The call itself stays in the API: who's let in, notes and the transcript.
   never counted as theirs, and a guest with the link reads nothing said in it. The API keeps that moment in memory
   (it runs as one instance); after a restart, until the page asks again, such a stay ends when they were let in.
   The page of whoever hosts sends nothing as it goes, so their reload comes back still
-  hosting. Whoever hosts ends the call for everyone with **End call for everyone** (`leave` with `end: true`): the
-  normal ending above, then the room is deleted (everyone else is disconnected with "room deleted"). They can leave it
-  going instead, with someone else hosting ([Host hand-off](#host-hand-off)). Their connection dropping doesn't end
+  hosting. Whoever hosts ends the call for everyone with **End for everyone** in Leave's question, or with Leave itself
+  when they're alone in it (`leave` with `end: true`): the normal ending above, then the room is deleted (everyone else
+  is disconnected with "room deleted"). They can leave it going instead, with someone else hosting
+  ([Host hand-off](#host-hand-off)). Their connection dropping doesn't end
   it: `POST /hooks/livekit` (signed by LiveKit with the API key) records when the host's connection left; 10 seconds
   later someone else hosts, and only if nobody can does the call end, once they've been gone for more than 25
   seconds (upkeep asks LiveKit whether they're in the room before doing either). A host whose browser never reaches
@@ -412,16 +414,16 @@ calls module makes the change), shown to everyone as `CallState.host`.
   sees to each call on its own
   (`reconcileCall`): one it can't hand on or end this time is logged and tried again next time, and never holds up
   the others.
-- **Leaving on purpose.** Whoever hosts chooses in the leave sheet: **End call for everyone** (`leave` with `end:
-  true`), or **Leave and keep it going** with someone else hosting (`POST /v1/live/calls/:id/hand-off {to}`; the best
-  person is chosen already, and Change lists the others). One transaction takes the leaver out and starts the new
+- **Leaving on purpose.** Whoever hosts chooses in Leave's question: **End for everyone** (`leave` with `end: true`),
+  or **Leave, Priya hosts**, leaving it going with someone else hosting (`POST /v1/live/calls/:id/hand-off {to}`; the
+  best person is chosen already, and Change lists the others). One transaction takes the leaver out and starts the new
   host's generation, so the call is never without a host; someone who can't host now (a guest, someone gone, someone
   not in the room, someone in another call) is refused with `409` and nothing changes. A host's `leave` without `end`
   (a browser that hadn't heard yet that it hosts) hands the call to whoever's next, and is refused when nobody can
   take it, so leaving never ends a call by accident and a page going away never ends one at all.
-- **Coming back.** The organizer joining again (from the join page, or any device) hosts at once, in a new
-  generation; whoever stood in carries on as a member. A stand-in's reload comes back hosting too, as the organizer's
-  does, even into a locked call. An organizer's tab that was away when someone else took over learns so
+- **Coming back.** The organizer joining again (Rejoin on the page the call left them on, the join page, or any
+  device) hosts at once, in a new generation; whoever stood in carries on as a member. A stand-in's reload comes back
+  hosting too, as the organizer's does, even into a locked call. An organizer's tab that was away when someone else took over learns so
   (`CallMls.admission` and `CallCrypto.status` `away`) and goes back to the join page, where joining takes the call
   back.
 - **What a stand-in can do.** Let people in or turn them away, mute, remove anyone but the organizer, lock and
@@ -1920,7 +1922,8 @@ in its frame, with Close's question (`frame.tsx`); the people (`Stage.tsx`, laid
 `view.ts`, with who's talking settled in `media/speakers.ts`); each tile's menu and a presented tile's (`TileMenu.tsx`); Share's
 steps (`ShareMenu.tsx`); and the call's keys are `session/useCallShortcuts.ts`. Presenting the workspace is
 `workspace/presenting.ts`, a board, its picker and presenting it are in `boards/`, and a share in its frame is
-`screen-sharing/ShareInFrame.tsx`. Then breakout rooms (`Rooms.tsx`), captions, the leave sheet and the device pickers.
+`screen-sharing/ShareInFrame.tsx`. Then breakout rooms (`Rooms.tsx`), captions, Leave's question and the device pickers,
+and the page a call leaves you on (`session/CallOver.tsx`).
 
 - **What it reads.** The `CallSession` (who's in, hands, spotlight, rooms, notes, the transcript, the live notes), its
   `crypto` store (MLS status and members, media keys, chat) and the LiveKit room (`livekit.ts`: mic, camera,
@@ -2456,15 +2459,44 @@ steps (`ShareMenu.tsx`); and the call's keys are `session/useCallShortcuts.ts`. 
   names whose browser transcribes the room), the Rooms panel and the call's privacy line; the scribe's browser
   says when it starts hearing the room. In a room, catching up says a stretch with nothing transcribed was one
   with no scribe there, not the host away.
-- **Leaving and ending.** Anyone but whoever hosts leaves (`leave()` returns null) and goes back to the call's
-  page. Whoever hosts chooses in the same sheet: **End call for everyone**, which deletes the room and disconnects
-  everyone, who are told the call has ended, while the host's sheet follows the notes being written; or, when
-  someone invited is in the call, **Leave and keep it going** with the best person chosen already to host until the
-  organizer is back, and **Change** to pick someone else (`handOff`); the host then goes back to the call's page.
-  For the organizer ending is the main button, for a stand-in leaving it going is. With nobody else who can host,
-  the sheet says leaving ends the call. A browser that's
-  removed, out of the group, or whose room ended is told, closes the session and leaves the room; one whose
-  keys fell out of step, or whose connection dropped for good, is offered a reload.
+- **Leaving and ending.** Anyone but whoever hosts leaves at once (`leave()` returns null). Whoever hosts, with anyone
+  else in the call, chooses in Leave's question, a popover over the dock's Leave (`LeaveAsk`, beside `CloseAsk`; its
+  rows, `LeaveChoices`, stand in the floating call's own window): **End for everyone**, which deletes the room and
+  disconnects everyone; or, when someone invited is in the call, **Leave, Priya hosts**, with the best person chosen
+  already to host until the organizer is back, and **Change** to pick someone else (`handOff`). A stand-in sees
+  leaving it going first. With nobody else who can host, ending is the only choice. Alone in the call, pressing Leave
+  ends it without asking; the leave guard (`useLeaveGuard` in `lib/live.ts`: going back a page, or any navigation in the
+  app, such as answering a ring) never does. For whoever hosts it opens Leave's question, alone too, where End's line
+  says they're the only one here (`alone`), so a stray Back can't end a call people are about to join; anyone else
+  leaves at once and carries on where they were going. Ending, leaving it with someone, a participant's leaving and the
+  call ending under you by anything else (`ended-by-host`, or the call saying `phase: 'ended'`) all put the call's own
+  page in its place, with the call easing back under it. A browser that's removed or out of the group is told, closes
+  the session and leaves the room; one whose keys fell out of step, or whose connection dropped for good, is offered a
+  reload.
+- **The page a call leaves you on** (`session/CallOver.tsx`) takes the call's place at the same address:
+  `session/CallPage.tsx` holds the call, then its page, then the call again if Rejoin brings it back. The page starts
+  from a snapshot taken as you leave (the title, who was in it, when it started, the note's ID, how notes were
+  (`capture.mode`), whether you get the notes, your role, your microphone and camera, the host's name), follows the
+  note's progress (`api.notes.progress`) and then shows the written note's first lines and counts. Everyone invited has
+  the note by then ([When the recording stops](notes-and-inference.md#when-the-recording-stops)). An end it didn't make
+  names nobody: the room going and `phase: 'ended'` look the same whether whoever hosts ended the call, upkeep did (a
+  host gone with nobody to stand in) or LiveKit finished the room, so its line is the one for an end you made. While a
+  call you left goes on, the page reads its card (`q.card`, `api.calls.card`) at the join page's pace: 10 to 17 seconds
+  apart while someone hosts, each browser a little apart from the rest, 20 seconds or more after a refusal or a failed
+  read, and not again once the code leads nowhere. It turns within about 15 seconds of the end, and only a card read
+  after you left counts. Signing out, or deleting the account, in another tab (`onSignedOutElsewhere`) takes it to the
+  welcome page, as it takes the frame, forgetting the note it read. Nothing on the wire changes for any of it.
+- **Rejoin** (`session/rejoin.ts`) joins again with the last pass (`api.calls.join` with `previous`) and the microphone
+  and camera as they were (a fresh `LocalMedia`, as moving devices does), and waits to be let in if it has to. J on the
+  page (on its own, not with Shift, ⌘, Ctrl or Alt) rejoins with both off instead, so a stray key never puts someone's
+  voice and picture back into a call they chose to leave. Rejoin never navigates: it hands the session to `CallPage`,
+  which brings the call back up at the same address as its page fades. Go to Home stays pressable while it says
+  Rejoining…, as the way out while waiting to be let in. A rejoin that isn't going in (the page goes first, the join comes back after the page went, or
+  getting in fails) is let go with the session's `closing()`, which closes it whatever happens and sends `leave` only
+  when it doesn't host (an ask is withdrawn), never with `leave()`, which sends `end` from whoever hosts. An organizer's
+  new connection hosts the moment it joins, so `leave()` would end the call for everyone; let go, it never reaches the
+  room, and upkeep hands the call on after 25 seconds, as for any host whose browser never gets there
+  ([Host hand-off](#host-hand-off)).
 - **Reconnecting.** The top bar says **Reconnecting** while the room's connection is coming back (signalling
   only, or everything) and while this browser is getting back into the call's group after a comeback. While the
   host's browser is out of the call, the notes sign says **Notes unavailable** ([Reconnects](#reconnects)).

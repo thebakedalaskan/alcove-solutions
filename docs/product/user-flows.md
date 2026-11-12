@@ -860,9 +860,9 @@ stops processing turns the camera off and says so: choose another background, or
 **6.22 Keep the call in view.** On a supported desktop browser, **Open floating call** in **More** opens a small,
 movable and resizable window over other apps. It shows the speaker or a selected live shared screen, with the same
 microphone, camera and raised-hand state as the meeting. Its controls act on this call. Closing the window keeps you
-in the call; **Return to call** brings the meeting forward. **Leave** asks only the current host to confirm; other
-participants leave immediately. Both save the last recording pieces before departing, and a failure keeps the call open
-with an explanation and Leave available to retry.
+in the call; **Return to call** brings the meeting forward. **Leave** asks only whoever hosts, in the window, with the
+same choices as the main stage (flow 7); other participants leave immediately. Both save the last recording pieces
+before departing, and a failure keeps the call open with an explanation and Leave available to retry.
 
 Hands, open Q&A, people asking to enter (for the host), and new chat have compact indicators that return to the full meeting: hands and people asking to enter open People, and Q&A and chat open Chat. The compact and full meeting controls share one confirmed action owner and the same speaker cues.
 The window shows no personal notes or message text. Its Chat count includes unread mentions; opening Chat returns to
@@ -1269,37 +1269,78 @@ Storybook journeys **6.23–6.25** show the review alongside the call:
 
 ## 7. End the call and get the notes
 
-1. **Leave** immediately leaves for anyone who is not hosting, invited participants and guests alike: no confirmation,
-   on the main stage or in the floating call. The last audio and speech are saved before leaving; while that happens,
+1. **Leave** leaves at once for anyone who isn't hosting, invited participants and guests alike: nothing is asked, on
+   the main stage or in the floating call. The last audio and speech are saved before leaving; while that happens,
    Leave is disabled. A failed departure keeps the same call open with an explanation and a way to retry. The call goes
-   on for everyone else, and the call’s link is ready to join again. In-app navigation does the same cleanup before
-   continuing, and closing or reloading a participant’s tab does not ask for confirmation.
-   For the current host, **Leave › End the call** (with others in the call, **End call for everyone**) sends the last audio and
-   speech and ends the call. **Stay in the call** goes back. With someone invited in the call, whoever hosts can
-   also **Leave and keep it going**: the person who'll host is chosen already ("Priya will host until you're back"),
-   and **Change** picks someone else. The call goes on, the notes with it, and the organizer takes it back by
-   joining again. Someone standing in sees the same sheet, with leaving it going first. The browser still asks the current
-   host to confirm closing or reloading the tab.
-2. The sheet becomes **Call ended**: who gets the notes, and how they're coming along until "Notes are
-   ready", then **Read the notes** or **Go to Home**. The note shows the steps so far (call ended, audio
-   saved, the transcript's length, the notes being written), playback of the decrypted recording, and who
-   has it. Without notes, the sheet says there's nothing to send.
+   on for everyone else. In-app navigation does the same cleanup before continuing, and closing or reloading a
+   participant's tab doesn't ask.
+   Whoever hosts, with anyone else in the call, is asked in a popover over **Leave**, the way Close's question opens (a
+   sheet on a phone, and the same choices in the floating call's own window). **End for everyone** ("Everyone invited
+   gets the notes.", or without notes "It ends for everyone in the call.") sends the last audio and speech and ends the
+   call. When someone in the call can host, **Leave, Priya hosts** leaves it going with the best person chosen already,
+   and **Change** lists who else could, in the same popover. The call goes on, the notes with it, and the organizer
+   takes it back by joining again. Someone standing in sees leaving it going first. While the call ends the question
+   says **Ending the call…**, and a failure is said in it, with the call still open. When nobody here can
+   host, End for everyone is the only choice: "Guests can't host, so leaving ends it for everyone." Alone in the call,
+   pressing **Leave** ends it at once: there's nobody to hand it to and nothing to choose. Any other way out while alone,
+   such as going back a page or answering a ring from another call, asks first, so a stray Back doesn't end a call
+   people are about to join: Leave's question opens with **End for everyone** alone ("You're the only one here, so
+   leaving ends the call."), and putting it away keeps the call going. The browser still asks whoever hosts to confirm
+   closing or reloading the tab.
+2. When the call is over for you, the call eases back and fades as its own page rises in, on the call's night over a
+   cove. From the top: who was in the call (or who's still in it) in their arches, the title, one line, the notes and
+   the buttons, the first one filled. It never moves on by itself.
+
+   | What happened | Title | The line | Notes | Buttons |
+   |---|---|---|---|---|
+   | You ended it, notes on | {Title} has ended | {n} min with {names} (alone: {n} min) | Being written (step, who gets them), then the summary's first lines with decided and follow-up counts | **Open the notes** (then **Read the notes**), Go to Home |
+   | You ended it, no notes | {Title} has ended | {n} min with {names} (alone: {n} min) | No notes were taken. | **Go to Home** |
+   | Whoever hosts ended it, you get the notes | {Title} has ended | {n} min with {names} | Being written, then written | **Open the notes**, Go to Home |
+   | Whoever hosts ended it, you don't (a guest) | {Title} has ended | {Organizer} can share the notes with you. | none | none |
+   | You left, it goes on | You left {Title} | {names} are still in it, and how long it's run (ticking) | As notes were when you left, only if you get them: Notes are on. You get them when it ends. / Notes are paused. You get what was written when it ends. / Notes are off. You get what was written when it ends. | **Rejoin** (J), Go to Home (a guest: Rejoin only) |
+   | You hosted, and left it with someone | You left {Title} | {Name} is hosting until you're back (standing in for the organizer: until {Organizer} is back) | the same | **Rejoin**, Go to Home |
+   | You left, and it ended while you're here | {Title} has ended | It ended after you left. | Being written (if you get them) | **Open the notes**, Go to Home (a guest: none) |
+   | The notes take long, or their progress can't be followed | | | Still being written. They'll be in Notes when they're ready. You don't need to wait here. | as above |
+
+   The page keeps up while you're on it: the notes turn from being written into their first lines, a call you left
+   turns into the ended page within about 15 seconds of it ending, and how long it's run ticks while it goes on. Who's
+   still in it is who was in the call as you left, without you: once you've left there's no live view of the room.
+
+   A call that ends while you're in it, and not by you, says the same line as one you end. Alcove can't tell whether
+   whoever hosts ended it or it ended by itself (the host's connection gone, with nobody to stand in), so the page names
+   nobody. A guest is told who can share the notes whenever the call had them. While a call you left goes on, whoever
+   gets the notes is told how notes were as they left: on, paused, or off after being on. Paused or off, what was
+   written comes to them when the call ends.
+
+   **Rejoin** goes straight back in, with the microphone and camera as they were: no join page and no camera preview.
+   It says **Rejoining…** meanwhile, waits to be let in when it has to, and says on the page if it's refused; the call
+   comes back up in place as its page fades. **J** rejoins too, but with the microphone and camera off, so a stray key
+   never puts your voice and picture back into a call you chose to leave; J with Shift, ⌘, Ctrl or Alt does nothing.
+   **Go to Home** still works while it says Rejoining…: it's the way out while you wait to be let in, and it takes the
+   rejoin back without ending the call for anyone. **Go to Home** and **Open the notes** fade the page, and the frame
+   settles in with the side panel easing in. The note shows the steps so far (call ended, audio saved, the transcript's
+   length, the notes being written), playback of the decrypted recording, and who has it. Signing out, or deleting your
+   account, in another tab takes the page to the welcome page, as it does every other tab, and what it showed of the
+   notes goes with it. Reloading the call's address after leaving goes to the join page. Being removed, moving to
+   another device, the connection dropping and someone else hosting after a drop don't come here (flow 6).
+
    Notes are written in the language set in settings by the organizer (or, for a room recording, by whoever recorded):
    "Same as the call" by default. Every note gets a short summary of two or three sentences, and a longer full summary
    under it.
 3. Everyone invited gets the notes as the call ends, including people signed in whom the organizer let in
-   from the link (letting them in added them to the invite; removing them took them off it). They find them
-   under Notes when they sign in with that address, marked as from the organizer. Guests who joined with only
-   a name don't get them.
+   from the link (letting them in added them to the invite; removing them took them off it). They have them before
+   the call closes for anyone in it, so they can follow them being written on its page. They find them under Notes
+   when they sign in with that address, marked as from the organizer. Guests who joined with only a name don't get
+   them.
 4. If the notes service fails three times, the note is finished with its transcript and recording and no
    summary. On a server without NEAR AI, notes wait with "Waiting for the notes service to be connected".
    While the notes model's evidence can't be checked or doesn't check out, nothing is sent; and while it
    doesn't answer, nothing is lost. Either way notes wait with "Waiting for the notes model. The notes are
    written as soon as it’s verified and answering" and are tried again every five minutes.
 
-**Journeys:** 7.1 ends the call and reads its notes; 7.2 hands hosting over; 7.3 leaves as an invited participant
-(including phone and light theme); 7.4 leaves as a guest; 7.5 retries a participant departure that failed;
-7.6 accepts another call while participating and continues there without a confirmation.
+**Journeys:** 7.1 ends the call and reads the notes; 7.2 leaves it going with someone hosting, then rejoins; 7.3 leaves
+as a participant (on a phone, in the light theme); 7.4 leaves as a guest; 7.5 retries a departure that failed; 7.6 joins
+another call while in one; 7.7 the call ends while they're on its page; 7.8 alone, pressing Leave ends the call.
 
 ## 8. Notes
 

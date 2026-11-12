@@ -1,20 +1,19 @@
 /*
- * Modal: a window over the page, which waits behind a veil. Centred for a choice that needs room, or rising from the
- * bottom for a quick decision (leaving a call). Several questions are asked one at a time inside the one modal: no window
- * ever opens over another. The answer that loses nothing is the filled button. Focus starts on the first thing to press,
- * or with `focusSelf` on the modal itself, for one that's mostly to read; closing puts it back where it was.
+ * Modal: a window over the page, centred, for a choice that needs room; the page waits behind a veil. Several questions are
+ * asked one at a time inside the one modal: no window ever opens over another. The answer that loses nothing is the filled
+ * button. Focus starts on the first thing to press, or with `focusSelf` on the modal itself, for one that's mostly to read;
+ * closing puts it back where it was.
  */
-import { Button, CallDock, DockButton, DockLeave, IconButton, Modal } from '@alcove/ui';
+import { Button, IconButton, Modal } from '@alcove/ui';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useArgs } from 'storybook/preview-api';
-import { did, onStage } from '../../../src/component';
+import { did } from '../../../src/component';
 
 const meta = {
   title: 'Components/Overlays/Modal',
   component: Modal,
-  args: { open: true, label: 'Delete these notes', placement: 'center', focusSelf: false, children: null, onOpenChange: did('onOpenChange') },
+  args: { open: true, label: 'Delete these notes', focusSelf: false, children: null, onOpenChange: did('onOpenChange') },
   argTypes: {
-    placement: { control: 'inline-radio', options: ['center', 'bottom'] },
     className: { control: 'text' },
     children: { control: false }, onCloseFocus: { control: false }
   }
@@ -39,37 +38,6 @@ export const AQuestion: Story = {
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 22 }}>
               <Button variant="primary" onClick={answer('Keep them')}>Keep them</Button>
               <Button onClick={answer('Delete for everyone')}>Delete for everyone</Button>
-            </div>
-          </div>
-        </Modal>
-      </>
-    );
-  }
-};
-
-/** The host leaving a call: it rises from the bottom, over the night stage. Leave in the dock opens it again. */
-export const LeavingACall: Story = {
-  name: 'Leaving a call',
-  ...onStage,
-  args: { label: 'Leave the call', placement: 'bottom', className: 'ic-leave' },
-  render: function Render(args) {
-    const [, update] = useArgs<typeof args>();
-    const close = () => { args.onOpenChange(false); update({ open: false }); };
-    return (
-      <>
-        <CallDock>
-          <DockButton icon="mic" label="Mute" onClick={did('Mute')} />
-          <DockButton icon="video" label="Turn camera off" onClick={did('Turn camera off')} />
-          <DockLeave onClick={() => update({ open: true })} />
-        </CallDock>
-        <Modal {...args} onOpenChange={(open) => { args.onOpenChange(open); update({ open }); }}>
-          <div className="in">
-            <div className="ac-eyebrow">Design review · 23 min</div>
-            <h2 className="ac-display-s">Leave the call?</h2>
-            <p>You organized this call. Ending it leaves everyone’s notes saved.</p>
-            <div className="acts">
-              <Button variant="primary" onClick={() => { did('End call for everyone')(); close(); }}>End call for everyone</Button>
-              <Button variant="quiet" onClick={close}>Stay in the call</Button>
             </div>
           </div>
         </Modal>

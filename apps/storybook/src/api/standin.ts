@@ -24,7 +24,7 @@ import { canvasTheme } from '../world/boards';
 import { changer, foundOf } from '../world/build';
 import { personAt } from '../world/people';
 import { session as sessionFor, type World } from '../world';
-import { joinCall, type ScriptedCall } from './call';
+import { forgetGoingOn, joinCall, type ScriptedCall } from './call';
 import { Pushed, pause } from './live';
 import { audioUrlFor, quietAudio, screenImage } from './media';
 import { ScriptedMove } from './move';
@@ -349,10 +349,11 @@ export function ringYou(r: IncomingRing): void {
 const calls = new Set<ScriptedCall>();
 const recordings = new Set<ScriptedRecording>();
 const moves = new Set<ScriptedMove>();
-/** Whatever the last story left open stops: its calls, its recordings, its rings, a move on its way. */
+/** Whatever the last story left open stops: its calls (and those it left going), its recordings, its rings, a move on its way. */
 export function stopLive(): void {
   for (const c of calls) c.close();
   calls.clear();
+  forgetGoingOn();
   for (const r of recordings) r.forget();
   recordings.clear();
   for (const r of ringing) r.close();
@@ -567,7 +568,7 @@ export const standIn: AlcoveApi = {
       return doorOf(w, code);
     }, 'anyone'),
     series: (code: string) => answer((w) => { const m = byCode(w, code); return m?.seriesId && w.notes.some((n) => n.seriesId === m.seriesId) ? seriesIn(w, m.seriesId) : null; }),
-    join: async (code: string, opts: { name?: string | undefined }): Promise<CallSession> => {
+    join: async (code: string, opts: { name?: string | undefined; previous?: string | undefined }): Promise<CallSession> => {
       const m = await answer((w) => {
         const found = byCode(w, code);
         if (!found) throw refused('not-found', 'That call link doesn’t lead anywhere.');

@@ -5,6 +5,22 @@
  * bottom take their place. The palette that Search or ask opens is in palette.css.
  */
 .world-in { animation: ac-fade var(--duration-3) var(--ease-out) both; }
+/*
+ * Arriving from a call's page (Go to Home, Open the notes), once, with data-arrive="call" on the shell: the frame is there at
+ * once, night lifting off the page under its rounded edge as the page settles in from a touch larger, and the side panel (on a
+ * phone, the tab bar) eases in after it. Opacity and transform only; with reduced motion, short fades.
+ */
+.shell[data-arrive="call"] { animation: none; }
+.shell[data-arrive="call"]::before { content: ""; position: fixed; z-index: 5; inset: 0; background: var(--stage); pointer-events: none; animation: ac-fade-out var(--duration-page-3) var(--ease-in-out) .08s both; }
+.shell[data-arrive="call"] > .main { transform-origin: 50% 50vh; animation: sh-settle var(--duration-page-3) var(--ease-expo) .12s backwards; }
+.shell[data-arrive="call"] .sb-in { animation: sh-ease-in var(--duration-page-3) var(--ease-out) .22s backwards; }
+.shell[data-arrive="call"] > .tabbar { animation: ac-fade var(--duration-page-2) var(--ease-out) .22s backwards; }
+@keyframes sh-settle { from { opacity: 0; transform: scale(1.014); } }
+@keyframes sh-ease-in { from { opacity: 0; transform: translateX(-16px); } }
+@media (prefers-reduced-motion: reduce) {
+  .shell[data-arrive="call"]::before { animation: ac-fade-out var(--duration-2) linear both !important; }
+  .shell[data-arrive="call"] > .main, .shell[data-arrive="call"] .sb-in, .shell[data-arrive="call"] > .tabbar { animation: ac-fade var(--duration-2) linear backwards !important; }
+}
 
 /* ----------------------------------------------------------------- shell */
 .shell { --side: 256px; display: grid; grid-template-columns: var(--side) minmax(0, 1fr); min-height: 100vh; min-height: 100dvh; transition: grid-template-columns var(--duration-3) var(--ease-out); }
