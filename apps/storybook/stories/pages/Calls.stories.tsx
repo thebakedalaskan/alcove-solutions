@@ -28,6 +28,9 @@ const typing = (text: string, said: string): NonNullable<PageStory['play']> => a
 export const All = page('/calls', 'busy', day);
 export const AllNight = page('/calls', 'busy', { ...day, ...night });
 export const AllPhone = phone(All);
+/** Four minutes before the design review: the foot of the side panel offers it with Join, as it does on every page but Home. */
+export const ACallAboutToStart = page('/calls', 'call-soon');
+export const ACallAboutToStartNight = page('/calls', 'call-soon', night);
 /** Coming up: the call waiting for Jonas, then each day, Alcove calls and the calendar's meetings. */
 export const ComingUp = page('/calls?view=soon', 'busy', day);
 export const ComingUpNight = page('/calls?view=soon', 'busy', { ...day, ...night });

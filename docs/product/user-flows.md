@@ -55,31 +55,29 @@ screen. Signing in on another browser doesn't end the first session.
 
 ## 2. The side panel
 
-Beside every page, dark in both themes:
+Beside every page, dark in both themes, in two groups: your work at the top, and who works with you at the foot.
 
 - **Start a call** (or **N**) opens flow 4.
-- **Home**, with how many things are waiting on you; **Notes**, with how many notes you have; **Drive**, every workspace,
-  where you write together (flow 12); **Record**, where recording in the room starts (flow 9), with how many recordings on this
-  device are waiting to upload; **Team** (flow 10), with how many people at your company use Alcove, you among them,
-  once anyone besides you does; and **Agents** (flow 14), with how many agents you've connected, once there's one.
-  Someone on their own, at a personal address, has no Team page and no groups here, and still has Agents.
-- **Up next**, on every page: the next Alcove call today, or the next meeting on your calendar
-  that has a video link (unless **Show my other meetings on Home** is off), when it starts, who's coming,
-  and **Join**. With nothing left today it says the next call will show there, except before your first
-  notes, when it says nothing. On Home it makes way while Home's own line offers a call (from 5 minutes before
-  one with someone else on it, and while one is going), so there's one **Join** at a time.
-- **Pinned**: the notes you pinned, in the order you pinned them, up to 8. A pinned note that was deleted,
-  or that you removed from your notes, isn't listed. The pin beside the heading opens the palette to pick
-  notes to pin or unpin; with 8 pinned it says to unpin one first. With nothing pinned, a line says what
-  pins are for.
-- **Groups**: each of your groups and how many people are in it. Each opens on the Team page, and **+**
-  starts a new one there.
+- **Home**, **Calls** (flow 8), **Drive**, every workspace, where you write together (flow 12), and **Record**, where
+  recording in the room starts (flow 9). A count beside a place says something is waiting on you there: on Home, what's
+  for you; in the Drive, tags you haven't seen; on Record, recordings on this device waiting to upload. Nothing counts a
+  total, such as every call or everyone on Team.
+- **Pinned**, under them, once you've pinned a note: the notes you pinned, in the order you pinned them, up to 8. A pinned
+  note that was deleted, or that you removed from your notes, isn't listed. A call's page pins its notes; the pin at the end
+  of the heading, which shows while you point at Pinned, opens the palette to pick notes to pin or unpin, and with 8 pinned
+  it says to unpin one first. With nothing pinned there's no Pinned at all.
+- At the foot, **Team** (flow 10), where your groups are, and **Agents** (flow 14). Someone on their own, at a personal
+  address, has no Team page, and still has Agents.
+- Under them, from 10 minutes before a call with someone else on it until it ends, on every page: the call, when it starts
+  (or **Happening now**), and **Join**. A meeting on your calendar is offered when it has a video link (unless **Show my
+  other meetings on Home** is off). The rest of the day is on Home, under Upcoming. On Home it makes way while Home's own
+  line offers the call (from 5 minutes before, and while it's going), so there's one **Join** at a time.
 - At the bottom: the confidential-compute check (**Confidential compute · verified** when the server's
   hardware answer is bound to this browser's request), and the time of notes left, which opens Settings at your
   minutes.
 - Offline, a notice at the top says recording still works and everything else catches up when you're back
-  (with **Record without a connection** off, that recording waits for the connection too). Up next and the
-  check wait until the connection returns. Alcove also opens offline for someone signed in on this browser:
+  (with **Record without a connection** off, that recording waits for the connection too). The call about to start and
+  the check wait until the connection returns. Alcove also opens offline for someone signed in on this browser:
   Record works, and every other page says it's offline, with **Record**.
 - **Hide the side panel** gives the page the room; the button left in the top-left corner brings the panel
   back, and the offline notice moves to the top of the page meanwhile. This browser remembers which.

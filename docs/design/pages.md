@@ -11,17 +11,22 @@ Storybook (`apps/storybook`, `stories/pages/`); the board it was designed as is 
 
 Every signed-in page sits in the same frame (`apps/web/src/features/shell/`, `packages/ui/src/styles/shell.css`).
 
-- **The side panel**, on the left, is dark in both themes. From the top:
+- **The side panel**, on the left, is dark in both themes, in two groups: your work at the top, and who works with you
+  at the foot. Board: [canvas/side-panel](canvas/side-panel/README.md). From the top:
   - the logo, and a button to hide the panel
   - Start a call (N): a row like the places, its name in line with theirs and its camera in a warm circle. It's never
     filled or shaded, so the place you're on is the one shaded row
-  - the places, each with a count: Home (what's waiting on you), Calls, Drive (tags you haven't seen), Record
-    (recordings waiting to upload), Team (people on Alcove) and Agents (agents connected), with Team hidden for someone
-    on their own. Every count is quiet, in `ink-3` at the row's end
-  - Up next, the next call with Join, on Home too, except while Home's own line offers a call (in its last few minutes,
-    and while it's going), so there's one Join at a time
-  - pinned notes and groups
-  - at the foot, the confidential-compute check and the minutes of notes left
+  - Home, Calls, Drive and Record. A count says something waits on you there (what's for you on Home, tags you haven't
+    seen in the Drive, recordings waiting to upload), quiet, in `ink-3` at the row's end. Nothing counts a total
+  - Pinned, once you've pinned something: no heading and no sentence before that. Its pin shows at the end of the heading
+    while you point at the list, as an add button does. It scrolls between the places and the foot
+  - at the foot, Team (where your groups are, so the panel doesn't list them again) and Agents, with Team hidden for
+    someone on their own
+  - a call about to start, from 10 minutes before until it ends: one row with a hairline round it, its cover, its name,
+    "Starts in 4 min" or "Happening now" in `sun-text`, and Join, never filled. On Home it makes way while Home's own
+    line offers the call (its last few minutes, and while it's going), so there's one Join at a time. The rest of the
+    day is Home's Upcoming. It comes in under Agents, so the places at the top never move
+  - the confidential-compute check and the minutes of notes left
 - **The page** scrolls under a rounded edge. Search ("Search or ask", ⌘K opens the palette) and you (your arch, which opens
   Settings) sit at its top right on every page, outside the page itself, so moving between pages leaves them alone. A page's
   title sits at its top left, in the same place on every page, and keeps clear of them with `--top-room`.
