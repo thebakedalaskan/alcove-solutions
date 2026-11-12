@@ -69,7 +69,7 @@ function Notices({ plan, team }: { plan: Plan; team: MyTeam | null | undefined }
   const shown = noticesNow(plan, team);
   const close = (n: PlanNotice) => {
     const all = async () => { for (const id of noticesLike(plan, n)) await dismiss.mutateAsync(id); };
-    all().then(() => requestAnimationFrame(() => {
+    void all().then(() => requestAnimationFrame(() => {
       const next = document.querySelector<HTMLButtonElement>('#plan .set-note-x');
       if (next) next.focus();
       else document.getElementById('plan')?.focus({ preventScroll: true });
