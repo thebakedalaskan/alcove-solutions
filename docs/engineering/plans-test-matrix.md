@@ -87,7 +87,7 @@ rewritten for it when this was written, so each row is In progress until the sui
 | W14 | An account makes workspaces up to `workspaces.max_made`, however each was made | workspaces/workspaces › … lets an account make as many workspaces as workspaces.max_made says… | 1 | Passes |
 | W15 | A call from before this (`viewing`, `made`, a home made by the previous release) reads: everyone has the meeting's workspace | calls/callWorkspace › what the previous release stored › … still opens a call that was viewing another workspace than its home…; calls/callFolders › what the previous release stored | 1 | Passes |
 | W16 | Nothing readable in a workspace made for a call (its name, an address) | calls/callFolders › what's kept of a workspace made for a call | 1 | Passes |
-| W17 | Delete workspace from the Drive row, the workspace's menu and the call's frame menu, by an admin alone | workspaces/workspaces › … is deleted by an admin alone…; the three menus by hand | 1 | In progress |
+| W17 | Delete workspace from the Drive row, the workspace's menu and the call's frame menu, by an admin alone | workspaces/workspaces › … is deleted by an admin alone…; the three menus by hand | 1 | Passes |
 
 ## Checked by hand
 

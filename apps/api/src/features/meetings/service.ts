@@ -24,7 +24,7 @@ import { indexCode } from './codes';
 import { boardsFrom, documentsFor, keptIds, shownOn, validDocuments } from '../workspaces/library';
 import { personOf } from '../account/portraits';
 import { cancelInSeries, changeInSeries, leadsTo, repeatsOf, schedule } from './repeats';
-import { accountReader, requireRole, workspaceFor } from '../workspaces/access';
+import { accountReader, requireRole, workspaceFor, workspacesThere } from '../workspaces/access';
 
 const mlog = log.child({ component: 'meetings' });
 
@@ -94,7 +94,7 @@ function cleanGuests(emails: string[], organizerEmail: string): string[] {
 }
 
 /** What showing calls to someone takes, read once for a whole list. */
-interface Reading { organizer: Person; viewer: Profile; reader: Owner; documents: ReadonlyMap<string, CallDocument>; access: ReadonlyMap<string, Access>; repeats: ReadonlyMap<string, Repeat> }
+interface Reading { organizer: Person; viewer: Profile; reader: Owner; documents: ReadonlyMap<string, CallDocument>; access: ReadonlyMap<string, Access>; repeats: ReadonlyMap<string, Repeat>; workspaces: ReadonlySet<string> }
 /** Everything brought to these calls, by ID, as `viewer` may know it: a workspace is read once, however many calls it's on. */
 async function broughtTo(viewer: Owner, meetings: Loaded<MeetingManifest>[]): Promise<ReadonlyMap<string, CallDocument>> {
   const ids = [...new Set(meetings.flatMap((m) => m.manifest.documents))];
@@ -103,7 +103,11 @@ async function broughtTo(viewer: Owner, meetings: Loaded<MeetingManifest>[]): Pr
 }
 /** `viewer` reading these calls of `owner`, who can be the same account. */
 const reading = async (owner: Owner, viewer: Owner, meetings: Loaded<MeetingManifest>[]): Promise<Reading> =>
-  ({ organizer: await me(owner), viewer: await profile(viewer), reader: viewer, documents: await broughtTo(viewer, meetings), access: await accessOf(owner, meetings.map((m) => m.itemId)), repeats: await repeatsOf(owner, meetings) });
+  ({
+    organizer: await me(owner), viewer: await profile(viewer), reader: viewer, documents: await broughtTo(viewer, meetings), access: await accessOf(owner, meetings.map((m) => m.itemId)), repeats: await repeatsOf(owner, meetings),
+    // A call's workspace deleted since is none: its organizer can pick another, or file its notes elsewhere.
+    workspaces: await workspacesThere(owner.pool, meetings.flatMap((m) => (m.manifest.workspaceId ? [m.manifest.workspaceId] : [])))
+  });
 
 /** A call as anyone on it sees it. What's only for its organizer, and who's on it, go on top of this. */
 function onCall(m: Loaded<MeetingManifest>, r: Reading) {
@@ -117,7 +121,7 @@ function onCall(m: Loaded<MeetingManifest>, r: Reading) {
 function asOrganizer(m: Loaded<MeetingManifest>, r: Reading): Meeting {
   const { guests, noteId, calendarEvent, seriesCode, workspaceId } = m.manifest;
   return {
-    ...onCall(m, r), isOrganizer: true, guests: guests.map((e) => personOf(e)), rsvp: null, workspaceId,
+    ...onCall(m, r), isOrganizer: true, guests: guests.map((e) => personOf(e)), rsvp: null, workspaceId: workspaceId && r.workspaces.has(workspaceId) ? workspaceId : null,
     ...(noteId !== undefined ? { noteId } : {}), ...(calendarEvent?.url ? { calendarUrl: calendarEvent.url } : {}), ...(seriesCode ? { seriesCode } : {})
   };
 }
@@ -167,7 +171,7 @@ export async function upcoming(o: Owner): Promise<Meeting[]> {
   // A call nobody held has no end to take its invite with it, and everyone on it may have no account to read it.
   await dropInvites(o, o.pool, mine.filter((m) => finished(m.manifest)).map((m) => m.itemId));
   const ms = mine.filter(listed);
-  const r: Reading = { organizer: await me(o), viewer: await profile(o), reader: o, documents: await broughtTo(o, ms), access: await reconcileAccess(o, ms), repeats: await repeatsOf(o, ms) };
+  const r: Reading = { organizer: await me(o), viewer: await profile(o), reader: o, documents: await broughtTo(o, ms), access: await reconcileAccess(o, ms), repeats: await repeatsOf(o, ms), workspaces: await workspacesThere(o.pool, ms.flatMap((m) => (m.manifest.workspaceId ? [m.manifest.workspaceId] : []))) };
   return [...ms.map((m) => asOrganizer(m, r)), ...await invitedTo(o)].sort((a, b) => a.startsAt.localeCompare(b.startsAt));
 }
 export async function past(o: Owner): Promise<Meeting[]> {

@@ -339,6 +339,13 @@ export async function workspaceAt(db: Db, workspaceId: string): Promise<{ ownerI
   return row && { ownerId: row.owner_id, version: row.version };
 }
 
+/** Which of these workspaces are there still, in one read: one deleted since is not. */
+export async function workspacesThere(db: Db, ids: readonly string[]): Promise<Set<string>> {
+  if (!ids.length) return new Set();
+  const found = await rows(db, z.object({ workspace_id: z.string() }), 'SELECT workspace_id FROM workspaces WHERE workspace_id = ANY($1::text[])', [[...new Set(ids)]]);
+  return new Set(found.map((r) => r.workspace_id));
+}
+
 /** A workspace, and where someone stands in it: what's needed to ask what they can do there. */
 export type WorkspaceAs = HeldWorkspace & Standing;
 /** How someone stands in a workspace that's already held, with nothing opened again. */

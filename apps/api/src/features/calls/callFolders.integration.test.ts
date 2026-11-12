@@ -342,6 +342,9 @@ describe('filing a call’s notes', () => {
     expect(ended).toMatchObject({ filed: false });
     const noteId = ended?.pendingNoteId ?? '';
     await noteOf(ann, noteId);
+    // The meeting says it has none, as the call did, so the note's page asks where its notes go.
+    expect((await ann.api.meetings.get(meetingId)).workspaceId).toBeNull();
+    expect((await ann.api.meetings.past()).find((x) => x.id === meetingId)?.workspaceId).toBeNull();
     const m = await ann.api.meetings.file(meetingId, { newWorkspace: true });
     expect(m.workspaceId).not.toBeNull();
     expect(m.workspaceId).not.toBe(gone);
