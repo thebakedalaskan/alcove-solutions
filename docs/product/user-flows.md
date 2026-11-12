@@ -60,8 +60,9 @@ Beside every page, dark in both themes:
 - **Start a call** (or **N**) opens flow 4.
 - **Home**, with how many things are waiting on you; **Notes**, with how many notes you have; **Drive**, every workspace,
   where you write together (flow 12); **Record**, where recording in the room starts (flow 9), with how many recordings on this
-  device are waiting to upload; and **Team** (flow 10), with how many people at your company use Alcove, you among them,
-  once anyone besides you does. Someone on their own, at a personal address, has no Team page and no groups here.
+  device are waiting to upload; **Team** (flow 10), with how many people at your company use Alcove, you among them,
+  once anyone besides you does; and **Agents** (flow 14), with how many agents you've connected, once there's one.
+  Someone on their own, at a personal address, has no Team page and no groups here, and still has Agents.
 - **Up next**, on every page: the next Alcove call today, or the next meeting on your calendar
   that has a video link (unless **Show my other meetings on Home** is off), when it starts, who's coming,
   and **Join**. With nothing left today it says the next call will show there, except before your first
@@ -90,7 +91,8 @@ the shortcut is **Find** (flow 12), and **Search or ask** stays at the top right
 
 On a phone (860 px wide or narrower) a top bar takes its place, with the brand, search (not on Notes), **Start a call** (a plus) and
 you (Settings), and a tab bar runs along the bottom: **Home**, **Notes**, **Record** (raised), **Drive** and **Team**
-when you're on one. Offline, the same notice sits under the top bar.
+when you're on one. Agents isn't in it: on a phone it opens from **Settings → Connections** (flow 11). Offline, the same
+notice sits under the top bar.
 
 **The palette** is a solid window over the page, with the page dimmed behind it and never blurred. On a wide screen what's
 lit in its list shows beside it; under 1100 px the list is alone, and on a phone it takes the screen, with **Cancel**.
@@ -1712,7 +1714,9 @@ notes on new calls while the oldest request fails.
   (when Google Calendar is connected, Google sends the invitations; a sample calendar stands in for it) and **Show my
   other meetings on Home** (both on by default). Then **Google Drive**, one line that says where notes go until
   **Manage** opens it in place, where **Connect** and **Reconnect** first say what Google shares and what Alcove uploads
-  (flow 15), and **Agents**: named, revocable connections, then **Connect an agent**, which opens in place (flow 14).
+  (flow 15). Then **Agents**, one row: who's connected ("Claude, Cursor and Weekly digest are connected.", and past three
+  names how many more), or what agents are for while none is, with **Open Agents**, or **Connect an agent** while none
+  is, which opens Agents (flow 14). On a phone this row is the way to Agents.
 - **Plan and credits**: the time of notes left, with a sun on the line under it: at the end of the line on a new
   account, back along it as notes are written, and set once there's none left. Calls without notes are free. Then the
   minutes of notes used this month (since 00:00 UTC on the 1st), and **Add credits** (11.24).
@@ -2053,34 +2057,93 @@ the boards open in this one.
 
 ## 14. Agent access
 
-An agent connection delegates only the signed-in person's existing access. Reading, editing, sharing and deleting notes
-are separate choices, as are reading calls, managing calls and reading calendar availability. Alcove explains that the
-agent can receive readable information and its provider handles it under its own policies. Signing out of a browser
-does not disconnect an agent; Disconnect, expiry and account deletion end its access.
+An agent (Claude, ChatGPT, Cursor, VS Code, Claude Code, Codex, or anything else that works with MCP) uses Alcove only as
+far as you allow, and never beyond what you can do yourself. Notes, calls and your calendar each have a level, and sharing
+and deleting notes are choices of their own, off unless you turn them on. Wherever you allow one, Alcove says the agent
+gets readable information, which its maker handles under its own policies. Allowing an agent lasts 30 days, and a token as
+long as it was made for. Signing out of a browser doesn't disconnect an agent; **Disconnect**, its access running out and
+deleting the account end it.
 
-1. **Connect an agent, or create a personal token.** In **Settings → Connections → Agents**, press **Connect an agent**.
-   It opens in place with Alcove's MCP address and **Copy**, to paste into the agent's connections; the agent then opens
-   Alcove to sign in (14.3). For a script that can't sign in, press **Create a token**, give the connection a name and choose
-   when it expires: 7, 30 or 90 days (30 by default). Read permissions start selected. Choose any additional permissions explicitly;
-   sharing and deletion stay separate. **Create token** shows the token once, masked, with **Copy**, and Alcove's address under
-   it. **Done** removes it from the page and leaves the named connection, its permissions and expiry in the
-   list. If creation fails, the form stays open with the reason. If Copy is unavailable, the same view says so and keeps
-   the token available until Done.
-2. **Disconnect an agent.** Each connection lists its permissions, expiry and last use, or **Not used yet**. Press
-   **Disconnect** on that connection's row. It leaves the list and a toast says **Agent disconnected.** If the request
-   fails, the connection stays and the toast explains why. With no connections, **Connect an agent** says there are none
-   yet; loading and unavailable states keep the rest of Settings usable.
-3. **Sign in and review requested access.** Start connecting from the external agent, which opens `/connect` with an
-   opaque request pointer. If signed out, choose an Alcove sign-in method first; the same request resumes afterward.
-   The page names the requesting client (a name supplied by that client), the signed-in account and only the requested
-   permissions. Remove any permission before **Allow selected access**. Access ends after 30 days, or sooner when
-   disconnected. **Cancel** declines access. Either answer hands control back to the validated external client. A request
-   that expired or was already answered says **This request ended** and asks you to start again from the agent. Opening
-   `/connect` without a request grants nothing and says to open the connection from the agent. A failed request or decision
-   stays on the page with a reason and a way to retry.
+**Agents** (`/agents`) is a place in the side panel, after Team, with how many agents you've connected (flow 2). On a phone
+it opens from **Settings → Connections** (flow 11), and its head has a way back to Settings. It's Team's evening the other
+way round, the sun low on the right just past the end of the line, and the agents stand on the horizon as windows, as people
+stand in arches:
 
-Storybook's journeys use these numbers: **14.1 Connect an agent, or create a personal token**, **14.2 Disconnect an
-agent**, and **14.3 Sign in and review requested access**. The OAuth journey plays up to the external-client hand-off; it does not open another app.
+- the connected ones first, solid, each with its name and when it was last used under it (**4 min ago**, **Yesterday**,
+  **Not used yet**, or **Just connected** in its first minutes), in the order of the list below, then other agents, then
+  tokens
+- then a gap, and the agents people use that aren't connected yet, dashed: Claude, ChatGPT, Cursor, VS Code, Claude Code
+  and Codex
+- then **Another agent**, a plug
+
+A connection's mark comes from the name the agent gives itself, and is only ever its picture: a token is a key, and a name
+Alcove doesn't know is a bot. One whose access ends within three days says **Ends tomorrow** (or **Ends today**, or the
+day) under its name, in caution, with a dot on its window. Before one is connected the sky says **Connect your agent**,
+*Ask it about your calls, and let it book them. It can do only what you allow.*; after, **Your agents**. Each window opens a
+popover under it (a sheet on a phone) with one thing to do.
+
+1. **Connect Claude.** Press **Agents** in the side panel, then Claude on the horizon. Its popover says *Paste this address
+   into Claude’s connectors.* over Alcove's address, and **Copy and open Claude** copies the address and opens Claude's
+   connectors in a new tab (ChatGPT's is the same, with ChatGPT's). The button gives way to **Waiting for Claude**, and
+   Agents looks for the new connection every 3 seconds while it waits. Add Alcove in Claude, and Claude opens Alcove to ask
+   what it can do (14.2). The moment it's allowed, this tab knows too: Claude stands on the horizon, and its popover says
+   **Claude is connected**, *Ask it something in Claude, like:* "What did we decide about the launch?", with copy.
+2. **Allow it, with less than it asks for.** The agent opens Alcove's `/connect` with its request, a pointer that carries no
+   credential. Signed in, Agents asks in its place; signed out, you sign in first (**Sign in to connect your agent**), and
+   Agents asks after. The sky grows, and the agent's window, outlined in rose, stands on the horizon beside you in your arch,
+   joined by a dashed line. **Claude wants to use your Alcove**, then a row for each part of Alcove it asked for, each set to
+   all it asked for and each a menu of levels that say what they allow: **Notes** (Off, Read, Read and edit), **Calls** (Off,
+   See, See and book) and **Calendar** (Off, See), with only the levels it asked for. When it asked to share or delete
+   notes, **Share or delete notes** has a switch for each, off until you turn it on. *Claude gets readable information from
+   Alcove, under its maker’s own policies.* **Allow** can't be pressed while everything is off; beside it is **Cancel**, and
+   under them *Only allow this if you just added Alcove to Claude. It lasts 30 days.* Allowed, the line between you closes
+   with a tick, **Claude is connected**, *Taking you back to Claude…*, and a moment later the browser goes back to Claude.
+   An agent that's an app on this computer opens without the page going anywhere: then the page is as it was, with the agent
+   on the horizon. **Cancel** tells Claude no, and a toast says nothing was shared with it. While the request is read it says
+   **Reading the request**; one that doesn't load says **This request didn’t load**, with **Try again**. `/connect` without
+   a request grants nothing, and says to open the connection from the agent.
+3. **One button: Cursor or VS Code.** Cursor's popover says *Cursor asks to add Alcove. Then you choose what it can do,
+   here.*, and **Add to Cursor** opens Cursor, which asks to add Alcove. The popover waits; Cursor opens Alcove, Agents asks,
+   as in 14.2, and once it's allowed the popover says it's connected.
+4. **One line: Claude Code or Codex.** Claude Code's popover has the line to run in your terminal, with **Copy command**:
+   *Run this in your terminal, then /mcp in Claude Code to sign in.* Codex's line signs in as well: *Run this in your
+   terminal. Codex opens Alcove to sign in.* The popover waits, and Agents asks, as in 14.2.
+5. **Change what an agent can do.** Press a connected agent. Its popover says when it was last used (**Used 4 min ago**,
+   or **Token · used Mon** for a token), then **What it can do**: Read notes, Edit notes, Share notes, Delete notes, Read
+   calls, Book calls and Read calendar. Pressing one changes it at once, **Saved** shows beside the heading, and the agent
+   can, or can't, from its next request. The last one can't be taken away: a toast says to disconnect instead. The foot has
+   **Disconnect** and when its access ends (**Until 20 Nov**).
+6. **Disconnect an agent.** **Disconnect** asks in the same popover: **Disconnect Claude?** *It stops working at once. To use
+   it again, connect it again.*, with **Keep Claude** (filled) and **Disconnect**. It leaves the horizon, with what it did,
+   and a toast says it can't reach Alcove any more.
+7. **See what your agents did.** Under the horizon, **What your agents did** (*Only you see this*) lists each thing your
+   agents read or changed, by day and newest first: a mark for what was done, a sentence (*Claude booked* **Onboarding
+   review**), a second line (when the call is, or how many it found) and the time. A note in it opens the note, and a call
+   opens its card. Reading is quiet; a booked call is warm, a follow-up in horizon and a decision in rose. **Show more** goes
+   further back. A note or call that's gone, or isn't yours any more, isn't named: it's "a note", *Not there any more*. It
+   keeps 30 days, and the last 1,000 things at most. Before anything's done it says **Nothing yet**. Beside it, **Ask your
+   agent**: four things to ask, naming people you work with, each saying which of your agents can do it (**Claude and Cursor
+   can do this**) or what it needs (**Needs book calls**), with copy. Tokens aren't among them: nobody asks a script.
+8. **A token for a script.** Press **Another agent**: Alcove's address with **Copy address**, then *A script that can’t sign
+   in?* **Create a token**. Give it a name, choose how long it **Lasts** (7, 30 or 90 days; 30 to start) and **What it can
+   do** (reading, to start), and press **Create token**. It shows once, hidden but for its ends, with copy, and Alcove's
+   address under it with copy: *Copy it into your script now, with Alcove’s address. It won’t show again.* **Done** forgets
+   it, since nothing else keeps it, and the token stands on the horizon with a key.
+9. **Keep one longer.** An agent whose access ends tomorrow says so under its window. Its popover says *Its access ends
+   tomorrow* and offers **Keep it 30 more days**, which keeps it for 30 days from then, and a toast says until when.
+10. **A request that ended.** A request that waited too long, or was answered in another tab, says **This request ended**,
+    *It waited too long, or was answered in another tab. Start again from Claude.* (from your agent, when the request can no
+    longer say whose it was), with **Show me how**, which opens that agent's popover on the line, or Another agent's.
+11. **Settings points to Agents.** **Settings → Connections** keeps one row for agents: who's connected, and **Open
+    Agents** (flow 11).
+12. **On a phone.** Agents opens from Settings. The line scrolls sideways under the sky, and what your agents did follows
+    under it. A window opens a sheet, allowing works the same, and the page's head goes back to Settings.
+
+While Agents loads, three empty windows breathe on the line. **Your agents didn’t load** says Alcove couldn't reach the
+server, with **Try again**. Offline, **You’re offline**: your agents keep working, and the page catches up when you're back.
+
+Storybook's journeys use these numbers, **14.1** to **14.12**. Claude, Cursor and the terminal are outside Storybook, so a
+journey plays up to handing over to them, opening no tab or app, and the stand-in plays the agent's side.
 
 ## 15. Google Drive exports
 

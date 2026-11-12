@@ -471,9 +471,10 @@ export const FirstDay: PageStory = {
       await row('Record without a connection');
       await within(await row('Used this month')).findByText('None yet', {}, SOON);
     });
-    await step('Under Connections, Connect is there when you want it', async () => {
+    await step('Under Connections, Connect is there when you want it, and Agents says what agents are for, with Connect an agent', async () => {
       await jump('Connections');
       await within(await row('Google Calendar')).findByRole('link', { name: 'Connect' }, SOON);
+      await within(await row('Agents')).findByRole('link', { name: 'Connect an agent' }, SOON);
     });
     await step('The browser doesn’t name your devices until they’re allowed, so there’s no list yet', async () => {
       await jump('Audio and video');

@@ -1,7 +1,7 @@
 /* Query keys, fetchers and mutations. Screens read data through these, never through `api` directly. */
-import type { AgentDecisionInput, AgentTokenInput, DriveExportInput, FollowUpReview } from '@alcove/api';
+import type { AgentDecisionInput, AgentTokenInput, AgentUpdateInput, DriveExportInput, FollowUpReview } from '@alcove/api';
 import { AlcoveApiError, MAX_SORT_STICKIES, MAX_SORT_STICKY, SORT_TOO_FEW, SORT_TOO_MANY, errorCode, type ActionProposal, type ChangeScope, type DecisionProposal, type DemoProvider, type DocumentRole, type FeatureFlagName, type Group, type PresenterFrameNotes, type InstantCallInput, type ISODate, type ItemInput, type ItemPlace, type LinePatch, type MeetingInput, type MentionBody, type NoteKind, type NotesSetting, type Patch, type PersonalInput, type PersonalNotes, type PromoteBody, type QuestionPatch, type TopUp, type RingReply, type Series, type SharedWrite, type ShareTarget, type DocumentLibrary, type WorkspaceRole, type WorkspaceSummary, type WorkspaceTree } from '@alcove/api';
-import { queryOptions, useIsMutating, useMutation, useMutationState, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { infiniteQueryOptions, queryOptions, useIsMutating, useMutation, useMutationState, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef } from 'react';
 import { forgetAccount } from '~/features/record/offline';
 import { forgetNotified } from '~/features/shell/notified';
@@ -24,6 +24,8 @@ export const qk = {
   driveJobs: ['google-drive', 'jobs'] as const,
   driveNote: (id: string) => ['google-drive', 'note', id] as const,
   agents: ['agents'] as const,
+  /** What your agents did: a list of its own, read again only when it changes (disconnecting deletes what an agent did). */
+  agentActivity: ['agent-activity'] as const,
   agentEndpoint: ['agent-endpoint'] as const,
   agentAuthorization: (id: string, ownerId: string) => ['agent-authorization', id, ownerId] as const,
   session: ['session'] as const,
@@ -117,6 +119,10 @@ export const verifiedAt = (t: Trust | undefined): number | null => (t?.tee === '
  */
 export const trustLine = (t: Trust | undefined): string => (verifiedAt(t) === null ? 'Confidential compute' : 'Confidential compute · verified');
 
+/** How much of what your agents did a page of it holds, and where the first page starts (nowhere before it). */
+const ACTIVITY_PAGE = 12;
+const newest = (): string | null => null;
+
 /** Whether money can still arrive for a top-up: it's waiting, arriving or short. */
 export const topUpOpen = (t: TopUp): boolean => t.state === 'waiting' || t.state === 'arriving' || t.state === 'short';
 
@@ -133,6 +139,17 @@ export const q = {
     refetchInterval: (query) => (query.state.data?.jobs.some((job) => job.status === 'uploading' || (job.status === 'pending' && job.reason === null)) ? 2_000 : 10_000)
   }),
   agents: () => queryOptions({ queryKey: qk.agents, queryFn: () => api.agents.list() }),
+  /**
+   * What your agents did, newest first, a page at a time: Show more reads the page after the last one. Read again every
+   * minute while only the first page is open; once more are, reading again would read them all, so it waits to be asked.
+   */
+  agentActivity: () => infiniteQueryOptions({
+    queryKey: qk.agentActivity,
+    queryFn: ({ pageParam }) => api.agents.activity(pageParam === null ? { limit: ACTIVITY_PAGE } : { limit: ACTIVITY_PAGE, before: pageParam }),
+    initialPageParam: newest(),
+    getNextPageParam: (page) => page.next,
+    refetchInterval: (query) => ((query.state.data?.pages.length ?? 1) > 1 ? false : 60_000)
+  }),
   /** The MCP address agents connect to: it stays the same while the app is open. */
   agentEndpoint: () => queryOptions({ queryKey: qk.agentEndpoint, queryFn: () => api.agents.endpoint(), staleTime: Infinity }),
   agentAuthorization: (id: string, ownerId: string) => queryOptions({ queryKey: qk.agentAuthorization(id, ownerId), queryFn: () => api.agents.authorization(id), retry: false, staleTime: 0 }),
@@ -987,16 +1004,46 @@ export function useWorkspacePeople(workspaceId: string) {
 }
 
 /** Credentials live in the active form only, never in a query or a persisted mutation. */
+/*
+ * After a change to the connections, the list alone is read again, and nothing waits for it: what was changed answers at
+ * once (a token shows, Saved says so, allowing hands back to the agent) and the list catches up behind it.
+ */
+const readConnectionsAgain = (qc: QueryClient) => { void qc.invalidateQueries({ queryKey: qk.agents, exact: true }); };
 export function useCreateAgentToken() {
   const qc = useQueryClient();
-  return useMutation({ gcTime: 0, mutationFn: (input: AgentTokenInput) => api.agents.createToken(input), onSuccess: () => qc.invalidateQueries({ queryKey: qk.agents }) });
+  return useMutation({ gcTime: 0, mutationFn: (input: AgentTokenInput) => api.agents.createToken(input), onSuccess: () => readConnectionsAgain(qc) });
 }
+/** Disconnecting deletes what the agent did too: it leaves the line at once, and what they did is read again. */
 export function useRevokeAgent() {
   const qc = useQueryClient();
-  return useMutation({ mutationFn: (id: string) => api.agents.revoke(id), onSuccess: () => qc.invalidateQueries({ queryKey: qk.agents }) });
+  return useMutation({
+    mutationFn: (id: string) => api.agents.revoke(id),
+    onSuccess: (_, id) => {
+      qc.setQueryData(q.agents().queryKey, (list) => list?.filter((c) => c.id !== id));
+      readConnectionsAgain(qc);
+      void qc.invalidateQueries({ queryKey: qk.agentActivity });
+    }
+  });
 }
+/** Allowing an agent connects it: the list is read again, so it stands on the line. */
 export function useAgentDecision(requestId: string) {
-  return useMutation({ gcTime: 0, mutationFn: (decision: AgentDecisionInput) => api.agents.decide(requestId, decision) });
+  const qc = useQueryClient();
+  return useMutation({ gcTime: 0, mutationFn: (decision: AgentDecisionInput) => api.agents.decide(requestId, decision), onSuccess: () => readConnectionsAgain(qc) });
+}
+/**
+ * Changing a connection: what it can do, or 30 more days. One change at a time, in the order they were made (`scope`), so
+ * quick presses of its chips land as pressed. What comes back is the connection as it now is, and it shows at once.
+ */
+export function useUpdateAgent() {
+  const qc = useQueryClient();
+  return useMutation({
+    scope: { id: 'agent-update' },
+    mutationFn: ({ id, ...change }: AgentUpdateInput & { id: string }) => api.agents.update(id, change),
+    onSuccess: (connection) => {
+      qc.setQueryData(q.agents().queryKey, (list) => list?.map((c) => (c.id === connection.id ? connection : c)));
+      readConnectionsAgain(qc);
+    }
+  });
 }
 
 /** Drive credentials stay on the server; the browser receives only a one-time consent destination. */

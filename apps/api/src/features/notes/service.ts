@@ -20,7 +20,7 @@ import { ConflictError, ForbiddenError, NotFoundError, ValidationError, notFound
 import { inference, type ChatModel } from '../../inference';
 import { log } from '../../log';
 import { findOwner, masterKey } from '../../owners';
-import { createItem, findItem, getItem, listItems, lockItem, saveRevision, type Loaded } from '../../vault';
+import { createItem, findItem, findItems, getItem, listItems, lockItem, saveRevision, type Loaded } from '../../vault';
 import { me, profile, unpin } from '../account/account';
 import { carryModel } from './carryModel';
 import { resolveModel } from './models';
@@ -352,6 +352,13 @@ export async function locate(o: Owner, id: string, db: Db = o.pool): Promise<Loc
   if (!owner) throw notFound('Those notes', { noteId: id });
   return { owner, note: await getItem(owner, db, 'note', id, NoteManifest, 'Those notes'), mine: false, as };
 }
+/** Titles of whichever of these notes are the account's own, read together from their manifests. */
+export async function ownNoteTitles(o: Owner, ids: string[]): Promise<Map<string, string>> {
+  if (!ids.length) return new Map();
+  return new Map((await findItems(o, o.pool, 'note', ids, NoteManifest)).map((n) => [n.itemId, n.manifest.title]));
+}
+/** The title of a note the account has, someone else's included, by the check reading it takes, from its manifest alone. */
+export async function noteTitle(o: Owner, id: string): Promise<string> { return (await locate(o, id)).note.manifest.title; }
 
 /**
  * Keeps a note, and this person's way to it, in place until the transaction ends, or says they've gone: deleting the

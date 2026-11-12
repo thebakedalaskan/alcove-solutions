@@ -24,12 +24,13 @@ export function ThemeScope({ theme, children }: { theme: 'light' | 'dark' | null
  * `takeFocus={false}` for one that opens as you hover or focus its anchor: focus doesn't move into it when it
  * opens, nor back to the anchor when it closes, so Tab carries on past it and moving the mouse away doesn't
  * open it again. `caret` points it at its anchor, and it keeps pointing there when the panel slides to stay in the window.
- * `onCloseFocus` puts focus somewhere else when it closes: return true once it has, as a Modal's does.
+ * `onCloseFocus` puts focus somewhere else when it closes: return true once it has, as a Modal's does. `within` keeps it
+ * inside a part of the page rather than the window, such as the page beside the side panel.
  */
-export function Popover({ open, onOpenChange, anchor, children, align = 'start', side = 'bottom', stage = false, takeFocus = true, caret = false, onCloseFocus, label, tip, className }: {
+export function Popover({ open, onOpenChange, anchor, children, align = 'start', side = 'bottom', stage = false, takeFocus = true, caret = false, onCloseFocus, label, tip, within, className }: {
   open: boolean; onOpenChange: (open: boolean) => void; anchor: ReactNode; children: ReactNode;
   align?: 'start' | 'center' | 'end'; side?: 'top' | 'bottom'; stage?: boolean; takeFocus?: boolean; caret?: boolean | undefined;
-  onCloseFocus?: (() => boolean) | undefined; label: string; tip?: ReactNode; className?: string;
+  onCloseFocus?: (() => boolean) | undefined; label: string; tip?: ReactNode; within?: Element | null | undefined; className?: string;
 }) {
   const returning = useRef(false);
   const scoped = useContext(Scoped);
@@ -48,7 +49,7 @@ export function Popover({ open, onOpenChange, anchor, children, align = 'start',
         </RTooltip.Root>
       )}
       <RPopover.Portal>
-        <RPopover.Content side={side} align={align} sideOffset={OFFSET} collisionPadding={EDGE} aria-label={label} className={cn('ac-pop', stage && 'is-stage', scoped, className)}
+        <RPopover.Content side={side} align={align} sideOffset={OFFSET} collisionPadding={EDGE} collisionBoundary={within ?? []} aria-label={label} className={cn('ac-pop', stage && 'is-stage', scoped, className)}
           onOpenAutoFocus={takeFocus ? undefined : (e) => e.preventDefault()}
           // Radix focuses the anchor right after this, synchronously, if it focuses it at all (not when it already has
           // focus, or after a click elsewhere), so the mark lasts only until then.

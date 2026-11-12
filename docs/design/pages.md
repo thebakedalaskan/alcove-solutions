@@ -15,8 +15,9 @@ Every signed-in page sits in the same frame (`apps/web/src/features/shell/`, `pa
   - the logo, and a button to hide the panel
   - Start a call (N): a row like the places, its name in line with theirs and its camera in a warm circle. It's never
     filled or shaded, so the place you're on is the one shaded row
-  - the places, each with a count: Home (what's waiting on you), Notes, Record (recordings waiting to upload) and Team
-    (people on Alcove), with Team hidden for someone on their own
+  - the places, each with a count: Home (what's waiting on you), Notes, Drive (tags you haven't seen), Record
+    (recordings waiting to upload), Team (people on Alcove) and Agents (agents connected), with Team hidden for someone
+    on their own. Every count is quiet, in `ink-3` at the row's end
   - Up next, the next call with Join, on Home too, except while Home's own line offers a call (in its last few minutes,
     and while it's going), so there's one Join at a time
   - pinned notes and groups
@@ -26,7 +27,8 @@ Every signed-in page sits in the same frame (`apps/web/src/features/shell/`, `pa
   title sits at its top left, in the same place on every page, and keeps clear of them with `--top-room`.
 - **On a phone** (860px and narrower) a top bar takes the panel's place: the logo, search, Start a call as a plus, and you.
   A tab bar sits at the bottom: Home, Notes, Record (standing up out of the bar as a small night recorder with its red
-  light), Team and Settings.
+  light), Drive and Team. Settings is you in the top bar, and Agents opens from Settings › Connections, so the bar keeps
+  its five.
 - **The palette** (`features/shell/Palette.tsx` and `palette/`, the `Palette*` parts, `styles/palette.css` (`pal-`)).
   Board: `Search.dc.html`. It's solid: an opaque window on `surface-raised` with a hairline, over a page dimmed and never
   blurred, and the field that opens it at the top right is solid too.
@@ -191,6 +193,53 @@ The sun is low and to the left, behind the people.
 - Every number on the page is real: a group's calls are calls everyone in it was on. Someone on their own has no Team page.
 - The first day, loading, a failed load and offline each have their own look.
 
+## Agents
+
+`routes/_app/agents.tsx`, `features/agents/`, `components/agents.tsx`, `styles/agents.css` (`ag-`). Moment: `agents`.
+Boards: `Agents.dc.html`, with every journey in `StepsAgents.dc.html`.
+
+Team's evening the other way round: the sun is low and to the right, just past the end of the line of agents.
+
+- **The sky.** Agents at the top left. In the middle on the first day, Connect your agent (Newsreader) over one line:
+  "Ask it about your calls, and let it book them. It can do only what you allow." The sky is a little taller then. Once
+  one is connected, the title is Your agents, with no line.
+- **The line.** Agents stand on the horizon as windows, square with rounded tops, as people stand in arches:
+  - the connected ones first, solid, with their name and when they were last used under them
+  - half a place's gap, then the agents people use that aren't connected yet, dashed, as someone not on Alcove is on Team:
+    Claude, ChatGPT, Cursor, VS Code, Claude Code and Codex
+  - Another agent, a plug, at the end
+  - each has a mark by its kind, a plain icon and never its maker's logo: a key for a token, and a bot for a name Alcove
+    doesn't know. The kind comes from the name the agent gives itself, so it's never more than the picture
+  - access that ends within three days says so under the name in `caution`, with a `caution` dot on the window
+- **A window's popover** opens under it, with a caret, and slides to stay on the page; on a phone it's a sheet. Each has
+  one thing to do, and no numbered steps, floating links or lines of facts:
+  - **To connect:** Connect Claude, one line of what to do, the address or the command in a quiet mono well when it needs
+    one, and one full-width filled button. Pressed, the button gives way to Waiting for Claude, with three dots, and once
+    Claude is connected the popover says so, with something to ask it in a well with copy.
+  - **Another agent:** the address and Copy address, with a foot row, A script that can't sign in? Create a token →.
+    The token's form opens in the same popover, with a way back; made, the token is masked in a well with copy, and the
+    address is under it.
+  - **A connected agent:** its mark, name and when it was used. While it's ending, a line in `caution` and a full-width
+    secondary Keep it 30 more days. Then What it can do, with Saved beside it after a change, as seven chips, and a foot
+    with a quiet Disconnect and when its access ends. Disconnect asks in place, and Keep Claude is the filled answer.
+- **The question.** When an agent asks to use your Alcove, the sky grows to hold it. In the line's place, the agent's
+  window, outlined in `rose` because a decision waits on you, stands with you in your arch, joined by a dashed `rose`
+  line with a plug in a `rose` circle. Then Claude wants to use your Alcove (Newsreader, 32 to 44px), a quiet panel with
+  a row for each part of Alcove it asked for, its level at the row's right edge opening a menu of levels with what each
+  allows, the disclosure, Allow (filled) and Cancel, and one line of fine print. Allowed, the line closes, solid with a
+  tick, and the page says it's taking you back.
+- **The water:**
+  - **What your agents did**, with Only you see this and a lock, grouped by day. Each row is a mark tinted by what was
+    done, a sentence with what it was about as a link, a quiet second line, and the time in a fixed column. Reading is
+    neutral; a booked call takes `sun-text`, a follow-up `horizon` and a decision `rose`. Show more continues it. Empty,
+    it's a dashed window with a bot, Nothing yet, and one line.
+  - **Ask your agent**, beside it: four things to ask, each saying which connected agents can do it (with a tick) or what
+    it needs, with copy.
+- Loading is three dashed windows that breathe. A failed load, being offline and a request that ended each say so on the
+  sky, with Try again or Show me how.
+- **On a phone** Agents opens from Settings, and its head has a way back there. The line scrolls sideways under the sky,
+  and the water follows in one column.
+
 ## Record
 
 `routes/_app/record.tsx`, `routes/record.live.tsx`, `features/record/`, `styles/record.css` (`rec-`). Moment: `record`.
@@ -248,11 +297,11 @@ The last of the light, with you in it, then seven groups. Change one thing and l
   tick (inside Alcove, and from the browser when Alcove is in another tab) and a Sound tick, empty where that way doesn't
   apply. With sounds off, the Sound column steps back and keeps its ticks. The call's own Settings shows the same pieces
   with the In a call rows.
-- **What you set up once folds away.** Connections holds Google Calendar (its two switches nested under it), Google Drive
-  and agents. Drive is one line that says where notes go until Manage opens its folder, files, recent exports and
-  Disconnect in place. Connect an agent opens in place too: Alcove's address with Copy, or a token for a script, shown
-  once. The shared `AgentPermissions`, `AgentDisclosure`, `AgentAddress` and `AgentTokenReveal` components live in
-  `components/agents.tsx` and `styles/agents.css`.
+- **What you set up once folds away.** Connections holds Google Calendar (its two switches nested under it) and Google
+  Drive in one panel, and Agents in its own. Drive is one line that says where notes go until Manage opens its folder,
+  files, recent exports and Disconnect in place. Agents is one row, since agents are connected and changed on a page of
+  their own: the agent tile, who's connected (or what agents are for, while none is), and Open Agents →, or Connect an
+  agent → while none is. On a phone it's the way to Agents.
 - **Sign out** signs you out at once. Only when recordings haven't uploaded does it ask first: the sky grows to hold the
   question, it says they'll be deleted, and Stay signed in is the filled answer.
 - **Delete account** sits apart, in its own panel at the end, and opens in place, with what goes beside what stays. The
@@ -260,12 +309,12 @@ The last of the light, with you in it, then seven groups. Change one thing and l
 
 ## Connecting an agent
 
-`routes/connect.tsx`, `features/agents/permissions.ts`, `components/agents.tsx`, `styles/agents.css` (`ac-agent-`). The public
-page uses the theme's ground and one quiet sheet, with the mark above it. It names the requesting client and the signed-in
-account, then only the permissions the client requested, the readable-information disclosure, and Allow / Cancel.
-Missing or expired requests, sign-in, loading, and unavailable states use the same frame. The permission choices are
-shared with Settings. Storybook records both pages and their states under Pages, with the steps in **Journeys / 14 Agent
-access**; the design canvas has no board for this page yet.
+`routes/connect.tsx`, `AgentConsentFrame` in `components/agents.tsx`, `styles/agents.css` (`ac-agent-`). Where an agent
+sends you to let it in, with its request. Signed in, it hands over to Agents at once (`/agents?request=…`, in its place),
+and Agents asks on its sky (see [Agents](#agents)). Signed out, it's one quiet sheet on the theme's ground with the mark
+above it: Sign in to connect your agent and the ways in, and then Agents asks. No request, and checking the sign-in or
+failing to, use the same sheet. Storybook records its states under **Pages / Connect an agent**, and the journeys under
+**Journeys / 14 Agent access**; it has no board of its own on the canvas.
 
 
 ## Starting and scheduling a call

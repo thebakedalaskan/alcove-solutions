@@ -11,7 +11,9 @@
  *  - deletes for good what's been in a workspace's Trash for 30 days, ends seats whose call is over and closes what such a
  *    call opened to everyone in it, and lets go of tags nobody came back for in 30 days;
  *  - deletes live notes a call left behind when a release from before them ended it;
- *  - takes away what an upload left when its browser went, a day on, and forgets uploads counted before yesterday.
+ *  - takes away what an upload left when its browser went, a day on, and forgets uploads counted before yesterday;
+ *  - deletes agent connections and credentials that ran out, and what agents did after 30 days or past each connection's
+ *    newest 1,000.
  *
  * Each step stands alone: one that fails is logged and the rest still run, so a sweep that keeps failing can't stop
  * notes being written or Drive exports going.
@@ -21,6 +23,7 @@ import type { Deps } from './context';
 import { exec, rows } from './db';
 import { log } from './log';
 import { deleteQueued } from './features/recordings/audio';
+import { sweep as sweepAgentActivity } from './features/agents/activity';
 import { sweep as sweepAgents } from './features/agents/service';
 import { reconcile } from './features/calls/lifecycle';
 import { sweep as sweepLiveNotes } from './features/calls/live-notes';
@@ -50,6 +53,8 @@ export async function maintain(d: Deps, opts: { orphanAgeMs?: number; trashAgeMs
   const started = Date.now();
   const sessions = await step('sessions', () => sweepSessions(d), 0);
   const agents = await step('agents', () => sweepAgents(d), 0);
+  // After the connections: what one that ran out did has gone with it.
+  const agentActivity = await step('agent activity', () => sweepAgentActivity(d), 0);
   const receipts = await step('receipts', () => exec(d.pool, `DELETE FROM operations WHERE completed_at < now() - interval '24 hours'`), 0);
 
   const retried = await step('object deletes', () => deleteQueued(d), 0);
@@ -73,7 +78,7 @@ export async function maintain(d: Deps, opts: { orphanAgeMs?: number; trashAgeMs
   const uploads = await quietly('uploads', () => sweepUploads(d, opts.uploadAgeMs, started));
   const uploadDays = await quietly('upload days', () => pruneUploadDays(d));
   const mentions = await quietly('mentions', () => sweepMentions(d));
-  return { driveExports, sessions, agents, receipts, retried, orphans, videos, notes, calls, moves, noteLinks, rings, liveNotes, attention, trash, seats: ended.seats, callWorkspaces: ended.workspaces, uploads, uploadDays, mentions };
+  return { driveExports, sessions, agents, agentActivity, receipts, retried, orphans, videos, notes, calls, moves, noteLinks, rings, liveNotes, attention, trash, seats: ended.seats, callWorkspaces: ended.workspaces, uploads, uploadDays, mentions };
 }
 
 /** Deletes objects older than `cutoff` (ms) that no row points at: writes whose SQL commit failed. */

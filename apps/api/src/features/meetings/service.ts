@@ -14,7 +14,7 @@ import { exec, tx, type Db } from '../../db';
 import { ConflictError, ValidationError } from '../../errors';
 import { log } from '../../log';
 import { lockOwner } from '../../owners';
-import { createItem, findItem, getItem, listItems, lockItem, saveRevision, type Loaded } from '../../vault';
+import { createItem, findItem, findItems, getItem, listItems, lockItem, saveRevision, type Loaded } from '../../vault';
 import { accessOf, answer as saveAnswer, countsOf, dropInvites, finished, invitedMeetings, inviteKey, locateInvited, reconcileAccess, syncAccess, type Access, type Invited } from './access';
 import { me, preferences, profile, type Profile } from '../account/account';
 import * as calendar from './calendar';
@@ -213,6 +213,17 @@ export async function get(o: Owner, id: string): Promise<Meeting> {
 }
 /** Says whether you're coming to a call you're invited to, and shows you the call. */
 export async function answer(o: Owner, id: string, value: Rsvp): Promise<Meeting> { return invitedCall(o, await saveAnswer(o, id, value)); }
+
+/** What a call is called, and when it starts: nothing yet while it still offers times. */
+export interface CallTitle { title: string; startsAt: string | null }
+const titleOf = (m: MeetingManifest): CallTitle => ({ title: m.title, startsAt: m.offer ? null : m.startsAt });
+/** Titles of whichever of these calls are the account's own, read together from their manifests: nothing else, and never Google. */
+export async function ownCallTitles(o: Owner, ids: string[]): Promise<Map<string, CallTitle>> {
+  if (!ids.length) return new Map();
+  return new Map((await findItems(o, o.pool, 'meeting', ids, MeetingManifest)).map((m) => [m.itemId, titleOf(m.manifest)]));
+}
+/** The title of a call the account is invited to and that isn't over, by the check reading it takes, from its manifest alone. */
+export async function invitedCallTitle(o: Owner, id: string): Promise<CallTitle> { return titleOf((await locateInvited(o, id)).meeting.manifest); }
 
 /** A call of yours by its code, or by its series' code the call that's on now or next. */
 export async function findByCode(o: Owner, code: string, db: Db = o.pool): Promise<Loaded<MeetingManifest> | undefined> {

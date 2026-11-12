@@ -18,6 +18,7 @@ import { acceptNoteSuggestions } from '../testing/follow-ups';
 import { PNG, type GoogleUser, type Spoil } from '../testing/fake-google';
 import { NOTES_MODEL, speechWav, startFakeNear, type Tamper } from '../testing/fake-near';
 import { ORIGIN, cookieFetch, startHarness, type Browser, type Harness } from '../testing/harness';
+import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
 import { disposeLiveKit, presentScreen, stopPresenting } from '../testing/livekit';
 import { cut, pictureJpeg, recordedWebm } from '../testing/video';
 
@@ -3194,8 +3195,13 @@ describe('deleting an account', () => {
     drawn.close();
     await b.api.workspaces.presenterNotes.setFrame(hers.id, retro.id, wentWell, 'Thank the room.');
 
-    // Her named agent goes with the account, too, including its hashed credential.
-    await b.api.agents.createToken({ name: 'Lena’s assistant', scopes: ['notes:read'], expiresInDays: 30 });
+    // Her named agent goes with the account, too, including its hashed credential and what it did.
+    const assistant = await b.api.agents.createToken({ name: 'Lena’s assistant', scopes: ['notes:read'], expiresInDays: 30 });
+    const agent = new Client({ name: 'leaving-assistant', version: '1.0.0' });
+    try {
+      await agent.connect(new StreamableHTTPClientTransport(new URL(`${h.baseUrl}/mcp`), { authProvider: { token: async () => assistant.token } }));
+      expect((await agent.callTool({ name: 'get_note', arguments: { noteId: callNote } })).isError).not.toBe(true);
+    } finally { await agent.close(); }
     // Her independent Drive credentials, explicit call choice and queued export go with her as well.
     const driveFolder = `leaving_${ownerId}`;
     h.google.drive.folder(lena.sub, { id: driveFolder, name: 'Leaving call exports' });
@@ -3214,7 +3220,7 @@ describe('deleting an account', () => {
     // Every table that keeps an account's rows has some of hers.
     const tables = (await h.pool.query<{ table_name: string }>("SELECT table_name FROM information_schema.columns WHERE table_schema = 'public' AND column_name = 'owner_id' ORDER BY table_name")).rows.map((r) => r.table_name);
     expect(tables).toEqual([
-      'agent_codes', 'agent_grants', 'agent_operations', 'agent_tokens', 'billing_accounts', 'call_attention', 'call_codes', 'call_mls', 'call_moves', 'call_notes',
+      'agent_activity', 'agent_codes', 'agent_grants', 'agent_operations', 'agent_tokens', 'billing_accounts', 'call_attention', 'call_codes', 'call_mls', 'call_moves', 'call_notes',
       'call_private_messages', 'call_rings', 'calls', 'content_jobs', 'deposits', 'document_access', 'document_clients', 'document_snapshots', 'document_updates', 'document_version_parts',
       'document_versions', 'documents', 'drive_call_exports', 'drive_connections', 'drive_export_jobs', 'identities', 'items', 'media_upload_days', 'meeting_access',
       'note_access', 'note_additions', 'note_links', 'object_gc', 'operations', 'owners', 'personal_notes', 'presenter_frame_notes', 'presenter_notes', 'recording_pieces', 'recordings',
@@ -3817,6 +3823,20 @@ describe('privacy at rest', () => {
     await attentionCall.postQuestion('CanaryAttentionQuestion01', 'CANARY-LIVEQUESTION who reviews the private launch?');
     expect(attentionCall.getSnapshot().attention.questions[0]?.text).toContain('CANARY-LIVEQUESTION');
 
+    // An agent of theirs: its name is sealed in its grant, and what it did keeps the tool, IDs and a count, sealed too. The
+    // titles come back in its owner's list, read from what they can open then, and are kept nowhere.
+    const helper = await c.api.agents.createToken({ name: 'CANARY-AGENT helper', scopes: ['notes:read', 'meetings:read'], expiresInDays: 30 });
+    const helperClient = new Client({ name: 'canary-agent', version: '1.0.0' });
+    try {
+      await helperClient.connect(new StreamableHTTPClientTransport(new URL(`${h.baseUrl}/mcp`), { authProvider: { token: async () => helper.token } }));
+      for (const call of [{ name: 'get_meeting', arguments: { meetingId: m.id } }, { name: 'get_note', arguments: { noteId: roomNote } }, { name: 'list_notes', arguments: { text: 'CANARY-SEARCH words' } }]) {
+        expect((await helperClient.callTool(call)).isError).not.toBe(true);
+      }
+    } finally { await helperClient.close(); }
+    expect((await c.api.agents.activity()).items.map((item) => [item.tool, item.meetingTitle ?? item.noteTitle ?? item.count])).toEqual([
+      ['list_notes', 1], ['get_note', 'CANARY-ROOM title'], ['get_meeting', 'CANARY-EDIT renamed merger']
+    ]);
+
     // Every table there is, so a table added later is read here without anyone remembering to list it.
     const everyTable = (await h.pool.query<{ table_name: string }>("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE'")).rows.map((r) => r.table_name);
     expect(everyTable).toEqual(expect.arrayContaining(['workspaces', 'workspace_members', 'workspace_authors', 'documents', 'document_access', 'workspace_media', 'workspace_media_pieces', 'workspace_media_previews', 'workspace_media_uses', 'owners', 'items', 'revisions', 'operations']));
@@ -3841,7 +3861,7 @@ describe('privacy at rest', () => {
       'CANARY-BOARDACTION', 'order the doors', 'CANARY-ROOMNAME', 'CANARY-ROOMSTICKY', 'owns the merger', 'canary-roomie', 'CANARY-VOTEFRAME', 'CANARY-VOTESTICKY', voteFrame, voteSticky,
       'CANARY-NOTEDFRAME', 'CANARY-FRAMENOTE', 'thank the support team', notedFrame,
       'CANARY-CUE', 'as you can see the chart', 'CANARY-VIDEO', 'Person’s screen', 'CANARY-LIVEQUESTION', 'private launch',
-      'canary-deposit-address', 'Credits added', 'canary-intent-hash'
+      'canary-deposit-address', 'Credits added', 'canary-intent-hash', 'CANARY-AGENT'
     ];
     for (const canary of canaries) for (const enc of encodings(canary)) expect(rowsText.includes(enc), `${canary} as ${enc}`).toBe(false);
     // An answer is one short word, so it has a check of its own, in the only rows that hold one.

@@ -55,15 +55,20 @@ export function untilLabel(minutes: number): string {
   const m = minutes % 60;
   return `in ${h} h${m ? ` ${m} min` : ''}`;
 }
-/** How long ago: "just now", "12 min ago", "2 h ago", "yesterday", the weekday this past week ("Friday"), else "Tue 27 Oct". */
-export function agoLabel(iso: string, now = Date.now()): string {
+/**
+ * How long ago: "just now", "12 min ago", "2 h ago", "yesterday", the weekday this past week ("Friday"), else "Tue 27 Oct".
+ * `short` for a line under something small: "Fri" this past week, else "27 Oct".
+ */
+export function agoLabel(iso: string, now = Date.now(), short = false): string {
   const mins = Math.floor((now - new Date(iso).getTime()) / 60_000);
   if (mins < 1) return 'just now';
   if (mins < 60) return `${mins} min ago`;
   const days = -daysFromToday(new Date(iso), new Date(now));
   if (days === 0) return `${Math.floor(mins / 60)} h ago`;
   if (days === 1) return 'yesterday';
-  return days < 7 ? weekday(new Date(iso)) : shortDay(new Date(iso));
+  const d = new Date(iso);
+  if (days < 7) return short ? weekday(d).slice(0, 3) : weekday(d);
+  return short ? dayMonth(d) : shortDay(d);
 }
 /** "6 h 40 min", "25 min" */
 export function hoursAndMinutes(minutes: number): string {

@@ -18,20 +18,27 @@ export type Place = { [K in keyof FileRoutesByTo]: K extends `${string}$${string
 /** How often the side panel looks for tags you haven't seen. */
 const TAGS_MS = 60_000;
 
-/** What a place in the side panel can count: what's waiting on you, notes, tags you haven't seen, recordings on this device waiting to upload, and the team. */
-export type Counter = 'home' | 'notes' | 'drive' | 'record' | 'team';
+/**
+ * What a place in the side panel can count: what's waiting on you, notes, tags you haven't seen, recordings on this
+ * device waiting to upload, the team, and the agents you've connected.
+ */
+export type Counter = 'home' | 'notes' | 'drive' | 'record' | 'team' | 'agents';
 /**
  * How many there are of each, once they've loaded. The team counts the people on Alcove, you among
- * them, once someone besides you is.
+ * them, once someone besides you is; Agents counts your connections, once there's one.
  */
 export function useCounts(): Record<Counter, number | undefined> {
   const notes = useQuery(q.notes()).data;
   const inbox = useQuery(q.inbox()).data;
   const others = useQuery(q.team()).data?.members.filter((m) => m.onAlcove).length;
   const tags = useQuery({ ...q.mentions(), refetchInterval: TAGS_MS }).data?.length;
+  const agents = useQuery(q.agents()).data?.length;
   const kept = useLive(uploads);
   const waiting = kept.list.filter((k) => k.status === 'waiting' || k.status === 'uploading' || k.status === 'refused').length;
-  return { home: (inbox && openCount(inbox, notes ?? [], Date.now())) || undefined, notes: notes?.length, drive: tags || undefined, record: waiting || undefined, team: others ? others + 1 : undefined };
+  return {
+    home: (inbox && openCount(inbox, notes ?? [], Date.now())) || undefined, notes: notes?.length, drive: tags || undefined, record: waiting || undefined,
+    team: others ? others + 1 : undefined, agents: agents || undefined
+  };
 }
 
 /** A workspace's pages, in the Drive, fill the frame, keep one screen as you move around them, and take N for themselves. */
@@ -44,7 +51,8 @@ export const NAV: readonly NavPlace[] = [
   { to: '/notes', icon: 'notes', label: 'Notes', count: 'notes', tour: 'notes' },
   { to: '/drive', icon: 'folderOpen', label: 'Drive', count: 'drive' },
   { to: '/record', icon: 'recordDot', label: 'Record', count: 'record', tour: 'room' },
-  { to: '/team', icon: 'people', label: 'Team', count: 'team' }
+  { to: '/team', icon: 'people', label: 'Team', count: 'team' },
+  { to: '/agents', icon: 'agent', label: 'Agents', count: 'agents' }
 ];
 
 /** The places someone has: on your own there's no Team page. Until that's known they're all there, so nothing appears late. */
@@ -53,7 +61,7 @@ export const places = <P extends { to: Place }>(all: readonly P[], team: Team | 
 export interface Tab { to: Place; icon: IconName; label: string; raised?: boolean | undefined; tour?: string | undefined }
 /**
  * The phone's tab bar, with Record in the middle. `raised` is Record's button, which stands up out of the bar. Settings is
- * behind your face in the top bar.
+ * behind your face in the top bar, and Agents opens from Settings › Connections.
  */
 export const TABS: readonly Tab[] = [
   { to: '/home', icon: 'home', label: 'Home' },

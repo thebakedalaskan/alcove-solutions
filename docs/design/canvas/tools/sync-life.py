@@ -22,7 +22,7 @@ whale = re.sub(r'<path([^>]*?)\s*/>', r'<path\1></path>', whale)
 
 clouds = {}
 block = cut('const MOMENTS: Record<Moment, Drawing> = {', '\n};\n')
-for m in re.finditer(r'\b(home|team|notes|note|settings|record): \{.*?clouds: \[(.*?)\]', block, re.S):
+for m in re.finditer(r'\b(home|team|agents|notes|drive|note|settings|record): \{.*?clouds: \[(.*?)\]', block, re.S):
     clouds[m.group(1)] = m.group(2)
 cloudjs = '{' + ', '.join(f"{k}: [{v}]" for k, v in clouds.items()) + '}'
 

@@ -7,7 +7,7 @@
  *
  * A method nothing renders yet answers with something sensible and empty. When the contract grows, this grows with it.
  */
-import { StartTopUpBodySchema, type TopUp } from '@alcove/api';
+import { StartTopUpBodySchema, type TopUp, AgentUpdateInputSchema } from '@alcove/api';
 import { PREVIEW_DEPOSIT_ADDRESS } from '../world/payments';
 import { DriveExportInputSchema, NOTE_LINK_DAYS, type DriveAutomatic, type DriveCallExports, type DriveExportFormat, type DriveExportInput, type DriveExportJob, type NewNoteLink, type NoteLink, type NoteLinkClaimed } from '@alcove/api';
 import { disconnectedDrive } from '../world/drive-exports';
@@ -32,7 +32,7 @@ import { personalFor } from './personal';
 import { ScriptedRecording } from './recording';
 import { AI_MODELS, atTheDoor } from './script';
 import { current, me, nextId, openedAs } from './state';
-import { agentsFor, EXPIRED_AGENT_REQUEST, forgetAgents, PREVIEW_AGENT_TOKEN, PREVIEW_MCP_ENDPOINT } from './agents';
+import { activityOf, agentRequest, agentsFor, answer as answerRequest, answered, connectionAllowed, EXPIRED_AGENT_REQUEST, forgetAgents, PREVIEW_AGENT_TOKEN, PREVIEW_MCP_ENDPOINT } from './agents';
 import * as spaces from './workspaces';
 
 /* ---------- how every answer comes back ---------- */
@@ -450,22 +450,39 @@ export const standIn: AlcoveApi = {
       const held = agentsFor(w);
       held.save(held.connections.filter((connection) => connection.id !== id));
     }),
+    update: (id, input) => answer((w) => {
+      AgentConnectionIdSchema.parse(id);
+      const parsed = AgentUpdateInputSchema.parse(input);
+      const held = agentsFor(w);
+      const found = held.connections.find((connection) => connection.id === id);
+      if (!found) throw refused('not-found', 'That connection is no longer available.');
+      const expiresAt = parsed.renew ? new Date(Math.max(Date.parse(found.expiresAt), Date.now() + 30 * 86_400_000)).toISOString() : found.expiresAt;
+      const next: AgentConnection = { ...found, scopes: parsed.scopes ?? found.scopes, expiresAt };
+      held.save(held.connections.map((connection) => (connection.id === id ? next : connection)));
+      return next;
+    }),
+    activity: (query) => answer((w) => activityOf(w, query)),
     authorization: (requestId) => answer((w) => {
       AgentAuthorizationIdSchema.parse(requestId);
-      if (requestId === EXPIRED_AGENT_REQUEST) throw refused('not-found', 'This connection request has expired.');
+      const asked = agentRequest(requestId);
+      if (!asked || requestId === EXPIRED_AGENT_REQUEST) throw refused('not-found', 'This connection request has expired.');
       if (!w.session) throw new AlcoveApiError('unauthenticated', 'Sign in to Alcove first.');
-      return { ownerId: w.session.ownerId, accountEmail: w.session.user.email, clientName: 'Workspace assistant', scopes: ['notes:read', 'meetings:read', 'calendar:read'], expiresAt: new Date(Date.now() + 10 * 60_000).toISOString() };
+      if (answered(w, requestId)) throw refused('not-found', 'This connection request has expired.');
+      return { ownerId: w.session.ownerId, accountEmail: w.session.user.email, clientName: asked.clientName, redirectHost: asked.redirectHost, scopes: [...asked.scopes], expiresAt: new Date(Date.now() + 10 * 60_000).toISOString() };
     }),
     decide: (requestId, decision) => answer((w) => {
       AgentAuthorizationIdSchema.parse(requestId);
-      if (requestId === EXPIRED_AGENT_REQUEST) throw refused('not-found', 'This connection request has expired.');
+      const asked = agentRequest(requestId);
+      if (!asked || requestId === EXPIRED_AGENT_REQUEST) throw refused('not-found', 'This connection request has expired.');
       if (decision.ownerId !== w.session?.ownerId) throw refused('conflict', 'Your account changed. Review this connection again.');
       // Story accounts have descriptive IDs, so compare those directly while parsing the actual permission choices.
       const allow = AgentDecisionInputSchema.shape.allow.parse(decision.allow);
       const scopes = AgentDecisionInputSchema.shape.scopes.parse(decision.scopes);
-      const requested = new Set(['notes:read', 'meetings:read', 'calendar:read']);
-      if (scopes.some((scope) => !requested.has(scope)) || new Set(scopes).size !== scopes.length || (allow && !scopes.length)) throw refused('invalid', 'Choose only permissions this agent requested.');
-      return { redirectUrl: `https://agent.example/callback?${allow ? 'code=storybook-preview' : 'error=access_denied'}` };
+      if (scopes.some((scope) => !asked.scopes.includes(scope)) || new Set(scopes).size !== scopes.length || (allow && !scopes.length)) throw refused('invalid', 'Choose only permissions this agent requested.');
+      if (!answerRequest(w, requestId)) throw refused('not-found', 'This connection request has expired.');
+      if (allow) { const held = agentsFor(w); held.save([...held.connections, connectionAllowed(asked.clientName, scopes)]); }
+      // The agent waits at its own address, outside Storybook: here it's a place in this frame, so the story stays put.
+      return { redirectUrl: new URL(`#agent-callback-${allow ? 'allowed' : 'access-denied'}`, location.href).href };
     })
   },
   people: {

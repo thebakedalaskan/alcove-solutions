@@ -30,11 +30,11 @@ import { drawnPicture, forgetAudio } from './media';
 import { stopLive } from './standin';
 import { paymentsOff, withPayments } from '../world/payments';
 import { disconnectedDrive, withDriveExports } from '../world/drive-exports';
-import { withAgentConnections } from './agents';
+import { withAgentConnections, withAgentEnding } from './agents';
 import { serve } from './state';
 import { forgetDocuments } from './workspaces';
 
-export type ScenarioName = 'busy' | 'first-day' | 'on-their-own' | 'offline' | 'writing' | 'call-soon' | 'lots' | 'signed-out' | 'unsaved' | 'first-sign-in' | 'agents-connected' | 'drive-connected' | 'payments';
+export type ScenarioName = 'busy' | 'first-day' | 'on-their-own' | 'offline' | 'writing' | 'call-soon' | 'lots' | 'signed-out' | 'unsaved' | 'first-sign-in' | 'agents-connected' | 'agents-ending' | 'drive-connected' | 'payments';
 
 interface Scenario { title: string; about: string; make: () => { world: World; opening: Partial<Opening> } }
 
@@ -370,8 +370,12 @@ export const SCENARIOS: Record<ScenarioName, Scenario> = {
     make: () => { const world = busy(); withDriveExports(world); return { world, opening: {} }; }
   },
   'agents-connected': {
-    title: 'Agents connected', about: 'Art has a read-only Workspace assistant and a Scheduling assistant token that has not been used yet.',
+    title: 'Agents connected', about: 'Art has Claude signed in (it booked the onboarding review 4 minutes ago), Cursor signed in to read, and a Weekly digest token, with three weeks of what they did.',
     make: () => { const world = busy(); withAgentConnections(world); return { world, opening: {} }; }
+  },
+  'agents-ending': {
+    title: 'An agent’s access ending', about: 'The same three agents, with Cursor’s access ending tomorrow.',
+    make: () => { const world = busy(); withAgentEnding(world); return { world, opening: {} }; }
   },
   busy: { title: 'A busy team', about: 'Wednesday afternoon at Vandelay Industries: a day of notes, things waiting on you, a design sync at 17:30.', make: () => ({ world: busy(), opening: {} }) },
   'first-day': {

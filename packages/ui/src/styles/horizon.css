@@ -52,6 +52,9 @@
 }
 .hz[data-moment="team"] { --hz-sky: linear-gradient(to bottom in oklch, oklch(0.8 0.062 250) 0%, oklch(0.869 0.043 270) 58%, oklch(0.912 0.047 355.294) 100%); --hz-sun-x: -300px; --hz-sun-r: 40px; }
 .dark .hz[data-moment="team"] { --hz-sky: linear-gradient(to bottom in oklch, oklch(0.24 0.052 258) 0%, oklch(0.292 0.066 264.923) 58%, oklch(0.402 0.076 305.789) 100%); }
+/* Agents: Team's moment the other way round, the sun low on the right. The page moves it to just past the end of its line. */
+.hz[data-moment="agents"] { --hz-sky: linear-gradient(to bottom in oklch, oklch(0.8 0.062 250) 0%, oklch(0.869 0.043 270) 58%, oklch(0.912 0.047 355.294) 100%); --hz-sun-x: 300px; --hz-sun-r: 36px; }
+.dark .hz[data-moment="agents"] { --hz-sky: linear-gradient(to bottom in oklch, oklch(0.24 0.052 258) 0%, oklch(0.292 0.066 264.923) 58%, oklch(0.402 0.076 305.789) 100%); }
 .hz[data-moment="notes"] { --hz-sky: linear-gradient(to bottom in oklch, oklch(0.8 0.062 250) 0%, oklch(0.863 0.044 260) 58%, oklch(0.902 0.038 327.059) 100%); --hz-glow-w: 980px; --hz-glow-h: 150px; }
 .dark .hz[data-moment="notes"] { --hz-sky: linear-gradient(to bottom in oklch, oklch(0.24 0.052 258) 0%, oklch(0.28 0.064 261.529) 58%, oklch(0.351 0.07 288.308) 100%); }
 .hz[data-moment="drive"] { --hz-sky: linear-gradient(to bottom in oklch, oklch(0.8 0.062 250) 0%, oklch(0.856 0.046 257) 58%, oklch(0.892 0.04 312) 100%); --hz-glow-w: 860px; --hz-glow-h: 120px; }

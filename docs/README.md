@@ -11,7 +11,7 @@ behind people's backs, and notes only the people in the call can read.
 3. **How it works.** [Data and storage](engineering/data-and-storage.md),
    [Calls and recordings](engineering/calls-and-recordings.md), [Notes and inference](engineering/notes-and-inference.md),
    [Payments and usage](engineering/payments-and-usage.md), [Logging and errors](engineering/logging-and-errors.md).
-   [Agents and MCP](engineering/agents-and-mcp.md) covers connecting clients, permissions and safe retries.
+   [Agents and MCP](engineering/agents-and-mcp.md) covers connecting clients, permissions, changing and renewing a connection, what agents did and safe retries.
    [Google Drive exports](engineering/drive-exports.md) covers readable copies, folder consent and durable upload jobs.
    [Feature flags](engineering/feature-flags.md) covers building behind a flag, switching it for people, releasing and retiring it.
 4. **Shipping.** [Deployment and acceptance](engineering/deployment-and-acceptance.md) and [infra/README.md](../infra/README.md).
