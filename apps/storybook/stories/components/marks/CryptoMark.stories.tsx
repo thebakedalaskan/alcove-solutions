@@ -1,7 +1,7 @@
 import { CryptoMark } from '@alcove/ui';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 
-const names = ['USDC', 'USDT', 'near', 'eth', 'base', 'arb', 'sol', 'pol', 'bsc', 'op', 'avax', 'tron'];
+const names = ['USDC', 'near', 'eth', 'base', 'arb', 'sol', 'pol', 'bsc', 'op', 'avax', 'tron'];
 const meta = {
   title: 'Components/Icons and marks/CryptoMark', component: CryptoMark,
   parameters: { layout: 'centered' }, args: { name: 'USDC' },

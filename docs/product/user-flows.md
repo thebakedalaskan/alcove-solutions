@@ -2381,9 +2381,8 @@ consent and the provider’s own folder-selection page require manual verificati
 
 ### 11.24 Add credits
 
-Open **Settings → Plan and credits → Add credits**, choose an amount of credits, then a token and network.
-**Get an address** opens the amount to send, its QR code and one payment address. Send only the stated token on that
-network. A short payment shows what arrived and how much remains; send the remainder before the address expires.
+Open **Settings → Plan and credits → Add credits**, choose an amount of credits, then the network to send USDC on.
+**Get an address** opens the amount to send, its QR code and one payment address. Send only USDC on that network. A short payment shows what arrived and how much remains; send the remainder before the address expires.
 After expiry it asks for no more money and waits for the payment or refund to settle. Credits appear in the balance
 once settlement is confirmed. Open and recent top-ups stay in Settings with **Open**, including cancelled, failed and
 held payments and their support reference. A waiting payment can be cancelled; a payment already sent still counts

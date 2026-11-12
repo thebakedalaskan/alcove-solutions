@@ -6,7 +6,8 @@ import { AlcoveApiError, type AlcoveApi, type TopUp } from '@alcove/api';
 import { createHttpApi } from '@alcove/api-http';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { watch } from './deposits';
+import { DepositRecord, watch } from './deposits';
+import { openJson, sealJson, serviceKey, toJson, unb64u } from '../../crypto';
 import { NOT_ALLOWLISTED } from '../../testing/fake-oneclick';
 import { ORIGIN, cookieFetch, startHarness, type Harness } from '../../testing/harness';
 
@@ -18,6 +19,8 @@ const BASE_USDC = 'nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.n
 const ETH_USDC = 'nep141:eth-0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48.omft.near';
 const NEAR_USDC = 'nep141:17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1';
 const BNB_USDC = 'nep245:v2_1.omni.hot.tg:56_2w93GqMcEmQFDru84j3HZZWt557r';
+const SOL_USDC = 'nep141:sol-5ce3bf3a31af18be40ba30f721101b4341690186.omft.near';
+/** 1Click lists it; Alcove doesn't take it. */
 const TRON_USDT = 'nep141:tron-d28a265909efecdcee7c5028585214ea0b96f015.omft.near';
 const code = (e: unknown) => (e instanceof AlcoveApiError ? e.code : 'not-an-api-error');
 const failure = (p: Promise<unknown>) => p.then(() => 'succeeded', code);
@@ -92,11 +95,14 @@ async function raceTopUpStarts(ownerId: string, first: AlcoveApi, second: Alcove
 }
 
 describe('top-ups', () => {
-  it('lists the allowlisted routes with their minimum in credits, the tiers and the presets', async () => {
+  it('lists the allowlisted routes, USDC only and NEAR, Ethereum and Solana first, with their minimum in credits, the tiers and the presets', async () => {
     const { api } = await account();
     const { routes, tiers, presets, perMinute } = await api.credits.routes();
     expect(routes.map((r) => `${r.token} ${r.chain}`)).toContain('USDC base');
     expect(routes.some((r) => r.id === NOT_ALLOWLISTED)).toBe(false);
+    expect(routes.every((r) => r.token === 'USDC')).toBe(true);
+    // 1Click lists Base and Arbitrum before Solana; the allowlist's order is what's offered.
+    expect(routes.map((r) => r.chain)).toEqual(['near', 'eth', 'sol', 'base', 'arb', 'pol', 'bsc', 'op', 'avax']);
     expect(routes.find((r) => r.chain === 'eth' && r.token === 'USDC')).toMatchObject({ minimum: '20', minimumCredits: 20_000 });
     expect(routes.find((r) => r.chain === 'base')).toMatchObject({ minimum: '5', minimumCredits: 5_000 });
     expect(routes.find((r) => r.chain === 'bsc' && r.token === 'USDC')).toMatchObject({ chainName: 'BNB Chain', minimum: '5', minimumCredits: 5_000 });
@@ -154,10 +160,33 @@ describe('top-ups', () => {
     expect((await api.credits.startTopUp(ETH_USDC, 20_000)).asked).toEqual({ amount: '20', credits: 20_000 });
   });
 
-  it('refuses a route that isn’t offered', async () => {
+  it('refuses a route that isn’t offered, USDT included', async () => {
     const { api, session } = await account();
     expect(await failure(api.credits.startTopUp(NOT_ALLOWLISTED, 10_000))).toBe('invalid');
+    expect(await failure(api.credits.startTopUp(TRON_USDT, 10_000))).toBe('invalid');
     expect(await depositRows(session.ownerId)).toBe(0);
+  });
+
+  it('still shows and credits a USDT top-up opened before only USDC was offered', async () => {
+    const { api, session } = await account();
+    const t = await api.credits.startTopUp(SOL_USDC, 10_000);
+    // Its record as the release before this one sealed a top-up on USDT on Tron.
+    const key = serviceKey(unb64u(h.deps.cfg.KSERVICE, 32), 'accounting');
+    const header = { v: 1, kind: 'deposit', ownerId: session.ownerId, depositId: t.id, keyVersion: '1' } as const;
+    const row = (await h.pool.query<{ record_ciphertext: Buffer }>('SELECT record_ciphertext FROM deposits WHERE deposit_id = $1', [t.id])).rows[0];
+    if (!row) throw new Error(`no deposit ${t.id}`);
+    const before: DepositRecord = {
+      ...openJson(key, header, row.record_ciphertext, DepositRecord),
+      route: { id: TRON_USDT, provider: 'oneclick', chain: 'tron', chainName: 'Tron', token: 'USDT', decimals: 6, minimum: '5000000' }
+    };
+    await h.pool.query('UPDATE deposits SET record_ciphertext = $2 WHERE deposit_id = $1', [t.id, sealJson(key, header, toJson(before))]);
+
+    expect(await api.credits.topUp(t.id)).toMatchObject({ state: 'waiting', route: { token: 'USDT', chain: 'tron', chainName: 'Tron', minimum: '5' }, asked: { amount: '10', credits: 10_000 } });
+    expect((await api.credits.topUps()).find((x) => x.id === t.id)?.route).toMatchObject({ token: 'USDT', chain: 'tron' });
+    await forgetCheck(t.id);
+    h.oneclick.set(addr(t), 'SUCCESS', { depositedAmount: '10000000', amountOut: '9999000', intentHashes: ['husdt10'] });
+    expect(await api.credits.topUp(t.id)).toMatchObject({ state: 'credited', route: { token: 'USDT' }, received: { amount: '10', credits: 10_000 } });
+    expect((await api.credits.balance()).balance).toBe(10_000 + 10_000);
   });
 
   it('keeps top-ups to their owner', async () => {
@@ -343,24 +372,24 @@ describe('top-ups', () => {
   it('credits a refund at the tier it reaches, however small, holds one worth no credits, and adds a swapped part', async () => {
     const { api } = await account();
     // 46 USD by itself buys 51,111 credits: past 50,000, so at 10,000/9.
-    const big = await api.credits.startTopUp(TRON_USDT, 50_000);
+    const big = await api.credits.startTopUp(SOL_USDC, 50_000);
     h.oneclick.set(addr(big), 'REFUNDED', { depositedAmount: '46000000', amountOut: '0', refundedAmount: '46000000', intentHashes: ['h46'] });
     expect(await api.credits.topUp(big.id)).toMatchObject({ state: 'credited', address: null, received: { amount: '46', credits: 51_111 } });
     expect((await api.credits.balance()).balance).toBe(10_000 + 51_111);
 
-    const small = await api.credits.startTopUp(TRON_USDT, 10_000);
+    const small = await api.credits.startTopUp(SOL_USDC, 10_000);
     h.oneclick.set(addr(small), 'REFUNDED', { depositedAmount: '400000', amountOut: '0', refundedAmount: '400000', intentHashes: ['h04'] });
     expect(await api.credits.topUp(small.id)).toMatchObject({ state: 'credited', address: null, received: { amount: '0.4', credits: 400 } });
     expect((await api.credits.balance()).balance).toBe(10_000 + 51_111 + 400);
 
     // Half a thousandth of a USD buys no whole credit: held.
-    const dust = await api.credits.startTopUp(TRON_USDT, 10_000);
+    const dust = await api.credits.startTopUp(SOL_USDC, 10_000);
     h.oneclick.set(addr(dust), 'REFUNDED', { depositedAmount: '500', amountOut: '0', refundedAmount: '500', intentHashes: ['h0005'] });
     expect(await api.credits.topUp(dust.id)).toMatchObject({ state: 'held', address: null, received: { amount: '0.0005', credits: 0 } });
     expect((await api.credits.balance()).balance).toBe(10_000 + 51_111 + 400);
 
     // 80 sent for 100,000 credits, 60 swapped and 20 refunded: the whole 80 reached the treasury, so it's the promise.
-    const part = await api.credits.startTopUp(TRON_USDT, 100_000);
+    const part = await api.credits.startTopUp(SOL_USDC, 100_000);
     h.oneclick.set(addr(part), 'REFUNDED', { depositedAmount: '80000000', amountOut: '59990000', refundedAmount: '20000000', intentHashes: ['h80'] });
     expect(await api.credits.topUp(part.id)).toMatchObject({ state: 'credited', received: { amount: '80', credits: 100_000 } });
     expect((await api.credits.balance()).balance).toBe(10_000 + 51_111 + 400 + 100_000);
@@ -974,7 +1003,7 @@ describe('top-ups', () => {
 
   it('credits a failed swap once 1Click refunds it to the treasury, checking it hourly', async () => {
     const { api } = await account();
-    const t = await api.credits.startTopUp(TRON_USDT, 10_000);
+    const t = await api.credits.startTopUp(SOL_USDC, 10_000);
     h.oneclick.set(addr(t), 'FAILED', { depositedAmount: '10000000' });
     expect(await api.credits.topUp(t.id)).toMatchObject({ state: 'failed' });
     await dueOnly(t.id);

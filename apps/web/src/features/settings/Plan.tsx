@@ -46,7 +46,7 @@ export function PlanGroup({ credits }: { credits: CreditBalance }) {
         </SettingRow>
         <SettingRow label="Used this month" control={<SettingFact title="Since 00:00 UTC on the 1st">{credits.usedThisMonth > 0 ? hoursAndMinutes(credits.usedThisMonth / credits.perMinute) : 'None yet'}</SettingFact>} />
         {routes.data !== undefined && (
-          <SettingRow label="Add credits" help="Pay with a stablecoin from any wallet or exchange."
+          <SettingRow label="Add credits" help="Pay with USDC from any wallet or exchange."
             control={<Button ref={add} variant="secondary" size="sm" icon="plus" onClick={() => show(null)}>Add credits</Button>} />
         )}
         {open.map((t) => (

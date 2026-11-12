@@ -43,7 +43,10 @@ const key = (d: Pick<Deps, 'cfg'>) => serviceKey(unb64u(d.cfg.KSERVICE, 32), 'ac
 const header = (ownerId: string, depositId: string) => ({ v: 1 as const, kind: 'deposit', ownerId, depositId, keyVersion: '1' });
 const units = z.string().regex(/^\d+$/);
 
-/** What a deposit is, sealed. Token amounts are in the token's smallest unit, as integer strings. */
+/**
+ * What a deposit is, sealed. Token amounts are in the token's smallest unit, as integer strings. USDT is no longer
+ * offered, but deposits opened with it before still open.
+ */
 export const DepositRecord = z.object({
   route: z.object({
     id: z.string(), provider: z.literal('oneclick'), chain: z.string(), chainName: z.string(), token: z.enum(['USDC', 'USDT']),

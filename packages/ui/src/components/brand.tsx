@@ -56,12 +56,11 @@ export function ProviderMark({ provider, className }: { provider: 'google' | 'mi
 
 /**
  * Stablecoin and network logos, served with the app rather than fetched from a third party (which would learn that
- * someone is paying). Keyed by token symbol (USDC, USDT) and by 1Click's chain name (near, eth, base, arb, sol, pol,
- * bsc, op, avax, tron). From web3icons (MIT).
+ * someone is paying). Keyed by token symbol (USDC) and by 1Click's chain name (near, eth, base, arb, sol, pol, bsc, op,
+ * avax, tron: Tron for top-ups paid in USDT before only USDC was taken). From web3icons (MIT).
  */
 const CRYPTO_MARKS = new Map<string, string>([
   ['usdc', new URL('../marks/usdc.svg', import.meta.url).href],
-  ['usdt', new URL('../marks/usdt.svg', import.meta.url).href],
   ['near', new URL('../marks/near.svg', import.meta.url).href],
   ['eth', new URL('../marks/eth.svg', import.meta.url).href],
   ['base', new URL('../marks/base.svg', import.meta.url).href],

@@ -16,7 +16,9 @@ export type CreditBalance = z.infer<typeof CreditBalanceSchema>;
 
 /** A way to pay for credits: a stablecoin on one chain. */
 export const TopUpRouteSchema = z.object({
-  id: z.string(), chain: z.string(), chainName: z.string(), token: z.enum(['USDC', 'USDT']),
+  id: z.string(), chain: z.string(), chainName: z.string(),
+  /** Routes offered are all USDC; USDT is only on a top-up opened before USDC was the one way to pay. */
+  token: z.enum(['USDC', 'USDT']),
   /** The least that can be sent, in tokens, as a decimal string ("5"). */
   minimum: z.string(),
   /** The fewest credits a top-up on this route can add: what its minimum buys. */
