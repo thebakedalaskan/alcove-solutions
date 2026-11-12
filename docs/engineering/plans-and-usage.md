@@ -33,7 +33,7 @@ when an organizer is told it's close; how long a period and a grace last; a call
 | Notes stopping, the 5-minute warning, the one note written past the allowance | Working |
 | Storage per account, recordings included; grace | Working |
 | A call's 10 hours and 100 people | Working |
-| The USD balance, filled by stablecoin top-ups | Working |
+| The USD balance, filled by stablecoin top-ups paid into the treasury's confidential balance | Working |
 | Buying Pro, renewing, refunds, reminders, the grace after Pro | Working (server; see [Pro](#pro)) |
 | Pro for a year or more at a lower price; more notes for a period | Working (server; see [Pro](#pro) and [More notes](#more-notes)) |
 | A payment that buys what it was for (Pro, more notes or a team's licenses) once it's added | Working (server; see [A payment that buys](#a-payment-that-buys)) |
@@ -396,8 +396,8 @@ is `arriving`, logged at error once with the reason, and fails at its deadline s
 | Part | State |
 | --- | --- |
 | Balance and history, sealed under `Kservice` (never under owner keys), in `plan_accounts` | Working |
-| Top-up routes (`GET /v1/plan/routes`) | Working. USDC on NEAR, Ethereum, Base, Arbitrum, Solana, Polygon, BNB Chain, Optimism and Avalanche, and USDT on NEAR, Ethereum, Solana, Tron, Polygon, BNB Chain, Optimism and Avalanche, while 1Click lists them, each with its minimum. A server without `TREASURY_INTENTS_ACCOUNT` answers `unavailable` on every top-up endpoint; `ONECLICK_API_KEY` is optional and only lowers 1Click's fee |
-| Opening a top-up (`POST /v1/plan/top-ups { routeId, microUsd, buys }`) | Working. With `buys`, what it's to buy is checked first ([below](#a-payment-that-buys)). A 1Click quote paying the treasury exactly that gives a one-off deposit address on the route's chain, open for 24 hours, kept sealed (`deposits`, record kind `deposit`). At most 10 a minute per account per API instance; refused with `conflict` while the account has 15 top-ups waiting for a payment to an address that hasn't expired, or has opened 30 in the last 24 hours (cancelled ones count). Both counts are checked in Postgres, again under a lock on the account in the transaction that inserts the deposit |
+| Top-up routes (`GET /v1/plan/routes`) | Working. USDC on NEAR, Ethereum, Base, Arbitrum, Solana, Polygon, BNB Chain, Optimism and Avalanche, and USDT on NEAR, Ethereum, Solana, Tron, Polygon, BNB Chain, Optimism and Avalanche, while 1Click lists them, each with its minimum. A server without `TREASURY_INTENTS_ACCOUNT`, `TREASURY_INTENTS_KEY` or `ONECLICK_API_KEY` answers `unavailable` on every top-up endpoint ("Adding money isn’t available on this server."): the key signs in to 1Click as the treasury, and 1Click takes that session on a quote only beside a partner key |
+| Opening a top-up (`POST /v1/plan/top-ups { routeId, microUsd, buys }`) | Working. With `buys`, what it's to buy is checked first ([below](#a-payment-that-buys)). A 1Click quote paying the treasury's confidential balance exactly that, asked for signed in as the treasury, gives a one-off deposit address on the route's chain, open for 24 hours, kept sealed (`deposits`, record kind `deposit`). At most 10 a minute per account per API instance; refused with `conflict` while the account has 15 top-ups waiting for a payment to an address that hasn't expired, or has opened 30 in the last 24 hours (cancelled ones count). Both counts are checked in Postgres, again under a lock on the account in the transaction that inserts the deposit |
 | Cancelling a top-up (`POST /v1/plan/top-ups/:id/cancel`) | Working. Only a `waiting` top-up can be cancelled. Its address is no longer shown and it no longer counts toward the 15 waiting. 1Click can't cancel a quote, so a payment that reaches it is still added. It still counts toward the 30 a day |
 | Adding a top-up | Working. On `SUCCESS` or `REFUNDED` that passes the checks above, what was sent is added by the rules above, in the transaction that marks the deposit `credited`, under its row lock: once, however many checks race. What it was opened to buy is bought in that transaction. `FAILED` is `failed`, logged at error. A `failed`, `expired` or `cancelled` deposit is still added when 1Click later settles it, and still buys |
 | Watching top-ups | Working, unchanged: every open deposit is asked about every 10 s for 15 minutes, every minute until 2 hours, then every 5 minutes, thinning out after its deadline (see below) |
@@ -409,29 +409,46 @@ is `arriving`, logged at error once with the reason, and fails at its deadline s
 1. **Routes.** `GET /v1/plan/routes` lists one route per stablecoin and chain on the allowlist in
    `features/billing/oneclick.ts` that 1Click currently lists in `/v0/tokens` (cached for 10 minutes), with its minimum,
    and the presets.
-2. **Address.** `POST /v1/plan/top-ups` asks 1Click for a `FLEX_INPUT` quote for exactly that amount of the token, whose
-   recipient and refund target are both the treasury's Intents account (fields in
-   [Stack and provider setup › 1Click as built](../references/stack-and-provider-setup.md#1click-as-built)). A quote for
-   another amount, whose `minAmountIn` is more than 1.5% below it, whose repeated `quoteRequest` isn't what was asked, or
-   whose deadline is under an hour or over 7 days away, is refused as unavailable and logged at error (without amounts).
+2. **Signing in.** The API signs in to 1Click as the treasury (`features/billing/oneclick-session.ts`) with its key,
+   `TREASURY_INTENTS_KEY`, as near.com signs a NEAR account in: an empty intent for `intents.near`, signed NEP-413 style,
+   whose nonce carries the contract's current salt (read from NEAR's RPC, `NEAR_RPC_URL`) and when it was made. 1Click
+   answers with an access token (15 minutes) and a refresh token (7 days), held in the API process's memory and nowhere
+   else: the access token is refreshed while under a minute of it is left, and the API signs in again once the refresh
+   token has run out or 1Click refuses it, one sign-in or refresh at a time however many requests want a token. A quote or
+   status call that 1Click answers 401 signs in again, once, and is made again; refused again, it's unavailable and logged
+   at error. If 1Click refuses the sign-in itself, top-ups are unavailable ("Adding money isn’t available right now. Try
+   again in a minute."), it's logged once at error (`1Click refused the treasury’s sign-in`, with the status), and 1Click
+   isn't asked again for a minute.
+3. **Address.** `POST /v1/plan/top-ups` asks 1Click, signed in, for a `FLEX_INPUT` quote for exactly that amount of the
+   token, whose recipient and refund target are both the treasury's confidential Intents balance (`CONFIDENTIAL_INTENTS`;
+   fields in [Stack and provider setup › 1Click as built](../references/stack-and-provider-setup.md#1click-as-built)). What
+   arrives there, and what's refunded there, only the treasury can see. A quote for another amount, whose `minAmountIn` is
+   more than 1.5% below it, whose repeated `quoteRequest` isn't what was asked (into the public balance, say), or whose
+   deadline is under an hour or over 7 days away, is refused as unavailable and logged at error (without amounts).
    Each route's decimals are pinned in the allowlist. The deposit's route, address, memo, expiry, the amount asked, the
    quote's `minAmountIn` and the whole signed quote are sealed in a `deposit` record; its row holds only the owner, ID,
    provider, state and when to look again.
-3. **Watching.** The watcher (`watch` in `features/billing/deposits.ts`, run every 5 s by `startWatching`) claims up to 20
+4. **Watching.** The watcher (`watch` in `features/billing/deposits.ts`, run every 5 s by `startWatching`) claims up to 20
    due deposits with `FOR UPDATE SKIP LOCKED`, pushing their next check ahead by a lease longer than a worst-case pass, asks
    1Click's `/v0/status` about each, 4 at a time, and records the answer. `GET /v1/plan/top-ups/:id` checks the same way,
-   at most every 5 s. 1Click being down leaves a deposit as it was, logged at warn. An `arriving` or `short` deposit never
+   at most every 5 s. Each deposit's kept quote says how: one into the confidential balance is asked about signed in as the
+   treasury, and one opened before top-ups were confidential (its quote says `INTENTS`) exactly as it was then, without
+   the treasury's token. 1Click being down leaves a deposit as it was, logged at warn. An `arriving` or `short` deposit never
    goes back to `waiting`, and a `cancelled` one stays `cancelled` until a payment reaches it. At the deadline (24 h after
    the address expires) 1Click is asked a last time: nothing arrived is `expired`, anything but a finished swap is
    `failed`. A `failed`, `expired` or `cancelled` deposit is asked about on a thinning schedule (hourly for a day, every 6
    hours for a week, then daily) until 30 days after its address expired, so a payment 1Click settles late is still added.
-4. **Adding.** When the swap settles, the deposit's state and the balance change in one transaction with the deposit row
+5. **Adding.** When the swap settles, the deposit's state and the balance change in one transaction with the deposit row
    locked (then, for licenses, the team's row, then the plan's row), so a deposit is added at most once. The balance's
    history reads "Added, 25 USDC". What the top-up was opened to buy is bought then, in the same transaction
    ([below](#a-payment-that-buys)).
 
 Logs about a deposit carry its ID, provider, states, counts and durations, never the address, amounts, hashes or the
-quote. Deleting an account deletes its deposits; a payment still on its way reaches the treasury and is added to nobody.
+quote. Nothing logs the treasury's key, the partner key or a 1Click token, nor puts one in an error, a response, a row or
+an object: a sign-in is logged with the tokens' lifetimes, a refused one with its status, and the parsed settings write
+the key out as `[treasury key]`. The privacy test checks the key, the public key it makes, the partner key and every token
+1Click issued against every row, object and log line. Deleting an account deletes its deposits; a payment still on its
+way reaches the treasury and is added to nobody.
 
 ### A payment that buys
 
@@ -484,19 +501,64 @@ deposit's ID, provider, what it buys (`pro`, `hours`, `licenses`) and why not (`
 
 ## Treasury runbook
 
-The server never holds a key that can move treasury money. By hand, in near.com, signed in as the treasury account:
+Every top-up and every refund lands in the treasury's **confidential** Intents balance (`alcove-treasury.near`), which
+only the treasury can see, signed in. Deposits opened before top-ups were confidential went to its public Intents
+balance, and any money still reaching them still does.
 
-- **Refunds.** A refund lands in the treasury's Intents balance as the token that was sent, not USDC. Swap these to USDC
-  on NEAR from time to time.
-- **Withdrawals.** Withdraw USDC from the Intents balance in batches, when topping up NEAR AI, not after every payment:
-  each withdrawal costs a flat 0.004615 USDC.
+### The treasury's key is on the server
+
+The API holds a **full access key** of `alcove-treasury.near` (`TREASURY_INTENTS_KEY`, from Secret Manager's
+`alcove-treasury-intents-key`, bound to the API service and to nothing else). This was chosen over a separate receiving
+account or a key registered only in intents.near, knowing the risk. The API uses the key for one thing: signing in to
+1Click as the treasury, so quotes pay its confidential balance. Nothing but the API's own code keeps it to that. The key
+can do anything the treasury can, so anyone who gets the server's secrets (access to that secret, the API's environment
+or memory, the deploy pipeline, or code deployed to the API) can, as the treasury:
+
+- sign NEAR transactions: send all its NEAR and tokens, add or delete its access keys (locking everyone else out), deploy
+  a contract to it, or delete the account;
+- sign intents in intents.near: transfer or withdraw everything in its Intents balances, public and confidential, and
+  register keys of their own for it there (`add_public_key`), which keep working after this key is rotated out;
+- sign in to 1Click: read the confidential balance and history, and quote and move what's in it.
+
+A 1Click token on its own lets its holder read the confidential balance (and, beside a partner key, ask for quotes as the
+treasury) until it runs out: 15 minutes, or 7 days for a refresh token, which stay good after the process that held them
+has gone. Moving money out of the balance takes an intent signed with the key. The partner key (`ONECLICK_API_KEY`,
+`alcove-oneclick-api-key`) only says which partner is asking.
+
+Keep the balance small: withdraw what's in it regularly (below), so the key never guards much.
+
+**Rotating the key** (if it may have been exposed, when someone who could read it leaves, and from time to time):
+
+1. In a wallet that holds another full access key of `alcove-treasury.near`, add a new full access key to the account,
+   and register its public key for the account in intents.near: signing in to near.com with the new key asks to add it.
+2. Add the new key as a version of the secret, never printing it:
+   `printf %s "$TREASURY_INTENTS_KEY" | gcloud secrets versions add alcove-treasury-intents-key --data-file=-`, then
+   redeploy (run the deploy workflow). The API reads the key at startup and signs in with it.
+3. Remove the old key everywhere: delete it from the account's access keys, and remove its public key from intents.near
+   (`remove_public_key`, or in near.com). Disable the secret's old version. Check intents.near's `public_keys_of` for the
+   account lists only keys you know.
+4. Check that it works: the API logs `treasury signed in to 1Click` after starting, and a top-up opens.
+
+If the key may be exposed and can't be rotated at once, move the treasury's money to an account it can't reach first,
+then rotate. Taking the key out of the API's settings turns top-ups off ("Adding money isn’t available on this server."):
+nothing is opened or checked meanwhile, and once it's back the watcher picks up every deposit it still watches.
+
+### By hand, in near.com, signed in as the treasury
+
+- **Refunds.** A refund lands in the treasury's confidential balance as the token that was sent, not USDC. Swap these to
+  USDC on NEAR from time to time, there.
+- **Withdrawals.** Withdraw USDC from the confidential balance in batches, when topping up NEAR AI, not after every
+  payment: each withdrawal from an Intents balance cost a flat 0.004615 USDC when checked (5 November 2026). What's left
+  in the public balance from before is withdrawn the same way.
 - **A stray payment** (a second payment to a used address, or one after it expired) reaches the treasury as a 1Click
   refund and isn't added. The person gives support the top-up's reference (its deposit ID). Support opens that deposit's
-  sealed record (`deposits`, under `Kservice`'s accounting key) to find its address, confirms the payment in 1Click's
-  status for it, and adds what reached the treasury to their balance with `billing credit` ([Support](#support)).
+  sealed record (`deposits`, under `Kservice`'s accounting key) to find its address, confirms the payment in the
+  treasury's confidential history in near.com (1Click is asked about a confidential deposit only as the treasury, signed
+  in, beside the partner key; a deposit from before answers anyone at `/v0/status`), and adds what reached the treasury
+  to their balance with `billing credit` ([Support](#support)).
 - **A failed top-up** (logged at error with its deposit ID and a reason) is one 1Click reported money for that wasn't
-  added. Support opens its record and 1Click's status as above, and adds only what 1Click shows reached the treasury (`billing credit`). If
-  1Click settles it cleanly within 30 days, it's added by itself.
+  added. Support opens its record and checks the treasury's history as above, and adds only what reached the treasury
+  (`billing credit`). If 1Click settles it cleanly within 30 days, it's added by itself.
 - **A depeg (accepted risk).** Every amount sent is valued at face (1 token = 1 USD). When a stablecoin depegs, turn
   top-ups off (take `TREASURY_INTENTS_ACCOUNT` out of the API's settings in `deploy.yml` and redeploy) until it recovers.
 
@@ -550,3 +612,11 @@ The server never holds a key that can move treasury money. By hand, in near.com,
   balance keeps it, in the shapes there are: a line in the `plan-account` record's history, and licenses in the
   `team-billing` record. Only this release opens one (it takes a team's admin, and teams come with this release); while
   the deploy runs, the previous release treats it as any payment that buys (above).
+- Confidential top-ups need no migration, and no stored shape changes. Which balance a deposit pays is in its own kept
+  quote, which 1Click repeats the request in: one opened before has `recipientType: 'INTENTS'` and is asked about exactly
+  as then, without the treasury's token, and settles as before; one opened now has `CONFIDENTIAL_INTENTS` and is asked
+  about signed in as the treasury. The previous release reads a record this one wrote (the same fields). While the deploy
+  runs, the previous release still opens top-ups into the public balance, which this release settles as ones from before,
+  and asks about a confidential deposit without the treasury's token, which 1Click may refuse: that's logged at warn and
+  asked again a minute later, by then by this release. The deploy needs `alcove-treasury-intents-key` and
+  `alcove-oneclick-api-key` in Secret Manager first ([Deployment](deployment-and-acceptance.md)).

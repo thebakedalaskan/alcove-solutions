@@ -15,7 +15,7 @@ requires its own verification.
 | API | `tsx watch` on `:8787`, proxied at `/api` | Cloud Run `alcove-api`, project `alcove-solutions`, `us-central1`, native mapping for `api.alcove.solutions` |
 | Database | Postgres 17 in Docker | Cloud SQL `alcove-db`, Postgres 17 Enterprise; SSL, 03:00 UTC daily backup window, seven retained backups, PITR |
 | Objects | RustFS in Docker | Private Cloudflare R2 `alcove-objects`, accessed through the API |
-| Secrets | `.env`, gitignored | GCP Secret Manager: database, `KMASTER`, `KSERVICE` and storage credentials; optional inference and Google credentials. The privacy promise needs `KMASTER` released only to an attested confidential VM, which Cloud Run is not; the API is ready to move to one ([Privacy › Moving to confidential computing](privacy-keys-and-sessions.md#moving-to-confidential-computing)) |
+| Secrets | `.env`, gitignored | GCP Secret Manager: database, `KMASTER`, `KSERVICE` and storage credentials; the treasury's NEAR key and 1Click's partner key, for top-ups; optional inference and Google credentials. The privacy promise needs `KMASTER` released only to an attested confidential VM, which Cloud Run is not; the API is ready to move to one ([Privacy › Moving to confidential computing](privacy-keys-and-sessions.md#moving-to-confidential-computing)) |
 | DNS | Localhost | GoDaddy registrar; Cloudflare nameservers `johnny.ns.cloudflare.com` and `maleah.ns.cloudflare.com` |
 
 Run locally with `pnpm install && pnpm dev`. The [runbook](../../infra/README.md) contains bootstrap,
@@ -164,10 +164,33 @@ or unset there is no binding and no placeholder secret version is needed: the AP
 doesn't transcribe them, notes wait, and `/health` reports `inference: missing`.
 
 Top-ups are on in production: the API service is deployed with `TREASURY_INTENTS_ACCOUNT=alcove-treasury.near`,
-the NEAR account whose Intents balance receives every top-up and refund, and without `ONECLICK_API_KEY`, so 1Click
-quotes at its own fee ([Plans and usage](plans-and-usage.md)). The migration job doesn't need either. To turn
-top-ups off, take the setting out and redeploy: nothing is checked or added meanwhile, and once it's back the watcher
-picks up every deposit it still watches.
+the NEAR account whose confidential Intents balance receives every top-up and refund, and binds two secrets that nothing
+else gets (not the migration job, not the feature-flags job): `TREASURY_INTENTS_KEY` from `alcove-treasury-intents-key`,
+a full access key of that account, with which the API signs in to 1Click as the treasury, and `ONECLICK_API_KEY` from
+`alcove-oneclick-api-key`, the partner key from partners.near-intents.org, beside which alone 1Click takes that session on
+a quote ([Plans and usage › Treasury runbook](plans-and-usage.md#treasury-runbook) says what the key can do and how to
+rotate it). Without any of the three, top-ups are off: every top-up endpoint answers `unavailable`.
+
+**Before deploying the release that brought confidential top-ups**, and on any new installation:
+
+1. Both secrets exist with a version, added by hand and never printed:
+   `printf %s "$TREASURY_INTENTS_KEY" | gcloud secrets create alcove-treasury-intents-key --replication-policy automatic --data-file=-`,
+   and the same for `alcove-oneclick-api-key`. The key is NEAR's secret key format, `ed25519:` and 64 bytes in base58 (a
+   wallet's export of a full access key); the API won't start with anything else, and says which setting is wrong but
+   never its value. A deploy fails while either secret is missing.
+2. `infra/bootstrap-gcp.sh` has been run again, which gives the runtime account access to both (it says so if one
+   doesn't exist yet, and creates neither).
+3. The key is registered for `alcove-treasury.near` in intents.near. It is if the treasury has signed in to near.com with
+   that key; otherwise near.com asks to add it on the first sign-in (`add_public_key`). `public_keys_of` on intents.near
+   lists the registered keys. A key that isn't registered is refused at sign-in: top-ups are unavailable, and the API logs
+   `1Click refused the treasury’s sign-in` at error, with the status.
+
+After deploying, the API logs `treasury signed in to 1Click` on its first top-up. Besides 1Click, a sign-in reaches
+NEAR's RPC (`NEAR_RPC_URL`, by default `https://near-rpc.defuse.org`) for intents.near's current salt, which takes no
+credential; while it can't be reached, a sign-in is unavailable (a token already held, and refreshing it, don't need it).
+To turn top-ups off, take
+`TREASURY_INTENTS_ACCOUNT` out of the settings and redeploy: nothing is checked or added meanwhile, and once it's back the
+watcher picks up every deposit it still watches.
 
 With NEAR AI enabled the API also reaches, over HTTPS, the models' own endpoints
 (`whisper-large-v3.completions.near.ai` and `deepseek-v4-1-flash.completions.near.ai`, and the host of any other private model chosen), where everything with

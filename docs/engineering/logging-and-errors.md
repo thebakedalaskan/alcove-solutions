@@ -179,12 +179,15 @@ about what anyone said, wrote or who they are.
   tokens: paths show `/v1/calls/:code`, and a file's token `/v1/media/:token`. Paths never include the query, so the
   Google callback's code and state stay out too.
 - Google's tokens are never logged, nor its error descriptions: only its error code (such as
-  `invalid_grant`). `inference.ts` logs only models, sizes, durations, counts, statuses, timings, finish
+  `invalid_grant`). Nor are the treasury's NEAR key, 1Click's partner key or the tokens 1Click gives the treasury
+  (`features/billing/oneclick-session.ts`): a sign-in is logged with the tokens' lifetimes, and a refused one with its
+  HTTP status only. `inference.ts` logs only models, sizes, durations, counts, statuses, timings, finish
   reasons and token counts; `evidence.ts` only models, result codes, durations, TCB statuses, advisory IDs,
   GPU counts and hashes of keys, quotes and configurations, never the evidence itself.
 - SQL is logged as static text; parameters never are.
 - pino redacts common secret field names (`secret`, `root`, `wrapKey`, `key`, `krec`, `cookie`,
-  `authorization`, `body`, `plaintext`, ...) as a backstop; the browser logger drops key-like and
+  `authorization`, `body`, `plaintext`, `accessToken`, `refreshToken`, `TREASURY_INTENTS_KEY`, `ONECLICK_API_KEY`, ...)
+  as a backstop; the browser logger drops key-like and
   content-like fields and cuts strings to 300 characters.
 - A second backstop scrubs every string on its way out, wherever it came from (messages, fields,
   browser reports, errors and their causes): email addresses become `[email]`, bearer and basic
@@ -198,7 +201,8 @@ about what anyone said, wrote or who they are.
 - The privacy-at-rest integration test runs at debug level and checks the captured log for every
   canary (names, emails, titles, guests, chat, speech, audio and search terms, and a Google account's ID,
   name, address and photo, in several encodings), every session and Google sign-in attempt cookie the
-  browser received, Google refresh tokens, and the call code. It also checks that, across the whole test
+  browser received, Google refresh tokens, the call code, the treasury's NEAR key and the public key it makes, 1Click's
+  partner key and every token 1Click issued. It also checks that, across the whole test
   run, the log holds no email address of anyone and no client address.
 
 ## Tests
