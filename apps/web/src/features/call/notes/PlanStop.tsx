@@ -1,14 +1,15 @@
 /*
  * When the organizer's plan stops a call's notes (docs: Plans and usage › Running out in a call; the plans spec's doors, 4).
  * What's said about it is the same in the banner over the call, at the top of Notes and in what's captured. Whoever organizes
- * has the ways to more (Get Pro, more hours for this period, room), each opening checkout over the call, and once their plan
- * has more, notes come on again by themselves and say so. Everyone else is told whose notes ran out, with nothing to buy: a
+ * has the ways to more (Get Pro, more hours for this period, room), each opening checkout over the call. Once they've bought
+ * more, notes come on again by themselves and say so; when the plan has notes again without a purchase (a new period), the
+ * organizer is asked, with Turn notes on. Everyone else is told whose notes ran out, with nothing to buy: a
  * call's notes are on its organizer's plan. Where notes stopped and came on again is marked in the notes.
  */
-import { CallStopsSeenSchema, notesAreOn, type CallSession, type CallState, type Plan } from '@alcove/api';
+import { CallStopsSeenSchema, errorCode, notesAreOn, type CallSession, type CallState, type Plan } from '@alcove/api';
 import { Button, Icon, buttonClass, useToast } from '@alcove/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useCheckout } from '~/features/plans/checkout';
 import { hoursLabel, hoursOfNotes } from '~/features/plans/words';
 import { log } from '~/lib/log';
@@ -20,7 +21,7 @@ import { organizerName } from './Capture';
 const slog = log.child({ component: 'plan-stop' });
 
 /** A way to more, for whoever organizes: Pro, more hours for this period, or room in their storage. */
-export type StopWay = { kind: 'pro' } | { kind: 'hours'; label: string } | { kind: 'room' };
+export type StopWay = { kind: 'pro' } | { kind: 'hours'; label: string } | { kind: 'room' } | { kind: 'on'; go: () => void; busy: boolean };
 
 /** Notes stopped by the organizer's plan, as it's said: a few words, a sentence, and the ways to more (none for anyone else). */
 export interface PlanStop { reason: 'notes' | 'storage'; at: string; title: string; line: string; ways: StopWay[] }
@@ -78,6 +79,7 @@ export function StopWays({ ways }: { ways: readonly StopWay[] }) {
         const variant = i === 0 ? 'primary' : 'secondary';
         if (w.kind === 'pro') return <Button key="pro" size="sm" variant={variant} onClick={() => checkout.open({ plan: 'pro' }, 'call')}>Get Pro</Button>;
         if (w.kind === 'hours') return <Button key="hours" size="sm" variant={variant} onClick={() => checkout.open({ plan: 'hours' }, 'call')}>{w.label}</Button>;
+        if (w.kind === 'on') return <Button key="on" size="sm" variant={variant} loading={w.busy} onClick={w.go}>Turn notes on</Button>;
         // The Drive opens beside the call, which goes on here.
         return <a key="room" className={buttonClass({ variant, size: 'sm' })} href="/drive" target="_blank" rel="noopener noreferrer">Make room</a>;
       })}
@@ -183,57 +185,105 @@ function hasMore(reason: 'notes' | 'storage', was: Plan, now: Plan): boolean {
   return now.kind !== was.kind || now.notes.minutesPerPeriod > was.notes.minutesPerPeriod || now.period.from !== was.period.from || now.notes.minutesLeft > was.notes.minutesLeft;
 }
 
+/** A purchase since notes stopped: Pro or more notes, bought from the balance or by a payment that bought it. */
+const boughtSince = (p: Plan, at: string): boolean => p.balance.history.some((e) => e.microUsd < 0 && Date.parse(e.at) >= Date.parse(at));
+/** Turning notes on failed for a reason that may pass (the connection, the server busy): tried again after these waits. */
+const RETRY_MS = [2000, 5000, 10_000, 20_000, 40_000] as const;
+const passing = (e: unknown): boolean => { const c = errorCode(e); return c === 'network' || c === 'unavailable' || c === 'unknown'; };
+
+/** Notes on again for a stopped call, as its organizer has it: whether to offer it, and doing it. */
+export interface PlanRestart {
+  /** True while notes coming on is this, so the call's own notice about it isn't said as well. */
+  hushing: () => boolean;
+  /** The plan has notes again without anything bought since the stop (a new period, more given): the organizer chooses. */
+  ready: boolean;
+  /** Turns notes on now, for the organizer who chose to. */
+  turnOn: () => void;
+  /** Notes are on their way back on. */
+  turning: boolean;
+}
+
 /**
- * For whoever organizes: the server doesn't turn a stopped call's notes on again by itself, so their browser does, the
- * moment their plan has more (bought in checkout over the call, paid from another device after closing it, more hours, a
- * new period, or room made), once for each change, and a toast says so: "You're on Pro. Notes are on again." when Pro is
- * what came, else "Notes are on again.". While a stop is in force the plan is read every 10 s, so a payment that lands
- * anywhere is heard within seconds. Turning them on is the organizer's own (setNotes); refused (the plan wasn't enough after
- * all), nothing is said and the next change tries again. `hushing()` is true while notes coming on is this, so the call's
- * own notice about it isn't said as well.
+ * For whoever organizes: the server doesn't turn a stopped call's notes on again by itself. When the organizer bought more
+ * since they stopped (Pro, or more notes, in checkout over the call or paid from anywhere), their browser turns them on the
+ * moment the plan has it, and a toast says so: "You're on Pro. Notes are on again." when Pro is what came, else "Notes are
+ * on again.". When the plan has notes again without anything bought (a new period, more given), nothing turns on by
+ * itself: the organizer is offered Turn notes on (`ready`). While a stop is in force the plan is read every 10 s, so a
+ * payment that lands anywhere is heard within seconds. Turning notes on that fails for a reason that may pass is tried
+ * again, waiting longer each time; refused (the plan wasn't enough after all), it's tried again only once the plan changes.
  */
-export function usePlanRestart(state: CallState, session: Pick<CallSession, 'setNotes'>): { hushing: () => boolean } {
+export function usePlanRestart(state: CallState, session: Pick<CallSession, 'setNotes'>): PlanRestart {
   const toast = useToast();
   const s = stopOf(state);
   const host = state.isOrganizer && state.phase === 'in-call';
   const read = useQuery({ ...q.plan(), enabled: host && s !== null, refetchInterval: STOPPED_READ_MS });
   const plan = read.data;
   const readAt = read.dataUpdatedAt;
-  /* The plan as it was when notes stopped, to tell more from what was already there; then whether notes are on their way back. */
-  const before = useRef<{ at: string; plan: Plan } | null>(null);
+  /* The plan when turning notes on was last refused, so the same plan isn't tried again; then whether they're on their way back. */
+  const refused = useRef<{ at: string; plan: Plan } | null>(null);
   const turning = useRef<{ pro: boolean } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [ready, setReady] = useState(false);
   const stoppedAt = s?.at ?? null;
   const reason = s?.reason ?? null;
+  const wasKind = useRef<Plan['kind'] | null>(null);
+  if (stoppedAt && plan && readAt < Date.parse(stoppedAt)) wasKind.current = plan.kind;
+
+  const turnOn = useCallback((pro: boolean, tries = 0) => {
+    if (!stoppedAt || !reason || !plan) return;
+    turning.current = { pro };
+    setBusy(true);
+    slog.info('turning notes on again', { reason, kind: plan.kind, tries });
+    session.setNotes(true).catch((e: unknown) => {
+      const wait = RETRY_MS[tries];
+      if (passing(e) && wait !== undefined) {
+        slog.info('notes didn’t come on again; trying again', { err: e, reason, tries });
+        window.setTimeout(() => { if (turning.current) turnOn(pro, tries + 1); }, wait);
+        return;
+      }
+      slog.info('notes didn’t come on again; the next change to the plan tries again', { err: e, reason });
+      turning.current = null;
+      refused.current = { at: stoppedAt, plan };
+      setBusy(false);
+    });
+  }, [stoppedAt, reason, plan, session]);
+
   useEffect(() => {
     if (!host || !stoppedAt || !reason || !plan || turning.current) return;
     // Only a plan read since notes stopped says what they can do now; one read before is a moment from being read again.
     if (readAt < Date.parse(stoppedAt)) return;
-    const was = before.current;
-    if (was === null || was.at !== stoppedAt) {
-      // The first look at the plan since notes stopped tries once if it has what they need (paid while the page reloaded, say).
-      before.current = { at: stoppedAt, plan };
-      if (!canGo(reason, plan)) return;
-      turning.current = { pro: false };
-    } else {
-      // After that, only a plan with more than before.
-      if (!hasMore(reason, was.plan, plan)) return;
-      turning.current = { pro: was.plan.kind === 'free' && plan.kind === 'pro' };
-    }
-    slog.info('the organizer’s plan has more: turning notes on again', { reason, kind: plan.kind });
-    session.setNotes(true).catch((e: unknown) => {
-      slog.info('notes didn’t come on again; the next change to the plan tries again', { err: e, reason });
-      turning.current = null;
-      before.current = { at: stoppedAt, plan };
-    });
-  }, [host, stoppedAt, reason, plan, readAt, session]);
+    const was = refused.current;
+    const fresh = was === null || was.at !== stoppedAt || hasMore(reason, was.plan, plan);
+    if (!fresh || !canGo(reason, plan)) { setReady(false); return; }
+    if (!boughtSince(plan, stoppedAt)) { setReady(true); return; }
+    setReady(false);
+    turnOn(wasKind.current === 'free' && plan.kind === 'pro');
+  }, [host, stoppedAt, reason, plan, readAt, turnOn]);
+
   /* Notes are on again: said once, as what came. */
   const on = notesAreOn(state.capture.mode);
   useEffect(() => {
     const t = turning.current;
     if (!t || !on || stoppedAt) return;
     turning.current = null;
-    before.current = null;
+    refused.current = null;
+    setBusy(false);
+    setReady(false);
     toast(t.pro ? 'You’re on Pro. Notes are on again.' : 'Notes are on again.', { icon: 'check', ms: 5200, topic: 'notes-back' });
   }, [on, stoppedAt, toast]);
-  return { hushing: () => turning.current !== null };
+  return { hushing: () => turning.current !== null, ready: host && ready && stoppedAt !== null, turnOn: () => turnOn(false), turning: busy };
+}
+
+/**
+ * What's said while the plan has notes again but nobody bought more since they stopped: the organizer is asked, with Turn
+ * notes on, and nothing turns on by itself. Otherwise the stop as it is.
+ */
+export function withRestart(stop: PlanStop | null, r: PlanRestart): PlanStop | null {
+  if (!stop || !r.ready) return stop;
+  return {
+    ...stop,
+    title: stop.reason === 'storage' ? 'You have room for notes again' : 'Your plan has notes again',
+    line: 'Notes stay off until you turn them on. The call carries on either way.',
+    ways: [{ kind: 'on', go: r.turnOn, busy: r.turning }]
+  };
 }

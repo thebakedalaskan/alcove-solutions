@@ -745,9 +745,10 @@ time, slides in on the right.
   stop for storage says storage, with **Make room**. Everyone else, guests included, reads whose notes ran out ("Priya's
   notes for this period are used up, and the call carries on. What was written before stays.") with nothing to buy. What
   was said until then is in the notes, which are written when the call ends, even when writing them goes past what was
-  left. Once the organizer's plan has notes again, wherever the payment lands, notes come on again by themselves: "You're
-  on Pro. Notes are on again." (or "Notes are on again."), and the notes mark **Notes stopped** and **Notes on again** at
-  their times, in that tab. While they're stopped, turning notes on or starting a room recording says "Your notes for this
+  left. Once the organizer has bought more, wherever the payment lands, notes come on again by themselves: "You're on
+  Pro. Notes are on again." (or "Notes are on again."), and the notes mark **Notes stopped** and **Notes on again** at
+  their times, in that tab. When the plan has notes again without a purchase (a new period), nothing turns on by itself:
+  the organizer is asked, "Your plan has notes again", with **Turn notes on**. While they're stopped, turning notes on or starting a room recording says "Your notes for this
   period have run out. They start again when your plan renews."
 - **How long a call runs.** A call ends at 10 hours, and everyone is told 5 minutes before ("This call ends at
   14:30"); its notes are written as when anyone ends it. At most 100 people are in a call or waiting to be let in: one
@@ -2266,8 +2267,9 @@ Notes stop for everyone and the call carries on. Over Notes' tabs, or in the ban
 this period's 5 hours. The call carries on. Notes start again the moment you have more." The organizer has **Get Pro** and
 **Add 10 hours · $15** (on Pro, the hours only), which open checkout over the call, whose **Back to the call** closes it; a stop
 for storage says storage, with **Make room**. Everyone else reads whose notes ran out, with nothing to buy. Once the
-organizer's plan has more, wherever the payment lands (in checkout, after closing it, or in another tab), notes come on again
-by themselves: "You're on Pro. Notes are on again.", and the notes mark **Notes stopped** and **Notes on again**.
+organizer has bought more, wherever the payment lands (in checkout, after closing it, or in another tab), notes come on
+again by themselves: "You're on Pro. Notes are on again.", and the notes mark **Notes stopped** and **Notes on again**. When
+the plan has notes again without a purchase (a new period), the organizer is asked instead, with **Turn notes on**.
 
 ### 16.10 Start a call with no notes left
 

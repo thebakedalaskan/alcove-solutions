@@ -68,7 +68,7 @@ import { GAP, PHONE_W, focusRoom, peopleEdge, placeMain } from '~/features/call/
 import { PeopleSeam } from '~/features/call/layout/PeopleSeam';
 import { TileHint } from '~/features/call/layout/TileHint';
 import { CaptureButton, CapturePill, NotesAsks, askedTag, organizerName, useCaptureAlerts } from '~/features/call/notes/Capture';
-import { NotesStopBar, usePlanRestart, usePlanStop, useStopMarks } from '~/features/call/notes/PlanStop';
+import { NotesStopBar, usePlanRestart, usePlanStop, useStopMarks, withRestart } from '~/features/call/notes/PlanStop';
 import { unreadChatMentions, useCallAttention } from './attention';
 import { captureHere } from '~/lib/capture';
 import { RoomsLive, RoomsSetup } from '~/features/call/rooms/Rooms';
@@ -286,9 +286,9 @@ export function InCall({ session }: { session: CallSession }) {
     if (fresh) keepSeen(state.callId, seen);
   }, [state.notices, state.callId, session, toast]);
   /* The organizer's plan and the call's notes: what's said while it has stopped them, where, and notes on again once it has more. */
-  const planStop = usePlanStop(state);
-  const stopMarks = useStopMarks(state);
   const planRestart = usePlanRestart(state, session);
+  const planStop = withRestart(usePlanStop(state), planRestart);
+  const stopMarks = useStopMarks(state);
 
   /*
    * Someone asking to join: a card drops in for the organizer and stays until they're answered, wherever that happens

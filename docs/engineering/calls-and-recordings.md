@@ -495,9 +495,9 @@ call's sealed state (`apps/api/src/features/calls/capture.ts`) and the same for 
   asks. Every change sends the room a change push, so browsers fetch the call again.
 - **Running out** (`capture.runningOut`, `capture.stopped`). Notes are paid for from the organizer's AI allowance and
   storage, so when what's left would last about 5 minutes at this call's pace the organizer alone is told, once
-  (`runningOut`), and when either is spent notes go off for everyone as if the organizer had turned them off, and
-  everyone sees **Notes have stopped** until they close it (`stopped`, with its reason, `notes` or `storage`). The call
-  goes on, and what was captured until then still goes into the notes. A call also ends at `CallState.endsAt`, 10 hours
+  (`runningOut`), and when either is spent notes go off for everyone as if the organizer had turned them off (`stopped`,
+  with its reason, `notes` or `storage`): the organizer is told why with the ways to more, everyone else whose notes ran
+  out, and the organizer's app turns notes on again once they've bought more (user-flows 16.9). The call goes on, and what was captured until then still goes into the notes. A call also ends at `CallState.endsAt`, 10 hours
   after it started, with everyone told 5 minutes before, and takes at most 100 people
   ([Plans and usage](plans-and-usage.md#running-out-in-a-call)).
 - **Pause** (`{type: "pause"}`, only while notes are on) stops every kind of capture at once. The one gate every

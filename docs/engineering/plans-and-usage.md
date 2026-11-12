@@ -97,8 +97,10 @@ The allowance runs down with the call, and notes stop before it's spent rather t
 
 - **About to run out:** when what's left would last `ai.warn_seconds` (5 minutes) at this call's own pace (what it has cost
   and will cost to write up, a second of it), the organizer alone is told, once (`CallState.capture.runningOut`).
-- **Spent:** notes go off for everyone, as if the organizer had turned them off, and everyone, guests included, sees
-  "Notes have stopped" until they close it (`capture.stopped`, reason `notes`). The call goes on. Captions, live notes,
+- **Spent:** notes go off for everyone, as if the organizer had turned them off (`capture.stopped`, reason `notes`), and
+  the call goes on. Notes says Stopped, and over its tabs (or in a banner while Notes is closed) the organizer reads why with
+  Get Pro and more hours for this period, which open checkout over the call; everyone else, guests included, reads whose
+  notes ran out, with nothing to buy (user-flows 16.9). Captions, live notes,
   guests' questions and anything else the organizer pays for are refused; a signed-in person's own questions are theirs.
 - **The last note:** when the call ends, its notes are written from what was transcribed before notes stopped. Writing a
   call's notes the first time is never refused, so it may cost more than what was left: that's the only way past an
@@ -239,8 +241,10 @@ The allowance is the period's minutes, the plan's and those bought, at `ai.hour_
 them, and the meter reads it), so `Plan.notes.minutesPerPeriod` rises by exactly what was bought, and `minutesLeft` by it
 less anything spent past the allowance already (the one note written past it). A stop the spent allowance caused lifts
 once what's left is above `ai.stop_micro_usd` (`notes.stopped` goes false; the meter clears its own stop the next time
-it's touched): a call's notes stay off until its organizer turns them on again, which works from then; nothing turns
-them on by itself. A stop full storage caused stays: more notes don't make room. Buying Pro starts a period of its own,
+it's touched). The server never turns a call's notes on again by itself: the organizer's app does, once the plan has
+more. After a purchase made since the stop (Pro or more notes, in checkout or paid from anywhere) it turns them on by
+itself and says so, retrying a failure that may pass; when the plan has notes again without a purchase (a new period, a
+limit raised), it asks the organizer instead, with Turn notes on, and nothing turns on until they press it. A stop full storage caused stays: more notes don't make room. Buying Pro starts a period of its own,
 so more bought on Free don't reach it, and none reach the period after the one they were bought for.
 
 ## Support
