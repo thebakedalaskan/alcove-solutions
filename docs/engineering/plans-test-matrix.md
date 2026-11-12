@@ -5,7 +5,8 @@
 Every scenario the plans work is tested against, where it's tested, and how it stands. Tests are integration tests over
 HTTP (`@alcove/api-http`) against real Postgres, the object store and LiveKit, with the fake NEAR AI (which prices its
 models as NEAR AI's catalog does) and the fake 1Click (the "fake money"). Limits are set per test to make a scenario quick:
-a minute of notes, an hour's period, a few kilobytes of storage. Rows for later phases say which.
+a minute of notes, an hour's period, a few kilobytes of storage. Rows for later phases say which; rows marked
+"frontend" are the backend additions the plans frontend needs (a year for less, more notes, payments that buy).
 
 Suites: `billing/meter` (`apps/api/src/features/billing/meter.integration.test.ts`), `billing/plans`, `billing/topups`,
 `calls/liveNotes`, `calls/callWorkspace`, `recordings/transcripts`, `workspaces/media`, `integration/flows`.
@@ -60,16 +61,33 @@ Suites: `billing/meter` (`apps/api/src/features/billing/meter.integration.test.t
 | F5 | Pro ends over Free's storage: the grace (uploads go in), then uploads refused, files readable and deletable; buying Pro lifts it at once; buying in the release grace ends it | billing/plans › Pro › holds storage to Pro’s through the grace… | 2 | Passes |
 | F6 | Pro's storage and file size are what's enforced; Pro's files are offered and held at 512 MiB until downloads resume | billing/plans › Pro › holds an account on Pro to Pro’s storage and file size… | 2 | Passes |
 | F7 | Support finds an account by its address and adds dollars (`pnpm billing credit`) | billing/plans › support | 2 | Passes |
+| F8 | A year or more for less: 12 months at the yearly price ($16), fewer at a month's; each refused at the other's price, nothing charged; the months that haven't started refunded at the yearly price | billing/plans › Pro › sells a year or more for less…; … buys 1 to 12 months at a time… | frontend | Passes |
+| F9 | No yearly offer while its price is 0, isn't below a month's, or needs more months than one purchase buys; a year is a month's price then, and never free | billing/plans › Pro › offers no yearly price while it’s 0… | frontend | Passes |
 | **G: Team** | Licenses, invites, visits, alerts, team notes and workspaces, pooled storage | — | 3 | Not built |
 | **H: calls** |  |  |  |  |
 | H1 | A call says when it ends, ends at 10 hours, and writes its notes | billing/plans › ends at its longest… | 1 | Passes |
 | H2 | The 101st person is refused and whoever hosts is told | billing/plans › turns away anyone past the most people… | 1 | Passes |
 | **I: privacy and upgrades** |  |  |  |  |
-| I1 | Nothing readable about plans in any row or log: the balance's history label is a canary | flows › privacy at rest | 1 | Passes |
+| I1 | Nothing readable about plans in any row or log: the balance's history labels ("Added, 25 USDC", "10 more hours of notes") and a top-up's sealed purchase (`microUsdPerPack`) are canaries | flows › privacy at rest | 1, frontend | Passes |
 | I2 | Top-ups stay their owner's | billing/topups › keeps top-ups to their owner | 1 | Passes |
 | I3 | Deleting an account deletes its plan and allowance | billing/plans › deleting an account | 1 | Passes |
 | I4 | A live call’s state from the previous release reads (no `notes.limit`), as not stopped, and carries on | billing/plans › reads a live call the previous release stored… | 1 | Passes |
-| I5 | A `plan-account` record in phase 1's shape (no `pro`, `renew`, `notices`) reads, and Pro is bought on it | billing/plans › Pro › reads a plan the previous release stored… | 2 | Passes |
+| I5 | A `plan-account` record in phase 1's shape (no `pro`, `renew`, `notices`, `hours`) reads, and Pro and more notes are bought on it | billing/plans › Pro › reads a plan the previous release stored… | 2, frontend | Passes |
+| **J: more notes** |  |  |  |  |
+| J1 | 10-hour packs from the balance, on Free and on Pro: this period's `minutesLeft` and `minutesPerPeriod` both rise, more again goes on top, "20 more hours of notes" in the history; the next period has the plan's alone, and Pro's period doesn't get what was bought on Free | billing/plans › more notes › adds notes to this period on any plan… | frontend | Passes |
+| J2 | Refused past the most packs, at a changed price, with a short balance ("10 hours of notes cost", "1 hour of notes costs"), and while none are offered (a price of 0), nothing charged | billing/plans › more notes › refuses more than one purchase buys… | frontend | Passes |
+| J3 | A buy of Pro and one of more notes at once with money for one wait on the same row lock: one goes through, the other is short | billing/plans › more notes › a buy of Pro and one of more notes at once… | frontend | Passes |
+| J4 | Bought after the allowance stopped a call's notes: `notes.stopped` lifts and the organizer turns notes on again; a stop full storage caused stays | billing/plans › more notes › lifts a stop the spent allowance caused… | frontend | Passes |
+| **K: payments that buy** |  |  |  |  |
+| K1 | A top-up opened with `buys` says `purchase: waiting`, stays so while the payment is on its way, and once it's added buys it in the same transaction (`bought`): Pro's months, or more notes for the period | billing/topups › top-ups that buy › buys what it was opened for…; … buys more notes… | frontend | Passes |
+| K2 | The balance and the payment pay together; what arrived over the total stays in the balance | billing/topups › top-ups that buy › buys with the balance and the payment together… | frontend | Passes |
+| K3 | Opening a payment for what isn't on offer at the price shown (a changed price, a year at a month's price, past the most, notes not offered) is refused before anything is quoted, with buyPro's and buyHours' words | billing/topups › top-ups that buy › refuses to open a payment… | frontend | Passes |
+| K4 | Refused once the money arrived, the money staying in the balance, with why in words: the price changed, one purchase buys fewer now, notes not offered any more | billing/topups › top-ups that buy › says why it didn’t buy when what it was for changed… | frontend | Passes |
+| K5 | Refused for too little: less arrived than it costs, or all arrived but the balance it counted on was spent meanwhile | billing/topups › top-ups that buy › says why it didn’t buy when less arrived… | frontend | Passes |
+| K6 | Two watchers and two app checks at once, with money for a second purchase: bought once | billing/topups › top-ups that buy › buys once, however many checks race on it | frontend | Passes |
+| K7 | A payment settled after its top-up was cancelled, or had expired, still buys, once | billing/topups › top-ups that buy › still buys what it was for… | frontend | Passes |
+| K8 | A `deposit` record from before purchases (no `purchase`) reads as one that only adds money, and is added as before | billing/topups › top-ups that buy › reads a top-up the previous release stored… | frontend | Passes |
+| K9 | Logs of a purchase by a top-up carry its ID, what it buys and why not, never an amount | billing/topups › top-ups that buy › buys what it was opened for…; … says why it didn’t buy when what it was for changed… | frontend | Passes |
 
 ## Workspaces (changed 12 Nov 2026)
 
@@ -110,6 +128,7 @@ drive it end to end.
 | The side panel | App and Storybook | Upgrade to Pro above "About 5 h of notes left", on Free only |
 | Notes have stopped | Storybook › Calls › Notes, wide and phone | Drops from the top; × closes it, and it stays closed through a reload in that tab |
 | About 5 minutes left, and the call's end | Storybook › Calls | The organizer's banner; everyone's "This call ends at…" |
+| The yearly price's and more notes' limits | `pnpm --filter @alcove/server limits list` and `limits set`, on a local database | Listed with their defaults and bounds; `'$16'`, `12`, `600`, `'$15'` and `5` set; 101 packs and 0 minutes a pack refused, out of bounds |
 
 ## Found along the way
 

@@ -208,7 +208,12 @@ everywhere within a minute.
 | `plan.pro.storage_bytes` | 100 GiB | 0 | 10 TiB | Pro: what an account stores, its uploads and its recordings. Held this high for `plan.grace_seconds` after Pro ends. |
 | `plan.pro.file_bytes` | 2 GiB | 0 | 4 GiB | Pro: one file. What's enforced is at most 512 MiB (`WHOLE_DOWNLOAD_BYTES`) until downloads can pick up where they stopped. |
 | `plan.pro.price_micro_usd` | $20 | $0 | $10,000 | Pro: one period. |
+| `plan.pro.yearly_price_micro_usd` | $16 | $0 | $10,000 | Pro: one period, bought `plan.pro.yearly_from_months` or more at once. None while it's 0 or not below `plan.pro.price_micro_usd`. |
+| `plan.pro.yearly_from_months` | 12 | 1 | 120 | The fewest months of Pro one purchase buys at `plan.pro.yearly_price_micro_usd`. None while it's more than `plan.pro_max_months`. |
 | `plan.pro_max_months` | 12 | 1 | 120 | The most months of Pro one purchase buys. |
+| `plan.hours.pack_minutes` | 600 | 1 | 60,000 | More notes: the minutes one pack adds to the period it's bought in, reckoned at `ai.hour_micro_usd` an hour. |
+| `plan.hours.price_micro_usd` | $15 | $0 | $10,000 | More notes: one pack. At 0, more notes aren't offered. |
+| `plan.hours.max_packs` | 5 | 1 | 100 | More notes: the most packs one purchase buys. |
 | `plan.pro_remind_seconds` | 3 d | 0 | 30 d | How long before Pro ends its owner is told, and a month is bought if renewing is on. |
 | `plan.period_seconds` | 30 d | 1 m | 365 d | A plan's period: notes renew, and paid time runs, in these. |
 | `plan.grace_seconds` | 15 d | 0 | 90 d | Once an account is over its plan's limits: how long until what's over stops taking more. |

@@ -1,9 +1,10 @@
 /*
  * Top-ups: payments into the treasury through a deposit provider, added to the balance plans are bought with (docs:
- * Plans and usage), a token as a dollar. What a deposit is (route, address, memo, the provider's quote) is sealed under
- * Kservice's accounting key, like the plan; its row says only whose it is, its state and when to look at it again.
+ * Plans and usage), a token as a dollar, and what one was opened to buy, bought with it once it's added. What a deposit
+ * is (route, address, memo, the provider's quote, what it buys) is sealed under Kservice's accounting key, like the plan;
+ * its row says only whose it is, its state and when to look at it again.
  */
-import { MAX_TOP_UP_MICRO_USD, TopUpStateSchema, type TopUp, type TopUpRoutes, type TopUpState } from '@alcove/api';
+import { MAX_TOP_UP_MICRO_USD, TopUpStateSchema, type Purchase, type TopUp, type TopUpRoutes, type TopUpState } from '@alcove/api';
 import { z } from 'zod';
 import type { Deps } from '../../context';
 import { id128, openJson, sealJson, serviceKey, toJson, unb64u } from '../../crypto';
@@ -15,7 +16,7 @@ import {
   type DepositProvider, type DepositRoute, type DoubtReason, type OpenDepositState
 } from './provider';
 import { limitsNow } from '../../limits';
-import { credit } from './plans';
+import { credit, purchase, refusalOf, refusedError } from './plans';
 
 const dlog = log.child({ component: 'deposits' });
 /** IDs are 22 characters of base64url; anything else names nothing. */
@@ -43,6 +44,14 @@ const isPending = (s: TopUpState): s is PendingState => isOpen(s) || s === 'canc
 const key = (d: Pick<Deps, 'cfg'>) => serviceKey(unb64u(d.cfg.KSERVICE, 32), 'accounting');
 const header = (ownerId: string, depositId: string) => ({ v: 1 as const, kind: 'deposit', ownerId, depositId, keyVersion: '1' });
 const units = z.string().regex(/^\d+$/);
+/**
+ * What a top-up is to buy, as its buyer asked for it: months of Pro, or packs of more notes, at the price they were shown.
+ * Kept as a record's own shape, not the contract's, so a bound the contract changes never stops a record from opening.
+ */
+const Buys = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('pro'), months: z.number().int(), microUsdPerMonth: z.number().int() }),
+  z.object({ kind: z.literal('hours'), packs: z.number().int(), microUsdPerPack: z.number().int() })
+]);
 
 /** What a deposit is, sealed. Token amounts are in the token's smallest unit, as integer strings. */
 export const DepositRecord = z.object({
@@ -73,9 +82,16 @@ export const DepositRecord = z.object({
   /** Whether it was logged that the provider couldn't answer past `give_up_at`, so it's logged once. */
   unanswered: z.boolean().default(false),
   /** Why the provider's last finished answer wasn't credited, so each reason is logged at error once. */
-  doubt: z.string().nullable().default(null)
+  doubt: z.string().nullable().default(null),
+  /**
+   * What it was opened to buy once its money is added, and how that went: `waiting` until it's added, then `bought`, or
+   * `refused` with why, in words for people (the money stays in the balance). Null for a top-up that only adds money, and
+   * for one opened before top-ups bought anything.
+   */
+  purchase: z.object({ buys: Buys, outcome: z.enum(['waiting', 'bought', 'refused']), why: z.string().nullable() }).nullable().default(null)
 });
 export type DepositRecord = z.infer<typeof DepositRecord>;
+type DepositPurchase = NonNullable<DepositRecord['purchase']>;
 
 /** The providers this server is set up with. Every top-up endpoint is unavailable when top-ups are off here. */
 function providers(d: Deps): DepositProvider[] {
@@ -98,7 +114,7 @@ function toTopUp(depositId: string, r: DepositRecord, state: TopUpState): TopUp 
     expiresAt: r.expiresAt, state,
     asked: { amount: formatUnits(BigInt(r.asked), r.route.decimals) },
     received: sent === null ? null : { amount: formatUnits(BigInt(sent), 6), microUsd: r.settled ? Number(r.settled.addedMicroUsd ?? 0) : null },
-    purchase: null
+    purchase: r.purchase
   };
 }
 
@@ -131,11 +147,17 @@ async function withinLimits(db: Db, ownerId: string): Promise<void> {
 
 /**
  * Opens a top-up for `microUsd` on a route: the provider quotes an address paying the treasury exactly that, a token as
- * a dollar, and the deposit is kept sealed with what was asked for. The limits are checked before asking for a quote,
- * and again under a lock on the owner in the transaction that inserts it, so concurrent requests can't pass them.
+ * a dollar, and the deposit is kept sealed with what was asked for, and what it's to buy (`buys`) once it's added. That's
+ * checked first, as buying it now would be but for the balance, so a price that has changed is said before anything is
+ * paid. The limits are checked before asking for a quote, and again under a lock on the owner in the transaction that
+ * inserts it, so concurrent requests can't pass them.
  */
-export async function start(d: Deps, ownerId: string, routeId: string, microUsd: number): Promise<TopUp> {
+export async function start(d: Deps, ownerId: string, routeId: string, microUsd: number, buys: Purchase | null): Promise<TopUp> {
   const all = providers(d);
+  if (buys) {
+    const refused = refusalOf(await limitsNow(d), buys);
+    if (refused) throw refusedError(refused, { kind: buys.kind });
+  }
   await withinLimits(d.pool, ownerId);
   const found = (await Promise.all(all.map(async (p) => ({ p, route: (await p.routes()).find((r) => r.id === routeId) })))).find((x) => x.route);
   if (!found?.route) throw invalid('That way to pay isn’t offered.');
@@ -149,7 +171,8 @@ export async function start(d: Deps, ownerId: string, routeId: string, microUsd:
     route: { ...opened.route, minimum: opened.route.minimum.toString() },
     address: opened.address, memo: opened.memo, expiresAt: opened.expiresAt,
     asked: opened.amountIn.toString(), minAmountIn: opened.minAmountIn.toString(),
-    quote: opened.quote, seenMicroUsd: null, settled: null, unanswered: false, doubt: null
+    quote: opened.quote, seenMicroUsd: null, settled: null, unanswered: false, doubt: null,
+    purchase: buys ? { buys, outcome: 'waiting', why: null } : null
   };
   const giveUpAt = new Date(Date.parse(opened.expiresAt) + GIVE_UP_AFTER_MS);
   try {
@@ -165,7 +188,7 @@ export async function start(d: Deps, ownerId: string, routeId: string, microUsd:
     if (e instanceof DatabaseError && e.context['pgCode'] === '23503') throw notFound('That account', { reason: 'account-gone' });
     throw e;
   }
-  dlog.info('top-up opened', { depositId, provider: found.p.name, state: 'waiting' });
+  dlog.info('top-up opened', { depositId, provider: found.p.name, state: 'waiting', buys: buys?.kind ?? null });
   return toTopUp(depositId, record, 'waiting');
 }
 
@@ -238,10 +261,26 @@ function doubtAbout(s: Extract<DepositCheck, { state: 'settled' }>): DoubtReason
 }
 
 /**
+ * Makes the purchase a top-up was opened for, in the transaction that adds its money, once the money is in: as buying it
+ * from the balance would (plans.ts `purchase`), so what isn't offered at that price any more, or a balance short of it, is
+ * refused with why, and the money stays in the balance. Logged with the deposit's ID and codes, never amounts.
+ */
+async function buyWith(d: Deps, c: Db, ownerId: string, depositId: string, provider: DepositProviderName, p: DepositPurchase, lessThanAsked: boolean): Promise<DepositPurchase> {
+  const r = await purchase(d, c, ownerId, p.buys);
+  if (r.bought) {
+    dlog.info('top-up bought what it was for', { depositId, provider, buys: p.buys.kind });
+    return { ...p, outcome: 'bought', why: null };
+  }
+  dlog.info('top-up didn’t buy what it was for; its money is in the balance', { depositId, provider, buys: p.buys.kind, why: r.refusal.why });
+  return { ...p, outcome: 'refused', why: r.refusal.arrived(lessThanAsked) };
+}
+
+/**
  * Records what the provider says, in one transaction with the deposit row locked, so a deposit credits at most once
  * however many watchers and requests race on it. A settled answer that can be trusted adds `addedFor` to the balance
- * (or is held when that comes to nothing) from any state but `credited` or `held`: a payment 1Click settles after
- * the deposit failed, expired or was cancelled is still credited. A doubtful answer credits nothing: the deposit is
+ * (or is held when that comes to nothing) from any state but `credited` or `held`, and then buys what the top-up was
+ * opened to buy, under the same locks, so that's tried once too: a payment 1Click settles after the deposit failed,
+ * expired or was cancelled is still credited, and still buys. A doubtful answer credits nothing: the deposit is
  * `arriving` (a failed or expired one `failed`), logged at error once per reason, and reaches support at its deadline. Otherwise `arriving` never goes
  * back to `waiting`, a cancelled one moves on only when a payment reaches it (and is then due for the watcher at once),
  * and a failed or expired one stays as it is. A status the provider doesn't explain leaves the deposit as it is.
@@ -272,12 +311,15 @@ export async function apply(d: Deps, ownerId: string, depositId: string, check: 
       const added = addedFor(rec, check);
       const state: TopUpState = added > 0n ? 'credited' : 'held';
       if (added > 0n) await credit(d, c, ownerId, Number(added), `Added, ${formatUnits(check.sentMicroUsd, 6)} ${rec.route.token}`);
+      const p = rec.purchase;
+      const lessThanAsked = added < toMicroUsd(BigInt(rec.asked), rec.route.decimals);
       await save(state, {
         ...rec,
         settled: {
           sentMicroUsd: check.sentMicroUsd.toString(), outMicroUsd: check.outMicroUsd.toString(), refundedMicroUsd: check.refundedMicroUsd.toString(),
           addedMicroUsd: added.toString(), providerRef: check.providerRef
-        }
+        },
+        purchase: p && p.outcome === 'waiting' ? await buyWith(d, c, ownerId, depositId, provider, p, lessThanAsked) : p
       });
       if (late) dlog.warn('top-up settled after it was given up', { depositId, provider, was: r.state, state });
       else dlog.info('top-up settled', { depositId, provider, state });

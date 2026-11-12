@@ -1,12 +1,16 @@
 /**
  * Adding money by sending stablecoins, end to end: the real API over HTTP via @alcove/api-http, real Postgres,
- * and a stand-in NEAR Intents 1Click (testing/fake-oneclick.ts) that quotes deposit addresses and reports on them.
+ * and a stand-in NEAR Intents 1Click (testing/fake-oneclick.ts) that quotes deposit addresses and reports on them. And
+ * buying with a payment: what a top-up was opened to buy, bought once its money is added.
  */
-import { AlcoveApiError, MAX_TOP_UP_MICRO_USD, type AlcoveApi, type TopUp } from '@alcove/api';
+import { AlcoveApiError, MAX_TOP_UP_MICRO_USD, type AlcoveApi, type Purchase, type TopUp } from '@alcove/api';
 import { createHttpApi } from '@alcove/api-http';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { watch } from './deposits';
+import { openJson, sealJson, serviceKey, toJson, unb64u } from '../../crypto';
+import type { LimitName } from '../../limits';
+import { DepositRecord, watch } from './deposits';
+import { creditByEmail } from './support';
 import { NOT_ALLOWLISTED } from '../../testing/fake-oneclick';
 import { ORIGIN, cookieFetch, startHarness, type Harness } from '../../testing/harness';
 
@@ -1138,5 +1142,196 @@ describe('top-ups', () => {
     // 17 so far this minute; 43 more are fine, and the next is refused.
     for (let i = 0; i < 43; i++) await api.plans.topUp(t.id);
     expect(await failure(api.plans.topUp(t.id))).toBe('unavailable');
+  });
+});
+
+const PRICE = 20_000_000;
+const YEARLY = 16_000_000;
+const HOURS = 15_000_000;
+/** Months of Pro at the price for that many: the yearly one for a year or more. */
+const pro = (months: number, microUsdPerMonth = months >= 12 ? YEARLY : PRICE): Purchase => ({ kind: 'pro', months, microUsdPerMonth });
+/** Packs of 10 more hours of notes. */
+const hours = (packs: number, microUsdPerPack = HOURS): Purchase => ({ kind: 'hours', packs, microUsdPerPack });
+const setLimit = (name: LimitName, value: number) => h.pool.query('INSERT INTO service_limits (name, value) VALUES ($1, $2) ON CONFLICT (name) DO UPDATE SET value = excluded.value, updated_at = now()', [name, value]);
+/** What a request came to: its code and message when it was refused. */
+const said = (p: Promise<unknown>) => p.then(() => 'succeeded', (e: unknown) => (e instanceof AlcoveApiError ? `${e.code}: ${e.message}` : String(e)));
+const labels = async (api: AlcoveApi) => (await api.plans.plan()).balance.history.map((e) => e.label);
+
+describe('top-ups that buy', () => {
+  afterEach(async () => { await h.resetLimits(); });
+  /** 1Click settles `microUsd` sent to the top-up, swapped in full, and the app looks at it. */
+  async function paid(api: AlcoveApi, t: TopUp, microUsd: number): Promise<TopUp> {
+    h.oneclick.set(addr(t), 'SUCCESS', { depositedAmount: String(microUsd), amountOut: String(microUsd), intentHashes: [`buys-${t.id}`] });
+    await forgetCheck(t.id);
+    return api.plans.topUp(t.id);
+  }
+  /** An account with `microUsd` already in its balance, as support adds it. */
+  async function withBalance(microUsd: number) {
+    const email = unique();
+    const who = await account(email);
+    await creditByEmail(h.deps, email, microUsd);
+    return who;
+  }
+
+  it('buys what it was opened for once its payment is added: waiting until then, then bought', async () => {
+    const { api } = await account();
+    const t = await api.plans.startTopUp(BASE_USDC, 3 * PRICE, pro(3));
+    expect(t).toMatchObject({ state: 'waiting', asked: { amount: '60' }, purchase: { buys: pro(3), outcome: 'waiting', why: null } });
+    // On its way: nothing is bought yet.
+    h.oneclick.set(addr(t), 'PROCESSING');
+    expect(await api.plans.topUp(t.id)).toMatchObject({ state: 'arriving', purchase: { outcome: 'waiting' } });
+    expect((await api.plans.plan()).kind).toBe('free');
+    const from = h.logs.length;
+    const done = await paid(api, t, 3 * PRICE);
+    expect(done).toMatchObject({ state: 'credited', received: { amount: '60', microUsd: 3 * PRICE }, purchase: { buys: pro(3), outcome: 'bought', why: null } });
+    // Logged by the top-up's ID and what it bought, never an amount.
+    expect(logsSince(from).some((l) => l.msg === 'top-up bought what it was for' && l.line.includes(t.id) && l.line.includes('"buys":"pro"'))).toBe(true);
+    expect(logsSince(from).filter((l) => /60000000|"microUsd"/.test(l.line))).toEqual([]);
+    const plan = await api.plans.plan();
+    expect(plan).toMatchObject({ kind: 'pro', balance: { microUsd: 0 } });
+    expect(plan.pro.months).toHaveLength(3);
+    expect(plan.balance.history.map((e) => [e.label, e.microUsd])).toEqual([['Pro, 3 months', -3 * PRICE], ['Added, 60 USDC', 3 * PRICE]]);
+    expect((await api.plans.topUps()).find((x) => x.id === t.id)).toEqual(done);
+    await forgetCheck(t.id);
+    expect(await api.plans.topUp(t.id)).toEqual(done);
+    expect((await api.plans.plan()).pro.months).toHaveLength(3);
+  });
+
+  it('buys with the balance and the payment together, and what’s over stays in the balance', async () => {
+    const { api } = await withBalance(50_000_000);
+    // A year at the yearly price is $192; with $50 in the balance, the payment asks for the rest. $150 arrives.
+    const t = await api.plans.startTopUp(BASE_USDC, 142_000_000, pro(12));
+    expect(await paid(api, t, 150_000_000)).toMatchObject({ state: 'credited', received: { amount: '150', microUsd: 150_000_000 }, purchase: { outcome: 'bought' } });
+    const plan = await api.plans.plan();
+    expect(plan).toMatchObject({ kind: 'pro', balance: { microUsd: 8_000_000 } });
+    expect(plan.pro.months.map((m) => m.microUsd)).toEqual(Array.from({ length: 12 }, () => YEARLY));
+    expect(plan.balance.history.map((e) => e.label)).toEqual(['Pro, 12 months', 'Added, 150 USDC', 'Added by support']);
+  });
+
+  it('buys more notes for the period the payment lands in', async () => {
+    const { api } = await account();
+    const t = await api.plans.startTopUp(BASE_USDC, 2 * HOURS, hours(2));
+    expect(await paid(api, t, 2 * HOURS)).toMatchObject({ state: 'credited', purchase: { buys: hours(2), outcome: 'bought', why: null } });
+    expect(await api.plans.plan()).toMatchObject({ kind: 'free', notes: { minutesLeft: 1500, minutesPerPeriod: 1500 }, balance: { microUsd: 0 } });
+    expect(await labels(api)).toEqual(['20 more hours of notes', 'Added, 30 USDC']);
+  });
+
+  it('refuses to open a payment for what isn’t on offer at the price shown, before anything is quoted', async () => {
+    const { api, session } = await account();
+    const quotes = h.oneclick.quotes.length;
+    const changed = 'conflict: The price of Pro has changed. Look at it again before buying.';
+    expect(await said(api.plans.startTopUp(BASE_USDC, 75_000_000, pro(3, 25_000_000)))).toBe(changed);
+    // A year is at the yearly price, and fewer months at a month's.
+    expect(await said(api.plans.startTopUp(BASE_USDC, 12 * PRICE, pro(12, PRICE)))).toBe(changed);
+    expect(await said(api.plans.startTopUp(BASE_USDC, 6 * YEARLY, pro(6, YEARLY)))).toBe(changed);
+    expect(await said(api.plans.startTopUp(BASE_USDC, 13 * PRICE, pro(13, PRICE)))).toBe('invalid: Buy 1 to 12 months at a time.');
+    expect(await said(api.plans.startTopUp(BASE_USDC, 6 * HOURS, hours(6)))).toBe('invalid: Buy up to 50 hours of notes at a time.');
+    expect(await said(api.plans.startTopUp(BASE_USDC, HOURS, hours(1, 10_000_000)))).toBe('conflict: The price of more notes has changed. Look at it again before buying.');
+    await setLimit('plan.hours.price_micro_usd', 0);
+    expect(await said(api.plans.startTopUp(BASE_USDC, HOURS, hours(1, 0)))).toBe('conflict: More notes can’t be bought right now.');
+    expect(h.oneclick.quotes.length).toBe(quotes);
+    expect(await depositRows(session.ownerId)).toBe(0);
+  });
+
+  it('says why it didn’t buy when what it was for changed while the payment was on its way, and leaves the money in the balance', async () => {
+    // The price of Pro changed.
+    const ann = await account();
+    const priced = await ann.api.plans.startTopUp(BASE_USDC, PRICE, pro(1));
+    await setLimit('plan.pro.price_micro_usd', 25_000_000);
+    const from = h.logs.length;
+    expect(await paid(ann.api, priced, PRICE)).toMatchObject({
+      state: 'credited', received: { microUsd: PRICE },
+      purchase: { buys: pro(1), outcome: 'refused', why: 'The price of Pro changed before your payment arrived. It’s in your balance.' }
+    });
+    expect(await ann.api.plans.plan()).toMatchObject({ kind: 'free', balance: { microUsd: PRICE } });
+    expect(await labels(ann.api)).toEqual(['Added, 20 USDC']);
+    expect(logsSince(from).some((l) => l.line.includes(priced.id) && l.line.includes('"why":"price"'))).toBe(true);
+    await h.resetLimits();
+    // One purchase buys fewer months now.
+    const bob = await account();
+    const many = await bob.api.plans.startTopUp(BASE_USDC, 3 * PRICE, pro(3));
+    await setLimit('plan.pro_max_months', 2);
+    expect((await paid(bob.api, many, 3 * PRICE)).purchase).toEqual({ buys: pro(3), outcome: 'refused', why: 'Since your payment was made, one purchase buys at most 2 months of Pro. It’s in your balance.' });
+    expect(await bob.api.plans.plan()).toMatchObject({ kind: 'free', balance: { microUsd: 3 * PRICE } });
+    await h.resetLimits();
+    // More notes aren't offered any more.
+    const cy = await account();
+    const notes = await cy.api.plans.startTopUp(BASE_USDC, HOURS, hours(1));
+    await setLimit('plan.hours.price_micro_usd', 0);
+    expect((await paid(cy.api, notes, HOURS)).purchase).toEqual({ buys: hours(1), outcome: 'refused', why: 'More notes stopped being offered before your payment arrived. It’s in your balance.' });
+    expect(await cy.api.plans.plan()).toMatchObject({ balance: { microUsd: HOURS }, notes: { minutesPerPeriod: 300 } });
+  });
+
+  it('says why it didn’t buy when less arrived than it costs, or the balance it counted on was spent, and keeps what arrived', async () => {
+    // $40 of the $60 asked arrives: under 1Click's band, so $40 is added, and three months aren't bought.
+    const ann = await account();
+    const short = await ann.api.plans.startTopUp(BASE_USDC, 3 * PRICE, pro(3));
+    h.oneclick.set(addr(short), 'SUCCESS', { depositedAmount: '40000000', amountOut: '39990000', intentHashes: [`short-${short.id}`] });
+    expect(await ann.api.plans.topUp(short.id)).toMatchObject({
+      state: 'credited', received: { amount: '40', microUsd: 40_000_000 },
+      purchase: { buys: pro(3), outcome: 'refused', why: 'Less arrived than 3 months of Pro cost. It’s in your balance.' }
+    });
+    expect(await ann.api.plans.plan()).toMatchObject({ kind: 'free', balance: { microUsd: 40_000_000 } });
+    // All of it arrives, but the $15 in the balance it was counting on went on more notes meanwhile.
+    const bob = await withBalance(HOURS);
+    const rest = await bob.api.plans.startTopUp(BASE_USDC, 5_000_000, pro(1));
+    await bob.api.plans.buyHours(1, HOURS);
+    expect((await paid(bob.api, rest, 5_000_000)).purchase).toEqual({
+      buys: pro(1), outcome: 'refused', why: 'Your balance was short of what 1 month of Pro costs when your payment arrived. It’s in your balance.'
+    });
+    expect(await bob.api.plans.plan()).toMatchObject({ kind: 'free', balance: { microUsd: 5_000_000 }, notes: { minutesPerPeriod: 900 } });
+  });
+
+  it('buys once, however many checks race on it', async () => {
+    const email = unique();
+    const one = await account(email);
+    const two = await account(email);
+    // Money for more, so a second purchase would go through if one were made.
+    await creditByEmail(h.deps, email, 5 * PRICE);
+    const t = await one.api.plans.startTopUp(BASE_USDC, PRICE, pro(1));
+    h.oneclick.set(addr(t), 'SUCCESS', { depositedAmount: String(PRICE), amountOut: String(PRICE), intentHashes: [`race-${t.id}`] });
+    await dueOnly(t.id);
+    await Promise.all([watch(h.deps), watch(h.deps), one.api.plans.topUp(t.id), two.api.plans.topUp(t.id)]);
+    expect(await two.api.plans.topUp(t.id)).toMatchObject({ state: 'credited', purchase: { outcome: 'bought' } });
+    const plan = await one.api.plans.plan();
+    expect(plan).toMatchObject({ kind: 'pro', balance: { microUsd: 5 * PRICE } });
+    expect(plan.pro.months).toHaveLength(1);
+    expect(await labels(one.api)).toEqual(['Pro, 1 month', 'Added, 20 USDC', 'Added by support']);
+  });
+
+  it('still buys what it was for, once, when its payment settles after it was cancelled or expired', async () => {
+    const { api } = await account();
+    const cancelled = await api.plans.startTopUp(BASE_USDC, PRICE, pro(1));
+    expect(await api.plans.cancelTopUp(cancelled.id)).toMatchObject({ state: 'cancelled', purchase: { outcome: 'waiting' } });
+    // Sent before it was cancelled, and settled with the app closed.
+    h.oneclick.set(addr(cancelled), 'SUCCESS', { depositedAmount: String(PRICE), amountOut: String(PRICE), intentHashes: [`late-${cancelled.id}`] });
+    await dueOnly(cancelled.id);
+    expect(await watch(h.deps)).toEqual({ checked: 1, credited: 1 });
+    expect(await api.plans.topUp(cancelled.id)).toMatchObject({ state: 'credited', purchase: { outcome: 'bought' } });
+    expect((await api.plans.plan()).kind).toBe('pro');
+    // Nothing arrived by its deadline, then 1Click settles a payment after all.
+    const expired = await api.plans.startTopUp(BASE_USDC, HOURS, hours(1));
+    await h.pool.query("UPDATE deposits SET give_up_at = now() - interval '1 second' WHERE deposit_id = $1", [expired.id]);
+    await dueOnly(expired.id);
+    await watch(h.deps);
+    expect(await api.plans.topUp(expired.id)).toMatchObject({ state: 'expired', purchase: { outcome: 'waiting' } });
+    expect(await paid(api, expired, HOURS)).toMatchObject({ state: 'credited', purchase: { outcome: 'bought' } });
+    expect(await api.plans.plan()).toMatchObject({ kind: 'pro', notes: { minutesPerPeriod: 3600 }, balance: { microUsd: 0 } });
+    expect(await labels(api)).toEqual(['10 more hours of notes', 'Added, 15 USDC', 'Pro, 1 month', 'Added, 20 USDC']);
+  });
+
+  it('reads a top-up the previous release stored, with no purchase, as one that only adds money', async () => {
+    const { api, session } = await account();
+    const t = await api.plans.startTopUp(BASE_USDC, PRICE);
+    expect(t.purchase).toBeNull();
+    // As the previous release wrote it: nothing in the record about a purchase.
+    const key = serviceKey(unb64u(h.deps.cfg.KSERVICE, 32), 'accounting');
+    const header = { v: 1 as const, kind: 'deposit', ownerId: session.ownerId, depositId: t.id, keyVersion: '1' };
+    const row = z.object({ record_ciphertext: z.instanceof(Uint8Array) }).parse((await h.pool.query('SELECT record_ciphertext FROM deposits WHERE deposit_id = $1', [t.id])).rows[0]);
+    const { purchase: _purchase, ...older } = openJson(key, header, row.record_ciphertext, DepositRecord);
+    await h.pool.query('UPDATE deposits SET record_ciphertext = $2 WHERE deposit_id = $1', [t.id, sealJson(key, header, toJson(older))]);
+    expect(await api.plans.topUp(t.id)).toMatchObject({ state: 'waiting', purchase: null });
+    expect(await paid(api, t, PRICE)).toMatchObject({ state: 'credited', received: { microUsd: PRICE }, purchase: null });
+    expect(await api.plans.plan()).toMatchObject({ kind: 'free', balance: { microUsd: PRICE } });
   });
 });

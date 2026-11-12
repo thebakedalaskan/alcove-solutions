@@ -7,9 +7,10 @@ they bring: notes and storage. Every feature is on every plan.
 
 | | Free | Pro | Team |
 | --- | --- | --- | --- |
-| Price | $0 | $20 a month (a period), from the balance | $40 a person a period |
+| Price | $0 | $20 a month (a period), or $16 a month bought 12 or more at once, from the balance | $40 a person a period |
 | Calls | Unlimited, up to 10 hours each, 100 people | Same | Same |
 | Notes (an estimate: what a call uses varies) | About 5 hours a period | About 50 hours | About 50 hours a person |
+| More notes this period | 10 hours for $15, from the balance, up to 50 hours at a time | Same | Same |
 | Storage (uploads and call recordings) | 10 GB | 100 GB | 100 GB a person, pooled |
 | Largest file | 512 MB | 512 MB, 2 GB once downloads resume | Same as Pro |
 | Shared workspaces not tied to a call | As many as you like (storage is the limit) | Same | Same |
@@ -18,10 +19,10 @@ A period is 30 days from when the plan began; a month of Pro is one period. Team
 what's built now.
 
 Every number is a limit (`apps/api/src/limits.ts`, [Deployment › Changing a limit](deployment-and-acceptance.md#changing-a-limit)),
-changeable without a deploy: each plan's notes, storage, files and price; the most months of Pro one purchase buys and how
-long before Pro ends its owner is told; the most workspaces one account makes; what an hour of notes is
-reckoned at; when AI stops and when an organizer is told it's close; how long a period and a grace last; a call's longest
-and its most people.
+changeable without a deploy: each plan's notes, storage, files and price; Pro's lower price for a year or more; the most
+months of Pro one purchase buys and how long before Pro ends its owner is told; more notes for a period, their price and
+the most bought at once; the most workspaces one account makes; what an hour of notes is reckoned at; when AI stops and
+when an organizer is told it's close; how long a period and a grace last; a call's longest and its most people.
 
 ## Status
 
@@ -34,6 +35,8 @@ and its most people.
 | A call's 10 hours and 100 people | Working |
 | The USD balance, filled by stablecoin top-ups | Working |
 | Buying Pro, renewing, refunds, reminders, the grace after Pro | Working (server; see [Pro](#pro)) |
+| Pro for a year or more at a lower price; more notes for a period | Working (server; see [Pro](#pro) and [More notes](#more-notes)) |
+| A payment that buys what it was for (Pro or more notes) once it's added | Working (server; see [A payment that buys](#a-payment-that-buys)) |
 | Teams, licenses, team notes and workspaces | Not built (phase 3) |
 | Picking a plan at first sign-in | Not built (phase 4). `Plan.choose` already says who hasn't. |
 | Withdrawing the balance | Not built, and not planned yet |
@@ -48,7 +51,8 @@ spent, so it only goes down in a period. What's held below (for requests on thei
 counts when the meter decides whether to warn or stop, but isn't shown: it's the most each could cost, and showing it
 would make notes left dip while a note is written and rise again once it's charged at what it actually cost. Near the
 end, notes can stop while a minute or two still shows; the banner says so. It doesn't carry over: a new period starts the
-first time the account is touched after the old one ends, or after its plan changes, with all of its allowance.
+first time the account is touched after the old one ends, or after its plan changes, with all of its allowance. More notes
+bought for a period ([below](#more-notes)) are part of its allowance, and end with it.
 
 **Every request to NEAR AI is paid for** (`features/billing/meter.ts`). `inference.ts`'s `transcribe`, `complete` and
 `completeJson` take a required `Meter`, so nothing reaches NEAR AI without naming who pays:
@@ -101,9 +105,9 @@ The allowance runs down with the call, and notes stop before it's spent rather t
   allowance, and what it costs over is Alcove's. Writing them again (after correcting the transcript) is refused like
   anything else, and the notes stay as they were.
 - **Then nothing:** the allowance stays spent for the rest of the period, even when what the call reserved turns out to
-  be more than writing cost; only a bigger allowance (the limits raised, a new period, a bigger plan) lifts it. A call
-  scheduled with notes starts without them and says why; turning notes on, starting a room recording, or asking is
-  refused with "Your notes for this period have run out. They start again when your plan renews."
+  be more than writing cost; only a bigger allowance (more notes bought, the limits raised, a new period, a bigger plan)
+  lifts it. A call scheduled with notes starts without them and says why; turning notes on, starting a room recording,
+  or asking is refused with "Your notes for this period have run out. They start again when your plan renews."
 
 ## Storage
 
@@ -151,21 +155,28 @@ with or without upkeep.
 **What's offered** (`GET /v1/plan/offers`): the period in days, Free's and Pro's allowances (Pro's file size as enforced),
 the price of a month (`plan.pro.price_micro_usd`, $20) and the most months one purchase buys (`plan.pro_max_months`, 12).
 
+**A year or more for less** (`offers.pro.yearly`): a month costs `plan.pro.yearly_price_micro_usd` ($16, 20% off) when one
+purchase buys at least `plan.pro.yearly_from_months` (12): `{ fromMonths, microUsdPerMonth }`. It's `null`, and every
+length is a month's price, while that price is 0, isn't below a month's, or is for more months than one purchase buys. The
+app works out its "20% off" from the two prices.
+
 **Buying** (`POST /v1/plan/pro { months, microUsdPerMonth }`) runs in one transaction with the account's `plan_accounts`
 row locked, so buys at once on any instance never spend the same money twice:
 
 1. More than `plan.pro_max_months` is refused (`invalid`, "Buy 1 to 12 months at a time.").
-2. A price other than the one in force is refused (`conflict`, "The price of Pro has changed. Look at it again before
-   buying."): the app sends the price it showed, so a change in between charges nothing.
+2. A price other than the one in force for that many months (the yearly price from `yearly.fromMonths`, a month's below
+   it) is refused (`conflict`, "The price of Pro has changed. Look at it again before buying."): the app sends the price
+   it showed, so a change in between charges nothing.
 3. A balance short of months × price is refused (`conflict`, "Your balance is short: 3 months of Pro cost $60 and your
    balance is $50. Add money first."). Nothing changes.
 4. The months are added back to back, from the end of the last month bought that hasn't ended, or from now. The balance
    goes down by the total, with "Pro, 3 months" in its history, and any grace ends. Logged `pro bought` with the owner,
    months and amount.
 
-**Refunds** (`POST /v1/plan/pro/refund`): every month that hasn't started goes back to the balance at what was paid for it
-("Pro refunded, 2 months"). A month that has started isn't refunded; with none to refund it's `conflict` ("There’s no
-month of Pro to refund that hasn’t started…"). `Plan.pro.refundableMicroUsd` says what a refund would add.
+**Refunds** (`POST /v1/plan/pro/refund`): every month that hasn't started goes back to the balance at what was paid for it,
+so a month bought at the yearly price comes back at the yearly price ("Pro refunded, 2 months"). A month that has started
+isn't refunded; with none to refund it's `conflict` ("There’s no month of Pro to refund that hasn’t started…").
+`Plan.pro.refundableMicroUsd` says what a refund would add.
 
 **Renewing** (`PUT /v1/plan/renew { renew }`) is off by default. Upkeep (`upkeep` in `plans.ts`, every 5 minutes, by
 `plan_accounts.due_at`) looks at an account at the earliest of: its release grace ending; `plan.pro_remind_seconds` (3
@@ -189,6 +200,38 @@ After it, uploads and notes stop while over Free's storage, as above. Buying Pro
 `Plan.pro` gives the months running and bought (oldest first), when the last ends, whether renewing is on and what a
 refund would add. The record keeps the months that haven't ended and the latest that has (the grace and Free's periods
 count from it).
+
+## More notes
+
+More notes for the period running now, on any plan, bought from the balance in packs (`features/billing/plans.ts`
+`buyHours`, the route in `routes.ts`). They don't carry over: the app says "for this period".
+
+**What's offered** (`offers.hours`): a pack's minutes (`plan.hours.pack_minutes`, 600: 10 hours), its price
+(`plan.hours.price_micro_usd`, $15) and the most packs one purchase buys (`plan.hours.max_packs`, 5). `null` while a pack's
+price is 0: none are offered then, and none can be had for nothing.
+
+**Buying** (`POST /v1/plan/hours { packs, microUsdPerPack }`) is what buying Pro is, through the same code (`purchase`): one
+transaction with the account's `plan_accounts` row locked, the one lock buying and adding money take, so a buy of Pro and
+one of more notes at once never spend the same money twice.
+
+1. None offered is refused (`conflict`, "More notes can’t be bought right now.").
+2. More than `plan.hours.max_packs` is refused (`invalid`, "Buy up to 50 hours of notes at a time.").
+3. A price a pack other than the one in force is refused (`conflict`, "The price of more notes has changed. Look at it
+   again before buying.").
+4. A balance short of packs × price is refused (`conflict`, "Your balance is short: 20 hours of notes cost $30 and your
+   balance is $20. Add money first."). Nothing changes.
+5. The minutes go to the period in force (the plan's kind and when its period began), on top of any bought for it already;
+   any bought for an earlier period are let go. The balance goes down by the total, with "10 more hours of notes" in its
+   history (the hours of the whole purchase: "20 more hours of notes" for two packs). Logged `notes bought` with the owner,
+   packs and amount.
+
+The allowance is the period's minutes, the plan's and those bought, at `ai.hour_micro_usd` (`inForce` in `plans.ts` adds
+them, and the meter reads it), so `Plan.notes.minutesPerPeriod` rises by exactly what was bought, and `minutesLeft` by it
+less anything spent past the allowance already (the one note written past it). A stop the spent allowance caused lifts
+once what's left is above `ai.stop_micro_usd` (`notes.stopped` goes false; the meter clears its own stop the next time
+it's touched): a call's notes stay off until its organizer turns them on again, which works from then; nothing turns
+them on by itself. A stop full storage caused stays: more notes don't make room. Buying Pro starts a period of its own,
+so more bought on Free don't reach it, and none reach the period after the one they were bought for.
 
 ## Support
 
@@ -229,9 +272,9 @@ is `arriving`, logged at error once with the reason, and fails at its deadline s
 | --- | --- |
 | Balance and history, sealed under `Kservice` (never under owner keys), in `plan_accounts` | Working |
 | Top-up routes (`GET /v1/plan/routes`) | Working. USDC on NEAR, Ethereum, Base, Arbitrum, Solana, Polygon, BNB Chain, Optimism and Avalanche, and USDT on NEAR, Ethereum, Solana, Tron, Polygon, BNB Chain, Optimism and Avalanche, while 1Click lists them, each with its minimum. A server without `TREASURY_INTENTS_ACCOUNT` answers `unavailable` on every top-up endpoint; `ONECLICK_API_KEY` is optional and only lowers 1Click's fee |
-| Opening a top-up (`POST /v1/plan/top-ups { routeId, microUsd }`) | Working. A 1Click quote paying the treasury exactly that gives a one-off deposit address on the route's chain, open for 24 hours, kept sealed (`deposits`, record kind `deposit`). At most 10 a minute per account per API instance; refused with `conflict` while the account has 15 top-ups waiting for a payment to an address that hasn't expired, or has opened 30 in the last 24 hours (cancelled ones count). Both counts are checked in Postgres, again under a lock on the account in the transaction that inserts the deposit |
+| Opening a top-up (`POST /v1/plan/top-ups { routeId, microUsd, buys }`) | Working. With `buys`, what it's to buy is checked first ([below](#a-payment-that-buys)). A 1Click quote paying the treasury exactly that gives a one-off deposit address on the route's chain, open for 24 hours, kept sealed (`deposits`, record kind `deposit`). At most 10 a minute per account per API instance; refused with `conflict` while the account has 15 top-ups waiting for a payment to an address that hasn't expired, or has opened 30 in the last 24 hours (cancelled ones count). Both counts are checked in Postgres, again under a lock on the account in the transaction that inserts the deposit |
 | Cancelling a top-up (`POST /v1/plan/top-ups/:id/cancel`) | Working. Only a `waiting` top-up can be cancelled. Its address is no longer shown and it no longer counts toward the 15 waiting. 1Click can't cancel a quote, so a payment that reaches it is still added. It still counts toward the 30 a day |
-| Adding a top-up | Working. On `SUCCESS` or `REFUNDED` that passes the checks above, what was sent is added by the rules above, in the transaction that marks the deposit `credited`, under its row lock: once, however many checks race. `FAILED` is `failed`, logged at error. A `failed`, `expired` or `cancelled` deposit is still added when 1Click later settles it |
+| Adding a top-up | Working. On `SUCCESS` or `REFUNDED` that passes the checks above, what was sent is added by the rules above, in the transaction that marks the deposit `credited`, under its row lock: once, however many checks race. What it was opened to buy is bought in that transaction. `FAILED` is `failed`, logged at error. A `failed`, `expired` or `cancelled` deposit is still added when 1Click later settles it, and still buys |
 | Watching top-ups | Working, unchanged: every open deposit is asked about every 10 s for 15 minutes, every minute until 2 hours, then every 5 minutes, thinning out after its deadline (see below) |
 | A top-up the previous release settled while this one deployed | Working. It added credits, which no longer count: upkeep adds it again as dollars, once (`creditCarried`, by `billing_cutover`) |
 | Adding money in the app | Working. Settings › Plan › Add money opens a sheet: choose $20, $60, $120 or your own, then a token and its chain, and get an address (with a QR code) for one payment of exactly that; the sheet follows it until it's added; while it waits for a payment it can be cancelled there; open and recent top-ups are listed under the balance |
@@ -258,10 +301,45 @@ is `arriving`, logged at error once with the reason, and fails at its deadline s
    `failed`. A `failed`, `expired` or `cancelled` deposit is asked about on a thinning schedule (hourly for a day, every 6
    hours for a week, then daily) until 30 days after its address expired, so a payment 1Click settles late is still added.
 4. **Adding.** When the swap settles, the deposit's state and the balance change in one transaction with the deposit row
-   locked (then the plan's row), so a deposit is added at most once. The balance's history reads "Added, 25 USDC".
+   locked (then the plan's row), so a deposit is added at most once. The balance's history reads "Added, 25 USDC". What
+   the top-up was opened to buy is bought then, in the same transaction ([below](#a-payment-that-buys)).
 
 Logs about a deposit carry its ID, provider, states, counts and durations, never the address, amounts, hashes or the
 quote. Deleting an account deletes its deposits; a payment still on its way reaches the treasury and is added to nobody.
+
+### A payment that buys
+
+Choosing how many months of Pro (or packs of more notes) and sending the total is one step that survives closing the
+window: the top-up says what it's for, and the server buys it once the money is in, whoever is watching.
+
+1. **Opening.** `POST /v1/plan/top-ups { routeId, microUsd, buys }`, with `buys` `{ kind: 'pro', months, microUsdPerMonth }`
+   or `{ kind: 'hours', packs, microUsdPerPack }` (`null`, the default, only adds money). Before anything is quoted, `buys`
+   is checked as buying it now would be, but for the balance, with the same refusals and words: past the most one purchase
+   buys (`invalid`), a price other than the one in force for it (`conflict`, "The price of Pro has changed. Look at it
+   again before buying."), more notes not offered (`conflict`). It's sealed in the `deposit` record with what's become of it
+   (`purchase`), and `TopUp.purchase` reports it: `{ buys, outcome: 'waiting', why: null }`. The app asks for what the
+   balance is short of the total (`max(0, total − balance)`), raised to the route's minimum, and opens no payment when the
+   balance covers it.
+2. **Buying.** In the transaction that adds the settled deposit, after the money is added and under the same locks (the
+   deposit's row, then the plan's), it's bought exactly as `buyPro` or `buyHours` would buy it from the balance (`purchase`
+   in `plans.ts`): the balance pays the whole total, what was there before and what just arrived, and anything over stays
+   in it. The deposit is settled in that transaction, so the purchase is tried once, however many checks race; a payment
+   1Click settles after the top-up failed, expired or was cancelled buys then, the same way.
+3. **What it says.** `outcome` is `waiting` until the money is added (an expired, failed or cancelled top-up stays
+   `waiting`: a late payment can still buy), then `bought`, or `refused` with `why` in words for people. A refusal leaves
+   the money in the balance, where "Buy with your balance" can use it:
+   - the price changed: "The price of Pro changed before your payment arrived. It’s in your balance." ("The price of more
+     notes changed…" for notes);
+   - less arrived than asked for, and the balance with it is short: "Less arrived than 3 months of Pro cost. It’s in your
+     balance.";
+   - everything arrived but the balance it counted on was spent meanwhile: "Your balance was short of what 1 month of Pro
+     costs when your payment arrived. It’s in your balance.";
+   - one purchase buys fewer now: "Since your payment was made, one purchase buys at most 6 months of Pro. It’s in your
+     balance."; more notes not offered any more: "More notes stopped being offered before your payment arrived. It’s in
+     your balance."
+
+Logged `top-up bought what it was for` or `top-up didn’t buy what it was for; its money is in the balance`, with the
+deposit's ID, provider, what it buys (`pro`, `hours`) and why not (`price`, `short`, `too-many`, `off`): never an amount.
 
 ## Treasury runbook
 
@@ -299,3 +377,18 @@ The server never holds a key that can move treasury money. By hand, in near.com,
   each has a `.default` (none bought, renewing off, no notices), and the record is written in the new shape the next
   time it's saved. The previous release reads a record this one wrote (zod ignores the new fields), so an account that
   bought Pro reads as Free there until this release is serving.
+- The yearly price needs no migration and changes no stored shape: it's two limits with defaults
+  (`plan.pro.yearly_from_months`, `plan.pro.yearly_price_micro_usd`), and each month of Pro in a `plan-account` record
+  already keeps what was paid for it (`microUsd`), which is what a refund gives back. The previous release, while the
+  deploy runs, offers no yearly price and refuses a buy at it as a changed price, charging nothing.
+- More notes need no migration. A `plan-account` record from before has no `hours`: it reads as none bought
+  (`.default(null)`), and the record is written in the new shape the next time it's saved. While the deploy runs, the
+  previous release reads a record this one wrote without them (zod ignores the field), so it doesn't count them, and one
+  it saves then (a top-up it adds, its upkeep, a purchase made there) is saved without them: notes bought in those minutes
+  are lost, the money stays spent. The window is the deploy's few minutes; support sees the purchase in the balance's
+  history (`billing show`) and can give its price back (`billing credit`).
+- Payments that buy need no migration. A `deposit` record from before has no `purchase`: it reads as `null`
+  (`.default(null)`), a top-up that only adds money, and `TopUp.purchase` says so. While the deploy runs, the previous
+  release ignores `buys` in a request (zod drops it), so a top-up opened there only adds money, and one this release
+  opened that it settles then is added without its purchase: it saves the record without the field, so the money stays in
+  the balance and the top-up reads as one that only added money.

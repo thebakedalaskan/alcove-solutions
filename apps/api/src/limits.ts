@@ -45,7 +45,7 @@ export interface LimitSpec {
 export const WHOLE_DOWNLOAD_BYTES = 512 * MiB;
 
 /**
- * Every limit there is (docs: Plans and usage, and Deployment › Changing a limit): each plan's notes, storage and files, Pro's price, the most months one purchase buys and when Pro's end is told; what an hour of notes is reckoned at, when AI stops and when an organizer is told
+ * Every limit there is (docs: Plans and usage, and Deployment › Changing a limit): each plan's notes, storage and files, Pro's price and its lower price for a year or more, the most months one purchase buys and when Pro's end is told; more notes for a period, their price and the most bought at once; what an hour of notes is reckoned at, when AI stops and when an organizer is told
  * it's close; how long a plan's period and its grace last; the longest call and the most people in one; and what one
  * person uploads in a day, everywhere. A ceiling leaves room to raise a default a long way, except a file's: a whole file
  * is read in one response, which is cut at 280 seconds and past 16 MiB can't pick up where it stopped, so 512 MiB needs
@@ -59,8 +59,13 @@ export const LIMITS = {
   'plan.pro.storage_bytes': { default: 100 * GiB, floor: 0, ceiling: 10 * TiB, unit: 'bytes', measures: 'Pro: what an account stores, its uploads and its recordings. Held this high for plan.grace_seconds after Pro ends.' },
   'plan.pro.file_bytes': { default: 2 * GiB, floor: 0, ceiling: MAX_MEDIA_BYTES, unit: 'bytes', measures: `Pro: one file. What's enforced is at most ${WHOLE_DOWNLOAD_BYTES / MiB} MiB (WHOLE_DOWNLOAD_BYTES) until downloads can pick up where they stopped.` },
   'plan.pro.price_micro_usd': { default: 20_000_000, floor: 0, ceiling: 10_000_000_000, unit: 'micro-usd', measures: 'Pro: one period.' },
+  'plan.pro.yearly_price_micro_usd': { default: 16_000_000, floor: 0, ceiling: 10_000_000_000, unit: 'micro-usd', measures: 'Pro: one period, bought plan.pro.yearly_from_months or more at once. None while it’s 0 or not below plan.pro.price_micro_usd.' },
+  'plan.pro.yearly_from_months': { default: 12, floor: 1, ceiling: 120, unit: 'count', measures: 'The fewest months of Pro one purchase buys at plan.pro.yearly_price_micro_usd. None while it’s more than plan.pro_max_months.' },
   'plan.pro_max_months': { default: 12, floor: 1, ceiling: 120, unit: 'count', measures: 'The most months of Pro one purchase buys.' },
-  'plan.pro_remind_seconds': { default: 3 * DAY, floor: 0, ceiling: 30 * DAY, unit: 'seconds', measures: 'How long before Pro ends its owner is told, and a month is bought if renewing is on.' },
+  'plan.hours.pack_minutes': { default: 600, floor: 1, ceiling: 60_000, unit: 'minutes', measures: 'More notes: the minutes one pack adds to the period it’s bought in, reckoned at ai.hour_micro_usd an hour.' },
+  'plan.hours.price_micro_usd': { default: 15_000_000, floor: 0, ceiling: 10_000_000_000, unit: 'micro-usd', measures: 'More notes: one pack. At 0, more notes aren’t offered.' },
+  'plan.hours.max_packs': { default: 5, floor: 1, ceiling: 100, unit: 'count', measures: 'More notes: the most packs one purchase buys.' },
+  'plan.pro_remind_seconds':{ default: 3 * DAY, floor: 0, ceiling: 30 * DAY, unit: 'seconds', measures: 'How long before Pro ends its owner is told, and a month is bought if renewing is on.' },
   'plan.period_seconds': { default: 30 * DAY, floor: MINUTE, ceiling: 365 * DAY, unit: 'seconds', measures: 'A plan’s period: notes renew, and paid time runs, in these.' },
   'plan.grace_seconds': { default: 15 * DAY, floor: 0, ceiling: 90 * DAY, unit: 'seconds', measures: 'Once an account is over its plan’s limits: how long until what’s over stops taking more.' },
   'ai.hour_micro_usd': { default: 500_000, floor: 1, ceiling: 100_000_000, unit: 'micro-usd', measures: 'What an hour of notes is reckoned at, to give the AI allowance as time.' },

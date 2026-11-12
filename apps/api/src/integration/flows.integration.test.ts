@@ -3916,11 +3916,13 @@ describe('privacy at rest', () => {
     const refusals: [string, string][] = [['canary-theirs-event', 'forbidden'], ['canary-allday-event', 'not-found'], ['canary-missing-event', 'not-found']];
     for (const [id, refusal] of refusals) expect(code(await g.api.calendar.adopt(id).catch((e: unknown) => e))).toBe(refusal);
 
-    // A top-up paid and credited: its deposit address, the settlement's hash and the history label stay sealed.
-    const topUp = await c.api.plans.startTopUp('nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near', 25_000_000);
+    // A top-up paid and credited, which bought more notes once it was: its deposit address, the settlement's hash, what it
+    // bought and the history's labels stay sealed.
+    const topUp = await c.api.plans.startTopUp('nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near', 25_000_000, { kind: 'hours', packs: 1, microUsdPerPack: 15_000_000 });
     expect(topUp.address).toContain('canary-deposit-address');
     h.oneclick.set(topUp.address ?? '', 'SUCCESS', { depositedAmount: '25000000', amountOut: '25000000', intentHashes: ['canary-intent-hash'] });
-    expect((await c.api.plans.topUp(topUp.id)).state).toBe('credited');
+    expect(await c.api.plans.topUp(topUp.id)).toMatchObject({ state: 'credited', purchase: { outcome: 'bought' } });
+    expect((await c.api.plans.plan()).balance.history.map((e) => e.label)).toEqual(['10 more hours of notes', 'Added, 25 USDC']);
 
     // A live question stays present for the sweep: ending a call physically deletes its attention record.
     const attentionCall = await c.api.calls.join((await c.api.calls.startNow({ notes: 'off' })).code, { mic: false, cam: false });
@@ -3952,7 +3954,7 @@ describe('privacy at rest', () => {
       'CANARY-BOARDACTION', 'order the doors', 'CANARY-ROOMNAME', 'CANARY-ROOMSTICKY', 'owns the merger', 'canary-roomie', 'CANARY-VOTEFRAME', 'CANARY-VOTESTICKY', voteFrame, voteSticky,
       'CANARY-NOTEDFRAME', 'CANARY-FRAMENOTE', 'thank the support team', notedFrame,
       'CANARY-CUE', 'as you can see the chart', 'CANARY-VIDEO', 'Person’s screen', 'CANARY-LIVEQUESTION', 'private launch',
-      'canary-deposit-address', 'Credits added', 'canary-intent-hash'
+      'canary-deposit-address', 'Credits added', 'canary-intent-hash', 'more hours of notes', 'microUsdPerPack'
     ];
     for (const canary of canaries) for (const enc of encodings(canary)) expect(rowsText.includes(enc), `${canary} as ${enc}`).toBe(false);
     // An answer is one short word, so it has a check of its own, in the only rows that hold one.
