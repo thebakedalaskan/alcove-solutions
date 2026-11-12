@@ -259,19 +259,6 @@
 .set-note + .set-note { margin-top: 8px; }
 .set-note:last-child { margin-bottom: 16px; }
 
-/* Something opened in place: what it is, then what to do. */
-.set-step { padding: 16px 0 4px; }
-.set-step-t { font: 600 15px/22px var(--font-sans); color: var(--ink); }
-.set-step-h { max-width: 62ch; margin-top: 3px; font: 400 13.5px/19px var(--font-sans); color: var(--ink-2); text-wrap: pretty; }
-.set-step > .ac-agent-copy, .set-step > .ac-agent-token { margin-top: 14px; }
-/* A form opened in place: a label over each control. */
-.set-form { display: grid; gap: 16px; max-width: 600px; margin-top: 14px; }
-.set-field { display: grid; gap: 7px; min-width: 0; }
-.set-field > span, .set-form .ac-field label { font: 500 13px/18px var(--font-sans); color: var(--ink-2); }
-.set-form .ac-field { gap: 7px; }
-.set-form .ac-input { height: 40px; border-radius: 12px; background: color-mix(in oklch, var(--ink) 6%, transparent); font-size: 14.5px; }
-.set-field .ac-seg { width: 300px; max-width: 100%; }
-
 /* The foot of something open in place: what to know, and how to close it. */
 .set-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 20px; padding: 14px 0 16px; }
 .set-foot > p { flex: 1 1 320px; max-width: 62ch; font: 400 13px/18px var(--font-sans); color: var(--ink-3); text-wrap: pretty; }
@@ -430,7 +417,6 @@
   .set-mx-t { gap: 10px; font-size: 14px; }
   .set-led { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 12px; }
   .set-gs { grid-template-columns: minmax(0, 1fr); row-gap: 16px; }
-  .set-field .ac-seg { width: 100%; }
   .set-foot-a { margin-left: 0; }
   .set-eves { gap: 12px; }
 }

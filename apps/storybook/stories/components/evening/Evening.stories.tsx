@@ -10,18 +10,19 @@ import { Card, Evening, Faces, type Moment } from '@alcove/ui';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { AIKO, KOFI, PRIYA } from '../../../src/world/people';
 
-const MOMENTS = ['home', 'team', 'notes', 'drive', 'note', 'settings', 'record'] as const satisfies readonly Moment[];
+const MOMENTS = ['home', 'team', 'agents', 'notes', 'drive', 'note', 'settings', 'record'] as const satisfies readonly Moment[];
 /** Where each page has the horizon, as its stylesheet sets --hz. */
 const PAGE_HZ: Record<Moment, string> = {
   home: 'clamp(352px, 45vh, 540px)',
   team: 'clamp(322px, 40vh, 470px)',
+  agents: 'clamp(330px, 41vh, 470px)',
   notes: 'calc(8px + clamp(256px, 30vh, 340px))',
   drive: 'calc(8px + clamp(220px, 26vh, 300px))',
   note: 'calc(8px + clamp(158px, 18.5vh, 196px))',
   settings: '136px',
   record: 'calc(8px + clamp(424px, 55vh, 700px))'
 };
-const PAGE: Record<Moment, string> = { home: 'Home', team: 'Team', notes: 'Notes', drive: 'Drive', note: 'Design review', settings: 'Settings', record: 'Record' };
+const PAGE: Record<Moment, string> = { home: 'Home', team: 'Team', agents: 'Agents', notes: 'Notes', drive: 'Drive', note: 'Design review', settings: 'Settings', record: 'Record' };
 
 const meta = {
   title: 'Components/The evening/Evening',

@@ -32,19 +32,3 @@ type Story = StoryObj<typeof meta>;
 export const UnderSubRows: Story = { name: 'Under sub rows' };
 export const UnderSubRowsNight: Story = { ...UnderSubRows, name: 'Under sub rows, night', globals: { theme: 'dark' } };
 export const UnderSubRowsPhone: Story = { ...UnderSubRows, name: 'Under sub rows, phone', globals: { viewport: { value: 'phone' } } };
-/** Two ways on: the quiet one first, then the one the step is for. */
-export const TwoButtons: Story = {
-  name: 'Two buttons',
-  args: {
-    sub: false,
-    children: 'For a script that can’t sign in, use a token instead.',
-    actions: <><Button variant="quiet" onClick={did('onToken')}>Create a token</Button><Button onClick={did('onDone')}>Done</Button></>
-  },
-  render: (args) => <SettingsPanel title="Agents"><SettingFoot {...args} /></SettingsPanel>
-};
-/** Only buttons. */
-export const JustButtons: Story = {
-  name: 'Just buttons',
-  args: { sub: false, children: undefined, actions: <><Button variant="quiet" onClick={did('onCancel')}>Cancel</Button><Button variant="primary" onClick={did('onCreate')}>Create token</Button></> },
-  render: (args) => <SettingsPanel title="Agents"><SettingFoot {...args} /></SettingsPanel>
-};

@@ -130,6 +130,22 @@ export function keepMail(): () => void {
   return () => { document.removeEventListener('click', stop, true); unswap(); };
 }
 
+/**
+ * Other apps can't open from Storybook: a link or a window to another site in a new tab (Claude's connectors, say), or to
+ * an app on this computer (cursor:, vscode:), does everything the app does with it up to the browser opening it, which it
+ * doesn't. A story's `beforeEach`.
+ */
+export function keepTabs(): () => void {
+  const away = (a: HTMLAnchorElement) => a.target === '_blank' || !['http:', 'https:'].includes(new URL(a.href, location.href).protocol);
+  const stop = (e: MouseEvent) => {
+    const a = e.target instanceof Element ? e.target.closest('a[href]') : null;
+    if (a instanceof HTMLAnchorElement && away(a)) e.preventDefault();
+  };
+  document.addEventListener('click', stop, true);
+  const unswap = swap(window, 'open', () => null);
+  return () => { document.removeEventListener('click', stop, true); unswap(); };
+}
+
 /** Alcove not answering, while the browser itself is online: what the client says when a request doesn't get through. */
 export const unreachable = (): AlcoveApiError => new AlcoveApiError('network', 'Can’t reach Alcove. Check your connection.');
 /** The server saying no, and why. */

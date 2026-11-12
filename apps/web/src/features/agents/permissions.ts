@@ -1,20 +1,27 @@
 import { type AgentScope } from '@alcove/api';
 import type { AgentPermission } from '@alcove/ui';
 
-/** Each permission an agent can have: what it's called where it's chosen, what it allows, and its `short` name in a connection's line. */
+/**
+ * Each permission an agent can have: what it's called (`label`), what it allows (`detail`), and its `short` name, which is
+ * what its chip says and what something that needs it says ("Needs book calls").
+ */
 export const PERMISSIONS = [
-  { id: 'notes:read', label: 'Read notes', short: 'Read notes', detail: 'Find notes, read available transcripts, ask questions, and read your own entries.' },
-  { id: 'notes:write', label: 'Edit notes and follow-ups', short: 'Edit notes', detail: 'Propose and update decisions and tasks, correct transcripts, and manage your own entries.' },
-  { id: 'notes:share', label: 'Share notes', short: 'Share notes', detail: 'Give other people access to notes you are allowed to share.' },
-  { id: 'notes:delete', label: 'Delete notes', short: 'Delete notes', detail: 'Delete your notes for everyone, or remove shared notes from your account.' },
-  { id: 'meetings:read', label: 'Read calls and find people', short: 'Read calls', detail: 'See upcoming and past calls and find people to invite.' },
-  { id: 'meetings:write', label: 'Schedule and manage calls', short: 'Manage calls', detail: 'Create, change and cancel calls. A connected calendar sends invitations and updates.' },
-  { id: 'calendar:read', label: 'Read calendar and availability', short: 'Read calendar', detail: 'See calendar events and check when people are busy.' }
+  { id: 'notes:read', label: 'Read notes', short: 'Read notes', detail: 'Find notes, read transcripts, and ask questions about them.' },
+  { id: 'notes:write', label: 'Edit notes and follow-ups', short: 'Edit notes', detail: 'Propose decisions, add follow-ups, and fix a transcript.' },
+  { id: 'notes:share', label: 'Share notes', short: 'Share notes', detail: 'Give people notes you’re allowed to share.' },
+  { id: 'notes:delete', label: 'Delete notes', short: 'Delete notes', detail: 'Delete notes, or take shared ones out of yours.' },
+  { id: 'meetings:read', label: 'Read calls and find people', short: 'Read calls', detail: 'See past and coming calls, and find people to invite.' },
+  { id: 'meetings:write', label: 'Book and change calls', short: 'Book calls', detail: 'Book, move and cancel calls. Your calendar sends the invitations.' },
+  { id: 'calendar:read', label: 'Read your calendar', short: 'Read calendar', detail: 'See your meetings, and when people are free.' }
 ] satisfies ReadonlyArray<AgentPermission & { id: AgentScope; short: string }>;
+
+/** The permissions as chips: each says its short name, and what it allows when the pointer rests on it. */
+export const CHIPS: readonly AgentPermission[] = PERMISSIONS.map((p) => ({ id: p.id, label: p.short, detail: `${p.label}. ${p.detail}` }));
 
 export const READ_SCOPES: AgentScope[] = ['notes:read', 'meetings:read', 'calendar:read'];
 
-/** What a connection can do, in a line: "Read notes · Read calls · Read calendar", in the order they're chosen in. */
-export function canDo(scopes: readonly AgentScope[]): string {
-  return PERMISSIONS.filter((p) => scopes.includes(p.id)).map((p) => p.short).join(' · ');
-}
+/** Scopes in the order they're shown, each once. */
+export const inOrder = (scopes: readonly AgentScope[]): AgentScope[] => PERMISSIONS.map((p) => p.id).filter((id) => scopes.includes(id));
+
+/** A permission's short name, in a sentence: "book calls". */
+export const needs = (scope: AgentScope): string => (PERMISSIONS.find((p) => p.id === scope)?.short ?? scope).toLowerCase();

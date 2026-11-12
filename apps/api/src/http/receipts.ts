@@ -22,12 +22,14 @@ import type { HttpRuntime } from './runtime';
  * deleting them must leave no copy of what they said for a day. Deleting the account deletes its receipts, so there is no account left to
  * keep one under. Answering a ring sets an explicit state too, and a receipt's clear method and time
  * would say an account was rung for a day after the ring had gone. Saying a browser closed one of its live streams ends it,
- * which a retry can't do twice, and a receipt would be a row for every page someone closed. What a guest can reach of a
+ * which a retry can't do twice, and a receipt would be a row for every page someone closed. Making an agent's token keeps
+ * none, as its answer is the token. Changing what an agent can do sets it outright, and its answer names the agent, which a
+ * receipt would keep for a day after it was disconnected; disconnecting it keeps none either. What a guest can reach of a
  * workspace comes before receipts altogether, so it isn't listed here: see the routes.
  */
 const NO_RECEIPT = [
   /^\/v1\/drive(?:\/.*)?$/,
-  /^\/v1\/agents\/tokens$/, /^\/v1\/agents\/authorization\/[^/]+$/,
+  /^\/v1\/agents\/[^/]+$/, /^\/v1\/agents\/authorization\/[^/]+$/,
   /^\/v1\/calendar\/busy$/,
   /^\/v1\/notes\/search$/, /^\/v1\/notes\/(?:[^/]+\/)?ask$/, /^\/v1\/series\/[^/]+\/ask$/, /^\/v1\/live\/calls\/[^/]+\/(?:catch-up|ask|series\/ask|translate|notes\/watch)$/,
   /^\/v1\/(?:live\/calls|recordings)\/[^/]+\/(?:audio|transcribe)$/, /^\/v1\/live\/calls\/[^/]+\/shares\/[^/]+\/video$/,

@@ -19,6 +19,7 @@ import { Route as MoveRouteImport } from './routes/move'
 import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as ReadyRouteImport } from './routes/ready'
 import { Route as WelcomeRouteImport } from './routes/welcome'
+import { Route as AppAgentsRouteImport } from './routes/_app/agents'
 import { Route as AppHomeRouteImport } from './routes/_app/home'
 import { Route as AppRecordRouteImport } from './routes/_app/record'
 import { Route as AppSettingsRouteImport } from './routes/_app/settings'
@@ -83,6 +84,11 @@ const WelcomeRoute = WelcomeRouteImport.update({
   id: '/welcome',
   path: '/welcome',
   getParentRoute: () => rootRouteImport,
+} as any)
+const AppAgentsRoute = AppAgentsRouteImport.update({
+  id: '/agents',
+  path: '/agents',
+  getParentRoute: () => AppRoute,
 } as any)
 const AppHomeRoute = AppHomeRouteImport.update({
   id: '/home',
@@ -173,6 +179,7 @@ export interface FileRoutesByFullPath {
   '/privacy': typeof PrivacyRoute
   '/ready': typeof ReadyRoute
   '/welcome': typeof WelcomeRoute
+  '/agents': typeof AppAgentsRoute
   '/home': typeof AppHomeRoute
   '/record': typeof AppRecordRoute
   '/settings': typeof AppSettingsRoute
@@ -199,6 +206,7 @@ export interface FileRoutesByTo {
   '/privacy': typeof PrivacyRoute
   '/ready': typeof ReadyRoute
   '/welcome': typeof WelcomeRoute
+  '/agents': typeof AppAgentsRoute
   '/home': typeof AppHomeRoute
   '/record': typeof AppRecordRoute
   '/settings': typeof AppSettingsRoute
@@ -226,6 +234,7 @@ export interface FileRoutesById {
   '/privacy': typeof PrivacyRoute
   '/ready': typeof ReadyRoute
   '/welcome': typeof WelcomeRoute
+  '/_app/agents': typeof AppAgentsRoute
   '/_app/home': typeof AppHomeRoute
   '/_app/record': typeof AppRecordRoute
   '/_app/settings': typeof AppSettingsRoute
@@ -254,6 +263,7 @@ export interface FileRouteTypes {
     | '/privacy'
     | '/ready'
     | '/welcome'
+    | '/agents'
     | '/home'
     | '/record'
     | '/settings'
@@ -280,6 +290,7 @@ export interface FileRouteTypes {
     | '/privacy'
     | '/ready'
     | '/welcome'
+    | '/agents'
     | '/home'
     | '/record'
     | '/settings'
@@ -306,6 +317,7 @@ export interface FileRouteTypes {
     | '/privacy'
     | '/ready'
     | '/welcome'
+    | '/_app/agents'
     | '/_app/home'
     | '/_app/record'
     | '/_app/settings'
@@ -410,6 +422,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/welcome'
       preLoaderRoute: typeof WelcomeRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/_app/agents': {
+      id: '/_app/agents'
+      path: '/agents'
+      fullPath: '/agents'
+      preLoaderRoute: typeof AppAgentsRouteImport
+      parentRoute: typeof AppRoute
     }
     '/_app/home': {
       id: '/_app/home'
@@ -535,6 +554,7 @@ const AppDriveWorkspaceIdRouteWithChildren =
   AppDriveWorkspaceIdRoute._addFileChildren(AppDriveWorkspaceIdRouteChildren)
 
 interface AppRouteChildren {
+  AppAgentsRoute: typeof AppAgentsRoute
   AppHomeRoute: typeof AppHomeRoute
   AppRecordRoute: typeof AppRecordRoute
   AppSettingsRoute: typeof AppSettingsRoute
@@ -547,6 +567,7 @@ interface AppRouteChildren {
 }
 
 const AppRouteChildren: AppRouteChildren = {
+  AppAgentsRoute: AppAgentsRoute,
   AppHomeRoute: AppHomeRoute,
   AppRecordRoute: AppRecordRoute,
   AppSettingsRoute: AppSettingsRoute,

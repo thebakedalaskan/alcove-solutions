@@ -1,0 +1,494 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Agents</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="home.css">
+<link rel="stylesheet" href="pages.css">
+<link rel="stylesheet" href="page-agents.css">
+<script src="tokens.js"></script>
+<script src="home.js"></script>
+<script src="scene.js"></script>
+<script src="appdata.js"></script>
+<script src="data-agents.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400..700&amp;family=IBM+Plex+Mono:wght@400;500&amp;family=Newsreader:ital,opsz,wght@0,6..72,300..600;1,6..72,300..600&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<div class="ah sh agt" data-mode="{{mode}}" data-first="{{firstFlag}}" data-ask="{{askFlag}}" data-done="{{doneFlag}}" data-sheet="{{sheetFlag}}" style="{{shellStyle}}" onKeyDown="{{onKey}}">
+<div class="sh-frame">
+<dc-import name="Side" s="{{side}}" hint-size="256px,100%"></dc-import>
+<main class="sh-panel">
+<div class="ah-scroll">
+<div class="pg-stage" style="{{stageStyle}}">
+<dc-import name="Scene" a="{{scene}}" hint-size="100%,100%"></dc-import>
+<div class="sh-bar">
+<span class="brand"><svg width="22" height="26" viewBox="0 0 22 26" aria-hidden="true"><defs><clipPath id="{{logoClip}}"><path d="M2 24.6V11a9 9 0 0 1 18 0v13.6z"></path></clipPath><linearGradient id="{{logoSky}}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2A2373"></stop><stop offset=".42" stop-color="#5847DA"></stop><stop offset=".64" stop-color="#C470A9"></stop><stop offset=".74" stop-color="#FFA06A"></stop></linearGradient></defs><g clip-path="{{logoClipUrl}}"><rect width="22" height="26" fill="{{logoSkyUrl}}"></rect><circle cx="11" cy="19.2" r="4.4" fill="#FFD58A"></circle><rect y="19.2" width="22" height="7" fill="#231C5E"></rect></g></svg>alcove</span>
+<div class="top-end"><button type="button" class="find" aria-label="Search or ask" onClick="{{openAsk}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.search}}"></path></svg></button><button type="button" class="me" aria-label="Art, settings" onClick="{{goSettings}}"><dc-import name="Faces" who="art" size="30" hint-size="30px,33px"></dc-import></button></div>
+</div>
+<sc-if value="{{anyPop}}" hint-placeholder-val="{{false}}"><button type="button" class="agt-catch" aria-label="Close" tabindex="-1" onClick="{{closeAll}}"></button></sc-if>
+<div class="pg-in">
+
+<div class="agt-sky">
+<header class="pg-top">
+<div class="agt-top"><button type="button" class="agt-back" onClick="{{goSettings}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.back}}"></path></svg>Settings</button><h1 class="agt-title">Agents</h1></div>
+<div class="top-end">
+<button type="button" class="find" onClick="{{openAsk}}" aria-label="Search or ask"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.search}}"></path></svg><span class="w">Search or ask</span><span class="k">⌘K</span></button>
+<button type="button" class="me" aria-label="Art, settings" onClick="{{goSettings}}"><dc-import name="Faces" who="art" size="30" hint-size="30px,33px"></dc-import></button>
+</div>
+</header>
+
+<sc-if value="{{isHero}}" hint-placeholder-val="{{true}}">
+<section class="agt-hero" aria-labelledby="agt-h">
+<h2 class="agt-t" id="agt-h">{{title}}</h2>
+<sc-if value="{{hasLine}}" hint-placeholder-val="{{false}}"><p class="agt-line">{{line}}</p></sc-if>
+<sc-if value="{{hasWhy}}" hint-placeholder-val="{{false}}"><p class="agt-why"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{whyIcon}}"></path></svg>{{why}}</p></sc-if>
+<sc-if value="{{hasHeroBtn}}" hint-placeholder-val="{{false}}"><button type="button" class="b b-sky{{hotHeroBtn}}" onClick="{{heroGo}}"><sc-if value="{{heroBtnIcon}}" hint-placeholder-val="{{false}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.retry}}"></path></svg></sc-if>{{heroBtn}}</button></sc-if>
+</section>
+</sc-if>
+
+<sc-if value="{{isAsk}}" hint-placeholder-val="{{false}}">
+<section class="agt-ask" role="group" aria-labelledby="agt-q">
+<h2 class="agt-qt" id="agt-q">{{ask.title}}</h2>
+<div class="agt-lv">
+<sc-for list="{{ask.rows}}" as="r" hint-placeholder-count="4">
+<div class="agt-lv-r">
+<span class="agt-lv-i"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{r.icon}}"></path></svg></span>
+<span class="agt-lv-n">{{r.name}}</span>
+<span class="agt-at">
+<button type="button" class="agt-lv-b{{r.offCls}}{{r.hotCls}}" aria-haspopup="listbox" aria-expanded="{{r.openA}}" aria-label="{{r.label}}" onClick="{{r.toggle}}"><span>{{r.value}}</span><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.down}}"></path></svg></button>
+<sc-if value="{{r.open}}" hint-placeholder-val="{{false}}">
+<div class="agt-menu" role="listbox" aria-label="{{r.name}}">
+<sc-for list="{{r.opts}}" as="o" hint-placeholder-count="3">
+<button type="button" class="agt-o{{o.hotCls}}" role="option" aria-selected="{{o.onA}}" onClick="{{o.go}}"><span><b>{{o.t}}</b><small>{{o.d}}</small></span><span class="agt-o-k"><sc-if value="{{o.on}}" hint-placeholder-val="{{false}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.check}}"></path></svg></sc-if></span></button>
+</sc-for>
+<sc-for list="{{r.switches}}" as="x" hint-placeholder-count="2">
+<button type="button" class="agt-o is-sw{{x.hotCls}}" role="switch" aria-checked="{{x.onA}}" onClick="{{x.go}}"><span><b>{{x.t}}</b><small>{{x.d}}</small></span><span class="sw{{x.swCls}}"></span></button>
+</sc-for>
+</div>
+</sc-if>
+</span>
+</div>
+</sc-for>
+</div>
+<p class="agt-disc">{{ask.disc}}</p>
+<div class="agt-ask-a"><button type="button" class="b b-press b-lg{{hotAllow}}" disabled="{{ask.none}}" onClick="{{allow}}">Allow</button><button type="button" class="b b-sky b-lg" onClick="{{cancelAsk}}">Cancel</button></div>
+<p class="agt-fine">{{ask.fine}}</p>
+</section>
+</sc-if>
+
+<sc-if value="{{isDone}}" hint-placeholder-val="{{false}}">
+<section class="agt-done" aria-labelledby="agt-d">
+<h2 class="agt-qt" id="agt-d">{{done.title}}</h2>
+<p class="agt-line">{{done.line}}</p>
+<span class="agt-try"><small>Try</small>“What did we decide about the launch?”<button type="button" class="agt-ib" aria-label="Copy the question" title="Copy" onClick="{{copyTry}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.copy}}"></path></svg></button></span>
+<button type="button" class="b b-sky b-sm" onClick="{{doneGo}}">Done</button>
+</section>
+</sc-if>
+
+<div class="agt-row{{rowCls}}" role="list" aria-label="Agents">
+<sc-if value="{{hasPair}}" hint-placeholder-val="{{false}}">
+<div class="agt-pair{{pair.cls}}" role="listitem" aria-label="{{pair.label}}">
+<div class="agt-pp"><span class="agt-win{{pair.winCls}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{pair.icon}}"></path></svg></span><span class="agt-n">{{pair.name}}</span><span class="agt-s">{{pair.sub}}</span></div>
+<span class="agt-link" aria-hidden="true"><span class="agt-link-c"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{pair.linkIcon}}"></path></svg></span></span>
+<div class="agt-pp"><span class="agt-arch"><dc-import name="Faces" who="art" size="76" hint-size="76px,84px"></dc-import></span><span class="agt-n">You</span><span class="agt-s">{{pair.email}}</span></div>
+</div>
+</sc-if>
+<sc-for list="{{tiles}}" as="t" hint-placeholder-count="7">
+<sc-if value="{{t.isGap}}" hint-placeholder-val="{{false}}"><i class="agt-gap" aria-hidden="true"></i></sc-if>
+<sc-if value="{{t.isTile}}" hint-placeholder-val="{{true}}">
+<div class="agt-p{{t.cls}}" role="listitem" style="{{t.style}}">
+<button type="button" class="agt-who{{t.hotCls}}" aria-label="{{t.label}}" aria-expanded="{{t.expanded}}" onClick="{{t.go}}">
+<span class="agt-win"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{t.icon}}"></path></svg><sc-if value="{{t.hasDot}}" hint-placeholder-val="{{false}}"><i class="agt-dot{{t.dotCls}}"></i></sc-if><sc-if value="{{t.hasTick}}" hint-placeholder-val="{{false}}"><span class="agt-tick"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.check}}"></path></svg></span></sc-if></span>
+<span class="agt-n">{{t.name}}</span>
+<span class="agt-s{{t.subCls}}">{{t.sub}}</span>
+</button>
+
+<sc-if value="{{t.open}}" hint-placeholder-val="{{false}}">
+<div class="agt-pop" role="dialog" aria-label="{{pv.name}}">
+<i class="agt-caret"></i>
+<header class="agt-pop-h{{pv.headCls}}">
+<sc-if value="{{pv.hasBack}}" hint-placeholder-val="{{false}}"><button type="button" class="agt-ib is-back" aria-label="Back" title="Back" onClick="{{pv.back}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.back}}"></path></svg></button></sc-if>
+<span class="agt-mini"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{pv.icon}}"></path></svg><sc-if value="{{pv.hasTick}}" hint-placeholder-val="{{false}}"><span class="agt-mini-t"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.check}}"></path></svg></span></sc-if></span>
+<span class="agt-pop-w"><b class="clamp1">{{pv.name}}</b><sc-if value="{{pv.hasSub}}" hint-placeholder-val="{{false}}"><small class="clamp1{{pv.subCls}}">{{pv.sub}}</small></sc-if></span>
+<button type="button" class="dlg-x" aria-label="Close" onClick="{{closeAll}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.x}}"></path></svg></button>
+</header>
+
+<sc-if value="{{pv.isConnect}}" hint-placeholder-val="{{false}}">
+<p class="agt-say">{{pv.say}}</p>
+<sc-if value="{{pv.hasCode}}" hint-placeholder-val="{{false}}"><code class="agt-code{{pv.codeCls}}">{{pv.code}}</code></sc-if>
+<sc-if value="{{pv.ready}}" hint-placeholder-val="{{true}}"><button type="button" class="b b-press agt-go{{hotGo}}" onClick="{{pv.go}}">{{pv.goLabel}}<sc-if value="{{pv.goOut}}" hint-placeholder-val="{{false}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.up}}"></path></svg></sc-if></button></sc-if>
+<sc-if value="{{pv.waiting}}" hint-placeholder-val="{{false}}"><p class="agt-wait" role="status"><span class="agt-dots" aria-hidden="true"><i></i><i></i><i></i></span>{{pv.wait}}</p></sc-if>
+<sc-if value="{{pv.hasTokenLink}}" hint-placeholder-val="{{false}}"><button type="button" class="agt-more{{hotToken}}" onClick="{{pv.makeToken}}"><span>A script that can’t sign in?</span><b>Create a token</b><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.right}}"></path></svg></button></sc-if>
+</sc-if>
+
+<sc-if value="{{pv.isToken}}" hint-placeholder-val="{{false}}">
+<div class="agt-form">
+<label class="agt-field"><span>Name</span><input type="text" value="{{tokenName}}" maxlength="80" placeholder="Weekly digest" onChange="{{setTokenName}}"></label>
+<div class="agt-field"><span>Lasts</span><div class="agt-seg" role="group" aria-label="Lasts"><sc-for list="{{days}}" as="d" hint-placeholder-count="3"><button type="button" aria-pressed="{{d.on}}" onClick="{{d.go}}">{{d.t}}</button></sc-for></div></div>
+<div class="agt-field"><span>What it can do</span><div class="agt-chips"><sc-for list="{{tokenChips}}" as="c" hint-placeholder-count="7"><button type="button" class="agt-chip" aria-pressed="{{c.onA}}" onClick="{{c.go}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.check}}"></path></svg>{{c.t}}</button></sc-for></div></div>
+</div>
+<p class="agt-small">It gets readable information from Alcove.</p>
+<button type="button" class="b b-press agt-go{{hotCreate}}" onClick="{{pv.create}}">Create token</button>
+</sc-if>
+
+<sc-if value="{{pv.isMade}}" hint-placeholder-val="{{false}}">
+<p class="agt-say">Copy it into your script now, with Alcove’s address. It won’t show again.</p>
+<div class="agt-code is-copy"><code>alc_••••••••••••••••••••••••3f9a</code><button type="button" class="agt-ib{{hotCopy}}" aria-label="Copy the token" title="Copy" onClick="{{pv.copyToken}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.copy}}"></path></svg></button></div>
+<div class="agt-code is-copy"><code>{{address}}</code><button type="button" class="agt-ib" aria-label="Copy Alcove’s address" title="Copy" onClick="{{copyAddress}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.copy}}"></path></svg></button></div>
+<button type="button" class="b b-press agt-go" onClick="{{pv.made}}">Done</button>
+</sc-if>
+
+<sc-if value="{{pv.isConn}}" hint-placeholder-val="{{false}}">
+<sc-if value="{{pv.isEnding}}" hint-placeholder-val="{{false}}"><button type="button" class="b b-line agt-go{{hotKeep}}" onClick="{{pv.keep}}">Keep it 30 more days</button></sc-if>
+<p class="agt-can-h"><span>What it can do</span><sc-if value="{{pv.saved}}" hint-placeholder-val="{{false}}"><span class="agt-saved" role="status"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.check}}"></path></svg>Saved</span></sc-if></p>
+<div class="agt-chips"><sc-for list="{{pv.chips}}" as="c" hint-placeholder-count="7"><button type="button" class="agt-chip{{c.hotCls}}" aria-pressed="{{c.onA}}" title="{{c.detail}}" onClick="{{c.go}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.check}}"></path></svg>{{c.t}}</button></sc-for></div>
+<div class="agt-pop-f"><button type="button" class="b b-quiet b-sm{{hotOff}}" onClick="{{pv.askOff}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.unplug}}"></path></svg>Disconnect</button><p>{{pv.until}}</p></div>
+</sc-if>
+
+<sc-if value="{{pv.isOff}}" hint-placeholder-val="{{false}}">
+<div class="agt-asked"><b>{{pv.offTitle}}</b><p>It stops working at once. To use it again, connect it again.</p>
+<div class="agt-acts"><button type="button" class="b b-press b-sm" onClick="{{pv.keepIt}}">{{pv.keepLabel}}</button><button type="button" class="b b-line b-sm{{hotOffYes}}" onClick="{{pv.off}}">Disconnect</button></div></div>
+</sc-if>
+
+<sc-if value="{{pv.isJoined}}" hint-placeholder-val="{{false}}">
+<p class="agt-say">{{pv.say}}</p>
+<div class="agt-code is-copy is-try"><span>“What did we decide about the launch?”</span><button type="button" class="agt-ib" aria-label="Copy the question" title="Copy" onClick="{{pv.copyTry}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.copy}}"></path></svg></button></div>
+</sc-if>
+</div>
+</sc-if>
+</div>
+</sc-if>
+</sc-for>
+</div>
+</div>
+
+<div class="agt-water">
+<section class="agt-log" aria-labelledby="agt-log-h">
+<div class="pn-h"><h2 id="agt-log-h">What your agents did</h2><span class="agt-only"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.lock}}"></path></svg>Only you see this</span></div>
+<sc-if value="{{hasLog}}" hint-placeholder-val="{{true}}">
+<sc-for list="{{log}}" as="d" hint-placeholder-count="2">
+<h3 class="agt-day">{{d.day}}</h3>
+<sc-for list="{{d.rows}}" as="r" hint-placeholder-count="3">
+<div class="agt-r">
+<span class="agt-k{{r.kCls}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{r.icon}}"></path></svg></span>
+<p class="agt-r-t"><b>{{r.who}}</b> {{r.verb}}<sc-if value="{{r.hasObj}}" hint-placeholder-val="{{false}}"> <button type="button" class="agt-obj{{r.hotCls}}" onClick="{{r.go}}">{{r.obj}}</button></sc-if><small>{{r.sub}}</small></p>
+<span class="agt-r-w">{{r.t}}</span>
+</div>
+</sc-for>
+</sc-for>
+<div class="agt-log-f"><button type="button" class="b b-quiet b-sm" onClick="{{showMore}}">Show 14 more</button></div>
+</sc-if>
+<sc-if value="{{noLog}}" hint-placeholder-val="{{false}}">
+<div class="agt-empty"><span class="agt-win"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.bot}}"></path></svg></span><b>{{emptyTitle}}</b><p>{{emptyLine}}</p></div>
+</sc-if>
+</section>
+
+<section class="agt-tries" aria-labelledby="agt-try-h">
+<div class="pn-h"><h2 id="agt-try-h">Ask your agent</h2></div>
+<sc-for list="{{prompts}}" as="q" hint-placeholder-count="4">
+<div class="agt-q"><p>“{{q.q}}”<small><sc-if value="{{q.can}}" hint-placeholder-val="{{false}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.check}}"></path></svg></sc-if>{{q.sub}}</small></p><button type="button" class="agt-ib{{q.hotCls}}" aria-label="Copy the question" title="Copy" onClick="{{q.copy}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.copy}}"></path></svg></button></div>
+</sc-for>
+</section>
+</div>
+
+</div>
+</div>
+</div>
+</main>
+</div>
+<nav class="phone-tabs" aria-label="Main">
+<sc-for list="{{nav}}" as="n" hint-placeholder-count="5"><button type="button" class="phone-tab{{n.cls}}" onClick="{{n.go}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{n.icon}}"></path></svg>{{n.label}}</button></sc-for>
+</nav>
+<dc-import name="Overlays" ov="{{ov}}" hint-size="0px,0px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"go":{"editor":null,"default":null},"mode":{"editor":"enum","options":["dark","light"],"default":"dark"},"step":{"editor":null,"default":"agToday"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  componentWillUnmount() { clearTimeout(this.__toastT); clearTimeout(this.__busy); }
+  renderVals() {
+    var AH = window.AH, G = AH.AG, assign = AH.assign, hs = AH.hash(), self = this;
+    var stepId = hs.step || this.props.step || 'agToday';
+    var step = G.STEPS[stepId] || {};
+    var st = assign({ scene: 'today', pop: '', view: '', ask: '', stage: '', fail: '', hot: '', waiting: false, perms: {}, saved: '', ending: '', kept: '', toast: '', askLv: null, askMenu: '', tokenName: 'Weekly digest', tokenDays: '30', tokenScopes: G.READS, modal: '' }, step, this.state || {});
+    var I = assign({}, AH.I, G.I);
+    var set = function (patch) { self.setState(patch); };
+    var hot = function (k) { return st.hot === k ? ' is-hot' : ''; };
+    var toast = function (msg) { clearTimeout(self.__toastT); self.setState({ toast: msg, hot: '' }); self.__toastT = setTimeout(function () { self.setState({ toast: '' }); }, 3600); };
+    var closed = { pop: '', view: '', hot: '', waiting: false, saved: '', askMenu: '' };
+
+    /* Who's connected, with any change made here. */
+    var conns = (st.conns || (st.scene === 'first' ? [] : G.CONNS)).map(function (c) {
+      return assign({}, c, { scopes: st.perms[c.id] || c.scopes, ending: st.ending === c.id, until: st.kept === c.id ? '4 Dec' : c.until });
+    });
+    var byKind = function (id) { return G.KINDS.filter(function (k) { return k.id === id; })[0] || null; };
+    var connOf = function (id) { return conns.filter(function (c) { return c.id === id; })[0] || null; };
+    var anyConn = function (id) { return connOf(id) || G.CONNS.filter(function (c) { return c.id === id; })[0] || null; };
+    var label = function (id) { return G.PERMS.filter(function (p) { return p.id === id; })[0]; };
+    var names = function (list) { return list.length < 2 ? list.join('') : list.slice(0, -1).join(', ') + ' and ' + list[list.length - 1]; };
+
+    var askKind = st.ask ? byKind(st.ask) : null;
+    var allowed = !!askKind && st.stage === 'allowed', ended = !!askKind && st.stage === 'ended', asking = !!askKind && !st.stage;
+    var loading = st.fail === 'loading', failed = st.fail === 'load', offline = st.fail === 'offline';
+
+    /* The line: connected agents, a gap, the agents people use that aren't connected yet, then any other. */
+    var full = [];
+    var have = conns.map(function (c) { return c.kind; });
+    var yet = G.KINDS.filter(function (k) { return have.indexOf(k.id) < 0; });
+    conns.forEach(function (c) { full.push({ type: 'conn', c: c }); });
+    if (conns.length && yet.length) full.push({ type: 'gap' });
+    yet.forEach(function (k) { full.push({ type: 'yet', k: k }); });
+    full.push({ type: 'other' });
+    var list = full;
+    if (failed) list = [];
+    else if (loading) list = [{ type: 'ghost' }, { type: 'ghost' }, { type: 'ghost' }];
+    else if (askKind) list = [];
+    var widthOf = function (l) { return l.reduce(function (s, t) { return s + (t.type === 'gap' ? 0.5 : 1); }, 0) || 1; };
+    var W = widthOf(list);
+    var at = 0;
+    var tiles = list.map(function (t, i) {
+      if (t.type === 'gap') { at += 0.5; return { isGap: true, isTile: false }; }
+      var x = at + 0.5 - W / 2; at += 1;
+      var c = t.c || null, k = t.k || null;
+      var id = c ? c.id : t.type === 'other' ? 'other' : t.type === 'ghost' ? 'ghost' + i : k.id;
+      var name = c ? c.name : t.type === 'other' ? G.OTHER.name : t.type === 'ghost' ? '' : k.name;
+      var icon = I[c ? c.icon : t.type === 'other' ? G.OTHER.icon : t.type === 'ghost' ? 'bot' : k.icon];
+      var open = st.pop === id && !askKind;
+      var sub = c ? (c.ending ? 'Ends tomorrow' : c.used) : '';
+      var cls = (c ? ' is-conn' : ' is-yet') + (t.type === 'other' ? ' is-other' : '') + (open ? ' is-on' : '') + (t.asking ? ' is-asking' : '') + (t.now ? ' is-allowed' : '');
+      return {
+        isGap: false, isTile: true, id: id, name: name, icon: icon, sub: sub, subCls: c && c.ending ? ' is-caution' : '',
+        cls: cls, open: open, expanded: open ? 'true' : 'false', hotCls: hot('tile-' + id),
+        style: '--px: ' + x.toFixed(2) + '; --d: ' + i,
+        label: c ? name + ', ' + (c.ending ? 'access ends tomorrow' : 'used ' + c.used.toLowerCase()) : t.type === 'other' ? 'Connect another agent' : 'Connect ' + name,
+        hasDot: !!(c && c.ending), dotCls: c && c.ending ? ' is-caution' : '', hasTick: !!t.now,
+        go: function () { if (askKind || t.type === 'ghost') return; set(assign({}, closed, { pop: st.pop === id ? '' : id })); }
+      };
+    });
+    /* The sun stays where the whole line would end, whatever is on it, so it doesn't move as the page changes. */
+    var sunu = widthOf(full) / 2 + 0.62;
+
+    /* The shell: the side panel lights Agents and counts who's connected. */
+    this.__uid = this.__uid || (window.__agUid = (window.__agUid || 0) + 1);
+    var host = this.__host || (this.__host = { setState: function (p) { self.setState(p); } });
+    host.props = assign({}, this.props, { step: 'none' });
+    host.state = assign({}, this.state || {}, { hot: st.hot, toast: st.toast, modal: st.modal });
+    var v = AH.page(host, 'agents', { agents: conns.length, sunX: Math.round(sunu * 106.5) });
+    v.logoClip = 'aga' + this.__uid; v.logoSky = 'ags' + this.__uid; v.logoClipUrl = 'url(#' + v.logoClip + ')'; v.logoSkyUrl = 'url(#' + v.logoSky + ')';
+    v.I = I;
+    v.tiles = tiles;
+    v.rowCls = loading ? ' is-loading' : askKind ? ' is-pair' : '';
+    v.stageStyle = '--w: ' + W + '; --sunu: ' + sunu.toFixed(2);
+    v.firstFlag = conns.length === 0 && !askKind ? 'true' : 'false';
+    v.askFlag = asking ? 'true' : 'false';
+    v.doneFlag = allowed || ended ? 'true' : 'false';
+    v.address = G.ADDRESS;
+    v.closeAll = function () { set(closed); };
+    v.onKey = function (e) { if (e.key === 'Escape') set(closed); };
+    v.openAsk = function () { set({ ask: '', hot: '' }); v.toast('Search or ask opens here.'); };
+    v.goSettings = function () { v.go('settings'); };
+
+    /* The hero: the one job, or what's wrong. */
+    var heroTitle = conns.length ? 'Your agents' : 'Connect your agent';
+    var heroLine = conns.length ? '' : 'Ask it about your calls, and let it book them. It can do only what you allow.';
+    v.isHero = !askKind;
+    v.hasWhy = failed || offline;
+    v.whyIcon = offline ? I.wifiOff : I.alert;
+    v.why = offline ? 'Your agents keep working. This page catches up when you’re back.' : 'Alcove couldn’t reach the server.';
+    v.title = failed ? 'Your agents didn’t load' : offline ? 'You’re offline' : loading ? 'Your agents' : heroTitle;
+    v.line = heroLine; v.hasLine = !!heroLine && !failed && !offline && !loading;
+    v.hasHeroBtn = failed; v.heroBtn = 'Try again'; v.heroBtnIcon = true; v.hotHeroBtn = hot('retry');
+    v.heroGo = function () { set({ fail: 'loading', hot: '' }); clearTimeout(self.__busy); self.__busy = setTimeout(function () { self.setState({ fail: '' }); }, 1300); };
+    if (ended) {
+      v.isHero = true; v.title = 'This request ended'; v.hasLine = true; v.line = 'It waited too long, or was answered in another tab. Start again from ' + askKind.name + '.';
+      v.hasHeroBtn = true; v.heroBtnIcon = false; v.heroBtn = 'Show me how'; v.heroGo = function () { set(assign({}, closed, { ask: '', stage: '', pop: askKind.id })); };
+    }
+
+    /*
+     * The question an agent asks, on the sky: one line, then each part of Alcove at the level it asked for, which you can
+     * lower. Sharing and deleting are their own row, off until you turn them on. You and the agent stand on the horizon.
+     */
+    var LV = G.LEVELS, req = G.ASKED;
+    var lv = assign({ notes: 'edit', calls: 'book', calendar: 'see', share: false, del: false }, st.askLv || {});
+    var cap = function (t) { return t.charAt(0).toUpperCase() + t.slice(1); };
+    var scopesOf = function (l) {
+      var out = [];
+      ['notes', 'calls', 'calendar'].forEach(function (a) { var o = LV[a].filter(function (x) { return x.id === l[a]; })[0]; if (o) out = out.concat(o.scopes); });
+      if (l.share) out.push('notes:share');
+      if (l.del) out.push('notes:delete');
+      return out.filter(function (x) { return req.indexOf(x) >= 0; });
+    };
+    var askOn = scopesOf(lv);
+    var rowsAsk = ['notes', 'calls', 'calendar'].map(function (a) {
+      var area = G.AREAS.filter(function (x) { return x.id === a; })[0], cur = LV[a].filter(function (x) { return x.id === lv[a]; })[0], open = st.askMenu === a;
+      return {
+        name: area.name, icon: I[area.icon], value: cur.t, label: area.name + ': ' + cur.t, offCls: cur.id === 'off' ? ' is-off' : '', hotCls: hot('lv-' + a), open: open, openA: open ? 'true' : 'false',
+        toggle: function () { set({ askMenu: open ? '' : a, hot: '' }); },
+        opts: LV[a].map(function (o) {
+          var on = o.id === lv[a];
+          return { t: o.t, d: o.d, on: on, onA: on ? 'true' : 'false', hotCls: hot('lvo-' + o.id), go: function () { var c = {}; c[a] = o.id; set({ askLv: assign({}, lv, c), askMenu: '', hot: '' }); } };
+        }),
+        switches: []
+      };
+    });
+    var extras = [lv.share ? 'share' : '', lv.del ? 'delete' : ''].filter(Boolean), openX = st.askMenu === 'extra';
+    rowsAsk.push({
+      name: 'Share or delete notes', icon: I.share, value: extras.length ? cap(extras.join(' and ')) : 'Off', label: 'Share or delete notes: ' + (extras.length ? extras.join(' and ') : 'off'),
+      offCls: extras.length ? '' : ' is-off', hotCls: hot('lv-extra'), open: openX, openA: openX ? 'true' : 'false',
+      toggle: function () { set({ askMenu: openX ? '' : 'extra', hot: '' }); },
+      opts: [],
+      switches: G.EXTRA.map(function (x) {
+        var on = !!lv[x.key];
+        return { t: x.t, d: x.d, onA: on ? 'true' : 'false', swCls: on ? ' is-on' : '', hotCls: hot('x-' + x.key), go: function () { var c = {}; c[x.key] = !on; set({ askLv: assign({}, lv, c), hot: '' }); } };
+      })
+    });
+    v.isAsk = asking;
+    v.hotAllow = hot('allow');
+    v.ask = askKind ? {
+      title: askKind.name + ' wants to use your Alcove', rows: rowsAsk, none: askOn.length === 0,
+      disc: askKind.name + ' gets readable information from Alcove, under its maker’s own policies.',
+      fine: 'Only allow this if you just added Alcove to ' + askKind.name + '. It lasts 30 days.'
+    } : { title: '', rows: [], none: false, disc: '', fine: '' };
+    /* You and the agent, together on the horizon: a dashed line while it asks, closed once it's allowed. */
+    v.hasPair = !!askKind;
+    v.pair = askKind ? {
+      name: askKind.name, icon: I[askKind.icon], email: AH.D.me.email,
+      sub: allowed ? 'Just connected' : ended ? 'Not connected' : 'Asking',
+      cls: allowed ? ' is-joined' : ended ? ' is-ended' : ' is-asking',
+      winCls: allowed ? '' : ' is-dash',
+      linkIcon: allowed ? I.check : ended ? I.hourglass : G.I.plug,
+      label: allowed ? askKind.name + ' and you, connected' : ended ? askKind.name + ', not connected' : askKind.name + ' is asking to connect to you'
+    } : { name: '', icon: '', email: '', sub: '', cls: '', winCls: '', linkIcon: '', label: '' };
+    v.allow = function () {
+      if (!askKind) return;
+      var made = assign({}, G.NEW[askKind.id] || G.NEW.claude, { scopes: askOn });
+      set({ stage: 'allowed', hot: '', conns: (st.conns || (st.scene === 'first' ? [] : G.CONNS)).concat([made]) });
+    };
+    v.cancelAsk = function () { set({ ask: '', stage: '', hot: '' }); toast('Nothing was shared with ' + (askKind ? askKind.name : 'the agent') + '.'); };
+    v.isDone = allowed;
+    v.done = askKind ? { title: askKind.name + ' is connected', line: 'Go back to ' + askKind.name + ' and ask it something. You can close this tab.' } : { title: '', line: '' };
+    v.copyTry = function () { toast('Copied. Paste it into ' + (askKind ? askKind.name : 'your agent') + '.'); };
+    v.doneGo = function () { set({ ask: '', stage: '', scene: 'today', hot: '' }); };
+
+    /*
+     * The open popover. Connecting is one line of what to do, the address or command when it needs one, and one button
+     * that does it; then it waits. A connected agent's popover is what it can do, and Disconnect.
+     */
+    var popKind = byKind(st.pop), popConn = connOf(st.pop), popOther = st.pop === 'other';
+    v.hotGo = hot('go'); v.hotCopy = hot('copy'); v.hotToken = hot('token'); v.hotCreate = hot('create'); v.hotKeep = hot('keep'); v.hotOff = hot('off'); v.hotOffYes = hot('off-yes');
+    v.copyAddress = function () { toast('Address copied.'); };
+    var pv = {
+      name: '', sub: '', hasSub: false, subCls: '', icon: I.bot, headCls: '', hasBack: false, back: null, hasTick: false,
+      isConnect: false, isToken: false, isMade: false, isConn: false, isOff: false, isJoined: false,
+      say: '', code: '', hasCode: false, codeCls: '', goLabel: '', goOut: false, go: null, ready: true, waiting: false, wait: '', hasTokenLink: false,
+      isEnding: false, saved: false, chips: [], until: '', offTitle: '', keepLabel: ''
+    };
+    if (popKind) {
+      var paste = popKind.how === 'paste', one = popKind.how === 'one', cmd = popKind.how === 'cmd';
+      Object.assign(pv, {
+        name: 'Connect ' + popKind.name, icon: I[popKind.icon], isConnect: true,
+        say: paste ? 'Paste this address into ' + popKind.name + '’s connectors.' : one ? popKind.name + ' asks to add Alcove. Then you choose what it can do, here.' : popKind.say,
+        code: cmd ? popKind.cmd : G.ADDRESS, hasCode: !one, codeCls: cmd ? ' is-cmd' : '',
+        goLabel: paste ? 'Copy and open ' + popKind.name : one ? 'Add to ' + popKind.name : 'Copy command', goOut: !cmd,
+        ready: !st.waiting, waiting: !!st.waiting, wait: 'Waiting for ' + popKind.name
+      });
+      pv.go = function () {
+        set({ waiting: true, hot: '' });
+        toast(paste ? 'Copied. ' + popKind.name + ' opens in a new tab.' : one ? popKind.name + ' opens.' : 'Copied. Run it in your terminal.');
+      };
+    } else if (popOther) {
+      pv.back = function () { set({ view: '', hot: '' }); };
+      pv.makeToken = function () { set({ view: 'token', hot: '' }); };
+      pv.create = function () { set({ view: 'made', hot: '' }); };
+      pv.copyToken = function () { toast('Token copied. It won’t show again.'); };
+      pv.made = function () {
+        var made = assign({}, G.NEW.token, { name: st.tokenName || 'Weekly digest', scopes: st.tokenScopes });
+        set(assign({}, closed, { conns: (st.conns || G.CONNS).concat([made]) }));
+      };
+      if (st.view === 'token') Object.assign(pv, { name: 'Create a token', icon: I.key, isToken: true, hasBack: true, headCls: ' has-back' });
+      else if (st.view === 'made') Object.assign(pv, { name: st.tokenName || 'Weekly digest', sub: 'Until 4 Dec', hasSub: true, icon: I.key, isMade: true });
+      else {
+        Object.assign(pv, {
+          name: 'Connect another agent', icon: I.plug, isConnect: true, say: 'Any agent that works with MCP connects with this address.',
+          code: G.ADDRESS, hasCode: true, goLabel: 'Copy address', hasTokenLink: true
+        });
+        pv.go = function () { toast('Address copied. Paste it into your agent’s connections.'); };
+      }
+    } else if (popConn) {
+      var fresh = popConn.isNew;
+      Object.assign(pv, {
+        icon: I[popConn.icon], isConn: !st.view, isOff: st.view === 'off', isJoined: st.view === 'joined',
+        name: st.view === 'joined' ? popConn.name + ' is connected' : popConn.name, hasTick: st.view === 'joined',
+        hasSub: st.view !== 'joined', subCls: popConn.ending ? ' is-caution' : '',
+        sub: popConn.ending ? 'Its access ends tomorrow' : (popConn.via === 'Token' ? 'Token · ' : '') + (fresh ? 'Not used yet' : 'Used ' + popConn.used.charAt(0).toLowerCase() + popConn.used.slice(1)),
+        isEnding: !!popConn.ending, saved: st.saved === popConn.id, until: popConn.ending ? '' : 'Until ' + popConn.until,
+        say: 'Ask it something in ' + popConn.name + ', like:', offTitle: 'Disconnect ' + popConn.name + '?', keepLabel: 'Keep ' + popConn.name
+      });
+      pv.copyTry = function () { toast('Copied. Paste it into ' + popConn.name + '.'); };
+      pv.chips = G.PERMS.map(function (p) {
+        var on = popConn.scopes.indexOf(p.id) >= 0;
+        return { t: p.short, detail: p.label + ': ' + p.detail, onA: on ? 'true' : 'false', hotCls: hot('perm-' + p.id), go: function () {
+          var next = on ? popConn.scopes.filter(function (x) { return x !== p.id; }) : popConn.scopes.concat([p.id]);
+          if (!next.length) { toast('An agent needs at least one thing it can do. Disconnect it instead.'); return; }
+          var o = assign({}, st.perms); o[popConn.id] = next; set({ perms: o, saved: popConn.id, hot: '' });
+        } };
+      });
+      pv.keep = function () { set({ kept: popConn.id, ending: '', hot: '' }); toast(popConn.name + ' can use Alcove until 4 Dec.'); };
+      pv.askOff = function () { set({ view: 'off', hot: '' }); };
+      pv.keepIt = function () { set({ view: '', hot: '' }); };
+      pv.off = function () {
+        set(assign({}, closed, { conns: conns.filter(function (c) { return c.id !== popConn.id; }) }));
+        toast(popConn.name + ' is disconnected. It can’t reach Alcove any more.');
+      };
+    }
+    v.pv = pv;
+    var popOpen = !!(st.pop && (popKind || popConn || popOther) && !askKind);
+    v.anyPop = popOpen || !!(asking && st.askMenu);
+    v.sheetFlag = popOpen ? 'true' : 'false';
+
+    /* A token being made. */
+    v.tokenName = st.tokenName;
+    v.setTokenName = function (e) { set({ tokenName: e.target.value }); };
+    v.days = [['7', '7 days'], ['30', '30 days'], ['90', '90 days']].map(function (d) { return { t: d[1], on: st.tokenDays === d[0] ? 'true' : 'false', go: function () { set({ tokenDays: d[0] }); } }; });
+    v.tokenChips = G.PERMS.map(function (p) {
+      var on = st.tokenScopes.indexOf(p.id) >= 0;
+      return { t: p.short, onA: on ? 'true' : 'false', go: function () { set({ tokenScopes: on ? st.tokenScopes.filter(function (x) { return x !== p.id; }) : st.tokenScopes.concat([p.id]) }); } };
+    });
+
+    /* The water: what they did, newest first, and things to ask. */
+    var showLog = st.scene !== 'first' && !failed && !loading;
+    v.hasLog = showLog; v.noLog = !showLog;
+    v.emptyTitle = failed ? 'Nothing to show' : 'Nothing yet';
+    v.emptyLine = failed ? 'What your agents did shows here once Alcove can reach the server.' : 'What your agents read and change in Alcove shows here, newest first.';
+    v.log = showLog ? G.LOG.map(function (d) {
+      return { day: d.day, rows: d.rows.map(function (r) {
+        var m = G.MARKS[r.kind], c = anyConn(r.who);
+        return {
+          who: c ? c.name : 'An agent', verb: r.verb, obj: r.obj || '', hasObj: !!r.obj, sub: r.sub, t: r.t,
+          icon: I[m.icon], kCls: ' is-' + m.tint, hotCls: hot('obj-' + r.id),
+          go: function () { toast(r.obj + ' opens.'); }
+        };
+      }) };
+    }) : [];
+    v.showMore = function () { toast('Earlier activity shows here, back to when each agent was connected.'); };
+    var talkers = conns.filter(function (c) { return c.via !== 'Token'; });
+    v.prompts = G.PROMPTS.map(function (q) {
+      var can = talkers.filter(function (c) { return c.scopes.indexOf(q.needs) >= 0; }).map(function (c) { return c.name; });
+      return {
+        q: q.q, can: can.length > 0, hotCls: hot('prompt-' + q.id),
+        sub: can.length ? names(can) + ' can do this' : conns.length ? 'Needs ' + label(q.needs).short.toLowerCase() : 'Needs ' + label(q.needs).short.toLowerCase(),
+        copy: function () { toast('Copied. Paste it into ' + (can[0] || 'your agent') + '.'); }
+      };
+    });
+
+    v.ov = assign({}, v.ov, { toast: st.toast, hasToast: !!st.toast });
+    return v;
+  }
+}
+</script>
+</body>
+</html>

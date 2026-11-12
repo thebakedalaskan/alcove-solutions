@@ -126,10 +126,10 @@ export const SubRows: Story = {
   )
 };
 export const SubRowsPhone: Story = { ...SubRows, name: 'Sub rows, phone', globals: { viewport: { value: 'phone' } } };
-/** An agent's connection: a tile as its mark. */
+/** Agents, in Connections: a tile as its mark, who's connected, and the way to Agents. */
 export const WithATile: Story = {
   name: 'With a tile',
-  args: { label: 'Weekly digest script', mark: <SettingTile icon="key" />, help: 'Read notes · Token', control: <><SettingFact>Expires 2 Dec</SettingFact><Button variant="quiet" size="sm" onClick={did('onDisconnect')}>Disconnect</Button></> }
+  args: { label: 'Agents', mark: <SettingTile icon="agent" />, help: 'Claude, Cursor and Weekly digest are connected.', control: <a href="#agents" className="set-go" onClick={(e) => e.preventDefault()}>Open Agents<Icon name="right" size={14} /></a> }
 };
 /** Something sits under the control (`stack`): the label stays level with the list, not with the pair. */
 export const Stacked: Story = {

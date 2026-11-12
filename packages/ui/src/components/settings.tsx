@@ -119,7 +119,7 @@ export function SettingFact({ icon, tone, title, children }: { icon?: IconName |
   return <span className={cn('set-f', tone && `is-${tone}`)} title={title}>{icon && <Icon name={icon} size={15} />}{children}</span>;
 }
 
-/** A connection's own mark, as a row's `mark`: a small tile holding an icon, such as an agent's or a token's. */
+/** A connection's own mark, as a row's `mark`: a small tile holding an icon, such as the agent on Agents' row. */
 export function SettingTile({ icon }: { icon: IconName }) {
   return <span className="set-tile" aria-hidden="true"><Icon name={icon} size={17} /></span>;
 }
@@ -132,21 +132,6 @@ export function SettingNote({ icon, tone = 'info', children, className, ...rest 
   return (
     <div {...rest} className={cn('set-note is-flush', tone === 'caution' && 'is-caution', className)}>
       <Icon name={icon ?? (tone === 'caution' ? 'alert' : 'info')} size={17} /><p>{children}</p>
-    </div>
-  );
-}
-
-/**
- * Something opened in place inside a panel, such as connecting an agent or making a token: its `title` and what it is
- * (`help`), then what to do. A SettingFoot after it closes it.
- */
-export function SettingStep({ title, help, children, className }: { title: ReactNode; help?: ReactNode; children?: ReactNode; className?: string | undefined }) {
-  const h = useId();
-  return (
-    <div className={cn('set-step', className)} role="group" aria-labelledby={h}>
-      <p id={h} className="set-step-t">{title}</p>
-      {help !== undefined && <p className="set-step-h">{help}</p>}
-      {children}
     </div>
   );
 }

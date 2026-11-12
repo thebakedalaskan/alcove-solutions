@@ -14,7 +14,8 @@ import {
   ImageOff, ImagePlus, Info, Italic, Lightbulb, Link2, List, ListChecks, ListCollapse, ListOrdered, ListTodo, LocateFixed, Megaphone, MessageSquareText, Minus,
   Moon, Navigation, PanelRight, Paperclip, Pilcrow, Quote, SquareCheckBig, Strikethrough, Sun, Table, TextAlignStart, TextQuote, Type, CalendarClock, StickyNote, Hourglass, PhoneCall,
   CircleOff, Droplet, Droplets, BellRing, Bot, Coffee, Ear, Gauge, Headphones, SmilePlus, Layers, MessagesSquare, VenetianMask,
-  FileCheck, FilePen, HandHelping, Laptop, MessageSquareLock, PhoneIncoming, Share2
+  FileCheck, FilePen, HandHelping, Laptop, MessageSquareLock, PhoneIncoming, Share2,
+  BookOpen, CalendarCheck, Plug, Sparkle, SquareTerminal, Terminal, Unplug
 } from 'lucide-react';
 import { cn } from '../cn';
 
@@ -52,7 +53,13 @@ const ICONS = {
   nudge: BellRing, agent: Bot, away: Coffee, hear: Ear, pace: Gauge, listening: Headphones, layers: Layers,
   privateChat: MessageSquareLock, ringIn: PhoneIncoming, fileCheck: FileCheck, shareNodes: Share2, handHelping: HandHelping, filePen: FilePen, laptop: Laptop,
   /* Play in outline, beside a level (SoundLevel); `play` is the filled one. */
-  playLine: Play
+  playLine: Play,
+  /*
+   * Agents: their marks are plain icons by kind, never their makers' logos (`sparkle`, `squareTerminal`, `terminal`, `plug`
+   * for any other, with `thread` for ChatGPT, `pointer` for Cursor and `code` for VS Code); `unplug` disconnects one, and
+   * `book` and `calCheck` say what one read or booked.
+   */
+  sparkle: Sparkle, squareTerminal: SquareTerminal, terminal: Terminal, plug: Plug, unplug: Unplug, book: BookOpen, calCheck: CalendarCheck
 } satisfies Record<string, LucideIcon>;
 
 const FILLED = new Set<IconName>(['dot', 'stop', 'play']);

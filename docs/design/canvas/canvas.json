@@ -47,6 +47,10 @@
    "name": "Search step by step"
   },
   {
+   "id": "steps-agents",
+   "name": "Agents step by step"
+  },
+  {
    "id": "parts",
    "name": "Parts"
   }
@@ -263,6 +267,24 @@
    "h": 5110,
    "title": "Search, every journey step by step",
    "page": "steps-search"
+  },
+  "Agents.dc.html": {
+   "x": 4560,
+   "y": 2360,
+   "w": 1440,
+   "h": 900,
+   "title": "Agents",
+   "page": "app",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "StepsAgents.dc.html": {
+   "x": 0,
+   "y": 0,
+   "w": 5432,
+   "h": 7568,
+   "title": "Agents, every journey step by step",
+   "page": "steps-agents"
   }
  },
  "order": [
@@ -276,6 +298,7 @@
   "Team.dc.html",
   "Record.dc.html",
   "Settings.dc.html",
+  "Agents.dc.html",
   "StepsPage.dc.html",
   "StepsNotes.dc.html",
   "StepsNote.dc.html",
@@ -289,7 +312,8 @@
   "Visitors.dc.html",
   "Scene.dc.html",
   "Search.dc.html",
-  "StepsSearch.dc.html"
+  "StepsSearch.dc.html",
+  "StepsAgents.dc.html"
  ],
  "notes": {
   "app-title": {

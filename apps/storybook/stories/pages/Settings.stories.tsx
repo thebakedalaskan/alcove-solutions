@@ -225,56 +225,18 @@ export const GoogleDriveDisconnectAfterReturn = page('/settings?drive=connected'
   }
 });
 
-/** Presses Connect an agent: Alcove's address opens in place. */
-const connectingAnAgent: NonNullable<PageStory['play']> = async ({ userEvent, step }) => {
-  await step('Press Connect an agent', async () => {
-    await userEvent.click(await screen.findByRole('button', { name: 'Connect an agent' }, { timeout: 8000 }));
-  });
-};
-/** Then Create a token, for a script that can't sign in. */
-const makingAToken: NonNullable<PageStory['play']> = async (context) => {
-  await connectingAnAgent(context);
-  await context.step('Press Create a token', async () => {
-    await context.userEvent.click(await screen.findByRole('button', { name: 'Create a token' }, { timeout: 8000 }));
-  });
-};
-/** Then names it and makes it, with what it can do as it starts: reading. */
-const issuingAToken: NonNullable<PageStory['play']> = async (context) => {
-  await makingAToken(context);
-  await context.step('Name it and press Create token', async () => {
-    await context.userEvent.type(await screen.findByRole('textbox', { name: 'Name' }, { timeout: 8000 }), 'Planning assistant');
-    await context.userEvent.click(screen.getByRole('button', { name: 'Create token' }));
-  });
-};
-/** No agents yet: Connect an agent says so. */
-export const AgentsEmpty = page('/settings#agents', 'busy');
-/** Each connection on a row of its own, with what it can do, when it was last used and Disconnect. */
+/** No agents yet: the row says what they're for, and Connect an agent opens Agents. */
+export const AgentsNone = page('/settings#agents', 'busy');
+export const AgentsNoneNight = night(AgentsNone);
+/** Agents is one row: who's connected, and Open Agents, where they're connected and changed. */
 export const AgentsConnected = page('/settings#agents', 'agents-connected');
 export const AgentsConnectedNight = night(AgentsConnected);
+/** On a phone the row is the way to Agents, since the tab bar keeps its five. */
 export const AgentsConnectedPhone = phone(AgentsConnected);
+export const AgentsConnectedPhoneNight = phoneNight(AgentsConnected);
+/** Until the connections are in, or when they don't come, the row says what agents are for, and opens Agents all the same. */
 export const AgentsLoading = page('/settings#agents', 'busy', { beforeEach: changing(troubled({ 'agents.list': 'hold' })) });
 export const AgentsUnavailable = page('/settings#agents', 'busy', { beforeEach: changing(troubled({ 'agents.list': 'failed' })) });
-/** Connect an agent opens in place: Alcove's address, with Copy. */
-export const ConnectAnAgent = page('/settings#agents', 'busy', { play: connectingAnAgent });
-export const ConnectAnAgentNight = night(ConnectAnAgent);
-export const ConnectAnAgentPhone = phone(ConnectAnAgent);
-/** Alcove's address didn't load: why, and Try again. */
-export const AgentAddressUnavailable = page('/settings#agents', 'busy', { beforeEach: changing(troubled({ 'agents.endpoint': 'failed' })), play: connectingAnAgent });
-/** A token for a script: its name, how long it lasts and what it can do. */
-export const CreatingAgentToken = page('/settings#agents', 'busy', { play: makingAToken });
-export const CreatingAgentTokenNight = night(CreatingAgentToken);
-/** The token shows once, with Copy, and Alcove's address beside it. */
-export const AgentTokenIssued = page('/settings#agents', 'busy', { play: issuingAToken });
-export const AgentTokenIssuedPhone = phone(AgentTokenIssued);
-export const AgentTokenRefused = page('/settings#agents', 'busy', { beforeEach: changing(troubled({ 'agents.createToken': 'failed' })), play: issuingAToken });
-export const AgentDisconnectRefused = page('/settings#agents', 'agents-connected', {
-  beforeEach: changing(troubled({ 'agents.revoke': 'failed' })),
-  play: async ({ userEvent, step }) => {
-    await step('Disconnect fails, so the connection stays in the list and a toast says why', async () => {
-      await userEvent.click(within(await screen.findByRole('group', { name: 'Workspace assistant' }, { timeout: 8000 })).getByRole('button', { name: 'Disconnect' }));
-    });
-  }
-});
 
 /* ------------------------------------------------------------------ notifications */
 /** The browser hasn't been asked: alerts still show inside Alcove, and Turn on is the only thing that asks it. */

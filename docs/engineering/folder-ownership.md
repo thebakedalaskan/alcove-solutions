@@ -44,7 +44,7 @@ apps/api/src/
   app.ts             shared middleware and feature-route composition
   features/
     account/         account, people and photos
-    agents/          scoped agent grants, OAuth, MCP operations and tools
+    agents/          scoped agent grants, OAuth, MCP operations and tools, and what agents did
     meetings/        schedule, invitations, calendar and repeats
     calls/           active-call lifecycle, state, rooms, MLS and notes/capture
     notes/           saved notes, additions, personal notes, series and writing

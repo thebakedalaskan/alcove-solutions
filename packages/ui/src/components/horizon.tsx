@@ -20,7 +20,7 @@ import { useReducedMotion } from 'motion/react';
 import { memo, useEffect, useMemo, useRef, useState, type AnimationEvent, type ComponentProps, type ReactNode } from 'react';
 import { cn } from '../cn';
 
-export type Moment = 'home' | 'team' | 'notes' | 'drive' | 'note' | 'settings' | 'record';
+export type Moment = 'home' | 'team' | 'agents' | 'notes' | 'drive' | 'note' | 'settings' | 'record';
 
 /** A small generator, so the sea is the same on every visit. */
 function seeded(seed: number): () => number {
@@ -51,6 +51,11 @@ const MOMENTS: Record<Moment, Drawing> = {
   team: {
     sun: true, glitter: 120, shine: 1, chop: 5, stars: 0, streaks: true,
     clouds: [{ x: 78, at: 0.12, w: 270, rows: 6, takes: 600 }, { x: 6, at: 0.34, w: 230, rows: 5, takes: 740 }, { x: 44, at: 0.05, w: 170, rows: 4, takes: 860 }]
+  },
+  /* Team's the other way round: the sun low on the right, just past the end of the line of agents. */
+  agents: {
+    sun: true, glitter: 120, shine: 1, chop: 5, stars: 0, streaks: true,
+    clouds: [{ x: 4, at: 0.12, w: 270, rows: 6, takes: 600 }, { x: 78, at: 0.34, w: 230, rows: 5, takes: 740 }, { x: 46, at: 0.05, w: 170, rows: 4, takes: 860 }]
   },
   notes: { sun: false, glitter: 70, shine: 0.55, chop: 5, stars: 7, streaks: false, clouds: [{ x: 16, at: 0.3, w: 230, rows: 4, takes: 720 }, { x: 72, at: 0.14, w: 170, rows: 3, takes: 900 }] },
   drive: { sun: false, glitter: 50, shine: 0.45, chop: 4, stars: 5, streaks: false, clouds: [{ x: 64, at: 0.24, w: 220, rows: 4, takes: 780 }, { x: 10, at: 0.12, w: 160, rows: 3, takes: 960 }] },
@@ -104,7 +109,7 @@ const drawn = (moment: Moment) => {
   const m = MOMENTS[moment];
   return { ...m, ...drawSea(m), starry: drawStars(m.stars), puffs: m.clouds.map((c, i) => ({ ...c, bars: drawCloud(c, 61 + i * 17) })) };
 };
-const SCENES: Record<Moment, ReturnType<typeof drawn>> = { home: drawn('home'), team: drawn('team'), notes: drawn('notes'), drive: drawn('drive'), note: drawn('note'), settings: drawn('settings'), record: drawn('record') };
+const SCENES: Record<Moment, ReturnType<typeof drawn>> = { home: drawn('home'), team: drawn('team'), agents: drawn('agents'), notes: drawn('notes'), drive: drawn('drive'), note: drawn('note'), settings: drawn('settings'), record: drawn('record') };
 
 /* ------------------------------------------------------- what passes through */
 type Span = readonly [number, number];
@@ -164,6 +169,7 @@ interface Life { quick: readonly Quick['kind'][]; slow: readonly Slow['kind'][];
 const LIFE: Record<Moment, Life> = {
   home: { quick: ['gulls', 'gulls', 'gulls', 'fish', 'fish', 'dolphins', 'school', 'flyer', 'marlin', 'whale'], slow: ['sail', 'sail', 'steamer', 'trawler', 'tall', 'freighter', 'tug', 'balloon'], gulls: [42, 104], fish: [30, 58] },
   team: { quick: ['gulls', 'gulls', 'fish', 'school', 'flyer', 'dolphins'], slow: ['sail', 'steamer', 'trawler', 'tall', 'tug'], gulls: [46, 120], fish: [34, 56] },
+  agents: { quick: ['gulls', 'gulls', 'fish', 'school', 'flyer', 'dolphins'], slow: ['sail', 'steamer', 'trawler', 'tall', 'tug'], gulls: [46, 120], fish: [34, 56] },
   notes: { quick: ['gulls', 'star', 'fish', 'school'], slow: ['sail', 'trawler', 'freighter'], gulls: [16, 44], fish: [16, 34] },
   drive: { quick: ['gulls', 'star', 'fish'], slow: ['sail', 'tug', 'trawler'], gulls: [18, 48], fish: [14, 30] },
   note: { quick: ['star'], slow: [], gulls: [0, 0], fish: [0, 0] },
@@ -306,7 +312,7 @@ function laneOf(moment: Moment): { quick: Lane<Quick>; slow: Lane<Slow> } {
     slow: { arrive: slowly, first: SLOW_FIRST, gap: SLOW_GAP, already: () => { const kind = pick(ships); return kind && coin() ? slowVisit(kind, between([0.12, 0.5])) : null; } }
   };
 }
-const LANES: Record<Moment, ReturnType<typeof laneOf>> = { home: laneOf('home'), team: laneOf('team'), notes: laneOf('notes'), drive: laneOf('drive'), note: laneOf('note'), settings: laneOf('settings'), record: laneOf('record') };
+const LANES: Record<Moment, ReturnType<typeof laneOf>> = { home: laneOf('home'), team: laneOf('team'), agents: laneOf('agents'), notes: laneOf('notes'), drive: laneOf('drive'), note: laneOf('note'), settings: laneOf('settings'), record: laneOf('record') };
 
 /** One quick visitor, drawn as its kind is. */
 function Quickly({ v, gone }: { v: Quick; gone: () => void }) {

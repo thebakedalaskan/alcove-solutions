@@ -9,9 +9,9 @@
 import { Horizon, VISITORS, type Moment, type Showing, type Visitor } from '@alcove/ui';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 
-const MOMENTS = ['home', 'team', 'notes', 'drive', 'note', 'settings', 'record'] as const satisfies readonly Moment[];
+const MOMENTS = ['home', 'team', 'agents', 'notes', 'drive', 'note', 'settings', 'record'] as const satisfies readonly Moment[];
 /** Where the sky meets the sea in the story's 480px box, for each moment: about as much of it as each page gives the sky. */
-const HZ: Record<Moment, number> = { home: 300, team: 250, notes: 190, drive: 165, note: 130, settings: 96, record: 330 };
+const HZ: Record<Moment, number> = { home: 300, team: 250, agents: 255, notes: 190, drive: 165, note: 130, settings: 96, record: 330 };
 
 /** Boats and ships take minutes to cross a page; shown for themselves, they cross five times as fast. */
 const SHIPS: ReadonlySet<Visitor> = new Set<Visitor>(['sail', 'steamer', 'trawler', 'tall', 'freighter', 'tug']);
