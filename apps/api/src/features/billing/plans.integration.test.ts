@@ -545,6 +545,40 @@ describe('Pro', () => {
     });
   });
 
+  it('turns renewing off with a refund, so upkeep never buys back what was refunded, and takes back the notice it renewed', async () => {
+    await h.setLimit('plan.period_seconds', 3600);
+    await h.setLimit('plan.pro.remind_seconds', 600);
+    // Renewed at the reminder, then refunded before that month starts: Pro ends at the old end, and nothing is bought there.
+    const ann = await account();
+    await give(ann, 2 * PRICE);
+    await ann.api.plans.buyPro(1, PRICE);
+    const end = Date.parse((await ann.api.plans.setRenew(true)).pro.until ?? '');
+    await upkeepAt(ann, end - 300_000);
+    expect(await ann.api.plans.plan()).toMatchObject({ balance: { microUsd: 0 }, pro: { until: new Date(end + 3_600_000).toISOString() }, notices: [{ kind: 'pro-renewed' }] });
+    expect(await ann.api.plans.refundPro()).toMatchObject({
+      kind: 'pro', balance: { microUsd: PRICE }, pro: { until: new Date(end).toISOString(), renew: false, refundableMicroUsd: 0 }, notices: []
+    });
+    await upkeepAt(ann, end + 60_000);
+    expect(await ann.api.plans.plan()).toMatchObject({
+      kind: 'free', balance: { microUsd: PRICE }, pro: { months: [], renew: false }, notices: [{ kind: 'pro-ended', until: new Date(end).toISOString() }]
+    });
+    expect(await labels(ann)).toEqual(['Pro refunded, 1 month', 'Pro, renewed for a month', 'Pro, 1 month', 'Added by support']);
+    vi.useRealTimers();
+
+    // A month bought by hand inside the reminder's window, before upkeep came, then refunded: not bought straight back.
+    const bob = await account();
+    await give(bob, 3 * PRICE);
+    await bob.api.plans.buyPro(1, PRICE);
+    const bobEnd = Date.parse((await bob.api.plans.setRenew(true)).pro.until ?? '');
+    vi.useFakeTimers({ toFake: ['Date'], now: bobEnd - 300_000 });
+    await bob.api.plans.buyPro(1, PRICE);
+    expect(await bob.api.plans.refundPro()).toMatchObject({ balance: { microUsd: 2 * PRICE }, pro: { until: new Date(bobEnd).toISOString(), renew: false } });
+    await upkeepAt(bob, bobEnd - 240_000);
+    expect(await bob.api.plans.plan()).toMatchObject({
+      kind: 'pro', balance: { microUsd: 2 * PRICE }, pro: { until: new Date(bobEnd).toISOString() }, notices: [{ kind: 'pro-ending', until: new Date(bobEnd).toISOString() }]
+    });
+  });
+
   it('tells its owner before Pro ends and when it has, until they dismiss it, and nobody else can', async () => {
     await h.setLimit('plan.period_seconds', 3600);
     await h.setLimit('plan.pro.remind_seconds', 600);

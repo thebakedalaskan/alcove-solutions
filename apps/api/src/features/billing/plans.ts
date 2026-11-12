@@ -547,7 +547,9 @@ export async function buyHours(d: Service, ownerId: string, packs: number, micro
 /**
  * Refunds every month of Pro that hasn't started, at what was paid for it, less the lower price's difference on the months
  * kept of a year or more that ends up shorter (`refundOf`). A month that has started isn't refunded, and nothing is when
- * nothing would come back.
+ * nothing would come back. Renewing goes off, so upkeep never buys back what was given back (at the reminder, or at the
+ * end with the refund in the balance), and a notice that Pro was renewed into a month refunded is taken back: Pro ends
+ * when the month running now does, unless its owner turns renewing on again or buys more.
  */
 export async function refundPro(d: Service, ownerId: string): Promise<void> {
   await changing(d, ownerId, (a, l, now) => {
@@ -557,7 +559,10 @@ export async function refundPro(d: Service, ownerId: string): Promise<void> {
       throw conflict(`Refunding now would give nothing back: kept for fewer than ${monthsOf(l.get('plan.pro.yearly_from_months'))}, Pro bought at its lower price costs a month’s price for each month you’ve had.`, { ownerId, months: months.length });
     }
     plog.info('pro refunded', { ownerId, months: months.length, microUsd });
-    return withEntry({ ...a, pro: a.pro.filter((m) => !months.includes(m)) }, microUsd, `Pro refunded, ${monthsOf(months.length)}`);
+    if (a.renew) plog.info('pro renewing set', { ownerId, renew: false, why: 'refund' });
+    const ends = new Set(months.map((m) => m.to));
+    const notices = a.notices.map((n) => (n.kind === 'pro-renewed' && n.until !== null && ends.has(n.until) ? { ...n, dismissed: true } : n));
+    return withEntry({ ...a, pro: a.pro.filter((m) => !months.includes(m)), renew: false, notices }, microUsd, `Pro refunded, ${monthsOf(months.length)}`);
   });
 }
 

@@ -188,7 +188,11 @@ first keeps its price. A month that has started isn't refunded; with none to ref
 to refund that hasn’t started…"), and when nothing would come back (two months left of a year, say) it's `conflict` too
 ("Refunding now would give nothing back…"), with nothing changed. `Plan.pro.refundableMicroUsd` says what a refund would
 add, by the same rule. Each month keeps the purchase it was one of, so the record keeps every month of a purchase that has a
-month still to come; the rest of the months that have ended go, as before.
+month still to come; the rest of the months that have ended go, as before. A refund turns renewing off (`Plan.pro.renew`
+false, logged `pro renewing set` with `why: refund`): otherwise upkeep would buy back what was just given back, at the
+reminder or at the end, paid for by the refund itself. Pro then ends when the month running now does, with `pro-ended`
+(and `pro-ending` first, if its reminder hasn't come yet), unless its owner turns renewing on again or buys more months. A
+`pro-renewed` notice about a month refunded is dismissed: Pro no longer runs to its `until`.
 
 **Renewing** (`PUT /v1/plan/renew { renew }`) is off by default. Upkeep (`upkeep` in `plans.ts`, every 5 minutes, by
 `plan_accounts.due_at`) looks at an account at the earliest of: its release grace ending; `plan.pro.remind_seconds` (3

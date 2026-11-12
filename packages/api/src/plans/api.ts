@@ -17,7 +17,10 @@ export interface PlansApi {
    * when a pack holds other than what was shown.
    */
   buyHours(packs: number, microUsdPerPack: number, minutesPerPack: number): Promise<Plan>;
-  /** Refunds every month of Pro that hasn't started to the balance. Refused when there's none: a started month isn't refunded. */
+  /**
+   * Refunds every month of Pro that hasn't started to the balance, and turns renewing off, so none is bought back: Pro ends
+   * when the month running now does. Refused when there's none: a started month isn't refunded.
+   */
   refundPro(): Promise<Plan>;
   /** Turns on or off buying a month from the balance as Pro is about to end. */
   setRenew(renew: boolean): Promise<Plan>;
