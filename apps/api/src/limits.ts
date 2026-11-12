@@ -39,8 +39,7 @@ export interface LimitSpec {
 }
 
 /**
- * Every limit there is (docs: Plans and usage, and Deployment › Changing a limit): each plan's notes, storage, files and
- * shared workspaces, and its price; what an hour of notes is reckoned at, when AI stops and when an organizer is told
+ * Every limit there is (docs: Plans and usage, and Deployment › Changing a limit): each plan's notes, storage and files, and its price; what an hour of notes is reckoned at, when AI stops and when an organizer is told
  * it's close; how long a plan's period and its grace last; the longest call and the most people in one; and what one
  * person uploads in a day, everywhere. A ceiling leaves room to raise a default a long way, except a file's: a whole file
  * is read in one response, which is cut at 280 seconds and past 16 MiB can't pick up where it stopped, so 512 MiB needs
@@ -50,7 +49,6 @@ export const LIMITS = {
   'plan.free.notes_minutes': { default: 300, floor: 0, ceiling: 60_000, unit: 'minutes', measures: 'Free: the notes a period brings, reckoned at ai.hour_micro_usd an hour.' },
   'plan.free.storage_bytes': { default: 10 * GiB, floor: 0, ceiling: TiB, unit: 'bytes', measures: 'Free: what an account stores, its uploads and its recordings.' },
   'plan.free.file_bytes': { default: 512 * MiB, floor: 0, ceiling: MAX_MEDIA_BYTES, unit: 'bytes', measures: 'Free: one file.' },
-  'plan.free.shared_workspaces': { default: 1, floor: 0, ceiling: 1_000, unit: 'count', measures: 'Free: shared workspaces an account makes (a call’s own don’t count).' },
   'plan.pro.price_micro_usd': { default: 20_000_000, floor: 0, ceiling: 10_000_000_000, unit: 'micro-usd', measures: 'Pro: one period.' },
   'plan.period_seconds': { default: 30 * DAY, floor: MINUTE, ceiling: 365 * DAY, unit: 'seconds', measures: 'A plan’s period: notes renew, and paid time runs, in these.' },
   'plan.grace_seconds': { default: 15 * DAY, floor: 0, ceiling: 90 * DAY, unit: 'seconds', measures: 'Once an account is over its plan’s limits: how long until what’s over stops taking more.' },
@@ -62,6 +60,7 @@ export const LIMITS = {
   'ai.image_tokens': { default: 1_500, floor: 0, ceiling: 100_000, unit: 'count', measures: 'The input tokens one image is taken to be at most, before NEAR AI says.' },
   'call.max_seconds': { default: 10 * HOUR, floor: 10 * MINUTE, ceiling: 48 * HOUR, unit: 'seconds', measures: 'The longest a call runs: it ends then, everyone told 5 minutes before.' },
   'call.max_people': { default: 100, floor: 2, ceiling: 1_000, unit: 'count', measures: 'The most people in a call at once, those waiting to be let in included.' },
+  'workspaces.max_made': { default: 1_000, floor: 1, ceiling: 100_000, unit: 'count', measures: 'The most workspaces one account makes, to stop one from making them without end.' },
   'media.account_day_bytes': { default: 20 * GiB, floor: 0, ceiling: 200 * GiB, unit: 'bytes', measures: 'What one person uploads in a day (UTC), in every workspace.' }
 } as const satisfies Record<string, LimitSpec>;
 export type LimitName = keyof typeof LIMITS;

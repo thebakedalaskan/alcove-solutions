@@ -479,7 +479,7 @@ export const NewWorkspacePhone = phone(NewWorkspace);
 function earlierReview(): void {
   const at = iso(0, 9, 0);
   const day = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short' }).format(new Date(at));
-  current().workspaces.push({ id: 'ws-review-early', name: `Design review · ${day}`, role: 'admin', people: 4, items: [], frozen: false, createdAt: at, call: { title: 'Design review', at } });
+  current().workspaces.push({ id: 'ws-review-early', name: `Design review · ${day}`, role: 'admin', people: 4, items: [], createdAt: at, call: { title: 'Design review', at } });
 }
 /** The picker when this call's home and an earlier one share a name: each says when its call started. */
 export const ThePickerSameNameTwice = inCall({ scenario: 'call-soon', call: REVIEW, script: { here: REVIEWERS }, then: earlierReview }, { play: openPicker('Design review · 4 Nov') });

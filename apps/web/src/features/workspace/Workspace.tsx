@@ -243,8 +243,7 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
     live: call?.live, workspaceId, pass, owner, tree, at, member, here: view.here, closed: call?.closed ?? false, go, say, openDoc, ids
   });
   const role = view.tree?.role ?? null;
-  // A workspace read-only because its owner is over their plan takes nothing new, from its admins either.
-  const canChange = (role === 'admin' || role === 'edit') && view.tree?.frozen !== true;
+  const canChange = role === 'admin' || role === 'edit';
   const documentId = at.kind === 'document' ? at.id : null;
   const item = documentId === null ? undefined : tree.all.get(documentId);
 

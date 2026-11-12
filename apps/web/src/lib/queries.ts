@@ -182,7 +182,7 @@ export const q = {
     queryFn: () => api.calls.series(code).catch((e: unknown) => { if (errorCode(e) === 'unauthenticated') return null; throw e; }),
     retry: false, staleTime: 30_000, refetchInterval: 60_000, refetchOnWindowFocus: true
   }),
-  /** The plan: notes left, storage, shared workspaces and the balance. Read again every minute, so notes left follows calls. */
+  /** The plan: notes left, storage and the balance. Read again every minute, so notes left follows calls. */
   plan: () => queryOptions({ queryKey: qk.plan, queryFn: () => api.plans.plan(), refetchInterval: 60_000 }),
   /**
    * The ways to add money. A server that can't take payments answers unavailable: nothing says so, the way to

@@ -1,6 +1,6 @@
 /*
  * Plan: the plan you're on and when it renews, about how much of its notes is left (with the sun on the row's own
- * hairline where it runs to), storage and shared workspaces against its limits, and the balance plans are bought with,
+ * hairline where it runs to), storage against its limit, and the balance plans are bought with,
  * with adding money when the server takes payments. Being over the plan's limits is said once, in a note: until when
  * everything works as before, or what's stopped since. Top-ups on their way are listed under the balance, each opening
  * the sheet on it (topup.tsx), so closing the sheet loses none; one nothing has reached yet can be cancelled from its row.
@@ -46,7 +46,7 @@ export function PlanGroup({ plan }: { plan: Plan }) {
     });
   };
   const renews = shortDay(new Date(plan.period.to));
-  const { storage, sharedWorkspaces: spaces } = plan;
+  const { storage } = plan;
   return (
     <SettingsGroup id="plan" title="Plan">
       <SettingsPanel>
@@ -57,8 +57,6 @@ export function PlanGroup({ plan }: { plan: Plan }) {
         </SettingRow>
         <SettingRow label="Storage" help={`Uploads and call recordings. Files up to ${roomLabel(storage.fileBytes)}.`}
           control={<SettingFact>{roomLabel(storage.usedBytes)} of {roomLabel(storage.limitBytes)}</SettingFact>} />
-        <SettingRow label="Shared workspaces" help="A call’s own workspace doesn’t count."
-          control={<SettingFact>{spaces.limit === null ? spaces.made : `${spaces.made} of ${spaces.limit}`}</SettingFact>} />
         <Limits plan={plan} />
       </SettingsPanel>
       <SettingsPanel>
@@ -93,13 +91,11 @@ export function PlanGroup({ plan }: { plan: Plan }) {
 function Limits({ plan }: { plan: Plan }) {
   const { grace, over } = plan;
   const name = PLAN_NAMES[plan.kind];
-  if (grace) {
-    const what = [grace.workspaces && 'your extra shared workspaces become read-only', grace.storage && 'uploads and notes stop'].filter(Boolean).join(', and ');
-    return <SettingNote tone="caution">You’re over {name}’s limits. Everything works as before until {shortDay(new Date(grace.until))}; then {what} until you upgrade or make room.</SettingNote>;
+  if (grace?.storage) {
+    return <SettingNote tone="caution">You’re over {name}’s storage. Everything works as before until {shortDay(new Date(grace.until))}; then uploads and notes stop until you upgrade or make room.</SettingNote>;
   }
-  if (over.workspaces || over.storage) {
-    const what = [over.workspaces && 'Your extra shared workspaces are read-only', over.storage && 'uploads and notes have stopped'].filter(Boolean).join(', and ');
-    return <SettingNote tone="caution">{what}: you’re over {name}’s limits. Upgrade, or make room.</SettingNote>;
+  if (over.storage) {
+    return <SettingNote tone="caution">Uploads and notes have stopped: you’re over {name}’s storage. Upgrade, or make room.</SettingNote>;
   }
   return null;
 }

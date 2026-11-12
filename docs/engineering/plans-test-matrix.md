@@ -17,7 +17,7 @@ Suites: `billing/meter` (`apps/api/src/features/billing/meter.integration.test.t
 | A1′ | The tier screen after the first sign-in | — | 4 | Not built |
 | A2 | New account picks Pro with $0: deposit, then buy | — | 2 | Not built |
 | A3 | New account picks Team: buy licenses, the admin takes one | — | 3 | Not built |
-| A4 | An account from before plans: Free from now, credits gone, the plans shown once, 15 days' grace if over Free | billing/plans › accounts from before plans (3 tests) | 1 | Passes |
+| A4 | An account from before plans: Free from now, credits gone, the plans shown once, 15 days' grace if over Free's storage | billing/plans › accounts from before plans (3 tests) | 1 | Passes |
 | A5 | A sign-in from a call link skips the tier screen, which shows on the next load | — | 4 | Not built |
 | A6 | Delete the account and sign in again: a fresh Free account | flows › deleting an account | 1 | Passes |
 | **B: money** |  |  |  |  |
@@ -29,7 +29,7 @@ Suites: `billing/meter` (`apps/api/src/features/billing/meter.integration.test.t
 | B6 | Buys at once on two instances never spend twice | — | 2 | Not built |
 | **C: Free** |  |  |  |  |
 | C1 | 300 minutes a period; renews from when it began; nothing carries over | billing/plans › renews its notes… | 1 | Passes |
-| C2 | One shared workspace; a second is refused; joining others and a call's own are fine | billing/plans › makes one shared workspace…; by hand | 1 | Passes |
+| C2 | Free makes as many shared workspaces as it likes, and every one works | billing/plans › makes as many shared workspaces…; workspaces (limits) for `workspaces.max_made` | 1 | Passes |
 | C3 | A file over the plan's size is refused; storage fills and refuses, counted against whoever made the workspace | billing/plans › takes files…; workspaces/media (limits); by hand | 1 | Passes |
 | C4 | Call recordings count; full storage stops notes for everyone (reason storage), and notes need 1 MiB to come back | billing/plans › counts call recordings… | 1 | Passes |
 | **D: metering** |  |  |  |  |
@@ -71,8 +71,7 @@ drive it end to end.
 
 | What | Where | Seen |
 | --- | --- | --- |
-| Signing up | App › Settings › Plan, light and dark, phone | Free, renews in 30 days, about 5 h of notes, under 1 MB of 10 GB, 0 of 1 shared workspaces, $0 |
-| A second shared workspace | App › Drive | Refused: "Free has one shared workspace, and you have it. Move to Pro for as many as you like." |
+| Signing up | App › Settings › Plan, light and dark, phone | Free, renews in 30 days, about 5 h of notes, under 1 MB of 10 GB, $0 |
 | Storage full (`plan.free.storage_bytes` 1 KiB) | App › a workspace | An upload is refused: "Your storage is full. Delete something, or move to a plan with more room." |
 | The side panel | App and Storybook | Upgrade to Pro above "About 5 h of notes left", on Free only |
 | Notes have stopped | Storybook › Calls › Notes, wide and phone | Drops from the top; × closes it, and it stays closed through a reload in that tab |

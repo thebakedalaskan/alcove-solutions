@@ -75,14 +75,6 @@ export const TrashEmpty = page(`${at('ws-design')}/trash`, 'busy');
 export const InTrash = page(at('ws-product', 'Old roadmap'), 'busy');
 /** The company handbook, which Art can only read: the bar says who to ask, and nothing on the page changes anything. */
 export const ReadOnly = page(at('ws-handbook', 'Holidays'), 'busy');
-/**
- * Over Free's one shared workspace, past the grace: Design, which Art made, is read-only for everyone in it, and the bar says
- * why and what brings it back.
- */
-export const FrozenWorkspace = page(at('ws-design', 'Empty states'), 'plan-over');
-export const FrozenWorkspaceNight = { ...FrozenWorkspace, globals: { theme: 'dark' } };
-export const FrozenWorkspacePhone = { ...FrozenWorkspace, globals: PHONE };
-
 /** In the standup's home: people tagged on its lines, words with comments on them, and the toast for Kofi's tag. */
 export const TagsAndComments = page(FIXES, 'busy');
 export const TagsAndCommentsNight = page(FIXES, 'busy', { globals: { theme: 'dark' } });

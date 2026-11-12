@@ -26,9 +26,9 @@ import { masterKey } from '../../owners';
 import { issueMediaToken, readMediaToken, type MediaToken } from '../../mediaToken';
 import { deleteQueued, queueDelete } from '../recordings/audio';
 import { jpegSize } from '../recordings/screens';
-import { ID128, frozenRefusal, limitKey, requireDocument, roleOf, whoNamed, workspaceFor, type Reader, type Who, type Workspace } from './access';
+import { ID128, limitKey, requireDocument, roleOf, whoNamed, workspaceFor, type Reader, type Who, type Workspace } from './access';
 import { fileBytesFor, requireRoom, storageLimitOf } from '../billing/plans';
-import { frozen, payerOf, usedBytes } from '../billing/storage';
+import { payerOf, usedBytes } from '../billing/storage';
 
 const mlog = log.child({ component: 'media' });
 
@@ -281,7 +281,6 @@ const NO_UPLOADS = 'Files can’t be uploaded right now.';
  */
 async function withinLimits(d: Deps, db: Db, w: Place, u: Uploader, allowed: Allowed, size: number, adding: number): Promise<void> {
   const context = { workspaceId: w.workspaceId, sizeBytes: size, addingBytes: adding };
-  if (await frozen(db, w.owner.ownerId)) throw frozenRefusal(w.workspaceId);
   if (size > allowed.file) {
     throw invalid(allowed.file ? `This file is bigger than ${shown('plan.free.file_bytes', allowed.file)}, the most a file can be here.` : NO_UPLOADS, { ...context, limit: 'file', limitBytes: allowed.file });
   }
@@ -792,11 +791,11 @@ export async function remove(d: Deps, who: Who, workspaceId: string, documentId:
   const ownerId = await tx(d.pool, async (c) => {
     const w = await workspaceFor(d, who, workspaceId, c, 'change');
     const doc = requireDocument(who, w, documentId, 'edit');
-    if (roleOf(who, { role: w.role, grants: w.lasting, frozen: w.frozen }, documentId, doc.item) !== 'edit') {
+    if (roleOf(who, { role: w.role, grants: w.lasting }, documentId, doc.item) !== 'edit') {
       throw new ForbiddenError('You can work on this in the call, but you can’t delete its files for good.', { level: 'info', context: { workspaceId, documentId, mediaId, why: 'only a seat' } });
     }
     if (!(await fileIn(w, c, documentId, mediaId))) throw noFile(w, documentId, mediaId);
-    const lasting = { role: w.role, grants: w.lasting, frozen: w.frozen };
+    const lasting = { role: w.role, grants: w.lasting };
     const stays = (await documentsWith(w, c, mediaId)).find((id) => { const item = w.state.items[id]; return item !== undefined && roleOf(who, lasting, id, item) !== 'edit'; });
     if (stays) throw new ForbiddenError('This file is also in a document you can’t edit.', { context: { workspaceId, documentId: stays, mediaId } });
     await forget(w.owner, c, [mediaId]);

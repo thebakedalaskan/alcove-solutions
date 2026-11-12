@@ -237,7 +237,7 @@ The last of the light, with you in it, then seven groups. Change one thing and l
   Disconnect in place. Connect an agent opens in place too: Alcove's address with Copy, or a token for a script, shown
   once. The shared `AgentPermissions`, `AgentDisclosure`, `AgentAddress` and `AgentTokenReveal` components live in
   `components/agents.tsx` and `styles/agents.css`.
-- **Plan says what's left, never what it costs.** Its first panel is Plan, Notes left, Storage and Shared workspaces. Notes
+- **Plan says what's left, never what it costs.** Its first panel is Plan, Notes left and Storage. Notes
   left and Storage each have a `SunLine` on the row's own hairline, the sun at the end in a fresh period and moving back as
   it's used. The AI allowance is kept in dollars and never shown: notes left is said as time, as an estimate. Over the plan's
   limits, one `SettingNote` says until when everything works as before. The balance is a second panel, and Add money opens a

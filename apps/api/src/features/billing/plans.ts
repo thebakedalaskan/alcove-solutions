@@ -12,7 +12,7 @@ import { bytea, exec, maybeOne, rows, tx, type Db } from '../../db';
 import { InternalError, PlanLimitError } from '../../errors';
 import { limitsNow, type Limits } from '../../limits';
 import { log } from '../../log';
-import { setFrozen, settlePayers, sharedMade, usedBytes } from './storage';
+import { settlePayers, usedBytes } from './storage';
 
 const plog = log.child({ component: 'plans' });
 /** How many changes to the balance are kept with it, to explain it. */
@@ -25,7 +25,7 @@ const Entry = z.object({ id: z.string(), at: z.string(), label: z.string(), micr
  * Limits held as they were while an account gets within its plan's (null: no limit then), until `until`: after a plan
  * ends, or at the release that brought plans for an account already over Free's.
  */
-const Grace = z.object({ until: z.string(), storageBytes: z.number().int().nullable(), sharedWorkspaces: z.number().int().nullable() });
+const Grace = z.object({ until: z.string(), storageBytes: z.number().int().nullable() });
 export const PlanAccount = z.object({
   balanceMicroUsd: z.number().int(),
   history: z.array(Entry),
@@ -51,8 +51,6 @@ export interface InForce {
   notesMinutes: number;
   storageBytes: number;
   fileBytes: number;
-  /** Shared workspaces it may make; null: as many as it likes. */
-  sharedWorkspaces: number | null;
 }
 
 /** The plan in force at `now`: Free, in periods counted from `freeFrom`. */
@@ -62,17 +60,16 @@ export function inForce(a: PlanAccount, l: Limits, now = Date.now()): InForce {
   const n = Math.max(0, Math.floor((now - start) / period));
   return {
     kind: 'free', from: start + n * period, to: start + (n + 1) * period,
-    notesMinutes: l.get('plan.free.notes_minutes'), storageBytes: l.get('plan.free.storage_bytes'), fileBytes: l.get('plan.free.file_bytes'),
-    sharedWorkspaces: l.get('plan.free.shared_workspaces')
+    notesMinutes: l.get('plan.free.notes_minutes'), storageBytes: l.get('plan.free.storage_bytes'), fileBytes: l.get('plan.free.file_bytes')
   };
 }
 
 /** The limits an account is held to now: its plan's, or, during a grace, the more of those and the grace's (null: none). */
-export function heldTo(a: PlanAccount, p: InForce, now = Date.now()): { storageBytes: number | null; sharedWorkspaces: number | null } {
+export function heldTo(a: PlanAccount, p: InForce, now = Date.now()): { storageBytes: number | null } {
   const g = a.grace && Date.parse(a.grace.until) > now ? a.grace : null;
-  if (!g) return { storageBytes: p.storageBytes, sharedWorkspaces: p.sharedWorkspaces };
+  if (!g) return { storageBytes: p.storageBytes };
   const more = (plan: number | null, held: number | null) => (plan === null || held === null ? null : Math.max(plan, held));
-  return { storageBytes: more(p.storageBytes, g.storageBytes), sharedWorkspaces: more(p.sharedWorkspaces, g.sharedWorkspaces) };
+  return { storageBytes: more(p.storageBytes, g.storageBytes) };
 }
 
 /** When upkeep should next look at an account: when its grace ends, if it has one. */
@@ -86,14 +83,14 @@ export async function open(d: Pick<Deps, 'cfg'>, db: Db, ownerId: string): Promi
 
 /**
  * The row for an account from before plans, on Free from now. If it's already over Free's limits it keeps working as it
- * did for the grace period: no limit on storage or shared workspaces until then. Nothing happens if another request made
+ * did for the grace period: no limit on storage until then. Nothing happens if another request made
  * the row first.
  */
 async function carryOver(d: Service, db: Db, ownerId: string): Promise<void> {
   const l = await limitsNow(d, db);
   const now = Date.now();
-  const over = (await usedBytes(db, ownerId)) > l.get('plan.free.storage_bytes') || (await sharedMade(db, ownerId)) > l.get('plan.free.shared_workspaces');
-  const grace = over ? { until: new Date(now + l.get('plan.grace_seconds') * 1000).toISOString(), storageBytes: null, sharedWorkspaces: null } : null;
+  const over = (await usedBytes(db, ownerId)) > l.get('plan.free.storage_bytes');
+  const grace = over ? { until: new Date(now + l.get('plan.grace_seconds') * 1000).toISOString(), storageBytes: null } : null;
   const a: PlanAccount = { balanceMicroUsd: 0, history: [], freeFrom: new Date(now).toISOString(), choose: true, grace };
   const made = await exec(db, 'INSERT INTO plan_accounts (owner_id, state_ciphertext, due_at) VALUES ($1,$2,$3) ON CONFLICT (owner_id) DO NOTHING', [ownerId, seal(d, ownerId, a), dueAt(a)]);
   if (made) plog.info('plan account carried over', { ownerId, grace: over });
@@ -154,32 +151,16 @@ export async function fileBytesFor(d: Service, db: Db, payerId: string): Promise
   return inForce(a, await limitsNow(d, db)).fileBytes;
 }
 
-/** Refuses another shared workspace for an account that has as many as its plan allows. In the caller's transaction. */
-export async function requireWorkspaceRoom(d: Service, db: Db, ownerId: string): Promise<void> {
-  const a = await accountOf(d, db, ownerId);
-  const { sharedWorkspaces } = heldTo(a, inForce(a, await limitsNow(d, db)));
-  if (sharedWorkspaces === null || (await sharedMade(db, ownerId)) < sharedWorkspaces) return;
-  throw new PlanLimitError(sharedWorkspaces === 1 ? 'Free has one shared workspace, and you have it. Move to Pro for as many as you like.'
-    : 'You have as many shared workspaces as your plan has. Move to Pro for as many as you like.', 'workspaces', { context: { ownerId, limit: sharedWorkspaces } });
-}
-
-/** Which shared workspaces of an account's are read-only, set again from what it's held to now. Returns those that changed. */
-export async function refreeze(d: Service, db: Db, ownerId: string, a: PlanAccount): Promise<string[]> {
-  return setFrozen(db, ownerId, heldTo(a, inForce(a, await limitsNow(d, db))).sharedWorkspaces);
-}
-
 /**
  * Upkeep for plans, each part on its own: settles who pays for workspaces nobody does, gives every account from before
- * plans its row (so a grace runs out even for someone who never comes back), and ends graces that are over, making what's
- * past the plan's limits read-only. Returns the workspaces that changed, to tell whoever's in them, and how many accounts
- * it looked at.
+ * plans its row (so a grace runs out even for someone who never comes back), and ends graces that are over. Returns how many
+ * accounts it settled, gave a row and looked at.
  */
-export async function upkeep(d: Service): Promise<{ settled: number; carried: number; due: number; changed: string[] }> {
+export async function upkeep(d: Service): Promise<{ settled: number; carried: number; due: number }> {
   const settled = await settlePayers(d.pool);
   const missing = await rows(d.pool, z.object({ owner_id: z.string() }), `
     SELECT DISTINCT i.owner_id FROM identities i WHERE NOT EXISTS (SELECT 1 FROM plan_accounts p WHERE p.owner_id = i.owner_id) LIMIT $1`, [BATCH]);
   for (const m of missing) await tx(d.pool, (c) => carryOver(d, c, m.owner_id));
-  const changed: string[] = [];
   let due = 0;
   for (;;) {
     const one = await tx(d.pool, async (c) => {
@@ -191,11 +172,10 @@ export async function upkeep(d: Service): Promise<{ settled: number; carried: nu
       const next = a.grace && Date.parse(a.grace.until) <= now ? { ...a, grace: null } : a;
       if (next !== a) plog.info('grace ended', { ownerId: r.owner_id });
       await save(d, c, r.owner_id, next);
-      changed.push(...(await refreeze(d, c, r.owner_id, next)));
       return true;
     });
     if (!one) break;
     if (++due >= BATCH) break;
   }
-  return { settled, carried: missing.length, due, changed };
+  return { settled, carried: missing.length, due };
 }

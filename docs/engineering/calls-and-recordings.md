@@ -1117,7 +1117,7 @@ into the call. Being in a call, or organizing it, opens nothing.
   people opening it at once get one. A chosen home the organizer can no longer make things in, one deleted since, or one with
   no room for the call's folder (a full tree), isn't theirs to use: the call gets a new one, and the meeting names it. A home
   counts as having the call's folder only once the folder's there. A home made for a call doesn't count towards the
-  workspaces someone can make by hand (`MAX_MADE`). The home doesn't change during the call, whichever workspace is viewed.
+  workspaces someone can make by hand (`workspaces.max_made`). The home doesn't change during the call, whichever workspace is viewed.
 - **In a series.** The next call scheduled takes `workspaceId` with it, and every call of a series scheduled to repeat
   starts with it. A call that settles a new home takes the later calls that had none, or had the one it replaced, along,
   once the call's row is let go, so a series shares one home with a folder for each call. A later call someone gave a

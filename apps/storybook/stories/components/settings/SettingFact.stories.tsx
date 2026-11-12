@@ -46,8 +46,8 @@ export const No: Story = {
 /** More on hover (`title`): what it counts. */
 export const WithATitle: Story = {
   name: 'With a title',
-  args: { title: 'A call’s own workspace doesn’t count.', children: '1 of 1' },
-  render: (args) => <SettingRow label="Shared workspaces" control={<SettingFact {...args} />} />
+  args: { title: 'Uploads and call recordings.', children: '2.1 GB of 10 GB' },
+  render: (args) => <SettingRow label="Storage" control={<SettingFact {...args} />} />
 };
 export const YesNight: Story = { ...Yes, name: 'Yes, night', globals: { theme: 'dark' } };
 export const NoNight: Story = { ...No, name: 'No, night', globals: { theme: 'dark' } };

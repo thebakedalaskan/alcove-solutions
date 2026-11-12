@@ -336,7 +336,7 @@ function OpenedPane({ ws, item, opened, reopen }: { ws: Ws; item: WorkspaceItem;
       <WsOfflineBar show={offline && ready && status.closed === null} online={online} onTry={session.retry} />
       <WsUnsavedBar why={unsaved} saveable={copyTo !== undefined}>{rescue}</WsUnsavedBar>
       <WsGoneBar who={trashed ? who : null} onRestore={item.role === 'edit' ? () => ws.actions.restore(item.id) : undefined} unsent={status.unsent} />
-      <WsReadOnlyBar show={!trashed && unsaved !== 'read-only' && (ws.sent.frozen || item.role !== 'edit' || status.role === 'read' || status.refused === 'read-only')} organizer={askToEdit} frozen={ws.sent.frozen} />
+      <WsReadOnlyBar show={!trashed && unsaved !== 'read-only' && (item.role !== 'edit' || status.role === 'read' || status.refused === 'read-only')} organizer={askToEdit} />
       <WsVersionBar when={history.reading} />
       {/* The page stays open behind a version: nothing's typed into it, and it's as it was on coming back. */}
       {ready

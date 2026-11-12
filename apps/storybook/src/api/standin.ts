@@ -764,7 +764,7 @@ export const standIn: AlcoveApi = {
     list: () => answer(spaces.workspaceList),
     create: (name: string) => answer((w) => {
       const id = nextId('ws');
-      w.workspaces.push({ id, name, role: 'admin', people: 1, items: [], frozen: false, createdAt: new Date().toISOString(), call: null });
+      w.workspaces.push({ id, name, role: 'admin', people: 1, items: [], createdAt: new Date().toISOString(), call: null });
       return { id };
     }),
     get: (id: ID) => answer(() => spaces.treeFor(id)),

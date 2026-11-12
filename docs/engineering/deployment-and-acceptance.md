@@ -204,7 +204,6 @@ everywhere within a minute.
 | `plan.free.notes_minutes` | 300 | 0 | 60,000 | Free: the minutes of notes a period brings, reckoned at `ai.hour_micro_usd` an hour. |
 | `plan.free.storage_bytes` | 10 GiB | 0 | 1 TiB | Free: what an account stores, its uploads and its recordings. |
 | `plan.free.file_bytes` | 512 MiB | 0 | 4 GiB | Free: one file. |
-| `plan.free.shared_workspaces` | 1 | 0 | 1,000 | Free: the shared workspaces an account makes (a call's own don't count). |
 | `plan.pro.price_micro_usd` | $20 | $0 | $10,000 | Pro: one period. Pro isn't built yet. |
 | `plan.period_seconds` | 30 d | 1 m | 365 d | A plan's period: notes renew, and paid time runs, in these. |
 | `plan.grace_seconds` | 15 d | 0 | 90 d | Once an account is over its plan's limits: how long until what's over stops taking more. |
@@ -216,6 +215,7 @@ everywhere within a minute.
 | `ai.image_tokens` | 1,500 | 0 | 100,000 | The input tokens one image is taken to be at most, before NEAR AI says. |
 | `call.max_seconds` | 10 h | 10 m | 48 h | The longest a call runs: it ends then, everyone told 5 minutes before. |
 | `call.max_people` | 100 | 2 | 1,000 | The most people in a call at once, those waiting to be let in included. |
+| `workspaces.max_made` | 1,000 | 1 | 100,000 | The most workspaces one account makes, to stop one from making them without end. |
 | `media.account_day_bytes` | 20 GiB | 0 | 200 GiB | What one person uploads in a day (UTC), in every workspace. |
 
 Zero is a value: none. A file size or a day's uploads at 0 stops every upload, with "Files can’t be uploaded right now."; storage
@@ -226,7 +226,7 @@ its Resume), asking for the rest with the file's `ETag`.
 Everyone is on Free, so a plan's limits are the same for everyone; the day's uploads are the same for everyone, guests in a call
 included. Lowering one deletes nothing: it refuses the next upload, and the next piece of one already going
 ([Data and storage › Media](data-and-storage.md#media)). What happens to an account over its plan's limits is in
-[Plans and usage › Over the limits](plans-and-usage.md#over-the-limits-grace-then-read-only).
+[Plans and usage › Over the limit](plans-and-usage.md#over-the-limit-the-grace).
 
 `media.file_bytes` and `media.workspace_bytes` are gone: a file's size and what's stored are each plan's now, and storage is
 counted for each account, not each workspace. A row for either is ignored with `service limit ignored` at warn, and what it

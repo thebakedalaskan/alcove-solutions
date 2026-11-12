@@ -1691,10 +1691,8 @@ notes on new calls while the oldest request fails.
   "About 3 h 20 min" (an estimate: busier calls use more), or "None" once they've stopped, with a sun on the line under
   it: at the end of the line on a new period, back along it as notes are written, and set once there's none left;
   **Storage**, what uploads and call recordings take, "2.4 GB of 10 GB", with files up to 512 MB and a sun on its line
-  the same way; and **Shared workspaces**, how many you've made against how many the plan allows, "1 of 1" (a call's own
-  workspace doesn't count). Over the plan's limits, a note says until when
-  everything works as before, then what has stopped: your extra shared workspaces are read-only and uploads and notes
-  stop, until you make room. In a second panel, **Balance**, in dollars, with **Add money** (11.24), then each top-up
+  the same way. Over the plan's storage, a note says until when
+  everything works as before, then that uploads and notes have stopped, until you make room. In a second panel, **Balance**, in dollars, with **Add money** (11.24), then each top-up
   still on its way, with **Open** and, until a payment reaches it, a cancel. Without a server that takes payments the
   balance has no **Add money**. Pro and Team aren't on sale yet, so nothing spends the balance.
 - **Privacy**: what account and call information Alcove processes, then confidential compute: the time the hardware
@@ -1766,9 +1764,7 @@ it. It's a folder like any other: rename it, move it, put documents in it.
 home instead, so its notes go there, beside the calls before it.
 
 **First day.** The Drive says **Nothing here yet**, and that your next call makes the first. **New workspace** in its sky
-names one in place and opens it. On Free that's your one shared workspace not tied to a call: a second says "Free has one
-shared workspace, and you have it. Move to Pro for as many as you like."; being in others' is fine, and a call's own
-doesn't count. An empty workspace says **Nothing here yet** with **New document** and **New folder**.
+names one in place and opens it. Free can make as many as it likes: storage is the only limit. An empty workspace says **Nothing here yet** with **New document** and **New folder**.
 **New document** opens an empty page with the caret in the title and a few ways to start under it: **Agenda**, **Decision
 log**, **Retro** and **Project brief**. They're only blocks: picking one fills the page, names an untitled document after
 it, and anything in it can change or go. Two people can have the same new document open: they get one title and one first
@@ -1912,10 +1908,9 @@ into a field: type, then **Enter**. A workspace always keeps an admin.
   in this browser and save when you sign in again (a document that finds out first says so in its bar). Signing out on
   purpose asks first (flow 11), and every other tab goes to the welcome page at once.
 - Someone who can only read gets no buttons that change anything: a bar says who to ask, and the list has no **+**.
-- A workspace over its owner's plan (they made more shared workspaces than the plan allows, and the 15 days after
-  that went by) is read-only for everyone in it: no edits and no uploads, though an admin can still delete it or change who's in it. Every
-  document says "This workspace is read-only for everyone until its owner upgrades or deletes a shared workspace."
-  Nothing is deleted for being over.
+- A workspace whose payer is over their storage (and the 15 days after that went by) takes no more uploads: they're refused
+  with "Your storage is full. Delete something, or move to a plan with more room." Everything else works, and nothing is
+  deleted for being over.
 
 **Nothing written is trapped.** What you write stays in this browser until Alcove has it or you let it go, however the
 document ends up. Wherever it may not get there by itself (the document refuses it, you can only read it now, or it's

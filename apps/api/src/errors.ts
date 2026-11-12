@@ -72,10 +72,10 @@ export class ClientTakenError extends ConflictError { constructor(m = 'This docu
 export class TooLargeError extends AppError { constructor(m: string, o?: ErrorOptions) { super('too-large', m, o); } }
 /**
  * What a plan brings has run out for whoever pays (features/billing): its notes, so no AI request goes out for them, or
- * its storage, so nothing more is stored, or its shared workspaces. `reason` says which.
+ * or its storage, so nothing more is stored. `reason` says which.
  */
 export class PlanLimitError extends AppError {
-  constructor(m: string, readonly reason: 'notes' | 'storage' | 'workspaces', o?: ErrorOptions) { super('plan-limit', m, { ...o, context: { ...o?.context, reason } }); }
+  constructor(m: string, readonly reason: 'notes' | 'storage', o?: ErrorOptions) { super('plan-limit', m, { ...o, context: { ...o?.context, reason } }); }
 }
 export class UnavailableError extends AppError { constructor(m: string, o?: ErrorOptions) { super('unavailable', m, o); } }
 /**

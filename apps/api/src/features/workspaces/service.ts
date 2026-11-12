@@ -14,8 +14,7 @@ import type { Deps, Owner } from '../../context';
 import { b64u, blindIndex, id128, openJson, sealJson, sha, toJson, utf8, type RecordHeader } from '../../crypto';
 import { bytea, exec, maybeOne, rows, timestamp, tx, type Db } from '../../db';
 import { AppError, ConflictError, invalid, notFound } from '../../errors';
-import { accountOf, refreeze, requireWorkspaceRoom } from '../billing/plans';
-import { payerOf } from '../billing/storage';
+import { limitsNow } from '../../limits';
 import { publish, type StreamPlace } from '../../live/hub';
 import { announce, roomFor, type Room, type Snapshot } from '../../live/room';
 import { LiveStream, type Line, type Step } from '../../live/stream';
@@ -41,8 +40,6 @@ const MAX_ITEMS = 5000;
 const MAX_NAME = 200;
 /** How many folders deep a tree can go. A stored tree can be deeper than this, so nothing that walks one recurses. */
 const MAX_DEPTH = 32;
-/** How many workspaces one address can have made and not deleted, in or out of them. */
-const MAX_MADE = 100;
 const MAX_PEOPLE = 1000;
 /** How long something stays in Trash. */
 export const TRASH_MS = 30 * 24 * 60 * 60_000;
@@ -208,7 +205,7 @@ function treeFor(who: Who, w: Seen, calls: ReadonlyMap<string, ItemCall>): Works
     if (role) items.push(wireItem(id, item, role, outside, trash, calls.get(id) ?? null));
     stack.push(...next(id, trash));
   }
-  return { id: w.workspaceId, name: outside ? null : w.state.name, role: w.role, people: outside ? null : w.people, items, frozen: w.frozen };
+  return { id: w.workspaceId, name: outside ? null : w.state.name, role: w.role, people: outside ? null : w.people, items };
 }
 export async function tree(d: Deps, reader: Reader, workspaceId: string): Promise<WorkspaceTree> {
   const w = await workspaceFor(d, reader, workspaceId);
@@ -221,7 +218,7 @@ export async function item(d: Deps, reader: Reader, workspaceId: string, itemId:
   return wireItem(itemId, found.item, found.role, w.role === null, trashOf(w.state, itemId), calls.get(itemId) ?? null);
 }
 
-const ListedRow = z.object({ owner_id: z.string(), workspace_id: z.string(), state_ciphertext: bytea, role: z.enum(['admin', 'edit', 'read']).nullable(), people: z.number(), created_at: timestamp, frozen: z.boolean() });
+const ListedRow = z.object({ owner_id: z.string(), workspace_id: z.string(), state_ciphertext: bytea, role: z.enum(['admin', 'edit', 'read']).nullable(), people: z.number(), created_at: timestamp });
 /**
  * The Drive: every workspace someone's in, newest first, a call's home with the call it was made for; then each one they only
  * have documents in, which says nothing about itself, not even when it was made.
@@ -229,7 +226,7 @@ const ListedRow = z.object({ owner_id: z.string(), workspace_id: z.string(), sta
 export async function list(reader: Reader): Promise<WorkspaceSummary[]> {
   const o = reader.account?.owner;
   if (!o) return [];
-  const found = await rows(o.pool, ListedRow, `SELECT w.owner_id, w.workspace_id, w.state_ciphertext, m.role, w.created_at, w.frozen_at IS NOT NULL AS frozen,
+  const found = await rows(o.pool, ListedRow, `SELECT w.owner_id, w.workspace_id, w.state_ciphertext, m.role, w.created_at,
       (SELECT count(*)::int FROM workspace_members x WHERE x.owner_id = w.owner_id) AS people
     FROM workspaces w LEFT JOIN workspace_members m ON m.owner_id = w.owner_id AND m.email_index = ANY($1::bytea[])
     WHERE m.role IS NOT NULL OR EXISTS (SELECT 1 FROM document_access a WHERE a.owner_id = w.owner_id AND a.principal_index = ANY($1::bytea[]))
@@ -237,12 +234,12 @@ export async function list(reader: Reader): Promise<WorkspaceSummary[]> {
   const mine: WorkspaceSummary[] = [];
   const given: WorkspaceSummary[] = [];
   for (const r of found) {
-    if (r.role === null) { given.push({ id: r.workspace_id, name: null, role: null, people: null, frozen: r.frozen, createdAt: null, call: null }); continue; }
+    if (r.role === null) { given.push({ id: r.workspace_id, name: null, role: null, people: null, createdAt: null, call: null }); continue; }
     const owner = await findOwner(o, r.owner_id, undefined);
     // Deleted since its row was read: nobody has it any more.
     if (!owner) continue;
     const state = openState(owner, r.workspace_id, r.state_ciphertext);
-    mine.push({ id: r.workspace_id, name: state.name, role: r.role, people: r.people, frozen: r.frozen, createdAt: r.created_at.toISOString(), call: state.madeFor && { title: state.madeFor.title, at: state.madeFor.at } });
+    mine.push({ id: r.workspace_id, name: state.name, role: r.role, people: r.people, createdAt: r.created_at.toISOString(), call: state.madeFor && { title: state.madeFor.title, at: state.madeFor.at } });
   }
   return [...mine, ...given];
 }
@@ -280,15 +277,15 @@ function landing(reader: Reader, w: Workspace, parent: string | null): string | 
 export async function createIn(o: Owner, c: Db, name: string, madeFor: Omit<MadeFor, 'out'> | null = null): Promise<{ id: string }> {
   const me = await profile(o, c);
   const id = id128();
-  // One at a time for an account, so two at once can't both be the hundredth.
+  // One at a time for an account, so two at once can't both be the last one.
   await lockOwner(o, c);
   const made = await maybeOne(c, z.object({ n: z.number() }), 'SELECT count(*)::int AS n FROM workspace_authors WHERE email_index = $1 AND made_workspace', [blindIndex(masterKey(o), 'email', me.email)]);
-  if ((made?.n ?? 0) >= MAX_MADE) throw new ConflictError('You’ve made as many workspaces as you can. Delete one first.', { context: { ownerId: o.ownerId, made: made?.n } });
-  // As many as their plan has (features/billing): Free has one, the first they make.
-  await requireWorkspaceRoom(o, c, o.ownerId);
+  // How many one address can have made and not deleted, in or out of them (`workspaces.max_made`).
+  const max = (await limitsNow(o, c)).get('workspaces.max_made');
+  if ((made?.n ?? 0) >= max) throw new ConflictError('You’ve made as many workspaces as you can. Delete one first.', { context: { ownerId: o.ownerId, made: made?.n, limit: max } });
   const { ownerId, root } = await createOwner(o, c);
   const owner = ownerFrom(o, ownerId, root, undefined);
-  await exec(c, 'INSERT INTO workspaces (owner_id, workspace_id, state_ciphertext, payer_owner_id, home) VALUES ($1,$2,$3,$4,false)', [ownerId, id, sealState(owner, id, { name, items: {}, madeFor: madeFor && { ...madeFor, out: [] } }), o.ownerId]);
+  await exec(c, 'INSERT INTO workspaces (owner_id, workspace_id, state_ciphertext, payer_owner_id) VALUES ($1,$2,$3,$4)', [ownerId, id, sealState(owner, id, { name, items: {}, madeFor: madeFor && { ...madeFor, out: [] } }), o.ownerId]);
   await addMember(owner, c, id, me.email, 'admin', me.name);
   await noteAuthor({ owner }, c, me.email, true);
   wlog.info('workspace created', { workspaceId: id });
@@ -310,7 +307,7 @@ const inviteesOf = (invited: string[], organizer: string): string[] => [...new S
  * A call's new home, in the caller's transaction, which holds the call's row: nobody else can reach it yet, so nothing waits
  * on it. The organizer is its admin and the call's folder is at the top. Everyone invited, the same people who get the notes,
  * is let in to edit once the call's row is let go (`followInvite`), so a big invite never holds the call up. It's the call's,
- * so it doesn't count towards the workspaces someone can make (`MAX_MADE`).
+ * so it doesn't count towards the workspaces someone can make (`workspaces.max_made`).
  */
 export async function makeHome(o: Owner, c: Db, home: { name: string; madeFor: Omit<MadeFor, 'out'>; folder: CallFolder }): Promise<{ id: string }> {
   const me = await profile(o, c);
@@ -319,7 +316,7 @@ export async function makeHome(o: Owner, c: Db, home: { name: string; madeFor: O
   const owner = ownerFrom(o, ownerId, root, undefined);
   const state: WorkspaceState = { name: home.name, items: { [home.folder.id]: folderOf(home.folder, FIRST, new Date().toISOString()) }, madeFor: { ...home.madeFor, out: [] } };
   // The organizer pays for their call's own: its files count against their storage, and it isn't one of their shared workspaces.
-  await exec(c, 'INSERT INTO workspaces (owner_id, workspace_id, state_ciphertext, payer_owner_id, home) VALUES ($1,$2,$3,$4,true)', [ownerId, id, sealState(owner, id, state), o.ownerId]);
+  await exec(c, 'INSERT INTO workspaces (owner_id, workspace_id, state_ciphertext, payer_owner_id) VALUES ($1,$2,$3,$4)', [ownerId, id, sealState(owner, id, state), o.ownerId]);
   await addMember(owner, c, id, me.email, 'admin', me.name);
   await noteAuthor({ owner }, c, me.email);
   wlog.info('call home made', { workspaceId: id });
@@ -384,16 +381,13 @@ async function deleteOwner(db: Db, ownerId: string): Promise<void> {
   await exec(db, 'DELETE FROM owners WHERE owner_id = $1', [ownerId]);
 }
 export async function remove(d: Deps, reader: Reader, workspaceId: string): Promise<void> {
-  const { ownerId, payer } = await change(d, reader, workspaceId, async (w, c) => {
+  const ownerId = await change(d, reader, workspaceId, async (w, c) => {
     requireRole(w, 'admin');
-    const paidBy = await payerOf(c, w.owner.ownerId);
     await deleteOwner(c, w.owner.ownerId);
-    return { ownerId: w.owner.ownerId, payer: paidBy };
+    return w.owner.ownerId;
   });
   await collect(d, [ownerId]);
   wlog.info('workspace deleted', { workspaceId });
-  // One fewer of its payer's shared workspaces: one of theirs that was read-only may work again.
-  if (payer) await tx(d.pool, async (c) => { await refreeze(d, c, payer, await accountOf(d, c, payer)); });
 }
 
 /* ---------- people ---------- */
@@ -720,7 +714,7 @@ async function whoCanOpen(w: Workspace, documentId: string, item: StoredItem, en
   const found = await rows(w.owner.pool, Member, 'SELECT member_id, email_index, role, person_ciphertext, created_at FROM workspace_members WHERE owner_id = $1', [w.owner.ownerId]);
   const members = found.flatMap((m) => {
     const { email } = openJson(workspaceKey(w.owner), memberHeader(w.owner, w.workspaceId, m.member_id), m.person_ciphertext, MemberPerson);
-    return roleOf({ email, principals: [m.email_index] }, { role: m.role, grants: new Map(), frozen: false }, documentId, item) ? [email] : [];
+    return roleOf({ email, principals: [m.email_index] }, { role: m.role, grants: new Map() }, documentId, item) ? [email] : [];
   });
   return [...new Set([...members, ...entries.flatMap((e) => (e.kind === 'email' ? [e.person.email] : []))])];
 }
@@ -1216,7 +1210,7 @@ export async function open(d: Deps, credentials: Credentials, reader: Reader, wo
     const known = await workspaceFor(d, reader, workspaceId);
     const callId = reader.seat?.callId ?? null;
     const room = roomFor(d, workspaceId);
-    const stream = new TreeStream(d, room, credentials, { email: reader.email, principals: reader.principals }, treeFor(reader, known, await callsIn(d.pool, reader, callId, known.state)), { role: known.role, grants: known.grants, lasting: known.lasting, frozen: known.frozen }, known.version, place, callId);
+    const stream = new TreeStream(d, room, credentials, { email: reader.email, principals: reader.principals }, treeFor(reader, known, await callsIn(d.pool, reader, callId, known.state)), { role: known.role, grants: known.grants, lasting: known.lasting }, known.version, place, callId);
     room.join(stream);
     try {
       await room.ready;

@@ -1,7 +1,7 @@
 import { type ID } from '../shared/ids';
 import { type Plan, type TopUp, type TopUpRoutes } from './schema';
 export interface PlansApi {
-  /** The account's plan: notes left this period, storage, shared workspaces, its balance. */
+  /** The account's plan: notes left this period, storage, its balance. */
   plan(): Promise<Plan>;
   /** The ways to add money right now, and the amounts offered first. */
   routes(): Promise<TopUpRoutes>;

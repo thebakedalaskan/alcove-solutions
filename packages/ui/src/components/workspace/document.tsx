@@ -201,13 +201,9 @@ export function WsDiscardAsk({ onDiscard, onKeep, gone = false, what = 'document
   );
 }
 
-/** You can read this and not change it; `frozen`: nobody can, while its owner has more shared workspaces than their plan. */
-export function WsReadOnlyBar({ show, organizer, frozen = false }: { show: boolean; organizer: string; frozen?: boolean | undefined }) {
-  return (
-    <Bar show={show} className="wd-ro"><Icon name="eye" size={14} />
-      <span>{frozen ? 'This workspace is read-only for everyone until its owner upgrades or deletes a shared workspace.' : <>You can read this. Ask {organizer} to edit.</>}</span>
-    </Bar>
-  );
+/** You can read this and not change it. */
+export function WsReadOnlyBar({ show, organizer }: { show: boolean; organizer: string }) {
+  return <Bar show={show} className="wd-ro"><Icon name="eye" size={14} /><span>You can read this. Ask {organizer} to edit.</span></Bar>;
 }
 
 /** What's on the page is a version from History, and nothing can be changed here. `when`: "on Tue 3 Nov". */

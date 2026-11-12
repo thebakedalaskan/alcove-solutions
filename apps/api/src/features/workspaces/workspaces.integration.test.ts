@@ -19,7 +19,7 @@ vi.setConfig({ testTimeout: 90_000 });
 let h: Harness;
 beforeAll(async () => { h = await startHarness(); });
 afterAll(async () => { await h?.close(); });
-afterEach(() => h.closeCalls());
+afterEach(async () => { h.closeCalls(); await h.resetLimits(); });
 
 let seq = 0;
 const unique = (who = 'person') => `${who}.${Date.now().toString(36)}${(seq++).toString(36)}@tests.example`;
@@ -123,8 +123,8 @@ describe('a workspace', () => {
     const ann = await account();
     const { id } = await ann.api.workspaces.create('  Launch \n plan ');
     expect(id).toMatch(/^[A-Za-z0-9_-]{22}$/);
-    expect(await ann.api.workspaces.list()).toEqual([{ id, name: 'Launch plan', role: 'admin', people: 1, frozen: false, createdAt: expect.any(String), call: null }]);
-    expect(await ann.api.workspaces.get(id)).toEqual({ id, name: 'Launch plan', role: 'admin', people: 1, items: [], frozen: false });
+    expect(await ann.api.workspaces.list()).toEqual([{ id, name: 'Launch plan', role: 'admin', people: 1, createdAt: expect.any(String), call: null }]);
+    expect(await ann.api.workspaces.get(id)).toEqual({ id, name: 'Launch plan', role: 'admin', people: 1, items: [] });
     await ann.api.workspaces.rename(id, 'Launch');
     expect((await ann.api.workspaces.get(id)).name).toBe('Launch');
     expect(await code(ann.api.workspaces.rename(id, '   '))).toBe('invalid');
@@ -209,7 +209,7 @@ describe('people in a workspace', () => {
     expect(people.map((p) => [p.person.email, p.role, p.isMe])).toEqual([[ann.email, 'admin', true], [theo.email, 'edit', false], [later, 'read', false]]);
     expect(people[0]?.person.name).toBe(ann.name);
     expect(await ann.api.workspaces.list()).toEqual([expect.objectContaining({ id, people: 3 })]);
-    expect(await theo.api.workspaces.list()).toEqual([{ id, name: 'Ours', role: 'edit', people: 3, frozen: false, createdAt: expect.any(String), call: null }]);
+    expect(await theo.api.workspaces.list()).toEqual([{ id, name: 'Ours', role: 'edit', people: 3, createdAt: expect.any(String), call: null }]);
     expect((await theo.api.workspaces.people(id)).find((p) => p.isMe)?.person.email).toBe(theo.email);
 
     // Adding someone who's in it sets their role: the same person, not a second one.
@@ -750,7 +750,7 @@ describe('who can open what', () => {
     expect(await w.list()).toEqual([]);
     await ann.api.workspaces.share.set(id, given, [{ email: sam.email }], 'read');
 
-    expect(await w.list()).toEqual([{ id, name: null, role: null, people: null, frozen: false, createdAt: null, call: null }]);
+    expect(await w.list()).toEqual([{ id, name: null, role: null, people: null, createdAt: null, call: null }]);
     const tree = await w.get(id);
     expect(tree).toMatchObject({ id, name: null, role: null, people: null });
     expect(tree.items.map((i) => [i.id, i.parent, i.role])).toEqual([[given, null, 'read']]);
@@ -1107,7 +1107,7 @@ describe('deleting an account', () => {
 });
 
 describe('limits', () => {
-  /** As if an account had made this many workspaces: making a hundred the real way is more than a minute's allowance. */
+  /** As if an account had made this many workspaces: making a thousand the real way is more than a minute's allowance. */
   async function madeAlready(who: Account, n: number) {
     const index = (await h.pool.query<{ email_index: Buffer }>('SELECT email_index FROM identities WHERE owner_id = $1', [who.ownerId])).rows[0]?.email_index;
     const owners = Array.from({ length: n }, () => randomBytes(32).toString('base64url'));
@@ -1119,7 +1119,8 @@ describe('limits', () => {
     return () => h.pool.query('DELETE FROM owners WHERE owner_id = ANY($1)', [owners]);
   }
 
-  it('lets an account make a hundred workspaces, and tells it plainly when that’s all', async () => {
+  it('lets an account make as many workspaces as workspaces.max_made says, and tells it plainly when that’s all', async () => {
+    await h.pool.query("INSERT INTO service_limits (name, value) VALUES ('workspaces.max_made', 100)");
     const ann = await account();
     const clear = await madeAlready(ann, 99);
     const last = await ann.api.workspaces.create('The hundredth');
@@ -1305,7 +1306,7 @@ describe('the live stream', () => {
     expect(s.lines[1]).toEqual({ type: 'mentions', mentions: [] });
     const [first] = s.lines;
     if (first?.type !== 'tree') throw new Error('the first line isn’t the tree');
-    expect(first.tree).toEqual({ id, name: 'Ours', role: 'read', people: 2, items: [], frozen: false });
+    expect(first.tree).toEqual({ id, name: 'Ours', role: 'read', people: 2, items: [] });
 
     const me = (await ann.api.workspaces.people(id)).find((p) => p.person.email === theo.email)?.id ?? '';
     await ann.api.workspaces.setRole(id, me, 'edit');

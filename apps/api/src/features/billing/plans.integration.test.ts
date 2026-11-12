@@ -1,7 +1,7 @@
 /**
  * Plans (docs: Plans and usage), end to end: the real API over HTTP via @alcove/api-http, real Postgres, the object store,
- * LiveKit and the fakes. Free's limits on storage, files and shared workspaces; accounts from before plans, carried onto
- * Free with time to get within its limits; what's over them going read-only for everyone once that time is up; a call's
+ * LiveKit and the fakes. Free's limits on storage and files; accounts from before plans, carried onto Free with time to
+ * get within its limits; what's over them taking no more once that time is up; a call's
  * longest and its most people; top-ups the previous release settled while this one deployed; and nothing of a plan
  * outliving its account.
  */
@@ -59,7 +59,6 @@ const addDoc = (who: Account, id: string) => refusal(who.api.workspaces.items.cr
 const upload = (who: Account, at: { id: string; doc: string }, bytes: number) => refusal(who.api.workspaces.media.upload(at.id, at.doc, fileOf(bytes)));
 /** As if the account had been made before plans: its plan's row is made the next time it's touched. */
 const beforePlans = (who: Account) => h.pool.query('DELETE FROM plan_accounts WHERE owner_id = $1', [who.session.ownerId]);
-const READ_ONLY = 'plan-limit: This workspace is read-only: its owner has more shared workspaces than their plan has. It works again once they upgrade or delete one.';
 const FULL = 'plan-limit: Your storage is full. Delete something, or move to a plan with more room.';
 
 describe('Free', () => {
@@ -67,10 +66,10 @@ describe('Free', () => {
     const ann = await account();
     const plan = await ann.api.plans.plan();
     expect(plan).toMatchObject({
-      kind: 'free', choose: true, grace: null, over: { workspaces: false, storage: false },
+      kind: 'free', choose: true, grace: null, over: { storage: false },
       notes: { minutesLeft: 300, minutesPerPeriod: 300, stopped: false },
       storage: { usedBytes: 0, limitBytes: 10 * 1024 * MiB, fileBytes: 512 * MiB },
-      sharedWorkspaces: { made: 0, limit: 1000 }, balance: { microUsd: 0, history: [] }
+      balance: { microUsd: 0, history: [] }
     });
     // Its period is 30 days from when it began.
     expect(Date.parse(plan.period.to) - Date.parse(plan.period.from)).toBe(30 * 86_400_000);
@@ -94,20 +93,17 @@ describe('Free', () => {
     expect(next.notes.minutesLeft).toBe(300);
   });
 
-  it('makes one shared workspace, and joins any number; a call’s own doesn’t count', async () => {
-    await setLimit('plan.free.shared_workspaces', 1);
+  it('makes as many shared workspaces as it likes, and every one works', async () => {
     const ann = await account();
     const bob = await account();
-    await workspace(ann, 'Ours');
-    expect(await refusal(ann.api.workspaces.create('Another'))).toBe('plan-limit: Free has one shared workspace, and you have it. Move to Pro for as many as you like.');
-    // Bob's is his one; Ann can be in it.
+    const made = [await workspace(ann, 'One'), await workspace(ann, 'Two'), await workspace(ann, 'Three')];
+    for (const w of made) {
+      expect(await addDoc(ann, w.id)).toBe('succeeded');
+      expect(await upload(ann, w, 1024)).toBe('succeeded');
+    }
     const his = await workspace(bob, 'His', [ann]);
     expect(await addDoc(ann, his.id)).toBe('succeeded');
-    // A call's own workspace is the call's: Ann starts one with notes and still has her one shared workspace.
-    const c = await ann.api.calls.startNow({ notes: 'on' });
-    const host = await ann.api.calls.join(c.code, { mic: true, cam: false });
-    await host.leave();
-    expect((await ann.api.plans.plan()).sharedWorkspaces).toEqual({ made: 1, limit: 1 });
+    expect((await ann.api.workspaces.list()).length).toBe(4);
   });
 
   it('takes files up to its plan’s size, while there’s room, counting a workspace’s files against whoever made it', async () => {
@@ -140,41 +136,28 @@ describe('Free', () => {
 });
 
 describe('accounts from before plans', () => {
-  it('carries one over onto Free, works as before during the grace, then makes what’s past Free read-only for everyone', async () => {
+  it('carries one over onto Free, works as before during the grace, then takes no more files', async () => {
     const ann = await account();
     const bob = await account();
-    const oldest = await workspace(ann, 'Oldest', [bob]);
-    const middle = await workspace(ann, 'Middle', [bob]);
-    const newest = await workspace(ann, 'Newest', [bob]);
-    // Plans arrive: Free has one shared workspace, and an hour's grace for an account already over it.
-    await setLimit('plan.free.shared_workspaces', 1);
+    const ours = await workspace(ann, 'Ours', [bob]);
+    expect(await upload(bob, ours, MiB)).toBe('succeeded');
+    // Plans arrive: Free's storage is smaller than what Ann already stores, and an hour's grace for an account over it.
+    await setLimit('plan.free.storage_bytes', MiB / 2);
     await setLimit('plan.grace_seconds', 3600);
     await beforePlans(ann);
     const carried = await ann.api.plans.plan();
-    expect(carried).toMatchObject({ kind: 'free', choose: true, sharedWorkspaces: { made: 3, limit: 1 }, grace: { workspaces: true, storage: false }, over: { workspaces: false } });
+    expect(carried).toMatchObject({ kind: 'free', choose: true, grace: { storage: true }, over: { storage: false } });
     expect(Date.parse(carried.grace?.until ?? '')).toBeGreaterThan(Date.now() + 3_500_000);
-    // Everything works as it did, a fourth workspace included.
-    for (const w of [oldest, middle, newest]) expect(await addDoc(bob, w.id)).toBe('succeeded');
-    const fourth = await workspace(ann, 'Fourth');
-    // Upkeep, once the grace is over: the oldest stays as it was; the rest are read-only, for everyone in them.
+    // Everything works as it did: more files go in.
+    expect(await upload(bob, ours, MiB)).toBe('succeeded');
+    // Upkeep, once the grace is over: nothing more is stored, but what's there stays readable and can be deleted.
     vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 2 * 3_600_000 });
     await h.pool.query('UPDATE plan_accounts SET due_at = now() WHERE owner_id = $1', [ann.session.ownerId]);
     await maintain(h.deps);
-    expect(await ann.api.plans.plan()).toMatchObject({ grace: null, over: { workspaces: true } });
-    expect(await addDoc(bob, oldest.id)).toBe('succeeded');
-    for (const w of [middle, newest, fourth]) {
-      expect(await addDoc(ann, w.id)).toBe(READ_ONLY);
-      expect(await upload(ann, w, 1024)).toBe(READ_ONLY);
-      expect((await ann.api.workspaces.get(w.id)).frozen).toBe(true);
-    }
-    expect(await addDoc(bob, middle.id)).toBe(READ_ONLY);
-    expect((await bob.api.workspaces.get(oldest.id)).frozen).toBe(false);
-    // An admin can still delete one: one fewer is still over, so the rest stay read-only, until only the oldest is left.
-    await ann.api.workspaces.remove(fourth.id);
-    await ann.api.workspaces.remove(newest.id);
-    expect(await addDoc(ann, middle.id)).toBe(READ_ONLY);
-    await ann.api.workspaces.remove(middle.id);
-    expect(await ann.api.plans.plan()).toMatchObject({ over: { workspaces: false }, sharedWorkspaces: { made: 1 } });
+    expect(await ann.api.plans.plan()).toMatchObject({ grace: null, over: { storage: true } });
+    expect(await upload(bob, ours, 1024)).toBe(FULL);
+    expect(await upload(ann, ours, 1024)).toBe(FULL);
+    expect(await addDoc(ann, ours.id)).toBe('succeeded');
   });
 
   it('carries over an account within Free’s limits without a grace, and shows the plans once', async () => {
@@ -185,9 +168,9 @@ describe('accounts from before plans', () => {
 
   it('gives every account from before plans its plan in upkeep, so a grace runs out even for someone who never comes back', async () => {
     const ann = await account();
-    await workspace(ann, 'One');
-    await workspace(ann, 'Two');
-    await setLimit('plan.free.shared_workspaces', 1);
+    const ours = await workspace(ann, 'Ours');
+    expect(await upload(ann, ours, MiB)).toBe('succeeded');
+    await setLimit('plan.free.storage_bytes', MiB / 2);
     await beforePlans(ann);
     await maintain(h.deps);
     expect((await h.pool.query('SELECT due_at IS NOT NULL AS due FROM plan_accounts WHERE owner_id = $1', [ann.session.ownerId])).rows[0]).toEqual({ due: true });

@@ -12,7 +12,7 @@
  *    nobody came back for in 30 days;
  *  - deletes live notes a call left behind when a release from before them ended it;
  *  - settles who pays for workspaces nobody does, gives accounts from before plans their plan, ends graces that are
- *    over (and makes what's past the plan read-only), and adds as dollars top-ups the previous release settled;
+ *    over, and adds as dollars top-ups the previous release settled;
  *  - takes away what an upload left when its browser went, a day on, and forgets uploads counted before yesterday.
  *
  * Each step stands alone: one that fails is logged and the rest still run, so a sweep that keeps failing can't stop
@@ -38,8 +38,6 @@ import { work } from './features/notes/writer';
 import { work as exportToDrive } from './features/notes/drive-worker';
 import { upkeep as plansUpkeep } from './features/billing/plans';
 import { creditCarried } from './features/billing/deposits';
-import { TREE_NOTICE } from './features/workspaces/access';
-import { publish } from './live/hub';
 import { sweepSessions } from './sessions';
 
 const mlog = log.child({ component: 'maintenance' });
@@ -71,13 +69,8 @@ export async function maintain(d: Deps, opts: { orphanAgeMs?: number; trashAgeMs
   const rings = await step('rings', () => sweepRings(d), 0);
   const liveNotes = await step('live notes', () => sweepLiveNotes(d), 0);
   const attention = await step('attention', () => sweepAttention(d), 0);
-  // Plans: who pays for each workspace, every account's plan, graces that ended (and workspaces read-only since, told to
-  // whoever's in them), and top-ups the previous release settled while this one deployed.
-  const plans = await step('plans', async () => {
-    const r = await plansUpkeep(d);
-    for (const workspaceId of r.changed) await publish(d.pool, workspaceId, TREE_NOTICE);
-    return r.settled + r.carried + r.due;
-  }, 0);
+  // Plans: who pays for each workspace, every account's plan, graces that ended, and top-ups the previous release settled while this one deployed.
+  const plans = await step('plans', () => plansUpkeep(d).then((r) => r.settled + r.carried + r.due), 0);
   const carried = await step('carried top-ups', () => creditCarried(d), 0);
   // Neither stops the other, or what comes next time: each logs what went wrong and says it did nothing.
   const quietly = (what: string, sweep: () => Promise<number>) => sweep().catch((e: unknown) => { mlog.warn('workspace upkeep failed', { what, err: e }); return 0; });

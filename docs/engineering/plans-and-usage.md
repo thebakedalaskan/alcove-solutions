@@ -3,7 +3,7 @@
 [Docs home](../README.md) · [Notes and inference](notes-and-inference.md) · [Privacy, keys and sessions](privacy-keys-and-sessions.md)
 
 Every call gets its own workspace and board on every plan, kept afterwards in the Drive. Plans differ only in how much
-they bring: notes, storage and shared workspaces. Every feature is on every plan.
+they bring: notes and storage. Every feature is on every plan.
 
 | | Free | Pro | Team |
 | --- | --- | --- | --- |
@@ -12,12 +12,12 @@ they bring: notes, storage and shared workspaces. Every feature is on every plan
 | Notes (an estimate: what a call uses varies) | About 5 hours a period | About 50 hours | About 50 hours a person |
 | Storage (uploads and call recordings) | 10 GB | 100 GB | 100 GB a person, pooled |
 | Largest file | 512 MB | 512 MB, 2 GB once downloads resume | Same as Pro |
-| Shared workspaces not tied to a call | 1, the first one made; join any number | Unlimited | Unlimited |
+| Shared workspaces not tied to a call | As many as you like (storage is the limit) | Same | Same |
 
 A period is 30 days from when the plan began. Pro and Team are built in later phases: this page says what's built now.
 
 Every number is a limit (`apps/api/src/limits.ts`, [Deployment › Changing a limit](deployment-and-acceptance.md#changing-a-limit)),
-changeable without a deploy: each plan's notes, storage, files, shared workspaces and price; what an hour of notes is
+changeable without a deploy: each plan's notes, storage, files and price; the most workspaces one account makes; what an hour of notes is
 reckoned at; when AI stops and when an organizer is told it's close; how long a period and a grace last; a call's longest
 and its most people.
 
@@ -28,7 +28,7 @@ and its most people.
 | Free, for every account | Working. A new account is on Free from sign-up; an account from before plans is the first time it's touched after this release, or by upkeep. |
 | The AI allowance, metered on every NEAR AI request | Working |
 | Notes stopping, the 5-minute warning, the one note written past the allowance | Working |
-| Storage per account, recordings included; Free's one shared workspace; grace and read-only | Working |
+| Storage per account, recordings included; grace | Working |
 | A call's 10 hours and 100 people | Working |
 | The USD balance, filled by stablecoin top-ups | Working |
 | Buying Pro, renewing, refunds | Not built (phase 2) |
@@ -103,7 +103,7 @@ The allowance runs down with the call, and notes stop before it's spent rather t
   scheduled with notes starts without them and says why; turning notes on, starting a room recording, or asking is
   refused with "Your notes for this period have run out. They start again when your plan renews."
 
-## Storage and shared workspaces
+## Storage
 
 What an account stores is its own row's `stored_bytes` (its calls' audio and shared screens, its room recordings) and
 every workspace it pays for (`workspaces.payer_owner_id`): the shared ones it made, and its calls' own, whose files count
@@ -114,17 +114,16 @@ against the organizer whoever adds them, guests included (`features/billing/stor
   shared screens too: then notes stop for everyone, as when the allowance is spent, with reason `storage`. Notes don't come
   on again without 1 MiB free.
 - `media.account_day_bytes` still caps what one person uploads in a day, everywhere.
-- Free makes one shared workspace (`plan.free.shared_workspaces`): a second is refused. Joining others' is fine, and a
-  call's own workspace doesn't count.
+- Workspaces aren't counted against a plan: an account makes as many as it likes, and storage is the only limit. One
+  account can make at most `workspaces.max_made` (1,000), an abuse guard that a plan doesn't change.
 - An account warns, once, at 80% of its storage (logged with IDs and sizes).
 
-### Over the limits: grace, then read-only
+### Over the limit: the grace
 
-An account over its plan's limits (after a plan ends, or at the release that brought plans for one already over Free's)
-gets `plan.grace_seconds` (15 days) with everything working as it did. Then upkeep makes the oldest shared workspace it
-made stay as it is and the rest **read-only for everyone in them** (`workspaces.frozen_at`): no edits, no uploads, the
-admin can still delete it or change who's in it, and every document says so. While over storage, uploads stop everywhere
-it pays for. Deleting a workspace, or a bigger plan, sets it again; nothing is ever deleted for being over.
+An account over its plan's storage (after a plan ends, or at the release that brought plans for one already over Free's)
+gets `plan.grace_seconds` (15 days) with everything working as it did. Then upkeep ends the grace: uploads stop everywhere
+the account pays for, and notes stop for everyone, as above. Making room, or a bigger plan, lifts it; nothing is ever
+deleted for being over, and every workspace stays readable and editable.
 
 ## Calls
 
@@ -213,8 +212,8 @@ The server never holds a key that can move treasury money. By hand, in near.com,
 ## How it upgrades
 
 - Migration `0026_plans.sql` adds `plan_accounts` (record kind `plan-account`), `ai_meters` (`ai-meter`), and
-  `billing_cutover` with the time it ran. `0027_workspace_payers.sql` adds nullable `payer_owner_id`, `home` and
-  `frozen_at` to `workspaces` and backfills who pays from `workspace_authors` and the first admin. The previous release
+  `billing_cutover` with the time it ran. `0027_workspace_payers.sql` adds a nullable `payer_owner_id` to
+  `workspaces` and backfills who pays from `workspace_authors` and the first admin. The previous release
   ignores all of it while the deploy migrates.
 - Credits are gone: every account starts on Free at $0, its old balance ignored. `billing_accounts` is no longer read,
   and goes in a later release.

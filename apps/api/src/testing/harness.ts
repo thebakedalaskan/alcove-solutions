@@ -13,7 +13,6 @@ import pg from 'pg';
 import { createApp } from '../app';
 import type { Deps } from '../context';
 import { loadConfig, type Config } from '../config';
-import type { LimitName } from '../limits';
 import { createPool } from '../db';
 import { createDocPool } from '../live/docPool';
 import { createHub } from '../live/hub';
@@ -83,10 +82,7 @@ export interface Harness {
   browser(o?: { fetch?: typeof fetch | undefined; onEvent?: ((e: ClientEvent) => void) | undefined; callPollMs?: number | undefined; callNotesMs?: number | undefined; callRekeyMs?: number | undefined; ringSilenceMs?: number | undefined }): Browser;
   /** Stops every call session, workspace stream and document this harness's browsers opened from keeping up (nobody leaves). */
   closeCalls(): void;
-  /**
-   * Puts the limits back to what tests start with: the defaults, except that an account on Free makes as many shared
-   * workspaces as a test needs (TEST_LIMITS). The plans' own suites set Free's number themselves.
-   */
+  /** Puts the limits back to what tests start with: the defaults. */
   resetLimits(): Promise<void>;
   /**
    * Another API process on the same database and bucket, with its own hub, as after a restart, on a second instance, or
@@ -116,12 +112,6 @@ const stop = (server: ServerType) => new Promise<void>((r) => {
   server.close(() => r());
   if (server instanceof Server) server.closeAllConnections();
 });
-
-/**
- * What tests start with besides the defaults: an account on Free makes as many shared workspaces as a test needs, so the
- * many suites that make several for one person keep to what they test. Free's own limits are tested in features/billing.
- */
-export const TEST_LIMITS: Partial<Record<LimitName, number>> = { 'plan.free.shared_workspaces': 1000 };
 
 export async function startHarness(): Promise<Harness> {
   const url = process.env['TEST_DATABASE_URL'];
@@ -159,11 +149,7 @@ export async function startHarness(): Promise<Harness> {
   const pool = createPool(url);
   await pool.query('DROP SCHEMA public CASCADE; CREATE SCHEMA public;');
   await migrate(pool);
-  const resetLimits = async () => {
-    await pool.query('DELETE FROM service_limits');
-    for (const [name, value] of Object.entries(TEST_LIMITS)) await pool.query('INSERT INTO service_limits (name, value) VALUES ($1, $2)', [name, value]);
-  };
-  await resetLimits();
+  const resetLimits = async () => { await pool.query('DELETE FROM service_limits'); };
   const objects = await createObjectStore(cfg);
   const deps: Deps = { cfg, pool, objects, livekit: createLiveKit(cfg), hub: createHub(url, { checkMs: cfg.HUB_CHECK_MS, timeoutMs: cfg.HUB_TIMEOUT_MS, maxStreams: cfg.LIVE_STREAMS_MAX, maxPerAddress: cfg.LIVE_STREAMS_PER_ADDRESS, makeRoomAfterMs: cfg.LIVE_MAKE_ROOM_MS }), docs: docPoolFor(cfg) };
   const { server, baseUrl } = await listen(deps);

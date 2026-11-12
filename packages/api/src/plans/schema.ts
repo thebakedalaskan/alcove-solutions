@@ -40,15 +40,10 @@ export const PlanSchema = z.object({
     /** The largest one file can be. */
     fileBytes: z.number().int().nonnegative()
   }),
-  /** Shared workspaces the account has made (a call's own don't count), and the most it can (null: no limit). */
-  sharedWorkspaces: z.object({ made: z.number().int().nonnegative(), limit: z.number().int().nonnegative().nullable() }),
-  /**
-   * While the account is over its plan's limits: until when what's over still works as before. After it, shared
-   * workspaces past the plan's number are read-only, and nothing more is uploaded while storage is over.
-   */
-  grace: z.object({ until: ISODateSchema, workspaces: z.boolean(), storage: z.boolean() }).nullable(),
-  /** What's past the limits now that the grace has ended: those workspaces are read-only, uploads have stopped. */
-  over: z.object({ workspaces: z.boolean(), storage: z.boolean() }),
+  /** While the account is over its plan's storage: until when it still works as before. After it, nothing more is uploaded. */
+  grace: z.object({ until: ISODateSchema, storage: z.boolean() }).nullable(),
+  /** What's past the limits now that the grace has ended: uploads have stopped. */
+  over: z.object({ storage: z.boolean() }),
   /** The USD balance plans are bought with, and its latest changes, newest first. */
   balance: z.object({ microUsd: MicroUsdSchema, history: z.array(BalanceEntrySchema) }),
   /** Whether the account hasn't been shown the plans to pick from yet. */

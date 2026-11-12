@@ -71,7 +71,7 @@ const homeName = (title: string, at: string): string => `${title} · ${new Intl.
 function home(id: string, title: string, at: string, organizer: Person, role: WorkspaceRole, people: number, noteId: string, items: WorkspaceItem[]): Space {
   const name = homeName(title, at);
   const hours = (Date.parse(iso(0, 16, 12)) - Date.parse(at)) / 3_600_000;
-  return { id, name, role, people, frozen: false, createdAt: at, call: { title, at }, items: [item(name, 'folder', organizer, hours, { call: { startedAt: at, on: false, here: false, noteId } }), ...items] };
+  return { id, name, role, people, createdAt: at, call: { title, at }, items: [item(name, 'folder', organizer, hours, { call: { startedAt: at, on: false, here: false, noteId } }), ...items] };
 }
 /**
  * The workspaces: the homes of the day's calls, the standup's newest; Product, which Art runs; Design, where he edits; and
@@ -87,7 +87,7 @@ function workspaces(): Space[] {
       item('Sidebar screenshots', 'document', KOFI, 28.3), item('Review uploads', 'document', AIKO, 28.9), item('Review checklist', 'document', ART, 28.6)
     ]),
     {
-      id: 'ws-product', name: 'Product', role: 'admin', people: 6, frozen: false, createdAt: iso(-120, 10, 0), call: null,
+      id: 'ws-product', name: 'Product', role: 'admin', people: 6, createdAt: iso(-120, 10, 0), call: null,
       items: [
         item('Launch plan', 'document', PRIYA, 2, { made: 76 }), item('Launch checklist', 'document', MAYA, 5), item('Research', 'folder', LENA, 300),
         item('Interview notes', 'document', LENA, 120, research), item('Competitor notes', 'document', LENA, 170, research),
@@ -97,11 +97,11 @@ function workspaces(): Space[] {
       ]
     },
     {
-      id: 'ws-design', name: 'Design', role: 'edit', people: 4, frozen: false, createdAt: iso(-90, 14, 0), call: null,
+      id: 'ws-design', name: 'Design', role: 'edit', people: 4, createdAt: iso(-90, 14, 0), call: null,
       items: [item('Onboarding flow', 'board', AIKO, 50), item('Empty states', 'document', KOFI, 8)]
     },
     {
-      id: 'ws-handbook', name: 'Company handbook', role: 'read', people: 38, frozen: false, createdAt: iso(-400, 9, 0), call: null,
+      id: 'ws-handbook', name: 'Company handbook', role: 'read', people: 38, createdAt: iso(-400, 9, 0), call: null,
       items: [item('Holidays', 'document', NADIA, 700, reading), item('Expenses', 'document', NADIA, 1300, reading), item('Working from home', 'document', NADIA, 2100, reading)]
     }
   ];
@@ -331,19 +331,6 @@ function lots(): World {
   return w;
 }
 
-/**
- * The busy afternoon, with the grace over: Art has more shared workspaces than Free has, so the extra ones are read-only for
- * everyone in them (Design, which Art made, and another with nothing in it yet), and storage is over Free's limit.
- * What the server does for a frozen workspace, its items read for everyone, is here as it is there.
- */
-function overTheLimits(): World {
-  const w = busy();
-  w.plan = overLimits();
-  w.workspaces = w.workspaces.map((s) => (s.id === 'ws-design' ? { ...s, role: 'admin', frozen: true, items: s.items.map((i) => ({ ...i, role: 'read' })) } : s));
-  w.workspaces.push({ id: 'ws-offsite', name: 'Offsite planning', role: 'admin', people: 5, frozen: true, items: [], createdAt: iso(-30, 10, 0), call: null });
-  return w;
-}
-
 /** Someone on their own: Art at a personal address, so no team and no groups, with recordings and calls with people he meets. */
 function onTheirOwn(): World {
   const solo: Person = { ...ART, id: 'o-art-personal', email: 'art@personal.example' };
@@ -385,12 +372,12 @@ export const SCENARIOS: Record<ScenarioName, Scenario> = {
     make: () => { const world = busy(); world.plan = notesStopped(); return { world, opening: {} }; }
   },
   'plan-grace': {
-    title: 'Over Free’s limits, in grace', about: 'Art made three shared workspaces of Free’s one and stores 14.2 GB of its 10: everything works as before for nine more days.',
+    title: 'Over Free’s storage, in grace', about: 'Art stores 14.2 GB of Free’s 10: everything works as before for nine more days.',
     make: () => { const world = busy(); world.plan = inGrace(); return { world, opening: {} }; }
   },
   'plan-over': {
-    title: 'Over Free’s limits, past the grace', about: 'The grace is over: Design and Offsite planning are read-only for everyone in them, and uploads have stopped.',
-    make: () => ({ world: overTheLimits(), opening: {} })
+    title: 'Over Free’s storage, past the grace', about: 'The grace is over: uploads have stopped.',
+    make: () => { const world = busy(); world.plan = overLimits(); return { world, opening: {} }; }
   },
   'plan-balance': {
     title: 'A balance', about: 'Art has $60 in their balance, with a $20 top-up waiting for its payment and a $40 one already added.',

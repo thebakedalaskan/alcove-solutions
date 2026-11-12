@@ -100,8 +100,8 @@ Product, then the follow-ups from the retro board's Actions frame.
 | `payments` | Adding money is available, with amount and token/network choices; every deposit address is a made-up invalid preview |
 | `plan-low` | Art is on Free with about 20 minutes of the period's notes left |
 | `plan-stopped` | The period's notes have run out: Settings says None, the side panel says no notes left until the period renews |
-| `plan-grace` | Over Free's limits in grace: three shared workspaces of one and 14.2 GB of 10, everything works as before for nine more days |
-| `plan-over` | The grace is over: Design (and Offsite planning, with nothing in it) are read-only for everyone in them, and uploads have stopped |
+| `plan-grace` | Over Free's storage in grace: 14.2 GB of 10, everything works as before for nine more days |
+| `plan-over` | The grace is over: uploads have stopped |
 | `plan-balance` | $60 in the balance, with a $20 top-up waiting for its payment and a $40 one already added |
 | `agents-connected` | Art has a read-only Workspace assistant connected through OAuth and an unused Scheduling assistant personal token; Settings shows their scopes, expiry and last use |
 | `first-sign-in` | Nobody signed in, and no account yet: signing in makes Art's account on screen, his first day, and Home's tour |

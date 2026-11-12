@@ -1139,7 +1139,7 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
       chosen.items = [folder, ...chosen.items];
       home = chosen;
     } else {
-      home = { id: nextId('home'), name, role: s.isOrganizer ? 'admin' : 'edit', people: this.meeting.guests.length + 1, items: [folder], frozen: false, createdAt: now, call: { title: this.meeting.title, at: s.startedAt } };
+      home = { id: nextId('home'), name, role: s.isOrganizer ? 'admin' : 'edit', people: this.meeting.guests.length + 1, items: [folder], createdAt: now, call: { title: this.meeting.title, at: s.startedAt } };
       w.workspaces.push(home);
     }
     this.homeId = home.id;
@@ -1234,7 +1234,7 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     const id = nextId('ws');
     // Made for the call, as its home is: the organizer and everyone invited, and no guest.
     current().workspaces.push({
-      id, name: name?.trim() || this.meeting.title, role: 'admin', people: this.meeting.guests.length + 1, items: [], frozen: false, createdAt: new Date().toISOString(),
+      id, name: name?.trim() || this.meeting.title, role: 'admin', people: this.meeting.guests.length + 1, items: [], createdAt: new Date().toISOString(),
       call: { title: this.meeting.title, at: this.getSnapshot().startedAt }
     });
     this.view(id);

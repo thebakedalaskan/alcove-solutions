@@ -116,8 +116,7 @@ throw new KeyError('This key can’t open that data.', { cause: err, context: { 
   waited, is an ordinary `503` at info, and so is its request's own line, `request refused`: a 5xx is `request failed` at error
   unless what answered it says it's an ordinary refusal.
 - Whatever a plan's limits refuse is an ordinary refusal at info, `402 plan-limit` with its `reason` in the context
-  (`notes`: the AI allowance is spent; `storage`: the account's storage is full, or a workspace is read-only; `workspaces`:
-  the plan's shared workspaces are all made), with IDs, sizes and kinds as its context, never an allowance, a balance or a title ([Plans and usage](plans-and-usage.md)).
+  (`notes`: the AI allowance is spent; `storage`: the account's storage is full), with IDs, sizes and kinds as its context, never an allowance, a balance or a title ([Plans and usage](plans-and-usage.md)).
 - An upload refused by a storage limit is an ordinary refusal at info: `402 plan-limit` for an account's storage that's full,
   `409 conflict` for a day used up, `400 invalid` for a file too big, with the limit's name, the sizes and the limit in its context.
   A piece that takes an account past 80% of its storage logs `an account is past 80% of its storage` at warn, and one that takes someone's day past 80% logs `someone is past

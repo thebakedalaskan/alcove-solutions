@@ -57,7 +57,7 @@ export const Notifications = page('/settings#notifications', 'busy');
 export const NotificationsNight = night(Notifications);
 export const Connections = page('/settings#connections', 'busy');
 export const ConnectionsNight = night(Connections);
-/** From the time of notes left in the side panel. Free: 3 h 20 min of 5 h of notes left, 2.1 GB of 10 GB stored, the one shared workspace made. */
+/** From the time of notes left in the side panel. Free: 3 h 20 min of 5 h of notes left, 2.1 GB of 10 GB stored. */
 export const Plan = page('/settings#plan', 'busy');
 export const PlanNight = night(Plan);
 export const PlanPhone = phone(Plan);
@@ -334,11 +334,11 @@ export const NotesNearlyOutNight = night(NotesNearlyOut);
 export const NoNotesLeft = page('/settings#plan', 'plan-stopped');
 export const NoNotesLeftNight = night(NoNotesLeft);
 export const NoNotesLeftPhone = phone(NoNotesLeft);
-/** Over Free's limits: three shared workspaces of one and 14.2 GB of 10. Everything works as before until the day the note names. */
+/** Over Free's storage: 14.2 GB of 10. Everything works as before until the day the note names. */
 export const OverFreesLimitsInGrace = page('/settings#plan', 'plan-grace');
 export const OverFreesLimitsInGraceNight = night(OverFreesLimitsInGrace);
 export const OverFreesLimitsInGracePhone = phone(OverFreesLimitsInGrace);
-/** The grace is over: the extra shared workspaces are read-only and uploads have stopped, and the note says so. */
+/** The grace is over: uploads have stopped, and the note says so. */
 export const OverFreesLimits = page('/settings#plan', 'plan-over');
 export const OverFreesLimitsNight = night(OverFreesLimits);
 /** $60 in the balance, with a $20 top-up waiting for its payment and a $40 one already added, each opening its sheet. */

@@ -94,12 +94,7 @@ export const WorkspaceTreeSchema = z.object({
   role: WorkspaceRoleSchema.nullable(),
   /** How many people are in it. Null for someone outside it. */
   people: z.number().nullable(),
-  items: z.array(WorkspaceItemSchema),
-  /**
-   * Read-only for everyone in it (docs: Plans and usage): whoever it counts against has more shared workspaces than their
-   * plan has. It works again once they upgrade or delete one.
-   */
-  frozen: z.boolean()
+  items: z.array(WorkspaceItemSchema)
 });
 
 export type WorkspaceTree = z.infer<typeof WorkspaceTreeSchema>;

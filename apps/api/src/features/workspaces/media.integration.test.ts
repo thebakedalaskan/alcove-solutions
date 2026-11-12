@@ -2274,7 +2274,7 @@ describe('storage limits', () => {
     const room = await cli('set', 'plan.free.storage_bytes', '5 GiB');
     expect(room.code).toBe(0);
     expect(loggedBy(room.out).filter((l) => l.msg === 'service limit set')).toEqual([expect.objectContaining({ limit: 'plan.free.storage_bytes', old: 10 * GiB, new: 5 * GiB })]);
-    expect(await stored()).toEqual([['media.account_day_bytes', 2 * MiB], ['plan.free.shared_workspaces', 1000], ['plan.free.storage_bytes', 5 * GiB]]);
+    expect(await stored()).toEqual([['media.account_day_bytes', 2 * MiB], ['plan.free.storage_bytes', 5 * GiB]]);
     // The API holds to it on the next request it reads limits for.
     const ann = await account();
     const { id, doc } = await planIn(ann);
@@ -2288,7 +2288,7 @@ describe('storage limits', () => {
       const refused = await cli(...args);
       expect([args.join(' '), refused.code, loggedBy(refused.out).filter((l) => l.level >= 50)]).toEqual([args.join(' '), 1, []]);
     }
-    expect(await stored()).toEqual([['media.account_day_bytes', 2 * MiB], ['plan.free.shared_workspaces', 1000], ['plan.free.storage_bytes', 5 * GiB]]);
+    expect(await stored()).toEqual([['media.account_day_bytes', 2 * MiB], ['plan.free.storage_bytes', 5 * GiB]]);
   });
 
   it('warns once each time someone’s storage or their day passes 80% of its limit', async () => {
