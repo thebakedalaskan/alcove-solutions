@@ -222,15 +222,23 @@ export interface Holders {
   shares: { principal_index: Uint8Array; document_id: string; role: DocumentRole; kind: 'email' | 'seat' }[];
   licensed: { index: Uint8Array; until: number }[];
 }
-const MemberRow = z.object({ email_index: bytea, role: z.enum(['admin', 'edit', 'read']) });
+/** Each of these people who's a member, with whose team the workspace is: one row with no member when none of them is. */
+const MemberRow = z.object({
+  email_index: bytea.nullable(), role: z.enum(['admin', 'edit', 'read']).nullable(), team_id: z.string().nullable(), team_access: z.enum(['team', 'added']).nullable()
+});
 const ShareRow = z.object({ principal_index: bytea, document_id: z.string(), role: z.enum(['edit', 'read']), kind: z.enum(['email', 'seat']) });
-const TeamRow = z.object({ team_id: z.string().nullable(), team_access: z.enum(['team', 'added']).nullable() });
-/** What these people have in a workspace, and nothing of anyone else's, however many it's shared with. */
+/**
+ * What these people have in a workspace, and nothing of anyone else's, however many it's shared with. Its members and its team
+ * are read together, so a workspace that isn't a team's costs no more to check than one did before teams: access is checked on
+ * every read of every file.
+ */
 export async function holdersOf(db: Db, ownerId: string, principals: Uint8Array[]): Promise<Holders> {
-  const team = await maybeOne(db, TeamRow, 'SELECT team_id, team_access FROM workspaces WHERE owner_id = $1', [ownerId]);
-  const teamId = team?.team_access === 'team' ? team.team_id : null;
+  const found = await rows(db, MemberRow, `SELECT m.email_index, m.role, w.team_id, w.team_access FROM workspaces w
+    LEFT JOIN workspace_members m ON m.owner_id = w.owner_id AND m.email_index = ANY($2::bytea[]) WHERE w.owner_id = $1`, [ownerId, principals]);
+  const first = found[0];
+  const teamId = first?.team_access === 'team' ? first.team_id : null;
   return {
-    members: await rows(db, MemberRow, 'SELECT email_index, role FROM workspace_members WHERE owner_id = $1 AND email_index = ANY($2::bytea[])', [ownerId, principals]),
+    members: found.flatMap(({ email_index, role }) => (email_index && role ? [{ email_index, role }] : [])),
     shares: await rows(db, ShareRow, 'SELECT principal_index, document_id, role, kind FROM document_access WHERE owner_id = $1 AND principal_index = ANY($2::bytea[])', [ownerId, principals]),
     licensed: teamId === null ? [] : (await licensedBy(db, principals)).filter((l) => l.teamId === teamId).map(({ index, until }) => ({ index, until }))
   };
