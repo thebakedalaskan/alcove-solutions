@@ -248,7 +248,7 @@ function PlanFoot({ plan }: { plan: Plan }) {
           {settling ? `Address closed, settling ${tokensShort(buying.received?.amount ?? '0')} ${route.token}`
             : short ? `Send ${tokensShort(restToSend(buying))} ${route.token} more`
             : state === 'waiting' ? `Waiting for ${tokensShort(asked.amount)} ${route.token}`
-            : purchase.buys.kind === 'pro' ? 'Payment seen, starting Pro' : 'Payment seen, adding notes'}
+            : purchase.buys.kind === 'pro' ? 'Payment seen, starting Pro' : purchase.buys.kind === 'licenses' ? 'Payment seen, adding licenses' : 'Payment seen, adding notes'}
         </p>
         <button type="button" className={cn('sb-plan', on && 'is-on')} onClick={() => checkout.reopen(buying.id, checkoutFor(purchase.buys), 'side')}>
           <span className="ac-clamp-1">{purchaseName(purchase.buys)}</span><span className="go">Open<Icon name="chevron" size={15} /></span>
