@@ -295,24 +295,28 @@ export interface TeamInviteProps {
   hint?: ReactNode;
   /** On a surface of its own, as the Team page's side column has it. */
   card?: boolean | undefined;
+  /** Only the link and its buttons, under a heading drawn around it: checkout's Done (`CheckoutDone`'s `invite`). */
+  bare?: boolean | undefined;
   className?: string | undefined;
 }
 
-export function TeamInvite({ made, making = false, copied = false, onMake, onCopy, title = 'Invite people', hint = 'Each link lets one person join, for a day. They take a license when they next open Alcove.', card = false, className }: TeamInviteProps) {
+export function TeamInvite({ made, making = false, copied = false, onMake, onCopy, title = 'Invite people', hint = 'Each link lets one person join, for a day. They take a license when they next open Alcove.', card = false, bare = false, className }: TeamInviteProps) {
   const h = useId();
+  const link = made ? (
+    <>
+      <div className="tq-link" role="group" aria-label="Link to join the team">
+        <code>{made.link.replace(/^https?:\/\//, '')}</code>
+        <Button variant="secondary" size="sm" icon={copied ? 'check' : 'copy'} onClick={onCopy}>{copied ? 'Copied' : 'Copy'}</Button>
+      </div>
+      <p className="tq-hint">Works once, until {made.until}. <button type="button" className="tq-lnk" disabled={making} onClick={onMake}>Make another</button></p>
+    </>
+  ) : <Button variant="secondary" icon="link" loading={making} onClick={onMake}>Make an invite link</Button>;
+  if (bare) return <div className={cn('tq-invite', className)}>{link}</div>;
   return (
     <section className={cn('tq-invite', card && 'tq-card', className)} aria-labelledby={h}>
       <h2 id={h} className="tq-ct">{title}</h2>
       {has(hint) && <p className="tq-sub">{hint}</p>}
-      {made ? (
-        <>
-          <div className="tq-link" role="group" aria-label="Link to join the team">
-            <code>{made.link.replace(/^https?:\/\//, '')}</code>
-            <Button variant="secondary" size="sm" icon={copied ? 'check' : 'copy'} onClick={onCopy}>{copied ? 'Copied' : 'Copy'}</Button>
-          </div>
-          <p className="tq-hint">Works once, until {made.until}. <button type="button" className="tq-lnk" disabled={making} onClick={onMake}>Make another</button></p>
-        </>
-      ) : <Button variant="secondary" icon="link" loading={making} onClick={onMake}>Make an invite link</Button>}
+      {link}
     </section>
   );
 }

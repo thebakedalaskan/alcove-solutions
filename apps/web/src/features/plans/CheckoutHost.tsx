@@ -15,7 +15,7 @@ import { errorCode, errorMessage, errorRequestId, type BalanceEntry, type MyTeam
 import {
   Avatar, Button, CheckoutAsk, CheckoutBig, CheckoutDone, CheckoutLine, CheckoutNote, CheckoutWindow, Dots, HoursPicker, LicensesLeft,
   LicensesPicker, MonthsPicker, NetworkPicker, PayAddress, PayAmount, PayArrived, PayStatus, PayTrack, PaymentReceipt, RequestRef,
-  TeamName, useTheme, useToast,
+  TeamInvite, TeamName, useTheme, useToast,
   type AvatarPerson, type CheckoutStage, type CheckoutSummaryData, type HoursOption, type LicensesOption, type MonthsOption,
   type ReceiptLine, type SummaryLine
 } from '@alcove/ui';
@@ -26,6 +26,7 @@ import { callName, someNames } from '~/lib/people';
 import { q, topUpOpen, useBuy, useCancelTopUp, useCreateTeam, useLicensesBought, useStartTopUp } from '~/lib/queries';
 import { byWhen, fullDate, hm, longDay, shortDate } from '~/lib/time';
 import { plural, usd, usdCents } from '~/lib/words';
+import { useInvite } from '../team/invite';
 import type { CheckoutOpen } from './checkout';
 import {
   LENGTHS, LICENSES, costOf, kindOf, lapsed, microOf, plainTokens, proPrice, purchaseName, repriced, roundTokens, sameTerms, tokens,
@@ -133,12 +134,16 @@ function described(buys: Purchase, offers: PlanOffers): { name: string; brief: s
 /** What Done says of a purchase, and its receipt. */
 interface Done {
   title: string; lines: string[]; reminder: string | null;
+  /** A team was just started: Done invites its people. */
+  invite: boolean;
   row: { title: string; sub: string; reference: string | null };
   receipt: { title: string; lines: ReceiptLine[]; total: string };
 }
 
 export function CheckoutHost({ open, onClose, onCompare }: { open: CheckoutOpen; onClose: () => void; onCompare?: (() => void) | undefined }) {
   const forTeam = open.what.plan === 'team';
+  /* Done invites a just-started team's people: the same links as Team's Invite people. */
+  const invite = useInvite();
   const plan = useQuery(q.plan());
   const offers = useQuery(q.offers());
   const routes = useQuery(q.topUpRoutes());
@@ -410,6 +415,7 @@ export function CheckoutHost({ open, onClose, onCompare }: { open: CheckoutOpen;
     const forOn = b.kind === 'licenses' ? named || null : name;
     return {
       title: heading, lines,
+      invite: b.kind === 'licenses' && starting !== false,
       // Licenses run a period from when each is taken, and aren't renewed: there's nothing to remind.
       reminder: b.kind !== 'pro' ? null : fresh?.pro.renew ? 'Renews from your balance.' : 'Nothing renews by itself. Alcove reminds you before it ends.',
       row: {
@@ -734,7 +740,8 @@ export function CheckoutHost({ open, onClose, onCompare }: { open: CheckoutOpen;
   }
   if (done) {
     const d = done;
-    body = <CheckoutDone title={d.title} lines={d.lines} reminder={d.reminder} receipt={{ ...d.row, onOpen: () => setReceipt(true) }} />;
+    body = <CheckoutDone title={d.title} lines={d.lines} reminder={d.reminder} receipt={{ ...d.row, onOpen: () => setReceipt(true) }}
+      invite={d.invite ? <TeamInvite {...invite} bare /> : undefined} />;
   }
 
   return (
