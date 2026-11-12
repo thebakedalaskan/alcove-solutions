@@ -5,6 +5,7 @@
  */
 import { CheckoutParamSchema, type CheckoutParam } from '@alcove/api';
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
+import { useCallback } from 'react';
 import { Plans } from '~/features/plans/Plans';
 import { q } from '~/lib/queries';
 
@@ -30,5 +31,7 @@ export const Route = createFileRoute('/_app/plans')({
 function PlansPage() {
   const { checkout } = Route.useSearch();
   const navigate = useNavigate();
-  return <Plans opening={checkout} onOpened={() => void navigate({ to: '/plans', search: {}, replace: true, resetScroll: false })} />;
+  /* Once checkout is open, the address goes back to /plans, so a reload or Back doesn't open it again. */
+  const opened = useCallback(() => void navigate({ to: '/plans', search: {}, replace: true, resetScroll: false }), [navigate]);
+  return <Plans opening={checkout} onOpened={opened} />;
 }
