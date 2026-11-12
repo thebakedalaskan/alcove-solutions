@@ -4,7 +4,7 @@
  * it. This file is who can open it and what with; the window itself is CheckoutHost.tsx, rendered by the provider at the
  * app's root.
  */
-import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
+import { createContext, Fragment, useContext, useMemo, useState, type ReactNode } from 'react';
 
 /** What checkout opens on: Pro (to start, or to extend when on Pro), with the months to begin on; or more notes for this period. */
 export type CheckoutFor = { plan: 'pro'; months?: number | undefined } | { plan: 'hours'; packs?: number | undefined };
@@ -31,19 +31,23 @@ export function useCheckout(): CheckoutControls {
   return useContext(CheckoutContext);
 }
 
-/** Holds what checkout is open on, for every page beneath it. `window` draws it (Checkout.tsx), given what's open and how to close. */
+/**
+ * Holds what checkout is open on, for every page beneath it. `window` draws it (CheckoutHost.tsx), given what's open and
+ * how to close. Each opening is a window of its own, from its first step, even over one already open.
+ */
 export function CheckoutProvider({ children, window }: { children: ReactNode; window?: ((open: CheckoutOpen, close: () => void) => ReactNode) | undefined }) {
-  const [current, setCurrent] = useState<CheckoutOpen | null>(null);
+  const [shown, setShown] = useState<{ open: CheckoutOpen; n: number } | null>(null);
+  const current = shown?.open ?? null;
   const controls = useMemo<CheckoutControls>(() => ({
-    open: (what, from) => setCurrent({ what, from, topUpId: null }),
-    reopen: (topUpId, what, from) => setCurrent({ what, from, topUpId }),
-    close: () => setCurrent(null),
+    open: (what, from) => setShown((was) => ({ open: { what, from, topUpId: null }, n: (was?.n ?? 0) + 1 })),
+    reopen: (topUpId, what, from) => setShown((was) => ({ open: { what, from, topUpId }, n: (was?.n ?? 0) + 1 })),
+    close: () => setShown(null),
     current
   }), [current]);
   return (
     <CheckoutContext.Provider value={controls}>
       {children}
-      {current && window ? window(current, controls.close) : null}
+      {shown && window ? <Fragment key={shown.n}>{window(shown.open, controls.close)}</Fragment> : null}
     </CheckoutContext.Provider>
   );
 }

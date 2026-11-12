@@ -374,13 +374,15 @@ export function PayAmount({ label = 'Send exactly', amount, copy: value = amount
  * On a phone there's no code: Open in wallet opens the payment in a wallet app, or copies the address where the network
  * has no such link (`walletHref` null).
  */
-export function PayAddress({ address, chainName, token = 'USDC', tag, walletHref, memo, listening = false }: {
+export function PayAddress({ address, chainName, token = 'USDC', tag, walletHref, memo, listening = false, quiet = false }: {
   address: string; chainName: string; token?: string | undefined;
   /** new: made for this payment. same: the address part of it already came to. */
   tag: 'new' | 'same';
   walletHref: string | null;
   memo?: string | null | undefined;
   listening?: boolean | undefined;
+  /** Open in wallet isn't the filled button while the window asks something else, whose answer is. */
+  quiet?: boolean | undefined;
 }) {
   const [copied, copy] = useCopy(address);
   const head = address.slice(0, 6);
@@ -405,8 +407,8 @@ export function PayAddress({ address, chainName, token = 'USDC', tag, walletHref
         <p className="chk">After you paste it, check the first and last characters.</p>
         <div className="ck-wallet">
           {walletHref
-            ? <a className={buttonClass({ variant: 'primary' })} href={walletHref}><Icon name="wallet" size={18} />Open in wallet</a>
-            : <Button variant="primary" icon={copied ? 'check' : 'copy'} onClick={copy}>{copied ? 'Copied' : 'Copy address'}</Button>}
+            ? <a className={buttonClass({ variant: quiet ? 'secondary' : 'primary' })} href={walletHref}><Icon name="wallet" size={18} />Open in wallet</a>
+            : <Button variant={quiet ? 'secondary' : 'primary'} icon={copied ? 'check' : 'copy'} onClick={copy}>{copied ? 'Copied' : 'Copy address'}</Button>}
         </div>
       </div>
     </div>

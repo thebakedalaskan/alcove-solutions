@@ -277,6 +277,7 @@
 
 /* Printing a receipt prints it alone, dark on the paper, with Alcove's name at its head. */
 @media print {
+  :root:has(.ck-receipt), body:has(.ck-receipt) { background: Canvas; color-scheme: light; }
   body:has(.ck-receipt) > :not(:has(.ck-receipt)), body:has(.ck-receipt) .ac-scrim, .ck-receipt-acts { display: none !important; }
   .ac-modal:has(.ck-receipt) { position: static; width: auto; max-width: 560px; height: auto; max-height: none; margin: 0; overflow: visible; transform: none; border-radius: 0; box-shadow: none; animation: none; color-scheme: light; background: Canvas; }
   .ck-receipt { --ink: CanvasText; --ink-2: GrayText; --line: GrayText; padding: 0; }

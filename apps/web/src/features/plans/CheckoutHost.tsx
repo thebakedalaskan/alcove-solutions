@@ -379,7 +379,7 @@ export function CheckoutHost({ open, onClose, onCompare }: { open: CheckoutOpen;
             <PayAmount label={short ? 'Send the rest' : 'Send exactly'} amount={tokens(rest)} copy={plainTokens(rest)} chain={chain} chainName={chainName}
               arrived={short ? `${tokens(got)} of ${tokens(asked)} USDC arrived.` : null} />
             {t.address && (
-              <PayAddress address={t.address} memo={t.memo} chainName={chainName} tag={short ? 'same' : 'new'} listening
+              <PayAddress address={t.address} memo={t.memo} chainName={chainName} tag={short ? 'same' : 'new'} listening quiet={asking}
                 walletHref={walletLink(t.route, t.address, plainTokens(rest))} />
             )}
             {short && <CheckoutNote tone="info">If you don’t, the {roundTokens(got)} USDC that arrived stays in your balance.</CheckoutNote>}
