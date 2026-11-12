@@ -9,7 +9,7 @@ import { Button, Faces, PlanCard, PlanHere, type PlanCardShown } from '@alcove/u
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { did } from '../../../src/component';
 import { AIKO, KOFI, MAYA, PRIYA } from '../../../src/world/people';
-import { FREE_FACTS, MORE_NOTES, PRO_FACTS, TEAM_FACTS, onTheWater } from './parts';
+import { FREE_FACTS, LICENSES_TAKEN, MORE_NOTES, PRO_FACTS, TEAM_FACTS, onTheWater } from './parts';
 
 /** A plan as it's shown, or `waiting` for its prices: the card is one or the other. */
 type CardArgs = Omit<PlanCardShown, 'waiting'> & { waiting?: boolean | undefined };
@@ -66,13 +66,26 @@ export const FreeOnPro: Story = {
   name: 'Free, on Pro',
   args: { ...Free.args, action: <PlanHere quiet>Where you’re back to if a plan ends</PlanHere> }
 };
-/** Team, once it's offered: the people it's for as small arches at the end of its name's row. */
+/**
+ * Team: licenses, one person for 30 days each, whichever way the prices are shown; the people it's for as small arches at the
+ * end of its name's row, and Start a team off a team.
+ */
 export const Team: Story = {
   args: {
-    kind: 'team', name: 'Team', sub: 'For 3 people or more', lifted: false, price: '$32', per: 'a person a month',
-    bill: '$384 a person for 12 months.', save: 'You save $96 each.', people: <Faces people={[PRIYA, KOFI, AIKO, MAYA]} size={22} max={4} />,
-    action: <Button variant="secondary" onClick={did('onGetTeam')}>Get Team</Button>, facts: TEAM_FACTS
+    kind: 'team', name: 'Team', sub: 'For a company', lifted: false, price: '$40', per: 'a person a month',
+    bill: 'Each license is one person for 30 days.', save: undefined, people: <Faces people={[PRIYA, KOFI, AIKO, MAYA]} size={22} max={4} />,
+    action: <Button variant="secondary" onClick={did('onStartATeam')}>Start a team</Button>, facts: TEAM_FACTS, more: LICENSES_TAKEN
   }
+};
+/** Team, as its admin: it's your plan while you're licensed, and Buy licenses. */
+export const TeamAdmin: Story = {
+  name: 'Team, its admin',
+  args: { ...Team.args, chip: 'Your plan', action: <Button variant="secondary" onClick={did('onBuyLicenses')}>Buy licenses</Button> }
+};
+/** Team, as a member: who buys its licenses, in a quiet line where the button would be. */
+export const TeamMember: Story = {
+  name: 'Team, a member',
+  args: { ...Team.args, chip: 'Your plan', action: <PlanHere quiet>Priya buys its licenses</PlanHere> }
 };
 /** Its prices on their way: the name and who it's for, and bars where the rest will be, breathing. */
 export const Waiting: Story = { args: { waiting: true } };

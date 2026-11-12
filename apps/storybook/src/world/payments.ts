@@ -3,6 +3,7 @@ import type { PlanOffers, Purchase, TopUp, TopUpRoute, TopUpRoutes, TopUpState }
 import { iso } from './clock';
 import type { World } from './index';
 import { buyFromBalance, PLAN_OFFERS } from './plans';
+import { addLicenses } from './teams';
 
 /**
  * How a payment opened to buy something plays out by itself, a step every few seconds from when it's opened, as 1Click
@@ -58,14 +59,27 @@ export const paymentsOff = (): PaymentsWorld => ({ offers: structuredClone(PLAN_
 export function withPayments(w: World, play: PaymentPlay = 'pays'): void {
   w.payments = { ...w.payments, routes: structuredClone(ROUTES), topUps: [], play, playing: {} };
 }
-/** The prices go up while the story is open: Pro to $24 a month ($19.20 for a year or more), more notes to $18 for 10 hours. */
+/**
+ * The prices go up while the story is open: Pro to $24 a month ($19.20 for a year or more), more notes to $18 for 10 hours, a
+ * team license to $48.
+ */
 export function raisePrices(w: World): void {
   const o = w.payments.offers;
   w.payments.offers = {
     ...o,
     pro: { ...o.pro, microUsdPerMonth: 24_000_000, yearly: o.pro.yearly ? { ...o.pro.yearly, microUsdPerMonth: 19_200_000 } : null },
-    hours: o.hours ? { ...o.hours, microUsd: 18_000_000 } : null
+    hours: o.hours ? { ...o.hours, microUsd: 18_000_000 } : null,
+    team: { ...o.team, microUsdPerLicense: 48_000_000 }
   };
+}
+
+/**
+ * `buys` bought from the balance, as the server buys it once its checks pass: the plan pays for it (and has Pro's months or
+ * more notes), and licenses go to the team Art runs, not taken by anyone yet. `entry` is the balance's line for it.
+ */
+export function boughtFromBalance(w: World, buys: Purchase, entry: string, now = Date.now()): void {
+  w.plan = buyFromBalance(w.plan, buys, entry, now);
+  if (buys.kind === 'licenses' && w.myTeam) addLicenses(w.myTeam, buys.count, buys.microUsdPerLicense);
 }
 
 /** An ID for a new line of the balance that none of its lines has yet: a list of them keys on it. */
@@ -110,6 +124,14 @@ export function purchaseTopUp(id: string, buys: Purchase, asked: number, expires
 
 /** A year of Pro at the yearly price: what most of the checkout's stories are buying. */
 export const PRO_YEAR: Purchase = { kind: 'pro', months: 12, microUsdPerMonth: 16_000_000 };
+/** Six licenses at $40, for the six people at Vandelay on Alcove: what starting Art's team buys. */
+export const TEAM_SIX: Purchase = { kind: 'licenses', count: 6, microUsdPerLicense: PLAN_OFFERS.team.microUsdPerLicense };
+/** Why a purchase whose price went up before its payment arrived wasn't bought, as the server says it. */
+const PRICE_CHANGED: Record<Purchase['kind'], string> = {
+  pro: 'The price of Pro changed before your payment arrived. It’s in your balance.',
+  hours: 'The price of more notes changed before your payment arrived. It’s in your balance.',
+  licenses: 'The price of a team license changed before your payment arrived. It’s in your balance.'
+};
 
 /** Where a payment opened to buy something is, for a story that opens on it. */
 export type PurchaseAt = 'waiting' | 'short' | 'closed-short' | 'seen' | 'bought' | 'over' | 'refused' | 'expired' | 'cancelled' | 'failed';
@@ -136,16 +158,13 @@ export const purchaseAt = (at: PurchaseAt, buys: Purchase = PRO_YEAR, asked = 19
     case 'bought':
     case 'over':
       addToBalance(w, settled.microUsd, String(sent));
-      w.plan = buyFromBalance(w.plan, buys, freshEntryId(w));
+      boughtFromBalance(w, buys, freshEntryId(w));
       now = { ...t, ...closed, state: 'credited', received: settled, purchase: { buys, outcome: 'bought', why: null } };
       break;
     case 'refused':
       raisePrices(w);
       addToBalance(w, settled.microUsd, String(sent));
-      now = {
-        ...t, ...closed, state: 'credited', received: settled,
-        purchase: { buys, outcome: 'refused', why: buys.kind === 'pro' ? 'The price of Pro changed before your payment arrived. It’s in your balance.' : 'The price of more notes changed before your payment arrived. It’s in your balance.' }
-      };
+      now = { ...t, ...closed, state: 'credited', received: settled, purchase: { buys, outcome: 'refused', why: PRICE_CHANGED[buys.kind] } };
       break;
     case 'expired': now = { ...t, ...closed, state: 'expired', expiresAt: new Date(Date.now() - 60_000).toISOString() }; break;
     case 'cancelled': now = { ...t, ...closed, state: 'cancelled' }; break;
@@ -191,7 +210,7 @@ export function settlePurchase(w: World, id: string, now = Date.now()): void {
   if (!t || !t.purchase) return;
   const microUsd = Math.round(Number(t.asked.amount) * 1_000_000);
   addToBalance(w, microUsd, t.asked.amount);
-  w.plan = buyFromBalance(w.plan, t.purchase.buys, `sb-entry-bought-${id}`, now);
+  boughtFromBalance(w, t.purchase.buys, `sb-entry-bought-${id}`, now);
   w.payments.topUps = w.payments.topUps.map((x) => x.id === id && x.purchase ? {
     ...x, state: 'credited', address: null, received: { amount: x.asked.amount, microUsd }, purchase: { ...x.purchase, outcome: 'bought' }
   } : x);

@@ -29,11 +29,11 @@ import { QUIET } from './empty';
 import { forgetKeptHere } from './kept';
 import { drawnPicture, forgetAudio } from './media';
 import { stopLive } from './standin';
-import { buyingWith, paymentsOff, PREVIEW_PAID_TOP_UP, PREVIEW_TOP_UP, PRO_YEAR, purchaseTopUp, topUpOf, withPayments, type PaymentPlay } from '../world/payments';
+import { buyingWith, paymentsOff, PREVIEW_PAID_TOP_UP, PREVIEW_TOP_UP, PRO_YEAR, purchaseTopUp, TEAM_SIX, topUpOf, withPayments, type PaymentPlay } from '../world/payments';
 import { freePlan, inGrace, newPlan, notesStopped, overLimits, proEnded, proEnding, proExtended, proPlan, proRenewed, PRO_YEARLY_PRICE, withBalance, withNotesLeft } from '../world/plans';
 import { disconnectedDrive, withDriveExports } from '../world/drive-exports';
 import { withAgentConnections } from './agents';
-import { planWithTeam, priyasTeam, teamView, vandelayTeam, type TeamWorld } from '../world/teams';
+import { planWithTeam, priyasTeam, startedTeam, teamView, vandelayTeam, type TeamWorld } from '../world/teams';
 import { serve } from './state';
 import { forgetDocuments } from './workspaces';
 
@@ -41,7 +41,8 @@ export type ScenarioName = 'busy' | 'first-day' | 'on-their-own' | 'offline' | '
   | 'plan-low' | 'plan-stopped' | 'plan-grace' | 'plan-over' | 'plan-balance' | 'plan-pro' | 'plan-pro-ending' | 'plan-pro-renewed' | 'plan-pro-ended'
   | 'plan-buying-pro' | 'plan-pro-extended'
   | 'plan-waiting' | 'payment-short' | 'payment-over' | 'payment-refused' | 'payment-expired' | 'payment-failed'
-  | 'team-admin' | 'team-admin-low' | 'team-admin-none' | 'team-member' | 'team-member-unlicensed' | 'team-join' | 'no-team';
+  | 'team-admin' | 'team-admin-low' | 'team-admin-none' | 'team-member' | 'team-member-unlicensed' | 'team-join' | 'no-team'
+  | 'team-buying';
 
 interface Scenario { title: string; about: string; make: () => { world: World; opening: Partial<Opening> } }
 
@@ -617,6 +618,17 @@ export const SCENARIOS: Record<ScenarioName, Scenario> = {
   'first-sign-in': {
     title: 'Signing in for the first time', about: 'Nobody is signed in, and Art has no account yet: signing in makes it on screen, opens on his first day, and the tour of Home follows.',
     make: () => ({ world: { ...SCENARIOS['first-day'].make().world, session: null }, opening: { tourSeen: false } })
+  },
+  'team-buying': {
+    title: 'Starting a team, paying', about: 'Art started Vandelay’s team from Plans and opened a payment of 240 USDC on Base for its first six licenses, then closed checkout: the team is his, with nothing bought yet, and the payment waits.',
+    make: () => {
+      const world = busy();
+      withPayments(world, 'waits');
+      world.myTeam = startedTeam(world.plan.storage.usedBytes);
+      world.plan = planWithTeam(world.plan, world.myTeam, ART.email, on(0, 16, 12).getTime());
+      world.payments.topUps = [purchaseTopUp(PREVIEW_TOP_UP, TEAM_SIX, 240, iso(1, 16, 12))];
+      return { world, opening: {} };
+    }
   }
 };
 export const SCENARIO_NAMES = Object.keys(SCENARIOS).filter((k): k is ScenarioName => k in SCENARIOS);

@@ -1,16 +1,18 @@
 /*
  * Plans (docs/design/pages.md › Plans): the last of the sunset, with the
  * plans on the water under it. On the sky, Monthly or Yearly when a year or more costs less, with the last sliver of the sun
- * on the horizon under it; on the water, Free and Pro side by side, their rows lined up (a third card grows when Team is
- * offered); then what every plan has and how paying works. Every number is the server's: the offers, and the plan you're
- * on. Get Pro and Extend open checkout over the page, on a year when Yearly is chosen. Reached from the side panel's foot,
- * Settings › Plan, checkout's Compare plans, and the welcome page's Get Pro, which opens checkout as the page opens.
+ * on the horizon under it; on the water, Free, Pro and Team side by side, their rows lined up; then what every plan has and
+ * how paying works. Every number is the server's: the offers, the plan you're on, and the team you're on. Get Pro and
+ * Extend open checkout over the page, on a year when Yearly is chosen; Start a team and Buy licenses open it on Team, whose
+ * licenses are a period at a time whichever way the prices are shown. Reached from the side panel's foot, Settings › Plan,
+ * checkout's Compare plans, and the welcome page's Get Pro, which opens checkout as the page opens.
  */
-import { errorCode, errorMessage, type CheckoutParam, type Plan, type PlanAllowance, type PlanOffers } from '@alcove/api';
-import { Button, EmptyState, Evening, EveryPlan, PayingLine, PlanCard, PlanCards, PlanCycle, PlanHere, PlanSunset, type IconName, type PlanCycleChoice, type PlanFact } from '@alcove/ui';
+import { errorCode, errorMessage, type CheckoutParam, type MyTeam, type Person, type Plan, type PlanAllowance, type PlanOffers } from '@alcove/api';
+import { Button, EmptyState, Evening, EveryPlan, Faces, PayingLine, PlanCard, PlanCards, PlanCycle, PlanHere, PlanSunset, type IconName, type PlanCycleChoice, type PlanFact } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { useNow, useOnline } from '~/lib/live';
+import { callName } from '~/lib/people';
 import { q } from '~/lib/queries';
 import { hoursAndMinutes } from '~/lib/time';
 import { plural, roomLabel, usd } from '~/lib/words';
@@ -34,6 +36,7 @@ const EVERY: readonly { icon: IconName; text: string }[] = [
 /** Who each plan is for, said before its prices are here too. */
 const FREE = { name: 'Free', sub: 'For a few calls a month' } as const;
 const PRO = { name: 'Pro', sub: 'For one person' } as const;
+const TEAM = { name: 'Team', sub: 'For a company' } as const;
 
 /* ---------- the words, from the offers ---------- */
 
@@ -48,6 +51,19 @@ function factsOf(a: PlanAllowance, periodDays: number, back: boolean): PlanFact[
     { icon: 'notes', text: `${aboutHours(a.notesMinutes)} of notes ${perPeriod(periodDays)}`, sub: back ? `Back to ${hoursOfNotes(a.notesMinutes)} on the 1st of each period` : undefined },
     { icon: 'hardDrive', text: `${roomLabel(a.storageBytes)} of storage` },
     { icon: 'file', text: `Files up to ${roomLabel(a.fileBytes)}` }
+  ];
+}
+
+/**
+ * What a license brings its person, one line each: their notes, their share of the team's storage, the largest file, and
+ * what the team shares.
+ */
+function teamFactsOf(a: PlanAllowance): PlanFact[] {
+  return [
+    { icon: 'notes', text: `${aboutHours(a.notesMinutes)} of notes each` },
+    { icon: 'hardDrive', text: `${roomLabel(a.storageBytes)} each, shared by the team` },
+    { icon: 'file', text: `Files up to ${roomLabel(a.fileBytes)}` },
+    { icon: 'people', text: 'Notes and workspaces the team shares' }
   ];
 }
 
@@ -93,6 +109,11 @@ export function Plans({ opening, onOpened }: { opening?: CheckoutParam | undefin
   /* The route's loader has tried them; offers that didn't load wait for Try again. */
   const offers = useQuery({ ...q.offers(), retryOnMount: false });
   const plan = useQuery(q.plan());
+  /* Team's people: the others on the team you're on (which says who buys its licenses too), else the company's on Alcove. */
+  const team = useQuery({ ...q.myTeam(), enabled: !!plan.data?.team });
+  const company = useQuery(q.team()).data ?? null;
+  const onTeam = plan.data?.team ? (team.data?.members ?? []).filter((m) => !m.you).map((m) => m.person) : [];
+  const atWork = company?.members.filter((m) => m.onAlcove).map((m) => m.person) ?? [];
   const online = useOnline();
   const now = useNow(60_000);
   const { open } = useCheckout();
@@ -120,7 +141,8 @@ export function Plans({ opening, onOpened }: { opening?: CheckoutParam | undefin
       <div ref={water} tabIndex={-1} className="pl-water" style={{ '--d': 2 }}>
         {o && p
           ? <Offered offers={o} plan={p} yearly={cycle === 'year' ? yearly : null} now={now}
-              onBuy={(months) => open({ plan: 'pro', months }, 'plans')} />
+              team={p.team ? team.data ?? null : null} people={onTeam.length ? onTeam : atWork}
+              onBuy={(months) => open({ plan: 'pro', months }, 'plans')} onTeam={() => open({ plan: 'team' }, 'plans')} />
           : trouble === 'offline'
             ? <EmptyState className="pl-none" title="You’re offline">The plans show here when you’re back online.</EmptyState>
             : trouble === 'failed'
@@ -134,6 +156,7 @@ export function Plans({ opening, onOpened }: { opening?: CheckoutParam | undefin
                 <PlanCards>
                   <PlanCard waiting kind="free" {...FREE} />
                   <PlanCard waiting kind="pro" {...PRO} lifted />
+                  <PlanCard waiting kind="team" {...TEAM} facts={4} />
                 </PlanCards>
               )}
       </div>
@@ -144,10 +167,15 @@ export function Plans({ opening, onOpened }: { opening?: CheckoutParam | undefin
 /**
  * The plans as they're offered, and what's under them. `yearly`: the lower price for a year or more, when it's the one
  * shown. Free's button area says it's your plan; on another plan, that Free is where you're back to. Pro's button is the
- * page's one filled button on Free, and on Pro only while it's ending.
+ * page's one filled button on Free, and on Pro only while it's ending. Team is licenses, a period at a time whichever way
+ * the prices are shown, its people at the end of its name's row (`people`): off a team, Start a team; its admin buys
+ * them; a member is told who does, and it's their plan while they're licensed.
  */
-function Offered({ offers: o, plan: p, yearly, now, onBuy }: {
-  offers: PlanOffers; plan: Plan; yearly: NonNullable<PlanOffers['pro']['yearly']> | null; now: number; onBuy: (months: number) => void;
+function Offered({ offers: o, plan: p, yearly, now, team, people, onBuy, onTeam }: {
+  offers: PlanOffers; plan: Plan; yearly: NonNullable<PlanOffers['pro']['yearly']> | null; now: number;
+  /** The team you're on, as you see it, once it's read (null off a team, or until then). */
+  team: MyTeam | null; people: Person[];
+  onBuy: (months: number) => void; onTeam: () => void;
 }) {
   const onFree = p.kind === 'free';
   const onPro = p.kind === 'pro';
@@ -157,6 +185,7 @@ function Offered({ offers: o, plan: p, yearly, now, onBuy }: {
   const save = yearly
     ? `You save ${usd((o.pro.microUsdPerMonth - yearly.microUsdPerMonth) * yearly.fromMonths)}.`
     : offered ? `Or ${usd(offered.microUsdPerMonth)} for ${fromWords(offered.fromMonths)}.` : undefined;
+  const admin = team?.members.find((m) => m.role === 'admin');
   return (
     <>
       <PlanCards>
@@ -173,6 +202,14 @@ function Offered({ offers: o, plan: p, yearly, now, onBuy }: {
             </Button>
           )}
           facts={factsOf(o.pro, o.periodDays, false)} />
+        <PlanCard kind="team" {...TEAM} people={people.length ? <Faces people={people.slice(0, 4)} size={22} max={4} /> : undefined}
+          chip={p.kind === 'team' ? 'Your plan' : undefined}
+          price={usd(o.team.microUsdPerLicense)} per={`a person ${perPeriod(o.periodDays)}`}
+          bill={`Each license is one person for ${plural(o.periodDays, 'day')}.`}
+          action={p.team && p.team.role !== 'admin'
+            ? <PlanHere quiet>{admin ? `${callName(admin.person)} buys its licenses` : 'Its admin buys its licenses'}</PlanHere>
+            : <Button variant="secondary" onClick={onTeam}>{p.team ? 'Buy licenses' : 'Start a team'}</Button>}
+          facts={teamFactsOf(o.team)} more="A license is taken when someone next opens Alcove. Ones nobody takes can be refunded." />
       </PlanCards>
       <EveryPlan items={EVERY} />
       <PayingLine>

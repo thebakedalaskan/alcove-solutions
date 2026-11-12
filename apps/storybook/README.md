@@ -125,6 +125,7 @@ Product, then the follow-ups from the retro board's Actions frame.
 | `team-member-unlicensed` | Art's license ended with none to take: on Free, with a `license-needed` notice |
 | `team-join` | Art isn't on a team and has Priya's link to join (stories add it to the tab with `withTeamInvite()`) |
 | `no-team` | The busy afternoon with $60 and payments: Start a team on Team |
+| `team-buying` | Art started Vandelay's team from Plans and opened a payment of 240 USDC on Base for its first six licenses, then closed checkout: the team is his with nothing bought yet, and the payment waits, in the side panel and in checkout |
 | `agents-connected` | Art has a read-only Workspace assistant connected through OAuth and an unused Scheduling assistant personal token; Settings shows their scopes, expiry and last use |
 | `first-sign-in` | Nobody signed in, and no account yet: signing in makes Art's account on screen, his first day, and Home's tour |
 
@@ -490,12 +491,15 @@ reading and cancelling top-ups; receipt changes come from the story's made-up pr
 Pro, Extend, Add 10 hours, a waiting payment's Open), in every stage: choosing (a year at 20% off, a month, another length,
 a network's least above what's needed, part of it from the balance, the balance covering it, payments off, a price that
 changed, offline, extending, more notes), then paying (waiting, Cancel payment asking first, less arrived, seen, done, more
-arrived, refused, expired, cancelled, failed, the receipt), in both themes and on a phone. The stand-in plays a payment
-opened to buy something by itself (`src/api/payments.ts`): seen, then added and bought, a step every 5 seconds from when it
-was opened, or as the `payment-*` scenarios say; nothing runs on a timer, so nothing carries into the next story.
-`purchaseAt()` and `playsOut()` put one where a story needs it. Every address is a made-up preview no wallet takes.
+arrived, refused, expired, cancelled, failed, the receipt), in both themes and on a phone. Team has the same: Start a team
+(its name, how many licenses, from the balance or a payment, unnamed, a changed price, payments off, offline), its first
+licenses' payment (`team-buying`) waiting, seen, bought, refused and expired, and its admin's Buy licenses (`team-admin-*`:
+who's waiting, from the balance, bought, with a payment), a member, and an admin who stopped being one. The stand-in plays
+a payment opened to buy something by itself (`src/api/payments.ts`): seen, then added and bought, a step every 5 seconds
+from when it was opened, or as the `payment-*` scenarios say; nothing runs on a timer, so nothing carries into the next
+story. `purchaseAt()` and `playsOut()` put one where a story needs it. Every address is a made-up preview no wallet takes.
 **Components / Checkout** has each part of the kit's window, and **Paying, in motion**, the canvas's player, with Slow
 motion and Play again. Section 16's journeys are **Journeys / 16 Plans and paying** (16.1, from the side panel to Plans),
-**16 Checkout** (16.2 to 16.6), **16 Your plan** (16.7, 16.8 and 16.14, in the side panel and Settings) and **16 Where
-checkout shows** (16.9 to 16.13, the doors).
+**16 Checkout** (16.2 to 16.6), **16 Your plan** (16.7, 16.8 and 16.14, in the side panel and Settings), **16 Where
+checkout shows** (16.9 to 16.13, the doors) and **16 Team** (16.15, starting a team from Plans).
 
