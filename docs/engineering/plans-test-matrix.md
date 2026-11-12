@@ -5,7 +5,8 @@
 Every scenario the plans work is tested against, where it's tested, and how it stands. Tests are integration tests over
 HTTP (`@alcove/api-http`) against real Postgres, the object store and LiveKit, with the fake NEAR AI (which prices its
 models as NEAR AI's catalog does) and the fake 1Click (the "fake money"). Limits are set per test to make a scenario quick:
-a minute of notes, an hour's period, a few kilobytes of storage. Rows for later phases say which.
+a minute of notes, an hour's period, a few kilobytes of storage. Rows for later phases say which; rows marked
+"frontend" are the backend additions the plans frontend needs (a year for less, more notes, payments that buy).
 
 Suites: `billing/meter` (`apps/api/src/features/billing/meter.integration.test.ts`), `billing/plans`, `billing/topups`,
 `calls/liveNotes`, `calls/callWorkspace`, `recordings/transcripts`, `workspaces/media`, `integration/flows`.
@@ -60,6 +61,8 @@ Suites: `billing/meter` (`apps/api/src/features/billing/meter.integration.test.t
 | F5 | Pro ends over Free's storage: the grace (uploads go in), then uploads refused, files readable and deletable; buying Pro lifts it at once; buying in the release grace ends it | billing/plans › Pro › holds storage to Pro’s through the grace… | 2 | Passes |
 | F6 | Pro's storage and file size are what's enforced; Pro's files are offered and held at 512 MiB until downloads resume | billing/plans › Pro › holds an account on Pro to Pro’s storage and file size… | 2 | Passes |
 | F7 | Support finds an account by its address and adds dollars (`pnpm billing credit`) | billing/plans › support | 2 | Passes |
+| F8 | A year or more for less: 12 months at the yearly price ($16), fewer at a month's; each refused at the other's price, nothing charged; the months that haven't started refunded at the yearly price | billing/plans › Pro › sells a year or more for less…; … buys 1 to 12 months at a time… | frontend | Passes |
+| F9 | No yearly offer while its price is 0, isn't below a month's, or needs more months than one purchase buys; a year is a month's price then, and never free | billing/plans › Pro › offers no yearly price while it’s 0… | frontend | Passes |
 | **G: Team** | Licenses, invites, visits, alerts, team notes and workspaces, pooled storage | — | 3 | Not built |
 | **H: calls** |  |  |  |  |
 | H1 | A call says when it ends, ends at 10 hours, and writes its notes | billing/plans › ends at its longest… | 1 | Passes |

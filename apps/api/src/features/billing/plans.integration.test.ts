@@ -249,6 +249,8 @@ describe('money', () => {
 
 const GiB = 1024 * MiB;
 const PRICE = 20_000_000;
+/** A month of Pro bought 12 or more at once: 20% off. */
+const YEARLY = 16_000_000;
 const BASE_USDC = 'nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near';
 /** Money in, as a person adds it: a top-up the fake 1Click settles in full. */
 async function deposit(who: Account, microUsd: number): Promise<void> {
@@ -273,7 +275,8 @@ describe('Pro', () => {
     expect(await ann.api.plans.offers()).toEqual({
       periodDays: 30,
       free: { notesMinutes: 300, storageBytes: 10 * GiB, fileBytes: 512 * MiB },
-      pro: { notesMinutes: 3000, storageBytes: 100 * GiB, fileBytes: 512 * MiB, microUsdPerMonth: PRICE, maxMonths: 12 }
+      pro: { notesMinutes: 3000, storageBytes: 100 * GiB, fileBytes: 512 * MiB, microUsdPerMonth: PRICE, maxMonths: 12, yearly: { fromMonths: 12, microUsdPerMonth: YEARLY } },
+      hours: null
     });
     expect(await refusal(ann.api.plans.buyPro(1, PRICE))).toBe('conflict: Your balance is short: 1 month of Pro costs $20 and your balance is $0. Add money first.');
     const rec = await ann.api.recordings.start({ title: 'Used' });
@@ -348,15 +351,55 @@ describe('Pro', () => {
 
   it('buys 1 to 12 months at a time, and refuses 13', async () => {
     const ann = await account();
-    await give(ann, 13 * PRICE);
+    await give(ann, PRICE + 12 * YEARLY);
     expect((await ann.api.plans.buyPro(1, PRICE)).pro.months).toHaveLength(1);
-    const twelve = await ann.api.plans.buyPro(12, PRICE);
+    const twelve = await ann.api.plans.buyPro(12, YEARLY);
     expect(twelve.pro.months).toHaveLength(13);
-    expect(twelve).toMatchObject({ kind: 'pro', balance: { microUsd: 0 }, pro: { refundableMicroUsd: 12 * PRICE } });
+    expect(twelve).toMatchObject({ kind: 'pro', balance: { microUsd: 0 }, pro: { refundableMicroUsd: 12 * YEARLY } });
     expect(Date.parse(twelve.pro.until ?? '') - Date.parse(twelve.period.from)).toBe(13 * 30 * 86_400_000);
     await give(ann, 13 * PRICE);
     expect(await refusal(ann.api.plans.buyPro(13, PRICE))).toBe('invalid: Buy 1 to 12 months at a time.');
+    expect(await refusal(ann.api.plans.buyPro(13, YEARLY))).toBe('invalid: Buy 1 to 12 months at a time.');
     expect((await ann.api.plans.plan()).balance.microUsd).toBe(13 * PRICE);
+  });
+
+  it('sells a year or more for less: the yearly price from 12 months, a month’s under it, each refused at the other’s, refunded at what was paid', async () => {
+    const ann = await account();
+    expect((await ann.api.plans.offers()).pro.yearly).toEqual({ fromMonths: 12, microUsdPerMonth: YEARLY });
+    await give(ann, 12 * YEARLY);
+    // The price for that many months, and no other: 12 at a month's price, or 11 at the yearly one, has changed.
+    const changed = 'conflict: The price of Pro has changed. Look at it again before buying.';
+    expect(await refusal(ann.api.plans.buyPro(12, PRICE))).toBe(changed);
+    expect(await refusal(ann.api.plans.buyPro(11, YEARLY))).toBe(changed);
+    expect((await ann.api.plans.plan())).toMatchObject({ kind: 'free', balance: { microUsd: 12 * YEARLY } });
+    const year = await ann.api.plans.buyPro(12, YEARLY);
+    expect(year).toMatchObject({ kind: 'pro', balance: { microUsd: 0 }, pro: { refundableMicroUsd: 11 * YEARLY } });
+    expect(year.pro.months.map((m) => m.microUsd)).toEqual(Array.from({ length: 12 }, () => YEARLY));
+    expect(year.balance.history[0]).toMatchObject({ label: 'Pro, 12 months', microUsd: -12 * YEARLY });
+    // The 11 months that haven't started go back at what was paid for them: the yearly price.
+    const refunded = await ann.api.plans.refundPro();
+    expect(refunded).toMatchObject({ kind: 'pro', balance: { microUsd: 11 * YEARLY }, pro: { refundableMicroUsd: 0 } });
+    expect(refunded.balance.history[0]).toMatchObject({ label: 'Pro refunded, 11 months', microUsd: 11 * YEARLY });
+    expect(await refusal(ann.api.plans.buyPro(12, YEARLY))).toBe('conflict: Your balance is short: 12 months of Pro cost $192 and your balance is $176. Add money first.');
+    // Under a year, a month's price.
+    expect(await ann.api.plans.buyPro(2, PRICE)).toMatchObject({ balance: { microUsd: 11 * YEARLY - 2 * PRICE }, pro: { refundableMicroUsd: 2 * PRICE } });
+  });
+
+  it('offers no yearly price while it’s 0, isn’t below a month’s, or is for more months than one purchase buys: a year is then a month’s price', async () => {
+    const ann = await account();
+    const yearly = async () => (await ann.api.plans.offers()).pro.yearly;
+    await setLimit('plan.pro.yearly_from_months', 6);
+    expect(await yearly()).toEqual({ fromMonths: 6, microUsdPerMonth: YEARLY });
+    await setLimit('plan.pro.yearly_price_micro_usd', PRICE);
+    expect(await yearly()).toBeNull();
+    await setLimit('plan.pro.yearly_price_micro_usd', 0);
+    expect(await yearly()).toBeNull();
+    await give(ann, 12 * PRICE);
+    expect(await refusal(ann.api.plans.buyPro(12, 0))).toBe('conflict: The price of Pro has changed. Look at it again before buying.');
+    expect(await ann.api.plans.buyPro(12, PRICE)).toMatchObject({ kind: 'pro', balance: { microUsd: 0 } });
+    await setLimit('plan.pro.yearly_price_micro_usd', YEARLY);
+    await setLimit('plan.pro.yearly_from_months', 13);
+    expect(await yearly()).toBeNull();
   });
 
   it('runs months back to back, refunds the ones that haven’t started, and never the running one', async () => {

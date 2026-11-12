@@ -5,7 +5,7 @@
  * made when it signs up, or the first time it's touched after the release that brought plans (on Free, with time to get
  * within Free's limits if it's over them).
  */
-import { PlanNoticeKindSchema, type BalanceEntry, type PlanKind, type PlanNoticeKind } from '@alcove/api';
+import { PlanNoticeKindSchema, type BalanceEntry, type PlanKind, type PlanNoticeKind, type PlanOffers } from '@alcove/api';
 import { z } from 'zod';
 import type { Deps } from '../../context';
 import { id128, openJson, sealJson, serviceKey, toJson, unb64u } from '../../crypto';
@@ -70,6 +70,22 @@ export const freeAllowance = (l: Limits): Allowance =>
 /** Pro's: the largest file is held to WHOLE_DOWNLOAD_BYTES, whatever its limit says, until downloads can resume. */
 export const proAllowance = (l: Limits): Allowance =>
   ({ notesMinutes: l.get('plan.pro.notes_minutes'), storageBytes: l.get('plan.pro.storage_bytes'), fileBytes: Math.min(l.get('plan.pro.file_bytes'), WHOLE_DOWNLOAD_BYTES) });
+
+/**
+ * Pro's lower price a month for buying at least `fromMonths` at once (a year or more): none while that price is 0, isn't
+ * below a month's, or is for more months than one purchase buys.
+ */
+export function yearlyOf(l: Limits): PlanOffers['pro']['yearly'] {
+  const microUsdPerMonth = l.get('plan.pro.yearly_price_micro_usd');
+  const fromMonths = l.get('plan.pro.yearly_from_months');
+  const lower = microUsdPerMonth > 0 && microUsdPerMonth < l.get('plan.pro.price_micro_usd');
+  return lower && fromMonths <= l.get('plan.pro_max_months') ? { fromMonths, microUsdPerMonth } : null;
+}
+/** What a month of Pro costs bought `months` at a time: the yearly price from its `fromMonths`, otherwise a month's. */
+export function proPriceFor(l: Limits, months: number): number {
+  const yearly = yearlyOf(l);
+  return yearly && months >= yearly.fromMonths ? yearly.microUsdPerMonth : l.get('plan.pro.price_micro_usd');
+}
 
 /** The plan an account is on now, the period it's in and what the plan brings. */
 export interface InForce extends Allowance { kind: PlanKind; from: number; to: number }
@@ -267,16 +283,17 @@ async function changing(d: Service, ownerId: string, change: (a: PlanAccount, l:
 }
 
 /**
- * Buys `months` of Pro from the balance at `microUsdPerMonth`, the price its buyer was shown, after any already bought (on
- * Free, from now). Under the row's lock, so buys at once on any instance never spend the same money twice. Buying ends
- * any grace: only Pro's limits apply from now.
+ * Buys `months` of Pro from the balance at `microUsdPerMonth`, the price its buyer was shown for that many months (the
+ * yearly price from its `fromMonths`), after any already bought (on Free, from now). Each month keeps what was paid for
+ * it, which is what a refund gives back. Under the row's lock, so buys at once on any instance never spend the same money
+ * twice. Buying ends any grace: only Pro's limits apply from now.
  */
 export async function buyPro(d: Service, ownerId: string, months: number, microUsdPerMonth: number): Promise<void> {
   await changing(d, ownerId, (a, l, now) => {
     const max = l.get('plan.pro_max_months');
     if (months > max) throw invalid(`Buy 1 to ${max} months at a time.`, { ownerId, months, max });
-    const price = l.get('plan.pro.price_micro_usd');
-    if (microUsdPerMonth !== price) throw conflict('The price of Pro has changed. Look at it again before buying.', { ownerId, why: 'price' });
+    const price = proPriceFor(l, months);
+    if (microUsdPerMonth !== price) throw conflict('The price of Pro has changed. Look at it again before buying.', { ownerId, why: 'price', months });
     const total = months * price;
     if (a.balanceMicroUsd < total) {
       throw conflict(`Your balance is short: ${monthsOf(months)} of Pro ${months === 1 ? 'costs' : 'cost'} ${dollars(total)} and your balance is ${dollars(a.balanceMicroUsd)}. Add money first.`, { ownerId, why: 'balance', months });

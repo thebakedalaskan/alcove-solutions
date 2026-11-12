@@ -8,7 +8,7 @@ import type { Plan, PlanOffers } from '@alcove/api';
 import type { Deps } from '../../context';
 import { limitsNow } from '../../limits';
 import { minutesOf, standing } from './meter';
-import { accountOf, freeAllowance, graceUntil, heldTo, historyOf, inForce, noticesOf, proAllowance, proOf } from './plans';
+import { accountOf, freeAllowance, graceUntil, heldTo, historyOf, inForce, noticesOf, proAllowance, proOf, yearlyOf } from './plans';
 import { usedBytes } from './storage';
 
 /** How many of the balance's latest changes are shown. */
@@ -40,13 +40,16 @@ export async function planOf(d: Pick<Deps, 'cfg' | 'pool'>, ownerId: string): Pr
   };
 }
 
-/** The plans on offer, from the limits in force: what each brings, what a month of Pro costs and the most one purchase buys. */
+/**
+ * The plans on offer, from the limits in force: what each brings, what a month of Pro costs, and less for a year or more,
+ * and the most months one purchase buys.
+ */
 export async function offersOf(d: Pick<Deps, 'cfg' | 'pool'>): Promise<PlanOffers> {
   const l = await limitsNow(d);
   return {
     periodDays: l.get('plan.period_seconds') / 86_400,
     free: freeAllowance(l),
-    pro: { ...proAllowance(l), microUsdPerMonth: l.get('plan.pro.price_micro_usd'), maxMonths: l.get('plan.pro_max_months'), yearly: null },
+    pro: { ...proAllowance(l), microUsdPerMonth: l.get('plan.pro.price_micro_usd'), maxMonths: l.get('plan.pro_max_months'), yearly: yearlyOf(l) },
     hours: null
   };
 }

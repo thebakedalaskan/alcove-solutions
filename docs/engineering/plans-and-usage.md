@@ -7,7 +7,7 @@ they bring: notes and storage. Every feature is on every plan.
 
 | | Free | Pro | Team |
 | --- | --- | --- | --- |
-| Price | $0 | $20 a month (a period), from the balance | $40 a person a period |
+| Price | $0 | $20 a month (a period), or $16 a month bought 12 or more at once, from the balance | $40 a person a period |
 | Calls | Unlimited, up to 10 hours each, 100 people | Same | Same |
 | Notes (an estimate: what a call uses varies) | About 5 hours a period | About 50 hours | About 50 hours a person |
 | Storage (uploads and call recordings) | 10 GB | 100 GB | 100 GB a person, pooled |
@@ -18,7 +18,7 @@ A period is 30 days from when the plan began; a month of Pro is one period. Team
 what's built now.
 
 Every number is a limit (`apps/api/src/limits.ts`, [Deployment › Changing a limit](deployment-and-acceptance.md#changing-a-limit)),
-changeable without a deploy: each plan's notes, storage, files and price; the most months of Pro one purchase buys and how
+changeable without a deploy: each plan's notes, storage, files and price; Pro's lower price for a year or more; the most months of Pro one purchase buys and how
 long before Pro ends its owner is told; the most workspaces one account makes; what an hour of notes is
 reckoned at; when AI stops and when an organizer is told it's close; how long a period and a grace last; a call's longest
 and its most people.
@@ -151,21 +151,28 @@ with or without upkeep.
 **What's offered** (`GET /v1/plan/offers`): the period in days, Free's and Pro's allowances (Pro's file size as enforced),
 the price of a month (`plan.pro.price_micro_usd`, $20) and the most months one purchase buys (`plan.pro_max_months`, 12).
 
+**A year or more for less** (`offers.pro.yearly`): a month costs `plan.pro.yearly_price_micro_usd` ($16, 20% off) when one
+purchase buys at least `plan.pro.yearly_from_months` (12): `{ fromMonths, microUsdPerMonth }`. It's `null`, and every
+length is a month's price, while that price is 0, isn't below a month's, or is for more months than one purchase buys. The
+app works out its "20% off" from the two prices.
+
 **Buying** (`POST /v1/plan/pro { months, microUsdPerMonth }`) runs in one transaction with the account's `plan_accounts`
 row locked, so buys at once on any instance never spend the same money twice:
 
 1. More than `plan.pro_max_months` is refused (`invalid`, "Buy 1 to 12 months at a time.").
-2. A price other than the one in force is refused (`conflict`, "The price of Pro has changed. Look at it again before
-   buying."): the app sends the price it showed, so a change in between charges nothing.
+2. A price other than the one in force for that many months (the yearly price from `yearly.fromMonths`, a month's below
+   it) is refused (`conflict`, "The price of Pro has changed. Look at it again before buying."): the app sends the price
+   it showed, so a change in between charges nothing.
 3. A balance short of months × price is refused (`conflict`, "Your balance is short: 3 months of Pro cost $60 and your
    balance is $50. Add money first."). Nothing changes.
 4. The months are added back to back, from the end of the last month bought that hasn't ended, or from now. The balance
    goes down by the total, with "Pro, 3 months" in its history, and any grace ends. Logged `pro bought` with the owner,
    months and amount.
 
-**Refunds** (`POST /v1/plan/pro/refund`): every month that hasn't started goes back to the balance at what was paid for it
-("Pro refunded, 2 months"). A month that has started isn't refunded; with none to refund it's `conflict` ("There’s no
-month of Pro to refund that hasn’t started…"). `Plan.pro.refundableMicroUsd` says what a refund would add.
+**Refunds** (`POST /v1/plan/pro/refund`): every month that hasn't started goes back to the balance at what was paid for it,
+so a month bought at the yearly price comes back at the yearly price ("Pro refunded, 2 months"). A month that has started
+isn't refunded; with none to refund it's `conflict` ("There’s no month of Pro to refund that hasn’t started…").
+`Plan.pro.refundableMicroUsd` says what a refund would add.
 
 **Renewing** (`PUT /v1/plan/renew { renew }`) is off by default. Upkeep (`upkeep` in `plans.ts`, every 5 minutes, by
 `plan_accounts.due_at`) looks at an account at the earliest of: its release grace ending; `plan.pro_remind_seconds` (3
@@ -299,3 +306,7 @@ The server never holds a key that can move treasury money. By hand, in near.com,
   each has a `.default` (none bought, renewing off, no notices), and the record is written in the new shape the next
   time it's saved. The previous release reads a record this one wrote (zod ignores the new fields), so an account that
   bought Pro reads as Free there until this release is serving.
+- The yearly price needs no migration and changes no stored shape: it's two limits with defaults
+  (`plan.pro.yearly_from_months`, `plan.pro.yearly_price_micro_usd`), and each month of Pro in a `plan-account` record
+  already keeps what was paid for it (`microUsd`), which is what a refund gives back. The previous release, while the
+  deploy runs, offers no yearly price and refuses a buy at it as a changed price, charging nothing.
