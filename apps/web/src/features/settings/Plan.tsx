@@ -17,10 +17,9 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { useRef, useState } from 'react';
 import { useCheckout } from '~/features/plans/checkout';
-import {
-  PLAN_NAMES, checkoutFor, endsIn, hoursOf, nextPeriodMinutes, noticesNow, notesLeft, notesLow, notesOut, notesShare, proEnding, purchaseName,
-  restToSend, tokensExact
-} from '~/features/plans/plan-state';
+import { PLAN_NAMES, endsIn, nextPeriodMinutes, noticesNow, notesLeft, notesLow, notesOut, notesShare, proEnding } from '~/features/plans/plan-state';
+import { checkoutFor, purchaseName, restToSend, tokensExact } from '~/features/plans/purchase';
+import { hoursOfNotes } from '~/features/plans/words';
 import { useNow } from '~/lib/live';
 import { q, topUpOpen, useCancelTopUp, useDismissPlanNotice, useRefundPro, useSetRenew } from '~/lib/queries';
 import { dayAndMonth, fullDate, hm, longDay, shortDate, shortDay } from '~/lib/time';
@@ -82,7 +81,7 @@ function PlanRow({ plan, offers }: { plan: Plan; offers: PlanOffers | undefined 
   const until = plan.pro.until;
   let help: string | undefined;
   if (plan.kind === 'free') {
-    help = `Every feature, with about ${hoursOf(offers?.free.notesMinutes ?? plan.notes.minutesPerPeriod)} of notes and ${roomLabel(offers?.free.storageBytes ?? plan.storage.limitBytes)} of storage.`;
+    help = `Every feature, with about ${hoursOfNotes(offers?.free.notesMinutes ?? plan.notes.minutesPerPeriod)} of notes and ${roomLabel(offers?.free.storageBytes ?? plan.storage.limitBytes)} of storage.`;
   } else if (ending) {
     help = `${endsIn(ending.days)}, on ${longDay(new Date(ending.until))}. Then you’re back on Free, and nothing is deleted.`;
   } else if (until !== null) {
@@ -105,7 +104,7 @@ function NotesRow({ plan, offers }: { plan: Plan; offers: PlanOffers | undefined
   const out = notesOut(plan);
   const low = notesLow(plan);
   const on = dayAndMonth(new Date(plan.period.to));
-  const next = hoursOf(nextPeriodMinutes(plan, offers));
+  const next = hoursOfNotes(nextPeriodMinutes(plan, offers));
   const help = out ? `Calls go on without notes until ${on}.`
     : low ? `Under an hour left. Back to ${next} on ${on}.`
     : `Back to ${next} on ${on}. Calls without notes are free.`;
@@ -141,7 +140,7 @@ function MoreNotes({ plan, offers }: { plan: Plan; offers: PlanOffers | undefine
   const checkout = useCheckout();
   const pack = offers?.hours;
   if (!pack || !(plan.kind === 'free' || notesLow(plan) || notesOut(plan))) return null;
-  const hours = hoursOf(pack.minutes);
+  const hours = hoursOfNotes(pack.minutes);
   return (
     <SettingRow label="More notes" help={`${hours} for ${usd(pack.microUsd)}, for this period.`}
       control={<Button size="sm" onClick={() => checkout.open({ plan: 'hours' }, 'settings')}>Add {hours}</Button>} />

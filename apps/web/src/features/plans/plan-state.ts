@@ -1,21 +1,13 @@
 /*
- * How your plan stands now, as the side panel's foot and Settings › Plan both say it (docs/superpowers/specs/
- * 2026-11-12-plans-frontend-design.md): the time of notes left, whether Pro is about to end, which of the plan's notices
- * still say something true, a payment for a plan on its way, and what a purchase is called. Every number is the server's.
+ * How your plan stands now, as the side panel's foot, Settings › Plan, Plans and the doors say it (docs/superpowers/specs/
+ * 2026-11-12-plans-frontend-design.md): the time of notes left, whether Pro is about to end, and which of the plan's notices
+ * still say something true. What a purchase is and costs is purchase.ts's. Every number is the server's.
  */
-import type { Plan, PlanKind, PlanNotice, PlanOffers, Purchase, TopUp } from '@alcove/api';
-import { topUpOpen } from '~/lib/queries';
+import type { Plan, PlanKind, PlanNotice, PlanOffers } from '@alcove/api';
 import { daysFromToday, hoursAndMinutes } from '~/lib/time';
-import type { CheckoutFor } from './checkout';
 
 export const PLAN_NAMES: Record<PlanKind, string> = { free: 'Free', pro: 'Pro', team: 'Team' };
 
-
-/** "5 hours", "1 hour", "50 hours": an allowance of notes, to the hour as the server's own words round it. */
-export function hoursOf(minutes: number): string {
-  const h = Math.round(minutes / 60);
-  return h >= 1 ? `${h} ${h === 1 ? 'hour' : 'hours'}` : `${Math.max(0, Math.round(minutes))} min`;
-}
 
 /** Whether the period's notes have run out: they stop until it renews, or until more are bought. */
 export const notesOut = (plan: Plan): boolean => plan.notes.stopped || plan.notes.minutesLeft <= 0;
@@ -59,50 +51,4 @@ export function nextPeriodMinutes(plan: Plan, offers: PlanOffers | undefined): n
   if (plan.kind === 'team') return plan.notes.minutesPerPeriod;
   const lastMonth = plan.pro.until === null || Date.parse(plan.pro.until) <= Date.parse(plan.period.to) + 60_000;
   return lastMonth && !renews(plan, offers) ? offers.free.notesMinutes : offers.pro.notesMinutes;
-}
-
-/** A payment opened to buy something. */
-export type Buying = TopUp & { purchase: NonNullable<TopUp['purchase']> };
-const isBuying = (t: TopUp): t is Buying => t.purchase !== null;
-/** Whether money can still reach it: it's waiting with its address open, arriving, or short. */
-const onItsWay = (t: TopUp, now: number) => topUpOpen(t) && (t.state !== 'waiting' || Date.parse(t.expiresAt) > now);
-
-/**
- * The newest payment opened to buy a plan or more notes that hasn't bought it yet: still on its way, or added and being
- * bought. Null when there's none.
- */
-export function buyingNow(topUps: readonly TopUp[] | undefined, now = Date.now()): Buying | null {
-  return topUps?.filter(isBuying).find((t) => t.purchase.outcome === 'waiting' && (onItsWay(t, now) || t.state === 'credited')) ?? null;
-}
-
-/** What checkout reopens a payment on: what it was opened to buy. */
-export const checkoutFor = (buys: Purchase): CheckoutFor => (buys.kind === 'pro' ? { plan: 'pro', months: buys.months } : { plan: 'hours', packs: buys.packs });
-
-/** "Pro, 12 months", "10 hours of notes": what a purchase buys. A pack's hours come from the offers. */
-export function purchaseName(buys: Purchase, offers: PlanOffers | undefined): string {
-  if (buys.kind === 'pro') return `Pro, ${buys.months} ${buys.months === 1 ? 'month' : 'months'}`;
-  const pack = offers?.hours?.minutes;
-  return pack ? `${hoursOf(buys.packs * pack)} of notes` : 'More notes';
-}
-
-/** `a` minus `b`, two token amounts as decimal strings ("5" − "1.5" = "3.5"), never below 0. */
-export function amountLeft(a: string, b: string): string {
-  const places = Math.max(a.split('.')[1]?.length ?? 0, b.split('.')[1]?.length ?? 0);
-  const units = (x: string) => { const [w = '0', f = ''] = x.split('.'); return BigInt(w + f.padEnd(places, '0')); };
-  const left = units(a) - units(b);
-  if (left <= 0n) return '0';
-  const digits = left.toString().padStart(places + 1, '0');
-  const whole = digits.slice(0, digits.length - places);
-  const fraction = digits.slice(digits.length - places).replace(/0+$/, '');
-  return fraction ? `${whole}.${fraction}` : whole;
-}
-/** What's still to send on a short payment: what was asked less what arrived. */
-export const restToSend = (t: TopUp): string => amountLeft(t.asked.amount, t.received?.amount ?? '0');
-
-/** "144", "187.5": an amount of tokens as a short line says it, with no zeros after the point. */
-export const tokensShort = (amount: string): string => (amount.includes('.') ? amount.replace(/0+$/, '').replace(/\.$/, '') : amount);
-/** "144.00", "187.50": an amount of tokens to the cent, as what to send is said; finer amounts as they are. */
-export function tokensExact(amount: string): string {
-  const [whole = '0', fraction = ''] = amount.split('.');
-  return fraction.length <= 2 ? `${whole}.${fraction.padEnd(2, '0')}` : amount;
 }

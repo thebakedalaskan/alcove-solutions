@@ -8,7 +8,7 @@ import { errorMessage, MAX_TOP_UP_MICRO_USD, type TopUpRoute } from '@alcove/api
 import { Button, Chip, CopyField, CryptoMark, Dots, Icon, IconButton, Notice, QrCode, RequestRef, Select, Sheet, Spinner, type SelectOption } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useId, useState, type ReactNode } from 'react';
-import { restToSend as rest } from '~/features/plans/plan-state';
+import { restToSend as rest } from '~/features/plans/purchase';
 import { q, useCancelTopUp, useStartTopUp } from '~/lib/queries';
 import { daysFromToday, hm, minutesUntil, shortDay } from '~/lib/time';
 import { usd } from '~/lib/words';

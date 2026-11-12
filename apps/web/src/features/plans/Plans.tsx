@@ -12,6 +12,8 @@ import { useQuery } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { useCheckout } from '~/features/plans/checkout';
 import { endsIn, proEnding } from '~/features/plans/plan-state';
+import { yearlyOff } from '~/features/plans/purchase';
+import { hoursOfNotes } from '~/features/plans/words';
 import { useNow, useOnline } from '~/lib/live';
 import { q } from '~/lib/queries';
 import { hoursAndMinutes } from '~/lib/time';
@@ -35,8 +37,6 @@ const PRO = { name: 'Pro', sub: 'For one person' } as const;
 
 /* ---------- the words, from the offers ---------- */
 
-/** "5 hours", "1 hour", "1 h 30 min": an amount of notes, as time. */
-const hoursOf = (minutes: number): string => (minutes % 60 === 0 ? plural(minutes / 60, 'hour') : hoursAndMinutes(minutes));
 /** "About 5 hours": what a period brings is an estimate, so it's said to the hour. */
 const aboutHours = (minutes: number): string => (minutes < 60 ? `About ${minutes} min` : `About ${plural(Math.round(minutes / 60), 'hour')}`);
 /** How often a plan's notes come back, as the notes it brings are said: "a month" for a period of about a month. */
@@ -45,7 +45,7 @@ const perPeriod = (days: number): string => (days >= 28 && days <= 31 ? 'a month
 /** What a plan brings, one line each: notes (and, on Free, when they come back), storage, and the largest file. */
 function factsOf(a: PlanAllowance, periodDays: number, back: boolean): PlanFact[] {
   return [
-    { icon: 'notes', text: `${aboutHours(a.notesMinutes)} of notes ${perPeriod(periodDays)}`, sub: back ? `Back to ${hoursOf(a.notesMinutes)} on the 1st of each period` : undefined },
+    { icon: 'notes', text: `${aboutHours(a.notesMinutes)} of notes ${perPeriod(periodDays)}`, sub: back ? `Back to ${hoursOfNotes(a.notesMinutes)} on the 1st of each period` : undefined },
     { icon: 'hardDrive', text: `${roomLabel(a.storageBytes)} of storage` },
     { icon: 'file', text: `Files up to ${roomLabel(a.fileBytes)}` }
   ];
@@ -68,9 +68,9 @@ function yearlyOf(o: PlanOffers): NonNullable<PlanOffers['pro']['yearly']> | nul
 /** "a year or more", "6 months or more": where the lower price starts. */
 const fromWords = (months: number): string => (months === 12 ? 'a year or more' : `${months} months or more`);
 /** "20% off", worked out from the two prices: nothing when it rounds to nothing. */
-function offWords(monthly: number, yearly: number): string | undefined {
-  const off = Math.round((1 - yearly / monthly) * 100);
-  return off >= 1 ? `${off}% off` : undefined;
+function offWords(o: PlanOffers): string | undefined {
+  const off = yearlyOff(o);
+  return off !== null && off >= 1 ? `${off}% off` : undefined;
 }
 
 /** "for 1 to 12 months at a time": as many as one purchase buys. */
@@ -118,7 +118,7 @@ export function Plans({ opening, onOpened }: { opening?: CheckoutParam | undefin
       <header className="dusk-top" style={{ '--d': 0 }}><h1 className="dusk-title">Plans</h1></header>
       <div className="pl-sky" style={{ '--d': 1 }}>
         {o && yearly && (
-          <PlanCycle value={cycle} onChange={setCycle} off={offWords(o.pro.microUsdPerMonth, yearly.microUsdPerMonth)}
+          <PlanCycle value={cycle} onChange={setCycle} off={offWords(o)}
             year={yearly.fromMonths === 12 ? 'Yearly' : `${yearly.fromMonths} months`} />
         )}
       </div>

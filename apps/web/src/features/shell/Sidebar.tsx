@@ -11,7 +11,8 @@ import { Link, useRouterState } from '@tanstack/react-router';
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import { aheadOf, joinable } from '~/features/home/day';
 import { useCheckout } from '~/features/plans/checkout';
-import { PLAN_NAMES, buyingNow, checkoutFor, endsIn, noticesNow, notesLeft, notesLow, notesOut, notesShare, proEnding, purchaseName, restToSend, tokensShort } from '~/features/plans/plan-state';
+import { PLAN_NAMES, endsIn, noticesNow, notesLeft, notesLow, notesOut, notesShare, proEnding } from '~/features/plans/plan-state';
+import { checkoutFor, purchaseName, restToSend, tokensShort, waitingPurchase } from '~/features/plans/purchase';
 import { recordOfflineHere } from '~/lib/device';
 import { log } from '~/lib/log';
 import { useNow, useOnline } from '~/lib/live';
@@ -230,7 +231,7 @@ function PlanFoot({ plan }: { plan: Plan }) {
   const checkout = useCheckout();
   const now = useNow();
   const on = useRouterState({ select: (s) => s.location.pathname }) === '/plans';
-  const buying = buyingNow(topUps, now);
+  const buying = waitingPurchase(topUps, undefined, now);
   if (buying) {
     const { route, state, asked, purchase } = buying;
     const short = state === 'short';

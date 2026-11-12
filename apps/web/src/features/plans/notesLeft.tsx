@@ -12,12 +12,10 @@ import { log } from '~/lib/log';
 import { q } from '~/lib/queries';
 import { dayFullMonth } from '~/lib/time';
 import { useCheckout, type CheckoutFor } from './checkout';
+import { notesLow, notesOut } from './plan-state';
 import { hoursLabel } from './words';
 
 const plog = log.child({ component: 'plan-doors' });
-
-/** None of this period's notes are left: they've stopped, or nothing shows as left. */
-export const noneLeft = (plan: Plan): boolean => plan.notes.stopped || plan.notes.minutesLeft <= 0;
 
 /**
  * Whether a call that starts at `at` (now, when it's left out) starts with none of your notes left, and until when there are
@@ -25,7 +23,7 @@ export const noneLeft = (plan: Plan): boolean => plan.notes.stopped || plan.note
  */
 export function useNotesLeft(at?: Date | undefined): { none: boolean; until: Date | null; plan: Plan | undefined } {
   const plan = useQuery(q.plan()).data;
-  if (!plan || !noneLeft(plan)) return { none: false, until: null, plan };
+  if (!plan || !notesOut(plan)) return { none: false, until: null, plan };
   const until = new Date(plan.period.to);
   return { none: (at ?? new Date()).getTime() < until.getTime(), until, plan };
 }
@@ -103,7 +101,7 @@ function tellOnce(ownerId: string, periodTo: string): boolean {
  */
 export function HourLeft({ ownerId }: { ownerId: string }) {
   const plan = useQuery(q.plan()).data;
-  const low = plan !== undefined && !noneLeft(plan) && plan.notes.minutesLeft < 60;
+  const low = plan !== undefined && notesLow(plan);
   const more = useMoreNotes(plan, low);
   const toast = useToast();
   const checkout = useCheckout();

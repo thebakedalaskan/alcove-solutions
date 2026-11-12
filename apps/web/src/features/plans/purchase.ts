@@ -50,7 +50,7 @@ export function hoursIn(offers: PlanOffers | undefined, packs: number): number {
 export function purchaseName(buys: Purchase, offers: PlanOffers | undefined): string {
   if (buys.kind === 'pro') return `Pro, ${monthsWord(buys.months)}`;
   const hours = hoursIn(offers, buys.packs);
-  return hours > 0 ? `${hours} hours of notes` : 'More notes';
+  return hours > 0 ? `${hours} ${hours === 1 ? 'hour' : 'hours'} of notes` : 'More notes';
 }
 
 /** What checkout opens on to see a purchase through. */
@@ -59,13 +59,17 @@ export const checkoutFor = (buys: Purchase): CheckoutFor => (buys.kind === 'pro'
 /** Whether a payment's address has closed: past its expiry, nothing more can be sent to it, whatever its state says yet. */
 export const lapsed = (t: TopUp, now = Date.now()): boolean => Date.parse(t.expiresAt) <= now;
 
+/** A payment opened to buy something. */
+export type Buying = TopUp & { purchase: NonNullable<TopUp['purchase']> };
+const isBuying = (t: TopUp): t is Buying => t.purchase !== null;
+
 /**
  * The payment on its way to buy something, if there is one: the newest top-up that can still take money (or is being
  * added) and was opened to buy `kind` (or anything), whose purchase hasn't happened yet. The side panel says it's waiting
  * (`asked.amount`), Settings lists it, and checkout opens on it instead of starting another.
  */
-export function waitingPurchase(list: TopUp[] | undefined, kind?: Purchase['kind'] | undefined, now = Date.now()): TopUp | undefined {
-  return list?.find((t) => topUpOpen(t) && t.purchase !== null && t.purchase.outcome === 'waiting'
+export function waitingPurchase(list: readonly TopUp[] | undefined, kind?: Purchase['kind'] | undefined, now = Date.now()): Buying | undefined {
+  return list?.filter(isBuying).find((t) => topUpOpen(t) && t.purchase.outcome === 'waiting'
     && (kind === undefined || t.purchase.buys.kind === kind) && !(t.state === 'waiting' && lapsed(t, now)));
 }
 
@@ -89,3 +93,25 @@ export const tokens = (micro: number): string => TOKENS.format(micro / 1_000_000
 export const plainTokens = (micro: number): string => PLAIN.format(micro / 1_000_000);
 /** The same, whole when it's whole: "100", "3.50". */
 export const roundTokens = (micro: number): string => tokens(micro).replace(/\.00$/, '');
+
+/** `a` minus `b`, two token amounts as decimal strings ("5" − "1.5" = "3.5"), never below 0. */
+export function amountLeft(a: string, b: string): string {
+  const places = Math.max(a.split('.')[1]?.length ?? 0, b.split('.')[1]?.length ?? 0);
+  const units = (x: string) => { const [w = '0', f = ''] = x.split('.'); return BigInt(w + f.padEnd(places, '0')); };
+  const left = units(a) - units(b);
+  if (left <= 0n) return '0';
+  const digits = left.toString().padStart(places + 1, '0');
+  const whole = digits.slice(0, digits.length - places);
+  const fraction = digits.slice(digits.length - places).replace(/0+$/, '');
+  return fraction ? `${whole}.${fraction}` : whole;
+}
+/** What's still to send on a short payment: what was asked less what arrived. */
+export const restToSend = (t: TopUp): string => amountLeft(t.asked.amount, t.received?.amount ?? '0');
+
+/** "144", "187.5": an amount of tokens as a short line says it, with no zeros after the point. */
+export const tokensShort = (amount: string): string => (amount.includes('.') ? amount.replace(/0+$/, '').replace(/\.$/, '') : amount);
+/** "144.00", "187.50": an amount of tokens to the cent, as what to send is said; finer amounts as they are. */
+export function tokensExact(amount: string): string {
+  const [whole = '0', fraction = ''] = amount.split('.');
+  return fraction.length <= 2 ? `${whole}.${fraction.padEnd(2, '0')}` : amount;
+}
