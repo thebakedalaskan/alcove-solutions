@@ -20,6 +20,7 @@ import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as ReadyRouteImport } from './routes/ready'
 import { Route as WelcomeRouteImport } from './routes/welcome'
 import { Route as AppHomeRouteImport } from './routes/_app/home'
+import { Route as AppPlansRouteImport } from './routes/_app/plans'
 import { Route as AppRecordRouteImport } from './routes/_app/record'
 import { Route as AppSettingsRouteImport } from './routes/_app/settings'
 import { Route as AppTeamRouteImport } from './routes/_app/team'
@@ -87,6 +88,11 @@ const WelcomeRoute = WelcomeRouteImport.update({
 const AppHomeRoute = AppHomeRouteImport.update({
   id: '/home',
   path: '/home',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppPlansRoute = AppPlansRouteImport.update({
+  id: '/plans',
+  path: '/plans',
   getParentRoute: () => AppRoute,
 } as any)
 const AppRecordRoute = AppRecordRouteImport.update({
@@ -174,6 +180,7 @@ export interface FileRoutesByFullPath {
   '/ready': typeof ReadyRoute
   '/welcome': typeof WelcomeRoute
   '/home': typeof AppHomeRoute
+  '/plans': typeof AppPlansRoute
   '/record': typeof AppRecordRoute
   '/settings': typeof AppSettingsRoute
   '/team': typeof AppTeamRoute
@@ -200,6 +207,7 @@ export interface FileRoutesByTo {
   '/ready': typeof ReadyRoute
   '/welcome': typeof WelcomeRoute
   '/home': typeof AppHomeRoute
+  '/plans': typeof AppPlansRoute
   '/record': typeof AppRecordRoute
   '/settings': typeof AppSettingsRoute
   '/team': typeof AppTeamRoute
@@ -227,6 +235,7 @@ export interface FileRoutesById {
   '/ready': typeof ReadyRoute
   '/welcome': typeof WelcomeRoute
   '/_app/home': typeof AppHomeRoute
+  '/_app/plans': typeof AppPlansRoute
   '/_app/record': typeof AppRecordRoute
   '/_app/settings': typeof AppSettingsRoute
   '/_app/team': typeof AppTeamRoute
@@ -255,6 +264,7 @@ export interface FileRouteTypes {
     | '/ready'
     | '/welcome'
     | '/home'
+    | '/plans'
     | '/record'
     | '/settings'
     | '/team'
@@ -281,6 +291,7 @@ export interface FileRouteTypes {
     | '/ready'
     | '/welcome'
     | '/home'
+    | '/plans'
     | '/record'
     | '/settings'
     | '/team'
@@ -307,6 +318,7 @@ export interface FileRouteTypes {
     | '/ready'
     | '/welcome'
     | '/_app/home'
+    | '/_app/plans'
     | '/_app/record'
     | '/_app/settings'
     | '/_app/team'
@@ -416,6 +428,13 @@ declare module '@tanstack/react-router' {
       path: '/home'
       fullPath: '/home'
       preLoaderRoute: typeof AppHomeRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/plans': {
+      id: '/_app/plans'
+      path: '/plans'
+      fullPath: '/plans'
+      preLoaderRoute: typeof AppPlansRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/record': {
@@ -536,6 +555,7 @@ const AppDriveWorkspaceIdRouteWithChildren =
 
 interface AppRouteChildren {
   AppHomeRoute: typeof AppHomeRoute
+  AppPlansRoute: typeof AppPlansRoute
   AppRecordRoute: typeof AppRecordRoute
   AppSettingsRoute: typeof AppSettingsRoute
   AppTeamRoute: typeof AppTeamRoute
@@ -548,6 +568,7 @@ interface AppRouteChildren {
 
 const AppRouteChildren: AppRouteChildren = {
   AppHomeRoute: AppHomeRoute,
+  AppPlansRoute: AppPlansRoute,
   AppRecordRoute: AppRecordRoute,
   AppSettingsRoute: AppSettingsRoute,
   AppTeamRoute: AppTeamRoute,
