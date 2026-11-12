@@ -1,16 +1,21 @@
 /**
  * Adding money by sending stablecoins, end to end: the real API over HTTP via @alcove/api-http, real Postgres,
- * and a stand-in NEAR Intents 1Click (testing/fake-oneclick.ts) that quotes deposit addresses and reports on them. And
- * buying with a payment: what a top-up was opened to buy, bought once its money is added.
+ * and a stand-in NEAR Intents 1Click (testing/fake-oneclick.ts) that the treasury signs in to with a test key, which
+ * quotes deposit addresses into the treasury's confidential balance and reports on them. And buying with a payment: what
+ * a top-up was opened to buy, bought once its money is added.
  */
+import { randomBytes } from 'node:crypto';
+import { inspect } from 'node:util';
 import { AlcoveApiError, MAX_TOP_UP_MICRO_USD, type AlcoveApi, type Purchase, type TopUp } from '@alcove/api';
 import { createHttpApi } from '@alcove/api-http';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { openJson, sealJson, serviceKey, toJson, unb64u } from '../../crypto';
+import { loadConfig } from '../../config';
+import { id128, openJson, sealJson, serviceKey, toJson, unb64u } from '../../crypto';
 import { DepositRecord, watch } from './deposits';
 import { creditByEmail } from './support';
-import { NOT_ALLOWLISTED } from '../../testing/fake-oneclick';
+import { TreasuryKey } from './treasury-key';
+import { NOT_ALLOWLISTED, nearKeyText, testNearKey } from '../../testing/fake-oneclick';
 import { ORIGIN, cookieFetch, startHarness, type Harness } from '../../testing/harness';
 
 let h: Harness;
@@ -107,20 +112,175 @@ describe('top-ups', () => {
     expect(presets).toEqual([20_000_000, 60_000_000, 120_000_000]);
   });
 
-  it('opens a top-up for an amount of dollars: a quote paying the treasury for exactly that', async () => {
+  it('opens a top-up for an amount of dollars: a quote paying the treasury’s confidential balance exactly that', async () => {
     const { api } = await account();
     const t = await api.plans.startTopUp(BASE_USDC, 10_000_000);
     expect(t).toMatchObject({ state: 'waiting', received: null, asked: { amount: '10' }, route: { token: 'USDC', chain: 'base', minimum: '5' } });
     expect(t.address).toContain('canary-deposit-address');
     const TREASURY = h.oneclick.settings.TREASURY_INTENTS_ACCOUNT;
     expect(h.oneclick.quotes.at(-1)).toMatchObject({
-      swapType: 'FLEX_INPUT', depositType: 'ORIGIN_CHAIN', originAsset: BASE_USDC,
-      destinationAsset: NEAR_USDC, recipient: TREASURY, recipientType: 'INTENTS', refundTo: TREASURY, refundType: 'INTENTS',
+      swapType: 'FLEX_INPUT', depositType: 'ORIGIN_CHAIN', originAsset: BASE_USDC, destinationAsset: NEAR_USDC,
+      recipient: TREASURY, recipientType: 'CONFIDENTIAL_INTENTS', refundTo: TREASURY, refundType: 'CONFIDENTIAL_INTENTS',
       amount: '10000000', slippageTolerance: 100, dry: false
     });
+    // With the partner key, signed in as the treasury.
     expect(h.oneclick.apiKeys.at(-1)).toBe(h.oneclick.settings.ONECLICK_API_KEY);
+    expect(h.oneclick.accountOf(h.oneclick.bearers.at(-1) ?? '')).toBe(TREASURY);
     expect(await api.plans.topUp(t.id)).toEqual(t);
     expect((await api.plans.topUps()).map((x) => x.id)).toEqual([t.id]);
+  });
+
+  it('signs in to 1Click as the treasury, once for top-ups opened at once, and asks about their deposits signed in', async () => {
+    // A server of its own, so it hasn't signed in yet.
+    const server = await h.secondServer();
+    try {
+      const api: AlcoveApi = createHttpApi({ baseUrl: server.baseUrl, fetch: cookieFetch(ORIGIN) });
+      await api.auth.signIn('sso', { email: unique() });
+      const TREASURY = h.oneclick.settings.TREASURY_INTENTS_ACCOUNT;
+      const { signIns, refreshes } = h.oneclick.counts();
+      const from = h.oneclick.bearers.length;
+      // The stand-in takes a sign-in only as 1Click does: an empty intent for intents.near, signed NEP-413 style by the
+      // key registered for the treasury, its nonce carrying the contract's current salt and when it was made.
+      const opened = await Promise.all([1, 2, 3].map(() => api.plans.startTopUp(BASE_USDC, 10_000_000)));
+      expect(opened.map((t) => t.state)).toEqual(['waiting', 'waiting', 'waiting']);
+      expect(h.oneclick.counts()).toEqual({ signIns: signIns + 1, refreshes });
+      // Every quote went with the partner key and the one token that sign-in gave the treasury.
+      const quoted = h.oneclick.bearers.slice(from).filter((b) => b !== '');
+      expect(quoted).toHaveLength(3);
+      expect(new Set(quoted).size).toBe(1);
+      expect(h.oneclick.accountOf(quoted[0] ?? '')).toBe(TREASURY);
+      expect(h.oneclick.apiKeys.slice(from)).toEqual(h.oneclick.apiKeys.slice(from).map(() => h.oneclick.settings.ONECLICK_API_KEY));
+      // A deposit into the confidential balance is told only to the treasury, signed in, with the token it holds.
+      const first = opened[0];
+      if (!first) throw new Error('no top-up opened');
+      h.oneclick.set(addr(first), 'SUCCESS', { depositedAmount: '10000000', amountOut: '10000000', intentHashes: ['hsession10'] });
+      expect(await api.plans.topUp(first.id)).toMatchObject({ state: 'credited', received: { amount: '10', microUsd: 10_000_000 } });
+      expect(h.oneclick.bearers.at(-1)).toBe(quoted[0]);
+      expect(h.oneclick.counts().signIns).toBe(signIns + 1);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it('signs in again, once, when 1Click has let the treasury’s token run out, reading intents.near’s salt again, and the top-ups go through', async () => {
+    const server = await h.secondServer();
+    try {
+      const api: AlcoveApi = createHttpApi({ baseUrl: server.baseUrl, fetch: cookieFetch(ORIGIN) });
+      await api.auth.signIn('sso', { email: unique() });
+      await api.plans.startTopUp(BASE_USDC, 10_000_000);
+      const { signIns, refreshes } = h.oneclick.counts();
+      // The token Alcove holds has run out at 1Click before Alcove expected, and the contract has a new salt: each quote is
+      // refused once, and they all wait for the one new sign-in, whose nonce carries the new salt.
+      h.oneclick.expireTokens();
+      h.oneclick.rotateSalt();
+      const opened = await Promise.all([1, 2, 3].map(() => api.plans.startTopUp(BASE_USDC, 10_000_000)));
+      expect(opened.map((t) => t.state)).toEqual(['waiting', 'waiting', 'waiting']);
+      expect(h.oneclick.counts()).toEqual({ signIns: signIns + 1, refreshes });
+      // Asked about with the new token, a deposit settles.
+      const t = opened[0];
+      if (!t) throw new Error('no top-up opened');
+      h.oneclick.set(addr(t), 'SUCCESS', { depositedAmount: '10000000', amountOut: '10000000', intentHashes: ['hexpired10'] });
+      expect(await api.plans.topUp(t.id)).toMatchObject({ state: 'credited', received: { microUsd: 10_000_000 } });
+      // The watcher too, after the next time the token runs out.
+      const due = opened[1];
+      if (!due) throw new Error('no top-up opened');
+      h.oneclick.expireTokens();
+      h.oneclick.set(addr(due), 'SUCCESS', { depositedAmount: '10000000', amountOut: '10000000', intentHashes: ['hexpired10w'] });
+      await dueOnly(due.id);
+      expect(await watch(h.deps)).toEqual({ checked: 1, credited: 1 });
+    } finally {
+      await server.close();
+    }
+  });
+
+  it('refreshes the treasury’s token while it has under a minute left, and signs in again once 1Click refuses the refresh token', async () => {
+    // Tokens that last 30 seconds: under the minute Alcove keeps in hand, so each is renewed before it's used again.
+    h.oneclick.tokenLifetime({ access: 30 });
+    const server = await h.secondServer();
+    try {
+      const api: AlcoveApi = createHttpApi({ baseUrl: server.baseUrl, fetch: cookieFetch(ORIGIN) });
+      await api.auth.signIn('sso', { email: unique() });
+      const { signIns, refreshes } = h.oneclick.counts();
+      await api.plans.startTopUp(BASE_USDC, 10_000_000);
+      expect(h.oneclick.counts()).toEqual({ signIns: signIns + 1, refreshes });
+      const asked = h.oneclick.quotes.length;
+      await api.plans.startTopUp(BASE_USDC, 10_000_000);
+      // Refreshed, not refused first: one quote for one top-up.
+      expect(h.oneclick.counts()).toEqual({ signIns: signIns + 1, refreshes: refreshes + 1 });
+      expect(h.oneclick.quotes.length).toBe(asked + 1);
+      // The refresh token has run out too: refused, and a new sign-in instead.
+      h.oneclick.expireTokens({ refresh: true });
+      expect((await api.plans.startTopUp(BASE_USDC, 10_000_000)).state).toBe('waiting');
+      expect(h.oneclick.counts()).toEqual({ signIns: signIns + 2, refreshes: refreshes + 1 });
+    } finally {
+      h.oneclick.tokenLifetime(null);
+      await server.close();
+    }
+  });
+
+  it('says top-ups are unavailable, in its usual words, when 1Click refuses the treasury’s sign-in, and logs that once at error with its status', async () => {
+    // A key nobody registered for the treasury: the stand-in checks the signature against the key that is.
+    const stranger = testNearKey();
+    const key = TreasuryKey.parse(stranger.secret);
+    if (!key) throw new Error('the stand-in made a key that isn’t one');
+    const server = await h.secondServer({ TREASURY_INTENTS_KEY: key });
+    try {
+      const api: AlcoveApi = createHttpApi({ baseUrl: server.baseUrl, fetch: cookieFetch(ORIGIN) });
+      const { session } = await api.auth.signIn('sso', { email: unique() });
+      const from = h.logs.length;
+      const e = await api.plans.startTopUp(BASE_USDC, 10_000_000).catch((x: unknown) => x);
+      expect(code(e)).toBe('unavailable');
+      expect(e instanceof AlcoveApiError ? e.message : '').toBe('Adding money isn’t available right now. Try again in a minute.');
+      // Asked again at once: refused without asking 1Click again, and without another line.
+      const asked = h.oneclick.apiKeys.length;
+      expect(await failure(api.plans.startTopUp(BASE_USDC, 10_000_000))).toBe('unavailable');
+      expect(h.oneclick.apiKeys.length).toBe(asked);
+      const errors = logsSince(from).filter((l) => l.level >= 50);
+      expect(errors.map((l) => l.msg)).toEqual(['1Click refused the treasury’s sign-in']);
+      expect(errors[0]?.line).toContain('"status":401');
+      // Its status, and nothing of the key.
+      const body = stranger.secret.slice('ed25519:'.length);
+      expect(logsSince(from).filter((l) => l.line.includes(body) || l.line.includes(stranger.publicKey))).toEqual([]);
+      expect(await depositRows(session.ownerId)).toBe(0);
+    } finally {
+      await server.close();
+    }
+    // 1Click refusing every sign-in, as once the key is no longer registered for the treasury: the same.
+    h.oneclick.refuseSignIns(true);
+    const other = await h.secondServer();
+    try {
+      const api: AlcoveApi = createHttpApi({ baseUrl: other.baseUrl, fetch: cookieFetch(ORIGIN) });
+      await api.auth.signIn('sso', { email: unique() });
+      const from = h.logs.length;
+      const e = await api.plans.startTopUp(BASE_USDC, 10_000_000).catch((x: unknown) => x);
+      expect(e instanceof AlcoveApiError ? `${e.code}: ${e.message}` : '').toBe('unavailable: Adding money isn’t available right now. Try again in a minute.');
+      expect(logsSince(from).filter((l) => l.level >= 50).map((l) => l.msg)).toEqual(['1Click refused the treasury’s sign-in']);
+    } finally {
+      h.oneclick.refuseSignIns(false);
+      await other.close();
+    }
+  });
+
+  it('won’t start with a treasury key that isn’t one, naming the setting and never what it was set to', async () => {
+    const good = testNearKey();
+    const notKeys = [
+      // Not base58, cut short, another curve's, nothing, a seed alone, and a public key that isn't the seed's.
+      'ed25519:0OIl0OIl', good.secret.slice(0, -4), good.secret.replace('ed25519:', 'secp256k1:'), 'ed25519:',
+      nearKeyText(randomBytes(32)), nearKeyText(randomBytes(64))
+    ];
+    for (const bad of notKeys) {
+      const e = await loadConfig({ ...process.env, TREASURY_INTENTS_KEY: bad }).catch((x: unknown) => x);
+      const message = e instanceof Error ? e.message : '';
+      expect(message).toContain('TREASURY_INTENTS_KEY must be the treasury’s NEAR secret key');
+      const body = bad.slice(bad.indexOf(':') + 1);
+      if (body) expect(message.includes(body), 'the key’s text in the message').toBe(false);
+    }
+    // A key is held as a signer that writes out, and prints, as nothing of it.
+    const cfg = await loadConfig({ ...process.env, TREASURY_INTENTS_KEY: good.secret });
+    const body = good.secret.slice('ed25519:'.length);
+    expect(JSON.stringify(cfg).includes(body)).toBe(false);
+    expect(inspect(cfg, { depth: 5, showHidden: true }).includes(body)).toBe(false);
+    expect(cfg.TREASURY_INTENTS_KEY?.publicKey).toBe(good.publicKey);
   });
 
   it('quotes the amount asked in the token’s own units, a token as a dollar', async () => {
@@ -177,34 +337,26 @@ describe('top-ups', () => {
     expect(await b.api.plans.topUps()).toEqual([]);
   });
 
-  it('quotes without a partner key, sending none', async () => {
-    const second = await h.secondServer({ ONECLICK_API_KEY: '' });
-    try {
-      const api: AlcoveApi = createHttpApi({ baseUrl: second.baseUrl, fetch: cookieFetch(ORIGIN) });
-      await api.auth.signIn('sso', { email: unique() });
-      const t = await api.plans.startTopUp(BASE_USDC, 10_000_000);
-      expect(t.state).toBe('waiting');
-      expect(h.oneclick.apiKeys.at(-1)).toBe('');
-    } finally {
-      await second.close();
-    }
-  });
-
-  it('says top-ups are unavailable when there’s no treasury, or 1Click won’t quote', async () => {
-    const second = await h.secondServer({ TREASURY_INTENTS_ACCOUNT: '' });
-    try {
-      const api: AlcoveApi = createHttpApi({ baseUrl: second.baseUrl, fetch: cookieFetch(ORIGIN) });
-      await api.auth.signIn('sso', { email: unique() });
-      const theirs = await (await account()).api.plans.startTopUp(BASE_USDC, 10_000_000);
-      const e = await api.plans.routes().catch((x: unknown) => x);
-      expect(code(e)).toBe('unavailable');
-      expect(e instanceof AlcoveApiError ? e.message : '').toBe('Adding money isn’t available on this server.');
-      expect(await failure(api.plans.startTopUp(BASE_USDC, 10_000_000))).toBe('unavailable');
-      expect(await failure(api.plans.topUp(theirs.id))).toBe('unavailable');
-      expect(await failure(api.plans.cancelTopUp(theirs.id))).toBe('unavailable');
-      expect(await failure(api.plans.topUps())).toBe('unavailable');
-    } finally {
-      await second.close();
+  it('says top-ups are unavailable without the treasury, its key or a partner key, or when 1Click won’t quote', async () => {
+    // Without a partner key 1Click takes no session on a quote, so there's no confidential quote to be had.
+    for (const off of [{ TREASURY_INTENTS_ACCOUNT: '' }, { TREASURY_INTENTS_KEY: undefined }, { ONECLICK_API_KEY: '' }]) {
+      const second = await h.secondServer(off);
+      try {
+        const api: AlcoveApi = createHttpApi({ baseUrl: second.baseUrl, fetch: cookieFetch(ORIGIN) });
+        await api.auth.signIn('sso', { email: unique() });
+        const theirs = await (await account()).api.plans.startTopUp(BASE_USDC, 10_000_000);
+        const asked = h.oneclick.apiKeys.length;
+        const e = await api.plans.routes().catch((x: unknown) => x);
+        expect(code(e)).toBe('unavailable');
+        expect(e instanceof AlcoveApiError ? e.message : '').toBe('Adding money isn’t available on this server.');
+        expect(await failure(api.plans.startTopUp(BASE_USDC, 10_000_000))).toBe('unavailable');
+        expect(await failure(api.plans.topUp(theirs.id))).toBe('unavailable');
+        expect(await failure(api.plans.cancelTopUp(theirs.id))).toBe('unavailable');
+        expect(await failure(api.plans.topUps())).toBe('unavailable');
+        expect(h.oneclick.apiKeys.length).toBe(asked);
+      } finally {
+        await second.close();
+      }
     }
 
     const { api, session } = await account();
@@ -959,7 +1111,9 @@ describe('top-ups', () => {
   });
 
   it('refuses a quote for another request, or with a deadline under an hour or over 7 days away', async () => {
-    const { api, session } = await account();
+    // Two people: one may open 10 top-ups a minute on a server, and there are 11 quotes here.
+    const one = await account();
+    const two = await account();
     const from = h.logs.length;
     const soon = new Date(Date.now() + 30 * 60_000).toISOString();
     const far = new Date(Date.now() + 8 * 24 * 3_600_000).toISOString();
@@ -967,16 +1121,18 @@ describe('top-ups', () => {
       { deadline: soon }, { deadline: far },
       { quoteRequest: { recipient: 'someone-else.near' } }, { quoteRequest: { refundTo: 'someone-else.near' } },
       { quoteRequest: { recipientType: 'DESTINATION_CHAIN' } }, { quoteRequest: { refundType: 'ORIGIN_CHAIN' } },
+      // Into the treasury's public balance, or refunded there, where anyone can see what arrived.
+      { quoteRequest: { recipientType: 'INTENTS' } }, { quoteRequest: { refundType: 'INTENTS' } },
       { quoteRequest: { swapType: 'EXACT_INPUT' } }, { quoteRequest: { amount: '9000000' } }, { quoteRequest: { originAsset: ETH_USDC } }
     ];
-    for (const o of odd) {
+    for (const [i, o] of odd.entries()) {
       h.oneclick.nextQuote(o);
-      expect(await failure(api.plans.startTopUp(BASE_USDC, 10_000_000))).toBe('unavailable');
+      expect(await failure((i % 2 ? two : one).api.plans.startTopUp(BASE_USDC, 10_000_000))).toBe('unavailable');
     }
-    expect(await depositRows(session.ownerId)).toBe(0);
+    for (const who of [one, two]) expect(await depositRows(who.session.ownerId)).toBe(0);
     const lines = logsSince(from).filter((l) => l.level === 50);
     expect(lines.filter((l) => l.line.includes('unexpected-quote-deadline')).length).toBe(2);
-    expect(lines.filter((l) => l.line.includes('unexpected-quote-request')).length).toBe(7);
+    expect(lines.filter((l) => l.line.includes('unexpected-quote-request')).length).toBe(9);
   });
 
   it('remembers for 30 seconds that 1Click couldn’t list its tokens', async () => {
@@ -1141,6 +1297,56 @@ describe('top-ups', () => {
     // 17 so far this minute; 43 more are fine, and the next is refused.
     for (let i = 0; i < 43; i++) await api.plans.topUp(t.id);
     expect(await failure(api.plans.topUp(t.id))).toBe('unavailable');
+  });
+
+  /**
+   * A top-up as the release before confidential top-ups opened it: a quote into the treasury's public Intents balance,
+   * asked for without signing in (and, as in production then, without a partner key), kept sealed as that release kept it.
+   */
+  async function openedBeforeConfidential(ownerId: string, microUsd: number): Promise<{ id: string; address: string }> {
+    const TREASURY = h.oneclick.settings.TREASURY_INTENTS_ACCOUNT;
+    const res = await fetch(`${h.oneclick.settings.ONECLICK_BASE_URL}/v0/quote`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        dry: false, swapType: 'FLEX_INPUT', slippageTolerance: 100, depositType: 'ORIGIN_CHAIN', originAsset: BASE_USDC, destinationAsset: NEAR_USDC,
+        amount: String(microUsd), recipient: TREASURY, recipientType: 'INTENTS', refundTo: TREASURY, refundType: 'INTENTS',
+        deadline: new Date(Date.now() + 24 * 3_600_000).toISOString()
+      })
+    });
+    const raw: unknown = await res.json();
+    const { quote } = z.object({ quote: z.object({ depositAddress: z.string(), deadline: z.string(), amountIn: z.string(), minAmountIn: z.string() }) }).parse(raw);
+    const id = id128();
+    const record: DepositRecord = {
+      route: { id: BASE_USDC, provider: 'oneclick', chain: 'base', chainName: 'Base', token: 'USDC', decimals: 6, minimum: '5000000' },
+      address: quote.depositAddress, memo: null, expiresAt: quote.deadline, asked: quote.amountIn, minAmountIn: quote.minAmountIn,
+      quote: raw, seenMicroUsd: null, settled: null, unanswered: false, doubt: null, purchase: null
+    };
+    const key = serviceKey(unb64u(h.deps.cfg.KSERVICE, 32), 'accounting');
+    const header = { v: 1 as const, kind: 'deposit', ownerId, depositId: id, keyVersion: '1' };
+    await h.pool.query('INSERT INTO deposits (owner_id, deposit_id, provider, state, give_up_at, record_ciphertext) VALUES ($1, $2, $3, $4, $5, $6)', [
+      ownerId, id, 'oneclick', 'waiting', new Date(Date.parse(quote.deadline) + 24 * 3_600_000), sealJson(key, header, toJson(record))
+    ]);
+    return { id, address: quote.depositAddress };
+  }
+
+  it('settles a top-up opened before top-ups were confidential, asking 1Click about it as it always did', async () => {
+    const { api, session } = await account();
+    const old = await openedBeforeConfidential(session.ownerId, 20_000_000);
+    const watched = await openedBeforeConfidential(session.ownerId, 15_000_000);
+    // It reads as it did, and 1Click is asked about it without the treasury's token: its deposit is in the public balance.
+    expect(await api.plans.topUp(old.id)).toMatchObject({ state: 'waiting', address: old.address, asked: { amount: '20' } });
+    expect(h.oneclick.bearers.at(-1)).toBe('');
+    h.oneclick.set(old.address, 'SUCCESS', { depositedAmount: '20000000', amountOut: '19998000', intentHashes: ['hbefore20'] });
+    await forgetCheck(old.id);
+    expect(await api.plans.topUp(old.id)).toMatchObject({ state: 'credited', received: { amount: '20', microUsd: 20_000_000 } });
+    expect(h.oneclick.bearers.at(-1)).toBe('');
+    // And by the watcher, with nobody looking.
+    h.oneclick.set(watched.address, 'SUCCESS', { depositedAmount: '15000000', amountOut: '15000000', intentHashes: ['hbefore15'] });
+    await dueOnly(watched.id);
+    expect(await watch(h.deps)).toEqual({ checked: 1, credited: 1 });
+    expect(h.oneclick.bearers.at(-1)).toBe('');
+    expect(await balance(api)).toBe(35_000_000);
+    expect((await api.plans.plan()).balance.history.map((e) => e.label)).toEqual(['Added, 15 USDC', 'Added, 20 USDC']);
   });
 });
 
