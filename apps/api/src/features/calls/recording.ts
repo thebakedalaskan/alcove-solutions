@@ -4,8 +4,8 @@ import { id128 } from '../../crypto';
 import { tx, type Db } from '../../db';
 import { ConflictError, ForbiddenError, PlanLimitError, UnavailableError, ValidationError, notFound } from '../../errors';
 import type { Meter, Most } from '../../inference';
-import { meterFor, notesBlocked, ranOut, reckonAgain, type Bill, type Spend } from '../billing/meter';
-import { mayStore } from '../billing/held';
+import { meterFor, notesBlocked, NOTES_ROOM, ranOut, reckonAgain, type Bill, type Spend } from '../billing/meter';
+import { mayStore, storageOf } from '../billing/held';
 import { writingAtMost } from '../notes/drafting';
 import { me } from '../account/account';
 import { appendPiece, createRecording, setRecordingState, type Piece } from '../recordings/audio';
@@ -18,7 +18,7 @@ import { mainScribeOf, placeAt, placeOf, readersAt } from './places';
 import { scribeAt } from './scribes';
 import * as screens from '../recordings/screens';
 import * as transcripts from '../recordings/transcripts';
-import { log } from '../../log';
+import { log, type LogContext } from '../../log';
 import { capturing, load, notice, roomPausesOf, roomsOpenAt, save, screenChanged, settle, sharesEnd, tenthsIn, trimShares, type Row, type Stored } from './state';
 import { requireIn, speakersIn, type Viewer } from './participants';
 import { stillHosting } from './permissions';
@@ -129,7 +129,7 @@ export async function changeCapture(v: Viewer, c: Db, row: Row, s: Stored, a: Ca
   const mayStart = async (): Promise<Stored> => {
     const blocked = await notesBlocked(o, c, o.ownerId);
     if (blocked === 'notes') throw ranOut('yours', ctx);
-    if (blocked === 'storage') throw new PlanLimitError('Your storage is full, so notes can’t be kept. Delete something, or move to a plan with more room.', 'storage', { context: ctx });
+    if (blocked === 'storage') throw new PlanLimitError('Your storage is full, so notes can’t be kept. Delete something, or move to a plan with more room.', 'storage', { context: { ...ctx, ...await storageRefused(o, c, NOTES_ROOM) } });
     return { ...s, notes: { ...s.notes, limit: capture.NO_LIMIT } };
   };
   if (a.type === 'notes') {
@@ -196,7 +196,16 @@ export async function audio(v: Viewer, callId: string, piece: Piece): Promise<Ca
 async function roomFor(o: Owner, callId: string, bytes: number, ctx: Record<string, string | number>): Promise<void> {
   if (await mayStore(o, o.pool, o.ownerId, bytes)) return;
   await limitReached(o, callId, 'stop', 'storage');
-  throw new PlanLimitError('The organizer’s storage is full, so notes have stopped.', 'storage', { context: ctx });
+  throw new PlanLimitError('The organizer’s storage is full, so notes have stopped.', 'storage', { context: { ...ctx, ...await storageRefused(o, o.pool, bytes) } });
+}
+
+/**
+ * The organizer's storage as a refusal for it is logged (docs: Logging and errors): the plan's limit by its name, what's
+ * stored, what was being added and what it's held to now (`grace`: a grace holds it past the plan's).
+ */
+async function storageRefused(o: Owner, db: Db, addingBytes: number): Promise<LogContext> {
+  const s = await storageOf(o, db, o.ownerId);
+  return { limit: `plan.${s.p.kind}.storage_bytes`, usedBytes: s.usedBytes, addingBytes, limitBytes: s.heldBytes ?? s.planBytes, grace: s.graceUntil !== null };
 }
 
 /**

@@ -7,6 +7,7 @@
 import { AlcoveApiError, DEFAULT_NOTES_CHOICES, type AlcoveApi, type AnswerPart, type AudioPiece, type CallSession, type CallState, type TranscriptClip } from '@alcove/api';
 import { randomBytes } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
 import { HALF_PRICED_MODEL, UNENCRYPTED_MODEL, speechWav } from '../../testing/fake-near';
 import { startHarness, type Harness } from '../../testing/harness';
 import { disposeLiveKit } from '../../testing/livekit';
@@ -21,6 +22,9 @@ afterAll(async () => { await h?.close(); await disposeLiveKit(); });
 afterEach(async () => { h.closeCalls(); vi.useRealTimers(); await h.resetLimits(); });
 
 const code = (e: unknown) => (e instanceof AlcoveApiError ? e.code : 'not-an-api-error');
+const LogLine = z.object({ level: z.number(), msg: z.string() }).passthrough();
+/** The API's log lines since `from`, read. */
+const linesSince = (from: number) => h.logs.slice(from).flatMap((l) => { const r = LogLine.safeParse(JSON.parse(l)); return r.success ? [r.data] : []; });
 const refusal = (p: Promise<unknown>) => p.then(() => 'succeeded', (e: unknown) => (e instanceof AlcoveApiError ? `${e.code}: ${e.message}` : String(e)));
 let seq = 0;
 const unique = (who = 'person') => `${who}.${Date.now().toString(36)}${(seq++).toString(36)}@tests.example`;
@@ -465,6 +469,26 @@ describe('running out', () => {
     expect((await now(host)).capture).toMatchObject({ mode: 'on', model: null, stopped: null });
     expect(await meter(org)).toMatchObject({ stopped: false });
     expect(await held()).toBeLessThan(dearer);
+  });
+
+  it('stops notes when the organizer’s storage fills, logging the limit by name, what’s stored, what was adding and the limit', async () => {
+    const org = await account(unique('organizer'));
+    const { host } = await call(org);
+    await host.appendAudio(piece('stored', 0));
+    const stored = (await org.api.plans.plan()).storage.usedBytes;
+    // Room for a kilobyte more: the next piece doesn't fit.
+    await h.setLimit('plan.free.storage_bytes', stored + 1024);
+    let from = h.logs.length;
+    expect(code(await host.appendAudio(piece('full', 1)).catch((e: unknown) => e))).toBe('plan-limit');
+    expect((await settle(host, (s) => s.capture.stopped !== null)).capture).toMatchObject({ mode: 'off', stopped: { reason: 'storage' } });
+    const full = linesSince(from).find((l) => l.msg === 'The organizer’s storage is full, so notes have stopped.');
+    expect(full).toMatchObject({ level: 30, reason: 'storage', limit: 'plan.free.storage_bytes', usedBytes: stored, limitBytes: stored + 1024, grace: false });
+    expect(full?.['addingBytes']).toBeGreaterThan(1024);
+    // Turning notes on again is refused while there's no room for them to come back, logged the same way.
+    from = h.logs.length;
+    const word = 'Your storage is full, so notes can’t be kept. Delete something, or move to a plan with more room.';
+    expect(await refusal(host.setNotes(true))).toBe(`plan-limit: ${word}`);
+    expect(linesSince(from).find((l) => l.msg === word)).toMatchObject({ level: 30, limit: 'plan.free.storage_bytes', usedBytes: stored, addingBytes: 1024 * 1024, limitBytes: stored + 1024 });
   });
 
   it('after a Free organizer’s notes stop, an invitee on Pro still asks from their own allowance, and a guest can’t', async () => {

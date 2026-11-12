@@ -35,6 +35,7 @@ Suites: `billing/meter` (`apps/api/src/features/billing/meter.integration.test.t
 | C2 | Free makes as many shared workspaces as it likes, and every one works | billing/plans › makes as many shared workspaces…; workspaces (limits) for `workspaces.max_made` | 1 | Passes |
 | C3 | A file over the plan's size is refused; storage fills and refuses, counted against whoever made the workspace | billing/plans › takes files…; workspaces/media (limits); by hand | 1 | Passes |
 | C4 | Call recordings count; full storage stops notes for everyone (reason storage), and notes need 1 MiB to come back | billing/plans › counts call recordings… | 1 | Passes |
+| C4′ | In a call, the refusal of a piece with storage full, and of notes turned on again without room, is logged with the limit by name (`plan.free.storage_bytes`), what's stored, what was being added and the limit | billing/meter › stops notes when the organizer’s storage fills, logging the limit… | 1 | Passes |
 | **D: metering** |  |  |  |  |
 | D1 | Each request charges the right payer: organizer (transcript, captions, live notes, notes), asker (ask, catch-up, ask a note, ask all), organizer for a guest, workspace's maker for document AI | billing/meter › who pays; calls/liveNotes; calls/callWorkspace; recordings/transcripts; flows | 1 | Passes |
 | D2 | A reply without usage is reckoned and charged | billing/meter › charges what NEAR AI says… | 1 | Passes |
