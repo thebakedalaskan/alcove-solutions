@@ -389,7 +389,7 @@
 .set-receipt-a { display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding: 16px 20px 20px; }
 @media print {
   body:has(.set-receipt) > :not(:has(.set-receipt)) { display: none !important; }
-  .ac-modal.set-receipt-win { position: static; transform: none; width: auto; max-height: none; box-shadow: none; background: none; animation: none; overflow: visible; }
+  .ac-modal.set-receipt-win { position: static; transform: none; width: auto; max-width: 600px; max-height: none; box-shadow: none; background: none; animation: none; overflow: visible; }
   .set-receipt-win > .set-receipt { margin: 0; box-shadow: none; }
   .set-receipt-a { display: none; }
 }
