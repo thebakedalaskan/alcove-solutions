@@ -6,17 +6,20 @@
  * Free's today.
  */
 import { errorCode, type Plan } from '@alcove/api';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import { useCallback } from 'react';
+import { log } from '~/lib/log';
 import { q } from '~/lib/queries';
 import { roomLabel } from '~/lib/words';
 import { useCheckout } from './checkout';
 
+const slog = log.child({ component: 'storage-door' });
+
 /** What's said about a refused upload, and the one thing that helps (null: nothing to do here). */
 export interface StorageRefused { text: string; action: { label: string; onClick: () => void } | null }
 /** Turns an upload's error into what the doors say about it, or null when it wasn't storage (the server's words stand). */
-export type StorageRefusal = (error: unknown, bytes: number) => StorageRefused | null;
+export type StorageRefusal = (error: unknown, bytes: number) => Promise<StorageRefused | null>;
 
 /** An upload refused with its words and its way on, for whatever shows its errors by their message (a board's toast). */
 export class StorageFullError extends Error {
@@ -33,26 +36,34 @@ export class StorageFullError extends Error {
 const yours = (plan: Plan, bytes: number): boolean => plan.over.storage || plan.storage.usedBytes + bytes > plan.storage.limitBytes;
 
 /**
- * What a storage refusal says, from your plan and the offers: on Free, "Your storage is full. Pro has 100 GB." with Get Pro;
- * on a paid plan, "Your storage is full." with Make room, which opens the Drive (in a new tab from a call, so the call goes
- * on); someone else's, that the workspace can't take more, with nothing to buy. `signedIn`: a guest in a call has no plan,
- * and hears the server's words. Reading the plan again after a refusal keeps what's said next true.
+ * What a storage refusal says, from your plan as it is now and the offers: on Free, "Your storage is full. Pro has 100 GB."
+ * with Get Pro; on a paid plan, "Your storage is full." with Make room, which opens the Drive (in a new tab from a call, so the
+ * call goes on); someone else's, that the workspace can't take more, with nothing to buy. `signedIn`: a guest in a call has
+ * no plan, and hears the server's words. The plan is read only when an upload is refused, never kept up to date meanwhile.
  */
 export function useStorageRefusal(signedIn: boolean, from: 'page' | 'call'): StorageRefusal {
-  const plan = useQuery({ ...q.plan(), enabled: signedIn }).data;
-  const pro = useQuery({ ...q.offers(), enabled: signedIn }).data?.pro.storageBytes;
   const checkout = useCheckout();
   const qc = useQueryClient();
   const navigate = useNavigate();
   const open = checkout.open;
-  return useCallback((error, bytes) => {
-    if (errorCode(error) !== 'plan-limit' || !plan) return null;
-    void qc.invalidateQueries({ queryKey: q.plan().queryKey, exact: true });
+  return useCallback(async (error, bytes) => {
+    if (errorCode(error) !== 'plan-limit' || !signedIn) return null;
+    let plan: Plan;
+    let pro: number | null;
+    try {
+      [plan, pro] = await Promise.all([
+        qc.fetchQuery({ ...q.plan(), staleTime: 0 }),
+        qc.fetchQuery(q.offers()).then((o) => o.pro.storageBytes, () => null)
+      ]);
+    } catch (e) {
+      slog.info('the plan wasn’t read for a storage refusal; the server’s words stand', { err: e });
+      return null;
+    }
     if (!yours(plan, bytes)) return { text: 'This workspace can’t take more files: the storage it counts against is full.', action: null };
-    if (plan.kind === 'free' && pro !== undefined && pro > plan.storage.limitBytes) {
+    if (plan.kind === 'free' && pro !== null && pro > plan.storage.limitBytes) {
       return { text: `Your storage is full. Pro has ${roomLabel(pro)}.`, action: { label: 'Get Pro', onClick: () => open({ plan: 'pro' }, from === 'call' ? 'call' : 'door') } };
     }
     const room = from === 'call' ? () => { window.open('/drive', '_blank', 'noopener'); } : () => { void navigate({ to: '/drive' }); };
     return { text: 'Your storage is full.', action: { label: 'Make room', onClick: room } };
-  }, [plan, pro, qc, open, from, navigate]);
+  }, [signedIn, qc, open, from, navigate]);
 }

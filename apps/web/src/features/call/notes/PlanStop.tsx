@@ -7,13 +7,13 @@
  */
 import { CallStopsSeenSchema, notesAreOn, type CallSession, type CallState, type Plan } from '@alcove/api';
 import { Button, Icon, buttonClass, useToast } from '@alcove/ui';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { useCheckout } from '~/features/plans/checkout';
 import { hoursLabel, hoursOfNotes } from '~/features/plans/words';
 import { log } from '~/lib/log';
 import { q } from '~/lib/queries';
-import { dayFullMonth, hm } from '~/lib/time';
+import { dayFullMonth, hm, hms } from '~/lib/time';
 import { capital } from '~/lib/words';
 import { organizerName } from './Capture';
 
@@ -45,6 +45,10 @@ export function usePlanStop(state: CallState): PlanStop | null {
   const host = state.isOrganizer;
   const plan = useQuery({ ...q.plan(), enabled: host && s !== null, refetchInterval: STOPPED_READ_MS }).data;
   const offers = useQuery({ ...q.offers(), enabled: host && s !== null }).data;
+  /* The plan as it is once notes stop, not as it was read before: what's said, and offered, follows it. */
+  const qc = useQueryClient();
+  const stoppedAt = s?.at ?? null;
+  useEffect(() => { if (host && stoppedAt) void qc.invalidateQueries({ queryKey: q.plan().queryKey, exact: true }); }, [host, stoppedAt, qc]);
   if (!s) return null;
   if (!host) {
     const whose = capital(organizerName(state));
@@ -138,17 +142,24 @@ export function useStopMarks(state: CallState): StopMark[] {
   return marks;
 }
 
-/** The marks in the notes: "Notes stopped · 16:44" in caution, and "Notes on again · 16:47" in the notes' own colour. */
+/**
+ * The marks in the notes: "Notes stopped · 16:44" in caution, and "Notes on again · 16:47" in the notes' own colour, to the
+ * second when both fall in one minute, as a stretch of the transcript says it.
+ */
 export function StopMarks({ marks }: { marks: readonly StopMark[] }) {
   if (!marks.length) return null;
   return (
     <div className="nn-cuts">
-      {marks.map((m) => (
-        <div key={m.at}>
-          <p className="nn-cut">Notes stopped · {hm(m.at)}</p>
-          {m.back && <p className="nn-cut is-on">Notes on again · {hm(m.back)}</p>}
-        </div>
-      ))}
+      {marks.map((m) => {
+        const close = m.back !== null && hm(m.at) === hm(m.back);
+        const time = close ? hms : hm;
+        return (
+          <div key={m.at}>
+            <p className="nn-cut">Notes stopped · {time(m.at)}</p>
+            {m.back && <p className="nn-cut is-on">Notes on again · {time(m.back)}</p>}
+          </div>
+        );
+      })}
     </div>
   );
 }

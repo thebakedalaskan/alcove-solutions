@@ -209,8 +209,7 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
   /* Storage full is said as the doors say it, with what helps; anything else in the server's own words. */
   const refused = useStorageRefusal(owner !== null, call ? 'call' : 'page');
   useEffect(() => talkThrough(workspaceId, (e, bytes) => {
-    const r = refused(e, bytes);
-    say(wsToast.failed(r?.text ?? errorMessage(e), r?.action ?? undefined));
+    void refused(e, bytes).then((r) => say(wsToast.failed(r?.text ?? errorMessage(e), r?.action ?? undefined)));
   }), [workspaceId, say, refused]);
   const qc = useQueryClient();
   useEffect(() => onStored((id) => { if (id === workspaceId) void qc.invalidateQueries({ queryKey: qk.workspaceMedia(id) }); }), [qc, workspaceId]);

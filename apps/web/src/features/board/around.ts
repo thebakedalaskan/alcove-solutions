@@ -23,7 +23,7 @@ export const boardUpload = (workspaceId: string, documentId: string, pass: strin
     try {
       return (await api.workspaces.media.upload(workspaceId, documentId, file, { pass, width: size?.width, height: size?.height })).id;
     } catch (e) {
-      const said = refused?.(e, file.size);
+      const said = refused ? await refused(e, file.size) : null;
       throw said ? new StorageFullError(said) : e;
     }
   };
