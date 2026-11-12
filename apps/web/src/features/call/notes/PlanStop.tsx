@@ -185,7 +185,9 @@ export function usePlanRestart(state: CallState, session: Pick<CallSession, 'set
   const toast = useToast();
   const s = stopOf(state);
   const host = state.isOrganizer && state.phase === 'in-call';
-  const plan = useQuery({ ...q.plan(), enabled: host && s !== null, refetchInterval: STOPPED_READ_MS }).data;
+  const read = useQuery({ ...q.plan(), enabled: host && s !== null, refetchInterval: STOPPED_READ_MS });
+  const plan = read.data;
+  const readAt = read.dataUpdatedAt;
   /* The plan as it was when notes stopped, to tell more from what was already there; then whether notes are on their way back. */
   const before = useRef<{ at: string; plan: Plan } | null>(null);
   const turning = useRef<{ pro: boolean } | null>(null);
@@ -193,6 +195,8 @@ export function usePlanRestart(state: CallState, session: Pick<CallSession, 'set
   const reason = s?.reason ?? null;
   useEffect(() => {
     if (!host || !stoppedAt || !reason || !plan || turning.current) return;
+    // Only a plan read since notes stopped says what they can do now; one read before is a moment from being read again.
+    if (readAt < Date.parse(stoppedAt)) return;
     const was = before.current;
     if (was === null || was.at !== stoppedAt) {
       // The first look at the plan since notes stopped tries once if it has what they need (paid while the page reloaded, say).
@@ -206,11 +210,11 @@ export function usePlanRestart(state: CallState, session: Pick<CallSession, 'set
     }
     slog.info('the organizer’s plan has more: turning notes on again', { reason, kind: plan.kind });
     session.setNotes(true).catch((e: unknown) => {
-      slog.warn('notes didn’t come on again; the next change to the plan tries again', { err: e, reason });
+      slog.info('notes didn’t come on again; the next change to the plan tries again', { err: e, reason });
       turning.current = null;
       before.current = { at: stoppedAt, plan };
     });
-  }, [host, stoppedAt, reason, plan, session]);
+  }, [host, stoppedAt, reason, plan, readAt, session]);
   /* Notes are on again: said once, as what came. */
   const on = notesAreOn(state.capture.mode);
   useEffect(() => {
