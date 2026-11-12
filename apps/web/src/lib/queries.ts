@@ -578,6 +578,25 @@ export function useDismissPlanNotice() {
   });
 }
 
+/**
+ * Says the plans were shown (`Plan.choose` is false from then; saying it again changes nothing), once the plan choice or Plans
+ * itself has been on screen (features/plans/choice.ts). Nobody waits on it, so it's quiet: tried again a few times, and
+ * held while there's no connection, and a failure is logged and never shows the plans again in this tab. They show once
+ * more on a later visit, since the server still says they haven't been. It keeps going if the page that asked goes.
+ */
+export function useChosePlans() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationKey: ['plan', 'chosen'],
+    mutationFn: () => api.plans.chose(),
+    networkMode: 'online',
+    retry: 4,
+    retryDelay: (n) => Math.min(30_000, 2000 * 2 ** n),
+    onSuccess: (p) => { qc.setQueryData(qk.plan, p); plog.debug('the plans are marked shown', { choose: p.choose }); },
+    onError: (e) => { plog.warn('the plans weren’t marked shown; they show again on a later visit', { code: errorCode(e) }); }
+  });
+}
+
 /* ---------- a team ---------- */
 
 /** What a team's change touches: the team, its notes, and the plan (a license decides it). */
