@@ -83,6 +83,10 @@ drive it end to end.
 - `limitsNow` read the limits through the pool inside transactions. Uploads started at once ran the pool dry: each
   transaction held a connection and waited for another to read the limits. It now reads on the caller's connection,
   under a savepoint, so a failed read leaves the transaction going on what was in force.
+- The call's card, for anyone with the link, said why notes stopped. It says only that they're off now (calls/capture,
+  billing/meter).
+- Notes in the call offered Turn on with no word of why notes were off. Notes and what's captured now say why, in the
+  banner's words; Turn on stays, as it works again once the plan has notes.
 - A refused upload leaves its document with an empty picture block, as before plans. Free's storage limit makes that
   more likely: not changed here.
 
