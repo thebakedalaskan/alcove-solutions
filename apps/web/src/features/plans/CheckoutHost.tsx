@@ -17,17 +17,18 @@ import {
   type CheckoutStage, type CheckoutSummaryData, type HoursOption, type MonthsOption, type ReceiptLine, type SummaryLine
 } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
-import { useEffect, useState, type ReactNode } from 'react';
-import { useOnline } from '~/lib/live';
-import { q, topUpOpen, useBuyHours, useBuyPro, useCancelTopUp, useStartTopUp } from '~/lib/queries';
-import { dayMonth, daysFromToday, hm, longDay, shortDay } from '~/lib/time';
+import { useState, type ReactNode } from 'react';
+import { useNow, useOnline } from '~/lib/live';
+import { q, topUpOpen, useBuy, useCancelTopUp, useStartTopUp } from '~/lib/queries';
+import { byWhen, fullDate, hm, longDay, shortDate } from '~/lib/time';
 import { plural, usd, usdCents } from '~/lib/words';
 import type { CheckoutOpen } from './checkout';
 import {
-  LENGTHS, costOf, hoursIn, lapsed, microOf, monthsWord, plainTokens, proPrice, purchaseName, repriced, roundTokens, sameTerms, tokens,
+  LENGTHS, costOf, lapsed, microOf, plainTokens, proPrice, purchaseName, repriced, roundTokens, sameTerms, tokens,
   waitingPurchase, yearlyOff
 } from './purchase';
 import { walletLink } from './wallet';
+import { hoursOfNotes, moreHoursOfNotes } from './words';
 
 const DAY = 86_400_000;
 /** The networks in the canvas's order; any other the server offers comes after them, in its order. */
@@ -35,16 +36,6 @@ const ORDER = ['base', 'sol', 'eth', 'arb', 'pol', 'near', 'op', 'avax', 'bsc'];
 const rank = (r: TopUpRoute) => { const i = ORDER.indexOf(r.chain); return i < 0 ? ORDER.length : i; };
 const PRICED = 'Priced in US dollars. 1 USDC is 1 dollar, so you send exactly the total.';
 
-/** "Thursday 4 November 2027" */
-const longDate = (d: Date) => `${longDay(d)} ${d.getFullYear()}`;
-/** "4 Nov 2027" */
-const shortDate = (d: Date) => `${dayMonth(d)} ${d.getFullYear()}`;
-/** "16:12", "tomorrow 16:12", "Thu 12 Nov 16:12": until when an address is open. */
-function byWhen(iso: string, now: number): string {
-  const d = new Date(iso);
-  const days = daysFromToday(d, new Date(now));
-  return days <= 0 ? hm(d) : `${days === 1 ? 'tomorrow' : shortDay(d)} ${hm(d)}`;
-}
 /** A reference as a row shows it: the start of it. The receipt has it whole. */
 const shortRef = (id: string) => (id.length > 10 ? id.slice(0, 8) : id);
 /** The balance entry a purchase of `cost` made in the last day, newest first: its reference is the receipt's. */
@@ -53,12 +44,6 @@ const entryFor = (history: BalanceEntry[] | undefined, cost: number, now: number
 /** The numbers of packs offered as cards: one, two and the most one purchase buys (10, 20 and 50 hours today). */
 const packChoices = (max: number) => [...new Set([1, 2, max])].filter((n) => n >= 1 && n <= max).sort((a, b) => a - b);
 
-/** The time now, a little stale: enough for an address to close while the window stays open. */
-function useNow(): number {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => { const t = window.setInterval(() => setNow(Date.now()), 30_000); return () => window.clearInterval(t); }, []);
-  return now;
-}
 
 /** What the window shows: choosing; a top-up opened to buy it, followed to the end; or bought from the balance. */
 type View = { step: 'choose' } | { step: 'pay'; id: string } | { step: 'bought'; plan: Plan; buys: Purchase; at: number };
@@ -85,7 +70,7 @@ const STAGE: Record<Paying, CheckoutStage> = {
 /** "A year or more", "6 months or more": the lengths the lower price is for. */
 const yearlyWords = (offers: PlanOffers) => {
   const from = offers.pro.yearly?.fromMonths ?? 12;
-  return from === 12 ? 'A year or more' : `${monthsWord(from)} or more`;
+  return from === 12 ? 'A year or more' : `${plural(from, 'month')} or more`;
 };
 
 /** A purchase's lines in the summary, its name, and what the phone's one line says of it. */
@@ -95,16 +80,14 @@ function described(buys: Purchase, offers: PlanOffers): { name: string; brief: s
     const lower = buys.microUsdPerMonth < monthly && buys.months >= (offers.pro.yearly?.fromMonths ?? Infinity);
     const pct = lower ? yearlyOff(offers) : null;
     const lines: SummaryLine[] = lower
-      ? [{ label: `${monthsWord(buys.months)} at ${usd(monthly)}`, value: usd(buys.months * monthly) },
+      ? [{ label: `${plural(buys.months, 'month')} at ${usd(monthly)}`, value: usd(buys.months * monthly) },
         { label: `${yearlyWords(offers)}${pct ? `: ${pct}% off` : ''}`, value: `−${usd(buys.months * (monthly - buys.microUsdPerMonth))}`, off: true }]
-      : [{ label: `${monthsWord(buys.months)} at ${usd(buys.microUsdPerMonth)}`, value: usd(costOf(buys)) }];
-    return { name: 'Pro', brief: `${monthsWord(buys.months)}${pct ? ` · ${pct}% off` : ''}`, lines };
+      : [{ label: `${plural(buys.months, 'month')} at ${usd(buys.microUsdPerMonth)}`, value: usd(costOf(buys)) }];
+    return { name: 'Pro', brief: `${plural(buys.months, 'month')}${pct ? ` · ${pct}% off` : ''}`, lines };
   }
-  const hours = hoursIn(offers, buys.packs);
-  const minutes = offers.hours?.minutes ?? 0;
-  const perHour = minutes > 0 ? Math.round((buys.microUsdPerPack * 60) / minutes) : 0;
-  const label = perHour > 0 ? `${hours} hours at ${usd(perHour)} an hour` : `${hours} hours of notes`;
-  return { name: `${hours} hours of notes`, brief: 'For this period', lines: [{ label, value: usd(costOf(buys)) }] };
+  const hours = hoursOfNotes(buys.packs * buys.minutesPerPack);
+  const perHour = Math.round((buys.microUsdPerPack * 60) / buys.minutesPerPack);
+  return { name: `${hours} of notes`, brief: 'For this period', lines: [{ label: `${hours} at ${usd(perHour)} an hour`, value: usd(costOf(buys)) }] };
 }
 
 /** What Done says of a purchase, and its receipt. */
@@ -124,8 +107,7 @@ export function CheckoutHost({ open, onClose, onCompare }: { open: CheckoutOpen;
   const online = useOnline();
   const now = useNow();
   const toast = useToast();
-  const buyPro = useBuyPro();
-  const buyHours = useBuyHours();
+  const buying = useBuy();
   const start = useStartTopUp();
   const cancel = useCancelTopUp();
   const p = plan.data;
@@ -198,7 +180,7 @@ export function CheckoutHost({ open, onClose, onCompare }: { open: CheckoutOpen;
   const maxMonths = o?.pro.maxMonths ?? 12;
   const yearly = o?.pro.yearly ?? null;
   const pct = o ? yearlyOff(o) : null;
-  const chosenMonths = Math.min(maxMonths, Math.max(1, months ?? (yearly && yearly.fromMonths <= maxMonths ? yearly.fromMonths : 1)));
+  const chosenMonths = Math.min(maxMonths, Math.max(1, months ?? (yearly ? yearly.fromMonths : 1)));
   const lengths = LENGTHS.filter((m) => m <= maxMonths);
   const otherOpen = other || !lengths.some((m) => m === chosenMonths);
   const hoursOffer = o?.hours ?? null;
@@ -213,7 +195,7 @@ export function CheckoutHost({ open, onClose, onCompare }: { open: CheckoutOpen;
   const paymentsOff = routes.isError || (routes.isSuccess && usdc.length === 0);
   const route = usdc.find((r) => r.id === routeId) ?? null;
   const send = need > 0 ? Math.max(need, route ? microOf(route.minimum) ?? 0 : 0) : 0;
-  const busy = buyPro.isPending || buyHours.isPending || start.isPending;
+  const busy = buying.isPending || start.isPending;
 
   /** When Pro would run to with `n` more months bought now: after the months already bought, or from now. */
   const proUntil = (n: number) => {
@@ -243,8 +225,7 @@ export function CheckoutHost({ open, onClose, onCompare }: { open: CheckoutOpen;
   const buy = (b: Purchase) => {
     setSaid(null);
     const done = (fresh: Plan) => setView({ step: 'bought', plan: fresh, buys: b, at: Date.now() });
-    if (b.kind === 'pro') buyPro.mutate({ months: b.months, microUsdPerMonth: b.microUsdPerMonth }, { onSuccess: done, onError: refused });
-    else buyHours.mutate({ packs: b.packs, microUsdPerPack: b.microUsdPerPack, minutesPerPack: b.minutesPerPack }, { onSuccess: done, onError: refused });
+    buying.mutate(b, { onSuccess: done, onError: refused });
   };
   const getAddress = (r: TopUpRoute, microUsd: number, b: Purchase) => {
     setSaid(null);
@@ -267,8 +248,8 @@ export function CheckoutHost({ open, onClose, onCompare }: { open: CheckoutOpen;
   const cancelPayment = (id: string) => cancel.mutate(id, { onSuccess: () => { toast('Payment cancelled'); onClose(); }, onError: () => setAsking(false) });
 
   /** What Done says of `b`, bought from the balance or by `paid`, and its receipt. */
-  const doneOf = (b: Purchase, paid: TopUp | null, fresh: Plan | undefined, offerNow: PlanOffers): Done => {
-    const bought = purchaseName(b, offerNow);
+  const doneOf = (b: Purchase, paid: TopUp | null, fresh: Plan | undefined): Done => {
+    const bought = purchaseName(b);
     const c = costOf(b);
     const asked = paid ? microOf(paid.asked.amount) ?? 0 : 0;
     // What was sent, in tokens, and what it added to the balance (what was asked, when a little less arrived within the band).
@@ -282,10 +263,10 @@ export function CheckoutHost({ open, onClose, onCompare }: { open: CheckoutOpen;
     if (b.kind === 'pro') {
       until = boughtUntil(b.months, fresh);
       heading = extend ? `Pro runs to ${shortDate(until)}` : 'You’re on Pro';
-      lines.push(`Until ${longDate(until)}.`);
+      lines.push(`Until ${fullDate(until)}.`);
     } else {
       until = periodEnd;
-      heading = `${hoursIn(offerNow, b.packs)} more hours of notes`;
+      heading = moreHoursOfNotes(b.packs * b.minutesPerPack);
       lines.push(`They’re yours until this period ends${until ? ` on ${longDay(until)}` : ''}${opened?.stopped ? ', and notes start again now' : ''}.`);
     }
     if (paid && sent > asked) lines.push(`You sent ${tokens(sent)} USDC, ${tokens(sent - asked)} more than asked: it’s in your balance.`);
@@ -301,10 +282,10 @@ export function CheckoutHost({ open, onClose, onCompare }: { open: CheckoutOpen;
       receipt: {
         title: bought, total: usdCents(c),
         lines: [
-          { label: 'Date', value: `${longDate(at)}, ${hm(at)}` },
+          { label: 'Date', value: `${fullDate(at)}, ${hm(at)}` },
           ...(name ? [{ label: 'For', value: name }] : []),
           { label: 'Bought', value: bought },
-          ...(until ? [{ label: b.kind === 'pro' ? 'Pro until' : 'For this period, to', value: longDate(until) }] : []),
+          ...(until ? [{ label: b.kind === 'pro' ? 'Pro until' : 'For this period, to', value: fullDate(until) }] : []),
           { label: 'Price', value: usdCents(c) },
           paid
             ? { label: 'Paid', value: `${tokens(added)} USDC on ${paid.route.chainName}${c > added ? `, and ${usdCents(c - added)} from your balance` : ''}` }
@@ -325,8 +306,8 @@ export function CheckoutHost({ open, onClose, onCompare }: { open: CheckoutOpen;
     const c = costOf(shown);
     const isDone = view?.step === 'bought' || paying === 'bought';
     const until = shown.kind === 'pro'
-      ? { lead: 'Pro until', day: longDate(isDone ? boughtUntil(shown.months, view?.step === 'bought' ? view.plan : p) : proUntil(shown.months)) }
-      : periodEnd ? { lead: 'Until', day: longDate(periodEnd) } : null;
+      ? { lead: 'Pro until', day: fullDate(isDone ? boughtUntil(shown.months, view?.step === 'bought' ? view.plan : p) : proUntil(shown.months)) }
+      : periodEnd ? { lead: 'Until', day: fullDate(periodEnd) } : null;
     summary = { ...summary, name: d.name, brief: d.brief, lines: d.lines, until };
     if (t) {
       // A payment: what was asked of it, and what the balance gave beside it.
@@ -370,7 +351,7 @@ export function CheckoutHost({ open, onClose, onCompare }: { open: CheckoutOpen;
   } else if (view.step === 'bought') {
     step = 3;
     stage = 'done';
-    done = doneOf(view.buys, null, view.plan, o);
+    done = doneOf(view.buys, null, view.plan);
     foot = finish;
   } else if (view.step === 'pay') {
     step = 2;
@@ -425,7 +406,7 @@ export function CheckoutHost({ open, onClose, onCompare }: { open: CheckoutOpen;
         foot = <><p className="hint">You can close this. It finishes by itself.</p>{close}</>;
       } else if (paying === 'bought' && t.purchase) {
         step = 3;
-        done = doneOf(t.purchase.buys, t, p, o);
+        done = doneOf(t.purchase.buys, t, p);
         foot = finish;
       } else if (paying === 'added' || paying === 'bought') {
         step = 3;
@@ -519,8 +500,8 @@ export function CheckoutHost({ open, onClose, onCompare }: { open: CheckoutOpen;
         ) : hoursOffer ? (
           <HoursPicker autoFocus value={chosenPacks} hint={`${usd(Math.round((hoursOffer.microUsd * 60) / hoursOffer.minutes))} an hour`} onChange={setPacks}
             options={packChoices(hoursOffer.maxPacks).map((n): HoursOption => {
-              const h = hoursIn(o, n);
-              return { packs: n, hours: `${h} hours`, price: usd(n * hoursOffer.microUsd), sub: `${h} hour-long calls` };
+              const minutes = n * hoursOffer.minutes;
+              return { packs: n, hours: hoursOfNotes(minutes), price: usd(n * hoursOffer.microUsd), sub: plural(Math.max(1, Math.round(minutes / 60)), 'hour-long call') };
             })} />
         ) : <CheckoutNote>More notes aren’t offered right now.</CheckoutNote>}
         {buys && need > 0 && (paymentsOff
@@ -542,8 +523,8 @@ export function CheckoutHost({ open, onClose, onCompare }: { open: CheckoutOpen;
           <Button variant="primary" loading={start.isPending} disabled={!route || paymentsOff || !online || busy}
             onClick={() => { if (route) getAddress(route, send, buys); }}>{start.isPending ? 'Getting the address' : 'Get the address'}</Button>
         ) : (
-          <Button variant="primary" loading={buyPro.isPending || buyHours.isPending} disabled={!online || busy} onClick={() => buy(buys)}>
-            {buyPro.isPending || buyHours.isPending ? 'Buying' : 'Buy with your balance'}
+          <Button variant="primary" loading={buying.isPending} disabled={!online || busy} onClick={() => buy(buys)}>
+            {buying.isPending ? 'Buying' : 'Buy with your balance'}
           </Button>
         )}
       </>

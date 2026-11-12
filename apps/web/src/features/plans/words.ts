@@ -15,3 +15,9 @@ export function hoursOfNotes(minutes: number): string {
 
 /** The pack of more notes for this period, as a button says it: "Add 10 hours · $15". */
 export const hoursLabel = (hours: NonNullable<PlanOffers['hours']>): string => `Add ${hoursOfNotes(hours.minutes)} · ${usd(hours.microUsd)}`;
+/** "10 more hours of notes", "1 more hour of notes": more notes bought for this period, as Done says it. */
+export function moreHoursOfNotes(minutes: number): string {
+  if (minutes % 60 !== 0) return `${hoursAndMinutes(minutes)} more of notes`;
+  const h = minutes / 60;
+  return `${h} more ${h === 1 ? 'hour' : 'hours'} of notes`;
+}

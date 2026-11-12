@@ -10,14 +10,14 @@ import { errorCode, errorMessage, type CheckoutParam, type Plan, type PlanAllowa
 import { Button, EmptyState, Evening, EveryPlan, PayingLine, PlanCard, PlanCards, PlanCycle, PlanHere, PlanSunset, type IconName, type PlanCycleChoice, type PlanFact } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
-import { useCheckout } from '~/features/plans/checkout';
-import { endsIn, proEnding } from '~/features/plans/plan-state';
-import { yearlyOff } from '~/features/plans/purchase';
-import { hoursOfNotes } from '~/features/plans/words';
 import { useNow, useOnline } from '~/lib/live';
 import { q } from '~/lib/queries';
 import { hoursAndMinutes } from '~/lib/time';
 import { plural, roomLabel, usd } from '~/lib/words';
+import { useCheckout } from './checkout';
+import { endsIn, proEnding } from './plan-state';
+import { yearlyOff } from './purchase';
+import { hoursOfNotes } from './words';
 
 /** The last of the sun, on the sky behind whatever passes through: one element, so the scene isn't drawn again with the page. */
 const SUNSET = <PlanSunset />;
@@ -60,11 +60,6 @@ function moreNotes(hours: PlanOffers['hours']): string | undefined {
   return `Out of notes before the period ends? ${more}.`;
 }
 
-/** A lower price for a year or more, when there's one a single purchase can reach. */
-function yearlyOf(o: PlanOffers): NonNullable<PlanOffers['pro']['yearly']> | null {
-  const y = o.pro.yearly;
-  return y && y.fromMonths <= o.pro.maxMonths && y.microUsdPerMonth < o.pro.microUsdPerMonth ? y : null;
-}
 /** "a year or more", "6 months or more": where the lower price starts. */
 const fromWords = (months: number): string => (months === 12 ? 'a year or more' : `${months} months or more`);
 /** "20% off", worked out from the two prices: nothing when it rounds to nothing. */
@@ -107,7 +102,7 @@ export function Plans({ opening, onOpened }: { opening?: CheckoutParam | undefin
 
   const o = offers.data;
   const p = plan.data;
-  const yearly = o ? yearlyOf(o) : null;
+  const yearly = o?.pro.yearly ?? null;
   const error = offers.error ?? plan.error;
   const trouble = o && p ? null : !online || errorCode(error) === 'network' ? 'offline' : offers.isError || plan.isError ? 'failed' : null;
   /* Whatever comes back stands where Try again was, so focus goes to the water rather than falling back to the page. */
@@ -157,7 +152,7 @@ function Offered({ offers: o, plan: p, yearly, now, onBuy }: {
   const onFree = p.kind === 'free';
   const onPro = p.kind === 'pro';
   const ending = proEnding(p, o, now);
-  const offered = yearlyOf(o);
+  const offered = o.pro.yearly;
   const perMonth = yearly ? yearly.microUsdPerMonth : o.pro.microUsdPerMonth;
   const save = yearly
     ? `You save ${usd((o.pro.microUsdPerMonth - yearly.microUsdPerMonth) * yearly.fromMonths)}.`

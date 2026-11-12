@@ -10,26 +10,13 @@ import { useQuery } from '@tanstack/react-query';
 import { useEffect, useId, useState, type ReactNode } from 'react';
 import { restToSend as rest } from '~/features/plans/purchase';
 import { q, useCancelTopUp, useStartTopUp } from '~/lib/queries';
-import { daysFromToday, hm, minutesUntil, shortDay } from '~/lib/time';
+import { byWhen, minutesUntil } from '~/lib/time';
 import { usd } from '~/lib/words';
 
 const tokens = new Intl.NumberFormat('en-GB', { maximumFractionDigits: 6, useGrouping: false });
 
 /** "USDC on Base" */
 const routeName = (r: { token: string; chainName: string }) => `${r.token} on ${r.chainName}`;
-
-/** "14:30", "tomorrow 14:30", "Thu 12 Nov 14:30": when something will have happened by. */
-export function byWhen(iso: string, now: number): string {
-  const days = daysFromToday(new Date(iso), new Date(now));
-  if (days <= 0) return hm(iso);
-  return `${days === 1 ? 'tomorrow' : shortDay(new Date(iso))} ${hm(iso)}`;
-}
-
-/** "14:30" today, "tomorrow", "Mon 9 Nov": the day something happens by, for a line that has no room for more. */
-export function byDay(iso: string, now: number): string {
-  const days = daysFromToday(new Date(iso), new Date(now));
-  return days <= 0 ? hm(iso) : days === 1 ? 'tomorrow' : shortDay(new Date(iso));
-}
 
 /** The least a custom amount suggests: the smallest any network takes. */
 const MIN_CUSTOM = '5';

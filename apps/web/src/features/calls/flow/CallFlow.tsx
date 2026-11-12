@@ -10,7 +10,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useCopyLink } from '~/features/call/session/links';
 import { openWhenStarted } from '~/features/call/session/opening';
-import { NoNotesLeftDoor } from '~/features/plans/notesLeft';
+import { NoNotesLeftDoor } from '~/features/plans/notesDoors';
 import { freshCalls, type BoardToOpen, type CallFlow, type StartOptions } from '~/features/shell/context';
 import { someNames } from '~/lib/people';
 import { q, useCancelCall, useScheduleCall, useStartNow } from '~/lib/queries';

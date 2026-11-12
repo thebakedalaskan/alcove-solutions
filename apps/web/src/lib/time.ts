@@ -25,8 +25,17 @@ export const longDay = (d: Date) => `${weekday(d)} ${d.getDate()} ${month(d)}`;
 export const fullDate = (d: Date) => `${longDay(d)} ${d.getFullYear()}`;
 /** "4 Nov 2027" */
 export const shortDate = (d: Date) => `${dayMonth(d)} ${d.getFullYear()}`;
-/** "1 December" */
-export const dayAndMonth = (d: Date) => `${d.getDate()} ${month(d)}`;
+/** "16:12", "tomorrow 16:12", "Thu 12 Nov 16:12": until when something is open, such as a payment's address. */
+export function byWhen(iso: string, now: number): string {
+  const days = daysFromToday(new Date(iso), new Date(now));
+  if (days <= 0) return hm(iso);
+  return `${days === 1 ? 'tomorrow' : shortDay(new Date(iso))} ${hm(iso)}`;
+}
+/** "14:30" today, "tomorrow", "Mon 9 Nov": the day something happens by, for a line that has no room for more. */
+export function byDay(iso: string, now: number): string {
+  const days = daysFromToday(new Date(iso), new Date(now));
+  return days <= 0 ? hm(iso) : days === 1 ? 'tomorrow' : shortDay(new Date(iso));
+}
 /** For lists of notes: "Today", "Yesterday" or "Fri 30 Oct". */
 export function noteDay(iso: string, now = new Date()): string {
   const d = new Date(iso);

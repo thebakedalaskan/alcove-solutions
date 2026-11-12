@@ -22,10 +22,10 @@ import { checkoutFor, purchaseName, restToSend, tokensExact } from '~/features/p
 import { hoursOfNotes } from '~/features/plans/words';
 import { useNow } from '~/lib/live';
 import { q, topUpOpen, useCancelTopUp, useDismissPlanNotice, useRefundPro, useSetRenew } from '~/lib/queries';
-import { dayAndMonth, fullDate, hm, longDay, shortDate, shortDay } from '~/lib/time';
-import { roomLabel, usd, usdCents } from '~/lib/words';
+import { byDay, byWhen, dayFullMonth, fullDate, hm, longDay, shortDate, shortDay } from '~/lib/time';
+import { plural, roomLabel, usd, usdCents } from '~/lib/words';
 import { useSaveState, useSaving } from './save';
-import { AddMoneySheet, byDay, byWhen } from './topup';
+import { AddMoneySheet } from './topup';
 
 export function PlanGroup({ plan }: { plan: Plan }) {
   const offers = useQuery(q.offers()).data;
@@ -103,7 +103,7 @@ function PlanRow({ plan, offers }: { plan: Plan; offers: PlanOffers | undefined 
 function NotesRow({ plan, offers }: { plan: Plan; offers: PlanOffers | undefined }) {
   const out = notesOut(plan);
   const low = notesLow(plan);
-  const on = dayAndMonth(new Date(plan.period.to));
+  const on = dayFullMonth(new Date(plan.period.to));
   const next = hoursOfNotes(nextPeriodMinutes(plan, offers));
   const help = out ? `Calls go on without notes until ${on}.`
     : low ? `Under an hour left. Back to ${next} on ${on}.`
@@ -172,7 +172,7 @@ function Paying({ plan, offers, canAdd, onAddMoney }: { plan: Plan; offers: Plan
         control={<><SettingFact>{usd(plan.balance.microUsd)}</SettingFact>{canAdd && <Button ref={add} size="sm" icon="plus" onClick={() => onAddMoney(null)}>Add money</Button>}</>} />
       {onPro && <Renew plan={plan} offers={offers} canAdd={canAdd} />}
       {onPro && <Refund plan={plan} />}
-      {(topUps.length > 0 || history.length > 0) && <Payments topUps={topUps} history={history} offers={offers} add={add} onAddMoney={onAddMoney} />}
+      {(topUps.length > 0 || history.length > 0) && <Payments topUps={topUps} history={history} add={add} onAddMoney={onAddMoney} />}
     </SettingsPanel>
   );
 }
@@ -197,7 +197,6 @@ function Renew({ plan, offers, canAdd }: { plan: Plan; offers: PlanOffers | unde
   );
 }
 
-const monthsWord = (n: number) => `${n} ${n === 1 ? 'month' : 'months'}`;
 
 /** Refunding the months that haven't started, asked in place: what goes back to the balance, and when Pro ends then. */
 function Refund({ plan }: { plan: Plan }) {
@@ -220,14 +219,14 @@ function Refund({ plan }: { plan: Plan }) {
   };
   if (!asking) {
     return (
-      <SettingRow label={`Refund ${monthsWord(later.length)} that ${later.length === 1 ? 'hasn’t' : 'haven’t'} started`}
+      <SettingRow label={`Refund ${plural(later.length, 'month')} that ${later.length === 1 ? 'hasn’t' : 'haven’t'} started`}
         help={`${usdCents(back)} goes back to your balance. A month that has started isn’t refunded.`}
         control={<Button ref={ask} variant="quiet" size="sm" onClick={() => { setRefused(null); setAsking(true); }}>Refund ({usdCents(back)})</Button>} />
     );
   }
   return (
     <>
-      <SettingStep title={`Refund ${monthsWord(later.length)} of Pro?`}
+      <SettingStep title={`Refund ${plural(later.length, 'month')} of Pro?`}
         help={`${usdCents(back)} goes back to your balance.${running ? ` Pro ends on ${shortDay(new Date(running.to))}, when the month running now does.` : ''}`}>
         {refused !== null && <p className="set-err" role="alert">{refused}</p>}
       </SettingStep>
@@ -249,8 +248,8 @@ const FIRST = 5;
  * sheet for money alone), with a cancel while nothing has reached it; then the balance's latest changes, newest first, each
  * with its receipt.
  */
-function Payments({ topUps, history, offers, add, onAddMoney }: {
-  topUps: TopUp[]; history: BalanceEntry[]; offers: PlanOffers | undefined; add: { current: HTMLButtonElement | null }; onAddMoney: (topUpId: string | null) => void;
+function Payments({ topUps, history, add, onAddMoney }: {
+  topUps: TopUp[]; history: BalanceEntry[]; add: { current: HTMLButtonElement | null }; onAddMoney: (topUpId: string | null) => void;
 }) {
   const checkout = useCheckout();
   const cancel = useCancelTopUp();
@@ -279,7 +278,7 @@ function Payments({ topUps, history, offers, add, onAddMoney }: {
   return (
     <SettingPayments title="Payments">
       {topUps.map((t) => {
-        const what = t.purchase ? purchaseName(t.purchase.buys, offers) : 'Money for your balance';
+        const what = t.purchase ? purchaseName(t.purchase.buys) : 'Money for your balance';
         const said = paymentLine(t, now);
         const cancellable = t.state === 'waiting' && Date.parse(t.expiresAt) > now;
         return (

@@ -477,31 +477,18 @@ export function useInviteTeam() {
   return useMutation({ mutationFn: (emails: string[]) => api.people.inviteToTeam(emails), onSuccess: (t) => qc.setQueryData(qk.team, t) });
 }
 
-/* ---------- buying Pro ---------- */
+/* ---------- buying Pro and more notes ---------- */
 
 /**
- * Buys months of Pro from the balance at the price shown. The answer is the plan as it is now. A refusal (a changed
- * price, a short balance) reads the plan and the offers again, so what's shown next is what's true.
+ * Buys a purchase from the balance at the price (and, for more notes, the size) shown: Pro's months, or packs of more notes
+ * for this period. Refused when the price changed (409, with the server's words) or the balance is short; either way the
+ * plan and offers are read again, so what's shown is what's true now.
  */
-export function useBuyPro() {
+export function useBuy() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ months, microUsdPerMonth }: { months: number; microUsdPerMonth: number }) => api.plans.buyPro(months, microUsdPerMonth),
+    mutationFn: (b: Purchase) => (b.kind === 'pro' ? api.plans.buyPro(b.months, b.microUsdPerMonth) : api.plans.buyHours(b.packs, b.microUsdPerPack, b.minutesPerPack)),
     // What's open on the plan (the side panel, Settings, a call's notes) follows at once.
-    onSuccess: (p) => { qc.setQueryData(qk.plan, p); void qc.invalidateQueries({ queryKey: qk.topUps }); },
-    // `plan` is the offers' prefix: both are read again.
-    onError: () => { void qc.invalidateQueries({ queryKey: qk.plan }); }
-  });
-}
-
-/**
- * Buys packs of more notes for this period from the balance at the price shown. Refused as buying Pro is, and read again
- * the same way.
- */
-export function useBuyHours() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ packs, microUsdPerPack, minutesPerPack }: { packs: number; microUsdPerPack: number; minutesPerPack: number }) => api.plans.buyHours(packs, microUsdPerPack, minutesPerPack),
     onSuccess: (p) => { qc.setQueryData(qk.plan, p); void qc.invalidateQueries({ queryKey: qk.topUps }); },
     // `plan` is the offers' prefix: both are read again.
     onError: () => { void qc.invalidateQueries({ queryKey: qk.plan }); }

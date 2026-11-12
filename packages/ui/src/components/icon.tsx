@@ -53,10 +53,9 @@ const ICONS = {
   nudge: BellRing, agent: Bot, away: Coffee, hear: Ear, pace: Gauge, listening: Headphones, layers: Layers,
   privateChat: MessageSquareLock, ringIn: PhoneIncoming, fileCheck: FileCheck, shareNodes: Share2, handHelping: HandHelping, filePen: FilePen, laptop: Laptop,
   /* A plan's largest file; paying: the wallet it's paid from, a receipt, printing it. */
-  file: FileIcon, wallet: Wallet, receipt: ReceiptText,
+  file: FileIcon, wallet: Wallet, receipt: ReceiptText, printer: Printer,
   /* Play in outline, beside a level (SoundLevel); `play` is the filled one. */
-  playLine: Play,
-  printer: Printer
+  playLine: Play
 } satisfies Record<string, LucideIcon>;
 
 const FILLED = new Set<IconName>(['dot', 'stop', 'play']);

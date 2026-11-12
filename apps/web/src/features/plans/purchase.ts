@@ -5,13 +5,13 @@
  * and checkout share. Every amount is micro-USD, as the server's; a token is sent as a dollar.
  */
 import type { PlanOffers, Purchase, TopUp } from '@alcove/api';
+import { plural } from '~/lib/words';
 import type { CheckoutFor } from './checkout';
+import { hoursOfNotes } from './words';
 
 /** The lengths of Pro offered as cards, up to the most one purchase buys. */
 export const LENGTHS = [1, 3, 6, 12, 24] as const;
 
-/** "1 month", "12 months". */
-export const monthsWord = (n: number): string => `${n} ${n === 1 ? 'month' : 'months'}`;
 
 /** Pro's price a month for buying `months` at once: the yearly price from the yearly offer's length on. */
 export function proPrice(offers: PlanOffers, months: number): number {
@@ -19,11 +19,11 @@ export function proPrice(offers: PlanOffers, months: number): number {
   return yearly && months >= yearly.fromMonths ? yearly.microUsdPerMonth : offers.pro.microUsdPerMonth;
 }
 
-/** How much less a month the yearly price is, in whole percent ("20"), or null when there's no lower price. */
+/** How much less a month the yearly price is, in whole percent ("20"), or null when there's none (the server offers one only when it's lower). */
 export function yearlyOff(offers: PlanOffers): number | null {
   const yearly = offers.pro.yearly;
   const month = offers.pro.microUsdPerMonth;
-  if (!yearly || month <= 0 || yearly.microUsdPerMonth >= month) return null;
+  if (!yearly || month <= 0) return null;
   return Math.round((1 - yearly.microUsdPerMonth / month) * 100);
 }
 
@@ -41,17 +41,9 @@ export function repriced(offers: PlanOffers, buys: Purchase): Purchase | null {
   return offers.hours ? { kind: 'hours', packs: buys.packs, microUsdPerPack: offers.hours.microUsd, minutesPerPack: offers.hours.minutes } : null;
 }
 
-/** About how many hours `packs` of more notes are: 10, 1.5. */
-export function hoursIn(offers: PlanOffers | undefined, packs: number): number {
-  const minutes = offers?.hours?.minutes ?? 0;
-  return Math.round((packs * minutes) / 6) / 10;
-}
-
 /** "Pro, 12 months", "10 hours of notes": what a purchase is, as the side panel, Settings and checkout say it. */
-export function purchaseName(buys: Purchase, offers: PlanOffers | undefined): string {
-  if (buys.kind === 'pro') return `Pro, ${monthsWord(buys.months)}`;
-  const hours = hoursIn(offers, buys.packs);
-  return hours > 0 ? `${hours} ${hours === 1 ? 'hour' : 'hours'} of notes` : 'More notes';
+export function purchaseName(buys: Purchase): string {
+  return buys.kind === 'pro' ? `Pro, ${plural(buys.months, 'month')}` : `${hoursOfNotes(buys.packs * buys.minutesPerPack)} of notes`;
 }
 
 /** What checkout opens on to see a purchase through. */

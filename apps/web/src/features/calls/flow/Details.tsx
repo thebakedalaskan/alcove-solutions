@@ -7,7 +7,7 @@ import { Button, Faces, FlowBody, FlowFoot, FlowNote, FlowRow, NotesSwitches, Se
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { NoNotesLeftDoor } from '~/features/plans/notesLeft';
+import { NoNotesLeftDoor } from '~/features/plans/notesDoors';
 import { namesIn } from '~/features/workspace/List';
 import { useMyModelUnencrypted } from '~/lib/aiModels';
 import { callName } from '~/lib/people';

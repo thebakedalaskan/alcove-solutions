@@ -251,7 +251,7 @@ function PlanFoot({ plan }: { plan: Plan }) {
             : purchase.buys.kind === 'pro' ? 'Payment seen, starting Pro' : 'Payment seen, adding notes'}
         </p>
         <button type="button" className={cn('sb-plan', on && 'is-on')} onClick={() => checkout.reopen(buying.id, checkoutFor(purchase.buys), 'side')}>
-          <span className="ac-clamp-1">{purchaseName(purchase.buys, offers)}</span><span className="go">Open<Icon name="chevron" size={15} /></span>
+          <span className="ac-clamp-1">{purchaseName(purchase.buys)}</span><span className="go">Open<Icon name="chevron" size={15} /></span>
         </button>
       </>
     );
