@@ -326,6 +326,14 @@ export async function refundPro(d: Service, ownerId: string): Promise<void> {
   });
 }
 
+/** The plans were shown to their owner (the app's tier screen), so they aren't shown again. Saying so again changes nothing. */
+export async function chose(d: Service, ownerId: string): Promise<void> {
+  await changing(d, ownerId, (a) => {
+    if (a.choose) plog.info('plans shown', { ownerId });
+    return { ...a, choose: false };
+  });
+}
+
 /** Turns buying a month as Pro is about to end on or off. */
 export async function setRenew(d: Service, ownerId: string, renew: boolean): Promise<void> {
   await changing(d, ownerId, (a) => {

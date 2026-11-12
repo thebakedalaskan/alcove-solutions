@@ -36,7 +36,7 @@ and its most people.
 | Buying Pro, renewing, refunds, reminders, the grace after Pro | Working (server; see [Pro](#pro)) |
 | Teams, licenses, visits, alerts, the pool (server; see [Team](#team)) | Working |
 | Team notes, Ask across them with @-references, team workspaces (server; see [Team](#team)) | Working |
-| Picking a plan at first sign-in | Not built (phase 4). `Plan.choose` already says who hasn't. |
+| Picking a plan at first sign-in | Server working: `Plan.choose` is true for every account until the app says the plans were shown (`POST /v1/plan/chosen`, `PlansApi.chose()`); an account from before plans is shown them once. The tier screen itself isn't built. |
 | Withdrawing the balance | Not built, and not planned yet |
 
 ## Notes: the AI allowance
