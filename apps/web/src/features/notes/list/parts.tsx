@@ -66,7 +66,7 @@ export function citedLine(note: Note | undefined, noteId: string, at: number): N
 export function MomentChip({ noteId, noteTitle, at, room, tabIndex }: { noteId: string; noteTitle: string; at: number; room?: RoomRef | undefined; tabIndex?: number | undefined }) {
   const said = `${noteTitle} at ${position(at)}${room ? `, in ${room.name}` : ''}`;
   return (
-    <Link to="/notes/$noteId" params={{ noteId }} {...inNote(at, room)} className="hm-moment" aria-label={`Open ${said}`} title={`Open ${said}`} tabIndex={tabIndex}>
+    <Link to="/notes/$noteId" params={{ noteId }} {...inNote(at, room)} className="nt-moment" aria-label={`Open ${said}`} title={`Open ${said}`} tabIndex={tabIndex}>
       <Icon name="moment" size={13} />{position(at)}
     </Link>
   );

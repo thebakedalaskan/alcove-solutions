@@ -57,7 +57,7 @@ haven't uploaded yet, and Agents' to hold an agent asking to use your Alcove.
 
 - Panels only where content needs grouping. Inside them, hairlines and space, never a card per row.
 - Every row action sits in a fixed column, so things line up down the page.
-- A link belongs to the list it acts on (Recent notes →), never floating on its own.
+- A link belongs to the list it acts on (View all, at the end of Recent notes' heading), never floating on its own.
 - The logo appears once per screen: in the side panel, or in the top bar on a phone. It's branding, never a status light.
 
 The failure this guards against is the look of a generated UI: boxes scattered everywhere, random squares, buttons that don't
@@ -76,7 +76,8 @@ Colour carries meaning, so each colour means one thing:
 | `caution` | A problem |
 
 A tile says its kind with an icon, a colour and a word (Decision, Follow-up). Anything said in a call links back to its
-moment with a chip that shows the time (`6:12`) and opens the note there. There is no green anywhere.
+moment with a chip that shows the time (`6:12`) and opens the note there. A list kept to one line a row, like For you on
+Home, lets the mark and its colour say the kind, and the words themselves open the moment. There is no green anywhere.
 
 Cutting text isn't the same as removing the design. A list stripped to words reads as a spreadsheet; it still needs icons,
 colour per kind and shape.
@@ -183,9 +184,11 @@ Truncate with `ac-clamp-1` or `ac-clamp-2` rather than `nowrap`, so long text ca
   with you in your arch, both from the same left edge.
 - Grids wrap and lists go to one column on a phone.
 - The breakpoints, widest first:
+  - 1320px: Home's widgets stack
   - 1241px: narrower than this, Notes stops showing a preview beside the list
   - 1240px and 1000px: Settings tightens, then its index becomes a strip
-  - 1180px: Home's panels stack
+  - 1180px: a note goes to one column, what's beside it following two across and where you write coming in after what was
+    decided; Notes' first-day example puts its note above its two tiles; and the welcome page's top bar drops its links
   - 1100px: the top search becomes an icon
   - 860px: the side panel becomes a top bar and a tab bar, with Record standing up out of it
 

@@ -15,7 +15,7 @@ const EXAMPLE = { to: '/notes/$noteId', params: { noteId: 'example' } } as const
 
 /** A moment in the example: it opens the example, which has no recording to wait at. */
 const Moment = ({ at }: { at: number }) => (
-  <Link {...EXAMPLE} className="hm-moment" aria-label={`Open the example at ${position(at)}`}><Icon name="moment" size={13} />{position(at)}</Link>
+  <Link {...EXAMPLE} className="nt-moment" aria-label={`Open the example at ${position(at)}`}><Icon name="moment" size={13} />{position(at)}</Link>
 );
 
 function Example({ me }: { me: Person }) {
@@ -36,19 +36,19 @@ function Example({ me }: { me: Person }) {
           <p className="nt-pv-s">{note.summary}</p>
           {line?.kind === 'line' && <div className="nt-said"><p className="nt-said-t"><b>{line.speaker?.name.split(' ')[0]}</b>{line.text}</p><Moment at={line.at} /></div>}
         </div>
-        <div className="hm-tiles nt-ex-t">
+        <div className="nt-tiles nt-ex-t">
           {decision && (
-            <article className="hm-tile is-decide">
-              <div className="hm-tile-h"><span className="hm-tile-i"><Icon name="badgeCheck" size={16} /></span><span className="hm-tile-k">Decision</span>{decision.at !== undefined && <Moment at={decision.at} />}</div>
-              <p className="hm-tile-t">{decision.text}</p>
-              <div className="hm-tile-a hm-done"><Icon name="check" size={15} /><span>Confirmed by {decision.changes[0]?.by.name.split(' ')[0]}</span></div>
+            <article className="nt-tile is-decide">
+              <div className="nt-tile-h"><span className="nt-kind"><Icon name="badgeCheck" size={16} /></span><span className="nt-tile-k">Decision</span>{decision.at !== undefined && <Moment at={decision.at} />}</div>
+              <p className="nt-tile-t">{decision.text}</p>
+              <div className="nt-tile-a nt-done"><Icon name="check" size={15} /><span>Confirmed by {decision.changes[0]?.by.name.split(' ')[0]}</span></div>
             </article>
           )}
           {action && (
-            <article className="hm-tile">
-              <div className="hm-tile-h"><span className="hm-tile-i"><Icon name="userCheck" size={16} /></span><span className="hm-tile-k">Follow-up</span>{action.at !== undefined && <Moment at={action.at} />}</div>
-              <p className="hm-tile-t">{action.text}</p>
-              <div className="hm-tile-a nt-ex-who"><Avatar person={action.owner?.person ?? { name: action.owner?.name ?? '' }} size={22} /><span>{action.owner?.name.split(' ')[0]}, {action.due}</span></div>
+            <article className="nt-tile">
+              <div className="nt-tile-h"><span className="nt-kind"><Icon name="userCheck" size={16} /></span><span className="nt-tile-k">Follow-up</span>{action.at !== undefined && <Moment at={action.at} />}</div>
+              <p className="nt-tile-t">{action.text}</p>
+              <div className="nt-tile-a nt-ex-who"><Avatar person={action.owner?.person ?? { name: action.owner?.name ?? '' }} size={22} /><span>{action.owner?.name.split(' ')[0]}, {action.due}</span></div>
             </article>
           )}
         </div>

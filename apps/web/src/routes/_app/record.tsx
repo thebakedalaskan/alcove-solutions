@@ -10,7 +10,7 @@ import { uploads } from '~/features/record/uploads';
 import { recordOfflineHere } from '~/lib/device';
 import { useLive, useOnline } from '~/lib/live';
 import { q } from '~/lib/queries';
-import { hoursAndMinutes, pastDay } from '~/lib/time';
+import { callLength, pastDay } from '~/lib/time';
 
 /*
  * Record, in the side panel: the night, in both themes, with the recorder for a sun. In the sky, the name, Start recording
@@ -75,7 +75,7 @@ function gistOf(n: NoteSummary): string {
 function whenOf(n: NoteSummary): string {
   const day = pastDay(n.startedAt);
   const when = day.charAt(0).toUpperCase() + day.slice(1);
-  return n.status === 'recording' ? when : `${when} · ${hoursAndMinutes(Math.max(1, Math.round(n.duration / 60)))}`;
+  return n.status === 'recording' ? when : `${when} · ${callLength(n.duration)}`;
 }
 
 function RecordedBefore({ notes }: { notes: NoteSummary[] }) {

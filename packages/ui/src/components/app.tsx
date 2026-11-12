@@ -1,12 +1,13 @@
 /*
- * The app's building blocks: cards, navigation, the palette's line, fields, notes and transcript lines, Show more, the
- * mic level, and what a transcript isn't sure of.
+ * The app's building blocks: cards and widgets, navigation, the palette's line, fields, notes and transcript lines, note
+ * cards, Read more, the mic level, and what a transcript isn't sure of.
  */
-import { forwardRef, useEffect, useId, useRef, useState, type CSSProperties, type InputHTMLAttributes, type MouseEvent, type ReactNode } from 'react';
+import { forwardRef, useEffect, useId, useRef, useState, type CSSProperties, type HTMLAttributes, type InputHTMLAttributes, type MouseEvent, type ReactNode, type Ref } from 'react';
 import { cn } from '../cn';
 import { Icon, type IconName } from './icon';
 import { Tooltip } from './overlay';
-import { Avatar, type AvatarPerson } from './people';
+import { Avatar, Faces, type AvatarPerson } from './people';
+import type { Cover } from './primitives';
 
 /**
  * A part of a page that opens and closes in place, closed until someone opens it: its heading row (`summary`, the
@@ -37,6 +38,36 @@ export function Card({ title, aside, children, className, style, label }: {
     <section className={cn('ac-card', className)} style={style} aria-labelledby={title ? id : undefined} aria-label={title ? undefined : label}>
       {title && <div className="ac-card-head"><h3 id={id}>{title}</h3>{aside}</div>}
       {children}
+    </section>
+  );
+}
+
+/**
+ * One card on a page's water, the way the big apps build a home: its head (an icon in a tile, the `title`, then `end`, what
+ * the head holds after the title: tabs, or a quiet button at its end), its body, and, only while the list in it is longer
+ * than it shows, a foot that says how many more and shows them (`more`). `foot` sits at the card's foot, under the body and
+ * before that. `bare` leaves the card out: the head and what's under it sit on the page, as a row of cards does. `body` makes
+ * the body something more than a list (a tab's panel). The heading can take focus (`headingRef`), for when the row that had
+ * it goes.
+ */
+export function Widget({ icon, title, end, foot, more, bare = false, headingRef, body, className, children }: {
+  icon: IconName; title: string; end?: ReactNode; foot?: ReactNode;
+  more?: { count: number; onShow: () => void } | undefined;
+  bare?: boolean | undefined; headingRef?: Ref<HTMLHeadingElement> | undefined;
+  body?: Omit<HTMLAttributes<HTMLDivElement>, 'children' | 'className'> | undefined;
+  className?: string | undefined; children: ReactNode;
+}) {
+  const h = useId();
+  return (
+    <section className={cn('ac-widget', bare && 'is-bare', className)} aria-labelledby={h}>
+      <header className="ac-widget-h">
+        <span className="ac-widget-ic" aria-hidden="true"><Icon name={icon} size={15} /></span>
+        <h2 id={h} ref={headingRef} tabIndex={-1}>{title}</h2>
+        {end}
+      </header>
+      <div {...body} className="ac-widget-b">{children}</div>
+      {foot}
+      {more && <footer className="ac-widget-f"><button type="button" className="ac-widget-more" onClick={more.onShow}>Show {more.count} more</button></footer>}
     </section>
   );
 }
@@ -136,20 +167,6 @@ export function TranscriptLine({ time, person, name, tools, children, className,
 }
 
 /**
- * "Show 4 more" under a list that's longer than its first few, and "Show fewer" once it's open: a quiet link centred
- * under the list it opens. Show it only when more than one more would show, so it never says "Show 1 more".
- */
-export function ShowMore({ all, more, onToggle, className }: { all: boolean; more: number; onToggle: () => void; className?: string | undefined }) {
-  return (
-    <div className={cn('hm-more', className)}>
-      <button type="button" className="lk quiet" aria-expanded={all} onClick={onToggle}>
-        {all ? 'Show fewer' : `Show ${more} more`}<Icon name={all ? 'up' : 'down'} size={15} />
-      </button>
-    </div>
-  );
-}
-
-/**
  * More prose under a short passage, behind a quiet text button: the note's full summary under its short one. Closed
  * until pressed (`defaultOpen` starts it open). What's inside is kept out of reach of the keyboard and screen readers
  * while it's closed. The button is named by `label`.
@@ -170,6 +187,31 @@ export function ReadMore({ label, children, defaultOpen = false, className }: { 
 }
 
 /* ---------- Tiles and cards ---------- */
+
+/**
+ * A note as a card, in a row of them: its own small sunset as the cover (`cover`, from `coverFor` its ID), the people on
+ * the call standing on the cover's lower edge (the first two), or an arch with a microphone for a recording in the room
+ * (a camera for a call with nobody else on it), then its title and `when` ("Today · 14 min"). `title` is the link that
+ * opens it, and it takes the whole card. `tag` says something on the cover ("Example"), and while the notes are being
+ * written (`writing`) the cover breathes.
+ */
+export function NoteCard({ title, when, cover, people = [], room = false, tag, writing = false, className, ...rest }: {
+  title: ReactNode; when: ReactNode; cover: Cover; people?: AvatarPerson[] | undefined; room?: boolean | undefined;
+  tag?: string | undefined; writing?: boolean | undefined; className?: string | undefined;
+} & Omit<HTMLAttributes<HTMLDivElement>, 'title' | 'className' | 'children'>) {
+  const faces = room ? [] : people.slice(0, 2);
+  return (
+    <div {...rest} className={cn('ac-note-card', writing && 'is-writing', className)}>
+      <span className={cn('ac-note-cover', `is-${cover}`)} aria-hidden="true">
+        <i className="s" /><i className="w" /><i className="g" /><i className="g b" />{tag && <span className="tag">{tag}</span>}
+      </span>
+      <span className="ac-note-who" aria-hidden="true">
+        {faces.length ? <Faces people={faces} size={28} max={2} /> : <span className="arch"><Icon name={room ? 'mic' : 'video'} size={14} /></span>}
+      </span>
+      <span className="ac-note-b"><b className="ac-clamp-2">{title}</b><small>{when}</small></span>
+    </div>
+  );
+}
 
 /* ---------- Minutes ---------- */
 

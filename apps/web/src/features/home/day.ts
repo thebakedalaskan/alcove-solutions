@@ -3,7 +3,7 @@
  * the calendar), what can be joined right now, and when follow-ups are due.
  */
 import { isAcceptedFollowUp, type CalendarEvent, type Inbox, type Meeting, type NoteSummary, type OpenAction, type Person } from '@alcove/api';
-import { callName, sameEmail, someNames } from '~/lib/people';
+import { sameEmail } from '~/lib/people';
 import { daysFromToday, shortDay, weekday } from '~/lib/time';
 import { capital } from '~/lib/words';
 
@@ -60,18 +60,11 @@ export function peopleOn(a: Ahead, me: string | undefined): Person[] {
   return me ? all.filter((p) => !sameEmail(p, { email: me })) : all;
 }
 
-/**
- * Who, in words: "Theo", "Priya, Kofi and Aiko", "Maya’s call" when it's someone else's, or "Just you".
- * `names` is how many to name before "and 3 more".
- */
-export function whoOn(a: Ahead, me: string | undefined, names = 3): string {
-  if (!yours(a)) return `${callName(organizerOf(a))}’s call`;
-  const people = peopleOn(a, me);
-  return people.length ? someNames(people, names) : 'Just you';
-}
-
 /** How long before a call Home offers to join it. */
 const JOIN_AHEAD_MS = 5 * 60_000;
+
+/** It starts in the next few minutes, when Home offers to join it and Upcoming counts down to it. */
+export const startsSoon = (a: Ahead, now: number) => !isOffered(a) && !started(a, now) && new Date(a.startsAt).getTime() - now <= JOIN_AHEAD_MS;
 
 /**
  * The call to offer at the top of Home: one that's going, or else one with someone else on it that starts in the next
@@ -215,12 +208,13 @@ export function groupOf(d: Due | undefined, now: Date): DueGroup {
   return n <= 6 - ((now.getDay() + 6) % 7) ? 'week' : 'later';
 }
 
-/** The due chip: "Today", "Tomorrow", "Thu" this week, else "Fri 30 Oct"; a span's own words; or the words as said. */
+/** When it's due, in a word: "Today", "Tomorrow", "Yesterday", "Thu" this week, else "Fri 30 Oct"; a span's own words; or the words as said. */
 export function dueLabel(d: Due, now: Date): string {
   if (d.kind === 'words') return d.text;
   if (d.words) return d.words;
   const n = daysFromToday(d.at, now);
   if (n === 0) return 'Today';
   if (n === 1) return 'Tomorrow';
+  if (n === -1) return 'Yesterday';
   return n > 1 && n < 7 ? weekday(d.at).slice(0, 3) : shortDay(d.at);
 }

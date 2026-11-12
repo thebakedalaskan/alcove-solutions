@@ -119,7 +119,7 @@ function SeriesView({ s, me }: { s: Series; me: string | undefined }) {
                       {proposed.map((d) => {
                         const no = notDecided(d, reader(d));
                         return row(d, <>
-                          {mayDecide(d, 'confirmed', reader(d)) && <button type="button" className="hm-yes" onClick={() => decide(d, 'confirmed')}>Confirm</button>}
+                          {mayDecide(d, 'confirmed', reader(d)) && <button type="button" className="nd-yes" onClick={() => decide(d, 'confirmed')}>Confirm</button>}
                           {no && <IconButton icon="x" label="It wasn’t decided" size={16} className="nd-more" onClick={() => change(d, no)} />}
                         </>, aboutLater(d, 'It wasn’t replaced'));
                       })}
@@ -133,7 +133,7 @@ function SeriesView({ s, me }: { s: Series; me: string | undefined }) {
                     <div className="carry-list">
                       {s.questions.map((x) => (x.answeredIn && !x.answeredIn.dismissed
                         ? <CarriedQuestionRow key={x.id} x={x} calls={from} me={me} saidWrong page laterActions={<><button type="button" className="nd-act" onClick={() => answer(x)}>It was answered</button><LaterWrong later={x.answeredIn} onWrong={wrong}>It’s still open</LaterWrong></>} />
-                        : <CarriedQuestionRow key={x.id} x={x} calls={from} me={me} saidWrong page actions={<button type="button" className="hm-yes" onClick={() => answer(x)}>It was answered</button>} laterActions={undo(x.answeredIn)} />))}
+                        : <CarriedQuestionRow key={x.id} x={x} calls={from} me={me} saidWrong page actions={<button type="button" className="nd-yes" onClick={() => answer(x)}>It was answered</button>} laterActions={undo(x.answeredIn)} />))}
                     </div>
                   </Section>
                 )}
@@ -239,8 +239,8 @@ function NextCall({ s }: { s: Series }) {
   if (s.next) {
     const m = s.next;
     return (
-      <section className="hm-panel nd-call" aria-label="Next call">
-        <div className="hm-panel-h"><h2>Next call</h2></div>
+      <section className="nd-panel nd-call" aria-label="Next call">
+        <div className="nd-panel-h"><h2>Next call</h2></div>
         <p className="nd-call-w"><b>{longDay(new Date(m.startsAt))}</b><span>{hm(m.startsAt)} to {hm(m.endsAt)}</span></p>
         <div className="nd-call-a">
           <Link to="/join/$code" params={{ code: m.code }} className={buttonClass({ variant: 'primary', size: 'sm' })}><Icon name="video" size={16} />Join</Link>

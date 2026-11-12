@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Home, every state</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="home.css">
+<link rel="stylesheet" href="pages.css">
+<link rel="stylesheet" href="water.css">
+<script src="tokens.js"></script>
+<script src="home.js"></script>
+<script src="scene.js"></script>
+<script src="appdata.js"></script>
+<script src="water.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400..700&amp;family=Newsreader:ital,opsz,wght@0,6..72,300..600;1,6..72,300..600&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<div class="fl" style="width: 4668px">
+<sc-for list="{{rows}}" as="r" hint-placeholder-count="2">
+<section class="fl-r">
+<h2 class="fl-h">{{r.name}}</h2>
+<div class="fl-s">
+<sc-for list="{{r.frames}}" as="f" hint-placeholder-count="3">
+<div class="fl-f{{f.cls}}" style="{{f.size}}">
+<p class="fl-c"><span>{{f.n}}</span>{{f.t}}</p>
+<div class="fl-box"><div class="fl-in"><dc-import name="Main" mode="{{f.mode}}" step="{{f.step}}" scroll="{{f.scroll}}" hint-size="1440px,900px"></dc-import></div></div>
+</div>
+</sc-for>
+</div>
+</section>
+</sc-for>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":4668,"height":3823}}'>
+class Component extends DCLogic {
+  renderVals() {
+    var HW = window.AH.HW;
+    /* A whole page, drawn at the frames' scale, so what's under the fold shows too. */
+    var tall = function (h, phone) { return '--in-h: ' + h + 'px; --box-h: ' + Math.round(h * (phone ? 0.641 : 0.5)) + 'px'; };
+    var rows = HW.STATES.concat([
+      { name: 'In the light', frames: [
+        { step: 'today', mode: 'light', t: 'Any day.' },
+        { step: 'first', mode: 'light', t: 'The first day.' },
+        { step: 'firstConnected', mode: 'light', t: 'Calendar connected.' },
+        { step: 'tabTodos', mode: 'light', t: 'Follow-ups.' }
+      ] },
+      { name: 'The whole page', frames: [
+        { step: 'today', t: 'Any day, to the end.', tall: 1303 },
+        { step: 'first', t: 'The first day, to the end.', tall: 1225 },
+        { step: 'today', t: 'On a phone.', phone: true, tall: 1723 },
+        { step: 'first', t: 'The first day on a phone.', phone: true, tall: 1550 }
+      ] }
+    ]);
+    return {
+      rows: rows.map(function (r) {
+        return {
+          name: r.name,
+          frames: r.frames.map(function (f, i) {
+            return {
+              n: i + 1, t: f.t, step: f.step, mode: f.mode || 'dark', scroll: f.scroll || 0,
+              cls: (f.phone ? ' is-phone' : '') + (f.tall ? ' is-tall' : ''),
+              size: f.tall ? tall(f.tall, f.phone) : ''
+            };
+          })
+        };
+      })
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -16,7 +16,7 @@ import { weeklyLabel } from '~/features/series/cards';
 import { sameEmail, spokenName } from '~/lib/people';
 import { isUnencrypted, unencryptedLine } from '~/lib/aiModels';
 import { q, useAiModels, useDeleteNote, usePendingActions, useUpdateAction, useUpdateDecision } from '~/lib/queries';
-import { daysFromToday, hm, hoursAndMinutes, noteDay, shortDay } from '~/lib/time';
+import { callLength, daysFromToday, hm, noteDay, shortDay } from '~/lib/time';
 import { capital, plural } from '~/lib/words';
 import { MomentChip, byTime, howOf, noSummary, othersIn, type Said } from './parts';
 
@@ -26,8 +26,6 @@ const FOLLOW_UPS = 4;
 const MOMENTS = 4;
 /* A long list of who has the notes stops here until it's opened. */
 const FIRST_PEOPLE = 8;
-
-const minutes = (seconds: number) => hoursAndMinutes(Math.max(1, Math.round(seconds / 60)));
 
 /** When the notes were last checked as written in confidential compute: the time today, else the day. */
 function sealedLine(n: Note): string {
@@ -72,7 +70,7 @@ export function Preview({ s, me, terms, said, onDropped }: { s: NoteSummary; me:
           {how && <span className="nt-how"><Icon name={how.icon} size={13} /><span className="ac-clamp-1">{how.text}</span></span>}
         </div>
         <div className="nt-pv-m">
-          <span>{noteDay(s.startedAt)} at {hm(s.startedAt)}, {minutes(s.duration)}</span>
+          <span>{noteDay(s.startedAt)} at {hm(s.startedAt)}, {callLength(s.duration)}</span>
           {note?.seriesId && <InSeries id={note.seriesId} />}
           <WhoHas s={s} note={note} me={me} />
         </div>
@@ -284,7 +282,7 @@ function DecisionRow({ d, note, me, reader, busy, onChange }: { d: NoteDecision;
   if (!mine && (yes || no)) {
     under = (
       <div className="nt-d-a">
-        {yes && <button type="button" className="hm-yes" disabled={busy} onClick={() => onChange(d, { state: 'confirmed', seen: { text: d.text } })}>{settling ? 'Keep it confirmed' : 'Confirm'}</button>}
+        {yes && <button type="button" className="nt-yes" disabled={busy} onClick={() => onChange(d, { state: 'confirmed', seen: { text: d.text } })}>{settling ? 'Keep it confirmed' : 'Confirm'}</button>}
         {no && <button type="button" className="nt-act" disabled={busy} onClick={() => onChange(d, no)}>It wasn’t decided</button>}
       </div>
     );
@@ -299,7 +297,7 @@ function DecisionRow({ d, note, me, reader, busy, onChange }: { d: NoteDecision;
   }
   return (
     <div ref={row} tabIndex={-1} className={cn('nt-d', d.state !== 'proposed' && 'is-settled')}>
-      <span className="hm-tile-i"><Icon name="badgeCheck" size={16} /></span>
+      <span className="nt-kind"><Icon name="badgeCheck" size={16} /></span>
       <div className="nt-d-b">
         <p className="nt-d-t">{d.text}</p>
         {d.disputes.length > 0 && !mine && <div className="nt-d-f"><EvidenceFlags evidence={{ ...d.evidence, flags: [] }} disputes={d.disputes} me={me} /></div>}

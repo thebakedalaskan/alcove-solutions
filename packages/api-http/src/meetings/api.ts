@@ -23,7 +23,11 @@ export function createMeetingsApi(t: HttpTransport): Pick<AlcoveApi, 'meetings' 
       get: () => req(CalendarSchema, 'GET', '/calendar'),
       // Addresses go in the body so they never appear in URLs or access logs.
       busy: (emails, range) => req(BusySchema, 'POST', '/calendar/busy', { emails, ...range, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone }),
-      connectUrl: () => `${base}/auth/google?consent=1`,
+      connectUrl: (opts) => {
+        const search = new URLSearchParams({ consent: '1' });
+        if (opts?.back) search.set('back', opts.back);
+        return `${base}/auth/google?${search}`;
+      },
       disconnect: () => req(CalendarSchema, 'DELETE', '/calendar'),
       adopt: (eventId, notes) => req(MeetingSchema, 'POST', `/calendar/events/${encodeURIComponent(eventId)}/adopt`, notes ? { notes } : {})
     }

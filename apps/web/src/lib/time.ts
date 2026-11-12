@@ -15,6 +15,8 @@ export const hms = (d: Date | string) => new Date(d).toLocaleTimeString('en-GB',
 export const shortDay = (d: Date) => `${weekday(d).slice(0, 3)} ${d.getDate()} ${month(d).slice(0, 3)}`;
 /** "3 Nov" */
 export const dayMonth = (d: Date) => `${d.getDate()} ${month(d).slice(0, 3)}`;
+/** "Nov" */
+export const shortMonth = (d: Date) => month(d).slice(0, 3);
 /** When something went: "16:40" today, "Thu 17:55" in the week before, then "3 Nov". */
 export const wentAt = (iso: string, now = new Date()): string => { const d = new Date(iso); const n = -daysFromToday(d, now); return n <= 0 ? hm(d) : n < 7 ? `${weekday(d).slice(0, 3)} ${hm(d)}` : dayMonth(d); };
 /** "Tuesday 3 November" */
@@ -31,7 +33,7 @@ export const noteAt = (iso: string, now = new Date()): string => `${noteDay(iso,
 export function noteWhen(startedAt: string, seconds: number): string {
   const a = new Date(startedAt);
   const b = new Date(a.getTime() + seconds * 1000);
-  return `${shortDay(a)} · ${hm(a)}–${hm(b)} · ${hoursAndMinutes(Math.max(1, Math.round(seconds / 60)))}`;
+  return `${shortDay(a)} · ${hm(a)}–${hm(b)} · ${callLength(seconds)}`;
 }
 /** Groups for the notes list, by day: "Today", "Yesterday", "This week", "Last week", then month names. */
 export function noteGroup(iso: string, now = new Date()): string {
@@ -76,6 +78,8 @@ export function hoursAndMinutes(minutes: number): string {
   const h = Math.floor(m / 60);
   return h ? `${h} h${m % 60 ? ` ${m % 60} min` : ''}` : `${m} min`;
 }
+/** How long a call ran, from its seconds: "14 min", "1 h 12 min", and never under a minute. */
+export const callLength = (seconds: number) => hoursAndMinutes(Math.max(1, Math.round(seconds / 60)));
 /** "4:05" for positions in a recording. */
 export const position = (seconds: number) => `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`;
 /** The day something happened, after a "·": "today", "yesterday", "Mon" in the past week, else "27 Oct" (and the year if it isn't this one). */

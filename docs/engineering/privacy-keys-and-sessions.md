@@ -241,17 +241,23 @@ transcript or meeting. See [Agents and MCP](agents-and-mcp.md) for the complete 
 - **The attempt cookie.** `__Host-alcove_google` when `WEB_ORIGIN` is HTTPS (`alcove_google` otherwise):
   HttpOnly, `SameSite=Lax` (Google's redirect back is a cross-site navigation), path `/`, `Secure` over
   HTTPS, max-age 10 minutes. It holds the `state`, `nonce`, PKCE verifier, expiry, whether this pass asked
-  for Calendar consent, where to land, and a popup channel UUID (null when there is no popup), sealed as a `sign-in-attempt` record, so
-  the browser can neither read nor change it. Older attempt records without a popup channel still open with a null default.
+  for Calendar consent, where signing in lands (`next`), where Calendar consent goes back to (`back: '/home'` when it
+  was started on Home), and a popup channel UUID (null when there is no popup), sealed as a `sign-in-attempt` record,
+  so the browser can neither read nor change it. Older attempt records without a popup channel still open with a null
+  default, and older Calendar consent records without `back` go back to Calendar settings.
   The callback uses the sealed channel only when its `state` matches, never a channel supplied on the
   callback URL. An expired matching attempt may deliver its refusal to that channel, but cannot sign in.
   The callback deletes the cookie only when the state matches, so an older tab cannot erase a newer attempt.
-- **Connecting Calendar.** **Connect Google Calendar** explains how Alcove uses event details and
-  availability. **Continue to Google** starts `GET /v1/auth/google?consent=1` with identity,
-  `calendar.events.owned` and `calendar.events.freebusy` scopes, offline access and explicit account selection
-  and consent. Connections with the earlier `calendar.events` grant can still use Calendar.
-  The sealed attempt binds the owner and session hash. The callback requires that session to remain open
-  and the Google identity to match the owner. It returns to Calendar settings with the result.
+- **Connecting Calendar.** **Connect Google Calendar** (in Home's Upcoming, Settings, scheduling's Details and a series)
+  goes straight to `GET /v1/auth/google?consent=1` (`&back=/home` from Home, as `?next=` says where signing in lands), with no page in between. It asks Google for
+  identity, `calendar.events.owned` and `calendar.events.freebusy` scopes, offline access and explicit account selection
+  and consent; Google's consent screen is where the person decides. Connections with the earlier `calendar.events` grant
+  can still use Calendar.
+  The sealed attempt binds the owner and session hash, and where to come back to. The callback requires that session to
+  remain open and the Google identity to match the owner. It returns with the result to Home (`/home?calendar=<result>`,
+  which Home reads and takes out of the address) when the consent was started there, and to Calendar settings
+  (`/settings?calendar=<result>#calendar`) otherwise, including for any other `back` value and for attempts sealed by the
+  previous release. Only the sealed attempt says where it returns, never the callback's address.
 - **The refresh token.** Calendar consent saves the scopes, time and refresh token as a sealed
   `connection` item. An existing refresh token can be reused if Google grants Calendar access again
   without sending a new one. Ordinary sign-in leaves the Calendar connection alone.

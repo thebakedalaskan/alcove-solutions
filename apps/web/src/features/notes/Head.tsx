@@ -39,7 +39,7 @@ export function NoteMenu({ ready, mine, inCall, ask, busy, gone, onCopy, onDelet
           <p className="nd-pop-p">{ask}</p>
           <div className="nd-pop-f">
             <Button variant="quiet" size="sm" autoFocus onClick={() => opened(false)}>Cancel</Button>
-            <button type="button" className="hm-yes nd-danger" disabled={busy || gone} onClick={onDelete}>{mine ? 'Delete' : 'Remove'}</button>
+            <button type="button" className="nd-yes nd-danger" disabled={busy || gone} onClick={onDelete}>{mine ? 'Delete' : 'Remove'}</button>
           </div>
         </div>
       ) : (

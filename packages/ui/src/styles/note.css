@@ -4,6 +4,23 @@
  * the note lies on the water with space and hairlines, and only what's yours alone sits in a panel. A series sits on the
  * same evening, with its calls on the line. Classes start with nd-.
  */
+/* ------------------------------------------------------------ pieces a note, a series and your own notes share */
+/* A panel (your own notes, a series' next call): its heading row, and a link that belongs to what it lists. */
+.nd-panel { min-width: 0; padding: 0 20px 6px; border-radius: 20px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); }
+.nd-panel-h { display: flex; align-items: center; justify-content: space-between; gap: 16px; height: 54px; }
+.nd-panel-h h2 { font: 600 15px/1.3 var(--font-sans); color: var(--ink); }
+.nd-panel-link { display: inline-flex; align-items: center; gap: 6px; color: var(--ink); }
+.nd-panel-link .ac-i { color: var(--ink-3); transition: transform var(--duration-1) var(--ease-out); }
+.nd-panel-link:hover .ac-i { transform: translateX(2px); color: var(--ink-2); }
+/* A moment, as a chip that goes there. */
+.nd-moment { display: inline-flex; flex: none; align-items: center; gap: 5px; height: 26px; margin-left: auto; padding: 0 9px 0 7px; border-radius: var(--radius-pill); background: color-mix(in oklch, var(--ink) 8%, transparent); font: 500 12.5px/1 var(--font-sans); font-variant-numeric: tabular-nums; color: var(--ink-2); transition: background-color var(--duration-1), color var(--duration-1); }
+.nd-moment:hover { background: color-mix(in oklch, var(--ink) 15%, transparent); color: var(--ink); }
+/* An entry's kind in a circle, and a tinted pill to say yes. */
+.nd-kind { display: grid; place-items: center; flex: none; width: 28px; height: 28px; border-radius: 50%; background: color-mix(in oklch, var(--tint) 20%, transparent); color: var(--tint); }
+.nd-yes { flex: 1; height: 34px; padding: 0 12px; border-radius: var(--radius-pill); background: color-mix(in oklch, var(--tint) 22%, transparent); color: var(--ink); font: 600 13px/34px var(--font-sans); text-align: center; transition: background-color var(--duration-1); }
+.nd-yes:hover { background: color-mix(in oklch, var(--tint) 34%, transparent); }
+.nd-yes:disabled { opacity: .6; }
+
 .nd {
   /* The band of sky the head stands in, and under it the shared screens, when a note has them (--nd-stage, measured). */
   --nd-sky-h: calc(8px + clamp(158px, 18.5vh, 196px));
@@ -238,13 +255,13 @@ body:has(.nd-askdock) .ac-toasts:not(.on-stage) { bottom: 92px; }
 .nd-r.is-follow { --tint: var(--horizon); }
 .nd-r > * { grid-row: 1; }
 .nd-r > :first-child { grid-column: 1; }
-.nd-r > .hm-tile-i { align-self: start; }
+.nd-r > .nd-kind { align-self: start; }
 .nd-r > .ac-check { justify-self: center; }
 .nd-r > .nd-rb { grid-column: 2; }
-.nd-r > .hm-moment { grid-column: 3; justify-self: end; margin-left: 0; }
+.nd-r > .nd-moment { grid-column: 3; justify-self: end; margin-left: 0; }
 .nd-r > .nd-ra { grid-column: 4; }
 .nd-r > .nd-more { grid-column: 5; }
-.nd-r.is-decide.is-set .hm-tile-i { background: var(--tint); color: var(--nd-bed); }
+.nd-r.is-decide.is-set .nd-kind { background: var(--tint); color: var(--nd-bed); }
 .nd-rb { min-width: 0; }
 .nd-rt { font: 400 15.5px/22px var(--font-sans); color: var(--ink); text-wrap: pretty; overflow-wrap: anywhere; }
 .nd-rs { margin-top: 1px; font: 400 13px/18px var(--font-sans); color: var(--ink-3); }
@@ -252,15 +269,15 @@ body:has(.nd-askdock) .ac-toasts:not(.on-stage) { bottom: 92px; }
 .nd-rf:empty { display: none; }
 .nd-rf .ent-flag { min-height: 18px; padding: 0; background: none; font: 400 13px/18px var(--font-sans); }
 .nd-r.is-off .nd-rt { color: var(--ink-3); }
-.nd-r.is-off .hm-tile-i { opacity: .6; }
+.nd-r.is-off .nd-kind { opacity: .6; }
 .nd-r.is-done .nd-rt { color: var(--ink-3); text-decoration: line-through; }
 .nd-r.is-done .nd-owner { color: var(--ink-3); }
 .nd-ra { display: flex; align-items: center; justify-content: flex-end; gap: 10px; min-width: 0; }
-.nd-ra .hm-yes { flex: none; height: 32px; padding: 0 14px; line-height: 32px; white-space: nowrap; }
+.nd-ra .nd-yes { flex: none; height: 32px; padding: 0 14px; line-height: 32px; white-space: nowrap; }
 .nd-r.is-editing > .nd-rb { grid-column: 2 / 4; }
 .nd-r.is-editing .nd-ra { grid-column: 4 / 6; }
-.nd-r.is-editing .hm-yes { padding: 0 12px; }
-.nd-r.is-editing > .hm-tile-i { align-self: start; margin-top: 6px; }
+.nd-r.is-editing .nd-yes { padding: 0 12px; }
+.nd-r.is-editing > .nd-kind { align-self: start; margin-top: 6px; }
 .nd-r.is-editing > .ac-check { align-self: start; margin-top: 10px; }
 
 /* What can be pressed that isn't a button. */
@@ -291,7 +308,7 @@ body:has(.nd-askdock) .ac-toasts:not(.on-stage) { bottom: 92px; }
 .nd-mp .ac-avatar { justify-self: center; }
 .nd-tick { color: var(--sun-text); }
 .nd-rowmenu .ent-ms { padding: 4px 10px 8px; }
-.nd-rowmenu .ent-m .hm-moment { margin-left: auto; height: 24px; }
+.nd-rowmenu .ent-m .nd-moment { margin-left: auto; height: 24px; }
 .nd-rowmenu .ent-hist { padding: 4px 10px 6px; }
 .ac-pop.nd-whopop { width: min(300px, calc(100vw - 24px)); max-height: min(var(--radix-popover-content-available-height, 70vh), 420px); overflow-y: auto; padding: 8px; }
 .ac-pop.nd-more-pop { width: 268px; padding: 8px; }
@@ -301,7 +318,7 @@ body:has(.nd-askdock) .ac-toasts:not(.on-stage) { bottom: 92px; }
 .nd-pop-p { padding: 0 10px 8px; font: 400 13.5px/1.45 var(--font-sans); color: var(--ink-2); text-wrap: pretty; }
 .nd-pop-n { padding: 4px 10px 6px; font: 400 13px/1.4 var(--font-sans); color: var(--ink-3); }
 .nd-pop-f { display: flex; align-items: center; justify-content: flex-end; gap: 4px; padding: 6px 6px 4px; }
-.hm-yes.nd-danger { --tint: var(--sun-text); flex: none; height: 36px; padding: 0 16px; line-height: 36px; }
+.nd-yes.nd-danger { --tint: var(--sun-text); flex: none; height: 36px; padding: 0 16px; line-height: 36px; }
 .nd-dues { display: flex; flex-wrap: wrap; gap: 4px; padding: 6px 10px; }
 .nd-dc { height: 28px; padding: 0 10px; border-radius: var(--radius-pill); background: color-mix(in oklch, var(--ink) 8%, transparent); font: 500 13px/1 var(--font-sans); color: var(--ink-2); transition: background-color var(--duration-1), color var(--duration-1); }
 .nd-dc:hover { background: color-mix(in oklch, var(--ink) 14%, transparent); color: var(--ink); }
@@ -468,7 +485,7 @@ button.nd-lt:hover { color: var(--ink); }
 .nd-ans .wait { font-size: 14px; color: var(--ink-2); }
 .nd-ans .wait .ac-dots { color: var(--sun-text); }
 .nd-ans-f { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 10px; }
-.nd-ans-f .hm-moment { margin-left: 0; }
+.nd-ans-f .nd-moment { margin-left: 0; }
 .nd-ans-f .own-keep { margin: 0 0 0 auto; }
 .nd-ans-f .own-keep .lk { font: 500 13px/1 var(--font-sans); color: var(--ink-2); }
 .nd-ans-f .own-keep .lk:hover { color: var(--ink); text-decoration: none; }
@@ -482,8 +499,8 @@ button.nd-lt:hover { color: var(--ink); }
 .nd-yours, .nd-about { display: grid; row-gap: 30px; min-width: 0; }
 /* The two places where you write is put (whereYouWrite.ts): beside the note, and before the transcript in one column. Neither draws a box. */
 .nd-spot { display: contents; }
-.nd-own.hm-panel { padding: 0 16px 14px; }
-.nd-own .hm-panel-h { height: 48px; }
+.nd-own.nd-panel { padding: 0 16px 14px; }
+.nd-own .nd-panel-h { height: 48px; }
 .nd-own .own-list { display: grid; gap: 0; }
 .nd-own .own-row, .nd-own .own-row + .own-row { grid-template-columns: 18px minmax(0, 1fr); column-gap: 9px; padding: 9px 0; border-top: 1px solid var(--line); border-radius: 0; }
 .nd-own .own-row.is-picked { background: none; box-shadow: none; }
@@ -492,7 +509,7 @@ button.nd-lt:hover { color: var(--ink); }
 .nd-own .own-q { font-size: 13px; color: var(--ink-3); }
 .nd-own .own-quote { padding-left: 0; border-left: 0; font: 400 14.5px/20px var(--font-sans); color: var(--ink); }
 .nd-own .own-m { gap: 4px 8px; min-height: 24px; }
-.nd-own .own-m .hm-moment { margin-left: 0; height: 24px; }
+.nd-own .own-m .nd-moment { margin-left: 0; height: 24px; }
 .nd-own .own-acts { opacity: 1; }
 .nd-own .own-acts .ac-icon-btn { width: 26px; height: 26px; opacity: 0; transition: opacity var(--duration-1), background-color var(--duration-1), color var(--duration-1); }
 /* At rest a row shows no actions: Add to the shared notes, Edit and Delete show together on hover or focus, and always on touch screens. */
@@ -536,7 +553,7 @@ button.nd-lt:hover { color: var(--ink); }
 .nd-a-t { font: 400 14.5px/21px var(--font-sans); color: var(--ink); text-wrap: pretty; overflow-wrap: anywhere; white-space: pre-wrap; }
 .nd-a .own-quote { padding-left: 0; border-left: 0; font-size: 13.5px; color: var(--ink-2); }
 .nd-a-f { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 8px; min-height: 26px; margin-top: 2px; }
-.nd-a-f .hm-moment { margin-left: 0; }
+.nd-a-f .nd-moment { margin-left: 0; }
 .nd-a-f .nd-act { height: 26px; margin-left: auto; }
 .nd-a .own-sure { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 12px; margin: 6px 0 0; padding: 8px 10px; border-radius: 11px; background: color-mix(in oklch, var(--ink) 7%, transparent); font: 400 13px/1.35 var(--font-sans); color: var(--ink); }
 .nd-a .own-sure .lk { font: 600 13px/26px var(--font-sans); color: var(--ink); }
@@ -588,9 +605,9 @@ button.nd-lt:hover { color: var(--ink); }
 .nd-series .carry .t { font: 400 15.5px/22px var(--font-sans); }
 .nd-series .carry .m { gap: 0 10px; font: 400 13px/18px var(--font-sans); }
 .nd-series .carry-from { font-weight: 500; }
-.nd-series .carry > .hm-moment { justify-self: end; margin: 0; }
+.nd-series .carry > .nd-moment { justify-self: end; margin: 0; }
 .nd-series .carry-a { grid-column: 4; display: flex; align-items: center; justify-content: flex-end; gap: 4px; min-width: 0; }
-.nd-series .carry-a .hm-yes { flex: 1; height: 32px; padding: 0 14px; line-height: 32px; white-space: nowrap; }
+.nd-series .carry-a .nd-yes { flex: 1; height: 32px; padding: 0 14px; line-height: 32px; white-space: nowrap; }
 .nd-series .carry .on-hover { opacity: 0; transition: opacity var(--duration-1); }
 .nd-series .carry:hover .on-hover, .nd-series .carry:focus-within .on-hover { opacity: 1; }
 @media (hover: none) { .nd-series .carry .on-hover { opacity: 1; } }
@@ -600,15 +617,15 @@ button.nd-lt:hover { color: var(--ink); }
 .nd-series .grp { padding: 14px 0 6px; border-top: 1px solid var(--nd-hair); font: 500 13px/16px var(--font-sans); color: var(--ink-3); }
 .nd-series .grp + .carry { border-top: 0; }
 .nd-c.is-call { grid-template-columns: 50px minmax(0, 1fr) auto; }
-.nd-call.hm-panel { padding: 0 16px 14px; }
-.nd-call .hm-panel-h { height: 48px; }
+.nd-call.nd-panel { padding: 0 16px 14px; }
+.nd-call .nd-panel-h { height: 48px; }
 .nd-call-w { display: grid; gap: 2px; padding-top: 10px; border-top: 1px solid var(--line); font: 400 13.5px/20px var(--font-sans); font-variant-numeric: tabular-nums; color: var(--ink-2); }
 .nd-call-w b { font: 500 15px/21px var(--font-sans); color: var(--ink); }
 .nd-call-a { display: flex; align-items: center; gap: 6px; margin-top: 12px; }
 
 /* Shared screens, opened. */
 .ac-modal.scr-view .scr-f { align-items: center; }
-.scr-f .hm-moment { margin-left: auto; }
+.scr-f .nd-moment { margin-left: auto; }
 
 @media (prefers-reduced-motion: reduce) { .nd-g::before { animation: none !important; } }
 
@@ -672,7 +689,7 @@ button.nd-lt:hover { color: var(--ink); }
   .nd-r { grid-template-columns: 28px minmax(0, 1fr) 30px; row-gap: 8px; }
   .nd-r > .nd-rb { grid-column: 2; }
   .nd-r > .nd-more { grid-column: 3; grid-row: 1; }
-  .nd-r > .hm-moment { grid-column: 2; grid-row: 2; justify-self: start; }
+  .nd-r > .nd-moment { grid-column: 2; grid-row: 2; justify-self: start; }
   .nd-r > .nd-ra { grid-column: 2 / 4; grid-row: 2; justify-content: flex-end; padding-left: 72px; }
   .nd-r > .nd-ra:empty { display: none; }
   .nd-r.is-editing > .nd-rb { grid-column: 2 / 4; }
@@ -715,9 +732,9 @@ button.nd-lt:hover { color: var(--ink); }
   .nd-gone { margin-top: calc(var(--hz) - 36px); }
   .nd-gonetop { display: none; }
   /* Small controls keep a finger-sized target without changing how they sit. */
-  .nd .ac-check, .nd .hm-moment, .nd-more.ac-icon-btn, .nd-tool.ac-icon-btn { position: relative; }
+  .nd .ac-check, .nd .nd-moment, .nd-more.ac-icon-btn, .nd-tool.ac-icon-btn { position: relative; }
   .nd .ac-check::after { content: ""; position: absolute; inset: -12px; }
-  .nd .hm-moment::after { content: ""; position: absolute; inset: -9px -2px; }
+  .nd .nd-moment::after { content: ""; position: absolute; inset: -9px -2px; }
   .nd-more.ac-icon-btn::after, .nd-tool.ac-icon-btn::after { content: ""; position: absolute; inset: -6px; }
 }
 

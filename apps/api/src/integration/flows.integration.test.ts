@@ -92,10 +92,11 @@ const SessionReply = z.object({ ownerId: z.string() });
  * Signs in with Google the way a browser does: off to Google and back, following each redirect by
  * hand so the browser's cookies see every hop. Returns where the
  * API finally sends the browser. `tamper` and `deliverIn` apply to the first return from Google.
+ * `start` is the link the browser follows first, when it isn't the sign-in link (Connect on Home, say).
  */
-async function viaGoogle(b: Browser, user: GoogleUser, o: { spoil?: Spoil; tamper?: (callback: URL) => void; deliverIn?: Browser; consent?: boolean; popup?: string; next?: '/move' } = {}): Promise<URL> {
+async function viaGoogle(b: Browser, user: GoogleUser, o: { spoil?: Spoil; tamper?: (callback: URL) => void; deliverIn?: Browser; consent?: boolean; popup?: string; next?: '/move'; start?: string } = {}): Promise<URL> {
   h.google.next(user, o.spoil);
-  let url = new URL(b.api.auth.signInUrl('google'));
+  let url = new URL(o.start ?? b.api.auth.signInUrl('google'));
   if (o.consent) url.searchParams.set('consent', '1');
   if (o.popup) url.searchParams.set('popup', o.popup);
   if (o.next) url.searchParams.set('next', o.next);
@@ -718,6 +719,130 @@ describe('Google Calendar', () => {
     expect(afterSignOut.headers.get('location')).toBe(`${ORIGIN}/settings?calendar=failed#calendar`);
     expect(await b.api.auth.getSession()).toBeNull();
     expect((await anotherBrowser.api.calendar.get()).needsAccess).toBe(true);
+  });
+
+  it('connects a calendar from Home and goes back to Home, whatever Google says', async () => {
+    const b = h.browser();
+    const who = person('home');
+    // Connect on Home goes straight to Google, and asks to come back to Home.
+    const fromHome = { start: b.api.calendar.connectUrl({ back: '/home' }) };
+    expect(landed(await viaGoogle(b, who))).toBe('/ready');
+    const session = await b.api.auth.getSession();
+    // Cancelled at Google, or Calendar access unticked there.
+    expect(landed(await viaGoogle(b, who, { ...fromHome, spoil: 'deny' }))).toBe('/home?calendar=denied');
+    expect(landed(await viaGoogle(b, who, { ...fromHome, spoil: 'no-calendar' }))).toBe('/home?calendar=denied');
+    // Another Google account than the one this account signs in with.
+    expect(landed(await viaGoogle(b, { ...who, sub: `g-cal-another-account-${seq++}` }, fromHome))).toBe('/home?calendar=account');
+    // What Google sent back doesn't check out.
+    expect(landed(await viaGoogle(b, who, { ...fromHome, spoil: 'wrong-nonce' }))).toBe('/home?calendar=failed');
+    expect((await b.api.calendar.get()).needsAccess).toBe(true);
+
+    expect(landed(await viaGoogle(b, who, fromHome))).toBe('/home?calendar=connected');
+    expect(await b.api.auth.getSession()).toEqual(session);
+    expect((await b.api.calendar.get()).needsAccess).toBe(false);
+  });
+
+  it('says on Home why a calendar wasn’t connected before Google was asked', async () => {
+    // Signed out meanwhile: there's no Home to go back to, so the welcome page asks to sign in again, as from Settings.
+    const signedOut = h.browser();
+    expect((await signedOut.fetch(signedOut.api.calendar.connectUrl({ back: '/home' }), { redirect: 'manual' })).headers.get('location')).toBe(`${ORIGIN}/welcome?signin=expired`);
+    // Signed in with single sign-on: Google Calendar connects only from an account that signs in with Google.
+    const sso = await account();
+    expect((await sso.fetch(sso.api.calendar.connectUrl({ back: '/home' }), { redirect: 'manual' })).headers.get('location')).toBe(`${ORIGIN}/home?calendar=account`);
+    // Too many tries from one address in a minute: that's checked before anything else.
+    const hurried = h.browser();
+    const tryIt = async () => (await hurried.fetch(hurried.api.calendar.connectUrl({ back: '/home' }), { redirect: 'manual' })).headers.get('location');
+    for (let n = 0; n < 30; n++) expect(await tryIt()).toBe(`${ORIGIN}/welcome?signin=expired`);
+    expect(await tryIt()).toBe(`${ORIGIN}/home?calendar=failed`);
+    // A server without a Google client.
+    const bare = await h.secondServer({ GOOGLE_CLIENT_ID: undefined, GOOGLE_CLIENT_SECRET: undefined });
+    try {
+      const there = browserAt(bare.baseUrl);
+      expect((await there.fetch(there.api.calendar.connectUrl({ back: '/home' }), { redirect: 'manual' })).headers.get('location')).toBe(`${ORIGIN}/home?calendar=failed`);
+    } finally { await bare.close(); }
+    // Google can't be reached: someone signed in with Google presses Connect on a server that can't get to it.
+    const b = h.browser();
+    expect(landed(await viaGoogle(b, person('home-unreachable')))).toBe('/ready');
+    const unreachable = await h.secondServer({ GOOGLE_ISSUER: 'http://127.0.0.1:1' });
+    try {
+      const there = createHttpApi({ baseUrl: unreachable.baseUrl, fetch: b.fetch });
+      expect((await b.fetch(there.calendar.connectUrl({ back: '/home' }), { redirect: 'manual' })).headers.get('location')).toBe(`${ORIGIN}/home?calendar=failed`);
+    } finally { await unreachable.close(); }
+    expect((await b.api.calendar.get()).needsAccess).toBe(true);
+  });
+
+  it('goes back to Home when Google’s answer comes too late to use: the session has ended, or Alcove is too busy for it', async () => {
+    const b = h.browser();
+    const who = person('home-late');
+    expect(landed(await viaGoogle(b, who))).toBe('/ready');
+    /** Connect on Home, as far as Google's answer: the attempt cookie Google comes back with, and where it sends the browser. */
+    const toGoogle = async () => {
+      h.google.next(who);
+      const start = await b.fetch(b.api.calendar.connectUrl({ back: '/home' }), { redirect: 'manual' });
+      const attempt = start.headers.getSetCookie().find((s) => s.startsWith('__Host-alcove_google='))?.split(';')[0];
+      if (!attempt) throw new Error('Calendar consent did not set an attempt cookie.');
+      const google = await fetch(start.headers.get('location') ?? '', { redirect: 'manual' });
+      return { attempt, callback: google.headers.get('location') ?? '' };
+    };
+
+    // Too busy: Google's answer comes back on an address that has used up this minute's tries.
+    const busy = await toGoogle();
+    const hurried = h.browser();
+    for (let n = 0; n < 30; n++) await hurried.fetch(hurried.api.calendar.connectUrl({ back: '/home' }), { redirect: 'manual' });
+    const refused = await hurried.fetch(busy.callback, { redirect: 'manual', headers: { cookie: busy.attempt } });
+    expect(refused.headers.get('location')).toBe(`${ORIGIN}/home?calendar=failed`);
+    expect((await b.api.calendar.get()).needsAccess).toBe(true);
+
+    // Signed out while Google asked: Google comes back with only the attempt cookie, for a session that has ended.
+    const late = await toGoogle();
+    await b.api.auth.signOut();
+    const end = await h.browser().fetch(late.callback, { redirect: 'manual', headers: { cookie: late.attempt } });
+    expect(end.headers.get('location')).toBe(`${ORIGIN}/home?calendar=failed`);
+    const again = h.browser();
+    expect(landed(await viaGoogle(again, who))).toBe('/home');
+    expect((await again.api.calendar.get()).needsAccess).toBe(true);
+  });
+
+  it('lets only the sealed attempt choose the way back, never the address Google returns to', async () => {
+    const b = h.browser();
+    const who = person('return-address');
+    expect(landed(await viaGoogle(b, who))).toBe('/ready');
+    // From Settings, with back=/home put on Google's return address: it still goes back to Settings.
+    const toHome = (u: URL) => u.searchParams.set('back', '/home');
+    expect(landed(await viaGoogle(b, who, { start: b.api.calendar.connectUrl(), spoil: 'deny', tamper: toHome }))).toBe('/settings?calendar=denied#calendar');
+    // From Home, with back=settings put on it: it still goes back to Home.
+    const toSettings = (u: URL) => u.searchParams.set('back', 'settings');
+    expect(landed(await viaGoogle(b, who, { start: b.api.calendar.connectUrl({ back: '/home' }), spoil: 'deny', tamper: toSettings }))).toBe('/home?calendar=denied');
+  });
+
+  it('goes back to Settings for any other way back, and for an attempt started before Home could start one', async () => {
+    const b = h.browser();
+    const who = person('settings');
+    expect(landed(await viaGoogle(b, who))).toBe('/ready');
+    for (const back of ['settings', 'HOME', 'home', '/home/', `${ORIGIN}/home`, '']) {
+      const link = `${b.api.calendar.connectUrl()}&back=${encodeURIComponent(back)}`;
+      expect(landed(await viaGoogle(b, who, { start: link, spoil: 'deny' }))).toBe('/settings?calendar=denied#calendar');
+    }
+
+    // The previous release sealed these fields, with no way back. Re-seal that stored shape.
+    h.google.next(who);
+    const start = await b.fetch(b.api.calendar.connectUrl({ back: '/home' }), { redirect: 'manual' });
+    const cookie = start.headers.getSetCookie().find((s) => s.startsWith('__Host-alcove_google='))?.split(';')[0]?.slice('__Host-alcove_google='.length);
+    if (!cookie) throw new Error('Calendar consent did not set an attempt cookie.');
+    const beforeHome = z.object({
+      state: z.string(), nonce: z.string(), verifier: z.string(), until: z.number(),
+      consent: z.literal(true), calendar: z.object({ ownerId: z.string(), sessionHash: z.string() }), popup: z.null()
+    });
+    const header = { v: 1 as const, kind: 'sign-in-attempt', ownerId: '', provider: 'google' };
+    const key = signInAttemptKey(masterKey(h.deps));
+    const prior = beforeHome.parse(openJson(key, header, unb64u(cookie), beforeHome.extend({ back: z.literal('/home') })));
+    const google = await fetch(start.headers.get('location') ?? '', { redirect: 'manual' });
+    // Google returns with the Lax attempt cookie, and without the Strict session cookie.
+    const end = await h.browser().fetch(google.headers.get('location') ?? '', {
+      redirect: 'manual', headers: { cookie: `__Host-alcove_google=${b64u(sealJson(key, header, prior))}` }
+    });
+    expect(end.headers.get('location')).toBe(`${ORIGIN}/settings?calendar=connected#calendar`);
+    expect((await b.api.calendar.get()).needsAccess).toBe(false);
   });
 
   it('disconnects Calendar without revoking the Google grant Drive exports still use', async () => {

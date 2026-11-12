@@ -18,7 +18,7 @@ import { byTime, noSummary, othersIn } from '~/features/notes/list/parts';
 import { decisionLine, inNote, notDecided, playIn } from '~/features/notes/parts';
 import { callName, spokenName } from '~/lib/people';
 import { q, useUpdateDecision } from '~/lib/queries';
-import { hoursAndMinutes, noteAt, pastDay, position } from '~/lib/time';
+import { callLength, noteAt, pastDay, position } from '~/lib/time';
 import { plural } from '~/lib/words';
 import { keepInView } from './keepInView';
 import { around, madeAt, together, type Counts, type Made, type Row, type Someone } from './rows';
@@ -28,9 +28,8 @@ const LATEST = 3;
 /** How long someone lit by typing or by the pointer stays lit before their lines are asked for, in ms. */
 const LINGER = 250;
 
-const minutes = (seconds: number) => hoursAndMinutes(Math.max(1, Math.round(seconds / 60)));
 /** When a call was and how long it took: "Today at 09:00 · 20 min". */
-const when = (n: NoteFound) => `${noteAt(n.startedAt)} · ${minutes(n.duration)}`;
+const when = (n: NoteFound) => `${noteAt(n.startedAt)} · ${callLength(n.duration)}`;
 /** A note that went meanwhile (deleted, or taken out of yours) isn't asked for again. */
 const unlessGone = (tries: number, e: unknown) => errorCode(e) !== 'not-found' && tries < 2;
 /** Who said a line, as an arch: their account's, or their name's when they have none. */

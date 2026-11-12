@@ -69,6 +69,7 @@ is right. It holds:
 | `notes/` | Notes in the call, rethought: the panel and the card (what's captured) the call's Notes was rebuilt from, with its own model (`notes.js`, on a copy of `call/`'s), boards and seven journeys; its [README](canvas/notes/README.md) says what each board is |
 | `after/` | After the call: the page a call leaves you on, on the call's night over a cove, with its own model (`after.js`), every state, a player and seven journeys; its [README](canvas/after/README.md) says what each board is |
 | `call-access/` | The call's workspace and boards, open to everyone in it: the design the build followed (11 November 2026), the call at any of its moments and four journeys; its [README](canvas/call-access/README.md) says what each board is |
+| `home/` | Home, under the horizon: the three widgets Home's lower half was rebuilt from (For you, Upcoming and Recent notes), with its own model (`water.js`, on a copy of the kit's `home.js`), boards for Home and every state, and eight journeys and a phone row; its [README](canvas/home/README.md) says what each board is |
 
 `window.AH` has, among others:
 

@@ -906,8 +906,9 @@ manifest, the call's own lists and each breakout room's, so it has no table of i
 - **In the app.** The note says where each decision stands in words as well as colour, who said so, **What was said**
   (the lines and screens, each opening the moment), anything to be careful of, and a history that's reachable by keyboard
   and touch, with what the words were. Only what `grants.ts` allows is offered. A line of the transcript starts a
-  decision or a follow-up from what was said, once the notes are written. Home's **Waiting on you** shows the same, and
-  **I’ll do it** and **Not mine**, and for the organizer, a confirmed decision someone disputes, with **Keep it confirmed**.
+  decision or a follow-up from what was said, once the notes are written. Home's **For you** shows the same under **To
+  answer**, with **I’ll do it** and **Not mine**, and for the organizer, a confirmed decision someone disputes, with
+  **Keep it confirmed**.
 - **Written again.** All of this is what `keepSettled` keeps: anything with a change, so a proposal, a dispute and a "Not
   mine" too, whenever notes are written, even the first time, when someone added to a note whose notes couldn't be
   written. The notes model is told, and a fresh entry like a kept one is dropped, so a follow-up someone turned down isn't
