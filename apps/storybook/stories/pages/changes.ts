@@ -76,6 +76,13 @@ export const longSuggestions = (w: World): void => {
 /** Nothing recorded in the room yet: only calls have notes. */
 export const noRoomNotes = (w: World): void => { w.notes = w.notes.filter((n) => n.kind !== 'room'); };
 
+/** Theo sat in on yesterday's design review and said nothing: Search or ask offers him, with no line of his to find. */
+export const quietGuest = (w: World): void => {
+  w.notes = w.notes.map((n) => (n.id === 'n4'
+    ? { ...n, people: [...n.people, THEO], recipients: [...n.recipients, { person: THEO, role: 'invited' as const, at: iso(-1, 11, 45) }] }
+    : n));
+};
+
 /** Record without a connection is off: this browser remembers that too, so it holds without a connection. */
 export const recordsOnlyOnline = (w: World): void => {
   w.prefs = { ...w.prefs, recordOffline: false };

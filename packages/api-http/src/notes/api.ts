@@ -9,8 +9,8 @@ export function createNotesApi(t: HttpTransport): Pick<AlcoveApi, 'notes' | 'ser
   const personal = createPersonalApi(t);
   return {
     notes: {
-      // Search terms go in the body so they never appear in URLs or access logs.
-      list: (q) => req(z.array(NoteFoundSchema), 'POST', '/notes/search', { ...(q?.kind ? { kind: q.kind } : {}), ...(q?.text ? { text: q.text } : {}) }),
+      // Search terms and whose lines to look in go in the body, so they never appear in URLs or access logs.
+      list: (q) => req(z.array(NoteFoundSchema), 'POST', '/notes/search', { ...(q?.kind ? { kind: q.kind } : {}), ...(q?.text ? { text: q.text } : {}), ...(q?.by ? { by: q.by } : {}) }),
       get: (id) => req(NoteSchema, 'GET', `/notes/${encodeURIComponent(id)}`),
       progress: (id) => ndjson(NoteProgressSchema, `/notes/${encodeURIComponent(id)}/progress`),
       audioUrl: (id, segment, pieces) => `${base}${audioPath(id, segment, pieces)}`,

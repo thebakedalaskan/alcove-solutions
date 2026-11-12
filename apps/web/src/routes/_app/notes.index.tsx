@@ -2,10 +2,11 @@
  * Notes: the sun has just set, and the search sits in the middle of the sky. It finds the words, not just the note: a row
  * quotes the line and who said it, with a chip for each moment. Enter asks every note you have, and the list and the
  * preview follow what the answer cites. Who and what to look through sit under the line: `#with=<address>` narrows the
- * list to someone. On a wide screen the note picked in the list shows beside it; narrower, a note opens on its own page.
- * Before the first notes, Start a call takes the middle.
+ * list to someone. See all in the palette opens it with its words in the line (handed over in history state, and taken
+ * out of it as they're read) and its person after `#with=`. On a wide screen the note picked in the list shows beside
+ * it; narrower, a note opens on its own page. Before the first notes, Start a call takes the middle.
  */
-import { EmailParamSchema, errorCode, errorMessage, searchOf, type AnswerPart, type NoteFound } from '@alcove/api';
+import { EmailParamSchema, MAX_SEARCH_TEXT, NoteSearchBodySchema, errorCode, errorMessage, searchOf, type AnswerPart, type NoteFound } from '@alcove/api';
 import { Evening } from '@alcove/ui';
 import { useQueries, useQuery } from '@tanstack/react-query';
 import { createFileRoute, useNavigate, useRouterState } from '@tanstack/react-router';
@@ -31,8 +32,6 @@ export const Route = createFileRoute('/_app/notes/')({
 });
 
 const askAll = (question: string): AsyncIterable<AnswerPart> => api.notes.askAll(question);
-/** The most of what's typed that a search looks at: a question can be longer. */
-const SEARCHED = 200;
 
 /**
  * The person after `#with=` in the address (the hash never leaves the browser, so their address never reaches a
@@ -43,6 +42,15 @@ function withOf(hash: string): string | undefined {
   const raw = /^with=(.+)$/.exec(hash)?.[1];
   const email = EmailParamSchema.safeParse(raw?.replace(/%([0-9a-f]{2})/gi, (_, hex: string) => String.fromCharCode(Number.parseInt(hex, 16))));
   return email.success ? email.data : undefined;
+}
+
+/**
+ * The words See all handed over from the palette in the history entry (`searched`), when they're a search's words as its
+ * request takes them; anything else, or nothing, is no words.
+ */
+function handedOf(state: unknown): string {
+  const words = NoteSearchBodySchema.shape.text.safeParse(state);
+  return words.success ? words.data ?? '' : '';
 }
 
 /** The preview sits beside the list from 1241px; narrower, the list is alone and a note opens on its own page. */
@@ -65,7 +73,16 @@ function Library({ all, me }: { all: NoteFound[]; me: string | undefined }) {
   const wide = useWide();
   const box = useRef<HTMLDivElement>(null);
   const line = useRef<HTMLInputElement>(null);
-  const [text, setText] = useState('');
+  /*
+   * The words See all handed over from the palette, in history state (never the address): they're in the line as Notes
+   * opens, and leave the history entry as they're read, so they don't outlive the page, a sign-out or a restored session.
+   */
+  const handed = useRouterState({ select: (s) => s.location.state.searched });
+  const [text, setText] = useState(() => handedOf(handed));
+  useEffect(() => {
+    if (handed === undefined) return;
+    void navigate({ to: '/notes', search: true, hash: true, state: (s) => ({ ...s, searched: undefined }), replace: true, resetScroll: false, hashScrollIntoView: false });
+  }, [handed, navigate]);
   const [show, setShow] = useState<Show>('all');
   const [picked, setPicked] = useState<string | null>(null);
   /* The question whose answer wasn't shown, because a note it read went while it was written. */
@@ -76,7 +93,8 @@ function Library({ all, me }: { all: NoteFound[]; me: string | undefined }) {
     return true;
   }, []);
   const { answer, ask, reset } = useAnswer(askAll, refused);
-  const term = useSettled(text.trim(), 160).slice(0, SEARCHED);
+  /* A search looks at as much of what's typed as the server takes; a question asked can be longer. */
+  const term = useSettled(text.trim(), 160).slice(0, MAX_SEARCH_TEXT);
   const search = searchOf(term);
   const who = withOf(useRouterState({ select: (s) => s.location.hash }));
   const kind = show === 'call' || show === 'room' ? show : undefined;

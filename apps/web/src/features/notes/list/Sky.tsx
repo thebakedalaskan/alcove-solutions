@@ -2,7 +2,7 @@
  * The page's one job, in the middle of the sky: the line that searches everything said and asks your notes, with who
  * and what to look through under it. It takes ⌘K here, in place of the palette.
  */
-import type { Person } from '@alcove/api';
+import { MAX_QUESTION, type Person } from '@alcove/api';
 import { Avatar, Button, Icon, IconButton, Kbd, Popover, Tabs, cn, type Choice } from '@alcove/ui';
 import { useEffect, useState, type RefObject } from 'react';
 import { ariaShortcut, overlayOpen, shortcut, withMod } from '~/lib/keys';
@@ -40,7 +40,7 @@ export function SearchLine({ line, text, asked, asking, onText, onClear, onAsk, 
     <div className="nt-q">
       <Icon name="search" size={20} />
       <input ref={line} type="text" value={text} placeholder="Search everything said, or ask" aria-label="Search everything said, or ask" aria-keyshortcuts={ariaShortcut('K')}
-        autoComplete="off" spellCheck={false} enterKeyHint="search" maxLength={500} onChange={(e) => onText(e.target.value)}
+        autoComplete="off" spellCheck={false} enterKeyHint="search" maxLength={MAX_QUESTION} onChange={(e) => onText(e.target.value)}
         onKeyDown={(e) => {
           if (e.nativeEvent.isComposing) return;
           if (e.key === 'Enter') { e.preventDefault(); onAsk(); }

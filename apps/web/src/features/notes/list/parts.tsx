@@ -1,5 +1,5 @@
 /* What the notes list shares: who you have notes with, what a note shows of what was said, and the way to a moment. */
-import type { Note, NoteSaid, NoteSummary, Person, RoomRef } from '@alcove/api';
+import type { Note, NoteSaid, NoteSummary, Person, RoomRef, TranscriptLine } from '@alcove/api';
 import { Icon, type IconName } from '@alcove/ui';
 import { Link } from '@tanstack/react-router';
 import { receivedLine } from '~/features/notes/meta';
@@ -48,12 +48,17 @@ export interface Said { lines: NoteSaid[]; count: number }
 export const byTime = (lines: NoteSaid[]): NoteSaid[] => [...lines].sort((a, b) => a.at - b.at);
 
 /**
- * The line an answer cites at second `at`, in the main room or a breakout room's, as far as the reader has what was said.
- * A cite is a whole second read from a line's own mark, so a line further off is another line: then it's only a moment.
+ * The transcript line said at second `at`, in the main room or a breakout room's (saying which), as far as the reader has
+ * what was said. A cite is a whole second read from a line's own mark, so a line further off is another line.
  */
-export function citedLine(note: Note | undefined, noteId: string, at: number): NoteSaid {
+export function heardAt(note: Note | undefined, at: number): TranscriptLine | undefined {
   const heard = note ? [...(note.transcript ?? []), ...note.rooms.flatMap((r) => r.transcript.map((l) => ({ ...l, room: { id: r.id, name: r.name } })))] : [];
-  const line = heard.filter((l) => Math.abs(l.at - at) < 1).sort((a, b) => Math.abs(a.at - at) - Math.abs(b.at - at))[0];
+  return heard.filter((l) => Math.abs(l.at - at) < 1).sort((a, b) => Math.abs(a.at - at) - Math.abs(b.at - at))[0];
+}
+
+/** The line an answer cites at second `at`, as `heardAt` finds it: with no line there, it's only a moment. */
+export function citedLine(note: Note | undefined, noteId: string, at: number): NoteSaid {
+  const line = heardAt(note, at);
   return { id: `${noteId}@${at}`, at, text: line?.text ?? '', ...(line?.speaker ? { speaker: line.speaker } : {}), ...(line?.room ? { room: line.room } : {}) };
 }
 

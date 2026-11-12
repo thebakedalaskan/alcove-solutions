@@ -190,7 +190,7 @@
   }
  },
  "src/integration/flows.integration.test.ts": {
-  "seconds": 122.6,
+  "seconds": 119.9,
   "groups": {
    "public readiness": 0.1,
    "signing in": 1.0,
@@ -204,7 +204,6 @@
    "verified private inference": 14.0,
    "confirming what the notes say": 1.5,
    "the inbox": 3.8,
-   "finding what was said": 2.7,
    "asking your notes": 13.6,
    "pinned notes": 0.8,
    "who has the notes": 3.4,

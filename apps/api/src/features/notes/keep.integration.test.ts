@@ -3,7 +3,7 @@
  * HTTP via @alcove/api-http, real Postgres, the object store, LiveKit and the fake NEAR AI. "Deleted" is checked where
  * it would still be otherwise: every revision of the note, opened with its owner's keys; the rows beside it; the bucket.
  */
-import { AlcoveApiError, DEFAULT_NOTES_CHOICES, type AlcoveApi, type AnswerPart, type AudioPiece, type CallSession, type CallState, type MeetingInput, type NoteProgress, type NotesChoices, type ScreenPiece, type TranscriptClip } from '@alcove/api';
+import { AlcoveApiError, DEFAULT_NOTES_CHOICES, firstName, type AlcoveApi, type AnswerPart, type AudioPiece, type CallSession, type CallState, type MeetingInput, type NoteProgress, type NotesChoices, type ScreenPiece, type TranscriptClip } from '@alcove/api';
 import { randomBytes } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
@@ -137,6 +137,13 @@ describe('keeping the transcript', () => {
     // A search that finds the note by its title quotes nothing to anyone who can't read what was said.
     expect((await org.api.notes.list({ text: `Supplier ${CANARY}` }))[0]?.said.map((l) => l.text)).toEqual([expect.stringContaining(CANARY)]);
     expect((await invited.api.notes.list({ text: 'Supplier review' }))[0]).toMatchObject({ id: noteId, said: [], saidCount: 0 });
+    // Nor through who said it: the organizer's address and first name find their lines for the organizer alone.
+    const first = firstName(org.session.user.name);
+    const lines = [DECIDED, `The supplier is ${CANARY} for now.`, 'Thanks everyone, talk soon.'];
+    expect(await invited.api.notes.list({ by: org.session.user.email })).toEqual([]);
+    expect(await invited.api.notes.list({ text: first })).toEqual([]);
+    expect((await org.api.notes.list({ by: org.session.user.email }))[0]?.said.map((l) => l.text)).toEqual(lines);
+    expect((await org.api.notes.list({ text: first }))[0]?.said.map((l) => l.text)).toEqual(lines);
     expect((await revisionsOf(org.session.ownerId, noteId)).some((r) => r.text.includes(CANARY))).toBe(true);
 
     const steps = await written(org.api, noteId);
@@ -586,6 +593,12 @@ describe('a call with breakout rooms', () => {
     // A search reads no more than that: what was said in a room is the organizer's alone, whoever said it.
     expect(await lena.browser.api.notes.list({ text: SUPPORT_CANARY })).toEqual([]);
     expect((await org.api.notes.list({ text: SUPPORT_CANARY }))[0]?.said).toMatchObject([{ text: expect.stringContaining(SUPPORT_CANARY), room: { name: 'Support' } }]);
+    // Nor through who said it: Lena's address and first name find her lines in Support for the organizer, and none for her.
+    const lenas = [['Support', QUEUE], ['Support', `The bank is ${SUPPORT_CANARY} for now.`], ['Support', 'Right, see you back there.']];
+    expect(await lena.browser.api.notes.list({ by: lena.email })).toEqual([]);
+    expect(await lena.browser.api.notes.list({ text: 'lena' })).toEqual([]);
+    expect((await org.api.notes.list({ by: lena.email }))[0]?.said.map((l) => [l.room?.name, l.text])).toEqual(lenas);
+    expect((await org.api.notes.list({ text: 'lena' }))[0]?.said.map((l) => [l.room?.name, l.text])).toEqual(lenas);
     expect(await fails(asked(lena.browser.api, noteId, 'Who is the bank?'))).toEqual(['conflict', 'These notes aren’t written yet, so there’s nothing to ask about.']);
     await asked(org.api, noteId, 'Who is the bank?');
     expect(h.near.prompts.at(-1)).toContain(SUPPORT_CANARY);

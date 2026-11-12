@@ -2398,57 +2398,6 @@ describe('the inbox', () => {
   });
 });
 
-describe('finding what was said', () => {
-  /** A call between its organizer and someone invited, with `said` said by the organizer at 4-second steps, written up. */
-  async function talked(said: string[], title = 'Roadmap review') {
-    const org = await account(unique('organizer'));
-    const guestEmail = unique('guest');
-    const guest = await account(guestEmail);
-    const meeting = await org.api.meetings.create({ title, startsAt: new Date(Date.now() + 3_600_000).toISOString(), durationMinutes: 30, guests: [guestEmail], notes: 'on' });
-    const call = await org.api.calls.join(meeting.code, { mic: true, cam: false });
-    for (const [i, words] of said.entries()) await call.transcribe(speech(words, 0, i * 4), call.ticket.identity);
-    const noteId = (await ended(call)).pendingNoteId ?? '';
-    await written(org.api, noteId);
-    return { org, guest, noteId };
-  }
-  const found = async (api: AlcoveApi, text: string) => (await api.notes.list({ text })).map((n) => n.id);
-
-  it('finds the words in what was said, with who said them and when, for everyone who has the notes', async () => {
-    const { org, guest, noteId } = await talked(['The harbour pilot starts in March.', 'Nothing else came up about the budget.', 'The budget for the harbour pilot is agreed.']);
-    const name = org.session.user.name;
-    const [hit] = await org.api.notes.list({ text: 'pilot' });
-    expect(hit).toMatchObject({ id: noteId, saidCount: 2 });
-    expect(hit?.said.map((l) => [l.at, l.text, l.speaker?.name])).toEqual([[0, 'The harbour pilot starts in March.', name], [8, 'The budget for the harbour pilot is agreed.', name]]);
-    expect((await guest.api.notes.list({ text: 'pilot' }))[0]?.said).toEqual(hit?.said);
-
-    // Every word counts, in any order and anywhere in the note: the title is searched too, though nothing said matches it.
-    expect(await found(org.api, 'budget harbour')).toEqual([noteId]);
-    expect(await found(org.api, 'budget tugboat')).toEqual([]);
-    expect(await org.api.notes.list({ text: 'Roadmap' })).toMatchObject([{ id: noteId, said: [], saidCount: 0 }]);
-    expect(await org.api.notes.list({ text: 'roadmap pilot' })).toMatchObject([{ id: noteId, saidCount: 2 }]);
-
-    // Not a search at all: nothing was looked for, so nothing is quoted.
-    expect(await org.api.notes.list()).toMatchObject([{ id: noteId, said: [], saidCount: 0 }]);
-    // A question shows the notes with any of its words, while it's being typed, and what was said with them.
-    expect(await found(org.api, 'When does the pilot start?')).toEqual([noteId]);
-    expect(await found(org.api, 'Who ordered the cake?')).toEqual([]);
-    // Only what you have: someone else's search finds nothing here, and neither does asking to see every note.
-    const stranger = await account(unique('stranger'));
-    expect(await found(stranger.api, 'pilot')).toEqual([]);
-    expect(await stranger.api.notes.list()).toEqual([]);
-  });
-
-  it('quotes the lines with most of the words first, and says how many there were', async () => {
-    const { org } = await talked([
-      'The tide table is late.', 'The tide came in early.', 'The tide turned at noon.', 'The tide was high all week.', 'The harbour tide table is right now.', 'Then the tide went out.'
-    ]);
-    const [hit] = await org.api.notes.list({ text: 'tide harbour' });
-    expect(hit?.saidCount).toBe(6);
-    expect(hit?.said.map((l) => l.text)).toEqual(['The harbour tide table is right now.', 'The tide table is late.', 'The tide came in early.', 'The tide turned at noon.']);
-    expect(hit?.said.map((l) => l.at)).toEqual([16, 0, 4, 8]);
-  });
-});
-
 describe('asking your notes', () => {
   const NOTHING = 'You don’t have any notes to answer from yet.';
   const WRITING = 'Your notes aren’t written yet. Ask again once they’re ready.';
@@ -3693,6 +3642,8 @@ describe('privacy at rest', () => {
     expect(invited).not.toBe('');
     // A search and the lines it quotes pass through here, and stay out of every row and log line below.
     expect((await c.api.notes.list({ text: 'CANARY-SEARCH words' })).flatMap((n) => n.said.map((l) => l.text))).toEqual(['CANARY-SEARCH words in the room.']);
+    // So does whose lines a search looks in: an address, the breakout room's scribe's, whose one line is all it finds.
+    expect((await c.api.notes.list({ by: scribeEmail })).flatMap((n) => n.said.map((l) => l.text))).toEqual(['CANARY-ROOMTALK the merger moves to Monday.']);
     await c.api.people.search('CANARY-PEOPLE query');
     // A workspace: its name, folders, documents and boards, and who's in it, sealed in its state and beside its rows.
     const space = await c.api.workspaces.create('CANARY-WORKSPACE name');

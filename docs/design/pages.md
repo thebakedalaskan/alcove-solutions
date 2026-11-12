@@ -27,7 +27,24 @@ Every signed-in page sits in the same frame (`apps/web/src/features/shell/`, `pa
 - **On a phone** (860px and narrower) a top bar takes the panel's place: the logo, search, Start a call as a plus, and you.
   A tab bar sits at the bottom: Home, Notes, Record (standing up out of the bar as a small night recorder with its red
   light), Team and Settings.
-- **The palette** drops from the top. It finds notes and asks them, and it never opens over another window.
+- **The palette** (`features/shell/Palette.tsx` and `palette/`, the `Palette*` parts, `styles/palette.css` (`pal-`)).
+  Board: `Search.dc.html`. It's solid: an opaque window on `surface-raised` with a hairline, over a page dimmed and never
+  blurred, and the field that opens it at the top right is solid too.
+  - It finds what was said, not just the note. A result is a moment: who said it (their arch), their words with the match
+    marked, and the time chip, under its call. A line a decision or follow-up rests on says Decision (`rose`) or Follow-up
+    (`horizon`). A name finds the person first, and Enter on them searches only what they said, with them as a token in
+    the line. Notes can't list only their lines, so the list then ends with Calls with Maya in Notes, with no count.
+  - Ask is a row, not what Enter does: first in the list, lit by itself only for a question. There's no filled Ask button.
+    The one filled button in view is the preview's own action (Open at 3:15).
+  - From 1100px the lit result shows beside the list: a moment in its transcript, with what was made there; a person; a
+    note; or what Ask will do. Narrower, the list is alone; on a phone it takes the screen.
+  - While an answer is written, the question waits in the preview's place, so the window keeps its width.
+  - The foot says what's private (sealed in `sun-text` while Ask is lit) and the keys, only those that do something now.
+    It never opens over another window.
+  - Nothing to list is the kit's `EmptyState` with a dashed arch around an icon (`pal-none`): nothing matches; someone in
+    the line who said nothing you can read, with Calls with Maya as a quiet button; the first day; a search that didn't
+    go through, in `caution`; offline. While a search hasn't answered, the last list stays dimmed, or there are dots.
+  - On a phone the line says less ("Search what was said, or ask", and "Search" beside a person), so it fits.
 
 ## Home
 

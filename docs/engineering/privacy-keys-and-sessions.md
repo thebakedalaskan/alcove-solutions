@@ -807,7 +807,7 @@ takes a token out of anything that quotes a file's URL, a browser's report of a 
   document can hold, 16 MiB, and a caret 4 KiB. At 150,000 items on its page or 16 MiB, a document takes only what doesn't
   add to the page, and anything but deletes stops at twice that or at 450,000 structs in all. Too much is `413 too-large`,
   and what no honest client sends `400 invalid`: neither lets go of anything a browser holds.
-- **No content in URLs.** Note search, people search, sharing and questions send their terms in POST bodies, as adding
+- **No content in URLs.** Note search (its words, and the address of someone whose lines it looks in), people search, sharing and questions send their terms in POST bodies, as adding
   someone to a workspace and sharing a document do their addresses; after that they're a `member_id` or an `access_id`.
   A call's code is in its pages' paths (`/join/<code>`, `/call/<code>`) and in the API paths that read or join
   it (`/v1/calls/<code>/card`, `…/join`, `…/pick`, `…/meeting`), never in a query string or a sign-in URL: signing in with

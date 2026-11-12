@@ -58,6 +58,7 @@ is right. It holds:
 | `pages.css` | The page frame (`pg-`), the scene (`sc-`), the evening board (`ev-`), the moving board (`lb-`), and what passes through (`hz-` and `lf-`), generated from the app |
 | `Side`, `Faces`, `Overlays`, `Scene`, `Visitors`, `SkyArt` `.dc.html` | Parts: the side panel, people in arches, what opens over a page (the palette, toasts, the call modal, a call's card, the lobby, and stand-in pages), the scene, what passes through, Home's sunset drawing |
 | `Home`, `Notes`, `Note`, `Team`, `Record`, `Settings` `.dc.html` | One board per page, each interactive at 1440×900 in both themes, with its own `page-<name>.css` and `data-<name>.js` (Home's are in `home.css` and `home.js`) |
+| `Search.dc.html` | The palette (Search or ask) over Home, interactive: type anything, and `data-search.js` searches the demo world's notes, people and transcripts. It imports Home, and opens Notes and a note from what you pick |
 | `Series.dc.html` | A series. For now it's a still: it uses a note's files, its buttons aren't wired, and it has no steps or journey board |
 | `Steps<Page>.dc.html` | Every journey of a page, one row each (`StepsPage` is Home's) |
 | `App.dc.html` | Walk the app: every page in one prototype, wired together |
@@ -189,7 +190,8 @@ class Component extends DCLogic {
   if no existing moment fits. A moment added only to `scene.js` gets Home's visitors on the canvas, so add it to the app's
   `Horizon` too (see [building.md](building.md#put-the-page-on-the-evening)) and run the sync tool.
 - **Its data.** Put the page's data in `data-<name>.js` under a short name of its own, keyed by the same ids as `AH.D`. The
-  kit uses `AH.NT` for Notes, `AH.TM` for Team, `AH.RC` for Record, `AH.ST3` for Settings and `AH.NOTE` for a note.
+  kit uses `AH.NT` for Notes, `AH.TM` for Team, `AH.RC` for Record, `AH.ST3` for Settings, `AH.NOTE` for a note and `AH.SR`
+  for search.
   - Use the demo world's people and notes, so every page tells one story.
   - Every person and every call is made up. Never write a real person's name, the user's included, or copy a real calendar
     or a real call. You are Art Vandelay.
@@ -235,7 +237,7 @@ a page. Each page gets a `Steps<Page>.dc.html` board.
 - **A phone row comes last.**
 - **Journeys are data** in the page's data file. The kit keeps them beside each page's data: `AH.JOURNEYS_HOME`,
   `AH.JOURNEYS_TEAM` with `AH.JOURNEYS_TEAM_PHONE`, `AH.JOURNEYS_NOTE` with `AH.JOURNEYS_NOTE_PHONE`, `AH.RC.JOURNEYS`,
-  `AH.ST3.JOURNEYS`, and inline in `StepsNotes.dc.html`. For a new page:
+  `AH.ST3.JOURNEYS`, `AH.SR.JOURNEYS`, and inline in `StepsNotes.dc.html`. For a new page:
 
   ```js
   AH.JOURNEYS_BILLING = [
