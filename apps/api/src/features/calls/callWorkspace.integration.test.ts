@@ -947,12 +947,15 @@ describe('everyone in the call', () => {
     await host.leave();
   });
 
-  it('opens the call’s home to everyone in it where it’s settled: in the answer to the first guest to open Workspace, and when a board settles it', async () => {
-    // Settled by a guest opening Workspace: their own answer has it open, and everyone else's does at once.
+  it('opens the workspace the call uses to everyone in it once anyone opens Workspace, in the first guest’s own answer too', async () => {
     const art = await account();
-    const one = await callBy(art);
-    const jamie = await guest(one.host, one.code);
-    const sam = await guest(one.host, one.code, 'Sam Guest');
+    const { host, code: c } = await callBy(art);
+    const jamie = await guest(host, c);
+    const sam = await guest(host, c, 'Sam Guest');
+    // A board made first settles the home and opens only itself: who's on it, and nothing of the home.
+    await host.openBoard({ template: 'blank' });
+    expect(await space(sam.call)).toMatchObject({ id: null, canOpen: false, everyone: false });
+    // Jamie opens Workspace: their own answer has the home open, and so does everyone else's.
     const res = await action(jamie, jamie.call, { type: 'workspace-open' });
     expect(res.status).toBe(200);
     const answer = CallStateSchema.parse(await res.json()).workspace;
@@ -961,49 +964,29 @@ describe('everyone in the call', () => {
     expect(home).not.toBe('');
     expect(await space(sam.call)).toMatchObject({ id: home, canOpen: true, everyone: true });
     expect(await code(sam.api.workspaces.get(home, { pass: sam.call.ticket.pass }))).toBe('allowed');
-    expect(await count('SELECT count(*)::int AS n FROM workspace_calls WHERE call_id = $1', [one.host.ticket.callId])).toBe(1);
-    await one.host.leave();
-
-    // Settled by a board made in the call, with nobody opening Workspace: it's open to everyone all the same.
-    const lena = await account();
-    const two = await callBy(lena);
-    const kim = await guest(two.host, two.code, 'Kim Guest');
-    await two.host.openBoard({ template: 'blank' });
-    const theirs = await space(kim.call);
-    expect(theirs).toMatchObject({ canOpen: true, role: null, everyone: true });
-    expect(theirs.id).not.toBeNull();
-    expect(await code(kim.api.workspaces.get(theirs.id ?? '', { pass: kim.call.ticket.pass }))).toBe('allowed');
-    await two.host.leave();
+    expect(await count('SELECT count(*)::int AS n FROM workspace_calls WHERE call_id = $1', [host.ticket.callId])).toBe(1);
+    await host.leave();
   });
 
-  it('takes everyone back to a home that’s open to them when the workspace everyone viewed is deleted, however the home was settled', async () => {
-    // A home a board settled: nobody opened Workspace.
+  it('opens the home to everyone when the workspace everyone viewed is deleted, though nobody had opened Workspace', async () => {
     const art = await account();
-    const one = await callBy(art);
-    await one.host.openBoard({ template: 'blank' });
-    const home = (await space(one.host)).home ?? '';
+    const { host, code: c } = await callBy(art);
+    // A board settles the home, which nothing opens to the call yet.
+    await host.openBoard({ template: 'blank' });
+    const home = (await space(host)).home ?? '';
+    expect(home).not.toBe('');
     const other = await workspace(art, 'Short lived');
-    await one.host.setWorkspace(other);
-    const jamie = await guest(one.host, one.code);
+    await host.setWorkspace(other);
+    const jamie = await guest(host, c);
+    const homeRows = () => count('SELECT count(*)::int AS n FROM workspace_calls w JOIN workspaces s ON s.owner_id = w.owner_id WHERE w.call_id = $1 AND s.workspace_id = $2', [host.ticket.callId, home]);
+    expect(await homeRows()).toBe(0);
     await art.api.workspaces.remove(other);
-    await settle(one.host, (x) => x.workspace.id === home);
+    // The next read finds it gone and takes the call back to its home, which opens to everyone in it then.
+    await settle(host, (x) => x.workspace.id === home);
     expect(await space(jamie.call)).toMatchObject({ id: home, canOpen: true, role: null, everyone: true });
-    await one.host.leave();
-
-    // A home the release before settled, which opened nothing to the call: going back to it opens it.
-    const lena = await account();
-    const two = await callBy(lena);
-    await two.host.openWorkspace();
-    const hers = (await space(two.host)).home ?? '';
-    await h.pool.query('DELETE FROM workspace_calls WHERE call_id = $1', [two.host.ticket.callId]);
-    const gone = await workspace(lena, 'Short lived');
-    await two.host.setWorkspace(gone);
-    const kim = await guest(two.host, two.code, 'Kim Guest');
-    await lena.api.workspaces.remove(gone);
-    await settle(two.host, (x) => x.workspace.id === hers);
-    expect(await space(kim.call)).toMatchObject({ id: hers, canOpen: true, role: null, everyone: true });
-    expect(await code(kim.api.workspaces.get(hers, { pass: kim.call.ticket.pass }))).toBe('allowed');
-    await two.host.leave();
+    expect(await code(jamie.api.workspaces.get(home, { pass: jamie.call.ticket.pass }))).toBe('allowed');
+    expect(await homeRows()).toBe(1);
+    await host.leave();
   });
 
   it('lets someone signed in change its tree with the call’s pass, invited and outside it or a member who can only read, and not without it', async () => {

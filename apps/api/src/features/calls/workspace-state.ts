@@ -12,8 +12,8 @@ const clog = log.child({ component: 'calls' });
 /**
  * Whoever started something has lost its document, or the workspace they presented: it stops for everyone, how a presentation
  * ended is said where it was presented, and it doesn't come back if they're given it again. A workspace everyone viewed that's
- * been deleted since takes them back to the home, which opens to everyone in the call: settling it did, unless it was settled
- * under the release before. Reading the call finds this out, and a read isn't refused for it: the next read tries again.
+ * been deleted since takes them back to the home, which opens to everyone in the call then, if nothing had (a board settled
+ * it, or the release before did). Reading the call finds this out, and a read isn't refused for it: the next read tries again.
  */
 export async function stopLost(o: Owner, callId: string, lost: space.Lost): Promise<void> {
   const backHome = lost.viewing !== null;

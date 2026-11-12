@@ -811,7 +811,8 @@ readable.
   during the call is in the call's sealed state (`workspace`: which workspace everyone views, what's presented and playing,
   what's been worked on and by whom, and the next agenda while it's being made), and goes when the call ends: what was
   worked on into the note, if there is one, and nowhere else. That the call opens it to everyone in it is a row in
-  `workspace_calls`, written where the call's home is settled or the organizer switches to another, which goes then too
+  `workspace_calls`, written when someone in the call opens Workspace, when it goes back to its home, or when the organizer
+  switches to another, which goes then too
   ([Calls and recordings › The call's workspace](calls-and-recordings.md#the-calls-workspace)).
 - **The call's timer** lives in the call's sealed state (`timer`), separate from its boards and workspace: one countdown's
   ID, revision, length with time added, whether it's paused, and its clock on the server, numbers only. Call state from the

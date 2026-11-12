@@ -80,20 +80,15 @@ export async function actOnWorkspace(v: Viewer, callId: string, a: space.SpaceAc
  * for a home that's there already the folder's ID is taken there, and the folder made in that workspace's own transaction
  * with nothing of the call held. Everyone invited is let into a home made for the call once the call's row is let go. A home
  * deleted since is settled again, and one with no room for the folder (`full`) gives way to a new one. Whose it is, and what's
- * in it, the meeting's organizer decides: whoever asks first only settles it. Settled, it's open to everyone in the call
- * (`openForCall`), however it came to be asked for, and the call is told when that's just happened.
+ * in it, the meeting's organizer decides: whoever asks first only settles it. Settling it opens it to nobody: someone
+ * opening Workspace does (`openWorkspace`), as a board made in it gives its seats and no more until then.
  */
 export async function settledHome(o: Owner, callId: string, timeZone?: string | undefined, full: string | null = null): Promise<{ workspaceId: string; folderId: string }> {
   const { row, state } = await load(o, o.pool, callId);
   const meeting = await getItem(o, o.pool, 'meeting', row.meeting_item_id, MeetingManifest, 'That meeting');
   const had = state.workspace.home;
   const chosen = meeting.manifest.workspaceId;
-  /** The home, open to everyone in the call: settled under the release before, or opened by nothing yet, it's opened now. */
-  const opened = async (home: { workspaceId: string; folderId: string }) => {
-    if (await openForCall({ organizer: o, callId }, home.workspaceId)) await tellRoom(o, row.room_name, callId, { call: true, log: false });
-    return { workspaceId: home.workspaceId, folderId: home.folderId };
-  };
-  if (had?.made && had.workspaceId === chosen && await workspaceOwner(o.pool, chosen)) return opened(had);
+  if (had?.made && had.workspaceId === chosen && await workspaceOwner(o.pool, chosen)) return had;
   const organizer = (await profile(o)).email;
   // Asked with nothing held: a home the organizer can no longer make things in is no home of theirs, nor one with no room.
   const usable = chosen !== full && (await space.usableHome(o, organizer, chosen)) !== undefined;
@@ -126,11 +121,9 @@ export async function settledHome(o: Owner, callId: string, timeZone?: string | 
   if (taken.again) return settledHome(o, callId, timeZone, full);
   const { home } = taken;
   if (taken.made) {
-    // Everyone invited comes in now the call's row is let go, so a big invite never holds the call up, and it's open to
-    // everyone in the call before anyone's told it's there.
+    // Everyone invited comes in now the call's row is let go, so a big invite never holds the call up.
     await space.followHome(o, row.meeting_item_id, { add: taken.guests });
     await space.carryForward(o, row.meeting_item_id, taken.was, home.workspaceId);
-    await openForCall({ organizer: o, callId }, home.workspaceId);
     await tellRoom(o, taken.room, callId, { call: true, log: false });
     return home;
   }
@@ -148,7 +141,7 @@ export async function settledHome(o: Owner, callId: string, timeZone?: string | 
     await space.followHome(o, row.meeting_item_id, { add: taken.guests });
     clog.info('call folder settled in its home', { callId, workspaceId: home.workspaceId });
   }
-  return opened(home);
+  return { workspaceId: home.workspaceId, folderId: home.folderId };
 }
 
 /**
@@ -193,16 +186,17 @@ async function agendaFor(o: Owner, callId: string): Promise<void> {
 }
 
 /**
- * Someone opens Workspace. A home that can't be made for a guest opening it is the organizer's to hear about, not theirs,
- * and an agenda that can't be made is no reason anyone can't open the rest. They're told as the call is once it's settled:
- * what they carry names the workspace it uses, which may be the home settled just now.
+ * Someone opens Workspace: the workspace the call uses opens to everyone in it (`openForCall`), the home unless the organizer
+ * switched, and everyone's told when that's just happened. A home that can't be made for a guest opening it is the
+ * organizer's to hear about, not theirs, and an agenda that can't be made is no reason anyone can't open the rest. They're
+ * told as the call is once it's settled: what they carry names the workspace it uses, which may be a home settled just now.
  */
 export async function openWorkspace(v: Viewer, callId: string, timeZone: string | undefined): Promise<CallState> {
   const o = v.organizer;
   let now = v;
   try {
     await settledHome(o, callId, timeZone);
-    // Settling the home opened it, and switching opens what's switched to; one switched to under the release before opens here.
+    // A switch opens what it switches to before it applies; a home, or one switched to under the release before, opens here.
     const { row, state } = await load(o, o.pool, callId);
     const inUse = workspaceIn(state);
     if (inUse !== null && await openForCall({ organizer: o, callId }, inUse)) await tellRoom(o, row.room_name, callId, { call: true, log: false });

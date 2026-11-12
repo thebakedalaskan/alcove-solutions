@@ -580,11 +580,12 @@ read every note given to it. That's why the demo SSO sign-in takes only example 
 - **A call opens the workspace it uses** to everyone let in to it, guests without an account too, for as long as they're
   in the call: its home, unless the organizer switched to another. A row in `workspace_calls` says so, under the
   `call-workspace` index of the call and the workspace, which is what everyone in the call carries while the call uses that
-  workspace. It's written in the workspace's own transaction, with nothing of the call held (`openForCall`): where the
-  call's home is settled, however that's asked for (someone opening Workspace, whose answer says it's open, or a board
-  made for the call), and the call is told; when someone opens Workspace on a workspace switched to under the release
-  before; when the call goes back to a home the release before settled; and before the organizer's switch to another
-  workspace applies. A workspace made in the call gets its row in the transaction that makes it (`openToCall`). Each is
+  workspace. It's written in the workspace's own transaction, with nothing of the call held (`openForCall`): the first time
+  anyone opens Workspace in the call, for the workspace it uses (their answer already says it's open, and everyone else is
+  told), which is also how a call that began under the release before gets one; when the call goes back to its home
+  because the workspace it viewed was deleted; and before the organizer's switch to another workspace applies. A board made
+  in the call settles its home without opening it: until someone opens Workspace, the board gives its seats and no more. A
+  workspace made in the call gets its row in the transaction that makes it (`openToCall`). Each is
   logged with the call's and the workspace's IDs, and so is a row not written because the organizer can't edit there. A
   row counts only while the call's organizer can still edit there, as an admin or with `edit` (`organizer_index`, their
   email index), because a call adds to a workspace on its organizer's word alone; a new address from their provider moves
