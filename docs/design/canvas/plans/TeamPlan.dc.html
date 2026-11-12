@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Team, on a plan</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="home.css">
+<link rel="stylesheet" href="pages.css">
+<link rel="stylesheet" href="page-plans.css">
+<script src="tokens.js"></script>
+<script src="home.js"></script>
+<script src="scene.js"></script>
+<script src="appdata.js"></script>
+<script src="marks.js"></script>
+<script src="data-plans.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400..700&amp;family=IBM+Plex+Mono:wght@400;500&amp;family=Newsreader:ital,opsz,wght@0,6..72,300..600;1,6..72,300..600&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<div class="ah sh tq" data-mode="{{mode}}" style="{{shellStyle}}">
+<div class="sh-frame">
+<dc-import name="Side" s="{{side}}" hint-size="256px,100%"></dc-import>
+<main class="sh-panel">
+<div class="ah-scroll">
+<div class="pg-stage">
+<dc-import name="Scene" a="{{scene}}" hint-size="100%,100%"></dc-import>
+<div class="pg-in">
+
+<div class="pl-top">
+<h1 class="pl-title">Team</h1>
+<div class="top-end"><button type="button" class="find" aria-label="Search or ask"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.search}}"></path></svg><span class="w">Search or ask</span><span class="k">⌘K</span></button><dc-import name="Faces" who="art" size="30" hint-size="30px,33px"></dc-import></div>
+</div>
+
+<div class="tq-sky">
+<h2 class="tq-name">{{T.company}}</h2>
+<p class="tq-say">{{say}}</p>
+</div>
+
+<ul class="tq-line" aria-label="People on {{T.company}}">
+<sc-for list="{{line}}" as="m" hint-placeholder-count="6">
+<li class="tq-who{{m.cls}}"><dc-import name="Faces" who="{{m.who}}" size="46" hint-size="46px,52px"></dc-import><span class="nm">{{m.first}}</span><span class="lc">{{m.short}}</span></li>
+</sc-for>
+</ul>
+
+<div class="tq-water{{soloCls}}">
+<div class="tq-main">
+
+<sc-if value="{{hasWait}}" hint-placeholder-val="{{false}}"><p class="tq-note is-caution" role="status"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.alert}}"></path></svg><span>{{waitText}}</span></p></sc-if>
+
+<section class="tq-sec" aria-label="People">
+<p class="tq-h"><span>People on {{T.company}}</span></p>
+<sc-for list="{{people}}" as="m" hint-placeholder-count="6">
+<div class="tq-row">
+<dc-import name="Faces" who="{{m.who}}" size="32" hint-size="32px,36px"></dc-import>
+<span class="tx"><b>{{m.name}}<sc-if value="{{m.isAdmin}}" hint-placeholder-val="{{false}}"><span class="tq-tag">Admin</span></sc-if></b><small class="{{m.licCls}}">{{m.lic}}</small></span>
+<sc-if value="{{m.canRemove}}" hint-placeholder-val="{{false}}"><button type="button" class="b b-quiet b-sm{{m.hot}}" onClick="{{m.remove}}">Remove</button></sc-if>
+<sc-if value="{{m.asking}}" hint-placeholder-val="{{false}}">
+<div class="tq-ask" role="group" aria-label="Take {{m.first}} off the team?">
+<b>{{m.askT}}</b>
+<p>Their license isn’t refunded. They go back to Free, and notes they made visible to the team stay visible.</p>
+<div class="row"><button type="button" class="b b-line b-caution b-sm" onClick="{{m.confirm}}">Take off the team</button><button type="button" class="b b-press b-sm" onClick="{{m.keep}}">{{m.keepT}}</button></div>
+</div>
+</sc-if>
+</div>
+</sc-for>
+<sc-if value="{{isMember}}" hint-placeholder-val="{{false}}"><div class="tq-foot"><button type="button" class="b b-quiet b-sm">Leave team</button><span>Your license isn’t refunded, and you go back to Free.</span></div></sc-if>
+<sc-if value="{{isAdmin}}" hint-placeholder-val="{{true}}"><div class="tq-foot"><button type="button" class="b b-quiet b-sm" disabled="true">Delete team</button><span>Once nobody else is on it. Licenses nobody took go back to your balance.</span></div></sc-if>
+</section>
+
+<section class="tq-sec" aria-label="Visible to the team">
+<p class="tq-h"><span>Visible to the team</span><small>Notes people here chose to share with everyone licensed</small></p>
+<sc-for list="{{notes}}" as="n" hint-placeholder-count="3">
+<div class="tq-note-row"><dc-import name="Faces" who="{{n.who}}" size="26" hint-size="26px,29px"></dc-import><span class="tx"><b>{{n.title}}</b><small>Made visible by {{n.by}} · {{n.when}}</small></span><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18l6-6-6-6"></path></svg></div>
+</sc-for>
+</section>
+</div>
+
+<sc-if value="{{isAdmin}}" hint-placeholder-val="{{true}}">
+<aside class="tq-side" aria-label="For the team’s admin">
+<section class="tq-card">
+<p class="tq-h">Licenses</p>
+<p class="tq-big"><b>{{T.left}}</b> of {{T.bought}} left</p>
+<p class="tq-sub{{lowCls}}">{{licSay}}</p>
+<button type="button" class="b {{buyC}}{{hotBuy}}" onClick="{{buy}}">Buy licenses</button>
+<div class="tq-sw"><span><b>Buy one when it’s needed</b><small>From your balance, when someone needs a license and none is left.</small></span><button type="button" class="st2-swb" role="switch" aria-checked="{{autoA}}" aria-label="Buy one when it’s needed" onClick="{{flipAuto}}"><span class="sw{{autoCls}}"></span></button></div>
+</section>
+<section class="tq-card">
+<p class="tq-h">Invite people</p>
+<p class="tq-sub">Each link lets one person join, for a day. They take a license when they next open Alcove.</p>
+<sc-if value="{{noLink}}" hint-placeholder-val="{{true}}"><button type="button" class="b b-line{{hotLink}}" onClick="{{makeLink}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.link}}"></path></svg>Make an invite link</button></sc-if>
+<sc-if value="{{hasLink}}" hint-placeholder-val="{{false}}">
+<div class="pl-link"><code>{{T.invite}}</code><button type="button" class="b b-line b-sm" onClick="{{copy}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{copyI}}"></path></svg>{{copyT}}</button></div>
+<p class="pl-hint">Works once, until tomorrow 16:12. <button type="button" class="lnk" onClick="{{makeLink}}">Make another</button></p>
+</sc-if>
+</section>
+</aside>
+</sc-if>
+</div>
+
+</div>
+</div>
+</div>
+</main>
+</div>
+<nav class="phone-tabs" aria-label="Main">
+<sc-for list="{{tabs}}" as="n" hint-placeholder-count="5"><button type="button" class="phone-tab{{n.cls}}" onClick="{{n.go}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{n.icon}}"></path></svg>{{n.label}}</button></sc-for>
+</nav>
+<dc-import name="Overlays" ov="{{ov}}" hint-size="0px,0px"></dc-import>
+<sc-if value="{{hasCo}}" hint-placeholder-val="{{false}}"><dc-import name="Checkout" at="{{coAt}}" mode="{{mode}}" from="team" on-close="{{coClose}}" on-done="{{coDone}}" hint-size="0px,0px"></dc-import></sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"go":{"editor":null,"default":null},"mode":{"editor":"enum","options":["dark","light"],"default":"dark"},"step":{"editor":"enum","options":["teamAdmin","teamAdminHot","teamAdminLink","teamAdminRemove","teamAdminMore","teamAdminMoreBal","teamMember","teamWait"],"default":"teamAdmin"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    var AH = window.AH, PL = AH.PL, I = PL.I, T = PL.TEAM, hs = AH.hash(), self = this, p = this.props;
+    var STEPS = {
+      teamAdmin: {}, teamAdminHot: { hot: 'buy' }, teamAdminLink: { link: true }, teamAdminRemove: { asking: 'maya' },
+      teamAdminMore: { co: 'coTeamMore' }, teamAdminMoreBal: { co: 'coTeamMoreBal' }, teamMember: { member: true }, teamWait: { member: true, wait: true }
+    };
+    var stepId = hs.step || p.step || 'teamAdmin';
+    var st = AH.assign({ link: false, asking: '', auto: false, co: '', member: false, wait: false, copied: false }, STEPS[stepId] || {}, this.state || {});
+    var set = function (patch) { self.setState(AH.assign({ hot: '' }, patch)); };
+    var v = AH.page(this, 'team', { moment: 'team' });
+    v.I = I; v.T = T;
+    var admin = !st.member;
+    v.isAdmin = admin; v.isMember = !admin; v.soloCls = admin ? '' : ' is-solo';
+    v.side = AH.assign({}, v.side, { foot: PL.foot(st.wait ? 'teamWait' : admin ? 'teamLow' : 'team') });
+
+    /* The team on the horizon, each under their license. You're Art; on a team where you're a member, Ines is its admin. */
+    var members = T.members.map(function (m) {
+      var isAdmin = admin ? !!m.admin : m.who === 'priya';
+      var lic = m.who === 'art' && st.wait ? 'waiting' : m.lic;
+      return AH.assign({}, m, { isAdmin: isAdmin, licState: lic });
+    });
+    var lineLabel = function (m) { return m.licState === 'live' ? 'Until ' + m.until : m.licState === 'waiting' ? 'Waiting' : m.licState === 'ended' ? 'Ended' : 'No license yet'; };
+    v.line = members.map(function (m) {
+      return { who: m.who, first: m.you ? 'You' : m.name.split(' ')[0], short: lineLabel(m), cls: m.licState === 'waiting' ? ' is-wait' : m.licState === 'ended' ? ' is-ended' : '' };
+    });
+    var live = members.filter(function (m) { return m.licState === 'live'; }).length;
+    v.say = admin ? T.count + ' people · ' + live + ' with a license · ' + T.left + ' licenses left' : T.count + ' people · ' + T.memberAdmin + ' is its admin';
+
+    v.people = members.map(function (m) {
+      var asking = admin && st.asking === m.who;
+      var lic = m.licState === 'live' ? 'Licensed until ' + m.until : m.licState === 'waiting' ? 'Waiting for a license' : m.licState === 'ended' ? 'License ended ' + m.until + '. A new one is taken when they next open Alcove.' : 'No license yet';
+      return {
+        who: m.who, first: m.name.split(' ')[0], name: m.you ? m.name + ' (you)' : m.name, isAdmin: m.isAdmin, lic: lic,
+        keepT: 'Keep ' + m.name.split(' ')[0], askT: 'Take ' + m.name.split(' ')[0] + ' off ' + T.company + '?',
+        licCls: m.licState === 'waiting' ? 'is-caution' : m.licState === 'ended' ? 'is-quiet' : '',
+        canRemove: admin && !m.you && !asking, asking: asking, hot: '',
+        remove: function () { set({ asking: m.who }); },
+        keep: function () { set({ asking: '' }); },
+        confirm: function () { set({ asking: '' }); self.toast(m.name.split(' ')[0] + ' is off the team.'); }
+      };
+    });
+    v.notes = T.notes;
+    v.hasWait = st.wait;
+    v.waitText = 'You don’t have a license on ' + T.company + ' yet, so the notes and workspaces the team shares aren’t open to you. ' + T.memberAdmin + ' has been told, and one is yours the next time you open Alcove after they buy more.';
+
+    /* For the admin: licenses, buying one when needed, and invite links. */
+    var waiting = members.filter(function (m) { return m.licState === 'waiting'; }).map(function (m) { return m.name.split(' ')[0]; });
+    v.licSay = waiting.length ? waiting.join(' and ') + ' is waiting for one. Each is taken as someone next opens Alcove, for 30 days.' : 'Each is taken as someone next opens Alcove, for 30 days.';
+    v.lowCls = waiting.length ? ' is-warm' : '';
+    /* One filled button in view: while a removal is being asked about, Keep is it. */
+    v.buyC = waiting.length && !st.asking ? 'b-press' : 'b-line';
+    v.hotBuy = st.hot === 'buy' ? ' is-hot' : '';
+    v.buy = function () { set({ co: 'coTeamMore' }); };
+    v.autoA = st.auto ? 'true' : 'false'; v.autoCls = st.auto ? ' is-on' : '';
+    v.flipAuto = function () { set({ auto: !st.auto }); };
+    v.noLink = !st.link; v.hasLink = st.link;
+    v.hotLink = st.hot === 'link' ? ' is-hot' : '';
+    v.makeLink = function () { set({ link: true, copied: false }); };
+    v.copyT = st.copied ? 'Copied' : 'Copy'; v.copyI = st.copied ? I.check : I.copy;
+    v.copy = function () { set({ copied: true }); };
+
+    v.hasCo = !!st.co; v.coAt = st.co || 'coTeamMore';
+    v.coClose = function () { set({ co: '' }); };
+    v.coDone = function (s) { set({ co: '' }); self.toast(s.licenses + ' licenses added. Aiko gets one the next time they open Alcove.'); };
+    this.toast = function (t) { set({ toast: t }); clearTimeout(self.__t); self.__t = setTimeout(function () { self.setState({ toast: '' }); }, 3600); };
+    v.ov = AH.assign({}, v.ov, { toast: st.toast || '', hasToast: !!st.toast });
+    v.tabs = v.nav;
+    return v;
+  }
+}
+</script>
+</body>
+</html>

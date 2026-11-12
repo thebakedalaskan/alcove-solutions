@@ -59,11 +59,12 @@
   /* ------------------------------------------------------------------ the plans */
   var PLANS = {
     free: { id: 'free', name: 'Free', sub: 'For a few calls a month', month: 0, year: 0,
-      facts: [['notes', '5 hours of notes a month', 'Back to 5 hours on the 1st'], ['upload', '10 GB of uploads a month', ''], ['file', 'Files up to 512 MB', ''], ['folder', 'One shared workspace', '']] },
-    pro: { id: 'pro', name: 'Pro', sub: 'For one person', month: 15, year: 12,
-      facts: [['infinity', 'Unlimited notes', 'Fair use: 100 hours a month'], ['upload', '100 GB of uploads a month', ''], ['file', 'Files up to 2 GB', ''], ['folder', 'Unlimited shared workspaces', '']] },
-    team: { id: 'team', name: 'Team', sub: 'For 3 people or more', month: 20, year: 16, each: true,
-      facts: [['infinity', 'Unlimited notes for everyone', 'Fair use: 100 hours a month each'], ['upload', '100 GB a month each, pooled', ''], ['file', 'Files up to 2 GB', ''], ['folder', 'Workspaces the whole team shares', '']] }
+      facts: [['notes', 'About 5 hours of notes a month', 'Back to 5 hours on the 1st of each period'], ['upload', '10 GB of storage', ''], ['file', 'Files up to 512 MB', '']] },
+    pro: { id: 'pro', name: 'Pro', sub: 'For one person', month: 20, year: 16,
+      facts: [['notes', 'About 50 hours of notes a month', ''], ['upload', '100 GB of storage', ''], ['file', 'Files up to 512 MB', '']] },
+    /* Team is licenses: one person for 30 days each, bought by the team's admin, taken as each person next opens Alcove. */
+    team: { id: 'team', name: 'Team', sub: 'For a company', month: 40, year: 40, each: true, licenses: true,
+      facts: [['notes', 'About 50 hours of notes each', ''], ['upload', '100 GB each, shared by the team', ''], ['file', 'Files up to 512 MB', ''], ['people', 'Notes and workspaces the team shares', '']] }
   };
   var ORDER = ['free', 'pro', 'team'];
   /* What every plan has: plans only change how much you get, so Free shows the whole product. */
@@ -74,8 +75,30 @@
     ['sealed', 'Confidential compute'],
     ['people', 'Invitees get the notes free']
   ];
-  var DURATIONS = [1, 3, 6, 12, 24];
-  var TEAM = { company: 'Vandelay Industries', people: 'art,priya,kofi,aiko,maya,ines', count: 6, names: 'You, Priya, Kofi, Aiko, Maya and Ines' };
+  var DURATIONS = [1, 3, 6, 12];
+  var TEAM = {
+    company: 'Vandelay Industries', people: 'art,priya,kofi,lena,maya,aiko', count: 6, names: 'You, Priya, Kofi, Lena, Maya and Aiko',
+    /* Art made it, so Art is its admin: buys its licenses, invites, takes people off. */
+    admin: 'Art', price: 40, bought: 8, left: 2, low: 5, auto: false,
+    /* Where you're a member rather than its admin, Priya is. */
+    memberAdmin: 'Priya',
+    /* `lic`: live until a day; waiting (needed one and none was left); ended (until they next open Alcove); none yet. */
+    members: [
+      { who: 'art', name: 'Art Vandelay', you: true, admin: true, lic: 'live', until: '12 Dec' },
+      { who: 'priya', name: 'Priya Raman', lic: 'live', until: '12 Dec' },
+      { who: 'kofi', name: 'Kofi Asante', lic: 'live', until: '3 Dec' },
+      { who: 'lena', name: 'Lena Fischer', lic: 'live', until: '28 Nov' },
+      { who: 'maya', name: 'Maya Chen', lic: 'ended', until: '9 Nov' },
+      { who: 'aiko', name: 'Aiko Tanaka', lic: 'waiting', until: '' }
+    ],
+    /* Notes members made visible to the team. */
+    notes: [
+      { title: 'Team standup', who: 'priya', by: 'Priya', when: 'Today' },
+      { title: 'Pricing sync', who: 'maya', by: 'Maya', when: 'Yesterday' },
+      { title: 'Launch planning', who: 'lena', by: 'Lena', when: 'Tue 27 Oct' }
+    ],
+    invite: 'alcove.solutions/team/join#k3Fq9xZ2mWnT4pLv'
+  };
 
   /* ------------------------------------------------------------------ USDC, and the networks it's sent on */
   var NETS = [
@@ -130,7 +153,11 @@
       var hrs = s.hours || 10, cost = hrs * 1.5;
       return { plan: 'hours', P: { name: 'More notes', month: 0, year: 0 }, hours: hrs, months: 0, people: 1, yearly: false, per: 1.5, list: cost, total: cost, off: 0, from: TODAY, until: null };
     }
-    var P = PLANS[s.plan] || PLANS.pro, n = Math.max(1, s.months || 1), people = s.plan === 'team' ? Math.max(3, s.people || TEAM.count) : 1;
+    if (s.plan === 'team') {
+      var lic = Math.max(1, s.licenses || 6), cost = lic * PLANS.team.month;
+      return { plan: 'team', P: PLANS.team, licenses: lic, months: 1, people: lic, yearly: false, per: PLANS.team.month, list: cost, total: cost, off: 0, from: TODAY, until: null };
+    }
+    var P = PLANS[s.plan] || PLANS.pro, n = Math.max(1, s.months || 1), people = 1;
     var yearly = n >= 12, per = yearly ? P.year : P.month, from = s.kind === 'extend' ? ENDS : TODAY;
     return { plan: P.id, P: P, months: n, people: people, yearly: yearly, per: per, list: P.month * n * people, total: per * n * people, off: (P.month - per) * n * people, from: from, until: plus(from, n) };
   }
@@ -162,13 +189,16 @@
     coShort: { plan: 'pro', months: 12, net: 'base', stage: 'short', got: 100 },
     coOver: { plan: 'pro', months: 12, net: 'base', stage: 'done', got: 150 },
     coExpired: { plan: 'pro', months: 12, net: 'base', stage: 'expired' },
-    coTeam: { plan: 'team', months: 12, people: 6, net: 'base', stage: 'choose', hot: 'go' },
-    coTeamNew: { plan: 'team', months: 12, people: 6, net: null, stage: 'choose' },
-    coTeamNewMonth: { plan: 'team', months: 1, people: 6, net: null, stage: 'choose' },
+    coTeam: { plan: 'team', kind: 'start', licenses: 6, net: 'base', stage: 'choose', hot: 'go' },
+    coTeamNew: { plan: 'team', kind: 'start', licenses: 6, net: null, stage: 'choose' },
     coExtendNew: { plan: 'pro', kind: 'extend', months: 12, net: null, stage: 'choose' },
-    coTeamPeople: { plan: 'team', months: 12, people: 6, net: null, stage: 'choose', hot: 'people-up' },
-    coTeamSend: { plan: 'team', months: 12, people: 6, net: 'base', stage: 'send' },
-    coTeamDone: { plan: 'team', months: 12, people: 6, net: 'base', stage: 'done' },
+    coTeamLicenses: { plan: 'team', kind: 'start', licenses: 6, net: null, stage: 'choose', other: true, hot: 'lic-up' },
+    coTeamSend: { plan: 'team', kind: 'start', licenses: 6, net: 'base', stage: 'send' },
+    coTeamDone: { plan: 'team', kind: 'start', licenses: 6, net: 'base', stage: 'done' },
+    coTeamDoneLink: { plan: 'team', kind: 'start', licenses: 6, net: 'base', stage: 'done', link: true },
+    coTeamMore: { plan: 'team', kind: 'more', licenses: 5, net: null, stage: 'choose' },
+    coTeamMoreBal: { plan: 'team', kind: 'more', licenses: 3, net: null, stage: 'choose', bal: 200, hot: 'go' },
+    coTeamMoreDone: { plan: 'team', kind: 'more', licenses: 3, net: null, stage: 'done', bal: 200 },
     coExtend: { plan: 'pro', kind: 'extend', months: 12, net: 'base', stage: 'choose', hot: 'go' },
     coExtendSend: { plan: 'pro', kind: 'extend', months: 12, net: 'base', stage: 'send' },
     coExtendDone: { plan: 'pro', kind: 'extend', months: 12, net: 'base', stage: 'done' },
@@ -186,16 +216,21 @@
     out: { kind: 'out', text: 'No notes left until 1 Dec', plan: 'Free plan', act: 'Get Pro' },
     pro: { kind: 'pro', plan: 'Pro', act: 'Until 4 Nov 2027' },
     extended: { kind: 'pro', plan: 'Pro', act: 'Until 10 Nov 2027' },
-    team: { kind: 'pro', plan: 'Team', act: 'Until 4 Nov 2027' },
+    team: { kind: 'pro', plan: 'Team', act: 'Vandelay Industries' },
+    teamLow: { kind: 'low', plan: 'Team', act: '2 licenses left · Buy' },
+    teamWait: { kind: 'wait', text: 'No team license yet', left: '3 h 10 min', share: 63, plan: 'Free plan', act: 'Team' },
     ending: { kind: 'ending', plan: 'Pro', act: 'Ends in 6 days · Extend' },
     ended: { kind: 'free', left: '5 h', share: 100, plan: 'Free plan', act: 'See plans' },
     waiting: { kind: 'waiting', text: 'Waiting for 144 USDC', plan: 'Pro, 12 months', act: 'Open' }
   };
   function foot(kind) {
     var hot = /-hot$/.test(kind || ''), f = FOOT[(kind || '').replace(/-hot$/, '')] || FOOT.free;
-    /* A paid plan is a small card on the evening: its sun up while it runs, half set when it's ending. */
-    var card = f.kind === 'pro' || f.kind === 'ending';
-    return assign({ hotCls: hot ? ' is-hot' : '', hasArrow: true, goCls: '', isCard: card, isRow: !card, cardCls: f.kind === 'ending' ? ' is-ending' : '', smallCls: f.kind === 'ending' ? 'is-warm' : '', isFree: f.kind === 'free', isOut: f.kind === 'out', isPro: f.kind === 'pro', isEnding: f.kind === 'ending', isWaiting: f.kind === 'waiting', warmCls: f.warm ? ' is-warm' : '', meter: 'width: ' + (f.share || 0) + '%', go: null }, f);
+    /*
+     * A paid plan is a row with its small sun: up while it runs, half set when it's ending. A team's admin is told in warm
+     * when its licenses run low. Someone on a team without a license is on their own plan, and told so above it.
+     */
+    var card = f.kind === 'pro' || f.kind === 'ending' || f.kind === 'low';
+    return assign({ hotCls: hot ? ' is-hot' : '', hasArrow: true, goCls: '', isCard: card, isRow: !card, cardCls: f.kind === 'ending' ? ' is-ending' : '', smallCls: f.kind === 'ending' || f.kind === 'low' ? 'is-warm' : '', isFree: f.kind === 'free' || f.kind === 'wait', isWait: f.kind === 'wait', isOut: f.kind === 'out', isPro: f.kind === 'pro', isEnding: f.kind === 'ending', isWaiting: f.kind === 'waiting', warmCls: f.warm ? ' is-warm' : '', meter: 'width: ' + (f.share || 0) + '%', go: null }, f);
   }
 
   /* ------------------------------------------------------------------ Plans, by moment */
@@ -209,6 +244,8 @@
     plansPro: { mine: 'pro', toast: 'You’re on Pro until 4 Nov 2027.' },
     plansProRest: { mine: 'pro' },
     plansTeamMine: { mine: 'team' },
+    plansTeamAdmin: { mine: 'teamAdmin' },
+    plansHotTeamStart: { hot: 'get-team' },
     plansEnding: { mine: 'ending' }
   };
   Object.keys(CO).forEach(function (k) { STEPS[k] = { co: k }; });
@@ -242,6 +279,11 @@
     plExtended: { to: 'plan', plan: 'extended', toast: 'Pro runs to 10 Nov 2027.' },
     plEnded: { to: 'plan', plan: 'ended' },
     plTeam: { to: 'plan', plan: 'team' },
+    plTeamAdmin: { to: 'plan', plan: 'teamAdmin' },
+    plTeamLow: { to: 'plan', plan: 'teamLow' },
+    plTeamLowHot: { to: 'plan', plan: 'teamLow', hot: 'buy-licenses' },
+    plTeamMore: { to: 'plan', plan: 'teamLow', co: 'coTeamMore' },
+    plTeamWait: { to: 'plan', plan: 'teamWait' },
     plCoHours: { to: 'plan', plan: 'out', co: 'coHours' }
   };
   if (AH.ST3 && AH.ST3.STEPS) Object.keys(SET).forEach(function (k) { AH.ST3.STEPS[k] = SET[k]; });
@@ -272,12 +314,32 @@
       { b: 'call', step: 'callCoSend', t: 'Send it from your phone while the call goes on.' },
       { b: 'call', step: 'callBack', t: 'The moment it arrives, notes start again, and say where they picked up.' }
     ] },
-    { name: 'One plan for the team', frames: [
-      { b: 'plans', step: 'plansHotTeam', t: 'Click Get Team.' },
-      { b: 'plans', step: 'coTeamPeople', t: 'Everyone on the team on Alcove is counted in. Add or take away people; Team starts at 3.' },
-      { b: 'plans', step: 'coTeam', t: '6 people for a year: 1,152 USDC, 288 less than month by month. Get the address.' },
-      { b: 'plans', step: 'coTeamSend', t: 'One payment covers everyone.' },
-      { b: 'plans', step: 'coTeamDone', t: 'Vandelay Industries is on Team until 4 November 2027.' }
+    { name: 'Start a team', frames: [
+      { b: 'plans', step: 'plansHotTeamStart', t: 'On Plans, Team is licenses: $40 for each person, 30 days at a time. Press Start a team.' },
+      { b: 'plans', step: 'coTeamNew', t: 'Name it, and choose how many licenses: one for each of you, to start.' },
+      { b: 'plans', step: 'coTeamSend', t: 'Pay as for Pro: the exact amount, to an address made for this payment.' },
+      { b: 'plans', step: 'coTeamDoneLink', t: 'Vandelay Industries is on Team, with you its admin. Make an invite link for each person.' },
+      { b: 'team', step: 'teamAdmin', t: 'Team shows everyone on it under their license, the licenses left, and more invites.' }
+    ] },
+    { name: 'Joining by an invite', frames: [
+      { b: 'join', step: 'joinSignIn', t: 'An invite opens a page of its own. Signed out, it asks you to sign in first.' },
+      { b: 'join', step: 'joinHot', t: 'Whose team it is, and what joining gives you. Nothing happens until Join.' },
+      { b: 'join', step: 'joinDone', t: 'Joined: one of its licenses is yours now, for 30 days.' },
+      { b: 'join', step: 'joinNoLicense', t: 'With none left, you’re on the team on your own plan, and its admin is told.' },
+      { b: 'join', step: 'joinUsed', t: 'An invite works once, for a day.' }
+    ] },
+    { name: 'Licenses running low', frames: [
+      { b: 'home', plan: 'teamLow', step: 'home', t: 'Under 5 left, the side panel says so, in warm. The admin alone sees it.' },
+      { b: 'team', step: 'teamAdminHot', t: 'Team says who’s waiting. Buy licenses is filled while someone is.' },
+      { b: 'team', step: 'teamAdminMore', t: 'Checkout opens on how many, with what’s left in view.' },
+      { b: 'settings', step: 'plTeamLowHot', t: 'Settings › Plan has the same, with buying one when it’s needed, and refunds.' },
+      { b: 'team', step: 'teamAdminRemove', t: 'Remove asks in place: the license isn’t refunded, and notes they shared stay.' }
+    ] },
+    { name: 'On a team without a license', frames: [
+      { b: 'home', plan: 'teamWait', step: 'home', t: 'None was left when you opened Alcove: the side panel says so, over your own plan.' },
+      { b: 'team', step: 'teamWait', t: 'Team says why the team’s notes and workspaces aren’t open, and who has been told.' },
+      { b: 'settings', step: 'plTeamWait', t: 'Settings › Plan says it once, over Free. One is yours the next time you open Alcove after more are bought.' },
+      { b: 'team', step: 'teamMember', t: 'With a license: the team’s people, and the notes they made visible to it.' }
     ] },
     { name: 'Extend before it ends', frames: [
       { b: 'settings', step: 'plEnding', t: 'A week before, the side panel and Settings say when Pro ends. An email says it too.' },
@@ -298,7 +360,7 @@
       { b: 'settings', step: 'plLow', t: 'With under an hour left the numbers turn warm. One toast said so, once.' },
       { b: 'settings', step: 'plOut', t: 'Out of notes: calls go on without them until 1 December. Get Pro, or add 10 hours.' },
       { b: 'settings', step: 'plPro', t: 'Pro: unlimited notes, the date it runs to, and every payment.' },
-      { b: 'settings', step: 'plTeam', t: 'Team: who’s on it, pooled uploads, Add people.' },
+      { b: 'settings', step: 'plTeam', t: 'Team: your license, notes of your own, and the team’s shared storage.' },
       { b: 'settings', step: 'plEnded', t: 'Pro ended: back on Free, and nothing was deleted.' }
     ] },
     { name: 'In the light', frames: [

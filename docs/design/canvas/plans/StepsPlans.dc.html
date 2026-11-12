@@ -35,6 +35,8 @@
 <sc-if value="{{f.isSettings}}" hint-placeholder-val="{{false}}"><dc-import name="Settings" mode="{{f.mode}}" step="{{f.step}}" hint-size="100%,100%"></dc-import></sc-if>
 <sc-if value="{{f.isHome}}" hint-placeholder-val="{{false}}"><dc-import name="Home" mode="{{f.mode}}" step="{{f.step}}" plan="{{f.plan}}" hint-size="100%,100%"></dc-import></sc-if>
 <sc-if value="{{f.isCall}}" hint-placeholder-val="{{false}}"><dc-import name="CallOut" mode="{{f.mode}}" step="{{f.step}}" hint-size="100%,100%"></dc-import></sc-if>
+<sc-if value="{{f.isTeam}}" hint-placeholder-val="{{false}}"><dc-import name="TeamPlan" mode="{{f.mode}}" step="{{f.step}}" hint-size="100%,100%"></dc-import></sc-if>
+<sc-if value="{{f.isJoin}}" hint-placeholder-val="{{false}}"><dc-import name="Join" mode="{{f.mode}}" step="{{f.step}}" hint-size="100%,100%"></dc-import></sc-if>
 </div></div>
 </div>
 </sc-for>
@@ -43,7 +45,7 @@
 </sc-for>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":4668,"height":6200}}'>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":4668,"height":7700}}'>
 class Component extends DCLogic {
   renderVals() {
     var PL = window.AH.PL;
@@ -52,7 +54,7 @@ class Component extends DCLogic {
         return {
           name: r.name, cls: r.phone ? ' is-phone' : '',
           frames: r.frames.map(function (f, i) {
-            return { n: i + 1, t: f.t, step: f.step, mode: f.mode || 'dark', plan: f.plan || 'free', isPlans: f.b === 'plans', isSettings: f.b === 'settings', isHome: f.b === 'home', isCall: f.b === 'call' };
+            return { n: i + 1, t: f.t, step: f.step, mode: f.mode || 'dark', plan: f.plan || 'free', isPlans: f.b === 'plans', isSettings: f.b === 'settings', isHome: f.b === 'home', isCall: f.b === 'call', isTeam: f.b === 'team', isJoin: f.b === 'join' };
           })
         };
       })

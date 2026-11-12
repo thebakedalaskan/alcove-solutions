@@ -26,7 +26,7 @@
 <div class="pl-mini">
 <span class="pl-win {{artCls}}" aria-hidden="true"><i class="sky"></i><i class="dawn"></i><i class="glow"></i><i class="sun"></i><i class="sea"></i><i class="rim"></i></span>
 <span><b>{{sumName}}</b><small class="clamp1">{{miniSub}}</small></span>
-<span class="t">{{totalText}}<small>USDC</small></span>
+<span class="t">{{totalText}}<small>{{totalUnit}}</small></span>
 </div>
 
 <header class="pl-co-h">
@@ -39,13 +39,17 @@
 <div class="pl-co-b">
 
 <sc-if value="{{isChoose}}" hint-placeholder-val="{{true}}">
-<sc-if value="{{isTeam}}" hint-placeholder-val="{{false}}">
+<sc-if value="{{isTeamStart}}" hint-placeholder-val="{{false}}">
 <div class="pl-sec">
-<p class="pl-q">Who it’s for<small>Add people later for the months left</small></p>
+<p class="pl-q">Your team<small>You’re its admin: you buy its licenses and invite people.</small></p>
+<div class="pl-field"><span class="pl-fk">Its name</span><span class="pl-fv">{{teamName}}</span></div>
+</div>
+</sc-if>
+<sc-if value="{{isTeamMore}}" hint-placeholder-val="{{false}}">
+<div class="pl-sec">
 <div class="pl-people">
 <dc-import name="Faces" who="{{teamWho}}" size="30" max="5" ring="var(--surface)" hint-size="130px,33px"></dc-import>
-<span class="who"><b>{{peopleText}}</b><small>{{peopleSub}}</small></span>
-<span class="pl-step" role="group" aria-label="People"><button type="button" aria-label="One person fewer" onClick="{{peopleDown}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.minus}}"></path></svg></button><b>{{peopleN}}</b><button type="button" class="{{hotPeople}}" aria-label="One more person" onClick="{{peopleUp}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.plus}}"></path></svg></button></span>
+<span class="who"><b>{{leftText}}</b><small>{{leftSub}}</small></span>
 </div>
 </div>
 </sc-if>
@@ -66,14 +70,15 @@
 <sc-if value="{{showOther}}" hint-placeholder-val="{{true}}">
 <div class="pl-other">
 <sc-if value="{{s.other}}" hint-placeholder-val="{{false}}">
-<span class="pl-step" role="group" aria-label="Months"><button type="button" aria-label="One month fewer" onClick="{{otherDown}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.minus}}"></path></svg></button><b>{{otherText}}</b><button type="button" aria-label="One more month" onClick="{{otherUp}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.plus}}"></path></svg></button></span>
+<span class="pl-step" role="group" aria-label="{{lenQ}}"><button type="button" aria-label="One fewer" onClick="{{otherDown}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.minus}}"></path></svg></button><b>{{otherText}}</b><button type="button" class="{{hotLic}}" aria-label="One more" onClick="{{otherUp}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.plus}}"></path></svg></button></span>
 <span>{{otherPrice}}</span>
 </sc-if>
-<sc-if value="{{noOther}}" hint-placeholder-val="{{true}}"><button type="button" class="lnk" onClick="{{otherOn}}">Another length</button><span>Any number of months from 1 to 36.</span></sc-if>
+<sc-if value="{{noOther}}" hint-placeholder-val="{{true}}"><button type="button" class="lnk" onClick="{{otherOn}}">{{otherLink}}</button><span>{{otherHint}}</span></sc-if>
 </div>
 </sc-if>
 </div>
 
+<sc-if value="{{needsNet}}" hint-placeholder-val="{{true}}">
 <div class="pl-sec">
 <p class="pl-q">Pay with USDC on<small>Any wallet or exchange</small></p>
 <div class="pl-nets" role="radiogroup" aria-label="Network">
@@ -87,6 +92,7 @@
 </div>
 <sc-if value="{{below}}" hint-placeholder-val="{{false}}"><p class="pl-note" role="status"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.alert}}"></path></svg><span>{{belowText}}</span></p></sc-if>
 </div>
+</sc-if>
 </sc-if>
 
 <sc-if value="{{isPay}}" hint-placeholder-val="{{false}}">
@@ -142,6 +148,16 @@
 <span><b>{{receiptT}}</b><small>{{receiptS}} · <code>AV-7Q2K</code></small></span>
 <button type="button" class="b b-line b-sm"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.download}}"></path></svg>Receipt</button>
 </div>
+<sc-if value="{{hasInvite}}" hint-placeholder-val="{{false}}">
+<div class="pl-invite">
+<p class="pl-q">Invite your team<small>Each link lets one person join, for a day. A license is taken when they next open Alcove.</small></p>
+<sc-if value="{{noLink}}" hint-placeholder-val="{{true}}"><button type="button" class="b b-line" onClick="{{makeLink}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.link}}"></path></svg>Make an invite link</button></sc-if>
+<sc-if value="{{s.link}}" hint-placeholder-val="{{false}}">
+<div class="pl-link"><code>{{inviteLink}}</code><button type="button" class="b b-line b-sm" onClick="{{copyLink}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{copyLinkI}}"></path></svg>{{copyLinkT}}</button></div>
+<p class="pl-hint">Works once, until tomorrow 16:12. <button type="button" class="lnk" onClick="{{makeLink}}">Make another</button></p>
+</sc-if>
+</div>
+</sc-if>
 <sc-if value="{{hasRem}}" hint-placeholder-val="{{true}}"><p class="pl-rem"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.clock}}"></path></svg>Nothing renews by itself. Alcove reminds you a week before it ends.</p></sc-if>
 </div>
 </sc-if>
@@ -157,7 +173,7 @@
 <footer class="pl-co-f">
 <sc-if value="{{isChoose}}" hint-placeholder-val="{{true}}">
 <sc-if value="{{showCompare}}" hint-placeholder-val="{{false}}"><button type="button" class="b b-quiet grow" onClick="{{compare}}">Compare plans</button></sc-if>
-<button type="button" class="b b-press{{hotGo}}" disabled="{{cantGo}}" onClick="{{go}}">Get the address</button>
+<button type="button" class="b b-press{{hotGo}}" disabled="{{cantGo}}" onClick="{{go}}">{{goLabel}}</button>
 </sc-if>
 <sc-if value="{{payFoot}}" hint-placeholder-val="{{false}}">
 <p class="hint">{{payHint}}</p>
@@ -183,7 +199,7 @@
 <div class="pl-lines">
 <sc-for list="{{lines}}" as="l" hint-placeholder-count="2"><p class="pl-ln{{l.cls}}"><span>{{l.t}}</span><b>{{l.v}}</b></p></sc-for>
 </div>
-<p class="pl-total"><span class="lab">Total</span><b>{{totalText}} <small>USDC</small></b></p>
+<p class="pl-total"><span class="lab">Total</span><b>{{totalText}} <small>{{totalUnit}}</small></b></p>
 <p class="pl-until">{{untilPre}} <b>{{untilText}}</b></p>
 <p class="pl-sum-f"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.info}}"></path></svg><span>Priced in US dollars. 1 USDC is 1 dollar, so you send exactly the total.</span></p>
 </aside>
@@ -192,7 +208,7 @@
 </section>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props='{"at":{"editor":"enum","options":["coChoose","coMonth","coNet","coOther","coEth","coSend","coSendSol","coAsk","coSeen","coDone","coShort","coOver","coExpired","coTeam","coTeamSend","coTeamDone","coExtend","coExtendSend","coExtendDone","coHours","coHoursDone","coCall","coCallSend","coCallDone"],"default":"coChoose"},"mode":{"editor":"enum","options":["dark","light"],"default":"dark"},"from":{"editor":null,"default":"plans"},"onClose":{"editor":null,"default":null},"onDone":{"editor":null,"default":null},"onCompare":{"editor":null,"default":null},"pm":{"editor":null,"default":1},"$preview":{"width":1100,"height":760}}'>
+<script type="text/x-dc" data-dc-script data-props='{"at":{"editor":"enum","options":["coChoose","coMonth","coNet","coOther","coEth","coSend","coSendSol","coAsk","coSeen","coDone","coShort","coOver","coExpired","coTeam","coTeamNew","coTeamLicenses","coTeamSend","coTeamDone","coTeamDoneLink","coTeamMore","coTeamMoreBal","coTeamMoreDone","coExtend","coExtendSend","coExtendDone","coHours","coHoursDone","coCall","coCallSend","coCallDone"],"default":"coChoose"},"mode":{"editor":"enum","options":["dark","light"],"default":"dark"},"from":{"editor":null,"default":"plans"},"onClose":{"editor":null,"default":null},"onDone":{"editor":null,"default":null},"onCompare":{"editor":null,"default":null},"pm":{"editor":null,"default":1},"$preview":{"width":1100,"height":760}}'>
 class Component extends DCLogic {
   componentDidMount() { this.__stagePrev = this.__stageNow; }
   componentDidUpdate() { this.watchStage(); }
@@ -217,11 +233,14 @@ class Component extends DCLogic {
     var AH = window.AH, PL = AH.PL, I = PL.I, p = this.props, self = this, hs = AH.hash();
     var at = hs.co || p.at || 'coChoose';
     var own = this.state && this.state.__at === at ? this.state : {};
-    var s = AH.assign({ hours: 10, people: PL.TEAM.count, months: 12 }, PL.CO[at] || PL.CO.coChoose, own);
+    var s = AH.assign({ hours: 10, people: PL.TEAM.count, months: 12, licenses: 6 }, PL.CO[at] || PL.CO.coChoose, own);
     var set = function (patch) { self.setState(AH.assign({}, self.state && self.state.__at === at ? self.state : {}, { __at: at, hot: '' }, patch)); };
     var mode = hs.mode || p.mode || 'dark', alone = typeof p.onClose !== 'function', from = s.from || p.from || 'plans';
     var q = PL.quote(s), net = PL.NET[s.net || 'base'], team = s.plan === 'team', hours = s.plan === 'hours', ext = s.kind === 'extend';
     var stage = s.stage, waiting = stage === 'send', short = stage === 'short';
+    /* Team: starting one (its name, then licenses), or its admin buying more. The balance pays when it covers the total. */
+    var start = team && s.kind !== 'more', more = team && s.kind === 'more', T = PL.TEAM;
+    var covered = (s.bal || 0) >= q.total && q.total > 0;
     var pm = Number(p.pm) || 1;
     var v = { I: I, s: s, mode: mode, USDC: PL.USDC, net: net, isTeam: team, stage: stage };
     v.vars = AH.rootStyle('blue-hour', mode, 16.2) + '; --frame: ' + AH.ok(AH.PALS['blue-hour'].dark.well) + '; --pm: ' + pm;
@@ -230,16 +249,21 @@ class Component extends DCLogic {
     v.withScrim = true;
 
     /* What it's for, said once: in the title, and beside every step. */
-    v.title = hours ? 'More notes' : team ? 'Get Team' : ext ? 'Extend Pro' : 'Get Pro';
+    v.title = hours ? 'More notes' : team ? (more ? 'Buy licenses' : 'Start a team') : ext ? 'Extend Pro' : 'Get Pro';
+    v.isTeamStart = start; v.isTeamMore = more; v.teamName = T.company;
+    v.leftText = T.left + ' of ' + T.bought + ' licenses left';
+    v.leftSub = 'Aiko is waiting for one. Each runs 30 days from when it’s taken.';
     v.sumName = hours ? s.hours + ' hours of notes' : team ? 'Team' : 'Pro';
     v.artCls = hours ? 'is-free' : team ? 'is-team' : 'is-pro';
     v.starry = hours;
     v.teamWho = PL.TEAM.people;
-    v.sumSub = hours ? 'For when this month’s run out. Kept until you use them.' : team ? 'For ' + PL.TEAM.company + ', ' + q.people + ' people' : ext ? 'Added to the 6 days you have left' : 'For Art Vandelay';
-    v.miniSub = hours ? 'Kept until you use them' : team ? q.people + ' people · ' + PL.mo(q.months) : PL.mo(q.months) + (q.yearly ? ' · 20% off' : '');
-    v.totalText = PL.amt(q.total);
+    v.sumSub = hours ? 'For this period' : team ? (more ? 'For ' + T.company + ', ' + T.left + ' left now' : 'For ' + T.company + ', with you its admin') : ext ? 'Added to the 6 days you have left' : 'For Art Vandelay';
+    v.miniSub = hours ? 'For this period' : team ? q.licenses + ' licenses' : PL.mo(q.months) + (q.yearly ? ' · 20% off' : '');
+    v.totalText = covered ? PL.usd(q.total) : PL.amt(q.total);
+    v.totalUnit = covered ? 'from your balance' : 'USDC';
     var lines = [];
     if (hours) lines.push({ t: s.hours + ' hours at $1.50 an hour', v: PL.usd(q.total), cls: '' });
+    else if (team) lines.push({ t: q.licenses + ' licenses at ' + PL.usd(q.P.month), v: PL.usd(q.total), cls: '' });
     else {
       lines.push({ t: (team ? q.people + ' people × ' : '') + PL.mo(q.months) + ' at ' + PL.usd(q.P.month), v: PL.usd(q.list), cls: '' });
       if (q.off) lines.push({ t: 'A year or more: 20% off', v: '−' + PL.usd(q.off), cls: ' is-off' });
@@ -247,8 +271,8 @@ class Component extends DCLogic {
     v.lines = lines;
     var until = q.until;
     if (stage === 'done' && s.got && s.got > q.total) until = PL.plus(q.until, 0, PL.extraDays(q, s.got - q.total));
-    v.untilPre = hours ? '' : (team ? 'Team' : 'Pro') + ' until';
-    v.untilText = hours ? 'Kept until you use them' : PL.long(until);
+    v.untilPre = hours ? '' : team ? 'Each runs' : 'Pro until';
+    v.untilText = hours ? 'Until this period ends' : team ? '30 days from when it’s taken' : PL.long(until);
 
     /* Choose, pay, done. */
     var n = stage === 'choose' ? 1 : stage === 'done' ? 3 : 2;
@@ -257,12 +281,17 @@ class Component extends DCLogic {
     v.isSeen = stage === 'seen'; v.isDone = stage === 'done'; v.isExpired = stage === 'expired';
 
     /* How long, or how many hours. */
-    v.lenQ = hours ? 'How many hours' : ext ? 'How much longer' : 'How long';
-    v.lenHint = hours ? '$1.50 an hour' : '';
-    v.hasLenHint = hours;
-    v.hasBrk = !hours;
+    v.lenQ = hours ? 'How many hours' : team ? 'How many licenses' : ext ? 'How much longer' : 'How long';
+    v.lenHint = hours ? '$1.50 an hour' : team ? '$40 each, one person for 30 days' : '';
+    v.hasLenHint = hours || team;
+    v.hasBrk = !hours && !team;
     v.dursCls = hours ? ' is-3' : '';
-    if (hours) {
+    if (team) {
+      v.durs = [3, 6, 10, 25].map(function (n) {
+        var on = !s.other && s.licenses === n;
+        return { n: n + ' licenses', p: PL.usd(n * q.P.month), m: more ? (n - 1) + ' spare after Aiko’s' : n === T.count ? 'For the 6 of you' : n === 3 ? 'To start with' : 'Room for ' + (n - T.count) + ' more', off: false, onA: on ? 'true' : 'false', pick: function () { set({ licenses: n, other: false }); } };
+      });
+    } else if (hours) {
       v.durs = [10, 20, 50].map(function (h) { var on = s.hours === h; return { n: h + ' hours', p: PL.usd(h * 1.5), m: h + ' hour-long calls', off: false, onA: on ? 'true' : 'false', pick: function () { set({ hours: h }); } }; });
     } else {
       v.durs = PL.DURATIONS.map(function (m) {
@@ -271,11 +300,14 @@ class Component extends DCLogic {
       });
     }
     v.showOther = !hours; v.noOther = !s.other;
-    v.otherText = PL.mo(s.months);
+    v.otherText = team ? q.licenses + (q.licenses === 1 ? ' license' : ' licenses') : PL.mo(s.months);
     v.otherPrice = PL.usd(q.total) + (q.yearly ? ', 20% off' : '');
-    v.otherOn = function () { set({ other: true, months: s.months === 24 ? 18 : Math.max(s.months, 2) }); };
-    v.otherDown = function () { set({ other: true, months: Math.max(1, s.months - 1) }); };
-    v.otherUp = function () { set({ other: true, months: Math.min(36, s.months + 1) }); };
+    v.otherLink = team ? 'Another number' : 'Another length';
+    v.otherHint = team ? 'Any number from 1 to 500.' : 'Any number of months from 1 to 12.';
+    v.otherOn = function () { if (team) set({ other: true, licenses: Math.max(q.licenses + 1, 2) }); else set({ other: true, months: Math.max(s.months, 2) }); };
+    v.otherDown = function () { if (team) set({ other: true, licenses: Math.max(1, q.licenses - 1) }); else set({ other: true, months: Math.max(1, s.months - 1) }); };
+    v.otherUp = function () { if (team) set({ other: true, licenses: Math.min(500, q.licenses + 1) }); else set({ other: true, months: Math.min(12, s.months + 1) }); };
+    v.hotLic = s.hot === 'lic-up' ? 'is-hot' : '';
 
     /* Who's on Team. */
     v.peopleN = q.people + ' people';
@@ -293,9 +325,11 @@ class Component extends DCLogic {
     v.below = v.isChoose && !!s.net && q.total < net.min;
     var enough = PL.DURATIONS.filter(function (m) { return PL.quote(AH.assign({}, s, { months: m })).total >= net.min; })[0];
     v.belowText = net.name + ' takes at least ' + net.min + ' USDC. ' + (hours ? 'Choose 20 hours or more, or another network.' : 'Choose ' + PL.mo(enough || 3) + ' or more, or another network.');
-    v.cantGo = !s.net || v.below;
+    v.needsNet = !covered;
+    v.cantGo = !covered && (!s.net || v.below);
+    v.goLabel = covered ? 'Buy with your balance' : 'Get the address';
     v.hotGo = s.hot === 'go' && !v.cantGo ? ' is-hot' : '';
-    v.go = function () { if (!v.cantGo) set({ stage: 'send', ask: false }); };
+    v.go = function () { if (v.cantGo) return; set({ stage: covered ? 'done' : 'send', ask: false }); };
     v.showCompare = from !== 'plans' && !hours;
     v.compare = function () { if (typeof p.onCompare === 'function') p.onCompare(); };
 
@@ -304,7 +338,7 @@ class Component extends DCLogic {
     v.sendLab = short ? 'Send the rest' : 'Send exactly';
     v.sendAmt = PL.amt(short ? rest : q.total);
     v.shortSo = PL.amt(got) + ' of ' + PL.amt(q.total) + ' USDC arrived.';
-    v.shortKeep = 'If you don’t, the ' + PL.amt(got).replace(/\.00$/, '') + ' USDC that arrived buys ' + PL.buys(q, got).text + ' of Pro once the address closes.';
+    v.shortKeep = 'If you don’t, the ' + PL.amt(got).replace(/\.00$/, '') + ' USDC that arrived stays in your balance.';
     v.qr = PL.qr(net.addr);
     v.copyAddrT = s.copied === 'addr' ? 'Copied' : 'Copy address';
     v.copyAddrI = s.copied === 'addr' ? I.check : I.copy;
@@ -320,7 +354,7 @@ class Component extends DCLogic {
     };
     v.payFoot = (waiting || short) && !s.ask;
     v.askFoot = (waiting || short) && !!s.ask;
-    v.payHint = hours ? 'You can close this. The hours are added as soon as your payment arrives.' : 'You can close this. ' + (team ? 'Team' : 'Pro') + ' starts as soon as your payment arrives.';
+    v.payHint = hours ? 'You can close this. The hours are added as soon as your payment arrives.' : team ? 'You can close this. The licenses are added as soon as your payment arrives.' : 'You can close this. Pro starts as soon as your payment arrives.';
     v.askCancel = function () { set({ ask: true }); };
     v.keep = function () { set({ ask: false }); };
     v.cancelGo = function () { if (alone) set({ stage: 'choose', ask: false }); else p.onClose('cancelled'); };
@@ -328,16 +362,22 @@ class Component extends DCLogic {
     /* Seen, then done. */
     /* The amount counts up as the payment lands, while you watch; reopened later, it's simply there. */
     v.seenAmt = PL.amt(this.__count != null ? this.__count : q.total);
-    v.startsLabel = hours ? 'Hours added' : (team ? 'Team' : 'Pro') + ' starts';
-    v.seenLine = hours ? 'Adding your hours. This takes a minute or two.' : 'Starting ' + (team ? 'Team' : 'Pro') + '. This takes a minute or two.';
+    v.startsLabel = hours ? 'Hours added' : team ? 'Licenses added' : 'Pro starts';
+    v.seenLine = hours ? 'Adding your hours. This takes a minute or two.' : team ? 'Adding the licenses. This takes a minute or two.' : 'Starting Pro. This takes a minute or two.';
     v.seenHint = 'You can close this. It finishes by itself.';
-    v.doneTitle = hours ? s.hours + ' more hours of notes' : team ? PL.TEAM.company + ' is on Team' : ext ? 'Pro runs to ' + PL.day(until).replace(/^\w+ /, '') + ' ' + until.getFullYear() : 'You’re on Pro';
-    v.doneLine = hours ? 'They’re yours until you use them, and notes start again now.' : team ? 'Until ' + PL.long(until) + '. Everyone on it has unlimited notes from now on.' : 'Until ' + PL.long(until) + '.';
-    v.doneMore = s.got && s.got > q.total ? 'You sent ' + PL.amt(s.got) + ' USDC, ' + PL.amt(s.got - q.total) + ' more than asked: that’s ' + PL.extraDays(q, s.got - q.total) + ' more days.' : from === 'call' ? 'Notes are on again in Pricing sync.' : '';
+    v.doneTitle = hours ? s.hours + ' more hours of notes' : team ? (more ? q.licenses + ' more licenses' : T.company + ' is on Team') : ext ? 'Pro runs to ' + PL.day(until).replace(/^\w+ /, '') + ' ' + until.getFullYear() : 'You’re on Pro';
+    v.doneLine = hours ? 'They’re yours until this period ends, and notes start again now.' : team ? (more ? (T.left + q.licenses) + ' licenses left now. Aiko gets one the next time they open Alcove.' : q.licenses + ' licenses, one for each person you invite. Each is taken when they next open Alcove, and yours is taken now.') : 'Until ' + PL.long(until) + '.';
+    v.doneMore = s.got && s.got > q.total ? 'You sent ' + PL.amt(s.got) + ' USDC, ' + PL.amt(s.got - q.total) + ' more than asked: it’s in your balance.' : from === 'call' ? 'Notes are on again in Pricing sync.' : '';
     v.hasDoneMore = !!v.doneMore;
-    v.receiptT = PL.amt(s.got && s.got > q.total ? s.got : q.total) + ' USDC on ' + net.name;
-    v.receiptS = '4 Nov 2026 · ' + (hours ? s.hours + ' hours of notes' : (team ? 'Team, ' + q.people + ' people, ' : 'Pro, ') + PL.mo(q.months));
-    v.hasRem = !hours;
+    v.receiptT = covered ? PL.usd(q.total) + ' from your balance' : PL.amt(s.got && s.got > q.total ? s.got : q.total) + ' USDC on ' + net.name;
+    v.receiptS = '4 Nov 2026 · ' + (hours ? s.hours + ' hours of notes' : team ? 'Team, ' + q.licenses + ' licenses' : 'Pro, ' + PL.mo(q.months));
+    v.hasRem = !hours && !team;
+    v.hasInvite = start; v.noLink = !s.link;
+    v.inviteLink = T.invite;
+    v.makeLink = function () { set({ link: true, copied: '' }); };
+    v.copyLinkT = s.copied === 'link' ? 'Copied' : 'Copy';
+    v.copyLinkI = s.copied === 'link' ? I.check : I.copy;
+    v.copyLink = function () { copied('link'); };
     v.doneBtn = from === 'call' ? 'Back to the call' : 'Done';
     v.done = function () { if (typeof p.onDone === 'function') p.onDone(s); else set({ stage: 'choose' }); };
     v.again = function () { set({ stage: 'send' }); };

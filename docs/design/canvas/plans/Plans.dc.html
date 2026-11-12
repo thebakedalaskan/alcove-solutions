@@ -66,7 +66,7 @@
 
 <p class="pl-every-h">On every plan</p>
 <ul class="pl-every" aria-label="On every plan"><sc-for list="{{every}}" as="x" hint-placeholder-count="5"><li><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{x.icon}}"></path></svg>{{x.t}}</li></sc-for></ul>
-<p class="pl-paying"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.wallet}}"></path></svg><span><b>Pay in USDC</b> from any wallet or exchange, for 1 to 24 months at a time. Nothing renews by itself, and when a plan ends you’re back on Free with nothing lost.</span></p>
+<p class="pl-paying"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.wallet}}"></path></svg><span><b>Pay in USDC</b> from any wallet or exchange, for 1 to 12 months at a time. Nothing renews by itself, and when a plan ends you’re back on Free with nothing lost.</span></p>
 </div>
 
 </div>
@@ -107,7 +107,7 @@ class Component extends DCLogic {
     this.__down = !!st.scrolled;
 
     /* The side panel says which plan you're on; on Plans, its row is the place you're on. */
-    var footKind = st.mine === 'ending' ? 'ending' : st.mine === 'team' ? 'team' : st.mine === 'pro' ? 'pro' : 'free';
+    var footKind = st.mine === 'ending' ? 'ending' : st.mine === 'team' || st.mine === 'teamAdmin' ? 'team' : st.mine === 'pro' ? 'pro' : 'free';
     v.side = AH.assign({}, v.side, { foot: AH.assign(PL.foot(footKind), { onCls: ' is-on', go: function () {} }) });
 
     /* Monthly or yearly: each plan shows one price. */
@@ -117,17 +117,27 @@ class Component extends DCLogic {
     v.toMonth = function () { set({ cycle: 'month' }); };
     v.toYear = function () { set({ cycle: 'year' }); };
 
-    var mine = st.mine === 'ending' ? 'pro' : st.mine;
+    var mine = st.mine === 'ending' ? 'pro' : st.mine === 'teamAdmin' ? 'team' : st.mine, admin = st.mine === 'teamAdmin';
     v.cards = PL.ORDER.map(function (id) {
       var P = PL.PLANS[id], isMine = mine === id, per = yearly ? P.year : P.month;
       var c = { id: id, name: P.name, sub: P.sub, mine: isMine && id !== 'free', chip: st.mine === 'ending' && id === 'pro' ? 'Ends in 6 days' : 'Your plan', hot: hot('get-' + id), team: id === 'team', ring: 'var(--surface)',
         facts: P.facts.map(function (f, i) { return { icon: I[f[0]], t: f[1], s: f[2], hasS: !!f[2], cls: i === 0 ? ' is-first' : '' }; }),
-        hasMore: id !== 'pro', more: id === 'free' ? 'Out of notes before the 1st? 10 more hours are $15.' : 'Ask reaches the team’s shared notes.' };
+        hasMore: id !== 'pro', more: id === 'free' ? 'Out of notes before the period ends? 10 more hours are $15.' : 'A license is taken when someone next opens Alcove. Ones nobody takes can be refunded.' };
       if (id === 'free') {
         return AH.assign(c, { price: '$0', per: '', bill: 'Nothing to pay.', save: '',
           hasBtn: false, isHere: true, hereTick: mine === 'free', hereCls: mine === 'free' ? '' : ' is-quiet', here: mine === 'free' ? 'Your plan' : 'Where you’re back to if a plan ends', btn: '', btnC: '', go: null });
       }
       var each = id === 'team';
+      if (each) {
+        /* Team is licenses, a month at a time whichever way the prices are shown. Its admin buys them; a member doesn't. */
+        var member = isMine && !admin;
+        return AH.assign(c, {
+          price: PL.usd(P.month), per: 'a person a month', bill: 'Each license is one person for 30 days.', save: '',
+          hasBtn: !member, isHere: member, hereTick: false, hereCls: ' is-quiet', here: PL.TEAM.memberAdmin + ' buys its licenses',
+          btn: admin ? 'Buy licenses' : 'Start a team', btnC: 'b-line',
+          go: function () { set({ co: admin ? 'coTeamMore' : 'coTeamNew' }); }
+        });
+      }
       return AH.assign(c, {
         price: PL.usd(per), per: each ? 'a person a month' : 'a month',
         bill: yearly ? PL.usd(per * 12) + (each ? ' a person' : '') + ' for 12 months.' : 'For as many months as you choose.',
@@ -136,7 +146,7 @@ class Component extends DCLogic {
         btn: isMine ? 'Extend' : 'Get ' + P.name,
         btnC: (id === 'pro' && mine === 'free') || (isMine && st.mine === 'ending') ? 'b-press' : 'b-line',
         go: function () {
-          var at = id === 'team' ? (yearly ? 'coTeamNew' : 'coTeamNewMonth') : isMine ? 'coExtendNew' : (yearly ? 'coChoose' : 'coMonth');
+          var at = isMine ? 'coExtendNew' : (yearly ? 'coChoose' : 'coMonth');
           set({ co: at });
         }
       });
@@ -148,8 +158,8 @@ class Component extends DCLogic {
     v.coAt = st.co || 'coChoose';
     v.coClose = function () { set({ co: '' }); };
     v.coDone = function (s) {
-      var to = s.plan === 'team' ? 'team' : 'pro';
-      set({ co: '', mine: to, toast: to === 'team' ? 'Vandelay Industries is on Team until 4 Nov 2027.' : 'You’re on Pro until ' + PL.short(PL.quote(s).until) + '.' });
+      var to = s.plan === 'team' ? 'teamAdmin' : 'pro';
+      set({ co: '', mine: to, toast: to === 'teamAdmin' ? (s.kind === 'more' ? s.licenses + ' licenses added to Vandelay Industries.' : 'Vandelay Industries is on Team.') : 'You’re on Pro until ' + PL.short(PL.quote(s).until) + '.' });
       clearTimeout(self.__t); self.__t = setTimeout(function () { self.setState({ toast: '' }); }, 3600);
     };
     v.ov = AH.assign({}, v.ov, { toast: st.toast || '', hasToast: !!st.toast });

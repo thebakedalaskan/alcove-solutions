@@ -23,6 +23,10 @@
    "name": "The app"
   },
   {
+   "id": "team",
+   "name": "Team, on licenses"
+  },
+  {
    "id": "steps",
    "name": "Step by step"
   },
@@ -55,7 +59,7 @@
    "y": 0,
    "w": 1440,
    "h": 900,
-   "title": "Settings › Plan",
+   "title": "Settings \u203a Plan",
    "page": "app",
    "expand": "fill",
    "is_interactive": true
@@ -84,7 +88,7 @@
    "x": 0,
    "y": 0,
    "w": 4668,
-   "h": 5722,
+   "h": 7700,
    "title": "Plans and checkout, every journey step by step",
    "page": "steps"
   },
@@ -142,7 +146,7 @@
    "y": 940,
    "w": 1000,
    "h": 340,
-   "title": "Home’s sunset",
+   "title": "Home\u2019s sunset",
    "page": "parts"
   },
   "PayMotion.dc.html": {
@@ -152,6 +156,26 @@
    "h": 944,
    "title": "Paying, in motion: the sun rises as the payment lands",
    "page": "motion",
+   "is_interactive": true
+  },
+  "TeamPlan.dc.html": {
+   "x": 0,
+   "y": 0,
+   "w": 1440,
+   "h": 900,
+   "title": "Team: its people, licenses and invites",
+   "page": "team",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "Join.dc.html": {
+   "x": 1520,
+   "y": 0,
+   "w": 1440,
+   "h": 900,
+   "title": "Joining a team by its link",
+   "page": "team",
+   "expand": "fill",
    "is_interactive": true
   }
  },

@@ -38,7 +38,7 @@ alcove</button>
 <span class="sd-grow"></span>
 <div class="sd-foot">
 <p class="sd-seal"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{s.I.sealed}}"></path></svg>Confidential compute</p>
-<sc-if value="{{f.isFree}}" hint-placeholder-val="{{true}}"><p class="sd-min{{f.warmCls}}"><b>{{f.left}}</b> of notes left</p><span class="sd-meter{{f.warmCls}}"><i style="{{f.meter}}"></i></span></sc-if>
+<sc-if value="{{f.isWait}}" hint-placeholder-val="{{false}}"><p class="sd-min is-out sd-nolic">{{f.text}}<small>Priya has been told</small></p></sc-if><sc-if value="{{f.isFree}}" hint-placeholder-val="{{true}}"><p class="sd-min{{f.warmCls}}"><b>{{f.left}}</b> of notes left</p><span class="sd-meter{{f.warmCls}}"><i style="{{f.meter}}"></i></span></sc-if>
 <sc-if value="{{f.isOut}}" hint-placeholder-val="{{false}}"><p class="sd-min is-out">{{f.text}}</p><span class="sd-meter"><i style="width: 0%"></i></span></sc-if>
 <sc-if value="{{f.isWaiting}}" hint-placeholder-val="{{false}}"><p class="sd-min is-wait"><span class="pl-dots" aria-hidden="true"><i></i><i></i><i></i></span>{{f.text}}</p></sc-if>
 <sc-if value="{{f.isCard}}" hint-placeholder-val="{{false}}"><button type="button" class="sd-pro{{f.cardCls}}{{f.hotCls}}{{f.onCls}}" onClick="{{f.go}}"><span class="mark" aria-hidden="true"><span class="sky"><i class="sun"></i></span><i class="line"></i><i class="g"></i></span><span class="tx"><b>{{f.plan}}</b><small class="{{f.smallCls}}">{{f.act}}</small></span><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18l6-6-6-6"></path></svg></button></sc-if>

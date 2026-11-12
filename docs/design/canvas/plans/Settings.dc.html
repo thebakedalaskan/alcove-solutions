@@ -707,12 +707,14 @@ class Component extends DCLogic {
     }
 
     /* ---------------------------------------------------------------- Plan: what you're on, what's left, what you paid */
-    var PL = AH.PL, PI = PL.I, planK = st.plan || 'free', onFree = ['free', 'low', 'out', 'ended', 'waiting'].indexOf(planK) >= 0;
+    var PL = AH.PL, PI = PL.I, planK = st.plan || 'free', onFree = ['free', 'low', 'out', 'ended', 'waiting', 'teamWait'].indexOf(planK) >= 0;
+    var onTeam = ['team', 'teamAdmin', 'teamLow'].indexOf(planK) >= 0, TM = PL.TEAM;
     var openCo = function (at) { set({ co: at }); };
     var payItem = function (net, t, s, more) { return AH.assign({ mark: PL.NET[net].mark, t: t, s: s, sCls: '', isWait: false, isPaid: true, hot: '', dl: PI.download, open: null, receipt: function () { self.toastNow('The receipt downloads as a PDF.'); } }, more); };
     var plan = [];
+    if (planK === 'teamWait') plan.push(item('isNote', { text: 'You’re on ' + TM.company + ', but none of its licenses was left for you, so you’re on Free for now. ' + TM.memberAdmin + '’s been told, and one is yours the next time you open Alcove after they buy more.' }));
     if (onFree) {
-      var left = { free: ['1 h 26 min', 0.29], waiting: ['1 h 26 min', 0.29], low: ['24 min', 0.08], out: ['None', 0], ended: ['5 h', 1] }[planK];
+      var left = { free: ['1 h 26 min', 0.29], waiting: ['1 h 26 min', 0.29], teamWait: ['3 h 10 min', 0.63], low: ['24 min', 0.08], out: ['None', 0], ended: ['5 h', 1] }[planK];
       plan.push(row('plan', 'Free', 'plan', {
         help: planK === 'ended' ? 'Pro ended on Tuesday 3 November. Nothing was deleted: you’re back to Free’s 5 hours of notes a month.' : 'Every feature, with 5 hours of notes and 10 GB of uploads a month.',
         cls: ' is-still', btnT: planK === 'ended' ? 'Get Pro again' : 'Get Pro', btnC: planK === 'out' ? 'b-press' : 'b-line', hotBtn: hot('get-pro'), btnGo: function () { openCo('coChoose'); },
@@ -730,20 +732,45 @@ class Component extends DCLogic {
       if (planK === 'waiting') plan.push(item('isPays', { payH: 'Payments', pays: [payItem('base', 'Pro, 12 months', 'Waiting for 144.00 USDC on Base · open until tomorrow 16:12', { sCls: 'is-wait', isWait: true, isPaid: false, hot: hot('open'), open: function () { openCo('coSend'); } })] }));
       if (planK === 'ended') plan.push(item('isPays', { payH: 'Payments', pays: [payItem('sol', 'Pro, 1 month', '15.00 USDC on Solana · 3 Oct 2026')] }));
     } else {
-      var team = planK === 'team', until = planK === 'extended' ? 'Wednesday 10 November 2027' : 'Thursday 4 November 2027';
-      plan.push(row('plan', team ? 'Team' : 'Pro', 'plan', {
-        help: planK === 'ending' ? 'Ends in 6 days, on Tuesday 10 November. Then you’re back on Free, and nothing is deleted.' : team ? '6 people at Vandelay Industries, until ' + until + '. Paid by you.' : 'Until ' + until + '. Nothing renews by itself: Alcove reminds you a week before.',
+      if (onTeam) {
+        /* Team: whose it is and until when, notes of your own, the team's pooled storage; for its admin, the licenses. */
+        var admin = planK !== 'team', low = planK === 'teamLow';
+        plan.push(row('plan', 'Team', 'plan', {
+          help: admin ? TM.company + '. You’re its admin: your license runs to 12 December.' : TM.company + '. Your license runs to 12 December; ' + TM.memberAdmin + ' buys them.',
+          cls: ' is-still', btnT: admin ? 'Open Team' : 'Open Team', btnC: 'b-line', hotBtn: hot('team'), btnGo: function () { v.go('team'); },
+          btn2T: 'See plans', btn2Go: function () { v.go('plans'); }
+        }));
+        plan.push(row('left', 'Notes left this period', 'left', {
+          help: 'Your own, back to 50 hours when your license is taken again. Calls without notes are free.',
+          bigT: '41 h', cls: ' is-still', sun: '--at: calc(15px + (100% - 30px) * 0.82)', sunCls: ''
+        }));
+        plan.push(fact('uploads', 'Storage', '312 GB of 600 GB', PI.upload, { help: 'The team’s, shared by everyone with a license: 100 GB for each. Files up to 512 MB.' }));
+        if (admin) {
+          var left2 = low ? 2 : 5;
+          plan.push(row('licenses', 'Licenses', 'btn', {
+            help: low ? left2 + ' of ' + TM.bought + ' left, and Aiko is waiting for one. Each is taken as someone next opens Alcove, for 30 days.' : left2 + ' of ' + TM.bought + ' left. Each is taken as someone next opens Alcove, for 30 days.',
+            helpCls: low ? ' is-warm' : '', cls: ' is-still',
+            btnT: 'Buy licenses', btnC: low ? 'b-press' : 'b-line', hotBtn: hot('buy-licenses'), btnGo: function () { openCo(low ? 'coTeamMore' : 'coTeamMoreBal'); }
+          }));
+          plan.push(sw('auto-buy', 'Buy one when it’s needed', !!st.autoBuy, function () { set({ autoBuy: !st.autoBuy }); }, { help: 'From your balance, when someone on the team needs a license and none is left.' }));
+          plan.push(row('refund-lic', 'Refund ' + left2 + ' licenses nobody has taken', 'btn', { help: '$' + left2 * TM.price + ' goes back to your balance. One someone has taken isn’t refunded.', cls: ' is-still', btnT: 'Refund', btnC: 'b-quiet', btnGo: function () { self.toastNow('Asks in place, as Pro’s refund does.'); } }));
+          plan.push(item('isPays', { payH: 'Payments', pays: [payItem('base', 'Team, 6 licenses', '240.00 USDC on Base · 4 Nov 2026'), payItem('base', 'Team, 2 licenses', '$80.00 from your balance · 12 Nov 2026')] }));
+        }
+      } else {
+      var team = false, until = planK === 'extended' ? 'Wednesday 10 November 2027' : 'Thursday 4 November 2027';
+      plan.push(row('plan', 'Pro', 'plan', {
+        help: planK === 'ending' ? 'Ends in 6 days, on Tuesday 10 November. Then you’re back on Free, and nothing is deleted.' : 'Until ' + until + '. Nothing renews by itself: Alcove reminds you before it ends.',
         helpCls: planK === 'ending' ? ' is-warm' : '',
         cls: ' is-still', btnT: 'Extend', btnC: planK === 'ending' ? 'b-press' : 'b-line', hotBtn: hot('extend'), btnGo: function () { openCo(planK === 'ending' ? 'coExtend' : 'coExtendNew'); },
-        btn2T: team ? 'Add people' : 'See plans', btn2Go: function () { if (team) openCo('coTeamPeople'); else v.go('plans'); }
+        btn2T: 'See plans', btn2Go: function () { v.go('plans'); }
       }));
-      plan.push(fact('notes-pro', 'Notes', team ? 'Unlimited, for everyone' : 'Unlimited', PI.infinity, { help: (team ? 'Fair use is 100 hours a month each.' : 'Fair use is 100 hours a month.') + ' 3 h 34 min so far this month.' }));
-      plan.push(fact('uploads', 'Uploads this month', team ? '38 GB of 600 GB' : '2.4 GB of 100 GB', PI.upload, { help: team ? 'Pooled across the team, up to 2 GB a file.' : 'Up to 2 GB a file.' }));
-      var pays = team ? [payItem('base', 'Team, 6 people, 12 months', '1,152.00 USDC on Base · 4 Nov 2026')]
-        : planK === 'ending' ? [payItem('sol', 'Pro, 1 month', '15.00 USDC on Solana · 10 Oct 2026')]
-        : planK === 'extended' ? [payItem('base', 'Pro, 12 more months', '144.00 USDC on Base · 4 Nov 2026'), payItem('sol', 'Pro, 1 month', '15.00 USDC on Solana · 10 Oct 2026')]
-        : [payItem('base', 'Pro, 12 months', '144.00 USDC on Base · 4 Nov 2026')];
+      plan.push(fact('notes-pro', 'Notes left this period', 'About 41 h', PI.notes, { help: 'Back to 50 hours on 4 December. Calls without notes are free.' }));
+      plan.push(fact('uploads', 'Storage', '2.4 GB of 100 GB', PI.upload, { help: 'Uploads and call recordings. Files up to 512 MB.' }));
+      var pays = planK === 'ending' ? [payItem('sol', 'Pro, 1 month', '20.00 USDC on Solana · 10 Oct 2026')]
+        : planK === 'extended' ? [payItem('base', 'Pro, 12 more months', '192.00 USDC on Base · 4 Nov 2026'), payItem('sol', 'Pro, 1 month', '20.00 USDC on Solana · 10 Oct 2026')]
+        : [payItem('base', 'Pro, 12 months', '192.00 USDC on Base · 4 Nov 2026')];
       plan.push(item('isPays', { payH: 'Payments', pays: pays }));
+      }
     }
 
     /* ---------------------------------------------------------------- Privacy, and the way out */
@@ -786,14 +813,14 @@ class Component extends DCLogic {
 
     /* ---------------------------------------------------------------- the sky: who you are, the tour and Sign out */
     v.who = who; v.I = I; v.uid = this.__uid;
-    v.side = AH.assign({}, v.side, { foot: AH.assign(PL.foot(planK), { go: function () { self.jump('plan', true); } }) });
+    v.side = AH.assign({}, v.side, { foot: AH.assign(PL.foot({ teamAdmin: 'team' }[planK] || planK), { go: function () { self.jump('plan', true); } }) });
     v.hasCo = !!st.co; v.coAt = st.co || 'coChoose';
     v.coClose = function () { set({ co: '' }); };
     v.coCompare = function () { set({ co: '' }); v.go('plans'); };
     v.coDone = function (s) {
-      var to = s.plan === 'hours' ? planK : s.kind === 'extend' ? 'extended' : s.plan === 'team' ? 'team' : 'pro';
+      var to = s.plan === 'hours' ? planK : s.kind === 'extend' ? 'extended' : s.plan === 'team' ? 'teamAdmin' : 'pro';
       self.setState({ co: '', plan: to === 'out' ? 'free' : to });
-      self.toastNow(s.plan === 'hours' ? '10 hours of notes added.' : s.kind === 'extend' ? 'Pro runs to 10 Nov 2027.' : s.plan === 'team' ? 'Vandelay Industries is on Team until 4 Nov 2027.' : 'You’re on Pro until 4 Nov 2027.');
+      self.toastNow(s.plan === 'hours' ? '10 hours of notes added.' : s.kind === 'extend' ? 'Pro runs to 10 Nov 2027.' : s.plan === 'team' ? s.licenses + ' licenses added to Vandelay Industries.' : 'You’re on Pro until 4 Nov 2027.');
     };
     v.hotTour = hot('tour'); v.hotOut = hot('signout');
     v.tour = function () { self.toastNow('Home opens and the tour plays again.'); };
@@ -818,7 +845,7 @@ class Component extends DCLogic {
     v.goes = [
       who.mine ? who.mine + (who.mine === 1 ? ' note' : ' notes') + ' you made, with their audio, for everyone who has them' : null,
       who.calls ? who.calls + (who.calls === 1 ? ' call' : ' calls') + ' you scheduled, for everyone invited' : null,
-      onFree ? (left[1] > 0 ? 'Your ' + left[0] + ' of notes left this month' : null) : planK === 'team' ? null : 'Pro, and the time left on it',
+      onFree ? (left[1] > 0 ? 'Your ' + left[0] + ' of notes left this month' : null) : onTeam ? null : 'Pro, and the time left on it',
       'Your own notes on every call',
       st.cal === 'google' ? 'Your Google Calendar connection, and the calls Alcove put on it' : null,
       st.drive !== 'none' ? 'Your Google Drive connection. Copies already in Drive stay there.' : null,
