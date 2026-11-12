@@ -1,21 +1,23 @@
 /*
  * The side panel, beside every page and dark in both themes: Start a call, the app's places, the next call with
- * Join, pinned notes, groups, the confidential-compute check and the minutes of notes left. Someone on their own has
- * no Team page and no groups. It can be hidden. At 860px and narrower the phone's top bar and tab bar (TabBar.tsx)
- * take its place.
+ * Join, pinned notes, groups, the confidential-compute check and your plan. Someone on their own has no Team page and
+ * no groups. It can be hidden. At 860px and narrower the phone's top bar and tab bar (TabBar.tsx) take its place, and
+ * the plan is said in Settings.
  */
-import { NEW_GROUP, type CalendarEvent, type Meeting, type Person, type PlanNotice } from '@alcove/api';
-import { ArchThumb, Faces, Icon, IconButton, Kbd, Logo, Meter, NavItemContent, SidebarNav, buttonClass, cn, coverFor, type IconName } from '@alcove/ui';
+import { NEW_GROUP, type CalendarEvent, type Meeting, type Person, type Plan } from '@alcove/api';
+import { ArchThumb, Dots, Faces, Icon, IconButton, Kbd, Logo, Meter, NavItemContent, SidebarNav, SunMark, buttonClass, cn, coverFor } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useRouterState } from '@tanstack/react-router';
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import { aheadOf, joinable } from '~/features/home/day';
+import { useCheckout } from '~/features/plans/checkout';
+import { PLAN_NAMES, buyingNow, checkoutFor, endingNotice, endsIn, noticesNow, notesLeft, notesLow, notesOut, notesShare, purchaseName, restToSend, tokensShort } from '~/features/plans/standing';
 import { recordOfflineHere } from '~/lib/device';
 import { log } from '~/lib/log';
 import { useNow, useOnline } from '~/lib/live';
 import { sameEmail } from '~/lib/people';
 import { q, trustLine, verifiedAt } from '~/lib/queries';
-import { dayMonth, daysFromToday, hm, hoursAndMinutes, minutesUntil, shortDay, untilLabel } from '~/lib/time';
+import { dayMonth, daysFromToday, hm, minutesUntil, shortDate, untilLabel } from '~/lib/time';
 import { NAV, inWorkspace, places, useCounts } from './places';
 
 const KEY = 'alcove-side-panel';
@@ -203,37 +205,88 @@ function Groups() {
   );
 }
 
-/** The newest of the plan's notices, in a short line: "Pro ends 15 Nov", "Pro renewed", "Pro ended". */
-function noticeLine(n: PlanNotice): { text: string; icon: IconName } {
-  switch (n.kind) {
-    case 'pro-ending': return { text: `Pro ends ${dayMonth(new Date(n.until))}`, icon: 'clock' };
-    case 'pro-renewed': return { text: 'Pro renewed', icon: 'coins' };
-    case 'pro-ended': return { text: 'Pro ended', icon: 'info' };
-  }
-}
-
 /**
- * The check, and about how much of the period's notes is left (Settings' Plan), with Upgrade to Pro above it on Free,
- * and the newest of the plan's notices until it's dismissed, each opening the plans in Settings.
+ * The check, then your plan (Settings' Plan). On Free, about how much of the period's notes is left over a meter, then Free
+ * plan with the way to Plans; on Pro, one row like the places with its own small sun and until when. A plan about to end
+ * sets its sun half and opens checkout to extend; a payment for a plan on its way says what it's waiting for, and its row
+ * opens it again. Pro renewed or ended is one short line above, until it's dismissed in Settings. On Plans the row is
+ * the place you're on.
  */
 function Foot({ online }: { online: boolean }) {
   const plan = useQuery(q.plan()).data;
   const trust = useQuery(q.trust()).data;
   const verified = verifiedAt(trust);
-  const said = plan?.notices[0] ? noticeLine(plan.notices[0]) : null;
   return (
     <div className="sb-foot">
       {online && <p className="sb-seal" data-tour="sealed" title={verified === null ? undefined : `Hardware checked at ${hm(new Date(verified))}`}><Icon name="sealed" size={15} />{trustLine(trust)}</p>}
-      {plan?.kind === 'free' && <Link to="/settings" hash="plan" className="sb-upgrade"><Icon name="arrowUp" size={14} />Upgrade to Pro</Link>}
-      {said && <Link to="/settings" hash="plan" className="sb-plan-note"><Icon name={said.icon} size={14} />{said.text}</Link>}
-      {plan && (
-        <Link to="/settings" hash="plan" activeOptions={{ includeHash: true }} className="sb-notes">
-          {plan.notes.stopped || plan.notes.minutesLeft <= 0
-            ? <span><b>No notes left</b> until {shortDay(new Date(plan.period.to))}</span>
-            : <span><b>About {hoursAndMinutes(plan.notes.minutesLeft)}</b> of notes left</span>}
-          <Meter value={plan.notes.minutesPerPeriod > 0 ? plan.notes.minutesLeft / plan.notes.minutesPerPeriod : 0} />
+      {plan && <PlanFoot plan={plan} />}
+    </div>
+  );
+}
+
+function PlanFoot({ plan }: { plan: Plan }) {
+  const offers = useQuery(q.offers()).data;
+  const topUps = useQuery(q.topUps()).data;
+  const checkout = useCheckout();
+  const now = useNow();
+  const on = useRouterState({ select: (s) => s.location.pathname }) === '/plans';
+  const buying = buyingNow(topUps, now);
+  if (buying) {
+    const { route, state, asked, purchase } = buying;
+    const short = state === 'short';
+    return (
+      <>
+        <p className={cn('sb-wait', short && 'is-out')}>
+          {!short && <Dots />}
+          {short ? `Send ${tokensShort(restToSend(buying))} ${route.token} more`
+            : state === 'waiting' ? `Waiting for ${tokensShort(asked.amount)} ${route.token}`
+            : purchase.buys.kind === 'pro' ? 'Payment seen, starting Pro' : 'Payment seen, adding notes'}
+        </p>
+        <button type="button" className={cn('sb-plan', on && 'is-on')} onClick={() => checkout.reopen(buying.id, checkoutFor(purchase.buys), 'side')}>
+          <span className="ac-clamp-1">{purchaseName(purchase.buys, offers)}</span><span className="go">Open<Icon name="chevron" size={15} /></span>
+        </button>
+      </>
+    );
+  }
+  const said = noticesNow(plan)[0];
+  const ending = endingNotice(plan, offers);
+  const until = plan.pro.until;
+  return (
+    <>
+      {said && (
+        <Link to="/settings" hash="plan" className="sb-said">
+          {said.kind === 'pro-renewed' ? <><b>Pro renewed</b> from your balance</> : <><b>Pro ended.</b> Nothing was deleted.</>}
         </Link>
       )}
-    </div>
+      {(plan.kind === 'free' || notesLow(plan) || notesOut(plan)) && <NotesLeft plan={plan} />}
+      {plan.kind === 'free' ? (
+        <Link to="/plans" className={cn('sb-plan', on && 'is-on')}>
+          <span>Free plan</span><span className="go">{notesLow(plan) || notesOut(plan) ? 'Get Pro' : 'See plans'}<Icon name="chevron" size={15} /></span>
+        </Link>
+      ) : ending ? (
+        <button type="button" className={cn('sb-pro', on && 'is-on')} onClick={() => checkout.open({ plan: 'pro' }, 'side')}>
+          <SunMark state="setting" />
+          <span className="min-w-0"><b>{PLAN_NAMES[plan.kind]}</b><small className="is-warm">{endsIn(ending.until, now)} · Extend</small></span>
+          <Icon name="chevron" size={15} />
+        </button>
+      ) : (
+        <Link to="/settings" hash="plan" className={cn('sb-pro', on && 'is-on')}>
+          <SunMark />
+          <span className="min-w-0"><b>{PLAN_NAMES[plan.kind]}</b>{until !== null && <small>Until {shortDate(new Date(until))}</small>}</span>
+          <Icon name="chevron" size={15} />
+        </Link>
+      )}
+    </>
+  );
+}
+
+/** About how much of the period's notes is left, over a meter: warm under an hour, and once they've stopped, until when. */
+function NotesLeft({ plan }: { plan: Plan }) {
+  const out = notesOut(plan);
+  return (
+    <Link to="/settings" hash="plan" activeOptions={{ includeHash: true }} className={cn('sb-left', out ? 'is-out' : notesLow(plan) && 'is-warm')}>
+      {out ? <span>No notes left until {dayMonth(new Date(plan.period.to))}</span> : <span><b>About {notesLeft(plan)}</b> of notes left</span>}
+      <Meter value={out ? 0 : notesShare(plan)} className="sb-meter" />
+    </Link>
   );
 }
