@@ -111,9 +111,9 @@ export const hoursOf = (offers: PlanOffers, packs: number): number => (packs * (
  * or more notes for this period, which lift notes that the allowance stopped; and the balance's line for it, `entry`.
  * Whoever calls it has checked that it can be bought.
  */
-export function buyFromBalance(plan: Plan, buys: Purchase, offers: PlanOffers, entry: string, now = Date.now()): Plan {
+export function buyFromBalance(plan: Plan, buys: Purchase, entry: string, now = Date.now()): Plan {
   const cost = buys.kind === 'pro' ? buys.months * buys.microUsdPerMonth : buys.packs * buys.microUsdPerPack;
-  const label = buys.kind === 'pro' ? `Pro, ${buys.months} ${buys.months === 1 ? 'month' : 'months'}` : `${hoursOf(offers, buys.packs)} more hours of notes`;
+  const label = buys.kind === 'pro' ? `Pro, ${buys.months} ${buys.months === 1 ? 'month' : 'months'}` : `${(buys.packs * buys.minutesPerPack) / 60} more hours of notes`;
   const line: BalanceEntry = { id: entry, at: new Date(now).toISOString(), label, microUsd: -cost };
   const paid = { ...plan, balance: { microUsd: plan.balance.microUsd - cost, history: [line, ...plan.balance.history] } };
   if (buys.kind === 'pro') {
@@ -121,7 +121,7 @@ export function buyFromBalance(plan: Plan, buys: Purchase, offers: PlanOffers, e
     const from = Number.isFinite(lastTo) && lastTo > now ? lastTo : now;
     return withProMonths(paid, [...plan.pro.months, ...monthsFrom(from, buys.months, buys.microUsdPerMonth)], now);
   }
-  const minutes = buys.packs * (offers.hours?.minutes ?? 0);
+  const minutes = buys.packs * buys.minutesPerPack;
   return { ...paid, notes: { minutesLeft: plan.notes.minutesLeft + minutes, minutesPerPeriod: plan.notes.minutesPerPeriod + minutes, stopped: false } };
 }
 
@@ -218,10 +218,6 @@ export const proEnded = (): Plan => {
 
 /* ---------- Pro paid for in one go, renewed, ended ---------- */
 
-/** `months` of Pro back to back from `from` (ms), at `microUsd` a month: the yearly price, when a year is bought at once. */
-export function monthsAt(from: number, months: number, microUsd: number): ProMonth[] {
-  return monthsFrom(from, months).map((m) => ({ ...m, microUsd }));
-}
 /** What a month costs when a year or more is bought at once. */
 export const PRO_YEARLY_PRICE = PLAN_OFFERS.pro.yearly?.microUsdPerMonth ?? PRO_PRICE;
 
@@ -237,7 +233,7 @@ export const proExtended = (): Plan => {
     { id: 'sb-entry-1', at: iso(-10, 9, 55), label: 'Added, 25 USDC', microUsd: 25_000_000 }
   ];
   const first = on(-10, 10, 0).getTime();
-  const months = [...monthsFrom(first, 1), ...monthsAt(first + PERIOD_MS, 12, PRO_YEARLY_PRICE)];
+  const months = [...monthsFrom(first, 1), ...monthsFrom(first + PERIOD_MS, 12, PRO_YEARLY_PRICE)];
   const plan = withProMonths({ ...freePlan(), balance: { microUsd: 5_000_000, history } }, months, AFTERNOON());
   return { ...plan, notes: { ...plan.notes, minutesLeft: 2460 } };
 };

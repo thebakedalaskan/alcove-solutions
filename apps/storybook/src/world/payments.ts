@@ -2,7 +2,7 @@
 import type { PlanOffers, Purchase, TopUp, TopUpRoute, TopUpRoutes, TopUpState } from '@alcove/api';
 import { iso } from './clock';
 import type { World } from './index';
-import { buyFromBalance, monthsAt, PLAN_OFFERS, withProMonths } from './plans';
+import { buyFromBalance, PLAN_OFFERS } from './plans';
 
 /**
  * How a payment opened to buy something plays out by itself, a step every few seconds from when it's opened, as 1Click
@@ -136,7 +136,7 @@ export const purchaseAt = (at: PurchaseAt, buys: Purchase = PRO_YEAR, asked = 19
     case 'bought':
     case 'over':
       addToBalance(w, settled.microUsd, String(sent));
-      w.plan = buyFromBalance(w.plan, buys, w.payments.offers, freshEntryId(w));
+      w.plan = buyFromBalance(w.plan, buys, freshEntryId(w));
       now = { ...t, ...closed, state: 'credited', received: settled, purchase: { buys, outcome: 'bought', why: null } };
       break;
     case 'refused':
@@ -189,27 +189,9 @@ export function buyingWith(id: string, buys: Purchase, dollars: number): TopUp {
 export function settlePurchase(w: World, id: string, now = Date.now()): void {
   const t = w.payments.topUps.find((x) => x.id === id);
   if (!t || !t.purchase) return;
-  const { buys } = t.purchase;
   const microUsd = Math.round(Number(t.asked.amount) * 1_000_000);
   addToBalance(w, microUsd, t.asked.amount);
-  const at = new Date(now).toISOString();
-  if (buys.kind === 'pro') {
-    const cost = buys.months * buys.microUsdPerMonth;
-    const entry = { id: `sb-entry-bought-${id}`, at, label: `Pro, ${buys.months} ${buys.months === 1 ? 'month' : 'months'}`, microUsd: -cost };
-    const paid = { ...w.plan, balance: { microUsd: w.plan.balance.microUsd - cost, history: [entry, ...w.plan.balance.history] } };
-    const end = Date.parse(w.plan.pro.until ?? '');
-    const from = Number.isFinite(end) && end > now ? end : now;
-    w.plan = withProMonths(paid, [...w.plan.pro.months, ...monthsAt(from, buys.months, buys.microUsdPerMonth)], now);
-  } else {
-    const pack = PLAN_OFFERS.hours?.minutes ?? 600;
-    const cost = buys.packs * buys.microUsdPerPack;
-    const minutes = buys.packs * pack;
-    const entry = { id: `sb-entry-bought-${id}`, at, label: `${minutes / 60} more hours of notes`, microUsd: -cost };
-    w.plan = {
-      ...w.plan, balance: { microUsd: w.plan.balance.microUsd - cost, history: [entry, ...w.plan.balance.history] },
-      notes: { minutesLeft: w.plan.notes.minutesLeft + minutes, minutesPerPeriod: w.plan.notes.minutesPerPeriod + minutes, stopped: false }
-    };
-  }
+  w.plan = buyFromBalance(w.plan, t.purchase.buys, `sb-entry-bought-${id}`, now);
   w.payments.topUps = w.payments.topUps.map((x) => x.id === id && x.purchase ? {
     ...x, state: 'credited', address: null, received: { amount: x.asked.amount, microUsd }, purchase: { ...x.purchase, outcome: 'bought' }
   } : x);

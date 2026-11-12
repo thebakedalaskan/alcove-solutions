@@ -9,8 +9,8 @@
  */
 import { StartTopUpBodySchema, type Purchase, type TopUp } from '@alcove/api';
 import { freshEntryId, PREVIEW_BASE_ADDRESS, PREVIEW_DEPOSIT_ADDRESS } from '../world/payments';
-import { buyFromBalance, hoursOf, proPriceOf, withProMonths } from '../world/plans';
-import { playPayment, settlePayments } from './payments';
+import { buyFromBalance, withProMonths } from '../world/plans';
+import { playPayment, refusalOf, settlePayments, shortOf } from './payments';
 import { DriveExportInputSchema, NOTE_LINK_DAYS, type DriveAutomatic, type DriveCallExports, type DriveExportFormat, type DriveExportInput, type DriveExportJob, type NewNoteLink, type NoteLink, type NoteLinkClaimed } from '@alcove/api';
 import { disconnectedDrive } from '../world/drive-exports';
 import type { BoardSortBody, DocAskBody, DocAskPart } from '@alcove/api';
@@ -48,34 +48,17 @@ const paymentIn = (w: World, id: string): TopUp => {
   if (!t) throw refused('not-found', 'That top-up isn’t there any more.');
   return t;
 };
-/** An amount as the server's refusals say it: "$192", "$12.50". */
-const dollars = (microUsd: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: microUsd % 1_000_000 === 0 ? 0 : 2 }).format(microUsd / 1_000_000);
-/**
- * Refuses a purchase as the server does before anything is bought or a payment opened for it: past the most one purchase
- * buys, or at a price other than today's for that much.
- */
+/** Refuses a purchase as the server does before anything is bought or a payment opened for it (api/payments.ts has the terms). */
 function checkPurchase(w: World, buys: Purchase): void {
-  const o = w.payments.offers;
-  if (buys.kind === 'pro') {
-    if (!Number.isInteger(buys.months) || buys.months < 1 || buys.months > o.pro.maxMonths) throw refused('invalid', `Buy 1 to ${o.pro.maxMonths} months at a time.`);
-    if (buys.microUsdPerMonth !== proPriceOf(o, buys.months)) throw refused('conflict', 'The price of Pro has changed. Look at it again before buying.');
-    return;
-  }
-  if (!o.hours) throw refused('conflict', 'More notes can’t be bought right now.');
-  if (!Number.isInteger(buys.packs) || buys.packs < 1 || buys.packs > o.hours.maxPacks) throw refused('invalid', `Buy up to ${hoursOf(o, o.hours.maxPacks)} hours of notes at a time.`);
-  if (buys.microUsdPerPack !== o.hours.microUsd) throw refused('conflict', 'The price of more notes has changed. Look at it again before buying.');
-  if (buys.minutesPerPack !== o.hours.minutes) throw refused('conflict', 'The hours more notes bring have changed. Look at them again before buying.');
+  const r = refusalOf(w, buys);
+  if (r) throw refused(r.code, r.asked);
 }
 /** Buys from the balance once the purchase checks out, refused with nothing charged when the balance is short. */
 function buyNow(w: World, buys: Purchase) {
   checkPurchase(w, buys);
-  const cost = buys.kind === 'pro' ? buys.months * buys.microUsdPerMonth : buys.packs * buys.microUsdPerPack;
-  const balance = w.plan.balance.microUsd;
-  if (balance < cost) {
-    const what = buys.kind === 'pro' ? `${buys.months} ${buys.months === 1 ? 'month' : 'months'} of Pro` : `${hoursOf(w.payments.offers, buys.packs)} hours of notes`;
-    throw refused('conflict', `Your balance is short of what ${what} ${buys.kind === 'pro' && buys.months === 1 ? 'costs' : 'cost'} (${dollars(cost)}). Add money first.`);
-  }
-  w.plan = buyFromBalance(w.plan, buys, w.payments.offers, freshEntryId(w));
+  const short = shortOf(w, buys);
+  if (short) throw refused('conflict', short);
+  w.plan = buyFromBalance(w.plan, buys, freshEntryId(w));
   return w.plan;
 }
 const offline = () =>new AlcoveApiError('network', 'Can’t reach Alcove. Check your connection.');

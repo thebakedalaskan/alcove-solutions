@@ -19,26 +19,54 @@ export const PAYMENT_STEP_MS = 5_000;
 const months = (n: number) => `${n} ${n === 1 ? 'month' : 'months'}`;
 const micro = (amount: string) => Math.round(Number(amount) * 1_000_000);
 
+/** An amount as the server's refusals say it: "$192", "$12.50". */
+const dollars = (microUsd: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: microUsd % 1_000_000 === 0 ? 0 : 2 }).format(microUsd / 1_000_000);
+/** "12 months of Pro", "20 hours of notes": what a purchase buys, as refusals say it. */
+const amountOf = (buys: Purchase) => (buys.kind === 'pro' ? `${months(buys.months)} of Pro` : `${(buys.packs * buys.minutesPerPack) / 60} hours of notes`);
+
 /**
- * Why a purchase can't be bought from the balance once its payment is added, in the server's words, or null when it can:
- * a price or a limit that changed since the payment was opened, or a balance short of it.
+ * Why a purchase can't be had on today's terms, as the server's terms say it, or null when it can: when it's asked for
+ * (`asked`, with its code), and once a payment for it has arrived (`arrived`). Past the most one purchase buys, or at a
+ * price (or, for more notes, a size) other than today's for that much.
  */
-function whyNot(w: World, buys: Purchase, lessArrived: boolean): string | null {
+export function refusalOf(w: World, buys: Purchase): { code: 'invalid' | 'conflict'; asked: string; arrived: string } | null {
   const o = w.payments.offers;
-  const balance = w.plan.balance.microUsd;
   if (buys.kind === 'pro') {
-    if (buys.months > o.pro.maxMonths) return `Since your payment was made, one purchase buys at most ${months(o.pro.maxMonths)} of Pro. It’s in your balance.`;
-    if (buys.microUsdPerMonth !== proPriceOf(o, buys.months)) return 'The price of Pro changed before your payment arrived. It’s in your balance.';
-    if (balance >= buys.months * buys.microUsdPerMonth) return null;
-    return lessArrived ? `Less arrived than ${months(buys.months)} of Pro cost. It’s in your balance.`
-      : `Your balance was short of what ${months(buys.months)} of Pro costs when your payment arrived. It’s in your balance.`;
+    if (!Number.isInteger(buys.months) || buys.months < 1 || buys.months > o.pro.maxMonths) {
+      return { code: 'invalid', asked: `Buy 1 to ${o.pro.maxMonths} months at a time.`, arrived: `Since your payment was made, one purchase buys at most ${months(o.pro.maxMonths)} of Pro. It’s in your balance.` };
+    }
+    if (buys.microUsdPerMonth !== proPriceOf(o, buys.months)) {
+      return { code: 'conflict', asked: 'The price of Pro has changed. Look at it again before buying.', arrived: 'The price of Pro changed before your payment arrived. It’s in your balance.' };
+    }
+    return null;
   }
-  if (!o.hours) return 'More notes stopped being offered before your payment arrived. It’s in your balance.';
-  if (buys.microUsdPerPack !== o.hours.microUsd) return 'The price of more notes changed before your payment arrived. It’s in your balance.';
-  if (buys.minutesPerPack !== o.hours.minutes) return 'The hours more notes bring changed before your payment arrived. It’s in your balance.';
-  if (balance >= buys.packs * buys.microUsdPerPack) return null;
-  return lessArrived ? `Less arrived than ${hoursOf(o, buys.packs)} hours of notes cost. It’s in your balance.`
-    : `Your balance was short of what ${hoursOf(o, buys.packs)} hours of notes cost when your payment arrived. It’s in your balance.`;
+  if (!o.hours) return { code: 'conflict', asked: 'More notes can’t be bought right now.', arrived: 'More notes stopped being offered before your payment arrived. It’s in your balance.' };
+  if (!Number.isInteger(buys.packs) || buys.packs < 1 || buys.packs > o.hours.maxPacks) {
+    return { code: 'invalid', asked: `Buy up to ${hoursOf(o, o.hours.maxPacks)} hours of notes at a time.`, arrived: `Since your payment was made, one purchase buys at most ${hoursOf(o, o.hours.maxPacks)} hours of notes. It’s in your balance.` };
+  }
+  if (buys.microUsdPerPack !== o.hours.microUsd) {
+    return { code: 'conflict', asked: 'The price of more notes has changed. Look at it again before buying.', arrived: 'The price of more notes changed before your payment arrived. It’s in your balance.' };
+  }
+  if (buys.minutesPerPack !== o.hours.minutes) {
+    return { code: 'conflict', asked: 'The hours more notes bring have changed. Look at them again before buying.', arrived: 'The hours more notes bring changed before your payment arrived. It’s in your balance.' };
+  }
+  return null;
+}
+
+/** Why the balance can't pay for it, or null when it can: as it's asked for, never saying the balance itself. */
+export function shortOf(w: World, buys: Purchase): string | null {
+  const cost = buys.kind === 'pro' ? buys.months * buys.microUsdPerMonth : buys.packs * buys.microUsdPerPack;
+  if (w.plan.balance.microUsd >= cost) return null;
+  return `Your balance is short of what ${amountOf(buys)} ${buys.kind === 'pro' && buys.months === 1 ? 'costs' : 'cost'} (${dollars(cost)}). Add money first.`;
+}
+
+/** Why a purchase can't be bought once its payment is added, in the server's words, or null when it can. */
+function whyNot(w: World, buys: Purchase, lessArrived: boolean): string | null {
+  const r = refusalOf(w, buys);
+  if (r) return r.arrived;
+  if (!shortOf(w, buys)) return null;
+  return lessArrived ? `Less arrived than ${amountOf(buys)} cost. It’s in your balance.`
+    : `Your balance was short of what ${amountOf(buys)} ${buys.kind === 'pro' && buys.months === 1 ? 'costs' : 'cost'} when your payment arrived. It’s in your balance.`;
 }
 
 /** One step of a payment: what the top-up becomes, and what that does to the world. */
@@ -61,7 +89,7 @@ const credit: Step = (w, t) => {
   if (!t.purchase) return settled;
   const why = whyNot(w, t.purchase.buys, added < micro(t.asked.amount));
   if (why) return { ...settled, purchase: { ...t.purchase, outcome: 'refused', why } };
-  w.plan = buyFromBalance(w.plan, t.purchase.buys, w.payments.offers, freshEntryId(w));
+  w.plan = buyFromBalance(w.plan, t.purchase.buys, freshEntryId(w));
   return { ...settled, purchase: { ...t.purchase, outcome: 'bought', why: null } };
 };
 
