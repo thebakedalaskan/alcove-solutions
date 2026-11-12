@@ -3,8 +3,9 @@ import { z } from '../shared/zod';
 /* ---------- the doors into checkout, as a browser keeps them ---------- */
 
 /**
- * Get Pro pressed on the welcome page, before signing in (sessionStorage, in that tab only): after signing in, Plans opens
- * with checkout on it. Until when it counts (ms), like any way back through sign-in.
+ * Where to go after signing in when Get Pro on the welcome page started it (sessionStorage, in that tab only): Plans, at its
+ * address as it is ("/plans?checkout=pro", its `checkout` read by Plans itself), and until when it counts (ms), like any way
+ * back through sign-in. Only a Plans address is taken.
  */
-export const PlansReturnStoredSchema = z.object({ checkout: z.enum(['pro']), until: z.number() });
+export const PlansReturnStoredSchema = z.object({ path: z.string().regex(/^\/plans(\?checkout=[a-z]+)?$/), until: z.number() });
 export type PlansReturnStored = z.infer<typeof PlansReturnStoredSchema>;

@@ -104,28 +104,31 @@ export function takeReturn(): string | null {
   }
 }
 
+/** Where Get Pro on the welcome page goes once signed in: Plans, with checkout open on Pro. */
+export const PLANS_FOR_PRO = '/plans?checkout=pro';
 /**
  * Get Pro on the welcome page, before signing in: afterwards Plans opens with checkout on Pro, wherever sign-in lands (Google's
- * way back included). Kept in this tab for ten minutes and used once; Cancel sign-in forgets it (clearReturn).
+ * way back included). Its address is kept as it is, in this tab for ten minutes, and used once; Cancel sign-in forgets it
+ * (clearReturn).
  */
-export function returnToPlans(): void {
+export function returnToPlans(path: string = PLANS_FOR_PRO): void {
   try {
     sessionStorage.removeItem(KEY);
     sessionStorage.removeItem(AGENT_KEY);
-    sessionStorage.setItem(PLANS_KEY, JSON.stringify({ checkout: 'pro', until: Date.now() + MINUTES * 60_000 }));
+    sessionStorage.setItem(PLANS_KEY, JSON.stringify({ path, until: Date.now() + MINUTES * 60_000 }));
   } catch (e) {
     // Private browsing and the like: after signing in this tab lands on Home, where Plans is a press away.
     alog.debug('plans not kept for after sign-in', { err: e });
   }
 }
-/** What checkout opens on after signing in, once, if Get Pro started it in the last ten minutes; an older one is dropped. */
-export function takePlansReturn(): 'pro' | null {
+/** The Plans address to go to after signing in, once, if Get Pro started it in the last ten minutes; an older one is dropped. */
+export function takePlansReturn(): string | null {
   try {
     const raw = sessionStorage.getItem(PLANS_KEY);
     if (raw === null) return null;
     sessionStorage.removeItem(PLANS_KEY);
     const w = PlansReturnStoredSchema.safeParse(JSON.parse(raw));
-    return w.success && w.data.until > Date.now() ? w.data.checkout : null;
+    return w.success && w.data.until > Date.now() ? w.data.path : null;
   } catch (e) {
     alog.debug('plans to go to not readable', { err: e });
     return null;
