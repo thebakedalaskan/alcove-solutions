@@ -271,6 +271,27 @@ export function meterFor(d: Service, bill: Bill): Meter {
   };
 }
 
+/**
+ * What writing a live source's notes will cost, reckoned again (`reserve`, in tokens of the model they'll be written with,
+ * as when the call's model changes), held in place of what the source held, in the caller's transaction, which holds the
+ * meter until it commits. Holding more is refused when it would take the allowance to the stop, or it's spent: writing the
+ * notes is never refused, so what it may cost has to be held before. Holding less always goes. A source with nothing held
+ * yet, or whose notes are written, has nothing to change: its next clip reckons it.
+ */
+export async function reckonAgain(d: Service, db: Db, payer: string, source: Source, reserve: { model: string; most: Most }): Promise<void> {
+  const l = await limitsNow(d, db);
+  const nano = costOf(await priced(d, l, reserve.model), usageOf(reserve.most, l));
+  const now = Date.now();
+  const { m, save } = await locked(d, db, payer, l, now);
+  const was = m.sources.find((s) => s.kind === source.kind && s.id === source.id);
+  if (!was || m.closed.some((c) => c.id === source.id)) return;
+  const next: MeterState = { ...m, sources: m.sources.map((s) => (s === was ? { ...s, touched: now, reserveNano: nano } : s)) };
+  if (nano > was.reserveNano && (m.stopped !== null || leftOf(next) <= l.get('ai.stop_micro_usd') * 1000)) {
+    throw new PlanLimitError('What’s left of your notes this period won’t cover writing this call’s notes with that model. Keep the one it has, or choose one that costs less.', 'notes', { context: { ownerId: payer, source: source.kind, why: 'reserve' } });
+  }
+  await save(next);
+}
+
 /** Lets go of what a call or room recording held for writing its notes, once they're written (or given up on). */
 export async function close(d: Service, payer: string, source: Source): Promise<void> {
   await changing(d, payer, (m, _l, now) => ({

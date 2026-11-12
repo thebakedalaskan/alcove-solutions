@@ -4,7 +4,7 @@ import { id128 } from '../../crypto';
 import { tx, type Db } from '../../db';
 import { ConflictError, ForbiddenError, PlanLimitError, UnavailableError, ValidationError, notFound } from '../../errors';
 import type { Meter, Most } from '../../inference';
-import { meterFor, notesBlocked, ranOut, type Bill, type Spend } from '../billing/meter';
+import { meterFor, notesBlocked, ranOut, reckonAgain, type Bill, type Spend } from '../billing/meter';
 import { mayStore } from '../billing/held';
 import { writingAtMost } from '../notes/drafting';
 import { me } from '../account/account';
@@ -159,7 +159,13 @@ export async function changeCapture(v: Viewer, c: Db, row: Row, s: Stored, a: Ca
     if (s.notes.status !== 'on') return s;
     return { ...s, notes: { ...s.notes, unavailable: [...new Set(a.parts)] } };
   }
-  if (a.type === 'model') return { ...s, notes: { ...s.notes, model: a.model } };
+  if (a.type === 'model') {
+    const next = { ...s, notes: { ...s.notes, model: a.model } };
+    // What writing the notes will cost is held at the model they'll be written with: a dearer one holds more, and is refused
+    // when the organizer's notes can't cover it, since writing them is never refused.
+    if (s.notes.recordingId) await reckonAgain(o, c, o.ownerId, { kind: 'call', id: s.notes.recordingId }, writingSoFar(o, row, next, Date.now()));
+    return next;
+  }
   if (a.type === 'request-notes') {
     if (v.isOrganizer) throw new ValidationError('You can turn notes on yourself.', { context: ctx });
     // One ask each: asking again while asking changes nothing, and taking it back forgets it.

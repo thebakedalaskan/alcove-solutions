@@ -443,6 +443,30 @@ describe('running out', () => {
     expect((await org.api.plans.plan()).notes.stopped).toBe(false);
   });
 
+  it('holds what writing a call’s notes will cost at the model it’s set to, and refuses a dearer one the organizer can’t cover', async () => {
+    await h.setLimit('plan.free.notes_minutes', 60);
+    await h.setLimit('ai.stop_micro_usd', 0);
+    const org = await account(unique('organizer'));
+    const { host } = await call(org);
+    await host.appendAudio(piece('model', 0));
+    await host.transcribe(speech('We agreed to ship on Monday.', 0), host.ticket.identity);
+    const held = async () => { const m = await meter(org); return m.unspentNano - m.leftNano; };
+    const theDefault = await held();
+    // A model at 5/3 of the default's prices: what the call holds for its notes goes up with it, and down again after.
+    await host.setModel(UNENCRYPTED_MODEL);
+    const dearer = await held();
+    expect(dearer).toBeGreaterThan(theDefault * 1.5);
+    await host.setModel(null);
+    expect(await held()).toBeLessThan(dearer);
+    // With a hundredth of a cent left beside what's held, the dearer model is refused: the call keeps its model and its notes.
+    const live = await meter(org);
+    await h.setLimit('ai.hour_micro_usd', Math.ceil((live.spentNano + live.unspentNano - live.leftNano + 100_000) / 1000));
+    expect(await refusal(host.setModel(UNENCRYPTED_MODEL))).toBe('plan-limit: What’s left of your notes this period won’t cover writing this call’s notes with that model. Keep the one it has, or choose one that costs less.');
+    expect((await now(host)).capture).toMatchObject({ mode: 'on', model: null, stopped: null });
+    expect(await meter(org)).toMatchObject({ stopped: false });
+    expect(await held()).toBeLessThan(dearer);
+  });
+
   it('after a Free organizer’s notes stop, an invitee on Pro still asks from their own allowance, and a guest can’t', async () => {
     await h.setLimit('plan.free.notes_minutes', 1);
     await h.setLimit('ai.hour_micro_usd', 3600);

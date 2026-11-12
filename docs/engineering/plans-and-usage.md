@@ -99,7 +99,11 @@ meter's row lock (`ai_meters`), so requests at once on any instance can't spend 
 A call's notes are written once it's over, so while it's live each transcript clip also **reserves** what writing them
 will cost at most so far (`drafting.writingAtMost`: the notes and their details from the transcript, a section for each
 breakout room, picking moments and reading a frame for every 15 seconds shared, every request at its most output).
-The allowance runs down with the call, and notes stop before it's spent rather than after.
+The allowance runs down with the call, and notes stop before it's spent rather than after. It's reckoned at the model
+the notes will be written with: when the organizer chooses another in the call (**Notes written by**) it's reckoned again
+at once, and a dearer one is refused while what's left can't hold it (`plan-limit`, "What’s left of your notes this
+period won’t cover writing this call’s notes with that model. Keep the one it has, or choose one that costs less."),
+after notes stop too; a cheaper one always goes.
 
 - **About to run out:** when what's left would last `ai.warn_seconds` (5 minutes) at this call's own pace (what it has cost
   and will cost to write up, a second of it), the organizer alone is told, once (`CallState.capture.runningOut`), by

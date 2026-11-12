@@ -54,6 +54,7 @@ Suites: `billing/meter` (`apps/api/src/features/billing/meter.integration.test.t
 | E3 | Then transcription, the organizer's AI and a guest's questions are refused; notes can't come back on | billing/meter › stops notes for everyone… | 1 | Passes |
 | E4 | The last note covers only what was said before the stop, and may go past the allowance | billing/meter › stops notes for everyone… | 1 | Passes |
 | E4′ | The last note is paid from what the call held for it, its requests on their way too: writing it stops nothing the call held enough for | billing/meter › pays for writing a call’s notes from what the call held for them… | 1 | Passes |
+| E4″ | What a call holds for its notes follows the model they'll be written with: a dearer one holds more, a cheaper one less, and a dearer one the allowance can't hold is refused, the call keeping its model and notes | billing/meter › holds what writing a call’s notes will cost at the model it’s set to… | 1 | Passes |
 | E5 | Then nothing: the next call starts without notes, saying why; asks and room recordings are refused | billing/meter › stops notes for everyone… | 1 | Passes |
 | E6 | An invitee on another plan can still ask after the organizer's stop; a guest can't, and is told it's the organizer's notes that ran out | billing/meter › after a Free organizer’s notes stop, an invitee on Pro still asks… | 2 | Passes |
 | E7 | A room recording runs out the same way | billing/meter › stops a room recording… | 1 | Passes |
