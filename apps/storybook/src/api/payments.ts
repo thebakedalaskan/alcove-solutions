@@ -10,9 +10,8 @@
  */
 import type { Purchase, TopUp } from '@alcove/api';
 import type { World } from '../world';
-import { addToBalance, raisePrices, type PaymentPlay } from '../world/payments';
+import { addToBalance, freshEntryId, raisePrices, type PaymentPlay } from '../world/payments';
 import { buyFromBalance, hoursOf, proPriceOf } from '../world/plans';
-import { nextId } from './state';
 
 /** How long each step of a payment takes: long enough to see each state, short enough to play one through. */
 export const PAYMENT_STEP_MS = 5_000;
@@ -61,7 +60,7 @@ const credit: Step = (w, t) => {
   if (!t.purchase) return settled;
   const why = whyNot(w, t.purchase.buys, added < micro(t.asked.amount));
   if (why) return { ...settled, purchase: { ...t.purchase, outcome: 'refused', why } };
-  w.plan = buyFromBalance(w.plan, t.purchase.buys, w.payments.offers, nextId('sb-entry'));
+  w.plan = buyFromBalance(w.plan, t.purchase.buys, w.payments.offers, freshEntryId(w));
   return { ...settled, purchase: { ...t.purchase, outcome: 'bought', why: null } };
 };
 

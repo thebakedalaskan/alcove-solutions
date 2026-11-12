@@ -8,7 +8,7 @@
  * A method nothing renders yet answers with something sensible and empty. When the contract grows, this grows with it.
  */
 import { StartTopUpBodySchema, type Purchase, type TopUp } from '@alcove/api';
-import { PREVIEW_BASE_ADDRESS, PREVIEW_DEPOSIT_ADDRESS } from '../world/payments';
+import { freshEntryId, PREVIEW_BASE_ADDRESS, PREVIEW_DEPOSIT_ADDRESS } from '../world/payments';
 import { buyFromBalance, hoursOf, proPriceOf, withProMonths } from '../world/plans';
 import { playPayment, settlePayments } from './payments';
 import { DriveExportInputSchema, NOTE_LINK_DAYS, type DriveAutomatic, type DriveCallExports, type DriveExportFormat, type DriveExportInput, type DriveExportJob, type NewNoteLink, type NoteLink, type NoteLinkClaimed } from '@alcove/api';
@@ -74,7 +74,7 @@ function buyNow(w: World, buys: Purchase) {
     const what = buys.kind === 'pro' ? `${buys.months} ${buys.months === 1 ? 'month' : 'months'} of Pro` : `${hoursOf(w.payments.offers, buys.packs)} hours of notes`;
     throw refused('conflict', `Your balance is short: ${what} cost ${dollars(cost)} and your balance is ${dollars(balance)}. Add money first.`);
   }
-  w.plan = buyFromBalance(w.plan, buys, w.payments.offers, nextId('sb-entry'));
+  w.plan = buyFromBalance(w.plan, buys, w.payments.offers, freshEntryId(w));
   return w.plan;
 }
 const offline = () =>new AlcoveApiError('network', 'Can’t reach Alcove. Check your connection.');
@@ -927,7 +927,7 @@ export const standIn: AlcoveApi = {
       if (!later.length) throw refused('conflict', 'There’s no month of Pro to refund that hasn’t started. A month that has started isn’t refunded.');
       const back = later.reduce((sum, m) => sum + m.microUsd, 0);
       const { balance } = w.plan;
-      const entry = { id: nextId('sb-entry'), at: new Date(now).toISOString(), label: `Pro refunded, ${later.length} ${later.length === 1 ? 'month' : 'months'}`, microUsd: back };
+      const entry = { id: freshEntryId(w), at: new Date(now).toISOString(), label: `Pro refunded, ${later.length} ${later.length === 1 ? 'month' : 'months'}`, microUsd: back };
       const refunded = { ...w.plan, balance: { microUsd: balance.microUsd + back, history: [entry, ...balance.history] } };
       w.plan = withProMonths(refunded, w.plan.pro.months.filter((m) => Date.parse(m.from) <= now), now);
       return w.plan;

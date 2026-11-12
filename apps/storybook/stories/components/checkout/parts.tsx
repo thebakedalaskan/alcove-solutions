@@ -55,9 +55,16 @@ export const NETWORKS: NetworkOption[] = [
   { id: 'bsc', chain: 'bsc', name: 'BNB Chain' }
 ];
 
-/** The window's left column, for a part that only shows in it: its surface, as wide as the step. */
+/**
+ * The window's left column, for a part that only shows in it: its surface, as wide as the step, in a frame as wide as the
+ * window, which is what the parts lay out by (on a phone, the screen).
+ */
 export function Step({ children, width = 548 }: { children: ReactNode; width?: number | undefined }) {
-  return <div className="ac-modal ck sbc-modal ck-host" style={{ width: `min(${width + 56}px, calc(100vw - 32px))`, height: 'auto', padding: '22px 28px' }}>{children}</div>;
+  return (
+    <div className="ck-host" style={{ width: 'min(944px, calc(100vw - 32px))', height: 'auto' }}>
+      <div className="ac-modal ck sbc-modal" style={{ width: `min(${width + 56}px, 100%)`, height: 'auto', margin: '24px 0', padding: '22px 28px' }}>{children}</div>
+    </div>
+  );
 }
 /** The window's right column, for what you're buying. */
 export function Side({ children }: { children: ReactNode }) {

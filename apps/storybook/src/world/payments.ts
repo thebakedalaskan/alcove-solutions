@@ -67,10 +67,18 @@ export function raisePrices(w: World): void {
   };
 }
 
+/** An ID for a new line of the balance that none of its lines has yet: a list of them keys on it. */
+export function freshEntryId(w: World): string {
+  const taken = new Set(w.plan.balance.history.map((e) => e.id));
+  let n = w.plan.balance.history.length + 1;
+  while (taken.has(`sb-entry-${n}`)) n += 1;
+  return `sb-entry-${n}`;
+}
+
 /** `microUsd` more in the balance, with the line the balance lists it by. A token is added as a dollar. */
 export function addToBalance(w: World, microUsd: number, tokens: string): void {
   const { balance } = w.plan;
-  const entry = { id: `sb-entry-${balance.history.length + 1}`, at: new Date().toISOString(), label: `Added, ${tokens} USDC`, microUsd };
+  const entry = { id: freshEntryId(w), at: new Date().toISOString(), label: `Added, ${tokens} USDC`, microUsd };
   w.plan = { ...w.plan, balance: { microUsd: balance.microUsd + microUsd, history: [entry, ...balance.history] } };
 }
 
@@ -125,7 +133,7 @@ export const purchaseAt = (at: PurchaseAt, buys: Purchase = PRO_YEAR, asked = 19
     case 'bought':
     case 'over':
       addToBalance(w, settled.microUsd, String(sent));
-      w.plan = buyFromBalance(w.plan, buys, w.payments.offers, 'sb-entry-bought');
+      w.plan = buyFromBalance(w.plan, buys, w.payments.offers, freshEntryId(w));
       now = { ...t, ...closed, state: 'credited', received: settled, purchase: { buys, outcome: 'bought', why: null } };
       break;
     case 'refused':

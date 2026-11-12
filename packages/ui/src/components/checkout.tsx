@@ -313,13 +313,14 @@ export function CheckoutPanel({ title, step, stage, summary, children, foot, foo
 /**
  * The checkout window, on the kit's Modal: focus starts on what's chosen (or the first thing to press), Escape and the
  * veil close it, and focus goes back where it was. `theme` scopes it to one theme, as over a call it opens in yours.
- * With `receipt`, the window is small and holds the receipt alone.
+ * With `receipt`, the window is small and holds the receipt alone, as paper in both themes (no window opens over another).
  */
 export function CheckoutWindow({ theme = null, receipt, ...panel }: CheckoutPanelProps & { theme?: 'light' | 'dark' | null | undefined; receipt?: ReactNode }) {
+  const scoped = receipt ? 'light' : theme;
   return (
     <Modal open onOpenChange={(open) => { if (!open) panel.onClose(); }} label={panel.title} focusOn=".ck-b input:checked"
-      className={cn('ck', receipt ? 'is-receipt' : null, theme)}>
-      <ThemeScope theme={theme}>
+      className={cn('ck', receipt ? 'is-receipt' : null, scoped)}>
+      <ThemeScope theme={scoped}>
         {receipt ?? <CheckoutPanel {...panel} />}
       </ThemeScope>
     </Modal>
@@ -520,7 +521,8 @@ export interface ReceiptLine { label: string; value: ReactNode; mono?: boolean |
 
 /**
  * A payment's receipt, to keep or print: what was bought, line by line, and its total. Print prints it alone, with
- * Alcove's name at its head; on screen it's the window's, and Back goes back.
+ * Alcove's name at its head; on screen it's paper in a small window (CheckoutWindow's `receipt`, `.light` in both
+ * themes), and Back goes back.
  */
 export function PaymentReceipt({ title, lines, total, onPrint, onBack, backLabel = 'Back' }: {
   title: string; lines: ReceiptLine[]; total: string; onPrint: () => void; onBack: () => void; backLabel?: string | undefined;
