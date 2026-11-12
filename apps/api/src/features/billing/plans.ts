@@ -29,8 +29,16 @@ const Entry = z.object({ id: z.string(), at: z.string(), label: z.string(), micr
  * that brought plans, for an account already over Free's. The grace after Pro ends needs no record (`gracesOf`).
  */
 const Grace = z.object({ until: z.string(), storageBytes: z.number().int().nullable() });
-/** A month of Pro bought from the balance, and what was paid for it. */
-const Month = z.object({ id: z.string(), from: z.string(), to: z.string(), microUsd: z.number().int() });
+/**
+ * A month of Pro bought from the balance, and what was paid for it; with the purchase it was one of and a month's price
+ * when it was bought, so a refund can tell months bought together at the lower price for a year or more. A month kept
+ * before either was has neither: it's a purchase of its own, refunded at what was paid for it.
+ */
+const Month = z.object({
+  id: z.string(), from: z.string(), to: z.string(), microUsd: z.number().int(),
+  purchase: z.string().nullable().default(null),
+  monthlyMicroUsd: z.number().int().nullable().default(null)
+});
 type Month = z.infer<typeof Month>;
 const Notice = z.object({ id: z.string(), kind: PlanNoticeKindSchema, at: z.string(), until: z.string(), dismissed: z.boolean() });
 /** More notes bought from the balance for one period (its plan and start): minutes added to that period's allowance alone. */
@@ -220,21 +228,27 @@ const withEntry = (a: PlanAccount, microUsd: number, label: string): PlanAccount
 /** Something the owner is told (the latest NOTICES are kept). */
 const withNotice = (a: PlanAccount, kind: PlanNoticeKind, until: string, now: number): PlanAccount =>
   ({ ...a, notices: [...a.notices, { id: id128(), kind, at: new Date(now).toISOString(), until, dismissed: false }].slice(-NOTICES) });
-/** Months that ended before the latest one that has go: nothing reads them. */
+/**
+ * Months that ended before the latest one that has go: nothing reads them. A month of a purchase with a month still to
+ * come stays, so a refund counts every month of it that was had.
+ */
 function pruned(a: PlanAccount, now: number): PlanAccount {
   const ended = lastEnded(a, now);
-  return { ...a, pro: a.pro.filter((m) => Date.parse(m.to) > now || Date.parse(m.to) === ended) };
+  const going = new Set(a.pro.flatMap((m) => (m.purchase !== null && Date.parse(m.to) > now ? [m.purchase] : [])));
+  return { ...a, pro: a.pro.filter((m) => Date.parse(m.to) > now || Date.parse(m.to) === ended || (m.purchase !== null && going.has(m.purchase))) };
 }
 /**
- * `months` of Pro at `microUsd` each, back to back after the last one bought that hasn't ended at `from`, or from `from`.
- * A month is `plan.period_seconds` long.
+ * `months` of Pro at `microUsd` each, one purchase, back to back after the last one bought that hasn't ended at `from`, or
+ * from `from`. A month is `plan.period_seconds` long; each keeps a month's price as it is now.
  */
 function withMonths(a: PlanAccount, l: Limits, months: number, microUsd: number, from: number): PlanAccount {
   const period = l.get('plan.period_seconds') * 1000;
   const end = proEnd(a);
   const start = end !== null && Date.parse(end) > from ? Date.parse(end) : from;
+  const purchase = id128();
+  const monthlyMicroUsd = l.get('plan.pro.price_micro_usd');
   const bought = Array.from({ length: months }, (_, i): Month => ({
-    id: id128(), from: new Date(start + i * period).toISOString(), to: new Date(start + (i + 1) * period).toISOString(), microUsd
+    id: id128(), from: new Date(start + i * period).toISOString(), to: new Date(start + (i + 1) * period).toISOString(), microUsd, purchase, monthlyMicroUsd
   }));
   return { ...a, pro: [...a.pro, ...bought] };
 }
@@ -267,14 +281,36 @@ export async function credit(d: Service, db: Db, ownerId: string, microUsd: numb
 /** The balance's history as its owner sees it, newest first. */
 export const historyOf = (a: PlanAccount): BalanceEntry[] => [...a.history].reverse().map((e) => ({ id: e.id, at: e.at, label: e.label, microUsd: e.microUsd }));
 
-/** Months of Pro as their owner sees them: those that haven't ended, oldest first, and when the last ends. */
-export function proOf(a: PlanAccount, now = Date.now()) {
+/**
+ * What refunding comes to at `now`: every month of Pro that hasn't started goes back at what was paid for it, except that
+ * a purchase at the lower price for a year or more that a refund leaves with fewer than `plan.pro.yearly_from_months` months
+ * costs a month's price for each of its months kept, a month's price as it was when it was bought. That difference comes off
+ * what its months give back, never past nothing. A month kept before purchases were is one of its own.
+ */
+function refundOf(a: PlanAccount, l: Limits, now: number): { months: Month[]; microUsd: number } {
+  const months = a.pro.filter((m) => Date.parse(m.from) > now);
+  const fromMonths = l.get('plan.pro.yearly_from_months');
+  const purchases = new Map<string, Month[]>();
+  for (const m of a.pro) purchases.set(m.purchase ?? m.id, [...(purchases.get(m.purchase ?? m.id) ?? []), m]);
+  let microUsd = 0;
+  for (const bought of purchases.values()) {
+    const back = bought.filter((m) => Date.parse(m.from) > now).reduce((n, m) => n + m.microUsd, 0);
+    if (back === 0) continue;
+    const kept = bought.filter((m) => Date.parse(m.from) <= now);
+    const owed = kept.length < fromMonths ? kept.reduce((n, m) => n + Math.max(0, (m.monthlyMicroUsd ?? m.microUsd) - m.microUsd), 0) : 0;
+    microUsd += Math.max(0, back - owed);
+  }
+  return { months, microUsd };
+}
+
+/** Months of Pro as their owner sees them: those that haven't ended, oldest first, when the last ends, and what a refund gives back. */
+export function proOf(a: PlanAccount, l: Limits, now = Date.now()) {
   const months = a.pro.filter((m) => Date.parse(m.to) > now);
   return {
     months: months.map((m) => ({ from: m.from, to: m.to, microUsd: m.microUsd })),
     until: months.at(-1)?.to ?? null,
     renew: a.renew,
-    refundableMicroUsd: months.filter((m) => Date.parse(m.from) > now).reduce((n, m) => n + m.microUsd, 0)
+    refundableMicroUsd: refundOf(a, l, now).microUsd
   };
 }
 /** The notices not dismissed, newest first. */
@@ -447,14 +483,20 @@ export async function buyHours(d: Service, ownerId: string, packs: number, micro
   plog.info('notes bought', { ownerId, packs, microUsd: r.totalMicroUsd });
 }
 
-/** Refunds every month of Pro that hasn't started, at what was paid for it. A month that has started isn't refunded. */
+/**
+ * Refunds every month of Pro that hasn't started, at what was paid for it, less the lower price's difference on the months
+ * kept of a year or more that ends up shorter (`refundOf`). A month that has started isn't refunded, and nothing is when
+ * nothing would come back.
+ */
 export async function refundPro(d: Service, ownerId: string): Promise<void> {
-  await changing(d, ownerId, (a, _l, now) => {
-    const later = a.pro.filter((m) => Date.parse(m.from) > now);
-    if (!later.length) throw conflict('There’s no month of Pro to refund that hasn’t started. A month that has started isn’t refunded.', { ownerId });
-    const microUsd = later.reduce((n, m) => n + m.microUsd, 0);
-    plog.info('pro refunded', { ownerId, months: later.length, microUsd });
-    return withEntry({ ...a, pro: a.pro.filter((m) => !later.includes(m)) }, microUsd, `Pro refunded, ${monthsOf(later.length)}`);
+  await changing(d, ownerId, (a, l, now) => {
+    const { months, microUsd } = refundOf(a, l, now);
+    if (!months.length) throw conflict('There’s no month of Pro to refund that hasn’t started. A month that has started isn’t refunded.', { ownerId });
+    if (microUsd <= 0) {
+      throw conflict(`Refunding now would give nothing back: kept for fewer than ${monthsOf(l.get('plan.pro.yearly_from_months'))}, Pro bought at its lower price costs a month’s price for each month you’ve had.`, { ownerId, months: months.length });
+    }
+    plog.info('pro refunded', { ownerId, months: months.length, microUsd });
+    return withEntry({ ...a, pro: a.pro.filter((m) => !months.includes(m)) }, microUsd, `Pro refunded, ${monthsOf(months.length)}`);
   });
 }
 

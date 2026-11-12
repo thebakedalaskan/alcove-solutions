@@ -35,7 +35,7 @@ export async function planOf(d: Pick<Deps, 'cfg' | 'pool'>, ownerId: string): Pr
     over: { storage: overStorage && !inGrace },
     balance: { microUsd: a.balanceMicroUsd, history: historyOf(a).slice(0, SHOWN) },
     choose: a.choose,
-    pro: proOf(a, now),
+    pro: proOf(a, l, now),
     notices: noticesOf(a)
   };
 }

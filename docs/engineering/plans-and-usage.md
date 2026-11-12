@@ -174,10 +174,17 @@ row locked, so buys at once on any instance never spend the same money twice:
    goes down by the total, with "Pro, 3 months" in its history, and any grace ends. Logged `pro bought` with the owner,
    months and amount.
 
-**Refunds** (`POST /v1/plan/pro/refund`): every month that hasn't started goes back to the balance at what was paid for it,
-so a month bought at the yearly price comes back at the yearly price ("Pro refunded, 2 months"). A month that has started
-isn't refunded; with none to refund it's `conflict` ("There’s no month of Pro to refund that hasn’t started…").
-`Plan.pro.refundableMicroUsd` says what a refund would add.
+**Refunds** (`POST /v1/plan/pro/refund`): every month that hasn't started goes back to the balance at what was paid for it
+("Pro refunded, 2 months"), so a month bought at the yearly price comes back at the yearly price. But the yearly price is for
+a year or more: a purchase at it that the refund leaves with fewer than `plan.pro.yearly_from_months` months costs a month's
+price (as it was when it was bought) for each of its months kept, and the difference comes off what its months give back,
+never past nothing. A year refunded at once returns $172, the 11 months that haven't started at $16 less the $4 more the one
+kept costs, not $176; a second year bought after the first, refunded before any of it started, returns all of it, and the
+first keeps its price. A month that has started isn't refunded; with none to refund it's `conflict` ("There’s no month of Pro
+to refund that hasn’t started…"), and when nothing would come back (two months left of a year, say) it's `conflict` too
+("Refunding now would give nothing back…"), with nothing changed. `Plan.pro.refundableMicroUsd` says what a refund would
+add, by the same rule. Each month keeps the purchase it was one of, so the record keeps every month of a purchase that has a
+month still to come; the rest of the months that have ended go, as before.
 
 **Renewing** (`PUT /v1/plan/renew { renew }`) is off by default. Upkeep (`upkeep` in `plans.ts`, every 5 minutes, by
 `plan_accounts.due_at`) looks at an account at the earliest of: its release grace ending; `plan.pro_remind_seconds` (3
@@ -381,10 +388,13 @@ The server never holds a key that can move treasury money. By hand, in near.com,
   each has a `.default` (none bought, renewing off, no notices), and the record is written in the new shape the next
   time it's saved. The previous release reads a record this one wrote (zod ignores the new fields), so an account that
   bought Pro reads as Free there until this release is serving.
-- The yearly price needs no migration and changes no stored shape: it's two limits with defaults
-  (`plan.pro.yearly_from_months`, `plan.pro.yearly_price_micro_usd`), and each month of Pro in a `plan-account` record
-  already keeps what was paid for it (`microUsd`), which is what a refund gives back. The previous release, while the
-  deploy runs, offers no yearly price and refuses a buy at it as a changed price, charging nothing.
+- The yearly price needs no migration: it's two limits with defaults (`plan.pro.yearly_from_months`,
+  `plan.pro.yearly_price_micro_usd`). Each month of Pro in a `plan-account` record gains the purchase it was one of
+  (`purchase`) and a month's price when it was bought (`monthlyMicroUsd`), both `.default(null)`: a month from before has
+  neither, is a purchase of its own and is refunded at what was paid for it (`microUsd`), as before; the record is written in
+  the new shape the next time it's saved. The previous release, while the deploy runs, offers no yearly price and refuses a
+  buy at it as a changed price, charging nothing; a record it saves then loses the two fields (zod strips them), so its
+  months refund at what was paid, as from before.
 - More notes need no migration. A `plan-account` record from before has no `hours`: it reads as none bought
   (`.default(null)`), and the record is written in the new shape the next time it's saved. While the deploy runs, the
   previous release reads a record this one wrote without them (zod ignores the field), so it doesn't count them, and one

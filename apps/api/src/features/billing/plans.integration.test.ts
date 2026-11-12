@@ -364,7 +364,7 @@ describe('Pro', () => {
     expect((await ann.api.plans.plan()).balance.microUsd).toBe(13 * PRICE);
   });
 
-  it('sells a year or more for less: the yearly price from 12 months, a month’s under it, each refused at the other’s, refunded at what was paid', async () => {
+  it('sells a year or more for less: the yearly price from 12 months, a month’s under it, each refused at the other’s', async () => {
     const ann = await account();
     expect((await ann.api.plans.offers()).pro.yearly).toEqual({ fromMonths: 12, microUsdPerMonth: YEARLY });
     await give(ann, 12 * YEARLY);
@@ -374,16 +374,54 @@ describe('Pro', () => {
     expect(await refusal(ann.api.plans.buyPro(11, YEARLY))).toBe(changed);
     expect((await ann.api.plans.plan())).toMatchObject({ kind: 'free', balance: { microUsd: 12 * YEARLY } });
     const year = await ann.api.plans.buyPro(12, YEARLY);
-    expect(year).toMatchObject({ kind: 'pro', balance: { microUsd: 0 }, pro: { refundableMicroUsd: 11 * YEARLY } });
+    expect(year).toMatchObject({ kind: 'pro', balance: { microUsd: 0 } });
     expect(year.pro.months.map((m) => m.microUsd)).toEqual(Array.from({ length: 12 }, () => YEARLY));
     expect(year.balance.history[0]).toMatchObject({ label: 'Pro, 12 months', microUsd: -12 * YEARLY });
-    // The 11 months that haven't started go back at what was paid for them: the yearly price.
-    const refunded = await ann.api.plans.refundPro();
-    expect(refunded).toMatchObject({ kind: 'pro', balance: { microUsd: 11 * YEARLY }, pro: { refundableMicroUsd: 0 } });
-    expect(refunded.balance.history[0]).toMatchObject({ label: 'Pro refunded, 11 months', microUsd: 11 * YEARLY });
-    expect(await refusal(ann.api.plans.buyPro(12, YEARLY))).toBe('conflict: Your balance is short of what 12 months of Pro cost ($192). Add money first.');
     // Under a year, a month's price.
-    expect(await ann.api.plans.buyPro(2, PRICE)).toMatchObject({ balance: { microUsd: 11 * YEARLY - 2 * PRICE }, pro: { refundableMicroUsd: 2 * PRICE } });
+    await give(ann, 2 * PRICE);
+    expect(await ann.api.plans.buyPro(2, PRICE)).toMatchObject({ balance: { microUsd: 0 }, pro: { months: { length: 14 } } });
+  });
+
+  it('refunds a year bought at its lower price less the difference on the months kept, once fewer than 12 are left, and only then', async () => {
+    await h.setLimit('plan.period_seconds', 3600);
+    // A year refunded at once: the 11 months that haven't started come back at $16, less the $4 a month's price is above
+    // that on the one kept, since a month is all that's left of it. $172, not $176.
+    const ann = await account();
+    await give(ann, 12 * YEARLY);
+    expect((await ann.api.plans.buyPro(12, YEARLY)).pro.refundableMicroUsd).toBe(172_000_000);
+    const refunded = await ann.api.plans.refundPro();
+    expect(refunded).toMatchObject({ kind: 'pro', balance: { microUsd: 172_000_000 }, pro: { months: [{ microUsd: YEARLY }], refundableMicroUsd: 0 } });
+    expect(refunded.balance.history[0]).toMatchObject({ label: 'Pro refunded, 11 months', microUsd: 172_000_000 });
+
+    // Two years back to back, the first's last month running: refunding the second, which none of has been had, gives all
+    // of it back, and the first keeps its price.
+    const bob = await account();
+    await give(bob, 24 * YEARLY);
+    const first = await bob.api.plans.buyPro(12, YEARLY);
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.parse(first.pro.months[11]?.from ?? '') + 60_000 });
+    const second = await bob.api.plans.buyPro(12, YEARLY);
+    expect(second.pro).toMatchObject({ months: { length: 13 }, refundableMicroUsd: 12 * YEARLY });
+    const back = await bob.api.plans.refundPro();
+    expect(back).toMatchObject({ balance: { microUsd: 12 * YEARLY }, pro: { months: [{ microUsd: YEARLY }], refundableMicroUsd: 0 } });
+    expect(back.balance.history[0]).toMatchObject({ label: 'Pro refunded, 12 months', microUsd: 12 * YEARLY });
+    vi.useRealTimers();
+
+    // Ten months of a year had: the two left come to $32, less than the $40 the ten kept would cost more at a month's price.
+    // Nothing would come back, so nothing is refunded.
+    const cy = await account();
+    await give(cy, 12 * YEARLY);
+    const year = await cy.api.plans.buyPro(12, YEARLY);
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.parse(year.pro.months[9]?.from ?? '') + 60_000 });
+    expect((await cy.api.plans.plan()).pro).toMatchObject({ months: { length: 3 }, refundableMicroUsd: 0 });
+    expect(await refusal(cy.api.plans.refundPro())).toBe('conflict: Refunding now would give nothing back: kept for fewer than 12 months, Pro bought at its lower price costs a month’s price for each month you’ve had.');
+    expect((await cy.api.plans.plan()).pro.months).toHaveLength(3);
+    vi.useRealTimers();
+
+    // Months bought at a month's price refund at what was paid, however few are kept.
+    const di = await account();
+    await give(di, 3 * PRICE);
+    expect((await di.api.plans.buyPro(3, PRICE)).pro.refundableMicroUsd).toBe(2 * PRICE);
+    expect(await di.api.plans.refundPro()).toMatchObject({ balance: { microUsd: 2 * PRICE }, pro: { months: [{ microUsd: PRICE }], refundableMicroUsd: 0 } });
   });
 
   it('offers no yearly price while it’s 0, isn’t below a month’s, or is for more months than one purchase buys: a year is then a month’s price', async () => {
