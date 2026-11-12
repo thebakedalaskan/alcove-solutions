@@ -65,7 +65,7 @@ export const LIMITS = {
   'plan.hours.pack_minutes': { default: 600, floor: 1, ceiling: 60_000, unit: 'minutes', measures: 'More notes: the minutes one pack adds to the period it’s bought in, reckoned at ai.hour_micro_usd an hour.' },
   'plan.hours.price_micro_usd': { default: 15_000_000, floor: 0, ceiling: 10_000_000_000, unit: 'micro-usd', measures: 'More notes: one pack. At 0, more notes aren’t offered.' },
   'plan.hours.max_packs': { default: 5, floor: 1, ceiling: 100, unit: 'count', measures: 'More notes: the most packs one purchase buys.' },
-  'plan.pro_remind_seconds':{ default: 3 * DAY, floor: 0, ceiling: 30 * DAY, unit: 'seconds', measures: 'How long before Pro ends its owner is told, and a month is bought if renewing is on.' },
+  'plan.pro_remind_seconds': { default: 3 * DAY, floor: 0, ceiling: 30 * DAY, unit: 'seconds', measures: 'How long before Pro ends its owner is told, and a month is bought if renewing is on.' },
   'plan.period_seconds': { default: 30 * DAY, floor: MINUTE, ceiling: 365 * DAY, unit: 'seconds', measures: 'A plan’s period: notes renew, and paid time runs, in these.' },
   'plan.grace_seconds': { default: 15 * DAY, floor: 0, ceiling: 90 * DAY, unit: 'seconds', measures: 'Once an account is over its plan’s limits: how long until what’s over stops taking more.' },
   'ai.hour_micro_usd': { default: 500_000, floor: 1, ceiling: 100_000_000, unit: 'micro-usd', measures: 'What an hour of notes is reckoned at, to give the AI allowance as time.' },

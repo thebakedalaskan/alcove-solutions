@@ -324,7 +324,7 @@ async function changing(d: Service, ownerId: string, change: (a: PlanAccount, l:
 export interface Refusal {
   why: 'off' | 'too-many' | 'price' | 'short';
   /** What its buyer is told as they ask for it: from the balance, or as they open a payment for it. */
-  now: string;
+  asked: string;
   /**
    * What they're told when a payment made for it has arrived and it wasn't bought: the money is in the balance.
    * `lessThanAsked`: less arrived than the payment asked for, which is why the balance is short.
@@ -332,7 +332,7 @@ export interface Refusal {
   arrived(lessThanAsked: boolean): string;
 }
 /** A refusal whose words don't depend on what arrived. */
-const refusal = (why: Refusal['why'], now: string, arrived: string): Refusal => ({ why, now, arrived: () => arrived });
+const refusal = (why: Refusal['why'], asked: string, arrived: string): Refusal => ({ why, asked, arrived: () => arrived });
 /** What a purchase comes to at the limits in force: what it costs, its line in the history, and the account with it. */
 interface Terms {
   totalMicroUsd: number;
@@ -408,7 +408,7 @@ export async function purchase(d: Service, db: Db, ownerId: string, buys: Purcha
       bought: false,
       refusal: {
         why: 'short',
-        now: `Your balance is short: ${cost} ${dollars(t.totalMicroUsd)} and your balance is ${dollars(a.balanceMicroUsd)}. Add money first.`,
+        asked: `Your balance is short: ${cost} ${dollars(t.totalMicroUsd)} and your balance is ${dollars(a.balanceMicroUsd)}. Add money first.`,
         arrived: (less) => (less ? `Less arrived than ${cost}. It’s in your balance.` : `Your balance was short of what ${cost} when your payment arrived. It’s in your balance.`)
       }
     };
@@ -419,7 +419,7 @@ export async function purchase(d: Service, db: Db, ownerId: string, buys: Purcha
 
 /** A purchase refused as it's asked for, as the error its buyer gets: `invalid` past the most one purchase buys, else `conflict`. */
 export const refusedError = (r: Refusal, context: LogContext) =>
-  (r.why === 'too-many' ? invalid(r.now, { ...context, why: r.why }) : conflict(r.now, { ...context, why: r.why }));
+  (r.why === 'too-many' ? invalid(r.asked, { ...context, why: r.why }) : conflict(r.asked, { ...context, why: r.why }));
 
 /**
  * Buys `months` of Pro from the balance at `microUsdPerMonth`, the price its buyer was shown for that many months (the
