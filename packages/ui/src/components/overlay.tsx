@@ -248,7 +248,8 @@ export function Sheet({ open, onOpenChange, label, children, className }: { open
 export function TooltipProvider({ children }: { children: ReactNode }) {
   return <RTooltip.Provider delayDuration={300}>{children}</RTooltip.Provider>;
 }
-export function Tooltip({ label, children, side = 'top' }: { label: ReactNode; children: ReactNode; side?: 'top' | 'bottom' }) {
+/** A tooltip over what it names, or under it; left or right of something tall, such as a seam, beside its middle. */
+export function Tooltip({ label, children, side = 'top' }: { label: ReactNode; children: ReactNode; side?: 'top' | 'bottom' | 'left' | 'right' }) {
   return (
     <RTooltip.Root>
       <RTooltip.Trigger asChild>{children}</RTooltip.Trigger>

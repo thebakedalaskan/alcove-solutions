@@ -17,7 +17,7 @@ const meta = {
   subcomponents: { TooltipProvider },
   parameters: { layout: 'centered' },
   args: { label: 'Copy link', side: 'top', children: <IconButton icon="copy" label="Copy link" title={undefined} /> },
-  argTypes: { side: { control: 'inline-radio', options: ['top', 'bottom'] }, label: { control: 'text' }, children: { control: false } },
+  argTypes: { side: { control: 'inline-radio', options: ['top', 'bottom', 'left', 'right'] }, label: { control: 'text' }, children: { control: false } },
   render: (args) => <Row><Tooltip {...args} /><Hint>Hover the button to see its tooltip.</Hint></Row>
 } satisfies Meta<typeof Tooltip>;
 export default meta;

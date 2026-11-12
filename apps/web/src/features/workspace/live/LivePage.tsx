@@ -34,7 +34,7 @@ function heldBack(s: CallState, live: LiveCall): ReactNode {
       <Notice icon="notesPen" className="wl-off">
         {asking ? `Notes are off. You asked ${firstName(organizer)} for them.` : 'Notes are off. Nothing new is written down until they’re back on.'}
         {!s.isOrganizer && (asking
-          ? <Button variant="quiet" size="xs" onClick={() => live.ask(false)}>Take it back</Button>
+          ? <Button variant="quiet" size="xs" onClick={() => live.ask(false)}>Take back your ask</Button>
           : <Button variant="secondary" size="xs" icon="hand" onClick={() => live.ask(true)}>Ask {firstName(organizer)} for notes</Button>)}
       </Notice>
     );

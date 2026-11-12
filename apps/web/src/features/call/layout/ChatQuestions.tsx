@@ -8,11 +8,12 @@
 import { errorMessage, type CallQuestion as Question, type CallSession, type CallState } from '@alcove/api';
 import { CallQuestion, EmptyState, Icon, Switch, useToast } from '@alcove/ui';
 import { motion, useReducedMotion } from 'motion/react';
-import { useEffect, useRef, useState, type FocusEvent, type PointerEvent, type TouchEvent } from 'react';
+import { useEffect, useRef, useState, type FocusEvent } from 'react';
 import { log } from '~/lib/log';
 import { hm } from '~/lib/time';
 import { useActionFocus, type ActionJump } from './actionFocus';
 import { useDraft, type Draft } from './side';
+import { useTouchHold } from './touchHold';
 
 const qlog = log.child({ component: 'call-questions' });
 
@@ -28,42 +29,6 @@ const ranked = (qs: readonly Question[], by: Order) => [...qs].sort((a, b) => by
 const pinnedFirst = (qs: readonly Question[]) => [...qs.filter((q) => q.pinned), ...qs.filter((q) => !q.pinned)];
 /** Rows gliding to their new places: --duration-2 on --ease-in-out. */
 const GLIDE = { duration: 0.24, ease: [0.65, 0, 0.35, 1] } as const;
-/** On a touch screen, how long the order holds after the last touch or scroll in the list: time to read where it stopped, or tap again. */
-const TOUCH_HOLD_MS = 2500;
-/** Whether a touch is a finger's: a pen on a tablet sends touches too, and holds the order only while it points, as a mouse does. */
-const byFinger = (e: TouchEvent) => Array.from(e.changedTouches).some((t) => !('touchType' in t) || t.touchType !== 'stylus');
-
-/**
- * Holding the order for a finger, which the pointer's enter and leave can't do: a finger leaves the list as it lifts and as soon
- * as a scroll starts, and a tap leaves no keyboard focus. So for touch the order holds while a finger is on the list, and for
- * `TOUCH_HOLD_MS` after the last touch or scroll there, so a row doesn't move from under a second tap when a vote comes back.
- * A finger's pointer is cancelled once the page takes it for a scroll, so its touch says when it lifts. A mouse or pen still
- * holds the order only while it points at the list. Owns its timer, cleared as the list goes.
- */
-function useTouchHold() {
-  const [held, setHeld] = useState(false);
-  const holding = useRef(false);
-  const down = useRef(false);
-  const timer = useRef<number | undefined>(undefined);
-  useEffect(() => () => window.clearTimeout(timer.current), []);
-  const hold = (on: boolean) => { holding.current = on; setHeld(on); };
-  const soon = () => { window.clearTimeout(timer.current); timer.current = window.setTimeout(() => hold(false), TOUCH_HOLD_MS); };
-  const press = () => { down.current = true; window.clearTimeout(timer.current); hold(true); };
-  const lift = () => { down.current = false; soon(); };
-  return {
-    held,
-    /** On the list and its bar. */
-    on: {
-      onPointerDown: (e: PointerEvent) => { if (e.pointerType === 'touch') press(); },
-      onPointerUp: (e: PointerEvent) => { if (e.pointerType === 'touch') lift(); },
-      onTouchStart: (e: TouchEvent) => { if (byFinger(e)) press(); },
-      onTouchEnd: (e: TouchEvent) => { if (byFinger(e)) lift(); },
-      onTouchCancel: (e: TouchEvent) => { if (byFinger(e)) lift(); }
-    },
-    /** On what scrolls: while a touch holds the order, each scroll there, a flick's glide included, keeps it a while longer. */
-    onScroll: () => { if (holding.current && !down.current) soon(); }
-  };
-}
 
 export function ChatQuestions({ session, state, ready, draft, jump }: {
   session: CallSession; state: CallState; ready: boolean; draft: QuestionDraft; jump?: ActionJump | undefined;

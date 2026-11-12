@@ -4,7 +4,8 @@ import { useEffect, useRef, useState } from 'react';
 import { useProposeAction, useReviewAction } from '~/lib/queries';
 import { Backing, EvidenceFlags, type Seed } from './entries';
 import { FollowUpForm } from './FollowUpForm';
-import { FollowUpReview, type FollowUpProposal } from './FollowUpReview';
+import { FollowUpReview } from './FollowUpReview';
+import type { FollowUpProposal } from './useFollowUpReview';
 import { Moment, type ScreenRefShown } from './parts';
 
 /** Manual tasks are actual tasks immediately, with an explicit owner and date. */

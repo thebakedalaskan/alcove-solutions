@@ -1,8 +1,9 @@
 /*
- * Notes in the call (user-flows 6): the notes sign everyone sees, Notes in your side filling in as people talk (what's
- * decided, the follow-ups, a summary, and Yours at the foot, for you alone), the transcript and Ask as its tabs, captions from
- * More, and asking for notes from either side. While notes are on, what's said arrives in the transcript a moment later; the
- * live notes are written again a few seconds after.
+ * Notes in the call (user-flows 6): the notes sign everyone sees, and Notes in your side: its state in one pill beside its name
+ * (which opens what's captured, as the sign does), the notes filling in as people talk (a short summary, what's decided, the
+ * follow-ups with what the call suggests under them), the transcript, Ask and Yours as its tabs, Note to self and the bookmark at
+ * its foot, a bar under the tabs when capture isn't simply live, captions from More, and asking for notes from either side.
+ * While notes are on, what's said arrives in the transcript a moment later; the live notes are written again a few seconds after.
  */
 import type { Meta } from '@storybook/react-vite';
 import { screen } from 'storybook/test';
@@ -27,7 +28,7 @@ export const NotesOnLight = light(NotesOn);
 const LATE = { here: REVIEWERS, since: 7 * 60, earlier: REVIEW_TALK.slice(0, 9), talk: { lines: REVIEW_TALK.slice(9) }, summary: REVIEW_SUMMARY };
 export const DecidedAndFollowUps = inCall({ scenario: 'call-soon', call: REVIEW, script: LATE }, { play: reach('Notes') });
 export const DecidedAndFollowUpsPhone = phone(DecidedAndFollowUps);
-/** Yours, at the foot of the notes: the bookmark in Notes' head (or B) marks this moment, for you alone. */
+/** The bookmark at the foot of Notes (or B) marks this moment in Yours, for you alone; the toast's Open goes there. */
 export const MarkAMoment = {
   ...DecidedAndFollowUps, name: 'Mark a moment',
   play: plays(reach('Notes'), press('Mark this moment, only you', { then: ['Open'] }))
@@ -54,10 +55,20 @@ export const TakeABookmarkBack = { ...Transcript, name: 'Take a bookmark back', 
 /** Ask, Notes' third tab: catching up and asking about the call, for you alone. */
 export const Ask = inCall({ scenario: 'call-soon', call: REVIEW, script: LATE }, { play: reach('Notes', { tab: 'Ask' }) });
 export const AskPhone = phone(Ask);
+/** Yours, Notes' fourth tab, before anything's in it: only you see what's here, and it says what can go in. */
+export const YoursFirst = inCall({ scenario: 'call-soon', call: REVIEW, script: LATE }, { play: reach('Notes', { tab: 'Yours' }) });
+export const YoursFirstPhone = phone(YoursFirst);
+/** The notes couldn't be written again just now: they stay as they were, and the summary's time says since when, in caution. */
+export const NotUpdated = inCall({ scenario: 'call-soon', call: REVIEW, script: { ...LATE, notesStale: true } }, { play: reach('Notes') });
 
 /** Captions, turned on from More: the newest line, under the stage, with its language on the caption itself. */
 export const Captions = inCall({ scenario: 'call-soon', call: REVIEW, script: { here: REVIEWERS, talk: { lines: REVIEW_TALK }, summary: REVIEW_SUMMARY } }, { play: press(MORE, { then: ['Turn on captions'] }) });
 export const CaptionsPhone = phone(Captions);
+
+/** Live, beside Notes: the state in a word, which opens what's captured, the same card as the sign at the top of the call, here with the organizer's Pause notes and Turn off. */
+export const WhatsCapturedFromNotes = inCall({ scenario: 'call-soon', call: REVIEW, script: LATE }, { play: plays(reach('Notes'), press('Live. What’s captured')) });
+export const WhatsCapturedFromNotesPhone = phone(WhatsCapturedFromNotes);
+export const WhatsCapturedFromNotesLight = light(WhatsCapturedFromNotes);
 
 /** The call's AI model isn't in a secure enclave: what's captured says so in caution, with Unencrypted, instead of claiming confidential compute. */
 export const UnencryptedModel = inCall({ scenario: 'call-soon', call: REVIEW, script: { here: REVIEWERS, model: UNENCRYPTED_MODEL, talk: { lines: REVIEW_TALK }, summary: REVIEW_SUMMARY } }, { play: press('Notes on. What’s captured') });
@@ -72,7 +83,7 @@ export const NotesPaused = inCall({ scenario: 'call-soon', call: REVIEW, script:
 export const NotesRequested = inCall({
   scenario: 'call-soon', call: REVIEW,
   script: { here: REVIEWERS, notes: 'off', cues: [...at(3, asksForNotes(PRIYA)), ...at(7, asksForNotes(KOFI))] }
-});
+}, { play: reach('Notes') });
 export const NotesRequestedPhone = phone(NotesRequested);
 
 /** At Priya's check-in, notes are off: you ask for them, and ten seconds in Priya turns them on. */
@@ -91,13 +102,25 @@ export const NotNow = inCall({
   play: reach('Notes', { then: ['Ask for notes'] })
 });
 
+/** Priya's browser, which takes the notes, still records but can't listen: nothing new is transcribed, and Notes says so in caution, on every tab. */
+export const CantListen = inCall({
+  scenario: 'busy', call: { ...CHECK_IN, code: 'lch-chck-cnt' },
+  script: { here: CHECKING_IN, talk: { lines: CHECK_IN_TALK }, summary: CHECK_IN_SUMMARY, cues: at(4, { do: 'host-cant-hear', records: true }) }
+}, { play: reach('Notes') });
+/** Priya's browser can neither record nor listen: notes are unavailable, the pill says so in caution, and a bar says why. */
+export const CantCapture = inCall({
+  scenario: 'busy', call: { ...CHECK_IN, code: 'lch-chck-cap' },
+  script: { here: CHECKING_IN, talk: { lines: CHECK_IN_TALK }, summary: CHECK_IN_SUMMARY, cues: at(4, { do: 'host-cant-hear', records: false }) }
+}, { play: reach('Notes') });
+export const CantCapturePhone = phone(CantCapture);
+
 /** Priya pauses notes six seconds in, and resumes them at twenty: everyone is told, each time. */
 export const PausedByTheOrganizer = inCall({
   scenario: 'busy', call: { ...CHECK_IN, code: 'lch-chck-pse' },
   script: { here: CHECKING_IN, talk: { lines: CHECK_IN_TALK }, summary: CHECK_IN_SUMMARY, cues: [...at(6, { do: 'notes', mode: 'paused' }), ...at(20, { do: 'notes', mode: 'on' })] }
 });
 
-/** One actual task, two optional proposals. The checklist does not grow until someone adds one. */
+/** One actual task, and under it what the call suggests, dashed, with Add and ×. The checklist does not grow until someone adds one. */
 export const FollowUpsAndSuggestions = inCall({ scenario: 'call-soon', call: REVIEW, script: FOLLOW_UP_SCRIPT }, { play: reach('Notes') });
 export const FollowUpsAndSuggestionsPhone = phone(FollowUpsAndSuggestions);
 export const FollowUpsAndSuggestionsLight = light(FollowUpsAndSuggestions);
@@ -107,8 +130,14 @@ export const ReviewInWorkspace = inCall({ scenario: 'call-soon', call: REVIEW, s
 });
 export const ReviewInWorkspacePhone = phone(ReviewInWorkspace);
 export const ReviewInWorkspaceLight = light(ReviewInWorkspace);
-/** Another proposal arrives while this fixed batch is open, waiting behind its own count. */
-export const SuggestionsArriveDuringReview = inCall({
+/** Points at what the call suggests, as a person would before pressing Add. */
+const pointAtSuggestions: NonNullable<PageStory['play']> = async ({ userEvent, step }) => {
+  await step('Point at what the call suggests', async () => {
+    await userEvent.hover(await screen.findByRole('group', { name: 'Suggested from the call' }, { timeout: 10000 }));
+  });
+};
+/** Another suggestion arrives while your pointer is on them: the rows stay as they were, and it waits behind "1 more suggested". */
+export const SuggestionsArriveWhileYouPoint = inCall({
   scenario: 'call-soon', call: REVIEW,
   script: { ...FOLLOW_UP_SCRIPT, cues: at(12, says(PRIYA, 'We should check the launch email on Thursday.', { hands: { text: 'Check the launch email', due: 'Thursday' } })) }
-}, { play: plays(reach('Notes'), press('2 suggestions from the call')) });
+}, { play: plays(reach('Notes'), pointAtSuggestions) });

@@ -13,7 +13,8 @@ Every signed-in page sits in the same frame (`apps/web/src/features/shell/`, `pa
 
 - **The side panel**, on the left, is dark in both themes. From the top:
   - the logo, and a button to hide the panel
-  - Start a call (N), tinted, never filled
+  - Start a call (N): a row like the places, its name in line with theirs and its camera in a warm circle. It's never
+    filled or shaded, so the place you're on is the one shaded row
   - the places, each with a count: Home (what's waiting on you), Notes, Record (recordings waiting to upload) and Team
     (people on Alcove), with Team hidden for someone on their own
   - Up next, the next call with Join, on Home too, except while Home's own line offers a call (in its last few minutes,
@@ -22,7 +23,7 @@ Every signed-in page sits in the same frame (`apps/web/src/features/shell/`, `pa
   - at the foot, the confidential-compute check and the minutes of notes left
 - **The page** scrolls under a rounded edge. Search ("Search or ask", ⌘K opens the palette) and you (your arch, which opens
   Settings) sit at its top right on every page, outside the page itself, so moving between pages leaves them alone. A page's
-  title keeps clear of them with `--top-room`.
+  title sits at its top left, in the same place on every page, and keeps clear of them with `--top-room`.
 - **On a phone** (860px and narrower) a top bar takes the panel's place: the logo, search, Start a call as a plus, and you.
   A tab bar sits at the bottom: Home, Notes, Record (standing up out of the bar as a small night recorder with its red
   light), Team and Settings.
@@ -35,7 +36,7 @@ Every signed-in page sits in the same frame (`apps/web/src/features/shell/`, `pa
 Home is for starting a call and for what's yours. It's nearly all sky.
 
 - **The sky.** The date, small, at the top left. In the middle, Start a call (Newsreader), then:
-  - Start now (filled), Schedule, and an icon button that copies a link for a new call
+  - Start now (filled) and Schedule
   - up to three people to ring, each a chip with their arch, then a plus
   - from 5 minutes before a call with someone else on it, and while it's going, a slim line above the title with its faces,
     its name, "Starts in 4 min" or "Happening now", and Join (J), which takes the filled button
@@ -152,8 +153,8 @@ you choose: It was answered or It's still open.
 
 The sun is low and to the left, behind the people.
 
-- **The sky.** The company's name (Newsreader) and Invite people (filled). Everyone stands in their arch on the horizon,
-  with you in the middle:
+- **The sky.** Team at the top left. In the middle, the company's name (Newsreader) and Invite people (filled). Everyone
+  stands in their arch on the horizon, with you in the middle:
   - someone not on Alcove yet is a dashed arch with their initial
   - the sun stands in an empty arch, or just past the end of the line
   - past 13 people the far ones recede, with the sun behind them, and step forward when you point at them; "All N people"
@@ -267,9 +268,9 @@ One modal, one question at a time, and a sheet on a phone.
 
 ## A call
 
-`routes/call.$code.tsx`, `features/call/` (the shell in `layout/`), `styles/call.css`, styled with `ic-` classes, and Chat in
-`styles/call-chat.css` (`ch-`). Boards:
-[canvas/call/](canvas/call/README.md).
+`routes/call.$code.tsx`, `features/call/` (the shell in `layout/`), `styles/call.css`, styled with `ic-` classes, Chat in
+`styles/call-chat.css` (`ch-`), and Notes in `styles/call-notes.css` (`nn-`, and `nk-` for what's captured). Boards:
+[canvas/call/](canvas/call/README.md), and Notes' own in [canvas/notes/](canvas/notes/README.md).
 
 Always night, in both themes, on the stage tokens, except your side, which takes your theme. People are in arches, never
 circles, and whoever speaks gets the `speak` ring. The camera appears only here and on the join screen.
@@ -288,9 +289,18 @@ circles, and whoever speaks gets the `speak` ring. The camera appears only here 
     hairline, and the faces with the count (and, for whoever hosts, how many are asking to join), which open People. Each is lit while what it opens is open.
 - **Your side** is one panel at a time, on the right, at a fixed width (368px, or 340px in a window under 1200px), and the
   stage gives way as it slides in; where that would leave the stage under 480px (a window under 864px), it slides in over
-  the stage, which dims behind it, and toasts keep clear of its foot wherever it is: Notes (with the tabs Notes, Transcript
-  and Ask, and Yours at the foot of Notes), Chat, People, Your notes beside a presented board, and the rooms. It takes your
-  theme, as a board's sheet does unless it's a night board; the stage, the dock, the workspace and screens stay night.
+  the stage, which dims behind it, and toasts keep clear of its foot wherever it is: Notes (with the tabs Notes, Transcript,
+  Ask and Yours), Chat, People, Your notes beside a presented board, and the rooms. It takes your theme, as a board's sheet
+  does unless it's a night board; the stage, the dock, the workspace and screens stay night.
+- **Notes** has its head (Notes, a pill, Open as an icon, ×), then its tabs, words with a line under the one you're on.
+  The pill says the state once, in a word: Live with a `rec` dot, Paused, Off, Unavailable in caution, or the
+  organizer's 2 asked in rose. It opens the card the sign at the top left opens, what's captured: one sentence, the asks,
+  what's yours to press, then how the notes are written and who gets them. A bar under the tabs shows only while capture
+  isn't simply live, saying what it means with the one thing to do; a hiccup that fixes itself is only the summary's
+  time, in caution. Nothing hides behind ⋯, and nothing is said twice, so there's no line about writing and no footer.
+  The notes take their colours by kind, as the note does afterwards: the summary first, Decided in rose with diamonds,
+  Follow-ups in horizon with boxes, and what the call suggests dashed under them, with Add and ×, two at a time and still
+  while you point at them. Every tab but Ask ends in Note to self, with the bookmark beside it, for you alone.
 - **The frame.** A screen, a board and the workspace each sit in one frame with one bar. On the left, the presenter's face
   (or the kind's icon while nobody presents), the name as a menu of the kind's own commands, and a line that says whose it
   is. On the right, only what applies: following or Follow, Present, focus, Stop sharing (with Close, on your own screen),
@@ -298,13 +308,16 @@ circles, and whoever speaks gets the `speak` ring. The camera appears only here 
   it again; on your own screen it puts the screen away for you, a tile with the people, while everyone still sees it. A
   board someone presents keeps every tool for everyone following it: following is a view, not a mode, and anything of your
   own on it takes you off it, from where you are; the presenter keeps theirs too, with the pager at the frame's foot. The
-  people sit beside it in a column of tiles on the right, under the bar, a row of arches over it on a stage under 760px,
-  or on the horizon once they're hidden and in focus. Their own quiet button (an icon with a tooltip, no fill) does what
-  ⇧P does: Hide the people at the top of the column, level with the bar's buttons, or at the end of the row, and Show the
-  people, first on the horizon. A phone keeps its arches, and has none.
-- **No layouts to choose.** The stage lays itself out; you drag a tile to move it and pull its corner to make it bigger,
-  and pin from its menu. The first time you point at a tile you can move, a coachmark under it says so, once in that
-  browser. Once you've changed it, More has a quiet Reset layout (muted ink, no fill). Testers asked for preset layouts
+  people stand at the window's right edge, level with it and in the middle of their edge: a column of tiles, or a rail of
+  arches once they're smaller and in focus, and a row of arches over it on a stage under 760px. Notes, Chat and People open
+  between it and them, and it makes room; the people never move for them. Their one control is the seam left of them: a
+  faint grip in the gap until you point at it, when the whole seam lights up. Click it, or drag it right to make the people
+  smaller and left to make them bigger, as ⇧P does. Nothing floats over them. A narrow stage and a phone keep their arches,
+  and have none.
+- **No layouts to choose.** The stage lays itself out, and talking moves nobody: the speak ring says who's talking, and
+  only a pin or the organizer's spotlight puts someone on the main stage. You drag a tile to move it and pull its corner
+  to make it bigger, and pin from its menu. The first time you point at a tile you can move, a coachmark under it says
+  so, once in that browser. Once you've changed it, More has a quiet Reset layout (muted ink, no fill). Testers asked for preset layouts
   and for tiles that snap to drop zones (#227); both stay out, as #178 and #197 decided, because choosing layouts made the
   call hard to understand. What they were missing was a way out of the column and a sign that tiles move, so those were
   built instead.
@@ -353,8 +366,8 @@ circles, and whoever speaks gets the `speak` ring. The camera appears only here 
   in the ⋯ at the end of its line, and the list sorts as chosen whenever the pointer is away from it (on a touch screen, a
   couple of seconds after the last touch or scroll). The
   composer is one box: the words, then @, the thread's or question's one choice, and Send, the one filled button.
-- **Focus** fills the window with what's in the frame. The bars slide off, the people stand on the horizon, and the dock
-  keeps the microphone, camera, Show everything and Leave.
+- **Focus** fills the window with what's in the frame. The bars slide off, the people keep a rail of arches at the right,
+  and the dock keeps the microphone, camera, Show everything and Leave.
 - **On a phone** (under 600px), the top is the title, the notes sign, Chat and the faces; the dock is the microphone,
   camera, Share, More and Leave; what's open fills the screen under a row of arches; More starts with a grid of Board,
   Workspace, Notes, Chat and People; and your side, Settings and Close's question are sheets.
@@ -419,8 +432,8 @@ Signed out, before anything else: what Alcove is, told as one evening on the app
     nudge from Kofi's ⋯ as a step in its place. You're talking on mute is said at the top of the call.
   - Arrange it your way has no layouts to pick. Maya's tile is dragged to the front, the others making room, and pulled
     by its corner until she's the bigger one. Kofi's screen takes the room in its frame with everyone in a column beside
-    it, and Focus fills the window with it, everyone on the horizon. When Kofi stops, Reset layout, in More, puts the call
-    back.
+    it, and Focus fills the window with it, everyone in a rail of arches at its right. When Kofi stops, Reset layout, in
+    More, puts the call back.
 - **Find a time** is the Team moment (`TeamScene`): the team stands on the horizon with the sun low past the end of the
   line. Picking people lays their busy hours out across the week, with the times everyone is free.
 - **Your agent** (`AgentScene`) books a call over MCP, beside the tools it can use.
@@ -440,8 +453,8 @@ Signed out, before anything else: what Alcove is, told as one evening on the app
 
   A new account has its arrival instead, and with reduced motion Home just opens. It's decorative: it takes no focus, and
   a press, a key or the wheel clears it at once.
-- The nav is fixed over the sky. It turns night over the night windows, and its Get started is tinted, like the side
-  panel's Start a call. The logo appears once, in the nav.
+- The nav is fixed over the sky. It turns night over the night windows, and its Get started is tinted, leaving the
+  filled button to what's on the page. The logo appears once, in the nav.
 
 ## Not yet on the canvas
 

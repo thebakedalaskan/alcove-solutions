@@ -1,19 +1,19 @@
 /*
- * The layout engine: where everyone on the stage goes. `arrange` turns the call (who's here, what's presented, who's
- * talking) and your own view (view.ts) into a plan: who leads, in what order, and where you see yourself. There are no modes
- * to choose: the stage lays itself out, and what you dragged, sized and pinned is kept. `place` turns a plan into rectangles
- * for the stage's size, and `placeFrame` puts them where the stage is, or, once something is open on your stage (panels.ts),
- * beside it. All are pure, so the same call and the same choices always look the same, and nothing moves unless one of them
- * changed.
+ * The layout engine: where everyone on the stage goes. `arrange` turns the call (who's here, what's presented, the
+ * organizer's spotlight) and your own view (view.ts) into a plan: who leads, in what order, and where you see yourself. There
+ * are no modes to choose: the stage lays itself out, and what you dragged, sized and pinned is kept. Talking moves nothing:
+ * only a pin or the spotlight puts someone on the main stage. `place` turns a plan into rectangles for the stage's size, and
+ * `placeFrame` puts them where the stage is, or, once something is open on your stage (panels.ts), beside it. All are pure,
+ * so the same call and the same choices always look the same, and nothing moves unless one of them changed.
  */
 import type { CallLayout, CallViewPrefs, StageCorner } from '@alcove/api';
-import { placePeople, type Horizon, type PeopleMode, type TileMode } from './panels';
+import { placePeople, type PeopleMode, type TileMode } from './panels';
 
 export type Rect = [x: number, y: number, w: number, h: number];
 export interface Box { x: number; y: number; w: number; h: number }
 /**
- * What you see. Grid: everyone in tiles, whoever leads first and bigger. Focus: whoever leads (a spotlight, your pins,
- * the speaker) on the main stage, everyone else in a strip under it. Side: something is open on your stage, and the people
+ * What you see. Grid: everyone in tiles, whoever leads first and bigger. Focus: whoever leads (the organizer's spotlight,
+ * your pins) on the main stage, everyone else in a strip under it. Side: something is open on your stage, and the people
  * sit beside it.
  */
 export type Shape = 'grid' | 'focus' | 'side';
@@ -34,11 +34,9 @@ export interface ArrangeInput {
   tiles: string[];
   /** The organizer's spotlight, for everyone: a participant ID. */
   spotlight: string | null;
-  /** Who has done most of the talking lately (settled, yours counted). */
-  dominant: string | null;
   prefs: CallViewPrefs;
   layout: CallLayout;
-  /** Something is open on your stage: the people sit beside it, and nobody leads by themselves. */
+  /** Something is open on your stage: the people sit beside it. */
   hold: boolean;
 }
 export interface Plan {
@@ -49,8 +47,6 @@ export interface Plan {
   rest: string[];
   /** Tiles shown at twice the size (grid). */
   big: Set<string>;
-  /** Whoever leads was picked by Alcove (whoever does most of the talking), not by you or the organizer. */
-  auto: boolean;
   /** Your own picture when it isn't in the grid: in a corner, or folded into a small chip there. */
   self: { id: string; corner: StageCorner; folded: boolean } | null;
   /** You, while nobody else is here and people rung are on their way: you're big, with their arches beside you. */
@@ -73,22 +69,15 @@ export function arrange(i: ArrangeInput): Plan {
   const people = order.flatMap((seat) => { const p = bySeat.get(seat); return p && p.id !== self?.id ? [p] : []; });
   const here = new Set(people.map((p) => p.id));
   const idOf = (seat: string) => { const p = bySeat.get(seat); return p && here.has(p.id) ? [p.id] : []; };
-  // Who leads: the organizer's spotlight, then your pins in the order you pinned them.
-  let leads = [...new Set([...(i.spotlight && here.has(i.spotlight) ? [i.spotlight] : []), ...layout.pins.flatMap(idOf)])];
-  // Nobody chosen and nothing open: someone doing most of the talking leads, but only while you haven't arranged anything,
-  // so what you arranged stays put.
-  let auto = false;
-  if (!leads.length && !i.hold) {
-    const arranged = layout.order.length > 0 || layout.big.length > 0;
-    const pick = !arranged && i.dominant && here.has(i.dominant) ? i.dominant : null;
-    if (pick) { leads = [pick]; auto = true; }
-  }
+  // Who leads: the organizer's spotlight, then your pins in the order you pinned them. Nobody leads for talking: the speak
+  // ring says who's talking, and the stage stays as it is.
+  const leads = [...new Set([...(i.spotlight && here.has(i.spotlight) ? [i.spotlight] : []), ...layout.pins.flatMap(idOf)])];
   const count = people.length + i.tiles.length;
   const shape: Shape = i.hold ? 'side' : leads.length && count > 1 ? 'focus' : 'grid';
   const rest = [...i.tiles, ...people.map((p) => p.id).filter((id) => !leads.includes(id))];
   const big = new Set(shape === 'grid' ? [...leads, ...layout.big.flatMap(idOf)] : []);
   const awaiting = me && !self && alone && awaited > 0 ? me.id : null;
-  return { shape, leads, rest, big, auto, self, awaiting, order: order.filter((seat) => !bySeat.get(seat)?.waiting) };
+  return { shape, leads, rest, big, self, awaiting, order: order.filter((seat) => !bySeat.get(seat)?.waiting) };
 }
 
 /** `full` with the members of a group (`before`, in their old order) put back in their new order, in the same places. */
@@ -96,21 +85,6 @@ export function reslot(full: string[], before: string[], after: string[]): strin
   const out = [...full];
   before.forEach((s, k) => { const at = full.indexOf(s); const next = after[k]; if (at >= 0 && next !== undefined) out[at] = next; });
   return out;
-}
-
-/**
- * Keeps tiles where they were when only who leads changed by itself: whoever stepped down takes the place of whoever
- * stepped up, instead of everyone between them shifting along. Newcomers go at the end.
- */
-export function steady(prev: string[], next: string[]): string[] {
-  const want = new Set(next);
-  const fresh = next.filter((k) => !prev.includes(k));
-  const out: string[] = [];
-  for (const k of prev) {
-    if (want.has(k)) out.push(k);
-    else { const n = fresh.shift(); if (n !== undefined) out.push(n); }
-  }
-  return [...out, ...fresh];
 }
 
 /* ---------- rectangles ---------- */
@@ -226,7 +200,7 @@ export interface Placed {
   self: Rect | null;
   /** Where the people are while something is open on your stage, if they're anywhere. */
   people: Box | null;
-  /** Tiles that aren't tiles: arches, or small arches on the horizon. */
+  /** Tiles that aren't tiles: arches, in a rail or a row. */
   modes: Map<string, TileMode>;
   /** Tiles with no room: kept in place, out of sight. */
   off: Set<string>;
@@ -310,11 +284,10 @@ export interface StageFrame {
   /** The room to keep for the status bar and captions on a stage that holds everyone. */
   top: number;
   bottom: number;
-  /** The people beside what's open on your stage, or null while the stage is theirs. */
+  /** The people beside what's open on your stage, in the call's area (at its right edge, past your side), or null while the stage is theirs. */
   panels: {
     people: Box | null;
     mode: PeopleMode;
-    horizon: Horizon;
     /** Who's talking or has a hand up: there's always a place for them. */
     loud: ReadonlySet<string>;
     /** The row of arches on a phone. */
@@ -338,9 +311,9 @@ export function placeFrame(plan: Plan, f: StageFrame): Placed {
   }
   const folded = plan.self?.folded && p.people && p.mode === 'tiles';
   const people = folded && p.people ? { ...p.people, h: Math.max(0, p.people.h - CHIP_H - GAP) } : p.people;
-  // Someone rung waits in a tile: among arches or on the horizon they're in People, with what they said.
+  // Someone rung waits in a tile: among arches they're in People, with what they said.
   const who = [...plan.leads, ...plan.rest].filter((id) => p.mode === 'tiles' || !isWaitKey(id));
-  const placed = placePeople(people, who.map((id) => ({ id, thing: isThingKey(id) })), p.mode, p.horizon, p.loud, p.small);
+  const placed = placePeople(people, who.map((id) => ({ id, thing: isThingKey(id) })), p.mode, p.loud, p.small);
   const modes = new Map<string, TileMode>();
   const slots = new Map<string, Rect>();
   for (const [k, s] of placed.spots) { slots.set(k, rectOf(s.box)); if (s.mode !== 'tile') modes.set(k, s.mode); }

@@ -4,11 +4,7 @@
  * so New workspace stays in view. On a phone the page scrolls as one. Classes start with dv-.
  */
 .dv { --hz: calc(8px + clamp(220px, 26vh, 300px)); height: 100vh; height: 100dvh; }
-.dv .dusk-in { display: flex; flex-direction: column; height: 100%; max-width: 1180px; padding-bottom: 8px; }
-.main:has(> .main-in > .dv) .main-top { max-width: 1180px; }
-.dv-top { flex: none; display: flex; align-items: center; min-height: 40px; padding-right: var(--top-room); }
-.shell.is-bare .dv-top { padding-left: max(0px, calc(72px - var(--page-x))); }
-.dv-top h1 { font: 400 clamp(22px, 2vw, 28px)/1.2 var(--font-display); letter-spacing: -.008em; color: var(--ink); }
+.dv .dusk-in { display: flex; flex-direction: column; height: 100%; padding-bottom: 8px; }
 
 /* ------------------------------------------------------------ the sky: one job, in the middle */
 .dv-sky { position: relative; z-index: 5; flex: none; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; height: calc(var(--hz) - 70px); padding-bottom: 14px; text-align: center; }
@@ -41,8 +37,7 @@
   .dv { --hz: 260px; --behind: 66px; height: auto; margin-top: -66px; }
   .dv .dusk-in { display: block; height: auto; padding-top: 66px; padding-bottom: 28px; }
   .dv .hz > .hz-at, .dv .hz > .hz-light { clip-path: inset(-500px -2400px -30px -2400px); }
-  .dv-top { min-height: 32px; }
-  .dv-sky { height: calc(var(--hz) - 98px); gap: 9px; padding-bottom: 8px; }
+  .dv-sky { height: calc(var(--hz) - 110px); gap: 9px; padding-bottom: 8px; }
   .dv-sky p { font-size: 14px; }
   .dv-name { height: 48px; padding-left: 16px; }
   .dv-name input { font-size: 18px; }

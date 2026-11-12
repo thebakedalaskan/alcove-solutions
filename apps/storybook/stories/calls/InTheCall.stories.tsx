@@ -141,24 +141,50 @@ export const TabAttentionWithoutNotifications = inCall({
   script: { here: REVIEWERS, cues: [...at(2, chats(AIKO, '@Art Vandelay, can you review the checklist?', ['me'])), ...at(4, knocks(DIEGO))] }
 }, { parameters: { opening: { browser: { notifications: 'denied' } } } });
 
+/**
+ * Writes on Chat's line to everyone once it can take words (it waits for the call's keys first), as typing does: the line's
+ * own value, then the input event it answers. user-event's typing never reaches this line, so its stories showed nothing.
+ */
+const toEveryone = async (words: string) => {
+  const line = await screen.findByRole('combobox', { name: 'Message everyone' });
+  await waitFor(() => { if (line instanceof HTMLInputElement && line.disabled) throw new Error('Chat is still getting the call’s keys.'); }, { timeout: 8000 });
+  if (!(line instanceof HTMLInputElement)) return line;
+  line.focus();
+  Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(line, `${line.value}${words}`);
+  line.setSelectionRange(line.value.length, line.value.length);
+  line.dispatchEvent(new Event('input', { bubbles: true }));
+  return line;
+};
+
 /** Type @ without leaving the composer: arrows choose someone in this room, Enter inserts their identity. */
 export const MentionPicker = {
   ...FourOfYou, name: 'Mention someone in chat',
-  play: plays(reach('Chat'), async ({ userEvent }) => {
-    await userEvent.type(await screen.findByRole('combobox', { name: 'Message everyone' }), '@');
+  play: plays(reach('Chat'), async () => {
+    await toEveryone('@');
   })
 };
 export const MentionPickerPhone = phone(MentionPicker);
 export const MentionPickerLight = light(MentionPicker);
 export const MentionPickerLightPhone = phone(MentionPickerLight);
 
+/**
+ * Each letter after @ narrows the list to the people whose name, a word of it, or their address before the @ starts with
+ * what's typed: @k is Kofi alone. The address everyone shares doesn't count, so one letter of it finds nobody.
+ */
+export const MentionPickerNarrows = {
+  ...FourOfYou, name: 'Mention someone in chat, narrowed as you type',
+  play: plays(reach('Chat'), async () => {
+    await toEveryone('@k');
+  })
+};
+
 /** A selected mention has a chip in the composer as well as its words on the line. */
 export const SelectedMention = {
   ...FourOfYou, name: 'A selected chat mention',
   play: plays(reach('Chat'), async ({ userEvent }) => {
-    await userEvent.type(await screen.findByRole('combobox', { name: 'Message everyone' }), '@Pri');
+    await toEveryone('@Pri');
     await userEvent.keyboard('{Enter}');
-    await userEvent.type(await screen.findByRole('combobox', { name: 'Message everyone' }), 'can you review this?');
+    await toEveryone('can you review this?');
   })
 };
 
@@ -229,7 +255,7 @@ export const Many = inCall({
 });
 export const ManyPhone = phone(Many);
 
-/** Kofi has the floor: the speak ring follows whoever's talking, and the stage settles on him. */
+/** Kofi has the floor: the speak ring follows whoever's talking, and the stage stays as it is. */
 export const SomeoneSpeaking = inCall({
   scenario: 'call-soon', call: REVIEW, you: { mic: false },
   script: {
@@ -330,19 +356,31 @@ export const FindNobody = {
 /* ---------- beside what's open ---------- */
 
 /**
- * Priya shares two seconds in: her screen takes your stage, and the people stand in a column beside it, under the frame's bar.
- * At the top of the column, level with the bar, Hide the people does what ⇧P does.
+ * Priya shares two seconds in: her screen takes your stage, and the people stand in a column at the window's right edge, level
+ * with it. Left of them is the seam, a faint grip until you point at it, which does what ⇧P does.
  */
 const SHARING = inCall({ scenario: 'call-soon', call: REVIEW, script: { here: REVIEWERS, cues: at(2, shares(PRIYA, CHECKLIST)), talk: { from: 4, lines: REVIEW_TALK }, summary: REVIEW_SUMMARY } });
 const priyasScreen: Play = async ({ step }) => { await step('Priya shares her screen', async () => { await frameOf('Priya’s screen'); }); };
 export const PeopleBesideWhatsOpen = { ...SHARING, name: 'The people beside what’s open', play: plays(clearSide, priyasScreen) };
-/** On a phone the people are a row of arches over what's open, always: there's no room to hide them into. */
+/** A laptop's window, where a call opens Notes by itself while notes are on. */
+const LAPTOP = { ...SHARING.globals, viewport: { value: 'laptop', isRotated: false } };
+/** Notes, which a call opens by itself on a wide screen, stands between what's open and the people: her screen makes room, and they keep the window's edge. */
+export const PeopleBesideWhatsOpenWithNotes = { ...SHARING, name: 'The people beside what’s open, with Notes', globals: LAPTOP, play: priyasScreen };
+/** On a phone the people are a row of arches over what's open, always: they're as small as they get. */
 export const PeopleBesideWhatsOpenPhone = { ...phone(SHARING, 'The people beside what’s open, on a phone'), play: priyasScreen };
-/** Hide the people: they wait small on the horizon by the dock, and Show the people, first there, brings them back. */
-export const HideThePeople = { ...SHARING, name: 'Hide the people', play: plays(clearSide, priyasScreen, press('Hide the people')) };
-/** In a narrow window they're a row of arches over the frame, with Hide the people at its end. */
+/** Pointing at the seam says what it does: click it, or drag it right. */
+export const PointAtTheSeam = {
+  ...SHARING, name: 'Point at the seam', globals: LAPTOP,
+  play: plays(priyasScreen, async ({ userEvent, step }) => {
+    await step('Point at the seam left of the people', async () => { await userEvent.hover(await screen.findByRole('button', { name: 'Make the people smaller' }, { timeout: 10000 })); });
+  })
+};
+/** Make the people smaller (the seam, or ⇧P): the column folds into a rail of arches in the same place, and the seam beside it opens it out again. */
+export const MakeThePeopleSmaller = { ...SHARING, name: 'Make the people smaller', play: plays(clearSide, priyasScreen, press('Make the people smaller')) };
+/** With Notes open the rail keeps the window's edge, Notes beside it, and her screen takes the room the column gave back. */
+export const MakeThePeopleSmallerWithNotes = { ...SHARING, name: 'Make the people smaller, with Notes', globals: LAPTOP, play: plays(priyasScreen, press('Make the people smaller')) };
+/** In a narrow window they're a row of arches over the frame, already as small as they get: there's no seam. */
 export const PeopleBesideWhatsOpenNarrow = { ...narrow(SHARING, 'The people beside what’s open, in a narrow window'), play: plays(clearSide, priyasScreen) };
-export const HideThePeopleNarrow = { ...narrow(SHARING, 'Hide the people, in a narrow window'), play: plays(clearSide, priyasScreen, press('Hide the people')) };
 /** Close says what it does before it's pressed: closed for you, the people fill your stage again, and Priya's tile takes you back. */
 export const CloseSaysThePeopleComeBack = {
   ...SHARING, name: 'Close, before it’s pressed',
@@ -379,7 +417,7 @@ const firstTime = (story: PageStory): PageStory => {
   const forget = () => { for (const k of [tileHintKey(ME_ID), tileHintKey(null)]) localStorage.removeItem(k); };
   return { ...story, beforeEach: [...(Array.isArray(b) ? b : b ? [b] : []), forget] };
 };
-/** A tile that can be moved, as a pointer finds one: not whoever Alcove picked to lead, nor your own picture in a corner. */
+/** A tile that can be moved, as a pointer finds one: not your own picture in a corner. */
 const movable = () => waitFor(() => {
   const tile = screen.getAllByRole('group').find((el) => el.classList.contains('can-drag') && !el.classList.contains('is-corner'));
   if (!tile) throw new Error('No tile can be moved yet.');

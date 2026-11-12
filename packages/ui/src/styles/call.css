@@ -220,16 +220,16 @@ button.dev-pick:hover, .dev-pick[data-state="open"] { background: color-mix(in s
 .ic-slot.is-drag .ac-tile { box-shadow: 0 30px 60px -20px rgba(0, 0, 0, .85), inset 0 0 0 2px rgba(238, 237, 248, .7); }
 .ic-slot.is-sizing { z-index: 9; }
 .ic-slot.is-sizing .ac-tile { box-shadow: inset 0 0 0 2px rgba(238, 237, 248, .7); }
-.ic-slot > .ac-tile { position: absolute; inset: 0; }
+.ic-slot > .ac-tile { position: absolute; inset: 0; transition: border-radius var(--duration-3) var(--ease-out), box-shadow var(--duration-2) var(--ease-out); }
 .ic-slot .ac-tile-name { left: 8px; bottom: 8px; }
 .ic-slot .ac-tile-mic { right: 8px; top: 8px; }
 .ic-slot .ac-figure { pointer-events: none; }
 .ac-tile-name .you { color: var(--stage-ink-2); }
 .ic-tstate { position: absolute; z-index: 3; left: 8px; top: 8px; right: 44px; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; pointer-events: none; }
-/* Someone's status takes the top left; what's pinned or spotlighted for you sits under it. A corner, an arch or the horizon has no room for it. */
+/* Someone's status takes the top left; what's pinned or spotlighted for you sits under it. A corner or an arch has no room for it. */
 .ic-slot .ac-tile-status { left: 8px; top: 8px; }
 .ac-tile:has(.ac-tile-status) .ic-tstate { top: 40px; }
-.ic-slot:is(.is-arch, .is-horizon, .is-corner) :is(.ac-tile-status, .ac-tile-left) { display: none; }
+.ic-slot:is(.is-arch, .is-corner) :is(.ac-tile-status, .ac-tile-left) { display: none; }
 @container (max-width: 240px) { .ic-slot .ac-tile-status { max-width: calc(100% - 44px); gap: 5px; padding: 0 7px; font-size: 11.5px; } }
 @container (max-width: 200px) { .ic-slot .ac-tile-status .full { display: none; } .ic-slot .ac-tile-status .short { display: inline; } }
 /* Working together in the workspace: who's writing, who you're following, and whose tile lights up for being tagged. */
@@ -361,28 +361,22 @@ button.dev-pick:hover, .dev-pick[data-state="open"] { background: color-mix(in s
 /* Nothing on the stage but you, folded away. */
 .ic-stage-empty { position: absolute; inset: 0; display: grid; place-items: center; padding: 16px; pointer-events: none; }
 .ic-stage-empty > * { pointer-events: auto; }
-/* People as arches, in a column or a strip: their faces, and everything else on the tile's menu. */
-.ic-slot.is-arch > .ac-tile { border-radius: 999px 999px 14px 14px; }
+/* People as arches, in a rail at the window's edge or a row over what's open: their faces, and everything else on the tile's menu. */
+/*
+ * Half an arch's width over square feet, as every arch is drawn (999px over 14px comes to that), but in px a tile folding into
+ * an arch can round off as it shrinks rather than snapping into a dome.
+ */
+.ic-slot.is-arch > .ac-tile { border-radius: 37px 37px 0.5px 0.5px; }
 .ic-slot.is-arch > .ac-tile.is-speaking { box-shadow: inset 0 0 0 2px var(--speak); }
 /* A ring has to clear whoever's camera is on: it's drawn over the picture. */
 .ic-slot.is-arch > .ac-tile::after { border-radius: inherit; transition: box-shadow var(--duration-2) var(--ease-out); }
 .ic-slot.is-arch > .ac-tile.is-speaking::after { box-shadow: inset 0 0 0 2px var(--speak); }
 .ic-slot.is-arch > .ac-tile.is-hand::after { box-shadow: inset 0 0 0 2px var(--gold); }
 .ic-slot.is-arch .ac-figure { height: 84%; }
-.ic-slot.is-arch, .ic-slot.is-horizon { cursor: pointer; }
-.ic-slot.is-arch :is(.ac-tile-name, .ac-tile-mic, .ac-tile-hand, .ac-tile-wait, .ic-tstate), .ic-slot.is-horizon :is(.ac-tile-name, .ac-tile-mic, .ac-tile-hand, .ac-tile-wait, .ic-tstate) { display: none; }
-.ic-slot.is-arch .ic-more, .ic-slot.is-horizon .ic-more { opacity: 0 !important; pointer-events: none; }
+.ic-slot.is-arch { cursor: pointer; }
+.ic-slot.is-arch :is(.ac-tile-name, .ac-tile-mic, .ac-tile-hand, .ac-tile-wait, .ic-tstate) { display: none; }
+.ic-slot.is-arch .ic-more { opacity: 0 !important; pointer-events: none; }
 .ic-slot.is-arch .ac-tile-face .ac-avatar { --size: 48px !important; }
-/* People on the horizon: small arches beside the dock. Whoever's talking, or has a hand up, rises. */
-.ic-slot.is-horizon { z-index: 3; }
-.ic-slot.is-horizon > .ac-tile { border-radius: 999px 999px 8px 8px; box-shadow: none; transition: transform var(--duration-2) var(--ease-out); }
-.ic-slot.is-horizon > .ac-tile::after { background: none; border-radius: inherit; box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.1); transition: box-shadow var(--duration-2) var(--ease-out); }
-.ic-slot.is-horizon .ac-figure { height: 92%; filter: none; }
-.ic-slot.is-horizon .ac-tile-face .ac-avatar { --size: 24px !important; }
-.ic-slot.is-horizon > .ac-tile.is-speaking, .ic-slot.is-horizon > .ac-tile.is-hand { box-shadow: none; }
-.ic-slot.is-horizon > .ac-tile.is-speaking::after { box-shadow: inset 0 0 0 1.5px var(--speak); }
-.ic-slot.is-horizon > .ac-tile.is-hand::after { box-shadow: inset 0 0 0 1.5px var(--gold); }
-.ic-slot.is-up > .ac-tile { transform: translateY(-9px); }
 /* Above the dock, a toast lands on a board's sheet: there it's the night's own pill, as the canvas has it, so it stands out in either theme. */
 @media (max-width: 1327px) {
   body:has(.ic-framebox:is([data-thing="board"], [data-thing="saved"]):not(.is-away)) .ac-toasts.on-stage .ac-toast { background: var(--stage-raised); color: var(--stage-ink); box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.1), var(--shadow-3); }
@@ -399,33 +393,29 @@ button.dev-pick:hover, .dev-pick[data-state="open"] { background: color-mix(in s
    */
   body:has(.ic-framebox:not(.is-away) .pc-add):not(:has(.ic-board .bd-tray)) .ac-toasts.on-stage { bottom: 164px; }
 }
-/* Toasts stand clear of the horizon, where they'd otherwise sit on people's heads. */
-/* With people on the horizon, the left of the dock is theirs, and toasts take the right. Above the dock they'd sit on the list's foot. */
+/* In focus the dock tucks down to a few buttons, and toasts beside it come down with it. */
 @media (min-width: 1328px) {
-  body:has(.ic-slot.is-horizon) .ac-toasts.on-stage { left: auto; right: max(16px, env(safe-area-inset-right, 0px)); justify-items: end; }
-  /* Unless your side is open: the right is its foot's, so they stand above the dock, mid-stage, as in a narrower window. */
-  body:has(.ic-slot.is-horizon):has(.ic-side:not(.is-sheet)) .ac-toasts.on-stage { left: calc((100vw - 380px) / 2); right: auto; bottom: 96px; transform: translateX(-50%); justify-items: center; max-width: calc(100vw - 444px); }
   body:has(.ic-call.is-focus) .ac-toasts.on-stage { bottom: 6px; }
-  /* The line that says who's up gives way there, and comes back when the toast goes: the arch still shows it. */
-  body:has(.ac-toasts.on-stage .ac-toast) .ic-hz.is-past { opacity: 0; }
 }
-.ic-hz { position: absolute; z-index: 3; color: var(--stage-ink-2); font: 500 12.5px/1 var(--font-sans); white-space: nowrap; pointer-events: none; transition: opacity var(--duration-2) var(--ease-out); }
 /* Something presented, waiting among the people: its tile, and its menu at the top left, clear of Join. */
 .ic-pslot > .ic-ptile { position: absolute; inset: 0; }
 .ic-pslot .ic-more { left: 8px; right: auto; }
 .ic-pslot:hover .ic-more, .ic-pslot:focus-visible .ic-more { opacity: 1; }
-.ic-pslot.is-horizon { z-index: 3; }
 /* The board drawn small in its tile: at its own size, shrunk from the top left. */
 .ic-ptile-board { position: absolute; left: 0; top: 0; transform-origin: 0 0; pointer-events: none; }
 .ic-slot.is-off { visibility: hidden; pointer-events: none; }
 .ic-tmore { position: absolute; z-index: 3; display: grid; place-items: center; border-radius: var(--radius-md); background: var(--stage-tile); box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.1); color: var(--stage-ink-2); font: 600 14px/1 var(--font-sans); transition: color var(--duration-1), background-color var(--duration-1); }
 .ic-tmore:hover { background: var(--stage-raised); color: var(--stage-ink); }
 .ic-tmore.is-arch { border-radius: 999px 999px 14px 14px; }
-.ic-tmore.is-horizon { border-radius: 999px 999px 8px 8px; font-size: 11.5px; }
-/* The people's own button beside what's open (Hide the people, ⇧P), as quiet as the +N with them; Show the people on the horizon. */
-.ic-aside { position: absolute; z-index: 3; display: grid; place-items: center; border-radius: 10px; background: var(--stage-tile); box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.1); color: var(--stage-ink-2); transition: color var(--duration-1), background-color var(--duration-1); }
-.ic-aside:hover { background: var(--stage-raised); color: var(--stage-ink); }
-.ic-aside:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+/* The seam left of the people at the window's edge (PeopleSeam.tsx): a faint grip in its middle, the whole seam lit while you point at it or drag it. */
+/* Over the tiles, and under your side and the stage's dimming while your side is over it (`.ic-scrim.is-over`). */
+.ic-seam { position: absolute; z-index: 4; padding: 0; border: 0; background: none; cursor: ew-resize; touch-action: none; }
+.ic-seam::before { content: ""; position: absolute; top: 0; bottom: 0; left: 50%; width: 2px; margin-left: -1px; border-radius: 2px; background: rgb(255 255 255 / 0.22); opacity: 0; transition: opacity var(--duration-2) var(--ease-out); }
+.ic-seam .grip { position: absolute; top: 50%; left: 50%; width: 4px; height: 36px; margin: -18px 0 0 -2px; border-radius: 4px; background: var(--stage-ink-2); opacity: 0.4; transition: opacity var(--duration-2) var(--ease-out), height var(--duration-2) var(--ease-out), margin var(--duration-2) var(--ease-out); }
+.ic-seam:hover::before, .ic-seam.is-drag::before, .ic-seam:focus-visible::before { opacity: 1; }
+.ic-seam:hover .grip, .ic-seam.is-drag .grip, .ic-seam:focus-visible .grip { opacity: 1; height: 52px; margin-top: -26px; background: var(--stage-ink); }
+.ic-seam:focus-visible { outline: none; }
+.ic-seam:focus-visible .grip { box-shadow: 0 0 0 2px var(--stage), 0 0 0 4px var(--focus); }
 /* The first time you point at a tile you can move, what you can do with it, under the tile (or over it, or inside it). */
 .ic-tilehint { position: absolute; z-index: 12; pointer-events: none; }
 .ic-tilehint.is-above .ac-coach::before { top: auto; bottom: -6px; }
@@ -515,15 +505,7 @@ button.dev-pick:hover, .dev-pick[data-state="open"] { background: color-mix(in s
 .ic-side-head { flex: none; display: flex; align-items: center; gap: 6px; height: 58px; padding: 0 10px 0 20px; }
 .ic-side-head .ttl { flex: 1; min-width: 0; display: grid; gap: 3px; }
 .ic-side-head h2 { margin: 0; font: 600 15.5px/1.2 var(--font-sans); letter-spacing: -0.01em; color: var(--ink); }
-.ic-side-head .sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 500 12px/1.2 var(--font-sans); color: var(--ink-3); }
-.ic-side-head .ac-btn.is-xs { flex: none; gap: 6px; padding: 0 11px 0 9px; font-size: 12.5px; }
 .ic-side-head .ac-icon-btn { flex: none; border-radius: 50%; color: var(--ink-2); }
-/* Notes' tabs: the notes, the transcript and Ask, as one segmented pill under the head. */
-.ic-ntabs.ac-tabs { flex: none; display: flex; gap: 0; margin: 2px 20px 14px; padding: 3px; border: 0; border-radius: 12px; background: var(--sunk); }
-.ic-ntabs .ac-tab { flex: 1; justify-content: center; height: 32px; padding: 0; border-radius: 9px; color: var(--ink-3); font: 600 13px/1 var(--font-sans); transition: background-color var(--duration-1), color var(--duration-1); }
-.ic-ntabs .ac-tab:hover { color: var(--ink); }
-.ic-ntabs .ac-tab[aria-selected="true"] { background: var(--surface-raised); color: var(--ink); box-shadow: 0 1px 2px rgb(0 0 0 / 0.18), inset 0 0 0 1px var(--line); }
-.ic-ntabs .ac-tab[aria-selected="true"]::after { display: none; }
 /* People's way to breakout rooms, for the organizer: they open in your side, in its place. */
 .ic-roomsrow { display: flex; align-items: center; gap: 12px; width: 100%; margin: 2px 0 6px; padding: 12px 14px; border-radius: 14px; background: var(--sunk); color: var(--ink); text-align: left; transition: background-color var(--duration-1); }
 .ic-roomsrow:hover { background: color-mix(in srgb, var(--sunk) 70%, var(--line)); }
@@ -537,61 +519,10 @@ button.dev-pick:hover, .dev-pick[data-state="open"] { background: color-mix(in s
 .ic-pad { padding: 18px 20px; }
 .ic-empty { padding: 36px 20px; }
 .ic-quiet { font-size: 13px; line-height: 1.45; color: var(--ink-3); }
-/* How the notes stand, first in the notes: the sign as everyone sees it, and what that means here. */
-.ic-nh { display: flex; align-items: center; gap: 10px; padding: 0 20px 4px; }
-.ic-nh .ac-notes-sign, .ic-nh .ac-capture-sign { flex: none; height: 26px; padding: 0 10px 0 9px; font-size: 12px; }
-.ic-nh .m { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; color: var(--ink-3); }
-.ic-nh .ac-icon-btn { flex: none; width: 32px; height: 32px; margin-right: -8px; border-radius: 50%; color: var(--ink-2); }
-/* Yours, at the foot of the notes: only you see it. */
-.ic-own { display: grid; gap: 4px; margin: 0 20px; padding: 14px 0 20px; border-top: 1px solid var(--line); }
-.ic-own .ic-sh { margin-bottom: 2px; }
-.ic-own .only { display: inline-flex; align-items: center; gap: 5px; margin-left: auto; font: 500 12px/1 var(--font-sans); color: var(--ink-3); }
-.ic-own .own-list { display: grid; gap: 0; }
-.ic-own .own-row, .ic-own .own-row + .own-row { grid-template-columns: 18px minmax(0, 1fr); column-gap: 10px; padding: 7px 0; border-radius: 0; }
-.ic-own .own-row.is-picked { background: none; box-shadow: none; }
-.ic-own .own-mk, .ic-own .own-row.is-bookmark .own-mk { width: 18px; height: 20px; background: none; color: var(--sun-text); }
-.ic-own .own-t, .ic-own .own-q { font: 500 14px/1.4 var(--font-sans); }
-.ic-own .own-q { font-size: 13px; color: var(--ink-3); }
-.ic-own .own-acts .ac-icon-btn { width: 26px; height: 26px; opacity: 0; transition: opacity var(--duration-1), background-color var(--duration-1), color var(--duration-1); }
-.ic-own .own-row:hover .own-acts .ac-icon-btn, .ic-own .own-acts .ac-icon-btn:focus-visible { opacity: 1; }
-@media (hover: none) { .ic-own .own-acts .ac-icon-btn { opacity: 1; } }
-.ic-own .own-compose { grid-template-columns: minmax(0, 1fr) auto; align-items: center; min-height: 40px; margin-top: 6px; padding: 3px 5px 3px 12px; border-radius: 13px; }
-.ic-own .own-compose textarea { min-height: 20px; padding: 0; font: 400 14px/20px var(--font-sans); }
-.ic-own .own-compose .ac-btn { width: 30px; height: 30px; background: none; box-shadow: none; color: var(--ink-3); }
-.ic-nb { display: grid; gap: 20px; padding: 14px 20px 20px; }
-.ic-sh { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
-.ic-sh .ac-eyebrow { font: 600 13.5px/1.2 var(--font-sans); color: var(--ink); }
-.ic-sh .n { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 6px; background: var(--sunk); font: 600 11.5px/1 var(--font-sans); font-variant-numeric: tabular-nums; color: var(--ink-2); }
-.ic-nr { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; gap: 10px; align-items: start; margin: 0 -6px; padding: 6px; border-radius: 8px; font: 500 14px/1.4 var(--font-sans); color: var(--ink); }
-.ic-nr .mk { display: grid; place-items: center; width: 18px; height: 18px; margin-top: 1px; border-radius: 5px; background: var(--sun-soft); color: var(--sun-text); }
-.ic-nr .mk.av { background: none; }
-.ic-nr .meta { display: flex; align-items: center; gap: 6px; margin-top: 3px; font: 400 12.5px/1 var(--font-sans); color: var(--ink-3); }
-.ic-nr .nr-due { display: inline-flex; align-items: center; gap: 4px; height: 18px; padding: 0 6px; border-radius: 5px; background: var(--sunk); font: 500 11.5px/1 var(--font-sans); color: var(--ink-2); }
-.ic-nr .ac-time-chip { margin-top: 1px; }
-.ic-nr:has(> .ac-check) { grid-template-columns: 20px minmax(0, 1fr) auto; }
-.ic-nr:has(> .ws-put) { grid-template-columns: 18px minmax(0, 1fr) auto 26px; column-gap: 6px; }
-.ic-nr:has(> .ac-check):has(> .ws-put) { grid-template-columns: 20px minmax(0, 1fr) auto 26px; }
-.ic-nr > .mk, .ic-nr > .ac-check { margin-right: 4px; }
-.ic-nr .nr-text { overflow-wrap: anywhere; }
-.ic-nr.is-done .nr-text { color: var(--ink-3); text-decoration: line-through; text-decoration-color: var(--line-control); }
-/* A finger needs more than the box. Rows are never closer than this reaches, even with one line and nothing under it. */
-@media (hover: none), (max-width: 599px) { .ic-nr .ac-check::after { content: ""; position: absolute; inset: -6px -12px; } }
-.ic-sum { font: 400 14px/1.6 var(--font-sans); color: var(--ink-2); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden; }
-.ic-sum.is-open { display: block; }
-.ic-more-text { margin-top: 4px; padding: 2px 0; font: 600 12.5px/1.2 var(--font-sans); color: var(--ink-2); }
-.ic-more-text:hover { color: var(--ink); }
-.ic-rgrp { display: grid; gap: 4px; }
-.ic-rgrp + .ic-rgrp { margin-top: 10px; }
-.ic-rgrp .rn { display: flex; align-items: center; gap: 8px; font: 600 12.5px/1 var(--font-sans); color: var(--ink-2); }
-.ic-rgrp .rn span { font: 500 11.5px/1 var(--font-sans); font-variant-numeric: tabular-nums; color: var(--ink-3); }
-.ic-about { display: grid; gap: 6px; }
 .ic-writing { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--ink-3); }
-.ic-problems { display: grid; gap: 8px; padding: 0 16px 16px; }
 .ic-nf { display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 16px; border-top: 1px solid var(--line); flex: none; font-size: 12.5px; color: var(--ink-3); white-space: nowrap; overflow: hidden; }
 .ic-nf .ac-i { flex: none; color: var(--sun-text); }
 .ic-nf .lbl { overflow: hidden; text-overflow: ellipsis; }
-.ic-nf .end { margin-left: auto; display: flex; align-items: center; gap: 8px; flex: none; }
-.ic-nf .ac-faces .ac-avatar { --ring: var(--surface); }
 /* A footer that says something in full: how the call is kept private. */
 .ic-nf.is-wrap { height: auto; min-height: 44px; align-items: flex-start; padding: 12px 16px; white-space: normal; line-height: 1.45; }
 .ic-nf.is-wrap .ac-i { margin-top: 1px; }
@@ -1186,7 +1117,7 @@ button.ic-facc:hover, button.ic-facc[aria-expanded="true"] { background: color-m
 .ic-ptile .ac-tile-name .nm { flex: 0 1 auto; }
 /* Who presents it gives way before what it is. */
 .ic-tsub { flex: 0 1000 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--horizon); }
-/* As an arch, among arches or on the horizon: the kind and the presenter's face. */
+/* As an arch, among arches in a rail or a row: the kind and the presenter's face. */
 .ic-ptile.is-small { container-type: size; border-radius: var(--radius-arch) var(--radius-arch) var(--radius-md) var(--radius-md); }
 .ic-ptile.is-small::after { background: none; }
 .ic-tsm { position: absolute; inset: 0; display: grid; place-items: center; padding-bottom: 6%; color: var(--stage-ink); }
@@ -1285,15 +1216,13 @@ button.ic-facc:hover, button.ic-facc[aria-expanded="true"] { background: color-m
 }
 /*
  * Your side's foot is its composer and its buttons, and toasts never cover it. Under 1328 px they stand above the dock: while
- * your side is open, beside it or over the stage in a narrow window, they keep to the middle of the stage left of it, at its
- * width (368 px, or 340 px under 1200 px: side.ts's `sideWidth`, with its 12 px gap). On a phone your side is a sheet over the
- * call, up to the top bar, so they say their piece over the top bar, which the sheet's scrim already dims.
+ * your side is open, beside it or over the stage in a narrow window, they keep to the middle of the stage left of it and of the
+ * people at the window's edge. `--ic-right` is what those take (InCall.tsx: side.ts's `sideWidth` and its 12 px gap, and the
+ * people's column or rail with theirs). On a phone your side is a sheet over the call, up to the top bar, so they say their
+ * piece over the top bar, which the sheet's scrim already dims.
  */
 @media (min-width: 600px) and (max-width: 1327px) {
-  body:has(.ic-side:not(.is-sheet)) .ac-toasts.on-stage { left: calc((100vw - 380px) / 2); max-width: calc(100vw - 444px); }
-}
-@media (min-width: 600px) and (max-width: 1199px) {
-  body:has(.ic-side:not(.is-sheet)) .ac-toasts.on-stage { left: calc((100vw - 352px) / 2); max-width: calc(100vw - 416px); }
+  body:has(.ic-side:not(.is-sheet)) .ac-toasts.on-stage { left: calc((100vw - var(--ic-right, 380px)) / 2); max-width: calc(100vw - var(--ic-right, 380px) - 64px); }
 }
 @media (max-width: 599px) {
   body:has(.ic-side.is-sheet) .ac-toasts.on-stage { top: max(8px, env(safe-area-inset-top, 0px)); bottom: auto; align-content: start; }
@@ -1304,9 +1233,6 @@ button.ic-facc:hover, button.ic-facc[aria-expanded="true"] { background: color-m
  */
 @media (max-width: 1327px) {
   body:has(.ic-framebox:not(.is-away) [data-pager]):not(:has(.ic-side.is-sheet, .ac-pop.is-sheet)) .ac-toasts.on-stage { bottom: 152px; }
-}
-@media (min-width: 1328px) {
-  body:has(.ic-slot.is-horizon):has(.ic-side:not(.is-sheet)):has(.ic-framebox:not(.is-away) [data-pager]) .ac-toasts.on-stage { bottom: 152px; }
 }
 
 @media (max-width: 599px) { .ic-top.is-phone .ttl { min-width: 0; flex: 1; } .ic-top.is-phone .end { gap: 3px; } }

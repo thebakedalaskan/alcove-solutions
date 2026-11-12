@@ -245,7 +245,7 @@ export const NotesTranscriptAndChat: PageStory = {
       await screen.findByRole('complementary', { name: 'Chat' }, SOON);
       await screen.findByText('The status page is mine from now on.', {}, SOON);
     });
-    await step('Click Notes. This call’s notes, the same pages the workspace keeps: the notes, the transcript and Ask', async () => {
+    await step('Click Notes. This call’s notes on your side: the notes, the transcript, Ask, and your own notes under Yours', async () => {
       await userEvent.click(await screen.findByRole('button', { name: 'Notes' }, SOON));
       await notesPanel();
     });
@@ -256,8 +256,8 @@ export const NotesTranscriptAndChat: PageStory = {
     await step('Click Ask. Catch up lives here: ask what you missed, or anything about the call', async () => {
       await userEvent.click(within(await notesPanel()).getByRole('tab', { name: 'Ask' }));
     });
-    await step('Click Open, at the top of Notes. The workspace opens on these notes, on your screen, as Workspace at the top right would. Present brings everyone', async () => {
-      await userEvent.click(await screen.findByRole('button', { name: 'Open the workspace on these notes' }, SOON));
+    await step('Click Open, the arrow at the top of Notes. The workspace opens on these notes, on your screen, as Workspace at the top right would. Present brings everyone', async () => {
+      await userEvent.click(await screen.findByRole('button', { name: 'Open in the workspace, on your screen' }, SOON));
       await onBar(await frame(yours, LATER), 'Present');
     });
   }
@@ -269,7 +269,7 @@ function firstTime(story: PageStory): PageStory {
   const forget = () => { for (const k of [tileHintKey(ME_ID), tileHintKey(null)]) localStorage.removeItem(k); };
   return { ...story, beforeEach: [...(Array.isArray(b) ? b : b ? [b] : []), forget] };
 }
-/** A tile that can be moved, as a pointer finds one: not whoever Alcove picked to lead. */
+/** A tile that can be moved, as a pointer finds one: not your own picture in a corner. */
 const movable = () => waitFor(() => {
   const tile = screen.getAllByRole('group').find((el) => el.classList.contains('can-drag') && !el.classList.contains('is-corner'));
   if (!tile) throw new Error('No tile can be moved yet.');
@@ -304,13 +304,13 @@ export const EverythingElse: PageStory = {
       await userEvent.click(await screen.findByRole('button', { name: /^People in this call/ }, SOON));
       await screen.findByRole('complementary', { name: 'People' }, SOON);
     });
-    await step('Priya shares her screen, and the people stand in a column beside it. Hide the people, at its top: they wait small by the dock', async () => {
+    await step('Priya shares her screen. The people stand in a column at the window’s right edge, with People between them and her screen. Click the seam left of them: they fold into a rail of arches', async () => {
       await frame(/^Priya’s screen, everyone sees it$/, LATER);
-      await userEvent.click(await screen.findByRole('button', { name: 'Hide the people' }, SOON));
+      await userEvent.click(await screen.findByRole('button', { name: 'Make the people smaller' }, SOON));
     });
-    await step('Show the people, first by the dock, brings them back beside it. Close, on its bar, says it gives the stage back to the people', async () => {
-      await userEvent.click(await screen.findByRole('button', { name: 'Show the people' }, SOON));
-      await screen.findByRole('button', { name: 'Hide the people' }, SOON);
+    await step('Click the seam again, or drag it left: the column opens back out. Close, on her screen’s bar, says it gives the stage back to the people', async () => {
+      await userEvent.click(await screen.findByRole('button', { name: 'Make the people bigger' }, SOON));
+      await screen.findByRole('button', { name: 'Make the people smaller' }, SOON);
     });
     await step('As the organizer, click the name of Priya’s share. Priya’s bar has Close for you, like anyone’s', async () => {
       await userEvent.click(await nameOf(await frame(/^Priya’s screen, everyone sees it$/, LATER)));
@@ -365,9 +365,8 @@ export const NotesAsYouTalk: PageStory = {
     await step('As people talk, what’s decided and the follow-ups fill in, read from the transcript', async () => {
       await within(await notesPanel()).findByText(/Every empty list gets one line and the empty arch/, {}, LATER);
     });
-    await step('AI follow-ups wait under a quiet suggestion count. Add the copy task before ticking it', async () => {
-      await userEvent.click(await within(await notesPanel()).findByRole('button', { name: /suggestions? from the call/ }, LATER));
-      const proposals = await within(await notesPanel()).findByRole('region', { name: 'Suggestions from the call' }, SOON);
+    await step('What the call suggests waits under the follow-ups, dashed, with Add and ×. Add the copy task before ticking it', async () => {
+      const proposals = await within(await notesPanel()).findByRole('group', { name: 'Suggested from the call' }, LATER);
       const add = within(proposals).getAllByRole('button', { name: 'Add' })[0];
       if (add) await userEvent.click(add);
       await userEvent.click(await within(await notesPanel()).findByRole('checkbox', { name: /Write the copy for each empty state/ }, LATER));
@@ -383,12 +382,12 @@ export const PauseTheNotes: PageStory = {
   name: '6.9 Pause the notes, and resume them',
   ...inCall({ scenario: 'call-soon', call: REVIEW, script: { here: REVIEWERS, talk: { lines: REVIEW_TALK }, summary: REVIEW_SUMMARY } }, { globals: LAPTOP }),
   play: async ({ userEvent, step }) => {
-    await step('The notes sign opens what’s captured: each kind, its state, and who gets the notes', async () => {
+    await step('The notes sign opens what’s captured: what’s captured now, in a sentence, Pause notes and Turn off, and who gets the notes', async () => {
       await userEvent.click(await screen.findByRole('button', { name: /^Notes on/ }, LATER));
     });
     await step('Pause notes. Nothing is recorded, transcribed or sent to the AI until you resume', async () => {
       await userEvent.click(await screen.findByRole('button', { name: 'Pause notes' }, SOON));
-      await screen.findByRole('button', { name: /^(Notes paused|Pausing)/ }, LATER);
+      await screen.findByRole('button', { name: /^(Notes paused|Pausing notes)/ }, LATER);
     });
     await step('Resume notes. Everyone is told, each time', async () => {
       await userEvent.click(await screen.findByRole('button', { name: /^Notes paused/ }, LATER));

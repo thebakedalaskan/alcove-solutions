@@ -47,7 +47,6 @@
 <div class="st-a">
 <button type="button" class="b {{goCls}} b-lg st-go{{hotGo}}" onClick="{{go}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.video}}"></path></svg>Start now</button>
 <button type="button" class="b b-sky b-lg{{hotLater}}" onClick="{{later}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.cal}}"></path></svg>Schedule</button>
-<button type="button" class="b b-sky b-lg b-icon" aria-label="Copy a link for a new call" title="Copy a link for a new call" onClick="{{copyNew}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.link}}"></path></svg></button>
 </div>
 <sc-if value="{{hasPeople}}" hint-placeholder-val="{{true}}">
 <div class="st-p">
@@ -161,7 +160,6 @@ class Component extends DCLogic {
     v.hotLater = v.hot('later2');
     v.go = function () { self.setState({ page: 'lobby', lobbyTitle: 'Art’s call', lobbySub: '', hot: '' }); };
     v.later = function () { self.setState({ modal: 'who', guests: [], slot: 't17', fromCard: true, hot: '' }); };
-    v.copyNew = function () { v.toast('Link copied. Anyone with it can ask to join.'); };
     v.people = (S.people || []).map(function (p, i) {
       return {
         id: p.id, name: p.name, first: p.name.split(' ')[0], hotCls: i === 0 ? v.hot('ring') : '',

@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>What’s captured</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="call.css">
+<link rel="stylesheet" href="notes.css">
+<script src="icons.js"></script>
+<script src="nc.js"></script>
+<script src="notes.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400..700&amp;family=Newsreader:ital,opsz,wght@0,6..72,300..600;1,6..72,300..600&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<div class="{{rootCls}}">
+<div class="{{k.cls}}" role="dialog" aria-label="What’s captured">
+<div class="nk-h">
+<span class="{{k.signCls}}"><sc-if value="{{k.dot}}" hint-placeholder-val="{{true}}"><i aria-hidden="true"></i></sc-if><sc-if value="{{k.hasIcon}}" hint-placeholder-val="{{false}}"><svg class="i" width="13" height="13" viewBox="0 0 24 24" aria-hidden="true"><path d="{{k.d}}"></path></svg></sc-if>{{k.label}}</span>
+<sc-if value="{{k.hasWhen}}" hint-placeholder-val="{{true}}"><span class="when">{{k.when}}</span></sc-if>
+</div>
+<p class="nk-said">{{k.said}}</p>
+<sc-if value="{{k.hasAsks}}" hint-placeholder-val="{{false}}"><div class="nk-ask"><dc-import name="Faces" who="{{k.asks}}" size="22" max="3" ring="transparent" hint-size="40px,24px"></dc-import><span>{{k.askText}}</span></div></sc-if>
+<sc-if value="{{k.hasAsked}}" hint-placeholder-val="{{false}}"><div class="nk-ask is-mine"><svg class="i" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.hand}}"></path></svg><span>{{k.askedText}}</span></div></sc-if>
+<sc-if value="{{k.hasActs}}" hint-placeholder-val="{{true}}"><div class="nk-acts"><sc-for list="{{k.acts}}" as="a" hint-placeholder-count="2"><button type="button" class="{{a.cls}}" onClick="{{a.click}}"><sc-if value="{{a.hasD}}" hint-placeholder-val="{{false}}"><svg class="i" width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><path d="{{a.d}}"></path></svg></sc-if>{{a.label}}</button></sc-for></div></sc-if>
+<div class="nk-facts">
+<sc-for list="{{k.facts}}" as="f" hint-placeholder-count="3"><div class="nk-f"><svg class="i" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="{{f.d}}"></path></svg><span class="t">{{f.t}}</span><sc-if value="{{f.hasFaces}}" hint-placeholder-val="{{false}}"><dc-import name="Faces" who="{{f.faces}}" size="18" max="5" ring="transparent" hint-size="70px,20px"></dc-import></sc-if><sc-if value="{{f.hasPick}}" hint-placeholder-val="{{false}}"><button type="button" class="nk-pick" aria-haspopup="listbox">{{f.pick}}<svg class="i" width="13" height="13" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.down}}"></path></svg></button></sc-if></div></sc-for>
+</div>
+<sc-if value="{{k.hasOpen}}" hint-placeholder-val="{{false}}"><button type="button" class="{{k.openCls}}" onClick="{{k.openClick}}"><svg class="i" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.notes}}"></path></svg><span class="t">Open the notes</span><svg class="i" width="15" height="15" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.chevron}}"></path></svg></button></sc-if>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"step":{"editor":"enum","options":["nCard","nCardOther","nPausedCard","nRequestedCard","nSign","nSignOther"],"default":"nCard"},"m":{"editor":null,"default":null},"onPress":{"editor":null,"default":null},"$preview":{"width":344,"height":380}}'>
+/* What's captured: the card the pill beside Notes and the sign in the top bar both open. Give it `step`, or a moment as `m` with `onPress`. */
+class Component extends DCLogic {
+  key() { return this.props.step || 'nCard'; }
+  cur() {
+    if (this.props.m) return this.props.m;
+    var st = this.state || {};
+    if (st.s && st.from === this.key()) return st.s;
+    return window.NC.step(this.key(), null);
+  }
+  press(id) {
+    if (id === 'noop') return;
+    if (typeof this.props.onPress === 'function') { this.props.onPress(id); return; }
+    this.setState({ s: window.NC.act(this.cur(), id), from: this.key() });
+  }
+  renderVals() {
+    var self = this, NC = window.NC, s = this.cur();
+    var on = function (id) { return function (e) { if (e && e.stopPropagation) e.stopPropagation(); self.press(id); }; };
+    var framed = !this.props.m;
+    return { k: NC.cardView(s, on), I: NC.I, rootCls: framed ? (s.theme === 'light' ? 'light' : 'dark') : 'nn-host' };
+  }
+}
+</script>
+</body>
+</html>

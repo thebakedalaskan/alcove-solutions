@@ -60,9 +60,6 @@
 .rec-voice[data-kind="idle"] .rec-v i { animation: hz-glint var(--every) ease-in-out var(--after) infinite; }
 
 /* ------------------------------------------------------------ the top */
-.rec-head { min-height: 38px; }
-.shell.is-bare .rec-head { padding-left: max(0px, calc(72px - var(--page-x))); }
-.rec-head h1 { font: 400 clamp(22px, 2vw, 28px)/1.2 var(--font-display); letter-spacing: -.008em; color: var(--ink); }
 
 /* ------------------------------------------------------------ the job, in the middle of the sky */
 .rec-go { display: flex; flex-direction: column; align-items: center; justify-content: center; height: calc(var(--hz) - 68px - var(--orb) - 16px); text-align: center; }
@@ -217,7 +214,7 @@ body:has(.ac-toast) .rec-foot { opacity: 0; }
   .rec { --orb: 50px; --span: 72px; --hz: clamp(400px, 54vh, 454px); min-height: calc(100vh - 70px - env(safe-area-inset-bottom, 0px)); min-height: calc(100dvh - 70px - env(safe-area-inset-bottom, 0px)); margin-top: -66px; }
   .rec[data-first] { --hz: 500px; }
   .rec .dusk-in { padding-top: 66px; }
-  .rec-head { position: absolute; width: 1px; height: 1px; min-height: 0; padding: 0; overflow: hidden; clip-path: inset(50%); }
+  .rec .dusk-top { position: absolute; width: 1px; height: 1px; min-height: 0; padding: 0; overflow: hidden; clip-path: inset(50%); }
   .rec-go { height: calc(var(--hz) - 66px - var(--orb) - 12px); }
   .rec-name { font-size: 34px; }
   .rec-a { align-self: stretch; }

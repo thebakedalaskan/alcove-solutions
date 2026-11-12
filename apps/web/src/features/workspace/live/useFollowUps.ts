@@ -8,13 +8,17 @@ import { wsToast, type WsFollowUp } from '@alcove/ui';
 import { useCallback, useMemo, useState } from 'react';
 import { useLive } from '~/lib/live';
 import { sameEmail } from '~/lib/people';
-import { dayWords, dueWords } from './dates';
+import { NO_DATE, dayWords, dueWords } from './dates';
 import type { LiveHost } from './host';
 import { earlierIds, type PersonIds } from '../ids';
 import { clockAt, personNamed, sameName } from './lines';
 
 /** A row, what it takes to tick it, and whether it's yours. */
-export interface FollowUpRow extends WsFollowUp { mine: boolean; ticks: ((done: boolean) => Promise<void>)[]; said: { text: string; owner?: string | undefined; due?: string | undefined } }
+export interface FollowUpRow extends WsFollowUp {
+  mine: boolean; ticks: ((done: boolean) => Promise<void>)[]; said: { text: string; owner?: string | undefined; due?: string | undefined };
+  /** The document it's written in, by name, when it's in one. */
+  document: string | null;
+}
 
 const folded = (text: string) => text.replace(/\s+/g, ' ').trim().toLowerCase();
 const firstOf = (name: string) => name.trim().split(/\s+/)[0] ?? name;
@@ -51,7 +55,7 @@ export function useFollowUps({ session, here, workspaceId, go, say, ids }: Pick<
     const typed = notes.added.filter(isAcceptedFollowUp).map((f) => ({ f, when: f.at, source: 'Added by hand' }));
     const spoken = [...said, ...typed].sort((a, b) => a.when - b.when).map(({ f, source }): FollowUpRow => ({
       id: f.id, text: f.text, done: f.done, person: f.ownerPerson ?? face(state, f.owner), name: f.owner ? firstOf(f.owner) : '', due: dueWords(f.due, now), source,
-      locked: !mayTick, mine: me !== undefined && (f.ownerPerson ? sameEmail(f.ownerPerson, me) : f.owner !== undefined && sameName(f.owner, me.name)), ticks: tickSaid(f.id), said: { text: f.text, owner: f.owner, due: f.due }
+      locked: !mayTick, mine: me !== undefined && (f.ownerPerson ? sameEmail(f.ownerPerson, me) : f.owner !== undefined && sameName(f.owner, me.name)), ticks: tickSaid(f.id), said: { text: f.text, owner: f.owner, due: f.due }, document: null
     }));
     /* Each thing said is the same as one line at most: a second copy in a document is a to-do of its own. */
     const joined = new Set<string>();
@@ -65,6 +69,7 @@ export function useFollowUps({ session, here, workspaceId, go, say, ids }: Pick<
       if (same) {
         joined.add(same.id);
         same.source = `${same.source} · ${d.document}`;
+        same.document = d.document;
         same.onSource = open;
         same.done = same.done || d.done;
         same.ticks = [...same.ticks, ...tickDoc];
@@ -76,8 +81,8 @@ export function useFollowUps({ session, here, workspaceId, go, say, ids }: Pick<
         continue;
       }
       lines.push({
-        id: `${d.documentId}:${d.block}`, text: d.text.replace(/\s+/g, ' ').trim(), done: d.done, person: tag ? face(state, tag.name) : null, name: tag ? firstOf(tag.name) : '', due: date ? dayWords(date, now) : 'No date',
-        source: d.document, onSource: open, locked: tickDoc.length === 0, mine: isYours(d, me, myId, ids), ticks: tickDoc, said: { text: d.text }
+        id: `${d.documentId}:${d.block}`, text: d.text.replace(/\s+/g, ' ').trim(), done: d.done, person: tag ? face(state, tag.name) : null, name: tag ? firstOf(tag.name) : '', due: date ? dayWords(date, now) : NO_DATE,
+        source: d.document, document: d.document, onSource: open, locked: tickDoc.length === 0, mine: isYours(d, me, myId, ids), ticks: tickDoc, said: { text: d.text }
       });
     }
     return [...spoken, ...lines].map((r) => { const done = ticking.get(r.id); return done === undefined ? r : { ...r, done }; });

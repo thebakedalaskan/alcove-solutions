@@ -4,16 +4,14 @@
  * Join takes the one filled button. Nothing else about the day comes up here: people join from their calendar.
  */
 import { errorMessage, firstName } from '@alcove/api';
-import { Avatar, Button, Faces, Icon, buttonClass, cn, useToast } from '@alcove/ui';
+import { Avatar, Button, Faces, Icon, buttonClass, useToast } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { useId, useRef } from 'react';
-import { useScheduled } from '~/features/calls/flow/CallFlow';
-import { DEFAULT_MINUTES } from '~/features/calls/flow/draft';
 import { useFloodToCall } from '~/features/calls/flow/parts';
 import { ringable } from '~/features/calls/ringing/RingWords';
 import { useCallFlow } from '~/features/shell/context';
-import { q, useScheduleCall, useStartNow } from '~/lib/queries';
+import { q, useStartNow } from '~/lib/queries';
 import { minutesUntil, untilLabel } from '~/lib/time';
 import { peopleOn, started, type Ahead } from './day';
 
@@ -23,11 +21,7 @@ export function Start({ first, soon, me, now }: { first: boolean; soon: Ahead | 
   const flow = useCallFlow();
   const toast = useToast();
   const startNow = useStartNow();
-  const schedule = useScheduleCall();
-  const scheduled = useScheduled();
   const team = useQuery(q.team()).data;
-  const session = useQuery(q.session()).data;
-  const prefs = useQuery(q.prefs()).data;
   const { go, flood } = useFloodToCall();
   const h = useId();
   /* One call at a time, however fast the buttons are pressed. */
@@ -38,11 +32,6 @@ export function Start({ first, soon, me, now }: { first: boolean; soon: Ahead | 
     run().catch((e: unknown) => toast(errorMessage(e), { icon: 'x' })).finally(() => { busy.current = false; });
   };
   const begin = (from: Element, guests?: string[]) => once(() => go(from, async () => (await startNow.mutateAsync(guests ? { guests } : {})).code));
-  /* A link to send means a call that keeps: scheduled for now, so it's listed and has a card, and nobody's back button ends it. */
-  const link = () => once(async () => {
-    const title = session ? `${firstName(session.user.name)}’s call` : 'Call';
-    await scheduled(await schedule.mutateAsync({ title, startsAt: new Date().toISOString(), durationMinutes: DEFAULT_MINUTES, guests: [], notes: prefs?.notesDefault ?? 'on' }), []);
-  });
   const people = ringable(team, me ? { email: me } : undefined).slice(0, PEOPLE);
   return (
     <section className="hm-start" aria-labelledby={h} style={{ '--d': 1 }}>
@@ -51,7 +40,6 @@ export function Start({ first, soon, me, now }: { first: boolean; soon: Ahead | 
       <div className="hm-acts">
         <Button variant={soon ? 'secondary' : 'primary'} size="lg" icon="video" className="hm-go" data-tour="new-call" onClick={(e) => begin(e.currentTarget)}>Start now</Button>
         <Button variant="secondary" size="lg" icon="cal" aria-haspopup="dialog" onClick={() => flow.start({ later: true })}>Schedule</Button>
-        <button type="button" className={cn(buttonClass({ size: 'lg' }), 'hm-link')} aria-label="Copy a link for a new call" title="Copy a link for a new call" onClick={link}><Icon name="link" /></button>
       </div>
       {people.length > 0 && (
         <div className="hm-people">

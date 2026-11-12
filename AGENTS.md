@@ -243,7 +243,7 @@ page is designed, how to make a design canvas from the kit in `docs/design/canva
   `bg-surface`, `bg-frame`, `text-ink-2`, `bg-sun`, `text-sun-text`, `shadow-2`, `rounded-lg`,
   `font-display`, `ease-out` ...). Component classes carry the `ac-` prefix and live in
   `packages/ui/src/styles/kit.css`; the frame around every screen (side panel, the page's rounded edge, search and
-  you at its top right, phone top bar and tab bar, palette) in `styles/shell.css`; the evening behind each page in `styles/horizon.css` (`dusk` the page, `hz-` the scene); the cove the welcome page looks out of, and signing in sailing out of it, in `styles/cove.css` (`cv-`); Home in `styles/home.css` (`hm-`); the Team page in
+  you at its top right, phone top bar and tab bar, palette) in `styles/shell.css`; the evening behind each page in `styles/horizon.css` (`dusk` the page, `dusk-top` and `dusk-title` its head, `hz-` the scene); the cove the welcome page looks out of, and signing in sailing out of it, in `styles/cove.css` (`cv-`); Home in `styles/home.css` (`hm-`); the Team page in
   `styles/team.css` (its classes start with `tp-`); Notes in `styles/notes.css` (`nt-`); the Drive in `styles/drive.css` (`dv-`); a note and a series in `styles/note.css` (`nd-`);
   Settings in `styles/settings.css` (its classes start with `set-`); Record in `styles/record.css` (its classes
   start with `rec-`); starting and scheduling a call in `styles/flow.css` (its classes start with `cf-`); the organizer's
@@ -254,7 +254,7 @@ page is designed, how to make a design canvas from the kit in `docs/design/canva
   board picker, `pc-` the phone's add sheet; its tokens are `--bd-*`, `--bf-*`, `--note-*`, and `--line-ink` and `--line-rose` beside the existing
   `--line` and `--line-control`; `.bt`, `.bi`, `.bm`, `.swatch`, `.c-*` and `.k-*` are unscoped there, so those names are taken); the welcome
   page in `styles/welcome.css`, with its scenes in `welcome-note.css`, `welcome-call.css`, `welcome-team.css` and
-  `welcome-night.css` (`lp-`); the other screens in `styles/app.css` and `call.css`; the call's timer in `styles/call-timer.css`; Chat in a call in `styles/call-chat.css` (`ch-`).
+  `welcome-night.css` (`lp-`); the other screens in `styles/app.css` and `call.css`; the call's timer in `styles/call-timer.css`; Chat in a call in `styles/call-chat.css` (`ch-`); Notes in a call in `styles/call-notes.css` (`nn-` the panel, `nk-` what's captured).
   Truncate to one or two lines with `ac-clamp-1` / `ac-clamp-2` (left-aligned): unlike `nowrap`, long text
   can't make a column wider than the screen.
   No raw hex in the app, except on the always-night call stage and in illustrations.
@@ -263,7 +263,8 @@ page is designed, how to make a design canvas from the kit in `docs/design/canva
 - Every screen must work in light and dark. Check both, and check phone and wide screens.
 - `sun` is the only colour you can press: primary buttons are a solid `sun` fill with `on-sun` text and no
   shadow, one per view. It's navy by day and cream by night, so it never glows against the page. The side panel's
-  Start a call is tinted, so the page's own action is the one filled button in view. The warmth lives in `sun-text` and `sun-soft`.
+  Start a call is a row like the places under it, its camera in a warm circle, so the page's own action is the one filled
+  button in view and the place you're on is the one shaded row. The warmth lives in `sun-text` and `sun-soft`.
   `rec` only ever means notes or recording (`NotesSign`, `RecDot`). Problems use `caution`,
   information and focus use `horizon`, and a decision waiting on someone uses `rose`. The mark (`Mark`, `Logo`) is branding, never state. No green.
 - Type: Newsreader (`font-display`) for page-level headings, a board's name and its frame titles, and nothing

@@ -34,8 +34,6 @@
   --nd-sky: linear-gradient(to bottom in oklch, oklch(0.272 0.062 260.824), oklch(0.307 0.067 270.769));
   --nd-sea: linear-gradient(to bottom in oklch, oklch(0.305 0.06 268.408), oklch(0.24 0.052 258));
 }
-.main:has(> .main-in > .nd) { --page-x: clamp(28px, 2.8vw, 56px); }
-.main:has(> .main-in > .nd) .main-top, .nd .dusk-in { max-width: calc(1760px + 2 * var(--page-x)); }
 .nd .dusk-in { padding-bottom: 24px; }
 /* By day the water comes up to the page's own ground, so a long read sits on paper, not on blue. */
 .nd .hz-sea::after { content: ""; position: absolute; inset: 0; background: linear-gradient(to bottom in oklch, transparent 0, color-mix(in oklch, var(--ground) 70%, transparent) 260px, var(--ground) 620px); }
@@ -54,8 +52,6 @@ body:has(.nd-askdock) .ac-toasts:not(.on-stage) { bottom: 92px; }
 
 /* ------------------------------------------------------------ the band */
 .nd-head { position: relative; height: calc(var(--nd-sky-h) - 30px - var(--nd-up)); }
-.nd-top { display: flex; align-items: center; gap: 12px; min-height: 40px; padding-right: var(--top-room); }
-.shell.is-bare .nd-top { padding-left: max(0px, calc(72px - var(--page-x))); }
 .nd-title { display: flex; align-items: baseline; gap: 10px; min-width: 0; margin-right: auto; }
 .nd-title h1 { min-width: 0; font: 400 clamp(26px, 2.3vw, 32px)/1.2 var(--font-display); letter-spacing: -.008em; color: var(--ink); }
 .nd-back { display: inline-flex; align-items: baseline; gap: 10px; flex: none; border-radius: 6px; font: 500 14.5px/1 var(--font-sans); color: var(--ink-2); transition: color var(--duration-1); }
@@ -647,9 +643,8 @@ button.nd-lt:hover { color: var(--ink); }
 
 @media (max-width: 860px) {
   .nd { --nd-sky-h: 158px; --nd-side: 100%; }
-  .nd .dusk-in { padding: 6px 16px 28px; }
   .nd-head { height: calc(var(--nd-sky-h) - 6px - var(--nd-up)); }
-  .nd-top { gap: 2px; padding-right: 0; }
+  .nd .dusk-top { gap: 2px; }
   .nd-title { flex: 1 1 auto; gap: 8px; }
   .nd-title h1 { font-size: 25px; }
   .nd-back { gap: 8px; }

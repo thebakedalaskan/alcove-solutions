@@ -1,0 +1,193 @@
+{
+ "v": 3,
+ "createdOnFiles": {
+  "v": 1,
+  "at": "2026-11-11T20:21:43Z"
+ },
+ "title": "Notes in the call, rethought",
+ "launch": {
+  "view": "canvas",
+  "page": "idea"
+ },
+ "pages": [
+  {
+   "id": "idea",
+   "name": "Today and rethought"
+  },
+  {
+   "id": "journeys",
+   "name": "Every journey"
+  },
+  {
+   "id": "states",
+   "name": "Every state"
+  },
+  {
+   "id": "parts",
+   "name": "Parts"
+  }
+ ],
+ "boards": {
+  "Idea.dc.html": {
+   "x": 0,
+   "y": 0,
+   "w": 1760,
+   "h": 1520,
+   "title": "Today and rethought",
+   "page": "idea"
+  },
+  "Main.dc.html": {
+   "x": 1840,
+   "y": 0,
+   "w": 1520,
+   "h": 1200,
+   "title": "Play the notes",
+   "page": "idea",
+   "is_interactive": true
+  },
+  "J-look.dc.html": {
+   "x": 0,
+   "y": 0,
+   "w": 3904,
+   "h": 820,
+   "title": "1 · Look at the notes",
+   "page": "journeys"
+  },
+  "J-follow.dc.html": {
+   "x": 0,
+   "y": 940,
+   "w": 3140,
+   "h": 820,
+   "title": "2 · Follow-ups the call suggests",
+   "page": "journeys"
+  },
+  "J-own.dc.html": {
+   "x": 0,
+   "y": 1880,
+   "w": 3904,
+   "h": 820,
+   "title": "3 · Write something for yourself",
+   "page": "journeys"
+  },
+  "J-ask.dc.html": {
+   "x": 0,
+   "y": 2820,
+   "w": 3140,
+   "h": 820,
+   "title": "4 · Catch up with Ask",
+   "page": "journeys"
+  },
+  "J-pause.dc.html": {
+   "x": 0,
+   "y": 3760,
+   "w": 3140,
+   "h": 820,
+   "title": "5 · Pause and resume, as the organizer",
+   "page": "journeys"
+  },
+  "J-off.dc.html": {
+   "x": 0,
+   "y": 4700,
+   "w": 3140,
+   "h": 820,
+   "title": "6 · When notes are off",
+   "page": "journeys"
+  },
+  "J-phone.dc.html": {
+   "x": 0,
+   "y": 5640,
+   "w": 1260,
+   "h": 880,
+   "title": "7 · On a phone",
+   "page": "journeys"
+  },
+  "States.dc.html": {
+   "x": 0,
+   "y": 0,
+   "w": 2192,
+   "h": 3590,
+   "title": "Every state",
+   "page": "states"
+  },
+  "Call.dc.html": {
+   "x": 0,
+   "y": 0,
+   "w": 1440,
+   "h": 900,
+   "title": "The call, one moment at a time",
+   "page": "parts",
+   "is_interactive": true
+  },
+  "Notes.dc.html": {
+   "x": 1520,
+   "y": 0,
+   "w": 368,
+   "h": 752,
+   "title": "Notes, on your side",
+   "page": "parts",
+   "is_interactive": true
+  },
+  "Card.dc.html": {
+   "x": 1968,
+   "y": 0,
+   "w": 344,
+   "h": 380,
+   "title": "What’s captured",
+   "page": "parts",
+   "is_interactive": true
+  },
+  "Before.dc.html": {
+   "x": 2392,
+   "y": 0,
+   "w": 368,
+   "h": 752,
+   "title": "Notes today",
+   "page": "parts"
+  },
+  "Thing.dc.html": {
+   "x": 0,
+   "y": 1020,
+   "w": 1100,
+   "h": 690,
+   "title": "What’s shared, inside its frame",
+   "page": "parts"
+  },
+  "Faces.dc.html": {
+   "x": 1180,
+   "y": 1020,
+   "w": 1000,
+   "h": 420,
+   "title": "Faces",
+   "page": "parts"
+  },
+  "Strip.dc.html": {
+   "x": 0,
+   "y": 1830,
+   "w": 3904,
+   "h": 820,
+   "title": "A journey, step by step",
+   "page": "parts"
+  }
+ },
+ "order": [
+  "Idea.dc.html",
+  "Main.dc.html",
+  "J-look.dc.html",
+  "J-follow.dc.html",
+  "J-own.dc.html",
+  "J-ask.dc.html",
+  "J-pause.dc.html",
+  "J-off.dc.html",
+  "J-phone.dc.html",
+  "States.dc.html",
+  "Call.dc.html",
+  "Notes.dc.html",
+  "Card.dc.html",
+  "Before.dc.html",
+  "Thing.dc.html",
+  "Faces.dc.html",
+  "Strip.dc.html"
+ ],
+ "notes": {},
+ "designSystems": []
+}

@@ -499,7 +499,7 @@ export const StoppedFollowingPhone = phone(StoppedFollowing);
 const CHECKING_IN: Present[] = [{ who: KOFI }, { who: AIKO }, { who: MAYA }];
 /**
  * Priya turns notes off at her check-in once some are written: the call's Notes keep what was written, say they're off, and
- * offer to ask her for them back. You ask: it says so, with Take it back.
+ * offer to ask her for them back. You ask: it says so, with Take back your ask.
  */
 export const NotesTurnedOff = inCall({
   scenario: 'busy', call: { ...CHECK_IN, code: 'lch-chck-wso' },

@@ -338,10 +338,18 @@ time, slides in on the right.
 
 - **Top bar.** On the left, the title and clock; the notes sign (**Notes on** in crimson, **Notes paused**, **Notes
   unavailable** when the host's browser can't record or listen or is out of the call, **Notes off**, or **Notes requested**
-  while someone has asked; the organizer's own says **Pausing…** until their pause lands), the same for everyone, which
-  opens what's captured: each kind of capture and its state, who changed it and when, who gets the notes, and the
-  organizer's **Pause notes**, **Resume notes** and **Turn off** (or **Turn on notes**) and **Notes written by** (the AI model that writes this call's notes), or
-  anyone else's **Ask for notes**; and the shield, whose hover says what confidential compute covers (verified only when the server's hardware check is bound to this browser's request). On the right, what's only yours: **Board** (**O**), which
+  while someone has asked; the organizer's own says **Pausing…** until their pause lands), the same for everyone; and the
+  shield, whose hover says what confidential compute covers (verified only when the server's hardware check is bound to
+  this browser's request). The notes sign opens what's captured, the card the pill in **Notes** opens too. It has the sign
+  and when it changed ("Since 16:02", "By you at 16:12"), then one sentence on what's captured now, which says in words
+  what isn't working (there's no list of each kind of capture), and for anyone but the organizer who can change it ("Only
+  Priya can pause or turn them off."). The organizer sees who asked for notes, in rose; whoever asked sees "You asked
+  Priya." with **Take back your ask**, or when Priya said not now. Then the organizer's **Pause notes**, **Resume notes**
+  and **Turn off** (or **Turn on notes**; **Pause notes here** or **Resume notes here** in a breakout room), or anyone
+  else's **Ask for notes** while notes are off or paused. Last, a row each for how the notes are written, who gets them,
+  shared screens while they're read and, for the organizer outside a breakout room, **Notes written by** (the AI model
+  that writes this call's notes). Opened from the sign while Notes isn't open, it ends with **Open the notes**. On the
+  right, what's only yours: **Board** (**O**), which
   opens the board picker under it, and **Workspace** (**W**, with a count of what's been brought to this call), which
   opens the workspace, each on your stage just for you (Presenting, below); **Notes** and **Chat** (**C**,
   with a count of what's new), which open your side; and who is here, the faces and the count (and, for whoever hosts, how
@@ -392,18 +400,20 @@ time, slides in on the right.
   again, its **×**, or **Esc** (once no menu is open, you're not in focus, and nobody you pinned is here) puts it away. On a
   phone a panel is a sheet over the call. A reload finds your side as it was, and a call you've just joined opens Notes
   beside the stage on a wide screen while notes are on. Nothing on your side changes anyone else's screen.
-- **Your view.** There are no layouts to choose: the stage lays itself out, everyone in a grid, and someone doing most
-  of the talking on the main stage over a strip of everyone else until you arrange anything yourself. Drag a tile to
-  move it, and pull its corner to make it bigger; once you do, the stage is a grid again and stays as you left it. The
-  first time you point at a tile you can move, it says so under the tile ("Drag a tile to move it", and in the grid "Pull
-  its corner to make it bigger"), once in this browser.
-  Beside what's open the people stand in a column of tiles on the right that narrows with the stage, under the frame's
-  bar, or a row of arches over it on a narrow stage and on a phone. **Hide the people**, at the top of the column (or the
-  end of the row), and **⇧P** hide them, standing small on the horizon beside the dock, where whoever's talking or has a
-  hand up rises, with a line saying so; **Show the people**, first on the horizon, or **⇧P** again, brings them back. On a
-  phone the arches stay. Closing the last thing on your stage gives it back to everyone, and **Close** says so before
-  it's pressed ("Close it, and the people fill your stage again"). Once you've changed the
-  layout (moved, sized or pinned someone, or hidden the people), **Reset layout** in **More** puts it back, with
+- **Your view.** There are no layouts to choose: the stage lays itself out, everyone in a grid, and talking moves
+  nobody (whoever's talking has the speak ring). Only someone you pin, or the organizer's spotlight, goes on the main
+  stage over a strip of everyone else. Drag a tile to move it, and pull its corner to make it bigger; the stage stays as
+  you left it. The first time you point at a tile you can move, it says so under the tile ("Drag a tile to move it", and
+  in the grid "Pull its corner to make it bigger"), once in this browser.
+  Beside what's open the people stand at the window's right edge, in a column of tiles that narrows with the window, or a
+  row of arches over it on a narrow stage and on a phone. **Notes**, **Chat** and **People** open between what's open and
+  them: what's open makes room, and the people stay where they are. The seam left of them, a faint grip until you point at
+  it, makes them smaller: click it, drag it right, or press **⇧P**, and the column folds into a rail of arches in the same
+  place, where whoever's talking has the ring and anyone with a hand up keeps a place. Click it again, drag it left, or
+  press **⇧P** again, and it opens back out. On a narrow stage and a phone the arches stay. Closing the last thing on your
+  stage gives it back to everyone, and **Close** says so before it's pressed ("Close it, and the people fill your stage
+  again"). Once you've changed the layout (moved, sized or pinned someone, or made the people smaller), **Reset layout**
+  in **More** puts it back, with
   **Undo**; where you see yourself stays as it is. Only your screen changes. A tile's **⋯** menu is short, with no key
   hints. On your own tile: **Set a status** (journey 6.34), **Pin for me** (up to six people, who share the main
   stage), **See yourself**: **Grid**, **Corner** (drag it, or Shift and an arrow, to another corner) or **Hidden** (a
@@ -532,26 +542,62 @@ time, slides in on the right.
   turning them off only hides them: while notes are on the call is still transcribed. Captions show the newest line, in
   the language you pick on the captions themselves (translated in confidential compute, for you alone), with the
   original underneath. Captions need notes on.
-- **Notes**, at the top right, opens on your side: "This call, in the workspace", with **Open** (the workspace on these
-  notes, just for you), the bookmark (**Mark this moment**, **B**) and **×**, over the tabs **Notes**, **Transcript** and
-  **Ask**. While notes are on, the Notes tab has what's been decided, the follow-ups (who and when, as said), **From the
-  rooms** once breakout rooms have been held, and a summary, read from the transcript as the call goes, the same for
-  everyone in that part of the call; each time opens the transcript at that moment. The checklist contains accepted
-  tasks; a quiet count opens suggestions to Add, Apply change or Dismiss. Review stays available in the final note. Anyone
-  permitted to change a task can tick it, and it is done for everyone and in the notes at the end. A guest with the link gets notes written only from what
-  was said while they were here, and can't tick them. The **⋯** beside the notes sign, at the top of the Notes tab, has the
-  organizer's **Pause notes**, **Resume notes** and **Turn notes off** (or **Turn notes on**), or anyone else's **Ask for
-  notes**. The notes everyone gets are written when the call ends.
-- **Yours**, at the foot of the Notes tab: your own notes on the call, which say **Only you** before you type. Write
-  something for yourself, or **Mark this** to bookmark what was just said (**B**, the bookmark at the top of Notes, or
-  **Mark this moment** in **More**). The bookmark on a line of the **Transcript** (**Bookmark this line in your own
-  notes, which only you see**) bookmarks that line, as on the note: once it's on, it stays in sight, ticked, and says
-  **Remove your bookmark**, which takes it back out of Yours. A toast says each time it goes in or comes out, and nothing
-  when a press changes nothing. A moment marked as a line was said opens at the same line, but it's a moment, not that
-  line's bookmark: taking the line's bookmark back leaves it. Under an answer in **Ask**, **Keep in your notes**
-  keeps it here; nothing else keeps one. A bookmark of something said where you aren't now (the main room, from a
-  breakout room) says so, and opens once you're back there or in the notes after the call. Someone with only the link
-  doesn't have this: there's no account to keep it under. It goes with the call's notes, so it starts when notes do.
+- **Notes**, at the top right, opens on your side. Its head is **Notes**, the pill, **Open** (an icon: the workspace on
+  these notes, just for you) and **×**, over the tabs **Notes**, **Transcript**, **Ask** and **Yours** (a guest with the
+  link has no Yours), words with a line under the one you're on. The notes everyone gets are written when the call ends.
+  - **The pill** says the state in a word, and opens what's captured (above): **Live**, with a crimson dot, while notes
+    are on; **Paused** (the organizer's says **Pausing…** until their pause lands); **Unavailable**, in caution, while the
+    browser taking the notes can't capture; or **Off**. For the organizer, while notes are off and people have asked, it
+    says how many (**2 asked**), in rose. In a breakout room it says the room's state.
+  - **The bar**, under the tabs on Notes and Transcript, is there only while capture isn't simply live: it says what that
+    means, with the one thing to do about it. Paused, the organizer reads "Paused at 16:12. Nothing new is written until
+    you resume." with **Resume**, and anyone else "Priya paused notes at 16:12…" with **Ask to resume**, then **Take
+    back your ask** once they've asked. Off after notes were on, the organizer reads "Notes are off. What was written is
+    kept." with **Turn on**, and anyone else "Priya turned notes off. What was written is kept." with **Ask for notes**.
+    While people have asked, the organizer's is rose: their faces, "Kofi and Aiko asked for notes.", **Not now** (said
+    to each of them, once) and **Turn on**. In caution, it says whose browser can't record or listen (in a breakout
+    room, that nobody's there can), or can record but not listen, so nothing new is transcribed, and that notes pick up
+    as soon as it can. It also says
+    when you host from a breakout room while notes are on, and when the organizer paused the room you're in. This
+    browser's own problems (the recording couldn't upload, the microphone isn't heard, a share can't reach the notes) get
+    a bar each, in caution.
+  - **The Notes tab** has the summary first, under **From last time** (below) when there is one: three lines and **Show
+    all**, with how fresh it is at its heading's right. That's "Writing" while notes are on, "As of 16:12" otherwise, and
+    "Not updated since 16:12", in caution, while the notes can't be brought up to date (Alcove tries again on its own);
+    an **Unencrypted** badge sits there too while the call's model isn't in a secure enclave. Then **Decided**, in rose:
+    each a rose diamond, the words, the time it was said and the arrow that sends it to the document you were last in.
+    Then **Follow-ups** (below), and **From the rooms** once breakout rooms have been held. The notes are read from the
+    transcript as the call goes, the same for everyone in that part of the call, and each time opens the transcript at
+    that moment. A guest with the link gets notes written only from what was said while they were here, and the summary
+    says so. With nothing to show yet it says why: **Listening**, **Writing the first notes** (or that the first notes
+    couldn't be written yet, while Alcove tries again), **Notes are off** (with
+    **Turn on notes** for the organizer, or **Ask for notes**, then "You asked Priya for notes" with **Take back your
+    ask**, or that Priya said not now), **Notes are paused** or **Nothing is being captured**.
+  - **Follow-ups**, in horizon, is the checklist everyone shares, with no filter: each one's box, its words, who and when
+    (as said) and the time it was said; pointing at one shows edit, which opens it in place, and the arrow. Anyone
+    permitted to change a follow-up can tick it, and it's done for everyone and in the notes at the end; a guest's box
+    can't be ticked. **+** in the heading adds one in place. What the call suggests waits under the checklist, under
+    "Suggested from the call": dashed, with who and when and its time, **Add** and **×** (Dismiss). A change to a
+    follow-up shows its new words over the old ones, struck through, with **Apply**. Two show, then how many more ("3
+    more suggested"). Nothing moves or changes under your pointer or keyboard: while you point at the suggestions or one
+    has focus, the ones shown stay as they are, and new ones wait behind the count. What you press goes with what you
+    saw: one that changed says "Changed since you saw it" and shows its new words, and one someone else reviewed says
+    so. Someone who can read the suggestions but not review them sees no buttons on them. With neither follow-ups nor
+    suggestions it says "Nothing to do yet." The workspace's Follow-ups page and the note after the call review the
+    same suggestions as a batch.
+- **Yours**, the last tab, is your own notes on the call: what you wrote, marked and kept, oldest first. Empty, it says
+  "Only you see what's here" and what can go in, and before notes have been on, that it starts when they do. At the
+  foot of every tab but Ask, **Note to self** says **Only you**, with a lock, until you type; **Enter** keeps it in
+  Yours, and a toast says so ("Kept in your own notes."), with **Open**. Beside it, the bookmark, **Mark this moment, only you**, bookmarks what was
+  just said, as **B** and **Mark this moment** in **More** do. The bookmark on a line of the **Transcript** (**Bookmark
+  this line in your own notes, which only you see**) bookmarks that line, as on the note: once it's on, it stays in
+  sight, ticked, and says **Remove your bookmark**, which takes it back out of Yours. A toast says each time it goes in
+  (with **Open**, which opens Yours) or comes out, and nothing when a press changes nothing. A moment marked as a line
+  was said opens at the same line, but it's a moment, not that line's bookmark: taking the line's bookmark back leaves
+  it. Under an answer in **Ask**, **Keep in your notes** keeps it here; nothing else keeps one. A bookmark of something
+  said where you aren't now (the main room, from a breakout room) says so, and opens once you're back there or in the
+  notes after the call. Someone with only the link has neither Yours nor Note to self: there's no account to keep them
+  under. It goes with the call's notes, so it starts when notes do, and the foot is there once they've been on.
 - **From last time**, at the top of the Notes tab when the call is in a series and you have earlier notes from it: for you
   alone, from those notes. What's decided, what's still open and for how long, and the follow-ups (who took them on,
   who they're only suggested for), three of each, then what was settled since the last call. Each has its call and
@@ -561,9 +607,9 @@ time, slides in on the right.
 - **Earlier calls**, in **Ask**, beside **This call**: ask across the calls you have notes from, such as why something was
   chosen. Each answer says which calls it comes from, and opens them in a new tab. Only you see it, and nothing of it
   is kept. It waits while notes are paused, and a guest, or someone with no notes from the series, doesn't have it.
-- **Transcript** (the whole call so far, with who's talking at the end) and **Ask** are the Notes panel's other tabs.
-  **Chat** (**C**) has a panel to itself, encrypted end to end, with its conversations as tabs: **Everyone**, **Questions**
-  and one per private conversation. **People**, from the faces, opens with **Find someone**,
+- **Transcript** (the whole call so far, with who's talking at the end), **Ask** and **Yours** are the Notes panel's
+  other tabs. **Chat** (**C**) has a panel to itself, encrypted end to end, with its conversations as tabs: **Everyone**,
+  **Questions** and one per private conversation. **People**, from the faces, opens with **Find someone**,
   which narrows every list in it by name: who is asking to join (first, for whoever hosts), who is here (hands raised
   first, in the order they went up, with each person's status, pins and spotlight), who is ringing and how they answered,
   and who is invited and not here (the organizer can ring anyone in the last two); for the organizer, **Breakout rooms**,
@@ -685,9 +731,10 @@ time, slides in on the right.
   another app), everyone sees the recording as unavailable, and the transcript carries on for everyone else.
   When the browser can neither record nor listen, the sign says **Notes unavailable**, for everyone and on the
   join page, until it can again.
-- **Asking for notes.** While notes are off or paused, anyone can ask for them, from the notes sign or the Notes
-  panel. Everyone sees who asked. The organizer gets a toast and sees the ask in People, then turns notes on (or
-  resumes them) or says not now, and whoever asked is told.
+- **Asking for notes.** While notes are off or paused, anyone can ask for them: **Ask for notes** in what's captured,
+  or in Notes, whose bar says **Ask to resume** while they're paused. Everyone sees who asked. The organizer gets a toast
+  and sees the ask in People, and while notes are off, Notes says how many asked in its pill, in rose, with **Not now**
+  and **Turn on** under its tabs. They turn notes on (or resume them) or say not now, and whoever asked is told.
 - Changes show as short notices beside the dock, like "Notes are on. Everyone here can see that."
 - **Move to another device** (in **More**) shows a QR code and a link that work once, for two minutes. Scan it
   with the phone's camera, or open the link on another computer: it shows the call, who you'll be and whether your
@@ -840,8 +887,8 @@ See [Floating call](../engineering/floating-call.md) for browser capabilities an
      exactly where you were. If you're watching someone else's presentation, it comes in as a tile among the people
      instead, with **Join**, and a toast offers **Show it**; **Show beside** puts it beside the one you're watching, and
      closing either leaves the other.
-   - **Focus** (**⌘⇧F**, or "Fill your window with it" on the frame's bar): the bars slide off, everyone drops to
-     arches on the horizon, and your microphone, camera, **Show everything** and Leave stay. You still see who's talking and
+   - **Focus** (**⌘⇧F**, or "Fill your window with it" on the frame's bar): the bars slide off, the people keep a rail
+     of arches at the right, and your microphone, camera, **Show everything** and Leave stay. You still see who's talking and
      who has a hand up, and the faces at the top right still count anyone asking to join. **Show everything**, **⌘⇧F** or **Esc** brings it all back as it was, with the caret where you left it.
    - **Working together:** with the workspace open, hovering someone's tile offers **Follow** if they're in it (an arch has it in
      its menu, and People has it beside where each person is); the tile says **Following**, and shows a pen while they write.

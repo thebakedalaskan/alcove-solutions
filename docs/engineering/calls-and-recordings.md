@@ -2002,9 +2002,11 @@ steps (`ShareMenu.tsx`); and the call's keys are `session/useCallShortcuts.ts`. 
   width and dims under it (`.ic-scrim.is-over`, the main area alone, so the top bar and the dock work as ever); a press on
   the stage puts it away, and so does choosing something there, as on a phone (`sideCovers`). Someone asking to join is
   answered in what it leaves clear. On a phone it's a sheet over the call, and a window that narrows to a phone puts it
-  away. `Panel.tsx` draws each: Notes is a head (This call, in the workspace; Open; the bookmark, for an account) over the
-  tabs Notes, Transcript and Ask, the Notes tab starting with the notes sign and its ⋯ (the organizer's Pause, Resume and
-  Turn off or on, or anyone else's Ask for notes) and ending with Yours; Chat is alone; People has Breakout rooms for the
+  away. `Panel.tsx` draws each. Notes is a head (Notes; the pill, which says the state in a word and opens what's
+  captured; Open; ×) over the tabs Notes, Transcript, Ask and, for an account, Yours. Under the tabs on Notes and
+  Transcript a bar shows while capture isn't simply live, with the one thing to do about it (the organizer's Resume or
+  Turn on, or anyone else's Ask to resume or Ask for notes), and the foot of every tab but Ask has Note to self with the
+  bookmark beside it, for an account once notes have been on. Chat is alone; People has Breakout rooms for the
   organizer, which opens `rooms`; and `mine` is a presenter's own notes beside a board they present, from the pager's notes
   button. It takes your theme (`ThemeScope`, so a popover or a list that opens from it takes it too), as a board's sheet
   does unless it's a night board, while the stage, the dock, the workspace and screens stay night. What's typed in Chat or
@@ -2014,8 +2016,9 @@ steps (`ShareMenu.tsx`); and the call's keys are `session/useCallShortcuts.ts`. 
 - **The stage** (`Stage.tsx`, `stageLayout.ts`, placed in the main area by `panels.ts`'s `placeMain`) holds the people and
   what you have open (`onStage.ts`: the workspace, the board in the call, a saved board just for you, or someone's screen).
   With nothing open the people fill it, laid out by the stage itself (Your view, below). With something open, it sits in its
-  frame, and the people sit beside it: a column on the right, about 300, 248, 216 or 176 px wide as the stage narrows; a row
-  of arches over the frame, which any stage under 760 px gets; or, hidden (⇧P), on the horizon by the dock. Your stage holds one
+  frame, and the people stand beside it at the window's right edge, past your side: a column about 300, 248, 216 or 176 px
+  wide as the call's area narrows, or, made smaller (⇧P), a rail of arches 74 px wide; or a row of arches over the frame,
+  which any call's area under 760 px gets. Your stage holds one
   thing: opening something puts away what was there, so a presentation becomes its tile, and what's open just for you closes
   (the workspace keeping your place, caret and undo). Show beside is the one exception: it puts a second presented thing
   beside the first, side by side where there's 900 px across for them, else one over the other where there's 620 px down,
@@ -2068,7 +2071,7 @@ steps (`ShareMenu.tsx`); and the call's keys are `session/useCallShortcuts.ts`. 
   or P on it do. It's one tab stop among the tiles (the tile's group; its button isn't one of its own), and says what it is
   and who presents it, with no "Enter for options". One that lands while you watch something else glows for 3 s where it
   lands (`onStage.ts` `fresh`, `.ic-ptile.is-new`). A screen's tile shows it live, and a board's shows it drawn small (`BoardMini`); the workspace's has no
-  picture, and says where its presenter is. Among arches or on the horizon it's small: the kind's icon and
+  picture, and says where its presenter is. Among arches it's small: the kind's icon and
   the presenter's face. Its ⋯ has Show it, Show beside (while your stage holds one thing, and not on a phone) and, for a share
   with sound, its sound for you. It's there only while it's presented: when the presentation ends, its tile goes.
 - **A presentation starting** takes the stage of everyone who isn't watching another (what was open just for them closes),
@@ -2192,36 +2195,40 @@ steps (`ShareMenu.tsx`); and the call's keys are `session/useCallShortcuts.ts`. 
   plays through `usePlayer` (`notes.audioUrl`) until the next line, or for 8 seconds after the last one. A call that keeps no
   recording has nothing to hear.
 - **Focus** fills your window with what's in the frame (⌘⇧F, or the frame's Fill your window with it): the top bar slides
-  off, the people go to the horizon, and the dock tucks to the microphone, camera, Show everything and Leave. Show
+  off, the people keep a rail of arches at the right, and the dock tucks to the microphone, camera, Show everything and Leave. Show
   everything, ⌘⇧F or Esc brings it all back. Esc goes in the canvas's order: a menu, a sheet or a drag takes it first (they
   listen on `window`), then whatever's being edited keeps it (a field does what it does anywhere, so a rename is cancelled
   and the chat box keeps its words, and words selected in the document lose their format bar), then the list over the page
   goes, then focus. The workspace takes it in the capture phase on `document` and steps aside for all of those (`editing`
   in WorkspacePanel.tsx); with only the caret in the document, the editor never sees it, so the caret stays where it was.
-- **When room runs out**, the people's column narrows with the stage, and under 760 px of stage they're a row of arches over
-  the frame; your side is 340 px wide in a window under 1200 px, and in one under 864 px it sits over the stage rather than
-  leave it under 480 px; and two things on your stage with room for neither side by side nor one over the other take turns,
+- **When room runs out**, the people's column narrows with the call's area, and under 760 px of it they're a row of arches
+  over the frame; your side is 340 px wide in a window under 1200 px, and where what's open would be left under 480 px beside
+  it and the people, it sits over the stage instead; and two things on your stage with room for neither side by side nor one over the other take turns,
   with a switcher in the top bar. Under 600 px it's a phone: what's open fills the
   screen under a row of arches, two things take turns with the switcher under the arches, and your side, Share, More, a
   frame's name menu and Close's question are sheets over the call.
-- **The people beside what's open.** Tiles in a column sized to the stage, starting under the frame's bar; arches in a row
-  over the frame on a narrow stage, their name, mic and menu moved to a click on the arch; or, hidden (**⇧P**), small arches
-  on the horizon beside the dock, in space nothing else uses. They have a button of their own for what ⇧P does
-  (`PeopleAside.tsx`, placed by `panels.ts`: `MainPlaced.aside`, `asideOnHorizon`): Hide the people at the top right of
-  the column, level with the bar's buttons, or at the end of the row, and once they're hidden, Show the people, first on
-  the horizon, with the people after it (`Horizon.from`). There's none on a phone, where the arches always stay, in focus,
-  or beside the organizer's rooms. Whoever has a hand up, or has been talking a moment (`speakers.ts`, so a quick "yes" moves
-  nothing), rises 9 px, with a line beside them saying so. As many as fit are shown, then a count that opens People, and the
-  speaker and anyone with a hand up always have a place, unless the dock leaves room for nobody: nothing ever stands on it.
-  Those there's no room for stay mounted, out of sight. Someone rung waits in a tile among the tiles; among arches or on the
-  horizon they're in People. Beside what's open there's no stage to have a corner of, so your own picture is one of the
-  people; hidden, its chip waits under the tiles. Nothing here changes while nothing is open: hiding people then says it
-  applies once something is. A presented thing's tile (`PresentedTile`) stands first among them.
+- **The people beside what's open.** They stand at the window's right edge, past your side, level with what's open and in
+  the middle of their edge (`panels.ts`: `peopleEdge` decides their strip, `placeMain` the rest). They're a column of tiles
+  sized to the call's area, or, made smaller (**⇧P**, stored as `hidden`), a rail of arches one arch wide (74 px) in the same
+  place; in a call's area under 760 px, a row of arches over the frame, their name, mic and menu moved to a click on the arch.
+  Their strip comes from the call's whole width, so your side never moves or resizes them: it opens between what's open and
+  them (`HostSide.edge` in `PanelHost.tsx`), fading in where it lands, and what's open makes room; where that would leave the
+  stage under 480 px, your side sits over the stage instead, left of the people. Their one control is the seam left of them
+  (`PeopleSeam.tsx`, placed as `MainPlaced.seam`): the gap, with a faint grip in its middle, lit while you point at it, with a
+  focus ring on the grip from the keyboard. Click it, or drag it 36 px right to make the people smaller or left to make them
+  bigger; a drag the other way, or one that stops short, does nothing. There's none on a phone or a narrow stage, where the
+  arches always stay (⇧P says so there), in focus, beside the organizer's rooms, or while your side covers the stage. As many as fit are shown, then a count that opens People, and the speaker
+  (`speakers.ts`, so a quick "yes" moves nothing) and anyone with a hand up always have a place, with the speak ring or the
+  gold one. Those there's no room for stay mounted, out of sight. Someone rung waits in a tile among the tiles; among arches
+  they're in People. Beside what's open there's no stage to have a corner of, so your own picture is one of the people;
+  hidden, its chip waits under the tiles. Nothing here changes while nothing is open: making the people smaller then says it
+  applies once something is. A presented thing's tile (`PresentedTile`) stands first among them. A tile folding into an arch
+  rounds off as it shrinks (the arch's 37 px corners transition with it) rather than snapping into a dome.
 - **Toasts in a call** sit left of the dock from 1328 px, spaced as the canvas spaces them so that someone's share is offered
-  on one line, and right of it when people are on the horizon, so they never cover the foot of the list. Narrower, there's
-  no room for one line beside the dock, so they go above it, in the middle. They never cover your side's foot, its composer
-  and its buttons: while it's open they keep to the middle of the stage left of it (with people on the horizon, from
-  1328 px too), and on a phone, with your side a sheet, they go to the top. Nor do they cover the pager at the foot of a
+  on one line. Narrower, there's no room for one line beside the dock, so they go above it, in the middle. They never cover
+  your side's foot, its composer and its buttons: while it's open they keep to the middle of the stage left of it and of the
+  people at the window's edge (`--ic-right`, which InCall.tsx sets), and on a phone, with your side a sheet, they go to the
+  top. Nor do they cover the pager at the foot of a
   board you present: they stand above it (all in `call.css`). What presenting says (who you're following, closed for you or
   for everyone, a share the organizer stopped) is built with `wsToast`, in the words the canvas's `nc.js` has. Each is about
   one thing on your stage (`topic`, `ToastOptions` in the kit's `toast.tsx`), and a newer one about the same thing takes the
@@ -2229,10 +2236,10 @@ steps (`ShareMenu.tsx`); and the call's keys are `session/useCallShortcuts.ts`. 
   stopped.
 - **Your view** (`view.ts`, laid out by `stageLayout.ts`) is each viewer's own and is never sent anywhere. There are no layout
   modes: the stage lays itself out (`arrange`), and what's kept is what you did to it: up to six pins, which share the main
-  stage; the order you dragged people into; who you made bigger from a tile's corner; whether you hid the people beside
-  what's open (⇧P); and where you see yourself (in the grid, in a corner the layout makes room for so it never covers a
-  tile, or hidden, folded into a chip there). Beside what's open the people are a column of tiles, or a row of arches on a
-  stage under 760 px and on a phone (`panels.ts`), whatever was kept. Reset layout, in More while there's something to
+  stage; the order you dragged people into; who you made bigger from a tile's corner; whether you made the people beside
+  what's open smaller (⇧P); and where you see yourself (in the grid, in a corner the layout makes room for so it never covers
+  a tile, or hidden, folded into a chip there). Beside what's open the people are the column or the rail that was kept, or a
+  row of arches in a call's area under 760 px and on a phone, whatever was kept (`panels.ts`). Reset layout, in More while there's something to
   put back (`isCustom`), puts everything back as the stage lays it out (where you see yourself stays as it is, and what's
   open stays open), with Undo in its toast, as unpinning everyone has. Testers asked for preset layouts or tiles that
   snap to drop zones again (#227): both stay out, as #178 and #197 decided, and what's there is easier to find instead.
@@ -2262,19 +2269,19 @@ steps (`ShareMenu.tsx`); and the call's keys are `session/useCallShortcuts.ts`. 
   come back to the same seat; you're told both times. With all six pins taken, pinning someone else gives up the
   oldest pin of someone who isn't here, and someone the organizer removes loses the organizer's pin, since they
   can't come back. Everyone keeps their place across reconnections (the order
-  people first came in, by seat). The stage shows one person big only once they've had most of the talk time over the
-  last minute or so (yours counted), and only while you haven't arranged anything; in the strip under them, whoever steps
-  down takes the place of whoever steps up, and moving or sizing a tile there arranges the stage, which is a grid again
-  (`handsOn` in `Stage.tsx`). A presentation that starts takes your stage only while you
-  aren't watching another; otherwise it comes in as a tile, and nothing you see moves. Your pins stay first beside what's
+  people first came in, by seat). Talking moves nobody: only a pin or the organizer's spotlight puts someone on the main
+  stage (`arrange`), and whoever's talking has the speak ring. The stage used to put whoever had most of the last 45
+  seconds' talk time there by itself; it switched between that and the grid well after anyone started or stopped
+  talking, which read as the layout changing for no reason, so it went. A presentation that starts takes your stage
+  only while you aren't watching another; otherwise it comes in as a tile, and nothing you see moves. Your pins stay first beside what's
   open, and when it closes everything is where it was. Cameras turning off move nothing.
 - **Keyboard.** The stage is one tab stop. Arrow keys move between tiles, Enter (or Shift+F10) opens a tile's menu, P pins
   or unpins, and Shift with an arrow moves your corner picture to another corner (tiles move and grow by dragging); on a
   presented thing's tile, Enter, Space or P puts it on your stage. A share's frame is one tab stop
   too, where L starts pointing at it ([Pointing at shared screens](#pointing-at-shared-screens)). Escape stops pointing;
   then, once no menu or sheet is open, it leaves focus, then unpins everyone, then puts your side away. The call's own keys
-  are M and V (microphone and camera), C (Chat), B (Mark this moment), W (Workspace), O (Board), ⇧P (hide the people or
-  bring them back), ⌘K (find in the workspace) and ⌘⇧F (focus), all in `session/useCallShortcuts.ts`; captions have none,
+  are M and V (microphone and camera), C (Chat), B (Mark this moment), W (Workspace), O (Board), ⇧P (make the people
+  smaller or bigger), ⌘K (find in the workspace) and ⌘⇧F (focus), all in `session/useCallShortcuts.ts`; captions have none,
   and the letters sleep while you type. There's no sheet listing them: the keys just work. A share you
   bring back from its own window takes the keys back, on its frame or its tile (`useFocusBack`), so focus never drops to the
   page. Nor does it as your stage changes under the keys (`layout/landKeys.ts`): closing what's on it hands them to its
@@ -2334,9 +2341,12 @@ steps (`ShareMenu.tsx`); and the call's keys are `session/useCallShortcuts.ts`. 
   everyone who can read the same lines in that part of the call. While the tab is open and notes are on where you are,
   the browser says it's watching (`CallSession.watchNotes`), which is what keeps them up to date at most every 30 seconds,
   in one run however many are watching. Someone reading the notes everyone shares, who gets the notes, can tick a
-  follow-up (`tickFollowUp`), and it's done for everyone, and can add one (`addFollowUp`). A guest sees no box, and someone with
-  notes of their own, written from what they may read, sees no box and is told so
-  ([Notes and inference › Live notes](notes-and-inference.md#live-notes)). Each row's arrow sends it to a document.
+  follow-up (`tickFollowUp`), and it's done for everyone, add one (`addFollowUp`), and add (or apply) or dismiss what
+  the call suggests (`reviewFollowUp`), which waits under the checklist, two at a time. A guest's box is disabled, as is
+  the box of anyone whose notes are written from what they may read, and they're told so
+  ([Notes and inference › Live notes](notes-and-inference.md#live-notes)). Each row's arrow sends it to a document. A
+  refresh that didn't work (`liveNotes.error`) turns the summary's time caution ("Not updated since 16:12"), with no
+  notice: Alcove tries again on its own.
 - **Catching up** (`CatchUp.tsx`, `catchingUp.ts`) is for the person asking alone. **Catch up on what you missed**, in
   More, opens Notes on the Ask tab on what they most likely missed (their recent time away, what was said before
   they joined late, or the last five minutes). In the Ask view a chip says what's read and opens a menu: the last 5
@@ -2400,13 +2410,16 @@ steps (`ShareMenu.tsx`); and the call's keys are `session/useCallShortcuts.ts`. 
 - **What's captured.** The notes sign in the top bar is the same for everyone: **Notes on** (crimson),
   **Notes paused**, **Notes unavailable** (caution), **Notes off**, or **Notes requested** while someone has
   asked; the organizer's own says **Pausing…** while their pause is on its way. It opens a popover
-  (`features/call/notes/Capture.tsx`) with each kind of capture and its state, who changed it and when, who gets the
-  notes, and that they're written in confidential compute; with the organizer's **Pause notes**, **Resume
-  notes** and **Turn off** or **Turn on notes**, or anyone else's **Ask for notes**. Its sentence says what's
-  captured now: what everyone says recorded and transcribed, less whatever the host's browser can't do. The
-  Notes, on your side, has the same controls in its ⋯ and empty states. The transcript, in the call and in the note,
-  marks each gap, and dots what it isn't sure of: words that were hard to hear, and a name heard on more than one
-  microphone ([Notes and inference › The live transcript](notes-and-inference.md#the-live-transcript)).
+  (`features/call/notes/Capture.tsx`), the same card the pill beside Notes, on your side, opens: who changed the state
+  and when, then one sentence on what's captured now, what everyone says recorded and transcribed, less whatever the
+  host's browser can't do. It doesn't list the kinds of capture one by one: the sentence says what isn't working, in
+  words. Then the asks, the organizer's **Pause notes**, **Resume notes** and **Turn off** or **Turn on notes**, or
+  anyone else's **Ask for notes**, and a row each for how the notes are written (confidential compute, or
+  **Unencrypted**), who gets them, shared screens while they're read and, for the organizer outside a breakout room,
+  **Notes written by**. The pill says the same state in a word (**Live**, **Paused**, **Unavailable**, **Off**, or for
+  the organizer how many asked), and Notes' bar and empty states carry the one thing to do about it. The transcript, in
+  the call and in the note, marks each gap, and dots what it isn't sure of: words that were hard to hear, and a name
+  heard on more than one microphone ([Notes and inference › The live transcript](notes-and-inference.md#the-live-transcript)).
 - **Asks for notes.** The organizer gets a toast with Turn on (or Resume), and an Asking for notes section in
   People with Not now for each; everyone sees "Asked for notes" on the asker's row. Whoever asked hears when
   the organizer says not now. Joining shows only the latest notice as a toast; older ones are history.

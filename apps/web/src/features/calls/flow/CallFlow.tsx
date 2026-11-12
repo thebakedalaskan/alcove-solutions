@@ -189,7 +189,7 @@ function Choice({ people, name, team, documents, board, onClose, onLater, toast 
  * Says what scheduling did, and only what it did. Google sends invitations; a sample calendar stands in for that;
  * with nothing connected nobody has heard, so the toast says so and offers the link. The row on Home rises either way.
  */
-export function useScheduled() {
+function useScheduled() {
   const toast = useToast();
   const copy = useCopyLink();
   const cancel = useCancelCall();

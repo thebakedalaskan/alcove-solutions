@@ -1,0 +1,208 @@
+/*
+ * Notes in a call: the panel on your side (nn-) and what's captured (nk-), the card that its pill and the sign at the top
+ * of the call both open. The design is docs/design/canvas/notes. Colour by kind, as on the note afterwards: rose for what's
+ * decided or asked of the organizer, horizon for follow-ups, sun-text for what's yours, rec only while notes are taken,
+ * caution for a problem. Times are quiet, in ink-3, and warm when pointed at, as any time does.
+ */
+
+/* ---------- the panel: its head, tabs, a bar when capture needs saying, what's in it, and its foot ---------- */
+.nn { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+
+/* Its head is the side's own (.ic-side-head): Notes, its state in a word (which opens what's captured), Open and ×. */
+.nn-head { gap: 10px; }
+.nn-head .sp { flex: 1; }
+
+/*
+ * The pill: the state in a word, and a chevron, since it opens what's captured. A rec dot only while notes are taken, the
+ * pause mark while paused (breathing while the organizer's pause is on its way), caution while nothing can be captured,
+ * rose for the organizer while people have asked, and a hollow ring while off.
+ */
+.nn-pill { flex: none; display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 7px 0 10px; border: 0; border-radius: var(--radius-pill); background: none; color: var(--ink-2); font: 600 12.5px/1 var(--font-sans); white-space: nowrap; cursor: pointer; box-shadow: inset 0 0 0 1px var(--line); transition: background-color var(--duration-1), box-shadow var(--duration-1); }
+.nn-pill:hover, .nn-pill[aria-expanded="true"] { background: var(--sunk); box-shadow: inset 0 0 0 1px var(--line-control); }
+.nn-pill:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.nn-pill .ac-rec-dot { width: 7px; height: 7px; }
+.nn-pill .ring { flex: none; width: 7px; height: 7px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--ink-3); }
+.nn-pill .ac-i { flex: none; }
+.nn-pill .nn-chev { display: grid; place-items: center; margin-left: -1px; color: var(--ink-3); }
+.nn-pill.is-ask { color: var(--rose); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--rose) 45%, transparent); }
+.nn-pill.is-ask:hover, .nn-pill.is-ask[aria-expanded="true"] { background: var(--rose-soft); }
+.nn-pill.is-ask .ac-rec-dot { background: var(--rose); animation: none; }
+.nn-pill.is-ask .nn-chev, .nn-pill.is-caution .nn-chev { color: inherit; }
+.nn-pill.is-caution { color: var(--caution); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--caution) 45%, transparent); }
+.nn-pill.is-caution:hover, .nn-pill.is-caution[aria-expanded="true"] { background: var(--caution-soft); }
+.nn-pill.is-changing > .ac-i { animation: ac-capture-changing var(--duration-4) var(--ease-in-out) infinite alternate; }
+
+/* Four tabs, words with a line under the one you're on. */
+.nn-tabs.ac-tabs { flex: none; gap: 22px; padding: 0 20px; }
+.nn-tabs .ac-tab { height: 40px; padding: 0; font-size: 13.5px; white-space: nowrap; }
+.nn-tabs .ac-tab[aria-selected="true"]::after { left: 0; right: 0; }
+
+/* The bar: what capture means right now, only when it isn't simply live, and the one thing to do about it. */
+.nn-bar { flex: none; display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 10px; row-gap: 10px; align-items: start; padding: 12px 20px; background: var(--sunk); box-shadow: inset 0 -1px 0 var(--line); color: var(--ink-2); font: 500 13px/1.45 var(--font-sans); }
+.nn-bar + .nn-bar { box-shadow: inset 0 -1px 0 var(--line), inset 0 1px 0 var(--line); }
+.nn-bar > .ac-i { margin-top: 1px; color: var(--ink-3); }
+.nn-bar > .ac-faces { align-self: center; }
+.nn-bar .nn-tx { min-width: 0; margin: 0; }
+.nn-bar .nn-acts { grid-column: 2; display: flex; flex-wrap: wrap; gap: 8px; }
+.nn-bar.is-ask { background: var(--rose-soft); color: var(--ink); }
+.nn-bar.is-ask .nn-tx { align-self: center; font-weight: 600; }
+.nn-bar.is-caution { background: var(--caution-soft); color: var(--ink); }
+.nn-bar.is-caution > .ac-i { color: var(--caution); }
+
+/* What's in it. */
+.nn-body { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 18px 20px 24px; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+.nn-body > .ic-carry { margin: 0 0 22px; }
+.nn-sec + .nn-sec { margin-top: 26px; }
+.nn-sh { display: flex; align-items: center; gap: 8px; min-height: 28px; margin-bottom: 6px; }
+.nn-sh h3 { margin: 0; font: 600 13.5px/1.2 var(--font-sans); color: var(--ink); }
+.nn-sh .n { color: var(--ink-3); font: 500 13px/1 var(--font-sans); font-variant-numeric: tabular-nums; }
+.nn-sh .sp { flex: 1; }
+.nn-sh .ac-icon-btn { width: 28px; height: 28px; margin-right: -6px; border-radius: 50%; color: var(--ink-2); }
+.nn-sec.is-dec > .nn-sh h3 { color: var(--rose); }
+.nn-sec.is-fol > .nn-sh h3 { color: var(--horizon); }
+.nn-quiet { margin: 0; color: var(--ink-3); font: 400 13.5px/1.45 var(--font-sans); }
+.nn-guest { display: flex; align-items: center; gap: 8px; margin: 0 0 16px; color: var(--ink-3); font: 500 12.5px/1.4 var(--font-sans); }
+
+/* The summary first: a few lines, its freshness at the right of its heading. */
+.nn-fresh { margin-left: auto; display: inline-flex; align-items: center; gap: 7px; color: var(--ink-3); font: 500 12.5px/1 var(--font-sans); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.nn-fresh.is-stale { color: var(--caution); }
+.nn-fresh .ac-unencrypted { margin-right: 2px; }
+.nn-sum { margin: 0; font: 400 14.5px/1.58 var(--font-sans); color: var(--ink); text-wrap: pretty; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden; }
+.nn-sum.is-open { display: block; }
+.nn-more { margin-top: 6px; padding: 0; border: 0; background: none; color: var(--ink-2); font: 600 12.5px/1.6 var(--font-sans); cursor: pointer; }
+.nn-more:hover { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
+
+/* A row: its kind's mark, the words, then its time and what it can do, each in a column of its own. */
+.nn-row { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; column-gap: 10px; align-items: start; padding: 6px 0; }
+.nn-row .nn-tx { min-width: 0; margin: 0; font: 500 14px/1.45 var(--font-sans); color: var(--ink); overflow-wrap: anywhere; }
+.nn-row .mt { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 5px; color: var(--ink-3); font: 500 12.5px/1.2 var(--font-sans); }
+.nn-row .due { display: inline-flex; align-items: center; height: 20px; padding: 0 6px; border-radius: 6px; background: var(--sunk); color: var(--ink-2); font: 500 11.5px/1 var(--font-sans); }
+.nn-row .end { display: flex; align-items: center; gap: 2px; margin-top: -1px; }
+.nn-row .ws-put, .nn-row .ac-icon-btn { opacity: 0; transition: opacity var(--duration-1); }
+.nn-row:hover .ws-put, .nn-row:hover .ac-icon-btn, .nn-row .ws-put:focus-visible, .nn-row .ac-icon-btn:focus-visible { opacity: 1; }
+@media (hover: none) { .nn-row .ws-put, .nn-row .ac-icon-btn { opacity: 1; } }
+.nn-dia { width: 8px; height: 8px; margin: 6px 0 0 5px; border-radius: 1.5px; background: var(--rose); transform: rotate(45deg); }
+/* Times are quiet: the time of day in a column of its own, which opens the transcript there (and warms, as any time does, when pointed at). */
+.ac-stage .ic-side .nn .ac-time-chip { height: 22px; padding: 0 6px; border-radius: 6px; background: none; color: var(--ink-3); font-size: 12.5px; }
+
+/* ---------- follow-ups: a checklist anyone permitted can tick, and what the call suggests under it ---------- */
+/* Its heading's +, while the form to add one is open; and the section itself, when a decision from the keyboard leaves focus there. */
+.nn-sec.is-fol > .nn-sh .ac-icon-btn.is-on { background: var(--sunk); color: var(--ink); }
+.nn-sec.is-fol:focus { outline: none; }
+.nn-sec.is-fol:focus-visible { outline: 2px solid var(--focus); outline-offset: 6px; border-radius: 12px; }
+
+/* The box is the kit's Check, as on the note, with a finger-sized target. Once it's done, the words are struck through. */
+.nn-row > .ac-check::after { content: ""; position: absolute; inset: -8px; }
+.nn-row.is-done .nn-tx > p { color: var(--ink-3); text-decoration: line-through; text-decoration-color: var(--line-control); }
+
+/* A follow-up's document, beside whose it is and when: it opens the line there. Its tools show while anything in the row has focus. */
+.nn-row.is-fol .src { display: inline-flex; align-items: center; gap: 4px; min-width: 0; max-width: 100%; padding: 0; border: 0; border-radius: 4px; background: none; color: inherit; font: inherit; }
+.nn-row.is-fol button.src { cursor: pointer; transition: color var(--duration-1); }
+.nn-row.is-fol button.src:hover { color: var(--ink); }
+.nn-row.is-fol button.src:hover > span { text-decoration: underline; text-underline-offset: 2px; }
+.nn-row.is-fol button.src:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.nn-row.is-fol .end .ac-icon-btn { width: 26px; height: 26px; border-radius: 7px; }
+.nn-row.is-fol:focus-within .ac-icon-btn, .nn-row.is-fol:focus-within .ws-put { opacity: 1; }
+
+/* Adding or editing one: the form in the row's place. */
+.nn-row.is-editing { display: block; padding: 2px 0 8px; }
+
+/*
+ * What the call suggests: under a dashed rule, a dashed box the size of a follow-up's and its words in ink-2, with Add (or
+ * Apply) and × always in sight.
+ */
+.nn-sugh { display: flex; align-items: center; gap: 8px; margin: 12px 0 2px; color: var(--ink-3); font: 500 12.5px/1.2 var(--font-sans); }
+.nn-sugh::after { content: ""; flex: 1; border-top: 1px dashed var(--line); }
+.nn-ck.is-sug { width: 20px; height: 20px; border-radius: var(--radius-xs); outline: 1.5px dashed var(--line-control); outline-offset: -1.5px; }
+.nn-row.is-sug { border-radius: 10px; }
+.nn-row.is-sug:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.nn-row.is-sug .nn-tx > p { color: var(--ink-2); }
+.nn-row.is-sug .mt .at { display: inline-flex; align-items: center; gap: 2px; margin-left: auto; }
+.nn-row.is-sug .mt .ac-time-chip { height: 20px; padding: 0 4px; }
+.nn-row.is-sug .nn-tx > .was { margin: 4px 0 0; color: var(--ink-3); font: 400 12.5px/1.4 var(--font-sans); }
+.nn-row.is-sug .was s { text-decoration-color: var(--line-control); }
+.nn-row.is-sug .end { gap: 4px; margin-top: -3px; }
+.nn-row.is-sug .end .ac-btn { position: relative; height: 28px; padding: 0 11px; font-size: 12.5px; }
+.nn-row.is-sug .end .ac-icon-btn { width: 28px; height: 28px; opacity: 1; }
+/* On its way, Add keeps its size and spins in its middle, so nothing beside it moves. */
+.nn-row.is-sug .end .ac-btn:has(> .ac-spin) { opacity: 1; color: transparent; }
+.nn-row.is-sug .end .ac-btn > .ac-spin { position: absolute; inset: 0; width: 14px; height: 14px; margin: auto; border-color: var(--ink-2); border-right-color: transparent; }
+.nn-row .status { grid-column: 2 / -1; margin: 4px 0 0; color: var(--ink-3); font: 500 12.5px/1.35 var(--font-sans); }
+.nn-row .status.is-caution { color: var(--caution); }
+.nn-sugs .nn-more { margin: 2px 0 0 30px; border-radius: 4px; }
+.nn-sugs .nn-more:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+/* ---------- breakout rooms held, in the notes ---------- */
+.nn-rooms .rn { display: flex; align-items: center; gap: 8px; padding: 5px 0; font: 500 14px/1.4 var(--font-sans); color: var(--ink); }
+.nn-rooms .rn span { color: var(--ink-3); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+
+/* ---------- empty: notes off, the first minute, nothing yet ---------- */
+.nn .ac-empty { gap: 8px; padding: 44px 8px 24px; }
+.nn .ac-empty b { font: 600 15.5px/1.3 var(--font-sans); letter-spacing: 0; text-wrap: balance; }
+.nn .ac-empty p { max-width: 272px; font-size: 13.5px; color: var(--ink-2); text-wrap: pretty; }
+.nn .ac-empty.is-listening .ac-empty-arch, .nn .ac-empty.is-listening > svg:first-child { animation: nn-listen 2.8s var(--ease-in-out) infinite; }
+@keyframes nn-listen { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
+
+/* ---------- yours, and the foot every tab but Ask has: Note to self, and the bookmark beside it ---------- */
+/* Yours: a mark for each kind, warm for a moment you marked, hairlines between, what you can do on hover (always on touch). */
+.nn-own .own-list { display: grid; gap: 0; }
+.nn-own .own-list .own-row { grid-template-columns: 18px minmax(0, 1fr); column-gap: 10px; padding: 10px 0; border-radius: 0; }
+.nn-own .own-list .own-row .own-mk { width: 18px; height: 20px; border-radius: 0; background: none; color: var(--ink-3); }
+.nn-own .own-list .own-row.is-bookmark .own-mk { background: none; color: var(--sun-text); }
+.nn-own .own-list .own-row.is-answer .own-mk { color: var(--horizon); }
+.nn-own .own-t, .nn-own .own-q { font: 500 14px/1.45 var(--font-sans); }
+.nn-own .own-q { font-size: 13px; color: var(--ink-3); }
+.nn-own .own-acts .ac-icon-btn { width: 26px; height: 26px; }
+.nn-foot { flex: none; display: flex; align-items: flex-end; gap: 8px; padding: 10px 16px 16px; box-shadow: inset 0 1px 0 var(--line); }
+.nn-foot .own-compose { flex: 1; min-width: 0; display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; align-items: center; column-gap: 9px; min-height: 44px; margin: 0; padding: 4px 6px 4px 13px; border-radius: 14px; background: var(--sunk); box-shadow: none; }
+.nn-foot .own-compose:focus-within { box-shadow: inset 0 0 0 1.5px var(--focus); }
+.nn-foot .own-compose > .ac-i { color: var(--ink-3); }
+.nn-foot .own-compose textarea { min-height: 20px; padding: 0; border: 0; background: none; font: 400 14px/20px var(--font-sans); color: var(--ink); resize: none; }
+.nn-foot .own-compose textarea::placeholder { color: var(--ink-3); }
+.nn-foot .own-compose .ac-btn { width: 32px; height: 32px; padding: 0; background: none; box-shadow: none; color: var(--ink-2); }
+.nn-foot .own-compose .nn-lock { display: inline-flex; align-items: center; gap: 5px; padding: 0 8px; color: var(--ink-3); font: 500 12px/1 var(--font-sans); white-space: nowrap; }
+.nn-mark { flex: none; display: grid; place-items: center; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 14px; background: none; color: var(--sun-text); cursor: pointer; box-shadow: inset 0 0 0 1px var(--line); transition: background-color var(--duration-1); }
+.nn-mark:hover { background: var(--sunk); }
+
+/* ---------- what's captured: the card the pill and the sign open ---------- */
+/*
+ * One card in a popover: under the pill, in your side's theme, or under the sign, on the night of the call; a sheet from the
+ * foot on a phone (call.css's .is-sheet). Its head, a sentence, asks, what's yours to press, then a hairline row per fact.
+ */
+.ac-pop.nk-pop { width: min(344px, calc(100vw - 24px)); padding: 0; }
+.nk { display: grid; gap: 0; padding: 16px 16px 6px; }
+/* The sign, and when it changed beside it, or under it when there isn't the room. */
+.nk-h { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 10px; }
+.nk-h .when { color: var(--ink-3); font: 500 12.5px/1.3 var(--font-sans); font-variant-numeric: tabular-nums; }
+/* The sign as the card's head isn't a button: quiet while paused or off, caution as everywhere, and asked for, a decision waiting on the organizer, in rose. */
+.nk-h .ac-capture-sign { color: var(--ink-2); }
+.nk-h .ac-capture-sign.is-paused { background: var(--sunk); box-shadow: none; color: var(--ink-2); }
+.nk-h .ac-notes-sign.is-requested { background: var(--rose-soft); box-shadow: none; color: var(--rose); }
+.nk-h .ac-notes-sign.is-requested .ac-rec-dot { background: var(--rose); }
+.nk-said { margin: 12px 0 0; font: 400 14px/1.5 var(--font-sans); color: var(--ink); text-wrap: pretty; }
+.nk-ask { display: flex; align-items: center; gap: 10px; margin-top: 12px; padding: 10px 12px; border-radius: 12px; background: var(--rose-soft); color: var(--ink); font: 600 13.5px/1.35 var(--font-sans); }
+.nk-ask > .ac-i, .nk-ask > .ac-faces { flex: none; }
+.nk-ask > .ac-i { color: var(--ink-3); }
+.nk-ask .ac-faces .ac-avatar { --ring: var(--rose-soft); }
+.nk-ask.is-mine { background: var(--sunk); color: var(--ink-2); font-weight: 500; }
+.nk-ask .t { flex: 1; min-width: 0; }
+.nk-acts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.nk-facts { display: grid; margin-top: 16px; }
+.nk-f { display: flex; align-items: center; gap: 11px; min-height: 44px; padding: 8px 0; border-top: 1px solid var(--line); color: var(--ink-2); font: 500 13px/1.4 var(--font-sans); }
+.nk-f > .ac-i, .nk-f > .ac-faces, .nk-f > .ac-unencrypted { flex: none; }
+.nk-f > .ac-i { color: var(--ink-3); }
+.nk-f.is-caution > .ac-i { color: var(--caution); }
+.nk-f .t { flex: 1; min-width: 0; }
+.nk-f .ac-faces .ac-avatar { --ring: var(--surface-raised); }
+/* The organizer's model, under its words, so a long name and its "(default)" or Unencrypted have the row's width. */
+.nk-f.is-model { display: grid; grid-template-columns: 16px minmax(0, 1fr); column-gap: 11px; row-gap: 8px; padding: 12px 0; }
+.nk-f.is-model .ac-select { grid-column: 2; justify-self: start; height: 34px; padding: 0 9px 0 12px; font-size: 13px; }
+/* The way on to the notes, from the sign while they aren't open: the card's last row. */
+.nk-open { display: flex; align-items: center; gap: 10px; width: calc(100% + 16px); height: 44px; margin: 0 -8px; padding: 0 8px; border: 0; border-top: 1px solid var(--line); border-radius: 0 0 14px 14px; background: none; color: var(--ink); font: 600 13.5px/1 var(--font-sans); cursor: pointer; transition: background-color var(--duration-1); }
+.nk-open > .ac-i { flex: none; color: var(--ink-3); }
+.nk-open .t { flex: 1; text-align: left; }
+.nk-open:hover { background: var(--sunk); }
+.nk-open:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+@media (max-width: 599px) {
+  .ac-pop.nk-pop.is-sheet { width: auto; padding: 10px 6px calc(12px + env(safe-area-inset-bottom, 0px)); }
+}

@@ -176,7 +176,7 @@ function Library({ all, me }: { all: NoteFound[]; me: string | undefined }) {
 
   return (
     <Evening moment="notes" className="nt" data-asking={(!!answer && !answer.done) || undefined}>
-      <header className="nt-top" style={{ '--d': 0 }}><h1>Notes</h1></header>
+      <header className="dusk-top" style={{ '--d': 0 }}><h1 className="dusk-title">Notes</h1></header>
       <section className="nt-sky" aria-label="Find what was said" style={{ '--d': 1 }}>
         <SearchLine line={line} text={text} asked={asked} asking={!!answer && !answer.done} onText={change} onClear={clear} onAsk={run} onDown={() => focusRow(current?.id)} />
         <WithPeople known={known} person={person} add={add} onPick={(email) => (email ? narrow(email) : anyone())} />
