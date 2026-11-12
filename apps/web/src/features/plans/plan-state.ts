@@ -10,11 +10,6 @@ import type { CheckoutFor } from './checkout';
 
 export const PLAN_NAMES: Record<PlanKind, string> = { free: 'Free', pro: 'Pro', team: 'Team' };
 
-/** "Ends today", "Ends tomorrow", "Ends in 6 days": how soon a plan ends, by the calendar. */
-export function endsIn(until: string, now = Date.now()): string {
-  const days = daysFromToday(new Date(until), new Date(now));
-  return days <= 0 ? 'Ends today' : days === 1 ? 'Ends tomorrow' : `Ends in ${days} days`;
-}
 
 /** "5 hours", "1 hour", "50 hours": an allowance of notes, to the hour as the server's own words round it. */
 export function hoursOf(minutes: number): string {
@@ -35,18 +30,23 @@ export const notesShare = (plan: Plan): number => (plan.notes.minutesPerPeriod >
 export const renews = (plan: Plan, offers: PlanOffers | undefined): boolean =>
   plan.pro.renew && offers !== undefined && plan.balance.microUsd >= offers.pro.microUsdPerMonth;
 
-/** Two moments the server wrote from the same end of Pro. */
-const sameEnd = (a: string, b: string) => Math.abs(Date.parse(a) - Date.parse(b)) < 60_000;
+/** Pro about to end: when, and how many days away by the calendar (0 is today). */
+export interface ProEnding { until: string; days: number }
 
 /**
- * The pro-ending notice that still holds, or null: Pro still ends where it warned, and renewing won't keep it going.
- * Once Pro is extended, or renewing will buy the next month, it no longer says anything true.
+ * Whether Pro is about to end: the one rule Plans, the side panel's foot and Settings › Plan say "ending" by. Pro is ending
+ * while a pro-ending notice's `until` is the end Pro has now (`plan.pro.until`), unless renewing will buy the next month
+ * (it's on, and the balance has a month's price): once Pro is extended, or renewing will keep it, the notice no longer
+ * says anything true. Null otherwise.
  */
-export function endingNotice(plan: Plan, offers: PlanOffers | undefined): PlanNotice | null {
+export function proEnding(plan: Plan, offers: PlanOffers | undefined, now = Date.now()): ProEnding | null {
   const until = plan.pro.until;
   if (plan.kind !== 'pro' || until === null || renews(plan, offers)) return null;
-  return plan.notices.find((n) => n.kind === 'pro-ending' && sameEnd(n.until, until)) ?? null;
+  const warned = plan.notices.some((n) => n.kind === 'pro-ending' && Date.parse(n.until) === Date.parse(until));
+  return warned ? { until, days: Math.max(0, daysFromToday(new Date(until), new Date(now))) } : null;
 }
+/** "Ends today", "Ends tomorrow", "Ends in 6 days": how soon Pro ends, from `proEnding`'s days. */
+export const endsIn = (days: number): string => (days <= 0 ? 'Ends today' : days === 1 ? 'Ends tomorrow' : `Ends in ${days} days`);
 
 /** The plan's other notices that still say something true, newest first: Pro renewed while on Pro, Pro ended while on Free. */
 export const noticesNow = (plan: Plan): PlanNotice[] =>

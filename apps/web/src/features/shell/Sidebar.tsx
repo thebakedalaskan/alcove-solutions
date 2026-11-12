@@ -11,7 +11,7 @@ import { Link, useRouterState } from '@tanstack/react-router';
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import { aheadOf, joinable } from '~/features/home/day';
 import { useCheckout } from '~/features/plans/checkout';
-import { PLAN_NAMES, buyingNow, checkoutFor, endingNotice, endsIn, noticesNow, notesLeft, notesLow, notesOut, notesShare, purchaseName, restToSend, tokensShort } from '~/features/plans/standing';
+import { PLAN_NAMES, buyingNow, checkoutFor, endsIn, noticesNow, notesLeft, notesLow, notesOut, notesShare, proEnding, purchaseName, restToSend, tokensShort } from '~/features/plans/plan-state';
 import { recordOfflineHere } from '~/lib/device';
 import { log } from '~/lib/log';
 import { useNow, useOnline } from '~/lib/live';
@@ -249,7 +249,7 @@ function PlanFoot({ plan }: { plan: Plan }) {
     );
   }
   const said = noticesNow(plan)[0];
-  const ending = endingNotice(plan, offers);
+  const ending = proEnding(plan, offers, now);
   const until = plan.pro.until;
   return (
     <>
@@ -261,12 +261,12 @@ function PlanFoot({ plan }: { plan: Plan }) {
       {(plan.kind === 'free' || notesLow(plan) || notesOut(plan)) && <NotesLeft plan={plan} />}
       {plan.kind === 'free' ? (
         <Link to="/plans" className={cn('sb-plan', on && 'is-on')}>
-          <span>Free plan</span><span className="go">{notesLow(plan) || notesOut(plan) ? 'Get Pro' : 'See plans'}<Icon name="chevron" size={15} /></span>
+          <span>Free plan</span><span className="go">See plans<Icon name="chevron" size={15} /></span>
         </Link>
       ) : ending ? (
         <button type="button" className={cn('sb-pro', on && 'is-on')} onClick={() => checkout.open({ plan: 'pro' }, 'side')}>
           <SunMark state="setting" />
-          <span className="min-w-0"><b>{PLAN_NAMES[plan.kind]}</b><small className="is-warm">{endsIn(ending.until, now)} · Extend</small></span>
+          <span className="min-w-0"><b>{PLAN_NAMES[plan.kind]}</b><small className="is-warm">{endsIn(ending.days)} · Extend</small></span>
           <Icon name="chevron" size={15} />
         </button>
       ) : (

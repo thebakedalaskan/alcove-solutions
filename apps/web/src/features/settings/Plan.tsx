@@ -18,9 +18,9 @@ import { Link } from '@tanstack/react-router';
 import { useRef, useState } from 'react';
 import { useCheckout } from '~/features/plans/checkout';
 import {
-  PLAN_NAMES, checkoutFor, endingNotice, endsIn, hoursOf, nextPeriodMinutes, noticesNow, notesLeft, notesLow, notesOut, notesShare, purchaseName,
+  PLAN_NAMES, checkoutFor, endsIn, hoursOf, nextPeriodMinutes, noticesNow, notesLeft, notesLow, notesOut, notesShare, proEnding, purchaseName,
   restToSend, tokensExact
-} from '~/features/plans/standing';
+} from '~/features/plans/plan-state';
 import { useNow } from '~/lib/live';
 import { q, topUpOpen, useCancelTopUp, useDismissPlanNotice, useRefundPro, useSetRenew } from '~/lib/queries';
 import { dayAndMonth, fullDate, hm, longDay, shortDate, shortDay } from '~/lib/time';
@@ -78,13 +78,13 @@ function Notices({ plan }: { plan: Plan }) {
 function PlanRow({ plan, offers }: { plan: Plan; offers: PlanOffers | undefined }) {
   const checkout = useCheckout();
   const now = useNow();
-  const ending = endingNotice(plan, offers);
+  const ending = proEnding(plan, offers, now);
   const until = plan.pro.until;
   let help: string | undefined;
   if (plan.kind === 'free') {
     help = `Every feature, with about ${hoursOf(offers?.free.notesMinutes ?? plan.notes.minutesPerPeriod)} of notes and ${roomLabel(offers?.free.storageBytes ?? plan.storage.limitBytes)} of storage.`;
   } else if (ending) {
-    help = `${endsIn(ending.until, now)}, on ${longDay(new Date(ending.until))}. Then you’re back on Free, and nothing is deleted.`;
+    help = `${endsIn(ending.days)}, on ${longDay(new Date(ending.until))}. Then you’re back on Free, and nothing is deleted.`;
   } else if (until !== null) {
     help = `Until ${fullDate(new Date(until))}. ${plan.pro.renew ? 'It renews from your balance before it ends.' : 'Nothing renews by itself: Alcove reminds you before it ends.'}`;
   }
@@ -297,7 +297,7 @@ function Payments({ topUps, history, offers, add, onAddMoney }: {
         const day = shortDate(new Date(e.at));
         const token = /\b(USDC|USDT)\b/.exec(e.label)?.[1];
         return (
-          <PaymentRow key={e.id} mark={token ? <CryptoMark name={token} /> : <Icon name="coins" size={18} />} label={e.label}
+          <PaymentRow key={`${e.id} ${e.at}`} mark={token ? <CryptoMark name={token} /> : <Icon name="coins" size={18} />} label={e.label}
             detail={`${e.microUsd >= 0 ? '+' : '−'}${usdCents(Math.abs(e.microUsd))} · ${day}`}
             actions={<Button variant="quiet" size="sm" icon="download" aria-label={`Receipt for ${e.label}, ${day}`} onClick={() => setReceipt(e)}>Receipt</Button>} />
         );
