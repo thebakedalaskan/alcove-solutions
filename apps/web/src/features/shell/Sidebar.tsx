@@ -216,7 +216,7 @@ function Foot({ online }: { online: boolean }) {
       {online && <p className="sb-seal" data-tour="sealed" title={verified === null ? undefined : `Hardware checked at ${hm(new Date(verified))}`}><Icon name="sealed" size={15} />{trustLine(trust)}</p>}
       {plan?.kind === 'free' && <Link to="/settings" hash="plan" className="sb-upgrade"><Icon name="arrowUp" size={14} />Upgrade to Pro</Link>}
       {plan && (
-        <Link to="/settings" hash="plan" activeOptions={{ includeHash: true }} className="sb-credits">
+        <Link to="/settings" hash="plan" activeOptions={{ includeHash: true }} className="sb-notes">
           {plan.notes.stopped || plan.notes.minutesLeft <= 0
             ? <span><b>No notes left</b> until {shortDay(new Date(plan.period.to))}</span>
             : <span><b>About {hoursAndMinutes(plan.notes.minutesLeft)}</b> of notes left</span>}

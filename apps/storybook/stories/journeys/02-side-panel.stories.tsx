@@ -95,9 +95,10 @@ export const GroupsAndMinutes: PageStory = {
       await userEvent.click(await screen.findByRole('link', { name: 'Product 4 people' }, SOON));
       await screen.findByRole('heading', { name: 'Team', level: 1 }, SOON);
     });
-    await step('The time of notes left opens Settings at your minutes', async () => {
+    await step('On Free, Upgrade to Pro sits above the time of notes left. The time opens Settings at your plan', async () => {
+      await screen.findByRole('link', { name: 'Upgrade to Pro' }, SOON);
       await userEvent.click(screen.getByRole('link', { name: /of notes left$/ }));
-      await screen.findByRole('region', { name: 'Plan and credits' }, SOON);
+      await screen.findByRole('region', { name: 'Plan' }, SOON);
     });
   }
 };

@@ -61,8 +61,10 @@ const MeterState = z.object({
   allowanceNano: nano, spentNano: nano,
   byKind: z.record(z.string(), nano),
   holds: z.array(Hold), sources: z.array(SourceState),
+  /** Sources whose notes were written lately (ms): a charge still on its way for one never holds for its notes again. */
+  closed: z.array(z.object({ id: z.string(), at: z.number() })),
   /** When the allowance was spent this period: nothing more until the next. */
-  stoppedAt: z.number().nullable()
+  stopped: z.object({ at: z.number(), allowanceNano: nano }).nullable()
 });
 type MeterState = z.infer<typeof MeterState>;
 
@@ -94,11 +96,11 @@ const usageOf = (most: Most, l: Limits): Usage => ({ input: most.input + most.im
  */
 async function locked(d: Service, db: Db, ownerId: string, l: Limits, now: number): Promise<{ m: MeterState; save: (m: MeterState) => Promise<void> }> {
   const p = inForce(await accountOf(d, db, ownerId), l, now);
-  const fresh = (carried: Pick<MeterState, 'holds' | 'sources'>): MeterState => ({
-    plan: p.kind, from: p.from, to: p.to, allowanceNano: allowanceOf(p, l), spentNano: 0, byKind: {}, ...carried, stoppedAt: null
+  const fresh = (carried: Pick<MeterState, 'holds' | 'sources' | 'closed'>): MeterState => ({
+    plan: p.kind, from: p.from, to: p.to, allowanceNano: allowanceOf(p, l), spentNano: 0, byKind: {}, ...carried, stopped: null
   });
   const seal = (m: MeterState) => sealJson(key(d), header(ownerId), toJson(m));
-  await exec(db, 'INSERT INTO ai_meters (owner_id, state_ciphertext) VALUES ($1,$2) ON CONFLICT (owner_id) DO NOTHING', [ownerId, seal(fresh({ holds: [], sources: [] }))]);
+  await exec(db, 'INSERT INTO ai_meters (owner_id, state_ciphertext) VALUES ($1,$2) ON CONFLICT (owner_id) DO NOTHING', [ownerId, seal(fresh({ holds: [], sources: [], closed: [] }))]);
   const r = await maybeOne(db, z.object({ state_ciphertext: bytea }), 'SELECT state_ciphertext FROM ai_meters WHERE owner_id = $1 FOR UPDATE', [ownerId]);
   if (!r) throw new PlanLimitError('Notes aren’t available for this account.', 'notes', { context: { ownerId, why: 'no meter' } });
   let m = openJson(key(d), header(ownerId), r.state_ciphertext, MeterState);
@@ -107,11 +109,15 @@ async function locked(d: Service, db: Db, ownerId: string, l: Limits, now: numbe
     m = { ...m, spentNano: m.spentNano + lost.reduce((n, h) => n + h.nano, 0), holds: m.holds.filter((h) => h.until > now) };
     alog.warn('requests never said what they used; charged what they held', { ownerId, requests: lost.length });
   }
-  m = { ...m, sources: m.sources.filter((s) => now - s.touched < SOURCE_GONE_MS) };
+  m = { ...m, sources: m.sources.filter((s) => now - s.touched < SOURCE_GONE_MS), closed: m.closed.filter((c) => now - c.at < SOURCE_GONE_MS) };
   if (m.from !== p.from || m.plan !== p.kind) {
-    if (m.spentNano > 0 || m.stoppedAt !== null) alog.info('ai period closed', { ownerId, plan: m.plan, spentNano: m.spentNano, allowanceNano: m.allowanceNano, overNano: Math.max(0, m.spentNano - m.allowanceNano), byKind: m.byKind });
-    m = fresh({ holds: m.holds, sources: m.sources });
+    if (m.spentNano > 0 || m.stopped !== null) alog.info('ai period closed', { ownerId, plan: m.plan, spentNano: m.spentNano, allowanceNano: m.allowanceNano, overNano: Math.max(0, m.spentNano - m.allowanceNano), byKind: m.byKind });
+    m = fresh({ holds: m.holds, sources: m.sources, closed: m.closed });
   }
+  // What the plan brings is read from the limits each time, so a change to them is in force at once, this period included.
+  m = { ...m, allowanceNano: allowanceOf(p, l) };
+  // Once spent it stays spent this period, a call's hold let go included, unless the allowance itself is raised past it.
+  if (m.stopped !== null && m.allowanceNano > m.stopped.allowanceNano && leftOf(m) > l.get('ai.stop_micro_usd') * 1000) m = { ...m, stopped: null };
   return { m, save: async (next) => { await exec(db, 'UPDATE ai_meters SET state_ciphertext = $2, version = version + 1 WHERE owner_id = $1', [ownerId, seal(next)]); } };
 }
 
@@ -143,11 +149,11 @@ export function meterFor(d: Service, bill: Bill): Meter & { outcome(): Outcome }
       const stop = l.get('ai.stop_micro_usd') * 1000;
       const held = await changing(d, bill.payer, (m, _l, now): { m: MeterState; result: 'held' | 'refused' | 'stopped' } => {
         if (bill.final) return { m: { ...m, holds: [...m.holds, { id: holdId, nano: heldNano, until: now + HOLD_MS }] }, result: 'held' };
-        if (m.stoppedAt !== null) return { m, result: 'stopped' };
+        if (m.stopped !== null) return { m, result: 'stopped' };
         // Spent: nothing more this period. Only too little for this one request: it's refused, and smaller ones still go.
         if (leftOf(m) <= stop) {
           alog.info('ai allowance spent', { ownerId: bill.payer, plan: m.plan, spend: bill.spend, source: bill.source?.kind ?? null });
-          return { m: { ...m, stoppedAt: now }, result: 'stopped' };
+          return { m: { ...m, stopped: { at: now, allowanceNano: m.allowanceNano } }, result: 'stopped' };
         }
         if (leftOf(m) - heldNano < stop) return { m, result: 'refused' };
         return { m: { ...m, holds: [...m.holds, { id: holdId, nano: heldNano, until: now + HOLD_MS }] }, result: 'held' };
@@ -160,7 +166,7 @@ export function meterFor(d: Service, bill: Bill): Meter & { outcome(): Outcome }
         const charged = cost(m);
         const s = bill.source;
         let sources = m.sources;
-        if (s) {
+        if (s && !m.closed.some((c) => c.id === s.id)) {
           const had = sources.find((x) => x.kind === s.kind && x.id === s.id);
           const was = had ?? { ...s, since: now, touched: now, spentNano: 0, reserveNano: 0, warned: false };
           const next = { ...was, touched: now, spentNano: was.spentNano + charged, reserveNano: reserve ?? was.reserveNano };
@@ -171,11 +177,11 @@ export function meterFor(d: Service, bill: Bill): Meter & { outcome(): Outcome }
           holds: m.holds.filter((h) => h.id !== holdId), sources
         };
         last = 'ok';
-        if (next.stoppedAt === null && leftOf(next) <= stop) {
-          next = { ...next, stoppedAt: now };
+        if (next.stopped === null && leftOf(next) <= stop) {
+          next = { ...next, stopped: { at: now, allowanceNano: next.allowanceNano } };
           last = 'stop';
           alog.info('ai allowance spent', { ownerId: bill.payer, plan: next.plan, spend: bill.spend, source: s?.kind ?? null });
-        } else if (s && next.stoppedAt === null) {
+        } else if (s && next.stopped === null) {
           const mine = next.sources.find((x) => x.kind === s.kind && x.id === s.id);
           // This source's pace: what it has cost and will cost to write up, a second of it, since it began.
           const pace = mine ? (mine.spentNano + mine.reserveNano) / Math.max(60, (now - mine.since) / 1000) : 0;
@@ -183,7 +189,7 @@ export function meterFor(d: Service, bill: Bill): Meter & { outcome(): Outcome }
             next = { ...next, sources: next.sources.map((x) => (x === mine ? { ...x, warned: true } : x)) };
             last = 'warn';
           }
-        } else if (next.stoppedAt !== null) last = 'stop';
+        } else if (next.stopped !== null) last = 'stop';
         if (charged > 0) alog.debug('ai charged', { ownerId: bill.payer, spend: bill.spend, model, how: what, costNano: charged, final: bill.final === true });
         return { m: next, result: undefined };
       });
@@ -198,11 +204,13 @@ export function meterFor(d: Service, bill: Bill): Meter & { outcome(): Outcome }
 
 /** Lets go of what a call or room recording held for writing its notes, once they're written (or given up on). */
 export async function close(d: Service, payer: string, source: Source): Promise<void> {
-  await changing(d, payer, (m) => ({ m: { ...m, sources: m.sources.filter((s) => !(s.kind === source.kind && s.id === source.id)) }, result: undefined }));
+  await changing(d, payer, (m, _l, now) => ({
+    m: { ...m, sources: m.sources.filter((s) => !(s.kind === source.kind && s.id === source.id)), closed: [...m.closed.filter((c) => c.id !== source.id), { id: source.id, at: now }] }, result: undefined
+  }));
 }
 
 /** An account's allowance as it stands, without changing it: what's left, what a period brings, and whether it's spent. */
-export interface Standing { leftNano: number; allowanceNano: number; stopped: boolean; plan: PlanKind; from: number; to: number }
+export interface Standing { leftNano: number; allowanceNano: number; spentNano: number; byKind: Readonly<Record<string, number>>; stopped: boolean; plan: PlanKind; from: number; to: number }
 export async function standing(d: Service, db: Db, ownerId: string): Promise<Standing> {
   const l = await limitsNow(d);
   const now = Date.now();
@@ -212,17 +220,20 @@ export async function standing(d: Service, db: Db, ownerId: string): Promise<Sta
   const allowanceNano = allowanceOf(p, l);
   // A period that's over, or a plan that changed, starts again the next time the meter's touched: it's shown so already.
   const current = m && m.from === p.from && m.plan === p.kind ? m : null;
-  const live = current ? { ...current, holds: current.holds.filter((h) => h.until > now), sources: current.sources.filter((s) => now - s.touched < SOURCE_GONE_MS) } : null;
+  const live = current ? { ...current, allowanceNano, holds: current.holds.filter((h) => h.until > now), sources: current.sources.filter((s) => now - s.touched < SOURCE_GONE_MS) } : null;
   const leftNano = live ? leftOf(live) : allowanceNano - (m?.sources.filter((s) => now - s.touched < SOURCE_GONE_MS).reduce((n, s) => n + s.reserveNano, 0) ?? 0);
-  return { leftNano, allowanceNano, stopped: live ? live.stoppedAt !== null || leftNano <= l.get('ai.stop_micro_usd') * 1000 : false, plan: p.kind, from: p.from, to: p.to };
+  const stop = l.get('ai.stop_micro_usd') * 1000;
+  return { leftNano, allowanceNano, spentNano: live?.spentNano ?? 0, byKind: live?.byKind ?? {}, stopped: leftNano <= stop || (live?.stopped != null && !(allowanceNano > live.stopped.allowanceNano && leftNano > stop)), plan: p.kind, from: p.from, to: p.to };
 }
 
 /** Minutes of notes `nano` is about worth, at what an hour of notes is reckoned at. */
 export const minutesOf = (nanoUsd: number, l: Limits): number => Math.max(0, Math.floor((nanoUsd * 60) / (l.get('ai.hour_micro_usd') * 1000)));
 
-/** Why notes can't be kept for an account now: its notes this period, or its storage, have run out. Null: they can. */
+/** Room a recording needs to start or carry on: a few minutes of a call's audio. */
+const NOTES_ROOM = 1024 * 1024;
+/** Why notes can't be kept for an account now: its notes this period, or its storage (without NOTES_ROOM left), have run out. Null: they can. */
 export async function notesBlocked(d: Service, db: Db, ownerId: string): Promise<'notes' | 'storage' | null> {
   if ((await standing(d, db, ownerId)).stopped) return 'notes';
-  if (!(await mayStore(d, db, ownerId, 1))) return 'storage';
+  if (!(await mayStore(d, db, ownerId, NOTES_ROOM))) return 'storage';
   return null;
 }

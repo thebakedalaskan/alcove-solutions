@@ -50,7 +50,7 @@ apps/api/src/
     notes/           saved notes, additions, personal notes, series and writing
     recordings/      audio, screen frames, transcripts and room recordings
     workspaces/      tree, access, documents, media and mentions
-    billing/         service accounting
+    billing/         plans, the AI allowance, storage and top-ups
   http/              shared request infrastructure
   integration/       cross-feature and infrastructure suites
   live/              shared realtime/worker infrastructure

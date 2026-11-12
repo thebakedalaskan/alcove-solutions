@@ -43,11 +43,11 @@ export const No: Story = {
   args: { icon: 'bellOff', tone: 'no', children: 'Blocked' },
   render: (args) => <SettingRow label="Browser notifications" problem help="Blocked in this browser. Allow them for this site in its site settings." control={<SettingFact {...args} />} />
 };
-/** More on hover (`title`): when this month began counting. */
+/** More on hover (`title`): what it counts. */
 export const WithATitle: Story = {
   name: 'With a title',
-  args: { title: 'Since 00:00 UTC on the 1st', children: '3 h 34 min' },
-  render: (args) => <SettingRow label="Used this month" control={<SettingFact {...args} />} />
+  args: { title: 'A call’s own workspace doesn’t count.', children: '1 of 1' },
+  render: (args) => <SettingRow label="Shared workspaces" control={<SettingFact {...args} />} />
 };
 export const YesNight: Story = { ...Yes, name: 'Yes, night', globals: { theme: 'dark' } };
 export const NoNight: Story = { ...No, name: 'No, night', globals: { theme: 'dark' } };

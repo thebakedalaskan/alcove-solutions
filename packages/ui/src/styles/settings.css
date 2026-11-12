@@ -435,7 +435,7 @@
   .set-eves { gap: 12px; }
 }
 
-/* ---- Add credits: the sheet (topup.tsx), picking how to pay, then where to send it ---- */
+/* ---- Add money: the sheet (topup.tsx), picking how much and how to pay, then where to send it ---- */
 .ac-sheet.set-topup { font-variant-numeric: tabular-nums; display: flex; flex-direction: column; width: min(560px, calc(100vw - 28px)); max-height: calc(100dvh - 13vh - 24px); }
 .set-topup-h { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-5) var(--space-4) 0 var(--space-6); }
 .set-topup-h h2 { flex: 1; margin: 0; font: 600 18px/24px var(--font-sans); letter-spacing: -.01em; }
@@ -443,7 +443,7 @@
 .set-topup-lead { font-size: 14px; line-height: 1.5; color: var(--ink-2); text-wrap: pretty; }
 /* The status line under the form takes no room until it says something. */
 .set-topup-body > [role="status"]:empty { position: absolute; }
-/* How many credits: one row each, the credits and their notes time on the left, the price on the right. */
+/* How much: one row each, the amount and what it is on the left, what to send on the right. */
 .set-topup-amounts, .set-topup-pick { display: grid; gap: var(--space-2); margin: 0; padding: 0; border: 0; min-width: 0; }
 .set-topup-amounts legend, .set-topup-pick legend { margin-bottom: var(--space-3); padding: 0; font: 600 13.5px/1.2 var(--font-sans); color: var(--ink); }
 .set-topup-amt { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: var(--space-3); min-height: 64px; padding: var(--space-3) var(--space-4); border-radius: var(--radius-md); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); cursor: pointer; transition: box-shadow var(--duration-1); }
@@ -474,15 +474,15 @@
 .set-topup-sum .so-far { font-size: 13.5px; line-height: 1.4; color: var(--ink-2); }
 .set-topup-sum .on { display: flex; align-items: center; gap: var(--space-2); font-size: 13.5px; color: var(--ink-2); }
 .set-topup-sum .on .ac-crypto { width: 16px; height: 16px; }
-.set-topup-sum .credits { font: 600 17px/1.3 var(--font-sans); color: var(--ink); }
-.set-topup-sum .credits b { font-weight: inherit; color: var(--ink); }
+.set-topup-sum .added { font: 600 17px/1.3 var(--font-sans); color: var(--ink); }
+.set-topup-sum .added b { font-weight: inherit; color: var(--ink); }
 .set-topup-sum .hrs { font: 500 12.5px/1.3 var(--font-sans); color: var(--ink-3); }
 /* An expired top-up: a line through each number at its digits' middle (16px down the 32px amount, 10px down the
-   17px credits), and the words beside them greyed. */
-.set-topup-sum.is-void .amt, .set-topup-sum.is-void .credits { color: var(--ink-3); }
-.set-topup-sum.is-void .amt b, .set-topup-sum.is-void .credits b { position: relative; }
-.set-topup-sum.is-void .amt b::after, .set-topup-sum.is-void .credits b::after { content: ""; position: absolute; left: -2px; right: -2px; top: 16px; height: 2px; border-radius: 1px; background: var(--ink-3); }
-.set-topup-sum.is-void .credits b::after { top: 10px; }
+   17px added), and the words beside them greyed. */
+.set-topup-sum.is-void .amt, .set-topup-sum.is-void .added { color: var(--ink-3); }
+.set-topup-sum.is-void .amt b, .set-topup-sum.is-void .added b { position: relative; }
+.set-topup-sum.is-void .amt b::after, .set-topup-sum.is-void .added b::after { content: ""; position: absolute; left: -2px; right: -2px; top: 16px; height: 2px; border-radius: 1px; background: var(--ink-3); }
+.set-topup-sum.is-void .added b::after { top: 10px; }
 .set-topup-scan { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: var(--space-5); }
 .set-topup-scan .how, .set-topup-how { display: grid; justify-items: start; gap: var(--space-3); min-width: 0; }
 .set-topup-scan .how p, .set-topup-how p { font-size: 14px; line-height: 1.5; color: var(--ink-2); text-wrap: pretty; }

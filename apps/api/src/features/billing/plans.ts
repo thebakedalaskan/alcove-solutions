@@ -142,6 +142,12 @@ export async function requireRoom(d: Service, db: Db, payerId: string, adding: n
   throw new PlanLimitError('Your storage is full. Delete something, or move to a plan with more room.', 'storage', { context: { ...context, ownerId: payerId } });
 }
 
+/** What an account may store now, its plan's or its grace's (null: no limit). */
+export async function storageLimitOf(d: Service, db: Db, ownerId: string): Promise<number | null> {
+  const a = await accountOf(d, db, ownerId);
+  return heldTo(a, inForce(a, await limitsNow(d))).storageBytes;
+}
+
 /** The largest file an account's plan takes. */
 export async function fileBytesFor(d: Service, db: Db, payerId: string): Promise<number> {
   const a = await accountOf(d, db, payerId);

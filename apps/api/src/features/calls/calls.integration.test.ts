@@ -1378,12 +1378,11 @@ describe('breakout rooms, each with its own keys', () => {
     expect(code(await ade.browser.api.notes.proposeDecision(noteId, { text: 'From the other room.', room: sp?.id, lines: [said] }).catch((e: unknown) => e))).toBe('invalid');
     expect(code(await ade.browser.api.notes.proposeDecision(noteId, { text: 'From a room, to the main room.', lines: [said] }).catch((e: unknown) => e))).toBe('invalid');
     // A room's line is corrected like the call's: its words by whoever said them (or the organizer), nobody else.
-    const balance = (await org.api.credits.balance()).balance;
     const icons = d?.transcript.find((l) => l.text === 'Mia will draw the icons by Friday.')?.id ?? '';
     const fixed = await mia.browser.api.notes.correctLine(noteId, icons, { text: 'Mia will draw the icons by Thursday.' });
     expect(fixed.rooms[0]?.transcript.find((l) => l.id === icons)?.changes?.map((c) => c.what)).toEqual(['reworded']);
     expect(code(await ade.browser.api.notes.correctLine(noteId, icons, { text: 'Ade will draw them.' }).catch((e: unknown) => e))).toBe('forbidden');
-    // Written again, each room's section is written again from its lines as they are, and nothing is charged again.
+    // Written again, each room’s section is written again from its lines as they are.
     const sentAgain = h.near.prompts.length;
     h.near.slowNext(3000);
     expect(await org.api.notes.rewrite(noteId)).toMatchObject({ status: 'ready', writingAgain: true });
@@ -1403,7 +1402,6 @@ describe('breakout rooms, each with its own keys', () => {
     const rewritten = h.near.prompts.slice(sentAgain).find((x) => x.includes('the breakout room “Design”')) ?? '';
     expect(rewritten).toContain('Mia will draw the icons by Thursday.');
     expect(rewritten).toContain('Already settled (don\'t list these again):\n- Decision (confirmed): We agreed on blue buttons.');
-    expect((await org.api.credits.balance()).balance).toBe(balance);
 
     // The lines moved into the note, sealed: no live row is left, and nothing said in a room is readable in any row.
     expect(await clipsOf(noteId)).toBe(0);

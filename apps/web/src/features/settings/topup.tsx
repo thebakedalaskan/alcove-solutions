@@ -282,8 +282,8 @@ function Paying({ id, onNew, onClose }: { id: string; onNew: () => void; onClose
           </div>
           <div className="get">
             <span className="ac-eyebrow">{done ? 'Added' : short && lapsed ? 'Your balance' : 'You add'}</span>
-            {short && lapsed ? <p className="credits">Settlement pending</p>
-              : <p className="credits"><b>{usd(added)}</b>{short && ' in total'}</p>}
+            {short && lapsed ? <p className="added">Settlement pending</p>
+              : <p className="added"><b>{usd(added)}</b>{short && ' in total'}</p>}
           </div>
         </div>
         {address !== null ? (

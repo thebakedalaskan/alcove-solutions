@@ -19,7 +19,7 @@ interface Parts { recording?: CaptureMode; transcript?: CaptureMode; ai?: Captur
 function captured(mode: CaptureMode, p: Parts = {}): CaptureState {
   return {
     mode, recording: part(p.recording ?? mode), transcript: part(p.transcript ?? mode), ai: part(p.ai ?? (mode === 'unavailable' ? 'on' : mode)),
-    screen: part(p.screen ?? 'off'), gaps: [], requests: [], asked: null, room: null, away: false, model: null, modelPrivate: true, allowScreens: true
+    screen: part(p.screen ?? 'off'), gaps: [], requests: [], asked: null, room: null, away: false, model: null, modelPrivate: true, allowScreens: true, stopped: null, runningOut: null
   };
 }
 /** In a breakout room, what's captured is the room's: never recorded, and heard by one browser there, its scribe. */

@@ -163,10 +163,10 @@ with `NEAR_AI_BASE_URL=https://cloud-api.near.ai/v1` and the default models, spe
 or unset there is no binding and no placeholder secret version is needed: the API keeps recordings but
 doesn't transcribe them, notes wait, and `/health` reports `inference: missing`.
 
-Credit top-ups are on in production: the API service is deployed with `TREASURY_INTENTS_ACCOUNT=alcove-treasury.near`,
+Top-ups are on in production: the API service is deployed with `TREASURY_INTENTS_ACCOUNT=alcove-treasury.near`,
 the NEAR account whose Intents balance receives every top-up and refund, and without `ONECLICK_API_KEY`, so 1Click
-quotes at its own fee ([Payments and usage](payments-and-usage.md)). The migration job doesn't need either. To turn
-top-ups off, take the setting out and redeploy: nothing is checked or credited meanwhile, and once it's back the watcher
+quotes at its own fee ([Plans and usage](plans-and-usage.md)). The migration job doesn't need either. To turn
+top-ups off, take the setting out and redeploy: nothing is checked or added meanwhile, and once it's back the watcher
 picks up every deposit it still watches.
 
 With NEAR AI enabled the API also reaches, over HTTPS, the models' own endpoints
@@ -192,41 +192,67 @@ those raw entries.
 
 ## Changing a limit
 
-Some limits can change while the service runs, with no release and no restart: so far, what files can take up. Each has a
-name, a default that holds while nothing's set, and a floor and a ceiling in code (`apps/api/src/limits.ts`) that hold
-whatever's set, so a typo can't make anything unsafe. A value is a row in `service_limits`, and each instance reads them
-again every 30 seconds (`LIMITS_CACHE_MS`), so a change is in force everywhere within a minute.
+Some limits can change while the service runs, with no release and no restart: what each plan brings and costs, what AI
+costs and when it stops, how long a call runs and how many people it takes, and what files can take up
+([Plans and usage](plans-and-usage.md)). Each has a name, a default that holds while nothing's set, and a floor and a ceiling
+in code (`apps/api/src/limits.ts`) that hold whatever's set, so a typo can't make anything unsafe. A value is a row in
+`service_limits`, and each instance reads them again every 30 seconds (`LIMITS_CACHE_MS`), so a change is in force
+everywhere within a minute.
 
-| Limit | Default | Ceiling | Measures |
-| --- | --- | --- | --- |
-| `media.file_bytes` | 512 MiB | 4 GiB | One file. |
-| `media.workspace_bytes` | 100 GiB | 1 TiB | What a workspace stores, sealed: its `stored_bytes`. |
-| `media.account_day_bytes` | 20 GiB | 200 GiB | What one person uploads in a day (UTC), in every workspace. |
+| Limit | Default | Floor | Ceiling | Measures |
+| --- | --- | --- | --- | --- |
+| `plan.free.notes_minutes` | 300 | 0 | 60,000 | Free: the minutes of notes a period brings, reckoned at `ai.hour_micro_usd` an hour. |
+| `plan.free.storage_bytes` | 10 GiB | 0 | 1 TiB | Free: what an account stores, its uploads and its recordings. |
+| `plan.free.file_bytes` | 512 MiB | 0 | 4 GiB | Free: one file. |
+| `plan.free.shared_workspaces` | 1 | 0 | 1,000 | Free: the shared workspaces an account makes (a call's own don't count). |
+| `plan.pro.price_micro_usd` | $20 | $0 | $10,000 | Pro: one period. Pro isn't built yet. |
+| `plan.period_seconds` | 30 d | 1 m | 365 d | A plan's period: notes renew, and paid time runs, in these. |
+| `plan.grace_seconds` | 15 d | 0 | 90 d | Once an account is over its plan's limits: how long until what's over stops taking more. |
+| `ai.hour_micro_usd` | $0.50 | $0.000001 | $100 | What an hour of notes is reckoned at, to give the AI allowance as time. |
+| `ai.stop_micro_usd` | $0.005 | $0 | $10 | What's left of an allowance when transcription and every AI request stop. |
+| `ai.warn_seconds` | 5 m | 0 | 1 h | Notes left, at a call's own pace, when its organizer is told. |
+| `ai.fallback_input_micro_usd` | $1 | $0 | $100 | A million input tokens of a model NEAR AI lists no price for. |
+| `ai.fallback_output_micro_usd` | $4 | $0 | $100 | A million output tokens of a model NEAR AI lists no price for. |
+| `ai.image_tokens` | 1,500 | 0 | 100,000 | The input tokens one image is taken to be at most, before NEAR AI says. |
+| `call.max_seconds` | 10 h | 10 m | 48 h | The longest a call runs: it ends then, everyone told 5 minutes before. |
+| `call.max_people` | 100 | 2 | 1,000 | The most people in a call at once, those waiting to be let in included. |
+| `media.account_day_bytes` | 20 GiB | 0 | 200 GiB | What one person uploads in a day (UTC), in every workspace. |
 
-Every floor is 0, and 0 means none: any of them at 0 stops every upload, with "Files can’t be uploaded right now." A ceiling is
-ten times the default, except a file's. A whole file is read in one response, which is cut at 280 seconds: that's about 15
-Mbit/s for 512 MiB in one answer, and about 120 Mbit/s for 4 GiB. Slower, a download picks up where it stopped when the
-browser resumes it (by itself, or with its Resume), asking for the rest with the file's `ETag`.
-The limits are the same for everyone, guests in a call included. Lowering one deletes nothing: it refuses the next upload, and
-the next piece of one already going ([Data and storage › Media](data-and-storage.md#media)).
+Zero is a value: none. A file size or a day's uploads at 0 stops every upload, with "Files can’t be uploaded right now."; storage
+at 0 says storage is full; notes at 0 brings none. A file's ceiling is the most
+that can be read whole: a whole file is read in one response, which is cut at 280 seconds, so it takes about 15 Mbit/s to
+download 512 MiB in one answer, and about 120 Mbit/s for 4 GiB. Slower, a download picks up where it stopped when the browser resumes it (by itself, or with
+its Resume), asking for the rest with the file's `ETag`.
+Everyone is on Free, so a plan's limits are the same for everyone; the day's uploads are the same for everyone, guests in a call
+included. Lowering one deletes nothing: it refuses the next upload, and the next piece of one already going
+([Data and storage › Media](data-and-storage.md#media)). What happens to an account over its plan's limits is in
+[Plans and usage › Over the limits](plans-and-usage.md#over-the-limits-grace-then-read-only).
+
+`media.file_bytes` and `media.workspace_bytes` are gone: a file's size and what's stored are each plan's now, and storage is
+counted for each account, not each workspace. A row for either is ignored with `service limit ignored` at warn, and what it
+said isn't carried over to `plan.free.file_bytes` or `plan.free.storage_bytes`. Delete the row.
 
 From a checkout, against whichever database `DATABASE_URL` names, `.env` locally or Cloud SQL through its proxy, as `migrate` is:
 
 ```
 pnpm --filter @alcove/server limits list
-pnpm --filter @alcove/server limits set media.workspace_bytes 200GiB
+pnpm --filter @alcove/server limits set plan.free.storage_bytes 20GiB
+pnpm --filter @alcove/server limits set call.max_seconds 12h
+pnpm --filter @alcove/server limits set ai.hour_micro_usd '$0.60'
 ```
 
-`set` takes a whole number of bytes, or one with a unit (`KiB`, `MiB`, `GiB`, `TiB`), as `512MiB` or as `list` writes it,
-`512 MiB`. It refuses a name that isn't a limit and a value outside its bounds, at warn, and logs `service limit set` with the
-old value and the new. The image has it as `dist/limits-cli.js`,
-beside `dist/migrate-cli.js`. Or from Cloud SQL's console, in bytes:
+`set` takes a whole number. Bytes may have a unit (`KiB`, `MiB`, `GiB`, `TiB`), as `512MiB` or as `list` writes it,
+`512 MiB`; time may have one too (`s`, `m`, `h`, `d`), as `30d` or `10 h`; and money is in dollars, `$0.50` or `$20`, up to
+six places (quote it in a shell, which reads `$0` as a variable). Minutes and counts are whole numbers. It refuses a name
+that isn't a limit and a value outside its bounds, at warn, and logs `service limit set` with the old value and the new.
+The image has it as `dist/limits-cli.js`, beside `dist/migrate-cli.js`. Or from Cloud SQL's console, in the unit it's
+kept in: bytes, seconds, micro-USD ($0.50 is 500000), minutes or a count:
 
 ```sql
-INSERT INTO service_limits (name, value) VALUES ('media.workspace_bytes', 214748364800) ON CONFLICT (name) DO UPDATE SET value = excluded.value, updated_at = now();
+INSERT INTO service_limits (name, value) VALUES ('plan.free.storage_bytes', 21474836480) ON CONFLICT (name) DO UPDATE SET value = excluded.value, updated_at = now();
 ```
 
-`DELETE FROM service_limits WHERE name = 'media.workspace_bytes';` puts a limit back to its default. Each instance logs `service
+`DELETE FROM service_limits WHERE name = 'plan.free.storage_bytes';` puts a limit back to its default. Each instance logs `service
 limit changed`, with the old value and the new, when it sees a change, however it was made, and the first time it reads the
 limits, for every one that isn't its default. If it can't read them, it keeps what was in force, says so at warn, and tries
 again next time. A row it can't use, a name that isn't a limit or a value below zero, is ignored with `service limit

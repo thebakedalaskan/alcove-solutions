@@ -18,7 +18,7 @@ interface Parts { recording?: CaptureMode; transcript?: CaptureMode; ai?: Captur
 function captured(mode: CaptureMode, p: Parts = {}, away = false): CaptureState {
   return {
     mode, recording: part(p.recording ?? mode), transcript: part(p.transcript ?? mode), ai: part(p.ai ?? (mode === 'unavailable' ? 'on' : mode)),
-    screen: part(p.screen ?? 'off'), gaps: [], requests: [], asked: null, room: null, away, model: null, modelPrivate: true, allowScreens: true
+    screen: part(p.screen ?? 'off'), gaps: [], requests: [], asked: null, room: null, away, model: null, modelPrivate: true, allowScreens: true, stopped: null, runningOut: null
   };
 }
 const KEEPS_ALL: NotesChoices = { keepTranscript: true, keepRecording: true, allowScreens: false };

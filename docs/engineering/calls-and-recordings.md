@@ -493,6 +493,13 @@ call's sealed state (`apps/api/src/features/calls/capture.ts`) and the same for 
 - **Who sees it.** Everyone in the call, and anyone reconnecting, gets it with the call. People asking to join
   and anyone reading the card get it without names: `by` says only "the organizer", and there are no gaps or
   asks. Every change sends the room a change push, so browsers fetch the call again.
+- **Running out** (`capture.runningOut`, `capture.stopped`). Notes are paid for from the organizer's AI allowance and
+  storage, so when what's left would last about 5 minutes at this call's pace the organizer alone is told, once
+  (`runningOut`), and when either is spent notes go off for everyone as if the organizer had turned them off, and
+  everyone sees **Notes have stopped** until they close it (`stopped`, with its reason, `notes` or `storage`). The call
+  goes on, and what was captured until then still goes into the notes. A call also ends at `CallState.endsAt`, 10 hours
+  after it started, with everyone told 5 minutes before, and takes at most 100 people
+  ([Plans and usage](plans-and-usage.md#running-out-in-a-call)).
 - **Pause** (`{type: "pause"}`, only while notes are on) stops every kind of capture at once. The one gate every
   capturing path goes through, `mayCapture` in `apps/api/src/features/calls/capture.ts`, refuses audio pieces, speech
   clips, caption translations, catch-up and questions with `409 conflict` ("Notes are paused…"), whoever sends
@@ -1466,7 +1473,7 @@ it, by their name, address and seat, and which boards it lets everyone into. Wha
   the call, and only when something new was said: what was said there lately (`catchup.readOf`), with the board's frames by
   their titles, goes to the notes model (`drafting.ideasFrom`), which offers up to three things worth a sticky, each from one
   line, which says who said it and when, with the words it comes from, copied from that line (the line's own words when they
-  aren't in it), and the frame it fits. Only someone who may read every line of that part looks, nobody's credits pay for it,
+  aren't in it), and the frame it fits. Only someone who may read every line of that part looks, the call's organizer pays for it,
   and nothing is held while the model reads: a run claims the look for two and a half minutes at most, and any other look
   meanwhile answers at once. A pause stops it as it stops any capture (`capture.mayCapture`, `'ideas'`). Adding one writes a
   sticky in the browser (`addStickies` in `@alcove/board`), as a change of that person's own whatever they have under way, on a

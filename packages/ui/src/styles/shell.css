@@ -130,9 +130,9 @@ a.sb-link:hover, a.sb-link[aria-current="page"] { background: color-mix(in srgb,
 .sb-foot { flex: none; display: grid; gap: 4px; padding-top: 20px; }
 .sb-seal { display: flex; align-items: center; gap: 8px; padding: 0 12px 6px; font: 500 12px/1.35 var(--font-sans); color: var(--ink-3); }
 .sb-seal .ac-i { color: var(--sun-text); }
-.sb-credits { display: grid; gap: 8px; padding: 12px; border-radius: var(--radius-md); color: var(--ink-2); font-size: 13px; line-height: 1.3; transition: background-color var(--duration-1); }
-.sb-credits b { color: var(--ink); font-weight: 600; }
-.sb-credits:hover { background: color-mix(in srgb, var(--ink) 8%, transparent); }
+.sb-notes { display: grid; gap: 8px; padding: 12px; border-radius: var(--radius-md); color: var(--ink-2); font-size: 13px; line-height: 1.3; transition: background-color var(--duration-1); }
+.sb-notes b { color: var(--ink); font-weight: 600; }
+.sb-notes:hover { background: color-mix(in srgb, var(--ink) 8%, transparent); }
 /* On Free, a tab above the notes left that opens the plans: tinted warm, as Start a call is, so the page's own button stays the one filled. */
 .sb-upgrade { justify-self: start; display: inline-flex; align-items: center; gap: 6px; margin: 0 12px; padding: 5px 10px; border-radius: var(--radius-pill); background: var(--sun-soft); color: var(--sun-text); font: 600 12.5px/1 var(--font-sans); transition: background-color var(--duration-1); }
 .sb-upgrade:hover { background: color-mix(in srgb, var(--sun-text) 22%, var(--sun-soft)); }

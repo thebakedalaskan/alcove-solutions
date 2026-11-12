@@ -259,6 +259,7 @@ const noFile = () => new AlcoveApiError('not-found', 'That file doesn’t exist,
 function editable(id: string, documentId: string): WorkspaceItem {
   const item = treeOf(id).items.find((i) => i.id === documentId);
   if (!item || item.kind === 'folder') throw new AlcoveApiError('not-found', 'That document doesn’t exist, or you don’t have access to it.');
+  if (treeOf(id).frozen) throw new AlcoveApiError('plan-limit', 'This workspace is read-only: its owner has more shared workspaces than their plan has. It works again once they upgrade or delete one.');
   if (item.role !== 'edit') throw new AlcoveApiError('forbidden', 'You can read this, but not change it.');
   return item;
 }

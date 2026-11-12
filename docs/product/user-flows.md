@@ -44,7 +44,7 @@ Each flow below is implemented in `apps/web` and exercised end to end by the int
    tour** in Settings (flow 11) plays it again.
 
 The first sign-in creates the account: its keys, a profile with the name, email and photo from the sign-in,
-the notes default (on) and 10,000 credits. Later sign-ins bring the name, email and photo up to date. In local
+the notes default (on) and the Free plan, with all of its notes for the period. Later sign-ins bring the name, email and photo up to date. In local
 development and Storybook, Microsoft signs in Art Vandelay (art@vandelay.industries), and SSO signs in
 whoever's email was typed, with a name made from the address, as long as it's an address no real person can
 have (at example.com or another domain reserved for examples, or at vandelay.industries). These demo accounts get a sample day of
@@ -74,8 +74,9 @@ Beside every page, dark in both themes:
 - **Groups**: each of your groups and how many people are in it. Each opens on the Team page, and **+**
   starts a new one there.
 - At the bottom: the confidential-compute check (**Confidential compute · verified** when the server's
-  hardware answer is bound to this browser's request), and the time of notes left, which opens Settings at your
-  minutes.
+  hardware answer is bound to this browser's request), then, on Free, **Upgrade to Pro**, and under it about how much
+  of the period's notes is left, "About 3 h 20 min of notes left" over a meter, or "No notes left until Thu 12 Nov" once
+  they've stopped. Both open Settings at your plan.
 - Offline, a notice at the top says recording still works and everything else catches up when you're back
   (with **Record without a connection** off, that recording waits for the connection too). Up next and the
   check wait until the connection returns. Alcove also opens offline for someone signed in on this browser:
@@ -687,6 +688,17 @@ time, slides in on the right.
   another app), everyone sees the recording as unavailable, and the transcript carries on for everyone else.
   When the browser can neither record nor listen, the sign says **Notes unavailable**, for everyone and on the
   join page, until it can again.
+- **When the organizer's notes or storage run out.** The organizer alone is told, once, when what's left would last
+  about 5 minutes at this call's pace: "About 5 minutes of notes left". Notes then go off for everyone, as if the
+  organizer had turned them off, and everyone, guests included, sees **Notes have stopped** ("The organizer's notes for
+  this period have run out", or "…storage is full"; the organizer's own say "Your notes…", with **Upgrade** on Free)
+  until they close it. The call goes on, and what was said until then is in the notes, which are written when the
+  call ends, even when writing them goes past what was left. While they're stopped, turning notes on or starting a
+  room recording says "Your notes for this period have run out. They start again when your plan renews."
+- **How long a call runs.** A call ends at 10 hours, and everyone is told 5 minutes before ("This call ends at
+  14:30"); its notes are written as when anyone ends it. At most 100 people are in a call or waiting to be let in: one
+  more is told "This call is full: 100 people are in it, the most a call can have", and whoever hosts is told someone
+  tried.
 - **Asking for notes.** While notes are off or paused, anyone can ask for them, from the notes sign or the Notes
   panel. Everyone sees who asked. The organizer gets a toast and sees the ask in People, then turns notes on (or
   resumes them) or says not now, and whoever asked is told.
@@ -1628,16 +1640,23 @@ notes on new calls while the oldest request fails.
   other meetings on Home** (both on by default). Then **Google Drive**, one line that says where notes go until
   **Manage** opens it in place, where **Connect** and **Reconnect** first say what Google shares and what Alcove uploads
   (flow 15), and **Agents**: named, revocable connections, then **Connect an agent**, which opens in place (flow 14).
-- **Plan and credits**: the time of notes left, with a sun on the line under it: at the end of the line on a new
-  account, back along it as notes are written, and set once there's none left. Calls without notes are free. Then the
-  minutes of notes used this month (since 00:00 UTC on the 1st), and **Add credits** (11.24).
+- **Plan**: **Plan** (Free) and when its notes renew; **Notes left**, about how much of the period's notes is left,
+  "About 3 h 20 min" (an estimate: busier calls use more), or "None" once they've stopped, with a sun on the line under
+  it: at the end of the line on a new period, back along it as notes are written, and set once there's none left;
+  **Storage**, what uploads and call recordings take, "2.4 GB of 10 GB", with files up to 512 MB and a sun on its line
+  the same way; and **Shared workspaces**, how many you've made against how many the plan allows, "1 of 1" (a call's own
+  workspace doesn't count). Over the plan's limits, a note says until when
+  everything works as before, then what has stopped: your extra shared workspaces are read-only and uploads and notes
+  stop, until you make room. In a second panel, **Balance**, in dollars, with **Add money** (11.24), then each top-up
+  still on its way, with **Open** and, until a payment reaches it, a cancel. Without a server that takes payments the
+  balance has no **Add money**. Pro and Team aren't on sale yet, so nothing spends the balance.
 - **Privacy**: what account and call information Alcove processes, then confidential compute: the time the hardware
   was verified when this browser could check it, or where your audio is opened and your notes are written. The **Privacy policy** explains how Alcove uses account and service
   data and how to disconnect Google services. Then, in its own panel at the end, **Delete account**.
 
 **Delete account** opens one step where it is (never a window over the page): the row becomes the question, **Delete
 your account for good?**, and what goes sits beside what stays. What goes: the notes you made, with their audio, for
-everyone who has them; the calls you scheduled, for everyone invited; the minutes of notes left; your own notes on every
+everyone who has them; the calls you scheduled, for everyone invited; your plan, and your balance when there is one; your own notes on every
 call, and anything you added from them to other people's notes; your groups and pins; workspaces only you are in, and
 documents only you can open; your Google Calendar connection, where Alcove also asks Google to cancel your calls and end
 its access; and your sign-in on every browser. What stays: the notes other people gave you stay with them, without you,
@@ -1657,7 +1676,7 @@ The shared demo account can't be deleted: as soon as **Delete account** is press
 row says to reload the page. Any other failure, having no connection included, is said in the step, **Delete my account**
 tries again, and nothing happens later by itself. Once it's deleted you land on the welcome page, signed out, even
 if you left Settings meanwhile, and this browser forgets the tour and call view it kept for the account.
-Signing in again starts a new, empty account with 10,000 credits.
+Signing in again starts a new, empty account on Free.
 
 ### 11.25 Choose what reaches you
 
@@ -1700,7 +1719,9 @@ it. It's a folder like any other: rename it, move it, put documents in it.
 home instead, so its notes go there, beside the calls before it.
 
 **First day.** The Drive says **Nothing here yet**, and that your next call makes the first. **New workspace** in its sky
-names one in place and opens it. An empty workspace says **Nothing here yet** with **New document** and **New folder**.
+names one in place and opens it. On Free that's your one shared workspace not tied to a call: a second says "Free has one
+shared workspace, and you have it. Move to Pro for as many as you like."; being in others' is fine, and a call's own
+doesn't count. An empty workspace says **Nothing here yet** with **New document** and **New folder**.
 **New document** opens an empty page with the caret in the title and a few ways to start under it: **Agenda**, **Decision
 log**, **Retro** and **Project brief**. They're only blocks: picking one fills the page, names an untitled document after
 it, and anything in it can change or go. Two people can have the same new document open: they get one title and one first
@@ -1727,8 +1748,8 @@ saves the original, each photo as a file of its own, and the page stays as it is
 pictures sharpen when it's done; a caption starts as the file's name and is one click to change. A photo the browser can't read
 says which file, with **Add as a file** and **Delete**; chosen with **File**, a picture Alcove can't show (a phone's HEIC photo,
 say) goes in as a file straight away. One Alcove refuses says which file and why ("This file is bigger than
-512 MiB, the most a file can be.", "This workspace is full, so it can't take more files.", "That's all you can upload today. You
-can upload more tomorrow."), with **Try again** and **Delete**, and nothing else in the document changes. A block that's
+512 MiB, the most a file can be here.", "Your storage is full. Delete something, or move to a plan with more room.", "That's all you
+can upload today. You can upload more tomorrow."), with **Try again** and **Delete**, and nothing else in the document changes. A block that's
 uploading can be cut and pasted in its document, or undone and done again, and the upload goes on into it. Leaving the page doesn't stop
 an upload, and closing the tab asks first, until everything about it has reached Alcove; a browser that goes mid-upload leaves
 its block saying it couldn't, for everyone. A block's **Delete** takes it out and keeps
@@ -1844,6 +1865,10 @@ into a field: type, then **Enter**. A workspace always keeps an admin.
   in this browser and save when you sign in again (a document that finds out first says so in its bar). Signing out on
   purpose asks first (flow 11), and every other tab goes to the welcome page at once.
 - Someone who can only read gets no buttons that change anything: a bar says who to ask, and the list has no **+**.
+- A workspace over its owner's plan (they made more shared workspaces than the plan allows, and the 15 days after
+  that went by) is read-only for everyone in it: no edits and no uploads, though an admin can still delete it or change who's in it. Every
+  document says "This workspace is read-only for everyone until its owner upgrades or deletes a shared workspace."
+  Nothing is deleted for being over.
 
 **Nothing written is trapped.** What you write stays in this browser until Alcove has it or you let it go, however the
 document ends up. Wherever it may not get there by itself (the document refuses it, you can only read it now, or it's
@@ -2054,12 +2079,13 @@ happened, leaving the existing settings in place after cancellation or failure.
 Storybook’s journeys use **15.1–15.8** above. The account, folders and file links in the preview are made-up; real Google
 consent and the provider’s own folder-selection page require manual verification with a supported Google account.
 
-### 11.24 Add credits
+### 11.24 Add money
 
-Open **Settings → Plan and credits → Add credits**, choose an amount of credits, then a token and network.
-**Get an address** opens the amount to send, its QR code and one payment address. Send only the stated token on that
-network. A short payment shows what arrived and how much remains; send the remainder before the address expires.
-After expiry it asks for no more money and waits for the payment or refund to settle. Credits appear in the balance
-once settlement is confirmed. Open and recent top-ups stay in Settings with **Open**, including cancelled, failed and
-held payments and their support reference. A waiting payment can be cancelled; a payment already sent still counts
-when it settles. Deleting an account warns when one of its payment addresses could still receive money.
+Open **Settings → Plan → Add money** beside **Balance**, choose **$20**, **$60**, **$120** or your own amount in dollars,
+then a token (USDC or USDT) and network. A token is a dollar, so $20 is 20 USDC. **Get an address** opens the amount to
+send, its QR code and one payment address. Send only the stated token on that network. A short payment shows what
+arrived and how much remains; send the remainder before the address expires. After expiry it asks for no more money
+and waits for the payment or refund to settle. The money appears in the balance once settlement is confirmed, and the
+sheet follows the payment until it does. Open and recent top-ups stay under the balance with **Open**, including
+cancelled, failed and held payments and their support reference. A waiting payment can be cancelled; a payment already
+sent still counts when it settles. Deleting an account warns when one of its payment addresses could still receive money.

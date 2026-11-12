@@ -97,7 +97,12 @@ Product, then the follow-ups from the retro board's Actions frame.
 | `signed-out` | Nobody signed in on this browser: the welcome page; Microsoft or single sign-on signs Art in to the busy afternoon |
 | `unsaved` | The busy afternoon after Alcove wouldn't take some of Art's edits: the pricing copy's last edits, more interview notes than a document holds, and a line in the handbook he can only read now |
 | `drive-connected` | Art has a separate Google Drive connection, authorized personal and shared-drive folders, and exports in pending, uploading, uploaded and failed states |
-| `payments` | Credit top-ups are available, with token/network choices; every deposit address is a made-up invalid preview |
+| `payments` | Adding money is available, with amount and token/network choices; every deposit address is a made-up invalid preview |
+| `plan-low` | Art is on Free with about 20 minutes of the period's notes left |
+| `plan-stopped` | The period's notes have run out: Settings says None, the side panel says no notes left until the period renews |
+| `plan-grace` | Over Free's limits in grace: three shared workspaces of one and 14.2 GB of 10, everything works as before for nine more days |
+| `plan-over` | The grace is over: Design (and Offsite planning, with nothing in it) are read-only for everyone in them, and uploads have stopped |
+| `plan-balance` | $60 in the balance, with a $20 top-up waiting for its payment and a $40 one already added |
 | `agents-connected` | Art has a read-only Workspace assistant connected through OAuth and an unused Scheduling assistant personal token; Settings shows their scopes, expiry and last use |
 | `first-sign-in` | Nobody signed in, and no account yet: signing in makes Art's account on screen, his first day, and Home's tour |
 
@@ -279,7 +284,9 @@ and `plays()` runs plays one after another.
 A call is one of the scenario's (its link's code) or a `StoryCall` the story puts in the world (`stories/calls/talk.ts`
 has the calls, conversations and shares the call stories share). Times are seconds from joining; the door's, from the
 story opening. A beat (`joins`, `says`, `shares`, `knocks`, `raisesHand`, `nudges` (you, as only you see it), `setsStatus`, `{ do: 'host-drops' }`, `{ do: 'reconnect' }`,
-`{ do: 'end' }`...) is anything someone else, the server or LiveKit could do; `run()` is anything else, such as `ringYou()`
+`{ do: 'end' }`...) is anything someone else, the server or LiveKit could do (the plan's side of a call too: `notesRunningOut()` is
+the organizer's notes about to run out, which only they are told, and `notesStop('notes')` is their notes (or `'storage'`) running out, which
+turns notes off for everyone, who are told why; a call within 5 minutes of its longest, 10 hours, is one with a `since` of 9 h 55 min or more); `run()` is anything else, such as `ringYou()`
 from another call. Rooms the organizer opens (`{ do: 'rooms' }`) can have a board each, or one they share (`board`), and each
 room's people can put stickies on theirs (`work`): the scripted call makes, fills and lands the boards as the server does, in
 the world's first workspace. Someone else can make the board in the call (`{ do: 'open-board' }`, with what `draw` puts on

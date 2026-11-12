@@ -27,7 +27,7 @@ export async function planOf(d: Pick<Deps, 'cfg' | 'pool'>, ownerId: string): Pr
   return {
     kind: p.kind,
     period: { from: new Date(p.from).toISOString(), to: new Date(p.to).toISOString() },
-    notes: { minutesLeft: minutesOf(s.leftNano - l.get('ai.stop_micro_usd') * 1000, l), minutesPerPeriod: p.notesMinutes, stopped: s.stopped },
+    notes: { minutesLeft: s.stopped ? 0 : minutesOf(s.leftNano, l), minutesPerPeriod: p.notesMinutes, stopped: s.stopped },
     storage: { usedBytes: used, limitBytes: held.storageBytes ?? p.storageBytes, fileBytes: p.fileBytes },
     sharedWorkspaces: { made, limit: p.sharedWorkspaces },
     grace: inGrace && a.grace ? { until: a.grace.until, workspaces: overWorkspaces, storage: overStorage } : null,

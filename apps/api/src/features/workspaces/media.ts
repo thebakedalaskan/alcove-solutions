@@ -27,8 +27,8 @@ import { issueMediaToken, readMediaToken, type MediaToken } from '../../mediaTok
 import { deleteQueued, queueDelete } from '../recordings/audio';
 import { jpegSize } from '../recordings/screens';
 import { ID128, frozenRefusal, limitKey, requireDocument, roleOf, whoNamed, workspaceFor, type Reader, type Who, type Workspace } from './access';
-import { fileBytesFor, requireRoom } from '../billing/plans';
-import { frozen, payerOf } from '../billing/storage';
+import { fileBytesFor, requireRoom, storageLimitOf } from '../billing/plans';
+import { frozen, payerOf, usedBytes } from '../billing/storage';
 
 const mlog = log.child({ component: 'media' });
 
@@ -246,11 +246,12 @@ const uploaderOf = (d: Deps, r: Reader): Uploader =>
  * while their storage has room, and what one person uploads in a day, the same for everyone. A workspace nobody pays for
  * yet (its payer just deleted their account, until upkeep settles it) takes Free's files.
  */
-interface Allowed { file: number; day: number; payer: string | null }
+interface Allowed { file: number; day: number; payer: string | null; storage: number | null }
 async function allowedIn(d: Deps, db: Db, w: Place): Promise<Allowed> {
   const limits = await limitsNow(d);
   const payer = await payerOf(db, w.owner.ownerId);
-  return { file: payer ? await fileBytesFor(d, db, payer) : limits.get('plan.free.file_bytes'), day: limits.get('media.account_day_bytes'), payer };
+  if (!payer) return { file: limits.get('plan.free.file_bytes'), day: limits.get('media.account_day_bytes'), payer, storage: null };
+  return { file: await fileBytesFor(d, db, payer), day: limits.get('media.account_day_bytes'), payer, storage: await storageLimitOf(d, db, payer) };
 }
 
 /** Today, as uploads are counted: in UTC. */
@@ -290,9 +291,15 @@ async function withinLimits(d: Deps, db: Db, w: Place, u: Uploader, allowed: All
     throw new ConflictError(allowed.day ? 'That’s all you can upload today. You can upload more tomorrow.' : NO_UPLOADS, { context: { ...context, limit: 'media.account_day_bytes', uploadedBytes: day, limitBytes: allowed.day } });
   }
 }
-/** Says so, once, when a piece takes someone's day past 80% of what they can upload: IDs and sizes, nothing else. */
+/**
+ * Says so, once, when a piece takes the storage of whoever the workspace counts against, or someone's day, past 80% of
+ * what it's allowed: IDs and sizes, nothing else.
+ */
 const passes80 = (before: number, after: number, limit: number): boolean => before < 0.8 * limit && after >= 0.8 * limit;
-function nearTheLimits(u: Uploader, allowed: Allowed, day: { before: number; after: number }): void {
+function nearTheLimits(w: Place, u: Uploader, allowed: Allowed, stored: { before: number; after: number } | null, day: { before: number; after: number }): void {
+  if (stored && allowed.storage !== null && passes80(stored.before, stored.after, allowed.storage)) {
+    mlog.warn('an account is past 80% of its storage', { workspaceId: w.workspaceId, ownerId: allowed.payer, storedBytes: stored.after, limitBytes: allowed.storage });
+  }
   if (passes80(day.before, day.after, allowed.day)) {
     mlog.warn('someone is past 80% of what they can upload today', { ...('guest' in u ? { callId: u.callId ?? null } : { ownerId: u.account }), uploadedBytes: day.after, limitBytes: allowed.day });
   }
@@ -383,7 +390,8 @@ export async function storePiece(d: Deps, who: Reader, workspaceId: string, docu
     }
     if (kept) {
       mlog.debug('piece stored', { ...where, bytes: sealed });
-      nearTheLimits(u, allowed, { before: kept.day - bytes.length, after: kept.day });
+      const stored = allowed.payer ? await usedBytes(d.pool, allowed.payer) : null;
+      nearTheLimits(w, u, allowed, stored === null ? null : { before: stored - sealed, after: stored }, { before: kept.day - bytes.length, after: kept.day });
       return;
     }
     mlog.info('piece raced a retry; dropping the duplicate', where);

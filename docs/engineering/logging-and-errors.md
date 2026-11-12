@@ -56,6 +56,7 @@ and optional `context` (logged, never sent) and `cause` (logged with its stack).
 | `NotFoundError` | `not-found` | 404 | info |
 | `ConflictError` (`ClientTakenError`) | `conflict` | 409 | info |
 | `TooLargeError` | `too-large` | 413 | info |
+| `PlanLimitError` | `plan-limit` | 402 | info |
 | `UnavailableError` (`LostConnectionError`, `DatabaseBusyError`) | `unavailable` | 503 | warn |
 | `InternalError` (`DatabaseError`, `ObjectStoreError`) | `unknown` | 500 | error |
 
@@ -114,9 +115,12 @@ throw new KeyError('This key can’t open that data.', { cause: err, context: { 
   someone's waiting, or its time ran out. A piece that stopped arriving, or a read whose browser went while it
   waited, is an ordinary `503` at info, and so is its request's own line, `request refused`: a 5xx is `request failed` at error
   unless what answered it says it's an ordinary refusal.
-- An upload refused by a storage limit is an ordinary refusal at info: `409 conflict` for a full workspace or a day used up,
-  `400 invalid` for a file too big, with the limit's name, the sizes and the limit in its context. A piece that takes a workspace past 80% of its
-  limit logs `a workspace is past 80% of its storage` at warn, and one that takes someone's day past 80% logs `someone is past
+- Whatever a plan's limits refuse is an ordinary refusal at info, `402 plan-limit` with its `reason` in the context
+  (`notes`: the AI allowance is spent; `storage`: the account's storage is full, or a workspace is read-only; `workspaces`:
+  the plan's shared workspaces are all made), with IDs, sizes and kinds as its context, never an allowance, a balance or a title ([Plans and usage](plans-and-usage.md)).
+- An upload refused by a storage limit is an ordinary refusal at info: `402 plan-limit` for an account's storage that's full,
+  `409 conflict` for a day used up, `400 invalid` for a file too big, with the limit's name, the sizes and the limit in its context.
+  A piece that takes an account past 80% of its storage logs `an account is past 80% of its storage` at warn, and one that takes someone's day past 80% logs `someone is past
   80% of what they can upload today`, once each time it's crossed, with IDs and sizes. Every instance logs `service limit
   changed` at info when it reads a new value, with `limit`, `old` and `new`, and `service limit ignored` or `service limit
   clamped` at warn, once, for a row it can't use or had to hold to its bounds, and `service limits not read; keeping what was in

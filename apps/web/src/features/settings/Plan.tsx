@@ -55,10 +55,8 @@ export function PlanGroup({ plan }: { plan: Plan }) {
           control={<span className="set-left">{notesLeft(plan)}</span>}>
           <SunLine share={plan.notes.minutesPerPeriod > 0 ? plan.notes.minutesLeft / plan.notes.minutesPerPeriod : 0} />
         </SettingRow>
-        <SettingRow className="is-left" label="Storage" help={`Uploads and call recordings. Files up to ${roomLabel(storage.fileBytes)}.`}
-          control={<span className="set-left">{roomLabel(storage.usedBytes)} of {roomLabel(storage.limitBytes)}</span>}>
-          <SunLine share={storage.limitBytes > 0 ? Math.max(0, 1 - storage.usedBytes / storage.limitBytes) : 0} />
-        </SettingRow>
+        <SettingRow label="Storage" help={`Uploads and call recordings. Files up to ${roomLabel(storage.fileBytes)}.`}
+          control={<SettingFact>{roomLabel(storage.usedBytes)} of {roomLabel(storage.limitBytes)}</SettingFact>} />
         <SettingRow label="Shared workspaces" help="A call’s own workspace doesn’t count."
           control={<SettingFact>{spaces.limit === null ? spaces.made : `${spaces.made} of ${spaces.limit}`}</SettingFact>} />
         <Limits plan={plan} />

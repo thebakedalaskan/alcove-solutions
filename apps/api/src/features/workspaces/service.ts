@@ -221,7 +221,7 @@ export async function item(d: Deps, reader: Reader, workspaceId: string, itemId:
   return wireItem(itemId, found.item, found.role, w.role === null, trashOf(w.state, itemId), calls.get(itemId) ?? null);
 }
 
-const ListedRow = z.object({ owner_id: z.string(), workspace_id: z.string(), state_ciphertext: bytea, role: z.enum(['admin', 'edit', 'read']).nullable(), people: z.number(), created_at: timestamp });
+const ListedRow = z.object({ owner_id: z.string(), workspace_id: z.string(), state_ciphertext: bytea, role: z.enum(['admin', 'edit', 'read']).nullable(), people: z.number(), created_at: timestamp, frozen: z.boolean() });
 /**
  * The Drive: every workspace someone's in, newest first, a call's home with the call it was made for; then each one they only
  * have documents in, which says nothing about itself, not even when it was made.
@@ -229,7 +229,7 @@ const ListedRow = z.object({ owner_id: z.string(), workspace_id: z.string(), sta
 export async function list(reader: Reader): Promise<WorkspaceSummary[]> {
   const o = reader.account?.owner;
   if (!o) return [];
-  const found = await rows(o.pool, ListedRow, `SELECT w.owner_id, w.workspace_id, w.state_ciphertext, m.role, w.created_at,
+  const found = await rows(o.pool, ListedRow, `SELECT w.owner_id, w.workspace_id, w.state_ciphertext, m.role, w.created_at, w.frozen_at IS NOT NULL AS frozen,
       (SELECT count(*)::int FROM workspace_members x WHERE x.owner_id = w.owner_id) AS people
     FROM workspaces w LEFT JOIN workspace_members m ON m.owner_id = w.owner_id AND m.email_index = ANY($1::bytea[])
     WHERE m.role IS NOT NULL OR EXISTS (SELECT 1 FROM document_access a WHERE a.owner_id = w.owner_id AND a.principal_index = ANY($1::bytea[]))
@@ -237,12 +237,12 @@ export async function list(reader: Reader): Promise<WorkspaceSummary[]> {
   const mine: WorkspaceSummary[] = [];
   const given: WorkspaceSummary[] = [];
   for (const r of found) {
-    if (r.role === null) { given.push({ id: r.workspace_id, name: null, role: null, people: null, createdAt: null, call: null }); continue; }
+    if (r.role === null) { given.push({ id: r.workspace_id, name: null, role: null, people: null, frozen: r.frozen, createdAt: null, call: null }); continue; }
     const owner = await findOwner(o, r.owner_id, undefined);
     // Deleted since its row was read: nobody has it any more.
     if (!owner) continue;
     const state = openState(owner, r.workspace_id, r.state_ciphertext);
-    mine.push({ id: r.workspace_id, name: state.name, role: r.role, people: r.people, createdAt: r.created_at.toISOString(), call: state.madeFor && { title: state.madeFor.title, at: state.madeFor.at } });
+    mine.push({ id: r.workspace_id, name: state.name, role: r.role, people: r.people, frozen: r.frozen, createdAt: r.created_at.toISOString(), call: state.madeFor && { title: state.madeFor.title, at: state.madeFor.at } });
   }
   return [...mine, ...given];
 }

@@ -5,7 +5,7 @@
  * of these reach.
  */
 import {
-  TopUpSchema, TopUpRoutesSchema, ISODateSchema, DriveExportChoiceSchema, DriveExportJobSchema, DriveFolderSchema, DriveSettingsSchema, FILE_TYPE, CalendarSchema, CreditBalanceSchema, DocumentLibrarySchema, IncomingRingSchema, MeetingSchema, NoteSchema, PersonalEntrySchema, PreferencesSchema,
+  TopUpSchema, TopUpRoutesSchema, ISODateSchema, DriveExportChoiceSchema, DriveExportJobSchema, DriveFolderSchema, DriveSettingsSchema, FILE_TYPE, CalendarSchema, DocumentLibrarySchema, IncomingRingSchema, MeetingSchema, NoteSchema, PersonalEntrySchema, PlanSchema, PreferencesSchema,
   MentionNoticeSchema, SessionSchema, ShareEntrySchema, TeamSchema, WorkspaceMediaSchema, WorkspaceSummarySchema, WorkspaceTreeSchema, type DocumentLibrary, type DocumentRole,
   type Group, type ItemCall, type MentionNotice, type NoteRoom, type NoteWorkedOn, type Person, type ShareEntry, type WorkspaceItem, type WorkspaceRole
 } from '@alcove/api';
@@ -16,7 +16,7 @@ import { busyCalls, busyEvents, soonCalls } from '../world/calls';
 import { connected, notConnected, writeNote, type NoteSpec } from '../world/build';
 import { iso, on, setClock } from '../world/clock';
 import { clipOf, stillOf } from '../media/screens';
-import { CREDITS, PREFS, WELCOME_CREDITS, session, type BoardSpec, type Kept, type Opening, type Page, type Refused, type Space, type World } from '../world';
+import { PREFS, session, type BoardSpec, type Kept, type Opening, type Page, type Refused, type Space, type World } from '../world';
 import { FLOW, RETRO, roomBoard } from '../world/boards';
 import {
   COMPETITORS, EMPTY_STATES, EXPENSES, FIRST_DRAFT, HOLIDAYS, INTERVIEWS, LAUNCH_CHECKLIST, LAUNCH_PLAN, MEDIA, OLD_ROADMAP, ONBOARDING_FIXES, PRICING_COPY,
@@ -28,13 +28,15 @@ import { QUIET } from './empty';
 import { forgetKeptHere } from './kept';
 import { drawnPicture, forgetAudio } from './media';
 import { stopLive } from './standin';
-import { paymentsOff, withPayments } from '../world/payments';
+import { paymentsOff, PREVIEW_PAID_TOP_UP, PREVIEW_TOP_UP, topUpOf, withPayments } from '../world/payments';
+import { freePlan, inGrace, newPlan, notesStopped, overLimits, withBalance, withNotesLeft } from '../world/plans';
 import { disconnectedDrive, withDriveExports } from '../world/drive-exports';
 import { withAgentConnections } from './agents';
 import { serve } from './state';
 import { forgetDocuments } from './workspaces';
 
-export type ScenarioName = 'busy' | 'first-day' | 'on-their-own' | 'offline' | 'writing' | 'call-soon' | 'lots' | 'signed-out' | 'unsaved' | 'first-sign-in' | 'agents-connected' | 'drive-connected' | 'payments';
+export type ScenarioName = 'busy' | 'first-day' | 'on-their-own' | 'offline' | 'writing' | 'call-soon' | 'lots' | 'signed-out' | 'unsaved' | 'first-sign-in' | 'agents-connected' | 'drive-connected' | 'payments'
+  | 'plan-low' | 'plan-stopped' | 'plan-grace' | 'plan-over' | 'plan-balance';
 
 interface Scenario { title: string; about: string; make: () => { world: World; opening: Partial<Opening> } }
 
@@ -69,7 +71,7 @@ const homeName = (title: string, at: string): string => `${title} · ${new Intl.
 function home(id: string, title: string, at: string, organizer: Person, role: WorkspaceRole, people: number, noteId: string, items: WorkspaceItem[]): Space {
   const name = homeName(title, at);
   const hours = (Date.parse(iso(0, 16, 12)) - Date.parse(at)) / 3_600_000;
-  return { id, name, role, people, createdAt: at, call: { title, at }, items: [item(name, 'folder', organizer, hours, { call: { startedAt: at, on: false, here: false, noteId } }), ...items] };
+  return { id, name, role, people, frozen: false, createdAt: at, call: { title, at }, items: [item(name, 'folder', organizer, hours, { call: { startedAt: at, on: false, here: false, noteId } }), ...items] };
 }
 /**
  * The workspaces: the homes of the day's calls, the standup's newest; Product, which Art runs; Design, where he edits; and
@@ -85,7 +87,7 @@ function workspaces(): Space[] {
       item('Sidebar screenshots', 'document', KOFI, 28.3), item('Review uploads', 'document', AIKO, 28.9), item('Review checklist', 'document', ART, 28.6)
     ]),
     {
-      id: 'ws-product', name: 'Product', role: 'admin', people: 6, createdAt: iso(-120, 10, 0), call: null,
+      id: 'ws-product', name: 'Product', role: 'admin', people: 6, frozen: false, createdAt: iso(-120, 10, 0), call: null,
       items: [
         item('Launch plan', 'document', PRIYA, 2, { made: 76 }), item('Launch checklist', 'document', MAYA, 5), item('Research', 'folder', LENA, 300),
         item('Interview notes', 'document', LENA, 120, research), item('Competitor notes', 'document', LENA, 170, research),
@@ -95,11 +97,11 @@ function workspaces(): Space[] {
       ]
     },
     {
-      id: 'ws-design', name: 'Design', role: 'edit', people: 4, createdAt: iso(-90, 14, 0), call: null,
+      id: 'ws-design', name: 'Design', role: 'edit', people: 4, frozen: false, createdAt: iso(-90, 14, 0), call: null,
       items: [item('Onboarding flow', 'board', AIKO, 50), item('Empty states', 'document', KOFI, 8)]
     },
     {
-      id: 'ws-handbook', name: 'Company handbook', role: 'read', people: 38, createdAt: iso(-400, 9, 0), call: null,
+      id: 'ws-handbook', name: 'Company handbook', role: 'read', people: 38, frozen: false, createdAt: iso(-400, 9, 0), call: null,
       items: [item('Holidays', 'document', NADIA, 700, reading), item('Expenses', 'document', NADIA, 1300, reading), item('Working from home', 'document', NADIA, 2100, reading)]
     }
   ];
@@ -285,7 +287,7 @@ function busy(): World {
   }
   return {
     drive: disconnectedDrive(), payments: paymentsOff(), session: session(), prefs: { ...PREFS, pinned: ['n4', 'n6'], groups: GROUPS }, team: teamOf(DIRECTORY), notes, personal: { n2: standupOwn() },
-    meetings: busyCalls(), calendar: connected(busyEvents()), credits: CREDITS, documents: library(), workspaces: workspaces(), pages: pages(), shares: shares(), boards: boards(),
+    meetings: busyCalls(), calendar: connected(busyEvents()), plan: freePlan(), documents: library(), workspaces: workspaces(), pages: pages(), shares: shares(), boards: boards(),
     mentions: structuredClone(TAGGED), media: files(), rings: [], writing: null,
     // The bandwidth flag is on here and off in every other scenario, so both answers are served.
     featureFlags: ['call.bandwidth_reduction']
@@ -329,6 +331,19 @@ function lots(): World {
   return w;
 }
 
+/**
+ * The busy afternoon, with the grace over: Art has more shared workspaces than Free has, so the extra ones are read-only for
+ * everyone in them (Design, which he made, and another with nothing in it yet), and storage is over Free's limit.
+ * What the server does for a frozen workspace, its items read for everyone, is here as it is there.
+ */
+function overTheLimits(): World {
+  const w = busy();
+  w.plan = overLimits();
+  w.workspaces = w.workspaces.map((s) => (s.id === 'ws-design' ? { ...s, role: 'admin', frozen: true, items: s.items.map((i) => ({ ...i, role: 'read' })) } : s));
+  w.workspaces.push({ id: 'ws-offsite', name: 'Offsite planning', role: 'admin', people: 5, frozen: true, items: [], createdAt: iso(-30, 10, 0), call: null });
+  return w;
+}
+
 /** Someone on their own: Art at a personal address, so no team and no groups, with recordings and calls with people he meets. */
 function onTheirOwn(): World {
   const solo: Person = { ...ART, id: 'o-art-personal', email: 'art@personal.example' };
@@ -353,7 +368,7 @@ function onTheirOwn(): World {
   ];
   return {
     drive: disconnectedDrive(), payments: paymentsOff(), session: session({ user: solo, ownerId: solo.id }), prefs: PREFS, team: null, notes: specs.map((s) => writeNote(s, solo)), personal: {},
-    meetings: [], calendar: connected([]), credits: CREDITS, documents: { workspaces: [{ id: 'own', name: 'Your documents', documents: [] }] },
+    meetings: [], calendar: connected([]), plan: freePlan(), documents: { workspaces: [{ id: 'own', name: 'Your documents', documents: [] }] },
     workspaces: [], pages: {}, shares: {}, boards: {}, mentions: [], media: [], rings: [], writing: null
   };
 }
@@ -361,8 +376,34 @@ function onTheirOwn(): World {
 /* ---------- the scenarios ---------- */
 
 export const SCENARIOS: Record<ScenarioName, Scenario> = {
+  'plan-low': {
+    title: 'Notes nearly out', about: 'Art is on Free with about 20 minutes of the period’s notes left, and the sun near the start of the line.',
+    make: () => { const world = busy(); world.plan = withNotesLeft(20); return { world, opening: {} }; }
+  },
+  'plan-stopped': {
+    title: 'Notes stopped', about: 'Art is on Free and the period’s notes have run out: they stop until it renews, and calls go on without them.',
+    make: () => { const world = busy(); world.plan = notesStopped(); return { world, opening: {} }; }
+  },
+  'plan-grace': {
+    title: 'Over Free’s limits, in grace', about: 'Art made three shared workspaces of Free’s one and stores 14.2 GB of its 10: everything works as before for nine more days.',
+    make: () => { const world = busy(); world.plan = inGrace(); return { world, opening: {} }; }
+  },
+  'plan-over': {
+    title: 'Over Free’s limits, past the grace', about: 'The grace is over: Design and Offsite planning are read-only for everyone in them, and uploads have stopped.',
+    make: () => ({ world: overTheLimits(), opening: {} })
+  },
+  'plan-balance': {
+    title: 'A balance', about: 'Art has $60 in his balance, with a $20 top-up waiting for its payment and a $40 one already added.',
+    make: () => {
+      const world = busy();
+      withPayments(world);
+      world.plan = withBalance();
+      world.payments.topUps = [topUpOf(PREVIEW_TOP_UP, 'waiting', 20), topUpOf(PREVIEW_PAID_TOP_UP, 'credited', 40, true)];
+      return { world, opening: {} };
+    }
+  },
   payments: {
-    title: 'Credit top-ups', about: 'Art can add credits with a stablecoin; every payment address is an invalid Storybook preview.',
+    title: 'Adding money', about: 'Art can add money to his balance with a stablecoin; every payment address is an invalid Storybook preview.',
     make: () => { const world = busy(); withPayments(world); return { world, opening: {} }; }
   },
   'drive-connected': {
@@ -379,7 +420,7 @@ export const SCENARIOS: Record<ScenarioName, Scenario> = {
     make: () => ({
       world: {
         drive: disconnectedDrive(), payments: paymentsOff(), session: session({ createdAt: iso(0, 16, 5) }), prefs: PREFS, team: teamOf(DIRECTORY.filter((c) => c.person !== INES && c.person !== AIKO).map((c): Colleague => ({ ...c, onAlcove: false, invited: false }))),
-        notes: [], personal: {}, meetings: [], calendar: notConnected, credits: WELCOME_CREDITS, documents: library(), workspaces: [], pages: {}, shares: {}, boards: {}, mentions: [], media: [], rings: [], writing: null
+        notes: [], personal: {}, meetings: [], calendar: notConnected, plan: newPlan(), documents: library(), workspaces: [], pages: {}, shares: {}, boards: {}, mentions: [], media: [], rings: [], writing: null
       },
       opening: { tourSeen: false }
     })
@@ -444,7 +485,7 @@ export function checked(w: World): World {
     ['session', SessionSchema.nullable().safeParse(w.session)], ['prefs', PreferencesSchema.safeParse(w.prefs)], ['team', TeamSchema.nullable().safeParse(w.team)],
     ['notes', NoteSchema.array().safeParse(w.notes)], ['meetings', MeetingSchema.array().safeParse(w.meetings)], ['calendar', CalendarSchema.safeParse(w.calendar)],
     ['payment routes', TopUpRoutesSchema.nullable().safeParse(w.payments.routes)], ['top-ups', TopUpSchema.array().safeParse(w.payments.topUps)],
-    ['credits', CreditBalanceSchema.safeParse(w.credits)], ['documents', DocumentLibrarySchema.safeParse(w.documents)], ['workspaces', WorkspaceTreeSchema.array().safeParse(w.workspaces)],
+    ['plan', PlanSchema.safeParse(w.plan)], ['documents', DocumentLibrarySchema.safeParse(w.documents)], ['workspaces', WorkspaceTreeSchema.array().safeParse(w.workspaces)],
     ['rings', IncomingRingSchema.array().safeParse(w.rings)], ['personal', PersonalEntrySchema.array().safeParse(Object.values(w.personal).flat())],
     ['shares', ShareEntrySchema.array().safeParse(Object.values(w.shares).flat())],
     ['drive', WorkspaceSummarySchema.array().safeParse(w.workspaces)], ['mentions', MentionNoticeSchema.array().safeParse(w.mentions)],

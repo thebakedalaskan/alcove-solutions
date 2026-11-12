@@ -57,9 +57,10 @@ export const Notifications = page('/settings#notifications', 'busy');
 export const NotificationsNight = night(Notifications);
 export const Connections = page('/settings#connections', 'busy');
 export const ConnectionsNight = night(Connections);
-/** From the minutes in the side panel. */
-export const PlanAndCredits = page('/settings#plan', 'busy');
-export const PlanAndCreditsNight = night(PlanAndCredits);
+/** From the time of notes left in the side panel. Free: 3 h 20 min of 5 h of notes left, 2.1 GB of 10 GB stored, the one shared workspace made. */
+export const Plan = page('/settings#plan', 'busy');
+export const PlanNight = night(Plan);
+export const PlanPhone = phone(Plan);
 /** Confidential compute, with the time this browser verified the hardware the server runs on. */
 export const Privacy = page('/settings#privacy', 'busy');
 export const PrivacyNight = night(Privacy);
@@ -123,7 +124,7 @@ export const DemoCantBeDeleted = page('/settings#privacy', 'busy', { beforeEach:
 /** Alcove is slow to answer: the calendar and the hardware check are still on their way, and the rest of the page works. */
 export const StillLoading = page('/settings', 'busy', { beforeEach: changing(troubled({ 'calendar.get': 'hold', 'trust.attestation': 'hold' })) });
 /** Panels that didn't load say so in their groups, with Try again, and the rest of the page still works. */
-export const PanelsDidntLoad = page('/settings', 'busy', { beforeEach: changing(troubled({ 'account.preferences': 'failed', 'credits.balance': 'failed' })) });
+export const PanelsDidntLoad = page('/settings', 'busy', { beforeEach: changing(troubled({ 'account.preferences': 'failed', 'plans.plan': 'failed' })) });
 export const PanelsDidntLoadNight = night(PanelsDidntLoad);
 export const PanelsDidntLoadPhone = phone(PanelsDidntLoad);
 /** Opened without a connection: Settings needs one, and Record still works. */
@@ -320,28 +321,42 @@ export const NotificationLeafRefused = page('/settings#notifications', 'busy', {
   })
 });
 
-/* ------------------------------------------------------------------ plan and credits */
+/* ------------------------------------------------------------------ plan */
 /** Payments are separate from the default server-without-a-treasury scenario. Every address is an invalid preview. */
 export const Payments = page('/settings#plan', 'payments');
 export const PaymentsNight = night(Payments);
+/** A server without a treasury takes no money: the balance is there, and there's no Add money. */
 export const PaymentsUnavailable = page('/settings#plan', 'busy');
-/** Nearly out: twelve minutes of notes left, and the sun at the start of the line. */
-export const NotesNearlyOut = page('/settings#plan', 'busy', { beforeEach: changing((w) => { w.credits = { balance: 300, granted: 10000, usedThisMonth: 9700, perMinute: 25 }; }) });
-/** None left: the sun has set, and a little of its light is left at the start of the line. */
-export const NoNotesLeft = page('/settings#plan', 'busy', { beforeEach: changing((w) => { w.credits = { balance: 0, granted: 10000, usedThisMonth: 10000, perMinute: 25 }; }) });
+/** Nearly out: about 20 minutes of notes left, and the sun near the start of the line. */
+export const NotesNearlyOut = page('/settings#plan', 'plan-low');
+export const NotesNearlyOutNight = night(NotesNearlyOut);
+/** None left: the period's notes have stopped until it renews, the sun has set, and a little of its light is left at the start of the line. */
+export const NoNotesLeft = page('/settings#plan', 'plan-stopped');
 export const NoNotesLeftNight = night(NoNotesLeft);
-export const AddCreditsPicker = page('/settings#plan', 'payments', { play: pressing('Add credits', 'Choose how many credits, then a token and network') });
-export const AddCreditsPickerNight = night(AddCreditsPicker);
-export const AddCreditsPickerPhone = phone(AddCreditsPicker);
-export const AddCreditsPickerPhoneNight = phoneNight(AddCreditsPicker);
+export const NoNotesLeftPhone = phone(NoNotesLeft);
+/** Over Free's limits: three shared workspaces of one and 14.2 GB of 10. Everything works as before until the day the note names. */
+export const OverFreesLimitsInGrace = page('/settings#plan', 'plan-grace');
+export const OverFreesLimitsInGraceNight = night(OverFreesLimitsInGrace);
+export const OverFreesLimitsInGracePhone = phone(OverFreesLimitsInGrace);
+/** The grace is over: the extra shared workspaces are read-only and uploads have stopped, and the note says so. */
+export const OverFreesLimits = page('/settings#plan', 'plan-over');
+export const OverFreesLimitsNight = night(OverFreesLimits);
+/** $60 in the balance, with a $20 top-up waiting for its payment and a $40 one already added, each opening its sheet. */
+export const ABalance = page('/settings#plan', 'plan-balance');
+export const ABalanceNight = night(ABalance);
+export const ABalancePhone = phone(ABalance);
+export const AddMoneyPicker = page('/settings#plan', 'payments', { play: pressing('Add money', 'Choose how much to add, then a token and network') });
+export const AddMoneyPickerNight = night(AddMoneyPicker);
+export const AddMoneyPickerPhone = phone(AddMoneyPicker);
+export const AddMoneyPickerPhoneNight = phoneNight(AddMoneyPicker);
 
 const openTopUp: NonNullable<PageStory['play']> = async ({ userEvent, step }) => {
-  await step('Reopen the payment from Plan and credits', async () => {
-    const plan = await screen.findByRole('region', { name: 'Plan and credits' }, { timeout: 8000 });
+  await step('Reopen the payment from Plan', async () => {
+    const plan = await screen.findByRole('region', { name: 'Plan' }, { timeout: 8000 });
     await userEvent.click(await within(plan).findByRole('button', { name: 'Open' }, { timeout: 8000 }));
   });
 };
-/** A top-up on its way, under Add credits, with Open and cancel. */
+/** A top-up on its way, under the balance, with Open and cancel. */
 export const TopUpOnItsWay = page('/settings#plan', 'payments', { beforeEach: changing(withTopUp('waiting')) });
 export const TopUpOnItsWayPhone = phone(TopUpOnItsWay);
 export const PaymentWaiting = page('/settings#plan', 'payments', { beforeEach: changing(withTopUp('waiting')), play: openTopUp });

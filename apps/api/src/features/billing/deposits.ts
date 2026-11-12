@@ -107,7 +107,7 @@ export async function routes(d: Deps): Promise<TopUpRoutes> {
   return { routes: all.map(toRoute), presets: pro > 0 ? PRESET_PERIODS.map((n) => n * pro) : [] };
 }
 
-const dollars = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 });
+const dollars = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 2 });
 /**
  * Refuses another top-up while the owner has 15 waiting for a payment to an address that hasn't expired, or opened 30
  * in the last 24 hours (cancelled ones count: each was a quote, and is watched until its address expires). Counted in

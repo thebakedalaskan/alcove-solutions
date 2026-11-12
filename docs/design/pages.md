@@ -20,7 +20,8 @@ Every signed-in page sits in the same frame (`apps/web/src/features/shell/`, `pa
   - Up next, the next call with Join, on Home too, except while Home's own line offers a call (in its last few minutes,
     and while it's going), so there's one Join at a time
   - pinned notes and groups
-  - at the foot, the confidential-compute check and the minutes of notes left
+  - at the foot, the confidential-compute check, then on Free Upgrade to Pro, and under it about how much of the period's
+    notes is left ("About 3 h 20 min of notes left", over a small meter), which opens Settings at Plan
 - **The page** scrolls under a rounded edge. Search ("Search or ask", ⌘K opens the palette) and you (your arch, which opens
   Settings) sit at its top right on every page, outside the page itself, so moving between pages leaves them alone. A page's
   title sits at its top left, in the same place on every page, and keeps clear of them with `--top-room`.
@@ -219,7 +220,7 @@ The last of the light, with you in it, then seven groups. Change one thing and l
 - **The band.** You stand on the horizon in your arch, with your name (Newsreader) and address. Take the tour and Sign out
   sit at the right.
 - **The index.** It stays beside the page as you scroll, and a small sun on it follows the group in view: You, Calls and
-  notes, Audio and video, Notifications, Connections, Plan and credits, Privacy. At 1000px and narrower it becomes a strip
+  notes, Audio and video, Notifications, Connections, Plan, Privacy. At 1000px and narrower it becomes a strip
   that stays at the top. A group is found by what it's for, so a setting has one obvious home.
 - **Groups of panels.** Each group is a heading over one or two panels (`SettingsGroup`, `SettingsPanel`): `surface`, a
   hairline edge, rows separated by hairlines inside, never a card per row. A panel is a set of things you'd change
@@ -236,6 +237,11 @@ The last of the light, with you in it, then seven groups. Change one thing and l
   Disconnect in place. Connect an agent opens in place too: Alcove's address with Copy, or a token for a script, shown
   once. The shared `AgentPermissions`, `AgentDisclosure`, `AgentAddress` and `AgentTokenReveal` components live in
   `components/agents.tsx` and `styles/agents.css`.
+- **Plan says what's left, never what it costs.** Its first panel is Plan, Notes left, Storage and Shared workspaces. Notes
+  left and Storage each have a `SunLine` on the row's own hairline, the sun at the end in a fresh period and moving back as
+  it's used. The AI allowance is kept in dollars and never shown: notes left is said as time, as an estimate. Over the plan's
+  limits, one `SettingNote` says until when everything works as before. The balance is a second panel, and Add money opens a
+  sheet (the deposit address and its QR code), never a window over the page.
 - **Sign out** signs you out at once. Only when recordings haven't uploaded does it ask first: the sky grows to hold the
   question, it says they'll be deleted, and Stay signed in is the filled answer.
 - **Delete account** sits apart, in its own panel at the end, and opens in place, with what goes beside what stays. The

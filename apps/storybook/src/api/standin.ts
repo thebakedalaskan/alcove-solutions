@@ -764,7 +764,7 @@ export const standIn: AlcoveApi = {
     list: () => answer(spaces.workspaceList),
     create: (name: string) => answer((w) => {
       const id = nextId('ws');
-      w.workspaces.push({ id, name, role: 'admin', people: 1, items: [], createdAt: new Date().toISOString(), call: null });
+      w.workspaces.push({ id, name, role: 'admin', people: 1, items: [], frozen: false, createdAt: new Date().toISOString(), call: null });
       return { id };
     }),
     get: (id: ID) => answer(() => spaces.treeFor(id)),
@@ -837,21 +837,21 @@ export const standIn: AlcoveApi = {
     restoreVersion: (id: ID) => answer(() => { spaces.treeOf(id); }),
     searchText: (id: ID) => spaces.searchText(id)
   },
-  credits: {
-    balance: () => answer((w) => w.credits),
+  plans: {
+    plan: () => answer((w) => w.plan),
     routes: () => answer(paymentRoutes),
-    startTopUp: (routeId, credits) => answer((w) => {
+    startTopUp: (routeId, microUsd) => answer((w) => {
       const choices = paymentRoutes(w);
-      StartTopUpBodySchema.parse({ routeId, credits });
+      StartTopUpBodySchema.parse({ routeId, microUsd });
       const route = choices.routes.find((r) => r.id === routeId);
       if (!route) throw refused('invalid', 'That way to pay isn’t offered.');
-      if (credits < route.minimumCredits) throw refused('invalid', `Choose at least ${route.minimumCredits.toLocaleString('en-GB')} credits on ${route.chainName}.`);
-      const rate = choices.tiers.reduce((best, t) => credits >= t.fromCredits ? t.creditsPerUsd : best, 1000);
-      const amount = String(Math.ceil(credits * 1_000_000 / rate - 1e-6) / 1_000_000);
+      if (microUsd < Number(route.minimum) * 1_000_000) throw refused('invalid', `The least you can add with ${route.token} on ${route.chainName} is $${route.minimum}.`);
+      // A token is added as a dollar.
+      const amount = String(microUsd / 1_000_000);
       const t: TopUp = {
         id: nextId('sb-top-up'), route, address: PREVIEW_DEPOSIT_ADDRESS, memo: null,
         expiresAt: new Date(Date.now() + 3_600_000).toISOString(), state: 'waiting',
-        asked: { amount, credits }, received: null
+        asked: { amount }, received: null
       };
       w.payments.topUps.unshift(t);
       return t;

@@ -26,6 +26,7 @@ import { grantDocumentToCall, saveState, serverWorkspace, workspaceForCall, type
 import { openOwner } from '../../owners';
 import { speechWav } from '../../testing/fake-near';
 import { startHarness, type Browser, type Harness } from '../../testing/harness';
+import { standing } from '../billing/meter';
 import { connect, disposeLiveKit, type TestParticipant } from '../../testing/livekit';
 import { getItem, listItems, saveRevision } from '../../vault';
 
@@ -2018,18 +2019,20 @@ describe('the next call’s agenda', () => {
 });
 
 describe('asking Alcove about a selection', () => {
-  it('needs edit, goes sealed to the notes model, keeps nothing, and costs nobody credits', async () => {
+  it('needs edit, goes sealed to the notes model, keeps nothing, and is paid for by whoever the workspace counts against', async () => {
     const art = await account();
     const theo = await account();
     const id = await workspace(art, 'Product', [[theo, 'read']]);
     const plan = await doc(art, id, 'Plan');
-    const credits = await art.api.credits.balance();
+    const spent = async (a: Account) => (await standing(h.deps, h.pool, a.ownerId)).byKind['documents'] ?? 0;
     const from = h.near.prompts.length;
     expect(await collect(art.api.workspaces.ask(id, plan, { action: 'shorter', text: 'CANARY-SELECTION a long way of saying it' }))).toEqual([{ type: 'text', text: 'Shorter: CANARY-SELECTION a long way of saying it' }]);
     expect(await collect(art.api.workspaces.ask(id, plan, { action: 'checklist', text: 'Book the room; send the brief' }))).toEqual([{ type: 'todo', text: 'Book the room' }, { type: 'todo', text: 'send the brief' }]);
     expect(h.near.prompts.slice(from).join(' ')).toContain('CANARY-SELECTION');
     expect(Buffer.concat(h.near.received.map((r) => r.body)).includes(Buffer.from('CANARY-SELECTION'))).toBe(false);
-    expect(await art.api.credits.balance()).toEqual(credits);
+    // Art made the workspace, so Art's plan pays.
+    expect(await spent(art)).toBeGreaterThan(0);
+    expect(await spent(theo)).toBe(0);
     // Reading isn't enough, and what's elsewhere isn't there. Nothing refused reaches the model.
     const asked = h.near.prompts.length;
     expect(await code(collect(theo.api.workspaces.ask(id, plan, { action: 'shorter', text: 'Words' })))).toBe('forbidden');
