@@ -1,16 +1,18 @@
 /*
- * Your own notes in a call: Yours, at the foot of the Notes tab, "mark this" from anywhere in the call, and the bookmark on
- * each line of the transcript, which takes it back on a second press as it does on the note. They're your account's, on the
- * call's note, so nothing here is for someone with only the link. Nothing goes into the call or to anyone's screen: they're
- * read from the server while the notes or the transcript show, and each change answers with all of them. The draft lives
- * here, so moving around your side neither loses it nor carries it anywhere else.
+ * Your own notes in a call: Yours, a tab of Notes; Note to self and the bookmark at the foot of every tab but Ask; "mark
+ * this" from anywhere in the call; and the bookmark on each line of the transcript, which takes it back on a second press
+ * as it does on the note. They're your account's, on the call's note, so nothing here is for someone with only the link.
+ * Nothing goes into the call or to anyone's screen: they're read from the server while Notes, the transcript or Yours
+ * show, and each change answers with all of them. What's typed in Note to self is kept above your side (a Draft), so
+ * moving around it neither loses the words nor carries them anywhere else, and typing renders only the foot.
  */
 import { errorCode, errorMessage, type CallAnswer, type CallSession, type CallState, type PersonalEntry, type PersonalNotes, type TranscriptLine, type TranscriptMoment } from '@alcove/api';
-import { Icon, useToast } from '@alcove/ui';
+import { EmptyState, Icon, IconButton, useToast } from '@alcove/ui';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { LineMarks } from '~/features/notes/lines';
 import { OwnComposer, OwnEntries } from '~/features/personal/parts';
 import { log } from '~/lib/log';
+import { useDraft, type Draft } from '../layout/side';
 import { Moments, callTimes } from './CatchUp';
 
 const plog = log.child({ component: 'own-notes' });
@@ -22,10 +24,9 @@ export interface OwnInCall {
   enabled: boolean;
   /** What's kept, once it's been read. */
   entries: PersonalEntry[] | null;
-  draft: string;
-  setDraft(text: string): void;
   busy: boolean;
-  write(text: string): void;
+  /** Keeps what was typed in Yours, and says so with a way there; `kept` clears the box once it's in. */
+  write(text: string, kept: () => void): void;
   /** Mark this moment: what was just said, each time it's pressed. */
   mark(): void;
   /** The transcript's lines you bookmarked, and bookmarking one or taking its bookmark back. */
@@ -43,14 +44,13 @@ const markOf = (lineId: string) => (e: PersonalEntry) => e.kind === 'bookmark' &
 const NO_NOTE = 'Your own notes go with the call’s, and notes haven’t been on in this call.';
 
 /**
- * `showing`: the notes are showing, with Yours at their foot, or the transcript, with its bookmarks. `line`: the newest line
+ * `showing`: Notes, Yours or the transcript (with its bookmarks) is on screen. `line`: the newest line
  * of the transcript, which can fill in a moment you marked. `place`: the part of the call you're in, which decides what
  * your bookmarks may open: they're read again when it changes.
  */
 export function useOwnInCall(session: CallSession, o: { role: CallState['role']; noteId: string | null; showing: boolean; line: string | undefined; place: string | null; onOpen: () => void }): OwnInCall {
   const toast = useToast();
   const [notes, setNotes] = useState<PersonalNotes | null>(null);
-  const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
   const [kept, setKept] = useState<ReadonlySet<number>>(new Set());
   const enabled = o.role !== 'guest';
@@ -72,11 +72,15 @@ export function useOwnInCall(session: CallSession, o: { role: CallState['role'];
 
   const open = useRef(o.onOpen);
   open.current = o.onOpen;
-  const write = (text: string) => {
-    setBusy(true);
-    session.personal.add({ kind: 'note', text }).then((n) => { setNotes(n); setDraft(''); }, failed).finally(() => setBusy(false));
-  };
   const opens = { label: 'Open', onClick: () => open.current() };
+  const write = (text: string, kept: () => void) => {
+    setBusy(true);
+    session.personal.add({ kind: 'note', text }).then((n) => {
+      setNotes(n);
+      kept();
+      toast('Kept in your own notes.', { icon: 'pen', action: opens });
+    }, failed).finally(() => setBusy(false));
+  };
   const mark = () => {
     if (!o.noteId) { toast(NO_NOTE, { icon: 'bookmark' }); return; }
     session.personal.add({ kind: 'bookmark', label: '', point: null }).then((n) => {
@@ -113,7 +117,7 @@ export function useOwnInCall(session: CallSession, o: { role: CallState['role'];
   };
   const marked: LineMarks = { has: (id) => notes?.entries.some(markOf(id)) ?? false, toggle: toggleLine };
   return {
-    enabled, entries: notes?.entries ?? null, draft, setDraft, busy, write, mark, lines: marked, kept,
+    enabled, entries: notes?.entries ?? null, busy, write, mark, lines: marked, kept,
     edit: async (entryId, text) => { setNotes(await session.personal.edit(entryId, text)); },
     remove: async (entryId) => { setNotes(await session.personal.remove(entryId)); },
     keep: async (asked, question, a) => {
@@ -127,32 +131,40 @@ export function useOwnInCall(session: CallSession, o: { role: CallState['role'];
 const away = (reach: 'later' | 'none') => (reach === 'later' ? 'Said somewhere you aren’t now. It opens when you’re back there, and in the notes after the call.' : 'Nothing’s transcribed at that moment.');
 
 /**
- * Yours, at the foot of the notes: what you wrote, marked and kept, for you alone, and a line to write more. `shown` counts the
- * times something asked to see it (the toast after marking a moment), and brings it into view each time.
+ * Yours, a tab of Notes: what you wrote, marked and kept, for you alone, oldest first. Before notes have been on there's
+ * nothing to keep them with, and it says so.
  */
-export function Yours({ own, state, me, shown, onOpen }: { own: OwnInCall; state: CallState; me: string | undefined; shown: number; onOpen: (e: TranscriptMoment) => void }) {
+export function YoursView({ own, state, me, onOpen }: { own: OwnInCall; state: CallState; me: string | undefined; onOpen: (e: TranscriptMoment) => void }) {
   const times = callTimes(state.startedAt);
-  const noNote = state.notes.noteId === null;
-  const part = useRef<HTMLElement>(null);
-  // Only the notes' own scroll moves: the call around it never scrolls.
-  useEffect(() => {
-    const el = part.current;
-    const box = el?.closest('.ic-scroll');
-    if (shown > 0 && el && box) box.scrollTop += el.getBoundingClientRect().top - box.getBoundingClientRect().top - 12;
-  }, [shown]);
   return (
-    <section ref={part} className="ic-own" aria-label="Yours, only you">
-      <div className="ic-sh"><span className="ac-eyebrow">Yours</span><span className="only"><Icon name="lock" size={13} />Only you</span></div>
-      {noNote ? <p className="ic-quiet">Your own notes stay beside the call’s, so they start when notes do.</p>
-        : own.entries && own.entries.length > 0 ? (
-          <OwnEntries entries={own.entries} me={me} actions={own} away={away} moment={(m) => (
-            <>
-              {m.line && <Moments evidence={[{ kind: 'transcript', lineId: m.line.id, said: m.at }]} times={times} onOpen={onOpen} />}
-              {m.room && <span className="own-room"><Icon name="door" size={12} />{m.room.name}</span>}
-            </>
-          )} />
-        ) : own.entries && <p className="ic-quiet">Write something for yourself, mark a moment, or keep an answer. Find them beside the call’s notes afterwards. Other participants can’t open them.</p>}
-      {!noNote && <OwnComposer value={own.draft} onChange={own.setDraft} onSend={own.write} busy={own.busy} said />}
+    <section className="nn-body nn-own" aria-label="Yours, only you">
+      {state.notes.noteId === null ? (
+        <EmptyState title="Your own notes start when notes do">They stay beside the call’s notes, so there’s nothing to keep them with yet.</EmptyState>
+      ) : own.entries && own.entries.length > 0 ? (
+        <OwnEntries entries={own.entries} me={me} actions={own} away={away} moment={(m) => (
+          <>
+            {m.line && <Moments evidence={[{ kind: 'transcript', lineId: m.line.id, said: m.at }]} times={times} onOpen={onOpen} />}
+            {m.room && <span className="own-room"><Icon name="door" size={12} />{m.room.name}</span>}
+          </>
+        )} />
+      ) : own.entries && (
+        <EmptyState title="Only you see what’s here">Write a note to yourself, press the bookmark or B to mark a moment, or keep an answer from Ask. Find them beside the call’s notes afterwards.</EmptyState>
+      )}
     </section>
+  );
+}
+
+/**
+ * The foot of Notes on every tab but Ask: Note to self, which keeps what you type in Yours, and the bookmark beside it, which
+ * marks what was just said there (B does the same from anywhere in the call).
+ */
+export function OwnFoot({ own, draft }: { own: OwnInCall; draft: Draft }) {
+  const [text, setText] = useDraft(draft);
+  return (
+    <div className="nn-foot">
+      <OwnComposer value={text} onChange={setText} onSend={(t) => own.write(t, () => setText(''))} busy={own.busy} said placeholder="Note to self" icon="pen"
+        hint={<span className="nn-lock"><Icon name="lock" size={12} />Only you</span>} />
+      <IconButton icon="bookmark" className="nn-mark" label="Mark this moment, only you" title="Mark this moment · B" aria-keyshortcuts="B" onClick={() => own.mark()} />
+    </div>
   );
 }

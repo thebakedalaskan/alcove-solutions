@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Notes, before and after</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="call.css">
+<link rel="stylesheet" href="notes.css">
+<script src="icons.js"></script>
+<script src="nc.js"></script>
+<script src="notes.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400..700&amp;family=Newsreader:ital,opsz,wght@0,6..72,300..600;1,6..72,300..600&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<div class="ni stage" style="width: 1760px">
+<div class="ni-top">
+<h1>Notes in the call, rethought</h1>
+<p>The same moment of the same call, today and redesigned: two decisions, three follow-ups the call suggested, and a summary that couldn’t be updated for a moment.</p>
+</div>
+
+<div class="ni-row">
+<div class="ni-col">
+<div class="ni-lab">Today<span>Notes, at the top right</span></div>
+<div class="ni-tall"><dc-import name="Before" marks="{{true}}" hint-size="368px,980px"></dc-import></div>
+</div>
+<div class="ni-col">
+<div class="ni-lab">Rethought<span>Every control works</span></div>
+<div class="ni-tall"><dc-import name="Notes" step="nIdea" hint-size="368px,980px"></dc-import></div>
+</div>
+<div class="ni-col">
+<div class="ni-lab">What changed</div>
+<div class="ni-list">
+<sc-for list="{{items}}" as="x" hint-placeholder-count="7">
+<div class="ni-it"><span class="k">{{x.k}}</span><div><b>{{x.t}}</b><span class="was"><i>Was</i>{{x.was}}</span><span class="now"><i>Now</i>{{x.now}}</span></div></div>
+</sc-for>
+</div>
+</div>
+</div>
+
+<div class="ni-keys">
+<sc-for list="{{keys}}" as="y" hint-placeholder-count="5">
+<div class="ni-key"><b><span class="{{y.cls}}" style="{{y.sw}}"></span>{{y.t}}</b><p>{{y.p}}</p></div>
+</sc-for>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1760,"height":1520}}'>
+/* Today's panel beside the redesign, at the same moment, and what changed, by the numbers on today's. */
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      items: [
+        { k: '1', t: 'The head says what it is', was: 'a subtitle, Open, a bookmark and ×.', now: 'Notes, its state, Open (↗) and ×.' },
+        { k: '2', t: 'The state is said once', was: 'a Notes on chip, “Written as people talk”, “Writing as people talk”, and ⋯ for the controls.', now: 'one pill, Live, which opens what’s captured, with Pause and Turn off.' },
+        { k: '3', t: 'A hiccup is a word, not a box', was: 'a caution box for something that fixes itself.', now: 'the summary’s time turns caution until it’s back.' },
+        { k: '4', t: 'Decisions look like decisions', was: 'ticked boxes, like to-dos, and times with seconds in chips.', now: 'rose diamonds, as on the note, and 16:04 in a quiet column that opens the transcript.' },
+        { k: '5', t: 'Suggestions are rows you can add', was: 'Everyone 0 · Mine 0, “Nothing to do yet”, and a count of 3 suggestions to open.', now: 'each one dashed under the checklist, with who and when, Add and ×.' },
+        { k: '6', t: 'Your own notes are a line away', was: 'a paragraph explaining Yours, at the end of a long scroll.', now: 'Note to self and the bookmark at the foot of every tab; what you keep is under Yours.' },
+        { k: '7', t: 'Each fact once', was: 'a footer repeating the shield in the top bar.', now: 'who gets the notes and how they’re written are in what’s captured.' }
+      ],
+      keys: [
+        { cls: 'ni-sw', sw: 'background: #FF6B83', t: 'Live', p: 'Rec’s dot only ever means notes are being taken.' },
+        { cls: 'ni-sw dia', sw: 'background: #ECA1BE', t: 'Decided', p: 'Rose, a diamond, as on the note afterwards.' },
+        { cls: 'ni-sw box', sw: 'background: transparent', t: 'Follow-ups', p: 'Horizon, a box anyone in the call can tick.' },
+        { cls: 'ni-sw dash', sw: 'background: transparent', t: 'Suggested', p: 'Dashed until someone adds it. Nothing to review behind a count.' },
+        { cls: 'ni-sw', sw: 'background: #FAAD77', t: 'Yours', p: 'Warm, with a lock where it’s written: only you see it.' }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,13 +1,13 @@
 /*
- * Your side of the call, one view at a time (side.ts): Notes, with the notes as the call goes, the transcript and asking
- * about the call (CatchUp.tsx) as its tabs, and your own notes at the foot of the notes; Chat; and People. It slides in at
+ * Your side of the call, one view at a time (side.ts): Notes, with its tabs (the notes as the call goes, the transcript, asking
+ * about the call in CatchUp.tsx, and your own notes in Yours.tsx); Chat; and People. It slides in at
  * the right and the stage makes room (PanelHost.tsx); on a phone it's a sheet over the call. Notes, the transcript and
  * answers come from what was really said while notes were on; nothing here is invented. The notes are the call's shared
  * live notes, which come with the call (CallState.liveNotes), so ticking a follow-up is done for everyone there. Chat is
  * end-to-end encrypted in the browsers (CallSession.crypto); the server only relays it.
  */
 import { clock, errorMessage, notesAreOn, type CallAsker, type CallState, type CallStatus, type CatchUpItem, type CallSession, type Person, type Rung, type TranscriptMoment } from '@alcove/api';
-import { Avatar, Button, CaptureSign, Dots, EmptyState, Faces, Icon, IconButton, Notice, Popover, Tabs, WsPutArrow, cn, useToast, type IconName } from '@alcove/ui';
+import { Avatar, Button, Dots, EmptyState, Faces, Icon, IconButton, Tabs, TimeChip, Unencrypted, WsPutArrow, cn, useToast, type IconName } from '@alcove/ui';
 import type { StageTogether } from './Stage';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
@@ -19,10 +19,11 @@ import { captureHere } from '~/lib/capture';
 import { useLive } from '~/lib/live';
 import { callName, listNames, sameEmail } from '~/lib/people';
 import { hm } from '~/lib/time';
-import { notesBrowser, organizerName, roomScribe, type CaptureControls } from '../notes/Capture';
-import { Moments, callTimes, type CallTimes } from '../notes/CatchUp';
+import { capital } from '~/lib/words';
+import { AskForNotes, askerOf, notesBrowser, organizerName, roomScribe, useNotNow, type CaptureControls } from '../notes/Capture';
+import { callTimes, type CallTimes } from '../notes/CatchUp';
 import { CallLines } from '../notes/LiveLines';
-import { CallFollowUps } from '../notes/FollowUps';
+import { NotesFollowUps } from '../notes/FollowUps';
 import { useActionFocus, type ActionJump } from './actionFocus';
 import type { NotesTab } from './side';
 import { statusText } from './status';
@@ -56,14 +57,11 @@ export interface HostControls {
   setPointing: (on: boolean) => Promise<void>;
 }
 
-/**
- * The head of your side: what it shows (and, for Notes, where it's kept), what's yours to press there, and × to put it away.
- */
-export function SideHead({ title, sub, onClose, children }: { title: string; sub?: string | undefined; onClose: () => void; children?: ReactNode }) {
+/** The head of your side, but for Notes (NotesHead): what it shows, and × to put it away. */
+export function SideHead({ title, onClose }: { title: string; onClose: () => void }) {
   return (
     <div className="ic-side-head">
-      <div className="ttl"><h2>{title}</h2>{sub && <span className="sub">{sub}</span>}</div>
-      {children}
+      <div className="ttl"><h2>{title}</h2></div>
       <IconButton icon="x" label={`Close ${title}`} onClick={onClose} />
     </div>
   );
@@ -83,89 +81,142 @@ export function SideBody({ view, children }: { view: string; children: ReactNode
   );
 }
 
-const NOTES_TABS: { value: NotesTab; label: string }[] = [{ value: 'notes', label: 'Notes' }, { value: 'transcript', label: 'Transcript' }, { value: 'ask', label: 'Ask' }];
-/** The Notes view's tabs: the notes, the transcript and Ask, three views of what was said. */
-export const NotesTabs = ({ tab, onTab }: { tab: NotesTab; onTab: (t: NotesTab) => void }) => (
-  <Tabs className="ic-ntabs" label="Notes, the transcript or Ask" value={tab} onChange={onTab} options={NOTES_TABS} />
+const NOTES_TABS: { value: NotesTab; label: string }[] = [{ value: 'notes', label: 'Notes' }, { value: 'transcript', label: 'Transcript' }, { value: 'ask', label: 'Ask' }, { value: 'yours', label: 'Yours' }];
+/** Notes' tabs: the notes, the transcript, Ask, and your own notes for someone with an account to keep them under (`yours`). */
+export const NotesTabs = ({ tab, yours, onTab }: { tab: NotesTab; yours: boolean; onTab: (t: NotesTab) => void }) => (
+  <Tabs className="nn-tabs" label="Notes, the transcript, Ask or yours" value={tab} onChange={onTab} options={yours ? NOTES_TABS : NOTES_TABS.filter((t) => t.value !== 'yours')} />
 );
 
-const Foot = ({ icon = 'sealed', children, end, wrap = false }: { icon?: 'sealed' | 'lock' | 'shieldOff'; children: ReactNode; end?: ReactNode; wrap?: boolean }) => (
-  <div className={cn('ic-nf', wrap && 'is-wrap')}><Icon name={icon} size={15} /><span className="lbl">{children}</span>{end && <span className="end">{end}</span>}</div>
-);
+/**
+ * The head of Notes: what it is, its state in a word (`pill`, which opens what's captured), Unencrypted beside it while the
+ * call's model isn't in a secure enclave (so it's said on every tab, in every state), Open and ×.
+ */
+export function NotesHead({ pill, modelPrivate, onOpen, onClose }: { pill: ReactNode; modelPrivate: boolean; onOpen: () => void; onClose: () => void }) {
+  return (
+    <div className="ic-side-head nn-head">
+      <h2>Notes</h2>
+      {pill}
+      {!modelPrivate && <Unencrypted compact />}
+      <span className="sp" />
+      <IconButton icon="external" label="Open in the workspace, just for you" onClick={onOpen} />
+      <IconButton icon="x" label="Close Notes" onClick={onClose} />
+    </div>
+  );
+}
 
 /* ---------- notes ---------- */
-
-function DecidedRows({ items, times, onSeek, put }: { items: CatchUpItem[]; times: CallTimes; onSeek: (e: TranscriptMoment) => void; put: LivePut | null | undefined }) {
-  return (
-    <>
-      {items.map((it) => (
-        <motion.div key={`${it.evidence[0]?.lineId ?? 'x'}-${it.text}`} className="ic-nr" layout="position" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={UI}>
-          <span className="mk"><Icon name="check" size={12} /></span>
-          <div className="nr-text">{it.text}</div>
-          {it.evidence.length ? <Moments evidence={it.evidence.slice(0, 1)} times={times} onOpen={onSeek} /> : <span />}
-          {put && <WsPutArrow verb="Add to" target={put.target} onPut={() => put.decided(it.text)} />}
-        </motion.div>
-      ))}
-    </>
-  );
-}
-
-
-function Summary({ text }: { text: string }) {
-  const ref = useRef<HTMLParagraphElement>(null);
-  const [open, setOpen] = useState(false);
-  const [long, setLong] = useState(false);
-  useEffect(() => { const el = ref.current; if (el) setLong(el.scrollHeight > el.clientHeight + 2); }, [text]);
-  return (
-    <>
-      <p ref={ref} className={cn('ic-sum', open && 'is-open')}>{text}</p>
-      {(long || open) && <button type="button" className="ic-more-text" onClick={() => setOpen((o) => !o)}>{open ? 'Show less' : 'Show more'}</button>}
-    </>
-  );
-}
 
 /** What's said in a breakout room nobody's browser can hear, and one the organizer paused on its own. */
 const ROOM_UNHEARD = 'Nobody’s browser in this room can transcribe it right now, so nothing new is transcribed.';
 const ROOM_PAUSED = 'Notes are paused in this room. Nothing said here is transcribed until the organizer resumes.';
 
+/** One bar under the tabs: what capture means now, said once, and the one thing to do about it. */
+interface Bar { key: string; tone?: 'ask' | 'caution' | undefined; icon?: IconName | undefined; faces?: Person[] | undefined; text: string; acts?: ReactNode }
+
 /**
- * Notes' ⋯, beside the sign it changes: the organizer's Pause, Resume and Turn off (or Turn on), or anyone else's Ask for notes.
+ * The bars under Notes' tabs, on the notes and the transcript: this browser's own problems, then what capture means where
+ * you are, only when it isn't simply live, with the one thing to do about it. `capture`: say capture's state too. The notes
+ * say it in their empty state instead while there's nothing in them.
  */
-function NotesMenu({ state, controls }: { state: CallState; controls: CaptureControls }) {
+export function NotesBars({ state, controls, problems, capture }: { state: CallState; controls: CaptureControls; problems: string[]; capture: boolean }) {
+  const { notNow, busy } = useNotNow(state, controls);
   const c = state.capture;
-  const on = notesAreOn(c.mode);
-  const paused = c.mode === 'paused';
+  const here = captureHere(c);
   const host = state.isOrganizer;
-  const asking = !host && c.asked?.state === 'asking';
-  const [menu, setMenu] = useState(false);
-  const item = (icon: IconName, label: string, f: () => void) => (
-    <button type="button" className="mi" onClick={() => { setMenu(false); f(); }}><Icon name={icon} size={16} /><span className="t">{label}</span></button>
-  );
+  const organizer = capital(organizerName(state));
+  const askers = c.requests.map((r) => askerOf(state, r));
+  const bars: Bar[] = problems.map((p) => ({ key: p, tone: 'caution', icon: 'alert', text: p }));
+  if (notesAreOn(c.mode) && state.isHost && !host && c.room) {
+    bars.push({ key: 'hosting', tone: 'caution', icon: 'alert', text: 'You’re hosting from a breakout room, so nobody’s browser hears the main room for the notes until everyone is back.' });
+  }
+  // Recorded but not heard: notes stay as they are, whatever the tab, unless this browser's own problem already says why.
+  if (here.mode === 'on' && here.transcript.mode === 'unavailable' && !(state.isHost && problems.length > 0)) {
+    bars.push({ key: 'unheard', tone: 'caution', icon: 'alert', text: `${notesBrowser(state)} can’t listen right now, so nothing new is transcribed. Notes pick up as soon as it can.` });
+  }
+  if (capture) {
+    const since = c.recording.since ? ` at ${hm(c.recording.since)}` : '';
+    if (here.mode === 'unavailable') {
+      bars.push({ key: 'unavailable', tone: 'caution', icon: 'alert', text: c.room ? ROOM_UNHEARD : c.away
+        ? `${notesBrowser(state)} isn’t in the call right now, so nothing new is captured until it’s back.`
+        : `${notesBrowser(state)} can’t record or listen right now, so nothing new is captured. Notes pick up as soon as it can.` });
+    } else if (here.mode === 'paused' && c.mode !== 'paused') {
+      bars.push({ key: 'room', icon: 'pause', text: ROOM_PAUSED, acts: host ? <Button size="sm" variant="primary" icon="play" onClick={() => controls.room(false)}>Resume notes here</Button> : undefined });
+    } else if (c.mode === 'paused') {
+      bars.push({ key: 'paused', icon: 'pause', text: host ? `Paused${since}. Nothing new is written until you resume.` : `${organizer} paused notes${since}. Nothing new is written until they resume.`,
+        acts: host ? <Button size="sm" variant="primary" icon="play" onClick={controls.resume}>Resume</Button> : <AskForNotes state={state} controls={controls} label="Ask to resume" /> });
+    } else if (c.mode === 'off' && host && askers.length > 0) {
+      bars.push({ key: 'asked', tone: 'ask', faces: askers, text: `${listNames(askers)} asked for notes.`,
+        acts: <><Button size="sm" variant="quiet" disabled={busy} onClick={notNow}>Not now</Button><Button size="sm" variant="primary" onClick={() => controls.notes(true)}>Turn on</Button></> });
+    } else if (c.mode === 'off') {
+      const ever = state.notes.everOn;
+      bars.push({ key: 'off', icon: 'notesPen', text: !ever ? 'Notes are off, so nothing is being transcribed.' : host ? 'Notes are off. What was written is kept.' : `${organizer} turned notes off. What was written is kept.`,
+        acts: host ? <Button size="sm" variant="primary" onClick={() => controls.notes(true)}>Turn on</Button> : <AskForNotes state={state} controls={controls} label="Ask for notes" /> });
+    }
+  }
   return (
-    <Popover open={menu} onOpenChange={setMenu} side="bottom" align="end" label="Notes options" className="ic-menu narrow"
-      anchor={<button type="button" className="ac-icon-btn" aria-label="Notes options" title="Notes options"><Icon name="more" size={18} /></button>}>
-      {host && on && item('pause', 'Pause notes', controls.pause)}
-      {host && paused && item('play', 'Resume notes', controls.resume)}
-      {host && (on || paused) && item('notesPen', 'Turn notes off', () => controls.notes(false))}
-      {host && c.mode === 'off' && item('play', 'Turn notes on', () => controls.notes(true))}
-      {!host && !on && (asking ? item('x', 'Take back your ask', () => controls.ask(false)) : item('hand', 'Ask for notes', () => controls.ask(true)))}
-      {!host && <p className="hint">Only {organizerName(state)} can turn notes on, off or pause them. You can ask for them.</p>}
-    </Popover>
+    <>
+      {bars.map((b) => (
+        <div key={b.key} className={cn('nn-bar', b.tone && `is-${b.tone}`)} role="status">
+          {b.faces ? <Faces people={b.faces} size={20} max={3} /> : <Icon name={b.icon ?? 'info'} size={16} />}
+          <p className="nn-tx">{b.text}</p>
+          {b.acts && <div className="nn-acts">{b.acts}</div>}
+        </div>
+      ))}
+    </>
   );
 }
 
-export function NotesView({ session, state, getting, problems, controls, carried, yours, put, onSeek }: {
+/** A decision, as the notes have it: a rose diamond, its words, when it was said (which opens the transcript there) and the arrow into a document. */
+function DecidedRows({ items, times, onSeek, put }: { items: CatchUpItem[]; times: CallTimes; onSeek: (e: TranscriptMoment) => void; put: LivePut | null | undefined }) {
+  return (
+    <>
+      {items.map((it) => {
+        const e = it.evidence[0];
+        return (
+          <motion.div key={`${e?.lineId ?? 'x'}-${it.text}`} className="nn-row" layout="position" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={UI}>
+            <span className="nn-dia" aria-hidden="true" />
+            <p className="nn-tx">{it.text}</p>
+            <span className="end">
+              {e && <TimeChip seconds={e.said} label={times.minute(e.said)} title={`Open the transcript at ${times.second(e.said)}`} onSeek={() => onSeek(e)} />}
+              {put && <WsPutArrow verb="Add to" target={put.target} onPut={() => put.decided(it.text)} />}
+            </span>
+          </motion.div>
+        );
+      })}
+    </>
+  );
+}
+
+/** The summary first, a few lines of it, with how fresh it is at the right of its heading. */
+function Summary({ text, fresh }: { text: string; fresh: ReactNode }) {
+  const ref = useRef<HTMLParagraphElement>(null);
+  const [open, setOpen] = useState(false);
+  const [long, setLong] = useState(false);
+  useEffect(() => { const el = ref.current; if (el) setLong(el.scrollHeight > el.clientHeight + 2); }, [text]);
+  return (
+    <section className="nn-sec is-sum" aria-label="Summary">
+      <div className="nn-sh"><h3>Summary</h3>{fresh}</div>
+      {text ? (
+        <>
+          <p ref={ref} className={cn('nn-sum', open && 'is-open')}>{text}</p>
+          {(long || open) && <button type="button" className="nn-more" onClick={() => setOpen((o) => !o)}>{open ? 'Show less' : 'Show all'}</button>}
+        </>
+      ) : <p className="nn-quiet">Nothing to sum up yet.</p>}
+    </section>
+  );
+}
+
+export function NotesView({ session, state, getting, problems, controls, carried, put, onSeek }: {
   session: CallSession;
   state: CallState;
   /** Who gets the notes, as far as you can tell: everyone invited, for the organizer. */
   getting: Person[];
+  /** This browser's own problems with capture: each is a bar. */
   problems: string[];
-  /** Notes on and off, pause and resume (the organizer's), or asking for notes (anyone else's). */
+  /** Notes on and off, pause and resume and not now (the organizer's), or asking for notes (anyone else's). */
   controls: CaptureControls;
   /** What carries over from earlier calls, for you alone, when there's anything of yours. */
   carried?: ReactNode;
-  /** Your own notes, at the foot: only for someone with an account in the call. */
-  yours?: ReactNode;
   /** Sends a line into the document you were last in, while the workspace has one you can edit. */
   put?: LivePut | null | undefined;
   onSeek: (e: TranscriptMoment) => void;
@@ -180,8 +231,9 @@ export function NotesView({ session, state, getting, problems, controls, carried
   const pausedHere = here.mode === 'paused';
   const roomHeld = pausedHere && !paused;
   const host = state.isOrganizer;
-  const asking = !host && c.asked?.state === 'asking';
-  const organizer = organizerName(state);
+  const asked = !host ? c.asked : null;
+  const organizer = capital(organizerName(state));
+  const askers = c.requests.map((r) => askerOf(state, r));
   const live = state.liveNotes;
   const n = live.notes;
   const written = useLive(session.followUps);
@@ -189,118 +241,128 @@ export function NotesView({ session, state, getting, problems, controls, carried
   /* What people added comes first in nothing: it's listed among what was said, and there may be no notes for it to go with yet. */
   const any = n !== null || live.added.length > 0 || live.suggestions.length > 0 || (written?.items.length ?? 0) > 0;
   const held = state.breakouts.held;
-  const ask = asking
-    ? <Button size="sm" variant="quiet" onClick={() => controls.ask(false)}>Take it back</Button>
-    : <Button variant="primary" size="sm" icon="hand" onClick={() => controls.ask(true)}>Ask for notes</Button>;
+  const times = callTimes(state.startedAt);
+  const { notNow, busy } = useNotNow(state, controls);
+  const asOf = n ? times.minute(n.read.asOf) : null;
+  /* Anyone else's way to ask, and to take it back: what this view is for while notes are off. */
+  const askFor = <AskForNotes state={state} controls={controls} label={asked?.state === 'declined' ? 'Ask again' : 'Ask for notes'} primary />;
+  const fresh = (
+    <span className={cn('nn-fresh', live.error && 'is-stale')} title={live.error ? 'Alcove tries again on its own' : undefined}>
+      {live.error ? <><Icon name="retry" size={13} />{asOf ? `Not updated since ${asOf}` : 'Not updated just now'}</>
+        : on && live.writing ? <><Dots />Writing</>
+          : asOf && `As of ${asOf}`}
+    </span>
+  );
+  let empty: ReactNode = null;
+  if (roomHeld && !any) {
+    empty = (
+      <EmptyState title="Notes are paused in this room" action={host ? <Button variant="primary" size="sm" icon="play" onClick={() => controls.room(false)}>Resume notes here</Button> : undefined}>
+        Nothing said here is transcribed until the organizer resumes.
+      </EmptyState>
+    );
+  } else if (paused && !any) {
+    empty = (
+      <EmptyState title="Notes are paused" action={host ? <Button variant="primary" size="sm" icon="play" onClick={controls.resume}>Resume</Button> : askFor}>
+        {host ? 'Nothing is recorded, transcribed or sent to the AI until you resume.' : asked?.state === 'asking' ? `You asked ${organizer} to resume them.` : `Nothing is recorded, transcribed or sent to the AI until ${organizer} resumes.`}
+      </EmptyState>
+    );
+  } else if (c.mode === 'off' && !any) {
+    empty = host && askers.length > 0 ? (
+      <EmptyState art={<Faces people={askers} size={40} max={3} />} title={`${listNames(askers)} asked for notes`}
+        action={<><Button variant="quiet" size="sm" disabled={busy} onClick={notNow}>Not now</Button><Button variant="primary" size="sm" onClick={() => controls.notes(true)}>Turn on notes</Button></>}>
+        Nothing from this call is written down yet. Notes start from the moment you turn them on.
+      </EmptyState>
+    ) : host ? (
+      <EmptyState title="Notes are off" action={<Button variant="primary" size="sm" onClick={() => controls.notes(true)}>Turn on notes</Button>}>
+        Nothing from this call is written down. Notes start from the moment you turn them on.
+      </EmptyState>
+    ) : asked?.state === 'asking' ? (
+      <EmptyState title={`You asked ${organizer} for notes`} action={askFor}>{organizer} sees your ask, and so does everyone here. You’ll hear when they answer.</EmptyState>
+    ) : asked?.state === 'declined' ? (
+      <EmptyState title={`${organizer} said not now`} action={askFor}>At {hm(asked.at)}. You can ask again.</EmptyState>
+    ) : (
+      <EmptyState title="Notes are off" action={askFor}>Only {organizer} can turn them on. You can ask them to.</EmptyState>
+    );
+  } else if (unavailable && !any) {
+    empty = (
+      <EmptyState title="Nothing is being captured">
+        {c.room ? 'Nobody’s browser in this room can transcribe it right now. Notes pick up as soon as one can.' : c.away ? `${notesBrowser(state)} isn’t in the call right now. Notes pick up as soon as it’s back.`
+          : `${notesBrowser(state)} can’t record or listen right now.${state.isHost ? ' Everyone can see that.' : ''} Notes pick up as soon as it can.`}
+      </EmptyState>
+    );
+  } else if (!any && live.error) {
+    empty = <EmptyState title="The first notes couldn’t be written yet">Alcove tries again on its own. What’s said is still transcribed meanwhile.</EmptyState>;
+  } else if (!any) {
+    empty = (
+      <EmptyState title={live.writing ? 'Writing the first notes' : 'Listening'} className="is-listening">
+        {state.transcript.length ? 'Decisions, follow-ups and a summary come in here in a moment.' : 'Decisions, follow-ups and a summary come in here as people talk.'}
+      </EmptyState>
+    );
+  }
   return (
     <>
-      <div className="ic-scroll">
-        <div className="ic-nh">
-          <CaptureSign mode={here.mode} requested={!on && c.requests.length > 0} />
-          <span className="m">{unavailable ? 'Nothing is being captured' : notesAreOn(here.mode) ? 'Written as people talk' : pausedHere ? 'Nothing is written down' : state.notes.everOn ? 'What was written is kept' : 'Nothing is being written down'}</span>
-          <NotesMenu state={state} controls={controls} />
-        </div>
+      <NotesBars state={state} controls={controls} problems={problems} capture={any} />
+      <div className="nn-body">
         {carried}
-        {on && state.isHost && !host && c.room && (
-          <div className="ic-problems is-top"><Notice tone="caution" icon="alert">You’re hosting from a breakout room, so nobody’s browser hears the main room for the notes until everyone is back.</Notice></div>
-        )}
-        {unavailable && any && (
-          <div className="ic-problems is-top"><Notice tone="caution" icon="alert">{c.room ? ROOM_UNHEARD : c.away
-            ? `${notesBrowser(state)} isn’t in the call right now, so nothing new is captured until it’s back.`
-            : `${notesBrowser(state)} can’t record or listen right now, so nothing new is captured.${state.isHost ? ' Everyone can see that.' : ''}`}</Notice></div>
-        )}
-        {pausedHere && any && (
-          <div className="ic-problems is-top"><Notice icon="pause">{roomHeld ? ROOM_PAUSED : <>Paused{c.recording.since ? ` at ${hm(c.recording.since)}` : ''}. Nothing is recorded, transcribed or sent to the AI until {host ? 'you resume' : `${organizer} resumes`}.</>}</Notice></div>
-        )}
-        {(problems.length > 0 || live.error) && (
-          <div className="ic-problems is-top">{[...problems, ...(live.error ? [live.error] : [])].map((p) => <Notice key={p} tone="caution">{p}</Notice>)}</div>
-        )}
-        {roomHeld && !any ? (
-          <EmptyState title="Notes are paused in this room" className="ic-empty">Nothing said here is transcribed until the organizer resumes.</EmptyState>
-        ) : paused && !any ? (
-          <EmptyState title="Notes are paused" className="ic-empty"
-            action={host ? <Button variant="primary" size="sm" icon="play" onClick={controls.resume}>Resume notes</Button> : ask}>
-            {host ? 'Nothing is recorded, transcribed or sent to the AI until you resume.' : asking ? `You asked ${organizer} to resume them.` : `Nothing is recorded, transcribed or sent to the AI until ${organizer} resumes.`}
-          </EmptyState>
-        ) : c.mode === 'off' && !any ? (
-          <EmptyState title="Notes are off" className="ic-empty"
-            action={host ? <Button variant="primary" size="sm" onClick={() => controls.notes(true)}>Turn notes on</Button> : ask}>
-            {host ? 'Nothing from this call is being written down. Notes pick up from the moment you turn them on.' : asking ? `You asked ${organizer} for notes.` : `Only ${organizer} can turn them on. You can ask them to.`}
-          </EmptyState>
-        ) : unavailable && !any ? (
-          <EmptyState title="Nothing is being captured" className="ic-empty">
-            {c.room ? 'Nobody’s browser in this room can transcribe it right now. Notes pick up as soon as one can.' : c.away ? `${notesBrowser(state)} isn’t in the call right now. Notes pick up as soon as it’s back.`
-              : `${notesBrowser(state)} can’t record or listen right now.${state.isHost ? ' Everyone can see that.' : ''} Notes pick up as soon as it can.`}
-          </EmptyState>
-        ) : !any ? (
-          <EmptyState title={live.writing ? 'Writing the first notes' : 'Listening'} className="ic-empty">
-            {state.transcript.length ? 'Decisions, follow-ups and a summary appear here in a moment.' : 'Decisions, follow-ups and a summary appear here as people talk.'}
-          </EmptyState>
-        ) : (
-          <div className="ic-nb">
-            <div><div className="ic-sh"><span className="ac-eyebrow">Decided</span><span className="n">{n?.decided.length ?? 0}</span></div>
-              {n?.decided.length ? <DecidedRows items={n.decided} times={callTimes(state.startedAt)} onSeek={onSeek} put={put} /> : <p className="ic-quiet">Nothing decided yet.</p>}</div>
-            <div><div className="ic-sh"><span className="ac-eyebrow">Follow-ups</span></div>
-              <CallFollowUps key={state.capture.room?.id ?? 'main'} session={session} compact put={put} onSeek={onSeek} people={getting} /></div>
+        {empty ?? (
+          <>
+            {n?.read.whileHere && <p className="nn-guest"><Icon name="lock" size={13} />Written from what was said while you were here.</p>}
+            <Summary text={n?.summary ?? ''} fresh={fresh} />
+            <section className="nn-sec is-dec" aria-label="Decided">
+              <div className="nn-sh"><h3>Decided</h3>{(n?.decided.length ?? 0) > 0 && <span className="n">{n?.decided.length}</span>}</div>
+              {n?.decided.length ? <DecidedRows items={n.decided} times={times} onSeek={onSeek} put={put} /> : <p className="nn-quiet">Nothing decided yet.</p>}
+            </section>
+            <NotesFollowUps key={state.capture.room?.id ?? 'main'} session={session} put={put} onSeek={onSeek} people={getting} />
             {held.length > 0 && (
-              <div><div className="ic-sh"><span className="ac-eyebrow">From the rooms</span><span className="n">{held.reduce((k, h) => k + h.rooms.length, 0)}</span></div>
+              <section className="nn-sec nn-rooms" aria-label="From the rooms">
+                <div className="nn-sh"><h3>From the rooms</h3><span className="n">{held.reduce((k, h) => k + h.rooms.length, 0)}</span></div>
                 {held.map((h) => (
-                  <div key={h.from} className="ic-rgrp">
+                  <div key={h.from}>
                     {h.rooms.map((r) => {
                       const sent = [...r.people, ...r.guests.map((g) => g.person)];
                       return <div key={r.id} className="rn">{r.name}<span>{sent.length}</span><Faces people={sent} size={16} /></div>;
                     })}
-                    <p className="ic-quiet">{clock(h.from)} to {clock(h.to)}. Each room’s talk goes into the call’s notes as its own section.</p>
+                    <p className="nn-quiet">{clock(h.from)} to {clock(h.to)}. Each room’s talk goes into the call’s notes as its own section.</p>
                   </div>
                 ))}
-              </div>
+              </section>
             )}
-            <div><div className="ic-sh"><span className="ac-eyebrow">Summary</span></div>{n?.summary ? <Summary text={n.summary} /> : <p className="ic-quiet">Nothing to sum up yet.</p>}</div>
-            {(n?.read.whileHere || (on && (n || live.writing))) && (
-              <div className="ic-about">
-                {n?.read.whileHere && <div className="ic-writing"><Icon name="lock" size={13} />Only what was said while you were here.</div>}
-                {on && <div className="ic-writing">{live.writing ? <><Dots />Writing as people talk</> : n && <><Icon name="clock" size={13} />Updated from {n.read.lines} {n.read.lines === 1 ? 'line' : 'lines'} of the transcript</>}</div>}
-              </div>
-            )}
-          </div>
+          </>
         )}
-        {yours}
       </div>
-      <Foot wrap icon={state.capture.modelPrivate ? 'sealed' : 'shieldOff'} end={getting.length ? <span title={`Notes go to ${listNames(getting)}`}><Faces people={getting} size={18} max={3} /></span> : undefined}>{state.capture.modelPrivate ? 'Confidential compute' : 'Unencrypted AI model'} · everyone with the notes</Foot>
     </>
   );
 }
 
 /* ---------- transcript ---------- */
 
-export function TranscriptView({ state, me, marks, put }: { state: CallState; me: string | undefined; marks?: LineMarks | undefined; put?: LivePut | null | undefined }) {
+export function TranscriptView({ state, me, marks, put, controls, problems }: {
+  state: CallState; me: string | undefined; marks?: LineMarks | undefined; put?: LivePut | null | undefined;
+  controls: CaptureControls; problems: string[];
+}) {
   // What's said where you are: in a breakout room, the room's lines, under the room's capture.
   const c = captureHere(state.capture);
-  const mode = c.mode;
-  const on = notesAreOn(mode);
-  const roomHeld = state.capture.room !== null && mode === 'paused' && state.capture.mode !== 'paused';
+  const on = notesAreOn(c.mode);
   return (
     <>
+      <NotesBars state={state} controls={controls} problems={problems} capture />
       <div className="ic-tr">
-        {c.transcript.mode === 'unavailable' && (
-          <Notice tone="caution" icon="alert">
-            {state.capture.room ? ROOM_UNHEARD : `${notesBrowser(state)} can’t listen right now, so nothing new is transcribed.`}
-          </Notice>
-        )}
-        {mode === 'paused' && <Notice icon="pause">{roomHeld ? ROOM_PAUSED : 'Notes are paused. Nothing new is transcribed until they resume.'}</Notice>}
-        {mode === 'off' && <Notice icon="notesPen">{state.notes.everOn ? 'Notes are off. Nothing new is written down until they’re back on.' : 'Notes are off, so nothing is being transcribed.'}</Notice>}
         {state.transcript.length ? <CallLines lines={state.transcript} gaps={c.gaps} me={me} marks={marks} quote={put ? { target: put.target, onQuote: put.line } : null} when={(at) => lineClock(state, at)} /> : on && (
-          <EmptyState title="Nothing said yet" className="ic-empty">
+          <EmptyState title="Nothing said yet">
             {!state.capture.room ? 'What’s said appears here a few seconds later.'
               : state.capture.room.scribe ? `What’s said here appears a few seconds later, transcribed by ${roomScribe(state)} for this room’s section of the notes.`
                 : 'What’s said here appears once a browser in this room can transcribe it.'}
           </EmptyState>
         )}
       </div>
-      <Foot wrap icon={state.capture.modelPrivate ? 'sealed' : 'shieldOff'}>{state.capture.modelPrivate ? 'Confidential compute' : 'Unencrypted AI model'} · {state.capture.room ? 'this room’s section of the notes' : 'everyone invited gets it'}</Foot>
     </>
   );
 }
+
+/** The foot of People: how the call is kept private. */
+const Foot = ({ icon = 'sealed', children, wrap = false }: { icon?: 'sealed' | 'lock'; children: ReactNode; wrap?: boolean }) => (
+  <div className={cn('ic-nf', wrap && 'is-wrap')}><Icon name={icon} size={15} /><span className="lbl">{children}</span></div>
+);
 
 /* ---------- people ---------- */
 

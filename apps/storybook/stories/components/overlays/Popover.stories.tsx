@@ -29,12 +29,12 @@ const NOTE_MENU = (
   </>
 );
 
-/** The notes options in a call, on the night stage. */
-const NOTES_OPTIONS = (
+/** What the name of your shared screen offers in a call, on the night stage. */
+const SCREEN_OPTIONS = (
   <>
-    <Item icon="pause" title="Pause notes" />
-    <Item icon="notesPen" title="Turn notes off" />
-    <Item icon="transcript" title="Open the transcript" />
+    <Item icon="pointer" title="Others can point at it" />
+    <Item icon="x" title="Clear marks" />
+    <Item icon="screen" title="Change what you share" />
   </>
 );
 
@@ -96,11 +96,11 @@ export const WithATip: Story = {
 };
 /** Above its anchor, lined up with the anchor's end: for a button low on the page or at the right of a row. */
 export const AboveAtTheEnd: Story = { name: 'Above at the end', args: { side: 'top', align: 'end', caret: true } };
-/** On the call's night stage: the notes options in a call. */
+/** On the call's night stage: the menu on the name of your shared screen. */
 export const OnTheStage: Story = {
   name: 'On the stage',
   ...onStage,
-  args: { stage: true, align: 'end', label: 'Notes options', anchor: <IconButton icon="more" label="Notes options" title={undefined} />, children: NOTES_OPTIONS }
+  args: { stage: true, align: 'end', label: 'Your screen', anchor: <IconButton icon="more" label="Your screen" title={undefined} />, children: SCREEN_OPTIONS }
 };
 /** PopoverClose closes it from inside: here, the X in its head. */
 export const WithACloseButton: Story = {

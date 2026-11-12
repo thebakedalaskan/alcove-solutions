@@ -253,7 +253,7 @@ page is designed, how to make a design canvas from the kit in `docs/design/canva
   board picker, `pc-` the phone's add sheet; its tokens are `--bd-*`, `--bf-*`, `--note-*`, and `--line-ink` and `--line-rose` beside the existing
   `--line` and `--line-control`; `.bt`, `.bi`, `.bm`, `.swatch`, `.c-*` and `.k-*` are unscoped there, so those names are taken); the welcome
   page in `styles/welcome.css`, with its scenes in `welcome-note.css`, `welcome-call.css`, `welcome-team.css` and
-  `welcome-night.css` (`lp-`); the other screens in `styles/app.css` and `call.css`; the call's timer in `styles/call-timer.css`; Chat in a call in `styles/call-chat.css` (`ch-`).
+  `welcome-night.css` (`lp-`); the other screens in `styles/app.css` and `call.css`; the call's timer in `styles/call-timer.css`; Chat in a call in `styles/call-chat.css` (`ch-`); Notes in a call in `styles/call-notes.css` (`nn-` the panel, `nk-` what's captured).
   Truncate to one or two lines with `ac-clamp-1` / `ac-clamp-2` (left-aligned): unlike `nowrap`, long text
   can't make a column wider than the screen.
   No raw hex in the app, except on the always-night call stage and in illustrations.

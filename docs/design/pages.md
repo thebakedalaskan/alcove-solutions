@@ -274,9 +274,9 @@ One modal, one question at a time, and a sheet on a phone.
 
 ## A call
 
-`routes/call.$code.tsx`, `features/call/` (the shell in `layout/`), `styles/call.css`, styled with `ic-` classes, and Chat in
-`styles/call-chat.css` (`ch-`). Boards:
-[canvas/call/](canvas/call/README.md).
+`routes/call.$code.tsx`, `features/call/` (the shell in `layout/`), `styles/call.css`, styled with `ic-` classes, Chat in
+`styles/call-chat.css` (`ch-`), and Notes in `styles/call-notes.css` (`nn-`, and `nk-` for what's captured). Boards:
+[canvas/call/](canvas/call/README.md), and Notes' own in [canvas/notes/](canvas/notes/README.md).
 
 Always night, in both themes, on the stage tokens, except your side, which takes your theme. People are in arches, never
 circles, and whoever speaks gets the `speak` ring. The camera appears only here and on the join screen.
@@ -295,9 +295,18 @@ circles, and whoever speaks gets the `speak` ring. The camera appears only here 
     hairline, and the faces with the count (and, for whoever hosts, how many are asking to join), which open People. Each is lit while what it opens is open.
 - **Your side** is one panel at a time, on the right, at a fixed width (368px, or 340px in a window under 1200px), and the
   stage gives way as it slides in; where that would leave the stage under 480px (a window under 864px), it slides in over
-  the stage, which dims behind it, and toasts keep clear of its foot wherever it is: Notes (with the tabs Notes, Transcript
-  and Ask, and Yours at the foot of Notes), Chat, People, Your notes beside a presented board, and the rooms. It takes your
-  theme, as a board's sheet does unless it's a night board; the stage, the dock, the workspace and screens stay night.
+  the stage, which dims behind it, and toasts keep clear of its foot wherever it is: Notes (with the tabs Notes, Transcript,
+  Ask and Yours), Chat, People, Your notes beside a presented board, and the rooms. It takes your theme, as a board's sheet
+  does unless it's a night board; the stage, the dock, the workspace and screens stay night.
+- **Notes** has its head (Notes, a pill, Open as an icon, ×), then its tabs, words with a line under the one you're on.
+  The pill says the state once, in a word: Live with a `rec` dot, Paused, Off, Unavailable in caution, or the
+  organizer's 2 asked in rose. It opens the card the sign at the top left opens, what's captured: one sentence, the asks,
+  what's yours to press, then how the notes are written and who gets them. A bar under the tabs shows only while capture
+  isn't simply live, saying what it means with the one thing to do; a hiccup that fixes itself is only the summary's
+  time, in caution. Nothing hides behind ⋯, and nothing is said twice, so there's no line about writing and no footer.
+  The notes take their colours by kind, as the note does afterwards: the summary first, Decided in rose with diamonds,
+  Follow-ups in horizon with boxes, and what the call suggests dashed under them, with Add and ×, two at a time and still
+  while you point at them. Every tab but Ask ends in Note to self, with the bookmark beside it, for you alone.
 - **The frame.** A screen, a board and the workspace each sit in one frame with one bar. On the left, the presenter's face
   (or the kind's icon while nobody presents), the name as a menu of the kind's own commands, and a line that says whose it
   is. On the right, only what applies: following or Follow, Present, focus, Stop sharing (with Close, on your own screen),

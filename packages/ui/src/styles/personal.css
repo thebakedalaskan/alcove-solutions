@@ -1,4 +1,4 @@
-/* Your own notes (apps/web/src/features/personal): at the foot of the notes in a call, and beside a note (own-). */
+/* Your own notes (apps/web/src/features/personal): Yours, a tab of the call's Notes, with Note to self at its foot, and beside a note (own-). */
 
 /* Everything kept, oldest first. */
 .own-list { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }

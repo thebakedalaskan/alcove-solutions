@@ -96,6 +96,8 @@ export type Beat =
   | { do: 'ask-for-notes'; who: Person }
   /** The organizer, when it isn't you: notes on, off or paused, or not now to your ask. */
   | { do: 'notes'; mode: 'on' | 'off' | 'paused' }
+  /** The browser taking the notes stops hearing the call: with `records`, it still records, so only the transcript can't go on; without, it can do neither, and notes are unavailable. */
+  | { do: 'host-cant-hear'; records: boolean }
   | { do: 'not-now' }
   /**
    * The organizer's plan (docs: Plans and usage): their notes are about to run out at this call's pace, which only they are told
@@ -213,6 +215,8 @@ export interface CallScript {
   followUps?: readonly LiveFollowUp[] | undefined;
   /** What the live notes sum up, once anything has been said. */
   summary?: string | undefined;
+  /** The live notes couldn't be written again just now: they stay as they were, and the panel says since when. */
+  notesStale?: boolean | undefined;
   /** The call's workspace as you come in: what's been brought to the call, and where people are in it. */
   workspace?: ScriptWorkspace | undefined;
   /**
