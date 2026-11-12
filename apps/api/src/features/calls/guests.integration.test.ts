@@ -511,10 +511,12 @@ describe('what a guest’s pass reaches', () => {
       expect(`${path} → ${res.status}`).toBe(`${path} → 404`);
       expect(await res.text()).not.toContain('Standup');
     }
-    // The only routes outside the call's that take a pass: what may be shared with someone's seat in a call. Each one is listed
-    // here on purpose, and without anything shared it answers as if the workspace weren't there.
+    // The only routes outside the call's that take a pass: what may be shared with someone's seat in a call, and what the
+    // workspace a call uses opens to everyone in it. Each one is listed here on purpose, and for a workspace this call doesn't
+    // use, with nothing shared, it answers as if the workspace weren't there.
     const BY_PASS = new Set([
-      'GET /v1/workspaces/:id', 'GET /v1/workspaces/:id/live', 'GET /v1/workspaces/:id/items/:item', 'PATCH /v1/workspaces/:id/items/:item', 'POST /v1/workspaces/:id/items/:item/restore', 'POST /v1/workspaces/:id/presence', 'GET /v1/workspaces/:id/search',
+      'GET /v1/workspaces/:id', 'GET /v1/workspaces/:id/live', 'GET /v1/workspaces/:id/items/:item', 'PATCH /v1/workspaces/:id/items/:item', 'POST /v1/workspaces/:id/items/:item/restore',
+      'POST /v1/workspaces/:id/items', 'POST /v1/workspaces/:id/items/:item/move', 'POST /v1/workspaces/:id/items/:item/duplicate', 'POST /v1/workspaces/:id/items/:item/trash', 'POST /v1/workspaces/:id/presence', 'GET /v1/workspaces/:id/search',
       'GET /v1/workspaces/:id/documents/:doc/live', 'POST /v1/workspaces/:id/documents/:doc/updates', 'POST /v1/workspaces/:id/documents/:doc/awareness', 'GET /v1/workspaces/:id/documents/:doc/versions',
       'GET /v1/workspaces/:id/documents/:doc/versions/:version', 'POST /v1/workspaces/:id/documents/:doc/versions/:version/restore',
       'GET /v1/workspaces/:id/documents/:doc/presenter-notes/frames', 'POST /v1/workspaces/:id/documents/:doc/presenter-notes/frames', 'POST /v1/workspaces/:id/documents/:doc/ask',
@@ -555,7 +557,8 @@ describe('what a guest’s pass reaches', () => {
     expect(mcpGet.status).toBe(405);
     expect(mcpGet.headers.get('allow')).toBe('POST');
     const passRoutes = table.filter(byPass);
-    expect(passRoutes.map((r) => `${r.method} ${r.path}`).sort()).toEqual([...BY_PASS].sort());
+    // Changing the tree is there twice: for a guest, with the pass alone, and for everyone signed in, behind sign-in.
+    expect([...new Set(passRoutes.map((r) => `${r.method} ${r.path}`))].sort()).toEqual([...BY_PASS].sort());
     // Each with what it takes, so what answers is whether it's there to reach and not what was sent.
     const update = 'AQHpxYYMAAQBB2NvbnRlbnQBeAA';
     const presence = { connection: 'x'.repeat(22), document: null, block: null, typing: false, page: null };
@@ -565,7 +568,8 @@ describe('what a guest’s pass reaches', () => {
       'POST /v1/workspaces/:id/documents/:doc/ask': { action: 'shorter', text: 'Words' },
       'POST /v1/workspaces/:id/documents/:doc/sort': { stickies: [{ id: 'a', text: 'Ship on Monday' }, { id: 'b', text: 'Tell support' }] },
       'POST /v1/workspaces/:id/documents/:doc/mentions': { to: { email: 'someone@example.com' }, block: null },
-      'POST /v1/workspaces/:id/ids': { emails: ['someone@example.com'] }
+      'POST /v1/workspaces/:id/ids': { emails: ['someone@example.com'] },
+      'POST /v1/workspaces/:id/items': { kind: 'document', name: 'From a guest', parent: null }, 'POST /v1/workspaces/:id/items/:item/move': { parent: null }
     };
     for (const r of passRoutes) {
       const res = await send(r.method, fill(r.path), JSON.stringify(asking[`${r.method} ${r.path}`] ?? { name: 'Renamed by a guest' }));

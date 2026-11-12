@@ -1,0 +1,91 @@
+{
+ "v": 3,
+ "createdOnFiles": {
+  "v": 1,
+  "at": "2026-11-11T16:05:00Z"
+ },
+ "title": "Workspace and boards in a call",
+ "launch": {
+  "view": "canvas",
+  "page": "end"
+ },
+ "pages": [
+  {
+   "id": "end",
+   "name": "The end state"
+  },
+  {
+   "id": "parts",
+   "name": "Parts"
+  }
+ ],
+ "boards": {
+  "Main.dc.html": {
+   "x": 0,
+   "y": 0,
+   "w": 1440,
+   "h": 900,
+   "title": "The call, one moment at a time (click around)",
+   "page": "end",
+   "is_interactive": true
+  },
+  "Steps.dc.html": {
+   "x": 0,
+   "y": 1400,
+   "w": 3140,
+   "h": 2712,
+   "title": "Every journey, step by step",
+   "page": "end"
+  },
+  "Faces.dc.html": {
+   "x": 0,
+   "y": 0,
+   "w": 1000,
+   "h": 420,
+   "title": "People in the arch",
+   "page": "parts"
+  }
+ },
+ "order": [
+  "Main.dc.html",
+  "Steps.dc.html",
+  "Faces.dc.html"
+ ],
+ "notes": {
+  "end-title": {
+   "x": 0,
+   "y": -300,
+   "text": "The call’s workspace and board, open to everyone in it",
+   "kind": "title1",
+   "maxW": 3140,
+   "page": "end"
+  },
+  "what-changes": {
+   "x": 1520,
+   "y": 0,
+   "w": 560,
+   "size": "m",
+   "fill": "blue",
+   "page": "end",
+   "text": "What changes\n\n• Everyone in the call can open the call’s workspace and its board, and edit them, guests too. It lasts while they’re in the call.\n• The frame’s bar says both things: “Only on your screen” (nobody follows you) and “Everyone in the call can edit”. A guest’s says “You can edit while you’re in the call”.\n• One menu, on the workspace’s name: Switch workspace, Find, Who’s in it, Rename, Copy link. The list stops repeating it.\n• What you make during the call goes in This call, beside its notes, not one level up.\n• Switching to another workspace, or opening a board from one, says who it opens to, once, before it does.\n\nWhat goes away\n• “This call’s workspace is private · Ask Art”\n• “A board you can’t open”, and “Kofi can’t open it · Let them in for this call”\n• A guest’s greyed-out Workspace button\n• “Open just for you”, which read like who can open it"
+  },
+  "my-calls": {
+   "x": 2160,
+   "y": 0,
+   "w": 560,
+   "size": "m",
+   "fill": "orange",
+   "page": "end",
+   "text": "Calls I made (say if you want them different)\n\n• A document someone closed to some people stays closed.\n• A breakout room’s board stays with its room.\n• Someone waiting in the lobby gets nothing until they’re let in.\n• When a guest leaves, or the call ends, it closes for them at once. What they wrote stays.\n• People invited to the call stay in its workspace afterwards, as today.\n• Only the organizer switches the workspace. A guest can’t share anything on or copy a link."
+  },
+  "steps-title": {
+   "x": 0,
+   "y": 1100,
+   "text": "Step by step",
+   "kind": "title1",
+   "maxW": 3140,
+   "page": "end"
+  }
+ },
+ "designSystems": []
+}

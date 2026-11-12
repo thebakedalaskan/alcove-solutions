@@ -3,20 +3,21 @@
  * in a folder of its own, lives on the meeting, so it carries to the next call in a series; which workspace everyone views,
  * if the organizer switched, and what's going on there, live in the call's sealed state (features/calls/space-state.ts).
  *
- * Nothing here decides who can open what: features/workspaces/access.ts does, on every read, for each person. Being in a call or
- * organizing it opens nothing, and access is never copied into the call, so someone who loses a document stops being told
- * about it at once, and what they were presenting or playing stops. What's in a workspace is read with the server's keys
+ * Nothing here decides who can open what: features/workspaces/access.ts does, on every read, for each person. The workspace a
+ * call uses opens to everyone in it while they're in it (`openForCall`); organizing a call opens nothing more, and access is
+ * never copied into the call, so someone who loses a document stops being told about it at once, and what they were
+ * presenting or playing stops. What's in a workspace is read with the server's keys
  * here only to work out what each person may be told, and someone who can open nothing is told nothing that names it.
  *
  * `calls.ts` holds the call's row and says when to do what; this is what's done. A live call comes first, so nothing done here
  * under the call's row waits on a workspace's lock, opens a workspace or works through its documents: that's done before the
  * row is taken (`prepare`, `makeAgenda`), and reading a call opens a workspace once a version for everyone (`seenAt`).
  */
-import { firstName, type CallAction, type CallBrought, type CallFollowUp, type CallFollowUps, type CallPlay, type CallPresent, type CallWorkspace, type CallWorkspaceAsk, type CallWorkspaceSwitch, type DocFollowUp, type DocFollowUpTick, type LiveNotes, type Person } from '@alcove/api';
+import { firstName, type CallAction, type CallBrought, type CallFollowUp, type CallFollowUps, type CallPlay, type CallPresent, type CallWorkspace, type CallWorkspaceSwitch, type DocFollowUp, type DocFollowUpTick, type LiveNotes, type Person } from '@alcove/api';
 import type { Deps, Owner } from '../../context';
 import { b64u, id128, mac, stateKey, utf8 } from '../../crypto';
 import { tx, type Db } from '../../db';
-import { ConflictError, ForbiddenError, NotFoundError, ValidationError, notFound } from '../../errors';
+import { ConflictError, ForbiddenError, NotFoundError, notFound } from '../../errors';
 import { publish, type Hub } from '../../live/hub';
 import { log } from '../../log';
 import { findItem, type Loaded } from '../../vault';
@@ -27,7 +28,7 @@ import type { DocTodo, FollowUpLimits, Run } from '../workspaces/document-text';
 import { MeetingManifest, all as allMeetings, updateManifest } from '../meetings/service';
 import { boardPlace, placeOf, placesOf, type Joined, type Placing } from './places';
 import { zoneOf } from '../meetings/repeats';
-import { TREE_NOTICE, canOpen, emailIndex, grant, holdersOf, organizerEdits, readerInCall, requireDocument, requireRole, requireSharing, roleOf, saveState, serverWorkspace, standingIn, trashOf, whoInCall, workspaceAt, workspaceFor, type HeldWorkspace, type MadeFor, type Reader, type Standing, type StoredItem, type Who, type Workspace } from '../workspaces/access';
+import { NO_HOLDERS, TREE_NOTICE, canOpen, emailIndex, holdersOf, openForCall, openToCall, organizerEdits, readerInCall, requireDocument, requireRole, roleOf, saveState, serverWorkspace, standingIn, trashOf, whoInCall, workspaceAt, workspaceFor, type HeldWorkspace, type MadeFor, type Reader, type Standing, type StoredItem, type Who, type Workspace } from '../workspaces/access';
 import { documentsAt, editorOf, keepVersion, kindOf, readDocument, writeDocument } from '../workspaces/documents';
 import { addBeside, addCallFolder, createIn, followInvite, makeHome, type CallFolder, type InviteChange } from '../workspaces/service';
 
@@ -154,8 +155,7 @@ export function tidied<S extends Spaced>(s: S, e: Ending): S {
     workspace: {
       ...kept,
       ended: kept.ended.filter((x) => open.includes(x.place)),
-      play: w.play.filter((x) => !over(s, x)),
-      asks: w.asks.filter((a) => !s.removed.includes(a.person))
+      play: w.play.filter((x) => !over(s, x))
     }
   };
 }
@@ -193,7 +193,8 @@ export const boardPresentedOver = (s: Spaced, place: string, person: string, kee
   s.workspace.present.some((p) => p.by.person !== person && p.id !== keeping && (p.place === place || boardPlace(s, p.place) === place) && showing(s, p) && onStage(s, p));
 /** Who started something, by the name they came into the call with, which is how everyone there knows them. */
 export const controllerOf = (v: Viewer, reader: Reader): Controller => ({ person: v.pass.person, seat: seatOfViewer(v), name: v.pass.name, email: reader.email ?? null });
-const whoStarted = (d: Deps, callId: string, by: Controller): Who => whoInCall(d, callId, by);
+/** Who started something, to the workspace: what they have, and while they're in the call, what it opens (`workspace`, the one it uses). */
+const whoStarted = (d: Deps, callId: string, by: Controller, workspace: string | null): Who => whoInCall(d, callId, by, workspace);
 const asSeat = (by: Controller) => ({ seat: by.seat, name: by.name });
 
 /* ---------- what each person is told ---------- */
@@ -207,8 +208,6 @@ export interface Seeing {
   /** Where they are in the call. */
   place: string;
   chosenBy: Person;
-  /** Who's asking, for the organizer. */
-  asks: CallWorkspaceAsk[];
 }
 
 /** A board presented, as someone who can open it (`opens`) is told, or anyone else: that it's on, and whose it is. */
@@ -231,16 +230,19 @@ const playAs = (v: Viewer, p: Playing): CallPlay => {
 /**
  * What whoever started it has lost the document of, found while reading the call. Losing a document says nothing to the call,
  * so this is where it's noticed: it stops for good (`withoutLost`), how a presentation ended is said where it was presented, and
- * it doesn't come back if they're given it again.
+ * it doesn't come back if they're given it again. `viewing`: a workspace everyone viewed that's been deleted since, which takes
+ * the call back to its home.
  */
-export interface Lost { present: Presenting[]; space: SpacePresenting[]; play: Playing[] }
+export interface Lost { present: Presenting[]; space: SpacePresenting[]; play: Playing[]; viewing: string | null }
+/** Nothing lost, as a new record each time: what's found is pushed onto it. */
+const nothingLost = (): Lost => ({ present: [], space: [], play: [], viewing: null });
 const sameStart = (a: { place: string; by: Controller }, b: { place: string; by: Controller }) => a.place === b.place && a.by.person === b.by.person;
 export const withoutLost = (w: CallSpace, lost: Lost, open: readonly string[], e: Ending): CallSpace => {
   const gone = {
     present: w.present.filter((p) => lost.present.some((x) => sameStart(x, p) && x.id === p.id)),
     space: w.space.filter((p) => lost.space.some((x) => sameStart(x, p) && x.key === p.key))
   };
-  return { ...endedFor(w, gone, open, e), play: w.play.filter((p) => !lost.play.some((x) => sameStart(x, p) && x.mediaId === p.mediaId)) };
+  return { ...endedFor(w, gone, open, e), play: w.play.filter((p) => !lost.play.some((x) => sameStart(x, p) && x.mediaId === p.mediaId)), ...(lost.viewing !== null && w.viewing === lost.viewing ? { viewing: null } : {}) };
 };
 
 /* ---------- what calls read of a tree: once for each version, for everyone ---------- */
@@ -291,11 +293,11 @@ async function seenAt(d: Deps, workspaceId: string, version: number, ids: string
   return now;
 }
 /**
- * Whether a workspace itself opens for someone: a role in it, or a document given to them that's still there, with `seen` holding
- * what's given. A board in a call gives every guest a seat on it, and boards aren't in the workspace's list, so a board alone
- * opens it to nothing: they're told it's private, who's presenting it and never what, and can ask.
+ * Whether a workspace itself opens for someone: a role in it, a call they're in that uses it, or a document given to them that's
+ * still there, with `seen` holding what's given. A board in a call gives every guest a seat on it, and boards aren't in the
+ * workspace's list, so a board alone opens it to nothing: they're told it's private, who's presenting it and never what.
  */
-const opensItself = (as: Standing, seen: Seen): boolean => as.role !== null || [...as.grants.keys()].some((id) => { const f = seen.items.get(id); return f ? !f.trashed && f.item.kind !== 'board' : false; });
+const opensItself = (as: Standing, seen: Seen): boolean => as.role !== null || as.call || [...as.grants.keys()].some((id) => { const f = seen.items.get(id); return f ? !f.trashed && f.item.kind !== 'board' : false; });
 
 /**
  * The call's workspace as this person may know it, and what's been lost. One that can't be read says it's private: a call
@@ -311,12 +313,11 @@ export async function shownTo(x: Seeing): Promise<{ shown: CallWorkspace; lost: 
   const last = s.workspace.ended.find((e) => e.place === place);
   const ended = last ? { key: last.key, close: last.close, by: asSeat(last.by) } : null;
   const shut: CallWorkspace = {
-    id: null, home: null, name: null, chosenBy: x.chosenBy, canOpen: false, role: null, documents: [], agenda: null, present: null, ended, play: null, asks: x.asks,
-    asked: s.workspace.asks.find((a) => a.person === v.pass.person)?.state === 'asking' ? 'asking' : s.workspace.asks.some((a) => a.person === v.pass.person) ? 'declined' : 'no'
+    id: null, home: null, name: null, chosenBy: x.chosenBy, canOpen: false, role: null, everyone: false, documents: [], agenda: null, present: null, ended, play: null, asks: [], asked: 'no'
   };
   const brought = meeting.documents.flatMap((id) => { const at = placeOfBrought(id); return at ? [at] : []; });
   const home = meeting.workspaceId;
-  const lost: Lost = { present: [], space: [], play: [] };
+  const lost = nothingLost();
   // A board presented is wherever it's kept, which needn't be the workspace everyone views.
   const boards = s.workspace.present.flatMap((p) => (p.kind === 'board' && p.place === place ? [p.workspaceId] : []));
   if (!home && !s.workspace.viewing && !brought.length && !boards.length) return { shown: shut, lost };
@@ -325,7 +326,10 @@ export async function shownTo(x: Seeing): Promise<{ shown: CallWorkspace; lost: 
     // A workspace everyone was viewing that's been deleted since: they're back in the home, and its presentation here is over, as
     // losing it would make it (`stopLost`).
     const inUse = s.workspace.viewing !== null && await workspaceAt(d.pool, s.workspace.viewing) ? s.workspace.viewing : home;
-    if (s.workspace.viewing !== null && inUse !== s.workspace.viewing) lost.space.push(...s.workspace.space.filter((p) => p.place === place && p.workspaceId === s.workspace.viewing && showing(s, p)));
+    if (s.workspace.viewing !== null && inUse !== s.workspace.viewing) {
+      lost.space.push(...s.workspace.space.filter((p) => p.place === place && p.workspaceId === s.workspace.viewing && showing(s, p)));
+      lost.viewing = s.workspace.viewing;
+    }
     const workspaces = new Set([...(inUse ? [inUse] : []), ...(home ? [home] : []), ...brought.map((b) => b.workspaceId), ...boards]);
     const reader = await readerInCall(v);
     const out = { ...shut };
@@ -346,7 +350,7 @@ export async function shownTo(x: Seeing): Promise<{ shown: CallWorkspace; lost: 
       const present = s.workspace.present.find((p) => p.place === place && p.workspaceId === workspaceId && showing(s, p) && onStage(s, p));
       const space = inCall ? s.workspace.space.find((p) => p.place === place && p.workspaceId === workspaceId && showing(s, p)) : undefined;
       const play = inCall ? s.workspace.play.find((p) => p.place === place && p.workspaceId === workspaceId && showing(s, p)) : undefined;
-      const standing = standingIn(await holdersOf(d.pool, at.ownerId, reader.principals), reader);
+      const standing = standingIn(await holdersOf(d.pool, at.ownerId, reader), reader);
       const opensSomething = canOpen(standing);
       if (opensSomething && workspaceId === home) out.home = home;
       if (!opensSomething && !startedHere(present) && !startedHere(space) && !startedHere(play)) {
@@ -354,8 +358,8 @@ export async function shownTo(x: Seeing): Promise<{ shown: CallWorkspace; lost: 
         if (space) presents.push({ since: space.since, is: spaceAs(v, space, false) });
         continue;
       }
-      // Someone with no role in the workspace the call views has it open only through what's given to them, so that's looked at.
-      const given = inCall && standing.role === null ? [...standing.grants.keys()] : [];
+      // Someone with no role in the workspace the call views, and nothing from the call there, has it open only through what's given to them, so that's looked at.
+      const given = inCall && standing.role === null && !standing.call ? [...standing.grants.keys()] : [];
       const ids = [...brought.filter((b) => b.workspaceId === workspaceId).map((b) => b.documentId), ...(present ? [present.id] : []), ...(play ? [play.documentId] : []), ...given];
       // The home, when it isn't what's viewed and nothing's brought from it, only says whether it opens for them.
       if (!ids.length && !inCall) continue;
@@ -373,16 +377,17 @@ export async function shownTo(x: Seeing): Promise<{ shown: CallWorkspace; lost: 
       }
       if (inCall && opensSpace) {
         out.id = workspaceId;
-        out.name = standing.role === null ? null : seen.name;
+        out.name = standing.role === null && !standing.call ? null : seen.name;
         out.canOpen = true;
         out.role = standing.role;
+        out.everyone = standing.call;
       }
       // Whatever's going on there goes on while whoever started it can still open it: the workspace presented, while something
       // in it opens for them.
-      const starters = [present, space, play].flatMap((p) => (p ? [whoStarted(d, x.callId, p.by)] : []));
-      const theirs = starters.length ? await holdersOf(d.pool, at.ownerId, starters.flatMap((who) => who.principals)) : { members: [], shares: [] };
-      const stands = (by: Controller, id: string) => { const who = whoStarted(d, x.callId, by); return roleIn(who, standingIn(theirs, who), id) !== undefined; };
-      const opensIt = (by: Controller) => { const who = whoStarted(d, x.callId, by); return canOpen(standingIn(theirs, who)); };
+      const starters = [present, space, play].flatMap((p) => (p ? [whoStarted(d, x.callId, p.by, v.workspace)] : []));
+      const theirs = starters.length ? await holdersOf(d.pool, at.ownerId, { principals: starters.flatMap((who) => who.principals), calls: starters.flatMap((who) => who.calls) }) : NO_HOLDERS;
+      const stands = (by: Controller, id: string) => { const who = whoStarted(d, x.callId, by, v.workspace); return roleIn(who, standingIn(theirs, who), id) !== undefined; };
+      const opensIt = (by: Controller) => { const who = whoStarted(d, x.callId, by, v.workspace); return canOpen(standingIn(theirs, who)); };
       if (present) {
         if (!stands(present.by, present.id)) lost.present.push(present);
         else presents.push({ since: present.since, is: presentAs(v, keyOf(d, x.callId, present), present, seen.items.get(present.id)?.item.name ?? '', roleIn(reader, standing, present.id) !== undefined) });
@@ -409,14 +414,14 @@ export async function shownTo(x: Seeing): Promise<{ shown: CallWorkspace; lost: 
     return { shown: { ...out, present: shown, ended: shown && said?.key === shown.key ? null : said, documents: inOrder, agenda: agenda?.id ?? null }, lost };
   } catch (e) {
     wlog.warn('workspace not read for someone in a call', { callId: x.callId, err: e });
-    return { shown: shut, lost: { present: [], space: [], play: [] } };
+    return { shown: shut, lost: nothingLost() };
   }
 }
 
 /* ---------- the call's home, and what's viewed ---------- */
 
 /** Who an account is to a workspace, without a call. */
-const accountWho = (o: Owner, email: string): Who => ({ email, principals: [emailIndex(o, email)] });
+const accountWho = (o: Owner, email: string): Who => ({ email, principals: [emailIndex(o, email)], calls: [] });
 
 /** The workspace everyone in the call views and edits together: its home, unless the organizer switched to another. */
 export const viewedIn = (m: Pick<MeetingManifest, 'workspaceId'>, w: Pick<CallSpace, 'viewing'>): string | null => w.viewing ?? m.workspaceId;
@@ -537,15 +542,19 @@ export async function followInvites(o: Owner, before: Map<string, string[]>): Pr
   }
 }
 
-/** What viewing another workspace would mean: refused as switching is. It goes only by who's in the workspace, which the organizer can see: what's been given to anyone beyond that isn't theirs to know. */
+/**
+ * What viewing another workspace would mean: refused as switching is. Who in the call isn't in it, who'd open it through the
+ * call alone. It goes only by who's in the workspace, which the organizer can see: what's been given to anyone beyond that
+ * isn't theirs to know.
+ */
 export async function preview(v: Viewer, reader: Reader, people: Joined[], workspaceId: string): Promise<CallWorkspaceSwitch> {
   const o = v.organizer;
   const w = await workspaceFor(o, reader, workspaceId);
   requireRole(w, 'edit');
   const inCall = people.filter((j) => j.status === 'in' && j.role !== 'host');
-  const who = inCall.map((j) => ({ j, who: j.email ? accountWho(o, j.email) : { email: undefined, principals: [] } }));
-  const holders = await holdersOf(o.pool, w.owner.ownerId, who.flatMap((x) => x.who.principals));
-  return { name: w.state.name, cantOpen: who.filter((x) => standingIn({ ...holders, shares: [] }, x.who).role === null).map((x) => firstName(x.j.name)) };
+  const who = inCall.map((j): { j: Joined; who: Who } => ({ j, who: j.email ? accountWho(o, j.email) : { email: undefined, principals: [], calls: [] } }));
+  const holders = await holdersOf(o.pool, w.owner.ownerId, { principals: who.flatMap((x) => x.who.principals), calls: [] });
+  return { name: w.state.name, cantOpen: who.filter((x) => standingIn({ ...NO_HOLDERS, members: holders.members }, x.who).role === null).map((x) => firstName(x.j.name)) };
 }
 
 /** Later calls in a series that had the home `from` follow it to `to`, once a call of theirs settles one: they're the same meetings, so it can only be said here. */
@@ -562,11 +571,11 @@ export async function carryForward(o: Owner, meetingId: string, from: string | n
 
 /* ---------- what people do ---------- */
 
-export type SpaceAction = Extract<CallAction, { type: 'workspace-set' | 'workspace-new' | 'workspace-bring' | 'workspace-ask' | 'workspace-grant' | 'workspace-decline' | 'present-start' | 'present-move' | 'present-stop' | 'play-start' | 'play-pause' | 'play-resume' | 'play-seek' | 'play-stop' }>;
-const SPACE_ACTIONS: ReadonlySet<CallAction['type']> = new Set(['workspace-set', 'workspace-new', 'workspace-bring', 'workspace-ask', 'workspace-grant', 'workspace-decline', 'present-start', 'present-move', 'present-stop', 'play-start', 'play-pause', 'play-resume', 'play-seek', 'play-stop']);
+export type SpaceAction = Extract<CallAction, { type: 'workspace-set' | 'workspace-new' | 'workspace-bring' | 'present-start' | 'present-move' | 'present-stop' | 'play-start' | 'play-pause' | 'play-resume' | 'play-seek' | 'play-stop' }>;
+const SPACE_ACTIONS: ReadonlySet<CallAction['type']> = new Set(['workspace-set', 'workspace-new', 'workspace-bring', 'present-start', 'present-move', 'present-stop', 'play-start', 'play-pause', 'play-resume', 'play-seek', 'play-stop']);
 export const isSpaceAction = (a: CallAction): a is SpaceAction => SPACE_ACTIONS.has(a.type);
 /** What's anyone's in a call: what they can do goes by what they can open. The rest of a call's workspace is its organizer's. */
-const ANYONES: ReadonlySet<CallAction['type']> = new Set(['workspace-open', 'workspace-bring', 'workspace-ask', 'present-start', 'present-move', 'present-stop', 'play-start', 'play-pause', 'play-resume', 'play-seek', 'play-stop']);
+const ANYONES: ReadonlySet<CallAction['type']> = new Set(['workspace-open', 'workspace-bring', 'present-start', 'present-move', 'present-stop', 'play-start', 'play-pause', 'play-resume', 'play-seek', 'play-stop']);
 export const anyonesAction = (a: CallAction): boolean => ANYONES.has(a.type);
 
 const noDocument = (documentId: string) => notFound('That document', { documentId });
@@ -602,12 +611,9 @@ export interface Changing<S extends Spaced> {
   now: number;
   seatOf: (j: Joined) => string;
 }
-/**
- * What came of it: the call as it is now, and the seat a grant gave someone who was removed meanwhile, for the caller to take
- * back once the call's row is let go, as their removal does.
- */
+/** What came of it: the call as it is now. */
 export interface Changed<S> {
-  s: S; ended?: string | undefined;
+  s: S;
   /** A workspace made for the call just now, and who's invited, for them to be let into it once the call's row is let go. */
   made?: { workspaceId: string; guests: string[] } | undefined;
 }
@@ -638,8 +644,8 @@ async function opens(d: Deps, reader: Who, workspaceId: string, documentId: stri
 async function opensWorkspace(d: Deps, who: Who, workspaceId: string): Promise<boolean> {
   const at = await workspaceAt(d.pool, workspaceId);
   if (!at) return false;
-  const standing = standingIn(await holdersOf(d.pool, at.ownerId, who.principals), who);
-  if (standing.role !== null) return true;
+  const standing = standingIn(await holdersOf(d.pool, at.ownerId, who), who);
+  if (standing.role !== null || standing.call) return true;
   if (!standing.grants.size) return false;
   const seen = await seenAt(d, workspaceId, at.version, [...standing.grants.keys()]);
   return seen !== undefined && opensItself(standing, seen);
@@ -648,12 +654,12 @@ async function opensWorkspace(d: Deps, who: Who, workspaceId: string): Promise<b
  * Someone else presenting in a part of the call, a board or the workspace `viewed`, while it shows and they can still open it: a
  * start there is refused. Someone reloading, or who's lost it, is in nobody's way.
  */
-async function presentingThere(o: Owner, callId: string, s: Spaced, place: string, viewed: string | null, person: string): Promise<boolean> {
+async function presentingThere(o: Owner, callId: string, s: Spaced, place: string, viewed: string | null, person: string, inUse: string | null): Promise<boolean> {
   for (const p of s.workspace.present) {
-    if (p.place === place && p.by.person !== person && showing(s, p) && onStage(s, p) && await opens(o, whoStarted(o, callId, p.by), p.workspaceId, p.id)) return true;
+    if (p.place === place && p.by.person !== person && showing(s, p) && onStage(s, p) && await opens(o, whoStarted(o, callId, p.by, inUse), p.workspaceId, p.id)) return true;
   }
   for (const p of s.workspace.space) {
-    if (p.place === place && p.by.person !== person && p.workspaceId === viewed && showing(s, p) && await opensWorkspace(o, whoStarted(o, callId, p.by), p.workspaceId)) return true;
+    if (p.place === place && p.by.person !== person && p.workspaceId === viewed && showing(s, p) && await opensWorkspace(o, whoStarted(o, callId, p.by, inUse), p.workspaceId)) return true;
   }
   return false;
 }
@@ -718,8 +724,13 @@ export async function prepare<S extends Spaced>(x: Changing<S>, a: SpaceAction):
   const inUse = viewedIn(x.meeting.manifest, w);
   const control = (p: { by: Controller }) => p.by.person === v.pass.person || v.isOrganizer;
   switch (a.type) {
+    /*
+     * The workspace is opened to everyone in the call before anyone views it, with nothing of the call held. What was viewed
+     * closes to them the moment the call stops using it: what they carry names the call and the workspace it uses.
+     */
     case 'workspace-set': {
       requireRole(await workspaceFor(o, reader, a.workspaceId), 'edit');
+      await openForCall({ organizer: o, callId }, a.workspaceId);
       return (y) => Promise.resolve(view(y, a.workspaceId));
     }
     /*
@@ -730,6 +741,8 @@ export async function prepare<S extends Spaced>(x: Changing<S>, a: SpaceAction):
     case 'workspace-new': return async (y) => {
       const name = a.name ?? (y.meeting.manifest.title.replace(/\s+/g, ' ').trim().slice(0, 120) || 'Untitled');
       const { id } = await createIn(o, y.c, name, { ...madeForCall(y.meeting, y.startedAt), seriesId: null });
+      const made = await serverWorkspace(o, id, y.c);
+      if (made) await openToCall(made, y.c, callId, (await profile(o, y.c)).email);
       const { s } = view(y, id);
       return { s: withSpace(s, { ...s.workspace, made: [...s.workspace.made, id].slice(-MADE_KEPT) }), made: { workspaceId: id, guests: y.meeting.manifest.guests } };
     };
@@ -749,35 +762,6 @@ export async function prepare<S extends Spaced>(x: Changing<S>, a: SpaceAction):
         return { s: y.s };
       };
     }
-    case 'workspace-ask': {
-      if (v.isOrganizer) throw new ValidationError('You choose the workspace for this call.', { context: { callId } });
-      return async (y) => {
-        const now = y.s.workspace;
-        const others = now.asks.filter((q) => q.person !== v.pass.person);
-        if (!a.up) return { s: withSpace(y.s, { ...now, asks: others }) };
-        if (now.asks.some((q) => q.person === v.pass.person && q.state === 'asking')) return { s: y.s };
-        return { s: withSpace(y.s, { ...now, asks: [...others, { id: id128(), person: v.pass.person, at: y.now, state: 'asking' }] }) };
-      };
-    }
-    case 'workspace-grant': {
-      const ask = w.asks.find((q) => q.id === a.askId && q.state === 'asking');
-      const j = ask && here(s, ask.person);
-      if (!ask || !j) throw new ValidationError('That ask isn’t open.', { context: { callId } });
-      if (!inUse) throw noDocument(a.documentId);
-      const seat = x.seatOf(j);
-      await tx(o.pool, async (c) => {
-        const held = await workspaceFor(o, reader, inUse, c, 'change');
-        requireSharing(reader, held, a.documentId);
-        await grant(held, c, a.documentId, [{ kind: 'seat', callId, seat, name: j.name, role: a.role }]);
-      });
-      wlog.info('document opened to someone in a call', { callId, workspaceId: inUse, documentId: a.documentId, role: a.role });
-      return async (y) => ({ s: withSpace(y.s, { ...y.s.workspace, asks: y.s.workspace.asks.filter((q) => q.id !== ask.id) }), ended: y.s.removed.includes(ask.person) ? seat : undefined });
-    }
-    case 'workspace-decline': return async (y) => {
-      const now = y.s.workspace;
-      if (!now.asks.some((q) => q.id === a.askId && q.state === 'asking')) throw new ValidationError('That ask isn’t open.', { context: { callId } });
-      return { s: withSpace(y.s, { ...now, asks: now.asks.map((q) => (q.id === a.askId ? { ...q, state: 'declined' as const } : q)) }) };
-    };
     /*
      * One at a time in each part of the call: nobody starts over someone else presenting there (`presentable` says what may be).
      * Starting while you present one presents this in its place, as a new presentation unless it's the same again: a start clears
@@ -786,7 +770,7 @@ export async function prepare<S extends Spaced>(x: Changing<S>, a: SpaceAction):
      */
     case 'present-start': {
       const what = await presentable(x, a.what, inUse);
-      if (await presentingThere(o, callId, s, place, inUse, v.pass.person)) throw new ConflictError('Someone else is presenting here.', { context: { callId, kind: what.kind } });
+      if (await presentingThere(o, callId, s, place, inUse, v.pass.person, v.workspace)) throw new ConflictError('Someone else is presenting here.', { context: { callId, kind: what.kind } });
       const slot = presentSlot(s, place);
       return async (y) => {
         const now = y.s.workspace;
@@ -844,7 +828,7 @@ export async function prepare<S extends Spaced>(x: Changing<S>, a: SpaceAction):
       if (!inUse) throw noDocument(a.documentId);
       await mayPlay(o, reader, inUse, a.documentId, a.mediaId);
       const there = w.play.find((p) => p.place === place);
-      if (there && showing(s, there) && there.by.person !== v.pass.person && await opens(o, whoStarted(o, callId, there.by), there.workspaceId, there.documentId)) {
+      if (there && showing(s, there) && there.by.person !== v.pass.person && await opens(o, whoStarted(o, callId, there.by, v.workspace), there.workspaceId, there.documentId)) {
         // Someone who can't open what's playing isn't told it is: what they try reads as their own video not being there.
         if (!await opens(o, reader, there.workspaceId, there.documentId)) throw noDocument(a.documentId);
         throw new ConflictError('Someone else is playing something here.', { context: { callId } });
@@ -956,7 +940,7 @@ async function fromDocuments(d: Deps, reader: Reader, worked: WorkedDocument[]):
   for (const [workspaceId, documents] of byWorkspace(worked.slice(-FOLLOW_UP_DOCUMENTS))) {
     const at = await workspaceAt(d.pool, workspaceId);
     if (!at) continue;
-    const standing = standingIn(await holdersOf(d.pool, at.ownerId, reader.principals), reader);
+    const standing = standingIn(await holdersOf(d.pool, at.ownerId, reader), reader);
     if (!canOpen(standing)) continue;
     const seen = await seenAt(d, workspaceId, at.version, documents.map((x) => x.documentId));
     if (!seen) continue;

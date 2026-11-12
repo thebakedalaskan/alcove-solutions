@@ -4,8 +4,8 @@
  * rung, breakout rooms, and who hosts. LiveKit's side (everyone else's microphones, who's speaking, what they share and
  * your own connection) is `livekit`, which the scripted room (src/media/livekit.ts) plays to the call screen. Every control
  * does to the snapshot what the server would; leaving ends the call for whoever hosts and leaves its note being written.
- * The call's workspace is played here too: its home, settled the first time Workspace opens, what's brought, presented and
- * played, who's asking to see it, and where everyone else is in it. So is a board in the call: one you open, or one someone in
+ * The call's workspace is played here too: its home, settled the first time Workspace opens, which opens to everyone in the
+ * call, guests too, what's brought, presented and played, and where everyone else is in it. So is a board in the call: one you open, or one someone in
  * the script opens, made in the call's home and filled from its template as the server does, with whoever works on it on it,
  * and its vote.
  */
@@ -17,7 +17,7 @@ import {
 } from '@alcove/api';
 import type {
   BoardCheck, BoardOpen, BoardTemplate, BoardVotesEach, BreakoutBoard, BreakoutBoardMode, CallBoard, CallBoardIdea, CallFollowUp, CallFollowUps, CallPresent, CallSeat, CallWorkspace,
-  CallWorkspaceSwitch, DocFollowUpTick, DocumentRole, PresentStart, WorkspaceHere, WorkspaceItem
+  CallWorkspaceSwitch, DocFollowUpTick, PresentStart, WorkspaceHere, WorkspaceItem
 } from '@alcove/api';
 import { BOARD_VIEW_WIDTH, addObject, colourIn, fillTemplate, landBoards, readBoard, roomFrameId, roomFrames, type FrameObject } from '@alcove/board';
 import { reading } from '~/features/board/slides';
@@ -34,7 +34,7 @@ import { ScriptedDirectMessages } from './direct-messages';
 import { ScriptedNotifications } from './notifications';
 import { captureOf, defaultScript, linkState, modelIsPrivate, part, scriptFor, type Beat, type CallScript, type HeardIdea, type Line, type Present, type RoomPlan } from './script';
 import { current, me as you, nextId } from './state';
-import { boardDoc, createItem, hereIn, moveItem, onTheBoard, peopleIn, removeWorkspace, restrict, shareWith, tagYou, trashItem, treeOf } from './workspaces';
+import { boardDoc, createItem, hereIn, moveItem, onTheBoard, peopleIn, removeWorkspace, restrict, tagYou, trashItem, treeOf } from './workspaces';
 
 /** A connection's identity in a call: `p_` and 22 characters, as LiveKit's are. */
 const identity = (seed: string) => `p_${seed.replace(/[^A-Za-z0-9]/g, '').padEnd(22, 'x').slice(-22)}`;
@@ -134,10 +134,11 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
   /** The organizer's connection dropped: since when, for the stretch the notes mark. */
   private away: { from: string; at: number; organizer: Person; seat: string } | null = null;
   /**
-   * The board open in each part of the call, as the server keeps them (`main`, or a room's ID): where it's kept and who opened
-   * it, by participant ID; what rooms were opened with to work on; and each room's own board, which comes back when they close.
+   * The board open in each part of the call, as the server keeps them (`main`, or a room's ID): where it's kept, who opened it,
+   * by participant ID, and whether `everyone` can edit it, as one the call made, or a saved one someone let everyone into; what
+   * rooms were opened with to work on; and each room's own board, which comes back when they close.
    */
-  private boards = new Map<string, { at: { workspaceId: string; documentId: string } | null; openedBy: string; made: boolean }>();
+  private boards = new Map<string, { at: { workspaceId: string; documentId: string } | null; openedBy: string; everyone: boolean }>();
   private boardMode: BreakoutBoardMode = 'none';
   private roomBoards = new Map<string, { workspaceId: string; documentId: string; name: string; who: string[] }>();
   /** What's presented in each part of the call: one thing at a time in each. */
@@ -165,7 +166,7 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
       host: { id: organizes ? me.id : null, standIn: false, organizer: meeting.organizer, next: [] }, generation: 1, transcript: [],
       liveNotes: { notes: null, added: [], suggestions: [], writing: false, error: null }, notices: mode === 'on' && !since ? [{ id: nextId('notice'), text: 'Notes are on. Everyone here can see that.', kind: 'notes' }] : [],
       isOrganizer: organizes, isHost: organizes, role: arrival.role,
-      workspace: { id: null, home: null, name: null, chosenBy: meeting.organizer, canOpen: false, role: null, documents: [], agenda: null, present: null, ended: null, play: null, asks: [], asked: 'no' },
+      workspace: { id: null, home: null, name: null, chosenBy: meeting.organizer, canOpen: false, role: null, everyone: false, documents: [], agenda: null, present: null, ended: null, play: null, asks: [], asked: 'no' },
       board: { open: null, timer: null, vote: null, ideas: [] }, shares: []
     });
     this.script = script;
@@ -338,12 +339,6 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
       case 'stop-share': this.theyStopShare(b.who); return;
       case 'play': this.theyPlay(b.who, b.document, b.media); return;
       case 'stop-playing': this.space((w) => ({ ...w, play: null })); return;
-      case 'ask-to-see': {
-        const p = this.find(b.who);
-        if (p && this.getSnapshot().isOrganizer) this.space((w) => ({ ...w, asks: [...w.asks, { id: nextId('see'), participantId: p.id, person: p.person, at: new Date().toISOString() }] }));
-        return;
-      }
-      case 'not-now-to-see': this.space((w) => (w.asked === 'asking' ? { ...w, asked: 'declined' } : w)); return;
       case 'tag-you': this.tagsYou(b.who, b.document, b.block ?? null); return;
       case 'open-board': this.theyOpenBoard(b.who, b.template, b.closedToYou ?? false, b.draw, b.standing); return;
       case 'add-sticky': this.theyAddSticky(b.who, b.frame, b.text); return;
@@ -391,7 +386,9 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     this.seats.set(key, seat);
     const id = identity(`${key}${this.ticket.callId}${this.connections}`);
     if (o.guest) this.guests.add(id);
-    const joined: CallParticipant = { id, seat, person: p, isMe: false, isOrganizer: o.organizer ?? false, hand: o.hand ?? false, status: null, othersPoint: true };
+    // As the server shows people: a guest by the name they typed, with no address, and to a guest, nobody's address.
+    const shown = o.guest || this.me.person.email === '' ? { ...p, email: '' } : p;
+    const joined: CallParticipant = { id, seat, person: shown, isMe: false, isOrganizer: o.organizer ?? false, hand: o.hand ?? false, status: null, othersPoint: true };
     this.change((s) => ({ ...s, participants: [...s.participants, joined], host: o.organizer && !this.away ? { ...s.host, id } : s.host }));
     if (o.hand) this.handFor(joined, true);
     if (o.status) this.statusFor(joined, o.status.kind, o.status.minutes);
@@ -595,20 +592,6 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     if (signedIn) current().meetings = current().meetings.map((m) => (m.id === this.meeting.id ? { ...m, guests: [...m.guests, this.me.person], guestCount: m.guestCount + 1 } : m));
     this.change((s) => ({ ...s, participants: [...s.participants, this.me], role: signedIn ? 'invited' : 'guest' }));
     this.crypto.update((c) => ({ ...c, status: 'in', members: [...this.getSnapshot().participants.map((p) => p.id)], everyone: this.getSnapshot().participants.map((p) => p.id) }));
-    if (!signedIn) this.letSee();
-  }
-  /**
-   * A guest with the link, let in: what the organizer has let them see of the call's home (`ScriptWorkspace.yours`) opens to
-   * them, and the home is the workspace they view, as the server says it to whoever can open something in it. Its name and
-   * their role in it are as the story's world has them. It's still no home of theirs to make anything in (`homeId`).
-   */
-  private letSee(): void {
-    const home = this.meeting.workspaceId;
-    const yours = home ? (this.script.workspace?.yours ?? []).flatMap((id) => { const item = this.itemIn(home, id); return item ? [item] : []; }) : [];
-    if (!home || !yours.length) return;
-    this.space((w) => ({ ...w, documents: yours.map((item) => this.broughtOf(home, item)) }));
-    this.view(home);
-    this.space((w) => ({ ...w, home }));
   }
 
   /* ---------- the call's boards, in the main room and in rooms ---------- */
@@ -632,8 +615,11 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     const item = this.itemIn(b.at.workspaceId, b.at.documentId);
     if (!item) return { open: null, timer: null, vote: null, ideas: [] };
     const same = was.open?.documentId === b.at.documentId;
+    // Everyone here can edit it as the server says: let in, or in the workspace the call opens to everyone, and not restricted.
+    const w = this.getSnapshot().workspace;
+    const everyone = b.everyone || (w.everyone && b.at.workspaceId === w.id && !item.restricted);
     return {
-      open: { ...b.at, name: item.name, role: item.role ?? 'edit', everyone: b.made, ...seen },
+      open: { ...b.at, name: item.name, role: item.role ?? 'edit', everyone, ...seen },
       timer: null, vote: same ? was.vote : null, ideas: same ? was.ideas : []
     };
   }
@@ -792,7 +778,7 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
       for (const r of rooms) {
         const made = this.makeBoard(`${r.name} board`, board.template, true);
         if (!made) continue;
-        this.boards.set(r.id, { at: made, openedBy: by, made: true });
+        this.boards.set(r.id, { at: made, openedBy: by, everyone: true });
         this.roomBoards.set(r.id, { ...made, name: r.name, who: who(r.people) });
         const doc = boardDoc(made.workspaceId, made.documentId);
         const frame = readBoard(doc).frames[0] ?? { x: 0, y: 0 };
@@ -806,7 +792,7 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     if (!main) {
       main = this.makeBoard(this.meeting.title, board.template, false);
       if (!main) return;
-      this.boards.set('main', { at: main, openedBy: by, made: true });
+      this.boards.set('main', { at: main, openedBy: by, everyone: true });
     }
     roomFrames(boardDoc(main.workspaceId, main.documentId), rooms.map((r) => ({ id: r.id, name: r.name, who: who(r.people) })), null);
   }
@@ -821,7 +807,7 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     if (!main) {
       main = this.makeBoard(this.meeting.title, 'blank', false);
       if (!main) return;
-      this.boards.set('main', { at: main, openedBy: this.organizerId(), made: true });
+      this.boards.set('main', { at: main, openedBy: this.organizerId(), everyone: true });
     }
     landBoards(boardDoc(main.workspaceId, main.documentId), coming.map((r) => ({ key: r.room, name: r.name, who: r.who, doc: boardDoc(r.workspaceId, r.documentId) })), null);
   }
@@ -1111,11 +1097,11 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
   /**
    * The first time Workspace opens, the call's home: the meeting's own, with this call's folder put at its top, else a new
    * workspace named after the call and the day, with the folder in it. The organizer is its admin and everyone invited
-   * edits; someone who came in with the link gets nothing, so it's private to them.
+   * edits; someone who came in with the link isn't in it, and has it, as everyone in the call does, while they're in the call.
    */
   private settleHome(): void {
     const s = this.getSnapshot();
-    if (this.homeId !== null || s.role === 'guest') return;
+    if (this.homeId !== null) return;
     const w = current();
     const name = homeName(this.meeting.title, s.startedAt);
     const now = new Date().toISOString();
@@ -1129,7 +1115,7 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
       chosen.items = [folder, ...chosen.items];
       home = chosen;
     } else {
-      home = { id: nextId('home'), name, role: s.isOrganizer ? 'admin' : 'edit', people: this.meeting.guests.length + 1, items: [folder], createdAt: now, call: { title: this.meeting.title, at: s.startedAt } };
+      home = { id: nextId('home'), name, role: s.isOrganizer ? 'admin' : s.role === 'guest' ? null : 'edit', inCall: false, people: this.meeting.guests.length + 1, items: [folder], createdAt: now, call: { title: this.meeting.title, at: s.startedAt } };
       w.workspaces.push(home);
     }
     this.homeId = home.id;
@@ -1146,17 +1132,19 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
   }
   /**
    * Everyone views `id`: what was presented, a board or the workspace, ends for good in every part of the call, said there at
-   * once; what was played stops; and everyone else is on its list until they open something there.
+   * once; what was played stops; and everyone else is on its list until they open something there. It opens to everyone in the
+   * call, to edit what isn't restricted, while they're in it, and the one it used before closes to whoever isn't in it.
    */
   private view(id: string): void {
     const was = this.getSnapshot().workspace.id;
-    const tree = treeOf(id);
+    const tree = this.openedToCall(id);
     if (was !== null && was !== id) {
+      treeOf(was).inCall = false;
       hereIn(was, []);
       for (const [k, v] of this.where) this.where.set(k, { ...v, document: v.document !== null && this.itemIn(id, v.document) ? v.document : null });
       for (const [place, p] of [...this.presented]) this.endIt(place, p, false);
     }
-    this.space((w) => ({ ...w, id, home: this.homeId, name: tree.name, canOpen: true, role: tree.role, play: null }));
+    this.space((w) => ({ ...w, id, home: this.homeId, name: tree.name, canOpen: true, role: tree.role, everyone: true, play: null }));
     this.showBoard();
     this.sayWhere();
   }
@@ -1204,6 +1192,21 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     return () => { if (!stopped) { stopped = true; this.followWatchers -= 1; } };
   }
   openWorkspace(): Promise<void> { this.settleHome(); return Promise.resolve(); }
+  /**
+   * A workspace as someone in a call that uses it has it: everything in it that isn't restricted opens to them, to edit. For
+   * someone who isn't in it, a guest say, that's all they have: its name, and no say in who has what. The world is as you see
+   * it, so it's written here as you'd see it.
+   */
+  private openedToCall(id: string): Space {
+    const tree = treeOf(id);
+    tree.inCall = true;
+    // The world is as Art has it: a guest with the link is in none of it.
+    if (this.getSnapshot().role === 'guest') tree.role = null;
+    if (tree.role !== null) return tree;
+    tree.people = null;
+    tree.items = tree.items.filter((i) => !i.restricted).map((i) => ({ ...i, role: 'edit' }));
+    return tree;
+  }
   previewWorkspace(workspaceId: string): Promise<CallWorkspaceSwitch> {
     const no = this.organizerOnly();
     if (no) return no.then(() => ({ name: '', cantOpen: [] }));
@@ -1224,7 +1227,7 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     const id = nextId('ws');
     // Made for the call, as its home is: the organizer and everyone invited, and no guest.
     current().workspaces.push({
-      id, name: name?.trim() || this.meeting.title, role: 'admin', people: this.meeting.guests.length + 1, items: [], createdAt: new Date().toISOString(),
+      id, name: name?.trim() || this.meeting.title, role: 'admin', inCall: false, people: this.meeting.guests.length + 1, items: [], createdAt: new Date().toISOString(),
       call: { title: this.meeting.title, at: this.getSnapshot().startedAt }
     });
     this.view(id);
@@ -1237,16 +1240,6 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     this.space((w) => ({ ...w, documents: [...w.documents.filter((d) => d.id !== documentId), ...(brought ? [this.broughtOf(id, item)] : [])] }));
     return Promise.resolve();
   }
-  askForWorkspace(up: boolean): Promise<void> { this.space((w) => ({ ...w, asked: up ? 'asking' : 'no' })); return Promise.resolve(); }
-  /** The organizer opens one document to whoever asked, by their seat in the call. */
-  grantWorkspaceAsk(askId: string, documentId: string, role: DocumentRole): Promise<void> {
-    const ask = this.getSnapshot().workspace.asks.find((a) => a.id === askId);
-    const seat = ask ? this.getSnapshot().participants.find((p) => p.id === ask.participantId)?.seat : undefined;
-    if (seat) shareWith(documentId, [{ seat }], role);
-    this.space((w) => ({ ...w, asks: w.asks.filter((a) => a.id !== askId) }));
-    return Promise.resolve();
-  }
-  declineWorkspaceAsk(askId: string): Promise<void> { this.space((w) => ({ ...w, asks: w.asks.filter((a) => a.id !== askId) })); return Promise.resolve(); }
   /**
    * The workspace everyone views, for someone who can open it, or a board where it's open, as the server lets either be: one at a
    * time where you are. Presenting while you present something presents this in its place; the same again is the same one.
@@ -1339,7 +1332,7 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     if (!closedToYou && !at) return;
     if (at) draw?.(boardDoc(at.workspaceId, at.documentId));
     if (at && standing) current().boards[at.documentId] = { ...current().boards[at.documentId], standing };
-    this.boards.set('main', { at, openedBy: p.id, made: !closedToYou });
+    this.boards.set('main', { at, openedBy: p.id, everyone: !closedToYou });
     this.onIt.clear();
     this.onIt.set(p.id, { x: 560, y: 260 });
     this.showBoard();
@@ -1400,7 +1393,7 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     if (!at) return;
     removeWorkspace(at.workspaceId);
     if (this.homeId === at.workspaceId) this.homeId = null;
-    if (this.getSnapshot().workspace.id === at.workspaceId) this.space((w) => ({ ...w, id: null, home: this.homeId, name: null, canOpen: false, role: null, documents: [], agenda: null, play: null }));
+    if (this.getSnapshot().workspace.id === at.workspaceId) this.space((w) => ({ ...w, id: null, home: this.homeId, name: null, canOpen: false, role: null, everyone: false, documents: [], agenda: null, play: null }));
     this.showBoard();
   }
   /**
@@ -1456,11 +1449,12 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
       const room = place === 'main' ? undefined : this.getSnapshot().breakouts.open?.rooms.find((r) => r.id === place);
       const at = this.makeBoard(room ? `${room.name} board` : this.meeting.title, from.template, room !== undefined);
       if (!at) return Promise.reject(new AlcoveApiError('forbidden', 'Only someone invited can start a board.'));
-      this.boards.set(place, { at, openedBy: this.me.id, made: true });
+      this.boards.set(place, { at, openedBy: this.me.id, everyone: true });
       if (room) this.roomBoards.set(place, { ...at, name: room.name, who: room.people.map(firstOf) });
     } else {
       if (place !== 'main') return Promise.reject(new AlcoveApiError('conflict', 'Open a board from the main room.'));
-      this.boards.set('main', { at: { workspaceId: from.workspaceId, documentId: from.documentId }, openedBy: this.me.id, made: false });
+      // Let in, everyone here can edit it while they're in the call; otherwise it opens for whoever can open it already.
+      this.boards.set('main', { at: { workspaceId: from.workspaceId, documentId: from.documentId }, openedBy: this.me.id, everyone: from.letIn });
     }
     this.onIt.clear();
     this.showBoard();
@@ -1472,12 +1466,16 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     return no ? Promise.reject(no) : Promise.resolve();
   }
   /**
-   * Who here can't open a saved board: anyone who came with the link, and anyone not in its workspace. You may let them in if
+   * Who here can't open a saved board: anyone who came with the link, and anyone not in its workspace, but for one in the workspace
+   * the call opens to everyone, which they can. You may let them in if
    * you may share it: you can edit it, in a workspace you're in.
    */
   boardCheck(workspaceId: string, documentId: string): Promise<BoardCheck> {
     const members = new Set(peopleIn(workspaceId).map((p) => p.person.email.toLowerCase()));
-    const cannot = this.getSnapshot().participants.filter((p) => !p.isMe && (this.guests.has(p.id) || !members.has(p.person.email.toLowerCase()))).map((p) => firstOf(p.person));
+    // The workspace the call opens to everyone opens what isn't restricted in it to everyone here.
+    const w = this.getSnapshot().workspace;
+    const toCall = w.everyone && w.id === workspaceId && this.itemIn(workspaceId, documentId)?.restricted === false;
+    const cannot = toCall ? [] : this.getSnapshot().participants.filter((p) => !p.isMe && (this.guests.has(p.id) || !members.has(p.person.email.toLowerCase()))).map((p) => firstOf(p.person));
     return Promise.resolve({ cannot, mayLetIn: treeOf(workspaceId).role !== null && this.itemIn(workspaceId, documentId)?.role === 'edit' });
   }
   /*

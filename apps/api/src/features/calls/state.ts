@@ -136,7 +136,7 @@ export const Stored = z.preprocess((v) => withTimer(withHost(v)), z.object({
   /** This person's opaque chat message IDs, sealed with call state and kept across their reconnections. */
   chatRead: z.record(z.string(), z.array(z.string())).default({}),
   notices: z.array(Notice),
-  /** What's going on in the workspace the call uses: who's asking to see it, what's being presented and played, and what's been worked on. */
+  /** What's going on in the workspace the call uses: which one it is, what's being presented and played, and what's been worked on. */
   workspace: CallSpace.default(NO_SPACE),
   /** Which board is open in each part of the call, and which boards it lets everyone into. */
   board: CallBoards.default(NO_BOARDS),

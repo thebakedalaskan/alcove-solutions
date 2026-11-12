@@ -1,27 +1,25 @@
 /*
- * What opens in a popover in the workspace, and the two things that open over everything. Someone's card (WsPersonCard),
- * the question asked once when you tag someone who can't open the document (WsMentionPrompt), a comment and its thread
- * (WsCommentCompose, WsCommentThread), Share (WsShareSheet), the one question before a call changes workspace
- * (WsSwitchSheet), and photos to add (WsUploadPicker). Find (WsFind,
- * ⌘K) dims the page and opens over it; someone asking to see the workspace (WsKnock) drops in at the top of the
- * organizer's screen.
+ * What opens in a popover in the workspace, and what opens over everything. Someone's card (WsPersonCard), the question asked
+ * once when you tag someone who can't open the document (WsMentionPrompt), a comment and its thread (WsCommentCompose,
+ * WsCommentThread), Share (WsShareSheet), which is also who's in a workspace, and in a call who else is in the call, the one
+ * question before a call changes workspace (WsSwitchSheet), renaming the workspace from its menu (WsNameSheet), and photos to
+ * add (WsUploadPicker). Find (WsFind, ⌘K) dims the page and opens over it.
  */
-import type { Person } from '@alcove/api';
 import {
-  Avatar, Button, Icon, WsCaptionField, WsCommentCompose, WsCommentThread, WsDoc, WsFind, WsKnock, WsMentionPrompt, WsPage, WsPane, WsPersonCard, WsPopover,
-  WsScroll, WsShareSheet, WsSwitchSheet, WsToasts, WsUploadPicker, wsToast, type WsComment, type WsFindHit
+  Avatar, Button, Icon, WsCaptionField, WsCommentCompose, WsCommentThread, WsDoc, WsFind, WsMentionPrompt, WsNameSheet, WsPage, WsPane, WsPersonCard, WsPopover,
+  WsScroll, WsShareSheet, WsSwitchSheet, WsToasts, WsUploadPicker, wsToast, type WsComment, type WsFindHit, type WsShareRow
 } from '@alcove/ui';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useRef, useState, type ComponentProps } from 'react';
 import { useArgs } from 'storybook/preview-api';
-import { Box, PopSurface, Stack, did } from '../../../src/component';
-import { ART, KOFI, PRIYA } from '../../../src/world/people';
+import { Box, PopSurface, did } from '../../../src/component';
+import { ANA, ART, KOFI, PRIYA } from '../../../src/world/people';
 import { DocOf, GUEST, ListOf, PHOTOS, ShareFor, first, useToasts, useWorkspace } from './parts';
 
 const meta = {
   title: 'Components/Workspace/Sheets',
   component: WsShareSheet,
-  subcomponents: { WsCaptionField, WsPersonCard, WsMentionPrompt, WsCommentCompose, WsCommentThread, WsSwitchSheet, WsFind, WsKnock, WsUploadPicker },
+  subcomponents: { WsCaptionField, WsPersonCard, WsMentionPrompt, WsCommentCompose, WsCommentThread, WsSwitchSheet, WsNameSheet, WsFind, WsUploadPicker },
   parameters: { layout: 'centered' }
 } satisfies Meta<typeof WsShareSheet>;
 export default meta;
@@ -38,19 +36,57 @@ const WIDE = { parameters: { layout: 'padded' } };
 
 const SHARE = { title: 'Share Launch plan', query: '', onQuery: did('onQuery'), rows: [] };
 const shareTypes: Story['argTypes'] = {
-  rows: { table: { disable: true } }, matches: { table: { disable: true } }, guest: { table: { disable: true } }, onQuery: { table: { disable: true } }, onAdd: { table: { disable: true } }
+  rows: { table: { disable: true } }, matches: { table: { disable: true } }, inCall: { table: { disable: true } }, onQuery: { table: { disable: true } }, onAdd: { table: { disable: true } }
 };
 /**
  * Who has the document: everyone in the workspace, and anyone it was shared with, each with what they can do, which
  * the arrow beside it changes. Typing finds people to add; Enter adds the first.
  */
-export const Share: Story = { name: 'Share sheet', args: SHARE, argTypes: shareTypes, render: ({ title, query }) => <PopSurface ws><ShareFor key={query} title={title} call={false} query={query} /></PopSurface> };
+export const Share: Story = { name: 'Share sheet', args: SHARE, argTypes: shareTypes, render: ({ title, query }) => <PopSurface ws><ShareFor key={query} title={title} query={query} /></PopSurface> };
 /** People the field found as you typed, not added yet: pressing one adds them. */
-export const ShareMatches: Story = { name: 'Share sheet: finding people as you type', args: { ...SHARE, query: 's' }, argTypes: shareTypes, render: ({ title, query }) => <PopSurface ws><ShareFor key={query} title={title} call={false} query={query} /></PopSurface> };
-/** In a call, a guest who can't open it is offered too: Let them read shares it with them for the call. */
-export const ShareGuest: Story = { name: 'Share sheet: a guest in the call', args: SHARE, argTypes: shareTypes, render: ({ title, query }) => <PopSurface ws><ShareFor key={query} title={title} call query={query} /></PopSurface> };
+export const ShareMatches: Story = { name: 'Share sheet: finding people as you type', args: { ...SHARE, query: 's' }, argTypes: shareTypes, render: ({ title, query }) => <PopSurface ws><ShareFor key={query} title={title} query={query} /></PopSurface> };
 /** Only the people added here: the workspace can't open it, and whoever made it always can. */
-export const ShareRestricted: Story = { name: 'Share sheet: only people added here', args: SHARE, argTypes: shareTypes, render: ({ title, query }) => <PopSurface ws><ShareFor key={query} title={title} call={false} query={query} restricted /></PopSurface> };
+export const ShareRestricted: Story = { name: 'Share sheet: only people added here', args: SHARE, argTypes: shareTypes, render: ({ title, query }) => <PopSurface ws><ShareFor key={query} title={title} query={query} restricted /></PopSurface> };
+
+/* ---------- who's in it, in a call ---------- */
+
+const role = (label: string) => ({ label });
+/** Product's people, as the sheet lists them. */
+const PRODUCT_PEOPLE: WsShareRow[] = [
+  { id: 'art', people: [ART], name: `${ART.name} (you)`, sub: ART.email, role: role('Admin') },
+  { id: 'priya', people: [PRIYA], name: PRIYA.name, sub: PRIYA.email, role: role('Can edit') },
+  { id: 'kofi', people: [KOFI], name: KOFI.name, sub: KOFI.email, role: role('Can edit') }
+];
+/** Whoever's in the call and not in Product: each can edit it while they're in the call. */
+const ALSO_IN_THE_CALL: WsShareRow[] = [
+  { id: 'jonas', people: [GUEST], name: GUEST.name, sub: 'Can edit while they’re in the call', tag: 'Guest' },
+  { id: 'ana', people: [ANA], name: ANA.name, sub: 'Can edit while they’re in the call' }
+];
+/** In a call that opens the workspace to everyone in it: its people, then whoever else is in the call, a guest tagged so. */
+export const WhosInIt: Story = {
+  name: 'Who’s in it: its people, and the rest of the call', args: { title: 'People in Product', rows: PRODUCT_PEOPLE, inCall: ALSO_IN_THE_CALL }, argTypes: shareTypes,
+  render: (args) => <PopSurface ws><WsShareSheet {...args} /></PopSurface>
+};
+/** For someone in the call who isn't in the workspace, a guest say: they can't read its people, so it's the people in the call. */
+export const WhosInItForAGuest: Story = {
+  name: 'Who’s in it: for a guest',
+  args: {
+    title: 'Who’s in Product', about: 'Everyone in the call can open it and edit it while they’re here.',
+    rows: [
+      { id: 'priya', people: [PRIYA], name: PRIYA.name, sub: 'Organizer' },
+      { id: 'kofi', people: [KOFI], name: KOFI.name, sub: '' },
+      { id: 'jonas', people: [GUEST], name: `${GUEST.name} (you)`, sub: '', tag: 'Guest' }
+    ]
+  },
+  argTypes: shareTypes,
+  render: (args) => <PopSurface ws><WsShareSheet {...args} /></PopSurface>
+};
+
+/* ---------- renaming the workspace ---------- */
+
+type NameStory = StoryObj<typeof WsNameSheet>;
+/** Rename, in the workspace's menu in a call: its name, selected, in place of the rows. Enter keeps it, Esc leaves it. */
+export const Rename: NameStory = { name: 'Rename: in place of the menu', args: { name: 'Product', onCommit: did('onCommit') }, render: (args) => <PopSurface ws><WsNameSheet {...args} /></PopSurface> };
 
 /* ---------- someone's card ---------- */
 
@@ -230,21 +266,14 @@ export const CaptionReading: CaptionStory = {
 /* ---------- switching the call's workspace ---------- */
 
 type SwitchStory = StoryObj<typeof WsSwitchSheet>;
-const SWITCH = { name: 'Design', current: 'Product', cantOpen: [], onSwitch: did('onSwitch'), onKeep: did('onKeep') };
+const SWITCH = { name: 'Design', cantOpen: [], onSwitch: did('onSwitch'), onKeep: did('onKeep') };
 const switching: SwitchStory['render'] = (args) => <PopSurface ws><WsSwitchSheet {...args} /></PopSurface>;
-/** Everyone in the call can open it: only the question. */
-export const SwitchEveryone: SwitchStory = { name: 'Switch sheet: everyone can open it', args: SWITCH, render: switching };
-/** Maya can't open Design: she stays in the call and sees it's private. */
-export const SwitchOne: SwitchStory = { name: 'Switch sheet: one person can’t open it', args: { ...SWITCH, cantOpen: ['Maya'] }, render: switching };
-/** Nobody else can open a workspace that's only yours. */
-export const SwitchSeveral: SwitchStory = { name: 'Switch sheet: several can’t open it', args: { ...SWITCH, name: 'Art’s workspace', cantOpen: ['Priya', 'Kofi', 'Aiko', 'Maya'] }, render: switching };
-
-/** In your own call: choosing Design in the list's head asks this in the menu's place. Switch changes it for everyone. */
-function SwitchInPlace() {
-  const ws = useWorkspace({ call: true, organizer: true, opened: { key: 'picker', step: 'switch', to: 'ws-design' } });
-  return <><Box width={244} height={560}><WsPane><ListOf ws={ws} /></WsPane></Box><WsToasts toasts={ws.toasts} /></>;
-}
-export const SwitchOpen: Story = { name: 'Switch sheet: in the picker’s place', parameters: { layout: 'padded', controls: { disable: true } }, args: SHARE, render: () => <SwitchInPlace /> };
+/** Everyone in the call is in Design already: only the question. */
+export const SwitchEveryone: SwitchStory = { name: 'Switch sheet: everyone is in it', args: SWITCH, render: switching };
+/** Maya isn't in Design: while she's in the call, she can open and edit everything in it. The notes still go to the call's home. */
+export const SwitchOne: SwitchStory = { name: 'Switch sheet: one person isn’t in it', args: { ...SWITCH, cantOpen: ['Maya'], home: 'Product' }, render: switching };
+/** Nobody else is in a workspace that's only yours. */
+export const SwitchSeveral: SwitchStory = { name: 'Switch sheet: several aren’t in it', args: { ...SWITCH, name: 'Art’s workspace', cantOpen: ['Priya', 'Kofi', 'Aiko', 'Maya'], home: 'Product' }, render: switching };
 
 /* ---------- find ---------- */
 
@@ -292,29 +321,6 @@ export const FindRecent: FindStory = { name: 'Find: recent, nothing typed', ...W
 /** Documents and lines that have the words in them. */
 export const FindMatches: FindStory = { name: 'Find: what matches', ...WIDE, args: { ...FIND, query: 'legal', selected: 1 }, argTypes: findTypes, render: (args) => <Finding key={args.query} {...args} /> };
 export const FindNothing: FindStory = { name: 'Find: nothing found', ...WIDE, args: { ...FIND, query: 'warehouse photos' }, argTypes: findTypes, render: (args) => <Finding key={args.query} {...args} /> };
-
-/* ---------- asking to see the workspace ---------- */
-
-/** On the organizer's screen: Jonas, a guest, asked to see the workspace. Letting him read or edit shares just this document. */
-function Knocking(args: ComponentProps<typeof WsKnock>) {
-  const [person, setPerson] = useState<Person | null>(args.person === null ? null : GUEST);
-  const { toasts, say } = useToasts();
-  return (
-    <Stack>
-      {person === null && <Button size="sm" icon="hand" onClick={() => setPerson(GUEST)}>{first(GUEST)} asks to see the workspace</Button>}
-      <Behind height={520} />
-      <WsKnock person={person} document={args.document}
-        onLet={() => { args.onLet(); setPerson(null); if (args.document) say(wsToast.canOpen(first(GUEST), 'read', args.document)); }}
-        onEdit={() => { args.onEdit(); setPerson(null); if (args.document) say(wsToast.canOpen(first(GUEST), 'edit', args.document)); }}
-        onChoose={() => { args.onChoose(); setPerson(null); }} onNotNow={() => { args.onNotNow(); setPerson(null); }} />
-      <WsToasts toasts={toasts} />
-    </Stack>
-  );
-}
-type KnockStory = StoryObj<typeof WsKnock>;
-export const Knock: KnockStory = { name: 'Knock: someone asks', ...WIDE, args: { person: GUEST, document: 'Launch plan', onLet: did('onLet'), onEdit: did('onEdit'), onChoose: did('onChoose'), onNotNow: did('onNotNow') }, argTypes: { person: { control: false } }, render: (args) => <Knocking {...args} /> };
-/** Answered, or not asked yet: nothing over the call. The button asks, and it drops in. */
-export const KnockGone: KnockStory = { name: 'Knock: gone', ...WIDE, args: { person: null, document: 'Launch plan', onLet: did('onLet'), onEdit: did('onEdit'), onChoose: did('onChoose'), onNotNow: did('onNotNow') }, argTypes: { person: { control: false } }, render: (args) => <Knocking {...args} /> };
 
 /* ---------- photos ---------- */
 

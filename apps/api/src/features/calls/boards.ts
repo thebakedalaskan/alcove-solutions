@@ -81,12 +81,15 @@ export async function shownTo(v: Viewer, s: Boarded, place: string): Promise<Cal
     const item = w?.state.items[open.documentId];
     if (!w || !item || trashOf(w.state, open.documentId)) return NO_BOARD;
     const reader = await readerInCall(v);
-    const holders = await holdersOf(v.organizer.pool, w.owner.ownerId, reader.principals);
-    const role = roleOf(reader, standingIn(holders, reader), open.documentId, item);
+    const holders = await holdersOf(v.organizer.pool, w.owner.ownerId, reader);
+    const standing = standingIn(holders, reader);
+    const role = roleOf(reader, standing, open.documentId, item);
     if (!role) return shut;
-    // Everyone here can add to it while the call made it and it's still the call's to give, which is when someone new gets a seat;
-    // a room's own board is everyone's in the room.
-    const everyone = roomsOwn(s, open.documentId) || (s.board.letIn.some((e) => e.documentId === open.documentId && e.by === null) && await stillTheCalls(v.organizer, w, v.organizer.pool, open.documentId));
+    // Everyone here can edit it: it's in the workspace the call opens to everyone in it, and not restricted; or the call lets
+    // everyone in, which is when someone new gets a seat: a board it made while it's still the call's to give, and a saved one
+    // while whoever let everyone in still may. A room's own board is everyone's in the room.
+    const everyone = roomsOwn(s, open.documentId) || (standing.call && !item.restricted)
+      || await letsEveryoneIn(v.organizer, w, v.pass.callId, s.board.letIn.filter((e) => e.documentId === open.documentId));
     // Ideas from the call are the call's to add (calls.ts), for whoever can add to the board.
     return { open: { workspaceId: open.workspaceId, documentId: open.documentId, name: item.name, role, ...seen, everyone }, timer: null, ...sessionFor(v, reader, s, open, role === 'edit'), ideas: [] };
   } catch (e) {
@@ -190,7 +193,7 @@ const mayShare = (who: Who, w: WorkspaceAs, documentId: string): boolean => {
 export async function check(o: Owner, reader: Reader, x: { callId: string; place: string; here: Here[] }, workspaceId: string, documentId: string): Promise<BoardCheck> {
   requireMainRoom(x.callId, x.place, 'board-check');
   const w = await bringable(o, reader, workspaceId, documentId, { letIn: false, db: o.pool });
-  const left = await cantOpen(w, o.pool, documentId, x.here.map((p) => ({ ...p, who: whoInCall(o, x.callId, p) })));
+  const left = await cantOpen(w, o.pool, documentId, x.here.map((p) => ({ ...p, who: whoInCall(o, x.callId, p, reader.seat?.workspace ?? null) })));
   return { cannot: left.map((p) => firstName(p.name)), mayLetIn: mayShare(reader, w, documentId) };
 }
 
@@ -199,9 +202,10 @@ export async function check(o: Owner, reader: Reader, x: { callId: string; place
 /** Whether a board hasn't been worked out for someone: not on the seat they're on now, and not as an address it went to. */
 const unseen = (e: BoardLetIn, p: Here): boolean => !e.seen.includes(p.seat) && !(p.email !== null && e.seen.includes(p.email));
 /**
- * Works a board out for everyone here it hasn't been yet: whoever it isn't open to gets a seat, which ends with the call. On
- * a board the call made that's whoever can't edit it, because everyone here works on it, unless someone chose otherwise. On a
- * saved one it's whoever can't open it, and what the workspace gives anyone else stays what they have. Someone the call knows
+ * Works a board out for everyone here it hasn't been yet: whoever can't edit it gets a seat, which ends with the call, because
+ * everyone here works on a board the call lets them into, the call's own or a saved one, unless someone chose otherwise: an
+ * entry that sets someone to `read` stays theirs. Who the call opens a workspace to doesn't count here: a seat on the board stays
+ * theirs if the call moves on to another workspace while the board's open. Someone the call knows
  * by address whose other connections it was worked out for is seated only as those seats stand: not at all if one was taken
  * back, at `read` if one is `read`, so a new tab never undoes what someone did to a seat. A guest is known only by the name
  * they typed, so a guest's new tab is someone new. `known` is everyone in the call who wasn't taken out of it, here now or not.
@@ -210,7 +214,7 @@ const unseen = (e: BoardLetIn, p: Here): boolean => !e.seen.includes(p.seat) && 
 async function letInHere(w: HeldWorkspace, db: Db, callId: string, entry: BoardLetIn, here: Here[], known: Here[]): Promise<{ entry: BoardLetIn; seats: string[] }> {
   const fresh = here.filter((p) => unseen(entry, p));
   if (!fresh.length) return { entry, seats: [] };
-  const left = await (entry.by === null ? cantEdit : cantOpen)(w, db, entry.documentId, fresh.map((p) => ({ ...p, who: whoInCall(w.owner, callId, p) })));
+  const left = await cantEdit(w, db, entry.documentId, fresh.map((p) => ({ ...p, who: whoInCall(w.owner, callId, p, null) })));
   const earlierOf = (p: Here): Uint8Array[] => (p.email === null ? [] : known.filter((k) => k.email === p.email && k.seat !== p.seat && entry.seen.includes(k.seat)).map((k) => seatIndex(w.owner, callId, k.seat)));
   const indexes = left.flatMap(earlierOf);
   const entryOn = indexes.length ? await entriesOn(w, db, entry.documentId, indexes) : (): DocumentRole | undefined => undefined;
@@ -228,7 +232,7 @@ async function letInHere(w: HeldWorkspace, db: Db, callId: string, entry: BoardL
 const removedFrom = (known: Here[], seats: string[]): string[] => seats.filter((seat) => !known.some((k) => k.seat === seat));
 /** Whether someone who let people in still may: a seat outlives whoever gave it, but nobody new gets one in their name. */
 async function stillShares(w: HeldWorkspace, db: Db, callId: string, by: Controller, documentId: string): Promise<boolean> {
-  const who = whoInCall(w.owner, callId, by);
+  const who = whoInCall(w.owner, callId, by, null);
   return mayShare(who, await heldBy(w, db, who), documentId);
 }
 /**
@@ -237,6 +241,13 @@ async function stillShares(w: HeldWorkspace, db: Db, callId: string, by: Control
  */
 const stillTheCalls = async (o: Owner, w: HeldWorkspace, db: Db, documentId: string): Promise<boolean> =>
   w.state.items[documentId]?.restricted === false && organizerEdits(o, w, db, (await profile(o, db)).email);
+/** Whether the call still lets everyone in to a board by any of these decisions: the call's own, or whoever's who still may. */
+async function letsEveryoneIn(o: Owner, w: HeldWorkspace, callId: string, entries: BoardLetIn[]): Promise<boolean> {
+  for (const e of entries) {
+    if (await (e.by === null ? stillTheCalls(o, w, o.pool, e.documentId) : stillShares(w, o.pool, callId, e.by, e.documentId))) return true;
+  }
+  return false;
+}
 
 /** What the call lets people into that has someone here it hasn't been worked out for. */
 export const dueIn = (board: CallBoards, here: Here[]): BoardLetIn[] => board.letIn.filter((e) => here.some((p) => unseen(e, p)));
@@ -413,7 +424,7 @@ export async function makeMainBoard(m: MainBoardFor, workspaceId: string, folder
  * of whoever let people in (`stillShares`). `w` is held by the caller when the answer has to hold until it's written.
  */
 async function stillEdits(w: HeldWorkspace, db: Db, callId: string, by: Controller, documentId: string): Promise<boolean> {
-  const who = whoInCall(w.owner, callId, by);
+  const who = whoInCall(w.owner, callId, by, null);
   try {
     requireDocument(who, await heldBy(w, db, who), documentId, 'edit');
     return true;

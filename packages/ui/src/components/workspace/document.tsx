@@ -381,11 +381,14 @@ export function WsTrash({ items }: { items: WsTrashItem[] }) {
   );
 }
 
-/** The call's workspace, for someone who can't open it: it says it's private and nothing more. `organizer` is their first name. */
-export function WsNoAccess({ organizer, asked, onAsk }: { organizer: string; asked: boolean; onAsk?: (() => void) | undefined }) {
+/**
+ * The call's workspace, for someone it doesn't open for: the rare call whose workspace isn't open to everyone in it any more,
+ * once its organizer can't edit there. It says it's private and nothing more.
+ */
+export function WsNoAccess() {
   return (
-    <EmptyState className="wd-none" title={asked ? `You asked ${organizer}` : 'This call’s workspace is private'} art={<LockedArch />} action={asked || !onAsk ? undefined : <Button variant="primary" size="sm" onClick={onAsk}>Ask {organizer}</Button>}>
-      {asked ? 'This opens by itself as soon as they share something with you.' : onAsk ? `Ask ${organizer} and they can share what you need. You stay in the call either way.` : `${organizer} can share what you need. You stay in the call either way.`}
+    <EmptyState className="wd-none" title="This call’s workspace is private" art={<LockedArch />}>
+      Only the people in it can open it now. You stay in the call either way.
     </EmptyState>
   );
 }

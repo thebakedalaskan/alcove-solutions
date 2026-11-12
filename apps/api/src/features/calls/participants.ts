@@ -25,8 +25,10 @@ import { load, save, settle, type Stored } from './state';
  * account's session; `stale`: it hosted before and the call has gone on from another connection (another of the
  * organizer's tabs or devices, someone standing in, or the organizer back), so what it still sends as host is out of
  * date rather than never allowed. `session`: the account behind this request, if there is one, opened when it's asked for.
+ * `workspace`: the one the call uses now, its home unless the organizer switched, which opens to everyone in the call
+ * (features/workspaces/access.ts); null until it has one.
  */
-export interface Viewer { pass: CallPass; organizer: Owner; session: () => Promise<Owner | undefined>; isOrganizer: boolean; isHost: boolean; stale: boolean; inCall: boolean; role: CallRole }
+export interface Viewer { pass: CallPass; organizer: Owner; session: () => Promise<Owner | undefined>; isOrganizer: boolean; isHost: boolean; stale: boolean; inCall: boolean; role: CallRole; workspace: string | null }
 
 /** Someone as the call shows them: the organizer, invited people and anyone signed in by their account, guests by the name they typed. */
 export function personFor(j: Joined | undefined, identity: string, fallbackName: string, organizer: Person): Person {
@@ -96,8 +98,14 @@ export async function viewerOf(d: Deps, pass: CallPass, session: () => Promise<O
       await save(organizer, c, pass.callId, { ...held.state, people: held.state.people.map((p) => p.identity === pass.identity ? { ...p, askedAt: Date.now(), status: fresh ? 'waiting' : 'denied' } : p) });
     });
   }
-  return { pass, organizer, session, isOrganizer, isHost, stale: (mine?.hosting.length ?? 0) > 0 && s.host !== pass.identity, inCall: isOrganizer || isHost || mine?.status === 'in', role };
+  return {
+    pass, organizer, session, isOrganizer, isHost, stale: (mine?.hosting.length ?? 0) > 0 && s.host !== pass.identity, inCall: isOrganizer || isHost || mine?.status === 'in', role,
+    workspace: workspaceIn(s)
+  };
 }
+
+/** The workspace a call uses now, as `Viewer.workspace` says: its home, unless the organizer switched to another. */
+export const workspaceIn = (s: { workspace: { viewing: string | null; home: { workspaceId: string } | null } }): string | null => s.workspace.viewing ?? s.workspace.home?.workspaceId ?? null;
 
 /** Everything about a call but whether you're let in needs you to be in it. */
 export function requireIn(v: Viewer, what: string): void {
@@ -154,15 +162,18 @@ export const seatOfViewer = (v: Viewer): string => seatFor(seatKey(v.organizer, 
 
 /**
  * Whether someone's in a seat now, known only by its name: the call is going on, and whoever has the seat is let in and
- * wasn't taken out. It's what a pass's viewer says, for what carries a seat in place of a pass.
+ * wasn't taken out. It's what a pass's viewer says, for what carries a seat in place of a pass, with the workspace the call
+ * uses now (`Viewer.workspace`). Undefined when they aren't.
  */
-export async function inSeat(d: Deps, at: { callId: string; organizer: string; seat: string }): Promise<boolean> {
+export async function inSeat(d: Deps, at: { callId: string; organizer: string; seat: string }): Promise<{ workspace: string | null } | undefined> {
   const o = await findOwner(d, at.organizer, undefined);
-  if (!o) return false;
+  if (!o) return undefined;
   const found = await load(o, o.pool, at.callId).catch((e: unknown) => { if (e instanceof NotFoundError) return undefined; throw e; });
-  if (found?.row.state !== 'live') return false;
+  if (found?.row.state !== 'live') return undefined;
   const key = seatKey(o, at.callId);
-  return found.state.people.some((j) => j.status === 'in' && !found.state.removed.includes(j.person) && seatOf(key, j) === at.seat);
+  const s = found.state;
+  if (!s.people.some((j) => j.status === 'in' && !s.removed.includes(j.person) && seatOf(key, j) === at.seat)) return undefined;
+  return { workspace: workspaceIn(s) };
 }
 
 /** Everyone in the call now or, with `place`, in that part of it, by seat, with the name they're in it under. */

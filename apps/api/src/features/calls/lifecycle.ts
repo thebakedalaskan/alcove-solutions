@@ -24,11 +24,12 @@ import { Joined, relocate } from './places';
 import * as rings from './rings';
 import * as screens from '../recordings/screens';
 import { endSeats } from '../workspaces/service';
+import { seatEnded } from '../workspaces/access';
 import * as writer from '../notes/writer';
 import { log } from '../../log';
 import { closeRooms, hostNotices, load, roomsChanged, roomsClosedBetween, save, secondsIn, settle, sharesEnd, tenthsIn, type Row, type Stored, withPerson } from './state';
 import { MlsRow, appendMls, openMls } from './mls-log';
-import { hereIn, knownIn, knownUntil, personFor, speakersIn, type Viewer } from './participants';
+import { hereIn, knownIn, knownUntil, personFor, seatKey, seatOf, speakersIn, type Viewer } from './participants';
 import { afterClosing, keepRoomBoards, landRooms, syncBoardSeats, syncRoomBoards } from './room-boards';
 import { stillHosting } from './permissions';
 import { tellRoom } from './notifications';
@@ -259,9 +260,15 @@ export async function handOff(v: Viewer, callId: string, to: string | null, onPu
     const organizer = (await me(o, c)).name;
     const { state: after, generation } = await newGeneration(o, c, row, onPurpose ? space.leftForGood(s, from.person, from.identity, space.ending(o, callId)) : s, { host: next, joining: false, gone: [from.identity] }, { change: { kind: 'left', from, to: next }, organizer });
     clog.info('host handed off and left', { ...ctx, generation, segment: after.notes.segment, notes: after.notes.status });
-    return { room: row.room_name, closed: roomsClosedBetween(state, s) };
+    // By seat: the organizer's is one on every device, so another of theirs still in the call keeps it.
+    const key = seatKey(o, callId);
+    const seat = seatOf(key, from);
+    const stillIn = after.people.some((x) => x.status === 'in' && seatOf(key, x) === seat);
+    return { room: row.room_name, closed: roomsClosedBetween(state, s), seat: stillIn ? null : seat };
   });
   if (r.room) await o.livekit.removeParticipant(r.room, v.pass.identity).catch((e: unknown) => clog.info('host already gone from the room', { callId, err: e }));
+  // As anyone leaving: what the call opened to them closes now.
+  if (r.seat) await seatEnded(o, callId, r.seat);
   await afterClosing({ organizer: o, callId }, r.closed, () => tellRoom(o, r.room, callId, { call: true, log: true }));
 }
 
@@ -290,10 +297,16 @@ export async function departed(o: Owner, callId: string, identity: string, at = 
     // asking again, and their identity can't come back as someone else (to be let in by a toast still showing the first ask).
     await save(o, c, callId, await sharesEnd(o, c, withPerson(state, identity, (x) => (j.status === 'waiting' ? { ...x, status: 'denied' } : { ...x, status: 'left', left: noticed ? knownUntil(callId, x, at) : at })),
       j.status === 'in' ? [identity] : [], tenthsIn(row.started_at)));
-    return { room: row.room_name, was: j.status, rooms: held.state.board.rooms.some((x) => !x.kept) };
+    // Their seat stops counting once no connection of theirs is still in the call: a reload that's back already keeps it.
+    const key = seatKey(o, callId);
+    const seat = seatOf(key, j);
+    const stillIn = state.people.some((x) => x.identity !== identity && x.status === 'in' && seatOf(key, x) === seat);
+    return { room: row.room_name, was: j.status, rooms: held.state.board.rooms.some((x) => !x.kept), seat: j.status === 'in' && !stillIn ? seat : null };
   });
   if (r) {
     clog.info(r.was === 'waiting' ? 'someone stopped asking to join' : 'someone left the call', { callId });
+    // What the call opened to them closes now, not at their streams' next ping.
+    if (r.seat) await seatEnded(o, callId, r.seat);
     // Someone who's gone isn't in their room: its board goes with them, and comes back when they do.
     if (r.rooms) await syncRoomBoards({ organizer: o, callId });
     await tellRoom(o, r.room, callId, { call: true, log: true });

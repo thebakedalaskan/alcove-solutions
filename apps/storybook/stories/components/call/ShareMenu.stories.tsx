@@ -153,11 +153,19 @@ export const BoardStepSomeonePresenting: Story = {
       inCall={{ name: 'Launch retro', by: 'Priya is presenting it', onOpen: did('Launch retro') }} />
   )
 };
-/** Theo and Sam can't open the onboarding flow: let them in for this call, or present it without them. */
+/** Theo and Sam can't open the onboarding flow: let everyone here edit it, and present it, or not now. */
 export const BoardStepAccess: Story = {
   name: 'Board step, someone can’t open it',
   render: (args) => (
     <ShareFlow kinds={args} start="board"
-      access={{ names: ['Theo', 'Sam'], board: 'Onboarding flow', where: 'Aiko’s workspace', onLetIn: did('Let them in for this call'), onWithout: did('Present without them') }} />
+      access={{ names: ['Theo', 'Sam'], board: 'Onboarding flow', letIn: true, onOpen: did('Present it'), onNotNow: did('Not now') }} />
+  )
+};
+/** The same, for someone it isn't theirs to share: present it anyway, for whoever can open it, or not now. */
+export const BoardStepAccessNotYours: Story = {
+  name: 'Board step, someone can’t open it, and it isn’t yours to share',
+  render: (args) => (
+    <ShareFlow kinds={args} start="board"
+      access={{ names: ['Theo', 'Sam'], board: 'Onboarding flow', letIn: false, onOpen: did('Present it anyway'), onNotNow: did('Not now') }} />
   )
 };

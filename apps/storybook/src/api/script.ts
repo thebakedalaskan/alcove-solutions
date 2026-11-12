@@ -141,10 +141,6 @@ export type Beat =
   /** Someone plays a video in a document of the call's workspace for everyone, and stops it. */
   | { do: 'play'; who: Person; document: string; media: string }
   | { do: 'stop-playing' }
-  /** Someone who can open nothing in the call's workspace asks the organizer to see it. */
-  | { do: 'ask-to-see'; who: Person }
-  /** The organizer, when it isn't you, says not now to your ask to see the workspace. */
-  | { do: 'not-now-to-see' }
   /** Someone tags you in a document of the call's workspace, on a line. */
   | { do: 'tag-you'; who: Person; document: string; block?: string | undefined }
   /**
@@ -231,17 +227,13 @@ export interface CallScript {
 
 /**
  * The call's workspace as you come in. Its home is the meeting's (`Meeting.workspaceId`, chosen when it was scheduled), else
- * a new one, made the first time anyone opens Workspace. `brought` are documents in it brought to the call, by ID, and
- * `where` is who's in it, on which document or page of the call's, once it's settled.
+ * a new one, made the first time anyone opens Workspace. Whichever the call uses opens to everyone in it, guests too. `brought`
+ * are documents in it brought to the call, by ID, and `where` is who's in it, on which document or page of the call's, once
+ * it's settled.
  */
 export interface ScriptWorkspace {
   brought?: readonly string[] | undefined;
   where?: readonly { who: Person; document: string | null; typing?: boolean | undefined; page?: CallPage | undefined }[] | undefined;
-  /**
-   * For you, with the link: the documents of the call's home the organizer has let you see, as their card's Let them see does,
-   * which open to you once you're let in. The rest of the home is as the story's world has it, which is as you see it.
-   */
-  yours?: readonly string[] | undefined;
 }
 
 /* ---------- writing a script ---------- */
@@ -295,7 +287,6 @@ export const closesPresenting = (): Beat => ({ do: 'close-presenting' });
 /** The organizer stops what someone shares, yours or theirs, for everyone. */
 export const stopsShare = (who: Person | 'me'): Beat => ({ do: 'stop-share', who });
 export const plays = (who: Person, document: string, media: string): Beat => ({ do: 'play', who, document, media });
-export const asksToSee = (who: Person): Beat => ({ do: 'ask-to-see', who });
 export const tagsYou = (who: Person, document: string, block?: string): Beat => ({ do: 'tag-you', who, document, block });
 /** Someone makes the board here from a template (on their stage alone until they present it), or one you can't open, or one that stands badly here. */
 export const opensBoard = (who: Person, template: BoardTemplate, o: { closedToYou?: boolean; draw?: (doc: Y.Doc) => void; standing?: 'offline' | 'failed' } = {}): Beat => ({ do: 'open-board', who, template, ...o });

@@ -4,7 +4,7 @@ import { Children, useLayoutEffect, useRef, type ComponentProps, type KeyboardEv
 import { cn } from '../../cn';
 import { Icon, type IconName } from '../icon';
 import { Faces, type AvatarPerson } from '../people';
-import { IconButton } from '../primitives';
+import { IconButton, Kbd } from '../primitives';
 import { WsPopover, type WsPop } from './popover';
 import { useMove } from './shared';
 
@@ -49,7 +49,7 @@ function moveInList(e: KeyboardEvent<HTMLDivElement>) {
 }
 
 /**
- * The list: its head (`WsListHead`; someone who isn't a member has none), then `WsSection`s and `WsRow`s as children, and
+ * The list: its head (`WsListHead` in the app, `WsListTools` in a call; someone in the app who isn't a member has none), then `WsSection`s and `WsRow`s as children, and
  * the sealed line at the foot. `empty` says what appears here. Change `listKey` when the workspace changes and the list
  * cross-fades, 240 ms. Rows that leave close up, and ones that arrive open in place, so give each a key. The list is one
  * tab stop: arrow keys move through it, Left and Right close and open a folder.
@@ -65,8 +65,13 @@ const EMPTY_WORDS: Record<WsListEmpty, string> = {
   shared: 'Documents and boards shared with you show up here.'
 };
 
-export function WsList({ head, children, empty = false, listKey, label = 'Documents', foot, onKeyDown }: {
+export function WsList({ head, children, empty = false, listKey, label = 'Documents', foot, aligned = false, onKeyDown }: {
   head?: ReactNode; children?: ReactNode; empty?: WsListEmpty | false | undefined; listKey?: string | undefined; label?: string | undefined;
+  /**
+   * Every row lines up with the folders' twists, `pins` too: This call holds what's in the call's own folder, folders and all,
+   * so its rows line up with them as the rest of the list does.
+   */
+  aligned?: boolean | undefined;
   /** What stays at the foot, above the sealed line, however long the list is: `WsTrashRow`. */
   foot?: ReactNode;
   /** Keys pressed on a row, before the list's own: stop one to keep it from moving through the rows. */
@@ -78,7 +83,7 @@ export function WsList({ head, children, empty = false, listKey, label = 'Docume
   return (
     <aside className="wt" aria-label={label}>
       {head}
-      <motion.div key={listKey} ref={scroll} className="wt-scroll" role="tree" aria-label={label} onKeyDown={(e) => { onKeyDown?.(e); if (!e.isPropagationStopped()) moveInList(e); }} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={move(2)}>
+      <motion.div key={listKey} ref={scroll} className={cn('wt-scroll', aligned && 'is-aligned')} role="tree" aria-label={label} onKeyDown={(e) => { onKeyDown?.(e); if (!e.isPropagationStopped()) moveInList(e); }} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={move(2)}>
         <AnimatePresence initial={false}>{Children.toArray(children)}</AnimatePresence>
         {empty && <p className="wt-empty">{EMPTY_WORDS[empty]}</p>}
       </motion.div>
@@ -108,13 +113,32 @@ function SpaceName({ name, placeholder, onCommit, onCancel }: WsNaming) {
   );
 }
 
+/** The line under the head while the list's own connection is down: Reconnecting, with Try now (`onTry`) while the browser has one. */
+function ListReconnecting({ onTry }: { onTry?: (() => void) | undefined }) {
+  return (
+    <div className="wt-off" role="status">
+      <Icon name="wifiOff" size={13} /><span className="ac-clamp-1">Reconnecting</span>
+      {onTry && <button type="button" onClick={onTry}>Try now</button>}
+    </div>
+  );
+}
+
+/** New, at the top of the list: what it makes is in its menu (`create`), and `createLabel` says it. */
+function CreateButton({ create, createLabel }: { create: WsPop; createLabel: string }) {
+  return (
+    <WsPopover open={create.open} onOpenChange={create.onOpenChange} label="New" anchor={
+      <IconButton icon="plus" size={17} className="wt-ib" label={createLabel} title="New" />
+    }>{create.content}</WsPopover>
+  );
+}
+
 /**
  * The top of the list: which workspace (a menu of them in `picker`), find, and what you can make (`create`, named for what its
  * menu makes: `createLabel`). `naming` swaps the name for a field. Whatever isn't given isn't shown: someone who can only read
  * makes nothing.
  */
-export function WsListHead({ name, picker, pickerLabel = 'This call’s workspace', onFind, create, createLabel = 'New document or folder', naming, saveState = 'quiet', reconnecting = null }: {
-  name: string; picker: WsPop; pickerLabel?: string | undefined; onFind?: (() => void) | undefined; create?: WsPop | undefined; createLabel?: string | undefined; naming?: WsNaming | null | undefined;
+export function WsListHead({ name, picker, onFind, create, createLabel = 'New document or folder', naming, saveState = 'quiet', reconnecting = null }: {
+  name: string; picker: WsPop; onFind?: (() => void) | undefined; create?: WsPop | undefined; createLabel?: string | undefined; naming?: WsNaming | null | undefined;
   saveState?: 'quiet' | 'saving' | 'saved' | 'failed' | undefined;
   /**
    * The list's own connection dropped, so it may not be up to date: a line under the head says Reconnecting, with Try now
@@ -126,24 +150,36 @@ export function WsListHead({ name, picker, pickerLabel = 'This call’s workspac
     <>
     <div className="wt-head">
       {naming ? <SpaceName {...naming} /> : (
-        <WsPopover open={picker.open} onOpenChange={picker.onOpenChange} label={pickerLabel} anchor={
+        <WsPopover open={picker.open} onOpenChange={picker.onOpenChange} label="Workspaces" anchor={
           <button type="button" className="wt-space"><span className="wt-mark"><Icon name="folders" size={15} /></span><span className="n ac-clamp-1" title={name}>{name}</span><Icon name="chevronsUpDown" size={14} /></button>
         }>{picker.content}</WsPopover>
       )}
       {saveState !== 'quiet' && <span role="status" className={cn('wt-name-save', saveState === 'failed' && 'is-failed')}>{saveState === 'saving' ? 'Saving…' : saveState === 'saved' ? 'Saved' : 'Couldn’t confirm'}</span>}
       {onFind && <IconButton icon="search" size={16} className="wt-ib" label="Find in this workspace" title="Find (⌘K)" onClick={onFind} />}
-      {create && (
-        <WsPopover open={create.open} onOpenChange={create.onOpenChange} label="New" anchor={
-          <IconButton icon="plus" size={17} className="wt-ib" label={createLabel} title="New" />
-        }>{create.content}</WsPopover>
-      )}
+      {create && <CreateButton create={create} createLabel={createLabel} />}
     </div>
-    {reconnecting && (
-      <div className="wt-off" role="status">
-        <Icon name="wifiOff" size={13} /><span className="ac-clamp-1">Reconnecting</span>
-        {reconnecting.onTry && <button type="button" onClick={reconnecting.onTry}>Try now</button>}
-      </div>
-    )}
+    {reconnecting && <ListReconnecting onTry={reconnecting.onTry} />}
+    </>
+  );
+}
+
+/**
+ * The top of the list in a call, where the frame's bar names the workspace and its name is the workspace's one menu: Find, as
+ * wide as there's room for, with its key (`findKey`, "⌘K"), and what you can make (`create`), as `WsListHead` has them.
+ */
+export function WsListTools({ onFind, findKey, create, createLabel = 'New document or folder', reconnecting = null }: {
+  onFind: () => void; findKey?: string | undefined; create?: WsPop | undefined; createLabel?: string | undefined;
+  reconnecting?: { onTry?: (() => void) | undefined } | null | undefined;
+}) {
+  return (
+    <>
+    <div className="wt-head is-tools">
+      <button type="button" className="wt-find" aria-label="Find in this workspace" onClick={onFind}>
+        <Icon name="search" size={15} /><span className="t">Find</span>{findKey && <Kbd>{findKey}</Kbd>}
+      </button>
+      {create && <CreateButton create={create} createLabel={createLabel} />}
+    </div>
+    {reconnecting && <ListReconnecting onTry={reconnecting.onTry} />}
     </>
   );
 }

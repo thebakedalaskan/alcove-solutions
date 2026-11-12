@@ -5,7 +5,7 @@
  */
 import type { IconName } from '@alcove/ui';
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
-import { foldersAbove, isWithin, nameOf, landing, type DropSide, type Tree } from './tree';
+import { depthOf, isWithin, nameOf, landing, type DropSide, type Tree } from './tree';
 import type { ItemPlace } from '@alcove/api';
 
 const LIFT_PX = 5;
@@ -24,13 +24,19 @@ export interface RowDrag { id: string; icon: IconName; label: string; x: number;
 
 interface Armed { id: string; x: number; y: number }
 
-/** What's under the pointer, for a row that's moving. */
-function spotAt(t: Tree, moving: string, x: number, y: number, canBring: boolean): DropSpot | null {
+/**
+ * What's under the pointer, for a row that's moving. In a call, This call's part of the list (its head, the call's pages and what's
+ * brought to it) is the call's folder (`callFolder`) where the list shows that: what's dropped there goes last in it, and between
+ * the rows from inside it, among them. Without the folder, This call is what's brought to it, in the order it came: a document
+ * dropped there comes to the call (`canBring`).
+ */
+function spotAt(t: Tree, moving: string, x: number, y: number, canBring: boolean, callFolder: string | null): DropSpot | null {
   const under = document.elementFromPoint(x, y);
   if (!under) return null;
   if (under.closest('[data-trash]')) return { kind: 'trash' };
-  // This call's part of the list is what's brought to it, in the order it came: a document dropped there comes to the call.
-  if (canBring && under.closest('[data-sec="pins"], [data-row][data-area="pins"]')) return t.all.get(moving)?.kind === 'document' ? { kind: 'bring' } : null;
+  const thisCall = under.closest('[data-sec="pins"], [data-row][data-area="pins"]') !== null;
+  if (thisCall && callFolder !== null) return isWithin(t, callFolder, moving) ? null : { kind: 'place', to: { parent: callFolder }, line: null, into: callFolder };
+  if (canBring && thisCall) return t.all.get(moving)?.kind === 'document' ? { kind: 'bring' } : null;
   const row = under.closest<HTMLElement>('[data-row]');
   if (!row) {
     const list = under.closest('.wt-scroll');
@@ -47,25 +53,28 @@ function spotAt(t: Tree, moving: string, x: number, y: number, canBring: boolean
   const folder = target.kind === 'folder';
   const side: DropSide = folder && at > 0.28 && at < 0.72 ? 'inside' : at < 0.5 ? 'before' : 'after';
   if (side === 'inside') return { kind: 'place', to: landing(t, moving, target.id, side), line: null, into: target.id };
-  const depth = foldersAbove(t, target.id).length;
+  // What's in the call's folder shows at This call's top level, so the line is drawn as deep as the row shows.
+  const depth = depthOf(t, target.id, callFolder !== null && target.id !== callFolder && isWithin(t, target.id, callFolder) ? callFolder : null);
   const top = row.offsetTop + (side === 'after' ? row.offsetHeight : 0);
   // Under an open folder, what's next is what's in it.
   if (side === 'after' && row.getAttribute('aria-expanded') === 'true') return { kind: 'place', to: { parent: target.id, after: null }, line: { top, left: 12 + (depth + 1) * 16 }, into: null };
   return { kind: 'place', to: landing(t, moving, target.id, side), line: { top, left: 12 + depth * 16 }, into: null };
 }
 
-export function useRowDrag({ tree, canDrag, canBring = false, onDrop, onOpenFolder }: {
+export function useRowDrag({ tree, canDrag, canBring = false, callFolder = null, onDrop, onOpenFolder }: {
   tree: Tree; canDrag: (id: string) => boolean;
   /** In a call: a row can be dropped on This call. */
   canBring?: boolean | undefined;
+  /** In a call: the folder of the call you're in, which the list shows as This call. */
+  callFolder?: string | null | undefined;
   onDrop: (id: string, spot: DropSpot) => void; onOpenFolder: (id: string) => void;
 }) {
   const [drag, setDrag] = useState<RowDrag | null>(null);
   const armed = useRef<Armed | null>(null);
   const moving = useRef<RowDrag | null>(null);
   const justDropped = useRef(false);
-  const said = useRef({ tree, canBring, onDrop, onOpenFolder });
-  said.current = { tree, canBring, onDrop, onOpenFolder };
+  const said = useRef({ tree, canBring, callFolder, onDrop, onOpenFolder });
+  said.current = { tree, canBring, callFolder, onDrop, onOpenFolder };
 
   useEffect(() => {
     let pause: { id: string; timer: ReturnType<typeof setTimeout> } | null = null;
@@ -83,7 +92,7 @@ export function useRowDrag({ tree, canDrag, canBring = false, onDrop, onOpenFold
     const place = (x: number, y: number) => {
       const d = moving.current;
       if (!d) return;
-      const spot = spotAt(said.current.tree, d.id, x, y, said.current.canBring);
+      const spot = spotAt(said.current.tree, d.id, x, y, said.current.canBring, said.current.callFolder);
       const into = spot?.kind === 'place' ? spot.into : null;
       if (pause?.id !== into) {
         stopPause();

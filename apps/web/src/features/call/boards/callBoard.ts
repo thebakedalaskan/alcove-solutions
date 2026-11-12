@@ -1,7 +1,7 @@
 /*
  * The board in a call, as this browser holds it (docs: Calls and recordings › A board in a call): the board in the part of the
- * call you're in (`CallState.board`), which votes, ideas from the call and breakout rooms hang on, or a saved board you
- * opened just for you, which touches nothing in the call. Whichever is on your stage (layout/onStage.ts) has its session open
+ * call you're in (`CallState.board`), which votes, ideas from the call and breakout rooms hang on, or a saved board on your
+ * stage only (`SavedBoard`), which touches nothing in the call. Whichever is on your stage (layout/onStage.ts) has its session open
  * while you can open it; so does the call's board while it's in the call, for its presented tile. Who you're following on it,
  * and what you're told as it closes, are here too. What's drawn is features/board/CallBoard.tsx, loaded the first time it's
  * needed.
@@ -167,7 +167,10 @@ function useBoardComments(participants: CallState['participants'], workspaceId: 
   }, [people, ids, canAdd, toast]);
 }
 
-/** A saved board you opened just for you, from the picker: by where it's kept, and what it's called. */
+/**
+ * A saved board on your stage only: the one you had open when someone else made a new board in the call, or one asked for as
+ * the call started (Start a call here). By where it's kept, and what it's called.
+ */
 export interface SavedBoard { workspaceId: string; documentId: string; name: string }
 
 /**

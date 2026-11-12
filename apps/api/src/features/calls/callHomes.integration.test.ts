@@ -124,9 +124,9 @@ describe('a call’s home', () => {
     expect(await peopleIn(ann, home)).toEqual({ [ann.email]: 'admin', [kofi.email]: 'edit', [priya.email]: 'edit' });
     expect(await space(k)).toMatchObject({ id: home, home, canOpen: true, role: 'edit' });
     expect(await priya.api.workspaces.list()).toEqual([expect.objectContaining({ id: home, role: 'edit', call: { title: 'Launch check-in', at: expect.any(String) } })]);
-    // A guest has nothing in it, and isn't told which it is.
-    expect(await space(jamie)).toMatchObject({ id: null, home: null, canOpen: false });
-    expect(await code(h.browser().api.workspaces.get(home, { pass: jamie.ticket.pass }))).toBe('not-found');
+    // A guest isn't one of its people: it's open to them while they're in the call, as it is to everyone in it.
+    expect(await space(jamie)).toMatchObject({ id: home, home, canOpen: true, role: null, everyone: true });
+    expect(await h.browser().api.workspaces.get(home, { pass: jamie.ticket.pass })).toMatchObject({ id: home, role: null, inCall: true, people: null });
 
     // The call's folder is at the top, named as the home is. Its pages are live for whoever's in the call, and nobody else.
     const tree = await ann.api.workspaces.get(home);
@@ -400,10 +400,10 @@ describe('who’s in a home made for a call', () => {
     expect(await peopleIn(ann, home)).toEqual({ [ann.email]: 'admin', [kofi.email]: 'edit', [lena.email]: 'edit' });
     expect(await code(sam.api.workspaces.get(home))).toBe('not-found');
 
-    // A guest let in from the link with no account has nothing.
+    // A guest let in from the link with no account isn't one of its people: it's open to them only while they're in the call.
     const jamie = await h.browser().api.calls.join(c, { mic: false, cam: false, name: 'Jamie Guest' });
     await letIn(host, jamie);
-    expect(await space(jamie)).toMatchObject({ id: null, home: null, canOpen: false });
+    expect(await space(jamie)).toMatchObject({ id: home, home, canOpen: true, role: null, everyone: true });
     expect(Object.keys(await peopleIn(ann, home))).toHaveLength(3);
     await host.leave();
   });
@@ -556,8 +556,8 @@ describe('who’s in a home made for a call', () => {
     expect(made).not.toBe(home);
     expect(await peopleIn(ann, made)).toEqual({ [ann.email]: 'admin', [kofi.email]: 'edit', [sam.email]: 'edit' });
     expect(await ann.api.workspaces.list()).toEqual(expect.arrayContaining([expect.objectContaining({ id: made, name: 'Retro', people: 3, call: { title: 'Standup', at: expect.any(String) } })]));
-    // A guest without an account isn't in it: to them it's private.
-    expect(await space(jamie)).toMatchObject({ id: null, canOpen: false });
+    // A guest without an account isn't one of its people: it's open to them while they're in the call.
+    expect(await space(jamie)).toMatchObject({ id: made, canOpen: true, role: null, everyone: true });
     // Someone let in after it's made comes in too, as the invite says, and someone taken out of the call goes, whichever
     // workspace everyone views by then.
     await host.setWorkspace(home);
@@ -598,7 +598,6 @@ describe('who’s who in a workspace’s documents', () => {
     await invited(host, c, kofi);
     await host.openWorkspace();
     const home = (await space(host)).home ?? '';
-    const plan = (await ann.api.workspaces.items.create(home, { kind: 'document', name: 'Plan' })).id;
 
     // In the workspace, any address: a member's is the ID the workspace already knows them by.
     const ids = await ann.api.workspaces.ids(home, [ann.email, kofi.email, ola.email.toUpperCase(), 'nobody@elsewhere.example']);
@@ -616,13 +615,10 @@ describe('who’s who in a workspace’s documents', () => {
     // Someone who can't open anything in it is told nothing.
     expect(await code(ola.api.workspaces.ids(home, [kofi.email]))).toBe('not-found');
 
-    // A guest given a document in the call: only the people who've been in it, never anyone else's.
+    // A guest, whom the call's home is open to while they're in it: only the people who've been in the call, never anyone else's.
     const jamieBrowser = h.browser();
     const jamie = await jamieBrowser.api.calls.join(c, { mic: false, cam: false, name: 'Jamie Guest' });
     await letIn(host, jamie);
-    await jamie.askForWorkspace(true);
-    const ask = (await settle(host, (x) => x.workspace.asks.length === 1)).workspace.asks[0];
-    await host.grantWorkspaceAsk(ask?.id ?? '', plan, 'read');
     const theirs = await jamieBrowser.api.workspaces.ids(home, [ann.email, kofi.email, ola.email], { pass: jamie.ticket.pass });
     expect(theirs).toEqual({ [ann.email]: ids[ann.email], [kofi.email]: ids[kofi.email] });
     await host.leave();

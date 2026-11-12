@@ -69,7 +69,7 @@ const homeName = (title: string, at: string): string => `${title} · ${new Intl.
 function home(id: string, title: string, at: string, organizer: Person, role: WorkspaceRole, people: number, noteId: string, items: WorkspaceItem[]): Space {
   const name = homeName(title, at);
   const hours = (Date.parse(iso(0, 16, 12)) - Date.parse(at)) / 3_600_000;
-  return { id, name, role, people, createdAt: at, call: { title, at }, items: [item(name, 'folder', organizer, hours, { call: { startedAt: at, on: false, here: false, noteId } }), ...items] };
+  return { id, name, role, inCall: false, people, createdAt: at, call: { title, at }, items: [item(name, 'folder', organizer, hours, { call: { startedAt: at, on: false, here: false, noteId } }), ...items] };
 }
 /**
  * The workspaces: the homes of the day's calls, the standup's newest; Product, which Art runs; Design, where he edits; and
@@ -85,7 +85,7 @@ function workspaces(): Space[] {
       item('Sidebar screenshots', 'document', KOFI, 28.3), item('Review uploads', 'document', AIKO, 28.9), item('Review checklist', 'document', ART, 28.6)
     ]),
     {
-      id: 'ws-product', name: 'Product', role: 'admin', people: 6, createdAt: iso(-120, 10, 0), call: null,
+      id: 'ws-product', name: 'Product', role: 'admin', inCall: false, people: 6, createdAt: iso(-120, 10, 0), call: null,
       items: [
         item('Launch plan', 'document', PRIYA, 2, { made: 76 }), item('Launch checklist', 'document', MAYA, 5), item('Research', 'folder', LENA, 300),
         item('Interview notes', 'document', LENA, 120, research), item('Competitor notes', 'document', LENA, 170, research),
@@ -95,11 +95,11 @@ function workspaces(): Space[] {
       ]
     },
     {
-      id: 'ws-design', name: 'Design', role: 'edit', people: 4, createdAt: iso(-90, 14, 0), call: null,
+      id: 'ws-design', name: 'Design', role: 'edit', inCall: false, people: 4, createdAt: iso(-90, 14, 0), call: null,
       items: [item('Onboarding flow', 'board', AIKO, 50), item('Empty states', 'document', KOFI, 8)]
     },
     {
-      id: 'ws-handbook', name: 'Company handbook', role: 'read', people: 38, createdAt: iso(-400, 9, 0), call: null,
+      id: 'ws-handbook', name: 'Company handbook', role: 'read', inCall: false, people: 38, createdAt: iso(-400, 9, 0), call: null,
       items: [item('Holidays', 'document', NADIA, 700, reading), item('Expenses', 'document', NADIA, 1300, reading), item('Working from home', 'document', NADIA, 2100, reading)]
     }
   ];

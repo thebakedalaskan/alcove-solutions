@@ -1,14 +1,15 @@
 /*
- * The workspace in a call (user-flows 6): the call's home, with its folder of live Notes, Follow-ups and Transcript, open on your
- * stage just for you; the organizer's Switch workspace, in its name's menu, and switching; following someone, a tag and a
- * comment; Find and History; presenting it, with everyone following, and Play for everyone; someone who can open nothing in it,
- * and asking to see it; a follow-up added by hand; and the toasts. Everyone else's browser is the script's: where they are in
- * the workspace, what they present and play, and who asks.
+ * The workspace in a call (user-flows 6): the call's home, open on your stage, only on your screen, which everyone in the call
+ * can open and edit while they're in it, guests too, as its frame's bar says. This call at the top of its list, with the call's
+ * live Notes, Follow-ups and Transcript and what's made in the call, which lands there. Its one menu, on its name: the
+ * organizer's Switch workspace and switching, Find, Who's in it, Rename and Copy link. Following someone, a tag and a comment;
+ * Find and History; presenting it, with everyone following, and Play for everyone; a guest's workspace; a follow-up added by
+ * hand; and the toasts. Everyone else's browser is the script's: where they are in the workspace, and what they present and play.
  */
 import { DEFAULT_NOTES_CHOICES, type CallSession } from '@alcove/api';
 import type { Meta } from '@storybook/react-vite';
 import { screen, waitFor, within } from 'storybook/test';
-import { asksToSee, at, goesTo, leaves, opensPage, plays, presentsWorkspace, tagsYou, type CallScript, type Line, type Present } from '../../src/api/script';
+import { at, goesTo, leaves, opensPage, plays, presentsWorkspace, tagsYou, type CallScript, type Line, type Present } from '../../src/api/script';
 import { current } from '../../src/api/state';
 import { inCall, light, phone, reach, type InCall, type StoryCall } from '../../src/call';
 import { iso } from '../../src/world/clock';
@@ -16,7 +17,7 @@ import { ART } from '../../src/world/people';
 import { caretAtEnd, pages, type PageArgs, type PageStory } from '../../src/page';
 import { frameMenu, frameOf } from './plays';
 import {
-  addWalkthrough, AIKO, CHECK_IN, CHECK_IN_SUMMARY, CHECK_IN_TALK, CHECKLIST_DOC, FILM, KOFI, LAUNCH_REVIEW, MAYA, PLAN, PRIYA, REVIEW, REVIEW_SUMMARY, REVIEW_TALK, SAM, THEO,
+  addWalkthrough, AIKO, CHECK_IN, CHECK_IN_SUMMARY, CHECK_IN_TALK, CHECKLIST_DOC, FILM, KOFI, LAUNCH_REVIEW, MAYA, PLAN, PRIYA, REVIEW, REVIEW_SUMMARY, REVIEW_TALK, SAM,
   WALKTHROUGH
 } from './talk';
 
@@ -54,12 +55,27 @@ const openPage = (name: string): Play => async (c) => {
     await c.userEvent.click(await rowIn(new RegExp(`^${name}\\s?(\\d+)?$`)));
   });
 };
-/** Opens Switch workspace, from the workspace's name on its frame: the organizer's workspaces, with this call's home marked. */
-const openPicker = (home: string): Play => async (c) => {
+/** Opens the workspace's one menu, from its name on its frame. */
+const openMenu = (home: string): Play => async (c) => {
   await openWorkspace(c);
-  await c.step('Press the workspace’s name on its frame, then Switch workspace', async () => {
-    await frameMenu(c, home);
-    await c.userEvent.click(await screen.findByRole('menuitem', { name: 'Switch workspace' }, { timeout: 5000 }));
+  await c.step('Press the workspace’s name on its frame: its one menu', async () => { await frameMenu(c, home); });
+};
+/** Opens one of the menu's rows that open in place of the rows. */
+const fromMenu = (home: string, row: string, says: string): Play => async (c) => {
+  await openMenu(home)(c);
+  await c.step(`Press ${row}. ${says}`, async () => {
+    const it = await screen.findByRole('menuitem', { name: row }, { timeout: 5000 });
+    await settle();
+    await c.userEvent.click(it);
+  });
+};
+/** Opens Switch workspace, from the workspace's name on its frame: the organizer's workspaces, with this call's home marked. */
+const openPicker = (home: string): Play => fromMenu(home, 'Switch workspace', 'Your workspaces, this call’s home ticked');
+/** Who can edit it, on the frame's bar: it opens Who's in it, in place of the menu's rows. */
+const whoCanEdit = (frame: string, label: RegExp): Play => async (c) => {
+  await openWorkspace(c);
+  await c.step('Press who can edit it, on the frame’s bar: Who’s in it opens under its name', async () => {
+    await c.userEvent.click(await within(await frameOf(frame)).findByRole('button', { name: label }, { timeout: 10000 }));
   });
 };
 /**
@@ -70,7 +86,7 @@ const settle = () => new Promise<void>((done) => { setTimeout(done, 500); });
 /** Picks Design in the picker: it asks first. */
 const pickDesign = (home: string): Play => async (c) => {
   await openPicker(home)(c);
-  await c.step('Pick Design. The question says who can’t open it, and that the notes still go to the home', async () => {
+  await c.step('Pick Design. The question says who isn’t in it, that they can open and edit it while they’re in the call, and that the notes still go to the home', async () => {
     const design = await screen.findByRole('menuitemradio', { name: /^Design(?! review)/ }, { timeout: 5000 });
     await settle();
     await c.userEvent.click(design);
@@ -79,9 +95,56 @@ const pickDesign = (home: string): Play => async (c) => {
 
 /* ---------- the call's home ---------- */
 
-/** The design review's first Workspace: a new home named after the call and the day, with the call's folder in it. */
+/**
+ * The design review's first Workspace: a new home named after the call and the day. Its bar says it's only on your screen, and
+ * that everyone in the call can edit it. The call's folder is This call, at the top of the list, with the call's pages; the
+ * list's top is Find and New, as the bar names the workspace.
+ */
 export const OnItsHome = inCall({ scenario: 'call-soon', call: REVIEW, script: { here: REVIEWERS, ...TALK } }, { play: openWorkspace });
 export const OnItsHomePhone = phone(OnItsHome);
+export const OnItsHomeLight = light(OnItsHome);
+
+/* ---------- its one menu ---------- */
+
+/** Its name is the workspace's one menu. The organizer's: Switch workspace, Find in the workspace, Who's in it, Rename and Copy link. */
+export const TheMenu = inCall({ scenario: 'call-soon', call: REVIEW, script: { here: REVIEWERS } }, { play: openMenu('Design review · 4 Nov') });
+export const TheMenuPhone = phone(TheMenu);
+/**
+ * Who's in it, from who can edit it on the bar, or from the menu: the workspace's people, then whoever else is in the call,
+ * who can edit it while they're there. Sam came in with the link: a guest.
+ */
+export const WhosInIt = inCall(
+  { scenario: 'call-soon', call: REVIEW, script: { here: [...REVIEWERS, { who: SAM, guest: true }] } },
+  { play: whoCanEdit('Design review · 4 Nov', /^Everyone in the call can edit/) }
+);
+export const WhosInItPhone = phone(WhosInIt);
+/** Rename, for an admin: the name in a field, in place of the rows. Enter keeps it, Esc leaves it as it was. */
+export const Rename = inCall({ scenario: 'call-soon', call: REVIEW, script: { here: REVIEWERS } }, {
+  play: async (c) => {
+    await fromMenu('Design review · 4 Nov', 'Rename', 'Its name, selected, in place of the rows')(c);
+    await c.step('Type a new name, and press Enter: the frame says it', async () => {
+      await c.userEvent.keyboard('Empty states review{Enter}');
+      await frameOf('Empty states review');
+    });
+  }
+});
+export const RenamePhone = phone(Rename);
+/**
+ * New, at the top of the list, then New document: it goes in This call, beside the call's pages, as N and the empty page's New
+ * document do while the call's home is open, and opens with the caret in its title.
+ */
+export const MadeInThisCall = inCall({ scenario: 'call-soon', call: REVIEW, script: { here: REVIEWERS } }, {
+  play: async (c) => {
+    await openWorkspace(c);
+    await c.step('Press New, at the top of the list, then New document. It lands in This call', async () => {
+      await c.userEvent.click(await within(await frameOf('Design review · 4 Nov')).findByRole('button', { name: 'New document or folder' }, { timeout: 10000 }));
+      const doc = await screen.findByRole('menuitem', { name: /^New document/ }, { timeout: 5000 });
+      await settle();
+      await c.userEvent.click(doc);
+    });
+  }
+});
+export const MadeInThisCallPhone = phone(MadeInThisCall);
 /** On your own with the workspace open: the link for anyone to ask to join stays on the stage, as it does without the workspace, clear of the list. */
 export const JustYou = inCall({
   scenario: 'on-their-own',
@@ -93,7 +156,7 @@ export const JustYouPhone = phone(JustYou);
 export const ThePicker = inCall({ scenario: 'call-soon', call: REVIEW, script: { here: REVIEWERS } }, { play: openPicker('Design review · 4 Nov') });
 export const ThePickerPhone = phone(ThePicker);
 
-/** Switching asks once: Sam came in with the link and can't open Design, and the notes still go to the home. */
+/** Switching asks once: Sam came in with the link and isn't in Design, so can open and edit it while in the call, and the notes still go to the home. */
 export const SwitchQuestion = inCall(
   { scenario: 'call-soon', call: REVIEW, script: { here: [...REVIEWERS, { who: SAM, guest: true }] } },
   { play: pickDesign('Design review · 4 Nov') }
@@ -104,8 +167,8 @@ export const SwitchQuestionPhone = phone(SwitchQuestion);
 export const Switched = inCall({ scenario: 'call-soon', call: REVIEW, script: { here: [...REVIEWERS, { who: SAM, guest: true }] } }, {
   play: async (c) => {
     await pickDesign('Design review · 4 Nov')(c);
-    await c.step('Switch to Design. Everyone views it at once', async () => {
-      await c.userEvent.click(await screen.findByRole('button', { name: 'Switch to Design' }, { timeout: 5000 }));
+    await c.step('Press Switch. Everyone views Design at once', async () => {
+      await c.userEvent.click(await screen.findByRole('button', { name: 'Switch' }, { timeout: 5000 }));
     });
   }
 });
@@ -213,11 +276,6 @@ const PRIYAS_REVIEW: StoryCall = { id: 'm-priyas-review', title: 'Launch review'
 const PRIYAS_REVIEW_BY_LINK: StoryCall = { ...PRIYAS_REVIEW, id: 'm-priyas-review-link', code: 'lch-revw-lnk', guests: [KOFI, AIKO] };
 /** What Priya says once the guest is in, which she quotes into the plan. */
 const SAID_ONCE_IN: Line & { id: string } = { id: 'line-review-notice', who: PRIYA, text: 'Support needs a day’s notice before the launch moves.' };
-/** Product as a guest Priya let see the launch plan has it: the plan and nothing else, under no name. */
-function onlyThePlan(): void {
-  const w = current();
-  w.workspaces = w.workspaces.map((s) => (s.id === 'ws-product' ? { ...s, name: null, role: null, people: null, items: s.items.filter((i) => i.id === PLAN).map((i) => ({ ...i, parent: null })) } : s));
-}
 /** Priya's quote of what she said once the guest was in, at the end of the plan, as Quote what was said puts it there. */
 function quoteSaidOnceIn(session: CallSession): void {
   const note = session.getSnapshot().notes.noteId;
@@ -229,15 +287,16 @@ function quoteSaidOnceIn(session: CallSession): void {
 }
 /**
  * A guest with the link hears only the pieces of the recording they were there for, whole: on a line they came in part way
- * through the piece of, it says so in place of Hear it. Priya let the guest see the launch plan, where she quoted the line.
+ * through the piece of, it says so in place of Hear it. Product opens to them as to everyone in the call, the launch plan
+ * first, where Priya quoted the line.
  */
 export const HearItNotThere = inCall({
   scenario: 'signed-out', call: PRIYAS_REVIEW_BY_LINK,
   script: {
     here: [{ who: PRIYA, organizer: true }, { who: KOFI }], since: 100, cues: at(0.3, { do: 'let-in' }), talk: { lines: [SAID_ONCE_IN], from: 1.5 },
-    workspace: { brought: [PLAN], yours: [PLAN] }, hear: 'not-found'
+    workspace: { brought: [PLAN] }, hear: 'not-found'
   },
-  then: (session) => { onlyThePlan(); quoteSaidOnceIn(session); }
+  then: quoteSaidOnceIn
 }, { play: says('You can only hear what you were there for.'), name: 'Hear it, not there for it' });
 /**
  * Someone invited (or the organizer, or whoever hosts) hears all of the recording that plays, so a part of it that can't be
@@ -357,14 +416,14 @@ export const WatchingPhone = phone(Watching);
 
 /**
  * Priya leaves while she's presenting the workspace: the call says it ended as she goes, so it ends at once, and the toast says
- * why. What you had open stays, just for you.
+ * why. What you had open stays, only on your screen.
  */
 export const PresenterLeft = inCall(reviewing({ cues: [...at(6, presentsWorkspace(PRIYA)), ...at(12, leaves(PRIYA))] }), {
   play: async (c) => {
     await c.step('Priya presents the workspace, then leaves: it ends, and you’re told why', async () => {
       await screen.findByText('Priya left the call, so the presentation ended', {}, { timeout: 25000 });
     });
-    await c.step('What you had open stays, just for you', async () => { await screen.findByText('Open just for you', {}, { timeout: 5000 }); });
+    await c.step('What you had open stays, only on your screen', async () => { await screen.findByText('Only on your screen', {}, { timeout: 5000 }); });
   }
 });
 export const PresenterLeftPhone = phone(PresenterLeft);
@@ -373,28 +432,27 @@ export const PresenterLeftPhone = phone(PresenterLeft);
 export const PlayForEveryone = inCall(reviewing({ workspace: { brought: [WALKTHROUGH], where: [{ who: AIKO, document: WALKTHROUGH }] }, cues: at(4, plays(AIKO, WALKTHROUGH, FILM)) }, addWalkthrough), { play: openWorkspace });
 export const PlayForEveryonePhone = phone(PlayForEveryone);
 
-/* ---------- someone who can open nothing ---------- */
+/* ---------- a guest ---------- */
 
-/** Priya's call with Harbourline, which Art isn't signed in for: he comes in with the link, by name, and is let in. */
-const HARBOURLINE: StoryCall = { id: 'm-guest', title: 'Harbourline intro', startsAt: iso(0, 16, 5), minutes: 30, code: 'hbr-intr-gst', organizer: PRIYA, guests: [KOFI], status: 'live' };
-
-/** A guest with the link: the workspace is private to them, with the call's own pages and Ask Priya. */
-export const Private = inCall({
-  scenario: 'signed-out', call: HARBOURLINE,
-  script: { here: [{ who: PRIYA, organizer: true }, { who: KOFI }], cues: at(0.5, { do: 'let-in' }), ...TALK }
-}, {
-  play: async (c) => {
-    await openWorkspace(c);
-    await c.step('Ask Priya. It names nothing, and opens by itself once she shares something', async () => {
-      await c.userEvent.click(await c.canvas.findByRole('button', { name: 'Ask Priya' }, { timeout: 8000 }));
-    });
+/**
+ * Priya's launch review, which Noor Haddad comes into with the link, signed out, by the name she typed, and is let in: a guest.
+ * Product, the call's home, opens to her as to everyone in the call, the launch plan first, where Priya and Kofi are.
+ */
+const asAGuest = (): InCall => ({
+  scenario: 'signed-out', call: PRIYAS_REVIEW_BY_LINK, you: { name: 'Noor Haddad' },
+  script: {
+    here: [{ who: PRIYA, organizer: true }, { who: KOFI }], cues: at(0.3, { do: 'let-in' }), ...TALK,
+    workspace: { brought: [PLAN], where: [{ who: PRIYA, document: PLAN }, { who: KOFI, document: PLAN, typing: true }] }
   }
 });
-export const PrivatePhone = phone(Private);
-
-/** Theo, with the link, asks to see the workspace: the organizer's card offers the document in front of them, or not now. */
-export const AskCard = inCall(reviewing({ here: [...REVIEWERS, { who: THEO, guest: true }], cues: at(4, asksToSee(THEO)) }), { play: openWorkspace });
-export const AskCardPhone = phone(AskCard);
+/** Workspace, for a guest: it opens as it does for everyone in the call, folders, documents and all, and its bar says it's theirs to edit while they're in the call. */
+export const AsAGuest = inCall(asAGuest(), { play: openWorkspace });
+export const AsAGuestPhone = phone(AsAGuest);
+/** A guest's menu, on the workspace's name: what a guest can use, Find in the workspace and Who's in it. */
+export const AsAGuestMenu = inCall(asAGuest(), { play: openMenu('Product') });
+/** Who's in it, for a guest, from who can edit it on the bar: they can't read Product's people, so it's the people in the call. */
+export const AsAGuestWhosInIt = inCall(asAGuest(), { play: whoCanEdit('Product', /^You can edit while you’re in the call/) });
+export const AsAGuestWhosInItPhone = phone(AsAGuestWhosInIt);
 
 /* ---------- following onto the call's pages, and stopping ---------- */
 
@@ -479,7 +537,7 @@ export const NewWorkspacePhone = phone(NewWorkspace);
 function earlierReview(): void {
   const at = iso(0, 9, 0);
   const day = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short' }).format(new Date(at));
-  current().workspaces.push({ id: 'ws-review-early', name: `Design review · ${day}`, role: 'admin', people: 4, items: [], createdAt: at, call: { title: 'Design review', at } });
+  current().workspaces.push({ id: 'ws-review-early', name: `Design review · ${day}`, role: 'admin', inCall: false, people: 4, items: [], createdAt: at, call: { title: 'Design review', at } });
 }
 /** The picker when this call's home and an earlier one share a name: each says when its call started. */
 export const ThePickerSameNameTwice = inCall({ scenario: 'call-soon', call: REVIEW, script: { here: REVIEWERS }, then: earlierReview }, { play: openPicker('Design review · 4 Nov') });

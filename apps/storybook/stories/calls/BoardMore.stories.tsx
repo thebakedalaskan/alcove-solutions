@@ -23,9 +23,9 @@ type Context = Parameters<Play>[0];
 const SOON = { timeout: 10000 };
 const LATER = { timeout: 40000 };
 const REVIEWERS: Present[] = [{ who: PRIYA }, { who: KOFI }, { who: AIKO }];
-/** Board, then the board in this call: on your stage, just for you. */
+/** Board, then the board in this call: on your stage, only on your screen. */
 const onTheBoard: Play = async (c) => {
-  await c.step('Press Board, then the retro in this call: it opens just for you', async () => { await openCallBoard(c, 'Launch review'); });
+  await c.step('Press Board, then the retro in this call: it opens on your screen', async () => { await openCallBoard(c, 'Launch review'); });
 };
 /** The launch review with the launch retro open and four stickies on it, and what the story does with More. */
 const withBoard = (play: Play, more: Omit<PageStory, 'args' | 'play'> = {}): PageStory => inCall({

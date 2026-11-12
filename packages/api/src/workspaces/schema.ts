@@ -90,8 +90,13 @@ export const WorkspaceTreeSchema = z.object({
   id: IDSchema,
   /** Null for someone outside the workspace who has documents in it. */
   name: z.string().nullable(),
-  /** Your role in it, or null when you only have documents in it. */
+  /** Your role in it, or null when you're not in it: you only have documents in it, or a call you're in uses it. */
   role: WorkspaceRoleSchema.nullable(),
+  /**
+   * A call you're in uses it: you can open it as its people can, folders and all, and change what isn't restricted, while
+   * you're in the call. It gives no say in who has what. Read with the call's pass.
+   */
+  inCall: z.boolean(),
   /** How many people are in it. Null for someone outside it. */
   people: z.number().nullable(),
   items: z.array(WorkspaceItemSchema)
@@ -104,7 +109,7 @@ export type WorkspaceTree = z.infer<typeof WorkspaceTreeSchema>;
  * A workspace in your Drive, newest first. Someone outside it who has documents in it sees only that it's there: `createdAt`
  * is null for them. `call`: the call it was made for, as a call's home, for someone in it.
  */
-export const WorkspaceSummarySchema = WorkspaceTreeSchema.omit({ items: true }).extend({
+export const WorkspaceSummarySchema = WorkspaceTreeSchema.omit({ items: true, inCall: true }).extend({
   createdAt: ISODateSchema.nullable(),
   call: z.object({ title: z.string(), at: ISODateSchema }).nullable()
 });

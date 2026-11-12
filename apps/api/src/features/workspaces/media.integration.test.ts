@@ -1273,6 +1273,47 @@ describe('guests in a call', () => {
     await host.leave();
   });
 
+  it('see the pictures of anything unrestricted in the workspace the call uses, by URL alone, and lose them on the next range once it moves on or they’re taken out', async () => {
+    const org = await account();
+    const id = await workspace(org, 'Ours');
+    const other = await workspace(org, 'Other');
+    const agenda = await make(org, id, 'document', 'Agenda');
+    const secret = await make(org, id, 'document', 'Restricted');
+    const bytes = bytesOf(PIECE + 50);
+    const shown = await org.api.workspaces.media.upload(id, agenda, fileOf(bytes));
+    const hidden = await org.api.workspaces.media.upload(id, secret, fileOf(bytesOf(8), 'CANARY-RESTRICTED.png'));
+    await org.api.workspaces.share.restrict(id, secret, true);
+    const { host, guests } = await callWith(org, ['Sam Guest', 'Jo Guest']);
+    const [sam, jo] = guests;
+    if (!sam || !jo) throw new Error('nobody joined');
+    const m = sam.api.workspaces.media;
+    const opts = { pass: sam.pass };
+    // Nothing yet: the call uses no workspace.
+    expect(await refusal(m.url(id, agenda, shown.id, opts))).toEqual(await refusal(m.url(madeUp(), agenda, shown.id, opts)));
+    await host.setWorkspace(id);
+
+    // Nothing given to their seat: the call opens it, and an `<img>` reads it with no cookie and no header.
+    const url = await m.url(id, agenda, shown.id, opts);
+    expect(same((await read({ fetch }, url)).bytes, bytes)).toBe(true);
+    expect((await m.list(id, opts)).map((x) => x.id)).toEqual([shown.id]);
+    // What's restricted stays closed, as a file nobody has.
+    expect(await refusal(m.url(id, secret, hidden.id, opts))).toEqual(await refusal(m.url(id, madeUp(), hidden.id, opts)));
+
+    // The call moves on: the very next range is refused, as for a URL nobody made. Back again, the same URL reads.
+    const nobody = await nothing();
+    await host.setWorkspace(other);
+    expect(await refused({ fetch }, url, 'bytes=0-0')).toEqual(nobody);
+    await host.setWorkspace(id);
+    expect((await read({ fetch }, url, 'bytes=0-0')).status).toBe(206);
+
+    // Taken out: refused on the next range, and someone still in the call reads on.
+    const joUrl = await jo.api.workspaces.media.url(id, agenda, shown.id, { pass: jo.pass });
+    await host.remove(sam.call.ticket.identity);
+    expect(await refused({ fetch }, url, 'bytes=1-1')).toEqual(nobody);
+    expect((await read({ fetch }, joUrl, 'bytes=1-1')).status).toBe(206);
+    await host.leave();
+  });
+
   it('lose a picture when they leave, even if what the call gave them is still on its row', async () => {
     const org = await account();
     const id = await workspace(org, 'Ours');

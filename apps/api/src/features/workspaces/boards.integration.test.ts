@@ -63,7 +63,7 @@ async function workspace(who: Account, name: string, people: [Account, Workspace
 }
 const make = async (who: Account, id: string, name: string, kind: ItemKind = 'board') => (await who.api.workspaces.items.create(id, { kind, name, parent: null })).id;
 /** A workspace as someone with this address has it, for what server code calls. */
-const heldBy = (who: Account, workspaceId: string) => workspaceFor(h.deps, { email: who.email, principals: [blindIndex(masterKey(h.deps), 'email', who.email)] }, workspaceId);
+const heldBy = (who: Account, workspaceId: string) => workspaceFor(h.deps, { email: who.email, principals: [blindIndex(masterKey(h.deps), 'email', who.email)], calls: [] }, workspaceId);
 
 /* ---------- a browser at a board ---------- */
 

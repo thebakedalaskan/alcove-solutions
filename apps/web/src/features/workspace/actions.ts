@@ -11,7 +11,7 @@ import type { TreeChange } from './changes';
 import type { TreeActions, WorkspacePlace } from './context';
 import { withDocument } from './session';
 import { stemOf, uploadInto } from './uploads';
-import { foldersAbove, isWithin, nameFrom, nameOf, nextDocument, placeOf, samePlace, type Tree } from './tree';
+import { folderName, foldersAbove, isWithin, nameFrom, nameOf, nextDocument, placeOf, samePlace, type Tree } from './tree';
 
 /** Everything `useTreeActions` works with. It reads the latest of these whenever something's pressed. */
 export interface ActionsInput {
@@ -22,6 +22,8 @@ export interface ActionsInput {
   at: WorkspacePlace;
   me: Person | null;
   spaceName: string;
+  /** In a call, the folder of the call you're in, which the list shows as This call. */
+  callFolder: string | null;
   change: <T>(c: TreeChange, work: () => Promise<T>) => Promise<T>;
   go: (to: WorkspacePlace, how?: { replace?: boolean | undefined }) => void;
   say: (toast: WsToastData) => void;
@@ -131,13 +133,13 @@ export function useTreeActions(input: ActionsInput): TreeActions {
         void source.change({ kind: 'name', id, name }, () => source.changes.rename.mutateAsync(request)).catch((e: unknown) => { if (errorCode(e) !== 'network') failed(e); });
       },
       move: (id, to) => {
-        const { tree, spaceName } = s();
+        const { tree, spaceName, callFolder } = s();
         if (samePlace(tree, id, to)) return;
         const back = placeOf(tree, id);
         const into = to.parent === null ? undefined : tree.all.get(to.parent);
         void place(id, to);
         if (to.parent) s().openFolders([to.parent, ...foldersAbove(tree, to.parent).map((f) => f.id)]);
-        s().say(wsToast.moved(into ? nameOf(into) : spaceName, () => { void place(id, back); }));
+        s().say(wsToast.moved(into ? folderName(into, callFolder) : spaceName, () => { void place(id, back); }));
       },
       duplicate: (id) => {
         const source = s();

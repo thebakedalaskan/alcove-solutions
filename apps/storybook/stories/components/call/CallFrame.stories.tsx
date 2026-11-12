@@ -1,6 +1,7 @@
 /*
  * CallFrame: the frame anything open on your stage wears, always at night. Its bar says whose it is (their arch, or the
- * kind's icon while it's open just for you), what it is (a menu, from its name) and how it stands, then what's yours to
+ * kind's icon while it's only on your screen), what it is (a menu, from its name), how it stands and, on a board or the
+ * workspace everyone in the call can edit, who can (a button that opens who's in it, in the name's menu), then what's yours to
  * press: following its presenter, Present, focus, Stop sharing and Close. While you present, Close asks whether it's for you
  * or for everyone; while some people here can't open the board, Present asks first. A board you present has its pager at
  * its foot. The body here is a plain drawing of what the frame holds in the call.
@@ -104,8 +105,15 @@ const BOARD_MENU = (
   </>
 );
 const WORKSPACE_MENU = (
-  <><Row icon="folders" label="Switch workspace" /><Row icon="search" label="Find in the workspace" /><Row icon="people" label="Who’s in it" /><Row icon="link" label="Copy link" /></>
+  <>
+    <Row icon="folders" label="Switch workspace" /><Row icon="search" label="Find in the workspace" k="⌘K" /><Row icon="people" label="Who’s in it" />
+    <Row icon="pen" label="Rename" /><Row icon="link" label="Copy link" />
+  </>
 );
+/** The same menu for a guest: what a guest can use. */
+const GUEST_WORKSPACE_MENU = <><Row icon="search" label="Find in the workspace" k="⌘K" /><Row icon="people" label="Who’s in it" /></>;
+/** Who can edit it, after how it stands: everyone in the call, on the call's board or workspace. */
+const EVERYONE = { label: 'Everyone in the call can edit', onPress: did('Who’s in it') };
 const YOUR_SCREEN_MENU = <><Row icon="pointer" label="Others can point at it" /><Row icon="eraser" label="Clear marks" /><Row icon="screen" label="Change what you share" /></>;
 const THEIR_SCREEN_MENU = (
   <>
@@ -173,14 +181,14 @@ const meta = {
   subcomponents: { FramePager, CloseAsk, PresentAsk },
   ...onStage,
   args: {
-    who: null, icon: 'presentation', name: 'Launch retro', meta: 'Open just for you', label: 'Launch retro, only you see it',
+    who: null, icon: 'presentation', name: 'Launch retro', meta: 'Only on your screen', label: 'Launch retro, only you see it', access: EVERYONE,
     menu: menu('Launch retro', BOARD_MENU), following: null, present: { onPress: did('Present') },
     focus: { on: false, onToggle: did('Focus') }, close: { tip: 'Close it', onClose: did('Close') },
     lit: false, focused: false, phone: false, children: <BoardBody />
   },
   argTypes: {
     icon: { control: 'select', options: ICON_NAMES },
-    who: { control: false }, menu: { control: false }, following: { control: false }, present: { control: false }, focus: { control: false },
+    who: { control: false }, access: { control: false }, menu: { control: false }, following: { control: false }, present: { control: false }, focus: { control: false },
     close: { control: false }, onStop: { control: false }, foot: { control: false }, children: { control: false }, style: { control: false }, className: { control: false }
   },
   render: (args) => <Live {...args} />
@@ -188,13 +196,30 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/** Board, at the top right, opened a board just for you: the kind's icon, Present (the one filled button), focus and Close. */
-export const OpenJustForYou: Story = { name: 'Open just for you' };
-/** The workspace, open just for you on its launch plan. */
+/**
+ * Board, at the top right, opened a board on your screen: the kind's icon, that it's only on your screen and that everyone in the
+ * call can edit it, Present (the one filled button), focus and Close.
+ */
+export const OpenJustForYou: Story = { name: 'Only on your screen' };
+/** The workspace, on your screen on its launch plan: everyone in the call can edit it, which opens who's in it. */
 export const WorkspaceJustForYou: Story = {
-  name: 'The workspace, just for you',
+  name: 'The workspace, only on your screen',
   args: { icon: 'folderOpen', name: 'Launch review · 4 Nov', label: 'Launch review · 4 Nov, only you see it', menu: menu('Launch review · 4 Nov', WORKSPACE_MENU), children: <WorkspaceBody /> }
 };
+/** Its name's menu: the workspace's one menu. For the organizer, Switch workspace, Find, Who's in it, Rename and Copy link. */
+export const WorkspaceMenu: Story = {
+  name: 'The workspace, its menu open',
+  args: { ...WorkspaceJustForYou.args, menu: menu('Launch review · 4 Nov', WORKSPACE_MENU, true) }
+};
+/** A guest's: they can edit it while they're in the call, and their menu has what a guest can use, Find and Who's in it. */
+export const WorkspaceForAGuest: Story = {
+  name: 'The workspace, for a guest',
+  args: { ...WorkspaceJustForYou.args, access: { label: 'You can edit while you’re in the call', onPress: did('Who’s in it') }, menu: menu('Launch review · 4 Nov', GUEST_WORKSPACE_MENU, true) }
+};
+/** A guest on the call's board: there's no sheet of who has it for them, so who can edit it is only said. */
+export const BoardForAGuest: Story = { name: 'The call’s board, for a guest', args: { access: { label: 'You can edit while you’re in the call' } } };
+/** A breakout room's own board: everyone in the room can edit it. */
+export const RoomBoard: Story = { name: 'A room’s own board', args: { name: 'Pricing board', label: 'Pricing board, only you see it', access: { label: 'Everyone in this room can edit' } } };
 /**
  * You present the board: your arch, how many follow you, and Close asks first. The pager at its foot steps everyone
  * following you through its frames; the notebook opens your own notes.
@@ -222,7 +247,7 @@ export const Unfollowed: Story = { args: { ...Following.args, lit: false, follow
 export const YourScreen: Story = {
   name: 'Your screen',
   args: {
-    who: ART, icon: 'screen', name: 'Your screen', meta: 'You’re presenting · a tab with sound', label: 'Your screen, everyone sees it',
+    who: ART, icon: 'screen', name: 'Your screen', meta: 'You’re presenting · a tab with sound', label: 'Your screen, everyone sees it', access: null,
     menu: menu('Your screen', YOUR_SCREEN_MENU), present: undefined, close: null, onStop: did('Stop sharing'), children: <ScreenBody src={screenImage(LAUNCH_CHECKLIST)} />
   }
 };
@@ -230,7 +255,7 @@ export const YourScreen: Story = {
 export const TheirScreenMenu: Story = {
   name: 'Someone’s screen, its menu open',
   args: {
-    who: PRIYA, icon: 'screen', name: 'Priya’s screen', meta: 'Priya is presenting', label: 'Priya’s screen, Priya is presenting',
+    who: PRIYA, icon: 'screen', name: 'Priya’s screen', meta: 'Priya is presenting', label: 'Priya’s screen, Priya is presenting', access: null,
     menu: menu('Priya’s screen', THEIR_SCREEN_MENU, true), present: undefined,
     close: { tip: 'Close it for you. While Priya presents, its tile takes you back', onClose: did('Close') }, children: <ScreenBody src={screenImage(PRIYAS_SCREEN)} />
   }
@@ -248,7 +273,7 @@ export const ClosesQuestion: Story = {
 export const PresentsQuestion: Story = {
   name: 'Present’s question',
   args: {
-    name: 'Onboarding flow', label: 'Onboarding flow, only you see it', menu: menu('Onboarding flow', BOARD_MENU),
+    name: 'Onboarding flow', label: 'Onboarding flow, only you see it', menu: menu('Onboarding flow', BOARD_MENU), access: null,
     present: { onPress: did('Present'), ask: { open: true, onOpenChange: did('Present’s question'), names: ['Theo', 'Sam'], board: 'Onboarding flow', where: 'Aiko’s workspace', onLetIn: did('Let them in for this call'), onWithout: did('Present without them') } }
   }
 };

@@ -38,8 +38,6 @@ const EVERY: { [K in keyof typeof wsToast]: WsToastData } = {
   presenterLeft: wsToast.presenterLeft(first(PRIYA)),
   switched: wsToast.switched('Design', 'Product', did('onBack')),
   newSpace: wsToast.newSpace(NEW_SPACE.name, 'Product'),
-  saidNotNow: wsToast.saidNotNow(first(PRIYA)),
-  toldNotNow: wsToast.toldNotNow(first(GUEST)),
   askedForNotes: wsToast.askedForNotes(first(PRIYA)),
   notesOn: wsToast.notesOn(),
   backOnline: wsToast.backOnline(),

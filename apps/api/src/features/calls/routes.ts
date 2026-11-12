@@ -29,7 +29,7 @@ import type { HttpRuntime } from '../../http/runtime';
 
 export function registerCallRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
   const { d } = runtime;
-  const { cardLimiter, pickLimiter, carryLimiter, callLimiter, moveOpenLimiter, moveSecretChangeLimiter, moveCheckLimiter, moveSecretCheckLimiter, spaceLimiter, followUpsLimiter, followUpLimiter, askNotesLimiter, othersPointLimiter, nudgeLimiter, statusLimiter, ringLimiter, askSpaceLimiter, chatLimiter, rejoinLimiter, moveLimiter, voiceLimiter, speechLimiter, videoLimiter, shareLimiter, askLimiter, notesWatchLimiter, ideasWatchLimiter, momentLimiter, personalLimiter, captionLimiter } = runtime.limits;
+  const { cardLimiter, pickLimiter, carryLimiter, callLimiter, moveOpenLimiter, moveSecretChangeLimiter, moveCheckLimiter, moveSecretCheckLimiter, spaceLimiter, followUpsLimiter, followUpLimiter, askNotesLimiter, othersPointLimiter, nudgeLimiter, statusLimiter, ringLimiter, chatLimiter, rejoinLimiter, moveLimiter, voiceLimiter, speechLimiter, videoLimiter, shareLimiter, askLimiter, notesWatchLimiter, ideasWatchLimiter, momentLimiter, personalLimiter, captionLimiter } = runtime.limits;
   const { optionalOwner, signedIn } = runtime.context;
 
   /* LiveKit's webhooks: outside /v1 (no Origin, no session); trusted only by their signature. */
@@ -210,8 +210,7 @@ export function registerCallRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
     if (a.type === 'status') statusLimiter(c.get('viewer').pass.person, 'status');
     if (a.type === 'ring') ringLimiter(c.get('viewer').organizer.ownerId, 'ring');
     if (a.type === 'follow-up' || a.type === 'follow-up-add' || a.type === 'follow-up-edit' || a.type === 'follow-up-review') followUpLimiter(c.get('viewer').pass.person, 'follow-up');
-    if (a.type === 'workspace-ask') askSpaceLimiter(c.get('viewer').pass.person, 'workspace-ask');
-    else if (a.type.startsWith('workspace-') || a.type.startsWith('present-') || a.type.startsWith('play-') || a.type.startsWith('board-')) spaceLimiter(c.get('viewer').pass.person, 'workspace');
+    if (a.type.startsWith('workspace-') || a.type.startsWith('present-') || a.type.startsWith('play-') || a.type.startsWith('board-')) spaceLimiter(c.get('viewer').pass.person, 'workspace');
     return c.json(await callsService.act(c.get('viewer'), c.req.param('id'), a));
   });
 

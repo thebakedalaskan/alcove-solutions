@@ -10,7 +10,7 @@ import { cn } from '../cn';
 import { CallDock, DockButton, DockSeparator, SharePointer, ShareStepHead } from './call';
 import { Icon, type IconName } from './icon';
 import { EmptyArch } from './illustrations';
-import { Avatar, Faces, type AvatarPerson } from './people';
+import { andList, Avatar, Faces, type AvatarPerson } from './people';
 import { Button, IconButton } from './primitives';
 import { useSettledPress } from './settle';
 
@@ -921,27 +921,36 @@ export interface BoardPickerRecent {
 /** The team's recent boards, and the workspace they're from. */
 export interface BoardPickerRecents { workspace: string; boards: BoardPickerRecent[] }
 
-/** Some people here can't open the saved board: the opener decides before anything opens. */
+/**
+ * Some people here can't open the saved board picked: asked once, before it opens. `letIn`: you may share it, so it opens for
+ * everyone here to edit while they're in the call; without it, it opens for whoever can open it already.
+ */
 export interface BoardPickerAccess {
+  /** First names of who can't open it now. */
   names: string[];
   board: string;
-  /** Where it's kept, as it should read after "It’s in". */
-  where: string;
-  /** Only for someone who may share the board: without it, the one way on is without them. */
-  onLetIn?: (() => void) | undefined;
-  onWithout: () => void;
+  letIn: boolean;
+  /** Opens it, or in Share presents it: letting everyone in, or as it is. */
+  onOpen: () => void;
+  /** Back to the picker, with nothing opened. */
+  onNotNow: () => void;
 }
 
-const namesList = (names: string[]): string => (names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names.at(-1) ?? ''}`);
-
-/** Who here can't open the saved board, and the ways on: let them in for this call (for someone who may share it), or go on without them. */
-function AccessAsk({ access, busy, press }: { access: BoardPickerAccess; busy: boolean; press: (act: () => void) => () => void }) {
+/** The question about who here can't open the saved board, in place of the picker: open it for everyone here (or as it is), or not now. */
+function AccessAsk({ access, presents, busy, press }: { access: BoardPickerAccess; presents: boolean; busy: boolean; press: (act: () => void) => () => void }) {
+  const who = andList(access.names);
+  const verb = presents ? 'Present it' : 'Open it';
   return (
-    <div className="bl-q">
-      <p><b>{namesList(access.names)} can’t open {access.board}.</b> It’s in {access.where}.</p>
+    <div className="bl-q" role="group" aria-label={access.letIn ? `Let everyone here edit ${access.board}?` : `${who} can’t open ${access.board}`}>
+      {access.letIn ? (
+        <>
+          <b>Let everyone here edit {access.board}?</b>
+          <p>{who} can’t open it now. While they’re in the call, everyone here can open it and edit it.</p>
+        </>
+      ) : <b>{who} can’t open {access.board}, and it isn’t yours to share.</b>}
       <div className="acts">
-        {access.onLetIn && <Button variant="primary" disabled={busy} onClick={press(access.onLetIn)}>Let them in for this call</Button>}
-        <Button variant={access.onLetIn ? 'secondary' : 'primary'} disabled={busy} onClick={press(access.onWithout)}>Present without them</Button>
+        <Button variant="primary" disabled={busy} onClick={press(access.onOpen)}>{access.letIn ? verb : `${verb} anyway`}</Button>
+        <Button variant="quiet" disabled={busy} onClick={press(access.onNotNow)}>Not now</Button>
       </div>
     </div>
   );
@@ -972,7 +981,7 @@ export interface BoardPickerProps {
   inRoom?: boolean | undefined;
   /** The team's boards. An empty `workspace` says they come from several places: each one's `by` can say where ("Priya · Product"). */
   recents?: BoardPickerRecents | undefined;
-  /** Some people here can't open the saved board picked in Share › A board: the question in place of the saved boards. */
+  /** Some people here can't open the saved board picked: the question, in place of the picker. */
   access?: BoardPickerAccess | undefined;
   /** Something chosen is on its way, so nothing else can be. */
   busy?: boolean | undefined;
@@ -981,30 +990,32 @@ export interface BoardPickerProps {
 }
 
 /**
- * Board, at the top right of the call, opens this under itself (a popover with the class `bl`): a board opens just for you
- * until you present it. Share › A board shows it as its step (`step`), where what's picked opens for everyone. The board the
- * call has comes first, then a new one from Blank, Retro, Ideas or Flow, then the team's. As in every menu, a press does
- * nothing for a moment after the rows move (`useSettledPress`).
+ * Board, at the top right of the call, opens this under itself (a popover with the class `bl`): a board opens on your screen
+ * until you present it, and everyone in the call (in a room, everyone in it) can edit it. Share › A board shows it as its step
+ * (`step`), where what's picked opens for everyone. The board the call has comes first, then a new one from Blank, Retro, Ideas
+ * or Flow, then the team's. A saved board some people here can't open asks first (`access`), in the picker's place. As in every
+ * menu, a press does nothing for a moment after the rows move (`useSettledPress`).
  */
 export function BoardPicker({ step, inCall, blocked, inRoom = false, recents, access, busy = false, onTemplate, onRecent }: BoardPickerProps) {
-  const saved = !access && !inRoom && recents ? recents.boards : [];
-  const now = access ? undefined : inCall;
+  const saved = !inRoom && recents ? recents.boards : [];
   const off = busy || !!blocked;
   // Opening the board in this call just for you is always yours to do; presenting it, from Share, waits like the rest.
   const nowOff = busy || (!!step && !!blocked);
-  const press = useSettledPress([
-    ...(now ? ['in-call'] : []), ...TEMPLATES.map((t) => `template:${t.id}`), ...saved.map((r) => `board:${r.id}`),
-    ...(access ? [...(access.onLetIn ? ['access:let-in'] : []), 'access:without'] : [])
-  ].join('\n'));
+  const press = useSettledPress((access ? ['access:open', 'access:not-now'] : [
+    ...(inCall ? ['in-call'] : []), ...TEMPLATES.map((t) => `template:${t.id}`), ...saved.map((r) => `board:${r.id}`)
+  ]).join('\n'));
+  if (access) return <AccessAsk access={access} presents={!!step} busy={busy} press={press} />;
   return (
     <>
-      {step ? <ShareStepHead title="A board" onBack={step.onBack} /> : <div className="bl-hd"><b>Open a board</b><span>Only you see it until you present it.</span></div>}
-      {now && (
+      {step ? <ShareStepHead title="A board" onBack={step.onBack} /> : (
+        <div className="bl-hd"><b>Open a board</b><span>Only on your screen until you present it. Everyone in {inRoom ? 'this room' : 'the call'} can edit it.</span></div>
+      )}
+      {inCall && (
         <>
           <div className="bl-sub">In this call</div>
-          <button type="button" className={cn('bl-r bl-now', nowOff && blocked && 'is-off')} disabled={nowOff} onClick={press(now.onOpen)}>
+          <button type="button" className={cn('bl-r bl-now', nowOff && blocked && 'is-off')} disabled={nowOff} onClick={press(inCall.onOpen)}>
             <span className="bl-th is-icon"><Icon name="presentation" size={18} /></span>
-            <span><b>{now.name}</b><small>{now.by}</small></span>
+            <span><b>{inCall.name}</b><small>{inCall.by}</small></span>
           </button>
         </>
       )}
@@ -1028,7 +1039,6 @@ export function BoardPicker({ step, inCall, blocked, inRoom = false, recents, ac
           ))}
         </>
       )}
-      {access && <AccessAsk access={access} busy={busy} press={press} />}
       <div className="bl-f">
         <Icon name="sealed" size={15} />
         <span>{inRoom ? 'Comes back with you when rooms close.' : step ? 'Opens for everyone here.' : 'Boards are encrypted in storage.'}</span>

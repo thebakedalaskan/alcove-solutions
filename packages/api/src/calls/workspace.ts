@@ -1,5 +1,5 @@
 import { PersonSchema } from '../identity/people';
-import { IDSchema, ISODateSchema } from '../shared/ids';
+import { IDSchema } from '../shared/ids';
 import { z } from '../shared/zod';
 import { DocumentKindSchema } from '../workspaces/library';
 import { DocumentRoleSchema, ItemIdSchema, ItemKindSchema, WorkspaceRoleSchema } from '../workspaces/schema';
@@ -83,17 +83,11 @@ export type CallPlay = z.infer<typeof CallPlaySchema>;
 export const playPosition = (play: CallPlay, sinceRead = 0): number => play.positionMs + (play.playing ? play.nowMs - play.atMs + sinceRead : 0);
 
 
-/** Someone asking to see the workspace, for the organizer to answer. They name nothing: the organizer picks what to share. */
-export const CallWorkspaceAskSchema = z.object({ id: IDSchema, participantId: z.string(), person: PersonSchema, at: ISODateSchema });
-
-export type CallWorkspaceAsk = z.infer<typeof CallWorkspaceAskSchema>;
-
-
 export const CallWorkspaceSchema = z.object({
   /**
    * The workspace everyone in the call views and edits together: its home, unless the organizer switched to another. Null
-   * until someone first opens Workspace (`CallSession.openWorkspace`), and for anyone who can open nothing in it: to them
-   * it's private, and they aren't told which it is.
+   * until someone first opens Workspace (`CallSession.openWorkspace`), and for anyone who can open nothing in it, which is
+   * only once it's no longer open to the call (`everyone`): to them it's private, and they aren't told which it is.
    */
   id: IDSchema.nullable(),
   /**
@@ -102,7 +96,7 @@ export const CallWorkspaceSchema = z.object({
    * settled, and for anyone who can open nothing in it.
    */
   home: IDSchema.nullable(),
-  /** Its name, for someone in it. */
+  /** Its name, for someone it opens for. */
   name: z.string().nullable(),
   /** Who chooses it: the organizer, as you see them. */
   chosenBy: PersonSchema,
@@ -110,6 +104,11 @@ export const CallWorkspaceSchema = z.object({
   canOpen: z.boolean(),
   /** Your role in it; null when you're not in it, whatever you have in it. */
   role: WorkspaceRoleSchema.nullable(),
+  /**
+   * Everyone in the call can open it and edit what isn't restricted, guests too, while they're in the call. False once its
+   * organizer can't edit there any more, when it opens only for its own people.
+   */
+  everyone: z.boolean(),
   /** What's been brought to the call that you can open, wherever it is. */
   documents: z.array(CallBroughtSchema),
   /** The agenda this call has, by the ID it has in `documents`, if you can open it. */
@@ -118,16 +117,21 @@ export const CallWorkspaceSchema = z.object({
   /** The last presentation that ended in your part of the call, until another starts there. */
   ended: CallPresentEndedSchema.nullable(),
   play: CallPlaySchema.nullable(),
-  /** For the organizer: who's asking now, oldest first. Empty for everyone else. */
-  asks: z.array(CallWorkspaceAskSchema),
-  /** Your own ask: `no`, `asking`, or `declined` once the organizer says not now. An ask they say yes to is a document that opens. */
-  asked: z.enum(['no', 'asking', 'declined'])
+  /**
+   * Always empty and always `no`: nobody asks for the workspace now that it's open to everyone in the call. They're sent only
+   * because the previous release's tabs can't read a call without them, and they go in the next release.
+   */
+  asks: z.array(z.never()),
+  asked: z.literal('no')
 });
 
 export type CallWorkspace = z.infer<typeof CallWorkspaceSchema>;
 
 
-/** What viewing another workspace in the call would mean. `cantOpen`: the first names of people in the call who aren't in that workspace. */
+/**
+ * What viewing another workspace in the call would mean. `cantOpen`: the first names of people in the call who aren't in that
+ * workspace, so can't open it but through the call: once everyone views it, they can open and edit it while they're in the call.
+ */
 export const CallWorkspaceSwitchSchema = z.object({ name: z.string(), cantOpen: z.array(z.string()) });
 
 export type CallWorkspaceSwitch = z.infer<typeof CallWorkspaceSwitchSchema>;

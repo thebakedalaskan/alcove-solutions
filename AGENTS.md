@@ -200,7 +200,7 @@ page is designed, how to make a design canvas from the kit in `docs/design/canva
   `CallMoreGrid` and `CallMoreTile` (More's grid on a phone), `CallMenuChips` (equal choices in a row inside a call's menu, such as Back in), `ChatTabs`, `ChatMessage` (Slack-like, with the bar of reactions, Reply in thread and Message privately over its corner),
   `ChatThreadLine`, `ChatThreadHead`, `ChatDivider` and `ChatLock` (Chat in a call: its conversations as tabs, threads in place, a private
   conversation's lock line), `CallQuestion` (a room's question, with its votes),
-  `CallFrame` (one frame for a screen, a board or the workspace, with its bar), `PresentedTile` (something presented that isn't on your stage, with Join),
+  `CallFrame` (one frame for a screen, a board or the workspace, with its bar, which says who can edit a board or the workspace), `PresentedTile` (something presented that isn't on your stage, with Join),
   `CloseAsk` (Close's question: for you or for everyone), `PresentAsk` (Present's question when some people here can't open
   the board), `FramePager` (a board's presenter steps through its frames at the frame's foot, with their notes), Share's
   steps in one popover over the dock (`ShareKinds`, then `ShareScreenStep`, the `BoardPicker`, or `ShareStopStep` (Close's
@@ -218,15 +218,16 @@ page is designed, how to make a design canvas from the kit in `docs/design/canva
   `SwitchLine`, `NotesSwitches` (whether a call writes notes, and what they keep), `ScopeBar` (this call, or this and later
   calls), `WayCard`, `PersonToken`, `QuadFaces`, `TimeCard`, `WeekGrid`, `Flood` and `useSmoothHeight`.
   The workspace kit is in `components/workspace/`, every part stateless, taking plain data and handlers: `WsPane` holds
-  `WsList` (`WsListHead`, `WsSection`, `WsRow`, `WsRenameRow`, `WsDropLine`, `WsTrashRow`) and `WsDoc` (`WsDocHead` with
+  `WsList` (`WsListHead`, or `WsListTools` in a call, where the frame's bar names the workspace; `WsSection`, `WsRow`,
+  `WsRenameRow`, `WsDropLine`, `WsTrashRow`) and `WsDoc` (`WsDocHead` with
   `WsSaveState`, `WsFollowBar`, `WsOfflineBar`, `WsUnsavedBar` (with `WsRescue` for what didn't reach Alcove), `WsGoneBar`,
   `WsReadOnlyBar`, `WsVersionBar`, `WsVersionFailed`, `WsScroll`, `WsPage`, `WsDocBy`, `WsTemplates`, `WsTail`, `WsTrash`,
   `WsEmpty`, `WsPickDocument`, `WsCantOpen`, `WsUnavailable`, `WsOfflineEmpty`, `WsNoAccess`, `WsLostSpace`), with
   `WsHistory` beside it.
   Anything that opens sits on `WsPopover` (a sheet on a phone by itself, and it hands focus back): `WsMenu` and its
   `WsNewMenu`, `WsRowMenu`, `WsDocMenu`, `WsMovePicker`, `WsSpacePicker`, `WsAskMenu`, `WsAskAnswer`; `WsPersonCard`, `WsMentionPrompt`,
-  `WsCommentCompose`, `WsCommentThread`, `WsShareSheet`, `WsSwitchSheet`, `WsDeleteAsk`, `WsDiscardAsk`, `WsUploadPicker`. The call's
-  own pages are `WsNotesPage`, `WsFollowUps`, `WsTranscript` and `WsNotesOff`. Over the call: `WsFind`, `WsKeyboard`, `WsKnock`,
+  `WsCommentCompose`, `WsCommentThread`, `WsShareSheet`, `WsSwitchSheet`, `WsNameSheet`, `WsDeleteAsk`, `WsDiscardAsk`, `WsUploadPicker`. The call's
+  own pages are `WsNotesPage`, `WsFollowUps`, `WsTranscript` and `WsNotesOff`. Over the call: `WsFind`, `WsKeyboard`,
   `WsPlayBar`, `WsToasts` (say them with `wsToast`, which has every toast's words), `WsDragGhost`, `WsKeyboardBar`. On the
   note: `WsWorkedOn`. `WsFade` swaps what's inside in place.
   The board's parts are in `components/board.tsx`, and take data and handlers with no idea of Yjs: `BoardLayout`, `BoardSheet` and

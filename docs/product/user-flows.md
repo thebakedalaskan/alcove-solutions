@@ -463,7 +463,7 @@ time, slides in on the right.
   lasts until you leave it.
 - **Presenting.** What you have open, or what someone presents, sits on your stage in one frame, with the people beside
   it. Its bar has whoever presents it (their face, or what kind of thing it is while nobody does), its name, which opens a
-  menu of what you can do with it, and a line: "Open just for you", "You’re presenting · 3 following" or "Priya is
+  menu of what you can do with it, and a line: "Only on your screen", "You’re presenting · 3 following" or "Priya is
   presenting". On the right it has only what applies: following, **Present**, focus (**⌘⇧F**, "Fill your window with
   it"), **Stop sharing** or **Close**.
   - **Open it just for you.** **Board** (from its picker) and **Workspace**, at the top right, open on your stage, and nobody
@@ -885,12 +885,19 @@ See [Floating call](../engineering/floating-call.md) for browser capabilities an
    and the people sit beside it. **Open**, at the top of Notes, opens it on the call's notes. The count on the
    button is what's been brought to this call. Every call has a home, where its notes and transcript go: the workspace it
    was scheduled with, as a continuation, or the one its series has; else, the first time anyone opens it, a new one made
-   for the call, named after it and the day (**Launch check-in · 5 Nov**), with the organizer and everyone invited in it. At
-   the top of the home is the call's own folder, named the same, open, with **Notes**, **Follow-ups** and **Transcript** in
-   it; a home for several calls has a folder for each, the newest first. Everyone sees the same workspace, late or back from
-   a reload. It opens on this call's agenda, or the first thing brought to it, or with neither on what you had open there
-   last, and **This call** at the top of the list holds what's been brought. Anyone who can open a document can bring it
-   from its row's menu (**Bring to this call**, **Take out of this call**), or by dropping its row on This call. Pressing
+   for the call, named after it and the day (**Launch check-in · 5 Nov**), with the organizer and everyone invited in it.
+   Everyone let in to the call can open it and edit it, guests too (step 3). Its bar says "Only on your screen" and, beside
+   that, "Everyone in the call can edit", or "You can edit while you’re in the call" for a guest or anyone else not in the
+   workspace, which opens **Who’s in it**: the workspace's people, and everyone in the call. The workspace's name, on its
+   bar, is its one menu: **Switch workspace** for the organizer (step 2), **Find in the workspace**, **Who’s in it**,
+   **Rename** for an admin, and **Copy link**; a guest's has **Find in the workspace** and **Who’s in it**. The list's head
+   has only **Find** and **+**. At the top of the list is **This call**: the call's own folder in its home, named after the
+   call and the day as a new home is, with **Notes**, **Follow-ups** and **Transcript**, then whatever's made in it, and
+   what's been brought to the call. What you make during the call (**N**, **+**, **New document**) goes in This call. A
+   home for several calls has a folder for each, the newest first. Everyone sees the same workspace, late or back from a
+   reload. It opens on this call's agenda, or the first thing brought to it, or with neither on what you had open there
+   last. Anyone who can open a document can bring it from its row's menu (**Bring to this call**, **Take out of this
+   call**), or by dropping its row on This call. Pressing
    Workspace or **W** again, or **Close** on its bar (which asks first while you present it: step 5), puts it away and keeps
    your place: the document, where you'd scrolled to, your caret and your undo, for the rest of the call and across a
    reload, so opening it again takes you back there. A list that gives way for want of room comes over the page from the
@@ -918,34 +925,37 @@ See [Floating call](../engineering/floating-call.md) for browser capabilities an
      following, and for everyone else you've left it.
    - **While breakout rooms are open** the organizer's stage, in the main room, shows the rooms, and the workspace stands
      beside them, as anything else open there does, the rooms where the people would be; Workspace, **W**, Find and the
-     notes' **Open** all open it there, and so does **Open the workspace** for someone in the main room asking to see it. On
-     a phone, or a window too narrow for both, the workspace goes over the rooms until it's closed. Focus isn't on offer
-     there until the rooms close; in a room, it is, as for anyone.
+     notes' **Open** all open it there. On a phone, or a window too narrow for both, the workspace goes over the rooms until
+     it's closed. Focus isn't on offer there until the rooms close; in a room, it is, as for anyone.
    - **An organizer taken out of the workspace** everyone's viewing is told so, and **New workspace** has everyone view one
-     of their own. Everyone else carries on.
-2. **Only the organizer switches what everyone views**, from the name at the top of the list, or **Switch workspace** in the
-   workspace's name on its bar: their workspaces they can edit in, with who's in each, the call's home marked **This call's
-   home**, and **New workspace**. Picking one asks once, in place, says who in the call can't open it, and that the notes
-   and transcript still go to the home; **Switch to …** changes the list for everyone at once, a toast says where the notes
-   still go (in two lines at most), and **Back** on it changes it back; it goes when the call ends, or when Leave asks its
-   question. The question takes focus as it opens, and **Tab** reaches its answers. Someone following someone stops, and is
-   told the call's workspace changed. The call's Notes, Follow-ups and Transcript stay at the top of the list while another
-   workspace is viewed. Nobody is interrupted and nothing is moved or copied: sound and video carry on, and whoever can't
-   open it stays in the call and sees that it's private, not what's in it. What was brought to the call from the workspace
-   before stays with that one. **New workspace** makes one for the call, with everyone invited in it to edit, as its home
-   has (a guest without an account isn't), named after the call, and opens a blank document in it; it's still there after
-   the call. The home doesn't change: the next call in the series still has it. Everyone else sees the name, and that the
-   organizer chooses.
-3. **Someone who can't open it**, a guest or anyone outside the workspace, is told it's private, and nothing else: no
-   names, no folders, nobody's whereabouts. **Ask** (the organizer by name) changes the words in place, and they carry on
-   with the call. The organizer sees who's asking at the top of the call (above the dock on a phone, clear of the list's button), and
-   shares the document in front of them: **Let … read**, **Let … edit**, or **Not now**. With nothing open, **Open the
-   workspace** opens the document they were last in there, to share, or else the list to pick one, on a phone too. Only that document
-   opens for whoever asked, by itself, under Shared with you, and read only says to ask the organizer to edit. **Not now**
-   is said to them, and they can ask again. Share lists them as a guest in this call and **Remove** takes it back, and it
-   ends with the call.
-4. **Notes, Follow-ups and Transcript** are in the call's folder in its home, and at the top of the list wherever else, for everyone
-   in the call, whether or not they can open the workspace, and the count is what's still to do. They fill in as people talk. With notes off they go quiet and say why they're
+     of their own. The workspace's own people carry on. Once its organizer can't edit there, taken out or left only able to
+     read it, it stops opening to everyone else in the call, who's told it's private (step 3).
+2. **Only the organizer switches what everyone views**, from **Switch workspace** in the workspace's name on its bar: their
+   workspaces they can edit in, with who's in each, the call's home marked **This call's home**, and **New workspace**.
+   Picking one asks once, in place: it names who in the call isn't in that workspace, and says that while they're in the
+   call they can open and edit everything in it, that anything closed to some people stays closed, and that the notes
+   still go to the home. **Switch to …** opens it to everyone in the call and changes the list for everyone at once, a
+   toast says where the notes still go (in two lines at most), and **Back** on it changes it back; it goes when the call
+   ends, or when Leave asks its question. The question takes focus as it opens, and **Tab** reaches its answers. Someone
+   following someone stops, and is told the call's workspace changed. The call's Notes, Follow-ups and Transcript stay at
+   the top of the list while another workspace is viewed. Nobody is interrupted and nothing is moved or copied: sound and
+   video carry on, and the workspace the call was using closes to anyone who had it only through the call. What was
+   brought to the call from the workspace before stays with that one. **New workspace** makes one for the call, with
+   everyone invited in it to edit, as its home has (a guest without an account isn't, and edits it through the call, as in
+   any workspace the call uses), named after the call, and opens a blank document in it; it's still there after the call.
+   The home doesn't change: the next call in the series still has it. Everyone else sees the name, and that the organizer
+   chooses.
+3. **Everyone in the call can open it and edit it**, a guest or anyone else outside the workspace too, for as long as they're
+   in the call: its folders, documents and boards, and its name, as its people see them. They work in it as anyone who can
+   edit there does: make, rename, move and duplicate things, send them to Trash and bring them back, and write. A member
+   who can only read can edit too while they're in the call. What someone closed to some people stays closed to them, and
+   changing who's in it, sharing, deleting for good and renaming the workspace stay with its people. Leaving the call, or
+   the call ending, closes it for them, and what they wrote stays. If the organizer can't edit there any more, it opens
+   only to its own people: anyone else is told it's private, and nothing else, no names, no folders, nobody's whereabouts,
+   and carries on with the call.
+4. **Notes, Follow-ups and Transcript** are This call's first rows, in the call's folder in its home, and stay at the top of
+   the list wherever else, for everyone in the call, whether or not they can open the workspace, and the count is what's
+   still to do. They fill in as people talk. With notes off they go quiet and say why they're
    empty, and the organizer can turn notes on from there while anyone else asks; if something's written already it stays, and a line
    says what's holding the notes back. **Notes** is the summary and what's been decided so far, and a time opens the transcript at
    that moment. **Transcript** is the whole call so far, with who's talking at the end, and finds any word. Notes and Transcript
@@ -977,12 +987,12 @@ See [Floating call](../engineering/floating-call.md) for browser capabilities an
      for anyone else, "This part of the recording can't be played.". A quote from a call that doesn't keep its recording
      says "This call doesn't keep its recording.", and one said in a breakout room, which is never recorded, "Breakout rooms
      aren't recorded.", with no Hear it.
-5. **Present the workspace**, from **Present** on its bar while it's open just for you (on a phone too), or with **Share ›
-   The workspace** in the dock, for anyone in the workspace, while nobody else presents a board or the workspace (Share
-   says "Priya is presenting. You can present once they stop."). Everyone in your part of the call who isn't watching
-   another presentation follows you, live, to the page and the line you're on, through the same Follow as working
-   together, and you're told "Everyone follows you in the workspace. They can unfollow to work alongside you." The bar says
-   how many follow ("You’re presenting · 3 following").
+5. **Present the workspace**, from **Present** on its bar while it's only on your screen (on a phone too), or with
+   **Share › The workspace** in the dock, for anyone it opens for, guests too, while nobody else presents a board or the
+   workspace (Share says "Priya is presenting. You can present once they stop."). Everyone in your part of the call who
+   isn't watching another presentation follows you, live, to the page and the line you're on, through the same Follow as
+   working together, and you're told "Everyone follows you in the workspace. They can unfollow to work alongside you." The
+   bar says how many follow ("You’re presenting · 3 following").
    - **Everyone else** finds it on their stage, unless they're watching another presentation, when it comes in as a tile
      with **Show it**. The bar says "Priya is presenting" and "Following Priya". **Unfollow** gives them their own place
      back, where they were before they followed, and a click, scroll or keystroke in it leaves them where they are, on their
@@ -1022,29 +1032,32 @@ See [Floating call](../engineering/floating-call.md) for browser capabilities an
 
 ### A board in the call
 
-1. **Board**, at the top right, or **O**, opens the board picker under it: "Open a board" and "Only you see it until you
-   present it." **In this call**, if the call has a board, has its name and who brought it ("Priya · brought it"), or "Priya
-   is presenting it". **New** has **Blank**, **Retro**, **Ideas** and **Flow**. **Your team’s boards** has whatever's been
-   brought to this call first, then the newest from the workspaces in your Drive, three at most, with whose each is and
-   where it's from. At its foot: "Boards are encrypted in storage." Anyone invited can start one, in the main room or a
-   breakout room; a guest can't ("Guests can’t start a board here."). While someone else presents a board here, nobody can
-   start or bring in another, and the picker says "Priya is presenting a board. You can start one once they stop." With a
-   board on your stage, Board and **O** close it instead (step 5). **Share › A board** in the dock is the same picker, as
-   Share's next step, presenting what you pick straight away (step 11); while someone else presents a board or the
-   workspace here it says "Priya is presenting. You can present once they stop." instead, and nothing is made or brought
-   in. On a phone, Board is in **More** (step 14).
-2. **It opens just for you.** The board you pick opens on your stage, in the frame ("Open just for you"), with the people
-   beside it, and nobody else's screen changes. Opening a saved board this way doesn't touch the call. **New** makes a
-   board, saved in the call's workspace and named after the call, that's the board in this part of the call: the one
-   votes, ideas from the call, breakout rooms and the note's **Worked on in this call** hang on. It still opens only
-   for you, and everyone else finds it under **In this call**. Vote and ideas from the call show on the board in the
-   call, not on a saved board you opened yourself. Someone else starting a new board while you have the call's open leaves
-   yours on your stage, just for you. **Present**, on its bar, brings everyone (step 11).
-3. **Presenting a saved board brings it into the call first.** If some people here can't open it, a question comes first,
-   before anything is presented: "Kofi and Maya can't open Onboarding flow. It's in Design." **Let them in for this call**,
-   there only for someone who may share it, opens it to them until the call ends. **Present without them** presents it to
-   everyone else. Someone it isn't open to sees **A board you can't open** and who brought it, and nothing of its name;
-   **Ask Art for access** asks in the call's chat.
+1. **Board**, at the top right, or **O**, opens the board picker under it: "Open a board" and "Only on your screen until
+   you present it. Everyone in the call can edit it." **In this call**, if the call has a board, has its name and who
+   brought it ("Priya · brought it"), or "Priya is presenting it". **New** has **Blank**, **Retro**, **Ideas** and
+   **Flow**. **Your team’s boards** has whatever's been brought to this call first, then the newest from the workspaces
+   in your Drive, three at most, with whose each is and where it's from. At its foot: "Boards are encrypted in storage."
+   Anyone invited can start one, in the main room or a breakout room; a guest can't ("Guests can’t start a board
+   here."). While someone else presents a board here, nobody can start or bring in another, and the picker says "Priya
+   is presenting a board. You can start one once they stop." With a board on your stage, Board and **O** close it
+   instead (step 5). **Share › A board** in the dock is the same picker, as Share's next step, presenting what you pick
+   straight away (step 11); while someone else presents a board or the workspace here it says "Priya is presenting. You
+   can present once they stop." instead, and nothing is made or brought in. On a phone, Board is in **More** (step 14).
+2. **It opens only on your screen.** The board you pick opens on your stage, in the frame ("Only on your screen"), with the
+   people beside it, and nobody else's screen changes. A saved board some people here can't open asks first (step 3).
+   **New** makes a board, saved in This call, the call's folder, and named after the call, that's the board in this part
+   of the call: the one votes, ideas from the call, breakout rooms and the note's **Worked on in this call** hang on.
+   Everyone in the call can edit it, guests too. It still opens only for you, and everyone else finds it under **In this
+   call**. Vote and ideas from the call show on the board in the call, not on a saved board you opened yourself. Someone
+   else starting a new board while you have the call's open leaves yours on your stage, just for you. **Present**, on its
+   bar, brings everyone (step 11).
+3. **A saved board some here can't open asks first.** Picking one that's in a workspace some of them aren't in, or
+   closed to some people, asks once, before it opens: "Let everyone here edit Onboarding flow?", that Kofi and Maya can't
+   open it now, and that while they're in the call everyone here can open it and edit it. **Open it** opens it and lets
+   everyone here edit it until the call ends, anyone let in later too; **Not now** goes back to the picker. Someone who
+   may not share it gets **Open it anyway** instead, which lets nobody in. A board in the workspace the call uses that
+   isn't closed to anyone asks nothing: everyone here can open it already. Someone it isn't open to sees **A board you
+   can't open** and who brought it, and nothing of its name; **Ask Art for access** asks in the call's chat.
 4. **Working on it together.** Everyone's pointer carries their face and name, with dots while they type, and whoever's
    talking glows on their tile and their pointer. While Priya's on the board, unless it's being presented to you, her
    tile's menu has **Go to Priya**, which takes you to where Priya is, and **Follow Priya**, which keeps your view with
@@ -1064,8 +1077,8 @@ See [Floating call](../engineering/floating-call.md) for browser capabilities an
    screen, 14:05", and Priya is told. It's kept in the board's files, whether or not the share is in the notes. It's for whoever
    can add to the board, and isn't offered for your own screen.
 7. **The board's name**, on the frame's bar, is a menu. It has **Rename**, for anyone who can change it, and everyone sees
-   the new name at once, wherever it's named: a saved board renamed while it's open just for you is under its new name in
-   **Board**'s list once it's closed, and opens again with it (journey 6.37); **Open where it’s saved**, which brings up
+   the new name at once, wherever it's named: a saved board renamed while it's in the call is under its new name in
+   **Board**'s list once it's closed for everyone, and opens again with it (journey 6.37); **Open where it’s saved**, which brings up
    that workspace if it's the one the call is viewing and opens any other in a tab of its own;
    **Who can add to it**, for someone in that workspace who can edit the board, which opens the workspace's own **Share** for
    it under the name (add people by name or address, change what each can do, or keep it to the people added; someone it
@@ -1122,7 +1135,7 @@ See [Floating call](../engineering/floating-call.md) for browser capabilities an
    works with notes off, and on a board's own page. While notes are paused nothing goes to the AI, so it isn't offered.
    Fewer than two stickies with words says "Pick at least two stickies with words to sort.", and more than 80 "Sort up to 80
    stickies at a time."
-11. **Present.** **Present**, on the frame's bar of a board you can add to while it's open just for you, or **Share › A
+11. **Present.** **Present**, on the frame's bar of a board you can add to while it's only on your screen, or **Share › A
    board** in the dock, brings everyone with you, following your view, with nothing to prepare. It's still the board, tools
    and all, for everyone: nothing turns into slides. Neither is offered while someone else presents a board or the workspace
    here. The frame's bar has no Present on a phone, where **Share › A board** presents one. A saved board comes into the call

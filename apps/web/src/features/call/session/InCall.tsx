@@ -30,7 +30,7 @@ import { useNavigate } from '@tanstack/react-router';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { stateOf } from '~/features/call/media/access';
-import { accessAsk, bringAndPresent, presentingWhy, useBoardPicker } from '~/features/call/boards/BoardPicker';
+import { bringAndPresent, presentAskOf, presentingWhy, useBoardPicker } from '~/features/call/boards/BoardPicker';
 import type { BoardPager } from '~/features/board/CallBoard';
 import { StandingPill, roomPills, type PillKind } from '~/features/board/pills';
 import { ENCRYPTED, standingOf, useChangesSinceSaved } from '~/features/board/standing';
@@ -87,8 +87,7 @@ import { FeedVideo, type Feed } from '~/features/call/media/Video';
 import { isCustom, useCallView, type ViewSnapshot } from '~/features/call/layout/view';
 import { canSetVolume, volumesFor } from '~/features/call/media/volume';
 import { useLiveCall } from '~/features/call/notes/liveCall';
-import { WorkspaceKnock } from '~/features/call/workspace/WorkspaceAsks';
-import { WorkspaceMenuRows, WorkspacePanel, useWorkspacePanel } from '~/features/call/workspace/WorkspacePanel';
+import { WorkspaceMenuRows, WorkspacePanel, inTheCall, useWorkspacePanel } from '~/features/call/workspace/WorkspacePanel';
 import { ShareSheetFor } from '~/features/workspace/Sheets';
 import { ringable, rungWords, waitingOnStage } from '~/features/calls/ringing/RingWords';
 import { Moved } from '~/features/move/Moved';
@@ -97,7 +96,7 @@ import { useMoveOut } from '~/features/move/useMoveOut';
 import { selfIn, sessions, useClosingWithPage, useLeaveGuard, useLive, useOnline } from '~/lib/live';
 import { log } from '~/lib/log';
 import { callName, sameEmail } from '~/lib/people';
-import { q, qk, useCallSeries, useRenameBoard } from '~/lib/queries';
+import { q, qk, useCallSeries, useRenameBoard, useWorkspaceName } from '~/lib/queries';
 import { hm } from '~/lib/time';
 
 const clog = log.child({ component: 'call' });
@@ -960,7 +959,7 @@ export function InCall({ session }: { session: CallSession }) {
       : board.opener ? `${callName(board.opener)} · brought it` : 'In this call'
   } : null;
   const pickerOpen = picking && !phone;
-  const picked = { onOpenCall: () => stageOpen('board'), onOpenSaved: (b: SavedBoard) => { setSaved(b); stageOpen('saved'); }, onMade: () => stageOpen('board'), onPresented: (name: string) => { stageOpen('board'); sayIt(wsToast.boardOn(name)); }, failed };
+  const picked = { onOpenCall: () => stageOpen('board'), onMade: () => stageOpen('board'), onPresented: (name: string) => { stageOpen('board'); sayIt(wsToast.boardOn(name)); }, failed };
   const openPicker = useBoardPicker({
     session, board, mode: 'open', inRoom: boardInRoom, account: state.role !== 'guest', brought: space.documents, spaceName, showing: pickerOpen || pop === 'board', blocked: boardBlocked, inCall: callBoardRow,
     onDone: () => { setPicking(false); setPop(null); }, ...picked
@@ -969,7 +968,10 @@ export function InCall({ session }: { session: CallSession }) {
     session, board, mode: 'present', inRoom: boardInRoom, account: state.role !== 'guest', brought: space.documents, spaceName, showing: pop === 'shareBoard', blocked: othersWhy ?? boardBlocked,
     inCall: callBoardRow, onDone: () => setPop(null), ...picked
   });
-  /** Present, on a saved board just for you: brought into the call first, asking first if some people here can't open it. */
+  /**
+   * Present, on a saved board just for you: brought into the call first, for everyone here to edit when it's yours to share, so
+   * whoever joins later can too, asking first if some people here can't open it.
+   */
   const [presentAsk, setPresentAsk] = useState<PresentAskProps | null>(null);
   const [presentBusy, setPresentBusy] = useState(false);
   const presentSaved = (b: SavedBoard) => {
@@ -982,9 +984,9 @@ export function InCall({ session }: { session: CallSession }) {
     };
     session.boardCheck(b.workspaceId, b.documentId).then((check) => {
       setPresentBusy(false);
-      if (!check.cannot.length) { go(false, null); return; }
-      const ask = accessAsk(check, { workspaceId: b.workspaceId, id: b.documentId, name: b.name, where: spaceName(b.workspaceId) }, (letIn, says) => go(letIn, says));
-      setPresentAsk({ open: true, onOpenChange: (o) => { if (!o) setPresentAsk(null); }, names: ask.names, board: ask.board, where: ask.where, onLetIn: ask.onLetIn, onWithout: ask.onWithout, phone });
+      if (!check.cannot.length) { go(check.mayLetIn, null); return; }
+      const ask = presentAskOf(check, { name: b.name, where: spaceName(b.workspaceId) }, (letIn, says) => go(letIn, says));
+      setPresentAsk({ open: true, onOpenChange: (o) => { if (!o) setPresentAsk(null); }, ...ask, phone });
     }, (e: unknown) => { setPresentBusy(false); failed(e); });
   };
   const presentBoardNow = () => {
@@ -1531,7 +1533,7 @@ export function InCall({ session }: { session: CallSession }) {
         onAskEarlier={(question) => cu.askEarlier(question, earlierNotes)} onCatchUp={() => cu.catchUp(cu.range)} onOpen={cu.open} onLive={cu.backToLive} keeping={own.enabled ? own : undefined} />;
     }
   };
-  /** Opens the workspace on these notes, just for you, and puts your side away. */
+  /** Opens the workspace on these notes, on your screen, and puts your side away. */
   const openNotesPage = () => { cu.settle(); side.close(); stageOpen('ws', { own: true }); work.act.go({ kind: 'live', page: 'notes' }); };
   const sideClose = () => { cu.settle(); closeSide(); };
   const sideBody = (v: SideView) => {
@@ -1638,7 +1640,7 @@ export function InCall({ session }: { session: CallSession }) {
         { icon: 'door', text: 'When rooms close it comes back to the main room, and everyone in the call sees it.' },
         ENCRYPTED
       ] : board.savedDrawn ? [
-        { icon: 'lock', text: boardWhere ? `Open just for you. Saved in ${boardWhere}.` : 'Open just for you.' },
+        { icon: 'lock', text: boardWhere ? `Only on your screen. Saved in ${boardWhere}.` : 'Only on your screen.' },
         ENCRYPTED
       ] : [
         ...(boardOpen?.everyone ? [{ icon: 'lock' as const, text: boardWhere ? `Everyone in this call can add to it. Saved in ${boardWhere}.` : 'Everyone in this call can add to it.' }]
@@ -1697,6 +1699,8 @@ export function InCall({ session }: { session: CallSession }) {
   const player = useSharedVideo(session, !ended, work.act.failed);
   const startPlaying = useCallback((documentId: string, mediaId: string) => { session.startPlaying(documentId, mediaId, 0).catch(work.act.failed); }, [session, work.act]);
   const playing = useWorkspacePlaying(player, startPlaying);
+  /** The workspace's name on its frame: a new one shows while it's being kept, until the call says it. */
+  const wsName = useWorkspaceName(space.id ?? '', space.name ?? 'Workspace', state.role !== 'guest').name;
 
   if (moving.moved) {
     const leaveFor = (to: 'join' | 'home') => {
@@ -1746,9 +1750,17 @@ export function InCall({ session }: { session: CallSession }) {
   const myShareRead = published && keptMine;
   const myShareMeta = published ? `You’re presenting · ${surfaceWords}${withSound ? ' with sound' : ''}${myShareRead ? ' · Read for the notes' : ''}` : 'Starting to share…';
   const copyLinkOf = (link: string | undefined) => (link ? () => { void navigator.clipboard.writeText(link).then(() => sayIt(wsToast.linkCopied()), failed); } : undefined);
+  /** Everyone in the call, for Who's in it. */
+  const inCallNow = inTheCall(state.participants, state.role);
+  /*
+   * Who can edit the call's board, while everyone here can: everyone in a room, on a room's own board; anyone else, everyone in
+   * the call, which a guest is told as theirs while they're in it.
+   */
+  const roomBoard = myRoomId !== null && open?.board === 'each';
+  const boardEditors = !callBoardOpen?.everyone ? null : roomBoard ? 'Everyone in this room can edit' : state.role === 'guest' ? 'You can edit while you’re in the call' : 'Everyone in the call can edit';
   const wsLink = space.id ? `${location.origin}/drive/${encodeURIComponent(space.id)}` : undefined;
-  // Anyone who can open the workspace presents it: before anyone's opened it, the call hasn't said which it is yet.
-  const canPresentWs = state.role !== 'guest' && (space.id === null || space.role !== null) && live;
+  // Anyone who can open the workspace presents it, guests too: before anyone's opened it, the call hasn't said which it is yet.
+  const canPresentWs = (space.id === null || space.canOpen) && live;
   /* Where the workspace was last, so it stays there, out of sight, while it isn't on your stage. */
   const lastWsBox = useRef<Box | null>(null);
   const wsAt = boxOf('ws');
@@ -1766,7 +1778,7 @@ export function InCall({ session }: { session: CallSession }) {
           const pop = !s.mine && popOut ? (isPopped ? () => looks.looks.popIn(true) : () => popOut(s)) : null;
           const bar: FrameBar = {
             icon: 'screen', name: s.mine ? 'Your screen' : s.name, by: { person: s.presenter, first: s.mine ? 'You' : callName(s.presenter), mine: s.mine },
-            followers, follow: null, present: null, focus: focusFor, phone, onClose: () => closeThing(id), clears, ask: null,
+            followers, follow: null, present: null, focus: focusFor, phone, onClose: () => closeThing(id), clears, ask: null, access: null,
             rows: (close) => (s.mine
               ? <MyShareMenuRows read={myShareRead} othersPoint={state.pointing ? othersPoint : null} marksOn={marksOnMine} onOthersPoint={flipOthersPoint}
                 onClear={() => { if (myShare) marks?.clear(myShare); }} onChange={() => pickShare()} onDone={close} />
@@ -1786,18 +1798,21 @@ export function InCall({ session }: { session: CallSession }) {
           const p = id === 'board' ? stage.presentedOf('board') : null;
           const canPresent = p === null && !phone && canStartBoard && boardOpen?.role === 'edit' && !someoneElse && !board.sinking;
           const where = boardOpen?.workspaceId && boardWhere ? { name: boardWhere, onOpen: () => openSaved(boardOpen.workspaceId ?? '') } : null;
+          /* Who can edit it, on the call's board everyone here can: what the Share sheet says, for whoever has it to open. */
+          const access = id === 'board' && boardEditors ? { label: boardEditors, opens: boardShare !== null } : null;
           const bar: FrameBar = {
-            icon: 'presentation', name: boardOpen?.name ?? 'Board', by: byOf(p), followers, phone, focus: focusFor, clears,
+            icon: 'presentation', name: boardOpen?.name ?? 'Board', by: byOf(p), followers, phone, focus: focusFor, clears, access,
             follow: p && !p.mine ? { on: stage.following('board'), where: pager?.part || 'the board', onToggle: () => stage.setFollow('board', !stage.following('board')) } : null,
             present: canPresent ? { onPress: presentBoardNow, busy: presentBusy, ask: presentAsk ?? undefined } : null,
             onClose: () => closeThing(id), ask: p?.mine ? askFor(id) : id === 'board' && !p && boardClosable ? boardAsk : null,
-            rows: (close) => {
+            rows: (close, start) => {
               // What the board itself has to offer, read as the menu opens: there's none until it's drawn here. Night board changes
               // it for everyone, so it's for whoever can change it.
               const h = board.handle.current;
               return (
                 <BoardMenuRows rename={boardRename ? () => setRenameAsk((n) => n + 1) : undefined} where={where} share={boardShare} link={copyLinkOf(boardLink)}
-                  image={h ? () => h.saveImage() : undefined} pdf={h ? () => h.savePdf() : undefined} night={h && boardOpen?.role === 'edit' ? { on: h.night(), onToggle: () => h.setNight(!h.night()) } : undefined} onDone={close} />
+                  image={h ? () => h.saveImage() : undefined} pdf={h ? () => h.savePdf() : undefined} night={h && boardOpen?.role === 'edit' ? { on: h.night(), onToggle: () => h.setNight(!h.night()) } : undefined}
+                  start={start} onDone={close} />
               );
             },
             stop: p && !p.mine && organizer ? { label: 'Close it for everyone', onPick: closeTheirs } : null
@@ -1823,11 +1838,15 @@ export function InCall({ session }: { session: CallSession }) {
         const p = stage.presentedOf('ws');
         const shown = wsAt !== null;
         const bar: FrameBar = {
-          icon: 'folderOpen', name: space.name ?? 'Workspace', by: byOf(p), followers, phone, focus: focusFor, clears,
+          icon: 'folderOpen', name: wsName, by: byOf(p), followers, phone, focus: focusFor, clears,
+          access: space.everyone && space.id !== null ? { label: space.role !== null ? 'Everyone in the call can edit' : 'You can edit while you’re in the call', opens: true } : null,
           follow: p && !p.mine ? { on: stage.following('ws'), where: wsPresenting.where ?? 'the workspace', onToggle: () => stage.setFollow('ws', !stage.following('ws')) } : null,
           present: p === null && canPresentWs && !someoneElse ? { onPress: () => { void wsPresenting.start().then(() => land({ to: 'frame', id: 'ws' }, holding()), () => undefined); }, busy: false } : null,
           onClose: () => closeThing('ws'), ask: p?.mine ? askFor('ws') : null,
-          rows: (close) => <WorkspaceMenuRows workspace={space} organizer={organizer} act={work.act} onFind={() => work.act.find()} onCopy={copyLinkOf(wsLink)} onDone={close} />,
+          rows: (close, start) => (
+            <WorkspaceMenuRows workspace={space} organizer={organizer} people={inCallNow} act={work.act} start={start} onFind={() => work.act.find()} onCopy={copyLinkOf(wsLink)}
+              onRenamed={() => { session.refresh({ call: true, log: false }).catch((e: unknown) => clog.info('call not read again for a new workspace name', { code: errorCode(e) })); }} onDone={close} />
+          ),
           stop: p && !p.mine && organizer ? { label: 'Close it for everyone', onPick: closeTheirs } : null
         };
         return (
@@ -2015,8 +2034,6 @@ export function InCall({ session }: { session: CallSession }) {
         </footer>
       </div>
       <ShareWindows shares={shares} looks={looks} marks={marks} me={me?.person ?? SOMEONE} whoIs={personOf} />
-      <WorkspaceKnock session={session} workspace={space} at={work.at} act={work.act}
-        onChoose={() => { work.act.wantList(); setFront('ws'); if (sideCovers) side.close(); onShowList(); }} />
       <MoveSheet open={moving.open} onOpenChange={(o) => { if (!o) moving.hide(); }} move={moving.move} media={{ mic: m.mic, cam: m.cam }} account={state.role !== 'guest'}
         sharing={!!m.screen} onStopSharing={stopShare} onMove={() => void moving.go()} onAgain={moving.again} />
       <CallSettings open={settingsOpen} onOpenChange={setSettingsOpen} tab={settingsTab} onTab={setSettingsTab} phone={phone} media={media} m={m} devices={devices} me={me?.person ?? { name: 'You' }}

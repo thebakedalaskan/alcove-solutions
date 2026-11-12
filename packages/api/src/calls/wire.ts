@@ -5,7 +5,7 @@ import { AskBodySchema } from '../notes/wire';
 import { IDSchema } from '../shared/ids';
 import { oneLine } from '../shared/validation';
 import { z } from '../shared/zod';
-import { DocumentRoleSchema, ItemIdSchema } from '../workspaces/schema';
+import { ItemIdSchema } from '../workspaces/schema';
 import { BoardNewSchema, BoardObjectIdSchema, BoardSavedSchema, BoardVotesEachSchema, BreakoutBoardSchema } from './boards';
 import { CaptionLanguageSchema } from './captions';
 import { CaptureDevicePartSchema } from './capture';
@@ -125,12 +125,6 @@ const CallStepSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('workspace-new'), name: z.string().transform((s) => s.replace(/\s+/g, ' ').trim()).pipe(z.string().min(1).max(120)).optional() }),
   /** Anyone who can open it brings a document in the call's workspace to the call, or takes it off. */
   z.object({ type: z.literal('workspace-bring'), documentId: ItemIdSchema, brought: z.boolean() }),
-  /** Anyone in the call but the organizer asks to see the workspace, or takes the ask back. It names nothing. */
-  z.object({ type: z.literal('workspace-ask'), up: z.boolean() }),
-  /** The organizer answers an ask by opening one document to whoever asked: a seat entry, until the call ends or Share takes it back. */
-  z.object({ type: z.literal('workspace-grant'), askId: z.string().min(1).max(64), documentId: ItemIdSchema, role: DocumentRoleSchema }),
-  /** The organizer says not now to an ask, and whoever asked is told. */
-  z.object({ type: z.literal('workspace-decline'), askId: z.string().min(1).max(64) }),
   /**
    * Anyone who can open it presents the workspace everyone views, or the board open where they are, to the part of the call
    * they're in: one at a time there, so it's refused while someone else presents either.

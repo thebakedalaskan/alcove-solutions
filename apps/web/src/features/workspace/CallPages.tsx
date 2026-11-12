@@ -1,15 +1,14 @@
 /*
- * A call's own pages, in its folder at the top of its home (docs: Calls and recordings › The call's home): while you're in
- * the call, its live notes, follow-ups and transcript, the same rows as everywhere in the call; once it's over, its note,
- * for someone who has it. The server says which (`ItemCall`), from the call's and the note's own access, so someone without
- * the notes sees the folder and whatever else is in it. Nothing here opens the note in a call's place: from a call, it opens
- * in a tab of its own.
+ * A call's own pages, in its folder at the top of its home (docs: Calls and recordings › The call's home), once it's over: its
+ * note, for someone who has it. The server says which (`ItemCall`), from the call's and the note's own access, so someone
+ * without the notes sees the folder and whatever else is in it. Nothing here opens the note in a call's place: from a call, it
+ * opens in a tab of its own. While you're in the call, its folder is This call, at the top of the list (List.tsx), with its live
+ * pages first.
  */
 import { CALL_PAGES, type CallPage, type ItemCall } from '@alcove/api';
 import { WsRow, type IconName } from '@alcove/ui';
 import { useNavigate } from '@tanstack/react-router';
 import { useWs } from './context';
-import { LiveRows } from './live/LiveRows';
 
 const NAMES: Record<CallPage, { name: string; icon: IconName; hash?: string | undefined }> = {
   notes: { name: 'Notes', icon: 'notes' },
@@ -30,6 +29,5 @@ function NoteRows({ noteId, depth }: { noteId: string; depth: number }) {
 
 /** The pages of the call `call` is the folder of, `depth` folders in. */
 export function CallPages({ call, depth }: { call: ItemCall; depth: number }) {
-  if (call.here) return <LiveRows depth={depth} area="tree" />;
   return call.noteId ? <NoteRows noteId={call.noteId} depth={depth} /> : null;
 }
