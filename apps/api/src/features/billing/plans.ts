@@ -591,7 +591,7 @@ export async function dismissNotice(d: Service, ownerId: string, noticeId: strin
 function notRenewed(a: PlanAccount, price: number): 'off' | 'price' | 'short' | null {
   if (!a.renew) return 'off';
   const last = a.pro.at(-1);
-  // A month kept before months said a month's price was bought at it: what was paid for it.
+  // A month kept from before `monthlyMicroUsd` was bought at a month's price: what was paid for it.
   if (!last || price > (last.monthlyMicroUsd ?? last.microUsd)) return 'price';
   return a.balanceMicroUsd < price ? 'short' : null;
 }
