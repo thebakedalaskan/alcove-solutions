@@ -84,11 +84,10 @@ function leftOf(m: MeterState): number {
   return m.allowanceNano - m.spentNano - loose - writing;
 }
 
-/** A model's price, or the fallback's for one NEAR AI doesn't price. */
+/** A model's price, or the fallback's for one NEAR AI doesn't price (said once each time the catalog is read: models.ts). */
 async function priced(d: Service, l: Limits, model: string): Promise<Price> {
   const p = await priceOf(d.cfg, model);
   if (p) return p;
-  alog.warn('model not priced; charged at the fallback', { model });
   return { input: l.get('ai.fallback_input_micro_usd'), cached: l.get('ai.fallback_input_micro_usd'), output: l.get('ai.fallback_output_micro_usd') };
 }
 /** What `u` costs at `p`, in nano-USD, rounded up. */

@@ -124,6 +124,10 @@ async function load(cfg: Config): Promise<ModelEntry[]> {
     // Private ones first, then by name.
     .sort((a, b) => Number(b.private) - Number(a.private) || a.name.localeCompare(b.name));
   const models: ModelEntry[] = [{ id: cfg.NEAR_AI_NOTES_MODEL, name: nameOf(cfg.NEAR_AI_NOTES_MODEL), private: true, via: defaultModel(cfg) }, ...others];
+  // What can be charged with no price both ways is charged at the fallback (features/billing/meter.ts): said here, once each
+  // time the catalog is read, never with every request.
+  const unpriced = [...new Set([cfg.NEAR_AI_STT_MODEL, ...models.map((m) => m.id)])].filter((id) => !prices.has(id));
+  if (unpriced.length) mlog.warn('models not priced; charged at the fallback', { models: unpriced });
   mlog.info('models listed', { catalog: entries.length, endpoints: hosts.size, offered: others.length, unencrypted: others.filter((m) => !m.private).length, ms: Math.round(performance.now() - t0) });
   return models;
 }
