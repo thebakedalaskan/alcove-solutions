@@ -4,7 +4,7 @@
  * renews. Notes are time: what's left of the period's allowance, as an estimate. Storage is against the plan's limit, in
  * the binary units the API sets them in. Made up, as everything in the demo world is.
  */
-import type { BalanceEntry, Plan, PlanNotice, PlanOffers, ProMonth } from '@alcove/api';
+import type { BalanceEntry, Plan, PlanNotice, PlanOffers, ProMonth, Purchase } from '@alcove/api';
 import { iso, on } from './clock';
 
 const MiB = 2 ** 20;
@@ -91,11 +91,38 @@ export const withBalance = (): Plan => {
 
 /* ---------- Pro ---------- */
 
-/** `months` of Pro back to back from `from` (ms), each a period long, at Pro's price. */
-export function monthsFrom(from: number, months: number): ProMonth[] {
+/** `months` of Pro back to back from `from` (ms), each a period long, at `microUsd` a month (Pro's price unless said). */
+export function monthsFrom(from: number, months: number, microUsd = PRO_PRICE): ProMonth[] {
   return Array.from({ length: months }, (_, i) => ({
-    from: new Date(from + i * PERIOD_MS).toISOString(), to: new Date(from + (i + 1) * PERIOD_MS).toISOString(), microUsd: PRO_PRICE
+    from: new Date(from + i * PERIOD_MS).toISOString(), to: new Date(from + (i + 1) * PERIOD_MS).toISOString(), microUsd
   }));
+}
+
+/** Pro's price a month for buying `months` at once, as the offers have it: the yearly price from its length on. */
+export function proPriceOf(offers: PlanOffers, months: number): number {
+  const yearly = offers.pro.yearly;
+  return yearly && months >= yearly.fromMonths ? yearly.microUsdPerMonth : offers.pro.microUsdPerMonth;
+}
+/** About how many hours `packs` of more notes are, as the offers have it. */
+export const hoursOf = (offers: PlanOffers, packs: number): number => (packs * (offers.hours?.minutes ?? 0)) / 60;
+
+/**
+ * `plan` with `buys` bought from its balance, as the server buys it: months of Pro after the last bought (or from now),
+ * or more notes for this period, which lift notes that the allowance stopped; and the balance's line for it, `entry`.
+ * Whoever calls it has checked that it can be bought.
+ */
+export function buyFromBalance(plan: Plan, buys: Purchase, offers: PlanOffers, entry: string, now = Date.now()): Plan {
+  const cost = buys.kind === 'pro' ? buys.months * buys.microUsdPerMonth : buys.packs * buys.microUsdPerPack;
+  const label = buys.kind === 'pro' ? `Pro, ${buys.months} ${buys.months === 1 ? 'month' : 'months'}` : `${hoursOf(offers, buys.packs)} more hours of notes`;
+  const line: BalanceEntry = { id: entry, at: new Date(now).toISOString(), label, microUsd: -cost };
+  const paid = { ...plan, balance: { microUsd: plan.balance.microUsd - cost, history: [line, ...plan.balance.history] } };
+  if (buys.kind === 'pro') {
+    const lastTo = Date.parse(plan.pro.until ?? '');
+    const from = Number.isFinite(lastTo) && lastTo > now ? lastTo : now;
+    return withProMonths(paid, [...plan.pro.months, ...monthsFrom(from, buys.months, buys.microUsdPerMonth)], now);
+  }
+  const minutes = buys.packs * (offers.hours?.minutes ?? 0);
+  return { ...paid, notes: { minutesLeft: plan.notes.minutesLeft + minutes, minutesPerPeriod: plan.notes.minutesPerPeriod + minutes, stopped: false } };
 }
 
 /**

@@ -28,6 +28,7 @@ src/api/script.ts         what a call's script says: who's here, what's said and
 src/api/trouble.ts        a part of Alcove that fails, can't be reached or keeps a page waiting, as the story's world says
 src/api/kept.ts           recordings kept on this device that haven't uploaded, through the app's own way of keeping them
 src/api/move.ts           a call being moved to this device, as /move sees it
+src/api/payments.ts       payments opened to buy something, played out by 1Click's side and the server's as the scenario says
 src/world/                the demo world, in the contract's types: people, notes, calls, the demo clock
 src/world/boards.ts       the boards in it, written by the board package's own writes: in-memory for board stories, and into
                           the stand-in's workspaces for the board's page
@@ -37,6 +38,7 @@ src/media/film.ts         a video for a document, drawn and recorded in the brow
 src/browser.ts            the browser as a story finds it: connection, devices, notifications, a page that goes
 src/app.tsx               the app's own router at an address, in memory
 src/page.tsx              what page stories share: `pages` and `page()`
+src/checkout.tsx          checkout over the real app, opened as a door opens it: `checkouts` and `checkout()`
 src/component.tsx         what component stories share: `onStage`, `PopSurface`, `ModalFrame`, `Box`, `Row`, `did()`
 src/call.ts               what call stories share: `inCall()`, `atTheDoor()`, `rung()`, `phone()`, `light()`, `press()`, `reach()`,
                           `settings()`
@@ -98,7 +100,13 @@ Product, then the follow-ups from the retro board's Actions frame.
 | `signed-out` | Nobody signed in on this browser: the welcome page; Microsoft or single sign-on signs Art in to the busy afternoon |
 | `unsaved` | The busy afternoon after Alcove wouldn't take some of Art's edits: the pricing copy's last edits, more interview notes than a document holds, and a line in the handbook he can only read now |
 | `drive-connected` | Art has a separate Google Drive connection, authorized personal and shared-drive folders, and exports in pending, uploading, uploaded and failed states |
-| `payments` | Adding money is available, with amount and token/network choices; every deposit address is a made-up invalid preview |
+| `payments` | Adding money is available, with amount and token/network choices; every deposit address is a made-up invalid preview. A payment opened to buy something (checkout) is seen, added and bought a few seconds apart |
+| `plan-waiting` | Art is on Free with a payment of 192 USDC on Base on its way, opened to buy 12 months of Pro; nothing has been sent yet |
+| `payment-short` | A payment opened to buy something: two thirds of it arrive, and the same address waits for the rest |
+| `payment-over` | A payment opened to buy something: 6 USDC more than asked arrives; it's bought, and the rest stays in the balance |
+| `payment-refused` | A payment opened to buy something arrives after the prices went up: it's added to the balance, and the purchase is refused |
+| `payment-expired` | A payment opened to buy something: nothing arrives before its address closes |
+| `payment-failed` | A payment opened to buy something is seen, then 1Click fails it |
 | `plan-low` | Art is on Free with about 20 minutes of the period's notes left |
 | `plan-stopped` | The period's notes have run out: Settings says None, the side panel says no notes left until the period renews |
 | `plan-grace` | Over Free's storage in grace: 14.2 GB of 10, everything works as before for nine more days |
@@ -467,3 +475,18 @@ receives a scripted short payment, completes it and reopens the completed paymen
 reading and cancelling top-ups; receipt changes come from the story's made-up provider side. These scenes send no money.
 **Components / Icons and marks / CryptoMark**, **Forms / CopyField**, and **Forms / Select / Network marks** and
 **Token marks** show the shared controls.
+
+
+## Checkout
+
+**Pages / Checkout** is the app's own checkout window over the app (`src/checkout.tsx`, which opens it as a door does: Get
+Pro, Extend, Add 10 hours, a waiting payment's Open), in every stage: choosing (a year at 20% off, a month, another length,
+a network's least above what's needed, part of it from the balance, the balance covering it, payments off, a price that
+changed, offline, extending, more notes), then paying (waiting, Cancel payment asking first, less arrived, seen, done, more
+arrived, refused, expired, cancelled, failed, the receipt), in both themes and on a phone. The stand-in plays a payment
+opened to buy something by itself (`src/api/payments.ts`): seen, then added and bought, a step every 5 seconds from when it
+was opened, or as the `payment-*` scenarios say; nothing runs on a timer, so nothing carries into the next story.
+`purchaseAt()` and `playsOut()` put one where a story needs it. Every address is a made-up preview no wallet takes.
+**Components / Checkout** has each part of the kit's window, and **Paying, in motion**, the canvas's player, with Slow
+motion and Play again. **Journeys / 16 Checkout** plays 16.2 to 16.6.
+

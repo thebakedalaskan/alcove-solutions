@@ -2,12 +2,11 @@
  * Settings is seven groups on one page: a group is a heading over one or two panels, and inside a panel each row is what
  * it is on the left and its control at the panel's right edge, with hairlines and space between them, never a card per
  * row. What you set up once opens in place inside its panel, with a foot that closes it. Payments list at a panel's foot,
- * each with what can be done with it, and a payment's receipt is paper. Everything here is stateless, taking plain data
- * and handlers. styles/settings.css.
+ * each with what can be done with it (a receipt opens checkout's PaymentReceipt). Everything here is stateless, taking
+ * plain data and handlers. styles/settings.css.
  */
 import { forwardRef, useId, useRef, type ButtonHTMLAttributes, type HTMLAttributes, type MouseEvent, type MouseEventHandler, type ReactNode } from 'react';
 import { cn } from '../cn';
-import { Logo } from './brand';
 import { Icon, type IconName } from './icon';
 import { Tooltip } from './overlay';
 import { IconButton } from './primitives';
@@ -185,29 +184,6 @@ export function PaymentRow({ mark, label, detail, tone, actions, className, ...r
         <small id={`${id}d`} className={tone && `is-${tone}`}>{detail}</small>
       </span>
       {actions !== undefined && <span className="set-pay-a">{actions}</span>}
-    </div>
-  );
-}
-
-/** One fact on a receipt: When, Paid from, For, Reference. */
-export interface ReceiptLine { label: string; value: ReactNode }
-
-/**
- * A receipt for one payment, as paper: Alcove's name, what it was for and how much, then its facts in a column (`lines`)
- * and a last line (`note`). Light in both themes, as paper is, and the only thing on the page when it's printed.
- */
-export function PaymentReceipt({ title, amount, lines, note, className }: {
-  title: ReactNode; amount: ReactNode; lines: readonly ReceiptLine[]; note?: ReactNode; className?: string | undefined;
-}) {
-  return (
-    <div className={cn('set-receipt light', className)}>
-      <div className="set-receipt-h"><Logo size={22} /><span>Receipt</span></div>
-      <p className="set-receipt-t">{title}</p>
-      <p className="set-receipt-n">{amount}</p>
-      <dl className="set-receipt-l">
-        {lines.map((l) => <div key={l.label}><dt>{l.label}</dt><dd>{l.value}</dd></div>)}
-      </dl>
-      {note !== undefined && <p className="set-receipt-f">{note}</p>}
     </div>
   );
 }

@@ -373,26 +373,6 @@
 .set-pay-a { display: flex; align-items: center; justify-content: flex-end; gap: 4px; }
 .set-pays > .hm-more { padding: 4px 0 2px; border-top: 1px solid var(--line); }
 
-/* A payment's receipt: paper, light in both themes, alone on the page when it's printed. */
-.ac-modal.set-receipt-win { width: min(480px, calc(100vw - 32px)); }
-.set-receipt-win > .set-receipt { margin: 20px 20px 0; }
-.set-receipt { padding: 22px 24px 20px; border-radius: var(--radius-md); background: var(--surface-raised); box-shadow: 0 0 0 1px var(--line); color: var(--ink); font-variant-numeric: tabular-nums; }
-.set-receipt-h { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-bottom: 18px; border-bottom: 1px solid var(--line); }
-.set-receipt-h > span:last-child { font: 500 13px/18px var(--font-sans); color: var(--ink-3); }
-.set-receipt-t { margin-top: 18px; font: 500 15px/22px var(--font-sans); color: var(--ink-2); }
-.set-receipt-n { margin-top: 2px; font: 600 30px/36px var(--font-sans); letter-spacing: -.015em; color: var(--ink); }
-.set-receipt-l { display: grid; margin: 16px 0 0; }
-.set-receipt-l > div { display: grid; grid-template-columns: minmax(96px, auto) minmax(0, 1fr); column-gap: 16px; padding: 9px 0; border-top: 1px solid var(--line); font: 400 13.5px/19px var(--font-sans); }
-.set-receipt-l dt { color: var(--ink-3); }
-.set-receipt-l dd { margin: 0; color: var(--ink); overflow-wrap: anywhere; }
-.set-receipt-f { padding-top: 12px; border-top: 1px solid var(--line); font: 400 12.5px/18px var(--font-sans); color: var(--ink-3); text-wrap: pretty; }
-.set-receipt-a { display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding: 16px 20px 20px; }
-@media print {
-  body:has(.set-receipt) > :not(:has(.set-receipt)) { display: none !important; }
-  .ac-modal.set-receipt-win { position: static; transform: none; width: auto; max-width: 600px; max-height: none; box-shadow: none; background: none; animation: none; overflow: visible; }
-  .set-receipt-win > .set-receipt { margin: 0; box-shadow: none; }
-  .set-receipt-a { display: none; }
-}
 
 /* ------------------------------------------------------------------ privacy: what Alcove knows beside what it can't read */
 .set-led { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 24px; padding: 16px 0 14px; }

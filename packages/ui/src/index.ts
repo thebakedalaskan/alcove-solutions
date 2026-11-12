@@ -43,3 +43,4 @@ export * from './components/call-timer';
 export * from './components/call-chat';
 export * from './components/call-questions';
 export * from './components/plans';
+export * from './components/checkout';

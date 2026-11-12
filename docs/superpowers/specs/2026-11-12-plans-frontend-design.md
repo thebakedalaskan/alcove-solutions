@@ -119,7 +119,7 @@ place you're on while on Plans (`is-on`), like a nav row.
 
 ### The checkout window
 
-One window over wherever you are (`features/plans/Checkout.tsx` + the kit's `CheckoutWindow` and parts in
+One window over wherever you are (`features/plans/CheckoutHost.tsx` + the kit's `CheckoutWindow` and parts in
 `components/checkout.tsx`), opened by `useCheckout().open({ plan: 'pro' | 'hours', months?, from })` from a
 `CheckoutProvider` at the app's root, so the call, Settings, Plans, the side panel and any door open the same thing. In a call
 it opens in your theme (`ThemeScope`). It's a `Modal` sized as the canvas (944×672 max, two columns: the step on the left, what

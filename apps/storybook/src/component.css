@@ -17,3 +17,6 @@
 
 .sbc-row { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; }
 .sbc-stack { display: grid; justify-items: start; gap: 16px; }
+
+/* A frame holding still for a moment: what's in it lands where it is, with no transition, as a loop starts again. */
+.sbc-still *, .sbc-still *::before, .sbc-still *::after { transition: none !important; }

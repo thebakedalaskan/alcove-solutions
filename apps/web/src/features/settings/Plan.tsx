@@ -10,8 +10,8 @@
  */
 import { errorMessage, type BalanceEntry, type Plan, type PlanOffers, type TopUp } from '@alcove/api';
 import {
-  Button, CryptoMark, Icon, IconButton, Modal, PaymentReceipt, PaymentRow, SettingFact, SettingFoot, SettingNote, SettingPayments, SettingRow,
-  SettingStep, SettingsGroup, SettingsPanel, ShowMore, SunLine, Switch, buttonClass, cn, useToast, type ReceiptLine
+  Button, CryptoMark, Icon, IconButton, PaymentReceipt, PaymentRow, SettingFact, SettingFoot, SettingNote, SettingPayments, SettingRow,
+  ReceiptWindow, SettingStep, SettingsGroup, SettingsPanel, ShowMore, SunLine, Switch, buttonClass, cn, useToast, type ReceiptLine
 } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
@@ -339,15 +339,14 @@ function Receipt({ entry, onClose }: { entry: BalanceEntry | null; onClose: () =
     { label: 'Date', value: `${fullDate(new Date(entry.at))}, ${hm(entry.at)}` },
     { label: entry.microUsd >= 0 ? 'Added to' : 'Paid from', value: 'Your Alcove balance' },
     ...(me ? [{ label: 'For', value: `${me.name}, ${me.email}` }] : []),
-    { label: 'Reference', value: <code>{entry.id}</code> }
+    { label: 'Reference', value: entry.id, mono: true }
   ] : [];
   return (
-    <Modal open={entry !== null} onOpenChange={(o) => { if (!o) onClose(); }} label="Receipt" className="set-receipt-win">
-      {entry && <PaymentReceipt title={entry.label} amount={usdCents(Math.abs(entry.microUsd))} lines={lines} note="Priced in US dollars. 1 USDC is 1 dollar." />}
-      <div className="set-receipt-a">
-        <Button variant="quiet" onClick={onClose}>Close</Button>
-        <Button variant="primary" icon="printer" onClick={() => window.print()}>Print</Button>
-      </div>
-    </Modal>
+    <ReceiptWindow open={entry !== null} onOpenChange={(o) => { if (!o) onClose(); }}>
+      {entry && (
+        <PaymentReceipt title={entry.label} lines={lines} total={usdCents(Math.abs(entry.microUsd))} note="Priced in US dollars. 1 USDC is 1 dollar."
+          onPrint={() => window.print()} onBack={onClose} backLabel="Close" />
+      )}
+    </ReceiptWindow>
   );
 }

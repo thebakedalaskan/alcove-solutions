@@ -7,9 +7,10 @@
  *
  * A method nothing renders yet answers with something sensible and empty. When the contract grows, this grows with it.
  */
-import { StartTopUpBodySchema, type TopUp } from '@alcove/api';
-import { PREVIEW_DEPOSIT_ADDRESS } from '../world/payments';
-import { monthsFrom, PLAN_OFFERS, withProMonths } from '../world/plans';
+import { StartTopUpBodySchema, type Purchase, type TopUp } from '@alcove/api';
+import { freshEntryId, PREVIEW_BASE_ADDRESS, PREVIEW_DEPOSIT_ADDRESS } from '../world/payments';
+import { buyFromBalance, hoursOf, proPriceOf, withProMonths } from '../world/plans';
+import { playPayment, settlePayments } from './payments';
 import { DriveExportInputSchema, NOTE_LINK_DAYS, type DriveAutomatic, type DriveCallExports, type DriveExportFormat, type DriveExportInput, type DriveExportJob, type NewNoteLink, type NoteLink, type NoteLinkClaimed } from '@alcove/api';
 import { disconnectedDrive } from '../world/drive-exports';
 import type { BoardSortBody, DocAskBody, DocAskPart } from '@alcove/api';
@@ -47,8 +48,35 @@ const paymentIn = (w: World, id: string): TopUp => {
   if (!t) throw refused('not-found', 'That top-up isn’t there any more.');
   return t;
 };
-/** An amount as the server's refusals say it: "$20.00". */
-const dollars = (microUsd: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(microUsd / 1_000_000);
+/** An amount as the server's refusals say it: "$192", "$12.50". */
+const dollars = (microUsd: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: microUsd % 1_000_000 === 0 ? 0 : 2 }).format(microUsd / 1_000_000);
+/**
+ * Refuses a purchase as the server does before anything is bought or a payment opened for it: past the most one purchase
+ * buys, or at a price other than today's for that much.
+ */
+function checkPurchase(w: World, buys: Purchase): void {
+  const o = w.payments.offers;
+  if (buys.kind === 'pro') {
+    if (!Number.isInteger(buys.months) || buys.months < 1 || buys.months > o.pro.maxMonths) throw refused('invalid', `Buy 1 to ${o.pro.maxMonths} months at a time.`);
+    if (buys.microUsdPerMonth !== proPriceOf(o, buys.months)) throw refused('conflict', 'The price of Pro has changed. Look at it again before buying.');
+    return;
+  }
+  if (!o.hours) throw refused('conflict', 'More notes can’t be bought right now.');
+  if (!Number.isInteger(buys.packs) || buys.packs < 1 || buys.packs > o.hours.maxPacks) throw refused('invalid', `Buy up to ${hoursOf(o, o.hours.maxPacks)} hours of notes at a time.`);
+  if (buys.microUsdPerPack !== o.hours.microUsd) throw refused('conflict', 'The price of more notes has changed. Look at it again before buying.');
+}
+/** Buys from the balance once the purchase checks out, refused with nothing charged when the balance is short. */
+function buyNow(w: World, buys: Purchase) {
+  checkPurchase(w, buys);
+  const cost = buys.kind === 'pro' ? buys.months * buys.microUsdPerMonth : buys.packs * buys.microUsdPerPack;
+  const balance = w.plan.balance.microUsd;
+  if (balance < cost) {
+    const what = buys.kind === 'pro' ? `${buys.months} ${buys.months === 1 ? 'month' : 'months'} of Pro` : `${hoursOf(w.payments.offers, buys.packs)} hours of notes`;
+    throw refused('conflict', `Your balance is short: ${what} cost ${dollars(cost)} and your balance is ${dollars(balance)}. Add money first.`);
+  }
+  w.plan = buyFromBalance(w.plan, buys, w.payments.offers, freshEntryId(w));
+  return w.plan;
+}
 const offline = () =>new AlcoveApiError('network', 'Can’t reach Alcove. Check your connection.');
 
 /** Answers after a moment, from the world as it is then, as a copy: what the app holds never changes under it. */
@@ -889,32 +917,17 @@ export const standIn: AlcoveApi = {
     searchText: (id: ID) => spaces.searchText(id)
   },
   plans: {
-    plan: () => answer((w) => w.plan),
-    offers: () => answer(() => PLAN_OFFERS),
-    buyPro: (months, microUsdPerMonth) => answer((w) => {
-      const { maxMonths, microUsdPerMonth: price } = PLAN_OFFERS.pro;
-      if (!Number.isInteger(months) || months < 1 || months > maxMonths) throw refused('invalid', `Buy 1 to ${maxMonths} months at a time.`);
-      if (microUsdPerMonth !== price) throw refused('conflict', 'The price of Pro has changed. Look at it again before buying.');
-      const cost = months * price;
-      const { balance } = w.plan;
-      if (balance.microUsd < cost) {
-        throw refused('conflict', `Your balance is short: ${months} ${months === 1 ? 'month' : 'months'} of Pro cost ${dollars(cost)} and your balance is ${dollars(balance.microUsd)}. Add money first.`);
-      }
-      const now = Date.now();
-      const lastTo = Date.parse(w.plan.pro.until ?? '');
-      const from = Number.isFinite(lastTo) && lastTo > now ? lastTo : now;
-      const entry = { id: nextId('sb-entry'), at: new Date(now).toISOString(), label: `Pro, ${months} ${months === 1 ? 'month' : 'months'}`, microUsd: -cost };
-      const paid = { ...w.plan, balance: { microUsd: balance.microUsd - cost, history: [entry, ...balance.history] } };
-      w.plan = withProMonths(paid, [...w.plan.pro.months, ...monthsFrom(from, months)], now);
-      return w.plan;
-    }),
+    // The payments playing out catch up with the clock whenever the plan or a payment is read (api/payments.ts).
+    plan: () => answer((w) => { settlePayments(w); return w.plan; }),
+    offers: () => answer((w) => w.payments.offers),
+    buyPro: (months, microUsdPerMonth) => answer((w) => buyNow(w, { kind: 'pro', months, microUsdPerMonth })),
     refundPro: () => answer((w) => {
       const now = Date.now();
       const later = w.plan.pro.months.filter((m) => Date.parse(m.from) > now);
       if (!later.length) throw refused('conflict', 'There’s no month of Pro to refund that hasn’t started. A month that has started isn’t refunded.');
       const back = later.reduce((sum, m) => sum + m.microUsd, 0);
       const { balance } = w.plan;
-      const entry = { id: nextId('sb-entry'), at: new Date(now).toISOString(), label: `Pro refunded, ${later.length} ${later.length === 1 ? 'month' : 'months'}`, microUsd: back };
+      const entry = { id: freshEntryId(w), at: new Date(now).toISOString(), label: `Pro refunded, ${later.length} ${later.length === 1 ? 'month' : 'months'}`, microUsd: back };
       const refunded = { ...w.plan, balance: { microUsd: balance.microUsd + back, history: [entry, ...balance.history] } };
       w.plan = withProMonths(refunded, w.plan.pro.months.filter((m) => Date.parse(m.from) <= now), now);
       return w.plan;
@@ -926,45 +939,37 @@ export const standIn: AlcoveApi = {
       return w.plan;
     }),
     routes: () => answer(paymentRoutes),
-    buyHours: (packs, microUsdPerPack) => answer((w) => {
-      const offer = PLAN_OFFERS.hours;
-      if (!offer) throw refused('invalid', 'More notes aren’t offered right now.');
-      if (!Number.isInteger(packs) || packs < 1 || packs > offer.maxPacks) throw refused('invalid', `Buy 1 to ${offer.maxPacks} packs at a time.`);
-      if (microUsdPerPack !== offer.microUsd) throw refused('conflict', 'The price of more notes has changed. Look at it again before buying.');
-      const cost = packs * offer.microUsd;
-      const { balance } = w.plan;
-      if (balance.microUsd < cost) throw refused('conflict', `Your balance is short: more notes cost ${dollars(cost)} and your balance is ${dollars(balance.microUsd)}. Add money first.`);
-      const minutes = packs * offer.minutes;
-      const entry = { id: nextId('sb-entry'), at: new Date().toISOString(), label: `${minutes / 60} more hours of notes`, microUsd: -cost };
-      w.plan = { ...w.plan, balance: { microUsd: balance.microUsd - cost, history: [entry, ...balance.history] }, notes: { minutesLeft: w.plan.notes.minutesLeft + minutes, minutesPerPeriod: w.plan.notes.minutesPerPeriod + minutes, stopped: false } };
-      return w.plan;
-    }),
+    buyHours: (packs, microUsdPerPack) => answer((w) => buyNow(w, { kind: 'hours', packs, microUsdPerPack })),
     startTopUp: (routeId, microUsd, buys) => answer((w) => {
       const choices = paymentRoutes(w);
       StartTopUpBodySchema.parse({ routeId, microUsd, buys: buys ?? null });
       const route = choices.routes.find((r) => r.id === routeId);
       if (!route) throw refused('invalid', 'That way to pay isn’t offered.');
       if (microUsd < Number(route.minimum) * 1_000_000) throw refused('invalid', `The least you can add with ${route.token} on ${route.chainName} is $${route.minimum}.`);
-      // A token is added as a dollar.
+      // What it's for is checked first, as a purchase from the balance is, but for the balance: a refusal opens nothing.
+      if (buys) checkPurchase(w, buys);
+      // A token is added as a dollar. A payment to buy something is open for a day, as the server's are.
       const amount = String(microUsd / 1_000_000);
       const t: TopUp = {
-        id: nextId('sb-top-up'), route, address: PREVIEW_DEPOSIT_ADDRESS, memo: null,
-        expiresAt: new Date(Date.now() + 3_600_000).toISOString(), state: 'waiting',
+        id: nextId('sb-top-up'), route, address: buys ? PREVIEW_BASE_ADDRESS : PREVIEW_DEPOSIT_ADDRESS, memo: null,
+        expiresAt: new Date(Date.now() + (buys ? 86_400_000 : 3_600_000)).toISOString(), state: 'waiting',
         asked: { amount }, received: null,
         purchase: buys ? { buys, outcome: 'waiting', why: null } : null
       };
       w.payments.topUps.unshift(t);
+      playPayment(w, t);
       return t;
     }),
-    topUp: (id) => answer((w) => paymentIn(w, id)),
+    topUp: (id) => answer((w) => { settlePayments(w); return paymentIn(w, id); }),
     cancelTopUp: (id) => answer((w) => {
+      settlePayments(w);
       const t = paymentIn(w, id);
       if (t.state !== 'waiting') throw refused('conflict', 'This top-up can’t be cancelled any more: a payment has already reached it.');
       const cancelled: TopUp = { ...t, state: 'cancelled', address: null, memo: null };
       w.payments.topUps = w.payments.topUps.map((x) => x.id === id ? cancelled : x);
       return cancelled;
     }),
-    topUps: () => answer((w) => { paymentRoutes(w); return w.payments.topUps; })
+    topUps: () => answer((w) => { paymentRoutes(w); settlePayments(w); return w.payments.topUps; })
   },
   models: { list: () => answer(() => AI_MODELS) },
   trust: { attestation: attest },
