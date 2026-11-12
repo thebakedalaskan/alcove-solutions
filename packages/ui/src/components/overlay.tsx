@@ -231,20 +231,22 @@ function useFocusBack(open: boolean) {
 }
 
 /**
- * A single sheet that drops from the top around one input, for finding something. Closing it puts focus back where it was.
+ * A single sheet that drops from the top around one input, for finding something. Closing it puts focus back where it was;
+ * when that has gone, `onCloseFocus` puts it somewhere else (return true once it has), as a Popover's does.
  * `overlayClassName` gives the veil behind it a look of its own, as the palette's `pal-scrim` does. Escape closes it, unless
  * `onEscapeKeyDown` prevents that (the palette goes back from an answer to its results first).
  */
-export function Sheet({ open, onOpenChange, label, children, className, overlayClassName, onEscapeKeyDown }: {
+export function Sheet({ open, onOpenChange, label, children, className, overlayClassName, onEscapeKeyDown, onCloseFocus }: {
   open: boolean; onOpenChange: (open: boolean) => void; label: string; children: ReactNode; className?: string | undefined; overlayClassName?: string | undefined;
-  onEscapeKeyDown?: ((event: globalThis.KeyboardEvent) => void) | undefined;
+  onEscapeKeyDown?: ((event: globalThis.KeyboardEvent) => void) | undefined; onCloseFocus?: (() => boolean) | undefined;
 }) {
   const focusBack = useFocusBack(open);
   return (
     <RDialog.Root open={open} onOpenChange={onOpenChange}>
       <RDialog.Portal>
         <RDialog.Overlay className={cn('ac-scrim', overlayClassName)} />
-        <RDialog.Content aria-describedby={undefined} className={cn('ac-sheet', className)} onCloseAutoFocus={focusBack} onEscapeKeyDown={onEscapeKeyDown}>
+        <RDialog.Content aria-describedby={undefined} className={cn('ac-sheet', className)} onEscapeKeyDown={onEscapeKeyDown}
+          onCloseAutoFocus={(e) => { focusBack(e); if (!e.defaultPrevented && onCloseFocus?.()) e.preventDefault(); }}>
           <RDialog.Title className="sr-only">{label}</RDialog.Title>
           {children}
         </RDialog.Content>

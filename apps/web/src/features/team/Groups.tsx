@@ -202,7 +202,7 @@ function OpenGroup({ group, groups, calls, person, shown, change, onDelete, onCl
   const people = group.emails.map(person);
   const full = group.emails.length >= MAX_GROUP_PEOPLE;
 
-  /* It comes into view however it was opened, the side panel too, and takes the focus from the tile it replaced. */
+  /* It comes into view however it was opened, from its tile or the address, and takes the focus from the tile it replaced. */
   useEffect(() => {
     box.current?.scrollIntoView({ block: 'nearest' });
     head.current?.focus({ preventScroll: true });

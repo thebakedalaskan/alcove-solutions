@@ -250,7 +250,7 @@ export const OpenAGroup: PageStory = {
   name: '10.12 Open a group in place',
   ...page('/team', 'busy'),
   play: async ({ userEvent, step }) => {
-    await step('Click a group’s tile. It says how many calls had all of them. The side panel’s groups do the same', async () => {
+    await step('Click a group’s tile. It says how many calls had all of them', async () => {
       await within(await groups()).findByText('3 people · 1 call', {}, SOON);
       await userEvent.click(within(await groups()).getByRole('button', { name: 'Open Leads' }));
     });
@@ -319,12 +319,11 @@ export const RenameAGroup: PageStory = {
       await userEvent.type(name, 'Product{Enter}');
       await screen.findByText('You already have a group called Product.', {}, SOON);
     });
-    await step('Renamed. The side panel follows', async () => {
+    await step('Renamed, where it is', async () => {
       const name = screen.getByRole('textbox', { name: 'Group name' });
       await userEvent.clear(name);
       await userEvent.type(name, 'Leadership{Enter}');
       await screen.findByRole('heading', { name: 'Leadership', level: 3 }, SOON);
-      await within(screen.getByRole('complementary', { name: 'Side panel' })).findByRole('link', { name: /^Leadership/ }, SOON);
     });
   }
 };

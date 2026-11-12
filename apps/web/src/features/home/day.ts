@@ -4,7 +4,7 @@
  */
 import { isAcceptedFollowUp, type CalendarEvent, type Inbox, type Meeting, type NoteSummary, type OpenAction, type Person } from '@alcove/api';
 import { sameEmail } from '~/lib/people';
-import { daysFromToday, shortDay, weekday } from '~/lib/time';
+import { daysFromToday, minutesUntil, shortDay, untilLabel, weekday } from '~/lib/time';
 import { capital } from '~/lib/words';
 
 /** Something ahead: one of your Alcove calls, or another meeting on your calendar. */
@@ -69,14 +69,19 @@ export const startsSoon = (a: Ahead, now: number) => !isOffered(a) && !started(a
 /**
  * The call to offer at the top of Home: one that's going, or else one with someone else on it that starts in the next
  * few minutes. A meeting needs a link to join by. Anything further off stays out of the way: people join from their
- * calendar.
+ * calendar. `within` is how far ahead it looks: Home's few minutes, unless the side panel asks for its ten.
  */
-export function joinable(ahead: readonly Ahead[], me: string | undefined, now: number): Ahead | undefined {
+export function joinable(ahead: readonly Ahead[], me: string | undefined, now: number, within = JOIN_AHEAD_MS): Ahead | undefined {
   return ahead.find((a) => a.kind === 'call' && a.call.status === 'live') ?? ahead.find((a) => {
     if (isOffered(a) || (a.kind === 'event' && !a.event.join)) return false;
-    return new Date(a.startsAt).getTime() - now <= JOIN_AHEAD_MS && peopleOn(a, me).length > 0;
+    return new Date(a.startsAt).getTime() - now <= within && peopleOn(a, me).length > 0;
   });
 }
+
+/** A call is going once someone's in it. A meeting elsewhere goes by the clock. */
+export const going = (a: Ahead, now: number) => (a.kind === 'call' ? a.call.status === 'live' : started(a, now));
+/** When it starts, as Home's line and the side panel say it: "Starts in 4 min", or "Happening now". */
+export const whenLine = (a: Ahead, now: number) => (going(a, now) ? 'Happening now' : `Starts ${untilLabel(minutesUntil(a.startsAt, now))}`);
 
 const WEEK_MS = 7 * 86_400_000;
 /** Notes someone shared with you this past week. */

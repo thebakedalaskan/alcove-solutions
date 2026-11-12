@@ -110,7 +110,7 @@ export const PinANote: PageStory = {
   name: '2.5 Pin a note',
   ...page('/home', 'busy'),
   play: async ({ userEvent, step }) => {
-    await step('Click the pin beside Pinned. The palette opens to pick notes', async () => {
+    await step('Point at Pinned and click the pin at the end of its heading. The palette opens to pick notes', async () => {
       await userEvent.click(await screen.findByRole('button', { name: 'Pin a note' }, SOON));
     });
     await step('Pin this morning’s standup', async () => {
@@ -139,16 +139,20 @@ export const HideTheSidePanel: PageStory = {
   }
 };
 
-export const GroupsAndMinutes: PageStory = {
-  name: '2.7 A group, and the notes left',
-  ...page('/home', 'busy'),
+export const TheFoot: PageStory = {
+  name: '2.7 The foot: a call about to start, Team, and the notes left',
+  ...page('/calls', 'call-soon'),
   play: async ({ userEvent, step }) => {
-    await step('Click a group. It opens on the Team page', async () => {
-      await userEvent.click(await screen.findByRole('link', { name: 'Product 4 people' }, SOON));
+    const panel = async () => within(await screen.findByRole('complementary', { name: 'Side panel' }, SOON));
+    await step('Four minutes before the design review, the foot of the panel offers it, with Join. Further off it says nothing', async () => {
+      await (await panel()).findByRole('link', { name: 'Join Design review' }, SOON);
+    });
+    await step('Click Team, at the foot. Your groups are on the Team page', async () => {
+      await userEvent.click(within((await panel()).getByRole('navigation', { name: 'Team and agents' })).getByRole('link', { name: 'Team' }));
       await screen.findByRole('heading', { name: 'Team', level: 1 }, SOON);
     });
     await step('The time of notes left opens Settings at your minutes', async () => {
-      await userEvent.click(screen.getByRole('link', { name: /of notes left$/ }));
+      await userEvent.click((await panel()).getByRole('link', { name: /of notes left$/ }));
       await screen.findByRole('region', { name: 'Plan and credits' }, SOON);
     });
   }

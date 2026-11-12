@@ -10,8 +10,7 @@ import { useId, useRef } from 'react';
 import { useFloodToCall } from '~/features/calls/flow/parts';
 import { useCallFlow } from '~/features/shell/context';
 import { useStartNow } from '~/lib/queries';
-import { minutesUntil, untilLabel } from '~/lib/time';
-import { peopleOn, started, type Ahead } from './day';
+import { peopleOn, whenLine, type Ahead } from './day';
 
 export function Start({ first, soon, me, now }: { first: boolean; soon: Ahead | undefined; me: string | undefined; now: number }) {
   const flow = useCallFlow();
@@ -40,9 +39,6 @@ export function Start({ first, soon, me, now }: { first: boolean; soon: Ahead | 
   );
 }
 
-/** A call is going once someone's in it. A meeting elsewhere goes by the clock. */
-const going = (a: Ahead, now: number) => (a.kind === 'call' ? a.call.status === 'live' : started(a, now));
-
 /** The call that's about to start, or going, and the way into it. */
 function Soon({ soon, me, now }: { soon: Ahead; me: string | undefined; now: number }) {
   const people = peopleOn(soon, me);
@@ -51,7 +47,7 @@ function Soon({ soon, me, now }: { soon: Ahead; me: string | undefined; now: num
       {people.length > 0 && <Faces people={people} size={26} max={3} />}
       <span className="hm-join-t">
         <b className="ac-clamp-1" title={soon.title}>{soon.title}</b>
-        <small>{going(soon, now) ? 'Happening now' : `Starts ${untilLabel(minutesUntil(soon.startsAt, now))}`}</small>
+        <small>{whenLine(soon, now)}</small>
       </span>
       <Join soon={soon} />
     </div>
