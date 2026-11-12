@@ -27,7 +27,7 @@ import type { Screen } from '../media/screens';
 import { changer, writeNote } from '../world/build';
 import { quietAudio } from './media';
 import { personAt } from '../world/people';
-import type { Space } from '../world';
+import type { Space, World } from '../world';
 import { Pushed, Snapshots } from './live';
 import { personalFor } from './personal';
 import { ScriptedDirectMessages } from './direct-messages';
@@ -148,23 +148,28 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
   /** Who's on the board where you are besides you, by their connection, and where their pointer is. */
   private onIt = new Map<string, { x: number; y: number }>();
 
-  constructor(private readonly meeting: Meeting, arrival: Arrival) {
+  /** When you first came in: the script's times count from then, whenever you join it again. */
+  private readonly began: number;
+
+  /** `back`: a call you left that went on, which joining again picks up where it's got to (`GoingOn`). */
+  constructor(private readonly meeting: Meeting, arrival: Arrival, back: GoingOn | null = null) {
     const script = scriptFor(meeting.code) ?? defaultScript(meeting);
-    const callId = script.notificationId ?? `${nextId('call')}-${crypto.randomUUID()}`;
-    const noteId = nextId('note');
-    const since = script.since ?? 0;
-    const startedAt = new Date(Date.now() - since * 1000).toISOString();
+    const callId = back?.callId ?? script.notificationId ?? `${nextId('call')}-${crypto.randomUUID()}`;
+    const noteId = back?.noteId ?? nextId('note');
+    const since = back ? Math.max(0, Math.round((Date.now() - Date.parse(back.startedAt)) / 1000)) : script.since ?? 0;
+    const startedAt = back?.startedAt ?? new Date(Date.now() - since * 1000).toISOString();
     const organizes = arrival.role === 'host';
     const person: Person = arrival.name ? { id: `guest-${callId}`, name: arrival.name, email: '' } : you();
-    const me: CallParticipant = { id: identity(`me${callId}`), seat: 'seat-me', person, isMe: true, isOrganizer: organizes, hand: false, status: null, othersPoint: true };
+    // Every connection is new, as LiveKit's are: coming back is another, in the same seat.
+    const me: CallParticipant = { id: identity(`me${callId}${back ? nextId('back') : ''}`), seat: 'seat-me', person, isMe: true, isOrganizer: organizes, hand: false, status: null, othersPoint: true };
     const mode = script.notes ?? meeting.notes;
     super({
       revision: 0, timer: script.timer ? { ...script.timer, startedAt: script.timer.status === 'running' ? Date.now() : null } : null, attention: { place: 'main', hands: [], questions: [], nudges: [], cues: [], latest: 0, serverNow: new Date().toISOString() },
       callId, meetingId: meeting.id, code: meeting.code, title: meeting.title, startedAt, elapsed: since, phase: 'in-call', participants: organizes ? [me] : [], locked: false, pointing: true,
-      spotlight: null, breakouts: { open: null, held: [] }, capture: captureOf(mode, mode === 'off' ? null : startedAt, meeting.organizer.name, script.model ?? null),
-      notes: { everOn: mode !== 'off', noteId: mode !== 'off' ? noteId : null, segmentStartedAt: mode !== 'off' ? startedAt : null, recording: { segment: 0, pieces: 0, seconds: mode === 'on' ? since : 0 }, keepsRecording: meeting.choices.keepRecording }, waiting: [], ringing: [], leaving: [], chatRead: [],
-      host: { id: organizes ? me.id : null, standIn: false, organizer: meeting.organizer, next: [] }, generation: 1, transcript: [],
-      liveNotes: { notes: null, added: [], suggestions: [], writing: false, error: null }, notices: mode === 'on' && !since ? [{ id: nextId('notice'), text: 'Notes are on. Everyone here can see that.', kind: 'notes' }] : [],
+      spotlight: null, breakouts: { open: null, held: [] }, capture: back?.capture ?? captureOf(mode, mode === 'off' ? null : startedAt, meeting.organizer.name, script.model ?? null),
+      notes: back?.notes ?? { everOn: mode !== 'off', noteId: mode !== 'off' ? noteId : null, segmentStartedAt: mode !== 'off' ? startedAt : null, recording: { segment: 0, pieces: 0, seconds: mode === 'on' ? since : 0 }, keepsRecording: meeting.choices.keepRecording }, waiting: [], ringing: [], leaving: [], chatRead: [],
+      host: { id: organizes ? me.id : null, standIn: false, organizer: meeting.organizer, next: [] }, generation: 1, transcript: back?.transcript ?? [],
+      liveNotes: { notes: null, added: [], suggestions: [], writing: false, error: null }, notices: !back && mode === 'on' && !since ? [{ id: nextId('notice'), text: 'Notes are on. Everyone here can see that.', kind: 'notes' }] : [],
       isOrganizer: organizes, isHost: organizes, role: arrival.role,
       workspace: { id: null, home: null, name: null, chosenBy: meeting.organizer, canOpen: false, role: null, everyone: false, documents: [], agenda: null, present: null, ended: null, play: null, asks: [], asked: 'no' },
       board: { open: null, timer: null, vote: null, ideas: [] }, shares: []
@@ -172,6 +177,7 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     this.script = script;
     this.me = me;
     this.noteId = noteId;
+    this.began = back?.began ?? Date.now();
     for (const followUp of script.followUps ?? []) this.inferred.set(followUp.id, structuredClone(followUp));
     this.ticket = { callId, serverUrl: 'wss://livekit.storybook.invalid', roomName: `room-${callId}`, identity: me.id, role: arrival.role, pass: `${callId}.storybook` };
     this.crypto = new Crypto({ status: arrival.asking ? 'waiting' : 'in', place: 'main', members: arrival.asking ? [] : [me.id], everyone: arrival.asking ? [] : [me.id], media: null, chat: [], missedChat: false });
@@ -180,11 +186,14 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     this.notifications = new ScriptedNotifications(me.id, this, this.crypto, this.direct);
     this.livekit = new Pushed<RoomSide>({ people: {}, connection: 'connected', endReason: null, mutedYou: 0, sharesStopped: 0 });
 
-    // Whoever's here already, the organizer first when it isn't you.
-    const here: Present[] = [...(script.here ?? [])];
-    if (!organizes && !here.some((p) => p.organizer)) here.unshift({ who: meeting.organizer, organizer: true });
+    // Whoever's here already, the organizer first when it isn't you; coming back, whoever was still in it as you left.
+    const here: Present[] = back ? [...back.here] : [...(script.here ?? [])];
+    if (!back && !organizes && !here.some((p) => p.organizer)) here.unshift({ who: meeting.organizer, organizer: true });
     for (const p of here) this.join(p.who, { organizer: p.organizer, guest: p.guest, mic: p.mic, hand: p.hand, sharing: p.sharing, status: p.status });
-    for (const message of script.privateMessages ?? []) this.after((message.after ?? 2) * 1000, () => {
+    // Coming back, what's in the script from here on happens as it would have: what's past has happened.
+    const gone = back ? Date.now() - back.began : 0;
+    const later = (ms: number, step: () => void) => { if (ms >= gone) this.after(ms - gone, step); };
+    for (const message of script.privateMessages ?? []) later((message.after ?? 2) * 1000, () => {
       const from = this.find(message.from);
       const parent = message.replyTo ? this.direct.getSnapshot().messages.find((m) => m.text === message.replyTo) : null;
       if (message.replyTo && !parent) return;
@@ -198,8 +207,9 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     });
     // You come in after them, unless you organized it (or you're asking to be let in).
     if (!organizes && !arrival.asking) this.change((s) => ({ ...s, participants: [...s.participants, me] }));
-    // What was said before you came, spread over the time the call has been going.
-    const earlier = script.earlier ?? [];
+    // What was said before you came, spread over the time the call has been going; coming back, what was said while you were in it.
+    if (back) this.heard = [...back.heard];
+    const earlier = back ? [] : script.earlier ?? [];
     earlier.forEach((l, i) => this.heardLine(l, Math.round(((i + 1) / (earlier.length + 1)) * since)));
     // Joining late, the call's notes have been written already.
     if (this.heard.length || script.followUps?.length) {
@@ -207,16 +217,19 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
       this.change((s) => ({ ...s, liveNotes: { ...s.liveNotes, notes: this.notesNow(), suggestions: this.suggestionsNow(), writing: false, error: this.notesError() } }));
     }
     // The organizer back after someone hosted in their place hosts again at once, and hears who did.
-    const stoodIn = script.door?.standIn;
+    const stoodIn = back ? back.standIn : script.door?.standIn;
     if (organizes && stoodIn) this.change((s) => ({ ...s, notices: [...s.notices, { id: nextId('notice'), text: `You’re hosting again. ${firstOf(stoodIn)} hosted while you were away.`, kind: 'people' }] }));
+    // Anyone else coming back finds whoever you left hosting in the organizer's place still hosting: only the organizer takes it back.
+    const standing = !organizes && back?.standIn ? this.find(back.standIn) : undefined;
+    if (standing) this.change((s) => ({ ...s, host: { ...s.host, id: standing.id, standIn: true } }));
     this.hosting();
-    linkState(meeting.code, () => ({ hostHere: true, standIn: null, locked: false, capture: this.getSnapshot().capture, ended: false }));
+    linkState(meeting.code, () => ({ hostHere: true, standIn: standing ? standing.person : null, locked: false, capture: this.getSnapshot().capture, ended: false }));
     talking(false);
 
     this.every(1000, () => this.tick());
     const talk = script.talk;
-    if (talk) talk.lines.forEach((l, i) => this.after(((talk.from ?? 2) + i * (talk.every ?? 4.5)) * 1000, () => this.say(l)));
-    for (const cue of script.cues ?? []) this.after(cue.at * 1000, () => this.play(cue.beat));
+    if (talk) talk.lines.forEach((l, i) => later(((talk.from ?? 2) + i * (talk.every ?? 4.5)) * 1000, () => this.say(l)));
+    for (const cue of script.cues ?? []) later(cue.at * 1000, () => this.play(cue.beat));
   }
 
   /* ---------- the script ---------- */
@@ -1021,13 +1034,60 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     this.hosting();
   }
 
-  /** Whoever hosts (not you) ends the call: it's over for everyone. */
+  /** Whoever hosts (not you) ends the call: it's over for everyone, and everyone invited can follow its notes being written. */
   private ends(): void {
-    current().meetings = current().meetings.map((m) => (m.id === this.meeting.id ? { ...m, status: 'ended' } : m));
-    linkState(this.meeting.code, (l) => ({ hostHere: false, standIn: null, locked: false, capture: null, ...l, ended: true }));
+    this.endsWith(this.getSnapshot());
     this.change((s) => ({ ...s, phase: 'ended' }));
     this.livekit.update((r) => ({ ...r, connection: 'ended', endReason: 'ended-by-host' }));
     this.halt();
+  }
+  /**
+   * The call ends for everyone, as the server ends it: it's over in the world and its link says so, and its note, if notes
+   * were ever on, is written as everyone invited is given it, before anyone's out of the call.
+   */
+  private endsWith(s: CallState): string | null {
+    const w = current();
+    const noteId = s.notes.everOn ? s.notes.noteId : null;
+    w.meetings = w.meetings.map((m) => (m.id === this.meeting.id ? { ...m, status: 'ended', duration: s.elapsed, ...(noteId ? { noteId } : {}) } : m));
+    linkState(this.meeting.code, (l) => ({ hostHere: false, standIn: null, locked: false, capture: null, ...l, ended: true }));
+    if (noteId) {
+      const decided = this.heard.flatMap((h) => (h.line.decides ? [{ id: `${noteId}-d${h.id}`, text: h.line.decides, at: clockOf(h.at), state: 'proposed' as const }] : []));
+      const actionSpec = (row: LiveFollowUp) => ({
+        id: row.id, text: row.text, revision: row.revision, reviewed: row.reviewed, ...(row.ownerPerson ? { owner: row.ownerPerson } : {}), ...(row.due ? { due: row.due } : {}),
+        ...(row.evidence[0] ? { at: clockOf(row.evidence[0].said) } : {}), done: row.done, ...(row.target ? { target: row.target } : {})
+      });
+      const actions = [...(s.liveNotes.notes?.next ?? []), ...s.liveNotes.added].map(actionSpec);
+      const suggestions = s.liveNotes.suggestions.map(actionSpec);
+      const spec = {
+        id: noteId, title: s.title, startedAt: s.startedAt, minutes: Math.max(1, Math.round(s.elapsed / 60)), organizer: this.meeting.organizer, invited: this.meeting.guests,
+        excerpt: this.script.summary ?? 'Notes from the call.', summary: this.script.summary, meetingId: this.meeting.id, decisions: decided, actions, suggestions,
+        said: s.transcript.map((l) => ({ at: clockOf(l.at), who: l.speaker?.person, text: l.text }))
+      };
+      w.notes.unshift(writeNote({ ...spec, status: 'pending' }));
+      w.writing = { id: noteId, seconds: 8, written: () => writeNote(spec) };
+    }
+    return noteId;
+  }
+  /**
+   * You left, and the call goes on without you, as the server keeps it: where it had got to, for joining it again, and its
+   * script's end, which can still come while you're on its page. `standIn`: whoever you left hosting in the organizer's place.
+   */
+  private goesOn(standIn: Person | null): void {
+    const s = this.getSnapshot();
+    const lk = this.livekit.getSnapshot();
+    const call: GoingOn = {
+      callId: this.ticket.callId, noteId: this.noteId, startedAt: s.startedAt, began: this.began, standIn, pass: this.ticket.pass,
+      here: s.participants.filter((p) => !p.isMe).map((p) => ({ who: p.person, organizer: p.isOrganizer, guest: this.guests.has(p.id), mic: lk.people[p.id]?.mic ?? true })),
+      heard: [...this.heard], transcript: s.transcript, capture: s.capture, notes: s.notes
+    };
+    const w = current();
+    const end = (this.script.cues ?? []).find((c) => c.beat.do === 'end' && c.at * 1000 >= Date.now() - this.began);
+    const ends = end ? setTimeout(() => {
+      if (current() !== w || goingOnIn(w).get(this.meeting.code)?.call !== call) return;
+      goingOnIn(w).delete(this.meeting.code);
+      this.endsWith({ ...s, elapsed: Math.round((Date.now() - Date.parse(s.startedAt)) / 1000) });
+    }, end.at * 1000 - (Date.now() - this.began)) : null;
+    goingOnIn(w).set(this.meeting.code, { call, ends });
   }
 
   /* ---------- the session ---------- */
@@ -1856,39 +1916,21 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
   dismissNotice(id: string): void { this.change((s) => ({ ...s, notices: s.notices.filter((n) => n.id !== id) })); }
   startMove(_media: MoveMedia): Promise<CallMoveOut> { return Promise.resolve(new MoveOut()); }
 
-  /** Whoever hosts ends the call for everyone and its note starts being written; anyone else just leaves. */
+  /** Whoever hosts ends the call for everyone and its note starts being written; anyone else just leaves, and it goes on. */
   leave(): Promise<CallEndResult | null> {
     const s = this.getSnapshot();
     if (s.isHost) this.push({ ...s, phase: 'ended' });
     this.close();
-    if (!s.isHost) return Promise.resolve(null);
-    const w = current();
-    const noteId = s.notes.everOn ? s.notes.noteId : null;
-    w.meetings = w.meetings.map((m) => (m.id === this.meeting.id ? { ...m, status: 'ended', duration: s.elapsed, ...(noteId ? { noteId } : {}) } : m));
-    linkState(this.meeting.code, (l) => ({ hostHere: false, standIn: null, locked: false, capture: null, ...l, ended: true }));
-    if (noteId) {
-      const decided = this.heard.flatMap((h) => (h.line.decides ? [{ id: `${noteId}-d${h.id}`, text: h.line.decides, at: clockOf(h.at), state: 'proposed' as const }] : []));
-      const actionSpec = (row: LiveFollowUp) => ({
-        id: row.id, text: row.text, revision: row.revision, reviewed: row.reviewed, ...(row.ownerPerson ? { owner: row.ownerPerson } : {}), ...(row.due ? { due: row.due } : {}),
-        ...(row.evidence[0] ? { at: clockOf(row.evidence[0].said) } : {}), done: row.done, ...(row.target ? { target: row.target } : {})
-      });
-      const actions = [...(s.liveNotes.notes?.next ?? []), ...s.liveNotes.added].map(actionSpec);
-      const suggestions = s.liveNotes.suggestions.map(actionSpec);
-      const spec = {
-        id: noteId, title: s.title, startedAt: s.startedAt, minutes: Math.max(1, Math.round(s.elapsed / 60)), organizer: this.meeting.organizer, invited: this.meeting.guests,
-        excerpt: this.script.summary ?? 'Notes from the call.', summary: this.script.summary, meetingId: this.meeting.id, decisions: decided, actions, suggestions,
-        said: s.transcript.map((l) => ({ at: clockOf(l.at), who: l.speaker?.person, text: l.text }))
-      };
-      w.notes.unshift(writeNote({ ...spec, status: 'pending' }));
-      w.writing = { id: noteId, seconds: 8, written: () => writeNote(spec) };
-    }
+    if (!s.isHost) { this.goesOn(null); return Promise.resolve(null); }
+    const noteId = this.endsWith(s);
     return Promise.resolve({ meetingId: this.meeting.id, pendingNoteId: noteId, duration: s.elapsed });
   }
-  /** Whoever hosts leaves it to someone invited, who hosts until the organizer is back. */
+  /** Whoever hosts leaves it to someone invited, who hosts until the organizer is back, and it goes on. */
   handOff(to: string): Promise<void> {
     const person = this.getSnapshot().participants.find((p) => p.id === to)?.person ?? null;
     linkState(this.meeting.code, (l) => ({ hostHere: true, locked: false, capture: null, ended: false, ...l, standIn: person }));
     this.close();
+    this.goesOn(person);
     return Promise.resolve();
   }
   close(): void {
@@ -1919,11 +1961,53 @@ class MoveOut extends Pushed<MoveOutState> implements CallMoveOut {
   renew(): Promise<void> { this.update((s) => ({ ...s, stage: 'open', expiresAt: Date.now() + 120_000 })); return Promise.resolve(); }
 }
 
-/** The CallSession the stand-in's `calls.join` hands back: you, as the world and the call's invite have you. */
-export function joinCall(m: Meeting, opts: { name?: string | undefined }): ScriptedCall {
+/**
+ * A call you left that goes on without you, as the server keeps it: the same call and note, how long it's been going, who's still
+ * in it, what was said while you were there, how it's captured, whoever you left hosting, and the pass you left with.
+ */
+export interface GoingOn {
+  callId: string;
+  noteId: string;
+  startedAt: string;
+  /** When you first came in: the script's times count from then. */
+  began: number;
+  here: Present[];
+  heard: { line: Line; id: string; at: number }[];
+  transcript: TranscriptLine[];
+  capture: CallState['capture'];
+  notes: CallState['notes'];
+  standIn: Person | null;
+  pass: string;
+}
+/** The calls you've left that go on, by their link, and the timer for the end their script still has: kept with the world. */
+const goingOn = new WeakMap<World, Map<string, { call: GoingOn; ends: ReturnType<typeof setTimeout> | null }>>();
+function goingOnIn(w: World): Map<string, { call: GoingOn; ends: ReturnType<typeof setTimeout> | null }> {
+  const known = goingOn.get(w);
+  if (known) return known;
+  const fresh = new Map<string, { call: GoingOn; ends: ReturnType<typeof setTimeout> | null }>();
+  goingOn.set(w, fresh);
+  return fresh;
+}
+/** Whatever the last story left going stops: no call it left ends in the next story's world. */
+export function forgetGoingOn(): void {
+  const here = goingOnIn(current());
+  for (const { ends } of here.values()) if (ends) clearTimeout(ends);
+  here.clear();
+}
+
+/**
+ * The CallSession the stand-in's `calls.join` hands back: you, as the world and the call's invite have you. A call you left
+ * that's still going is picked up where it's got to, and the pass you left with (`previous`) lets you straight back in.
+ */
+export function joinCall(m: Meeting, opts: { name?: string | undefined; previous?: string | undefined }): ScriptedCall {
   const w = current();
   const signedIn = w.session !== null;
   const organizes = signedIn && m.organizer.email === you().email;
   const invited = organizes || (signedIn && m.guests.some((g) => g.email === you().email));
-  return new ScriptedCall(m, { role: organizes ? 'host' : invited ? 'invited' : 'guest', asking: !invited, ...(signedIn ? {} : { name: opts.name?.trim() || 'Guest' }) });
+  const kept = goingOnIn(w).get(m.code);
+  if (kept?.ends) clearTimeout(kept.ends);
+  goingOnIn(w).delete(m.code);
+  const back = kept?.call ?? null;
+  const known = back !== null && opts.previous === back.pass;
+  return new ScriptedCall(m, { role: organizes ? 'host' : invited ? 'invited' : 'guest', asking: !invited && !known, ...(signedIn ? {} : { name: opts.name?.trim() || 'Guest' }) }, back);
 }

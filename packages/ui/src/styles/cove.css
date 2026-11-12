@@ -20,14 +20,28 @@
   --cv-foam: oklch(0.9 0.03 75 / .3);
   --cv-rip: oklch(0.86 0.03 250 / .12);
 }
+/* After a call the cove stands in the night, in both themes: the dark cove a step darker, its faces lit less. */
+.hz[data-moment="after"] .cv {
+  --cv-far: oklch(0.285 0.052 285);
+  --cv-stacks: oklch(0.25 0.05 280);
+  --cv-mid: oklch(0.21 0.045 272);
+  --cv-near: oklch(0.16 0.036 263);
+  --cv-foam: oklch(0.9 0.03 75 / .22);
+  --cv-rip: oklch(0.86 0.03 250 / .1);
+}
 .cv svg { position: absolute; left: 0; top: 0; overflow: visible; }
 .cv-far { --cv: var(--cv-far); --cv-lit: 24%; }
 .cv-stacks { --cv: var(--cv-stacks); --cv-lit: 20%; }
 .cv-mid { --cv: var(--cv-mid); --cv-lit: 17%; }
 .cv-near { --cv: var(--cv-near); --cv-lit: 12%; }
+.hz[data-moment="after"] .cv-far { --cv-lit: 20%; }
+.hz[data-moment="after"] .cv-stacks { --cv-lit: 16%; }
+.hz[data-moment="after"] .cv-mid { --cv-lit: 13%; }
+.hz[data-moment="after"] .cv-near { --cv-lit: 9%; }
 .cv-rock { fill: var(--cv); }
 .cv-face { fill: color-mix(in oklch, var(--cv), var(--hz-rim) var(--cv-lit)); }
 .cv-refl { fill: var(--cv); opacity: .26; }
+.hz[data-moment="after"] .cv-refl { opacity: .3; }
 .cv-foam { fill: none; stroke: var(--cv-foam); stroke-width: 2; stroke-linecap: round; }
 .cv-rips path { fill: none; stroke: var(--cv-rip); stroke-width: 1.6; stroke-linecap: round; }
 

@@ -17,13 +17,15 @@ import { useCallControls } from './useCallControls';
 import { useFloatingWindow } from './floatingWindow';
 import { FloatingCallPortal } from './FloatingCallPortal';
 import { asShown, SOMEONE } from './participants';
+import { leftOf, onTheWay, type Left, type LeftHow } from './CallOver';
+import { rememberPass } from './pass';
 import {
   BOARD_SHOT_LIMITS, CALL_LAYOUT_MAX, CAPTION_LANGUAGES, MAIN_PLACE, errorCode, errorMessage, firstName, notesAreOn, type CallAsker, type CallReaction, type CallSession, type CallState, type CaptionLanguage,
   type CallNudgeKind, type CallStatusKind, type CallStatusMinutes, type CaptureMode, type Person, type SelfView
 } from '@alcove/api';
 import {
-  CallTimerButton, Avatar, BoardPicker, CallDock, CallMoreGrid, CallMoreTile, DockButton, DockLeave, DockSeparator, DockSplit, DockWords, Dots, Icon, IconButton, KnockCard, LinkRow, Popover, ReactPicker, ReactionBurst, RingAgain, RingReply,
-  WaitTile, cn, useRaisedToasts, useTheme, useToast, volumeTag, wsToast, type IconName, type PresentAskProps, type WsToastData
+  CallTimerButton, Avatar, BoardPicker, CallDock, CallMoreGrid, CallMoreTile, DockButton, DockLeave, DockSeparator, DockSplit, DockWords, Dots, EASE, Icon, IconButton, KnockCard, LeaveAsk, LeaveChoices, LinkRow, Popover, ReactPicker, ReactionBurst,
+  RingAgain, RingReply, WaitTile, cn, useRaisedToasts, useTheme, useToast, volumeTag, wsToast, type IconName, type LeaveHost, type PresentAskProps, type WsToastData
 } from '@alcove/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
@@ -42,7 +44,6 @@ import { CamMenu, MicMenu } from '~/features/call/media/DevicePickers';
 import { ChooseBackground } from '~/features/call/media/backgrounds/ChooseBackground';
 import { deviceChoices, useDevices } from '~/features/call/media/devices';
 import { HostSpill, organizerFirst } from '~/features/call/rooms/Hosting';
-import { LeaveSheet, type Ended, type NextHost } from '~/features/call/session/LeaveSheet';
 import { copyUrl, shownUrl, useCopyLink } from '~/features/call/session/links';
 import { useOpenWhenStarted } from '~/features/call/session/opening';
 import { AskView, MomentView } from '~/features/call/notes/CatchUp';
@@ -119,9 +120,17 @@ const isNotesTab = (p: SidePlace): p is NotesTab => p === 'notes' || p === 'tran
 /** Nobody's anywhere in the workspace, as far as the people list says while it's put away. */
 const NOWHERE: Readonly<Record<string, string>> = {};
 
-export function InCall({ session }: { session: CallSession }) {
+/**
+ * The call screen. Once the call is over for you (you end it, whoever hosts ends it, you leave it, or you leave it with someone
+ * hosting), it lets go of the call and hands its page what it needs to know of it (`onOver`), then eases back under that page
+ * (`.ic-call.is-leaving`). `returning`: Rejoin brought you back from that page, and the call comes up again.
+ */
+export function InCall({ session, onOver, returning = false }: { session: CallSession; onOver: (left: Left) => void; returning?: boolean | undefined }) {
   useClosingWithPage(session);
   const told = useLive(session);
+  /* The call as the server last said it while you were in it: a call that has ended says nothing of who was there. */
+  const lastTold = useRef(told);
+  if (told.phase === 'in-call' && told.participants.some((p) => p.isMe)) lastTold.current = told;
   const crypto = useLive(session.crypto);
   const direct = useLive(session.direct);
   const self = session.ticket.identity;
@@ -166,11 +175,15 @@ export function InCall({ session }: { session: CallSession }) {
   const [backgroundOpen, setBackgroundOpen] = useState(false);
   /** Share › Your screen: why the last try didn't start, if it didn't. */
   const [shareTrouble, setShareTrouble] = useState<ShareTrouble | null>(null);
+  /** Leave's question, for whoever hosts: open over Leave, or in the floating call's own window. */
   const [leaveOpen, setLeaveOpen] = useState(false);
   const [leaveInFloating, setLeaveInFloating] = useState(false);
-  const [leaving, setLeaving] = useState(false);
+  /** A departure on its way: ending the call (or leaving it, for anyone else), or leaving it with someone hosting. */
+  const [leavingAs, setLeavingAs] = useState<'end' | 'keep' | null>(null);
+  const leaving = leavingAs !== null;
   const departing = useRef(false);
-  const [ended, setEnded] = useState<Ended | null>(null);
+  /** The call is over here: its page has taken over, and the call eases back under it. */
+  const [done, setDone] = useState(false);
   const [cc, setCc] = useState(false);
   const [lang, setLang] = useState<CaptionLanguage | null>(null);
   // Your own view of the call (never sent anywhere): how you like calls, remembered for your account, and how you
@@ -232,7 +245,8 @@ export function InCall({ session }: { session: CallSession }) {
   const levels = useLive(volumes);
   const [canVolume] = useState(canSetVolume);
   useEffect(() => { volumes.follow(told.participants); }, [volumes, told.participants]);
-  const guard = useLeaveGuard(() => requestLeave(), hosting);
+  /* Going back a page, or anywhere else in the app, is a way out too: it asks first (`requestLeave`). */
+  const guard = useLeaveGuard(() => requestLeave('elsewhere'), hosting);
   const guardRef = useRef(guard);
   guardRef.current = guard;
   const readChatIds = useMemo(() => new Set(state.chatRead), [state.chatRead]);
@@ -242,7 +256,7 @@ export function InCall({ session }: { session: CallSession }) {
   const unread = new Set([...unreadChat, ...unreadMentions, ...unreadReplies]).size + direct.unread.length;
   const [chatTarget, setChatTarget] = useState<ReplyJump>();
   const attentionMentions = useMemo(() => [...unreadMentions, ...direct.unreadMentions], [unreadMentions, direct.unreadMentions]);
-  const attentionAllowed = useCallAttention(state, crypto, attentionMentions, !leaving && ended === null);
+  const attentionAllowed = useCallAttention(state, crypto, attentionMentions, !leaving && !done);
   const readingMentions = useRef(new Set<string>());
   const readMentions = useCallback((ids: readonly string[]) => {
     const fresh = ids.filter((id) => !readingMentions.current.has(id));
@@ -259,11 +273,11 @@ export function InCall({ session }: { session: CallSession }) {
   const react = (r: CallReaction) => reactions?.fire(r);
 
   const live = state.phase === 'in-call';
-  const capture = useNotesCapture({ session, state, crypto, media, room, departing: leaving || ended !== null });
+  const capture = useNotesCapture({ session, state, crypto, media, room, departing: leaving || done });
   const { uploadError, heardProblem, pausing, discardDisplaced } = capture;
 
   const myShare = roomView.people[self]?.screenSid ?? null;
-  const { screenProblem, sharingInRoom, keptMine, keptOf, startMine } = useScreenCapture({ session, state, media, screen: m.screen, departing: leaving || ended !== null });
+  const { screenProblem, sharingInRoom, keptMine, keptOf, startMine } = useScreenCapture({ session, state, media, screen: m.screen, departing: leaving || done });
 
   /* What the call says happened ("Notes are on…") arrives once, as a toast. Joining shows only the latest: the rest is history. */
   const shown = useRef<Set<string> | null>(null);
@@ -338,46 +352,53 @@ export function InCall({ session }: { session: CallSession }) {
   }, [roomView.audioBlocked, room]);
 
   /*
-   * The call ended, or the host removed you, or the call went on from another tab or device: you're told, and go back
-   * to the call's page. The organizer is removed only by joining from another device; this screen then lets go of the
-   * call. An organizer's tab that was away long enough for someone else to host goes back to the join page, where
-   * joining takes the call back. A connection that dropped for good asks for a reload.
+   * Whoever hosts ended the call: it's over here too, and its page says so. Otherwise the host removed you, or the call
+   * went on from another tab or device: you're told, and go back to the call's link. The organizer is removed only by joining
+   * from another device; this screen then lets go of the call. An organizer's tab that was away long enough for someone else
+   * to host goes back to the join page, where joining takes the call back. A connection that dropped for good asks for a reload.
    */
   const organizerTab = session.ticket.role === 'host';
   const outOfGroup = crypto.status === 'removed' || crypto.status === 'away';
   const over = useRef(false);
   /* The connection dropped for good: its toast offers a reload, until the call says this tab is out of it (someone else hosts now). */
   const dropped = useRef<(() => void) | null>(null);
+  /* The call says it has ended, or its room went with it, and not by anything this tab did: whoever hosts ended it, or Alcove did. */
+  const endedByHost = !organizerTab && ((roomView.connection === 'ended' && roomView.endReason === 'ended-by-host') || told.phase === 'ended');
   useEffect(() => {
-    if (leaving || ended || (over.current && !(dropped.current && outOfGroup))) return;
-    if (roomView.connection === 'ended' && roomView.endReason === 'error' && !outOfGroup) {
+    if (leaving || done || (over.current && !(dropped.current && outOfGroup))) return;
+    if (roomView.connection === 'ended' && roomView.endReason === 'error' && !outOfGroup && !endedByHost) {
       over.current = true;
       dropped.current = toast('The call’s connection dropped. Reload to join again.', { icon: 'x', ms: 120_000, action: { label: 'Reload', onClick: () => { guardRef.current.release(); location.reload(); } } });
       return;
     }
-    const gone = roomView.connection === 'ended' && (roomView.endReason === 'removed' || (!organizerTab && roomView.endReason === 'ended-by-host'));
+    const gone = (roomView.connection === 'ended' && roomView.endReason === 'removed') || endedByHost;
     if (!gone && !outOfGroup) return;
     dropped.current?.();
     dropped.current = null;
     over.current = true;
+    const was = mediaNow();
     discardDisplaced();
     session.close();
     void room.leave();
-    guardRef.current.release();
     sessions.call = null;
     forgetLayout();
     media.stop();
     volumes.clear();
     sessions.media = null;
     void qc.invalidateQueries();
+    if (endedByHost) {
+      overHere({ kind: 'ended-by' }, was);
+      return;
+    }
+    guardRef.current.release();
     const away = crypto.status === 'away';
     leftToast = toast(away ? 'Your connection dropped, so someone else is hosting. Join again to take the call back.'
       : organizerTab ? 'You joined this call from another device.'
-        : roomView.endReason === 'ended-by-host' ? 'The call has ended.'
-          : roomView.endReason === 'removed' ? 'The host removed you from the call.'
-            : 'You’re no longer in this call here. You can join again.', { icon: 'leave', ...(away ? { ms: 8000 } : {}) });
+        : roomView.endReason === 'removed' ? 'The host removed you from the call.'
+          : 'You’re no longer in this call here. You can join again.', { icon: 'leave', ...(away ? { ms: 8000 } : {}) });
     void navigate(organizerTab && !away ? { to: '/home', replace: true } : { to: '/join/$code', params: { code: state.code }, replace: true });
-  }, [roomView.connection, roomView.endReason, outOfGroup, crypto.status, leaving, ended, organizerTab, state.code, forgetLayout, media, volumes, navigate, toast, session, room, qc, discardDisplaced]);
+    // overHere and mediaNow read the call and your devices as they are when this runs.
+  }, [roomView.connection, roomView.endReason, endedByHost, outOfGroup, crypto.status, leaving, done, organizerTab, state.code, forgetLayout, media, volumes, navigate, toast, session, room, qc, discardDisplaced]);
 
   /*
    * Moving to another device. Letting go here comes first: what the notes heard so far is sent, then the microphone
@@ -613,7 +634,7 @@ export function InCall({ session }: { session: CallSession }) {
   /* ---------- actions ---------- */
   const callControls = useCallControls({
     session, media,
-    enabled: () => live && !leaving && !ended && !over.current,
+    enabled: () => live && !leaving && !done && !over.current,
     problem: (kind) => setPop(kind),
     failed: (message) => toast(message, { icon: 'x' }),
     micChanged: (enabled) => callSounds.confirmMic(enabled),
@@ -775,7 +796,7 @@ export function InCall({ session }: { session: CallSession }) {
   };
 
   /* ---------- catching up and asking: for you alone, with the moments behind each answer, and a way back to live ---------- */
-  const cu = useCatchingUp(session, { place, setPlace: (p) => { setPop(null); goTo(p); }, narrow: phone, everOn: state.notes.everOn, room: roomName });
+  const cu = useCatchingUp(session, { place, setPlace: (p) => { setPop(null); goTo(p); }, narrow: phone, everOn: state.notes.everOn, room: roomName, over: done });
   const catchUp = () => { setPop(null); cu.catchUp(); };
   // Showing the notes is what keeps them up to date, for everyone in this part of the call.
   const watchingNotes = notesAreOn(capHere.mode) && live && place === 'notes';
@@ -857,7 +878,7 @@ export function InCall({ session }: { session: CallSession }) {
   /** The call's board is one you can't open, brought by someone here: a presentation you can't open asks them for it (`askBoard`). */
   const boardAccess = useRef<{ who: string; onAsk: () => void } | null>(null);
   const wsPresenting = useWorkspacePresenting({
-    session, present: space.present, ended: space.ended, participants: state.participants, onStage: stage.on.includes('ws') && ended === null && !leaving, following: stage.following('ws'), together: work.together, at: work.at,
+    session, present: space.present, ended: space.ended, participants: state.participants, onStage: stage.on.includes('ws') && !done && !leaving, following: stage.following('ws'), together: work.together, at: work.at,
     act: { follow: work.act.follow, stopFollowing: work.act.stopFollowing, go: work.act.go }, say: work.act.say, failed: work.act.failed, onOwn: () => stage.setFollow('ws', false),
     access: () => boardAccess.current
   });
@@ -1030,17 +1051,32 @@ export function InCall({ session }: { session: CallSession }) {
   const wasDown = useRef(false);
   useEffect(() => {
     if (down) { wasDown.current = true; return; }
-    if (!wasDown.current || ended) return;
+    if (!wasDown.current || done) return;
     wasDown.current = false;
     work.act.say(wsToast.reconnected());
-  }, [down, ended, work.act]);
+  }, [down, done, work.act]);
 
   /* What the workspace said last, such as a switch with Back, means nothing once the call's over, and sits over Leave's question. */
-  useEffect(() => { if (ended || leaveOpen) work.act.hush(); }, [ended, leaveOpen, work.act]);
+  useEffect(() => { if (done || leaveOpen) work.act.hush(); }, [done, leaveOpen, work.act]);
   /* Settings and Background never stay open under Leave's question, or once the call's over: one window at a time. */
-  useEffect(() => { if (ended || leaveOpen) { setSettingsOpen(false); setBackgroundOpen(false); } }, [ended, leaveOpen]);
+  useEffect(() => { if (done || leaveOpen) { setSettingsOpen(false); setBackgroundOpen(false); } }, [done, leaveOpen]);
 
   /* ---------- leaving: whoever hosts ends the call for everyone, or leaves it with someone else hosting; anyone else just leaves ---------- */
+  /** Your microphone and camera as you leave: Rejoin brings them back as they were. */
+  const mediaNow = () => ({ mic: media.getSnapshot().mic, cam: media.getSnapshot().cam });
+  /**
+   * The call is over here: its page takes over with what it needs to know of the call, taken now from the call as it last was
+   * (`lastTold`) and your microphone and camera as you left, and the call eases back under it. Leaving on the way somewhere, such
+   * as to a call that rang, carries on there instead, with a word of what happened.
+   */
+  const overHere = (how: LeftHow, media: { mic: boolean; cam: boolean }) => {
+    const left = leftOf({ last: lastTold.current, how, media, invited: organizer ? meeting?.guests ?? null : null });
+    if (guardRef.current.proceed()) { toast(onTheWay(left), { icon: 'leave' }); return; }
+    setDone(true);
+    setLeaveOpen(false);
+    setPop(null);
+    onOver(left);
+  };
   /*
    * The last audio and speech go before the call ends or this browser leaves it: the server refuses them after. That's
    * the host's, and a breakout room scribe's for its room. The recorder is paused, not stopped, until it has: if ending
@@ -1050,7 +1086,8 @@ export function InCall({ session }: { session: CallSession }) {
   const end = async (hostConfirmed = false) => {
     if (departing.current) return;
     departing.current = true;
-    setLeaving(true);
+    setLeavingAs('end');
+    const was = mediaNow();
     const departure = capture.departure('leave');
     try {
       await departure.flush();
@@ -1063,49 +1100,46 @@ export function InCall({ session }: { session: CallSession }) {
       const r = await session.leave();
       departure.finish();
       over.current = true;
-      if (r) guard.release();
       forgetLayout();
       // Ending the call deletes its room, which disconnects everyone at once; anyone else leaves the room now.
       if (!r) void room.leave();
       media.stop();
       volumes.clear();
       sessions.media = null;
+      sessions.call = null;
+      // Whoever comes back to a call they left (Rejoin, or its link after a reload) isn't asked again.
+      if (!r) rememberPass(state.code, session.ticket.pass);
       void qc.invalidateQueries();
-      if (r) setEnded({ noteId: r.pendingNoteId, duration: r.duration });
-      else {
-        sessions.call = null;
-        // Leaving on the way somewhere, such as to a call that rang, carries on there.
-        if (!guard.proceed()) await navigate({ to: '/join/$code', params: { code: state.code }, replace: true });
-        toast('You left the call', { icon: 'leave' });
-      }
+      overHere(r ? { kind: 'ended', elapsed: r.duration, noteId: r.pendingNoteId } : { kind: 'left' }, was);
     } catch (e) {
       departure.rollback();
       clog.error('leaving the call failed', { err: e });
       callControls.setError(errorMessage(e));
       guard.stay();
-      toast(errorMessage(e), { icon: 'x' });
+      // Leave's question, while it's open, says why under its choices.
+      if (!askingNow.current) toast(errorMessage(e), { icon: 'x' });
     } finally {
       departing.current = false;
-      setLeaving(false);
+      setLeavingAs(null);
     }
   };
   /*
-   * Leaving with someone else hosting: the last audio and speech go first, then the call is theirs. You go back to the
-   * call's page, where the organizer's joining again takes it back. If they can't host after all, you stay, and the
-   * paused recorder carries on in the same segment, as when ending fails.
+   * Leaving with someone else hosting: the last audio and speech go first, then the call is theirs, and its page says
+   * who's hosting until the organizer's back: only the organizer's Rejoin takes it back. If they can't host after all, you
+   * stay, and the paused recorder carries on in the same segment, as when ending fails.
    */
   const handOff = async (to: string) => {
     if (departing.current) return;
     departing.current = true;
-    setLeaving(true);
+    setLeavingAs('keep');
     const who = state.participants.find((p) => p.id === to)?.person;
+    const was = mediaNow();
     const departure = capture.departure('hand-off');
     try {
       await departure.flush();
       await session.handOff(to);
       departure.finish(() => {
         over.current = true;
-        guard.release();
         forgetLayout();
       });
       void room.leave();
@@ -1113,40 +1147,43 @@ export function InCall({ session }: { session: CallSession }) {
       volumes.clear();
       sessions.media = null;
       sessions.call = null;
+      rememberPass(state.code, session.ticket.pass);
       void qc.invalidateQueries();
-      await navigate({ to: '/join/$code', params: { code: state.code }, replace: true });
-      leftToast = toast(`You left the call. ${who ? callName(who) : 'Someone else'} is hosting${organizer ? ' until you’re back' : ''}.`, { icon: 'leave' });
+      overHere({ kind: 'handed', to: who ? callName(who) : 'Someone else' }, was);
     } catch (e) {
       departure.rollback();
       clog.warn('handing the call on failed', { err: e });
       callControls.setError(errorMessage(e));
+      // Back to the question, which says why under its choices.
       setLeaveOpen(true);
-      toast(errorMessage(e), { icon: 'x' });
     } finally {
       departing.current = false;
-      setLeaving(false);
+      setLeavingAs(null);
     }
   };
-  // The host decides what happens to everyone; other participants leave through the same capture and media cleanup.
-  const requestLeave = (inFloating = false) => {
-    if (departing.current || ended) return;
+  /**
+   * Whoever hosts decides what happens to everyone, in Leave's question. Alone in the call, pressing Leave (in the dock, or in
+   * the floating call's own window) ends it at once, with nobody to hand it to and nothing to choose; any other way out while
+   * alone (going back a page, anywhere else in the app, a call that rang) asks first, End's line saying leaving ends the call,
+   * so nothing ends it by accident. Anyone else just leaves, through the same capture and media cleanup.
+   */
+  const onlyYou = state.participants.every((p) => p.isMe);
+  /** Leave's question is up, as a departure that fails finds it. */
+  const askingNow = useRef(false);
+  askingNow.current = hosting && leaveOpen;
+  const requestLeave = (from: 'dock' | 'floating' | 'elsewhere') => {
+    if (departing.current || done) return;
     callControls.setError(null);
-    setLeaveInFloating(inFloating);
-    if (hosting) {
-      setLeaveOpen(true);
-    } else void end();
+    setLeaveInFloating(from === 'floating');
+    if (hosting && (!onlyYou || from === 'elsewhere')) setLeaveOpen(true);
+    else void end(hosting);
   };
   useEffect(() => {
-    if (!hosting && leaveOpen && !ended) {
+    if (!hosting && leaveOpen && !done) {
       setLeaveOpen(false);
       guardRef.current.stay();
     }
-  }, [hosting, leaveOpen, ended]);
-  const away = async (to: { noteId: string } | null) => {
-    sessions.call = null;
-    if (to) await navigate({ to: '/notes/$noteId', params: { noteId: to.noteId }, replace: true });
-    else await navigate({ to: '/home', replace: true });
-  };
+  }, [hosting, leaveOpen, done]);
 
   /* ---------- the panel's people ---------- */
   /* The microphone in use, named as its menu names it ("AirPods (Bluetooth)", not Chrome's "Default - AirPods (Bluetooth)"). */
@@ -1177,8 +1214,8 @@ export function InCall({ session }: { session: CallSession }) {
       menu: personMenu(sp)
     }];
   }).sort((a, b) => raisedAt(a.id) - raisedAt(b.id));
-  /* Who could host after you, best first, as the call names them: for the leave sheet. */
-  const nextHosts: NextHost[] = state.host.next.flatMap((id) => { const p = state.participants.find((x) => x.id === id); return p ? [{ id, person: p.person }] : []; });
+  /* Who could host after you, best first, as the call names them: for Leave's question. */
+  const nextHosts: LeaveHost[] = state.host.next.flatMap((id) => { const p = state.participants.find((x) => x.id === id); return p ? [{ id, person: p.person }] : []; });
   const host: HostControls | undefined = hosting ? {
     admit: (id) => session.admit(id),
     deny: (id) => session.deny(id),
@@ -1238,7 +1275,7 @@ export function InCall({ session }: { session: CallSession }) {
    */
   const roomsPill = roomPills(open ? { name: roomName, rooms: open.rooms.length, shared: open.board === 'shared', left } : null);
   const [boardPill, setBoardPill] = useState<PillKind | null>(null);
-  const pillSaysRooms = board.shown && ended === null && !leaving && !stageRooms && (boardPill === 'room' || boardPill === 'closing');
+  const pillSaysRooms = board.shown && !done && !leaving && !stageRooms && (boardPill === 'room' || boardPill === 'closing');
   /*
    * In a room (or the main room while rooms are open): where you are and how long for. In rooms without boards, the organizer's
    * message to every room shows here for a moment; with boards it's a toast.
@@ -1291,7 +1328,7 @@ export function InCall({ session }: { session: CallSession }) {
     </div>
   );
   /* Talking with your microphone muted: said at the top of the call, with Unmute, from your microphone's level here alone. */
-  const talkingOnMute = useTalkingOnMute(media, live && !m.mic && !leaving && ended === null);
+  const talkingOnMute = useTalkingOnMute(media, live && !m.mic && !leaving && !done);
   const mutePill = talkingOnMute && (
     <div className="ic-spill" role="status"><Icon name="micOff" size={15} /><span className="tx2">You’re talking on mute</span>
       <button type="button" className="sp-btn is-strong" onClick={pressMic}>Unmute</button>
@@ -1349,9 +1386,9 @@ export function InCall({ session }: { session: CallSession }) {
   const reduce = useReducedMotion();
   /*
    * Once the call is over for this tab (it ended, or you're leaving), the workspace goes at once: its streams close and it stops
-   * saying where you are, while the sheet says what happened.
+   * saying where you are, while its page says what happened.
    */
-  const callOver = ended !== null || leaving;
+  const callOver = done || leaving;
   const shownThings = callOver ? [] : stage.on;
   /*
    * Beside what's open the people stand at the window's right edge: a column, or made smaller a rail (panels.ts). They come from
@@ -1437,7 +1474,7 @@ export function InCall({ session }: { session: CallSession }) {
   useFocusBack(looks);
   const pointing = usePointing(shares, (id) => screensShown.includes(id), looks.popped);
   const popOut = usePopOut(looks.looks);
-  const floating = useFloatingWindow(looks.looks, live && ended === null && !outOfGroup && !over.current && roomView.connection !== 'ended',
+  const floating = useFloatingWindow(looks.looks, live && !done && !outOfGroup && !over.current && roomView.connection !== 'ended',
     media.micTrack()?.readyState === 'live' || media.camSource()?.readyState === 'live');
   const floatingHelp = useId();
   const openAddressedMessage = (id: string, audience: PrivateAudience | null) => { setChatTab(audience ? { kind: 'private', audience } : { kind: 'room' }); setChatTarget((was) => ({ id, request: (was?.request ?? 0) + 1 })); returnToCall(); openSide('chat'); };
@@ -1445,10 +1482,10 @@ export function InCall({ session }: { session: CallSession }) {
   const openPrivate = (identity: string) => { setChatTab({ kind: 'private', audience: { identity, place: crypto.place, generation: state.generation } }); returnToCall(); openSide('chat'); };
   /** The room's questions, in Chat, at one of them if it says which. */
   const openQuestions = (id?: string) => { setChatTab({ kind: 'questions' }); if (id) setQuestionTarget((was) => ({ id, request: (was?.request ?? 0) + 1 })); openSide('chat'); };
-  const alertsAllowed = attentionAllowed && attentionReady && online && !leaving && ended === null;
+  const alertsAllowed = attentionAllowed && attentionReady && online && !leaving && !done;
   useReplyAlerts({ session, state, crypto, direct, allowed: alertsAllowed, onOpen: openAddressedMessage });
   useMentionAlerts({ session, state, crypto, direct, allowed: alertsAllowed, onOpen: openAddressedMessage });
-  useCallBrowserNotifications({ session, state, crypto, direct, active: attentionAllowed && attentionReady && online && roomView.connection === 'connected' && !leaving && ended === null,
+  useCallBrowserNotifications({ session, state, crypto, direct, active: attentionAllowed && attentionReady && online && roomView.connection === 'connected' && !leaving && !done,
     foreground: floating.mainVisible,
     onOpen: (target) => {
       returnToCall();
@@ -1552,7 +1589,7 @@ export function InCall({ session }: { session: CallSession }) {
           <SideHead title="Chat" onClose={sideClose} />
           <SideBody view="chat">
             <ChatPanel session={session} state={state} crypto={crypto} direct={direct} memory={chatMemory.current} tab={chatTab} onTab={setChatTab} who={personOf} placeName={placeName}
-              here={open ? roomName ?? 'the main room' : null} visible={floating.mainVisible && !focusOn && !leaveOpen && !ended && !moving.open && !settingsOpen && !backgroundOpen && pop === null}
+              here={open ? roomName ?? 'the main room' : null} visible={floating.mainVisible && !focusOn && !leaveOpen && !done && !moving.open && !settingsOpen && !backgroundOpen && pop === null}
               jump={chatTarget} questionJump={questionTarget} questionsReady={attentionReady} roomUnread={unreadChat} unreadMentions={unreadMentions} onRead={readMentions} />
           </SideBody>
         </>
@@ -1696,7 +1733,7 @@ export function InCall({ session }: { session: CallSession }) {
   } : null;
 
   /* A video played for everyone: the call's one player, until the call ends here (PlayTogether.tsx). */
-  const player = useSharedVideo(session, !ended, work.act.failed);
+  const player = useSharedVideo(session, !done, work.act.failed);
   const startPlaying = useCallback((documentId: string, mediaId: string) => { session.startPlaying(documentId, mediaId, 0).catch(work.act.failed); }, [session, work.act]);
   const playing = useWorkspacePlaying(player, startPlaying);
   /** The workspace's name on its frame: a new one shows while it's being kept, until the call says it. */
@@ -1891,7 +1928,7 @@ export function InCall({ session }: { session: CallSession }) {
    */
   const floatingRow = (
     <div className="ic-mfloat">
-      <button type="button" className="mi" disabled={!floating.supported || floating.pending || !live || !!ended} aria-busy={floating.pending}
+      <button type="button" className="mi" disabled={!floating.supported || floating.pending || !live || done} aria-busy={floating.pending}
         aria-describedby={!floating.supported || floating.error ? floatingHelp : undefined}
         onClick={() => { void floating.owner.open().then(() => { if (floating.owner.getSnapshot().target) setPop(null); }); }}>
         <Icon name="pip" size={17} /><span className="t">{floating.pending ? 'Opening floating call…' : floating.target ? 'Return to floating call' : 'Open floating call'}</span>
@@ -1900,12 +1937,20 @@ export function InCall({ session }: { session: CallSession }) {
         : floating.error && <p id={floatingHelp} role="alert">{floating.error}</p>}
     </div>
   );
-  const leaveQuestion = (
-    <LeaveSheet inline={leaveInFloating && floating.target !== null} open={(hosting && leaveOpen) || !!ended} onOpenChange={(o) => { setLeaveOpen(o); if (!o) guard.stay(); }} title={state.title} elapsed={state.elapsed}
-        organizer={organizer} standingInFor={state.host.standIn && hosting ? state.host.organizer.name : null} next={nextHosts}
-        notes={state.notes.everOn} modelPrivate={state.capture.modelPrivate} others={others.length}
-        getting={invited} leaving={leaving} ended={ended} onEnd={() => void end(true)} onHandOff={(to) => void handOff(to)} onRead={(id) => void away({ noteId: id })} onHome={() => void away(null)} />
-  );
+  /*
+   * Leave's question, for whoever hosts: End for everyone, or leave it going with someone hosting (the best person is chosen
+   * already, and Change shows who else could). Someone standing in for the organizer sees leaving it going first; alone, End is
+   * all there is, and its line says leaving ends the call. It opens over Leave, or, from the floating call, in that window's own
+   * document.
+   */
+  const leaveTitle = `Leave ${state.title}`;
+  const leaveChoices = {
+    onEnd: () => void end(true), onKeep: (to: string) => void handOff(to), notes: state.notes.everOn, alone: onlyYou, hosts: nextHosts,
+    standingInFor: state.host.standIn && hosting ? organizerFirst(state) : null, busy: leavingAs, error: callControls.error
+  };
+  const askingInFloating = leaveInFloating && floating.target !== null;
+  /** Stay in the call: the question goes, and so does wherever you were going. Not while it's ending. */
+  const stay = () => { if (leaving) return; setLeaveOpen(false); guard.stay(); };
 
   /** Which device it switched to, from Settings as from the dock's own menus. */
   const switched = {
@@ -1946,8 +1991,10 @@ export function InCall({ session }: { session: CallSession }) {
   );
 
   return (
-    <div className="stage ac-stage">
-      <div className={cn('ic-call', ended && 'is-ended', focusOn && 'is-focus')}>
+    <div className="stage ac-stage" inert={done}>
+      {/* Over here, the call eases back under its page; brought back by Rejoin, it comes up again. */}
+      <motion.div className={cn('ic-call', done && 'is-leaving', focusOn && 'is-focus')} initial={returning && !reduce ? { scale: 0.985 } : false} animate={{ scale: 1 }}
+        transition={{ duration: 0.56, delay: 0.1, ease: EASE.out }}>
         {focusOn && <CallTimer session={session} view={callTimer} host={hosting} connected={attentionReady && !down} open={timerOpen} onOpenChange={setTimerOpen} className="ic-timer-focus" />}
         <span className="sr-only" role="status" aria-live="polite">{callTimer.say}</span>
         <span className="sr-only" role="status" aria-live="polite">{attentionReady ? `${state.attention.hands.length === 1 ? '1 hand' : `${state.attention.hands.length} hands`} raised.${hosting ? ` ${state.waiting.length} waiting to join.` : ''}` : 'Connecting to this room.'}</span>
@@ -1992,13 +2039,13 @@ export function InCall({ session }: { session: CallSession }) {
           <ReactionBurst items={burst} />
           <CallDock tucked={focusOn}>
             <DockSplit className="keep">
-              <DockButton icon={m.mic ? 'mic' : 'micOff'} label={m.access.mic.problem ? stateOf('mic', m.access.mic.problem) : m.mic ? 'Mute' : 'Unmute'} off={!m.mic} alert={!!m.access.mic.problem} disabled={callControls.pending.mic || leaving || !!ended} aria-busy={callControls.pending.mic} onClick={pressMic}
+              <DockButton icon={m.mic ? 'mic' : 'micOff'} label={m.access.mic.problem ? stateOf('mic', m.access.mic.problem) : m.mic ? 'Mute' : 'Unmute'} off={!m.mic} alert={!!m.access.mic.problem} disabled={callControls.pending.mic || leaving || done} aria-busy={callControls.pending.mic} onClick={pressMic}
                 tip={m.access.mic.problem ? `${stateOf('mic', m.access.mic.problem)}. Press to see how to fix it` : `${m.mic ? 'Mute' : 'Unmute'}${micLabel ? ` · ${micLabel}` : ''}`} />
               <MicMenu media={media} m={m} devices={devices} open={pop === 'mic'} onOpenChange={(o) => setPop(o ? 'mic' : null)}
                 onSwitched={(what, label) => toast(`Switched to ${label}`, { icon: what === 'mic' ? 'mic' : 'speaker' })} />
             </DockSplit>
             <DockSplit className="keep">
-              <DockButton icon={m.cam ? 'video' : 'videoOff'} label={m.access.cam.problem ? stateOf('cam', m.access.cam.problem) : m.cam ? 'Turn camera off' : 'Turn camera on'} off={!m.cam} alert={!!m.access.cam.problem} disabled={callControls.pending.cam || leaving || !!ended} aria-busy={callControls.pending.cam} onClick={pressCam}
+              <DockButton icon={m.cam ? 'video' : 'videoOff'} label={m.access.cam.problem ? stateOf('cam', m.access.cam.problem) : m.cam ? 'Turn camera off' : 'Turn camera on'} off={!m.cam} alert={!!m.access.cam.problem} disabled={callControls.pending.cam || leaving || done} aria-busy={callControls.pending.cam} onClick={pressCam}
                 tip={m.access.cam.problem ? `${stateOf('cam', m.access.cam.problem)}. Press to see how to fix it` : `${m.cam ? 'Turn camera off' : 'Turn camera on'}${devices.cam.find((d) => d.id === m.camId)?.label ? ` · ${devices.cam.find((d) => d.id === m.camId)?.label ?? ''}` : ''}`} />
               <CamMenu media={media} m={m} devices={devices} me={me?.person ?? { name: 'You' }} open={pop === 'cam'} onOpenChange={(o) => setPop(o ? 'cam' : null)}
                 onBackground={() => { setPop(null); setBackgroundOpen(true); }} onSwitched={(label) => toast(`Switched to ${label}`, { icon: 'video' })} />
@@ -2017,7 +2064,7 @@ export function InCall({ session }: { session: CallSession }) {
               workspace={!canPresentWs ? { why: 'You can’t open this call’s workspace.' } : othersWhy ? { why: othersWhy } : { onPress: presentWorkspace }} />
             {!phone && (
               <DockButton icon="hand" label={handLabel} tip={me?.hand ? 'Lower your hand' : roomName && !organizer ? `Raise your hand to ask ${roomsOnBoards && organizerPerson ? callName(organizerPerson) : 'the organizer'} for help` : 'Raise your hand'}
-                on={!!me?.hand} disabled={callControls.pending.hand || !attentionReady || leaving || !!ended} aria-busy={callControls.pending.hand} onClick={() => setHand(!me?.hand)} />
+                on={!!me?.hand} disabled={callControls.pending.hand || !attentionReady || leaving || done} aria-busy={callControls.pending.hand} onClick={() => setHand(!me?.hand)} />
             )}
             {!phone && <ReactMenu open={pop === 'react'} onOpenChange={(o) => setPop(o ? 'react' : null)} onPick={react} />}
             <Popover open={moreOpen} onOpenChange={(o) => setPop(o ? 'more' : null)} side="top" align="center" label={pop === 'board' ? 'Open a board' : pop === 'reactMore' ? 'React' : 'More'}
@@ -2029,10 +2076,11 @@ export function InCall({ session }: { session: CallSession }) {
             </Popover>
             {!phone && <DockSeparator />}
             {focusOn && <DockWords icon="shrink" className="keep" onClick={toggleFocus}>Show everything</DockWords>}
-            <DockLeave className="keep" disabled={leaving || !!ended} onClick={() => requestLeave()}>{leaving ? 'Leaving…' : 'Leave'}</DockLeave>
+            <LeaveAsk {...leaveChoices} title={leaveTitle} phone={phone} open={hosting && leaveOpen && !askingInFloating} onOpenChange={(o) => { if (!o) stay(); }}
+              anchor={<DockLeave className="keep" disabled={leaving || done} onClick={() => requestLeave('dock')}>{leaving ? 'Leaving…' : 'Leave'}</DockLeave>} />
           </CallDock>
         </footer>
-      </div>
+      </motion.div>
       <ShareWindows shares={shares} looks={looks} marks={marks} me={me?.person ?? SOMEONE} whoIs={personOf} />
       <MoveSheet open={moving.open} onOpenChange={(o) => { if (!o) moving.hide(); }} move={moving.move} media={{ mic: m.mic, cam: m.cam }} account={state.role !== 'guest'}
         sharing={!!m.screen} onStopSharing={stopShare} onMove={() => void moving.go()} onAgain={moving.again} />
@@ -2041,7 +2089,6 @@ export function InCall({ session }: { session: CallSession }) {
         backTo={() => dockBar.current?.querySelector<HTMLElement>('[data-more]') ?? null} />
       <ChooseBackground media={media} m={m} me={me?.person ?? { name: 'You' }} open={backgroundOpen} onOpenChange={setBackgroundOpen}
         backTo={() => [...(dockBar.current?.querySelectorAll<HTMLElement>('[data-cam-menu], [data-more]') ?? [])].find((el) => el.getClientRects().length > 0) ?? null} />
-      {!(leaveInFloating && floating.target) && leaveQuestion}
       <FloatingCallPortal target={floating.target} view={{
         title: state.title,
         timer: callTimer.time ? <CallTimerButton time={callTimer.time} label={callTimer.label} tone={callTimer.tone} onClick={() => { returnToCall(); setTimerOpen(true); }} /> : null,
@@ -2051,13 +2098,14 @@ export function InCall({ session }: { session: CallSession }) {
         connection: roomView.connection,
         mic: { on: m.mic, pending: callControls.pending.mic, problem: m.access.mic.problem ? stateOf('mic', m.access.mic.problem) : null },
         cam: { on: m.cam, pending: callControls.pending.cam, problem: m.access.cam.problem ? stateOf('cam', m.access.cam.problem) : null },
-        hand: !!me?.hand, handPending: callControls.pending.hand, busy: leaving || !!ended,
-        attention: floatAttention, error: crypto.status === 'failed' ? 'This device lost the call’s encryption keys. Return to the call to reload.' : callControls.error, soundBlocked: roomView.audioBlocked, onSound: playSound,
+        hand: !!me?.hand, handPending: callControls.pending.hand, busy: leaving || done,
+        // While Leave's question is in the window, what went wrong is said under its choices instead.
+        attention: floatAttention, error: crypto.status === 'failed' ? 'This device lost the call’s encryption keys. Return to the call to reload.' : hosting && leaveOpen && askingInFloating ? null : callControls.error, soundBlocked: roomView.audioBlocked, onSound: playSound,
         onMic: () => callControls.mic('floating'), onCam: () => callControls.cam('floating'), onHand: () => callControls.hand(!me?.hand, 'floating'),
-        onLeave: () => requestLeave(true),
+        onLeave: () => requestLeave('floating'),
         onReturn: returnToCall,
         onAttention: (kind) => { returnToCall(); if (kind === 'questions') openQuestions(); else openSide(kind === 'chat' ? 'chat' : 'people'); },
-        children: leaveInFloating && leaveOpen ? leaveQuestion : null
+        children: hosting && leaveOpen && askingInFloating ? <LeaveChoices {...leaveChoices} title={leaveTitle} onStay={stay} /> : null
       }} />
     </div>
   );

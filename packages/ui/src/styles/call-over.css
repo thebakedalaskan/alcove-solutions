@@ -1,0 +1,130 @@
+/*
+ * The page a call leaves you on (`CallOver`, classes `co-`), on the call's own night in both themes: the scene behind (Horizon
+ * moment `after`, the cove its land), a top bar with the logo once and what the call runs on, and one centred column: who was
+ * in the call, the title, one line, the notes and the buttons. It takes the window, as the stage does. A phone (the page under
+ * 600px wide) stands the column at the top and puts the buttons across the foot.
+ */
+.co {
+  --co-face: 54px; --hz: 84%;
+  --co-wl: 0px; --co-wr: 0px; --co-wt: 0px; --co-wb: 0px;
+  container: co / inline-size;
+  display: flex; flex-direction: column; overflow: hidden; font-family: var(--font-sans); -webkit-font-smoothing: antialiased;
+}
+.co-scene { position: absolute; inset: 0; z-index: 0; pointer-events: none; }
+
+/*
+ * The stars keep off the top bar and 30px off the words (the box the land keeps clear of, which the page measures): they show
+ * above the words, beside them and below them.
+ */
+.co .hz-stars {
+  --co-tb: 72px;
+  -webkit-mask:
+    linear-gradient(#000 0 0) 0 var(--co-tb) / 100% max(0px, calc(var(--co-wt) - var(--co-tb))) no-repeat,
+    linear-gradient(#000 0 0) 0 var(--co-tb) / max(0px, var(--co-wl)) 100% no-repeat,
+    linear-gradient(#000 0 0) var(--co-wr) var(--co-tb) / 100% 100% no-repeat,
+    linear-gradient(#000 0 0) 0 var(--co-wb) / 100% 100% no-repeat;
+  mask:
+    linear-gradient(#000 0 0) 0 var(--co-tb) / 100% max(0px, calc(var(--co-wt) - var(--co-tb))) no-repeat,
+    linear-gradient(#000 0 0) 0 var(--co-tb) / max(0px, var(--co-wl)) 100% no-repeat,
+    linear-gradient(#000 0 0) var(--co-wr) var(--co-tb) / 100% 100% no-repeat,
+    linear-gradient(#000 0 0) 0 var(--co-wb) / 100% 100% no-repeat;
+}
+
+/* The top: the logo once in the middle, and what the call runs on at the right. No way home but the page's own button. */
+.co-top { position: relative; z-index: 1; flex: none; display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 16px; height: 68px; padding: 0 22px; }
+.co .co-logo { gap: 9px; color: var(--stage-ink); font-size: 19px; letter-spacing: -.05em; }
+.co-trust { justify-self: end; display: inline-flex; align-items: center; gap: 7px; min-width: 0; color: var(--stage-ink-2); font: 500 13px/1.2 var(--font-sans); }
+.co-trust .ac-i { flex: none; }
+
+/* The column, centred on the night; the page scrolls under the top only when it can't hold it. */
+.co-in { position: relative; z-index: 1; flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; padding: 0 24px 68px; overflow-y: auto; overscroll-behavior: contain; }
+.co-col { display: flex; flex-direction: column; align-items: center; width: 560px; max-width: 100%; margin: auto 0; text-align: center; }
+.co-words, .co-head, .co-notes { display: flex; flex-direction: column; align-items: center; width: 100%; }
+
+/* Who was in the call, each in their arch. */
+.co-people { display: flex; align-items: flex-end; justify-content: center; gap: 12px; margin-bottom: 28px; }
+.co-people .ac-avatar { background: var(--stage-tile); }
+.co-more { display: grid; place-items: center; flex: none; width: var(--co-face); height: calc(var(--co-face) * 1.08); padding-top: calc(var(--co-face) * .1); border-radius: var(--radius-arch) var(--radius-arch) calc(var(--co-face) * .22) calc(var(--co-face) * .22); background: rgb(255 255 255 / .07); color: var(--stage-ink-2); font: 600 calc(var(--co-face) * .3)/1 var(--font-sans); font-variant-numeric: tabular-nums; }
+.co-more.is-phone { display: none; }
+
+.co-t { max-width: 100%; color: var(--stage-ink); font: 420 46px/1.08 var(--font-display); letter-spacing: -.022em; font-variation-settings: 'opsz' 48; text-wrap: balance; overflow-wrap: anywhere; }
+/* The keys land on the title so what happened is read first; it's only somewhere to start from, so it wears no ring. */
+.co-t:focus { outline: none; }
+.co-m { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px 12px; margin-top: 12px; color: var(--stage-ink-2); font: 500 15.5px/1.45 var(--font-sans); text-wrap: balance; }
+.co-clock { display: inline-flex; align-items: center; gap: 7px; color: var(--stage-ink); font-variant-numeric: tabular-nums; }
+.co-clock i { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--speak); animation: co-live 1.6s var(--ease-in-out) infinite; }
+@keyframes co-live { 0%, 100% { opacity: .35; } 50% { opacity: 1; } }
+
+/* The notes: being written, then the first of what they say; still being written; or a line. */
+.co-panel { width: 100%; margin-top: 30px; padding: 16px 18px; border-radius: var(--radius-lg); background: var(--stage-tile); box-shadow: inset 0 0 0 1px rgb(255 255 255 / .07); text-align: left; }
+.co-nh { display: flex; align-items: center; gap: 12px; }
+.co-ni { display: grid; place-items: center; flex: none; width: 36px; height: 36px; border-radius: 50%; background: rgb(255 255 255 / .07); color: var(--stage-ink-2); }
+.co-panel.is-ready .co-ni { background: color-mix(in srgb, var(--stage-sun) 14%, transparent); color: var(--stage-sun); }
+.co-nt { flex: 1; min-width: 0; }
+.co-nt b { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; color: var(--stage-ink); font: 600 15px/1.3 var(--font-sans); }
+.co-nt small { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; margin-top: 2px; color: var(--stage-ink-2); font: 500 13px/1.4 var(--font-sans); }
+.co-step { display: flex; align-items: center; gap: 9px; margin-top: 12px; padding-left: 48px; color: var(--stage-ink-2); font: 500 13.5px/1.4 var(--font-sans); }
+.co-step .ac-dots { flex: none; gap: 3px; }
+.co-step .ac-dots i { width: 4px; height: 4px; }
+.co-who { display: flex; align-items: center; gap: 10px; margin-top: 14px; padding-top: 14px; border-top: 1px solid rgb(255 255 255 / .07); color: var(--stage-ink-2); font: 500 13.5px/1.4 var(--font-sans); }
+.co-who .ac-faces { flex: none; }
+.co-who .ac-faces .ac-avatar { --ring: var(--stage-tile); }
+.co-sum { display: -webkit-box; margin-top: 12px; padding-left: 48px; overflow: hidden; -webkit-line-clamp: 3; -webkit-box-orient: vertical; color: var(--stage-ink); font: 400 15px/1.55 var(--font-sans); }
+.co-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; padding-left: 48px; }
+.co-chip { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px 0 8px; border-radius: var(--radius-pill); font: 600 12.5px/1 var(--font-sans); white-space: nowrap; }
+.co-chip.is-rose { background: var(--rose-soft); color: var(--rose); }
+.co-chip.is-horizon { background: var(--horizon-soft); color: var(--horizon); }
+.co-line { display: inline-flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px 9px; margin-top: 22px; color: var(--stage-ink-2); font: 500 14px/1.4 var(--font-sans); }
+.co-rec { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--rec); }
+
+/* The next step: the first button is the filled one, the others drawn in a line on the night. */
+.co-acts { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; margin-top: 32px; }
+.co-acts .ac-btn { height: 52px; padding: 0 24px; gap: 9px; font-size: 15.5px; }
+.co-acts .ac-btn:has(> .ac-i:first-child, > .ac-spin:first-child) { padding-left: 20px; }
+.co-acts .ac-btn.is-secondary { background: transparent; color: var(--stage-ink); box-shadow: inset 0 0 0 1px rgb(255 255 255 / .18); }
+.co-acts .ac-btn.is-secondary:hover { background: rgb(255 255 255 / .06); }
+.co-acts .ac-btn .kb { display: inline-grid; place-items: center; min-width: 22px; height: 22px; margin-left: 2px; padding: 0 6px; border-radius: 6px; background: color-mix(in srgb, currentColor 10%, transparent); opacity: 1; font: 600 12px/1 var(--font-sans); }
+
+/* A phone: one column under the top, the buttons across the foot in reach of a thumb, the moon and the glow made smaller. */
+@container co (max-width: 599px) {
+  .co-scene .hz[data-moment="after"] { --hz-glow-w: 520px; --hz-glow-h: 140px; --hz-moon-x: calc(100% - 44px); --hz-moon-y: 76px; --hz-moon-size: 16px; }
+  .co .hz-stars { --co-tb: 60px; }
+  .co-top { height: 56px; padding: 0 14px; }
+  .co-trust-t { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .co-in { padding: 64px 20px 0; }
+  .co-col { flex: 1 0 auto; width: 100%; margin: 0; }
+  .co-people { --co-face: 44px; gap: 9px; padding: 0 22px; margin-bottom: 24px; }
+  .co-people .is-wide { display: none; }
+  .co-more.is-phone { display: grid; }
+  .co-t { font-size: 34px; }
+  .co-m { font-size: 15px; }
+  .co-panel { margin-top: 24px; padding: 14px; }
+  .co-step, .co-sum, .co-chips { padding-left: 0; }
+  .co-acts { flex-direction: column; flex-wrap: nowrap; width: 100%; gap: 10px; margin-top: auto; padding: 24px 0 max(22px, env(safe-area-inset-bottom, 0px)); }
+  .co-acts .ac-btn { width: 100%; }
+  .co-acts .ac-btn .kb { display: none; }
+}
+
+/*
+ * Arriving from the call, which eases back under it: the page fades in over it, its night settling, then the top, and the
+ * words, the notes and the buttons rise in one after another, about a second in all. Going on, the page fades; going while
+ * it's still arriving, the arrival plays on under the fade, so the page fades from wherever it had got to.
+ */
+.co.is-entering { animation: ac-fade var(--duration-page-3) var(--ease-soft) .06s both; }
+.co.is-entering .co-scene { animation: co-settle var(--duration-page-4) var(--ease-expo) .06s both; }
+.co.is-entering .co-top { animation: ac-fade var(--duration-page-2) var(--ease-soft) .3s both; }
+.co.is-entering :is(.co-head, .co-notes, .co-acts) { animation: co-rise var(--duration-page-3) var(--ease-out) both; }
+.co.is-entering .co-head { animation-delay: .26s; }
+.co.is-entering .co-notes { animation-delay: .38s; }
+.co.is-entering .co-acts { animation-delay: .48s; }
+.co.is-leaving { animation: ac-fade-out var(--duration-page-1) var(--ease-in) both; pointer-events: none; }
+.co.is-entering.is-leaving { animation: ac-fade var(--duration-page-3) var(--ease-soft) .06s both, ac-fade-out var(--duration-page-1) var(--ease-in) both; }
+@keyframes co-settle { from { opacity: 0; transform: scale(1.014); } }
+@keyframes co-rise { from { opacity: 0; transform: translateY(12px); } }
+/* With reduced motion, short fades and nothing moving. */
+@media (prefers-reduced-motion: reduce) {
+  .co.is-entering { animation: ac-fade var(--duration-2) linear both !important; }
+  .co.is-entering :is(.co-scene, .co-top, .co-head, .co-notes, .co-acts) { animation: none !important; }
+  .co.is-leaving { animation: ac-fade-out var(--duration-2) linear both !important; }
+  .co.is-entering.is-leaving { animation: ac-fade var(--duration-2) linear both, ac-fade-out var(--duration-2) linear both !important; }
+}

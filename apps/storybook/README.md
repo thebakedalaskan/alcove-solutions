@@ -267,8 +267,8 @@ export const SomeoneSharing = inCall({
 export const SomeoneSharingPhone = phone(SomeoneSharing);
 /** At the call's link: the organizer comes in eight seconds after the story opens. */
 export const Waiting = atTheDoor({ scenario: 'busy', call: CHECK_IN, script: { door: { hostArrives: 8 } } });
-/** A play that presses a button in the dock, then one in what it opens. */
-export const CallEnded = inCall({ scenario: 'call-soon', call: REVIEW }, { play: press('Leave', { then: ['End call for everyone'] }) });
+/** A play that presses a button in the dock, then one in what it opens (by its name, or the start of it). */
+export const CallEnded = inCall({ scenario: 'call-soon', call: REVIEW }, { play: press('Leave', { then: [/^End for everyone/] }) });
 /** A play that opens what's yours: at the top right, or from the grid at the top of More on a phone, then a tab of your side. */
 export const Transcript = inCall({ scenario: 'call-soon', call: REVIEW }, { play: reach('Notes', { tab: 'Transcript' }) });
 ```
@@ -438,9 +438,16 @@ late guest's read-only view. **Components / In a call / CallTimerButton** shows 
 starting one, pausing, adding a minute and stopping it, and following it as a participant. Stories remain demonstrations;
 the colocated API/client integration suite verifies the shared clock, permissions, concurrency and older sealed state.
 
-Calls / Leaving and Journeys / 7 End the call and get the notes show one-press departure for invited participants and
-guests, pending and failed departures, a retry, and the confirmation retained by the current host, including a stand-in.
-Calls / Floating call / Participant ready to open and Participant leave refused keep the real native window hand-off
+Calls / Leaving and Journeys / 7 End the call and get the notes show Leave's question over Leave for whoever hosts (leaving
+it going first for a stand-in, End for everyone alone when only guests could take over, Leave ending a call you're alone in at
+once, and any other way out while alone, such as answering a ring, asking first), one-press departure for everyone else,
+pending and failed departures with a retry, and every state of the page a call leaves you on, each reached for real: ended by
+you or without you (the page names nobody as having ended it), left with notes on, paused or off, left with someone hosting,
+ended while you were on it, the notes being written, written or slow, and Rejoin, straight back in as you were, with J muted
+and the camera off, or refused. The stand-in keeps a call you
+leave going (`GoingOn` in `src/api/call.ts`): what's left of its script plays on far enough to end it, which writes its note
+for everyone invited, and joining it again picks it up where it's got to, the pass you left with letting you straight back
+in. Calls / Floating call / Participant ready to open and Participant leave refused keep the real native window hand-off
 available for manual checks of the same behavior.
 
 

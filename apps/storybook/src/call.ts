@@ -125,14 +125,16 @@ export function rung(o: { scenario: ScenarioName; path: string; call: StoryCall;
 }
 
 type Play = NonNullable<PageStory['play']>;
-type Then = { then?: readonly string[] | undefined; tab?: string | undefined };
+type Then = { then?: readonly (string | RegExp)[] | undefined; tab?: string | undefined };
+/** A button's name as a step says it: a pattern's words, without its anchors. */
+const said = (name: string | RegExp): string => (typeof name === 'string' ? name : name.source.replace(/^\^|\$$/g, ''));
 /** The dock's More, by what its label starts with on any screen. */
 export const MORE = /^More:/;
 
 /** Then any buttons that come up (in a sheet or a menu, which open over the page), and a tab of your side. */
 const andThen = (o: Then): Play => async ({ canvas, userEvent, step }) => {
   for (const next of o.then ?? []) {
-    await step(`Press ${next}`, async () => {
+    await step(`Press ${said(next)}`, async () => {
       await userEvent.click(await screen.findByRole('button', { name: next }, { timeout: 8000 }));
     });
   }
@@ -146,7 +148,7 @@ const andThen = (o: Then): Play => async ({ canvas, userEvent, step }) => {
 
 /** A play that does what a person would: presses a button on the page (in the dock, say), then any that come up after it. */
 export const press = (label: string | RegExp, o: Then = {}): Play => async (c) => {
-  await c.step(`Press ${String(label)}`, async () => {
+  await c.step(`Press ${said(label)}`, async () => {
     await c.userEvent.click(await c.canvas.findByRole('button', { name: label }, { timeout: 10000 }));
   });
   await andThen(o)(c);

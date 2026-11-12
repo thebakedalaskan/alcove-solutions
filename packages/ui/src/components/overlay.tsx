@@ -267,8 +267,7 @@ export function Tooltip({ label, children, side = 'top' }: { label: ReactNode; c
 }
 
 /**
- * A modal over the page: centred for a choice that needs room (what to share), or rising from the
- * bottom for a quick decision (leaving a call). The rest of the page waits behind a veil. Something with
+ * A modal over the page, centred, for a choice that needs room. The rest of the page waits behind a veil. Something with
  * several questions asks them one at a time inside the one modal: no window ever opens over another.
  * Closing it puts focus back where it was when it opened, since a shortcut can open it from anywhere;
  * `onCloseFocus` puts it somewhere else instead, when what it came from has gone (return true once it has).
@@ -276,15 +275,15 @@ export function Tooltip({ label, children, side = 'top' }: { label: ReactNode; c
  * `focusOn` on what that selector finds in it (a choice already made), where there is one.
  */
 export const Modal = forwardRef<HTMLDivElement, {
-  open: boolean; onOpenChange: (open: boolean) => void; label: string; children: ReactNode; placement?: 'center' | 'bottom'; className?: string | undefined;
+  open: boolean; onOpenChange: (open: boolean) => void; label: string; children: ReactNode; className?: string | undefined;
   onCloseFocus?: (() => boolean) | undefined; focusSelf?: boolean | undefined; focusOn?: string | undefined;
-}>(function Modal({ open, onOpenChange, label, children, placement = 'center', className, onCloseFocus, focusSelf = false, focusOn }, ref) {
+}>(function Modal({ open, onOpenChange, label, children, className, onCloseFocus, focusSelf = false, focusOn }, ref) {
   const focusBack = useFocusBack(open);
   return (
     <RDialog.Root open={open} onOpenChange={onOpenChange}>
       <RDialog.Portal>
         <RDialog.Overlay className="ac-scrim" />
-        <RDialog.Content ref={ref} aria-describedby={undefined} className={cn('ac-modal', placement === 'bottom' && 'is-bottom', className)}
+        <RDialog.Content ref={ref} aria-describedby={undefined} className={cn('ac-modal', className)}
           onOpenAutoFocus={focusSelf || focusOn ? (e) => {
             if (!(e.currentTarget instanceof HTMLElement)) return;
             const first = focusSelf ? e.currentTarget : focusOn ? e.currentTarget.querySelector<HTMLElement>(focusOn) : null;

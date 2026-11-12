@@ -1,0 +1,1023 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>A note</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="home.css">
+<link rel="stylesheet" href="pages.css">
+<link rel="stylesheet" href="page-note.css">
+<script src="tokens.js"></script>
+<script src="home.js"></script>
+<script src="scene.js"></script>
+<script src="appdata.js"></script>
+<script src="data-note.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400..700&amp;family=Newsreader:ital,opsz,wght@0,6..72,300..600;1,6..72,300..600&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<div class="ah sh nd" data-mode="{{mode}}" data-view="{{view}}" style="{{rootCss}}" ref="{{rootRef}}" onKeyDown="{{keys}}">
+<div class="sh-frame" onScroll="{{scrolled}}">
+<dc-import name="Side" s="{{side}}" hint-size="256px,100%"></dc-import>
+<main class="sh-panel">
+<div class="ah-scroll" onScroll="{{scrolled}}">
+<div class="pg-stage">
+<dc-import name="Scene" a="{{scene}}" hint-size="100%,100%"></dc-import>
+<div class="sh-bar">
+<span class="brand"><svg width="22" height="26" viewBox="0 0 22 26" aria-hidden="true"><defs><clipPath id="nda"><path d="M2 24.6V11a9 9 0 0 1 18 0v13.6z"></path></clipPath><linearGradient id="nds" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2A2373"></stop><stop offset=".42" stop-color="#5847DA"></stop><stop offset=".64" stop-color="#C470A9"></stop><stop offset=".74" stop-color="#FFA06A"></stop></linearGradient></defs><g clip-path="url(#nda)"><rect width="22" height="26" fill="url(#nds)"></rect><circle cx="11" cy="19.2" r="4.4" fill="#FFD58A"></circle><rect y="19.2" width="22" height="7" fill="#231C5E"></rect></g></svg>alcove</span>
+<div class="top-end"><button type="button" class="find" aria-label="Search or ask" onClick="{{openAsk}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.search}}"></path></svg></button><dc-import name="Faces" who="art" size="30" hint-size="30px,33px"></dc-import></div>
+</div>
+<div class="pg-in">
+
+<sc-if value="{{isGone}}">
+<div class="nd-gonetop"><button type="button" class="nd-back" onClick="{{goBack}}">Notes<i aria-hidden="true">/</i></button><div class="top-end"><button type="button" class="find" onClick="{{openAsk}}" aria-label="Search or ask"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.search}}"></path></svg><span class="w">Search or ask</span><span class="k">⌘K</span></button><button type="button" class="me" aria-label="Art, settings" onClick="{{goSettings}}"><dc-import name="Faces" who="art" size="30" hint-size="30px,33px"></dc-import></button></div></div>
+<section class="nd-gone" aria-label="{{gone.title}}">
+<h1 class="nd-gone-t">{{gone.title}}</h1>
+<sc-if value="{{gone.hasLead}}"><p class="nd-gone-p">{{gone.lead}}</p></sc-if>
+<sc-if value="{{gone.hasList}}"><ul class="nd-gone-l"><sc-for list="{{gone.list}}" as="g"><li><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.check}}"></path></svg>{{g}}</li></sc-for></ul></sc-if>
+<button type="button" class="b b-press" onClick="{{goBack}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.left}}"></path></svg>Back to notes</button>
+</section>
+</sc-if>
+
+<sc-if value="{{isPage}}">
+<header class="nd-head{{headCls}}">
+<div class="nd-top">
+<h1 class="nd-title"><button type="button" class="nd-back" onClick="{{goBack}}">{{backLabel}}<i aria-hidden="true">/</i></button><span class="nd-name clamp1">{{N.title}}</span></h1>
+<sc-if value="{{canManage}}">
+<div class="nd-acts">
+<button type="button" class="nd-ic{{pinCls}}{{hotPin}}" aria-label="{{pinLabel}}" title="{{pinLabel}}" aria-pressed="{{pinned}}" onClick="{{togglePin}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.pin}}"></path></svg></button>
+<div class="nd-anchor">
+<button type="button" class="b b-tint nd-sharebtn{{hotShare}}" aria-label="Share" aria-expanded="{{shareOpen}}" disabled="{{isRecording}}" title="{{shareTitle}}" onClick="{{openShare}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.share}}"></path></svg><span>Share</span></button>
+<sc-if value="{{shareOpen}}">
+<div class="nd-pop nd-share" role="dialog" aria-label="Share these notes">
+<h2 class="nd-pop-h">Share these notes</h2>
+<label class="nd-field"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.search}}"></path></svg><input type="text" value="{{shareText}}" placeholder="Name or email" aria-label="Name or email" onChange="{{typeShare}}"></label>
+<div class="nd-picks">
+<sc-for list="{{sharePicks}}" as="p">
+<button type="button" class="nd-pick{{p.cls}}" aria-pressed="{{p.on}}" onClick="{{p.go}}">
+<sc-if value="{{p.group}}"><span class="ft-i nd-gi"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.people}}"></path></svg></span></sc-if>
+<sc-if value="{{p.person}}"><dc-import name="Faces" who="{{p.id}}" size="28" hint-size="28px,31px"></dc-import></sc-if>
+<span class="nd-pick-t"><b>{{p.name}}</b><small>{{p.sub}}</small></span>
+<sc-if value="{{p.on}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.check}}"></path></svg></sc-if>
+</button>
+</sc-for>
+</div>
+<p class="nd-pop-n">They find them in Alcove when they sign in with that email.</p>
+<div class="nd-pop-f"><span class="nd-pop-have">{{haveLine}}</span><button type="button" class="b b-tint b-sm{{hotShareGo}}" disabled="{{shareNone}}" onClick="{{doShare}}">Share</button></div>
+</div>
+</sc-if>
+</div>
+<div class="nd-anchor">
+<button type="button" class="nd-ic{{hotMore}}" aria-label="More" title="More" aria-expanded="{{moreOpen}}" onClick="{{openMore}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.more}}"></path></svg></button>
+<sc-if value="{{moreOpen}}">
+<div class="nd-pop nd-menu" role="menu" aria-label="More">
+<button type="button" class="nd-mi" role="menuitem" disabled="{{cantCopy}}" onClick="{{copyText}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.copy}}"></path></svg><span><b>Copy as text</b><sc-if value="{{cantCopy}}"><small>Once the notes are written.</small></sc-if></span></button>
+<i class="nd-sep"></i>
+<button type="button" class="nd-mi{{hotDelete}}" role="menuitem" onClick="{{askDelete}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.trash}}"></path></svg><span><b>{{delTitle}}</b><small>{{delSub}}</small></span></button>
+</div>
+</sc-if>
+<sc-if value="{{delOpen}}">
+<div class="nd-pop nd-del" role="alertdialog" aria-label="{{delTitle}}">
+<h2 class="nd-pop-h">{{delAsk}}</h2>
+<p class="nd-pop-p">{{delBody}}</p>
+<div class="nd-pop-f is-end"><button type="button" class="b b-quiet b-sm" onClick="{{closeMenu}}">Cancel</button><button type="button" class="ft-yes nd-danger{{hotDeleteGo}}" onClick="{{doDelete}}">{{delGo}}</button></div>
+</div>
+</sc-if>
+</div>
+</div>
+</sc-if>
+<div class="top-end nd-find">
+<button type="button" class="find" onClick="{{openAsk}}" aria-label="Search or ask"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.search}}"></path></svg><span class="w">Search or ask</span><span class="k">⌘K</span></button>
+<button type="button" class="me" aria-label="Art, settings" onClick="{{goSettings}}"><dc-import name="Faces" who="art" size="30" hint-size="30px,33px"></dc-import></button>
+</div>
+</div>
+<div class="nd-meta">
+<sc-if value="{{hasWhen}}"><span class="nd-when">{{N.when}}</span></sc-if>
+<span class="nd-faces" title="{{facesTitle}}"><dc-import name="Faces" who="{{faces}}" size="24" max="5" ring="var(--nd-bed)" hint-size="72px,26px"></dc-import><span class="nd-every">Everyone with the notes</span></span>
+<sc-if value="{{hasHow}}"><span class="nd-how">{{how}}</span></sc-if>
+<sc-if value="{{isRecording}}"><span class="nd-rec"><i></i>Still recording</span></sc-if>
+<sc-if value="{{hasSeal}}">
+<div class="nd-anchor">
+<button type="button" class="nd-seal{{hotSeal}}" aria-expanded="{{sealOpen}}" onClick="{{openSeal}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.sealed}}"></path></svg><span class="clamp1">{{sealText}}<sc-if value="{{sealDone}}"><span class="nd-hw"> · hardware verified {{N.checked}}</span></sc-if></span><sc-if value="{{sealBusy}}"><span class="nd-dots" aria-hidden="true"><i></i><i></i><i></i></span></sc-if><svg class="i nd-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.down}}"></path></svg></button>
+<sc-if value="{{sealOpen}}">
+<div class="nd-pop nd-proof" role="dialog" aria-label="What Alcove checked">
+<h2 class="nd-pop-h">Checked before anything was sent</h2>
+<p class="nd-pop-p">Before sending this call’s speech and transcript to a model on NEAR AI, Alcove checked its hardware evidence, then sealed everything to the key that evidence vouches for. Alcove can’t read it.</p>
+<div class="nd-models"><sc-for list="{{evidence.models}}" as="m"><div class="nd-model"><small>{{m.what}}</small><b>{{m.model}}</b><span>Verified {{m.when}}</span><ul class="nd-checks" style="padding: 10px 0 2px"><sc-for list="{{evidence.checks}}" as="c"><li><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.check}}"></path></svg><span><b>{{c.t}}</b><small>{{c.d}}</small></span></li></sc-for></ul><button type="button" class="nd-link" style="margin: 6px 0 0" onClick="{{openNear}}">Check this model at NEAR AI<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.external}}"></path></svg></button></div></sc-for></div>
+<p class="nd-pop-n">“Check this model” opens NEAR AI’s site, which sees your visit and checks fresh evidence for the model, not this note.</p>
+</div>
+</sc-if>
+</div>
+</sc-if>
+<sc-if value="{{isExample}}"><span class="nd-how">Example · 24 min</span></sc-if>
+</div>
+</header>
+
+<section class="nd-hz{{hzCls}}" aria-label="The call">
+<div class="nd-hz-in" style="{{hzStyle}}">
+<sc-if value="{{hasPlay}}"><button type="button" class="nd-play{{hotPlay}}" aria-label="{{playLabel}}" title="{{playLabel}}" onClick="{{togglePlay}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{playIcon}}"></path></svg></button></sc-if>
+<sc-if value="{{hasPlayer}}"><span class="nd-now tn">{{nowLabel}}</span></sc-if>
+<div class="nd-track">
+<sc-if value="{{hasPlay}}"><button type="button" class="nd-seek" role="slider" aria-label="Position in the recording" aria-valuemin="0" aria-valuemax="{{endRounded}}" aria-valuenow="{{posRounded}}" aria-valuetext="{{nowLabel}}" onClick="{{seek}}" onKeyDown="{{seekKeys}}" onMouseMove="{{hoverSeek}}"></button></sc-if>
+<i class="nd-rail"></i><i class="nd-lit"></i>
+<sc-if value="{{hasWave}}"><div class="nd-wave" aria-hidden="true"><sc-for list="{{glints}}" as="g"><i class="nd-g{{g.cls}}" style="{{g.style}}"></i></sc-for></div></sc-if>
+<sc-for list="{{chapters}}" as="c">
+<button type="button" class="nd-ch{{c.cls}}" style="{{c.style}}" aria-label="Chapter: {{c.t}}, {{c.at}}" onClick="{{c.go}}"><span class="clamp1">{{c.t}}</span><span class="nd-tip nd-tip-ch"><b>{{c.t}}</b><small class="tn">{{c.at}}</small><span>{{c.gist}}</span></span></button>
+</sc-for>
+<sc-for list="{{gaps}}" as="g">
+<span class="nd-gap{{g.cls}}" style="{{g.style}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.pause}}"></path></svg><span class="nd-tip"><b>{{g.label}}</b><span>Nothing was recorded</span></span></span>
+</sc-for>
+<sc-for list="{{marks}}" as="m">
+<button type="button" class="nd-m{{m.cls}}" style="{{m.style}}" aria-label="{{m.label}}" onClick="{{m.go}}"><i></i><span class="nd-tip"><b>{{m.kind}}</b><small class="tn">{{m.at}}</small><span>{{m.text}}</span></span></button>
+</sc-for>
+<sc-if value="{{isRecording}}"><i class="nd-edge"></i></sc-if>
+<sc-if value="{{hasPlayer}}"><i class="nd-sun"></i><span class="nd-ghost" aria-hidden="true"><b class="tn"></b></span></sc-if>
+</div>
+<sc-if value="{{hasEnd}}"><span class="nd-end tn" title="The recording is encrypted. Only the people who have these notes can play it."><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.lock}}"></path></svg>{{endLabel}}</span></sc-if>
+</div>
+<sc-if value="{{noPlayerLine}}"><p class="nd-kept"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.mic}}"></path></svg>The recording was deleted when the call ended.</p></sc-if>
+</section>
+
+<div class="nd-cols">
+<div class="nd-main">
+<div class="nd-read">
+
+<sc-if value="{{writingAgain}}"><p class="nd-again"><span class="nd-dots" aria-hidden="true"><i></i><i></i><i></i></span><span><b>Writing the notes again</b> from the transcript as it is now. What people confirmed or took on stays.</span></p></sc-if>
+
+<sc-if value="{{isRecording}}"><section class="nd-writing"><p class="nd-writing-t">The recording is still going. Summary, decisions and follow-ups are written in confidential compute once it stops.</p></section></sc-if>
+
+<sc-if value="{{isWriting}}">
+<section class="nd-writing" aria-label="How the notes are coming along">
+<p class="nd-writing-t">{{writingLine}}</p>
+<ol class="nd-steps"><sc-for list="{{progress}}" as="p"><li class="{{p.cls}}"><span class="nd-step-i"><sc-if value="{{p.done}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.check}}"></path></svg></sc-if><sc-if value="{{p.now}}"><span class="nd-dots" aria-hidden="true"><i></i><i></i><i></i></span></sc-if></span>{{p.t}}</li></sc-for></ol>
+</section>
+</sc-if>
+
+<sc-if value="{{isQuiet}}">
+<section class="nd-quiet" aria-label="Nothing was said"><h2 class="nd-quiet-t">Nothing was said while notes were on.</h2></section>
+</sc-if>
+
+<sc-if value="{{isWritten}}">
+<p class="nd-sum" data-at="s-sum">{{N.summary}}</p>
+
+<sc-for list="{{parts}}" as="p">
+<section class="nd-s{{p.cls}}" data-at="{{p.anchor}}">
+<h2>{{p.title}}<sc-if value="{{p.hasCount}}"><span class="n">{{p.count}}</span></sc-if></h2>
+<sc-for list="{{p.rows}}" as="x">
+<article class="nd-r{{x.cls}}">
+<sc-if value="{{x.isCheck}}"><button type="button" class="ck{{x.hotTick}}" role="checkbox" aria-checked="{{x.done}}" aria-label="Done: {{x.text}}" onClick="{{x.tick}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.check}}"></path></svg></button></sc-if>
+<sc-if value="{{x.hasIcon}}"><span class="ft-i"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{x.icon}}"></path></svg></span></sc-if>
+<div class="nd-rb">
+<sc-if value="{{x.showText}}"><p class="nd-rt">{{x.text}}</p></sc-if>
+<sc-if value="{{x.editing}}"><textarea class="nd-area" rows="2" value="{{rewText}}" aria-label="Reword this" onChange="{{typeRew}}" onKeyDown="{{rewKeys}}"></textarea></sc-if>
+<sc-if value="{{x.hasStatus}}"><p class="nd-rs">{{x.status}}</p></sc-if>
+<sc-if value="{{x.hasFlags}}"><div class="nd-rf"><sc-for list="{{x.flags}}" as="f"><span class="ent-flag"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.alert}}"></path></svg>{{f}}</span></sc-for></div></sc-if>
+</div>
+<sc-if value="{{x.hasChip}}"><button type="button" class="ft-m{{x.hotChip}}" aria-label="Go to the moment at {{x.at}}" title="Go to this moment" onClick="{{x.goMoment}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.wave}}"></path></svg>{{x.at}}</button></sc-if>
+<sc-if value="{{x.noChip}}"><span></span></sc-if>
+<div class="nd-ra">
+<sc-if value="{{x.hasYes}}"><button type="button" class="ft-yes{{x.hotYes}}" onClick="{{x.yes}}">{{x.yesLabel}}</button></sc-if>
+<sc-if value="{{x.hasUndo}}"><button type="button" class="act{{x.hotUndo}}" onClick="{{x.undo}}">{{x.undoLabel}}</button></sc-if>
+<sc-if value="{{x.editing}}"><button type="button" class="ft-yes{{x.hotSave}}" onClick="{{saveRew}}">Save</button><button type="button" class="act" onClick="{{cancelRew}}">Cancel</button></sc-if>
+<sc-if value="{{x.hasOwner}}"><span class="nd-owner{{x.ownerCls}}" title="{{x.ownerTitle}}"><sc-if value="{{x.hasFace}}"><dc-import name="Faces" who="{{x.owner}}" size="22" hint-size="22px,24px"></dc-import></sc-if><span>{{x.ownerName}}</span></span></sc-if>
+<sc-if value="{{x.hasTake}}"><button type="button" class="nd-take{{x.hotTake}}" title="The notes suggest you. I’ll do it if it’s yours." onClick="{{x.take}}">I’ll do it</button></sc-if>
+<sc-if value="{{x.hasDue}}"><span class="nd-due{{x.dueCls}}">{{x.due}}</span></sc-if>
+</div>
+<sc-if value="{{isExample}}"><span></span></sc-if>
+<sc-if value="{{canManage}}"><div class="nd-anchor">
+<button type="button" class="nd-ic is-sm{{x.hotMenu}}" aria-label="Change this" title="Change this" aria-expanded="{{x.menuOpen}}" onClick="{{x.openMenu}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.more}}"></path></svg></button>
+<sc-if value="{{x.menuOpen}}">
+<div class="nd-pop nd-menu nd-rowmenu{{menuUpCls}}" role="menu" aria-label="Change this">
+<sc-if value="{{x.hasPeople}}">
+<p class="nd-pop-l">Who it’s for</p>
+<sc-for list="{{x.people}}" as="p2"><button type="button" class="nd-mi nd-mp{{p2.cls}}" role="menuitem" onClick="{{p2.go}}"><dc-import name="Faces" who="{{p2.id}}" size="22" hint-size="22px,24px"></dc-import><span><b>{{p2.label}}</b><sc-if value="{{p2.hasSub}}"><small>{{p2.sub}}</small></sc-if></span><sc-if value="{{p2.on}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.check}}"></path></svg></sc-if></button></sc-for>
+<button type="button" class="nd-mi" role="menuitem" onClick="{{x.nobody}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.x}}"></path></svg><span><b>{{x.nobodyLabel}}</b></span></button>
+<i class="nd-sep"></i>
+<p class="nd-pop-l">Due</p>
+<div class="nd-dues"><sc-for list="{{x.dues}}" as="d2"><button type="button" class="nd-dc{{d2.cls}}" aria-pressed="{{d2.on}}" onClick="{{d2.go}}">{{d2.t}}</button></sc-for></div>
+<input class="nd-duef" type="text" placeholder="Another day" aria-label="When it’s due, in your words">
+<i class="nd-sep"></i>
+</sc-if>
+<sc-for list="{{x.items}}" as="m2"><button type="button" class="nd-mi{{m2.cls}}" role="menuitem" onClick="{{m2.go}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{m2.icon}}"></path></svg><span><b>{{m2.t}}</b></span></button></sc-for>
+<sc-if value="{{x.hasSaid}}"><i class="nd-sep"></i><p class="nd-pop-l">What was said</p><p class="nd-said-q"><b>{{x.saidWho}}<button type="button" class="ft-m" aria-label="Go to the moment at {{x.at}}" onClick="{{x.goMoment}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.wave}}"></path></svg>{{x.at}}</button></b>“{{x.saidText}}”</p></sc-if>
+<sc-if value="{{x.hasLog}}"><i class="nd-sep"></i><p class="nd-pop-l">Changes</p><ul class="nd-log"><sc-for list="{{x.log}}" as="g"><li><span>{{g.t}}</span><small>{{g.w}}</small></li></sc-for></ul></sc-if>
+</div>
+</sc-if>
+</div></sc-if>
+</article>
+</sc-for>
+<sc-if value="{{p.hasAdd}}"><button type="button" class="nd-addrow{{p.hotAdd}}" onClick="{{p.add}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.plus}}"></path></svg>{{p.addLabel}}</button></sc-if>
+<sc-if value="{{p.adding}}"><div class="nd-addform"><input class="nd-duef" style="width:100%;margin:0" type="text" value="{{proposeText}}" aria-label="{{p.addLabel}}"><button type="button" class="b b-tint b-sm" onClick="{{doPropose}}">Add</button><button type="button" class="act" onClick="{{closePropose}}">Cancel</button><p>{{p.addHint}}</p></div></sc-if>
+</section>
+</sc-for>
+</sc-if>
+
+</div>
+
+<div class="nd-said">
+<sc-if value="{{hasLines}}">
+<section class="nd-s nd-tr" data-at="s-said">
+<div class="nd-sh"><h2>Transcript</h2><p class="nd-key"><span class="nd-u">Dotted</span> words were hard to hear and may not be exact. A <span class="nd-u">dotted</span> name was heard on more than one microphone.</p></div>
+<sc-if value="{{canRewrite}}"><div class="nd-offer"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.history}}"></path></svg><span>{{correctedLine}}</span><button type="button" class="b b-tint b-sm{{hotRewrite}}" onClick="{{rewrite}}">Write the notes again</button></div></sc-if>
+<div class="nd-lines">
+<sc-for list="{{lines}}" as="l">
+<sc-if value="{{l.show}}">
+<div class="nd-l{{l.cls}}" data-at="{{l.id}}">
+<button type="button" class="nd-lt tn" aria-label="Go to {{l.time}}" onClick="{{l.goMoment}}">{{l.time}}<sc-if value="{{l.hasKind}}"><i class="nd-lk{{l.kindCls}}" aria-hidden="true"></i></sc-if></button>
+<span class="nd-la"><sc-if value="{{l.showFace}}"><dc-import name="Faces" who="{{l.who}}" size="24" hint-size="24px,26px"></dc-import></sc-if></span>
+<div class="nd-lb">
+<sc-if value="{{l.showName}}"><p class="nd-ln"><span class="{{l.nameCls}}">{{l.name}}</span><sc-if value="{{l.hasFix}}"><span class="nd-fixed{{l.tipCls}}" tabindex="0"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.history}}"></path></svg>Corrected<span class="nd-tip nd-tip-fix"><sc-for list="{{l.hist}}" as="h"><span>{{h}}</span></sc-for></span></span></sc-if></p></sc-if>
+<sc-if value="{{l.reading}}"><p class="nd-lp">{{l.a}}<span class="{{l.uCls}}">{{l.u}}</span>{{l.b}}</p></sc-if>
+<sc-if value="{{l.isEdit}}">
+<div class="nd-edit">
+<sc-if value="{{organizer}}">
+<div class="nd-anchor nd-whoa">
+<button type="button" class="nd-whopick{{hotEditWho}}" aria-expanded="{{whoOpen}}" onClick="{{toggleWho}}">Said by {{editName}}<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.down}}"></path></svg></button>
+<sc-if value="{{whoOpen}}">
+<div class="nd-pop nd-menu nd-whopop" role="menu" aria-label="Who said this">
+<p class="nd-pop-l">Who said this</p>
+<sc-for list="{{speakers}}" as="p"><button type="button" class="nd-mi nd-mp{{p.cls}}" role="menuitem" onClick="{{p.go}}"><dc-import name="Faces" who="{{p.id}}" size="22" hint-size="22px,24px"></dc-import><span><b>{{p.label}}</b></span><sc-if value="{{p.on}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.check}}"></path></svg></sc-if></button></sc-for>
+<button type="button" class="nd-mi{{notSureCls}}" role="menuitem" onClick="{{whoNotSure}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.question}}"></path></svg><span><b>Not sure who</b></span></button>
+</div>
+</sc-if>
+</div>
+</sc-if>
+<textarea class="nd-area" rows="2" value="{{editText}}" aria-label="What was said" onChange="{{typeEdit}}" onKeyDown="{{editKeys}}"></textarea>
+<div class="nd-edit-f"><button type="button" class="b b-tint b-sm{{hotEditSave}}" onClick="{{saveEdit}}">Save</button><sc-if value="{{canVouch}}"><button type="button" class="act" onClick="{{vouch}}">It was heard right</button></sc-if><button type="button" class="act" onClick="{{cancelEdit}}">Cancel</button></div>
+</div>
+</sc-if>
+</div>
+<div class="nd-lx">
+<sc-if value="{{l.canFix}}"><button type="button" class="nd-ic is-xs{{l.hotFix}}" aria-label="Correct this line" title="Correct this line" onClick="{{l.fix}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.pen}}"></path></svg></button></sc-if>
+<sc-if value="{{canManage}}"><div class="nd-anchor"><button type="button" class="nd-ic is-xs{{l.hotPlus}}" aria-label="Add to the notes from this line" title="Add to the notes from this line" onClick="{{l.plus}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.plus}}"></path></svg></button><sc-if value="{{l.plusOpen}}"><div class="nd-pop nd-menu" role="menu" aria-label="Add to the notes from this line"><button type="button" class="nd-mi" role="menuitem"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.decide}}"></path></svg><span><b>Propose a decision</b></span></button><button type="button" class="nd-mi" role="menuitem"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.check}}"></path></svg><span><b>Add a follow-up</b></span></button></div></sc-if></div></sc-if>
+<sc-if value="{{canManage}}"><button type="button" class="nd-ic is-xs{{l.markCls}}" aria-label="{{l.markLabel}}" title="{{l.markLabel}}" onClick="{{l.mark}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.bookmark}}"></path></svg></button></sc-if>
+</div>
+</div>
+<sc-if value="{{l.hasScreen}}">
+<button type="button" class="nd-scr{{l.hotScreen}}" onClick="{{l.openScreen}}"><span class="tn nd-lt-s">{{l.screen.time}}</span><span class="nd-thumb" aria-hidden="true"><i></i><i></i><i></i><i></i></span><span class="nd-scr-t"><b>{{l.screen.title}}</b><small>{{l.screen.by}}</small></span><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.monitor}}"></path></svg></button>
+</sc-if>
+</sc-if>
+</sc-for>
+</div>
+<sc-if value="{{hasMoreLines}}"><div class="nd-allrow"><button type="button" class="b b-quiet b-sm nd-all{{hotAll}}" aria-expanded="{{full}}" onClick="{{toggleAll}}">{{allLabel}}<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.down}}"></path></svg></button><sc-if value="{{hasScreenLink}}"><button type="button" class="act nd-scrlink{{hotScreenLink}}" onClick="{{openFirstScreen}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.monitor}}"></path></svg>1 shared screen</button></sc-if></div></sc-if>
+</section>
+</sc-if>
+
+<sc-if value="{{noTranscriptLine}}"><p class="nd-kept is-doc" data-at="s-said"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.notes}}"></path></svg>The transcript was deleted after the notes were written.</p></sc-if>
+
+<sc-if value="{{hasRooms}}">
+<section class="nd-s nd-rooms" data-at="s-rooms">
+<h2>Breakout rooms<span class="n">{{N.rooms.length}}</span></h2>
+<sc-for list="{{rooms}}" as="r">
+<div class="nd-fold{{r.cls}}">
+<button type="button" class="nd-fold-h{{r.hotCls}}" aria-expanded="{{r.open}}" onClick="{{r.toggle}}"><svg class="i nd-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.down}}"></path></svg><b>{{r.name}}</b><dc-import name="Faces" who="{{r.who}}" size="22" max="3" ring="var(--nd-bed)" hint-size="40px,24px"></dc-import><small>{{r.meta}}</small></button>
+<sc-if value="{{r.open}}">
+<div class="nd-fold-b">
+<sc-if value="{{r.quiet}}"><p class="nd-rs">Nothing was said here while notes were on.</p></sc-if>
+<sc-if value="{{r.hasSummary}}"><p class="nd-fold-sum">{{r.summary}}</p></sc-if>
+<sc-for list="{{r.parts}}" as="p">
+<div class="nd-sub{{p.cls}}"><h3>{{p.title}}</h3>
+<sc-for list="{{p.rows}}" as="x">
+<article class="nd-r is-room{{x.cls}}">
+<sc-if value="{{x.isCheck}}"><button type="button" class="ck" role="checkbox" aria-checked="{{x.done}}" aria-label="Done: {{x.text}}" onClick="{{x.tick}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.check}}"></path></svg></button></sc-if>
+<sc-if value="{{x.hasIcon}}"><span class="ft-i"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{x.icon}}"></path></svg></span></sc-if>
+<div class="nd-rb"><p class="nd-rt">{{x.text}}</p><sc-if value="{{x.hasStatus}}"><p class="nd-rs">{{x.status}}</p></sc-if></div>
+<div class="nd-ra">
+<sc-if value="{{x.hasYes}}"><button type="button" class="ft-yes" onClick="{{x.yes}}">{{x.yesLabel}}</button></sc-if>
+<sc-if value="{{x.hasUndo}}"><button type="button" class="act" onClick="{{x.undo}}">{{x.undoLabel}}</button></sc-if>
+<sc-if value="{{x.hasOwner}}"><span class="nd-owner"><dc-import name="Faces" who="{{x.owner}}" size="22" hint-size="22px,24px"></dc-import><span>{{x.ownerName}}</span></span><span class="nd-due">{{x.due}}</span></sc-if>
+</div>
+</article>
+</sc-for>
+</div>
+</sc-for>
+<sc-if value="{{r.hasChapters}}"><div class="nd-sub"><h3>Chapters</h3><ol class="nd-rch"><sc-for list="{{r.chapters}}" as="c"><li>{{c}}</li></sc-for></ol></div></sc-if>
+<sc-if value="{{r.hasLines}}">
+<div class="nd-fold is-said{{r.saidCls}}">
+<button type="button" class="nd-fold-h" aria-expanded="{{r.saidOpen}}" onClick="{{r.toggleSaid}}"><svg class="i nd-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.down}}"></path></svg><b>What was said in {{r.name}}</b><small>{{r.lineCount}}</small></button>
+<sc-if value="{{r.saidOpen}}"><div class="nd-lines is-room"><sc-for list="{{r.lines}}" as="l"><div class="nd-l{{l.cls}}" data-at="{{l.id}}"><span class="nd-lt tn">{{l.time}}</span><span class="nd-la"><dc-import name="Faces" who="{{l.who}}" size="24" hint-size="24px,26px"></dc-import></span><div class="nd-lb"><p class="nd-ln">{{l.name}}<sc-if value="{{l.hasFix}}"><span class="nd-fixed" tabindex="0"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.history}}"></path></svg>Corrected<span class="nd-tip nd-tip-fix"><span>{{l.fixLine}}</span></span></span></sc-if></p><sc-if value="{{l.reading}}"><p class="nd-lp">{{l.text}}</p></sc-if><sc-if value="{{l.isEdit}}"><div class="nd-edit"><textarea class="nd-area" rows="2" value="{{editText}}" aria-label="What was said" onChange="{{typeEdit}}" onKeyDown="{{editKeys}}"></textarea><div class="nd-edit-f"><button type="button" class="b b-tint b-sm" onClick="{{saveEdit}}">Save</button><button type="button" class="act" onClick="{{cancelEdit}}">Cancel</button></div></div></sc-if></div><div class="nd-lx"><sc-if value="{{l.canFix}}"><button type="button" class="nd-ic is-xs{{l.hotFix}}" aria-label="Correct this line" title="Correct this line" onClick="{{l.fix}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.pen}}"></path></svg></button></sc-if></div></div></sc-for></div></sc-if>
+</div>
+</sc-if>
+</div>
+</sc-if>
+</div>
+</sc-for>
+</section>
+</sc-if>
+
+</div>
+
+<sc-if value="{{hasAskBar}}">
+<div class="nd-askdock">
+<div class="nd-up">
+<sc-if value="{{askShown}}">
+<div class="nd-ans" aria-live="polite">
+<div class="nd-ans-h"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.ask}}"></path></svg><span class="clamp1">{{aq}}</span><button type="button" class="nd-ic is-xs" aria-label="Close" onClick="{{closeAnswer}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.x}}"></path></svg></button></div>
+<sc-if value="{{askWaiting}}"><p class="nd-ans-w"><span class="nd-dots" aria-hidden="true"><i></i><i></i><i></i></span>Reading the call in confidential compute</p></sc-if>
+<sc-if value="{{askDone}}">
+<p class="nd-ans-t">{{answer.text}}</p>
+<div class="nd-ans-f">
+<sc-for list="{{answer.cites}}" as="c"><button type="button" class="ft-m{{c.hotCls}}" aria-label="Go to the moment at {{c.t}}" onClick="{{c.go}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.wave}}"></path></svg>{{c.t}}</button></sc-for>
+<sc-if value="{{canKeep}}"><button type="button" class="act nd-keep{{hotKeep}}" onClick="{{keep}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.bookmark}}"></path></svg>Keep in your notes</button></sc-if>
+<sc-if value="{{isKept}}"><span class="nd-kept-a"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.bookmark}}"></path></svg>Kept in your notes</span></sc-if>
+</div>
+</sc-if>
+</div>
+</sc-if>
+<sc-if value="{{showSugg}}"><div class="nd-suggs"><sc-for list="{{suggestions}}" as="q"><button type="button" class="nd-sugg{{q.hotCls}}" onMouseDown="{{holdFocus}}" onClick="{{q.go}}">{{q.q}}</button></sc-for></div></sc-if>
+</div>
+<div class="nd-ask{{hotAskBar}}">
+<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.ask}}"></path></svg>
+<input type="text" value="{{askText}}" placeholder="Ask about this call" aria-label="Ask about this call, for you alone" onChange="{{typeAsk}}" onKeyDown="{{askKeys}}" onFocus="{{focusAsk}}" onBlur="{{blurAsk}}">
+<span class="nd-only"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.lock}}"></path></svg>Only you</span>
+<button type="button" class="b b-tint b-sm nd-ask-go" aria-label="Ask" onClick="{{sendAsk}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.up}}"></path></svg></button>
+</div>
+</div>
+</sc-if>
+</div>
+
+<aside class="nd-side" aria-label="About these notes">
+
+<sc-if value="{{hasChapters}}">
+<section class="nd-b nd-chapters" data-at="s-chapters">
+<h2>Chapters</h2>
+<sc-for list="{{chapters}}" as="c"><button type="button" class="nd-chap" onClick="{{c.go}}"><span class="nd-c-d tn">{{c.at}}</span><span><b>{{c.t}}</b><small>{{c.gist}}</small></span></button></sc-for>
+</section>
+</sc-if>
+
+<sc-if value="{{hasOwn}}">
+<section class="pn nd-own" data-at="s-own">
+<div class="pn-h"><h2>Your notes</h2><span class="nd-only"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.lock}}"></path></svg>Only you</span></div>
+<sc-if value="{{hasEntries}}">
+<ul class="nd-ents">
+<sc-for list="{{entries}}" as="e">
+<li class="nd-ent{{e.cls}}">
+<span class="nd-ent-i"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{e.icon}}"></path></svg></span>
+<div class="nd-ent-b">
+<p class="nd-ent-t">{{e.text}}</p>
+<sc-if value="{{e.hasFoot}}"><div class="nd-ent-f"><sc-if value="{{e.hasWhen}}"><span class="nd-ent-when">{{e.when}}</span></sc-if><sc-if value="{{e.hasChip}}"><button type="button" class="ft-m" aria-label="Go to the moment at {{e.time}}" onClick="{{e.goMoment}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.wave}}"></path></svg>{{e.time}}</button></sc-if><sc-if value="{{e.shared}}"><span class="nd-tagged">Added</span></sc-if><sc-if value="{{e.hasWho}}"><span class="nd-ent-w">{{e.who}}</span></sc-if></div></sc-if>
+</div>
+<div class="nd-ent-x">
+<sc-if value="{{e.canShare}}"><button type="button" class="nd-ic is-xs{{e.hotShare}}" aria-label="Add to the shared notes" title="Add to the shared notes" onClick="{{e.share}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.share}}"></path></svg></button></sc-if>
+<sc-if value="{{e.canEdit}}"><button type="button" class="nd-ic is-xs nd-ent-rm" aria-label="Change what you wrote" title="Change what you wrote"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.pen}}"></path></svg></button></sc-if>
+<button type="button" class="nd-ic is-xs nd-ent-rm" aria-label="Delete this" title="Delete this" onClick="{{e.remove}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.trash}}"></path></svg></button>
+</div>
+</li>
+</sc-for>
+</ul>
+</sc-if>
+<sc-if value="{{noEntries}}"><p class="nd-own-e">Write something, bookmark a line, or keep an answer. Nobody else can read it, the organizer included.</p></sc-if>
+
+<sc-if value="{{isAdding}}">
+<div class="nd-add" role="group" aria-label="Add this to the shared notes">
+<div class="nd-add-h"><b>Add to the shared notes</b><span class="nd-every"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.people}}"></path></svg>Everyone with the notes</span></div>
+<textarea class="nd-area" rows="3" value="{{addText}}" aria-label="What goes into the shared notes" onChange="{{typeAdd}}"></textarea>
+<sc-if value="{{pv.hasQuote}}"><blockquote class="nd-q"><b>{{pv.quoteWho}}</b>{{pv.quote}}</blockquote></sc-if>
+<sc-if value="{{pv.hasMoment}}"><button type="button" class="ft-m" aria-label="Go to the moment at {{pv.time}}" onClick="{{pv.goMoment}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.wave}}"></path></svg>{{pv.time}}</button></sc-if>
+<p class="nd-add-n">Only what’s in this box goes. Nothing else from your notes, and no questions you asked.</p>
+<dl class="nd-dl"><dt>Goes to</dt><dd>Added by people, in {{N.title}}</dd><dt>Who reads it</dt><dd class="nd-dl-f"><dc-import name="Faces" who="{{pv.faces}}" size="20" max="4" ring="var(--surface)" hint-size="52px,22px"></dc-import><span>{{pv.names}}, and anyone they share the notes with</span></dd></dl>
+<sc-if value="{{pv.hasSince}}"><p class="nd-since"><dc-import name="Faces" who="{{pv.sinceFaces}}" size="20" hint-size="20px,22px"></dc-import><span>{{pv.since}}</span></p></sc-if>
+<div class="nd-add-f"><button type="button" class="b b-quiet b-sm" onClick="{{closeAdd}}">Cancel</button><button type="button" class="b b-tint b-sm{{hotAddGo}}" onClick="{{doAdd}}">{{pv.go}}</button></div>
+</div>
+</sc-if>
+
+<sc-if value="{{showComposer}}">
+<div class="nd-write{{writeCls}}">
+<textarea rows="1" value="{{draft}}" placeholder="Write something for yourself" aria-label="Write something only you can read" onChange="{{typeDraft}}" onKeyDown="{{draftKeys}}"></textarea>
+<button type="button" class="nd-ic is-sm{{hotOwnSend}}" aria-label="Keep it in your notes" title="Keep it in your notes" disabled="{{noDraft}}" onClick="{{keepDraft}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.up}}"></path></svg></button>
+</div>
+</sc-if>
+</section>
+</sc-if>
+
+<sc-if value="{{hasAdds}}">
+<section class="nd-b" data-at="s-adds">
+<h2>Added by people</h2>
+<sc-for list="{{adds}}" as="a">
+<div class="nd-a{{a.cls}}">
+<dc-import name="Faces" who="{{a.who}}" size="26" hint-size="26px,29px"></dc-import>
+<div class="nd-a-b">
+<p class="nd-a-h"><b>{{a.name}}</b><small>{{a.when}}</small></p>
+<sc-if value="{{a.hasText}}"><p class="nd-a-t">{{a.text}}</p></sc-if>
+<div class="nd-a-f">
+<sc-if value="{{a.hasMoment}}"><button type="button" class="ft-m" aria-label="Go to the moment at {{a.time}}" onClick="{{a.goMoment}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.wave}}"></path></svg>{{a.time}}</button></sc-if>
+<sc-if value="{{a.canAct}}"><button type="button" class="act{{a.hotAct}}" onClick="{{a.ask}}">{{a.act}}</button></sc-if>
+</div>
+<sc-if value="{{a.sure}}"><div class="nd-sure" role="group" aria-label="Take this out of the shared notes, for everyone?"><span>Take this out of the shared notes, for everyone?</span><button type="button" class="act nd-yes{{a.hotYes}}" onClick="{{a.yes}}">{{a.act}}</button><button type="button" class="act" onClick="{{a.no}}">Keep</button></div></sc-if>
+</div>
+</div>
+</sc-for>
+</section>
+</sc-if>
+
+<section class="nd-b" data-at="s-who">
+<h2>Who has these notes</h2>
+<sc-for list="{{people}}" as="p">
+<div class="nd-p{{p.cls}}"><dc-import name="Faces" who="{{p.id}}" size="26" hint-size="26px,29px"></dc-import><span class="nd-p-n clamp1">{{p.name}}</span><span class="nd-p-r">{{p.role}}</span></div>
+</sc-for>
+<sc-if value="{{hasMorePeople}}"><button type="button" class="act nd-showall" aria-expanded="{{allPeople}}" onClick="{{toggleAllPeople}}">{{morePeopleLabel}}</button></sc-if>
+<p class="nd-open"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.sealed}}"></path></svg>{{onlyThese}}</p>
+</section>
+
+<sc-if value="{{hasSeries}}">
+<section class="nd-b" data-at="s-series">
+<div class="nd-b-h"><h2>{{series.label}}</h2><button type="button" class="pn-link nd-allcalls" aria-label="All 9 calls in this series" onClick="{{openSeries}}">All<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.right}}"></path></svg></button></div>
+<sc-for list="{{series.calls}}" as="c">
+<button type="button" class="nd-c" onClick="{{c.go}}"><span class="nd-c-d tn">{{c.day}}</span><span class="nd-c-t clamp1">{{c.gist}}</span></button>
+</sc-for>
+<p class="nd-c-open">{{series.open}}</p>
+<sc-if value="{{organizer}}"><p class="nd-next"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.cal}}"></path></svg><span>Next call</span><b class="tn">{{series.next}}</b><button type="button" class="act{{hotNextChange}}" onClick="{{nextChange}}">Change</button></p></sc-if>
+</section>
+</sc-if>
+
+<sc-if value="{{hasMeet}}">
+<section class="nd-b" data-at="s-series">
+<h2>Meet again</h2>
+<button type="button" class="b b-tint b-sm nd-meet{{hotMeet}}" onClick="{{meet}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.repeat}}"></path></svg>Schedule next week’s call</button>
+</section>
+</sc-if>
+
+</aside>
+</div>
+</sc-if>
+
+<sc-if value="{{catchOpen}}"><button type="button" class="nd-catch" aria-label="Close" tabindex="-1" onClick="{{closeMenu}}"></button></sc-if>
+</div>
+</div>
+</div>
+</main>
+</div>
+<nav class="phone-tabs" aria-label="Main">
+<sc-for list="{{nav}}" as="n"><button type="button" class="phone-tab{{n.cls}}" onClick="{{n.go}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{n.icon}}"></path></svg>{{n.label}}</button></sc-for>
+</nav>
+<sc-if value="{{screenOpen}}">
+<div class="scrim">
+<div class="dlg nd-view" role="dialog" aria-modal="true" aria-label="Shared screen: {{shot.title}}">
+<div class="dlg-h"><h2>{{shot.title}}</h2><button type="button" class="dlg-x" aria-label="Close" onClick="{{closeScreen}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.x}}"></path></svg></button></div>
+<div class="nd-view-b"><div class="nd-sheet" aria-hidden="true"><b></b><i></i><i></i><i class="is-open"></i><i></i><i class="is-open"></i><i></i></div></div>
+<div class="dlg-f"><span class="nd-view-m"><span>{{shot.by}}</span><button type="button" class="ft-m" aria-label="Go to the moment at {{shot.time}}" onClick="{{shot.goMoment}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.wave}}"></path></svg>{{shot.time}}</button></span><button type="button" class="nd-ic{{shot.markCls}}" aria-label="Bookmark this screen, for you alone" title="Bookmark this screen, for you alone" onClick="{{shot.mark}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.bookmark}}"></path></svg></button></div>
+</div>
+</div>
+</sc-if>
+<dc-import name="Overlays" ov="{{ov}}" hint-size="0px,0px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"go":{"editor":null,"default":null},"mode":{"editor":"enum","options":["dark","light"],"default":"dark"},"scene":{"editor":"enum","options":["today","first"],"default":"today"},"step":{"editor":null,"default":"home"},"$preview":{"width":1440,"height":900}}'>
+var FIRST = 5;
+function cap(t) { return t.charAt(0).toUpperCase() + t.slice(1); }
+function listNames(a) { return a.length < 2 ? (a[0] || '') : a.slice(0, -1).join(', ') + ' and ' + a[a.length - 1]; }
+var COUNTED = ['', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten'];
+var NOW = 'Today, 16:12';
+
+class Component extends DCLogic {
+  constructor(p) {
+    super(p);
+    var self = this;
+    this.__rootRef = function (el) { if (el) self.__el = el; };
+    this.__scrolled = function (e) { self.__onScroll(e.currentTarget); };
+  }
+  componentDidMount() { this.__afterRender(); }
+  componentDidUpdate() { this.__afterRender(); }
+  componentWillUnmount() { clearTimeout(this.__toast); clearInterval(this.__tick); clearTimeout(this.__run); clearTimeout(this.__blur); (this.__waits || []).forEach(clearTimeout); }
+
+  /* The page that scrolls: the panel on a wide screen, the whole frame on a phone. */
+  __scroller() {
+    var el = this.__el; if (!el) return null;
+    var a = el.querySelector('.ah-scroll');
+    if (a && getComputedStyle(a).overflowY !== 'visible') return a;
+    return el.querySelector('.sh-frame');
+  }
+  __scale(sc) { var r = sc.getBoundingClientRect().height; return r && sc.offsetHeight ? r / sc.offsetHeight : 1; }
+  __scrollTo(id, smooth) {
+    var el = this.__el, sc = this.__scroller(); if (!el || !sc) return;
+    var t = el.querySelector('[data-at="' + id + '"]'); if (!t) return;
+    var k = this.__scale(sc), top = (t.getBoundingClientRect().top - sc.getBoundingClientRect().top) / k + sc.scrollTop;
+    var phone = sc.classList.contains('sh-frame');
+    var want = Math.max(0, top - (id.charAt(0) === 'l' ? Math.round(sc.clientHeight * 0.3) : (phone ? 96 : 88)));
+    sc.scrollTo({ top: want, behavior: smooth && !this.__frozen() ? 'smooth' : 'auto' });
+  }
+  __frozen() { return !!(this.__el && this.__el.closest('.fl-in')); }
+  __afterRender() {
+    var st = this.__st || {}, key = (st.to || '') + '#' + (st.toN || 0);
+    this.__stickSide();
+    this.__checkEnd();
+    if (st.to && key !== this.__went) {
+      var self = this, first = !this.__went && !st.toN;
+      this.__went = key;
+      if (first) { (this.__waits = this.__waits || []).push.apply(this.__waits, [0, 200, 600, 1300, 2200].map(function (ms) { return setTimeout(function () { self.__scrollTo(st.to, false); }, ms); })); }
+      else this.__scrollTo(st.to, true);
+    }
+    /* A note being written ticks along on its own, unless it's a frame on a board. */
+    if (st.view === 'writing' && !this.__frozen() && !this.__run && !st.hold) {
+      var me = this;
+      this.__run = setTimeout(function () {
+        me.__run = null;
+        var p = (me.__st.prog || 1);
+        if (p >= 4) me.setState({ view: 'ready', prog: 0, fresh: true }); else me.setState({ prog: p + 1, view: 'writing' });
+      }, 2400);
+    }
+    if (st.view === 'again' && !this.__frozen() && !this.__run && !st.hold) {
+      var m2 = this;
+      this.__run = setTimeout(function () { m2.__run = null; m2.setState({ view: 'ready', fix: m2.__st.fix, rewritten: true, toast: 'The notes were written again.' }); clearTimeout(m2.__toast); m2.__toast = setTimeout(function () { m2.setState({ toast: '' }); }, 3600); }, 3600);
+    }
+  }
+  /* Beside a long transcript the column stays in view: it scrolls with the page until its end is on screen, then waits there. */
+  __stickSide() {
+    var el = this.__el, sc = this.__scroller(); if (!el || !sc) return;
+    var side = el.querySelector('.nd-side'); if (!side) return;
+    var top = Math.min(82, sc.clientHeight - side.offsetHeight - 16) + 'px';
+    if (top !== this.__stick) { this.__stick = top; side.style.setProperty('--nd-stick', top); }
+  }
+  /* The suggested questions show at the end of the note, as well as while asking. */
+  __checkEnd() {
+    var sc = this.__scroller(); if (!sc) return;
+    var end = sc.scrollTop + sc.clientHeight > sc.scrollHeight - 56;
+    if (end !== !!(this.state && this.state.atEnd)) this.setState({ atEnd: end });
+  }
+  __onScroll(sc) {
+    if (!sc || !this.__el) return;
+    this.__checkEnd();
+    var head = this.__el.querySelector('.nd-head');
+    if (!head) return;
+    var stuck = sc.scrollTop > head.offsetHeight + 16, phone = sc.classList.contains('sh-frame');
+    if (phone) { var bar = this.__el.querySelector('.sh-bar'); stuck = sc.scrollTop > head.offsetHeight + (bar ? bar.offsetHeight : 0) + 16; }
+    if (stuck !== !!(this.state && this.state.stuck)) this.setState({ stuck: stuck });
+  }
+  __play() {
+    var self = this;
+    clearInterval(this.__tick);
+    this.setState({ playing: true, hot: '' });
+    this.__tick = setInterval(function () {
+      var s = self.__st, N = self.__N, p = (s.pos || 0) + 1, hit = '', last = s.edge || N.seconds;
+      if (p >= last) { clearInterval(self.__tick); self.setState({ playing: false, pos: last }); return; }
+      N.lines.forEach(function (l) { if (l.at <= p) hit = l.id; });
+      self.setState({ pos: p, line: hit });
+    }, 1000);
+  }
+  __pause() { clearInterval(this.__tick); this.setState({ playing: false }); }
+
+  renderVals() {
+    var AH = window.AH, self = this, hs = AH.hash();
+    var v = AH.page(this, 'note');
+    var I = v.I, set = v.set, assign = AH.assign, mmss = AH.mmss, D = AH.D;
+    var stepId = hs.step || this.props.step || 'home';
+    var st = assign({}, (AH.NOTE_STEPS || {})[stepId] || {}, this.state || {});
+    var hot = function (k) { return st.hot === k ? ' is-hot' : ''; };
+    var view = st.view || (v.first ? 'example' : 'ready');
+    var N = view === 'example' ? AH.NOTE.example : AH.NOTE.n2;
+    this.__st = st; this.__N = N;
+
+    var isExample = view === 'example', isWriting = view === 'writing', isQuiet = view === 'quiet', isRecording = view === 'recording';
+    var noTranscript = view === 'noTranscript' || view === 'noKeep', noRecording = view === 'noRecording' || view === 'noKeep';
+    var writingAgain = view === 'again';
+    var isWritten = !isWriting && !isQuiet && !isRecording;
+    var prog = st.prog || 1;
+    var organizer = !st.role && !isExample;
+    var firstOf = function (id) { if (id === 'art') return 'You'; var p = D.people.filter(function (x) { return x.id === id; })[0]; if (p) return p.first; if (id === 'theo') return 'Theo'; return id; };
+    var fullOf = function (id) { if (id === 'art') return D.me.name; var p = D.people.filter(function (x) { return x.id === id; })[0]; return p ? p.name : firstOf(id); };
+
+    /* Who has the notes: the note's own, and anyone it was shared with since. */
+    var extra = (st.shared || []).map(function (id) { var via = (st.sharedVia || {})[id]; return { id: id, name: fullOf(id), role: via ? 'Shared by you with ' + via : 'Shared by you', fresh: true }; }).concat(st.many ? AH.NOTE_MANY : []);
+    var recipients = N.recipients.map(function (r) {
+      if (st.role && r.id === 'art') return assign({}, r, { role: st.role === 'shared' ? 'Shared by Kofi with Leads' : 'Invited' });
+      if (st.role && r.id === 'priya') return assign({}, r, { role: 'Organizer' });
+      return r;
+    }).concat(extra);
+    var others = recipients.filter(function (r) { return !r.you; });
+
+    /* The horizon. A call that hasn't finished can't know its end, so its line is drawn to the next quarter of an hour. */
+    var edge = st.edge || 0;
+    var len = isRecording ? Math.ceil((edge + 60) / 900) * 900 : N.seconds, end = isRecording ? edge : len, pos = Math.min(st.pos || 0, end), pct = function (t) { return (t / len * 100).toFixed(3) + '%'; };
+    var hasLines = (isWritten || isRecording || (isWriting && prog >= 4)) && !noTranscript;
+    var hasAudio = !noRecording && !(isWriting && prog < 3);
+    var hasPlayer = hasAudio;
+    var lit = pos / len * 100;
+    var glints = [];
+    if (hasAudio && !isQuiet && hasLines) {
+      var upTo = isRecording ? edge / len * 100 : 100;
+      glints = AH.noteWave(N).filter(function (g) { return g.x <= upTo; }).map(function (g) { return { cls: isRecording || g.x + g.w / 2 <= lit ? ' is-lit' : '', style: g.style }; });
+    }
+    var lineAt = function (t) { var hit = N.lines[0]; N.lines.forEach(function (l) { if (l.at <= t + 0.5) hit = l; }); return hit; };
+    var jump = function (t, extraState) {
+      var l = hasLines ? lineAt(t) : null;
+      var patch = { pos: t, hot: '', menu: '', line: l ? l.id : '' };
+      if (l) { patch.full = st.full || N.lines.indexOf(l) >= FIRST; patch.to = l.id; patch.toN = (st.toN || 0) + 1; }
+      set(assign(patch, extraState || {}));
+    };
+    var curCh = 0;
+    N.chapters.forEach(function (c, i) { if (c.at <= pos) curCh = i; });
+    var chapters = isWritten ? N.chapters.map(function (c, i) {
+      var nx = N.chapters[i + 1] ? N.chapters[i + 1].at : len;
+      return {
+        t: c.t, gist: c.gist, at: mmss(c.at), style: '--x: ' + pct(c.at) + '; --room: ' + ((nx - c.at) / len * 100).toFixed(2) + '%',
+        cls: (i === curCh ? ' is-on' : '') + hot('ch-' + i) + (st.tip === 'ch-' + i ? ' is-tip' : ''),
+        go: function () { if (c.rooms) { var r = assign({}, st.rooms || {}); r.r1 = true; jump(c.at, { rooms: r, to: 's-rooms', toN: (st.toN || 0) + 1 }); } else jump(c.at); }
+      };
+    }) : [];
+
+    /* What was decided, what's open and what's to do, with what people have done to them. */
+    var decisions = N.decisions.concat(st.decNew || []);
+    var decOf = function (d) { return assign({}, d, (st.dec || {})[d.id] || {}); };
+    var qOf = function (q) { return assign({}, q, (st.qs || {})[q.id] || {}); };
+    var fuOf = function (a) { return assign({}, a, (st.fu || {})[a.id] || {}); };
+    var setDec = function (id, patch, more) { var d = assign({}, st.dec || {}); d[id] = assign({}, d[id] || {}, patch); set(assign({ dec: d, menu: '', hot: '' }, more || {})); };
+    var setQ = function (id, patch) { var q = assign({}, st.qs || {}); q[id] = assign({}, q[id] || {}, patch); set({ qs: q, menu: '', hot: '' }); };
+    var setFu = function (id, patch) { var a = assign({}, st.fu || {}); a[id] = assign({}, a[id] || {}, patch); set({ fu: a, menu: '', hot: '' }); };
+    var log = function (x, line) { return (x.log || []).concat([[line, NOW]]); };
+
+    var marks = [];
+    if (isWritten) {
+      decisions.forEach(function (d0) {
+        var d = decOf(d0); if (d.state === 'rejected' || d.at === undefined) return;
+        marks.push({ id: d.id, at: d.at, kindCls: ' is-decide' + (d.state === 'confirmed' ? '' : ' is-open'), kind: 'Decision', text: d.text });
+      });
+      N.actions.forEach(function (a0) {
+        var a = fuOf(a0);
+        marks.push({ id: a.id, at: a.at, kindCls: ' is-follow' + (a.taken ? '' : ' is-open'), kind: 'Follow-up', text: a.text });
+      });
+    }
+    var gaps = (st.gaps || []).map(function (g) { return { label: g.label, style: '--x: ' + pct(g.at), cls: st.tip === 'gap' ? ' is-tip' : '' }; });
+    marks = marks.map(function (m, i) {
+      var x = m.at / len * 100, side = x < 12 ? ' is-l' : x > 86 ? ' is-r' : '';
+      return { kind: m.kind, text: m.text, at: mmss(m.at), label: m.kind + ' at ' + mmss(m.at) + ': ' + m.text, style: '--x: ' + pct(m.at) + '; --i: ' + i, cls: m.kindCls + side + (Math.abs(pos - m.at) < 1 && (st.pos || st.line) ? ' is-here' : '') + hot('mark-' + m.id) + (st.tip === m.id ? ' is-tip' : ''), go: function () { jump(m.at); } };
+    });
+
+    var askLine = function (x) { return function () { jump(x.at); }; };
+    var rewOpen = function (x) { set({ rew: x.id, rewText: x.text, menu: '', hot: '' }); };
+    var openMenu = function (id, more) {
+      return function (e) {
+        if (st.menu === id) { set({ menu: '' }); return; }
+        var r = e && e.currentTarget ? e.currentTarget.getBoundingClientRect() : null, tall = id.charAt(0) === 'a' ? 480 : 230;
+        set(assign({ menu: id, hot: '', menuUp: !!r && r.bottom + tall > window.innerHeight && r.top > tall }, more || {}));
+      };
+    };
+
+    var decRow = function (d0) {
+      var d = decOf(d0), id = d.id, editing = st.rew === id, prop = d.state === 'proposed', conf = d.state === 'confirmed', rej = d.state === 'rejected', sup = d.state === 'superseded';
+      var status = prop ? (d.proposedBy ? 'Proposed by ' + d.proposedBy : 'Proposed by the notes') : conf ? 'Confirmed by ' + d.by : rej ? cap(d.by) + ' said this wasn’t decided' : cap(d.by) + ' said this no longer holds';
+      if (d.reworded) status += '. Reworded by ' + d.reworded;
+      var items = [];
+      if (prop) items.push({ t: 'It wasn’t decided', icon: I.x, go: function () { setDec(id, { state: 'rejected', by: 'you', log: log(d, 'You said it wasn’t decided') }); } });
+      if (conf) items.push({ t: 'It no longer holds', icon: I.history, go: function () { setDec(id, { state: 'superseded', by: 'you', log: log(d, 'You said it no longer holds') }); } });
+      if (sup) items.push({ t: 'It still holds', icon: I.check, go: function () { setDec(id, { state: 'confirmed', by: 'you', log: log(d, 'You said it still holds') }); } });
+      if (!editing) items.push({ t: 'Reword', cls: hot('rew-' + id), icon: I.pen, go: function () { rewOpen(d); } });
+      if (conf && st.just !== id) items.push({ t: 'Undo', icon: I.undo, go: function () { setDec(id, { state: 'proposed', by: '', log: log(d, 'You undid it') }); } });
+      var said = d.line ? N.lines.filter(function (l) { return l.id === d.line; })[0] : null, disputed = (d.flags || []).length > 0;
+      return {
+        id: id, cls: ' is-decide' + (conf ? ' is-set' : '') + (rej || sup ? ' is-off' : '') + (st.menu === id ? ' is-open' : '') + (editing ? ' is-editing' : ''), hasIcon: true, isCheck: false, icon: I.decide,
+        text: d.text, showText: !editing, editing: editing, status: status, hasStatus: !editing, at: mmss(d.at), hasChip: (!noRecording || hasLines) && !editing, noChip: noRecording && !hasLines && !editing, hotChip: hot('chip-' + id), goMoment: askLine(d),
+        hasFlags: disputed && !editing, flags: d.flags || [], hasSaid: !!said, saidWho: said ? firstOf(said.who) : '', saidText: said ? said.text : '',
+        hasYes: (prop || (conf && disputed && organizer)) && !editing, yesLabel: prop ? 'Confirm' : 'Keep it confirmed', hotYes: hot('yes-' + id),
+        yes: function () { setDec(id, { state: 'confirmed', by: 'you', flags: [], log: log(d, 'You confirmed it') }, { just: id }); },
+        hasUndo: ((conf && st.just === id) || rej) && !editing, undoLabel: rej ? 'Reopen' : 'Undo', hotUndo: hot('undo-' + id), undo: function () { setDec(id, { state: 'proposed', by: '', reworded: d.reworded, log: log(d, rej ? 'You reopened it' : 'You undid it') }, { just: '' }); },
+        hotSave: hot('save-' + id), hasOwner: false, hasTake: false, hasPeople: false,
+        menuOpen: st.menu === id, hotMenu: hot('menu-' + id), openMenu: openMenu(id), items: items, hasLog: (d.log || []).length > 0, log: (d.log || []).slice().reverse().map(function (g) { return { t: g[0], w: g[1] }; })
+      };
+    };
+    var qRow = function (q0) {
+      var q = qOf(q0), id = q.id, editing = st.rew === id, open = q.state === 'open';
+      var status = open ? 'Not answered yet' : cap(q.by) + ' said this was answered';
+      if (q.reworded) status += '. Reworded by ' + q.reworded;
+      return {
+        id: id, cls: ' is-ask' + (open ? '' : ' is-off') + (st.menu === id ? ' is-open' : '') + (editing ? ' is-editing' : ''), hasIcon: true, isCheck: false, icon: I.question,
+        text: q.text, showText: !editing, editing: editing, status: status, hasStatus: !editing, at: mmss(q.at), hasChip: (!noRecording || hasLines) && !editing, noChip: noRecording && !hasLines && !editing, hotChip: hot('chip-' + id), goMoment: askLine(q),
+        hasFlags: false, flags: [], hasSaid: false,
+        hasYes: open && !editing && !isExample, yesLabel: 'It was answered', hotYes: hot('yes-' + id), yes: function () { setQ(id, { state: 'answered', by: 'you', log: log(q, 'You said it was answered') }); },
+        hasUndo: !open && !editing, undoLabel: 'Reopen', hotUndo: '', undo: function () { setQ(id, { state: 'open', by: '', log: log(q, 'You reopened it') }); },
+        hotSave: hot('save-' + id), hasOwner: false, hasTake: false, hasPeople: false,
+        menuOpen: st.menu === id, hotMenu: hot('menu-' + id), openMenu: openMenu(id), items: editing ? [] : [{ t: 'Reword', icon: I.pen, go: function () { rewOpen(q); } }], hasLog: (q.log || []).length > 0, log: (q.log || []).slice().reverse().map(function (g) { return { t: g[0], w: g[1] }; })
+      };
+    };
+    var fuRow = function (a0) {
+      var a = fuOf(a0), id = a.id, mine = a.owner === 'art', suggestedToYou = mine && !a.taken && !a.done, editing = st.rew === id;
+      var open = st.menu === id;
+      var people = recipients.map(function (r) {
+        var on = a.owner === r.id;
+        return {
+          id: r.id, label: r.name + (r.you ? ' (you)' : ''), on: on, cls: on ? ' is-sel' : '', hasSub: on, sub: a.taken ? 'Took it on' : 'Hasn’t taken it on yet',
+          go: function () { setFu(id, { owner: r.id, taken: !!r.you, log: log(a, r.you ? 'You took it on' : 'You gave it to ' + firstOf(r.id)) }); }
+        };
+      });
+      var dues = ['Today', 'Tomorrow', 'Friday', 'Monday', 'No date'].map(function (t) {
+        var none = t === 'No date', on = none ? !a.due : a.due === t;
+        return { t: t, on: on, cls: on ? ' is-on' : '', go: function () { setFu(id, { due: none ? '' : t, soon: t === 'Today', log: log(a, none ? 'You removed the due date' : 'You set it due ' + t) }); } };
+      });
+      var given = !a.taken && !a.done && !!a.owner && (a.log || []).some(function (g) { return /gave it to/.test(g[0]); });
+      return {
+        hasFlags: false, flags: [], hasSaid: false, nobodyLabel: mine ? 'Not mine' : 'Nobody yet',
+        id: id, cls: ' is-follow' + (a.done ? ' is-done' : '') + (open ? ' is-open' : '') + (editing ? ' is-editing' : ''), hasIcon: false, isCheck: true, done: !!a.done, hotTick: hot('tick-' + id),
+        tick: function () { setFu(id, { done: !a.done, log: log(a, a.done ? 'You unticked it' : 'You ticked it') }); },
+        text: a.text, showText: !editing, editing: editing, hasStatus: given && !editing, status: 'You gave this to ' + firstOf(a.owner) + '. Waiting for ' + firstOf(a.owner) + ' to take it on', at: mmss(a.at), hasChip: (!noRecording || hasLines) && !editing, noChip: noRecording && !hasLines && !editing, hotChip: hot('chip-' + id), goMoment: askLine(a),
+        hasYes: false, hasUndo: false, hotSave: hot('save-' + id),
+        hasOwner: !suggestedToYou && !editing, hasFace: !!a.owner, owner: a.owner || 'art', ownerName: a.owner ? firstOf(a.owner) : 'Nobody yet',
+        ownerCls: !a.owner ? ' is-none' : a.taken ? '' : ' is-maybe', ownerTitle: !a.owner ? 'Nobody is on this yet' : a.taken ? (mine ? 'You took this on' : firstOf(a.owner) + ' took this on') : 'Waiting for ' + firstOf(a.owner) + ' to take it on',
+        hasTake: suggestedToYou && !editing, hotTake: hot('take-' + id), take: function () { setFu(id, { taken: true, log: log(a, 'You took it on') }); v.toast('It’s yours. Everyone with the notes sees that.'); },
+        hasDue: !editing, due: a.done ? '' : (a.due || ''), dueCls: a.soon && !a.done ? ' is-soon' : '',
+        menuOpen: open, hotMenu: hot('menu-' + id), openMenu: openMenu(id),
+        hasPeople: true, people: people, nobody: function () { setFu(id, { owner: '', taken: false, log: log(a, 'You took the owner off') }); }, dues: dues,
+        items: editing ? [] : [{ t: 'Reword', icon: I.pen, cls: hot('rew-' + id), go: function () { rewOpen(a); } }], hasLog: (a.log || []).length > 0, log: (a.log || []).slice().reverse().map(function (g) { return { t: g[0], w: g[1] }; })
+      };
+    };
+
+    var decRows = decisions.map(decRow), qRows = N.questions.map(qRow), fuRows = N.actions.map(fuRow);
+    var toConfirm = decisions.filter(function (d) { return decOf(d).state === 'proposed'; }).length;
+    var forYou = N.actions.filter(function (a) { var x = fuOf(a); return x.owner === 'art' && !x.done; }).length;
+    var parts = [];
+    var adder = function (kind, label, hint) { return { hasAdd: !isExample && st.proposing !== kind, adding: st.proposing === kind, addLabel: label, addHint: hint, hotAdd: hot('add-' + kind), add: function () { set({ proposing: kind, proposeText: '', hot: '' }); } }; };
+    if (decRows.length) parts.push(assign({ cls: ' is-decide', anchor: 's-decided', title: 'Decided', count: toConfirm + ' to confirm', hasCount: toConfirm > 0, rows: decRows }, adder('decision', 'Propose a decision', 'Everyone with the notes sees it, as proposed by you, until someone else confirms it.')));
+    if (qRows.length) parts.push({ cls: ' is-ask', anchor: 's-open', title: 'Still open', count: '', hasCount: false, rows: qRows, hasAdd: false, adding: false });
+    if (fuRows.length) parts.push(assign({ cls: ' is-follow', anchor: 's-follow', title: 'Follow-ups', count: forYou + ' for you', hasCount: forYou > 0, rows: fuRows }, adder('follow-up', 'Add a follow-up', 'Everyone with the notes sees it. Give it to someone from its menu.')));
+
+    var saveRew = function () {
+      var id = st.rew, t = (st.rewText || '').trim(); if (!t) return;
+      var isQ = N.questions.some(function (q) { return q.id === id; }), isA = N.actions.some(function (a) { return a.id === id; });
+      if (isA) { var f = assign({}, st.fu || {}), curA = fuOf(N.actions.filter(function (x) { return x.id === id; })[0]); f[id] = assign({}, f[id] || {}, { text: t, log: log(curA, 'You reworded it') }); set({ fu: f, rew: '', hot: '' }); }
+      else if (isQ) { var q = assign({}, st.qs || {}), cur = qOf(N.questions.filter(function (x) { return x.id === id; })[0]); q[id] = assign({}, q[id] || {}, { text: t, reworded: 'you', log: log(cur, 'You reworded it') }); set({ qs: q, rew: '', hot: '' }); }
+      else { var d = assign({}, st.dec || {}), curD = decOf(N.decisions.filter(function (x) { return x.id === id; })[0]); d[id] = assign({}, d[id] || {}, { text: t, reworded: 'you', log: log(curD, 'You reworded it') }); set({ dec: d, rew: '', hot: '' }); }
+    };
+
+    /* The transcript. */
+    var fixes = st.fix || {}, marksOn = st.marks || {};
+    var whoOf = function (l) { var f = fixes[l.id]; return f && f.who !== undefined ? f.who : l.who; };
+    var textOf = function (l) { var f = fixes[l.id]; return f && f.text ? f.text : l.text; };
+    var canFix = function (l) { return organizer || whoOf(l) === 'art'; };
+    var openEdit = function (l) { set({ edit: l.id, editText: textOf(l), editWho: whoOf(l), whoOpen: false, hot: '', menu: '' }); };
+    var lines = N.lines.map(function (l, i) {
+      var f = fixes[l.id], who = whoOf(l), prev = N.lines[i - 1], more = !!prev && whoOf(prev) === who && !l.unsureWho, isEdit = st.edit === l.id;
+      var txt = textOf(l), sure = !!(f && (f.text || f.heard)), a = txt, u = '', b = '';
+      if (l.unsure && !sure) { var k = txt.indexOf(l.unsure); a = txt.slice(0, k); u = l.unsure; b = txt.slice(k + l.unsure.length); }
+      var hist = (l.fixed || []).concat(f && f.line ? [[f.line, NOW]] : []);
+      var on = st.line === l.id;
+      var scr = l.screen ? N.screens[l.screen] : null;
+      return {
+        id: l.id, time: mmss(l.at), who: who || 'art', name: who ? firstOf(who) : 'Not sure who', show: (st.full || i < FIRST || isEdit) && (!isRecording || l.at <= edge), cls: (more ? ' is-more' : '') + (on ? ' is-on' : '') + (isEdit ? ' is-edit' : '') + (st.hoverLine === l.id ? ' is-hover' : ''),
+        showFace: (!more || isEdit) && !!who, showName: !more && !isEdit, nameCls: l.unsureWho && !(f && f.who !== undefined) && !(f && f.heard) ? 'nd-u' : '',
+        reading: !isEdit, isEdit: isEdit, a: a, u: u, b: b, uCls: u ? 'nd-u' : '', hasKind: !!l.kind, kindCls: l.kind === 'decide' ? ' is-decide' : ' is-follow',
+        hasFix: hist.length > 0, hist: hist.map(function (h) { return h[0] + ', ' + h[1]; }), tipCls: st.tipFix === l.id ? ' is-tip' : '',
+        canFix: canFix(l) && !isEdit, hotFix: hot('fix-' + l.id), fix: function () { openEdit(l); },
+        hotPlus: hot('plus-' + l.id), plusOpen: st.linePop === l.id, plus: function () { set({ linePop: st.linePop === l.id ? '' : l.id, hot: '' }); },
+        goMoment: function () { jump(l.at); },
+        markCls: (marksOn[l.id] ? ' is-on' : '') + hot('mark-line-' + l.id), markLabel: marksOn[l.id] ? 'Remove your bookmark' : 'Bookmark this line, for you alone',
+        mark: function () { var m = assign({}, marksOn); if (m[l.id]) delete m[l.id]; else m[l.id] = true; set({ marks: m, hot: '' }); if (!marksOn[l.id]) v.toast('Bookmarked. Only you can see it.'); },
+        hasScreen: !!scr && (st.full || i < FIRST) && (!isRecording || l.at <= edge), hotScreen: hot('screen'), screen: scr ? { time: mmss(scr.at), title: scr.title, by: scr.by } : {}, openScreen: function () { set({ screen: scr ? scr.id : '', hot: '' }); }
+      };
+    });
+    var corrected = Object.keys(fixes).filter(function (id) { return fixes[id].text || fixes[id].who !== undefined; }).length;
+    var editLine = st.edit ? N.rooms.reduce(function (all, r) { return all.concat(r.lines); }, N.lines).filter(function (l) { return l.id === st.edit; })[0] : null;
+    var speakers = recipients.map(function (r) { var on = st.editWho === r.id; return { id: r.id, label: r.name + (r.you ? ' (you)' : ''), on: on, cls: on ? ' is-sel' : '', go: function () { set({ editWho: r.id, whoOpen: false }); } }; });
+    var saveEdit = function () {
+      if (!editLine) return;
+      var t = (st.editText || '').replace(/\s+/g, ' ').trim(), wordsChanged = t && t !== textOf(editLine), whoChanged = st.editWho !== whoOf(editLine);
+      if (!wordsChanged && !whoChanged) { set({ edit: '', whoOpen: false }); return; }
+      var f = assign({}, fixes), patch = assign({}, f[editLine.id] || {});
+      if (wordsChanged) { patch.text = t; patch.line = 'You corrected it from “' + textOf(editLine).slice(0, 60) + (textOf(editLine).length > 60 ? '…' : '') + '”'; }
+      if (whoChanged) { patch.who = st.editWho; patch.line = st.editWho ? 'You said ' + firstOf(st.editWho).replace('You', 'you') + ' said it' : 'You said nobody can tell who said it'; }
+      f[editLine.id] = patch;
+      set({ fix: f, edit: '', whoOpen: false, hot: '', rewritten: false });
+    };
+
+    /* Breakout rooms. */
+    var roomParts = function (r) {
+      var out = [];
+      if (r.decisions.length) out.push({ cls: ' is-decide', title: 'Decided', rows: r.decisions.map(function (d0) {
+        var d = decOf(d0), id = d.id, prop = d.state === 'proposed';
+        return { cls: ' is-decide' + (d.state === 'confirmed' ? ' is-set' : ''), hasIcon: true, icon: I.decide, isCheck: false, text: d.text, hasStatus: true, status: prop ? 'Proposed by the notes' : 'Confirmed by ' + d.by, hasYes: prop, yesLabel: 'Confirm', yes: function () { setDec(id, { state: 'confirmed', by: 'you' }); }, hasUndo: !prop && d.by === 'you', undoLabel: 'Undo', undo: function () { setDec(id, { state: 'proposed', by: '' }); }, hasOwner: false };
+      }) });
+      if (r.questions.length) out.push({ cls: ' is-ask', title: 'Still open', rows: r.questions.map(function (q0) {
+        var q = qOf(q0), id = q.id, open = q.state === 'open';
+        return { cls: ' is-ask' + (open ? '' : ' is-off'), hasIcon: true, icon: I.question, isCheck: false, text: q.text, hasStatus: true, status: open ? 'Not answered yet' : cap(q.by) + ' said this was answered', hasYes: open, yesLabel: 'It was answered', yes: function () { setQ(id, { state: 'answered', by: 'you' }); }, hasUndo: !open, undoLabel: 'Reopen', undo: function () { setQ(id, { state: 'open', by: '' }); }, hasOwner: false };
+      }) });
+      if (r.actions.length) out.push({ cls: ' is-follow', title: 'Follow-ups', rows: r.actions.map(function (a0) {
+        var a = fuOf(a0), id = a.id;
+        return { cls: ' is-follow' + (a.done ? ' is-done' : ''), isCheck: true, hasIcon: false, done: !!a.done, tick: function () { setFu(id, { done: !a.done }); }, text: a.text, hasStatus: false, hasYes: false, hasUndo: false, hasOwner: true, owner: a.owner, ownerName: firstOf(a.owner), due: a.due };
+      }) });
+      return out;
+    };
+    var roomsOpen = st.rooms || {}, saidOpen = st.said || {};
+    var rooms = N.rooms.map(function (r) {
+      var open = !!roomsOpen[r.id], so = !!saidOpen[r.id];
+      return {
+        name: r.name, who: r.who, meta: r.length + ' · ' + r.names, open: open, cls: open ? ' is-open' : '', hotCls: hot('room-' + r.id), quiet: !!r.quiet, hasSummary: !!r.summary, summary: r.summary || '',
+        toggle: function () { var o = assign({}, roomsOpen); o[r.id] = !open; set({ rooms: o, hot: '' }); },
+        parts: roomParts(r), hasChapters: r.chapters.length > 0, chapters: r.chapters, hasLines: r.lines.length > 0 && !noTranscript, lineCount: r.lines.length + (r.lines.length === 1 ? ' line' : ' lines'), saidOpen: so, saidCls: so ? ' is-open' : '',
+        toggleSaid: function () { var o = assign({}, saidOpen); o[r.id] = !so; set({ said: o }); },
+        lines: r.lines.map(function (l) {
+          var f = fixes[l.id], isEdit = st.edit === l.id;
+          return { id: l.id, time: l.at, who: l.who, name: firstOf(l.who), text: textOf(l), cls: isEdit ? ' is-edit' : '', reading: !isEdit, isEdit: isEdit, canFix: canFix(l) && !isEdit, hotFix: hot('fix-' + l.id), fix: function () { openEdit(l); }, hasFix: !!(f && f.line), fixLine: f && f.line ? f.line + ', ' + NOW : '' };
+        })
+      };
+    });
+
+    /* Asking about the call. */
+    var runAsk = function (q) {
+      var text = String(q || '').trim(); if (!text) return;
+      set({ aq: text, askBar: 'wait', askText: '', hot: '' });
+      clearTimeout(self.__askWait);
+      self.__askWait = setTimeout(function () { self.setState({ askBar: 'answer' }); }, 900);
+    };
+    var answerOf = function (q) {
+      var hit = N.answers[q]; if (hit) return hit;
+      if (/decid/i.test(q)) return N.answers['What did we decide?'];
+      if (/\b(i|me|my)\b/i.test(q)) return N.answers['What do I need to do?'];
+      return N.fallback;
+    };
+    var ans = st.aq ? answerOf(st.aq) : null;
+    var askShown = st.askBar === 'wait' || st.askBar === 'answer';
+    var kept = !!st.aq && (st.keptQ || []).indexOf(st.aq) >= 0;
+    var answer = ans ? { text: ans.text, cites: (hasLines || hasAudio ? ans.cites : []).map(function (t, i) { return { t: mmss(t), hotCls: hot('cite-' + i), go: function () { jump(t); } }; }) } : { text: '', cites: [] };
+    var keep = function () {
+      if (!ans) return;
+      var add = { id: 'k' + ((st.ownAdd || []).length + 1), kind: 'answer', text: ans.text, q: st.aq, at: ans.cites[0], line: lineAt(ans.cites[0]).id };
+      set({ ownAdd: (st.ownAdd || []).concat([add]), keptQ: (st.keptQ || []).concat([st.aq]), hot: '' });
+    };
+
+    /* Your notes. */
+    var gone = st.ownGone || {};
+    var addedOf = (st.addsNew || []).reduce(function (m, a) { m[a.from] = true; return m; }, {});
+    var bookmarked = Object.keys(marksOn).filter(function (id) { return marksOn[id]; }).map(function (id) {
+      var l = N.lines.filter(function (x) { return x.id === id; })[0];
+      return { id: 'b-' + id, kind: 'bookmark', text: textOf(l), quoteWho: firstOf(whoOf(l)), at: l.at, line: l.id, lineId: id };
+    });
+    var kindIcon = { note: I.pen, bookmark: I.bookmark, answer: I.ask, screen: I.monitor };
+    var shots = st.shotMark ? Object.keys(N.screens).map(function (id) { var x = N.screens[id]; return { id: 'b-' + id, kind: 'screen', text: x.title, quoteWho: x.by, at: x.at, shot: true }; }) : [];
+    var ownList = (isQuiet ? [] : N.own).concat(bookmarked).concat(shots).concat(st.ownAdd || []).filter(function (e) { return !gone[e.id]; });
+    var entries = ownList.map(function (e) {
+      var shared = !!addedOf[e.id];
+      return {
+        id: e.id, cls: (st.adding === e.id ? ' is-picked' : '') + (st.hoverOwn === e.id ? ' is-hover' : ''), icon: kindIcon[e.kind], text: e.text, hasFoot: true, hasChip: e.at !== undefined, hasWhen: e.at === undefined, when: '16:12', canEdit: e.kind !== 'answer', time: e.at !== undefined ? mmss(e.at) : '',
+        goMoment: function () { jump(e.at); }, shared: shared, hasWho: (e.kind === 'bookmark' || e.kind === 'screen') && !!e.quoteWho, who: e.quoteWho || '',
+        canShare: isWritten && !shared && !isExample && !(e.kind === 'answer' && !hasLines), hotShare: hot('share-' + e.id), share: function () { set({ adding: e.id, addText: e.text, hot: '', menu: '' }); },
+        remove: function () {
+          if (e.lineId) { var m = assign({}, marksOn); delete m[e.lineId]; set({ marks: m }); return; }
+          if (e.shot) { set({ shotMark: false }); return; }
+          var g = assign({}, gone); g[e.id] = true; set({ ownGone: g, adding: st.adding === e.id ? '' : st.adding });
+        }
+      };
+    });
+    var picked = ownList.filter(function (e) { return e.id === st.adding; })[0] || null;
+    var audience = others.map(function (r) { return r.id; });
+    var pv = picked ? {
+      hasQuote: !!picked.quote, quoteWho: picked.quoteWho || '', quote: picked.quote || '', hasMoment: picked.at !== undefined, time: picked.at !== undefined ? mmss(picked.at) : '', goMoment: function () { jump(picked.at); },
+      faces: audience.join(','), names: listNames(audience.map(firstOf)), go: 'Add for ' + (audience.length === 1 ? '1 person' : audience.length + ' people'),
+      hasSince: (st.shared || []).length > 0 && !!st.sinceNote, since: listNames((st.shared || []).map(firstOf)) + ' got the notes since you opened this, so they read it too.', sinceFaces: (st.shared || []).join(',')
+    } : { hasQuote: false, hasMoment: false, go: '', faces: '', names: '', hasSince: false };
+    var doAdd = function () {
+      if (!picked) return;
+      var text = (st.addText || '').trim();
+      var row = { id: 'x-' + picked.id, from: picked.id, by: 'art', name: 'You', when: NOW, text: text, at: picked.at, line: picked.line };
+      set({ addsNew: (st.addsNew || []).concat([row]), adding: '', addText: '', hot: '' });
+      v.toast('It’s in the shared notes. Your own stays yours.');
+    };
+
+    /* Added by people. */
+    var takenBack = st.takenBack || {};
+    var adds = N.additions.concat(st.addsNew || []).filter(function (a) { return !takenBack[a.id]; }).map(function (a) {
+      var yours = a.by === 'art', can = yours || organizer, act = yours ? 'Take back' : 'Remove', sure = st.sure === a.id;
+      return {
+        id: a.id, who: a.by, name: yours ? 'You' : a.name, when: a.when, text: a.text, hasText: !!a.text, hasMoment: a.at !== undefined, time: a.at !== undefined ? mmss(a.at) : '', goMoment: function () { jump(a.at); },
+        canAct: can && !sure, act: act, sure: sure, hotAct: hot('back-' + a.id), hotYes: hot('yes-' + a.id), cls: sure ? ' is-sure' : '',
+        ask: function () { set({ sure: a.id, hot: '' }); }, no: function () { set({ sure: '' }); },
+        yes: function () {
+          var tb = assign({}, takenBack); tb[a.id] = true;
+          var keepNew = (st.addsNew || []).filter(function (x) { return x.id !== a.id; });
+          set({ takenBack: tb, addsNew: keepNew, sure: '', hot: '' });
+          v.toast('It’s out of the shared notes, for everyone.');
+        }
+      };
+    });
+
+    /* Share. */
+    var picks = st.shareTo || [];
+    var sharePicks = AH.NOTE_SHARE.filter(function (p) { var q = (st.shareText || '').toLowerCase(); return !q || p.name.toLowerCase().indexOf(q) >= 0; }).filter(function (p) { return !(st.shared || []).some(function (id) { return p.adds.indexOf(id) >= 0; }); }).map(function (p) {
+      var on = picks.indexOf(p.id) >= 0;
+      return { id: p.id, name: p.name, sub: p.sub, group: !!p.group, person: !p.group, on: on, cls: on ? ' is-sel' : '', go: function () { set({ shareTo: on ? picks.filter(function (x) { return x !== p.id; }) : picks.concat([p.id]), hot: '' }); } };
+    });
+    var typedMail = (st.shareText || '').trim();
+    if (/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(typedMail)) {
+      var mailOn = picks.indexOf(typedMail) >= 0;
+      sharePicks = sharePicks.concat([{ id: typedMail, name: typedMail, sub: 'By email', group: false, person: true, on: mailOn, cls: mailOn ? ' is-sel' : '', go: function () { set({ shareTo: mailOn ? picks.filter(function (x) { return x !== typedMail; }) : picks.concat([typedMail]), hot: '' }); } }]);
+    }
+    var doShare = function () {
+      var add = [], via = assign({}, st.sharedVia || {});
+      AH.NOTE_SHARE.forEach(function (p) { if (picks.indexOf(p.id) >= 0) p.adds.forEach(function (id) { if (add.indexOf(id) < 0) add.push(id); if (p.group) via[id] = p.name; }); });
+      picks.forEach(function (id) { if (id.indexOf('@') > 0 && add.indexOf(id) < 0) add.push(id); });
+      if (!add.length) return;
+      set({ shared: (st.shared || []).concat(add), sharedVia: via, shareTo: [], shareText: '', menu: '', hot: '', sinceNote: !!st.adding });
+      v.toast('Shared with ' + listNames(add.map(firstOf)) + '.');
+    };
+
+    /* Delete. */
+    var mine = organizer;
+    var delTitle = mine ? 'Delete notes' : 'Remove from your notes';
+    var delBody = mine ? 'Removes the summary, the transcript, ' + N.gone.rooms + ', ' + N.gone.audio + ' and anyone’s own notes on them. Nobody can get them back.' : 'Priya and everyone else who has them keep them. Your own notes on them go for good. Anything you added to the shared notes stays there, and you can’t take it back after this.';
+    var goneView = st.gone === 'deleted'
+      ? { title: 'Deleted', hasLead: true, lead: 'Gone from Alcove, for everyone who had them.', hasList: true, list: ['Summary, decisions and follow-ups', 'The transcript', '3 breakout rooms’ sections, what was said there included', 'The recording, 20 min of audio', 'Anyone’s own notes on them, and what people added'] }
+      : st.gone === 'removed'
+        ? { title: 'Removed', hasLead: true, lead: 'They’re out of your notes, with your own notes on them. Priya still has them.', hasList: false, list: [] }
+        : { title: 'These notes aren’t here', hasLead: true, lead: 'They were deleted, or they were never shared with you.', hasList: false, list: [] };
+    var doDelete = function () { self.__pause(); set({ gone: mine ? 'deleted' : 'removed', menu: '', hot: '' }); };
+
+    /* The sidebar: pinned notes show there. */
+    var pinned = !!st.pinned;
+    var side = assign({}, v.side, { pinned: pinned ? [{ t: N.title, go: function () {} }] : [], hasPinned: pinned });
+
+    /* The state of the seal. */
+    var sealText = isWriting ? 'Being written in confidential compute' : writingAgain ? 'Being written again in confidential compute' : isRecording ? 'Transcribed in confidential compute' : 'Written in confidential compute';
+
+    /* Series. */
+    var inSeries = !!N.series && st.noSeries !== true && !isRecording;
+    var series = N.series ? assign({}, N.series, { open: (organizer ? '' : 'From Priya’s calls. ') + N.series.open.replace(' its 9 calls', organizer ? ' its 9 calls' : ' the calls you have notes from'), calls: N.series.calls.map(function (c) { return assign({}, c, { go: function () { v.toast('Opens the ' + c.day + ' call.'); } }); }) }) : { calls: [] };
+
+    var writingLine = prog >= 3 ? 'The audio is saved and encrypted. Summary, decisions and follow-ups are being written in confidential compute.' : 'The call has ended. Summary, decisions and follow-ups are being written in confidential compute.';
+    var progress = ['Call ended', N.minutes + ' min of audio saved, encrypted', 'Transcript of ' + N.lines.length + ' lines', 'Notes written'].map(function (t, i) { var n = i + 1; return { t: t, done: n < prog, now: n === prog, cls: n < prog ? 'is-done' : n === prog ? 'is-now' : '' }; });
+
+    /* The scene's stars are placed for a short stage. Keep them in this page's sky, not on the water. */
+    var SKY = [[14, 0.7], [37, 0.62], [63, 0.72], [88, 0.64]];
+    var scene = assign({}, v.scene, { stars: (v.scene.stars || []).map(function (x, i) { var at = SKY[i % SKY.length]; return { style: x.style.replace(/left: [\d.]+%; top: [\d.]+%/, 'left: ' + at[0] + '%; top: calc(var(--hz) * ' + at[1] + ')') }; }) });
+
+    var ov = assign({}, v.ov, { pageNote: false, pageNotes: false, toast: st.toast || '', hasToast: !!st.toast, openSource: function () { set({ ask: '', q: '', hot: '' }); v.toast('Opens Art’s call.'); } });
+    var catchOpen = !!st.menu || !!st.whoOpen;
+
+    return {
+      mode: v.mode, I: I, nav: v.nav, side: side, scene: scene, ov: ov, openAsk: v.openAsk, view: view, N: N,
+      rootCss: v.shellStyle + '; ' + v.scene.vars, rootRef: this.__rootRef, scrolled: this.__scrolled,
+      keys: function (e) { if (e.key === 'Escape') { if (st.menu || st.whoOpen) set({ menu: '', whoOpen: false }); } },
+      goSettings: function () { v.go('settings'); }, isGone: !!st.gone, isPage: !st.gone, gone: goneView, goBack: function () { v.go(isExample ? 'home' : 'notes'); }, backLabel: isExample ? 'Home' : 'Notes',
+      headCls: st.menu === 'share' || st.menu === 'more' || st.menu === 'del' || st.menu === 'seal' ? ' is-raised' : '',
+
+      canManage: !isExample, pinned: pinned, pinCls: pinned ? ' is-on' : '', hotPin: hot('pin'), pinLabel: pinned ? 'Pinned. Unpin these notes' : 'Pin these notes', togglePin: function () { set({ pinned: !pinned, hot: '' }); },
+      shareTitle: isRecording ? 'You can share these once the recording stops.' : 'Share', shareOpen: st.menu === 'share', hotShare: hot('share'), openShare: openMenu('share'), shareText: st.shareText || '', typeShare: function (e) { set({ shareText: e.target.value }); }, sharePicks: sharePicks, shareNone: picks.length === 0, hotShareGo: hot('share-go'), doShare: doShare,
+      haveLine: recipients.length + ' people have them',
+      moreOpen: st.menu === 'more', hotMore: hot('more'), openMore: openMenu('more'), cantCopy: !isWritten, copyText: function () { set({ menu: '' }); v.toast('Copied as text.'); }, hotDelete: hot('delete'), askDelete: function () { set({ menu: 'del', hot: '' }); },
+      delOpen: st.menu === 'del', delTitle: delTitle, delSub: mine ? 'For everyone. Can’t be undone.' : 'Everyone else keeps them.', delAsk: mine ? 'Delete these notes for everyone?' : 'Remove these notes from yours?', delBody: delBody, delGo: mine ? 'Delete' : 'Remove', hotDeleteGo: hot('delete-go'), doDelete: doDelete,
+      closeMenu: function () { set({ menu: '', whoOpen: false, hot: '' }); },
+
+      faces: recipients.map(function (r) { return r.id; }).join(','), facesTitle: listNames(recipients.map(function (r) { return r.you ? 'You' : r.name.split(' ')[0]; })),
+      hasWhen: !!N.when, hasHow: !!st.role, how: st.role === 'shared' ? 'Shared by Kofi with Leads' : 'From Priya’s call', isRecording: isRecording, isExample: isExample,
+      hasSeal: !isExample, sealText: sealText, sealDone: !isWriting && !writingAgain, sealBusy: isWriting || writingAgain, sealOpen: st.menu === 'seal', hotSeal: hot('seal'), openSeal: openMenu('seal'), evidence: AH.NOTE_EVIDENCE, openNear: function () { v.toast('Opens NEAR AI’s site in a new tab.'); },
+
+      gaps: gaps, hasChapters: chapters.length > 0, proposeText: st.proposeText || '', closePropose: function () { set({ proposing: '' }); }, doPropose: function () { set({ proposing: '', decNew: (st.decNew || []).concat([{ id: 'd' + ((st.decNew || []).length + 9), text: st.proposeText || 'Support reviews the article on Thursday.', state: 'proposed', proposedBy: 'you', log: [['You proposed it', NOW]] }]) }); },
+      hzCls: (st.stuck ? ' is-stuck' : '') + (hasAudio ? '' : ' is-silent') + (hasLines || hasAudio ? '' : ' is-fixed') + (isQuiet ? ' is-still' : '') + (isRecording ? ' is-live' : '') + (st.fresh ? ' is-fresh' : ''), hzStyle: '--p: ' + lit.toFixed(3) + '%; --edge: ' + (end / len * 100).toFixed(3) + '%', hasPlayer: hasPlayer, hasPlay: hasPlayer, hasEnd: hasPlayer, hasWave: glints.length > 0, glints: glints, chapters: chapters, marks: marks,
+      playLabel: st.playing ? 'Pause' : 'Play', playIcon: st.playing ? I.pause : I.play, hotPlay: hot('play'), nowLabel: mmss(pos), endLabel: mmss(end), endRounded: Math.round(end), posRounded: Math.round(pos),
+      togglePlay: function () { if (st.playing) self.__pause(); else if (isRecording && pos >= end) v.toast('That’s all that’s been recorded so far.'); else self.__play(); },
+      seek: function (e) { if (e.detail === 0) return; var r = e.currentTarget.getBoundingClientRect(), t = Math.max(0, Math.min(end, (e.clientX - r.left) / r.width * end)); jump(Math.round(t)); },
+      seekKeys: function (e) { if (e.key === 'ArrowRight') { e.preventDefault(); jump(Math.min(end, pos + 10)); } if (e.key === 'ArrowLeft') { e.preventDefault(); jump(Math.max(0, pos - 10)); } },
+      hoverSeek: function (e) {
+        var el = e.currentTarget, r = el.getBoundingClientRect(), f = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)), g = el.parentNode.querySelector('.nd-ghost');
+        if (!g) return;
+        g.style.left = (f * 100).toFixed(2) + '%';
+        g.firstChild.textContent = mmss(f * len);
+      },
+      noPlayerLine: noRecording,
+
+      writingAgain: writingAgain, isWriting: isWriting, writingLine: writingLine, progress: progress, isQuiet: isQuiet,
+      isWritten: isWritten, parts: parts, rewText: st.rewText || '', typeRew: function (e) { set({ rewText: e.target.value }); },
+      saveRew: saveRew,
+      cancelRew: function () { set({ rew: '' }); },
+      rewKeys: function (e) { if (e.key === 'Escape') set({ rew: '' }); if (e.key === 'Enter') { e.preventDefault(); saveRew(); } },
+
+      hasLines: hasLines, lines: lines, hasMoreLines: N.lines.filter(function (l) { return !isRecording || l.at <= edge; }).length > FIRST, full: !!st.full, hotAll: hot('all'), allLabel: st.full ? 'Show less' : isRecording ? 'Show all so far' : 'Show all ' + N.minutes + ' minutes', toggleAll: function () { set({ full: !st.full, hot: '' }); },
+      hasScreenLink: hasLines && !st.full && Object.keys(N.screens).length > 0, hotScreenLink: hot('screen-link'), openFirstScreen: function () { set({ screen: Object.keys(N.screens)[0], hot: '' }); },
+      canRewrite: organizer && corrected > 0 && !writingAgain && !st.rewritten, correctedLine: corrected === 1 ? 'A line was corrected since these notes were written.' : corrected + ' lines were corrected since these notes were written.', hotRewrite: hot('rewrite'), rewrite: function () { set({ view: 'again', hot: '' }); },
+      noTranscriptLine: noTranscript && isWritten,
+      organizer: organizer, whoOpen: !!st.whoOpen, toggleWho: function () { set({ whoOpen: !st.whoOpen, hot: '' }); }, hotEditWho: hot('edit-who'), editName: st.editWho ? firstOf(st.editWho) : 'not sure who', speakers: speakers, notSureCls: st.editWho === '' ? ' is-sel' : '', whoNotSure: function () { set({ editWho: '', whoOpen: false }); },
+      editText: st.editText || '', typeEdit: function (e) { set({ editText: e.target.value }); }, saveEdit: saveEdit, hotEditSave: hot('edit-save'), cancelEdit: function () { set({ edit: '', whoOpen: false }); },
+      editKeys: function (e) { if (e.key === 'Enter') { e.preventDefault(); saveEdit(); } if (e.key === 'Escape') { e.preventDefault(); set({ edit: '', whoOpen: false }); } },
+      canVouch: !!editLine && (!!editLine.unsure || !!editLine.unsureWho) && !(fixes[editLine.id] && fixes[editLine.id].heard),
+      vouch: function () { if (!editLine) return; var f = assign({}, fixes); f[editLine.id] = assign({}, f[editLine.id] || {}, { heard: true, line: 'You said it was heard right' }); set({ fix: f, edit: '', whoOpen: false }); },
+
+      hasRooms: isWritten && N.rooms.length > 0, rooms: rooms,
+
+      hasAskBar: isWritten && !isRecording, suggestions: N.suggested.map(function (q, i) { return { q: q, hotCls: hot('q' + i), go: function () { runAsk(q); } }; }),
+      askShown: askShown, askWaiting: st.askBar === 'wait', askDone: st.askBar === 'answer', aq: st.aq || '', answer: answer, showSugg: !askShown && (st.askBar === 'focus' || !!st.atEnd), closeAnswer: function () { set({ askBar: '', aq: '' }); },
+      askText: st.askText || '', typeAsk: function (e) { set({ askText: e.target.value }); }, askKeys: function (e) { if (e.key === 'Enter') runAsk(e.target.value); }, sendAsk: function () { runAsk(st.askText); },
+      focusAsk: function () { clearTimeout(self.__blur); if (!askShown) set({ askBar: 'focus', hot: '' }); }, blurAsk: function () { self.__blur = setTimeout(function () { if (self.__st.askBar === 'focus') self.setState({ askBar: '' }); }, 160); }, holdFocus: function (e) { e.preventDefault(); },
+      canKeep: !kept, isKept: kept, keep: keep, hotKeep: hot('keep'), hotAskBar: hot('askbar'),
+
+      hasOwn: !isExample, hasEntries: entries.length > 0, noEntries: entries.length === 0, entries: entries, isAdding: !!picked, pv: pv, addText: st.addText || '', typeAdd: function (e) { set({ addText: e.target.value }); }, closeAdd: function () { set({ adding: '', addText: '' }); }, doAdd: doAdd, hotAddGo: hot('add-go'),
+      showComposer: !picked, draft: st.draft || '', noDraft: !(st.draft || '').trim(), writeCls: (st.draft || '').trim() ? ' has-text' : '', hotOwnSend: hot('own-send'), typeDraft: function (e) { set({ draft: e.target.value }); },
+      keepDraft: function () { var t = (st.draft || '').trim(); if (!t) return; set({ ownAdd: (st.ownAdd || []).concat([{ id: 'w' + ((st.ownAdd || []).length + 1), kind: 'note', text: t }]), draft: '', hot: '' }); },
+      draftKeys: function (e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); var t = (st.draft || '').trim(); if (t) set({ ownAdd: (st.ownAdd || []).concat([{ id: 'w' + ((st.ownAdd || []).length + 1), kind: 'note', text: t }]), draft: '', hot: '' }); } },
+
+      hasAdds: isWritten && adds.length > 0, adds: adds,
+
+      people: recipients.slice(0, st.allPeople || recipients.length <= 10 ? recipients.length : 8).map(function (r) { return { id: r.id, name: r.name + (r.you ? ' (you)' : ''), role: r.role, cls: r.fresh ? ' is-fresh' : '' }; }),
+      hasMorePeople: recipients.length > 10, allPeople: !!st.allPeople, morePeopleLabel: st.allPeople ? 'Show fewer' : 'Show all ' + recipients.length, toggleAllPeople: function () { set({ allPeople: !st.allPeople }); },
+      onlyThese: recipients.length <= 1 ? 'Only you can open them. Alcove can’t.' : 'Only these ' + (COUNTED[recipients.length] || recipients.length) + ' can open them. Alcove can’t.',
+
+      hasSeries: inSeries, series: series, openSeries: function () { v.toast('Opens the series page.'); },
+      hasMeet: !inSeries && organizer && !isRecording, hotMeet: hot('meet'), hotNextChange: hot('next-change'),
+      meet: function () { set({ noSeries: false, hot: '' }); v.toast('On your calendar for Wed 11 Nov, 09:00. Priya, Kofi and Maya are invited.'); }, nextChange: function () { v.toast('Opens the call, to move it or cancel it.'); },
+
+      catchOpen: catchOpen, menuUpCls: st.menuUp ? ' is-up' : '',
+      screenOpen: !!st.screen, closeScreen: function () { set({ screen: '' }); },
+      shot: st.screen ? { title: N.screens[st.screen].title, by: N.screens[st.screen].by, time: mmss(N.screens[st.screen].at), goMoment: function () { jump(N.screens[st.screen].at, { screen: '' }); }, markCls: st.shotMark ? ' is-on' : '', mark: function () { set({ shotMark: !st.shotMark }); if (!st.shotMark) v.toast('Bookmarked. Only you can see it.'); } } : {}
+    };
+  }
+}
+</script>
+</body>
+</html>

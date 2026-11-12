@@ -1,7 +1,7 @@
 /*
  * The evening behind every page: a sky and a sea meeting at --hz, which each page sets as tall as the page is one action.
  * Home is the sunset, and every other page is a moment of the same evening (`moment`): the sun low, then gone, then the
- * night Record is set in. A page goes on it with `Evening`.
+ * night Record is set in, and the night a call leaves you on (`after`), with a crescent moon. A page goes on it with `Evening`.
  *
  * It moves a little so the page feels awake: the water, the light on it, the clouds, the stars. Everything that moves is
  * a plain element animating transform and opacity, which the browser runs off the main thread, in long cycles that wake
@@ -20,7 +20,7 @@ import { useReducedMotion } from 'motion/react';
 import { memo, useEffect, useMemo, useRef, useState, type AnimationEvent, type ComponentProps, type ReactNode } from 'react';
 import { cn } from '../cn';
 
-export type Moment = 'home' | 'team' | 'agents' | 'notes' | 'drive' | 'note' | 'settings' | 'record';
+export type Moment = 'home' | 'team' | 'agents' | 'notes' | 'drive' | 'note' | 'settings' | 'record' | 'after';
 
 /** A small generator, so the sea is the same on every visit. */
 function seeded(seed: number): () => number {
@@ -35,7 +35,8 @@ interface Star { x: number; y: number; s: number; o: number; every: number; afte
 interface Cloud { x: number; at: number; w: number; rows: number; takes: number }
 interface Bar { x: number; y: number; w: number; lit: number }
 
-interface Drawing { sun: boolean; glitter: number; shine: number; chop: number; stars: number; streaks: boolean; clouds: Cloud[] }
+/** `moon`: a crescent high on the right; `bay`: the glow lies on the water under the horizon too. Only the night after a call has them. */
+interface Drawing { sun: boolean; glitter: number; shine: number; chop: number; stars: number; streaks: boolean; clouds: Cloud[]; moon?: boolean | undefined; bay?: boolean | undefined }
 
 const CHOP_REACH = 1700;
 const CHOP_PER_ROW = 26;
@@ -61,7 +62,9 @@ const MOMENTS: Record<Moment, Drawing> = {
   drive: { sun: false, glitter: 50, shine: 0.45, chop: 4, stars: 5, streaks: false, clouds: [{ x: 64, at: 0.24, w: 220, rows: 4, takes: 780 }, { x: 10, at: 0.12, w: 160, rows: 3, takes: 960 }] },
   note: { sun: false, glitter: 0, shine: 0, chop: 2, stars: 4, streaks: false, clouds: [{ x: 58, at: 0.2, w: 190, rows: 3, takes: 880 }] },
   settings: { sun: false, glitter: 0, shine: 0, chop: 2, stars: 0, streaks: false, clouds: [{ x: 44, at: 0.26, w: 190, rows: 3, takes: 960 }] },
-  record: { sun: true, glitter: 150, shine: 1, chop: 5, stars: 22, streaks: false, clouds: [{ x: 24, at: 0.3, w: 260, rows: 4, takes: 940 }] }
+  record: { sun: true, glitter: 150, shine: 1, chop: 5, stars: 22, streaks: false, clouds: [{ x: 24, at: 0.3, w: 260, rows: 4, takes: 940 }] },
+  /* After a call: no sun, the glow it left on the horizon and its light lying on the bay, the stars and a crescent moon. */
+  after: { sun: false, glitter: 124, shine: 0.4, chop: 3, stars: 40, streaks: false, moon: true, bay: true, clouds: [] }
 };
 
 function drawSea({ sun, glitter, shine, chop: rows }: Drawing): { glints: Glint[]; chop: Stroke[][] } {
@@ -105,11 +108,14 @@ function drawCloud({ w, rows }: Cloud, seed: number): Bar[] {
   });
 }
 
+/** A crescent, lit on its left, in a 26px box: drawn flat, one colour, like everything else in the scene. */
+const MOON = 'M13 0a13 13 0 1 0 11.7 20.15a10.14 10.14 0 1 1 -11.7 -20.15Z';
+
 const drawn = (moment: Moment) => {
   const m = MOMENTS[moment];
   return { ...m, ...drawSea(m), starry: drawStars(m.stars), puffs: m.clouds.map((c, i) => ({ ...c, bars: drawCloud(c, 61 + i * 17) })) };
 };
-const SCENES: Record<Moment, ReturnType<typeof drawn>> = { home: drawn('home'), team: drawn('team'), agents: drawn('agents'), notes: drawn('notes'), drive: drawn('drive'), note: drawn('note'), settings: drawn('settings'), record: drawn('record') };
+const SCENES: Record<Moment, ReturnType<typeof drawn>> = { home: drawn('home'), team: drawn('team'), agents: drawn('agents'), notes: drawn('notes'), drive: drawn('drive'), note: drawn('note'), settings: drawn('settings'), record: drawn('record'), after: drawn('after') };
 
 /* ------------------------------------------------------- what passes through */
 type Span = readonly [number, number];
@@ -174,7 +180,8 @@ const LIFE: Record<Moment, Life> = {
   drive: { quick: ['gulls', 'star', 'fish'], slow: ['sail', 'tug', 'trawler'], gulls: [18, 48], fish: [14, 30] },
   note: { quick: ['star'], slow: [], gulls: [0, 0], fish: [0, 0] },
   settings: { quick: [], slow: ['sail', 'freighter'], gulls: [0, 0], fish: [0, 0] },
-  record: { quick: ['star', 'star', 'fish', 'whale'], slow: ['sail', 'tall', 'trawler'], gulls: [0, 0], fish: [30, 70] }
+  record: { quick: ['star', 'star', 'fish', 'whale'], slow: ['sail', 'tall', 'trawler'], gulls: [0, 0], fish: [30, 70] },
+  after: { quick: ['star'], slow: [], gulls: [0, 0], fish: [0, 0] }
 };
 
 function quickVisit(kind: Quick['kind'], life: Life): Quick {
@@ -312,7 +319,7 @@ function laneOf(moment: Moment): { quick: Lane<Quick>; slow: Lane<Slow> } {
     slow: { arrive: slowly, first: SLOW_FIRST, gap: SLOW_GAP, already: () => { const kind = pick(ships); return kind && coin() ? slowVisit(kind, between([0.12, 0.5])) : null; } }
   };
 }
-const LANES: Record<Moment, ReturnType<typeof laneOf>> = { home: laneOf('home'), team: laneOf('team'), agents: laneOf('agents'), notes: laneOf('notes'), drive: laneOf('drive'), note: laneOf('note'), settings: laneOf('settings'), record: laneOf('record') };
+const LANES: Record<Moment, ReturnType<typeof laneOf>> = { home: laneOf('home'), team: laneOf('team'), agents: laneOf('agents'), notes: laneOf('notes'), drive: laneOf('drive'), note: laneOf('note'), settings: laneOf('settings'), record: laneOf('record'), after: laneOf('after') };
 
 /** One quick visitor, drawn as its kind is. */
 function Quickly({ v, gone }: { v: Quick; gone: () => void }) {
@@ -400,7 +407,10 @@ export const Horizon = memo(function Horizon({ moment, only, land }: {
       <div className="hz-sky" />
       <div className="hz-sea" />
       <div className="hz-up">
-        {scene.starry.map((s) => <i key={`${s.x}-${s.y}`} className="hz-star" style={{ left: `${s.x}%`, top: `${s.y}%`, width: s.s, height: s.s, '--o': s.o, '--every': `${s.every}s`, '--after': `${s.after}s` }} />)}
+        <div className="hz-stars">
+          {scene.starry.map((s) => <i key={`${s.x}-${s.y}`} className="hz-star" style={{ left: `${s.x}%`, top: `${s.y}%`, width: s.s, height: s.s, '--o': s.o, '--every': `${s.every}s`, '--after': `${s.after}s` }} />)}
+        </div>
+        {scene.moon && <svg className="hz-moon" viewBox="0 0 26 26"><path d={MOON} /></svg>}
         <div className="hz-light"><i className="hz-glow" />{scene.sun && <i className="hz-sun" />}</div>
         {scene.puffs.map((c) => (
           <div key={c.x} className="hz-puff" style={{ top: `calc(var(--hz) * ${c.at})`, '--x': c.x, '--takes': `${c.takes}s` }}>
@@ -418,6 +428,7 @@ export const Horizon = memo(function Horizon({ moment, only, land }: {
         ))}
       </div>
       <div className="hz-light">
+        {scene.bay && <i className="hz-glow is-bay" />}
         {scene.glints.map((g) => <i key={`${g.x}-${g.y}`} className="hz-glint" style={{ left: g.x, top: g.y, width: g.w, '--o': g.o, '--far': g.far, '--every': `${g.every}s`, '--after': `${g.after}s` }} />)}
       </div>
       <Visitors moment={moment} only={only} land={land} />
