@@ -568,6 +568,40 @@ describe('running out', () => {
     expect((await h.pool.query('SELECT 1 FROM content_jobs WHERE owner_id = $1', [org.session.ownerId])).rowCount).toBe(0);
   });
 
+  it('after the organizer buys more notes, or Pro, past a stop, the next clip and question are charged to what was bought, and notes stay on', async () => {
+    // A minute of notes at $0.0036 an hour and no stop short of nothing: the call's first clip spends it.
+    await h.setLimit('plan.free.notes_minutes', 1);
+    await h.setLimit('ai.hour_micro_usd', 3600);
+    await h.setLimit('ai.stop_micro_usd', 0);
+    for (const buys of ['hours', 'pro'] as const) {
+      const org = await account(unique('organizer'));
+      const { host } = await call(org);
+      await host.appendAudio(piece(buys, 0));
+      await host.transcribe(speech('We agreed to ship on Monday.', 0), host.ticket.identity);
+      expect((await settle(host, (s) => s.capture.stopped !== null)).capture).toMatchObject({ mode: 'off', stopped: { reason: 'notes' } });
+      await creditByEmail(h.deps, org.email, 20_000_000);
+      const bought = buys === 'hours' ? await org.api.plans.buyHours(1, 15_000_000, 600) : await org.api.plans.buyPro(1, 20_000_000);
+      expect(bought.notes.stopped).toBe(false);
+      await host.setNotes(true);
+      const on = await settle(host, (s) => s.capture.mode === 'on');
+      expect(on.capture).toMatchObject({ mode: 'on', stopped: null });
+      // The next clip, in the segment notes came back on in, is transcribed and charged: the meter's own stop has lifted.
+      const before = await meter(org);
+      await host.transcribe({ ...speech('And we test on staging first.', 0), segment: on.notes.recording?.segment ?? 0 }, host.ticket.identity);
+      expect((await settle(host, (s) => s.transcript.length > 1)).capture).toMatchObject({ mode: 'on', stopped: null });
+      const clip = await meter(org);
+      expect(clip).toMatchObject({ plan: buys === 'pro' ? 'pro' : 'free', stopped: false });
+      expect(clip.byKind['transcript'] ?? 0).toBeGreaterThan(buys === 'pro' ? 0 : before.byKind['transcript'] ?? 0);
+      // A question of the organizer's is charged too, and notes left go down.
+      const shown = (await org.api.plans.plan()).notes.minutesLeft;
+      await host.askSoFar('When do we ship?', { kind: 'all' });
+      expect((await meter(org)).byKind['ask']).toBeGreaterThan(0);
+      const plan = await org.api.plans.plan();
+      expect(plan.notes.stopped).toBe(false);
+      expect(plan.notes.minutesLeft).toBeLessThan(shown);
+    }
+  });
+
   it('holds what requests in flight may cost, so several at once never spend past the allowance', async () => {
     // A note to ask about, written while there's plenty.
     await h.setLimit('ai.stop_micro_usd', 0);
