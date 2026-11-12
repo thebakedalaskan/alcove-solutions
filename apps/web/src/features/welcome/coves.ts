@@ -7,4 +7,4 @@ import type { SkyCove } from './Sky';
 export const HERO_COVE: SkyCove = { seed: 5, foot: (sky) => Math.max(sky + 110, sky + (document.documentElement.clientHeight - sky) * 0.94) };
 export const CLOSE_COVE: SkyCove = { seed: 11, foot: (sky) => sky + 110 };
 /** Plans, at night with the last of the sun: a narrower bay, its cliffs a little way into the water. */
-export const PLANS_COVE: SkyCove = { seed: 8, foot: (sky) => sky + 96 };
+export const PLANS_COVE: SkyCove = { seed: 8, foot: (sky) => sky + 84 };

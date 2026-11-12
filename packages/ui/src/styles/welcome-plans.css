@@ -12,14 +12,14 @@
   --hz-sky: linear-gradient(to bottom in oklch, oklch(0.2 0.05 272) 0%, oklch(0.3 0.08 298) 64%, oklch(0.5 0.12 22) 100%);
   --hz-glow: oklch(0.72 0.14 45 / 0.5);
 }
-.lp-plans-in { padding-block: clamp(120px, 12vw, 180px) clamp(64px, 6.4vw, 96px); }
+.lp-plans-in { padding-block: clamp(96px, 9vw, 140px) clamp(52px, 5vw, 76px); }
 
 /* The last of the sun: the top of its disc, just showing over the horizon in the mouth of the bay. */
 .lp-plans-sun { position: absolute; left: 50%; top: var(--hz); width: clamp(80px, 6.6vw, 104px); height: clamp(9px, 0.8vw, 12px); translate: -50% -100%; overflow: hidden; pointer-events: none; }
 .lp-plans-sun::before { content: ""; position: absolute; left: 0; top: 0; width: 100%; aspect-ratio: 1; border-radius: 50%; background: radial-gradient(circle at 50% 24%, var(--dusk-sun), color-mix(in oklch, var(--dusk-sun) 70%, var(--dusk-haze)) 62%, var(--dusk-haze)); }
 
 /* On the water: the two plans, side by side, then the ways in. */
-.lp-plans-water { display: grid; justify-items: center; padding-top: max(56px, calc(var(--cv-reach, 0px) + 28px)); padding-bottom: clamp(96px, 9vw, 140px); }
+.lp-plans-water { display: grid; justify-items: center; padding-top: max(48px, calc(var(--cv-reach, 0px) + 20px)); padding-bottom: clamp(96px, 9vw, 140px); }
 .lp-plans-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(3, auto); column-gap: 16px; width: min(720px, 100%); margin: 0; padding: 0; list-style: none; }
 .lp-plan { position: relative; grid-row: span 3; display: grid; grid-template-rows: subgrid; align-content: start; min-width: 0; padding: 22px 24px 20px; border-radius: 20px; background: var(--surface); box-shadow: 0 0 0 1px var(--line); text-align: left; }
 .lp-plan.is-pro { background: var(--surface-raised); box-shadow: 0 0 0 1px var(--line-control), var(--shadow-2); }
