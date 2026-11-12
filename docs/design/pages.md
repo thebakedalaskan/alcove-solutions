@@ -278,6 +278,25 @@ The last of the sunset, with the plans on the water: a page you compare on, so m
 - **States:** waiting cards, failed with Try again, offline. On a phone the cards stand one under another.
 - The side panel's foot row is the place you're on while you're here.
 
+## Checkout
+
+`features/plans/checkout.tsx` (who opens it, and with what), `features/plans/CheckoutHost.tsx` (the window, from choosing to
+bought), `features/plans/purchase.ts`, `components/checkout.tsx`, `styles/checkout.css` (`ck-`). Boards:
+`plans/Checkout.dc.html`, `plans/PayMotion.dc.html`.
+
+One window over any page, a call included, where it opens in your own theme: at most 944×672, the step on the left and what
+you're buying on the right, under its own small evening (`PlanWindow`) whose sun rises as the payment lands.
+- **Steps:** Choose, Pay, Done (`CheckoutSteps`). Choose is the lengths (`MonthsPicker`, with its 20% off bracket) or the
+  hours (`HoursPicker`), then the network (`NetworkPicker`) only when money is needed; Pay is the status, the amount to send,
+  the address with its QR code and the track (`PayStatus`, `PayAmount`, `PayAddress`, `PayTrack`); Done draws its tick
+  (`CheckoutDone`), with the receipt (`PaymentReceipt`) in the same window, as paper.
+- **One filled button per view:** Get the address, or Buy with your balance; on a phone while paying, Open in wallet.
+  Cancel payment asks in the foot (`CheckoutAsk`), with Keep waiting filled.
+- **Motion** is one move a stage, transform and opacity only: waiting, the sun on its horizon and its glow breathing; seen,
+  the sun lifts and the amount counts up; done, it clears the horizon and the sky warms. With reduced motion every stage
+  shows at once and only the dots and glints fade.
+- **On a phone** it fills the screen, with what you're buying in one line at the top.
+
 ## Connecting an agent
 
 `routes/connect.tsx`, `features/agents/permissions.ts`, `components/agents.tsx`, `styles/agents.css` (`ac-agent-`). The public

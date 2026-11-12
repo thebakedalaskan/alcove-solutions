@@ -2205,8 +2205,9 @@ the page says why with **Try again**, and offline they show once you're back.
    where a network's minimum is higher). **Get the address** is the one filled button.
 2. **Pay.** "Waiting for your payment", open for 24 hours. **Send exactly** the total, with Copy; the QR code with the USDC
    mark in its middle; the address made for this payment, its first six and last four characters in bold, with **Copy
-   address**; "Only send USDC on Base. Anything else may be lost." On a phone, **Open in wallet** instead of the code. The
-   summary's sun waits on its horizon. You can close this: Pro starts as soon as the payment arrives.
+   address**; "Only send USDC on Base. Anything else may be lost." On a phone, **Open in wallet** instead of the code where
+   the network has a wallet link, else **Copy address**. The summary's sun waits on its horizon. You can close this: Pro
+   starts as soon as the payment arrives.
 3. **Seen.** The payment arrives: "Payment seen", the amount counts up, "Starting Pro. This takes a minute or two.", and the
    line Sent → Seen on Base → Pro starts. The sun lifts. There's nothing to press.
 4. **Done.** The sun clears the horizon and a tick draws in: "You're on Pro", until when, the receipt row with **Receipt**, a
@@ -2229,8 +2230,8 @@ days you have left", and the months start after the last one, so no day is lost.
 
 ### 16.5 More notes for this period
 
-On any plan, **Add 10 hours** (Settings › Plan's **More notes**, or a call whose notes have run out) opens **More notes**: 10
-hours for $15, up to 50 hours at once, paid the same way. They add to this period's notes and lift a stop that ran out of
+On any plan, **Add 10 hours** (Settings › Plan's **More notes**, or a call whose notes have run out) opens **More notes**: 10,
+20 or 50 hours at $15 for each 10, paid the same way. They add to this period's notes and lift a stop that ran out of
 notes; they don't carry into the next period. Done says "10 more hours of notes".
 
 ### 16.6 When a payment isn't right
