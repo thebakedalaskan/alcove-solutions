@@ -188,7 +188,6 @@ const ITEMS: ReadonlyMap<string, Item[]> = new Map([
   ['ws-product', PRODUCT_ITEMS],
   ['ws-design', [{ id: 'empty-states', name: 'Empty states', kind: 'document', parent: null }]]
 ]);
-/** Who in the call can't open each workspace, by first name. */
 
 /** The documents brought to the call, at the top of the list under This call. */
 export const BROUGHT = ['plan', 'checklist'];

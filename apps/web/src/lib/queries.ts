@@ -824,9 +824,12 @@ export function useRenameWorkspace() {
   const qc = useQueryClient();
   return useMutation(renameWorkspaceOptions(api, qc, qk));
 }
-/** Only the requested name overlays the live tree. Once that stream acknowledges it, later people’s renames own it. */
+/**
+ * Only the requested name overlays the live tree. Once that stream acknowledges it, later people’s renames own it. The list of
+ * workspaces is read only while a rename of this one is on its way, so somewhere that only shows the name, such as a call
+ * screen, never lists them all.
+ */
 export function useWorkspaceName(id: string, liveName: string, signedIn: boolean) {
-  const list = useQuery({ ...q.workspaces(), enabled: signedIn }).data;
   const changes = useMutationState({ filters: { mutationKey: ['workspaces', 'rename'] }, select: (mutation) => {
     const v = mutation.state.variables;
     return v && typeof v === 'object' && 'id' in v && v.id === id && 'name' in v && typeof v.name === 'string'
@@ -837,6 +840,7 @@ export function useWorkspaceName(id: string, liveName: string, signedIn: boolean
   useEffect(() => { if (latest?.status === 'success' && latest.name === liveName) caught.current = latest.n; }, [latest?.n, latest?.name, latest?.status, liveName]);
   const pending = changes.some((change) => change.status === 'pending');
   const waiting = latest?.status === 'success' && latest.n > caught.current && latest.name !== liveName;
+  const list = useQuery({ ...q.workspaces(), enabled: signedIn && (pending || waiting) }).data;
   const name = (pending || waiting) ? list?.find((space) => space.id === id)?.name ?? liveName : liveName;
   return { name, state: pending ? 'saving' : latest?.status === 'error' ? 'failed' : latest?.status === 'success' ? 'saved' : 'quiet' } as const;
 }

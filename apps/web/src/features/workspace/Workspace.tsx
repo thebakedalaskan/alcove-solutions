@@ -216,8 +216,8 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
   /* Going anywhere puts a phone's list away, even to what's already open behind it, and going yourself stops following. */
   const go = useCallback<WorkspaceProps['onGo']>((to, how) => { stopFollowing(); setPhoneList(to.kind === 'home'); onGo(to, how); }, [onGo, stopFollowing]);
   /*
-   * Something outside the workspace needs a document from it, such as someone asking to see it: the one you were last in here,
-   * if you can share it, or else the list to pick one from, on a phone too. Only for each ask after this opened.
+   * Something outside the workspace wants it shown, such as a board's Saved in when the board is kept here: where you left it,
+   * the document you were last in here, or else its list, on a phone too. Only for each want after this opened.
    */
   const wanted = call?.list.wanted ?? 0;
   const seenWant = useRef(wanted);
@@ -229,7 +229,7 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
     const { tree: t, owner: o, go: to } = forWant.current;
     const lastId = placesOf(o).documents[workspaceId];
     const last = lastId === undefined ? undefined : t.all.get(lastId);
-    if (last && last.kind === 'document' && last.role === 'edit' && last.trashedAt === null) to({ kind: 'document', id: last.id });
+    if (last && last.kind === 'document' && last.trashedAt === null) to({ kind: 'document', id: last.id });
     else setPhoneList(true);
   }, [wanted, workspaceId]);
   useTagToasts(store, view.mentions, tree, at, say, go);

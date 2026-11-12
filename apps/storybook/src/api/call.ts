@@ -134,10 +134,10 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
   /** The organizer's connection dropped: since when, for the stretch the notes mark. */
   private away: { from: string; at: number; organizer: Person; seat: string } | null = null;
   /**
-   * The board open in each part of the call, as the server keeps them (`main`, or a room's ID): where it's kept and who opened
-   * it, by participant ID; what rooms were opened with to work on; and each room's own board, which comes back when they close.
+   * The board open in each part of the call, as the server keeps them (`main`, or a room's ID): where it's kept, who opened it,
+   * by participant ID, and whether `everyone` can edit it, as one the call made, or a saved one someone let everyone into; what
+   * rooms were opened with to work on; and each room's own board, which comes back when they close.
    */
-  /** The board open in each part of the call: `everyone` can edit it, as one the call made, or a saved one someone let everyone into. */
   private boards = new Map<string, { at: { workspaceId: string; documentId: string } | null; openedBy: string; everyone: boolean }>();
   private boardMode: BreakoutBoardMode = 'none';
   private roomBoards = new Map<string, { workspaceId: string; documentId: string; name: string; who: string[] }>();

@@ -60,7 +60,7 @@ export interface WorkspaceCall {
   /**
    * Whether the list shows, which is the call's to say (panels.ts): `off`, or only over the page for now (`peek`). `onToggle` is
    * the list's button. `onShow` is for whatever needs the list showing, such as naming a folder: it never hides it. `wanted`
-   * goes up each time something outside the workspace needs the list, such as someone asking to see it: a phone shows it too.
+   * goes up each time something outside the workspace wants it shown, such as a board's Saved in: a phone shows it too.
    */
   list: { off: boolean; peek: boolean; onToggle: () => void; onShow: () => void; wanted: number };
   /** Where what the workspace says goes: a call has one place for toasts. */

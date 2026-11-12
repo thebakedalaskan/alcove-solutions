@@ -107,7 +107,7 @@ export function useWorkspacePanel(session: CallSession, workspace: CallWorkspace
       /** ⌘K: Find, with the workspace opened for it. */
       find: () => { reveal(); setFinding(true); },
       found: () => setFinding(false),
-      /** Opens it on something to share: the document last open there, or its list to pick one, on a phone too (`WorkspaceCall.list.wanted`). */
+      /** Opens it where you left it, for a board's Saved in: the document last open there, or its list, on a phone too (`WorkspaceCall.list.wanted`). */
       wantList: () => { reveal(); setListWanted((n) => n + 1); },
       /** Takes away what the workspace said last, for something it would sit over, such as the call ending. */
       hush: () => { said.current?.(); said.current = null; },

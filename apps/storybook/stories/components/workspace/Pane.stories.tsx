@@ -16,7 +16,7 @@ import { DocOf, ListOf, NEW_SPACE, first, useWorkspace } from './parts';
 
 type PaneArgs = ComponentProps<typeof WsPane>;
 type Update = (next: Partial<PaneArgs>) => void;
-/** Where a story starts besides its args: which workspace, what's open, and whether Art organizes the call. */
+/** Where a story starts besides its args: which workspace, and what's open. */
 interface Start { space?: string | undefined; start?: string | undefined }
 
 const onPhone = () => window.matchMedia('(max-width: 640px)').matches;
