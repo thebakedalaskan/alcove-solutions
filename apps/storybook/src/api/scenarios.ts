@@ -393,7 +393,17 @@ export const TEAM_INVITE_SECRET = 'VandelayInviteStorybook0001';
 function onTeam(team: TeamWorld, change: (t: TeamWorld, w: World) => void = () => {}): World {
   const w = busy();
   withPayments(w);
-  w.plan = { ...freePlan(), balance: { microUsd: 180_000_000, history: [{ id: 'sb-entry-1', at: iso(-12, 9, 0), label: 'Added, 300 USDC', microUsd: 300_000_000 }, { id: 'sb-entry-team', at: iso(-12, 9, 5), label: 'Team, 3 licenses', microUsd: -120_000_000 }] } };
+  // The licenses are the admin's to buy: a member's balance never paid for any.
+  const admin = team.members.some((m) => m.person === ART && m.role === 'admin');
+  w.plan = {
+    ...freePlan(),
+    balance: {
+      microUsd: 180_000_000,
+      history: admin
+        ? [{ id: 'sb-entry-1', at: iso(-12, 9, 0), label: 'Added, 300 USDC', microUsd: 300_000_000 }, { id: 'sb-entry-team', at: iso(-12, 9, 5), label: 'Team, 3 licenses', microUsd: -120_000_000 }]
+        : [{ id: 'sb-entry-1', at: iso(-12, 9, 0), label: 'Added, 180 USDC', microUsd: 180_000_000 }]
+    }
+  };
   w.myTeam = team;
   change(team, w);
   // A team note of Art's own: the standup, visible to the team.
@@ -464,7 +474,7 @@ export const SCENARIOS: Record<ScenarioName, Scenario> = {
     make: () => { const world = busy(); withTeamInvite()(world); return { world, opening: {} }; }
   },
   'no-team': {
-    title: 'Not on a team', about: 'The busy afternoon: Vandelay’s directory, and Start a team on the Team page and on Team’s card in Settings › Plan.',
+    title: 'Not on a team', about: 'The busy afternoon: Vandelay’s directory, and Start a team on the Team page.',
     make: () => { const world = busy(); withPayments(world); world.plan = withBalance(); return { world, opening: {} }; }
   },
   'plan-low': {
