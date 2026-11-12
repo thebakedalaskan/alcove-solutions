@@ -48,6 +48,7 @@
 .answer { margin-bottom: 12px; padding: 18px 20px; animation: ac-rise var(--duration-3) var(--ease-out) both; }
 .answer .q { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-3); font-weight: 600; margin-bottom: 8px; }
 .answer p { font-size: 15.5px; line-height: 1.6; }
+.answer .wait { display: inline-flex; align-items: center; gap: 10px; color: var(--ink-3); }
 
 /* Shared screens in a note: "On screen" chips and the viewer. */
 .scr-ref { display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 8px; border-radius: 7px; background: var(--horizon-soft); color: var(--horizon); font: 500 12px/1 var(--font-sans); white-space: nowrap; transition: box-shadow var(--duration-1); }

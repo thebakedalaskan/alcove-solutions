@@ -50,14 +50,6 @@ export function NavItemContent({ icon, label, count }: { icon: IconName; label: 
   return <><Icon name={icon} /><span>{label}</span>{count ? <span className="count">{count}</span> : null}</>;
 }
 
-/**
- * One line to type in, for finding something: the palette's. Put an input with className="text" inside, and the
- * action after it. Anything that needs more than a line asks one thing at a time in a Modal instead.
- */
-export function ComposerLine({ icon = 'cal', children, action, className }: { icon?: IconName; children: ReactNode; action?: ReactNode; className?: string | undefined }) {
-  return <div className={cn('ac-composer', className)}><Icon name={icon} size={20} />{children}{action}</div>;
-}
-
 /** A labelled text input, for the rare places that need one. A dialog asks one thing at a time: several questions are steps of one modal, not a stack of fields. */
 export const Field = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement> & { label: string; hint?: ReactNode }>(function Field({ label, hint, id, className, ...rest }, ref) {
   const auto = useId();

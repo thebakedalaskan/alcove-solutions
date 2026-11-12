@@ -19,7 +19,7 @@
 .ac-clamp-1, .ac-clamp-2 { display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; min-width: 0; white-space: normal; overflow-wrap: anywhere; }
 .ac-clamp-1 { -webkit-line-clamp: 1; word-break: break-all; }
 .ac-clamp-2 { -webkit-line-clamp: 2; }
-:where(.ac-btn, .ac-icon-btn, .ac-provider, .ac-tab, .ac-seg button, .ac-dock-btn, .ac-dock-leave, .ac-nav-item, .ac-input, .ac-composer):focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+:where(.ac-btn, .ac-icon-btn, .ac-provider, .ac-tab, .ac-seg button, .ac-dock-btn, .ac-dock-leave, .ac-nav-item, .ac-input):focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 
 /* ---- Button ---- */
 .ac-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 44px; padding: 0 18px; border: 0; border-radius: var(--radius-pill); font: 600 14px/18px var(--font-sans); cursor: pointer; white-space: nowrap; transition: background-color var(--duration-1) var(--ease-out), color var(--duration-1) var(--ease-out), transform var(--duration-1) var(--ease-out), box-shadow var(--duration-1), filter var(--duration-1); }
@@ -252,12 +252,7 @@
 .ac-nav-item[aria-current="page"] { background: color-mix(in srgb, var(--ink) 12%, transparent); color: var(--ink); }
 .ac-nav-item .count { margin-left: auto; font: 500 12px/1 var(--font-sans); font-variant-numeric: tabular-nums; color: var(--ink-3); }
 
-/* ---- The palette's line, Field ---- */
-.ac-composer { display: flex; align-items: center; gap: 12px; min-height: 60px; padding: 0 8px 0 18px; border-radius: var(--radius-lg); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line), var(--shadow-2); color: var(--ink-3); font: 400 15.5px/1.4 var(--font-sans); }
-.ac-composer > .ac-i { color: var(--sun-text); }
-.ac-composer .text { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ac-composer input.text { height: 58px; border: 0; outline: 0; background: transparent; color: var(--ink); font: inherit; }
-.ac-composer input.text::placeholder { color: var(--ink-3); }
+/* ---- Field ---- */
 .ac-field { display: grid; gap: 6px; }
 .ac-field label { font: 600 13.5px/1.2 var(--font-sans); color: var(--ink); }
 .ac-field .hint { font-size: 12.5px; color: var(--ink-3); }

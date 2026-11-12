@@ -1,5 +1,5 @@
 import {
-  NoteMomentSchema, NoteRoomParamSchema, errorCode, errorMessage, firstName, minutesLabel, type ActionItem, type ActionPatch, type Chapter, type Decision, type DecisionPatch, type Note, type NoteProgress, type Person,
+  NoteMomentSchema, NotePlayParamSchema, NoteRoomParamSchema, errorCode, errorMessage, firstName, minutesLabel, type ActionItem, type ActionPatch, type Chapter, type Decision, type DecisionPatch, type Note, type NoteProgress, type Person,
   type PersonalPoint, type Question, type QuestionPatch, type TranscriptLine
 } from '@alcove/api';
 import { Button, Dots, Evening, Faces, Icon, Modal, Notice, RecDot, Select, cn, useToast } from '@alcove/ui';
@@ -39,14 +39,16 @@ import { isUnencrypted, modelOf, modelOptions, modelValue } from '~/lib/aiModels
 
 export const Route = createFileRoute('/_app/notes/$noteId')({
   /**
-   * `at`: a moment in the recording, in seconds, from a link in an answer or a series: the page opens the player
-   * there without playing, and the transcript at the line said then. `room`: the breakout room's section the link came
+   * `at`: a moment in the recording, in seconds, from a link in an answer, a search or a series: the page opens the
+   * player there, and the transcript at the line said then. It doesn't play unless `play` says to, as Play from in the
+   * palette does; once it has, `play` leaves the address (useOpenAt). `room`: the breakout room's section the link came
    * to, which opens, with its own transcript at `at`.
    */
-  validateSearch: (s: Record<string, unknown>): { at?: number | undefined; room?: string | undefined } => {
+  validateSearch: (s: Record<string, unknown>): { at?: number | undefined; room?: string | undefined; play?: true | undefined } => {
     const at = NoteMomentSchema.safeParse(s['at']);
     const room = NoteRoomParamSchema.safeParse(s['room']);
-    return { at: at.success ? at.data : undefined, room: room.success ? room.data : undefined };
+    const play = NotePlayParamSchema.safeParse(s['play']);
+    return { at: at.success ? at.data : undefined, room: room.success ? room.data : undefined, play: play.success ? play.data : undefined };
   },
   loader: ({ context, params }) => (params.noteId === 'example' ? undefined : context.queryClient.ensureQueryData(q.note(params.noteId))),
   errorComponent: Missing,
@@ -58,10 +60,10 @@ const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 function NotePage() {
   const { noteId } = Route.useParams();
-  const { at, room } = Route.useSearch();
+  const { at, room, play } = Route.useSearch();
   const me = useQuery(q.session()).data?.user;
   if (noteId === 'example') return me ? <Example me={me} /> : null;
-  return <Stored key={noteId} id={noteId} me={me?.email} at={at} room={room} />;
+  return <Stored key={noteId} id={noteId} me={me?.email} at={at} room={room} play={play === true} />;
 }
 
 interface GoneInfo { kind: 'deleted' | 'removed'; transcript: boolean; audio: string | null; screens: number; rooms: number; roomsSaid: boolean; organizer: string }
@@ -69,7 +71,7 @@ const NO_AUDIO: Note['audio'] = [];
 /** "The summary, the transcript and 4 min of audio" */
 const asList = (parts: string[]) => (parts.length < 2 ? parts.join('') : `${parts.slice(0, -1).join(', ')} and ${parts.at(-1) ?? ''}`);
 
-function Stored({ id, me, at, room }: { id: string; me: string | undefined; at: number | undefined; room: string | undefined }) {
+function Stored({ id, me, at, room, play }: { id: string; me: string | undefined; at: number | undefined; room: string | undefined; play: boolean }) {
   const qc = useQueryClient();
   const [gone, setGone] = useState<GoneInfo | null>(null);
   // A failed read keeps the last answer, which would keep showing notes someone may not read any more.
@@ -78,7 +80,7 @@ function Stored({ id, me, at, room }: { id: string; me: string | undefined; at: 
   useNoteOnScreen(id);
   if (gone) return <Gone {...gone} />;
   if (!note) return null;
-  return <NoteView note={note} me={me} at={at} room={room} onGone={setGone} />;
+  return <NoteView note={note} me={me} at={at} room={room} play={play} onGone={setGone} />;
 }
 
 /*
@@ -121,17 +123,25 @@ function useProgress(note: Note): NoteProgress | null {
 }
 
 /**
- * Opens the player at the moment the address asks for (`?at=`), without playing; once for each note and moment,
- * so a refresh doesn't move it back.
+ * Opens the player at the moment the address asks for (`?at=`), once for each note and moment, so the note being read
+ * again doesn't move it back. With `play` (Play from in the palette) it plays from there, then `played` takes `play` out
+ * of the address: going Back to the page or reloading it opens there without playing, and Play from on the moment that's
+ * open plays it again.
  */
-function useOpenAt(noteId: string, at: number | undefined, player: PlayerState) {
+function useOpenAt(noteId: string, at: number | undefined, play: boolean, player: PlayerState, played: () => void) {
   const done = useRef<string | null>(null);
   const { seek, total } = player;
   useEffect(() => {
-    if (at === undefined || total <= 0 || done.current === `${noteId}@${at}`) return;
-    done.current = `${noteId}@${at}`;
-    seek(at);
-  }, [at, noteId, seek, total]);
+    if (at === undefined || total <= 0) return;
+    const moment = `${noteId}@${at}`;
+    const asked = play ? `${moment}+play` : moment;
+    if (done.current === asked) return;
+    // `play` just left the address: it's the moment that's open, played already.
+    if (!play && done.current === `${moment}+play`) { done.current = moment; return; }
+    done.current = asked;
+    seek(at, play);
+    if (play) played();
+  }, [at, noteId, play, played, seek, total]);
 }
 
 /** Which lines something in the notes came from. A decision someone said wasn't one no longer counts. */
@@ -145,7 +155,7 @@ function kindsOf(note: Note): LineKinds {
 /** A line a call hasn't finished can't know its end, so it's drawn to the next quarter of an hour. */
 const QUARTER = 900;
 
-function NoteView({ note, me, at, room, onGone }: { note: Note; me: string | undefined; at: number | undefined; room: string | undefined; onGone: (g: GoneInfo) => void }) {
+function NoteView({ note, me, at, room, play, onGone }: { note: Note; me: string | undefined; at: number | undefined; room: string | undefined; play: boolean; onGone: (g: GoneInfo) => void }) {
   const toast = useToast();
   const navigate = Route.useNavigate();
   const del = useDeleteNote();
@@ -162,7 +172,9 @@ function NoteView({ note, me, at, room, onGone }: { note: Note; me: string | und
   // A call that doesn't keep its recording has none to play, whatever is still on its way out.
   const audio = note.kept.recording ? note.audio : NO_AUDIO;
   const player = usePlayer(note.id, audio, note.status === 'recording');
-  useOpenAt(note.id, at, player);
+  /* Play from plays once: `play` leaves the address as soon as it has, and the page stays where it is. */
+  const played = useCallback(() => void navigate({ search: (s) => ({ ...s, play: undefined }), hash: true, replace: true, resetScroll: false, hashScrollIntoView: false }), [navigate]);
+  useOpenAt(note.id, at, play, player, played);
   useSpaceToPlay(player);
   const progress = useProgress(note);
   const [going, setGoing] = useState(false);

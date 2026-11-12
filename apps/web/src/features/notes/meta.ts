@@ -1,14 +1,10 @@
 import { isAcceptedFollowUp, firstName, type ActionItem, type Note, type NoteSummary, type Person, type Received, type Recipient } from '@alcove/api';
 import { sameEmail, someNames } from '~/lib/people';
-import { noteWhen } from '~/lib/time';
+import { noteDay, noteWhen } from '~/lib/time';
 
-/** What a note's row says under its title. */
-export function noteMeta(n: NoteSummary): string {
-  const where = n.kind === 'room' ? 'In the room · ' : '';
-  if (n.status === 'recording') return `${where}Recording`;
-  if (n.status === 'pending') return `${where}Waiting to be written`;
-  return `${where}${n.totalActions ? `${n.totalActions} follow-up${n.totalActions === 1 ? '' : 's'}` : 'No follow-ups'}`;
-}
+/** What a note's row says under its title: its day, and how it came to you (receivedLine) or that it was in the room. */
+export const noteLine = (n: NoteSummary): string =>
+  [noteDay(n.startedAt), ...(n.received ? [receivedLine(n.received)] : n.kind === 'room' ? ['In the room'] : [])].join(' · ');
 
 /** How you came to have someone else's note: "Shared by Theo with Leads", "Shared by Priya", "From Lena’s link", or "From Kofi’s call". */
 export function receivedLine(r: Received): string {

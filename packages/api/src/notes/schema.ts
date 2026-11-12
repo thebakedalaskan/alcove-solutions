@@ -127,11 +127,22 @@ export type NoteSummary = z.infer<typeof NoteSummarySchema>;
 
 
 /** A line of what was said that a search found: where it is, who said it, the room it was said in, and the words. */
-export const NoteSaidSchema = TranscriptLineSchema.pick({ id: true, at: true, speaker: true, room: true, text: true });
+export const NoteSaidSchema = TranscriptLineSchema.pick({ id: true, at: true, speaker: true, room: true, text: true }).extend({
+  /**
+   * What the line became in the notes: it's what a decision that isn't rejected rests on (one of the decision's `lines`),
+   * or else what a follow-up rests on (one in `actions`, not a suggestion waiting for review), in the part of the call it
+   * was said in (a breakout room's line, in that room's section). Absent when nothing in the notes rests on it.
+   */
+  made: z.enum(['decision', 'follow-up']).optional()
+});
 
 export type NoteSaid = z.infer<typeof NoteSaidSchema>;
 
-/** A note as a search finds it: what was said that matched, the lines with most of its words first (empty without a search), and how many lines did in all. */
+/**
+ * A note as a search finds it: what was said that matched, the lines with most of its words first, then the earliest
+ * (empty without a search; everything they said, in time order, when the search is only someone's lines), and how many
+ * lines did in all.
+ */
 export const NoteFoundSchema = NoteSummarySchema.extend({ said: z.array(NoteSaidSchema), saidCount: z.number() });
 
 export type NoteFound = z.infer<typeof NoteFoundSchema>;
@@ -326,3 +337,9 @@ export const NoteMomentSchema = z.number().min(0);
 
 /** A breakout room's section of a note, as a link opens it (`/notes/<id>?room=<room ID>`). From the address bar too. */
 export const NoteRoomParamSchema = IDSchema.min(1).max(64);
+
+/**
+ * That a link to a moment plays it from there (`/notes/<id>?at=245&play=true`), as Play from in the palette opens it.
+ * From the address bar too, where it can arrive as the word: true or 'true' both mean play, and anything else doesn't.
+ */
+export const NotePlayParamSchema = z.union([z.literal(true), z.literal('true')]).transform((): true => true);

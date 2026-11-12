@@ -204,6 +204,11 @@ export const roomAnchor = (id: string) => `room-${id}`;
 /** The parts of a link to a note that open it at a breakout room's section, or at a moment, when it has one. */
 export const inNote = (at: number | undefined, room: RoomRef | undefined) =>
   (at !== undefined ? atMoment(at, room) : room ? { search: { room: room.id }, hash: roomAnchor(room.id), hashScrollIntoView: CENTER } : {});
+/** The parts of a link to a note that open it at a moment and play the call from there, as Play from in the palette does. */
+export const playIn = (at: number, room: RoomRef | undefined) => {
+  const moment = atMoment(at, room);
+  return { ...moment, search: { ...moment.search, play: true as const } };
+};
 
 /**
  * Links to notes under this open in a new tab, each still opened with the reader's access checked: from a call or its

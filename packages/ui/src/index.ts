@@ -25,6 +25,7 @@ export * from './components/capture';
 export * from './components/ringing';
 export * from './components/screens';
 export * from './components/app';
+export * from './components/palette';
 export * from './components/settings';
 export * from './components/agents';
 export * from './components/guidance';
