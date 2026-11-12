@@ -22,14 +22,14 @@ whale = re.sub(r'<path([^>]*?)\s*/>', r'<path\1></path>', whale)
 
 clouds = {}
 block = cut('const MOMENTS: Record<Moment, Drawing> = {', '\n};\n')
-for m in re.finditer(r'\b(home|team|notes|note|settings|record): \{.*?clouds: \[(.*?)\]', block, re.S):
+for m in re.finditer(r'\b(home|team|notes|drive|plans|note|settings|record): \{.*?clouds: \[(.*?)\]', block, re.S):
     clouds[m.group(1)] = m.group(2)
 cloudjs = '{' + ', '.join(f"{k}: [{v}]" for k, v in clouds.items()) + '}'
 
 life = css[css.index('/* ------------------------------------------------------------ what passes through */'):]
 life = life.replace('.dark .hz-lamp, .hz[data-moment="record"] .hz-lamp', '.lf[data-night="true"] .hz-lamp')
 life = life.replace('.dark .hz-shoot, .hz[data-moment="record"] .hz-shoot', '.lf[data-night="true"] .hz-shoot')
-life = life.replace('.hz[data-moment="notes"] .hz-sail, .hz[data-moment="settings"] .hz-sail', '.lf[data-moment="notes"] .hz-sail, .lf[data-moment="settings"] .hz-sail')
+life = re.sub(r'\.hz\[data-moment="(\w+)"\] \.hz-sail', r'.lf[data-moment="\1"] .hz-sail', life)
 wind = re.search(r'@keyframes hz-wind \{.*?\n', css).group(0)
 puff = css[css.index('/* A cloud rests where it'):css.index('@keyframes hz-rise')]
 head = '''
