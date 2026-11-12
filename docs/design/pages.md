@@ -282,10 +282,21 @@ The last of the sunset, with the plans on the water: a page you compare on, so m
   lines, buttons and facts line up. Each is at most a third of 1120px, so Free and Pro stand together in the middle, and a
   third card joins when Team is offered. Pro is lifted: raised, a firmer edge, a 2px warm edge on top. A warm chip marks the
   plan you're on (never Free, whose button area says it) or "Ends in N days".
-- **One filled button:** Get Pro on Free, Extend only while Pro is ending. Both open checkout over the page.
+- **One filled button:** Get Pro on Free, Extend only while Pro is ending. Both open checkout over the page. On a team
+  license Pro isn't sold: its card says "Not while you’re on your team’s plan", quietly, where the button would be.
 - **Under them:** On every plan, as chips, and the paying line with its wallet.
 - **States:** waiting cards, failed with Try again, offline. On a phone the cards stand one under another.
 - The side panel's foot row is the place you're on while you're here.
+- **The first time** (the plan choice, `features/plans/PlanChoice.tsx`): Home opens on Plans once, in its place, while the
+  server says the plans haven't been shown (`Plan.choose`): every new account, after its arrival, and once every account from
+  before plans. Its head is a short title in the page's own type (`dusk-title`) with one line under it (`pl-lede`), in place
+  of Plans: "Choose a plan" and how the plans differ for someone with no notes yet, "Alcove has plans now" and which one
+  they're on for someone who has used Alcove. The head and the sky are one block down to the horizon (`pl-lead`), so the
+  switch keeps its place over the sun however long the line. The plan you're on leads straight on, quiet, on its card
+  (Continue on Free, there even while the prices wait, and beside Try again or offline); Get Pro stays the one filled button,
+  and checkout opens over it as it does on Plans. Home follows once something bought is yours and checkout has closed.
+  Where it shows is decided in one place, `features/plans/choice.ts`: Home only, never over a deep link, and never twice in a
+  tab. Once the plans have been on screen there, or on Plans, the server is told. The tour of Home waits for Home.
 
 ## Checkout
 

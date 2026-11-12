@@ -70,6 +70,8 @@ export interface PlanCardWaiting extends PlanCardBase {
   waiting: true;
   /** How many facts will come, so nothing moves when they do. */
   facts?: number | undefined;
+  /** What can be done before the prices come, in the button's place (the plan choice's way on). Otherwise a bar waits there. */
+  action?: ReactNode;
 }
 
 export type PlanCardProps = PlanCardShown | PlanCardWaiting;
@@ -93,7 +95,9 @@ export function PlanCard(props: PlanCardProps) {
         <p className="pl-sub">{sub}</p>
         <p className="pl-price" aria-hidden="true"><i className="pl-wait is-price" /></p>
         <p className="pl-bill" aria-hidden="true"><i className="pl-wait is-bill" /></p>
-        <div className="pl-act" aria-hidden="true"><i className="pl-wait is-act" /></div>
+        {has(props.action)
+          ? <div className="pl-act">{props.action}</div>
+          : <div className="pl-act" aria-hidden="true"><i className="pl-wait is-act" /></div>}
         <ul className="pl-facts" aria-hidden="true" style={{ '--facts': n }}>
           {Array.from({ length: n }, (_, i) => <li key={i} className="pl-fact"><i className="pl-wait is-icon" /><i className="pl-wait is-line" /></li>)}
         </ul>
