@@ -84,6 +84,12 @@ export const briefOf = (m: NoteManifest, organizer: Person, people: Person[]): B
   deleted: !m.keep.transcript && m.writtenAt !== null, rooms: m.rooms
 });
 
+/**
+ * What isn't part of the notes, said the same way to each prompt that writes them: small talk, and talk about the call itself.
+ * Plans that are the meeting's business stay in: "let's meet Thursday about the launch" is a follow-up.
+ */
+const SMALL_TALK = `Small talk isn't part of the notes: greetings, how people are, the weather, weekends and plans that have nothing to do with the meeting, and talk about the call itself ("can you hear me?", "you're on mute").`;
+
 /** What people settle in written notes: a part's decisions, open questions and follow-ups. */
 export type Settled = Pick<NoteManifest, 'decisions' | 'questions' | 'actions'>;
 const DECIDED: Record<Decision['state'], string> = { proposed: 'proposed', confirmed: 'confirmed', rejected: 'said not to be decided', superseded: 'no longer holds' };
@@ -377,6 +383,7 @@ summary: two or three plain sentences on what the meeting was about and where it
 decisions: what the people agreed or settled, one short sentence each. At most ${keeps(style).decisions}: the ones that matter most. An empty list if nothing was decided; something only suggested is not a decision.
 questions: what someone asked that the meeting didn't answer or settle by its end, one short question each. At most ${keeps(style).questions}: the ones that matter most. An empty list if every question was answered.
 actions: what someone said they, or someone else, would do, at most ${keeps(style).actions}: the ones that matter most. text starts with a verb, like "Send the new screens". owner is that person's name as the transcript gives it, or null if it doesn't say. due is when, as it was said ("Wednesday", "end of March"), or null.
+${SMALL_TALK} Never make a decision, question, action or chapter of it, and leave it out of the summary: a meeting that was only small talk gets one sentence that says so.
 Each transcript line starts with its number, as in "L12 [03:41] Name: words". lines: the numbers of the lines each decision, question or action comes from, one to three of them, the ones where it was said, starting with the line where it first came up. against: the numbers of any lines where someone disagreed with it or said otherwise, at most two; an empty list if nobody did. Only numbers of lines you were sent. What you write is only proposed: people confirm decisions, and owners agree to their actions themselves. Never say someone agreed to something they didn't say.
 chapters: the parts of the meeting in order, two to six of them (one for a short meeting). line is the number of the line the part starts with, as in the 12 of "L12 [03:41] Name: words", and only a number you were sent. title is two to five words; summary is one short sentence.
 suggestedQuestions: three short questions someone might ask about this meeting afterwards.
@@ -660,7 +667,7 @@ export async function draft(cfg: Config, b: Brief, style: NotesStyle): Promise<W
 const DETAILS_PROMPT = (style: NotesStyle, paragraphs: number) => `You write the full summary of a meeting: a longer account than its short summary, for someone who wasn't there and wants to know what happened without reading the transcript. Reply with a single JSON object and nothing else, in this shape:
 {"details": string}
 
-details: about ${paragraphs} short paragraph${paragraphs === 1 ? '' : 's'} of plain prose, separated by a blank line, following the meeting in order, one topic to a paragraph. For each topic say what was discussed and the main points people made, what they concluded or decided, and what was left open. When a shared screen mattered to a topic (a line "[mm:ss] [screen N" in the transcript), say what it showed, in a few words, as context. Name people as the transcript does, and say "they" when you need a pronoun for someone: never guess at anyone's gender from their name. No headings, lists or markdown. Keep it a summary: the main content, not everything that was said. Fewer paragraphs when less happened.
+details: about ${paragraphs} short paragraph${paragraphs === 1 ? '' : 's'} of plain prose, separated by a blank line, following the meeting in order, one topic to a paragraph. For each topic say what was discussed and the main points people made, what they concluded or decided, and what was left open. When a shared screen mattered to a topic (a line "[mm:ss] [screen N" in the transcript), say what it showed, in a few words, as context. Name people as the transcript does, and say "they" when you need a pronoun for someone: never guess at anyone's gender from their name. No headings, lists or markdown. Keep it a summary: the main content, not everything that was said. ${SMALL_TALK} Leave it out: a meeting that was only small talk gets one sentence that says so. Fewer paragraphs when less happened.
 
 You're also sent the notes already written for the meeting (its short summary, decisions, open questions, follow-ups and parts): agree with them, and don't contradict what they say was decided.
 ${style.language === 'call' ? 'Write in the language the call was held in.' : `Write in ${LANGUAGE_NAMES[style.language]}.`} Use only what the transcript and its screens say: never invent names, numbers, dates or decisions. Lines without a name come from a recording in a room, where nobody can tell who spoke. A line starting "--" marks a stretch when notes were off or paused and nothing was recorded: never say or guess what happened in it. ${DOUBT} ${SAID_ONLY}`;
@@ -931,6 +938,7 @@ decided: what the people agreed or settled.
 proposed: what someone suggested that hasn't been agreed yet. Something only suggested is never decided.
 open: questions that were asked and haven't been answered yet.
 next: what someone said they, or someone else, would do. owner is that person's name as the transcript gives it, or null if it doesn't say; due is when, as it was said ("Friday"), or null.
+${SMALL_TALK} Never make a decision, suggestion, question or next step of it, and leave it out of the summary: when it's all these lines hold, the summary says only small talk was said in them.
 Each item is one short sentence. lines are the numbers of the transcript lines it comes from, one to three of them; leave out anything you can't point to a line for. Use an empty list when there's nothing. Write in the language of the transcript, and use only what it says: never invent names, numbers or decisions. A line starting "--" marks a stretch when nothing was recorded: never say or guess what happened in it. ${DOUBT} ${SAID_ONLY}`;
 
 /** Said when a catch-up is told the follow-ups so far: it's the model that can tell what it's writing from what it wrote, in any words and any language. */

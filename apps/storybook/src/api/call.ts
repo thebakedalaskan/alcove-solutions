@@ -203,7 +203,7 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     // Joining late, the call's notes have been written already.
     if (this.heard.length || script.followUps?.length) {
       this.notesFor = this.heard.length;
-      this.change((s) => ({ ...s, liveNotes: { ...s.liveNotes, notes: this.notesNow(), suggestions: this.suggestionsNow(), writing: false, error: null } }));
+      this.change((s) => ({ ...s, liveNotes: { ...s.liveNotes, notes: this.notesNow(), suggestions: this.suggestionsNow(), writing: false, error: this.notesError() } }));
     }
     // The organizer back after someone hosted in their place hosts again at once, and hears who did.
     const stoodIn = script.door?.standIn;
@@ -281,6 +281,7 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
         return;
       }
       case 'notes': this.capture(b.mode); return;
+      case 'host-cant-hear': this.cantHear(b.records); return;
       case 'not-now': this.change((s) => ({ ...s, capture: { ...s.capture, requests: s.capture.requests.filter((r) => r.participantId !== this.me.id), asked: s.capture.asked ? { state: 'declined', at: new Date().toISOString() } : null } })); return;
       case 'rooms': this.opensRooms(b.rooms, b.minutes, b.board); return;
       case 'message-rooms': this.messageRooms(b.text); return;
@@ -508,7 +509,7 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
       this.after(1500, () => {
         this.writing = false;
         this.notesFor = this.heard.length;
-        this.change((s) => ({ ...s, liveNotes: { ...s.liveNotes, notes: this.notesNow(), suggestions: this.suggestionsNow(), writing: false, error: null } }));
+        this.change((s) => ({ ...s, liveNotes: { ...s.liveNotes, notes: this.notesNow(), suggestions: this.suggestionsNow(), writing: false, error: this.notesError() } }));
         this.writeNotesSoon();
       });
     });
@@ -539,6 +540,11 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     };
   }
 
+  /** What the live notes say went wrong: the server's words, while the script has them not written again just now. */
+  private notesError(): string | null {
+    return this.script.notesStale ? 'The notes couldn’t be updated just now. Alcove tries again on its own.' : null;
+  }
+
   /** The script's summary as far as the conversation has got: each sentence once its share of the call has been said. */
   private summaryNow(): string {
     const sentences = (this.script.summary ?? '').match(/[^.!?]+[.!?]+(?:\s|$)/g) ?? [];
@@ -549,6 +555,14 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
   }
 
   /* ---------- what's captured ---------- */
+
+  /** The host's browser can't hear the call: it records on (`records`), so only the transcript stops, or it can do neither. */
+  private cantHear(records: boolean): void {
+    const at = new Date().toISOString();
+    const s = this.getSnapshot();
+    const by = s.capture.transcript.by;
+    this.push({ ...s, capture: { ...s.capture, mode: records ? s.capture.mode : 'unavailable', transcript: part('unavailable', at, by), recording: records ? s.capture.recording : part('unavailable', at, by) } });
+  }
 
   private capture(mode: 'on' | 'off' | 'paused'): void {
     const at = new Date().toISOString();

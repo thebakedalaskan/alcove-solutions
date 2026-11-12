@@ -76,9 +76,12 @@ export function dayWords(date: string, now: Date): string {
   return y === now.getFullYear() ? shortDay(day) : `${shortDay(day)} ${y}`;
 }
 
+/** What a follow-up says for when it's due when nobody said. */
+export const NO_DATE = 'No date';
+
 /** When something's due, in words: the day if it names one, what was said if it doesn't, and No date when nobody said. */
 export function dueWords(due: string | undefined, now: Date): string {
-  if (!due) return 'No date';
+  if (!due) return NO_DATE;
   const date = dateOf(due, now);
   return date ? dayWords(date, now) : due;
 }

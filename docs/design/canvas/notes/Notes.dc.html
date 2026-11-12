@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Notes, on your side</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="call.css">
+<link rel="stylesheet" href="notes.css">
+<script src="icons.js"></script>
+<script src="nc.js"></script>
+<script src="notes.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400..700&amp;family=Newsreader:ital,opsz,wght@0,6..72,300..600;1,6..72,300..600&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<div class="{{rootCls}}">
+<div class="nn">
+
+<div class="nn-head">
+<h2>Notes</h2>
+<button type="button" class="{{n.pill.cls}}" onClick="{{n.pill.click}}" aria-haspopup="dialog" aria-expanded="{{n.pill.expanded}}" aria-label="{{n.pill.aria}}" title="What’s captured"><sc-if value="{{n.pill.dot}}" hint-placeholder-val="{{true}}"><i class="dot" aria-hidden="true"></i></sc-if><sc-if value="{{n.pill.ring}}" hint-placeholder-val="{{false}}"><i class="ring" aria-hidden="true"></i></sc-if><sc-if value="{{n.pill.hasIcon}}" hint-placeholder-val="{{false}}"><svg class="i" width="13" height="13" viewBox="0 0 24 24" aria-hidden="true"><path d="{{n.pill.d}}"></path></svg></sc-if><span class="lb">{{n.pill.label}}</span><svg class="i cv" width="13" height="13" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.down}}"></path></svg></button>
+<span class="nn-sp"></span>
+<button type="button" class="{{n.openCls}}" onClick="{{n.openClick}}" aria-label="Open in the workspace, just for you" title="Open in the workspace · just for you"><svg class="i" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.arrowUpRight}}"></path></svg></button>
+<button type="button" class="{{n.closeCls}}" onClick="{{n.closeClick}}" aria-label="Close Notes" title="Close"><svg class="i" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.x}}"></path></svg></button>
+</div>
+
+<div class="nn-tabs" role="tablist" aria-label="Notes, the transcript, Ask or yours">
+<sc-for list="{{n.tabs}}" as="t" hint-placeholder-count="4"><button type="button" role="tab" class="{{t.cls}}" aria-selected="{{t.sel}}" onClick="{{t.click}}">{{t.label}}</button></sc-for>
+</div>
+
+<sc-if value="{{n.hasBar}}" hint-placeholder-val="{{false}}">
+<div class="{{n.bar.cls}}" role="status">
+<sc-if value="{{n.bar.hasIcon}}" hint-placeholder-val="{{true}}"><svg class="i" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="{{n.bar.d}}"></path></svg></sc-if>
+<sc-if value="{{n.bar.hasFaces}}" hint-placeholder-val="{{false}}"><dc-import name="Faces" who="{{n.bar.faces}}" size="20" max="3" ring="transparent" hint-size="34px,22px"></dc-import></sc-if>
+<p class="tx">{{n.bar.text}}</p>
+<sc-if value="{{n.bar.hasBtns}}" hint-placeholder-val="{{false}}"><span class="bt"><sc-for list="{{n.bar.btns}}" as="b" hint-placeholder-count="1"><button type="button" class="{{b.cls}}" onClick="{{b.click}}"><sc-if value="{{b.hasD}}" hint-placeholder-val="{{false}}"><svg class="i" width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><path d="{{b.d}}"></path></svg></sc-if>{{b.label}}</button></sc-for></span></sc-if>
+</div>
+</sc-if>
+
+<div class="nn-body">
+
+<sc-if value="{{n.isEmpty}}" hint-placeholder-val="{{false}}">
+<div class="{{n.empty.cls}}">
+<sc-if value="{{n.empty.hasArch}}" hint-placeholder-val="{{true}}"><span class="nn-arch"><svg class="i" width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="{{n.empty.d}}"></path></svg></span></sc-if>
+<sc-if value="{{n.empty.hasFaces}}" hint-placeholder-val="{{false}}"><span class="faces"><dc-import name="Faces" who="{{n.empty.faces}}" size="40" max="3" ring="var(--surface)" hint-size="72px,44px"></dc-import></span></sc-if>
+<b>{{n.empty.title}}</b>
+<p>{{n.empty.text}}</p>
+<sc-if value="{{n.empty.hasBtns}}" hint-placeholder-val="{{false}}"><div class="acts"><sc-for list="{{n.empty.btns}}" as="b" hint-placeholder-count="1"><button type="button" class="{{b.cls}}" onClick="{{b.click}}"><sc-if value="{{b.hasD}}" hint-placeholder-val="{{false}}"><svg class="i" width="15" height="15" viewBox="0 0 24 24" aria-hidden="true"><path d="{{b.d}}"></path></svg></sc-if>{{b.label}}</button></sc-for></div></sc-if>
+</div>
+</sc-if>
+
+<sc-if value="{{n.showNotes}}" hint-placeholder-val="{{true}}">
+<sc-if value="{{n.guestLine}}" hint-placeholder-val="{{false}}"><p class="nn-guest"><svg class="i" width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.lock}}"></path></svg>Written from what was said while you were here.</p></sc-if>
+<section class="nn-sec is-sum" aria-label="Summary">
+<div class="nn-sh"><h3>Summary</h3><span class="{{n.fresh.cls}}" title="{{n.fresh.tip}}"><sc-if value="{{n.fresh.writing}}" hint-placeholder-val="{{true}}"><span class="nn-dots" aria-hidden="true"><i></i><i></i><i></i></span></sc-if><sc-if value="{{n.fresh.stale}}" hint-placeholder-val="{{false}}"><svg class="i" width="13" height="13" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.retry}}"></path></svg></sc-if>{{n.fresh.text}}</span></div>
+<p class="{{n.sumCls}}">{{n.summary}}</p>
+<button type="button" class="{{n.moreCls}}" onClick="{{n.moreClick}}">{{n.moreLabel}}</button>
+</section>
+
+<section class="nn-sec is-dec" aria-label="Decided">
+<div class="nn-sh"><h3>Decided</h3><span class="n">{{n.decCount}}</span></div>
+<sc-for list="{{n.decided}}" as="d" hint-placeholder-count="2"><div class="nn-row"><span class="nn-dia" aria-hidden="true"></span><p class="tx">{{d.t}}</p><button type="button" class="{{d.tCls}}" onClick="{{d.seek}}" title="Open the transcript here">{{d.at}}</button></div></sc-for>
+</section>
+
+<section class="nn-sec is-fol" aria-label="Follow-ups">
+<div class="nn-sh"><h3>Follow-ups</h3><sc-if value="{{n.hasFollow}}" hint-placeholder-val="{{true}}"><span class="n">{{n.folCount}}</span></sc-if><span class="nn-sp"></span><sc-if value="{{n.canAdd}}" hint-placeholder-val="{{true}}"><button type="button" class="{{n.addCls}}" onClick="{{n.addClick}}" aria-label="Add a follow-up" title="Add a follow-up"><svg class="i" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.plus}}"></path></svg></button></sc-if></div>
+<sc-for list="{{n.follow}}" as="f" hint-placeholder-count="2">
+<div class="{{f.cls}}">
+<button type="button" class="{{f.ckCls}}" onClick="{{f.tick}}" aria-pressed="{{f.pressed}}" aria-label="{{f.ckLabel}}"><svg class="i" width="12" height="12" viewBox="0 0 24 24" aria-hidden="true" style="stroke-width: 3"><path d="{{I.check}}"></path></svg></button>
+<div class="tx"><p>{{f.t}}</p><span class="mt"><dc-import name="Faces" who="{{f.who}}" size="16" ring="transparent" hint-size="16px,18px"></dc-import><span>{{f.name}}</span><sc-if value="{{f.hasDue}}" hint-placeholder-val="{{true}}"><span class="due">{{f.due}}</span></sc-if></span></div>
+<button type="button" class="{{f.tCls}}" onClick="{{f.seek}}" title="Open the transcript here">{{f.at}}</button>
+</div>
+</sc-for>
+<sc-if value="{{n.adding}}" hint-placeholder-val="{{false}}">
+<div class="nn-row nn-adding">
+<span class="nn-ck" aria-hidden="true"></span>
+<div class="tx"><label class="nn-addf"><input type="text" placeholder="What needs doing?" aria-label="What needs doing"></label><span class="mt"><button type="button" class="nn-chip is-sm"><svg class="i" width="13" height="13" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.user}}"></path></svg>Who</button><button type="button" class="nn-chip is-sm"><svg class="i" width="13" height="13" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.cal}}"></path></svg>When</button><span class="nn-sp"></span><button type="button" class="nn-btn is-xs is-quiet" onClick="{{n.addCancel}}">Cancel</button><button type="button" class="{{n.addDoneCls}}" onClick="{{n.addDone}}">Add</button></span></div>
+<span></span>
+</div>
+</sc-if>
+<sc-if value="{{n.noFollow}}" hint-placeholder-val="{{false}}"><p class="nn-quiet">Nothing to do yet.</p></sc-if>
+<sc-if value="{{n.hasSug}}" hint-placeholder-val="{{true}}">
+<div class="nn-sugh"><span>Suggested from the call</span></div>
+<sc-for list="{{n.sug}}" as="g" hint-placeholder-count="2">
+<div class="nn-row is-sug">
+<span class="nn-ck is-sug" aria-hidden="true"></span>
+<div class="tx"><p>{{g.t}}</p><span class="mt"><dc-import name="Faces" who="{{g.who}}" size="16" ring="transparent" hint-size="16px,18px"></dc-import><span>{{g.name}}</span><sc-if value="{{g.hasDue}}" hint-placeholder-val="{{true}}"><span class="due">{{g.due}}</span></sc-if></span></div>
+<span class="ac"><button type="button" class="{{g.addCls}}" onClick="{{g.add}}">Add</button><button type="button" class="{{g.noCls}}" onClick="{{g.no}}" aria-label="{{g.noLabel}}" title="Dismiss"><svg class="i" width="15" height="15" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.x}}"></path></svg></button></span>
+</div>
+</sc-for>
+<sc-if value="{{n.hasSugMore}}" hint-placeholder-val="{{false}}"><button type="button" class="{{n.sugMoreCls}}" onClick="{{n.sugMoreClick}}">{{n.sugMore}}</button></sc-if>
+</sc-if>
+</section>
+</sc-if>
+
+<sc-if value="{{n.showLines}}" hint-placeholder-val="{{false}}">
+<div class="nn-lines">
+<sc-for list="{{n.lines}}" as="l" hint-placeholder-count="6">
+<div class="{{l.cls}}">
+<span class="tm">{{l.at}}</span>
+<div class="tx"><sc-if value="{{l.head}}" hint-placeholder-val="{{true}}"><b>{{l.name}}</b></sc-if><p>{{l.t}}</p></div>
+<sc-if value="{{l.canMark}}" hint-placeholder-val="{{true}}"><button type="button" class="{{l.markCls}}" onClick="{{l.mark}}" aria-pressed="{{l.pressed}}" aria-label="{{l.markLabel}}" title="{{l.markLabel}}"><svg class="i" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.bookmark}}"></path></svg></button></sc-if>
+</div>
+</sc-for>
+<sc-if value="{{n.liveTalk}}" hint-placeholder-val="{{true}}"><p class="nn-live"><span class="nn-dots" aria-hidden="true"><i></i><i></i><i></i></span>{{n.talking}}</p></sc-if>
+</div>
+</sc-if>
+
+<sc-if value="{{n.showAsk}}" hint-placeholder-val="{{false}}">
+<sc-if value="{{n.askEmpty}}" hint-placeholder-val="{{true}}">
+<div class="nn-askhi">
+<span class="nn-arch"><svg class="i" width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.sparkles}}"></path></svg></span>
+<b>Ask about this call</b>
+<p>Answers come from what’s been said, with the times it was said. Only you see them.</p>
+<div class="nn-chips"><sc-for list="{{n.chips}}" as="c" hint-placeholder-count="3"><button type="button" class="{{c.cls}}" onClick="{{c.click}}">{{c.t}}</button></sc-for></div>
+</div>
+</sc-if>
+<sc-if value="{{n.hasAnswer}}" hint-placeholder-val="{{false}}">
+<div class="nn-qa">
+<p class="nn-q">{{n.q}}</p>
+<div class="nn-a">
+<span class="rng"><svg class="i" width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.sparkles}}"></path></svg>{{n.range}}</span>
+<sc-for list="{{n.points}}" as="p" hint-placeholder-count="4"><div class="nn-row"><span class="{{p.mkCls}}" aria-hidden="true"></span><p class="tx">{{p.t}}</p><button type="button" class="{{p.tCls}}" onClick="{{p.seek}}" title="Open the transcript here">{{p.at}}</button></div></sc-for>
+<div class="acts"><button type="button" class="{{n.keepCls}}" onClick="{{n.keep}}"><svg class="i" width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><path d="{{n.keepD}}"></path></svg>{{n.keepLabel}}</button><button type="button" class="{{n.askAgainCls}}" onClick="{{n.askAgain}}">Ask something else</button></div>
+</div>
+</div>
+</sc-if>
+</sc-if>
+
+<sc-if value="{{n.isYours}}" hint-placeholder-val="{{false}}">
+<sc-if value="{{n.yoursEmpty}}" hint-placeholder-val="{{false}}">
+<div class="nn-empty">
+<span class="nn-arch"><svg class="i" width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.lock}}"></path></svg></span>
+<b>Only you see what’s here</b>
+<p>Write a note to yourself, press the bookmark or B to mark a moment, or keep an answer from Ask.</p>
+</div>
+</sc-if>
+<sc-for list="{{n.yours}}" as="y" hint-placeholder-count="2">
+<div class="nn-row is-own"><span class="{{y.mkCls}}"><svg class="i" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="{{y.d}}"></path></svg></span><div class="tx"><p>{{y.t}}</p><sc-if value="{{y.hasSub}}" hint-placeholder-val="{{false}}"><span class="mt">{{y.sub}}</span></sc-if></div><span class="{{y.tCls}}">{{y.at}}</span></div>
+</sc-for>
+</sc-if>
+
+</div>
+
+<sc-if value="{{n.hasFoot}}" hint-placeholder-val="{{true}}">
+<div class="nn-foot">
+<sc-if value="{{n.hasScope}}" hint-placeholder-val="{{false}}"><div class="nn-scope"><button type="button" class="nn-chip is-sm" title="What Ask reads"><svg class="i" width="13" height="13" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.clock}}"></path></svg>Whole call<svg class="i" width="12" height="12" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.down}}"></path></svg></button></div></sc-if>
+<div class="nn-compose">
+<label class="{{n.footFieldCls}}">
+<svg class="i" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="{{n.footLead}}"></path></svg>
+<input class="nn-in" type="text" placeholder="{{n.footPlaceholder}}" aria-label="{{n.footPlaceholder}}, only you see it" value="{{footValue}}" onChange="{{type}}" onKeyDown="{{key}}" onFocus="{{focus}}">
+<sc-if value="{{n.footHasText}}" hint-placeholder-val="{{false}}"><button type="button" class="{{n.sendCls}}" onClick="{{n.sendClick}}" aria-label="Keep it in Yours" title="Keep it in Yours · Enter"><svg class="i" width="17" height="17" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.up}}"></path></svg></button></sc-if>
+<sc-if value="{{n.footShowLock}}" hint-placeholder-val="{{true}}"><span class="nn-lock"><svg class="i" width="12" height="12" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.lock}}"></path></svg>Only you</span></sc-if>
+</label>
+<sc-if value="{{n.hasMark}}" hint-placeholder-val="{{true}}"><button type="button" class="{{n.markCls}}" onClick="{{n.markClick}}" aria-label="Mark this moment, only you" title="Mark this moment · B"><svg class="i" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.bookmark}}"></path></svg></button></sc-if>
+</div>
+</div>
+</sc-if>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"step":{"editor":"enum","options":["nOn","nListen","nPausedQuiet","nPausedOther","nOffOrg","nOffKept","nOffOther","nAsked","nRequested","nUnavailable","nStale","nGuest","nSeek","nYoursAll","nYoursEmpty","nAsk","nAskAnswer","nAdding","nLight"],"default":"nOn"},"m":{"editor":null,"default":null},"onPress":{"editor":null,"default":null},"$preview":{"width":368,"height":752}}'>
+/* Notes on your side: give it `step`, or a whole moment as `m` with `onPress` (the call does). Alone, it sits in its own panel and every control works. */
+class Component extends DCLogic {
+  key() { return this.props.step || 'nOn'; }
+  cur() {
+    if (this.props.m) return this.props.m;
+    var st = this.state || {};
+    if (st.s && st.from === this.key()) return st.s;
+    return window.NC.step(this.key(), null);
+  }
+  press(id) {
+    if (id === 'noop') return;
+    if (typeof this.props.onPress === 'function') { this.props.onPress(id); return; }
+    this.setState({ s: window.NC.act(this.cur(), id), from: this.key() });
+  }
+  renderVals() {
+    var self = this, NC = window.NC, s = this.cur();
+    var on = function (id) { return function (e) { if (e && e.stopPropagation) e.stopPropagation(); self.press(id); }; };
+    var n = NC.notesView(s, on);
+    var framed = !this.props.m;
+    return {
+      n: n, I: NC.I,
+      rootCls: framed ? 'ns-panel ' + (s.theme === 'light' ? 'light' : 'dark') : 'nn-host',
+      footValue: n.footValue,
+      type: function (e) { self.press('nn.type:' + encodeURIComponent(e.target.value)); },
+      key: function (e) { if (e.key === 'Enter') { e.preventDefault(); self.press(n.footAsk ? 'nn.askSend' : 'nn.send'); } },
+      focus: function () { if (!n.footAsk && !n.footHasText) self.press('nn.focus'); }
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -207,7 +207,8 @@ export function useNotesCapture({ session, state, crypto, media, room, departing
       },
       ask: (up) => {
         session.requestNotes(up).then(() => feedback.notesAsked(up), feedback.failed);
-      }
+      },
+      decline: (requestId) => session.declineNotes(requestId)
     };
   };
 

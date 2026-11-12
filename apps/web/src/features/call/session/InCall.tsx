@@ -23,7 +23,7 @@ import {
 } from '@alcove/api';
 import {
   CallTimerButton, Avatar, BoardPicker, CallDock, CallMoreGrid, CallMoreTile, DockButton, DockLeave, DockSeparator, DockSplit, DockWords, Dots, Icon, IconButton, KnockCard, LinkRow, Popover, ReactPicker, ReactionBurst, RingAgain, RingReply,
-  Tooltip, WaitTile, buttonClass, cn, useRaisedToasts, useTheme, useToast, volumeTag, wsToast, type IconName, type PresentAskProps, type WsToastData
+  WaitTile, cn, useRaisedToasts, useTheme, useToast, volumeTag, wsToast, type IconName, type PresentAskProps, type WsToastData
 } from '@alcove/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
@@ -48,11 +48,11 @@ import { useOpenWhenStarted } from '~/features/call/session/opening';
 import { AskView, MomentView } from '~/features/call/notes/CatchUp';
 import { useCatchingUp } from '~/features/call/notes/catchingUp';
 import { FromLastTime } from '~/features/call/notes/FromLastTime';
-import { Yours, useOwnInCall } from '~/features/call/notes/Yours';
+import { OwnFoot, YoursView, useOwnInCall } from '~/features/call/notes/Yours';
 import { useShareMarkCount } from '~/features/call/screen-sharing/SharePointing';
 import { MyShareMenuRows, ShareInFrame, ShareMenuRows, ShareWindows, useFocusBack, usePointing, usePopOut, useShareLooks } from '~/features/call/screen-sharing/ShareInFrame';
 import { LocalMedia, type ShareChoice } from '~/features/call/media/media';
-import { NotesTabs, NotesView, PeopleView, SideBody, SideHead, TranscriptView, type HostControls, type PanelPerson } from '~/features/call/layout/Panel';
+import { NotesHead, NotesTabs, NotesView, PeopleView, SideBody, SideHead, TranscriptView, type HostControls, type PanelPerson } from '~/features/call/layout/Panel';
 import { type PrivateAudience } from '~/features/call/layout/PrivateChat';
 import { PanelHost, useCallArea, useFocusBounds, type HostSide } from '~/features/call/layout/PanelHost';
 import { BoardPagerFoot, Frame, FrameBox, type FrameBar } from '~/features/call/layout/frame';
@@ -66,7 +66,7 @@ import { useWorkspacePresenting } from '~/features/call/workspace/presenting';
 import { GAP, PHONE_W, focusRoom, peopleEdge, placeMain } from '~/features/call/layout/panels';
 import { PeopleSeam } from '~/features/call/layout/PeopleSeam';
 import { TileHint } from '~/features/call/layout/TileHint';
-import { CaptureButton, NotesAsks, askedTag, organizerName, useCaptureAlerts } from '~/features/call/notes/Capture';
+import { CaptureButton, CapturePill, NotesAsks, askedTag, organizerName, useCaptureAlerts } from '~/features/call/notes/Capture';
 import { unreadChatMentions, useCallAttention } from './attention';
 import { captureHere } from '~/lib/capture';
 import { RoomsLive, RoomsSetup } from '~/features/call/rooms/Rooms';
@@ -116,7 +116,7 @@ let leftToast: (() => void) | null = null;
 /** What More holds, as its button says. */
 const MORE_SAYS = 'More: captions, catch up, rooms, settings';
 /** Notes' tabs, as places your side can be. */
-const isNotesTab = (p: SidePlace): p is NotesTab => p === 'notes' || p === 'transcript' || p === 'ask';
+const isNotesTab = (p: SidePlace): p is NotesTab => p === 'notes' || p === 'transcript' || p === 'ask' || p === 'yours';
 /** Nobody's anywhere in the workspace, as far as the people list says while it's put away. */
 const NOWHERE: Readonly<Record<string, string>> = {};
 
@@ -220,6 +220,8 @@ export function InCall({ session }: { session: CallSession }) {
   }, [sideKept]);
   /* What's typed in Chat and Ask: moving your side to another view and back keeps it. */
   const askDraft = useRef({ text: '' });
+  /* What's typed in Note to self, at the foot of Notes: kept above the side, so typing there renders only the foot. */
+  const ownDraft = useRef({ text: '' });
   const chatMemory = useRef(newChatMemory());
   /* Which conversation Chat shows: a tile, a row in People or a notification can choose it as well as its own tabs. */
   const [chatTab, setChatTab] = useState<ChatTab>({ kind: 'room' });
@@ -779,11 +781,10 @@ export function InCall({ session }: { session: CallSession }) {
   // Showing the notes is what keeps them up to date, for everyone in this part of the call.
   const watchingNotes = notesAreOn(capHere.mode) && live && place === 'notes';
   useEffect(() => (watchingNotes ? session.watchNotes() : undefined), [session, watchingNotes]);
-  /* Your own notes, at the foot of the notes: for someone with an account in the call, and for nobody else's eyes. */
-  const [yoursShown, setYoursShown] = useState(0);
+  /* Your own notes, a tab of Notes, with Note to self at the foot of every tab but Ask: for someone with an account in the call, and for nobody else's eyes. */
   const own = useOwnInCall(session, {
-    role: state.role, noteId: state.notes.noteId, showing: place === 'notes' || place === 'transcript', line: state.transcript.at(-1)?.id, place: state.capture.room?.id ?? null,
-    onOpen: () => { cu.settle(); openSide('notes'); setYoursShown((n) => n + 1); }
+    role: state.role, noteId: state.notes.noteId, showing: place === 'notes' || place === 'transcript' || place === 'yours', line: state.transcript.at(-1)?.id, place: state.capture.room?.id ?? null,
+    onOpen: () => { cu.settle(); openSide('yours'); }
   });
   // What carries over is your account's, not the call's: a guest has none, and everyone else reads only their own.
   // It's read while it's on screen, in the notes and Ask.
@@ -1515,15 +1516,16 @@ export function InCall({ session }: { session: CallSession }) {
     ? <RoomsLive open={open} elapsed={state.elapsed} members={open.rooms.map((r) => r.members.flatMap((id) => { const p = byId.get(id); return p ? [p] : []; }))}
       chips={roomChips} main={mainPeople} people={byId} activity={activity} onJoin={visit} onRename={renameRoom} onMove={moveTo} onMessage={(t) => session.messageRooms(t)} onClose={() => session.closeRooms()} />
     : <RoomsSetup people={candidates} me={me?.person ?? SOMEONE} notes={on} boardName={state.board.open?.name ?? null} onOpen={openRooms} />);
-  /* Notes: its tabs, and your own notes at the foot of the notes. */
+  /* Notes: its tabs, and Note to self at the foot of all but Ask. This browser's own problems with capture are bars on the notes and the transcript. */
+  const notesProblems = [uploadError, heardProblem, screenProblem].filter((x): x is string => !!x);
   const notesTabBody = (t: NotesTab) => {
     switch (t) {
-      case 'notes': return <NotesView session={session} state={state} getting={getting} problems={[uploadError, heardProblem, screenProblem].filter((x): x is string => !!x)} put={put}
-        controls={controls} carried={carried && <FromLastTime s={carried} me={account.data?.user.email} open={!state.liveNotes.notes} />} onSeek={cu.open}
-        yours={own.enabled ? <Yours own={own} state={state} me={me?.person.email} shown={yoursShown} onOpen={cu.open} /> : undefined} />;
+      case 'notes': return <NotesView session={session} state={state} getting={getting} problems={notesProblems} put={put} controls={controls}
+        carried={carried && <FromLastTime s={carried} me={account.data?.user.email} open={!state.liveNotes.notes} />} onSeek={cu.open} />;
       case 'transcript': return cu.moment
         ? <MomentView moment={cu.moment} startedAt={state.startedAt} me={me?.person.email} onLive={cu.backToLive} />
-        : <TranscriptView state={state} me={me?.person.email} marks={own.enabled ? own.lines : undefined} put={put} />;
+        : <TranscriptView state={state} me={me?.person.email} marks={own.enabled ? own.lines : undefined} put={put} controls={controls} problems={notesProblems} />;
+      case 'yours': return <YoursView own={own} state={state} me={me?.person.email} onOpen={cu.open} />;
       case 'ask': return <AskView asks={cu.asks} modelPrivate={state.capture.modelPrivate} ready={state.notes.everOn && state.transcript.length > 0 && capHere.mode !== 'paused'} paused={capHere.mode === 'paused'} startedAt={state.startedAt} range={cu.range} window={cu.window}
         catching={cu.catching} draft={askDraft.current} earlier={earlierNotes.length ? earlierNotes : null} scope={cu.scope} onScope={cu.setScope} onRange={cu.setRange} onWindow={cu.refreshWindow} onAsk={cu.ask}
         onAskEarlier={(question) => cu.askEarlier(question, earlierNotes)} onCatchUp={() => cu.catchUp(cu.range)} onOpen={cu.open} onLive={cu.backToLive} keeping={own.enabled ? own : undefined} />;
@@ -1535,16 +1537,13 @@ export function InCall({ session }: { session: CallSession }) {
   const sideBody = (v: SideView) => {
     switch (v) {
       case 'notes': return (
-        <>
-          <SideHead title="Notes" sub="This call, in the workspace" onClose={sideClose}>
-            <Tooltip label="Open the workspace on these notes, just for you" side="bottom">
-              <button type="button" className={buttonClass({ variant: 'secondary', size: 'xs' })} aria-label="Open the workspace on these notes" onClick={openNotesPage}><Icon name="folderOpen" size={15} />Open</button>
-            </Tooltip>
-            {own.enabled && <IconButton icon="bookmark" label="Mark this moment, only you" title="Mark this moment · B" aria-keyshortcuts="B" onClick={() => own.mark()} />}
-          </SideHead>
-          <NotesTabs tab={notesTab} onTab={(t) => { cu.settle(); setNotesTab(t); }} />
+        <div className="nn">
+          <NotesHead pill={<CapturePill state={state} role={session.ticket.role} getting={getting} controls={controls} pausing={pausing} phone={phone} />} modelPrivate={state.capture.modelPrivate}
+            onOpen={openNotesPage} onClose={sideClose} />
+          <NotesTabs tab={notesTab} yours={own.enabled} onTab={(t) => { cu.settle(); setNotesTab(t); }} />
           <SideBody view={notesTab}>{notesTabBody(notesTab)}</SideBody>
-        </>
+          {notesTab !== 'ask' && own.enabled && state.notes.noteId !== null && <OwnFoot own={own} draft={ownDraft.current} />}
+        </div>
       );
       case 'chat': return (
         <>
@@ -1563,7 +1562,7 @@ export function InCall({ session }: { session: CallSession }) {
             <PeopleView jump={actionTarget} here={panelPeople} invited={invited} asking={hosting ? state.waiting : []} invites={organizer} ringing={rung} host={host} foot={privacyLine} together={together}
               link={{ copy: () => copy(state.code), locked: state.locked }}
               canRing={(p) => team.data?.members.some((x) => x.onAlcove && sameEmail(x.person, p)) ?? false} onRing={organizer && live ? ring : undefined} onStopRing={organizer && live ? stopRing : undefined}
-              notesAsks={organizer && !on && state.capture.requests.length > 0 ? <NotesAsks state={state} controls={controls} decline={(id) => session.declineNotes(id)} after={state.waiting.length > 0} /> : undefined}
+              notesAsks={organizer && !on && state.capture.requests.length > 0 ? <NotesAsks state={state} controls={controls} after={state.waiting.length > 0} /> : undefined}
               rooms={roomsHere ? { open: !!open, onOpen: () => side.open('rooms') } : undefined} />
           </SideBody>
         </>
@@ -1935,7 +1934,7 @@ export function InCall({ session }: { session: CallSession }) {
         <span className="sr-only" role="status" aria-live="polite">{attentionReady ? `${state.attention.hands.length === 1 ? '1 hand' : `${state.attention.hands.length} hands`} raised.${hosting ? ` ${state.waiting.length} waiting to join.` : ''}` : 'Connecting to this room.'}</span>
         <TopBar title={state.title} elapsed={state.elapsed} people={stagePeople.map((p) => p.person)} phone={phone}
           timer={<CallTimer session={session} view={callTimer} host={hosting} connected={attentionReady && !down} open={timerOpen && !focusOn} onOpenChange={setTimerOpen} phone={phone} />}
-          sign={<CaptureButton state={state} role={session.ticket.role} getting={getting} controls={controls} pausing={pausing} onOpenNotes={() => openSide('notes')} />}
+          sign={<CaptureButton state={state} role={session.ticket.role} getting={getting} controls={controls} pausing={pausing} phone={phone} notesOpen={side.view === 'notes'} onOpenNotes={() => openSide('notes')} />}
           asking={hosting ? state.waiting.length : 0} reconnecting={down || (crypto.status === 'joining' && !leaving)} screens={state.capture.screen.mode !== 'off'} modelPrivate={state.capture.modelPrivate}
           swap={!phone && swap}
           board={{

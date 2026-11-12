@@ -1966,9 +1966,11 @@ steps (`ShareMenu.tsx`); and the call's keys are `session/useCallShortcuts.ts`. 
   width and dims under it (`.ic-scrim.is-over`, the main area alone, so the top bar and the dock work as ever); a press on
   the stage puts it away, and so does choosing something there, as on a phone (`sideCovers`). Someone asking to join is
   answered in what it leaves clear. On a phone it's a sheet over the call, and a window that narrows to a phone puts it
-  away. `Panel.tsx` draws each: Notes is a head (This call, in the workspace; Open; the bookmark, for an account) over the
-  tabs Notes, Transcript and Ask, the Notes tab starting with the notes sign and its ⋯ (the organizer's Pause, Resume and
-  Turn off or on, or anyone else's Ask for notes) and ending with Yours; Chat is alone; People has Breakout rooms for the
+  away. `Panel.tsx` draws each. Notes is a head (Notes; the pill, which says the state in a word and opens what's
+  captured; Open; ×) over the tabs Notes, Transcript, Ask and, for an account, Yours. Under the tabs on Notes and
+  Transcript a bar shows while capture isn't simply live, with the one thing to do about it (the organizer's Resume or
+  Turn on, or anyone else's Ask to resume or Ask for notes), and the foot of every tab but Ask has Note to self with the
+  bookmark beside it, for an account once notes have been on. Chat is alone; People has Breakout rooms for the
   organizer, which opens `rooms`; and `mine` is a presenter's own notes beside a board they present, from the pager's notes
   button. It takes your theme (`ThemeScope`, so a popover or a list that opens from it takes it too), as a board's sheet
   does unless it's a night board, while the stage, the dock, the workspace and screens stay night. What's typed in Chat or
@@ -2297,9 +2299,12 @@ steps (`ShareMenu.tsx`); and the call's keys are `session/useCallShortcuts.ts`. 
   everyone who can read the same lines in that part of the call. While the tab is open and notes are on where you are,
   the browser says it's watching (`CallSession.watchNotes`), which is what keeps them up to date at most every 30 seconds,
   in one run however many are watching. Someone reading the notes everyone shares, who gets the notes, can tick a
-  follow-up (`tickFollowUp`), and it's done for everyone, and can add one (`addFollowUp`). A guest sees no box, and someone with
-  notes of their own, written from what they may read, sees no box and is told so
-  ([Notes and inference › Live notes](notes-and-inference.md#live-notes)). Each row's arrow sends it to a document.
+  follow-up (`tickFollowUp`), and it's done for everyone, add one (`addFollowUp`), and add (or apply) or dismiss what
+  the call suggests (`reviewFollowUp`), which waits under the checklist, two at a time. A guest's box is disabled, as is
+  the box of anyone whose notes are written from what they may read, and they're told so
+  ([Notes and inference › Live notes](notes-and-inference.md#live-notes)). Each row's arrow sends it to a document. A
+  refresh that didn't work (`liveNotes.error`) turns the summary's time caution ("Not updated since 16:12"), with no
+  notice: Alcove tries again on its own.
 - **Catching up** (`CatchUp.tsx`, `catchingUp.ts`) is for the person asking alone. **Catch up on what you missed**, in
   More, opens Notes on the Ask tab on what they most likely missed (their recent time away, what was said before
   they joined late, or the last five minutes). In the Ask view a chip says what's read and opens a menu: the last 5
@@ -2363,13 +2368,16 @@ steps (`ShareMenu.tsx`); and the call's keys are `session/useCallShortcuts.ts`. 
 - **What's captured.** The notes sign in the top bar is the same for everyone: **Notes on** (crimson),
   **Notes paused**, **Notes unavailable** (caution), **Notes off**, or **Notes requested** while someone has
   asked; the organizer's own says **Pausing…** while their pause is on its way. It opens a popover
-  (`features/call/notes/Capture.tsx`) with each kind of capture and its state, who changed it and when, who gets the
-  notes, and that they're written in confidential compute; with the organizer's **Pause notes**, **Resume
-  notes** and **Turn off** or **Turn on notes**, or anyone else's **Ask for notes**. Its sentence says what's
-  captured now: what everyone says recorded and transcribed, less whatever the host's browser can't do. The
-  Notes, on your side, has the same controls in its ⋯ and empty states. The transcript, in the call and in the note,
-  marks each gap, and dots what it isn't sure of: words that were hard to hear, and a name heard on more than one
-  microphone ([Notes and inference › The live transcript](notes-and-inference.md#the-live-transcript)).
+  (`features/call/notes/Capture.tsx`), the same card the pill beside Notes, on your side, opens: who changed the state
+  and when, then one sentence on what's captured now, what everyone says recorded and transcribed, less whatever the
+  host's browser can't do. It doesn't list the kinds of capture one by one: the sentence says what isn't working, in
+  words. Then the asks, the organizer's **Pause notes**, **Resume notes** and **Turn off** or **Turn on notes**, or
+  anyone else's **Ask for notes**, and a row each for how the notes are written (confidential compute, or
+  **Unencrypted**), who gets them, shared screens while they're read and, for the organizer outside a breakout room,
+  **Notes written by**. The pill says the same state in a word (**Live**, **Paused**, **Unavailable**, **Off**, or for
+  the organizer how many asked), and Notes' bar and empty states carry the one thing to do about it. The transcript, in
+  the call and in the note, marks each gap, and dots what it isn't sure of: words that were hard to hear, and a name
+  heard on more than one microphone ([Notes and inference › The live transcript](notes-and-inference.md#the-live-transcript)).
 - **Asks for notes.** The organizer gets a toast with Turn on (or Resume), and an Asking for notes section in
   People with Not now for each; everyone sees "Asked for notes" on the asker's row. Whoever asked hears when
   the organizer says not now. Joining shows only the latest notice as a toast; older ones are history.
