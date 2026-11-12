@@ -1,0 +1,352 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Checkout</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="home.css">
+<link rel="stylesheet" href="page-plans.css">
+<script src="tokens.js"></script>
+<script src="home.js"></script>
+<script src="appdata.js"></script>
+<script src="marks.js"></script>
+<script src="data-plans.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400..700&amp;family=IBM+Plex+Mono:wght@400;500&amp;family=Newsreader:ital,opsz,wght@0,6..72,300..600;1,6..72,300..600&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<div class="pl-co-wrap{{aloneCls}}" data-mode="{{mode}}" style="{{vars}}" onKeyDown="{{onKey}}">
+<sc-if value="{{withScrim}}" hint-placeholder-val="{{true}}"><div class="pl-co-scrim" onClick="{{close}}"></div></sc-if>
+<section class="pl-co" data-stage="{{stage}}" role="dialog" aria-modal="true" aria-label="{{title}}">
+<div class="pl-co-main">
+
+<div class="pl-mini">
+<span class="pl-win {{artCls}}" aria-hidden="true"><i class="sky"></i><i class="dawn"></i><i class="glow"></i><i class="sun"></i><i class="sea"></i><i class="rim"></i></span>
+<span><b>{{sumName}}</b><small class="clamp1">{{miniSub}}</small></span>
+<span class="t">{{totalText}}<small>USDC</small></span>
+</div>
+
+<header class="pl-co-h">
+<h2>{{title}}</h2>
+<ol class="pl-steps" aria-label="Steps">
+<sc-for list="{{steps}}" as="x" hint-placeholder-count="3"><li class="{{x.cls}}" aria-current="{{x.cur}}"><span class="n">{{x.n}}</span><span class="t">{{x.t}}</span></li></sc-for>
+</ol>
+</header>
+
+<div class="pl-co-b">
+
+<sc-if value="{{isChoose}}" hint-placeholder-val="{{true}}">
+<sc-if value="{{isTeam}}" hint-placeholder-val="{{false}}">
+<div class="pl-sec">
+<p class="pl-q">Who it’s for<small>Add people later for the months left</small></p>
+<div class="pl-people">
+<dc-import name="Faces" who="{{teamWho}}" size="30" max="5" ring="var(--surface)" hint-size="130px,33px"></dc-import>
+<span class="who"><b>{{peopleText}}</b><small>{{peopleSub}}</small></span>
+<span class="pl-step" role="group" aria-label="People"><button type="button" aria-label="One person fewer" onClick="{{peopleDown}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.minus}}"></path></svg></button><b>{{peopleN}}</b><button type="button" class="{{hotPeople}}" aria-label="One more person" onClick="{{peopleUp}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.plus}}"></path></svg></button></span>
+</div>
+</div>
+</sc-if>
+
+<div class="pl-sec">
+<p class="pl-q">{{lenQ}}<sc-if value="{{hasLenHint}}" hint-placeholder-val="{{true}}"><small>{{lenHint}}</small></sc-if></p>
+<div class="pl-durs{{dursCls}}" role="radiogroup" aria-label="{{lenQ}}">
+<sc-if value="{{hasBrk}}" hint-placeholder-val="{{true}}"><span class="pl-brk-sp" aria-hidden="true"></span><span class="pl-brk" aria-hidden="true">20% off</span></sc-if>
+<sc-for list="{{durs}}" as="d" hint-placeholder-count="5">
+<button type="button" class="pl-d" role="radio" aria-checked="{{d.onA}}" onClick="{{d.pick}}">
+<sc-if value="{{d.off}}" hint-placeholder-val="{{false}}"><span class="tag"><span class="pl-off">20% off</span></span></sc-if>
+<span class="n">{{d.n}}</span>
+<span class="p">{{d.p}}</span>
+<span class="m">{{d.m}}</span>
+</button>
+</sc-for>
+</div>
+<sc-if value="{{showOther}}" hint-placeholder-val="{{true}}">
+<div class="pl-other">
+<sc-if value="{{s.other}}" hint-placeholder-val="{{false}}">
+<span class="pl-step" role="group" aria-label="Months"><button type="button" aria-label="One month fewer" onClick="{{otherDown}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.minus}}"></path></svg></button><b>{{otherText}}</b><button type="button" aria-label="One more month" onClick="{{otherUp}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.plus}}"></path></svg></button></span>
+<span>{{otherPrice}}</span>
+</sc-if>
+<sc-if value="{{noOther}}" hint-placeholder-val="{{true}}"><button type="button" class="lnk" onClick="{{otherOn}}">Another length</button><span>Any number of months from 1 to 36.</span></sc-if>
+</div>
+</sc-if>
+</div>
+
+<div class="pl-sec">
+<p class="pl-q">Pay with USDC on<small>Any wallet or exchange</small></p>
+<div class="pl-nets" role="radiogroup" aria-label="Network">
+<sc-for list="{{nets}}" as="n" hint-placeholder-count="9">
+<button type="button" class="pl-n" role="radio" aria-checked="{{n.onA}}" onClick="{{n.pick}}">
+<svg class="pl-mark" viewBox="{{n.mark.vb}}" aria-hidden="true"><sc-for list="{{n.mark.paths}}" as="m" hint-placeholder-count="2"><path fill="{{m.f}}" fill-rule="{{m.r}}" d="{{m.d}}"></path></sc-for></svg>
+<span class="nm">{{n.name}}</span>
+<sc-if value="{{n.hasSmall}}" hint-placeholder-val="{{false}}"><small>{{n.small}}</small></sc-if>
+</button>
+</sc-for>
+</div>
+<sc-if value="{{below}}" hint-placeholder-val="{{false}}"><p class="pl-note" role="status"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.alert}}"></path></svg><span>{{belowText}}</span></p></sc-if>
+</div>
+</sc-if>
+
+<sc-if value="{{isPay}}" hint-placeholder-val="{{false}}">
+<div class="pl-status" role="status">
+<sc-if value="{{isShort}}" hint-placeholder-val="{{false}}"><span class="pl-st is-caution"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.alert}}"></path></svg>Less than asked arrived</span></sc-if>
+<sc-if value="{{isWaiting}}" hint-placeholder-val="{{true}}"><span class="pl-st"><span class="pl-dots" aria-hidden="true"><i></i><i></i><i></i></span>Waiting for your payment</span></sc-if>
+<span class="pl-exp"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.clock}}"></path></svg>Open until tomorrow 16:12</span>
+</div>
+<div class="pl-amount">
+<p class="lab">{{sendLab}}</p>
+<div class="v"><b>{{sendAmt}}</b><span class="unit">USDC</span><button type="button" class="pl-icb" aria-label="Copy the amount" title="{{copyAmtT}}" onClick="{{copyAmt}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{copyAmtI}}"></path></svg></button></div>
+<sc-if value="{{isShort}}" hint-placeholder-val="{{false}}"><p class="so">{{shortSo}}</p></sc-if>
+<p class="pl-on"><svg class="pl-mark is-sm" viewBox="{{USDC.vb}}" aria-hidden="true"><sc-for list="{{USDC.paths}}" as="m" hint-placeholder-count="3"><path fill="{{m.f}}" fill-rule="{{m.r}}" d="{{m.d}}"></path></sc-for></svg>USDC on<svg class="pl-mark is-sm" viewBox="{{net.mark.vb}}" aria-hidden="true"><sc-for list="{{net.mark.paths}}" as="m" hint-placeholder-count="2"><path fill="{{m.f}}" fill-rule="{{m.r}}" d="{{m.d}}"></path></sc-for></svg>{{net.name}}</p>
+</div>
+<div class="pl-pay">
+<button type="button" class="pl-qr" aria-label="QR code of the address" title="In this prototype, click the code to pretend the payment was sent" onClick="{{pretend}}">
+<svg viewBox="{{qr.vb}}" shape-rendering="crispEdges" aria-hidden="true"><path class="q" d="{{qr.d}}"></path></svg>
+<span class="ctr"><svg viewBox="{{USDC.vb}}" aria-hidden="true"><sc-for list="{{USDC.paths}}" as="m" hint-placeholder-count="3"><path fill="{{m.f}}" fill-rule="{{m.r}}" d="{{m.d}}"></path></sc-for></svg></span>
+</button>
+<div class="pl-addr">
+<p class="lab"><span>Address on {{net.name}}</span><sc-if value="{{isShort}}" hint-placeholder-val="{{false}}"><span class="pl-tag">The same address</span></sc-if><sc-if value="{{isWaiting}}" hint-placeholder-val="{{true}}"><span class="pl-tag"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.lock}}"></path></svg>Made for this payment</span></sc-if></p>
+<code><b>{{net.head}}</b>{{net.mid}}<b>{{net.tail}}</b></code>
+<div class="acts"><button type="button" class="b b-line b-sm" onClick="{{copyAddr}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{copyAddrI}}"></path></svg>{{copyAddrT}}</button></div>
+<p class="chk">After you paste it, check the first and last characters.</p>
+<div class="pl-wallet"><button type="button" class="b b-press" onClick="{{pretend}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.wallet}}"></path></svg>Open in wallet</button></div>
+</div>
+</div>
+<sc-if value="{{isShort}}" hint-placeholder-val="{{false}}"><p class="pl-note is-info"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.info}}"></path></svg><span>{{shortKeep}}</span></p></sc-if>
+<p class="pl-note"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.alert}}"></path></svg><span>Only send USDC on {{net.name}}. Anything else may be lost. Sending from an exchange? Add its withdrawal fee on top.</span></p>
+</sc-if>
+
+<sc-if value="{{isSeen}}" hint-placeholder-val="{{false}}">
+<div class="pl-status" role="status"><span class="pl-st"><span class="pl-dots" aria-hidden="true"><i></i><i></i><i></i></span>Payment seen</span></div>
+<p class="pl-big"><span class="ac">{{seenAmt}}</span> USDC arrived on {{net.name}}</p>
+<p class="pl-line2">{{seenLine}}</p>
+<div class="pl-track" role="status" aria-label="Where your payment is">
+<p class="is-done"><i class="dot"></i><span>Sent</span></p>
+<p class="is-on"><i class="dot"></i><span>Seen on {{net.name}}</span></p>
+<p><i class="dot"></i><span>{{startsLabel}}</span></p>
+<span class="line" aria-hidden="true"><span class="run"></span></span>
+</div>
+<div class="pl-tx"><span>From <code>0x91c4…7e2a</code></span><span>Transaction <code>0x4f2a…9d0c</code> on {{net.name}}</span></div>
+</sc-if>
+
+<sc-if value="{{isDone}}" hint-placeholder-val="{{false}}">
+<div class="pl-done" role="status">
+<span class="pl-tick"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.check}}"></path></svg></span>
+<p class="pl-big">{{doneTitle}}</p>
+<p class="pl-line2">{{doneLine}}</p>
+<sc-if value="{{hasDoneMore}}" hint-placeholder-val="{{false}}"><p class="pl-line2">{{doneMore}}</p></sc-if>
+<div class="pl-receipt">
+<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.receipt}}"></path></svg>
+<span><b>{{receiptT}}</b><small>{{receiptS}} · <code>AV-7Q2K</code></small></span>
+<button type="button" class="b b-line b-sm"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.download}}"></path></svg>Receipt</button>
+</div>
+<sc-if value="{{hasRem}}" hint-placeholder-val="{{true}}"><p class="pl-rem"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.clock}}"></path></svg>Nothing renews by itself. Alcove reminds you a week before it ends.</p></sc-if>
+</div>
+</sc-if>
+
+<sc-if value="{{isExpired}}" hint-placeholder-val="{{false}}">
+<div class="pl-status" role="status"><span class="pl-st is-quiet"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.clock}}"></path></svg>Address closed</span></div>
+<p class="pl-big">Nothing arrived in 24 hours</p>
+<p class="pl-line2">So nothing was charged. If you still want {{sumName}}, get a new address: it’s made for the next 24 hours.</p>
+</sc-if>
+
+</div>
+
+<footer class="pl-co-f">
+<sc-if value="{{isChoose}}" hint-placeholder-val="{{true}}">
+<sc-if value="{{showCompare}}" hint-placeholder-val="{{false}}"><button type="button" class="b b-quiet grow" onClick="{{compare}}">Compare plans</button></sc-if>
+<button type="button" class="b b-press{{hotGo}}" disabled="{{cantGo}}" onClick="{{go}}">Get the address</button>
+</sc-if>
+<sc-if value="{{payFoot}}" hint-placeholder-val="{{false}}">
+<p class="hint">{{payHint}}</p>
+<button type="button" class="b b-quiet" onClick="{{askCancel}}">Cancel payment</button>
+<button type="button" class="b b-line" onClick="{{close}}">Close</button>
+</sc-if>
+<sc-if value="{{askFoot}}" hint-placeholder-val="{{false}}">
+<div class="pl-ask" role="group" aria-label="Cancel this payment?">
+<b>Cancel this payment?</b>
+<p>Its address stops showing here. A payment already sent to it still counts when it arrives.</p>
+<div class="row"><button type="button" class="b b-line b-caution" onClick="{{cancelGo}}">Cancel payment</button><button type="button" class="b b-press" onClick="{{keep}}">Keep waiting</button></div>
+</div>
+</sc-if>
+<sc-if value="{{isSeen}}" hint-placeholder-val="{{false}}"><p class="hint">{{seenHint}}</p><button type="button" class="b b-line" onClick="{{close}}">Close</button></sc-if>
+<sc-if value="{{isDone}}" hint-placeholder-val="{{false}}"><button type="button" class="b b-press" onClick="{{done}}">{{doneBtn}}</button></sc-if>
+<sc-if value="{{isExpired}}" hint-placeholder-val="{{false}}"><button type="button" class="b b-quiet grow" onClick="{{close}}">Close</button><button type="button" class="b b-press" onClick="{{again}}">Get a new address</button></sc-if>
+</footer>
+</div>
+
+<aside class="pl-sum" aria-label="What you’re buying">
+<span class="pl-win {{artCls}}" aria-hidden="true"><i class="sky"></i><i class="dawn"></i><i class="glow"></i><i class="sun"></i><i class="sea"></i><i class="rim"></i><i class="g g1"></i><i class="g g2"></i><i class="g g3"></i><sc-if value="{{isTeam}}" hint-placeholder-val="{{false}}"><span class="pl-folk"><dc-import name="Faces" who="priya" size="18" hint-size="18px,20px"></dc-import><dc-import name="Faces" who="kofi" size="20" hint-size="20px,22px"></dc-import><dc-import name="Faces" who="aiko" size="17" hint-size="17px,19px"></dc-import></span></sc-if><sc-if value="{{starry}}" hint-placeholder-val="{{false}}"><i class="st s1"></i><i class="st s2"></i><i class="st s3"></i></sc-if></span>
+<div class="pl-sum-h"><b>{{sumName}}</b><p>{{sumSub}}</p></div>
+<div class="pl-lines">
+<sc-for list="{{lines}}" as="l" hint-placeholder-count="2"><p class="pl-ln{{l.cls}}"><span>{{l.t}}</span><b>{{l.v}}</b></p></sc-for>
+</div>
+<p class="pl-total"><span class="lab">Total</span><b>{{totalText}} <small>USDC</small></b></p>
+<p class="pl-until">{{untilPre}} <b>{{untilText}}</b></p>
+<p class="pl-sum-f"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.info}}"></path></svg><span>Priced in US dollars. 1 USDC is 1 dollar, so you send exactly the total.</span></p>
+</aside>
+
+<button type="button" class="pl-x" aria-label="Close" onClick="{{close}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.x}}"></path></svg></button>
+</section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"at":{"editor":"enum","options":["coChoose","coMonth","coNet","coOther","coEth","coSend","coSendSol","coAsk","coSeen","coDone","coShort","coOver","coExpired","coTeam","coTeamSend","coTeamDone","coExtend","coExtendSend","coExtendDone","coHours","coHoursDone","coCall","coCallSend","coCallDone"],"default":"coChoose"},"mode":{"editor":"enum","options":["dark","light"],"default":"dark"},"from":{"editor":null,"default":"plans"},"onClose":{"editor":null,"default":null},"onDone":{"editor":null,"default":null},"onCompare":{"editor":null,"default":null},"pm":{"editor":null,"default":1},"$preview":{"width":1100,"height":760}}'>
+class Component extends DCLogic {
+  componentDidMount() { this.__stagePrev = this.__stageNow; }
+  componentDidUpdate() { this.watchStage(); }
+  componentWillUnmount() { cancelAnimationFrame(this.__raf); clearTimeout(this.__p); clearTimeout(this.__c); }
+  /* When the payment is seen while you watch, its amount counts up to what arrived (cubic ease-out, about 0.65 s). */
+  watchStage() {
+    var now = this.__stageNow, prev = this.__stagePrev, self = this;
+    this.__stagePrev = now;
+    if (now !== 'seen' || (prev !== 'send' && prev !== 'short')) return;
+    var to = this.__total, ms = 650 * (this.__pm || 1), t0 = performance.now();
+    cancelAnimationFrame(this.__raf);
+    var tick = function (t) {
+      var k = Math.min(1, Math.max(0, (t - t0) / ms)), e = 1 - Math.pow(1 - k, 3);
+      self.__count = k < 1 ? to * e : null;
+      self.forceUpdate();
+      if (k < 1) self.__raf = requestAnimationFrame(tick);
+    };
+    this.__count = 0;
+    this.__raf = requestAnimationFrame(tick);
+  }
+  renderVals() {
+    var AH = window.AH, PL = AH.PL, I = PL.I, p = this.props, self = this, hs = AH.hash();
+    var at = hs.co || p.at || 'coChoose';
+    var own = this.state && this.state.__at === at ? this.state : {};
+    var s = AH.assign({ hours: 10, people: PL.TEAM.count, months: 12 }, PL.CO[at] || PL.CO.coChoose, own);
+    var set = function (patch) { self.setState(AH.assign({}, self.state && self.state.__at === at ? self.state : {}, { __at: at, hot: '' }, patch)); };
+    var mode = hs.mode || p.mode || 'dark', alone = typeof p.onClose !== 'function', from = s.from || p.from || 'plans';
+    var q = PL.quote(s), net = PL.NET[s.net || 'base'], team = s.plan === 'team', hours = s.plan === 'hours', ext = s.kind === 'extend';
+    var stage = s.stage, waiting = stage === 'send', short = stage === 'short';
+    var pm = Number(p.pm) || 1;
+    var v = { I: I, s: s, mode: mode, USDC: PL.USDC, net: net, isTeam: team, stage: stage };
+    v.vars = AH.rootStyle('blue-hour', mode, 16.2) + '; --frame: ' + AH.ok(AH.PALS['blue-hour'].dark.well) + '; --pm: ' + pm;
+    this.__stageNow = stage; this.__total = q.total; this.__pm = pm;
+    v.aloneCls = alone ? ' is-alone' : '';
+    v.withScrim = true;
+
+    /* What it's for, said once: in the title, and beside every step. */
+    v.title = hours ? 'More notes' : team ? 'Get Team' : ext ? 'Extend Pro' : 'Get Pro';
+    v.sumName = hours ? s.hours + ' hours of notes' : team ? 'Team' : 'Pro';
+    v.artCls = hours ? 'is-free' : team ? 'is-team' : 'is-pro';
+    v.starry = hours;
+    v.teamWho = PL.TEAM.people;
+    v.sumSub = hours ? 'For when this month’s run out. Kept until you use them.' : team ? 'For ' + PL.TEAM.company + ', ' + q.people + ' people' : ext ? 'Added to the 6 days you have left' : 'For Art Vandelay';
+    v.miniSub = hours ? 'Kept until you use them' : team ? q.people + ' people · ' + PL.mo(q.months) : PL.mo(q.months) + (q.yearly ? ' · 20% off' : '');
+    v.totalText = PL.amt(q.total);
+    var lines = [];
+    if (hours) lines.push({ t: s.hours + ' hours at $1.50 an hour', v: PL.usd(q.total), cls: '' });
+    else {
+      lines.push({ t: (team ? q.people + ' people × ' : '') + PL.mo(q.months) + ' at ' + PL.usd(q.P.month), v: PL.usd(q.list), cls: '' });
+      if (q.off) lines.push({ t: 'A year or more: 20% off', v: '−' + PL.usd(q.off), cls: ' is-off' });
+    }
+    v.lines = lines;
+    var until = q.until;
+    if (stage === 'done' && s.got && s.got > q.total) until = PL.plus(q.until, 0, PL.extraDays(q, s.got - q.total));
+    v.untilPre = hours ? '' : (team ? 'Team' : 'Pro') + ' until';
+    v.untilText = hours ? 'Kept until you use them' : PL.long(until);
+
+    /* Choose, pay, done. */
+    var n = stage === 'choose' ? 1 : stage === 'done' ? 3 : 2;
+    v.steps = ['Choose', 'Pay', 'Done'].map(function (t, i) { return { n: i + 1, t: t, cls: i + 1 === n ? 'is-on' : i + 1 < n ? 'is-past' : '', cur: i + 1 === n ? 'step' : 'false' }; });
+    v.isChoose = stage === 'choose'; v.isPay = waiting || short; v.isWaiting = waiting; v.isShort = short;
+    v.isSeen = stage === 'seen'; v.isDone = stage === 'done'; v.isExpired = stage === 'expired';
+
+    /* How long, or how many hours. */
+    v.lenQ = hours ? 'How many hours' : ext ? 'How much longer' : 'How long';
+    v.lenHint = hours ? '$1.50 an hour' : '';
+    v.hasLenHint = hours;
+    v.hasBrk = !hours;
+    v.dursCls = hours ? ' is-3' : '';
+    if (hours) {
+      v.durs = [10, 20, 50].map(function (h) { var on = s.hours === h; return { n: h + ' hours', p: PL.usd(h * 1.5), m: h + ' hour-long calls', off: false, onA: on ? 'true' : 'false', pick: function () { set({ hours: h }); } }; });
+    } else {
+      v.durs = PL.DURATIONS.map(function (m) {
+        var qq = PL.quote(AH.assign({}, s, { months: m })), on = !s.other && s.months === m;
+        return { n: PL.mo(m), p: PL.usd(qq.total), m: PL.usd(qq.per) + (team ? ' a person' : ' a month'), off: qq.yearly, onA: on ? 'true' : 'false', pick: function () { set({ months: m, other: false }); } };
+      });
+    }
+    v.showOther = !hours; v.noOther = !s.other;
+    v.otherText = PL.mo(s.months);
+    v.otherPrice = PL.usd(q.total) + (q.yearly ? ', 20% off' : '');
+    v.otherOn = function () { set({ other: true, months: s.months === 24 ? 18 : Math.max(s.months, 2) }); };
+    v.otherDown = function () { set({ other: true, months: Math.max(1, s.months - 1) }); };
+    v.otherUp = function () { set({ other: true, months: Math.min(36, s.months + 1) }); };
+
+    /* Who's on Team. */
+    v.peopleN = q.people + ' people';
+    v.peopleText = q.people === PL.TEAM.count ? 'Everyone at ' + PL.TEAM.company : q.people + ' people at ' + PL.TEAM.company;
+    v.peopleSub = q.people === PL.TEAM.count ? PL.TEAM.names : q.people > PL.TEAM.count ? 'Room for ' + (q.people - PL.TEAM.count) + ' more as they join' : 'Team starts at 3 people';
+    v.peopleDown = function () { set({ people: Math.max(3, q.people - 1) }); };
+    v.peopleUp = function () { set({ people: Math.min(200, q.people + 1) }); };
+    v.hotPeople = s.hot === 'people-up' ? 'is-hot' : '';
+
+    /* The network, and its least. */
+    v.nets = PL.NETS.map(function (x) {
+      var on = s.net === x.id;
+      return { id: x.id, name: x.name, mark: x.mark, small: 'From ' + x.min, hasSmall: x.min > 5, onA: on ? 'true' : 'false', pick: function () { set({ net: x.id }); } };
+    });
+    v.below = v.isChoose && !!s.net && q.total < net.min;
+    var enough = PL.DURATIONS.filter(function (m) { return PL.quote(AH.assign({}, s, { months: m })).total >= net.min; })[0];
+    v.belowText = net.name + ' takes at least ' + net.min + ' USDC. ' + (hours ? 'Choose 20 hours or more, or another network.' : 'Choose ' + PL.mo(enough || 3) + ' or more, or another network.');
+    v.cantGo = !s.net || v.below;
+    v.hotGo = s.hot === 'go' && !v.cantGo ? ' is-hot' : '';
+    v.go = function () { if (!v.cantGo) set({ stage: 'send', ask: false }); };
+    v.showCompare = from !== 'plans' && !hours;
+    v.compare = function () { if (typeof p.onCompare === 'function') p.onCompare(); };
+
+    /* Send: exactly this, here. */
+    var got = s.got || 0, rest = Math.max(0, q.total - got);
+    v.sendLab = short ? 'Send the rest' : 'Send exactly';
+    v.sendAmt = PL.amt(short ? rest : q.total);
+    v.shortSo = PL.amt(got) + ' of ' + PL.amt(q.total) + ' USDC arrived.';
+    v.shortKeep = 'If you don’t, the ' + PL.amt(got).replace(/\.00$/, '') + ' USDC that arrived buys ' + PL.buys(q, got).text + ' of Pro once the address closes.';
+    v.qr = PL.qr(net.addr);
+    v.copyAddrT = s.copied === 'addr' ? 'Copied' : 'Copy address';
+    v.copyAddrI = s.copied === 'addr' ? I.check : I.copy;
+    v.copyAmtT = s.copied === 'amt' ? 'Copied' : 'Copy the amount';
+    v.copyAmtI = s.copied === 'amt' ? I.check : I.copy;
+    var copied = function (what) { set({ copied: what }); clearTimeout(self.__c); self.__c = setTimeout(function () { set({ copied: '' }); }, 1600); };
+    v.copyAddr = function () { copied('addr'); };
+    v.copyAmt = function () { copied('amt'); };
+    v.pretend = function () {
+      if (!(waiting || short)) return;
+      set({ stage: 'seen' });
+      clearTimeout(self.__p); self.__p = setTimeout(function () { set({ stage: 'done' }); }, 2400 * pm);
+    };
+    v.payFoot = (waiting || short) && !s.ask;
+    v.askFoot = (waiting || short) && !!s.ask;
+    v.payHint = hours ? 'You can close this. The hours are added as soon as your payment arrives.' : 'You can close this. ' + (team ? 'Team' : 'Pro') + ' starts as soon as your payment arrives.';
+    v.askCancel = function () { set({ ask: true }); };
+    v.keep = function () { set({ ask: false }); };
+    v.cancelGo = function () { if (alone) set({ stage: 'choose', ask: false }); else p.onClose('cancelled'); };
+
+    /* Seen, then done. */
+    /* The amount counts up as the payment lands, while you watch; reopened later, it's simply there. */
+    v.seenAmt = PL.amt(this.__count != null ? this.__count : q.total);
+    v.startsLabel = hours ? 'Hours added' : (team ? 'Team' : 'Pro') + ' starts';
+    v.seenLine = hours ? 'Adding your hours. This takes a minute or two.' : 'Starting ' + (team ? 'Team' : 'Pro') + '. This takes a minute or two.';
+    v.seenHint = 'You can close this. It finishes by itself.';
+    v.doneTitle = hours ? s.hours + ' more hours of notes' : team ? PL.TEAM.company + ' is on Team' : ext ? 'Pro runs to ' + PL.day(until).replace(/^\w+ /, '') + ' ' + until.getFullYear() : 'You’re on Pro';
+    v.doneLine = hours ? 'They’re yours until you use them, and notes start again now.' : team ? 'Until ' + PL.long(until) + '. Everyone on it has unlimited notes from now on.' : 'Until ' + PL.long(until) + '.';
+    v.doneMore = s.got && s.got > q.total ? 'You sent ' + PL.amt(s.got) + ' USDC, ' + PL.amt(s.got - q.total) + ' more than asked: that’s ' + PL.extraDays(q, s.got - q.total) + ' more days.' : from === 'call' ? 'Notes are on again in Pricing sync.' : '';
+    v.hasDoneMore = !!v.doneMore;
+    v.receiptT = PL.amt(s.got && s.got > q.total ? s.got : q.total) + ' USDC on ' + net.name;
+    v.receiptS = '4 Nov 2026 · ' + (hours ? s.hours + ' hours of notes' : (team ? 'Team, ' + q.people + ' people, ' : 'Pro, ') + PL.mo(q.months));
+    v.hasRem = !hours;
+    v.doneBtn = from === 'call' ? 'Back to the call' : 'Done';
+    v.done = function () { if (typeof p.onDone === 'function') p.onDone(s); else set({ stage: 'choose' }); };
+    v.again = function () { set({ stage: 'send' }); };
+
+    v.close = function () { if (alone) set({ stage: 'choose', ask: false }); else p.onClose(stage); };
+    v.onKey = function (e) { if (e.key === 'Escape') v.close(); };
+    return v;
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,185 @@
+{
+ "v": 3,
+ "createdOnFiles": {
+  "v": 1,
+  "at": "2026-11-12T14:43:01Z"
+ },
+ "title": "Plans and checkout",
+ "launch": {
+  "view": "canvas",
+  "page": "where"
+ },
+ "pages": [
+  {
+   "id": "where",
+   "name": "Where checkout shows"
+  },
+  {
+   "id": "motion",
+   "name": "Paying, in motion"
+  },
+  {
+   "id": "app",
+   "name": "The app"
+  },
+  {
+   "id": "steps",
+   "name": "Step by step"
+  },
+  {
+   "id": "parts",
+   "name": "Parts"
+  }
+ ],
+ "boards": {
+  "Doors.dc.html": {
+   "x": 0,
+   "y": 0,
+   "w": 1440,
+   "h": 1868,
+   "title": "Where checkout shows, and why",
+   "page": "where"
+  },
+  "Plans.dc.html": {
+   "x": 0,
+   "y": 0,
+   "w": 1440,
+   "h": 900,
+   "title": "Plans, with checkout over it",
+   "page": "app",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "Settings.dc.html": {
+   "x": 1520,
+   "y": 0,
+   "w": 1440,
+   "h": 900,
+   "title": "Settings › Plan",
+   "page": "app",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "CallOut.dc.html": {
+   "x": 3040,
+   "y": 0,
+   "w": 1440,
+   "h": 900,
+   "title": "A call, when notes run out",
+   "page": "app",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "Home.dc.html": {
+   "x": 4560,
+   "y": 0,
+   "w": 1440,
+   "h": 900,
+   "title": "Home, on Free",
+   "page": "app",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "StepsPlans.dc.html": {
+   "x": 0,
+   "y": 0,
+   "w": 4668,
+   "h": 5722,
+   "title": "Plans and checkout, every journey step by step",
+   "page": "steps"
+  },
+  "Checkout.dc.html": {
+   "x": 0,
+   "y": 0,
+   "w": 1100,
+   "h": 760,
+   "title": "Checkout",
+   "page": "parts",
+   "is_interactive": true
+  },
+  "Side.dc.html": {
+   "x": 1180,
+   "y": 0,
+   "w": 256,
+   "h": 800,
+   "title": "The side panel",
+   "page": "parts"
+  },
+  "Faces.dc.html": {
+   "x": 1516,
+   "y": 0,
+   "w": 1000,
+   "h": 820,
+   "title": "People in the arch",
+   "page": "parts"
+  },
+  "Overlays.dc.html": {
+   "x": 2596,
+   "y": 0,
+   "w": 1000,
+   "h": 300,
+   "title": "What opens over a page",
+   "page": "parts"
+  },
+  "Scene.dc.html": {
+   "x": 0,
+   "y": 940,
+   "w": 1200,
+   "h": 420,
+   "title": "The scene",
+   "page": "parts"
+  },
+  "Visitors.dc.html": {
+   "x": 1280,
+   "y": 940,
+   "w": 1200,
+   "h": 420,
+   "title": "What passes through",
+   "page": "parts"
+  },
+  "SkyArt.dc.html": {
+   "x": 2560,
+   "y": 940,
+   "w": 1000,
+   "h": 340,
+   "title": "Home’s sunset",
+   "page": "parts"
+  },
+  "PayMotion.dc.html": {
+   "x": 0,
+   "y": 0,
+   "w": 1180,
+   "h": 944,
+   "title": "Paying, in motion: the sun rises as the payment lands",
+   "page": "motion",
+   "is_interactive": true
+  }
+ },
+ "order": [
+  "Doors.dc.html",
+  "PayMotion.dc.html",
+  "Plans.dc.html",
+  "Settings.dc.html",
+  "CallOut.dc.html",
+  "Home.dc.html",
+  "StepsPlans.dc.html",
+  "Checkout.dc.html",
+  "Side.dc.html",
+  "Faces.dc.html",
+  "Overlays.dc.html",
+  "Scene.dc.html",
+  "Visitors.dc.html",
+  "SkyArt.dc.html"
+ ],
+ "notes": {
+  "app-title": {
+   "x": 0,
+   "y": -300,
+   "text": "The app: Plans, Settings, a call and Home",
+   "kind": "title1",
+   "maxW": 6000,
+   "page": "app"
+  }
+ },
+ "designSystems": []
+}

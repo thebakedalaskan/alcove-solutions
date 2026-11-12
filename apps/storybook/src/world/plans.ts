@@ -24,7 +24,8 @@ export const PRO_PRICE = 20_000_000;
 export const PLAN_OFFERS: PlanOffers = {
   periodDays: PERIOD_DAYS,
   free: { notesMinutes: FREE.minutes, storageBytes: FREE.storage, fileBytes: FREE.file },
-  pro: { notesMinutes: PRO.minutes, storageBytes: PRO.storage, fileBytes: PRO.file, microUsdPerMonth: PRO_PRICE, maxMonths: 12 }
+  pro: { notesMinutes: PRO.minutes, storageBytes: PRO.storage, fileBytes: PRO.file, microUsdPerMonth: PRO_PRICE, maxMonths: 12, yearly: { fromMonths: 12, microUsdPerMonth: 16_000_000 } },
+  hours: { minutes: 600, microUsd: 15_000_000, maxPacks: 5 }
 };
 /** Nothing of Pro bought. */
 const NO_PRO: Plan['pro'] = { months: [], until: null, renew: false, refundableMicroUsd: 0 };

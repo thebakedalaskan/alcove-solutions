@@ -31,11 +31,12 @@ export function createAccountApi(t: HttpTransport): Pick<AlcoveApi, 'auth' | 'ac
       plan: () => req(PlanSchema, 'GET', '/plan'),
       offers: () => req(PlanOffersSchema, 'GET', '/plan/offers'),
       buyPro: (months, microUsdPerMonth) => req(PlanSchema, 'POST', '/plan/pro', { months, microUsdPerMonth }),
+      buyHours: (packs, microUsdPerPack) => req(PlanSchema, 'POST', '/plan/hours', { packs, microUsdPerPack }),
       refundPro: () => req(PlanSchema, 'POST', '/plan/pro/refund', {}),
       setRenew: (renew) => req(PlanSchema, 'PUT', '/plan/renew', { renew }),
       dismissNotice: (id) => req(PlanSchema, 'POST', `/plan/notices/${encodeURIComponent(id)}/dismiss`, {}),
       routes: () => req(TopUpRoutesSchema, 'GET', '/plan/routes'),
-      startTopUp: (routeId, microUsd) => req(TopUpSchema, 'POST', '/plan/top-ups', { routeId, microUsd }),
+      startTopUp: (routeId, microUsd, buys) => req(TopUpSchema, 'POST', '/plan/top-ups', { routeId, microUsd, buys: buys ?? null }),
       topUp: (id) => req(TopUpSchema, 'GET', `/plan/top-ups/${encodeURIComponent(id)}`),
       cancelTopUp: (id) => req(TopUpSchema, 'POST', `/plan/top-ups/${encodeURIComponent(id)}/cancel`),
       topUps: () => req(z.array(TopUpSchema), 'GET', '/plan/top-ups')

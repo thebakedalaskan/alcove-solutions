@@ -40,7 +40,7 @@ export function topUpOf(id: string, state: TopUpState, dollars: number, expired 
     : { amount: asked, microUsd: state === 'credited' ? dollars * 1_000_000 : null };
   return {
     id, route: BASE, address: state === 'waiting' || state === 'short' ? PREVIEW_DEPOSIT_ADDRESS : null, memo: null,
-    expiresAt: new Date(Date.now() + (expired ? -60_000 : 3_600_000)).toISOString(), state, asked: { amount: asked }, received
+    expiresAt: new Date(Date.now() + (expired ? -60_000 : 3_600_000)).toISOString(), state, asked: { amount: asked }, received, purchase: null
   };
 }
 

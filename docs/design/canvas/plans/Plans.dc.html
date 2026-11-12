@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Plans</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="home.css">
+<link rel="stylesheet" href="pages.css">
+<link rel="stylesheet" href="page-plans.css">
+<script src="tokens.js"></script>
+<script src="home.js"></script>
+<script src="scene.js"></script>
+<script src="appdata.js"></script>
+<script src="marks.js"></script>
+<script src="data-plans.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400..700&amp;family=IBM+Plex+Mono:wght@400;500&amp;family=Newsreader:ital,opsz,wght@0,6..72,300..600;1,6..72,300..600&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<div class="ah sh pl" id="{{uid}}" data-mode="{{mode}}" style="{{shellStyle}}">
+<div class="sh-frame">
+<dc-import name="Side" s="{{side}}" hint-size="256px,100%"></dc-import>
+<main class="sh-panel">
+<div class="ah-scroll">
+<div class="pg-stage">
+<dc-import name="Scene" a="{{scene}}" hint-size="100%,100%"></dc-import>
+<div class="sh-bar">
+<span class="brand"><svg width="22" height="26" viewBox="0 0 22 26" aria-hidden="true"><defs><clipPath id="plba"><path d="M2 24.6V11a9 9 0 0 1 18 0v13.6z"></path></clipPath><linearGradient id="plbs" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2A2373"></stop><stop offset=".42" stop-color="#5847DA"></stop><stop offset=".64" stop-color="#C470A9"></stop><stop offset=".74" stop-color="#FFA06A"></stop></linearGradient></defs><g clip-path="url(#plba)"><rect width="22" height="26" fill="url(#plbs)"></rect><circle cx="11" cy="19.2" r="4.4" fill="#FFD58A"></circle><rect y="19.2" width="22" height="7" fill="#231C5E"></rect></g></svg>alcove</span>
+<div class="top-end"><button type="button" class="find" aria-label="Search or ask"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.search}}"></path></svg></button><dc-import name="Faces" who="art" size="30" hint-size="30px,33px"></dc-import></div>
+</div>
+<div class="pg-in">
+
+<div class="pl-top">
+<h1 class="pl-title">Plans</h1>
+<div class="top-end"><button type="button" class="find" aria-label="Search or ask"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.search}}"></path></svg><span class="w">Search or ask</span><span class="k">⌘K</span></button><dc-import name="Faces" who="art" size="30" hint-size="30px,33px"></dc-import></div>
+</div>
+
+<div class="pl-wrap">
+<div class="pl-sky">
+<span class="pl-glow" aria-hidden="true"></span><span class="pl-sun" aria-hidden="true"></span>
+<div class="pl-cycle" role="group" aria-label="Prices for">
+<button type="button" class="{{hotMonth}}" aria-pressed="{{monthA}}" onClick="{{toMonth}}">Monthly</button>
+<button type="button" class="{{hotYear}}" aria-pressed="{{yearA}}" onClick="{{toYear}}">Yearly<span class="off">20% off</span></button>
+</div>
+</div>
+
+<div class="pl-cards">
+<sc-for list="{{cards}}" as="c" hint-placeholder-count="3">
+<section class="pl-card is-{{c.id}}" aria-label="{{c.name}}">
+<div class="pl-hn"><h2>{{c.name}}</h2><sc-if value="{{c.mine}}" hint-placeholder-val="{{false}}"><span class="pl-chip">{{c.chip}}</span></sc-if><sc-if value="{{c.team}}" hint-placeholder-val="{{false}}"><span class="pl-who"><dc-import name="Faces" who="priya,kofi,aiko,maya" size="22" max="4" ring="{{c.ring}}" hint-size="72px,24px"></dc-import></span></sc-if></div>
+<p class="pl-sub">{{c.sub}}</p>
+<p class="pl-price"><b>{{c.price}}</b><span class="per">{{c.per}}</span></p>
+<p class="pl-bill">{{c.bill}} <span class="save">{{c.save}}</span></p>
+<div class="pl-act">
+<sc-if value="{{c.hasBtn}}" hint-placeholder-val="{{true}}"><button type="button" class="b {{c.btnC}}{{c.hot}}" onClick="{{c.go}}">{{c.btn}}</button></sc-if>
+<sc-if value="{{c.isHere}}" hint-placeholder-val="{{false}}"><span class="pl-here{{c.hereCls}}"><sc-if value="{{c.hereTick}}" hint-placeholder-val="{{true}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.check}}"></path></svg></sc-if>{{c.here}}</span></sc-if>
+</div>
+<sc-for list="{{c.facts}}" as="x" hint-placeholder-count="4"><div class="pl-fact{{x.cls}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{x.icon}}"></path></svg><span><b>{{x.t}}</b><sc-if value="{{x.hasS}}" hint-placeholder-val="{{false}}"><small>{{x.s}}</small></sc-if></span></div></sc-for>
+<sc-if value="{{c.hasMore}}" hint-placeholder-val="{{false}}"><p class="pl-more">{{c.more}}</p></sc-if>
+</section>
+</sc-for>
+</div>
+
+<p class="pl-every-h">On every plan</p>
+<ul class="pl-every" aria-label="On every plan"><sc-for list="{{every}}" as="x" hint-placeholder-count="5"><li><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{x.icon}}"></path></svg>{{x.t}}</li></sc-for></ul>
+<p class="pl-paying"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.wallet}}"></path></svg><span><b>Pay in USDC</b> from any wallet or exchange, for 1 to 24 months at a time. Nothing renews by itself, and when a plan ends you’re back on Free with nothing lost.</span></p>
+</div>
+
+</div>
+</div>
+</div>
+</main>
+</div>
+<nav class="phone-tabs" aria-label="Main">
+<sc-for list="{{tabs}}" as="n" hint-placeholder-count="5"><button type="button" class="phone-tab{{n.cls}}" onClick="{{n.go}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{n.icon}}"></path></svg>{{n.label}}</button></sc-for>
+</nav>
+<dc-import name="Overlays" ov="{{ov}}" hint-size="0px,0px"></dc-import>
+<sc-if value="{{hasCo}}" hint-placeholder-val="{{false}}"><dc-import name="Checkout" at="{{coAt}}" mode="{{mode}}" from="plans" on-close="{{coClose}}" on-done="{{coDone}}" hint-size="0px,0px"></dc-import></sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"go":{"editor":null,"default":null},"mode":{"editor":"enum","options":["dark","light"],"default":"dark"},"step":{"editor":"enum","options":["plans","plansMonth","plansHotPro","plansHotTeam","plansDown","plansPro","plansTeamMine","plansEnding","coChoose","coNet","coSend","coSeen","coDone","coShort","coOver","coExpired","coTeam","coTeamSend","coTeamDone"],"default":"plans"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  /* A step can show the page scrolled to its foot, where the comparison ends. */
+  componentDidMount() { this.scrollDown(); }
+  componentDidUpdate() { this.scrollDown(); }
+  scrollDown() {
+    var self = this;
+    if (!this.__down || this.__scrolled) return;
+    setTimeout(function () {
+      var root = document.getElementById(self.__uid), box = root && root.querySelector('.ah-scroll');
+      if (box) { box.scrollTop = 330; self.__scrolled = true; }
+    }, 60);
+  }
+  renderVals() {
+    var AH = window.AH, PL = AH.PL, I = PL.I, hs = AH.hash(), self = this, p = this.props;
+    var stepId = hs.step || p.step || 'plans';
+    var st = AH.assign({ cycle: 'year', mine: 'free', co: '', toast: '' }, PL.STEPS[stepId] || {}, this.state || {});
+    var set = function (patch) { self.setState(AH.assign({ hot: '' }, patch)); };
+    var hot = function (k) { return st.hot === k ? ' is-hot' : ''; };
+    var v = AH.page(this, 'plans', { moment: 'plans' });
+    v.I = I;
+    this.__uid = this.__uid || 'pl-' + Math.random().toString(36).slice(2, 9);
+    v.uid = this.__uid;
+    this.__down = !!st.scrolled;
+
+    /* The side panel says which plan you're on; on Plans, its row is the place you're on. */
+    var footKind = st.mine === 'ending' ? 'ending' : st.mine === 'team' ? 'team' : st.mine === 'pro' ? 'pro' : 'free';
+    v.side = AH.assign({}, v.side, { foot: AH.assign(PL.foot(footKind), { onCls: ' is-on', go: function () {} }) });
+
+    /* Monthly or yearly: each plan shows one price. */
+    var yearly = st.cycle === 'year';
+    v.monthA = yearly ? 'false' : 'true'; v.yearA = yearly ? 'true' : 'false';
+    v.hotMonth = hot('cycle-month').trim(); v.hotYear = hot('cycle-year').trim();
+    v.toMonth = function () { set({ cycle: 'month' }); };
+    v.toYear = function () { set({ cycle: 'year' }); };
+
+    var mine = st.mine === 'ending' ? 'pro' : st.mine;
+    v.cards = PL.ORDER.map(function (id) {
+      var P = PL.PLANS[id], isMine = mine === id, per = yearly ? P.year : P.month;
+      var c = { id: id, name: P.name, sub: P.sub, mine: isMine && id !== 'free', chip: st.mine === 'ending' && id === 'pro' ? 'Ends in 6 days' : 'Your plan', hot: hot('get-' + id), team: id === 'team', ring: 'var(--surface)',
+        facts: P.facts.map(function (f, i) { return { icon: I[f[0]], t: f[1], s: f[2], hasS: !!f[2], cls: i === 0 ? ' is-first' : '' }; }),
+        hasMore: id !== 'pro', more: id === 'free' ? 'Out of notes before the 1st? 10 more hours are $15.' : 'Ask reaches the team’s shared notes.' };
+      if (id === 'free') {
+        return AH.assign(c, { price: '$0', per: '', bill: 'Nothing to pay.', save: '',
+          hasBtn: false, isHere: true, hereTick: mine === 'free', hereCls: mine === 'free' ? '' : ' is-quiet', here: mine === 'free' ? 'Your plan' : 'Where you’re back to if a plan ends', btn: '', btnC: '', go: null });
+      }
+      var each = id === 'team';
+      return AH.assign(c, {
+        price: PL.usd(per), per: each ? 'a person a month' : 'a month',
+        bill: yearly ? PL.usd(per * 12) + (each ? ' a person' : '') + ' for 12 months.' : 'For as many months as you choose.',
+        save: yearly ? 'You save ' + PL.usd((P.month - P.year) * 12) + (each ? ' each' : '') + '.' : 'Or ' + PL.usd(P.year) + ' for a year or more.',
+        hasBtn: true, isHere: false, hereTick: false, hereCls: '', here: '',
+        btn: isMine ? 'Extend' : 'Get ' + P.name,
+        btnC: (id === 'pro' && mine === 'free') || (isMine && st.mine === 'ending') ? 'b-press' : 'b-line',
+        go: function () {
+          var at = id === 'team' ? (yearly ? 'coTeamNew' : 'coTeamNewMonth') : isMine ? 'coExtendNew' : (yearly ? 'coChoose' : 'coMonth');
+          set({ co: at });
+        }
+      });
+    });
+    v.every = PL.EVERY.map(function (x) { return { icon: I[x[0]], t: x[1] }; });
+
+    /* Checkout opens over Plans, and Plans takes what it bought. */
+    v.hasCo = !!st.co;
+    v.coAt = st.co || 'coChoose';
+    v.coClose = function () { set({ co: '' }); };
+    v.coDone = function (s) {
+      var to = s.plan === 'team' ? 'team' : 'pro';
+      set({ co: '', mine: to, toast: to === 'team' ? 'Vandelay Industries is on Team until 4 Nov 2027.' : 'You’re on Pro until ' + PL.short(PL.quote(s).until) + '.' });
+      clearTimeout(self.__t); self.__t = setTimeout(function () { self.setState({ toast: '' }); }, 3600);
+    };
+    v.ov = AH.assign({}, v.ov, { toast: st.toast || '', hasToast: !!st.toast });
+    v.tabs = v.nav;
+    return v;
+  }
+}
+</script>
+</body>
+</html>

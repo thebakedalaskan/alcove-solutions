@@ -926,9 +926,22 @@ export const standIn: AlcoveApi = {
       return w.plan;
     }),
     routes: () => answer(paymentRoutes),
-    startTopUp: (routeId, microUsd) => answer((w) => {
+    buyHours: (packs, microUsdPerPack) => answer((w) => {
+      const offer = PLAN_OFFERS.hours;
+      if (!offer) throw refused('invalid', 'More notes aren’t offered right now.');
+      if (!Number.isInteger(packs) || packs < 1 || packs > offer.maxPacks) throw refused('invalid', `Buy 1 to ${offer.maxPacks} packs at a time.`);
+      if (microUsdPerPack !== offer.microUsd) throw refused('conflict', 'The price of more notes has changed. Look at it again before buying.');
+      const cost = packs * offer.microUsd;
+      const { balance } = w.plan;
+      if (balance.microUsd < cost) throw refused('conflict', `Your balance is short: more notes cost ${dollars(cost)} and your balance is ${dollars(balance.microUsd)}. Add money first.`);
+      const minutes = packs * offer.minutes;
+      const entry = { id: nextId('sb-entry'), at: new Date().toISOString(), label: `${minutes / 60} more hours of notes`, microUsd: -cost };
+      w.plan = { ...w.plan, balance: { microUsd: balance.microUsd - cost, history: [entry, ...balance.history] }, notes: { minutesLeft: w.plan.notes.minutesLeft + minutes, minutesPerPeriod: w.plan.notes.minutesPerPeriod + minutes, stopped: false } };
+      return w.plan;
+    }),
+    startTopUp: (routeId, microUsd, buys) => answer((w) => {
       const choices = paymentRoutes(w);
-      StartTopUpBodySchema.parse({ routeId, microUsd });
+      StartTopUpBodySchema.parse({ routeId, microUsd, buys: buys ?? null });
       const route = choices.routes.find((r) => r.id === routeId);
       if (!route) throw refused('invalid', 'That way to pay isn’t offered.');
       if (microUsd < Number(route.minimum) * 1_000_000) throw refused('invalid', `The least you can add with ${route.token} on ${route.chainName} is $${route.minimum}.`);
@@ -937,7 +950,8 @@ export const standIn: AlcoveApi = {
       const t: TopUp = {
         id: nextId('sb-top-up'), route, address: PREVIEW_DEPOSIT_ADDRESS, memo: null,
         expiresAt: new Date(Date.now() + 3_600_000).toISOString(), state: 'waiting',
-        asked: { amount }, received: null
+        asked: { amount }, received: null,
+        purchase: buys ? { buys, outcome: 'waiting', why: null } : null
       };
       w.payments.topUps.unshift(t);
       return t;

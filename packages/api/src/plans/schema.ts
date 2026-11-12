@@ -94,13 +94,29 @@ export const PlanOffersSchema = z.object({
   pro: PlanAllowanceSchema.extend({
     microUsdPerMonth: MicroUsdSchema,
     /** The most months one purchase can buy. */
-    maxMonths: z.number().int().positive()
-  })
+    maxMonths: z.number().int().positive(),
+    /** A lower price a month for buying at least `fromMonths` at once (a year or more), or null when there's none. */
+    yearly: z.object({ fromMonths: z.number().int().positive(), microUsdPerMonth: MicroUsdSchema }).nullable()
+  }),
+  /** More notes for this period, bought from the balance in packs of `minutes` at `microUsd` each, or null when not offered. */
+  hours: z.object({ minutes: z.number().int().positive(), microUsd: MicroUsdSchema, maxPacks: z.number().int().positive() }).nullable()
 });
 export type PlanOffers = z.infer<typeof PlanOffersSchema>;
-/** Buys `months` of Pro from the balance, at the price per month the buyer was shown. */
+/**
+ * Buys `months` of Pro from the balance, at the price per month the buyer was shown for that many months: the yearly
+ * price when `months` reaches the offer's `yearly.fromMonths`, else the monthly one.
+ */
 export const BuyProBodySchema = z.object({ months: z.number().int().min(1).max(1000), microUsdPerMonth: MicroUsdSchema.min(0) });
 export type BuyProBody = z.infer<typeof BuyProBodySchema>;
+/** Buys `packs` of more notes for this period from the balance, at the price a pack the buyer was shown. */
+export const BuyHoursBodySchema = z.object({ packs: z.number().int().min(1).max(1000), microUsdPerPack: MicroUsdSchema.min(0) });
+export type BuyHoursBody = z.infer<typeof BuyHoursBodySchema>;
+/** What a purchase buys, from the balance or once a payment is added: months of Pro, or packs of more notes. */
+export const PurchaseSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('pro'), months: z.number().int().min(1).max(1000), microUsdPerMonth: MicroUsdSchema.min(0) }),
+  z.object({ kind: z.literal('hours'), packs: z.number().int().min(1).max(1000), microUsdPerPack: MicroUsdSchema.min(0) })
+]);
+export type Purchase = z.infer<typeof PurchaseSchema>;
 export const RenewBodySchema = z.object({ renew: z.boolean() });
 
 /* ---------- adding money ---------- */
@@ -118,7 +134,8 @@ export const TopUpRoutesSchema = z.object({
   presets: z.array(MicroUsdSchema)
 });
 export type TopUpRoutes = z.infer<typeof TopUpRoutesSchema>;
-export const StartTopUpBodySchema = z.object({ routeId: z.string().min(1).max(200), microUsd: MicroUsdSchema.min(1).max(MAX_TOP_UP_MICRO_USD) });
+/** `buys`: what to buy with it once it's added, in the same transaction (null: it only adds to the balance). */
+export const StartTopUpBodySchema = z.object({ routeId: z.string().min(1).max(200), microUsd: MicroUsdSchema.min(1).max(MAX_TOP_UP_MICRO_USD), buys: PurchaseSchema.nullable().default(null) });
 export const TopUpStateSchema = z.enum(['waiting', 'arriving', 'short', 'credited', 'held', 'failed', 'expired', 'cancelled']);
 export type TopUpState = z.infer<typeof TopUpStateSchema>;
 /** One payment into the balance: what to send and where, and what has happened to it so far. */
@@ -133,6 +150,12 @@ export const TopUpSchema = z.object({
    * Once a payment is seen: what was sent, in tokens as a decimal string, and what it added to the balance once it's
    * settled (0 if held, null until then).
    */
-  received: z.object({ amount: z.string(), microUsd: MicroUsdSchema.nullable() }).nullable()
+  received: z.object({ amount: z.string(), microUsd: MicroUsdSchema.nullable() }).nullable(),
+  /**
+   * What it was opened to buy, and how that went once it was added: `waiting` until then, `bought`, or `refused` (the
+   * price changed, or too little arrived) with why, in words for people. A refused purchase leaves the money in the balance.
+   * Null for a top-up that only adds money.
+   */
+  purchase: z.object({ buys: PurchaseSchema, outcome: z.enum(['waiting', 'bought', 'refused']), why: z.string().nullable() }).nullable()
 });
 export type TopUp = z.infer<typeof TopUpSchema>;

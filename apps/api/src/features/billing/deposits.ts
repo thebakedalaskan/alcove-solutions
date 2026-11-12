@@ -97,7 +97,8 @@ function toTopUp(depositId: string, r: DepositRecord, state: TopUpState): TopUp 
     id: depositId, route: toRoute(r.route), address: sendable ? r.address : null, memo: sendable ? r.memo : null,
     expiresAt: r.expiresAt, state,
     asked: { amount: formatUnits(BigInt(r.asked), r.route.decimals) },
-    received: sent === null ? null : { amount: formatUnits(BigInt(sent), 6), microUsd: r.settled ? Number(r.settled.addedMicroUsd ?? 0) : null }
+    received: sent === null ? null : { amount: formatUnits(BigInt(sent), 6), microUsd: r.settled ? Number(r.settled.addedMicroUsd ?? 0) : null },
+    purchase: null
   };
 }
 

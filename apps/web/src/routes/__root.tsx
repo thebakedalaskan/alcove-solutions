@@ -4,6 +4,7 @@ import { HeadContent, Outlet, Scripts, createRootRouteWithContext } from '@tanst
 import { type ReactNode, useEffect } from 'react';
 import { RingHost } from '~/features/calls/ringing/RingHost';
 import { Arrival } from '~/features/onboarding/Arrival';
+import { CheckoutProvider } from '~/features/plans/checkout';
 import { useNotifications } from '~/features/shell/notify';
 import { TabAttention } from '~/features/shell/TabAttention';
 import { registerServiceWorker } from '~/lib/serviceWorker';
@@ -45,11 +46,13 @@ function Root() {
       <ThemeProvider>
         <TooltipProvider>
           <ToastProvider>
-            <Outlet />
-            <Arrival />
-            <RingHost />
-            <Notifications />
-            <TabAttention />
+            <CheckoutProvider>
+              <Outlet />
+              <Arrival />
+              <RingHost />
+              <Notifications />
+              <TabAttention />
+            </CheckoutProvider>
           </ToastProvider>
         </TooltipProvider>
       </ThemeProvider>
