@@ -48,6 +48,8 @@ export const WRAPPED_UP_S = 40;
 export const UNENCRYPTED_MODEL = 'acme/vision-elsewhere';
 /** A model that takes text and images, unencrypted, and costs more than a model on offer may. */
 export const PRICEY_MODEL = 'acme/vision-pricey';
+/** A model that takes text and images, unencrypted, whose price the catalog gives for input alone: offered, and charged at the fallback. */
+export const HALF_PRICED_MODEL = 'acme/vision-half-priced';
 /** A model the catalog lists as reading images, with its own endpoint, whose evidence never checks out: NEAR AI sends no report for it. */
 export const UNVERIFIED_VISION_MODEL = 'acme/vision-unverified';
 
@@ -758,6 +760,7 @@ export async function startFakeNear(): Promise<FakeNear> {
         return send(res, 200, { object: 'list', data: [
           entry(NOTES_MODEL, 'DeepSeek V4.1 Flash 1017', ['text', 'image'], { is_ready: true, pricing: { input: 0.3, output: 1.2, input_cache_read: '0.000000006' } }),
           entry(PRICEY_MODEL, 'Vision Pricey', ['text', 'image'], { pricing: { input: 3, output: 12 } }), entry('acme/vision-unpriced', 'Vision Unpriced', ['text', 'image'], { pricing: null }),
+          entry(HALF_PRICED_MODEL, 'Vision Half Priced', ['text', 'image'], { pricing: { input: 0.5 } }),
           entry('acme/images-only', 'Images Only', ['image'], { pricing: { input: 0.1, output: 0.4 } }), entry(VISION_MODEL, 'Qwen3 VL Test', ['text', 'image'], { is_ready: true }), entry(UNVERIFIED_VISION_MODEL, 'Vision Unverified', ['text', 'image'], { is_ready: true }),
           entry('acme/text-only', 'Text Only', ['text']), entry(UNENCRYPTED_MODEL, 'Vision Elsewhere', ['text', 'image'], { pricing: { input: 0.5, output: 2 }, supported_sampling_parameters: ['max_tokens'] }), entry('acme/bad-host', 'Bad Host', ['text', 'image']),
           entry('acme/not-ready', 'Not Ready', ['text', 'image'], { is_ready: false }), entry(STT_MODEL, 'Whisper Large v3', ['audio'], { pricing: { input: 0.01, output: 0.01 } }), { id: 7, name: null }

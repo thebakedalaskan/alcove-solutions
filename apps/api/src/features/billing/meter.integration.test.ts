@@ -7,7 +7,7 @@
 import { AlcoveApiError, DEFAULT_NOTES_CHOICES, type AlcoveApi, type AnswerPart, type AudioPiece, type CallSession, type CallState, type TranscriptClip } from '@alcove/api';
 import { randomBytes } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { UNENCRYPTED_MODEL, speechWav } from '../../testing/fake-near';
+import { HALF_PRICED_MODEL, UNENCRYPTED_MODEL, speechWav } from '../../testing/fake-near';
 import { startHarness, type Harness } from '../../testing/harness';
 import { disposeLiveKit } from '../../testing/livekit';
 import { standing } from './meter';
@@ -182,6 +182,34 @@ describe('who pays', () => {
     const after = await meter(ann);
     expect(after.spentNano - before).toBe(2 * once);
     expect(after.leftNano).toBe(after.unspentNano);
+  });
+
+  it('charges a model the catalog prices only one way at the fallback, and says which once each time the catalog is read', async () => {
+    const ann = await account();
+    // Offered: it reads text and images, under the price cap, and the catalog gives its input price alone.
+    expect((await ann.api.models.list()).models.map((m) => m.id)).toContain(HALF_PRICED_MODEL);
+    const warned = () => h.logs.filter((l) => l.includes('models not priced; charged at the fallback') && l.includes(HALF_PRICED_MODEL)).length;
+    const said = warned();
+    expect(said).toBeGreaterThan(0);
+    const rec = await ann.api.recordings.start({ title: 'Fallback' });
+    await rec.transcribe(speech('We agreed to ship on Monday.', 0));
+    await written(ann.api, (await rec.stop()).pendingNoteId);
+    await ann.api.account.updatePreferences({ model: HALF_PRICED_MODEL });
+    const asked = async () => {
+      const before = (await meter(ann)).byKind['ask'] ?? 0;
+      await answer(ann.api.notes.askAll('When do we ship?'));
+      // What the fake says each answer used: its prompt's length a quarter, and 200 out.
+      return { cost: ((await meter(ann)).byKind['ask'] ?? 0) - before, tokens: Math.round((h.near.prompts.at(-1) ?? '').length / 4) };
+    };
+    // At the fallback's $1 and $4 a million.
+    const one = await asked();
+    expect(one.cost).toBe(Math.ceil((one.tokens * 1_000_000 + 200 * 4_000_000) / 1000));
+    // The fallback is a limit: raised, the next is charged at it.
+    await h.setLimit('ai.fallback_output_micro_usd', 40_000_000);
+    const two = await asked();
+    expect(two.cost).toBe(Math.ceil((two.tokens * 1_000_000 + 200 * 40_000_000) / 1000));
+    // Said when the catalog was read, not again with each request.
+    expect(warned()).toBe(said);
   });
 
   it('charges nothing for a request NEAR AI turned away', async () => {

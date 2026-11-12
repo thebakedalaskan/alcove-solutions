@@ -41,7 +41,7 @@ Suites: `billing/meter` (`apps/api/src/features/billing/meter.integration.test.t
 | D3 | A request NEAR AI turned away costs nothing | billing/meter › charges nothing for a request NEAR AI turned away | 1 | Passes |
 | D3′ | A request that timed out once sent is charged what was held | — | 1 | Not tested: the fake can't time out after receiving |
 | D3″ | A request still on its way after 5 minutes is charged what it held, shown so at once; answered after all, it's charged what it used instead, never both | billing/meter › charges a request still on its way after five minutes… | 1 | Passes |
-| D4 | A model the catalog doesn't price is charged at the fallback | — | 1 | Not tested: no unpriced model can be chosen; covered by reading `meter.ts` |
+| D4 | A model the catalog prices only one way is offered and charged at the fallback (`ai.fallback_*`, raised and charged at again), and said at warn once each time the catalog is read, not with each request | billing/meter › charges a model the catalog prices only one way at the fallback… | 1 | Passes |
 | D5 | A dearer model spends more for the same question | billing/meter › charges at the price of the model that answered… | 1 | Passes |
 | D6 | No request reaches NEAR AI without a payer | `Meter` is a required argument of `transcribe`, `complete` and `completeJson`: the typecheck refuses one without | 1 | Enforced by the compiler |
 | **E: running out** |  |  |  |  |
