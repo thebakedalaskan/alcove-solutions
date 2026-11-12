@@ -402,8 +402,8 @@ export const TimeOfNotesLeft: PageStory = {
   // Twelve minutes of notes left this period.
   beforeEach: before((w) => { w.plan = withNotesLeft(12); }),
   play: async ({ step }) => {
-    await step('Nearly out, the sun is at the start of the line', async () => {
-      await within(await row('Notes left')).findByText('About 12 min', {}, SOON);
+    await step('Nearly out, the time is warm and the sun is at the start of the line', async () => {
+      await within(await row('Notes left this period')).findByText('12 min', {}, SOON);
     });
   }
 };
@@ -486,7 +486,7 @@ export const FirstDay: PageStory = {
     });
     await step('All of Free’s notes, with the sun at the end of the line', async () => {
       await jump('Plan');
-      await within(await row('Notes left')).findByText('About 5 h', {}, SOON);
+      await within(await row('Notes left this period')).findByText('5 h', {}, SOON);
     });
   }
 };
@@ -538,7 +538,7 @@ export const AddMoney: PageStory = {
     });
     await step('Get an address for $20, the first amount offered. The sheet waits for the payment', async () => {
       await userEvent.click(within(await sheet()).getByRole('button', { name: 'Get an address' }));
-      await within(await sheet()).findByText('Waiting for payment', {}, SOON);
+      await within(await sheet()).findByText('Waiting for your payment', {}, SOON);
     });
     await step('The provider sees 3.5 of 20 USDC: the same address can take the rest', async () => {
       const w = current();
@@ -553,9 +553,8 @@ export const AddMoney: PageStory = {
       await within(await sheet()).findByText('It’s in your balance now.', {}, LATER);
       await userEvent.click(within(await sheet()).getByRole('button', { name: 'Done' }));
     });
-    await step('Reopen the completed payment from its row', async () => {
-      await userEvent.click(within(await group('Plan')).getByRole('button', { name: 'Open' }));
-      await within(await sheet()).findByText('It’s in your balance now.', {}, SOON);
+    await step('The balance says $20, and the payment is in the list with its receipt', async () => {
+      await within(await group('Plan')).findByText('Added, 20 USDC', {}, SOON);
     });
   }
 };

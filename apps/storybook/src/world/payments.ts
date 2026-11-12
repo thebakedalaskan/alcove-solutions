@@ -1,6 +1,8 @@
 /* Made-up payment data only. These addresses cannot receive a real payment. */
-import type { TopUp, TopUpRoute, TopUpRoutes, TopUpState } from '@alcove/api';
+import type { Purchase, TopUp, TopUpRoute, TopUpRoutes, TopUpState } from '@alcove/api';
+import { iso } from './clock';
 import type { World } from './index';
+import { PLAN_OFFERS, monthsAt, withProMonths } from './plans';
 
 export interface PaymentsWorld { routes: TopUpRoutes | null; topUps: TopUp[] }
 
@@ -61,5 +63,46 @@ export function receiveTopUp(w: World, id: string, state: 'short' | 'arriving' |
   w.payments.topUps = w.payments.topUps.map((x) => x.id === id ? {
     ...x, state, address: state === 'short' ? PREVIEW_DEPOSIT_ADDRESS : null,
     received: { amount: state === 'short' ? '3.5' : x.asked.amount, microUsd: credited ? microUsd : null }
+  } : x);
+}
+
+/**
+ * A payment opened to buy `buys`, of `dollars` in USDC on Base, waiting for it: what checkout leaves on its way when it's
+ * closed. Opened at 16:12 on the demo day, so its address is open until the same time tomorrow.
+ */
+export function buyingWith(id: string, buys: Purchase, dollars: number): TopUp {
+  return { ...topUpOf(id, 'waiting', dollars), expiresAt: iso(1, 16, 12), purchase: { buys, outcome: 'waiting', why: null } };
+}
+
+/**
+ * The provider's side of a payment that buys something: it arrives in full, is added to the balance, and what it was for
+ * is bought from it in the same go, as the server does. Reads pick it up as they come.
+ */
+export function settlePurchase(w: World, id: string, now = Date.now()): void {
+  const t = w.payments.topUps.find((x) => x.id === id);
+  if (!t || !t.purchase) return;
+  const { buys } = t.purchase;
+  const microUsd = Math.round(Number(t.asked.amount) * 1_000_000);
+  addToBalance(w, microUsd, t.asked.amount);
+  const at = new Date(now).toISOString();
+  if (buys.kind === 'pro') {
+    const cost = buys.months * buys.microUsdPerMonth;
+    const entry = { id: `sb-entry-bought-${id}`, at, label: `Pro, ${buys.months} ${buys.months === 1 ? 'month' : 'months'}`, microUsd: -cost };
+    const paid = { ...w.plan, balance: { microUsd: w.plan.balance.microUsd - cost, history: [entry, ...w.plan.balance.history] } };
+    const end = Date.parse(w.plan.pro.until ?? '');
+    const from = Number.isFinite(end) && end > now ? end : now;
+    w.plan = withProMonths(paid, [...w.plan.pro.months, ...monthsAt(from, buys.months, buys.microUsdPerMonth)], now);
+  } else {
+    const pack = PLAN_OFFERS.hours?.minutes ?? 600;
+    const cost = buys.packs * buys.microUsdPerPack;
+    const minutes = buys.packs * pack;
+    const entry = { id: `sb-entry-bought-${id}`, at, label: `${minutes / 60} more hours of notes`, microUsd: -cost };
+    w.plan = {
+      ...w.plan, balance: { microUsd: w.plan.balance.microUsd - cost, history: [entry, ...w.plan.balance.history] },
+      notes: { minutesLeft: w.plan.notes.minutesLeft + minutes, minutesPerPeriod: w.plan.notes.minutesPerPeriod + minutes, stopped: false }
+    };
+  }
+  w.payments.topUps = w.payments.topUps.map((x) => x.id === id && x.purchase ? {
+    ...x, state: 'credited', address: null, received: { amount: x.asked.amount, microUsd }, purchase: { ...x.purchase, outcome: 'bought' }
   } : x);
 }

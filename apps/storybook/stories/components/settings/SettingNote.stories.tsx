@@ -1,6 +1,7 @@
 /*
  * SettingNote: something said inside a panel, on no hairline of its own: what just happened (back from Google, in the
- * horizon's tint), or what's in the way (`caution`). The icon says which unless `icon` says otherwise.
+ * horizon's tint), or what's in the way (`caution`). The icon says which unless `icon` says otherwise. With `onDismiss` it stays
+ * until its × is pressed.
  */
 import { Button, ICON_NAMES, ProviderMark, SettingFact, SettingNote, SettingRow, SettingsPanel } from '@alcove/ui';
 import type { Decorator, Meta, StoryObj } from '@storybook/react-vite';
@@ -36,3 +37,6 @@ export const Cancelled: Story = { args: { icon: undefined, children: 'Google Dri
 export const Failed: Story = { args: { icon: undefined, tone: 'caution', children: 'Google Drive couldn’t be connected. Try again; your settings haven’t changed.' } };
 export const FailedNight: Story = { ...Failed, name: 'Failed, night', globals: { theme: 'dark' } };
 export const ConnectedPhone: Story = { ...Connected, name: 'Connected, phone', globals: { viewport: { value: 'phone' } } };
+/** Said until it's dismissed: Pro renewed, at the top of Settings › Plan, with its × (`onDismiss`). */
+export const Dismissable: Story = { args: { icon: 'repeat', children: 'Pro renewed from your balance, for another month.', onDismiss: did('onDismiss'), dismissLabel: 'Dismiss this notice' } };
+export const DismissableNight: Story = { ...Dismissable, name: 'Dismissable, night', globals: { theme: 'dark' } };
