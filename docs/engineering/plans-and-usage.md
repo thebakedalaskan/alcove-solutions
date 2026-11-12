@@ -74,10 +74,11 @@ bought for a period ([below](#more-notes)) are part of its allowance, and end wi
 Prices come from NEAR AI's catalog (`GET /v1/models`: `pricing.input` and `pricing.output` in USD a million tokens,
 `pricing.input_cache_read` a token), read with the list of models and kept as last listed through an outage
 (`features/notes/models.ts` `priceOf`). A request whose model has a price kept never waits on the catalog: it's charged
-at that, and the list is read again behind it once it's ten minutes old; only a model never priced waits for the list. A model the catalog has never priced both ways is charged at
-`ai.fallback_input_micro_usd` and `ai.fallback_output_micro_usd`; each time the catalog is read, the models that can be
-charged without a price (the default, the speech model and every one offered) are logged at warn, once (`models not
-priced; charged at the fallback`, with their IDs), never with every request.
+at that, and the list is read again behind it once it's ten minutes old; only a model never priced waits for the list.
+A model the catalog has never priced both ways is charged at `ai.fallback_input_micro_usd` and
+`ai.fallback_output_micro_usd`; each time the catalog is read, the models that can be charged without a price (the
+default, the speech model and every one offered) are logged at warn, once (`models not priced; charged at the
+fallback`, with their IDs), never with every request.
 
 **Who pays:**
 
@@ -128,8 +129,8 @@ after notes stop too; a cheaper one always goes.
   or asking is refused with "Your notes for this period have run out. They start again when your plan renews."
 - **Whose, in words:** a refusal says whose allowance it is (`whose` on the meter's bill). Someone asking for what the
   organizer pays for (a guest's question, captions, anything the call does) reads "The organizer’s notes for this period
-  have run out, and this is paid from them."; AI a workspace's payer pays for, "The notes this workspace’s AI is paid from
-  have run out for this period.". A request refused only because what's left can't cover it says so instead, and nothing
+  have run out, and this is paid from them."; AI on a document or board its workspace's payer pays for, "The notes this
+  workspace’s AI is paid from have run out for this period.". A request refused only because what's left can't cover it says so instead, and nothing
   stops: "What’s left of your notes this period isn’t enough for this." (the organizer's, or the workspace's, likewise).
 
 ## Storage
