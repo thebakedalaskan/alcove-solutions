@@ -4,21 +4,24 @@
  * no groups. It can be hidden. At 860px and narrower the phone's top bar and tab bar (TabBar.tsx) take its place, and
  * the plan is said in Settings.
  */
-import { NEW_GROUP, type CalendarEvent, type Meeting, type Person, type Plan } from '@alcove/api';
+import { NEW_GROUP, type CalendarEvent, type Meeting, type MyTeam, type Person, type Plan, type PlanNotice } from '@alcove/api';
 import { ArchThumb, Dots, Faces, Icon, IconButton, Kbd, Logo, Meter, NavItemContent, SidebarNav, SunMark, buttonClass, cn, coverFor } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useRouterState } from '@tanstack/react-router';
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import { aheadOf, joinable } from '~/features/home/day';
 import { useCheckout } from '~/features/plans/checkout';
-import { PLAN_NAMES, endsIn, noticesNow, notesLeft, notesLow, notesOut, notesShare, proEnding } from '~/features/plans/plan-state';
+import {
+  PLAN_NAMES, endsIn, licensesLeft, licensesShort, noticesNow, notesLeft, notesLow, notesOut, notesShare, proEnding, teamAdmin, waitingForLicense
+} from '~/features/plans/plan-state';
 import { checkoutFor, payable, purchaseName, restToSend, settlingPurchase, tokensShort, waitingPurchase } from '~/features/plans/purchase';
 import { recordOfflineHere } from '~/lib/device';
 import { log } from '~/lib/log';
 import { useNow, useOnline } from '~/lib/live';
-import { sameEmail } from '~/lib/people';
+import { callName, sameEmail } from '~/lib/people';
 import { q, trustLine, verifiedAt } from '~/lib/queries';
 import { dayMonth, daysFromToday, hm, minutesUntil, shortDate, untilLabel } from '~/lib/time';
+import { plural } from '~/lib/words';
 import { NAV, inWorkspace, places, useCounts } from './places';
 
 const KEY = 'alcove-side-panel';
@@ -225,8 +228,15 @@ function Foot({ online }: { online: boolean }) {
   );
 }
 
+/**
+ * Your plan at the foot. On a team with a license, Team's own calm row (TeamRow); for its admin while licenses run short,
+ * how many are left and Buy. On a team without one, a line in caution over your own plan (NoLicense), whose row goes to
+ * Team. A team's notices otherwise are one short line above, as Pro's are (Said).
+ */
 function PlanFoot({ plan }: { plan: Plan }) {
   const offers = useQuery(q.offers()).data;
+  // On a team: who its admin is, and for the admin how many licenses are left.
+  const team = useQuery({ ...q.myTeam(), enabled: plan.team !== null }).data;
   // Read again only while the foot shows a payment: every 30 s while one is on its way, every 5 minutes while one settles.
   const topUps = useQuery({
     ...q.topUps(),
@@ -248,7 +258,7 @@ function PlanFoot({ plan }: { plan: Plan }) {
           {settling ? `Address closed, settling ${tokensShort(buying.received?.amount ?? '0')} ${route.token}`
             : short ? `Send ${tokensShort(restToSend(buying))} ${route.token} more`
             : state === 'waiting' ? `Waiting for ${tokensShort(asked.amount)} ${route.token}`
-            : purchase.buys.kind === 'pro' ? 'Payment seen, starting Pro' : 'Payment seen, adding notes'}
+            : purchase.buys.kind === 'pro' ? 'Payment seen, starting Pro' : purchase.buys.kind === 'licenses' ? 'Payment seen, adding licenses' : 'Payment seen, adding notes'}
         </p>
         <button type="button" className={cn('sb-plan', on && 'is-on')} onClick={() => checkout.reopen(buying.id, checkoutFor(purchase.buys), 'side')}>
           <span className="ac-clamp-1">{purchaseName(purchase.buys)}</span><span className="go">Open<Icon name="chevron" size={15} /></span>
@@ -256,20 +266,23 @@ function PlanFoot({ plan }: { plan: Plan }) {
       </>
     );
   }
-  const said = noticesNow(plan)[0];
+  const notices = noticesNow(plan, team);
+  // A team's licenses running short are said by Team's own row; any other notice, the newest, in one short line above.
+  const short = plan.kind === 'team' ? notices.find(licensesShort) : undefined;
+  const said = notices.find((n) => n !== short);
+  const waiting = waitingForLicense(plan);
   const ending = proEnding(plan, offers, now);
   const until = plan.pro.until;
   return (
     <>
-      {said && (
-        <Link to="/settings" hash="plan" className="sb-said">
-          {said.kind === 'pro-renewed' ? <><b>Pro renewed</b> from your balance</> : <><b>Pro ended.</b> Nothing was deleted.</>}
-        </Link>
-      )}
+      {said && <Link to="/settings" hash="plan" className="sb-said"><Said notice={said} plan={plan} team={team} /></Link>}
+      {waiting && <NoLicense plan={plan} team={team} />}
       {(plan.kind === 'free' || notesLow(plan) || notesOut(plan)) && <NotesLeft plan={plan} />}
-      {plan.kind === 'free' ? (
-        <Link to="/plans" className={cn('sb-plan', on && 'is-on')}>
-          <span>Free plan</span><span className="go">See plans<Icon name="chevron" size={15} /></span>
+      {plan.kind === 'team' ? <TeamRow plan={plan} team={team} short={short} on={on} />
+      : plan.kind === 'free' ? (
+        // Waiting for a team license, the way on is Team, which says why and who has been told.
+        <Link to={waiting ? '/team' : '/plans'} className={cn('sb-plan', on && 'is-on')}>
+          <span>Free plan</span><span className="go">{waiting ? 'Team' : 'See plans'}<Icon name="chevron" size={15} /></span>
         </Link>
       ) : ending ? (
         <button type="button" className={cn('sb-pro', on && 'is-on')} onClick={() => checkout.open({ plan: 'pro' }, 'side')}>
@@ -285,6 +298,61 @@ function PlanFoot({ plan }: { plan: Plan }) {
         </Link>
       )}
     </>
+  );
+}
+
+/** A notice in one short line, its news in bold: Pro renewed or ended, a team license replacing Pro, a team's licenses. */
+function Said({ notice, plan, team }: { notice: PlanNotice; plan: Plan; team: MyTeam | null | undefined }) {
+  const on = plan.team ? ` on ${plan.team.name}` : '';
+  switch (notice.kind) {
+    case 'pro-renewed': return <><b>Pro renewed</b> from your balance</>;
+    case 'license-replaced-pro': return notice.count ? <><b>Team replaced Pro.</b> {plural(notice.count, 'month')} refunded</> : <><b>Team replaced Pro</b></>;
+    case 'licenses-low': case 'licenses-none': {
+      const left = licensesLeft(notice, team);
+      return <><b>{left === 0 ? 'No licenses' : plural(left, 'license')} left</b>{on}</>;
+    }
+    case 'pro-ended': return <><b>Pro ended.</b> Nothing was deleted.</>;
+    // Said elsewhere: Pro ending by its own row, and waiting for a license by the line about it.
+    case 'pro-ending': case 'license-needed': return null;
+  }
+}
+
+/**
+ * On a team without a license, in caution over your own plan: who has been told, or for its admin, that buying licenses
+ * gives them one.
+ */
+function NoLicense({ plan, team }: { plan: Plan; team: MyTeam | null | undefined }) {
+  const admin = teamAdmin(team);
+  return (
+    <p className="sb-nolic">
+      No team license yet
+      <small>{plan.team?.role === 'admin' ? 'Buy licenses, and one is yours' : `${admin ? callName(admin) : 'Its admin'} has been told`}</small>
+    </p>
+  );
+}
+
+/**
+ * Team: one calm row, as Pro's, with its small sun and the team's name under it, which opens Settings at Plan. For its admin
+ * while its licenses run short (`short`, a notice not yet dismissed), how many are left and Buy, which opens checkout on Team.
+ */
+function TeamRow({ plan, team, short, on }: { plan: Plan; team: MyTeam | null | undefined; short: PlanNotice | undefined; on: boolean }) {
+  const checkout = useCheckout();
+  if (short) {
+    const left = licensesLeft(short, team);
+    return (
+      <button type="button" className={cn('sb-pro', on && 'is-on')} onClick={() => checkout.open({ plan: 'team' }, 'side')}>
+        <SunMark />
+        <span className="min-w-0"><b>{PLAN_NAMES.team}</b><small className="is-warm">{left === 0 ? 'No licenses' : plural(left, 'license')} left · Buy</small></span>
+        <Icon name="chevron" size={15} />
+      </button>
+    );
+  }
+  return (
+    <Link to="/settings" hash="plan" className={cn('sb-pro', on && 'is-on')}>
+      <SunMark />
+      <span className="min-w-0"><b>{PLAN_NAMES.team}</b>{plan.team && <small>{plan.team.name}</small>}</span>
+      <Icon name="chevron" size={15} />
+    </Link>
   );
 }
 

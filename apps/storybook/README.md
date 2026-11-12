@@ -124,7 +124,7 @@ Product, then the follow-ups from the retro board's Actions frame.
 | `team-member` | Art on Priya's team with a live license: the team's notes (`tn-roadmap`, `tn-onboarding`) and his standup visible to it |
 | `team-member-unlicensed` | Art's license ended with none to take: on Free, with a `license-needed` notice |
 | `team-join` | Art isn't on a team and has Priya's link to join (stories add it to the tab with `withTeamInvite()`) |
-| `no-team` | The busy afternoon with $60 and payments: Start a team on Team and on Team's card in Settings › Plan |
+| `no-team` | The busy afternoon with $60 and payments: Start a team on Team |
 | `agents-connected` | Art has a read-only Workspace assistant connected through OAuth and an unused Scheduling assistant personal token; Settings shows their scopes, expiry and last use |
 | `first-sign-in` | Nobody signed in, and no account yet: signing in makes Art's account on screen, his first day, and Home's tour |
 
