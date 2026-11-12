@@ -148,8 +148,20 @@ export const DocumentShareSchema = z.object({
 export type DocumentShare = z.infer<typeof DocumentShareSchema>;
 
 
+/**
+ * What a workspace is for, in one line, as its Home says under its name: empty until an admin says. It's kept with the
+ * workspace's name, sealed, and read by anyone in it.
+ */
+export const WorkspaceAboutSchema = z.object({ about: z.string() });
+
+export type WorkspaceAbout = z.infer<typeof WorkspaceAboutSchema>;
+
+
 /* ---------- requests ---------- */
 export const WorkspaceInputSchema = z.object({ name: oneLine(1, 120) });
+
+/** Saying what a workspace is for: one line, however it was typed, up to 200 characters. Empty says nothing. */
+export const WorkspaceAboutInputSchema = z.object({ about: oneLine(0, 200) });
 
 export const WorkspacePersonInputSchema = z.object({ email: EmailSchema, role: WorkspaceRoleSchema });
 

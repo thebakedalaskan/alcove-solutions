@@ -116,6 +116,8 @@ export const NoteSummarySchema = z.object({
   excerpt: z.string(), openActions: z.number(), totalActions: z.number(), meetingId: IDSchema.optional(),
   /** How you got the note, when it's someone else's. Absent on your own. */
   received: ReceivedSchema.optional(),
+  /** The series its call is in, when it's in one: see series.get. Worked out on each read, from the call in its organizer's vault. */
+  seriesId: IDSchema.optional(),
   /**
    * Each time someone who has the notes shared them with one of their groups, newest first: once for each
    * sharer and group (the latest time), and only while someone it reached still has them.
@@ -233,6 +235,16 @@ export const NoteWorkedOnSchema = z.object({
 export type NoteWorkedOn = z.infer<typeof NoteWorkedOnSchema>;
 
 
+/**
+ * Where a call's things are kept: its home, the workspace its organizer chose or the one made for it, with this run of the
+ * call's folder in it (null once that's gone, or before the call made one). Only for someone who's in that workspace now,
+ * worked out on every read and kept nowhere, so a note says nothing of a workspace its reader isn't in.
+ */
+export const NoteHomeSchema = z.object({ workspaceId: IDSchema, folderId: IDSchema.nullable() });
+
+export type NoteHome = z.infer<typeof NoteHomeSchema>;
+
+
 export const NoteSchema = NoteSummarySchema.extend({
   recipients: z.array(RecipientSchema),
   summary: z.string(),
@@ -280,10 +292,10 @@ export const NoteSchema = NoteSummarySchema.extend({
   kept: z.object({ transcript: z.boolean(), recording: z.boolean() }),
   /** The verified private models that transcribed the speech and wrote the notes. Empty when nothing was transcribed. */
   inference: z.array(InferenceEvidenceSchema),
-  /** The series its call is in, when it's in one: see series.get. */
-  seriesId: IDSchema.optional(),
   /** What was worked on in the call that you can open now. */
-  workedOn: z.array(NoteWorkedOnSchema).default([])
+  workedOn: z.array(NoteWorkedOnSchema).default([]),
+  /** The call's home, for someone in that workspace now: see `NoteHome`. Null for everyone else, and for a room recording. */
+  home: NoteHomeSchema.nullable().default(null)
 });
 
 export type Note = z.infer<typeof NoteSchema>;

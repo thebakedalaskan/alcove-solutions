@@ -172,7 +172,8 @@ export function writeNote(s: NoteSpec, me: Person = ART): Note {
     audio: kept.recording && status !== 'recording' ? [{ index: 0, seconds, pieces: Math.ceil(seconds / 5), mimeType: 'audio/webm;codecs=opus' }] : [],
     kept,
     inference: written ? inferenceAt(addMinutes(ended, 1), (s.screens?.length ?? 0) > 0 || (s.shares?.length ?? 0) > 0) : [],
-    ...(s.seriesId ? { seriesId: s.seriesId } : {})
+    ...(s.seriesId ? { seriesId: s.seriesId } : {}),
+    home: null
   };
 }
 
@@ -181,7 +182,7 @@ export function summaryOf(n: Note): NoteSummary {
   return {
     id: n.id, kind: n.kind, status: n.status, title: n.title, startedAt: n.startedAt, duration: n.duration, people: n.people, sharedWith: n.sharedWith,
     excerpt: n.excerpt, openActions: n.openActions, totalActions: n.totalActions, ...(n.meetingId ? { meetingId: n.meetingId } : {}),
-    ...(n.received ? { received: n.received } : {}), groupShares: n.groupShares
+    ...(n.received ? { received: n.received } : {}), ...(n.seriesId ? { seriesId: n.seriesId } : {}), groupShares: n.groupShares
   };
 }
 export const foundOf = (n: Note): NoteFound => ({ ...summaryOf(n), said: [], saidCount: 0 });

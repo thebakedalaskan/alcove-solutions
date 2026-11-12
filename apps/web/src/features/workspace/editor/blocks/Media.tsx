@@ -4,14 +4,14 @@
  * so everyone sees it, and everything they can do goes through the Editor's props. A stored picture is read through
  * the media handlers while its block is on the page, and a file that's been deleted for good says so where it was.
  */
-import { Avatar, Button, Icon, IconButton, WsCaptionField, cn, type WsTagChoice, type WsTagging } from '@alcove/ui';
+import { Avatar, Button, Faces, Icon, IconButton, WsCaptionField, cn, type AvatarPerson, type WsTagChoice, type WsTagging } from '@alcove/ui';
 import type { Person } from '@alcove/api';
 import { firstName } from '@alcove/api';
 import type { Node as PMNode } from 'prosemirror-model';
 import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode, type SyntheticEvent } from 'react';
 import { position } from '~/lib/time';
 import { removeBlock, setBlockAttrs, setCaption } from '../actions';
-import type { EditorRuntime } from '../runtime';
+import type { EditorRuntime, ThreadAuthor } from '../runtime';
 import { captionsOf, numberAttr, textAttr, type CaptionTag } from '../schema';
 import type { MediaHandlers, MediaState, VideoPlay } from '../types';
 import { clockOf, liveWhen } from '../../live/dates';
@@ -29,6 +29,13 @@ export function PersonFace({ id, name, size }: { id: string; name: string; size:
   const rt = useRuntime();
   const person: Pick<Person, 'name'> = rt.people.get(id) ?? { name };
   return <Avatar person={person} size={size} />;
+}
+
+/** Who commented on a block, before how many comments there are in the margin: the first two, their arches overlapping. */
+export function ThreadFaces({ by }: { by: readonly ThreadAuthor[] }) {
+  const rt = useRuntime();
+  if (by.length === 0) return null;
+  return <Faces people={by.slice(0, 2).map((p): AvatarPerson => rt.people.get(p.id) ?? { name: p.name })} size={18} />;
 }
 
 const noChanges = { subscribe: () => () => undefined, getSnapshot: () => 0 };
@@ -510,8 +517,12 @@ function Moment({ node }: { node: PMNode }) {
       <div>
         <p>“{textAttr(node, 'text')}”</p>
         <span className="m">
-          <span>{firstName(name)} · {clockOf(at)}</span>
-          {note && line && rt.props.hear?.({ note, line })}
+          {rt.props.cite ? rt.props.cite({ note: note ?? null, line: line ?? null, name, at }) : (
+            <>
+              <span>{firstName(name)} · {clockOf(at)}</span>
+              {note && line && rt.props.hear?.({ note, line })}
+            </>
+          )}
         </span>
       </div>
     </div>

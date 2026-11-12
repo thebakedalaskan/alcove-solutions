@@ -124,7 +124,7 @@ export const EndedReady = inCall({ scenario: 'call-soon', call: REVIEW, script: 
     waitFor(/^Read the notes/, 'Stay a moment: they’re written, and the page says what they say'))
 });
 export const EndedReadyPhone = phone(EndedReady);
-/** Their progress can't be followed: they'll be in Notes when they're ready, and nobody needs to wait. */
+/** Their progress can't be followed: they'll be in Calls when they're ready, and nobody needs to wait. */
 export const EndedSlow = inCall({ scenario: 'call-soon', call: REVIEW, script: REVIEW_LATE }, {
   play: plays(
     async () => { troubled({ 'notes.progress': 'failed' })(current()); },

@@ -29,6 +29,7 @@ import { isOnline } from '../browser';
 import type { PageThread, Space } from '../world';
 import { personAt } from '../world/people';
 import { Pushed, pause } from './live';
+import { writersIn } from './writers';
 import { current, me, nextId } from './state';
 
 const notFound = () => new AlcoveApiError('not-found', 'That workspace isn’t there, or you can’t open it.');
@@ -103,8 +104,8 @@ export function duplicateItem(id: string, itemId: string): { id: string } {
 export function peopleIn(id: string): WorkspacePerson[] {
   const mine: WorkspaceRole = treeOf(id).role ?? 'read';
   const since = new Date(Date.now() - 30 * 86_400_000).toISOString();
-  const team = (current().team?.members ?? []).filter((m) => m.onAlcove)
-    .map((m, i): WorkspacePerson => ({ id: `wp-${i}`, person: m.person, role: mine !== 'admin' && i === 0 ? 'admin' : 'edit', since, isMe: false }));
+  const members = current().workspaces.find((w) => w.id === id)?.members ?? (current().team?.members ?? []).filter((m) => m.onAlcove).map((m) => m.person);
+  const team = members.map((person, i): WorkspacePerson => ({ id: `wp-${i}`, person, role: mine !== 'admin' && i === 0 ? 'admin' : 'edit', since, isMe: false }));
   return [{ id: 'wp-me', person: me(), role: mine, since, isMe: true }, ...team];
 }
 export function addPerson(id: string, email: string, _role: WorkspaceRole): { id: string } {
@@ -150,13 +151,16 @@ export function unshare(documentId: string, entryId: string): void {
 }
 export const restrict = (id: string, documentId: string, restricted: boolean) => edit(id, (items) => items.map((i) => (i.id === documentId ? { ...i, restricted } : i)));
 
-/** The IDs this workspace's documents know people by, for the addresses asked about: a member's is the one they have here. */
+/**
+ * The IDs this workspace's documents know people by, for the addresses asked about: a member's is the one they have here,
+ * the one the people list and who's here give them too, as the API's are, so a tag, a comment and a caret find the same face.
+ */
 export function idsIn(id: string, emails: string[]): Record<string, string> {
   const people = peopleIn(id);
   return Object.fromEntries(emails.flatMap((email) => {
     const lower = email.trim().toLowerCase();
     const found = people.find((p) => p.person.email.toLowerCase() === lower);
-    return found ? [[lower, found.id]] : [];
+    return found ? [[lower, found.person.id]] : [];
   }));
 }
 
@@ -210,10 +214,11 @@ const watching = new Set<LiveWorkspace>();
  */
 function hereNow(id: string): WorkspaceHere[] {
   const you: WorkspaceHere = { person: me(), connection: 'standin-you', callIdentity: null, document: null, block: null, typing: false, page: null, elsewhere: false, isMe: true };
-  const boards = treeOf(id).items.filter((i) => i.kind === 'board' && i.trashedAt === null);
-  return [you, ...boards.flatMap((b) => (current().boards[b.id]?.here ?? []).map(({ who }): WorkspaceHere => ({
-    person: who, connection: `standin-${b.id}-${who.id}`, callIdentity: null, document: b.id, block: null, typing: false, page: null, elsewhere: false, isMe: false
-  }))), ...(presence.get(id) ?? [])];
+  const open = treeOf(id).items.filter((i) => i.kind !== 'folder' && i.trashedAt === null);
+  const on = (i: WorkspaceItem, who: Person, typing: boolean): WorkspaceHere => ({
+    person: who, connection: `standin-${i.id}-${who.id}`, callIdentity: null, document: i.id, block: null, typing, page: null, elsewhere: false, isMe: false
+  });
+  return [you, ...open.flatMap((i) => [...(current().boards[i.id]?.here ?? []).map(({ who }) => on(i, who, false)), ...(current().pages[i.id]?.here ?? []).map(({ who }) => on(i, who, true))]), ...(presence.get(id) ?? [])];
 }
 
 class LiveWorkspace extends Pushed<WorkspaceView> implements WorkspaceLive {
@@ -517,7 +522,7 @@ class Document extends Pushed<DocStatus> implements DocSession {
     this.awareness = new Awareness(this.doc);
     const sending = sendingIn(current().pages[item.id]?.blocks ?? []);
     if (sending.length > 0) this.awareness.states.set(SOMEONE_ELSE, { uploading: sending });
-    this.leave = item.kind === 'board' ? othersOn(item, this.awareness) : () => undefined;
+    this.leave = item.kind === 'board' ? othersOn(item, this.awareness) : writersIn(this.doc, this.awareness, current().pages[item.id]?.here ?? []);
     this.ready = Promise.resolve();
   }
   /** What Alcove refused of this document, which is all this browser wrote here that it hasn't taken. */

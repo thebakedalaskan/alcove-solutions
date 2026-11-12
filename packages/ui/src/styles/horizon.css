@@ -55,8 +55,8 @@
 /* Agents: Team's moment the other way round, the sun low on the right. The page moves it to just past the end of its line. */
 .hz[data-moment="agents"] { --hz-sky: linear-gradient(to bottom in oklch, oklch(0.8 0.062 250) 0%, oklch(0.869 0.043 270) 58%, oklch(0.912 0.047 355.294) 100%); --hz-sun-x: 300px; --hz-sun-r: 36px; }
 .dark .hz[data-moment="agents"] { --hz-sky: linear-gradient(to bottom in oklch, oklch(0.24 0.052 258) 0%, oklch(0.292 0.066 264.923) 58%, oklch(0.402 0.076 305.789) 100%); }
-.hz[data-moment="notes"] { --hz-sky: linear-gradient(to bottom in oklch, oklch(0.8 0.062 250) 0%, oklch(0.863 0.044 260) 58%, oklch(0.902 0.038 327.059) 100%); --hz-glow-w: 980px; --hz-glow-h: 150px; }
-.dark .hz[data-moment="notes"] { --hz-sky: linear-gradient(to bottom in oklch, oklch(0.24 0.052 258) 0%, oklch(0.28 0.064 261.529) 58%, oklch(0.351 0.07 288.308) 100%); }
+.hz[data-moment="calls"] { --hz-sky: linear-gradient(to bottom in oklch, oklch(0.8 0.062 250) 0%, oklch(0.863 0.044 260) 58%, oklch(0.902 0.038 327.059) 100%); --hz-glow-w: 980px; --hz-glow-h: 150px; }
+.dark .hz[data-moment="calls"] { --hz-sky: linear-gradient(to bottom in oklch, oklch(0.24 0.052 258) 0%, oklch(0.28 0.064 261.529) 58%, oklch(0.351 0.07 288.308) 100%); }
 .hz[data-moment="drive"] { --hz-sky: linear-gradient(to bottom in oklch, oklch(0.8 0.062 250) 0%, oklch(0.856 0.046 257) 58%, oklch(0.892 0.04 312) 100%); --hz-glow-w: 860px; --hz-glow-h: 120px; }
 .dark .hz[data-moment="drive"] { --hz-sky: linear-gradient(to bottom in oklch, oklch(0.24 0.052 258) 0%, oklch(0.276 0.063 261) 58%, oklch(0.33 0.069 280) 100%); }
 .hz[data-moment="note"] { --hz-sky: linear-gradient(to bottom in oklch, oklch(0.8 0.062 250) 0%, oklch(0.847 0.049 253.947) 58%, oklch(0.878 0.041 285) 100%); --hz-glow-w: 760px; --hz-glow-h: 90px; }
@@ -179,7 +179,7 @@
 .hz-wake.is-2 { left: calc(var(--cw) * .3); top: 16px; width: calc(var(--cw) * .42); opacity: .22; }
 .hz-wake.is-3 { left: calc(var(--cw) * .4); top: 22px; width: calc(var(--cw) * .22); opacity: .13; }
 /* Far out, on the pages with a short sky. */
-.hz[data-moment="notes"] .hz-sail, .hz[data-moment="settings"] .hz-sail { --small: .62; }
+.hz[data-moment="calls"] .hz-sail, .hz[data-moment="settings"] .hz-sail { --small: .62; }
 .hz-sail:not(.is-left) .hz-craft { scale: var(--small, 1); }
 .hz-sail.is-left .hz-craft { scale: calc(-1 * var(--small, 1)) var(--small, 1); }
 @keyframes hz-bob { 0%, 100% { transform: rotate(0); } 7% { transform: rotate(-1.4deg); } 19% { transform: rotate(1.2deg); } 31% { transform: rotate(-1deg); } 44% { transform: rotate(1.5deg); } 58% { transform: rotate(-1.3deg); } 71% { transform: rotate(1deg); } 86% { transform: rotate(-1.1deg); } }

@@ -74,13 +74,14 @@ export type QuestionPatch = z.infer<typeof QuestionPatchSchema>;
 
 
 /**
- * A change to a follow-up. Only the person it's for can take it on (`takeOn`: "I'll do it"). The rest follows `grants.ts`.
- * Taking something on, or giving it to yourself, says what was read (`seen`), its words and its date: agreeing to something
- * that's since become something else is refused.
+ * A change to a follow-up. Only the person it's for can take it on (`takeOn`: "I'll do it"), and only whoever took it on can
+ * take that back (`takeOn: false`, Undo): it's suggested for them again. The rest follows `grants.ts`. Taking something on, or
+ * giving it to yourself, says what was read (`seen`), its words and its date: agreeing to something that's since become
+ * something else is refused.
  */
 export const ActionPatchSchema = z.object({
   done: z.boolean().optional(),
-  takeOn: z.literal(true).optional(),
+  takeOn: z.boolean().optional(),
   /** Give it to someone who has the notes, by email address, or to nobody: from the person it's for, that's "Not mine". */
   owner: z.string().trim().toLowerCase().max(254).nullable().optional(),
   due: z.string().trim().max(40).nullable().optional(),

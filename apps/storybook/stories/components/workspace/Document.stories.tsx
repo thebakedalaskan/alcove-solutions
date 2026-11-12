@@ -38,7 +38,7 @@ function Whole({ call }: { call: boolean }) {
   const ws = useWorkspace({ call });
   return (
     <>
-      <Box width="100%" height={640}><WsPane page={!call}><DocOf ws={ws} onToggleList={did('onToggleList')} /></WsPane></Box>
+      <Box width="100%" height={640}><WsPane><DocOf ws={ws} onToggleList={did('onToggleList')} /></WsPane></Box>
       <WsToasts toasts={ws.toasts} />
     </>
   );
@@ -91,12 +91,9 @@ type Part = 'faces' | 'share' | 'more';
 const headTypes: HeadStory['argTypes'] = { save: { control: 'inline-radio', options: SAVES }, crumbs: { control: 'object' }, faces: { control: false } };
 const HEAD = { crumbs: ['Product', 'Launch plan'], save: 'saved', onToggleList: did('onToggleList') } satisfies ComponentProps<typeof WsDocHead>;
 
-/**
- * The head over the top of its page. `parts`: what it has. `opened`: the popover that's open to begin with. `call`: it's in a
- * call, where the workspace is night and Share has the call's guest.
- */
-function HeadIn({ args, parts, opened: startOpened = null, width = '100%', call }: {
-  args: ComponentProps<typeof WsDocHead>; parts: Part[]; opened?: string | null | undefined; width?: number | string | undefined; call: boolean;
+/** The head over the top of its page. `parts`: what it has. `opened`: the popover that's open to begin with. */
+function HeadIn({ args, parts, opened: startOpened = null, width = '100%' }: {
+  args: ComponentProps<typeof WsDocHead>; parts: Part[]; opened?: string | null | undefined; width?: number | string | undefined;
 }) {
   const [opened, setOpened] = useState<string | null>(startOpened);
   const [moving, setMoving] = useState(false);
@@ -111,7 +108,7 @@ function HeadIn({ args, parts, opened: startOpened = null, width = '100%', call 
       onHistory={close} onDuplicate={close} onMove={() => setMoving(true)} onCopyLink={close} onExport={close} onTrash={close} />;
   return (
     <Box width={width} height={380}>
-      <WsPane page={!call}>
+      <WsPane>
         <WsDoc>
           <WsDocHead {...args} faces={faces}
             share={has('share') ? pop('share', <ShareFor title={`Share ${name}`} />) : undefined}
@@ -123,8 +120,8 @@ function HeadIn({ args, parts, opened: startOpened = null, width = '100%', call 
   );
 }
 const IN_A_CALL: Part[] = ['faces', 'share', 'more'];
-const headed = (parts: Part[], o: { opened?: string | null; width?: number | string; call?: boolean } = {}) => function Render(args: ComponentProps<typeof WsDocHead>) {
-  return <HeadIn args={args} parts={parts} opened={o.opened ?? null} width={o.width ?? '100%'} call={o.call ?? true} />;
+const headed = (parts: Part[], o: { opened?: string | null; width?: number | string } = {}) => function Render(args: ComponentProps<typeof WsDocHead>) {
+  return <HeadIn args={args} parts={parts} opened={o.opened ?? null} width={o.width ?? '100%'} />;
 };
 
 /** In a call: the path, Saved, who's in it (up to four), Share and ⋯. */
@@ -136,7 +133,7 @@ export const HeadMore: HeadStory = { name: 'Head: ⋯ open', args: HEAD, argType
 /** Pressing someone's face: follow them, or tag them here. They're in this document, so there's nowhere to go. */
 export const HeadFace: HeadStory = { name: 'Head: someone’s card open', args: HEAD, argTypes: headTypes, render: headed(IN_A_CALL, { opened: 'face:Priya' }) };
 /** In the app: Share and ⋯ only. */
-export const HeadInTheApp: HeadStory = { name: 'Head: in the app', args: HEAD, argTypes: headTypes, render: headed(['share', 'more'], { call: false }) };
+export const HeadInTheApp: HeadStory = { name: 'Head: in the app', args: HEAD, argTypes: headTypes, render: headed(['share', 'more']) };
 /** One of the call's pages: no Share or ⋯, and Live while notes are on. */
 export const HeadLivePage: HeadStory = { name: 'Head: a page of the call', args: { ...HEAD, crumbs: [CALL.title, 'Notes'], save: 'live' }, argTypes: headTypes, render: headed([]) };
 /** A narrow document gives up the path but the last name, then Saved, then the faces. */

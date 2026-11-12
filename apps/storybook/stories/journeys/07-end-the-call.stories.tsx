@@ -82,7 +82,7 @@ export const ParticipantLeaves: PageStory = {
     await step('The call’s page: you left, who’s still in it, and how long it’s been going. Notes are on, and you get them when it ends', async () => {
       await thePage('You left Launch check-in');
     });
-    await step('Go to Home. The page fades, and Home settles in, the side panel easing in. The notes come to Notes once the call ends', async () => {
+    await step('Go to Home. The page fades, and Home settles in, the side panel easing in. The notes come to Calls once the call ends', async () => {
       await userEvent.click(await screen.findByRole('button', { name: /^Go to Home/ }, SOON));
       await home();
     });

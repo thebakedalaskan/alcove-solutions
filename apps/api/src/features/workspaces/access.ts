@@ -97,8 +97,11 @@ export type StoredItem = z.infer<typeof StoredItem>;
  */
 export const MadeFor = z.object({ title: z.string(), at: z.string(), meetingId: z.string(), seriesId: z.string().nullable(), out: z.array(z.string()).default([]) });
 export type MadeFor = z.infer<typeof MadeFor>;
-/** A workspace's name and tree: one record, because its server serialises every change under the row's lock. */
-export const WorkspaceState = z.object({ name: z.string(), items: z.record(z.string(), StoredItem), madeFor: MadeFor.nullable().default(null) });
+/**
+ * A workspace's name and tree: one record, because its server serialises every change under the row's lock. `about` is the
+ * line on what it's for, which a state written before there was one doesn't have: it reads as nothing said.
+ */
+export const WorkspaceState = z.object({ name: z.string(), items: z.record(z.string(), StoredItem), madeFor: MadeFor.nullable().default(null), about: z.string().default('') });
 export type WorkspaceState = z.infer<typeof WorkspaceState>;
 
 /** Seals what's kept for a workspace: `workspace-state`, `workspace-member` and `document-access` records. */

@@ -8,11 +8,11 @@
  * know what's in a board add their functions here the same way. Arguments and results cross between threads, so they're
  * plain data: bytes are fine, a `Y.Doc` isn't. To work with another document, pass its `state`.
  */
-import { DOC_FRAGMENT, DocTextBlockSchema, SERVER_CLIENT } from '@alcove/api';
+import { DOC_FRAGMENT, DocTextBlockSchema, PreviewLineSchema, SERVER_CLIENT } from '@alcove/api';
 import { TEMPLATES, boardFollowUps, boardText, fillTemplate, landBoards, roomFrames, readBoard, type BoardView, type TemplateName } from '@alcove/board';
 import * as Y from 'yjs';
 import { z } from 'zod';
-import { documentText, documentTodos, followUpsIn, holdsVideo, openTodos, readsAsAgenda, tickFollowUp, writeAgenda, type ContentKind, type Run } from './document-text';
+import { documentPreview, documentText, documentTodos, followUpsIn, holdsVideo, openTodos, readsAsAgenda, tickFollowUp, writeAgenda, type ContentKind, type Run } from './document-text';
 
 /** Something a worker can do to a document. `call` is `run` for arguments that came through a message. */
 export interface DocOp<A, R> { args: z.ZodType<A>; result: z.ZodType<R>; call(doc: Y.Doc, args: unknown): unknown }
@@ -39,6 +39,12 @@ export const docReads = {
   todos: docOp(OfKind, z.array(Todo), (doc, a) => documentTodos(doc, a.kind)),
   /** Its follow-ups as a call shows them, worked out here so nothing past the limits comes back. */
   followUps: docOp(z.object({ kind: Kind, max: z.number().int().min(0), chars: z.number().int().min(1), tags: z.number().int().min(0) }), z.array(Todo), (doc, a) => followUpsIn(doc, a.kind, a)),
+  /** What its card shows: its first lines with words, the pictures and videos it holds, and its first file's ending. Nothing past the limits crosses back. */
+  preview: docOp(
+    z.object({ kind: Kind, lines: z.number().int().min(0), chars: z.number().int().min(1) }),
+    z.object({ lines: z.array(PreviewLineSchema), pictures: z.number(), videos: z.number(), file: z.string().nullable() }),
+    (doc, a) => documentPreview(doc, a.kind, a)
+  ),
   /** Whether it holds this video. */
   holdsVideo: docOp(z.object({ kind: Kind, media: z.string() }), z.boolean(), (doc, a) => holdsVideo(doc, a.kind, a.media)),
   /** What's left to do in it, for the next agenda to carry. */

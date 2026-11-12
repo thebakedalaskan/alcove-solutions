@@ -21,8 +21,8 @@ function NoteRows({ noteId, depth }: { noteId: string; depth: number }) {
   const navigate = useNavigate();
   const open = (page: CallPage) => {
     const { hash } = NAMES[page];
-    if (ws.mode === 'call') { window.open(`/notes/${encodeURIComponent(noteId)}${hash ? `#${hash}` : ''}`, '_blank', 'noopener'); return; }
-    void navigate({ to: '/notes/$noteId', params: { noteId }, ...(hash ? { hash } : {}) });
+    if (ws.mode === 'call') { window.open(`/calls/${encodeURIComponent(noteId)}${hash ? `#${hash}` : ''}`, '_blank', 'noopener'); return; }
+    void navigate({ to: '/calls/$noteId', params: { noteId }, ...(hash ? { hash } : {}) });
   };
   return <>{CALL_PAGES.map((page) => <WsRow key={page} id={`${noteId}:${page}`} name={NAMES[page].name} kind="live" icon={NAMES[page].icon} depth={depth} onOpen={() => open(page)} />)}</>;
 }

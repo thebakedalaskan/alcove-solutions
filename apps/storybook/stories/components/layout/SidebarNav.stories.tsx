@@ -13,14 +13,14 @@ interface Place { to: string; icon: IconName; label: string; count?: number | un
 /** A team's places on the busy afternoon: two things wait on you, eleven notes, six people on Alcove. */
 const TEAM: Place[] = [
   { to: '/home', icon: 'home', label: 'Home', count: 2 },
-  { to: '/notes', icon: 'notes', label: 'Notes', count: 11 },
+  { to: '/calls', icon: 'calls', label: 'Calls', count: 11 },
   { to: '/record', icon: 'recordDot', label: 'Record' },
   { to: '/team', icon: 'people', label: 'Team', count: 6 }
 ];
 /** On your own there's no Team page. A recording waits on this device to upload. */
 const ALONE: Place[] = [
   { to: '/home', icon: 'home', label: 'Home' },
-  { to: '/notes', icon: 'notes', label: 'Notes', count: 4 },
+  { to: '/calls', icon: 'calls', label: 'Calls', count: 4 },
   { to: '/record', icon: 'recordDot', label: 'Record', count: 1 }
 ];
 
@@ -68,7 +68,7 @@ type Story = StoryObj<typeof meta>;
 
 /** On Home. A place's count sits at its end: what's waiting on you, notes, the people on Alcove. */
 export const OnHome: Story = { name: 'On Home' };
-/** On Notes: the page you're on is lit. */
-export const OnNotes: Story = { name: 'On Notes', args: { children: <Links places={TEAM} start="/notes" /> } };
+/** On Calls: the page you're on is lit. */
+export const OnCalls: Story = { name: 'On Calls', args: { children: <Links places={TEAM} start="/calls" /> } };
 /** Someone on their own: no Team. Record counts the recording waiting on this device to upload. */
 export const OnTheirOwn: Story = { name: 'On their own', args: { children: <Links places={ALONE} start="/home" /> } };

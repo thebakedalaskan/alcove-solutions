@@ -162,7 +162,7 @@ function Find({ onClose, back }: { onClose: () => void; back: RefObject<Escape |
   const seeAll = () => {
     onClose();
     // The words searched go in history state and the person after #with=: neither reaches a server. Notes reads the words once.
-    void navigate({ to: '/notes', hashScrollIntoView: false, ...(token ? { hash: `with=${encodeURIComponent(token.email)}` } : {}), ...(typed ? { state: { searched: typed.slice(0, MAX_SEARCH_TEXT) } } : {}) });
+    void navigate({ to: '/calls', hashScrollIntoView: false, ...(token ? { hash: `with=${encodeURIComponent(token.email)}` } : {}), ...(typed ? { state: { searched: typed.slice(0, MAX_SEARCH_TEXT) } } : {}) });
   };
   const go = (row: Row) => {
     switch (row.kind) {
@@ -170,11 +170,11 @@ function Find({ onClose, back }: { onClose: () => void; back: RefObject<Escape |
       case 'person': pick(row.someone.person); return;
       case 'moment':
         onClose();
-        void navigate({ to: '/notes/$noteId', params: { noteId: row.note.id }, ...inNote(row.line.at, row.line.room) });
+        void navigate({ to: '/calls/$noteId', params: { noteId: row.note.id }, ...inNote(row.line.at, row.line.room) });
         return;
       case 'note':
         onClose();
-        void navigate({ to: '/notes/$noteId', params: { noteId: row.note.id } });
+        void navigate({ to: '/calls/$noteId', params: { noteId: row.note.id } });
         return;
       case 'more':
         setOpened((o) => new Set(o).add(row.note.id));

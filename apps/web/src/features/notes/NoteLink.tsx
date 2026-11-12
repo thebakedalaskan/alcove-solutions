@@ -72,7 +72,7 @@ export function NoteLinkPage() {
       if (now?.ownerId !== who.ownerId) { setOpening(now ? { at: 'ask', who: asked(now) } : { at: 'sign-in' }); return; }
       const { noteId } = await claim.mutateAsync(secret);
       taken = null;
-      await navigate({ to: '/notes/$noteId', params: { noteId }, replace: true });
+      await navigate({ to: '/calls/$noteId', params: { noteId }, replace: true });
     } catch (e) {
       const code = errorCode(e);
       llog.info('note link not opened', { code });
@@ -141,7 +141,7 @@ export function NoteLinkPage() {
         <span className="rg-done is-quiet"><Icon name={opening.at === 'gone' ? 'clock' : 'link'} size={24} /></span>
         <h1>{opening.at === 'gone' ? 'This link has run out or been revoked' : 'There’s no link here'}</h1>
         <p>{opening.at === 'gone' ? 'Ask whoever sent it for a new one.' : 'Open the whole link you were sent: the part after # is what opens the notes.'}</p>
-        <Link to="/notes" className={buttonClass({ size: 'lg' })}>Go to your notes</Link>
+        <Link to="/calls" className={buttonClass({ size: 'lg' })}>Go to your notes</Link>
       </GuestCard>
     );
   }
@@ -151,7 +151,7 @@ export function NoteLinkPage() {
         <span className="rg-done is-quiet"><Icon name="lock" size={24} /></span>
         <h1>These notes can’t open here</h1>
         <p>{opening.message}</p>
-        <Link to="/notes" className={buttonClass({ size: 'lg' })}>Go to your notes</Link>
+        <Link to="/calls" className={buttonClass({ size: 'lg' })}>Go to your notes</Link>
       </GuestCard>
     );
   }

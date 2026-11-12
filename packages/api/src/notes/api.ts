@@ -33,6 +33,8 @@ export interface NotesApi {
    * has the note, with ranges, so replay can seek.
    */
   screenVideoUrl(id: ID, share: ID, segment: number): string;
+  /** The same video whole, to save on this device: the browser has it decrypted, as it has the audio. */
+  screenVideo(id: ID, share: ID, segment: number, signal?: AbortSignal | undefined): Promise<Blob>;
   /**
    * Adds a decision the notes didn't hear, proposed by you, in your exact words. Anyone who has the notes can. Sending
    * the same words again adds nothing.

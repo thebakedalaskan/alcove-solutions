@@ -8,11 +8,11 @@ import type { Mark, Node as PMNode } from 'prosemirror-model';
 import type { Decoration, EditorView, MarkView, MarkViewConstructor, NodeView, NodeViewConstructor, ViewMutationRecord } from 'prosemirror-view';
 import { createElement } from 'react';
 import { codeLang, langName } from '../languages';
-import type { EditorRuntime } from '../runtime';
+import type { EditorRuntime, ThreadAuthor } from '../runtime';
 import { blockIdOf, headingLevel, indentAttr, isGone, lineKind, numberAttr, textAttr, textOf } from '../schema';
 import { dateLabel } from './dates';
 import { CALLOUT_ICONS, iconNode } from './icons';
-import { MediaBlock, PersonFace } from './Media';
+import { MediaBlock, PersonFace, ThreadFaces } from './Media';
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, className = ''): HTMLElementTagNameMap[K] {
   const out = document.createElement(tag);
@@ -26,6 +26,12 @@ function solid<T extends HTMLElement>(node: T): T {
   return node;
 }
 
+/** Someone who wrote in a thread, as a decoration carries them. */
+const authorOf = (v: unknown): ThreadAuthor[] => {
+  if (typeof v !== 'object' || v === null || !('id' in v) || !('name' in v)) return [];
+  return typeof v.id === 'string' && typeof v.name === 'string' ? [{ id: v.id, name: v.name }] : [];
+};
+
 const onControl = (e: Event): boolean => e.target instanceof Element && e.target.closest('.wb-box, .wb-fold, .wb-th, .wb-lang') !== null;
 
 /** Moves as it arrives, once: left on, the animation would run again each time the page is shown. */
@@ -37,12 +43,15 @@ function arrive(el: HTMLElement): void {
 /** Keeps the caret where it is when something beside the text is pressed. */
 const keepCaret = (control: HTMLElement) => control.addEventListener('mousedown', (e) => e.preventDefault());
 
-/** What every top-level block has: its ID, its indent and the count of comments in the margin. */
+/** What every top-level block has: its ID, its indent and, in the margin, who commented on it and how many times. */
 abstract class BlockFrame {
   readonly dom: HTMLElement;
   abstract contentDOM: HTMLElement | null;
   private margin: HTMLButtonElement | null = null;
   private thread: string | null = null;
+  /** The portal the commenters' faces are drawn in, while there's a margin. */
+  private faces: number | null = null;
+  private by: readonly ThreadAuthor[] = [];
 
   protected constructor(protected node: PMNode, protected readonly rt: EditorRuntime, className: string, decorations: readonly Decoration[]) {
     this.dom = el('div', `wb ${className}`);
@@ -55,29 +64,42 @@ abstract class BlockFrame {
     if (id) this.dom.setAttribute('data-b', id);
     this.dom.style.setProperty('--ind', String(indentAttr(node)));
     const shown = decorations.find((d) => typeof d.spec.threadId === 'string');
-    this.showThreads(textOf(shown?.spec.threadId), typeof shown?.spec.threadCount === 'number' ? shown.spec.threadCount : 0);
+    const by: unknown = shown?.spec.threadBy;
+    this.showThreads(textOf(shown?.spec.threadId), typeof shown?.spec.threadCount === 'number' ? shown.spec.threadCount : 0, Array.isArray(by) ? by.flatMap(authorOf) : []);
   }
 
-  private showThreads(thread: string | null, count: number): void {
+  private showThreads(thread: string | null, count: number, by: readonly ThreadAuthor[]): void {
     this.thread = thread;
+    this.by = by;
     if (thread === null) {
-      this.margin?.remove();
-      this.margin = null;
+      this.dropMargin();
       return;
     }
+    const drawFaces = () => createElement(ThreadFaces, { by: this.by });
     if (!this.margin) {
       const button = solid(el('button', 'wb-th'));
       button.type = 'button';
       button.setAttribute('aria-label', 'Open the comments');
-      button.append(iconNode('comment'), el('span'));
+      const faces = el('span', 'wb-thf');
+      button.append(iconNode('comment'), faces, el('span', 'wb-thn'));
       keepCaret(button);
       button.addEventListener('click', () => { if (this.thread) this.rt.props.onOpenThread?.(this.thread, button.getBoundingClientRect()); });
       this.dom.append(button);
       this.margin = button;
-    }
-    const label = this.margin.querySelector('span');
+      this.faces = this.rt.portals.add(faces, drawFaces);
+    } else if (this.faces !== null) this.rt.portals.update(this.faces, drawFaces);
+    const label = this.margin.querySelector('.wb-thn');
     if (label) label.textContent = String(count);
   }
+
+  private dropMargin(): void {
+    if (this.faces !== null) this.rt.portals.remove(this.faces);
+    this.faces = null;
+    this.margin?.remove();
+    this.margin = null;
+  }
+
+  destroy(): void { this.dropMargin(); }
 
   stopEvent(e: Event): boolean { return onControl(e); }
 
@@ -379,7 +401,10 @@ class AtomBlock extends BlockFrame implements NodeView {
   /* React draws all of it, and the caption's own selection is the caption's. */
   override ignoreMutation(): boolean { return true; }
 
-  destroy(): void { this.rt.portals.remove(this.portal); }
+  override destroy(): void {
+    super.destroy();
+    this.rt.portals.remove(this.portal);
+  }
 }
 
 /** A person's name in the text, with their face, which React draws. */

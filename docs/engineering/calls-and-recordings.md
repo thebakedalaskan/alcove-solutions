@@ -1369,6 +1369,19 @@ once it is (`StoredCall`), and nothing else.
   is never let in: the call opens the home to them, as to anyone there, while they're in the call and it uses the home.
   A chosen home's people are its own. A failure is logged, and tried again by the next change or the next call.
 - **Like any folder** otherwise: it can be renamed, moved and sent to Trash. A copy of it is a plain folder.
+- **Before the call** (`calls.ready`, `POST /v1/meetings/:id/home`, features/calls/ahead.ts), its page's Add an agenda,
+  New board and Upload settle the home the way the call does the first time anyone opens Workspace: the workspace its
+  organizer chose while they can still make things there, else a new one made under the meeting's row, named after the call
+  and its day (in the asker's time zone), with everyone invited let in once the row's let go and later calls of its series
+  following it. Its organizer or anyone invited can ask, while the call is still scheduled (after that, its workspace is the
+  call's to open: Conflict). What's asked for is made at the top of the home as the person asking, who has to be able to
+  change it (in a home the organizer chose that they aren't in, or only read, it's Forbidden): an Agenda document (titled,
+  and the call's agenda unless it has one), a Board, or a document for files to upload into, named after the file. It's
+  brought to the call, so it opens for everyone invited before the call and in it. The run's folder still comes when the
+  call starts, in the same home. Logs say IDs and kinds only.
+- **On a call's page after it** (`Note.home`), the home is worked out on every read of the note for whoever reads it, and
+  kept nowhere: the workspace the call used and the folder for this run (null once it's gone or in Trash), only for someone
+  in that workspace now, so Open its workspace works for everyone invited and says nothing of a workspace its reader isn't in.
 
 ## The call's timer
 

@@ -81,7 +81,7 @@ export const LeftWithSomeone: Story = {
 };
 /** You left, and it ended while you were on its page: the notes are being written. */
 export const LeftThenEnded: Story = { name: 'You left, and it ended', args: { meta: 'It ended after you left.', notes: WRITING_THEM } };
-/** The notes take long, or their progress can't be followed: they'll be in Notes. */
+/** The notes take long, or their progress can't be followed: they'll be in Calls. */
 export const NotesSlow: Story = { name: 'The notes take long', args: { notes: { kind: 'slow' } } };
 /** A guest who left: who's still in it, and Rejoin. A guest gets no notes and has no Home. */
 export const GuestLeft: Story = {

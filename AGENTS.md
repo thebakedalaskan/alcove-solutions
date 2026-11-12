@@ -216,22 +216,37 @@ page is designed, how to make a design canvas from the kit in `docs/design/canva
   `EmptyState`, `EmptyRows` and `EmptyWeek` (small drawings of rows and a week not filled in yet, for a widget with nothing in it yet), `SmallSunset` (Home's small sunset, for all caught up), `Modal` (several questions go one at a time inside one modal; no window ever opens over another),
   `ThemeScope` (one theme for a part of a page, such as your side of a call, so what opens from it takes that theme too),
   `BackgroundModal` (Background's window: a big live preview of you beside the choices) with `BackgroundPicker` (what shows behind someone on camera, in groups: Blur, Pictures, Colours and Yours, with `SCENE_PICTURES`), and `Fit` with `useSceneLoop` for scenes drawn at a design size that play while on screen.
-  For starting and scheduling a call: `FlowView`, `FlowHead`, `FlowSteps`, `FlowBody`, `FlowFoot`, `FlowNote`, `FlowRow`,
-  `SwitchLine`, `NotesSwitches` (whether a call writes notes, and what they keep), `ScopeBar` (this call, or this and later
-  calls), `WayCard`, `PersonToken`, `QuadFaces`, `TimeCard`, `WeekGrid`, `Flood` and `useSmoothHeight`.
+  For starting and scheduling a call: `FlowView`, `FlowHead`, `FlowBody`, `FlowFoot`, `FlowNote`, `SwitchLine`,
+  `NotesSwitches` (whether a call writes notes, and what they keep), `ScopeBar` (this call, or this and later calls),
+  `WayCard`, `PersonToken` (with `state` and `outside`), `QuadFaces`, `TimeCard` (with `box`), `Flood` and `useSmoothHeight`;
+  Start a call asks Start now or Schedule for later, and scheduling happens on Calls, beside `CallsWeek` (in
+  `components/calls-week.tsx`: the week on Calls and the week a call is scheduled on, with blocks by kind, busy time
+  hatched, the suggested times glowing, the picked block with a grip, the hours off greyed, and three days on a phone).
+  Calls' parts are in `components/calls.tsx`: `SkyBar` and `SkySearch` (the page's title, search and its one filled
+  button on a short sky), `PlaceTree` with `PlaceHead`, `PlaceRow`, `PlaceFoot` and `PlaceChips` (the rail of places,
+  chips on a phone), `CallsSheet` and `SheetHead`, `CallsGroup` and `CallsMore` (a day's calls, and Show N more),
+  `CallRow` with `CallReply`, `CallAnswered` and `CallChip` (a call in a list: answers in place, chips only for what waits
+  on you), `MomentChip` (▶ a moment that plays), `RowMenu` and `RowAsk` (a row's ⋯ menu, and a question asked in place),
+  `CallsAnswer` (Ask's answer across every call) and `CarryRow` (what a series carries over). `FileCard` and `Thumb`
+  (in `components/files.tsx`) show a file as a large preview: a document's first lines, a board, a PDF, photos, or a
+  shared screen with play, on a call's page and in the Drive.
   The workspace kit is in `components/workspace/`, every part stateless, taking plain data and handlers: `WsPane` holds
-  `WsList` (`WsListHead`, or `WsListTools` in a call, where the frame's bar names the workspace; `WsSection`, `WsRow`,
-  `WsRenameRow`, `WsDropLine`, `WsTrashRow`) and `WsDoc` (`WsDocHead` with
+  `WsList` (`WsListHead`, or `WsListTools` in a call, where the frame's bar names the workspace; `WsSection` with `add`,
+  `WsRow` with the kinds `place` and `call` and their `tag` and `out`, `WsRenameRow`, `WsDropLine`, `WsTrashRow`; the rows
+  themselves are `WsTree`) and `WsDoc` (`WsDocHead` with
   `WsSaveState`, `WsFollowBar`, `WsOfflineBar`, `WsUnsavedBar` (with `WsRescue` for what didn't reach Alcove), `WsGoneBar`,
   `WsReadOnlyBar`, `WsVersionBar`, `WsVersionFailed`, `WsScroll`, `WsPage`, `WsDocBy`, `WsTemplates`, `WsTail`, `WsTrash`,
   `WsEmpty`, `WsPickDocument`, `WsCantOpen`, `WsUnavailable`, `WsOfflineEmpty`, `WsNoAccess`, `WsLostSpace`), with
-  `WsHistory` beside it.
+  `WsHistory` beside it. `WsPane`'s `beside` is one document beside the Drive's tree. A workspace full screen is `WsFrame`
+  (in `components/workspace/frame.tsx`): `WsSide` (its side panel, with `WsMark` and `WsSpaceField`), `WsBar` (its top bar,
+  with `hereLine`), and its Home's `WsHomeBand`, `WsAbout`, `WsPeopleLine` and `WsHomeSection`, with `WsDocMeta` over a
+  document.
   Anything that opens sits on `WsPopover` (a sheet on a phone by itself, and it hands focus back): `WsMenu` and its
   `WsNewMenu`, `WsRowMenu`, `WsDocMenu`, `WsMovePicker`, `WsSpacePicker`, `WsAskMenu`, `WsAskAnswer`; `WsPersonCard`, `WsMentionPrompt`,
   `WsCommentCompose`, `WsCommentThread`, `WsShareSheet`, `WsSwitchSheet`, `WsNameSheet`, `WsDeleteAsk`, `WsDiscardAsk`, `WsUploadPicker`. The call's
   own pages are `WsNotesPage`, `WsFollowUps`, `WsTranscript` and `WsNotesOff`. Over the call: `WsFind`, `WsKeyboard`,
-  `WsPlayBar`, `WsToasts` (say them with `wsToast`, which has every toast's words), `WsDragGhost`, `WsKeyboardBar`. On the
-  note: `WsWorkedOn`. `WsFade` swaps what's inside in place.
+  `WsPlayBar`, `WsToasts` (say them with `wsToast`, which has every toast's words), `WsDragGhost`, `WsKeyboardBar`. `WsFade`
+  swaps what's inside in place.
   The board's parts are in `components/board.tsx`, and take data and handlers with no idea of Yjs: `BoardLayout`, `BoardSheet` and
   `BoardWorld` (`moveBoardCamera` writes its one transform), `BoardRail`, `BoardBar`, `BoardPill`, `BoardPop`, `BoardFlyout`,
   `BoardSelectionBar`, `BoardSelectionBox`, `BoardDots`, `BoardMarquee`, `BoardGuide`, `BoardFrame`, `BoardSticky`, `BoardText`, `BoardShape`,
@@ -257,13 +272,15 @@ page is designed, how to make a design canvas from the kit in `docs/design/canva
   `font-display`, `ease-out` ...). Component classes carry the `ac-` prefix and live in
   `packages/ui/src/styles/kit.css`; the frame around every screen (side panel, the page's rounded edge, search and
   you at its top right, phone top bar and tab bar) in `styles/shell.css`; the palette Search or ask opens in `styles/palette.css` (`pal-`); the evening behind each page in `styles/horizon.css` (`dusk` the page, `dusk-top` and `dusk-title` its head, `hz-` the scene); the cove the welcome page looks out of, and signing in sailing out of it, in `styles/cove.css` (`cv-`); Home in `styles/home.css` (`hm-`); the Team page in
-  `styles/team.css` (its classes start with `tp-`); Notes in `styles/notes.css` (`nt-`); the Drive in `styles/drive.css` (`dv-`); a note and a series in `styles/note.css` (`nd-`);
+  `styles/team.css` (its classes start with `tp-`); Calls in `styles/calls.css` (`cs-`); the Drive in `styles/drive.css` (`dv-`); a call's page in `styles/note.css` (`cd-`, with the
+  transcript line still `nd-l`); a file's large preview in `kit.css` (`fc-`);
   Settings in `styles/settings.css` (its classes start with `set-`); Agents in `styles/agents.css` (`ag-`, beside the
   `ac-agent-` chips and consent sheet); Record in `styles/record.css` (its classes
-  start with `rec-`); starting and scheduling a call in `styles/flow.css` (its classes start with `cf-`); the organizer's
+  start with `rec-`); starting and scheduling a call in `styles/flow.css` (its classes start with `cf-`, `cw-` the week and `sc-` the
+  scheduler); the organizer's
   lobby, ringing and the page for picking a time in `styles/ringing.css` (`rg-`); the workspace in `styles/workspace.css`
   (`wt-` the list, `wd-` a document, `wm-` menus, `wv-` popovers, `wh-` history, `wl-` the call's live
-  pages); the board in `styles/board.css` (`bz-` the board and its rail, `bd-` the sheet and its chrome, `bf-` frames,
+  pages, `wf-` full screen), with a document's own look full screen in `styles/workspace-editor.css`; the board in `styles/board.css` (`bz-` the board and its rail, `bd-` the sheet and its chrome, `bf-` frames,
   `bo-` objects, `bc-` pointers, `bs-` selection, `bx-` the bar on what's selected, `bfly-` a tool's options, `bp-` small menus, `bpg-` its own page, `bl-` the
   board picker, `pc-` the phone's add sheet; its tokens are `--bd-*`, `--bf-*`, `--note-*`, and `--line-ink` and `--line-rose` beside the existing
   `--line` and `--line-control`; `.bt`, `.bi`, `.bm`, `.swatch`, `.c-*` and `.k-*` are unscoped there, so those names are taken); the welcome

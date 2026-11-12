@@ -793,7 +793,7 @@ prompt in `answerFromNotes` in `drafting.ts`).
   `features/notes/answer.tsx`, which the ask bar on a note and on a series uses too). It shows the answer in place of
   the list, then each cited moment as the line said then, under its call, in the order the answer uses them (`citedOf`
   in `palette/rows.ts`, which reads the line from the note with `heardAt` and what it became with `madeAt`); a note that
-  isn't in the notes list the app already has is left out. Each moment links to `/notes/<id>?at=<seconds>`; the note
+  isn't in the notes list the app already has is left out. Each moment links to `/calls/<id>?at=<seconds>`; the note
   page parses `at` with `NoteMomentSchema` and opens its player there without playing, or playing with `play`
   (`NotePlayParamSchema`), which the palette's **Play from** adds. Once it has played, the note page takes `play` out of
   the address with a replace, so Back or a reload opens the moment without playing it again. A cite at second 0 links to
@@ -837,6 +837,7 @@ manifest, the call's own lists and each breakout room's, so it has no table of i
   | --- | --- |
   | Add one | Anyone with the note; for someone else it's a suggestion, for yourself it's taken on |
   | Take it on ("I'll do it") | Only the person it's for |
+  | Take that back (`takeOn: false`, Undo after I'll do it) | Only whoever took it on: recorded as `reopened`, and it waits on them again |
   | "Not mine" (`owner: null`) | The person it's for: recorded as `declined`, and nobody has it |
   | Say who it's for | The organizer or the person it's for; anyone while nobody has it (a name the notes couldn't tie to an account counts as nobody) |
   | Reword, date or tick it | Anyone invited until it's taken on, and someone given the notes afterwards what they added themselves; then its owner or the organizer |
@@ -1492,7 +1493,7 @@ Calendar event moved to Alcove, and a call scheduled as the next one.
 - **Breakout rooms** are part of a call's notes, so they carry over like the rest: each room's decisions, open
   questions and follow-ups come after the call's own, with the room they came from (`room`, its ID and name), and
   everything that goes for the call goes for them: the same note, the same access check, the same state. A room's
-  source opens the note at that room's section (`/notes/<id>?room=<room ID>`, at the moment in its transcript with
+  source opens the note at that room's section (`/calls/<id>?room=<room ID>`, at the moment in its transcript with
   `at`).
 - **Nothing derived is kept.** What carries over is read afresh on each request and stored nowhere, so a note that's
   deleted, removed from someone's notes or never given to them isn't in it. Being invited to one call opens
@@ -1565,12 +1566,11 @@ Calendar event moved to Alcove, and a call scheduled as the next one.
   stopped holding or was answered since the latest call. The pre-join shows the same in brief, and the call's Notes
   view a fold, **From last time**, open until the call has notes of its own, with follow-ups nobody took on as well,
   which says only you see it. Sources there open in a new tab, so the call, or the camera at the pre-join, stays as it
-  is. The Ask view's **Earlier calls** asks across the series. A note
-  says when it's in a series, and offers its organizer **Meet again** when it isn't. The series page
-  (`/notes/series/<id>`) has everything, lets people settle it, and answers questions across the calls; under
-  its calls it says how many older ones aren't shown. When a series follows a recurring Google event and
-  Google Calendar isn't connected any more, the series page and the note say so and offer **Connect Google
-  Calendar**, since Home can't show the next occurrence without it.
+  is. The Ask view's **Earlier calls** asks across the series. A call's page says how its series repeats, as a link to the
+  series' place on Calls, and More offers **Meet again**. The series' place (`/calls?series=<id>`) has everything, lets
+  people settle it, and answers questions across the calls; under its calls it says how many older ones aren't shown. When
+  a series follows a recurring Google event and Google Calendar isn't connected any more, the series' place says so and
+  offers **Connect Google Calendar**, since Home can't show the next occurrence without it.
 
 ## Prompts
 

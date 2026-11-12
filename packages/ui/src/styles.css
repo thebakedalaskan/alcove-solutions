@@ -11,8 +11,8 @@
  * styles/kit.css with the `ac-` prefix; the frame around every screen (side panel, phone bars, Search or ask) in
  * styles/shell.css; the palette Search or ask opens in styles/palette.css (`pal-`); the evening behind each page in
  * styles/horizon.css; the cove the welcome page looks out of, and signing in
- * sailing out of it, in styles/cove.css (`cv-`); Home in styles/home.css; the Team page in styles/team.css (`tp-`); Notes in
- * styles/notes.css (`nt-`); a note and a series in styles/note.css (`nd-`); Settings in styles/settings.css (`set-`); Record in styles/record.css
+ * sailing out of it, in styles/cove.css (`cv-`); Home in styles/home.css; the Team page in styles/team.css (`tp-`);
+ * Calls in styles/calls.css (`cs-`); a call's page in styles/note.css (`cd-`); Settings in styles/settings.css (`set-`); Record in styles/record.css
  * (`rec-`); starting and scheduling a call in styles/flow.css (`cf-`); the organizer's lobby, ringing and the page for
  * picking a time in styles/ringing.css (`rg-`); the workspace, in a call and in the app, in styles/workspace.css (`wt-`,
  * `wd-`, `wm-`, `wv-`, `wp-`, `wh-`, `wl-`); the board in styles/board.css; the welcome page in styles/welcome.css and its scenes'
@@ -39,7 +39,7 @@
 @import "./styles/call-timer.css";
 @import "./styles/call-chat.css";
 @import "./styles/call-notes.css";
-@import "./styles/notes.css";
+@import "./styles/calls.css";
 @import "./styles/drive.css";
 @import "./styles/library.css";
 @import "./styles/capture.css";

@@ -3,12 +3,11 @@
  * about a link to the note or call; Show more reads on. Beside it, things to ask your agent, each saying which of your
  * agents can do it, or what it needs.
  */
-import { errorCode, errorMessage, type AgentActivity, type AgentConnection, type Meeting, type NoteSummary, type Person } from '@alcove/api';
-import { AgentDay, AgentDid, AgentQuestion, AgentWindow, Button, Dots, EmptyState, Icon, useToast } from '@alcove/ui';
-import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
+import { errorMessage, type AgentActivity, type AgentConnection, type Meeting, type NoteSummary, type Person } from '@alcove/api';
+import { AgentDay, AgentDid, AgentQuestion, AgentWindow, Button, Dots, EmptyState, Icon } from '@alcove/ui';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { useId, type ReactNode } from 'react';
-import { useCallFlow } from '~/features/shell/context';
 import { callName, listNames } from '~/lib/people';
 import { q } from '~/lib/queries';
 import { daysFromToday, hm, noteDay, shortDay } from '~/lib/time';
@@ -21,17 +20,6 @@ const NO_NOTES: NoteSummary[] = [];
 /** What stands where nothing's listed yet: an empty window, waiting for an agent. */
 const EMPTY_WINDOW = <AgentWindow icon="agent" look="dashed" />;
 const NO_CALLS: Meeting[] = [];
-
-/** Opens a call's card from what an agent did with it, read afresh: it may have changed, or gone, since. */
-function useOpenCall() {
-  const qc = useQueryClient();
-  const flow = useCallFlow();
-  const toast = useToast();
-  return async (id: string) => {
-    try { flow.open(await qc.fetchQuery(q.meeting(id))); }
-    catch (e) { toast(errorCode(e) === 'not-found' ? 'That call isn’t there any more.' : errorMessage(e), { icon: 'x' }); }
-  };
-}
 
 /** Days, newest first, each with what happened that day. */
 function byDay(items: readonly AgentActivity[], now: Date): { day: string; items: AgentActivity[] }[] {
@@ -51,7 +39,6 @@ export function WhatTheyDid({ connections, down, now }: { connections: readonly 
   const activity = useInfiniteQuery(q.agentActivity());
   const notes = useQuery(q.notes()).data ?? NO_NOTES;
   const calls = useQuery(q.upcoming()).data ?? NO_CALLS;
-  const openCall = useOpenCall();
   const items = activity.data?.pages.flatMap((p) => p.items) ?? [];
 
   const row = (a: AgentActivity) => {
@@ -61,10 +48,10 @@ export function WhatTheyDid({ connections, down, now }: { connections: readonly 
     const note = a.noteId ? notes.find((n) => n.id === a.noteId) : undefined;
     const call = a.meetingId ? calls.find((m) => m.id === a.meetingId) : undefined;
     let about: ReactNode = null;
-    if (said.about === 'note') about = title && a.noteId ? <Link className="ag-obj" to="/notes/$noteId" params={{ noteId: a.noteId }}>{title}</Link> : GONE.note;
+    if (said.about === 'note') about = title && a.noteId ? <Link className="ag-obj" to="/calls/$noteId" params={{ noteId: a.noteId }}>{title}</Link> : GONE.note;
     else if (said.about === 'call') {
       const id = a.meetingId;
-      about = title && id ? <button type="button" className="ag-obj" aria-haspopup="dialog" onClick={() => void openCall(id)}>{title}</button> : GONE.call;
+      about = title && id ? <Link className="ag-obj" to="/calls/upcoming/$meetingId" params={{ meetingId: id }}>{title}</Link> : GONE.call;
     }
     const sub = said.sub ?? (said.counts && a.count !== null ? plural(a.count, said.counts[0], said.counts[1])
       : said.about && !title ? (ENDS_IT.has(a.tool) ? undefined : 'Not there any more')

@@ -34,13 +34,13 @@ result, and [Changing what's stored](#changing-whats-stored) how it changes with
 | `screen_videos` | owner, recording, share, segment, chunk, object ID, ciphertext SHA-256 and length, the chunk's plaintext length, the video's length, how many chunks, where it starts in its segment (`at_ms`), duration, type | (the object: at most 4 MiB of the joined video, sealed under the recording's key) |
 | `screen_frames` | owner, note item, frame ID, object ID, ciphertext SHA-256 and length | `frame_tag` (keyed hash of the share and the image's digest, so the same image is kept once), `info_ciphertext` (whose share, when, the segment, the frame's size, the moment picked (to a tenth of a second) and why (`reference`, `change`, `question`, `topic`, the share's `start`, or `before`, a frame taken to compare a change with), the words that picked it, what the vision model read on it (how legible it was, its title, its text, what it shows (`shows`) and what changed since the frame before it (`changed`), and its regions), how much it matters, which model read it, and the frame on a 48 × 27 grey grid (`grid`, base64; null on rows from before it was kept) for telling whether the screen changed), and the object (the JPEG, sealed under the recording's key) |
 | `note_access` | owner (the organizer), note item, role (`invited`/`shared`), created | `email_index` |
-| `meeting_access` | owner (the organizer), meeting item | `email_index` (keyed hash of the address, with a purpose of its own), `answer_ciphertext` (whether they're coming, padded to one length, under the meeting's answers key; null until they answer) |
+| `meeting_access` | owner (the organizer), meeting item | `email_index` (keyed hash of the address, with a purpose of its own), `answer_ciphertext` (whether they're coming, padded to one length, under the meeting's answers key; null until they answer), `proposal_ciphertext` (the time they've asked to move the call to, under the same key; null until they ask, and again once the organizer answers or the call moves; migration `0028_meeting_proposals.sql`) |
 | `personal_notes` | owner (the author), the note's organizer and item: one row for each person and note | `body_ciphertext` (everything they keep on it: what they wrote, bookmarks and what they point at, kept questions and answers, and which of it was added to the shared notes), sealed under the author's own keys. Replaced with each change, with no earlier versions |
 | `note_additions` | owner (the note's organizer), note item, addition ID, when it was added | `author_index` (keyed hash of who added it, so deleting their account finds their additions on anyone's notes), `body_ciphertext` (the words, who added it, and the lines or shared screens it points at), sealed under the organizer's keys |
 | `note_links` | owner (the note's organizer), note item, link ID, when it runs out | `secret_hash` (SHA-256 of the link's secret, which is only ever in the link's fragment and a POST body), `maker_index` (keyed hash of who made it, so removing the note from theirs or deleting their account finds their links), `body_ciphertext` (who made it, as they were, and when), sealed under the organizer's keys. Deleted when it's revoked, once it's run out (upkeep), with the note, and with its maker's access or account (migration `0025_note_links.sql`) |
 | `billing_accounts` | owner, `version` | `state_ciphertext` (balance and history, under `Kservice`) |
 | `deposits` | owner, deposit, provider (`oneclick`), state (`waiting`/`arriving`/`short`/`credited`/`held`/`failed`/`expired`/`cancelled`), created, when to check next (`check_after`), last checked, when to give up | `record_ciphertext` (a `deposit` record under `Kservice`'s accounting key, below) |
-| `workspaces` | owner, `workspace_id` (the public handle, Id128), `version`, when the oldest thing in its Trash went there (`trash_since`), created | `state_ciphertext` (its name and tree: [Workspaces](#workspaces)) |
+| `workspaces` | owner, `workspace_id` (the public handle, Id128), `version`, when the oldest thing in its Trash went there (`trash_since`), created | `state_ciphertext` (its name, tree and line on what it's for: [Workspaces](#workspaces)) |
 | `workspace_members` | owner (the workspace), `member_id` (what the API calls them), role (`admin`/`edit`/`read`), created | `email_index`, `person_ciphertext` (their address, their name if the workspace was made by them, and whether a call's invite put them there and nobody has changed their place by hand since: older records read as not) |
 | `documents` | owner (the workspace), `document_id`, `next_seq`, what it comes to in bytes, items and depth of nesting at its snapshot and since (`snapshot_bytes`, `bytes_since_snapshot`, `snapshot_items`, `items_since_snapshot`, `snapshot_nesting`, `nesting_since_snapshot`), how many of its items aren't on its page (`snapshot_retired_items`), `updates_since_snapshot`, how far the newest version reaches and when it was kept (`version_seq`, `version_at`), until when something's restoring it (`held_until`) or it stays closed because it wouldn't open (`closed_until`), created. One row for each document or board in the tree; a folder has none | — |
 | `document_updates` | owner (the workspace), document, `seq`, how much it adds in `bytes`, `items` and `nesting`, `deletes_tag` (a keyed hash of what it deletes, so the same deletes again cost no row), created | `update_ciphertext` (one Yjs update and who sent it: [Documents](#documents)) |
@@ -76,7 +76,7 @@ everything it owns; deleting an item cascades to its revisions, its calls, its r
 transcript clips, its `note_access` or `meeting_access` rows, everyone's `personal_notes` on it, its `note_additions` and `note_links`, and a
 meeting's rings go with it. The `note_access` rows that give an account other people's notes belong to those notes'
 organizers, so deleting the account deletes them by its email index, unless another account still signs in with that
-address; on the same condition, what it answered in `meeting_access` is cleared, and the invite stays with its
+address; on the same condition, what it answered and asked in `meeting_access` is cleared, and the invite stays with its
 organizer. The `call_rings` rows to its address, in other people's calls, go by their own hash and without that
 exception. `object_gc` keeps a plain owner ID with no foreign key, so a failed object delete is still retried after its
 account is gone. A workspace's tables hang off its `workspaces` row, which
@@ -115,7 +115,9 @@ or null when nobody in particular did), `createdAt`, `editedAt`, `trashedAt`, `t
 address of whoever restricted it, when that wasn't its creator) and `call` (on a call's folder only: whose call it is, by
 the organizer's owner and address and the call's ID, when it started, whether it's over, and its note's ID once it is); and
 `madeFor`, on a workspace made as a call's home: the call's title, when it started, its meeting and series, and `out`, the
-addresses taken out of it by hand or that left it, which its invite never puts back (older records take `[]`). Older records
+addresses taken out of it by hand or that left it, which its invite never puts back (older records take `[]`); and `about`,
+the line on what the workspace is for, which its Home says under its name: one line of up to 200 characters, set by an
+admin and read by anyone in it, never by anyone outside it (older records take `''`, nothing said). Older records
 take `null` for `call` and `madeFor`. To the tree `kind` is only data: a document and a board
 are alike, each a row in `documents` that what it holds hangs off, and nothing here looks inside. A call's folder holds no
 content of its own: its pages read the call and its note through their own access
@@ -792,9 +794,11 @@ readable.
   again shows the screens it kept, whatever they were judged.
 - **Notes jobs** are inserted `queued` by the stopping transaction, claimed with a lease by the notes worker,
   and deleted when the note is finished ([Notes and inference](notes-and-inference.md#the-notes-worker)).
-- **Google Calendar events** are read from Google whenever the app asks (`GET /v1/calendar`) and never
-  stored. An Alcove call's event ID and link are kept in its meeting manifest, and for an occurrence of a
-  recurring event, the recurring event's ID. A series that repeats is one recurring event: each call keeps its
+- **Google Calendar events** are read from Google whenever the app asks (`GET /v1/calendar`, the coming week or any
+  stretch of up to 31 days) and never stored. An Alcove call's event ID and link are kept in its meeting manifest, and
+  for an occurrence of a recurring event, the recurring event's ID. A call offering times keeps the IDs of the events
+  holding them on its organizer's calendar (`holds`, `[]` for calls from before them), until someone picks or it's
+  cancelled. A series that repeats is one recurring event: each call keeps its
   occurrence's ID and which recurring event that is, and the series keeps the event that carries its latest calls.
 - **Busy times** (`POST /v1/calendar/busy`) are read when the app asks, from Google, from the account's own calls,
   or for a demo account from `apps/api/src/demo.ts`, and go nowhere else: no row, no receipt, and in the logs only

@@ -17,10 +17,13 @@ export function createMeetingsApi(t: HttpTransport): Pick<AlcoveApi, 'meetings' 
       update: (id, input, opts) => req(MeetingSchema, 'PATCH', `/meetings/${encodeURIComponent(id)}${inScope(opts)}`, input),
       cancel: async (id, opts) => { await req(z.unknown(), 'DELETE', `/meetings/${encodeURIComponent(id)}${inScope(opts)}`); },
       answer: (id, answer) => req(MeetingSchema, 'POST', `/meetings/${encodeURIComponent(id)}/answer`, { answer }),
+      propose: (id, startsAt) => req(MeetingSchema, 'POST', `/meetings/${encodeURIComponent(id)}/propose`, { startsAt }),
+      // Whose request it is goes in the body, so their address never appears in a URL.
+      answerProposal: (id, email, answer) => req(MeetingSchema, 'POST', `/meetings/${encodeURIComponent(id)}/proposals/answer`, { email, answer }),
       scheduleNext: (id, startsAt) => req(MeetingSchema, 'POST', `/meetings/${encodeURIComponent(id)}/next`, { startsAt })
     },
     calendar: {
-      get: () => req(CalendarSchema, 'GET', '/calendar'),
+      get: (range) => req(CalendarSchema, 'GET', range ? `/calendar?from=${encodeURIComponent(range.from)}&to=${encodeURIComponent(range.to)}` : '/calendar'),
       // Addresses go in the body so they never appear in URLs or access logs.
       busy: (emails, range) => req(BusySchema, 'POST', '/calendar/busy', { emails, ...range, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone }),
       connectUrl: (opts) => {

@@ -158,9 +158,9 @@ export function retime(at: Date, minutes: number, which: 'start' | 'end', typed:
 
 /* ---------- suggesting times ---------- */
 
-/** The working day suggestions stay inside, in local hours, and how far ahead they look. */
-const WORK_FROM = 9;
-const WORK_TO = 17;
+/** The working day suggestions stay inside, in local hours (the week greys what's outside it), and how far ahead they look. */
+export const WORK_FROM = 9;
+export const WORK_TO = 17;
 const WORKING_DAYS_AHEAD = 10;
 /** A suggestion for today leaves this long to get ready. */
 const LEAD = 2 * 60 * MINUTE;

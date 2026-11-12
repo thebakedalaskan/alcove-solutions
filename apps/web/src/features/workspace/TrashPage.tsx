@@ -4,11 +4,12 @@
  * workspace who can edit it: someone it's open to through a call brings things back, and that's all.
  */
 import { firstName, type WorkspaceItem } from '@alcove/api';
-import { WsDeleteAsk, WsDoc, WsDocHead, WsScroll, WsTrash, type WsTrashItem } from '@alcove/ui';
+import { WsDeleteAsk, WsDoc, WsScroll, WsTrash, type WsTrashItem } from '@alcove/ui';
 import { useEffect, useRef, useState } from 'react';
 import { useNow } from '~/lib/live';
 import { agoLabel } from '~/lib/time';
 import { useWs } from './context';
+import { PaneHead } from './Head';
 import { nameOf, trashIn } from './tree';
 
 const KEPT_DAYS = 30;
@@ -54,7 +55,7 @@ export function TrashPage() {
   });
   return (
     <WsDoc>
-      <WsDocHead crumbs={[ws.spaceName, 'Trash']} save="quiet" onToggleList={ws.toggleList} />
+      <PaneHead crumbs={[ws.spaceName, 'Trash']} save="quiet" />
       <WsScroll><WsTrash items={items} /></WsScroll>
     </WsDoc>
   );

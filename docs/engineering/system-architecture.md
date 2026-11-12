@@ -124,7 +124,7 @@ which browsers edit together through the API ([Data and storage › Documents](d
 | Live transcript | The latest 200 lines in a call's or room recording's state |
 | Asking | Questions of 1 to 500 characters; 20 a minute per account, about one note or across notes. Across notes, at most 12 notes and 120,000 characters of them are sent, and an answer cites at most six places |
 | Notes job | Three attempts, a 180-second lease, retries 20 and 90 seconds after a failure; at most 120,000 characters of transcript sent |
-| Calendar | Events from an hour ago to a week ahead, at most 100 |
+| Calendar | Events from an hour ago to a week ahead, at most 100; or a stretch asked for of at most 31 days, at most 250 |
 | Meeting | 5 to 600 minutes, at most 300 people invited and 12 documents brought; a call started now is set to an hour; two or three times offered; picking one: 30 a minute per client address |
 | Call participants | No limit; the organizer, people invited and guests by name. Join tokens last 120 seconds, call passes 12 hours |
 | Note progress stream | One update a second, for at most two minutes |

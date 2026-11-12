@@ -53,7 +53,7 @@ function Page({ onTour }: { onTour: () => void }) {
     <div className="grid min-h-screen grid-cols-1 content-start gap-6 p-5 sm:grid-cols-[210px_minmax(0,1fr)] sm:gap-10 sm:p-8">
       <SidebarNav className="content-start self-start">
         <a href="#home" className="ac-nav-item" aria-current="page" onClick={stay}><NavItemContent icon="home" label="Home" /></a>
-        <a href="#notes" className="ac-nav-item" onClick={stay}><NavItemContent icon="notes" label="Notes" count={3} /></a>
+        <a href="#calls" className="ac-nav-item" onClick={stay}><NavItemContent icon="calls" label="Calls" /></a>
         <a href="#team" className="ac-nav-item" onClick={stay}><NavItemContent icon="people" label="Team" /></a>
         <a href="#record" className="ac-nav-item" data-tour="room" onClick={stay}><NavItemContent icon="room" label="Record" /></a>
       </SidebarNav>

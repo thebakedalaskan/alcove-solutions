@@ -624,7 +624,7 @@ describe('changing a scheduled call', () => {
 });
 
 describe('offering times', () => {
-  it('waits for someone with the link to pick: nothing’s on a calendar and nobody can join, and then the first pick settles it', async () => {
+  it('waits for someone with the link to pick: nobody’s invited and nobody can join, and then the first pick settles it', async () => {
     const org = await googleAccount('Bram');
     const jamie = unique('jamie');
     const times = [inDays(1), inDays(2), inDays(3)];
@@ -632,11 +632,14 @@ describe('offering times', () => {
     const m = await org.api.meetings.create(call('Catch-up', [jamie], { startsAt: second, durationMinutes: 45, offer: times }));
     expect([m.offer, m.startsAt, m.status]).toEqual([{ times }, first, 'scheduled']);
     expect(m).not.toHaveProperty('calendarUrl');
-    expect(h.google.calendar(org.sub)).toEqual([]);
+    // Its times are held on the organizer's calendar, inviting nobody: nobody hears of the call until a time is picked.
+    const onCalendar = () => h.google.calendar(org.sub).map((e) => [e.summary, e.start?.dateTime, e.attendees ?? []]);
+    expect(onCalendar()).toEqual(times.map((t) => ['Hold: Catch-up', t, []]));
     expect(listed(await org.api.meetings.upcoming(), m.id)?.offer).toEqual({ times });
-    // Changing it puts nothing on the calendar either.
+    // Changing it invites nobody either: the holds take its new name.
     expect((await org.api.meetings.update(m.id, { title: 'Catch-up with Jamie' })).offer).toEqual({ times });
-    expect(h.google.calendar(org.sub)).toEqual([]);
+    expect(onCalendar()).toEqual(times.map((t) => ['Hold: Catch-up with Jamie', t, []]));
+    expect(h.google.mail.filter((x) => h.google.calendar(org.sub).some((e) => e.id === x.eventId))).toEqual([]);
 
     // Anyone with the link sees the times, with no account, and neither they nor the organizer can come in yet.
     const anyone = h.browser().api;
@@ -662,6 +665,64 @@ describe('offering times', () => {
     expect((await org.api.meetings.get(m.id)).startsAt).toBe(second);
     // The call can be joined now.
     expect((await org.api.calls.join(m.code, { mic: false, cam: false })).ticket.role).toBe('host');
+  });
+
+  it('holds its times on the organizer’s calendar until someone picks or it’s cancelled, and offers them all the same when Google can’t', async () => {
+    const org = await googleAccount('Hana');
+    const jonas = unique('jonas');
+    const times = [inDays(4), inDays(5)];
+    const [first = '', second = ''] = times;
+    const held = () => h.google.calendar(org.sub).filter((e) => e.summary?.startsWith('Hold: ')).map((e) => e.start?.dateTime);
+    const m = await org.api.meetings.create(call('Second interview', [jonas], { durationMinutes: 45, offer: times }));
+    expect(held()).toEqual(times);
+    // Each holds the call's length, and the time is busy for the organizer: nothing else gets suggested there.
+    const hold = h.google.calendar(org.sub).find((e) => e.start?.dateTime === first);
+    expect(hold?.end?.dateTime).toBe(new Date(Date.parse(first) + 45 * 60_000).toISOString());
+    const busy = await org.api.calendar.busy([], { from: inDays(3.5), to: inDays(5.5) });
+    expect(busy.you).toEqual(expect.arrayContaining([{ from: first, to: new Date(Date.parse(first) + 45 * 60_000).toISOString() }]));
+    // A hold is the call's, not another meeting of theirs: the calendar beside Alcove's calls doesn't list it.
+    expect((await org.api.calendar.get()).events.map((e) => e.title)).toEqual([]);
+    // Someone invited doesn't see that its times are held, and Google told nobody.
+    expect(JSON.stringify(await org.api.meetings.get(m.id))).not.toContain(hold?.id ?? 'no hold');
+    expect(h.google.mail.filter((x) => x.eventId === hold?.id)).toEqual([]);
+
+    // Jonas picks the second: the holds clear and the call takes its place, with his invitation.
+    await h.browser().api.calls.pick(m.code, second);
+    expect(held()).toEqual([]);
+    expect(h.google.calendar(org.sub).map((e) => [e.summary, e.start?.dateTime, e.attendees?.map((a) => a.email)])).toEqual([['Second interview', second, [jonas]]]);
+
+    // Cancelled while waiting, its holds go with it.
+    const other = await org.api.meetings.create(call('Third interview', [jonas], { offer: [inDays(6), inDays(7)] }));
+    expect(held()).toHaveLength(2);
+    await org.api.meetings.cancel(other.id);
+    expect(held()).toEqual([]);
+
+    // Google down: nothing is held, and the call offers its times all the same.
+    h.google.refuse((c) => c.method === 'POST');
+    try {
+      const unheld = await org.api.meetings.create(call('Fourth interview', [jonas], { offer: [inDays(8), inDays(9)] }));
+      expect(unheld.offer?.times).toHaveLength(2);
+    } finally {
+      h.google.refuse();
+    }
+    expect(held()).toEqual([]);
+    // Half held when Google stopped answering: what was held comes off again, and the call still waits for its pick.
+    let posts = 0;
+    h.google.refuse((c) => c.method === 'POST' && ++posts > 1);
+    try {
+      expect((await org.api.meetings.create(call('Fifth interview', [jonas], { offer: [inDays(10), inDays(11)] }))).offer?.times).toHaveLength(2);
+    } finally {
+      h.google.refuse();
+    }
+    expect(held()).toEqual([]);
+  });
+
+  it('lets go of the times a deleted account was holding', async () => {
+    const org = await googleAccount('Ivo');
+    await org.api.meetings.create(call('Held, then gone', [unique('guest')], { offer: [inDays(2), inDays(3)] }));
+    expect(h.google.calendar(org.sub)).toHaveLength(2);
+    await org.api.account.delete();
+    expect(h.google.calendar(org.sub)).toEqual([]);
   });
 
   it('goes on the calendar once, whatever changes while Google is asked, and everyone hears of it once', async () => {

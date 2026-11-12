@@ -127,7 +127,7 @@ function Tagged() {
   return (
     <>
       <Box width={620} height={320}>
-        <WsPane page>
+        <WsPane>
           <WsDoc>
             <WsScroll>
               <WsPage>

@@ -205,7 +205,7 @@ export function CallOverPage({ left, entering, onEntered, back, onBack, onGone }
   const gone = () => {
     if (!away) { if (back) onGone(); return; }
     arriveFromCall();
-    void (away === 'notes' && noteId ? navigate({ to: '/notes/$noteId', params: { noteId }, replace: true }) : navigate({ to: '/home', replace: true }));
+    void (away === 'notes' && noteId ? navigate({ to: '/calls/$noteId', params: { noteId }, replace: true }) : navigate({ to: '/home', replace: true }));
   };
   useRejoinKey(!over && away === null && !back, rejoin.rejoin);
 

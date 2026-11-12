@@ -34,7 +34,7 @@ function GlassChip({ icon, children }: { icon: IconName; children: string }) {
   return <span className="ta-chip ta-glass"><Icon name={icon} size={14} />{children}</span>;
 }
 
-/** Start or schedule a call: one question at a time, and each answer settles into the call. */
+/** Start or schedule a call: who, when, and notes, each answer settling into the call. */
 export function ArtSchedule() {
   const t = useClock(5.7, 4.5);
   const gone = 1 - ramp(t, 4.9, 0.3, in2);

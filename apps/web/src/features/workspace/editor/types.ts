@@ -233,6 +233,12 @@ export interface EditorProps {
    * it's from, for anyone in it who was there for it. It draws nothing for anyone else.
    */
   hear?: ((moment: { note: string; line: string }) => ReactNode) | undefined;
+  /**
+   * Outside a call, what a quote says under its words in place of who said it and when: who said it, in which call, and a
+   * ▶ chip that opens the call at that moment. `at` is when it was said, as an ISO time. Without it, a quote says who and when,
+   * with Hear it.
+   */
+  cite?: ((quote: { note: string | null; line: string | null; name: string; at: string }) => ReactNode) | undefined;
   /** Comment was pressed, or ⌘⇧M, with words selected. Without it, there's no Comment button. */
   onComment?: ((draft: CommentDraft) => void) | undefined;
   /** Words with a comment on them, or the count in the margin, were pressed. */
