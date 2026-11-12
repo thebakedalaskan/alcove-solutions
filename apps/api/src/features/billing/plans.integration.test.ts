@@ -530,7 +530,7 @@ describe('Pro', () => {
     expect(ended.notices.map((n) => [n.kind, n.until])).toEqual([['pro-ended', new Date(bobEnd).toISOString()], ['pro-ending', new Date(bobEnd).toISOString()]]);
     vi.useRealTimers();
 
-    // Money added after the reminder: bought at the end instead.
+    // Money added after the reminder: bought at the end instead, from when upkeep came.
     const cy = await account();
     await give(cy, PRICE);
     await cy.api.plans.buyPro(1, PRICE);
@@ -540,9 +540,31 @@ describe('Pro', () => {
     await give(cy, PRICE);
     await upkeepAt(cy, cyEnd + 60_000);
     expect(await cy.api.plans.plan()).toMatchObject({
-      kind: 'pro', period: { from: new Date(cyEnd).toISOString() }, balance: { microUsd: 0 },
-      notices: [{ kind: 'pro-renewed', until: new Date(cyEnd + 3_600_000).toISOString() }, { kind: 'pro-ending' }]
+      kind: 'pro', period: { from: new Date(cyEnd + 60_000).toISOString() }, balance: { microUsd: 0 },
+      notices: [{ kind: 'pro-renewed', until: new Date(cyEnd + 3_660_000).toISOString() }, { kind: 'pro-ending' }]
     });
+  });
+
+  it('renews at the end from when upkeep comes, so a late pass buys one month that has yet to run, never months already over', async () => {
+    await h.setLimit('plan.period_seconds', 3600);
+    await h.setLimit('plan.pro.remind_seconds', 600);
+    const ann = await account();
+    await give(ann, PRICE);
+    await ann.api.plans.buyPro(1, PRICE);
+    const end = Date.parse((await ann.api.plans.setRenew(true)).pro.until ?? '');
+    await upkeepAt(ann, end - 300_000);
+    vi.useRealTimers();
+    // Money for two more months, and upkeep comes two and a half months late.
+    await give(ann, 2 * PRICE);
+    const late = end + 9_000_000;
+    await upkeepAt(ann, late);
+    const renewed = await ann.api.plans.plan();
+    expect(renewed).toMatchObject({
+      kind: 'pro', period: { from: new Date(late).toISOString(), to: new Date(late + 3_600_000).toISOString() }, balance: { microUsd: PRICE },
+      pro: { months: [{ from: new Date(late).toISOString(), to: new Date(late + 3_600_000).toISOString(), microUsd: PRICE }] },
+      notices: [{ kind: 'pro-renewed', until: new Date(late + 3_600_000).toISOString() }, { kind: 'pro-ending' }]
+    });
+    expect(await labels(ann)).toEqual(['Pro, renewed for a month', 'Added by support', 'Pro, 1 month', 'Added by support']);
   });
 
   it('turns renewing off with a refund, so upkeep never buys back what was refunded, and takes back the notice it renewed', async () => {

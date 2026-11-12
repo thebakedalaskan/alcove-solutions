@@ -585,7 +585,9 @@ export async function dismissNotice(d: Service, ownerId: string, noticeId: strin
 /**
  * What upkeep does for one account that's due at `now`: ends a grace that's over; at the reminder before Pro ends, buys a
  * month if renewing is on and the balance has it, else tells its owner Pro is ending; at the end, buys a month the same
- * way (renewing turned on, or money added, since), else tells them Pro has ended. Each happens once for each end.
+ * way (renewing turned on, or money added, since), else tells them Pro has ended. Each happens once for each end. A month
+ * bought at the reminder follows the last; one bought at the end starts now, which is the end unless upkeep is late: a
+ * month that's already over is never bought.
  */
 function kept(a: PlanAccount, l: Limits, now: number, ownerId: string): PlanAccount {
   let next = a;
@@ -600,7 +602,7 @@ function kept(a: PlanAccount, l: Limits, now: number, ownerId: string): PlanAcco
   const price = l.get('plan.pro.price_micro_usd');
   const marked = atEnd ? { ...next, reminded: end, ended: end } : { ...next, reminded: end };
   if (next.renew && next.balanceMicroUsd >= price) {
-    const renewed = withEntry(withMonths(marked, l, 1, price, Date.parse(end)), -price, 'Pro, renewed for a month');
+    const renewed = withEntry(withMonths(marked, l, 1, price, now), -price, 'Pro, renewed for a month');
     plog.info('pro renewed', { ownerId });
     return pruned(withNotice(renewed, 'pro-renewed', now, { until: proEnd(renewed) ?? end }), now);
   }

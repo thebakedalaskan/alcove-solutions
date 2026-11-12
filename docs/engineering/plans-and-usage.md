@@ -203,7 +203,9 @@ end it has reminded about (`reminded`) and handled (`ended`), so each happens on
   renewed for a month") and the owner told `pro-renewed`. Otherwise they're told `pro-ending`. Logged `pro renewed` or
   `pro ending`.
 - **At the end:** with renewing on and the money now (turned on, or money added, since the reminder), a month is bought
-  from the end, `pro-renewed`. Otherwise the account is on Free and told `pro-ended`. Logged `pro ended`.
+  from when upkeep comes, `pro-renewed`: that's the end, or later when upkeep is late, so a month already over is never
+  bought, and a late pass buys one month, not one for each it missed. Otherwise the account is on Free and told
+  `pro-ended`. Logged `pro ended`.
 
 **Notices** (`Plan.notices`, newest first, those not dismissed) are shown in the app and, with `NotificationPrefs.plan`
 on (the default), from the browser. `POST /v1/plan/notices/:id/dismiss` hides one; another account's ID, or an unknown
