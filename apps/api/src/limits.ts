@@ -147,61 +147,75 @@ export function readRows(found: LimitRow[]): Reading {
   return reading;
 }
 
-/** One instance's copy of the limits: when it was read, what it said, and which rows it has already said it can't use. */
-interface Copy { at: number; values: Map<LimitName, number>; noted: Set<string>; reading: Promise<void> | undefined }
+/**
+ * One instance's copy of the limits: when it was read, what it said, and which rows it has already said it can't use; the
+ * read through the pool on its way, if one is; and how many reads have started, and which of them is in force.
+ */
+interface Copy { at: number; values: Map<LimitName, number>; noted: Set<string>; pooled: Promise<void> | undefined; started: number; applied: number }
 /** One copy per database, which is one per process outside tests. */
 const copies = new WeakMap<Db, Copy>();
-
-/**
- * Reads the rows into a copy and says what changed: a limit whose value is new, at info, with what it was and what it is,
- * so a change made at the database's console is logged too, and a row it can't use or had to hold to its bounds, once, at
- * warn. A copy starts at the defaults, so a process says which limits are set the first time it reads them. If the rows
- * can't be read, what was in force stays, until the next try. They're read on the connection the caller is on.
- */
-async function refresh(db: Db, copy: Copy): Promise<void> {
-  copy.reading ??= (async () => {
-    try {
-      const r = readRows(await rowsOn(db));
-      const noted = new Set<string>();
-      for (const x of r.ignored) {
-        const key = `ignored ${x.name} ${x.value}`;
-        noted.add(key);
-        if (!copy.noted.has(key)) llog.warn('service limit ignored', { limit: x.name, value: x.value, why: x.why });
-      }
-      for (const x of r.clamped) {
-        const key = `clamped ${x.name} ${x.value}`;
-        noted.add(key);
-        if (!copy.noted.has(key)) llog.warn('service limit clamped', { limit: x.name, value: x.value, used: x.used, floor: LIMITS[x.name].floor, ceiling: LIMITS[x.name].ceiling });
-      }
-      copy.noted = noted;
-      for (const name of LIMIT_NAMES) {
-        const old = copy.values.get(name);
-        const next = r.values.get(name);
-        if (old !== next) llog.info('service limit changed', { limit: name, old, new: next });
-      }
-      copy.values = r.values;
-    } catch (e) {
-      llog.warn('service limits not read; keeping what was in force', { err: e });
-    } finally {
-      copy.at = performance.now();
-      copy.reading = undefined;
-    }
-  })();
-  await copy.reading;
+function copyFor(pool: Db): Copy {
+  const found = copies.get(pool);
+  if (found) return found;
+  const copy: Copy = { at: -Infinity, values: readRows([]).values, noted: new Set(), pooled: undefined, started: 0, applied: 0 };
+  copies.set(pool, copy);
+  return copy;
 }
 
 /**
- * The limits in force, from this instance's copy, read again first if it's older than LIMITS_CACHE_MS. Inside a transaction,
- * pass its connection: read through the pool there, a busy process's transactions would each hold one connection and
- * wait for another to read the limits, and none would come free.
+ * Reads the rows on `db` into a copy and says what changed: a limit whose value is new, at info, with what it was and what
+ * it is, so a change made at the database's console is logged too, and a row it can't use or had to hold to its bounds,
+ * once, at warn. A copy starts at the defaults, so a process says which limits are set the first time it reads them. If the
+ * rows can't be read, what was in force stays, until the next try. Reads on different connections can finish out of turn:
+ * one that started before the read in force changes nothing.
+ */
+async function read(db: Db, copy: Copy): Promise<void> {
+  const turn = ++copy.started;
+  try {
+    const r = readRows(await rowsOn(db));
+    if (turn < copy.applied) return;
+    copy.applied = turn;
+    const noted = new Set<string>();
+    for (const x of r.ignored) {
+      const key = `ignored ${x.name} ${x.value}`;
+      noted.add(key);
+      if (!copy.noted.has(key)) llog.warn('service limit ignored', { limit: x.name, value: x.value, why: x.why });
+    }
+    for (const x of r.clamped) {
+      const key = `clamped ${x.name} ${x.value}`;
+      noted.add(key);
+      if (!copy.noted.has(key)) llog.warn('service limit clamped', { limit: x.name, value: x.value, used: x.used, floor: LIMITS[x.name].floor, ceiling: LIMITS[x.name].ceiling });
+    }
+    copy.noted = noted;
+    for (const name of LIMIT_NAMES) {
+      const old = copy.values.get(name);
+      const next = r.values.get(name);
+      if (old !== next) llog.info('service limit changed', { limit: name, old, new: next });
+    }
+    copy.values = r.values;
+  } catch (e) {
+    llog.warn('service limits not read; keeping what was in force', { err: e });
+  } finally {
+    copy.at = performance.now();
+  }
+}
+
+/**
+ * The limits in force, from this instance's copy, read again first if it's older than LIMITS_CACHE_MS. Callers through the
+ * pool hold no connection while they wait, so they share one read. Inside a transaction, pass its connection: the rows are
+ * read there, and it waits on nothing else. A read through the pool may be waiting for a connection, and a transaction that
+ * waited on it while holding one could wait on itself, or on the others waiting on its rows, until the pool gives up.
  */
 export async function limitsNow(d: Pick<Deps, 'pool' | 'cfg'>, db: Db = d.pool): Promise<Limits> {
-  let copy = copies.get(d.pool);
-  if (!copy) {
-    copy = { at: -Infinity, values: readRows([]).values, noted: new Set(), reading: undefined };
-    copies.set(d.pool, copy);
+  const copy = copyFor(d.pool);
+  if (performance.now() - copy.at >= d.cfg.LIMITS_CACHE_MS) {
+    if (db instanceof pg.Pool) {
+      copy.pooled ??= read(db, copy).finally(() => { copy.pooled = undefined; });
+      await copy.pooled;
+    } else {
+      await read(db, copy);
+    }
   }
-  if (performance.now() - copy.at >= d.cfg.LIMITS_CACHE_MS) await refresh(db, copy);
   const { values } = copy;
   return { get: (name) => values.get(name) ?? LIMITS[name].default };
 }

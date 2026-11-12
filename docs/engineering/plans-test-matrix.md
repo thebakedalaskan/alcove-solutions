@@ -165,7 +165,10 @@ drive it end to end.
 - The welcome page still said "400 minutes of notes" (the old credits' welcome). It says about 5 hours a month now.
 - `limitsNow` read the limits through the pool inside transactions. Uploads started at once ran the pool dry: each
   transaction held a connection and waited for another to read the limits. It now reads on the caller's connection,
-  under a savepoint, so a failed read leaves the transaction going on what was in force.
+  under a savepoint, so a failed read leaves the transaction going on what was in force. A transaction also joined a
+  read another request had started through the pool, which may itself be waiting for the connection the transaction
+  holds: it reads on its own connection every time now, and only callers through the pool share a read
+  (meetings/connections › reads the limits inside a transaction on its own connection…).
 - The call's card, for anyone with the link, said why notes stopped. It says only that they're off now (calls/capture,
   billing/meter).
 - Notes in the call offered Turn on with no word of why notes were off. Notes and what's captured now say why, in the
