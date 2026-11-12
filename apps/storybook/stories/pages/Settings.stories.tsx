@@ -139,9 +139,6 @@ export const CalendarAccessDenied = page('/settings?calendar=denied#calendar', '
 /** Back with another Google account than the one you sign in with. */
 export const CalendarWrongAccount = page('/settings?calendar=account#calendar', 'busy', { beforeEach: changing(noCalendar) });
 export const CalendarConnectionFailed = page('/settings?calendar=failed#calendar', 'busy', { beforeEach: changing(noCalendar) });
-/** Connect: how Alcove uses Calendar data, before Google's consent. */
-export const CalendarConsent = page('/connect-calendar', 'busy', { beforeEach: changing(noCalendar) });
-export const CalendarConsentPhone = phone(CalendarConsent);
 /** The shared demo account: a sample calendar in place of Google's, its switches nested under it. */
 export const DemoAccount = page('/settings#calendar', 'busy', { beforeEach: changing(sharedDemo) });
 /** The calendar didn't answer: why, and Try again. */

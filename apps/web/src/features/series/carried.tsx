@@ -13,7 +13,7 @@ import type { ReactNode } from 'react';
 import { MomentLink, decisionLine, inNote, useNotesApart } from '~/features/notes/parts';
 import { freshCalls, useCallFlow } from '~/features/shell/context';
 import { listNames, sameEmail, spokenName } from '~/lib/people';
-import { q, useScheduleNext } from '~/lib/queries';
+import { calendarConnectUrl, q, useScheduleNext } from '~/lib/queries';
 import { hm, shortDay } from '~/lib/time';
 
 /** The calls of a series whose notes you have, by note: what an item, and a later call, are looked up in. */
@@ -122,15 +122,19 @@ export function CarriedActionRow({ a, calls, me, check, actions, page = false }:
 /**
  * For the organizer of a series that follows a recurring Google Calendar event: its next call is the
  * next occurrence there, which Home shows (`children` says so). Once the calendar isn't connected,
- * Home can't show it, so this says what to do instead.
+ * Home can't show it, so this says what to do instead: connect it again, straight at Google. Signed in
+ * some other way, Google Calendar can't connect, and Calendar settings says so.
  */
 export function NextOnCalendar({ children }: { children: ReactNode }) {
   const calendar = useQuery(q.calendar()).data;
   if (!calendar || (!calendar.needsAccess && calendar.source !== 'none')) return children;
+  const look = cn('nd-meet', buttonClass({ size: 'sm' }));
   return (
     <>
       <p className="nd-c-open">This series follows a repeating event on your Google Calendar, which isn’t connected now. Connect it again to see the next one on Home and make it an Alcove call.</p>
-      <Link to="/connect-calendar" className={cn('nd-meet', buttonClass({ size: 'sm' }))}><Icon name="cal" />Connect Google Calendar</Link>
+      {calendar.source === 'none'
+        ? <Link to="/settings" hash="calendar" className={look}><Icon name="cal" />Connect Google Calendar</Link>
+        : <a href={calendarConnectUrl()} className={look}><Icon name="cal" />Connect Google Calendar</a>}
     </>
   );
 }

@@ -56,7 +56,7 @@ function Reword({ text, label, hint, onSave, onDone }: { text: string; label: st
           onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); save(); } if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); onDone(); } }} />
         {hint && <p className="nd-rs">{hint}</p>}
       </div>
-      <div className="nd-ra"><button type="button" className="hm-yes" onClick={save}>Save</button><button type="button" className="nd-act" onClick={onDone}>Cancel</button></div>
+      <div className="nd-ra"><button type="button" className="nd-yes" onClick={save}>Save</button><button type="button" className="nd-act" onClick={onDone}>Cancel</button></div>
     </>
   );
 }
@@ -76,7 +76,7 @@ function DecisionRow({ d, reader, onChange, me, onSeek, shown, room }: { d: Note
   const [editing, setEditing] = useState(false);
   // Just confirmed here: taking it back is right there, not in the menu.
   const [just, setJust] = useState(false);
-  const tile = <span className="hm-tile-i"><Icon name="badgeCheck" size={16} /></span>;
+  const tile = <span className="nd-kind"><Icon name="badgeCheck" size={16} /></span>;
   const cls = cn('nd-r', 'is-decide', room && 'is-room', d.state === 'confirmed' && 'is-set', (d.state === 'rejected' || d.state === 'superseded') && 'is-off', editing && 'is-editing');
   if (editing) {
     const hint = reader?.role !== 'organizer' ? 'Someone else has to confirm new words.' : d.state === 'confirmed' ? 'New words need confirming again.' : undefined;
@@ -90,8 +90,8 @@ function DecisionRow({ d, reader, onChange, me, onSeek, shown, room }: { d: Note
   const mine = !!reader && d.disputes.some((x) => isBy(x.by, reader));
   const undoHere = just && d.state === 'confirmed' && may('proposed');
   const lead = !onChange ? null
-    : d.state === 'proposed' && may('confirmed') ? <button type="button" className="hm-yes" onClick={() => { setJust(true); confirm(); }}>Confirm</button>
-      : d.state === 'confirmed' && reader?.role === 'organizer' && d.disputes.length > 0 ? <button type="button" className="hm-yes" onClick={confirm}>Keep it confirmed</button>
+    : d.state === 'proposed' && may('confirmed') ? <button type="button" className="nd-yes" onClick={() => { setJust(true); confirm(); }}>Confirm</button>
+      : d.state === 'confirmed' && reader?.role === 'organizer' && d.disputes.length > 0 ? <button type="button" className="nd-yes" onClick={confirm}>Keep it confirmed</button>
         : undoHere ? <button type="button" className="nd-act" onClick={undo}>Undo</button>
           : d.state === 'rejected' && may('proposed') ? <button type="button" className="nd-act" onClick={() => onChange(d, { state: 'proposed' })}>Reopen</button> : null;
   const acts: Act[] = !onChange || !reader ? [] : [
@@ -126,7 +126,7 @@ export function Decisions({ items, reader, onChange, ...row }: { items: NoteDeci
 
 function QuestionRow({ x, onChange, me, onSeek, shown, room }: { x: NoteQuestion; onChange?: ((x: Question, patch: QuestionPatch) => void) | undefined } & RowProps) {
   const [editing, setEditing] = useState(false);
-  const tile = <span className="hm-tile-i"><Icon name="ask" size={16} /></span>;
+  const tile = <span className="nd-kind"><Icon name="ask" size={16} /></span>;
   const cls = cn('nd-r', 'is-ask', room && 'is-room', x.state === 'answered' && 'is-off', editing && 'is-editing');
   if (editing) return <article className={cls}>{tile}<Reword text={x.text} label="Reword this question" onSave={(text) => onChange?.(x, { text })} onDone={() => setEditing(false)} /></article>;
   const acts: Act[] = onChange ? [{ icon: 'pen', label: 'Reword', go: () => setEditing(true) }] : [];
@@ -141,7 +141,7 @@ function QuestionRow({ x, onChange, me, onSeek, shown, room }: { x: NoteQuestion
       {!room && <Moment at={x.at} onSeek={onSeek} />}
       <div className="nd-ra">
         {onChange && (x.state === 'open'
-          ? <button type="button" className="hm-yes" onClick={() => onChange(x, { state: 'answered' })}>It was answered</button>
+          ? <button type="button" className="nd-yes" onClick={() => onChange(x, { state: 'answered' })}>It was answered</button>
           : <button type="button" className="nd-act" onClick={() => onChange(x, { state: 'open' })}>Reopen</button>)}
       </div>
       {(acts.length > 0 || x.evidence.moments.length > 0 || x.changes.length > 0) && (

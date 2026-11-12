@@ -163,7 +163,7 @@ function InSeries({ seriesId, noteId }: { seriesId: string; noteId: string }) {
     <section className="nd-b">
       <div className="nd-b-h">
         <h2>{weeklyLabel(s) ?? 'In a series'}</h2>
-        <Link to="/notes/series/$seriesId" params={{ seriesId }} className="hm-panel-link nd-allcalls" aria-label={`All ${calls(s.notes.length + s.older)} in this series`}>All<Icon name="right" size={14} /></Link>
+        <Link to="/notes/series/$seriesId" params={{ seriesId }} className="nd-panel-link nd-allcalls" aria-label={`All ${calls(s.notes.length + s.older)} in this series`}>All<Icon name="right" size={14} /></Link>
       </div>
       {others.map((n) => (
         <Link key={n.id} to="/notes/$noteId" params={{ noteId: n.id }} className="nd-c">

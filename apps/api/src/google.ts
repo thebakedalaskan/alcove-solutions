@@ -34,6 +34,8 @@ export type Refusal = 'unavailable' | 'cancelled' | 'expired' | 'unverified' | '
 export interface Grant { accessToken: string; expiresIn: number; refreshToken?: string | undefined; scopes: string[] }
 /** Where the app lands after signing in: the account's first screen, Home, or a move to this device that was waiting on it. */
 export type Next = '/ready' | '/home' | '/move';
+/** Where Calendar consent goes back to when it was started on Home. Without one it goes back to Calendar settings. */
+export type CalendarBack = '/home';
 export type Finish = { ok: true; identity: GoogleIdentity; grant: Grant } | { ok: false; reason: Refusal };
 
 /** Google's discovery document. Only revoking needs `revocation_endpoint`, so signing in never depends on it. */
@@ -58,6 +60,8 @@ const Attempt = z.object({
   /** Calendar consent can only finish against the Google session that started it. */
   consent: z.boolean().default(false), next: z.enum(['/ready', '/home', '/move']).optional(),
   calendar: z.object({ ownerId: z.string(), sessionHash: z.string() }).optional(),
+  /** Calendar consent started on Home goes back there. Absent from attempts made before Home could start one: those go back to Settings. */
+  back: z.enum(['/home']).optional(),
   /** A random completion channel, absent from attempts made before popup sign-in was introduced. */
   popup: GoogleSignInPopupIdSchema.nullable().default(null)
 });
@@ -114,15 +118,15 @@ function refuse(reason: Refusal, context: Record<string, string | number | boole
 
 /**
  * Where to send the browser, and the sealed attempt it keeps in a cookie until it comes back.
- * Only an explicit calendar connection needs a refresh token or asks Google for consent.
+ * Only an explicit calendar connection needs a refresh token or asks Google for consent; `back` is where it goes back to.
  */
-export async function begin(d: Deps, o: { calendar?: { ownerId: string; sessionHash: string } | undefined; next?: Next | undefined; popup?: string | undefined }): Promise<{ url: string; attempt: string }> {
+export async function begin(d: Deps, o: { calendar?: { ownerId: string; sessionHash: string } | undefined; next?: Next | undefined; popup?: string | undefined; back?: CalendarBack | undefined }): Promise<{ url: string; attempt: string }> {
   const cfg = d.cfg;
   if (!configured(cfg)) throw new UnavailableError('Google sign-in isn’t set up on this server.');
   const { endpoints } = await provider(cfg.GOOGLE_ISSUER);
   const a = {
     state: b64u(random(32)), nonce: b64u(random(32)), verifier: b64u(random(32)), until: Date.now() + ATTEMPT_MINUTES * 60_000,
-    consent: !!o.calendar, ...(o.next ? { next: o.next } : {}), popup: o.popup ?? null, ...(o.calendar ? { calendar: o.calendar } : {})
+    consent: !!o.calendar, ...(o.next ? { next: o.next } : {}), popup: o.popup ?? null, ...(o.calendar ? { calendar: o.calendar } : {}), ...(o.back ? { back: o.back } : {})
   };
   const url = new URL(endpoints.authorization_endpoint);
   url.search = new URLSearchParams({
@@ -132,7 +136,7 @@ export async function begin(d: Deps, o: { calendar?: { ownerId: string; sessionH
       : { scope: IDENTITY_SCOPES, prompt: 'select_account' }),
     state: a.state, nonce: a.nonce, code_challenge: b64u(sha(utf8(a.verifier))), code_challenge_method: 'S256'
   }).toString();
-  glog.debug('google sign-in started', { consent: !!o.calendar });
+  glog.debug('google sign-in started', { consent: !!o.calendar, ...(o.back ? { back: o.back } : {}) });
   return { url: url.toString(), attempt: b64u(sealJson(signInAttemptKey(masterKey(d)), HEADER, a)) };
 }
 

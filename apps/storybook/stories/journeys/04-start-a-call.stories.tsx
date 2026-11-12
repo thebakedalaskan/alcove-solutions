@@ -68,7 +68,7 @@ export const ScheduleForLater: PageStory = {
     });
     await step('Back on Home. The call is on your day, and the toast says what happened, and only that', async () => {
       await screen.findByText(/On your Google Calendar/, {}, SOON);
-      await within(await screen.findByRole('region', { name: 'Coming up' })).findByRole('button', { name: /Launch review/ }, SOON);
+      await within(await screen.findByRole('region', { name: 'Upcoming' })).findByRole('button', { name: /Launch review/ }, SOON);
     });
   }
 };
@@ -153,9 +153,9 @@ export const LetAGuestPick: PageStory = {
     await step('The times stay ticked, and the call has no time until Ana picks one from its link', async () => {
       await userEvent.click(await screen.findByRole('button', { name: /^(Offer|Use|Next)/ }, SOON));
     });
-    await step('Details, then the button that says what it does. The link is copied to send Ana, and Home says it’s waiting for her', async () => {
+    await step('Details, then the button that says what it does. The link is copied to send Ana, and Upcoming says she’s picking a time', async () => {
       await userEvent.click(await screen.findByRole('button', { name: /^(Get the link|Schedule|Copy)/ }, SOON));
-      await within(await screen.findByRole('region', { name: 'Coming up' })).findByRole('button', { name: /Waiting for Ana to pick/ }, SOON);
+      await within(await screen.findByRole('region', { name: 'Upcoming' })).findByRole('button', { name: /Ana is picking a time/ }, SOON);
     });
   }
 };
@@ -185,8 +185,8 @@ export const ChangeAScheduledCall: PageStory = {
   name: '4.7 Change a scheduled call',
   ...page('/home', 'busy'),
   play: async ({ userEvent, step }) => {
-    await step('A scheduled call opens one card from its row in Coming up', async () => {
-      const coming = await screen.findByRole('region', { name: 'Coming up' }, SOON);
+    await step('A scheduled call opens one card from its row in Upcoming', async () => {
+      const coming = await screen.findByRole('region', { name: 'Upcoming' }, SOON);
       await userEvent.click(within(coming).getByRole('button', { name: /1:1 with Maya/ }));
     });
     await step('Change the time: the times you’re both free', async () => {
@@ -198,10 +198,10 @@ export const ChangeAScheduledCall: PageStory = {
       await screen.findByRole('button', { name: 'Undo' }, SOON);
     });
     await step('The card settles away, and the row moves to its new time', async () => {
-      await within(await screen.findByRole('region', { name: 'Coming up' })).findByRole('button', { name: /^Thu 14:00 1:1 with Maya/ }, SOON);
+      await within(await screen.findByRole('region', { name: 'Upcoming' })).findByRole('button', { name: /^Thu 14:00 1:1 with Maya/ }, SOON);
     });
     await step('Open it again: the pen renames it, and Enter keeps the name', async () => {
-      await userEvent.click(within(screen.getByRole('region', { name: 'Coming up' })).getByRole('button', { name: /^Thu 14:00 1:1 with Maya/ }));
+      await userEvent.click(within(screen.getByRole('region', { name: 'Upcoming' })).getByRole('button', { name: /^Thu 14:00 1:1 with Maya/ }));
       await userEvent.click(within(await modal('1:1 with Maya')).getByRole('button', { name: 'Rename this call' }));
       const name = within(await modal('1:1 with Maya')).getByRole('textbox');
       await userEvent.clear(name);
@@ -215,8 +215,8 @@ export const CancelAScheduledCall: PageStory = {
   name: '4.8 Cancel a scheduled call',
   ...page('/home', 'busy'),
   play: async ({ userEvent, step }) => {
-    await step('Open the design sync from Coming up', async () => {
-      const coming = await screen.findByRole('region', { name: 'Coming up' }, SOON);
+    await step('Open the design sync from Upcoming', async () => {
+      const coming = await screen.findByRole('region', { name: 'Upcoming' }, SOON);
       await userEvent.click(within(coming).getByRole('button', { name: /Design sync/ }));
     });
     await step('Cancel this call asks once, in place', async () => {
@@ -239,7 +239,7 @@ export const AnswerAnInvitation: PageStory = {
   beforeEach: before((w) => { w.meetings.push(structuredClone(ROADMAP)); }),
   play: async ({ userEvent, step }) => {
     await step('Someone else’s call you’re invited to opens the same card from its row', async () => {
-      const coming = await screen.findByRole('region', { name: 'Coming up' }, SOON);
+      const coming = await screen.findByRole('region', { name: 'Upcoming' }, SOON);
       await userEvent.click(within(coming).getByRole('button', { name: /Roadmap review/ }));
       await modal('Roadmap review');
     });

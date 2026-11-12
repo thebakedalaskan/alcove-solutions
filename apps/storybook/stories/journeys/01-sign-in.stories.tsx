@@ -83,7 +83,7 @@ export const SignInAgain: PageStory = {
     });
     await step('Continue. After the first time, signing in goes straight to Home', async () => {
       await userEvent.click(screen.getByRole('button', { name: 'Continue' }));
-      await screen.findByRole('region', { name: 'For you8' }, LATER);
+      await screen.findByRole('region', { name: 'For you' }, LATER);
     });
     await step('Out of the welcome page’s cove to sea: the headlands go by, the horizon comes up to Home’s, the frame forms round it and Home rises in', async () => {
       await pause(SAILING_OUT);

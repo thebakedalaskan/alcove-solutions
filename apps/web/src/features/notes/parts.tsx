@@ -35,7 +35,7 @@ export function Section({ title, count, kind, id, className, children }: { title
 export function Moment({ at, onSeek, plays = false }: { at: number | undefined; onSeek: ((s: number) => void) | undefined; plays?: boolean | undefined }) {
   if (at === undefined || !onSeek) return null;
   return (
-    <button type="button" className="hm-moment" aria-label={plays ? `Play the call from ${position(at)}` : `Go to the moment at ${position(at)}`} title={plays ? 'Play from this moment' : 'Go to this moment'} onClick={() => onSeek(at)}>
+    <button type="button" className="nd-moment" aria-label={plays ? `Play the call from ${position(at)}` : `Go to the moment at ${position(at)}`} title={plays ? 'Play from this moment' : 'Go to this moment'} onClick={() => onSeek(at)}>
       <Icon name={plays ? 'play' : 'moment'} size={13} />{position(at)}
     </button>
   );
@@ -268,7 +268,7 @@ export function TranscriptLines({ lines, gaps = [], me, onSeek, plays = false, f
  */
 export function MomentLink({ noteId, at, room, chip = false }: { noteId: string; at: number; room?: RoomRef | undefined; chip?: boolean | undefined }) {
   return (
-    <Link to="/notes/$noteId" params={{ noteId }} {...atMoment(at, room)} {...useNotesApart()} className={chip ? 'hm-moment' : 'ac-time-chip'} title={`Open the notes at ${position(at)}${room ? `, in ${room.name}` : ''}`}>
+    <Link to="/notes/$noteId" params={{ noteId }} {...atMoment(at, room)} {...useNotesApart()} className={chip ? 'nd-moment' : 'ac-time-chip'} title={`Open the notes at ${position(at)}${room ? `, in ${room.name}` : ''}`}>
       {chip && <Icon name="moment" size={13} />}{position(at)}
     </Link>
   );

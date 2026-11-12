@@ -33,14 +33,14 @@ Each flow below is implemented in `apps/web` and exercised end to end by the int
    straight to Home. From the welcome page it sails out of the cove: the headlands go by, the horizon comes up to
    Home's, the side panel and the page's frame form round the sea, and Home rises in, in about three and a half
    seconds (a press, a key or the wheel ends it at once; with reduced motion Home just opens).
-4. On first arriving in Home, a tour goes through it, one slide at a time: a card with a short animation, and
-   the page dimmed around the real thing the slide is about, with an arrow to it. **Start or schedule a call**
-   (Start a call, or Start now with the side panel hidden), **Notes for your calls** (the example note before there are
-   any, then Notes), **Join a call** (Join, when an Alcove call is on offer at the top of Home), **Record in the room**
-   (Record, in the side panel or the phone's tab bar), **Your notes stay yours** (the confidential-compute check in
-   the side panel, or the badge on Home on a phone) and **You’re ready** (Start a call). The card
-   moves beside its target, or along the bottom on a phone; **←**/**→** and **Enter** move through it and
-   **Escape** or **Skip tour** closes it. It isn't shown again on that browser for that account; **Take the
+4. On first arriving in Home, a tour goes through it, one slide at a time: a card with a short animation, and the
+   page dimmed around the real thing the slide is about, with an arrow to it. **Start or schedule a call** (Start a
+   call, or Start now with the side panel hidden), **Notes for your calls** (the example note's card in Recent notes
+   before there are any, then Notes), **Join a call** (Join, when an Alcove call is on offer at the top of Home),
+   **Record in the room** (Record, in the side panel or the phone's tab bar), **Your notes stay yours** (the
+   confidential-compute check in the side panel, or the badge on Home on a phone) and **You’re ready** (Start a
+   call). The card moves beside its target, or along the bottom on a phone; **←**/**→** and **Enter** move through
+   it and **Escape** or **Skip tour** closes it. It isn't shown again on that browser for that account; **Take the
    tour** in Settings (flow 11) plays it again.
 
 The first sign-in creates the account: its keys, a profile with the name, email and photo from the sign-in,
@@ -139,58 +139,100 @@ visitors: a boat far out, stars after dark and now and then a shooting star. Wit
 - The date, top left. On a phone or with the side panel hidden, a **Confidential compute** badge (with the time the
   hardware was verified when this browser could check it) shows on Home too, since the panel's check isn't there.
 - **Start a call** (**Start your first call** before your first notes). **Start now** goes straight to the lobby
-  (flow 5). **Schedule** opens scheduling at Who (flow 4). The third button schedules a call for now and copies its
-  link, so it's listed with a card like any other (**Undo** cancels it), and isn't on a phone. Under them, up to three people on your team who use Alcove: pressing one starts a
-  call and rings them when you join. **+** opens scheduling at Who. Someone on their own has no one to show.
+  (flow 5). **Schedule** opens scheduling at Who (flow 4). Nothing else sits under them: ringing someone starts from
+  their arch on Team (flow 10), or from the lobby, which rings whoever you pick when you join (flow 5).
 - While a call is going, or from 5 minutes before one with someone else on it, a line above **Start a call** names it
   with **Join** (**J**), and says when it starts or **Happening now**. It's the one time a call comes near the top: people
   join from their calendar. A call that's going comes first. A calendar meeting needs a video link to get this line, and
   its **Join** opens that link in a new tab. **Join** takes the filled button, and **Start now** gives it up. Until
   then the side panel's **Up next** has the next call with its countdown and **Join**, as on every page, and it makes way
   for this line while the line is there.
-- **For you**, with how many things are open: what needs an answer, as tiles, then your follow-ups as a checklist.
-  With nothing open, it says so. The side panel's **Home** shows the same count.
-- The tiles, newest first, the first six and then **Show more**. A **Decision** (rose) proposed in any note you organized or
-  were invited to that nobody has confirmed, by the notes or by someone else, saying whose words it's in: **Confirm**, or **×**
-  for it wasn't decided, each with **Undo**. On someone else's note, **×** says so for everyone and the organizer settles it,
-  and it stops waiting on you. On your own notes, **Disputed** is one someone confirmed that someone else says wasn't
-  decided: **Keep it confirmed**, or **×**. A **Follow-up** (blue) the notes suggest is yours, that someone gave you or suggested
-  (the tile says **From** them), or that changed since you took it on (**Changed by** them), with the date it's suggested for:
-  **I’ll do it**, which puts it in your follow-ups, or **×**, which leaves it with nobody (then **It’s mine** gives it back to
-  you, taken on). Each shows **What was said** and anything to be careful of. **Shared with you**: notes
-  someone shared in the last 7 days, with **Read the notes**. What you answer stays where it is, saying what you did,
-  until you leave Home. Each tile's time opens its note at the moment it was said, when the notes know it.
-- The checklist: the follow-ups you took on and haven't done, from every note you have, soonest first, with the rest
-  after them. The due words count from when they were said: the last time the due date was changed, or else the call. A
-  day ("today", "EOD", "tomorrow", "Friday", "Friday next week", "Nov 5") is that day, so "tomorrow" said yesterday is
-  due today, and it says when ("Today", "Thu", "Fri 13 Nov"). A stretch of time ("this week", "next week", "in two
-  weeks", "end of the month", "next month", "end of March", "Q1") is due when it ends, so "next week" said last Friday is
-  this week, and it keeps the words. Words with no date ("ASAP", "later") show as they were said, under the follow-up
-  when they're long. A follow-up's words open its note, at the moment it was said when the notes know it. Ticking one
-  crosses it out, and ticking it again puts it back.
-- **Coming up**: every Alcove call ahead and, with Google Calendar connected, the meetings with someone else on them,
-  one line each, soonest first: **Now**, the time today, the day and time this week, then the date. The call on offer
-  above stays listed too, so it can always be opened. Time blocked out on a calendar
-  with nobody else on it isn't listed. A call waiting for a guest to pick a time says **Soon** and **Waiting for Jamie
-  to pick** (someone invited reads **A time is being picked**). A call you're invited to and haven't answered says so, and
-  other people's calls are listed for the next 90 days. A series shows its next call only, and a calendar event that's a
-  copy of a listed call isn't listed twice. A call just scheduled rises in. An Alcove call's row opens its card (flow 4),
-  where **What carries over** opens its series. A calendar meeting has a menu (**⋯**) with **Open in Google Calendar**
-  (in a new tab), **Use Alcove instead** when you organized it (the calendar event gets the Alcove link, and Google tells
-  everyone on it), and **What carries over** when it's in a series. With **Show my other meetings on Home** off
-  (Settings), only Alcove calls count.
-- **Recent notes**: your four newest, one line each, and the heading opens all of them.
-- With Google Calendar disconnected, a card offers **Connect Google Calendar**. **Not now** puts it away in
-  this browser. Connect explains how Alcove uses Calendar data before sending you to Google for consent,
-  then returns to Calendar settings.
+- **For you** holds what's yours in two tabs, **To answer** and **Follow-ups**, each with how many are open; the side
+  panel's **Home** shows the two together. It opens on **To answer** when anything's there, else on **Follow-ups** when
+  anything's there, else on **To answer**. Each tab shows its first five, then **Show N more**.
+- **To answer**: what needs an answer from you, newest first, a row each with its kind, its words, the faces of whoever
+  was on the call (a microphone for a room recording) and the answer at the right. A row's words open its note at the
+  moment they were said, when the notes know it, and the call's name is the row's tooltip. What a decision or follow-up
+  rests on, and anything to be careful of, open from a small mark after its words.
+  - A **decision** proposed in any note you organized or were invited to that nobody has confirmed, by the notes or by
+    someone else: **Confirm**, or **×** for it wasn't decided, each with **Undo**. On someone else's note, **×** says so
+    for everyone and the organizer settles it, and it stops waiting on you. On your own notes, a decision someone
+    confirmed and someone else says wasn't decided is yours to settle: **Keep it confirmed**, or **×**.
+  - A **follow-up** the notes suggest is yours, that someone gave you or suggested, or that changed since you took it
+    on: **I’ll do it**, which puts it in your follow-ups, or **×**, which leaves it with nobody (then **It’s mine**
+    gives it back to you, taken on).
+  - **Notes shared with you** in the last 7 days ("Aiko shared the notes from Board prep"): **Read** opens them.
+  - What you answer stays where it is until you leave Home, saying what you did in a word or two: **Confirmed**, **Not
+    decided**, **Disputed**, **In your follow-ups** or **Not yours**.
+- **Follow-ups**: the ones you took on and haven't done, from every note you have, soonest first, with the rest after
+  them. Each row has the box to tick, the words, the call it came from and when it's due. The due words count from when
+  they were said: the last time the due date was changed, or else the call. A day ("today", "EOD", "tomorrow", "Friday",
+  "Friday next week", "Nov 5") is that day, so "tomorrow" said yesterday is due today, and it says when ("Today", "Thu",
+  "Fri 13 Nov"). A stretch of time ("this week", "next week", "in two weeks", "end of the month", "next month", "end of
+  March", "Q1") is due when it ends, so "next week" said last Friday is this week, and it keeps the words. Words with no
+  date ("ASAP", "later") show as they were said. Words go in the day's column when they fit; longer ones go after the
+  call it came from, and on a phone, where the call isn't shown, in the day's place. A follow-up's words open its
+  note, at the moment it was said when the notes know it. Ticking one crosses it out until you leave Home, and ticking
+  it again puts it back. While a tick saves, its row says **Saving…**; if it can't be saved, the box goes back and a
+  toast says why.
+- With nothing in a tab, it says so, with a small drawing. Once notes are written and both tabs are empty: **You're all
+  caught up** ("New ones show up after your calls."), under Home's small sunset, which shows only then. Otherwise the
+  drawing is rows not filled in yet, with boxes to tick on **Follow-ups**. Before your first notes: **Nothing to answer
+  yet** ("Decisions to confirm and follow-ups from your calls show up here.", or while they're being written, "Design
+  sync's notes are being written.") and **No follow-ups yet** ("What you take on shows up here, with when it's due.").
+  After them, with only the other tab holding anything: **Nothing to answer** ("Your follow-ups are in the next tab.")
+  or **No follow-ups** ("What you take on shows up here, with when it's due.").
+- **Upcoming**: every Alcove call ahead and, with Google Calendar connected, the meetings with someone else on them, by
+  day: today, then the next six days by weekday, then later days by date. A call waiting for a guest to pick a time
+  comes last, under **Soon**. Time blocked out on a calendar with nobody else on it isn't listed. Other people's calls
+  are listed for the next 90 days. A series shows its next call only, and a calendar event that's a copy of a listed
+  call isn't listed twice. With **Show my other meetings on Home** off (Settings), only Alcove calls count. The first
+  five show, then **Show N more**. The button at the right of its heading opens Settings at **Google Calendar**.
+- Each row has the time, the title and up to three faces, and a meeting from your calendar is marked as one. A call
+  waiting for a guest says **Jamie is picking a time** (someone invited reads **A time is being picked**). At the right,
+  only what needs saying: **In 4 min** in a call's last few minutes and **Now** while it's going (the call on offer
+  above stays listed, so it can always be opened); **Answer** on a call you're invited to and haven't answered; and
+  **Use Alcove** on a meeting you organized on your calendar.
+- An Alcove call's row opens its card (flow 4), where someone invited answers, and where **What carries over** opens its
+  series. A meeting from your calendar opens its menu, with what applies: **Use Alcove instead** when you organized it,
+  **Open in Google Calendar** (in a new tab), and **What carries over** when it's in a series. **Use Alcove** on the
+  row, or **Use Alcove instead** in the menu, makes the meeting an Alcove call: the calendar event gets the Alcove link,
+  Google tells everyone on it, a toast says who gets the new link, and from then on its row opens its card. A call just
+  scheduled, and meetings just connected, rise in once.
+- Until Google Calendar is connected, **Upcoming** offers to connect it. With nothing to list it says **See what's
+  coming up** ("Your meetings with other people show here."), with **Connect Google Calendar** and "Alcove reads your
+  events and adds the calls you schedule." With Alcove calls to list, they show, and a row at its foot says **See your
+  other meetings here**, with **Connect**. With **Show my other meetings on Home** off, neither promises meetings: both
+  say "The calls you schedule go on your calendar." Either goes straight to Google, with no page in between. Google asks for
+  access to the Google account you signed in with, then comes back to Home: connected, a toast says **Google Calendar is
+  connected.** and your meetings rise in. When Google wasn't allowed, the account was a different one, or connecting
+  failed, **Upcoming** says so in place of the connect (**Google didn't allow the calendar**, **Choose the Google
+  account you signed in with**, or **Google Calendar couldn't be connected**), with "Calls still work without it." and
+  **Try again**. Either way, Home then takes the result out of its address.
+- Without a Google account there's nothing to connect, and **Upcoming** lists Alcove calls only. A demo account's sample
+  calendar shows as a calendar. Connected, with nothing to list, it says **Nothing in the next 7 days**.
+- While the calendar is on its way, the Alcove calls ahead show, with "Your calendar is on its way" at the foot until it
+  comes (with none, a placeholder). If it doesn't load, **Upcoming** says **Your calendar didn't load** with **Try
+  again**: in place of the list when there's nothing else to list ("Calls still work without it."), otherwise in a row at
+  its foot. With **Show my other meetings on Home** off, it neither waits for the calendar nor says it didn't load.
+- **Recent notes**: your newest notes, up to eight, as a row of cards that scrolls sideways, with **View all** to Notes
+  (flow 8). Each card has the note's own small sunset as its cover, the faces of the people on it (two at most; a
+  microphone for a room recording), the title, and when and how long ("Today · 14 min"). A note still being written says
+  **Being written**. A card opens its note.
 
-The tiles and the checklist come from the inbox (`GET /v1/notes/inbox`): the follow-ups for you that aren't done
+**To answer** and **Follow-ups** come from the inbox (`GET /v1/notes/inbox`): the follow-ups for you that aren't done
 (taken on, or only suggested); the decisions in written notes that nobody has confirmed or rejected and that you can
 confirm, unless it's you who proposed one or said it wasn't decided; and, in notes you organized, confirmed decisions
 someone disputes; newest note first. Follow-ups in notes someone else shared with you count; ones you removed don't.
 
-Before your first notes, **Get set up** takes the place of **For you**, with what's left to do: **Read an example
-note**; **Connect your calendar**, unless one's connected; and **Invite your team**, unless you're on your own (flow 10).
+Before your first notes, Home has no list of things to set up: **For you** says there's nothing to answer yet,
+**Upcoming** offers **Connect Google Calendar** until a calendar is connected, and **Recent notes** has the example
+note's card, marked **Example**, which opens the example note, then a dashed card: **Notes from your calls land here**.
+Inviting your team is on the Team page (flow 10).
+
+Storybook's journeys use these numbers: **3.1 Start a call now**, **3.2 Schedule a call**, **3.3 A call is about to
+start**, **3.4 Move a meeting to Alcove**, **3.5 Clear what’s waiting**, **3.6 Tick off a follow-up** and **3.7 Your
+first day**.
 
 ## 4. Start or schedule a call
 
@@ -252,17 +294,17 @@ send to anyone".
    on, so everyone joins muted. **Documents** steps to the documents and boards you can open, by workspace, with a
    search; what's shared with you from workspaces you aren't in sits under **Shared with you**. With nothing to bring yet
    it says so, and the call works without. A call can bring 12, and anyone who can't open one is told whose it is, without
-   seeing its name, so they can ask for it. With Google Calendar disconnected, **Connect Google Calendar** opens in
-   a new tab. Your draft stays open, and you can still schedule and share its link yourself. The button says what it
-   will do: **Schedule**, **Schedule 4 calls** or **Get the link**.
-6. Once it's scheduled the modal settles away, the row rises on Home, and a toast says what happened, and only that.
-   With Google Calendar connected the call is on it and Google sends the invitations, with **Undo** for a moment. With
-   no calendar connected, or with **Put calls I schedule on my calendar** off (Settings), nobody has been told: the
-   toast says so and offers **Copy link**. With nobody invited, the link is copied. Letting a guest pick copies the
-   link to send them. While it saves, Back and the steps wait, so it can't be sent twice. If it can't be saved, the
+   seeing its name, so they can ask for it. With Google Calendar disconnected, **Connect Google Calendar** opens
+   Google in a new tab, which comes back to Settings with the result. Your draft stays open, and you can still schedule
+   and share its link yourself. The button says what it will do: **Schedule**, **Schedule 4 calls** or **Get the link**.
+6. Once it's scheduled the modal settles away, the row rises in Home's **Upcoming**, and a toast says what happened, and
+   only that. With Google Calendar connected the call is on it and Google sends the invitations, with **Undo** for a
+   moment. With no calendar connected, or with **Put calls I schedule on my calendar** off (Settings), nobody has been
+   told: the toast says so and offers **Copy link**. With nobody invited, the link is copied. Letting a guest pick copies
+   the link to send them. While it saves, Back and the steps wait, so it can't be sent twice. If it can't be saved, the
    error stays in the modal and nothing chosen is lost.
 7. **A scheduled call opens one card from its row**, for the organizer and for anyone invited: who's coming, notes,
-   documents, the link and **Join**. There's no Calls page: scheduled calls live in Home's list.
+   documents, the link and **Join**. There's no Calls page: scheduled calls live in Home's **Upcoming**.
    - For the organizer every row opens to change it (who, the time, notes, documents; the pen renames it), and only
      what changed is sent. In a series each change asks **This call** or **This and later calls** before saving; a call
      that doesn't repeat can start repeating from **Change the time**. With a calendar connected everyone gets the
@@ -1554,7 +1596,8 @@ another call while in one; 7.7 the call ends while they're on its page; 7.8 alon
   nothing changes until someone says so. Someone invited to only some of the calls sees only those. It shows the newest 24
   calls and says how many older ones aren't shown. The organizer also sees the next call, with **Join** and
   **Change this call**, or **Schedule next week’s call**. When the series follows a recurring Google event
-  and Google Calendar isn't connected any more, it says so and offers **Connect Google Calendar**.
+  and Google Calendar isn't connected any more, it says so and offers **Connect Google Calendar**, which goes straight
+  to Google and comes back to Settings with the result.
 
 Storybook journeys **8.47** and **8.48** write straight into the shared notes: posting for everyone in one step, and
 someone getting the notes while the box is open, which it says before posting again. **8.49** shares the notes by a
@@ -1745,11 +1788,11 @@ notes on new calls while the oldest request fails.
   Alerts arrive while Alcove stays open in a background tab/window; there is no delivery service after every tab closes. They always hide names, messages and call/workspace details, including on lock screens: a ring says only that someone is calling you. Browser alerts are silent; sounds follow their own ticks.
   The relevant focused conversation/action suppresses a redundant alert. Events deduplicate across tabs and reconnects, bursts share one alert per category, and handling/reading/withdrawing an event closes or replaces its alert where supported. Enabling a category or joining a thread does not replay old messages. Clicking focuses an existing tab, preferring the original call connection, checks current access, then opens the exact conversation, thread, pending action or timer; a ring's alert brings the tab with the ring forward, and closes when the ring ends. An ended private session or handled action says it is no longer available. Sign-out, removal and revoked permission stop delivery and close the applicable alerts. Other-device preference changes arrive through background refresh.
 - **Connections**: **Google Calendar**, **Connected** with **Disconnect** (it removes the Calendar connection in
-  Alcove), or **Connect**, which first says how Alcove uses Calendar data (the events it reads to show meetings on Home,
-  the guest addresses and time range it sends Google to suggest times, and what it sends Google when you schedule, change
-  or cancel a call), with **Not now** and **Continue to Google**. Google asks for access to the same Google account you
-  signed in with and returns here with the result, said under the row: connected; access not granted, so you can still
-  schedule calls and share the link yourself; the wrong Google account; or a failure, to try again. A demo account has a
+  Alcove), or **Connect**, with Alcove's one line about it under the name: "Alcove reads your events and adds the calls
+  you schedule." **Connect** goes straight to Google, which asks for access to the same Google account you signed in
+  with. Google sends you back here, as it does from **Connect Google Calendar** while scheduling or in a series, with the
+  result said under the row: connected; access not granted, so you can still schedule calls and share the link yourself;
+  the wrong Google account; or a failure, to try again. A demo account has a
   sample calendar. Other accounts show **Not connected**: Google Calendar connects from an Alcove account that uses Google
   sign-in. A calendar that doesn't answer says why, with **Try again**. Under it, **Put calls I schedule on my calendar**
   (when Google Calendar is connected, Google sends the invitations; a sample calendar stands in for it) and **Show my

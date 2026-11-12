@@ -252,6 +252,22 @@
 .ac-nav-item[aria-current="page"] { background: color-mix(in srgb, var(--ink) 12%, transparent); color: var(--ink); }
 .ac-nav-item .count { margin-left: auto; font: 500 12px/1 var(--font-sans); font-variant-numeric: tabular-nums; color: var(--ink-3); }
 
+/* ---- Widget: one card on a page's water. Its head (an icon in a tile, the title, then what the head holds), its body, and a foot only while its list is longer than it shows ---- */
+.ac-widget { position: relative; display: flex; flex-direction: column; min-width: 0; border-radius: 20px; background: var(--surface); box-shadow: 0 0 0 1px var(--line), var(--shadow-2); }
+.ac-widget-h { display: flex; align-items: center; gap: 10px; min-height: 56px; padding: 0 12px 0 18px; border-bottom: 1px solid var(--line); }
+.ac-widget-ic { display: grid; place-items: center; flex: none; width: 28px; height: 28px; border-radius: var(--radius-sm); background: color-mix(in oklch, var(--ink) 8%, transparent); color: var(--ink-2); }
+.ac-widget-h h2 { min-width: 0; font: 600 15px/1.3 var(--font-sans); color: var(--ink); }
+.ac-widget-h h2:focus { outline: none; }
+.ac-widget-b { flex: 1; min-height: 0; padding: 4px 0; }
+.ac-widget-f { display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 0 12px 0 18px; border-top: 1px solid var(--line); }
+.ac-widget-more { display: inline-flex; align-items: center; height: 32px; margin-left: -8px; padding: 0 8px; border-radius: var(--radius-sm); font: 500 13.5px/1 var(--font-sans); color: var(--ink-2); transition: background-color var(--duration-1), color var(--duration-1); }
+.ac-widget-more:hover { background: color-mix(in oklch, var(--ink) 7%, transparent); color: var(--ink); }
+.ac-widget-more:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+/* Bare: no card. The head and what's under it sit on the page, as a row of cards does. */
+.ac-widget.is-bare { border-radius: 0; background: none; box-shadow: none; }
+.ac-widget.is-bare > .ac-widget-h { min-height: 32px; margin-bottom: 14px; padding: 0; border: 0; }
+.ac-widget.is-bare > .ac-widget-b { padding: 0; }
+
 /* ---- Field ---- */
 .ac-field { display: grid; gap: 6px; }
 .ac-field label { font: 600 13.5px/1.2 var(--font-sans); color: var(--ink); }
@@ -444,6 +460,32 @@
 .ac-arch-art .well { fill: var(--sunk); }
 .ac-arch-art .sun { fill: var(--gold); opacity: .8; }
 .ac-arch-art .land { fill: var(--line); }
+/* EmptyRows: rows not filled in yet, in the colours they'll have. Follow-ups (`is-ticks`): boxes to tick and a day. */
+.ac-empty-rows { display: grid; gap: 7px; width: 176px; padding: 10px; border-radius: 12px; background: color-mix(in oklch, var(--ink) 6%, transparent); }
+.ac-empty-rows .r { --tint: var(--horizon); display: grid; grid-template-columns: 12px minmax(0, 1fr) 34px; column-gap: 9px; align-items: center; height: 18px; }
+.ac-empty-rows .r.is-decide { --tint: var(--rose); }
+.ac-empty-rows .k { justify-self: center; width: 9px; height: 9px; border-radius: 2px; border: 1.6px solid color-mix(in oklch, var(--tint) 75%, transparent); }
+.ac-empty-rows:not(.is-ticks) .r:not(.is-decide) .k { border-style: dashed; }
+.ac-empty-rows:not(.is-ticks) .r.is-decide .k { transform: rotate(45deg); }
+.ac-empty-rows .l { width: 82%; height: 5px; border-radius: 3px; background: color-mix(in oklch, var(--ink) 20%, transparent); }
+.ac-empty-rows .l.s { width: 58%; }
+.ac-empty-rows .l.m { width: 70%; }
+.ac-empty-rows .p { height: 12px; border-radius: 6px; background: color-mix(in oklch, var(--tint) 32%, transparent); }
+.ac-empty-rows.is-ticks .r { --tint: var(--horizon); }
+.ac-empty-rows.is-ticks .k { border-radius: 3px; }
+.ac-empty-rows.is-ticks .p { justify-self: end; width: 22px; height: 5px; border-radius: 3px; background: color-mix(in oklch, var(--ink) 20%, transparent); }
+/* EmptyWeek: three days, a few meetings in them, nothing to read yet. */
+.ac-empty-week { display: grid; grid-template-columns: repeat(3, 44px); gap: 6px; }
+.ac-empty-week > span { display: grid; gap: 5px; align-content: start; height: 70px; padding: 7px 6px; border-radius: 10px; background: color-mix(in oklch, var(--ink) 6%, transparent); }
+.ac-empty-week > span::before { content: ""; display: block; width: 14px; height: 4px; border-radius: 2px; background: color-mix(in oklch, var(--ink) 22%, transparent); }
+.ac-empty-week i { display: block; height: 12px; border-radius: 4px; background: color-mix(in oklch, var(--horizon) 30%, transparent); }
+.ac-empty-week i.r { background: color-mix(in oklch, var(--rose) 30%, transparent); }
+.ac-empty-week i.s { background: color-mix(in oklch, var(--sun-text) 34%, transparent); }
+/* SmallSunset: the sun half down on the horizon, and its glitter. */
+.ac-small-sunset { display: block; overflow: visible; }
+.ac-small-sunset .s { fill: var(--gold); }
+.ac-small-sunset .h { fill: color-mix(in oklch, var(--ink) 22%, transparent); }
+.ac-small-sunset .g { fill: var(--sun-text); }
 
 /* ---- Small pieces: check, meter, kbd, time chip ---- */
 .ac-check { position: relative; flex: none; display: grid; place-items: center; width: 20px; height: 20px; border-radius: var(--radius-xs); box-shadow: inset 0 0 0 1.5px var(--line-control); color: var(--on-sun); transition: background-color var(--duration-2), box-shadow var(--duration-2); }
@@ -502,6 +544,34 @@
 }
 .ac-arch-thumb::after { content: ""; position: absolute; left: 50%; top: 68%; width: 32%; aspect-ratio: 1; border-radius: 50%; transform: translate(-50%, -50%); background: var(--gold); box-shadow: 0 0 10px 2px color-mix(in srgb, var(--sun-glow) 55%, transparent); }
 .ac-arch-thumb.in-room::after { background: var(--stage-ink); box-shadow: 0 0 0 4px rgb(255 255 255 / 0.22); width: 22%; }
+
+/* ---- NoteCard: a note in a row of cards. Its own small sunset as the cover (each cover a moment of the sky: illustration), the people on it standing on the cover's edge, its title. The title's link takes the whole card ---- */
+.ac-note-card { position: relative; display: grid; grid-template-rows: 96px auto; min-width: 0; border-radius: 18px; background: var(--surface); box-shadow: 0 0 0 1px var(--line), var(--shadow-1); overflow: hidden; text-align: left; transition: transform var(--duration-2) var(--ease-out), box-shadow var(--duration-2) var(--ease-out); }
+.ac-note-card:hover { transform: translateY(-3px); box-shadow: 0 0 0 1px var(--line), var(--shadow-2); }
+.ac-note-card:has(a:focus-visible) { outline: 2px solid var(--focus); outline-offset: 2px; }
+.ac-note-card a { color: inherit; }
+.ac-note-card a::after { content: ""; position: absolute; inset: 0; z-index: 3; }
+.ac-note-card a:focus-visible { outline: none; }
+.ac-note-cover { --c1: oklch(.34 .07 282); --c2: oklch(.56 .12 345); --c3: oklch(.8 .12 62); --sx: 64%; --sun: oklch(.93 .1 85); --sea: oklch(.3 .06 270); position: relative; display: block; overflow: hidden; background: linear-gradient(to bottom in oklch, var(--c1), var(--c2) 60%, var(--c3) 78%); }
+.ac-note-cover.is-first { --c1: oklch(.4 .08 300); --c2: oklch(.64 .12 12); --c3: oklch(.84 .1 75); --sx: 30%; --sun: oklch(.95 .08 92); --sea: oklch(.34 .07 290); }
+.ac-note-cover.is-dusk { --c1: oklch(.3 .06 252); --c2: oklch(.5 .1 300); --c3: oklch(.74 .11 35); --sx: 72%; --sun: oklch(.9 .11 75); --sea: oklch(.27 .05 258); }
+.ac-note-cover.is-haze { --c1: oklch(.36 .07 270); --c2: oklch(.6 .11 330); --c3: oklch(.82 .1 50); --sx: 46%; --sun: oklch(.94 .09 88); --sea: oklch(.3 .06 268); }
+.ac-note-cover.is-night { --c1: oklch(.28 .05 262); --c2: oklch(.42 .08 290); --c3: oklch(.62 .1 330); --sx: 56%; --sun: oklch(.86 .08 60); --sea: oklch(.24 .05 262); }
+.ac-note-cover.is-morning { --c1: oklch(.42 .07 250); --c2: oklch(.66 .09 300); --c3: oklch(.86 .08 40); --sx: 38%; --sun: oklch(.96 .07 90); --sea: oklch(.36 .06 262); }
+.ac-note-cover .s { position: absolute; left: var(--sx); bottom: 30%; width: 34px; height: 34px; border-radius: 50%; background: var(--sun); transform: translate(-50%, 50%); }
+.ac-note-cover .w { position: absolute; inset: auto 0 0; height: 30%; background: var(--sea); }
+.ac-note-cover .g { position: absolute; left: var(--sx); bottom: 18%; width: 26px; height: 2px; border-radius: 1px; background: var(--sun); opacity: .6; transform: translateX(-50%); }
+.ac-note-cover .g.b { bottom: 9%; width: 14px; opacity: .4; }
+.ac-note-cover .tag { position: absolute; top: 10px; left: 10px; height: 22px; padding: 0 9px; border-radius: var(--radius-pill); background: color-mix(in oklch, var(--stage) 55%, transparent); font: 600 11.5px/22px var(--font-sans); color: var(--stage-ink); }
+.ac-note-who { position: absolute; left: 14px; top: 78px; z-index: 2; display: flex; }
+.ac-note-who .arch { display: grid; place-items: center; width: 28px; height: 31px; border-radius: 14px 14px 4px 4px; background: var(--surface); box-shadow: 0 0 0 2px var(--surface); color: var(--ink-2); }
+.ac-note-b { display: grid; gap: 3px; align-content: start; min-height: 86px; padding: 24px 14px 14px; }
+.ac-note-b b { font: 600 14.5px/19px var(--font-sans); color: var(--ink); }
+.ac-note-b small { display: flex; align-items: center; gap: 6px; font: 400 12.5px/17px var(--font-sans); color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.ac-note-b .ac-dots { gap: 3px; }
+.ac-note-b .ac-dots i { width: 4px; height: 4px; }
+/* Being written: the cover breathes, slowly. */
+.ac-note-card.is-writing .ac-note-cover { animation: ac-breathe var(--duration-5) ease-in-out infinite; }
 
 /* ---- Fit: a scene drawn at a design size, scaled to its column ---- */
 .ac-fit { position: relative; width: 100%; overflow: hidden; }

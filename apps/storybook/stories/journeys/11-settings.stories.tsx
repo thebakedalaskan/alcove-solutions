@@ -133,13 +133,11 @@ export const ConnectGoogleCalendar: PageStory = {
   ...page('/settings#calendar', 'busy'),
   beforeEach: before((w) => { w.calendar = notConnected; }),
   play: async ({ userEvent, step }) => {
-    await step('Under Connections, click Connect beside Google Calendar, and review how Alcove uses calendar data', async () => {
-      await userEvent.click(within(await row('Google Calendar')).getByRole('link', { name: 'Connect' }));
+    await step('Under Connections, Google Calendar says what Alcove does with it: it reads your events and adds the calls you schedule', async () => {
+      await within(await row('Google Calendar')).findByText('Alcove reads your events and adds the calls you schedule.', {}, SOON);
     });
-    await step('Continue to Google. After consent, Google returns you to Calendar settings', async () => {
-      const dialog = await screen.findByRole('dialog', { name: 'Connect Google Calendar' }, SOON);
-      await userEvent.click(within(dialog).getByRole('button', { name: 'Continue to Google' }));
-      await within(dialog).findByRole('button', { name: 'Opening Google' }, SOON);
+    await step('Click Connect. It goes straight to Google, which asks for access, then returns you to Calendar settings', async () => {
+      await userEvent.click(within(await row('Google Calendar')).getByRole('link', { name: 'Connect' }));
     });
   }
 };

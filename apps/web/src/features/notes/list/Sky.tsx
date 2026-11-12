@@ -65,12 +65,12 @@ export function WithPeople({ known, person, add, onPick }: {
   return (
     <div className="nt-people">
       {person ? (
-        <span className="hm-who nt-with">
+        <span className="nt-who nt-with">
           <Avatar person={person} size={26} /><span className="ac-clamp-1">{callName(person)}</span>
           <IconButton icon="x" size={14} label="Show notes with anyone" className="nt-with-x" onClick={() => onPick(undefined)} />
         </span>
       ) : known.slice(0, PEOPLE).map((k) => (
-        <button key={k.person.email} type="button" className="hm-who" aria-label={`Notes with ${k.person.name}`} title={`Notes with ${k.person.name}`} onClick={() => onPick(k.person.email)}>
+        <button key={k.person.email} type="button" className="nt-who" aria-label={`Notes with ${k.person.name}`} title={`Notes with ${k.person.name}`} onClick={() => onPick(k.person.email)}>
           <Avatar person={k.person} size={26} /><span className="ac-clamp-1">{callName(k.person)}</span>
         </button>
       ))}
@@ -88,7 +88,7 @@ function Someone({ known, person, add, onPick }: { known: Known[]; person: Perso
   const go = (email: string | undefined) => { setOpen(false); setText(''); onPick(email); };
   return (
     <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o) setText(''); }} align="center" label="Show notes with someone" className="nt-pop nt-pick"
-      anchor={<button ref={add} type="button" className="hm-add" aria-label="Notes with someone else" title="Notes with someone else"><Icon name="plus" size={18} /></button>}>
+      anchor={<button ref={add} type="button" className="nt-add" aria-label="Notes with someone else" title="Notes with someone else"><Icon name="plus" size={18} /></button>}>
       <label className="nt-pop-find"><Icon name="search" size={15} /><input value={text} onChange={(e) => setText(e.target.value)} placeholder="Find someone in your notes" aria-label="Find someone in your notes" autoComplete="off" spellCheck={false}
         onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); const first = shown[0]; if (first) go(first.person.email); } }} /></label>
       <div className="nt-pop-list">

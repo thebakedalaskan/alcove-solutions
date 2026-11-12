@@ -130,8 +130,8 @@ export function OwnNotesCard({ note, me, entries, own, shown, onSeek }: {
   const open = (e: PersonalEntry) => { back.current = document.activeElement instanceof HTMLElement ? document.activeElement : null; setAdded(false); setAdding(e.id); };
   const close = () => { setAdding(null); back.current?.focus(); };
   return (
-    <section className="hm-panel nd-own" aria-label="Your notes">
-      <div className="hm-panel-h"><h2>Your notes</h2><span className="nd-only"><Icon name="lock" size={13} />Only you</span></div>
+    <section className="nd-panel nd-own" aria-label="Your notes">
+      <div className="nd-panel-h"><h2>Your notes</h2><span className="nd-only"><Icon name="lock" size={13} />Only you</span></div>
       {entries && entries.length > 0 ? (
         <OwnEntries entries={entries} me={me} moment={(m) => <NoteMoment noteId={note.id} m={m} shown={shown} onSeek={onSeek} />} away={say} picked={adding}
           actions={{ edit: (entryId, text) => own.edit.mutateAsync({ entryId, text }), remove: (entryId) => own.remove.mutateAsync(entryId) }}

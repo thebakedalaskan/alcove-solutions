@@ -1,5 +1,5 @@
 /* Query keys, fetchers and mutations. Screens read data through these, never through `api` directly. */
-import type { AgentDecisionInput, AgentTokenInput, AgentUpdateInput, DriveExportInput, FollowUpReview } from '@alcove/api';
+import type { AgentDecisionInput, AgentTokenInput, AgentUpdateInput, Calendar, DriveExportInput, FollowUpReview } from '@alcove/api';
 import { AlcoveApiError, MAX_SORT_STICKIES, MAX_SORT_STICKY, SORT_TOO_FEW, SORT_TOO_MANY, errorCode, type ActionProposal, type ChangeScope, type DecisionProposal, type DemoProvider, type DocumentRole, type FeatureFlagName, type Group, type PresenterFrameNotes, type InstantCallInput, type ISODate, type ItemInput, type ItemPlace, type LinePatch, type MeetingInput, type MentionBody, type NoteKind, type NotesSetting, type Patch, type PersonalInput, type PersonalNotes, type PromoteBody, type QuestionPatch, type TopUp, type RingReply, type Series, type SharedWrite, type ShareTarget, type DocumentLibrary, type WorkspaceRole, type WorkspaceSummary, type WorkspaceTree } from '@alcove/api';
 import { infiniteQueryOptions, queryOptions, useIsMutating, useMutation, useMutationState, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef } from 'react';
@@ -540,13 +540,23 @@ export function useUpdateCall() {
   const qc = useQueryClient();
   return useMutation({ mutationFn: (v: { id: string; input: Patch<MeetingInput>; scope?: ChangeScope | undefined }) => api.meetings.update(v.id, v.input, { scope: v.scope }), onSuccess: () => callsChanged(qc) });
 }
-/** Makes one of your own calendar events an Alcove call; an occurrence of a recurring event joins its series. */
+/**
+ * Makes one of your own calendar events an Alcove call; an occurrence of a recurring event joins its series. The meeting
+ * leaves the calendar's list at once, so it isn't listed beside its new call; the calendar is read again with the calls
+ * (its key is under theirs), with the meeting's Alcove link.
+ */
 export function useAdoptEvent() {
   const qc = useQueryClient();
-  return useMutation({ mutationFn: (v: { eventId: string; notes?: NotesSetting | undefined }) => api.calendar.adopt(v.eventId, v.notes), onSuccess: () => callsChanged(qc) });
+  return useMutation({
+    mutationFn: (v: { eventId: string; notes?: NotesSetting | undefined }) => api.calendar.adopt(v.eventId, v.notes),
+    onSuccess: (_m, v) => {
+      qc.setQueryData<Calendar>(qk.calendar, (c) => (c ? { ...c, events: c.events.filter((e) => e.id !== v.eventId) } : c));
+      callsChanged(qc);
+    }
+  });
 }
-/** Where the browser goes to give Alcove access to Google Calendar. */
-export const calendarConnectUrl = () => api.calendar.connectUrl();
+/** Where the browser goes to give Alcove access to Google Calendar; Google sends it back to Settings, or to Home. */
+export const calendarConnectUrl = (opts?: { back?: '/home' | undefined }) => api.calendar.connectUrl(opts);
 /** Forgets the Google connection; the calendar then asks for access again. */
 export function useDisconnectCalendar() {
   const qc = useQueryClient();

@@ -40,8 +40,11 @@ export interface CalendarApi {
   get(): Promise<Calendar>;
   /** When you and these people are busy between two times, from what's readable: see `Busy`. */
   busy(emails: string[], range: { from: ISODate; to: ISODate }): Promise<Busy>;
-  /** Where the browser goes to give Alcove access to the Google Calendar of the account it's signed in with. */
-  connectUrl(): string;
+  /**
+   * Where the browser goes to give Alcove access to the Google Calendar of the account it's signed in with. Google sends
+   * the browser back to Settings, or to Home with `{ back: '/home' }`, with how it went in `?calendar=`.
+   */
+  connectUrl(opts?: { back?: '/home' | undefined }): string;
   /** Forgets the Google connection: Alcove's stored access is deleted and scheduling no longer touches Google. Connect again from `connectUrl()`. */
   disconnect(): Promise<Calendar>;
   /** Makes one of your own calendar events an Alcove call: the event gets the Alcove link, and everyone invited is told. */

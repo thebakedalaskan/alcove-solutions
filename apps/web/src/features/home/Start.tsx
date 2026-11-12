@@ -1,27 +1,22 @@
 /*
- * The middle of Home. Start now goes to the lobby, Schedule to the first step of scheduling, and a person's chip
- * starts a call that rings them. While a call is going, or in its last few minutes, a line above them joins it, and
- * Join takes the one filled button. Nothing else about the day comes up here: people join from their calendar.
+ * The middle of Home. Start now goes to the lobby, and Schedule to the first step of scheduling. While a call is going,
+ * or in its last few minutes, a line above them joins it, and Join takes the one filled button. Nothing else about the
+ * day comes up here: people join from their calendar, and ring someone from Team or from Start a call.
  */
-import { errorMessage, firstName } from '@alcove/api';
-import { Avatar, Button, Faces, Icon, buttonClass, useToast } from '@alcove/ui';
-import { useQuery } from '@tanstack/react-query';
+import { errorMessage } from '@alcove/api';
+import { Button, Faces, Icon, buttonClass, useToast } from '@alcove/ui';
 import { Link } from '@tanstack/react-router';
 import { useId, useRef } from 'react';
 import { useFloodToCall } from '~/features/calls/flow/parts';
-import { ringable } from '~/features/calls/ringing/RingWords';
 import { useCallFlow } from '~/features/shell/context';
-import { q, useStartNow } from '~/lib/queries';
+import { useStartNow } from '~/lib/queries';
 import { minutesUntil, untilLabel } from '~/lib/time';
 import { peopleOn, started, type Ahead } from './day';
-
-const PEOPLE = 3;
 
 export function Start({ first, soon, me, now }: { first: boolean; soon: Ahead | undefined; me: string | undefined; now: number }) {
   const flow = useCallFlow();
   const toast = useToast();
   const startNow = useStartNow();
-  const team = useQuery(q.team()).data;
   const { go, flood } = useFloodToCall();
   const h = useId();
   /* One call at a time, however fast the buttons are pressed. */
@@ -31,8 +26,7 @@ export function Start({ first, soon, me, now }: { first: boolean; soon: Ahead | 
     busy.current = true;
     run().catch((e: unknown) => toast(errorMessage(e), { icon: 'x' })).finally(() => { busy.current = false; });
   };
-  const begin = (from: Element, guests?: string[]) => once(() => go(from, async () => (await startNow.mutateAsync(guests ? { guests } : {})).code));
-  const people = ringable(team, me ? { email: me } : undefined).slice(0, PEOPLE);
+  const begin = (from: Element) => once(() => go(from, async () => (await startNow.mutateAsync({})).code));
   return (
     <section className="hm-start" aria-labelledby={h} style={{ '--d': 1 }}>
       {soon && <Soon soon={soon} me={me} now={now} />}
@@ -41,16 +35,6 @@ export function Start({ first, soon, me, now }: { first: boolean; soon: Ahead | 
         <Button variant={soon ? 'secondary' : 'primary'} size="lg" icon="video" className="hm-go" data-tour="new-call" onClick={(e) => begin(e.currentTarget)}>Start now</Button>
         <Button variant="secondary" size="lg" icon="cal" aria-haspopup="dialog" onClick={() => flow.start({ later: true })}>Schedule</Button>
       </div>
-      {people.length > 0 && (
-        <div className="hm-people">
-          {people.map((p) => (
-            <button key={p.email} type="button" className="hm-who" aria-label={`Ring ${p.name}`} title={`Ring ${p.name}`} onClick={(e) => begin(e.currentTarget, [p.email])}>
-              <Avatar person={p} size={26} /><span>{firstName(p.name)}</span>
-            </button>
-          ))}
-          <button type="button" className="hm-add" aria-label="Add someone" title="Add someone" aria-haspopup="dialog" onClick={() => flow.start({ later: true })}><Icon name="plus" size={18} /></button>
-        </div>
-      )}
       {flood}
     </section>
   );

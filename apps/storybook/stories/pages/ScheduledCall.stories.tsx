@@ -1,5 +1,5 @@
 /*
- * A scheduled call's card: one card, opened from its row in Home's Coming up, for the organizer and for anyone invited.
+ * A scheduled call's card: one card, opened from its row in Home's Upcoming, for the organizer and for anyone invited.
  * Who's coming, notes, documents, the link and Join; for the organizer every row opens to change it, and Cancel this call
  * asks once, in place (user-flows 4).
  */
@@ -12,7 +12,7 @@ import { invited, troubled } from './changes';
 const meta = { title: 'Pages/A scheduled call', ...pages } satisfies Meta<PageArgs>;
 export default meta;
 
-/** Opens a call's card from its row in Coming up, then presses whatever comes next in it. */
+/** Opens a call's card from its row in Upcoming, then presses whatever comes next in it. */
 const opening = (row: RegExp, said: string, then: readonly [string | RegExp, string][] = []): NonNullable<PageStory['play']> => async ({ canvas, userEvent, step }) => {
   await step(said, async () => {
     await userEvent.click(await canvas.findByRole('button', { name: row }, { timeout: 8000 }));
@@ -26,7 +26,7 @@ const opening = (row: RegExp, said: string, then: readonly [string | RegExp, str
 };
 
 /** Art's design sync at 17:30: who's coming and how they answered, notes, documents, the link, and Join. */
-export const Yours = page('/home', 'busy', { play: opening(/Design sync/, 'Open the design sync from Coming up') });
+export const Yours = page('/home', 'busy', { play: opening(/Design sync/, 'Open the design sync from Upcoming') });
 export const YoursPhone = phone(Yours);
 /** In a series: What carries over opens the series, and a change asks whether it's for this call or this and later ones. */
 export const InASeries = page('/home', 'busy', { play: opening(/Team standup/, 'Open next week’s standup, which repeats every Wednesday') });

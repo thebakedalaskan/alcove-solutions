@@ -50,24 +50,66 @@ Every signed-in page sits in the same frame (`apps/web/src/features/shell/`, `pa
 
 ## Home
 
-`routes/_app/home.tsx`, `features/home/`, `styles/home.css` (`hm-`). Moment: `home`. Board: `Home.dc.html`.
+`routes/_app/home.tsx`, `features/home/`, `styles/home.css` (`hm-`). Moment: `home`. Boards: `Home.dc.html`, and the
+water's own in [canvas/home/](canvas/home/README.md).
 
 Home is for starting a call and for what's yours. It's nearly all sky.
 
-- **The sky.** The date, small, at the top left. In the middle, Start a call (Newsreader), then:
-  - Start now (filled) and Schedule
-  - up to three people to ring, each a chip with their arch, then a plus
-  - from 5 minutes before a call with someone else on it, and while it's going, a slim line above the title with its faces,
-    its name, "Starts in 4 min" or "Happening now", and Join (J), which takes the filled button
+- **The sky.** The date, small, at the top left. In the middle, Start a call (Newsreader), then Start now (filled) and
+  Schedule, and nothing else: ringing someone starts from Team or from Start a call. From 5 minutes before a call with
+  someone else on it, and while it's going, a slim line above the title has its faces, its name, "Starts in 4 min" or
+  "Happening now", and Join (J), which takes the filled button.
 - **The sun** sits half risen under the buttons and lifts a little when you point at Start now.
-- **The water,** 72px under the horizon:
-  - **For you**, two thirds wide: tiles for what's yours to answer. A decision is rose, with Confirm. A follow-up is horizon,
-    with I'll do it. Something shared with you is warm. Decisions and follow-ups carry their moment chip. An answered tile
-    says what you chose, with Undo. Under the tiles, your follow-ups as a real checklist, with moment chips and due days in
-    a fixed column.
-  - **Beside it**: Coming up, one line per call, where a calendar meeting has a menu; then Recent notes. A card to connect a
-    calendar appears when it's needed.
-- **First day:** Get set up tiles take For you's place. Start your first call is the title.
+- **The water,** 72px under the horizon, holds three widgets, the way the big apps build a home: For you beside Upcoming
+  (7 parts to 5), then Recent notes across the width, 20px apart. At 1320px and narrower they stack in that order. A
+  widget is one card (`surface`, a hairline ring, a soft shadow): a head with its icon in a small tile and its title in
+  15px semibold, then the body, and a foot with Show N more only when a list is longer than it shows.
+  - **For you** has two tabs in its head, To answer and Follow-ups, each with a count in a pill: rose under To answer
+    and horizon under Follow-ups while that tab is on, neutral otherwise. A 2px ink line along the head's foot marks the
+    tab you're on.
+    - **A row to answer** is one grid: the kind in a circle (a rose diamond for a decision, a dashed horizon box for a
+      follow-up that isn't yours yet, a warm share icon for notes shared with you), the words in up to two lines, the
+      faces of whoever was on the call (a microphone arch for a room recording) in a fixed column, and the answer in a
+      fixed column at the right, a tinted pill (Confirm, Keep it confirmed, I'll do it, Read) with the × beside it. Read
+      keeps the ×'s room, so the pills line up. There's no moment chip and no second line: the words open the moment,
+      the call's name is the row's tooltip, and what backs it and what to be careful of sit behind a small mark after
+      the words.
+    - **Answered,** a row stays where it is: its words go to `ink-2`, its circle to an outline, and the answer column
+      says what happened in a word or two (Confirmed, Not decided, Disputed, In your follow-ups, Not yours), with Undo
+      or It's mine.
+    - **A follow-up** is the box to tick, the words on one line, the call it came from in `ink-2`, and the day at the
+      right: Today in `sun-text`, late in `caution`.
+    - **Empty,** the body's middle has a picture over a title and one line (the kit's `EmptyState`, in the widget's
+      type). With nothing in either tab once notes are written, the picture is Home's own small sunset, and only then:
+      You're all caught up. Otherwise it's a small drawing of rows not filled in yet (a rose diamond, a dashed box, bars
+      and pills, on a faint panel), with boxes to tick under Follow-ups: before your first notes, Nothing to answer yet
+      (or whose notes are being written) and No follow-ups yet; after them, when only the other tab has something,
+      Nothing to answer (your follow-ups are in the next tab) or No follow-ups.
+  - **Upcoming** is a calendar by day, with a quiet icon button at the right of its head that opens Settings at Google
+    Calendar. Each day is a date block (the day small, Today in `sun-text`, then the date's number large and tabular)
+    beside its calls, and a call whose time is still being picked goes last, under Soon. A row has the time (tabular,
+    `ink-2`), the title on one line, and under it a calendar mark for a meeting from your calendar or a clock for a call
+    whose time is being picked, then up to three small faces. At the right, only what needs saying: In 4 min in
+    `sun-text` in its last few minutes and Now while it's going, Answer as a rose pill, or Use Alcove, a line button
+    with the camera.
+    - **Not connected** and with nothing to show, the body is a small drawing of a week (three days, tinted blocks), See
+      what's coming up and one line, Connect Google Calendar (a line button with the calendar mark), and under it, small
+      in `ink-3`, what Alcove does with the calendar. With calls to show, the connect is a row at the widget's foot
+      instead: a dashed calendar circle, one line and Connect.
+    - **Back from Google** with a problem, the connect gives way to a `caution` circle, what went wrong, one line and
+      Try again. A calendar that doesn't load says so the same way.
+    - **While the calendar is on its way,** calls already ahead show, with a quiet row at the foot saying so; with none,
+      the body is a few faint bars.
+  - **Recent notes** has no card: its icon tile and its title, with View all at the right. Under them, a sideways row of
+    cards that scrolls with no scrollbar. Each card's cover is the note's own small sunset (a sky, a sun on a band of
+    sea, two glints), picked from its id, with the people's faces (two at most) standing on its lower edge, or a
+    microphone arch for a room recording. Under the cover, the title in up to two lines, then when and how long. A note
+    being written says so with the moving dots, and its cover breathes slowly.
+- **On a phone,** For you's tabs sit on their own line under its title, its rows drop the faces and the ×, and the note
+  cards scroll sideways.
+- **First day:** Start your first call is the title. For you shows its first-day empty states, Upcoming its connect
+  until a calendar is connected, and Recent notes the example note's card, with an Example tag on its cover, then a
+  dashed card where notes from your calls will land. There's no list of things to set up: the first day is these states.
 - **Signed in from the welcome page,** Home opens by sailing out of the welcome page's cove (see [Welcome](#welcome)).
 
 ## Notes

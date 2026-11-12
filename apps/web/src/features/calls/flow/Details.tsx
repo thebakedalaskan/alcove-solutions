@@ -5,12 +5,11 @@
 import type { MeetingInput, Person } from '@alcove/api';
 import { Button, Faces, FlowBody, FlowFoot, FlowNote, FlowRow, NotesSwitches, Select, Switch, SwitchLine } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
-import { Link } from '@tanstack/react-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { namesIn } from '~/features/workspace/List';
 import { useMyModelUnencrypted } from '~/lib/aiModels';
 import { callName } from '~/lib/people';
-import { q } from '~/lib/queries';
+import { calendarConnectUrl, q } from '~/lib/queries';
 import { timeZone } from '~/lib/time';
 import { docNames } from './Documents';
 import { BIG_CALL, peopleLine, repeatInput, ruleOf, titleFor, type Draft } from './draft';
@@ -111,7 +110,7 @@ export function Details({ draft, change, guests, at, invites, connectCalendar, b
         </div>
         {connectCalendar && !offer && !saving && (
           <FlowNote tone="info" icon="cal">
-            <Link className="lk" to="/connect-calendar" target="_blank" rel="noopener noreferrer">Connect Google Calendar</Link> in a new tab to put this call on your calendar{guests.length > 0 ? ' and send invitations' : ''}.
+            <a className="lk" href={calendarConnectUrl()} target="_blank" rel="noopener noreferrer">Connect Google Calendar</a> in a new tab to put this call on your calendar{guests.length > 0 ? ' and send invitations' : ''}.
           </FlowNote>
         )}
       </FlowBody>
