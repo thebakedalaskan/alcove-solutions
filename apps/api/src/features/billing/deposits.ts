@@ -15,7 +15,7 @@ import {
   depositProviders, formatUnits, fromMicroUsd, PROVIDER_TIMEOUT_MS, toMicroUsd, type DepositAddress, type DepositCheck, type DepositProviderName,
   type DepositProvider, type DepositRoute, type DoubtReason, type OpenDepositState
 } from './provider';
-import { limitsNow } from '../../limits';
+import { LIMITS, limitsNow } from '../../limits';
 import { credit, purchase, refusalOf, refusedError } from './plans';
 
 const dlog = log.child({ component: 'deposits' });
@@ -45,12 +45,13 @@ const key = (d: Pick<Deps, 'cfg'>) => serviceKey(unb64u(d.cfg.KSERVICE, 32), 'ac
 const header = (ownerId: string, depositId: string) => ({ v: 1 as const, kind: 'deposit', ownerId, depositId, keyVersion: '1' });
 const units = z.string().regex(/^\d+$/);
 /**
- * What a top-up is to buy, as its buyer asked for it: months of Pro, or packs of more notes, at the price they were shown.
- * Kept as a record's own shape, not the contract's, so a bound the contract changes never stops a record from opening.
+ * What a top-up is to buy, as its buyer asked for it: months of Pro at the price they were shown, or packs of more notes at
+ * the price and size they were shown. Kept as a record's own shape, not the contract's, so a bound the contract changes
+ * never stops a record from opening. One kept without a pack's size reads as a pack of the default size.
  */
 const Buys = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('pro'), months: z.number().int(), microUsdPerMonth: z.number().int() }),
-  z.object({ kind: z.literal('hours'), packs: z.number().int(), microUsdPerPack: z.number().int() })
+  z.object({ kind: z.literal('hours'), packs: z.number().int(), microUsdPerPack: z.number().int(), minutesPerPack: z.number().int().default(LIMITS['plan.hours.pack_minutes'].default) })
 ]);
 
 /** What a deposit is, sealed. Token amounts are in the token's smallest unit, as integer strings. */

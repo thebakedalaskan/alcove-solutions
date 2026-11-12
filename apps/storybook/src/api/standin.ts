@@ -64,6 +64,7 @@ function checkPurchase(w: World, buys: Purchase): void {
   if (!o.hours) throw refused('conflict', 'More notes can’t be bought right now.');
   if (!Number.isInteger(buys.packs) || buys.packs < 1 || buys.packs > o.hours.maxPacks) throw refused('invalid', `Buy up to ${hoursOf(o, o.hours.maxPacks)} hours of notes at a time.`);
   if (buys.microUsdPerPack !== o.hours.microUsd) throw refused('conflict', 'The price of more notes has changed. Look at it again before buying.');
+  if (buys.minutesPerPack !== o.hours.minutes) throw refused('conflict', 'The hours more notes bring have changed. Look at them again before buying.');
 }
 /** Buys from the balance once the purchase checks out, refused with nothing charged when the balance is short. */
 function buyNow(w: World, buys: Purchase) {
@@ -939,7 +940,7 @@ export const standIn: AlcoveApi = {
       return w.plan;
     }),
     routes: () => answer(paymentRoutes),
-    buyHours: (packs, microUsdPerPack) => answer((w) => buyNow(w, { kind: 'hours', packs, microUsdPerPack })),
+    buyHours: (packs, microUsdPerPack, minutesPerPack) => answer((w) => buyNow(w, { kind: 'hours', packs, microUsdPerPack, minutesPerPack })),
     startTopUp: (routeId, microUsd, buys) => answer((w) => {
       const choices = paymentRoutes(w);
       StartTopUpBodySchema.parse({ routeId, microUsd, buys: buys ?? null });

@@ -31,13 +31,15 @@ export function yearlyOff(offers: PlanOffers): number | null {
 /** What a purchase costs at the price it carries. */
 export const costOf = (buys: Purchase): number => (buys.kind === 'pro' ? buys.months * buys.microUsdPerMonth : buys.packs * buys.microUsdPerPack);
 
-/** The price of one of what's bought: a month of Pro, or a pack of notes. */
-export const unitPrice = (buys: Purchase): number => (buys.kind === 'pro' ? buys.microUsdPerMonth : buys.microUsdPerPack);
+/** Whether two purchases are on the same terms: a month of Pro at one price, or a pack of notes at one price and size. */
+export const sameTerms = (a: Purchase, b: Purchase): boolean =>
+  (a.kind === 'pro' ? b.kind === 'pro' && a.microUsdPerMonth === b.microUsdPerMonth
+    : b.kind === 'hours' && a.microUsdPerPack === b.microUsdPerPack && a.minutesPerPack === b.minutesPerPack);
 
-/** The same purchase at today's prices, or null when it isn't offered any more (more notes switched off). */
+/** The same purchase on today's terms, or null when it isn't offered any more (more notes switched off). */
 export function repriced(offers: PlanOffers, buys: Purchase): Purchase | null {
   if (buys.kind === 'pro') return { kind: 'pro', months: buys.months, microUsdPerMonth: proPrice(offers, buys.months) };
-  return offers.hours ? { kind: 'hours', packs: buys.packs, microUsdPerPack: offers.hours.microUsd } : null;
+  return offers.hours ? { kind: 'hours', packs: buys.packs, microUsdPerPack: offers.hours.microUsd, minutesPerPack: offers.hours.minutes } : null;
 }
 
 /** About how many hours `packs` of more notes are: 10, 1.5. */

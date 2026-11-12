@@ -12,10 +12,11 @@ export interface PlansApi {
    */
   buyPro(months: number, microUsdPerMonth: number): Promise<Plan>;
   /**
-   * Buys `packs` of more notes for this period from the balance, at `microUsdPerPack`, the price the buyer was shown. They
-   * don't carry over. Refused with nothing charged as `buyPro` is.
+   * Buys `packs` of more notes for this period from the balance, as a pack was offered when the buyer was shown it: at
+   * `microUsdPerPack`, each `minutesPerPack` long. They don't carry over. Refused with nothing charged as `buyPro` is, and
+   * when a pack holds other than what was shown.
    */
-  buyHours(packs: number, microUsdPerPack: number): Promise<Plan>;
+  buyHours(packs: number, microUsdPerPack: number, minutesPerPack: number): Promise<Plan>;
   /** Refunds every month of Pro that hasn't started to the balance. Refused when there's none: a started month isn't refunded. */
   refundPro(): Promise<Plan>;
   /** Turns on or off buying a month from the balance as Pro is about to end. */

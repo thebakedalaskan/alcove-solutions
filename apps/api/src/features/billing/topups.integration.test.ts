@@ -1150,7 +1150,8 @@ const HOURS = 15_000_000;
 /** Months of Pro at the price for that many: the yearly one for a year or more. */
 const pro = (months: number, microUsdPerMonth = months >= 12 ? YEARLY : PRICE): Purchase => ({ kind: 'pro', months, microUsdPerMonth });
 /** Packs of 10 more hours of notes. */
-const hours = (packs: number, microUsdPerPack = HOURS): Purchase => ({ kind: 'hours', packs, microUsdPerPack });
+const PACK = 600;
+const hours = (packs: number, microUsdPerPack = HOURS, minutesPerPack = PACK): Purchase => ({ kind: 'hours', packs, microUsdPerPack, minutesPerPack });
 /** What a request came to: its code and message when it was refused. */
 const said = (p: Promise<unknown>) => p.then(() => 'succeeded', (e: unknown) => (e instanceof AlcoveApiError ? `${e.code}: ${e.message}` : String(e)));
 const labels = async (api: AlcoveApi) => (await api.plans.plan()).balance.history.map((e) => e.label);
@@ -1225,6 +1226,8 @@ describe('top-ups that buy', () => {
     expect(await said(api.plans.startTopUp(BASE_USDC, 13 * PRICE, pro(13, PRICE)))).toBe('invalid: Buy 1 to 12 months at a time.');
     expect(await said(api.plans.startTopUp(BASE_USDC, 6 * HOURS, hours(6)))).toBe('invalid: Buy up to 50 hours of notes at a time.');
     expect(await said(api.plans.startTopUp(BASE_USDC, HOURS, hours(1, 10_000_000)))).toBe('conflict: The price of more notes has changed. Look at it again before buying.');
+    // A pack's hours are part of its price: the same $15 for an hour isn't what ten hours were shown at.
+    expect(await said(api.plans.startTopUp(BASE_USDC, HOURS, hours(1, HOURS, 60)))).toBe('conflict: The hours more notes bring have changed. Look at them again before buying.');
     await h.setLimit('plan.hours.price_micro_usd', 0);
     expect(await said(api.plans.startTopUp(BASE_USDC, HOURS, hours(1, 0)))).toBe('conflict: More notes can’t be bought right now.');
     expect(h.oneclick.quotes.length).toBe(quotes);
@@ -1258,6 +1261,15 @@ describe('top-ups that buy', () => {
     await h.setLimit('plan.hours.price_micro_usd', 0);
     expect((await paid(cy.api, notes, HOURS)).purchase).toEqual({ buys: hours(1), outcome: 'refused', why: 'More notes stopped being offered before your payment arrived. It’s in your balance.' });
     expect(await cy.api.plans.plan()).toMatchObject({ balance: { microUsd: HOURS }, notes: { minutesPerPeriod: 300 } });
+    await h.resetLimits();
+    // A pack brings fewer hours now, at the same price.
+    const di = await account();
+    const smaller = await di.api.plans.startTopUp(BASE_USDC, HOURS, hours(1));
+    await h.setLimit('plan.hours.pack_minutes', 60);
+    const fromSmaller = h.logs.length;
+    expect((await paid(di.api, smaller, HOURS)).purchase).toEqual({ buys: hours(1), outcome: 'refused', why: 'The hours more notes bring changed before your payment arrived. It’s in your balance.' });
+    expect(await di.api.plans.plan()).toMatchObject({ balance: { microUsd: HOURS }, notes: { minutesPerPeriod: 300 } });
+    expect(logsSince(fromSmaller).some((l) => l.line.includes(smaller.id) && l.line.includes('"buys":"hours"') && l.line.includes('"why":"price"'))).toBe(true);
   });
 
   it('says why it didn’t buy when less arrived than it costs, or the balance it counted on was spent, and keeps what arrived', async () => {
@@ -1273,7 +1285,7 @@ describe('top-ups that buy', () => {
     // All of it arrives, but the $15 in the balance it was counting on went on more notes meanwhile.
     const bob = await withBalance(HOURS);
     const rest = await bob.api.plans.startTopUp(BASE_USDC, 5_000_000, pro(1));
-    await bob.api.plans.buyHours(1, HOURS);
+    await bob.api.plans.buyHours(1, HOURS, PACK);
     expect((await paid(bob.api, rest, 5_000_000)).purchase).toEqual({
       buys: pro(1), outcome: 'refused', why: 'Your balance was short of what 1 month of Pro costs when your payment arrived. It’s in your balance.'
     });

@@ -3918,7 +3918,7 @@ describe('privacy at rest', () => {
 
     // A top-up paid and credited, which bought more notes once it was: its deposit address, the settlement's hash, what it
     // bought and the history's labels stay sealed.
-    const topUp = await c.api.plans.startTopUp('nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near', 25_000_000, { kind: 'hours', packs: 1, microUsdPerPack: 15_000_000 });
+    const topUp = await c.api.plans.startTopUp('nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near', 25_000_000, { kind: 'hours', packs: 1, microUsdPerPack: 15_000_000, minutesPerPack: 600 });
     expect(topUp.address).toContain('canary-deposit-address');
     h.oneclick.set(topUp.address ?? '', 'SUCCESS', { depositedAmount: '25000000', amountOut: '25000000', intentHashes: ['canary-intent-hash'] });
     expect(await c.api.plans.topUp(topUp.id)).toMatchObject({ state: 'credited', purchase: { outcome: 'bought' } });
@@ -3954,7 +3954,7 @@ describe('privacy at rest', () => {
       'CANARY-BOARDACTION', 'order the doors', 'CANARY-ROOMNAME', 'CANARY-ROOMSTICKY', 'owns the merger', 'canary-roomie', 'CANARY-VOTEFRAME', 'CANARY-VOTESTICKY', voteFrame, voteSticky,
       'CANARY-NOTEDFRAME', 'CANARY-FRAMENOTE', 'thank the support team', notedFrame,
       'CANARY-CUE', 'as you can see the chart', 'CANARY-VIDEO', 'Person’s screen', 'CANARY-LIVEQUESTION', 'private launch',
-      'canary-deposit-address', 'Credits added', 'canary-intent-hash', 'more hours of notes', 'microUsdPerPack'
+      'canary-deposit-address', 'Credits added', 'canary-intent-hash', 'more hours of notes', 'microUsdPerPack', 'minutesPerPack'
     ];
     for (const canary of canaries) for (const enc of encodings(canary)) expect(rowsText.includes(enc), `${canary} as ${enc}`).toBe(false);
     // An answer is one short word, so it has a check of its own, in the only rows that hold one.

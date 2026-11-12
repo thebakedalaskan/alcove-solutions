@@ -499,7 +499,7 @@ export function useBuyPro() {
 export function useBuyHours() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ packs, microUsdPerPack }: { packs: number; microUsdPerPack: number }) => api.plans.buyHours(packs, microUsdPerPack),
+    mutationFn: ({ packs, microUsdPerPack, minutesPerPack }: { packs: number; microUsdPerPack: number; minutesPerPack: number }) => api.plans.buyHours(packs, microUsdPerPack, minutesPerPack),
     onSuccess: (p) => { qc.setQueryData(qk.plan, p); void qc.invalidateQueries({ queryKey: qk.topUps }); },
     // `plan` is the offers' prefix: both are read again.
     onError: () => { void qc.invalidateQueries({ queryKey: qk.plan }); }

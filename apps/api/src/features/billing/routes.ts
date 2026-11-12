@@ -22,8 +22,8 @@ export function registerBillingRoutes(app: Hono<Env>, runtime: HttpRuntime): voi
     return c.json(await planOf(d, c.get('owner').ownerId));
   });
   app.post('/v1/plan/hours', async (c) => {
-    const { packs, microUsdPerPack } = await body(c, BuyHoursBodySchema);
-    await buyHours(d, c.get('owner').ownerId, packs, microUsdPerPack);
+    const { packs, microUsdPerPack, minutesPerPack } = await body(c, BuyHoursBodySchema);
+    await buyHours(d, c.get('owner').ownerId, packs, microUsdPerPack, minutesPerPack);
     return c.json(await planOf(d, c.get('owner').ownerId));
   });
   app.post('/v1/plan/pro/refund', async (c) => {

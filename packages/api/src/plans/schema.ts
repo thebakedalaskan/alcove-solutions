@@ -108,13 +108,19 @@ export type PlanOffers = z.infer<typeof PlanOffersSchema>;
  */
 export const BuyProBodySchema = z.object({ months: z.number().int().min(1).max(1000), microUsdPerMonth: MicroUsdSchema.min(0) });
 export type BuyProBody = z.infer<typeof BuyProBodySchema>;
-/** Buys `packs` of more notes for this period from the balance, at the price a pack the buyer was shown. */
-export const BuyHoursBodySchema = z.object({ packs: z.number().int().min(1).max(1000), microUsdPerPack: MicroUsdSchema.min(0) });
+/**
+ * Buys `packs` of more notes for this period from the balance, as a pack was offered when the buyer was shown it: its price
+ * (`microUsdPerPack`) and its size (`minutesPerPack`). A pack that has since cost more, or holds less, is refused.
+ */
+export const BuyHoursBodySchema = z.object({ packs: z.number().int().min(1).max(1000), microUsdPerPack: MicroUsdSchema.min(0), minutesPerPack: z.number().int().min(1) });
 export type BuyHoursBody = z.infer<typeof BuyHoursBodySchema>;
-/** What a purchase buys, from the balance or once a payment is added: months of Pro, or packs of more notes. */
+/**
+ * What a purchase buys, from the balance or once a payment is added, as it was offered when its buyer was shown it: months of
+ * Pro at a month's price, or packs of more notes at a pack's price and size.
+ */
 export const PurchaseSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('pro'), months: z.number().int().min(1).max(1000), microUsdPerMonth: MicroUsdSchema.min(0) }),
-  z.object({ kind: z.literal('hours'), packs: z.number().int().min(1).max(1000), microUsdPerPack: MicroUsdSchema.min(0) })
+  z.object({ kind: z.literal('hours'), packs: z.number().int().min(1).max(1000), microUsdPerPack: MicroUsdSchema.min(0), minutesPerPack: z.number().int().min(1) })
 ]);
 export type Purchase = z.infer<typeof PurchaseSchema>;
 export const RenewBodySchema = z.object({ renew: z.boolean() });

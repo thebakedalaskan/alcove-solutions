@@ -35,6 +35,7 @@ function whyNot(w: World, buys: Purchase, lessArrived: boolean): string | null {
   }
   if (!o.hours) return 'More notes stopped being offered before your payment arrived. It’s in your balance.';
   if (buys.microUsdPerPack !== o.hours.microUsd) return 'The price of more notes changed before your payment arrived. It’s in your balance.';
+  if (buys.minutesPerPack !== o.hours.minutes) return 'The hours more notes bring changed before your payment arrived. It’s in your balance.';
   if (balance >= buys.packs * buys.microUsdPerPack) return null;
   return lessArrived ? `Less arrived than ${hoursOf(o, buys.packs)} hours of notes cost. It’s in your balance.`
     : `Your balance was short of what ${hoursOf(o, buys.packs)} hours of notes cost when your payment arrived. It’s in your balance.`;

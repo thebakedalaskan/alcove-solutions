@@ -24,8 +24,8 @@ import { dayMonth, daysFromToday, hm, longDay, shortDay } from '~/lib/time';
 import { plural, usd, usdCents } from '~/lib/words';
 import type { CheckoutOpen } from './checkout';
 import {
-  LENGTHS, costOf, hoursIn, lapsed, microOf, monthsWord, plainTokens, proPrice, purchaseName, repriced, roundTokens, tokens,
-  unitPrice, waitingPurchase, yearlyOff
+  LENGTHS, costOf, hoursIn, lapsed, microOf, monthsWord, plainTokens, proPrice, purchaseName, repriced, roundTokens, sameTerms, tokens,
+  waitingPurchase, yearlyOff
 } from './purchase';
 import { walletLink } from './wallet';
 
@@ -196,7 +196,7 @@ export function CheckoutHost({ open, onClose, onCompare }: { open: CheckoutOpen;
   const chosenPacks = Math.min(hoursOffer?.maxPacks ?? 1, Math.max(1, packs));
   const buys: Purchase | null = !o ? null
     : kind === 'pro' ? { kind: 'pro', months: chosenMonths, microUsdPerMonth: proPrice(o, chosenMonths) }
-    : hoursOffer ? { kind: 'hours', packs: chosenPacks, microUsdPerPack: hoursOffer.microUsd } : null;
+    : hoursOffer ? { kind: 'hours', packs: chosenPacks, microUsdPerPack: hoursOffer.microUsd, minutesPerPack: hoursOffer.minutes } : null;
   const cost = buys ? costOf(buys) : 0;
   const fromBalance = Math.min(balance, cost);
   const need = cost - fromBalance;
@@ -235,18 +235,18 @@ export function CheckoutHost({ open, onClose, onCompare }: { open: CheckoutOpen;
     setSaid(null);
     const done = (fresh: Plan) => setView({ step: 'bought', plan: fresh, buys: b, at: Date.now() });
     if (b.kind === 'pro') buyPro.mutate({ months: b.months, microUsdPerMonth: b.microUsdPerMonth }, { onSuccess: done, onError: refused });
-    else buyHours.mutate({ packs: b.packs, microUsdPerPack: b.microUsdPerPack }, { onSuccess: done, onError: refused });
+    else buyHours.mutate({ packs: b.packs, microUsdPerPack: b.microUsdPerPack, minutesPerPack: b.minutesPerPack }, { onSuccess: done, onError: refused });
   };
   const getAddress = (r: TopUpRoute, microUsd: number, b: Purchase) => {
     setSaid(null);
     start.mutate({ routeId: r.id, microUsd, buys: b }, { onSuccess: (fresh) => setView({ step: 'pay', id: fresh.id }), onError: refused });
   };
-  /** A new address for what a closed payment was for, on the same network; choosing again when the price or the balance changed. */
+  /** A new address for what a closed payment was for, on the same network; choosing again when its terms or the balance changed. */
   const again = (old: TopUp) => {
     const b = old.purchase && o ? repriced(o, old.purchase.buys) : null;
     const r = usdc.find((x) => x.id === old.route.id);
     const short = b ? costOf(b) - Math.min(balance, costOf(b)) : 0;
-    if (!b || !r || short <= 0 || !old.purchase || unitPrice(b) !== unitPrice(old.purchase.buys)) { chooseAgain(old); return; }
+    if (!b || !r || short <= 0 || !old.purchase || !sameTerms(b, old.purchase.buys)) { chooseAgain(old); return; }
     getAddress(r, Math.max(short, microOf(r.minimum) ?? 0), b);
   };
   const cancelPayment = (id: string) => cancel.mutate(id, { onSuccess: () => { toast('Payment cancelled'); onClose(); }, onError: () => setAsking(false) });

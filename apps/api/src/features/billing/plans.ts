@@ -372,7 +372,11 @@ function termsOf(l: Limits, buys: Purchase): Terms | Refusal {
   if (buys.microUsdPerPack !== offer.microUsd) {
     return refusal('price', 'The price of more notes has changed. Look at it again before buying.', 'The price of more notes changed before your payment arrived. It’s in your balance.');
   }
-  const minutes = buys.packs * offer.minutes;
+  // A pack's size is part of its price: the same price for fewer hours is a dearer pack.
+  if (buys.minutesPerPack !== offer.minutes) {
+    return refusal('price', 'The hours more notes bring have changed. Look at them again before buying.', 'The hours more notes bring changed before your payment arrived. It’s in your balance.');
+  }
+  const minutes = buys.packs * buys.minutesPerPack;
   return {
     totalMicroUsd: buys.packs * buys.microUsdPerPack, label: `${notesTime(minutes, 'more ')} of notes`, what: `${notesTime(minutes)} of notes`, one: minutes === 60 || minutes === 1,
     add: (a, now) => withHours(a, l, minutes, now)
@@ -433,11 +437,12 @@ export async function buyPro(d: Service, ownerId: string, months: number, microU
 }
 
 /**
- * Buys `packs` of more notes from the balance at `microUsdPerPack`, the price its buyer was shown: each pack's minutes go
- * to this period's allowance, on any plan, and lift a stop the spent allowance caused. They don't carry into the next.
+ * Buys `packs` of more notes from the balance, each at `microUsdPerPack` and `minutesPerPack` long, as its buyer was shown a
+ * pack: its minutes go to this period's allowance, on any plan, and lift a stop the spent allowance caused. They don't carry
+ * into the next.
  */
-export async function buyHours(d: Service, ownerId: string, packs: number, microUsdPerPack: number): Promise<void> {
-  const r = await tx(d.pool, (c) => purchase(d, c, ownerId, { kind: 'hours', packs, microUsdPerPack }));
+export async function buyHours(d: Service, ownerId: string, packs: number, microUsdPerPack: number, minutesPerPack: number): Promise<void> {
+  const r = await tx(d.pool, (c) => purchase(d, c, ownerId, { kind: 'hours', packs, microUsdPerPack, minutesPerPack }));
   if (!r.bought) throw refusedError(r.refusal, { ownerId, kind: 'hours', packs });
   plog.info('notes bought', { ownerId, packs, microUsd: r.totalMicroUsd });
 }

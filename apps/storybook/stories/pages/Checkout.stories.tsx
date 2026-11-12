@@ -138,7 +138,7 @@ export const DoneFromACall = lands('plan-stopped', { from: 'call' });
 /** Pro extended from its last days, with $5 in the balance: Pro runs to the new end. */
 export const ExtendDone = lands('plan-pro-ending', { path: '/settings#plan', from: 'settings' }, 'pays', PRO_YEAR, 187);
 /** Ten more hours of notes for this period, bought with 15 USDC while notes had stopped. */
-export const MoreNotesDone = lands('plan-stopped', {}, 'pays', { kind: 'hours', packs: 1, microUsdPerPack: 15_000_000 }, 15);
+export const MoreNotesDone = lands('plan-stopped', {}, 'pays', { kind: 'hours', packs: 1, microUsdPerPack: 15_000_000, minutesPerPack: 600 }, 15);
 /** Three months bought from the balance at once: no Pay step. */
 export const BoughtWithTheBalance = checkout('/home', 'plan-balance', { plan: 'pro', months: 3 }, {
   play: async ({ userEvent }) => { await userEvent.click(await pressable('button', 'Buy with your balance', LATER, within(await win()))); }

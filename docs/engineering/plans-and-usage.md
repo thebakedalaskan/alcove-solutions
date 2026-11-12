@@ -211,14 +211,16 @@ More notes for the period running now, on any plan, bought from the balance in p
 (`plan.hours.price_micro_usd`, $15) and the most packs one purchase buys (`plan.hours.max_packs`, 5). `null` while a pack's
 price is 0: none are offered then, and none can be had for nothing.
 
-**Buying** (`POST /v1/plan/hours { packs, microUsdPerPack }`) is what buying Pro is, through the same code (`purchase`): one
-transaction with the account's `plan_accounts` row locked, the one lock buying and adding money take, so a buy of Pro and
-one of more notes at once never spend the same money twice.
+**Buying** (`POST /v1/plan/hours { packs, microUsdPerPack, minutesPerPack }`) is what buying Pro is, through the same code
+(`purchase`): one transaction with the account's `plan_accounts` row locked, the one lock buying and adding money take, so a
+buy of Pro and one of more notes at once never spend the same money twice. The app sends a pack as it showed it, its price
+and its minutes: a pack's size is part of its price.
 
 1. None offered is refused (`conflict`, "More notes can’t be bought right now.").
 2. More than `plan.hours.max_packs` is refused (`invalid`, "Buy up to 50 hours of notes at a time.").
 3. A price a pack other than the one in force is refused (`conflict`, "The price of more notes has changed. Look at it
-   again before buying.").
+   again before buying."), and so is a pack of other minutes than the one in force, the same price for fewer hours being a
+   dearer pack (`conflict`, "The hours more notes bring have changed. Look at them again before buying.").
 4. A balance short of packs × price is refused (`conflict`, "Your balance is short of what 20 hours of notes cost ($30).
    Add money first."). Nothing changes.
 5. The minutes go to the period in force (the plan's kind and when its period began), on top of any bought for it already;
@@ -314,10 +316,10 @@ Choosing how many months of Pro (or packs of more notes) and sending the total i
 window: the top-up says what it's for, and the server buys it once the money is in, whoever is watching.
 
 1. **Opening.** `POST /v1/plan/top-ups { routeId, microUsd, buys }`, with `buys` `{ kind: 'pro', months, microUsdPerMonth }`
-   or `{ kind: 'hours', packs, microUsdPerPack }` (`null`, the default, only adds money). Before anything is quoted, `buys`
-   is checked as buying it now would be, but for the balance, with the same refusals and words: past the most one purchase
-   buys (`invalid`), a price other than the one in force for it (`conflict`, "The price of Pro has changed. Look at it
-   again before buying."), more notes not offered (`conflict`). It's sealed in the `deposit` record with what's become of it
+   or `{ kind: 'hours', packs, microUsdPerPack, minutesPerPack }` (`null`, the default, only adds money). Before anything is
+   quoted, `buys` is checked as buying it now would be, but for the balance, with the same refusals and words: past the most
+   one purchase buys (`invalid`), a price other than the one in force for it (`conflict`, "The price of Pro has changed.
+   Look at it again before buying."), a pack of other minutes (`conflict`), more notes not offered (`conflict`). It's sealed in the `deposit` record with what's become of it
    (`purchase`), and `TopUp.purchase` reports it: `{ buys, outcome: 'waiting', why: null }`. The app asks for what the
    balance is short of the total (`max(0, total − balance)`), raised to the route's minimum, and opens no payment when the
    balance covers it.
@@ -330,7 +332,8 @@ window: the top-up says what it's for, and the server buys it once the money is 
    `waiting`: a late payment can still buy), then `bought`, or `refused` with `why` in words for people. A refusal leaves
    the money in the balance, where "Buy with your balance" can use it:
    - the price changed: "The price of Pro changed before your payment arrived. It’s in your balance." ("The price of more
-     notes changed…" for notes);
+     notes changed…" for notes), or a pack's minutes did: "The hours more notes bring changed before your payment arrived.
+     It’s in your balance.";
    - less arrived than asked for, and the balance with it is short: "Less arrived than 3 months of Pro cost. It’s in your
      balance.";
    - everything arrived but the balance it counted on was spent meanwhile: "Your balance was short of what 1 month of Pro
@@ -389,7 +392,9 @@ The server never holds a key that can move treasury money. By hand, in near.com,
   are lost, the money stays spent. The window is the deploy's few minutes; support sees the purchase in the balance's
   history (`billing show`) and can give its price back (`billing credit`).
 - Payments that buy need no migration. A `deposit` record from before has no `purchase`: it reads as `null`
-  (`.default(null)`), a top-up that only adds money, and `TopUp.purchase` says so. While the deploy runs, the previous
+  (`.default(null)`), a top-up that only adds money, and `TopUp.purchase` says so. A purchase of more notes keeps the
+  pack's minutes it was shown at (`minutesPerPack`); one kept without them reads as a pack of the default size
+  (`.default`, `plan.hours.pack_minutes`'s 600). While the deploy runs, the previous
   release ignores `buys` in a request (zod drops it), so a top-up opened there only adds money, and one this release
   opened that it settles then is added without its purchase: it saves the record without the field, so the money stays in
   the balance and the top-up reads as one that only added money.
