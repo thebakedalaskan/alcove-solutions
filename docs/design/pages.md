@@ -494,7 +494,8 @@ The last of the light, with you in it, then seven groups. Change one thing and l
   their own: the agent tile, who's connected (or what agents are for, while none is), and Open Agents →, or Connect an
   agent → while none is. On a phone it's the way to Agents.
 - **Sign out** signs you out at once. Only when recordings haven't uploaded does it ask first: the sky grows to hold the
-  question, it says they'll be deleted, and Stay signed in is the filled answer.
+  question, it says they'll be deleted, and Stay signed in is the filled answer. Signing out (from here or your menu), the
+  page holds until the welcome page replaces it in one step, rather than blanking or emptying first.
 - **Delete account** sits apart, in its own panel at the end, and opens in place, with what goes beside what stays. The
   shared demo account can't be deleted, and says so.
 
@@ -776,7 +777,8 @@ Signed out, before anything else: what Alcove is, told as one evening on the app
 
 - **The arrival** is always night. One arch draws itself, dawn fills it and the sun rises while what came with the account
   arrives a row at a time, each with a check: who signed in, the calendar, the team (or Invite them from Team), and notes
-  written in confidential compute. Then "You're in", and the arch opens into Home.
+  written in confidential compute. Then "You're in", and the arch opens into Home. The night comes up whole over the
+  welcome page before Home loads behind it, so Home is first seen through the opening arch, never through the night.
 - **The tour** is one card, 400px wide with a 180px dawn sky at its top, that travels to the real thing on Home. The page
   dims around a cut-out of the target, a ring in `sun` marks it, and an arrow is drawn from the card once it arrives. Under
   640px the card is a sheet along the bottom, standing above the tab bar when it points at it. Each slide is one loop on the

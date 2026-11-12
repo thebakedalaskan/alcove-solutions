@@ -440,7 +440,18 @@ async function forgetHere(owner: string | undefined, deleted: boolean) {
   try { await forgetEdits(owner); } catch (e) { log.child({ component: 'account' }).error('couldn’t delete the edits this device kept for the account', { err: e }); }
   try { await forgetPictures(owner); } catch (e) { log.child({ component: 'account' }).error('couldn’t delete the backgrounds this device kept for the account', { err: e }); }
 }
-export function useSignOut() {
+/**
+ * The account's session ended here (signed out, or the account deleted): what this device kept goes, `leave` takes the
+ * screen to the welcome page, and only once the welcome page has replaced the app is what the app read for the account
+ * forgotten. Emptied first, the app would change under the person while the welcome page loaded. The guards count the
+ * account as signed out meanwhile (lib/guards.ts). `leave` runs even if the screen that asked has gone.
+ */
+async function endHere(qc: QueryClient, owner: string | undefined, deleted: boolean, leave: () => Promise<void>) {
+  await forgetHere(owner, deleted);
+  try { await leave(); } finally { qc.clear(); qc.setQueryData(qk.session, null); }
+}
+/** Signs out of this device, then `leave` takes the screen to the welcome page (`endHere`). */
+export function useSignOut(leave: () => Promise<void>) {
   const qc = useQueryClient();
   // With no connection it fails now. Queued, it would happen by itself at some moment nobody chose.
   return useMutation({
@@ -450,16 +461,16 @@ export function useSignOut() {
       await api.auth.signOut();
       return owner;
     },
-    onSuccess: async (owner) => { await forgetHere(owner, false); qc.clear(); qc.setQueryData(qk.session, null); }
+    onSuccess: (owner) => endHere(qc, owner, false, leave)
   });
 }
 /**
- * Deletes the account for good. Every browser it was signed in on is signed out, this one included. `onDeleted` runs
- * then, even if the screen that asked has gone meanwhile. It's never queued for later, as signing out isn't. The cookie
- * decides whose account goes and another tab can have changed it since this page was drawn, so it first asks who's
- * signed in, and goes ahead only for the account on this screen.
+ * Deletes the account for good. Every browser it was signed in on is signed out, this one included. `onDeleted` then
+ * takes the screen to the welcome page (`endHere`), even if the screen that asked has gone meanwhile. It's never queued
+ * for later, as signing out isn't. The cookie decides whose account goes and another tab can have changed it since this
+ * page was drawn, so it first asks who's signed in, and goes ahead only for the account on this screen.
  */
-export function useDeleteAccount(onDeleted: () => void) {
+export function useDeleteAccount(onDeleted: () => Promise<void>) {
   const qc = useQueryClient();
   return useMutation({
     networkMode: 'always',
@@ -470,7 +481,7 @@ export function useDeleteAccount(onDeleted: () => void) {
       await api.account.delete();
       return here;
     },
-    onSuccess: async (owner) => { await forgetHere(owner, true); qc.clear(); qc.setQueryData(qk.session, null); onDeleted(); }
+    onSuccess: (owner) => endHere(qc, owner, true, onDeleted)
   });
 }
 /** Each channel hint belongs to its exact immutable query command, including after this hook re-renders. */
