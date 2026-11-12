@@ -319,10 +319,20 @@ async function changing(d: Service, ownerId: string, change: (a: PlanAccount, l:
 
 /**
  * Why a purchase from the balance isn't made: what's asked for isn't offered (`off`), is more than one purchase buys
- * (`too-many`), isn't at the price in force for it (`price`), or costs more than the balance (`short`). `now` is what its
- * buyer is told as they ask for it.
+ * (`too-many`), isn't at the price in force for it (`price`), or costs more than the balance (`short`).
  */
-export interface Refusal { why: 'off' | 'too-many' | 'price' | 'short'; now: string }
+export interface Refusal {
+  why: 'off' | 'too-many' | 'price' | 'short';
+  /** What its buyer is told as they ask for it: from the balance, or as they open a payment for it. */
+  now: string;
+  /**
+   * What they're told when a payment made for it has arrived and it wasn't bought: the money is in the balance.
+   * `lessThanAsked`: less arrived than the payment asked for, which is why the balance is short.
+   */
+  arrived(lessThanAsked: boolean): string;
+}
+/** A refusal whose words don't depend on what arrived. */
+const refusal = (why: Refusal['why'], now: string, arrived: string): Refusal => ({ why, now, arrived: () => arrived });
 /** What a purchase comes to at the limits in force: what it costs, its line in the history, and the account with it. */
 interface Terms {
   totalMicroUsd: number;
@@ -341,8 +351,12 @@ interface Terms {
 function termsOf(l: Limits, buys: Purchase): Terms | Refusal {
   if (buys.kind === 'pro') {
     const max = l.get('plan.pro_max_months');
-    if (buys.months > max) return { why: 'too-many', now: `Buy 1 to ${max} months at a time.` };
-    if (buys.microUsdPerMonth !== proPriceFor(l, buys.months)) return { why: 'price', now: 'The price of Pro has changed. Look at it again before buying.' };
+    if (buys.months > max) {
+      return refusal('too-many', `Buy 1 to ${max} months at a time.`, `Since your payment was made, one purchase buys at most ${monthsOf(max)} of Pro. It’s in your balance.`);
+    }
+    if (buys.microUsdPerMonth !== proPriceFor(l, buys.months)) {
+      return refusal('price', 'The price of Pro has changed. Look at it again before buying.', 'The price of Pro changed before your payment arrived. It’s in your balance.');
+    }
     const { months, microUsdPerMonth } = buys;
     return {
       totalMicroUsd: months * microUsdPerMonth, label: `Pro, ${monthsOf(months)}`, what: `${monthsOf(months)} of Pro`, one: months === 1,
@@ -350,14 +364,28 @@ function termsOf(l: Limits, buys: Purchase): Terms | Refusal {
     };
   }
   const offer = hoursOf(l);
-  if (!offer) return { why: 'off', now: 'More notes can’t be bought right now.' };
-  if (buys.packs > offer.maxPacks) return { why: 'too-many', now: `Buy up to ${notesTime(offer.maxPacks * offer.minutes)} of notes at a time.` };
-  if (buys.microUsdPerPack !== offer.microUsd) return { why: 'price', now: 'The price of more notes has changed. Look at it again before buying.' };
+  if (!offer) return refusal('off', 'More notes can’t be bought right now.', 'More notes stopped being offered before your payment arrived. It’s in your balance.');
+  if (buys.packs > offer.maxPacks) {
+    const most = notesTime(offer.maxPacks * offer.minutes);
+    return refusal('too-many', `Buy up to ${most} of notes at a time.`, `Since your payment was made, one purchase buys at most ${most} of notes. It’s in your balance.`);
+  }
+  if (buys.microUsdPerPack !== offer.microUsd) {
+    return refusal('price', 'The price of more notes has changed. Look at it again before buying.', 'The price of more notes changed before your payment arrived. It’s in your balance.');
+  }
   const minutes = buys.packs * offer.minutes;
   return {
     totalMicroUsd: buys.packs * buys.microUsdPerPack, label: `${notesTime(minutes, 'more ')} of notes`, what: `${notesTime(minutes)} of notes`, one: minutes === 60 || minutes === 1,
     add: (a, now) => withHours(a, l, minutes, now)
   };
+}
+
+/**
+ * Why `buys` isn't on offer at the price its buyer was shown (null: it is), whatever the balance: checked as a payment for
+ * it is opened, so a price that has changed is said before anything is paid.
+ */
+export function refusalOf(l: Limits, buys: Purchase): Refusal | null {
+  const t = termsOf(l, buys);
+  return 'why' in t ? t : null;
 }
 
 /** A purchase from the balance: made, for its total, or refused with nothing changed. */
@@ -366,7 +394,8 @@ export type Purchased = { bought: true; totalMicroUsd: number } | { bought: fals
 /**
  * Buys `buys` from the balance, in the caller's transaction, with the account's row locked: the one lock buying and adding
  * money take, so purchases at once on any instance never spend the same money twice. Refused, changing nothing, when it
- * isn't on offer at the price its buyer was shown or the balance is short of it.
+ * isn't on offer at the price its buyer was shown or the balance is short of it. What buyPro and buyHours do, and what a
+ * top-up opened to buy something does once its money is added (deposits.ts).
  */
 export async function purchase(d: Service, db: Db, ownerId: string, buys: Purchase): Promise<Purchased> {
   const a = await accountOf(d, db, ownerId, true);
@@ -374,8 +403,15 @@ export async function purchase(d: Service, db: Db, ownerId: string, buys: Purcha
   const t = termsOf(l, buys);
   if ('why' in t) return { bought: false, refusal: t };
   if (a.balanceMicroUsd < t.totalMicroUsd) {
-    const now = `Your balance is short: ${t.what} ${t.one ? 'costs' : 'cost'} ${dollars(t.totalMicroUsd)} and your balance is ${dollars(a.balanceMicroUsd)}. Add money first.`;
-    return { bought: false, refusal: { why: 'short', now } };
+    const cost = `${t.what} ${t.one ? 'costs' : 'cost'}`;
+    return {
+      bought: false,
+      refusal: {
+        why: 'short',
+        now: `Your balance is short: ${cost} ${dollars(t.totalMicroUsd)} and your balance is ${dollars(a.balanceMicroUsd)}. Add money first.`,
+        arrived: (less) => (less ? `Less arrived than ${cost}. It’s in your balance.` : `Your balance was short of what ${cost} when your payment arrived. It’s in your balance.`)
+      }
+    };
   }
   await save(d, db, ownerId, withEntry(t.add(a, Date.now()), -t.totalMicroUsd, t.label));
   return { bought: true, totalMicroUsd: t.totalMicroUsd };

@@ -42,8 +42,8 @@ export function registerBillingRoutes(app: Hono<Env>, runtime: HttpRuntime): voi
   app.get('/v1/plan/routes', async (c) => c.json(await deposits.routes(d)));
   app.post('/v1/plan/top-ups', async (c) => {
     topUpLimiter(c.get('owner').ownerId, 'top-up');
-    const { routeId, microUsd } = await body(c, StartTopUpBodySchema);
-    return c.json(await deposits.start(d, c.get('owner').ownerId, routeId, microUsd));
+    const { routeId, microUsd, buys } = await body(c, StartTopUpBodySchema);
+    return c.json(await deposits.start(d, c.get('owner').ownerId, routeId, microUsd, buys));
   });
   app.post('/v1/plan/top-ups/:id/cancel', async (c) => c.json(await deposits.cancel(d, c.get('owner').ownerId, c.req.param('id'))));
   app.get('/v1/plan/top-ups/:id', async (c) => {

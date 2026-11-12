@@ -69,11 +69,21 @@ Suites: `billing/meter` (`apps/api/src/features/billing/meter.integration.test.t
 | J2 | Refused past the most packs, at a changed price, with a short balance ("10 hours of notes cost", "1 hour of notes costs"), and while none are offered (a price of 0), nothing charged | billing/plans › more notes › refuses more than one purchase buys… | frontend | Passes |
 | J3 | A buy of Pro and one of more notes at once with money for one wait on the same row lock: one goes through, the other is short | billing/plans › more notes › a buy of Pro and one of more notes at once… | frontend | Passes |
 | J4 | Bought after the allowance stopped a call's notes: `notes.stopped` lifts and the organizer turns notes on again; a stop full storage caused stays | billing/plans › more notes › lifts a stop the spent allowance caused… | frontend | Passes |
+| **K: payments that buy** |  |  |  |  |
+| K1 | A top-up opened with `buys` says `purchase: waiting`, stays so while the payment is on its way, and once it's added buys it in the same transaction (`bought`): Pro's months, or more notes for the period | billing/topups › top-ups that buy › buys what it was opened for…; … buys more notes… | frontend | Passes |
+| K2 | The balance and the payment pay together; what arrived over the total stays in the balance | billing/topups › top-ups that buy › buys with the balance and the payment together… | frontend | Passes |
+| K3 | Opening a payment for what isn't on offer at the price shown (a changed price, a year at a month's price, past the most, notes not offered) is refused before anything is quoted, with buyPro's and buyHours' words | billing/topups › top-ups that buy › refuses to open a payment… | frontend | Passes |
+| K4 | Refused once the money arrived, the money staying in the balance, with why in words: the price changed, one purchase buys fewer now, notes not offered any more | billing/topups › top-ups that buy › says why it didn’t buy when what it was for changed… | frontend | Passes |
+| K5 | Refused for too little: less arrived than it costs, or all arrived but the balance it counted on was spent meanwhile | billing/topups › top-ups that buy › says why it didn’t buy when less arrived… | frontend | Passes |
+| K6 | Two watchers and two app checks at once, with money for a second purchase: bought once | billing/topups › top-ups that buy › buys once, however many checks race on it | frontend | Passes |
+| K7 | A payment settled after its top-up was cancelled, or had expired, still buys, once | billing/topups › top-ups that buy › still buys what it was for… | frontend | Passes |
+| K8 | A `deposit` record from before purchases (no `purchase`) reads as one that only adds money, and is added as before | billing/topups › top-ups that buy › reads a top-up the previous release stored… | frontend | Passes |
+| K9 | Logs of a purchase by a top-up carry its ID, what it buys and why not, never an amount | billing/topups › top-ups that buy › buys what it was opened for…; … says why it didn’t buy when what it was for changed… | frontend | Passes |
 | **H: calls** |  |  |  |  |
 | H1 | A call says when it ends, ends at 10 hours, and writes its notes | billing/plans › ends at its longest… | 1 | Passes |
 | H2 | The 101st person is refused and whoever hosts is told | billing/plans › turns away anyone past the most people… | 1 | Passes |
 | **I: privacy and upgrades** |  |  |  |  |
-| I1 | Nothing readable about plans in any row or log: the balance's history label is a canary | flows › privacy at rest | 1 | Passes |
+| I1 | Nothing readable about plans in any row or log: the balance's history labels ("Added, 25 USDC", "10 more hours of notes") and a top-up's sealed purchase (`microUsdPerPack`) are canaries | flows › privacy at rest | 1, frontend | Passes |
 | I2 | Top-ups stay their owner's | billing/topups › keeps top-ups to their owner | 1 | Passes |
 | I3 | Deleting an account deletes its plan and allowance | billing/plans › deleting an account | 1 | Passes |
 | I4 | A live call’s state from the previous release reads (no `notes.limit`), as not stopped, and carries on | billing/plans › reads a live call the previous release stored… | 1 | Passes |
