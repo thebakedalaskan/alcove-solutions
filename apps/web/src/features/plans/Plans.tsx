@@ -7,7 +7,7 @@
  * licenses are a period at a time whichever way the prices are shown. Reached from the side panel's foot, Settings › Plan,
  * checkout's Compare plans, and the welcome page's Get Pro, which opens checkout as the page opens.
  */
-import { errorCode, errorMessage, type CheckoutParam, type MyTeam, type Person, type Plan, type PlanAllowance, type PlanOffers } from '@alcove/api';
+import { errorCode, errorMessage, type CheckoutParam, type MyTeam, type Person, type Plan, type PlanBrings, type PlanOffers } from '@alcove/api';
 import { Button, EmptyState, Evening, EveryPlan, Faces, PayingLine, PlanCard, PlanCards, PlanCycle, PlanHere, PlanSunset, type IconName, type PlanCycleChoice, type PlanFact } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
@@ -46,7 +46,7 @@ const aboutHours = (minutes: number): string => (minutes < 60 ? `About ${minutes
 const perPeriod = (days: number): string => (days >= 28 && days <= 31 ? 'a month' : days === 7 ? 'a week' : `every ${days} days`);
 
 /** What a plan brings, one line each: notes (and, on Free, when they come back), storage, and the largest file. */
-function factsOf(a: PlanAllowance, periodDays: number, back: boolean): PlanFact[] {
+function factsOf(a: PlanBrings, periodDays: number, back: boolean): PlanFact[] {
   return [
     { icon: 'notes', text: `${aboutHours(a.notesMinutes)} of notes ${perPeriod(periodDays)}`, sub: back ? `Back to ${hoursOfNotes(a.notesMinutes)} on the 1st of each period` : undefined },
     { icon: 'hardDrive', text: `${roomLabel(a.storageBytes)} of storage` },
@@ -58,7 +58,7 @@ function factsOf(a: PlanAllowance, periodDays: number, back: boolean): PlanFact[
  * What a license brings its person, one line each: their notes, their share of the team's storage, the largest file, and
  * what the team shares.
  */
-function teamFactsOf(a: PlanAllowance): PlanFact[] {
+function teamFactsOf(a: PlanBrings): PlanFact[] {
   return [
     { icon: 'notes', text: `${aboutHours(a.notesMinutes)} of notes each` },
     { icon: 'hardDrive', text: `${roomLabel(a.storageBytes)} each, shared by the team` },

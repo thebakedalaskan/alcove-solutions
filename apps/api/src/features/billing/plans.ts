@@ -79,13 +79,13 @@ const fresh = (freeFrom: string, grace: PlanAccount['grace']): PlanAccount =>
   ({ balanceMicroUsd: 0, history: [], freeFrom, choose: true, grace, pro: [], renew: false, notices: [], reminded: null, ended: null, hours: null });
 
 /** What a plan brings: notes as minutes a period, storage and the largest file. */
-export interface Allowance { notesMinutes: number; storageBytes: number; fileBytes: number }
-export const freeAllowance = (l: Limits): Allowance =>
+export interface PlanBrings { notesMinutes: number; storageBytes: number; fileBytes: number }
+export const freeBrings = (l: Limits): PlanBrings =>
   ({ notesMinutes: l.get('plan.free.notes_minutes'), storageBytes: l.get('plan.free.storage_bytes'), fileBytes: l.get('plan.free.file_bytes') });
-export const proAllowance = (l: Limits): Allowance =>
+export const proBrings = (l: Limits): PlanBrings =>
   ({ notesMinutes: l.get('plan.pro.notes_minutes'), storageBytes: l.get('plan.pro.storage_bytes'), fileBytes: l.get('plan.pro.file_bytes') });
 /** Team's, for one licensed person: storage is what each license adds to the team's pool, which is what's enforced. */
-export const teamAllowance = (l: Limits): Allowance =>
+export const teamBrings = (l: Limits): PlanBrings =>
   ({ notesMinutes: l.get('plan.team.notes_minutes'), storageBytes: l.get('plan.team.storage_bytes'), fileBytes: l.get('plan.team.file_bytes') });
 
 /**
@@ -110,7 +110,7 @@ export function hoursOf(l: Limits): PlanOffers['hours'] {
 }
 
 /** The plan an account is on now, the period it's in and what the plan brings. */
-export interface InForce extends Allowance { kind: PlanKind; from: number; to: number }
+export interface InForce extends PlanBrings { kind: PlanKind; from: number; to: number }
 /** A team license an account has taken, live from `from` until `to` (ms), on `teamId`. */
 export interface License { teamId: string; from: number; to: number }
 
@@ -141,14 +141,14 @@ export function inForce(a: PlanAccount, l: Limits, now: number, license: License
  * the end of a license, whichever is latest, so Free starts afresh when Pro or a license ends.
  */
 function planAt(a: PlanAccount, l: Limits, now: number, license: License | null): InForce {
-  if (license && isLive(license, now)) return { kind: 'team', from: license.from, to: license.to, ...teamAllowance(l) };
+  if (license && isLive(license, now)) return { kind: 'team', from: license.from, to: license.to, ...teamBrings(l) };
   const month = runningAt(a, now);
-  if (month) return { kind: 'pro', from: Date.parse(month.from), to: Date.parse(month.to), ...proAllowance(l) };
+  if (month) return { kind: 'pro', from: Date.parse(month.from), to: Date.parse(month.to), ...proBrings(l) };
   const period = l.get('plan.period_seconds') * 1000;
   const licenseEnded = license && license.to <= now ? license.to : -Infinity;
   const start = Math.max(Date.parse(a.freeFrom), lastEnded(a, now) ?? -Infinity, licenseEnded);
   const n = Math.max(0, Math.floor((now - start) / period));
-  return { kind: 'free', from: start + n * period, to: start + (n + 1) * period, ...freeAllowance(l) };
+  return { kind: 'free', from: start + n * period, to: start + (n + 1) * period, ...freeBrings(l) };
 }
 
 /**
@@ -161,7 +161,7 @@ function gracesOf(a: PlanAccount, p: InForce, l: Limits, now: number): { until: 
   if (a.grace && Date.parse(a.grace.until) > now) out.push({ until: Date.parse(a.grace.until), storageBytes: a.grace.storageBytes });
   const ended = lastEnded(a, now);
   const after = ended === null ? null : ended + l.get('plan.grace_seconds') * 1000;
-  if (after !== null && after > now) out.push({ until: after, storageBytes: proAllowance(l).storageBytes });
+  if (after !== null && after > now) out.push({ until: after, storageBytes: proBrings(l).storageBytes });
   return out;
 }
 

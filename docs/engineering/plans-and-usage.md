@@ -158,7 +158,7 @@ bought month covers now, and Free otherwise. Free's periods count from
 when the account began, or from the end of the last month of Pro, whichever is later, so Free starts afresh when Pro ends,
 with or without upkeep.
 
-**What's offered** (`GET /v1/plan/offers`): the period in days, Free's and Pro's allowances,
+**What's offered** (`GET /v1/plan/offers`): the period in days, what Free and Pro bring,
 the price of a month (`plan.pro.price_micro_usd`, $20) and the most months one purchase buys (`plan.pro.max_months`, 12).
 
 **A year or more for less** (`offers.pro.yearly`): a month costs `plan.pro.yearly_price_micro_usd` ($16, 20% off) when one

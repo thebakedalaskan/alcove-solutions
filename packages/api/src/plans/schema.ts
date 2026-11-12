@@ -96,18 +96,18 @@ export const PlanSchema = z.object({
 export type Plan = z.infer<typeof PlanSchema>;
 
 /** What a plan brings, from the limits: notes as minutes a period, storage and the largest file. */
-export const PlanAllowanceSchema = z.object({
+export const PlanBringsSchema = z.object({
   notesMinutes: z.number().int().nonnegative(),
   storageBytes: z.number().int().nonnegative(),
   fileBytes: z.number().int().nonnegative()
 });
-export type PlanAllowance = z.infer<typeof PlanAllowanceSchema>;
+export type PlanBrings = z.infer<typeof PlanBringsSchema>;
 /** The plans on offer and what each costs now. Buying sends the price seen here, so a change in between is refused. */
 export const PlanOffersSchema = z.object({
   /** How long a period, and a month of Pro, is. */
   periodDays: z.number().nonnegative(),
-  free: PlanAllowanceSchema,
-  pro: PlanAllowanceSchema.extend({
+  free: PlanBringsSchema,
+  pro: PlanBringsSchema.extend({
     microUsdPerMonth: MicroUsdSchema,
     /** The most months one purchase can buy. */
     maxMonths: z.number().int().positive(),
@@ -117,7 +117,7 @@ export const PlanOffersSchema = z.object({
   /** More notes for this period, bought from the balance in packs of `minutes` at `microUsd` each, or null when not offered. */
   hours: z.object({ minutes: z.number().int().positive(), microUsd: MicroUsdSchema, maxPacks: z.number().int().positive() }).nullable(),
   /** Team: what each licensed person gets (storage is pooled: this much for each live license). */
-  team: PlanAllowanceSchema.extend({
+  team: PlanBringsSchema.extend({
     microUsdPerLicense: MicroUsdSchema,
     /** The most licenses one purchase can buy. */
     maxLicenses: z.number().int().positive()
