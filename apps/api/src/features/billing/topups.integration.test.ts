@@ -1152,9 +1152,22 @@ const pro = (months: number, microUsdPerMonth = months >= 12 ? YEARLY : PRICE): 
 /** Packs of 10 more hours of notes. */
 const PACK = 600;
 const hours = (packs: number, microUsdPerPack = HOURS, minutesPerPack = PACK): Purchase => ({ kind: 'hours', packs, microUsdPerPack, minutesPerPack });
+const LICENSE = 40_000_000;
+/** Licenses for the buyer's team, at a license's price. */
+const licenses = (count: number, microUsdPerLicense = LICENSE): Purchase => ({ kind: 'licenses', count, microUsdPerLicense });
 /** What a request came to: its code and message when it was refused. */
 const said = (p: Promise<unknown>) => p.then(() => 'succeeded', (e: unknown) => (e instanceof AlcoveApiError ? `${e.code}: ${e.message}` : String(e)));
+/** What `p` comes to, or "still waiting" when it hasn't in `ms`. */
+async function within(ms: number, p: Promise<string>): Promise<string> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([p, new Promise<string>((done) => { timer = setTimeout(() => done('still waiting'), ms); })]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
 const labels = async (api: AlcoveApi) => (await api.plans.plan()).balance.history.map((e) => e.label);
+const secretOf = (link: string) => link.slice(link.indexOf('#') + 1);
 
 describe('top-ups that buy', () => {
   afterEach(async () => { await h.resetLimits(); });
@@ -1169,6 +1182,12 @@ describe('top-ups that buy', () => {
     const email = unique();
     const who = await account(email);
     await creditByEmail(h.deps, email, microUsd);
+    return who;
+  }
+  /** An account that has made a team, so it's the team's admin, with `microUsd` in its balance first. */
+  async function admin(microUsd = 0) {
+    const who = microUsd ? await withBalance(microUsd) : await account();
+    await who.api.teams.create('Vandelay Industries');
     return who;
   }
 
@@ -1379,5 +1398,189 @@ describe('top-ups that buy', () => {
     expect(await api.plans.topUp(t.id)).toMatchObject({ state: 'waiting', purchase: null });
     expect(await paid(api, t, PRICE)).toMatchObject({ state: 'credited', received: { microUsd: PRICE }, purchase: null });
     expect(await api.plans.plan()).toMatchObject({ kind: 'free', balance: { microUsd: PRICE } });
+  });
+
+  it('buys licenses for the team its owner is the admin of once its payment is added, with what the balance has', async () => {
+    const { api } = await admin(LICENSE);
+    // Three licenses are $120; with $40 in the balance, the payment asks for the rest. $85 arrives.
+    const t = await api.plans.startTopUp(BASE_USDC, 2 * LICENSE, licenses(3));
+    expect(t).toMatchObject({ state: 'waiting', asked: { amount: '80' }, purchase: { buys: licenses(3), outcome: 'waiting', why: null } });
+    const from = h.logs.length;
+    const done = await paid(api, t, 85_000_000);
+    expect(done).toMatchObject({ state: 'credited', received: { amount: '85', microUsd: 85_000_000 }, purchase: { buys: licenses(3), outcome: 'bought', why: null } });
+    // Bought, not taken: they wait for the team's people to take one on a visit, the admin too.
+    expect((await api.teams.mine())?.licenses).toEqual({ unconsumed: 3, refundableMicroUsd: 3 * LICENSE, autoPurchase: false });
+    expect(await api.plans.plan()).toMatchObject({ kind: 'free', team: { role: 'admin', licensed: false }, balance: { microUsd: 5_000_000 } });
+    expect(await labels(api)).toEqual(['Team, 3 licenses', 'Added, 85 USDC', 'Added by support']);
+    // Logged by IDs, what it bought and how many, never an amount.
+    const lines = logsSince(from);
+    expect(lines.some((l) => l.msg === 'top-up bought what it was for' && l.line.includes(t.id) && l.line.includes('"buys":"licenses"'))).toBe(true);
+    expect(lines.some((l) => l.msg === 'team licenses bought' && l.line.includes('"count":3'))).toBe(true);
+    expect(lines.filter((l) => /85000000|120000000|40000000|"microUsd"/.test(l.line))).toEqual([]);
+    // Asked about again, it has bought them once.
+    await forgetCheck(t.id);
+    expect(await api.plans.topUp(t.id)).toEqual(done);
+    expect((await api.teams.mine())?.licenses?.unconsumed).toBe(3);
+    const one = await api.plans.startTopUp(BASE_USDC, LICENSE, licenses(1));
+    expect((await paid(api, one, LICENSE)).purchase).toMatchObject({ outcome: 'bought' });
+    expect(await labels(api)).toEqual(['Team, 1 license', 'Added, 40 USDC', 'Team, 3 licenses', 'Added, 85 USDC', 'Added by support']);
+  });
+
+  it('refuses to open a payment for licenses but by a team’s admin, past the most, at a price that changed, or for none or part of one, before anything is quoted', async () => {
+    const ann = await admin();
+    const bob = await account();
+    const cy = await account();
+    await bob.api.teams.join(secretOf((await ann.api.teams.invite()).link));
+    const quotes = h.oneclick.quotes.length;
+    // A member of a team, and someone on none.
+    const notAdmin = 'conflict: Only a team’s admin buys its licenses.';
+    expect(await said(bob.api.plans.startTopUp(BASE_USDC, LICENSE, licenses(1)))).toBe(notAdmin);
+    expect(await said(cy.api.plans.startTopUp(BASE_USDC, LICENSE, licenses(1)))).toBe(notAdmin);
+    expect(await said(ann.api.plans.startTopUp(BASE_USDC, LICENSE, licenses(501)))).toBe('invalid: Buy 1 to 500 licenses at a time.');
+    expect(await said(ann.api.plans.startTopUp(BASE_USDC, LICENSE, licenses(1, 30_000_000)))).toBe('conflict: The price of a team license has changed. Look at it again before buying.');
+    for (const buys of [licenses(0), licenses(-1), licenses(1.5), licenses(1, -1)]) {
+      expect(await said(ann.api.plans.startTopUp(BASE_USDC, LICENSE, buys)), JSON.stringify(buys)).toMatch(/^invalid: /);
+    }
+    expect(h.oneclick.quotes.length).toBe(quotes);
+    for (const who of [ann, bob, cy]) expect(await depositRows(who.session.ownerId)).toBe(0);
+    expect((await ann.api.plans.startTopUp(BASE_USDC, LICENSE, licenses(1))).purchase).toEqual({ buys: licenses(1), outcome: 'waiting', why: null });
+  });
+
+  it('says why it didn’t buy licenses when their price, the most one purchase buys or the team changed while the payment was on its way, and leaves the money in the balance', async () => {
+    // A license costs more now.
+    const ann = await admin();
+    const priced = await ann.api.plans.startTopUp(BASE_USDC, LICENSE, licenses(1));
+    await h.setLimit('plan.team.price_micro_usd', 50_000_000);
+    const from = h.logs.length;
+    expect(await paid(ann.api, priced, LICENSE)).toMatchObject({
+      state: 'credited', received: { microUsd: LICENSE },
+      purchase: { buys: licenses(1), outcome: 'refused', why: 'The price of a team license changed before your payment arrived. It’s in your balance.' }
+    });
+    expect(await ann.api.plans.plan()).toMatchObject({ balance: { microUsd: LICENSE } });
+    expect(await labels(ann.api)).toEqual(['Added, 40 USDC']);
+    expect((await ann.api.teams.mine())?.licenses?.unconsumed).toBe(0);
+    expect(logsSince(from).some((l) => l.line.includes(priced.id) && l.line.includes('"buys":"licenses"') && l.line.includes('"why":"price"'))).toBe(true);
+    await h.resetLimits();
+    // One purchase buys fewer now.
+    const bob = await admin();
+    const many = await bob.api.plans.startTopUp(BASE_USDC, 3 * LICENSE, licenses(3));
+    await h.setLimit('team.max_licenses', 2);
+    const fromMany = h.logs.length;
+    expect((await paid(bob.api, many, 3 * LICENSE)).purchase).toEqual({
+      buys: licenses(3), outcome: 'refused', why: 'Since your payment was made, one purchase buys at most 2 team licenses. It’s in your balance.'
+    });
+    expect(await bob.api.plans.plan()).toMatchObject({ balance: { microUsd: 3 * LICENSE } });
+    expect((await bob.api.teams.mine())?.licenses?.unconsumed).toBe(0);
+    expect(logsSince(fromMany).some((l) => l.line.includes(many.id) && l.line.includes('"why":"too-many"'))).toBe(true);
+    await h.resetLimits();
+    // The team was deleted: whoever paid isn't a team's admin any more.
+    const cy = await admin();
+    const gone = await cy.api.plans.startTopUp(BASE_USDC, LICENSE, licenses(1));
+    await cy.api.teams.delete();
+    const fromGone = h.logs.length;
+    expect((await paid(cy.api, gone, LICENSE)).purchase).toEqual({
+      buys: licenses(1), outcome: 'refused', why: 'You weren’t a team’s admin when your payment arrived, so no licenses were bought. It’s in your balance.'
+    });
+    expect(await cy.api.plans.plan()).toMatchObject({ team: null, balance: { microUsd: LICENSE } });
+    expect(await labels(cy.api)).toEqual(['Added, 40 USDC']);
+    expect(logsSince(fromGone).some((l) => l.line.includes(gone.id) && l.line.includes('"why":"not-admin"'))).toBe(true);
+  });
+
+  it('says why it didn’t buy licenses when less arrived than they cost, or the balance it counted on was spent, and keeps what arrived', async () => {
+    // $50 of the $80 asked arrives: under 1Click's band, so $50 is added, and two licenses aren't bought.
+    const ann = await admin();
+    const short = await ann.api.plans.startTopUp(BASE_USDC, 2 * LICENSE, licenses(2));
+    h.oneclick.set(addr(short), 'SUCCESS', { depositedAmount: '50000000', amountOut: '49990000', intentHashes: [`short-${short.id}`] });
+    expect(await ann.api.plans.topUp(short.id)).toMatchObject({
+      state: 'credited', received: { amount: '50', microUsd: 50_000_000 },
+      purchase: { buys: licenses(2), outcome: 'refused', why: 'Less arrived than 2 team licenses cost. It’s in your balance.' }
+    });
+    expect(await ann.api.plans.plan()).toMatchObject({ balance: { microUsd: 50_000_000 } });
+    expect((await ann.api.teams.mine())?.licenses?.unconsumed).toBe(0);
+    // All of it arrives, but the $40 in the balance it was counting on went on a license bought from it meanwhile.
+    const bob = await admin(LICENSE);
+    const rest = await bob.api.plans.startTopUp(BASE_USDC, LICENSE, licenses(2));
+    await bob.api.teams.buyLicenses(1, LICENSE);
+    expect((await paid(bob.api, rest, LICENSE)).purchase).toEqual({
+      buys: licenses(2), outcome: 'refused', why: 'Your balance was short of what 2 team licenses cost when your payment arrived. It’s in your balance.'
+    });
+    expect(await bob.api.plans.plan()).toMatchObject({ balance: { microUsd: LICENSE } });
+    expect((await bob.api.teams.mine())?.licenses?.unconsumed).toBe(1);
+  });
+
+  it('buys licenses once, however many checks race on it', async () => {
+    const email = unique();
+    const one = await account(email);
+    const two = await account(email);
+    await one.api.teams.create('Vandelay Industries');
+    // Money for more, so a second purchase would go through if one were made.
+    await creditByEmail(h.deps, email, 5 * LICENSE);
+    const t = await one.api.plans.startTopUp(BASE_USDC, 2 * LICENSE, licenses(2));
+    h.oneclick.set(addr(t), 'SUCCESS', { depositedAmount: String(2 * LICENSE), amountOut: String(2 * LICENSE), intentHashes: [`race-${t.id}`] });
+    await dueOnly(t.id);
+    await Promise.all([watch(h.deps), watch(h.deps), one.api.plans.topUp(t.id), two.api.plans.topUp(t.id)]);
+    expect(await two.api.plans.topUp(t.id)).toMatchObject({ state: 'credited', purchase: { outcome: 'bought' } });
+    expect((await one.api.teams.mine())?.licenses).toEqual({ unconsumed: 2, refundableMicroUsd: 2 * LICENSE, autoPurchase: false });
+    expect(await one.api.plans.plan()).toMatchObject({ balance: { microUsd: 5 * LICENSE } });
+    expect(await labels(one.api)).toEqual(['Team, 2 licenses', 'Added, 80 USDC', 'Added by support']);
+  });
+
+  it('takes the team’s lock before the plan’s to buy licenses: held, its payment waits without the plan, and buys at once spend nothing twice', async () => {
+    const { api, session } = await admin(HOURS + LICENSE);
+    const t = await api.plans.startTopUp(BASE_USDC, 2 * LICENSE, licenses(2));
+    h.oneclick.set(addr(t), 'SUCCESS', { depositedAmount: String(2 * LICENSE), amountOut: String(2 * LICENSE), intentHashes: [`order-${t.id}`] });
+    await forgetCheck(t.id);
+    const waitingOnTeams = async () => (await h.pool.query<{ n: number }>(`
+      SELECT count(*)::int AS n FROM pg_stat_activity
+      WHERE datname = current_database() AND wait_event_type = 'Lock' AND query LIKE '%FROM teams WHERE%'`)).rows[0]?.n;
+    const from = h.logs.length;
+    const gate = await h.pool.connect();
+    let pending: Promise<string>[] = [];
+    try {
+      // The team's row, held here: the payment, settling meanwhile, waits for it.
+      await gate.query('BEGIN');
+      await gate.query('SELECT 1 FROM teams WHERE admin_owner_id = $1 FOR UPDATE', [session.ownerId]);
+      pending = [said(api.plans.topUp(t.id))];
+      await expect.poll(waitingOnTeams, { timeout: 5000 }).toBe(1);
+      // It waits holding its deposit's row and not the plan's, so more notes bought from the balance meanwhile go through.
+      expect(await within(5000, said(api.plans.buyHours(1, HOURS, PACK)))).toBe('succeeded');
+      // A license bought from the balance waits on the team too; then each goes in turn, and both are paid for.
+      pending.push(said(api.teams.buyLicenses(1, LICENSE)));
+      await expect.poll(waitingOnTeams, { timeout: 5000 }).toBe(2);
+      await gate.query('COMMIT');
+      expect(await Promise.all(pending)).toEqual(['succeeded', 'succeeded']);
+    } finally {
+      await gate.query('ROLLBACK');
+      gate.release();
+      await Promise.all(pending);
+    }
+    expect(await api.plans.topUp(t.id)).toMatchObject({ state: 'credited', purchase: { buys: licenses(2), outcome: 'bought' } });
+    expect((await api.teams.mine())?.licenses?.unconsumed).toBe(3);
+    expect(await api.plans.plan()).toMatchObject({ balance: { microUsd: 0 } });
+    expect((await labels(api)).sort()).toEqual(['10 more hours of notes', 'Added by support', 'Added, 80 USDC', 'Team, 1 license', 'Team, 2 licenses']);
+    expect(logsSince(from).filter((l) => l.level >= 50)).toEqual([]);
+  });
+
+  it('still buys licenses, once, when its payment settles after it was cancelled or expired', async () => {
+    const { api } = await admin();
+    const cancelled = await api.plans.startTopUp(BASE_USDC, LICENSE, licenses(1));
+    expect(await api.plans.cancelTopUp(cancelled.id)).toMatchObject({ state: 'cancelled', purchase: { outcome: 'waiting' } });
+    // Sent before it was cancelled, and settled with the app closed.
+    h.oneclick.set(addr(cancelled), 'SUCCESS', { depositedAmount: String(LICENSE), amountOut: String(LICENSE), intentHashes: [`late-${cancelled.id}`] });
+    await dueOnly(cancelled.id);
+    expect(await watch(h.deps)).toEqual({ checked: 1, credited: 1 });
+    expect(await api.plans.topUp(cancelled.id)).toMatchObject({ state: 'credited', purchase: { outcome: 'bought' } });
+    // Nothing arrived by its deadline, then 1Click settles a payment after all.
+    const expired = await api.plans.startTopUp(BASE_USDC, 2 * LICENSE, licenses(2));
+    await h.pool.query("UPDATE deposits SET give_up_at = now() - interval '1 second' WHERE deposit_id = $1", [expired.id]);
+    await dueOnly(expired.id);
+    await watch(h.deps);
+    expect(await api.plans.topUp(expired.id)).toMatchObject({ state: 'expired', purchase: { outcome: 'waiting' } });
+    expect(await paid(api, expired, 2 * LICENSE)).toMatchObject({ state: 'credited', purchase: { outcome: 'bought' } });
+    await forgetCheck(expired.id);
+    expect(await api.plans.topUp(expired.id)).toMatchObject({ state: 'credited', purchase: { outcome: 'bought' } });
+    expect((await api.teams.mine())?.licenses?.unconsumed).toBe(3);
+    expect(await api.plans.plan()).toMatchObject({ balance: { microUsd: 0 } });
+    expect(await labels(api)).toEqual(['Team, 2 licenses', 'Added, 80 USDC', 'Team, 1 license', 'Added, 40 USDC']);
   });
 });

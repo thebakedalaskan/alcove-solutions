@@ -1,6 +1,7 @@
 /*
  * Teams (docs: Plans and usage › Team): one team for each account, made by its admin, who buys licenses for it from their
- * own balance. A member without a live license takes one when they visit (they sign in, or the app says it's being used:
+ * own balance, or with a payment that buys them once it's added (deposits.ts). A member without a live license takes one
+ * when they visit (they sign in, or the app says it's being used:
  * `POST /v1/session/visit`); none is ever taken by a read. A live license puts its member on Team for `plan.period_seconds`
  * (features/billing/plans.ts › planNow), replacing any Pro they had, with storage from the team's pool:
  * `plan.team.storage_bytes` for each live license, counting what every licensed member stores.
@@ -10,19 +11,19 @@
  * `team-billing` record under Kservice's accounting key. Every change is made with the team's row locked first, then
  * the plans of whoever it touches, so takes and purchases at once on any instance never spend a license or money twice.
  */
-import type { MyTeam, Person, TeamInvite, TeamInvitePeek, TeamLicense, TeamMember } from '@alcove/api';
+import type { MyTeam, Person, Purchase, TeamInvite, TeamInvitePeek, TeamLicense, TeamMember } from '@alcove/api';
 import { z } from 'zod';
 import type { Deps, Owner } from '../../context';
 import { b64u, blindIndex, id128, openJson, random, sealJson, serviceKey, sha, stateKey, toJson, unb64u, utf8 } from '../../crypto';
 import { bigintText, bytea, exec, maybeOne, rows, timestamp, tx, type Db } from '../../db';
-import { ConflictError, ForbiddenError, NotFoundError, conflict, invalid } from '../../errors';
+import { ConflictError, ForbiddenError, NotFoundError, conflict } from '../../errors';
 import { limitsNow, type Limits } from '../../limits';
 import { log } from '../../log';
 import { createOwner, lockOwner, masterKey, openRoot } from '../../owners';
 import { publish } from '../../live/hub';
 import { personOf } from '../account/portraits';
 import { TREE_NOTICE } from '../workspaces/access';
-import { accountOf, dollars, leftTeam, replacedByLicense, save, told, withEntry, withNotice, type PlanAccount } from './plans';
+import { accountOf, leftTeam, purchase, refusedError, replacedByLicense, save, told, withEntry, withNotice, type PlanAccount, type Purchased } from './plans';
 
 const tlog = log.child({ component: 'teams' });
 /** How many teams upkeep looks at each time. */
@@ -68,7 +69,8 @@ const nameIn = (team: TeamKey, t: TeamRow) => openJson(team.key, nameHeader(team
 const whoIn = (team: TeamKey, m: MemberRow) => openJson(team.key, memberHeader(team, m.team_id, m.member_id), m.person_ciphertext, Who);
 
 const TeamRow = z.object({ team_id: z.string(), owner_id: z.string(), admin_owner_id: z.string(), name_ciphertext: bytea, billing_ciphertext: bytea });
-type TeamRow = z.infer<typeof TeamRow>;
+export type TeamRow = z.infer<typeof TeamRow>;
+const TEAM = 'team_id, owner_id, admin_owner_id, name_ciphertext, billing_ciphertext';
 const MemberRow = z.object({
   member_id: z.string(), team_id: z.string(), account_owner_id: z.string(), role: z.enum(['admin', 'member']), person_ciphertext: bytea,
   licensed_from: timestamp.nullable(), licensed_until: timestamp.nullable(), wanted_at: timestamp.nullable(), created_at: timestamp
@@ -79,7 +81,7 @@ const MEMBER = 'member_id, team_id, account_owner_id, role, person_ciphertext, l
 const membership = (db: Db, ownerId: string, lock = false) =>
   maybeOne(db, MemberRow, `SELECT ${MEMBER} FROM team_members WHERE account_owner_id = $1${lock ? ' FOR UPDATE' : ''}`, [ownerId]);
 const teamRow = (db: Db, teamId: string, lock = false) =>
-  maybeOne(db, TeamRow, `SELECT team_id, owner_id, admin_owner_id, name_ciphertext, billing_ciphertext FROM teams WHERE team_id = $1${lock ? ' FOR UPDATE' : ''}`, [teamId]);
+  maybeOne(db, TeamRow, `SELECT ${TEAM} FROM teams WHERE team_id = $1${lock ? ' FOR UPDATE' : ''}`, [teamId]);
 const isLive = (m: Pick<MemberRow, 'licensed_from' | 'licensed_until'>, now: number) =>
   m.licensed_from !== null && m.licensed_until !== null && m.licensed_from.getTime() <= now && now < m.licensed_until.getTime();
 
@@ -394,30 +396,40 @@ export async function deleteTeam(o: Owner): Promise<void> {
 
 /* ---------- licenses ---------- */
 
-const licensesOf = (n: number) => `${n} ${n === 1 ? 'license' : 'licenses'}`;
+/**
+ * The team `ownerId` is the admin of, its row locked for the rest of the caller's transaction (null: they're no team's
+ * admin). Every change to a team locks its row before any plan's, so a payment that buys licenses takes this before its
+ * money is added to their balance (deposits.ts › apply): a team's row is never locked after a plan's.
+ */
+export async function adminsTeam(c: Db, ownerId: string): Promise<TeamRow | null> {
+  return (await maybeOne(c, TeamRow, `SELECT ${TEAM} FROM teams WHERE admin_owner_id = $1 FOR UPDATE`, [ownerId])) ?? null;
+}
 
 /**
- * Admin only: buys `count` licenses from their balance at `microUsdPerLicense`, the price they were shown, with the team's
- * row and then their plan's locked, so buys at once never spend the same money twice.
+ * Buys licenses for `t`, the team `ownerId` is the admin of, from their balance, in the caller's transaction: the team's
+ * row locked first, by the caller (`asAdmin`, `adminsTeam`), then their plan's, here (plans.ts › purchase), so buys and
+ * takes at once never spend the same money or license twice. Refused with nothing changed as anything bought from the
+ * balance is, and when `t` is null: they're no team's admin. What POST /v1/team/licenses does, and what a payment opened to
+ * buy licenses does once its money is added (deposits.ts). They wait unconsumed, oldest first, for members to take on a
+ * visit, are refunded until then, and let the admin be told again when few or none are left.
  */
+export async function licensesBought(d: Service, c: Db, t: TeamRow | null, ownerId: string, buys: Extract<Purchase, { kind: 'licenses' }>): Promise<Purchased> {
+  const r = await purchase(d, c, ownerId, buys, { admin: t !== null });
+  if (!r.bought || !t) return r;
+  const b = openBilling(d, t);
+  const licenses = [...b.licenses, ...Array.from({ length: buys.count }, () => ({ id: id128(), microUsd: buys.microUsdPerLicense }))];
+  const low = (await limitsNow(d, c)).get('team.low_licenses');
+  await saveBilling(d, c, t, { ...b, licenses, none: false, low: b.low && licenses.length < low });
+  tlog.info('team licenses bought', { ownerId, teamId: t.team_id, count: buys.count });
+  return r;
+}
+
+/** Admin only: buys `count` licenses from their balance at `microUsdPerLicense`, the price they were shown. */
 export async function buyLicenses(o: Owner, count: number, microUsdPerLicense: number): Promise<MyTeam> {
   await tx(o.pool, async (c) => {
     const { t } = await asAdmin(c, o.ownerId);
-    const l = await limitsNow(o, c);
-    const max = l.get('team.max_licenses');
-    if (count > max) throw invalid(`Buy 1 to ${max} licenses at a time.`, { ownerId: o.ownerId, count, max });
-    const price = l.get('plan.team.price_micro_usd');
-    if (microUsdPerLicense !== price) throw conflict('The price of a team license has changed. Look at it again before buying.', { ownerId: o.ownerId, why: 'price' });
-    const total = count * price;
-    const a = await accountOf(o, c, o.ownerId, true);
-    if (a.balanceMicroUsd < total) {
-      throw conflict(`Your balance is short: ${licensesOf(count)} ${count === 1 ? 'costs' : 'cost'} ${dollars(total)} and your balance is ${dollars(a.balanceMicroUsd)}. Add money first.`, { ownerId: o.ownerId, why: 'balance', count });
-    }
-    await save(o, c, o.ownerId, withEntry(a, -total, `Team, ${licensesOf(count)}`));
-    const b = openBilling(o, t);
-    const licenses = [...b.licenses, ...Array.from({ length: count }, () => ({ id: id128(), microUsd: price }))];
-    await saveBilling(o, c, t, { ...b, licenses, none: false, low: b.low && licenses.length < l.get('team.low_licenses') });
-    tlog.info('team licenses bought', { ownerId: o.ownerId, teamId: t.team_id, count, microUsd: total });
+    const r = await licensesBought(o, c, t, o.ownerId, { kind: 'licenses', count, microUsdPerLicense });
+    if (!r.bought) throw refusedError(r.refusal, { ownerId: o.ownerId, teamId: t.team_id, kind: 'licenses', count });
   });
   return requireTeam(o, o.ownerId);
 }
@@ -559,7 +571,7 @@ export async function upkeep(d: Service): Promise<{ invites: number; teams: numb
   for (;;) {
     const one = await tx(d.pool, async (c) => {
       const now = Date.now();
-      const t = await maybeOne(c, TeamRow, 'SELECT team_id, owner_id, admin_owner_id, name_ciphertext, billing_ciphertext FROM teams WHERE due_at <= $1 ORDER BY due_at LIMIT 1 FOR UPDATE SKIP LOCKED', [new Date(now)]);
+      const t = await maybeOne(c, TeamRow, `SELECT ${TEAM} FROM teams WHERE due_at <= $1 ORDER BY due_at LIMIT 1 FOR UPDATE SKIP LOCKED`, [new Date(now)]);
       if (!t) return false;
       await settle(d, c, t, openBilling(d, t), await limitsNow(d, c), now);
       return true;

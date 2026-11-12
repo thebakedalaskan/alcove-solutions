@@ -66,9 +66,8 @@ Suites: `billing/meter` (`apps/api/src/features/billing/meter.integration.test.t
 | F9 | No yearly offer while its price is 0, isn't below a month's, or needs more months than one purchase buys; a year is a month's price then, and never free | billing/plans › Pro › offers no yearly price while it’s 0… | frontend | Passes |
 | F10 | No months, fewer than none, part of one, or a price below nothing: invalid, nothing charged | billing/plans › Pro › refuses no months, fewer than none… | frontend | Passes |
 | F11 | Pro bought after the spent allowance stopped a call's notes: the stop lifts, nothing turns notes on by itself, and the organizer turns them on | billing/plans › Pro › lets the organizer turn a call’s notes on again once Pro is bought… | frontend | Passes |
-| **G: Team** | Licenses, invites, visits, alerts, team notes and workspaces, pooled storage | — | 3 | Not built |
 | **G: Team** | Licenses, invites, visits, alerts, team notes and workspaces, pooled storage |  |  |  |
-| G1 | Create a team, buy licenses (1 to 500, at the price shown; a short balance or a changed price refused), the admin takes one on a visit; Team offered from the limits | billing/teams › A3…; G1: offers Team from the limits, and buys 1 to 500 licenses… | 3 | Passes |
+| G1 | Create a team, buy licenses (1 to 500, at the price shown; a short balance, in words that say what they cost and never the balance, or a changed price refused), the admin takes one on a visit; Team offered from the limits | billing/teams › A3…; G1: offers Team from the limits, and buys 1 to 500 licenses… | 3 | Passes |
 | G2 | An invite works once; a second use, an expired one, a made-up one, or someone already on a team is refused; only its hash is kept; upkeep deletes expired ones; only the admin makes one | billing/teams › G2: an invite works once… | 3 | Passes |
 | G3 | Joining with licenses takes one; with none, Free and `license-needed` ("ask your admin"), the admin told `licenses-none`, once each; the next visit after more are bought takes one | billing/teams › G3: joining with a license left takes one… | 3 | Passes |
 | G4 | The low alert (`licenses-low`, with how many) below 5, once until there are 5 or more again (the browser notification is the app's) | billing/teams › G4: tells the admin once when fewer than 5… | 3 | Passes |
@@ -84,11 +83,12 @@ Suites: `billing/meter` (`apps/api/src/features/billing/meter.integration.test.t
 | G13 | Team workspace AI is billed to the member who pressed it; elsewhere to the workspace's payer | billing/teams › G13: AI in a team workspace is paid for by whoever pressed it… | 3 | Passes |
 | G14 | A removed member drops to Free (a fresh period) with the grace at a team's storage for a person, loses the team, and their license isn't refunded; a member can leave; the admin can't leave or take themselves off | billing/teams › G14: someone taken off the team drops to Free… | 3 | Passes |
 | G15 | Each licensed member has their own 50 hours, the whole of it from when the license is taken | billing/teams › G15: each licensed person has their own notes… | 3 | Passes |
+| G16 | Licenses bought with a payment are the team's as any others: taken on a visit, refunded while nobody has one, and the admin told again (`licenses-none`, `licenses-low`) once buying lifted it | billing/teams › G16: licenses bought with a payment are taken on a visit… | frontend | Passes |
 | **H: calls** |  |  |  |  |
 | H1 | A call says when it ends, ends at 10 hours, and writes its notes | billing/plans › ends at its longest… | 1 | Passes |
 | H2 | The 101st person is refused and whoever hosts is told | billing/plans › turns away anyone past the most people… | 1 | Passes |
 | **I: privacy and upgrades** |  |  |  |  |
-| I1 | Nothing readable about plans in any row or log: the balance's history labels ("Added, 25 USDC", "10 more hours of notes") and a top-up's sealed purchase (`microUsdPerPack`) are canaries; a team's name, a member's name and address, a `team-billing` record's fields and its history label are canaries, and an invite's secret is in no row or log | flows › privacy at rest | 1, 3, frontend | Passes |
+| I1 | Nothing readable about plans in any row or log: the balance's history labels ("Added, 25 USDC", "10 more hours of notes") and a top-up's sealed purchase (`microUsdPerPack`) are canaries; a team's name, a member's name and address, a `team-billing` record's fields, a payment's licenses (`microUsdPerLicense`) and the history label they write ("Team, 1 license") are canaries, and an invite's secret is in no row or log | flows › privacy at rest | 1, 3, frontend | Passes |
 | I2 | Top-ups stay their owner's | billing/topups › keeps top-ups to their owner | 1 | Passes |
 | I2′ | Team, member and invite IDs work only on the caller's own team, as its admin; another account's notice is unknown | billing/teams › I2: team, member and invite IDs… | 3 | Passes |
 | I2″ | A note ID (to read, to refer to in Ask, to make visible or not) and a workspace ID (to read, to set who's in it) from a request reach only what the caller can open; another team's notes and workspaces are unknown | billing/teams › I2: a note, a reference or a workspace from a request… | 3 | Passes |
@@ -114,6 +114,10 @@ Suites: `billing/meter` (`apps/api/src/features/billing/meter.integration.test.t
 | K7 | A payment settled after its top-up was cancelled, or had expired, still buys, once | billing/topups › top-ups that buy › still buys what it was for… | frontend | Passes |
 | K8 | A `deposit` record from before purchases (no `purchase`) reads as one that only adds money, and is added as before | billing/topups › top-ups that buy › reads a top-up the previous release stored… | frontend | Passes |
 | K9 | Logs of a purchase by a top-up carry its ID, what it buys and why not, never an amount | billing/topups › top-ups that buy › buys what it was opened for…; … says why it didn’t buy when what it was for changed… | frontend | Passes |
+| K10 | A payment for licenses buys them for the team its owner is the admin of once it's added, with what the balance has: unconsumed, "Team, 3 licenses" or "Team, 1 license" in the history, bought once when asked again, logged with IDs and the count, never an amount | billing/topups › top-ups that buy › buys licenses for the team its owner is the admin of… | frontend | Passes |
+| K11 | Opening a payment for licenses by anyone but a team's admin (a member, someone on no team), past the most, at a price that changed, or for none or part of one, is refused before anything is quoted | billing/topups › top-ups that buy › refuses to open a payment for licenses but by a team’s admin… | frontend | Passes |
+| K12 | Licenses refused once the money arrived, the money staying in the balance, with why in words: a license's price changed, one purchase buys fewer, the team was deleted (no longer an admin), less arrived, or the balance it counted on was spent | billing/topups › top-ups that buy › says why it didn’t buy licenses when their price…; … when less arrived than they cost… | frontend | Passes |
+| K13 | Licenses bought once however many checks race, and once by a payment settled after its top-up was cancelled or expired; the team's row is locked before the plan's: while it's held, the payment waits without the plan (a purchase of notes goes through) and a buy of licenses from the balance waits too, then both are paid, nothing twice and no error | billing/topups › top-ups that buy › buys licenses once…; … takes the team’s lock before the plan’s…; … still buys licenses, once… | frontend | Passes |
 
 ## Workspaces (changed 12 Nov 2026)
 
@@ -183,3 +187,7 @@ These suites tested credits: their charges are removed (AGENTS.md: removed behav
 - `account/notifications` (phase 2): notification preferences carry `plan`, the browser notification for Pro's notices,
   on unless turned off
 - `billing/plans` (phase 3): a notice carries `count` (null for Pro's)
+- `billing/teams` › G1 (payments that buy licenses): a license bought from a short balance is refused with what the
+  licenses cost, never the balance, in the words Pro's and more notes' terms give
+- `integration/flows` › privacy at rest (payments that buy licenses): the canary account's license is bought with a
+  payment instead of from the balance, so the sealed purchase is scanned too
