@@ -1215,6 +1215,16 @@ describe('top-ups that buy', () => {
     expect(await labels(api)).toEqual(['20 more hours of notes', 'Added, 30 USDC']);
   });
 
+  it('refuses to open a payment for no, fewer than none or part of a month or pack, a price below nothing or a pack of no minutes, before anything is quoted', async () => {
+    const { api, session } = await account();
+    const quotes = h.oneclick.quotes.length;
+    const asked: Purchase[] = [pro(0), pro(-1), pro(1.5), pro(1, -1), hours(0), hours(-1), hours(1.5), hours(1, -1), hours(1, HOURS, 0), hours(1, HOURS, -PACK)];
+    for (const buys of asked) expect(await said(api.plans.startTopUp(BASE_USDC, PRICE, buys)), JSON.stringify(buys)).toMatch(/^invalid: /);
+    expect(h.oneclick.quotes.length).toBe(quotes);
+    expect(await depositRows(session.ownerId)).toBe(0);
+    expect(await api.plans.plan()).toMatchObject({ balance: { microUsd: 0, history: [] } });
+  });
+
   it('refuses to open a payment for what isn’t on offer at the price shown, before anything is quoted', async () => {
     const { api, session } = await account();
     const quotes = h.oneclick.quotes.length;
@@ -1270,6 +1280,32 @@ describe('top-ups that buy', () => {
     expect((await paid(di.api, smaller, HOURS)).purchase).toEqual({ buys: hours(1), outcome: 'refused', why: 'The hours more notes bring changed before your payment arrived. It’s in your balance.' });
     expect(await di.api.plans.plan()).toMatchObject({ balance: { microUsd: HOURS }, notes: { minutesPerPeriod: 300 } });
     expect(logsSince(fromSmaller).some((l) => l.line.includes(smaller.id) && l.line.includes('"buys":"hours"') && l.line.includes('"why":"price"'))).toBe(true);
+  });
+
+  it('says why it didn’t buy more notes when their price or the most packs changed while the payment was on its way', async () => {
+    // A pack costs more now.
+    const ann = await account();
+    const priced = await ann.api.plans.startTopUp(BASE_USDC, HOURS, hours(1));
+    await h.setLimit('plan.hours.price_micro_usd', 20_000_000);
+    const from = h.logs.length;
+    expect(await paid(ann.api, priced, HOURS)).toMatchObject({
+      state: 'credited', received: { microUsd: HOURS },
+      purchase: { buys: hours(1), outcome: 'refused', why: 'The price of more notes changed before your payment arrived. It’s in your balance.' }
+    });
+    expect(await ann.api.plans.plan()).toMatchObject({ balance: { microUsd: HOURS }, notes: { minutesPerPeriod: 300 } });
+    expect(await labels(ann.api)).toEqual(['Added, 15 USDC']);
+    expect(logsSince(from).some((l) => l.line.includes(priced.id) && l.line.includes('"buys":"hours"') && l.line.includes('"why":"price"'))).toBe(true);
+    await h.resetLimits();
+    // One purchase buys fewer packs now.
+    const bob = await account();
+    const many = await bob.api.plans.startTopUp(BASE_USDC, 2 * HOURS, hours(2));
+    await h.setLimit('plan.hours.max_packs', 1);
+    const fromMany = h.logs.length;
+    expect((await paid(bob.api, many, 2 * HOURS)).purchase).toEqual({
+      buys: hours(2), outcome: 'refused', why: 'Since your payment was made, one purchase buys at most 10 hours of notes. It’s in your balance.'
+    });
+    expect(await bob.api.plans.plan()).toMatchObject({ balance: { microUsd: 2 * HOURS }, notes: { minutesPerPeriod: 300 } });
+    expect(logsSince(fromMany).some((l) => l.line.includes(many.id) && l.line.includes('"buys":"hours"') && l.line.includes('"why":"too-many"'))).toBe(true);
   });
 
   it('says why it didn’t buy when less arrived than it costs, or the balance it counted on was spent, and keeps what arrived', async () => {

@@ -350,6 +350,38 @@ describe('Pro', () => {
     }
   });
 
+  it('refuses no months, fewer than none, part of one, or a price below nothing as invalid, charging nothing', async () => {
+    const ann = await account();
+    await give(ann, 12 * PRICE);
+    const before = await ann.api.plans.plan();
+    const asked: [number, number][] = [[0, PRICE], [-1, PRICE], [1.5, PRICE], [1, -1], [-12, YEARLY]];
+    for (const [months, price] of asked) expect(await refusal(ann.api.plans.buyPro(months, price)), `${months} at ${price}`).toMatch(/^invalid: /);
+    expect(await ann.api.plans.plan()).toEqual(before);
+  });
+
+  it('lets the organizer turn a call’s notes on again once Pro is bought after the spent allowance stopped them', async () => {
+    // A minute of notes at $0.0036 an hour and no stop short of nothing: the call's first clip, holding what writing its
+    // notes will cost, spends it.
+    await h.setLimit('plan.free.notes_minutes', 1);
+    await h.setLimit('ai.hour_micro_usd', 3600);
+    await h.setLimit('ai.stop_micro_usd', 0);
+    const org = await account();
+    const meeting = await org.api.meetings.create({ title: 'Review', startsAt: new Date(Date.now() + 3_600_000).toISOString(), durationMinutes: 30, guests: [], notes: 'on', choices: DEFAULT_NOTES_CHOICES });
+    const host = await org.api.calls.join(meeting.code, { mic: true, cam: false });
+    await host.appendAudio(piece(0));
+    await host.transcribe(speech('We agreed to ship on Monday.', 0), host.ticket.identity);
+    expect((await settle(host, (s) => s.capture.stopped !== null)).capture).toMatchObject({ mode: 'off', stopped: { reason: 'notes' } });
+    expect(await refusal(host.setNotes(true))).toBe('plan-limit: Your notes for this period have run out. They start again when your plan renews.');
+    // Pro starts a period of its own, with all of Pro's notes: the stop lifts, and notes come on when the organizer says.
+    await give(org, PRICE);
+    expect(await org.api.plans.buyPro(1, PRICE)).toMatchObject({ kind: 'pro', notes: { minutesPerPeriod: 3000, stopped: false } });
+    // Nothing turns them on by itself.
+    await host.refresh();
+    expect(host.getSnapshot().capture).toMatchObject({ mode: 'off', stopped: { reason: 'notes' } });
+    await host.setNotes(true);
+    expect((await settle(host, (s) => s.capture.mode === 'on')).capture).toMatchObject({ mode: 'on', stopped: null });
+  });
+
   it('buys 1 to 12 months at a time, and refuses 13', async () => {
     const ann = await account();
     await give(ann, PRICE + 12 * YEARLY);
@@ -633,6 +665,15 @@ describe('more notes', () => {
     expect((await bob.api.plans.buyPro(1, PRICE)).notes).toMatchObject({ minutesLeft: 3000, minutesPerPeriod: 3000 });
     expect(await bob.api.plans.buyHours(1, HOURS, PACK)).toMatchObject({ kind: 'pro', notes: { minutesLeft: 3600, minutesPerPeriod: 3600 }, balance: { microUsd: 0 } });
     expect(await labels(bob)).toEqual(['10 more hours of notes', 'Pro, 1 month', '10 more hours of notes', 'Added by support']);
+  });
+
+  it('refuses no packs, fewer than none, part of one, a price below nothing or a pack of no minutes as invalid, charging nothing', async () => {
+    const ann = await account();
+    await give(ann, 5 * HOURS);
+    const before = await ann.api.plans.plan();
+    const asked: [number, number, number][] = [[0, HOURS, PACK], [-1, HOURS, PACK], [1.5, HOURS, PACK], [1, -1, PACK], [1, HOURS, 0], [1, HOURS, -PACK], [1, HOURS, 1.5]];
+    for (const [packs, price, minutes] of asked) expect(await refusal(ann.api.plans.buyHours(packs, price, minutes)), `${packs} of ${minutes} at ${price}`).toMatch(/^invalid: /);
+    expect(await ann.api.plans.plan()).toEqual(before);
   });
 
   it('refuses more than one purchase buys, a price that has changed, a short balance, and buying while none are offered, charging nothing', async () => {
