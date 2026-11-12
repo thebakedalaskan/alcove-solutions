@@ -64,6 +64,15 @@ Suites: `billing/meter` (`apps/api/src/features/billing/meter.integration.test.t
 | F8 | A year or more for less: 12 months at the yearly price ($16), fewer at a month's; each refused at the other's price, nothing charged; the months that haven't started refunded at the yearly price | billing/plans › Pro › sells a year or more for less…; … buys 1 to 12 months at a time… | frontend | Passes |
 | F9 | No yearly offer while its price is 0, isn't below a month's, or needs more months than one purchase buys; a year is a month's price then, and never free | billing/plans › Pro › offers no yearly price while it’s 0… | frontend | Passes |
 | **G: Team** | Licenses, invites, visits, alerts, team notes and workspaces, pooled storage | — | 3 | Not built |
+| **H: calls** |  |  |  |  |
+| H1 | A call says when it ends, ends at 10 hours, and writes its notes | billing/plans › ends at its longest… | 1 | Passes |
+| H2 | The 101st person is refused and whoever hosts is told | billing/plans › turns away anyone past the most people… | 1 | Passes |
+| **I: privacy and upgrades** |  |  |  |  |
+| I1 | Nothing readable about plans in any row or log: the balance's history labels ("Added, 25 USDC", "10 more hours of notes") and a top-up's sealed purchase (`microUsdPerPack`) are canaries | flows › privacy at rest | 1, frontend | Passes |
+| I2 | Top-ups stay their owner's | billing/topups › keeps top-ups to their owner | 1 | Passes |
+| I3 | Deleting an account deletes its plan and allowance | billing/plans › deleting an account | 1 | Passes |
+| I4 | A live call’s state from the previous release reads (no `notes.limit`), as not stopped, and carries on | billing/plans › reads a live call the previous release stored… | 1 | Passes |
+| I5 | A `plan-account` record in phase 1's shape (no `pro`, `renew`, `notices`, `hours`) reads, and Pro and more notes are bought on it | billing/plans › Pro › reads a plan the previous release stored… | 2, frontend | Passes |
 | **J: more notes** |  |  |  |  |
 | J1 | 10-hour packs from the balance, on Free and on Pro: this period's `minutesLeft` and `minutesPerPeriod` both rise, more again goes on top, "20 more hours of notes" in the history; the next period has the plan's alone, and Pro's period doesn't get what was bought on Free | billing/plans › more notes › adds notes to this period on any plan… | frontend | Passes |
 | J2 | Refused past the most packs, at a changed price, with a short balance ("10 hours of notes cost", "1 hour of notes costs"), and while none are offered (a price of 0), nothing charged | billing/plans › more notes › refuses more than one purchase buys… | frontend | Passes |
@@ -79,15 +88,6 @@ Suites: `billing/meter` (`apps/api/src/features/billing/meter.integration.test.t
 | K7 | A payment settled after its top-up was cancelled, or had expired, still buys, once | billing/topups › top-ups that buy › still buys what it was for… | frontend | Passes |
 | K8 | A `deposit` record from before purchases (no `purchase`) reads as one that only adds money, and is added as before | billing/topups › top-ups that buy › reads a top-up the previous release stored… | frontend | Passes |
 | K9 | Logs of a purchase by a top-up carry its ID, what it buys and why not, never an amount | billing/topups › top-ups that buy › buys what it was opened for…; … says why it didn’t buy when what it was for changed… | frontend | Passes |
-| **H: calls** |  |  |  |  |
-| H1 | A call says when it ends, ends at 10 hours, and writes its notes | billing/plans › ends at its longest… | 1 | Passes |
-| H2 | The 101st person is refused and whoever hosts is told | billing/plans › turns away anyone past the most people… | 1 | Passes |
-| **I: privacy and upgrades** |  |  |  |  |
-| I1 | Nothing readable about plans in any row or log: the balance's history labels ("Added, 25 USDC", "10 more hours of notes") and a top-up's sealed purchase (`microUsdPerPack`) are canaries | flows › privacy at rest | 1, frontend | Passes |
-| I2 | Top-ups stay their owner's | billing/topups › keeps top-ups to their owner | 1 | Passes |
-| I3 | Deleting an account deletes its plan and allowance | billing/plans › deleting an account | 1 | Passes |
-| I4 | A live call’s state from the previous release reads (no `notes.limit`), as not stopped, and carries on | billing/plans › reads a live call the previous release stored… | 1 | Passes |
-| I5 | A `plan-account` record in phase 1's shape (no `pro`, `renew`, `notices`, `hours`) reads, and Pro and more notes are bought on it | billing/plans › Pro › reads a plan the previous release stored… | 2, frontend | Passes |
 
 ## Workspaces (changed 12 Nov 2026)
 
@@ -128,6 +128,7 @@ drive it end to end.
 | The side panel | App and Storybook | Upgrade to Pro above "About 5 h of notes left", on Free only |
 | Notes have stopped | Storybook › Calls › Notes, wide and phone | Drops from the top; × closes it, and it stays closed through a reload in that tab |
 | About 5 minutes left, and the call's end | Storybook › Calls | The organizer's banner; everyone's "This call ends at…" |
+| The yearly price's and more notes' limits | `pnpm --filter @alcove/server limits list` and `limits set`, on a local database | Listed with their defaults and bounds; `'$16'`, `12`, `600`, `'$15'` and `5` set; 101 packs and 0 minutes a pack refused, out of bounds |
 
 ## Found along the way
 
