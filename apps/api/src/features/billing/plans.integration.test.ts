@@ -268,6 +268,10 @@ async function upkeepAt(who: Account, at: number): Promise<void> {
   await maintain(h.deps);
 }
 const labels = async (who: Account) => (await who.api.plans.plan()).balance.history.map((e) => e.label);
+/** When upkeep next looks at an account, as upkeep reads it (null: nothing to do). */
+const dueAt = async (who: Account) =>
+  z.object({ due_at: z.date().nullable() }).parse((await h.pool.query('SELECT due_at FROM plan_accounts WHERE owner_id = $1', [who.session.ownerId])).rows[0]).due_at?.toISOString() ?? null;
+const HOUR = 3_600_000;
 
 describe('Pro', () => {
   it('a new account buys Pro once it has the money, and gets all of Pro’s allowance, whatever it spent on Free', async () => {
@@ -671,10 +675,78 @@ describe('Pro', () => {
     expect((await ann.api.plans.dismissNotice(ending?.id ?? '')).notices).toEqual([]);
     await upkeepAt(ann, end + 60_000);
     const ended = await ann.api.plans.plan();
-    expect(ended).toMatchObject({ kind: 'free', notices: [{ kind: 'pro-ended', until: new Date(end).toISOString() }] });
+    // Within Free's storage, the grace after Pro has nothing to hold: none is shown, and nothing is over.
+    expect(ended).toMatchObject({ kind: 'free', grace: null, over: { storage: false }, notices: [{ kind: 'pro-ended', until: new Date(end).toISOString() }] });
     // Once each: upkeep again tells nothing more.
     await upkeepAt(ann, end + 120_000);
     expect((await ann.api.plans.plan()).notices).toHaveLength(1);
+  });
+
+  it('is due in upkeep at the reminder, at the next one once renewed, at Pro’s end once reminded, and not at all once it has ended', async () => {
+    await h.setLimit('plan.period_seconds', 3600);
+    await h.setLimit('plan.pro.remind_seconds', 600);
+    const ann = await account();
+    expect(await dueAt(ann)).toBeNull();
+    await give(ann, 2 * PRICE);
+    const end = Date.parse((await ann.api.plans.buyPro(1, PRICE)).pro.until ?? '');
+    expect(await dueAt(ann)).toBe(new Date(end - 600_000).toISOString());
+    await ann.api.plans.setRenew(true);
+    expect(await dueAt(ann)).toBe(new Date(end - 600_000).toISOString());
+    // Renewed at the reminder: the next month's reminder.
+    await upkeepAt(ann, end - 300_000);
+    expect(await dueAt(ann)).toBe(new Date(end + HOUR - 600_000).toISOString());
+    // Reminded with the balance short: its end.
+    await upkeepAt(ann, end + HOUR - 300_000);
+    expect((await ann.api.plans.plan()).notices[0]).toMatchObject({ kind: 'pro-ending' });
+    expect(await dueAt(ann)).toBe(new Date(end + HOUR).toISOString());
+    // Ended: nothing more to do.
+    await upkeepAt(ann, end + HOUR + 60_000);
+    expect((await ann.api.plans.plan()).kind).toBe('free');
+    expect(await dueAt(ann)).toBeNull();
+  });
+
+  it('renews month after month while the balance lasts, tells and ends at the last, and reminds again once Pro is bought again', async () => {
+    await h.setLimit('plan.period_seconds', 3600);
+    await h.setLimit('plan.pro.remind_seconds', 600);
+    const ann = await account();
+    await give(ann, 3 * PRICE);
+    await ann.api.plans.buyPro(1, PRICE);
+    const first = Date.parse((await ann.api.plans.setRenew(true)).pro.until ?? '');
+    // Each reminder buys the next month, while there's money for it.
+    await upkeepAt(ann, first - 300_000);
+    await upkeepAt(ann, first + HOUR - 300_000);
+    const third = first + 2 * HOUR;
+    const twice = await ann.api.plans.plan();
+    expect(twice).toMatchObject({ kind: 'pro', balance: { microUsd: 0 }, pro: { until: new Date(third).toISOString() } });
+    expect(twice.notices.map((n) => [n.kind, n.until])).toEqual([['pro-renewed', new Date(third).toISOString()], ['pro-renewed', new Date(first + HOUR).toISOString()]]);
+    // The third end, with the balance short: told before it, and on Free at it.
+    await upkeepAt(ann, third - 300_000);
+    await upkeepAt(ann, third + 60_000);
+    const ended = await ann.api.plans.plan();
+    expect(ended).toMatchObject({ kind: 'free', period: { from: new Date(third).toISOString() }, pro: { months: [], until: null, renew: true } });
+    expect(ended.notices.map((n) => n.kind)).toEqual(['pro-ended', 'pro-ending', 'pro-renewed', 'pro-renewed']);
+    // Bought again once it ended: its own end is told too.
+    await give(ann, PRICE);
+    const again = Date.parse((await ann.api.plans.buyPro(1, PRICE)).pro.until ?? '');
+    await upkeepAt(ann, again - 300_000);
+    expect((await ann.api.plans.plan()).notices[0]).toMatchObject({ kind: 'pro-ending', until: new Date(again).toISOString() });
+  });
+
+  it('renews only once in an upkeep pass when the reminder is longer than a month, its reminder never coming before it starts', async () => {
+    // Told 4 hours before the end of 1-hour months: each month's reminder comes as it starts.
+    await h.setLimit('plan.period_seconds', 3600);
+    await h.setLimit('plan.pro.remind_seconds', 4 * 3600);
+    const ann = await account();
+    await give(ann, 5 * PRICE);
+    const end = Date.parse((await ann.api.plans.buyPro(1, PRICE)).pro.until ?? '');
+    await ann.api.plans.setRenew(true);
+    // Due at once, with money for four months: one pass buys the next month, and no more.
+    await maintain(h.deps);
+    const renewed = await ann.api.plans.plan();
+    expect(renewed).toMatchObject({ balance: { microUsd: 3 * PRICE }, pro: { until: new Date(end + HOUR).toISOString() } });
+    expect(renewed.notices.map((n) => n.kind)).toEqual(['pro-renewed']);
+    // The month bought is reminded about as it starts, at this one's end.
+    expect(await dueAt(ann)).toBe(new Date(end).toISOString());
   });
 
   it('holds storage to Pro’s through the grace after Pro ends, then takes no more files until Pro is bought again', async () => {
