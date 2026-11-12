@@ -5,7 +5,7 @@
  * of these reach.
  */
 import {
-  TopUpSchema, TopUpRoutesSchema, ISODateSchema, DriveExportChoiceSchema, DriveExportJobSchema, DriveFolderSchema, DriveSettingsSchema, FILE_TYPE, CalendarSchema, DocumentLibrarySchema, IncomingRingSchema, MeetingSchema, NoteSchema, PersonalEntrySchema, PlanSchema, PreferencesSchema,
+  TopUpSchema, TopUpRoutesSchema, PlanOffersSchema, ISODateSchema, DriveExportChoiceSchema, DriveExportJobSchema, DriveFolderSchema, DriveSettingsSchema, FILE_TYPE, CalendarSchema, DocumentLibrarySchema, IncomingRingSchema, MeetingSchema, NoteSchema, PersonalEntrySchema, PlanSchema, PreferencesSchema,
   MentionNoticeSchema, SessionSchema, ShareEntrySchema, TeamSchema, WorkspaceMediaSchema, WorkspaceSummarySchema, WorkspaceTreeSchema, type DocumentLibrary, type DocumentRole,
   type Group, type ItemCall, type MentionNotice, type NoteRoom, type NoteWorkedOn, type Person, type ShareEntry, type WorkspaceItem, type WorkspaceRole
 } from '@alcove/api';
@@ -28,7 +28,7 @@ import { QUIET } from './empty';
 import { forgetKeptHere } from './kept';
 import { drawnPicture, forgetAudio } from './media';
 import { stopLive } from './standin';
-import { paymentsOff, PREVIEW_PAID_TOP_UP, PREVIEW_TOP_UP, topUpOf, withPayments } from '../world/payments';
+import { paymentsOff, PREVIEW_PAID_TOP_UP, PREVIEW_TOP_UP, PRO_YEAR, purchaseTopUp, topUpOf, withPayments, type PaymentPlay } from '../world/payments';
 import { freePlan, inGrace, newPlan, notesStopped, overLimits, proEnded, proEnding, proPlan, proRenewed, withBalance, withNotesLeft } from '../world/plans';
 import { disconnectedDrive, withDriveExports } from '../world/drive-exports';
 import { withAgentConnections } from './agents';
@@ -36,7 +36,8 @@ import { serve } from './state';
 import { forgetDocuments } from './workspaces';
 
 export type ScenarioName = 'busy' | 'first-day' | 'on-their-own' | 'offline' | 'writing' | 'call-soon' | 'no-workspace' | 'lots' | 'signed-out' | 'unsaved' | 'first-sign-in' | 'agents-connected' | 'drive-connected' | 'payments'
-  | 'plan-low' | 'plan-stopped' | 'plan-grace' | 'plan-over' | 'plan-balance' | 'plan-pro' | 'plan-pro-ending' | 'plan-pro-renewed' | 'plan-pro-ended';
+  | 'plan-low' | 'plan-stopped' | 'plan-grace' | 'plan-over' | 'plan-balance' | 'plan-pro' | 'plan-pro-ending' | 'plan-pro-renewed' | 'plan-pro-ended'
+  | 'plan-waiting' | 'payment-short' | 'payment-over' | 'payment-refused' | 'payment-expired' | 'payment-failed';
 
 interface Scenario { title: string; about: string; make: () => { world: World; opening: Partial<Opening> } }
 
@@ -379,6 +380,11 @@ function callSoon(withSpace: boolean): World {
 
 /* ---------- the scenarios ---------- */
 
+/** The busy afternoon with payments taken, where a payment opened to buy something goes as `play` says. */
+const paymentGoes = (title: string, about: string, play: PaymentPlay): Scenario => ({
+  title, about, make: () => { const world = busy(); withPayments(world, play); return { world, opening: {} }; }
+});
+
 export const SCENARIOS: Record<ScenarioName, Scenario> = {
   'plan-low': {
     title: 'Notes nearly out', about: 'Art is on Free with about 20 minutes of the period’s notes left, and the sun near the start of the line.',
@@ -423,9 +429,23 @@ export const SCENARIOS: Record<ScenarioName, Scenario> = {
     make: () => { const world = busy(); withPayments(world); world.plan = proEnded(); return { world, opening: {} }; }
   },
   payments: {
-    title: 'Adding money', about: 'Art can add money to their balance with a stablecoin; every payment address is an invalid Storybook preview.',
+    title: 'Adding money', about: 'Art can add money to their balance with a stablecoin; every payment address is an invalid Storybook preview. A payment opened to buy something is seen, added and bought a few seconds apart.',
     make: () => { const world = busy(); withPayments(world); return { world, opening: {} }; }
   },
+  'plan-waiting': {
+    title: 'A payment on its way', about: 'Art is on Free with a payment of 192 USDC on Base on its way, opened to buy 12 months of Pro: nothing has been sent to its address yet.',
+    make: () => {
+      const world = busy();
+      withPayments(world, 'waits');
+      world.payments.topUps = [purchaseTopUp(PREVIEW_TOP_UP, PRO_YEAR, 192, iso(1, 16, 12))];
+      return { world, opening: {} };
+    }
+  },
+  'payment-short': paymentGoes('Less than asked arrives', 'A payment opened to buy something: two thirds of it arrive, and the same address waits for the rest.', 'short'),
+  'payment-over': paymentGoes('More than asked arrives', 'A payment opened to buy something: 6 USDC more than asked arrives. It’s bought, and the rest stays in the balance.', 'over'),
+  'payment-refused': paymentGoes('Bought, refused', 'A payment opened to buy something arrives after the prices went up: it’s added to the balance, and what it was for isn’t bought at the old price.', 'refused'),
+  'payment-expired': paymentGoes('Nothing arrives', 'A payment opened to buy something: nothing arrives before its address closes, and nothing is charged.', 'expires'),
+  'payment-failed': paymentGoes('A payment fails', 'A payment opened to buy something is seen, then 1Click fails it: it needs support, with its reference.', 'fails'),
   'drive-connected': {
     title: 'Google Drive exports', about: 'Art sends finalized call files to a chosen folder, with completed, uploading, pending and failed exports.',
     make: () => { const world = busy(); withDriveExports(world); return { world, opening: {} }; }
@@ -506,6 +526,7 @@ export function checked(w: World): World {
     ['session', SessionSchema.nullable().safeParse(w.session)], ['prefs', PreferencesSchema.safeParse(w.prefs)], ['team', TeamSchema.nullable().safeParse(w.team)],
     ['notes', NoteSchema.array().safeParse(w.notes)], ['meetings', MeetingSchema.array().safeParse(w.meetings)], ['calendar', CalendarSchema.safeParse(w.calendar)],
     ['payment routes', TopUpRoutesSchema.nullable().safeParse(w.payments.routes)], ['top-ups', TopUpSchema.array().safeParse(w.payments.topUps)],
+    ['offers', PlanOffersSchema.safeParse(w.payments.offers)],
     ['plan', PlanSchema.safeParse(w.plan)], ['documents', DocumentLibrarySchema.safeParse(w.documents)], ['workspaces', WorkspaceTreeSchema.array().safeParse(w.workspaces)],
     ['rings', IncomingRingSchema.array().safeParse(w.rings)], ['personal', PersonalEntrySchema.array().safeParse(Object.values(w.personal).flat())],
     ['shares', ShareEntrySchema.array().safeParse(Object.values(w.shares).flat())],
