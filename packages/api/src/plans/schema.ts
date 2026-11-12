@@ -16,6 +16,22 @@ export const MAX_TOP_UP_MICRO_USD = 8_000_000_000;
 export const BalanceEntrySchema = z.object({ id: z.string(), at: ISODateSchema, label: z.string(), microUsd: MicroUsdSchema });
 export type BalanceEntry = z.infer<typeof BalanceEntrySchema>;
 
+/** A month of Pro bought from the balance: `plan.period_seconds` long, back to back with the others bought. */
+export const ProMonthSchema = z.object({ from: ISODateSchema, to: ISODateSchema, microUsd: MicroUsdSchema });
+export type ProMonth = z.infer<typeof ProMonthSchema>;
+
+/**
+ * Something about the plan its owner is told, in the app and, if they've turned it on, from the browser
+ * (`NotificationPrefs.plan`), until they dismiss it:
+ * - `pro-ending`: Pro ends at `until`, a few days from now, and won't renew (renewing is off, or the balance is short).
+ * - `pro-renewed`: a month was bought from the balance, so Pro now runs to `until`.
+ * - `pro-ended`: Pro ended at `until`; the account is on Free.
+ */
+export const PlanNoticeKindSchema = z.enum(['pro-ending', 'pro-renewed', 'pro-ended']);
+export type PlanNoticeKind = z.infer<typeof PlanNoticeKindSchema>;
+export const PlanNoticeSchema = z.object({ id: z.string(), kind: PlanNoticeKindSchema, at: ISODateSchema, until: ISODateSchema });
+export type PlanNotice = z.infer<typeof PlanNoticeSchema>;
+
 /**
  * An account's plan as its owner sees it. Notes are given as time: what's left of the period's AI allowance at the
  * rate an hour of notes is reckoned at, which is an estimate (what a call really uses depends on the model, how much is
@@ -47,9 +63,45 @@ export const PlanSchema = z.object({
   /** The USD balance plans are bought with, and its latest changes, newest first. */
   balance: z.object({ microUsd: MicroUsdSchema, history: z.array(BalanceEntrySchema) }),
   /** Whether the account hasn't been shown the plans to pick from yet. */
-  choose: z.boolean()
+  choose: z.boolean(),
+  pro: z.object({
+    /** The month running now and those bought after it, oldest first. Empty when not on Pro. */
+    months: z.array(ProMonthSchema),
+    /** When the last month bought ends (null: no Pro bought that hasn't ended). */
+    until: ISODateSchema.nullable(),
+    /** Whether a month is bought from the balance as Pro is about to end, while the balance has enough. */
+    renew: z.boolean(),
+    /** What refunding the months that haven't started would add back to the balance (0: none to refund). */
+    refundableMicroUsd: MicroUsdSchema
+  }),
+  /** What the owner is told about their plan and hasn't dismissed, newest first. */
+  notices: z.array(PlanNoticeSchema)
 });
 export type Plan = z.infer<typeof PlanSchema>;
+
+/** What a plan brings, from the limits: notes as minutes a period, storage and the largest file. */
+export const PlanAllowanceSchema = z.object({
+  notesMinutes: z.number().int().nonnegative(),
+  storageBytes: z.number().int().nonnegative(),
+  fileBytes: z.number().int().nonnegative()
+});
+export type PlanAllowance = z.infer<typeof PlanAllowanceSchema>;
+/** The plans on offer and what each costs now. Buying sends the price seen here, so a change in between is refused. */
+export const PlanOffersSchema = z.object({
+  /** How long a period, and a month of Pro, is. */
+  periodDays: z.number().nonnegative(),
+  free: PlanAllowanceSchema,
+  pro: PlanAllowanceSchema.extend({
+    microUsdPerMonth: MicroUsdSchema,
+    /** The most months one purchase can buy. */
+    maxMonths: z.number().int().positive()
+  })
+});
+export type PlanOffers = z.infer<typeof PlanOffersSchema>;
+/** Buys `months` of Pro from the balance, at the price per month the buyer was shown. */
+export const BuyProBodySchema = z.object({ months: z.number().int().min(1).max(1000), microUsdPerMonth: MicroUsdSchema.min(0) });
+export type BuyProBody = z.infer<typeof BuyProBodySchema>;
+export const RenewBodySchema = z.object({ renew: z.boolean() });
 
 /* ---------- adding money ---------- */
 

@@ -29,14 +29,14 @@ import { forgetKeptHere } from './kept';
 import { drawnPicture, forgetAudio } from './media';
 import { stopLive } from './standin';
 import { paymentsOff, PREVIEW_PAID_TOP_UP, PREVIEW_TOP_UP, topUpOf, withPayments } from '../world/payments';
-import { freePlan, inGrace, newPlan, notesStopped, overLimits, withBalance, withNotesLeft } from '../world/plans';
+import { freePlan, inGrace, newPlan, notesStopped, overLimits, proEnded, proEnding, proPlan, proRenewed, withBalance, withNotesLeft } from '../world/plans';
 import { disconnectedDrive, withDriveExports } from '../world/drive-exports';
 import { withAgentConnections } from './agents';
 import { serve } from './state';
 import { forgetDocuments } from './workspaces';
 
 export type ScenarioName = 'busy' | 'first-day' | 'on-their-own' | 'offline' | 'writing' | 'call-soon' | 'no-workspace' | 'lots' | 'signed-out' | 'unsaved' | 'first-sign-in' | 'agents-connected' | 'drive-connected' | 'payments'
-  | 'plan-low' | 'plan-stopped' | 'plan-grace' | 'plan-over' | 'plan-balance';
+  | 'plan-low' | 'plan-stopped' | 'plan-grace' | 'plan-over' | 'plan-balance' | 'plan-pro' | 'plan-pro-ending' | 'plan-pro-renewed' | 'plan-pro-ended';
 
 interface Scenario { title: string; about: string; make: () => { world: World; opening: Partial<Opening> } }
 
@@ -405,6 +405,22 @@ export const SCENARIOS: Record<ScenarioName, Scenario> = {
       world.payments.topUps = [topUpOf(PREVIEW_TOP_UP, 'waiting', 20), topUpOf(PREVIEW_PAID_TOP_UP, 'credited', 40, true)];
       return { world, opening: {} };
     }
+  },
+  'plan-pro': {
+    title: 'On Pro', about: 'Art bought three months of Pro ten days ago: the month running and two after it, renewing off, with $35 left in the balance.',
+    make: () => { const world = busy(); withPayments(world); world.plan = proPlan(); return { world, opening: {} }; }
+  },
+  'plan-pro-ending': {
+    title: 'Pro ending', about: 'Art’s Pro ends in 3 days and won’t renew: renewing is off and $5 doesn’t buy a month. Art is told so.',
+    make: () => { const world = busy(); withPayments(world); world.plan = proEnding(); return { world, opening: {} }; }
+  },
+  'plan-pro-renewed': {
+    title: 'Pro renewed', about: 'Renewing is on, so 3 days before Pro ended a month was bought from the balance, and Art is told it runs a month further.',
+    make: () => { const world = busy(); withPayments(world); world.plan = proRenewed(); return { world, opening: {} }; }
+  },
+  'plan-pro-ended': {
+    title: 'Pro ended', about: 'Pro ended two days ago: Art is on Free, over its storage with 14.2 GB, and everything works as before for 13 more days.',
+    make: () => { const world = busy(); withPayments(world); world.plan = proEnded(); return { world, opening: {} }; }
   },
   payments: {
     title: 'Adding money', about: 'Art can add money to their balance with a stablecoin; every payment address is an invalid Storybook preview.',

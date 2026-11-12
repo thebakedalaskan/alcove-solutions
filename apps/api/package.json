@@ -9,9 +9,10 @@
     "migrate": "tsx --env-file=../../.env src/migrate-cli.ts",
     "limits": "tsx --env-file=../../.env src/limits-cli.ts",
     "feature-flags": "tsx --env-file=../../.env src/feature-flags-cli.ts",
+    "billing": "tsx --env-file=../../.env src/billing-cli.ts",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
-    "build": "esbuild src/server.ts src/migrate-cli.ts src/limits-cli.ts src/feature-flags-cli.ts src/live/docWorker.ts --bundle --platform=node --target=node24 --format=esm --outdir=dist --outbase=src --sourcemap --banner:js=\"import { createRequire as __cr } from 'node:module'; const require = __cr(import.meta.url);\"",
+    "build": "esbuild src/server.ts src/migrate-cli.ts src/limits-cli.ts src/feature-flags-cli.ts src/billing-cli.ts src/live/docWorker.ts --bundle --platform=node --target=node24 --format=esm --outdir=dist --outbase=src --sourcemap --banner:js=\"import { createRequire as __cr } from 'node:module'; const require = __cr(import.meta.url);\"",
     "start:prod": "node --enable-source-maps dist/server.js"
   },
   "dependencies": {

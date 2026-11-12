@@ -104,6 +104,10 @@ Product, then the follow-ups from the retro board's Actions frame.
 | `plan-grace` | Over Free's storage in grace: 14.2 GB of 10, everything works as before for nine more days |
 | `plan-over` | The grace is over: uploads have stopped |
 | `plan-balance` | $60 in the balance, with a $20 top-up waiting for its payment and a $40 one already added |
+| `plan-pro` | Art on Pro: the month running and two bought after it, renewing off, $35 left in the balance |
+| `plan-pro-ending` | Pro ends in 3 days and won't renew (renewing off, $5 doesn't buy a month): a `pro-ending` notice |
+| `plan-pro-renewed` | Renewing is on and a month was bought from the balance 3 days before Pro ended: a `pro-renewed` notice |
+| `plan-pro-ended` | Pro ended two days ago: back on Free, over its storage with 14.2 GB, in the grace, with a `pro-ended` notice |
 | `agents-connected` | Art has a read-only Workspace assistant connected through OAuth and an unused Scheduling assistant personal token; Settings shows their scopes, expiry and last use |
 | `first-sign-in` | Nobody signed in, and no account yet: signing in makes Art's account on screen, his first day, and Home's tour |
 

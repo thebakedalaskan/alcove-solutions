@@ -25,3 +25,5 @@ const dollars = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'U
 const wholeDollars = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
 /** An amount in micro-USD as people read it: "$20", "$12.50", "$0.50". */
 export const usd = (microUsd: number): string => (microUsd % 1_000_000 === 0 ? wholeDollars : dollars).format(microUsd / 1_000_000);
+/** An amount to pay or get back, to the cent: "$20.00", "$12.50". */
+export const usdCents = (microUsd: number): string => dollars.format(microUsd / 1_000_000);

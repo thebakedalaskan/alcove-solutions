@@ -53,6 +53,7 @@ export const qk = {
   series: (id: string) => ['series', id] as const,
   callSeries: (code: string) => ['series', 'call', code] as const,
   plan: ['plan'] as const,
+  offers: ['plan', 'offers'] as const,
   topUpRoutes: ['top-ups', 'routes'] as const,
   topUps: ['top-ups', 'list'] as const,
   topUp: (id: string) => ['top-ups', 'one', id] as const,
@@ -184,6 +185,8 @@ export const q = {
   }),
   /** The plan: notes left, storage and the balance. Read again every minute, so notes left follows calls. */
   plan: () => queryOptions({ queryKey: qk.plan, queryFn: () => api.plans.plan(), refetchInterval: 60_000 }),
+  /** The plans on offer: what each brings, and what Pro costs now (buying sends this price back). */
+  offers: () => queryOptions({ queryKey: qk.offers, queryFn: () => api.plans.offers(), staleTime: 5 * 60_000 }),
   /**
    * The ways to add money. A server that can't take payments answers unavailable: nothing says so, the way to
    * add money just isn't there, and it isn't asked again for a while.
@@ -470,6 +473,52 @@ export function useGroups() {
 export function useInviteTeam() {
   const qc = useQueryClient();
   return useMutation({ mutationFn: (emails: string[]) => api.people.inviteToTeam(emails), onSuccess: (t) => qc.setQueryData(qk.team, t) });
+}
+
+/* ---------- buying Pro ---------- */
+
+/**
+ * Buys months of Pro from the balance at the price shown. The answer is the plan as it is now. A refusal (a changed
+ * price, a short balance) reads the plan and the offers again, so what's shown next is what's true.
+ */
+export function useBuyPro() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ months, microUsdPerMonth }: { months: number; microUsdPerMonth: number }) => api.plans.buyPro(months, microUsdPerMonth),
+    onSuccess: (p) => { qc.setQueryData(qk.plan, p); },
+    // `plan` is the offers' prefix: both are read again.
+    onError: () => { void qc.invalidateQueries({ queryKey: qk.plan }); }
+  });
+}
+
+/** Refunds the months of Pro that haven't started to the balance. */
+export function useRefundPro() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.plans.refundPro(),
+    onSuccess: (p) => { qc.setQueryData(qk.plan, p); },
+    onError: () => { void qc.invalidateQueries({ queryKey: qk.plan, exact: true }); }
+  });
+}
+
+/** Turns buying a month from the balance as Pro is about to end on or off. */
+export function useSetRenew() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (renew: boolean) => api.plans.setRenew(renew),
+    onSuccess: (p) => { qc.setQueryData(qk.plan, p); },
+    onError: () => { void qc.invalidateQueries({ queryKey: qk.plan, exact: true }); }
+  });
+}
+
+/** Stops showing one of the plan's notices, here and in the side panel. */
+export function useDismissPlanNotice() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.plans.dismissNotice(id),
+    onSuccess: (p) => { qc.setQueryData(qk.plan, p); },
+    onError: () => { void qc.invalidateQueries({ queryKey: qk.plan, exact: true }); }
+  });
 }
 
 /* ---------- adding money ---------- */

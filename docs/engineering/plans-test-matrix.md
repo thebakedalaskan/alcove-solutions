@@ -15,7 +15,7 @@ Suites: `billing/meter` (`apps/api/src/features/billing/meter.integration.test.t
 | **A: signing up** |  |  |  |  |
 | A1 | A new account is on Free, with all its notes, $0, and the plans to pick first | billing/plans › a new account starts on Free…; flows › sign-in | 1 | Passes |
 | A1′ | The tier screen after the first sign-in | — | 4 | Not built |
-| A2 | New account picks Pro with $0: deposit, then buy | — | 2 | Not built |
+| A2 | New account picks Pro with $0: refused, deposit, then buy: Pro's 3,000 minutes, 100 GiB and the whole allowance after spending on Free | billing/plans › Pro › a new account buys Pro once it has the money… | 2 | Passes |
 | A3 | New account picks Team: buy licenses, the admin takes one | — | 3 | Not built |
 | A4 | An account from before plans: Free from now, credits gone, the plans shown once, 15 days' grace if over Free's storage | billing/plans › accounts from before plans (3 tests) | 1 | Passes |
 | A5 | A sign-in from a call link skips the tier screen, which shows on the next load | — | 4 | Not built |
@@ -24,9 +24,9 @@ Suites: `billing/meter` (`apps/api/src/features/billing/meter.integration.test.t
 | B1 | Every 1Click outcome adds dollars at face value: exact, over, within the band, below it, refunded, part refunded, doubtful, late | billing/topups (53 tests) | 1 | Passes |
 | B2 | A deposit the previous release settled during the deploy is added as dollars, once | billing/plans › money | 1 | Passes |
 | B3 | Cancelling, the 15 waiting, 30 a day and 10 a minute, races between instances | billing/topups | 1 | Passes |
-| B4 | Buying with too little balance is refused, nothing changes | — | 2 | Not built |
-| B5 | Buying at a price that changed is refused | — | 2 | Not built |
-| B6 | Buys at once on two instances never spend twice | — | 2 | Not built |
+| B4 | Buying with too little balance is refused, nothing changes | billing/plans › Pro › refuses a buy the balance is short for… | 2 | Passes |
+| B5 | Buying at a price that changed is refused, nothing charged | billing/plans › Pro › refuses a buy at a price that has changed… | 2 | Passes |
+| B6 | Buys at once on two instances never spend twice | billing/plans › Pro › two buys at once on two instances… (both held on the row's lock, then let go) | 2 | Passes |
 | **C: Free** |  |  |  |  |
 | C1 | 300 minutes a period; renews from when it began; nothing carries over | billing/plans › renews its notes… | 1 | Passes |
 | C2 | Free makes as many shared workspaces as it likes, and every one works | billing/plans › makes as many shared workspaces…; workspaces (limits) for `workspaces.max_made` | 1 | Passes |
@@ -46,13 +46,20 @@ Suites: `billing/meter` (`apps/api/src/features/billing/meter.integration.test.t
 | E3 | Then transcription, the organizer's AI and a guest's questions are refused; notes can't come back on | billing/meter › stops notes for everyone… | 1 | Passes |
 | E4 | The last note covers only what was said before the stop, and may go past the allowance | billing/meter › stops notes for everyone… | 1 | Passes |
 | E5 | Then nothing: the next call starts without notes, saying why; asks and room recordings are refused | billing/meter › stops notes for everyone… | 1 | Passes |
-| E6 | An invitee on another plan can still ask after the organizer's stop | — | 2 | Needs a second plan (a Pro invitee) |
+| E6 | An invitee on another plan can still ask after the organizer's stop; a guest can't | billing/meter › after a Free organizer’s notes stop, an invitee on Pro still asks… | 2 | Passes |
 | E7 | A room recording runs out the same way | billing/meter › stops a room recording… | 1 | Passes |
 | E8 | Two live calls by one organizer both stop | billing/meter › stops every call the organizer has going… | 1 | Passes |
 | E9 | Questions at once near the end never spend past the allowance | billing/meter › holds what requests in flight… | 1 | Passes |
 | E10 | A bigger allowance lifts the stop; notes come back on | billing/meter › stops notes for everyone… | 1 | Passes |
 | E11 | Notes left only goes down: what's held for a call's notes and requests on their way counts for the stop, not for what's shown | billing/meter › says notes left from what was spent… | 1 | Passes |
-| **F: Pro** | Buying 1–12 months, refunds, renewing, reminders, expiry into grace | — | 2 | Not built |
+| **F: Pro** |  |  |  |  |
+| F1 | 1 month and 12 months are bought; 13 is refused | billing/plans › Pro › buys 1 to 12 months at a time, and refuses 13 | 2 | Passes |
+| F2 | Months run back to back; a refund returns the unstarted ones; with only the running month it's refused | billing/plans › Pro › runs months back to back, refunds… | 2 | Passes |
+| F3 | Renew on with the balance: upkeep at the reminder buys the next month (`pro-renewed`); without it `pro-ending`, then Free and `pro-ended`; money added after the reminder renews at the end | billing/plans › Pro › renews from the balance before Pro ends… | 2 | Passes |
+| F4 | The reminder before the end and the notice at it, once each; dismissing hides one; another account can't | billing/plans › Pro › tells its owner before Pro ends… | 2 | Passes |
+| F5 | Pro ends over Free's storage: the grace (uploads go in), then uploads refused, files readable and deletable; buying Pro lifts it at once; buying in the release grace ends it | billing/plans › Pro › holds storage to Pro’s through the grace… | 2 | Passes |
+| F6 | Pro's storage and file size are what's enforced; Pro's files are offered and held at 512 MiB until downloads resume | billing/plans › Pro › holds an account on Pro to Pro’s storage and file size… | 2 | Passes |
+| F7 | Support finds an account by its address and adds dollars (`pnpm billing credit`) | billing/plans › support | 2 | Passes |
 | **G: Team** | Licenses, invites, visits, alerts, team notes and workspaces, pooled storage | — | 3 | Not built |
 | **H: calls** |  |  |  |  |
 | H1 | A call says when it ends, ends at 10 hours, and writes its notes | billing/plans › ends at its longest… | 1 | Passes |
@@ -62,6 +69,7 @@ Suites: `billing/meter` (`apps/api/src/features/billing/meter.integration.test.t
 | I2 | Top-ups stay their owner's | billing/topups › keeps top-ups to their owner | 1 | Passes |
 | I3 | Deleting an account deletes its plan and allowance | billing/plans › deleting an account | 1 | Passes |
 | I4 | A live call’s state from the previous release reads (no `notes.limit`), as not stopped, and carries on | billing/plans › reads a live call the previous release stored… | 1 | Passes |
+| I5 | A `plan-account` record in phase 1's shape (no `pro`, `renew`, `notices`) reads, and Pro is bought on it | billing/plans › Pro › reads a plan the previous release stored… | 2 | Passes |
 
 ## Workspaces (changed 12 Nov 2026)
 
@@ -127,3 +135,5 @@ These suites tested credits: their charges are removed (AGENTS.md: removed behav
 - `workspaces/media`: the file and storage limits are the plan's (`plan.free.file_bytes`, `plan.free.storage_bytes`),
   storage is per account, and the 80% warning is the account's
 - `integration/flows` › plans (was credits)
+- `account/notifications` (phase 2): notification preferences carry `plan`, the browser notification for Pro's notices,
+  on unless turned off

@@ -46,6 +46,7 @@ function category(prefs: NotificationPrefs, kind?: BrowserAlertKind): boolean {
     case 'shared': return prefs.sharedWithYou;
     case 'due': return prefs.followUpDue;
     case 'tagged': return prefs.tagged;
+    case 'plan': return prefs.plan;
     default: return prefs[kind];
   }
 }
@@ -75,6 +76,7 @@ export function useNotifications() {
   const inbox = useQuery({ ...q.inbox(), enabled: allowed && prefs.prefs.followUpDue, ...POLL }).data;
   const mentions = useQuery({ ...q.mentions(), enabled: allowed, ...POLL });
   const notes = useQuery({ ...q.notes(), enabled: allowed, ...POLL });
+  const plan = useQuery({ ...q.plan(), enabled: allowed && prefs.prefs.plan, ...POLL }).data;
   const [tab] = useState(() => crypto.randomUUID());
   const token = useRef({});
   const context = useRef({ prefs, permission, allowed, go, toast });
@@ -100,6 +102,8 @@ export function useNotifications() {
     if (!owner) return;
     return watchNotificationViews(() => {
       if (here === '/home') return [`${owner}:home`];
+      // Settings shows the plan's notices at the top of Plan.
+      if (here === '/settings') return [`${owner}:plan`];
       const parts = here.split('/');
       return parts[1] === 'drive' && parts[2] && parts[3] ? [`${owner}:document:${parts[2]}:${parts[3]}`] : [];
     });
@@ -150,6 +154,11 @@ export function useNotifications() {
       alerts.push({ key: `call:${meeting.id}:${meeting.startsAt}`, kind: 'call', context: `${owner}:meeting:${meeting.id}`, raisedAt: starts - prefs.prefs.beforeCall * 60_000, expiresAt: starts, open: { to: 'call', code: meeting.code, event: null } });
     }
     alerts.push(...(inbox?.followUps ?? []).flatMap((action) => dueAlerts(action, owner)));
+    // What the plan's owner is told and hasn't dismissed, for an hour after it happened. The words never say an amount or a date.
+    if (prefs.prefs.plan) for (const notice of plan?.notices ?? []) {
+      const at = Date.parse(notice.at);
+      alerts.push({ key: `plan:${notice.id}`, kind: 'plan', context: `${owner}:plan`, raisedAt: at, expiresAt: at + HOUR, open: { to: 'plan' } });
+    }
     const owned = token.current;
     updateNotificationSource({ token: owned, scope, owner, ownerId: owner, alerts,
       allowed: (kind) => {
@@ -160,5 +169,5 @@ export function useNotifications() {
       open: (data) => context.current.go(data),
       failed: () => context.current.toast('Browser notifications couldn’t be shown. Unread messages and outstanding actions stay in Alcove.', { icon: 'bellOff' })
     });
-  }, [owner, allowed, prefs.prefs, calls, inbox, mentions.data, mentions.dataUpdatedAt, mentions.isPlaceholderData, notes.data, notes.dataUpdatedAt, notes.isPlaceholderData, here, scope, tick]);
+  }, [owner, allowed, prefs.prefs, calls, inbox, plan, mentions.data, mentions.dataUpdatedAt, mentions.isPlaceholderData, notes.data, notes.dataUpdatedAt, notes.isPlaceholderData, here, scope, tick]);
 }

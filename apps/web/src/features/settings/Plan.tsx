@@ -4,6 +4,8 @@
  * with adding money when the server takes payments. Being over the plan's limits is said once, in a note: until when
  * everything works as before, or what's stopped since. Top-ups on their way are listed under the balance, each opening
  * the sheet on it (topup.tsx), so closing the sheet loses none; one nothing has reached yet can be cancelled from its row.
+ * What the owner is told about the plan sits at the top until dismissed, and the plans on offer, with buying months of Pro,
+ * renewing and refunding, sit between the plan and the balance (PlanCards.tsx).
  */
 import { errorMessage, type Plan, type PlanKind, type TopUp } from '@alcove/api';
 import { Button, CryptoMark, IconButton, SettingFact, SettingNote, SettingRow, SettingsGroup, SettingsPanel, SunLine, useToast } from '@alcove/ui';
@@ -12,6 +14,7 @@ import { useRef, useState } from 'react';
 import { q, useCancelTopUp } from '~/lib/queries';
 import { hoursAndMinutes, shortDay } from '~/lib/time';
 import { roomLabel, usd } from '~/lib/words';
+import { PlanCards, PlanNotices, ProPanel } from './PlanCards';
 import { AddMoneySheet, routeName, topUpLine } from './topup';
 
 export const PLAN_NAMES: Record<PlanKind, string> = { free: 'Free', pro: 'Pro', team: 'Team' };
@@ -21,6 +24,7 @@ export const notesLeft = (p: Pick<Plan, 'notes'>): string => (p.notes.stopped ||
 
 export function PlanGroup({ plan }: { plan: Plan }) {
   const routes = useQuery(q.topUpRoutes());
+  const offers = useQuery(q.offers()).data;
   // Top-ups on their way show whether or not 1Click answers right now; a server without payments has none to show.
   const open = useQuery(q.topUps()).data ?? [];
   const cancel = useCancelTopUp();
@@ -47,10 +51,12 @@ export function PlanGroup({ plan }: { plan: Plan }) {
   };
   const renews = shortDay(new Date(plan.period.to));
   const { storage } = plan;
+  const until = plan.kind === 'pro' && plan.pro.until !== null ? `Pro until ${shortDay(new Date(plan.pro.until))}. ` : '';
   return (
     <SettingsGroup id="plan" title="Plan">
+      <PlanNotices plan={plan} offers={offers} />
       <SettingsPanel>
-        <SettingRow label="Plan" help={`Notes renew ${renews}.`} control={<SettingFact>{PLAN_NAMES[plan.kind]}</SettingFact>} />
+        <SettingRow label="Plan" help={`${until}Notes renew ${renews}.`} control={<SettingFact>{PLAN_NAMES[plan.kind]}</SettingFact>} />
         <SettingRow className="is-left" label="Notes left" help={plan.notes.stopped ? `They start again ${renews}.` : 'An estimate: busier calls use more.'}
           control={<span className="set-left">{notesLeft(plan)}</span>}>
           <SunLine share={plan.notes.minutesPerPeriod > 0 ? plan.notes.minutesLeft / plan.notes.minutesPerPeriod : 0} />
@@ -59,6 +65,8 @@ export function PlanGroup({ plan }: { plan: Plan }) {
           control={<SettingFact>{roomLabel(storage.usedBytes)} of {roomLabel(storage.limitBytes)}</SettingFact>} />
         <Limits plan={plan} />
       </SettingsPanel>
+      {offers && <PlanCards plan={plan} offers={offers} onAddMoney={routes.data === undefined ? null : () => show(null)} />}
+      <ProPanel plan={plan} />
       <SettingsPanel>
         <SettingRow label="Balance" help="What plans are bought with. Add money with a stablecoin from any wallet or exchange."
           control={

@@ -74,9 +74,10 @@ Beside every page, dark in both themes:
 - **Groups**: each of your groups and how many people are in it. Each opens on the Team page, and **+**
   starts a new one there.
 - At the bottom: the confidential-compute check (**Confidential compute · verified** when the server's
-  hardware answer is bound to this browser's request), then, on Free, **Upgrade to Pro**, and under it about how much
+  hardware answer is bound to this browser's request), then, on Free, **Upgrade to Pro**, then the newest of your plan's
+  notices you haven't dismissed, in a short line ("Pro ends 7 Nov", "Pro renewed", "Pro ended"), and under them about how much
   of the period's notes is left, "About 3 h 20 min of notes left" over a meter, or "No notes left until Thu 12 Nov" once
-  they've stopped. Both open Settings at your plan.
+  they've stopped. Each opens Settings at your plan.
 - Offline, a notice at the top says recording still works and everything else catches up when you're back
   (with **Record without a connection** off, that recording waits for the connection too). Up next and the
   check wait until the connection returns. Alcove also opens offline for someone signed in on this browser:
@@ -1679,8 +1680,8 @@ notes on new calls while the oldest request fails.
   doesn't apply. In a call: private messages, mentions, replies to you, requests to join (when you host), raised hands
   and new questions (when you host or present), the timer running out, people joining and leaving (sound only) and your
   microphone on and off (sound only). Outside a call: someone ringing you, your notes being ready, notes shared with you,
-  someone asking for notes (calls you organize), a follow-up being due (at 9:00 that day) and mentions in documents
-  (alert only). An Alert shows inside Alcove (replies and mentions as a brief alert in the call), and from the browser
+  someone asking for notes (calls you organize), a follow-up being due (at 9:00 that day), mentions in documents and your plan (Pro about to end,
+  renewed or ended), the last two alert only. A plan alert says only "Your Alcove plan", never an amount or a date, and opens Settings at Plan. An Alert shows inside Alcove (replies and mentions as a brief alert in the call), and from the browser
   when Alcove is in another tab, once browser notifications are on. With sounds off the Sound column steps back and keeps
   its ticks. **More → Settings → Notifications** in a call offers the same, with the In a call rows; guests keep their
   choices in this browser.
@@ -1698,14 +1699,21 @@ notes on new calls while the oldest request fails.
   other meetings on Home** (both on by default). Then **Google Drive**, one line that says where notes go until
   **Manage** opens it in place, where **Connect** and **Reconnect** first say what Google shares and what Alcove uploads
   (flow 15), and **Agents**: named, revocable connections, then **Connect an agent**, which opens in place (flow 14).
-- **Plan**: **Plan** (Free) and when its notes renew; **Notes left**, about how much of the period's notes is left,
+- **Plan**: at the top, what you're told about your plan until you dismiss it with ×: "Pro ends on Sat 7 Nov. Turn on
+  Renew from balance, or buy more months, to keep it." (with "Your balance is short of a month." when it is), "Pro
+  renewed from your balance. It now runs to Sat 5 Dec." or "Pro ended on Mon 2 Nov. You're on Free.". Then **Plan**
+  (Free or Pro, on Pro until when) and when its notes renew; **Notes left**, about how much of the period's notes is left,
   "About 3 h 20 min" (an estimate: busier calls use more), or "None" once they've stopped, with a sun on the line under
   it: at the end of the line on a new period, back along it as notes are written, and set once there's none left;
   **Storage**, what uploads and call recordings take, "2.4 GB of 10 GB", with files up to 512 MB and a sun on its line
   the same way. Over the plan's storage, a note says until when
-  everything works as before, then that uploads and notes have stopped, until you make room. In a second panel, **Balance**, in dollars, with **Add money** (11.24), then each top-up
+  everything works as before, then that uploads and notes have stopped, until you make room. Then the plans as cards side
+  by side (stacked on a phone): **Free**, $0, and **Pro**, $20.00 a month, each with about how many hours of notes a
+  month, its storage and its largest file, and "Your plan" on the one you're on. Pro's card buys months from the balance
+  (11.27). On Pro, a **Pro** panel has **Renew from balance** (off by default) and, while months bought after this one
+  haven't started, **Refund**. In the last panel, **Balance**, in dollars, with **Add money** (11.24), then each top-up
   still on its way, with **Open** and, until a payment reaches it, a cancel. Without a server that takes payments the
-  balance has no **Add money**. Pro and Team aren't on sale yet, so nothing spends the balance.
+  balance has no **Add money**. Team isn't on sale yet.
 - **Privacy**: what account and call information Alcove processes, then confidential compute: the time the hardware
   was verified when this browser could check it, or where your audio is opened and your notes are written. The **Privacy policy** explains how Alcove uses account and service
   data and how to disconnect Google services. Then, in its own panel at the end, **Delete account**.
@@ -2147,3 +2155,23 @@ and waits for the payment or refund to settle. The money appears in the balance 
 sheet follows the payment until it does. Open and recent top-ups stay under the balance with **Open**, including
 cancelled, failed and held payments and their support reference. A waiting payment can be cancelled; a payment already
 sent still counts when it settles. Deleting an account warns when one of its payment addresses could still receive money.
+
+### 11.27 Buy Pro, renew it, refund it
+
+1. **Buy months.** Open **Settings → Plan**. Pro's card says what it costs ($20.00 a month) and brings. Pick 1 to 12
+   months; the total shows beside them. When the balance covers it, **Buy 3 months** is the page's one filled button:
+   Pro starts at once, with a fresh period and all of Pro's notes, the balance goes down by the total with a line
+   ("Pro, 3 months"), and Pro's card says "Your plan". When it doesn't, **Buy** is greyed out with what's short ("Add
+   $40.00 more to buy 3 months") and **Add money** (11.24) is the way on. If Pro's price changed since the page was read,
+   or the balance changed, the refusal is said under the button, nothing is charged, and the card shows what's true now.
+2. **Buy more.** On Pro the card says "Pro until Sat 23 Jan"; months bought now start after the last one.
+3. **Renew from balance.** On Pro, turn on **Renew from balance**: 3 days before Pro ends a month is bought from the
+   balance, and you're told "Pro renewed from your balance. It now runs to …". With it off, or the balance short of a
+   month, you're told "Pro ends on …" instead; buying or adding money before the end still keeps it.
+4. **Pro ends.** You're on Free, and told "Pro ended on …. You're on Free.". Over Free's storage, everything works as
+   before for a grace, said on the page, then uploads and notes stop until you make room or buy Pro again, which lifts
+   it at once.
+5. **Refund.** Months bought after the one running can be refunded: **Refund ($40.00)** asks in place, and **Refund
+   $40.00** puts them back in the balance. A month that has started isn't refunded.
+6. **Notices.** Each notice stays at the top of Plan, and the newest in the side panel, until its × dismisses it. With
+   browser notifications on and **Your plan** ticked (11.25), one also comes from the browser within the hour.

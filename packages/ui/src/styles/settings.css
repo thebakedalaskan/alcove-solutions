@@ -342,6 +342,36 @@
 /* Run out: the sun has set, and only a little of its light is left at the start of the line. */
 .set-on.is-set .sun, .set-on.is-set .ref, .set-on.is-set .lit { display: none; }
 .set-on.is-set::before { opacity: .55; }
+/* What the plan's owner is told, over the plan until dismissed. */
+.set-plan-notices { display: grid; gap: 8px; margin-bottom: 14px; }
+/* The plans on offer, side by side: Free and Pro, with room in the row for Team. Stacked on a phone. */
+.set-plans { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; margin-top: 26px; }
+.set-plans + .set-blk { margin-top: 26px; }
+.set-plan {
+  --set-lift: 0 1px 3px color-mix(in oklch, var(--ink) 5%, transparent), 0 10px 30px -22px color-mix(in oklch, var(--ink) 22%, transparent);
+  display: flex; flex-direction: column; min-width: 0; padding: 20px 22px 22px; border-radius: 18px; background: var(--surface); box-shadow: 0 0 0 1px var(--line), var(--set-lift);
+}
+.dark .set-plan { --set-lift: 0 0 transparent; }
+/* The plan you're on has a firmer edge. */
+.set-plan.is-yours { box-shadow: 0 0 0 1.5px color-mix(in oklch, var(--ink) 34%, transparent), var(--set-lift); }
+.set-plan-h { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.set-plan-h h3 { font: 600 17px/24px var(--font-sans); color: var(--ink); }
+.set-plan-price { margin-top: 4px; font: 600 24px/32px var(--font-sans); letter-spacing: -.012em; color: var(--ink); font-variant-numeric: tabular-nums; }
+.set-plan-gets { display: grid; gap: 7px; margin: 14px 0 0; padding: 0; list-style: none; }
+.set-plan-gets li { display: grid; grid-template-columns: 16px minmax(0, 1fr); gap: 10px; align-items: start; font: 400 14px/20px var(--font-sans); color: var(--ink-2); }
+.set-plan-gets .ac-i { margin-top: 2px; color: var(--ink-3); }
+/* Buying months of Pro, at the card's foot. */
+.set-plan-buy { display: grid; gap: 12px; margin-top: auto; padding-top: 18px; }
+.set-plan-buy::before { content: ""; display: block; height: 1px; margin-top: 2px; margin-bottom: 4px; background: var(--line); }
+.set-plan-until { font: 400 13px/18px var(--font-sans); color: var(--ink-3); text-wrap: pretty; }
+.set-plan-until b { display: block; font: 600 14.5px/20px var(--font-sans); color: var(--ink); }
+.set-plan-pick { display: flex; align-items: center; gap: 12px; }
+.set-plan-pick .ac-select { flex: 1; min-width: 0; }
+.set-plan-total { font: 600 16px/22px var(--font-sans); color: var(--ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.set-plan-acts { display: flex; flex-wrap: wrap; gap: 8px; }
+.set-plan-acts .ac-btn { flex: 1 1 auto; }
+.set-plan-why { font: 400 13px/18px var(--font-sans); color: var(--ink-3); text-wrap: pretty; }
+.set-plan-err { font: 500 13px/18px var(--font-sans); color: var(--caution); text-wrap: pretty; }
 /* A top-up on its way, its mark beside it, Open and (while nothing has reached it) cancel. */
 .set-topup-acts { display: flex; align-items: center; justify-content: flex-end; gap: 4px; width: 100%; }
 

@@ -9,6 +9,7 @@
  */
 import { StartTopUpBodySchema, type TopUp } from '@alcove/api';
 import { PREVIEW_DEPOSIT_ADDRESS } from '../world/payments';
+import { monthsFrom, PLAN_OFFERS, withProMonths } from '../world/plans';
 import { DriveExportInputSchema, NOTE_LINK_DAYS, type DriveAutomatic, type DriveCallExports, type DriveExportFormat, type DriveExportInput, type DriveExportJob, type NewNoteLink, type NoteLink, type NoteLinkClaimed } from '@alcove/api';
 import { disconnectedDrive } from '../world/drive-exports';
 import type { BoardSortBody, DocAskBody, DocAskPart } from '@alcove/api';
@@ -46,7 +47,9 @@ const paymentIn = (w: World, id: string): TopUp => {
   if (!t) throw refused('not-found', 'That top-up isn’t there any more.');
   return t;
 };
-const offline = () => new AlcoveApiError('network', 'Can’t reach Alcove. Check your connection.');
+/** An amount as the server's refusals say it: "$20.00". */
+const dollars = (microUsd: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(microUsd / 1_000_000);
+const offline = () =>new AlcoveApiError('network', 'Can’t reach Alcove. Check your connection.');
 
 /** Answers after a moment, from the world as it is then, as a copy: what the app holds never changes under it. */
 async function answer<T>(read: (w: World) => T, who: 'anyone' | 'signed-in' = 'signed-in'): Promise<T> {
@@ -887,6 +890,41 @@ export const standIn: AlcoveApi = {
   },
   plans: {
     plan: () => answer((w) => w.plan),
+    offers: () => answer(() => PLAN_OFFERS),
+    buyPro: (months, microUsdPerMonth) => answer((w) => {
+      const { maxMonths, microUsdPerMonth: price } = PLAN_OFFERS.pro;
+      if (!Number.isInteger(months) || months < 1 || months > maxMonths) throw refused('invalid', `Buy 1 to ${maxMonths} months at a time.`);
+      if (microUsdPerMonth !== price) throw refused('conflict', 'The price of Pro has changed. Look at it again before buying.');
+      const cost = months * price;
+      const { balance } = w.plan;
+      if (balance.microUsd < cost) {
+        throw refused('conflict', `Your balance is short: ${months} ${months === 1 ? 'month' : 'months'} of Pro cost ${dollars(cost)} and your balance is ${dollars(balance.microUsd)}. Add money first.`);
+      }
+      const now = Date.now();
+      const lastTo = Date.parse(w.plan.pro.until ?? '');
+      const from = Number.isFinite(lastTo) && lastTo > now ? lastTo : now;
+      const entry = { id: nextId('sb-entry'), at: new Date(now).toISOString(), label: `Pro, ${months} ${months === 1 ? 'month' : 'months'}`, microUsd: -cost };
+      const paid = { ...w.plan, balance: { microUsd: balance.microUsd - cost, history: [entry, ...balance.history] } };
+      w.plan = withProMonths(paid, [...w.plan.pro.months, ...monthsFrom(from, months)], now);
+      return w.plan;
+    }),
+    refundPro: () => answer((w) => {
+      const now = Date.now();
+      const later = w.plan.pro.months.filter((m) => Date.parse(m.from) > now);
+      if (!later.length) throw refused('conflict', 'There’s no month of Pro to refund that hasn’t started. A month that has started isn’t refunded.');
+      const back = later.reduce((sum, m) => sum + m.microUsd, 0);
+      const { balance } = w.plan;
+      const entry = { id: nextId('sb-entry'), at: new Date(now).toISOString(), label: `Pro refunded, ${later.length} ${later.length === 1 ? 'month' : 'months'}`, microUsd: back };
+      const refunded = { ...w.plan, balance: { microUsd: balance.microUsd + back, history: [entry, ...balance.history] } };
+      w.plan = withProMonths(refunded, w.plan.pro.months.filter((m) => Date.parse(m.from) <= now), now);
+      return w.plan;
+    }),
+    setRenew: (renew) => answer((w) => { w.plan = { ...w.plan, pro: { ...w.plan.pro, renew } }; return w.plan; }),
+    dismissNotice: (id) => answer((w) => {
+      if (!w.plan.notices.some((n) => n.id === id)) throw refused('not-found', 'That notice isn’t there any more.');
+      w.plan = { ...w.plan, notices: w.plan.notices.filter((n) => n.id !== id) };
+      return w.plan;
+    }),
     routes: () => answer(paymentRoutes),
     startTopUp: (routeId, microUsd) => answer((w) => {
       const choices = paymentRoutes(w);

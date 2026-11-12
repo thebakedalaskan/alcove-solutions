@@ -345,7 +345,47 @@ export const OverFreesLimitsNight = night(OverFreesLimits);
 export const ABalance = page('/settings#plan', 'plan-balance');
 export const ABalanceNight = night(ABalance);
 export const ABalancePhone = phone(ABalance);
-export const AddMoneyPicker = page('/settings#plan', 'payments', { play: pressing('Add money', 'Choose how much to add, then a token and network') });
+/* Pro, bought from the balance */
+/** On Free with nothing in the balance: Free and Pro side by side, Buy 1 month greyed out with what's short, and Add money the way on. */
+export const PlansShortOfMoney = page('/settings#plan', 'payments');
+export const PlansShortOfMoneyNight = night(PlansShortOfMoney);
+export const PlansShortOfMoneyPhone = phone(PlansShortOfMoney);
+/** On Free with $60: the balance covers a month, so Buy 1 month is the page's one filled button. */
+export const PlansWithMoney = page('/settings#plan', 'plan-balance');
+export const PlansWithMoneyNight = night(PlansWithMoney);
+/** Buying a month: Art is on Pro at once, with the whole of Pro's notes, and the balance is $20 less. */
+export const BuyAMonth = page('/settings#plan', 'plan-balance', { play: pressing('Buy 1 month', 'Buy a month of Pro from the balance') });
+export const BuyAMonthPhone = phone(BuyAMonth);
+/** On Pro: until when, more months to buy after the last, Renew from balance (off), and the two months after this one to refund. */
+export const OnPro = page('/settings#plan', 'plan-pro');
+export const OnProNight = night(OnPro);
+export const OnProPhone = phone(OnPro);
+/** Renewing from the balance is on. */
+export const OnProRenewing = page('/settings#plan', 'plan-pro', { beforeEach: changing((w) => { w.plan = { ...w.plan, pro: { ...w.plan.pro, renew: true } }; }) });
+/** Refund asks in place: what goes back to the balance, and when Pro ends. */
+export const RefundAsked = page('/settings#plan', 'plan-pro', { play: pressing(/^Refund \(/, 'Ask to refund the months that haven’t started') });
+export const RefundAskedNight = night(RefundAsked);
+/** Pro ends in 3 days and won't renew: renewing is off and the balance is short of a month. */
+export const ProEnding = page('/settings#plan', 'plan-pro-ending');
+export const ProEndingNight = night(ProEnding);
+export const ProEndingPhone = phone(ProEnding);
+/** A month was bought from the balance 3 days before Pro ended. */
+export const ProRenewed = page('/settings#plan', 'plan-pro-renewed');
+export const ProRenewedNight = night(ProRenewed);
+/** Pro ended: back on Free, and over Free's storage, so the grace is said too. */
+export const ProEnded = page('/settings#plan', 'plan-pro-ended');
+export const ProEndedNight = night(ProEnded);
+export const ProEndedPhone = phone(ProEnded);
+/** Dismissing a notice: it goes, here and from the side panel. */
+export const DismissANotice = page('/settings#plan', 'plan-pro-renewed', { play: pressing('Dismiss this notice', 'Dismiss the notice that Pro renewed') });
+export const AddMoneyPicker = page('/settings#plan', 'payments', {
+  play: async ({ userEvent, step }) => {
+    await step('Choose how much to add, then a token and network', async () => {
+      const balance = await screen.findByRole('group', { name: 'Balance' }, { timeout: 8000 });
+      await userEvent.click(within(balance).getByRole('button', { name: 'Add money' }));
+    });
+  }
+});
 export const AddMoneyPickerNight = night(AddMoneyPicker);
 export const AddMoneyPickerPhone = phone(AddMoneyPicker);
 export const AddMoneyPickerPhoneNight = phoneNight(AddMoneyPicker);

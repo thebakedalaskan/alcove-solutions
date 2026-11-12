@@ -192,7 +192,7 @@ page is designed, how to make a design canvas from the kit in `docs/design/canva
 - Use components from `@alcove/ui` before writing markup. If something is missing and reusable, add it
   to `packages/ui`, not to the app. Components: `Button` (primary, secondary, quiet; `buttonClass()` for
   links), `IconButton`, `ProviderButton`, `NotesSign`, `Chip`, `GroupChip`, `SealedBadge` and `SealedButton`
-  (the badge that opens what was checked), `Notice`, `useToast` (a toast, from the `ToastProvider` at the app's root),
+  (the badge that opens what was checked), `Notice` (with an × when it can be dismissed), `useToast` (a toast, from the `ToastProvider` at the app's root),
   `Avatar` and `Faces` (the arch), `GhostArch` (an empty arch where a person will be), `PickList` (people to find and press
   in a popover: one, or several with ticks), `CallTile`, `FloatingCall` (the compact call's picture, controls and attention, with no media ownership), `CallDock` with `DockButton` (its `word` is said beside the icon,
   for Share, the one control the dock names), `CallTopGroup`, `CallTopButton` and `CallTopRule` (the top right's group, its

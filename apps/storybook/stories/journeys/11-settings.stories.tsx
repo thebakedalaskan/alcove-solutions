@@ -528,7 +528,7 @@ export const AddMoney: PageStory = {
   play: async ({ userEvent, step }) => {
     const sheet = () => screen.findByRole('dialog', { name: 'Add money' }, SOON);
     await step('Open Add money and choose USDC on Base', async () => {
-      await userEvent.click(await screen.findByRole('button', { name: 'Add money' }, LATER));
+      await userEvent.click(within(await screen.findByRole('group', { name: 'Balance' }, LATER)).getByRole('button', { name: 'Add money' }));
       await userEvent.click(within(await sheet()).getByRole('button', { name: /^Token:/ }));
       const tokens = await screen.findByRole('listbox', { name: 'Token' }, SOON);
       await userEvent.click(within(tokens).getByRole('option', { name: 'USDC' }));
