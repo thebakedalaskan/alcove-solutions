@@ -608,14 +608,16 @@ describe('Pro', () => {
     expect(await upload(bob, his, 1024)).toBe(FULL);
   });
 
-  it('holds an account on Pro to Pro’s storage and file size, and offers Pro’s files at 512 MiB until downloads resume', async () => {
+  it('holds an account on Pro to Pro’s storage and file size, and every plan’s files to 512 MiB until downloads resume', async () => {
     const ann = await account();
     await give(ann, PRICE);
-    await ann.api.plans.buyPro(1, PRICE);
-    // Pro's 2 GiB, or any more, is held at 512 MiB.
-    await h.setLimit('plan.pro.file_bytes', 4 * GiB);
-    expect((await ann.api.plans.offers()).pro.fileBytes).toBe(512 * MiB);
+    expect((await ann.api.plans.buyPro(1, PRICE)).storage.fileBytes).toBe(512 * MiB);
+    // 512 MiB is each plan's file limit, and its ceiling: set any higher, it's held there.
+    for (const kind of ['free', 'pro', 'team'] as const) await h.setLimit(`plan.${kind}.file_bytes`, 4 * GiB);
+    const offers = await ann.api.plans.offers();
+    expect([offers.free.fileBytes, offers.pro.fileBytes, offers.team.fileBytes]).toEqual([512 * MiB, 512 * MiB, 512 * MiB]);
     expect((await ann.api.plans.plan()).storage.fileBytes).toBe(512 * MiB);
+    // Lower, Pro's limit is what's enforced.
     await h.setLimit('plan.pro.file_bytes', MiB);
     await h.setLimit('plan.pro.storage_bytes', 2 * MiB);
     // Free's are larger, and don't count while on Pro.

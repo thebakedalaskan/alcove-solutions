@@ -147,8 +147,8 @@ hosts is told, at most once a minute. Someone coming back keeps their place.
 
 Pro is bought from the balance, a month at a time (`features/billing/plans.ts`, routes in `routes.ts`). A month is
 `plan.period_seconds` (30 days), and each is a period of its own: Pro's notes (`plan.pro.notes_minutes`, 3,000 minutes),
-storage (`plan.pro.storage_bytes`, 100 GiB) and largest file (`plan.pro.file_bytes`, 2 GiB, held at 512 MiB, the most a
-file can be downloaded whole, until downloads resume: `WHOLE_DOWNLOAD_BYTES` in `limits.ts`). Free → Pro, and each new
+storage (`plan.pro.storage_bytes`, 100 GiB) and largest file (`plan.pro.file_bytes`, 512 MiB: every plan's file limit
+stops there, at its ceiling, the most a file can be downloaded whole, until downloads resume). Free → Pro, and each new
 month, starts a fresh period with the whole allowance: nothing carries over, and going past an allowance isn't a debt.
 
 **The plan in force** (`inForce`, read with `planNow`) is Team while a team license is live ([Team](#team)), Pro while a
@@ -156,7 +156,7 @@ bought month covers now, and Free otherwise. Free's periods count from
 when the account began, or from the end of the last month of Pro, whichever is later, so Free starts afresh when Pro ends,
 with or without upkeep.
 
-**What's offered** (`GET /v1/plan/offers`): the period in days, Free's and Pro's allowances (Pro's file size as enforced),
+**What's offered** (`GET /v1/plan/offers`): the period in days, Free's and Pro's allowances,
 the price of a month (`plan.pro.price_micro_usd`, $20) and the most months one purchase buys (`plan.pro.max_months`, 12).
 
 **A year or more for less** (`offers.pro.yearly`): a month costs `plan.pro.yearly_price_micro_usd` ($16, 20% off) when one
@@ -290,7 +290,7 @@ are in `Plan.notices` with Pro's (`until` null, `count` where it says), shown an
 
 **On Team** the plan's kind is `team`, its period the license's, its notes `plan.team.notes_minutes` (3,000) for each
 member, metered as their own (a new license is a fresh period, with all of it), and its largest file
-`plan.team.file_bytes`, held at 512 MiB as Pro's is. Storage is the team's **pool**: `plan.team.storage_bytes` (100 GiB) for
+`plan.team.file_bytes` (512 MiB, as Pro's). Storage is the team's **pool**: `plan.team.storage_bytes` (100 GiB) for
 each live license, against what everyone licensed stores (their own and the workspaces they pay for). `Plan.storage` and
 `MyTeam.storage` show the pool. When the pool shrinks below what's stored (a license ends, someone leaves or is taken off),
 it gets `plan.grace_seconds`, held to the pool as it was; upkeep reckons it at each license's end (`teams.due_at`). After

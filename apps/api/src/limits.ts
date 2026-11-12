@@ -6,7 +6,6 @@
  * keeps its default. Each instance reads the rows again once its copy is LIMITS_CACHE_MS old, so a change made from
  * `limits set` or the database's console is in force everywhere within that, and every instance that sees one says so.
  */
-import { MAX_MEDIA_BYTES } from '@alcove/api';
 import pg from 'pg';
 import { z } from 'zod';
 import type { Deps } from './context';
@@ -39,10 +38,10 @@ export interface LimitSpec {
 }
 
 /**
- * The largest file any plan takes for now, whatever its limit says: a whole file is read in one response, so a bigger one
- * waits until downloads can pick up where they stopped. Pro's 2 GiB is held in the table, and enforced at this.
+ * The largest file any plan takes for now, so every plan's file limit stops here: a whole file is read in one response,
+ * so a bigger one waits until downloads can pick up where they stopped. Pro's and Team's 2 GiB are for then.
  */
-export const WHOLE_DOWNLOAD_BYTES = 512 * MiB;
+const WHOLE_DOWNLOAD_BYTES = 512 * MiB;
 
 /**
  * Every limit there is (docs: Plans and usage, and Deployment › Changing a limit): each plan's notes, storage and files, Pro's and
@@ -50,17 +49,17 @@ export const WHOLE_DOWNLOAD_BYTES = 512 * MiB;
  * Pro's end is told; more notes for a period, their price and the most bought at once; when a team's admin is told licenses
  * are low and how long an invite works; what an hour of notes is reckoned at, when AI stops and when an organizer is told
  * it's close; how long a plan's period and its grace last; the longest call and the most people in one; and what one
- * person uploads in a day, everywhere. A ceiling leaves room to raise a default a long way, except a file's: a whole file
- * is read in one response, which is cut at 280 seconds and past 16 MiB can't pick up where it stopped, so 512 MiB needs
- * about 15 Mbit/s to download whole and 4 GiB about 120 Mbit/s. Zero is a value: none.
+ * person uploads in a day, everywhere. A ceiling leaves room to raise a default a long way, except a file's, which is
+ * WHOLE_DOWNLOAD_BYTES for every plan: a whole file is read in one response, which is cut at 280 seconds, so 512 MiB
+ * already needs about 15 Mbit/s to download whole. Zero is a value: none.
  */
 export const LIMITS = {
   'plan.free.notes_minutes': { default: 300, floor: 0, ceiling: 60_000, unit: 'minutes', measures: 'Free: the notes a period brings, reckoned at ai.hour_micro_usd an hour.' },
   'plan.free.storage_bytes': { default: 10 * GiB, floor: 0, ceiling: TiB, unit: 'bytes', measures: 'Free: what an account stores, its uploads and its recordings.' },
-  'plan.free.file_bytes': { default: 512 * MiB, floor: 0, ceiling: MAX_MEDIA_BYTES, unit: 'bytes', measures: 'Free: one file.' },
+  'plan.free.file_bytes': { default: 512 * MiB, floor: 0, ceiling: WHOLE_DOWNLOAD_BYTES, unit: 'bytes', measures: 'Free: one file.' },
   'plan.pro.notes_minutes': { default: 3_000, floor: 0, ceiling: 600_000, unit: 'minutes', measures: 'Pro: the notes a period (a month of Pro) brings, reckoned at ai.hour_micro_usd an hour.' },
   'plan.pro.storage_bytes': { default: 100 * GiB, floor: 0, ceiling: 10 * TiB, unit: 'bytes', measures: 'Pro: what an account stores, its uploads and its recordings. Held this high for plan.grace_seconds after Pro ends.' },
-  'plan.pro.file_bytes': { default: 2 * GiB, floor: 0, ceiling: MAX_MEDIA_BYTES, unit: 'bytes', measures: `Pro: one file. What's enforced is at most ${WHOLE_DOWNLOAD_BYTES / MiB} MiB (WHOLE_DOWNLOAD_BYTES) until downloads can pick up where they stopped.` },
+  'plan.pro.file_bytes': { default: 512 * MiB, floor: 0, ceiling: WHOLE_DOWNLOAD_BYTES, unit: 'bytes', measures: 'Pro: one file.' },
   'plan.pro.price_micro_usd': { default: 20_000_000, floor: 0, ceiling: 10_000_000_000, unit: 'micro-usd', measures: 'Pro: one period.' },
   'plan.pro.yearly_price_micro_usd': { default: 16_000_000, floor: 0, ceiling: 10_000_000_000, unit: 'micro-usd', measures: 'Pro: one period, bought plan.pro.yearly_from_months or more at once. None while it’s 0 or not below plan.pro.price_micro_usd.' },
   'plan.pro.yearly_from_months': { default: 12, floor: 1, ceiling: 120, unit: 'count', measures: 'The fewest months of Pro one purchase buys at plan.pro.yearly_price_micro_usd. None while it’s more than plan.pro.max_months.' },
@@ -69,7 +68,7 @@ export const LIMITS = {
   'plan.team.price_micro_usd': { default: 40_000_000, floor: 0, ceiling: 10_000_000_000, unit: 'micro-usd', measures: 'Team: one license, a person for one period.' },
   'plan.team.notes_minutes': { default: 3_000, floor: 0, ceiling: 600_000, unit: 'minutes', measures: 'Team: the notes a license’s period brings its member, reckoned at ai.hour_micro_usd an hour.' },
   'plan.team.storage_bytes': { default: 100 * GiB, floor: 0, ceiling: 10 * TiB, unit: 'bytes', measures: 'Team: the storage each live license adds to its team’s pool; also what someone who leaves a team is held to through plan.grace_seconds.' },
-  'plan.team.file_bytes': { default: 2 * GiB, floor: 0, ceiling: MAX_MEDIA_BYTES, unit: 'bytes', measures: `Team: one file. What's enforced is at most ${WHOLE_DOWNLOAD_BYTES / MiB} MiB (WHOLE_DOWNLOAD_BYTES) until downloads can pick up where they stopped.` },
+  'plan.team.file_bytes': { default: 512 * MiB, floor: 0, ceiling: WHOLE_DOWNLOAD_BYTES, unit: 'bytes', measures: 'Team: one file.' },
   'plan.hours.pack_minutes': { default: 600, floor: 1, ceiling: 60_000, unit: 'minutes', measures: 'More notes: the minutes one pack adds to the period it’s bought in, reckoned at ai.hour_micro_usd an hour.' },
   'plan.hours.price_micro_usd': { default: 15_000_000, floor: 0, ceiling: 10_000_000_000, unit: 'micro-usd', measures: 'More notes: one pack. At 0, more notes aren’t offered.' },
   'plan.hours.max_packs': { default: 5, floor: 1, ceiling: 100, unit: 'count', measures: 'More notes: the most packs one purchase buys.' },

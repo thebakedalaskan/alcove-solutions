@@ -12,7 +12,7 @@ import type { Deps } from '../../context';
 import { id128, openJson, sealJson, serviceKey, toJson, unb64u } from '../../crypto';
 import { bytea, exec, maybeOne, rows, timestamp, tx, type Db } from '../../db';
 import { conflict, InternalError, invalid, notFound } from '../../errors';
-import { limitsNow, WHOLE_DOWNLOAD_BYTES, type Limits } from '../../limits';
+import { limitsNow, type Limits } from '../../limits';
 import { log, type LogContext } from '../../log';
 import { settlePayers, usedBytes } from './storage';
 
@@ -82,12 +82,11 @@ const fresh = (freeFrom: string, grace: PlanAccount['grace']): PlanAccount =>
 export interface Allowance { notesMinutes: number; storageBytes: number; fileBytes: number }
 export const freeAllowance = (l: Limits): Allowance =>
   ({ notesMinutes: l.get('plan.free.notes_minutes'), storageBytes: l.get('plan.free.storage_bytes'), fileBytes: l.get('plan.free.file_bytes') });
-/** Pro's: the largest file is held to WHOLE_DOWNLOAD_BYTES, whatever its limit says, until downloads can resume. */
 export const proAllowance = (l: Limits): Allowance =>
-  ({ notesMinutes: l.get('plan.pro.notes_minutes'), storageBytes: l.get('plan.pro.storage_bytes'), fileBytes: Math.min(l.get('plan.pro.file_bytes'), WHOLE_DOWNLOAD_BYTES) });
+  ({ notesMinutes: l.get('plan.pro.notes_minutes'), storageBytes: l.get('plan.pro.storage_bytes'), fileBytes: l.get('plan.pro.file_bytes') });
 /** Team's, for one licensed person: storage is what each license adds to the team's pool, which is what's enforced. */
 export const teamAllowance = (l: Limits): Allowance =>
-  ({ notesMinutes: l.get('plan.team.notes_minutes'), storageBytes: l.get('plan.team.storage_bytes'), fileBytes: Math.min(l.get('plan.team.file_bytes'), WHOLE_DOWNLOAD_BYTES) });
+  ({ notesMinutes: l.get('plan.team.notes_minutes'), storageBytes: l.get('plan.team.storage_bytes'), fileBytes: l.get('plan.team.file_bytes') });
 
 /**
  * Pro's lower price a month for buying at least `fromMonths` at once (a year or more): none while that price is 0, isn't
