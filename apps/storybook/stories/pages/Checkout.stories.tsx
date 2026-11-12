@@ -67,10 +67,14 @@ export const PriceChanged = checkout('/home', 'payments', { plan: 'pro' }, {
     await userEvent.click(await pressable('button', 'Get the address', SOON, within(await win())));
   }
 });
-/** Offline, signed in on this browser: the button waits, and the foot says why. */
-export const Offline = checkout('/home', 'payments', { plan: 'pro' }, {
+/** Offline, signed in on this browser, over Record (which works without a connection): the button waits, and the foot says why. */
+export const Offline = checkout('/record', 'payments', { plan: 'pro' }, {
   parameters: { opening: { signedInHere: true } },
-  play: async ({ userEvent }) => { await userEvent.click(await network('Base')); setOnline(false); }
+  play: async ({ userEvent }) => {
+    await userEvent.click(await network('Base'));
+    await within(await win()).findByText('For Art Vandelay', {}, LATER);
+    setOnline(false);
+  }
 });
 /** Extending Pro, which ends in 3 days: counted from its end, with the days left said. */
 export const Extend = checkout('/settings#plan', 'plan-pro-ending', { plan: 'pro', from: 'settings' });
