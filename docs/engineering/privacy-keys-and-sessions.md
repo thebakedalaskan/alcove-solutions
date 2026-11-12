@@ -939,6 +939,8 @@ connection](calls-and-recordings.md#recording-without-a-connection)), and so eac
   each one's kind and IDs and when it showed, for a day, with no titles, names or text. Signing out, or deleting the
   account, on this browser deletes all of them, and closes the notifications still showing, so no title stays in
   the device's notification centre.
+- **That the hour-left toast was said** (`localStorage` `alcove.hour-left.<ownerId>`): the end of the plan's period it was
+  said for, so it shows once a period. Nothing else. Signing out, or deleting the account, on this browser deletes it.
 - Each recording belongs to the account it was made under: only that account lists or uploads it. Before any
   upload the app asks Alcove who's signed in, and names the recording's account when it starts it there, so the
   server refuses (`403`) a session of any other account and makes nothing: a browser that changed hands never

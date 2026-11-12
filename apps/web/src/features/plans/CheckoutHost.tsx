@@ -19,7 +19,7 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useState, type ReactNode } from 'react';
 import { useOnline } from '~/lib/live';
-import { q, useBuyHours, useBuyPro, useCancelTopUp, useStartTopUp } from '~/lib/queries';
+import { q, topUpOpen, useBuyHours, useBuyPro, useCancelTopUp, useStartTopUp } from '~/lib/queries';
 import { dayMonth, daysFromToday, hm, longDay, shortDay } from '~/lib/time';
 import { plural, usd, usdCents } from '~/lib/words';
 import type { CheckoutOpen } from './checkout';
@@ -145,7 +145,16 @@ export function CheckoutHost({ open, onClose, onCompare }: { open: CheckoutOpen;
     setView(going ? { step: 'pay', id: going.id } : { step: 'choose' });
   }
   const payId = view?.step === 'pay' ? view.id : null;
-  const topUp = useQuery({ ...q.topUp(payId ?? ''), enabled: payId !== null });
+  // Every 5 s while money can arrive; once a waiting address has closed (it stays waiting until it's given up on), every minute.
+  const topUp = useQuery({
+    ...q.topUp(payId ?? ''),
+    enabled: payId !== null,
+    refetchInterval: (query) => {
+      const d = query.state.data;
+      if (!d || !topUpOpen(d)) return false;
+      return d.state === 'waiting' && lapsed(d) ? 60_000 : 5000;
+    }
+  });
   const t = payId !== null ? topUp.data : undefined;
   const paying = t ? payingOf(t, now) : null;
 

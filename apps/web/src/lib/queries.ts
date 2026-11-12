@@ -4,6 +4,7 @@ import { AlcoveApiError, MAX_SORT_STICKIES, MAX_SORT_STICKY, SORT_TOO_FEW, SORT_
 import { queryOptions, useIsMutating, useMutation, useMutationState, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef } from 'react';
 import { forgetAccount } from '~/features/record/offline';
+import { forgetHourLeft } from '~/features/plans/hourLeft';
 import { forgetNotified } from '~/features/shell/notified';
 import { announceMentionsRead } from '~/features/shell/attentionChannel';
 import { forgetEdits } from '~/features/workspace/keep';
@@ -382,6 +383,7 @@ async function forgetHere(owner: string | undefined, deleted: boolean) {
   if (owner) {
     announceSignOut(owner, deleted);
     forgetPlaces(owner);
+    forgetHourLeft(owner);
   }
   await forgetNotified();
   if (!owner) return;

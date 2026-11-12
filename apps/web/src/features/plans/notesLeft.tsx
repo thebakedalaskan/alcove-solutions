@@ -13,6 +13,7 @@ import { q } from '~/lib/queries';
 import { dayFullMonth } from '~/lib/time';
 import { useCheckout, type CheckoutFor } from './checkout';
 import { notesLow, notesOut } from './plan-state';
+import { tellOnce } from './hourLeft';
 import { hoursLabel } from './words';
 
 const plog = log.child({ component: 'plan-doors' });
@@ -76,23 +77,6 @@ export function NoNotesLeftDoor({ at, alone = false, newTab = false, beforeCheck
   );
 }
 
-/** Said once a period, per account, in this browser; once in this tab when the browser keeps nothing. */
-const toldHere = new Set<string>();
-const toldKey = (ownerId: string) => `alcove.hour-left.${ownerId}`;
-/** Whether this period's hour-left toast is still to be said, and keeps that it now has been. Only the period's end is kept. */
-function tellOnce(ownerId: string, periodTo: string): boolean {
-  try {
-    if (localStorage.getItem(toldKey(ownerId)) === periodTo) return false;
-    localStorage.setItem(toldKey(ownerId), periodTo);
-    return true;
-  } catch (e) {
-    plog.debug('the hour-left toast isn’t kept in this browser', { err: e });
-    const here = `${ownerId}:${periodTo}`;
-    if (toldHere.has(here)) return false;
-    toldHere.add(here);
-    return true;
-  }
-}
 
 /**
  * An hour left (door 3): once a period, when the notes left this period drop under an hour, a toast says so with the way to

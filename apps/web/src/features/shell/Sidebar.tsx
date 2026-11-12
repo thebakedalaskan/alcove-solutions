@@ -227,7 +227,11 @@ function Foot({ online }: { online: boolean }) {
 
 function PlanFoot({ plan }: { plan: Plan }) {
   const offers = useQuery(q.offers()).data;
-  const topUps = useQuery(q.topUps()).data;
+  // Read again only while the foot shows a payment: every 30 s while one is on its way, every 5 minutes while one settles.
+  const topUps = useQuery({
+    ...q.topUps(),
+    refetchInterval: (query) => (waitingPurchase(query.state.data) ? 30_000 : settlingPurchase(query.state.data) ? 300_000 : false)
+  }).data;
   const checkout = useCheckout();
   const now = useNow();
   const on = useRouterState({ select: (s) => s.location.pathname }) === '/plans';

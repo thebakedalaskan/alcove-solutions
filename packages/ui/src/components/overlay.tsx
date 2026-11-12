@@ -273,12 +273,14 @@ export const Modal = forwardRef<HTMLDivElement, {
   onCloseFocus?: (() => boolean) | undefined; focusSelf?: boolean | undefined; focusOn?: string | undefined;
 }>(function Modal({ open, onOpenChange, label, children, placement = 'center', className, onCloseFocus, focusSelf = false, focusOn }, ref) {
   const focusBack = useFocusBack(open);
+  // A theme the modal names itself (a receipt is paper in both) wins over the one it opened in.
+  const named = /(^|\s)(light|dark)(\s|$)/.test(className ?? '');
   const scoped = useContext(Scoped);
   return (
     <RDialog.Root open={open} onOpenChange={onOpenChange}>
       <RDialog.Portal>
         <RDialog.Overlay className="ac-scrim" />
-        <RDialog.Content ref={ref} aria-describedby={undefined} className={cn('ac-modal', placement === 'bottom' && 'is-bottom', scoped, className)}
+        <RDialog.Content ref={ref} aria-describedby={undefined} className={cn('ac-modal', placement === 'bottom' && 'is-bottom', named ? null : scoped, className)}
           onOpenAutoFocus={focusSelf || focusOn ? (e) => {
             if (!(e.currentTarget instanceof HTMLElement)) return;
             const first = focusSelf ? e.currentTarget : focusOn ? e.currentTarget.querySelector<HTMLElement>(focusOn) : null;
