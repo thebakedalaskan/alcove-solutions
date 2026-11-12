@@ -10,7 +10,6 @@ import { randomBytes } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { openJson, sealJson, serviceKey, toJson, unb64u } from '../../crypto';
-import type { LimitName } from '../../limits';
 import { maintain } from '../../maintenance';
 import { speechWav } from '../../testing/fake-near';
 import { startHarness, type Harness } from '../../testing/harness';
@@ -40,7 +39,6 @@ async function account(email = unique()) {
   return { ...b, session: r.session, email };
 }
 type Account = Awaited<ReturnType<typeof account>>;
-const setLimit = (name: LimitName, value: number) => h.pool.query('INSERT INTO service_limits (name, value) VALUES ($1, $2) ON CONFLICT (name) DO UPDATE SET value = excluded.value, updated_at = now()', [name, value]);
 const audioBytes = (n: number) => { const out = new Uint8Array(new ArrayBuffer(n)); out.set(randomBytes(n)); return out; };
 const piece = (at: number, bytes = 2048): AudioPiece => ({ data: new Blob([audioBytes(bytes)]), segment: 0, seq: at, at: at * 5, durationMs: 5000, mimeType: 'audio/webm;codecs=opus' });
 const speech = (words: string, atMs: number): TranscriptClip => ({ data: new Blob([speechWav(words, 6000)], { type: 'audio/wav' }), segment: 0, at: atMs / 1000, durationMs: 6000 });
@@ -79,8 +77,8 @@ describe('Free', () => {
 
   it('renews its notes every period from when it began, and what was left doesn’t carry over', async () => {
     // Periods of an hour here (30 days unless the limit says otherwise), and notes reckoned at a tenth of a cent a minute.
-    await setLimit('plan.period_seconds', 3600);
-    await setLimit('ai.hour_micro_usd', 60_000);
+    await h.setLimit('plan.period_seconds', 3600);
+    await h.setLimit('ai.hour_micro_usd', 60_000);
     const ann = await account();
     const rec = await ann.api.recordings.start({ title: 'Used' });
     await rec.transcribe(speech('We agreed to ship on Monday.', 0));
@@ -112,9 +110,9 @@ describe('Free', () => {
     const ann = await account();
     const bob = await account();
     const ours = await workspace(ann, 'Ours', [bob]);
-    await setLimit('plan.free.file_bytes', MiB);
+    await h.setLimit('plan.free.file_bytes', MiB);
     expect(await upload(bob, ours, MiB + 1)).toBe('invalid: This file is bigger than 1 MiB, the most a file can be here.');
-    await setLimit('plan.free.storage_bytes', 2 * MiB);
+    await h.setLimit('plan.free.storage_bytes', 2 * MiB);
     expect(await upload(bob, ours, MiB)).toBe('succeeded');
     // Bob added it, but it's Ann's workspace: it's Ann's storage it takes.
     expect((await ann.api.plans.plan()).storage.usedBytes).toBeGreaterThan(MiB);
@@ -128,7 +126,7 @@ describe('Free', () => {
     const host = await org.api.calls.join(meeting.code, { mic: true, cam: false });
     await host.appendAudio(piece(0, 40 * 1024));
     // Storage that the next piece won't fit in.
-    await setLimit('plan.free.storage_bytes', 64 * 1024);
+    await h.setLimit('plan.free.storage_bytes', 64 * 1024);
     expect(code(await host.appendAudio(piece(1, 40 * 1024)).catch((e: unknown) => e))).toBe('plan-limit');
     const now = await settle(host, (s) => s.capture.stopped !== null);
     expect(now.capture).toMatchObject({ mode: 'off', stopped: { reason: 'storage' } });
@@ -144,8 +142,8 @@ describe('accounts from before plans', () => {
     const ours = await workspace(ann, 'Ours', [bob]);
     expect(await upload(bob, ours, MiB)).toBe('succeeded');
     // Plans arrive: Free's storage is smaller than what Ann already stores, and an hour's grace for an account over it.
-    await setLimit('plan.free.storage_bytes', MiB / 2);
-    await setLimit('plan.grace_seconds', 3600);
+    await h.setLimit('plan.free.storage_bytes', MiB / 2);
+    await h.setLimit('plan.grace_seconds', 3600);
     await beforePlans(ann);
     const carried = await ann.api.plans.plan();
     expect(carried).toMatchObject({ kind: 'free', choose: true, grace: { storage: true }, over: { storage: false } });
@@ -172,7 +170,7 @@ describe('accounts from before plans', () => {
     const ann = await account();
     const ours = await workspace(ann, 'Ours');
     expect(await upload(ann, ours, MiB)).toBe('succeeded');
-    await setLimit('plan.free.storage_bytes', MiB / 2);
+    await h.setLimit('plan.free.storage_bytes', MiB / 2);
     await beforePlans(ann);
     await maintain(h.deps);
     expect((await h.pool.query('SELECT due_at IS NOT NULL AS due FROM plan_accounts WHERE owner_id = $1', [ann.session.ownerId])).rows[0]).toEqual({ due: true });
@@ -212,7 +210,7 @@ describe('a call’s limits', () => {
   });
 
   it('turns away anyone past the most people a call can have, and tells whoever hosts', async () => {
-    await setLimit('call.max_people', 2);
+    await h.setLimit('call.max_people', 2);
     const org = await account();
     const { code: c } = await org.api.calls.startNow({ notes: 'off' });
     const host = await org.api.calls.join(c, { mic: true, cam: false });
@@ -272,7 +270,7 @@ const labels = async (who: Account) => (await who.api.plans.plan()).balance.hist
 
 describe('Pro', () => {
   it('a new account buys Pro once it has the money, and gets all of Pro’s allowance, whatever it spent on Free', async () => {
-    await setLimit('ai.hour_micro_usd', 60_000);
+    await h.setLimit('ai.hour_micro_usd', 60_000);
     const ann = await account();
     expect(await ann.api.plans.offers()).toEqual({
       periodDays: 30,
@@ -315,7 +313,7 @@ describe('Pro', () => {
     const ann = await account();
     await give(ann, 50_000_000);
     const shown = (await ann.api.plans.offers()).pro.microUsdPerMonth;
-    await setLimit('plan.pro.price_micro_usd', 25_000_000);
+    await h.setLimit('plan.pro.price_micro_usd', 25_000_000);
     expect(await refusal(ann.api.plans.buyPro(1, shown))).toBe('conflict: The price of Pro has changed. Look at it again before buying.');
     expect((await ann.api.plans.plan())).toMatchObject({ kind: 'free', balance: { microUsd: 50_000_000 } });
     // Looked at again, it's bought at the new price.
@@ -390,22 +388,22 @@ describe('Pro', () => {
   it('offers no yearly price while it’s 0, isn’t below a month’s, or is for more months than one purchase buys: a year is then a month’s price', async () => {
     const ann = await account();
     const yearly = async () => (await ann.api.plans.offers()).pro.yearly;
-    await setLimit('plan.pro.yearly_from_months', 6);
+    await h.setLimit('plan.pro.yearly_from_months', 6);
     expect(await yearly()).toEqual({ fromMonths: 6, microUsdPerMonth: YEARLY });
-    await setLimit('plan.pro.yearly_price_micro_usd', PRICE);
+    await h.setLimit('plan.pro.yearly_price_micro_usd', PRICE);
     expect(await yearly()).toBeNull();
-    await setLimit('plan.pro.yearly_price_micro_usd', 0);
+    await h.setLimit('plan.pro.yearly_price_micro_usd', 0);
     expect(await yearly()).toBeNull();
     await give(ann, 12 * PRICE);
     expect(await refusal(ann.api.plans.buyPro(12, 0))).toBe('conflict: The price of Pro has changed. Look at it again before buying.');
     expect(await ann.api.plans.buyPro(12, PRICE)).toMatchObject({ kind: 'pro', balance: { microUsd: 0 } });
-    await setLimit('plan.pro.yearly_price_micro_usd', YEARLY);
-    await setLimit('plan.pro.yearly_from_months', 13);
+    await h.setLimit('plan.pro.yearly_price_micro_usd', YEARLY);
+    await h.setLimit('plan.pro.yearly_from_months', 13);
     expect(await yearly()).toBeNull();
   });
 
   it('runs months back to back, refunds the ones that haven’t started, and never the running one', async () => {
-    await setLimit('plan.period_seconds', 3600);
+    await h.setLimit('plan.period_seconds', 3600);
     const ann = await account();
     await give(ann, 3 * PRICE);
     await ann.api.plans.buyPro(1, PRICE);
@@ -425,8 +423,8 @@ describe('Pro', () => {
   });
 
   it('renews from the balance before Pro ends while renewing is on, and ends it when the balance is short', async () => {
-    await setLimit('plan.period_seconds', 3600);
-    await setLimit('plan.pro_remind_seconds', 600);
+    await h.setLimit('plan.period_seconds', 3600);
+    await h.setLimit('plan.pro_remind_seconds', 600);
     // With money for the next month: bought at the reminder, after the last.
     const ann = await account();
     await give(ann, 2 * PRICE);
@@ -476,8 +474,8 @@ describe('Pro', () => {
   });
 
   it('tells its owner before Pro ends and when it has, until they dismiss it, and nobody else can', async () => {
-    await setLimit('plan.period_seconds', 3600);
-    await setLimit('plan.pro_remind_seconds', 600);
+    await h.setLimit('plan.period_seconds', 3600);
+    await h.setLimit('plan.pro_remind_seconds', 600);
     const ann = await account();
     const bob = await account();
     await give(ann, PRICE);
@@ -500,9 +498,9 @@ describe('Pro', () => {
   });
 
   it('holds storage to Pro’s through the grace after Pro ends, then takes no more files until Pro is bought again', async () => {
-    await setLimit('plan.period_seconds', 3600);
-    await setLimit('plan.grace_seconds', 1800);
-    await setLimit('plan.free.storage_bytes', MiB / 2);
+    await h.setLimit('plan.period_seconds', 3600);
+    await h.setLimit('plan.grace_seconds', 1800);
+    await h.setLimit('plan.free.storage_bytes', MiB / 2);
     const ann = await account();
     await give(ann, 2 * PRICE);
     const end = Date.parse((await ann.api.plans.buyPro(1, PRICE)).pro.until ?? '');
@@ -528,8 +526,8 @@ describe('Pro', () => {
     const bob = await account();
     const his = await workspace(bob, 'His');
     expect(await upload(bob, his, MiB)).toBe('succeeded');
-    await setLimit('plan.free.storage_bytes', MiB / 2);
-    await setLimit('plan.pro.storage_bytes', MiB / 2);
+    await h.setLimit('plan.free.storage_bytes', MiB / 2);
+    await h.setLimit('plan.pro.storage_bytes', MiB / 2);
     await beforePlans(bob);
     expect(await bob.api.plans.plan()).toMatchObject({ kind: 'free', grace: { storage: true } });
     expect(await upload(bob, his, 1024)).toBe('succeeded');
@@ -543,13 +541,13 @@ describe('Pro', () => {
     await give(ann, PRICE);
     await ann.api.plans.buyPro(1, PRICE);
     // Pro's 2 GiB, or any more, is held at 512 MiB.
-    await setLimit('plan.pro.file_bytes', 4 * GiB);
+    await h.setLimit('plan.pro.file_bytes', 4 * GiB);
     expect((await ann.api.plans.offers()).pro.fileBytes).toBe(512 * MiB);
     expect((await ann.api.plans.plan()).storage.fileBytes).toBe(512 * MiB);
-    await setLimit('plan.pro.file_bytes', MiB);
-    await setLimit('plan.pro.storage_bytes', 2 * MiB);
+    await h.setLimit('plan.pro.file_bytes', MiB);
+    await h.setLimit('plan.pro.storage_bytes', 2 * MiB);
     // Free's are larger, and don't count while on Pro.
-    await setLimit('plan.free.storage_bytes', 10 * MiB);
+    await h.setLimit('plan.free.storage_bytes', 10 * MiB);
     expect((await ann.api.plans.plan()).storage).toMatchObject({ limitBytes: 2 * MiB, fileBytes: MiB });
     const ours = await workspace(ann, 'Ours');
     expect(await upload(ann, ours, MiB + 1)).toBe('invalid: This file is bigger than 1 MiB, the most a file can be here.');
@@ -576,7 +574,7 @@ describe('Pro', () => {
 
 describe('more notes', () => {
   it('adds notes to this period on any plan, from the balance, and they don’t carry into the next', async () => {
-    await setLimit('plan.period_seconds', 3600);
+    await h.setLimit('plan.period_seconds', 3600);
     const ann = await account();
     await give(ann, 3 * HOURS);
     const more = await ann.api.plans.buyHours(2, HOURS);
@@ -604,11 +602,11 @@ describe('more notes', () => {
     expect(await refusal(ann.api.plans.buyHours(6, HOURS))).toBe('invalid: Buy up to 50 hours of notes at a time.');
     expect(await refusal(ann.api.plans.buyHours(1, 10_000_000))).toBe('conflict: The price of more notes has changed. Look at it again before buying.');
     expect(await refusal(ann.api.plans.buyHours(2, HOURS))).toBe('conflict: Your balance is short: 20 hours of notes cost $30 and your balance is $20. Add money first.');
-    await setLimit('plan.hours.pack_minutes', 60);
-    await setLimit('plan.hours.price_micro_usd', 25_000_000);
+    await h.setLimit('plan.hours.pack_minutes', 60);
+    await h.setLimit('plan.hours.price_micro_usd', 25_000_000);
     expect(await refusal(ann.api.plans.buyHours(1, 25_000_000))).toBe('conflict: Your balance is short: 1 hour of notes costs $25 and your balance is $20. Add money first.');
     // A pack at no price: none are offered, and none can be had for nothing.
-    await setLimit('plan.hours.price_micro_usd', 0);
+    await h.setLimit('plan.hours.price_micro_usd', 0);
     expect((await ann.api.plans.offers()).hours).toBeNull();
     expect(await refusal(ann.api.plans.buyHours(1, 0))).toBe('conflict: More notes can’t be bought right now.');
     expect(await ann.api.plans.plan()).toMatchObject({ notes: { minutesPerPeriod: 300 }, balance: { microUsd: 20_000_000, history: [{ label: 'Added by support' }] } });
@@ -646,9 +644,9 @@ describe('more notes', () => {
   it('lifts a stop the spent allowance caused, so the organizer can turn notes on again, and not one full storage caused', async () => {
     // A minute of notes at $0.0036 an hour and no stop short of nothing: the call's first clip, holding what writing its
     // notes will cost, spends it.
-    await setLimit('plan.free.notes_minutes', 1);
-    await setLimit('ai.hour_micro_usd', 3600);
-    await setLimit('ai.stop_micro_usd', 0);
+    await h.setLimit('plan.free.notes_minutes', 1);
+    await h.setLimit('ai.hour_micro_usd', 3600);
+    await h.setLimit('ai.stop_micro_usd', 0);
     const org = await account();
     const meeting = await org.api.meetings.create({ title: 'Review', startsAt: new Date(Date.now() + 3_600_000).toISOString(), durationMinutes: 30, guests: [], notes: 'on', choices: DEFAULT_NOTES_CHOICES });
     const host = await org.api.calls.join(meeting.code, { mic: true, cam: false });
@@ -672,7 +670,7 @@ describe('more notes', () => {
     const theirs = await sam.api.meetings.create({ title: 'Full', startsAt: new Date(Date.now() + 3_600_000).toISOString(), durationMinutes: 30, guests: [], notes: 'on', choices: DEFAULT_NOTES_CHOICES });
     const hers = await sam.api.calls.join(theirs.code, { mic: true, cam: false });
     await hers.appendAudio(piece(0, 40 * 1024));
-    await setLimit('plan.free.storage_bytes', 64 * 1024);
+    await h.setLimit('plan.free.storage_bytes', 64 * 1024);
     expect(code(await hers.appendAudio(piece(1, 40 * 1024)).catch((e: unknown) => e))).toBe('plan-limit');
     expect((await settle(hers, (s) => s.capture.stopped !== null)).capture).toMatchObject({ mode: 'off', stopped: { reason: 'storage' } });
     await give(sam, HOURS);

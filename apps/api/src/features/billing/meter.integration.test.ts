@@ -7,7 +7,6 @@
 import { AlcoveApiError, DEFAULT_NOTES_CHOICES, type AlcoveApi, type AnswerPart, type AudioPiece, type CallSession, type CallState, type TranscriptClip } from '@alcove/api';
 import { randomBytes } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import type { LimitName } from '../../limits';
 import { UNENCRYPTED_MODEL, speechWav } from '../../testing/fake-near';
 import { startHarness, type Harness } from '../../testing/harness';
 import { disposeLiveKit } from '../../testing/livekit';
@@ -31,7 +30,6 @@ async function account(email = unique()) {
   return { ...b, session: r.session, email };
 }
 type Account = Awaited<ReturnType<typeof account>>;
-const setLimit = (name: LimitName, value: number) => h.pool.query('INSERT INTO service_limits (name, value) VALUES ($1, $2) ON CONFLICT (name) DO UPDATE SET value = excluded.value, updated_at = now()', [name, value]);
 const meter = (who: Account) => standing(h.deps, h.pool, who.session.ownerId);
 const audioBytes = (marker: string) => { const src = Buffer.concat([Buffer.from(marker), randomBytes(2048)]); const out = new Uint8Array(new ArrayBuffer(src.length)); out.set(src); return out; };
 const piece = (marker: string, at: number, durationMs = 5000): AudioPiece => ({ data: new Blob([audioBytes(marker)]), segment: 0, seq: at, at: at * 5, durationMs, mimeType: 'audio/webm;codecs=opus' });
@@ -168,8 +166,8 @@ describe('who pays', () => {
 describe('running out', () => {
   it('tells the organizer alone when about the warning’s seconds are left at the call’s pace', async () => {
     // Thirty minutes of notes, told once there's under an hour of them left at this call's pace.
-    await setLimit('plan.free.notes_minutes', 30);
-    await setLimit('ai.warn_seconds', 3600);
+    await h.setLimit('plan.free.notes_minutes', 30);
+    await h.setLimit('ai.warn_seconds', 3600);
     const org = await account(unique('organizer'));
     const kofi = await account(unique('kofi'));
     const { host, meeting } = await call(org, [kofi.email]);
@@ -187,9 +185,9 @@ describe('running out', () => {
   it('stops notes for everyone when the organizer’s allowance is spent, writes the last note past it, and nothing more', async () => {
     // A minute of notes at $0.0036 an hour, and no stop short of nothing: the first clip, holding what writing the notes
     // will cost, spends it, and the notes cost more than it.
-    await setLimit('plan.free.notes_minutes', 1);
-    await setLimit('ai.hour_micro_usd', 3600);
-    await setLimit('ai.stop_micro_usd', 0);
+    await h.setLimit('plan.free.notes_minutes', 1);
+    await h.setLimit('ai.hour_micro_usd', 3600);
+    await h.setLimit('ai.stop_micro_usd', 0);
     const org = await account(unique('organizer'));
     const kofi = await account(unique('kofi'));
     const { host, meeting } = await call(org, [kofi.email]);
@@ -228,15 +226,15 @@ describe('running out', () => {
     expect(code(await answer(org.api.notes.askAll('When do we ship?')).catch((e: unknown) => e))).toBe('plan-limit');
     expect(code(await org.api.recordings.start({ title: 'More' }).catch((e: unknown) => e))).toBe('plan-limit');
     // Raised, as by a new period or a bigger plan, the allowance isn't spent any more: notes come on again.
-    await setLimit('plan.free.notes_minutes', 300);
+    await h.setLimit('plan.free.notes_minutes', 300);
     await next.host.setNotes(true);
     expect((await settle(next.host, (s) => s.capture.mode === 'on')).capture).toMatchObject({ mode: 'on', stopped: null });
   });
 
   it('after a Free organizer’s notes stop, an invitee on Pro still asks from their own allowance, and a guest can’t', async () => {
-    await setLimit('plan.free.notes_minutes', 1);
-    await setLimit('ai.hour_micro_usd', 3600);
-    await setLimit('ai.stop_micro_usd', 0);
+    await h.setLimit('plan.free.notes_minutes', 1);
+    await h.setLimit('ai.hour_micro_usd', 3600);
+    await h.setLimit('ai.stop_micro_usd', 0);
     const org = await account(unique('organizer'));
     const kofi = await account(unique('kofi'));
     await creditByEmail(h.deps, kofi.email, 20_000_000);
@@ -258,9 +256,9 @@ describe('running out', () => {
   });
 
   it('stops every call the organizer has going, not only the one that spent it', async () => {
-    await setLimit('plan.free.notes_minutes', 1);
-    await setLimit('ai.hour_micro_usd', 3600);
-    await setLimit('ai.stop_micro_usd', 0);
+    await h.setLimit('plan.free.notes_minutes', 1);
+    await h.setLimit('ai.hour_micro_usd', 3600);
+    await h.setLimit('ai.stop_micro_usd', 0);
     const org = await account(unique('organizer'));
     const first = await call(org);
     const second = await call(org);
@@ -272,7 +270,7 @@ describe('running out', () => {
   });
 
   it('stops a room recording the same way: refused once its recorder’s allowance is spent', async () => {
-    await setLimit('plan.free.notes_minutes', 1);
+    await h.setLimit('plan.free.notes_minutes', 1);
     const ann = await account();
     const rec = await ann.api.recordings.start({ title: 'Running out' });
     await rec.appendAudio(piece('room', 0));
@@ -284,13 +282,13 @@ describe('running out', () => {
 
   it('holds what requests in flight may cost, so several at once never spend past the allowance', async () => {
     // A note to ask about, written while there's plenty.
-    await setLimit('ai.stop_micro_usd', 0);
+    await h.setLimit('ai.stop_micro_usd', 0);
     const ann = await account();
     const rec = await ann.api.recordings.start({ title: 'Asked' });
     await rec.transcribe(speech('We agreed to ship on Monday.', 0));
     await written(ann.api, (await rec.stop()).pendingNoteId);
     // Then a minute of notes: room for a question or two held at once, not eight, each held at the most it can cost.
-    await setLimit('plan.free.notes_minutes', 1);
+    await h.setLimit('plan.free.notes_minutes', 1);
     const outcomes = await Promise.all(Array.from({ length: 8 }, () => answer(ann.api.notes.askAll('When do we ship?')).then(() => 'answered', code)));
     const after = await meter(ann);
     expect(outcomes).toContain('answered');
@@ -302,7 +300,7 @@ describe('running out', () => {
 describe('what’s shown', () => {
   it('says notes left from what was spent, so it only goes down while a call goes on and its notes are written', async () => {
     // A minute of notes is a tenth of a cent here: anything held for a request would show as many minutes if it counted.
-    await setLimit('ai.hour_micro_usd', 6000);
+    await h.setLimit('ai.hour_micro_usd', 6000);
     const minuteNano = 100_000;
     const org = await account(unique('organizer'));
     const shown = async () => (await org.api.plans.plan()).notes.minutesLeft;

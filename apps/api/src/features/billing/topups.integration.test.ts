@@ -8,7 +8,6 @@ import { createHttpApi } from '@alcove/api-http';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { openJson, sealJson, serviceKey, toJson, unb64u } from '../../crypto';
-import type { LimitName } from '../../limits';
 import { DepositRecord, watch } from './deposits';
 import { creditByEmail } from './support';
 import { NOT_ALLOWLISTED } from '../../testing/fake-oneclick';
@@ -1152,7 +1151,6 @@ const HOURS = 15_000_000;
 const pro = (months: number, microUsdPerMonth = months >= 12 ? YEARLY : PRICE): Purchase => ({ kind: 'pro', months, microUsdPerMonth });
 /** Packs of 10 more hours of notes. */
 const hours = (packs: number, microUsdPerPack = HOURS): Purchase => ({ kind: 'hours', packs, microUsdPerPack });
-const setLimit = (name: LimitName, value: number) => h.pool.query('INSERT INTO service_limits (name, value) VALUES ($1, $2) ON CONFLICT (name) DO UPDATE SET value = excluded.value, updated_at = now()', [name, value]);
 /** What a request came to: its code and message when it was refused. */
 const said = (p: Promise<unknown>) => p.then(() => 'succeeded', (e: unknown) => (e instanceof AlcoveApiError ? `${e.code}: ${e.message}` : String(e)));
 const labels = async (api: AlcoveApi) => (await api.plans.plan()).balance.history.map((e) => e.label);
@@ -1227,7 +1225,7 @@ describe('top-ups that buy', () => {
     expect(await said(api.plans.startTopUp(BASE_USDC, 13 * PRICE, pro(13, PRICE)))).toBe('invalid: Buy 1 to 12 months at a time.');
     expect(await said(api.plans.startTopUp(BASE_USDC, 6 * HOURS, hours(6)))).toBe('invalid: Buy up to 50 hours of notes at a time.');
     expect(await said(api.plans.startTopUp(BASE_USDC, HOURS, hours(1, 10_000_000)))).toBe('conflict: The price of more notes has changed. Look at it again before buying.');
-    await setLimit('plan.hours.price_micro_usd', 0);
+    await h.setLimit('plan.hours.price_micro_usd', 0);
     expect(await said(api.plans.startTopUp(BASE_USDC, HOURS, hours(1, 0)))).toBe('conflict: More notes can’t be bought right now.');
     expect(h.oneclick.quotes.length).toBe(quotes);
     expect(await depositRows(session.ownerId)).toBe(0);
@@ -1237,7 +1235,7 @@ describe('top-ups that buy', () => {
     // The price of Pro changed.
     const ann = await account();
     const priced = await ann.api.plans.startTopUp(BASE_USDC, PRICE, pro(1));
-    await setLimit('plan.pro.price_micro_usd', 25_000_000);
+    await h.setLimit('plan.pro.price_micro_usd', 25_000_000);
     const from = h.logs.length;
     expect(await paid(ann.api, priced, PRICE)).toMatchObject({
       state: 'credited', received: { microUsd: PRICE },
@@ -1250,14 +1248,14 @@ describe('top-ups that buy', () => {
     // One purchase buys fewer months now.
     const bob = await account();
     const many = await bob.api.plans.startTopUp(BASE_USDC, 3 * PRICE, pro(3));
-    await setLimit('plan.pro_max_months', 2);
+    await h.setLimit('plan.pro_max_months', 2);
     expect((await paid(bob.api, many, 3 * PRICE)).purchase).toEqual({ buys: pro(3), outcome: 'refused', why: 'Since your payment was made, one purchase buys at most 2 months of Pro. It’s in your balance.' });
     expect(await bob.api.plans.plan()).toMatchObject({ kind: 'free', balance: { microUsd: 3 * PRICE } });
     await h.resetLimits();
     // More notes aren't offered any more.
     const cy = await account();
     const notes = await cy.api.plans.startTopUp(BASE_USDC, HOURS, hours(1));
-    await setLimit('plan.hours.price_micro_usd', 0);
+    await h.setLimit('plan.hours.price_micro_usd', 0);
     expect((await paid(cy.api, notes, HOURS)).purchase).toEqual({ buys: hours(1), outcome: 'refused', why: 'More notes stopped being offered before your payment arrived. It’s in your balance.' });
     expect(await cy.api.plans.plan()).toMatchObject({ balance: { microUsd: HOURS }, notes: { minutesPerPeriod: 300 } });
   });

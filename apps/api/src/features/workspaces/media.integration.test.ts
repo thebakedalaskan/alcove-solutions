@@ -49,8 +49,6 @@ async function account(o: { email?: string | undefined; fetch?: typeof fetch | u
 }
 const MiB = 1024 * 1024;
 const GiB = 1024 * MiB;
-/** A limit, set as someone at the database's console would. */
-const setLimit = (name: string, value: number) => h.pool.query('INSERT INTO service_limits (name, value) VALUES ($1, $2) ON CONFLICT (name) DO UPDATE SET value = excluded.value, updated_at = now()', [name, value]);
 /** What each storage limit refuses with, as a browser hears it: a file says how big one can be, and a limit of zero that nothing can be uploaded. */
 const tooBig = (most: string) => ({ code: 'invalid', message: `This file is bigger than ${most}, the most a file can be here.`, status: 400 });
 const NO_FILES = { code: 'invalid', message: 'Files can’t be uploaded right now.', status: 400 };
@@ -1333,7 +1331,7 @@ describe('guests in a call', () => {
     const days = async () => (await h.pool.query<{ day: string; bytes: string }>("SELECT to_char(day, 'YYYY-MM-DD') AS day, bytes::text AS bytes FROM media_guest_upload_days WHERE guest_index = $1 ORDER BY day", [index])).rows.map((r) => [r.day, Number(r.bytes)]);
     const ago = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10);
     const send = (api: AlcoveApi, bytes: number) => api.workspaces.media.upload(id, agenda, fileOf(bytesOf(bytes)), { pass: sam.pass });
-    await setLimit('media.account_day_bytes', 3 * MiB);
+    await h.setLimit('media.account_day_bytes', 3 * MiB);
     await send(sam.api, 2 * MiB);
     expect(await days()).toEqual([[ago(0), 2 * MiB]]);
     // Another process, as after a restart, counts what this one did, because it reads it from the database every time.
@@ -1430,12 +1428,12 @@ describe('guests in a call', () => {
     await org.api.workspaces.share.set(id, agenda, [{ seat: sam.seat }, { seat: jo.seat }], 'edit', { pass: host.ticket.pass });
     const send = (g: { api: AlcoveApi; pass: string }, bytes: number) => g.api.workspaces.media.upload(id, agenda, fileOf(bytesOf(bytes)), { pass: g.pass });
     // Each guest's day is their own, counted by the person their pass names.
-    await setLimit('media.account_day_bytes', 2 * MiB);
+    await h.setLimit('media.account_day_bytes', 2 * MiB);
     await send(sam, MiB);
     expect(await refusal(send(sam, MiB + MiB / 2))).toEqual(TODAYS);
     await send(jo, MiB + MiB / 2);
     // And the storage of whoever the workspace counts against holds what it holds, whoever’s adding to it.
-    await setLimit('plan.free.storage_bytes', 2 * MiB);
+    await h.setLimit('plan.free.storage_bytes', 2 * MiB);
     expect(await refusal(send(jo, 16))).toEqual(FULL);
   });
 });
@@ -2067,20 +2065,20 @@ describe('storage limits', () => {
     const starting = async (at: { id: string; doc: string }, size: number) => said(await json(ann, place(at.id, at.doc), { name: 'a.png', type: 'image/png', size }));
     // A file over the limit in force hears how big one can be, which only the server knows: one past the most there can ever be too.
     expect(await starting({ id, doc }, MAX_MEDIA_BYTES + 1)).toEqual(tooBig('512 MiB'));
-    await setLimit('plan.free.file_bytes', MiB);
+    await h.setLimit('plan.free.file_bytes', MiB);
     expect(await refusal(send(ann, id, doc, MiB + 1))).toEqual(tooBig('1 MiB'));
     expect(await starting({ id, doc }, MiB + 1)).toEqual(tooBig('1 MiB'));
     await send(ann, id, doc, MiB);
     // Storage that holds what its plan allows: what's stored, and what's coming.
-    await setLimit('plan.free.storage_bytes', 2 * MiB);
+    await h.setLimit('plan.free.storage_bytes', 2 * MiB);
     expect(await refusal(send(ann, id, doc, MiB))).toEqual(FULL);
     expect(await starting({ id, doc }, MiB)).toEqual(FULL);
     await send(ann, id, doc, MiB / 2);
     // What someone can upload in a day, in every workspace together. Storage is the account's, in every workspace it
     // pays for: with room again, only the day is in the way.
     const elsewhere = await planIn(ann);
-    await setLimit('plan.free.storage_bytes', 10 * MiB);
-    await setLimit('media.account_day_bytes', 2 * MiB);
+    await h.setLimit('plan.free.storage_bytes', 10 * MiB);
+    await h.setLimit('media.account_day_bytes', 2 * MiB);
     expect(await refusal(send(ann, elsewhere.id, elsewhere.doc, MiB))).toEqual(TODAYS);
     expect(await starting(elsewhere, MiB)).toEqual(TODAYS);
     await send(ann, elsewhere.id, elsewhere.doc, MiB / 2);
@@ -2089,13 +2087,13 @@ describe('storage limits', () => {
     expect(await count('SELECT count(*)::int AS n FROM workspace_media WHERE owner_id = $1', [owner])).toBe(2);
     // A limit of zero isn't someone having used theirs up: nothing can be uploaded, whoever's asking.
     await h.resetLimits();
-    await setLimit('plan.free.file_bytes', 0);
+    await h.setLimit('plan.free.file_bytes', 0);
     expect(await refusal(send(ann, id, doc, 1))).toEqual(NO_FILES);
     await h.resetLimits();
-    await setLimit('plan.free.storage_bytes', 0);
+    await h.setLimit('plan.free.storage_bytes', 0);
     expect(await refusal(send(ann, id, doc, 1))).toEqual(FULL);
     await h.resetLimits();
-    await setLimit('media.account_day_bytes', 0);
+    await h.setLimit('media.account_day_bytes', 0);
     expect(await refusal(send(ann, id, doc, 1))).toEqual(NO_UPLOADS);
   });
 
@@ -2105,13 +2103,13 @@ describe('storage limits', () => {
     const m = await started(ann, id, doc, 3 * PIECE);
     const at = (n: number) => `${place(id, doc)}/${m}/pieces/${n}`;
     expect((await sendPiece(ann, at(0), bytesOf(PIECE))).status).toBe(200);
-    await setLimit('media.account_day_bytes', PIECE + 1);
+    await h.setLimit('media.account_day_bytes', PIECE + 1);
     expect(await said(await sendPiece(ann, at(1), bytesOf(PIECE)))).toEqual(TODAYS);
-    await setLimit('media.account_day_bytes', 3 * PIECE);
-    await setLimit('plan.free.storage_bytes', 2 * PIECE);
+    await h.setLimit('media.account_day_bytes', 3 * PIECE);
+    await h.setLimit('plan.free.storage_bytes', 2 * PIECE);
     expect(await said(await sendPiece(ann, at(1), bytesOf(PIECE)))).toEqual(FULL);
-    await setLimit('plan.free.storage_bytes', 4 * PIECE);
-    await setLimit('plan.free.file_bytes', 2 * PIECE);
+    await h.setLimit('plan.free.storage_bytes', 4 * PIECE);
+    await h.setLimit('plan.free.file_bytes', 2 * PIECE);
     expect(await said(await sendPiece(ann, at(1), bytesOf(PIECE)))).toEqual(tooBig('8 MiB'));
     await h.resetLimits();
     expect((await sendPiece(ann, at(1), bytesOf(PIECE))).status).toBe(200);
@@ -2123,7 +2121,7 @@ describe('storage limits', () => {
     const ann = await withCookie();
     const { id, doc } = await planIn(ann);
     const m = await started(ann, id, doc, 2 * PIECE);
-    await setLimit('media.account_day_bytes', 1);
+    await h.setLimit('media.account_day_bytes', 1);
     // A browser that has sent all of a piece sends its next request down the same connection once it has its answer.
     const { hostname, port, host } = new URL(h.baseUrl);
     const socket = connect({ host: hostname, port: Number(port) });
@@ -2153,10 +2151,10 @@ describe('storage limits', () => {
     const objects = await objectsOf(owner);
     const before = await storedBytes(owner);
     // Below what's already there.
-    await setLimit('plan.free.storage_bytes', 1);
-    await setLimit('media.account_day_bytes', 1);
+    await h.setLimit('plan.free.storage_bytes', 1);
+    await h.setLimit('media.account_day_bytes', 1);
     expect(await refusal(send(ann, id, doc, 1))).toEqual(FULL);
-    await setLimit('plan.free.file_bytes', 0);
+    await h.setLimit('plan.free.file_bytes', 0);
     expect(await refusal(send(ann, id, doc, 1))).toEqual(NO_FILES);
     await maintain(h.deps, { uploadAgeMs: ALREADY });
     // Everything already there stays, and reads back as it went in.
@@ -2176,7 +2174,7 @@ describe('storage limits', () => {
     const from = h.logs.length;
     h.deps.cfg = { ...cfg, LIMITS_CACHE_MS: 3000 };
     try {
-      await setLimit('media.account_day_bytes', 1);
+      await h.setLimit('media.account_day_bytes', 1);
       // Until the window ends, what was read holds...
       await send(ann, id, doc, 16);
       await pause(3100);
@@ -2190,7 +2188,7 @@ describe('storage limits', () => {
   it('keeps what was in force when the limits can’t be read, and reads them again next time', async () => {
     const ann = await account();
     const { id, doc } = await planIn(ann);
-    await setLimit('media.account_day_bytes', 1);
+    await h.setLimit('media.account_day_bytes', 1);
     expect(await refusal(send(ann, id, doc, 16))).toEqual(TODAYS);
     const from = h.logs.length;
     await h.pool.query('ALTER TABLE service_limits RENAME TO service_limits_away');
@@ -2231,15 +2229,16 @@ describe('storage limits', () => {
     const { id, doc } = await planIn(ann);
     const owner = await ownerOf(id);
     const from = h.logs.length;
-    await setLimit('media.file_byte', 1);
-    await setLimit('media.account_day_bytes', -1);
+    // A row no limit has, as a typo at the database's console makes it, and a value below a limit's floor.
+    await h.pool.query('INSERT INTO service_limits (name, value) VALUES ($1, $2)', ['media.file_byte', 1]);
+    await h.setLimit('media.account_day_bytes', -1);
     // Neither stops anything: each limit they meant is its default.
     await send(ann, id, doc, MiB);
     await send(ann, id, doc, MiB);
     const ignored = logsSince(from).filter((l) => l.msg === 'service limit ignored').map((l) => [l.level, l['limit'], l['value']]);
     expect(ignored.sort()).toEqual([[40, 'media.account_day_bytes', -1], [40, 'media.file_byte', 1]]);
     // Zero is a value like any other: none.
-    await setLimit('media.account_day_bytes', 0);
+    await h.setLimit('media.account_day_bytes', 0);
     expect(await refusal(send(ann, id, doc, 1))).toEqual(NO_UPLOADS);
     await h.resetLimits();
     // Past its ceiling, a value is the ceiling: a workspace holding more than that is full, whatever the row says.
@@ -2247,7 +2246,7 @@ describe('storage limits', () => {
     const before = await storedBytes(owner);
     await h.pool.query('UPDATE owners SET stored_bytes = $2 WHERE owner_id = $1', [owner, ceiling + GiB]);
     try {
-      await setLimit('plan.free.storage_bytes', 1e15);
+      await h.setLimit('plan.free.storage_bytes', 1e15);
       expect(await refusal(send(ann, id, doc, 1))).toEqual(FULL);
     } finally { await h.pool.query('UPDATE owners SET stored_bytes = $2 WHERE owner_id = $1', [owner, before]); }
     expect(logsSince(from).filter((l) => l.msg === 'service limit clamped')).toEqual([expect.objectContaining({ level: 40, limit: 'plan.free.storage_bytes', value: 1e15, used: ceiling })]);
@@ -2297,8 +2296,8 @@ describe('storage limits', () => {
   it('warns once each time someone’s storage or their day passes 80% of its limit', async () => {
     const ann = await account();
     const { id, doc } = await planIn(ann);
-    await setLimit('plan.free.storage_bytes', 10 * MiB);
-    await setLimit('media.account_day_bytes', 12 * MiB);
+    await h.setLimit('plan.free.storage_bytes', 10 * MiB);
+    await h.setLimit('media.account_day_bytes', 12 * MiB);
     const from = h.logs.length;
     const warned = () => logsSince(from).filter((l) => l.level === 40 && /past 80%/.test(l.msg));
     const files = [];
@@ -2321,7 +2320,7 @@ describe('storage limits', () => {
   it('keeps a day’s count through a restart, forgets it after two days, and deletes it with the account', async () => {
     const ann = await account();
     const { id, doc } = await planIn(ann);
-    await setLimit('media.account_day_bytes', 3 * MiB);
+    await h.setLimit('media.account_day_bytes', 3 * MiB);
     await send(ann, id, doc, 2 * MiB);
     const days = async () => (await h.pool.query<{ day: string; bytes: string }>("SELECT to_char(day, 'YYYY-MM-DD') AS day, bytes::text AS bytes FROM media_upload_days WHERE owner_id = $1 ORDER BY day", [ann.ownerId])).rows.map((r) => [r.day, Number(r.bytes)]);
     const ago = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10);

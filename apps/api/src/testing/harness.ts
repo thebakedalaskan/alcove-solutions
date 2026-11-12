@@ -16,6 +16,7 @@ import { loadConfig, type Config } from '../config';
 import { createPool } from '../db';
 import { createDocPool } from '../live/docPool';
 import { createHub } from '../live/hub';
+import type { LimitName } from '../limits';
 import { createLiveKit } from '../livekit';
 import { configureLogging } from '../log';
 import { migrate } from '../migrate';
@@ -85,6 +86,11 @@ export interface Harness {
   /** Puts the limits back to what tests start with: the defaults. */
   resetLimits(): Promise<void>;
   /**
+   * Sets a limit as someone at the database's console would: in force on the next request (LIMITS_CACHE_MS is 0 here), and
+   * never checked against its bounds, so a test can set one past them.
+   */
+  setLimit(name: LimitName, value: number): Promise<void>;
+  /**
    * Another API process on the same database and bucket, with its own hub, as after a restart, on a second instance, or
    * with other settings. `stopping`: says it's shutting down. `pool`: its own connections to the database. `hubUrl`: the
    * way its hub reaches Postgres, for a test to stand in the way.
@@ -150,6 +156,9 @@ export async function startHarness(): Promise<Harness> {
   await pool.query('DROP SCHEMA public CASCADE; CREATE SCHEMA public;');
   await migrate(pool);
   const resetLimits = async () => { await pool.query('DELETE FROM service_limits'); };
+  const setLimit = async (name: LimitName, value: number) => {
+    await pool.query('INSERT INTO service_limits (name, value) VALUES ($1, $2) ON CONFLICT (name) DO UPDATE SET value = excluded.value, updated_at = now()', [name, value]);
+  };
   const objects = await createObjectStore(cfg);
   const deps: Deps = { cfg, pool, objects, livekit: createLiveKit(cfg), hub: createHub(url, { checkMs: cfg.HUB_CHECK_MS, timeoutMs: cfg.HUB_TIMEOUT_MS, maxStreams: cfg.LIVE_STREAMS_MAX, maxPerAddress: cfg.LIVE_STREAMS_PER_ADDRESS, makeRoomAfterMs: cfg.LIVE_MAKE_ROOM_MS }), docs: docPoolFor(cfg) };
   const { server, baseUrl } = await listen(deps);
@@ -174,6 +183,7 @@ export async function startHarness(): Promise<Harness> {
     },
     closeCalls,
     resetLimits,
+    setLimit,
     async secondServer(more = {}, stopping = undefined, own = undefined, hubUrl = undefined) {
       const settings = { ...deps.cfg, ...more };
       const hub = createHub(hubUrl ?? url, { checkMs: settings.HUB_CHECK_MS, timeoutMs: settings.HUB_TIMEOUT_MS, maxStreams: settings.LIVE_STREAMS_MAX, maxPerAddress: settings.LIVE_STREAMS_PER_ADDRESS, makeRoomAfterMs: settings.LIVE_MAKE_ROOM_MS });
