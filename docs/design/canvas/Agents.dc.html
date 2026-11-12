@@ -167,32 +167,39 @@
 </div>
 </div>
 
-<div class="agt-water">
+<div class="agt-water{{waterCls}}">
+<sc-if value="{{showLog}}" hint-placeholder-val="{{false}}">
 <section class="agt-log" aria-labelledby="agt-log-h">
 <div class="pn-h"><h2 id="agt-log-h">What your agents did</h2><span class="agt-only"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.lock}}"></path></svg>Only you see this</span></div>
-<sc-if value="{{hasLog}}" hint-placeholder-val="{{true}}">
-<sc-for list="{{log}}" as="d" hint-placeholder-count="2">
+<sc-if value="{{hasRows}}" hint-placeholder-val="{{false}}">
+<sc-for list="{{log}}" as="d" hint-placeholder-count="1">
 <h3 class="agt-day">{{d.day}}</h3>
-<sc-for list="{{d.rows}}" as="r" hint-placeholder-count="3">
-<div class="agt-r">
+<sc-for list="{{d.rows}}" as="r" hint-placeholder-count="2">
+<div class="agt-r{{r.newCls}}">
 <span class="agt-k{{r.kCls}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{r.icon}}"></path></svg></span>
 <p class="agt-r-t"><b>{{r.who}}</b> {{r.verb}}<sc-if value="{{r.hasObj}}" hint-placeholder-val="{{false}}"> <button type="button" class="agt-obj{{r.hotCls}}" onClick="{{r.go}}">{{r.obj}}</button></sc-if><small>{{r.sub}}</small></p>
 <span class="agt-r-w">{{r.t}}</span>
 </div>
 </sc-for>
 </sc-for>
-<div class="agt-log-f"><button type="button" class="b b-quiet b-sm" onClick="{{showMore}}">Show 14 more</button></div>
+<sc-if value="{{hasMore}}" hint-placeholder-val="{{false}}"><div class="agt-log-f"><button type="button" class="b b-quiet b-sm" onClick="{{showMore}}">Show 14 more</button></div></sc-if>
 </sc-if>
-<sc-if value="{{noLog}}" hint-placeholder-val="{{false}}">
-<div class="agt-empty"><span class="agt-win"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.bot}}"></path></svg></span><b>{{emptyTitle}}</b><p>{{emptyLine}}</p></div>
+<sc-if value="{{isNone}}" hint-placeholder-val="{{false}}">
+<div class="agt-none"><span class="agt-k is-wait"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.bot}}"></path></svg></span><p class="agt-r-t"><b>Nothing yet</b><small>{{noneLine}}</small></p></div>
+</sc-if>
+<sc-if value="{{isLook}}" hint-placeholder-val="{{false}}">
+<div class="agt-look" role="status"><span class="agt-dots" aria-hidden="true"><i></i><i></i><i></i></span>Looking for what your agents did</div>
 </sc-if>
 </section>
+</sc-if>
 
 <section class="agt-tries" aria-labelledby="agt-try-h">
 <div class="pn-h"><h2 id="agt-try-h">Ask your agent</h2></div>
+<ul class="agt-qs">
 <sc-for list="{{prompts}}" as="q" hint-placeholder-count="4">
-<div class="agt-q"><p>“{{q.q}}”<small><sc-if value="{{q.can}}" hint-placeholder-val="{{false}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.check}}"></path></svg></sc-if>{{q.sub}}</small></p><button type="button" class="agt-ib{{q.hotCls}}" aria-label="Copy the question" title="Copy" onClick="{{q.copy}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.copy}}"></path></svg></button></div>
+<li class="agt-q"><span class="agt-k{{q.kCls}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{q.icon}}"></path></svg></span><p>“{{q.q}}”<sc-if value="{{q.hasSub}}" hint-placeholder-val="{{false}}"><small><sc-if value="{{q.can}}" hint-placeholder-val="{{false}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.check}}"></path></svg></sc-if>{{q.sub}}</small></sc-if></p><button type="button" class="agt-ib{{q.hotCls}}" aria-label="Copy the question" title="Copy" onClick="{{q.copy}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.copy}}"></path></svg></button></li>
 </sc-for>
+</ul>
 </section>
 </div>
 
@@ -209,7 +216,7 @@
 </x-dc>
 <script type="text/x-dc" data-dc-script data-props='{"go":{"editor":null,"default":null},"mode":{"editor":"enum","options":["dark","light"],"default":"dark"},"step":{"editor":null,"default":"agToday"},"$preview":{"width":1440,"height":900}}'>
 class Component extends DCLogic {
-  componentWillUnmount() { clearTimeout(this.__toastT); clearTimeout(this.__busy); }
+  componentWillUnmount() { clearTimeout(this.__toastT); clearTimeout(this.__busy); clearTimeout(this.__arrive); }
   renderVals() {
     var AH = window.AH, G = AH.AG, assign = AH.assign, hs = AH.hash(), self = this;
     var stepId = hs.step || this.props.step || 'agToday';
@@ -372,7 +379,7 @@ class Component extends DCLogic {
     v.isDone = allowed;
     v.done = askKind ? { title: askKind.name + ' is connected', line: 'Go back to ' + askKind.name + ' and ask it something. You can close this tab.' } : { title: '', line: '' };
     v.copyTry = function () { toast('Copied. Paste it into ' + (askKind ? askKind.name : 'your agent') + '.'); };
-    v.doneGo = function () { set({ ask: '', stage: '', scene: 'today', hot: '' }); };
+    v.doneGo = function () { set({ ask: '', stage: '', scene: 'today', hot: '', log: 'empty' }); };
 
     /*
      * The open popover. Connecting is one line of what to do, the address or command when it needs one, and one button
@@ -459,29 +466,49 @@ class Component extends DCLogic {
       return { t: p.short, onA: on ? 'true' : 'false', go: function () { set({ tokenScopes: on ? st.tokenScopes.filter(function (x) { return x !== p.id; }) : st.tokenScopes.concat([p.id]) }); } };
     });
 
-    /* The water: what they did, newest first, and things to ask. */
-    var showLog = st.scene !== 'first' && !failed && !loading;
-    v.hasLog = showLog; v.noLog = !showLog;
-    v.emptyTitle = failed ? 'Nothing to show' : 'Nothing yet';
-    v.emptyLine = failed ? 'What your agents did shows here once Alcove can reach the server.' : 'What your agents read and change in Alcove shows here, newest first.';
-    v.log = showLog ? G.LOG.map(function (d) {
+    /*
+     * The water. What your agents did shows once there's an agent to do something, or something it did: until then the
+     * water is only what you can ask, two across. Nothing yet is one row in the list's shape. Each question has a mark
+     * for what the agent will do, and once an agent is connected, a line saying which can do it, or what it can't.
+     */
+    var talkers = failed ? [] : conns.filter(function (c) { return c.via !== 'Token'; });
+    var logKind = failed ? 'none' : loading ? 'look' : (st.log || (!conns.length ? 'none' : st.scene === 'first' ? 'empty' : 'full'));
+    var logData = logKind === 'full' ? G.LOG : logKind === 'first' ? G.FIRST_LOG : [];
+    v.showLog = logKind !== 'none';
+    v.waterCls = v.showLog ? '' : ' is-solo';
+    v.hasRows = logData.length > 0;
+    v.hasMore = logKind === 'full';
+    v.isNone = logKind === 'empty';
+    v.isLook = logKind === 'look';
+    var one = talkers.length === 1 ? talkers[0].name : '';
+    v.noneLine = 'What ' + (one ? one + ' reads and changes' : 'your agents read and change') + ' in Alcove shows here, newest first.';
+    v.log = logData.map(function (d) {
       return { day: d.day, rows: d.rows.map(function (r) {
         var m = G.MARKS[r.kind], c = anyConn(r.who);
         return {
           who: c ? c.name : 'An agent', verb: r.verb, obj: r.obj || '', hasObj: !!r.obj, sub: r.sub, t: r.t,
-          icon: I[m.icon], kCls: ' is-' + m.tint, hotCls: hot('obj-' + r.id),
+          icon: I[m.icon], kCls: ' is-' + m.tint, hotCls: hot('obj-' + r.id), newCls: st.fresh ? ' is-new' : '',
           go: function () { toast(r.obj + ' opens.'); }
         };
       }) };
-    }) : [];
+    });
     v.showMore = function () { toast('Earlier activity shows here, back to when each agent was connected.'); };
-    var talkers = conns.filter(function (c) { return c.via !== 'Token'; });
     v.prompts = G.PROMPTS.map(function (q) {
+      var mk = G.ASK[q.id];
       var can = talkers.filter(function (c) { return c.scopes.indexOf(q.needs) >= 0; }).map(function (c) { return c.name; });
+      var sub = !talkers.length ? '' : can.length ? names(can) + ' can do this' : (one || 'Your agents') + ' can’t ' + label(q.needs).short.toLowerCase();
       return {
-        q: q.q, can: can.length > 0, hotCls: hot('prompt-' + q.id),
-        sub: can.length ? names(can) + ' can do this' : conns.length ? 'Needs ' + label(q.needs).short.toLowerCase() : 'Needs ' + label(q.needs).short.toLowerCase(),
-        copy: function () { toast('Copied. Paste it into ' + (can[0] || 'your agent') + '.'); }
+        q: q.q, icon: I[mk.icon], kCls: ' is-' + mk.tint, hasSub: !!sub, sub: sub, can: can.length > 0, hotCls: hot('prompt-' + q.id),
+        copy: function () {
+          toast(talkers.length ? 'Copied. Paste it into ' + (can[0] || talkers[0].name) + '.' : 'Copied. Connect an agent, then paste it there.');
+          /* In the prototype, the agent answers a moment later: what it read arrives at the top of the log. */
+          if (logKind !== 'empty' || !talkers.length) return;
+          clearTimeout(self.__arrive);
+          self.__arrive = setTimeout(function () {
+            var cs = (self.state && self.state.conns) || st.conns || [];
+            self.setState({ log: 'first', fresh: true, conns: cs.map(function (c) { return c.isNew ? assign({}, c, { used: 'Just now', isNew: false }) : c; }) });
+          }, 2600);
+        }
       };
     });
 

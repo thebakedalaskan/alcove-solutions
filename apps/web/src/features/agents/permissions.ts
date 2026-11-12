@@ -3,7 +3,7 @@ import type { AgentPermission } from '@alcove/ui';
 
 /**
  * Each permission an agent can have: what it's called (`label`), what it allows (`detail`), and its `short` name, which is
- * what its chip says and what something that needs it says ("Needs book calls").
+ * what its chip says and what a question says when your agents don't have it ("Claude can’t book calls").
  */
 export const PERMISSIONS = [
   { id: 'notes:read', label: 'Read notes', short: 'Read notes', detail: 'Find notes, read transcripts, and ask questions about them.' },
@@ -23,5 +23,5 @@ export const READ_SCOPES: AgentScope[] = ['notes:read', 'meetings:read', 'calend
 /** Scopes in the order they're shown, each once. */
 export const inOrder = (scopes: readonly AgentScope[]): AgentScope[] => PERMISSIONS.map((p) => p.id).filter((id) => scopes.includes(id));
 
-/** A permission's short name, in a sentence: "book calls". */
+/** A permission's short name, in a sentence: "can’t book calls". */
 export const needs = (scope: AgentScope): string => (PERMISSIONS.find((p) => p.id === scope)?.short ?? scope).toLowerCase();

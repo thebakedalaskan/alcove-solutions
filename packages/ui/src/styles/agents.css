@@ -85,7 +85,8 @@
 .ag-who:focus-visible { outline: 2px solid var(--focus); outline-offset: 4px; }
 .ag-n, .ag-s { display: block; margin-inline: calc(var(--u) * -.12); overflow: hidden; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
 .ag-n { height: 25px; padding-top: 7px; font: 500 14px/18px var(--font-sans); color: var(--ink); text-shadow: 0 0 10px var(--ground), 0 0 3px var(--ground); }
-.ag-s { height: 18px; font: 400 12.5px/18px var(--font-sans); font-variant-numeric: tabular-nums; color: var(--ag-soft); }
+/* When it was used sits on the water too: the water's lines pass behind it, as they do behind the name. */
+.ag-s { height: 18px; font: 400 12.5px/18px var(--font-sans); font-variant-numeric: tabular-nums; color: var(--ag-soft); text-shadow: 0 0 10px var(--ground), 0 0 3px var(--ground); }
 .ag-s.is-caution { color: var(--caution); font-weight: 500; }
 .ag-p.is-yet .ag-n { font-weight: 400; color: var(--ink-2); }
 .ag-who:hover .ag-win { transform: translateY(-3px); }
@@ -212,8 +213,13 @@
 .ag-pair.is-ended .ag-link::before { border-color: var(--ag-dash); }
 .ag-pair.is-ended .ag-link-c { background: color-mix(in oklch, var(--ink) 16%, var(--ground)); color: var(--ink-2); box-shadow: none; }
 
-/* ------------------------------------------------------------ the water: what they did, and things to ask */
-.ag-water { position: relative; display: grid; grid-template-columns: minmax(0, 8fr) minmax(0, 4fr); gap: 56px; margin-top: calc(var(--name-h) + 30px); }
+/*
+ * ------------------------------------------------------------ the water: what they did, and things to ask
+ * What they did shows once there's an agent to do something; until then (`is-solo`) the water is only what you can ask,
+ * two across. Every row on it has the same shape: a mark by kind, the words, and what's at its end in a fixed column.
+ */
+.ag-water { position: relative; display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); gap: 28px 56px; margin-top: calc(var(--name-h) + 30px); }
+.ag-water.is-solo { grid-template-columns: minmax(0, 1fr); }
 .ag-water > section { min-width: 0; }
 .ag-h { display: flex; align-items: center; justify-content: space-between; gap: 16px; height: 46px; }
 .ag-h h2 { font: 600 15px/1.3 var(--font-sans); color: var(--ink); }
@@ -227,6 +233,9 @@
 .ag-k.is-time { --tint: var(--sun-text); }
 .ag-k.is-follow { --tint: var(--horizon); }
 .ag-k.is-decision { --tint: var(--rose); }
+.ag-k.is-caution { --tint: var(--caution); }
+/* An agent's window not filled in yet, the size of a row's mark: the line's dashed windows, once more. */
+.ag-k.is-wait { --tint: var(--ink-2); background: none; border: 1.5px dashed var(--ag-dash); border-bottom: 0; border-radius: 11px 11px 2px 2px; }
 .ag-r-t { min-width: 0; padding-top: 5px; font: 400 15px/22px var(--font-sans); color: var(--ink); text-wrap: pretty; overflow-wrap: anywhere; }
 .ag-r-t b { font-weight: 600; }
 .ag-obj { display: inline; font-weight: 500; color: var(--ink); text-decoration: underline; text-decoration-color: color-mix(in oklch, var(--ink) 32%, transparent); text-underline-offset: 3px; border-radius: 4px; }
@@ -237,20 +246,23 @@
 .ag-log-f { padding-top: 6px; border-top: 1px solid var(--line); }
 .ag-log-f .ac-btn { margin-left: -12px; }
 .ag-qs { margin: 0; padding: 0; list-style: none; }
-.ag-q { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 10px; align-items: center; padding: 11px 0; border-top: 1px solid var(--line); }
+.ag-q { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; column-gap: 14px; align-items: center; min-height: 55px; padding: 11px 0; border-top: 1px solid var(--line); }
 .ag-q p { min-width: 0; font: 400 15px/22px var(--font-sans); color: var(--ink); text-wrap: pretty; }
 .ag-q small { display: flex; align-items: center; gap: 5px; margin-top: 2px; font: 400 13px/18px var(--font-sans); color: var(--ag-soft); }
 .ag-q small > .ac-i { flex: none; }
-/* Nothing to list on the water is the kit's EmptyState (`.ac-empty.ag-none`), its art an empty dashed window. */
-.ac-empty.ag-none { gap: 6px; padding: 30px 16px 34px; border-top: 1px solid var(--line); }
-.ac-empty.ag-none > .ag-win { width: 64px; margin-bottom: 8px; }
-.ac-empty.ag-none > b { font: 600 16px/1.3 var(--font-sans); letter-spacing: 0; color: var(--ink); }
-.ac-empty.ag-none > p { max-width: 30em; font: 400 14.5px/1.45 var(--font-sans); color: var(--ag-soft); text-wrap: balance; }
-.ac-empty.ag-none .ac-empty-act { margin-top: 2px; }
-.ag-waiting { display: flex; justify-content: center; padding: 30px 0; border-top: 1px solid var(--line); color: var(--ag-soft); }
+/* With nothing connected, the questions are the water: two across, each row as tall as its neighbour. */
+.ag-water.is-solo .ag-qs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 56px; }
+/* Nothing in what they did yet: one row where the first will be (AgentNone), and Try again at its end when it didn't load. */
+.ag-none { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; column-gap: 14px; align-items: start; padding: 11px 0 12px; border-top: 1px solid var(--line); }
+.ag-none .ag-r-t b { font-weight: 500; }
+.ag-none > .ac-btn { align-self: center; }
+/* Looking for what they did: dots where the first row's mark will be. */
+.ag-waiting { display: flex; align-items: center; height: 55px; border-top: 1px solid var(--line); color: var(--ag-soft); }
+.ag-waiting > .ac-dots { justify-content: center; width: 32px; }
 
 @media (max-width: 1180px) {
-  .ag-water { grid-template-columns: minmax(0, 1fr); gap: 28px; }
+  .ag-water { grid-template-columns: minmax(0, 1fr); }
+  .ag-water.is-solo .ag-qs { grid-template-columns: minmax(0, 1fr); }
 }
 
 /* ------------------------------------------------------------ a phone: the line slides sideways, popovers are sheets */
@@ -271,6 +283,7 @@
   .ag .hz-sun, .ag .hz-glow { display: none; }
   .ag-water { margin-top: calc(var(--name-h) + 22px); }
   .ag-r { grid-template-columns: 32px minmax(0, 1fr) 44px; column-gap: 12px; }
+  .ag-q, .ag-none { column-gap: 12px; }
 
   .ag-ask { justify-content: flex-start; padding: 18px 0 22px; }
   .ag-qt { font-size: 30px; }
