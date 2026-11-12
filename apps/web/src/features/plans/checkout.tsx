@@ -12,7 +12,7 @@ export type CheckoutFor = { plan: 'pro'; months?: number | undefined } | { plan:
   /** Team: starting one (its name, then its first licenses) when you're on none, or its admin buying more. */
   | { plan: 'team'; licenses?: number | undefined };
 /** Where it was opened from: Done says "Back to the call" from a call, and Compare plans shows away from Plans. */
-export type CheckoutFrom = 'plans' | 'settings' | 'side' | 'call' | 'door' | 'welcome';
+export type CheckoutFrom = 'plans' | 'settings' | 'side' | 'call' | 'door' | 'welcome' | 'team';
 /** What's open: a fresh checkout, or one on a payment already on its way (`topUpId`), reopened from its row. */
 export interface CheckoutOpen { what: CheckoutFor; from: CheckoutFrom; topUpId: string | null }
 

@@ -34,7 +34,7 @@ export interface CheckoutArgs extends PageArgs {
   topUpId?: string | undefined;
 }
 
-const FROM: CheckoutFrom[] = ['plans', 'settings', 'side', 'call', 'door', 'welcome'];
+const FROM: CheckoutFrom[] = ['plans', 'settings', 'side', 'call', 'door', 'welcome', 'team'];
 
 /** What a door opens checkout on, from the story's args. */
 function openFrom(a: CheckoutArgs): CheckoutOpen {
