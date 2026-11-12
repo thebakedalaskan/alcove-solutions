@@ -1,5 +1,5 @@
 import { IconButton, cn } from '@alcove/ui';
-import { Outlet, createFileRoute, useRouter, useRouterState } from '@tanstack/react-router';
+import { Outlet, createFileRoute, useMatches, useRouter } from '@tanstack/react-router';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { CallFlowHost, useCallFlowHost } from '~/features/calls/flow/CallFlow';
 import { useKeptUploads } from '~/features/record/uploads';
@@ -39,6 +39,17 @@ function arrivalOf(shell: HTMLElement): Animation[] {
     .filter((a) => a instanceof CSSAnimation && a.effect instanceof KeyframeEffect && a.effect.target !== null && parts.has(a.effect.target));
 }
 
+/**
+ * The page the frame is showing. The router moves its location as soon as a navigation starts, and shows the page it's
+ * leaving until the next one has loaded, so the frame follows the matches it presents. Keyed on the location, the page being
+ * left would start again from nothing while the next loaded: signing out flashed the frame's background, and Home came back
+ * empty, until the welcome page arrived. An index page's path ends in a slash (`/drive/`); the address doesn't.
+ */
+function shownPath(matches: readonly { pathname: string }[]): string {
+  const path = matches[matches.length - 1]?.pathname ?? '/';
+  return path.length > 1 && path.endsWith('/') ? path.slice(0, -1) : path;
+}
+
 function Shell() {
   const { account } = Route.useRouteContext();
   const router = useRouter();
@@ -56,7 +67,7 @@ function Shell() {
   const [palette, setPalette] = useState(false);
   const [start, setStart] = useState<PaletteStart>({ mode: 'find' });
   const side = useSidePanel();
-  const path = useRouterState({ select: (s) => s.location.pathname });
+  const path = useMatches({ select: shownPath });
   const { stage, opened } = useArrival();
   const openPalette = useCallback((s: PaletteStart = { mode: 'find' }) => { setStart(s); setPalette(true); }, []);
   const paletteOpen = useRef(false);
