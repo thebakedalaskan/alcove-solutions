@@ -47,7 +47,7 @@
 .agt-p.is-yet .agt-win { background: none; box-shadow: none; border: 1.5px dashed var(--agt-dash); border-bottom: 0; color: var(--ink-2); }
 .agt-p.is-other .agt-win .i { width: 34%; height: 34%; }
 .agt-n { display: block; height: 25px; padding-top: 7px; font: 500 14px/18px var(--sans); text-align: center; white-space: nowrap; text-shadow: 0 0 10px var(--ground), 0 0 3px var(--ground); }
-.agt-s { display: block; height: 18px; font: 400 12.5px/18px var(--sans); color: var(--agt-soft); text-align: center; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.agt-s { display: block; height: 18px; font: 400 12.5px/18px var(--sans); color: var(--agt-soft); text-align: center; white-space: nowrap; font-variant-numeric: tabular-nums; text-shadow: 0 0 10px var(--ground), 0 0 3px var(--ground); }
 .agt-p.is-yet .agt-n { color: var(--ink-2); font-weight: 400; }
 .agt-s.is-caution { color: var(--agt-caution); font-weight: 500; }
 .agt-who:hover .agt-win { transform: translateY(-3px); }
@@ -209,43 +209,70 @@
 .agt-try small { margin-right: 8px; color: var(--ink-2); font-size: 13.5px; }
 .agt-done .b { margin-top: 16px; }
 
-/* The water: what they did, and things to ask. */
-.agt-water { position: relative; display: grid; grid-template-columns: minmax(0, 8fr) minmax(0, 4fr); gap: 56px; margin-top: calc(var(--name-h) + 30px); }
-.agt-water .pn-h { height: 46px; }
+/*
+ * The water. What your agents did shows once there's an agent to do something; until then the water is only what you can
+ * ask, two across. Nothing in it yet is one row in the list's own shape. Every row on the water is the same: a mark by
+ * kind, the words, and what's at its end in a fixed column.
+ */
+.agt-water { position: relative; display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); column-gap: 56px; row-gap: 28px; margin-top: calc(var(--name-h) + 30px); }
+.agt-water > section { min-width: 0; }
+.agt-water.is-solo { grid-template-columns: minmax(0, 1fr); }
+.agt-water .pn-h { display: flex; align-items: center; justify-content: space-between; gap: 16px; height: 46px; }
+.agt-water .pn-h h2 { font: 600 15px/1.3 var(--sans); color: var(--ink); }
 .agt-only { display: inline-flex; align-items: center; gap: 6px; font: 500 13px/1 var(--sans); color: var(--agt-soft); }
 .agt-only .i { width: 14px; height: 14px; }
-.agt-day { padding: 16px 0 6px; font: 500 13px/1.3 var(--sans); color: var(--agt-soft); }
-.agt-day:first-of-type { padding-top: 4px; }
-.agt-r { display: grid; grid-template-columns: 32px minmax(0, 1fr) 52px; column-gap: 14px; align-items: start; padding: 11px 0; border-top: 1px solid var(--line); }
-.agt-k { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 10px; background: color-mix(in oklch, var(--tint, var(--ink)) 14%, transparent); color: var(--tint, var(--ink-2)); }
+
+/* A row's mark, tinted by what was done: reading is quiet, a booked call time, a follow-up horizon, a decision rose. */
+.agt-k { --tint: var(--ink-2); display: grid; place-items: center; width: 32px; height: 32px; border-radius: 10px; background: color-mix(in oklch, var(--tint) 14%, transparent); color: var(--tint); }
 .agt-k .i { width: 16px; height: 16px; }
-.agt-k.is-ink { --tint: var(--ink-2); background: color-mix(in oklch, var(--ink) 8%, transparent); }
+.agt-k.is-ink { background: color-mix(in oklch, var(--ink) 8%, transparent); }
 .agt-k.is-now { --tint: var(--now); }
 .agt-k.is-focus { --tint: var(--focus); }
 .agt-k.is-notes { --tint: var(--notes); }
+.agt-k.is-caution { --tint: var(--agt-caution); }
+/* An agent's window not filled in yet, the size of a row's mark: the line's dashed windows, once more. */
+.agt-k.is-wait { background: none; border: 1.5px dashed var(--agt-dash); border-bottom: 0; border-radius: 11px 11px 2px 2px; color: var(--ink-2); }
+.agt-k.is-wait .i { width: 15px; height: 15px; }
+
+/* What they did, by day, newest first. */
+.agt-day { padding: 16px 0 6px; font: 500 13px/1.3 var(--sans); color: var(--agt-soft); }
+.agt-day:first-of-type { padding-top: 4px; }
+.agt-r { display: grid; grid-template-columns: 32px minmax(0, 1fr) 52px; column-gap: 14px; align-items: start; padding: 11px 0; border-top: 1px solid var(--line); }
+.agt-r.is-new { animation: agt-in .45s var(--ease) both; }
+@keyframes agt-in { from { opacity: 0; transform: translateY(-6px); } }
 .agt-r-t { min-width: 0; padding-top: 5px; font: 400 15px/22px var(--sans); color: var(--ink); text-wrap: pretty; }
 .agt-r-t b { font-weight: 600; }
+.agt-r-t small { display: block; margin-top: 1px; font: 400 13.5px/20px var(--sans); color: var(--agt-soft); }
 .agt-obj { display: inline; font-weight: 500; color: var(--ink); text-decoration: underline; text-decoration-color: color-mix(in oklch, var(--ink) 32%, transparent); text-underline-offset: 3px; border-radius: 4px; }
 .agt-obj:hover { text-decoration-color: var(--ink); }
-.agt-r-t small { display: block; margin-top: 1px; font: 400 13.5px/20px var(--sans); color: var(--agt-soft); }
 .agt-r-w { padding-top: 6px; font: 400 13px/20px var(--sans); color: var(--agt-soft); text-align: right; font-variant-numeric: tabular-nums; }
 .agt-log-f { padding-top: 6px; border-top: 1px solid var(--line); }
 .agt-log-f .b { margin-left: -12px; }
-.agt-q { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 10px; align-items: center; padding: 11px 0; border-top: 1px solid var(--line); }
-.agt-q p { font: 400 15px/22px var(--sans); color: var(--ink); text-wrap: pretty; }
+
+/* Nothing yet: one row where the first will be, its mark an empty window and its words where a row's words go. */
+.agt-none { display: grid; grid-template-columns: 32px minmax(0, 1fr); column-gap: 14px; align-items: start; padding: 11px 0 12px; border-top: 1px solid var(--line); }
+.agt-none .agt-r-t b { font-weight: 500; }
+/* Looking for what they did: dots where the first row will be. */
+.agt-look { display: flex; align-items: center; gap: 14px; height: 55px; border-top: 1px solid var(--line); font: 400 13.5px/20px var(--sans); color: var(--agt-soft); }
+.agt-look .agt-dots { justify-content: center; width: 32px; }
+
+/* Things to ask: the same row, its mark what the agent will do, and Copy at the end. */
+.agt-qs { margin: 0; padding: 0; list-style: none; }
+.agt-q { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; column-gap: 14px; align-items: center; min-height: 55px; padding: 11px 0; border-top: 1px solid var(--line); }
+.agt-q p { min-width: 0; font: 400 15px/22px var(--sans); color: var(--ink); text-wrap: pretty; }
 .agt-q small { display: flex; align-items: center; gap: 5px; margin-top: 2px; font: 400 13px/18px var(--sans); color: var(--agt-soft); }
 .agt-q small .i { width: 13px; height: 13px; }
-.agt-tries-f { padding-top: 12px; border-top: 1px solid var(--line); font: 400 13px/1.45 var(--sans); color: var(--agt-soft); }
-.agt-empty { display: grid; justify-items: center; gap: 6px; padding: 30px 16px 34px; border-top: 1px solid var(--line); text-align: center; }
-.agt-empty .agt-win { width: 64px; margin-bottom: 8px; background: none; box-shadow: none; border: 1.5px dashed var(--agt-dash); border-bottom: 0; color: var(--ink-2); }
-.agt-empty b { font: 600 16px/1.3 var(--sans); }
-.agt-empty p { max-width: 30em; font: 400 14.5px/1.45 var(--sans); color: var(--agt-soft); text-wrap: balance; }
+.agt-q .agt-ib { margin-right: -6px; }
+/* With nothing connected, the questions are the water: two across, each row the same height as its neighbour. */
+.agt-water.is-solo .agt-qs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 56px; }
+
 
 /* The side panel's count here is how many agents, not something waiting. */
 .agt .sd-i.is-on .sd-n { color: var(--ink-2); }
 
 @container page (max-width: 1180px) {
-  .agt-water { grid-template-columns: minmax(0, 1fr); gap: 28px; }
+  .agt-water { grid-template-columns: minmax(0, 1fr); }
+  .agt-water.is-solo .agt-qs { grid-template-columns: minmax(0, 1fr); }
 }
 
 /* A phone: the line slides sideways, popovers are sheets, the question fills the page. */
@@ -280,6 +307,7 @@
   .agt-ask-a { width: 100%; }
   .agt-ask-a .b { flex: 1; }
   .agt-r { grid-template-columns: 32px minmax(0, 1fr) 44px; column-gap: 12px; }
+  .agt-q, .agt-none { column-gap: 12px; }
 
   .agt[data-sheet="true"] .sh-panel { z-index: 30; }
   .agt-catch { z-index: 25; background: color-mix(in oklch, var(--well) 74%, transparent); }

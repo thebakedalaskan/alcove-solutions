@@ -3,8 +3,8 @@
  * Claude, signed in since 21 Oct, used 4 minutes ago (it's just booked the onboarding review); Cursor, signed in on Monday,
  * that can only read; and Art's Weekly digest, a script with a personal token. What they did is kept as the server keeps
  * it, the tool and what it touched, and titles are read from the world when it's listed, so a note deleted since reads
- * back with none. Two requests stand for an agent asking to connect (Claude asking for everything, Claude Code for less),
- * and one that has ended.
+ * back with none. Or Claude alone, just connected, having done nothing yet. Two requests stand for an agent asking to
+ * connect (Claude asking for everything, Claude Code for less), and one that has ended.
  */
 import { AGENT_SCOPES, AgentActivityQuerySchema, AgentActivitySchema, AgentConnectionSchema, AlcoveApiError, type AgentActivity, type AgentConnection, type AgentScope, type AgentTool } from '@alcove/api';
 import type { World } from '../world';
@@ -141,6 +141,15 @@ export function withAgentConnections(w: World, cursorEnds = iso(28, 9, 40)): voi
 
 /** The same, with Cursor's access ending tomorrow afternoon. */
 export const withAgentEnding = (w: World): void => withAgentConnections(w, iso(1, 9, 40));
+
+/** Claude alone, allowed a few minutes ago with everything but sharing and deleting, and not used yet: it's done nothing. */
+export function withClaudeJustConnected(w: World): void {
+  const held = heldFor(w);
+  held.connections = [
+    AgentConnectionSchema.parse({ id: CLAUDE, name: 'Claude', kind: 'oauth', scopes: GIVEN, createdAt: iso(0, 16, 4), expiresAt: iso(30, 16, 4), lastUsedAt: null })
+  ];
+  held.did = [];
+}
 
 /** A new connection, as allowing an agent makes one: signed in now, for 30 days, not used yet. */
 export function connectionAllowed(name: string, scopes: readonly AgentScope[]): AgentConnection {

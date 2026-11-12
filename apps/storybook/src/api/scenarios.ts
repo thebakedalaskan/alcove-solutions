@@ -31,11 +31,11 @@ import { stopLive } from './standin';
 import { paymentsOff, withPayments } from '../world/payments';
 import { disconnectedDrive, withDriveExports } from '../world/drive-exports';
 import { homesOn } from '../world/call-page';
-import { withAgentConnections, withAgentEnding } from './agents';
+import { withAgentConnections, withAgentEnding, withClaudeJustConnected } from './agents';
 import { serve } from './state';
 import { forgetDocuments } from './workspaces';
 
-export type ScenarioName = 'busy' | 'first-day' | 'on-their-own' | 'offline' | 'writing' | 'call-soon' | 'lots' | 'signed-out' | 'unsaved' | 'first-sign-in' | 'agents-connected' | 'agents-ending' | 'drive-connected' | 'payments';
+export type ScenarioName = 'busy' | 'first-day' | 'on-their-own' | 'offline' | 'writing' | 'call-soon' | 'lots' | 'signed-out' | 'unsaved' | 'first-sign-in' | 'agents-connected' | 'agents-ending' | 'agents-just-connected' | 'drive-connected' | 'payments';
 
 interface Scenario { title: string; about: string; make: () => { world: World; opening: Partial<Opening> } }
 
@@ -379,6 +379,10 @@ export const SCENARIOS: Record<ScenarioName, Scenario> = {
   'agents-ending': {
     title: 'An agent’s access ending', about: 'The same three agents, with Cursor’s access ending tomorrow.',
     make: () => { const world = busy(); withAgentEnding(world); return { world, opening: {} }; }
+  },
+  'agents-just-connected': {
+    title: 'An agent just connected', about: 'Art allowed Claude a few minutes ago and hasn’t asked it anything yet, so it hasn’t done anything.',
+    make: () => { const world = busy(); withClaudeJustConnected(world); return { world, opening: {} }; }
   },
   busy: { title: 'A busy team', about: 'Wednesday afternoon at Vandelay Industries: a day of notes, things waiting on you, a design sync at 17:30.', make: () => ({ world: busy(), opening: {} }) },
   'first-day': {

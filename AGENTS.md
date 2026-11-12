@@ -261,9 +261,9 @@ page is designed, how to make a design canvas from the kit in `docs/design/canva
   quiet well, with copy), one `AgentAction` or `AgentLink`, `AgentWaiting`, `AgentPopMore` (a foot row that leads on),
   `AgentPopFoot`, `AgentAsked` (asked in place: Disconnect Claude?) and `AgentSaved`. The question an agent asks is
   `AgentLevels` (each part of Alcove a level to lower, as a menu, and switches) with `AgentPair` (the agent and you on the
-  horizon, joined while it asks); on the water, `AgentDay` and `AgentDid` (what your agents did) and `AgentQuestion` (a thing
-  to ask, with who can), with the kit's `EmptyState` (`.ac-empty.ag-none`, an empty dashed window for its art) where
-  there's nothing yet. `AgentPermissions` (what an agent can do, as chips), `AgentDisclosure` and
+  horizon, joined while it asks); on the water, `AgentDay` and `AgentDid` (what your agents did), `AgentNone` (one row where
+  the first will be, an empty dashed window for its mark: nothing yet, or Try again) and `AgentQuestion` (a thing to ask,
+  with the mark of the row it will make, and who can). `AgentPermissions` (what an agent can do, as chips), `AgentDisclosure` and
   `AgentConsentFrame` (the sheet `/connect` signs you in on) sit beside them.
   A row's menu is an `IconButton` as the anchor of a `Popover` with a `tip`.
 - Colours, shadows, radii, fonts and easing come from the tokens in `packages/ui/src/styles.css`: light

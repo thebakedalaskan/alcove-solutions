@@ -53,9 +53,15 @@ const claudeConnects: Play = async ({ step }) => {
 /** Claude, Cursor and the Weekly digest on the horizon; what they did, and things to ask. */
 export const Today = page('/agents', 'agents-connected');
 export const TodayPhone = phone(Today);
-/** Nothing connected yet: the agents people use stand dashed, and the sky's a little taller. */
+/**
+ * Nothing connected yet: the agents people use stand dashed, and the sky's a little taller. Nothing could have been done
+ * yet, so the water is only what you can ask, two across.
+ */
 export const FirstDay = page('/agents', 'busy');
 export const FirstDayPhone = phone(FirstDay);
+/** Claude just connected and not asked anything: what your agents did is one row, where the first thing it does will be. */
+export const JustConnected = page('/agents', 'agents-just-connected');
+export const JustConnectedPhone = phone(JustConnected);
 /** Cursor's access ends tomorrow: its line says so, in caution, with a dot on its window. */
 export const Ending = page('/agents', 'agents-ending');
 
