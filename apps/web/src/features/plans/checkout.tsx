@@ -1,8 +1,8 @@
 /*
  * Checkout, opened from anywhere (docs/superpowers/specs/2026-11-12-plans-frontend-design.md): the Plans page, Settings ›
  * Plan, the side panel's foot, a call's banner, a door. It is one window over wherever you are, so the call goes on behind
- * it. This file is who can open it and what with; the window itself is Checkout.tsx, rendered by the provider at the app's
- * root.
+ * it. This file is who can open it and what with; the window itself is CheckoutHost.tsx, rendered by the provider at the
+ * app's root.
  */
 import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
 

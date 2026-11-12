@@ -1,6 +1,6 @@
 /* Query keys, fetchers and mutations. Screens read data through these, never through `api` directly. */
 import type { AgentDecisionInput, AgentTokenInput, DriveExportInput, FileNotes, FollowUpReview, MeetingCreate } from '@alcove/api';
-import { AlcoveApiError, MAX_SORT_STICKIES, MAX_SORT_STICKY, SORT_TOO_FEW, SORT_TOO_MANY, errorCode, type ActionProposal, type ChangeScope, type DecisionProposal, type DemoProvider, type DocumentRole, type FeatureFlagName, type Group, type PresenterFrameNotes, type InstantCallInput, type ISODate, type ItemInput, type ItemPlace, type LinePatch, type MeetingInput, type MentionBody, type NoteKind, type NotesSetting, type Patch, type PersonalInput, type PersonalNotes, type PromoteBody, type QuestionPatch, type TopUp, type RingReply, type Series, type SharedWrite, type ShareTarget, type DocumentLibrary, type WorkspaceRole, type WorkspaceSummary, type WorkspaceTree } from '@alcove/api';
+import { AlcoveApiError, MAX_SORT_STICKIES, MAX_SORT_STICKY, SORT_TOO_FEW, SORT_TOO_MANY, errorCode, type ActionProposal, type ChangeScope, type DecisionProposal, type DemoProvider, type DocumentRole, type FeatureFlagName, type Group, type PresenterFrameNotes, type InstantCallInput, type ISODate, type ItemInput, type ItemPlace, type LinePatch, type MeetingInput, type MentionBody, type NoteKind, type NotesSetting, type Patch, type PersonalInput, type PersonalNotes, type PromoteBody, type Purchase, type QuestionPatch, type TopUp, type RingReply, type Series, type SharedWrite, type ShareTarget, type DocumentLibrary, type WorkspaceRole, type WorkspaceSummary, type WorkspaceTree } from '@alcove/api';
 import { queryOptions, useIsMutating, useMutation, useMutationState, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef } from 'react';
 import { forgetAccount } from '~/features/record/offline';
@@ -485,7 +485,22 @@ export function useBuyPro() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ months, microUsdPerMonth }: { months: number; microUsdPerMonth: number }) => api.plans.buyPro(months, microUsdPerMonth),
-    onSuccess: (p) => { qc.setQueryData(qk.plan, p); },
+    // What's open on the plan (the side panel, Settings, a call's notes) follows at once.
+    onSuccess: (p) => { qc.setQueryData(qk.plan, p); void qc.invalidateQueries({ queryKey: qk.topUps }); },
+    // `plan` is the offers' prefix: both are read again.
+    onError: () => { void qc.invalidateQueries({ queryKey: qk.plan }); }
+  });
+}
+
+/**
+ * Buys packs of more notes for this period from the balance at the price shown. Refused as buying Pro is, and read again
+ * the same way.
+ */
+export function useBuyHours() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ packs, microUsdPerPack }: { packs: number; microUsdPerPack: number }) => api.plans.buyHours(packs, microUsdPerPack),
+    onSuccess: (p) => { qc.setQueryData(qk.plan, p); void qc.invalidateQueries({ queryKey: qk.topUps }); },
     // `plan` is the offers' prefix: both are read again.
     onError: () => { void qc.invalidateQueries({ queryKey: qk.plan }); }
   });
@@ -523,12 +538,16 @@ export function useDismissPlanNotice() {
 
 /* ---------- adding money ---------- */
 
-/** Opens a top-up on a route: the address to pay to. It joins the open ones on Plan. */
+/**
+ * Opens a top-up on a route: the address to pay to. It joins the open ones on Plan. With `buys`, what it's for is bought
+ * the moment it's added; a refusal (a changed price) reads the plan and the offers again, as buying does.
+ */
 export function useStartTopUp() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ routeId, microUsd }: { routeId: string; microUsd: number }) => api.plans.startTopUp(routeId, microUsd),
-    onSuccess: (t) => { qc.setQueryData(q.topUp(t.id).queryKey, t); void qc.invalidateQueries({ queryKey: qk.topUps }); }
+    mutationFn: ({ routeId, microUsd, buys = null }: { routeId: string; microUsd: number; buys?: Purchase | null | undefined }) => api.plans.startTopUp(routeId, microUsd, buys),
+    onSuccess: (t) => { qc.setQueryData(q.topUp(t.id).queryKey, t); void qc.invalidateQueries({ queryKey: qk.topUps }); },
+    onError: (_e, { buys }) => { if (buys) void qc.invalidateQueries({ queryKey: qk.plan }); }
   });
 }
 
