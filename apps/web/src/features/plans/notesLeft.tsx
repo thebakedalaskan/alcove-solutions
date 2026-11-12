@@ -7,6 +7,7 @@
 import type { Plan } from '@alcove/api';
 import { Button, NoNotesLeft, buttonClass, useToast } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
+import { Link } from '@tanstack/react-router';
 import { useEffect, useRef } from 'react';
 import { log } from '~/lib/log';
 import { q } from '~/lib/queries';
@@ -65,12 +66,14 @@ export function NoNotesLeftDoor({ at, alone = false, newTab = false, beforeCheck
   const more = useMoreNotes(left.plan, left.none);
   const checkout = useCheckout();
   if (!left.none || !left.until) return null;
-  // In a new tab, Plans opens with checkout on Pro; more hours are bought from Settings › Plan.
-  const away = more?.what.plan === 'pro' ? '/plans?checkout=pro' : '/settings#plan';
+  const away = buttonClass({ variant: 'secondary', size: 'sm' });
   return (
     <NoNotesLeft until={dayFullMonth(left.until)} alone={alone} className={className}>
       {more && (newTab
-        ? <a className={buttonClass({ variant: 'secondary', size: 'sm' })} href={away} target="_blank" rel="noopener noreferrer">{more.label}</a>
+        // In a new tab, Plans opens with checkout on Pro; more hours are bought from Settings › Plan.
+        ? more.what.plan === 'pro'
+          ? <Link className={away} to="/plans" search={{ checkout: 'pro' }} target="_blank" rel="noopener noreferrer">{more.label}</Link>
+          : <Link className={away} to="/settings" hash="plan" target="_blank" rel="noopener noreferrer">{more.label}</Link>
         : <Button size="sm" variant="secondary" onClick={() => { beforeCheckout?.(); checkout.open(more.what, 'door'); }}>{more.label}</Button>)}
       {without && <Button size="sm" variant="quiet" onClick={without.onClick}>{without.label}</Button>}
     </NoNotesLeft>

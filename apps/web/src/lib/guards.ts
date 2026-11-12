@@ -45,9 +45,9 @@ export async function requireAccount(qc: QueryClient, preload = false): Promise<
   if (agent) throw redirect({ to: '/connect', search: { request: agent }, replace: true });
   const back = preload ? null : takeReturn();
   if (back) throw redirect({ to: '/join/$code', params: { code: back }, replace: true });
-  // Get Pro on the welcome page: Plans, at the address kept for it, which opens checkout on Pro.
-  const plans = preload ? null : takePlansReturn();
-  if (plans) throw redirect({ href: plans, replace: true });
+  // Get Pro on the welcome page: Plans, which opens checkout on what was kept for it.
+  const checkout = preload ? null : takePlansReturn();
+  if (checkout) throw redirect({ to: '/plans', search: { checkout }, replace: true });
   // Signed in from a link to someone's notes, Google's way back lands here: back to the link, which asks before opening them.
   if (!preload && linkWaiting()) throw redirect({ to: '/link', replace: true });
   return { account: { offline: false, session: s } };

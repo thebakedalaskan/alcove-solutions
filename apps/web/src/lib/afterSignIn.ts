@@ -4,7 +4,7 @@
  * so the page to return to waits in this tab's sessionStorage: not in the sign-in URL, because a call's code is its link's
  * secret and the API's request logs keep URLs. It lasts ten minutes, like the sign-in attempt itself, and is used once.
  */
-import { AgentReturnStoredSchema, CallReturnStoredSchema, NoteLinkReturnStoredSchema, PlansReturnStoredSchema } from '@alcove/api';
+import { AgentReturnStoredSchema, CallReturnStoredSchema, NoteLinkReturnStoredSchema, PlansReturnStoredSchema, type CheckoutParam, type PlansReturnStored } from '@alcove/api';
 import { log } from './log';
 
 const alog = log.child({ component: 'after-sign-in' });
@@ -104,31 +104,30 @@ export function takeReturn(): string | null {
   }
 }
 
-/** Where Get Pro on the welcome page goes once signed in: Plans, with checkout open on Pro. */
-export const PLANS_FOR_PRO = '/plans?checkout=pro';
 /**
- * Get Pro on the welcome page, before signing in: afterwards Plans opens with checkout on Pro, wherever sign-in lands (Google's
- * way back included). Its address is kept as it is, in this tab for ten minutes, and used once; Cancel sign-in forgets it
+ * Get Pro on the welcome page, before signing in: afterwards Plans opens with checkout on `checkout` (Pro), wherever sign-in
+ * lands (Google's way back included). It's kept in this tab for ten minutes and used once; Cancel sign-in forgets it
  * (clearReturn).
  */
-export function returnToPlans(path: string = PLANS_FOR_PRO): void {
+export function returnToPlans(checkout: CheckoutParam = 'pro'): void {
   try {
     sessionStorage.removeItem(KEY);
     sessionStorage.removeItem(AGENT_KEY);
-    sessionStorage.setItem(PLANS_KEY, JSON.stringify({ path, until: Date.now() + MINUTES * 60_000 }));
+    const kept: PlansReturnStored = { checkout, until: Date.now() + MINUTES * 60_000 };
+    sessionStorage.setItem(PLANS_KEY, JSON.stringify(kept));
   } catch (e) {
     // Private browsing and the like: after signing in this tab lands on Home, where Plans is a press away.
     alog.debug('plans not kept for after sign-in', { err: e });
   }
 }
-/** The Plans address to go to after signing in, once, if Get Pro started it in the last ten minutes; an older one is dropped. */
-export function takePlansReturn(): string | null {
+/** What checkout opens on at Plans after signing in, once, if Get Pro started it in the last ten minutes; an older one is dropped. */
+export function takePlansReturn(): CheckoutParam | null {
   try {
     const raw = sessionStorage.getItem(PLANS_KEY);
     if (raw === null) return null;
     sessionStorage.removeItem(PLANS_KEY);
     const w = PlansReturnStoredSchema.safeParse(JSON.parse(raw));
-    return w.success && w.data.until > Date.now() ? w.data.path : null;
+    return w.success && w.data.until > Date.now() ? w.data.checkout : null;
   } catch (e) {
     alog.debug('plans to go to not readable', { err: e });
     return null;
