@@ -68,7 +68,7 @@ function Notices({ plan }: { plan: Plan }) {
     <SettingNote key={n.id} icon={n.kind === 'pro-renewed' ? 'repeat' : 'info'} onDismiss={() => close(n.id)} dismissLabel="Dismiss this notice">
       {n.kind === 'pro-renewed'
         ? 'Pro renewed from your balance, for another month.'
-        : `Pro ended on ${longDay(new Date(n.until))}. Nothing was deleted: you’re back on Free.`}
+        : n.until === null ? 'Pro ended. Nothing was deleted: you’re back on Free.' : `Pro ended on ${longDay(new Date(n.until))}. Nothing was deleted: you’re back on Free.`}
     </SettingNote>
   ));
 }

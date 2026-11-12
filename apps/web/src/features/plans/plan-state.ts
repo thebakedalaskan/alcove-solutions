@@ -34,7 +34,7 @@ export interface ProEnding { until: string; days: number }
 export function proEnding(plan: Plan, offers: PlanOffers | undefined, now = Date.now()): ProEnding | null {
   const until = plan.pro.until;
   if (plan.kind !== 'pro' || until === null || renews(plan, offers)) return null;
-  const warned = plan.notices.some((n) => n.kind === 'pro-ending' && Date.parse(n.until) === Date.parse(until));
+  const warned = plan.notices.some((n) => n.kind === 'pro-ending' && n.until !== null && Date.parse(n.until) === Date.parse(until));
   return warned ? { until, days: Math.max(0, daysFromToday(new Date(until), new Date(now))) } : null;
 }
 /** "Ends today", "Ends tomorrow", "Ends in 6 days": how soon Pro ends, from `proEnding`'s days. */
