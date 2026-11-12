@@ -119,7 +119,7 @@ export function CheckoutHost({ open, onClose, onCompare }: { open: CheckoutOpen;
   const offers = useQuery(q.offers());
   const routes = useQuery(q.topUpRoutes());
   const list = useQuery(q.topUps());
-  const name = useQuery(q.session()).data?.user.name ?? null;
+  const signedIn = useQuery(q.session()).data?.user.name ?? null;
   const theme = useTheme().resolved;
   const online = useOnline();
   const now = useNow();
@@ -134,6 +134,9 @@ export function CheckoutHost({ open, onClose, onCompare }: { open: CheckoutOpen;
   /* What checkout opened on, kept as it was: buying Pro makes the plan Pro, and the window still says Get Pro. */
   const [opened, setOpened] = useState<{ extend: boolean; until: string | null; stopped: boolean } | null>(null);
   if (opened === null && p) setOpened({ extend: p.kind === 'pro' && p.pro.until !== null, until: p.pro.until, stopped: p.notes.stopped });
+  /* Who it's for, once known: going offline doesn't make it someone else. */
+  const [name, setName] = useState<string | null>(signedIn);
+  if (name === null && signedIn !== null) setName(signedIn);
 
   /* Where the window starts: on the payment it was opened on, on one already on its way for the same thing, or choosing. */
   const [view, setView] = useState<View | null>(open.topUpId ? { step: 'pay', id: open.topUpId } : null);
@@ -344,9 +347,11 @@ export function CheckoutHost({ open, onClose, onCompare }: { open: CheckoutOpen;
 
   if (view === null || (!o && !offers.isError) || (!p && !plan.isError)) {
     body = waiting(view?.step === 'pay' ? 'Opening your payment' : 'Looking up the price');
+    // Its own foot, so what replaces it once it's read is new, and focus goes where the step puts it.
+    footKey = 'wait';
   } else if (!o || !p) {
     body = <CheckoutNote>{errorMessage(offers.error ?? plan.error)}</CheckoutNote>;
-    foot = <><Button variant="quiet" className="grow" onClick={onClose}>Close</Button><Button variant="secondary" onClick={() => { void offers.refetch(); void plan.refetch(); }}>Try again</Button></>;
+    foot = <><Button variant="quiet" className="ck-push" onClick={onClose}>Close</Button><Button variant="secondary" onClick={() => { void offers.refetch(); void plan.refetch(); }}>Try again</Button></>;
   } else if (view.step === 'bought') {
     step = 3;
     stage = 'done';
@@ -436,7 +441,7 @@ export function CheckoutHost({ open, onClose, onCompare }: { open: CheckoutOpen;
         );
         foot = (
           <>
-            <Button variant="quiet" className="grow" onClick={onClose}>Close</Button>
+            <Button variant="quiet" className="ck-push" onClick={onClose}>Close</Button>
             {offline}
             {t.purchase && <Button variant="primary" loading={start.isPending} disabled={!online || busy} onClick={() => again(t)}>Get a new address</Button>}
           </>
@@ -464,7 +469,7 @@ export function CheckoutHost({ open, onClose, onCompare }: { open: CheckoutOpen;
       <>
         {note}
         {kind === 'pro' ? (
-          <MonthsPicker label={extend ? 'How much longer' : 'How long'} value={chosenMonths} offLabel={offLabel}
+          <MonthsPicker autoFocus label={extend ? 'How much longer' : 'How long'} value={chosenMonths} offLabel={offLabel}
             options={lengths.map((m): MonthsOption => {
               const price = proPrice(o, m);
               return { months: m, total: usd(m * price), each: `${usd(price)} a month`, off: price < o.pro.microUsdPerMonth };
@@ -477,7 +482,7 @@ export function CheckoutHost({ open, onClose, onCompare }: { open: CheckoutOpen;
               onStep: (m) => { setOther(true); setMonths(m); }
             }} />
         ) : hoursOffer ? (
-          <HoursPicker value={chosenPacks} hint={`${usd(Math.round((hoursOffer.microUsd * 60) / hoursOffer.minutes))} an hour`} onChange={setPacks}
+          <HoursPicker autoFocus value={chosenPacks} hint={`${usd(Math.round((hoursOffer.microUsd * 60) / hoursOffer.minutes))} an hour`} onChange={setPacks}
             options={packChoices(hoursOffer.maxPacks).map((n): HoursOption => {
               const h = hoursIn(o, n);
               return { packs: n, hours: `${h} hours`, price: usd(n * hoursOffer.microUsd), sub: `${h} hour-long calls` };
@@ -491,8 +496,9 @@ export function CheckoutHost({ open, onClose, onCompare }: { open: CheckoutOpen;
                 options={usdc.map((r) => ({ id: r.id, chain: r.chain, name: r.chainName, note: Number(r.minimum) > 5 ? `From ${r.minimum}` : null }))} />)}
       </>
     );
-    const compare = kind === 'pro' && onCompare && open.from !== 'plans' && open.from !== 'call'
-      && <Button variant="quiet" className="grow" onClick={onCompare}>Compare plans</Button>;
+    // Away from Plans (and not over a call, which going to Plans would leave): from the welcome page, Plans is behind it.
+    const compare = kind === 'pro' && onCompare && open.from !== 'plans' && open.from !== 'welcome' && open.from !== 'call'
+      && <Button variant="quiet" className="ck-push" onClick={onCompare}>Compare plans</Button>;
     foot = (
       <>
         {compare}

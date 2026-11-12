@@ -87,16 +87,19 @@ export function CheckoutSteps({ at, className }: { at: 1 | 2 | 3; className?: st
 /** One choice as a card: its name, what it costs, and what that comes to. */
 interface Card { id: string; name: string; price: string; sub: string; tag?: string | null | undefined }
 
-/** Cards to pick one of, as radio buttons: arrow keys move between them. `bracket` spans the cards from `from` on, over them. */
-function Cards({ label, hint, cards, value, onChange, bracket }: {
+/**
+ * Cards to pick one of, as radio buttons: arrow keys move between them. `bracket` spans the cards from `from` on, over
+ * them. `autoFocus` puts focus on the one chosen as they appear, for a window whose first thing is this choice.
+ */
+function Cards({ label, hint, cards, value, onChange, bracket, autoFocus = false }: {
   label: string; hint?: string | undefined; cards: Card[]; value: string | null; onChange: (id: string) => void;
-  bracket?: { from: number; label: string } | null | undefined;
+  bracket?: { from: number; label: string } | null | undefined; autoFocus?: boolean | undefined;
 }) {
   const q = useId();
   const name = useId();
   return (
     <>
-      <p id={q} className="ck-q">{label}{hint && <small>{hint}</small>}</p>
+      <p className="ck-q"><span id={q}>{label}</span>{hint && <small>{hint}</small>}</p>
       <div role="radiogroup" aria-labelledby={q} className="ck-cards" style={{ '--n': cards.length }}>
         {bracket && (
           <>
@@ -106,7 +109,7 @@ function Cards({ label, hint, cards, value, onChange, bracket }: {
         )}
         {cards.map((c) => (
           <label key={c.id} className="ck-card">
-            <input type="radio" className="ck-radio" name={name} value={c.id} checked={value === c.id} onChange={() => onChange(c.id)} />
+            <input type="radio" className="ck-radio" name={name} value={c.id} checked={value === c.id} autoFocus={autoFocus && value === c.id} onChange={() => onChange(c.id)} />
             {c.tag && <span className="tag"><span className="ck-off">{c.tag}</span></span>}
             <span className="n">{c.name}</span>
             <span className="p">{c.price}</span>
@@ -127,16 +130,18 @@ export interface MonthsOption { months: number; total: string; each: string; off
  * `other.max`, with what it costs, which steps with `other.onStep`; while it's open, no card is ticked, and picking a
  * card (`onChange`) is the way back to them.
  */
-export function MonthsPicker({ label = 'How long', options, value, onChange, offLabel, other }: {
+export function MonthsPicker({ label = 'How long', options, value, onChange, offLabel, other, autoFocus }: {
   label?: string | undefined; options: MonthsOption[]; value: number; onChange: (months: number) => void;
   offLabel: string | null;
   other: { open: boolean; max: number; price: string; onOpen: () => void; onStep: (months: number) => void };
+  /** Focus on the length chosen as it appears. */
+  autoFocus?: boolean | undefined;
 }) {
   const from = options.findIndex((o) => o.off);
   const cards = options.map((o): Card => ({ id: String(o.months), name: monthsWord(o.months), price: o.total, sub: o.each, tag: o.off ? offLabel : null }));
   return (
     <div className="ck-sec">
-      <Cards label={label} cards={cards} value={other.open ? null : String(value)} onChange={(id) => onChange(Number(id))}
+      <Cards label={label} cards={cards} value={other.open ? null : String(value)} onChange={(id) => onChange(Number(id))} autoFocus={autoFocus}
         bracket={offLabel && from >= 0 ? { from, label: offLabel } : null} />
       <div className="ck-other">
         {other.open ? (
@@ -163,11 +168,13 @@ export function MonthsPicker({ label = 'How long', options, value, onChange, off
 export interface HoursOption { packs: number; hours: string; price: string; sub: string }
 
 /** How many hours: a card for each number of packs, up to the most one purchase buys. `hint` is the price of an hour. */
-export function HoursPicker({ label = 'How many hours', hint, options, value, onChange }: {
+export function HoursPicker({ label = 'How many hours', hint, options, value, onChange, autoFocus }: {
   label?: string | undefined; hint?: string | undefined; options: HoursOption[]; value: number; onChange: (packs: number) => void;
+  /** Focus on the number chosen as it appears. */
+  autoFocus?: boolean | undefined;
 }) {
   const cards = options.map((o): Card => ({ id: String(o.packs), name: o.hours, price: o.price, sub: o.sub }));
-  return <div className="ck-sec"><Cards label={label} hint={hint} cards={cards} value={String(value)} onChange={(id) => onChange(Number(id))} /></div>;
+  return <div className="ck-sec"><Cards label={label} hint={hint} cards={cards} value={String(value)} onChange={(id) => onChange(Number(id))} autoFocus={autoFocus} /></div>;
 }
 
 /** A network USDC can be sent on: its chain (for its mark), its name, and a note such as "From 20" when its least is more. */
@@ -181,7 +188,7 @@ export function NetworkPicker({ label = 'Pay with USDC on', hint = 'Any wallet o
   const name = useId();
   return (
     <div className="ck-sec">
-      <p id={q} className="ck-q">{label}<small>{hint}</small></p>
+      <p className="ck-q"><span id={q}>{label}</span><small>{hint}</small></p>
       <div role="radiogroup" aria-labelledby={q} className="ck-nets">
         {options.map((n) => (
           <label key={n.id} className="ck-net">

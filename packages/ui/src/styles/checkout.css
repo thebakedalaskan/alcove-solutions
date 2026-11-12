@@ -104,7 +104,7 @@
 .ck-h h2 { margin: 0; font: 600 19px/1.25 var(--font-sans); letter-spacing: -.01em; color: var(--ink); }
 .ck-b { flex: 1; min-height: 0; overflow: hidden auto; padding: 20px 28px 22px; scrollbar-width: thin; }
 .ck-f { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 10px; padding: 14px 28px 20px; border-top: 1px solid var(--line); }
-.ck-f .grow { margin-right: auto; }
+.ck-f .ck-push { margin-right: auto; }
 .ck-f .hint { margin-right: auto; max-width: 34ch; font: 400 13px/18px var(--font-sans); color: var(--ink-2); }
 .ac-icon-btn.ck-x { position: absolute; top: 14px; right: 14px; z-index: 3; width: 34px; height: 34px; background: color-mix(in oklch, var(--frame) 52%, transparent); color: var(--stage-ink); }
 .ac-icon-btn.ck-x:hover { background: color-mix(in oklch, var(--frame) 72%, transparent); color: var(--stage-ink); }
@@ -123,7 +123,7 @@
 .ck-q small { font: 400 13px/18px var(--font-sans); color: var(--ink-2); }
 .ck-sec + .ck-sec { margin-top: 22px; }
 /* A choice is a radio button under its card: the card shows what's chosen and where focus is. */
-.ck-radio { position: absolute; width: 1px; height: 1px; margin: 0; opacity: 0; pointer-events: none; }
+.ck-radio { position: absolute; top: 0; left: 0; width: 1px; height: 1px; margin: 0; opacity: 0; }
 .ck-cards { display: grid; grid-template-columns: repeat(var(--n, 5), minmax(0, 1fr)); gap: 8px; }
 .ck-card { position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 1px; min-width: 0; min-height: 92px; padding: 12px 12px 11px; border-radius: 14px; box-shadow: inset 0 0 0 1px var(--line); cursor: pointer; transition: box-shadow var(--duration-1), background-color var(--duration-1); }
 .ck-card:hover { box-shadow: inset 0 0 0 1px var(--line-control); }
@@ -166,6 +166,7 @@
 .ck-b > .ck-note:first-child { margin-top: 0; }
 .ck-note + .ck-sec { margin-top: 20px; }
 .ck-wait { display: flex; align-items: center; gap: 10px; font: 400 14px/20px var(--font-sans); color: var(--ink-2); }
+.ck-b > .ac-ref { margin: 10px 0 0 -7px; }
 
 /* ------------------------------------------------------------------ paying: the exact amount, the address made for it, and how it stands */
 .ck-status { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 12px; }
