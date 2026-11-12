@@ -1,9 +1,9 @@
 /*
- * The tour of Home: after a new account comes in, and again from your menu or Settings. Each stop points at the real
+ * The tour of Home: after a new account comes in, and again from your menu or Settings. Each slide points at the real
  * thing as it is now, found by its `data-tour` hook: Start now and Schedule, the call Home offers, the example note or
- * Calls, Search or ask, the Drive, Record, Agents. A stop whose thing isn't there (nothing to join, Agents on a phone) is
- * left out, or points at what stands in for it (the example note before there are notes); nothing is drawn onto the page
- * for the tour.
+ * Calls, Search or ask, the Drive, Record, Agents. A slide whose thing isn't there (nothing to join, Agents on a phone)
+ * is left out, or points at what stands in for it (the example note before there are notes); nothing is drawn onto the
+ * page for the tour.
  */
 import { TourDialog, useToast, type TourSlide } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
@@ -12,7 +12,7 @@ import { useEffect, useState } from 'react';
 import { q } from '~/lib/queries';
 import { shortcut } from '~/lib/keys';
 import { minutesUntil, untilLabel } from '~/lib/time';
-import { aheadOf, joinable, type Ahead } from '~/features/home/day';
+import { aheadShown, going, joinable, type Ahead } from '~/features/home/day';
 import { ArtAgents, ArtAsk, ArtCall, ArtDrive, ArtNotes, ArtRoom, ArtStart, ArtSun } from './art';
 import { arrival, rememberTour, tourSeen, useArrival } from './store';
 
@@ -22,60 +22,57 @@ const hook = (name: string) => (): HTMLElement | null => {
   return null;
 };
 
-/** A stop before it knows what follows it. `called` names it on the button before it ("Show me search"), unless `lead` says the whole button. */
-type Draft = Omit<TourSlide, 'next'> & { called: string; lead?: string | undefined };
+/** A slide before it knows what follows it. `lead` is the button on the slide before that leads to it. */
+type Draft = Omit<TourSlide, 'next'> & { lead: string };
 
-/** The stops for Home as it is right now, in order. `join` is the call Home offers at the top, when it's an Alcove call. */
-function slidesFor(o: { join: Ahead | undefined }): TourSlide[] {
+/** The slides for Home as it is right now, in order. `join` is the call Home offers at the top, by Home's own rule. */
+function slidesFor(o: { join: Ahead | undefined; now: number }): TourSlide[] {
   // Keyboard shortcuts are only worth mentioning where there's a keyboard.
   const keys = matchMedia('(hover: hover) and (pointer: fine)').matches;
   const drafts: Draft[] = [];
   const add = (d: Draft) => { if (d.target()) drafts.push(d); };
   add({
-    id: 'start', called: 'where to start', title: 'Start or schedule a call', art: <ArtStart />, prefer: ['below', 'right', 'left'], target: hook('start'),
-    text: `Start now goes straight to the call. Schedule suggests times that suit everyone and sends the invites.${keys ? ' N starts one from any page.' : ''}`
+    id: 'start', lead: 'Back to the start', title: 'Start or schedule a call', art: <ArtStart />, prefer: ['below', 'right', 'left'], target: hook('start'),
+    text: `Start now goes straight to the call. Schedule suggests times that suit everyone and sends the invites.${keys ? ' Or press N.' : ''}`
   });
-  if (o.join?.kind === 'call') {
-    const mins = minutesUntil(o.join.startsAt);
+  // Home only marks its line for an Alcove call, so a meeting elsewhere gets no stop.
+  if (o.join) {
     add({
-      id: 'join', called: 'the call', title: 'Join a call', art: <ArtCall />, prefer: ['below', 'right', 'left'], target: hook('join'),
-      text: `${o.join.title} ${mins <= 0 ? 'is happening now' : `starts ${untilLabel(mins)}`}. Join from here${keys ? ', or press J' : ''}. Captions, chat and boards are in the call.`
+      id: 'join', lead: 'Show me the call', title: 'Join a call', art: <ArtCall />, prefer: ['below', 'right', 'left'], target: hook('join'),
+      text: `${o.join.title} ${going(o.join, o.now) ? 'is happening now' : `starts ${untilLabel(minutesUntil(o.join.startsAt, o.now))}`}. Join from here${keys ? ', or press J' : ''}. Captions, chat and boards are in the call.`
     });
   }
   const example = hook('notes-example');
   add(example()
     ? {
-      id: 'notes', called: 'notes', title: 'Notes for your calls', art: <ArtNotes />, prefer: ['right', 'above', 'left'], target: example,
+      id: 'notes', lead: 'Show me notes', title: 'Notes for your calls', art: <ArtNotes />, prefer: ['right', 'above', 'left'], target: example,
       text: 'Open the example to see what a call leaves you: a summary, decisions and follow-ups, written in confidential compute.'
     }
     : {
-      id: 'notes', called: 'notes', title: 'Notes for your calls', art: <ArtNotes />, prefer: ['right', 'below', 'above'], target: hook('calls'),
+      id: 'notes', lead: 'Show me notes', title: 'Notes for your calls', art: <ArtNotes />, prefer: ['right', 'below', 'above'], target: hook('calls'),
       text: 'Every call’s notes are in Calls: a summary, decisions and follow-ups, written in confidential compute.'
     });
   add({
-    id: 'ask', called: 'search', title: 'Search or ask', art: <ArtAsk />, prefer: ['below', 'left'], target: hook('ask'),
+    id: 'ask', lead: 'Show me search', title: 'Search or ask', art: <ArtAsk />, prefer: ['below', 'left'], target: hook('ask'),
     text: `Find what anyone said in any call, or ask a question and get an answer with the moments it came from.${keys ? ` Press ${shortcut('K')}.` : ''}`
   });
   add({
-    id: 'drive', called: 'the Drive', title: 'Documents and boards', art: <ArtDrive />, prefer: ['right', 'above', 'below'], target: hook('drive'),
+    id: 'drive', lead: 'Show me the Drive', title: 'Documents and boards', art: <ArtDrive />, prefer: ['right', 'above', 'below'], target: hook('drive'),
     text: 'Write and sketch together in a call. Each call keeps what it made, and the Drive keeps it all.'
   });
   add({
-    id: 'room', called: 'recording', title: 'Record in the room', art: <ArtRoom />, prefer: ['right', 'above', 'below'], target: hook('record'),
+    id: 'room', lead: 'Show me recording', title: 'Record in the room', art: <ArtRoom />, prefer: ['right', 'above', 'below'], target: hook('record'),
     text: 'Meeting in person? Record on your phone, even offline. Notes are written when you’re back online.'
   });
   add({
-    id: 'agents', called: 'agents', title: 'Bring your agent', art: <ArtAgents />, prefer: ['right', 'above'], target: hook('agents'),
+    id: 'agents', lead: 'Show me agents', title: 'Bring your agent', art: <ArtAgents />, prefer: ['right', 'above'], target: hook('agents'),
     text: 'Let Claude or another agent find notes and book calls for you, with only what you allow.'
   });
   add({
-    id: 'ready', called: 'where to start', lead: 'Back to the start', title: 'You’re ready', art: <ArtSun />, prefer: ['below', 'right', 'left'], target: hook('start'),
+    id: 'ready', lead: 'Back to the start', title: 'You’re ready', art: <ArtSun />, prefer: ['below', 'right', 'left'], target: hook('start'),
     text: 'Start a call now, or schedule one for later.'
   });
-  return drafts.map((d, i) => {
-    const after = drafts[i + 1];
-    return { id: d.id, title: d.title, text: d.text, art: d.art, prefer: d.prefer, target: d.target, next: after ? after.lead ?? `Show me ${after.called}` : 'Start using Alcove' };
-  });
+  return drafts.map((d, i) => ({ id: d.id, title: d.title, text: d.text, art: d.art, prefer: d.prefer, target: d.target, next: drafts[i + 1]?.lead ?? 'Start using Alcove' }));
 }
 
 export function TourHost() {
@@ -85,6 +82,8 @@ export function TourHost() {
   const calendar = useQuery(q.calendar()).data;
   const prefs = useQuery(q.prefs()).data;
   const path = useRouterState({ select: (s) => s.location.pathname });
+  // The address changes as soon as a navigation starts; Home is on the page once the router has finished.
+  const settled = useRouterState({ select: (s) => s.status === 'idle' });
   const navigate = useNavigate();
   const toast = useToast();
   const [slides, setSlides] = useState<TourSlide[] | null>(null);
@@ -93,18 +92,17 @@ export function TourHost() {
     if (!tour || !session || stage !== 'none') return;
     if (tour.auto && tourSeen(session.ownerId)) { arrival.tourTaken(); return; }
     if (path !== '/home') { void navigate({ to: '/home' }); return; }
+    if (!settled) return;
     // Home settles in first.
     const t = setTimeout(() => {
       const now = Date.now();
-      // The call Home offers at the top, by Home's own rule.
-      const others = prefs?.showOtherMeetings !== false;
-      const join = joinable(aheadOf(upcoming ?? [], others ? calendar?.events ?? [] : [], now), session.user.email, now);
-      const s = slidesFor({ join });
+      const join = joinable(aheadShown(upcoming, calendar?.events, prefs?.showOtherMeetings, now), session.user.email, now);
+      const s = slidesFor({ join, now });
       arrival.tourTaken();
       if (s.length) setSlides(s);
     }, tour.auto ? 350 : 250);
     return () => clearTimeout(t);
-  }, [tour, session, stage, path, navigate, upcoming, calendar, prefs]);
+  }, [tour, session, stage, path, settled, navigate, upcoming, calendar, prefs]);
 
   if (!slides || !session) return null;
   return (

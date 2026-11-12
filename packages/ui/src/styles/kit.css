@@ -344,7 +344,7 @@
 .ac-tour-card .body { padding: 20px 24px 18px; }
 .ac-tour-card .body p { margin-top: 8px; color: var(--ink-2); font-size: 15px; line-height: 22px; text-wrap: pretty; }
 .ac-tour-card .foot { display: flex; align-items: center; gap: 6px; padding: 0 20px 20px 24px; }
-/* Eight stops and the longest button still fit on one row. */
+/* A long tour's dots and its longest button still fit on one row. */
 .ac-tour-card .foot .ac-btn.is-quiet { padding: 0 10px; }
 .ac-tour.is-sheet .ac-tour-card { width: 100%; max-width: none; border-radius: var(--radius-xl) var(--radius-xl) 0 0; padding-bottom: env(safe-area-inset-bottom, 0px); }
 .ac-tour.is-sheet .ac-tour-card .art { height: 150px; }

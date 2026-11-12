@@ -9,7 +9,7 @@ import { ArchThumb, Icon, IconButton, Kbd, Logo, Meter, NavItemContent, SidebarN
 import { useQuery } from '@tanstack/react-query';
 import { Link, useRouterState } from '@tanstack/react-router';
 import { useEffect, useRef, useState, type RefObject } from 'react';
-import { aheadOf, joinable, whenLine } from '~/features/home/day';
+import { aheadShown, joinable, whenLine } from '~/features/home/day';
 import { recordOfflineHere } from '~/lib/device';
 import { log } from '~/lib/log';
 import { useNow, useOnline } from '~/lib/live';
@@ -115,8 +115,7 @@ function AboutToStart({ home }: { home: boolean }) {
   const calls = useQuery(q.upcoming()).data;
   const calendar = useQuery(q.calendar()).data;
   const prefs = useQuery(q.prefs()).data;
-  const events = prefs?.showOtherMeetings === false ? [] : calendar?.events ?? [];
-  const ahead = aheadOf(calls ?? [], events, now);
+  const ahead = aheadShown(calls, calendar?.events, prefs?.showOtherMeetings, now);
   const next = joinable(ahead, me, now, NEAR_MS);
   if (!next || (home && joinable(ahead, me, now))) return null;
   const when = whenLine(next, now);

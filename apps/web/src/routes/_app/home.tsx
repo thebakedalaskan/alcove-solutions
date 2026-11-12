@@ -11,7 +11,7 @@ import { Evening, SealedBadge } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useEffect, useRef } from 'react';
-import { aheadOf, joinable } from '~/features/home/day';
+import { aheadShown, joinable } from '~/features/home/day';
 import { ForYou } from '~/features/home/ForYou';
 import { Recent } from '~/features/home/Recent';
 import { SailOutHere } from '~/features/home/SailOut';
@@ -53,8 +53,7 @@ function Home() {
   const me = session?.user.email;
   const evening = useRef<HTMLDivElement>(null);
 
-  const others = prefs?.showOtherMeetings !== false;
-  const items = aheadOf(calls, others ? calendar?.events ?? [] : [], now);
+  const items = aheadShown(calls, calendar?.events, prefs?.showOtherMeetings, now);
   const firstDay = notes.length === 0;
   const soon = joinable(items, me, now);
 

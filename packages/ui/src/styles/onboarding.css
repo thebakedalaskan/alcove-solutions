@@ -38,8 +38,10 @@
 .ta-glass { background: color-mix(in srgb, var(--stage) 70%, transparent); box-shadow: inset 0 0 0 1px rgb(255 255 255 / .1), 0 18px 36px -16px rgb(0 0 0 / .6); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
 .ac-tour.is-sheet .ta > :not(svg) { scale: .9; }
 /* A loop that grows down from the top, with a line about it along the foot. */
-.ta-top { position: absolute; inset: 0; display: grid; justify-items: center; align-content: start; padding-top: 12px; }
-.ta-label { position: absolute; left: 0; right: 0; bottom: 9px; display: flex; justify-content: center; pointer-events: none; }
+.ta-top { position: absolute; inset: 0; display: grid; justify-items: center; align-content: start; padding-top: 8px; }
+.ta-label { position: absolute; left: 0; right: 0; bottom: 7px; display: flex; justify-content: center; pointer-events: none; }
+/* On a phone's shorter art there's no room under the loop: the words say it there. */
+.ac-tour.is-sheet .ta-label { display: none; }
 .ta-lab { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 10px; border-radius: 999px; background: rgb(6 13 26 / .42); font: 500 11.5px/1 var(--font-sans); color: var(--stage-ink); }
 .ta-ok { display: grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; background: var(--stage-sun); color: #0E1E35; flex: none; }
 .ta-ok .ac-i { stroke-width: 3; }
@@ -67,6 +69,7 @@
 /* Notes for your calls: decisions in rose, a follow-up with whose it is, each with its moment. */
 .ta-notes { display: grid; gap: 8px; width: 316px; padding: 12px 14px; border-radius: 16px; }
 .ta-notes .hd { display: flex; align-items: center; justify-content: space-between; font: 600 13px/1 var(--font-sans); }
+.ta-notes .ac-notes-sign { height: 20px; gap: 6px; padding: 0 8px; font-size: 11px; }
 .ta-rows { display: grid; gap: 6px; }
 .ta-row { display: flex; align-items: center; gap: 8px; height: 26px; overflow: hidden; font: 500 13px/1 var(--font-sans); color: var(--stage-ink); }
 .ta-dec { display: grid; place-items: center; width: 20px; height: 20px; border-radius: 6px; background: rgb(236 161 190 / .2); color: #ECA1BE; flex: none; }

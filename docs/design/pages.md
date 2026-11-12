@@ -768,13 +768,31 @@ Signed out, before anything else: what Alcove is, told as one evening on the app
 - The nav is fixed over the sky. It turns night over the night windows, and its Get started is tinted, leaving the
   filled button to what's on the page. The logo appears once, in the nav.
 
+## A new account's way in: the arrival and the tour
+
+`features/onboarding/` (`Arrival.tsx`, `Tour.tsx` and `art.tsx`), with `TourDialog` in `components/guidance.tsx` and
+`styles/onboarding.css` (`cr-` for the account being created, `ta-` for the tour's art). Canvas:
+[onboarding](canvas/onboarding/README.md).
+
+- **The arrival** is always night. One arch draws itself, dawn fills it and the sun rises while what came with the account
+  arrives a row at a time, each with a check: who signed in, the calendar, the team (or Invite them from Team), and notes
+  written in confidential compute. Then "You're in", and the arch opens into Home.
+- **The tour** is one card, 400px wide with a 180px dawn sky at its top, that travels to the real thing on Home. The page
+  dims around a cut-out of the target, a ring in `sun` marks it, and an arrow is drawn from the card once it arrives. Under
+  640px the card is a sheet along the bottom, standing above the tab bar when it points at it. Each slide is one loop on the
+  sky, a title in Newsreader, one line, the step dots, Skip tour and the one filled button, which names the next stop.
+- **Its stops follow the app**: Start now and Schedule, the call Home offers when one is about to start, the example note
+  (Calls once there are notes), Search or ask, the Drive, Record, Agents (not on a phone), and back at Start now. A stop
+  whose target isn't on screen is left out, and nothing is drawn onto the page for the tour.
+- **The art** is night on the dawn sky whatever the theme, with the example calls' cast, and you where it's about you.
+  Each loop runs a few seconds on one clock and holds a finished frame with reduced motion.
+
 ## Not yet on the canvas
 
 These screens follow the same rules but have no section here and no board yet:
 - the join screen (`routes/join.$code.tsx`) and the organizer's lobby
 - a guest picking a time (`features/calls/scheduling/PickTime.tsx`)
 - sign-in's other ways in, on the join and move pages (`features/welcome/WaysIn.tsx`)
-- onboarding: arrival and the tour (`features/onboarding/`)
 - moving a call to another device (`routes/move.tsx`)
 - the offline page (`features/shell/OfflinePage.tsx`)
 

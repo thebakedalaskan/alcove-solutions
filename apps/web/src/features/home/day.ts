@@ -44,6 +44,13 @@ export function aheadOf(calls: readonly Meeting[], events: readonly CalendarEven
   ].sort((a, b) => a.startsAt.localeCompare(b.startsAt));
 }
 
+/**
+ * What's ahead as Home and the side panel list it: your Alcove calls, and the other meetings on your calendar unless
+ * Show my other meetings on Home is off.
+ */
+export const aheadShown = (calls: readonly Meeting[] | undefined, events: readonly CalendarEvent[] | undefined, showOthers: boolean | undefined, now: number): Ahead[] =>
+  aheadOf(calls ?? [], showOthers === false ? [] : events ?? [], now);
+
 /** The series it continues, when it's in one: an Alcove call's, or a recurring meeting's you've held in Alcove. */
 export const seriesIdOf = (a: Ahead) => (a.kind === 'call' ? a.call.seriesId : a.event.seriesId);
 

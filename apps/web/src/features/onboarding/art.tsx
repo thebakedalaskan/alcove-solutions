@@ -1,5 +1,5 @@
 /*
- * The tour's art: one short loop per stop on the dawn sky, with the illustrated people from Alcove's example calls (and
+ * The tour's art: one short loop per slide on the dawn sky, with the illustrated people from Alcove's example calls (and
  * you, where the art is about you). Each loop runs on one clock; under reduced motion it holds a single finished frame.
  */
 import { Avatar, CallTile, Icon, NotesSign, cn, type AvatarPerson, type IconName } from '@alcove/ui';
