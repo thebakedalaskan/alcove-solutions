@@ -230,12 +230,12 @@ const playAs = (v: Viewer, p: Playing): CallPlay => {
 /**
  * What whoever started it has lost the document of, found while reading the call. Losing a document says nothing to the call,
  * so this is where it's noticed: it stops for good (`withoutLost`), how a presentation ended is said where it was presented, and
- * it doesn't come back if they're given it again.
+ * it doesn't come back if they're given it again. `viewing`: a workspace everyone viewed that's been deleted since, which takes
+ * the call back to its home.
  */
-/** What's been lost, to stop: presentations and what's playing, and `viewing`, a workspace everyone viewed that's gone since. */
 export interface Lost { present: Presenting[]; space: SpacePresenting[]; play: Playing[]; viewing: string | null }
-/** Nothing lost. */
-export const NOTHING_LOST: Lost = { present: [], space: [], play: [], viewing: null };
+/** Nothing lost, as a new record each time: what's found is pushed onto it. */
+const nothingLost = (): Lost => ({ present: [], space: [], play: [], viewing: null });
 const sameStart = (a: { place: string; by: Controller }, b: { place: string; by: Controller }) => a.place === b.place && a.by.person === b.by.person;
 export const withoutLost = (w: CallSpace, lost: Lost, open: readonly string[], e: Ending): CallSpace => {
   const gone = {
@@ -317,7 +317,7 @@ export async function shownTo(x: Seeing): Promise<{ shown: CallWorkspace; lost: 
   };
   const brought = meeting.documents.flatMap((id) => { const at = placeOfBrought(id); return at ? [at] : []; });
   const home = meeting.workspaceId;
-  const lost: Lost = { ...NOTHING_LOST, present: [], space: [], play: [] };
+  const lost = nothingLost();
   // A board presented is wherever it's kept, which needn't be the workspace everyone views.
   const boards = s.workspace.present.flatMap((p) => (p.kind === 'board' && p.place === place ? [p.workspaceId] : []));
   if (!home && !s.workspace.viewing && !brought.length && !boards.length) return { shown: shut, lost };
@@ -350,7 +350,7 @@ export async function shownTo(x: Seeing): Promise<{ shown: CallWorkspace; lost: 
       const present = s.workspace.present.find((p) => p.place === place && p.workspaceId === workspaceId && showing(s, p) && onStage(s, p));
       const space = inCall ? s.workspace.space.find((p) => p.place === place && p.workspaceId === workspaceId && showing(s, p)) : undefined;
       const play = inCall ? s.workspace.play.find((p) => p.place === place && p.workspaceId === workspaceId && showing(s, p)) : undefined;
-      const standing = standingIn(await holdersOf(d.pool, at.ownerId, reader.principals), reader);
+      const standing = standingIn(await holdersOf(d.pool, at.ownerId, reader), reader);
       const opensSomething = canOpen(standing);
       if (opensSomething && workspaceId === home) out.home = home;
       if (!opensSomething && !startedHere(present) && !startedHere(space) && !startedHere(play)) {
@@ -385,7 +385,7 @@ export async function shownTo(x: Seeing): Promise<{ shown: CallWorkspace; lost: 
       // Whatever's going on there goes on while whoever started it can still open it: the workspace presented, while something
       // in it opens for them.
       const starters = [present, space, play].flatMap((p) => (p ? [whoStarted(d, x.callId, p.by, v.workspace)] : []));
-      const theirs = starters.length ? await holdersOf(d.pool, at.ownerId, starters.flatMap((who) => who.principals)) : NO_HOLDERS;
+      const theirs = starters.length ? await holdersOf(d.pool, at.ownerId, { principals: starters.flatMap((who) => who.principals), calls: starters.flatMap((who) => who.calls) }) : NO_HOLDERS;
       const stands = (by: Controller, id: string) => { const who = whoStarted(d, x.callId, by, v.workspace); return roleIn(who, standingIn(theirs, who), id) !== undefined; };
       const opensIt = (by: Controller) => { const who = whoStarted(d, x.callId, by, v.workspace); return canOpen(standingIn(theirs, who)); };
       if (present) {
@@ -414,14 +414,14 @@ export async function shownTo(x: Seeing): Promise<{ shown: CallWorkspace; lost: 
     return { shown: { ...out, present: shown, ended: shown && said?.key === shown.key ? null : said, documents: inOrder, agenda: agenda?.id ?? null }, lost };
   } catch (e) {
     wlog.warn('workspace not read for someone in a call', { callId: x.callId, err: e });
-    return { shown: shut, lost: NOTHING_LOST };
+    return { shown: shut, lost: nothingLost() };
   }
 }
 
 /* ---------- the call's home, and what's viewed ---------- */
 
 /** Who an account is to a workspace, without a call. */
-const accountWho = (o: Owner, email: string): Who => ({ email, principals: [emailIndex(o, email)] });
+const accountWho = (o: Owner, email: string): Who => ({ email, principals: [emailIndex(o, email)], calls: [] });
 
 /** The workspace everyone in the call views and edits together: its home, unless the organizer switched to another. */
 export const viewedIn = (m: Pick<MeetingManifest, 'workspaceId'>, w: Pick<CallSpace, 'viewing'>): string | null => w.viewing ?? m.workspaceId;
@@ -552,8 +552,8 @@ export async function preview(v: Viewer, reader: Reader, people: Joined[], works
   const w = await workspaceFor(o, reader, workspaceId);
   requireRole(w, 'edit');
   const inCall = people.filter((j) => j.status === 'in' && j.role !== 'host');
-  const who = inCall.map((j) => ({ j, who: j.email ? accountWho(o, j.email) : { email: undefined, principals: [] } }));
-  const holders = await holdersOf(o.pool, w.owner.ownerId, who.flatMap((x) => x.who.principals));
+  const who = inCall.map((j): { j: Joined; who: Who } => ({ j, who: j.email ? accountWho(o, j.email) : { email: undefined, principals: [], calls: [] } }));
+  const holders = await holdersOf(o.pool, w.owner.ownerId, { principals: who.flatMap((x) => x.who.principals), calls: [] });
   return { name: w.state.name, cantOpen: who.filter((x) => standingIn({ ...NO_HOLDERS, members: holders.members }, x.who).role === null).map((x) => firstName(x.j.name)) };
 }
 
@@ -644,7 +644,7 @@ async function opens(d: Deps, reader: Who, workspaceId: string, documentId: stri
 async function opensWorkspace(d: Deps, who: Who, workspaceId: string): Promise<boolean> {
   const at = await workspaceAt(d.pool, workspaceId);
   if (!at) return false;
-  const standing = standingIn(await holdersOf(d.pool, at.ownerId, who.principals), who);
+  const standing = standingIn(await holdersOf(d.pool, at.ownerId, who), who);
   if (standing.role !== null || standing.call) return true;
   if (!standing.grants.size) return false;
   const seen = await seenAt(d, workspaceId, at.version, [...standing.grants.keys()]);
@@ -940,7 +940,7 @@ async function fromDocuments(d: Deps, reader: Reader, worked: WorkedDocument[]):
   for (const [workspaceId, documents] of byWorkspace(worked.slice(-FOLLOW_UP_DOCUMENTS))) {
     const at = await workspaceAt(d.pool, workspaceId);
     if (!at) continue;
-    const standing = standingIn(await holdersOf(d.pool, at.ownerId, reader.principals), reader);
+    const standing = standingIn(await holdersOf(d.pool, at.ownerId, reader), reader);
     if (!canOpen(standing)) continue;
     const seen = await seenAt(d, workspaceId, at.version, documents.map((x) => x.documentId));
     if (!seen) continue;

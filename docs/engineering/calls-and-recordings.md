@@ -1122,14 +1122,19 @@ access is never copied into the call. Organizing a call opens nothing more.
   ([Privacy › Who can open a workspace](privacy-keys-and-sessions.md#who-can-open-a-workspace)). Each person carries the
   `call-workspace` index of the call and the workspace it uses now (`Viewer.workspace`: the home, unless the organizer
   switched), worked out from the call's state on every request, and the workspace keeps a row in `workspace_calls` under
-  that index, which counts only while the organizer can edit there. Opening Workspace writes it for the workspace in use
-  (`openWorkspace`, then `openForCall`, in that workspace's own transaction with nothing of the call held), so a call that
-  began under the release before gets one the next time anyone opens Workspace; so does `workspace-set`, before the
-  switch applies, and `workspace-new` writes one in the transaction that makes the workspace (`openToCall`). It gives no
-  place in the workspace: `role` stays null for anyone who isn't in it, and sharing, its people, deleting for good and
-  renaming the workspace stay with its people (`403` for anyone the call alone opens it to). Taking someone out of the
-  call ends what it gave them with their seat, and tells the workspaces it's open to, whose streams look again. The rows
-  go when the call ends (`endSeats`), and maintenance sweeps up any whose call isn't live (`sweepSeats`).
+  that index, which counts only while the organizer can edit there. It's what the call opens to them and never who they
+  are: it's the same for everyone in the call, so presence, carets and whose a Yjs client is go by their address or seat
+  alone. Settling the home writes the home's row (`settledHome`, then `openForCall`, in that workspace's own transaction
+  with nothing of the call held), however the home's asked for: someone opening Workspace, whose answer already says it's
+  open, or a board made for the call; the call is told when that's just happened. Opening Workspace writes one for a
+  workspace switched to under the release before, too; `workspace-set` writes one before the switch applies, and
+  `workspace-new` in the transaction that makes the workspace (`openToCall`). It gives no place in the workspace: `role`
+  stays null for anyone who isn't in it, and sharing, its people, deleting for good and renaming the workspace stay with its
+  people (`403` for anyone the call alone opens it to). Someone leaving the call, once no connection of theirs is in it, or
+  being taken out of it, ends what it gave them with their seat, and every workspace it's open to, or that gave the seat
+  something, is told (`seatEnded`): the streams that carry the seat look again at once, and close for anyone it was all they
+  had, who leaves who's here. The rows go when the call ends (`endSeats`), and maintenance sweeps up any whose call isn't
+  live (`sweepSeats`).
 - **Switching what's viewed.** Only the organizer (`workspace-set`), and only to a workspace where they have at least
   `edit`: a role of `read` is `403`, and one they can't reach is the same `404` as one that doesn't exist. It's the
   call's sealed `workspace.viewing` (null: the home), and it ends with the call: the meeting, its home and the series'
@@ -1139,9 +1144,11 @@ access is never copied into the call. Organizing a call opens nothing more.
   the organizer can see from the workspace's people: someone with one document there is still named, because saying
   otherwise would tell the organizer about something they can't see. The workspace is opened to the call before the
   switch applies, and the switch moves nothing in `workspace_calls`: what each person carries names the workspace the
-  call uses, so the one it used closes, at their next request, to everyone who had it only through the call, and a
-  stream they have open finds out at its next ping, within 25 seconds, as when someone leaves. Nobody's keys move, and
-  what was presented or playing there stops. A workspace viewed that's deleted takes everyone back to the home.
+  call uses, so the one it used closes to everyone who had it only through the call at their next request, and once the
+  switch is saved that workspace is told the call moved on (`callMovedOn`), so whatever they have open there looks again
+  and closes at once, as when someone leaves. Switching back opens it again, under the row it kept. Nobody's keys move,
+  and what was presented or playing there stops. A workspace viewed that's deleted takes everyone back to the home, which
+  is opened to the call then if nothing had opened it yet (a home the release before settled).
   `workspace-new` makes one for the call (`madeFor`, with no series), named after it unless it's given a name, and
   everyone views it: everyone invited is let in to edit once the call's row is let go, as a home's invitees are, and
   who's in it follows the invite for as long as the call's on, whichever workspace is viewed (the call keeps what it
@@ -1545,12 +1552,12 @@ anything there that isn't restricted does.
   comes first in the board picker's Your team's boards; joining never opens it. Start a call here, on a board's page, opens
   the start flow with the board brought (`InstantCallInput.documents`, from the starter's own library, checked by
   `validDocuments` as a scheduled call's are), and the starter's browser opens it once the call is under way there
-  (`features/call/session/opening.ts`): on their stage, just for them, as a saved board picked from the picker opens, so
-  nothing in the call changes until they present it. Present brings it into the call first, asking about anyone who can't
-  open it, as for any saved board. A board they can only read is brought and not opened, as presenting one needs edit. A
-  reload in between forgets the opening, and the board is still brought. The next call in a series brings what this one
-  brought, and the boards open for everyone in it that the organizer can still bring (`documents.boardsFrom`, from the
-  note), up to 12 in all.
+  (`features/call/session/opening.ts`): on their stage only, as a saved board they had open stays there when someone else
+  makes a new board in the call, so nothing in the call changes until they present it. Present brings it into the call
+  first, asking about anyone who can't open it, as for any saved board. A board they can only read is brought and not
+  opened, as presenting one needs edit. A reload in between forgets the opening, and the board is still brought. The
+  next call in a series brings what this one brought, and the boards open for everyone in it that the organizer can still
+  bring (`documents.boardsFrom`, from the note), up to 12 in all.
 
 A board is two steps too, as everything about the call's workspace is (`prepare` in `features/calls/boards.ts`). Making a
 board, giving its grants and seats, and checking who may bring one are done with nothing of the call held, in the

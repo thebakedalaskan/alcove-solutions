@@ -8,8 +8,8 @@
  *  - writes notes still waiting (after a restart, or once a retry is due);
  *  - deletes moves to other devices, and links to call notes, that ran out;
  *  - deletes rings a day after they ran out, in calls that went on that long;
- *  - deletes for good what's been in a workspace's Trash for 30 days, ends seats whose call is over, and lets go of tags
- *    nobody came back for in 30 days;
+ *  - deletes for good what's been in a workspace's Trash for 30 days, ends seats whose call is over and closes what such a
+ *    call opened to everyone in it, and lets go of tags nobody came back for in 30 days;
  *  - deletes live notes a call left behind when a release from before them ended it;
  *  - takes away what an upload left when its browser went, a day on, and forgets uploads counted before yesterday.
  *
@@ -68,11 +68,12 @@ export async function maintain(d: Deps, opts: { orphanAgeMs?: number; trashAgeMs
   // Neither stops the other, or what comes next time: each logs what went wrong and says it did nothing.
   const quietly = (what: string, sweep: () => Promise<number>) => sweep().catch((e: unknown) => { mlog.warn('workspace upkeep failed', { what, err: e }); return 0; });
   const trash = await quietly('trash', () => sweepTrash(d, opts.trashAgeMs, started));
-  const seats = await quietly('seats', () => sweepSeats(d));
+  // Seats, and the workspaces calls were open to, counted apart: each is a row of its own kind.
+  const ended = await sweepSeats(d).catch((e: unknown) => { mlog.warn('workspace upkeep failed', { what: 'seats', err: e }); return { seats: 0, workspaces: 0 }; });
   const uploads = await quietly('uploads', () => sweepUploads(d, opts.uploadAgeMs, started));
   const uploadDays = await quietly('upload days', () => pruneUploadDays(d));
   const mentions = await quietly('mentions', () => sweepMentions(d));
-  return { driveExports, sessions, agents, receipts, retried, orphans, videos, notes, calls, moves, noteLinks, rings, liveNotes, attention, trash, seats, uploads, uploadDays, mentions };
+  return { driveExports, sessions, agents, receipts, retried, orphans, videos, notes, calls, moves, noteLinks, rings, liveNotes, attention, trash, seats: ended.seats, callWorkspaces: ended.workspaces, uploads, uploadDays, mentions };
 }
 
 /** Deletes objects older than `cutoff` (ms) that no row points at: writes whose SQL commit failed. */

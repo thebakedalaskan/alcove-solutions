@@ -9,10 +9,10 @@ import { MeetingManifest, updateManifest } from '../meetings/service';
 import { zoneOf } from '../meetings/repeats';
 import { getItem } from '../../vault';
 import { Joined, placeOf } from './places';
-import { openForCall, readerInCall, workspaceOwner } from '../workspaces/access';
+import { callMovedOn, openForCall, readerInCall, workspaceOwner } from '../workspaces/access';
 import { makeHome } from '../workspaces/service';
 import { log } from '../../log';
-import { seatKey, seatOf, type Viewer } from './participants';
+import { seatKey, seatOf, workspaceIn, type Viewer } from './participants';
 import { load, save, saveSettled, settle } from './state';
 import { anyone, stillHosting } from './permissions';
 import { afterClosing } from './room-boards';
@@ -55,16 +55,19 @@ export async function actOnWorkspace(v: Viewer, callId: string, a: space.SpaceAc
       if (changed === 'again') return 'again';
       const { closed } = await saveSettled(o, c, callId, state, changed.s);
       clog.info('call action', { callId, action: a.type, present: changed.s.workspace.present.length, space: changed.s.workspace.space.length, play: changed.s.workspace.play.length, tries });
-      return { room: row.room_name, made: changed.made, meetingId: row.meeting_item_id, closed };
+      return { room: row.room_name, made: changed.made, meetingId: row.meeting_item_id, closed, was: workspaceIn(state), now: workspaceIn(changed.s) };
     });
     if (done === 'again') {
       if (tries < SPACE_TRIES) continue;
       throw new ConflictError('This call changed while that was being done. Try again.', { context: { ...ctx, tries } });
     }
+    // The workspace the call used closes at once to whoever had it only through the call: their streams there look again.
+    if (done.was !== null && done.was !== done.now) await callMovedOn(o, callId, done.was);
     if (done.made) await space.followHome(o, done.meetingId, { add: done.made.guests }, [done.made.workspaceId]);
     return afterClosing({ organizer: o, callId }, done.closed, async () => {
       await tellRoom(o, done.room, callId, { call: true, log: false });
-      return view(v, o.pool, callId);
+      // Told as the call is now: what they carry names the workspace it uses after this.
+      return view({ ...v, workspace: done.now }, o.pool, callId);
     });
   }
 }
@@ -77,14 +80,20 @@ export async function actOnWorkspace(v: Viewer, callId: string, a: space.SpaceAc
  * for a home that's there already the folder's ID is taken there, and the folder made in that workspace's own transaction
  * with nothing of the call held. Everyone invited is let into a home made for the call once the call's row is let go. A home
  * deleted since is settled again, and one with no room for the folder (`full`) gives way to a new one. Whose it is, and what's
- * in it, the meeting's organizer decides: whoever asks first only settles it.
+ * in it, the meeting's organizer decides: whoever asks first only settles it. Settled, it's open to everyone in the call
+ * (`openForCall`), however it came to be asked for, and the call is told when that's just happened.
  */
 export async function settledHome(o: Owner, callId: string, timeZone?: string | undefined, full: string | null = null): Promise<{ workspaceId: string; folderId: string }> {
   const { row, state } = await load(o, o.pool, callId);
   const meeting = await getItem(o, o.pool, 'meeting', row.meeting_item_id, MeetingManifest, 'That meeting');
   const had = state.workspace.home;
   const chosen = meeting.manifest.workspaceId;
-  if (had?.made && had.workspaceId === chosen && await workspaceOwner(o.pool, chosen)) return had;
+  /** The home, open to everyone in the call: settled under the release before, or opened by nothing yet, it's opened now. */
+  const opened = async (home: { workspaceId: string; folderId: string }) => {
+    if (await openForCall({ organizer: o, callId }, home.workspaceId)) await tellRoom(o, row.room_name, callId, { call: true, log: false });
+    return { workspaceId: home.workspaceId, folderId: home.folderId };
+  };
+  if (had?.made && had.workspaceId === chosen && await workspaceOwner(o.pool, chosen)) return opened(had);
   const organizer = (await profile(o)).email;
   // Asked with nothing held: a home the organizer can no longer make things in is no home of theirs, nor one with no room.
   const usable = chosen !== full && (await space.usableHome(o, organizer, chosen)) !== undefined;
@@ -117,9 +126,11 @@ export async function settledHome(o: Owner, callId: string, timeZone?: string | 
   if (taken.again) return settledHome(o, callId, timeZone, full);
   const { home } = taken;
   if (taken.made) {
-    // Everyone invited comes in now the call's row is let go, so a big invite never holds the call up.
+    // Everyone invited comes in now the call's row is let go, so a big invite never holds the call up, and it's open to
+    // everyone in the call before anyone's told it's there.
     await space.followHome(o, row.meeting_item_id, { add: taken.guests });
     await space.carryForward(o, row.meeting_item_id, taken.was, home.workspaceId);
+    await openForCall({ organizer: o, callId }, home.workspaceId);
     await tellRoom(o, taken.room, callId, { call: true, log: false });
     return home;
   }
@@ -137,7 +148,7 @@ export async function settledHome(o: Owner, callId: string, timeZone?: string | 
     await space.followHome(o, row.meeting_item_id, { add: taken.guests });
     clog.info('call folder settled in its home', { callId, workspaceId: home.workspaceId });
   }
-  return { workspaceId: home.workspaceId, folderId: home.folderId };
+  return opened(home);
 }
 
 /**
@@ -183,22 +194,25 @@ async function agendaFor(o: Owner, callId: string): Promise<void> {
 
 /**
  * Someone opens Workspace. A home that can't be made for a guest opening it is the organizer's to hear about, not theirs,
- * and an agenda that can't be made is no reason anyone can't open the rest.
+ * and an agenda that can't be made is no reason anyone can't open the rest. They're told as the call is once it's settled:
+ * what they carry names the workspace it uses, which may be the home settled just now.
  */
 export async function openWorkspace(v: Viewer, callId: string, timeZone: string | undefined): Promise<CallState> {
   const o = v.organizer;
+  let now = v;
   try {
     await settledHome(o, callId, timeZone);
-    // Open to everyone in the call: the workspace it uses now, the home unless the organizer switched.
-    const { state } = await load(o, o.pool, callId);
-    const inUse = state.workspace.viewing ?? state.workspace.home?.workspaceId;
-    if (inUse) await openForCall({ organizer: o, callId }, inUse);
+    // Settling the home opened it, and switching opens what's switched to; one switched to under the release before opens here.
+    const { row, state } = await load(o, o.pool, callId);
+    const inUse = workspaceIn(state);
+    if (inUse !== null && await openForCall({ organizer: o, callId }, inUse)) await tellRoom(o, row.room_name, callId, { call: true, log: false });
+    now = { ...v, workspace: inUse };
     await agendaFor(o, callId).catch((e: unknown) => clog.warn('next agenda not made', { callId, err: e }));
   } catch (e) {
     if (v.isOrganizer || !(e instanceof ConflictError)) throw e;
     clog.info('workspace not settled for someone opening it', { callId, code: e.code });
   }
-  return view(v, o.pool, callId);
+  return view(now, o.pool, callId);
 }
 
 /** What viewing another workspace in the call would mean, for the organizer to decide. */

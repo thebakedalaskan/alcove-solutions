@@ -140,7 +140,7 @@ index(purpose, value) = HMAC-SHA-256(HKDF(KMASTER, "alcove/index/v1"), purpose â
 | `addition-author` | The account's owner ID | `note_additions.author_index` | Taking everything an account added to the shared notes out of everyone's notes when it's deleted |
 | `note-link-maker` | The account's owner ID | `note_links.maker_index` | Taking out the links an account made to a note when it removes the note from theirs, and every link it made when it's deleted |
 | `call-seat` | A call's ID and someone's seat in it | `document_access.principal_index` | Who a document is shared with in a call. Only the API can work one out, from a call pass; it's different in every call |
-| `call-workspace` | A call's ID and the ID of a workspace it uses | `workspace_calls.call_index` | Which workspaces a call [opens to everyone in it](#who-can-open-a-workspace). Everyone let in carries the one for the workspace the call uses now, worked out by the API from their pass and the call's state; it's different for every call and workspace |
+| `call-workspace` | A call's ID and the ID of a workspace it uses | `workspace_calls.call_index` | Which workspaces a call [opens to everyone in it](#who-can-open-a-workspace). Everyone let in carries the one for the workspace the call uses now, worked out by the API from their pass and the call's state; it's different for every call and workspace, and the same for everyone in a call, so it's what the call opens to them and never who they are |
 | `upload-guest` | The person a guest's call pass names, random for each person in each call | `media_guest_upload_days.guest_index` | Counting what a guest uploads in a day, on every instance and after a restart. It can't be matched to a call, a seat or a name |
 
 The hash is deterministic, so equal values show the same person across rows and accounts (see
@@ -549,10 +549,13 @@ read every note given to it. That's why the demo SSO sign-in takes only example 
 `apps/api/src/features/workspaces/access.ts` decides, and nothing else does. Every route asks it first.
 
 - **A reader** is an account, known by the email index of its profile's address; or someone in a call, known by the
-  `call-seat` index of their seat, from their call pass, for as long as they're let in and the call is going on, and, while
-  the call uses a workspace, by the `call-workspace` index of the call and that workspace too, from the call's state as it
-  is at that request. Signed in and in a call, a request with both is both: it has what each gives it, the stronger where
-  they overlap. Neither: `401 unauthenticated`, whatever it asked for.
+  `call-seat` index of their seat, from their call pass, for as long as they're let in and the call is going on. Signed in
+  and in a call, a request with both is both: it has what each gives it, the stronger where they overlap. Neither:
+  `401 unauthenticated`, whatever it asked for. While the call uses a workspace, someone in it carries the `call-workspace`
+  index of the call and that workspace too, from the call's state as it is at that request (`Who.calls`), which says what
+  the call opens to them and nothing of who they are: everyone in the call carries the same one. So nothing that asks
+  whether two readers are one person goes by it: not who's who in presence (`isMe`, and with it an address), not whose a
+  caret or a Yjs client is, and not whether someone has a document open.
 - **A workspace role** (`admin`, `edit`, `read`) applies to everything in the workspace. `read` changes nothing. `edit`
   changes the tree. Only an `admin` renames or deletes the workspace or changes its people, and a workspace always keeps one.
 - **Restricted.** A restricted document or board opens only for its creator, while they're in the workspace or a call it's
@@ -577,15 +580,19 @@ read every note given to it. That's why the demo SSO sign-in takes only example 
 - **A call opens the workspace it uses** to everyone let in to it, guests without an account too, for as long as they're
   in the call: its home, unless the organizer switched to another. A row in `workspace_calls` says so, under the
   `call-workspace` index of the call and the workspace, which is what everyone in the call carries while the call uses that
-  workspace. It's written in the workspace's own transaction, with nothing of the call held (`openForCall`): the first time
-  anyone opens Workspace in the call, which is also how a call that began under the release before gets one, and
-  before the organizer's switch to another workspace applies; a workspace made in the call gets its row in the transaction
-  that makes it (`openToCall`). A row counts only while the call's organizer can still edit there, as an admin or with
-  `edit` (`organizer_index`, their email index), because a call adds to a workspace on its organizer's word alone. A
-  switch moves no row: what each person carries names the call and the workspace it uses, so the workspace it used
-  closes, at their next request, to everyone who had it only through the call, and a stream they have open finds out at
-  its next ping, within 25 seconds, as when someone leaves a call. The rows go when the call ends, and maintenance sweeps
-  up any whose call isn't live.
+  workspace. It's written in the workspace's own transaction, with nothing of the call held (`openForCall`): where the
+  call's home is settled, however that's asked for (someone opening Workspace, whose answer says it's open, or a board
+  made for the call), and the call is told; when someone opens Workspace on a workspace switched to under the release
+  before; when the call goes back to a home the release before settled; and before the organizer's switch to another
+  workspace applies. A workspace made in the call gets its row in the transaction that makes it (`openToCall`). Each is
+  logged with the call's and the workspace's IDs, and so is a row not written because the organizer can't edit there. A
+  row counts only while the call's organizer can still edit there, as an admin or with `edit` (`organizer_index`, their
+  email index), because a call adds to a workspace on its organizer's word alone; a new address from their provider moves
+  it to the new one ([A new address](#who-can-open-a-workspace)). A switch moves no row: what each person carries names the
+  call and the workspace it uses, so the workspace it used closes to everyone who had it only through the call at their
+  next request, and the streams they have open there close at once, because that workspace is told the call moved on
+  (`callMovedOn`). The rows go when the call ends, when its organizer's account is deleted, and maintenance sweeps up any
+  whose call isn't live.
 - **What the call gives** is what a member who can edit has, short of anything restricted. Someone it opens a workspace
   to gets the tree as its people see it, folders and the workspace's name, without its head count
   (`WorkspaceTree.inCall`, with `role` null), and every folder, document and board in it that isn't restricted, to open
@@ -672,10 +679,13 @@ read every note given to it. That's why the demo SSO sign-in takes only example 
   (`403`).
 - **Losing access** ends a stream with a `closed` line: every change to who has what reaches every instance
   ([Data and storage â€º Live traffic](data-and-storage.md#live-traffic)), and each stream looks again. A change that's being
-  made is checked under the workspace's lock, so nothing gets in after someone is taken out. Someone leaving a call, or the
-  call moving on to another workspace, changes nothing in the workspace, so a stream finds that out at its next ping,
-  within 25 seconds; the call ending, or someone being taken out of it, tells every workspace it was open to, and their
-  streams look again at once.
+  made is checked under the workspace's lock, so nothing gets in after someone is taken out. What being in a call gives
+  ends at once too, though the rows it matched stay for everyone else: someone leaving a call (once no connection of theirs
+  is in it) or being taken out of it tells every workspace the call is open to, and every one that gave their seat
+  something, that the seat ended (`seatEnded`); the call moving on from a workspace tells that workspace (`callMovedOn`).
+  Each is a notice naming the seat's or the call's keyed hash (`look:`), and every stream that carries it works out who
+  its reader is again then, not at its next ping: someone it was all they had gets `closed`, a document's says `access`, and
+  they leave who's here. The call ending deletes its rows, which tells every workspace it was open to.
 
 ### Files
 

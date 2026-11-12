@@ -14,7 +14,7 @@ import { b64u, fromUtf8, openJson, sealJson, toJson, unb64u, utf8, type RecordHe
 import { bigintText, bytea, maybeOne } from '../db';
 import { log } from '../log';
 import {
-  TREE_NOTICE, canOpen, holdersOf, openState, peopleIn, roleOf, standingIn, workspaceKey, type Holders, type Reader, type Standing, type Who, type WorkspaceState
+  LOOK, TREE_NOTICE, canOpen, holdersOf, openState, peopleIn, roleOf, standingIn, workspaceKey, type Holders, type Reader, type Standing, type Who, type WorkspaceState
 } from '../features/workspaces/access';
 import { portraitFor } from '../features/account/portraits';
 import { findOwner } from '../owners';
@@ -35,12 +35,16 @@ export type Snapshot = (Holders & { workspaceId: string; version: number; state:
 export interface RoomMember {
   /** How far it's been shown: anything else, and a change is read for it. */
   version: number;
+  /** Who its reader is, and what being in a call opens to them (`Who`). */
   principals: Uint8Array[];
+  calls: Uint8Array[];
   offer(s: Snapshot): void;
   /** Who's here changed: `seenBy` says what this stream's reader may know of it. */
   heard(): void;
   /** Someone tagged this stream's reader. */
   told(): void;
+  /** Something its reader carried stopped counting (`LOOK`): who they are is worked out again now. */
+  recheck(): void;
   end(): void;
 }
 
@@ -51,6 +55,8 @@ const HereNotice = z.object({
   /** What access is worked out from: the same as a reader's. */
   email: z.string().nullable(),
   principals: z.array(z.string()),
+  /** What being in a call opens to them (`Who.calls`). A notice from an instance a release behind has none. */
+  calls: z.array(z.string()).default([]),
   /** They're in the workspace, as opposed to having something in it. */
   member: z.boolean(),
   connection: z.string(),
@@ -72,7 +78,7 @@ const hereHeader = (o: Owner, workspaceId: string): RecordHeader => ({ v: 1, kin
 export async function announce(w: { owner: Owner; workspaceId: string; role: Standing['role'] }, reader: Reader, person: Person, connection: string, where: WorkspaceWhere | 'gone'): Promise<void> {
   const place: WorkspaceWhere = where === 'gone' ? { document: null, block: null, typing: false, page: null } : where;
   const notice: HereNotice = {
-    person, email: reader.email ?? null, principals: reader.principals.map(b64u), member: w.role !== null, connection, callId: reader.seat?.callId ?? null, callIdentity: reader.seat?.viewer.pass.identity ?? null,
+    person, email: reader.email ?? null, principals: reader.principals.map(b64u), calls: reader.calls.map(b64u), member: w.role !== null, connection, callId: reader.seat?.callId ?? null, callIdentity: reader.seat?.viewer.pass.identity ?? null,
     ...place, page: reader.seat ? place.page : null, gone: where === 'gone'
   };
   await publish(w.owner.pool, w.workspaceId, `${PRESENCE}${fromUtf8(sealJson(workspaceKey(w.owner), hereHeader(w.owner, w.workspaceId), toJson(notice)))}`);
@@ -80,16 +86,18 @@ export async function announce(w: { owner: Owner; workspaceId: string; role: Sta
 
 /** Whose eyes `seenBy` looks through. */
 export interface Viewer { who: Who; callId: string | null; standing: Standing }
-const samePerson = (a: Who, b: Who): boolean => a.principals.some((p) => b.principals.some((q) => Buffer.compare(p, q) === 0));
+const among = (xs: Uint8Array[], x: Uint8Array): boolean => xs.some((y) => Buffer.compare(y, x) === 0);
+/** Whether two readers are one person: by who they are, never by a call they're both in, which everyone in it carries. */
+const samePerson = (a: Who, b: Who): boolean => a.principals.some((p) => among(b.principals, p));
 
 /* ---------- a room ---------- */
 
 const WorkspaceRow = z.object({ owner_id: z.string(), version: bigintText, state_ciphertext: bytea });
-async function readSnapshot(d: Deps, workspaceId: string, principals: Uint8Array[]): Promise<Snapshot> {
+async function readSnapshot(d: Deps, workspaceId: string, who: Pick<Who, 'principals' | 'calls'>): Promise<Snapshot> {
   const row = await maybeOne(d.pool, WorkspaceRow, 'SELECT state_ciphertext, owner_id, version FROM workspaces WHERE workspace_id = $1', [workspaceId]);
   const owner = row && await findOwner(d, row.owner_id, undefined);
   if (!row || !owner) return null;
-  return { ...await holdersOf(d.pool, row.owner_id, principals), workspaceId, version: row.version, state: openState(owner, workspaceId, row.state_ciphertext), people: await peopleIn(d.pool, row.owner_id) };
+  return { ...await holdersOf(d.pool, row.owner_id, who), workspaceId, version: row.version, state: openState(owner, workspaceId, row.state_ciphertext), people: await peopleIn(d.pool, row.owner_id) };
 }
 
 /** Every stream of one workspace on this instance. */
@@ -120,10 +128,32 @@ export class Room {
     if (e.kind === 'closing') { for (const m of this.members) m.end(); return; }
     if (e.kind === 'notice' && e.notice.startsWith(PRESENCE)) { this.heardHere.push(e.notice.slice(PRESENCE.length)); void this.read(); return; }
     if (e.kind === 'notice' && e.notice.startsWith(TOLD)) { this.tellTagged(unb64u(e.notice.slice(TOLD.length))); return; }
+    if (e.kind === 'notice' && e.notice.startsWith(LOOK)) { this.lookAgain(unb64u(e.notice.slice(LOOK.length))); return; }
     if (e.kind === 'missed' || e.notice === TREE_NOTICE) void this.read();
   }
   private tellTagged(who: Uint8Array): void {
-    for (const m of this.members) if (m.principals.some((p) => Buffer.compare(p, who) === 0)) m.told();
+    for (const m of this.members) if (among(m.principals, who)) m.told();
+  }
+  /**
+   * Something people carried stopped opening anything here (`LOOK`): a seat in a call they've left or were taken out of, or a
+   * call's index for a workspace the call has moved on from. Each stream that carries it works out who its reader is again,
+   * now. Of who's here, it goes from whoever carried it, along with what being in the call opened when it's a seat, and the
+   * read that follows settles who that leaves here; anyone still here says so again within seconds, as they are now.
+   */
+  private lookAgain(index: Uint8Array): void {
+    for (const m of this.members) if (among(m.principals, index) || among(m.calls, index)) m.recheck();
+    let changed = false;
+    for (const [key, e] of this.here) {
+      const seat = among(e.who.principals, index);
+      if (!seat && !among(e.who.calls, index)) continue;
+      const left = (xs: Uint8Array[]) => xs.filter((x) => Buffer.compare(x, index) !== 0);
+      this.here.set(key, { ...e, who: { ...e.who, principals: left(e.who.principals), calls: seat ? [] : left(e.who.calls) } });
+      changed = true;
+    }
+    if (!changed) return;
+    // What was read last was read for what they carried then: whoever's here now is settled on a fresh read.
+    this.latest = undefined;
+    void this.read();
   }
   join(m: RoomMember): void { this.members.add(m); }
   leave(m: RoomMember): void {
@@ -155,7 +185,11 @@ export class Room {
         const placing = this.here.size > 0 || this.heardHere.length > 0;
         const stale = placing && (this.latest === undefined || (this.latest?.version ?? null) !== version);
         if (behind.length || stale) {
-          const s = await readSnapshot(this.d, this.workspaceId, [...behind.flatMap((m) => m.principals), ...[...this.here.values()].flatMap((e) => e.who.principals)]);
+          const here = [...this.here.values()].map((e) => e.who);
+          const s = await readSnapshot(this.d, this.workspaceId, {
+            principals: [...behind.flatMap((m) => m.principals), ...here.flatMap((who) => who.principals)],
+            calls: [...behind.flatMap((m) => m.calls), ...here.flatMap((who) => who.calls)]
+          });
           this.settle(s);
           this.latest = placing ? s : undefined;
           for (const m of behind) m.offer(s);
@@ -179,11 +213,11 @@ export class Room {
       const n = openJson(workspaceKey(owner), hereHeader(owner, this.workspaceId), utf8(text), HereNotice);
       const key = `${n.person.id}:${n.connection}`;
       if (n.gone) { this.here.delete(key); continue; }
-      const { email, principals, gone: _, ...rest } = n;
+      const { email, principals, calls, gone: _, ...rest } = n;
       // Whoever moved last comes last, so of someone's windows the one they're using can be told from one left open.
       const was = this.here.get(key);
       if (was && (was.document !== n.document || was.block !== n.block || was.typing !== n.typing || was.page !== n.page)) this.here.delete(key);
-      this.here.set(key, { ...rest, who: { email: email ?? undefined, principals: principals.map((p) => unb64u(p)) }, until });
+      this.here.set(key, { ...rest, who: { email: email ?? undefined, principals: principals.map((p) => unb64u(p)), calls: calls.map((c) => unb64u(c)) }, until });
     }
     this.expire();
     return true;

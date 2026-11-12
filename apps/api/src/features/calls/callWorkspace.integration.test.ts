@@ -5,17 +5,19 @@
  * asking Alcove about a selection. What's checked is what each person is told, and above all what they aren't.
  */
 import {
-  AlcoveApiError, CallFollowUpsSchema, playPosition, type AudioPiece, type CallAction, type CallSession, type CallState, type DocSession, type DocSessionOptions, type Note, type TranscriptClip, type WorkspaceRole, type WorkspaceTree
+  AlcoveApiError, CallFollowUpsSchema, CallStateSchema, DOC_SEED, DOC_UPDATE_TYPE, playPosition, toBase64Url, type AudioPiece, type CallAction, type CallSession, type CallState, type DocSession, type DocSessionOptions, type Note,
+  type TranscriptClip, type WorkspaceLive, type WorkspaceRole, type WorkspaceTree
 } from '@alcove/api';
 import { createHttpApi } from '@alcove/api-http';
 import { randomBytes } from 'node:crypto';
 import pg from 'pg';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { Awareness, encodeAwarenessUpdate } from 'y-protocols/awareness';
 import * as Y from 'yjs';
 import { z } from 'zod';
 import { id128, openJson, sealJson, stateKey, toJson } from '../../crypto';
 import { tx } from '../../db';
-import { NotFoundError } from '../../errors';
+import { NotFoundError, UnavailableError } from '../../errors';
 import { DocFailure } from '../../live/docPool';
 import { maintain } from '../../maintenance';
 import { Profile } from '../account/account';
@@ -582,6 +584,8 @@ describe('everyone in the call', () => {
 
     // What's only for its people stays theirs: deleting for good, saying who has something, who's in it, and its name.
     await jamie.api.workspaces.items.trash(id, copy, pass);
+    // What they send to Trash says who did, by the name they're in the call under, as what they make does.
+    expect((await art.api.workspaces.get(id)).items.find((x) => x.id === copy)?.trashedBy).toBe('Jamie Guest');
     expect(await code(jamie.api.workspaces.items.deleteForever(id, copy))).toBe('unauthenticated');
     expect(await code(theo.api.workspaces.items.deleteForever(id, copy))).toBe('not-found');
     expect(await refusal(theo.api.workspaces.share.set(id, plan, [{ email: unique() }], 'read', theos))).toMatchObject({ code: 'forbidden', message: 'Only people in this workspace can do that.' });
@@ -792,6 +796,283 @@ describe('everyone in the call', () => {
     await art.api.workspaces.share.remove(id, plan, entry?.id ?? '');
     await closed;
     expect((await jamie.api.workspaces.get(id, pass)).items.map((x) => x.id)).toEqual([]);
+  });
+
+  it('shows everyone in it to each other there, takes nobody for anyone else, and tells nobody an address they’re not to know', async () => {
+    const art = await account();
+    const priya = await account();
+    const theo = await account();
+    const id = await workspace(art, 'Product', [[priya, 'edit']]);
+    const plan = await doc(art, id, 'Plan');
+    const { host, code: c } = await callBy(art, { guests: [priya.email, theo.email] });
+    const p = await invited(host, c, priya);
+    const t = await invited(host, c, theo);
+    await host.setWorkspace(id);
+    const jamie = await guest(host, c);
+    const sam = await guest(host, c, 'Sam Guest');
+    // Everyone works in it from the call, with their pass, as the call's own Workspace does, all in the same document.
+    const watch = (who: Browser, call: CallSession) => who.api.workspaces.live(id, { pass: call.ticket.pass });
+    const seen = [
+      { name: art.name, s: watch(art, host) }, { name: priya.name, s: watch(priya, p) }, { name: theo.name, s: watch(theo, t) },
+      { name: 'Jamie Guest', s: watch(jamie, jamie.call) }, { name: 'Sam Guest', s: watch(sam, sam.call) }
+    ];
+    for (const { s } of seen) await until(() => s.getSnapshot().status === 'live', 'a stream');
+    for (const { s } of seen) s.present({ document: plan, block: null, typing: false, page: null });
+    // Each of them sees each of the others there, a guest the other guest too.
+    for (const { name, s } of seen) {
+      await until(() => seen.every((x) => s.getSnapshot().here.some((e) => e.person.name === x.name && e.document === plan)), `${name} to see everyone there`);
+      // And only themselves as themselves: being in one call makes nobody the same person.
+      expect(s.getSnapshot().here.filter((e) => e.isMe).map((e) => e.person.name), name).toEqual([name]);
+    }
+    // Someone outside the workspace, a guest or invited, is told nobody else's address, whoever they are.
+    for (const { name, s } of seen.filter((x) => x.name !== art.name && x.name !== priya.name)) {
+      const text = JSON.stringify(s.getSnapshot().here.filter((e) => !e.isMe));
+      for (const email of [art.email, priya.email, theo.email]) expect(text, name).not.toContain(email);
+      expect(text, name).not.toContain('@');
+    }
+    // Its own people still know each other by address.
+    expect(seen[1]?.s.getSnapshot().here.find((e) => e.person.name === art.name)?.person.email).toBe(art.email);
+    for (const { s } of seen) s.close();
+    await host.leave();
+  });
+
+  it('keeps what’s each person’s theirs: nobody writes as someone else’s Yjs client, or says where they are in what they don’t have open', async () => {
+    const art = await account();
+    const id = await workspace(art, 'Product');
+    const plan = await doc(art, id, 'Plan');
+    const other = await doc(art, id, 'Other');
+    const secret = await doc(art, id, 'Restricted');
+    await art.api.workspaces.share.restrict(id, secret, true);
+    const { host, code: c } = await callBy(art);
+    await host.setWorkspace(id);
+    const jamie = await guest(host, c);
+    const sam = await guest(host, c, 'Sam Guest');
+    // Each with their pass: Jamie writes in the plan, Sam has the other one open, Art has what's restricted open.
+    const jamies = await type(jamie, jamie.call, id, plan, ' from Jamie');
+    const sams = await open(sam, id, other, { pass: sam.call.ticket.pass });
+    const arts = await open(art, id, secret, { pass: host.ticket.pass });
+    const update = (who: Browser, call: CallSession, document: string, body: Uint8Array) =>
+      who.fetch(`${h.baseUrl}/v1/workspaces/${id}/documents/${document}/updates`, { method: 'POST', headers: { 'content-type': DOC_UPDATE_TYPE, 'x-alcove-call': call.ticket.pass }, body: new Uint8Array(body) });
+    /** Words at the start of the plan's first line, written as `client`, or as a browser of its own. */
+    const words = (text: string, client?: number) => {
+      const d = new Y.Doc();
+      if (client !== undefined) d.clientID = client;
+      Y.applyUpdate(d, DOC_SEED);
+      const before = Y.encodeStateVector(d);
+      firstLine({ doc: d }).insert(0, text);
+      return Y.encodeStateAsUpdate(d, before);
+    };
+    // Sam writes in the plan as anyone in the call may, and not as Jamie's client, which nobody's browser does.
+    expect((await update(sam, sam.call, plan, words('Not Sam’s to write ', jamies.doc.clientID))).status).toBe(400);
+    expect((await update(sam, sam.call, plan, words('Sam’s own '))).status).toBe(200);
+    const said = () => JSON.stringify(documentText(jamies.doc, 'document').blocks);
+    await until(() => said().includes('Sam’s own'), 'Sam’s words to reach Jamie');
+    expect(said()).not.toContain('Not Sam’s');
+    expect(said()).toContain('from Jamie');
+    // A caret goes only into what its sender has open: not another document someone else in the call has open, nor one
+    // restricted away from them that someone else in the call has open.
+    const caret = (who: Browser, call: CallSession, document: string) => {
+      const scratch = new Y.Doc();
+      const a = new Awareness(scratch);
+      a.setLocalState({ cursor: { anchor: 1, head: 1 } });
+      const sent = toBase64Url(encodeAwarenessUpdate(a, [scratch.clientID]));
+      a.destroy();
+      return who.fetch(`${h.baseUrl}/v1/workspaces/${id}/documents/${document}/awareness`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-alcove-call': call.ticket.pass }, body: JSON.stringify({ update: sent }) });
+    };
+    expect((await caret(jamie, jamie.call, plan)).status).toBe(200);
+    expect((await caret(jamie, jamie.call, other)).status).toBe(404);
+    expect((await caret(jamie, jamie.call, secret)).status).toBe(404);
+    expect((await caret(jamie, jamie.call, madeUp())).status).toBe(404);
+    for (const s of [jamies, sams, arts]) s.close();
+    await host.leave();
+  });
+
+  it('closes what they have open and takes them out of who’s here at once when the call moves on, and when they leave or are taken out', async () => {
+    const art = await account();
+    const product = await workspace(art, 'Product');
+    const design = await workspace(art, 'Design');
+    const plan = await doc(art, product, 'Plan');
+    const { host, code: c } = await callBy(art);
+    await host.setWorkspace(product);
+    const watching = art.api.workspaces.live(product);
+    await until(() => watching.getSnapshot().status === 'live', 'Art’s stream');
+    const there = (name: string) => watching.getSnapshot().here.some((x) => x.person.name === name);
+    /** A guest working in the plan with their pass: its page, the workspace's stream, and where they are in it, for Art to see. */
+    const working = async (who: Browser, call: CallSession, name: string) => {
+      const page = await open(who, product, plan, { pass: call.ticket.pass });
+      const tree = who.api.workspaces.live(product, { pass: call.ticket.pass });
+      await until(() => tree.getSnapshot().status === 'live', `${name}’s stream`);
+      tree.present({ document: plan, block: null, typing: false, page: null });
+      await until(() => there(name), `Art to see ${name} there`);
+      return { page, tree };
+    };
+    /** Closed, both of them, and gone from who's here, well inside the time a stream takes to ping: they're told, not found out. */
+    const closesAtOnce = async (w: { page: DocSession; tree: WorkspaceLive }, name: string, since: number) => {
+      await until(() => w.page.getSnapshot().closed === 'access', `${name}’s page to close`);
+      await until(() => w.tree.getSnapshot().status === 'closed', `${name}’s stream to close`);
+      await until(() => !there(name), `${name} to leave who’s here`);
+      expect(Date.now() - since, name).toBeLessThan(h.deps.cfg.LIVE_PING_MS / 2);
+    };
+
+    // The call moves on to another workspace: the one it used closes to them, though it stays open to the call's people.
+    const jamie = await guest(host, c);
+    const before = await working(jamie, jamie.call, 'Jamie Guest');
+    let at = Date.now();
+    await host.setWorkspace(design);
+    await closesAtOnce(before, 'Jamie Guest', at);
+    // And back, it opens to them again.
+    await host.setWorkspace(product);
+    const j = await working(jamie, jamie.call, 'Jamie Guest');
+
+    // Someone leaves.
+    const sam = await guest(host, c, 'Sam Guest');
+    const s = await working(sam, sam.call, 'Sam Guest');
+    at = Date.now();
+    await sam.call.leave();
+    await closesAtOnce(s, 'Sam Guest', at);
+
+    // Someone's taken out.
+    const kim = await guest(host, c, 'Kim Guest');
+    const k = await working(kim, kim.call, 'Kim Guest');
+    at = Date.now();
+    await host.remove(kim.call.ticket.identity);
+    await closesAtOnce(k, 'Kim Guest', at);
+
+    // Whoever's still there has what they had: what was said of others closed nothing of theirs.
+    await rest(250);
+    expect(j.page.getSnapshot().closed).toBeNull();
+    expect(j.tree.getSnapshot().status).toBe('live');
+    expect(there('Jamie Guest')).toBe(true);
+    for (const x of [j.page, j.tree, watching]) x.close();
+    await host.leave();
+  });
+
+  it('opens the call’s home to everyone in it where it’s settled: in the answer to the first guest to open Workspace, and when a board settles it', async () => {
+    // Settled by a guest opening Workspace: their own answer has it open, and everyone else's does at once.
+    const art = await account();
+    const one = await callBy(art);
+    const jamie = await guest(one.host, one.code);
+    const sam = await guest(one.host, one.code, 'Sam Guest');
+    const res = await action(jamie, jamie.call, { type: 'workspace-open' });
+    expect(res.status).toBe(200);
+    const answer = CallStateSchema.parse(await res.json()).workspace;
+    expect(answer).toMatchObject({ canOpen: true, role: null, everyone: true });
+    const home = answer.id ?? '';
+    expect(home).not.toBe('');
+    expect(await space(sam.call)).toMatchObject({ id: home, canOpen: true, everyone: true });
+    expect(await code(sam.api.workspaces.get(home, { pass: sam.call.ticket.pass }))).toBe('allowed');
+    expect(await count('SELECT count(*)::int AS n FROM workspace_calls WHERE call_id = $1', [one.host.ticket.callId])).toBe(1);
+    await one.host.leave();
+
+    // Settled by a board made in the call, with nobody opening Workspace: it's open to everyone all the same.
+    const lena = await account();
+    const two = await callBy(lena);
+    const kim = await guest(two.host, two.code, 'Kim Guest');
+    await two.host.openBoard({ template: 'blank' });
+    const theirs = await space(kim.call);
+    expect(theirs).toMatchObject({ canOpen: true, role: null, everyone: true });
+    expect(theirs.id).not.toBeNull();
+    expect(await code(kim.api.workspaces.get(theirs.id ?? '', { pass: kim.call.ticket.pass }))).toBe('allowed');
+    await two.host.leave();
+  });
+
+  it('takes everyone back to a home that’s open to them when the workspace everyone viewed is deleted, however the home was settled', async () => {
+    // A home a board settled: nobody opened Workspace.
+    const art = await account();
+    const one = await callBy(art);
+    await one.host.openBoard({ template: 'blank' });
+    const home = (await space(one.host)).home ?? '';
+    const other = await workspace(art, 'Short lived');
+    await one.host.setWorkspace(other);
+    const jamie = await guest(one.host, one.code);
+    await art.api.workspaces.remove(other);
+    await settle(one.host, (x) => x.workspace.id === home);
+    expect(await space(jamie.call)).toMatchObject({ id: home, canOpen: true, role: null, everyone: true });
+    await one.host.leave();
+
+    // A home the release before settled, which opened nothing to the call: going back to it opens it.
+    const lena = await account();
+    const two = await callBy(lena);
+    await two.host.openWorkspace();
+    const hers = (await space(two.host)).home ?? '';
+    await h.pool.query('DELETE FROM workspace_calls WHERE call_id = $1', [two.host.ticket.callId]);
+    const gone = await workspace(lena, 'Short lived');
+    await two.host.setWorkspace(gone);
+    const kim = await guest(two.host, two.code, 'Kim Guest');
+    await lena.api.workspaces.remove(gone);
+    await settle(two.host, (x) => x.workspace.id === hers);
+    expect(await space(kim.call)).toMatchObject({ id: hers, canOpen: true, role: null, everyone: true });
+    expect(await code(kim.api.workspaces.get(hers, { pass: kim.call.ticket.pass }))).toBe('allowed');
+    await two.host.leave();
+  });
+
+  it('lets someone signed in change its tree with the call’s pass, invited and outside it or a member who can only read, and not without it', async () => {
+    const lena = await account();
+    const art = await account();
+    const theo = await account();
+    const kofi = await account();
+    const id = await workspace(lena, 'Lena’s', [[art, 'edit'], [kofi, 'read']]);
+    const folder = (await lena.api.workspaces.items.create(id, { kind: 'folder', name: 'Launch', parent: null })).id;
+    const plan = await doc(lena, id, 'Plan');
+    const { host, code: c } = await callBy(art, { guests: [theo.email, kofi.email] });
+    const t = await invited(host, c, theo);
+    const k = await invited(host, c, kofi);
+    await host.setWorkspace(id);
+    const asked = (who: Account, pass?: { pass: string }) => [
+      () => who.api.workspaces.items.create(id, { kind: 'document', name: 'More', parent: null }, pass),
+      () => who.api.workspaces.items.move(id, plan, { parent: folder }, pass),
+      () => who.api.workspaces.items.duplicate(id, plan, pass),
+      () => who.api.workspaces.items.trash(id, plan, pass),
+      () => who.api.workspaces.items.restore(id, plan, pass),
+      () => who.api.workspaces.items.move(id, plan, { parent: null }, pass)
+    ];
+    for (const [who, call] of [[theo, t], [kofi, k]] as const) {
+      // With the pass: everything in the tree, as its people who can edit do.
+      for (const f of asked(who, { pass: call.ticket.pass })) expect(await code(f()), who.name).toBe('allowed');
+      // Without it: Theo isn't in it, and Kofi can only read.
+      const without = asked(who).slice(0, 4);
+      for (const f of without) expect(await code(f()), who.name).toBe(who === theo ? 'not-found' : 'forbidden');
+    }
+    expect((await lena.api.workspaces.get(id)).items.find((x) => x.name === 'More')?.by?.name).toBe(theo.name);
+    // Once its organizer can only read there, the pass changes nothing either.
+    const artIn = (await lena.api.workspaces.people(id)).find((x) => x.person.email === art.email)?.id ?? '';
+    await lena.api.workspaces.setRole(id, artIn, 'read');
+    for (const f of asked(theo, { pass: t.ticket.pass }).slice(0, 4)) expect(await code(f())).toBe('not-found');
+    for (const f of asked(kofi, { pass: k.ticket.pass }).slice(0, 4)) expect(await refusal(f())).toMatchObject({ code: 'forbidden', message: 'You can read this workspace, but not change it.' });
+    await host.leave();
+  });
+
+  it('takes away a copy a guest made that couldn’t be filled, as the server does, and keeps what anyone else put in it meanwhile', async () => {
+    const art = await account();
+    const id = await workspace(art, 'Product');
+    const folder = (await art.api.workspaces.items.create(id, { kind: 'folder', name: 'Launch', parent: null })).id;
+    await doc(art, id, 'Plan', folder);
+    const mine = await doc(art, id, 'Art’s own');
+    const { host, code: c } = await callBy(art);
+    await host.setWorkspace(id);
+    const jamie = await guest(host, c);
+    const before = await count('SELECT count(*)::int AS n FROM documents WHERE owner_id = $1', [await ownerOf(id)]);
+    // Every copy's words fail to come, as when the workers are too busy for long enough.
+    const pool = h.deps.docs;
+    const run = pool.run;
+    const real = pool.run.bind(pool);
+    pool.run = (task, input, o) => (task === 'copy' ? Promise.reject(new UnavailableError('Alcove is very busy right now.')) : real(task, input, o));
+    try {
+      const copying = refusal(jamie.api.workspaces.items.duplicate(id, folder, { pass: jamie.call.ticket.pass }));
+      // While it's trying, Art puts something of his own in the copy.
+      let copy = '';
+      await until(async () => { copy = (await art.api.workspaces.get(id)).items.find((x) => x.name === 'Launch copy')?.id ?? ''; return copy !== ''; }, 'the copy to be there');
+      await art.api.workspaces.items.move(id, mine, { parent: copy });
+      expect((await copying)?.code).toBe('unavailable');
+    } finally {
+      pool.run = run;
+    }
+    // The copy and what it made are gone for good, though Jamie can't delete anything; what Art put in it is where the copy was.
+    const items = (await art.api.workspaces.get(id)).items;
+    expect(items.map((x) => x.name).sort()).toEqual(['Art’s own', 'Launch', 'Plan']);
+    expect(items.find((x) => x.id === mine)).toMatchObject({ parent: null, trashedAt: null });
+    expect(await count('SELECT count(*)::int AS n FROM documents WHERE owner_id = $1', [await ownerOf(id)])).toBe(before);
+    await host.leave();
   });
 });
 
@@ -2468,7 +2749,8 @@ describe('every ID from a request', () => {
     const seat = (await settle(host, (s) => s.participants.some((x) => x.id === jamie.call.ticket.identity))).participants.find((x) => x.id === jamie.call.ticket.identity)?.seat ?? '';
     await art.api.workspaces.share.set(id, plan, [{ seat }], 'read', { pass: host.ticket.pass });
     await h.pool.query("UPDATE calls SET state = 'ended', ended_at = now() WHERE call_id = $1", [host.ticket.callId]);
-    expect((await maintain(h.deps)).seats).toBe(2);
+    // Each counted as what it is: the seat's row, and the workspace the call was open to.
+    expect(await maintain(h.deps)).toMatchObject({ seats: 1, callWorkspaces: 1 });
     expect(await count('SELECT count(*)::int AS n FROM document_access WHERE call_id = $1', [host.ticket.callId])).toBe(0);
     expect(await count('SELECT count(*)::int AS n FROM workspace_calls WHERE call_id = $1', [host.ticket.callId])).toBe(0);
   });

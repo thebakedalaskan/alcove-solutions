@@ -81,7 +81,7 @@ export async function shownTo(v: Viewer, s: Boarded, place: string): Promise<Cal
     const item = w?.state.items[open.documentId];
     if (!w || !item || trashOf(w.state, open.documentId)) return NO_BOARD;
     const reader = await readerInCall(v);
-    const holders = await holdersOf(v.organizer.pool, w.owner.ownerId, reader.principals);
+    const holders = await holdersOf(v.organizer.pool, w.owner.ownerId, reader);
     const standing = standingIn(holders, reader);
     const role = roleOf(reader, standing, open.documentId, item);
     if (!role) return shut;

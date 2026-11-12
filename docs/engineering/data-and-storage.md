@@ -49,7 +49,7 @@ result, and [Changing what's stored](#changing-whats-stored) how it changes with
 | `document_versions` | owner (the workspace), document, `version_id`, `bytes`, how many `parts`, created | `info_ciphertext` (who changed it, the call it was kept in, why it was kept) |
 | `document_version_parts` | owner (the workspace), document, version, `part` | `state_ciphertext` (256 KiB of its whole Yjs state) |
 | `document_access` | owner (the workspace), document, `access_id` (what the API calls the entry), `kind` (`email`/`seat`), role (`edit`/`read`), `call_id` (a seat's call), created | `principal_index` (an email index, or the `call-seat` index), `person_ciphertext` (the address, or the name in the seat) |
-| `workspace_calls` | owner (the workspace), `call_id`, created: a call that opens the workspace to everyone in it while it uses it, one row for each workspace a call has used, until the call ends ([Privacy › Who can open a workspace](privacy-keys-and-sessions.md#who-can-open-a-workspace); migration `0026_workspace_calls.sql`) | `call_index` (the `call-workspace` index of the call and this workspace, which everyone in the call carries while the call uses it), `organizer_index` (the email index of the call's organizer: the row counts only while they can edit here) |
+| `workspace_calls` | owner (the workspace), `call_id`, created: a call that opens the workspace to everyone in it while it uses it, one row for each workspace a call has used, until the call ends or its organizer's account is deleted ([Privacy › Who can open a workspace](privacy-keys-and-sessions.md#who-can-open-a-workspace); migration `0026_workspace_calls.sql`) | `call_index` (the `call-workspace` index of the call and this workspace, which everyone in the call carries while the call uses it), `organizer_index` (the email index of the call's organizer, moved with a new address from their provider: the row counts only while they can edit here) |
 | `presenter_notes` | owner (the account), the document's workspace (`workspace_owner_id`) and `document_id`: one row for each person and document or board they kept notes beside with an earlier release. Nothing reads or writes it now | `body_ciphertext` ([Presenter notes](#presenter-notes)) |
 | `timer_presets` | owner (the account), `preset_id`, created: timer presets an earlier release kept. Nothing reads or writes it now. Its rows stay, unread, while the previous release may still serve (during a deploy, or after a rollback, when it can still write one); a later migration drops the table, rows and all, once that release is gone. Deleting an account deletes its rows meanwhile | `ciphertext` (a preset's name, segments and presenters, sealed under the account's own keys) |
 | `presenter_frame_notes` | owner (the account), the board's workspace (`workspace_owner_id`), `document_id` (the board) and `frame_index` (a keyed hash of the frame under the account's key): one row for each person and frame they keep notes beside | `body_ciphertext` (the frame and what's kept beside it, [Presenter notes](#presenter-notes)) |
@@ -700,7 +700,9 @@ and this way it runs through the same auth, origin check and tests as everything
   once when the browser says it's leaving. Someone can only be placed in what they can open, and every change to who has
   what is checked against everyone here. What each reader is told is worked out for them: where someone is if they can open
   it, otherwise `elsewhere`, with the document and block null. Someone outside the workspace hears of nobody who isn't in something
-  they can open or in a call with them, and an address goes only between people in the workspace. `callIdentity` goes
+  they can open or in a call with them, and an address goes only between people in the workspace. Who's who (`isMe`) goes by
+  someone's address or seat, never by what a call opens to everyone in it, which travels in the notice beside them (`calls`,
+  empty from an instance a release behind) and counts only for what they can open. `callIdentity` goes
   only to people in that call, so a tile can show where someone is, and so does `page`: which of the call's own pages they're
   on (Notes, Follow-ups or the Transcript), which anyone else hears of only as `elsewhere`. Only a browser in a call can be on
   its pages: a `page` from anyone else is dropped. Streams work out who's here at most five times a second.
@@ -709,10 +711,14 @@ and this way it runs through the same auth, origin check and tests as everything
   in the app has its name to show.
 - **Who's reading is checked again** at every ping, on the clock, however busy the workspace is, from the session and pass
   the stream came with. For a session it's one indexed read and nothing of the workspace; a pass takes the call's state,
-  and only people in a call have one. A session or pass that ended, a person out of the call, or a call that's moved on to
-  another workspace from one it opened to them, all end it, within 25 seconds at most. A notice about the workspace does
-  it at once. A stream that finds nothing left for its reader first asks who they are now, because a new address from
-  their provider moves what they have to another hash.
+  and only people in a call have one. A session or pass that ended ends it within 25 seconds at most. A notice about the
+  workspace does it at once, and so do these, though the rows they matched stay for everyone else: someone leaving a call
+  or taken out of it, which is told to every workspace the call is open to and every one that gave their seat something,
+  and a call moving on from a workspace, which is told to that workspace. Each is `look:` and the keyed hash of the seat,
+  or of the call there, and only the streams carrying it look again (the way a tag's `told:` reaches only its person's), as
+  at a ping; whatever someone in it is here as forgets it, and the next read settles who that leaves here. A stream that
+  finds nothing left for its reader first asks who they are now, because a new address from their provider moves what they
+  have to another hash.
 - **Letting go.** A stream ends without `closed` when the API lets go (after 280 seconds, inside Cloud Run's 300-second
   request timeout, so it's never cut), its browser says it closed it, its person needs its place, or its instance shuts
   down. The browser opens it again: quietly when it just ended, showing `reconnecting` when it failed, keeping what it last
@@ -805,7 +811,7 @@ readable.
   during the call is in the call's sealed state (`workspace`: which workspace everyone views, what's presented and playing,
   what's been worked on and by whom, and the next agenda while it's being made), and goes when the call ends: what was
   worked on into the note, if there is one, and nowhere else. That the call opens it to everyone in it is a row in
-  `workspace_calls`, which goes then too
+  `workspace_calls`, written where the call's home is settled or the organizer switches to another, which goes then too
   ([Calls and recordings › The call's workspace](calls-and-recordings.md#the-calls-workspace)).
 - **The call's timer** lives in the call's sealed state (`timer`), separate from its boards and workspace: one countdown's
   ID, revision, length with time added, whether it's paused, and its clock on the server, numbers only. Call state from the
