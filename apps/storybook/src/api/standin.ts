@@ -854,8 +854,8 @@ export const standIn: AlcoveApi = {
     }),
     setTeamAccess: (id: ID, access: TeamAccess) => answer((w) => {
       const space = spaces.treeOf(id);
-      if (space.role !== 'admin') throw refused('forbidden', 'Only the workspace’s admins can change who’s in it.');
-      if (space.teamAccess === null) throw refused('invalid', 'This workspace isn’t a team’s.');
+      if (space.role !== 'admin') throw refused('forbidden', 'Only an admin can do that.');
+      if (space.teamAccess === null) throw refused('conflict', 'This workspace isn’t a team’s, so there’s no team to open it to.');
       space.teamAccess = access;
       space.people = access === 'team' ? Math.max(space.people ?? 1, licensedCount(w)) : space.people;
     }),
@@ -946,8 +946,9 @@ export const standIn: AlcoveApi = {
       return w.plan;
     }),
     setRenew: (renew) => answer((w) => { w.plan = { ...w.plan, pro: { ...w.plan.pro, renew } }; return w.plan; }),
+    chose: () => answer((w) => { w.plan = { ...w.plan, choose: false }; return w.plan; }),
     dismissNotice: (id) => answer((w) => {
-      if (!w.plan.notices.some((n) => n.id === id)) throw refused('not-found', 'That notice isn’t there any more.');
+      if (!w.plan.notices.some((n) => n.id === id)) throw refused('not-found', 'That notice doesn’t exist, or you don’t have access to it.');
       w.plan = { ...w.plan, notices: w.plan.notices.filter((n) => n.id !== id) };
       return w.plan;
     }),
