@@ -147,6 +147,7 @@ a.sb-said:hover, a.sb-left:hover { color: var(--ink); }
 .sb-left.is-warm .sb-meter i { background: var(--sun-text); }
 .sb-wait { display: flex; align-items: center; gap: 8px; color: var(--horizon); font-weight: 500; }
 .sb-wait.is-out { color: var(--caution); }
+.sb-wait.is-settling { color: var(--ink-2); }
 .sb-wait .ac-dots { gap: 3px; }
 .sb-wait .ac-dots i { width: 4px; height: 4px; }
 /* Free: Free plan, and the way to the plans at the panel's edge. */

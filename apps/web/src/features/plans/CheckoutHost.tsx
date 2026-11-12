@@ -241,13 +241,19 @@ export function CheckoutHost({ open, onClose, onCompare }: { open: CheckoutOpen;
     setSaid(null);
     start.mutate({ routeId: r.id, microUsd, buys: b }, { onSuccess: (fresh) => setView({ step: 'pay', id: fresh.id }), onError: refused });
   };
-  /** A new address for what a closed payment was for, on the same network; choosing again when its terms or the balance changed. */
-  const again = (old: TopUp) => {
-    const b = old.purchase && o ? repriced(o, old.purchase.buys) : null;
+  /**
+   * The way on from a payment for something whose address has closed, as fits: a new address on the same network for what
+   * the balance is short of, while what it was for is on today's terms; otherwise back to choosing, where the balance buys
+   * it once it covers it, and a changed price or a network gone is chosen afresh.
+   */
+  const wayOn = (old: TopUp): { label: string; go: () => void } | null => {
+    if (!old.purchase) return null;
+    const was = old.purchase.buys;
+    const b = o ? repriced(o, was) : null;
     const r = usdc.find((x) => x.id === old.route.id);
     const short = b ? costOf(b) - Math.min(balance, costOf(b)) : 0;
-    if (!b || !r || short <= 0 || !old.purchase || !sameTerms(b, old.purchase.buys)) { chooseAgain(old); return; }
-    getAddress(r, Math.max(short, microOf(r.minimum) ?? 0), b);
+    if (b && r && short > 0 && sameTerms(b, was)) return { label: 'Get a new address', go: () => getAddress(r, Math.max(short, microOf(r.minimum) ?? 0), b) };
+    return { label: 'Choose again', go: () => chooseAgain(old) };
   };
   const cancelPayment = (id: string) => cancel.mutate(id, { onSuccess: () => { toast('Payment cancelled'); onClose(); }, onError: () => setAsking(false) });
 
@@ -417,24 +423,44 @@ export function CheckoutHost({ open, onClose, onCompare }: { open: CheckoutOpen;
         body = <CheckoutDone title="Added to your balance" lines={[`${usd(t.received?.microUsd ?? 0)} is in your balance now.`]} receipt={null} reminder={null} />;
         foot = finish;
       } else if (paying === 'closed-short') {
+        // Less than asked arrived and the address closed: what arrived settles into the balance, and what it was for is had another way.
+        const next = wayOn(t);
+        const what = kind === 'hours' ? 'more notes' : 'Pro';
         body = (
           <>
             <PayStatus tone="quiet" icon="clock" label="Address closed" />
             <CheckoutBig>{tokens(got)} of {tokens(asked)} USDC arrived</CheckoutBig>
             <CheckoutLine>The address has closed, so nothing more can be sent to it. What arrived goes into your balance once the payment settles.</CheckoutLine>
+            {next && (
+              <CheckoutLine>
+                {next.label === 'Get a new address'
+                  ? `To get ${what} now, get a new address. What arrived here isn’t in your balance until it settles, so it doesn’t count toward it.`
+                  : `To get ${what} now, choose again.`}
+              </CheckoutLine>
+            )}
+            {note}
+          </>
+        );
+        foot = (
+          <>
+            <Button variant="quiet" className="ck-push" onClick={onClose}>Close</Button>
+            {offline}
+            {next && <Button variant="primary" loading={start.isPending} disabled={!online || busy} onClick={next.go}>{next.label}</Button>}
           </>
         );
       } else if (paying === 'expired' || paying === 'cancelled') {
         const expired = paying === 'expired';
+        const next = wayOn(t);
         const what = kind === 'hours' ? 'more notes' : 'Pro';
         body = (
           <>
             <PayStatus tone="quiet" icon={expired ? 'clock' : 'x'} label={expired ? 'Address closed' : 'Payment cancelled'} />
             <CheckoutBig>{expired ? 'Nothing arrived in 24 hours' : 'This payment was cancelled'}</CheckoutBig>
             <CheckoutLine>
-              {expired
-                ? `So nothing was charged. If you still want ${what}, get a new address: it’s made for the next 24 hours.`
-                : `A payment already sent to its address still counts when it arrives. If you still want ${what}, get a new address.`}
+              {expired ? 'So nothing was charged.' : 'A payment already sent to its address still counts when it arrives.'}
+              {next && (next.label === 'Get a new address'
+                ? ` If you still want ${what}, get a new address${expired ? ': it’s made for the next 24 hours' : ''}.`
+                : ` If you still want ${what}, choose again.`)}
             </CheckoutLine>
             {note}
           </>
@@ -443,7 +469,7 @@ export function CheckoutHost({ open, onClose, onCompare }: { open: CheckoutOpen;
           <>
             <Button variant="quiet" className="ck-push" onClick={onClose}>Close</Button>
             {offline}
-            {t.purchase && <Button variant="primary" loading={start.isPending} disabled={!online || busy} onClick={() => again(t)}>Get a new address</Button>}
+            {next && <Button variant="primary" loading={start.isPending} disabled={!online || busy} onClick={next.go}>{next.label}</Button>}
           </>
         );
       } else if (paying === 'failed' || paying === 'held') {

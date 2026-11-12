@@ -6,7 +6,8 @@
  * place you're on. Each opens on Home, at a laptop's width, by day and by night (the panel itself is night in both).
  */
 import type { Meta } from '@storybook/react-vite';
-import { page, pages, type PageArgs, type PageStory } from '../../src/page';
+import { changing, page, pages, type PageArgs, type PageStory } from '../../src/page';
+import { purchaseAt } from '../../src/world/payments';
 
 const meta = { title: 'Pages/The side panel', ...pages } satisfies Meta<PageArgs>;
 export default meta;
@@ -29,6 +30,9 @@ export const FreeOutNight = night(FreeOut);
 /** A payment for a year of Pro on its way: what it's waiting for, and the row that opens it again. */
 export const Waiting = foot('/home', 'plan-buying-pro');
 export const WaitingNight = night(Waiting);
+/** Less than asked arrived, and the address has closed: it's being settled into the balance, and its row opens it. */
+export const Settling = page('/home', 'payments', { globals: LAPTOP, beforeEach: changing(purchaseAt('closed-short')) });
+export const SettlingNight = night(Settling);
 /** Pro: the small sun on its line, Pro, and until when. It opens Settings › Plan. */
 export const Pro = foot('/home', 'plan-pro');
 export const ProNight = night(Pro);

@@ -112,17 +112,18 @@ export function purchaseTopUp(id: string, buys: Purchase, asked: number, expires
 export const PRO_YEAR: Purchase = { kind: 'pro', months: 12, microUsdPerMonth: 16_000_000 };
 
 /** Where a payment opened to buy something is, for a story that opens on it. */
-export type PurchaseAt = 'waiting' | 'short' | 'seen' | 'bought' | 'over' | 'refused' | 'expired' | 'cancelled' | 'failed';
+export type PurchaseAt = 'waiting' | 'short' | 'closed-short' | 'seen' | 'bought' | 'over' | 'refused' | 'expired' | 'cancelled' | 'failed';
 
 /**
  * A payment of `asked` USDC on Base for `buys` (192 USDC for a year of Pro), where a story needs it: waiting, less arrived
- * (128 of 192), seen, bought (the plan bought too, from the balance it arrived in), 6 USDC more than asked, refused (the
- * prices went up first), expired, cancelled or failed. It stays there: nothing plays out by itself.
+ * (128 of 192), less arrived and its address closed since (settling into the balance), seen, bought (the plan bought too,
+ * from the balance it arrived in), 6 USDC more than asked, refused (the prices went up first), expired, cancelled or
+ * failed. It stays there: nothing plays out by itself.
  */
 export const purchaseAt = (at: PurchaseAt, buys: Purchase = PRO_YEAR, asked = 192) => (w: World): void => {
   withPayments(w, 'waits');
   const t = purchaseTopUp(PREVIEW_TOP_UP, buys, asked);
-  const sent = at === 'over' ? asked + 6 : at === 'short' ? Math.floor((asked * 2) / 3) : asked;
+  const sent = at === 'over' ? asked + 6 : at === 'short' || at === 'closed-short' ? Math.floor((asked * 2) / 3) : asked;
   const received = { amount: String(sent), microUsd: null };
   const settled = { amount: String(sent), microUsd: sent * 1_000_000 };
   const closed = { address: null, memo: null };
@@ -130,6 +131,7 @@ export const purchaseAt = (at: PurchaseAt, buys: Purchase = PRO_YEAR, asked = 19
   switch (at) {
     case 'waiting': break;
     case 'short': now = { ...t, state: 'short', received }; break;
+    case 'closed-short': now = { ...t, state: 'short', received, expiresAt: new Date(Date.now() - 60_000).toISOString() }; break;
     case 'seen': now = { ...t, ...closed, state: 'arriving', received }; break;
     case 'bought':
     case 'over':

@@ -12,7 +12,7 @@ import { useEffect, useRef, useState, type RefObject } from 'react';
 import { aheadOf, joinable } from '~/features/home/day';
 import { useCheckout } from '~/features/plans/checkout';
 import { PLAN_NAMES, endsIn, noticesNow, notesLeft, notesLow, notesOut, notesShare, proEnding } from '~/features/plans/plan-state';
-import { checkoutFor, purchaseName, restToSend, tokensShort, waitingPurchase } from '~/features/plans/purchase';
+import { checkoutFor, payable, purchaseName, restToSend, settlingPurchase, tokensShort, waitingPurchase } from '~/features/plans/purchase';
 import { recordOfflineHere } from '~/lib/device';
 import { log } from '~/lib/log';
 import { useNow, useOnline } from '~/lib/live';
@@ -231,15 +231,18 @@ function PlanFoot({ plan }: { plan: Plan }) {
   const checkout = useCheckout();
   const now = useNow();
   const on = useRouterState({ select: (s) => s.location.pathname }) === '/plans';
-  const buying = waitingPurchase(topUps, undefined, now);
+  // A payment on its way first; else one whose address closed with less than asked arrived, which is being settled.
+  const buying = waitingPurchase(topUps, undefined, now) ?? settlingPurchase(topUps, now);
   if (buying) {
     const { route, state, asked, purchase } = buying;
-    const short = state === 'short';
+    const settling = state === 'short' && !payable(buying, now);
+    const short = state === 'short' && !settling;
     return (
       <>
-        <p className={cn('sb-wait', short && 'is-out')}>
-          {!short && <Dots />}
-          {short ? `Send ${tokensShort(restToSend(buying))} ${route.token} more`
+        <p className={cn('sb-wait', short && 'is-out', settling && 'is-settling')}>
+          {!short && !settling && <Dots />}
+          {settling ? `Address closed, settling ${tokensShort(buying.received?.amount ?? '0')} ${route.token}`
+            : short ? `Send ${tokensShort(restToSend(buying))} ${route.token} more`
             : state === 'waiting' ? `Waiting for ${tokensShort(asked.amount)} ${route.token}`
             : purchase.buys.kind === 'pro' ? 'Payment seen, starting Pro' : 'Payment seen, adding notes'}
         </p>

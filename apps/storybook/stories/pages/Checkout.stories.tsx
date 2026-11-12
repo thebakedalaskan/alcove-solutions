@@ -109,6 +109,12 @@ const lands = (scenario: CheckoutArgs['scenario'], open: Partial<CheckoutArgs>, 
 /** 128 of 192 USDC arrived: send the rest to the same address, or keep it in the balance. */
 export const LessArrived = at('short');
 export const LessArrivedNight: CheckoutStory = { ...LessArrived, globals: DARK };
+/**
+ * 128 of 192 USDC arrived and the address has closed since: nothing more can be sent to it, what arrived settles into the
+ * balance, and a new address for Pro is a press away.
+ */
+export const LessArrivedClosed = at('closed-short');
+export const LessArrivedClosedPhone: CheckoutStory = { ...LessArrivedClosed, globals: PHONE };
 /** The payment is seen and Pro is starting: the track's glint runs, and the window can be closed. */
 export const Seen = at('seen');
 export const SeenNight: CheckoutStory = { ...Seen, globals: DARK };

@@ -5,7 +5,6 @@
  * and checkout share. Every amount is micro-USD, as the server's; a token is sent as a dollar.
  */
 import type { PlanOffers, Purchase, TopUp } from '@alcove/api';
-import { topUpOpen } from '~/lib/queries';
 import type { CheckoutFor } from './checkout';
 
 /** The lengths of Pro offered as cards, up to the most one purchase buys. */
@@ -61,18 +60,31 @@ export const checkoutFor = (buys: Purchase): CheckoutFor => (buys.kind === 'pro'
 /** Whether a payment's address has closed: past its expiry, nothing more can be sent to it, whatever its state says yet. */
 export const lapsed = (t: TopUp, now = Date.now()): boolean => Date.parse(t.expiresAt) <= now;
 
+/** Whether a payment can still take money: it waits for the payment, or for the rest of it, at an address still open. */
+export const payable = (t: TopUp, now = Date.now()): boolean => (t.state === 'waiting' || t.state === 'short') && !lapsed(t, now);
+
 /** A payment opened to buy something. */
 export type Buying = TopUp & { purchase: NonNullable<TopUp['purchase']> };
 const isBuying = (t: TopUp): t is Buying => t.purchase !== null;
 
 /**
- * The payment on its way to buy something, if there is one: the newest top-up that can still take money (or is being
- * added) and was opened to buy `kind` (or anything), whose purchase hasn't happened yet. The side panel says it's waiting
- * (`asked.amount`), Settings lists it, and checkout opens on it instead of starting another.
+ * The payment on its way to buy something, if there is one: the newest top-up opened to buy `kind` (or anything), whose
+ * purchase hasn't happened yet, that can still take money or is being added. One whose address has closed can't take any
+ * more, whether nothing or less than asked arrived, so checkout starts afresh rather than opening on it. The side panel
+ * says it's on its way, and checkout opens on it instead of starting another.
  */
 export function waitingPurchase(list: readonly TopUp[] | undefined, kind?: Purchase['kind'] | undefined, now = Date.now()): Buying | undefined {
-  return list?.filter(isBuying).find((t) => topUpOpen(t) && t.purchase.outcome === 'waiting'
-    && (kind === undefined || t.purchase.buys.kind === kind) && !(t.state === 'waiting' && lapsed(t, now)));
+  return list?.filter(isBuying).find((t) => t.purchase.outcome === 'waiting' && (kind === undefined || t.purchase.buys.kind === kind)
+    && (t.state === 'arriving' || payable(t, now)));
+}
+
+/**
+ * A payment to buy something whose address closed after less than asked arrived: nothing more can be sent to it, and what
+ * arrived goes into the balance once it settles. The side panel says so while no payment is on its way, and its row opens
+ * it, where checkout offers the way on.
+ */
+export function settlingPurchase(list: readonly TopUp[] | undefined, now = Date.now()): Buying | undefined {
+  return list?.filter(isBuying).find((t) => t.purchase.outcome === 'waiting' && t.state === 'short' && lapsed(t, now));
 }
 
 /* ---------- amounts of tokens ---------- */
