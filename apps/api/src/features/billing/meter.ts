@@ -151,7 +151,8 @@ async function locked(d: Service, db: Db, ownerId: string, l: Limits, now: numbe
   if (closed && (closed.spentNano > 0 || closed.stopped !== null)) {
     alog.info('ai period closed', { ownerId, plan: closed.plan, spentNano: closed.spentNano, allowanceNano: closed.allowanceNano, overNano: Math.max(0, closed.spentNano - closed.allowanceNano), byKind: closed.byKind });
   }
-  return { m, save: async (next) => { await exec(db, 'UPDATE ai_meters SET state_ciphertext = $2, version = version + 1 WHERE owner_id = $1', [ownerId, sealMeter(d, ownerId, next)]); } };
+  // Nothing about the meter is counted in the clear: a version ticking with each save would count an account's AI requests.
+  return { m, save: async (next) => { await exec(db, 'UPDATE ai_meters SET state_ciphertext = $2 WHERE owner_id = $1', [ownerId, sealMeter(d, ownerId, next)]); } };
 }
 
 /** Runs `change` on the meter in its own transaction, under its lock. */
