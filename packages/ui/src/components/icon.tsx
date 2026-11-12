@@ -14,7 +14,8 @@ import {
   ImageOff, ImagePlus, Info, Italic, Lightbulb, Link2, List, ListChecks, ListCollapse, ListOrdered, ListTodo, LocateFixed, Megaphone, MessageSquareText, Minus,
   Moon, Navigation, PanelRight, Paperclip, Pilcrow, Quote, SquareCheckBig, Strikethrough, Sun, Table, TextAlignStart, TextQuote, Type, CalendarClock, StickyNote, Hourglass, PhoneCall,
   CircleOff, Droplet, Droplets, BellRing, Bot, Coffee, Ear, Gauge, Headphones, SmilePlus, Layers, MessagesSquare, VenetianMask,
-  FileCheck, FilePen, HandHelping, Laptop, MessageSquareLock, PhoneIncoming, Share2
+  FileCheck, FilePen, HandHelping, Laptop, MessageSquareLock, PhoneIncoming, Share2,
+  File as FileIcon, Wallet
 } from 'lucide-react';
 import { cn } from '../cn';
 
@@ -51,6 +52,8 @@ const ICONS = {
   circleOff: CircleOff, droplet: Droplet, droplets: Droplets,
   nudge: BellRing, agent: Bot, away: Coffee, hear: Ear, pace: Gauge, listening: Headphones, layers: Layers,
   privateChat: MessageSquareLock, ringIn: PhoneIncoming, fileCheck: FileCheck, shareNodes: Share2, handHelping: HandHelping, filePen: FilePen, laptop: Laptop,
+  /* A plan's largest file, and the wallet it's paid from (Plans). */
+  file: FileIcon, wallet: Wallet,
   /* Play in outline, beside a level (SoundLevel); `play` is the filled one. */
   playLine: Play
 } satisfies Record<string, LucideIcon>;

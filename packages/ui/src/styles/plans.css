@@ -1,0 +1,125 @@
+/*
+ * Plans: the last of the sunset, with the plans on the water under it. The sky holds Monthly or Yearly, centred, with the
+ * last sliver of the sun on the horizon under it; on the water, light cards whose parts share rows (subgrid), so prices,
+ * buttons and every fact line up and the plans compare row by row. Pro is lifted a little, never lit up: a raised card with
+ * a warm edge. Under them, what every plan has and how paying works. Classes start with pl-.
+ *
+ * The rules these keep: one filled button per view (Get Pro on Free, Extend only when Pro is ending); prices are said once,
+ * in their column, and the discount once, beside the choice that gives it; horizon for the discount, sun-text for what's
+ * saved and for the plan you're on.
+ */
+/* The horizon as the board has it, 262px down the page, with the 8px of the frame's edge above the page. */
+.pl { --hz: calc(8px + 262px); container-type: inline-size; }
+.pl .dusk-in { padding-bottom: 96px; }
+
+/* ------------------------------------------------------------ the sky: the switch in the middle, the sun on the line under it */
+.pl-sky { display: grid; place-items: end center; max-width: 1120px; height: calc(var(--hz) - 70px); margin: 0 auto; }
+.pl-cycle { position: relative; display: inline-grid; grid-auto-flow: column; margin-bottom: 52px; padding: 3px; border-radius: var(--radius-pill); background: color-mix(in oklch, var(--ground) 58%, transparent); box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--ink) 14%, transparent); animation: ac-fade var(--duration-2) var(--ease-out) both; }
+.pl-cycle button { display: inline-flex; align-items: center; gap: 8px; height: 34px; padding: 0 15px; border-radius: var(--radius-pill); font: 500 14px/1 var(--font-sans); color: var(--ink-2); white-space: nowrap; transition: background-color var(--duration-1) var(--ease-out), color var(--duration-1) var(--ease-out); }
+.pl-cycle button:hover { color: var(--ink); }
+.pl-cycle button[aria-pressed="true"] { background: var(--surface-raised); color: var(--ink); box-shadow: var(--shadow-1); }
+.dark .pl-cycle button[aria-pressed="true"] { background: color-mix(in oklch, var(--ink) 16%, transparent); box-shadow: none; }
+.pl-cycle .off { font-weight: 600; color: var(--horizon); }
+
+/*
+ * The last of the sun, drawn on the evening's sky behind whatever passes through (Evening's `sky`): a sliver of its disc
+ * over the middle of the horizon, and its long glow over the sky. Its colours are the scene's own, as Horizon's are.
+ */
+.pl-sunset { --pl-sun-core: oklch(0.97 0.07 90); --pl-sun-edge: oklch(0.845 0.15 74); --pl-sun-glow: oklch(0.76 0.165 54); position: absolute; left: 50%; top: var(--hz); width: 0; height: 0; pointer-events: none; }
+.dark .pl-sunset { --pl-sun-core: oklch(0.985 0.022 92); --pl-sun-edge: oklch(0.905 0.11 85); --pl-sun-glow: oklch(0.82 0.14 62); }
+.pl-sunset > i { position: absolute; display: block; }
+.pl-sunset-glow { left: -490px; top: -130px; width: 980px; height: 260px; border-radius: 50%; background: radial-gradient(closest-side, color-mix(in oklch, var(--pl-sun-glow) 40%, transparent), transparent); clip-path: inset(0 0 50% 0); }
+.pl-sunset-sun { left: -70px; top: -18px; width: 140px; height: 18px; overflow: hidden; }
+.pl-sunset-sun::before { content: ""; position: absolute; left: 0; top: 0; width: 140px; height: 140px; border-radius: 50%; background: radial-gradient(circle at 50% 22%, var(--pl-sun-core), var(--pl-sun-edge) 50%, var(--pl-sun-glow) 80%); }
+
+/* ------------------------------------------------------------ the water: the plans, then what every plan has */
+.pl-water { max-width: 1120px; margin: 34px auto 0; }
+/* Focus comes here when the plans come back after Try again: a place to stand, not something to press. */
+.pl-water:focus { outline: none; }
+
+/*
+ * The plans: light cards on the water, as many columns as there are plans, each at most a third of the water's widest (1120px),
+ * so two plans stand together in the middle and fill a narrower page. Each card's parts share rows with the others'
+ * (subgrid), so prices, buttons and every fact line up across them. Rows nobody fills are nothing tall.
+ */
+.pl-cards { --n: 3; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); grid-template-rows: repeat(16, auto); column-gap: 16px; width: min(100%, calc(var(--n) * 1136px / 3 - 16px)); margin: 0 auto; }
+.pl-card { position: relative; grid-row: 1 / span 16; display: grid; grid-template-rows: subgrid; align-content: start; min-width: 0; padding: 22px 24px; border-radius: var(--radius-lg); background: var(--surface); box-shadow: 0 0 0 1px var(--line); }
+.pl-card.is-lifted { background: var(--surface-raised); box-shadow: 0 0 0 1px var(--line-control), var(--shadow-2); }
+.pl-card.is-lifted::before { content: ""; position: absolute; left: 28px; right: 28px; top: -1px; height: 2px; border-radius: 2px; background: linear-gradient(90deg, transparent, var(--sun-glow), transparent); }
+.pl-hn { display: flex; align-items: center; gap: 10px; min-width: 0; min-height: 26px; }
+.pl-hn h2 { min-width: 0; font: 600 17px/1.25 var(--font-sans); letter-spacing: -.01em; color: var(--ink); }
+.pl-chip.ac-chip { height: 24px; padding: 0 9px; border-radius: var(--radius-pill); font: 600 12.5px/1 var(--font-sans); }
+.pl-who { display: inline-flex; flex: none; margin-left: auto; }
+.pl-sub { margin-top: 1px; font: 400 14px/20px var(--font-sans); color: var(--ink-2); }
+.pl-price { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 7px; margin-top: 16px; }
+.pl-price b { font: 400 46px/1 var(--font-display); letter-spacing: -.02em; color: var(--ink); font-variant-numeric: lining-nums; }
+.pl-price .per { font: 400 15px/1.3 var(--font-sans); color: var(--ink-2); }
+.pl-bill { margin-top: 8px; font: 400 13.5px/20px var(--font-sans); color: var(--ink-2); text-wrap: pretty; }
+.pl-bill .save { font-weight: 600; color: var(--sun-text); white-space: nowrap; }
+.pl-act { margin-top: 18px; }
+.pl-act .ac-btn { width: 100%; }
+.pl-here { display: flex; align-items: center; justify-content: center; gap: 8px; height: 44px; border-radius: var(--radius-pill); box-shadow: inset 0 0 0 1px var(--line-control); font: 500 14px/1 var(--font-sans); color: var(--ink-2); }
+.pl-here .ac-i { flex: none; color: var(--sun-text); }
+.pl-here.is-quiet { box-shadow: none; font: 400 13.5px/18px var(--font-sans); text-align: center; }
+/* What a plan brings, one row each, on a hairline under the button: a subgrid of its own, so each row lines up too. */
+.pl-facts { grid-row: span var(--facts, 3); display: grid; grid-template-rows: subgrid; margin: 20px 0 0; padding: 16px 0 0; border-top: 1px solid var(--line); list-style: none; }
+.pl-fact { display: grid; grid-template-columns: 18px minmax(0, 1fr); column-gap: 11px; align-content: start; padding-top: 11px; }
+.pl-fact:first-child { padding-top: 0; }
+.pl-fact .ac-i { margin-top: 2px; color: var(--ink-2); }
+.pl-fact b { display: block; font: 500 14.5px/21px var(--font-sans); color: var(--ink); }
+.pl-fact small { display: block; font: 400 13px/18px var(--font-sans); color: var(--ink-2); }
+.pl-more { margin-top: 16px; font: 400 13px/18px var(--font-sans); color: var(--ink-2); text-wrap: pretty; }
+
+/* A plan whose prices are on their way: quiet bars where they'll be, breathing, the same height as what comes. */
+.pl-wait { display: block; border-radius: var(--radius-xs); background: color-mix(in oklch, var(--ink) 8%, transparent); animation: pl-wait var(--duration-5) var(--ease-in-out) infinite; }
+.pl-wait.is-price { width: 96px; height: 46px; border-radius: var(--radius-sm); }
+.pl-wait.is-bill { width: 62%; height: 12px; margin: 4px 0; }
+.pl-wait.is-act { height: 44px; border-radius: var(--radius-pill); }
+.pl-wait.is-icon { width: 17px; height: 17px; margin-top: 2px; }
+.pl-wait.is-line { width: 72%; height: 12px; margin: 4.5px 0; }
+.pl-fact:nth-child(2) .pl-wait.is-line { width: 50%; }
+.pl-fact:nth-child(3) .pl-wait.is-line { width: 58%; }
+@keyframes pl-wait { 50% { opacity: .45; } }
+
+/* Under the plans: what every plan has, then how paying works, in a line. */
+.pl-every-h { margin-top: 30px; text-align: center; font: 600 13.5px/20px var(--font-sans); letter-spacing: 0; color: var(--ink); }
+.pl-every { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px; margin: 10px 0 0; padding: 0; list-style: none; }
+.pl-every .ac-chip { gap: 7px; height: 32px; padding: 0 12px 0 10px; border-radius: var(--radius-pill); background: color-mix(in oklch, var(--ink) 6.5%, transparent); font: 500 13px/1 var(--font-sans); color: var(--ink); }
+.pl-every .ac-chip .ac-i { width: 15px; height: 15px; color: var(--ink-2); }
+.pl-paying { display: flex; align-items: flex-start; justify-content: center; gap: 10px; max-width: 760px; margin: 18px auto 0; font: 400 13.5px/20px var(--font-sans); color: var(--ink-2); text-wrap: pretty; }
+.pl-paying .ac-i { flex: none; margin-top: 1px; color: var(--sun-text); }
+.pl-paying b { font-weight: 600; color: var(--ink); }
+
+/* When the plans didn't load, or the connection went before they came: why, on the water, where they'd be. */
+.ac-empty.pl-none { padding-top: 12px; }
+.ac-empty.pl-none p { color: var(--ink-2); }
+
+/* ------------------------------------------------------------ narrower */
+@container (max-width: 1100px) {
+  .pl-card { padding: 20px 18px; }
+  .pl-price b { font-size: 40px; }
+}
+/* Three plans or more stand one under another before a phone's width: three columns would be too narrow to read. */
+@media (max-width: 1180px) {
+  .pl-cards.is-many { grid-auto-flow: row; grid-template-columns: minmax(0, 1fr); grid-template-rows: none; row-gap: 14px; width: min(100%, 560px); }
+  .pl-cards.is-many > .pl-card { grid-row: auto; grid-template-rows: none; }
+}
+/* On a phone the sky goes up behind the top bar, the switch stays in the middle of it, and the plans stand one under another. */
+@media (max-width: 860px) {
+  .shell:has(> .main > .main-in > .pl) .ph-head { position: relative; z-index: 1; }
+  .pl { --hz: 300px; --behind: 66px; margin-top: -66px; }
+  .pl .dusk-in { padding-top: 66px; padding-bottom: 28px; }
+  .pl-sky { height: calc(var(--hz) - 110px); }
+  .pl-cycle { margin-bottom: 40px; }
+  .pl-sunset-glow { left: -280px; width: 560px; }
+  .pl-water { margin-top: 24px; }
+  .pl-cards, .pl-cards.is-many { grid-auto-flow: row; grid-template-columns: minmax(0, 1fr); grid-template-rows: none; row-gap: 14px; width: 100%; }
+  .pl-cards > .pl-card, .pl-cards.is-many > .pl-card { grid-row: auto; grid-template-rows: none; }
+  .pl-every-h { text-align: left; }
+  .pl-every { justify-content: flex-start; }
+  .pl-paying { justify-content: flex-start; }
+}
+@media (prefers-reduced-motion: reduce) {
+  /* Something on its way never rests: the bars still breathe, which isn't movement. */
+  .pl-wait { animation: pl-wait var(--duration-5) var(--ease-in-out) infinite !important; }
+}

@@ -3,8 +3,9 @@
  * board has them, and everything that passes through, each on its own tile over and over, as its Life board does. On a
  * page they come at random, one at a time, every 22 to 60 seconds; which moments each comes to is read from Horizon itself.
  */
-import { Horizon, VISITORS, type Moment, type Visitor } from '@alcove/ui';
+import { Horizon, PlanSunset, VISITORS, type Moment, type Visitor } from '@alcove/ui';
 import type { Meta, StoryObj } from '@storybook/react-vite';
+import type { ReactNode } from 'react';
 import '../../src/foundations.css';
 
 /** Each moment as the Evening board shows it: where its horizon sits on a 300px tile, and what it's like. */
@@ -14,10 +15,13 @@ const MOMENTS = {
   team: { name: 'Team', hz: 165, line: 'The sun low and to the left, behind the people standing on the horizon.' },
   notes: { name: 'Notes', hz: 115, line: 'Just after sunset: only the glow is left, with search in the middle. Stars come out after dark.' },
   drive: { name: 'Drive', hz: 100, line: 'A little later than Notes: less glow on the water and the first stars, over every workspace you’re in.' },
+  plans: { name: 'Plans', hz: 95, line: 'Just after sunset: a long low glow and a calm sky. The page draws the last sliver of the sun itself.' },
   note: { name: 'A note', hz: 85, line: 'A slim band. The horizon is the call itself.' },
   settings: { name: 'Settings', hz: 60, line: 'The last of the light. Mostly page.' }
 } satisfies Record<Moment, { name: string; hz: number; line: string }>;
 const MOMENT_ORDER = Object.keys(MOMENTS).filter((m): m is Moment => m in MOMENTS);
+/** What a page draws on its own sky: Plans' last sliver of the sun, where its moment has none. */
+const SKY: Partial<Record<Moment, ReactNode>> = { plans: <PlanSunset /> };
 
 /** What each visitor is, as the Life board says, and how much faster than on a page it's shown (the ships take minutes). */
 const ABOUT = {
@@ -58,7 +62,7 @@ function Moments() {
         <div className="sbf-moments">
           {MOMENT_ORDER.map((m) => (
             <figure key={m} className="sbf-tile">
-              <div className="sbf-scene" style={{ '--hz': `${MOMENTS[m].hz}px` }}><Horizon moment={m} only={{ kind: null }} /></div>
+              <div className="sbf-scene" style={{ '--hz': `${MOMENTS[m].hz}px` }}><Horizon moment={m} only={{ kind: null }} sky={SKY[m]} /></div>
               <figcaption><b>{MOMENTS[m].name}</b>{MOMENTS[m].line}</figcaption>
             </figure>
           ))}
