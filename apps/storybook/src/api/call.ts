@@ -592,7 +592,8 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     this.push({
       ...s,
       capture: {
-        ...s.capture, ...(limit ? { stopped: { reason: limit, at }, runningOut: null } : {}), mode, recording: part(mode, at, by), transcript: part(mode, at, by), ai: part(mode === 'off' && !s.notes.everOn ? 'off' : mode === 'off' ? 'on' : mode, at, by),
+        // Notes on again end a stop for the plan, as the server's limit is reset when they come on.
+        ...s.capture, ...(limit ? { stopped: { reason: limit, at }, runningOut: null } : mode === 'on' ? { stopped: null, runningOut: null } : {}), mode, recording: part(mode, at, by), transcript: part(mode, at, by), ai: part(mode === 'off' && !s.notes.everOn ? 'off' : mode === 'off' ? 'on' : mode, at, by),
         screen: mode === 'off' ? part('off', at, by) : s.capture.screen, gaps, requests: mode === 'on' ? [] : s.capture.requests, asked
       },
       notes: { ...s.notes, segmentStartedAt: mode === 'on' && was !== 'on' ? at : s.notes.segmentStartedAt, everOn: s.notes.everOn || mode === 'on', noteId: s.notes.noteId ?? (mode === 'on' ? this.noteId : null), recording: mode === 'on' && was !== 'on' ? { ...s.notes.recording, segment: s.notes.recording.segment + (s.notes.everOn ? 1 : 0) } : s.notes.recording },
@@ -1615,7 +1616,17 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     this.change((s) => ({ ...s, ringing: s.ringing.map((x) => (x.id === id ? next : x)) }));
     if (reply === 'join') this.after(2500, () => { this.change((s) => ({ ...s, ringing: s.ringing.filter((x) => x.id !== id) })); this.join(r.person); this.hosting(); });
   }
-  setNotes(on: boolean): Promise<void> { this.capture(on ? 'on' : 'off'); return Promise.resolve(); }
+  /**
+   * As the server does (calls/recording.ts › changeCapture): notes come on again only while the organizer's plan has notes and
+   * room for them, and once they do, the stop is over. The organizer is you in the stand-in, so it's the world's plan.
+   */
+  setNotes(on: boolean): Promise<void> {
+    const plan = current().plan;
+    if (on && (plan.notes.stopped || plan.notes.minutesLeft <= 0)) return Promise.reject(new AlcoveApiError('plan-limit', 'Your notes for this period have run out. They start again when your plan renews.'));
+    if (on && plan.over.storage) return Promise.reject(new AlcoveApiError('plan-limit', 'Your storage is full, so notes can’t be kept. Delete something, or move to a plan with more room.'));
+    this.capture(on ? 'on' : 'off');
+    return Promise.resolve();
+  }
   pause(): Promise<void> { this.capture('paused'); return Promise.resolve(); }
   resume(): Promise<void> { this.capture('on'); return Promise.resolve(); }
   requestNotes(up: boolean): Promise<void> {

@@ -68,6 +68,7 @@ import { GAP, PHONE_W, focusRoom, peopleEdge, placeMain } from '~/features/call/
 import { PeopleSeam } from '~/features/call/layout/PeopleSeam';
 import { TileHint } from '~/features/call/layout/TileHint';
 import { CaptureButton, CapturePill, NotesAsks, askedTag, organizerName, useCaptureAlerts } from '~/features/call/notes/Capture';
+import { NotesStopBar, usePlanRestart, usePlanStop, useStopMarks } from '~/features/call/notes/PlanStop';
 import { unreadChatMentions, useCallAttention } from './attention';
 import { captureHere } from '~/lib/capture';
 import { RoomsLive, RoomsSetup } from '~/features/call/rooms/Rooms';
@@ -278,11 +279,16 @@ export function InCall({ session }: { session: CallSession }) {
       if (seen.has(n.id)) { session.dismissNotice(n.id); continue; }
       seen.add(n.id);
       fresh = true;
-      toast(n.text, { icon: n.kind === 'notes' ? 'notesPen' : n.kind === 'people' ? 'people' : 'screen', ms: 3200 });
+      // Notes on again because the organizer's plan has more: their own toast says it (PlanStop.tsx), not this as well.
+      if (!(n.kind === 'notes' && planRestart.hushing())) toast(n.text, { icon: n.kind === 'notes' ? 'notesPen' : n.kind === 'people' ? 'people' : 'screen', ms: 3200 });
       session.dismissNotice(n.id);
     }
     if (fresh) keepSeen(state.callId, seen);
   }, [state.notices, state.callId, session, toast]);
+  /* The organizer's plan and the call's notes: what's said while it has stopped them, where, and notes on again once it has more. */
+  const planStop = usePlanStop(state);
+  const stopMarks = useStopMarks(state);
+  const planRestart = usePlanRestart(state, session);
 
   /*
    * Someone asking to join: a card drops in for the organizer and stays until they're answered, wherever that happens
@@ -1526,7 +1532,7 @@ export function InCall({ session }: { session: CallSession }) {
   const notesProblems = [uploadError, heardProblem, screenProblem].filter((x): x is string => !!x);
   const notesTabBody = (t: NotesTab) => {
     switch (t) {
-      case 'notes': return <NotesView session={session} state={state} getting={getting} problems={notesProblems} put={put} controls={controls}
+      case 'notes': return <NotesView session={session} state={state} getting={getting} problems={notesProblems} put={put} controls={controls} stops={stopMarks}
         carried={carried && <FromLastTime s={carried} me={account.data?.user.email} open={!state.liveNotes.notes} />} onSeek={cu.open} />;
       case 'transcript': return cu.moment
         ? <MomentView moment={cu.moment} startedAt={state.startedAt} me={me?.person.email} onLive={cu.backToLive} />
@@ -1544,8 +1550,9 @@ export function InCall({ session }: { session: CallSession }) {
     switch (v) {
       case 'notes': return (
         <div className="nn">
-          <NotesHead pill={<CapturePill state={state} role={session.ticket.role} getting={getting} controls={controls} pausing={pausing} phone={phone} />} modelPrivate={state.capture.modelPrivate}
+          <NotesHead pill={<CapturePill state={state} role={session.ticket.role} getting={getting} controls={controls} pausing={pausing} phone={phone} stop={planStop} />} modelPrivate={state.capture.modelPrivate}
             onOpen={openNotesPage} onClose={sideClose} />
+          {planStop && <NotesStopBar stop={planStop} />}
           <NotesTabs tab={notesTab} yours={own.enabled} onTab={(t) => { cu.settle(); setNotesTab(t); }} />
           <SideBody view={notesTab}>{notesTabBody(notesTab)}</SideBody>
           {notesTab !== 'ask' && own.enabled && state.notes.noteId !== null && <OwnFoot own={own} draft={ownDraft.current} />}
@@ -1940,7 +1947,7 @@ export function InCall({ session }: { session: CallSession }) {
         <span className="sr-only" role="status" aria-live="polite">{attentionReady ? `${state.attention.hands.length === 1 ? '1 hand' : `${state.attention.hands.length} hands`} raised.${hosting ? ` ${state.waiting.length} waiting to join.` : ''}` : 'Connecting to this room.'}</span>
         <TopBar title={state.title} elapsed={state.elapsed} people={stagePeople.map((p) => p.person)} phone={phone}
           timer={<CallTimer session={session} view={callTimer} host={hosting} connected={attentionReady && !down} open={timerOpen && !focusOn} onOpenChange={setTimerOpen} phone={phone} />}
-          sign={<CaptureButton state={state} role={session.ticket.role} getting={getting} controls={controls} pausing={pausing} phone={phone} notesOpen={side.view === 'notes'} onOpenNotes={() => openSide('notes')} />}
+          sign={<CaptureButton state={state} role={session.ticket.role} getting={getting} controls={controls} pausing={pausing} phone={phone} stop={planStop} notesOpen={side.view === 'notes'} onOpenNotes={() => openSide('notes')} />}
           asking={hosting ? state.waiting.length : 0} reconnecting={down || (crypto.status === 'joining' && !leaving)} screens={state.capture.screen.mode !== 'off'} modelPrivate={state.capture.modelPrivate}
           swap={!phone && swap}
           board={{
@@ -1958,7 +1965,7 @@ export function InCall({ session }: { session: CallSession }) {
               {seam && <PeopleSeam box={seam} small={peopleSmall} onToggle={togglePeople} />}
               <TileHint area={callArea.ref} account={owner} />
               <motion.div className="ic-frame" initial={false} animate={{ left: 0, top: 0, width: clearW, height: size.h }} transition={reduce ? { duration: 0 } : GLIDE}>
-                <PlanBanners state={state} />
+                <PlanBanners state={state} stop={planStop} notesOpen={side.view === 'notes'} />
                 {hosting && side.view !== 'people' && state.waiting.length > 0 && (
                   <div className="rg-knocks">
                     <AnimatePresence initial={false}>

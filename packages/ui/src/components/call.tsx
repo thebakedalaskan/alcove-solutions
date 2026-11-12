@@ -16,11 +16,11 @@ import { Button, IconButton, Notice, RecDot, Slider, Spinner, Segmented, Switch 
 /**
  * Something about the whole call that stays until it's closed: notes stopped because the organizer's plan ran out, the
  * organizer's notes about to run out, the call about to reach its longest. It drops from the top of the stage, centred,
- * and goes only when × is pressed. `tone`: caution for what has stopped, info for what's coming. `action`: one quiet
- * button, such as Upgrade for an organizer on Free.
+ * and goes only when × is pressed. `tone`: caution for what has stopped, info for what's coming. `actions`: the ways on,
+ * in a row under the words, such as Get Pro and more hours for an organizer whose notes ran out.
  */
-export function CallBanner({ icon, tone = 'info', title, children, action, onClose }: {
-  icon: IconName; tone?: 'info' | 'caution' | undefined; title: ReactNode; children?: ReactNode; action?: ReactNode; onClose: () => void;
+export function CallBanner({ icon, tone = 'info', title, children, actions, onClose }: {
+  icon: IconName; tone?: 'info' | 'caution' | undefined; title: ReactNode; children?: ReactNode; actions?: ReactNode; onClose: () => void;
 }) {
   const reduce = useReducedMotion() ?? false;
   return (
@@ -30,8 +30,8 @@ export function CallBanner({ icon, tone = 'info', title, children, action, onClo
       transition={reduce ? { duration: 0 } : { duration: 0.42, ease: EASE.out }}>
       <span className="ic-limit-i"><Icon name={icon} size={18} /></span>
       <span className="ic-limit-t"><b>{title}</b>{children !== undefined && <small>{children}</small>}</span>
-      {action}
       <IconButton icon="x" label="Close" className="ic-limit-x" onClick={onClose} />
+      {actions !== undefined && actions !== null && <span className="ic-limit-a">{actions}</span>}
     </motion.div>
   );
 }

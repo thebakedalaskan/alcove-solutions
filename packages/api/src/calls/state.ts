@@ -234,6 +234,12 @@ export type CallNotice = z.infer<typeof CallNoticeSchema>;
 /** Notices a tab has shown for a call, as it keeps them (sessionStorage), so a reload doesn't show them again. */
 export const CallNoticesSeenSchema = z.array(IDSchema.max(64)).max(50);
 
+/**
+ * When the organizer's plan stopped a call's notes, as a tab saw it (sessionStorage), and when they came on again (null
+ * while they're still stopped): the marks in the notes, through a reload. Only times.
+ */
+export const CallStopsSeenSchema = z.array(z.object({ at: ISODateSchema, back: ISODateSchema.nullable() })).max(20);
+
 
 /** One breakout room: its name, the invited people sent to it, and anyone else sent to it. */
 export const BreakoutRoomSchema = z.object({
