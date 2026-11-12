@@ -51,7 +51,7 @@ export function WaitingNote({ plan, team }: { plan: Plan; team: MyTeam | null | 
   if (!plan.team || !waitingForLicense(plan)) return null;
   const now = `so you’re on ${PLAN_NAMES[plan.kind]} for now`;
   if (plan.team.role === 'admin') {
-    return <SettingNote icon="people">You’re {plan.team.name}’s admin, but none of its licenses is yours yet, {now}. Buy licenses, and one is yours the next time you open Alcove.</SettingNote>;
+    return <SettingNote icon="people">You’re the admin of {plan.team.name}, but none of its licenses is yours yet, {now}. Buy licenses, and one is yours the next time you open Alcove.</SettingNote>;
   }
   return (
     <SettingNote icon="people">
