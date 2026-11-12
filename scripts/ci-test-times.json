@@ -441,5 +441,28 @@
   "groups": {
    "immediate query actions through the real API": 10.8
   }
+ },
+ "src/features/billing/meter.integration.test.ts": {
+  "seconds": 22,
+  "groups": {
+   "who pays": 7.7,
+   "running out": 14.3
+  }
+ },
+ "src/features/billing/plans.integration.test.ts": {
+  "seconds": 6.4,
+  "groups": {
+   "Free": 2.6,
+   "accounts from before plans": 0.8,
+   "a call’s limits": 1.8,
+   "money": 0.1,
+   "deleting an account": 1.2
+  }
+ },
+ "src/features/billing/topups.integration.test.ts": {
+  "seconds": 7.4,
+  "groups": {
+   "top-ups": 7.4
+  }
  }
 }

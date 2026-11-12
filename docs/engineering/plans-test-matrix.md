@@ -29,8 +29,8 @@ Suites: `billing/meter` (`apps/api/src/features/billing/meter.integration.test.t
 | B6 | Buys at once on two instances never spend twice | — | 2 | Not built |
 | **C: Free** |  |  |  |  |
 | C1 | 300 minutes a period; renews from when it began; nothing carries over | billing/plans › renews its notes… | 1 | Passes |
-| C2 | One shared workspace; a second is refused; joining others and a call's own are fine | billing/plans › makes one shared workspace… | 1 | Passes |
-| C3 | A file over the plan's size is refused; storage fills and refuses, counted against whoever made the workspace | billing/plans › takes files…; workspaces/media (limits) | 1 | Passes |
+| C2 | One shared workspace; a second is refused; joining others and a call's own are fine | billing/plans › makes one shared workspace…; by hand | 1 | Passes |
+| C3 | A file over the plan's size is refused; storage fills and refuses, counted against whoever made the workspace | billing/plans › takes files…; workspaces/media (limits); by hand | 1 | Passes |
 | C4 | Call recordings count; full storage stops notes for everyone (reason storage), and notes need 1 MiB to come back | billing/plans › counts call recordings… | 1 | Passes |
 | **D: metering** |  |  |  |  |
 | D1 | Each request charges the right payer: organizer (transcript, captions, live notes, notes), asker (ask, catch-up, ask a note, ask all), organizer for a guest, workspace's maker for document AI | billing/meter › who pays; calls/liveNotes; calls/callWorkspace; recordings/transcripts; flows | 1 | Passes |
@@ -42,7 +42,7 @@ Suites: `billing/meter` (`apps/api/src/features/billing/meter.integration.test.t
 | D6 | No request reaches NEAR AI without a payer | `Meter` is a required argument of `transcribe`, `complete` and `completeJson`: the typecheck refuses one without | 1 | Enforced by the compiler |
 | **E: running out** |  |  |  |  |
 | E1 | The organizer alone is warned, at the call's pace | billing/meter › tells the organizer alone… | 1 | Passes |
-| E2 | Spent: notes off for everyone, guests included, banner until closed, the call goes on | billing/meter › stops notes for everyone… | 1 | Passes |
+| E2 | Spent: notes off for everyone, guests included, banner until closed, the call goes on | billing/meter › stops notes for everyone…; the banner's × by hand | 1 | Passes |
 | E3 | Then transcription, the organizer's AI and a guest's questions are refused; notes can't come back on | billing/meter › stops notes for everyone… | 1 | Passes |
 | E4 | The last note covers only what was said before the stop, and may go past the allowance | billing/meter › stops notes for everyone… | 1 | Passes |
 | E5 | Then nothing: the next call starts without notes, saying why; asks and room recordings are refused | billing/meter › stops notes for everyone… | 1 | Passes |
@@ -61,6 +61,30 @@ Suites: `billing/meter` (`apps/api/src/features/billing/meter.integration.test.t
 | I2 | Top-ups stay their owner's | billing/topups › keeps top-ups to their owner | 1 | Passes |
 | I3 | Deleting an account deletes its plan and allowance | billing/plans › deleting an account | 1 | Passes |
 | I4 | A live call’s state from the previous release reads (no `notes.limit`), as not stopped, and carries on | billing/plans › reads a live call the previous release stored… | 1 | Passes |
+
+## Checked by hand
+
+The app run locally on its own ports and database (`pnpm limits` to make a scenario quick), and Storybook for what a live
+call needs. A call with notes wasn't run by hand: it needs a microphone's audio sent to NEAR AI, and the suites above
+drive it end to end.
+
+| What | Where | Seen |
+| --- | --- | --- |
+| Signing up | App › Settings › Plan, light and dark, phone | Free, renews in 30 days, about 5 h of notes, under 1 MB of 10 GB, 0 of 1 shared workspaces, $0 |
+| A second shared workspace | App › Drive | Refused: "Free has one shared workspace, and you have it. Move to Pro for as many as you like." |
+| Storage full (`plan.free.storage_bytes` 1 KiB) | App › a workspace | An upload is refused: "Your storage is full. Delete something, or move to a plan with more room." |
+| The side panel | App and Storybook | Upgrade to Pro above "About 5 h of notes left", on Free only |
+| Notes have stopped | Storybook › Calls › Notes, wide and phone | Drops from the top; × closes it, and it stays closed through a reload in that tab |
+| About 5 minutes left, and the call's end | Storybook › Calls | The organizer's banner; everyone's "This call ends at…" |
+
+## Found along the way
+
+- The welcome page still said "400 minutes of notes" (the old credits' welcome). It says about 5 hours a month now.
+- `limitsNow` read the limits through the pool inside transactions. Uploads started at once ran the pool dry: each
+  transaction held a connection and waited for another to read the limits. It now reads on the caller's connection,
+  under a savepoint, so a failed read leaves the transaction going on what was in force.
+- A refused upload leaves its document with an empty picture block, as before plans. Free's storage limit makes that
+  more likely: not changed here.
 
 ## Changed by this work
 

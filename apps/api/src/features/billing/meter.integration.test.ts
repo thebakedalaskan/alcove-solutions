@@ -205,6 +205,8 @@ describe('running out', () => {
       expect(now.capture.mode).toBe('off');
       expect(now.phase).toBe('in-call');
     }
+    // Anyone with the link sees notes are off, and not why: that's for the people in the call.
+    expect((await h.browser().api.calls.card(meeting.code)).capture).toMatchObject({ mode: 'off', stopped: null, runningOut: null });
     // Nothing more is transcribed or recorded, and nothing the organizer pays for reaches the AI.
     expect(code(await host.transcribe(speech('This is never heard.', 7000), host.ticket.identity).catch((e: unknown) => e))).toBe('conflict');
     expect(code(await guest.askSoFar('When do we ship?', { kind: 'all' }).catch((e: unknown) => e))).toBe('plan-limit');

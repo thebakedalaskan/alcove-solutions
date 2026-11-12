@@ -20,7 +20,7 @@ import { useLive } from '~/lib/live';
 import { callName, listNames, sameEmail } from '~/lib/people';
 import { hm } from '~/lib/time';
 import { capital } from '~/lib/words';
-import { AskForNotes, askerOf, notesBrowser, organizerName, roomScribe, useNotNow, type CaptureControls } from '../notes/Capture';
+import { AskForNotes, askerOf, notesBrowser, organizerName, roomScribe, stoppedSaid, useNotNow, type CaptureControls } from '../notes/Capture';
 import { callTimes, type CallTimes } from '../notes/CatchUp';
 import { CallLines } from '../notes/LiveLines';
 import { NotesFollowUps } from '../notes/FollowUps';
@@ -149,7 +149,9 @@ export function NotesBars({ state, controls, problems, capture }: { state: CallS
         acts: <><Button size="sm" variant="quiet" disabled={busy} onClick={notNow}>Not now</Button><Button size="sm" variant="primary" onClick={() => controls.notes(true)}>Turn on</Button></> });
     } else if (c.mode === 'off') {
       const ever = state.notes.everOn;
-      bars.push({ key: 'off', icon: 'notesPen', text: !ever ? 'Notes are off, so nothing is being transcribed.' : host ? 'Notes are off. What was written is kept.' : `${organizer} turned notes off. What was written is kept.`,
+      const stopped = stoppedSaid(state);
+      bars.push({ key: 'off', icon: stopped ? 'alert' : 'notesPen', tone: stopped ? 'caution' : undefined,
+        text: stopped ?? (!ever ? 'Notes are off, so nothing is being transcribed.' : host ? 'Notes are off. What was written is kept.' : `${organizer} turned notes off. What was written is kept.`),
         acts: host ? <Button size="sm" variant="primary" onClick={() => controls.notes(true)}>Turn on</Button> : <AskForNotes state={state} controls={controls} label="Ask for notes" /> });
     }
   }
@@ -267,7 +269,11 @@ export function NotesView({ session, state, getting, problems, controls, carried
       </EmptyState>
     );
   } else if (c.mode === 'off' && !any) {
-    empty = host && askers.length > 0 ? (
+    const stopped = stoppedSaid(state);
+    empty = stopped ? (
+      // Turning notes on works again once the organizer's plan has notes: a new period, or a bigger plan.
+      <EmptyState title="Notes have stopped" action={host ? <Button variant="primary" size="sm" onClick={() => controls.notes(true)}>Turn on notes</Button> : askFor}>{stopped}</EmptyState>
+    ) : host && askers.length > 0 ? (
       <EmptyState art={<Faces people={askers} size={40} max={3} />} title={`${listNames(askers)} asked for notes`}
         action={<><Button variant="quiet" size="sm" disabled={busy} onClick={notNow}>Not now</Button><Button variant="primary" size="sm" onClick={() => controls.notes(true)}>Turn on notes</Button></>}>
         Nothing from this call is written down yet. Notes start from the moment you turn them on.

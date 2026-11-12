@@ -106,7 +106,8 @@ function pillOf(state: CallState, c: CaptureState, pausing: boolean): { word: st
 
 /**
  * What's captured, the card the sign and the pill open, with what's yours to press: the sign and when it changed; one
- * sentence on what's captured now, and for anyone else while notes are on, who may change it; asks for notes; the
+ * sentence on what's captured now (or why the organizer's plan stopped it), and for anyone else while notes are on, who
+ * may change it; asks for notes; the
  * organizer's controls, or anyone else's ask; then a row for each fact. `onOpenNotes` is the way on to the notes at its
  * foot, when the sign opened it and Notes isn't open on your side.
  */
@@ -138,7 +139,7 @@ function CaptureCard({ state, role, getting, controls, pausing, done, onOpenNote
         <CaptureSign mode={c.mode} requested={!notesAreOn(c.mode) && c.requests.length > 0} pausing={changing} />
         {when && <span className="when">{when}</span>}
       </div>
-      <p className="nk-said">{saidFor(state, c, name)}{!host && notesAreOn(c.mode) && ` Only ${name} can pause or turn them off.`}</p>
+      <p className="nk-said">{(call.room ? null : stoppedSaid(state)) ?? saidFor(state, c, name)}{!host && notesAreOn(c.mode) && ` Only ${name} can pause or turn them off.`}</p>
       {host && askers.length > 0 && !on && (
         <div className="nk-ask"><Faces people={askers} size={22} max={3} /><span className="t">{listNames(askers)} asked for notes.</span></div>
       )}
@@ -327,6 +328,18 @@ export function NotesAsks({ state, controls, after }: {
 
 /** "Asked for notes", on the asker's row in People, for everyone. */
 export const askedTag = (state: CallState, participantId: string): string => (!notesAreOn(state.capture.mode) && state.capture.requests.some((r) => r.participantId === participantId) ? 'Asked for notes' : '');
+
+/**
+ * Why notes are off, when the organizer's plan stopped them (docs: Plans and usage): their notes for this period ran out,
+ * or their storage is full. Said to the organizer as theirs, to everyone else by the organizer's name. Null when that
+ * isn't why. Turning notes on still works once the plan has notes again: the stop is over then.
+ */
+export function stoppedSaid(state: CallState): string | null {
+  const s = state.capture.stopped;
+  if (!s || notesAreOn(state.capture.mode)) return null;
+  const whose = state.isOrganizer ? 'Your' : `${capital(organizerName(state))}’s`;
+  return `${whose} ${s.reason === 'storage' ? 'storage is full' : 'notes for this period have run out'}. What was said until now is in the notes.`;
+}
 
 /** The organizer's first name for a sentence, from the call itself (they may be away from it), or "the organizer" for someone not let in yet. */
 export function organizerName(state: CallState): string {

@@ -122,7 +122,8 @@ export const PausedByTheOrganizer = inCall({
 
 /*
  * What the plan says in a call (docs: Plans and usage): a banner from the top, once for the call, that stays until its × is
- * pressed. Notes stopping is said to everyone; notes about to run out, to the organizer alone.
+ * pressed. Notes stopping is said to everyone; notes about to run out, to the organizer alone. While they're stopped, Notes
+ * and what's captured say why too, and the organizer can still turn them on (it works once their plan has notes again).
  */
 /** Art organizes this review on Free. Three seconds in, Art's notes are about to run out at this call's pace: only Art is told. */
 export const NotesRunningOut = inCall({ scenario: 'call-soon', call: REVIEW, script: { ...LATE, cues: at(3, notesRunningOut()) } });

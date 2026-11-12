@@ -166,8 +166,9 @@ function hostOf(s: Stored, v: Viewer, organizer: Person, live: boolean): CallHos
 
 /**
  * What's captured, for someone who isn't in the call (asking to join, or reading the call's card): no names, no gaps, no
- * asks, and not which model, only whether it's private, so they know before they come in.
+ * asks, not which model, only whether it's private, so they know before they come in. Not that the organizer's plan
+ * stopped notes, either: only the people in the call are told that.
  */
 export function anonymousCapture(s: Stored, row: Pick<Row, 'started_at' | 'state' | 'host_identity' | 'host_left_at'>, modelPrivate: boolean) {
-  return capture.stateFor({ status: s.notes.status, history: s.notes.history, startedAt: row.started_at, organizer: null, unavailable: s.notes.unavailable, away: hostAway(row), screens: screensOf(s), model: null, modelPrivate, allowScreens: false, gaps: [], requests: [], asked: null, limit: s.notes.limit, organizerSees: false });
+  return capture.stateFor({ status: s.notes.status, history: s.notes.history, startedAt: row.started_at, organizer: null, unavailable: s.notes.unavailable, away: hostAway(row), screens: screensOf(s), model: null, modelPrivate, allowScreens: false, gaps: [], requests: [], asked: null, limit: capture.NO_LIMIT, organizerSees: false });
 }

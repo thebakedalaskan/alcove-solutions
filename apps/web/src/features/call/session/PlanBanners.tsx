@@ -12,6 +12,7 @@ import { useState, type ReactNode } from 'react';
 import { useNow } from '~/lib/live';
 import { q } from '~/lib/queries';
 import { hm } from '~/lib/time';
+import { stoppedSaid } from '../notes/Capture';
 import { keepSeen, seenNotices } from './seen';
 
 /** How long before the call's end everyone is told. */
@@ -24,18 +25,16 @@ export function PlanBanners({ state }: { state: CallState }) {
   const plan = useQuery({ ...q.plan(), enabled: state.isOrganizer }).data;
   const close = (key: string) => setClosed((was) => { const next = new Set(was).add(key); keepSeen(state.callId, next); return next; });
   const { stopped, runningOut } = state.capture;
+  const said = stoppedSaid(state);
   const ends = Date.parse(state.endsAt);
   const banners: { key: string; node: (key: string) => ReactNode }[] = [];
-  if (stopped) {
-    const storage = stopped.reason === 'storage';
+  if (stopped && said) {
     banners.push({
       key: `stopped:${stopped.at}`,
       node: (key) => (
         <CallBanner key={key} icon="notesPen" tone="caution" title="Notes have stopped" onClose={() => close(key)}
           action={state.isOrganizer && plan?.kind === 'free' ? <a className={buttonClass({ variant: 'secondary', size: 'sm' })} href="/settings#plan" target="_blank" rel="noreferrer">Upgrade</a> : undefined}>
-          {state.isOrganizer
-            ? storage ? 'Your storage is full. What was said until now is in the notes.' : 'Your notes for this period have run out. What was said until now is in the notes.'
-            : storage ? 'The organizer’s storage is full. What was said until now is in the notes.' : 'The organizer’s notes for this period have run out. What was said until now is in the notes.'}
+          {said}
         </CallBanner>
       )
     });

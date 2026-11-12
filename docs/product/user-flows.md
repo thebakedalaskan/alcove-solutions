@@ -734,11 +734,13 @@ time, slides in on the right.
   join page, until it can again.
 - **When the organizer's notes or storage run out.** The organizer alone is told, once, when what's left would last
   about 5 minutes at this call's pace: "About 5 minutes of notes left". Notes then go off for everyone, as if the
-  organizer had turned them off, and everyone, guests included, sees **Notes have stopped** ("The organizer's notes for
-  this period have run out", or "…storage is full"; the organizer's own say "Your notes…", with **Upgrade** on Free)
-  until they close it. The call goes on, and what was said until then is in the notes, which are written when the
-  call ends, even when writing them goes past what was left. While they're stopped, turning notes on or starting a
-  room recording says "Your notes for this period have run out. They start again when your plan renews."
+  organizer had turned them off, and everyone, guests included, sees **Notes have stopped** ("Priya's notes for this
+  period have run out", or "…storage is full"; the organizer's own say "Your notes…", with **Upgrade** on Free) until
+  they close it. Notes in the call and what's captured say the same while notes are off, and the organizer can still
+  turn them on: it works once their plan has notes again. The call goes on, and what was said until then is in the
+  notes, which are written when the call ends, even when writing them goes past what was left. While they're stopped,
+  turning notes on or starting a room recording says "Your notes for this period have run out. They start again when
+  your plan renews."
 - **How long a call runs.** A call ends at 10 hours, and everyone is told 5 minutes before ("This call ends at
   14:30"); its notes are written as when anyone ends it. At most 100 people are in a call or waiting to be let in: one
   more is told "This call is full: 100 people are in it, the most a call can have", and whoever hosts is told someone
