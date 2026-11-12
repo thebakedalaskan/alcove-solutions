@@ -109,11 +109,11 @@ export function TeamStorageNote({ plan, team }: { plan: Plan; team: MyTeam | nul
 export const balanceBuys = (plan: Plan, team: MyTeam | null | undefined): string =>
   (team?.licenses ? 'the team’s licenses and more notes are' : plan.kind === 'team' ? 'more notes are' : 'Pro and more notes are');
 
-/** "Maya is", "you and Maya are": who's waiting for a license, as the Licenses row says it. */
+/** "Maya is waiting", "you’re waiting", "you and Maya are waiting": who's waiting for a license, as Licenses says it. */
 function whoWaits(waiting: TeamMember[]): string {
   const names = [...waiting].sort((a, b) => Number(b.you) - Number(a.you)).map((m) => (m.you ? 'you' : callName(m.person)));
-  const said = names.length <= 1 ? names[0] ?? '' : `${names.slice(0, -1).join(', ')} and ${names.at(-1) ?? ''}`;
-  return `${said} ${names.length === 1 && names[0] !== 'you' ? 'is' : 'are'}`;
+  if (names.length === 1) return names[0] === 'you' ? 'you’re waiting' : `${names[0] ?? ''} is waiting`;
+  return `${names.slice(0, -1).join(', ')} and ${names.at(-1) ?? ''} are waiting`;
 }
 
 /**
@@ -124,7 +124,7 @@ export function Licenses({ licenses, offers }: { licenses: TeamLicenses; offers:
   const checkout = useCheckout();
   const { left, of, waiting } = licenses;
   const count = of === 0 ? 'None bought yet' : left === 0 ? `None of ${of} left` : `${left} of ${of} left`;
-  const help = `${count}${waiting.length ? `, and ${whoWaits(waiting)} waiting for one` : ''}. Each is taken as someone next opens Alcove, for ${offers?.periodDays ?? 30} days.`;
+  const help = `${count}${waiting.length ? `, and ${whoWaits(waiting)} for one` : ''}. Each is taken as someone next opens Alcove, for ${offers?.periodDays ?? 30} days.`;
   return (
     <SettingRow label="Licenses" help={help} warm={waiting.length > 0}
       control={<Button variant={waiting.length ? 'primary' : 'secondary'} size="sm" onClick={() => checkout.open({ plan: 'team' }, 'settings')}>Buy licenses</Button>} />
