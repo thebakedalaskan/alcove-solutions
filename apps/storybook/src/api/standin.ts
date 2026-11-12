@@ -72,7 +72,7 @@ function buyNow(w: World, buys: Purchase) {
   const balance = w.plan.balance.microUsd;
   if (balance < cost) {
     const what = buys.kind === 'pro' ? `${buys.months} ${buys.months === 1 ? 'month' : 'months'} of Pro` : `${hoursOf(w.payments.offers, buys.packs)} hours of notes`;
-    throw refused('conflict', `Your balance is short: ${what} cost ${dollars(cost)} and your balance is ${dollars(balance)}. Add money first.`);
+    throw refused('conflict', `Your balance is short of what ${what} ${buys.kind === 'pro' && buys.months === 1 ? 'costs' : 'cost'} (${dollars(cost)}). Add money first.`);
   }
   w.plan = buyFromBalance(w.plan, buys, w.payments.offers, freshEntryId(w));
   return w.plan;

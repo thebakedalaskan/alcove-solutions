@@ -278,7 +278,7 @@ describe('Pro', () => {
       pro: { notesMinutes: 3000, storageBytes: 100 * GiB, fileBytes: 512 * MiB, microUsdPerMonth: PRICE, maxMonths: 12, yearly: { fromMonths: 12, microUsdPerMonth: YEARLY } },
       hours: { minutes: 600, microUsd: HOURS, maxPacks: 5 }
     });
-    expect(await refusal(ann.api.plans.buyPro(1, PRICE))).toBe('conflict: Your balance is short: 1 month of Pro costs $20 and your balance is $0. Add money first.');
+    expect(await refusal(ann.api.plans.buyPro(1, PRICE))).toBe('conflict: Your balance is short of what 1 month of Pro costs ($20). Add money first.');
     const rec = await ann.api.recordings.start({ title: 'Used' });
     await rec.transcribe(speech('We agreed to ship on Monday.', 0));
     await written(ann.api, (await rec.stop()).pendingNoteId);
@@ -304,7 +304,7 @@ describe('Pro', () => {
     const ann = await account();
     await give(ann, 50_000_000);
     const before = await ann.api.plans.plan();
-    expect(await refusal(ann.api.plans.buyPro(3, PRICE))).toBe('conflict: Your balance is short: 3 months of Pro cost $60 and your balance is $50. Add money first.');
+    expect(await refusal(ann.api.plans.buyPro(3, PRICE))).toBe('conflict: Your balance is short of what 3 months of Pro cost ($60). Add money first.');
     expect(await ann.api.plans.plan()).toEqual(before);
     expect(before).toMatchObject({ kind: 'free', balance: { microUsd: 50_000_000 }, pro: { months: [], until: null } });
   });
@@ -339,7 +339,7 @@ describe('Pro', () => {
         WHERE datname = current_database() AND wait_event_type = 'Lock' AND query LIKE '%plan_accounts%'`)).rows[0]?.n, { timeout: 5000 }).toBe(2);
       await gate.query('COMMIT');
       const outcomes = await Promise.all(pending);
-      expect(outcomes.sort()).toEqual(['conflict: Your balance is short: 1 month of Pro costs $20 and your balance is $0. Add money first.', 'succeeded']);
+      expect(outcomes.sort()).toEqual(['conflict: Your balance is short of what 1 month of Pro costs ($20). Add money first.', 'succeeded']);
       expect(await ann.api.plans.plan()).toMatchObject({ kind: 'pro', balance: { microUsd: 0 }, pro: { months: [{ microUsd: PRICE }] } });
     } finally {
       await gate.query('ROLLBACK');
@@ -380,7 +380,7 @@ describe('Pro', () => {
     const refunded = await ann.api.plans.refundPro();
     expect(refunded).toMatchObject({ kind: 'pro', balance: { microUsd: 11 * YEARLY }, pro: { refundableMicroUsd: 0 } });
     expect(refunded.balance.history[0]).toMatchObject({ label: 'Pro refunded, 11 months', microUsd: 11 * YEARLY });
-    expect(await refusal(ann.api.plans.buyPro(12, YEARLY))).toBe('conflict: Your balance is short: 12 months of Pro cost $192 and your balance is $176. Add money first.');
+    expect(await refusal(ann.api.plans.buyPro(12, YEARLY))).toBe('conflict: Your balance is short of what 12 months of Pro cost ($192). Add money first.');
     // Under a year, a month's price.
     expect(await ann.api.plans.buyPro(2, PRICE)).toMatchObject({ balance: { microUsd: 11 * YEARLY - 2 * PRICE }, pro: { refundableMicroUsd: 2 * PRICE } });
   });
@@ -601,10 +601,10 @@ describe('more notes', () => {
     await give(ann, 20_000_000);
     expect(await refusal(ann.api.plans.buyHours(6, HOURS))).toBe('invalid: Buy up to 50 hours of notes at a time.');
     expect(await refusal(ann.api.plans.buyHours(1, 10_000_000))).toBe('conflict: The price of more notes has changed. Look at it again before buying.');
-    expect(await refusal(ann.api.plans.buyHours(2, HOURS))).toBe('conflict: Your balance is short: 20 hours of notes cost $30 and your balance is $20. Add money first.');
+    expect(await refusal(ann.api.plans.buyHours(2, HOURS))).toBe('conflict: Your balance is short of what 20 hours of notes cost ($30). Add money first.');
     await h.setLimit('plan.hours.pack_minutes', 60);
     await h.setLimit('plan.hours.price_micro_usd', 25_000_000);
-    expect(await refusal(ann.api.plans.buyHours(1, 25_000_000))).toBe('conflict: Your balance is short: 1 hour of notes costs $25 and your balance is $20. Add money first.');
+    expect(await refusal(ann.api.plans.buyHours(1, 25_000_000))).toBe('conflict: Your balance is short of what 1 hour of notes costs ($25). Add money first.');
     // A pack at no price: none are offered, and none can be had for nothing.
     await h.setLimit('plan.hours.price_micro_usd', 0);
     expect((await ann.api.plans.offers()).hours).toBeNull();
@@ -628,10 +628,10 @@ describe('more notes', () => {
       const [pro, hours] = await Promise.all(pending);
       const plan = await ann.api.plans.plan();
       if (pro === 'succeeded') {
-        expect(hours).toBe('conflict: Your balance is short: 10 hours of notes cost $15 and your balance is $0. Add money first.');
+        expect(hours).toBe('conflict: Your balance is short of what 10 hours of notes cost ($15). Add money first.');
         expect(plan).toMatchObject({ kind: 'pro', balance: { microUsd: 0 }, notes: { minutesPerPeriod: 3000 } });
       } else {
-        expect([pro, hours]).toEqual(['conflict: Your balance is short: 1 month of Pro costs $20 and your balance is $5. Add money first.', 'succeeded']);
+        expect([pro, hours]).toEqual(['conflict: Your balance is short of what 1 month of Pro costs ($20). Add money first.', 'succeeded']);
         expect(plan).toMatchObject({ kind: 'free', balance: { microUsd: 5_000_000 }, notes: { minutesPerPeriod: 900 } });
       }
     } finally {

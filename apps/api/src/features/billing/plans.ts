@@ -408,7 +408,8 @@ export async function purchase(d: Service, db: Db, ownerId: string, buys: Purcha
       bought: false,
       refusal: {
         why: 'short',
-        asked: `Your balance is short: ${cost} ${dollars(t.totalMicroUsd)} and your balance is ${dollars(a.balanceMicroUsd)}. Add money first.`,
+        // What it costs, never the balance: a refusal's words are logged, and the balance is sealed.
+        asked: `Your balance is short of what ${cost} (${dollars(t.totalMicroUsd)}). Add money first.`,
         arrived: (less) => (less ? `Less arrived than ${cost}. It’s in your balance.` : `Your balance was short of what ${cost} when your payment arrived. It’s in your balance.`)
       }
     };

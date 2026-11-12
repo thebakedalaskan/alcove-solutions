@@ -167,8 +167,9 @@ row locked, so buys at once on any instance never spend the same money twice:
 2. A price other than the one in force for that many months (the yearly price from `yearly.fromMonths`, a month's below
    it) is refused (`conflict`, "The price of Pro has changed. Look at it again before buying."): the app sends the price
    it showed, so a change in between charges nothing.
-3. A balance short of months × price is refused (`conflict`, "Your balance is short: 3 months of Pro cost $60 and your
-   balance is $50. Add money first."). Nothing changes.
+3. A balance short of months × price is refused (`conflict`, "Your balance is short of what 3 months of Pro cost ($60).
+   Add money first."). Nothing changes. The words never say the balance: they're logged with the refusal, and the balance
+   is sealed.
 4. The months are added back to back, from the end of the last month bought that hasn't ended, or from now. The balance
    goes down by the total, with "Pro, 3 months" in its history, and any grace ends. Logged `pro bought` with the owner,
    months and amount.
@@ -218,8 +219,8 @@ one of more notes at once never spend the same money twice.
 2. More than `plan.hours.max_packs` is refused (`invalid`, "Buy up to 50 hours of notes at a time.").
 3. A price a pack other than the one in force is refused (`conflict`, "The price of more notes has changed. Look at it
    again before buying.").
-4. A balance short of packs × price is refused (`conflict`, "Your balance is short: 20 hours of notes cost $30 and your
-   balance is $20. Add money first."). Nothing changes.
+4. A balance short of packs × price is refused (`conflict`, "Your balance is short of what 20 hours of notes cost ($30).
+   Add money first."). Nothing changes.
 5. The minutes go to the period in force (the plan's kind and when its period began), on top of any bought for it already;
    any bought for an earlier period are let go. The balance goes down by the total, with "10 more hours of notes" in its
    history (the hours of the whole purchase: "20 more hours of notes" for two packs). Logged `notes bought` with the owner,

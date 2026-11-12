@@ -117,6 +117,9 @@ throw new KeyError('This key can’t open that data.', { cause: err, context: { 
   unless what answered it says it's an ordinary refusal.
 - Whatever a plan's limits refuse is an ordinary refusal at info, `402 plan-limit` with its `reason` in the context
   (`notes`: the AI allowance is spent; `storage`: the account's storage is full), with IDs, sizes and kinds as its context, never an allowance, a balance or a title ([Plans and usage](plans-and-usage.md)).
+- A purchase refused as it's asked for (`409 conflict`: a price that changed, a balance short of it; `400 invalid`: more
+  than one purchase buys) is an ordinary refusal at info, with the owner, what it buys and `why`. Its words say what it
+  costs, never the balance, since a refusal's message is its log line's.
 - An upload refused by a storage limit is an ordinary refusal at info: `402 plan-limit` for an account's storage that's full,
   `409 conflict` for a day used up, `400 invalid` for a file too big, with the limit's name, the sizes and the limit in its context.
   A piece that takes an account past 80% of its storage logs `an account is past 80% of its storage` at warn, and one that takes someone's day past 80% logs `someone is past

@@ -224,7 +224,7 @@ export function CheckoutHost({ open, onClose, onCompare }: { open: CheckoutOpen;
   const title = kind === 'hours' ? 'More notes' : extend ? 'Extend Pro' : 'Get Pro';
   /**
    * Says why a purchase or a payment was refused, in the server's words ("The price of Pro has changed. Look at it again
-   * before buying.", "Your balance is short: …"); the mutation reads the plan and the offers again, so what's shown next is
+   * before buying.", "Your balance is short of what …"); the mutation reads the plan and the offers again, so what's shown next is
    * today's. A failure that isn't a refusal carries its reference for support.
    */
   const refused = (e: unknown) => {
