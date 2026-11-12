@@ -15,7 +15,8 @@
  * (`rec-`); starting and scheduling a call in styles/flow.css (`cf-`); the organizer's lobby, ringing and the page for
  * picking a time in styles/ringing.css (`rg-`); the workspace, in a call and in the app, in styles/workspace.css (`wt-`,
  * `wd-`, `wm-`, `wv-`, `wp-`, `wh-`, `wl-`); the board in styles/board.css; the welcome page in styles/welcome.css and its scenes'
- * welcome-*.css (`lp-`); the other screens in styles/{app,call}.css.
+ * welcome-*.css (`lp-`); checkout, one window over any page, in styles/checkout.css (`ck-`); the other screens in
+ * styles/{app,call}.css.
  */
 @import "./fonts.css";
 @import "./styles/kit.css";
@@ -51,6 +52,7 @@
 @import "./styles/workspace.css";
 @import "./styles/workspace-editor.css";
 @import "./styles/board.css";
+@import "./styles/checkout.css";
 @custom-variant dark (&:where(.dark, .dark *));
 
 /* `.light` and `.dark` also scope a theme to part of a page, whatever the page's own theme is. */
