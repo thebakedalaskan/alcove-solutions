@@ -5,22 +5,21 @@
  * ↑ and ↓ pick a note instead, and Enter opens it. "Pin a note" opens the same line to pick notes to
  * pin. It's the only thing open while it's open. Escape closes it, and focus goes back where it was.
  */
-import { MAX_PINS, errorMessage, firstName, searchOf, type AnswerPart, type NoteSummary } from '@alcove/api';
+import { MAX_PINS, errorMessage, firstName, searchOf, type NoteSummary } from '@alcove/api';
 import { ArchThumb, Button, ComposerLine, Dots, Icon, Kbd, Scope, Sheet, Unencrypted, cn, coverFor, useToast } from '@alcove/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
-import { useId, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { AnswerView, useAnswer, type Cite } from '~/features/notes/answer';
+import { NoteRefsRow, useAskableNotes, useNoteRefs } from '~/features/notes/ask-refs';
 import { marked } from '~/features/notes/highlight';
 import { noteMeta } from '~/features/notes/meta';
-import { api } from '~/lib/api';
 import { useSettled } from '~/lib/live';
 import { isUnencrypted } from '~/lib/aiModels';
 import { q, useAiModels, usePins } from '~/lib/queries';
 import { noteDay, position } from '~/lib/time';
 import type { PaletteStart } from './context';
 
-const askAll = (question: string): AsyncIterable<AnswerPart> => api.notes.askAll(question);
 /** Notes listed before anything is typed, and at most while typing. */
 const RECENT = 5;
 const FOUND = 8;
@@ -57,9 +56,12 @@ function Find({ onClose }: { onClose: () => void }) {
   const [text, setText] = useState('');
   /** The note ↑ and ↓ picked; -1 is the line itself, where Enter asks. */
   const [active, setActive] = useState(-1);
-  const { answer, ask: run, reset } = useAnswer(askAll);
+  const refs = useNoteRefs();
+  const line = useRef<HTMLInputElement>(null);
+  const { answer, ask: run, reset } = useAnswer(refs.ask);
   const term = useSettled(text.trim(), 160);
   const all = useQuery(q.notes()).data;
+  const askable = useAskableNotes();
   const models = useAiModels();
   const outside = isUnencrypted(models.data, useQuery(q.prefs()).data?.model ?? null);
   const found = useQuery(q.notes(undefined, answer ? undefined : term || undefined));
@@ -87,14 +89,15 @@ function Find({ onClose }: { onClose: () => void }) {
   return (
     <>
       <ComposerLine icon="search" className="pal-line" action={<><Scope>Only you</Scope><Kbd className="pal-esc">esc</Kbd></>}>
-        <input className="text" value={text} placeholder="Search your notes, or ask a question" aria-label="Search or ask your notes, for you alone"
+        <input ref={line} className="text" value={text} placeholder="Search your notes, or ask a question" aria-label="Search or ask your notes, for you alone"
           role="combobox" aria-expanded={listed} aria-controls={listed ? list : undefined} aria-autocomplete="list"
           aria-activedescendant={listed && at >= 0 ? `${list}-${at}` : undefined} autoComplete="off" spellCheck={false} enterKeyHint="search"
-          onChange={(e) => { setText(e.target.value); setActive(-1); if (answer) reset(); }} onKeyDown={keys} />
+          onChange={(e) => { setText(refs.typed(e.target.value, text)); setActive(-1); if (answer) reset(); }} onKeyDown={keys} />
       </ComposerLine>
+      <NoteRefsRow refs={refs} className="pal-refs px-4 pt-2" onBack={() => { if (answer) reset(); line.current?.focus(); }} />
       <div className="pal-body">
         {answer ? (
-          <AnswerView answer={answer} waiting="Reading your notes"><Sources cites={answer.cites} notes={all ?? []} onPick={onClose} /></AnswerView>
+          <AnswerView answer={answer} waiting="Reading your notes"><Sources cites={answer.cites} notes={askable} onPick={onClose} /></AnswerView>
         ) : listed ? (
           <div role="listbox" id={list} aria-label={term ? 'Notes that match' : 'Recent notes'} className={cn(found.isPlaceholderData && 'is-stale')}>
             <Group label={term ? 'Notes' : 'Recent notes'}>

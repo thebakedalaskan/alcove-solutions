@@ -378,6 +378,43 @@ export const ProEndedNight = night(ProEnded);
 export const ProEndedPhone = phone(ProEnded);
 /** Dismissing a notice: it goes, here and from the side panel. */
 export const DismissANotice = page('/settings#plan', 'plan-pro-renewed', { play: pressing('Dismiss this notice', 'Dismiss the notice that Pro renewed') });
+/* Team: licenses bought by the team's admin (user-flows 11.28) */
+/** Not on a team: Team's card beside Free and Pro, $40 a person a month, with Start a team. */
+export const TeamCardNotOnATeam = page('/settings#plan', 'no-team');
+export const TeamCardNotOnATeamNight = night(TeamCardNotOnATeam);
+export const TeamCardNotOnATeamPhone = phone(TeamCardNotOnATeam);
+/** The team's admin: Team is the plan, 3 licenses left, how many to buy and Buy 1 license, then Auto-purchase and Refund. */
+export const TeamCardAdmin = page('/settings#plan', 'team-admin');
+export const TeamCardAdminNight = night(TeamCardAdmin);
+export const TeamCardAdminPhone = phone(TeamCardAdmin);
+/** Buying a license: one more left. */
+export const BuyALicense = page('/settings#plan', 'team-admin', { play: pressing('Buy 1 license', 'Buy a license from the balance') });
+/** Refund asks in place: what goes back to the balance. */
+export const RefundLicensesAsked = page('/settings#plan', 'team-admin', { play: pressing(/^Refund \(/, 'Ask to refund the licenses nobody has taken') });
+/** Auto-purchase is on. */
+export const AutoPurchaseOn = page('/settings#plan', 'team-admin', { beforeEach: changing((w) => { if (w.myTeam) w.myTeam.autoPurchase = true; }) });
+/** A member: on Team, and Priya buys the licenses. */
+export const TeamCardMember = page('/settings#plan', 'team-member');
+/** Licenses running low: a `licenses-low` notice. */
+export const LicensesLowNotice = page('/settings#plan', 'team-admin-low');
+export const LicensesLowNoticeNight = night(LicensesLowNotice);
+/** None left when someone needed one: a `licenses-none` notice. */
+export const NoLicensesLeftNotice = page('/settings#plan', 'team-admin-none');
+/** No license for Art: on Free, told to ask Priya (a `license-needed` notice). */
+export const LicenseNeededNotice = page('/settings#plan', 'team-member-unlicensed');
+export const LicenseNeededNoticePhone = phone(LicenseNeededNotice);
+/** A license replaced Pro: two months that hadn't started went back to the balance (a `license-replaced-pro` notice). */
+export const LicenseReplacedProNotice = page('/settings#plan', 'team-member', {
+  beforeEach: changing((w) => {
+    const at = new Date().toISOString();
+    w.plan = {
+      ...w.plan,
+      balance: { microUsd: w.plan.balance.microUsd + 40_000_000, history: [{ id: 'sb-entry-replaced', at, label: 'Refund: 2 months of Pro, for a team license', microUsd: 40_000_000 }, ...w.plan.balance.history] },
+      notices: [{ id: 'sb-notice-replaced', kind: 'license-replaced-pro', at, until: null, count: 2 }]
+    };
+  })
+});
+
 export const AddMoneyPicker = page('/settings#plan', 'payments', {
   play: async ({ userEvent, step }) => {
     await step('Choose how much to add, then a token and network', async () => {

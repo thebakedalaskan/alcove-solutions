@@ -1,6 +1,6 @@
 /* Query keys, fetchers and mutations. Screens read data through these, never through `api` directly. */
 import type { AgentDecisionInput, AgentTokenInput, DriveExportInput, FileNotes, FollowUpReview, MeetingCreate } from '@alcove/api';
-import { AlcoveApiError, MAX_SORT_STICKIES, MAX_SORT_STICKY, SORT_TOO_FEW, SORT_TOO_MANY, errorCode, type ActionProposal, type ChangeScope, type DecisionProposal, type DemoProvider, type DocumentRole, type FeatureFlagName, type Group, type PresenterFrameNotes, type InstantCallInput, type ISODate, type ItemInput, type ItemPlace, type LinePatch, type MeetingInput, type MentionBody, type NoteKind, type NotesSetting, type Patch, type PersonalInput, type PersonalNotes, type PromoteBody, type QuestionPatch, type TopUp, type RingReply, type Series, type SharedWrite, type ShareTarget, type DocumentLibrary, type WorkspaceRole, type WorkspaceSummary, type WorkspaceTree } from '@alcove/api';
+import { AlcoveApiError, MAX_SORT_STICKIES, MAX_SORT_STICKY, SORT_TOO_FEW, SORT_TOO_MANY, errorCode, type ActionProposal, type ChangeScope, type DecisionProposal, type DemoProvider, type DocumentRole, type FeatureFlagName, type Group, type PresenterFrameNotes, type InstantCallInput, type ISODate, type ItemInput, type ItemPlace, type LinePatch, type MeetingInput, type MentionBody, type MyTeam, type NoteKind, type NotesSetting, type Patch, type PersonalInput, type PersonalNotes, type PromoteBody, type QuestionPatch, type TopUp, type RingReply, type Series, type SharedWrite, type ShareTarget, type TeamAccess, type DocumentLibrary, type WorkspaceRole, type WorkspaceSummary, type WorkspaceTree } from '@alcove/api';
 import { queryOptions, useIsMutating, useMutation, useMutationState, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef } from 'react';
 import { forgetAccount } from '~/features/record/offline';
@@ -29,6 +29,10 @@ export const qk = {
   session: ['session'] as const,
   prefs: ['prefs'] as const,
   team: ['team'] as const,
+  /** The team you're on (`teams.mine`), apart from `team`, the company directory. */
+  myTeam: ['my-team'] as const,
+  teamNotes: ['my-team', 'notes'] as const,
+  teamInvite: (secret: string) => ['team-invite', secret] as const,
   workspaces: ['workspaces'] as const,
   people: (query: string) => ['people', query] as const,
   meetings: ['meetings'] as const,
@@ -133,6 +137,12 @@ export const q = {
   session: () => queryOptions({ queryKey: qk.session, queryFn: () => readSessionWithPictureAccess(() => api.auth.getSession()), staleTime: 60_000 }),
   prefs: () => queryOptions({ queryKey: qk.prefs, queryFn: ({ client }) => readPreferences(api, client), refetchInterval: 30_000, refetchIntervalInBackground: true }),
   team: () => queryOptions({ queryKey: qk.team, queryFn: () => api.people.team(), staleTime: 5 * 60_000 }),
+  /** The team you're on, or null: its members and their licenses, and for its admin the licenses left. */
+  myTeam: () => queryOptions({ queryKey: qk.myTeam, queryFn: () => api.teams.mine(), staleTime: 60_000 }),
+  /** The notes made visible to your team that you can open (a live license needed). */
+  teamNotes: () => queryOptions({ queryKey: qk.teamNotes, queryFn: () => api.teams.notes(), staleTime: 60_000 }),
+  /** Whose team an invite's link joins, before joining. Asked once: a link that leads nowhere stays that way. */
+  teamInvite: (secret: string) => queryOptions({ queryKey: qk.teamInvite(secret), queryFn: () => api.teams.peek(secret), retry: false, staleTime: Infinity }),
   workspaces: () => queryOptions({ queryKey: qk.workspaces, queryFn: ({ client }) => readWorkspaces(api, client) }),
   people: (query: string) => queryOptions({ queryKey: qk.people(query), queryFn: () => api.people.search(query), staleTime: 30_000, placeholderData: (prev) => prev }),
   upcoming: () => queryOptions({ queryKey: qk.upcoming, queryFn: () => api.meetings.upcoming(), refetchInterval: 60_000 }),
@@ -521,6 +531,97 @@ export function useDismissPlanNotice() {
   });
 }
 
+/* ---------- a team ---------- */
+
+/** What a team's change touches: the team, its notes, and the plan (a license decides it). */
+function teamChanged(qc: QueryClient) {
+  for (const queryKey of [qk.myTeam, qk.plan]) void qc.invalidateQueries({ queryKey });
+}
+/** A change that answers with the team as it is now: kept, and the plan read again. A refusal reads both again. */
+function teamWrite<V>(qc: QueryClient, write: (v: V) => Promise<MyTeam>) {
+  return {
+    mutationFn: write,
+    onSuccess: (t: MyTeam) => { qc.setQueryData(qk.myTeam, t); void qc.invalidateQueries({ queryKey: qk.plan, exact: true }); },
+    onError: () => teamChanged(qc)
+  };
+}
+/**
+ * Says you're using Alcove: when the app opens signed in, and when a tab comes back after a long while away. On a team it
+ * can take a license, so the plan, the team and what a license opens are read again after.
+ */
+export function useVisit() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.auth.visit(),
+    onSuccess: () => {
+      teamChanged(qc);
+      void qc.invalidateQueries({ queryKey: qk.teamNotes });
+    }
+  });
+}
+export function useCreateTeam() {
+  const qc = useQueryClient();
+  return useMutation(teamWrite(qc, (name: string) => api.teams.create(name)));
+}
+/** A new one-time link to join the team. Shown once: it isn't kept anywhere. */
+export function useTeamInvite() {
+  return useMutation({ gcTime: 0, mutationFn: () => api.teams.invite() });
+}
+/** Joins the team an invite's link is for: the team, the plan, and everything a license opens are read again. */
+export function useJoinTeam() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (secret: string) => api.teams.join(secret),
+    onSuccess: (t) => {
+      qc.setQueryData(qk.myTeam, t);
+      for (const queryKey of [qk.plan, qk.teamNotes, qk.notes, qk.workspaces]) void qc.invalidateQueries({ queryKey });
+    },
+    onError: () => teamChanged(qc)
+  });
+}
+export function useRemoveTeamMember() {
+  const qc = useQueryClient();
+  return useMutation(teamWrite(qc, (memberId: string) => api.teams.remove(memberId)));
+}
+/** Leaving, or deleting the team: there's no team after, so everything it opened is read again. */
+function teamGone(qc: QueryClient) {
+  qc.setQueryData(qk.myTeam, null);
+  qc.removeQueries({ queryKey: qk.teamNotes });
+  for (const queryKey of [qk.plan, qk.notes, qk.workspaces]) void qc.invalidateQueries({ queryKey });
+}
+export function useLeaveTeam() {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: () => api.teams.leave(), onSuccess: () => teamGone(qc), onError: () => teamChanged(qc) });
+}
+export function useDeleteTeam() {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: () => api.teams.delete(), onSuccess: () => teamGone(qc), onError: () => teamChanged(qc) });
+}
+/** Buys licenses from the balance at the price shown. A refusal (a changed price, a short balance) reads the offers again too. */
+export function useBuyLicenses() {
+  const qc = useQueryClient();
+  return useMutation({
+    ...teamWrite(qc, ({ count, microUsdPerLicense }: { count: number; microUsdPerLicense: number }) => api.teams.buyLicenses(count, microUsdPerLicense)),
+    onError: () => { void qc.invalidateQueries({ queryKey: qk.myTeam }); void qc.invalidateQueries({ queryKey: qk.plan }); }
+  });
+}
+export function useRefundLicenses() {
+  const qc = useQueryClient();
+  return useMutation(teamWrite(qc, () => api.teams.refundLicenses()));
+}
+export function useSetAutoPurchase() {
+  const qc = useQueryClient();
+  return useMutation(teamWrite(qc, (on: boolean) => api.teams.setAutoPurchase(on)));
+}
+/** Makes a note you organized visible to your team, or stops it being: the note and the team's notes are read again. */
+export function useSetTeamVisible(noteId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (visible: boolean) => api.notes.setTeamVisible(noteId, visible),
+    onSettled: () => { for (const queryKey of [qk.note(noteId), ['notes', 'list'], qk.teamNotes]) void qc.invalidateQueries({ queryKey }); }
+  });
+}
+
 /* ---------- adding money ---------- */
 
 /** Opens a top-up on a route: the address to pay to. It joins the open ones on Plan. */
@@ -873,9 +974,25 @@ export function usePickTime(code: string) {
 
 /* ---------- workspaces ---------- */
 
+/** Makes a workspace. On a team, while licensed, `access` says who's in it: the whole team, or only the people added. */
 export function useCreateWorkspace() {
   const qc = useQueryClient();
-  return useMutation({ mutationFn: (name: string) => api.workspaces.create(name), onSuccess: () => qc.invalidateQueries({ queryKey: qk.workspaces, exact: true }) });
+  return useMutation({
+    mutationFn: ({ name, access }: { name: string; access?: TeamAccess | undefined }) => api.workspaces.create(name, { access }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.workspaces, exact: true })
+  });
+}
+/** Admins of a team's workspace: who's in it, the whole team or only the people added. */
+export function useSetTeamAccess(workspaceId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (access: TeamAccess) => api.workspaces.setTeamAccess(workspaceId, access),
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: qk.workspaceTree(workspaceId) });
+      void qc.invalidateQueries({ queryKey: qk.workspacePeople(workspaceId) });
+      void qc.invalidateQueries({ queryKey: qk.workspaces, exact: true });
+    }
+  });
 }
 export function useRenameWorkspace() {
   const qc = useQueryClient();

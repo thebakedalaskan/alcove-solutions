@@ -81,7 +81,7 @@ function useHead(onNaming: (n: 'new' | 'rename') => void) {
   const push = useToast();
   const close = () => { setOpen(false); setInside(null); };
   const about: WsMenuRow[] = [];
-  if (ws.sent.role !== null) about.push({ id: 'people', icon: 'people', label: 'People', sub: peopleWords(ws.sent.people), onSelect: () => setInside('people') });
+  if (ws.sent.role !== null) about.push({ id: 'people', icon: 'people', label: 'People', sub: ws.sent.teamAccess === 'team' ? 'Whole team' : peopleWords(ws.sent.people), onSelect: () => setInside('people') });
   if (ws.sent.role === 'admin') {
     about.push({ id: 'rename', icon: 'pen', label: 'Rename', onSelect: () => { close(); onNaming('rename'); } });
     about.push({ id: 'delete', icon: 'trash', label: 'Delete workspace', tone: 'caution', onSelect: () => setInside('delete') });
@@ -212,7 +212,8 @@ export function List({ drags }: { drags: ListDrag }) {
     onCommit: (name) => {
       setNaming(null);
       const to = name.trim();
-      if (to) create.mutateAsync(to).then(({ id }) => { ws.switchTo(id); }, refused);
+      // One made in a call is only for the people added, so a call's notes never reach a whole team unasked.
+      if (to) create.mutateAsync({ name: to, access: call ? 'added' : undefined }).then(({ id }) => { ws.switchTo(id); }, refused);
     }
   } : {
     name: nameDraft ?? ws.spaceName, placeholder: 'Name this workspace', onCancel: () => { setNaming(null); setNameDraft(null); },

@@ -367,6 +367,9 @@
 .set-plan-until b { display: block; font: 600 14.5px/20px var(--font-sans); color: var(--ink); }
 .set-plan-pick { display: flex; align-items: center; gap: 12px; }
 .set-plan-pick .ac-select { flex: 1; min-width: 0; }
+.set-plan-pick .set-plan-n { flex: 1; min-width: 0; }
+.set-plan-pick:has(.set-plan-n) { align-items: flex-end; }
+.set-plan-pick:has(.set-plan-n .hint) .set-plan-total { margin-bottom: 26px; }
 .set-plan-total { font: 600 16px/22px var(--font-sans); color: var(--ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .set-plan-acts { display: flex; flex-wrap: wrap; gap: 8px; }
 .set-plan-acts .ac-btn { flex: 1 1 auto; }

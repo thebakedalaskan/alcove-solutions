@@ -18,7 +18,7 @@ import {
   type CallDocument, type CallSession, type Change, type ChangeScope, type DecisionPatch, type DecisionProposal, type ID, type Inbox, type IncomingRing,
   type FileNotes, type InstantCallInput, type Interval, type LinePatch, type Meeting, type MeetingCreate, type MeetingInput, type Note, type NoteFound, type NoteKind, type NoteProgress,
   type Patch, type Preferences, type PromoteBody, type PromotionPreview, type QuestionPatch, type RecipientRole, type RingReply, type Rsvp, type Series, type SharedAudience, type SharedWrite,
-  type SeriesAnswerPart, type SeriesNote, type SignInResult, type DemoProvider, type RoomRecordingInput, type RoomRecording, type CallMoveIn, type WorkspaceItem
+  type SeriesAnswerPart, type SeriesNote, type SignInResult, type DemoProvider, type RoomRecordingInput, type RoomRecording, type CallMoveIn, type TeamAccess, type WorkspaceItem
 } from '@alcove/api';
 import { isOnline } from '../browser';
 import { canvasTheme } from '../world/boards';
@@ -35,6 +35,7 @@ import { AI_MODELS, atTheDoor } from './script';
 import { current, me, nextId, openedAs } from './state';
 import { agentsFor, EXPIRED_AGENT_REQUEST, forgetAgents, PREVIEW_AGENT_TOKEN, PREVIEW_MCP_ENDPOINT } from './agents';
 import * as spaces from './workspaces';
+import { licensed, licensedCount, teamNoteIn, teamNotesFor, teamsApi, visit } from './teams';
 
 /* ---------- how every answer comes back ---------- */
 
@@ -294,7 +295,7 @@ function spaceFor(w: World, call: { title: string; at: string; people: number },
     id: nextId('folder').padEnd(22, '0'), kind: 'folder', name: folder.name, parent: null, by: null, createdAt: now, editedAt: now, trashedAt: null, trashedBy: null,
     restricted: false, role: 'edit', call: { startedAt: call.at, on: false, here: false, noteId: folder.noteId }
   }] : [];
-  w.workspaces.push({ id, name: call.title.replace(/\s+/g, ' ').trim().slice(0, 120) || 'Untitled', role: 'admin', people: call.people, items, createdAt: now, call: { title: call.title, at: call.at } });
+  w.workspaces.push({ id, name: call.title.replace(/\s+/g, ' ').trim().slice(0, 120) || 'Untitled', role: 'admin', people: call.people, teamAccess: null, items, createdAt: now, call: { title: call.title, at: call.at } });
   return id;
 }
 /** What a call's folder is called: the call, and the day it started, 'Design review · 4 Nov'. */
@@ -377,7 +378,8 @@ export const standIn: AlcoveApi = {
       w.session = s;
       return { session: s, isNew: w.notes.length === 0 };
     }, 'anyone'),
-    signOut: () => answer((w) => { w.session = null; })
+    signOut: () => answer((w) => { w.session = null; }),
+    visit: () => answer(visit)
   },
   account: {
     preferences: () => answer((w) => w.prefs),
@@ -617,7 +619,8 @@ export const standIn: AlcoveApi = {
   },
   notes: {
     list: (query) => answer((w) => found(w, query?.kind, query?.text)),
-    get: (id: ID) => answer((w) => noteIn(w, id)),
+    // A note of the team's opens for a licensed member: to read and ask about.
+    get: (id: ID) => answer((w) => teamNoteIn(w, id) ?? noteIn(w, id)),
     progress: (id: ID): AsyncIterable<NoteProgress> => progressOf(id),
     audioUrl: (id: ID, segment: number) => {
       const seconds = current().notes.find((n) => n.id === id)?.audio.find((a) => a.index === segment)?.seconds ?? 60;
@@ -731,8 +734,25 @@ export const standIn: AlcoveApi = {
       if (w.writing?.id === noteId) w.writing = null;
       return { ...n, writingAgain: false };
     }),
-    ask: (noteId: ID, question: string) => stream((w) => asWritten(answerAbout(noteIn(w, noteId), question))),
-    askAll: (question: string) => stream((w) => asWritten(answerAcross(w, question))),
+    ask: (noteId: ID, question: string) => stream((w) => asWritten(answerAbout(teamNoteIn(w, noteId) ?? noteIn(w, noteId), question))),
+    // Your notes, the ones shared with you and your team's; the ones @-referenced first, and one you can't open refused.
+    askAll: (question: string, refs?: ID[]) => stream((w) => {
+      const team = teamNotesFor(w).filter((n) => n.received?.role === 'team');
+      const all = [...w.notes, ...team];
+      const named = (refs ?? []).slice(0, 5).map((id) => {
+        const n = all.find((x) => x.id === id);
+        if (!n) throw refused('not-found', 'One of the notes you referred to isn’t there, or you can’t open it.');
+        return n;
+      });
+      const about = named.filter((n) => n.status === 'ready').flatMap((n) => answerAbout(n, question));
+      return asWritten([...about, ...(about.length ? [] : answerAcross({ ...w, notes: all }, question))]);
+    }),
+    setTeamVisible: (id: ID, visible: boolean) => answer((w) => {
+      const n = noteIn(w, id);
+      if (n.received) throw refused('forbidden', 'Only the note’s organizer can make it visible to their team.');
+      if (visible && !licensed(w)) throw refused('forbidden', 'You need a team license to make a note visible to your team.');
+      w.notes = w.notes.map((x) => (x.id === id ? { ...x, teamVisible: visible } : x));
+    }),
     share: (id: ID, to: { emails: string[]; group?: string | undefined }) => changeNote(id, (n) => {
       const at = new Date().toISOString();
       const fresh = to.emails.map(personAt).filter((p) => !n.people.some((x) => x.email === p.email));
@@ -813,10 +833,19 @@ export const standIn: AlcoveApi = {
   },
   workspaces: {
     list: () => answer(spaces.workspaceList),
-    create: (name: string) => answer((w) => {
+    // On a team, while licensed, it's the team's: the whole team's unless only the people added are asked for.
+    create: (name: string, opts?: { access?: TeamAccess | undefined }) => answer((w) => {
       const id = nextId('ws');
-      w.workspaces.push({ id, name, role: 'admin', people: 1, items: [], createdAt: new Date().toISOString(), call: null });
+      const teamAccess = licensed(w) ? opts?.access ?? 'team' : null;
+      w.workspaces.push({ id, name, role: 'admin', people: teamAccess === 'team' ? licensedCount(w) : 1, teamAccess, items: [], createdAt: new Date().toISOString(), call: null });
       return { id };
+    }),
+    setTeamAccess: (id: ID, access: TeamAccess) => answer((w) => {
+      const space = spaces.treeOf(id);
+      if (space.role !== 'admin') throw refused('forbidden', 'Only the workspace’s admins can change who’s in it.');
+      if (space.teamAccess === null) throw refused('invalid', 'This workspace isn’t a team’s.');
+      space.teamAccess = access;
+      space.people = access === 'team' ? Math.max(space.people ?? 1, licensedCount(w)) : space.people;
     }),
     get: (id: ID) => answer(() => spaces.treeFor(id)),
     presenterNotes: {
@@ -951,6 +980,20 @@ export const standIn: AlcoveApi = {
       return cancelled;
     }),
     topUps: () => answer((w) => { paymentRoutes(w); return w.payments.topUps; })
+  },
+  teams: {
+    mine: () => answer(teamsApi.mine),
+    create: (name: string) => answer((w) => teamsApi.create(w, name)),
+    invite: () => answer(teamsApi.invite),
+    peek: (secret: string) => answer((w) => teamsApi.peek(w, secret)),
+    join: (secret: string) => answer((w) => teamsApi.join(w, secret)),
+    remove: (memberId: ID) => answer((w) => teamsApi.remove(w, memberId)),
+    leave: () => answer(teamsApi.leave),
+    delete: () => answer(teamsApi.delete),
+    buyLicenses: (count: number, microUsdPerLicense: number) => answer((w) => teamsApi.buyLicenses(w, count, microUsdPerLicense)),
+    refundLicenses: () => answer(teamsApi.refundLicenses),
+    setAutoPurchase: (on: boolean) => answer((w) => teamsApi.setAutoPurchase(w, on)),
+    notes: () => answer(teamsApi.notes)
   },
   models: { list: () => answer(() => AI_MODELS) },
   trust: { attestation: attest },

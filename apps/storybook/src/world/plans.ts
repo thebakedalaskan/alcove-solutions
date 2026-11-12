@@ -11,12 +11,16 @@ const MiB = 2 ** 20;
 const GiB = 2 ** 30;
 
 /** What Free brings a period: 5 hours of notes, 10 GB of storage, files up to 512 MB. */
-const FREE = { minutes: 300, storage: 10 * GiB, file: 512 * MiB } as const;
+export const FREE = { minutes: 300, storage: 10 * GiB, file: 512 * MiB } as const;
 /** What Pro brings a period: 50 hours of notes, 100 GB, and files up to 512 MB until downloads can resume. */
 const PRO = { minutes: 3000, storage: 100 * GiB, file: 512 * MiB } as const;
+/** What a team license brings each person a period: 50 hours of notes, 100 GB to the team's pool, files up to 512 MB. */
+export const TEAM = { minutes: 3000, storage: 100 * GiB, file: 512 * MiB } as const;
+/** What a team license costs: $40. */
+export const LICENSE_PRICE = 40_000_000;
 /** How long a period, and a month of Pro, is. */
 export const PERIOD_DAYS = 30;
-const PERIOD_MS = PERIOD_DAYS * 86_400_000;
+export const PERIOD_MS = PERIOD_DAYS * 86_400_000;
 /** What Pro costs a month: $20. */
 export const PRO_PRICE = 20_000_000;
 
@@ -24,10 +28,11 @@ export const PRO_PRICE = 20_000_000;
 export const PLAN_OFFERS: PlanOffers = {
   periodDays: PERIOD_DAYS,
   free: { notesMinutes: FREE.minutes, storageBytes: FREE.storage, fileBytes: FREE.file },
-  pro: { notesMinutes: PRO.minutes, storageBytes: PRO.storage, fileBytes: PRO.file, microUsdPerMonth: PRO_PRICE, maxMonths: 12 }
+  pro: { notesMinutes: PRO.minutes, storageBytes: PRO.storage, fileBytes: PRO.file, microUsdPerMonth: PRO_PRICE, maxMonths: 12 },
+  team: { notesMinutes: TEAM.minutes, storageBytes: TEAM.storage, fileBytes: TEAM.file, microUsdPerLicense: LICENSE_PRICE, maxLicenses: 500 }
 };
 /** Nothing of Pro bought. */
-const NO_PRO: Plan['pro'] = { months: [], until: null, renew: false, refundableMicroUsd: 0 };
+export const NO_PRO: Plan['pro'] = { months: [], until: null, renew: false, refundableMicroUsd: 0 };
 
 /**
  * Art on Free, the demo afternoon: 3 h 20 min of its 5 hours of notes left, 2.1 GB of 10 GB used, nothing in the balance, and the period renewing in about 12 days.
@@ -42,7 +47,8 @@ export const freePlan = (): Plan => ({
   balance: { microUsd: 0, history: [] },
   choose: false,
   pro: NO_PRO,
-  notices: []
+  notices: [],
+  team: null
 });
 
 /** A new account on Free: all of the period's notes, nothing stored, and the plans not shown yet. */
@@ -121,7 +127,7 @@ export function withProMonths(plan: Plan, months: ProMonth[], now = Date.now()):
   };
 }
 
-const notice = (id: string, kind: PlanNotice['kind'], at: string, until: string): PlanNotice => ({ id, kind, at, until });
+const notice = (id: string, kind: PlanNotice['kind'], at: string, until: string): PlanNotice => ({ id, kind, at, until, count: null });
 /** The demo afternoon the Pro scenarios open on: the world is made before the clock is set to it. */
 const AFTERNOON = () => on(0, 16, 12).getTime();
 

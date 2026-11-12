@@ -20,6 +20,7 @@ import { registerRecordingRoutes } from './features/recordings/routes';
 import { registerNoteRoutes } from './features/notes/routes';
 import { registerWorkspaceRoutes } from './features/workspaces/routes';
 import { registerBillingRoutes } from './features/billing/routes';
+import { registerTeamRoutes } from './features/billing/team-routes';
 
 /** Registration order is an access boundary: guest routes precede sign-in and stored receipts. */
 export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
@@ -46,6 +47,7 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
   registerDriveRoutes(app, runtime);
   registerWorkspaceRoutes(app, runtime);
   registerBillingRoutes(app, runtime);
+  registerTeamRoutes(app, runtime);
 
   return app;
 }

@@ -5,12 +5,13 @@
  * list to someone. On a wide screen the note picked in the list shows beside it; narrower, a note opens on its own page.
  * Before the first notes, Start a call takes the middle.
  */
-import { EmailParamSchema, errorCode, errorMessage, searchOf, type AnswerPart, type NoteFound } from '@alcove/api';
+import { EmailParamSchema, errorCode, errorMessage, searchOf, type NoteFound } from '@alcove/api';
 import { Evening } from '@alcove/ui';
 import { useQueries, useQuery } from '@tanstack/react-query';
 import { createFileRoute, useNavigate, useRouterState } from '@tanstack/react-router';
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent, type MouseEvent } from 'react';
 import { useAnswer } from '~/features/notes/answer';
+import { NoteRefsRow, useNoteRefs } from '~/features/notes/ask-refs';
 import { Answered } from '~/features/notes/list/Answered';
 import { FirstDay } from '~/features/notes/list/FirstDay';
 import { Nothing } from '~/features/notes/list/Nothing';
@@ -18,7 +19,6 @@ import { citedLine, peopleIn, type Said } from '~/features/notes/list/parts';
 import { Preview } from '~/features/notes/list/Preview';
 import { Row } from '~/features/notes/list/Row';
 import { SearchLine, ShowTabs, WithPeople, type Show } from '~/features/notes/list/Sky';
-import { api } from '~/lib/api';
 import { useSettled } from '~/lib/live';
 import { byEmail, sameEmail } from '~/lib/people';
 import { q } from '~/lib/queries';
@@ -30,7 +30,6 @@ export const Route = createFileRoute('/_app/notes/')({
   component: Notes
 });
 
-const askAll = (question: string): AsyncIterable<AnswerPart> => api.notes.askAll(question);
 /** The most of what's typed that a search looks at: a question can be longer. */
 const SEARCHED = 200;
 
@@ -75,7 +74,8 @@ function Library({ all, me }: { all: NoteFound[]; me: string | undefined }) {
     setLost(question);
     return true;
   }, []);
-  const { answer, ask, reset } = useAnswer(askAll, refused);
+  const refs = useNoteRefs();
+  const { answer, ask, reset } = useAnswer(refs.ask, refused);
   const term = useSettled(text.trim(), 160).slice(0, SEARCHED);
   const search = searchOf(term);
   const who = withOf(useRouterState({ select: (s) => s.location.hash }));
@@ -126,7 +126,7 @@ function Library({ all, me }: { all: NoteFound[]; me: string | undefined }) {
   useEffect(() => { if (!searched.isPlaceholderData) setAnswered(term); }, [term, searched.isPlaceholderData]);
 
   const change = (typed: string) => {
-    setText(typed);
+    setText(refs.typed(typed, text));
     setLost(null);
     if (answer) reset();
   };
@@ -179,6 +179,7 @@ function Library({ all, me }: { all: NoteFound[]; me: string | undefined }) {
       <header className="dusk-top" style={{ '--d': 0 }}><h1 className="dusk-title">Notes</h1></header>
       <section className="nt-sky" aria-label="Find what was said" style={{ '--d': 1 }}>
         <SearchLine line={line} text={text} asked={asked} asking={!!answer && !answer.done} onText={change} onClear={clear} onAsk={run} onDown={() => focusRow(current?.id)} />
+        <NoteRefsRow refs={refs} className="nt-refs" onBack={() => { if (answer) reset(); line.current?.focus(); }} />
         <WithPeople known={known} person={person} add={add} onPick={(email) => (email ? narrow(email) : anyone())} />
         <ShowTabs show={show} onShow={(s) => { putAway(); setShow(s); }} />
       </section>

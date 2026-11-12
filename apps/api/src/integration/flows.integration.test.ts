@@ -10,6 +10,7 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { addObject, boardText, newId, readBoard, tableCell } from '@alcove/board';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { standing } from '../features/billing/meter';
+import { creditByEmail } from '../features/billing/support';
 import { setLimit } from '../limits';
 import { loadConfig, loadEnv } from '../config';
 import { b64u, openJson, sealJson, signInAttemptKey, unb64u } from '../crypto';
@@ -3329,7 +3330,7 @@ describe('deleting an account', () => {
       'call_private_messages', 'call_rings', 'calls', 'content_jobs', 'deposits', 'document_access', 'document_clients', 'document_snapshots', 'document_updates', 'document_version_parts',
       'document_versions', 'documents', 'drive_call_exports', 'drive_connections', 'drive_export_jobs', 'identities', 'items', 'media_upload_days', 'meeting_access',
       'note_access', 'note_additions', 'note_links', 'object_gc', 'operations', 'owners', 'personal_notes', 'plan_accounts', 'presenter_frame_notes', 'presenter_notes', 'recording_pieces', 'recordings',
-      'revisions', 'screen_frames', 'screen_pieces', 'screen_shares', 'screen_videos', 'sessions', 'timer_presets', 'transcript_clips', 'transcript_translations',
+      'revisions', 'screen_frames', 'screen_pieces', 'screen_shares', 'screen_videos', 'sessions', 'team_notes', 'teams', 'timer_presets', 'transcript_clips', 'transcript_translations',
       'workspace_authors', 'workspace_media', 'workspace_media_pieces', 'workspace_media_previews', 'workspace_media_uses', 'workspace_members', 'workspace_mentions',
       'workspaces'
     ]);
@@ -3338,7 +3339,8 @@ describe('deleting an account', () => {
     // Frames and joined video come from a real video once the notes are written: deleting them with a note is in screens.integration.test.ts.
     // A workspace is an owner of its own, so an account has no rows there under its own ID: workspaces.integration.test.ts deletes those, and media.integration.test.ts what's in them.
     // OAuth codes and retry receipts have account-deletion coverage in the agents and MCP flows.
-    const notAnAccounts = new Set(['agent_codes', 'agent_operations', 'object_gc', 'screen_frames', 'screen_videos', 'workspaces', 'workspace_members', 'workspace_authors', 'workspace_mentions', 'documents', 'document_access', 'document_clients', 'document_updates', 'document_snapshots', 'document_version_parts', 'document_versions', 'workspace_media', 'workspace_media_pieces', 'workspace_media_previews', 'workspace_media_uses']);
+    // A team is an owner of its own, like a workspace, and a note made visible to a team goes with the note: teams.integration.test.ts deletes both.
+    const notAnAccounts = new Set(['agent_codes', 'agent_operations', 'object_gc', 'screen_frames', 'screen_videos', 'teams', 'team_notes', 'workspaces', 'workspace_members', 'workspace_authors', 'workspace_mentions', 'documents', 'document_access', 'document_clients', 'document_updates', 'document_snapshots', 'document_version_parts', 'document_versions', 'workspace_media', 'workspace_media_pieces', 'workspace_media_previews', 'workspace_media_uses']);
     for (const t of tables) if (!notAnAccounts.has(t)) expect(before[t], t).toBeGreaterThan(0);
     expect((await h.pool.query<{ kind: string }>('SELECT DISTINCT kind FROM items WHERE owner_id = $1 ORDER BY kind', [ownerId])).rows.map((r) => r.kind)).toEqual(['connection', 'meeting', 'note', 'profile']);
     const [identity] = (await h.pool.query<{ email_index: Buffer }>('SELECT email_index FROM identities WHERE owner_id = $1', [ownerId])).rows;
@@ -3922,6 +3924,22 @@ describe('privacy at rest', () => {
     h.oneclick.set(topUp.address ?? '', 'SUCCESS', { depositedAmount: '25000000', amountOut: '25000000', intentHashes: ['canary-intent-hash'] });
     expect((await c.api.plans.topUp(topUp.id)).state).toBe('credited');
 
+    // A team: its name and who's on it sealed under its own key, what it bought (`team-billing`) under the service's, and
+    // an invite's secret only as a hash, in rows and nowhere in the logs.
+    await creditByEmail(h.deps, 'canary-person@canary.example', 40_000_000);
+    await c.api.teams.create('CANARY-TEAM name of the merger crew');
+    await c.api.teams.buyLicenses(1, 40_000_000);
+    await c.api.teams.setAutoPurchase(true);
+    await c.api.auth.visit();
+    const joining = await c.api.teams.invite();
+    await invitee.api.teams.join(joining.link.slice(joining.link.indexOf('#') + 1));
+    const teamInvite = await c.api.teams.invite();
+    const teamSecret = teamInvite.link.slice(teamInvite.link.indexOf('#') + 1);
+    expect(await invitee.api.teams.peek(teamSecret)).toMatchObject({ name: 'CANARY-TEAM name of the merger crew', admin: { email: 'canary-person@canary.example' } });
+    expect((await c.api.teams.mine())?.members.map((m) => m.person.email)).toEqual(['canary-person@canary.example', scribeEmail]);
+    const teamRows = String((await h.pool.query(`SELECT string_agg(row_to_json(x)::text, ' ') AS all FROM teams x`)).rows[0]?.all ?? '');
+    expect(teamRows).toContain('billing_ciphertext');
+
     // A live question stays present for the sweep: ending a call physically deletes its attention record.
     const attentionCall = await c.api.calls.join((await c.api.calls.startNow({ notes: 'off' })).code, { mic: false, cam: false });
     await until(async () => attentionCall.crypto.getSnapshot().status === 'in', 'the live question author in the call’s group');
@@ -3952,7 +3970,8 @@ describe('privacy at rest', () => {
       'CANARY-BOARDACTION', 'order the doors', 'CANARY-ROOMNAME', 'CANARY-ROOMSTICKY', 'owns the merger', 'canary-roomie', 'CANARY-VOTEFRAME', 'CANARY-VOTESTICKY', voteFrame, voteSticky,
       'CANARY-NOTEDFRAME', 'CANARY-FRAMENOTE', 'thank the support team', notedFrame,
       'CANARY-CUE', 'as you can see the chart', 'CANARY-VIDEO', 'Person’s screen', 'CANARY-LIVEQUESTION', 'private launch',
-      'canary-deposit-address', 'Credits added', 'canary-intent-hash'
+      'canary-deposit-address', 'Credits added', 'canary-intent-hash',
+      'CANARY-TEAM', 'merger crew', 'Team, 1 license', '"autoPurchase"', '"pool"'
     ];
     for (const canary of canaries) for (const enc of encodings(canary)) expect(rowsText.includes(enc), `${canary} as ${enc}`).toBe(false);
     // An answer is one short word, so it has a check of its own, in the only rows that hold one.
@@ -3993,6 +4012,7 @@ describe('privacy at rest', () => {
     for (const secret of secrets) expect(logText.includes(secret), 'a session cookie or move code in logs').toBe(false);
     for (const enc of encodings(moveCode)) expect(rowsText.includes(enc), 'a move code in rows').toBe(false);
     for (const enc of encodings(noteLink.secret)) expect(rowsText.includes(enc), 'a note link’s secret in rows').toBe(false);
+    for (const enc of encodings(teamSecret)) expect(rowsText.includes(enc) || logText.includes(enc), 'a team invite’s secret in rows or logs').toBe(false);
     // Logs are built to leave the confidential VM: no email address of anyone, ever, and no client address.
     expect(logText.match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/g) ?? []).toEqual([]);
     expect(logText.match(/\b10\.1\.\d{1,3}\.\d{1,3}\b/g) ?? []).toEqual([]);

@@ -17,7 +17,7 @@ import { Replay, usePlayer, useSpaceToPlay, useStageOnTheSky, type PlayerState }
 import type { Answer } from '~/features/notes/answer';
 import { askExample, exampleNote } from '~/features/notes/example';
 import { correctedSince, speakersOf, type Correcting } from '~/features/notes/lines';
-import { noteAsText, peopleLine, receivedLine } from '~/features/notes/meta';
+import { noteAsText, peopleLine, readerRole, receivedLine } from '~/features/notes/meta';
 import { AskBar, ChapterList, Recipients, Section, Summary, Transcript, roomAnchor, type Focus, type LineKinds, type ScreenRefShown, type ScreensShown } from '~/features/notes/parts';
 import { RoomSections } from '~/features/notes/rooms';
 import { NewFollowUp, NoteFollowUpReview } from '~/features/notes/NoteFollowUps';
@@ -175,7 +175,10 @@ function NoteView({ note, me, at, room, onGone }: { note: Note; me: string | und
   const [choosing, setChoosing] = useState(false);
   const received = note.received;
   const mine = !received;
-  const reader = useNoteReader()(received?.role ?? 'organizer');
+  // A team's note is read and asked about, nothing more: nothing on it can be changed, shared or added to.
+  const teamNote = received?.role === 'team';
+  const team = useQuery(q.plan()).data?.team ?? null;
+  const reader = useNoteReader()(readerRole(received));
   const organizer = note.recipients.find((r) => r.role === 'organizer')?.person;
   const ready = note.status === 'ready';
   const live = note.status === 'recording';
@@ -266,14 +269,20 @@ function NoteView({ note, me, at, room, onGone }: { note: Note; me: string | und
   const changeDecision = (d: Decision, patch: DecisionPatch) => updateDecision.mutate({ noteId: note.id, decisionId: d.id, patch }, { onError: failed });
   const changeQuestion = (x: Question, patch: QuestionPatch) => updateQuestion.mutate({ noteId: note.id, questionId: x.id, patch }, { onError: failed });
   // The organizer corrects any line; anyone else who has the notes, the words of their own lines (the server's rule too).
-  const correct: Correcting | undefined = ready ? {
+  const correct: Correcting | undefined = ready && !teamNote ? {
     can: (l) => mine || (!!me && !!l.speaker?.person?.email && sameEmail(l.speaker.person, { email: me })),
     people: mine && note.kind === 'call' ? speakersOf(note) : null,
     organizer: mine,
     onCorrect: (l, patch) => correctLine.mutate({ noteId: note.id, lineId: l.id, patch }, { onError: failed })
   } : undefined;
   // Only where what it adds will show: notes that couldn't be written have no decisions or follow-ups to show it among.
-  const fromLine = ready && written ? proposing : undefined;
+  const fromLine = ready && written && !teamNote ? proposing : undefined;
+  // What can be changed here: nothing, on a team's note.
+  const onToggle = teamNote ? undefined : toggle;
+  const onAction = teamNote ? undefined : changeAction;
+  const onDecision = teamNote ? undefined : changeDecision;
+  const onQuestion = teamNote ? undefined : changeQuestion;
+  const proposeHere = (form: () => ReactNode) => (teamNote ? null : form());
   const corrected = correctedSince([...lines, ...note.rooms.flatMap((r) => r.transcript)], note.writtenAt);
   // Where writing them again has got to, once the notes service says.
   const step = note.writingAgain && progress && !progress.ready ? progress.steps.at(-1)?.label : undefined;
@@ -293,7 +302,7 @@ function NoteView({ note, me, at, room, onGone }: { note: Note; me: string | und
   const writingAgain = note.writingAgain && <p className="nd-again"><Dots /><span><b>Writing the notes again</b> from the transcript as it is now. What people confirmed or took on stays.{step ? ` ${step}.` : ''}</span>{stop}</p>;
   // Each breakout room's own section, under the call's notes; whether any room has what was said in it to show, and
   // whether any has notes, which stay when a call isn't set to keep what they were written from.
-  const settle = ready ? { reader, onDecision: changeDecision, onQuestion: changeQuestion, onToggle: toggle, onAction: changeAction, people: note.recipients.map((r) => r.person), decisionForm, actionForm } : undefined;
+  const settle = ready && !teamNote ? { reader, onDecision: changeDecision, onQuestion: changeQuestion, onToggle: toggle, onAction: changeAction, people: note.recipients.map((r) => r.person), decisionForm, actionForm } : undefined;
   const tryAgain = mine ? <>{pickModel}<Button size="sm" className="nd-retry" loading={rewrite.isPending} onClick={writeAgain}>Try writing them again</Button></> : null;
   // The boards open in the call: the main room's with the call's notes, each room's in its section.
   const boards = note.workedOn.filter((w) => w.kind === 'board');
@@ -321,7 +330,7 @@ function NoteView({ note, me, at, room, onGone }: { note: Note; me: string | und
   ) : null;
   const boardFollowUps = !going && ready && written && fromBoards.length > 0 ? (
     <Section title={mainBoards.length > 1 ? 'Follow-ups from the boards' : 'Follow-ups from the board'} kind="follow" id="board-follow-ups" count={boardForYou ? `${boardForYou} for you` : undefined}>
-      <FollowUps actions={fromBoards} me={me} reader={reader} people={note.recipients.map((r) => r.person)} onToggle={toggle} onChange={changeAction} onSeek={seek} shown={onScreen} />
+      <FollowUps actions={fromBoards} me={me} reader={reader} people={note.recipients.map((r) => r.person)} onToggle={onToggle} onChange={onAction} onSeek={seek} shown={onScreen} />
     </Section>
   ) : null;
 
@@ -351,14 +360,15 @@ function NoteView({ note, me, at, room, onGone }: { note: Note; me: string | und
       <PageHead title={note.title} acts={(
         <>
           <PinNote noteId={note.id} />
-          <ShareNote note={note} onShared={(emails) => setSharedTo(new Set(emails))} />
-          <NoteMenu ready={ready} mine={mine} inCall={inCall} ask={delAsk} onWriteAgain={mine && ready && !note.writingAgain && ((note.transcript?.length ?? 0) > 0 || note.rooms.some((room) => room.transcript.length > 0)) ? () => setChoosing(true) : undefined} busy={del.isPending} gone={going} onDelete={() => void remove()}
+          {!teamNote && <ShareNote note={note} onShared={(emails) => setSharedTo(new Set(emails))} />}
+          <NoteMenu ready={ready} mine={mine} removable={!teamNote} inCall={inCall} ask={delAsk} onWriteAgain={mine && ready && !note.writingAgain && ((note.transcript?.length ?? 0) > 0 || note.rooms.some((room) => room.transcript.length > 0)) ? () => setChoosing(true) : undefined} busy={del.isPending} gone={going} onDelete={() => void remove()}
             onCopy={() => void navigator.clipboard?.writeText(noteAsText(note)).then(() => toast('Copied as text'))} />
         </>
       )}>
         <span className="nd-when">{noteAt(note.startedAt)}{hasAudio ? '' : ` · ${minutesLabel(note.duration)}`}</span>
         <span className="nd-faces" title={peopleLine(note.people, me)}><Faces people={note.people} size={24} max={5} /><span>Everyone with the notes</span></span>
-        {received && <span className="nd-how">{receivedLine(received)}</span>}
+        {received && <span className="nd-how">{receivedLine(received, team?.name)}</span>}
+        {mine && note.teamVisible && <span className="nd-how"><Icon name="people" size={14} />Visible to {team?.name ?? 'your team'}</span>}
         {live && <span className="nd-rec"><RecDot />Still recording</span>}
         <Provenance evidence={note.inference} kind={note.kind} unencrypted={note.unencrypted} model={note.model} writing={note.status === 'pending' ? 'first' : note.writingAgain ? 'again' : undefined} />
       </PageHead>
@@ -377,15 +387,15 @@ function NoteView({ note, me, at, room, onGone }: { note: Note; me: string | und
                 {boardSection}
                 {boardFollowUps}
                 <Section title="Decided" kind="decide" id="decided" count={toConfirm ? `${toConfirm} to confirm` : undefined}>
-                  {note.decisions.length > 0 ? <Decisions items={note.decisions} me={me} reader={reader} onChange={changeDecision} onSeek={seek} shown={onScreen} /> : <p className="nd-none">The notes didn’t hear anything decided.</p>}
-                  {decisionForm()}
+                  {note.decisions.length > 0 ? <Decisions items={note.decisions} me={me} reader={reader} onChange={onDecision} onSeek={seek} shown={onScreen} /> : <p className="nd-none">The notes didn’t hear anything decided.</p>}
+                  {proposeHere(() => decisionForm())}
                 </Section>
                 {note.questions.length > 0 && (
-                  <Section title="Still open"><Questions items={note.questions} me={me} onChange={changeQuestion} onSeek={seek} shown={onScreen} /></Section>
+                  <Section title="Still open"><Questions items={note.questions} me={me} onChange={onQuestion} onSeek={seek} shown={onScreen} /></Section>
                 )}
                 <Section title="Follow-ups" kind="follow" id="follow-ups" count={forYou ? `${forYou} for you` : undefined}>
-                  {said.length > 0 ? <FollowUps actions={said} me={me} reader={reader} people={note.recipients.map((r) => r.person)} onToggle={toggle} onChange={changeAction} onSeek={seek} shown={onScreen} /> : <p className="nd-none">The notes didn’t hear anything to follow up.</p>}
-                  {actionForm()}
+                  {said.length > 0 ? <FollowUps actions={said} me={me} reader={reader} people={note.recipients.map((r) => r.person)} onToggle={onToggle} onChange={onAction} onSeek={seek} shown={onScreen} /> : <p className="nd-none">The notes didn’t hear anything to follow up.</p>}
+                  {proposeHere(() => actionForm())}
                 </Section>
               </>
             ) : ready && lines.length ? (
@@ -411,10 +421,10 @@ function NoteView({ note, me, at, room, onGone }: { note: Note; me: string | und
               </section>
             )}
             {!(ready && written) && (note.actions.length > 0 || ready) && <Section title="Follow-ups" kind="follow" id="follow-ups">
-              <FollowUps actions={said} me={me} reader={reader} people={note.recipients.map((r) => r.person)} onToggle={toggle} onChange={changeAction} onSeek={seek} shown={onScreen} />
-              {ready && actionForm()}
+              <FollowUps actions={said} me={me} reader={reader} people={note.recipients.map((r) => r.person)} onToggle={onToggle} onChange={onAction} onSeek={seek} shown={onScreen} />
+              {ready && proposeHere(() => actionForm())}
             </Section>}
-            <NoteFollowUpReview noteId={note.id} suggestions={note.suggestions} actions={note.actions} people={note.recipients.map((r) => r.person)} reader={reader} me={me} onSeek={seek} shown={onScreen} />
+            {!teamNote && <NoteFollowUpReview noteId={note.id} suggestions={note.suggestions} actions={note.actions} people={note.recipients.map((r) => r.person)} reader={reader} me={me} onSeek={seek} shown={onScreen} />}
             {/* Until there's a summary, the boards come after how the notes stand. */}
             {!(ready && written) && boardSection}
             {/* A call with no workspace: its organizer can file its notes in one, here as at the end of the call. */}
@@ -430,13 +440,13 @@ function NoteView({ note, me, at, room, onGone }: { note: Note; me: string | und
             {noScreens}
             {rooms}
           </div>
-          {ready && (lines.length > 0 || roomsSaid || roomNotes || (written && deleted)) && !going && <AskBar suggestions={note.suggestedQuestions} ask={(question) => api.notes.ask(note.id, question)} onSeek={seek} shown={onScreen} onKeep={keep} />}
+          {ready && (lines.length > 0 || roomsSaid || roomNotes || (written && deleted)) && !going && <AskBar suggestions={note.suggestedQuestions} ask={(question) => api.notes.ask(note.id, question)} onSeek={seek} shown={onScreen} onKeep={teamNote ? undefined : keep} />}
         </div>
         {/* Its own scroll area beside the note, so where you write is in reach however long the note is. In one column,
             where you write comes before the transcript (whereYouWrite.ts), and the rest after it. */}
         <aside className="nd-side" aria-label="About these notes">
           <div ref={where.beside} className="nd-spot" />
-          {where.put(<>
+          {!teamNote && where.put(<>
             <OwnNotesCard note={note} me={me} entries={yours.entries} own={yours.own} shown={onScreen} onSeek={seek} />
             <SharedNotes note={note} me={me} mine={mine} shown={onScreen} onSeek={seek} />
           </>)}
@@ -444,7 +454,7 @@ function NoteView({ note, me, at, room, onGone }: { note: Note; me: string | und
             {showMarks && <ChapterList chapters={note.chapters} onGo={canGo ? goChapter : undefined} />}
             <Recipients recipients={note.recipients} me={me} fresh={sharedTo} />
             {!going && <SeriesCard note={note} />}
-            {!going && note.kind === 'call' && note.id !== 'example' && <NoteDriveExports noteId={note.id} recordingAllowed={mine && note.kept.recording} recordingKept={note.kept.recording} />}
+            {!going && !teamNote && note.kind === 'call' && note.id !== 'example' && <NoteDriveExports noteId={note.id} recordingAllowed={mine && note.kept.recording} recordingKept={note.kept.recording} />}
           </div>
         </aside>
       </div>

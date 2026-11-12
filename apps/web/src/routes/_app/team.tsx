@@ -2,13 +2,14 @@
  * Team: your company, standing on the horizon. Everyone stands in the arch they're known by, you in the middle and the
  * low sun behind them to the left, and each opens a popover with everything about them. Under the water: your groups,
  * the people not on Alcove yet (the directory where there is one, otherwise the people at your work address you meet
- * with), and notes shared with groups. Nobody else here yet, it asks you to bring them. Someone on their own has no team,
- * so no Team page: nothing links here, and its address goes Home.
+ * with), and notes shared with groups. Nobody else here yet, it asks you to bring them, and Start a team makes a team of
+ * your own (features/team/OurTeam.tsx). On a team, the line is the team's people under their licenses, with its people, its
+ * licenses and the notes visible to it on the water. Someone on their own sees only Start a team.
  */
 import { GroupParamSchema, NEW_GROUP, errorCode, errorMessage, type NoteSummary, type Team } from '@alcove/api';
 import { Button, Evening, Icon, cn } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
-import { Navigate, createFileRoute, useNavigate } from '@tanstack/react-router';
+import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useState } from 'react';
 import { byMeetings, byRecency, knownPeople, meetings, shownOf, type Member } from '~/features/team/data';
 import { Groups, NO_DRAFT, readyToMake, type Draft } from '~/features/team/Groups';
@@ -17,6 +18,7 @@ import { blanks, inLine, lineOf, sunOf, you } from '~/features/team/line';
 import { OpenHost, personPop, useOpen } from '~/features/team/open';
 import { InvitePeople, NotOnAlcove, PeopleYouMeet, useCopyInvite } from '~/features/team/People';
 import { SharedWithGroups } from '~/features/team/Shared';
+import { asDirectory, InviteMade, NoLicense, StartTeam, TeamMembers, TeamNotes, teamLine, useInvite } from '~/features/team/OurTeam';
 import { useNow, useOnline } from '~/lib/live';
 import { sameEmail } from '~/lib/people';
 import { q } from '~/lib/queries';
@@ -35,7 +37,7 @@ export const Route = createFileRoute('/_app/team')({
   loader: async ({ context: { queryClient: qc } }) => {
     if (!navigator.onLine) return;
     await Promise.race([
-      Promise.allSettled([qc.ensureQueryData(q.team()), qc.ensureQueryData(q.prefs()), qc.ensureQueryData(q.notes())]),
+      Promise.allSettled([qc.ensureQueryData(q.team()), qc.ensureQueryData(q.myTeam()), qc.ensureQueryData(q.prefs()), qc.ensureQueryData(q.notes())]),
       new Promise((r) => setTimeout(r, 1200))
     ]);
   },
@@ -61,6 +63,9 @@ function TeamPage() {
   const session = useQuery(q.session()).data;
   /* The loader has tried it; a team that didn't load waits for Try again. */
   const team = useQuery({ ...q.team(), retryOnMount: false });
+  const mine = useQuery(q.myTeam()).data;
+  const teamNotes = useQuery({ ...q.teamNotes(), enabled: !!mine?.licensed }).data ?? NO_NOTES;
+  const invite = useInvite();
   const prefs = useQuery(q.prefs()).data;
   const notes = useQuery(q.notes()).data ?? NO_NOTES;
   const calls = useQuery(q.upcoming()).data ?? [];
@@ -73,10 +78,11 @@ function TeamPage() {
   const [forward, setForward] = useState<string | undefined>(undefined);
   const asked = useAskedBefore(team.data);
   if (!session) return null;
-  if (team.data === null) return <Navigate to="/home" replace />;
+  if (team.data === null && mine === null) return <OnTheirOwn />;
 
   const me = session.user;
-  const here = team.data;
+  // On a team, its people stand on the line; otherwise the company's directory.
+  const here = mine ? asDirectory(mine) : team.data ?? undefined;
   const events = prefs?.showOtherMeetings === false ? [] : calendar?.events ?? [];
   const meets = meetings(notes, calls, events, me.email, now);
   const person = knownPeople(here, notes, calls, events);
@@ -89,7 +95,7 @@ function TeamPage() {
   const inOrder = byMeetings(meets);
   const notYet = (was: boolean) => members.filter((m) => !m.onAlcove && asked.has(m.person.email) === was).sort(inOrder);
   const off: Member[] = [...notYet(false), ...notYet(true)];
-  const first = !!here && !on.length;
+  const first = !mine && !!here && !on.length;
   const trouble = here ? undefined : !online || errorCode(team.error) === 'network' ? 'offline' : team.isError ? 'failed' : undefined;
 
   const line = lineOf(you(me),
@@ -98,7 +104,7 @@ function TeamPage() {
         : inLine(on, off, forward));
   const sun = sunOf(line);
   /* One filled button: an open popover has its own, and so does a group ready to be made, while its editor's open. */
-  const filled = open === undefined && !(group === NEW_GROUP && readyToMake(draft));
+  const filled = open === undefined && !(group === NEW_GROUP && readyToMake(draft)) && invite.made === null;
 
   const groups = <Groups open={group} onOpen={openGroup} notes={notes} person={person} shown={shown} draft={draft} onDraft={setDraft} />;
   const shared = <SharedWithGroups notes={notes} me={me} now={now} />;
@@ -110,24 +116,47 @@ function TeamPage() {
         <header className="dusk-top"><h1 className="dusk-title">Team</h1></header>
         <section className="tp-hero" aria-labelledby="tp-h">
           <h2 id="tp-h" className="ac-clamp-2">{first ? 'Bring your team to Alcove' : here?.name ?? (trouble === 'offline' ? 'You’re offline' : trouble === 'failed' ? 'Your team didn’t load' : 'Your team')}</h2>
+          {mine && <p className="tp-line">{teamLine(mine)}</p>}
           {trouble && <p className="tp-why"><Icon name={trouble === 'offline' ? 'wifiOff' : 'alert'} size={18} />{trouble === 'offline' ? 'Your team shows here when you’re back.' : errorMessage(team.error)}</p>}
           <div className="tp-acts">
-            {here && <InvitePeople me={me} team={here} meets={meets} now={now} anchor={<Button variant={filled ? 'primary' : 'secondary'} size="lg" icon="addUser">Invite people</Button>} />}
+            {mine?.role === 'admin' && <Button variant={filled ? 'primary' : 'secondary'} size="lg" icon="addUser" loading={invite.making} onClick={invite.invite}>Invite</Button>}
+            {!mine && here && <InvitePeople me={me} team={here} meets={meets} now={now} anchor={<Button variant={filled ? 'primary' : 'secondary'} size="lg" icon="addUser">Invite people</Button>} />}
             {first && <Button size="lg" icon="link" onClick={() => void copy()}>Copy invite link</Button>}
+            {mine === null && here && <StartTeam />}
             {here && line.recedes && (
               <AllPeople me={me} team={here} onFind={(email) => { setForward(email); setOpen(() => personPop(email)); }}
                 anchor={<Button size="lg" icon="people">All {line.n} people</Button>} />
             )}
             {trouble && <Button variant="primary" size="lg" icon="retry" onClick={() => void team.refetch()}>Try again</Button>}
           </div>
+          {invite.made && <InviteMade made={invite.made} onDone={invite.done} />}
         </section>
         <PeopleLine line={line} sun={sun} company={here?.name} waiting={!here && !trouble} between={between} />
       </div>
-      <div className={cn('tp-grid', first && 'is-first')} style={{ '--d': 1 }}>
+      <div className={cn('tp-grid', first && 'is-first', mine && 'is-team')} style={{ '--d': 1 }}>
+        {mine && <NoLicense team={mine} />}
+        {mine && <TeamMembers team={mine} />}
+        {mine && <TeamNotes team={mine} notes={teamNotes} now={now} />}
         {first && here && <PeopleYouMeet team={here} people={off} directory={session.sample || members.some((m) => m.title !== undefined)} meets={meets} now={now} />}
         {groups}
-        {off.length > 0 && !first && <NotOnAlcove people={off} meets={meets} now={now} />}
+        {!mine && off.length > 0 && !first && <NotOnAlcove people={off} meets={meets} now={now} />}
         {shared}
+      </div>
+    </Evening>
+  );
+}
+
+/** Someone on their own, with no company and no team: Start a team is the page. */
+function OnTheirOwn() {
+  return (
+    <Evening moment="team" className="tp" data-line="short">
+      <div className="tp-sky" style={{ '--d': 0 }}>
+        <header className="dusk-top"><h1 className="dusk-title">Team</h1></header>
+        <section className="tp-hero" aria-labelledby="tp-h">
+          <h2 id="tp-h" className="ac-clamp-2">A team of your own</h2>
+          <p className="tp-line">Start a team, buy a license for each person, and invite them with a link.</p>
+          <div className="tp-acts"><StartTeam /></div>
+        </section>
       </div>
     </Evening>
   );

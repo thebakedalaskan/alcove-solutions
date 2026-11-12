@@ -378,7 +378,7 @@ export async function shownTo(x: Seeing): Promise<{ shown: CallWorkspace; lost: 
       // Whatever's going on there goes on while whoever started it can still open it: the workspace presented, while something
       // in it opens for them.
       const starters = [present, space, play].flatMap((p) => (p ? [whoStarted(d, x.callId, p.by)] : []));
-      const theirs = starters.length ? await holdersOf(d.pool, at.ownerId, starters.flatMap((who) => who.principals)) : { members: [], shares: [] };
+      const theirs = starters.length ? await holdersOf(d.pool, at.ownerId, starters.flatMap((who) => who.principals)) : { members: [], shares: [], licensed: [] };
       const stands = (by: Controller, id: string) => { const who = whoStarted(d, x.callId, by); return roleIn(who, standingIn(theirs, who), id) !== undefined; };
       const opensIt = (by: Controller) => { const who = whoStarted(d, x.callId, by); return canOpen(standingIn(theirs, who)); };
       if (present) {

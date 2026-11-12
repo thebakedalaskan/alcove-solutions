@@ -7,7 +7,7 @@ HTTP (`@alcove/api-http`) against real Postgres, the object store and LiveKit, w
 models as NEAR AI's catalog does) and the fake 1Click (the "fake money"). Limits are set per test to make a scenario quick:
 a minute of notes, an hour's period, a few kilobytes of storage. Rows for later phases say which.
 
-Suites: `billing/meter` (`apps/api/src/features/billing/meter.integration.test.ts`), `billing/plans`, `billing/topups`,
+Suites: `billing/meter` (`apps/api/src/features/billing/meter.integration.test.ts`), `billing/plans`, `billing/teams`, `billing/topups`,
 `calls/liveNotes`, `calls/callWorkspace`, `recordings/transcripts`, `workspaces/media`, `integration/flows`.
 
 | ID | Scenario | Where | Phase | Status |
@@ -16,7 +16,7 @@ Suites: `billing/meter` (`apps/api/src/features/billing/meter.integration.test.t
 | A1 | A new account is on Free, with all its notes, $0, and the plans to pick first | billing/plans › a new account starts on Free…; flows › sign-in | 1 | Passes |
 | A1′ | The tier screen after the first sign-in | — | 4 | Not built |
 | A2 | New account picks Pro with $0: refused, deposit, then buy: Pro's 3,000 minutes, 100 GiB and the whole allowance after spending on Free | billing/plans › Pro › a new account buys Pro once it has the money… | 2 | Passes |
-| A3 | New account picks Team: buy licenses, the admin takes one | — | 3 | Not built |
+| A3 | New account picks Team: deposit, make a team, buy licenses, the admin takes one on a visit (not by reading the session or plan) | billing/teams › A3: a new account picks Team… | 3 | Passes |
 | A4 | An account from before plans: Free from now, credits gone, the plans shown once, 15 days' grace if over Free's storage | billing/plans › accounts from before plans (3 tests) | 1 | Passes |
 | A5 | A sign-in from a call link skips the tier screen, which shows on the next load | — | 4 | Not built |
 | A6 | Delete the account and sign in again: a fresh Free account | flows › deleting an account | 1 | Passes |
@@ -60,14 +60,33 @@ Suites: `billing/meter` (`apps/api/src/features/billing/meter.integration.test.t
 | F5 | Pro ends over Free's storage: the grace (uploads go in), then uploads refused, files readable and deletable; buying Pro lifts it at once; buying in the release grace ends it | billing/plans › Pro › holds storage to Pro’s through the grace… | 2 | Passes |
 | F6 | Pro's storage and file size are what's enforced; Pro's files are offered and held at 512 MiB until downloads resume | billing/plans › Pro › holds an account on Pro to Pro’s storage and file size… | 2 | Passes |
 | F7 | Support finds an account by its address and adds dollars (`pnpm billing credit`) | billing/plans › support | 2 | Passes |
-| **G: Team** | Licenses, invites, visits, alerts, team notes and workspaces, pooled storage | — | 3 | Not built |
+| **G: Team** | Licenses, invites, visits, alerts, team notes and workspaces, pooled storage |  |  |  |
+| G1 | Create a team, buy licenses (1 to 500, at the price shown; a short balance or a changed price refused), the admin takes one on a visit; Team offered from the limits | billing/teams › A3…; G1: offers Team from the limits, and buys 1 to 500 licenses… | 3 | Passes |
+| G2 | An invite works once; a second use, an expired one, a made-up one, or someone already on a team is refused; only its hash is kept; upkeep deletes expired ones; only the admin makes one | billing/teams › G2: an invite works once… | 3 | Passes |
+| G3 | Joining with licenses takes one; with none, Free and `license-needed` ("ask your admin"), the admin told `licenses-none`, once each; the next visit after more are bought takes one | billing/teams › G3: joining with a license left takes one… | 3 | Passes |
+| G4 | The low alert (`licenses-low`, with how many) below 5, once until there are 5 or more again (the browser notification is the app's) | billing/teams › G4: tells the admin once when fewer than 5… | 3 | Passes |
+| G5 | Auto-purchase buys a license from the admin's balance when none is left; with the balance short, `licenses-none` | billing/teams › G5: with auto-purchase on… | 3 | Passes |
+| G6 | An ended license isn't taken again by `GET /v1/session` or `GET /v1/plan`, only by a visit; Free counts from the license's end meanwhile | billing/teams › G6: an ended license isn’t taken again… | 3 | Passes |
+| G7 | Pro→Team: the running month is lost, unstarted months refunded ("Refund: 2 months of Pro, for a team license"), `license-replaced-pro`; Pro can't be bought while licensed | billing/teams › G7: a license replaces Pro at once… | 3 | Passes |
+| G8 | An admin without a license still manages the team (invites, buys, auto-purchase, removes); told `licenses-none`, never `license-needed` | billing/teams › G8: an admin without a license still manages the team | 3 | Passes |
+| G9 | Unconsumed licenses refunded, never a consumed one; deleting a team refused while others are on it, then its unconsumed licenses refunded | billing/teams › G9: refunds the licenses nobody has taken… | 3 | Passes |
+| G10 | A team-visible note opens for licensed members only (read, ask, `teams.notes()`, `received.role` `team`; every change and anything of theirs on it refused with one sentence), only its organizer makes it visible, it stays after the organizer leaves (who can stop it but not start it again off the team), and it goes with the reader's license and with the note | billing/teams › G10: a note made visible to the team opens for licensed members… | 3 | Passes |
+| G11 | Ask includes team notes (not another account's, not off a team); @-references go first and send their transcript, at most 5, and a reference to a note you can't open is refused as one that never was, with nothing sent to the model | billing/teams › G11: Ask reads the team’s notes too… | 3 | Passes |
+| G12 | The pool = 100 GB × live licenses, shared by everyone licensed; a license ending shrinks it below what's stored: the grace (held to the pool as it was), then uploads refused until there's room | billing/teams › G12: pools 100 GB a live license… | 3 | Passes |
+| G12′ | Whole-team vs added-only workspaces (the team edits a whole team's without being added, in their Drive; admins switch it, only on a team's, opening it only with a license there), counted against the pool; out at once when taken off the team, and when a license ends | billing/teams › G12′: a team workspace is the whole team’s or only the people added… | 3 | Passes |
+| G13 | Team workspace AI is billed to the member who pressed it; elsewhere to the workspace's payer | billing/teams › G13: AI in a team workspace is paid for by whoever pressed it… | 3 | Passes |
+| G14 | A removed member drops to Free (a fresh period) with the grace at a team's storage for a person, loses the team, and their license isn't refunded; a member can leave; the admin can't leave or take themselves off | billing/teams › G14: someone taken off the team drops to Free… | 3 | Passes |
+| G15 | Each licensed member has their own 50 hours, the whole of it from when the license is taken | billing/teams › G15: each licensed person has their own notes… | 3 | Passes |
 | **H: calls** |  |  |  |  |
 | H1 | A call says when it ends, ends at 10 hours, and writes its notes | billing/plans › ends at its longest… | 1 | Passes |
 | H2 | The 101st person is refused and whoever hosts is told | billing/plans › turns away anyone past the most people… | 1 | Passes |
 | **I: privacy and upgrades** |  |  |  |  |
-| I1 | Nothing readable about plans in any row or log: the balance's history label is a canary | flows › privacy at rest | 1 | Passes |
+| I1 | Nothing readable about plans in any row or log: the balance's history label is a canary; a team's name, a member's name and address, a `team-billing` record's fields and its history label are canaries, and an invite's secret is in no row or log | flows › privacy at rest | 1, 3 | Passes |
 | I2 | Top-ups stay their owner's | billing/topups › keeps top-ups to their owner | 1 | Passes |
+| I2′ | Team, member and invite IDs work only on the caller's own team, as its admin; another account's notice is unknown | billing/teams › I2: team, member and invite IDs… | 3 | Passes |
+| I2″ | A note ID (to read, to refer to in Ask, to make visible or not) and a workspace ID (to read, to set who's in it) from a request reach only what the caller can open; another team's notes and workspaces are unknown | billing/teams › I2: a note, a reference or a workspace from a request… | 3 | Passes |
 | I3 | Deleting an account deletes its plan and allowance | billing/plans › deleting an account | 1 | Passes |
+| I3′ | Deleting an account takes a member off their team; the admin of a team with others on it is refused; an empty team goes with its admin | billing/teams › I3: takes a member off their team… | 3 | Passes |
 | I4 | A live call’s state from the previous release reads (no `notes.limit`), as not stopped, and carries on | billing/plans › reads a live call the previous release stored… | 1 | Passes |
 | I5 | A `plan-account` record in phase 1's shape (no `pro`, `renew`, `notices`) reads, and Pro is bought on it | billing/plans › Pro › reads a plan the previous release stored… | 2 | Passes |
 
@@ -137,3 +156,4 @@ These suites tested credits: their charges are removed (AGENTS.md: removed behav
 - `integration/flows` › plans (was credits)
 - `account/notifications` (phase 2): notification preferences carry `plan`, the browser notification for Pro's notices,
   on unless turned off
+- `billing/plans` (phase 3): a notice carries `count` (null for Pro's)

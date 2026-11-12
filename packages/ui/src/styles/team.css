@@ -220,6 +220,42 @@
 .tp-nr-t small { font: 400 13px/18px var(--font-sans); color: var(--ink-2); }
 .tp-nr-w { font: 400 13px/1 var(--font-sans); white-space: nowrap; color: var(--ink-2); }
 
+/* ------------------------------------------------------------ a team of your own (features/team/OurTeam.tsx) */
+.tp-line { margin-top: 8px; font: 500 15px/1.3 var(--font-sans); color: var(--ink-2); }
+/* The link Invite made: shown once, to copy. */
+.tp-inv { display: grid; gap: 10px; width: min(520px, 100%); margin-top: 16px; padding: 14px 16px; border-radius: var(--radius-lg); background: color-mix(in oklch, var(--ground) 82%, transparent); box-shadow: inset 0 0 0 1px var(--line); text-align: left; }
+.tp-inv p { font: 400 14px/20px var(--font-sans); color: var(--ink-2); }
+.tp-inv p b { font-weight: 600; color: var(--ink); }
+.tp-inv .ac-btn { justify-self: end; }
+.tp-start { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px; }
+.tp-start .tp-name { height: 46px; margin: 0; }
+.tp-start .tp-err { flex-basis: 100%; text-align: center; }
+@media (min-width: 1181px) {
+  .tp-grid.is-team .tp-tm, .tp-grid.is-team .tp-nolic { grid-column: 1 / span 8; }
+  .tp-grid.is-team .tp-tn { grid-column: 9 / span 4; grid-row: 1 / span 2; }
+  .tp-grid.is-team:has(.tp-nolic) .tp-tn { grid-row: 1 / span 3; }
+  .tp-grid.is-team .tp-sh:not(.tp-tn) { grid-row: auto; }
+}
+.tp-nolic { align-self: start; }
+.tp-r-m.is-off .ac-i { color: var(--ink-3); }
+.tp-r > span:empty { display: block; }
+/* Remove, Leave and Delete ask in place, under the row they're about. */
+.tp-ask { display: grid; gap: 10px; padding: 12px 0 14px 46px; font: 400 14px/20px var(--font-sans); color: var(--ink-2); }
+.tp-ask-a { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.tp-ask-a .ac-btn { width: auto; height: 32px; padding: 0 12px; }
+.tp-leave { display: flex; justify-content: flex-end; padding-top: 8px; }
+.tp-tm > .tp-ask { padding-left: 0; border-top: 1px solid var(--line); }
+.tp-a { font-weight: 500; color: var(--sun-text); text-decoration: underline; text-underline-offset: 3px; }
+@media (max-width: 860px) {
+  .tp-tm .tp-r { grid-template-columns: 32px minmax(0, 1fr) 84px; grid-template-rows: auto auto; row-gap: 2px; padding: 8px 0; }
+  .tp-tm .tp-r > .ac-avatar { grid-row: 1 / span 2; }
+  .tp-tm .tp-r > b { grid-column: 2; }
+  .tp-tm .tp-r-s { display: none; }
+  .tp-tm .tp-r-m { grid-column: 2; grid-row: 2; }
+  .tp-tm .tp-r > .ac-btn, .tp-tm .tp-r > span:last-child { grid-column: 3; grid-row: 1 / span 2; }
+  .tp-ask { padding-left: 0; }
+}
+
 /* ------------------------------------------------------------ a phone: you in the middle of a line that runs off both sides */
 @media (max-width: 860px) {
   /* The sea reaches under the tab bar, however short the page: the top bar and the room kept for the tab bar come off it. */

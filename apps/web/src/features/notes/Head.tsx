@@ -26,7 +26,7 @@ export function PageHead({ to = 'Notes', title, acts, children }: { to?: 'Notes'
  * More: copying the notes, and deleting them or taking them out of yours. Going through with that asks in the same
  * popover, and says what goes.
  */
-export function NoteMenu({ ready, mine, inCall, ask, busy, gone, onCopy, onDelete, onWriteAgain }: { ready: boolean; mine: boolean; inCall: boolean; ask: string; busy: boolean; gone: boolean; onCopy: () => void; onDelete: () => void; onWriteAgain?: (() => void) | undefined }) {
+export function NoteMenu({ ready, mine, removable = true, inCall, ask, busy, gone, onCopy, onDelete, onWriteAgain }: { ready: boolean; mine: boolean; removable?: boolean | undefined; inCall: boolean; ask: string; busy: boolean; gone: boolean; onCopy: () => void; onDelete: () => void; onWriteAgain?: (() => void) | undefined }) {
   const [open, setOpen] = useState(false);
   const [sure, setSure] = useState(false);
   const opened = (o: boolean) => { setOpen(o); if (!o) setSure(false); };
@@ -52,10 +52,12 @@ export function NoteMenu({ ready, mine, inCall, ask, busy, gone, onCopy, onDelet
               <Icon name="pen" size={18} /><span><b>Write the notes again</b><small>From the transcript, with the AI model you choose.</small></span>
             </button>
           )}
-          <div className="ac-pop-sep" />
-          <button type="button" className="ac-pop-item" disabled={inCall} onClick={() => setSure(true)}>
-            <Icon name="trash" size={18} /><span><b>{mine ? 'Delete notes' : 'Remove from your notes'}</b><small>{inCall ? 'Once the call ends.' : mine ? 'For everyone. Can’t be undone.' : 'Everyone else keeps them.'}</small></span>
-          </button>
+          {removable && <>
+            <div className="ac-pop-sep" />
+            <button type="button" className="ac-pop-item" disabled={inCall} onClick={() => setSure(true)}>
+              <Icon name="trash" size={18} /><span><b>{mine ? 'Delete notes' : 'Remove from your notes'}</b><small>{inCall ? 'Once the call ends.' : mine ? 'For everyone. Can’t be undone.' : 'Everyone else keeps them.'}</small></span>
+            </button>
+          </>}
         </>
       )}
     </Popover>

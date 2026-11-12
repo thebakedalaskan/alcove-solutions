@@ -2,12 +2,12 @@
  * The two who-has-it sheets, which look the same: Share on a document (the workspace's people, anyone it's shared with, and
  * closing it to the workspace), and the people in a workspace, from the name at the top of the list.
  */
-import { errorCode, errorMessage, firstName, type DocumentRole, type Person, type PersonSuggestion, type WorkspaceItem, type WorkspacePerson, type WorkspaceRole } from '@alcove/api';
+import { errorCode, errorMessage, firstName, type DocumentRole, type Person, type PersonSuggestion, type TeamAccess, type WorkspaceItem, type WorkspacePerson, type WorkspaceRole } from '@alcove/api';
 import { WsShareSheet, wsToast, type WsShareMatch, type WsShareRole, type WsShareRow, type WsToastData } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useSettled } from '~/lib/live';
-import { q, useDocumentShare, useWorkspacePeople } from '~/lib/queries';
+import { q, useDocumentShare, useSetTeamAccess, useWorkspacePeople } from '~/lib/queries';
 import { useWs } from './context';
 import { nameOf } from './tree';
 
@@ -115,13 +115,23 @@ function roleFor(p: WorkspacePerson, admin: boolean, setRole: (role: WorkspaceRo
 /** Who's in the workspace open here and what they can do, in the same sheet as Share. */
 export function PeopleSheet() {
   const ws = useWs();
-  return <PeopleSheetFor workspaceId={ws.workspaceId} name={ws.spaceName} admin={ws.sent.role === 'admin'} say={ws.say} />;
+  return <PeopleSheetFor workspaceId={ws.workspaceId} name={ws.spaceName} admin={ws.sent.role === 'admin'} say={ws.say} teamAccess={ws.sent.teamAccess} />;
 }
 
-/** Who's in a workspace and what they can do, wherever it's asked: an admin changes anyone, and anyone else can leave. */
-export function PeopleSheetFor({ workspaceId, name, admin, say }: { workspaceId: string; name: string; admin: boolean; say: (toast: WsToastData) => void }) {
+/**
+ * Who's in a workspace and what they can do, wherever it's asked: an admin changes anyone, and anyone else can leave. On a
+ * team's workspace (`teamAccess`), who's in it too: the whole team, or only the people added, which its admins change.
+ */
+export function PeopleSheetFor({ workspaceId, name, admin, say, teamAccess = null }: {
+  workspaceId: string; name: string; admin: boolean; say: (toast: WsToastData) => void; teamAccess?: TeamAccess | null | undefined;
+}) {
   const people = useQuery(q.workspacePeople(workspaceId)).data ?? [];
   const changes = useWorkspacePeople(workspaceId);
+  const access = useSetTeamAccess(workspaceId);
+  // What was just chosen shows at once, until the workspace says so itself.
+  const shown = access.isPending ? access.variables : teamAccess;
+  const choose = (to: TeamAccess) => { access.mutateAsync(to).catch((e: unknown) => { say(wsToast.failed(errorMessage(e))); }); };
+  const team = shown === null ? null : { access: shown, ...(admin ? { onChange: choose } : {}) };
   const refused = (e: unknown) => { say(wsToast.failed(errorCode(e) === 'conflict' ? 'A workspace always keeps an admin.' : errorMessage(e))); };
   const adding = useAdding(
     (p) => people.some((w) => w.person.email === p.email),
@@ -131,5 +141,5 @@ export function PeopleSheetFor({ workspaceId, name, admin, say }: { workspaceId:
     id: p.id, people: [p.person], name: p.isMe ? `${p.person.name} (you)` : p.person.name, sub: addressUnder(p.person),
     role: roleFor(p, admin, (role) => { changes.setRole.mutateAsync({ id: p.id, role }).catch(refused); }, () => { changes.remove.mutateAsync(p.id).catch(refused); })
   }));
-  return <WsShareSheet title={`People in ${name}`} rows={rows} {...(admin ? { query: adding.query, onQuery: adding.setQuery, onAdd: adding.onAdd, matches: adding.matches } : {})} />;
+  return <WsShareSheet title={`People in ${name}`} rows={rows} team={team} {...(admin ? { query: adding.query, onQuery: adding.setQuery, onAdd: adding.onAdd, matches: adding.matches } : {})} />;
 }

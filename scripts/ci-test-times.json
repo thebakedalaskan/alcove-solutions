@@ -466,5 +466,16 @@
   "groups": {
    "top-ups": 7.4
   }
+ },
+ "src/features/billing/teams.integration.test.ts": {
+  "seconds": 20.5,
+  "groups": {
+   "making a team and its licenses": 3,
+   "licenses": 4.5,
+   "the pool and the people in it": 2.5,
+   "team notes, Ask and team workspaces": 8.5,
+   "nobody reaches another team": 1,
+   "deleting an account": 1
+  }
  }
 }

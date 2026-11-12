@@ -5,8 +5,9 @@
  * A reader is an account, known by the keyed hash of its address, or someone in a call, known by a keyed hash of their
  * seat, from their call pass; signed in and in a call, they're both, and have what each gives them. A workspace role
  * applies to everything in it, except a restricted document, which opens only for its creator and the people it's
- * shared with. `document_access` opens one document for anyone. Being an admin, a call's organizer or in a call opens
- * nothing by itself.
+ * shared with. `document_access` opens one document for anyone. A team's workspace for the whole team is in everyone's who's
+ * live-licensed on that team, to edit, for as long as their license lasts (`standingIn`). Being an admin, a call's organizer
+ * or in a call opens nothing by itself.
  *
  * Someone with no access gets the same `not-found` for a real ID and a made-up one, wherever they ask.
  */
@@ -28,6 +29,7 @@ import { inSeat, seated, seatedIn, seatOfViewer, viewerOf, type Viewer } from '.
 import { tellCall } from '../calls/notifications';
 import { settledFolder } from '../calls/workspace-actions';
 import { personOf, portraitFor } from '../account/portraits';
+import { licensedBy } from '../billing/teams';
 
 const xlog = log.child({ component: 'access' });
 
@@ -201,24 +203,36 @@ export function personIn(o: Owner, r: Reader): Person {
 
 /* ---------- where someone stands in a workspace ---------- */
 
-/** What a reader has in a workspace: their role, each document given to them beyond it, and of those what isn't only a seat in a call. */
-export interface Standing { role: WorkspaceRole | null; grants: Map<string, DocumentRole>; lasting: Map<string, DocumentRole> }
+/**
+ * What a reader has in a workspace: their role, each document given to them beyond it, and of those what isn't only a seat in
+ * a call. `until`: their role is their team's (a team's workspace for the whole team, docs: Plans and usage › Team), and lasts
+ * until their license ends (ms), so nothing remembered of it outlasts that.
+ */
+export interface Standing { role: WorkspaceRole | null; grants: Map<string, DocumentRole>; lasting: Map<string, DocumentRole>; until?: number | undefined }
 const stronger = (a: DocumentRole | undefined, b: DocumentRole | undefined): DocumentRole | undefined => (a === 'edit' || b === 'edit' ? 'edit' : a ?? b);
 /** Whether anything in the workspace opens for them at all. */
 export const canOpen = (s: Standing): boolean => s.role !== null || s.grants.size > 0;
 
-/** Everything in a workspace's rows that says who has what, for working out anyone's standing. */
+/**
+ * Everything in a workspace's rows that says who has what, for working out anyone's standing. `licensed`: on a team's
+ * workspace for the whole team, the addresses that sign in to someone live-licensed on that team, and when each license ends.
+ */
 export interface Holders {
   members: { email_index: Uint8Array; role: WorkspaceRole }[];
   shares: { principal_index: Uint8Array; document_id: string; role: DocumentRole; kind: 'email' | 'seat' }[];
+  licensed: { index: Uint8Array; until: number }[];
 }
 const MemberRow = z.object({ email_index: bytea, role: z.enum(['admin', 'edit', 'read']) });
 const ShareRow = z.object({ principal_index: bytea, document_id: z.string(), role: z.enum(['edit', 'read']), kind: z.enum(['email', 'seat']) });
+const TeamRow = z.object({ team_id: z.string().nullable(), team_access: z.enum(['team', 'added']).nullable() });
 /** What these people have in a workspace, and nothing of anyone else's, however many it's shared with. */
 export async function holdersOf(db: Db, ownerId: string, principals: Uint8Array[]): Promise<Holders> {
+  const team = await maybeOne(db, TeamRow, 'SELECT team_id, team_access FROM workspaces WHERE owner_id = $1', [ownerId]);
+  const teamId = team?.team_access === 'team' ? team.team_id : null;
   return {
     members: await rows(db, MemberRow, 'SELECT email_index, role FROM workspace_members WHERE owner_id = $1 AND email_index = ANY($2::bytea[])', [ownerId, principals]),
-    shares: await rows(db, ShareRow, 'SELECT principal_index, document_id, role, kind FROM document_access WHERE owner_id = $1 AND principal_index = ANY($2::bytea[])', [ownerId, principals])
+    shares: await rows(db, ShareRow, 'SELECT principal_index, document_id, role, kind FROM document_access WHERE owner_id = $1 AND principal_index = ANY($2::bytea[])', [ownerId, principals]),
+    licensed: teamId === null ? [] : (await licensedBy(db, principals)).filter((l) => l.teamId === teamId).map(({ index, until }) => ({ index, until }))
   };
 }
 /** How many people are in a workspace. */
@@ -234,7 +248,13 @@ export function standingIn(h: Holders, who: Who): Standing {
       if (role) given.set(s.document_id, role);
     }
   }
-  return { role: h.members.find((m) => among(who.principals, m.email_index))?.role ?? null, grants, lasting };
+  const role = h.members.find((m) => among(who.principals, m.email_index))?.role ?? null;
+  // Someone live-licensed on the workspace's team edits it, unless they're its admin: without a member row, and only until
+  // their license ends, which is checked now, whenever this was read.
+  const now = Date.now();
+  const until = Math.max(-Infinity, ...h.licensed.filter((l) => among(who.principals, l.index) && now < l.until).map((l) => l.until));
+  if (until > now && (role === null || role === 'read')) return { role: 'edit', grants, lasting, until };
+  return { role, grants, lasting };
 }
 
 /** What someone can do with one item, or undefined when it doesn't exist for them. */
@@ -282,10 +302,10 @@ export async function workspaceVersion(d: Deps, workspaceId: string): Promise<nu
   return (await maybeOne(d.pool, z.object({ version: bigintText }), 'SELECT version FROM workspaces WHERE workspace_id = $1', [workspaceId]))?.version;
 }
 
-/** A yes to something, as of a version of the workspace. Only that: no keys, and nothing of the tree. */
-interface Yes { version: number; role: WorkspaceRole | null; editedAt: string }
+/** A yes to something, as of a version of the workspace, until a team license it came from ends (null: none). Only that: no keys, and nothing of the tree. */
+interface Yes { version: number; role: WorkspaceRole | null; editedAt: string; until: number | null }
 /** What a remembered yes gives: the keys of this request, and what was true of the tree. */
-export interface Allowed extends Omit<Yes, 'version'> { owner: Owner; workspaceId: string }
+export interface Allowed extends Omit<Yes, 'version' | 'until'> { owner: Owner; workspaceId: string }
 const MAX_REMEMBERED = 4096;
 const yesByHub = new WeakMap<Hub, Map<string, Yes>>();
 const VersionRow = z.object({ owner_id: z.string(), version: bigintText });
@@ -301,7 +321,7 @@ async function remembering(d: Deps, who: Who, workspaceId: string, what: string,
   yesByHub.set(d.hub, remembered);
   const key = `${workspaceId}:${what}:${who.email ?? ''}:${who.principals.map(b64u).join()}`;
   const yes = remembered.get(key);
-  if (row && yes?.version === row.version) {
+  if (row && yes?.version === row.version && (yes.until === null || Date.now() < yes.until)) {
     const owner = await findOwner(d, row.owner_id, undefined, db);
     if (!owner) throw missing(workspaceId);
     return { owner, workspaceId, role: yes.role, editedAt: yes.editedAt };
@@ -309,7 +329,7 @@ async function remembering(d: Deps, who: Who, workspaceId: string, what: string,
   const w = await workspaceFor(d, who, workspaceId, db, lock);
   const editedAt = ask(w);
   remembered.delete(key);
-  remembered.set(key, { version: w.version, role: w.role, editedAt });
+  remembered.set(key, { version: w.version, role: w.role, editedAt, until: w.until ?? null });
   for (const oldest of remembered.keys()) {
     if (remembered.size <= MAX_REMEMBERED) break;
     remembered.delete(oldest);

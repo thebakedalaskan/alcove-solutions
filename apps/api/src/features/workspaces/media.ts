@@ -27,7 +27,7 @@ import { issueMediaToken, readMediaToken, type MediaToken } from '../../mediaTok
 import { deleteQueued, queueDelete } from '../recordings/audio';
 import { jpegSize } from '../recordings/screens';
 import { ID128, limitKey, requireDocument, roleOf, whoNamed, workspaceFor, type Reader, type Who, type Workspace } from './access';
-import { fileBytesFor, requireRoom, storageLimitOf } from '../billing/plans';
+import { fileBytesFor, requireRoom, storageLimitOf } from '../billing/held';
 import { payerOf, usedBytes } from '../billing/storage';
 
 const mlog = log.child({ component: 'media' });

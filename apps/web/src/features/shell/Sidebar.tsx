@@ -203,17 +203,24 @@ function Groups() {
   );
 }
 
-/** The newest of the plan's notices, in a short line: "Pro ends 15 Nov", "Pro renewed", "Pro ended". */
+/**
+ * The newest of the plan's notices, in a short line: "Pro ends 15 Nov", "Pro renewed", "Pro ended", "2 team licenses
+ * left", "No team licenses left", "No team license for you", "Team replaced Pro".
+ */
 function noticeLine(n: PlanNotice): { text: string; icon: IconName } {
   switch (n.kind) {
-    case 'pro-ending': return { text: `Pro ends ${dayMonth(new Date(n.until))}`, icon: 'clock' };
+    case 'pro-ending': return { text: n.until === null ? 'Pro ends soon' : `Pro ends ${dayMonth(new Date(n.until))}`, icon: 'clock' };
     case 'pro-renewed': return { text: 'Pro renewed', icon: 'coins' };
     case 'pro-ended': return { text: 'Pro ended', icon: 'info' };
+    case 'licenses-low': { const c = n.count ?? 0; return { text: `${c} team ${c === 1 ? 'license' : 'licenses'} left`, icon: 'people' }; }
+    case 'licenses-none': return { text: 'No team licenses left', icon: 'people' };
+    case 'license-needed': return { text: 'No team license for you', icon: 'people' };
+    case 'license-replaced-pro': return { text: 'Team replaced Pro', icon: 'coins' };
   }
 }
 
 /**
- * The check, and about how much of the period's notes is left (Settings' Plan), with Upgrade to Pro above it on Free,
+ * The check, and about how much of the period's notes is left (Settings' Plan), with Upgrade to Pro above it on Free (off a team),
  * and the newest of the plan's notices until it's dismissed, each opening the plans in Settings.
  */
 function Foot({ online }: { online: boolean }) {
@@ -224,7 +231,7 @@ function Foot({ online }: { online: boolean }) {
   return (
     <div className="sb-foot">
       {online && <p className="sb-seal" data-tour="sealed" title={verified === null ? undefined : `Hardware checked at ${hm(new Date(verified))}`}><Icon name="sealed" size={15} />{trustLine(trust)}</p>}
-      {plan?.kind === 'free' && <Link to="/settings" hash="plan" className="sb-upgrade"><Icon name="arrowUp" size={14} />Upgrade to Pro</Link>}
+      {plan?.kind === 'free' && plan.team === null && <Link to="/settings" hash="plan" className="sb-upgrade"><Icon name="arrowUp" size={14} />Upgrade to Pro</Link>}
       {said && <Link to="/settings" hash="plan" className="sb-plan-note"><Icon name={said.icon} size={14} />{said.text}</Link>}
       {plan && (
         <Link to="/settings" hash="plan" activeOptions={{ includeHash: true }} className="sb-notes">

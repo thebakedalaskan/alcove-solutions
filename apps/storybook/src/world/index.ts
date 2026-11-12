@@ -9,6 +9,7 @@ import type {
   WorkspaceMedia, WorkspaceSummary, WorkspaceTree
 } from '@alcove/api';
 import type { PaymentsWorld } from './payments';
+import type { TeamInviteWorld, TeamWorld } from './teams';
 import type { DriveWorld } from './drive-exports';
 import type * as Y from 'yjs';
 import type { BlockJSON } from '~/features/workspace/editor/types';
@@ -117,6 +118,10 @@ export interface World {
   trouble?: Troubles | undefined;
   /** A call being moved to this device, which this browser holds the claim to (/move). */
   move?: MoveSpec | undefined;
+  /** The team you're on (src/world/teams.ts), if any: not `team`, which is your company's directory. */
+  myTeam?: TeamWorld | null | undefined;
+  /** Links to join a team that still work, by their secret. */
+  teamInvites?: TeamInviteWorld[] | undefined;
   /** The feature flags on for whoever's here. None unless a scenario switches one on. */
   featureFlags?: FeatureFlagName[] | undefined;
   /** Links to notes that still work, with their secrets: none unless a story makes one. */

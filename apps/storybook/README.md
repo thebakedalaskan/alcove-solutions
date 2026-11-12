@@ -108,6 +108,13 @@ Product, then the follow-ups from the retro board's Actions frame.
 | `plan-pro-ending` | Pro ends in 3 days and won't renew (renewing off, $5 doesn't buy a month): a `pro-ending` notice |
 | `plan-pro-renewed` | Renewing is on and a month was bought from the balance 3 days before Pro ended: a `pro-renewed` notice |
 | `plan-pro-ended` | Pro ended two days ago: back on Free, over its storage with 14.2 GB, in the grace, with a `pro-ended` notice |
+| `team-admin` | Art runs Vandelay's team: six people, Maya's license ended last week, three licenses left, auto-purchase off, $180 in the balance |
+| `team-admin-low` | The same with two licenses left: a `licenses-low` notice |
+| `team-admin-none` | None left, and Maya waiting for one: a `licenses-none` notice |
+| `team-member` | Art on Priya's team with a live license: the team's notes (`tn-roadmap`, `tn-onboarding`) and his standup visible to it |
+| `team-member-unlicensed` | Art's license ended with none to take: on Free, with a `license-needed` notice |
+| `team-join` | Art isn't on a team and has Priya's link to join (stories add it to the tab with `withTeamInvite()`) |
+| `no-team` | The busy afternoon with $60 and payments: Start a team on Team and on Team's card in Settings › Plan |
 | `agents-connected` | Art has a read-only Workspace assistant connected through OAuth and an unused Scheduling assistant personal token; Settings shows their scopes, expiry and last use |
 | `first-sign-in` | Nobody signed in, and no account yet: signing in makes Art's account on screen, his first day, and Home's tour |
 

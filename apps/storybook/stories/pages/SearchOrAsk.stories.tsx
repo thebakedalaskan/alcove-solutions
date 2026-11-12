@@ -34,6 +34,23 @@ export const OpenPhone = phone(Open);
 export const Found = page('/home', 'busy', { play: typing('launch', 'Type “launch”') });
 /** Enter asks every note: the answer appears under the line with the notes and moments it comes from. */
 export const Asked = page('/home', 'busy', { play: typing('What did we decide about the launch?{Enter}', 'Ask what was decided about the launch, and press Enter') });
+/**
+ * Typing @ offers the notes you can open, your team's included, by title: the one picked sits under the line, is read first
+ * and goes with the question (up to five).
+ */
+const referring: Play = async (ctx) => {
+  await typing('What did we decide in @', 'Type a question, then @: the notes you can open are offered')(ctx);
+  await ctx.step('Find Roadmap review, a note Priya made visible to the team, and press Enter', async () => {
+    await ctx.userEvent.type(await screen.findByRole('combobox', { name: 'Notes to refer to' }, { timeout: 8000 }), 'roadmap{Enter}');
+  });
+  await ctx.step('Finish the question and ask', async () => {
+    await ctx.userEvent.type(await screen.findByRole('combobox', { name: /Search or ask your notes/ }), ' about the admin page?{Enter}');
+  });
+};
+export const PickingANoteToReferTo = page('/home', 'team-member', { play: typing('What did we decide in @', 'Type a question, then @: the notes you can open are offered') });
+export const AskWithAReference = page('/home', 'team-member', { play: referring });
+export const AskWithAReferenceNight = page('/home', 'team-member', { play: referring, globals: { theme: 'dark' } });
+export const AskWithAReferencePhone = phone(AskWithAReference);
 /** The pin beside Pinned, in the side panel: a wide screen's, since a phone has no side panel. */
 const pinning = {
   globals: { viewport: { value: 'laptop', isRotated: false } },

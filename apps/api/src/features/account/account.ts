@@ -20,6 +20,7 @@ import { takeAllBack } from '../notes/additions';
 import { forgetAllMade } from '../notes/links';
 import { queueDelete } from '../recordings/audio';
 import { open as openPlan } from '../billing/plans';
+import { forgetMembership, refuseDeletingAdmin } from '../billing/teams';
 import { forgetAccess, grantToRevoke, revokeGrant, unreachable, withdraw } from '../meetings/calendar';
 import { create as createMeeting, findUpcoming } from '../meetings/service';
 import { deleteOwnNote, heldNoteIds } from '../notes/service';
@@ -192,7 +193,8 @@ const REVOKE_MS = 3_000;
  * opened); its access to the notes other people gave its address and what it answered on their calls (unless another
  * account signs in with that address too); its place in every workspace and on every document given to that
  * address, and in feature flags' groups and grants, on the same condition, and what its calls gave people's seats in workspaces; and the account's row, which takes its own notes on anyone's notes, sign-in identity, sessions, profile (pins and groups with it),
- * Google connection, receipts, notes jobs, plan and AI allowance with it. Then the LiveKit rooms of its calls still
+ * Google connection, receipts, notes jobs, plan and AI allowance with it; its place on a team, and the team it's the admin
+ * of once nobody else is on it (refused until then). Then the LiveKit rooms of its calls still
  * going are closed, which takes everyone in them out, as ending a call does; the audio and shared-screen
  * objects, and those of any file that went from a workspace, are deleted, and any the store refuses wait in object_gc
  * for maintenance. Notes it shared on
@@ -204,6 +206,8 @@ export async function deleteAccount(o: Owner): Promise<void> {
   // Another deletion committed after this request was signed in: there's nothing left to delete.
   if (!existing) { alog.info('account already deleted', { ownerId: o.ownerId }); return; }
   if (isSharedDemo(existing.manifest)) throw new ForbiddenError('This is the shared demo account, so it can’t be deleted.', { context: { ownerId: o.ownerId } });
+  // A team's admin goes once nobody else is on it: asked first, before anything is cancelled, and again as it's deleted.
+  await refuseDeletingAdmin(o.pool, o.ownerId);
   let refreshToken: string | undefined;
   try {
     refreshToken = await grantToRevoke(o);
@@ -243,13 +247,15 @@ export async function deleteAccount(o: Owner): Promise<void> {
     // Its address in feature flags' groups and grants, on the same condition as note_access.
     const featureFlags = await forgetFeatureFlags(c, blindIndex(masterKey(o), 'email', p.manifest.email), o.ownerId);
     const workspaces = await forgetAccount(o, c, p.manifest.email, callIds);
+    // Its place on a team, and the team itself if it's the admin of one nobody else is on.
+    const team = await forgetMembership(c, o.ownerId);
     // Every other table keyed by the account cascades from its row.
     await exec(c, 'DELETE FROM owners WHERE owner_id = $1', [o.ownerId]);
     // After its row: taking its own notes with it waits for anything being added, which is here by now, or fails from now on.
     const added = await takeAllBack(o, c);
     // And every link it made to anyone's notes: they hand on only what their maker has.
     const links = await forgetAllMade(o, c);
-    return { meetings, notes: notes.length, objects, frames, received, answers, rings, featureFlags, added, links, rooms, workspaces };
+    return { meetings, notes: notes.length, objects, frames, received, answers, rings, featureFlags, added, links, rooms, workspaces, team };
   });
   if (!gone) { alog.info('account already deleted', { ownerId: o.ownerId }); return; }
   forgetAccess(o.ownerId);
@@ -262,7 +268,7 @@ export async function deleteAccount(o: Owner): Promise<void> {
   alog.info('account deleted', {
     ownerId: o.ownerId, calendarCancelled: calendar.cancelled, calendarKept: calendar.kept, calendarNotCancelled: calendar.notCancelled,
     meetings: gone.meetings, notes: gone.notes, received: gone.received, answers: gone.answers, rings: gone.rings, featureFlags: gone.featureFlags, added: gone.added, links: gone.links, objects: gone.objects.length, frames: gone.frames, rooms: gone.rooms.length,
-    workspaces: gone.workspaces.workspaces, workspacesDeleted: gone.workspaces.deleted, ms: Math.round(performance.now() - t0)
+    workspaces: gone.workspaces.workspaces, workspacesDeleted: gone.workspaces.deleted, leftTeam: gone.team.left, teamDeleted: gone.team.teamDeleted, ms: Math.round(performance.now() - t0)
   });
 }
 

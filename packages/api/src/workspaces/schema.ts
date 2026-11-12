@@ -1,3 +1,4 @@
+import { TeamAccessSchema } from '../teams/schema';
 import { PersonSchema, PortraitStyleSchema } from '../identity/people';
 import { DeviceSealedSchema } from '../recordings/offline';
 import { IDSchema, ISODateSchema } from '../shared/ids';
@@ -94,6 +95,8 @@ export const WorkspaceTreeSchema = z.object({
   role: WorkspaceRoleSchema.nullable(),
   /** How many people are in it. Null for someone outside it. */
   people: z.number().nullable(),
+  /** On a team's workspace, who's in it (the whole team, or only the people added); null when it isn't a team's. */
+  teamAccess: TeamAccessSchema.nullable(),
   items: z.array(WorkspaceItemSchema)
 });
 

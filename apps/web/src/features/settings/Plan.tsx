@@ -14,7 +14,7 @@ import { useRef, useState } from 'react';
 import { q, useCancelTopUp } from '~/lib/queries';
 import { hoursAndMinutes, shortDay } from '~/lib/time';
 import { roomLabel, usd } from '~/lib/words';
-import { PlanCards, PlanNotices, ProPanel } from './PlanCards';
+import { PlanCards, PlanNotices, ProPanel, TeamPanel } from './PlanCards';
 import { AddMoneySheet, routeName, topUpLine } from './topup';
 
 export const PLAN_NAMES: Record<PlanKind, string> = { free: 'Free', pro: 'Pro', team: 'Team' };
@@ -25,6 +25,7 @@ export const notesLeft = (p: Pick<Plan, 'notes'>): string => (p.notes.stopped ||
 export function PlanGroup({ plan }: { plan: Plan }) {
   const routes = useQuery(q.topUpRoutes());
   const offers = useQuery(q.offers()).data;
+  const team = useQuery(q.myTeam()).data;
   // Top-ups on their way show whether or not 1Click answers right now; a server without payments has none to show.
   const open = useQuery(q.topUps()).data ?? [];
   const cancel = useCancelTopUp();
@@ -51,22 +52,24 @@ export function PlanGroup({ plan }: { plan: Plan }) {
   };
   const renews = shortDay(new Date(plan.period.to));
   const { storage } = plan;
-  const until = plan.kind === 'pro' && plan.pro.until !== null ? `Pro until ${shortDay(new Date(plan.pro.until))}. ` : '';
+  const until = plan.kind === 'pro' && plan.pro.until !== null ? `Pro until ${shortDay(new Date(plan.pro.until))}. `
+    : plan.kind === 'team' && plan.team ? `A license from ${plan.team.name}. ` : '';
   return (
     <SettingsGroup id="plan" title="Plan">
-      <PlanNotices plan={plan} offers={offers} />
+      <PlanNotices plan={plan} offers={offers} team={team} />
       <SettingsPanel>
         <SettingRow label="Plan" help={`${until}Notes renew ${renews}.`} control={<SettingFact>{PLAN_NAMES[plan.kind]}</SettingFact>} />
         <SettingRow className="is-left" label="Notes left" help={plan.notes.stopped ? `They start again ${renews}.` : 'An estimate: busier calls use more.'}
           control={<span className="set-left">{notesLeft(plan)}</span>}>
           <SunLine share={plan.notes.minutesPerPeriod > 0 ? plan.notes.minutesLeft / plan.notes.minutesPerPeriod : 0} />
         </SettingRow>
-        <SettingRow label="Storage" help={`Uploads and call recordings. Files up to ${roomLabel(storage.fileBytes)}.`}
+        <SettingRow label="Storage" help={`${plan.kind === 'team' ? 'The team’s, shared by everyone licensed: uploads' : 'Uploads'} and call recordings. Files up to ${roomLabel(storage.fileBytes)}.`}
           control={<SettingFact>{roomLabel(storage.usedBytes)} of {roomLabel(storage.limitBytes)}</SettingFact>} />
         <Limits plan={plan} />
       </SettingsPanel>
-      {offers && <PlanCards plan={plan} offers={offers} onAddMoney={routes.data === undefined ? null : () => show(null)} />}
+      {offers && <PlanCards plan={plan} offers={offers} team={team} onAddMoney={routes.data === undefined ? null : () => show(null)} />}
       <ProPanel plan={plan} />
+      <TeamPanel team={team} />
       <SettingsPanel>
         <SettingRow label="Balance" help="What plans are bought with. Add money with a stablecoin from any wallet or exchange."
           control={

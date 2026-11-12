@@ -25,7 +25,8 @@ import type { Meter, Metered, Most, Usage } from '../../inference';
 import { limitsNow, type Limits } from '../../limits';
 import { log } from '../../log';
 import { priceOf, type Price } from '../notes/models';
-import { accountOf, inForce, mayStore, type InForce } from './plans';
+import { mayStore } from './held';
+import { planNow, type InForce } from './plans';
 
 const alog = log.child({ component: 'ai-allowance' });
 /** A source (a call or room recording) nothing has charged for this long is over, and what it held goes. */
@@ -95,7 +96,7 @@ const usageOf = (most: Most, l: Limits): Usage => ({ input: most.input + most.im
  * full (whatever held them never said), and sources nothing has charged for in a day go.
  */
 async function locked(d: Service, db: Db, ownerId: string, l: Limits, now: number): Promise<{ m: MeterState; save: (m: MeterState) => Promise<void> }> {
-  const p = inForce(await accountOf(d, db, ownerId), l, now);
+  const { p } = await planNow(d, db, ownerId, now);
   const fresh = (carried: Pick<MeterState, 'holds' | 'sources' | 'closed'>): MeterState => ({
     plan: p.kind, from: p.from, to: p.to, allowanceNano: allowanceOf(p, l), spentNano: 0, byKind: {}, ...carried, stopped: null
   });
@@ -223,7 +224,7 @@ export interface Standing {
 export async function standing(d: Service, db: Db, ownerId: string): Promise<Standing> {
   const l = await limitsNow(d, db);
   const now = Date.now();
-  const p = inForce(await accountOf(d, db, ownerId), l, now);
+  const { p } = await planNow(d, db, ownerId, now);
   const r = await maybeOne(db, z.object({ state_ciphertext: bytea }), 'SELECT state_ciphertext FROM ai_meters WHERE owner_id = $1', [ownerId]);
   const m = r ? openJson(key(d), header(ownerId), r.state_ciphertext, MeterState) : null;
   const allowanceNano = allowanceOf(p, l);
