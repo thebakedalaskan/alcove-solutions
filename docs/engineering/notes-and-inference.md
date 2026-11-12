@@ -461,8 +461,11 @@ account.
   NVIDIA or NEAR AI unreachable, a platform out of date, anything in [What is checked](#what-is-checked)),
   nothing was sent. The job goes to `waiting` without using up the attempt, and is tried again five minutes
   later, for as long as it takes, so an outage or a TCB recovery doesn't lose notes. The same goes when the
-  notes model doesn't answer (`UnansweredError`: no answer within four minutes, unreachable, `429` or `5xx`):
-  nothing about the note is wrong, so it waits rather than using its attempts up. A draft can take the model
+  notes model can't be reached or is busy (`UnansweredError`: unreachable, `429` or `5xx`): nothing was charged and
+  nothing about the note is wrong, so it waits rather than using its attempts up. A request that gets no answer within
+  its time once it was sent (`timedOut`) was charged what it held (Charging, below), so it uses up an attempt like a
+  failure: notes that keep timing out are finished without a summary after three, and notes written again stay as they
+  were, instead of being charged again every five minutes without end. A draft can take the model
   well over a minute (about 24 tokens a second at its slowest, up to 4,000 of them, which is 167 seconds), so it gets
   four minutes, and the job's lease five.
 - **Retries.** A failed attempt (NEAR AI refusing the request, a reply that won't open, or one that isn't the

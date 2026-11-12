@@ -20,7 +20,7 @@ import type { Deps, Owner } from '../../context';
 import { id128, openJson, sealJson, toJson } from '../../crypto';
 import { bytea, exec, maybeOne, tx } from '../../db';
 import { NotFoundError, PlanLimitError, UnansweredError, UnverifiedError } from '../../errors';
-import { inference, type ChatModel, type Meter } from '../../inference';
+import { inference, lostOnceSent, type ChatModel, type Meter } from '../../inference';
 import { log } from '../../log';
 import { openOwner } from '../../owners';
 import { getItem, lockItem, pruneRevisions } from '../../vault';
@@ -498,9 +498,11 @@ async function attempt(d: Deps, job: Claimed): Promise<void> {
     } catch (e) {
       if (e instanceof Cancelled) { await stopped('writing'); return; }
       if (e instanceof NotFoundError) { await drop('note deleted while its notes were written'); return; }
-      if (e instanceof UnverifiedError || e instanceof UnansweredError) {
-        // Unverified: nothing was sent (an outage at Intel or NVIDIA, or NEAR AI out of date). Unanswered: NEAR AI
-        // timed out, couldn't be reached or was busy. Neither is the note's fault, so neither uses the attempts up.
+      if (e instanceof UnverifiedError || (e instanceof UnansweredError && !lostOnceSent(e))) {
+        // Unverified: nothing was sent (an outage at Intel or NVIDIA, or NEAR AI out of date). Unanswered: NEAR AI couldn't
+        // be reached or was busy, and nothing was charged. Neither is the note's fault, so neither uses the attempts up. A
+        // request that timed out once it was sent was charged what it held, so it does (below): notes that keep timing out
+        // are finished without a summary after ATTEMPTS, or written again stay as they were, never charged without end.
         wlog.warn(e instanceof UnverifiedError ? 'notes waiting for the notes model to check out' : 'notes waiting for the notes model to answer', { ...at, retryInS: VERIFY_AGAIN_SECONDS, err: e });
         await exec(d.pool, `UPDATE content_jobs SET state = 'waiting', attempt = $3, lease_until = now() + make_interval(secs => $4) WHERE owner_id = $1 AND job_id = $2`,
           [job.owner_id, job.job_id, job.tried, VERIFY_AGAIN_SECONDS]);
