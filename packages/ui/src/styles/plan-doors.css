@@ -12,6 +12,11 @@
 .pd-none.is-alone .pd-none-t { font-size: 13.5px; font-weight: 600; }
 @media (max-width: 560px) { .pd-none.is-alone { grid-template-columns: minmax(0, 1fr); padding: 10px 12px; } }
 
-/* Under the notes row in Start a call's Details, its words lined up with the row's. */
-.cf-rows > .pd-none { margin: -4px 0 8px; padding: 0 10px 0 66px; }
-@media (max-width: 860px) { .cf-rows > .pd-none { padding-left: 10px; } }
+/*
+ * Where today's Start a call puts it: under the ways to start, inside the modal's padding; and under Details' notes row, its
+ * words lined up with the row's (its icon's 26px and the 12px after it) and inside the row's hairline.
+ */
+.cf-ways ~ .pd-none.is-alone { margin: -12px 30px 30px; }
+.cf-rows > .cf-r:has(+ .pd-none) { border-bottom-color: transparent; }
+.cf-rows > .pd-none { margin-top: -10px; padding: 0 2px 14px 40px; border-bottom: 1px solid var(--line); }
+@media (max-width: 640px) { .cf-ways ~ .pd-none.is-alone { margin: -10px 18px calc(26px + env(safe-area-inset-bottom, 0px)); } }
