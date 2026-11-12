@@ -1,9 +1,10 @@
 /*
  * Checkout: one window over wherever you were, with what you're buying beside every step (the canvas's Checkout and
- * PayMotion boards, docs/design/canvas/plans/). The step is on the left: choose how long or how many hours, and the
- * network to send USDC on; pay, with the exact amount, the address made for this one payment and how it stands; then
- * done. What you're buying is on the right, under a small evening of its own whose sun rises as the payment lands. On a
- * phone the window fills the screen, with what you're buying as one line at the top.
+ * PayMotion boards, docs/design/canvas/plans/). The step is on the left: choose how long, how many hours or how many of
+ * Team's licenses (a team being started is named first, and one buying more says who's waiting), and the network to send
+ * USDC on; pay, with the exact amount, the address made for this one payment and how it stands; then done. What you're
+ * buying is on the right, under a small evening of its own whose sun rises as the payment lands. On a phone the window
+ * fills the screen, with what you're buying as one line at the top.
  *
  * Every part is stateless: plain data in and handlers out, the words as the app puts them. Only a copy button keeps
  * "Copied" for a moment, and the amount that arrived counts up while you watch.
@@ -15,6 +16,7 @@ import { CryptoMark, Logo } from './brand';
 import { Icon, type IconName } from './icon';
 import { Dots } from './motion';
 import { Modal, ThemeScope } from './overlay';
+import { Faces, type AvatarPerson } from './people';
 import { Button, CopyField, IconButton, buttonClass } from './primitives';
 import { QrCode } from './qr';
 
@@ -30,6 +32,7 @@ export type CheckoutStage = 'choose' | 'send' | 'short' | 'seen' | 'done' | 'clo
 
 const RISE: Record<CheckoutStage, SunRise> = { choose: 'rest', send: 'waiting', short: 'waiting', seen: 'seen', done: 'done', closed: 'rest' };
 const monthsWord = (n: number) => `${n} ${n === 1 ? 'month' : 'months'}`;
+const licensesWord = (n: number) => `${n} ${n === 1 ? 'license' : 'licenses'}`;
 
 /** A value to copy, and "Copied" for a moment once it has been. */
 function useCopy(value: string): [boolean, () => void] {
@@ -91,16 +94,16 @@ interface Card { id: string; name: string; price: string; sub: string; tag?: str
  * Cards to pick one of, as radio buttons: arrow keys move between them. `bracket` spans the cards from `from` on, over
  * them. `autoFocus` puts focus on the one chosen as they appear, for a window whose first thing is this choice.
  */
-function Cards({ label, hint, cards, value, onChange, bracket, autoFocus = false }: {
+function Cards({ label, hint, cards, value, onChange, bracket, autoFocus = false, className }: {
   label: string; hint?: string | undefined; cards: Card[]; value: string | null; onChange: (id: string) => void;
-  bracket?: { from: number; label: string } | null | undefined; autoFocus?: boolean | undefined;
+  bracket?: { from: number; label: string } | null | undefined; autoFocus?: boolean | undefined; className?: string | undefined;
 }) {
   const q = useId();
   const name = useId();
   return (
     <>
       <p className="ck-q"><span id={q}>{label}</span>{hint && <small>{hint}</small>}</p>
-      <div role="radiogroup" aria-labelledby={q} className="ck-cards" style={{ '--n': cards.length }}>
+      <div role="radiogroup" aria-labelledby={q} className={cn('ck-cards', className)} style={{ '--n': cards.length }}>
         {bracket && (
           <>
             {bracket.from > 0 && <span className="ck-brk-sp" aria-hidden="true" style={{ gridColumn: `1 / span ${bracket.from}` }} />}
@@ -121,6 +124,37 @@ function Cards({ label, hint, cards, value, onChange, bracket, autoFocus = false
   );
 }
 
+/** Another amount than the cards offer: open, from 1 to `max`, with what the amount stepped to costs. */
+interface OtherAmount { open: boolean; max: number; price: string; onOpen: () => void; onStep: (n: number) => void }
+
+/**
+ * Under the cards: a link (`link`, with the range it reaches) that opens a stepper from 1 to `other.max`, saying the amount
+ * stepped to (`word`) and what it costs.
+ */
+function Another({ other, value, link, range, word, group, fewer, more }: {
+  other: OtherAmount; value: number; link: string; range: string; word: (n: number) => string; group: string; fewer: string; more: string;
+}) {
+  return (
+    <div className="ck-other">
+      {other.open ? (
+        <>
+          <span className="ck-stepper" role="group" aria-label={group}>
+            <button type="button" aria-label={fewer} disabled={value <= 1} onClick={() => other.onStep(Math.max(1, value - 1))}><Icon name="minus" size={16} /></button>
+            <output aria-live="polite">{word(value)}</output>
+            <button type="button" aria-label={more} disabled={value >= other.max} onClick={() => other.onStep(Math.min(other.max, value + 1))}><Icon name="plus" size={16} /></button>
+          </span>
+          <span>{other.price}</span>
+        </>
+      ) : (
+        <>
+          <button type="button" className="ck-lnk" onClick={other.onOpen}>{link}</button>
+          <span>{range}</span>
+        </>
+      )}
+    </div>
+  );
+}
+
 /** One length of Pro: "12 months", "$192", "$16 a month", and whether it's at the lower price. */
 export interface MonthsOption { months: number; total: string; each: string; off: boolean }
 
@@ -133,7 +167,7 @@ export interface MonthsOption { months: number; total: string; each: string; off
 export function MonthsPicker({ label = 'How long', options, value, onChange, offLabel, other, autoFocus }: {
   label?: string | undefined; options: MonthsOption[]; value: number; onChange: (months: number) => void;
   offLabel: string | null;
-  other: { open: boolean; max: number; price: string; onOpen: () => void; onStep: (months: number) => void };
+  other: OtherAmount;
   /** Focus on the length chosen as it appears. */
   autoFocus?: boolean | undefined;
 }) {
@@ -143,23 +177,67 @@ export function MonthsPicker({ label = 'How long', options, value, onChange, off
     <div className="ck-sec">
       <Cards label={label} cards={cards} value={other.open ? null : String(value)} onChange={(id) => onChange(Number(id))} autoFocus={autoFocus}
         bracket={offLabel && from >= 0 ? { from, label: offLabel } : null} />
-      <div className="ck-other">
-        {other.open ? (
-          <>
-            <span className="ck-stepper" role="group" aria-label="Months">
-              <button type="button" aria-label="One month fewer" disabled={value <= 1} onClick={() => other.onStep(Math.max(1, value - 1))}><Icon name="minus" size={16} /></button>
-              <output aria-live="polite">{monthsWord(value)}</output>
-              <button type="button" aria-label="One more month" disabled={value >= other.max} onClick={() => other.onStep(Math.min(other.max, value + 1))}><Icon name="plus" size={16} /></button>
-            </span>
-            <span>{other.price}</span>
-          </>
-        ) : (
-          <>
-            <button type="button" className="ck-lnk" onClick={other.onOpen}>Another length</button>
-            <span>Any number of months from 1 to {other.max}.</span>
-          </>
-        )}
-      </div>
+      <Another other={other} value={value} link="Another length" range={`Any number of months from 1 to ${other.max}.`} word={monthsWord}
+        group="Months" fewer="One month fewer" more="One more month" />
+    </div>
+  );
+}
+
+/** A number of Team's licenses: "6 licenses", "$240", and what that number is for: "For the 6 of you", "Room for 4 more". */
+export interface LicensesOption { count: number; total: string; sub: string }
+
+/**
+ * How many licenses: a card for each number, each with its total and what it's for, under the price of one (`hint`, "$40
+ * each, one person for 30 days"). Another number opens a stepper from 1 to `other.max` (the most one purchase buys), with
+ * what it costs; while it's open, no card is ticked, and picking a card is the way back to them.
+ */
+export function LicensesPicker({ label = 'How many licenses', hint, options, value, onChange, other, autoFocus }: {
+  label?: string | undefined; hint?: string | undefined; options: LicensesOption[]; value: number; onChange: (count: number) => void;
+  other: OtherAmount;
+  /** Focus on the number chosen as it appears. */
+  autoFocus?: boolean | undefined;
+}) {
+  const cards = options.map((o): Card => ({ id: String(o.count), name: licensesWord(o.count), price: o.total, sub: o.sub }));
+  return (
+    <div className="ck-sec">
+      <Cards label={label} hint={hint} cards={cards} value={other.open ? null : String(value)} onChange={(id) => onChange(Number(id))} autoFocus={autoFocus}
+        className="is-licenses" />
+      <Another other={other} value={value} link="Another number" range={`Any number from 1 to ${other.max}.`} word={licensesWord}
+        group="Licenses" fewer="One license fewer" more="One more license" />
+    </div>
+  );
+}
+
+/**
+ * The team being started: its name, typed into a box with its label inside, under what starting it makes you. `disabled`
+ * once the team is made, when its name is what it is.
+ */
+export function TeamName({ label = 'Your team', hint = 'You’re its admin: you buy its licenses and invite people.', field = 'Its name', value, onChange, placeholder, disabled = false, autoFocus = false, maxLength = 120 }: {
+  label?: string | undefined; hint?: string | undefined; field?: string | undefined; value: string; onChange: (name: string) => void;
+  placeholder?: string | undefined; disabled?: boolean | undefined; autoFocus?: boolean | undefined; maxLength?: number | undefined;
+}) {
+  const q = useId();
+  return (
+    <div className="ck-sec" role="group" aria-labelledby={q}>
+      <p className="ck-q"><span id={q}>{label}</span>{hint && <small>{hint}</small>}</p>
+      <label className="ck-field">
+        <span className="k">{field}</span>
+        <input type="text" value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} disabled={disabled} autoFocus={autoFocus}
+          maxLength={maxLength} autoComplete="organization" spellCheck={false} />
+      </label>
+    </div>
+  );
+}
+
+/**
+ * The team licenses are bought for, in a line: its people's arches, how many licenses are left (`title`, "2 of 8 licenses
+ * left") and, under it, who's waiting for one or how long each runs.
+ */
+export function LicensesLeft({ people, title, sub, className }: { people: AvatarPerson[]; title: ReactNode; sub?: ReactNode; className?: string | undefined }) {
+  return (
+    <div className={cn('ck-sec ck-team', className)}>
+      {people.length > 0 && <Faces people={people} size={30} max={5} />}
+      <p className="who"><b>{title}</b>{sub && <small>{sub}</small>}</p>
     </div>
   );
 }
@@ -225,18 +303,21 @@ export interface CheckoutSummaryData {
   art: PlanArt;
   /** Who stands on Team's horizon. */
   people?: ReactNode;
-  /** "Pro", "10 hours of notes". */
+  /** "Pro", "10 hours of notes", "Team". */
   name: string;
-  /** Who it's for, or what it adds to: "For Art Vandelay", "Added to the 6 days you have left", "For this period". */
+  /**
+   * Who it's for, or what it adds to: "For Art Vandelay", "Added to the 6 days you have left", "For this period", "For
+   * Vandelay Industries, with you its admin".
+   */
   sub: string;
-  /** What the phone's one line says under the name: "12 months · 20% off". */
+  /** What the phone's one line says under the name: "12 months · 20% off", "6 licenses". */
   brief: string;
   lines: SummaryLine[];
   /** What's paid: an amount to send ("187.00" "USDC"), or from the balance ("$192"). Null while it isn't known yet. */
   total: { value: string; unit?: string | undefined } | null;
   /** Under the total: what more there is to know about it, such as a network's least. */
   extra?: string | null | undefined;
-  /** "Pro until" and the day it runs to. */
+  /** "Pro until" and the day it runs to, or how long each of Team's licenses runs: "Each runs" "30 days from when it’s taken". */
   until?: { lead: string; day: string } | null | undefined;
   /** At the foot: how the price is reckoned, or where it's paid from. */
   foot: string;
@@ -264,7 +345,7 @@ export function CheckoutSummary({ summary: s, rise = 'rest', className }: { summ
 /* ---------- the window ---------- */
 
 export interface CheckoutPanelProps {
-  /** "Get Pro", "Extend Pro", "More notes". */
+  /** "Get Pro", "Extend Pro", "More notes", "Start a team", "Buy licenses". */
   title: string;
   step: 1 | 2 | 3;
   stage: CheckoutStage;
@@ -475,21 +556,35 @@ export interface ReceiptRowData { title: string; sub: string; reference: string 
 
 /**
  * Done: a tick that draws in, what you have now in Newsreader, a line or two on it, the receipt's row, and a reminder that
- * nothing renews by itself.
+ * nothing renews by itself. A team just started has inviting its people under the receipt (`invite`, under its heading
+ * and what an invite does: `inviteTitle`, `inviteHint`).
  */
-export function CheckoutDone({ title, lines, receipt, reminder }: {
+export function CheckoutDone({ title, lines, receipt, reminder, invite, inviteTitle = 'Invite your team', inviteHint = 'Each link lets one person join, for a day. A license is taken when they next open Alcove.' }: {
   title: string; lines: string[]; receipt: ReceiptRowData | null; reminder: string | null;
+  /** What invites people: a link to make, then the link with Copy. Nothing shows without it. */
+  invite?: ReactNode;
+  inviteTitle?: string | undefined;
+  inviteHint?: string | undefined;
 }) {
+  const q = useId();
   return (
-    <div className="ck-done" role="status">
-      <span className="ck-tick"><Icon name="check" size={28} /></span>
-      <p className="ck-big">{title}</p>
-      {lines.map((l) => <p key={l} className="ck-line2">{l}</p>)}
+    <div className="ck-done">
+      <div className="ck-done-said" role="status">
+        <span className="ck-tick"><Icon name="check" size={28} /></span>
+        <p className="ck-big">{title}</p>
+        {lines.map((l) => <p key={l} className="ck-line2">{l}</p>)}
+      </div>
       {receipt && (
         <div className="ck-receipt-row">
           <Icon name="receipt" size={22} />
           <span><b>{receipt.title}</b><small>{receipt.sub}{receipt.reference && <> · <code>{receipt.reference}</code></>}</small></span>
           <Button variant="secondary" size="sm" icon="download" onClick={receipt.onOpen}>Receipt</Button>
+        </div>
+      )}
+      {invite !== undefined && invite !== null && invite !== false && (
+        <div className="ck-invite" role="group" aria-labelledby={q}>
+          <p className="ck-q"><span id={q}>{inviteTitle}</span><small>{inviteHint}</small></p>
+          {invite}
         </div>
       )}
       {reminder && <p className="ck-rem"><Icon name="clock" size={18} />{reminder}</p>}

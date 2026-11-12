@@ -157,6 +157,20 @@
 .ck-net small { font: 400 12px/1 var(--font-sans); color: var(--ink-3); white-space: nowrap; }
 .ck-mark { display: block; flex: none; width: 22px; height: 22px; }
 .ck-mark.is-sm { width: 18px; height: 18px; }
+/* Team: its name, typed into a box with its label inside. */
+.ck-field { display: grid; gap: 2px; padding: 9px 14px 10px; border-radius: 12px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line-control); cursor: text; transition: box-shadow var(--duration-1); }
+.ck-field:focus-within { box-shadow: inset 0 0 0 1.5px var(--ink); }
+.ck-field:has(:focus-visible) { outline: 2px solid var(--focus); outline-offset: 2px; }
+.ck-field .k { font: 500 12px/16px var(--font-sans); color: var(--ink-2); }
+.ck-field input { width: 100%; min-width: 0; padding: 0; border: 0; background: none; outline: none; font: 500 15px/22px var(--font-sans); color: var(--ink); }
+.ck-field input::placeholder { color: var(--ink-3); opacity: 1; }
+.ck-field:has(input:disabled) { background: transparent; box-shadow: inset 0 0 0 1px var(--line); cursor: default; }
+.ck-field input:disabled { color: var(--ink); -webkit-text-fill-color: var(--ink); }
+/* Buying licenses: the team's people, how many licenses are left, and who's waiting for one. */
+.ck-team { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; padding: 12px 14px; border-radius: 14px; box-shadow: inset 0 0 0 1px var(--line); }
+.ck-team .who { flex: 1; min-width: 160px; }
+.ck-team .who b { display: block; font: 500 14.5px/20px var(--font-sans); color: var(--ink); }
+.ck-team .who small { display: block; font: 400 13px/18px var(--font-sans); color: var(--ink-2); text-wrap: pretty; }
 /* A calm sentence: caution for something to look at, info for what happens next. */
 .ck-note { display: grid; grid-template-columns: 18px minmax(0, 1fr); column-gap: 10px; margin-top: 12px; padding: 11px 14px; border-radius: 12px; background: color-mix(in oklch, var(--caution) 13%, transparent); font: 400 13.5px/20px var(--font-sans); color: var(--ink); }
 .ck-note > .ac-i { margin-top: 1px; color: var(--caution); }
@@ -221,7 +235,7 @@
 .ck-track .run { position: absolute; left: calc(var(--at, 1) * 50%); top: 0; bottom: 0; width: 16%; background: linear-gradient(90deg, transparent, var(--horizon), transparent); animation: ck-travel calc(1.6s * var(--pm, 1)) var(--ease-out) infinite; }
 
 /* Done. */
-.ck-done { display: grid; justify-items: start; }
+.ck-done, .ck-done-said { display: grid; justify-items: start; }
 .ck-tick { display: grid; place-items: center; width: 56px; height: 56px; border-radius: 50%; background: color-mix(in oklch, var(--sun-text) 15%, transparent); color: var(--sun-text); animation: ck-pop calc(.45s * var(--pm, 1)) var(--ease-out) both; }
 .ck-tick .ac-i { stroke-width: 2.2; stroke-dasharray: 24; animation: ck-draw calc(.5s * var(--pm, 1)) calc(.15s * var(--pm, 1)) var(--ease-out) both; }
 .ck-done .ck-big { margin-top: 16px; font-size: 36px; }
@@ -232,6 +246,10 @@
 .ck-receipt-row small code { font: 400 12.5px/18px var(--font-mono); }
 .ck-rem { display: flex; align-items: center; gap: 10px; margin-top: 14px; font: 400 13.5px/20px var(--font-sans); color: var(--ink-2); }
 .ck-rem .ac-i { flex: none; color: var(--sun-text); }
+/* A team just started: inviting its people, on a hairline under the receipt. */
+.ck-invite { display: grid; gap: 10px; justify-self: stretch; margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--line); }
+.ck-invite .ck-q { margin: 0; }
+.ck-invite > .ac-btn { justify-self: start; }
 
 /* A question before something that can't be undone, in the foot, in place. */
 .ck-ask { display: grid; gap: 10px; width: 100%; }
@@ -301,9 +319,9 @@
   .ck-track .run, .ck-track .is-on .dot::after { animation: ck-fade 1.6s ease-in-out infinite alternate !important; }
 }
 
-/* A narrower window: the networks two to a row, so each name and its least fit. */
+/* A narrower window: the networks two to a row, so each name and its least fit, and the licenses' cards, so what each is for does. */
 @container ck (max-width: 900px) {
-  .ck-nets { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ck-nets, .ck-cards.is-licenses { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 /* ------------------------------------------------------------------ on a phone: the whole screen, what you're buying in one line at the top */
@@ -333,6 +351,8 @@
   .ck-card .p { grid-area: p; margin: 0; font-size: 15px; text-align: right; }
   .ck-card .m { grid-area: m; }
   .ck-card .tag { grid-area: tag; display: block; justify-self: end; }
+  .ck-cards.is-licenses { grid-template-columns: minmax(0, 1fr); }
+  .ck-team .who { flex-basis: 100%; }
   .ck-brk, .ck-brk-sp { display: none; }
   .ck-nets { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .ck-pay { grid-template-columns: minmax(0, 1fr); }
