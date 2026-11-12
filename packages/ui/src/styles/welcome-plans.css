@@ -1,0 +1,42 @@
+/*
+ * Plans, on the welcome page (features/welcome/PlansScene.tsx, `lp-`): a cove at night with the last of the sun, a sliver of it
+ * on the horizon under the title, and Free and Pro on the water as small cards whose parts line up, Pro raised with a warm
+ * edge as on the Plans page. The ways in sit under them: Start free beside Get Pro, the one filled button here. The sky's
+ * colours are the scene's own, as the other parts' are.
+ */
+.lp-plans .hz[data-moment="drive"] {
+  --hz-sky: linear-gradient(to bottom in oklch, oklch(0.8 0.06 252) 0%, oklch(0.86 0.05 290) 62%, oklch(0.9 0.06 22) 100%);
+  --hz-glow: oklch(0.93 0.09 50 / 0.62); --hz-glow-w: 1100px; --hz-glow-h: 210px;
+}
+.dark .lp-plans .hz[data-moment="drive"] {
+  --hz-sky: linear-gradient(to bottom in oklch, oklch(0.2 0.05 272) 0%, oklch(0.3 0.08 298) 64%, oklch(0.5 0.12 22) 100%);
+  --hz-glow: oklch(0.72 0.14 45 / 0.5);
+}
+.lp-plans-in { padding-block: clamp(96px, 9vw, 140px) clamp(52px, 5vw, 76px); }
+
+/* The last of the sun: the top of its disc, just showing over the horizon in the mouth of the bay. */
+.lp-plans-sun { position: absolute; left: 50%; top: var(--hz); width: clamp(80px, 6.6vw, 104px); height: clamp(9px, 0.8vw, 12px); translate: -50% -100%; overflow: hidden; pointer-events: none; }
+.lp-plans-sun::before { content: ""; position: absolute; left: 0; top: 0; width: 100%; aspect-ratio: 1; border-radius: 50%; background: radial-gradient(circle at 50% 24%, var(--dusk-sun), color-mix(in oklch, var(--dusk-sun) 70%, var(--dusk-haze)) 62%, var(--dusk-haze)); }
+
+/* On the water: the two plans, side by side, then the ways in. */
+.lp-plans-water { display: grid; justify-items: center; padding-top: max(48px, calc(var(--cv-reach, 0px) + 20px)); padding-bottom: clamp(96px, 9vw, 140px); }
+.lp-plans-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(3, auto); column-gap: 16px; width: min(720px, 100%); margin: 0; padding: 0; list-style: none; }
+.lp-plan { position: relative; grid-row: span 3; display: grid; grid-template-rows: subgrid; align-content: start; min-width: 0; padding: 22px 24px 20px; border-radius: 20px; background: var(--surface); box-shadow: 0 0 0 1px var(--line); text-align: left; }
+.lp-plan.is-pro { background: var(--surface-raised); box-shadow: 0 0 0 1px var(--line-control), var(--shadow-2); }
+.lp-plan.is-pro::before { content: ""; position: absolute; left: 28px; right: 28px; top: -1px; height: 2px; border-radius: 2px; background: linear-gradient(90deg, transparent, var(--sun-glow), transparent); }
+.lp-plan h3 { margin: 0; font: 600 17px/1.25 var(--font-sans); letter-spacing: -.01em; color: var(--ink); }
+.lp-plan-price { display: flex; align-items: baseline; flex-wrap: wrap; gap: 0 7px; margin: 14px 0 0; }
+.lp-plan-price b { font: 400 46px/1 var(--font-display); font-weight: 400; letter-spacing: -.02em; color: var(--ink); font-variant-numeric: lining-nums; }
+.lp-plan-price span { font: 400 15px/1.3 var(--font-sans); color: var(--ink-2); }
+.lp-plan-facts { display: grid; gap: 9px; margin: 18px 0 0; padding: 16px 0 0; border-top: 1px solid var(--line); list-style: none; }
+.lp-plan-facts li { display: grid; grid-template-columns: 18px minmax(0, 1fr); column-gap: 11px; align-items: start; font: 500 14.5px/21px var(--font-sans); color: var(--ink); }
+.lp-plan-facts .ac-i { margin-top: 2px; color: var(--ink-2); }
+.lp-plans-go { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 28px; }
+
+@media (max-width: 640px) {
+  .lp-plans-cards { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; row-gap: 12px; }
+  .lp-plan { grid-row: auto; grid-template-rows: none; }
+  .lp-plan-price b { font-size: 40px; }
+  .lp-plans-go { width: 100%; }
+  .lp-plans-go .ac-btn { flex: 1 1 140px; }
+}

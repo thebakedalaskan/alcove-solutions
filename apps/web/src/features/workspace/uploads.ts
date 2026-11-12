@@ -14,8 +14,7 @@
  *
  * Nothing about a file is logged but its IDs, sizes and how it went: never its name.
  */
-import { errorCode, errorMessage, servedType, type DocSession, type WorkspaceMedia } from '@alcove/api';
-import { wsToast, type WsToastData } from '@alcove/ui';
+import { errorCode, servedType, type DocSession, type WorkspaceMedia } from '@alcove/api';
 import { api } from '~/lib/api';
 import { smallJpeg } from './thumbs';
 import { log } from '~/lib/log';
@@ -233,11 +232,15 @@ export const uploadsStore = {
   getSnapshot: (): number => version
 };
 
-/** Where a workspace on screen says things, for an upload's failure: an upload outlives the page that started it. */
-const talkers = new Map<string, (toast: WsToastData) => void>();
-export function talkThrough(workspaceId: string, say: (toast: WsToastData) => void): () => void {
-  talkers.set(workspaceId, say);
-  return () => { if (talkers.get(workspaceId) === say) talkers.delete(workspaceId); };
+/**
+ * Where a workspace on screen says what happened to an upload that failed, given the server's refusal and how much the upload
+ * was: an upload outlives the page that started it, and whoever shows it knows best how to say it (storage full, say).
+ */
+type Tell = (error: unknown, bytes: number) => void;
+const talkers = new Map<string, Tell>();
+export function talkThrough(workspaceId: string, tell: Tell): () => void {
+  talkers.set(workspaceId, tell);
+  return () => { if (talkers.get(workspaceId) === tell) talkers.delete(workspaceId); };
 }
 
 /** Told whenever a file is stored, so whatever lists a workspace's files reads it again. */
@@ -491,7 +494,7 @@ async function run(job: Job): Promise<void> {
       await write(job, { up: null, failed: name }, true).then((w) => { if (w === 'gone') drop(job); }, (err: unknown) => { ulog.warn('a failed upload couldn’t say so', { workspaceId: job.workspaceId, documentId: job.documentId, err }); });
     }
     /* What the server said is written for the person uploading: the file's too big, the workspace is full, the day's used up. */
-    if (!never) talkers.get(job.workspaceId)?.(wsToast.failed(errorMessage(e)));
+    if (!never) talkers.get(job.workspaceId)?.(e, total(job));
     sweepSoon();
   } finally {
     claim(job.workspaceId, job.documentId);

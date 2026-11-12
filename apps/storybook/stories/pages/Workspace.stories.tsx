@@ -355,3 +355,13 @@ export const WritingStylesPhone = page(PLAN, 'busy', {
 /** On a phone the list and the page take turns: the list, until something's open. */
 export const PhoneList = page(at('ws-product'), 'busy', { globals: PHONE });
 export const PhoneCouldntSave = page(at('ws-product', 'Pricing page copy'), 'unsaved', { globals: { ...PHONE, theme: 'dark' } });
+
+/*
+ * Storage full (the plans spec's doors, 6): past Free's storage, with the grace over, a file added to a document is refused
+ * before any of it is kept, and the toast says so as the doors do, with Get Pro and how much room Pro has. The block stays,
+ * saying it didn't upload, with Try again.
+ */
+const STORAGE_FULL = fileFrom(aPdf, 'Choose a PDF. Your storage is full, so it isn’t kept: Pro has 100 GB, and Get Pro is a press away');
+export const StorageFull = page(PLAN, 'plan-over', { play: STORAGE_FULL });
+export const StorageFullNight = page(PLAN, 'plan-over', { globals: { theme: 'dark' }, play: STORAGE_FULL });
+export const StorageFullPhone = page(PLAN, 'plan-over', { globals: PHONE, play: STORAGE_FULL });

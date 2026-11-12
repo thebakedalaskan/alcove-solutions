@@ -4,6 +4,7 @@
  * it. This file is who can open it and what with; the window itself is Checkout.tsx, rendered by the provider at the app's
  * root.
  */
+import { ThemeScope, useTheme } from '@alcove/ui';
 import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
 
 /** What checkout opens on: Pro (to start, or to extend when on Pro), with the months to begin on; or more notes for this period. */
@@ -31,9 +32,13 @@ export function useCheckout(): CheckoutControls {
   return useContext(CheckoutContext);
 }
 
-/** Holds what checkout is open on, for every page beneath it. `window` draws it (Checkout.tsx), given what's open and how to close. */
+/**
+ * Holds what checkout is open on, for every page beneath it. `window` draws it (Checkout.tsx), given what's open and how to
+ * close. It's in your own theme wherever it opens: over a call, which keeps the whole page night, too.
+ */
 export function CheckoutProvider({ children, window }: { children: ReactNode; window?: ((open: CheckoutOpen, close: () => void) => ReactNode) | undefined }) {
   const [current, setCurrent] = useState<CheckoutOpen | null>(null);
+  const { resolved } = useTheme();
   const controls = useMemo<CheckoutControls>(() => ({
     open: (what, from) => setCurrent({ what, from, topUpId: null }),
     reopen: (topUpId, what, from) => setCurrent({ what, from, topUpId }),
@@ -43,7 +48,7 @@ export function CheckoutProvider({ children, window }: { children: ReactNode; wi
   return (
     <CheckoutContext.Provider value={controls}>
       {children}
-      {current && window ? window(current, controls.close) : null}
+      {current && window ? <ThemeScope theme={resolved}>{window(current, controls.close)}</ThemeScope> : null}
     </CheckoutContext.Provider>
   );
 }

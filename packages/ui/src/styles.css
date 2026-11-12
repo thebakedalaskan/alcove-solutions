@@ -24,6 +24,7 @@
 @import "./styles/welcome-call.css";
 @import "./styles/welcome-team.css";
 @import "./styles/welcome-night.css";
+@import "./styles/welcome-plans.css";
 @import "./styles/shell.css";
 @import "./styles/app.css";
 @import "./styles/horizon.css";
@@ -48,6 +49,7 @@
 @import "./styles/settings.css";
 @import "./styles/agents.css";
 @import "./styles/flow.css";
+@import "./styles/plan-doors.css";
 @import "./styles/workspace.css";
 @import "./styles/workspace-editor.css";
 @import "./styles/board.css";

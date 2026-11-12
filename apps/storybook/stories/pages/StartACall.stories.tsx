@@ -168,3 +168,15 @@ export const Scheduling = page('/home', 'busy', { beforeEach: changing(troubled(
 export const ScheduleFailed = page('/home', 'busy', { beforeEach: changing(troubled({ 'meetings.create': 'failed' })), play: playing(open, later, priyaAndKofi, findATime, useIt, press('Schedule', 'Schedule')) });
 /** The call couldn't be made: the modal stays, and says why. */
 export const StartFailed = page('/home', 'busy', { beforeEach: changing(troubled({ 'calls.startNow': 'failed' })), play: playing(open, press(/^Start now/, 'Start now')) });
+
+/*
+ * No notes left this period (the plans spec's doors, 5): starting or scheduling a call with notes on says so in caution, until
+ * the period renews, with Get Pro, and on Start now a way on without notes. A call scheduled after the period renews has notes
+ * again, so nothing is said there.
+ */
+/** Under the ways to start: No notes left until 20 November, with Get Pro and Start without notes. */
+export const NoNotesLeft = page('/home', 'plan-stopped', { play: playing(open) });
+export const NoNotesLeftPhone = phone(NoNotesLeft);
+/** Scheduled for this period, Details says None left until 20 November under the notes row, with Get Pro, which opens Plans in a new tab so the draft stays. */
+export const NoNotesLeftScheduling = page('/home', 'plan-stopped', { play: playing(open, later, priyaAndKofi, findATime, useIt) });
+export const NoNotesLeftSchedulingPhone = phone(NoNotesLeftScheduling);

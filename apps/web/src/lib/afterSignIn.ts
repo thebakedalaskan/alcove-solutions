@@ -4,19 +4,21 @@
  * so the page to return to waits in this tab's sessionStorage: not in the sign-in URL, because a call's code is its link's
  * secret and the API's request logs keep URLs. It lasts ten minutes, like the sign-in attempt itself, and is used once.
  */
-import { AgentReturnStoredSchema, CallReturnStoredSchema, NoteLinkReturnStoredSchema } from '@alcove/api';
+import { AgentReturnStoredSchema, CallReturnStoredSchema, NoteLinkReturnStoredSchema, PlansReturnStoredSchema } from '@alcove/api';
 import { log } from './log';
 
 const alog = log.child({ component: 'after-sign-in' });
 const KEY = 'alcove.after-sign-in';
 const AGENT_KEY = 'alcove.agent-after-sign-in';
 const LINK_KEY = 'alcove.link-after-sign-in';
+const PLANS_KEY = 'alcove.plans-after-sign-in';
 const MINUTES = 10;
 
 /** Signing in from this call's join page: come back to it afterwards. */
 export function returnToCall(code: string): void {
   try {
     sessionStorage.removeItem(AGENT_KEY);
+    sessionStorage.removeItem(PLANS_KEY);
     sessionStorage.setItem(KEY, JSON.stringify({ code, until: Date.now() + MINUTES * 60_000 }));
   } catch (e) {
     // Private browsing and the like: after signing in this tab lands on Home, and the link still works.
@@ -29,6 +31,7 @@ export function clearReturn(): void {
   try {
     sessionStorage.removeItem(KEY);
     sessionStorage.removeItem(AGENT_KEY);
+    sessionStorage.removeItem(PLANS_KEY);
   } catch (e) {
     alog.debug('join page to go back to not cleared', { err: e });
   }
@@ -38,6 +41,7 @@ export function clearReturn(): void {
 export function returnToAgent(requestId: string): void {
   try {
     sessionStorage.removeItem(KEY);
+    sessionStorage.removeItem(PLANS_KEY);
     sessionStorage.setItem(AGENT_KEY, JSON.stringify({ requestId, until: Date.now() + MINUTES * 60_000 }));
   } catch (e) {
     alog.debug('agent consent not kept for after sign-in', { err: e });
@@ -96,6 +100,37 @@ export function takeReturn(): string | null {
     return w.success && w.data.until > Date.now() ? w.data.code : null;
   } catch (e) {
     alog.debug('join page to go back to not readable', { err: e });
+    return null;
+  }
+}
+
+/** Where Get Pro on the welcome page goes once signed in: Plans, with checkout open on Pro. */
+export const PLANS_FOR_PRO = '/plans?checkout=pro';
+/**
+ * Get Pro on the welcome page, before signing in: afterwards Plans opens with checkout on Pro, wherever sign-in lands (Google's
+ * way back included). Its address is kept as it is, in this tab for ten minutes, and used once; Cancel sign-in forgets it
+ * (clearReturn).
+ */
+export function returnToPlans(path: string = PLANS_FOR_PRO): void {
+  try {
+    sessionStorage.removeItem(KEY);
+    sessionStorage.removeItem(AGENT_KEY);
+    sessionStorage.setItem(PLANS_KEY, JSON.stringify({ path, until: Date.now() + MINUTES * 60_000 }));
+  } catch (e) {
+    // Private browsing and the like: after signing in this tab lands on Home, where Plans is a press away.
+    alog.debug('plans not kept for after sign-in', { err: e });
+  }
+}
+/** The Plans address to go to after signing in, once, if Get Pro started it in the last ten minutes; an older one is dropped. */
+export function takePlansReturn(): string | null {
+  try {
+    const raw = sessionStorage.getItem(PLANS_KEY);
+    if (raw === null) return null;
+    sessionStorage.removeItem(PLANS_KEY);
+    const w = PlansReturnStoredSchema.safeParse(JSON.parse(raw));
+    return w.success && w.data.until > Date.now() ? w.data.path : null;
+  } catch (e) {
+    alog.debug('plans to go to not readable', { err: e });
     return null;
   }
 }

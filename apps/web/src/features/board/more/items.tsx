@@ -9,6 +9,7 @@ import { errorMessage } from '@alcove/api';
 import type { TemplateName } from '@alcove/board';
 import { BoardFlyList, BoardPop, type IconName } from '@alcove/ui';
 import { useEffect, useRef } from 'react';
+import { StorageFullError } from '~/features/plans/storageFull';
 import { log as rootLog } from '~/lib/log';
 import type { BoardBarItem, BoardBarItems, BoardMoreItems } from '../state';
 import { useBoardState, type Board } from '../useBoard';
@@ -81,7 +82,8 @@ async function addImage(board: Board, upload: BoardUpload): Promise<void> {
     const w = size ? Math.max(48, Math.round(size.width * k)) : 320, h = size ? Math.max(48, Math.round(size.height * k)) : 240;
     board.addHere({ k: 'image', ...board.middle(w, h), w, h, media });
   } catch (e: unknown) {
-    board.tell(errorMessage(e));
+    // Storage full says what helps, as the doors do; anything else, the server's words.
+    board.tell(errorMessage(e), e instanceof StorageFullError && e.said.action ? { action: e.said.action, ms: 9000 } : undefined);
   }
 }
 
