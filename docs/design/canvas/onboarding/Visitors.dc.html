@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>What passes through</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="home.css">
+<link rel="stylesheet" href="pages.css">
+<script src="tokens.js"></script>
+<script src="home.js"></script>
+<script src="scene.js"></script>
+<script src="appdata.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>body{margin:0}</style>
+</helmet>
+<div class="lf" data-moment="{{moment}}" data-night="{{night}}" style="{{vars}}" aria-hidden="true">
+<div class="lf-up"><sc-for list="{{puffs}}" as="c" hint-placeholder-count="2"><div class="hz-puff" style="{{c.style}}"><div style="{{c.at}}"><sc-for list="{{c.bars}}" as="b" hint-placeholder-count="4"><i style="{{b.style}}"></i></sc-for></div></div></sc-for></div>
+<sc-if value="{{isShip}}" hint-placeholder-val="{{false}}">
+<div class="{{shipCls}}" style="{{shipStyle}}" onAnimationEnd="{{slowEnd}}">
+<div class="hz-craft" style="{{craftStyle}}">
+<sc-if value="{{hasFunnel}}" hint-placeholder-val="{{false}}"><div class="hz-funnel" style="{{funnelStyle}}"><i class="hz-smoke"></i><i class="hz-smoke is-2"></i><i class="hz-smoke is-3"></i></div></sc-if>
+<svg class="hz-boat" viewBox="{{shipBox}}"><sc-for list="{{shipPaths}}" as="p" hint-placeholder-count="3"><path d="{{p.d}}"></path></sc-for></svg>
+<i class="hz-lamp" style="{{lampStyle}}"></i>
+</div>
+<i class="hz-wake"></i><i class="hz-wake is-2"></i><i class="hz-wake is-3"></i>
+</div>
+</sc-if>
+<sc-if value="{{isBalloon}}" hint-placeholder-val="{{false}}">
+<div class="hz-peek" style="{{slowDur}}" onAnimationEnd="{{slowEnd}}"><div class="hz-climb" style="{{slowDur}}"><svg class="hz-balloon" viewBox="0 0 30 44"><path d="M15 1C7 1 1 7 1 15C1 22.5 8 27 11 33H19C22 27 29 22.5 29 15C29 7 23 1 15 1Z"></path><path class="hz-gore" d="M15 1C11.5 1 9 7 9 15C9 22 11.5 28 13 33H17C18.5 28 21 22 21 15C21 7 18.5 1 15 1Z"></path><path d="M12.5 37H17.5V42H12.5Z"></path><path class="hz-rope" d="M11.5 33L13 37M18.5 33L17 37"></path></svg></div></div>
+</sc-if>
+<sc-if value="{{isGulls}}" hint-placeholder-val="{{false}}">
+<div class="{{flyCls}}" style="{{flyStyle}}" onAnimationEnd="{{quickEnd}}"><div class="hz-glide">
+<sc-for list="{{birds}}" as="b" hint-placeholder-count="3"><div class="hz-gull" style="{{b.style}}"><svg class="is-0" viewBox="0 0 28 14"><path d="{{pose0}}"></path></svg><svg class="is-1" viewBox="0 0 28 14"><path d="{{pose1}}"></path></svg><svg class="is-2" viewBox="0 0 28 14"><path d="{{pose2}}"></path></svg></div></sc-for>
+</div></div>
+</sc-if>
+<sc-if value="{{isLeap}}" hint-placeholder-val="{{false}}">
+<div class="{{leapCls}}" style="{{leapStyle}}">
+<sc-for list="{{jumps}}" as="j" hint-placeholder-count="1"><div class="{{j.cls}}" style="{{j.style}}"><i class="hz-ring"></i><div class="hz-along"><div class="hz-arc"><svg class="hz-leaper" viewBox="{{j.box}}"><path d="{{j.d}}"></path></svg></div></div><i class="hz-ring is-late" onAnimationEnd="{{j.end}}"></i></div></sc-for>
+</div>
+</sc-if>
+<sc-if value="{{isWhale}}" hint-placeholder-val="{{false}}">
+<div class="hz-whale" style="{{leapStyle}}"><div class="hz-sound"><svg class="hz-tail" viewBox="0 0 44 28" onAnimationEnd="{{quickDone}}"><path d="M22 28C20.5 20 19.5 15 19 12C17 12.5 12.5 11.5 8 8C5 5.5 2.5 3 1 1C6 1.5 13 2 17.5 4C20 5 21.5 6.3 22 7.3C22.5 6.3 24 5 26.5 4C31 2 38 1.5 43 1C41.5 3 39 5.5 36 8C31.5 11.5 27 12.5 25 12C24.5 15 23.5 20 22 28Z"></path></svg></div><i class="hz-ring"></i><i class="hz-ring is-late"></i></div>
+</sc-if>
+<sc-if value="{{isStar}}" hint-placeholder-val="{{false}}">
+<i class="{{shootCls}}" style="{{leapStyle}}" onAnimationEnd="{{quickEnd}}"></i>
+</sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"moment":{"editor":null,"default":"home"},"mode":{"editor":null,"default":"dark"},"only":{"editor":null,"default":null},"pace":{"editor":null,"default":null},"$preview":{"width":1200,"height":420}}'>
+/*
+ * What passes through a page. The shapes and who comes where are copied from the real scene
+ * (packages/ui/src/components/horizon.tsx); the waits are shorter so it's quick to see here. On the real pages the quick
+ * ones come every 22 to 60 seconds and a ship takes minutes. `only` keeps one kind, and `pace` speeds up what's slow.
+ */
+var SHIPS = {
+  sail: { w: 40, h: 30, speed: 8, lamp: [30, 19], shape: ['M20 1C26 8 30.5 15 31.5 22H20Z', 'M18 6C13.5 11 10 16.5 8 22H18Z', 'M3 24H37C36 27 33.5 29 30.5 29H9.5C6.5 29 4 27 3 24Z'] },
+  steamer: { w: 58, h: 28, speed: 11, lamp: [46, 15], funnel: [20, 0], shape: ['M1 19H57L52 27H7Z', 'M13 13H43V18H13Z', 'M31 8H40V12H31Z', 'M20 3H26.5V12H20Z', 'M47 3V18H45.5V3Z'] },
+  trawler: { w: 50, h: 30, speed: 9, lamp: [37, 13], shape: ['M2 20H48L44 28H8C5 28 3 24 2 20Z', 'M28 11H40V20H28Z', 'M16 2H17.5V20H16Z', 'M17 3.5L31 11L30.4 12L16.6 4.6Z', 'M6 13H7.5V20H6Z', 'M10 13H11.5V20H10Z', 'M5 12H12.5V13.5H5Z'] },
+  tug: { w: 44, h: 26, speed: 14, lamp: [29, 12], funnel: [20, -3], shape: ['M1 17C8 19 30 19 43 14L40 25H8C5 25 2 21 1 17Z', 'M14 10H30V17H14Z', 'M17 5H27V10H17Z', 'M21 0H25V5H21Z'] },
+  tall: {
+    w: 64, h: 46, speed: 6, lamp: [52, 31],
+    shape: ['M2 34H60L56 44H9C6 44 4 40 2 34Z', 'M60 34L64 30L60.5 35Z', 'M15.4 8H16.6V34H15.4Z', 'M30.4 1H31.6V34H30.4Z', 'M45.4 6H46.6V34H45.4Z', 'M11 19H21C22 24 22 28 21 31H11C12 28 12 24 11 19Z', 'M12.5 9H19.5C20.5 12 20.5 15 19.5 17H12.5C13.5 15 13.5 12 12.5 9Z', 'M24 15H38C39 21 39 27 38 31H24C25 27 25 21 24 15Z', 'M26 3H36C37 7 37 10 36 13H26C27 10 27 7 26 3Z', 'M40 18H52C53 23 53 28 52 31H40C41 28 41 23 40 18Z', 'M42 7H50C51 10 51 13 50 15H42C43 13 43 10 42 7Z', 'M53 31L63 31L53.5 19Z']
+  },
+  freighter: { w: 84, h: 24, speed: 7, lamp: [15, 8], funnel: [11, -2], shape: ['M1 14H83L79 23H6C4 23 2 18 1 14Z', 'M8 5H20V14H8Z', 'M11 1H15V5H11Z', 'M24 8H32V14H24Z', 'M33 6H41V14H33Z', 'M42 8H50V14H42Z', 'M51 6H59V14H51Z', 'M60 9H68V14H60Z', 'M70 14H83V11Z'] }
+};
+var LEAPERS = {
+  fish: { box: '0 0 19 10', d: 'M18 5C15 1 9 0 5 4L1 1.5V8.5L5 6C9 10 15 9 18 5Z' },
+  minnow: { box: '0 0 12 6', d: 'M11.5 3C9.5 .8 6 .6 3.5 2.2L.5 .8V5.2L3.5 3.8C6 5.4 9.5 5.2 11.5 3Z' },
+  flyer: { box: '0 0 30 12', d: 'M29 6.5C25 4 18 4 13 5.5L5 3L7.5 7L4 10.5L13 8.2C18 9.6 25 9 29 6.5ZM20.5 5.1L11 .5L12.6 5.3Z' },
+  marlin: { box: '0 0 46 18', d: 'M46 7L33 8C30 5.5 24 4.5 18 5.5C13 6.5 9 8 6 8.5L1 4L3 9.5L1 15L7 10.5C11 11.5 17 13 23 12.5C27 12.2 31 10.8 33 9.4ZM30 5.4C27 1.5 22 .5 16 1C18 3 18.5 4.5 18.5 5.6Z' },
+  dolphin: { box: '0 0 34 16', d: 'M1 11C6 5 13 2 19 2L23 0L23.5 3C27 4 30 6 33 10L29.5 9C26 9 25 9 22 9.5C17 10 12 12 8 14.5L6 12.5C4 12.5 2.5 12 1 11Z' }
+};
+var LEAPS = {
+  fish: [{ shape: 'fish', late: '0s', x: 0, y: 0 }],
+  flyer: [{ shape: 'flyer', late: '0s', x: 0, y: 0 }],
+  marlin: [{ shape: 'marlin', late: '0s', x: 0, y: 0 }],
+  dolphins: [{ shape: 'dolphin', late: '0s', x: 0, y: 0 }, { shape: 'dolphin', late: '.55s', x: -30, y: 3 }],
+  school: [
+    { shape: 'minnow', late: '0s', x: 0, y: 0 }, { shape: 'minnow', late: '.13s', x: 13, y: 4 }, { shape: 'minnow', late: '.27s', x: -11, y: 3 },
+    { shape: 'minnow', late: '.4s', x: 24, y: -1 }, { shape: 'minnow', late: '.56s', x: 6, y: 7 }
+  ]
+};
+var POSES = [
+  'M3 .5C5 3 7.5 5.5 10 6.6C11.6 7.3 13 7.9 14 8.6C15 7.9 16.4 7.3 18 6.6C20.5 5.5 23 3 25 .5C24.6 3.6 22.6 6.6 19.6 8.2C17.4 9.4 15.4 10 14 11C12.6 10 10.6 9.4 8.4 8.2C5.4 6.6 3.4 3.6 3 .5Z',
+  'M0 6.5C3 4.5 7 3 10 4.5C11.6 5.3 13 7 14 8.2C15 7 16.4 5.3 18 4.5C21 3 25 4.5 28 6.5C24.5 5.6 21 5.4 18.5 6.6C16.6 7.6 15.2 9.2 14 10.4C12.8 9.2 11.4 7.6 9.5 6.6C7 5.4 3.5 5.6 0 6.5Z',
+  'M2 13C3.6 10.4 6.6 7.6 10 6.8C11.6 6.4 13 6.4 14 7C15 6.4 16.4 6.4 18 6.8C21.4 7.6 24.4 10.4 26 13C23.4 11.2 20.6 9.8 18 9.4C16.4 9.2 15 9.4 14 10C13 9.4 11.6 9.2 10 9.4C7.4 9.8 4.6 11.2 2 13Z'
+];
+var FLOCK = [{ x: 0, y: 0, w: 28, after: '0s' }, { x: -30, y: -11, w: 23, after: '-1.7s' }, { x: -34, y: 12, w: 22, after: '-3.1s' }, { x: -58, y: -20, w: 19, after: '-.8s' }, { x: -64, y: 22, w: 18, after: '-4.3s' }];
+var LIFE = {
+  home: { quick: ['gulls', 'gulls', 'gulls', 'fish', 'fish', 'dolphins', 'school', 'flyer', 'marlin', 'whale'], slow: ['sail', 'sail', 'steamer', 'trawler', 'tall', 'freighter', 'tug', 'balloon'], gulls: [42, 104], fish: [30, 58] },
+  team: { quick: ['gulls', 'gulls', 'fish', 'school', 'flyer', 'dolphins'], slow: ['sail', 'steamer', 'trawler', 'tall', 'tug'], gulls: [46, 120], fish: [34, 56] },
+  notes: { quick: ['gulls', 'star', 'fish', 'school'], slow: ['sail', 'trawler', 'freighter'], gulls: [16, 44], fish: [16, 34] },
+  note: { quick: ['star'], slow: [], gulls: [0, 0], fish: [0, 0] },
+  settings: { quick: [], slow: ['sail', 'freighter'], gulls: [0, 0], fish: [0, 0] },
+  record: { quick: ['star', 'star', 'fish', 'whale'], slow: ['sail', 'tall', 'trawler'], gulls: [0, 0], fish: [30, 70] }
+};
+var CLOUDS = {home: [{ x: 9, at: 0.24, w: 290, rows: 6, takes: 560 }, { x: 66, at: 0.1, w: 210, rows: 5, takes: 800 }, { x: 82, at: 0.44, w: 330, rows: 7, takes: 470 }, { x: 34, at: 0.56, w: 170, rows: 4, takes: 690 }], team: [{ x: 78, at: 0.12, w: 270, rows: 6, takes: 600 }, { x: 6, at: 0.34, w: 230, rows: 5, takes: 740 }, { x: 44, at: 0.05, w: 170, rows: 4, takes: 860 }], notes: [{ x: 16, at: 0.3, w: 230, rows: 4, takes: 720 }, { x: 72, at: 0.14, w: 170, rows: 3, takes: 900 }], note: [{ x: 58, at: 0.2, w: 190, rows: 3, takes: 880 }], settings: [{ x: 44, at: 0.26, w: 190, rows: 3, takes: 960 }], record: [{ x: 24, at: 0.3, w: 260, rows: 4, takes: 940 }]};
+function seeded(n) { return function () { n = (n * 16807) % 2147483647; return (n - 1) / 2147483646; }; }
+function between(a, b) { return a + Math.random() * (b - a); }
+function coin(c) { return Math.random() < (c == null ? 0.5 : c); }
+function pick(l) { return l[Math.floor(Math.random() * l.length)]; }
+function puffsOf(moment, pace) {
+  return (CLOUDS[moment] || []).map(function (c, i) {
+    var r = seeded(61 + i * 17), bars = [];
+    for (var k = 0; k < c.rows; k++) {
+      var up = k / c.rows, width = c.w * Math.pow(1 - up, 0.75) * (0.82 + r() * 0.3), left = (c.w - width) * (0.25 + r() * 0.5);
+      bars.push({ style: 'left: ' + left.toFixed(1) + 'px; top: ' + (-k * 7) + 'px; width: ' + width.toFixed(1) + 'px; --lit: ' + (1 - up).toFixed(2) });
+    }
+    return { style: 'top: calc(var(--hz) * ' + c.at + '); --x: ' + c.x + '; --takes: ' + (c.takes / pace).toFixed(1) + 's', at: 'left: ' + c.x + '%', bars: bars };
+  });
+}
+var QUICK = ['gulls', 'whale', 'star', 'fish', 'flyer', 'marlin', 'dolphins', 'school'];
+class Component extends DCLogic {
+  componentDidMount() {
+    /* A journey frame is a still: nothing comes. */
+    if (document.querySelector('.fl-in')) return;
+    this.alive = true;
+    this.wait('quick', 900, 3200);
+    this.wait('slow', 1500, 5000);
+  }
+  componentWillUnmount() { this.alive = false; clearTimeout(this.quickT); clearTimeout(this.slowT); }
+  wait(lane, a, b) {
+    var self = this;
+    clearTimeout(this[lane + 'T']);
+    this[lane + 'T'] = setTimeout(function () {
+      if (!self.alive) return;
+      var v = lane === 'quick' ? self.quickVisit() : self.slowVisit();
+      if (!v) return;
+      var st = {}; st[lane] = v; self.setState(st);
+    }, between(a, b));
+  }
+  only() { return this.props.only || null; }
+  /* How far a crossing is: a tile on the moving board, or the page. */
+  across() { return (this.only() ? 340 : innerWidth) + 240; }
+  quickVisit() {
+    var m = this.props.moment || 'home', L = LIFE[m] || LIFE.home, o = this.only();
+    if (o && QUICK.indexOf(o) < 0) return null;
+    var kind = o || pick(L.quick);
+    if (!kind) return null;
+    if (kind === 'gulls') return { kind: kind, birds: pick([1, 3, 3, 5]), left: coin(), y: between(L.gulls[0] || 42, L.gulls[1] || 104), ms: this.across() / between(105, 150) * 1000 };
+    if (kind === 'whale') return { kind: kind, x: between(20, 80), y: between(8, 16) };
+    if (kind === 'star') return { kind: kind, x: between(12, 58), y: between(6, 34), back: coin() };
+    var back = coin(), reach = kind === 'flyer' ? 56 : 18;
+    return { kind: kind, x: back ? between(reach + 8, 88) : between(8, 92 - reach), y: kind === 'dolphins' ? between(10, 20) : between(L.fish[0] || 30, L.fish[1] || 58), back: back };
+  }
+  slowVisit() {
+    var m = this.props.moment || 'home', L = LIFE[m] || LIFE.home, o = this.only();
+    if (o && QUICK.indexOf(o) >= 0 || o === 'clouds') return null;
+    var kind = o || pick(L.slow), pace = Number(this.props.pace) || 3;
+    if (!kind) return null;
+    if (kind === 'balloon') return { kind: kind, ms: between(34000, 44000) };
+    return { kind: kind, left: coin(), ms: this.across() / (SHIPS[kind].speed * pace) * 1000 };
+  }
+  renderVals() {
+    var self = this, AH = window.AH, p = this.props, st = this.state || {}, moment = p.moment || 'home', mode = p.mode || 'dark', q = st.quick, s = st.slow;
+    var o = this.only(), night = mode === 'dark' || moment === 'record', ship = s && s.kind !== 'balloon' ? SHIPS[s.kind] : null;
+    var quickDone = function () { self.setState({ quick: null }); self.wait('quick', o ? 700 : 5000, o ? 1800 : 11000); };
+    var slowDone = function () { self.setState({ slow: null }); self.wait('slow', o ? 500 : 9000, o ? 1400 : 22000); };
+    var own = function (done) { return function (e) { if (e.target === e.currentTarget) done(); }; };
+    var left = !!(q && q.left), leaps = q && LEAPS[q.kind] ? LEAPS[q.kind] : null;
+    return {
+      moment: moment, night: night ? 'true' : 'false', vars: AH.scene(moment, 'blue-hour', mode).vars,
+      puffs: puffsOf(moment, o === 'clouds' ? 12 : 1),
+      isShip: !!ship, isBalloon: !!(s && s.kind === 'balloon'), hasFunnel: !!(ship && ship.funnel),
+      shipCls: 'hz-sail' + (s && s.left ? ' is-left' : ''), shipStyle: ship ? '--cw: ' + ship.w + 'px; animation-duration: ' + Math.round(s.ms) + 'ms' : '',
+      craftStyle: ship ? 'width: ' + ship.w + 'px; height: ' + ship.h + 'px' : '', shipBox: ship ? '0 0 ' + ship.w + ' ' + ship.h : '0 0 1 1',
+      shipPaths: ship ? ship.shape.map(function (d) { return { d: d }; }) : [],
+      funnelStyle: ship && ship.funnel ? 'left: ' + ship.funnel[0] + 'px; top: ' + ship.funnel[1] + 'px' : '', lampStyle: ship ? 'left: ' + ship.lamp[0] + 'px; top: ' + ship.lamp[1] + 'px' : '',
+      slowDur: s ? 'animation-duration: ' + Math.round(s.ms) + 'ms' : '', slowEnd: own(slowDone),
+      isGulls: !!(q && q.kind === 'gulls'), isLeap: !!leaps, isWhale: !!(q && q.kind === 'whale'), isStar: !!(q && q.kind === 'star'),
+      flyCls: 'hz-fly' + (left ? ' is-left' : ''),
+      flyStyle: q && q.ms ? 'top: calc(var(--hz) - ' + q.y.toFixed(0) + 'px); animation-duration: ' + Math.round(q.ms) + 'ms' : '',
+      birds: q && q.birds ? FLOCK.slice(0, q.birds).map(function (b) { return { style: 'left: ' + b.x + 'px; top: ' + b.y + 'px; width: ' + b.w + 'px; --after: ' + b.after }; }) : [],
+      pose0: POSES[0], pose1: POSES[1], pose2: POSES[2],
+      jumps: leaps ? leaps.map(function (j, i) { var L = LEAPERS[j.shape]; return { cls: 'hz-jump is-' + j.shape, style: 'left: ' + j.x + 'px; top: ' + j.y + 'px; --late: ' + j.late, box: L.box, d: L.d, end: i === leaps.length - 1 ? quickDone : null }; }) : [],
+      quickEnd: own(quickDone), quickDone: quickDone,
+      leapCls: 'hz-leap' + (q && q.back ? ' is-back' : ''), shootCls: 'hz-shoot' + (q && q.back ? ' is-back' : ''),
+      leapStyle: q && q.x != null ? 'left: ' + q.x.toFixed(1) + '%; top: ' + (q.kind === 'star' ? 'calc(var(--hz) * ' + (q.y / 100).toFixed(2) + ')' : 'calc(var(--hz) + ' + q.y.toFixed(0) + 'px)') : ''
+    };
+  }
+}
+</script>
+</body>
+</html>

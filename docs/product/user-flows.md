@@ -27,21 +27,27 @@ Each flow below is implemented in `apps/web` and exercised end to end by the int
    in as** the name, with the provider's mark (a key for single sign-on). **Your calendar**: how many calls are
    left today and which is next, from the connected or sample calendar (no row without calendar access). **Your
    team at** the company, with its size and faces, when it has people in it and has arrived by then (the screen
-   doesn't wait for it). **Notes are encrypted in storage** and follow the call’s sharing permissions. Then
+   doesn't wait for it), with who already uses Alcove, or **Invite them from Team** while nobody does. **Notes are
+   written in confidential compute**, and only the people invited to a call get its notes. Then
    "You’re in" and the arch opens into Home. **Skip**, **Escape** or **Enter** opens it straight away; with
    reduced motion the finished screen shows for a moment and Home follows. After that, signing in goes
    straight to Home. From the welcome page it sails out of the cove: the headlands go by, the horizon comes up to
    Home's, the side panel and the page's frame form round the sea, and Home rises in, in about three and a half
    seconds (a press, a key or the wheel ends it at once; with reduced motion Home just opens).
-4. On first arriving in Home, a tour goes through it, one slide at a time: a card with a short animation, and the
-   page dimmed around the real thing the slide is about, with an arrow to it. **Start or schedule a call** (Start a
-   call, or Start now with the side panel hidden), **Notes for your calls** (the example note's card in Recent notes
-   before there are any, then Notes), **Join a call** (Join, when an Alcove call is on offer at the top of Home),
-   **Record in the room** (Record, in the side panel or the phone's tab bar), **Your notes stay yours** (the
-   confidential-compute check in the side panel, or the badge on Home on a phone) and **You’re ready** (Start a
-   call). The card moves beside its target, or along the bottom on a phone; **←**/**→** and **Enter** move through
-   it and **Escape** or **Skip tour** closes it. It isn't shown again on that browser for that account; **Take the
-   tour** in Settings (flow 11) plays it again.
+4. On first arriving in Home, a tour goes through it, one stop at a time: a card with a short animation on the dawn sky,
+   and the page dimmed around the real thing the stop is about, with a ring round it and an arrow to it. **Start or
+   schedule a call** (Start now and Schedule, on Home's sky); **Join a call** (the line on Home that offers an Alcove
+   call, only while it does, from its last few minutes); **Notes for your calls** (the example note's card in Recent
+   notes before there are any notes, then Calls; it says they're written in confidential compute); **Search or ask** (at
+   the top right, or the search button in the phone's top bar); **Documents and boards** (Drive, in the side panel or the tab bar); **Record in the room** (Record); **Bring your
+   agent** (Agents, at the foot of the side panel; a phone has no Agents in its tab bar, so the stop is left out); and
+   **You’re ready** (Start now and Schedule again). Any stop whose target isn't on screen is left out. Shortcuts (**N**,
+   **J**, **⌘K** or **Ctrl K**) are named only where there's a keyboard. The card's button names the next stop (**Show me notes**,
+   **Show me the call**, **Show me search**, **Show me the Drive**, **Show me recording**, **Show me agents**, **Back to
+   the start**), and the last is **Start using Alcove**. The card moves beside its target, or along the bottom on a phone,
+   standing above the tab bar when it points at it; **←**/**→** and **Enter** move through it and **Escape** or **Skip
+   tour** closes it. A toast says it can be taken again from your menu. It isn't shown again on that browser for that
+   account; **Take the tour** in your menu (flow 2) or in Settings (flow 11) plays it again.
 
 The first sign-in creates the account: its keys, a profile with the name, email and photo from the sign-in,
 the notes default (on) and 10,000 credits. Later sign-ins bring the name, email and photo up to date. In local

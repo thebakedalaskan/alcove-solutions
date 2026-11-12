@@ -80,13 +80,13 @@ function useRows(): Row[] {
     rows.push({
       id: 'team', icon: <Faces people={team.members.slice(0, 3).map((m) => m.person)} size={14} max={3} />,
       text: <>Your team at {team.name}: <b>{team.members.length + 1} people</b></>,
-      sub: on.length ? `${listNames(on)} already ${on.length > 1 ? 'use' : 'uses'} Alcove` : 'Invite them from Home'
+      sub: on.length ? `${listNames(on)} already ${on.length > 1 ? 'use' : 'uses'} Alcove` : 'Invite them from Team'
     });
   }
   rows.push({
     id: 'seal', icon: <Icon name="sealed" size={18} />,
-    text: <>Notes are <b>encrypted in storage</b></>,
-    sub: 'Your notes follow the call’s sharing permissions'
+    text: <>Notes are <b>written in confidential compute</b></>,
+    sub: 'Only the people invited to a call get its notes'
   });
   return rows;
 }

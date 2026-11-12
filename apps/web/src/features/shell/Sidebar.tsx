@@ -9,7 +9,7 @@ import { ArchThumb, Icon, IconButton, Kbd, Logo, Meter, NavItemContent, SidebarN
 import { useQuery } from '@tanstack/react-query';
 import { Link, useRouterState } from '@tanstack/react-router';
 import { useEffect, useRef, useState, type RefObject } from 'react';
-import { aheadOf, joinable, whenLine } from '~/features/home/day';
+import { aheadShown, joinable, whenLine } from '~/features/home/day';
 import { recordOfflineHere } from '~/lib/device';
 import { log } from '~/lib/log';
 import { useNow, useOnline } from '~/lib/live';
@@ -85,7 +85,7 @@ export function Sidebar({ hidden, hideRef, onHide, onNew, onPin }: {
         </div>
         <Offline className="sb-offline" />
         {/* In the workspace, N makes a document. */}
-        <button type="button" className={cn(buttonClass(), 'sb-new')} onClick={onNew} aria-label="Start a call" aria-haspopup="dialog" aria-keyshortcuts={inWorkspace(path) ? undefined : 'N'} data-tour="new-call">
+        <button type="button" className={cn(buttonClass(), 'sb-new')} onClick={onNew} aria-label="Start a call" aria-haspopup="dialog" aria-keyshortcuts={inWorkspace(path) ? undefined : 'N'}>
           <span className="sb-new-ic"><Icon name="video" size={16} /></span><span>Start a call</span>{!inWorkspace(path) && <Kbd>N</Kbd>}
         </button>
         <SidebarNav>{NAV.map(link)}</SidebarNav>
@@ -115,8 +115,7 @@ function AboutToStart({ home }: { home: boolean }) {
   const calls = useQuery(q.upcoming()).data;
   const calendar = useQuery(q.calendar()).data;
   const prefs = useQuery(q.prefs()).data;
-  const events = prefs?.showOtherMeetings === false ? [] : calendar?.events ?? [];
-  const ahead = aheadOf(calls ?? [], events, now);
+  const ahead = aheadShown(calls, calendar?.events, prefs?.showOtherMeetings, now);
   const next = joinable(ahead, me, now, NEAR_MS);
   if (!next || (home && joinable(ahead, me, now))) return null;
   const when = whenLine(next, now);
@@ -161,7 +160,7 @@ function Foot({ online }: { online: boolean }) {
   const verified = verifiedAt(trust);
   return (
     <div className="sb-foot">
-      {online && <p className="sb-seal" data-tour="sealed" title={verified === null ? undefined : `Hardware checked at ${hm(new Date(verified))}`}><Icon name="sealed" size={15} />{trustLine(trust)}</p>}
+      {online && <p className="sb-seal" title={verified === null ? undefined : `Hardware checked at ${hm(new Date(verified))}`}><Icon name="sealed" size={15} />{trustLine(trust)}</p>}
       {credits && (
         <Link to="/settings" hash="plan" activeOptions={{ includeHash: true }} className="sb-credits">
           <span><b>{hoursAndMinutes(credits.balance / credits.perMinute)}</b> of notes left</span>

@@ -1,18 +1,19 @@
 /*
- * The tour of Home: after a new account comes in, and again from Settings. Each slide points
- * at the real thing on Home as it is now, found by its `data-tour` hook. A slide whose thing isn't
- * there (no calls yet, nothing to join) is left out, or points at what stands in for it (the example
- * note); nothing is drawn onto the page for the tour.
+ * The tour of Home: after a new account comes in, and again from your menu or Settings. Each slide points at the real
+ * thing as it is now, found by its `data-tour` hook: Start now and Schedule, the call Home offers, the example note or
+ * Calls, Search or ask, the Drive, Record, Agents. A slide whose thing isn't there (nothing to join, Agents on a phone)
+ * is left out, or points at what stands in for it (the example note before there are notes); nothing is drawn onto the
+ * page for the tour.
  */
-import type { Meeting } from '@alcove/api';
 import { TourDialog, useToast, type TourSlide } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useRouterState } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
 import { q } from '~/lib/queries';
+import { shortcut } from '~/lib/keys';
 import { minutesUntil, untilLabel } from '~/lib/time';
-import { aheadOf, joinable, type Ahead } from '~/features/home/day';
-import { ArtCall, ArtNotes, ArtRoom, ArtSchedule, ArtSeal, ArtSun } from './art';
+import { aheadShown, going, joinable, type Ahead } from '~/features/home/day';
+import { ArtAgents, ArtAsk, ArtCall, ArtDrive, ArtNotes, ArtRoom, ArtStart, ArtSun } from './art';
 import { arrival, rememberTour, tourSeen, useArrival } from './store';
 
 /** The first element with this hook that's on screen: laid out, and not in something inert (a hidden side panel). */
@@ -21,49 +22,68 @@ const hook = (name: string) => (): HTMLElement | null => {
   return null;
 };
 
-/** A slide before it knows what follows it; `called` names it on the button before it. */
-type Draft = Omit<TourSlide, 'next'> & { called: string };
+/** A slide before it knows what follows it. `lead` is the button on the slide before that leads to it. */
+type Draft = Omit<TourSlide, 'next'> & { lead: string };
 
-/** The slides for Home as it is right now, in order. */
-function slidesFor(o: { next: Meeting | undefined; join: Ahead | undefined; firstDay: boolean; calendar: boolean }): TourSlide[] {
+/** The slides for Home as it is right now, in order. `join` is the call Home offers at the top, by Home's own rule. */
+function slidesFor(o: { join: Ahead | undefined; now: number }): TourSlide[] {
   // Keyboard shortcuts are only worth mentioning where there's a keyboard.
   const keys = matchMedia('(hover: hover) and (pointer: fine)').matches;
   const drafts: Draft[] = [];
   const add = (d: Draft) => { if (d.target()) drafts.push(d); };
   add({
-    id: 'schedule', called: 'notes', title: 'Start or schedule a call', art: <ArtSchedule />, prefer: ['right', 'below'], target: hook('new-call'),
-    text: `Press Start a call${keys ? ', or N,' : ''} to go now, or schedule it for later: who, when, then the details. Alcove suggests the times${o.calendar ? ' and puts it on your calendar' : ''}.`
+    id: 'start', lead: 'Back to the start', title: 'Start or schedule a call', art: <ArtStart />, prefer: ['below', 'right', 'left'], target: hook('start'),
+    text: `Start now goes straight to the call. Schedule suggests times that suit everyone and sends the invites.${keys ? ' Or press N.' : ''}`
   });
-  const example = hook('notes-example');
-  add(example()
-    ? { id: 'notes', called: 'notes', title: 'Notes for your calls', art: <ArtNotes />, prefer: ['left', 'below', 'above'], target: example, text: 'See what your notes will look like: a summary, decisions and follow-ups. Only the people invited get them.' }
-    : { id: 'notes', called: 'notes', title: 'Notes for your calls', art: <ArtNotes />, prefer: ['right', 'above', 'below'], target: hook('notes'), text: 'Notes are set when you schedule. Everyone in the call can see they’re on, and only the people invited get them.' });
+  // Home only marks its line for an Alcove call, so a meeting elsewhere gets no stop.
   if (o.join) {
-    const mins = minutesUntil(o.join.startsAt);
     add({
-      id: 'join', called: 'how to join', title: 'Join a call', art: <ArtCall />, prefer: ['below', 'above', 'right'], target: hook('join'),
-      text: `${o.join.title} ${mins <= 0 ? 'is happening now' : `starts ${untilLabel(mins)}`}. Join from here${keys ? ' or press J' : ''}. Captions and translation are in the call.`
+      id: 'join', lead: 'Show me the call', title: 'Join a call', art: <ArtCall />, prefer: ['below', 'right', 'left'], target: hook('join'),
+      text: `${o.join.title} ${going(o.join, o.now) ? 'is happening now' : `starts ${untilLabel(minutesUntil(o.join.startsAt, o.now))}`}. Join from here${keys ? ', or press J' : ''}. Captions, chat and boards are in the call.`
     });
   }
-  add({ id: 'room', called: 'the room', title: 'Record in the room', art: <ArtRoom />, prefer: ['right', 'below'], target: hook('room'), text: 'Meeting in person? Record on your phone, even offline. Notes are written when you’re back online.' });
-  add({ id: 'sealed', called: 'privacy', title: 'Your notes stay yours', art: <ArtSeal />, prefer: ['left', 'below'], target: hook('sealed'), text: 'Alcove encrypts stored notes and uses the call’s sharing permissions to decide who can open them.' });
+  const example = hook('notes-example');
+  add(example()
+    ? {
+      id: 'notes', lead: 'Show me notes', title: 'Notes for your calls', art: <ArtNotes />, prefer: ['right', 'above', 'left'], target: example,
+      text: 'Open the example to see what a call leaves you: a summary, decisions and follow-ups, written in confidential compute.'
+    }
+    : {
+      id: 'notes', lead: 'Show me notes', title: 'Notes for your calls', art: <ArtNotes />, prefer: ['right', 'below', 'above'], target: hook('calls'),
+      text: 'Every call’s notes are in Calls: a summary, decisions and follow-ups, written in confidential compute.'
+    });
   add({
-    id: 'ready', called: 'where to start', title: 'You’re ready', art: <ArtSun />, prefer: ['right', 'below', 'left'], target: hook('new-call'),
-    text: `Start a call now, or schedule one for later.${o.firstDay && o.next?.notes === 'on' ? ` Your first notes arrive after ${o.next.title}.` : ''}`
+    id: 'ask', lead: 'Show me search', title: 'Search or ask', art: <ArtAsk />, prefer: ['below', 'left'], target: hook('ask'),
+    text: `Find what anyone said in any call, or ask a question and get an answer with the moments it came from.${keys ? ` Press ${shortcut('K')}.` : ''}`
   });
-  return drafts.map((d, i) => {
-    const after = drafts[i + 1];
-    return { id: d.id, title: d.title, text: d.text, art: d.art, prefer: d.prefer, target: d.target, next: after ? `Show me ${after.called}` : 'Start using Alcove' };
+  add({
+    id: 'drive', lead: 'Show me the Drive', title: 'Documents and boards', art: <ArtDrive />, prefer: ['right', 'above', 'below'], target: hook('drive'),
+    text: 'Write and sketch together in a call. Each call keeps what it made, and the Drive keeps it all.'
   });
+  add({
+    id: 'room', lead: 'Show me recording', title: 'Record in the room', art: <ArtRoom />, prefer: ['right', 'above', 'below'], target: hook('record'),
+    text: 'Meeting in person? Record on your phone, even offline. Notes are written when you’re back online.'
+  });
+  add({
+    id: 'agents', lead: 'Show me agents', title: 'Bring your agent', art: <ArtAgents />, prefer: ['right', 'above'], target: hook('agents'),
+    text: 'Let Claude or another agent find notes and book calls for you, with only what you allow.'
+  });
+  add({
+    id: 'ready', lead: 'Back to the start', title: 'You’re ready', art: <ArtSun />, prefer: ['below', 'right', 'left'], target: hook('start'),
+    text: 'Start a call now, or schedule one for later.'
+  });
+  return drafts.map((d, i) => ({ id: d.id, title: d.title, text: d.text, art: d.art, prefer: d.prefer, target: d.target, next: drafts[i + 1]?.lead ?? 'Start using Alcove' }));
 }
 
 export function TourHost() {
   const { tour, stage } = useArrival();
   const session = useQuery(q.session()).data;
   const upcoming = useQuery(q.upcoming()).data;
-  const notes = useQuery(q.notes()).data;
   const calendar = useQuery(q.calendar()).data;
+  const prefs = useQuery(q.prefs()).data;
   const path = useRouterState({ select: (s) => s.location.pathname });
+  // The address changes as soon as a navigation starts; Home is on the page once the router has finished.
+  const settled = useRouterState({ select: (s) => s.status === 'idle' });
   const navigate = useNavigate();
   const toast = useToast();
   const [slides, setSlides] = useState<TourSlide[] | null>(null);
@@ -72,24 +92,24 @@ export function TourHost() {
     if (!tour || !session || stage !== 'none') return;
     if (tour.auto && tourSeen(session.ownerId)) { arrival.tourTaken(); return; }
     if (path !== '/home') { void navigate({ to: '/home' }); return; }
+    if (!settled) return;
     // Home settles in first.
     const t = setTimeout(() => {
       const now = Date.now();
-      const next = (upcoming ?? []).filter((m) => new Date(m.endsAt).getTime() > now && !m.offer).sort((a, b) => a.startsAt.localeCompare(b.startsAt))[0];
-      const join = joinable(aheadOf(upcoming ?? [], [], now), session.user.email, now);
-      const s = slidesFor({ next, join, firstDay: (notes ?? []).length === 0, calendar: calendar?.source === 'google' && !calendar.needsAccess });
+      const join = joinable(aheadShown(upcoming, calendar?.events, prefs?.showOtherMeetings, now), session.user.email, now);
+      const s = slidesFor({ join, now });
       arrival.tourTaken();
       if (s.length) setSlides(s);
     }, tour.auto ? 350 : 250);
     return () => clearTimeout(t);
-  }, [tour, session, stage, path, navigate, upcoming, notes, calendar]);
+  }, [tour, session, stage, path, settled, navigate, upcoming, calendar, prefs]);
 
   if (!slides || !session) return null;
   return (
     <TourDialog slides={slides} onClose={(finished) => {
       setSlides(null);
       rememberTour(session.ownerId);
-      toast(finished ? 'You can take the tour again from Settings.' : 'Tour closed. You can take it again from Settings.', { icon: 'compass', ms: 4200 });
+      toast(finished ? 'You can take the tour again from your menu.' : 'Tour closed. You can take it again from your menu.', { icon: 'compass', ms: 4200 });
     }} />
   );
 }
