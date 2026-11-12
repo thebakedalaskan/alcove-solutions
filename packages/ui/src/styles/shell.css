@@ -137,8 +137,6 @@
 .sb-link > span { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 a.sb-link:hover, a.sb-link[aria-current="page"] { background: color-mix(in srgb, var(--ink) 8%, transparent); color: var(--ink); }
 .sb-link .ac-arch-thumb { box-shadow: none; }
-.sb-link > .ac-i { color: var(--ink-3); }
-.sb-link .n { flex: none; margin-left: auto; padding-left: 6px; font: 500 12px/1 var(--font-sans); font-variant-numeric: tabular-nums; color: var(--ink-3); }
 .sb-foot { flex: none; display: grid; gap: 4px; padding-top: 20px; }
 .sb-seal { display: flex; align-items: center; gap: 8px; padding: 0 12px 6px; font: 500 12px/1.35 var(--font-sans); color: var(--ink-3); }
 .sb-seal .ac-i { color: var(--sun-text); }

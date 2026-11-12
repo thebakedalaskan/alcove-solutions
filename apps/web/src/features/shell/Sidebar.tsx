@@ -9,13 +9,13 @@ import { ArchThumb, Icon, IconButton, Kbd, Logo, Meter, NavItemContent, SidebarN
 import { useQuery } from '@tanstack/react-query';
 import { Link, useRouterState } from '@tanstack/react-router';
 import { useEffect, useRef, useState, type RefObject } from 'react';
-import { aheadOf, isOffered, joinable, peopleOn, started, type Ahead } from '~/features/home/day';
+import { aheadOf, joinable, whenLine } from '~/features/home/day';
 import { recordOfflineHere } from '~/lib/device';
 import { log } from '~/lib/log';
 import { useNow, useOnline } from '~/lib/live';
 import { q, trustLine, verifiedAt } from '~/lib/queries';
-import { hm, hoursAndMinutes, minutesUntil, untilLabel } from '~/lib/time';
-import { NAV, NAV_FOOT, inWorkspace, places, useCounts, type Counter, type NavPlace } from './places';
+import { hm, hoursAndMinutes } from '~/lib/time';
+import { NAV, NAV_FOOT, inWorkspace, places, useCounts, type NavPlace } from './places';
 
 const KEY = 'alcove-side-panel';
 const slog = log.child({ component: 'shell' });
@@ -75,7 +75,7 @@ export function Sidebar({ hidden, hideRef, onHide, onNew, onPin }: {
   const counts = useCounts();
   const team = useQuery(q.team()).data;
   const path = useRouterState({ select: (s) => s.location.pathname });
-  const link = (p: NavPlace) => <Link key={p.to} to={p.to} className="ac-nav-item" data-tour={p.tour}><NavItemContent icon={p.icon} label={p.label} count={countOf(counts, p.count)} /></Link>;
+  const link = (p: NavPlace) => <Link key={p.to} to={p.to} className="ac-nav-item" data-tour={p.tour}><NavItemContent icon={p.icon} label={p.label} count={p.count && counts[p.count]} /></Link>;
   return (
     <aside className="sb dark" aria-label="Side panel" inert={hidden}>
       <div className="sb-in">
@@ -93,36 +93,23 @@ export function Sidebar({ hidden, hideRef, onHide, onNew, onPin }: {
           <Pinned onPin={onPin} />
         </div>
         <SidebarNav label="Team and agents" className="sb-low">{places(NAV_FOOT, team).map(link)}</SidebarNav>
-        {online && <UpNext home={path === '/home'} />}
+        {online && <AboutToStart home={path === '/home'} />}
         <Foot online={online} />
       </div>
     </aside>
   );
 }
 
-/** A place's count, while something waits on you there. */
-const countOf = (counts: Record<Counter, number | undefined>, counter: Counter | undefined) => (counter ? counts[counter] : undefined);
-
 /** From this long before a call, the side panel offers it with Join. */
 const NEAR_MS = 10 * 60_000;
 
 /**
- * The call to offer at the panel's foot: one that's going, or else one with someone else on it that starts in the next ten
- * minutes. A meeting needs a link to join by. A call offering times hasn't got one yet.
+ * A call that's about to start, at the foot of the panel with Join, on every page: one that's going, or one with someone
+ * else on it from ten minutes before until it ends, by Home's own rule (`joinable`) looking further ahead. The rest of the
+ * day is Home's Upcoming. On Home it makes way while Home's own line offers the call, from its last few minutes and while
+ * it's going, so there's one Join at a time. Offline there's nothing to join.
  */
-function nearCall(ahead: readonly Ahead[], me: string | undefined, now: number): Ahead | undefined {
-  return ahead.find((a) => a.kind === 'call' && a.call.status === 'live') ?? ahead.find((a) => {
-    if (isOffered(a) || (a.kind === 'event' && !a.event.join)) return false;
-    return new Date(a.startsAt).getTime() - now <= NEAR_MS && peopleOn(a, me).length > 0;
-  });
-}
-
-/**
- * A call that's about to start, at the foot of the panel with Join, on every page: from ten minutes before until it ends.
- * The rest of the day is Home's Upcoming. On Home it makes way while Home's own line offers the call, from its last few
- * minutes and while it's going (Home's rule, `joinable`), so there's one Join at a time. Offline there's nothing to join.
- */
-function UpNext({ home }: { home: boolean }) {
+function AboutToStart({ home }: { home: boolean }) {
   const now = useNow();
   const me = useQuery(q.session()).data?.user.email;
   const calls = useQuery(q.upcoming()).data;
@@ -130,9 +117,9 @@ function UpNext({ home }: { home: boolean }) {
   const prefs = useQuery(q.prefs()).data;
   const events = prefs?.showOtherMeetings === false ? [] : calendar?.events ?? [];
   const ahead = aheadOf(calls ?? [], events, now);
-  const next = nearCall(ahead, me, now);
+  const next = joinable(ahead, me, now, NEAR_MS);
   if (!next || (home && joinable(ahead, me, now))) return null;
-  const when = started(next, now) ? 'Happening now' : `Starts ${untilLabel(minutesUntil(next.startsAt, now))}`;
+  const when = whenLine(next, now);
   return (
     <div className="sb-now" role="group" aria-label={`${next.title}, ${when.toLowerCase()}`}>
       <ArchThumb cover={coverFor(next.id)} width={24} />

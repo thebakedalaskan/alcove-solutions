@@ -45,8 +45,8 @@ export const BusyTablet = page('/home', 'busy', { globals: TABLET });
  * Eight minutes before the design review, on a wide screen: the foot of the side panel offers it with Join, under Team and
  * Agents, until Home's own line takes it at five minutes. Further off, the panel says nothing of the day: that's Upcoming.
  */
-export const UpNextOnHome = page('/home', 'call-soon', { globals: WIDE, parameters: { opening: { now: on(0, 10, 22) } } });
-export const UpNextOnHomeNight = page('/home', 'call-soon', { globals: { ...WIDE, ...NIGHT }, parameters: { opening: { now: on(0, 10, 22) } } });
+export const AboutToStartOnHome = page('/home', 'call-soon', { globals: WIDE, parameters: { opening: { now: on(0, 10, 22) } } });
+export const AboutToStartOnHomeNight = page('/home', 'call-soon', { globals: { ...WIDE, ...NIGHT }, parameters: { opening: { now: on(0, 10, 22) } } });
 
 /** Follow-ups: what Art took on, soonest first, each with the call it came from and the day it's due. */
 export const FollowUpsTab = page('/home', 'busy', { beforeEach: changing(takenOn), play: toFollowUps });
@@ -167,8 +167,8 @@ export const CallSoonNight = { ...CallSoon, globals: NIGHT };
 /** Six minutes after the design review's time: Join still takes the filled button, and its row in Upcoming says Now. */
 export const HappeningNow = page('/home', 'call-soon', { parameters: { opening: { now: on(0, 10, 36) } } });
 /** Four minutes before the design review on a wide screen: Home's line is the one Join on screen, and the side panel's has made way. */
-export const UpNextMakesWay = page('/home', 'call-soon', { globals: WIDE });
-export const UpNextMakesWayNight = page('/home', 'call-soon', { globals: { ...WIDE, ...NIGHT } });
+export const AboutToStartMakesWay = page('/home', 'call-soon', { globals: WIDE });
+export const AboutToStartMakesWayNight = page('/home', 'call-soon', { globals: { ...WIDE, ...NIGHT } });
 
 /** Opened without a connection: Home says it's offline, and Record still works. */
 export const Offline = page('/home', 'offline');

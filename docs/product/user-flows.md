@@ -68,8 +68,8 @@ Beside every page, dark in both themes, in two groups: your work at the top, and
   it says to unpin one first. With nothing pinned there's no Pinned at all.
 - At the foot, **Team** (flow 10), where your groups are, and **Agents** (flow 14). Someone on their own, at a personal
   address, has no Team page, and still has Agents.
-- Under them, from 10 minutes before a call with someone else on it until it ends, on every page: the call, when it starts
-  (or **Happening now**), and **Join**. A meeting on your calendar is offered when it has a video link (unless **Show my
+- Under them, on every page, while a call is going, or from 10 minutes before one with someone else on it until it ends:
+  the call, when it starts (or **Happening now** once someone's in it), and **Join**. A meeting on your calendar is offered when it has a video link (unless **Show my
   other meetings on Home** is off). The rest of the day is on Home, under Upcoming. On Home it makes way while Home's own
   line offers the call (from 5 minutes before, and while it's going), so there's one **Join** at a time.
 - At the bottom: the confidential-compute check (**Confidential compute · verified** when the server's
@@ -142,8 +142,8 @@ visitors: a boat far out, stars after dark and now and then a shooting star. Wit
 - While a call is going, or from 5 minutes before one with someone else on it, a line above **Start a call** names it
   with **Join** (**J**), and says when it starts or **Happening now**. It's the one time a call comes near the top: people
   join from their calendar. A call that's going comes first. A calendar meeting needs a video link to get this line, and
-  its **Join** opens that link in a new tab. **Join** takes the filled button, and **Start now** gives it up. Until
-  then the side panel's **Up next** has the next call with its countdown and **Join**, as on every page, and it makes way
+  its **Join** opens that link in a new tab. **Join** takes the filled button, and **Start now** gives it up. From 10
+  minutes before until then, the call at the foot of the side panel offers **Join**, as on every page, and it makes way
   for this line while the line is there.
 - **For you** holds what's yours in two tabs, **To answer** and **Follow-ups**, each with how many are open; the side
   panel's **Home** shows the two together. It opens on **To answer** when anything's there, else on **Follow-ups** when
@@ -1748,7 +1748,7 @@ address goes to Home.
   hasn't been asked at once. Nobody moves when they're invited. Five show before **Show all**.
 - **Groups**: a tile for each, with its people standing on the tile's bottom edge, how many there are, and how many calls
   had all of them. The camera starts a call with all of them without opening it. A tile opens in place, across the
-  column (the side panel's groups open it too): its people, each with × to take them out (a group keeps at least one);
+  column: its people, each with × to take them out (a group keeps at least one);
   **Add people**, from anyone you could reach; **Start a call** with all of them; **Rename**; and **Delete**, which asks once
   and can be undone for a few seconds. **New group** is a tile too: it opens to name one (Enter opens the picker) and fill
   it, **Create group** takes the filled button once it's ready, and a group half made waits on its tile until you make it
@@ -2237,7 +2237,7 @@ gets readable information, which its maker handles under its own policies. Allow
 long as it was made for. Signing out of a browser doesn't disconnect an agent; **Disconnect**, its access running out and
 deleting the account end it.
 
-**Agents** (`/agents`) is a place in the side panel, after Team, with how many agents you've connected (flow 2). On a phone
+**Agents** (`/agents`) is a place at the foot of the side panel, after Team (flow 2). On a phone
 it opens from **Settings → Connections** (flow 11), and its head has a way back to Settings. It's Team's evening the other
 way round, the sun low on the right just past the end of the line, and the agents stand on the horizon as windows, as people
 stand in arches:
