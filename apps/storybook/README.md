@@ -451,10 +451,11 @@ Browser notifications (#88): Calls/Browser notifications shows explicit opt-in, 
 Native two tabs is the explicit browser-receipt scene: open it twice, enable once and background both before20seconds. It preserves opaque browser state and shares one demo-clock anchor, like real tabs share a wall clock. Stable event IDs demonstrate cross-tab/reload deduplication; reopening the same scene does not replay those IDs. Native browser uses a new call ID for a fresh delivery demonstration. The report can start/stop the exact application service worker on this development origin; Stop unregisters it and closes its test alerts. Open delivered alert invokes the native notification's actual click callback for routing checks; this is distinct from an OS notification-centre click.
 
 
-Credit top-ups live under **Pages / Settings / Payments**, **Add credits picker** and **Payment…**: waiting, arriving,
-short, short after the address expired, credited, held, failed, cancelled and expired, plus the deletion warnings.
+The plan lives under **Pages / Settings / Plan**, **Notes nearly out**, **No notes left**, **Over Free's limits (in
+grace)** and **A balance**. Top-ups live under **Payments**, **Add money picker** and **Payment…**: waiting, arriving,
+short, short after the address expired, added, held, failed, cancelled and expired, plus the deletion warnings.
 Phone and night variants show the picker and waiting address, and the expired-short phone at night. The default scenarios
-keep payments unavailable. **Journeys / 11 Settings / 11.24 Add credits** chooses a token and network, opens a top-up,
+keep payments unavailable. **Journeys / 11 Settings / 11.24 Add money** chooses an amount, a token and network, opens a top-up,
 receives a scripted short payment, completes it and reopens the completed payment. The stand-in supports starting,
 reading and cancelling top-ups; receipt changes come from the story's made-up provider side. These scenes send no money.
 **Components / Icons and marks / CryptoMark**, **Forms / CopyField**, and **Forms / Select / Network marks** and

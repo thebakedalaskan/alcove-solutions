@@ -303,7 +303,7 @@ async function toldFull(o: Owner, callId: string): Promise<void> {
   const room = await tx(o.pool, async (c) => {
     const { row, state } = await load(o, c, callId, true);
     if (row.state !== 'live' || !state.host) return null;
-    const most = (await limitsNow(o)).get('call.max_people');
+    const most = (await limitsNow(o, c)).get('call.max_people');
     const told = { ...state, notices: [...state.notices.slice(-2), { id: id128(), text: `Someone tried to join, but this call is full: ${most} people is the most a call can have.`, kind: 'people' as const, to: state.host }] };
     await save(o, c, callId, told);
     return row.room_name;
@@ -347,7 +347,7 @@ async function guestJoin(o: Owner, meeting: Loaded<MeetingManifest>, joined: Joi
     // At most `call.max_people` at once, those waiting to be let in included (docs: Plans and usage): someone coming back
     // keeps their place, anyone more is turned away, and whoever hosts is told.
     if (!before) {
-      const most = (await limitsNow(o)).get('call.max_people');
+      const most = (await limitsNow(o, c)).get('call.max_people');
       const here = new Set(state.people.filter((j) => j.status === 'in' || j.status === 'waiting').map((j) => j.person)).size;
       if (here >= most) throw new ConflictError(`This call is full: ${most} people are in it, the most a call can have.`, { context: { callId: live.call_id, reason: 'full', people: here } });
     }

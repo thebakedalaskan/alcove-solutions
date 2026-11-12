@@ -2073,8 +2073,10 @@ describe('storage limits', () => {
     expect(await refusal(send(ann, id, doc, MiB))).toEqual(FULL);
     expect(await starting({ id, doc }, MiB)).toEqual(FULL);
     await send(ann, id, doc, MiB / 2);
-    // What someone can upload in a day, in every workspace together.
+    // What someone can upload in a day, in every workspace together. Storage is the account's, in every workspace it
+    // pays for: with room again, only the day is in the way.
     const elsewhere = await planIn(ann);
+    await setLimit('plan.free.storage_bytes', 10 * MiB);
     await setLimit('media.account_day_bytes', 2 * MiB);
     expect(await refusal(send(ann, elsewhere.id, elsewhere.doc, MiB))).toEqual(TODAYS);
     expect(await starting(elsewhere, MiB)).toEqual(TODAYS);

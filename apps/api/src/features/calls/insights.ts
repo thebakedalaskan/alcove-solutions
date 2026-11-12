@@ -439,7 +439,7 @@ const restingIdeas = new Map<string, number>();
  * that part's ideas were last looked for, nobody else is at it, and something new was said, what was said lately is read now,
  * for everyone there, with the board's frames, and the notes model offers ideas worth a sticky: each from one line, which
  * says who said it and when, and in the frame it fits. Ideas come only from what everyone in that part may read: someone who
- * may read less doesn't look. Nobody's credits pay for it, as for the live notes. True when this look found some; any other
+ * may read less doesn't look. The organizer's notes pay for it, as for the live notes. True when this look found some; any other
  * look at the same time answers false at once. Nothing is held while the model reads. A part looks only at its own board:
  * a room on the board every room shares has none of its own, so nobody there looks. Claiming the look and letting it go both
  * save the call (`saveSettled`), so rooms whose time ran out close with either: their boards are everyone invited's once the

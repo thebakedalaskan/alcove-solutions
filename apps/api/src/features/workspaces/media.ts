@@ -248,7 +248,7 @@ const uploaderOf = (d: Deps, r: Reader): Uploader =>
  */
 interface Allowed { file: number; day: number; payer: string | null; storage: number | null }
 async function allowedIn(d: Deps, db: Db, w: Place): Promise<Allowed> {
-  const limits = await limitsNow(d);
+  const limits = await limitsNow(d, db);
   const payer = await payerOf(db, w.owner.ownerId);
   if (!payer) return { file: limits.get('plan.free.file_bytes'), day: limits.get('media.account_day_bytes'), payer, storage: null };
   return { file: await fileBytesFor(d, db, payer), day: limits.get('media.account_day_bytes'), payer, storage: await storageLimitOf(d, db, payer) };

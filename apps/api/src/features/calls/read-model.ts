@@ -64,7 +64,7 @@ export async function view(v: Viewer, db: Db, callId: string): Promise<CallState
   const end = row.ended_at ?? new Date();
   const base = {
     revision: row.version, callId, meetingId: row.meeting_item_id, code: meeting.manifest.code, title: meeting.manifest.title, startedAt: row.started_at.toISOString(),
-    elapsed: Math.max(0, Math.round((end.getTime() - row.started_at.getTime()) / 1000)), endsAt: new Date(row.started_at.getTime() + (await limitsNow(o)).get('call.max_seconds') * 1000).toISOString(),
+    elapsed: Math.max(0, Math.round((end.getTime() - row.started_at.getTime()) / 1000)), endsAt: new Date(row.started_at.getTime() + (await limitsNow(o, db)).get('call.max_seconds') * 1000).toISOString(),
     phase: row.state === 'live' ? 'in-call' as const : 'ended' as const,
     locked: row.locked, pointing: s.pointing, generation: row.mls_generation, isOrganizer: v.isOrganizer, isHost: v.isHost && s.host === v.pass.identity, role: v.role,
     chatRead: chatReadFor(v, s)

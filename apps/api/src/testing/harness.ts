@@ -1,7 +1,7 @@
 /*
  * Boots the real API against a clean test database and bucket, with a stand-in Google to sign in
  * through, a stand-in NEAR AI Cloud to transcribe and write notes (with stand-ins for the Intel and
- * NVIDIA services that vouch for it, under test roots) and a stand-in 1Click to pay for credits with,
+ * NVIDIA services that vouch for it, under test roots) and a stand-in 1Click to add money with,
  * and gives tests "browsers":
  * each with its own cookie jar, sending the web app's Origin, talking through @alcove/api-http.
  */
@@ -101,7 +101,9 @@ const docPoolFor = (cfg: Config) => createDocPool({ workers: cfg.DOC_WORKERS, ti
 
 async function listen(deps: Deps, stopping?: AbortSignal | undefined): Promise<{ server: ServerType; baseUrl: string }> {
   const app = createApp(deps, stopping);
-  const server: ServerType = await new Promise((resolve) => { const s = serve({ fetch: app.fetch, port: 0, hostname: '127.0.0.1' }, () => resolve(s)); });
+  // The browsers share this process's event loop: a test that holds it for seconds (scanning every log line for
+  // canaries) mustn't leave them a kept-alive socket the server is closing as they reuse it.
+  const server: ServerType = await new Promise((resolve) => { const s = serve({ fetch: app.fetch, port: 0, hostname: '127.0.0.1', serverOptions: { keepAliveTimeout: 60_000 } }, () => resolve(s)); });
   const addr = server.address();
   const port = typeof addr === 'object' && addr ? addr.port : 0;
   return { server, baseUrl: `http://127.0.0.1:${port}` };

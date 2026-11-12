@@ -7,6 +7,7 @@
  * `limits set` or the database's console is in force everywhere within that, and every instance that sees one says so.
  */
 import { MAX_MEDIA_BYTES } from '@alcove/api';
+import pg from 'pg';
 import { z } from 'zod';
 import type { Deps } from './context';
 import { exec, maybeOne, rows, timestamp, type Db } from './db';
@@ -74,6 +75,22 @@ const Row = z.object({ name: z.string(), value: z.string(), updated_at: timestam
 export type LimitRow = z.infer<typeof Row>;
 /** Every row, by name. A bigint is read as its text, so nothing about it is lost before it's checked. */
 export const limitRows = (db: Db): Promise<LimitRow[]> => rows(db, Row, 'SELECT name, value::text AS value, updated_at FROM service_limits ORDER BY name');
+/**
+ * The rows, read on the caller's connection. A client is one `tx` holds: there, a read that fails is undone to a
+ * savepoint, so the caller's transaction goes on with what was in force.
+ */
+async function rowsOn(db: Db): Promise<LimitRow[]> {
+  if (db instanceof pg.Pool) return limitRows(db);
+  await exec(db, 'SAVEPOINT service_limits_read');
+  try {
+    const read = await limitRows(db);
+    await exec(db, 'RELEASE SAVEPOINT service_limits_read');
+    return read;
+  } catch (e) {
+    await exec(db, 'ROLLBACK TO SAVEPOINT service_limits_read');
+    throw e;
+  }
+}
 
 /** What a row's value means for a limit: what's in force, held to its bounds, or why it can't be used at all. */
 export function valueOf(name: LimitName, raw: string): { value: number; clamped: boolean } | { refused: string } {
@@ -114,12 +131,12 @@ const copies = new WeakMap<Db, Copy>();
  * Reads the rows into a copy and says what changed: a limit whose value is new, at info, with what it was and what it is,
  * so a change made at the database's console is logged too, and a row it can't use or had to hold to its bounds, once, at
  * warn. A copy starts at the defaults, so a process says which limits are set the first time it reads them. If the rows
- * can't be read, what was in force stays, until the next try.
+ * can't be read, what was in force stays, until the next try. They're read on the connection the caller is on.
  */
-async function refresh(d: Pick<Deps, 'pool'>, copy: Copy): Promise<void> {
+async function refresh(db: Db, copy: Copy): Promise<void> {
   copy.reading ??= (async () => {
     try {
-      const r = readRows(await limitRows(d.pool));
+      const r = readRows(await rowsOn(db));
       const noted = new Set<string>();
       for (const x of r.ignored) {
         const key = `ignored ${x.name} ${x.value}`;
@@ -148,14 +165,18 @@ async function refresh(d: Pick<Deps, 'pool'>, copy: Copy): Promise<void> {
   await copy.reading;
 }
 
-/** The limits in force, from this instance's copy, read again first if it's older than LIMITS_CACHE_MS. */
-export async function limitsNow(d: Pick<Deps, 'pool' | 'cfg'>): Promise<Limits> {
+/**
+ * The limits in force, from this instance's copy, read again first if it's older than LIMITS_CACHE_MS. Inside a transaction,
+ * pass its connection: read through the pool there, a busy process's transactions would each hold one connection and
+ * wait for another to read the limits, and none would come free.
+ */
+export async function limitsNow(d: Pick<Deps, 'pool' | 'cfg'>, db: Db = d.pool): Promise<Limits> {
   let copy = copies.get(d.pool);
   if (!copy) {
     copy = { at: -Infinity, values: readRows([]).values, noted: new Set(), reading: undefined };
     copies.set(d.pool, copy);
   }
-  if (performance.now() - copy.at >= d.cfg.LIMITS_CACHE_MS) await refresh(d, copy);
+  if (performance.now() - copy.at >= d.cfg.LIMITS_CACHE_MS) await refresh(db, copy);
   const { values } = copy;
   return { get: (name) => values.get(name) ?? LIMITS[name].default };
 }

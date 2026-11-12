@@ -102,10 +102,10 @@ const IN_PROGRESS = new Map<string, OpenDepositState>([
 ]);
 
 const unavailable = (context: Record<string, string | number>, level: 'warn' | 'error' = 'warn') =>
-  new UnavailableError('Adding credits isn’t available right now. Try again in a minute.', { context: { provider: 'oneclick', ...context }, level });
+  new UnavailableError('Adding money isn’t available right now. Try again in a minute.', { context: { provider: 'oneclick', ...context }, level });
 /**
  * The widest band of a quote Alcove takes, in basis points below what it asks for: 1% slippage and half a percent more.
- * A payment anywhere in the band earns the full promise, so a wider one would give credits away.
+ * A payment anywhere in the band earns the full promise, so a wider one would give money away.
  */
 const MAX_BAND_BPS = 150n;
 

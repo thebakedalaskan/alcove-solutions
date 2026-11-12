@@ -212,7 +212,7 @@ export async function close(d: Service, payer: string, source: Source): Promise<
 /** An account's allowance as it stands, without changing it: what's left, what a period brings, and whether it's spent. */
 export interface Standing { leftNano: number; allowanceNano: number; spentNano: number; byKind: Readonly<Record<string, number>>; stopped: boolean; plan: PlanKind; from: number; to: number }
 export async function standing(d: Service, db: Db, ownerId: string): Promise<Standing> {
-  const l = await limitsNow(d);
+  const l = await limitsNow(d, db);
   const now = Date.now();
   const p = inForce(await accountOf(d, db, ownerId), l, now);
   const r = await maybeOne(db, z.object({ state_ciphertext: bytea }), 'SELECT state_ciphertext FROM ai_meters WHERE owner_id = $1', [ownerId]);

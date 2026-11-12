@@ -90,7 +90,7 @@ export async function open(d: Pick<Deps, 'cfg'>, db: Db, ownerId: string): Promi
  * the row first.
  */
 async function carryOver(d: Service, db: Db, ownerId: string): Promise<void> {
-  const l = await limitsNow(d);
+  const l = await limitsNow(d, db);
   const now = Date.now();
   const over = (await usedBytes(db, ownerId)) > l.get('plan.free.storage_bytes') || (await sharedMade(db, ownerId)) > l.get('plan.free.shared_workspaces');
   const grace = over ? { until: new Date(now + l.get('plan.grace_seconds') * 1000).toISOString(), storageBytes: null, sharedWorkspaces: null } : null;
@@ -132,7 +132,7 @@ export const historyOf = (a: PlanAccount): BalanceEntry[] => [...a.history].reve
 /** Whether storing `adding` more bytes keeps an account within what it's held to. */
 export async function mayStore(d: Service, db: Db, payerId: string, adding: number): Promise<boolean> {
   const a = await accountOf(d, db, payerId);
-  const held = heldTo(a, inForce(a, await limitsNow(d)));
+  const held = heldTo(a, inForce(a, await limitsNow(d, db)));
   return held.storageBytes === null || (await usedBytes(db, payerId)) + adding <= held.storageBytes;
 }
 
@@ -145,19 +145,19 @@ export async function requireRoom(d: Service, db: Db, payerId: string, adding: n
 /** What an account may store now, its plan's or its grace's (null: no limit). */
 export async function storageLimitOf(d: Service, db: Db, ownerId: string): Promise<number | null> {
   const a = await accountOf(d, db, ownerId);
-  return heldTo(a, inForce(a, await limitsNow(d))).storageBytes;
+  return heldTo(a, inForce(a, await limitsNow(d, db))).storageBytes;
 }
 
 /** The largest file an account's plan takes. */
 export async function fileBytesFor(d: Service, db: Db, payerId: string): Promise<number> {
   const a = await accountOf(d, db, payerId);
-  return inForce(a, await limitsNow(d)).fileBytes;
+  return inForce(a, await limitsNow(d, db)).fileBytes;
 }
 
 /** Refuses another shared workspace for an account that has as many as its plan allows. In the caller's transaction. */
 export async function requireWorkspaceRoom(d: Service, db: Db, ownerId: string): Promise<void> {
   const a = await accountOf(d, db, ownerId);
-  const { sharedWorkspaces } = heldTo(a, inForce(a, await limitsNow(d)));
+  const { sharedWorkspaces } = heldTo(a, inForce(a, await limitsNow(d, db)));
   if (sharedWorkspaces === null || (await sharedMade(db, ownerId)) < sharedWorkspaces) return;
   throw new PlanLimitError(sharedWorkspaces === 1 ? 'Free has one shared workspace, and you have it. Move to Pro for as many as you like.'
     : 'You have as many shared workspaces as your plan has. Move to Pro for as many as you like.', 'workspaces', { context: { ownerId, limit: sharedWorkspaces } });
@@ -165,7 +165,7 @@ export async function requireWorkspaceRoom(d: Service, db: Db, ownerId: string):
 
 /** Which shared workspaces of an account's are read-only, set again from what it's held to now. Returns those that changed. */
 export async function refreeze(d: Service, db: Db, ownerId: string, a: PlanAccount): Promise<string[]> {
-  return setFrozen(db, ownerId, heldTo(a, inForce(a, await limitsNow(d))).sharedWorkspaces);
+  return setFrozen(db, ownerId, heldTo(a, inForce(a, await limitsNow(d, db))).sharedWorkspaces);
 }
 
 /**
