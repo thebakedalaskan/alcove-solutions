@@ -60,7 +60,7 @@ const DEFAULT_PREFERENCES: StoredPreferences = {
   notesDefault: 'on', notesLanguage: 'call', summaryLength: 'short', addToCalendar: true, showOtherMeetings: true, recordOffline: true,
   notifications: DEFAULT_NOTIFICATION_PREFERENCES,
   sounds: DEFAULT_SOUND_PREFERENCES,
-  pinned: [], groups: [], model: null
+  pinned: [], groups: [], model: null, notificationsPausedUntil: null
 };
 
 async function profileItem(o: Owner, db: Db) {
@@ -347,6 +347,8 @@ export async function updatePreferences(o: Owner, patch: Patch<Preferences>): Pr
     sounds: patch.sounds ?? p.preferences.sounds,
     pinned: patch.pinned ?? p.preferences.pinned,
     groups: patch.groups ?? p.preferences.groups,
-    model: patch.model === undefined ? p.preferences.model : patch.model
+    model: patch.model === undefined ? p.preferences.model : patch.model,
+    // Null resumes; a time already past is kept as given and means nothing is paused.
+    notificationsPausedUntil: patch.notificationsPausedUntil === undefined ? p.preferences.notificationsPausedUntil : patch.notificationsPausedUntil
   } }))).preferences;
 }

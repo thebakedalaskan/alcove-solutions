@@ -57,7 +57,7 @@ export const places = <P extends { to: Place }>(all: readonly P[], team: Team | 
 export interface Tab { to: Place; icon: IconName; label: string; raised?: boolean | undefined; tour?: string | undefined }
 /**
  * The phone's tab bar, with Record in the middle. `raised` is Record's button, which stands up out of the bar. Settings is
- * behind your face in the top bar, and Agents opens from Settings › Connections.
+ * in your menu, which your face in the top bar opens, and Agents opens from Settings › Connections.
  */
 export const TABS: readonly Tab[] = [
   { to: '/home', icon: 'home', label: 'Home' },

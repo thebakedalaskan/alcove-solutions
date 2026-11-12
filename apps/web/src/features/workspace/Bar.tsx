@@ -1,15 +1,14 @@
 /*
  * The bar over a page full screen (WsBar): the way back to where the workspace was opened from, the path, and you at the
- * far right, with what the page says about itself (how it's saving, who else is in it, Share and ⋯). Each page puts its own
- * bar in the frame's place for it, so there's one bar however the page changes. On a phone a page's bar goes back to the
- * workspace's pages, and the pages' bar goes back where the workspace was opened from.
+ * far right, whose face opens your menu (features/shell/YouMenu.tsx), with what the page says about itself (how it's
+ * saving, who else is in it, Share and ⋯). Each page puts its own bar in the frame's place for it, so there's one bar
+ * however the page changes. On a phone a page's bar goes back to the workspace's pages, and the pages' bar goes back where
+ * the workspace was opened from.
  */
 import { firstName } from '@alcove/api';
-import { Avatar, WsBar, hereLine, type WsCrumb, type WsFace, type WsPop, type WsSave } from '@alcove/ui';
-import { useQuery } from '@tanstack/react-query';
-import { Link } from '@tanstack/react-router';
+import { WsBar, hereLine, type WsCrumb, type WsFace, type WsPop, type WsSave } from '@alcove/ui';
 import { createPortal } from 'react-dom';
-import { q } from '~/lib/queries';
+import { YourFace } from '~/features/shell/YouMenu';
 import { useWs } from './context';
 import { useFrame } from './Frame';
 
@@ -30,14 +29,13 @@ export interface PageBarProps {
 export function PageBar({ crumbs, save, faces = [], share, more, moreLabel }: PageBarProps) {
   const ws = useWs();
   const frame = useFrame();
-  const me = useQuery(q.session()).data?.user;
   if (!frame?.bar || !ws.frame) return null;
   const { from, onBack } = ws.frame;
   const here = faces.length > 0 ? { faces: [...faces], line: hereLine(faces.map((f) => firstName(f.person.name))) } : undefined;
   return createPortal(
     <WsBar back={{ label: FROM_WORDS[from], onClick: onBack }} crumbs={crumbs} up={frame.onPage ? { label: ws.spaceName, onClick: ws.showPages } : undefined}
       save={save} here={here} share={share} more={more} moreLabel={moreLabel} onExit={onBack}
-      me={me && <Link to="/settings" aria-label={`${me.name}, settings`}><Avatar person={me} size={30} /></Link>} />,
+      me={<YourFace size={30} />} />,
     frame.bar
   );
 }

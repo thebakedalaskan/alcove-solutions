@@ -148,9 +148,11 @@ function Sounds({ sounds, ready, writes, speaker }: { sounds: SoundPreferences; 
     clearTimeout(stopPlaying.current);
     setPlaying(true);
     stopPlaying.current = setTimeout(() => setPlaying(false), PLAYING_MS);
+    // `preview` is what lets Play be heard while notifications are paused: a preview skips soundAllowed, and the pause with
+    // it, so the pause it carries (none) is never read.
     playSound({
       owner: owner.current, cue: 'message', key: `preview:${crypto.randomUUID()}`, until: Date.now() + 1200, preview: true,
-      current: () => ({ prefs: { ...heard.current.sounds, volume: heard.current.volume }, speakerId: speaker() })
+      current: () => ({ prefs: { ...heard.current.sounds, volume: heard.current.volume }, notificationsPauseEnd: null, speakerId: speaker() })
     });
   };
   const muted = !sounds.enabled;

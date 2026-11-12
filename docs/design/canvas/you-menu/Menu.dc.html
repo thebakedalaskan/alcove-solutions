@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Your menu</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="home.css">
+<link rel="stylesheet" href="pages.css">
+<link rel="stylesheet" href="account.css">
+<script src="tokens.js"></script>
+<script src="home.js"></script>
+<script src="scene.js"></script>
+<script src="appdata.js"></script>
+<script src="account.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400..700&amp;family=Newsreader:ital,opsz,wght@0,6..72,300..600;1,6..72,300..600&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<div class="am-part" data-mode="{{mode}}" style="{{partStyle}}">
+<div class="am-menu" role="menu" aria-label="Your menu">
+
+<div class="am-head" style="{{m.headStyle}}">
+<i class="sky"></i><i class="sea"></i><i class="glow"></i><i class="rim"></i>
+<span class="am-you"><dc-import name="Faces" who="art" size="40" hint-size="40px,44px"></dc-import><span class="am-gl" aria-hidden="true"><i></i><i></i><i></i></span></span>
+<span class="am-who"><p class="am-name clamp1">{{m.who.name}}</p><p class="am-mail clamp1">{{m.who.email}}</p></span>
+</div>
+
+<sc-if value="{{m.list}}" hint-placeholder-val="{{true}}">
+<div class="am-sec">
+<sc-if value="{{m.pause.off}}" hint-placeholder-val="{{true}}">
+<button type="button" class="am-row{{m.pause.cls}}" role="menuitem" data-am-row="pause" aria-expanded="{{m.pause.openA}}" onClick="{{m.pause.go}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{m.I.bell}}"></path></svg><span>Pause notifications</span><svg class="i am-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="{{m.I.chev}}"></path></svg></button>
+<sc-if value="{{m.pause.open}}" hint-placeholder-val="{{false}}">
+<div class="am-opts" role="group" aria-label="Pause notifications">
+<sc-for list="{{m.pause.opts}}" as="x" hint-placeholder-count="3"><button type="button" class="am-opt{{x.cls}}" role="menuitem" data-am-row="opt" onClick="{{x.go}}"><span>{{x.t}}</span><small>{{x.end}}</small></button></sc-for>
+</div>
+</sc-if>
+</sc-if>
+<sc-if value="{{m.pause.on}}" hint-placeholder-val="{{false}}">
+<div class="am-row is-paused" role="none"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{m.I.bellOff}}"></path></svg><span>Paused until <b>{{m.pause.until}}</b></span><button type="button" class="am-resume{{m.pause.resumeCls}}" role="menuitem" data-am-row="resume" onClick="{{m.pause.resume}}">Resume</button></div>
+</sc-if>
+<div class="am-row am-theme{{m.theme.cls}}" role="group" aria-label="Theme"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{m.I.sunMoon}}"></path></svg><span>Theme</span>
+<span class="am-eves">
+<sc-for list="{{m.theme.list}}" as="t" hint-placeholder-count="3">
+<button type="button" class="am-eve{{t.cls}}" role="menuitemradio" data-am-row="theme" aria-checked="{{t.onA}}" aria-label="{{t.t}}" title="{{t.t}}" onClick="{{t.go}}">
+<span class="am-win" aria-hidden="true">
+<span class="am-art" style="{{t.a}}"><i class="sky"></i><i class="sea"></i><i class="glow"></i><span class="up"><i class="sun"></i></span><i class="rim"></i><i class="g g1"></i><i class="g g2"></i><sc-if value="{{t.stars}}" hint-placeholder-val="{{false}}"><i class="star s1"></i><i class="star s2"></i></sc-if></span>
+<sc-if value="{{t.hasB}}" hint-placeholder-val="{{false}}"><span class="am-art is-b" style="{{t.b}}"><i class="sky"></i><i class="sea"></i><i class="glow"></i><span class="up"><i class="sun"></i></span><i class="rim"></i><i class="g g1"></i><i class="g g2"></i><i class="star s2"></i></span></sc-if>
+</span>
+</button>
+</sc-for>
+</span>
+</div>
+</div>
+<div class="am-sep" role="separator"></div>
+<div class="am-sec">
+<button type="button" class="am-row{{m.settings.cls}}" role="menuitem" data-am-row="settings" onClick="{{m.settings.go}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{m.I.gear}}"></path></svg><span>Settings</span><span></span></button>
+<button type="button" class="am-row{{m.tour.cls}}" role="menuitem" data-am-row="tour" onClick="{{m.tour.go}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{m.I.compass}}"></path></svg><span>Take the tour</span><span></span></button>
+</div>
+<div class="am-sep" role="separator"></div>
+<div class="am-sec">
+<button type="button" class="am-row{{m.out.cls}}" role="menuitem" data-am-row="out" onClick="{{m.out.go}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{m.I.out}}"></path></svg><span>Sign out</span><span></span></button>
+</div>
+</sc-if>
+
+<sc-if value="{{m.asking}}" hint-placeholder-val="{{false}}">
+<div class="am-ask" role="group" aria-label="Before you sign out">
+<b>{{m.ask.says}}</b>
+<sc-if value="{{m.ask.hasStay}}" hint-placeholder-val="{{true}}"><p>{{m.ask.stay}}</p></sc-if>
+<sc-if value="{{m.ask.words}}" hint-placeholder-val="{{false}}"><p>{{m.ask.wordsLine}}</p></sc-if>
+<div class="am-ask-a">
+<button type="button" class="b b-press{{m.ask.stayCls}}" data-am-row="stay" aria-disabled="{{m.ask.busyA}}" onClick="{{m.ask.onStay}}">Stay signed in</button>
+<sc-if value="{{m.ask.words}}" hint-placeholder-val="{{false}}"><button type="button" class="b b-line{{m.ask.copyCls}}" data-am-row="copy" aria-disabled="{{m.ask.busyA}}" onClick="{{m.ask.onCopy}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{m.I.copy}}"></path></svg>Copy what you wrote</button></sc-if>
+<button type="button" class="b am-del{{m.ask.goCls}}" data-am-row="go" onClick="{{m.ask.onGo}}"><sc-if value="{{m.ask.busy}}" hint-placeholder-val="{{false}}"><span class="am-spin" aria-hidden="true"></span></sc-if>{{m.ask.goText}}</button>
+</div>
+</div>
+</sc-if>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"m":{"editor":null,"default":null},"mode":{"editor":"enum","options":["dark","light"],"default":"dark"},"$preview":{"width":360,"height":480}}'>
+class Component extends DCLogic {
+  renderVals() {
+    var AH = window.AH, m = this.props.m, mode = this.props.mode || 'dark', partStyle = '';
+    if (!m) {
+      /* By itself, as a part: open on the list, on the page's own colours. */
+      var host = { props: { step: 'amOpen', mode: mode }, state: null, setState: function () {} };
+      m = AH.AM.view(host, { toast: function () {} }).menu;
+      partStyle = AH.rootStyle('blue-hour', mode, 16.2) + '; --sans: "Hanken Grotesk", ui-sans-serif, system-ui, sans-serif; --ease: cubic-bezier(.22, .8, .24, 1); box-sizing: border-box; width: 360px; min-height: 480px; padding: 24px; background: var(--ground); color: var(--ink); font-family: var(--sans)';
+    }
+    return { m: m, mode: m.mode || mode, partStyle: partStyle };
+  }
+}
+</script>
+</body>
+</html>

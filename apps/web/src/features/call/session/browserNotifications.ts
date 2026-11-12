@@ -81,8 +81,9 @@ export function useCallBrowserNotifications({ session, state, crypto, direct, ac
         return lifetime.current.scope === scope && lifetime.current.token === token && current.scope === scope && current.active && current.snapshot.ready && current.preferences.ready && current.preferences.ownerId === ownerId
           && current.permission === 'granted' && permits(currentPrefs, kind) && (key === undefined || baseline.current.allowed.has(key));
       },
+      notificationsPauseEnd: () => latest.current.preferences.notificationsPauseEnd,
       open: routeBrowserNotification,
       failed: () => toast('Browser notifications couldn’t be shown. Unread messages and outstanding call actions stay in Alcove.', { icon: 'bellOff' })
     });
-  }, [session, state, crypto, direct, snapshot, preferences.prefs, preferences.ready, owner, ownerId, scope, active, permission, toast]);
+  }, [session, state, crypto, direct, snapshot, preferences.prefs, preferences.notificationsPauseEnd, preferences.ready, owner, ownerId, scope, active, permission, toast]);
 }

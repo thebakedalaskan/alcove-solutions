@@ -119,7 +119,7 @@ export interface WsBarProps {
   moreLabel?: string | undefined;
   /** Leave full screen: back to where it was opened from. There's none on a phone, where back does it. */
   onExit?: (() => void) | undefined;
-  /** You, at the far right: the app's own way to Settings. */
+  /** You, at the far right: your face, which opens the app's own menu (Settings, the theme, Sign out). */
   me?: ReactNode;
 }
 

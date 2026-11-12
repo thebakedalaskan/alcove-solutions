@@ -14,7 +14,7 @@ import { session } from '../../src/world';
 import { notConnected } from '../../src/world/build';
 import { busyEvents } from '../../src/world/calls';
 import { page, pages, type PageArgs, type PageStory } from '../../src/page';
-import { before, first, LATER, outage, pause, pressable, SOON, swap, unreachable } from './play';
+import { away, before, first, LATER, outage, pause, pressable, SOON, swap, unreachable } from './play';
 
 const meta = { title: 'Journeys/11 Settings', ...pages } satisfies Meta<PageArgs>;
 export default meta;
@@ -30,10 +30,12 @@ const goneFrom = (where: HTMLElement, text: string) =>
   waitFor(() => { if (within(where).queryByText(text)) throw new Error(`“${text}” is still there.`); }, SOON);
 /** The welcome page, signed out: it offers every way in, at the top and again at the bottom. */
 const welcome = () => first(screen.findAllByRole('button', { name: 'Continue with Microsoft' }, LATER));
-/** From any page, you at the top right open Settings. */
+/** From any page, your face at the top right opens your menu, and Settings in it opens Settings, as the menu goes. */
 const toSettings = async (click: (el: Element) => Promise<void>) => {
-  await click(await screen.findByRole('link', { name: 'Art Vandelay, settings' }, LATER));
+  await click(await screen.findByRole('button', { name: /^Art Vandelay, your menu/ }, LATER));
+  await click(await within(await screen.findByRole('dialog', { name: 'Your menu' }, SOON)).findByRole('link', { name: 'Settings' }, SOON));
   await screen.findByRole('heading', { name: 'Art Vandelay', level: 1 }, LATER);
+  await away('dialog', 'Your menu');
 };
 
 /** A failure on the server's side: the database connection dropping, Google not answering, the hardware check. */

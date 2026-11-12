@@ -279,6 +279,42 @@ describe('immediate query actions through the real API', () => {
     } finally { client.clear(); }
   });
 
+  it('shows pausing notifications and resuming them at once, and puts the pause back when resuming is refused', async () => {
+    const browser = h.browser();
+    await browser.api.auth.signIn('sso', { email: email() });
+    const initial = await browser.api.account.preferences();
+    const ends = new Date(Date.now() + 60 * 60_000).toISOString();
+    const held = hold(browser, 'PATCH', '/account/preferences', 'dispatch');
+    let refusing = false;
+    const unreliable = h.browser({ fetch: (input, init) => refusing && init?.method === 'PATCH' && String(input).endsWith('/account/preferences')
+      ? Promise.reject(new TypeError('The connection is unavailable.')) : browser.fetch(input, init) });
+    const client = queryClient();
+    client.setQueryData(keys.session, await browser.api.auth.getSession());
+    client.setQueryData(keys.prefs, initial);
+    // As the app's usePauseNotifications asks: a time, or null to resume.
+    const pause = ({ until: at }: { until: string | null }): PreferenceChange => ({ notificationsPausedUntil: at });
+    const paused = () => client.getQueryData<Preferences>(keys.prefs)?.notificationsPausedUntil;
+    try {
+      const pausing = new MutationObserver(client, preferenceOptions(held.api, client, keys, pause)).mutate({ until: ends });
+      await until(held.reached, 'the pause on its way');
+      expect(paused()).toBe(ends);
+      expect((await browser.api.account.preferences()).notificationsPausedUntil).toBeNull();
+      held.release();
+      expect((await pausing).notificationsPausedUntil).toBe(ends);
+      expect(await browser.api.account.preferences()).toEqual({ ...initial, notificationsPausedUntil: ends });
+      refusing = true;
+      const resuming = new MutationObserver(client, preferenceOptions(unreliable.api, client, keys, pause)).mutate({ until: null }).catch(errorCode);
+      await until(() => paused() === null, 'resuming shown');
+      expect(await resuming).toBe('network');
+      expect(paused()).toBe(ends);
+      expect((await browser.api.account.preferences()).notificationsPausedUntil).toBe(ends);
+      refusing = false;
+      await new MutationObserver(client, preferenceOptions(unreliable.api, client, keys, pause)).mutate({ until: null });
+      expect(paused()).toBeNull();
+      expect(await browser.api.account.preferences()).toEqual(initial);
+    } finally { held.release(); client.clear(); }
+  });
+
   it.each(['different account', 'same account'] as const)('refuses queued old-session writes and cache settlement after signing in to the %s', async (mode) => {
     const browser = h.browser();
     const oldAddress = email();

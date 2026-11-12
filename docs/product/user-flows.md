@@ -83,14 +83,35 @@ Beside every page, dark in both themes, in two groups: your work at the top, and
   back, and the offline notice moves to the top of the page meanwhile. This browser remembers which.
 
 At the top right of every page: **Search or ask** (**⌘K** on a Mac, **Ctrl+K** elsewhere), which opens the palette
-below, and you, which opens Settings (flow 11). In a narrow window search shrinks to its magnifying glass. Notes has
+below, and you, which opens your menu (below). In a narrow window search shrinks to its magnifying glass. Notes has
 its own search, so there's none at the top right, and the shortcut goes to the line in its sky (flow 8). In the workspace
 the shortcut is **Find** (flow 12), and **Search or ask** stays at the top right without it.
 
 On a phone (860 px wide or narrower) a top bar takes its place, with the brand, search (not on Notes), **Start a call** (a plus) and
-you (Settings), and a tab bar runs along the bottom: **Home**, **Notes**, **Record** (raised), **Drive** and **Team**
+you (your menu), and a tab bar runs along the bottom: **Home**, **Calls**, **Record** (raised), **Drive** and **Team**
 when you're on one. Agents isn't in it: on a phone it opens from **Settings → Connections** (flow 11). Offline, the same
 notice sits under the top bar.
+
+**Your menu** opens under you, at the top right of every page but Settings (where you stand on the horizon instead), and
+from the bottom as a sheet on a phone. At its top you stand on a small evening, with your name and address. Then:
+
+- **Pause notifications** opens three lengths in place under it: **For 30 minutes**, **For 1 hour** and **Until
+  tomorrow**, each with the time it ends (tomorrow at 9:00, in this computer's time zone). While paused, nothing reaches
+  you from the browser or by sound, except your own microphone going on and off and requests to join a call you host;
+  what shows on the page still shows. The row says **Paused until 17:12**, with **Resume**, and a small crossed-out bell
+  sits on you at the top right until then, on every page and every device you're signed in on. It ends by itself.
+- **Theme**: system, light or dark, as the three small evenings Settings shows. The page changes at once, the menu stays
+  open, and this browser keeps it.
+- **Settings** (flow 11) and **Take the tour** (the tour of Home again, flow 1), which close the menu. Settings is a link,
+  so ⌘-click, Ctrl-click or the middle button opens it in a new tab and leaves the menu open.
+- **Sign out**, which signs out at once, unless something on this device would be lost: then the menu asks in place, in
+  Settings' words, with **Stay signed in** (focused), **Copy what you wrote** when something written is waiting, and **Sign
+  out and delete them**. Everything Settings' **Sign out** does holds here too.
+
+**Escape** steps back one thing at a time (the question, then the menu, focus back on you), and **↓** and **↑** move
+between its rows. Storybook's journeys use these numbers: **2.9 Open your menu, then Settings**, **2.10 Pause
+notifications for an hour**, **2.11 Change the theme from your menu**, **2.12 Sign out with recordings on this device**
+and **2.13 Your menu on a phone**.
 
 **The palette** is a solid window over the page, with the page dimmed behind it and never blurred. On a wide screen what's
 lit in its list shows beside it; under 1100 px the list is alone, and on a phone it takes the screen, with **Cancel**.
@@ -1776,7 +1797,8 @@ the page works.
 
 ## 11. Settings
 
-**Settings** opens from you at the top right of every page, the phone's avatar or its **Settings** tab. You stand on
+**Settings** opens from your menu at the top right of every page, and on a phone from the same menu in the top bar
+(flow 2). You stand on
 the horizon with your name and address, beside **Take the tour** (the tour of Home again, flow 1) and **Sign out**.
 With recordings on this device that haven't uploaded, **Sign out** first says so: the sky grows to hold the question
 ("2 recordings on this device haven't uploaded. Signing out deletes them."), says what staying does (they upload by

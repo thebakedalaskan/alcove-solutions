@@ -521,6 +521,13 @@ export function usePins() {
 export function useGroups() {
   return useMutation(preferenceOptions(api, useQueryClient(), qk, (groups: Group[]) => ({ groups })));
 }
+/**
+ * Pausing notifications until a time (an ISO date-time), or resuming them (`until: null`), shares that queue too: shown at
+ * once, and put back if it's refused. features/shell/pause.ts's `usePause` is how the app asks.
+ */
+export function usePauseNotifications() {
+  return useMutation(preferenceOptions(api, useQueryClient(), qk, ({ until }: { until: string | null }) => ({ notificationsPausedUntil: until })));
+}
 export function useInviteTeam() {
   const qc = useQueryClient();
   return useMutation({ mutationFn: (emails: string[]) => api.people.inviteToTeam(emails), onSuccess: (t) => qc.setQueryData(qk.team, t) });

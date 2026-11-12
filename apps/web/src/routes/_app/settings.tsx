@@ -2,9 +2,9 @@ import { CalendarConnectResultSchema, DriveConnectResultSchema, type CalendarCon
 /*
  * Settings: change one thing and leave. You stand on the horizon, in the last of the light, with the tour and Sign out
  * beside you. Under the water the page is seven groups of panels with an index beside them, which on a narrow screen is a
- * strip that stays at the top. Every control saves as it changes. Search and you at the top right, the phone's avatar and
- * its Settings tab open it; the minutes in the side panel open Plan and credits, and other pages link to the places in a
- * group they need (Nav.tsx).
+ * strip that stays at the top. Every control saves as it changes. Your menu opens it, from your face at the top right of
+ * every page (and in the phone's top bar), which makes way here since you're in the sky; the minutes in the side panel open
+ * Plan and credits, and other pages link to the places in a group they need (Nav.tsx).
  */
 import { Avatar, Button, Evening, SettingRow, SettingsGroup, SettingsPanel } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
