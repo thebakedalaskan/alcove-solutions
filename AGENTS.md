@@ -199,7 +199,7 @@ page is designed, how to make a design canvas from the kit in `docs/design/canva
   buttons and hairlines), `CallTimerButton`, `CallTimerCard`, `CallTimerLength` and `CallTimerRun` (the call's one countdown for everyone: its button, and Timer for everyone, the popover it opens, with the lengths to start one, then Pause, +1 min and Stop),
   `CallMoreGrid` and `CallMoreTile` (More's grid on a phone), `CallMenuChips` (equal choices in a row inside a call's menu, such as Back in), `ChatTabs`, `ChatMessage` (Slack-like, with the bar of reactions, Reply in thread and Message privately over its corner),
   `ChatThreadLine`, `ChatThreadHead`, `ChatDivider` and `ChatLock` (Chat in a call: its conversations as tabs, threads in place, a private
-  conversation's lock line), `CallQuestion` (a room's question, with its votes),
+  conversation's lock line), `CallQuestion` (a room's question, with its votes), `CallBanner` (what's said about the whole call until it's closed, its `actions` under the words),
   `CallFrame` (one frame for a screen, a board or the workspace, with its bar), `PresentedTile` (something presented that isn't on your stage, with Join),
   `CloseAsk` (Close's question: for you or for everyone), `PresentAsk` (Present's question when some people here can't open
   the board), `FramePager` (a board's presenter steps through its frames at the frame's foot, with their notes), Share's
@@ -209,14 +209,19 @@ page is designed, how to make a design canvas from the kit in `docs/design/canva
   `RingArch` and `RingAddArch` (who to ring), `WaitArch`, `WaitTile`, `RingReply` and `RingAgain` (someone rung, waiting on
   the stage), `RingCard` in a `RingShelf` (being rung, on any page, over a modal), `KnockCard` (someone asking to join),
   `LinkRow` (a link with Copy), `GuestCard`, `TimeChoice` and `DoneTick` (a public page with one card), `Caption`, `Emoji` (the 8 bundled Fluent Emoji), `Reactions` and `ReactionAdd` (reactions under a chat message), `ReactPicker` (the eight emoji to press), `ReactionBurst` (emoji rising out of the foot of the call and fading at their peak, from React in the dock), `NotesPanel`, `TranscriptLine` (with `Unsure` and `UnsureKey` for what a transcript isn't sure of), `Card`, `Fold`, `ShowMore` (Show 4 more under a list), `ReadMore` (more prose behind a quiet button: a note's full summary), `Evening` (a page on the evening: `Horizon`, the scene behind it, set by `moment`), `Cove` (the land the welcome page looks out of, a `Horizon`'s `land`) and `SailOut` (signing in, out of that cove to Home), `SidebarNav`, `ComposerLine` (the palette's one line), `Field`, `CopyField` (a long value to copy exactly), `CryptoMark` (a stablecoin or network logo), `Select` (a listbox; an option can carry a `mark`, `note` and `tag`), `MonthGrid` (a month to pick a day from, from the keyboard too, in `components/calendar.tsx`), `Unencrypted` (the badge for a model outside a secure enclave), `Tabs`,
-  `Segmented`, `SettingsGroup`, `SettingsPanel`, `SettingRow` and `SettingFact` (Settings: a group's heading over panels, each row a label with its control at the panel's edge; `sub` rows nest under a connection), `SettingTile` (an agent's mark on a row), `SettingNote` (a notice inside a panel), `SettingStep` (something opened in place inside a panel: its title and help, then what to do), `SettingFoot` (the foot of something opened in place), `AlertTable` (what reaches you: each event once, with an Alert and a Sound tick), `SoundLevel` (silence, volume, play), `SunLine` (time left, on a row's hairline), `ThemePreview` (a small evening in a theme's own colours), `MicLevel`, `RecorderSun` (the recorder on
+  `Segmented`, `SettingsGroup`, `SettingsPanel`, `SettingRow` and `SettingFact` (Settings: a group's heading over panels, each row a label with its control at the panel's edge; `sub` rows nest under a connection), `SettingTile` (an agent's mark on a row), `SettingNote` (a notice inside a panel, with × when it has `onDismiss`), `SettingStep` (something opened in place inside a panel: its title and help, then what to do), `SettingFoot` (the foot of something opened in place), `SettingPayments` and `PaymentRow` (payments at a panel's foot, each with Receipt), `PaymentReceipt` (one payment as paper, alone on the page when printed), `AlertTable` (what reaches you: each event once, with an Alert and a Sound tick), `SoundLevel` (silence, volume, play), `SunLine` (time left, on a row's hairline), `SunMark` (a paid plan's small sun in the side panel's icon column, half set while it's ending), `ThemePreview` (a small evening in a theme's own colours), `MicLevel`, `RecorderSun` (the recorder on
   the horizon, moved with the microphone by `useVoice`), `RecMeter`, `RecPrint`, `TourDialog`, `Coachmark`,
   `EmptyState`, `Modal` (several questions go one at a time inside one modal; no window ever opens over another),
   `ThemeScope` (one theme for a part of a page, such as your side of a call, so what opens from it takes that theme too),
   `BackgroundModal` (Background's window: a big live preview of you beside the choices) with `BackgroundPicker` (what shows behind someone on camera, in groups: Blur, Pictures, Colours and Yours, with `SCENE_PICTURES`), and `Fit` with `useSceneLoop` for scenes drawn at a design size that play while on screen.
   For starting and scheduling a call: `FlowView`, `FlowHead`, `FlowSteps`, `FlowBody`, `FlowFoot`, `FlowNote`, `FlowRow`,
   `SwitchLine`, `NotesSwitches` (whether a call writes notes, and what they keep), `ScopeBar` (this call, or this and later
-  calls), `WayCard`, `PersonToken`, `QuadFaces`, `TimeCard`, `WeekGrid`, `Flood` and `useSmoothHeight`.
+  calls), `WayCard`, `PersonToken`, `QuadFaces`, `TimeCard`, `WeekGrid`, `Flood` and `useSmoothHeight`, with `NoNotesLeft` (no
+  notes left this period where a call with notes starts or is scheduled: until when, in caution, the ways on under it).
+  For plans: `PlanCards` and `PlanCard` (the plans side by side, their rows lined up by subgrid; `lifted` for Pro's raised
+  card with its warm edge, `waiting` while the prices come), `PlanHere` ("Your plan", nothing to press; `quiet` for Free's
+  line on another plan), `PlanCycle` (Monthly / Yearly · 20% off on the sky), `PlanSunset` (the last sliver of the sun,
+  drawn through `Evening`'s and `Horizon`'s `sky`), `EveryPlan` and `PayingLine`.
   The workspace kit is in `components/workspace/`, every part stateless, taking plain data and handlers: `WsPane` holds
   `WsList` (`WsListHead`, `WsSection`, `WsRow`, `WsRenameRow`, `WsDropLine`, `WsTrashRow`) and `WsDoc` (`WsDocHead` with
   `WsSaveState`, `WsFollowBar`, `WsOfflineBar`, `WsUnsavedBar` (with `WsRescue` for what didn't reach Alcove), `WsGoneBar`,
@@ -245,7 +250,7 @@ page is designed, how to make a design canvas from the kit in `docs/design/canva
   `packages/ui/src/styles/kit.css`; the frame around every screen (side panel, the page's rounded edge, search and
   you at its top right, phone top bar and tab bar, palette) in `styles/shell.css`; the evening behind each page in `styles/horizon.css` (`dusk` the page, `dusk-top` and `dusk-title` its head, `hz-` the scene); the cove the welcome page looks out of, and signing in sailing out of it, in `styles/cove.css` (`cv-`); Home in `styles/home.css` (`hm-`); the Team page in
   `styles/team.css` (its classes start with `tp-`); Notes in `styles/notes.css` (`nt-`); the Drive in `styles/drive.css` (`dv-`); a note and a series in `styles/note.css` (`nd-`);
-  Settings in `styles/settings.css` (its classes start with `set-`); Record in `styles/record.css` (its classes
+  Settings in `styles/settings.css` (its classes start with `set-`); Plans in `styles/plans.css` (`pl-`); the doors into checkout in `styles/plan-doors.css` (`pd-`); Record in `styles/record.css` (its classes
   start with `rec-`); starting and scheduling a call in `styles/flow.css` (its classes start with `cf-`); the organizer's
   lobby, ringing and the page for picking a time in `styles/ringing.css` (`rg-`); the workspace in `styles/workspace.css`
   (`wt-` the list, `wd-` a document, `wm-` menus, `wv-` popovers, `wh-` history, `wl-` the call's live
@@ -254,7 +259,7 @@ page is designed, how to make a design canvas from the kit in `docs/design/canva
   board picker, `pc-` the phone's add sheet; its tokens are `--bd-*`, `--bf-*`, `--note-*`, and `--line-ink` and `--line-rose` beside the existing
   `--line` and `--line-control`; `.bt`, `.bi`, `.bm`, `.swatch`, `.c-*` and `.k-*` are unscoped there, so those names are taken); the welcome
   page in `styles/welcome.css`, with its scenes in `welcome-note.css`, `welcome-call.css`, `welcome-team.css` and
-  `welcome-night.css` (`lp-`); the other screens in `styles/app.css` and `call.css`; the call's timer in `styles/call-timer.css`; Chat in a call in `styles/call-chat.css` (`ch-`); Notes in a call in `styles/call-notes.css` (`nn-` the panel, `nk-` what's captured).
+  `welcome-night.css`, and its Plans in `welcome-plans.css` (`lp-`); the other screens in `styles/app.css` and `call.css`; the call's timer in `styles/call-timer.css`; Chat in a call in `styles/call-chat.css` (`ch-`); Notes in a call in `styles/call-notes.css` (`nn-` the panel, `nk-` what's captured).
   Truncate to one or two lines with `ac-clamp-1` / `ac-clamp-2` (left-aligned): unlike `nowrap`, long text
   can't make a column wider than the screen.
   No raw hex in the app, except on the always-night call stage and in illustrations.

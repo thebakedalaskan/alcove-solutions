@@ -20,8 +20,13 @@ Every signed-in page sits in the same frame (`apps/web/src/features/shell/`, `pa
   - Up next, the next call with Join, on Home too, except while Home's own line offers a call (in its last few minutes,
     and while it's going), so there's one Join at a time
   - pinned notes and groups
-  - at the foot, the confidential-compute check, then on Free Upgrade to Pro, and under it about how much of the period's
-    notes is left ("About 3 h 20 min of notes left", over a small meter), which opens Settings at Plan
+  - at the foot, the confidential-compute check, then the plan. On Free, notes left over a thin meter that runs from rose
+    to the sun's warmth ("About 1 h 26 min of notes left", warm under an hour, caution once out), which opens Settings at
+    Plan, then the row Free plan · See plans ›, which opens Plans. On Pro, one calm row: `SunMark` (a 12px half sun on a
+    16px hairline, in the icon column under the shield), Pro in Newsreader 18px over "Until 4 Nov 2027" in 12.5px ink-2,
+    and a chevron, with no box and no glow. Ending: the sun half set and "Ends in N days · Extend" in sun-text 600, which
+    opens checkout. Waiting: dots and "Waiting for N USDC" in horizon, and the payment's row with Open. Renewed or ended:
+    one line above. On Plans the row is shaded as the place you're on, so there's still one shaded row
 - **The page** scrolls under a rounded edge. Search ("Search or ask", ⌘K opens the palette) and you (your arch, which opens
   Settings) sit at its top right on every page, outside the page itself, so moving between pages leaves them alone. A page's
   title sits at its top left, in the same place on every page, and keeps clear of them with `--top-room`.
@@ -237,21 +242,41 @@ The last of the light, with you in it, then seven groups. Change one thing and l
   Disconnect in place. Connect an agent opens in place too: Alcove's address with Copy, or a token for a script, shown
   once. The shared `AgentPermissions`, `AgentDisclosure`, `AgentAddress` and `AgentTokenReveal` components live in
   `components/agents.tsx` and `styles/agents.css`.
-- **Plan says what's left, never what it costs.** Its first panel is Plan, Notes left and Storage. Notes
-  left and Storage each have a `SunLine` on the row's own hairline, the sun at the end in a fresh period and moving back as
-  it's used. The AI allowance is kept in dollars and never shown: notes left is said as time, as an estimate. Over the plan's
-  limits, one `SettingNote` says until when everything works as before. Above it, what the owner is told about the plan
-  (Pro ending, renewed, ended), each a `Notice` with × until dismissed. Under it, the plans as cards side by side
-  (`set-plans`, stacked on a phone, with room in the row for Team's): the name in Hanken Grotesk, the price to the cent,
-  what it brings, and "Your plan" on the one you're on, with a firmer edge. Pro's card buys months: Buy is the page's one
-  filled button when the balance covers it; when it doesn't, it's greyed out with what's short, and Add money is the filled
-  one. On Pro a panel holds Renew from balance and Refund, which asks in place. The balance is the last panel, and Add money
-  opens a sheet (the deposit address and its QR code), never a window over the page. The code is `features/settings/Plan.tsx`
-  and `PlanCards.tsx`.
+- **Plan says what you have, then what you pay with.** The first panel: the plan row (Free or Pro with its help, See plans
+  quiet and Get Pro or Extend secondary, filled only when notes have run out or Pro is ending), Notes left this period and
+  Storage, each with a `SunLine` on the row's own hairline (the sun at the end in a fresh period and moving back as it's
+  used), and More notes on Free (or on any plan once notes are low or out). The AI allowance is kept in dollars and never
+  shown: notes left is said as time, as an estimate, with a small "About" before the number. Over the plan's limits, one
+  `SettingNote` says until when everything works as before. Pro renewed and Pro ended are `SettingNote`s with × at the top
+  until dismissed; ending is said once, in warm, in the plan row. The second panel: Balance with Add money (a sheet with the
+  deposit address and its QR code, never a window over the page), Renew from balance and Refund on Pro (asked in place), and
+  Payments (`SettingPayments`, `PaymentRow`): first what's on its way or needs a person, then the balance's latest changes,
+  each with Receipt opening `PaymentReceipt`, paper in both themes and alone on the page when printed. Buying is
+  checkout's, never this page's. Controls drop under their words on a phone. The code is `features/settings/Plan.tsx`,
+  with `features/plans/plan-state.ts`, which the side panel's foot and Plans share.
 - **Sign out** signs you out at once. Only when recordings haven't uploaded does it ask first: the sky grows to hold the
   question, it says they'll be deleted, and Stay signed in is the filled answer.
 - **Delete account** sits apart, in its own panel at the end, and opens in place, with what goes beside what stays. The
   shared demo account can't be deleted, and says so.
+
+## Plans
+
+`routes/_app/plans.tsx`, `features/plans/Plans.tsx`, `components/plans.tsx`, `styles/plans.css` (`pl-`). Moment: `plans`.
+Board: `plans/Plans.dc.html`.
+
+The last of the sunset, with the plans on the water: a page you compare on, so mostly water.
+- **The sky.** Plans at the top left, search and you at the right. In the middle, Monthly / Yearly · 20% off, Yearly to
+  start, only while a year costs less. Under it, the last sliver of the sun, which the page draws on the evening
+  (`PlanSunset`, through `Evening`'s `sky`) behind whatever passes through. The horizon is 8px + 262px; on a phone it's
+  300px and the sky runs up behind the top bar.
+- **The plans** (`PlanCards`, `PlanCard`): light cards whose parts share rows through subgrid, so the names, prices, bill
+  lines, buttons and facts line up. Each is at most a third of 1120px, so Free and Pro stand together in the middle, and a
+  third card joins when Team is offered. Pro is lifted: raised, a firmer edge, a 2px warm edge on top. A warm chip marks the
+  plan you're on (never Free, whose button area says it) or "Ends in N days".
+- **One filled button:** Get Pro on Free, Extend only while Pro is ending. Both open checkout over the page.
+- **Under them:** On every plan, as chips, and the paying line with its wallet.
+- **States:** waiting cards, failed with Try again, offline. On a phone the cards stand one under another.
+- The side panel's foot row is the place you're on while you're here.
 
 ## Connecting an agent
 
@@ -276,6 +301,8 @@ One modal, one question at a time, and a sheet on a phone.
   - Documents steps out of Details and comes back to it.
 - Back keeps everything picked.
 - Starting floods the screen into the night of the call.
+- With no notes left this period and notes on, a caution note sits under the ways ("No notes left until 20 November", Get
+  Pro, Start without notes), and a line under the notes row when scheduling (`NoNotesLeft`).
 - Ringing someone puts a card on their screen on any page, over a modal if one is open.
 
 ## A call
@@ -305,8 +332,10 @@ circles, and whoever speaks gets the `speak` ring. The camera appears only here 
   Ask and Yours), Chat, People, Your notes beside a presented board, and the rooms. It takes your theme, as a board's sheet
   does unless it's a night board; the stage, the dock, the workspace and screens stay night.
 - **Notes** has its head (Notes, a pill, Open as an icon, ×), then its tabs, words with a line under the one you're on.
-  The pill says the state once, in a word: Live with a `rec` dot, Paused, Off, Unavailable in caution, or the
-  organizer's 2 asked in rose. It opens the card the sign at the top left opens, what's captured: one sentence, the asks,
+  The pill says the state once, in a word: Live with a `rec` dot, Paused, Off, Unavailable or Stopped in caution, or the
+  organizer's 2 asked in rose. Stopped by the organizer's plan, a caution bar between the head and the tabs says so, with
+  the organizer's ways to more (Get Pro filled, Add 10 hours) and nothing to buy for anyone else; the notes mark where they
+  stopped and came back on, in `rec`. It opens the card the sign at the top left opens, what's captured: one sentence, the asks,
   what's yours to press, then how the notes are written and who gets them. A bar under the tabs shows only while capture
   isn't simply live, saying what it means with the one thing to do; a hiccup that fixes itself is only the summary's
   time, in caution. Nothing hides behind ⋯, and nothing is said twice, so there's no line about writing and no footer.
@@ -455,6 +484,9 @@ Signed out, before anything else: what Alcove is, told as one evening on the app
 - **Your agent** (`AgentScene`) books a call over MCP, beside the tools it can use.
 - **Recording in the room** is Record's night, inset on the water (`RecordScene`): the recorder stands on the horizon,
   records offline and sets, then the session notes rise. **What Alcove can see** (`SealedScene`) sits on its water.
+- **Plans** looks out of a cove of its own (seed 8) on the plans moment, the last of the sun on its horizon: Free and Pro as small
+  cards on the water, Pro raised with a warm edge, then Start free and Get Pro, the filled one, which signs in and opens
+  Plans with checkout on Pro. Its prices are kept beside it, since the server's offers need a session.
 - **The last ask** is morning on the same sea, in a cove of its own (seed 11): the sun comes up as the page reaches it.
   The footer sits on the water.
 - **Signing in sails out of the cove to Home.** Every way in on the page keeps where the hero's cove stands on screen as

@@ -74,10 +74,14 @@ Beside every page, dark in both themes:
 - **Groups**: each of your groups and how many people are in it. Each opens on the Team page, and **+**
   starts a new one there.
 - At the bottom: the confidential-compute check (**Confidential compute · verified** when the server's
-  hardware answer is bound to this browser's request), then, on Free, **Upgrade to Pro**, then the newest of your plan's
-  notices you haven't dismissed, in a short line ("Pro ends 7 Nov", "Pro renewed", "Pro ended"), and under them about how much
-  of the period's notes is left, "About 3 h 20 min of notes left" over a meter, or "No notes left until Thu 12 Nov" once
-  they've stopped. Each opens Settings at your plan.
+  hardware answer is bound to this browser's request), then your plan (16.7). On Free, about how much of the period's notes
+  is left, "About 1 h 26 min of notes left" over a meter (warm under an hour, "No notes left until 1 Dec" in caution once
+  they've stopped), which opens Settings at your plan, then **Free plan · See plans ›**, which opens Plans. On Pro, one row
+  like the places: Pro's small sun, **Pro** and "Until 4 Nov 2027", opening Settings at your plan. While Pro is about to end
+  without renewing, its sun is half set and it says "Ends in 3 days · Extend", which opens checkout. A payment for a plan on
+  its way says "Waiting for 192 USDC", and **Pro, 12 months · Open** opens it again in checkout. "Pro renewed from your
+  balance" or "Pro ended. Nothing was deleted." is one line above until it's dismissed in Settings. On Plans, the row is the
+  place you're on.
 - Offline, a notice at the top says recording still works and everything else catches up when you're back
   (with **Record without a connection** off, that recording waits for the connection too). Up next and the
   check wait until the connection returns. Alcove also opens offline for someone signed in on this browser:
@@ -733,15 +737,18 @@ time, slides in on the right.
   another app), everyone sees the recording as unavailable, and the transcript carries on for everyone else.
   When the browser can neither record nor listen, the sign says **Notes unavailable**, for everyone and on the
   join page, until it can again.
-- **When the organizer's notes or storage run out.** The organizer alone is told, once, when what's left would last
-  about 5 minutes at this call's pace: "About 5 minutes of notes left". Notes then go off for everyone, as if the
-  organizer had turned them off, and everyone, guests included, sees **Notes have stopped** ("Priya's notes for this
-  period have run out", or "…storage is full"; the organizer's own say "Your notes…", with **Upgrade** on Free) until
-  they close it. Notes in the call and what's captured say the same while notes are off, and the organizer can still
-  turn them on: it works once their plan has notes again. The call goes on, and what was said until then is in the
-  notes, which are written when the call ends, even when writing them goes past what was left. While they're stopped,
-  turning notes on or starting a room recording says "Your notes for this period have run out. They start again when
-  your plan renews."
+- **When the organizer's notes or storage run out** (16.9). The organizer alone is told, once, when what's left would
+  last about 5 minutes at this call's pace: "About 5 minutes of notes left". Notes then stop for everyone and the call
+  carries on: Notes' pill says **Stopped** and the top bar **Notes stopped**. Over Notes' tabs, or in a banner while Notes is
+  closed, the organizer reads "Notes stopped at this period's 5 hours. The call carries on. Notes start again the moment
+  you have more." with **Get Pro** and **Add 10 hours · $15** (on Pro, the hours only), which open checkout over the call; a
+  stop for storage says storage, with **Make room**. Everyone else, guests included, reads whose notes ran out ("Priya's
+  notes for this period are used up, and the call carries on. What was written before stays.") with nothing to buy. What
+  was said until then is in the notes, which are written when the call ends, even when writing them goes past what was
+  left. Once the organizer's plan has notes again, wherever the payment lands, notes come on again by themselves: "You're
+  on Pro. Notes are on again." (or "Notes are on again."), and the notes mark **Notes stopped** and **Notes on again** at
+  their times, in that tab. While they're stopped, turning notes on or starting a room recording says "Your notes for this
+  period have run out. They start again when your plan renews."
 - **How long a call runs.** A call ends at 10 hours, and everyone is told 5 minutes before ("This call ends at
   14:30"); its notes are written as when anyone ends it. At most 100 people are in a call or waiting to be let in: one
   more is told "This call is full: 100 people are in it, the most a call can have", and whoever hosts is told someone
@@ -1699,21 +1706,23 @@ notes on new calls while the oldest request fails.
   other meetings on Home** (both on by default). Then **Google Drive**, one line that says where notes go until
   **Manage** opens it in place, where **Connect** and **Reconnect** first say what Google shares and what Alcove uploads
   (flow 15), and **Agents**: named, revocable connections, then **Connect an agent**, which opens in place (flow 14).
-- **Plan**: at the top, what you're told about your plan until you dismiss it with ×: "Pro ends on Sat 7 Nov. Turn on
-  Renew from balance, or buy more months, to keep it." (with "Your balance is short of a month." when it is), "Pro
-  renewed from your balance. It now runs to Sat 5 Dec." or "Pro ended on Mon 2 Nov. You're on Free.". Then **Plan**
-  (Free or Pro, on Pro until when) and when its notes renew; **Notes left**, about how much of the period's notes is left,
-  "About 3 h 20 min" (an estimate: busier calls use more), or "None" once they've stopped, with a sun on the line under
-  it: at the end of the line on a new period, back along it as notes are written, and set once there's none left;
-  **Storage**, what uploads and call recordings take, "2.4 GB of 10 GB", with files up to 512 MB and a sun on its line
-  the same way. Over the plan's storage, a note says until when
-  everything works as before, then that uploads and notes have stopped, until you make room. Then the plans as cards side
-  by side (stacked on a phone): **Free**, $0, and **Pro**, $20.00 a month, each with about how many hours of notes a
-  month, its storage and its largest file, and "Your plan" on the one you're on. Pro's card buys months from the balance
-  (11.27). On Pro, a **Pro** panel has **Renew from balance** (off by default) and, while months bought after this one
-  haven't started, **Refund**. In the last panel, **Balance**, in dollars, with **Add money** (11.24), then each top-up
-  still on its way, with **Open** and, until a payment reaches it, a cancel. Without a server that takes payments the
-  balance has no **Add money**. Team isn't on sale yet.
+- **Plan** (16.7, 16.8, 16.14), in two panels. What you have: **Free** ("Every feature, with about 5 hours of notes and
+  10 GB of storage.") or **Pro** ("Until Thursday 4 November 2027. Nothing renews by itself: Alcove reminds you before it
+  ends.", or "It renews from your balance before it ends."), with **See plans** (Plans) and **Get Pro** or **Extend**
+  (checkout). Ending is said in warm ("Ends in 3 days, on Saturday 7 November. Then you're back on Free, and nothing is
+  deleted."), and **Extend** is the page's one filled button then, as **Get Pro** is once notes have run out. **Notes left
+  this period** ("About 1 h 26 min", "Back to 5 hours on 1 December. Calls without notes are free.") has a sun on its line,
+  at the end of the line on a new period and back along it as notes are written: warm under an hour, "None" with "Calls go
+  on without notes until 1 December." once out. **Storage** ("2.1 GB of 10 GB", files up to 512 MB): over the plan's
+  storage, a note says until when everything works as before, then that uploads and notes have stopped until you make
+  room. **More notes** ("10 hours for $15, for this period.", **Add 10 hours**, which opens checkout) shows on Free, and on
+  any plan once notes are low or out. At the top until dismissed with ×: "Pro renewed from your balance, for another month."
+  or "Pro ended on … Nothing was deleted: you're back on Free." (with **Get Pro again**). What you pay with: **Balance**, in
+  dollars, with **Add money** (11.24); on Pro, **Renew from balance** (off by default; it says when the balance is short of
+  a month) and, while months bought after this one haven't started, **Refund**, asked in place. Then **Payments**: first
+  what's on its way or needs a person, each opening checkout (a payment for a plan) or the add-money sheet, with a cancel
+  while nothing has reached it; then the balance's latest changes, each with **Receipt**, a receipt to print. Without a
+  server that takes payments the balance has no **Add money**. Team isn't on sale yet.
 - **Privacy**: what account and call information Alcove processes, then confidential compute: the time the hardware
   was verified when this browser could check it, or where your audio is opened and your notes are written. The **Privacy policy** explains how Alcove uses account and service
   data and how to disconnect Google services. Then, in its own panel at the end, **Delete account**.
@@ -1741,6 +1750,19 @@ row says to reload the page. Any other failure, having no connection included, i
 tries again, and nothing happens later by itself. Once it's deleted you land on the welcome page, signed out, even
 if you left Settings meanwhile, and this browser forgets the tour and call view it kept for the account.
 Signing in again starts a new, empty account on Free.
+
+### 11.24 Add money
+
+Open **Settings → Plan → Add money** beside **Balance**, choose **$20**, **$60**, **$120** or your own amount in dollars,
+then a token (USDC or USDT) and network. A token is a dollar, so $20 is 20 USDC. **Get an address** opens the amount to
+send, its QR code and one payment address. Send only the stated token on that network. A short payment shows what
+arrived and how much remains; send the remainder before the address expires. After expiry it asks for no more money
+and waits for the payment or refund to settle. The money appears in the balance once settlement is confirmed, and the
+sheet follows the payment until it does. A payment on its way stays under the balance in **Payments** with **Open**, as do
+failed and held payments with their support reference; once it's added it shows as "Added, 20 USDC" with **Receipt**. A
+waiting payment can be cancelled; a payment already sent still counts when it settles. Deleting an account warns when one
+of its payment addresses could still receive money. Buying Pro or more notes is checkout's (16.2–16.5), which adds the
+money and buys with it in one go.
 
 ### 11.25 Choose what reaches you
 
@@ -2145,33 +2167,138 @@ happened, leaving the existing settings in place after cancellation or failure.
 Storybook’s journeys use **15.1–15.8** above. The account, folders and file links in the preview are made-up; real Google
 consent and the provider’s own folder-selection page require manual verification with a supported Google account.
 
-### 11.24 Add money
+## 16. Plans and paying
 
-Open **Settings → Plan → Add money** beside **Balance**, choose **$20**, **$60**, **$120** or your own amount in dollars,
-then a token (USDC or USDT) and network. A token is a dollar, so $20 is 20 USDC. **Get an address** opens the amount to
-send, its QR code and one payment address. Send only the stated token on that network. A short payment shows what
-arrived and how much remains; send the remainder before the address expires. After expiry it asks for no more money
-and waits for the payment or refund to settle. The money appears in the balance once settlement is confirmed, and the
-sheet follows the payment until it does. Open and recent top-ups stay under the balance with **Open**, including
-cancelled, failed and held payments and their support reference. A waiting payment can be cancelled; a payment already
-sent still counts when it settles. Deleting an account warns when one of its payment addresses could still receive money.
+Plans differ only in notes and storage: every feature is on every plan, and invitees get a call's notes on its organizer's
+plan. Pro is paid in USDC from any wallet or exchange, for months at a time, and nothing renews by itself unless **Renew from
+balance** is on (16.8); when a plan ends you're back on Free with nothing lost. Checkout is one window that opens over
+wherever you are (Plans, Settings, the side panel, a call or a door), in your own theme even over a call. Closing it never
+loses a payment on its way: the side panel and Settings show it, and opening it again opens that payment, not a new one.
 
-### 11.27 Buy Pro, renew it, refund it
+### 16.1 See the plans
 
-1. **Buy months.** Open **Settings → Plan**. Pro's card says what it costs ($20.00 a month) and brings. Pick 1 to 12
-   months; the total shows beside them. When the balance covers it, **Buy 3 months** is the page's one filled button:
-   Pro starts at once, with a fresh period and all of Pro's notes, the balance goes down by the total with a line
-   ("Pro, 3 months"), and Pro's card says "Your plan". When it doesn't, **Buy** is greyed out with what's short ("Add
-   $40.00 more to buy 3 months") and **Add money** (11.24) is the way on. If Pro's price changed since the page was read,
-   or the balance changed, the refusal is said under the button, nothing is charged, and the card shows what's true now.
-2. **Buy more.** On Pro the card says "Pro until Sat 23 Jan"; months bought now start after the last one.
-3. **Renew from balance.** On Pro, turn on **Renew from balance**: 3 days before Pro ends a month is bought from the
-   balance, and you're told "Pro renewed from your balance. It now runs to …". With it off, or the balance short of a
-   month, you're told "Pro ends on …" instead; buying or adding money before the end still keeps it.
-4. **Pro ends.** You're on Free, and told "Pro ended on …. You're on Free.". Over Free's storage, everything works as
-   before for a grace, said on the page, then uploads and notes stop until you make room or buy Pro again, which lifts
-   it at once.
-5. **Refund.** Months bought after the one running can be refunded: **Refund ($40.00)** asks in place, and **Refund
-   $40.00** puts them back in the balance. A month that has started isn't refunded.
-6. **Notices.** Each notice stays at the top of Plan, and the newest in the side panel, until its × dismisses it. With
-   browser notifications on and **Your plan** ticked (11.25), one also comes from the browser within the hour.
+**Plans** (`/plans`) is what each plan brings and what it costs: Free and Pro side by side (Team joins when it's offered), on
+the last of the sunset. It's reached from the side panel's **See plans**, Settings › Plan's **See plans**, checkout's
+**Compare plans**, and the welcome page's **Get Pro** (16.13), which opens it with checkout open on Pro (`/plans?checkout=pro`;
+`?checkout=hours` opens it on more notes); the address forgets it once checkout is open.
+
+1. On Free, **See plans** opens Plans priced for a year: Pro is $16 a month, "$192 for 12 months. You save $48.", and **Get
+   Pro** is the one filled button. Free's button area says **Your plan** with a tick.
+2. **Monthly** shows $20 a month, "For as many months as you choose. Or $16 for a year or more."; **Yearly · 20% off** goes
+   back. The switch shows only while a year or more costs less, and the saving is worked out from the two prices.
+3. Every number is the server's: about how many hours of notes a period brings (Free: "Back to 5 hours on the 1st of each
+   period"), the storage and the largest file. Free's last line says what more notes cost this period while they're offered.
+   Under the plans, **On every plan**, then how paying works: "for 1 to 12 months at a time. Nothing renews by itself…".
+4. **Get Pro** opens checkout over Plans (16.2), on 12 months with Yearly chosen and 1 with Monthly. While on Plans, the side
+   panel's foot row is the place you're on.
+
+On Pro, Pro says **Your plan**, **Extend** is a second choice, and Free says "Where you’re back to if a plan ends". While Pro is
+ending it says "Ends in 3 days" and **Extend** is filled. While the prices load, the cards wait in place; if they don't load,
+the page says why with **Try again**, and offline they show once you're back.
+
+### 16.2 Get Pro, paying with USDC
+
+1. **Choose.** Checkout's left side is the step and its right side is what you're buying: Pro's small arched window, "For"
+   your name, the lines ("12 months at $20 — $240", "A year or more: 20% off — −$48"), **Total** in USDC and "Pro until" the
+   day it runs to. Lengths are 1, 3, 6 and 12 months, each with its total; "20% off" marks a year or more, and **Another
+   length** steps from 1 to 12. Then **Pay with USDC on**: Base, Solana, Ethereum and the rest, each with its mark ("From 20"
+   where a network's minimum is higher). **Get the address** is the one filled button.
+2. **Pay.** "Waiting for your payment", open for 24 hours. **Send exactly** the total, with Copy; the QR code with the USDC
+   mark in its middle; the address made for this payment, its first six and last four characters in bold, with **Copy
+   address**; "Only send USDC on Base. Anything else may be lost." On a phone, **Open in wallet** instead of the code. The
+   summary's sun waits on its horizon. You can close this: Pro starts as soon as the payment arrives.
+3. **Seen.** The payment arrives: "Payment seen", the amount counts up, "Starting Pro. This takes a minute or two.", and the
+   line Sent → Seen on Base → Pro starts. The sun lifts. There's nothing to press.
+4. **Done.** The sun clears the horizon and a tick draws in: "You're on Pro", until when, the receipt row with **Receipt**, a
+   receipt to print, "Nothing renews by itself. Alcove reminds you before it ends.", and **Done**. Pro starts at once with a
+   fresh period and all of Pro's notes.
+
+What you send is what the balance is short of the total: money already in the balance counts ("Your balance — −$5"). A
+network's minimum above that raises the amount, and the summary says the rest stays in your balance. The payment adds the
+money and buys Pro with it in one go.
+
+### 16.3 Get Pro with your balance
+
+With a balance that covers the total, Choose has no networks and the button is **Buy with your balance**: it goes straight to
+Done.
+
+### 16.4 Extend Pro
+
+On Pro, **Extend** (Plans, Settings, or the side panel's ending row) opens **Extend Pro**: the summary says "Added to the 6
+days you have left", and the months start after the last one, so no day is lost. Done says "Pro runs to …".
+
+### 16.5 More notes for this period
+
+On any plan, **Add 10 hours** (Settings › Plan's **More notes**, or a call whose notes have run out) opens **More notes**: 10
+hours for $15, up to 50 hours at once, paid the same way. They add to this period's notes and lift a stop that ran out of
+notes; they don't carry into the next period. Done says "10 more hours of notes".
+
+### 16.6 When a payment isn't right
+
+1. **Less arrived.** "Less than asked arrived": **Send the rest** to the same address. If you don't, what arrived stays in
+   your balance.
+2. **More arrived.** Done says how much more you sent: it's in your balance.
+3. **It couldn't buy.** The price changed before the payment arrived, or less arrived than the months cost: the money is in
+   your balance and checkout says why, with **Buy with your balance** at today's price, or fewer months.
+4. **Nothing arrived in 24 hours.** The address closes and nothing was charged; **Get a new address** starts again. A payment
+   that arrives after all still counts, and still buys.
+5. **Cancel.** **Cancel payment** in the foot asks first: a payment sent to that address anyway still counts when it arrives.
+6. **Something went wrong.** Checkout says so, with the reference to give support.
+7. **Payments off.** Choose says paying isn't available right now; a balance that covers it can still buy.
+
+### 16.7 Your plan in the side panel
+
+A payment for a year of Pro is on its way: the foot says "Waiting for 192 USDC", and **Pro, 12 months · Open** reopens it in
+checkout. When it arrives, Pro is bought from it in the same go, and within half a minute the foot becomes Pro's own row: its
+sun up, "Until …". Pressing it opens Settings at your plan, with the payment and its receipt. On Free, **See plans** opens
+Plans, where the row is the place you're on.
+
+### 16.8 Renew, refund and your payments
+
+On Pro, Settings › Plan says until when, with **Extend**. Turn on **Renew from balance**: it's kept and **Saved** shows. **Refund
+($40.00)** asks in place; **Refund $40.00** returns the months that haven't started to the balance, and "Pro refunded, 2
+months" is first in the payments. **Receipt** opens a payment's receipt over the page as paper, with **Print**.
+
+### 16.9 Notes run out in a call
+
+Notes stop for everyone and the call carries on. Over Notes' tabs, or in the banner while Notes is closed: "Notes stopped at
+this period's 5 hours. The call carries on. Notes start again the moment you have more." The organizer has **Get Pro** and
+**Add 10 hours · $15** (on Pro, the hours only), which open checkout over the call, whose **Back to the call** closes it; a stop
+for storage says storage, with **Make room**. Everyone else reads whose notes ran out, with nothing to buy. Once the
+organizer's plan has more, wherever the payment lands (in checkout, after closing it, or in another tab), notes come on again
+by themselves: "You're on Pro. Notes are on again.", and the notes mark **Notes stopped** and **Notes on again**.
+
+### 16.10 Start a call with no notes left
+
+With none left this period, **Start a call** says "No notes left until 20 November" with **Get Pro** and **Start without
+notes**. Scheduling a call with notes before the period renews says "None left until …" under the notes switch, with **Get
+Pro** (in a new tab, so the call being scheduled stays).
+
+### 16.11 Storage full
+
+An upload refused for storage says "Your storage is full. Pro has 100 GB." with **Get Pro** on Free, or **Make room** (the
+Drive); in someone else's workspace it says the workspace can't take more files. A file over the plan's largest says its
+limit, and offers nothing.
+
+### 16.12 An hour left
+
+Once a period, when notes left drop under an hour: "Less than an hour of notes left this period", with **Get Pro**, never in
+a call. The side panel's number turns warm.
+
+### 16.13 Plans before signing in
+
+The welcome page's **Plans**: Free and Pro in a cove at the last of the sun, with what they cost, their notes and storage,
+**Start free**, and **Get Pro**, which signs in and then opens Plans with checkout open on Pro.
+
+### 16.14 Pro ending, renewed, ended
+
+Three days before Pro ends without renewing, the foot's sun is half set ("Ends in 3 days · Extend"), and Plan says when in
+warm, with **Extend** filled; with browser notifications on and **Your plan** ticked (11.25), the browser says so too. With
+renewing on and less than a month's price in the balance, Plan says Pro won't renew; once **Add money** brings the balance to
+a month's price, it says it renews and the sun is up again. At the month's end a month is bought: "Pro renewed…" shows at the
+top and in the foot until dismissed. When Pro ends without renewing you're back on Free with nothing deleted, said at the
+top, with **Get Pro again**, and in the foot. Over Free's storage, everything works as before for a grace, then uploads and
+notes stop until you make room or get Pro again, which lifts it at once.
+
+Storybook's journeys use **16.1–16.14** above. The addresses, payments and networks in it are made up; a real payment through
+1Click needs a hand check with a wallet.

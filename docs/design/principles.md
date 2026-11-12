@@ -25,6 +25,7 @@ page is one action. A page that's mostly one action is mostly sky; a page you re
 | Home | The sunset. The sun sits half risen in the middle, under Start a call. | About half (45%, 352 to 540px) |
 | Team | The sun low and to the left, behind the people standing on the horizon. | 40% |
 | Notes | Just after sunset. The sun has gone and only its glow is left; stars come out after dark. | 30% |
+| Plans | The last of the sunset: a long low glow, and only a sliver of the sun, which the page draws under its Monthly / Yearly switch. No clouds. | 270px (300px on a phone) |
 | A note, a series | A slim band. The horizon is the call itself. | About a fifth (18.5%) |
 | Settings | The last of the light. | 136px |
 
@@ -220,6 +221,7 @@ Everything comes from the tokens in `styles.css`. Don't invent values.
   | Home | Gulls, a fish, a shoal, a flying fish, a marlin, dolphins, a whale's tail | Six kinds of boat and ship, and a balloon in the corner |
   | Team | Gulls, a fish, a shoal, a flying fish, dolphins | Five kinds of boat and ship |
   | Notes | Gulls, a shooting star, a fish, a shoal | A sailing boat, a fishing boat, a freighter |
+  | Plans | Gulls, a shooting star, a fish, a shoal | A sailing boat, a fishing boat, a freighter |
   | A note | A shooting star, only in the dark | Nothing |
   | Settings | Nothing | A sailing boat, a freighter |
   | Record | A shooting star, a fish, a whale's tail | A sailing boat, a tall ship, a fishing boat |
