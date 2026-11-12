@@ -60,7 +60,8 @@ bought for a period ([below](#more-notes)) are part of its allowance, and end wi
 
 1. Before it's sent, the most the request can cost is **held**: its text at a token a byte, each image at
    `ai.image_tokens`, and the output it asks for at most, at its model's price. It's refused (`plan-limit`, 402) if that
-   would take what's left below `ai.stop_micro_usd` ($0.005), or once the allowance is spent.
+   would take what's left below `ai.stop_micro_usd` ($0.005), or once the allowance is spent. Only a spent allowance stops
+   anything: a request refused because it's too dear for what's left leaves cheaper ones to go.
 2. Once NEAR AI answers 200 it's **charged** what NEAR AI says it used (cached input at its cache price), even when what
    came back can't be used: the model did the work. A reply that doesn't say what it used is reckoned (a quarter of its
    characters a token). A Whisper clip is reckoned from its length when NEAR AI doesn't say: 1,500 tokens in for every
@@ -97,12 +98,16 @@ breakout room, picking moments and reading a frame for every 15 seconds shared, 
 The allowance runs down with the call, and notes stop before it's spent rather than after.
 
 - **About to run out:** when what's left would last `ai.warn_seconds` (5 minutes) at this call's own pace (what it has cost
-  and will cost to write up, a second of it), the organizer alone is told, once (`CallState.capture.runningOut`).
+  and will cost to write up, a second of it), the organizer alone is told, once (`CallState.capture.runningOut`), by
+  whichever charge to the call gets there first: a transcript clip, captions, live notes or board ideas (`callMeter` in
+  `calls/recording.ts` tells the call as soon as the charge is saved).
 - **Spent:** notes go off for everyone, as if the organizer had turned them off (`capture.stopped`, reason `notes`), and
   the call goes on. Notes says Stopped, and over its tabs (or in a banner while Notes is closed) the organizer reads why with
   Get Pro and more hours for this period, which open checkout over the call; everyone else, guests included, reads whose
   notes ran out, with nothing to buy (user-flows 16.9). Captions, live notes,
   guests' questions and anything else the organizer pays for are refused; a signed-in person's own questions are theirs.
+  Whichever charge to the call spends it stops the call's notes at once; a clip or captions refused only for being too
+  dear for what's left stop nothing.
 - **The last note:** when the call ends, its notes are written from what was transcribed before notes stopped. Writing a
   call's notes the first time is never refused, so it may cost more than what was left: that's the only way past an
   allowance, and what it costs over is Alcove's. It's paid from what the call held for it: what it's charged, and what

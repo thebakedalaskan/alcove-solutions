@@ -49,9 +49,16 @@ export interface Bill {
   reserve?: { model: string; most: Most } | undefined;
   /** Writing a source's notes once it's over: never refused, the one way past an allowance, and paid from what it held. */
   final?: boolean | undefined;
+  /**
+   * Told once a change is saved that the allowance has reached a limit: about to run out at the source's pace (`warn`,
+   * once for it, and only for a bill with this), or spent (`stop`: the charge took it there, or it was already, or a request
+   * was refused for it). A request refused only because it's too dear for what's left says nothing. A failure here is
+   * logged, and the request goes on.
+   */
+  onLimit?: ((what: Limit) => Promise<void>) | undefined;
 }
-/** What a charge to a source came to: fine, notes about to run out at its pace (once), or the allowance spent. */
-export type Outcome = 'ok' | 'warn' | 'stop';
+/** A limit an allowance reached: about to run out at a source's pace, or spent. */
+export type Limit = 'warn' | 'stop';
 
 type Service = Pick<Deps, 'cfg' | 'pool'>;
 
@@ -149,11 +156,17 @@ async function changing<T>(d: Service, ownerId: string, change: (m: MeterState, 
 
 const refusal = (ownerId: string, bill: Bill) => new PlanLimitError('Your notes for this period have run out. They start again when your plan renews.', 'notes', { context: { ownerId, spend: bill.spend } });
 
-/** The meter `bill` pays with, and what the last charge to its source came to. */
-export function meterFor(d: Service, bill: Bill): Meter & { outcome(): Outcome } {
-  let last: Outcome = 'ok';
+/** The meter `bill` pays with. */
+export function meterFor(d: Service, bill: Bill): Meter {
+  const said = async (what: Limit): Promise<void> => {
+    if (!bill.onLimit) return;
+    try {
+      await bill.onLimit(what);
+    } catch (e) {
+      alog.error('a limit the allowance reached wasn’t acted on', { ownerId: bill.payer, spend: bill.spend, what, err: e });
+    }
+  };
   return {
-    outcome: () => last,
     async begin(model: string, most: Most): Promise<Metered> {
       const l = await limitsNow(d);
       const price = await priced(d, l, model);
@@ -174,11 +187,10 @@ export function meterFor(d: Service, bill: Bill): Meter & { outcome(): Outcome }
         if (leftOf(m) - heldNano < stop) return { m, result: 'refused' };
         return { m: { ...m, holds: [...m.holds, hold(now)] }, result: 'held' };
       });
-      if (held !== 'held') {
-        if (held === 'stopped') last = 'stop';
-        throw refusal(bill.payer, bill);
-      }
-      const settle = (cost: (m: MeterState) => number, what: string) => changing(d, bill.payer, (m, _l, now) => {
+      if (held === 'stopped') await said('stop');
+      if (held !== 'held') throw refusal(bill.payer, bill);
+      // What it cost, charged under the lock; what that came to is said once it's saved.
+      const charge = (cost: (m: MeterState) => number, what: string) => changing(d, bill.payer, (m, _l, now): { m: MeterState; result: Limit | null } => {
         const used = cost(m);
         // A hold nothing settled in time was charged in full already (`current`): what it really cost is set right now,
         // never charged on top of it.
@@ -198,23 +210,29 @@ export function meterFor(d: Service, bill: Bill): Meter & { outcome(): Outcome }
           ...m, spentNano: m.spentNano + charged, byKind: { ...m.byKind, [bill.spend]: (m.byKind[bill.spend] ?? 0) + used },
           holds: m.holds.filter((h) => h.id !== holdId), sources
         };
-        last = 'ok';
+        let reached: Limit | null = null;
         if (next.stopped === null && leftOf(next) <= stop) {
           next = { ...next, stopped: { at: now, allowanceNano: next.allowanceNano } };
-          last = 'stop';
           alog.info('ai allowance spent', { ownerId: bill.payer, plan: next.plan, spend: bill.spend, source: s?.kind ?? null });
-        } else if (s && next.stopped === null) {
+        }
+        if (next.stopped !== null) reached = 'stop';
+        else if (s && bill.onLimit) {
+          // Only a bill whose caller is told can take the source's one warning, so it's never lost to one that isn't.
           const mine = next.sources.find((x) => x.kind === s.kind && x.id === s.id);
           // This source's pace: what it has cost and will cost to write up, a second of it, since it began.
           const pace = mine ? (mine.spentNano + mine.reserveNano) / Math.max(60, (now - mine.since) / 1000) : 0;
           if (mine && !mine.warned && pace > 0 && (leftOf(next) - stop) / pace <= l.get('ai.warn_seconds')) {
             next = { ...next, sources: next.sources.map((x) => (x === mine ? { ...x, warned: true } : x)) };
-            last = 'warn';
+            reached = 'warn';
           }
-        } else if (next.stopped !== null) last = 'stop';
+        }
         if (used > 0) alog.debug('ai charged', { ownerId: bill.payer, spend: bill.spend, model, how: what, costNano: used, final: bill.final === true, late: swept });
-        return { m: next, result: undefined };
+        return { m: next, result: reached };
       });
+      const settle = async (cost: (m: MeterState) => number, what: string): Promise<void> => {
+        const reached = await charge(cost, what);
+        if (reached) await said(reached);
+      };
       return {
         used: (u, reckoned) => settle(() => costOf(price, reckoned ? { ...u, input: u.input + most.images * l.get('ai.image_tokens') } : u), reckoned ? 'reckoned' : 'reported'),
         unsent: () => settle(() => 0, 'unsent'),

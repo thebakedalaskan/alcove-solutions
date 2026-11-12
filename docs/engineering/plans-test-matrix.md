@@ -44,6 +44,7 @@ Suites: `billing/meter` (`apps/api/src/features/billing/meter.integration.test.t
 | D6 | No request reaches NEAR AI without a payer | `Meter` is a required argument of `transcribe`, `complete` and `completeJson`: the typecheck refuses one without | 1 | Enforced by the compiler |
 | **E: running out** |  |  |  |  |
 | E1 | The organizer alone is warned, at the call's pace | billing/meter › tells the organizer alone… | 1 | Passes |
+| E1′ | The warning comes from whichever charge to the call gets there first (captions here), once | billing/meter › tells the organizer once, whichever charge to the call brings it close… | 1 | Passes |
 | E2 | Spent: notes off for everyone, guests included, banner until closed, the call goes on | billing/meter › stops notes for everyone…; the banner's × by hand | 1 | Passes |
 | E3 | Then transcription, the organizer's AI and a guest's questions are refused; notes can't come back on | billing/meter › stops notes for everyone… | 1 | Passes |
 | E4 | The last note covers only what was said before the stop, and may go past the allowance | billing/meter › stops notes for everyone… | 1 | Passes |
@@ -53,6 +54,7 @@ Suites: `billing/meter` (`apps/api/src/features/billing/meter.integration.test.t
 | E7 | A room recording runs out the same way | billing/meter › stops a room recording… | 1 | Passes |
 | E8 | Two live calls by one organizer both stop | billing/meter › stops every call the organizer has going… | 1 | Passes |
 | E9 | Questions at once near the end never spend past the allowance | billing/meter › holds what requests in flight… | 1 | Passes |
+| E9′ | A request too dear for what's left is refused, nothing sent, and the allowance isn't stopped: a cheaper one still goes; in a call, captions refused that way leave notes on and the transcript going | billing/meter › refuses only a request too dear for what’s left…; … in a call, refuses captions too dear… | 1 | Passes |
 | E10 | A bigger allowance lifts the stop; notes come back on | billing/meter › stops notes for everyone… | 1 | Passes |
 | E11 | Notes left only goes down: what's held for a call's notes and requests on their way counts for the stop, not for what's shown | billing/meter › says notes left from what was spent… | 1 | Passes |
 | **F: Pro** |  |  |  |  |

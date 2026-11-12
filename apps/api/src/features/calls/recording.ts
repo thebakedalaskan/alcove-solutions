@@ -3,8 +3,8 @@ import type { Owner } from '../../context';
 import { id128 } from '../../crypto';
 import { tx, type Db } from '../../db';
 import { ConflictError, ForbiddenError, PlanLimitError, UnavailableError, ValidationError, notFound } from '../../errors';
-import type { Most } from '../../inference';
-import { meterFor, notesBlocked } from '../billing/meter';
+import type { Meter, Most } from '../../inference';
+import { meterFor, notesBlocked, type Bill, type Spend } from '../billing/meter';
 import { mayStore } from '../billing/held';
 import { writingAtMost } from '../notes/drafting';
 import { me } from '../account/account';
@@ -100,6 +100,15 @@ export async function limitReached(o: Owner, callId: string, what: 'warn' | 'sto
   clog.info(what === 'warn' ? 'organizer told their notes are running out' : 'notes stopped: the organizer’s plan ran out', { callId, reason });
   await tellRoom(o, told, callId, { call: true, log: false });
 }
+
+/**
+ * What the call does for everyone, paid by its organizer as part of the call: its transcript (holding what writing its
+ * notes will cost so far, `reserve`), captions, live notes and board ideas. Whichever of them takes the organizer's notes
+ * close to running out at the call's pace, or to spent, says so in the call at once (`limitReached`); a request refused
+ * only because it's too dear for what's left stops nothing.
+ */
+export const callMeter = (o: Owner, callId: string, recordingId: string, spend: Spend, reserve?: Bill['reserve']): Meter =>
+  meterFor(o, { payer: o.ownerId, spend, source: { kind: 'call', id: recordingId }, reserve, onLimit: (what) => limitReached(o, callId, what, 'notes') });
 
 type CaptureAction = Extract<CallAction, { type: 'notes' | 'pause' | 'resume' | 'request-notes' | 'decline-notes' | 'unavailable' | 'model' }>;
 
@@ -227,16 +236,10 @@ export async function transcribe(v: Viewer, callId: string, clip: transcripts.Cl
     atMs = Math.max(0, Math.round((said - s.notes.segmentFrom) * 1000));
   }
   const readers = roomsOpenAt(s, row, t0) ? readersAt(s, place, t0) : undefined;
-  // The organizer pays, and holds what writing the notes will cost so far: notes stop before their allowance is spent.
-  const meter = meterFor(o, { payer: o.ownerId, spend: 'transcript', source: { kind: 'call', id: into.recordingId }, reserve: writingSoFar(o, row, s, nowMs) });
-  try {
-    await transcripts.hear(o, meter, into, clip, { speaker, ...(place !== MAIN_PLACE ? { room: place } : {}), ...(readers ? { readers } : {}), began: t0, ...(atMs === undefined ? {} : { atMs }) });
-  } catch (e) {
-    if (e instanceof PlanLimitError) await limitReached(o, callId, 'stop', 'notes');
-    throw e;
-  }
-  const outcome = meter.outcome();
-  if (outcome !== 'ok') await limitReached(o, callId, outcome, 'notes');
+  // The organizer pays, and holds what writing the notes will cost so far: notes stop before their allowance is spent,
+  // and only then: a clip refused for anything else leaves them on.
+  const meter = callMeter(o, callId, into.recordingId, 'transcript', writingSoFar(o, row, s, nowMs));
+  await transcripts.hear(o, meter, into, clip, { speaker, ...(place !== MAIN_PLACE ? { room: place } : {}), ...(readers ? { readers } : {}), began: t0, ...(atMs === undefined ? {} : { atMs }) });
   await tellRoom(o, row.room_name, callId, { call: true, log: false });
   return view(v, o.pool, callId);
 }
