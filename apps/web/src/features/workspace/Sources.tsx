@@ -33,13 +33,13 @@ export function Sources({ cites, notes, onPick }: { cites: Cite[]; notes: NoteSu
           return (
             <li key={note.id} className="wv-cite">
               <ArchThumb cover={coverFor(note.id)} room={note.kind === 'room'} width={26} />
-              <Link to="/notes/$noteId" params={{ noteId: note.id }} search={{ at: moments[0] }} className="t" onClick={onPick}>
+              <Link to="/calls/$noteId" params={{ noteId: note.id }} search={{ at: moments[0] }} className="t" onClick={onPick}>
                 <b>{note.title}</b><small>{noteDay(note.startedAt)}</small>
               </Link>
               {moments.length > 0 && (
                 <span className="at">
                   {moments.map((s) => (
-                    <Link key={s} to="/notes/$noteId" params={{ noteId: note.id }} search={{ at: s }} className="ac-time-chip" aria-label={`${note.title} at ${position(s)}`} onClick={onPick}>{position(s)}</Link>
+                    <Link key={s} to="/calls/$noteId" params={{ noteId: note.id }} search={{ at: s }} className="ac-time-chip" aria-label={`${note.title} at ${position(s)}`} onClick={onPick}>{position(s)}</Link>
                   ))}
                 </span>
               )}

@@ -1,7 +1,8 @@
 /*
  * Google Drive exports (docs/product/user-flows.md › 15), from the canvas's Settings board: Settings → Connections →
- * Google Drive, one line until Manage opens it in place. Google's pages can't open in Storybook: Connect plays up to the
- * hand-off (15.5), and the way back is Settings' own address, `?drive=connected`, with Drive just connected (15.1).
+ * Google Drive, one line until Manage opens it in place; a call's own, from More › Google Drive on its page, in a window.
+ * Google's pages can't open in Storybook: Connect plays up to the hand-off (15.5), and the way back is Settings' own
+ * address, `?drive=connected`, with Drive just connected (15.1).
  */
 import type { Meta } from '@storybook/react-vite';
 import { screen, within } from 'storybook/test';
@@ -16,6 +17,15 @@ export default meta;
 const row = (name: string | RegExp) => screen.findByRole('group', { name }, LATER);
 /** The picker of folders Google lets Alcove use. */
 const picker = () => screen.findByRole('dialog', { name: 'Choose a Google Drive folder' }, SOON);
+/** A call's own exports, in the window More › Google Drive opens on its page. */
+const callsDrive = () => screen.findByRole('dialog', { name: 'Google Drive exports for this call' }, SOON);
+type Play = NonNullable<PageStory['play']>;
+/** More › Google Drive, on a call's page. */
+async function openCallsDrive(userEvent: Parameters<Play>[0]['userEvent']): Promise<void> {
+  await userEvent.click(await screen.findByRole('button', { name: 'More' }, LATER));
+  await userEvent.click(await screen.findByRole('button', { name: /^Google Drive/ }, SOON));
+  await callsDrive();
+}
 
 export const ChooseDefaultFiles: PageStory = {
   name: '15.1 Choose default files',
@@ -65,10 +75,13 @@ export const ChooseASharedDriveFolder: PageStory = {
 
 export const OverrideOneCall: PageStory = {
   name: '15.3 Override one call',
-  ...page('/notes/n2', 'drive-connected'),
+  ...page('/calls/n2', 'drive-connected'),
   play: async ({ userEvent, step }) => {
+    await step('On the call’s page, More › Google Drive opens where this call’s files go, in a window', async () => {
+      await openCallsDrive(userEvent);
+    });
     await step('Choose settings for this call without changing the default', async () => {
-      await userEvent.click(await screen.findByRole('switch', { name: 'Use custom export settings for this call', checked: false }, LATER));
+      await userEvent.click(within(await callsDrive()).getByRole('switch', { name: 'Use custom export settings for this call', checked: false }));
     });
     await step('Choose an authorized destination for this call', async () => {
       await userEvent.click(await screen.findByRole('button', { name: 'Choose Google Drive folder for this call' }, SOON));
@@ -118,10 +131,11 @@ export const DisconnectDrive: PageStory = {
 
 export const ExportSharedCallNotes: PageStory = {
   name: '15.6 Export shared call notes',
-  ...page('/notes/n3', 'busy', { beforeEach: changing(withSharedCallExports) }),
+  ...page('/calls/n3', 'busy', { beforeEach: changing(withSharedCallExports) }),
   play: async ({ userEvent, step }) => {
-    await step('As a reader of Maya’s call, choose your own export settings and destination', async () => {
-      await userEvent.click(await screen.findByRole('switch', { name: 'Use custom export settings for this call', checked: false }, LATER));
+    await step('As a reader of Maya’s call, More › Google Drive: choose your own export settings and destination', async () => {
+      await openCallsDrive(userEvent);
+      await userEvent.click(await within(await callsDrive()).findByRole('switch', { name: 'Use custom export settings for this call', checked: false }, LATER));
     });
     await step('Original audio is unavailable to readers. Keep just the shared notes', async () => {
       await screen.findByRole('button', { name: /^Recording.*Only the organizer can export original audio/ }, SOON);
@@ -146,9 +160,10 @@ export const ReviewDrivePermissions: PageStory = {
 
 export const ExportACallFromBefore: PageStory = {
   name: '15.8 Export a call from before automatic exports',
-  ...page('/notes/n7', 'drive-connected'),
+  ...page('/calls/n7', 'drive-connected'),
   play: async ({ userEvent, step }) => {
-    await step('Launch planning ended the week before automatic exports went on. Its Google Drive panel says it isn’t exported', async () => {
+    await step('Launch planning ended the week before automatic exports went on. More › Google Drive says it isn’t exported', async () => {
+      await openCallsDrive(userEvent);
       await screen.findByText('This call ended before automatic exports were on, so it isn’t exported.', {}, LATER);
     });
     await step('Press Export to Google Drive. It goes to the folder shown, with the files ticked in Settings', async () => {

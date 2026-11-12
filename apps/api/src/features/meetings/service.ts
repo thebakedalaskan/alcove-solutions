@@ -6,16 +6,16 @@
  * (./access.ts). A call can offer times instead of settling on one, until someone with its link picks, and calls can
  * repeat, as one series with one link (./repeats.ts).
  */
-import { DEFAULT_NOTES_CHOICES, MAX_CALL_DOCUMENTS, MeetingStatusSchema, NotesChoicesSchema, NotesSettingSchema, firstName, type CallDocument, type ChangeScope, type InstantCallInput, type Meeting, type MeetingInput, type NotesSetting, type Patch, type Person, type Repeat, type Rsvp, type RsvpCounts } from '@alcove/api';
+import { DEFAULT_NOTES_CHOICES, MAX_CALL_DOCUMENTS, MeetingStatusSchema, NotesChoicesSchema, NotesSettingSchema, firstName, type CallDocument, type ChangeScope, type GuestAnswer, type InstantCallInput, type Meeting, type MeetingInput, type NotesSetting, type Patch, type Person, type ProposalAnswer, type Repeat, type Rsvp } from '@alcove/api';
 import { z } from 'zod';
 import type { Owner } from '../../context';
 import { id128, random } from '../../crypto';
 import { exec, tx, type Db } from '../../db';
-import { ConflictError, ValidationError } from '../../errors';
+import { ConflictError, ValidationError, notFound } from '../../errors';
 import { log } from '../../log';
 import { lockOwner } from '../../owners';
 import { createItem, findItem, findItems, getItem, listItems, lockItem, saveRevision, type Loaded } from '../../vault';
-import { accessOf, answer as saveAnswer, countsOf, dropInvites, finished, invitedMeetings, inviteKey, locateInvited, reconcileAccess, syncAccess, type Access, type Invited } from './access';
+import { accessOf, answer as saveAnswer, countsFrom, countsOf, dropInvites, dropProposals, finished, invitedMeetings, inviteKey, locateInvited, propose as saveProposal, reconcileAccess, standing, syncAccess, type Access, type Invited } from './access';
 import { me, preferences, profile, type Profile } from '../account/account';
 import * as calendar from './calendar';
 import { followInvites, invitesOf } from '../calls/workspace';
@@ -65,9 +65,16 @@ export const MeetingManifest = z.object({
   /** The link code of the series this call repeats in: it leads to whichever of its calls is on now or next. */
   seriesCode: z.string().optional(),
   /** Until when it's claimed for the calendar: Google is being asked for its event, and nobody else asks meanwhile. */
-  placing: z.string().optional()
+  placing: z.string().optional(),
+  /**
+   * While it offers times: the events holding each of them on the organizer's calendar, which nobody else is invited
+   * to. They go when someone picks, or the call is cancelled. Calls from before holds have none.
+   */
+  holds: z.array(z.object({ at: z.string(), eventId: z.string() })).default([])
 });
 export type MeetingManifest = z.infer<typeof MeetingManifest>;
+/** One time a call offers, held on its organizer's calendar. */
+export type Hold = MeetingManifest['holds'][number];
 
 const LETTERS = 'abcdefghijkmnpqrstuvwxyz';
 export function makeCode(): string {
@@ -92,8 +99,16 @@ function cleanGuests(emails: string[], organizerEmail: string): string[] {
   return out;
 }
 
-/** What showing calls to someone takes, read once for a whole list. */
-interface Reading { organizer: Person; viewer: Profile; reader: Owner; documents: ReadonlyMap<string, CallDocument>; access: ReadonlyMap<string, Access>; repeats: ReadonlyMap<string, Repeat> }
+/**
+ * What showing calls to someone takes, read once for a whole list. `keyOf` is the organizer's `inviteKey`, kept for
+ * every address the list has: the calls of a series share their guests.
+ */
+interface Reading { organizer: Person; viewer: Profile; reader: Owner; documents: ReadonlyMap<string, CallDocument>; access: ReadonlyMap<string, Access>; repeats: ReadonlyMap<string, Repeat>; keyOf: (email: string) => string }
+/** `inviteKey` for one organizer, each address worked out once. */
+function invites(owner: Owner): (email: string) => string {
+  const keys = new Map<string, string>();
+  return (email) => { const k = keys.get(email) ?? inviteKey(owner, email); keys.set(email, k); return k; };
+}
 /** Everything brought to these calls, by ID, as `viewer` may know it: a workspace is read once, however many calls it's on. */
 async function broughtTo(viewer: Owner, meetings: Loaded<MeetingManifest>[]): Promise<ReadonlyMap<string, CallDocument>> {
   const ids = [...new Set(meetings.flatMap((m) => m.manifest.documents))];
@@ -102,33 +117,37 @@ async function broughtTo(viewer: Owner, meetings: Loaded<MeetingManifest>[]): Pr
 }
 /** `viewer` reading these calls of `owner`, who can be the same account. */
 const reading = async (owner: Owner, viewer: Owner, meetings: Loaded<MeetingManifest>[]): Promise<Reading> =>
-  ({ organizer: await me(owner), viewer: await profile(viewer), reader: viewer, documents: await broughtTo(viewer, meetings), access: await accessOf(owner, meetings.map((m) => m.itemId)), repeats: await repeatsOf(owner, meetings) });
+  ({ organizer: await me(owner), viewer: await profile(viewer), reader: viewer, documents: await broughtTo(viewer, meetings), access: await accessOf(owner, meetings.map((m) => m.itemId)), repeats: await repeatsOf(owner, meetings), keyOf: invites(owner) });
 
 /** A call as anyone on it sees it. What's only for its organizer, and who's on it, go on top of this. */
 function onCall(m: Loaded<MeetingManifest>, r: Reading) {
-  const { guests, duration, noteId: _note, calendarEvent: _event, seriesId, seriesCode, offer, documents, recurringEventId: _recurring, addedFromLink: _added, placing: _placing, workspaceId: _workspace, agenda: _agenda, ...rest } = m.manifest;
+  const { guests, duration, noteId: _note, calendarEvent: _event, seriesId, seriesCode, offer, documents, recurringEventId: _recurring, addedFromLink: _added, placing: _placing, workspaceId: _workspace, agenda: _agenda, holds: _holds, ...rest } = m.manifest;
   const repeat = seriesId && seriesCode ? r.repeats.get(seriesId) : undefined;
   return {
     id: m.itemId, ...rest, organizer: r.organizer, guestCount: guests.length, documents: documents.flatMap((id) => { const d = r.documents.get(id); return d ? [shownOn(r.reader, m.itemId, d)] : []; }), workspaceId: null, rsvps: countsOf(r.access.get(m.itemId), guests.length),
     ...(duration !== undefined ? { duration } : {}), ...(seriesId ? { seriesId } : {}), ...(offer ? { offer } : {}), ...(repeat ? { repeat } : {})
   };
 }
+/** A call as its organizer sees it: who everyone is, what each of them answered, and the times they've asked for. */
 function asOrganizer(m: Loaded<MeetingManifest>, r: Reading): Meeting {
   const { guests, noteId, calendarEvent, seriesCode, workspaceId } = m.manifest;
   return {
-    ...onCall(m, r), isOrganizer: true, guests: guests.map((e) => personOf(e)), rsvp: null, workspaceId,
+    ...onCall(m, r), isOrganizer: true, guests: guests.map((e) => personOf(e)), rsvp: null, workspaceId, ...standing(r.access.get(m.itemId), guests, r.keyOf),
     ...(noteId !== undefined ? { noteId } : {}), ...(calendarEvent?.url ? { calendarUrl: calendarEvent.url } : {}), ...(seriesCode ? { seriesCode } : {})
   };
 }
 /**
  * A call as someone invited sees it, `you` being their `inviteKey`. Past NAMED_GUESTS they see how many are invited,
- * not who. The note and the calendar link are the organizer's. A series' link is theirs only if their invitation
+ * not who. What each person answered is the organizer's: they see how many, their own answer, and the time they asked
+ * to move it to. The note and the calendar link are the organizer's. A series' link is theirs only if their invitation
  * carried it, which takes a calendar.
  */
 function asInvited(m: Loaded<MeetingManifest>, r: Reading, you: string): Meeting {
   const { guests, calendarEvent, seriesCode } = m.manifest;
+  const mine = r.access.get(m.itemId)?.get(you);
   return {
-    ...onCall(m, r), isOrganizer: false, guests: guests.length > NAMED_GUESTS ? [] : guests.map((e) => personOf(e)), rsvp: r.access.get(m.itemId)?.get(you) ?? null,
+    ...onCall(m, r), isOrganizer: false, guests: guests.length > NAMED_GUESTS ? [] : guests.map((e) => personOf(e)), rsvp: mine?.answer ?? null,
+    proposals: mine?.proposal ? [{ email: r.viewer.email, startsAt: mine.proposal }] : [],
     ...(seriesCode && calendarEvent ? { seriesCode } : {})
   };
 }
@@ -166,7 +185,7 @@ export async function upcoming(o: Owner): Promise<Meeting[]> {
   // A call nobody held has no end to take its invite with it, and everyone on it may have no account to read it.
   await dropInvites(o, o.pool, mine.filter((m) => finished(m.manifest)).map((m) => m.itemId));
   const ms = mine.filter(listed);
-  const r: Reading = { organizer: await me(o), viewer: await profile(o), reader: o, documents: await broughtTo(o, ms), access: await reconcileAccess(o, ms), repeats: await repeatsOf(o, ms) };
+  const r: Reading = { organizer: await me(o), viewer: await profile(o), reader: o, documents: await broughtTo(o, ms), access: await reconcileAccess(o, ms), repeats: await repeatsOf(o, ms), keyOf: invites(o) };
   return [...ms.map((m) => asOrganizer(m, r)), ...await invitedTo(o)].sort((a, b) => a.startsAt.localeCompare(b.startsAt));
 }
 export async function past(o: Owner): Promise<Meeting[]> {
@@ -186,21 +205,18 @@ const invitedCall = async (o: Owner, { organizer, meeting }: Invited) => {
 /** How long Google has to say who answered there, when an organizer opens one of their calls. */
 const CALENDAR_ANSWERS_MS = 3000;
 /**
- * How everyone has answered, for the organizer opening a call that's on their calendar: for anyone with no answer in
- * Alcove, what they said in Google, read now and stored nowhere. If Google can't say, the counts stay Alcove's.
+ * What everyone answered, for the organizer opening a call that's on their calendar: for anyone with no answer in
+ * Alcove, what they said in Google, read now and stored nowhere. If Google can't say, the answers stay Alcove's.
  */
-async function withCalendarAnswers(o: Owner, m: Loaded<MeetingManifest>, access: Access | undefined): Promise<RsvpCounts> {
-  const { guests, calendarEvent } = m.manifest;
-  const counts = countsOf(access, guests.length);
-  if (!calendarEvent) return counts;
+async function withCalendarAnswers(o: Owner, m: Loaded<MeetingManifest>, answers: GuestAnswer[]): Promise<GuestAnswer[]> {
+  const { calendarEvent } = m.manifest;
+  if (!calendarEvent || answers.every((a) => a.answer)) return answers;
   try {
     const said = await calendar.answers(o, calendarEvent.id, AbortSignal.timeout(CALENDAR_ANSWERS_MS));
-    const there = guests.flatMap((e): Rsvp[] => { const a = said.get(e.toLowerCase()); return a && !access?.get(inviteKey(o, e)) ? [a] : []; });
-    for (const a of there) counts[a]++;
-    return { ...counts, waiting: counts.waiting - there.length };
+    return answers.map((a) => (a.answer ? a : { ...a, answer: said.get(a.email.toLowerCase()) ?? null }));
   } catch (e) {
     mlog.warn('calendar answers not read', { meetingId: m.itemId, err: e });
-    return counts;
+    return answers;
   }
 }
 
@@ -209,10 +225,33 @@ export async function get(o: Owner, id: string): Promise<Meeting> {
   const mine = await findItem(o, o.pool, 'meeting', id, MeetingManifest);
   if (!mine) return invitedCall(o, await locateInvited(o, id));
   const r = await reading(o, o, [mine]);
-  return { ...asOrganizer(mine, r), rsvps: await withCalendarAnswers(o, mine, r.access.get(id)) };
+  const shown = asOrganizer(mine, r);
+  const answers = await withCalendarAnswers(o, mine, shown.answers ?? []);
+  return { ...shown, answers, rsvps: countsFrom(answers) };
 }
 /** Says whether you're coming to a call you're invited to, and shows you the call. */
 export async function answer(o: Owner, id: string, value: Rsvp): Promise<Meeting> { return invitedCall(o, await saveAnswer(o, id, value)); }
+/** Asks the organizer of a call you're invited to to move it, and shows you the call with what you asked. */
+export async function propose(o: Owner, id: string, startsAt: string): Promise<Meeting> { return invitedCall(o, await saveProposal(o, id, startsAt)); }
+
+/**
+ * Answers someone's request to move one of your calls. Moving it changes its time as Change the time does, which
+ * tells everyone through a connected calendar and lets go of every request, since they were asked of the time it had.
+ * Keeping it lets go of this one request.
+ */
+export async function answerProposal(o: Owner, id: string, email: string, answer: ProposalAnswer): Promise<Meeting> {
+  const asked = (await accessOf(o, [id])).get(id)?.get(inviteKey(o, email))?.proposal;
+  if (!asked) throw notFound('That request to move the call', { meetingId: id });
+  if (answer === 'keep') {
+    await dropProposals(o, o.pool, [id], email);
+    mlog.info('request to move a call answered', { meetingId: id, moved: false });
+    return own(o, id);
+  }
+  if (new Date(asked).getTime() <= Date.now()) throw new ConflictError('That time has passed. Pick another one.', { context: { meetingId: id } });
+  const moved = await update(o, id, { startsAt: asked });
+  mlog.info('request to move a call answered', { meetingId: id, moved: true });
+  return moved;
+}
 
 /** What a call is called, and when it starts: nothing yet while it still offers times. */
 export interface CallTitle { title: string; startsAt: string | null }
@@ -271,14 +310,56 @@ export async function create(o: Owner, input: MeetingInput): Promise<Meeting> {
   const manifest: MeetingManifest = {
     title: input.title.trim() || 'Untitled call', ...validTimes(offered?.[0] ?? input.startsAt, input.durationMinutes),
     guests: cleanGuests(input.guests, organizer.email), notes: input.notes, code: makeCode(), status: 'scheduled',
-    instant: false, choices: input.choices ?? DEFAULT_NOTES_CHOICES, joinMuted: input.joinMuted ?? false, documents: input.documents ?? [], workspaceId: input.workspaceId ?? null, agenda: null, ...(offered ? { offer: { times: offered } } : {})
+    instant: false, choices: input.choices ?? DEFAULT_NOTES_CHOICES, joinMuted: input.joinMuted ?? false, documents: input.documents ?? [], workspaceId: input.workspaceId ?? null, agenda: null, holds: [], ...(offered ? { offer: { times: offered } } : {})
   };
   if (input.repeat) return own(o, await schedule(o, manifest, input.repeat));
   const itemId = await tx(o.pool, (c) => store(o, c, manifest));
   mlog.info('meeting scheduled', { meetingId: itemId, guests: manifest.guests.length, notes: manifest.notes, offered: offered?.length ?? 0 });
-  // A call offering times has none to put on a calendar until one is picked.
-  if (!offered) await placeOnCalendar(o, itemId);
+  // A call offering times has none to put on a calendar until one is picked: the times are held there instead.
+  if (offered) await placeHolds(o, itemId);
+  else await placeOnCalendar(o, itemId);
   return own(o, itemId);
+}
+
+/* ---------- holds: the times a call offers, on its organizer's calendar until someone picks ---------- */
+
+/** Takes holds off the calendar, quietly, as far as Google lets it: one that won't go is logged and left. */
+async function releaseHolds(o: Owner, meetingId: string, holds: readonly Hold[]): Promise<void> {
+  for (const h of holds) {
+    try { await calendar.release(o, h.eventId); } catch (e) { mlog.warn('held time not cleared from calendar', { meetingId, err: e }); }
+  }
+}
+
+/**
+ * Holds each time a call offers on the organizer's calendar, as an event of theirs nobody else is invited to, so nothing
+ * else lands there while the guest picks. Like the call's own event it's a courtesy: if Google fails, the call offers
+ * its times all the same. Google is asked holding nothing, and the holds are kept only if the call still offers times
+ * by then: a pick or a cancel that came first takes them straight off again.
+ */
+async function placeHolds(o: Owner, id: string): Promise<void> {
+  try {
+    if (!(await calendar.places(o))) return;
+    const m = await findItem(o, o.pool, 'meeting', id, MeetingManifest);
+    if (!m?.manifest.offer) return;
+    const placed: Hold[] = [];
+    try {
+      for (const at of m.manifest.offer.times) placed.push({ at, eventId: await calendar.hold(o, id, m.manifest, at) });
+    } catch (e) {
+      await releaseHolds(o, id, placed);
+      throw e;
+    }
+    const kept = await tx(o.pool, async (c) => {
+      await lockItem(o, c, id);
+      const cur = await findItem(o, c, 'meeting', id, MeetingManifest);
+      if (!cur?.manifest.offer) return false;
+      await saveRevision(o, c, id, cur.revisionId, { ...cur.manifest, holds: [...cur.manifest.holds, ...placed] });
+      return true;
+    });
+    if (!kept) await releaseHolds(o, id, placed);
+    mlog.info('offered times held on calendar', { meetingId: id, holds: placed.length, kept });
+  } catch (e) {
+    mlog.warn('offered times not held on calendar', { meetingId: id, err: e });
+  }
 }
 
 /** How long a call stays claimed for the calendar: longer than Google gets to answer, and a process that dies lets go of it by this. */
@@ -355,12 +436,17 @@ export function withChange(m: MeetingManifest, patch: Patch<MeetingInput>, organ
   };
 }
 
-/** Changes one call and who's invited to it, without touching its calendar event. */
+/**
+ * Changes one call and who's invited to it, without touching its calendar event. A call that moves lets go of the times
+ * people asked to move it to: they were asked of where it was.
+ */
 export async function changeCall(o: Owner, id: string, patch: Patch<MeetingInput>): Promise<MeetingManifest> {
   const organizer = await me(o);
   const next = await tx(o.pool, async (c) => {
-    const changed = await updateManifest(o, c, id, (m) => withChange(m, patch, organizer.email, id));
+    let was = '';
+    const changed = await updateManifest(o, c, id, (m) => { was = m.startsAt; return withChange(m, patch, organizer.email, id); });
     await syncAccess(o, c, id, changed.guests);
+    if (changed.startsAt !== was) await dropProposals(o, c, [id]);
     return changed;
   });
   mlog.info('meeting updated', { meetingId: id, fields: Object.keys(patch).length });
@@ -388,6 +474,8 @@ export async function update(o: Owner, id: string, sent: Patch<MeetingInput>, sc
         try { await calendar.change(o, next.calendarEvent.id, id, next); } catch (e) { mlog.warn('calendar event not updated', { meetingId: id, err: e }); }
       }
     } else if (!next.instant && !next.offer) await placeOnCalendar(o, id);
+    // Held times say which call they're for, so they take its new name: nobody else sees them, so nobody is told.
+    else if (next.offer && patch.title !== undefined && next.title !== manifest.title) await retitleHolds(o, id, next);
   }
   if (invites) await followInvites(o, invites);
   return own(o, id);
@@ -400,14 +488,25 @@ export async function update(o: Owner, id: string, sent: Patch<MeetingInput>, sc
  */
 export async function pickTime(o: Owner, id: string, at: string): Promise<void> {
   const when = new Date(at).getTime();
-  await tx(o.pool, (c) => updateManifest(o, c, id, ({ offer, ...m }) => {
+  let held: Hold[] = [];
+  await tx(o.pool, (c) => updateManifest(o, c, id, ({ offer, holds, ...m }) => {
     if (!offer) throw new ConflictError('A time has already been picked for this call.', { context: { meetingId: id } });
     const time = offer.times.find((t) => new Date(t).getTime() === when);
     if (!time || when <= Date.now()) throw new ValidationError('That time isn’t on offer.', { context: { meetingId: id, offered: offer.times.length } });
-    return { ...m, ...validTimes(time, minutesOf(m)) };
+    held = holds;
+    return { ...m, holds: [], ...validTimes(time, minutesOf(m)) };
   }));
-  mlog.info('time picked for a call', { meetingId: id });
+  mlog.info('time picked for a call', { meetingId: id, holds: held.length });
+  // The holds clear, the picked one with them, and the call takes its place with its invitations.
+  await releaseHolds(o, id, held);
   await placeOnCalendar(o, id);
+}
+
+/** Gives a call's held times its new name. */
+async function retitleHolds(o: Owner, id: string, m: MeetingManifest): Promise<void> {
+  for (const h of m.holds) {
+    try { await calendar.retitleHold(o, h.eventId, m); } catch (e) { mlog.warn('held time not renamed on calendar', { meetingId: id, err: e }); }
+  }
 }
 
 /**
@@ -419,18 +518,19 @@ export async function cancel(o: Owner, id: string, scope?: ChangeScope | undefin
   const { manifest } = await getItem(o, o.pool, 'meeting', id, MeetingManifest, 'That meeting');
   if (manifest.seriesId && manifest.seriesCode) return cancelInSeries(o, id, manifest.seriesId, scope);
   if (scope === 'following') throw new ConflictError('This call doesn’t repeat, so there are no later calls to cancel with it.', { context: { meetingId: id } });
-  const eventId = await tx(o.pool, async (c) => {
+  const { eventId, holds } = await tx(o.pool, async (c) => {
     await lockItem(o, c, id);
     const m = await getItem(o, c, 'meeting', id, MeetingManifest, 'That meeting');
     if (m.manifest.status === 'live') throw new ConflictError('That call is happening now. Leave it first.', { context: { meetingId: id } });
     await exec(c, 'DELETE FROM items WHERE owner_id = $1 AND item_id = $2', [o.ownerId, id]);
     await exec(c, 'DELETE FROM operations WHERE owner_id = $1', [o.ownerId]);
-    return m.manifest.calendarEvent?.id;
+    return { eventId: m.manifest.calendarEvent?.id, holds: m.manifest.holds };
   });
-  mlog.info('meeting cancelled', { meetingId: id });
+  mlog.info('meeting cancelled', { meetingId: id, holds: holds.length });
   if (eventId) {
     try { await calendar.withdraw(o, eventId, id); } catch (e) { mlog.warn('calendar event not cancelled', { meetingId: id, err: e }); }
   }
+  await releaseHolds(o, id, holds);
 }
 
 /**
@@ -457,7 +557,7 @@ export async function adopt(o: Owner, eventId: string, notes?: NotesSetting | un
     const manifest: MeetingManifest = {
       title: e.title, startsAt: e.startsAt, endsAt: e.endsAt, guests: cleanGuests(e.guests, organizer.email),
       notes: setting, code: makeCode(), status: 'scheduled', calendarEvent: { id: eventId, ...(e.url ? { url: e.url } : {}), adopted: true }, ...series,
-      instant: false, choices: DEFAULT_NOTES_CHOICES, joinMuted: false, documents: [], workspaceId: before?.manifest.workspaceId ?? null, agenda: null
+      instant: false, choices: DEFAULT_NOTES_CHOICES, joinMuted: false, documents: [], workspaceId: before?.manifest.workspaceId ?? null, agenda: null, holds: []
     };
     return { itemId: await store(o, c, manifest), manifest, created: true };
   });
@@ -495,7 +595,7 @@ export async function startNow(o: Owner, input: InstantCallInput): Promise<{ cod
   const manifest: MeetingManifest = {
     title: input.title?.trim() || `${firstName(organizer.name)}’s call`, startsAt: start.toISOString(), endsAt: new Date(start.getTime() + 60 * 60_000).toISOString(),
     guests: cleanGuests(input.guests ?? [], organizer.email), notes, code: makeCode(), status: 'scheduled',
-    instant: true, choices: DEFAULT_NOTES_CHOICES, joinMuted: false, documents, workspaceId: null, agenda: null
+    instant: true, choices: DEFAULT_NOTES_CHOICES, joinMuted: false, documents, workspaceId: null, agenda: null, holds: []
   };
   const { itemId, swept } = await tx(o.pool, async (c) => ({ swept: await sweepUnjoined(o, c), itemId: await store(o, c, manifest) }));
   mlog.info('instant call created', { meetingId: itemId, guests: manifest.guests.length, notes, documents: documents.length, swept });
@@ -529,7 +629,7 @@ export async function scheduleNext(o: Owner, id: string, startsAt: string): Prom
     if (!from.seriesId) await saveRevision(o, c, id, cur.revisionId, { ...from, seriesId });
     const manifest: MeetingManifest = {
       title: from.title, ...times, guests: from.guests, notes: from.notes, code: makeCode(), status: 'scheduled', seriesId, instant: false, choices: from.choices, joinMuted: from.joinMuted,
-      documents: [...new Set([...from.documents, ...boards])].slice(0, MAX_CALL_DOCUMENTS), workspaceId: from.workspaceId, agenda: null, ...(from.seriesCode ? { seriesCode: from.seriesCode } : {})
+      documents: [...new Set([...from.documents, ...boards])].slice(0, MAX_CALL_DOCUMENTS), workspaceId: from.workspaceId, agenda: null, holds: [], ...(from.seriesCode ? { seriesCode: from.seriesCode } : {})
     };
     return { itemId: await store(o, c, manifest), manifest, started: !from.seriesId };
   });

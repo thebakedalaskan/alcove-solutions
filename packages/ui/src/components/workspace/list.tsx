@@ -9,18 +9,18 @@ import { WsPopover, type WsPop } from './popover';
 import { useMove } from './shared';
 
 /**
- * The workspace itself: the list and the document side by side, on a card. It fills the box it's given: a panel in a
- * call, or the page in the app. `listOff` tucks the list away and `listPeek` brings it back over the page for a moment;
- * `phoneList` slides it in on a phone. `following` draws the frame that says you're going where someone goes. `page` is
- * outside a call.
+ * The workspace in a call: the list and the document side by side, on a card, filling the panel it's given. `listOff`
+ * tucks the list away and `listPeek` brings it back over the page for a moment; `phoneList` slides it in on a phone.
+ * `following` draws the frame that says you're going where someone goes. `beside`: one document on its own, beside another
+ * page of the app's (the Drive's tree), with no card around it. Full screen, a workspace is `WsFrame`.
  */
-export function WsPane({ children, label = 'Workspace', listOff = false, listPeek = false, phoneList = false, following = false, page = false, className, ref }: {
+export function WsPane({ children, label = 'Workspace', listOff = false, listPeek = false, phoneList = false, following = false, beside = false, className, ref }: {
   children?: ReactNode; label?: string | undefined; listOff?: boolean | undefined; listPeek?: boolean | undefined; phoneList?: boolean | undefined;
-  following?: boolean | undefined; page?: boolean | undefined; className?: string | undefined;
+  following?: boolean | undefined; beside?: boolean | undefined; className?: string | undefined;
   ref?: Ref<HTMLElement> | undefined;
 }) {
   return (
-    <section ref={ref} aria-label={label} className={cn('ws-pane', listOff && 'tree-off', listPeek && 'list-peek', phoneList && 'phone-tree', following && 'is-follow', page && 'in-app', className)}>
+    <section ref={ref} aria-label={label} className={cn('ws-pane', listOff && 'tree-off', listPeek && 'list-peek', phoneList && 'phone-tree', following && 'is-follow', beside && 'is-beside', className)}>
       {children}
     </section>
   );
@@ -65,28 +65,42 @@ const EMPTY_WORDS: Record<WsListEmpty, string> = {
   shared: 'Documents and boards shared with you show up here.'
 };
 
-export function WsList({ head, children, empty = false, listKey, label = 'Documents', foot, aligned = false, onKeyDown }: {
-  head?: ReactNode; children?: ReactNode; empty?: WsListEmpty | false | undefined; listKey?: string | undefined; label?: string | undefined;
+export interface WsTreeProps {
+  children?: ReactNode; empty?: WsListEmpty | false | undefined; listKey?: string | undefined; label?: string | undefined;
   /**
    * Every row lines up with the folders' twists, `pins` too: This call holds what's in the call's own folder, folders and all,
    * so its rows line up with them as the rest of the list does.
    */
   aligned?: boolean | undefined;
-  /** What stays at the foot, above the sealed line, however long the list is: `WsTrashRow`. */
-  foot?: ReactNode;
   /** Keys pressed on a row, before the list's own: stop one to keep it from moving through the rows. */
   onKeyDown?: ((e: KeyboardEvent<HTMLDivElement>) => void) | undefined;
-}) {
+}
+
+/**
+ * The rows of a workspace, wherever they're listed (`WsList` in a call, `WsSide` full screen): one tab stop, the arrow keys
+ * moving through it, rows closing up as they go and opening in place as they come, and a cross-fade when `listKey` changes.
+ */
+export function WsTree({ children, empty = false, listKey, label = 'Documents', aligned = false, onKeyDown }: WsTreeProps) {
   const scroll = useRef<HTMLDivElement>(null);
   const move = useMove();
   useLayoutEffect(() => { if (scroll.current) keepOneTabStop(scroll.current); });
   return (
+    <motion.div key={listKey} ref={scroll} className={cn('wt-scroll', aligned && 'is-aligned')} role="tree" aria-label={label} onKeyDown={(e) => { onKeyDown?.(e); if (!e.isPropagationStopped()) moveInList(e); }} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={move(2)}>
+      <AnimatePresence initial={false}>{Children.toArray(children)}</AnimatePresence>
+      {empty && <p className="wt-empty">{EMPTY_WORDS[empty]}</p>}
+    </motion.div>
+  );
+}
+
+export function WsList({ head, foot, label = 'Documents', ...tree }: WsTreeProps & {
+  head?: ReactNode;
+  /** What stays at the foot, above the sealed line, however long the list is: `WsTrashRow`. */
+  foot?: ReactNode;
+}) {
+  return (
     <aside className="wt" aria-label={label}>
       {head}
-      <motion.div key={listKey} ref={scroll} className={cn('wt-scroll', aligned && 'is-aligned')} role="tree" aria-label={label} onKeyDown={(e) => { onKeyDown?.(e); if (!e.isPropagationStopped()) moveInList(e); }} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={move(2)}>
-        <AnimatePresence initial={false}>{Children.toArray(children)}</AnimatePresence>
-        {empty && <p className="wt-empty">{EMPTY_WORDS[empty]}</p>}
-      </motion.div>
+      <WsTree label={label} {...tree} />
       {foot}
       <div className="wt-foot"><Icon name="sealed" size={14} /><span>Encrypted in storage.</span></div>
     </aside>
@@ -96,12 +110,15 @@ export function WsList({ head, children, empty = false, listKey, label = 'Docume
 /** Naming a workspace, in the head of the list: Enter or leaving the field keeps it, Esc goes back. */
 export interface WsNaming { name: string; placeholder: string; onCommit: (name: string) => void; onCancel: () => void }
 
-/** The field that takes the place of the workspace's name while it's being named. The name's selected when it opens. */
-function SpaceName({ name, placeholder, onCommit, onCancel }: WsNaming) {
+/**
+ * The field that takes the place of the workspace's name while it's being named. The name's selected when it opens. `mark`
+ * stands where the workspace's mark was.
+ */
+export function WsSpaceField({ name, placeholder, onCommit, onCancel, mark }: WsNaming & { mark?: ReactNode }) {
   const cancelled = useRef(false);
   return (
     <div className="wt-space is-edit">
-      <span className="wt-mark"><Icon name="folders" size={15} /></span>
+      {mark ?? <span className="wt-mark"><Icon name="folders" size={15} /></span>}
       <input className="wt-in" type="text" aria-label="Name this workspace" placeholder={placeholder} defaultValue={name} maxLength={120} autoFocus onFocus={(e) => e.currentTarget.select()}
         onKeyDown={(e) => {
           e.stopPropagation();
@@ -149,7 +166,7 @@ export function WsListHead({ name, picker, onFind, create, createLabel = 'New do
   return (
     <>
     <div className="wt-head">
-      {naming ? <SpaceName {...naming} /> : (
+      {naming ? <WsSpaceField {...naming} /> : (
         <WsPopover open={picker.open} onOpenChange={picker.onOpenChange} label="Workspaces" anchor={
           <button type="button" className="wt-space"><span className="wt-mark"><Icon name="folders" size={15} /></span><span className="n ac-clamp-1" title={name}>{name}</span><Icon name="chevronsUpDown" size={14} /></button>
         }>{picker.content}</WsPopover>
@@ -184,9 +201,23 @@ export function WsListTools({ onFind, findKey, create, createLabel = 'New docume
   );
 }
 
-/** A heading in the list: This call, Documents. `into`: something's being dragged onto it. */
-export function WsSection({ label, area = 'tree', into = false }: { label: ReactNode; area?: 'pins' | 'tree' | undefined; into?: boolean | undefined }) {
-  return <div className={cn('wt-sec', into && 'is-into')} data-sec={area} role="presentation">{label}</div>;
+/**
+ * A heading in the list: This call, Documents, Pages. `into`: something's being dragged onto it. `add`: a + at its end that
+ * opens what can be made under it (`WsNewMenu`), named `addLabel`.
+ */
+export function WsSection({ label, area = 'tree', into = false, add, addLabel = 'New' }: {
+  label: ReactNode; area?: 'pins' | 'tree' | undefined; into?: boolean | undefined; add?: WsPop | undefined; addLabel?: string | undefined;
+}) {
+  return (
+    <div className={cn('wt-sec', into && 'is-into', add && 'has-add')} data-sec={area} role="presentation">
+      <span>{label}</span>
+      {add && (
+        <WsPopover open={add.open} onOpenChange={add.onOpenChange} label={addLabel} anchor={
+          <IconButton icon="plus" size={15} className="wt-ib" label={addLabel} title={addLabel} />
+        }>{add.content}</WsPopover>
+      )}
+    </div>
+  );
 }
 
 /** An action that shows when you hover a row. */
@@ -194,8 +225,11 @@ function RowAction({ icon, label, ...rest }: { icon: IconName; label: string } &
   return <button type="button" className="wt-a" aria-label={label} {...rest}><Icon name={icon} size={15} /></button>;
 }
 
-/** What a row is. */
-export type WsRowKind = 'document' | 'folder' | 'board' | 'live';
+/**
+ * What a row is. `place`: somewhere in the workspace that isn't something in it, such as its Home. `call`: a call kept in
+ * it (its folder), which opens the call's own page.
+ */
+export type WsRowKind = 'document' | 'folder' | 'board' | 'live' | 'place' | 'call';
 
 /** What a row in the list shows for each kind of thing in it. */
 export const WS_ITEM_ICONS = { document: 'fileText', folder: 'folder', board: 'presentation' } as const satisfies Record<string, IconName>;
@@ -217,6 +251,10 @@ export interface WsRowProps {
   current?: boolean | undefined;
   /** A count beside the name, such as open follow-ups. Zero shows nothing. */
   count?: number | undefined;
+  /** A word at the row's end, in the colour of what's new: "New" for something just made. */
+  tag?: string | undefined;
+  /** It opens somewhere else than this workspace's page: ↗ at its end. */
+  out?: boolean | undefined;
   /** Who's in it. Pressing them opens `facesCard`. */
   faces?: AvatarPerson[] | undefined;
   facesCard?: WsPop | undefined;
@@ -243,24 +281,30 @@ export interface WsRowProps {
   onPointerDown?: ((e: PointerEvent<HTMLDivElement>) => void) | undefined;
 }
 
-/** A document, a folder, or one of the call's live pages. */
-export function WsRow({ id, name, kind = 'document', icon, depth = 0, area = 'tree', open = false, current = false, count = 0, faces = [], facesCard, quiet = false, flash = false, into = false, ghosted = false, onOpen, onTwist, onBeside, menu, add, onRename, onContextMenu, onPointerDown }: WsRowProps) {
+/**
+ * A document, a folder, one of the call's live pages, a place in the workspace (`place`), or a call kept in it (`call`). A
+ * folder twists open; so does a call, when something's been put in its folder (`onTwist`).
+ */
+export function WsRow({ id, name, kind = 'document', icon, depth = 0, area = 'tree', open = false, current = false, count = 0, tag, out = false, faces = [], facesCard, quiet = false, flash = false, into = false, ghosted = false, onOpen, onTwist, onBeside, menu, add, onRename, onContextMenu, onPointerDown }: WsRowProps) {
   const move = useMove();
   const folder = kind === 'folder';
+  const twists = folder || ((kind === 'call' || kind === 'place') && onTwist !== undefined);
   const glyph = icon ?? (folder ? (open ? 'folderOpen' : 'folder') : kind === 'board' ? WS_ITEM_ICONS.board : WS_ITEM_ICONS.document);
   const keys = (e: KeyboardEvent<HTMLButtonElement>) => {
-    if (folder && onTwist && ((e.key === 'ArrowRight' && !open) || (e.key === 'ArrowLeft' && open))) { e.preventDefault(); onTwist(); }
+    if (twists && onTwist && ((e.key === 'ArrowRight' && !open) || (e.key === 'ArrowLeft' && open))) { e.preventDefault(); onTwist(); }
   };
   const facesButton = <button type="button" className="wt-f" aria-label={`Who’s in ${name}`}><Faces people={faces} size={16} max={2} /></button>;
   return (
-    <motion.div role="treeitem" aria-level={depth + 1} aria-selected={current} aria-expanded={folder ? open : undefined} data-row={id} data-kind={kind} data-area={area}
-      className={cn('wt-r', kind === 'live' && 'is-live', quiet && 'is-quiet', current && 'is-cur', flash && 'is-flash', into && 'is-into', (menu?.open || add?.open) && 'is-menu')}
+    <motion.div role="treeitem" aria-level={depth + 1} aria-selected={current} aria-expanded={twists ? open : undefined} data-row={id} data-kind={kind} data-area={area}
+      className={cn('wt-r', kind === 'live' && 'is-live', kind === 'place' && 'is-place', quiet && 'is-quiet', current && 'is-cur', flash && 'is-flash', into && 'is-into', (menu?.open || add?.open) && 'is-menu')}
       /* What's being dragged fades where it was. Motion owns the row's opacity (its inline style beats any class), so the fade is here. */
       style={{ '--d': depth }} initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: ghosted ? 0.4 : 1, transition: move(1) }} exit={{ height: 0, opacity: 0, transition: move(2) }}
       onDoubleClick={onRename ? (e) => { if (e.target instanceof Element && !e.target.closest('.wt-acts')) onRename(); } : undefined} onContextMenu={onContextMenu} onPointerDown={onPointerDown}>
-      {folder && <button type="button" tabIndex={-1} className={cn('wt-tw', open && 'is-open')} aria-label={`Open or close ${name}`} onClick={onTwist}><Icon name="chevron" size={13} /></button>}
+      {twists && <button type="button" tabIndex={-1} className={cn('wt-tw', open && 'is-open')} aria-label={`Open or close ${name}`} onClick={onTwist}><Icon name="chevron" size={13} /></button>}
       <button type="button" className="wt-open" aria-current={current ? 'page' : undefined} onClick={onOpen} onKeyDown={keys}>
         <Icon name={glyph} size={16} /><span className="n">{name}</span>{count > 0 && <span className="wt-c">{count}</span>}
+        {tag && <span className="wt-tag">{tag}</span>}
+        {out && <Icon name="external" size={13} className="wt-out" />}
       </button>
       {faces.length > 0 && (facesCard
         ? <WsPopover open={facesCard.open} onOpenChange={facesCard.onOpenChange} label={`Who’s in ${name}`} align="end" anchor={facesButton}>{facesCard.content}</WsPopover>
@@ -268,7 +312,7 @@ export function WsRow({ id, name, kind = 'document', icon, depth = 0, area = 'tr
       <span className="wt-acts">
         {onBeside && <RowAction icon="panelRight" label={`Open ${name} beside the document`} title="Open beside the document" onClick={onBeside} />}
         {menu && <WsPopover open={menu.open} onOpenChange={menu.onOpenChange} at={menu.at} label={`Options for ${name}`} anchor={<RowAction icon="more" label={`Options for ${name}`} />}>{menu.content}</WsPopover>}
-        {folder && add && <WsPopover open={add.open} onOpenChange={add.onOpenChange} label={`Add inside ${name}`} anchor={<RowAction icon="plus" label={`Add inside ${name}`} />}>{add.content}</WsPopover>}
+        {twists && add && <WsPopover open={add.open} onOpenChange={add.onOpenChange} label={`Add inside ${name}`} anchor={<RowAction icon="plus" label={`Add inside ${name}`} />}>{add.content}</WsPopover>}
       </span>
     </motion.div>
   );

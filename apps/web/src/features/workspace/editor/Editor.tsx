@@ -347,7 +347,10 @@ export default function Editor(props: EditorProps) {
   useEffect(() => {
     const update = () => {
       const threads = new Map<string, ThreadView>();
-      for (const t of readThreads(doc)) threads.set(t.id, { open: !t.resolved, count: t.messages.length });
+      for (const t of readThreads(doc)) {
+        const by = t.messages.filter((m, i, all) => all.findIndex((x) => x.by === m.by) === i).map((m) => ({ id: m.by, name: m.name }));
+        threads.set(t.id, { open: !t.resolved, count: t.messages.length, by });
+      }
       rt.threads.set(threads);
       rt.refreshAfterTransaction();
     };

@@ -1193,6 +1193,14 @@ export async function makeAgenda(o: Owner, plan: AgendaPlan, draft: AgendaDraft)
 export const withAgenda = (m: MeetingManifest, plan: AgendaPlan, documentId: string): MeetingManifest => (m.agenda ? m : {
   ...m, agenda: { workspaceId: plan.workspaceId, documentId }, documents: [broughtId(plan.workspaceId, documentId), ...m.documents.filter((d) => d !== broughtId(plan.workspaceId, plan.last))].slice(0, MAX_BROUGHT)
 });
+/**
+ * The meeting once something made for it before it starts is brought to it, first among what's brought; an agenda is its
+ * agenda too, while it has none, so the next call in a series carries on from it.
+ */
+export const withMadeAhead = (m: MeetingManifest, workspaceId: string, documentId: string, agenda: boolean): MeetingManifest => {
+  const id = broughtId(workspaceId, documentId);
+  return { ...m, ...(agenda && !m.agenda ? { agenda: { workspaceId, documentId } } : {}), documents: [id, ...m.documents.filter((d) => d !== id)].slice(0, MAX_BROUGHT) };
+};
 /** Fills in an agenda once it's there, through the log like anything else: whoever has it open sees it arrive. */
 export async function fillAgenda(made: MadeAgenda, plan: AgendaPlan, callId: string): Promise<void> {
   await writeDocument(made, made.documentId, 'writeAgenda', { title: plan.title, open: plan.open }, { callId });

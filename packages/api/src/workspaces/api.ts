@@ -1,6 +1,6 @@
 import { type ID } from '../shared/ids';
 import { type BoardSortBody, type BoardThemes, type DocAskBody, type DocAskPart, type DocSession, type DocSessionOptions, type DocVersion, type DocVersionSummary, type PresenterFrameNotes, type SearchDoc } from './documents';
-import { type DocumentLibrary } from './library';
+import { type DocumentLibrary, type DocumentPreview, type Trashed } from './library';
 import { type MediaPictureOptions, type MediaUploadOptions, type MediaUrlOptions, type WorkspaceMedia } from './media';
 import { type DocumentRole, type DocumentShare, type ItemInput, type ItemPlace, type MentionBody, type MentionNotice, type ShareTarget, type WorkspaceItem, type WorkspaceLive, type WorkspacePerson, type WorkspaceReadOptions, type WorkspaceRole, type WorkspaceSummary, type WorkspaceTree } from './schema';
 export interface DocumentsApi {
@@ -17,8 +17,20 @@ export interface WorkspacesApi {
   get(id: ID, opts?: WorkspaceReadOptions): Promise<WorkspaceTree>;
   /** Admins only. */
   rename(id: ID, name: string): Promise<void>;
+  /** What a workspace is for, in one line: for anyone in it, and empty until an admin says. Anyone else gets `not-found`. */
+  about(id: ID): Promise<string>;
+  /** Says what a workspace is for, in one line, for everyone in it, or empty to say nothing. Admins only, as with its name. */
+  setAbout(id: ID, about: string): Promise<void>;
   /** Deletes a workspace for good, for everyone, with everything in it. Admins only. */
   remove(id: ID): Promise<void>;
+  /**
+   * What these documents say at the top, for their cards in the Drive: only the ones you can open now, and no board, which
+   * draws its own. It's read from each as it is and kept nowhere. Anything else asked about is left out, the same for one you
+   * can't open as for one that isn't there; a workspace you can't open at all is `not-found`.
+   */
+  previews(id: ID, items: ID[], opts?: WorkspaceReadOptions): Promise<DocumentPreview[]>;
+  /** Everything in Trash in every workspace you're in or have something in, the latest sent there first: one Trash for the Drive. */
+  trashed(): Promise<Trashed[]>;
   /** Everyone in a workspace, for anyone in it. */
   people(id: ID): Promise<WorkspacePerson[]>;
   /** Adds someone by address, whether or not they use Alcove yet, or sets their role if they're in it. Admins only. */

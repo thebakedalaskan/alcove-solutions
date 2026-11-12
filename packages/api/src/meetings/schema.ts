@@ -70,6 +70,21 @@ export const RsvpCountsSchema = z.object({ yes: z.number(), maybe: z.number(), n
 
 export type RsvpCounts = z.infer<typeof RsvpCountsSchema>;
 
+/** Someone invited, by their address, and what they answered: null until they have. */
+export const GuestAnswerSchema = z.object({ email: z.string(), answer: RsvpSchema.nullable() });
+
+export type GuestAnswer = z.infer<typeof GuestAnswerSchema>;
+
+/** A time someone invited has asked to move a call to, by their address. */
+export const ProposalSchema = z.object({ email: z.string(), startsAt: ISODateSchema });
+
+export type Proposal = z.infer<typeof ProposalSchema>;
+
+/** The organizer's answer to a request to move a call: move it there, or keep the time it has. */
+export const ProposalAnswerSchema = z.enum(['move', 'keep']);
+
+export type ProposalAnswer = z.infer<typeof ProposalAnswerSchema>;
+
 
 export const MeetingSchema = z.object({
   id: IDSchema,
@@ -103,6 +118,16 @@ export const MeetingSchema = z.object({
   rsvps: RsvpCountsSchema,
   /** Your own answer, when you're invited; null when you haven't answered, and for the organizer. */
   rsvp: RsvpSchema.nullable(),
+  /**
+   * What each person invited answered, in the order of `guests`: only for the organizer. Everyone else sees how many
+   * (`rsvps`) and their own (`rsvp`).
+   */
+  answers: z.array(GuestAnswerSchema).optional(),
+  /**
+   * The times people invited have asked to move it to: everyone's for its organizer, who can move it there or keep its
+   * time, and only your own for someone invited. A call that moves lets go of them all.
+   */
+  proposals: z.array(ProposalSchema).optional(),
   /** Times offered to a guest, while they haven't picked one: `startsAt` means nothing until they have. */
   offer: z.object({ times: z.array(ISODateSchema) }).optional(),
   /** Present once the call has happened with notes on. */
@@ -152,7 +177,8 @@ export const MeetingInputSchema = z.object({
   repeat: RepeatInputSchema.optional(),
   /**
    * Offers these times to a guest instead of settling on one: the call goes on no calendar until someone with its
-   * link picks one (see calls.pick). `startsAt` is the first of them. Can't be combined with `repeat`.
+   * link picks one (see calls.pick), and meanwhile each time is held on the organizer's calendar. `startsAt` is the
+   * first of them. Can't be combined with `repeat`.
    */
   offer: z.array(ISODateSchema).min(2).max(3).optional()
 });

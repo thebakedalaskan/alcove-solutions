@@ -10,9 +10,9 @@
 import { Horizon, VISITORS, type Moment, type Showing, type Visitor } from '@alcove/ui';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 
-const MOMENTS = ['home', 'team', 'agents', 'notes', 'drive', 'note', 'settings', 'record', 'after'] as const satisfies readonly Moment[];
+const MOMENTS = ['home', 'team', 'agents', 'calls', 'drive', 'note', 'settings', 'record', 'after'] as const satisfies readonly Moment[];
 /** Where the sky meets the sea in the story's 480px box, for each moment: about as much of it as each page gives the sky. */
-const HZ: Record<Moment, number> = { home: 300, team: 250, agents: 255, notes: 190, drive: 165, note: 130, settings: 96, record: 330, after: 400 };
+const HZ: Record<Moment, number> = { home: 300, team: 250, agents: 255, calls: 190, drive: 165, note: 130, settings: 96, record: 330, after: 400 };
 
 /** Boats and ships take minutes to cross a page; shown for themselves, they cross five times as fast. */
 const SHIPS: ReadonlySet<Visitor> = new Set<Visitor>(['sail', 'steamer', 'trawler', 'tall', 'freighter', 'tug']);
@@ -46,8 +46,8 @@ export const AsOnAPage: Story = { name: 'As on a page' };
 export const OneVisitor: Story = { name: 'One visitor', args: { only: { kind: 'dolphins' } } };
 /** A tall ship crossing Team's evening, five times as fast as on the page. */
 export const AShip: Story = { name: 'A ship', args: { moment: 'team', only: { kind: 'tall', pace: 5 } } };
-/** Nothing passing: Notes, just after sunset. The water, the light and the clouds still move. */
-export const NothingPassing: Story = { name: 'Nothing passing', args: { moment: 'notes', only: { kind: null } } };
+/** Nothing passing: Calls, just after sunset. The water, the light and the clouds still move. */
+export const NothingPassing: Story = { name: 'Nothing passing', args: { moment: 'calls', only: { kind: null } } };
 /** Record is night in both themes; shooting stars come to it. */
 export const RecordAtNight: Story = { name: 'Record at night', args: { moment: 'record', only: { kind: 'star' } } };
 /** After a call: night in both themes, no sun, the glow it left and its light on the bay, a crescent moon. Only shooting stars pass. */

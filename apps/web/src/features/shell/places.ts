@@ -12,17 +12,17 @@ import { openCount } from '~/features/home/day';
 import { q } from '~/lib/queries';
 import type { FileRoutesByTo } from '~/routeTree.gen';
 
-/** A path in the app with nothing to fill in, such as /notes. */
+/** A path in the app with nothing to fill in, such as /calls. */
 export type Place = { [K in keyof FileRoutesByTo]: K extends `${string}$${string}` ? never : K }[keyof FileRoutesByTo];
 
 /** How often the side panel looks for tags you haven't seen. */
 const TAGS_MS = 60_000;
 
 /**
- * What a place in the side panel can count: what's waiting on you, notes, tags you haven't seen, recordings on this
- * device waiting to upload, the team, and the agents you've connected.
+ * What a place in the side panel can count: what's waiting on you, tags you haven't seen, recordings on this device
+ * waiting to upload, the team, and the agents you've connected.
  */
-export type Counter = 'home' | 'notes' | 'drive' | 'record' | 'team' | 'agents';
+export type Counter = 'home' | 'drive' | 'record' | 'team' | 'agents';
 /**
  * How many there are of each, once they've loaded. The team counts the people on Alcove, you among
  * them, once someone besides you is; Agents counts your connections, once there's one.
@@ -36,7 +36,7 @@ export function useCounts(): Record<Counter, number | undefined> {
   const kept = useLive(uploads);
   const waiting = kept.list.filter((k) => k.status === 'waiting' || k.status === 'uploading' || k.status === 'refused').length;
   return {
-    home: (inbox && openCount(inbox, notes ?? [], Date.now())) || undefined, notes: notes?.length, drive: tags || undefined, record: waiting || undefined,
+    home: (inbox && openCount(inbox, notes ?? [], Date.now())) || undefined, drive: tags || undefined, record: waiting || undefined,
     team: others ? others + 1 : undefined, agents: agents || undefined
   };
 }
@@ -48,7 +48,7 @@ export interface NavPlace { to: Place; icon: IconName; label: string; count?: Co
 /** The side panel's places, under Start a call. */
 export const NAV: readonly NavPlace[] = [
   { to: '/home', icon: 'home', label: 'Home', count: 'home' },
-  { to: '/notes', icon: 'notes', label: 'Notes', count: 'notes', tour: 'notes' },
+  { to: '/calls', icon: 'calls', label: 'Calls', tour: 'notes' },
   { to: '/drive', icon: 'folderOpen', label: 'Drive', count: 'drive' },
   { to: '/record', icon: 'recordDot', label: 'Record', count: 'record', tour: 'room' },
   { to: '/team', icon: 'people', label: 'Team', count: 'team' },
@@ -65,7 +65,7 @@ export interface Tab { to: Place; icon: IconName; label: string; raised?: boolea
  */
 export const TABS: readonly Tab[] = [
   { to: '/home', icon: 'home', label: 'Home' },
-  { to: '/notes', icon: 'notes', label: 'Notes', tour: 'notes' },
+  { to: '/calls', icon: 'calls', label: 'Calls', tour: 'notes' },
   { to: '/record', icon: 'recordDot', label: 'Record', raised: true, tour: 'room' },
   { to: '/drive', icon: 'folderOpen', label: 'Drive' },
   { to: '/team', icon: 'people', label: 'Team' }

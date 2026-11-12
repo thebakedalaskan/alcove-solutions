@@ -7,7 +7,8 @@ import { type HttpOptions } from '../transport/options';
 import { MlsKeys, newIdentity } from './mls';
 import { HttpMoveIn, type MoveInTransport } from './moves';
 import { HttpRings } from './rings';
-import { HttpCall } from './session';
+import { HttpCall, hereZone } from './session';
+import { CallAheadHomeSchema } from '@alcove/api';
 import { type AlcoveApi, AlcoveApiError, AUDIO_HEADERS, BoardCheckSchema, CALL_PASS_HEADER, CallAnswerSchema, CallCardSchema, CallEndResultSchema, CallFollowUpsSchema, CallMlsSchema, CallMomentSchema, CallRoomTokenSchema, type CallSession, type CallState, CallStateSchema, type CallTicket, CallTicketSchema, ShareStartedSchema, VIDEO_HEADERS, CallWorkspaceSwitchSchema, CaptionTranslationSchema, CatchUpSchema, CatchUpWindowSchema, HEARD_HEADERS, IdeasWatchedSchema, MoveClaimSchema, MoveCodeSchema, MoveInSchema, MoveOutSchema, NotesWatchedSchema, RingsSnapshotSchema, SeriesAnswerPartSchema, SeriesSchema, type TranscriptClip } from '@alcove/api';
 import { z } from 'zod';
 export function createCallsApi(t: HttpTransport, o: HttpOptions): Pick<AlcoveApi, 'calls' | 'rings'> {
@@ -109,7 +110,8 @@ export function createCallsApi(t: HttpTransport, o: HttpOptions): Pick<AlcoveApi
         const opened = await req(MoveClaimSchema, 'POST', '/moves/claim', { code });
         return new HttpMoveIn(opened.claim, opened.move, moving, connect, { pollMs: movePollMs }, (level, msg, context) => emit(level, msg, context));
       },
-      resumeMove: async (claim) => new HttpMoveIn(claim, await moving.status(claim), moving, connect, { pollMs: movePollMs }, (level, msg, context) => emit(level, msg, context))
+      resumeMove: async (claim) => new HttpMoveIn(claim, await moving.status(claim), moving, connect, { pollMs: movePollMs }, (level, msg, context) => emit(level, msg, context)),
+      ready: (meetingId, make, name) => req(CallAheadHomeSchema, 'POST', `/meetings/${encodeURIComponent(meetingId)}/home`, { make, ...(name ? { name } : {}), ...hereZone() })
     },
     rings: {
       live: () => {

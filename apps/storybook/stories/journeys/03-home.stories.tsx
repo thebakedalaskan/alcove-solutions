@@ -39,24 +39,21 @@ export const ScheduleACall: PageStory = {
   name: '3.2 Schedule a call',
   ...page('/home', 'busy'),
   play: async ({ userEvent, step }) => {
-    await step('Click Schedule. No chooser in between', async () => {
+    await step('Click Schedule. No chooser in between: the Calls page opens on the scheduler, beside the week', async () => {
       await userEvent.click(await screen.findByRole('button', { name: 'Schedule' }, SOON));
+      await screen.findByRole('complementary', { name: 'Schedule a call' }, SOON);
     });
     await step('Who’s it with? Type a name and pick them', async () => {
       await userEvent.type(await screen.findByRole('combobox', { name: 'Add people' }, SOON), 'Priya');
       await userEvent.click(await screen.findByRole('option', { name: /Priya Raman/ }, SOON));
-      await userEvent.click(screen.getByRole('button', { name: 'Find a time' }));
+      await userEvent.keyboard('{Escape}');
     });
-    await step('When? Only times you’re free. The best one is picked already', async () => {
-      await userEvent.click(await screen.findByRole('button', { name: /^Use / }, SOON));
+    await step('Only times you’re both free, glowing on the week. The best one is picked already', async () => {
+      await screen.findByText('You and Priya are free at these times.', {}, LATER);
     });
-    await step('Check the details, then Schedule', async () => {
-      await screen.findByRole('textbox', { name: 'Name the call' }, SOON);
+    await step('Schedule. It’s on your calendar, which is where you’ll join it, and Google Calendar invites Priya', async () => {
       await userEvent.click(screen.getByRole('button', { name: 'Schedule' }));
-    });
-    await step('Back on Home. It rises into Upcoming, under its day, and it’s on your calendar, which is where you’ll join it', async () => {
-      await screen.findByText(/On your Google Calendar/, {}, SOON);
-      await within(await widget('Upcoming')).findByRole('button', { name: /Call with Priya/ }, SOON);
+      await screen.findByText(/Google Calendar invites Priya/, {}, SOON);
     });
   }
 };
@@ -88,9 +85,9 @@ export const MoveAMeetingToAlcove: PageStory = {
     await step('It’s an Alcove call now: the meeting gets an Alcove link, Google tells everyone on it, and the toast says who', async () => {
       await screen.findByText(/Pricing review is an Alcove call now/, {}, SOON);
     });
-    await step('Click it, and its call card opens over Home', async () => {
-      await userEvent.click(await within(await widget('Upcoming')).findByRole('button', { name: /^Fri 14:00 Pricing review/ }, SOON));
-      await screen.findByRole('dialog', { name: /Pricing review/ }, SOON);
+    await step('Click it, and its page opens: who’s invited, its link and its agenda', async () => {
+      await userEvent.click(await within(await widget('Upcoming')).findByRole('link', { name: /^Fri 14:00 Pricing review/ }, SOON));
+      await screen.findByRole('heading', { name: 'Pricing review', level: 1 }, LATER);
     });
   }
 };

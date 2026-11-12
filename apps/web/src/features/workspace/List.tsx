@@ -7,10 +7,12 @@
  * folder (`Ws.callFolder`, which isn't listed again under Documents), then what's been brought to the call.
  */
 import { errorMessage, type WorkspaceItem, type WorkspaceSummary } from '@alcove/api';
-import { WsDropLine, WsList, WsListHead, WsListTools, WsMovePicker, WsNewMenu, WsRenameRow, WsRow, WsRowMenu, WsSection, WsSpacePicker, WsTrashRow, wsToast, type WsMenuRow, type WsNaming, type WsPoint, type WsPop, type WsSpaceChoice } from '@alcove/ui';
+import { WsDropLine, WsList, WsListTools, WsMovePicker, WsNewMenu, WsRenameRow, WsRow, WsRowMenu, WsSection, WsSpacePicker, WsTrashRow, wsToast, type IconName, type WsMenuRow, type WsNaming, type WsPoint, type WsPop, type WsSpaceChoice } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
+import { useNavigate } from '@tanstack/react-router';
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactElement } from 'react';
 import { shortcut } from '~/lib/keys';
+import { useNow } from '~/lib/live';
 import { q, useCreateWorkspace, useRenameWorkspace } from '~/lib/queries';
 import { hm, hms } from '~/lib/time';
 import { focusRow } from './actions';
@@ -95,13 +97,26 @@ function useHead(onNaming: (n: 'new' | 'rename') => void) {
   } satisfies WsPop;
 }
 
-export function List({ drags }: { drags: ListDrag }) {
+/** A row's look, where the list draws it as something other than its name: a call's folder, full screen. */
+export interface RowAs { label?: string | undefined; place?: boolean | undefined }
+
+/** How long something made says it's new, full screen. */
+const NEW_MS = 10 * 60_000;
+
+/**
+ * Everything the rows of a workspace need, wherever they're listed (the call's list here, a full screen's side panel in
+ * Side.tsx): the menu under the workspace's name and naming it, each row's menu and +, renaming in place, the keys, a drag's
+ * line, Trash, and choosing files to upload.
+ */
+export function useListParts(drags: ListDrag) {
   const ws = useWs();
+  const navigate = useNavigate();
+  const now = useNow(60_000);
   const { tree, sent, actions, canChange } = ws;
   const [menu, setMenu] = useState<RowMenu | null>(null);
   /** Plus: at the top of the list (null), or on a folder. */
   const [adding, setAdding] = useState<string | null | undefined>(undefined);
-  const [naming, setNaming] = useState<'new' | 'rename' | null>(null);
+  const { naming, setNaming } = ws;
   const [nameDraft, setNameDraft] = useState<string | null>(null);
   const nameTurn = useRef(0);
   /** The row whose faces were pressed. */
@@ -122,9 +137,17 @@ export function List({ drags }: { drags: ListDrag }) {
   const justBrought = useJustBrought(inCall.map((i) => i.id));
 
   const canEdit = (item: WorkspaceItem) => item.role === 'edit';
+  const twist = (item: WorkspaceItem) => ws.setOpen(item.id, !ws.open.has(item.id));
+  /** Full screen, a call's folder is the call: it opens the call's own page, once it has notes, and otherwise opens what's in it. */
+  const openCall = (item: WorkspaceItem) => {
+    const noteId = item.call?.noteId;
+    if (noteId) void navigate({ to: '/calls/$noteId', params: { noteId } });
+    else if (tree.kids.get(item.id)?.length) twist(item);
+  };
   const openRow = (item: WorkspaceItem, area: WorkspaceArea) => {
     if (ended()) return;
-    if (item.kind === 'folder') { ws.setOpen(item.id, !ws.open.has(item.id)); return; }
+    if (ws.mode === 'page' && item.call) { openCall(item); return; }
+    if (item.kind === 'folder') { twist(item); return; }
     ws.go({ kind: 'document', id: item.id, area });
   };
   /**
@@ -140,6 +163,8 @@ export function List({ drags }: { drags: ListDrag }) {
       onBoard={tree.boards ? () => { setAdding(undefined); void actions.newBoard(parent); } : undefined}
       onUpload={() => { setAdding(undefined); uploadTo.current = parent; if (field.current) { field.current.value = ''; field.current.click(); } }} />
   );
+  /** + at the top: what can be made outside any folder, or in a call in its own folder (`Ws.madeIn`). */
+  const createTop: WsPop | undefined = canChange ? { open: adding === null, onOpenChange: (to) => setAdding(to ? null : undefined), content: adding === null ? newIn(madeIn) : null } : undefined;
   const menuFor = (item: WorkspaceItem, area: WorkspaceArea): WsPop | undefined => {
     const folder = item.kind === 'folder';
     const changing = canChange && canEdit(item);
@@ -175,7 +200,9 @@ export function List({ drags }: { drags: ListDrag }) {
     if (e.key === 'F2' && canEdit(item)) { e.preventDefault(); ws.setRenaming(item.id); }
     else if ((e.key === 'Delete' || (e.key === 'Backspace' && (e.metaKey || e.ctrlKey))) && changing) {
       e.preventDefault();
-      const listed = [...callRows, ...rows].flatMap((r) => (r.draft ? [] : [r.item.id]));
+      /* The rows as the list has them: in a call's home, what's in the call's own folder comes first, as This call. */
+      const order = callFolder === null ? rowsOf(tree, ws.open) : [...rowsOf(tree, ws.open, undefined, { top: callFolder }), ...rowsOf(tree, ws.open, undefined, { skip: callFolder })];
+      const listed = order.flatMap((r) => (r.draft ? [] : [r.item.id]));
       const at = listed.indexOf(item.id);
       const near = listed[at + 1] ?? listed[at - 1];
       actions.trash(item.id);
@@ -212,7 +239,8 @@ export function List({ drags }: { drags: ListDrag }) {
     }
   };
 
-  const rowOf = (item: WorkspaceItem, area: WorkspaceArea, depth: number, open: boolean): ReactElement => {
+  /** A row of the list. Full screen, a call's folder is drawn as the call (`as`): its label, and the ↗ of what opens elsewhere. */
+  const rowOf = (item: WorkspaceItem, area: WorkspaceArea, depth: number, open: boolean, as: RowAs = {}): ReactElement => {
     const folder = item.kind === 'folder';
     const key = `${area}:${item.id}`;
     if (ws.renaming === item.id && area === 'tree') {
@@ -223,57 +251,77 @@ export function List({ drags }: { drags: ListDrag }) {
     }
     const faces = folder ? [] : facesIn(ws.here, item.id);
     const first = faces[0];
+    const asCall = ws.mode === 'page' && item.call !== null;
+    const kids = (tree.kids.get(item.id)?.length ?? 0) > 0;
     return (
-      <WsRow key={key} id={item.id} name={nameOf(item)} kind={item.kind} depth={depth} open={open} area={area} faces={faces}
+      <WsRow key={key} id={item.id} name={as.label ?? nameOf(item)} kind={as.place ? 'place' : asCall ? 'call' : item.kind} icon={asCall ? CALL_ICON : undefined} depth={depth} open={open} area={area} faces={faces}
+        out={asCall && item.call?.noteId !== null} tag={ws.mode === 'page' && !folder && now - Date.parse(item.createdAt) < NEW_MS ? 'New' : undefined}
         facesCard={first && { open: card === key, onOpenChange: (to) => setCard(to ? key : null), content: card === key ? <PersonCard person={first} onDone={() => setCard(null)} /> : null }}
         current={currentIn(area, item.id)} flash={ws.glowing.has(item.id) || (area === 'pins' && justBrought.has(item.id))}
         into={(drag?.spot?.kind === 'place' && drag.spot.into === item.id) || (area === 'tree' && ws.blockInto === item.id)} ghosted={drag?.id === item.id}
-        onOpen={() => openRow(item, area)} onTwist={folder ? () => ws.setOpen(item.id, !open) : undefined}
+        onOpen={() => openRow(item, area)} onTwist={folder && (!asCall || kids) ? () => twist(item) : undefined}
         menu={menuFor(item, area)} add={folder ? addFor(item) : undefined}
         onRename={canEdit(item) ? () => ws.setRenaming(item.id) : undefined}
         onContextMenu={(e) => { if (folder && !(canChange && canEdit(item))) return; e.preventDefault(); setMenu({ id: item.id, area, at: { x: e.clientX, y: e.clientY }, moving: false }); }}
         onPointerDown={(e) => arm(e, item.id)} />
     );
   };
+  /** A folder being named, in place, where it'll go. */
+  const draftRow = (depth: number): ReactElement => (
+    <WsRenameRow key="draft" name="" kind="folder" depth={depth} onCancel={() => ws.setDraft(null)}
+      onCommit={(name) => { const parent = ws.draft?.parent ?? null; ws.setDraft(null); if (name.trim()) actions.newFolder(parent, name.trim()); }} />
+  );
+  const trash = trashIn(ws.items, ws.tree.boards);
+  const trashRow = inside ? <WsTrashRow count={trash.length} current={ws.at.kind === 'trash'} into={drag?.spot?.kind === 'trash'} onOpen={() => ws.go({ kind: 'trash' })} /> : null;
+  const dropLine = drag?.spot?.kind === 'place' && drag.spot.line ? <WsDropLine key="line" top={drag.spot.line.top} left={drag.spot.line.left} /> : null;
+  const files = (
+    <input ref={field} type="file" multiple hidden aria-label="Choose files to upload"
+      onChange={(e) => { const chosen = [...(e.currentTarget.files ?? [])]; if (chosen.length) actions.uploadFiles(uploadTo.current, chosen); }} />
+  );
+  return { inside, picker, namingField, createTop, rowOf, draftRow, rowKeys, trashRow, dropLine, files, inCall, drag };
+}
+
+/** What a call kept in a workspace looks like in its list, full screen: the app's mark for calls. */
+export const CALL_ICON = 'calls' satisfies IconName;
+
+/**
+ * The list down the side of a workspace in a call: This call (the call's own pages, what's in its own folder in its home, and
+ * what's brought to it), then the documents. Someone outside the workspace, given something in it, sees what's shared with them.
+ */
+export function List({ drags }: { drags: ListDrag }) {
+  const ws = useWs();
+  const parts = useListParts(drags);
+  const { tree, canChange, callFolder } = ws;
+  const { inside, inCall, drag } = parts;
+  const call = ws.call;
   /** The rows of the tree, from `top`: the folder a draft is named in shows it last, at its depth. */
   const drawn = (list: readonly ListRow[]) => list.flatMap((row): ReactElement[] => {
-    if (row.draft) {
-      return [(
-        <WsRenameRow key="draft" name="" kind="folder" depth={row.depth} onCancel={() => ws.setDraft(null)}
-          onCommit={(name) => { const parent = ws.draft?.parent ?? null; ws.setDraft(null); if (name.trim()) actions.newFolder(parent, name.trim()); }} />
-      )];
-    }
+    if (row.draft) return [parts.draftRow(row.depth)];
     /* A folder of a call that's over holds its note's pages first, then whatever people put in it. */
     const pages = row.open && row.item.call ? [<CallPages key={`pages:${row.item.id}`} call={row.item.call} depth={row.depth + 1} />] : [];
-    return [rowOf(row.item, 'tree', row.depth, row.open), ...pages];
+    return [parts.rowOf(row.item, 'tree', row.depth, row.open), ...pages];
   });
   /* This call's own folder shows as This call, at its top level, and isn't among the rest. */
   const callRows = callFolder === null ? [] : rowsOf(tree, ws.open, ws.draft?.parent, { top: callFolder });
   const rows = rowsOf(tree, ws.open, ws.draft?.parent, { skip: callFolder });
-  const trash = trashIn(ws.items, ws.tree.boards);
   const intoCall = drag?.spot?.kind === 'bring' || (callFolder !== null && drag?.spot?.kind === 'place' && drag.spot.into === callFolder);
   /* In a call's home, what's made in the call is in This call: Documents shows once there's something else to list. */
   const documents = rows.length > 0 || callFolder === null;
-  const newAtTop: WsPop | undefined = canChange ? { open: adding === null, onOpenChange: (to) => setAdding(to ? null : undefined), content: adding === null ? newIn(madeIn) : null } : undefined;
-  const createLabel = tree.boards ? 'New document, folder or board' : undefined;
 
   return (
     <>
-    <WsList listKey={ws.workspaceId} onKeyDown={rowKeys} aligned={callFolder !== null} empty={rows.length > 0 || !documents ? false : !inside ? 'shared' : ws.canChange ? 'yours' : 'others'} foot={<>{inside && <WsTrashRow count={trash.length} current={ws.at.kind === 'trash'} into={drag?.spot?.kind === 'trash'} onOpen={() => ws.go({ kind: 'trash' })} />}{call?.foot}</>}
-      head={ws.mode === 'call' ? <WsListTools onFind={ws.openFind} findKey={shortcut('K')} create={newAtTop} createLabel={createLabel} reconnecting={ws.listDown} /> : (
-        <WsListHead name={ws.spaceName} saveState={ws.spaceSave} reconnecting={ws.listDown} picker={picker} naming={namingField} onFind={ws.openFind} createLabel={createLabel} create={newAtTop} />
-      )}>
+    <WsList listKey={ws.workspaceId} onKeyDown={parts.rowKeys} aligned={callFolder !== null} empty={rows.length > 0 || !documents ? false : !inside ? 'shared' : canChange ? 'yours' : 'others'} foot={<>{parts.trashRow}{call?.foot}</>}
+      head={<WsListTools onFind={ws.openFind} findKey={shortcut('K')} create={parts.createTop} createLabel={tree.boards ? 'New document, folder or board' : undefined} reconnecting={ws.listDown} />}>
       {(call?.top || callRows.length > 0 || inCall.length > 0) && <WsSection key="call" label="This call" area="pins" into={intoCall} />}
       {call?.top}
       {drawn(callRows)}
-      {inCall.map((item) => rowOf(item, 'pins', 0, false))}
-      {/* Someone outside the workspace has only what's shared with them: the head's words for it in the app, and in a call this. */}
-      {!documents ? null : inside ? <WsSection key="section" label="Documents" /> : ws.mode === 'call' ? <WsSection key="section" label="Shared with you" /> : null}
+      {inCall.map((item) => parts.rowOf(item, 'pins', 0, false))}
+      {/* Someone outside the workspace has only what's shared with them. */}
+      {documents && <WsSection key="section" label={inside ? 'Documents' : 'Shared with you'} />}
       {drawn(rows)}
-      {drag?.spot?.kind === 'place' && drag.spot.line && <WsDropLine key="line" top={drag.spot.line.top} left={drag.spot.line.left} />}
+      {parts.dropLine}
     </WsList>
-    <input ref={field} type="file" multiple hidden aria-label="Choose files to upload"
-      onChange={(e) => { const files = [...(e.currentTarget.files ?? [])]; if (files.length) actions.uploadFiles(uploadTo.current, files); }} />
+    {parts.files}
     </>
   );
 }

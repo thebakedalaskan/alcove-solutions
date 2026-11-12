@@ -633,10 +633,11 @@ function faceCard(ws: Workspace, person: Person, where: string, following: Perso
  * The document side, as the call and the app put it together: the head, the bars, and the page (or one of the call's
  * pages), with History beside it when it's open. `following`: who you're following, for the bar and the faces.
  */
-export function DocOf({ ws, save = 'saved', quiet = false, following = null, onFollow, onStopFollowing, onToggleList, bars }: {
+export function DocOf({ ws, save = 'saved', quiet = false, following = null, onFollow, onStopFollowing, onToggleList, onExpand, bars }: {
   ws: Workspace; save?: WsSave | undefined; quiet?: boolean | undefined;
   following?: WsFollowing | null | undefined; onFollow?: ((person: Person, where: string) => void) | undefined; onStopFollowing?: (() => void) | undefined;
-  onToggleList: () => void;
+  /** Beside the list: its button. Beside the Drive's tree instead: ⤢ (`onExpand`). */
+  onToggleList?: (() => void) | undefined; onExpand?: (() => void) | undefined;
   /** Bars under the head: offline, gone, read only. */
   bars?: ReactNode;
 }) {
@@ -646,7 +647,7 @@ export function DocOf({ ws, save = 'saved', quiet = false, following = null, onF
   if (live) {
     return (
       <WsDoc>
-        <WsDocHead crumbs={[CALL.title, live.name]} save={quiet ? 'quiet' : 'live'} onToggleList={onToggleList} />
+        <WsDocHead crumbs={[CALL.title, live.name]} save={quiet ? 'quiet' : 'live'} onToggleList={onToggleList} onExpand={onExpand} />
         <WsFollowBar following={following} onStop={stop} />
         <WsScroll onWheel={following ? stop : undefined}>
           <WsFade id={live.id}>{live.id === '$notes' ? <NotesLive /> : live.id === '$followups' ? <FollowUpsLive /> : <TranscriptLive />}</WsFade>
@@ -658,7 +659,7 @@ export function DocOf({ ws, save = 'saved', quiet = false, following = null, onF
   if (!item) {
     return (
       <WsDoc>
-        <WsDocHead crumbs={[ws.spaceName]} save="quiet" onToggleList={onToggleList} />
+        <WsDocHead crumbs={[ws.spaceName]} save="quiet" onToggleList={onToggleList} onExpand={onExpand} />
         <WsEmpty space={ws.spaceName} onDocument={() => ws.newDocument(null)} onFolder={() => ws.newFolder(null)} />
       </WsDoc>
     );
@@ -673,7 +674,7 @@ export function DocOf({ ws, save = 'saved', quiet = false, following = null, onF
   return (
     <>
       <WsDoc>
-        <WsDocHead crumbs={[ws.spaceName, ...ws.above(item.id).map((f) => f.name), name]} save={save} faces={faces} onToggleList={onToggleList}
+        <WsDocHead crumbs={[ws.spaceName, ...ws.above(item.id).map((f) => f.name), name]} save={save} faces={faces} onToggleList={onToggleList} onExpand={onExpand}
           share={ws.pop('share', <ShareFor title={`Share ${name}`} />)}
           more={ws.pop('more', moving
             ? <WsMovePicker name={name} space={ws.spaceName} folders={foldersFor(ws, item.id)} onRoot={() => ws.moveTo(item.id, null)} onFolder={(f) => ws.moveTo(item.id, f)} />

@@ -39,6 +39,7 @@ import { nameOf, personOf } from '../account/portraits';
 import * as screens from '../recordings/screens';
 import * as transcripts from '../recordings/transcripts';
 import { workedOnFor } from './worked-on';
+import { homeFor } from './home';
 
 const nlog = log.child({ component: 'notes' });
 
@@ -431,7 +432,7 @@ function groupSharesOf(who: Recipient[]): GroupShare[] {
   return [...shares.values()].sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
 }
 
-function summaryOf(l: Located, organizer: Person, who: Recipient[]): NoteSummary {
+function summaryOf(l: Located, organizer: Person, who: Recipient[], seriesId: string | undefined): NoteSummary {
   const m = l.note.manifest;
   return {
     id: l.note.itemId, kind: m.kind, status: m.status, title: m.title, startedAt: m.startedAt, duration: m.duration,
@@ -439,12 +440,12 @@ function summaryOf(l: Located, organizer: Person, who: Recipient[]): NoteSummary
     excerpt: m.summary.split(/(?<=\.)\s/).slice(0, 2).join(' '),
     openActions: actionsOf(m).filter((a) => !a.done).length, totalActions: actionsOf(m).length,
     ...(m.meetingId && l.mine ? { meetingId: m.meetingId } : {}), ...(l.mine ? {} : { received: receivedBy(m, l.as, organizer) }),
-    groupShares: groupSharesOf(who)
+    ...(seriesId ? { seriesId } : {}), groupShares: groupSharesOf(who)
   };
 }
-async function summary(l: Located): Promise<NoteSummary> {
+async function summary(l: Located, seriesId: string | undefined): Promise<NoteSummary> {
   const organizer = await me(l.owner);
-  return summaryOf(l, organizer, await recipients(l, organizer));
+  return summaryOf(l, organizer, await recipients(l, organizer), seriesId);
 }
 
 /** Lines of what was said a found note quotes, at most: enough for the palette to open a call's other moments in place. */
@@ -506,7 +507,15 @@ export async function list(o: Owner, q: { kind?: NoteKind | undefined; text?: st
     const hit = search.terms.length || by !== undefined ? foundIn(l, search, by) : { said: [], saidCount: 0 };
     return hit ? [{ l, hit }] : [];
   });
-  return Promise.all(found.map(async ({ l, hit }) => ({ ...await summary(l), ...hit })));
+  // Each call's series is read once, however many of its notes there are: a series' calls are each other's.
+  const seriesOfCall = new Map<string, Promise<string | undefined>>();
+  const seriesFor = (l: Located): Promise<string | undefined> => {
+    const key = `${l.owner.ownerId}:${l.note.manifest.meetingId ?? ''}`;
+    const known = seriesOfCall.get(key) ?? seriesOf(l);
+    seriesOfCall.set(key, known);
+    return known;
+  };
+  return Promise.all(found.map(async ({ l, hit }) => ({ ...await summary(l, await seriesFor(l)), ...hit })));
 }
 /** The series a note's call is in, read from the call in its organizer's vault. Room recordings have no call, so no series. */
 export async function seriesOf(l: Located): Promise<string | undefined> {
@@ -519,13 +528,16 @@ export async function get(o: Owner, id: string): Promise<Note> {
   const read = asRead(l);
   const organizer = await me(l.owner);
   const who = await recipients(l, organizer);
-  const seriesId = await seriesOf(l);
+  // The call it was, in its organizer's vault: the series it's in, and its home. A room recording has neither.
+  const call = m.meetingId ? (await findItem(l.owner, l.owner.pool, 'meeting', m.meetingId, MeetingManifest))?.manifest : undefined;
+  const seriesId = call?.seriesId;
   const { decisions, questions, actions, suggestions, rooms } = entriesOf(read);
   return {
-    ...summaryOf(l, organizer, who), recipients: who, summary: m.summary, decisions, questions, actions, suggestions, chapters: m.chapters,
+    ...summaryOf(l, organizer, who, seriesId), recipients: who, summary: m.summary, decisions, questions, actions, suggestions, chapters: m.chapters,
     gaps: m.gaps, screens: m.screens, transcript: read.transcript, rooms, additions: await additions.of(l, o.ownerId), writtenAt: m.writtenAt, writingAgain: m.status === 'ready' && !!(await jobOf(l.owner, l.owner.pool, id)),
     details: m.details, suggestedQuestions: m.suggestedQuestions, audio: await segments(l.owner, m.recordingId), kept: m.keep, inference: m.inference, workedOn: await workedOnFor(o, m.workedOn, everyoneWith(m, organizer.email)),
-    shares: m.keep.recording ? await screens.shareIntervals(l.owner, m.recordingId, m.segmentSeconds) : [], model: m.model, unencrypted: m.unencrypted, ...(seriesId ? { seriesId } : {})
+    shares: m.keep.recording ? await screens.shareIntervals(l.owner, m.recordingId, m.segmentSeconds) : [], model: m.model, unencrypted: m.unencrypted,
+    home: await homeFor(o, id, call?.workspaceId ?? null)
   };
 }
 /** A note's notes job while its notes are queued or being written, whichever of its revisions it was queued for. */
@@ -856,6 +868,11 @@ export async function updateAction(o: Owner, noteId: string, actionId: string, p
       if (patch.takeOn) {
         if (!isAssignee(next, reader)) throw new ForbiddenError('Only the person a follow-up is for can take it on. You can give it to yourself.', { context });
         if (!next.takenOn) { changes.push({ by, at, what: 'took-on' }); next = { ...next, takenOn: true }; }
+      }
+      // Taking back a yes (Undo): it's suggested for them again, and the record says they reopened it.
+      if (patch.takeOn === false) {
+        if (!isAssignee(next, reader)) throw new ForbiddenError('Only whoever took this on can take that back.', { context });
+        if (next.takenOn) { changes.push({ by, at, what: 'reopened' }); next = { ...next, takenOn: false }; }
       }
       if (patch.due !== undefined) {
         const due = patch.due || undefined;

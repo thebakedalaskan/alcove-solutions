@@ -288,7 +288,7 @@ export async function createIn(o: Owner, c: Db, name: string, madeFor: Omit<Made
   if ((made?.n ?? 0) >= MAX_MADE) throw new ConflictError('You’ve made as many workspaces as you can. Delete one first.', { context: { ownerId: o.ownerId, made: made?.n } });
   const { ownerId, root } = await createOwner(o, c);
   const owner = ownerFrom(o, ownerId, root, undefined);
-  await exec(c, 'INSERT INTO workspaces (owner_id, workspace_id, state_ciphertext) VALUES ($1,$2,$3)', [ownerId, id, sealState(owner, id, { name, items: {}, madeFor: madeFor && { ...madeFor, out: [] } })]);
+  await exec(c, 'INSERT INTO workspaces (owner_id, workspace_id, state_ciphertext) VALUES ($1,$2,$3)', [ownerId, id, sealState(owner, id, { name, items: {}, madeFor: madeFor && { ...madeFor, out: [] }, about: '' })]);
   await addMember(owner, c, id, me.email, 'admin', me.name);
   await noteAuthor({ owner }, c, me.email, true);
   wlog.info('workspace created', { workspaceId: id });
@@ -307,17 +307,19 @@ const folderOf = (f: CallFolder, pos: string, at: string): StoredItem => ({
 const inviteesOf = (invited: string[], organizer: string): string[] => [...new Set(invited.map((e) => e.trim().toLowerCase()))].filter((e) => e && e !== organizer.trim().toLowerCase());
 
 /**
- * A call's new home, in the caller's transaction, which holds the call's row: nobody else can reach it yet, so nothing waits
- * on it. The organizer is its admin and the call's folder is at the top. Everyone invited, the same people who get the notes,
- * is let in to edit once the call's row is let go (`followInvite`), so a big invite never holds the call up. It's the call's,
- * so it doesn't count towards the workspaces someone can make (`MAX_MADE`).
+ * A call's new home, in the caller's transaction, which holds the call's row (or, before the call, its meeting's): nobody else
+ * can reach it yet, so nothing waits on it. The organizer is its admin and the call's folder is at the top; a home made before
+ * the call has none until the call starts and makes its own. Everyone invited, the same people who get the notes, is let in to
+ * edit once that row is let go (`followInvite`), so a big invite never holds the call up. It's the call's, so it doesn't count
+ * towards the workspaces someone can make (`MAX_MADE`).
  */
-export async function makeHome(o: Owner, c: Db, home: { name: string; madeFor: Omit<MadeFor, 'out'>; folder: CallFolder }): Promise<{ id: string }> {
+export async function makeHome(o: Owner, c: Db, home: { name: string; madeFor: Omit<MadeFor, 'out'>; folder?: CallFolder | undefined }): Promise<{ id: string }> {
   const me = await profile(o, c);
   const id = id128();
   const { ownerId, root } = await createOwner(o, c);
   const owner = ownerFrom(o, ownerId, root, undefined);
-  const state: WorkspaceState = { name: home.name, items: { [home.folder.id]: folderOf(home.folder, FIRST, new Date().toISOString()) }, madeFor: { ...home.madeFor, out: [] } };
+  const items = home.folder ? { [home.folder.id]: folderOf(home.folder, FIRST, new Date().toISOString()) } : {};
+  const state: WorkspaceState = { name: home.name, items, madeFor: { ...home.madeFor, out: [] }, about: '' };
   await exec(c, 'INSERT INTO workspaces (owner_id, workspace_id, state_ciphertext) VALUES ($1,$2,$3)', [ownerId, id, sealState(owner, id, state)]);
   await addMember(owner, c, id, me.email, 'admin', me.name);
   await noteAuthor({ owner }, c, me.email);
@@ -373,6 +375,20 @@ export async function rename(d: Deps, reader: Reader, workspaceId: string, name:
     requireRole(w, 'admin');
     w.state = { ...w.state, name };
   });
+}
+/** What a workspace is for, in one line, for anyone in it. */
+export async function about(d: Deps, reader: Reader, workspaceId: string): Promise<string> {
+  const w = await workspaceFor(d, reader, workspaceId);
+  requireRole(w, 'in');
+  return w.state.about;
+}
+/** Says what a workspace is for, for everyone in it. Admins only, as with its name. */
+export async function setAbout(d: Deps, reader: Reader, workspaceId: string, line: string): Promise<void> {
+  await change(d, reader, workspaceId, (w) => {
+    requireRole(w, 'admin');
+    if (w.state.about !== line) w.state = { ...w.state, about: line };
+  });
+  wlog.info('workspace about set', { workspaceId, said: line !== '' });
 }
 /**
  * Deletes a workspace and everything it holds, in the caller's transaction: its owner row goes, and the rest with it. Only

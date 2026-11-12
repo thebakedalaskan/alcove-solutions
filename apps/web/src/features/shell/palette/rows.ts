@@ -10,7 +10,7 @@
  */
 import { MAX_SEARCH_TEXT, isAcceptedFollowUp, namesIn, searchOf, type Note, type NoteAction, type NoteDecision, type NoteFound, type NoteSaid, type Person, type RoomRef, type Team, type TranscriptLine } from '@alcove/api';
 import type { Cite } from '~/features/notes/answer';
-import { byTime, heardAt } from '~/features/notes/list/parts';
+import { byTime, heardAt } from '~/features/calls/list/said';
 import { callName } from '~/lib/people';
 import { plural } from '~/lib/words';
 
@@ -29,12 +29,12 @@ const CALLS = 8;
 const WRITTEN = 5;
 
 /**
- * What the row at the end of a search says: See all, with what Notes will show, when the list left moments or notes out;
+ * What the row at the end of a search says: See all, with what Calls will show, when the list left moments or notes out;
  * otherwise Open, since everything found is already here.
  */
 function allLabel(counts: Counts, hiddenMoments: number, notesLeftOut: boolean): string {
-  if (hiddenMoments > 0 || notesLeftOut) return `See all ${counts.moments ? plural(counts.moments, 'moment') : plural(counts.notes, 'note')} in Notes`;
-  return `Open ${counts.moments + counts.notes === 1 ? 'it' : 'these'} in Notes`;
+  if (hiddenMoments > 0 || notesLeftOut) return `See all ${counts.moments ? plural(counts.moments, 'moment') : plural(counts.notes, 'note')} in Calls`;
+  return `Open ${counts.moments + counts.notes === 1 ? 'it' : 'these'} in Calls`;
 }
 
 /** Someone you have notes with, as search offers them. */
@@ -110,7 +110,7 @@ export type Row =
   | { kind: 'note'; key: string; note: NoteFound }
   /** "3 more in Team standup": Enter opens the rest of that call's moments in place, and lights `reveal`, the first of them. */
   | { kind: 'more'; key: string; note: NoteFound; count: number; reveal: string }
-  /** See all, at the end: Enter opens Notes with the words, and with only the notes you both have under someone's token. */
+  /** See all, at the end: Enter opens Calls with the words, and with only the calls you're both on under someone's token. */
   | { kind: 'all'; key: string; label: string };
 
 /** In a group: a call's head (its sky, its title and its day, over its moments), or a row. */
@@ -239,8 +239,8 @@ export function listOf(l: Looking): Listed {
       kind: 'group', key: 'notes', label: 'Notes', count: written.length > 1 ? plural(written.length, 'note') : undefined,
       parts: written.slice(0, WRITTEN).map((note): Row => ({ kind: 'note', key: `note:${note.id}`, note }))
     } satisfies Section] : []),
-    // Notes can't list only someone's lines: under their token it lists the notes you both have, so it says that, with no count.
-    ...(things ? [sectionOf({ kind: 'all', key: 'all', label: l.token ? `Calls with ${callName(l.token)} in Notes` : allLabel(counts, hidden, written.length > WRITTEN) })] : [])
+    // Calls can't list only someone's lines: under their token it lists the calls you're both on, so it says that, with no count.
+    ...(things ? [sectionOf({ kind: 'all', key: 'all', label: l.token ? `Calls with ${callName(l.token)}` : allLabel(counts, hidden, written.length > WRITTEN) })] : [])
   ];
   const state = calls.length || written.length || named.length ? 'results' : l.token && !typed ? 'unsaid' : 'none';
   return { ...empty, state, sections, rows: rowsOf(sections), lit: lit(sections), counts };

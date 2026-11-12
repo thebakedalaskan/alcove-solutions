@@ -137,18 +137,18 @@ export const NotesByTheirWords: Story = {
   )
 };
 
-/** See all, at the end of the list: "See all 9 moments in Notes", lit here, or "Open these in Notes" when nothing is hidden. */
+/** See all, at the end of the list: "See all 9 moments in Calls", lit here, or "Open these in Calls" when nothing is hidden. */
 export const SeeAll: Story = {
   name: 'See all',
   render: () => (
     <Stack>
       <Pane label="The end of the list">
         <CallMoments call={DESIGN} words={['flag']} />
-        <Row kind="all" lit><PaletteAllLine>See all 9 moments in Notes</PaletteAllLine></Row>
+        <Row kind="all" lit><PaletteAllLine>See all 9 moments in Calls</PaletteAllLine></Row>
       </Pane>
       <Pane label="The end of the list">
         <CallMoments call={DESIGN} words={['flag']} />
-        <Row kind="all"><PaletteAllLine>Open these in Notes</PaletteAllLine></Row>
+        <Row kind="all"><PaletteAllLine>Open these in Calls</PaletteAllLine></Row>
       </Pane>
     </Stack>
   )

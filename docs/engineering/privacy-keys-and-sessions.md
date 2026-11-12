@@ -45,7 +45,7 @@ nobody can sign in as someone who uses Alcove with Google and read the notes giv
 | `Kwrap` | `HKDF(Kowner, salt=ownerId, "alcove/owner-wrap/v1")` | Derived per request; wraps revision and recording keys |
 | `Krecord` | 32 random bytes per item revision | `revisions.key_envelope`, wrapped under `Kwrap` with scope `revision:<id>` |
 | `Krec` | 32 random bytes per recording | `recordings.key_envelope`, wrapped under `Kwrap` with scope `recording:<id>`; seals the recording's audio pieces, its kept shares' video and the frames taken from it |
-| State keys | `HKDF(Kowner, salt=ownerId, "alcove/state/v1/<scope>")`, scopes `document-clients:<id>` (who each Yjs client in a document belongs to, as keyed hashes), `document-deletes:<id>` (a keyed hash of what each row of its log deletes, so the same deletes again cost nothing), `call:<id>` (call state), `call-attention:<id>` (ordered hands, explicit questions, votes, nudges for their one recipient, statuses and audience-bound notification cues), `call-mls:<id>` (the call's MLS log, sealed again), `call-seat:<id>` (each person's seat in the call, a MAC of their random per-call `person`, never stored), `call-move:<id>` (moves to other devices in a call), `call-notes:<id>` (the call's shared live notes), `ring:<meetingId>` (rings in a call), `meeting-answers:<meetingId>` (what people invited to a call answered), `job:<noteId>` (notes jobs), `transcript:<noteId>` (live transcript clips and caption translations, and the keyed tags that find them), `screen-share:<recordingId>` (whose each share in a call was) and `screen:<noteId>` (what's known about each shared-screen frame, and the keyed tags that find them), `note-additions:<noteId>` (what people added to the shared notes), `note-links:<noteId>` (who made each link to a note's notes, and when). Under the author's own `Kowner`, never the organizer's: `personal:<noteId>` (their own notes on a note), `presenter-notes:<documentId>` (what they kept beside a whole document or board with an earlier release, which nothing opens now), `presenter-frame-notes:<boardId>` (what they keep beside each frame of a board, and the keyed hash that says which frame) and `promotion:<noteId>` (the seal on a preview of adding to the shared notes, and on the box for writing straight into them); and, under a workspace's root, `workspace` (its name and tree, who its people and shares are, and carets and presence on their way between instances), `workspace-person` (what someone's known by in it, a keyed hash of how access knows them), `document:<id>` (what a document or board holds) and `media:<id>` (a file: what's said about it, and its pieces) | Derived per request, or per job in the notes worker |
+| State keys | `HKDF(Kowner, salt=ownerId, "alcove/state/v1/<scope>")`, scopes `document-clients:<id>` (who each Yjs client in a document belongs to, as keyed hashes), `document-deletes:<id>` (a keyed hash of what each row of its log deletes, so the same deletes again cost nothing), `call:<id>` (call state), `call-attention:<id>` (ordered hands, explicit questions, votes, nudges for their one recipient, statuses and audience-bound notification cues), `call-mls:<id>` (the call's MLS log, sealed again), `call-seat:<id>` (each person's seat in the call, a MAC of their random per-call `person`, never stored), `call-move:<id>` (moves to other devices in a call), `call-notes:<id>` (the call's shared live notes), `ring:<meetingId>` (rings in a call), `meeting-answers:<meetingId>` (what people invited to a call answered, and the times they asked to move it to), `job:<noteId>` (notes jobs), `transcript:<noteId>` (live transcript clips and caption translations, and the keyed tags that find them), `screen-share:<recordingId>` (whose each share in a call was) and `screen:<noteId>` (what's known about each shared-screen frame, and the keyed tags that find them), `note-additions:<noteId>` (what people added to the shared notes), `note-links:<noteId>` (who made each link to a note's notes, and when). Under the author's own `Kowner`, never the organizer's: `personal:<noteId>` (their own notes on a note), `presenter-notes:<documentId>` (what they kept beside a whole document or board with an earlier release, which nothing opens now), `presenter-frame-notes:<boardId>` (what they keep beside each frame of a board, and the keyed hash that says which frame) and `promotion:<noteId>` (the seal on a preview of adding to the shared notes, and on the box for writing straight into them); and, under a workspace's root, `workspace` (its name, tree and line on what it's for, who its people and shares are, and carets and presence on their way between instances), `workspace-person` (what someone's known by in it, a keyed hash of how access knows them), `document:<id>` (what a document or board holds) and `media:<id>` (a file: what's said about it, and its pieces) | Derived per request, or per job in the notes worker |
 | Operation keys | `HKDF(Kowner, salt=ownerId, "alcove/operation-commit/v1")` and `"…/operation-result/v1"` | Derived per request |
 | Index key | `HKDF(KMASTER, "alcove/index/v1")` | Derived per use; keys the [blind indexes](#blind-indexes) |
 | Sign-in attempt key | `HKDF(KMASTER, "alcove/sign-in-attempt/v1")` | Derived per use; seals the [Google sign-in attempt](#google-sign-in-and-calendar-access) a browser carries to Google and back |
@@ -87,6 +87,7 @@ piece of a file is sealed on the one core every call runs on. A `media-piece` is
 | `call-notes` | state key `call-notes:<id>` | call, part of the call (`main`, or a breakout room's random ID), view (`all`, or a digest of the lines it can't read) |
 | `call-notes-lines` | state key `call-notes:<id>` | the same (the lines that row read, and the lines it left out) |
 | `meeting-answer` | state key `meeting-answers:<meetingId>` | meeting, and the hash of the address of whoever answered |
+| `meeting-proposal` | state key `meeting-answers:<meetingId>` | meeting, and the hash of the address of whoever asked to move it (the time they asked for) |
 | `call-ring` | state key `ring:<meetingId>` | meeting, ring (whom it's for and what they said) |
 | `transcript-clip` | state key `transcript:<noteId>` | note, clip tag |
 | `transcript-translation` | state key `transcript:<noteId>` | note, line-and-language tag |
@@ -96,7 +97,7 @@ piece of a file is sealed on the one core every call runs on. A `media-piece` is
 | `job` | state key `job:<noteId>` | note |
 | `drive-export` | state key `drive:<scope>` under the exporting account | connection, call or export job's exact scope; credentials, destinations and private export metadata |
 | `drive-oauth-attempt` | sign-in attempt key | independent Drive authorization attempt; the sealed body binds the owner, state, PKCE verifier and expiry |
-| `workspace-state` | state key `workspace` | workspace (its name and tree) |
+| `workspace-state` | state key `workspace` | workspace (its name, its tree and the line on what it's for) |
 | `workspace-member` | state key `workspace` | workspace, member (who someone in it is) |
 | `document-access` | state key `workspace` | workspace, document, entry (who a document is shared with) |
 | `document-update` | state key `document:<id>` | workspace, document, `seq` (one Yjs update and who sent it) |
@@ -278,7 +279,13 @@ transcript or meeting. See [Agents and MCP](agents-and-mcp.md) for the complete 
   so Google emails everyone invited. The event carries the call's title, time and guests, the join link, a
   line saying whether notes are on, `guestsCanModify: false` and a private extended property
   `alcoveMeeting` with the meeting ID. If Google fails, the call is kept without its calendar event. Calls
-  started now don't go on the calendar, and neither does a call offering times until one is picked. Changing only
+  started now don't go on the calendar, and neither does a call offering times until one is picked: each time it
+  offers is held on the organizer's calendar instead, as an event of theirs that invites nobody (`sendUpdates=none`),
+  named "Hold: " and the call's title, with the call's link and a private extended property `alcoveHold` with the
+  meeting ID. Their event IDs are sealed in the call's manifest (`holds`), they take the call's new name when it's
+  renamed, and they're deleted, telling nobody, when someone picks (the call's own event takes the picked one's place,
+  with its invitations), when the call is cancelled, and when the account is deleted. If Google fails, the call offers
+  its times all the same, and anything held so far comes off again. Changing only
   what the event doesn't show (what the notes keep, joining muted, documents) sends Google nothing. A series that
   repeats is one recurring event, so everyone gets one invitation and not one per call: it also carries how the
   calls repeat and the organizer's time zone, its link is the series' own, and the private property holds the
@@ -287,13 +294,16 @@ transcript or meeting. See [Agents and MCP](agents-and-mcp.md) for the complete 
   `sendUpdates=none`, so nobody gets an email for each. If Google fails, the calls are kept, and each step that
   didn't reach the calendar is logged ([Notes and inference › Series](notes-and-inference.md#series)).
 - **What comes from Google.** `GET /v1/calendar` reads the primary calendar's events from an hour ago to a
-  week ahead (at most 100) into memory for the response, and never stores them: timed events that weren't
-  cancelled or declined, of the default type, and not Alcove's own. Someone invited to an Alcove call has their own
+  week ahead (at most 100), or with `from` and `to` any stretch of at most 31 days, past ones included (at most 250),
+  as the scheduler and the Calls page's week ask for each week they show, into memory for the response, and never
+  stores them: timed events that weren't cancelled or declined, of the default type, and not Alcove's own (its calls'
+  events and the times it holds). Only your own calendar is read this way: other people's are only ever busy times
+  (below). Someone invited to an Alcove call has their own
   copy of its event, without the private property, so it's read as theirs: its location under the web app's
   `/join/` says which call it is (`alcoveCode`) and joins it. When the organizer opens a call that's on the
   calendar (`GET /v1/meetings/:id`), the event's `attendees[].responseStatus` is read too, for anyone with no answer
-  in Alcove: at that moment, for the counts in that response, and stored nowhere. If Google doesn't answer within
-  3 seconds, the counts are Alcove's alone. `POST /v1/calendar/events/:id/adopt`
+  in Alcove: at that moment, for each person's answer and the counts in that response, and stored nowhere. If Google
+  doesn't answer within 3 seconds, the answers are Alcove's alone. `POST /v1/calendar/events/:id/adopt`
   makes one of them an Alcove call, only if the account is its organizer (`403 forbidden` otherwise): the
   call takes the event's title, time and guests, and the event gets the Alcove link above its old
   description, with the update sent to everyone. Adopting the same event twice returns the same call. An
@@ -343,8 +353,10 @@ purpose `invite`.
 - **How far it reaches.** Anyone can invite any address, so what lands on someone's Home is bounded: Upcoming lists
   other people's calls only for the next 90 days, though a call further out can still be opened and answered, and an
   account makes at most 30 calls a minute, however it makes them.
+- **What the organizer sees:** everyone invited, what each of them answered (`answers`), and the times any of them
+  have asked to move the call to (`proposals`), from their rows, which only the organizer's keys open.
 - **What someone invited sees:** the call as the organizer scheduled it, the organizer, how everyone has answered, as
-  counts, and what was [brought to it](#brought-to-a-call). Up to 25 people invited they see who, with their addresses;
+  counts, their own answer and the time they asked for, if they did, and what was [brought to it](#brought-to-a-call). Up to 25 people invited they see who, with their addresses;
   past that, only how many. They don't get the call's note, its calendar link, or a series' own link, unless the call is
   on a calendar, whose invitation carries that link. They see how a series repeats; the rest of the series is its
   organizer's.
@@ -352,6 +364,15 @@ purpose `invite`.
   bound to that call and that person's hash, so it can't be moved to another row. It's padded, so all three answers
   are the same length. It keeps no receipt: the response is the organizer's call, which a receipt under the person
   invited would hold after the call was cancelled. Google Calendar doesn't hear about it.
+- **Asking to move it** (`POST /v1/meetings/:id/propose`) goes through the same check and seals the time asked for into
+  the person's row, beside their answer, as a `meeting-proposal` record bound to the call and their hash; a moment as
+  `toISOString` writes one, so every request is the same length. Asking again replaces it. Only a call that hasn't
+  started and has a time of its own can be asked, to a time still to come. It keeps no receipt, for the same reason, and
+  Google Calendar doesn't hear about it. The organizer answers (`POST /v1/meetings/:id/proposals/answer`, the address
+  in the body): **Move it** changes the call's time as Change the time does, so a connected calendar tells everyone, and
+  **Keep** lets go of that request. Any change that moves a call clears every request on it, since they were asked of
+  the time it had; someone taken off the invite takes theirs with their row, and deleting their account clears it with
+  their answer.
 - **A call that's over.** Once a call has ended, or it's an hour past its time (for a call offering times, its last
   one), it leaves everyone's Upcoming. Ending it deletes its rows in the same transaction, and a call nobody held loses
   them the first time its organizer or someone invited reads it after that, so an address with no account leaves no
@@ -572,7 +593,8 @@ read every note given to it. That's why the demo SSO sign-in takes only example 
   whether two readers are one person goes by it: not who's who in presence (`isMe`, and with it an address), not whose a
   caret or a Yjs client is, and not whether someone has a document open.
 - **A workspace role** (`admin`, `edit`, `read`) applies to everything in the workspace. `read` changes nothing. `edit`
-  changes the tree. Only an `admin` renames or deletes the workspace or changes its people, and a workspace always keeps one.
+  changes the tree. Only an `admin` renames or deletes the workspace, says what it's for (its line, which anyone in it reads
+  and nobody outside it is told of), or changes its people, and a workspace always keeps one.
 - **Restricted.** A restricted document or board opens only for its creator, while they're in the workspace or a call it's
   open to (below), and the people it's shared with. Nobody else's tree shows it, and being an admin or in a call doesn't
   open it. Something with no creator (`by` null) gives nobody the creator's rule, and opens only through `document_access`,
@@ -625,7 +647,12 @@ read every note given to it. That's why the demo SSO sign-in takes only example 
   put there is ever taken out, and only while nobody has changed their place by hand; someone an admin took out, or who
   left, is never put back by the invite. A guest without an account is never put in it: they have what the call opens to
   everyone in it while they're there (above), and anything shared with their seat. A home the organizer chose keeps its own
-  people.
+  people. Making one ready before the call (an agenda, a board, a document for files) makes it as the person asking, who
+  has to be able to change it; a note says where its call's home is (`Note.home`) only to a reader who's in that workspace
+  now, worked out on each read and never stored.
+- **Downloads from a call's page** (the transcript as text, the notes as Markdown, the recording, each shared screen's video)
+  are put together in the browser from what the page has already opened, and saved on that device; nothing is sent
+  anywhere, and the logs say the note's ID, the kind and how many bytes, never a name or a word of it.
 - **Who a document names.** Tags, quotes and follow-up lines name people by an ID the server keys under the workspace's own
   keys, never by an address or a plain hash of one, so reading a document says nothing about anyone's address and a guess
   can't be checked against it offline ([Data and storage › Workspaces](data-and-storage.md#workspaces)).
@@ -743,6 +770,22 @@ never the request, and every answer says `nosniff` and `no-store`, with a Conten
 opened by itself, and an `ETag` that's a digest of its sealed info, so it names the file without saying anything about it. Its URL never reaches a log: paths show `/v1/media/:token`, and the [scrubber](logging-and-errors.md#privacy-rules-for-logs)
 takes a token out of anything that quotes a file's URL, a browser's report of a picture that failed among them.
 
+### The Drive
+
+`features/workspaces/drive.ts` reads across what someone can open for the Drive's page, and `access.ts` still decides.
+
+- **A card's preview** (`GET /v1/workspaces/:id/previews?items=…`, up to 24 IDs in the query, which no log line holds) is a
+  document's first four lines with words, each cut at a word to 120 characters, and how many pictures, videos and which kind
+  of file it holds. Only for a document the reader can open now, out of Trash: a board, a folder, something they can't open,
+  something in Trash, a made-up ID and another workspace's ID are all left out alike, and a workspace they can't open is
+  `404 not-found` as anywhere. It's read in a worker from the document as it is, on the reader's own turn, and if who has
+  what changed while it was read it's asked again, so nothing goes to someone who lost it on the way. The answer goes to the
+  browser and nowhere else: `no-store`, no receipt (it's a GET), nothing of it in a log line (`previews read` says how many
+  were asked and read). A call's pass reads previews as it reads the tree.
+- **One Trash** (`GET /v1/trash`, an account only) is what's in Trash in every workspace someone's in or has something in,
+  as each tree shows it to them (someone outside a workspace sees only what's shared with them, with no folder), with when
+  it goes for good. It names nothing they couldn't open, and restoring is the item's own `restore`, which asks again.
+
 ### Brought to a call
 
 `features/workspaces/library.ts` shows what's in workspaces to people with calls, and `features/workspaces/access.ts` still
@@ -830,7 +873,7 @@ decides.
   waiting for you, your library or changing what a call brings 120 together, since each opens every workspace you're in.
   Tagging someone, and saying you've heard: 240 a minute per person. Document
   updates: 1,200 a minute per person, and 64 MiB of them; carets 1,800; saying where you are 600; opening a document's stream
-  240; reading a version 60; reading everything you can open for search 12. Pieces of a file: 600 a minute per person, and what a file, a workspace and each person's day can hold, which change without a deploy ([Deployment › Changing a limit](deployment-and-acceptance.md#changing-a-limit)). Files read: 240 a minute per person, an account or a seat, counting each URL asked for and each piece opened. Moving to another device: 12 new codes a minute per person; opening a link 30 a minute and checking on a move 240 a minute per client address; and for each move, by its secret's hash, 240 checks and 60 changes a minute. Making, revoking and opening links to notes count with changes to notes: 120 a minute per account. Over a
+  240; reading a version 60; reading everything you can open for search 12; what documents say at the top, for the Drive's cards, 600 documents. Pieces of a file: 600 a minute per person, and what a file, a workspace and each person's day can hold, which change without a deploy ([Deployment › Changing a limit](deployment-and-acceptance.md#changing-a-limit)). Files read: 240 a minute per person, an account or a seat, counting each URL asked for and each piece opened. Moving to another device: 12 new codes a minute per person; opening a link 30 a minute and checking on a move 240 a minute per client address; and for each move, by its secret's hash, 240 checks and 60 changes a minute. Making, revoking and opening links to notes count with changes to notes: 120 a minute per account. Over a
   limit the answer is `503 unavailable` ("Too many attempts"); Google sign-in returns to the welcome screen
   with `signin=busy` instead. The counters live in each API process.
 - **Sizes.** An audio piece over 2 MiB, a transcript clip over 30 seconds of WAV, a piece of a shared screen's
@@ -991,7 +1034,7 @@ connection](calls-and-recordings.md#recording-without-a-connection)), and so eac
 | NEAR AI's gateway and operators | Alcove's API key on attestation requests, which models are verified when, the size and timing of every sealed request, and the server's address; never the content, the request's parameters or the key inside the seal. A deployment NEAR AI chooses to run in an attested VM on a measured dstack image passes. |
 | Intel and NVIDIA | Intel's certification service: which platform (FMSPC) each quote came from, when Alcove verifies. NVIDIA's attestation service: each model's GPU evidence (certificates and measurements). No content. |
 | Google | For Google accounts, each sign-in. With the calendar connected, every scheduled call's title, time, guests, join link and whether notes are on, as an ordinary calendar event that Google sends to the guests, and whose availability is asked for when finding a time, by address. |
-| Cloudflare | As the web app's host: each page load and file request, with its address, path (such as `/notes/<id>`), time and browser. The API's traffic doesn't pass through it. As the object store (R2): what the object store row shows. |
+| Cloudflare | As the web app's host: each page load and file request, with its address, path (such as `/calls/<id>`), time and browser. The API's traffic doesn't pass through it. As the object store (R2): what the object store row shows. |
 | LiveKit (Cloud in production) | No media: frames are end-to-end encrypted. Each person's address; room names and identities (random, no names); join and leave times; packet sizes and timing; the audio-level header, so who is speaking when; track kinds and mute state, so who has a camera or screen on; each frame's key index, which travels in the clear (the frame trailer), so whose keys change together: who is in the same part of the call, and who is between two; the size and timing of the sealed data browsers send each other, so roughly when someone points at a shared screen, never where, reacts (`react/1`), never with what, or puts a picture of someone's share on a board (`board-shot/1`), never which; and, from a small packet every 10 s, whose browser can't decode VP9 (`codecs/1`: Safari or iOS before 16) |
 | The call's MLS log (`call_mls`) | Sealed MLS messages, while the call runs: how many people asked to join, were added and removed, and how much chat there was, by count and size, for each part of the call (the main room, or a breakout room by its random ID). A room's entries are deleted when it closes, the rest when the call ends |
 | The API (calls) | Who's in each call, asking or turned away, and their names, with the addresses of people signed in whom the notes may go to (sealed at rest, opened per request); whom the organizer rang and how each answered (sealed the same way), and, in memory for as long as a tab holds a stream of rings, which accounts are listening, by owner ID and the hash of their address; who sent each chat message, in which part of the call and when, by size; raised hands, who nudged whom and how (sealed, for a minute), each person's status, spotlight, breakout rooms, who's in which and whose browser is each room's scribe; whether pointing at shared screens is on, and who doesn't let others point at what they share (never a pointer or a mark); when notes were turned on, off, paused and resumed, in the call or in one room, and who asked for notes; who shared their screen and when, whether each share went in the notes, and when it ended. What's on a shared screen only in memory, and only for the shares presenters put in the notes from the main room: each piece of video is held to seal it as it arrives, and opened again only to join it into one video after the call, take frames from it for the vision model, and play it to the note's people. It's never kept readable. It vouches for who's invited and decides who goes into which room's group: [Calls and recordings › End-to-end encryption](calls-and-recordings.md#end-to-end-encryption) |
@@ -1035,7 +1078,7 @@ connection](calls-and-recordings.md#recording-without-a-connection)), and so eac
   before them ended. Deleting a meeting or an account takes a live call's rows with the call.
 - **Cancelling a meeting** deletes it with every revision, its `meeting_access` rows (so everyone's answers) and its
   calls (including chat, and any rings), and the owner's receipts. With a connected calendar, its Google event is
-  cancelled too, which tells the guests. Its notes stay. A live call can't be cancelled. Backing out of a call started
+  cancelled too, which tells the guests, and the times it held while it offered them come off, telling nobody. Its notes stay. A live call can't be cancelled. Backing out of a call started
   now cancels it, unless its link was copied, and starting a new one deletes the same way any of the account's that
   nobody joined and that are over a day old.
 - **Discarding a room recording** deletes its note in the same way as deleting your own note. What this browser
@@ -1065,7 +1108,8 @@ connection](calls-and-recordings.md#recording-without-a-connection)), and so eac
   call does, so its guests are told: one still to come, one whose time has come but hasn't begun, and one
   under way. A meeting the account made in Google Calendar and then moved to Alcove (adopted) is left alone:
   the event is the person's own, so it stays on the calendar as it was, Alcove link and all, and that link
-  stops working. The cancelling is best effort too, and Google has 10 seconds for it in all: it stops at the
+  stops working. The times held for a call still waiting for a guest to pick come off too, telling nobody. The
+  cancelling is best effort too, and Google has 10 seconds for it in all: it stops at the
   first timeout or network failure, or when the 10 seconds are up, and a warning counts the calls not
   cancelled and carries the error (no tokens, addresses or content). Then the deletion goes ahead. The shared
   demo account (Art Vandelay) can't be deleted: it answers `forbidden`. Locks are taken calls first, then

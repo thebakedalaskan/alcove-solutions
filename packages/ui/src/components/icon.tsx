@@ -14,7 +14,7 @@ import {
   ImageOff, ImagePlus, Info, Italic, Lightbulb, Link2, List, ListChecks, ListCollapse, ListOrdered, ListTodo, LocateFixed, Megaphone, MessageSquareText, Minus,
   Moon, Navigation, PanelRight, Paperclip, Pilcrow, Quote, SquareCheckBig, Strikethrough, Sun, Table, TextAlignStart, TextQuote, Type, CalendarClock, StickyNote, Hourglass, PhoneCall,
   CircleOff, Droplet, Droplets, BellRing, Bot, Coffee, Ear, Gauge, Headphones, SmilePlus, Layers, MessagesSquare, VenetianMask,
-  FileCheck, FilePen, HandHelping, Inbox, Laptop, MessageSquareLock, PhoneIncoming, Share2,
+  FileCheck, FilePen, HandHelping, Inbox, Laptop, MessageSquareLock, PhoneIncoming, Share2, ListVideo,
   BookOpen, CalendarCheck, Plug, Sparkle, SquareTerminal, Terminal, Unplug
 } from 'lucide-react';
 import { cn } from '../cn';
@@ -55,6 +55,8 @@ const ICONS = {
   inbox: Inbox,
   /* Play in outline, beside a level (SoundLevel); `play` is the filled one. */
   playLine: Play,
+  /* Calls, the place: every call, ahead and past. */
+  calls: ListVideo,
   /*
    * Agents: their marks are plain icons by kind, never their makers' logos (`sparkle`, `squareTerminal`, `terminal`, `plug`
    * for any other, with `thread` for ChatGPT, `pointer` for Cursor and `code` for VS Code); `unplug` disconnects one, and

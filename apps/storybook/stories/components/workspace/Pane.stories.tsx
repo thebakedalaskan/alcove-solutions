@@ -1,16 +1,16 @@
 /*
- * WsPane: the workspace itself, the list of documents beside a document on one card that fills the box it's given: the
- * workspace's frame in a call, or the page in the app (`page`), where it follows the theme. In a call it's night, as the
- * whole call is. The list tucks away (`listOff`) and peeks back over the page (`listPeek`); on a phone it slides in over
- * everything (`phoneList`). Following someone draws a frame round it (`following`). Everything here answers: rows open,
- * folders twist, menus do what they say, and toasts say so.
+ * WsPane: the workspace in a call, the list of documents beside a document on one card that fills the box it's given, night
+ * as the whole call is; or one document on its own beside the Drive's tree (`beside`), in the app's theme, with ⤢ to go full
+ * screen. The list tucks away (`listOff`) and peeks back over the page (`listPeek`); on a phone it slides in over everything
+ * (`phoneList`). Following someone draws a frame round it (`following`). Everything here answers: rows open, folders twist,
+ * menus do what they say, and toasts say so. A workspace full screen is WsFrame (Frame.stories.tsx).
  */
 import type { Person } from '@alcove/api';
 import { WsDoc, WsList, WsNoAccess, WsPane, WsToasts, wsToast } from '@alcove/ui';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useRef, useState, type ComponentProps } from 'react';
 import { useArgs } from 'storybook/preview-api';
-import { Box, onStage } from '../../../src/component';
+import { Box, did, onStage } from '../../../src/component';
 import { PRIYA } from '../../../src/world/people';
 import { DocOf, ListOf, NEW_SPACE, first, useWorkspace } from './parts';
 
@@ -38,7 +38,7 @@ function Workspace({ args, update, space, start }: { args: PaneArgs; update: Upd
     if (args.phoneList) next.phoneList = false;
     if (Object.keys(next).length > 0) update(next);
   };
-  const ws = useWorkspace({ call: !args.page, space, start: start ?? (args.following ? 'checklist' : 'plan'), onGo: settle });
+  const ws = useWorkspace({ call: !args.beside, space, start: start ?? (args.following ? 'checklist' : 'plan'), onGo: settle });
   const follow = (person: Person, where: string) => {
     setFollowee({ person, where });
     const id = ws.shown.find((i) => i.name === where)?.id;
@@ -55,12 +55,12 @@ function Workspace({ args, update, space, start }: { args: PaneArgs; update: Upd
 
   return (
     <>
-      <WsPane label={args.label} page={args.page} listOff={args.listOff} listPeek={args.listPeek} phoneList={args.phoneList} following={args.following}>
-        <ListOf ws={ws} onFollow={follow} />
+      <WsPane label={args.label} beside={args.beside} listOff={args.listOff} listPeek={args.listPeek} phoneList={args.phoneList} following={args.following}>
+        {!args.beside && <ListOf ws={ws} onFollow={follow} />}
         <DocOf ws={ws} following={args.following ? { person: followee.person, name: first(followee.person), where: followee.where } : null}
-          onFollow={follow} onStopFollowing={stopFollowing} onToggleList={toggleList} />
+          onFollow={follow} onStopFollowing={stopFollowing} {...(args.beside ? { onExpand: did('onExpand') } : { onToggleList: toggleList })} />
       </WsPane>
-      <WsToasts toasts={ws.toasts} />
+      <WsToasts toasts={ws.toasts} place={args.beside ? 'beside' : undefined} />
     </>
   );
 }
@@ -68,14 +68,14 @@ function Workspace({ args, update, space, start }: { args: PaneArgs; update: Upd
 /** A story's render: the workspace in a box, from where it starts. */
 const framed = (from: Start = {}, height: number | string = 640) => function Render(args: PaneArgs) {
   const [, update] = useArgs<PaneArgs>();
-  return <Box width="100%" height={height}><Workspace key={String(args.page)} args={args} update={update} {...from} /></Box>;
+  return <Box width="100%" height={height}><Workspace key={String(args.beside)} args={args} update={update} {...from} /></Box>;
 };
 
 /** Someone the call's workspace doesn't open for, once its organizer can't edit there: it says it's private. */
 function Private({ args }: { args: PaneArgs }) {
   return (
     <Box width="100%" height={640}>
-      <WsPane label={args.label} page={args.page}>
+      <WsPane label={args.label}>
         <WsDoc><WsNoAccess /></WsDoc>
       </WsPane>
     </Box>
@@ -87,21 +87,21 @@ const meta = {
   component: WsPane,
   subcomponents: { WsList, WsDoc },
   parameters: { layout: 'padded' },
-  args: { children: null, label: 'Workspace', page: false, listOff: false, listPeek: false, phoneList: false, following: false },
+  args: { children: null, label: 'Workspace', beside: false, listOff: false, listPeek: false, phoneList: false, following: false },
   argTypes: { children: { table: { disable: true } }, className: { table: { disable: true } } },
   render: framed()
 } satisfies Meta<typeof WsPane>;
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/** Outside a call, the workspace is a page in the app: Documents only, Share and ⋯ on a document, in the theme you chose. */
-export const InTheApp: Story = { name: 'In the app', args: { page: true } };
+/** Beside the Drive's tree: one document on its own, in the theme you chose, with ⤢ to give it the whole screen. */
+export const BesideTheDrive: Story = { name: 'Beside the Drive', args: { beside: true } };
 /**
  * In a call it's night, as the whole call is. The frame's bar names the workspace, so the list's top is Find and New. This call
  * sits at the top of the list: the call's own Notes, Follow-ups and Transcript, and the documents brought to it, with the faces
  * of whoever's in each.
  */
-export const InACall: Story = { name: 'In a call', ...onStage, args: { page: false } };
+export const InACall: Story = { name: 'In a call', ...onStage, args: { beside: false } };
 /** The list tucked away: the panel button at the top left of the document brings it back. */
 export const ListOff: Story = { name: 'List off', args: { listOff: true } };
 /** The list brought back over the page for a moment. Opening something puts it away again. */

@@ -1,4 +1,4 @@
-import { DocAwarenessBodySchema, ItemInputSchema, ItemPlaceSchema, ItemRenameSchema, LIVE_STREAM_HEADER, LiveStreamNameSchema, MediaInputSchema, MAX_DOC_AWARENESS_BYTES, MAX_DOC_BYTES, MAX_DOC_UPDATE_BYTES, MentionBodySchema, PersonIdsBodySchema, PresenceBodySchema, MAX_MEDIA_PREVIEW_BYTES, DocAskBodySchema, BoardSortBodySchema, PresenterFrameNoteBodySchema } from '@alcove/api';
+import { DocAwarenessBodySchema, ItemInputSchema, ItemPlaceSchema, ItemRenameSchema, MAX_PREVIEWS, PreviewItemsSchema, LIVE_STREAM_HEADER, LiveStreamNameSchema, MediaInputSchema, MAX_DOC_AWARENESS_BYTES, MAX_DOC_BYTES, MAX_DOC_UPDATE_BYTES, MentionBodySchema, PersonIdsBodySchema, PresenceBodySchema, MAX_MEDIA_PREVIEW_BYTES, DocAskBodySchema, BoardSortBodySchema, PresenterFrameNoteBodySchema } from '@alcove/api';
 import { Hono, type Context } from 'hono';
 import { getCookie } from 'hono/cookie';
 import { bodyLimit } from 'hono/body-limit';
@@ -8,6 +8,7 @@ import { CALL_PASS_HEADER } from '../../callPass';
 import { unb64u } from '../../crypto';
 import { TooLargeError, ValidationError } from '../../errors';
 import * as access from './access';
+import * as drive from './drive';
 import * as media from './media';
 import * as presenterNotes from './presenter-notes';
 import * as workspaceDocuments from './documents';
@@ -21,7 +22,7 @@ import type { HttpRuntime } from '../../http/runtime';
 
 export function registerWorkspaceReaderRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
   const { d } = runtime;
-  const { liveLimiter, presenceLimiter, mentionLimiter, idsLimiter, documentLiveLimiter, updateLimiter, updateBytesLimiter, awarenessLimiter, versionLimiter, treeLimiter, presenterLimiter, askLimiter, sortLimiter, searchLimiter, pieceLimiter, mediaLimiter } = runtime.limits;
+  const { liveLimiter, presenceLimiter, mentionLimiter, idsLimiter, documentLiveLimiter, updateLimiter, updateBytesLimiter, awarenessLimiter, versionLimiter, treeLimiter, presenterLimiter, askLimiter, sortLimiter, searchLimiter, previewLimiter, pieceLimiter, mediaLimiter } = runtime.limits;
   const { readerOf, credentials, optionalOwner, COOKIE } = runtime.context;
   /** What the browser calls the stream it's opening, for it to say when it closes it: none from a browser that doesn't. */
   const streamName = (c: Context<Env>): string | null => LiveStreamNameSchema.safeParse(c.req.header(LIVE_STREAM_HEADER)).data ?? null;
@@ -183,6 +184,20 @@ export function registerWorkspaceReaderRoutes(app: Hono<Env>, runtime: HttpRunti
     c.header('content-type', 'application/x-ndjson');
     c.header('cache-control', 'no-store');
     return stream(c, run);
+  });
+
+  /*
+   * What documents say at the top, for their cards in the Drive: read as they are, for whoever can open each, and kept
+   * nowhere, so nothing caches the answer either. The IDs are in the query, which no log line holds.
+   */
+  app.get('/v1/workspaces/:id/previews', async (c) => {
+    const r = await readerOf(c);
+    const asked = PreviewItemsSchema.safeParse(c.req.query('items') ?? '');
+    if (!asked.success) throw new ValidationError(`Ask for between 1 and ${MAX_PREVIEWS} documents, by their IDs.`, { context: { workspaceId: c.req.param('id') } });
+    previewLimiter(access.limitKey(r), 'previews', asked.data.length);
+    const found = await drive.previews(d, r, c.req.param('id'), asked.data);
+    c.header('cache-control', 'no-store');
+    return c.json(found);
   });
 
   app.get('/v1/workspaces/:id/items/:item', async (c) => c.json(await workspaces.item(d, await readerOf(c), c.req.param('id'), c.req.param('item'))));

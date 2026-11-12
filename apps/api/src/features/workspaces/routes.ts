@@ -1,4 +1,4 @@
-import { ItemInputSchema, ItemPlaceSchema, LiveStreamEndBodySchema, MAX_DOC_BYTES, RestrictBodySchema, ShareBodySchema, WorkspaceInputSchema, WorkspacePersonInputSchema, WorkspaceRolePatchSchema } from '@alcove/api';
+import { ItemInputSchema, ItemPlaceSchema, LiveStreamEndBodySchema, MAX_DOC_BYTES, RestrictBodySchema, ShareBodySchema, WorkspaceAboutInputSchema, WorkspaceInputSchema, WorkspacePersonInputSchema, WorkspaceRolePatchSchema } from '@alcove/api';
 import { Hono, type Context } from 'hono';
 import { CALL_PASS_HEADER } from '../../callPass';
 import * as access from './access';
@@ -47,6 +47,15 @@ export function registerWorkspaceRoutes(app: Hono<Env>, runtime: HttpRuntime): v
   app.patch('/v1/workspaces/:id', async (c) => { await workspaces.rename(d, await member(c), ws(c), (await body(c, WorkspaceInputSchema)).name); return c.json({ renamed: true }); });
 
   app.delete('/v1/workspaces/:id', async (c) => { await workspaces.remove(d, await member(c), ws(c)); return c.json({ deleted: true }); });
+
+  /* What a workspace is for, in one line: it's said back in the answer, so nothing keeps it (`no-store`), as with a tree. */
+  app.get('/v1/workspaces/:id/about', async (c) => {
+    const line = await workspaces.about(d, await access.accountReader(c.get('owner')), ws(c));
+    c.header('cache-control', 'no-store');
+    return c.json({ about: line });
+  });
+
+  app.put('/v1/workspaces/:id/about', async (c) => { await workspaces.setAbout(d, await member(c), ws(c), (await body(c, WorkspaceAboutInputSchema)).about); return c.json({ changed: true }); });
 
   app.get('/v1/workspaces/:id/people', async (c) => c.json(await workspaces.people(d, await access.accountReader(c.get('owner')), ws(c))));
 

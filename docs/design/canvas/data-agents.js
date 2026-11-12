@@ -128,6 +128,22 @@
     book: { icon: 'booked', tint: 'now' }, todo: { icon: 'todo', tint: 'focus' }, decide: { icon: 'decide', tint: 'notes' }
   };
 
+  /* Asked "What did we decide about the launch?", a just-connected Claude looked through the notes and read one. */
+  var FIRST_LOG = [
+    { day: 'Today', rows: [
+      { id: 'f2', who: 'n-claude', t: '16:13', kind: 'read', verb: 'read', obj: 'Launch planning', sub: 'Tue 27 Oct' },
+      { id: 'f1', who: 'n-claude', t: '16:13', kind: 'find', verb: 'searched your notes for “launch”', sub: '3 notes' }
+    ] }
+  ];
+
+  /* Each question's mark: the row it will make in what your agents did. Reading is quiet, booking time, a follow-up horizon. */
+  var ASK = {
+    p1: { icon: 'book', tint: 'ink' },
+    p2: { icon: 'list', tint: 'ink' },
+    p3: { icon: 'booked', tint: 'now' },
+    p4: { icon: 'todo', tint: 'focus' }
+  };
+
   /* Things to ask, each with the permission it needs. */
   var PROMPTS = [
     { id: 'p1', q: 'What did we decide about the launch?', needs: 'notes:read' },
@@ -179,7 +195,12 @@
     agOffHot: { pop: 'c1', hot: 'off' },
     agOffAsk: { pop: 'c1', view: 'off', hot: 'off-yes' },
     agOffDone: { conns: only(['c2', 'c3']), toast: 'Claude is disconnected. It can’t reach Alcove any more.' },
-    /* What they did. */
+    /* What they did: nothing to hold until an agent is connected, then one row until it does something. */
+    agJust: { scene: 'first', conns: [NEW.claude], log: 'empty' },
+    agAskHot: { scene: 'first', conns: [NEW.claude], log: 'empty', hot: 'prompt-p1' },
+    agFirstRows: { scene: 'first', conns: [assign({}, NEW.claude, { used: 'Just now', isNew: false })], log: 'first' },
+    agCant: { conns: [assign({}, CONNS[0], { scopes: ['notes:read', 'notes:write', 'meetings:read', 'calendar:read'] })], log: 'full', hot: 'prompt-p3' },
+    agLooking: { scene: 'first', conns: [NEW.claude], log: 'look' },
     agLogHot: { hot: 'obj-a1' },
     agPromptHot: { hot: 'prompt-p3' },
     agPromptCopied: { toast: 'Copied. Paste it into Claude.' },
@@ -246,10 +267,13 @@
       J('agOffDone', 'It leaves the horizon, and can’t reach Alcove any more.')
     ] },
     { name: 'See what your agents did', frames: [
-      J('agToday', 'Under the horizon: everything your agents read and changed, newest first. Only you see it.'),
+      J('agFirst', 'The first day: nothing is connected, so there’s nothing an agent did yet. The water is only what you can ask, two across.'),
+      J('agJust', 'Once Claude is connected, What your agents did joins the water: one row, where the first thing it does will be.'),
+      J('agAskHot', 'Copy a question, and ask Claude in Claude. Each says Claude can do it.'),
+      J('agFirstRows', 'What Claude read and searched shows at the top as it happens. Only you see it.'),
+      J('agToday', 'A few days in: everything your agents read and changed, by day, newest first.'),
       J('agLogHot', 'Click what it’s about to open it.'),
-      J('agPromptHot', 'Beside it, things to ask, each saying which agents can do it. Copy one.'),
-      J('agPromptCopied', 'Paste it into your agent.')
+      J('agCant', 'Claude isn’t allowed to book calls, so the question that books says so.')
     ] },
     { name: 'A token for a script', frames: [
       J('agOtherHot', 'Click Another agent.'),
@@ -275,7 +299,7 @@
   ];
   var JOURNEYS_PHONE = [
     J('agSettingsPhone', 'On a phone the tab bar keeps its five. Agents opens from Settings › Connections.', 'Settings'),
-    J('agPhone', 'The line scrolls sideways under the sky. What they did follows.'),
+    J('agPhone', 'The line scrolls sideways under the sky. What they did follows, then what to ask, in one column.'),
     J('agPhoneConn', 'An agent opens as a sheet.'),
     J('agPhoneAsk', 'Allowing works the same on a phone.')
   ];
@@ -290,6 +314,6 @@
 
   AH.AG = {
     I: I, ADDRESS: ADDRESS, KINDS: KINDS, OTHER: OTHER, PERMS: PERMS, AREAS: AREAS, LEVELS: LEVELS, EXTRA: EXTRA, READS: READS, ASKED: ASKED, GIVEN: GIVEN,
-    CONNS: CONNS, NEW: NEW, LOG: LOG, MARKS: MARKS, PROMPTS: PROMPTS, STEPS: STEPS, JOURNEYS: JOURNEYS, JOURNEYS_PHONE: JOURNEYS_PHONE
+    CONNS: CONNS, NEW: NEW, LOG: LOG, FIRST_LOG: FIRST_LOG, MARKS: MARKS, ASK: ASK, PROMPTS: PROMPTS, STEPS: STEPS, JOURNEYS: JOURNEYS, JOURNEYS_PHONE: JOURNEYS_PHONE
   };
 })();

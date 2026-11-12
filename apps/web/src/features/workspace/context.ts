@@ -1,4 +1,5 @@
 /* What the list and the page of a workspace share, and what `<Workspace />` takes from whatever it's in. */
+import type { HomeOf } from './calls';
 import type { PersonIds } from './ids';
 import type { ItemPlace, Person, WorkspaceHere, WorkspaceItem, WorkspaceTree, WorkspaceWhere } from '@alcove/api';
 import type { WsToastData } from '@alcove/ui';
@@ -92,9 +93,22 @@ export interface WorkspaceCall {
   playing: WorkspacePlaying;
 }
 
+/** Where a workspace full screen was opened from: the Drive, or Calls (a call's Open its workspace). */
+export type WorkspaceFrom = 'drive' | 'calls';
+
+/** What a workspace full screen knows of the page around it: where it was opened from, and the way back there. */
+export interface WorkspaceFrame { from: WorkspaceFrom; onBack: () => void }
+
 export interface WorkspaceProps {
-  /** `page`: a page of the app, in the person's theme. `call`: a panel in a call, inside the call's `.stage`, so it's night. */
-  mode: 'page' | 'call';
+  /**
+   * `page`: a page of the app, in the person's theme. `call`: a panel in a call, inside the call's `.stage`, so it's night.
+   * `beside`: one document or board on its own, beside another page of the app's (the Drive's tree, Beside.tsx), with no list.
+   */
+  mode: 'page' | 'call' | 'beside';
+  /** ⤢ on a document shown `beside`: the same document, full screen. */
+  onExpand?: (() => void) | undefined;
+  /** As a `page`: where it was opened from, which ← and leaving full screen go back to. */
+  frame?: WorkspaceFrame | undefined;
   workspaceId: string;
   at: WorkspacePlace;
   /** Go somewhere in this workspace. The app changes the address; a call keeps it in its own state. */
@@ -201,6 +215,17 @@ export interface Ws {
   setRenaming: (id: string | null) => void;
   listOff: boolean;
   toggleList: () => void;
+  /** ⤢, for a document shown beside another page of the app's: the same document, full screen. */
+  expand: (() => void) | undefined;
+  /** Full screen: where it was opened from and the way back there. */
+  frame: WorkspaceFrame | undefined;
+  /** Full screen, for a call's own workspace: the call it was made for, which it's about. Null for any other. */
+  home: HomeOf | null;
+  /** On a phone, full screen: the workspace's pages take the screen, as ← on a page asks. */
+  showPages: () => void;
+  /** The workspace's name being written in place of the switcher: a new workspace, or this one renamed. */
+  naming: 'new' | 'rename' | null;
+  setNaming: (naming: 'new' | 'rename' | null) => void;
   /** The document just made here, whose page opens with the caret in its title. */
   justMade: RefObject<string | null>;
   /** The document open on the page, so naming it in the list reaches its title, what's sent from a call lands where it can be seen, and its editor once it's drawn. */

@@ -82,7 +82,7 @@ function RecordedBefore({ notes }: { notes: NoteSummary[] }) {
   const h = useId();
   return (
     <section className="rec-list" aria-labelledby={h}>
-      <div className="rec-h"><h2 id={h}>Recorded before</h2><Link to="/notes" className="rec-more-link">In Notes<Icon name="right" size={15} /></Link></div>
+      <div className="rec-h"><h2 id={h}>Recorded before</h2><Link to="/calls" search={{ view: 'room' }} className="rec-more-link">In Calls<Icon name="right" size={15} /></Link></div>
       <ul className="rec-before">{notes.map((n) => <Recorded key={n.id} n={n} />)}</ul>
     </section>
   );
@@ -98,7 +98,7 @@ function Recorded({ n }: { n: NoteSummary }) {
   return (
     <li>
       {/* Named by its title alone, not by every word in it. */}
-      <Link to="/notes/$noteId" params={{ noteId: n.id }} className={cn('rec-n', n.status === 'pending' && 'is-writing')} aria-labelledby={`${id}-t`} aria-describedby={standing ? `${id}-w ${standing}` : `${id}-w`}
+      <Link to="/calls/$noteId" params={{ noteId: n.id }} className={cn('rec-n', n.status === 'pending' && 'is-writing')} aria-labelledby={`${id}-t`} aria-describedby={standing ? `${id}-w ${standing}` : `${id}-w`}
         onClick={(e) => { if (online) return; e.preventDefault(); toast('Notes open when you’re back online.', { icon: 'wifiOff' }); }}>
         <RecPrint id={n.id} />
         <span className="rec-t"><b id={`${id}-t`} className="ac-clamp-1">{n.title}</b><small id={`${id}-g`} className="ac-clamp-1">{gistOf(n)}</small></span>

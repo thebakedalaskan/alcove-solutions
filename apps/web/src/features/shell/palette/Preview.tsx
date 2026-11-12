@@ -2,7 +2,7 @@
  * Beside the list, from 1100px: what the lit row is. A moment: its call, what was made there (a decision still waiting
  * can be confirmed right here), the transcript around it, and Open at and Play from. Someone: your calls together and the
  * latest they said, with What they said and Calls with them. A note: its summary and what's waiting in it. Ask: what
- * asking does. See all: what Notes will show. The one filled button is what Enter does.
+ * asking does. See all: what Calls will show. The one filled button is what Enter does.
  */
 import { errorCode, errorMessage, firstName, isBy, mayDecide, type DecisionPatch, type Note, type NoteAction, type NoteDecision, type NoteFound, type NoteReader, type Person, type Speaker } from '@alcove/api';
 import {
@@ -14,7 +14,7 @@ import { Link } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
 import { useNoteReader } from '~/features/notes/entries';
 import { marked } from '~/features/notes/highlight';
-import { byTime, noSummary, othersIn } from '~/features/notes/list/parts';
+import { byTime, noSummary, othersIn } from '~/features/calls/list/said';
 import { decisionLine, inNote, notDecided, playIn } from '~/features/notes/parts';
 import { callName, spokenName } from '~/lib/people';
 import { q, useUpdateDecision } from '~/lib/queries';
@@ -44,7 +44,7 @@ export interface PreviewProps {
   terms: string[];
   /** What's in the line, for See all. */
   typed: string;
-  /** Who the search is narrowed to: See all opens their calls with you in Notes. */
+  /** Who the search is narrowed to: See all opens their calls with you in Calls. */
   token: Person | undefined;
   /** The token's first name when nothing's typed, for See all. */
   whose: string | undefined;
@@ -85,7 +85,7 @@ export function Preview(p: PreviewProps) {
         return (
           <PalettePreview actions={<Button variant="primary" size="sm" kb="↵" onClick={p.onSeeAll}>Calls with {first}</Button>}>
             <PaletteAllPreview words={words || `Calls with ${first}`}>
-              {words ? 'Notes lists the notes you both have with these words in them, whoever said them.' : 'Notes lists the notes you both have, newest first.'}
+              {words ? 'Calls lists the calls you’re both on with these words in them, whoever said them.' : 'Calls lists the calls you’re both on: coming up, then the ones you’ve had.'}
             </PaletteAllPreview>
           </PalettePreview>
         );
@@ -95,7 +95,7 @@ export function Preview(p: PreviewProps) {
         ...(p.counts.notes ? [plural(p.counts.notes, 'note')] : [])
       ].join(', ');
       return (
-        <PalettePreview actions={<Button variant="primary" size="sm" kb="↵" onClick={p.onSeeAll}>See all in Notes</Button>}>
+        <PalettePreview actions={<Button variant="primary" size="sm" kb="↵" onClick={p.onSeeAll}>See all in Calls</Button>}>
           <PaletteAllPreview words={p.typed.trim() || p.whose}>
             {found}, each under its note. Notes can narrow them to someone, or to calls, the room and what was shared with you.
           </PaletteAllPreview>
@@ -173,11 +173,11 @@ function MomentPreview({ row, me, terms, onOpen, onSettled }: PreviewProps & { r
   return (
     <PalettePreview actions={(
       <>
-        <Link to="/notes/$noteId" params={{ noteId: n.id }} {...inNote(line.at, line.room)} className={buttonClass({ variant: 'primary', size: 'sm' })} onClick={onOpen}>
+        <Link to="/calls/$noteId" params={{ noteId: n.id }} {...inNote(line.at, line.room)} className={buttonClass({ variant: 'primary', size: 'sm' })} onClick={onOpen}>
           Open at {time}<span className="kb">↵</span>
         </Link>
         {plays && (
-          <Link to="/notes/$noteId" params={{ noteId: n.id }} {...playIn(line.at, line.room)} className={buttonClass({ size: 'sm' })} onClick={onOpen}>
+          <Link to="/calls/$noteId" params={{ noteId: n.id }} {...playIn(line.at, line.room)} className={buttonClass({ size: 'sm' })} onClick={onOpen}>
             <Icon name="play" size={14} />Play from {time}
           </Link>
         )}
@@ -199,7 +199,7 @@ function MomentPreview({ row, me, terms, onOpen, onSettled }: PreviewProps & { r
 }
 
 /**
- * Someone: your calls together, the latest they said, and What they said (the token) and Calls with them (Notes). Lit by
+ * Someone: your calls together, the latest they said, and What they said (the token) and Calls with them (on the Calls page). Lit by
  * typing a name or by the pointer passing over, what they said is asked for once they've stayed lit a moment; lit with the
  * keys, at once. Until it's there, nothing: never the lines of whoever was lit before.
  */
@@ -219,7 +219,7 @@ function PersonPreview({ someone, byKeys, onOpen, onPick }: PreviewProps & { som
     <PalettePreview actions={(
       <>
         <Button variant="primary" size="sm" kb="↵" onClick={() => onPick(person)}>What {first} said</Button>
-        <Link to="/notes" hash={`with=${encodeURIComponent(person.email)}`} hashScrollIntoView={false} className={buttonClass({ size: 'sm' })} onClick={onOpen}>Calls with {first}</Link>
+        <Link to="/calls" hash={`with=${encodeURIComponent(person.email)}`} hashScrollIntoView={false} className={buttonClass({ size: 'sm' })} onClick={onOpen}>Calls with {first}</Link>
       </>
     )}>
       <PalettePersonPreview person={person} title={someone.title ?? person.email} saidLabel={`Latest from ${first}`} said={latest}
@@ -233,7 +233,7 @@ function NotePreview({ note: n, enter, me, toConfirm, onOpen }: PreviewProps & {
   const note = useQuery({ ...q.note(n.id), retry: unlessGone }).data;
   return (
     <PalettePreview actions={(
-      <Link to="/notes/$noteId" params={{ noteId: n.id }} className={buttonClass({ variant: enter ? 'primary' : 'secondary', size: 'sm' })} onClick={onOpen}>
+      <Link to="/calls/$noteId" params={{ noteId: n.id }} className={buttonClass({ variant: enter ? 'primary' : 'secondary', size: 'sm' })} onClick={onOpen}>
         Open notes{enter && <span className="kb">↵</span>}
       </Link>
     )}>

@@ -1,4 +1,4 @@
-/* What a note shares with everything else that shows a note. A note's own page is in note.css, and the notes list in notes.css. */
+/* What a note shares with everything else that shows a note. A call's own page is in note.css. */
 .back { margin-left: -12px; }
 .summary { font-size: 18px; line-height: 28px; color: var(--ink); text-wrap: pretty; }
 /* Where the notes were written and what was checked about the models: one click from the title. */

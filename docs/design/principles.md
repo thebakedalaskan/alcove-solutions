@@ -26,8 +26,8 @@ page is one action. A page that's mostly one action is mostly sky; a page you re
 | Home | The sunset. The sun sits half risen in the middle, under Start a call. | About half (45%, 352 to 540px) |
 | Team | The sun low and to the left, behind the people standing on the horizon. | 40% |
 | Agents | Team's the other way round: the sun low and to the right, just past the end of the line of agents. | About 41% (49% on the first day, about 75% while an agent asks, and 56% once it's answered) |
-| Notes | Just after sunset. The sun has gone and only its glow is left; stars come out after dark. | 30% |
-| A note, a series | A slim band. The horizon is the call itself. | About a fifth (18.5%) |
+| Calls | Just after sunset. The sun has gone and only its glow is left; stars come out after dark. | A short band (13%, 112 to 128px) |
+| A call's page | A slim band over the title and its line; the call plays on its own night stage, on the water. | 158px (196px on a phone) |
 | Settings | The last of the light. | 136px |
 
 A call isn't part of the evening: it's always night, on the call stage. The page it leaves you on has no frame, like the
@@ -42,7 +42,7 @@ Record also restyles its sun, because the recorder takes its place.
 ### 1. One job, in the middle
 
 Each page has one thing you came to do, and it sits on the sky, centred and big: Start a call on Home, the search line on
-Notes, Start recording on Record, the people on Team, your agents on Agents. Everything else comes after it, on the water.
+Calls, Start recording on Record, the people on Team, your agents on Agents. Everything else comes after it, on the water.
 
 Don't promote whatever happens to be next: Home doesn't lead with the next calendar event (see
 [product rules](#product-rules-that-shape-screens)).
@@ -141,7 +141,7 @@ page. Blue Hour takes the page and the pressable colour from the logo's own sky 
 
 | Face | For | Where it's set |
 |---|---|---|
-| Newsreader | A page's title and its hero: the date on Home, Start a call, Notes, a company name on Team, what an agent asks on Agents | `font-display` |
+| Newsreader | A page's title and its hero: the date on Home, Start a call, Calls and its search, a company name on Team, what an agent asks on Agents | `font-display` |
 | Hanken Grotesk | Everything else: rows, buttons, labels, times, numbers. Digits line up with `tabular-nums` (`ac-mono` sets it) | `font-sans` |
 | IBM Plex Mono | Code and hashes only | `font-mono` |
 
@@ -180,16 +180,15 @@ Truncate with `ac-clamp-1` or `ac-clamp-2` rather than `nowrap`, so long text ca
   page), so going from page to page leaves the title, search and you where they were. Don't centre a narrow column on a
   wide screen.
 - A page's title sits at its top left, in the same place and the same face on every page (`dusk-top`, `dusk-title`):
-  Home's date, Notes, Drive, Record, Team and Agents. A note puts the way back first and its own name larger, and Settings starts
+  Home's date, Calls, Drive, Record, Team and Agents. A note puts the way back first and its own name larger, and Settings starts
   with you in your arch, both from the same left edge.
 - Grids wrap and lists go to one column on a phone.
 - The breakpoints, widest first:
   - 1320px: Home's widgets stack
-  - 1241px: narrower than this, Notes stops showing a preview beside the list
+  - 1241px: narrower than this, Calls' rows tighten their columns
   - 1240px and 1000px: Settings tightens, then its index becomes a strip
-  - 1180px: a note goes to one column, what's beside it following two across and where you write coming in after what was
-    decided; Notes' first-day example puts its note above its two tiles; and the welcome page's top bar drops its links
-  - 1100px: the top search becomes an icon
+  - 1180px: the welcome page's top bar drops its links
+  - 1100px: the top search becomes an icon, and Calls' rail narrows, its counts stepping back
   - 860px: the side panel becomes a top bar and a tab bar, with Record standing up out of it
 
 ## Scales
@@ -226,7 +225,7 @@ Everything comes from the tokens in `styles.css`. Don't invent values.
   | Home | Gulls, a fish, a shoal, a flying fish, a marlin, dolphins, a whale's tail | Six kinds of boat and ship, and a balloon in the corner |
   | Team | Gulls, a fish, a shoal, a flying fish, dolphins | Five kinds of boat and ship |
   | Agents | The same as Team: gulls, a fish, a shoal, a flying fish, dolphins | Five kinds of boat and ship |
-  | Notes | Gulls, a shooting star, a fish, a shoal | A sailing boat, a fishing boat, a freighter |
+  | Calls | Gulls, a shooting star, a fish, a shoal | A sailing boat, a fishing boat, a freighter |
   | A note | A shooting star, only in the dark | Nothing |
   | Settings | Nothing | A sailing boat, a freighter |
   | Record | A shooting star, a fish, a whale's tail | A sailing boat, a tall ship, a fishing boat |

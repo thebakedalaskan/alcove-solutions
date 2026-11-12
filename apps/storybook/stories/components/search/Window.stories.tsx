@@ -77,7 +77,7 @@ function WordFound({ words, lit }: { words: readonly string[]; lit: number }) {
       <SaidGroup label="What was said" calls={calls} words={words}>
         {calls.map((c, i) => <CallMoments key={c.id} call={c} words={words} lit={i === 0 ? lit : undefined} shown={i === 0 ? 3 : 2} />)}
       </SaidGroup>
-      <Row kind="all"><PaletteAllLine>See all {calls.reduce((n, c) => n + found(c, words).length, 0)} moments in Notes</PaletteAllLine></Row>
+      <Row kind="all"><PaletteAllLine>See all {calls.reduce((n, c) => n + found(c, words).length, 0)} moments in Calls</PaletteAllLine></Row>
     </Listbox>
   );
 }
@@ -203,7 +203,7 @@ export const AQuestion: Story = {
               <CallMoments call={STANDUP} words={['onboarding']} />
               <CallMoments call={LAUNCH} words={['onboarding']} />
             </SaidGroup>
-            <Row kind="all"><PaletteAllLine>Open these in Notes</PaletteAllLine></Row>
+            <Row kind="all"><PaletteAllLine>Open these in Calls</PaletteAllLine></Row>
           </Listbox>
         </PaletteBody>
         <Sealed />

@@ -11,7 +11,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { pickerName } from '~/features/calls/scheduling/words';
-import { freshCalls, useCallFlow } from '~/features/shell/context';
+import { freshCalls } from '~/features/shell/context';
 import { calendarConnectUrl, q } from '~/lib/queries';
 import { dayMonth, daysFromToday, hm, longDay, minutesUntil, shortMonth, weekday } from '~/lib/time';
 import { capital } from '~/lib/words';
@@ -176,7 +176,6 @@ function Missing({ text, action, warn = false, quiet = false }: { text: string; 
 function Row({ a, said, me, now, fresh, delay, onGone }: {
   a: Ahead; said: string; me: string | undefined; now: number; fresh: boolean; delay: CSSProperties | undefined; onGone: () => void;
 }) {
-  const flow = useCallFlow();
   const [isNew] = useState(() => (a.kind === 'call' ? freshCalls.delete(a.id) : fresh));
   // Now from when it starts by the clock, or someone's in it, until it ends.
   const on = started(a, now);
@@ -206,7 +205,7 @@ function Row({ a, said, me, now, fresh, delay, onGone }: {
   if (a.kind === 'event') return <MeetingRow a={a} going={on} cls={cls} style={isNew ? delay : undefined} onGone={onGone}>{inner}</MeetingRow>;
   return (
     <li data-row className={cls}>
-      <button type="button" className="hm-ev-b" aria-haspopup="dialog" onClick={() => flow.open(a.call, { onGone })}>{inner}</button>
+      <Link to="/calls/upcoming/$meetingId" params={{ meetingId: a.call.id }} className="hm-ev-b">{inner}</Link>
     </li>
   );
 }
@@ -246,7 +245,7 @@ function MeetingRow({ a, going: on, cls, style, onGone, children }: {
           <Icon name="cal" size={18} /><span><b>Open in Google Calendar</b><small>In a new tab.</small></span>
         </a>
         {series && (
-          <Link to="/notes/series/$seriesId" params={{ seriesId: series }} className="ac-pop-item" onClick={() => setOpen(false)}>
+          <Link to="/calls" search={{ series }} className="ac-pop-item" onClick={() => setOpen(false)}>
             <Icon name="repeat" size={18} /><span><b>What carries over</b><small>What earlier calls in the series decided and left open.</small></span>
           </Link>
         )}

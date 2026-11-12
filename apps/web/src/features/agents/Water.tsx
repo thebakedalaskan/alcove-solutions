@@ -1,36 +1,38 @@
 /*
  * On the water: what your agents did, newest first and only for you, grouped by day, each row a sentence with what it was
- * about a link to the note or call; Show more reads on. Beside it, things to ask your agent, each saying which of your
- * agents can do it, or what it needs.
+ * about a link to the note or call; Show more reads on. Beside it, things to ask your agent, each with the mark of the row
+ * it will make, and once an agent is connected, which of your agents can do it, or what they can't. What they did goes
+ * with the agents that did it, so with none connected it has nothing to hold: the water is then only what you can ask.
  */
 import { errorCode, errorMessage, type AgentActivity, type AgentConnection, type Meeting, type NoteSummary, type Person } from '@alcove/api';
-import { AgentDay, AgentDid, AgentQuestion, AgentWindow, Button, Dots, EmptyState, Icon, useToast } from '@alcove/ui';
-import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
+import { AgentDay, AgentDid, AgentNone, AgentQuestion, Button, cn, Dots, Icon } from '@alcove/ui';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { useId, type ReactNode } from 'react';
-import { useCallFlow } from '~/features/shell/context';
 import { callName, listNames } from '~/lib/people';
 import { q } from '~/lib/queries';
 import { daysFromToday, hm, noteDay, shortDay } from '~/lib/time';
 import { plural } from '~/lib/words';
 import { useCopy } from './copy';
 import { ENDS_IT, GONE, SAID } from './did';
+import { namesInLine } from './line';
 import { questionsFor, whoCan } from './questions';
 
 const NO_NOTES: NoteSummary[] = [];
-/** What stands where nothing's listed yet: an empty window, waiting for an agent. */
-const EMPTY_WINDOW = <AgentWindow icon="agent" look="dashed" />;
 const NO_CALLS: Meeting[] = [];
 
-/** Opens a call's card from what an agent did with it, read afresh: it may have changed, or gone, since. */
-function useOpenCall() {
-  const qc = useQueryClient();
-  const flow = useCallFlow();
-  const toast = useToast();
-  return async (id: string) => {
-    try { flow.open(await qc.fetchQuery(q.meeting(id))); }
-    catch (e) { toast(errorCode(e) === 'not-found' ? 'That call isn’t there any more.' : errorMessage(e), { icon: 'x' }); }
-  };
+/**
+ * The water under the line. What your agents did shows while any agent is connected, or while the line is still on its
+ * way; with none, the questions take the water, two across. `down`: the page couldn't reach Alcove, and the sky says so.
+ */
+export function OnTheWater({ connections, down, now }: { connections: readonly AgentConnection[] | undefined; down: boolean; now: Date }) {
+  const log = !down && connections?.length !== 0;
+  return (
+    <div className={cn('ag-water', !log && 'is-solo')} style={{ '--d': 1 }}>
+      {log && <WhatTheyDid connections={connections} now={now} />}
+      <AskYourAgent connections={connections ?? []} />
+    </div>
+  );
 }
 
 /** Days, newest first, each with what happened that day. */
@@ -45,13 +47,12 @@ function byDay(items: readonly AgentActivity[], now: Date): { day: string; items
   return days;
 }
 
-/** `down`: the page couldn't reach Alcove, so there's nothing to show yet. */
-export function WhatTheyDid({ connections, down, now }: { connections: readonly AgentConnection[] | undefined; down: boolean; now: Date }) {
+/** What they did, or one row where the first will be: nothing yet, its dots on the way, or Try again. */
+function WhatTheyDid({ connections, now }: { connections: readonly AgentConnection[] | undefined; now: Date }) {
   const head = useId();
   const activity = useInfiniteQuery(q.agentActivity());
   const notes = useQuery(q.notes()).data ?? NO_NOTES;
   const calls = useQuery(q.upcoming()).data ?? NO_CALLS;
-  const openCall = useOpenCall();
   const items = activity.data?.pages.flatMap((p) => p.items) ?? [];
 
   const row = (a: AgentActivity) => {
@@ -61,10 +62,10 @@ export function WhatTheyDid({ connections, down, now }: { connections: readonly 
     const note = a.noteId ? notes.find((n) => n.id === a.noteId) : undefined;
     const call = a.meetingId ? calls.find((m) => m.id === a.meetingId) : undefined;
     let about: ReactNode = null;
-    if (said.about === 'note') about = title && a.noteId ? <Link className="ag-obj" to="/notes/$noteId" params={{ noteId: a.noteId }}>{title}</Link> : GONE.note;
+    if (said.about === 'note') about = title && a.noteId ? <Link className="ag-obj" to="/calls/$noteId" params={{ noteId: a.noteId }}>{title}</Link> : GONE.note;
     else if (said.about === 'call') {
       const id = a.meetingId;
-      about = title && id ? <button type="button" className="ag-obj" aria-haspopup="dialog" onClick={() => void openCall(id)}>{title}</button> : GONE.call;
+      about = title && id ? <Link className="ag-obj" to="/calls/upcoming/$meetingId" params={{ meetingId: id }}>{title}</Link> : GONE.call;
     }
     const sub = said.sub ?? (said.counts && a.count !== null ? plural(a.count, said.counts[0], said.counts[1])
       : said.about && !title ? (ENDS_IT.has(a.tool) ? undefined : 'Not there any more')
@@ -90,17 +91,19 @@ export function WhatTheyDid({ connections, down, now }: { connections: readonly 
         )}
       </>
     );
-  } else if (activity.isError || down) {
+  } else if (activity.isError) {
     body = (
-      <EmptyState className="ag-none" art={EMPTY_WINDOW} title="Nothing to show"
-        action={activity.isError && !down ? <Button variant="quiet" size="sm" icon="retry" loading={activity.isFetching} onClick={() => void activity.refetch()}>Try again</Button> : undefined}>
-        What your agents did shows here once Alcove can reach the server.
-      </EmptyState>
+      <AgentNone problem title="Didn’t load"
+        action={<Button variant="quiet" size="sm" icon="retry" loading={activity.isFetching} onClick={() => void activity.refetch()}>Try again</Button>}>
+        {errorCode(activity.error) === 'network' ? 'Alcove couldn’t reach the server.' : errorMessage(activity.error)}
+      </AgentNone>
     );
   } else if (activity.isPending) {
     body = <div className="ag-waiting" role="status"><Dots /><span className="sr-only">Looking for what your agents did</span></div>;
   } else {
-    body = <EmptyState className="ag-none" art={EMPTY_WINDOW} title="Nothing yet">What your agents read and change in Alcove shows here, newest first.</EmptyState>;
+    /* One agent is named: what Claude reads and changes. */
+    const [only, more] = namesInLine(connections ?? []);
+    body = <AgentNone title="Nothing yet">What {only && !more ? `${only} reads and changes` : 'your agents read and change'} in Alcove shows here, newest first.</AgentNone>;
   }
   return (
     <section aria-labelledby={head}>
@@ -136,7 +139,7 @@ function peopleYouWorkWith(me: Person | undefined, team: readonly Person[] | und
   return names;
 }
 
-export function AskYourAgent({ connections }: { connections: readonly AgentConnection[] }) {
+function AskYourAgent({ connections }: { connections: readonly AgentConnection[] }) {
   const head = useId();
   const me = useQuery(q.session()).data?.user;
   const team = useQuery(q.team()).data;
@@ -149,8 +152,9 @@ export function AskYourAgent({ connections }: { connections: readonly AgentConne
       <ul className="ag-qs">
         {questionsFor(people).map((x) => {
           const who = whoCan(x, connections);
+          const mark = SAID[x.does];
           return (
-            <AgentQuestion key={x.id} question={x.ask} sub={who.sub} can={who.can !== undefined}
+            <AgentQuestion key={x.id} icon={mark.icon} tone={mark.tone} question={x.ask} sub={who.sub} can={who.can !== undefined}
               onCopy={() => void copy(x.ask, `Copied. Paste it into ${who.can ?? 'your agent'}.`, 'Copy wasn’t available. Select the question and copy it.')} />
           );
         })}
