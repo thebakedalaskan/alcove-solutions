@@ -613,10 +613,10 @@ export const SCENARIOS: Record<ScenarioName, Scenario> = {
     title: 'Starting a team, paying', about: 'Art started Vandelay’s team from Plans and opened a payment of 240 USDC on Base for its first six licenses, then closed checkout: the team is his, with nothing bought yet, and the payment waits.',
     make: () => {
       const world = busy();
-      withPayments(world);
+      withPayments(world, 'waits');
       world.myTeam = startedTeam(world.plan.storage.usedBytes);
       world.plan = planWithTeam(world.plan, world.myTeam, ART.email, on(0, 16, 12).getTime());
-      world.payments.topUps = [buyingWith(PREVIEW_TOP_UP, TEAM_SIX, 240)];
+      world.payments.topUps = [purchaseTopUp(PREVIEW_TOP_UP, TEAM_SIX, 240, iso(1, 16, 12))];
       return { world, opening: {} };
     }
   }
