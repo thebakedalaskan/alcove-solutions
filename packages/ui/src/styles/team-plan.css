@@ -32,7 +32,7 @@
 
 /* ------------------------------------------------------------ the sky: the team's name, and its people on the horizon */
 .tq-sky { display: flex; flex-direction: column; height: calc(var(--hz) - 30px); }
-.tq-hero { flex: 1; display: grid; place-content: end center; gap: 6px; min-height: 0; padding-bottom: 24px; text-align: center; }
+.tq-hero { flex: 1; display: grid; place-content: end center; gap: 6px; min-height: 0; padding-bottom: 16px; text-align: center; }
 .tq-hero h2 { font: 400 40px/1.1 var(--font-display); letter-spacing: -.01em; color: var(--ink); text-wrap: balance; overflow-wrap: anywhere; }
 .tq-say { font: 400 14px/20px var(--font-sans); color: var(--ink-2); font-variant-numeric: tabular-nums; }
 
@@ -40,7 +40,8 @@
  * The line: everyone's feet on the horizon, and their name and license on the water just under it. Wider than the page,
  * it slides sideways (the auto margins centre it only while it fits).
  */
-.tq-line { flex: none; display: flex; align-items: flex-start; gap: var(--tq-gap, 12px); height: calc(50px + var(--tq-below, 40px)); margin: 0 calc(-1 * var(--tq-edge, 0px)) calc(-1 * var(--tq-below, 40px)); padding: 0 var(--tq-edge, 0px); overflow: auto hidden; overscroll-behavior-x: contain; list-style: none; scrollbar-width: none; scroll-snap-type: x proximity; }
+/* Room above and below the arches inside it, for an arch lifted to the pointer and the focus ring round a name. */
+.tq-line { flex: none; display: flex; align-items: flex-start; gap: var(--tq-gap, 12px); height: calc(8px + 50px + var(--tq-below, 40px) + 6px); margin: 0 calc(-1 * var(--tq-edge, 0px)) calc(-1 * (var(--tq-below, 40px) + 6px)); padding: 8px var(--tq-edge, 0px) 6px; overflow: auto hidden; overscroll-behavior-x: contain; list-style: none; scrollbar-width: none; scroll-snap-type: x proximity; }
 .tq-line::-webkit-scrollbar { display: none; }
 .tq-line > :first-child { margin-left: auto; }
 .tq-line > :last-child { margin-right: auto; }
@@ -152,7 +153,7 @@
 
 @media (max-width: 860px) {
   .tq { --hz: 300px; --tq-slot: 72px; --tq-gap: 12px; --tq-edge: 20px; }
-  .tq-hero { padding-bottom: 20px; }
+  .tq-hero { padding-bottom: 12px; }
   .tq-hero h2 { font-size: 36px; }
   /* One column. The admin's cards come up under the people, before the notes: what's yours to do, first. */
   .tq-water { grid-template-columns: minmax(0, 1fr); gap: 26px; margin-top: calc(var(--tq-below, 40px) + 26px); }
