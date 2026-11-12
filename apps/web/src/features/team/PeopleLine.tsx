@@ -5,9 +5,9 @@
  * in place of Ring. Past thirteen people the line recedes, and the list of everyone finds whoever's too far away to read.
  */
 import { errorMessage, type NoteSummary, type Person, type Team } from '@alcove/api';
-import { Avatar, Button, GhostArch, Icon, IconButton, PickList, Popover, PopoverClose, buttonClass, cn, useToast, type PickRow } from '@alcove/ui';
+import { Avatar, Button, GhostArch, Icon, IconButton, PickList, Popover, PopoverClose, buttonClass, cn, useToast, type PickRow, type TeamArchButton } from '@alcove/ui';
 import { Link } from '@tanstack/react-router';
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { cloneElement, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { useFloodToCall } from '~/features/calls/flow/parts';
 import { useCallFlow } from '~/features/shell/context';
 import { callName, fold } from '~/lib/people';
@@ -178,4 +178,23 @@ function AllList({ me, team, onFind }: { me: Person; team: Team; onFind: (email:
     }))
   ].filter((r) => !typed || fold(r.name).includes(typed) || r.person.email.toLowerCase().includes(typed)).sort((a, b) => a.name.localeCompare(b.name));
   return <PickList label="Find someone" placeholder="Find someone" query={query} onQuery={setQuery} rows={rows} tall none="Nobody here by that name." onPress={(r) => onFind(r.person.email)} />;
+}
+
+/**
+ * Someone's popover around an arch that isn't on the company's line: the team's, on a plan (features/team/OnTeam.tsx). It's
+ * the same popover, with Ring, Schedule and the notes you both have, and the arch takes the focus back as it closes.
+ */
+export function PersonPop({ person, me = false, between, anchor }: { person: Person; me?: boolean | undefined; between: Between; anchor: TeamArchButton }) {
+  const { ring, flood } = useRing();
+  const pop = usePop(personPop(person.email));
+  const arch = useRef<HTMLButtonElement>(null);
+  const standing: Arch = { key: person.email, person, me, ghost: false, d: 0, k: 1, far: false, haze: 0, z: 1, px: 0 };
+  return (
+    <>
+      <Popover {...pop} side="bottom" align="center" caret label={listed(person)} className="tp-pop is-person" anchor={cloneElement(anchor, { ref: arch })}>
+        <About arch={standing} person={person} between={between} ring={ring} onLeave={() => { arch.current?.focus({ preventScroll: true }); pop.onOpenChange(false); }} />
+      </Popover>
+      {flood}
+    </>
+  );
 }
