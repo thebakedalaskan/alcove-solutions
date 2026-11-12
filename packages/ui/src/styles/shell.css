@@ -127,21 +127,49 @@ a.sb-link:hover, a.sb-link[aria-current="page"] { background: color-mix(in srgb,
 .sb-link .ac-arch-thumb { box-shadow: none; }
 .sb-link > .ac-i { color: var(--ink-3); }
 .sb-link .n { flex: none; margin-left: auto; padding-left: 6px; font: 500 12px/1 var(--font-sans); font-variant-numeric: tabular-nums; color: var(--ink-3); }
-.sb-foot { flex: none; display: grid; gap: 4px; padding-top: 20px; }
-.sb-seal { display: flex; align-items: center; gap: 8px; padding: 0 12px 6px; font: 500 12px/1.35 var(--font-sans); color: var(--ink-3); }
-.sb-seal .ac-i { color: var(--sun-text); }
-.sb-notes { display: grid; gap: 8px; padding: 12px; border-radius: var(--radius-md); color: var(--ink-2); font-size: 13px; line-height: 1.3; transition: background-color var(--duration-1); }
-.sb-notes b { color: var(--ink); font-weight: 600; }
-.sb-notes:hover { background: color-mix(in srgb, var(--ink) 8%, transparent); }
-/* On Free, a tab above the notes left that opens the plans: tinted warm, as Start a call is, so the page's own button stays the one filled. */
-.sb-upgrade { justify-self: start; display: inline-flex; align-items: center; gap: 6px; margin: 0 12px; padding: 5px 10px; border-radius: var(--radius-pill); background: var(--sun-soft); color: var(--sun-text); font: 600 12.5px/1 var(--font-sans); transition: background-color var(--duration-1); }
-.sb-upgrade:hover { background: color-mix(in srgb, var(--sun-text) 22%, var(--sun-soft)); }
-.sb-upgrade:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
-/* The newest of the plan's notices, one short line above the notes left, until it's dismissed on Settings › Plan. */
-.sb-plan-note { display: flex; align-items: center; gap: 7px; margin: 2px 0 0; padding: 6px 12px; border-radius: var(--radius-md); color: var(--ink); font: 500 12.5px/1.3 var(--font-sans); transition: background-color var(--duration-1); }
-.sb-plan-note .ac-i { flex: none; color: var(--sun-text); }
-.sb-plan-note:hover { background: color-mix(in srgb, var(--ink) 8%, transparent); }
-.sb-plan-note:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.sb-foot { flex: none; display: grid; grid-template-columns: minmax(0, 1fr); gap: 7px; padding-top: 20px; }
+.sb-seal { display: flex; align-items: center; gap: 8px; padding: 0 12px; font: 400 13px/18px var(--font-sans); color: var(--ink-2); }
+.sb-seal .ac-i { flex: none; color: var(--sun-text); }
+/*
+ * The plan, at the foot, as the places are rows above it: on Free how much of the period's notes is left over a meter, then
+ * Free plan with the way to the plans; on Pro one calm row with its own small sun, half set while Pro is ending; a payment
+ * on its way says what it's waiting for. On Plans the row is the place you're on, shaded like a place.
+ */
+.sb-said, .sb-left, .sb-wait { margin: 0 12px; font: 400 13px/18px var(--font-sans); color: var(--ink-2); }
+.sb-said b, .sb-left b { font-weight: 600; color: var(--ink); }
+a.sb-said, a.sb-left { border-radius: var(--radius-xs); transition: color var(--duration-1); }
+a.sb-said:hover, a.sb-left:hover { color: var(--ink); }
+.sb-left { display: grid; gap: 8px; }
+.sb-left.is-warm b { color: var(--sun-text); }
+.sb-left.is-out, .sb-left.is-out b { color: var(--caution); }
+.ac-meter.sb-meter { height: 3px; border-radius: 2px; background: color-mix(in oklch, var(--ink) 18%, transparent); }
+.sb-meter i { background: linear-gradient(90deg in oklch, var(--rose), var(--sun-text) 70%, var(--gold)); }
+.sb-left.is-warm .sb-meter i { background: var(--sun-text); }
+.sb-wait { display: flex; align-items: center; gap: 8px; color: var(--horizon); font-weight: 500; }
+.sb-wait.is-out { color: var(--caution); }
+.sb-wait .ac-dots { gap: 3px; }
+.sb-wait .ac-dots i { width: 4px; height: 4px; }
+/* Free: Free plan, and the way to the plans at the panel's edge. */
+.sb-plan { display: flex; align-items: center; justify-content: space-between; gap: 10px; height: 36px; margin-top: 1px; padding: 0 10px 0 12px; border-radius: 10px; color: var(--ink-2); font: 500 13.5px/1 var(--font-sans); white-space: nowrap; transition: background-color var(--duration-1), color var(--duration-1); }
+.sb-plan .go { display: inline-flex; align-items: center; gap: 3px; color: var(--ink); font-weight: 600; }
+/* A paid plan: a row like the places, with its own small sun in the icon column. */
+.sb-pro { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; column-gap: 10px; align-items: center; width: 100%; margin-top: 2px; padding: 7px 10px 8px 12px; border-radius: 10px; text-align: left; color: var(--ink-2); transition: background-color var(--duration-1); }
+.sb-pro > .sb-sun { align-self: start; margin-top: 5px; }
+.sb-pro b { display: block; font: 400 18px/1.1 var(--font-display); letter-spacing: -.01em; color: var(--ink); }
+.sb-pro small { display: block; margin-top: 2px; font: 400 12.5px/16px var(--font-sans); color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sb-pro small.is-warm { color: var(--sun-text); font-weight: 600; }
+.sb-pro > .ac-i { color: var(--ink-3); }
+.sb-plan:hover, .sb-pro:hover { background: color-mix(in srgb, var(--ink) 7%, transparent); color: var(--ink); }
+.sb-plan.is-on, .sb-pro.is-on { background: color-mix(in srgb, var(--ink) 12%, transparent); color: var(--ink); }
+:is(.sb-said, .sb-left, .sb-plan, .sb-pro):focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+/* The small sun: a half sun on a hairline, its glint under it. Setting, it sinks to half of that. */
+.sb-sun { position: relative; display: block; flex: none; width: 16px; height: 16px; }
+.sb-sun > *, .sb-sun .sun { position: absolute; display: block; }
+.sb-sun .sky { left: 2px; top: 0; width: 12px; height: 10px; overflow: hidden; }
+.sb-sun .sun { left: 0; top: 4px; width: 12px; height: 12px; border-radius: 50%; background: linear-gradient(to bottom, var(--dusk-sun), var(--gold)); transition: transform var(--duration-3) var(--ease-out); }
+.sb-sun .line { left: 0; right: 0; top: 10px; height: 1.5px; border-radius: 1px; background: color-mix(in oklch, var(--gold) 62%, transparent); }
+.sb-sun .g { left: 4px; top: 13px; width: 8px; height: 1.5px; border-radius: 1px; background: color-mix(in oklch, var(--gold) 38%, transparent); }
+.sb-sun.is-setting .sun { transform: translateY(3px); }
 /* A short window: the whole panel scrolls instead of squeezing its middle to nothing. */
 @media (max-height: 640px) {
   .sb-in { overflow-y: auto; }

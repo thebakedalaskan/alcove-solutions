@@ -115,6 +115,8 @@
 .set-t > .ac-crypto { flex: none; width: 24px; height: 24px; }
 .set-h { max-width: 58ch; margin-top: 2px; padding-left: var(--set-indent, 0px); font: 400 13px/18px var(--font-sans); color: var(--ink-3); text-wrap: pretty; }
 .set-h.is-no { color: var(--caution); }
+/* Time is short: under an hour of notes, a plan about to end. */
+.set-h.is-warm { color: var(--sun-text); font-weight: 500; }
 /* With a mark before the label, the help lines up under the label. */
 .set-r:has(> .set-l > .set-t > :is(.ac-logo, .ac-i):first-child) { --set-indent: 30px; }
 .set-r:has(> .set-l > .set-t > .ac-crypto:first-child) { --set-indent: 34px; }
@@ -258,6 +260,10 @@
 .set-note.is-caution > .ac-i { color: var(--caution); }
 .set-note + .set-note { margin-top: 8px; }
 .set-note:last-child { margin-bottom: 16px; }
+/* Said until its × is pressed. */
+.set-note.has-x { grid-template-columns: 18px minmax(0, 1fr) auto; padding-right: 6px; }
+.set-note-x.ac-icon-btn { width: 30px; height: 30px; margin-block: -5px; color: var(--ink-2); }
+.set-note-x.ac-icon-btn:hover { background: color-mix(in oklch, var(--ink) 8%, transparent); color: var(--ink); }
 
 /* Something opened in place: what it is, then what to do. */
 .set-step { padding: 16px 0 4px; }
@@ -327,6 +333,10 @@
 /* ------------------------------------------------------------------ plan: the row's own hairline is the horizon */
 .set-r.is-left { min-height: 78px; }
 .set-left { font: 600 22px/28px var(--font-sans); letter-spacing: -.012em; color: var(--ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* About, before the time: it's an estimate, and the time stays the hero. */
+.set-left small { margin-right: 6px; font: 400 15px/28px var(--font-sans); letter-spacing: 0; color: var(--ink-2); }
+.set-left.is-warm, .set-left.is-warm small { color: var(--sun-text); }
+.set-left.is-out { color: var(--caution); }
 /* Over the next row, whose hairline it lies on. */
 .set-on { position: absolute; z-index: 1; left: 0; right: 0; bottom: -1px; height: 2px; pointer-events: none; }
 /* Its light lies along the row and fades before either end, so the sun can stand at the very start or the very end. */
@@ -342,38 +352,47 @@
 /* Run out: the sun has set, and only a little of its light is left at the start of the line. */
 .set-on.is-set .sun, .set-on.is-set .ref, .set-on.is-set .lit { display: none; }
 .set-on.is-set::before { opacity: .55; }
-/* What the plan's owner is told, over the plan until dismissed. */
-.set-plan-notices { display: grid; gap: 8px; margin-bottom: 14px; }
-/* The plans on offer, side by side: Free and Pro, with room in the row for Team. Stacked on a phone. */
-.set-plans { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; margin-top: 26px; }
-.set-plans + .set-blk { margin-top: 26px; }
-.set-plan {
-  --set-lift: 0 1px 3px color-mix(in oklch, var(--ink) 5%, transparent), 0 10px 30px -22px color-mix(in oklch, var(--ink) 22%, transparent);
-  display: flex; flex-direction: column; min-width: 0; padding: 20px 22px 22px; border-radius: 18px; background: var(--surface); box-shadow: 0 0 0 1px var(--line), var(--set-lift);
+/* A refusal, said in place under what was pressed. */
+.set-err { font: 500 13px/18px var(--font-sans); color: var(--caution); text-wrap: pretty; }
+
+/*
+ * Payments, at the foot of the balance's panel: what's on its way first, then what the balance took in and paid for,
+ * newest first. Each has its mark in a fixed column and what can be done with it at the panel's edge.
+ */
+.set-pays { display: grid; grid-template-columns: minmax(0, 1fr); padding-bottom: 6px; }
+.set-pays-h { padding: 14px 0 4px; font: 500 13px/18px var(--font-sans); color: var(--ink-3); }
+.set-pay { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; column-gap: 12px; align-items: center; min-height: 54px; padding: 8px 0; border-top: 1px solid var(--line); }
+.set-pays-h + .set-pay { border-top: 0; }
+.set-pay-m { display: grid; place-items: center; width: 22px; height: 22px; color: var(--ink-3); }
+.set-pay-m > .ac-crypto { width: 22px; height: 22px; }
+.set-pay-t { min-width: 0; }
+.set-pay-t b { font: 500 14.5px/20px var(--font-sans); color: var(--ink); }
+.set-pay-t small { display: block; font: 400 13px/18px var(--font-sans); color: var(--ink-2); font-variant-numeric: tabular-nums; text-wrap: pretty; }
+.set-pay-t small.is-wait { color: var(--horizon); }
+.set-pay-t small.is-problem { color: var(--caution); }
+.set-pay-a { display: flex; align-items: center; justify-content: flex-end; gap: 4px; }
+.set-pays > .hm-more { padding: 4px 0 2px; border-top: 1px solid var(--line); }
+
+/* A payment's receipt: paper, light in both themes, alone on the page when it's printed. */
+.ac-modal.set-receipt-win { width: min(480px, calc(100vw - 32px)); }
+.set-receipt-win > .set-receipt { margin: 20px 20px 0; }
+.set-receipt { padding: 22px 24px 20px; border-radius: var(--radius-md); background: var(--surface-raised); box-shadow: 0 0 0 1px var(--line); color: var(--ink); font-variant-numeric: tabular-nums; }
+.set-receipt-h { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-bottom: 18px; border-bottom: 1px solid var(--line); }
+.set-receipt-h > span:last-child { font: 500 13px/18px var(--font-sans); color: var(--ink-3); }
+.set-receipt-t { margin-top: 18px; font: 500 15px/22px var(--font-sans); color: var(--ink-2); }
+.set-receipt-n { margin-top: 2px; font: 600 30px/36px var(--font-sans); letter-spacing: -.015em; color: var(--ink); }
+.set-receipt-l { display: grid; margin: 16px 0 0; }
+.set-receipt-l > div { display: grid; grid-template-columns: minmax(96px, auto) minmax(0, 1fr); column-gap: 16px; padding: 9px 0; border-top: 1px solid var(--line); font: 400 13.5px/19px var(--font-sans); }
+.set-receipt-l dt { color: var(--ink-3); }
+.set-receipt-l dd { margin: 0; color: var(--ink); overflow-wrap: anywhere; }
+.set-receipt-f { padding-top: 12px; border-top: 1px solid var(--line); font: 400 12.5px/18px var(--font-sans); color: var(--ink-3); text-wrap: pretty; }
+.set-receipt-a { display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding: 16px 20px 20px; }
+@media print {
+  body:has(.set-receipt) > :not(:has(.set-receipt)) { display: none !important; }
+  .ac-modal.set-receipt-win { position: static; transform: none; width: auto; max-height: none; box-shadow: none; background: none; animation: none; overflow: visible; }
+  .set-receipt-win > .set-receipt { margin: 0; box-shadow: none; }
+  .set-receipt-a { display: none; }
 }
-.dark .set-plan { --set-lift: 0 0 transparent; }
-/* The plan you're on has a firmer edge. */
-.set-plan.is-yours { box-shadow: 0 0 0 1.5px color-mix(in oklch, var(--ink) 34%, transparent), var(--set-lift); }
-.set-plan-h { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.set-plan-h h3 { font: 600 17px/24px var(--font-sans); color: var(--ink); }
-.set-plan-price { margin-top: 4px; font: 600 24px/32px var(--font-sans); letter-spacing: -.012em; color: var(--ink); font-variant-numeric: tabular-nums; }
-.set-plan-gets { display: grid; gap: 7px; margin: 14px 0 0; padding: 0; list-style: none; }
-.set-plan-gets li { display: grid; grid-template-columns: 16px minmax(0, 1fr); gap: 10px; align-items: start; font: 400 14px/20px var(--font-sans); color: var(--ink-2); }
-.set-plan-gets .ac-i { margin-top: 2px; color: var(--ink-3); }
-/* Buying months of Pro, at the card's foot. */
-.set-plan-buy { display: grid; gap: 12px; margin-top: auto; padding-top: 18px; }
-.set-plan-buy::before { content: ""; display: block; height: 1px; margin-top: 2px; margin-bottom: 4px; background: var(--line); }
-.set-plan-until { font: 400 13px/18px var(--font-sans); color: var(--ink-3); text-wrap: pretty; }
-.set-plan-until b { display: block; font: 600 14.5px/20px var(--font-sans); color: var(--ink); }
-.set-plan-pick { display: flex; align-items: center; gap: 12px; }
-.set-plan-pick .ac-select { flex: 1; min-width: 0; }
-.set-plan-total { font: 600 16px/22px var(--font-sans); color: var(--ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.set-plan-acts { display: flex; flex-wrap: wrap; gap: 8px; }
-.set-plan-acts .ac-btn { flex: 1 1 auto; }
-.set-plan-why { font: 400 13px/18px var(--font-sans); color: var(--ink-3); text-wrap: pretty; }
-.set-plan-err { font: 500 13px/18px var(--font-sans); color: var(--caution); text-wrap: pretty; }
-/* A top-up on its way, its mark beside it, Open and (while nothing has reached it) cancel. */
-.set-topup-acts { display: flex; align-items: center; justify-content: flex-end; gap: 4px; width: 100%; }
 
 /* ------------------------------------------------------------------ privacy: what Alcove knows beside what it can't read */
 .set-led { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 24px; padding: 16px 0 14px; }
@@ -451,6 +470,10 @@
   /* A list, a choice or something wide goes under its label, the width of the panel. */
   .set-r:has(> .set-c > .set-ctl > :is(.ac-seg, .ac-select, .set-vol)), .set-r.is-wide, .set-r.is-stack { grid-template-columns: minmax(0, 1fr); row-gap: 10px; }
   .set-r.is-stack .set-l { min-height: 0; }
+  /* Two buttons, or a fact and a button, go under the label, at its start, so a long help keeps its measure. */
+  .set-r.is-under { grid-template-columns: minmax(0, 1fr); row-gap: 10px; }
+  .set-r.is-under .set-c, .set-r.is-under .set-ctl { justify-content: flex-start; }
+  .set-r.is-under .set-ctl > .ac-btn.is-quiet:first-child { margin-left: -10px; }
   .set-r .set-ctl { max-width: 100%; }
   .set-r.is-sub, .set-foot.is-sub, .set-pn > .ac-drive-history { margin-left: 0; }
   .set-r .set-h { padding-left: 0; }
