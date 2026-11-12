@@ -5,8 +5,9 @@
  * A reader is an account, known by the keyed hash of its address, or someone in a call, known by a keyed hash of their
  * seat, from their call pass; signed in and in a call, they're both, and have what each gives them. A workspace role
  * applies to everything in it, except a restricted document, which opens only for its creator and the people it's
- * shared with. `document_access` opens one document for anyone. Being an admin, a call's organizer or in a call opens
- * nothing by itself.
+ * shared with. `document_access` opens one document for anyone. A call opens the workspace it uses to everyone in it, to
+ * edit, while they're in it (`workspace_calls`): that's no place in the workspace, so it gives no say in who has what.
+ * Being an admin or a call's organizer opens nothing by itself.
  *
  * Someone with no access gets the same `not-found` for a real ID and a made-up one, wherever they ask.
  */
@@ -118,8 +119,8 @@ export const sealSharedPerson = (o: Owner, workspaceId: string, documentId: stri
 export interface Credentials { session: string | undefined; pass: string | undefined }
 /** Who access is decided for: their address, if they have one here, and every index their access is filed under. */
 export interface Who { email: string | undefined; principals: Uint8Array[] }
-/** Someone's place in a call, while they're let in and it's going on. */
-export interface Seat { callId: string; seat: string; name: string; viewer: Viewer }
+/** Someone's place in a call, while they're let in and it's going on, and the workspace the call uses now, if it has one. */
+export interface Seat { callId: string; seat: string; name: string; viewer: Viewer; workspace: string | null }
 /** Who's asking, for this request: the account with its keys, their seat, or both. */
 export interface Reader extends Who {
   account: { owner: Owner; name: string } | undefined;
@@ -128,6 +129,14 @@ export interface Reader extends Who {
 
 export const emailIndex = (d: Deps, email: string): Uint8Array => blindIndex(masterKey(d), 'email', email);
 export const seatIndex = (d: Deps, callId: string, seat: string): Uint8Array => blindIndex(masterKey(d), 'call-seat', `${callId}:${seat}`);
+/**
+ * What everyone in a call carries while it uses one workspace, and what that workspace's `workspace_calls` row names: the call
+ * and the workspace together, so a call that moves to another carries something else at once, and this one closes to it.
+ */
+export const callIndex = (d: Deps, callId: string, workspaceId: string): Uint8Array => blindIndex(masterKey(d), 'call-workspace', `${callId}:${workspaceId}`);
+/** How access knows someone in a seat: the seat, and while the call uses a workspace, the call there. */
+const seatPrincipals = (d: Deps, s: { callId: string; seat: string; workspace: string | null }): Uint8Array[] =>
+  [seatIndex(d, s.callId, s.seat), ...(s.workspace === null ? [] : [callIndex(d, s.callId, s.workspace)])];
 
 /** The seat behind a call pass. Removed, not let in, or the call is over: no seat. */
 async function seatFrom(d: Deps, token: string | undefined, account: Owner | undefined): Promise<Seat | undefined> {
@@ -135,7 +144,7 @@ async function seatFrom(d: Deps, token: string | undefined, account: Owner | und
   if (!pass) return undefined;
   try {
     const viewer = await viewerOf(d, pass, () => Promise.resolve(account));
-    return viewer.inCall ? { callId: pass.callId, seat: seatOfViewer(viewer), name: pass.name, viewer } : undefined;
+    return viewer.inCall ? { callId: pass.callId, seat: seatOfViewer(viewer), name: pass.name, viewer, workspace: viewer.workspace } : undefined;
   } catch (e) {
     if (e instanceof AppError && e.status < 500) { xlog.debug('a call pass opens nothing here', { callId: pass.callId, code: e.code }); return undefined; }
     throw e;
@@ -146,7 +155,7 @@ async function readerWith(d: Deps, owner: Owner | undefined, seat: Seat | undefi
   const me = owner && await profile(owner);
   return {
     account: owner && me ? { owner, name: me.name } : undefined, seat, email: me?.email,
-    principals: [...(me ? [emailIndex(d, me.email)] : []), ...(seat ? [seatIndex(d, seat.callId, seat.seat)] : [])]
+    principals: [...(me ? [emailIndex(d, me.email)] : []), ...(seat ? seatPrincipals(d, seat) : [])]
   };
 }
 async function reader(d: Deps, owner: Owner | undefined, pass: string | undefined): Promise<Reader> {
@@ -166,10 +175,13 @@ export const accountReader = (owner: Owner, pass?: string | undefined): Promise<
  * they're let in, their seat. The same as `readerOf` says for that browser, so what the call tells them is what opens.
  */
 export const readerInCall = async (v: Viewer): Promise<Reader> =>
-  readerWith(v.organizer, await v.session(), v.inCall ? { callId: v.pass.callId, seat: seatOfViewer(v), name: v.pass.name, viewer: v } : undefined);
-/** Who someone else in a call is to a workspace, from what the call keeps of them. */
-export const whoInCall = (d: Deps, callId: string, x: { seat: string; email: string | null }): Who =>
-  ({ email: x.email ?? undefined, principals: [...(x.email === null ? [] : [emailIndex(d, x.email)]), seatIndex(d, callId, x.seat)] });
+  readerWith(v.organizer, await v.session(), v.inCall ? { callId: v.pass.callId, seat: seatOfViewer(v), name: v.pass.name, viewer: v, workspace: v.workspace } : undefined);
+/**
+ * Who someone else in a call is to a workspace, from what the call keeps of them. `workspace`: the one the call uses now, for
+ * someone who's in it now; null leaves out what being in the call opens, for anyone it shouldn't count for.
+ */
+export const whoInCall = (d: Deps, callId: string, x: { seat: string; email: string | null }, workspace: string | null): Who =>
+  ({ email: x.email ?? undefined, principals: [...(x.email === null ? [] : [emailIndex(d, x.email)]), ...seatPrincipals(d, { callId, seat: x.seat, workspace })] });
 /** Who a limit counts: the account, or the person in a call. */
 export const limitKey = (r: Reader): string => r.account?.owner.ownerId ?? r.seat?.viewer.pass.person ?? 'nobody';
 /**
@@ -182,9 +194,10 @@ export async function whoNamed(d: Deps, named: Pick<MediaToken, 'account' | 'sea
   const session = named.account === null ? undefined : await findSession(d, sessionId);
   const owner = session && session.ownerId === named.account ? await findOwner(d, session.ownerId, session) : undefined;
   const me = owner && await profile(owner);
-  const seat = named.seat && (await inSeat(d, named.seat)) ? named.seat : undefined;
+  const seated = named.seat ? await inSeat(d, named.seat) : undefined;
+  const seat = named.seat && seated ? { ...named.seat, workspace: seated.workspace } : undefined;
   if (!me && !seat) return undefined;
-  return { email: me?.email, principals: [...(me ? [emailIndex(d, me.email)] : []), ...(seat ? [seatIndex(d, seat.callId, seat.seat)] : [])] };
+  return { email: me?.email, principals: [...(me ? [emailIndex(d, me.email)] : []), ...(seat ? seatPrincipals(d, seat) : [])] };
 }
 
 /**
@@ -201,26 +214,36 @@ export function personIn(o: Owner, r: Reader): Person {
 
 /* ---------- where someone stands in a workspace ---------- */
 
-/** What a reader has in a workspace: their role, each document given to them beyond it, and of those what isn't only a seat in a call. */
-export interface Standing { role: WorkspaceRole | null; grants: Map<string, DocumentRole>; lasting: Map<string, DocumentRole> }
+/**
+ * What a reader has in a workspace: their role, each document given to them beyond it, and of those what isn't only a seat in a
+ * call; and `call`, that a call they're in uses it, which lets them open and edit what isn't restricted while they're in it.
+ */
+export interface Standing { role: WorkspaceRole | null; grants: Map<string, DocumentRole>; lasting: Map<string, DocumentRole>; call: boolean }
 const stronger = (a: DocumentRole | undefined, b: DocumentRole | undefined): DocumentRole | undefined => (a === 'edit' || b === 'edit' ? 'edit' : a ?? b);
 /** Whether anything in the workspace opens for them at all. */
-export const canOpen = (s: Standing): boolean => s.role !== null || s.grants.size > 0;
+export const canOpen = (s: Standing): boolean => s.role !== null || s.call || s.grants.size > 0;
 
 /** Everything in a workspace's rows that says who has what, for working out anyone's standing. */
 export interface Holders {
   members: { email_index: Uint8Array; role: WorkspaceRole }[];
   shares: { principal_index: Uint8Array; document_id: string; role: DocumentRole; kind: 'email' | 'seat' }[];
+  /** The calls it's open to, as what their seats carry: each only while its organizer can still edit there. */
+  calls: { call_index: Uint8Array }[];
 }
 const MemberRow = z.object({ email_index: bytea, role: z.enum(['admin', 'edit', 'read']) });
 const ShareRow = z.object({ principal_index: bytea, document_id: z.string(), role: z.enum(['edit', 'read']), kind: z.enum(['email', 'seat']) });
+const CallRow = z.object({ call_index: bytea });
 /** What these people have in a workspace, and nothing of anyone else's, however many it's shared with. */
 export async function holdersOf(db: Db, ownerId: string, principals: Uint8Array[]): Promise<Holders> {
   return {
     members: await rows(db, MemberRow, 'SELECT email_index, role FROM workspace_members WHERE owner_id = $1 AND email_index = ANY($2::bytea[])', [ownerId, principals]),
-    shares: await rows(db, ShareRow, 'SELECT principal_index, document_id, role, kind FROM document_access WHERE owner_id = $1 AND principal_index = ANY($2::bytea[])', [ownerId, principals])
+    shares: await rows(db, ShareRow, 'SELECT principal_index, document_id, role, kind FROM document_access WHERE owner_id = $1 AND principal_index = ANY($2::bytea[])', [ownerId, principals]),
+    calls: await rows(db, CallRow, `SELECT c.call_index FROM workspace_calls c WHERE c.owner_id = $1 AND c.call_index = ANY($2::bytea[])
+      AND EXISTS (SELECT 1 FROM workspace_members m WHERE m.owner_id = c.owner_id AND m.email_index = c.organizer_index AND m.role IN ('admin', 'edit'))`, [ownerId, principals])
   };
 }
+/** Holders for someone with nothing in a workspace. */
+export const NO_HOLDERS: Holders = { members: [], shares: [], calls: [] };
 /** How many people are in a workspace. */
 export const peopleIn = async (db: Db, ownerId: string): Promise<number> => (await maybeOne(db, z.object({ n: z.number() }), 'SELECT count(*)::int AS n FROM workspace_members WHERE owner_id = $1', [ownerId]))?.n ?? 0;
 const among = (principals: Uint8Array[], index: Uint8Array): boolean => principals.some((p) => Buffer.compare(p, index) === 0);
@@ -234,12 +257,19 @@ export function standingIn(h: Holders, who: Who): Standing {
       if (role) given.set(s.document_id, role);
     }
   }
-  return { role: h.members.find((m) => among(who.principals, m.email_index))?.role ?? null, grants, lasting };
+  return {
+    role: h.members.find((m) => among(who.principals, m.email_index))?.role ?? null, grants, lasting,
+    call: h.calls.some((c) => among(who.principals, c.call_index))
+  };
 }
 
-/** What someone can do with one item, or undefined when it doesn't exist for them. */
-export function roleOf(who: Who, s: Pick<Standing, 'role' | 'grants'>, id: string, item: Pick<StoredItem, 'kind' | 'by' | 'restricted' | 'restrictedBy'>): DocumentRole | undefined {
-  const asMember = s.role === null ? undefined : s.role === 'read' ? 'read' : 'edit';
+/**
+ * What someone can do with one item, or undefined when it doesn't exist for them. `call`, when it's given, is what being in a
+ * call that uses the workspace adds: what a member who can edit has, short of what's restricted. Leaving it out asks what
+ * someone has beyond the call, as who may share something does.
+ */
+export function roleOf(who: Who, s: Pick<Standing, 'role' | 'grants'> & { call?: boolean | undefined }, id: string, item: Pick<StoredItem, 'kind' | 'by' | 'restricted' | 'restrictedBy'>): DocumentRole | undefined {
+  const asMember = stronger(s.role === null ? undefined : s.role === 'read' ? 'read' : 'edit', s.call ? 'edit' : undefined);
   if (item.kind === 'folder') return asMember;
   const email = who.email?.trim().toLowerCase();
   const mine = email !== undefined && (item.by?.email === email || item.restrictedBy === email);
@@ -409,10 +439,16 @@ export function requireDocument(who: Who, w: WorkspaceAs, documentId: string, ne
   if (!found || found.item.kind === 'folder') throw notFound('That document', { workspaceId: w.workspaceId, documentId });
   return need === 'edit' ? requireEditable(who, w, documentId) : found;
 }
-/** What's only for people in the workspace. Anyone else, it doesn't exist for; a role that's too low is refused. */
-export function requireRole(w: WorkspaceAs, need: 'in' | 'edit' | 'admin'): void {
+/**
+ * What's only for people in the workspace. Anyone else, it doesn't exist for; a role that's too low is refused. `change` is
+ * changing what's in the tree, which someone in a call that uses the workspace may do too.
+ */
+export function requireRole(w: WorkspaceAs, need: 'in' | 'edit' | 'admin' | 'change'): void {
+  if (need === 'change' && w.call) return;
+  // Someone a call opens it to knows it's there, so what's only for its people is refused, not hidden.
+  if (w.role === null && w.call) throw new ForbiddenError('Only people in this workspace can do that.', { context: { workspaceId: w.workspaceId, need } });
   if (w.role === null) throw missing(w.workspaceId);
-  if ((need === 'admin' && w.role !== 'admin') || (need === 'edit' && w.role === 'read')) throw new ForbiddenError(need === 'admin' ? 'Only an admin can do that.' : 'You can read this workspace, but not change it.', { context: { workspaceId: w.workspaceId, need } });
+  if ((need === 'admin' && w.role !== 'admin') || ((need === 'edit' || need === 'change') && w.role === 'read')) throw new ForbiddenError(need === 'admin' ? 'Only an admin can do that.' : 'You can read this workspace, but not change it.', { context: { workspaceId: w.workspaceId, need } });
 }
 /**
  * Who gets to say who has a document: someone in the workspace who can edit it, in Trash or not. A seat is for working on it
@@ -517,8 +553,40 @@ export async function seatsInStep(w: Pick<Workspace, 'owner' | 'workspaceId'>, d
   return adding.length + going.length;
 }
 
+/**
+ * Opens a workspace to everyone in a call while the call uses it (`workspace_calls`), in the caller's transaction, which holds
+ * the workspace's row: whoever's let in can open and edit what isn't restricted, while they're in the call and `organizer`, its
+ * organizer's address, can still edit there. Asked again for the same call, it changes nothing. Streams hear once it commits.
+ */
+export async function openToCall(w: Pick<Workspace, 'owner' | 'workspaceId'>, db: Db, callId: string, organizer: string): Promise<void> {
+  const o = w.owner;
+  const added = await exec(db, 'INSERT INTO workspace_calls (owner_id, call_index, call_id, organizer_index) VALUES ($1, $2, $3, $4) ON CONFLICT (owner_id, call_index) DO NOTHING',
+    [o.ownerId, callIndex(o, callId, w.workspaceId), callId, emailIndex(o, organizer.trim().toLowerCase())]);
+  if (!added) return;
+  await exec(db, 'UPDATE workspaces SET version = version + 1 WHERE owner_id = $1', [o.ownerId]);
+  await publish(db, w.workspaceId, TREE_NOTICE);
+}
+
 /** A call, as what's done for it on the server names it: its organizer's keys, and which call. */
 export interface CallRef { organizer: Owner; callId: string }
+
+/**
+ * Opens a workspace to everyone in a call (`openToCall`), in that workspace's own transaction, with nothing of the call held:
+ * what someone opening Workspace, or the organizer switching to it, asks for. Already open to the call, gone, or no longer its
+ * organizer's to give: nothing changes.
+ */
+export async function openForCall(call: CallRef, workspaceId: string): Promise<void> {
+  const o = call.organizer;
+  const at = await workspaceAt(o.pool, workspaceId);
+  if (!at) return;
+  const open = await maybeOne(o.pool, z.object({ n: z.number() }), 'SELECT 1 AS n FROM workspace_calls WHERE owner_id = $1 AND call_index = $2', [at.ownerId, callIndex(o, call.callId, workspaceId)]);
+  if (open) return;
+  const organizer = (await profile(o)).email;
+  await tx(o.pool, async (c) => {
+    const w = await serverWorkspace(o, workspaceId, c, 'change');
+    if (w && await organizerEdits(o, w, c, organizer)) await openToCall(w, c, call.callId, organizer);
+  });
+}
 
 /**
  * The call's home, for the server to work in, and the call's folder at the top of it (`folderId`): what the server makes for

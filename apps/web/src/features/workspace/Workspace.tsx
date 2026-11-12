@@ -233,7 +233,13 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
     else setPhoneList(true);
   }, [wanted, workspaceId]);
   useTagToasts(store, view.mentions, tree, at, say, go);
-  const actions = useTreeActions({ workspaceId, pass, owner, tree, at, me, spaceName, change, go, say, openFolders: openAll, justMade, openDoc });
+  /* Someone in the workspace who can edit changes what's in it, and so does anyone in a call that uses it. */
+  const role = view.tree?.role ?? null;
+  const canChange = role === 'admin' || role === 'edit' || view.tree?.inCall === true;
+  /* The call's own folder, in its home: the list shows it as This call, and what's made in the call goes in it. */
+  const callFolder = call ? items.find((i) => i.kind === 'folder' && i.call?.here === true && i.trashedAt === null)?.id ?? null : null;
+  const madeIn = callFolder !== null && canChange && tree.all.get(callFolder)?.role === 'edit' ? callFolder : null;
+  const actions = useTreeActions({ workspaceId, pass, owner, tree, at, me, spaceName, callFolder, change, go, say, openFolders: openAll, justMade, openDoc });
   /* Everyone a document here may tag, quote or name for a follow-up, by the ID the workspace knows them by. */
   const member = view.tree?.role != null;
   const team = useQuery({ ...q.team(), enabled: member }).data;
@@ -242,8 +248,6 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
   const { put, lastDocument } = useSending({
     live: call?.live, workspaceId, pass, owner, tree, at, member, here: view.here, closed: call?.closed ?? false, go, say, openDoc, ids
   });
-  const role = view.tree?.role ?? null;
-  const canChange = role === 'admin' || role === 'edit';
   const documentId = at.kind === 'document' ? at.id : null;
   const item = documentId === null ? undefined : tree.all.get(documentId);
 
@@ -264,7 +268,7 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
   useEffect(() => { setPhoneList(at.kind === 'home' && !empty); }, [at.kind, documentId, empty]);
 
   const arrived = useRef(false);
-  const given = call !== undefined && view.tree?.role === null;
+  const given = call !== undefined && view.tree?.role === null && !view.tree.inCall;
   useEffect(() => {
     if (at.kind !== 'home') { arrived.current = false; return; }
     if (!view.tree || arrived.current || (phone && !given)) return;
@@ -342,16 +346,16 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
   /* A folder is named in the list, so the list has to be showing: in a call, wherever the call shows it, and never hidden. */
   const showInCall = call?.list.onShow;
   const newFolder = useCallback(() => {
-    setDraft({ parent: null });
+    setDraft({ parent: madeIn });
     setPhoneList(true);
     if (showInCall) showInCall();
     else setListOff(false);
-  }, [showInCall]);
+  }, [showInCall, madeIn]);
 
   /*
-   * N and ⇧N make something outside any folder, and sleep while you're typing, and while a new document is opening: what's
-   * typed then was meant for its title. On a board, N is the board's: a sticky, as the blank board says. ⌘\ shows or hides
-   * the list.
+   * N and ⇧N make something outside any folder, or in a call in its own folder (This call), and sleep while you're typing, and
+   * while a new document is opening: what's typed then was meant for its title. On a board, N is the board's: a sticky, as the
+   * blank board says. ⌘\ shows or hides the list.
    */
   const onBoard = item?.kind === 'board';
   const asleep = call?.closed ?? false;
@@ -362,11 +366,11 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
       if (e.metaKey || e.ctrlKey || e.altKey || typing(e.target) || overlayOpen() || !canChange || onBoard || justMade.current !== null || e.key.toLowerCase() !== 'n') return;
       e.preventDefault();
       if (e.shiftKey) newFolder();
-      else actions.newDocument(null);
+      else actions.newDocument(madeIn);
     };
     addEventListener('keydown', keys);
     return () => removeEventListener('keydown', keys);
-  }, [actions, canChange, onBoard, newFolder, toggleList, asleep]);
+  }, [actions, canChange, onBoard, newFolder, toggleList, asleep, madeIn]);
 
   const find = useFindKeys(asleep, call?.finding ?? false, call?.onFinding);
   useWordsFollow(workspaceId, pass, view);
@@ -374,7 +378,7 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
   const { drag, arm, ended } = useRowDrag({
     tree, canDrag: (id) => canChange && tree.all.get(id)?.role === 'edit',
     onOpenFolder: (id) => setOpen(id, true),
-    canBring: call !== undefined,
+    canBring: call !== undefined, callFolder,
     onDrop: (id, spot) => { if (spot.kind === 'trash') actions.trash(id); else if (spot.kind === 'bring') call?.onBring(id, true); else actions.move(id, spot.to); }
   });
 
@@ -396,7 +400,7 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
 
   const ws: Ws = {
     mode, workspaceId, pass, call, sent: view.tree, here: view.here, others, present, following, follow, stopFollowing, items, tree, at, go, switchTo: onSwitch, owner, me,
-    self: view.here.find((h) => h.isMe)?.person ?? me, actions, say, canChange, spaceName, spaceSave, listDown: view.status === 'reconnecting' ? { onTry: online ? store.retry : undefined } : null,
+    self: view.here.find((h) => h.isMe)?.person ?? me, actions, say, canChange, callFolder, madeIn, spaceName, spaceSave, listDown: view.status === 'reconnecting' ? { onTry: online ? store.retry : undefined } : null,
     open, setOpen, glowing, blockInto, setBlockInto, draft, setDraft, renaming, setRenaming, listOff, toggleList, justMade, openDoc, page, put, lastDocument, openFind: () => find.setFinding(true), pictures, ids
   };
   const host = call ? { live: call.live, at, go, say, here: view.here, workspaceId, put, lastDocument, closed: call.closed, toggleList, ids, following, stopFollowing: () => stopFollowing() } : null;
@@ -418,8 +422,8 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
           <WsDoc className={listOff ? undefined : 'is-bare'}>
             <WsDocHead crumbs={[spaceName]} save="quiet" onToggleList={toggleList} />
             {empty
-              ? <WsEmpty space={spaceName} page={isPage} onDocument={canChange ? () => actions.newDocument(null) : undefined} onFolder={canChange ? newFolder : undefined} />
-              : <WsPickDocument onDocument={canChange ? () => actions.newDocument(null) : undefined} />}
+              ? <WsEmpty space={spaceName} page={isPage} onDocument={canChange ? () => actions.newDocument(madeIn) : undefined} onFolder={canChange ? newFolder : undefined} />
+              : <WsPickDocument onDocument={canChange ? () => actions.newDocument(madeIn) : undefined} />}
           </WsDoc>
         )}
       </WsPane>

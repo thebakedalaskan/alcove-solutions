@@ -95,7 +95,7 @@ export const OpenTheWorkspace: PageStory = {
       await dock();
       await userEvent.click(await screen.findByRole('button', { name: /^Workspace/ }, LATER));
     });
-    await step('It opens just for you. Nobody else’s screen changes. This call’s own pages are in its list, with its documents', async () => {
+    await step('It’s only on your screen: nobody else’s changes, and everyone in the call can edit it, as its bar says. This call’s own pages are at the top of its list, then its documents', async () => {
       await frame(yours, LATER);
     });
     await step('Click Launch plan, and work on your own. Present, on its bar, brings everyone here', async () => {
@@ -125,14 +125,14 @@ export const OpenABoard: PageStory = {
       await dock();
       await userEvent.click(await screen.findByRole('button', { name: 'Board' }, LATER));
     });
-    await step('Pick Launch retro, one of your team’s boards. Only you see it until you present it', async () => {
+    await step('Pick Launch retro, one of your team’s boards. It’s only on your screen until you present it, and everyone in the call can edit it', async () => {
       // Your team's boards come in a moment after the picker opens, and like every menu it takes no press just after its rows move.
       const picker = await screen.findByRole('dialog', { name: 'Open a board' }, LATER);
       await within(picker).findByRole('button', { name: /^Launch retro/ }, LATER);
       await still(picker);
       await userEvent.click(within(picker).getByRole('button', { name: /^Launch retro/ }));
     });
-    await step('It opens just for you. Look around and add to it on your own. Present, on its bar, brings everyone', async () => {
+    await step('It opens on your screen. Look around and add to it on your own. Present, on its bar, brings everyone', async () => {
       await frame('Launch retro, only you see it', LATER);
     });
     await step('Click Present. Everyone follows your view, with their tools to hand. The arrows at its foot step through its frames, in the order they sit', async () => {
@@ -190,7 +190,7 @@ export const WhenSomeoneElsePresents: PageStory = {
       await userEvent.click(await screen.findByRole('button', { name: /^Join / }, SOON));
       await onBar(await frame(everyones), 'Unfollow Priya');
     });
-    await step('If Priya stops while it’s closed for you, its tile goes too. Workspace, at the top right, still opens it just for you', async () => {
+    await step('If Priya stops while it’s closed for you, its tile goes too. Workspace, at the top right, still opens it, on your screen', async () => {
       await userEvent.click(await onBar(await frame(everyones), /^Close /));
       await screen.findByRole('button', { name: /^Join / }, SOON);
       await screen.findByText('Priya stopped presenting the workspace.', {}, { timeout: PRIYA_STOPS * 1000 });
@@ -256,7 +256,7 @@ export const NotesTranscriptAndChat: PageStory = {
     await step('Click Ask. Catch up lives here: ask what you missed, or anything about the call', async () => {
       await userEvent.click(within(await notesPanel()).getByRole('tab', { name: 'Ask' }));
     });
-    await step('Click Open, at the top of Notes. The workspace opens on these notes, just for you, as Workspace at the top right would. Present brings everyone', async () => {
+    await step('Click Open, at the top of Notes. The workspace opens on these notes, on your screen, as Workspace at the top right would. Present brings everyone', async () => {
       await userEvent.click(await screen.findByRole('button', { name: 'Open the workspace on these notes' }, SOON));
       await onBar(await frame(yours, LATER), 'Present');
     });
@@ -332,7 +332,7 @@ export const OnAPhone: PageStory = {
     await step('Board and Workspace come first, then Notes, Chat and People. Tap Workspace', async () => {
       await userEvent.click(await screen.findByRole('button', { name: /^Workspace/ }, SOON));
     });
-    await step('It opens just for you, under the faces. Present brings everyone with you', async () => {
+    await step('It opens on your screen, under the faces. Present brings everyone with you', async () => {
       await frame(yours, LATER);
     });
     await step('Tap Present. Everyone follows you', async () => {

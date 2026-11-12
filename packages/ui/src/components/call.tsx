@@ -10,7 +10,7 @@ import { motion, useReducedMotion } from 'motion/react';
 import { Emoji, type EmojiName } from './emoji';
 import { Dots, EASE } from './motion';
 import { Popover, Tooltip } from './overlay';
-import { Avatar, PortraitArt, type AvatarPerson } from './people';
+import { andList, Avatar, PortraitArt, type AvatarPerson } from './people';
 import { Button, IconButton, Notice, RecDot, Slider, Spinner, Segmented, Switch } from './primitives';
 
 /** "#RRGGBB" at an alpha, for the person's colour as room light. */
@@ -264,6 +264,17 @@ export interface CallFrameClose {
   ask?: CloseAskProps | undefined;
 }
 
+/**
+ * Who can edit what's in a frame, said after how it stands: "Everyone in the call can edit", "You can edit while you’re in the
+ * call", "Everyone in this room can edit". With `onPress` it's a button that opens who has it, in place of the name's menu
+ * (`open` says that's showing now, so pressing it again puts it away); without, it's only said.
+ */
+export interface CallFrameAccess {
+  label: string;
+  onPress?: (() => void) | undefined;
+  open?: boolean | undefined;
+}
+
 /** Present, on the bar of a board or the workspace open just for you. */
 export interface CallFramePresent {
   onPress: () => void;
@@ -274,20 +285,22 @@ export interface CallFramePresent {
 
 /**
  * The frame anything open on your stage wears: a board, the workspace or a screen. Its bar says whose it is (their arch, or
- * the kind's icon while nobody presents it), what it is and how it stands, then what's yours to press: following its
+ * the kind's icon while nobody presents it), what it is, how it stands and who can edit it, then what's yours to press: following its
  * presenter, Present, focus, Stop sharing and Close. The body fills the rest; `foot` floats at its foot, centred. It fills
  * the box it's given: the app places that box. The frame itself takes the keys from code (not from Tab), as it opens from its
  * tile: what it is is said, and Tab goes on to its bar.
  */
-export function CallFrame({ who, icon, name, meta, menu, following, present, focus, onStop, close, lit = false, focused = false, phone = false, foot, label, className, style, children }: {
+export function CallFrame({ who, icon, name, meta, access, menu, following, present, focus, onStop, close, lit = false, focused = false, phone = false, foot, label, className, style, children }: {
   /** Whoever presents it, in the arch; null while nobody does: the kind's icon in a small square instead. */
   who: AvatarPerson | null;
   /** The kind: `presentation` for a board, `folderOpen` for the workspace, `screen` for a screen. */
   icon: IconName;
   /** "Launch retro", "Launch review · 4 Nov", "Your screen", "Priya’s screen". */
   name: string;
-  /** "Open just for you", "You’re presenting · 3 following", "You’re presenting · a tab with sound", "Priya is presenting". */
+  /** "Only on your screen", "You’re presenting · 3 following", "You’re presenting · a tab with sound", "Priya is presenting". */
   meta: string;
+  /** Who can edit it, after `meta`: a board or the workspace everyone in the call can edit. */
+  access?: CallFrameAccess | null | undefined;
   /** The name is a menu ▾ with the app's rows (`.mi`), in a popover under it. Null: the name is plain text. */
   menu: { open: boolean; onOpenChange: (open: boolean) => void; label: string; children: ReactNode } | null;
   following: CallFrameFollowing | null;
@@ -323,6 +336,11 @@ export function CallFrame({ who, icon, name, meta, menu, following, present, foc
     if (pressed && (document.activeElement === null || document.activeElement === document.body)) followButton.current?.focus({ preventScroll: true });
   }, [followOn]);
   const toggleFollow = () => { followPressed.current = true; following?.onToggle(); };
+  /*
+   * Who can edit it opens who has it in the name's menu, which a press anywhere else puts away first: pressed while that's
+   * showing, it stays put away rather than opening again.
+   */
+  const accessWasOpen = useRef(false);
   const closeButton = close && (
     <button type="button" className="ic-close" aria-label={`Close ${name}`} onClick={close.ask ? undefined : close.onClose}>
       <Icon name="x" size={15} />Close{close.ask && <Icon name="down" size={13} className="chev" />}
@@ -347,7 +365,16 @@ export function CallFrame({ who, icon, name, meta, menu, following, present, foc
                 {menu.children}
               </Popover>
             ) : <span className="ic-fname">{title}</span>}
-            <span className="ic-fmeta">{meta}</span>
+            <span className="ic-fstat">
+              <span className="ic-fmeta">{meta}</span>
+              {access && (access.onPress ? (
+                <button type="button" className="ic-facc" aria-expanded={access.open ?? false} title="Who’s in it"
+                  onPointerDown={() => { accessWasOpen.current = access.open === true; }}
+                  onClick={() => { if (accessWasOpen.current) { accessWasOpen.current = false; return; } access.onPress?.(); }}>
+                  <Icon name="people" size={14} /><span className="t">{access.label}</span>
+                </button>
+              ) : <span className="ic-facc"><Icon name="people" size={14} /><span className="t">{access.label}</span></span>)}
+            </span>
           </div>
         </div>
         <div className="ic-fend">
@@ -489,8 +516,6 @@ export interface PresentAskProps {
   phone?: boolean | undefined;
 }
 
-/** Names as a sentence says them, as the board picker does: "Theo", "Theo and Sam", "Theo, Sam and Kofi". */
-const andList = (names: string[]): string => (names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names.at(-1) ?? ''}`);
 
 /** Present's question, under `anchor` (Present on the frame's bar). */
 export function PresentAsk({ open, onOpenChange, names, board, where, onLetIn, onWithout, busy = false, phone = false, anchor }: PresentAskProps & { anchor: ReactNode }) {

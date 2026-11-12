@@ -866,13 +866,14 @@ export function useSortStickies(pass?: string | undefined) {
     }
   });
 }
-/** A document in a workspace made a moment ago, before anything in it is on screen: a call's new workspace starts with one. */
-export function useFirstDocument() {
-  return useMutation({ mutationFn: (workspaceId: string) => api.workspaces.items.create(workspaceId, { kind: 'document' }) });
+/** A document in a workspace made a moment ago, before anything in it is on screen: a call's new workspace starts with one. `pass`: the call's. */
+export function useFirstDocument(pass: string | undefined) {
+  return useMutation({ mutationFn: (workspaceId: string) => api.workspaces.items.create(workspaceId, { kind: 'document' }, pass ? { pass } : undefined) });
 }
 /**
  * Changes to a workspace's tree. Nothing's cached: what changed reaches the list on the workspace's stream. What can be brought
- * to a call is read again after each, as it lists these documents. `pass`: a guest's.
+ * to a call is read again after each, as it lists these documents. `pass`: the call's, in a call, where it lets anyone in the
+ * call change what's in the workspace it uses; deleting for good is never the pass's.
  */
 export function useItemChanges() {
   const qc = useQueryClient();
@@ -881,12 +882,12 @@ export function useItemChanges() {
   const as = (target: Target) => target.pass ? { pass: target.pass } : undefined;
   const library = () => qc.invalidateQueries({ queryKey: qk.documents });
   return {
-    create: useMutation({ mutationFn: (v: Target & { input: ItemInput }) => w.items.create(v.workspaceId, v.input), onSuccess: library }),
+    create: useMutation({ mutationFn: (v: Target & { input: ItemInput }) => w.items.create(v.workspaceId, v.input, as(v)), onSuccess: library }),
     // The live owner orders work; explicit targets survive an observer's options changing during navigation.
     rename: useMutation({ mutationFn: (v: Target & { id: string; name: string }) => w.items.rename(v.workspaceId, v.id, v.name, as(v)), onSuccess: library }),
-    move: useMutation({ mutationFn: (v: Target & { id: string; to: ItemPlace }) => w.items.move(v.workspaceId, v.id, v.to), onSuccess: library }),
-    duplicate: useMutation({ mutationFn: (v: Target & { id: string }) => w.items.duplicate(v.workspaceId, v.id), onSuccess: library }),
-    trash: useMutation({ mutationFn: (v: Target & { id: string }) => w.items.trash(v.workspaceId, v.id), onSuccess: library }),
+    move: useMutation({ mutationFn: (v: Target & { id: string; to: ItemPlace }) => w.items.move(v.workspaceId, v.id, v.to, as(v)), onSuccess: library }),
+    duplicate: useMutation({ mutationFn: (v: Target & { id: string }) => w.items.duplicate(v.workspaceId, v.id, as(v)), onSuccess: library }),
+    trash: useMutation({ mutationFn: (v: Target & { id: string }) => w.items.trash(v.workspaceId, v.id, as(v)), onSuccess: library }),
     restore: useMutation({ mutationFn: (v: Target & { id: string }) => w.items.restore(v.workspaceId, v.id, as(v)), onSuccess: library }),
     deleteForever: useMutation({ mutationFn: (v: Target & { id: string }) => w.items.deleteForever(v.workspaceId, v.id), onSuccess: library })
   };

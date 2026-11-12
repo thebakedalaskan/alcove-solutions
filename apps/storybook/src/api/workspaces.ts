@@ -42,7 +42,7 @@ export function treeOf(id: string): Space {
 /** Its tree, as the API sends it: what the Drive says of it besides stays out. */
 const treeOnly = ({ createdAt: _made, call: _call, ...tree }: Space): WorkspaceTree => tree;
 export const treeFor = (id: string): WorkspaceTree => treeOnly(treeOf(id));
-const summaryOf = ({ items: _items, ...rest }: Space): WorkspaceSummary => rest;
+const summaryOf = ({ items: _items, inCall: _inCall, ...rest }: Space): WorkspaceSummary => rest;
 /** Your Drive: every workspace you're in, the newest first, then each one you only have documents in. */
 const drive = (a: WorkspaceSummary, b: WorkspaceSummary) => Number(a.role === null) - Number(b.role === null) || (b.createdAt ?? '').localeCompare(a.createdAt ?? '');
 export const workspaceList = (): WorkspaceSummary[] => current().workspaces.map(summaryOf).sort(drive);

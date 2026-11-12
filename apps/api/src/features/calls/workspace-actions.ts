@@ -9,8 +9,8 @@ import { MeetingManifest, updateManifest } from '../meetings/service';
 import { zoneOf } from '../meetings/repeats';
 import { getItem } from '../../vault';
 import { Joined, placeOf } from './places';
-import { readerInCall, workspaceOwner } from '../workspaces/access';
-import { endSeat, makeHome } from '../workspaces/service';
+import { openForCall, readerInCall, workspaceOwner } from '../workspaces/access';
+import { makeHome } from '../workspaces/service';
 import { log } from '../../log';
 import { seatKey, seatOf, type Viewer } from './participants';
 import { load, save, saveSettled, settle } from './state';
@@ -54,15 +54,13 @@ export async function actOnWorkspace(v: Viewer, callId: string, a: space.SpaceAc
       const changed = await apply({ ...changing, c });
       if (changed === 'again') return 'again';
       const { closed } = await saveSettled(o, c, callId, state, changed.s);
-      clog.info('call action', { callId, action: a.type, present: changed.s.workspace.present.length, space: changed.s.workspace.space.length, play: changed.s.workspace.play.length, asks: changed.s.workspace.asks.length, tries });
-      return { room: row.room_name, ended: changed.ended, made: changed.made, meetingId: row.meeting_item_id, closed };
+      clog.info('call action', { callId, action: a.type, present: changed.s.workspace.present.length, space: changed.s.workspace.space.length, play: changed.s.workspace.play.length, tries });
+      return { room: row.room_name, made: changed.made, meetingId: row.meeting_item_id, closed };
     });
     if (done === 'again') {
       if (tries < SPACE_TRIES) continue;
       throw new ConflictError('This call changed while that was being done. Try again.', { context: { ...ctx, tries } });
     }
-    // A grant to someone removed while it was made goes, as their removal took everything else.
-    if (done.ended) await endSeat(o, callId, done.ended);
     if (done.made) await space.followHome(o, done.meetingId, { add: done.made.guests }, [done.made.workspaceId]);
     return afterClosing({ organizer: o, callId }, done.closed, async () => {
       await tellRoom(o, done.room, callId, { call: true, log: false });
@@ -191,6 +189,10 @@ export async function openWorkspace(v: Viewer, callId: string, timeZone: string 
   const o = v.organizer;
   try {
     await settledHome(o, callId, timeZone);
+    // Open to everyone in the call: the workspace it uses now, the home unless the organizer switched.
+    const { state } = await load(o, o.pool, callId);
+    const inUse = state.workspace.viewing ?? state.workspace.home?.workspaceId;
+    if (inUse) await openForCall({ organizer: o, callId }, inUse);
     await agendaFor(o, callId).catch((e: unknown) => clog.warn('next agenda not made', { callId, err: e }));
   } catch (e) {
     if (v.isOrganizer || !(e instanceof ConflictError)) throw e;

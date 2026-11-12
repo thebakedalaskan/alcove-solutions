@@ -572,6 +572,9 @@ describe('who is told of them', () => {
     const kofi = await account();
     const id = await workspace(art, 'Product', [[lena, 'read']]);
     const saved = (await art.api.workspaces.items.create(id, { kind: 'board', name: 'Planning' })).id;
+    // Restricted, and Lena given it to read: the call that uses its workspace opens nothing restricted.
+    await art.api.workspaces.share.restrict(id, saved, true);
+    await art.api.workspaces.share.set(id, saved, [{ email: lena.email }], 'read');
     const { host, code: c } = await callBy(art, [lena.email, kofi.email]);
     const l = await invited(host, c, lena);
     const k = await invited(host, c, kofi);
@@ -607,6 +610,8 @@ describe('who is told of them', () => {
     const kofi = await account();
     const id = await workspace(art, 'Product');
     const planning = (await art.api.workspaces.items.create(id, { kind: 'board', name: 'Planning' })).id;
+    // Restricted: the call that uses its workspace opens nothing restricted.
+    await art.api.workspaces.share.restrict(id, planning, true);
     const { host, code: c } = await callBy(art, [kofi.email]);
     const k = await invited(host, c, kofi);
     const jamie = await guest(host, c);
@@ -725,6 +730,10 @@ async function savedBoardCall(priyaBrowser?: Browser) {
   const lena = await account();
   const id = await workspace(art, 'Product', [[kofi, 'edit'], [priya, 'edit'], [lena, 'read']]);
   const saved = (await art.api.workspaces.items.create(id, { kind: 'board', name: 'Planning' })).id;
+  // Restricted to who it's shared with, so being in the call that uses its workspace gives Lena no more than reading it.
+  await art.api.workspaces.share.restrict(id, saved, true);
+  await art.api.workspaces.share.set(id, saved, [{ email: kofi.email }, { email: priya.email }], 'edit');
+  await art.api.workspaces.share.set(id, saved, [{ email: lena.email }], 'read');
   const { host, code: c } = await callBy(art, [kofi.email, priya.email, lena.email]);
   const k = await invited(host, c, kofi);
   const p = await invited(host, c, priya);

@@ -1,6 +1,7 @@
 /*
  * The call, rethought (docs/design/canvas/call/, nc.js): every moment its seven journeys show, each reached as a person would
- * reach it. Board and Workspace at the top right open on your stage just for you; Present, on what you have open, or Share in
+ * reach it. Board and Workspace at the top right open on your stage, only on your screen, and everyone in the call can edit
+ * what they open; Present, on what you have open, or Share in
  * the dock brings everyone with you; everyone follows whoever presents, and on a board or in the workspace they can unfollow;
  * something presented that isn't on your stage is a tile with the people, only while it's presented; and Close is for you,
  * asking for you or for everyone while you present. Then the review's three hard cases: a presentation that starts while
@@ -24,7 +25,7 @@ import {
   LATER, SOON, boardPicker, close, closeFor, frameMenu, frameOf, onTheBar, pickBoard, present, settle, shareATab, shareKind, shareMenu, sideAway, startingWith,
   tileOf, toldThat, toldThenGone, type Context, type Play
 } from './plays';
-import { AIKO, ART, CHECKLIST, EMPTY_STATES, KOFI, LAUNCH_REVIEW, PLAN, PRIYA } from './talk';
+import { AIKO, ART, CHECKLIST, EMPTY_STATES, KOFI, LAUNCH_REVIEW, PLAN, PRIYA, SAM } from './talk';
 
 const meta = { title: 'Calls/The call, rethought', ...pages } satisfies Meta<PageArgs>;
 export default meta;
@@ -113,10 +114,13 @@ const presentWorkspace = step('Press Present on its bar: everyone follows you', 
 const wsOn = 'Everyone follows you in the workspace. They can unfollow to work alongside you.';
 const followsYou = step('Everyone follows you', () => toldThat(wsOn));
 
-/** Workspace, at the top right: it opens on your stage just for you, and nobody else's screen changes. */
-export const WorkspaceOpenJustForYou: PageStory = { ...moment(yours(), openWorkspace, step('It’s open just for you', () => frameOf(WS))), name: 'Workspace open just for you' };
+/**
+ * Workspace, at the top right: it opens on your stage, only on your screen, and nobody else's screen changes. Its bar says so,
+ * and that everyone in the call can edit it.
+ */
+export const WorkspaceOpenJustForYou: PageStory = { ...moment(yours(), openWorkspace, step('It’s only on your screen, and everyone in the call can edit it', () => frameOf(WS))), name: 'Workspace only on your screen' };
 /** On a phone, Workspace is at the top of More, and it opens under the faces. */
-export const WorkspaceOpenJustForYouPhone: PageStory = { ...phone(WorkspaceOpenJustForYou), name: 'Workspace open just for you, on a phone' };
+export const WorkspaceOpenJustForYouPhone: PageStory = { ...phone(WorkspaceOpenJustForYou), name: 'Workspace only on your screen, on a phone' };
 /** Launch plan, on your own: Present, on the workspace's bar, brings everyone here. */
 export const WorkspaceOnLaunchPlan: PageStory = { ...moment(yours(), openWorkspace, toThePlan), name: 'Workspace open on Launch plan' };
 /** Present: everyone follows you, live, and anyone can unfollow to write alongside you. */
@@ -147,7 +151,7 @@ export const WorkspaceClosedForEveryone: PageStory = {
     step('It closes for everyone', () => toldThat('Closed for everyone.'))),
   name: 'Workspace closed for everyone'
 };
-/** Open, at the top of Notes: the workspace opens on these notes, just for you, as Workspace at the top right would. */
+/** Open, at the top of Notes: the workspace opens on these notes, on your screen, as Workspace at the top right would. */
 export const WorkspaceFromNotes: PageStory = {
   ...inCall(yours(), {
     play: plays(reach('Notes'), step('Press Open, at the top of Notes: the workspace opens on these notes', async (c) => {
@@ -161,7 +165,7 @@ export const WorkspaceFromNotes: PageStory = {
 /* ---------- 2 Open a board, then present it ---------- */
 
 const retro = 'Launch retro';
-const openRetro = step('Press Board, then Launch retro, from your team’s boards: it opens just for you', async (c) => { await pickBoard(c, retro); await frameOf(retro); });
+const openRetro = step('Press Board, then Launch retro, from your team’s boards: it comes into the call, on your screen until you present it, and everyone here can edit it', async (c) => { await pickBoard(c, retro); await frameOf(retro); });
 const presentRetro = step('Press Present on its bar: everyone follows you, and its foot steps through its frames', (c) => present(c, retro));
 const boardOn = `Everyone follows you on ${retro}. They can add to it as you go.`;
 const presented = [openRetro, presentRetro, step('Everyone follows you', () => toldThat(boardOn))];
@@ -170,10 +174,30 @@ const nextFrame = step('Press Next frame, at its foot: everyone following you mo
   await screen.findByText('2 of 3', {}, SOON);
 });
 
-/** Board, at the top right: a new board, or one your team has. Only you see it until you present it. */
+/** Board, at the top right: a new board, or one your team has. It's only on your screen until you present it, and everyone in the call can edit it. */
 export const TheBoardPicker: PageStory = { ...moment(yours(), step('Press Board, at the top right', boardPicker)), name: 'The board picker' };
-/** Launch retro, from your team's boards: open just for you, to look round and add to on your own. */
-export const ABoardOpenJustForYou: PageStory = { ...moment(yours(), openRetro), name: 'A board open just for you' };
+/** Launch retro, from your team's boards: on your screen, to look round and add to on your own, and everyone here can edit it too. */
+export const ABoardOpenJustForYou: PageStory = { ...moment(yours(), openRetro), name: 'A board on your screen' };
+export const ABoardOpenJustForYouLight: PageStory = { ...light(ABoardOpenJustForYou), name: 'A board on your screen, in a light theme' };
+export const ABoardOpenJustForYouPhone: PageStory = { ...ABoardOpenJustForYou, name: 'A board on your screen, on a phone', globals: PHONE };
+/** Your launch review, with Sam, who came in with the link: a guest, in none of your workspaces. */
+const withSam = (): InCall => review(LAUNCH_REVIEW, [{ who: PRIYA }, { who: KOFI }, { who: AIKO }, { who: SAM, guest: true }], {});
+const askedAboutSam = step('Press Board, then Onboarding flow, from your team’s boards. It’s in Design, and Sam can’t open it: it asks once, in the picker’s place', async (c) => {
+  await pickBoard(c, 'Onboarding flow');
+  await screen.findByText('Let everyone here edit Onboarding flow?', {}, LATER);
+});
+/** A saved board someone here can't open: let everyone here edit it, or not now. */
+export const ASavedBoardSomeoneCantOpen: PageStory = { ...moment(withSam(), askedAboutSam), name: 'A saved board someone can’t open' };
+export const ASavedBoardSomeoneCantOpenPhone: PageStory = { ...ASavedBoardSomeoneCantOpen, name: 'A saved board someone can’t open, on a phone', globals: PHONE };
+/** Open it: it comes into the call on your screen, and everyone here can edit it while they're in the call, Sam too, as its bar says. */
+export const ASavedBoardLetIn: PageStory = {
+  ...moment(withSam(), askedAboutSam, step('Press Open it', async (c) => {
+    await settle();
+    await c.userEvent.click(await screen.findByRole('button', { name: 'Open it' }, SOON));
+    await frameOf('Onboarding flow');
+  })),
+  name: 'A saved board, everyone let in'
+};
 /** Present: everyone follows you, and the arrows at its foot step through its frames. */
 export const YouPresentABoard: PageStory = { ...moment(yours(), ...presented), name: 'You present a board' };
 /** A moment later: 1 of 3, Went well, at its foot. */
@@ -240,7 +264,7 @@ export const StopSharingFromShare: PageStory = {
     step('Press Presenting in the dock, then Stop sharing: Share asks, wherever what you present is', stopInShare)),
   name: 'Stop sharing, from Share'
 };
-/** For everyone: the workspace closes for everyone, its tile goes, and the board open just for you stays. */
+/** For everyone: the workspace closes for everyone, its tile goes, and the board on your screen stays. */
 export const StoppedFromShare: PageStory = {
   ...moment(yours(), openWorkspace, toThePlan, presentWorkspace, followsYou, workspaceAway,
     step('Press Presenting in the dock, Stop sharing, then For everyone', async (c) => {
@@ -281,16 +305,16 @@ export const BackFromItsTile: PageStory = {
     step('Press its tile: you’re back in, following her', async (c) => { await c.userEvent.click(await tileOf(WS)); await frameOf(WS); })),
   name: 'Back in from its tile'
 };
-/** Priya stops while it's closed for you: its tile goes too. Workspace still opens it just for you. */
+/** Priya stops while it's closed for you: its tile goes too. Workspace still opens it, on your screen. */
 export const PriyaStopped: PageStory = {
   ...moment(hers({ cues: [...at(PRIYA_PRESENTS, presentsWorkspace(PRIYA)), ...at(PRIYA_PRESENTS + 10, stopsPresenting())] }),
     followingPriya, closeTheirs, step('Priya stops: its tile goes', () => toldThat('Priya stopped presenting the workspace.'))),
   name: 'Priya stopped presenting'
 };
-/** One board or workspace is presented at a time: while Priya presents the workspace, a board you open just for you has no Present. */
+/** One board or workspace is presented at a time: while Priya presents the workspace, a board you open on your screen has no Present. */
 export const ABoardOfYoursWhilePriyaPresents: PageStory = {
   ...moment(priyaWs, followingPriya,
-    step('Press Board, then Launch retro: it opens just for you, and has no Present while Priya presents', async (c) => { await pickBoard(c, 'Launch retro'); await frameOf('Launch retro'); })),
+    step('Press Board, then Launch retro: it opens on your screen, and has no Present while Priya presents', async (c) => { await pickBoard(c, 'Launch retro'); await frameOf('Launch retro'); })),
   name: 'A board of yours, while Priya presents'
 };
 /** Share, while Priya presents the workspace: A board and The workspace say who's presenting, so nothing's made that couldn't be. */
@@ -363,20 +387,20 @@ export const PriyaClosesItForEveryone: PageStory = {
 };
 /**
  * Kofi presents the workspace in Priya's call, and she sends him to a breakout room: his presentation ends there and then, said
- * at once, and what you followed stays open, just for you.
+ * at once, and what you followed stays open, only on your screen.
  */
 const kofiPresents = (cues: Cue[]) => hers({ cues: [...at(PRIYA_PRESENTS, presentsWorkspace(KOFI)), ...at(PRIYA_PRESENTS + 3, { do: 'rooms', rooms: [{ name: 'Rollout', people: [AIKO] }, { name: 'Support', people: [] }], minutes: 10 }), ...cues] });
 const followingKofi = step('Kofi presents the workspace: you follow him', () => toldThat('Kofi is presenting the workspace, and you’re following.'));
 export const KofiMovedToARoom: PageStory = {
   ...moment(kofiPresents(at(PRIYA_PRESENTS + 9, movesToRoom(KOFI, 'Rollout'))), followingKofi,
     step('Priya moves Kofi to Rollout: his presentation ends, and you’re told at once', () => toldThat('Kofi stopped presenting the workspace.')),
-    step('What you followed stays open, just for you', () => screen.findByText('Open just for you', {}, SOON))),
+    step('What you followed stays open, only on your screen', () => screen.findByText('Only on your screen', {}, SOON))),
   name: 'Kofi moved to a room while he presents'
 };
-/** You're moved to a room while you follow Kofi: what was presented where you were ends for you without a word, and stays open just for you. */
+/** You're moved to a room while you follow Kofi: what was presented where you were ends for you without a word, and stays open, only on your screen. */
 export const YouMovedToARoom: PageStory = {
   ...moment(kofiPresents(at(PRIYA_PRESENTS + 9, movesToRoom('me', 'Support'))), followingKofi,
-    step('Priya moves you to Support: what Kofi presents stays in the main room, and the workspace stays open just for you', () => screen.findByText('Open just for you', {}, LATER))),
+    step('Priya moves you to Support: what Kofi presents stays in the main room, and the workspace stays open, only on your screen', () => screen.findByText('Only on your screen', {}, LATER))),
   name: 'You, moved to a room while Kofi presents'
 };
 /** Priya organizes the call: she stops what you share for everyone, and the call says it was her. */
@@ -458,10 +482,10 @@ export const TwoPresentedCloseOne: PageStory = {
 /** Priya's call with Harbourline: you come in with the link, by name, and she lets you in. */
 const HARBOURLINE: StoryCall = { id: 'm-harbourline', title: 'Harbourline intro', startsAt: iso(0, 16, 5), minutes: 30, code: 'hbr-intr-prs', organizer: PRIYA, guests: [KOFI], status: 'live' };
 const asGuest = (cues: Cue[]): InCall => ({ scenario: 'signed-out', call: HARBOURLINE, script: { here: [{ who: PRIYA, organizer: true }, { who: KOFI }], cues: [...at(0.5, { do: 'let-in' }), ...cues] } });
-const guestTold = step('Priya presents the workspace: you’re told who, and never what', () => toldThat('Priya is presenting something you can’t open'));
-/** A guest is told who's presenting, and never what: no frame and no tile, as there's nothing they may see. */
-export const AGuestIsToldWho: PageStory = { ...moment(asGuest(at(8, presentsWorkspace(PRIYA))), guestTold), name: 'A guest, while Priya presents' };
+const guestFollows = step('Priya presents the workspace: it opens to a guest as to everyone in the call, so you follow her', () => toldThat('Priya is presenting the workspace, and you’re following.'));
+/** A guest follows whoever presents the workspace, as everyone in the call does: it opens to them while they're in the call. */
+export const AGuestIsToldWho: PageStory = { ...moment(asGuest(at(8, presentsWorkspace(PRIYA))), guestFollows), name: 'A guest, while Priya presents' };
 /** A guest's board picker says a guest can't start a board, and has nothing to open. */
 export const AGuestsBoardPicker: PageStory = { ...moment(asGuest([]), step('Press Board, at the top right', boardPicker)), name: 'A guest’s board picker' };
-/** A guest's Share: their screen, and why a board and the workspace aren't theirs to present. */
-export const AGuestsShare: PageStory = { ...moment(asGuest(at(8, presentsWorkspace(PRIYA))), guestTold, openShare), name: 'A guest’s Share' };
+/** A guest's Share: their screen and the workspace, once nobody else presents, and why a board isn't theirs to start. */
+export const AGuestsShare: PageStory = { ...moment(asGuest(at(8, presentsWorkspace(PRIYA))), guestFollows, openShare), name: 'A guest’s Share' };

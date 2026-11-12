@@ -28,10 +28,10 @@ import { useWs, type Ws } from './context';
 import { canKeepEdits } from './keep';
 import { useBackOnline, useOpensAgain, useSession, useTriesWhenShown, type Opened } from './opened';
 import { ShareSheet } from './Sheets';
-import { foldersAbove, nameOf } from './tree';
+import { folderName, foldersAbove, nameOf } from './tree';
 
 /** Where a board is: its workspace and the folders it's in. Its own name is on its bar, below. */
-const crumbsAbove = (ws: Ws, item: WorkspaceItem): string[] => [...(ws.sent.name === null ? [] : [ws.spaceName]), ...foldersAbove(ws.tree, item.id).map(nameOf)];
+const crumbsAbove = (ws: Ws, item: WorkspaceItem): string[] => [...(ws.sent.name === null ? [] : [ws.spaceName]), ...foldersAbove(ws.tree, item.id).map((f) => folderName(f, ws.callFolder))];
 
 const blog = log.child({ component: 'board-page' });
 

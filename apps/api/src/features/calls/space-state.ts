@@ -52,9 +52,6 @@ export type PresentEnded = z.infer<typeof PresentEnded>;
 /** A video playing in one part of the call. `positionMs` is where it was at `atMs`, on this server's clock. Only IDs: the video stays in its document. */
 const Playing = z.object({ place: z.string(), workspaceId: z.string(), documentId: z.string(), mediaId: z.string(), by: Controller, playing: z.boolean(), positionMs: z.number(), atMs: z.number() });
 export type Playing = z.infer<typeof Playing>;
-/** Someone asking to see the workspace, while they're asking and once they've been told not now. */
-const SpaceAsk = z.object({ id: z.string(), person: z.string(), at: z.number(), state: z.enum(['asking', 'declined']) });
-export type SpaceAsk = z.infer<typeof SpaceAsk>;
 
 /**
  * The next agenda while it's being made: the document it's made as, so trying again fills the same one, and until when
@@ -71,7 +68,6 @@ const CallHome = z.object({ workspaceId: z.string(), folderId: z.string(), made:
 export type CallHome = z.infer<typeof CallHome>;
 
 export const CallSpace = z.object({
-  asks: z.array(SpaceAsk).default([]),
   present: z.array(Presenting).default([]),
   /** Not in `present`: a release that knows only documents and boards there couldn't open the call. */
   space: z.array(SpacePresenting).default([]),
@@ -88,7 +84,7 @@ export const CallSpace = z.object({
   made: z.array(z.string()).default([])
 });
 export type CallSpace = z.infer<typeof CallSpace>;
-export const NO_SPACE: CallSpace = { asks: [], present: [], space: [], ended: [], play: [], worked: [], agendaLooked: false, agendaDraft: null, viewing: null, home: null, made: [] };
+export const NO_SPACE: CallSpace = { present: [], space: [], ended: [], play: [], worked: [], agendaLooked: false, agendaDraft: null, viewing: null, home: null, made: [] };
 
 /**
  * A vote on a board, on one of its frames or with none on every sticky. Each person's votes are kept by who they are to it:

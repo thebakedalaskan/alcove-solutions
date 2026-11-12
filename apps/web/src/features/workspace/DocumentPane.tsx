@@ -28,7 +28,7 @@ import { useBackOnline, useOpensAgain, useSession, useTriesWhenShown, type Opene
 import { withDocument } from './session';
 import { ShareSheet } from './Sheets';
 import { tagRect, useTags } from './tags';
-import { documentsIn, foldersAbove, foldersFor, nameFrom, nameOf } from './tree';
+import { documentsIn, folderName, foldersAbove, foldersFor, nameFrom, nameOf } from './tree';
 
 const Comments = lazy(() => import('./Comments'));
 
@@ -253,7 +253,7 @@ function Blank({ ws, item }: { ws: Ws; item: WorkspaceItem }) {
   return <WsDocHead crumbs={crumbsOf(ws, item)} save="quiet" onToggleList={ws.toggleList} />;
 }
 
-const crumbsOf = (ws: Ws, item: WorkspaceItem) => [...(ws.sent.name === null ? [] : [ws.spaceName]), ...foldersAbove(ws.tree, item.id).map(nameOf), nameOf(item)];
+const crumbsOf = (ws: Ws, item: WorkspaceItem) => [...(ws.sent.name === null ? [] : [ws.spaceName]), ...foldersAbove(ws.tree, item.id).map((f) => folderName(f, ws.callFolder)), nameOf(item)];
 
 /** Why what's written here isn't reaching Alcove, as the bar says it, if it says anything. */
 function unsavedOf(status: DocStatus, ready: boolean, guest: boolean): WsUnsaved | null {
@@ -307,7 +307,7 @@ function OpenedPane({ ws, item, opened, reopen }: { ws: Ws; item: WorkspaceItem;
   const morePop: WsPop = {
     open: more !== null, onOpenChange: (to) => setMore(to ? 'menu' : null),
     content: more === 'move' ? (
-      <WsMovePicker name={nameOf(item)} space={ws.spaceName} folders={foldersFor(ws.tree, item.id)}
+      <WsMovePicker name={nameOf(item)} space={ws.spaceName} folders={foldersFor(ws.tree, item.id, ws.callFolder)}
         onRoot={() => { close(); ws.actions.move(item.id, { parent: null }); }} onFolder={(id) => { close(); ws.actions.move(item.id, { parent: id }); }} />
     ) : (
       <WsDocMenu onShare={canShare ? () => { close(); setShare(true); } : undefined}
@@ -325,8 +325,8 @@ function OpenedPane({ ws, item, opened, reopen }: { ws: Ws; item: WorkspaceItem;
   /* Scrolling or pressing the page stops following: you stay where you are. */
   const stayHere = () => ws.stopFollowing();
   const save: WsSave = status.closed === 'unavailable' || offline ? 'offline' : status.closed === 'session' ? (status.unsent ? 'failed' : 'quiet') : ready ? status.status : 'quiet';
-  /* Who to ask to edit: in a call, someone outside the workspace was let in by the organizer, so it's them. */
-  const askToEdit = ws.call?.chooser && !member ? ws.call.chooser : item.by ? firstName(item.by.name) : 'whoever shared it';
+  /* Who to ask to edit: whoever made it, if anyone's known to have. */
+  const askToEdit = item.by ? firstName(item.by.name) : 'whoever shared it';
   return (
     <>
     <WsDoc>

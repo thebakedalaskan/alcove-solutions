@@ -8,7 +8,6 @@ import { type AudioPiece, type ScreenPiece, type TranscriptClip } from '../recor
 import { IDSchema } from '../shared/ids';
 import { type LiveStore } from '../shared/live';
 import { z } from '../shared/zod';
-import { type DocumentRole } from '../workspaces/schema';
 import { type BoardCheck, type BoardOpen, type BoardVotesEach, type BreakoutBoard } from './boards';
 import { type CaptionLanguage } from './captions';
 import { type CaptureDevicePart } from './capture';
@@ -328,12 +327,6 @@ export interface CallSession extends LiveStore<CallState> {
   newWorkspace(name?: string | undefined): Promise<void>;
   /** Anyone who can open it: brings a document in the call's workspace to the call, or takes it off (`brought` false). */
   bringDocument(documentId: string, brought: boolean): Promise<void>;
-  /** Asks the organizer to share something from the workspace, or takes the ask back. It names nothing. */
-  askForWorkspace(up: boolean): Promise<void>;
-  /** Organizer only: answers an ask by opening one document to whoever asked, until the call ends or Share takes it back. */
-  grantWorkspaceAsk(askId: string, documentId: string, role: DocumentRole): Promise<void>;
-  /** Organizer only: says not now to an ask. Whoever asked is told. */
-  declineWorkspaceAsk(askId: string): Promise<void>;
   /**
    * Anyone who can open it: presents the workspace everyone views, or the board open where you are, to the part of the call
    * you're in, as a new presentation (`CallPresent.key`). One at a time there: refused while someone else presents either, and

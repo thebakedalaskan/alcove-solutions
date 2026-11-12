@@ -1,6 +1,8 @@
 /*
- * The two who-has-it sheets, which look the same: Share on a document (the workspace's people, anyone it's shared with, and
- * closing it to the workspace), and the people in a workspace, from the name at the top of the list.
+ * The who-has-it sheets, which look the same: Share on a document (the workspace's people, anyone it's shared with, and closing
+ * it to the workspace); the people in a workspace, from the name at the top of the list, and in a call from Who's in it, with
+ * whoever else is in the call; and for someone in the call who isn't in the workspace, who can't read its people, the people
+ * in the call.
  */
 import { errorCode, errorMessage, firstName, type DocumentRole, type Person, type PersonSuggestion, type WorkspaceItem, type WorkspacePerson, type WorkspaceRole } from '@alcove/api';
 import { WsShareSheet, wsToast, type WsShareMatch, type WsShareRole, type WsShareRow, type WsToastData } from '@alcove/ui';
@@ -118,9 +120,31 @@ export function PeopleSheet() {
   return <PeopleSheetFor workspaceId={ws.workspaceId} name={ws.spaceName} admin={ws.sent.role === 'admin'} say={ws.say} />;
 }
 
-/** Who's in a workspace and what they can do, wherever it's asked: an admin changes anyone, and anyone else can leave. */
-export function PeopleSheetFor({ workspaceId, name, admin, say }: { workspaceId: string; name: string; admin: boolean; say: (toast: WsToastData) => void }) {
-  const people = useQuery(q.workspacePeople(workspaceId)).data ?? [];
+/** Someone in a call, as Who's in it lists them, as you may know them: `guest`, they came in with the link, by name alone. */
+export interface InTheCall { person: Person; isMe: boolean; organizer: boolean; guest: boolean }
+
+/** Everyone in the call once, the organizer first: someone on two devices is one person. */
+function onceEach(people: readonly InTheCall[]): InTheCall[] {
+  const seen = new Set<string>();
+  return [...people].sort((a, b) => Number(b.organizer) - Number(a.organizer)).filter((p) => {
+    const key = p.person.email ? p.person.email.toLowerCase() : p.person.id;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+const youIn = (p: InTheCall) => (p.isMe ? `${p.person.name} (you)` : p.person.name);
+
+/**
+ * Who's in a workspace and what they can do, wherever it's asked: an admin changes anyone, and anyone else can leave. In a call
+ * that opens it to everyone in it, `call` has who's in the call, and whoever of them isn't in the workspace is under its people:
+ * they can edit it while they're in the call.
+ */
+export function PeopleSheetFor({ workspaceId, name, admin, say, call }: {
+  workspaceId: string; name: string; admin: boolean; say: (toast: WsToastData) => void; call?: readonly InTheCall[] | undefined;
+}) {
+  const read = useQuery(q.workspacePeople(workspaceId)).data;
+  const people = read ?? [];
   const changes = useWorkspacePeople(workspaceId);
   const refused = (e: unknown) => { say(wsToast.failed(errorCode(e) === 'conflict' ? 'A workspace always keeps an admin.' : errorMessage(e))); };
   const adding = useAdding(
@@ -131,5 +155,19 @@ export function PeopleSheetFor({ workspaceId, name, admin, say }: { workspaceId:
     id: p.id, people: [p.person], name: p.isMe ? `${p.person.name} (you)` : p.person.name, sub: addressUnder(p.person),
     role: roleFor(p, admin, (role) => { changes.setRole.mutateAsync({ id: p.id, role }).catch(refused); }, () => { changes.remove.mutateAsync(p.id).catch(refused); })
   }));
-  return <WsShareSheet title={`People in ${name}`} rows={rows} {...(admin ? { query: adding.query, onQuery: adding.setQuery, onAdd: adding.onAdd, matches: adding.matches } : {})} />;
+  /* Whoever in the call isn't among its people, once they're known: a guest has no address, so is never one of them. */
+  const members = new Set(people.map((p) => p.person.email.toLowerCase()));
+  const also = read && call ? onceEach(call).filter((c) => !c.person.email || !members.has(c.person.email.toLowerCase())).map((c): WsShareRow => ({
+    id: `call:${c.person.id}`, people: [c.person], name: youIn(c), sub: 'Can edit while they’re in the call', tag: c.guest ? 'Guest' : undefined
+  })) : [];
+  return <WsShareSheet title={`People in ${name}`} rows={rows} inCall={also} {...(admin ? { query: adding.query, onQuery: adding.setQuery, onAdd: adding.onAdd, matches: adding.matches } : {})} />;
+}
+
+/**
+ * Who's in it, for someone in a call who isn't in the workspace the call uses: they can't read its people, so it's the people
+ * in the call, everyone of whom can open it and edit it while they're there.
+ */
+export function CallPeopleSheet({ name, people }: { name: string; people: readonly InTheCall[] }) {
+  const rows = onceEach(people).map((c): WsShareRow => ({ id: c.person.id, people: [c.person], name: youIn(c), sub: c.organizer ? 'Organizer' : addressUnder(c.person), tag: c.guest ? 'Guest' : undefined }));
+  return <WsShareSheet title={`Who’s in ${name}`} about="Everyone in the call can open it and edit it while they’re here." rows={rows} />;
 }

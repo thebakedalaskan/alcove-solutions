@@ -4,7 +4,7 @@
  * following someone (WsFollowBar), the connection dropped (WsOfflineBar), someone moved it to Trash (WsGoneBar), or you
  * can only read it (WsReadOnlyBar). Under them it scrolls (WsScroll), with the page in it (WsPage): whose it is
  * (WsDocBy), the editor's text, and the space under the last line (WsTail), or ways to start an empty page
- * (WsTemplates). A workspace with nothing in it (WsEmpty) and one you can't open (WsNoAccess) draw in WsArch.
+ * (WsTemplates). A workspace with nothing in it (WsEmpty) and one that doesn't open for you (WsNoAccess) draw in WsArch.
  */
 import {
   WsArch, WsDoc, WsDocBy, WsDocHead, WsDocMenu, WsEmpty, WsFollowBar, WsGoneBar, WsMovePicker, WsNoAccess, WsOfflineBar,
@@ -13,7 +13,6 @@ import {
 } from '@alcove/ui';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useState, type ComponentProps, type ReactNode } from 'react';
-import { useArgs } from 'storybook/preview-api';
 import { TEMPLATES } from '~/features/workspace/editor/templates';
 import { Box, Row, Stack, did } from '../../../src/component';
 import { ART, KOFI, PRIYA } from '../../../src/world/people';
@@ -115,7 +114,7 @@ function HeadIn({ args, parts, opened: startOpened = null, width = '100%', call 
       <WsPane page={!call}>
         <WsDoc>
           <WsDocHead {...args} faces={faces}
-            share={has('share') ? pop('share', <ShareFor title={`Share ${name}`} call={call} />) : undefined}
+            share={has('share') ? pop('share', <ShareFor title={`Share ${name}`} />) : undefined}
             more={has('more') ? pop('more', more) : undefined} />
           <WsScroll><PageFor name={name} /></WsScroll>
         </WsDoc>
@@ -312,17 +311,17 @@ export const Empty: StoryObj<typeof WsEmpty> = {
   name: 'Empty: a new workspace', args: { space: 'Art’s workspace', onDocument: did('onDocument'), onFolder: did('onFolder') }, render: (args) => <EmptyFrame {...args} />
 };
 
-/** The call's workspace, to someone who can't open it: Ask asks, and then it says so. */
-const privately: StoryObj<typeof WsNoAccess>['render'] = function Render(args) {
-  const [, update] = useArgs<ComponentProps<typeof WsNoAccess>>();
-  return (
+/**
+ * The call's workspace, to someone it doesn't open for: the rare call whose workspace isn't open to everyone in it any more, once
+ * its organizer can't edit there. It says it's private, and nothing more.
+ */
+export const NoAccess: StoryObj<typeof WsNoAccess> = {
+  name: 'No access',
+  render: () => (
     <Box width="100%" height={560}>
       <WsPane>
-        <WsDoc><WsNoAccess organizer={args.organizer} asked={args.asked} onAsk={() => { args.onAsk?.(); update({ asked: true }); }} /></WsDoc>
+        <WsDoc><WsNoAccess /></WsDoc>
       </WsPane>
     </Box>
-  );
+  )
 };
-export const NoAccess: StoryObj<typeof WsNoAccess> = { name: 'No access', args: { organizer: 'Priya', asked: false, onAsk: did('onAsk') }, render: privately };
-/** They asked: it opens by itself once Priya shares something with them. */
-export const NoAccessAsked: StoryObj<typeof WsNoAccess> = { name: 'No access: asked', args: { organizer: 'Priya', asked: true, onAsk: did('onAsk') }, render: privately };

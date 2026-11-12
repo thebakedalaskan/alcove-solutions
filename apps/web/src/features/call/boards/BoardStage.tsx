@@ -92,7 +92,7 @@ export function BoardMine({ board, section, notes, onNote, theme }: {
  * the board. The board's own More, on its bar, has the downloads and Night board too; while you present it, it has no bar, and
  * this menu is where they are.
  */
-export function BoardMenuRows({ rename, where, share, link, image, pdf, night, onDone }: {
+export function BoardMenuRows({ rename, where, share, link, image, pdf, night, start, onDone }: {
   rename: (() => void) | undefined;
   /** Where it's kept, and opening that. */
   where: { name: string; onOpen: () => void } | null;
@@ -103,9 +103,11 @@ export function BoardMenuRows({ rename, where, share, link, image, pdf, night, o
   pdf: (() => void) | undefined;
   /** Night board, for whoever can change the board: whether it's on, and turning it on or off for everyone. */
   night: { on: boolean; onToggle: () => void } | undefined;
+  /** `access`: opened from who can edit it on the frame's bar, so it starts on who can add to it. */
+  start: 'access' | null;
   onDone: () => void;
 }) {
-  const [sharing, setSharing] = useState(false);
+  const [sharing, setSharing] = useState(start === 'access');
   const press = useSettledPress(['rename', 'saved', 'share', 'link', 'image', 'pdf', 'night'].join('\n'));
   const pick = (f: () => void) => press(() => { onDone(); f(); });
   if (sharing && share) return <div className="ic-menu-sheet">{share}</div>;

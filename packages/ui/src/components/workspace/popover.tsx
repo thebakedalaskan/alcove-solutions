@@ -117,8 +117,6 @@ export interface WsMenuItem {
   hint?: string | undefined;
   /** The chosen one of a list: it gets a tick. */
   ticked?: boolean | undefined;
-  /** It's only saying what's chosen, so the tick isn't in the colour of something you can press. */
-  fixed?: boolean | undefined;
   tone?: 'caution' | undefined;
   /** Highlighted by what the keyboard's doing somewhere else, such as in a field that keeps focus. */
   selected?: boolean | undefined;
@@ -133,7 +131,7 @@ export type WsMenuRow = WsMenuItem | { type: 'head'; label: ReactNode } | { type
 function Item({ row, onPress, onPoint }: { row: WsMenuItem; onPress: () => void; onPoint: (e: PointerEvent<HTMLButtonElement>) => void }) {
   return (
     <button type="button" role={row.ticked === undefined ? 'menuitem' : 'menuitemradio'} aria-checked={row.ticked} onClick={onPress} onPointerMove={onPoint}
-      className={cn('wm-r', row.tone === 'caution' && 'is-caution', row.ticked && !row.fixed && 'is-on', row.selected && 'is-sel', row.phoneOnly && 'is-phone')}>
+      className={cn('wm-r', row.tone === 'caution' && 'is-caution', row.ticked && 'is-on', row.selected && 'is-sel', row.phoneOnly && 'is-phone')}>
       {row.person && <Avatar person={row.person} size={24} />}
       {row.icon && <Icon name={row.icon} size={16} />}
       <span className="t"><span className="l">{row.label}</span>{row.sub && <small>{row.sub}</small>}</span>
@@ -263,23 +261,20 @@ export function WsMovePicker({ name, space, folders, onRoot, onFolder }: {
 export interface WsSpaceChoice { id: string; name: string; sub: string; icon?: 'folders' | 'lock' | 'building' | undefined }
 
 /**
- * The name at the top of the list. Who can choose (`canChoose`, the organizer) sees their workspaces and New workspace;
- * everyone else sees which one it is and who chooses (`organizer`). `heading` for outside a call. `about` holds rows for
- * the workspace you're in, such as its people, under the list. The one you're in comes first, so it stays where it is as
- * the rest come in.
+ * Someone's workspaces, to pick one: at the top of the list in the app, and Switch workspace in the name's menu in a call, for
+ * its organizer. Then New workspace. `heading` for outside a call. `about` holds rows for the workspace you're in, such as its
+ * people, under the list. The one you're in comes first, so it stays where it is as the rest come in.
  */
-export function WsSpacePicker({ spaces, current, canChoose, organizer, heading = 'This call’s workspace', about = [], onPick, onNew }: {
-  spaces: WsSpaceChoice[]; current: string; canChoose: boolean; organizer?: string | undefined; heading?: string | undefined; about?: WsMenuRow[] | undefined;
+export function WsSpacePicker({ spaces, current, heading = 'This call’s workspace', about = [], onPick, onNew }: {
+  spaces: WsSpaceChoice[]; current: string; heading?: string | undefined; about?: WsMenuRow[] | undefined;
   onPick: (id: string) => void; onNew: () => void;
 }) {
-  const here = spaces.filter((s) => s.id === current);
-  const shown = canChoose ? [...here, ...spaces.filter((s) => s.id !== current)] : here;
+  const shown = [...spaces.filter((s) => s.id === current), ...spaces.filter((s) => s.id !== current)];
   const rows: WsMenuRow[] = [{ type: 'head', label: heading }, ...shown.map((s): WsMenuRow => ({
-    id: `space:${s.id}`, icon: canChoose ? s.icon ?? 'folders' : 'folders', label: s.name, sub: s.sub, ticked: s.id === current, fixed: !canChoose, onSelect: () => onPick(s.id)
+    id: `space:${s.id}`, icon: s.icon ?? 'folders', label: s.name, sub: s.sub, ticked: s.id === current, onSelect: () => onPick(s.id)
   }))];
   if (about.length > 0) rows.push({ type: 'sep' }, ...about);
-  if (canChoose) rows.push({ type: 'sep' }, { id: 'new', icon: 'plus', label: 'New workspace', onSelect: onNew });
-  else if (organizer) rows.push({ type: 'text', label: `${organizer} chooses the workspace for this call.` });
+  rows.push({ type: 'sep' }, { id: 'new', icon: 'plus', label: 'New workspace', onSelect: onNew });
   return <WsMenu label={heading} rows={rows} />;
 }
 

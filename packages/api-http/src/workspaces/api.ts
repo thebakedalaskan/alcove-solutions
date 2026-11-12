@@ -37,11 +37,11 @@ export function createWorkspacesApi(t: HttpTransport, o: HttpOptions): Pick<Alco
       removePerson: async (id, personId) => { await req(z.unknown(), 'DELETE', `${space(id)}/people/${encodeURIComponent(personId)}`); },
       items: {
         get: (id, itemId, w) => req(WorkspaceItemSchema, 'GET', itemIn(id, itemId), undefined, withPass(w)),
-        create: (id, input) => req(CreatedSchema, 'POST', `${space(id)}/items`, input),
+        create: (id, input, w) => req(CreatedSchema, 'POST', `${space(id)}/items`, input, withPass(w)),
         rename: async (id, itemId, name, w) => { await req(z.unknown(), 'PATCH', itemIn(id, itemId), { name }, withPass(w)); },
-        move: async (id, itemId, to) => { await req(z.unknown(), 'POST', `${itemIn(id, itemId)}/move`, to); },
-        duplicate: (id, itemId) => req(CreatedSchema, 'POST', `${itemIn(id, itemId)}/duplicate`, {}),
-        trash: async (id, itemId) => { await req(z.unknown(), 'POST', `${itemIn(id, itemId)}/trash`, {}); },
+        move: async (id, itemId, to, w) => { await req(z.unknown(), 'POST', `${itemIn(id, itemId)}/move`, to, withPass(w)); },
+        duplicate: (id, itemId, w) => req(CreatedSchema, 'POST', `${itemIn(id, itemId)}/duplicate`, {}, withPass(w)),
+        trash: async (id, itemId, w) => { await req(z.unknown(), 'POST', `${itemIn(id, itemId)}/trash`, {}, withPass(w)); },
         restore: async (id, itemId, w) => { await req(z.unknown(), 'POST', `${itemIn(id, itemId)}/restore`, {}, withPass(w)); },
         deleteForever: async (id, itemId) => { await req(z.unknown(), 'DELETE', itemIn(id, itemId)); }
       },

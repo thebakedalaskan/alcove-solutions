@@ -58,8 +58,11 @@ export interface InCall {
   script?: CallScript | undefined;
   /** Other calls the story needs in the world: one that rings you, say. */
   also?: readonly StoryCall[] | undefined;
-  /** Your microphone and camera as you join: the microphone on and the camera off unless it says, so everyone shows in their arch. */
-  you?: { mic?: boolean | undefined; cam?: boolean | undefined } | undefined;
+  /**
+   * Your microphone and camera as you join: the microphone on and the camera off unless it says, so everyone shows in their arch.
+   * `name`: the name you typed, coming in with the link signed out, as a guest does.
+   */
+  you?: { mic?: boolean | undefined; cam?: boolean | undefined; name?: string | undefined } | undefined;
   /** People to ring as you join, as the lobby's Join and ring does. */
   ring?: readonly Person[] | undefined;
   /** Anything you do the moment you're in, before the screen shows (rooms opened, say). */
@@ -80,7 +83,7 @@ export function inCall(o: InCall, more: Omit<PageStory, 'args'> = {}): PageStory
       const media = new LocalMedia();
       await media.start({ mic, cam });
       sessions.media = media;
-      const session = await standIn.calls.join(code, { mic, cam });
+      const session = await standIn.calls.join(code, { mic, cam, ...(o.you?.name ? { name: o.you.name } : {}) });
       sessions.call = { code, session };
       if (o.ring?.length) await session.ring(o.ring.map((p) => p.email));
       o.then?.(session);

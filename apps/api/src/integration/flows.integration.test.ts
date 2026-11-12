@@ -3270,7 +3270,7 @@ describe('deleting an account', () => {
       'document_versions', 'documents', 'drive_call_exports', 'drive_connections', 'drive_export_jobs', 'identities', 'items', 'media_upload_days', 'meeting_access',
       'note_access', 'note_additions', 'note_links', 'object_gc', 'operations', 'owners', 'personal_notes', 'presenter_frame_notes', 'presenter_notes', 'recording_pieces', 'recordings',
       'revisions', 'screen_frames', 'screen_pieces', 'screen_shares', 'screen_videos', 'sessions', 'timer_presets', 'transcript_clips', 'transcript_translations',
-      'workspace_authors', 'workspace_media', 'workspace_media_pieces', 'workspace_media_previews', 'workspace_media_uses', 'workspace_members', 'workspace_mentions',
+      'workspace_authors', 'workspace_calls', 'workspace_media', 'workspace_media_pieces', 'workspace_media_previews', 'workspace_media_uses', 'workspace_members', 'workspace_mentions',
       'workspaces'
     ]);
     const counts = async () => Object.fromEntries(await Promise.all(tables.map(async (t) => [t, (await h.pool.query<{ n: number }>(`SELECT count(*)::int AS n FROM ${t} WHERE owner_id = $1`, [ownerId])).rows[0]?.n ?? -1] as const)));
@@ -3278,7 +3278,7 @@ describe('deleting an account', () => {
     // Frames and joined video come from a real video once the notes are written: deleting them with a note is in screens.integration.test.ts.
     // A workspace is an owner of its own, so an account has no rows there under its own ID: workspaces.integration.test.ts deletes those, and media.integration.test.ts what's in them.
     // OAuth codes and retry receipts have account-deletion coverage in the agents and MCP flows.
-    const notAnAccounts = new Set(['agent_codes', 'agent_operations', 'object_gc', 'screen_frames', 'screen_videos', 'workspaces', 'workspace_members', 'workspace_authors', 'workspace_mentions', 'documents', 'document_access', 'document_clients', 'document_updates', 'document_snapshots', 'document_version_parts', 'document_versions', 'workspace_media', 'workspace_media_pieces', 'workspace_media_previews', 'workspace_media_uses']);
+    const notAnAccounts = new Set(['agent_codes', 'agent_operations', 'object_gc', 'screen_frames', 'screen_videos', 'workspaces', 'workspace_members', 'workspace_authors', 'workspace_calls', 'workspace_mentions', 'documents', 'document_access', 'document_clients', 'document_updates', 'document_snapshots', 'document_version_parts', 'document_versions', 'workspace_media', 'workspace_media_pieces', 'workspace_media_previews', 'workspace_media_uses']);
     for (const t of tables) if (!notAnAccounts.has(t)) expect(before[t], t).toBeGreaterThan(0);
     expect((await h.pool.query<{ kind: string }>('SELECT DISTINCT kind FROM items WHERE owner_id = $1 ORDER BY kind', [ownerId])).rows.map((r) => r.kind)).toEqual(['connection', 'meeting', 'note', 'profile']);
     const [identity] = (await h.pool.query<{ email_index: Buffer }>('SELECT email_index FROM identities WHERE owner_id = $1', [ownerId])).rows;

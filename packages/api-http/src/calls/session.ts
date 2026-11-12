@@ -7,7 +7,7 @@ import { Box, Live, unref } from '../transport/live';
 import { type ClientEvent } from '../transport/options';
 import { groupName, MlsError, MlsGroup, MlsKeys } from './mls';
 import { HttpMoveOut } from './moves';
-import { type FollowUpCreate, type FollowUpPatch, type FollowUpReview, AlcoveApiError, type AudioPiece, type ScreenPiece, type ShareStarted, type BoardCheck, type BoardOpen, type BoardVotesEach, type BreakoutPlan, CALL_CHAT_MAX, CALL_DATA_OVERHEAD, CALL_VOID_KEY_INDEX, type CallAction, type CallAnswer, type CallChatMention, type CallChatPayload, CallChatTextSchema, type CallCrypto, CallEndResultSchema, type CallFollowUps, type CallMediaKeys, type CallMls, type CallMoment, type CallMoveOut, type CallReaction, type CallSession, type CallState, type CallTicket, type CallWorkspaceSwitch, type CaptionLanguage, type CaptionTranslation, type CaptureDevicePart, type CatchUp, type CatchUpRange, type CatchUpWindow, type DocFollowUpTick, type DocumentRole, errorCode, isTimeZone, type LineAudio, LIVE_TRANSCRIPT_LINES, MAIN_PLACE, type MoveMedia, type MoveOut, type PersonalApi, type PresentStart, reactionTarget, type RoomPerson, type SeriesAnswerPart, type TranscriptClip, withReaction } from '@alcove/api';
+import { type FollowUpCreate, type FollowUpPatch, type FollowUpReview, AlcoveApiError, type AudioPiece, type ScreenPiece, type ShareStarted, type BoardCheck, type BoardOpen, type BoardVotesEach, type BreakoutPlan, CALL_CHAT_MAX, CALL_DATA_OVERHEAD, CALL_VOID_KEY_INDEX, type CallAction, type CallAnswer, type CallChatMention, type CallChatPayload, CallChatTextSchema, type CallCrypto, CallEndResultSchema, type CallFollowUps, type CallMediaKeys, type CallMls, type CallMoment, type CallMoveOut, type CallReaction, type CallSession, type CallState, type CallTicket, type CallWorkspaceSwitch, type CaptionLanguage, type CaptionTranslation, type CaptureDevicePart, type CatchUp, type CatchUpRange, type CatchUpWindow, type DocFollowUpTick, errorCode, isTimeZone, type LineAudio, LIVE_TRANSCRIPT_LINES, MAIN_PLACE, type MoveMedia, type MoveOut, type PersonalApi, type PresentStart, reactionTarget, type RoomPerson, type SeriesAnswerPart, type TranscriptClip, withReaction } from '@alcove/api';
 import { type KeyPackage } from 'ts-mls';
 import { z } from 'zod';
 
@@ -910,9 +910,6 @@ export class HttpCall extends Live<CallState> implements CallSession {
   setWorkspace = (workspaceId: string) => this.space({ type: 'workspace-set', workspaceId });
   newWorkspace = (name?: string | undefined) => this.space({ type: 'workspace-new', ...(name ? { name } : {}) });
   bringDocument = (documentId: string, brought: boolean) => this.space({ type: 'workspace-bring', documentId, brought });
-  askForWorkspace = (up: boolean) => this.space({ type: 'workspace-ask', up });
-  grantWorkspaceAsk = (askId: string, documentId: string, role: DocumentRole) => this.space({ type: 'workspace-grant', askId, documentId, role });
-  declineWorkspaceAsk = (askId: string) => this.space({ type: 'workspace-decline', askId });
   startPresenting = (what: PresentStart) => this.space({ type: 'present-start', what: what.kind === 'board' ? { kind: 'board', id: what.id, section: what.section ?? 0 } : { kind: 'workspace' } });
   movePresenting = (section: number) => this.space({ type: 'present-move', section });
   stopPresenting = (close: boolean) => this.space({ type: 'present-stop', close });

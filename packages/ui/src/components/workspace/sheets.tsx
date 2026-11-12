@@ -4,7 +4,7 @@ import { Dialog as RDialog } from 'radix-ui';
 import { Fragment, useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from 'react';
 import { cn } from '../../cn';
 import { Icon, type IconName } from '../icon';
-import { Avatar, Faces, type AvatarPerson } from '../people';
+import { andList, Avatar, Faces, type AvatarPerson } from '../people';
 import { Dots } from '../motion';
 import { Button, Kbd } from '../primitives';
 import { WsMenu, WsPopover, type WsMenuRow } from './popover';
@@ -227,8 +227,11 @@ export function WsCommentThread({ quote, messages, value = '', onChange, onSend,
 
 /** What someone can do with a document, and what they can change it to. Without `options` it's only said. */
 export interface WsShareRole { label: string; options?: { label: string; sub?: string | undefined; caution?: boolean | undefined; ticked?: boolean | undefined; onSelect: () => void }[] | undefined }
-/** Someone or a group with this document. */
-export interface WsShareRow { id: string; people: AvatarPerson[]; name: string; sub: string; role: WsShareRole }
+/**
+ * Someone or a group with this document. `tag`: a word after the name, such as Guest. Without a `role`, nothing's said at the
+ * row's end: what everyone in it can do is said once, above them.
+ */
+export interface WsShareRow { id: string; people: AvatarPerson[]; name: string; sub: string; role?: WsShareRole | undefined; tag?: string | undefined }
 /** Someone the field found, not added yet. */
 export interface WsShareMatch { id: string; person: AvatarPerson; sub: string; onAdd: () => void }
 
@@ -243,21 +246,33 @@ function RolePicker({ role, who }: { role: WsShareRole; who: string }) {
   );
 }
 
+/** One person or group in the sheet, with what they can do at its end. */
+function ShareRow({ row }: { row: WsShareRow }) {
+  return (
+    <div className="wv-pr">
+      <Faces people={row.people} size={26} max={3} />
+      <span className="m"><b><span className="n">{row.name}</span>{row.tag && <span className="wv-tag">{row.tag}</span>}</b>{row.sub && <small>{row.sub}</small>}</span>
+      {row.role && <RolePicker role={row.role} who={row.name} />}
+    </div>
+  );
+}
+
 /**
- * Share, at the top of a document, and the same sheet for who's in a workspace. `title` is its heading. `rows`: who has
- * it. `guest`: someone in this call who can't open it, with Let them read. `matches`: who the field found, as you type.
- * Someone who can't add people has no field: leave `onQuery` out.
+ * Share, at the top of a document, and the same sheet for who's in a workspace. `title` is its heading, and `about` a line
+ * under it. `rows`: who has it. `inCall`: people in the call who aren't among them, who can edit it while they're in the
+ * call, under the rows. `matches`: who the field found, as you type. Someone who can't add people has no field: leave
+ * `onQuery` out.
  */
-export function WsShareSheet({ title, query = '', onQuery, onAdd, matches = [], rows, guest }: {
-  title: string; query?: string | undefined; onQuery?: ((q: string) => void) | undefined;
+export function WsShareSheet({ title, about, query = '', onQuery, onAdd, matches = [], rows, inCall = [] }: {
+  title: string; about?: string | undefined; query?: string | undefined; onQuery?: ((q: string) => void) | undefined;
   /** Enter in the field, with an email address or a name. */
   onAdd?: (() => void) | undefined;
   matches?: WsShareMatch[] | undefined; rows: WsShareRow[];
-  guest?: { person: AvatarPerson; onRead: () => void } | null | undefined;
+  inCall?: WsShareRow[] | undefined;
 }) {
   return (
     <div className="wv-share">
-      <div className="wv-h"><b>{title}</b></div>
+      <div className="wv-h"><b>{title}</b>{about && <p>{about}</p>}</div>
       {onQuery && (
         <label className="wv-f">
           <Icon name="search" size={15} />
@@ -268,15 +283,11 @@ export function WsShareSheet({ title, query = '', onQuery, onAdd, matches = [], 
       {matches.map((m) => (
         <button key={m.id} type="button" className="wm-r" onClick={m.onAdd}><Avatar person={m.person} size={24} /><span className="t"><span className="l">{m.person.name}</span><small>{m.sub}</small></span></button>
       ))}
-      <div className="wv-rows">
-        {rows.map((r) => (
-          <div key={r.id} className="wv-pr"><Faces people={r.people} size={26} max={3} /><span className="m"><b>{r.name}</b><small>{r.sub}</small></span><RolePicker role={r.role} who={r.name} /></div>
-        ))}
-      </div>
-      {guest && <>
+      <div className="wv-rows">{rows.map((r) => <ShareRow key={r.id} row={r} />)}</div>
+      {inCall.length > 0 && <>
         <div className="wv-sep" />
-        <span className="ac-eyebrow">In this call</span>
-        <div className="wv-pr"><Avatar person={guest.person} size={26} /><span className="m"><b>{guest.person.name}</b><small>Guest, can’t open this</small></span><Button size="xs" onClick={guest.onRead}>Let them read</Button></div>
+        <span className="ac-eyebrow">Also in the call</span>
+        <div className="wv-rows is-call">{inCall.map((r) => <ShareRow key={r.id} row={r} />)}</div>
       </>}
       <div className="wv-foot"><Icon name="sealed" size={14} /><span>Encrypted in storage.</span></div>
     </div>
@@ -284,27 +295,45 @@ export function WsShareSheet({ title, query = '', onQuery, onAdd, matches = [], 
 }
 
 /**
- * One question, in place of the menu, before everyone in a call views another workspace. `name`: that workspace. `current`:
- * this one. `home`: the call's home, where its notes go, when that isn't `name`. `cantOpen`: the first names of people in the
- * call who can't open it.
+ * One question, in place of the menu, before everyone in a call views another workspace. `name`: that workspace. `home`: the
+ * call's home, where its notes go, when that isn't `name`. `cantOpen`: the first names of people in the call who aren't in it,
+ * so can't open it but through the call: once everyone views it, they can open and edit everything in it while they're in the call.
  */
-export function WsSwitchSheet({ name, current, home, cantOpen = [], onSwitch, onKeep }: {
-  name: string; current: string; home?: string | undefined; cantOpen?: string[] | undefined; onSwitch: () => void; onKeep: () => void;
+export function WsSwitchSheet({ name, home, cantOpen = [], onSwitch, onKeep }: {
+  name: string; home?: string | undefined; cantOpen?: readonly string[] | undefined; onSwitch: () => void; onKeep: () => void;
 }) {
-  const who = cantOpen.length === 1 ? cantOpen[0] : `${cantOpen.length} people`;
   /* It takes the menu's place, and focus with it: on the question, so a stray key or Enter switches nobody. Tab reaches the answers. */
   const box = useRef<HTMLDivElement>(null);
   const question = useId();
   useEffect(() => { box.current?.focus({ preventScroll: true }); }, []);
   return (
     <div ref={box} className="wv-switch" tabIndex={-1} role="group" aria-labelledby={question}>
-      <b id={question}>Switch this call to {name}?</b>
-      <p>Everyone sees the change. Nobody is disconnected, and nothing moves or is copied.{home ? ` Notes and the transcript still go to ${home}.` : ''}</p>
-      {cantOpen.length > 0 && <p className="warn"><Icon name="info" size={15} /><span>{who} can’t open {name}. They stay in the call and see that it’s private, not what’s in it.</span></p>}
+      <b id={question}>Switch everyone to {name}?</b>
+      {cantOpen.length > 0 && <p>{andList(cantOpen)} {cantOpen.length === 1 ? 'isn’t' : 'aren’t'} in it. While they’re in the call, they can open and edit everything in it.</p>}
+      <p className="m">Anything closed to some people stays closed.{home ? ` The notes still go to ${home}.` : ''}</p>
       <div className="ac">
-        <Button variant="primary" size="sm" onClick={onSwitch}><span className="ac-clamp-1">Switch to {name}</span></Button>
-        <Button variant="quiet" size="sm" onClick={onKeep}><span className="ac-clamp-1">Keep {current}</span></Button>
+        <Button variant="primary" size="sm" onClick={onSwitch}>Switch</Button>
+        <Button variant="quiet" size="sm" onClick={onKeep}>Keep this one</Button>
       </div>
+    </div>
+  );
+}
+
+
+/**
+ * Renaming a workspace, in place of a menu: its name in a field, selected as it opens. Enter keeps what's typed; Esc, or a
+ * press anywhere else, leaves the name as it was.
+ */
+export function WsNameSheet({ name, onCommit }: { name: string; onCommit: (name: string) => void }) {
+  return (
+    <div className="wv-name">
+      <div className="wv-h"><b>Rename this workspace</b></div>
+      <label className="wv-f">
+        <Icon name="pen" size={15} />
+        <input type="text" aria-label="Name this workspace" placeholder="Name this workspace" defaultValue={name} maxLength={120} autoFocus spellCheck={false}
+          onFocus={(e) => e.currentTarget.select()}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); onCommit(e.currentTarget.value); } }} />
+      </label>
     </div>
   );
 }
@@ -404,37 +433,6 @@ export function WsKeyboard({ open, onOpenChange, groups, note }: { open: boolean
         </RDialog.Content>
       </RDialog.Portal>
     </RDialog.Root>
-  );
-}
-
-/**
- * Someone in the call asked to see the workspace, on the organizer's screen: below the frame's bar and a document's head, so
- * Present, Close and Share stay free, or above the dock on a phone, where it leaves the list's button free. Pass the person to show it: it drops in 8 px, 420 ms, waits, and lifts away, 240 ms, when
- * you pass null. `document`: what they can be let into, read only (`onLet`) or to edit (`onEdit`), the one open in front of
- * you. With none open, `onChoose` opens the workspace on something to share, or its list to pick one.
- */
-export function WsKnock({ person, document, onLet, onEdit, onChoose, onNotNow }: {
-  person: AvatarPerson | null; document: string | null; onLet: () => void; onEdit: () => void; onChoose: () => void; onNotNow: () => void;
-}) {
-  const move = useMove();
-  return (
-    <AnimatePresence initial={false}>
-      {person && (
-        <motion.div className="wv-knock" role="status" initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0, transition: move(3) }} exit={{ opacity: 0, y: -8, transition: move(2) }}>
-          <Avatar person={person} size={34} />
-          <div><b>{firstName(person)} asked to see the workspace</b><p>{document === null ? 'Open a document to share just that, or nothing.' : 'Share just this document, or nothing.'}</p></div>
-          <div className="ac">
-            {document === null ? <Button variant="primary" size="sm" onClick={onChoose}>Open the workspace</Button> : (
-              <>
-                <Button variant="primary" size="sm" onClick={onLet}><span className="ac-clamp-1">Let {firstName(person)} read {document}</span></Button>
-                <Button size="sm" onClick={onEdit}><span className="ac-clamp-1">Let {firstName(person)} edit</span></Button>
-              </>
-            )}
-            <Button variant="quiet" size="sm" onClick={onNotNow}>Not now</Button>
-          </div>
-        </motion.div>
-      )}
-    </AnimatePresence>
   );
 }
 

@@ -32,8 +32,9 @@ export const CallBoardOpenSchema = z.object({
   /** You can close it for everyone: you opened it, or you're the organizer. */
   canClose: z.boolean(),
   /**
-   * The call made it, so everyone in it can add to it, anyone let in later too, for as long as it's the call's to give: what
-   * the board can say about who's on it. A saved board says only what each person has.
+   * Everyone in the call can edit it, anyone let in later too: the call made it, for as long as it's the call's to give, or
+   * someone who may share it let everyone in. What the board can say about who's on it. A saved board nobody let everyone into
+   * says only what each person has.
    */
   everyone: z.boolean(),
   /** What you can do with it. */
@@ -113,8 +114,8 @@ export const BoardNewSchema = z.object({ template: BoardTemplateSchema });
 
 /**
  * A saved board, from the workspace it's in, whichever that is: a call's own home is new, so what a team has is across the
- * Drive. `letIn` gives everyone here who can't open it a seat until the call ends, and anyone let into the call later; it
- * needs the right to share that board.
+ * Drive. `letIn` gives everyone here who can't edit it a seat to edit it until the call ends, and anyone let into the call
+ * later; it needs the right to share that board. Without it, it opens for whoever can open it already.
  */
 export const BoardSavedSchema = z.object({ workspaceId: ItemIdSchema, documentId: ItemIdSchema, letIn: z.boolean() });
 

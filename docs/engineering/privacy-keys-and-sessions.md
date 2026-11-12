@@ -133,13 +133,14 @@ index(purpose, value) = HMAC-SHA-256(HKDF(KMASTER, "alcove/index/v1"), purpose �
 | Purpose | Value | Stored in | Used for |
 | --- | --- | --- | --- |
 | `subject` | The sign-in provider's account ID (`google:<sub>` for Google) | `identities.subject_index` (primary key) | Finding the account at sign-in |
-| `email` | The email address, trimmed and lower-cased | `identities.email_index`, `note_access.email_index`, `workspace_members.email_index`, `workspace_authors.email_index`, `document_access.principal_index`, `workspace_mentions.principal_index` | Whether an address is on Alcove (people search, team and who on it uses Alcove); who else may read a note; who's in a workspace, and who a document is shared with |
+| `email` | The email address, trimmed and lower-cased | `identities.email_index`, `note_access.email_index`, `workspace_members.email_index`, `workspace_authors.email_index`, `document_access.principal_index`, `workspace_mentions.principal_index`, `workspace_calls.organizer_index` | Whether an address is on Alcove (people search, team and who on it uses Alcove); who else may read a note; who's in a workspace, and who a document is shared with; whose call a workspace is open to, which counts while they can edit there |
 | `invite` | The email address, trimmed and lower-cased | `meeting_access.email_index` | Who's invited to a call. A purpose of its own, so these rows can't be joined to `identities` without `KMASTER` |
 | `call-code` | The call's code from its link | `call_codes.code_hash` | Finding a call for anyone with the link, guests included |
 | `ring` | The email address, trimmed and lower-cased | `call_rings.email_index` | Finding the rings for someone signed in. Its own purpose, so a row joins to no other table without `KMASTER` |
 | `addition-author` | The account's owner ID | `note_additions.author_index` | Taking everything an account added to the shared notes out of everyone's notes when it's deleted |
 | `note-link-maker` | The account's owner ID | `note_links.maker_index` | Taking out the links an account made to a note when it removes the note from theirs, and every link it made when it's deleted |
 | `call-seat` | A call's ID and someone's seat in it | `document_access.principal_index` | Who a document is shared with in a call. Only the API can work one out, from a call pass; it's different in every call |
+| `call-workspace` | A call's ID and the ID of a workspace it uses | `workspace_calls.call_index` | Which workspaces a call [opens to everyone in it](#who-can-open-a-workspace). Everyone let in carries the one for the workspace the call uses now, worked out by the API from their pass and the call's state; it's different for every call and workspace |
 | `upload-guest` | The person a guest's call pass names, random for each person in each call | `media_guest_upload_days.guest_index` | Counting what a guest uploads in a day, on every instance and after a restart. It can't be matched to a call, a seat or a name |
 
 The hash is deterministic, so equal values show the same person across rows and accounts (see
@@ -548,34 +549,60 @@ read every note given to it. That's why the demo SSO sign-in takes only example 
 `apps/api/src/features/workspaces/access.ts` decides, and nothing else does. Every route asks it first.
 
 - **A reader** is an account, known by the email index of its profile's address; or someone in a call, known by the
-  `call-seat` index of their seat, from their call pass, for as long as they're let in and the call is going on. Signed in
-  and in a call, a request with both is both: it has what each gives it, the stronger where they overlap. Neither:
-  `401 unauthenticated`, whatever it asked for.
+  `call-seat` index of their seat, from their call pass, for as long as they're let in and the call is going on, and, while
+  the call uses a workspace, by the `call-workspace` index of the call and that workspace too, from the call's state as it
+  is at that request. Signed in and in a call, a request with both is both: it has what each gives it, the stronger where
+  they overlap. Neither: `401 unauthenticated`, whatever it asked for.
 - **A workspace role** (`admin`, `edit`, `read`) applies to everything in the workspace. `read` changes nothing. `edit`
   changes the tree. Only an `admin` renames or deletes the workspace or changes its people, and a workspace always keeps one.
-- **Restricted.** A restricted document or board opens only for its creator, while they're in the workspace, and the
-  people it's shared with. Nobody else's tree shows it, and being an admin doesn't open it. Something with no creator (`by`
-  null) gives nobody the creator's rule, and opens only through `document_access`. Whoever restricts something they didn't
-  make keeps it as its creator does, or they'd be locked out of it, for as long as it's restricted and they're in the
-  workspace: it's kept on the item, so there's no entry to outlive either. A copy of something restricted is restricted to
-  whoever made the copy. When nobody can open one any more because someone was taken out, by an admin or by a call's invite,
-  it goes to the workspace's admins, still restricted; when it's because they left, or an entry or a seat ended, it goes to
-  Trash, and to nobody else ([Data and storage › Workspaces](data-and-storage.md#workspaces)). Deleting an account deletes
-  what only it can open by then.
+- **Restricted.** A restricted document or board opens only for its creator, while they're in the workspace or a call it's
+  open to (below), and the people it's shared with. Nobody else's tree shows it, and being an admin or in a call doesn't
+  open it. Something with no creator (`by` null) gives nobody the creator's rule, and opens only through `document_access`,
+  and so does something made by a guest without an account, who has no address to be known by. Whoever restricts
+  something they didn't make keeps it as its creator does, or they'd be locked out of it, for as long as it's restricted and
+  they're in the workspace or such a call: it's kept on the item, so there's no entry to outlive either. A copy of
+  something restricted is restricted to whoever made the copy. When nobody can open one any more because someone was taken
+  out, by an admin or by a call's invite, it goes to the workspace's admins, still restricted; when it's because they left,
+  or an entry or a seat ended, it goes to Trash, and to nobody else
+  ([Data and storage › Workspaces](data-and-storage.md#workspaces)). Deleting an account deletes what only it can open by
+  then.
 - **Shared.** `document_access` opens one document for anyone, at `edit` or `read`. Someone outside the workspace sees that
   document alone: no folders (its `parent` reads null), no name or head count for the workspace, and no address of anyone.
-  People in a workspace who can edit a document say who it's shared with; someone outside it can't, even with `edit`, and a seat
-  gives no say: someone who can only edit through a seat works on it in the call and can't share it.
+  People in a workspace who can edit a document say who it's shared with; someone outside it can't, even with `edit`, and
+  neither a seat nor a call gives a say: someone who can only edit through either works on it in the call and can't share it.
   One request gives it to up to 100 people, all of them or none, as does one call to `grant` on the server, to any number. An entry for an address lasts until
   it's removed. An entry for a seat ends with the call: it's deleted when the call ends or that person is taken out of
   it, the pass stops opening it the moment either happens, and maintenance sweeps up any left by a process that stopped.
   Someone who also has it through their account keeps what that gives them.
+- **A call opens the workspace it uses** to everyone let in to it, guests without an account too, for as long as they're
+  in the call: its home, unless the organizer switched to another. A row in `workspace_calls` says so, under the
+  `call-workspace` index of the call and the workspace, which is what everyone in the call carries while the call uses that
+  workspace. It's written in the workspace's own transaction, with nothing of the call held (`openForCall`): the first time
+  anyone opens Workspace in the call, which is also how a call that began under the release before gets one, and
+  before the organizer's switch to another workspace applies; a workspace made in the call gets its row in the transaction
+  that makes it (`openToCall`). A row counts only while the call's organizer can still edit there, as an admin or with
+  `edit` (`organizer_index`, their email index), because a call adds to a workspace on its organizer's word alone. A
+  switch moves no row: what each person carries names the call and the workspace it uses, so the workspace it used
+  closes, at their next request, to everyone who had it only through the call, and a stream they have open finds out at
+  its next ping, within 25 seconds, as when someone leaves a call. The rows go when the call ends, and maintenance sweeps
+  up any whose call isn't live.
+- **What the call gives** is what a member who can edit has, short of anything restricted. Someone it opens a workspace
+  to gets the tree as its people see it, folders and the workspace's name, without its head count
+  (`WorkspaceTree.inCall`, with `role` null), and every folder, document and board in it that isn't restricted, to open
+  and edit. They can make things, rename, move, duplicate, send to Trash and bring back (`requireRole(w, 'change')`),
+  work on documents and boards, and add files to them, and a member who can only read can do as much while they're in
+  the call. It's no place in the workspace, so it gives no say in who has what: sharing and restricting
+  (`requireSharing`, which goes by membership and lasting entries alone), its people and their roles, deleting something
+  or a file for good, and renaming or deleting the workspace stay with its people, as their roles allow. Someone the
+  call alone opens it to knows it's there, so what's only for its people is refused them (`403`, "Only people in this
+  workspace can do that."), not hidden. Restricted documents and boards stay closed to it.
 - **A call's home.** A workspace made as a call's home has the organizer as its admin and the people invited in it, to
   edit: the same people who get the call's notes. Someone let in from the link who goes on the invite is let in too, and
   taken out again when they're taken off it, as is someone taken off a scheduled call or a series. Only someone the invite
   put there is ever taken out, and only while nobody has changed their place by hand; someone an admin took out, or who
-  left, is never put back by the invite. A guest without an account gets nothing unless something's shared with their seat.
-  A home the organizer chose keeps its own people.
+  left, is never put back by the invite. A guest without an account is never put in it: they have what the call opens to
+  everyone in it while they're there (above), and anything shared with their seat. A home the organizer chose keeps its own
+  people.
 - **Who a document names.** Tags, quotes and follow-up lines name people by an ID the server keys under the workspace's own
   keys, never by an address or a plain hash of one, so reading a document says nothing about anyone's address and a guess
   can't be checked against it offline ([Data and storage › Workspaces](data-and-storage.md#workspaces)).
@@ -584,10 +611,12 @@ read every note given to it. That's why the demo SSO sign-in takes only example 
   organizer and whoever has its note by the note's own rows, so taking the note out of your notes, or deleting it, takes
   the pages too. Nothing of the call or the note is in the workspace, so the pages open only through the call or the note,
   which ask again. Everyone else in the workspace sees the folder and what people put in it, as they would any folder.
-- **Nothing else opens anything.** Being a call's organizer gives nothing. Joining a call gives nothing. What a call says
-  of its workspace is worked out here on every read, for each person, and nothing about who can open what is copied into it.
-  Someone who can open nothing is told that it's private and nothing that names anything: not which workspace, not a document, a
-  folder or anyone's whereabouts. That something's being presented, by whom, and which presentation it is (a random key that
+- **Nothing else opens anything.** Being a call's organizer gives nothing by itself, and joining a call gives only what the
+  call opens to everyone in it (above), once they're let in: someone waiting to be let in gets nothing. What a call says of
+  its workspace is worked out here on every read, for each person, and nothing about who can open what is copied into it.
+  Someone who can open nothing is told that it's private and nothing that names anything: not which workspace, not a
+  document, a folder or anyone's whereabouts, which, for the workspace a call uses, happens only once its organizer can't
+  edit there any more. That something's being presented, by whom, and which presentation it is (a random key that
   names nothing), is said to everyone in that part of the call, as is how the last one there ended, for its presenter or for
   everyone; what it is only to those who can open it: which workspace to someone something in it opens for, which board to
   someone who can open that board. A refusal to open a board while someone else presents one names nobody. A video playing
@@ -597,10 +626,12 @@ read every note given to it. That's why the demo SSO sign-in takes only example 
   nothing someone who can't tries says whether one is on; each person is told their own votes and nobody a count until it
   ends; a vote being cast tells nobody else
   ([Calls and recordings › A board's vote](calls-and-recordings.md#a-boards-vote)).
-- **A call adds and lets in only as far as the workspace says.** Anyone invited can make a board in the call's home, while
-  its organizer can edit there ([Calls and recordings › A board in a call](calls-and-recordings.md#a-board-in-a-call)). Letting
-  people into a saved board needs the right to share it, asked again for everyone who comes later, and each seat ends with the call.
-  A board the call made goes on being given to whoever comes only until it's restricted or the organizer can't edit there.
+- **A call adds and lets in only as far as the workspace says.** A call opens a workspace to everyone in it, and anyone
+  invited can make a board in the call's home, only while its organizer can edit there
+  ([Calls and recordings › A board in a call](calls-and-recordings.md#a-board-in-a-call)). Letting everyone into a saved
+  board needs the right to share it, asked again for everyone who comes later: whoever here can't edit it gets a seat to
+  edit it, and each seat ends with the call. A board the call made goes on being given to whoever comes only until it's
+  restricted or the organizer can't edit there.
   A breakout room's board is restricted with nobody as its creator: only the seats of whoever is in that room open it, the
   organizer's only while visiting, and someone moved out loses it at once. When rooms close its seats go and everyone invited
   has it by address; a workspace member who wasn't invited never does, nor do the workspace's admins: nothing strands a room's
@@ -637,20 +668,26 @@ read every note given to it. That's why the demo SSO sign-in takes only example 
 - **Refusals never say what exists.** Someone with no access gets the same `404 not-found` for a real ID and a made-up one:
   a workspace, an item, a person, an entry, wherever it comes in, as a parent or a sibling too. Someone who can see
   something and may not do this to it gets `403 forbidden`. What's only for people in the workspace doesn't exist for
-  anyone outside it, whatever they hold in it.
+  anyone outside it, whatever they hold in it, except someone a call opens it to, who knows it's there and is refused
+  (`403`).
 - **Losing access** ends a stream with a `closed` line: every change to who has what reaches every instance
   ([Data and storage › Live traffic](data-and-storage.md#live-traffic)), and each stream looks again. A change that's being
-  made is checked under the workspace's lock, so nothing gets in after someone is taken out.
+  made is checked under the workspace's lock, so nothing gets in after someone is taken out. Someone leaving a call, or the
+  call moving on to another workspace, changes nothing in the workspace, so a stream finds that out at its next ping,
+  within 25 seconds; the call ending, or someone being taken out of it, tells every workspace it was open to, and their
+  streams look again at once.
 
 ### Files
 
 A file in a workspace ([Data and storage › Media](data-and-storage.md#media)) is reached through a document that has it, and
-only that way, because a guest's seat covers one document. Whoever can open one of those documents can read the file, in Trash
-too. Adding one, or reusing one in another document, takes `edit` on that document, and reusing one takes being able to reach
-it already: an ID someone remembers or was told opens nothing. Deleting one takes `edit` on a document that has it, beyond a
-seat in a call, and on every other document that has it, whether they can open it or not, and takes it from all of them:
-reusing a picture doesn't make it theirs to delete, and nobody's file goes from a document they were never shown. A document
-they can't open refuses in the same words as one they can only read, so the refusal names neither. What a workspace keeps and
+only that way, because what someone can open of a workspace needn't be all of it: a seat covers one document, and a call
+opens everything but what's restricted. Whoever can open one of those documents, however they can, reads the file, in
+Trash too. Adding one, or reusing one in another document, takes `edit` on that document, and reusing one takes being able
+to reach it already: an ID someone remembers or was told opens nothing. Deleting one takes `edit` on a document that has
+it, beyond a seat in a call or what a call opens, and on every other document that has it, whether they can open it or
+not, and takes it from all of them: reusing a picture doesn't make it theirs to delete, and nobody's file goes from a
+document they were never shown. A document they can't open refuses in the same words as one they can only read, so the
+refusal names neither. What a workspace keeps and
 what each person uploads in a day are limited, the same for everyone: an account's day is counted in `media_upload_days` and a
 guest's in `media_guest_upload_days`, under the `upload-guest` blind index of the person their pass names, a number a day
 ([Data and storage › Media](data-and-storage.md#media)). `list` shows a reader what they can reach, and through which documents, and never a document they can't open.
@@ -669,9 +706,11 @@ for (one workspace, document and file), by opaque IDs and nothing else, and it d
 - **Nothing counts against anyone until they've shown they're who it names,** so a leaked URL can't spend their reads.
 - **A seat counts while someone's in it**: the call is going on, whoever has the seat is let in, and they weren't taken out.
   That's what a pass says, read from the call each time, so leaving the call stops the URL even while their `document_access`
-  row waits for the call to end. For a guest the URL is all there is, so within those limits, for 12 hours, anyone who holds it reads
-  that one file. A seat is named by what the call already calls it (`CallParticipant.seat`). Nothing of a call pass goes in a
-  URL, and a pass reads no file by itself.
+  row waits for the call to end. What the call opens counts with the seat, for the workspace the call uses at that request,
+  so a file someone reaches only through the call stops reading once they leave or the call moves on to another workspace.
+  For a guest the URL is all there is, so within those limits, for 12 hours, anyone who holds it reads that one file. A
+  seat is named by what the call already calls it (`CallParticipant.seat`). Nothing of a call pass goes in a URL, and a
+  pass reads no file by itself.
 
 Anything off the list of what can be shown in place only downloads, what a file is served as comes from its sealed info and
 never the request, and every answer says `nosniff` and `no-store`, with a Content-Security-Policy that lets nothing run if one is
@@ -680,12 +719,13 @@ takes a token out of anything that quotes a file's URL, a browser's report of a 
 
 ### Brought to a call
 
-`features/workspaces/library.ts` shows what's in workspaces to people with calls, and `workspaceAccess.ts` still decides.
+`features/workspaces/library.ts` shows what's in workspaces to people with calls, and `features/workspaces/access.ts` still
+decides.
 
 - **The library** (`GET /v1/documents`) is what someone can bring: everything they can open with their account, by
   workspace, as each tree shows it to them, without folders or what's in Trash. A workspace with nothing to bring isn't
-  listed. Someone outside a workspace who was given something sees that, with no name for the workspace. A seat in a call
-  adds nothing: it ends with the call, and the call being brought to is another one.
+  listed. Someone outside a workspace who was given something sees that, with no name for the workspace. A seat in a call,
+  and what a call opens, add nothing: each ends with the call, and the call being brought to is another one.
 - **On a call**, everyone who can read it is told each document's kind and whose it is, by first name, and its name only
   if they can open it, worked out on every read. That's the one thing anyone is told about something they can't open, and
   the organizer is the one telling them: they could reach it when they brought it. It opens nothing, and it's a first name
@@ -708,44 +748,9 @@ takes a token out of anything that quotes a file's URL, a browser's report of a 
   moment, so a name still goes only to someone who can open it. Something in Trash or gone isn't listed for anyone, and
   restored, it's back. A workspace that can't be read leaves its documents off the call and is logged by its ID, and the
   call opens as usual.
-- **Guests** see none of it: a call pass reaches no library and no meeting, and neither a call's state nor its card says
-  what was brought. What a guest can read of a workspace is what's shared with their seat.
-
-### Files
-
-A file in a workspace ([Data and storage › Media](data-and-storage.md#media)) is reached through a document that has it, and
-only that way, because a guest's seat covers one document. Whoever can open one of those documents can read the file, in Trash
-too. Adding one, or reusing one in another document, takes `edit` on that document, and reusing one takes being able to reach
-it already: an ID someone remembers or was told opens nothing. Deleting one takes `edit` on a document that has it, beyond a
-seat in a call, and on every other document that has it, whether they can open it or not, and takes it from all of them:
-reusing a picture doesn't make it theirs to delete, and nobody's file goes from a document they were never shown. A document
-they can't open refuses in the same words as one they can only read, so the refusal names neither. What a workspace keeps and
-what each person uploads in a day are limited, the same for everyone: an account's day is counted in `media_upload_days` and a
-guest's in `media_guest_upload_days`, under the `upload-guest` blind index of the person their pass names, a number a day
-([Data and storage › Media](data-and-storage.md#media)). `list` shows a reader what they can reach, and through which documents, and never a document they can't open.
-
-A picture or a player can't send a header and a guest has no cookie, so reading a file takes a URL with a token in it. The token
-is signed, as a call pass is, and lasts 12 hours. It says who's asking (an account's ID, a seat in a call, or both) and what
-for (one workspace, document and file), by opaque IDs and nothing else, and it decides nothing:
-
-- **Every request asks again**, each `Range` included: who's asking and whether they can open the document, in
-  `features/workspaces/access.ts`, and whether the document still has the file. An answer sends at most 16 MiB, and a read of a
-  whole file asks again every four pieces, so a read can't outlast access by much. Someone who lost the document gets the same
-  `not-found` on their next request as a URL nobody made, and so does an expired, changed or unsigned token. If they're given
-  the document back, the same URL works again.
-- **An account counts only with its own session.** The browser's cookie comes with the request, and it has to be that
-  account's and live. So a URL is nothing in anyone else's browser, or none, and it stops the moment that session ends.
-- **Nothing counts against anyone until they've shown they're who it names,** so a leaked URL can't spend their reads.
-- **A seat counts while someone's in it**: the call is going on, whoever has the seat is let in, and they weren't taken out.
-  That's what a pass says, read from the call each time, so leaving the call stops the URL even while their `document_access`
-  row waits for the call to end. For a guest the URL is all there is, so within those limits, for 12 hours, anyone who holds it reads
-  that one file. A seat is named by what the call already calls it (`CallParticipant.seat`). Nothing of a call pass goes in a
-  URL, and a pass reads no file by itself.
-
-Anything off the list of what can be shown in place only downloads, what a file is served as comes from its sealed info and
-never the request, and every answer says `nosniff` and `no-store`, with a Content-Security-Policy that lets nothing run if one is
-opened by itself, and an `ETag` that's a digest of its sealed info, so it names the file without saying anything about it. Its URL never reaches a log: paths show `/v1/media/:token`, and the [scrubber](logging-and-errors.md#privacy-rules-for-logs)
-takes a token out of anything that quotes a file's URL, a browser's report of a picture that failed among them.
+- **Guests** reach none of it: a call pass reads no library and no meeting, and a call's card doesn't say what was brought.
+  In the call, a guest is told what was brought that they can open, as anyone there is (`CallWorkspace.documents`): what
+  isn't restricted in the workspace the call uses, while they're in the call, and what's shared with their seat.
 
 ## Requests
 
@@ -777,8 +782,10 @@ takes a token out of anything that quotes a file's URL, a browser's report of a 
   was about, so it can't hold a name. A call's answer does hold the names of what was brought to it, so its receipt keeps
   the call without them: a retry gets `documents` empty, and the next read has them. What a guest in a call can reach of a workspace keeps none: renaming an item,
   which happens as a title is typed, restoring one, reading, and everything to do with files. Each sets an explicit state
-  or, for a piece of a file, is kept by its place, and a guest has no account to file a receipt under. Nor does anything about
-  a document's content: an update that arrives twice changes nothing, and a receipt would hold a copy of it. Starting an upload
+  or, for a piece of a file, is kept by its place, and a guest has no account to file a receipt under. So a guest's making,
+  moving, duplicating and sending something to Trash keep none either, where anyone signed in keeps one: the browser never
+  sends one of those twice. Nor does anything about a document's content: an update that arrives twice changes nothing,
+  and a receipt would hold a copy of it. Starting an upload
   twice leaves one nobody finishes, which maintenance takes.
 - **Rate limits.** Sign-in, demo and Google together: 30 a minute per client address (the last
   `x-forwarded-for` entry, which Cloud Run's front end appends). Browser reports: 60 a minute per client
@@ -946,8 +953,8 @@ connection](calls-and-recordings.md#recording-without-a-connection)), and so eac
 | Where | Visible |
 | --- | --- |
 | Postgres | Opaque IDs; item kinds (`profile`, `meeting`, `note`, `connection`, `series`, so which accounts connected Google, and how many series that repeat an account has, though not which calls are in one: that's sealed in each call); while a change to a series goes through, that one is; revision, call and recording times (a room recording uploaded later shows when it really started); that someone in a call is moving to another device, and when the move runs out; how many links each note has working, and when each runs out; while a call runs, how many people its organizer rang, and for each when the ring started and when it stops: so also that someone said "in a little while" (a ring still to come) or answered at all (a ring that stopped early), and when, though never how, and never who; per-piece start, duration, size and codec; while a note records, how many clips were transcribed and their sizes; while a call runs, which parts of it have live notes, how many views of each, when they were last refreshed, and the size of each; when each share in a call started and ended and whether it went in the notes; the place, length, size and type of each piece and chunk of a kept share's video; how many shared-screen frames a note keeps, and their sizes; each notes job's state, attempts and lease times; which accounts have their own notes on which notes (one row each, so not how many, or of what), and how many additions a note has and when each was made; operation method and time; stored bytes; each session's provider and its created, last-seen and expiry times; when each sign-in identity was last used |
-| Keyed hashes | Equal hashes show the same person. Joining `note_access` to `identities` shows which accounts received which notes from which organizers, and whether by invitation or by sharing. For addresses without an account it still shows the same address receiving several notes. `note_additions.author_index` shows which additions are the same person's, across notes and organizers, and `note_links.maker_index` which links are the same person's. It matches no other column, but comparing the notes those additions are on with `note_access` can narrow down who it is. `call_rings` joins to nothing but itself: the same hash in two rows is the same address rung twice, and its rows last as long as the call. `meeting_access` shows how many people are invited to each call that isn't over, whether each has answered (never what), and the same address on several organizers' calls; its hashes have their own purpose, so it can't be joined to `identities` or `note_access` without `KMASTER`. Joining `workspace_members` and `document_access` the same way shows who's in which workspaces and who has how many of a workspace's documents, at what role; `workspace_authors` shows who has had their name on something in one, or made it, even after leaving. |
-| Workspaces | That a workspace exists, how many people and documents it has and when each came, each one's role, that a document is shared and whether with an address or a seat in which call, how often it changes (`version`), when the oldest thing in its Trash went there, and that someone was tagged in a document and when, until they've heard. How many files it has, when each came, how big each is, and which documents share one. Never a name, a folder, how the tree is arranged, or what a file is called or is. `presenter_notes`, which nothing writes now, shows which accounts kept notes on which documents with an earlier release, and so that those accounts could open them: one row each, of a size, and never what they say. `presenter_frame_notes` shows the same for boards, and how many frames of each someone keeps notes beside, never which frames or what they say. Which calls use which workspaces, and what was worked on in them, is sealed in the meeting, the call and the note |
+| Keyed hashes | Equal hashes show the same person. Joining `note_access` to `identities` shows which accounts received which notes from which organizers, and whether by invitation or by sharing. For addresses without an account it still shows the same address receiving several notes. `note_additions.author_index` shows which additions are the same person's, across notes and organizers, and `note_links.maker_index` which links are the same person's. It matches no other column, but comparing the notes those additions are on with `note_access` can narrow down who it is. `call_rings` joins to nothing but itself: the same hash in two rows is the same address rung twice, and its rows last as long as the call. `meeting_access` shows how many people are invited to each call that isn't over, whether each has answered (never what), and the same address on several organizers' calls; its hashes have their own purpose, so it can't be joined to `identities` or `note_access` without `KMASTER`. Joining `workspace_members` and `document_access` the same way shows who's in which workspaces and who has how many of a workspace's documents, at what role; `workspace_authors` shows who has had their name on something in one, or made it, even after leaving. `workspace_calls.organizer_index` is an email index too, so it shows whose call a workspace is open to, while the call goes on; its `call_index` matches nothing else. |
+| Workspaces | That a workspace exists, how many people and documents it has and when each came, each one's role, that a document is shared and whether with an address or a seat in which call, how often it changes (`version`), when the oldest thing in its Trash went there, and that someone was tagged in a document and when, until they've heard. How many files it has, when each came, how big each is, and which documents share one. Never a name, a folder, how the tree is arranged, or what a file is called or is. `presenter_notes`, which nothing writes now, shows which accounts kept notes on which documents with an earlier release, and so that those accounts could open them: one row each, of a size, and never what they say. `presenter_frame_notes` shows the same for boards, and how many frames of each someone keeps notes beside, never which frames or what they say. Which calls use which workspaces, and what was worked on in them, is sealed in the meeting, the call and the note, except while a call goes on: then `workspace_calls` shows, by the call's ID, each workspace it has opened to everyone in it, and since when, until it ends |
 | Documents | When each update was made and roughly how big it was and how many pieces it held, until it compacts, so when a document was being worked on and how hard; how big its state and versions are, how many versions it has and when each was kept; how many Yjs clients have written to it, which is about how many sessions, and how much each wrote, with nothing to link two clients to each other or to anyone. A board started from a template has the server's client for it, 2, with how much the template wrote, so which template it started from, and the row stays if a version from before it takes the board's place. Never a word, a title, a mention or a comment, nor anything on a board. Carets and presence pass through Postgres's notice queue sealed, as notices of a size and at a time, each naming the workspace and, for a caret, the document |
 | Object store | Object count, sizes and timing: a recording writes about one object every 5 seconds, a share kept for the notes about one every 5 seconds while it's going, then one per 4 MiB of its joined video once the call is over, and a file one for every 4 MiB |
 | Uploads | How many bytes each account uploaded to workspaces each day, today and yesterday, and each guest in a call, under a blind index that can't be matched to the call, the seat or a name. A file's row says which workspace it's in, how big it is and when it came, and not who uploaded it, but on a quiet day an account's bytes can be matched to one file's size and time, which shows that account uploaded it. And the service's limits, which are numbers and nothing of anyone's |
@@ -1060,16 +1067,18 @@ connection](calls-and-recordings.md#recording-without-a-connection)), and so eac
 - **Deleting a file** from a workspace takes it from every document that has it, for everyone: rows and stored bytes in one
   transaction, and its objects as above. It's refused for someone who can't edit every one of those documents, whether they
   can open it or not, in words that name none of them, and for someone who can edit the document only through a seat in a
-  call. Taking its block out of a document deletes nothing: a version may still show it.
-- **Deleting your account** takes its presenter notes with its `owners` row, and also reaches every workspace its address still appears in, including ones it left: it comes
-  out of them and off every document given to its address, unless another account still signs in with that address, and
-  everything its calls gave people's seats ends. A workspace left with nobody in it is deleted, even if people outside it
-  have documents from it. One left with no admin makes its longest-standing person its admin. A restricted document only
-  the account could open goes, in Trash or not, with any file nothing else has; anything else left with nobody to open it goes to Trash; and what it made
-  keeps its name and loses its address, so signing in again with that address brings none of it back. Every row is touched
-  under its workspace's lock, the order every change takes, workspace by workspace in order of owner and after the
-  account's, so it can't deadlock with a change, or with someone else leaving at the same moment. Files that go are queued in
-  `object_gc` in the transaction, and deleted before Google is asked to revoke anything.
+  call, or what a call opens. Taking its block out of a document deletes nothing: a version may still show it.
+- **Deleting your account** takes its presenter notes with its `owners` row, and also reaches every workspace its
+  address still appears in, including ones it left: it comes out of them and off every document given to its address,
+  unless another account still signs in with that address, and everything its calls gave people's seats ends. What its
+  calls opened to everyone in them opens nothing from then on, as there's no call left to be in, and maintenance deletes
+  those rows. A workspace left with nobody in it is deleted, even if people outside it have documents from it. One left
+  with no admin makes its longest-standing person its admin. A restricted document only the account could open goes, in
+  Trash or not, with any file nothing else has; anything else left with nobody to open it goes to Trash; and what it
+  made keeps its name and loses its address, so signing in again with that address brings none of it back. Every row is
+  touched under its workspace's lock, the order every change takes, workspace by workspace in order of owner and after
+  the account's, so it can't deadlock with a change, or with someone else leaving at the same moment. Files that go are
+  queued in `object_gc` in the transaction, and deleted before Google is asked to revoke anything.
 - **Series** that follow on from each other have no record of their own: a series is the ID its calls share inside
   their sealed manifests (with Google's ID for a recurring event), so it goes when its calls do. One scheduled to
   repeat has a sealed `series` item, deleted with its link in the transaction that deletes its last call, however
@@ -1090,8 +1099,8 @@ connection](calls-and-recordings.md#recording-without-a-connection)), and so eac
 - **Maintenance** (every 5 minutes) removes ended sessions and receipts older than 24 hours, retries
   `object_gc`, removes objects older than 24 hours that no recording piece, piece or chunk of shared-screen video, frame or piece of a file
   references, removes rings a day after they ran out, in a call that went on that long, deletes for good what's been in
-  a workspace's Trash for 30 days, ends seats whose call is over, removes live notes of calls that have ended, and takes
-  away what an upload left when its browser went, a day on.
+  a workspace's Trash for 30 days, ends seats, and what calls opened to everyone in them, whose call is over, removes live
+  notes of calls that have ended, and takes away what an upload left when its browser went, a day on.
 
 ## Moving to confidential computing
 

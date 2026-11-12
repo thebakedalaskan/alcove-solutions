@@ -30,19 +30,28 @@ export interface WorkspacesApi {
   items: {
     /** One document, board or folder, if you can open it. */
     get(id: ID, itemId: ID, opts?: WorkspaceReadOptions): Promise<WorkspaceItem>;
-    /** Makes one, last in `parent` (the top when left out) unless `after` says otherwise. */
-    create(id: ID, input: ItemInput): Promise<{ id: ID }>;
+    /**
+     * Makes one, last in `parent` (the top when left out) unless `after` says otherwise. Someone who can edit in it, or anyone in
+     * a call that uses it, with the call's pass.
+     */
+    create(id: ID, input: ItemInput, opts?: WorkspaceReadOptions): Promise<{ id: ID }>;
     /** Anyone who can edit it, so a document's title can follow what's typed. */
     rename(id: ID, itemId: ID, name: string, opts?: WorkspaceReadOptions): Promise<void>;
-    /** Moves it to another folder or another place among its siblings. A folder can't go inside itself. */
-    move(id: ID, itemId: ID, to: ItemPlace): Promise<void>;
-    /** A copy just after it, with everything you can open inside a folder. A copy isn't shared with anyone, and a copy of something restricted is restricted, to you. */
-    duplicate(id: ID, itemId: ID): Promise<{ id: ID }>;
-    /** Moves it to Trash, for everyone, for 30 days. A folder takes what's in it, except anything you can't open, which stays in the tree. */
-    trash(id: ID, itemId: ID): Promise<void>;
+    /** Moves it to another folder or another place among its siblings. A folder can't go inside itself. As `create` says who may. */
+    move(id: ID, itemId: ID, to: ItemPlace, opts?: WorkspaceReadOptions): Promise<void>;
+    /**
+     * A copy just after it, with everything you can open inside a folder. A copy isn't shared with anyone, and a copy of something
+     * restricted is restricted, to you. As `create` says who may.
+     */
+    duplicate(id: ID, itemId: ID, opts?: WorkspaceReadOptions): Promise<{ id: ID }>;
+    /**
+     * Moves it to Trash, for everyone, for 30 days. A folder takes what's in it, except anything you can't open, which stays in the
+     * tree. As `create` says who may.
+     */
+    trash(id: ID, itemId: ID, opts?: WorkspaceReadOptions): Promise<void>;
     /** Brings it back, to the top if its folder isn't in the tree any more. Anyone who can edit it. */
     restore(id: ID, itemId: ID, opts?: WorkspaceReadOptions): Promise<void>;
-    /** Deletes something in Trash for good, for everyone. */
+    /** Deletes something in Trash for good, for everyone: for people in the workspace who can edit, never a call's pass alone. */
     deleteForever(id: ID, itemId: ID): Promise<void>;
   };
   share: {

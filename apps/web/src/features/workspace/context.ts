@@ -1,7 +1,7 @@
 /* What the list and the page of a workspace share, and what `<Workspace />` takes from whatever it's in. */
 import type { PersonIds } from './ids';
 import type { ItemPlace, Person, WorkspaceHere, WorkspaceItem, WorkspaceTree, WorkspaceWhere } from '@alcove/api';
-import type { WsMenuRow, WsToastData } from '@alcove/ui';
+import type { WsToastData } from '@alcove/ui';
 import { createContext, useContext, type ReactNode, type RefObject } from 'react';
 import type { Doc } from 'yjs';
 import type { Pictures } from './pictures';
@@ -44,37 +44,19 @@ export interface WorkspacePlaying {
   start?: ((documentId: string, mediaId: string) => void) | undefined;
 }
 
-/**
- * What the name at the top of the list knows when someone opens it: the workspace it names, and what's there about it
- * (`about`: its people, renaming it). `close` puts the menu away.
- */
-export interface SpaceHead { workspaceId: string; name: string; people: number | null; about: WsMenuRow[]; close: () => void }
-
 /** What a call adds to the workspace. Left out in the app. */
 export interface WorkspaceCall {
-  /**
-   * The first rows under This call: the call's own pages. The list leaves them out where it shows the call's folder, which
-   * holds them; someone who can't see that folder, such as a guest shared one document, still has them here.
-   */
+  /** The first rows under This call: the call's own pages, whichever workspace everyone views. */
   top?: ReactNode;
   /**
    * What the call puts at the foot of the list, under Trash: the organizer's link for anyone to ask to join, while they're on
    * their own. In the list's own flow it covers none of it, where over the stage it would cover the list.
    */
   foot?: ReactNode;
-  /** The call's home, where its notes go and its folder is, if you can open anything in it. */
-  home: string | null;
   /** What's been brought to the call, in order, by its ID in this workspace. */
   documents: readonly string[];
   /** Brings a document to the call, or takes it off. It's in every document's menu. */
   onBring: (id: string, brought: boolean) => void;
-  /**
-   * What the name at the top of the list opens, for whoever chooses the call's workspace: their workspaces, and a new one.
-   * Left out, it says which workspace this is, and who chooses it (`chooser`).
-   */
-  picker?: ((head: SpaceHead) => ReactNode) | undefined;
-  /** The first name of who chooses the workspace, for anyone else. */
-  chooser?: string | undefined;
   /**
    * Whether the list shows, which is the call's to say (panels.ts): `off`, or only over the page for now (`peek`). `onToggle` is
    * the list's button. `onShow` is for whatever needs the list showing, such as naming a folder: it never hides it. `wanted`
@@ -185,8 +167,18 @@ export interface Ws {
   self: Person | null;
   actions: TreeActions;
   say: (toast: WsToastData) => void;
-  /** Whether someone can add to the tree, move things in it and send them to Trash. */
+  /**
+   * Whether someone can add to the tree, move things in it and send them to Trash: someone in the workspace who can edit, or
+   * anyone in a call that uses it (`WorkspaceTree.inCall`).
+   */
   canChange: boolean;
+  /**
+   * In a call, the folder of the call you're in, there while the workspace the call uses is its home: the list shows what's in
+   * it as This call. Null anywhere else.
+   */
+  callFolder: string | null;
+  /** Where what's made here goes when nothing says where (N, New at the top, an empty page's New document): `callFolder` while you can add to it, else the top. */
+  madeIn: string | null;
   /** What the workspace is called here. */
   spaceName: string;
   spaceSave: 'quiet' | 'saving' | 'saved' | 'failed';

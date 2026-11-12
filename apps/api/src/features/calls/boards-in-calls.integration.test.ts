@@ -761,19 +761,18 @@ describe('a saved board', () => {
     expect(await seats(board)).toBe(0);
   });
 
-  it('lets people in for the call: everyone who can’t open it, anyone admitted later, and it all ends with the call', async () => {
+  it('lets people in for the call: everyone who can’t edit it, anyone admitted later, and it all ends with the call', async () => {
     const { art, priya, rita, theo, id, board, host, code: c } = await room();
     const p = await invited(host, c, priya);
     const r = await invited(host, c, rita);
     const t = await invited(host, c, theo);
     const jamie = await guest(host, c);
     await p.openBoard({ workspaceId: id, documentId: board, letIn: true });
-    expect(p.getSnapshot().board.open).toEqual({ workspaceId: id, documentId: board, name: 'Onboarding flow', openedBy: p.ticket.identity, canClose: true, everyone: false, role: 'edit', seal: 'Sealed', frame: null });
-    // Only the people who couldn't open it: Rita keeps what the workspace gives her.
-    expect(await seats(board)).toBe(2);
-    for (const who of [t, jamie.call]) expect(await opened(who)).toMatchObject({ documentId: board, name: 'Onboarding flow', role: 'edit', canClose: false });
-    expect(await opened(r)).toMatchObject({ documentId: board, role: 'read' });
-    expect((await art.api.workspaces.share.list(id, board)).entries.map((e) => [e.kind, e.role]).sort()).toEqual([['seat', 'edit'], ['seat', 'edit']]);
+    expect(p.getSnapshot().board.open).toEqual({ workspaceId: id, documentId: board, name: 'Onboarding flow', openedBy: p.ticket.identity, canClose: true, everyone: true, role: 'edit', seal: 'Sealed', frame: null });
+    // Everyone here who couldn't edit it: Rita could only read it, and edits it in the call like everyone else.
+    expect(await seats(board)).toBe(3);
+    for (const who of [t, jamie.call, r]) expect(await opened(who)).toMatchObject({ documentId: board, name: 'Onboarding flow', role: 'edit', canClose: false, everyone: true });
+    expect((await art.api.workspaces.share.list(id, board)).entries.map((e) => [e.kind, e.role]).sort()).toEqual([['seat', 'edit'], ['seat', 'edit'], ['seat', 'edit']]);
     // They see that one board and nothing else in the workspace, by their seat.
     expect((await theo.api.workspaces.get(id, { pass: t.ticket.pass })).items.map((x) => x.id)).toEqual([board]);
     expect(await p.boardCheck(id, board)).toEqual({ cannot: [], mayLetIn: true });
@@ -781,11 +780,11 @@ describe('a saved board', () => {
     // Someone admitted later gets a seat too: it's a policy on the call, not a list.
     const sam = await guest(host, c, 'Sam Guest');
     await until(async () => (await opened(sam.call))?.role === 'edit', 'a seat for someone admitted later');
-    expect(await seats(board)).toBe(3);
+    expect(await seats(board)).toBe(4);
     // Closing leaves the policy where it was, and someone admitted now finds it when it's opened again.
     await p.closeBoard();
     const lee = await guest(host, c, 'Lee Guest');
-    await until(async () => (await seats(board)) === 4, 'a seat for someone admitted while it’s closed');
+    await until(async () => (await seats(board)) === 5, 'a seat for someone admitted while it’s closed');
     await p.openBoard({ workspaceId: id, documentId: board, letIn: false });
     expect(await opened(lee.call)).toMatchObject({ documentId: board, role: 'edit' });
 

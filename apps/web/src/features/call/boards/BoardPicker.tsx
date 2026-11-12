@@ -1,25 +1,26 @@
 /*
  * The board picker (docs: Calls and recordings › A board in a call): under Board at the top right, where it opens a board on
- * your stage just for you, and in Share › A board, where it presents one straight away.
+ * your stage, only on your screen until you present it, and in Share › A board, where it presents one straight away. Whatever
+ * opens from it is the board in the call, which everyone in the call can edit.
  *
  * - In this call: the board the call has, if it has one.
- * - New: Blank, Retro, Ideas or Flow. A new board is the board in the call, as the call's boards always are, but it opens only
- *   for whoever made it, until they present it.
- * - Your team's boards: what's been brought to this call first, then the newest from your Drive. Opening one just for you
- *   touches nothing in the call; presenting one brings it in first, and if some people here can't open it, asks first.
+ * - New: Blank, Retro, Ideas or Flow. A new board is the board in the call, as the call's boards always are.
+ * - Your team's boards: what's been brought to this call first, then the newest from your Drive. One is brought into the call
+ *   as it opens, for everyone here to edit when it's yours to share, so whoever joins later can too. If some people here can't
+ *   open it, it asks first: let everyone here edit it, or, when it isn't yours to share, open it anyway, for whoever can.
  *
  * Nobody can make or bring in a board while someone else presents one here, and a guest can't start one. In Share, where
  * what's picked is presented, nothing is picked while someone else presents a board or the workspace here.
  */
 import { AlcoveApiError, errorCode, firstName, type BoardCheck, type BoardOpen, type CallBrought, type CallPresent, type CallSession } from '@alcove/api';
-import { Icon, type BoardPickerAccess, type BoardPickerRecent, type BoardPickerInCall, type BoardPickerProps, type BoardTemplate } from '@alcove/ui';
+import { Icon, type BoardPickerAccess, type BoardPickerRecent, type BoardPickerInCall, type BoardPickerProps, type BoardTemplate, type PresentAskProps } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { log } from '~/lib/log';
 import { listNames } from '~/lib/people';
 import { q, type BoardToBring } from '~/lib/queries';
 import { pastDay } from '~/lib/time';
-import type { CallBoard, SavedBoard } from './callBoard';
+import type { CallBoard } from './callBoard';
 
 const mlog = log.child({ component: 'board-picker' });
 
@@ -68,12 +69,15 @@ export async function bringAndPresent(session: CallSession, board: CallBoard, fr
   await session.startPresenting({ kind: 'board', id });
 }
 
-/** Who can't open a saved board, as the question before presenting it asks. */
-export function accessAsk(check: BoardCheck, b: { workspaceId: string; id: string; name: string; where: string | null }, go: (letIn: boolean, says: string) => void): BoardPickerAccess {
+/**
+ * Who can't open a saved board on your screen, as Present asks before it brings it into the call: let everyone here edit it
+ * (for someone who may share it), or present it without them.
+ */
+export function presentAskOf(check: BoardCheck, b: { name: string; where: string | null }, go: (letIn: boolean, says: string) => void): Pick<PresentAskProps, 'names' | 'board' | 'where' | 'onLetIn' | 'onWithout'> {
   const names = listNames(check.cannot.map((n) => ({ name: n, email: '' })));
   return {
     names: check.cannot, board: b.name, where: b.where ?? 'another workspace',
-    onLetIn: check.mayLetIn ? () => go(true, `${names} can open this board until the call ends.`) : undefined,
+    onLetIn: check.mayLetIn ? () => go(true, `Everyone here can edit ${b.name} until the call ends.`) : undefined,
     onWithout: () => go(false, `${b.name} is open. ${names} can’t open it.`)
   };
 }
@@ -81,7 +85,7 @@ export function accessAsk(check: BoardCheck, b: { workspaceId: string; id: strin
 interface PickerFrom {
   session: CallSession;
   board: CallBoard;
-  /** Under Board, it opens on your stage just for you; in Share › A board, it's presented straight away. */
+  /** Under Board, it opens on your stage, only on your screen; in Share › A board, it's presented straight away. */
   mode: 'open' | 'present';
   /** You're in a breakout room: a new board is the room's alone, and saved boards stay the main room's. */
   inRoom: boolean;
@@ -97,11 +101,9 @@ interface PickerFrom {
   blocked: string | undefined;
   /** The board in the call, as the picker's first row says it, or nothing. */
   inCall: { name: string; by: string } | null;
-  /** The board in the call, on your stage (following whoever presents it). */
+  /** The board in the call, on your stage (following whoever presents it), and a saved one brought into it. */
   onOpenCall: () => void;
-  /** A saved board, on your stage just for you. */
-  onOpenSaved: (b: SavedBoard) => void;
-  /** A board you made, on your stage just for you. */
+  /** A board you made, on your stage, only on your screen until you present it. */
   onMade: () => void;
   /** A board you present, on your stage and everyone's. */
   onPresented: (name: string) => void;
@@ -111,7 +113,7 @@ interface PickerFrom {
 }
 
 /** What the board picker offers and does, wherever it opens. `reset` forgets the access question, as the picker closes. */
-export function useBoardPicker({ session, board, mode, inRoom, account, brought, spaceName, showing, blocked, inCall, onOpenCall, onOpenSaved, onMade, onPresented, onDone, failed }: PickerFrom): { picker: BoardPickerProps; reset: () => void } {
+export function useBoardPicker({ session, board, mode, inRoom, account, brought, spaceName, showing, blocked, inCall, onOpenCall, onMade, onPresented, onDone, failed }: PickerFrom): { picker: BoardPickerProps; reset: () => void } {
   // Your Drive's workspaces, which reaching for the picker read already, then the boards in the newest of them.
   const spaces = useQuery({ ...q.workspaces(), enabled: showing && !inRoom && account }).data;
   const drive = useQuery({ ...q.boardsToBring(spaces ?? []), enabled: showing && !inRoom && account && spaces !== undefined });
@@ -132,17 +134,25 @@ export function useBoardPicker({ session, board, mode, inRoom, account, brought,
     setBusy(true);
     session.openBoard({ template }).then(() => { onDone(); onMade(); }, failed).finally(() => setBusy(false));
   };
+  /** A saved board, brought into the call as the board here, on your stage only. */
+  const open = (from: BoardOpen) => {
+    setBusy(true);
+    session.openBoard(from).then(() => { setAccess(null); onDone(); onOpenCall(); }, failed).finally(() => setBusy(false));
+  };
+  /*
+   * A saved board comes into the call as it opens or is presented: for everyone here to edit when it's yours to share, so whoever
+   * joins later can too, and otherwise for whoever can open it. Some people here can't open it: it asks first.
+   */
   const onRecent = (id: string) => {
     const b = rows.find((r) => r.id === id);
     if (!b || busy) return;
-    if (mode === 'open') { onDone(); onOpenSaved({ workspaceId: b.workspaceId, documentId: b.id, name: b.name }); return; }
     setBusy(true);
     session.boardCheck(b.workspaceId, b.id).then((check) => {
       setBusy(false);
-      const from = (letIn: boolean): BoardOpen => ({ workspaceId: b.workspaceId, documentId: b.id, letIn });
-      if (check.cannot.length) { setAccess(accessAsk(check, b, (letIn, says) => present(from(letIn), says))); return; }
-      present(from(false), null);
-    }, (e: unknown) => { setBusy(false); mlog.info('a board couldn’t be checked before presenting', { workspaceId: b.workspaceId, documentId: b.id, code: errorCode(e) }); failed(e); });
+      const go = (letIn: boolean) => { const from: BoardOpen = { workspaceId: b.workspaceId, documentId: b.id, letIn }; if (mode === 'present') present(from, null); else open(from); };
+      if (!check.cannot.length) { go(check.mayLetIn); return; }
+      setAccess({ names: check.cannot, board: b.name, letIn: check.mayLetIn, onOpen: () => go(check.mayLetIn), onNotNow: () => setAccess(null) } satisfies BoardPickerAccess);
+    }, (e: unknown) => { setBusy(false); mlog.info('a board couldn’t be checked before it opened', { workspaceId: b.workspaceId, documentId: b.id, code: errorCode(e) }); failed(e); });
   };
   // Your team's boards, each saying whose it is and which workspace it's in.
   const recents = rows.length ? {

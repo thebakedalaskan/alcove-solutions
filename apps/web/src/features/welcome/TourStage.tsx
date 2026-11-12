@@ -55,7 +55,7 @@ const Top = memo(function Top({ tool, away }: { tool: Stage['tool']; away: boole
       <span className="lp-st-shield"><Icon name="sealed" size={19} /></span>
       <CallTimerButton time={null} label="Timer for everyone" tone="ready" />
       <div className="lp-st-end">
-        <CallTopGroup label="Just for you">
+        <CallTopGroup label="On your screen">
           <CallTopButton icon="presentation" word="Board" label="Board" />
           <CallTopButton icon="folderOpen" word="Workspace" label="Workspace" on={tool === 'work'} />
           <CallTopRule />

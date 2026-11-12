@@ -65,6 +65,7 @@ is right. It holds:
 | `Life.dc.html` | Everything that moves, each on its own tile, on repeat |
 | `tools/` | `sync-life.py`, which copies what passes through from the app's scene onto the canvas, and `Visitors.template.html`, the board it fills in, where the canvas's shorter waits are set |
 | `call/` | The call, rethought: the in-call screen the call was rebuilt from, with its own model (`nc.js`), boards and seven journeys; its [README](canvas/call/README.md) says what each board is |
+| `call-access/` | The call's workspace and boards, open to everyone in it: the design the build followed (11 November 2026), the call at any of its moments and four journeys; its [README](canvas/call-access/README.md) says what each board is |
 
 `window.AH` has, among others:
 

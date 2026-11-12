@@ -124,7 +124,7 @@ describe('a workspace', () => {
     const { id } = await ann.api.workspaces.create('  Launch \n plan ');
     expect(id).toMatch(/^[A-Za-z0-9_-]{22}$/);
     expect(await ann.api.workspaces.list()).toEqual([{ id, name: 'Launch plan', role: 'admin', people: 1, createdAt: expect.any(String), call: null }]);
-    expect(await ann.api.workspaces.get(id)).toEqual({ id, name: 'Launch plan', role: 'admin', people: 1, items: [] });
+    expect(await ann.api.workspaces.get(id)).toEqual({ id, name: 'Launch plan', role: 'admin', inCall: false, people: 1, items: [] });
     await ann.api.workspaces.rename(id, 'Launch');
     expect((await ann.api.workspaces.get(id)).name).toBe('Launch');
     expect(await code(ann.api.workspaces.rename(id, '   '))).toBe('invalid');
@@ -1305,7 +1305,7 @@ describe('the live stream', () => {
     expect(s.lines[1]).toEqual({ type: 'mentions', mentions: [] });
     const [first] = s.lines;
     if (first?.type !== 'tree') throw new Error('the first line isn’t the tree');
-    expect(first.tree).toEqual({ id, name: 'Ours', role: 'read', people: 2, items: [] });
+    expect(first.tree).toEqual({ id, name: 'Ours', role: 'read', inCall: false, people: 2, items: [] });
 
     const me = (await ann.api.workspaces.people(id)).find((p) => p.person.email === theo.email)?.id ?? '';
     await ann.api.workspaces.setRole(id, me, 'edit');
