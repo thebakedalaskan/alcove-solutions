@@ -51,6 +51,7 @@ Suites: `billing/meter` (`apps/api/src/features/billing/meter.integration.test.t
 | E8 | Two live calls by one organizer both stop | billing/meter › stops every call the organizer has going… | 1 | Passes |
 | E9 | Questions at once near the end never spend past the allowance | billing/meter › holds what requests in flight… | 1 | Passes |
 | E10 | A bigger allowance lifts the stop; notes come back on | billing/meter › stops notes for everyone… | 1 | Passes |
+| E11 | Notes left only goes down: what's held for a call's notes and requests on their way counts for the stop, not for what's shown | billing/meter › says notes left from what was spent… | 1 | Passes |
 | **F: Pro** | Buying 1–12 months, refunds, renewing, reminders, expiry into grace | — | 2 | Not built |
 | **G: Team** | Licenses, invites, visits, alerts, team notes and workspaces, pooled storage | — | 3 | Not built |
 | **H: calls** |  |  |  |  |

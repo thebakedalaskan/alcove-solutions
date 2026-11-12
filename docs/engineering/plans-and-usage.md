@@ -41,7 +41,11 @@ and its most people.
 Each plan brings an AI allowance for its period: its minutes of notes at what an hour of notes is reckoned at
 (`ai.hour_micro_usd`, $0.50), so Free's 300 minutes are $2.50. The allowance is kept in dollars, sealed, and never
 leaves the server: the app shows what's left as time ("About 3 h 20 min of notes left"), an estimate, since what a call
-really costs depends on its model, how much is said and what's shared. It doesn't carry over: a new period starts the
+really costs depends on its model, how much is said and what's shared. What's shown is the allowance less what's been
+spent, so it only goes down in a period. What's held below (for requests on their way, and for a live call's notes)
+counts when the meter decides whether to warn or stop, but isn't shown: it's the most each could cost, and showing it
+would make notes left dip while a note is written and rise again once it's charged at what it actually cost. Near the
+end, notes can stop while a minute or two still shows; the banner says so. It doesn't carry over: a new period starts the
 first time the account is touched after the old one ends, or after its plan changes, with all of its allowance.
 
 **Every request to NEAR AI is paid for** (`features/billing/meter.ts`). `inference.ts`'s `transcribe`, `complete` and

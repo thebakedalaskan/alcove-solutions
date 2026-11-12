@@ -209,8 +209,17 @@ export async function close(d: Service, payer: string, source: Source): Promise<
   }));
 }
 
-/** An account's allowance as it stands, without changing it: what's left, what a period brings, and whether it's spent. */
-export interface Standing { leftNano: number; allowanceNano: number; spentNano: number; byKind: Readonly<Record<string, number>>; stopped: boolean; plan: PlanKind; from: number; to: number }
+/**
+ * An account's allowance as it stands, without changing it: what's left, what a period brings, and whether it's spent.
+ * `leftNano` and `stopped` are what the meter decides by: what requests in flight and live calls' notes hold counts at the
+ * most it could cost, so nothing spends past the allowance. `unspentNano` and `ranOut` are what the plan shows: only what's
+ * been spent, so notes left only ever go down in a period, and don't dip while something is held and come back when it's
+ * charged at what it actually cost.
+ */
+export interface Standing {
+  leftNano: number; unspentNano: number; allowanceNano: number; spentNano: number; byKind: Readonly<Record<string, number>>;
+  stopped: boolean; ranOut: boolean; plan: PlanKind; from: number; to: number;
+}
 export async function standing(d: Service, db: Db, ownerId: string): Promise<Standing> {
   const l = await limitsNow(d, db);
   const now = Date.now();
@@ -223,7 +232,14 @@ export async function standing(d: Service, db: Db, ownerId: string): Promise<Sta
   const live = current ? { ...current, allowanceNano, holds: current.holds.filter((h) => h.until > now), sources: current.sources.filter((s) => now - s.touched < SOURCE_GONE_MS) } : null;
   const leftNano = live ? leftOf(live) : allowanceNano - (m?.sources.filter((s) => now - s.touched < SOURCE_GONE_MS).reduce((n, s) => n + s.reserveNano, 0) ?? 0);
   const stop = l.get('ai.stop_micro_usd') * 1000;
-  return { leftNano, allowanceNano, spentNano: live?.spentNano ?? 0, byKind: live?.byKind ?? {}, stopped: leftNano <= stop || (live?.stopped != null && !(allowanceNano > live.stopped.allowanceNano && leftNano > stop)), plan: p.kind, from: p.from, to: p.to };
+  const spentNano = live?.spentNano ?? 0;
+  const unspentNano = Math.max(0, allowanceNano - spentNano);
+  // Spent this period, and not lifted by a bigger allowance since.
+  const halted = live?.stopped != null && !(allowanceNano > live.stopped.allowanceNano && leftNano > stop);
+  return {
+    leftNano, unspentNano, allowanceNano, spentNano, byKind: live?.byKind ?? {},
+    stopped: leftNano <= stop || halted, ranOut: unspentNano <= stop || halted, plan: p.kind, from: p.from, to: p.to
+  };
 }
 
 /** Minutes of notes `nano` is about worth, at what an hour of notes is reckoned at. */

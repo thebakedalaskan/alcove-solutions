@@ -1,6 +1,6 @@
 /*
  * An account's plan as its owner sees it (docs: Plans and usage): notes as time, about what's left of the period's AI
- * allowance at what an hour of notes is reckoned at; storage and shared workspaces against the plan's limits, with any
+ * allowance once what's been spent is taken off, at what an hour of notes is reckoned at; storage and shared workspaces against the plan's limits, with any
  * grace; and the balance. The allowance itself, in dollars, never leaves the server.
  */
 import type { Plan } from '@alcove/api';
@@ -27,7 +27,8 @@ export async function planOf(d: Pick<Deps, 'cfg' | 'pool'>, ownerId: string): Pr
   return {
     kind: p.kind,
     period: { from: new Date(p.from).toISOString(), to: new Date(p.to).toISOString() },
-    notes: { minutesLeft: s.stopped ? 0 : minutesOf(s.leftNano, l), minutesPerPeriod: p.notesMinutes, stopped: s.stopped },
+    // From what's been spent, not what's held for requests in flight or a call's notes: it only goes down.
+    notes: { minutesLeft: s.ranOut ? 0 : minutesOf(s.unspentNano, l), minutesPerPeriod: p.notesMinutes, stopped: s.ranOut },
     storage: { usedBytes: used, limitBytes: held.storageBytes ?? p.storageBytes, fileBytes: p.fileBytes },
     sharedWorkspaces: { made, limit: p.sharedWorkspaces },
     grace: inGrace && a.grace ? { until: a.grace.until, workspaces: overWorkspaces, storage: overStorage } : null,

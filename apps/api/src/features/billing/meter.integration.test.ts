@@ -273,3 +273,38 @@ describe('running out', () => {
     expect(after.spentNano).toBeLessThanOrEqual(after.allowanceNano);
   });
 });
+
+describe('what’s shown', () => {
+  it('says notes left from what was spent, so it only goes down while a call goes on and its notes are written', async () => {
+    // A minute of notes is a tenth of a cent here: anything held for a request would show as many minutes if it counted.
+    await setLimit('ai.hour_micro_usd', 6000);
+    const minuteNano = 100_000;
+    const org = await account(unique('organizer'));
+    const shown = async () => (await org.api.plans.plan()).notes.minutesLeft;
+    const seen = [await shown()];
+    const { host } = await call(org);
+    await host.appendAudio(piece('shown', 0));
+    await host.transcribe(speech('We agreed to ship on Monday.', 0), host.ticket.identity);
+    // The call holds what writing its notes could cost at most. The meter decides by that; the plan shows what's spent.
+    const during = await meter(org);
+    expect(during.leftNano).toBeLessThan(during.unspentNano - minuteNano);
+    seen.push(await shown());
+    expect(seen.at(-1)).toBe(Math.floor(during.unspentNano / minuteNano));
+    // While the notes are written, each request holds the most its reply could be, and the plan still says what's spent.
+    let held = 0;
+    h.near.holdNext(async () => {
+      const m = await meter(org);
+      held = m.unspentNano - m.leftNano;
+      seen.push(await shown());
+    });
+    const ended = await host.leave();
+    await written(org.api, ended?.pendingNoteId ?? '');
+    seen.push(await shown());
+    expect(held).toBeGreaterThan(minuteNano);
+    expect(seen).toHaveLength(4);
+    // Each reading is at most the one before: down as the allowance is spent, never back up.
+    for (const [i, n] of seen.entries()) expect(n, `reading ${i}`).toBeLessThanOrEqual(seen[i - 1] ?? n);
+    expect(seen.at(-1)).toBeLessThan(seen[0] ?? 0);
+    expect((await org.api.plans.plan()).notes.stopped).toBe(false);
+  });
+});
