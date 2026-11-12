@@ -18,7 +18,7 @@ vi.setConfig({ testTimeout: 90_000 });
 let h: Harness;
 beforeAll(async () => { h = await startHarness(); });
 afterAll(async () => { await h?.close(); await disposeLiveKit(); });
-afterEach(async () => { h.closeCalls(); await h.resetLimits(); });
+afterEach(async () => { h.closeCalls(); vi.useRealTimers(); await h.resetLimits(); });
 
 const code = (e: unknown) => (e instanceof AlcoveApiError ? e.code : 'not-an-api-error');
 const refusal = (p: Promise<unknown>) => p.then(() => 'succeeded', (e: unknown) => (e instanceof AlcoveApiError ? `${e.code}: ${e.message}` : String(e)));
@@ -151,6 +151,37 @@ describe('who pays', () => {
     expect(dear).toBeGreaterThan(cheap);
   });
 
+  it('charges a request still on its way after five minutes what it held, and once it’s answered what it used, never both', async () => {
+    const ann = await account();
+    const rec = await ann.api.recordings.start({ title: 'Late' });
+    await rec.transcribe(speech('We agreed to ship on Monday.', 0));
+    await written(ann.api, (await rec.stop()).pendingNoteId);
+    const asked = async () => {
+      const before = (await meter(ann)).byKind['ask'] ?? 0;
+      await answer(ann.api.notes.askAll('When do we ship?'));
+      return ((await meter(ann)).byKind['ask'] ?? 0) - before;
+    };
+    // What the question costs answered at once.
+    const once = await asked();
+    const before = (await meter(ann)).spentNano;
+    // Asked again, it's answered only six minutes later, and the same question goes meanwhile.
+    let overdue = 0;
+    let meanwhile = 0;
+    h.near.holdNext(async () => {
+      vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 6 * 60_000 });
+      // What it held is charged in full once it's overdue: shown so before the meter is next touched, as it will be then.
+      overdue = (await meter(ann)).spentNano - before;
+      meanwhile = await asked();
+    });
+    await answer(ann.api.notes.askAll('When do we ship?'));
+    expect(overdue).toBeGreaterThan(once);
+    expect(meanwhile).toBe(once);
+    // Answered after all, it's charged what it used instead of what it held: the two questions cost what one did twice.
+    const after = await meter(ann);
+    expect(after.spentNano - before).toBe(2 * once);
+    expect(after.leftNano).toBe(after.unspentNano);
+  });
+
   it('charges nothing for a request NEAR AI turned away', async () => {
     const ann = await account();
     const rec = await ann.api.recordings.start({ title: 'Down' });
@@ -229,6 +260,33 @@ describe('running out', () => {
     await h.setLimit('plan.free.notes_minutes', 300);
     await next.host.setNotes(true);
     expect((await settle(next.host, (s) => s.capture.mode === 'on')).capture).toMatchObject({ mode: 'on', stopped: null });
+  });
+
+  it('pays for writing a call’s notes from what the call held for them, so writing them stops nothing the call held enough for', async () => {
+    // An hour of notes at whatever ai.hour_micro_usd says, and no stop short of nothing.
+    await h.setLimit('plan.free.notes_minutes', 60);
+    await h.setLimit('ai.stop_micro_usd', 0);
+    const org = await account(unique('organizer'));
+    const { host } = await call(org);
+    await host.appendAudio(piece('held', 0));
+    await host.transcribe(speech('We agreed to ship on Monday.', 0), host.ticket.identity);
+    // What the call has spent and holds for writing its notes, and a twentieth of a cent more: less than writing them costs.
+    const live = await meter(org);
+    const reserved = live.unspentNano - live.leftNano;
+    expect(reserved).toBeGreaterThan(0);
+    await h.setLimit('ai.hour_micro_usd', Math.ceil((live.spentNano + reserved + 50_000) / 1000));
+    const room = (await meter(org)).leftNano;
+    expect(room).toBeGreaterThanOrEqual(50_000);
+    // While the notes are written, what each request holds is part of what the call held: nothing more is taken.
+    let writing: { leftNano: number; stopped: boolean } | null = null;
+    h.near.holdNext(async () => { writing = await meter(org); });
+    const ended = await host.leave();
+    await written(org.api, ended?.pendingNoteId ?? '');
+    expect(writing).toEqual(expect.objectContaining({ leftNano: room, stopped: false }));
+    const after = await meter(org);
+    expect(after.byKind['notes']).toBeGreaterThan(room);
+    expect(after.stopped).toBe(false);
+    expect((await org.api.plans.plan()).notes.stopped).toBe(false);
   });
 
   it('after a Free organizer’s notes stop, an invitee on Pro still asks from their own allowance, and a guest can’t', async () => {

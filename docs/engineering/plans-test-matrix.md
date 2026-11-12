@@ -38,6 +38,7 @@ Suites: `billing/meter` (`apps/api/src/features/billing/meter.integration.test.t
 | D2 | A reply without usage is reckoned and charged | billing/meter › charges what NEAR AI says… | 1 | Passes |
 | D3 | A request NEAR AI turned away costs nothing | billing/meter › charges nothing for a request NEAR AI turned away | 1 | Passes |
 | D3′ | A request that timed out once sent is charged what was held | — | 1 | Not tested: the fake can't time out after receiving |
+| D3″ | A request still on its way after 5 minutes is charged what it held, shown so at once; answered after all, it's charged what it used instead, never both | billing/meter › charges a request still on its way after five minutes… | 1 | Passes |
 | D4 | A model the catalog doesn't price is charged at the fallback | — | 1 | Not tested: no unpriced model can be chosen; covered by reading `meter.ts` |
 | D5 | A dearer model spends more for the same question | billing/meter › charges at the price of the model that answered… | 1 | Passes |
 | D6 | No request reaches NEAR AI without a payer | `Meter` is a required argument of `transcribe`, `complete` and `completeJson`: the typecheck refuses one without | 1 | Enforced by the compiler |
@@ -46,6 +47,7 @@ Suites: `billing/meter` (`apps/api/src/features/billing/meter.integration.test.t
 | E2 | Spent: notes off for everyone, guests included, banner until closed, the call goes on | billing/meter › stops notes for everyone…; the banner's × by hand | 1 | Passes |
 | E3 | Then transcription, the organizer's AI and a guest's questions are refused; notes can't come back on | billing/meter › stops notes for everyone… | 1 | Passes |
 | E4 | The last note covers only what was said before the stop, and may go past the allowance | billing/meter › stops notes for everyone… | 1 | Passes |
+| E4′ | The last note is paid from what the call held for it, its requests on their way too: writing it stops nothing the call held enough for | billing/meter › pays for writing a call’s notes from what the call held for them… | 1 | Passes |
 | E5 | Then nothing: the next call starts without notes, saying why; asks and room recordings are refused | billing/meter › stops notes for everyone… | 1 | Passes |
 | E6 | An invitee on another plan can still ask after the organizer's stop; a guest can't | billing/meter › after a Free organizer’s notes stop, an invitee on Pro still asks… | 2 | Passes |
 | E7 | A room recording runs out the same way | billing/meter › stops a room recording… | 1 | Passes |

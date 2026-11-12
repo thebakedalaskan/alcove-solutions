@@ -67,7 +67,7 @@ bought for a period ([below](#more-notes)) are part of its allowance, and end wi
    30 seconds, and its words out.
 3. A request NEAR AI turned away (not 200), or that never went (its evidence didn't check out), is charged nothing. One
    that timed out once sent is charged what was held. A hold nothing settles within 5 minutes is charged in full the next
-   time the meter is touched.
+   time the meter is touched, and shown so already; answered after all, it's charged what it used instead, never both.
 
 Prices come from NEAR AI's catalog (`GET /v1/models`: `pricing.input` and `pricing.output` in USD a million tokens,
 `pricing.input_cache_read` a token), read with the list of models and kept as last listed through an outage
@@ -105,8 +105,10 @@ The allowance runs down with the call, and notes stop before it's spent rather t
   guests' questions and anything else the organizer pays for are refused; a signed-in person's own questions are theirs.
 - **The last note:** when the call ends, its notes are written from what was transcribed before notes stopped. Writing a
   call's notes the first time is never refused, so it may cost more than what was left: that's the only way past an
-  allowance, and what it costs over is Alcove's. Writing them again (after correcting the transcript) is refused like
-  anything else, and the notes stay as they were.
+  allowance, and what it costs over is Alcove's. It's paid from what the call held for it: what it's charged, and what
+  its requests hold on their way, come out of that and count on top only once they're past it, so writing the notes
+  stops nothing the call held enough for. Writing them again (after correcting the transcript) is refused like anything
+  else, and the notes stay as they were.
 - **Then nothing:** the allowance stays spent for the rest of the period, even when what the call reserved turns out to
   be more than writing cost; only a bigger allowance (more notes bought, the limits raised, a new period, a bigger plan)
   lifts it. A call scheduled with notes starts without them and says why; turning notes on, starting a room recording,

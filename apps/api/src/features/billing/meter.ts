@@ -1,31 +1,33 @@
 /*
  * The AI allowance (docs: Plans and usage › Notes): what each account's plan brings for its period, in nano-USD, and
- * what's been spent of it, sealed under Kservice's accounting key with nothing but whose it is in the clear. Every
- * request to NEAR AI is paid from one (inference.ts takes a Meter, so none goes out without a payer): before it's sent,
- * the most it could cost is held, and refused if that would take the allowance below `ai.stop_micro_usd`; once it's
- * answered, what it used is charged at the price NEAR AI lists for its model (features/notes/models.ts), or at
- * `ai.fallback_*` for a model it doesn't price.
+ * what's been spent of it, sealed under Kservice's accounting key with nothing but whose it is in the clear
+ * (features/billing/meter-state.ts). Every request to NEAR AI is paid from one (inference.ts takes a Meter, so none goes
+ * out without a payer): before it's sent, the most it could cost is held, and refused if that would take the allowance
+ * below `ai.stop_micro_usd`; once it's answered, what it used is charged at the price NEAR AI lists for its model
+ * (features/notes/models.ts), or at `ai.fallback_*` for a model it doesn't price.
  *
  * A call's notes are written once it's over, so while it's live each transcript clip also holds what writing them will
  * cost (`reserveNano`, reckoned by features/notes/drafting.ts): the allowance runs down with the call, notes stop before
  * it's spent rather than after, and the organizer is told when about `ai.warn_seconds` of notes are left at the call's own
- * pace. Writing those notes is never refused, and is the one way past an allowance: what it costs over is Alcove's.
+ * pace. Writing those notes is never refused, and is the one way past an allowance: what it costs over is Alcove's. What
+ * it holds and is charged comes out of what the call held for it, and counts on top only once it's past that.
  *
  * Every change is made under the meter's row lock, so requests at once on any instance can't spend the same money
  * twice. A new period starts the first time a meter is touched after its period ends, or after its plan changes:
- * what was left doesn't carry over.
+ * what was left doesn't carry over. What the meter is now (`current`) is worked out one way, for changing it and for
+ * showing it.
  */
-import { PlanKindSchema, type PlanKind } from '@alcove/api';
-import { z } from 'zod';
+import type { PlanKind } from '@alcove/api';
 import type { Deps } from '../../context';
-import { id128, openJson, sealJson, serviceKey, toJson, unb64u } from '../../crypto';
-import { bytea, exec, maybeOne, tx, type Db } from '../../db';
+import { id128 } from '../../crypto';
+import { exec, maybeOne, tx, type Db } from '../../db';
 import { PlanLimitError } from '../../errors';
 import type { Meter, Metered, Most, Usage } from '../../inference';
 import { limitsNow, type Limits } from '../../limits';
 import { log } from '../../log';
 import { priceOf, type Price } from '../notes/models';
 import { mayStore } from './held';
+import { MeterRow, openMeter, sealMeter, type Hold, type MeterState } from './meter-state';
 import { planNow, type InForce } from './plans';
 
 const alog = log.child({ component: 'ai-allowance' });
@@ -45,38 +47,29 @@ export interface Bill {
   source?: Source | undefined;
   /** What writing the source's notes will cost, reckoned now in tokens of `model`: held from the allowance while it runs. */
   reserve?: { model: string; most: Most } | undefined;
-  /** Writing a source's notes once it's over: never refused, the one way past an allowance. */
+  /** Writing a source's notes once it's over: never refused, the one way past an allowance, and paid from what it held. */
   final?: boolean | undefined;
 }
 /** What a charge to a source came to: fine, notes about to run out at its pace (once), or the allowance spent. */
 export type Outcome = 'ok' | 'warn' | 'stop';
 
-const nano = z.number().int();
-const SourceState = z.object({
-  kind: z.enum(['call', 'recording']), id: z.string(), since: z.number(), touched: z.number(),
-  spentNano: nano, reserveNano: nano, warned: z.boolean()
-});
-const Hold = z.object({ id: z.string(), nano, until: z.number() });
-const MeterState = z.object({
-  plan: PlanKindSchema, from: z.number(), to: z.number(),
-  allowanceNano: nano, spentNano: nano,
-  byKind: z.record(z.string(), nano),
-  holds: z.array(Hold), sources: z.array(SourceState),
-  /** Sources whose notes were written lately (ms): a charge still on its way for one never holds for its notes again. */
-  closed: z.array(z.object({ id: z.string(), at: z.number() })),
-  /** When the allowance was spent this period: nothing more until the next. */
-  stopped: z.object({ at: z.number(), allowanceNano: nano }).nullable()
-});
-type MeterState = z.infer<typeof MeterState>;
-
 type Service = Pick<Deps, 'cfg' | 'pool'>;
-const key = (d: Pick<Deps, 'cfg'>) => serviceKey(unb64u(d.cfg.KSERVICE, 32), 'accounting');
-const header = (ownerId: string) => ({ v: 1 as const, kind: 'ai-meter', ownerId, keyVersion: '1' });
 
 /** What a period's minutes of notes are worth, in nano-USD: the plan's, and any more bought for the period (plans.ts `inForce`). */
 const allowanceOf = (p: InForce, l: Limits) => Math.round((p.notesMinutes * l.get('ai.hour_micro_usd') * 1000) / 60);
-/** What's left to spend: the allowance, less what's spent and what requests in flight and live sources hold. */
-const leftOf = (m: MeterState) => m.allowanceNano - m.spentNano - m.holds.reduce((n, h) => n + h.nano, 0) - m.sources.reduce((n, s) => n + s.reserveNano, 0);
+/** What a live source's own requests hold now: those writing its notes. */
+const heldFor = (m: MeterState, sourceId: string) => m.holds.reduce((n, h) => n + (h.source === sourceId ? h.nano : 0), 0);
+/**
+ * What's left to spend: the allowance, less what's spent, what requests in flight hold, and what live sources hold for
+ * writing their notes. Writing a source's notes is paid from what it held for them: what that has been charged so far,
+ * and what its requests hold now, come out of the reserve, and count on top of it only once they're past it.
+ */
+function leftOf(m: MeterState): number {
+  const live = new Set(m.sources.map((s) => s.id));
+  const loose = m.holds.reduce((n, h) => n + (h.source !== null && live.has(h.source) ? 0 : h.nano), 0);
+  const writing = m.sources.reduce((n, s) => n + Math.max(s.reserveNano - s.drawnNano, heldFor(m, s.id)), 0);
+  return m.allowanceNano - m.spentNano - loose - writing;
+}
 
 /** A model's price, or the fallback's for one NEAR AI doesn't price. */
 async function priced(d: Service, l: Limits, model: string): Promise<Price> {
@@ -90,36 +83,56 @@ const costOf = (p: Price, u: Usage) => Math.ceil((Math.max(0, u.input - u.cached
 /** The most `most` can use, as tokens: images at `ai.image_tokens` each. */
 const usageOf = (most: Most, l: Limits): Usage => ({ input: most.input + most.images * l.get('ai.image_tokens'), cached: 0, output: most.output });
 
+/** A new period's meter for the plan in force: all of its allowance, carrying what's held over from the one before. */
+const fresh = (p: InForce, l: Limits, carried: Pick<MeterState, 'holds' | 'sources' | 'closed'>): MeterState => ({
+  plan: p.kind, from: p.from, to: p.to, allowanceNano: allowanceOf(p, l), spentNano: 0, byKind: {}, ...carried, stopped: null
+});
+
 /**
- * The meter, locked for the rest of the caller's transaction, in its current period: made on the account's first
- * request, and started again when its period is over or its plan changed. Holds left past their time are charged in
- * full (whatever held them never said), and sources nothing has charged for in a day go.
+ * The meter as it stands at `now`, from what's stored (null before the account's first request), for the plan in force
+ * (`p`): holds nothing settled in time are charged in full, as if answered and lost, and come out of what their source held
+ * for its notes; sources nothing has charged for in a day go; a period that's over, or a plan that changed, starts a new
+ * period carrying what's held; the allowance is what the limits make it now, a change to them in force at once; and a stop
+ * is lifted once the allowance itself has outgrown it. It's what `locked` saves and `standing` shows, so the two never
+ * differ. Says how many holds were charged in full (`lost`), and the period that closed, if one did.
  */
-async function locked(d: Service, db: Db, ownerId: string, l: Limits, now: number): Promise<{ m: MeterState; save: (m: MeterState) => Promise<void> }> {
-  const { p } = await planNow(d, db, ownerId, now);
-  const fresh = (carried: Pick<MeterState, 'holds' | 'sources' | 'closed'>): MeterState => ({
-    plan: p.kind, from: p.from, to: p.to, allowanceNano: allowanceOf(p, l), spentNano: 0, byKind: {}, ...carried, stopped: null
-  });
-  const seal = (m: MeterState) => sealJson(key(d), header(ownerId), toJson(m));
-  await exec(db, 'INSERT INTO ai_meters (owner_id, state_ciphertext) VALUES ($1,$2) ON CONFLICT (owner_id) DO NOTHING', [ownerId, seal(fresh({ holds: [], sources: [], closed: [] }))]);
-  const r = await maybeOne(db, z.object({ state_ciphertext: bytea }), 'SELECT state_ciphertext FROM ai_meters WHERE owner_id = $1 FOR UPDATE', [ownerId]);
-  if (!r) throw new PlanLimitError('Notes aren’t available for this account.', 'notes', { context: { ownerId, why: 'no meter' } });
-  let m = openJson(key(d), header(ownerId), r.state_ciphertext, MeterState);
-  const lost = m.holds.filter((h) => h.until <= now);
-  if (lost.length) {
-    m = { ...m, spentNano: m.spentNano + lost.reduce((n, h) => n + h.nano, 0), holds: m.holds.filter((h) => h.until > now) };
-    alog.warn('requests never said what they used; charged what they held', { ownerId, requests: lost.length });
+function current(stored: MeterState | null, p: InForce, l: Limits, now: number): { m: MeterState; lost: number; closed: MeterState | null } {
+  let m = stored ?? fresh(p, l, { holds: [], sources: [], closed: [] });
+  const gone: Hold[] = m.holds.filter((h) => h.until <= now);
+  if (gone.length) {
+    const drawn = (id: string) => gone.reduce((n, h) => n + (h.source === id ? h.nano : 0), 0);
+    m = {
+      ...m, spentNano: m.spentNano + gone.reduce((n, h) => n + h.nano, 0), holds: m.holds.filter((h) => h.until > now),
+      sources: m.sources.map((s) => ({ ...s, drawnNano: s.drawnNano + drawn(s.id) }))
+    };
   }
   m = { ...m, sources: m.sources.filter((s) => now - s.touched < SOURCE_GONE_MS), closed: m.closed.filter((c) => now - c.at < SOURCE_GONE_MS) };
+  let closed: MeterState | null = null;
   if (m.from !== p.from || m.plan !== p.kind) {
-    if (m.spentNano > 0 || m.stopped !== null) alog.info('ai period closed', { ownerId, plan: m.plan, spentNano: m.spentNano, allowanceNano: m.allowanceNano, overNano: Math.max(0, m.spentNano - m.allowanceNano), byKind: m.byKind });
-    m = fresh({ holds: m.holds, sources: m.sources, closed: m.closed });
+    closed = m;
+    m = fresh(p, l, { holds: m.holds, sources: m.sources, closed: m.closed });
   }
-  // What the plan brings is read from the limits each time, so a change to them is in force at once, this period included.
   m = { ...m, allowanceNano: allowanceOf(p, l) };
   // Once spent it stays spent this period, a call's hold let go included, unless the allowance itself is raised past it.
   if (m.stopped !== null && m.allowanceNano > m.stopped.allowanceNano && leftOf(m) > l.get('ai.stop_micro_usd') * 1000) m = { ...m, stopped: null };
-  return { m, save: async (next) => { await exec(db, 'UPDATE ai_meters SET state_ciphertext = $2, version = version + 1 WHERE owner_id = $1', [ownerId, seal(next)]); } };
+  return { m, lost: gone.length, closed };
+}
+
+/**
+ * The meter, locked for the rest of the caller's transaction, as it stands now (`current`): made on the account's first
+ * request. What it says changed by itself (holds charged in full, a period closed) is logged here, where it's saved.
+ */
+async function locked(d: Service, db: Db, ownerId: string, l: Limits, now: number): Promise<{ m: MeterState; save: (m: MeterState) => Promise<void> }> {
+  const { p } = await planNow(d, db, ownerId, now);
+  await exec(db, 'INSERT INTO ai_meters (owner_id, state_ciphertext) VALUES ($1,$2) ON CONFLICT (owner_id) DO NOTHING', [ownerId, sealMeter(d, ownerId, current(null, p, l, now).m)]);
+  const r = await maybeOne(db, MeterRow, 'SELECT state_ciphertext FROM ai_meters WHERE owner_id = $1 FOR UPDATE', [ownerId]);
+  if (!r) throw new PlanLimitError('Notes aren’t available for this account.', 'notes', { context: { ownerId, why: 'no meter' } });
+  const { m, lost, closed } = current(openMeter(d, ownerId, r.state_ciphertext), p, l, now);
+  if (lost) alog.warn('requests never said what they used; charged what they held', { ownerId, requests: lost });
+  if (closed && (closed.spentNano > 0 || closed.stopped !== null)) {
+    alog.info('ai period closed', { ownerId, plan: closed.plan, spentNano: closed.spentNano, allowanceNano: closed.allowanceNano, overNano: Math.max(0, closed.spentNano - closed.allowanceNano), byKind: closed.byKind });
+  }
+  return { m, save: async (next) => { await exec(db, 'UPDATE ai_meters SET state_ciphertext = $2, version = version + 1 WHERE owner_id = $1', [ownerId, sealMeter(d, ownerId, next)]); } };
 }
 
 /** Runs `change` on the meter in its own transaction, under its lock. */
@@ -147,9 +160,11 @@ export function meterFor(d: Service, bill: Bill): Meter & { outcome(): Outcome }
       const reserve = bill.reserve ? costOf(await priced(d, l, bill.reserve.model), usageOf(bill.reserve.most, l)) : undefined;
       const heldNano = costOf(price, usageOf(most, l));
       const holdId = id128();
+      // Writing a source's notes holds from what the source held for them.
+      const hold = (now: number): Hold => ({ id: holdId, nano: heldNano, until: now + HOLD_MS, source: bill.final && bill.source ? bill.source.id : null });
       const stop = l.get('ai.stop_micro_usd') * 1000;
       const held = await changing(d, bill.payer, (m, _l, now): { m: MeterState; result: 'held' | 'refused' | 'stopped' } => {
-        if (bill.final) return { m: { ...m, holds: [...m.holds, { id: holdId, nano: heldNano, until: now + HOLD_MS }] }, result: 'held' };
+        if (bill.final) return { m: { ...m, holds: [...m.holds, hold(now)] }, result: 'held' };
         if (m.stopped !== null) return { m, result: 'stopped' };
         // Spent: nothing more this period. Only too little for this one request: it's refused, and smaller ones still go.
         if (leftOf(m) <= stop) {
@@ -157,24 +172,30 @@ export function meterFor(d: Service, bill: Bill): Meter & { outcome(): Outcome }
           return { m: { ...m, stopped: { at: now, allowanceNano: m.allowanceNano } }, result: 'stopped' };
         }
         if (leftOf(m) - heldNano < stop) return { m, result: 'refused' };
-        return { m: { ...m, holds: [...m.holds, { id: holdId, nano: heldNano, until: now + HOLD_MS }] }, result: 'held' };
+        return { m: { ...m, holds: [...m.holds, hold(now)] }, result: 'held' };
       });
       if (held !== 'held') {
         if (held === 'stopped') last = 'stop';
         throw refusal(bill.payer, bill);
       }
       const settle = (cost: (m: MeterState) => number, what: string) => changing(d, bill.payer, (m, _l, now) => {
-        const charged = cost(m);
+        const used = cost(m);
+        // A hold nothing settled in time was charged in full already (`current`): what it really cost is set right now,
+        // never charged on top of it.
+        const swept = !m.holds.some((h) => h.id === holdId);
+        const charged = swept ? Math.max(-m.spentNano, used - heldNano) : used;
         const s = bill.source;
         let sources = m.sources;
         if (s && !m.closed.some((c) => c.id === s.id)) {
           const had = sources.find((x) => x.kind === s.kind && x.id === s.id);
-          const was = had ?? { ...s, since: now, touched: now, spentNano: 0, reserveNano: 0, warned: false };
-          const next = { ...was, touched: now, spentNano: was.spentNano + charged, reserveNano: reserve ?? was.reserveNano };
+          const was = had ?? { ...s, since: now, touched: now, spentNano: 0, reserveNano: 0, drawnNano: 0, warned: false };
+          // Writing its notes is paid from what it held for them: what's charged comes out of the reserve.
+          const drawnNano = bill.final ? Math.max(0, was.drawnNano + charged) : was.drawnNano;
+          const next = { ...was, touched: now, spentNano: was.spentNano + used, reserveNano: reserve ?? was.reserveNano, drawnNano };
           sources = [...sources.filter((x) => x !== had), next];
         }
         let next: MeterState = {
-          ...m, spentNano: m.spentNano + charged, byKind: { ...m.byKind, [bill.spend]: (m.byKind[bill.spend] ?? 0) + charged },
+          ...m, spentNano: m.spentNano + charged, byKind: { ...m.byKind, [bill.spend]: (m.byKind[bill.spend] ?? 0) + used },
           holds: m.holds.filter((h) => h.id !== holdId), sources
         };
         last = 'ok';
@@ -191,7 +212,7 @@ export function meterFor(d: Service, bill: Bill): Meter & { outcome(): Outcome }
             last = 'warn';
           }
         } else if (next.stopped !== null) last = 'stop';
-        if (charged > 0) alog.debug('ai charged', { ownerId: bill.payer, spend: bill.spend, model, how: what, costNano: charged, final: bill.final === true });
+        if (used > 0) alog.debug('ai charged', { ownerId: bill.payer, spend: bill.spend, model, how: what, costNano: used, final: bill.final === true, late: swept });
         return { m: next, result: undefined };
       });
       return {
@@ -211,11 +232,11 @@ export async function close(d: Service, payer: string, source: Source): Promise<
 }
 
 /**
- * An account's allowance as it stands, without changing it: what's left, what a period brings, and whether it's spent.
- * `leftNano` and `stopped` are what the meter decides by: what requests in flight and live calls' notes hold counts at the
- * most it could cost, so nothing spends past the allowance. `unspentNano` and `ranOut` are what the plan shows: only what's
- * been spent, so notes left only ever go down in a period, and don't dip while something is held and come back when it's
- * charged at what it actually cost.
+ * An account's allowance as it stands, without changing it: what's left, what a period brings, and whether it's spent,
+ * as the meter will be the next time it's touched (`current`). `leftNano` and `stopped` are what the meter decides by:
+ * what requests in flight and live calls' notes hold counts at the most it could cost, so nothing spends past the
+ * allowance. `unspentNano` and `ranOut` are what the plan shows: only what's been spent, so notes left only ever go down
+ * in a period, and don't dip while something is held and come back when it's charged at what it actually cost.
  */
 export interface Standing {
   leftNano: number; unspentNano: number; allowanceNano: number; spentNano: number; byKind: Readonly<Record<string, number>>;
@@ -225,21 +246,16 @@ export async function standing(d: Service, db: Db, ownerId: string): Promise<Sta
   const l = await limitsNow(d, db);
   const now = Date.now();
   const { p } = await planNow(d, db, ownerId, now);
-  const r = await maybeOne(db, z.object({ state_ciphertext: bytea }), 'SELECT state_ciphertext FROM ai_meters WHERE owner_id = $1', [ownerId]);
-  const m = r ? openJson(key(d), header(ownerId), r.state_ciphertext, MeterState) : null;
-  const allowanceNano = allowanceOf(p, l);
-  // A period that's over, or a plan that changed, starts again the next time the meter's touched: it's shown so already.
-  const current = m && m.from === p.from && m.plan === p.kind ? m : null;
-  const live = current ? { ...current, allowanceNano, holds: current.holds.filter((h) => h.until > now), sources: current.sources.filter((s) => now - s.touched < SOURCE_GONE_MS) } : null;
-  const leftNano = live ? leftOf(live) : allowanceNano - (m?.sources.filter((s) => now - s.touched < SOURCE_GONE_MS).reduce((n, s) => n + s.reserveNano, 0) ?? 0);
+  const r = await maybeOne(db, MeterRow, 'SELECT state_ciphertext FROM ai_meters WHERE owner_id = $1', [ownerId]);
+  const { m } = current(r ? openMeter(d, ownerId, r.state_ciphertext) : null, p, l, now);
   const stop = l.get('ai.stop_micro_usd') * 1000;
-  const spentNano = live?.spentNano ?? 0;
-  const unspentNano = Math.max(0, allowanceNano - spentNano);
+  const leftNano = leftOf(m);
+  const unspentNano = Math.max(0, m.allowanceNano - m.spentNano);
   // Spent this period, and not lifted by a bigger allowance since.
-  const halted = live?.stopped != null && !(allowanceNano > live.stopped.allowanceNano && leftNano > stop);
+  const halted = m.stopped !== null;
   return {
-    leftNano, unspentNano, allowanceNano, spentNano, byKind: live?.byKind ?? {},
-    stopped: leftNano <= stop || halted, ranOut: unspentNano <= stop || halted, plan: p.kind, from: p.from, to: p.to
+    leftNano, unspentNano, allowanceNano: m.allowanceNano, spentNano: m.spentNano, byKind: m.byKind,
+    stopped: leftNano <= stop || halted, ranOut: unspentNano <= stop || halted, plan: m.plan, from: m.from, to: m.to
   };
 }
 
