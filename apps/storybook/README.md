@@ -90,7 +90,7 @@ Product, then the follow-ups from the retro board's Actions frame.
 | Name | What it is |
 |---|---|
 | `busy` | Wednesday afternoon at Vandelay Industries: a day of notes, things waiting on you, a design sync at 17:30, and two photos and a file in the Product workspace's Launch plan |
-| `first-day` | Art has just signed in: no notes or calls, a team not on Alcove yet, no calendar access |
+| `first-day` | Art has just signed in and carried on with Free: no notes or calls, a team not on Alcove yet, no calendar access |
 | `on-their-own` | Art at a personal address: no team, no groups, recordings and calls with people he meets |
 | `offline` | The busy afternoon opened with no connection, signed in on this browser: Record works, the rest says offline |
 | `writing` | Just after the pricing follow-up: its notes are written over a few seconds; a walkthrough records elsewhere |
@@ -127,7 +127,9 @@ Product, then the follow-ups from the retro board's Actions frame.
 | `no-team` | The busy afternoon with $60 and payments: Start a team on Team |
 | `team-buying` | Art started Vandelay's team from Plans and opened a payment of 240 USDC on Base for its first six licenses, then closed checkout: the team is his with nothing bought yet, and the payment waits, in the side panel and in checkout |
 | `agents-connected` | Art has a read-only Workspace assistant connected through OAuth and an unused Scheduling assistant personal token; Settings shows their scopes, expiry and last use |
-| `first-sign-in` | Nobody signed in, and no account yet: signing in makes Art's account on screen, his first day, and Home's tour |
+| `first-sign-in` | Nobody signed in, and no account yet: signing in makes Art's account on screen, the plans to choose from, his first day, and Home's tour |
+| `plan-choice` | Art's account was made a few minutes ago and the plans haven't been shown to him (`Plan.choose`): Home opens on them once. Payments are taken |
+| `plan-choice-before` | Art has used Alcove for weeks, from before plans, and was put on Free two days ago: the busy afternoon, and Home opens on the plans once. Payments are taken |
 
 ## Add a component story
 
@@ -501,5 +503,12 @@ story. `purchaseAt()` and `playsOut()` put one where a story needs it. Every add
 **Components / Checkout** has each part of the kit's window, and **Paying, in motion**, the canvas's player, with Slow
 motion and Play again. Section 16's journeys are **Journeys / 16 Plans and paying** (16.1, from the side panel to Plans),
 **16 Checkout** (16.2 to 16.6), **16 Your plan** (16.7, 16.8 and 16.14, in the side panel and Settings), **16 Where
-checkout shows** (16.9 to 16.13, the doors) and **16 Team** (16.15, starting a team from Plans).
+checkout shows** (16.9 to 16.13, the doors), **16 Team** (16.15, starting a team from Plans) and **16 The plan choice** (16.20:
+a new account's arrival onto the plans, Continue on Free, then Home and its tour; and Get Pro from them, paid, then Home).
+
+**Pages / Plans / Plan Choice…** is the plan choice, Plans in Home's place once while `Plan.choose` is true (the `plan-choice`
+and `plan-choice-before` scenarios): a new account, an account from before plans and one over Free's storage, on a team (where
+Pro says not while you're on your team's plan, as **Team Admin** and **Team Member** show on Plans), Pro bought from it, payments
+off, telling Alcove the plans were seen failing (they aren't shown again in that tab), and the prices loading, not loaded and
+offline, in both themes and on a phone. The first sign-in's journeys (1.1, 1.2) pass through it too.
 

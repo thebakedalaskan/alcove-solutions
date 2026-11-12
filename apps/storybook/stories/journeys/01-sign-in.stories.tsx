@@ -3,12 +3,12 @@
  * sign in on the spot, as the stand-in does; Google's own pages can't open in Storybook, so its journey plays up to the
  * hand-off, and the way back from Google that didn't sign anyone in is the welcome page's address. A way in on the welcome
  * page keeps where its cove stood, as the real buttons do, so signing in again sails out of it to Home; a new account has
- * its arrival instead.
+ * its arrival instead, and the plans to choose from before Home (16.20).
  */
 import type { Meta } from '@storybook/react-vite';
 import { screen, within } from 'storybook/test';
 import { page, pages, type PageArgs, type PageStory } from '../../src/page';
-import { first, LATER, pause, SOON } from './play';
+import { away, first, LATER, pause, pressable, SOON } from './play';
 
 /** Signing in from the welcome page sails out of its cove to Home: about three and a half seconds. */
 const SAILING_OUT = 3600;
@@ -28,8 +28,13 @@ export const FirstTime: PageStory = {
     await step('The account is made on screen: an arch draws itself, and what came with the account arrives a row at a time', async () => {
       await screen.findByRole('dialog', { name: 'Creating your account' }, LATER);
     });
-    await step('“You’re in”, and the arch opens into Home', async () => {
+    await step('“You’re in”, and the arch opens on the plans to choose from, once (16.20)', async () => {
       await screen.findByRole('dialog', { name: /^You’re in/ }, LATER);
+      await screen.findByRole('heading', { name: 'Choose a plan', level: 1 }, LATER);
+      await away('dialog', /^You’re in/, LATER);
+    });
+    await step('Continue on Free, on Free’s card. Home opens on his first day', async () => {
+      await userEvent.click(await pressable('button', 'Continue on Free', LATER));
       await screen.findByRole('region', { name: 'Start your first call' }, LATER);
     });
     await step('The tour goes through Home a slide at a time, the page dimmed around what each is about', async () => {
@@ -62,8 +67,10 @@ export const SkipAhead: PageStory = {
       await userEvent.click(screen.getByRole('button', { name: 'Continue' }));
       await screen.findByRole('dialog', { name: 'Creating your account' }, LATER);
     });
-    await step('Skip opens Home straight away', async () => {
+    await step('Skip opens the plans to choose from straight away. Continue on Free, and Home opens', async () => {
       await userEvent.click(await screen.findByRole('button', { name: 'Skip' }, LATER));
+      await away('dialog', /^You’re in|^Creating your account/, LATER);
+      await userEvent.click(await pressable('button', 'Continue on Free', LATER));
       await screen.findByRole('region', { name: 'Start your first call' }, LATER);
     });
     await step('Skip tour closes the tour, and says Settings plays it again', async () => {

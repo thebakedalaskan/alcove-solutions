@@ -30,7 +30,7 @@ import { forgetKeptHere } from './kept';
 import { drawnPicture, forgetAudio } from './media';
 import { stopLive } from './standin';
 import { buyingWith, paymentsOff, PREVIEW_PAID_TOP_UP, PREVIEW_TOP_UP, PRO_YEAR, purchaseTopUp, TEAM_SIX, topUpOf, withPayments, type PaymentPlay } from '../world/payments';
-import { freePlan, inGrace, newPlan, notesStopped, overLimits, proEnded, proEnding, proExtended, proPlan, proRenewed, PRO_YEARLY_PRICE, withBalance, withNotesLeft } from '../world/plans';
+import { carriedOver, freePlan, inGrace, newPlan, notesStopped, overLimits, proEnded, proEnding, proExtended, proPlan, proRenewed, PRO_YEARLY_PRICE, withBalance, withNotesLeft } from '../world/plans';
 import { disconnectedDrive, withDriveExports } from '../world/drive-exports';
 import { withAgentConnections } from './agents';
 import { planWithTeam, priyasTeam, startedTeam, teamView, vandelayTeam, type TeamWorld } from '../world/teams';
@@ -42,7 +42,7 @@ export type ScenarioName = 'busy' | 'first-day' | 'on-their-own' | 'offline' | '
   | 'plan-buying-pro' | 'plan-pro-extended'
   | 'plan-waiting' | 'payment-short' | 'payment-over' | 'payment-refused' | 'payment-expired' | 'payment-failed'
   | 'team-admin' | 'team-admin-low' | 'team-admin-none' | 'team-member' | 'team-member-unlicensed' | 'team-join' | 'no-team'
-  | 'team-buying';
+  | 'team-buying' | 'plan-choice' | 'plan-choice-before';
 
 interface Scenario { title: string; about: string; make: () => { world: World; opening: Partial<Opening> } }
 
@@ -561,14 +561,28 @@ export const SCENARIOS: Record<ScenarioName, Scenario> = {
   },
   busy: { title: 'A busy team', about: 'Wednesday afternoon at Vandelay Industries: a day of notes, things waiting on you, a design sync at 17:30.', make: () => ({ world: busy(), opening: {} }) },
   'first-day': {
-    title: 'A first day', about: 'Art has just signed in for the first time: no notes, no calls, a team that isn’t on Alcove yet, and no calendar access.',
+    title: 'A first day', about: 'Art has just signed in for the first time and carried on with Free: no notes, no calls, a team that isn’t on Alcove yet, and no calendar access.',
     make: () => ({
       world: {
         drive: disconnectedDrive(), payments: paymentsOff(), session: session({ createdAt: iso(0, 16, 5) }), prefs: PREFS, team: teamOf(DIRECTORY.filter((c) => c.person !== INES && c.person !== AIKO).map((c): Colleague => ({ ...c, onAlcove: false, invited: false }))),
-        notes: [], personal: {}, meetings: [], calendar: notConnected, plan: newPlan(), documents: library(), workspaces: [], pages: {}, shares: {}, boards: {}, mentions: [], media: [], rings: [], writing: null
+        // Past the plans, which a new account sees first (`plan-choice`), so Home is Home.
+        notes: [], personal: {}, meetings: [], calendar: notConnected, plan: { ...newPlan(), choose: false }, documents: library(), workspaces: [], pages: {}, shares: {}, boards: {}, mentions: [], media: [], rings: [], writing: null
       },
       opening: { tourSeen: false }
     })
+  },
+  'plan-choice': {
+    title: 'Choosing a plan', about: 'Art’s account was made a few minutes ago, and the plans haven’t been shown to him yet: Home opens on them, once. Payments are taken.',
+    make: () => {
+      const { world, opening } = SCENARIOS['first-day'].make();
+      world.plan = newPlan();
+      withPayments(world);
+      return { world, opening };
+    }
+  },
+  'plan-choice-before': {
+    title: 'Plans, new to an account from before them', about: 'Art has used Alcove for weeks, and the release that brought plans put him on Free two days ago: the busy afternoon, and Home opens on the plans, once. Payments are taken.',
+    make: () => { const world = busy(); withPayments(world); world.plan = carriedOver(); return { world, opening: {} }; }
   },
   'on-their-own': { title: 'Someone on their own', about: 'Art at a personal address: no team, no groups, recordings and calls with people he meets.', make: () => ({ world: onTheirOwn(), opening: {} }) },
   offline: {
@@ -616,8 +630,8 @@ export const SCENARIOS: Record<ScenarioName, Scenario> = {
     }
   },
   'first-sign-in': {
-    title: 'Signing in for the first time', about: 'Nobody is signed in, and Art has no account yet: signing in makes it on screen, opens on his first day, and the tour of Home follows.',
-    make: () => ({ world: { ...SCENARIOS['first-day'].make().world, session: null }, opening: { tourSeen: false } })
+    title: 'Signing in for the first time', about: 'Nobody is signed in, and Art has no account yet: signing in makes it on screen and opens on the plans to choose from, then his first day, and the tour of Home follows.',
+    make: () => ({ world: { ...SCENARIOS['first-day'].make().world, session: null, plan: newPlan() }, opening: { tourSeen: false } })
   },
   'team-buying': {
     title: 'Starting a team, paying', about: 'Art started Vandelay’s team from Plans and opened a payment of 240 USDC on Base for its first six licenses, then closed checkout: the team is his, with nothing bought yet, and the payment waits.',
