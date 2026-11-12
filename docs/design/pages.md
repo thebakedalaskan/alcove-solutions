@@ -177,7 +177,16 @@ The sun is low and to the left, behind the people.
   - **Not on Alcove yet** lists each person with their title and meetings coming up, and Invite, or Invited with Remind.
     "Invite all N" sits on the heading when more than one is left.
   - **Shared with groups** lists the notes shared with a group, who shared them and when.
-- Every number on the page is real: a group's calls are calls everyone in it was on. Someone on their own has no Team page.
+- **On a team** (`features/team/OurTeam.tsx`): the team's name in the sky with "6 people · 3 licenses left", and for its
+  admin Invite (filled), which shows a one-time link under it with Copy. The line is the team's people. On the water,
+  People on {team} (role and license on each row: "Licensed until 12 Dec", "License ended", "Waiting for a license"),
+  with Remove for the admin and Leave team or Delete team at its foot, each asked in place; Visible to the team beside it;
+  and, without a license, a caution notice above them. Not on a team, a quiet Start a team sits beside Invite people,
+  and opens the team's name in place.
+- **Joining** (`/team/join#…`, `features/team/JoinTeam.tsx`) is one guest card: the admin's arch, "Join {team}, Priya's
+  team?", Join (filled) and Not now; signed out, the ways in.
+- Every number on the page is real: a group's calls are calls everyone in it was on. Someone on their own sees only
+  Start a team.
 - The first day, loading, a failed load and offline each have their own look.
 
 ## Record

@@ -15,6 +15,10 @@
 .dv-name input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; outline: 0; background: none; font: 400 20px/1.2 var(--font-display); color: var(--ink); }
 .dv-name input::placeholder { color: var(--ink-2); opacity: 1; }
 .dv-name .ac-btn { flex: none; height: 38px; padding: 0 16px; font-size: 14px; }
+/* On a team: who's in the new workspace, under its name. */
+.dv-make { display: flex; flex-direction: column; gap: 12px; width: min(520px, 100%); }
+.dv-who { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+.dv-who p { margin: 0; font-size: 13px; color: var(--ink-2); }
 
 /* ------------------------------------------------------------ the water */
 .dv .hz > .hz-at, .dv .hz > .hz-light { clip-path: inset(-500px -2400px -42px -2400px); }

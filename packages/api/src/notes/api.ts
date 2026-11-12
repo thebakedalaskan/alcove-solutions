@@ -72,10 +72,16 @@ export interface NotesApi {
   /** Answers a question about one written note from its transcript, or from the notes once that's deleted, citing moments in it and the shared screens it read. */
   ask(noteId: ID, question: string): AsyncIterable<AnswerPart>;
   /**
-   * Answers a question from every note you have, your own and ones shared with you, citing the notes
-   * and moments it comes from. With no written notes to go on, it says so and asks no model.
+   * Answers a question from every note you have, your own, ones shared with you and your team's visible ones, citing
+   * the notes and moments it comes from. `refs` (up to 5, @-referenced in the question) are always read first; one you
+   * can't open is refused. With no written notes to go on, it says so and asks no model.
    */
-  askAll(question: string): AsyncIterable<AnswerPart>;
+  askAll(question: string, refs?: ID[]): AsyncIterable<AnswerPart>;
+  /**
+   * The organizer, while licensed on a team: makes a note visible to the team (read and ask only), or stops it being.
+   * It stays visible after they leave the team.
+   */
+  setTeamVisible(noteId: ID, visible: boolean): Promise<void>;
   /**
    * Shares the notes with more people, by email. For one of your groups, send its addresses and its
    * name: everyone it reaches sees who shared the notes and with which group. They find them in

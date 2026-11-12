@@ -9,7 +9,7 @@
 import type { Person } from '@alcove/api';
 import {
   Avatar, Button, Icon, WsCaptionField, WsCommentCompose, WsCommentThread, WsDoc, WsFind, WsKnock, WsMentionPrompt, WsPage, WsPane, WsPersonCard, WsPopover,
-  WsScroll, WsShareSheet, WsSwitchSheet, WsToasts, WsUploadPicker, wsToast, type WsComment, type WsFindHit
+  WsScroll, WsShareSheet, WsSwitchSheet, WsToasts, WsUploadPicker, wsToast, type WsComment, type WsFindHit, type WsTeamAccess
 } from '@alcove/ui';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useRef, useState, type ComponentProps } from 'react';
@@ -51,6 +51,19 @@ export const ShareMatches: Story = { name: 'Share sheet: finding people as you t
 export const ShareGuest: Story = { name: 'Share sheet: a guest in the call', args: SHARE, argTypes: shareTypes, render: ({ title, query }) => <PopSurface ws><ShareFor key={query} title={title} call query={query} /></PopSurface> };
 /** Only the people added here: the workspace can't open it, and whoever made it always can. */
 export const ShareRestricted: Story = { name: 'Share sheet: only people added here', args: SHARE, argTypes: shareTypes, render: ({ title, query }) => <PopSurface ws><ShareFor key={query} title={title} call={false} query={query} restricted /></PopSurface> };
+
+/* ---------- a team's workspace ---------- */
+
+const TEAM_ROWS = [ART, PRIYA, KOFI].map((p, i) => ({ id: p.id, people: [p], name: i === 0 ? `${p.name} (you)` : p.name, sub: p.email, role: { label: i === 0 ? 'Admin' : 'Can edit' } }));
+/** Who's in a team's workspace, chosen by its admins: the whole team, or only the people added. Pressing one changes it. */
+function TeamChoice({ admin }: { admin: boolean }) {
+  const [access, setAccess] = useState<WsTeamAccess>('team');
+  return <PopSurface ws><WsShareSheet title="People in Launch" rows={TEAM_ROWS} team={{ access, ...(admin ? { onChange: (a: WsTeamAccess) => { setAccess(a); did('onChange')(a); } } : {}) }} /></PopSurface>;
+}
+/** A team's workspace, for its admins: Whole team or Only people I add, above the people in it. */
+export const PeopleTeamAdmin: Story = { name: 'People sheet: a team’s workspace, as its admin', args: SHARE, parameters: { controls: { disable: true } }, render: () => <TeamChoice admin /> };
+/** Anyone else reads which it is. */
+export const PeopleTeamMember: Story = { name: 'People sheet: a team’s workspace, as someone in it', args: SHARE, parameters: { controls: { disable: true } }, render: () => <TeamChoice admin={false} /> };
 
 /* ---------- someone's card ---------- */
 

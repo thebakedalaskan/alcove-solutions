@@ -6,6 +6,7 @@ import type { ReactNode } from 'react';
 import { LineStrip, percent, share } from '~/features/notes/CallLine';
 import { GonePage, PageHead } from '~/features/notes/Head';
 import { useNoteReader } from '~/features/notes/entries';
+import { readerRole } from '~/features/notes/meta';
 import { AskBar, Section, notDecided } from '~/features/notes/parts';
 import { CarriedActionRow, CarriedDecisionRow, CarriedQuestionRow, NextOnCalendar, useScheduleNextCall } from '~/features/series/carried';
 import { useCallFlow } from '~/features/shell/context';
@@ -52,7 +53,7 @@ function SeriesView({ s, me }: { s: Series; me: string | undefined }) {
   const from = new Map(s.notes.map((n) => [n.id, n]));
   const readerAs = useNoteReader();
   /** Who the reader is to the call something came from: the series is one organizer's, but each call's notes reached people their own way. */
-  const reader = (x: { noteId: string }) => readerAs(s.isOrganizer ? 'organizer' : from.get(x.noteId)?.received?.role ?? 'shared');
+  const reader = (x: { noteId: string }) => readerAs(s.isOrganizer ? 'organizer' : ((r) => (r ? readerRole(r) : 'shared'))(from.get(x.noteId)?.received));
   const change = (d: CarriedDecision, patch: DecisionPatch) => decision.mutate({ noteId: d.noteId, decisionId: d.id, patch }, { onError: failed });
   const decide = (d: CarriedDecision, state: CarriedDecision['state']) => change(d, state === 'confirmed' ? { state, seen: { text: d.text } } : { state });
   const answer = (x: CarriedQuestion) => question.mutate({ noteId: x.noteId, questionId: x.id, patch: { state: 'answered' } }, { onSuccess: () => toast('Marked answered', { ms: 2200 }), onError: failed });

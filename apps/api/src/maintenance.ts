@@ -13,6 +13,7 @@
  *  - deletes live notes a call left behind when a release from before them ended it;
  *  - settles who pays for workspaces nobody does, gives accounts from before plans their plan, ends graces that are
  *    over, and adds as dollars top-ups the previous release settled;
+ *  - deletes team invites that expired, and reckons the storage pool of each team whose license ended or whose grace did;
  *  - takes away what an upload left when its browser went, a day on, and forgets uploads counted before yesterday.
  *
  * Each step stands alone: one that fails is logged and the rest still run, so a sweep that keeps failing can't stop
@@ -37,6 +38,7 @@ import { joinDue } from './features/recordings/screens';
 import { work } from './features/notes/writer';
 import { work as exportToDrive } from './features/notes/drive-worker';
 import { upkeep as plansUpkeep } from './features/billing/plans';
+import { upkeep as teamsUpkeep } from './features/billing/teams';
 import { creditCarried } from './features/billing/deposits';
 import { sweepSessions } from './sessions';
 
@@ -72,6 +74,8 @@ export async function maintain(d: Deps, opts: { orphanAgeMs?: number; trashAgeMs
   // Plans: who pays for each workspace, every account's plan, graces that ended, and top-ups the previous release settled while this one deployed.
   const plans = await step('plans', () => plansUpkeep(d).then((r) => r.settled + r.carried + r.due), 0);
   const carried = await step('carried top-ups', () => creditCarried(d), 0);
+  // Teams: invites that expired, and pools that shrank as a license ended, or whose grace ended.
+  const teams = await step('teams', () => teamsUpkeep(d).then((r) => r.invites + r.teams), 0);
   // Neither stops the other, or what comes next time: each logs what went wrong and says it did nothing.
   const quietly = (what: string, sweep: () => Promise<number>) => sweep().catch((e: unknown) => { mlog.warn('workspace upkeep failed', { what, err: e }); return 0; });
   const trash = await quietly('trash', () => sweepTrash(d, opts.trashAgeMs, started));
@@ -79,7 +83,7 @@ export async function maintain(d: Deps, opts: { orphanAgeMs?: number; trashAgeMs
   const uploads = await quietly('uploads', () => sweepUploads(d, opts.uploadAgeMs, started));
   const uploadDays = await quietly('upload days', () => pruneUploadDays(d));
   const mentions = await quietly('mentions', () => sweepMentions(d));
-  return { driveExports, sessions, agents, receipts, retried, orphans, videos, notes, calls, moves, noteLinks, rings, liveNotes, attention, plans, carried, trash, seats, uploads, uploadDays, mentions };
+  return { driveExports, sessions, agents, receipts, retried, orphans, videos, notes, calls, moves, noteLinks, rings, liveNotes, attention, plans, carried, teams, trash, seats, uploads, uploadDays, mentions };
 }
 
 /** Deletes objects older than `cutoff` (ms) that no row points at: writes whose SQL commit failed. */

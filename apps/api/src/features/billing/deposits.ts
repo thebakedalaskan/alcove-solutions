@@ -16,7 +16,7 @@ import {
   type DepositProvider, type DepositRoute, type DoubtReason, type OpenDepositState
 } from './provider';
 import { LIMITS, limitsNow } from '../../limits';
-import { credit, purchase, refusalOf, refusedError } from './plans';
+import { credit, licenseOf, purchase, refusalOf, refusedError } from './plans';
 
 const dlog = log.child({ component: 'deposits' });
 /** IDs are 22 characters of base64url; anything else names nothing. */
@@ -156,7 +156,7 @@ async function withinLimits(db: Db, ownerId: string): Promise<void> {
 export async function start(d: Deps, ownerId: string, routeId: string, microUsd: number, buys: Purchase | null): Promise<TopUp> {
   const all = providers(d);
   if (buys) {
-    const refused = refusalOf(await limitsNow(d), buys);
+    const refused = refusalOf(await limitsNow(d), buys, await licenseOf(d.pool, ownerId));
     if (refused) throw refusedError(refused, { kind: buys.kind });
   }
   await withinLimits(d.pool, ownerId);

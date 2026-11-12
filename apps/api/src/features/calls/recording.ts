@@ -5,7 +5,7 @@ import { tx, type Db } from '../../db';
 import { ConflictError, ForbiddenError, PlanLimitError, UnavailableError, ValidationError, notFound } from '../../errors';
 import type { Most } from '../../inference';
 import { meterFor, notesBlocked } from '../billing/meter';
-import { mayStore } from '../billing/plans';
+import { mayStore } from '../billing/held';
 import { writingAtMost } from '../notes/drafting';
 import { me } from '../account/account';
 import { appendPiece, createRecording, setRecordingState, type Piece } from '../recordings/audio';

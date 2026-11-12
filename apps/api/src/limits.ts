@@ -45,7 +45,10 @@ export interface LimitSpec {
 export const WHOLE_DOWNLOAD_BYTES = 512 * MiB;
 
 /**
- * Every limit there is (docs: Plans and usage, and Deployment › Changing a limit): each plan's notes, storage and files, Pro's price and its lower price for a year or more, the most months one purchase buys and when Pro's end is told; more notes for a period, their price and the most bought at once; what an hour of notes is reckoned at, when AI stops and when an organizer is told
+ * Every limit there is (docs: Plans and usage, and Deployment › Changing a limit): each plan's notes, storage and files, Pro's and
+ * a team license's price and Pro's lower price for a year or more, the most months or licenses one purchase buys and when
+ * Pro's end is told; more notes for a period, their price and the most bought at once; when a team's admin is told licenses
+ * are low and how long an invite works; what an hour of notes is reckoned at, when AI stops and when an organizer is told
  * it's close; how long a plan's period and its grace last; the longest call and the most people in one; and what one
  * person uploads in a day, everywhere. A ceiling leaves room to raise a default a long way, except a file's: a whole file
  * is read in one response, which is cut at 280 seconds and past 16 MiB can't pick up where it stopped, so 512 MiB needs
@@ -61,6 +64,10 @@ export const LIMITS = {
   'plan.pro.price_micro_usd': { default: 20_000_000, floor: 0, ceiling: 10_000_000_000, unit: 'micro-usd', measures: 'Pro: one period.' },
   'plan.pro.yearly_price_micro_usd': { default: 16_000_000, floor: 0, ceiling: 10_000_000_000, unit: 'micro-usd', measures: 'Pro: one period, bought plan.pro.yearly_from_months or more at once. None while it’s 0 or not below plan.pro.price_micro_usd.' },
   'plan.pro.yearly_from_months': { default: 12, floor: 1, ceiling: 120, unit: 'count', measures: 'The fewest months of Pro one purchase buys at plan.pro.yearly_price_micro_usd. None while it’s more than plan.pro_max_months.' },
+  'plan.team.price_micro_usd': { default: 40_000_000, floor: 0, ceiling: 10_000_000_000, unit: 'micro-usd', measures: 'Team: one license, a person for one period.' },
+  'plan.team.notes_minutes': { default: 3_000, floor: 0, ceiling: 600_000, unit: 'minutes', measures: 'Team: the notes a license’s period brings its member, reckoned at ai.hour_micro_usd an hour.' },
+  'plan.team.storage_bytes': { default: 100 * GiB, floor: 0, ceiling: 10 * TiB, unit: 'bytes', measures: 'Team: the storage each live license adds to its team’s pool; also what someone who leaves a team is held to through plan.grace_seconds.' },
+  'plan.team.file_bytes': { default: 2 * GiB, floor: 0, ceiling: MAX_MEDIA_BYTES, unit: 'bytes', measures: `Team: one file. What's enforced is at most ${WHOLE_DOWNLOAD_BYTES / MiB} MiB (WHOLE_DOWNLOAD_BYTES) until downloads can pick up where they stopped.` },
   'plan.pro_max_months': { default: 12, floor: 1, ceiling: 120, unit: 'count', measures: 'The most months of Pro one purchase buys.' },
   'plan.hours.pack_minutes': { default: 600, floor: 1, ceiling: 60_000, unit: 'minutes', measures: 'More notes: the minutes one pack adds to the period it’s bought in, reckoned at ai.hour_micro_usd an hour.' },
   'plan.hours.price_micro_usd': { default: 15_000_000, floor: 0, ceiling: 10_000_000_000, unit: 'micro-usd', measures: 'More notes: one pack. At 0, more notes aren’t offered.' },
@@ -76,6 +83,9 @@ export const LIMITS = {
   'ai.image_tokens': { default: 1_500, floor: 0, ceiling: 100_000, unit: 'count', measures: 'The input tokens one image is taken to be at most, before NEAR AI says.' },
   'call.max_seconds': { default: 10 * HOUR, floor: 10 * MINUTE, ceiling: 48 * HOUR, unit: 'seconds', measures: 'The longest a call runs: it ends then, everyone told 5 minutes before.' },
   'call.max_people': { default: 100, floor: 2, ceiling: 1_000, unit: 'count', measures: 'The most people in a call at once, those waiting to be let in included.' },
+  'team.max_licenses': { default: 500, floor: 1, ceiling: 100_000, unit: 'count', measures: 'The most team licenses one purchase buys.' },
+  'team.low_licenses': { default: 5, floor: 0, ceiling: 100_000, unit: 'count', measures: 'Unconsumed licenses below which a team’s admin is told they’re running low.' },
+  'team.invite_seconds': { default: DAY, floor: MINUTE, ceiling: 30 * DAY, unit: 'seconds', measures: 'How long a link to join a team works, once.' },
   'workspaces.max_made': { default: 1_000, floor: 1, ceiling: 100_000, unit: 'count', measures: 'The most workspaces one account makes, to stop one from making them without end.' },
   'media.account_day_bytes': { default: 20 * GiB, floor: 0, ceiling: 200 * GiB, unit: 'bytes', measures: 'What one person uploads in a day (UTC), in every workspace.' }
 } as const satisfies Record<string, LimitSpec>;

@@ -544,7 +544,7 @@ export const NewWorkspacePhone = phone(NewWorkspace);
 /** An earlier design review today, at 9:00, with a workspace made for it: named as this call's is. */
 function earlierReview(): void {
   const at = iso(0, 9, 0);
-  current().workspaces.push({ id: 'ws-review-early', name: 'Design review', role: 'admin', people: 4, items: [], createdAt: at, call: { title: 'Design review', at } });
+  current().workspaces.push({ id: 'ws-review-early', name: 'Design review', role: 'admin', people: 4, teamAccess: null, items: [], createdAt: at, call: { title: 'Design review', at } });
 }
 /** The picker when this call's workspace and an earlier one share a name: each says when its call started. */
 export const ThePickerSameNameTwice = inCall({ scenario: 'call-soon', call: REVIEW, script: { here: REVIEWERS }, then: earlierReview }, { play: openPicker(REVIEW_SPACE) });

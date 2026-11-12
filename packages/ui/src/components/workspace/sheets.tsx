@@ -6,7 +6,7 @@ import { cn } from '../../cn';
 import { Icon, type IconName } from '../icon';
 import { Avatar, Faces, type AvatarPerson } from '../people';
 import { Dots } from '../motion';
-import { Button, Kbd } from '../primitives';
+import { Button, Kbd, Segmented, type Choice } from '../primitives';
 import { WsMenu, WsPopover, type WsMenuRow } from './popover';
 import { canTakeFocus, firstName, focusedNow, useMove } from './shared';
 
@@ -248,8 +248,21 @@ function RolePicker({ role, who }: { role: WsShareRole; who: string }) {
  * it. `guest`: someone in this call who can't open it, with Let them read. `matches`: who the field found, as you type.
  * Someone who can't add people has no field: leave `onQuery` out.
  */
-export function WsShareSheet({ title, query = '', onQuery, onAdd, matches = [], rows, guest }: {
+/** Who's in a team's workspace: everyone licensed on the team, or only the people added. */
+export type WsTeamAccess = 'team' | 'added';
+const TEAM_ACCESS: Choice<WsTeamAccess>[] = [{ value: 'team', label: 'Whole team', icon: 'people' }, { value: 'added', label: 'Only people I add', icon: 'lock' }];
+const TEAM_ACCESS_SAYS: Record<WsTeamAccess, string> = {
+  team: 'Everyone licensed on the team can open and edit it.',
+  added: 'Only the people here can open it.'
+};
+
+/**
+ * People in a workspace or a document, and adding more. `team`, on a team's workspace: who's in it, which its admins change
+ * (`onChange`) and everyone else reads.
+ */
+export function WsShareSheet({ title, query = '', onQuery, onAdd, matches = [], rows, guest, team }: {
   title: string; query?: string | undefined; onQuery?: ((q: string) => void) | undefined;
+  team?: { access: WsTeamAccess; onChange?: ((access: WsTeamAccess) => void) | undefined } | null | undefined;
   /** Enter in the field, with an email address or a name. */
   onAdd?: (() => void) | undefined;
   matches?: WsShareMatch[] | undefined; rows: WsShareRow[];
@@ -258,6 +271,14 @@ export function WsShareSheet({ title, query = '', onQuery, onAdd, matches = [], 
   return (
     <div className="wv-share">
       <div className="wv-h"><b>{title}</b></div>
+      {team && (
+        <div className="wv-team">
+          {team.onChange
+            ? <Segmented label="Who’s in it" value={team.access} onChange={team.onChange} options={TEAM_ACCESS} />
+            : <b><Icon name={team.access === 'team' ? 'people' : 'lock'} size={15} />{team.access === 'team' ? 'Whole team' : 'Only people added'}</b>}
+          <small>{TEAM_ACCESS_SAYS[team.access]}</small>
+        </div>
+      )}
       {onQuery && (
         <label className="wv-f">
           <Icon name="search" size={15} />

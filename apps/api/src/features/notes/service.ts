@@ -3,7 +3,9 @@
  * ends, and anyone who has it can share it on, by address, with one of their groups, or by a link
  * whoever opens signed in (links.ts); the note keeps, sealed, who shared it with whom, the group's
  * name or that it was a link, and when. Who else may read it is kept in note_access as keyed email
- * hashes. Someone else's note is opened with its organizer's keys, and only after that check.
+ * hashes. Someone else's note is opened with its organizer's keys, and only after that check. Its organizer can also make
+ * it visible to their team (`team_notes`): everyone live-licensed on that team reads it and asks about it, and changes
+ * nothing (`locateToRead` finds it; `locate`, which everything that changes a note uses, refuses it).
  */
 import {
   MAX_FOLLOW_UP_PROPOSALS, ACCEPTED_FOLLOW_UP, isAcceptedFollowUp, type FollowUpReview, ActionItemSchema, CaptureGapSchema, ChangerSchema, ChapterSchema, DecisionSchema, InferenceEvidenceSchema, ModelIdSchema, NoteKindSchema, NoteStatusSchema, QuestionSchema, RoomNoteSchema, ScreenMomentSchema, TranscriptLineSchema, UnencryptedUseSchema,
@@ -15,7 +17,7 @@ import {
 import { z } from 'zod';
 import type { Owner } from '../../context';
 import { b64u, blindIndex, id128, openJson, sealJson, stateKey, toJson, type RecordHeader } from '../../crypto';
-import { bytea, exec, maybeOne, rows, tx, type Db } from '../../db';
+import { bytea, exec, maybeOne, rows, timestamp, tx, type Db } from '../../db';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError, notFound } from '../../errors';
 import { inference, type ChatModel } from '../../inference';
 import { log } from '../../log';
@@ -40,6 +42,7 @@ import { nameOf, personOf } from '../account/portraits';
 import * as screens from '../recordings/screens';
 import * as transcripts from '../recordings/transcripts';
 import { workedOnFor } from './worked-on';
+import { licensedOn } from '../billing/teams';
 
 const nlog = log.child({ component: 'notes' });
 
@@ -275,14 +278,25 @@ async function queueNotes(o: Owner, db: Db, noteId: string, recordingId: string,
 export type Located =
   | { owner: Owner; note: Loaded<NoteManifest>; mine: true }
   | { owner: Owner; note: Loaded<NoteManifest>; mine: false; as: string };
+/**
+ * Someone else's note its organizer made visible to the team the reader is live-licensed on (`teamId`), since `at`: it's
+ * theirs to read and ask about, and nothing more (docs: Plans and usage › Team).
+ */
+export interface TeamLocated { owner: Owner; note: Loaded<NoteManifest>; mine: false; team: { teamId: string; at: string } }
+/** A note as someone may read it: their own, given to them, or their team's. */
+export type Seen = Located | TeamLocated;
+const viaTeam = (l: Seen): l is TeamLocated => 'team' in l;
 const AccessRow = z.object({ owner_id: z.string(), note_item_id: z.string() });
+const TeamNoteRow = z.object({ owner_id: z.string(), note_item_id: z.string(), created_at: timestamp });
+/** What every change to a note refuses someone who has it only through their team. */
+export const TEAM_READS = 'This note is visible to your team to read and ask about. Only its organizer changes it.';
 
 /**
  * A note as this person may read it. A transcript that's to be deleted once the notes are written is there to write
  * them from, for its organizer: everyone else gets the notes, and never reads it, by any path. That goes for the main
  * room's and every breakout room's, which any of them may still hold while its notes can't be written.
  */
-export function asRead(l: Located): NoteManifest {
+export function asRead(l: Seen): NoteManifest {
   const m = l.note.manifest;
   return l.mine || m.keep.transcript ? m : { ...m, transcript: m.transcript === null ? null : [], rooms: m.rooms.map((r) => ({ ...r, transcript: [] })) };
 }
@@ -328,10 +342,19 @@ async function everyNote(o: Owner, as: string): Promise<Located[]> {
  * or (someone else's) no longer given to them. An answer that took a while to write is checked with
  * this before it's sent, since it may quote a note that went in the meantime.
  */
-export async function goneSince(o: Owner, found: Located[]): Promise<number> {
+export async function goneSince(o: Owner, found: Seen[]): Promise<number> {
   const Count = z.object({ n: z.number() });
   const mine = found.filter((l) => l.mine).map((l) => l.note.itemId);
-  const theirs = found.filter((l) => !l.mine);
+  const theirs = found.filter((l): l is Extract<Located, { mine: false }> => !l.mine && !viaTeam(l));
+  const team = found.filter(viaTeam);
+  // A team's note goes with the note, with its organizer making it not visible, or with the reader's license.
+  const licensed = team.length ? await licensedOn(o.pool, o.ownerId) : null;
+  const teamLeft = licensed && team.length
+    ? (await maybeOne(o.pool, Count, `SELECT count(*)::int AS n FROM team_notes t
+        JOIN unnest($2::text[], $3::text[]) AS x(owner_id, note_item_id) ON t.owner_id = x.owner_id AND t.note_item_id = x.note_item_id
+        JOIN items i ON i.owner_id = t.owner_id AND i.item_id = t.note_item_id AND i.deleted_at IS NULL
+        WHERE t.team_id = $1`, [licensed.teamId, team.map((l) => l.owner.ownerId), team.map((l) => l.note.itemId)]))?.n ?? 0
+    : 0;
   const ownLeft = mine.length
     ? (await maybeOne(o.pool, Count, `SELECT count(*)::int AS n FROM items WHERE owner_id = $1 AND kind = 'note' AND deleted_at IS NULL AND item_id = ANY($2::text[])`, [o.ownerId, mine]))?.n ?? 0
     : 0;
@@ -341,17 +364,104 @@ export async function goneSince(o: Owner, found: Located[]): Promise<number> {
         JOIN items i ON i.owner_id = a.owner_id AND i.item_id = a.note_item_id AND i.deleted_at IS NULL
         WHERE a.email_index = $1`, [emailIndex(o, await myEmail(o)), theirs.map((l) => l.owner.ownerId), theirs.map((l) => l.note.itemId)]))?.n ?? 0
     : 0;
-  return found.length - ownLeft - givenLeft;
+  return found.length - ownLeft - givenLeft - teamLeft;
 }
-export async function locate(o: Owner, id: string, db: Db = o.pool): Promise<Located> {
+/** A note this person has, their own or given to them, or nothing. */
+async function given(o: Owner, id: string, db: Db): Promise<Located | undefined> {
   const own = await maybeOne(db, z.object({ n: z.number() }), `SELECT 1 AS n FROM items WHERE owner_id = $1 AND item_id = $2 AND kind = 'note' AND deleted_at IS NULL`, [o.ownerId, id]);
   if (own) return { owner: o, note: await getItem(o, db, 'note', id, NoteManifest, 'Those notes'), mine: true };
   const as = await myEmail(o);
   const a = await maybeOne(db, AccessRow, 'SELECT owner_id, note_item_id FROM note_access WHERE note_item_id = $1 AND email_index = $2', [id, emailIndex(o, as)]);
-  // No access, or access whose organizer deleted their account since it was read: not found, either way.
+  // No access, or access whose organizer deleted their account since it was read: nothing, either way.
   const owner = a && await findOwner(o, a.owner_id, undefined, db);
-  if (!owner) throw notFound('Those notes', { noteId: id });
-  return { owner, note: await getItem(owner, db, 'note', id, NoteManifest, 'Those notes'), mine: false, as };
+  return owner ? { owner, note: await getItem(owner, db, 'note', id, NoteManifest, 'Those notes'), mine: false, as } : undefined;
+}
+/** Where someone else's note is visible to the team this person is live-licensed on, without opening anything. */
+async function onTeam(o: Owner, id: string, db: Db): Promise<{ row: z.infer<typeof TeamNoteRow>; teamId: string } | undefined> {
+  const licensed = await licensedOn(db, o.ownerId);
+  const row = licensed && await maybeOne(db, TeamNoteRow, `SELECT t.owner_id, t.note_item_id, t.created_at FROM team_notes t
+    JOIN items i ON i.owner_id = t.owner_id AND i.item_id = t.note_item_id AND i.kind = 'note' AND i.deleted_at IS NULL
+    WHERE t.note_item_id = $1 AND t.team_id = $2 AND t.owner_id <> $3`, [id, licensed.teamId, o.ownerId]);
+  return licensed && row ? { row, teamId: licensed.teamId } : undefined;
+}
+/**
+ * A note this person has, to change it (or anything of theirs on it): their own, or given to them. One they can only read
+ * through their team is refused (`forbidden`); anything else is `not-found`, the same for a note that was never there.
+ */
+export async function locate(o: Owner, id: string, db: Db = o.pool): Promise<Located> {
+  const l = await given(o, id, db);
+  if (l) return l;
+  if (await onTeam(o, id, db)) throw new ForbiddenError(TEAM_READS, { context: { noteId: id } });
+  throw notFound('Those notes', { noteId: id });
+}
+/** A note this person may read and ask about: their own, given to them, or visible to the team they're live-licensed on. */
+export async function locateToRead(o: Owner, id: string, db: Db = o.pool): Promise<Seen> {
+  const l = await given(o, id, db);
+  if (l) return l;
+  const t = await onTeam(o, id, db);
+  // Its organizer deleted their account since the row was read: it's gone.
+  const owner = t && await findOwner(o, t.row.owner_id, undefined, db);
+  if (!t || !owner) throw notFound('Those notes', { noteId: id });
+  return { owner, note: await getItem(owner, db, 'note', id, NoteManifest, 'Those notes'), mine: false, team: { teamId: t.teamId, at: t.row.created_at.toISOString() } };
+}
+
+/**
+ * The notes made visible to the team this person is live-licensed on that they don't have otherwise (`except`: what they
+ * have), each opened with its organizer's keys, once for each organizer. None without a live license.
+ */
+async function teamNotes(o: Owner, except: ReadonlySet<string>): Promise<TeamLocated[]> {
+  const licensed = await licensedOn(o.pool, o.ownerId);
+  if (!licensed) return [];
+  const found = await rows(o.pool, TeamNoteRow, 'SELECT owner_id, note_item_id, created_at FROM team_notes WHERE team_id = $1 AND owner_id <> $2', [licensed.teamId, o.ownerId]);
+  const owners = new Map<string, Owner | undefined>();
+  const out: TeamLocated[] = [];
+  for (const r of found) {
+    if (except.has(r.note_item_id)) continue;
+    const owner = owners.has(r.owner_id) ? owners.get(r.owner_id) : await findOwner(o, r.owner_id, undefined);
+    owners.set(r.owner_id, owner);
+    // Deleted since its row was read, on its own or with its organizer's account.
+    const note = owner && await findItem(owner, owner.pool, 'note', r.note_item_id, NoteManifest);
+    if (owner && note) out.push({ owner, note, mine: false, team: { teamId: licensed.teamId, at: r.created_at.toISOString() } });
+  }
+  return out;
+}
+
+/**
+ * The team's notes (`GET /v1/team/notes`): every note made visible to the team this person is live-licensed on, their own
+ * among them, newest first, each as they have it (a note also given to them says so). None without a live license.
+ */
+export async function teamList(o: Owner): Promise<NoteSummary[]> {
+  const licensed = await licensedOn(o.pool, o.ownerId);
+  if (!licensed) return [];
+  const visible = new Set((await rows(o.pool, z.object({ id: z.string() }), 'SELECT note_item_id AS id FROM team_notes WHERE team_id = $1', [licensed.teamId])).map((r) => r.id));
+  if (!visible.size) return [];
+  const held: Seen[] = (await everyNote(o, await myEmail(o))).filter((l) => visible.has(l.note.itemId));
+  const notes = [...held, ...await teamNotes(o, new Set(held.map((l) => l.note.itemId)))];
+  notes.sort((a, b) => b.note.manifest.startedAt.localeCompare(a.note.manifest.startedAt));
+  return Promise.all(notes.map(summary));
+}
+
+/**
+ * Makes a note visible to its organizer's team, to read and ask about, or stops it being (docs: Plans and usage › Team). Only
+ * its organizer, and making it visible only while they're live-licensed on a team, once its call has ended. It stays visible
+ * to that team after they leave it, until they say otherwise, or the note or their account goes. Saying it again changes nothing.
+ */
+export async function setTeamVisible(o: Owner, id: string, visible: boolean): Promise<void> {
+  const l = await locate(o, id);
+  const context = { noteId: id, visible };
+  if (!l.mine) throw new ForbiddenError('Only the organizer can make these notes visible to their team.', { context });
+  if (!visible) {
+    const gone = await exec(o.pool, 'DELETE FROM team_notes WHERE owner_id = $1 AND note_item_id = $2', [o.ownerId, id]);
+    nlog.info('note team visibility set', { ...context, changed: gone > 0 });
+    return;
+  }
+  if (l.note.manifest.status === 'recording') throw new ValidationError('These notes can be made visible to your team once the call ends.', { context });
+  const licensed = await licensedOn(o.pool, o.ownerId);
+  if (!licensed) throw new ForbiddenError('You need a license on a team to make notes visible to it.', { context });
+  // Made visible to another team before, while they were on it: it's this one's now.
+  const changed = await exec(o.pool, `INSERT INTO team_notes (owner_id, note_item_id, team_id) VALUES ($1,$2,$3)
+    ON CONFLICT (owner_id, note_item_id) DO UPDATE SET team_id = EXCLUDED.team_id, created_at = now() WHERE team_notes.team_id <> EXCLUDED.team_id`, [o.ownerId, id, licensed.teamId]);
+  nlog.info('note team visibility set', { ...context, teamId: licensed.teamId, changed: changed > 0 });
 }
 
 /**
@@ -382,7 +492,7 @@ const sharerOf = (s: Sharer, organizer: Person): Person => (s.id === organizer.i
  * got it, each with who shared it, the group's name and when. Whoever has since removed it from
  * their notes no longer has it, so isn't listed.
  */
-async function recipients(l: Located, organizer: Person, db: Db = l.owner.pool): Promise<Recipient[]> {
+async function recipients(l: Seen, organizer: Person, db: Db = l.owner.pool): Promise<Recipient[]> {
   const m = l.note.manifest;
   const holding = await holders(l.owner, db, l.note.itemId);
   const holds = (email: string) => holding.has(b64u(emailIndex(l.owner, email)));
@@ -425,20 +535,27 @@ function groupSharesOf(who: Recipient[]): GroupShare[] {
   return [...shares.values()].sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
 }
 
-function summaryOf(l: Located, organizer: Person, who: Recipient[]): NoteSummary {
+/** Whether a note's organizer made it visible to their team (docs: Plans and usage › Team). */
+async function teamVisible(l: Seen): Promise<boolean> {
+  return (await exec(l.owner.pool, 'SELECT 1 FROM team_notes WHERE owner_id = $1 AND note_item_id = $2', [l.owner.ownerId, l.note.itemId])) > 0;
+}
+/** How someone came to have a note that isn't theirs: given to them, or made visible to their team. */
+const receivedOf = (l: Exclude<Seen, { mine: true }>, organizer: Person): Received =>
+  (viaTeam(l) ? { role: 'team', by: organizer, at: l.team.at } : receivedBy(l.note.manifest, l.as, organizer));
+function summaryOf(l: Seen, organizer: Person, who: Recipient[], visible: boolean): NoteSummary {
   const m = l.note.manifest;
   return {
     id: l.note.itemId, kind: m.kind, status: m.status, title: m.title, startedAt: m.startedAt, duration: m.duration,
     people: who.map((r) => r.person), sharedWith: who.filter((r) => r.role === 'shared').map((r) => r.person.email),
     excerpt: m.summary.split(/(?<=\.)\s/).slice(0, 2).join(' '),
     openActions: actionsOf(m).filter((a) => !a.done).length, totalActions: actionsOf(m).length,
-    ...(m.meetingId && l.mine ? { meetingId: m.meetingId } : {}), ...(l.mine ? {} : { received: receivedBy(m, l.as, organizer) }),
-    groupShares: groupSharesOf(who)
+    ...(m.meetingId && l.mine ? { meetingId: m.meetingId } : {}), ...(l.mine ? {} : { received: receivedOf(l, organizer) }),
+    teamVisible: visible, groupShares: groupSharesOf(who)
   };
 }
-async function summary(l: Located): Promise<NoteSummary> {
+async function summary(l: Seen): Promise<NoteSummary> {
   const organizer = await me(l.owner);
-  return summaryOf(l, organizer, await recipients(l, organizer));
+  return summaryOf(l, organizer, await recipients(l, organizer), await teamVisible(l));
 }
 
 /** Lines of what was said that a note's row and its preview show, at most. */
@@ -447,7 +564,7 @@ const SAID_SHOWN = 4;
 const saidIn = (m: NoteManifest): TranscriptLine[] => [...(m.transcript ?? []), ...m.rooms.flatMap((r) => r.transcript.map((l) => ({ ...l, room: { id: r.id, name: r.name } })))];
 
 /** What a search finds in a note as someone may read it: the lines with most of its words, best first, and how many lines have any. Nothing, when the note doesn't match. */
-function foundIn(l: Located, { terms, question }: NoteSearch): Pick<NoteFound, 'said' | 'saidCount'> | undefined {
+function foundIn(l: Seen, { terms, question }: NoteSearch): Pick<NoteFound, 'said' | 'saidCount'> | undefined {
   const m = asRead(l);
   const lines = saidIn(m);
   const has = termsIn(`${m.title} ${m.summary} ${lines.map((t) => t.text).join(' ')}`, terms);
@@ -470,12 +587,12 @@ export async function list(o: Owner, q: { kind?: NoteKind | undefined; text?: st
   return Promise.all(found.map(async ({ l, hit }) => ({ ...await summary(l), ...hit })));
 }
 /** The series a note's call is in, read from the call in its organizer's vault. Room recordings have no call, so no series. */
-export async function seriesOf(l: Located): Promise<string | undefined> {
+export async function seriesOf(l: Seen): Promise<string | undefined> {
   const meetingId = l.note.manifest.meetingId;
   return meetingId ? (await findItem(l.owner, l.owner.pool, 'meeting', meetingId, MeetingManifest))?.manifest.seriesId : undefined;
 }
 export async function get(o: Owner, id: string): Promise<Note> {
-  const l = await locate(o, id);
+  const l = await locateToRead(o, id);
   const m = l.note.manifest;
   const read = asRead(l);
   const organizer = await me(l.owner);
@@ -483,7 +600,7 @@ export async function get(o: Owner, id: string): Promise<Note> {
   const seriesId = await seriesOf(l);
   const { decisions, questions, actions, suggestions, rooms } = entriesOf(read);
   return {
-    ...summaryOf(l, organizer, who), recipients: who, summary: m.summary, decisions, questions, actions, suggestions, chapters: m.chapters,
+    ...summaryOf(l, organizer, who, await teamVisible(l)), recipients: who, summary: m.summary, decisions, questions, actions, suggestions, chapters: m.chapters,
     gaps: m.gaps, screens: m.screens, transcript: read.transcript, rooms, additions: await additions.of(l, o.ownerId), writtenAt: m.writtenAt, writingAgain: m.status === 'ready' && !!(await jobOf(l.owner, l.owner.pool, id)),
     details: m.details, suggestedQuestions: m.suggestedQuestions, audio: await segments(l.owner, m.recordingId), kept: m.keep, inference: m.inference, workedOn: await workedOnFor(o, m.workedOn, everyoneWith(m, organizer.email)),
     shares: m.keep.recording ? await screens.shareIntervals(l.owner, m.recordingId, m.segmentSeconds) : [], model: m.model, unencrypted: m.unencrypted, ...(seriesId ? { seriesId } : {})
@@ -496,7 +613,7 @@ async function jobOf(o: Owner, db: Db, noteId: string) {
 }
 /** The vault and recording to stream a note's audio from, after the access check. */
 export async function audioSource(o: Owner, id: string): Promise<{ owner: Owner; recordingId: string }> {
-  const l = await locate(o, id);
+  const l = await locateToRead(o, id);
   return { owner: l.owner, recordingId: l.note.manifest.recordingId };
 }
 /**
@@ -504,7 +621,7 @@ export async function audioSource(o: Owner, id: string): Promise<{ owner: Owner;
  * audio: not found unless the note's recording has that video. One query besides opening the note, for every range.
  */
 export async function videoAccess(o: Owner, id: string, shareId: string, segment: number): Promise<{ owner: Owner; recordingId: string }> {
-  const l = await locate(o, id);
+  const l = await locateToRead(o, id);
   if (!l.note.manifest.keep.recording) throw notFound('That shared screen’s video', { noteId: id, segment });
   const recordingId = l.note.manifest.recordingId;
   const has = await maybeOne(l.owner.pool, z.object({ chunk: z.number() }), `SELECT v.chunk FROM screen_videos v
@@ -515,13 +632,13 @@ export async function videoAccess(o: Owner, id: string, shareId: string, segment
 }
 /** One of a note's shared-screen frames, decrypted, for anyone who has the note: only frames the note shows. */
 export async function screenImage(o: Owner, id: string, frameId: string): Promise<Uint8Array> {
-  const l = await locate(o, id);
+  const l = await locateToRead(o, id);
   if (!l.note.manifest.screens.some((m) => m.id === frameId)) throw notFound('That frame', { noteId: id });
   return screens.image(l.owner, id, l.note.manifest.recordingId, frameId);
 }
 /** Where a note is on its way to being written, step by step; `ready` once the notes are written. */
 export async function progress(o: Owner, id: string): Promise<NoteProgress> {
-  const { owner, note } = await locate(o, id);
+  const { owner, note } = await locateToRead(o, id);
   const m = note.manifest;
   const stopped = m.status !== 'recording';
   const seconds = m.recorded ?? (await segments(owner, m.recordingId)).reduce((s, a) => s + a.seconds, 0);
@@ -560,7 +677,7 @@ export async function progress(o: Owner, id: string): Promise<NoteProgress> {
  * notes once it's written: it may quote them.
  */
 export async function ask(o: Owner, id: string, question: string): Promise<AnswerPart[]> {
-  const l = await locate(o, id);
+  const l = await locateToRead(o, id);
   const { owner, note } = l;
   const m = note.manifest;
   if (m.status !== 'ready') throw new ConflictError('You can ask about a call once its notes are written.', { context: { noteId: id, status: m.status } });
@@ -577,21 +694,35 @@ export async function ask(o: Owner, id: string, question: string): Promise<Answe
   if (await goneSince(o, [l])) {
     throw new ConflictError('These notes were deleted or removed from yours while the answer was being written, so it isn’t shown.', { context: { noteId: id, mine: l.mine, ms } });
   }
-  nlog.info('question answered', { noteId: id, mine: l.mine, cites: parts.length - 1, ms });
+  nlog.info('question answered', { noteId: id, mine: l.mine, team: viaTeam(l), cites: parts.length - 1, ms });
   return parts;
 }
 
 const NOTHING_TO_ASK = 'You don’t have any notes to answer from yet.';
 const NOT_WRITTEN = 'Your notes aren’t written yet. Ask again once they’re ready.';
+/** How many notes one question can refer to (@-references). */
+const MAX_REFS = 5;
+/** Whether a note can answer questions: written, or with a transcript the reader can read. */
+const answerable = (l: Seen): boolean => l.note.manifest.status === 'ready' && (l.note.manifest.writtenAt !== null || (asRead(l).transcript?.length ?? 0) > 0);
 /**
- * Answers a question from every note this person has, their own and ones shared with them: the ones
- * with notes written or a transcript they can read (features/notes/drafting.ts chooses which go). Without any,
- * it says so, and nothing goes to the notes model. The answer goes only if they still have every note
- * it read once it's written: it may quote any of them.
+ * Answers a question from every note this person may read: their own, ones shared with them, and the ones visible to the
+ * team they're live-licensed on; the ones with notes written or a transcript they can read (features/notes/drafting.ts
+ * chooses which go). `refs` (up to 5, the question's @-references) are each opened as anything else is, refused if they
+ * can't be, and go first; nothing else goes that the search didn't find. Without any, it says so, and nothing goes to
+ * the notes model. The asker pays. The answer goes only if they still have every note it read once it's written: it may
+ * quote any of them.
  */
-export async function askAll(o: Owner, question: string): Promise<AnswerPart[]> {
-  const all = await everyNote(o, await myEmail(o));
-  const ready = all.filter((l) => l.note.manifest.status === 'ready' && (l.note.manifest.writtenAt !== null || (asRead(l).transcript?.length ?? 0) > 0));
+export async function askAll(o: Owner, question: string, refs: readonly string[] = []): Promise<AnswerPart[]> {
+  const wanted = [...new Set(refs)];
+  if (wanted.length > MAX_REFS) throw new ValidationError(`Refer to ${MAX_REFS} notes at most in one question.`, { context: { refs: wanted.length } });
+  const given = await everyNote(o, await myEmail(o));
+  const all: Seen[] = [...given, ...await teamNotes(o, new Set(given.map((l) => l.note.itemId)))];
+  // Each reference is opened as anything else is: one this person can't read is `not-found`, the same for one that never was.
+  for (const id of wanted) {
+    const l = all.find((x) => x.note.itemId === id) ?? await locateToRead(o, id);
+    if (!answerable(l)) throw new ConflictError('A note you referred to isn’t written yet. Ask again once it’s ready.', { context: { noteId: id, status: l.note.manifest.status } });
+  }
+  const ready = all.filter(answerable);
   if (!ready.length) {
     const writing = all.some((l) => l.note.manifest.status !== 'ready');
     nlog.info('asked across notes with nothing to answer from', { notes: all.length, writing });
@@ -614,13 +745,13 @@ export async function askAll(o: Owner, question: string): Promise<AnswerPart[]> 
   const { parts, sent, lines } = await answerFromNotes(o.cfg, meterFor(o, { payer: o.ownerId, spend: 'ask' }), notes, await person(o), question, via, async (ids) => {
     const sent = new Set(ids);
     for (const l of ready) if (sent.has(l.note.itemId)) await recordUnencryptedUse(l.owner, l.note.itemId, via);
-  });
+  }, new Set(wanted));
   const ms = Math.round(performance.now() - t0);
   // Writing it can take up to a minute. A note deleted or taken away meanwhile must not show through the answer.
   if (await goneSince(o, ready.filter((l) => sent.includes(l.note.itemId)))) {
     throw new ConflictError('Notes it read were deleted or removed from yours while the answer was being written, so it isn’t shown. Ask again.', { context: { notes: sent.length, ms } });
   }
-  nlog.info('question answered across notes', { notes: all.length, ready: ready.length, sent: sent.length, lines, cites: parts.length - 1, ms });
+  nlog.info('question answered across notes', { notes: all.length, team: all.length - given.length, refs: wanted.length, ready: ready.length, sent: sent.length, lines, cites: parts.length - 1, ms });
   return parts;
 }
 /**

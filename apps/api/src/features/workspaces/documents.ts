@@ -947,11 +947,15 @@ export async function searchText(d: Deps, reader: Reader, workspaceId: string, a
 
 /**
  * What AI in a workspace is paid from (docs: Plans and usage): the plan of whoever the workspace counts against, its
- * maker or, for a call's own, the organizer. A workspace nobody pays for yet (its payer just deleted their account, until
- * upkeep settles it) is paid for by whoever asks, if they're signed in.
+ * maker or, for a call's own, the organizer. In a team's workspace, whoever pressed it pays, from their own allowance (docs:
+ * Plans and usage › Team); someone there only by a seat in a call, with no account, falls back to the workspace's payer. A
+ * workspace nobody pays for yet (its payer just deleted their account, until upkeep settles it) is paid for by whoever asks,
+ * if they're signed in.
  */
 async function workspaceMeter(d: Deps, reader: Reader, w: Workspace, spend: Spend) {
-  const payer = (await payerOf(d.pool, w.owner.ownerId)) ?? reader.account?.owner.ownerId;
+  const asker = reader.account?.owner.ownerId;
+  const team = await maybeOne(d.pool, z.object({ team_id: z.string().nullable() }), 'SELECT team_id FROM workspaces WHERE owner_id = $1', [w.owner.ownerId]);
+  const payer = (asker && team?.team_id ? asker : null) ?? (await payerOf(d.pool, w.owner.ownerId)) ?? asker;
   if (!payer) throw new ConflictError('AI isn’t available in this workspace right now.', { context: { workspaceId: w.workspaceId, why: 'no payer' } });
   return meterFor(d, { payer, spend });
 }

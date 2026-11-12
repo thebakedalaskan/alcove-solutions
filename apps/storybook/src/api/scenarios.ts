@@ -5,9 +5,10 @@
  * of these reach.
  */
 import {
-  TopUpSchema, TopUpRoutesSchema, PlanOffersSchema, ISODateSchema, DriveExportChoiceSchema, DriveExportJobSchema, DriveFolderSchema, DriveSettingsSchema, FILE_TYPE, CalendarSchema, DocumentLibrarySchema, IncomingRingSchema, MeetingSchema, NoteSchema, PersonalEntrySchema, PlanSchema, PreferencesSchema,
-  MentionNoticeSchema, SessionSchema, ShareEntrySchema, TeamSchema, WorkspaceMediaSchema, WorkspaceSummarySchema, WorkspaceTreeSchema, type DocumentLibrary, type DocumentRole,
-  type Group, type ItemCall, type MentionNotice, type NoteRoom, type NoteWorkedOn, type Person, type ShareEntry, type WorkspaceItem, type WorkspaceRole
+  TopUpSchema, TopUpRoutesSchema, PlanOffersSchema, ISODateSchema, DriveExportChoiceSchema, DriveExportJobSchema, DriveFolderSchema, DriveSettingsSchema, FILE_TYPE, CalendarSchema,
+  DocumentLibrarySchema, IncomingRingSchema, MeetingSchema, NoteSchema, PersonalEntrySchema, PlanSchema, PreferencesSchema, MentionNoticeSchema, SessionSchema, ShareEntrySchema, TeamSchema,
+  WorkspaceMediaSchema, WorkspaceSummarySchema, WorkspaceTreeSchema, type DocumentLibrary, type DocumentRole, type Group, type ItemCall, type MentionNotice, type NoteRoom, type NoteWorkedOn,
+  type Person, type ShareEntry, type WorkspaceItem, type WorkspaceRole, MyTeamSchema, type PlanNotice
 } from '@alcove/api';
 import { tileHintKey } from '~/features/call/layout/view';
 import { sessions } from '~/lib/live';
@@ -32,13 +33,15 @@ import { buyingWith, paymentsOff, PREVIEW_PAID_TOP_UP, PREVIEW_TOP_UP, PRO_YEAR,
 import { freePlan, inGrace, newPlan, notesStopped, overLimits, proEnded, proEnding, proExtended, proPlan, proRenewed, PRO_YEARLY_PRICE, withBalance, withNotesLeft } from '../world/plans';
 import { disconnectedDrive, withDriveExports } from '../world/drive-exports';
 import { withAgentConnections } from './agents';
+import { planWithTeam, priyasTeam, teamView, vandelayTeam, type TeamWorld } from '../world/teams';
 import { serve } from './state';
 import { forgetDocuments } from './workspaces';
 
 export type ScenarioName = 'busy' | 'first-day' | 'on-their-own' | 'offline' | 'writing' | 'call-soon' | 'no-workspace' | 'lots' | 'signed-out' | 'unsaved' | 'first-sign-in' | 'agents-connected' | 'drive-connected' | 'payments'
   | 'plan-low' | 'plan-stopped' | 'plan-grace' | 'plan-over' | 'plan-balance' | 'plan-pro' | 'plan-pro-ending' | 'plan-pro-renewed' | 'plan-pro-ended'
   | 'plan-buying-pro' | 'plan-pro-extended'
-  | 'plan-waiting' | 'payment-short' | 'payment-over' | 'payment-refused' | 'payment-expired' | 'payment-failed';
+  | 'plan-waiting' | 'payment-short' | 'payment-over' | 'payment-refused' | 'payment-expired' | 'payment-failed'
+  | 'team-admin' | 'team-admin-low' | 'team-admin-none' | 'team-member' | 'team-member-unlicensed' | 'team-join' | 'no-team';
 
 interface Scenario { title: string; about: string; make: () => { world: World; opening: Partial<Opening> } }
 
@@ -73,7 +76,7 @@ const homeName = (title: string, at: string): string => `${title} · ${new Intl.
 function home(id: string, title: string, at: string, organizer: Person, role: WorkspaceRole, people: number, noteId: string, items: WorkspaceItem[]): Space {
   const name = homeName(title, at);
   const hours = (Date.parse(iso(0, 16, 12)) - Date.parse(at)) / 3_600_000;
-  return { id, name, role, people, createdAt: at, call: { title, at }, items: [item(name, 'folder', organizer, hours, { call: { startedAt: at, on: false, here: false, noteId } }), ...items] };
+  return { id, name, role, people, teamAccess: null, createdAt: at, call: { title, at }, items: [item(name, 'folder', organizer, hours, { call: { startedAt: at, on: false, here: false, noteId } }), ...items] };
 }
 /**
  * The workspaces: the homes of the day's calls, the standup's newest; Product, which Art runs; Design, where he edits; and
@@ -89,7 +92,7 @@ function workspaces(): Space[] {
       item('Sidebar screenshots', 'document', KOFI, 28.3), item('Review uploads', 'document', AIKO, 28.9), item('Review checklist', 'document', ART, 28.6)
     ]),
     {
-      id: 'ws-product', name: 'Product', role: 'admin', people: 6, createdAt: iso(-120, 10, 0), call: null,
+      id: 'ws-product', name: 'Product', role: 'admin', people: 6, teamAccess: null, createdAt: iso(-120, 10, 0), call: null,
       items: [
         item('Launch plan', 'document', PRIYA, 2, { made: 76 }), item('Launch checklist', 'document', MAYA, 5), item('Research', 'folder', LENA, 300),
         item('Interview notes', 'document', LENA, 120, research), item('Competitor notes', 'document', LENA, 170, research),
@@ -99,11 +102,11 @@ function workspaces(): Space[] {
       ]
     },
     {
-      id: 'ws-design', name: 'Design', role: 'edit', people: 4, createdAt: iso(-90, 14, 0), call: null,
+      id: 'ws-design', name: 'Design', role: 'edit', people: 4, teamAccess: null, createdAt: iso(-90, 14, 0), call: null,
       items: [item('Onboarding flow', 'board', AIKO, 50), item('Empty states', 'document', KOFI, 8)]
     },
     {
-      id: 'ws-handbook', name: 'Company handbook', role: 'read', people: 38, createdAt: iso(-400, 9, 0), call: null,
+      id: 'ws-handbook', name: 'Company handbook', role: 'read', people: 38, teamAccess: null, createdAt: iso(-400, 9, 0), call: null,
       items: [item('Holidays', 'document', NADIA, 700, reading), item('Expenses', 'document', NADIA, 1300, reading), item('Working from home', 'document', NADIA, 2100, reading)]
     }
   ];
@@ -379,6 +382,37 @@ function callSoon(withSpace: boolean): World {
   return w;
 }
 
+/* ---------- a team ---------- */
+
+/** The secret of the invite `team-join` opens. Made up: it joins nothing outside Storybook. */
+export const TEAM_INVITE_SECRET = 'VandelayInviteStorybook0001';
+/**
+ * The busy afternoon on Vandelay's team (src/world/teams.ts): `team` as it stands, `admin` whether Art runs it, `change`
+ * anything else, and the plan as the team makes it, with $180 in the balance.
+ */
+function onTeam(team: TeamWorld, change: (t: TeamWorld, w: World) => void = () => {}): World {
+  const w = busy();
+  withPayments(w);
+  w.plan = { ...freePlan(), balance: { microUsd: 180_000_000, history: [{ id: 'sb-entry-1', at: iso(-12, 9, 0), label: 'Added, 300 USDC', microUsd: 300_000_000 }, { id: 'sb-entry-team', at: iso(-12, 9, 5), label: 'Team, 3 licenses', microUsd: -120_000_000 }] } };
+  w.myTeam = team;
+  change(team, w);
+  // A team note of Art's own: the standup, visible to the team.
+  w.notes = w.notes.map((n) => (n.id === 'n2' ? { ...n, teamVisible: true } : n));
+  w.plan = { ...planWithTeam(w.plan, team, ART.email, on(0, 16, 12).getTime()), notes: { minutesLeft: 2380, minutesPerPeriod: 3000, stopped: false } };
+  return w;
+}
+/**
+ * Priya's link to join Vandelay's team (which has licenses left, and Art isn't on) in the world, waiting in this tab as it
+ * does while signing in from it: Storybook can't put a secret in the page's address. `expired`: it ran out a minute ago.
+ */
+export const withTeamInvite = (expired = false) => (w: World): void => {
+  const team = vandelayTeam();
+  team.members = team.members.filter((m) => m.person !== ART).map((m) => (m.person === PRIYA ? { ...m, role: 'admin' } : m));
+  w.teamInvites = [{ secret: TEAM_INVITE_SECRET, expiresAt: new Date(Date.now() + (expired ? -60_000 : 4 * 3_600_000)).toISOString(), team, admin: PRIYA }];
+  try { sessionStorage.setItem('alcove.team-after-sign-in', JSON.stringify({ secret: TEAM_INVITE_SECRET, until: Date.now() + 600_000 })); } catch { /* without storage there's no link to open */ }
+};
+const teamNotice = (id: string, kind: PlanNotice['kind'], count: number | null, at = iso(0, 11, 20)): PlanNotice => ({ id, kind, at, until: null, count });
+
 /* ---------- the scenarios ---------- */
 
 /** The busy afternoon with payments taken, where a payment opened to buy something goes as `play` says. */
@@ -387,6 +421,52 @@ const paymentGoes = (title: string, about: string, play: PaymentPlay): Scenario 
 });
 
 export const SCENARIOS: Record<ScenarioName, Scenario> = {
+  'team-admin': {
+    title: 'A team, as its admin', about: 'Art runs Vandelay’s team: six people, Maya’s license ran out last week, three licenses left, auto-purchase off, $180 in the balance.',
+    make: () => ({ world: onTeam(vandelayTeam()), opening: {} })
+  },
+  'team-admin-low': {
+    title: 'Team licenses running low', about: 'Art’s team has two licenses left, and he’s told so.',
+    make: () => {
+      const world = onTeam(vandelayTeam(), (t) => { t.unconsumed = t.unconsumed.slice(1); });
+      world.plan = { ...world.plan, notices: [teamNotice('sb-notice-low', 'licenses-low', 2)] };
+      return { world, opening: {} };
+    }
+  },
+  'team-admin-none': {
+    title: 'No team licenses left', about: 'Maya came back this morning and needed a license, but none was left: she waits, and Art is told.',
+    make: () => {
+      const world = onTeam(vandelayTeam(), (t) => {
+        t.unconsumed = [];
+        t.members = t.members.map((m) => (m.person === MAYA ? { ...m, wanted: iso(0, 11, 20) } : m));
+      });
+      world.plan = { ...world.plan, notices: [teamNotice('sb-notice-none', 'licenses-none', null)] };
+      return { world, opening: {} };
+    }
+  },
+  'team-member': {
+    title: 'On a team, licensed', about: 'Art is on Priya’s team with a live license: its notes and workspaces are open to him.',
+    make: () => ({ world: onTeam(priyasTeam()), opening: {} })
+  },
+  'team-member-unlicensed': {
+    title: 'On a team, without a license', about: 'Art’s license ran out and there was none to take: he’s on Free, and told to ask Priya.',
+    make: () => {
+      const world = onTeam(priyasTeam(), (t) => {
+        t.unconsumed = [];
+        t.members = t.members.map((m) => (m.person === ART ? { ...m, license: { from: iso(-32, 9, 0), until: iso(-2, 9, 0) }, wanted: iso(0, 9, 5) } : m));
+      });
+      world.plan = { ...freePlan(), balance: world.plan.balance, team: world.plan.team, notices: [teamNotice('sb-notice-needed', 'license-needed', null, iso(0, 9, 5))] };
+      return { world, opening: {} };
+    }
+  },
+  'team-join': {
+    title: 'An invite to a team', about: 'Art isn’t on a team, and has Priya’s link to join Vandelay’s, which has licenses left.',
+    make: () => { const world = busy(); withTeamInvite()(world); return { world, opening: {} }; }
+  },
+  'no-team': {
+    title: 'Not on a team', about: 'The busy afternoon: Vandelay’s directory, and Start a team on the Team page and on Team’s card in Settings › Plan.',
+    make: () => { const world = busy(); withPayments(world); world.plan = withBalance(); return { world, opening: {} }; }
+  },
   'plan-low': {
     title: 'Notes nearly out', about: 'Art is on Free with about 20 minutes of the period’s notes left, and the sun near the start of the line.',
     make: () => { const world = busy(); world.plan = withNotesLeft(20); return { world, opening: {} }; }
@@ -545,7 +625,8 @@ export function checked(w: World): World {
     ['rings', IncomingRingSchema.array().safeParse(w.rings)], ['personal', PersonalEntrySchema.array().safeParse(Object.values(w.personal).flat())],
     ['shares', ShareEntrySchema.array().safeParse(Object.values(w.shares).flat())],
     ['drive', WorkspaceSummarySchema.array().safeParse(w.workspaces)], ['mentions', MentionNoticeSchema.array().safeParse(w.mentions)],
-    ['media', WorkspaceMediaSchema.array().safeParse(w.media.map((m) => m.media))]
+    ['media', WorkspaceMediaSchema.array().safeParse(w.media.map((m) => m.media))],
+    ['team', MyTeamSchema.nullable().safeParse(w.myTeam ? teamView(w.myTeam, w.session?.user.email ?? ART.email) : null)]
   ] as const;
   const bad = checks.flatMap(([what, r]) => (r.success ? [] : [`${what}: ${r.error.issues.slice(0, 3).map((i) => `${i.path.join('.')} ${i.message}`).join('; ')}`]));
   if (bad.length) throw new Error(`The demo world doesn’t fit the contract. ${bad.join(' · ')}`);

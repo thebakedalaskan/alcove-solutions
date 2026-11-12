@@ -4,7 +4,7 @@
  * so the page to return to waits in this tab's sessionStorage: not in the sign-in URL, because a call's code is its link's
  * secret and the API's request logs keep URLs. It lasts ten minutes, like the sign-in attempt itself, and is used once.
  */
-import { AgentReturnStoredSchema, CallReturnStoredSchema, NoteLinkReturnStoredSchema, PlansReturnStoredSchema, type CheckoutParam, type PlansReturnStored } from '@alcove/api';
+import { AgentReturnStoredSchema, CallReturnStoredSchema, NoteLinkReturnStoredSchema, PlansReturnStoredSchema, TeamJoinReturnStoredSchema, type CheckoutParam, type PlansReturnStored } from '@alcove/api';
 import { log } from './log';
 
 const alog = log.child({ component: 'after-sign-in' });
@@ -12,6 +12,7 @@ const KEY = 'alcove.after-sign-in';
 const AGENT_KEY = 'alcove.agent-after-sign-in';
 const LINK_KEY = 'alcove.link-after-sign-in';
 const PLANS_KEY = 'alcove.plans-after-sign-in';
+const TEAM_KEY = 'alcove.team-after-sign-in';
 const MINUTES = 10;
 
 /** Signing in from this call's join page: come back to it afterwards. */
@@ -130,6 +131,35 @@ export function takePlansReturn(): CheckoutParam | null {
     return w.success && w.data.until > Date.now() ? w.data.checkout : null;
   } catch (e) {
     alog.debug('plans to go to not readable', { err: e });
+    return null;
+  }
+}
+
+/**
+ * Signing in to join a team by its link: back to it afterwards, where it asks before joining. Its secret waits in this tab
+ * only, never in a URL, for ten minutes at most.
+ */
+export function returnToTeam(secret: string): void {
+  try {
+    sessionStorage.setItem(TEAM_KEY, JSON.stringify({ secret, until: Date.now() + MINUTES * 60_000 }));
+  } catch (e) {
+    alog.debug('team link not kept for after sign-in', { err: e });
+  }
+}
+/** Whether a link to join a team waits for this sign-in, without taking it. */
+export function teamWaiting(): boolean {
+  try { return sessionStorage.getItem(TEAM_KEY) !== null; } catch { return false; }
+}
+/** The team link's secret, once, if signing in started from it in the last ten minutes; an older one is dropped. */
+export function takeTeamReturn(): string | null {
+  try {
+    const raw = sessionStorage.getItem(TEAM_KEY);
+    if (raw === null) return null;
+    sessionStorage.removeItem(TEAM_KEY);
+    const w = TeamJoinReturnStoredSchema.safeParse(JSON.parse(raw));
+    return w.success && w.data.until > Date.now() ? w.data.secret : null;
+  } catch (e) {
+    alog.debug('team link to go back to not readable', { err: e });
     return null;
   }
 }

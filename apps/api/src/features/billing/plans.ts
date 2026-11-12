@@ -1,16 +1,17 @@
 /*
  * Plans (docs: Plans and usage): which plan each account is on, the USD balance it buys plans with, the months of Pro and
- * more notes bought from it, what its owner is told about them, and when upkeep next has something to do for it. Sealed
- * under Kservice's accounting key, never under owner keys: the row says only whose it is and when it's due. An account's
- * row is made when it signs up, or the first time it's touched after the release that brought plans (on Free, with time
- * to get within Free's limits if it's over them).
+ * more notes bought from it, what its owner is told about them and about their team's licenses, and when upkeep next has
+ * something to do for it. A team license (features/billing/teams.ts) puts its member on Team while it's live (`planNow`).
+ * Sealed under Kservice's accounting key, never under owner keys: the row says only whose it is and when it's due. An
+ * account's row is made when it signs up, or the first time it's touched after the release that brought plans (on Free,
+ * with time to get within Free's limits if it's over them).
  */
 import { PlanKindSchema, PlanNoticeKindSchema, type BalanceEntry, type PlanKind, type PlanNoticeKind, type PlanOffers, type Purchase } from '@alcove/api';
 import { z } from 'zod';
 import type { Deps } from '../../context';
 import { id128, openJson, sealJson, serviceKey, toJson, unb64u } from '../../crypto';
-import { bytea, exec, maybeOne, rows, tx, type Db } from '../../db';
-import { conflict, InternalError, invalid, notFound, PlanLimitError } from '../../errors';
+import { bytea, exec, maybeOne, rows, timestamp, tx, type Db } from '../../db';
+import { conflict, InternalError, invalid, notFound } from '../../errors';
 import { limitsNow, WHOLE_DOWNLOAD_BYTES, type Limits } from '../../limits';
 import { log, type LogContext } from '../../log';
 import { settlePayers, usedBytes } from './storage';
@@ -26,7 +27,8 @@ const BATCH = 100;
 const Entry = z.object({ id: z.string(), at: z.string(), label: z.string(), microUsd: z.number().int() });
 /**
  * Limits held as they were while an account gets within its plan's (null: no limit then), until `until`: at the release
- * that brought plans, for an account already over Free's. The grace after Pro ends needs no record (`gracesOf`).
+ * that brought plans, for an account already over Free's, or on leaving a team with a live license (held to a team's
+ * storage for a person). The grace after Pro ends needs no record (`gracesOf`).
  */
 const Grace = z.object({ until: z.string(), storageBytes: z.number().int().nullable() });
 /**
@@ -40,7 +42,8 @@ const Month = z.object({
   monthlyMicroUsd: z.number().int().nullable().default(null)
 });
 type Month = z.infer<typeof Month>;
-const Notice = z.object({ id: z.string(), kind: PlanNoticeKindSchema, at: z.string(), until: z.string(), dismissed: z.boolean() });
+/** `until`: Pro's end, for Pro's notices (null for a team's); `count`: how many licenses or months, where it says. */
+const Notice = z.object({ id: z.string(), kind: PlanNoticeKindSchema, at: z.string(), until: z.string().nullable(), count: z.number().int().nullable().default(null), dismissed: z.boolean() });
 /** More notes bought from the balance for one period (its plan and start): minutes added to that period's allowance alone. */
 const Hours = z.object({ plan: PlanKindSchema, from: z.string(), minutes: z.number().int() });
 export const PlanAccount = z.object({
@@ -82,6 +85,9 @@ export const freeAllowance = (l: Limits): Allowance =>
 /** Pro's: the largest file is held to WHOLE_DOWNLOAD_BYTES, whatever its limit says, until downloads can resume. */
 export const proAllowance = (l: Limits): Allowance =>
   ({ notesMinutes: l.get('plan.pro.notes_minutes'), storageBytes: l.get('plan.pro.storage_bytes'), fileBytes: Math.min(l.get('plan.pro.file_bytes'), WHOLE_DOWNLOAD_BYTES) });
+/** Team's, for one licensed person: storage is what each license adds to the team's pool, which is what's enforced. */
+export const teamAllowance = (l: Limits): Allowance =>
+  ({ notesMinutes: l.get('plan.team.notes_minutes'), storageBytes: l.get('plan.team.storage_bytes'), fileBytes: Math.min(l.get('plan.team.file_bytes'), WHOLE_DOWNLOAD_BYTES) });
 
 /**
  * Pro's lower price a month for buying at least `fromMonths` at once (a year or more): none while that price is 0, isn't
@@ -106,6 +112,8 @@ export function hoursOf(l: Limits): PlanOffers['hours'] {
 
 /** The plan an account is on now, the period it's in and what the plan brings. */
 export interface InForce extends Allowance { kind: PlanKind; from: number; to: number }
+/** A team license an account has taken, live from `from` until `to` (ms), on `teamId`. */
+export interface License { teamId: string; from: number; to: number }
 
 /** The month of Pro running at `now`, if one is. */
 const runningAt = (a: PlanAccount, now: number): Month | undefined => a.pro.find((m) => Date.parse(m.from) <= now && now < Date.parse(m.to));
@@ -123,20 +131,23 @@ const boughtFor = (a: PlanAccount, p: Pick<InForce, 'kind' | 'from'>): number =>
  * The plan in force at `now`, with its notes and any more bought for the period it's in: the allowance the meter keeps
  * (features/billing/meter.ts) and what a period brings as the plan shows it.
  */
-export function inForce(a: PlanAccount, l: Limits, now = Date.now()): InForce {
-  const p = planAt(a, l, now);
+export function inForce(a: PlanAccount, l: Limits, now: number, license: License | null): InForce {
+  const p = planAt(a, l, now, license);
   return { ...p, notesMinutes: p.notesMinutes + boughtFor(a, p) };
 }
 
 /**
- * The plan at `now`, as it brings it: Pro while a month bought covers it, its period that month; otherwise Free, in periods
- * counted from `freeFrom` or the end of the last month of Pro, whichever is later, so Free starts afresh when Pro ends.
+ * The plan at `now`, as it brings it: Team while a license is live, its period the license's; Pro while a month bought
+ * covers it, its period that month; otherwise Free, in periods counted from `freeFrom`, the end of the last month of Pro or
+ * the end of a license, whichever is latest, so Free starts afresh when Pro or a license ends.
  */
-function planAt(a: PlanAccount, l: Limits, now: number): InForce {
+function planAt(a: PlanAccount, l: Limits, now: number, license: License | null): InForce {
+  if (license && isLive(license, now)) return { kind: 'team', from: license.from, to: license.to, ...teamAllowance(l) };
   const month = runningAt(a, now);
   if (month) return { kind: 'pro', from: Date.parse(month.from), to: Date.parse(month.to), ...proAllowance(l) };
   const period = l.get('plan.period_seconds') * 1000;
-  const start = Math.max(Date.parse(a.freeFrom), lastEnded(a, now) ?? -Infinity);
+  const licenseEnded = license && license.to <= now ? license.to : -Infinity;
+  const start = Math.max(Date.parse(a.freeFrom), lastEnded(a, now) ?? -Infinity, licenseEnded);
   const n = Math.max(0, Math.floor((now - start) / period));
   return { kind: 'free', from: start + n * period, to: start + (n + 1) * period, ...freeAllowance(l) };
 }
@@ -216,6 +227,22 @@ export async function accountOf(d: Service, db: Db, ownerId: string, lock = fals
   return openJson(key(d), header(ownerId), r.state_ciphertext, PlanAccount);
 }
 
+const LicenseRow = z.object({ team_id: z.string(), licensed_from: timestamp.nullable(), licensed_until: timestamp.nullable() });
+/** The team license an account has taken, live or ended (null: it's on no team, or has never taken one there). */
+export async function licenseOf(db: Db, ownerId: string): Promise<License | null> {
+  const r = await maybeOne(db, LicenseRow, 'SELECT team_id, licensed_from, licensed_until FROM team_members WHERE account_owner_id = $1', [ownerId]);
+  return r?.licensed_from && r.licensed_until ? { teamId: r.team_id, from: r.licensed_from.getTime(), to: r.licensed_until.getTime() } : null;
+}
+/** Whether `license` is live at `now`. */
+export const isLive = (license: License | null, now: number): boolean => license !== null && license.from <= now && now < license.to;
+
+/** An account's plan in force at `now` (docs: Plans and usage › Team), with its plan record and its team license, if any. */
+export async function planNow(d: Service, db: Db, ownerId: string, now = Date.now()): Promise<{ a: PlanAccount; p: InForce; license: License | null }> {
+  const a = await accountOf(d, db, ownerId);
+  const license = await licenseOf(db, ownerId);
+  return { a, p: inForce(a, await limitsNow(d, db), now, license), license };
+}
+
 /** Saves an account's plan, in the caller's transaction, which holds its row. */
 export async function save(d: Service, db: Db, ownerId: string, a: PlanAccount): Promise<void> {
   const l = await limitsNow(d, db);
@@ -223,11 +250,13 @@ export async function save(d: Service, db: Db, ownerId: string, a: PlanAccount):
 }
 
 /** A change to the balance, with what it was for, kept with it (the latest HISTORY). */
-const withEntry = (a: PlanAccount, microUsd: number, label: string): PlanAccount =>
+export const withEntry = (a: PlanAccount, microUsd: number, label: string): PlanAccount =>
   ({ ...a, balanceMicroUsd: a.balanceMicroUsd + microUsd, history: [...a.history, { id: id128(), at: new Date().toISOString(), label, microUsd }].slice(-HISTORY) });
-/** Something the owner is told (the latest NOTICES are kept). */
-const withNotice = (a: PlanAccount, kind: PlanNoticeKind, until: string, now: number): PlanAccount =>
-  ({ ...a, notices: [...a.notices, { id: id128(), kind, at: new Date(now).toISOString(), until, dismissed: false }].slice(-NOTICES) });
+/** Something the owner is told (the latest NOTICES are kept): Pro's end (`until`), or how many (`count`) for a team's. */
+export const withNotice = (a: PlanAccount, kind: PlanNoticeKind, now: number, about: { until?: string | undefined; count?: number | undefined } = {}): PlanAccount =>
+  ({ ...a, notices: [...a.notices, { id: id128(), kind, at: new Date(now).toISOString(), until: about.until ?? null, count: about.count ?? null, dismissed: false }].slice(-NOTICES) });
+/** Whether the owner has been told `kind` and hasn't dismissed it yet. */
+export const told = (a: PlanAccount, kind: PlanNoticeKind): boolean => a.notices.some((n) => n.kind === kind && !n.dismissed);
 /**
  * Months that ended before the latest one that has go: nothing reads them. A month of a purchase with a month still to
  * come stays, so a refund counts every month of it that was had.
@@ -256,8 +285,8 @@ function withMonths(a: PlanAccount, l: Limits, months: number, microUsd: number,
  * `minutes` more notes for the period in force at `now`, on top of any bought for it already. More bought for an earlier
  * period are let go: they ended with it.
  */
-function withHours(a: PlanAccount, l: Limits, minutes: number, now: number): PlanAccount {
-  const p = planAt(a, l, now);
+function withHours(a: PlanAccount, l: Limits, minutes: number, now: number, license: License | null): PlanAccount {
+  const p = planAt(a, l, now, license);
   return { ...a, hours: { plan: p.kind, from: new Date(p.from).toISOString(), minutes: boughtFor(a, p) + minutes } };
 }
 const monthsOf = (n: number) => `${n} ${n === 1 ? 'month' : 'months'}`;
@@ -267,7 +296,7 @@ function notesTime(minutes: number, more = ''): string {
   return `${minutes} ${more}${minutes === 1 ? 'minute' : 'minutes'}`;
 }
 /** Dollars as someone reads them: whole dollars bare, otherwise to the cent below. */
-const dollars = (microUsd: number) => {
+export const dollars = (microUsd: number) => {
   const cents = Math.floor(microUsd / 10_000);
   return cents % 100 === 0 ? `$${cents / 100}` : `$${(cents / 100).toFixed(2)}`;
 };
@@ -315,34 +344,31 @@ export function proOf(a: PlanAccount, l: Limits, now = Date.now()) {
 }
 /** The notices not dismissed, newest first. */
 export const noticesOf = (a: PlanAccount) =>
-  a.notices.filter((n) => !n.dismissed).reverse().map((n) => ({ id: n.id, kind: n.kind, at: n.at, until: n.until }));
+  a.notices.filter((n) => !n.dismissed).reverse().map((n) => ({ id: n.id, kind: n.kind, at: n.at, until: n.until, count: n.count }));
 
-/** Whether storing `adding` more bytes keeps an account within what it's held to. */
-export async function mayStore(d: Service, db: Db, payerId: string, adding: number): Promise<boolean> {
-  const a = await accountOf(d, db, payerId);
-  const l = await limitsNow(d, db);
-  const held = heldTo(a, inForce(a, l), l);
-  return held.storageBytes === null || (await usedBytes(db, payerId)) + adding <= held.storageBytes;
+/**
+ * A team license taken at `now` replaces Pro at once: the month running ends now (it isn't refunded), and every month that
+ * hasn't started goes back to the balance at what was paid for it. Upkeep has nothing left to remind about or end.
+ * Says how many months were refunded (null: there was no Pro to replace).
+ */
+export function replacedByLicense(a: PlanAccount, now: number): { a: PlanAccount; refunded: number | null } {
+  const running = runningAt(a, now);
+  const later = a.pro.filter((m) => Date.parse(m.from) > now);
+  if (!running && !later.length) return { a, refunded: null };
+  const cut = new Date(now).toISOString();
+  const pro = a.pro.filter((m) => m !== running && !later.includes(m)).concat(running ? [{ ...running, to: cut }] : []);
+  const end = pro.at(-1)?.to ?? null;
+  const next: PlanAccount = { ...a, pro, reminded: end, ended: end };
+  const microUsd = later.reduce((n, m) => n + m.microUsd, 0);
+  return { a: later.length ? withEntry(next, microUsd, `Refund: ${monthsOf(later.length)} of Pro, for a team license`) : next, refunded: later.length };
 }
 
-/** Refuses storing `adding` more bytes for an account that it has no room for. */
-export async function requireRoom(d: Service, db: Db, payerId: string, adding: number, context: Record<string, string | number>): Promise<void> {
-  if (await mayStore(d, db, payerId, adding)) return;
-  throw new PlanLimitError('Your storage is full. Delete something, or move to a plan with more room.', 'storage', { context: { ...context, ownerId: payerId } });
-}
-
-/** What an account may store now, its plan's or its grace's (null: no limit). */
-export async function storageLimitOf(d: Service, db: Db, ownerId: string): Promise<number | null> {
-  const a = await accountOf(d, db, ownerId);
-  const l = await limitsNow(d, db);
-  return heldTo(a, inForce(a, l), l).storageBytes;
-}
-
-/** The largest file an account's plan takes. */
-export async function fileBytesFor(d: Service, db: Db, payerId: string): Promise<number> {
-  const a = await accountOf(d, db, payerId);
-  return inForce(a, await limitsNow(d, db)).fileBytes;
-}
+/**
+ * Leaving a team, or being taken off one, with a live license: Free from `now`, a fresh period, with `plan.grace_seconds`
+ * held to a team's storage for a person while getting within Free's.
+ */
+export const leftTeam = (a: PlanAccount, l: Limits, now: number): PlanAccount =>
+  ({ ...a, freeFrom: new Date(now).toISOString(), grace: { until: new Date(now + l.get('plan.grace_seconds') * 1000).toISOString(), storageBytes: l.get('plan.team.storage_bytes') } });
 
 /** Changes an account's plan in a transaction of its own, with its row locked. */
 async function changing(d: Service, ownerId: string, change: (a: PlanAccount, l: Limits, now: number) => PlanAccount): Promise<void> {
@@ -358,7 +384,7 @@ async function changing(d: Service, ownerId: string, change: (a: PlanAccount, l:
  * (`too-many`), isn't at the price in force for it (`price`), or costs more than the balance (`short`).
  */
 export interface Refusal {
-  why: 'off' | 'too-many' | 'price' | 'short';
+  why: 'off' | 'too-many' | 'price' | 'short' | 'team';
   /** What its buyer is told as they ask for it: from the balance, or as they open a payment for it. */
   asked: string;
   /**
@@ -384,8 +410,12 @@ interface Terms {
  * after any already bought (on Free, from now), each keeping what was paid for it, which is what a refund gives back, and
  * end any grace: only Pro's limits apply from then. More notes go to the period in force, whatever the plan.
  */
-function termsOf(l: Limits, buys: Purchase): Terms | Refusal {
+function termsOf(l: Limits, buys: Purchase, license: License | null, now: number): Terms | Refusal {
   if (buys.kind === 'pro') {
+    // While a team license is live it's the plan in force: months of Pro bought now would run unused.
+    if (isLive(license, now)) {
+      return refusal('team', 'You’re on your team’s plan while your license lasts, so Pro can’t be bought now.', 'You were on your team’s plan when your payment arrived, so Pro wasn’t bought. It’s in your balance.');
+    }
     const max = l.get('plan.pro_max_months');
     if (buys.months > max) {
       return refusal('too-many', `Buy 1 to ${max} months at a time.`, `Since your payment was made, one purchase buys at most ${monthsOf(max)} of Pro. It’s in your balance.`);
@@ -415,7 +445,7 @@ function termsOf(l: Limits, buys: Purchase): Terms | Refusal {
   const minutes = buys.packs * buys.minutesPerPack;
   return {
     totalMicroUsd: buys.packs * buys.microUsdPerPack, label: `${notesTime(minutes, 'more ')} of notes`, what: `${notesTime(minutes)} of notes`, one: minutes === 60 || minutes === 1,
-    add: (a, now) => withHours(a, l, minutes, now)
+    add: (a, at) => withHours(a, l, minutes, at, license)
   };
 }
 
@@ -423,8 +453,8 @@ function termsOf(l: Limits, buys: Purchase): Terms | Refusal {
  * Why `buys` isn't on offer at the price its buyer was shown (null: it is), whatever the balance: checked as a payment for
  * it is opened, so a price that has changed is said before anything is paid.
  */
-export function refusalOf(l: Limits, buys: Purchase): Refusal | null {
-  const t = termsOf(l, buys);
+export function refusalOf(l: Limits, buys: Purchase, license: License | null, now = Date.now()): Refusal | null {
+  const t = termsOf(l, buys, license, now);
   return 'why' in t ? t : null;
 }
 
@@ -440,7 +470,7 @@ export type Purchased = { bought: true; totalMicroUsd: number } | { bought: fals
 export async function purchase(d: Service, db: Db, ownerId: string, buys: Purchase): Promise<Purchased> {
   const a = await accountOf(d, db, ownerId, true);
   const l = await limitsNow(d, db);
-  const t = termsOf(l, buys);
+  const t = termsOf(l, buys, await licenseOf(db, ownerId), Date.now());
   if ('why' in t) return { bought: false, refusal: t };
   if (a.balanceMicroUsd < t.totalMicroUsd) {
     const cost = `${t.what} ${t.one ? 'costs' : 'cost'}`;
@@ -536,10 +566,10 @@ function kept(a: PlanAccount, l: Limits, now: number, ownerId: string): PlanAcco
   if (next.renew && next.balanceMicroUsd >= price) {
     const renewed = withEntry(withMonths(marked, l, 1, price, Date.parse(end)), -price, 'Pro, renewed for a month');
     plog.info('pro renewed', { ownerId });
-    return pruned(withNotice(renewed, 'pro-renewed', proEnd(renewed) ?? end, now), now);
+    return pruned(withNotice(renewed, 'pro-renewed', now, { until: proEnd(renewed) ?? end }), now);
   }
   plog.info(atEnd ? 'pro ended' : 'pro ending', { ownerId });
-  return pruned(withNotice(marked, atEnd ? 'pro-ended' : 'pro-ending', end, now), now);
+  return pruned(withNotice(marked, atEnd ? 'pro-ended' : 'pro-ending', now, { until: end }), now);
 }
 
 /**

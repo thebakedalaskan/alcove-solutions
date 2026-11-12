@@ -9,6 +9,7 @@ import { drawnPicture } from '../../src/api/media';
 import { itemId } from '../../src/api/scenarios';
 import { caretAtEnd, changing, page, pages, type PageArgs, type PageStory } from '../../src/page';
 import type { World } from '../../src/world';
+import { iso } from '../../src/world/clock';
 import { troubled } from './changes';
 
 const meta = { title: 'Pages/Workspace', ...pages } satisfies Meta<PageArgs>;
@@ -40,6 +41,29 @@ const hold = (selector: string): NonNullable<PageStory['play']> => async ({ canv
 const share: PageStory['play'] = async ({ canvas, userEvent }) => {
   await userEvent.click(await canvas.findByRole('button', { name: 'Share' }));
 };
+
+/** Launch, a team workspace the whole team is in, made last week, which Art runs (`admin`) or edits in. */
+const withTeamSpace = (role: 'admin' | 'edit') => (w: World): void => {
+  w.workspaces = [...w.workspaces, { id: 'ws-launch', name: 'Launch', role, people: 5, teamAccess: 'team', createdAt: iso(-6, 11, 0), call: null, items: [] }];
+};
+/** Opens People from the workspace's name at the top of its list. */
+const teamPeople: PageStory['play'] = async ({ canvas, userEvent, step }) => {
+  await step('Press Launch at the top of its list, then People', async () => {
+    const named = await canvas.findAllByRole('button', { name: /^Launch/ }, { timeout: 8000 });
+    const top = named.find((b) => b.closest('.wt-head') !== null);
+    if (top) await userEvent.click(top);
+    const people = await screen.findByRole('menuitem', { name: /^People/ }, { timeout: 5000 });
+    // A menu takes no press until its rows have been still for a moment (WsMenu).
+    await beat(800);
+    await userEvent.click(people);
+  });
+};
+/** A team's workspace, as its admin: who's in it, Whole team or Only people I add, above its people. */
+export const TeamWorkspacePeople = page(at('ws-launch'), 'team-member', { beforeEach: changing(withTeamSpace('admin')), play: teamPeople });
+export const TeamWorkspacePeopleNight = page(at('ws-launch'), 'team-member', { beforeEach: changing(withTeamSpace('admin')), play: teamPeople, globals: { theme: 'dark' } });
+export const TeamWorkspacePeoplePhone = page(at('ws-launch'), 'team-member', { beforeEach: changing(withTeamSpace('admin')), play: teamPeople, globals: PHONE });
+/** As someone who edits in it: which it is, said, not chosen. */
+export const TeamWorkspacePeopleNotAdmin = page(at('ws-launch'), 'team-member', { beforeEach: changing(withTeamSpace('edit')), play: teamPeople });
 
 /** Product, which Art runs: the launch plan open beside the list. */
 export const ADocument = page(PLAN, 'busy');

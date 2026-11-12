@@ -7,6 +7,11 @@ export interface AuthApi {
   /** The signed-in session, or null when signed out. */
   getSession(): Promise<Session | null>;
   /**
+   * Says someone is using Alcove: the app sends it when it loads and when a tab comes back after 30 minutes or more
+   * away, never from polling. On a team, a visit takes a license for a member without a live one.
+   */
+  visit(): Promise<void>;
+  /**
        * Where the browser goes to sign in with Google. Google sends it back to the API, which opens
        * the session and returns to the app: /ready for a new account, /home otherwise, or
        * /welcome?signin=<reason> when it didn't work. `next: '/move'` comes back to a move being made instead.

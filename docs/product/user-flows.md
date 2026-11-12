@@ -1507,6 +1507,18 @@ and files its notes in a new one.
   **Change this call**, or **Schedule next week’s call**. When the series follows a recurring Google event
   and Google Calendar isn't connected any more, it says so and offers **Connect Google Calendar**.
 
+### 8.51 Notes visible to a team, and @-references in Ask
+
+While you're licensed on a team, Share on a note you organized has **Visible to team** ("Everyone licensed on {team} can
+read it and ask about it."), and the note's head then says Visible to {team}. It works on notes from before you joined,
+and the note stays visible after you leave the team. A note someone else made visible opens for a licensed member from
+the Team page. It reads "From {organizer}, visible to {team}" and can be read, played and asked about, nothing more: no
+Share, no confirming or changing decisions and follow-ups, no proposing, no corrections, no own or shared notes, no
+Drive exports, and it can't be removed from yours. When asking across notes (the palette, or the line on Notes), typing
+@ or pressing @ offers the notes you can open, yours, the ones shared with you and your team's, by title. A picked note
+sits under the line as a chip and is read first, up to five per question. A note you can no longer open is refused in
+Alcove's words.
+
 Storybook journeys **8.47** and **8.48** write straight into the shared notes: posting for everyone in one step, and
 someone getting the notes while the box is open, which it says before posting again. **8.49** shares the notes by a
 link, then revokes it, and **8.50** opens one signed out: it asks to sign in, then asks before opening the notes as that
@@ -1578,8 +1590,8 @@ a piece that reaches Alcove late, or twice, still lands where it was recorded, o
 
 **Team** is your company, standing on the horizon: the company directory where there is one (the demo directory
 today), otherwise the people at your work email domain you have calls or calendar meetings with. A personal address
-(gmail.com, outlook.com, icloud.com and the like) has no team, so it has no Team page: nothing links to it, and its
-address goes to Home.
+(gmail.com, outlook.com, icloud.com and the like) has no company, so its Team page is only **Start a team** (10.22).
+On a team of your own (10.22 to 10.25), the line is the team's people instead, each under their license.
 
 - **The line**: the company's name in the middle of the sky, and everyone on the horizon in their arch. You stand in
   the middle, whoever you met most recently beside you, one to each side, and people not on Alcove yet at the ends,
@@ -1632,6 +1644,44 @@ While the team is on its way, empty arches wait on the line beside you, and ever
 arrives. If it doesn't load, the page says why (or that you're offline, and it comes back by itself), with **Try again**.
 Your groups and notes load beside it: if your groups don't, their section says so, with **Try again**, and the rest of
 the page works.
+
+### 10.22 Start a team, buy licenses, invite
+
+A team is one admin (whoever starts it) and as many members as they invite; you're on one team at most. Not on a team,
+the Team page has a quiet **Start a team** beside Invite people (or, at a personal address, as the whole page): it opens
+a name in place, and **Make it** makes the team with you its admin. Its licenses are bought from the admin's balance on
+Team's card in **Settings → Plan** (11.28), reached from **Buy licenses in Settings** under the team's people. On the
+Team page the admin's **Invite** is the filled button: it makes a link for one person (`/team/join#…`), shown once with
+Copy, that works once and runs out after a day. Each press makes a new one.
+
+### 10.23 Join a team by its link
+
+The link's secret is after its `#`, so no server sees it, and it leaves the address bar at once. Signed in, the page asks
+"Join Vandelay Industries, Priya's team?" with **Join** and **Not now**; nothing happens until Join. Signed out, it asks
+you to sign in first, there, and then asks the same. Join takes one of the team's licenses if one is left and opens the
+Team page. A used or expired link, or being on a team already, is refused in Alcove's words.
+
+### 10.24 A team on the Team page
+
+The team's name stands in the sky, with how many people are on it (and, for its admin, how many licenses are left), and
+its people stand on the line. Under the water, **People on {team}** lists everyone with their role and license:
+"Licensed until 12 Dec", "License ended", or "Waiting for a license". The admin has **Remove** on each row, which asks in
+place (their license isn't refunded, they go back to Free, and notes they made visible to the team stay visible), and
+**Delete team** once nobody else is on it, which refunds the licenses nobody took. A member has **Leave team**, asked in
+place the same way. Beside them, **Visible to the team** lists the notes members made visible, each opening its note
+(8.51). Someone without a live license is told "You don't have a team license, so the team's notes and workspaces aren't
+open to you. Ask Priya to buy more." Groups and Shared with groups stay below, as ever.
+
+### 10.25 Licenses and visits
+
+A license is taken when someone without a live one uses Alcove: when the app opens signed in, when a tab comes back
+after 30 minutes or more away, or when they join. Nothing that reads in the background takes one. It runs a month from
+then, and an expired one is replaced only by the next visit. With none left, the admin's **Auto-purchase** buys one from
+their balance; otherwise the member stays on their own plan and is told to ask the admin, and the admin is told none
+were left. The admin is told too when fewer than 5 are left. A license replaces Pro at once: the month running is lost
+and the months that haven't started go back to the balance, which the member is told.
+
+Storybook's journeys **10.22** (start a team, buy licenses, invite) and **10.23** (join a team by its link) play these.
 
 ## 11. Settings
 
@@ -1977,6 +2027,15 @@ brings it back. Menus and sheets rise from the bottom, and **Share** is in the d
 touch screen: **Move to…** does that. While you write, a bar rides on the keyboard with a block (as **/** does), the text's
 style, **@**, photos, a checklist and Done; sheets open above it. Holding a finger on a block opens its menu, the one its
 handle opens on a laptop, with **Download** on a photo or a video, and **Delete for good** on a photo, video or file. Someone's card and a comment are sheets too, and faces are on the list's rows. A bar's buttons go under its words.
+
+### Team workspaces
+
+While you're licensed on a team, New workspace in the Drive asks who's in it under its name: **Whole team** (as it
+starts), so everyone licensed on the team can open and edit it, or **Only people I add**, so only you are in it until you
+add people. Either way it counts against the team's storage. A workspace made in a call or when scheduling one is only
+for the people invited, so a call's notes never reach the whole team unless someone chooses that. A team workspace's row
+in the Drive says Whole team. In its People sheet (its name at the top of the list, then People), its admins can switch
+between Whole team and Only people I add. Anyone else in it reads which it is.
 
 ## 13. Boards
 

@@ -4,11 +4,11 @@
  * workspace is named in place, in the sky, and opens once it's made. Before the first, it says where they come from. Whoever
  * runs a workspace can delete it from its row's menu, which asks first, in place.
  */
-import { errorMessage, type WorkspaceSummary } from '@alcove/api';
-import { Button, EmptyState, Evening, Icon, IconButton, Popover, cn, useToast } from '@alcove/ui';
+import { errorMessage, type TeamAccess, type WorkspaceSummary } from '@alcove/api';
+import { Button, EmptyState, Evening, Icon, IconButton, Popover, Segmented, cn, useToast, type Choice } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
-import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
+import { useEffect, useRef, useState, type FocusEvent, type FormEvent, type KeyboardEvent } from 'react';
 import { namesIn, peopleWords } from '~/features/workspace/List';
 import { q, useCreateWorkspace, useDeleteWorkspace } from '~/lib/queries';
 import { daysFromToday, hm, noteDay, shortDay } from '~/lib/time';
@@ -23,7 +23,7 @@ function madeOn(iso: string): string {
 function aboutOf(w: WorkspaceSummary): string {
   if (w.role === null) return 'Only what’s shared with you';
   const made = w.call ? `From ${w.call.title}, ${noteDay(w.call.at)} at ${hm(w.call.at)}` : w.createdAt ? `Made ${madeOn(w.createdAt)}` : '';
-  return [made, peopleWords(w.people)].filter(Boolean).join(' · ');
+  return [made, w.teamAccess === 'team' ? 'Whole team' : peopleWords(w.people)].filter(Boolean).join(' · ');
 }
 
 /** A workspace's menu, for its admins: Delete workspace, which asks once in place, and waits for Alcove to say it's done. */
@@ -81,10 +81,18 @@ function Row({ w, name }: { w: WorkspaceSummary; name: string }) {
   );
 }
 
-/** New workspace, then its name in the button's place: Enter makes it and opens it, Esc puts it away. */
+/** Who's in a team's workspace: everyone licensed on the team, or only the people added. */
+export const TEAM_ACCESS: Choice<TeamAccess>[] = [{ value: 'team', label: 'Whole team', icon: 'people' }, { value: 'added', label: 'Only people I add', icon: 'lock' }];
+
+/**
+ * New workspace, then its name in the button's place: Enter makes it and opens it, Esc puts it away. On a team, while
+ * licensed, it's the team's, and under the name it asks who's in it: the whole team (as it starts), or only the people added.
+ */
 function Make() {
   const [naming, setNaming] = useState(false);
   const [name, setName] = useState('');
+  const [access, setAccess] = useState<TeamAccess>('team');
+  const onTeam = useQuery(q.plan()).data?.team?.licensed === true;
   const create = useCreateWorkspace();
   const navigate = useNavigate();
   const push = useToast();
@@ -93,16 +101,29 @@ function Make() {
     e.preventDefault();
     const to = name.trim();
     if (!to || create.isPending) return;
-    create.mutateAsync(to).then(({ id }) => navigate({ to: '/drive/$workspaceId', params: { workspaceId: id } }), (err: unknown) => { push(errorMessage(err), { icon: 'alert' }); });
+    create.mutateAsync({ name: to, access: onTeam ? access : undefined }).then(({ id }) => navigate({ to: '/drive/$workspaceId', params: { workspaceId: id } }), (err: unknown) => { push(errorMessage(err), { icon: 'alert' }); });
   };
-  const keys = (e: KeyboardEvent<HTMLInputElement>) => { if (e.key === 'Escape') { e.preventDefault(); setNaming(false); setName(''); } };
+  const keys = (e: KeyboardEvent<HTMLInputElement>) => { if (e.key === 'Escape') { e.preventDefault(); setNaming(false); setName(''); setAccess('team'); } };
+  /** Leaving the name empty puts it away, unless focus went to who's in it. */
+  const blur = (e: FocusEvent<HTMLInputElement>) => {
+    if (name.trim() || (e.relatedTarget instanceof Node && e.currentTarget.closest('.dv-make')?.contains(e.relatedTarget))) return;
+    setNaming(false);
+  };
   if (!naming) return <Button variant="primary" onClick={() => { setNaming(true); requestAnimationFrame(() => field.current?.focus()); }}><Icon name="plus" size={18} />New workspace</Button>;
   return (
-    <form className="dv-name" onSubmit={submit}>
-      <input ref={field} type="text" aria-label="Name this workspace" placeholder="Name this workspace" value={name} maxLength={120} autoComplete="off" enterKeyHint="done"
-        onChange={(e) => setName(e.target.value)} onKeyDown={keys} onBlur={() => { if (!name.trim()) setNaming(false); }} />
-      <Button variant="primary" type="submit" loading={create.isPending} disabled={!name.trim()}>Make it</Button>
-    </form>
+    <div className="dv-make">
+      <form className="dv-name" onSubmit={submit}>
+        <input ref={field} type="text" aria-label="Name this workspace" placeholder="Name this workspace" value={name} maxLength={120} autoComplete="off" enterKeyHint="done"
+          onChange={(e) => setName(e.target.value)} onKeyDown={keys} onBlur={blur} />
+        <Button variant="primary" type="submit" loading={create.isPending} disabled={!name.trim()}>Make it</Button>
+      </form>
+      {onTeam && (
+        <div className="dv-who">
+          <Segmented label="Who’s in it" value={access} onChange={setAccess} options={TEAM_ACCESS} />
+          <p>{access === 'team' ? 'Everyone licensed on your team can open and edit it.' : 'Only you, until you add people.'}</p>
+        </div>
+      )}
+    </div>
   );
 }
 

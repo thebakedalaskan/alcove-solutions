@@ -1,11 +1,11 @@
 /* Sharing a note and pinning it: the same on the note's page and beside the notes list. */
 import { MAX_PINS, NOTE_LINK_DAYS, errorMessage, firstName, type Group, type Note, type Person } from '@alcove/api';
-import { Button, CopyField, IconButton, useToast, type ButtonSize } from '@alcove/ui';
+import { Button, CopyField, IconButton, Switch, useToast, type ButtonSize } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { PeoplePicker } from '~/features/people/PeoplePicker';
 import { callName, listNames, sameEmail } from '~/lib/people';
-import { q, usePins, useCreateNoteLink, useRevokeNoteLink, useShareNote } from '~/lib/queries';
+import { q, usePins, useCreateNoteLink, useRevokeNoteLink, useSetTeamVisible, useShareNote } from '~/lib/queries';
 import { shortDay } from '~/lib/time';
 
 /** "Product, Lena and Sam" */
@@ -44,6 +44,30 @@ function ShareLinks({ noteId }: { noteId: string }) {
 }
 
 /**
+ * Visible to team: the organizer, while licensed on a team, lets everyone licensed on it read the notes and ask about
+ * them, and nothing more. It stays visible if they leave the team. Absent for anyone else.
+ */
+function TeamVisible({ note }: { note: Note }) {
+  const toast = useToast();
+  const team = useQuery(q.plan()).data?.team;
+  const set = useSetTeamVisible(note.id);
+  if (note.received || !team?.licensed) return null;
+  const on = set.isPending && set.variables !== undefined ? set.variables : note.teamVisible;
+  const flip = (visible: boolean) => set.mutate(visible, {
+    onSuccess: () => toast(visible ? `Visible to ${team.name}` : `Only the people with them now can read these notes.`, { icon: 'check' }),
+    onError: (e) => toast(errorMessage(e), { icon: 'x' })
+  });
+  return (
+    <div className="pick-links">
+      <div className="pick-links-h">
+        <span><b>Visible to team</b><small>Everyone licensed on {team.name} can read it and ask about it.</small></span>
+        <Switch label="Visible to team" checked={on} disabled={set.isPending} onChange={flip} />
+      </div>
+    </div>
+  );
+}
+
+/**
  * Share: with people by name or address, or with one of your groups, which reaches all of its people at once and
  * tells each of them it came to them as that group, or by a link anyone signed in can open. `onShared` hears who got
  * the notes just now.
@@ -70,7 +94,7 @@ export function ShareNote({ note, size, align = 'end', className, onShared }: {
     <PeoplePicker open={open} onOpenChange={setOpen} align={align} className={className} title="Share these notes" cta="Share" skip={have} groups={groups}
       anchor={<Button variant="secondary" size={size} icon="share" loading={share.isPending} disabled={recording} title={recording ? 'You can share these once the recording stops.' : undefined}><span className="share-t">Share</span></Button>}
       note="They find them in Alcove when they sign in with that email."
-      after={<><div className="pick-have"><span>{note.recipients.length === 1 ? 'Only you have them' : `${note.recipients.length} people have them`}</span></div><ShareLinks noteId={note.id} /></>}
+      after={<><div className="pick-have"><span>{note.recipients.length === 1 ? 'Only you have them' : `${note.recipients.length} people have them`}</span></div><TeamVisible note={note} /><ShareLinks noteId={note.id} /></>}
       onDone={done} />
   );
 }

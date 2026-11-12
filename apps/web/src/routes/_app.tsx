@@ -14,6 +14,7 @@ import { inWorkspace } from '~/features/shell/places';
 import { Offline, Sidebar, useSidePanel } from '~/features/shell/Sidebar';
 import { PhoneTop, TabBar } from '~/features/shell/TabBar';
 import { TopActions } from '~/features/shell/TopActions';
+import { useVisits } from '~/features/shell/visits';
 import { CallFlowContext, type PaletteStart } from '~/features/shell/context';
 import { ownerOf, requireAccount } from '~/lib/guards';
 import { log } from '~/lib/log';
@@ -37,6 +38,7 @@ function Shell() {
   useKeptUploads(ownerOf(account));
   useKeptEdits(ownerOf(account));
   useSignedOutElsewhere(ownerOf(account));
+  useVisits(ownerOf(account), account.offline);
   useEffect(() => {
     if (!account.offline) return;
     const back = () => { void router.invalidate(); };
