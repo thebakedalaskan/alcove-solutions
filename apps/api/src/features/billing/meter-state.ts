@@ -1,12 +1,13 @@
 /*
  * The AI meter's sealed record (docs: Plans and usage › Notes): its shape, sealed under Kservice's accounting key with
- * nothing but whose it is in the clear. What it means, and every change to it, is features/billing/meter.ts.
+ * nothing but whose it is in the clear, and the period it keeps, which Free's periods run on from (features/billing/plans.ts
+ * › planAt). What it means, and every change to it, is features/billing/meter.ts.
  */
-import { PlanKindSchema } from '@alcove/api';
+import { PlanKindSchema, type PlanKind } from '@alcove/api';
 import { z } from 'zod';
 import type { Deps } from '../../context';
 import { openJson, sealJson, serviceKey, toJson, unb64u } from '../../crypto';
-import { bytea } from '../../db';
+import { bytea, maybeOne, type Db } from '../../db';
 
 const nano = z.number().int();
 /**
@@ -39,3 +40,16 @@ const header = (ownerId: string) => ({ v: 1 as const, kind: 'ai-meter', ownerId,
 export const sealMeter = (d: Pick<Deps, 'cfg'>, ownerId: string, m: MeterState): Uint8Array => sealJson(key(d), header(ownerId), toJson(m));
 export const openMeter = (d: Pick<Deps, 'cfg'>, ownerId: string, sealed: Uint8Array): MeterState => openJson(key(d), header(ownerId), sealed, MeterState);
 export const MeterRow = z.object({ state_ciphertext: bytea });
+
+/**
+ * The plan and period an account's meter keeps (ms), as they were when it was last touched: Free's periods run on from it,
+ * each at the length in force when it begins, so a change to `plan.period_seconds` applies from each account's next period.
+ */
+export interface KeptPeriod { plan: PlanKind; from: number; to: number }
+export const keptOf = (m: Pick<MeterState, 'plan' | 'from' | 'to'>): KeptPeriod => ({ plan: m.plan, from: m.from, to: m.to });
+
+/** The period an account's meter keeps, read without holding it (null: it has no meter yet). */
+export async function keptPeriodOf(d: Pick<Deps, 'cfg'>, db: Db, ownerId: string): Promise<KeptPeriod | null> {
+  const r = await maybeOne(db, MeterRow, 'SELECT state_ciphertext FROM ai_meters WHERE owner_id = $1', [ownerId]);
+  return r ? keptOf(openMeter(d, ownerId, r.state_ciphertext)) : null;
+}

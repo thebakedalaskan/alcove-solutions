@@ -433,6 +433,54 @@ describe('running out', () => {
   });
 });
 
+describe('periods', () => {
+  /** An account whose minute of notes a room recording's first clip spent, in periods of an hour. */
+  async function spentInAnHour() {
+    await h.setLimit('plan.period_seconds', 3600);
+    await h.setLimit('plan.free.notes_minutes', 1);
+    const ann = await account();
+    const rec = await ann.api.recordings.start({ title: 'Spent' });
+    await rec.transcribe(speech('We agreed to ship on Monday.', 0));
+    await written(ann.api, (await rec.stop()).pendingNoteId);
+    const spent = await meter(ann);
+    expect(spent).toMatchObject({ stopped: true, to: spent.from + 3_600_000 });
+    expect(code(await answer(ann.api.notes.askAll('When do we ship?')).catch((e: unknown) => e))).toBe('plan-limit');
+    return { ann, spent };
+  }
+
+  it('starts the next period afresh: a request after the period ends is charged to the new one, and the stop is lifted', async () => {
+    const { ann, spent } = await spentInAnHour();
+    vi.useFakeTimers({ toFake: ['Date'], now: spent.to + 60_000 });
+    // Shown so before anything touches it: all of the new period's notes.
+    expect(await ann.api.plans.plan()).toMatchObject({ period: { from: new Date(spent.to).toISOString() }, notes: { minutesPerPeriod: 1, stopped: false } });
+    const fresh = await meter(ann);
+    expect(fresh).toMatchObject({ from: spent.to, spentNano: 0, unspentNano: fresh.allowanceNano, stopped: false });
+    // A question is answered, and charged to the new period alone.
+    expect((await answer(ann.api.notes.askAll('When do we ship?'))).length).toBeGreaterThan(0);
+    const next = await meter(ann);
+    expect(next).toMatchObject({ from: spent.to, to: spent.to + 3_600_000, stopped: false, byKind: { ask: next.spentNano } });
+    expect(Object.keys(next.byKind)).toEqual(['ask']);
+    // And notes can be kept again: a room recording starts.
+    expect((await ann.api.recordings.start({ title: 'Again' })).getSnapshot().status).toBe('recording');
+  });
+
+  it('runs a period to its end as it began when plan.period_seconds changes, and the next one at the new length', async () => {
+    const { ann, spent } = await spentInAnHour();
+    // Half-hour periods from now on, forty minutes into the hour. Counted afresh from when the account began, it would be in
+    // its second period with all its notes back; it's in the one that began, still spent, until that one ends.
+    await h.setLimit('plan.period_seconds', 1800);
+    vi.useFakeTimers({ toFake: ['Date'], now: spent.from + 40 * 60_000 });
+    expect(await meter(ann)).toMatchObject({ from: spent.from, to: spent.to, stopped: true, spentNano: spent.spentNano });
+    expect((await ann.api.plans.plan()).period).toEqual({ from: new Date(spent.from).toISOString(), to: new Date(spent.to).toISOString() });
+    expect(code(await answer(ann.api.notes.askAll('When do we ship?')).catch((e: unknown) => e))).toBe('plan-limit');
+    // Once it's over, the next is half an hour long, with all its notes.
+    vi.setSystemTime(spent.to + 60_000);
+    expect(await meter(ann)).toMatchObject({ from: spent.to, to: spent.to + 1_800_000, stopped: false, spentNano: 0 });
+    await answer(ann.api.notes.askAll('When do we ship?'));
+    expect(Object.keys((await meter(ann)).byKind)).toEqual(['ask']);
+  });
+});
+
 describe('what’s shown', () => {
   it('says notes left from what was spent, so it only goes down while a call goes on and its notes are written', async () => {
     // A minute of notes is a tenth of a cent here: anything held for a request would show as many minutes if it counted.

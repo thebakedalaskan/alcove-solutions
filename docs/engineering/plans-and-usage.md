@@ -16,7 +16,8 @@ they bring: notes and storage. Every feature is on every plan.
 | Shared workspaces not tied to a call | As many as you like (storage is the limit) | Same | Same |
 
 A period is 30 days from when the plan began; a month of Pro is one period, and so is a team license from when it's
-taken. This page says what's built now.
+taken. A change to how long a period is applies from each account's next one: a period that has begun runs to its end
+as it began. This page says what's built now.
 
 Every number is a limit (`apps/api/src/limits.ts`, [Deployment › Changing a limit](deployment-and-acceptance.md#changing-a-limit)),
 changeable without a deploy: each plan's notes, storage, files and price; Pro's lower price for a year or more; the most
@@ -166,7 +167,10 @@ month, starts a fresh period with the whole allowance: nothing carries over, and
 **The plan in force** (`inForce`, read with `planNow`) is Team while a team license is live ([Team](#team)), Pro while a
 bought month covers now, and Free otherwise. Free's periods count from
 when the account began, or from the end of the last month of Pro, whichever is later, so Free starts afresh when Pro ends,
-with or without upkeep.
+with or without upkeep. Each runs on from the one before as the AI meter keeps it (its `from` and `to`,
+`features/billing/meter-state.ts`), at the length `plan.period_seconds` has when it begins, so changing that limit never
+restarts a period that's running, nor gives back an allowance spent in it; an account the meter hasn't seen on Free since
+it started counts from the start. Pro's months and a team license's period are kept as they were bought or taken.
 
 **What's offered** (`GET /v1/plan/offers`): the period in days, Free's and Pro's allowances (Pro's file size as enforced),
 the price of a month (`plan.pro.price_micro_usd`, $20) and the most months one purchase buys (`plan.pro_max_months`, 12).

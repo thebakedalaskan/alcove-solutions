@@ -30,6 +30,8 @@ Suites: `billing/meter` (`apps/api/src/features/billing/meter.integration.test.t
 | B6 | Buys at once on two instances never spend twice | billing/plans › Pro › two buys at once on two instances… (both held on the row's lock, then let go) | 2 | Passes |
 | **C: Free** |  |  |  |  |
 | C1 | 300 minutes a period; renews from when it began; nothing carries over | billing/plans › renews its notes… | 1 | Passes |
+| C1′ | A request after the period ends is charged to the new one alone, and a stop the old one had is lifted (shown so before anything touches the meter) | billing/meter › starts the next period afresh… | 1 | Passes |
+| C1″ | Changing `plan.period_seconds` applies from each account's next period: the running one runs to its end as it began, still spent, and the next has the new length | billing/meter › runs a period to its end as it began… | 1 | Passes |
 | C2 | Free makes as many shared workspaces as it likes, and every one works | billing/plans › makes as many shared workspaces…; workspaces (limits) for `workspaces.max_made` | 1 | Passes |
 | C3 | A file over the plan's size is refused; storage fills and refuses, counted against whoever made the workspace | billing/plans › takes files…; workspaces/media (limits); by hand | 1 | Passes |
 | C4 | Call recordings count; full storage stops notes for everyone (reason storage), and notes need 1 MiB to come back | billing/plans › counts call recordings… | 1 | Passes |

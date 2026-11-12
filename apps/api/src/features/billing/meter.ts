@@ -27,8 +27,8 @@ import { limitsNow, type Limits } from '../../limits';
 import { log } from '../../log';
 import { priceOf, type Price } from '../notes/models';
 import { mayStore } from './held';
-import { MeterRow, openMeter, sealMeter, type Hold, type MeterState } from './meter-state';
-import { planNow, type InForce } from './plans';
+import { keptOf, MeterRow, openMeter, sealMeter, type Hold, type MeterState } from './meter-state';
+import { planWith, type InForce } from './plans';
 
 const alog = log.child({ component: 'ai-allowance' });
 /** A source (a call or room recording) nothing has charged for this long is over, and what it held goes. */
@@ -133,14 +133,21 @@ function current(stored: MeterState | null, p: InForce, l: Limits, now: number):
 
 /**
  * The meter, locked for the rest of the caller's transaction, as it stands now (`current`): made on the account's first
- * request. What it says changed by itself (holds charged in full, a period closed) is logged here, where it's saved.
+ * request, in the period the plan in force has then. After that the plan in force runs on from the period it keeps
+ * (plans.ts › planAt). What it says changed by itself (holds charged in full, a period closed) is logged here, where it's saved.
  */
 async function locked(d: Service, db: Db, ownerId: string, l: Limits, now: number): Promise<{ m: MeterState; save: (m: MeterState) => Promise<void> }> {
-  const { p } = await planNow(d, db, ownerId, now);
-  await exec(db, 'INSERT INTO ai_meters (owner_id, state_ciphertext) VALUES ($1,$2) ON CONFLICT (owner_id) DO NOTHING', [ownerId, sealMeter(d, ownerId, current(null, p, l, now).m)]);
-  const r = await maybeOne(db, MeterRow, 'SELECT state_ciphertext FROM ai_meters WHERE owner_id = $1 FOR UPDATE', [ownerId]);
+  const read = () => maybeOne(db, MeterRow, 'SELECT state_ciphertext FROM ai_meters WHERE owner_id = $1 FOR UPDATE', [ownerId]);
+  let r = await read();
+  if (!r) {
+    const { p } = await planWith(d, db, ownerId, now, null);
+    await exec(db, 'INSERT INTO ai_meters (owner_id, state_ciphertext) VALUES ($1,$2) ON CONFLICT (owner_id) DO NOTHING', [ownerId, sealMeter(d, ownerId, current(null, p, l, now).m)]);
+    r = await read();
+  }
   if (!r) throw new PlanLimitError('Notes aren’t available for this account.', 'notes', { context: { ownerId, why: 'no meter' } });
-  const { m, lost, closed } = current(openMeter(d, ownerId, r.state_ciphertext), p, l, now);
+  const stored = openMeter(d, ownerId, r.state_ciphertext);
+  const { p } = await planWith(d, db, ownerId, now, keptOf(stored));
+  const { m, lost, closed } = current(stored, p, l, now);
   if (lost) alog.warn('requests never said what they used; charged what they held', { ownerId, requests: lost });
   if (closed && (closed.spentNano > 0 || closed.stopped !== null)) {
     alog.info('ai period closed', { ownerId, plan: closed.plan, spentNano: closed.spentNano, allowanceNano: closed.allowanceNano, overNano: Math.max(0, closed.spentNano - closed.allowanceNano), byKind: closed.byKind });
@@ -286,9 +293,10 @@ export interface Standing {
 export async function standing(d: Service, db: Db, ownerId: string): Promise<Standing> {
   const l = await limitsNow(d, db);
   const now = Date.now();
-  const { p } = await planNow(d, db, ownerId, now);
   const r = await maybeOne(db, MeterRow, 'SELECT state_ciphertext FROM ai_meters WHERE owner_id = $1', [ownerId]);
-  const { m } = current(r ? openMeter(d, ownerId, r.state_ciphertext) : null, p, l, now);
+  const stored = r ? openMeter(d, ownerId, r.state_ciphertext) : null;
+  const { p } = await planWith(d, db, ownerId, now, stored ? keptOf(stored) : null);
+  const { m } = current(stored, p, l, now);
   const stop = l.get('ai.stop_micro_usd') * 1000;
   const leftNano = leftOf(m);
   const unspentNano = Math.max(0, m.allowanceNano - m.spentNano);
