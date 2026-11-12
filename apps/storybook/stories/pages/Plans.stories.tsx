@@ -1,8 +1,9 @@
 /*
- * Plans: the last of the sunset, with the plans on the water under it (user-flows 16, the canvas's Plans board). Free and Pro
- * side by side, their rows lined up, priced for a year (Yearly · 20% off, the default) or month by month; Pro lifted with a
- * warm edge, its button the page's one filled button on Free and while Pro is ending. Get Pro and Extend open checkout over
- * the page. The prices wait in place while they're on their way, and say so when they don't come.
+ * Plans: the last of the sunset, with the plans on the water under it (user-flows 16, the canvas's Plans board). Free, Pro and
+ * Team side by side, their rows lined up, priced for a year (Yearly · 20% off, the default) or month by month; Pro lifted with a
+ * warm edge, its button the page's one filled button on Free and while Pro is ending. Team is licenses, the same either way:
+ * Start a team off one, Buy licenses for its admin, and who buys them for a member. Get Pro, Extend, Start a team and Buy
+ * licenses open checkout over the page. The prices wait in place while they're on their way, and say so when they don't come.
  */
 import type { Meta } from '@storybook/react-vite';
 import { setOnline } from '../../src/browser';
@@ -43,6 +44,30 @@ export const ProPhone = phone(Pro);
 export const ProEnding = page('/plans', 'plan-pro-ending');
 export const ProEndingNight = night(ProEnding);
 export const ProEndingPhone = phone(ProEnding);
+
+/* ------------------------------------------------------------------ Team */
+/*
+ * Team is licenses, one person for 30 days each, the same whichever way the prices are shown, with the people at the end of its
+ * name's row: off a team (every story above), the people at Vandelay on Alcove and Start a team.
+ */
+/** Start a team, on Team's card: checkout opens over Plans on starting one. */
+export const StartATeam = page('/plans', 'payments', {
+  play: async ({ canvas, userEvent, step }) => {
+    await step('Press Start a team, on Team’s card', async () => {
+      await userEvent.click(await canvas.findByRole('button', { name: 'Start a team' }, { timeout: 8000 }));
+    });
+  }
+});
+/** Vandelay's admin, licensed: Team is his plan, with Buy licenses; Pro's Get Pro is a second choice, and nothing is filled. */
+export const TeamAdmin = page('/plans', 'team-admin');
+export const TeamAdminNight = night(TeamAdmin);
+export const TeamAdminPhone = phone(TeamAdmin);
+/** On Priya's team, licensed: Team is his plan, and Priya buys its licenses. */
+export const TeamMember = page('/plans', 'team-member');
+export const TeamMemberNight = night(TeamMember);
+export const TeamMemberPhone = phone(TeamMember);
+/** On Priya's team with no license to take: he's on Free meanwhile, so Team isn't his plan yet, and Priya buys its licenses. */
+export const TeamMemberWithoutALicense = page('/plans', 'team-member-unlicensed');
 
 /* ------------------------------------------------------------------ on their way, or not */
 /** The prices are on their way: the cards wait in place, their names and who they're for already there. */

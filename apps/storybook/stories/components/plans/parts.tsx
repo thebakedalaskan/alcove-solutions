@@ -1,7 +1,8 @@
 /*
  * What the plans' stories share: what each plan brings, worded as Plans words the stand-in's offers (src/world/plans.ts:
- * 5 hours of notes, 10 GB and 512 MB on Free; 50 hours and 100 GB on Pro; Team as phase 3 plans it), and the evening they
- * stand on, as the page has it: the plans' moment, with the last sliver of the sun on its horizon.
+ * 5 hours of notes, 10 GB and 512 MB on Free; 50 hours and 100 GB on Pro; the same for each person on Team, its storage
+ * shared), and the evening they stand on, as the page has it: the plans' moment, with the last sliver of the sun on its
+ * horizon.
  */
 import { Horizon, PlanSunset, type PlanFact } from '@alcove/ui';
 import type { Decorator } from '@storybook/react-vite';
@@ -18,12 +19,15 @@ export const PRO_FACTS: PlanFact[] = [
   { icon: 'file', text: 'Files up to 512 MB' }
 ];
 export const TEAM_FACTS: PlanFact[] = [
-  { icon: 'notes', text: 'About 50 hours of notes a person a month' },
-  { icon: 'hardDrive', text: '100 GB a person, pooled' },
-  { icon: 'file', text: 'Files up to 512 MB' }
+  { icon: 'notes', text: 'About 50 hours of notes each' },
+  { icon: 'hardDrive', text: '100 GB each, shared by the team' },
+  { icon: 'file', text: 'Files up to 512 MB' },
+  { icon: 'people', text: 'Notes and workspaces the team shares' }
 ];
 /** Free's last line, while more notes are offered. */
 export const MORE_NOTES = 'Out of notes before the period ends? 10 more hours are $15.';
+/** Team's last line. */
+export const LICENSES_TAKEN = 'A license is taken when someone next opens Alcove. Ones nobody takes can be refunded.';
 
 /** The last of the sun, as Plans draws it on its sky. */
 export const SUNSET = <PlanSunset />;
