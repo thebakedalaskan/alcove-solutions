@@ -38,6 +38,7 @@ Suites: `billing/meter` (`apps/api/src/features/billing/meter.integration.test.t
 | **D: metering** |  |  |  |  |
 | D1 | Each request charges the right payer: organizer (transcript, captions, live notes, notes), asker (ask, catch-up, ask a note, ask all), organizer for a guest, workspace's maker for document AI | billing/meter › who pays; calls/liveNotes; calls/callWorkspace; recordings/transcripts; flows | 1 | Passes |
 | D2 | A reply without usage is reckoned and charged | billing/meter › charges what NEAR AI says… | 1 | Passes |
+| D2′ | A clip is charged what NEAR AI says it used when it says (not reckoned from its length), and cached input at the catalog's cache-read price (`input_cache_read`, a token) | billing/meter › charges a clip what NEAR AI says it used, and cached input… | 1 | Passes |
 | D3 | A request NEAR AI turned away costs nothing | billing/meter › charges nothing for a request NEAR AI turned away | 1 | Passes |
 | D3′ | A request that timed out once sent is charged what was held | — | 1 | Not tested: the fake can't time out after receiving |
 | D3″ | A request still on its way after 5 minutes is charged what it held, shown so at once; answered after all, it's charged what it used instead, never both | billing/meter › charges a request still on its way after five minutes… | 1 | Passes |

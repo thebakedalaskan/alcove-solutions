@@ -115,6 +115,10 @@ export interface FakeNear {
   failNext(n: number, how: Failure, only?: string | undefined): void;
   /** The next `n` chat replies don't say what they used, as a provider sometimes doesn't. */
   withoutUsageNext(n: number): void;
+  /** The next chat reply says this many of its prompt's tokens were cached (at most all of them), as NEAR AI does for a prompt it has seen. */
+  cachedNext(tokens: number): void;
+  /** The next transcription says what it used, as NEAR AI may: tokens in and out. */
+  speechUsageNext(usage: { input: number; output: number }): void;
   /** The next request for a call's full summary comes back in the wrong shape (the notes are written as usual). */
   failDetailsNext(): void;
   /** The next chat reply takes this long, as a busy model does. */
@@ -185,7 +189,7 @@ function speechIn(wav: Buffer): { words: string; language: string; sure: boolean
 }
 
 /** Whisper's answer to a multipart transcription request. */
-async function transcription(contentType: string, body: Uint8Array, calls: FakeNear['calls'], heard: FakeNear['transcriptions'], path: string, encryption: 'ohttp' | 'none', key: string | null): Promise<{ status: number; body: unknown }> {
+async function transcription(contentType: string, body: Uint8Array, calls: FakeNear['calls'], heard: FakeNear['transcriptions'], path: string, encryption: 'ohttp' | 'none', key: string | null, usage: { input: number; output: number } | null): Promise<{ status: number; body: unknown }> {
   const form = await new Request('http://fake', { method: 'POST', headers: { 'content-type': contentType }, body: new Uint8Array(body) }).formData();
   const file = form.get('file');
   const model = str(form.get('model'));
@@ -206,7 +210,13 @@ async function transcription(contentType: string, body: Uint8Array, calls: FakeN
     avg_logprob: x.unclear ? -0.8 : speech?.sure === false ? -0.45 : -0.2, compression_ratio: 1.1, no_speech_prob: null
   }));
   // The language it was told, or the one it hears.
-  return { status: 200, body: { text: said.map((x) => x.text).join(''), duration: String(seconds), language: asked.language ?? speech?.language ?? 'en', segments, id: `trans-${randomUUID()}` } };
+  return {
+    status: 200,
+    body: {
+      text: said.map((x) => x.text).join(''), duration: String(seconds), language: asked.language ?? speech?.language ?? 'en', segments, id: `trans-${randomUUID()}`,
+      ...(usage ? { usage: { input_tokens: usage.input, output_tokens: usage.output } } : {})
+    }
+  };
 }
 
 interface Shown { n: number; at: number; title: string; parts: number }
@@ -588,6 +598,11 @@ export async function startFakeNear(): Promise<FakeNear> {
   let failing = 0;
   /** How many of the next chat replies leave out what they used. */
   let unsaid = 0;
+  /** How many of the next chat reply's prompt tokens it says were cached. */
+  let cached = 0;
+  /** What the next transcription says it used. */
+  let speechUsage: { input: number; output: number } | null = null;
+  const takeSpeechUsage = () => { const u = speechUsage; speechUsage = null; return u; };
   let failure: Failure = 'down';
   let failingOnly: string | undefined;
   let detailsFailing = false;
@@ -707,8 +722,11 @@ export async function startFakeNear(): Promise<FakeNear> {
       if (detailsFailing && system.startsWith('You write the full summary')) { detailsFailing = false; content = JSON.stringify({ details: '' }); }
       else content = JSON.stringify(notesReply(model, system, user, sent, memory));
     }
-    // What it used, as NEAR AI says, unless it was told to leave that out.
-    const said = unsaid > 0 ? (unsaid--, {}) : { usage: { prompt_tokens: Math.round(user.length / 4), completion_tokens: 200 } };
+    // What it used, as NEAR AI says, unless it was told to leave that out: cached tokens too, when told to say some were.
+    const promptTokens = Math.round(user.length / 4);
+    const hit = Math.min(cached, promptTokens);
+    cached = 0;
+    const said = unsaid > 0 ? (unsaid--, {}) : { usage: { prompt_tokens: promptTokens, completion_tokens: 200, ...(hit > 0 ? { prompt_tokens_details: { cached_tokens: hit } } : {}) } };
     return {
       status: 200,
       body: {
@@ -736,7 +754,7 @@ export async function startFakeNear(): Promise<FakeNear> {
       // model's attested key signed opens a request, so what opens was sealed to that attested key.
       if (req.method === 'POST' && url.pathname === '/direct/whisper/ohttp') {
         return direct(res, req, body, 'transcript', async (inner) => (inner.method === 'POST' && inner.path === '/v1/audio/transcriptions'
-          ? transcription(inner.headers.get('content-type') ?? '', inner.body, calls, transcriptions, inner.path, 'ohttp', hex(models.transcript.key)) : { status: 404, body: { error: { message: 'Not found' } } }));
+          ? transcription(inner.headers.get('content-type') ?? '', inner.body, calls, transcriptions, inner.path, 'ohttp', hex(models.transcript.key), takeSpeechUsage()) : { status: 404, body: { error: { message: 'Not found' } } }));
       }
       if (req.method === 'POST' && url.pathname === '/direct/glm/ohttp') {
         return direct(res, req, body, 'notes', async (inner) => (inner.method === 'POST' && inner.path === '/v1/chat/completions'
@@ -787,7 +805,7 @@ export async function startFakeNear(): Promise<FakeNear> {
       // What real NEAR AI's gateway also takes, in plaintext. Alcove sends speech nowhere but the model's own endpoint, and
       // chat here only for a model an organizer chose that isn't private (no endpoint of its own).
       if (req.method === 'POST' && url.pathname === '/v1/audio/transcriptions') {
-        const t = await transcription(req.headers['content-type'] ?? '', body, calls, transcriptions, url.pathname, 'none', null);
+        const t = await transcription(req.headers['content-type'] ?? '', body, calls, transcriptions, url.pathname, 'none', null, takeSpeechUsage());
         return send(res, t.status, t.body);
       }
       if (req.method === 'POST' && url.pathname === '/v1/chat/completions') {
@@ -845,6 +863,8 @@ export async function startFakeNear(): Promise<FakeNear> {
     verdictLifetime(seconds) { n.lifetime = seconds; },
     failNext(count, how, only) { failing = count; failure = how; failingOnly = only; },
     withoutUsageNext(n) { unsaid = n; },
+    cachedNext(tokens) { cached = tokens; },
+    speechUsageNext(usage) { speechUsage = usage; },
     failDetailsNext() { detailsFailing = true; },
     slowNext(ms, only) { slow = ms; slowOnly = only; },
     holdNext(then) { holding = then; },

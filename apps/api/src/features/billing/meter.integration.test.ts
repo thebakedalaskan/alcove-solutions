@@ -212,6 +212,31 @@ describe('who pays', () => {
     expect(warned()).toBe(said);
   });
 
+  it('charges a clip what NEAR AI says it used, and cached input at the catalog’s cache price', async () => {
+    const ann = await account();
+    const rec = await ann.api.recordings.start({ title: 'Cached' });
+    // NEAR AI says the clip used a million tokens in and a thousand out: charged that, at Whisper's $0.01 a million each
+    // way, not reckoned from its length (which would be a few thousand).
+    h.near.speechUsageNext({ input: 1_000_000, output: 1_000 });
+    await rec.transcribe(speech('We agreed to ship on Monday.', 0));
+    expect((await meter(ann)).byKind['transcript']).toBe(Math.ceil((1_000_000 * 10_000 + 1_000 * 10_000) / 1000));
+    await written(ann.api, (await rec.stop()).pendingNoteId);
+    const asked = async () => {
+      const before = (await meter(ann)).byKind['ask'] ?? 0;
+      await answer(ann.api.notes.askAll('When do we ship?'));
+      return { cost: ((await meter(ann)).byKind['ask'] ?? 0) - before, prompt: h.near.prompts.at(-1) ?? '' };
+    };
+    // The same question twice, the second with all of its prompt cached: input at $0.30 a million, then at the catalog's
+    // cache-read price, $0.000000006 a token ($0.006 a million). Output at $1.20 a million both times.
+    const full = await asked();
+    h.near.cachedNext(Number.MAX_SAFE_INTEGER);
+    const cached = await asked();
+    expect(cached.prompt).toBe(full.prompt);
+    const tokens = Math.round(full.prompt.length / 4);
+    expect(full.cost).toBe(Math.ceil((tokens * 300_000 + 200 * 1_200_000) / 1000));
+    expect(cached.cost).toBe(Math.ceil((tokens * 6_000 + 200 * 1_200_000) / 1000));
+  });
+
   it('charges nothing for a request NEAR AI turned away', async () => {
     const ann = await account();
     const rec = await ann.api.recordings.start({ title: 'Down' });
