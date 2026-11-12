@@ -50,11 +50,11 @@ Suites: `billing/meter` (`apps/api/src/features/billing/meter.integration.test.t
 | E4 | The last note covers only what was said before the stop, and may go past the allowance | billing/meter › stops notes for everyone… | 1 | Passes |
 | E4′ | The last note is paid from what the call held for it, its requests on their way too: writing it stops nothing the call held enough for | billing/meter › pays for writing a call’s notes from what the call held for them… | 1 | Passes |
 | E5 | Then nothing: the next call starts without notes, saying why; asks and room recordings are refused | billing/meter › stops notes for everyone… | 1 | Passes |
-| E6 | An invitee on another plan can still ask after the organizer's stop; a guest can't | billing/meter › after a Free organizer’s notes stop, an invitee on Pro still asks… | 2 | Passes |
+| E6 | An invitee on another plan can still ask after the organizer's stop; a guest can't, and is told it's the organizer's notes that ran out | billing/meter › after a Free organizer’s notes stop, an invitee on Pro still asks… | 2 | Passes |
 | E7 | A room recording runs out the same way | billing/meter › stops a room recording… | 1 | Passes |
 | E8 | Two live calls by one organizer both stop | billing/meter › stops every call the organizer has going… | 1 | Passes |
 | E9 | Questions at once near the end never spend past the allowance | billing/meter › holds what requests in flight… | 1 | Passes |
-| E9′ | A request too dear for what's left is refused, nothing sent, and the allowance isn't stopped: a cheaper one still goes; in a call, captions refused that way leave notes on and the transcript going | billing/meter › refuses only a request too dear for what’s left…; … in a call, refuses captions too dear… | 1 | Passes |
+| E9′ | A request too dear for what's left is refused ("What’s left of your notes this period isn’t enough for this."), nothing sent, and the allowance isn't stopped: a cheaper one still goes; in a call, captions refused that way say it's the organizer's and leave notes on and the transcript going | billing/meter › refuses only a request too dear for what’s left…; … in a call, refuses captions too dear… | 1 | Passes |
 | E10 | A bigger allowance lifts the stop; notes come back on | billing/meter › stops notes for everyone… | 1 | Passes |
 | E11 | Notes left only goes down: what's held for a call's notes and requests on their way counts for the stop, not for what's shown | billing/meter › says notes left from what was spent… | 1 | Passes |
 | **F: Pro** |  |  |  |  |

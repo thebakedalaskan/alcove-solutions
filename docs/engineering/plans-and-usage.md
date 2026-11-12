@@ -118,6 +118,11 @@ The allowance runs down with the call, and notes stop before it's spent rather t
   be more than writing cost; only a bigger allowance (more notes bought, the limits raised, a new period, a bigger plan)
   lifts it. A call scheduled with notes starts without them and says why; turning notes on, starting a room recording,
   or asking is refused with "Your notes for this period have run out. They start again when your plan renews."
+- **Whose, in words:** a refusal says whose allowance it is (`whose` on the meter's bill). Someone asking for what the
+  organizer pays for (a guest's question, captions, anything the call does) reads "The organizer’s notes for this period
+  have run out, and this is paid from them."; AI a workspace's payer pays for, "The notes this workspace’s AI is paid from
+  have run out for this period.". A request refused only because what's left can't cover it says so instead, and nothing
+  stops: "What’s left of your notes this period isn’t enough for this." (the organizer's, or the workspace's, likewise).
 
 ## Storage
 

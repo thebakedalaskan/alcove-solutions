@@ -356,7 +356,7 @@ async function attempt(d: Deps, job: Claimed): Promise<void> {
     const at = { ...ctx, noteId, recordingId, lines, seconds: note.manifest.duration };
     // The organizer pays, or whoever recorded the room. Writing the notes the first time is never refused: it's what was
     // transcribed before notes stopped, and the one way past their allowance. Writing them again is as anything else is.
-    const meter = meterFor(o, { payer: o.ownerId, spend: 'notes', source: sourceOf(note.manifest), final: was === null });
+    const meter = meterFor(o, { payer: o.ownerId, spend: 'notes', whose: 'yours', source: sourceOf(note.manifest), final: was === null });
     // A presenter's last piece can still come in for a little while after the call (screens.SHARE_TAIL_MS): the job
     // waits for it, without using an attempt.
     const tail = await screens.tailEndsAt(o, recordingId, note.manifest.duration);

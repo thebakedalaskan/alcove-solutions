@@ -957,7 +957,7 @@ async function workspaceMeter(d: Deps, reader: Reader, w: Workspace, spend: Spen
   const team = await maybeOne(d.pool, z.object({ team_id: z.string().nullable() }), 'SELECT team_id FROM workspaces WHERE owner_id = $1', [w.owner.ownerId]);
   const payer = (asker && team?.team_id ? asker : null) ?? (await payerOf(d.pool, w.owner.ownerId)) ?? asker;
   if (!payer) throw new ConflictError('AI isn’t available in this workspace right now.', { context: { workspaceId: w.workspaceId, why: 'no payer' } });
-  return meterFor(d, { payer, spend });
+  return meterFor(d, { payer, spend, whose: payer === asker ? 'yours' : 'workspace' });
 }
 
 /**

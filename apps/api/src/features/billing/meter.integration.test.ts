@@ -258,7 +258,7 @@ describe('running out', () => {
     await h.setLimit('ai.hour_micro_usd', Math.ceil((spent + (holds * 4) / 3) / 1000));
     await ann.api.account.updatePreferences({ model: UNENCRYPTED_MODEL });
     const sent = h.near.prompts.length;
-    expect(code(await answer(ann.api.notes.askAll('When do we ship?')).catch((e: unknown) => e))).toBe('plan-limit');
+    expect(await refusal(answer(ann.api.notes.askAll('When do we ship?')))).toBe('plan-limit: What’s left of your notes this period isn’t enough for this.');
     expect(h.near.prompts.length).toBe(sent);
     const after = await meter(ann);
     expect(after).toMatchObject({ stopped: false, spentNano: spent });
@@ -282,7 +282,7 @@ describe('running out', () => {
     // Left, beside what the call holds for its notes: a twentieth of a cent. A clip holds far less; captions far more.
     const live = await meter(org);
     await h.setLimit('ai.hour_micro_usd', Math.ceil((live.spentNano + live.unspentNano - live.leftNano + 500_000) / 1000));
-    expect(code(await theirs.translate([line], 'de').catch((e: unknown) => e))).toBe('plan-limit');
+    expect(await refusal(theirs.translate([line], 'de'))).toBe('plan-limit: What’s left of the organizer’s notes this period isn’t enough for this.');
     expect((await meter(org)).stopped).toBe(false);
     expect((await now(host)).capture).toMatchObject({ mode: 'on', stopped: null });
     // The call goes on being transcribed.
@@ -382,7 +382,8 @@ describe('running out', () => {
     await host.appendAudio(piece('before', 0));
     await host.transcribe(speech('We agreed to ship on Monday.', 0), host.ticket.identity);
     expect((await settle(theirs, (s) => s.capture.stopped !== null)).capture.stopped).toEqual({ reason: 'notes', at: expect.any(String) });
-    expect(code(await guest.askSoFar('When do we ship?', { kind: 'all' }).catch((e: unknown) => e))).toBe('plan-limit');
+    // The guest is told whose notes ran out: theirs aren't.
+    expect(await refusal(guest.askSoFar('When do we ship?', { kind: 'all' }))).toBe('plan-limit: The organizer’s notes for this period have run out, and this is paid from them.');
     await theirs.askSoFar('When do we ship?', { kind: 'all' });
     const k = await meter(kofi);
     expect(k.plan).toBe('pro');

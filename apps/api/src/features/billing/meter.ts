@@ -40,10 +40,16 @@ const HOLD_MS = 5 * 60_000;
 export type Spend = 'transcript' | 'notes' | 'live-notes' | 'ideas' | 'captions' | 'catch-up' | 'ask' | 'series' | 'documents';
 /** What a call or room recording's charges belong to, so what writing its notes will cost is held while it runs. */
 export interface Source { kind: 'call' | 'recording'; id: string }
-/** Who pays for a request, and what for. */
+/**
+ * Whose allowance pays, as the person asking is told when it's refused: their own, the organizer's (what a call does for
+ * everyone, and a guest's questions), or the notes a workspace's AI is paid from.
+ */
+export type Whose = 'yours' | 'organizer' | 'workspace';
+/** Who pays for a request, what for, and whose allowance that is to whoever asked. */
 export interface Bill {
   payer: string;
   spend: Spend;
+  whose: Whose;
   source?: Source | undefined;
   /** What writing the source's notes will cost, reckoned now in tokens of `model`: held from the allowance while it runs. */
   reserve?: { model: string; most: Most } | undefined;
@@ -154,7 +160,20 @@ async function changing<T>(d: Service, ownerId: string, change: (m: MeterState, 
   });
 }
 
-const refusal = (ownerId: string, bill: Bill) => new PlanLimitError('Your notes for this period have run out. They start again when your plan renews.', 'notes', { context: { ownerId, spend: bill.spend } });
+/** What someone is told when an allowance is spent, by whose it is. */
+const SPENT: Record<Whose, string> = {
+  yours: 'Your notes for this period have run out. They start again when your plan renews.',
+  organizer: 'The organizer’s notes for this period have run out, and this is paid from them.',
+  workspace: 'The notes this workspace’s AI is paid from have run out for this period.'
+};
+/** What someone is told when what's left can't cover a request, though smaller ones still go. */
+const SHORT: Record<Whose, string> = {
+  yours: 'What’s left of your notes this period isn’t enough for this.',
+  organizer: 'What’s left of the organizer’s notes this period isn’t enough for this.',
+  workspace: 'What’s left of the notes this workspace’s AI is paid from isn’t enough for this.'
+};
+/** The refusal when an allowance is spent, worded for whoever asked (`whose`). */
+export const ranOut = (whose: Whose, context: Record<string, string | number | null>): PlanLimitError => new PlanLimitError(SPENT[whose], 'notes', { context });
 
 /** The meter `bill` pays with. */
 export function meterFor(d: Service, bill: Bill): Meter {
@@ -187,8 +206,12 @@ export function meterFor(d: Service, bill: Bill): Meter {
         if (leftOf(m) - heldNano < stop) return { m, result: 'refused' };
         return { m: { ...m, holds: [...m.holds, hold(now)] }, result: 'held' };
       });
-      if (held === 'stopped') await said('stop');
-      if (held !== 'held') throw refusal(bill.payer, bill);
+      const context = { ownerId: bill.payer, spend: bill.spend, whose: bill.whose };
+      if (held === 'stopped') {
+        await said('stop');
+        throw ranOut(bill.whose, context);
+      }
+      if (held === 'refused') throw new PlanLimitError(SHORT[bill.whose], 'notes', { context: { ...context, why: 'short' } });
       // What it cost, charged under the lock; what that came to is said once it's saved.
       const charge = (cost: (m: MeterState) => number, what: string) => changing(d, bill.payer, (m, _l, now): { m: MeterState; result: Limit | null } => {
         const used = cost(m);
