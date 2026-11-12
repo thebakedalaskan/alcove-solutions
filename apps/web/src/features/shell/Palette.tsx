@@ -60,13 +60,24 @@ const readOf = (results: UseQueryResult<Note>[]): { read: ReadonlyMap<string, No
 /** What Escape does inside the window before it closes it, if anything: true when it did something. */
 type Escape = () => boolean;
 
+/**
+ * Where Pin a note leaves focus when the pin that opened it has gone, as it does with the last note unpinned (Pinned goes
+ * with it): the side panel's place you're on.
+ */
+const toPanelPlace = (): boolean => {
+  const here = document.querySelector('aside.sb a[aria-current="page"]');
+  if (!(here instanceof HTMLElement)) return false;
+  here.focus({ preventScroll: true });
+  return true;
+};
+
 export function Palette({ open, onOpenChange, start }: { open: boolean; onOpenChange: (open: boolean) => void; start: PaletteStart }) {
   const close = () => onOpenChange(false);
   /* Escape is the window's: it closes it, unless what's in it goes back a step first (an answer, to its results). */
   const back = useRef<Escape | null>(null);
   return (
     <Sheet open={open} onOpenChange={onOpenChange} label={start.mode === 'pin' ? 'Pin a note' : 'Search or ask'} className="pal" overlayClassName="pal-scrim"
-      onEscapeKeyDown={(e) => { if (back.current?.()) e.preventDefault(); }}>
+      onEscapeKeyDown={(e) => { if (back.current?.()) e.preventDefault(); }} onCloseFocus={start.mode === 'pin' ? toPanelPlace : undefined}>
       {start.mode === 'pin' ? <PinNotes onClose={close} /> : <Find onClose={close} back={back} />}
     </Sheet>
   );

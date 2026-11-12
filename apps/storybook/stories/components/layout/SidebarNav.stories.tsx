@@ -1,8 +1,9 @@
 /*
- * SidebarNav: the app's places, under Start a call in the side panel, which is dark in both themes. Each place is a
- * router link with className="ac-nav-item" holding NavItemContent: its icon, its name, and a count when there's one
- * (what's waiting on you, your notes, recordings waiting to upload, the people on Alcove). The page you're on carries
- * aria-current="page". Someone on their own has no Team. At 860px and narrower the phone's tab bar takes its place.
+ * SidebarNav: a group of the app's places in the side panel, which is dark in both themes: Home, Calls, Drive and Record
+ * under Start a call, and Team and Agents at the foot. Each place is a router link with className="ac-nav-item" holding
+ * NavItemContent: its icon, its name, and a count while something waits on you there (what's for you on Home, tags you
+ * haven't seen in the Drive, recordings waiting to upload). The page you're on carries aria-current="page". Someone on
+ * their own has no Team. At 860px and narrower the phone's tab bar takes its place.
  */
 import { Icon, Kbd, Logo, NavItemContent, SidebarNav, buttonClass, cn, type IconName } from '@alcove/ui';
 import type { Decorator, Meta, StoryObj } from '@storybook/react-vite';
@@ -10,18 +11,24 @@ import { useState, type MouseEvent } from 'react';
 import { did } from '../../../src/component';
 
 interface Place { to: string; icon: IconName; label: string; count?: number | undefined }
-/** A team's places on the busy afternoon: two things wait on you, eleven notes, six people on Alcove. */
-const TEAM: Place[] = [
+/** Your work on the busy afternoon: two things wait on you on Home, and a tag you haven't seen in the Drive. */
+const WORK: Place[] = [
   { to: '/home', icon: 'home', label: 'Home', count: 2 },
-  { to: '/calls', icon: 'calls', label: 'Calls', count: 11 },
-  { to: '/record', icon: 'recordDot', label: 'Record' },
-  { to: '/team', icon: 'people', label: 'Team', count: 6 }
+  { to: '/calls', icon: 'calls', label: 'Calls' },
+  { to: '/drive', icon: 'folderOpen', label: 'Drive', count: 1 },
+  { to: '/record', icon: 'recordDot', label: 'Record' }
 ];
-/** On your own there's no Team page. A recording waits on this device to upload. */
+/** On your own: nothing waits on Home, and a recording waits on this device to upload. */
 const ALONE: Place[] = [
   { to: '/home', icon: 'home', label: 'Home' },
-  { to: '/calls', icon: 'calls', label: 'Calls', count: 4 },
+  { to: '/calls', icon: 'calls', label: 'Calls' },
+  { to: '/drive', icon: 'folderOpen', label: 'Drive' },
   { to: '/record', icon: 'recordDot', label: 'Record', count: 1 }
+];
+/** The foot: who works with you. Someone on their own has Agents alone. */
+const FOOT: Place[] = [
+  { to: '/team', icon: 'people', label: 'Team' },
+  { to: '/agents', icon: 'agent', label: 'Agents' }
 ];
 
 const navigate = did('navigate');
@@ -60,15 +67,17 @@ const meta = {
   subcomponents: { NavItemContent },
   decorators: [panel],
   parameters: { layout: 'fullscreen' },
-  args: { label: 'Main', children: <Links places={TEAM} start="/home" /> },
+  args: { label: 'Main', children: <Links places={WORK} start="/home" /> },
   argTypes: { label: { control: 'text' }, children: { control: false }, className: { control: false } }
 } satisfies Meta<typeof SidebarNav>;
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/** On Home. A place's count sits at its end: what's waiting on you, notes, the people on Alcove. */
+/** On Home. A count sits at a place's end while something waits on you there. */
 export const OnHome: Story = { name: 'On Home' };
 /** On Calls: the page you're on is lit. */
-export const OnCalls: Story = { name: 'On Calls', args: { children: <Links places={TEAM} start="/calls" /> } };
-/** Someone on their own: no Team. Record counts the recording waiting on this device to upload. */
+export const OnCalls: Story = { name: 'On Calls', args: { children: <Links places={WORK} start="/calls" /> } };
+/** Someone on their own. Record counts the recording waiting on this device to upload. */
 export const OnTheirOwn: Story = { name: 'On their own', args: { children: <Links places={ALONE} start="/home" /> } };
+/** The group at the foot of the panel, on Team: Team and Agents. */
+export const AtTheFoot: Story = { name: 'At the foot', args: { label: 'Team and agents', children: <Links places={FOOT} start="/team" /> } };

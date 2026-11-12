@@ -2,8 +2,9 @@
  * Sheet: the one panel that drops from the top, around one line to type in, for finding something. The palette is one
  * (⌘K, or Search or ask), over a veil of its own (`overlayClassName="pal-scrim"`: solid night, no blur); Add credits in
  * Settings is another, over the usual veil. The page waits behind it, focus goes to the line, and closing it (Escape, or
- * pressing the veil) puts focus back where it was. `onEscapeKeyDown` can keep it open on Escape, as the palette does to go
- * back from an answer to its results first.
+ * pressing the veil) puts focus back where it was, or, when that has gone, where `onCloseFocus` puts it: Pin a note goes to
+ * the side panel's place you're on once its last note is unpinned. `onEscapeKeyDown` can keep it open on Escape, as the
+ * palette does to go back from an answer to its results first.
  */
 import { Button, PaletteBody, PaletteFoot, PaletteGroup, PaletteLine, PaletteNoteLine, PalettePin, Sheet, coverFor, paletteRow } from '@alcove/ui';
 import type { Meta, StoryObj } from '@storybook/react-vite';
