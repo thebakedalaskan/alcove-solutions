@@ -1,18 +1,21 @@
 /*
- * NEAR Intents 1Click as a deposit provider. A quote whose recipient (and refund target) is the treasury's Intents
- * account gives a one-off deposit address on the chain the person picked; whatever arrives there is swapped into USDC
- * on NEAR in the treasury's Intents balance. Only the stablecoins on the allowlist, and only while 1Click lists them.
- * Nothing about a deposit goes in a log line or an error: failures carry the HTTP status only.
+ * NEAR Intents 1Click as a deposit provider. A quote whose recipient (and refund target) is the treasury's confidential
+ * Intents balance gives a one-off deposit address on the chain the person picked; whatever arrives there is swapped into
+ * USDC on NEAR in that balance, which only the treasury can see. 1Click quotes into it only for the treasury signed in
+ * (oneclick-session.ts), so the quote, and asking about its deposit, carry the treasury's token. Only the stablecoins
+ * on the allowlist, and only while 1Click lists them. Nothing about a deposit, and no key or token, goes in a log line
+ * or an error: failures carry the HTTP status only.
  */
 import { z } from 'zod';
 import { toJson } from '../../crypto';
-import { UnavailableError } from '../../errors';
 import { log } from '../../log';
-import { PROVIDER_TIMEOUT_MS, toMicroUsd, type DepositCheck, type DepositProvider, type DepositRoute, type OpenDepositState, type OpenedDeposit } from './provider';
+import { treasurySession, type OneClickRequest } from './oneclick-session';
+import { PROVIDER_TIMEOUT_MS, providerUnavailable, toMicroUsd, type DepositCheck, type DepositProvider, type DepositRoute, type OpenDepositState, type OpenedDeposit } from './provider';
+import type { TreasuryKey } from './treasury-key';
 
 const olog = log.child({ component: 'oneclick' });
 
-/** USDC on NEAR: every payment ends as this, in the treasury's Intents balance. */
+/** USDC on NEAR: every payment ends as this, in the treasury's confidential Intents balance. */
 const NEAR_USDC = 'nep141:17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1';
 /**
  * The routes Alcove takes, keyed by 1Click asset ID (from /v0/tokens, checked 5 November 2026): USD stablecoins on
@@ -64,6 +67,11 @@ const QuoteResponseSchema = z.object({
   quote: z.object({ depositAddress: z.string().min(1), depositMemo: z.string().nullish(), deadline: z.string().datetime(), amountIn: units, minAmountIn: units })
 });
 
+/**
+ * A kept quote that pays into the treasury's confidential balance, as 1Click repeats the request in it. A deposit opened
+ * before top-ups were confidential has `INTENTS` there, and is asked about as it always was: without the treasury's token.
+ */
+const ConfidentialQuote = z.object({ quoteRequest: z.object({ recipientType: z.literal('CONFIDENTIAL_INTENTS') }) });
 /** What /v0/status says about a deposit: its status and the swap details, read for what was sent so far, and once the swap is done. */
 const StatusSchema = z.object({ status: z.string(), swapDetails: z.unknown() });
 /** What an unfinished swap says arrived so far, when it says. */
@@ -101,32 +109,55 @@ const IN_PROGRESS = new Map<string, OpenDepositState>([
   ['PENDING_DEPOSIT', 'waiting'], ['KNOWN_DEPOSIT_TX', 'arriving'], ['PROCESSING', 'arriving'], ['INCOMPLETE_DEPOSIT', 'short']
 ]);
 
-const unavailable = (context: Record<string, string | number>, level: 'warn' | 'error' = 'warn') =>
-  new UnavailableError('Adding money isn’t available right now. Try again in a minute.', { context: { provider: 'oneclick', ...context }, level });
+const unavailable = (context: Record<string, string | number>, level: 'warn' | 'error' = 'warn') => providerUnavailable('oneclick', context, level);
 /**
  * The widest band of a quote Alcove takes, in basis points below what it asks for: 1% slippage and half a percent more.
  * A payment anywhere in the band earns the full promise, so a wider one would give money away.
  */
 const MAX_BAND_BPS = 150n;
 
-/** `apiKey` is the partner JWT; without one 1Click still quotes, with its own fee on top. */
-export function oneClick(o: { baseUrl: string; apiKey: string | undefined; treasury: string }): DepositProvider {
+/**
+ * `apiKey` is the partner key, sent as X-API-Key on every request: beside it, and only beside it, 1Click takes the
+ * treasury's token as its session. `treasury` is the treasury's account and its key, which signs in as it.
+ */
+export function oneClick(o: { baseUrl: string; nearRpcUrl: string; apiKey: string; treasury: { account: string; key: TreasuryKey } }): DepositProvider {
   let tokens: { routes: DepositRoute[]; until: number } | { failed: true; until: number } | null = null;
 
-  /** One request to 1Click, its JSON body parsed with `schema`. Anything but a 2xx answer that parses is unavailable. */
-  async function call<S extends z.ZodType>(schema: S, method: 'GET' | 'POST', path: string, body?: unknown): Promise<{ data: z.infer<S>; raw: unknown }> {
+  const request: OneClickRequest = (method, path, body, token) => fetch(`${o.baseUrl}${path}`, {
+    method,
+    headers: {
+      'X-API-Key': o.apiKey, 'User-Agent': 'alcove-api',
+      ...(token === null ? {} : { Authorization: `Bearer ${token}` }),
+      ...(body === undefined ? {} : { 'content-type': 'application/json' })
+    },
+    body: body === undefined ? null : JSON.stringify(body),
+    signal: AbortSignal.timeout(PROVIDER_TIMEOUT_MS)
+  });
+  const session = treasurySession({ request, nearRpcUrl: o.nearRpcUrl, account: o.treasury.account, key: o.treasury.key });
+
+  /**
+   * One request to 1Click, its JSON body parsed with `schema`, signed in as the treasury when `signedIn`. A token 1Click
+   * refuses (401) is replaced by a new sign-in, once, and the request made again; refused again, it's unavailable and
+   * logged at error, since a fresh session refused means a setting is wrong. Anything but a 2xx answer that parses is
+   * unavailable.
+   */
+  async function call<S extends z.ZodType>(schema: S, method: 'GET' | 'POST', path: string, how: { body?: unknown; signedIn: boolean }): Promise<{ data: z.infer<S>; raw: unknown }> {
     // Errors name the endpoint, never its query, which can name a deposit.
     const endpoint = path.split('?')[0] ?? '';
-    let res: Response;
-    try {
-      res = await fetch(`${o.baseUrl}${path}`, {
-        method,
-        headers: { ...(o.apiKey === undefined ? {} : { 'X-API-Key': o.apiKey }), 'User-Agent': 'alcove-api', ...(body === undefined ? {} : { 'content-type': 'application/json' }) },
-        body: body === undefined ? null : JSON.stringify(body),
-        signal: AbortSignal.timeout(PROVIDER_TIMEOUT_MS)
-      });
-    } catch (e) {
-      throw unavailable({ endpoint, error: e instanceof Error ? e.name : 'unknown' });
+    const send = async (token: string | null): Promise<Response> => {
+      try {
+        return await request(method, path, how.body, token);
+      } catch (e) {
+        throw unavailable({ endpoint, error: e instanceof Error ? e.name : 'unknown' });
+      }
+    };
+    const token = how.signedIn ? await session.token() : null;
+    let res = await send(token);
+    if (res.status === 401 && token !== null) {
+      // The refusal's body isn't read: let its connection go before asking again.
+      await res.body?.cancel().catch(() => undefined);
+      res = await send(await session.renew(token));
+      if (res.status === 401) throw unavailable({ endpoint, status: res.status, error: 'session-refused' }, 'error');
     }
     if (!res.ok) throw unavailable({ endpoint, status: res.status });
     const raw: unknown = await res.json().catch(() => null);
@@ -144,7 +175,7 @@ export function oneClick(o: { baseUrl: string; apiKey: string | undefined; treas
       }
       let data: z.infer<typeof TokensSchema>;
       try {
-        ({ data } = await call(TokensSchema, 'GET', '/v0/tokens'));
+        ({ data } = await call(TokensSchema, 'GET', '/v0/tokens', { signedIn: false }));
       } catch (e) {
         tokens = { failed: true, until: Date.now() + TOKENS_FAILED_FOR_MS };
         throw e;
@@ -163,12 +194,17 @@ export function oneClick(o: { baseUrl: string; apiKey: string | undefined; treas
       return routes;
     },
     async open(route, amount): Promise<OpenedDeposit> {
+      const treasury = o.treasury.account;
       const asked = {
-        originAsset: route.id, destinationAsset: NEAR_USDC, recipient: o.treasury, recipientType: 'INTENTS', refundTo: o.treasury, refundType: 'INTENTS'
+        originAsset: route.id, destinationAsset: NEAR_USDC,
+        recipient: treasury, recipientType: 'CONFIDENTIAL_INTENTS', refundTo: treasury, refundType: 'CONFIDENTIAL_INTENTS'
       };
       const { data, raw } = await call(QuoteResponseSchema, 'POST', '/v0/quote', {
-        dry: false, swapType: 'FLEX_INPUT', slippageTolerance: 100, depositType: 'ORIGIN_CHAIN', amount: amount.toString(), ...asked,
-        deadline: new Date(Date.now() + DEADLINE_MS).toISOString()
+        body: {
+          dry: false, swapType: 'FLEX_INPUT', slippageTolerance: 100, depositType: 'ORIGIN_CHAIN', amount: amount.toString(), ...asked,
+          deadline: new Date(Date.now() + DEADLINE_MS).toISOString()
+        },
+        signedIn: true
       });
       // The person is told to send exactly what was asked for, and anything from `minAmountIn` up earns the promise: a
       // quote for another amount, with a wider band, for another request or with a deadline out of bounds isn't one to
@@ -191,7 +227,9 @@ export function oneClick(o: { baseUrl: string; apiKey: string | undefined; treas
     },
     async check(deposit): Promise<DepositCheck> {
       const query = new URLSearchParams({ depositAddress: deposit.address, ...(deposit.memo === null ? {} : { depositMemo: deposit.memo }) });
-      const { data } = await call(StatusSchema, 'GET', `/v0/status?${query.toString()}`);
+      // Decided by the deposit's own quote: one into the confidential balance is asked about as the treasury, and one
+      // opened before, into the public balance, exactly as it was then.
+      const { data } = await call(StatusSchema, 'GET', `/v0/status?${query.toString()}`, { signedIn: ConfidentialQuote.safeParse(deposit.quote).success });
       const progress = IN_PROGRESS.get(data.status);
       if (progress) {
         const sent = seen.safeParse(data.swapDetails);
@@ -224,7 +262,10 @@ export function oneClick(o: { baseUrl: string; apiKey: string | undefined; treas
   };
 }
 
-/** Whether 1Click's repetition of a quote request is the request Alcove makes: from the route, to the treasury, as USDC on NEAR. */
+/**
+ * Whether 1Click's repetition of a quote request is the request Alcove makes: from the route, to the treasury's
+ * confidential balance and refunded there, as USDC on NEAR.
+ */
 function sameRequest(got: z.infer<typeof Asked>, want: z.infer<typeof Asked>): boolean {
   return got.originAsset === want.originAsset && got.destinationAsset === want.destinationAsset && got.recipient === want.recipient
     && got.recipientType === want.recipientType && got.refundTo === want.refundTo && got.refundType === want.refundType;

@@ -5,6 +5,7 @@
  */
 import type { Config } from '../../config';
 import type { Json } from '../../crypto';
+import { UnavailableError } from '../../errors';
 import { oneClick } from './oneclick';
 
 export type DepositProviderName = 'oneclick';
@@ -15,8 +16,8 @@ export interface DepositProvider {
   /** Routes the provider can take right now, filtered to the allowlist. Cached for 10 minutes. */
   routes(): Promise<DepositRoute[]>;
   /**
-   * Opens a deposit for `amount` (in the token's smallest unit): a quote whose recipient is the treasury. Throws
-   * UnavailableError if the provider won't quote.
+   * Opens a deposit for `amount` (in the token's smallest unit): a quote whose recipient is the treasury's confidential
+   * balance. Throws UnavailableError if the provider won't quote.
    */
   open(route: DepositRoute, amount: bigint): Promise<OpenedDeposit>;
   /**
@@ -27,13 +28,23 @@ export interface DepositProvider {
 }
 /** How long one call to a provider may take before it counts as no answer. */
 export const PROVIDER_TIMEOUT_MS = 15_000;
+/**
+ * A provider that can't be used right now (down, refusing, or answering what can't be trusted), in the words people see
+ * for it. `context` says why in codes and statuses, never what a deposit is about.
+ */
+export const providerUnavailable = (provider: DepositProviderName, context: Record<string, string | number>, level: 'info' | 'warn' | 'error' = 'warn') =>
+  new UnavailableError('Adding money isn’t available right now. Try again in a minute.', { context: { provider, ...context }, level });
 /** The states of a deposit that money can still be on its way to. */
 export type OpenDepositState = 'waiting' | 'arriving' | 'short';
 
 /** One token on one chain. `minimum` is in the token's smallest unit; `chainName` is the chain as people call it. */
 export interface DepositRoute { id: string; provider: DepositProviderName; chain: string; chainName: string; token: 'USDC' | 'USDT'; decimals: number; minimum: bigint }
-/** Where a deposit is paid, which is all a provider needs to say what happened to it. */
-export interface DepositAddress { route: DepositRoute; address: string; memo: string | null }
+/**
+ * Where a deposit is paid, and the provider's quote for it as it was kept, which is all a provider needs to say what
+ * happened to it: the quote says how the provider is to be asked (1Click: signed in as the treasury, for a deposit into
+ * its confidential balance).
+ */
+export interface DepositAddress { route: DepositRoute; address: string; memo: string | null; quote: unknown }
 /**
  * A deposit as the provider handed it out. `amountIn` is what the person is asked to send and `minAmountIn` the least
  * the provider still swaps, both in the token's smallest unit.
@@ -79,9 +90,11 @@ const made = new WeakMap<Config, { oneclick: DepositProvider } | null>();
 export function depositProviders(cfg: Config): { oneclick: DepositProvider } | null {
   const known = made.get(cfg);
   if (known !== undefined) return known;
-  // The treasury turns top-ups on; the partner key only lowers 1Click's fee, so without it quotes are a little worse.
-  const providers = cfg.TREASURY_INTENTS_ACCOUNT
-    ? { oneclick: oneClick({ baseUrl: cfg.ONECLICK_BASE_URL, apiKey: cfg.ONECLICK_API_KEY || undefined, treasury: cfg.TREASURY_INTENTS_ACCOUNT }) }
+  // Top-ups take the treasury, its key to sign in to 1Click as it, and a partner key, beside which alone 1Click takes
+  // that session on a quote. Without any of them they're off: no deposit is opened that would only be refused.
+  const { TREASURY_INTENTS_ACCOUNT: account, TREASURY_INTENTS_KEY: key, ONECLICK_API_KEY: apiKey } = cfg;
+  const providers = account && key && apiKey
+    ? { oneclick: oneClick({ baseUrl: cfg.ONECLICK_BASE_URL, nearRpcUrl: cfg.NEAR_RPC_URL, apiKey, treasury: { account, key } }) }
     : null;
   made.set(cfg, providers);
   return providers;

@@ -1,11 +1,23 @@
 import { X509Certificate } from 'node:crypto';
 import { MAX_DOC_ITEMS } from '@alcove/api';
 import { z } from 'zod';
+import { TreasuryKey } from './features/billing/treasury-key';
 import { INTEL_SGX_ROOT_CA, NVIDIA_NRAS_ROOT_CA } from './roots';
 import { teeKeys } from './tee';
 
 /** An optional setting: unset, or set to nothing (as in .env.example), means it isn't configured. */
 const optional = z.preprocess((v) => (typeof v === 'string' && v.trim() === '' ? undefined : v), z.string().min(1).optional());
+/**
+ * The treasury's NEAR key, made a signer here, once, so no setting holds its text. One that isn't a key stops the server
+ * from starting, with a message that names the setting and never what it was set to.
+ */
+const TreasuryKeySetting = optional.transform((text, ctx) => {
+  if (text === undefined) return undefined;
+  const key = TreasuryKey.parse(text);
+  if (key) return key;
+  ctx.issues.push({ code: 'custom', input: undefined, message: 'TREASURY_INTENTS_KEY must be the treasury’s NEAR secret key: ed25519: and 64 bytes, base58' });
+  return z.NEVER;
+});
 
 const Key = (name: string) => z.string().regex(/^[A-Za-z0-9_-]{43}$/, `${name} must be 32 bytes, base64url`);
 const INTEL_PCS = 'https://api.trustedservices.intel.com';
@@ -82,12 +94,23 @@ const EnvSchema = z.object({
    * and is sent requests sealed to its attested key; any other is unencrypted (features/notes/models.ts).
    */
   NEAR_AI_ENDPOINTS_URL: z.string().url().default('https://completions.near.ai/endpoints'),
-  /** NEAR Intents 1Click, for credit top-ups: the partner JWT from partners.near-intents.org. Optional: without it 1Click still quotes, with a higher fee. */
+  /**
+   * NEAR Intents 1Click, for top-ups: the partner key from partners.near-intents.org, sent as X-API-Key. 1Click takes
+   * the treasury's session for a confidential quote only beside a partner key, so top-ups are off without it.
+   */
   ONECLICK_API_KEY: optional,
-  /** The NEAR account whose Intents balance receives every top-up, and every refund. Top-ups are off without it. */
+  /** The NEAR account whose confidential Intents balance receives every top-up, and every refund. Top-ups are off without it. */
   TREASURY_INTENTS_ACCOUNT: optional,
+  /**
+   * A full access key of TREASURY_INTENTS_ACCOUNT, in NEAR's format (`ed25519:` and 64 bytes, base58), registered for
+   * it in intents.near: it signs Alcove in to 1Click as the treasury. It can move everything the treasury holds.
+   * Top-ups are off without it.
+   */
+  TREASURY_INTENTS_KEY: TreasuryKeySetting,
   /** 1Click's API. Tests point it at their stand-in. */
   ONECLICK_BASE_URL: z.string().url().default('https://1click.chaindefuser.com'),
+  /** NEAR's JSON-RPC, read for intents.near's current salt, which every sign-in to 1Click carries. Tests point it at their stand-in. */
+  NEAR_RPC_URL: z.string().url().default('https://near-rpc.defuse.org'),
   /** Intel's Provisioning Certification Service: the TCB info, QE identity and revocation lists a TDX quote is checked against. */
   INTEL_PCS_URL: z.string().url().default(INTEL_PCS),
   /** The root every TDX quote and Intel collateral must chain to: Intel's SGX Root CA. Tests set their own. */
