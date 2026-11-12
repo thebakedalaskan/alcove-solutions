@@ -122,7 +122,8 @@ export function CheckoutHost({ open, onClose, onCompare }: { open: CheckoutOpen;
   /* Where the window starts: on the payment it was opened on, on one already on its way for the same thing, or choosing. */
   const [view, setView] = useState<View | null>(open.topUpId ? { step: 'pay', id: open.topUpId } : null);
   if (view === null && !list.isPending) {
-    const going = waitingPurchase(list.data, open.what.plan, now);
+    // Team's payments are added with Team's checkout (a payment that buys licenses).
+    const going = open.what.plan === 'team' ? undefined : waitingPurchase(list.data, open.what.plan, now);
     setView(going ? { step: 'pay', id: going.id } : { step: 'choose' });
   }
   const payId = view?.step === 'pay' ? view.id : null;
