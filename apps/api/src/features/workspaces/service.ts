@@ -30,6 +30,7 @@ import { tellCall } from '../calls/notifications';
 import { roomsOfCalls } from '../calls/room-boards';
 import { collect, copyUses, releaseDocuments, releaseWorkspace } from './media';
 import { personOf, portraitFor } from '../account/portraits';
+import { settlePayers } from '../billing/storage';
 import { copyContent, kindOf, moveClientTags, startContent } from './documents';
 import { waitingFor } from './mentions';
 import { licensedBy, licensedOn } from '../billing/teams';
@@ -554,11 +555,13 @@ export async function removePerson(d: Deps, reader: Reader, workspaceId: string,
  * by restricting something goes with them, so coming back gives them only what they're given. What only they could reach:
  * taken out (`taken`, by an admin or by a call's invite), it goes to the workspace's admins (`handStranded`), so nobody's
  * words are lost to a change nobody made of that document; leaving (`left`), it's still theirs, in Trash, for 30 days, should
- * they come back (`trashStranded`), and nobody else's to read. How much did.
+ * they come back (`trashStranded`), and nobody else's to read. Whoever the workspace counted against, if that was them,
+ * stops paying for it: it counts against whoever's in charge of it now (`settlePayers`). How much did.
  */
 async function dropMember(w: HeldWorkspace, c: Db, m: z.infer<typeof Member>, why: 'taken' | 'left'): Promise<number> {
   await exec(c, 'DELETE FROM workspace_members WHERE owner_id = $1 AND member_id = $2', [w.owner.ownerId, m.member_id]);
   await exec(c, 'DELETE FROM workspace_mentions WHERE owner_id = $1 AND principal_index = $2', [w.owner.ownerId, m.email_index]);
+  await settlePayers(c, w.owner.ownerId);
   const { email } = personOfMember(w, m);
   w.state = { ...w.state, items: Object.fromEntries(Object.entries(w.state.items).map(([id, x]) => [id, x.restrictedBy === email ? { ...x, restrictedBy: null } : x])) };
   return why === 'taken' ? handStranded(w, c) : trashStranded(w, c);

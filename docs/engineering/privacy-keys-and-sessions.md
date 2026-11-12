@@ -894,7 +894,7 @@ decides.
   watching a call's live notes: 120 a minute per connection to the call, with at most one refresh every 30 seconds for
   each part of the call, however many are watching. Questions and catch-ups (about a note, across your notes, a call so far or a
   series): 20 a minute per account, together (during a call, per connection to it, and asking about earlier calls per
-  account). What carries over into a call: 60 a minute per account. Opening a moment of a call's
+  account); a guest's in a call, which the organizer pays for, 6 a minute each. What carries over into a call: 60 a minute per account. Opening a moment of a call's
   live transcript from a catch-up: 60 a minute per connection to the call. Ringing: 20 a minute per organizer, 30 answers a minute per person, and 30 openings of the stream of rings a minute per account. Changes to a workspace's tree and people: 600 a
   minute per person, opening its stream 120, making a workspace 20 per account, and reading your list of them, the tags
   waiting for you, your library or changing what a call brings 120 together, since each opens every workspace you're in.

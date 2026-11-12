@@ -219,6 +219,23 @@ describe('catching up during a call', () => {
     await again.leave();
   });
 
+  it('lets a guest, whose questions the organizer pays for, ask a few a minute, and someone signed in as many as before', async () => {
+    const org = await account();
+    const kofiEmail = unique('kofi');
+    const { code: c } = await org.api.calls.startNow({ notes: 'on', guests: [kofiEmail] });
+    const host = await org.api.calls.join(c, { mic: true, cam: false });
+    await inGroup(host);
+    const sam = await guestBrowser().calls.join(c, { mic: true, cam: false, name: 'Sam' });
+    await letIn(host, sam);
+    for (let i = 0; i < 6; i++) await sam.askSoFar('What did we agree?', { kind: 'all' });
+    const refused = await sam.catchUp({ kind: 'all' }).catch((e: unknown) => e);
+    expect([code(refused), message(refused)]).toEqual(['unavailable', 'Too many attempts. Wait a minute and try again.']);
+    // Kofi is signed in, and his questions are his own plan's: he may ask more than a guest.
+    const kofi = await (await account(kofiEmail)).api.calls.join(c, { mic: true, cam: false });
+    await inGroup(kofi);
+    for (let i = 0; i < 7; i++) await kofi.askSoFar('What did we agree?', { kind: 'all' });
+  });
+
   it('lets a guest with the link read only what was said while they were in the call', async () => {
     const org = await account();
     const kofiEmail = unique('kofi');

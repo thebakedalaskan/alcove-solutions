@@ -76,7 +76,7 @@ export async function maintain(d: Deps, opts: { orphanAgeMs?: number; trashAgeMs
   const rings = await step('rings', () => sweepRings(d), 0);
   const liveNotes = await step('live notes', () => sweepLiveNotes(d), 0);
   const attention = await step('attention', () => sweepAttention(d), 0);
-  // Plans: who pays for each workspace, every account's plan, graces that ended, and top-ups the previous release settled while this one deployed.
+  // Plans: who pays for each workspace, every account's plan, graces that ended, and top-ups paid for before plans.
   const plans = await step('plans', () => plansUpkeep(d).then((r) => r.settled + r.carried + r.due), 0);
   const carried = await step('carried top-ups', () => creditCarried(d), 0);
   // Teams: invites that expired, and pools that shrank as a license ended, or whose grace ended.

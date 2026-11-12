@@ -583,30 +583,70 @@ export async function list(d: Deps, ownerId: string): Promise<TopUp[]> {
 }
 
 /**
- * Adds to the balance what a deposit settled by the previous release while this one deployed came to: that release
- * added credits, which no longer count (billing_cutover says when this release's migration ran, and the previous release
- * runs only for a while after it). Each once, under its row's lock, by the same rules as any other. Says how many.
+ * A deposit's record with everything in it kept, what this release doesn't read included (the credits a release before
+ * plans promised and added): saved again, it still opens in the previous release, serving while this one deploys.
+ */
+const Kept = z.looseObject({ settled: z.looseObject({}).nullable().optional() });
+type Kept = z.infer<typeof Kept>;
+/** A deposit's record as stored (`Kept`) and as this release reads it, or why it can't be opened. */
+function openKept(d: Deps, ownerId: string, depositId: string, ciphertext: Uint8Array): { ok: true; kept: Kept; rec: DepositRecord } | { ok: false; error: unknown } {
+  try {
+    const kept = openJson(key(d), header(ownerId, depositId), ciphertext, Kept);
+    return { ok: true, kept, rec: DepositRecord.parse(kept) };
+  } catch (error) {
+    return { ok: false, error };
+  }
+}
+
+/** Whether every deposit a release before plans settled has been looked at, as far as this process knows. */
+let carriedAll = false;
+/**
+ * Adds to the balance what every deposit a release before plans settled came to: those releases added credits, which no
+ * longer count, so money paid before this release, or while it deployed, is added again as dollars (billing_cutover says
+ * when this release's migration ran, and the previous release runs only for a while after it). Each settled deposit is
+ * looked at once, then never again (`check_after` infinity), under its row's lock, by the same rules as any other; one
+ * whose record can't be opened is logged at error, once, for support to add by hand, and holds up none after it. Once a
+ * pass a day after the cutover finds nothing, nothing can come again: this process stops looking. Says how many it added.
  */
 export async function creditCarried(d: Deps): Promise<number> {
+  if (carriedAll) return 0;
   const due = await rows(d.pool, z.object({ owner_id: z.string(), deposit_id: z.string() }), `
     SELECT owner_id, deposit_id FROM deposits d, billing_cutover b
-    WHERE d.state = 'credited' AND d.checked_at >= b.at AND d.checked_at < b.at + interval '1 day' LIMIT 100`);
+    WHERE d.state = 'credited' AND d.checked_at < b.at + interval '1 day' AND d.check_after < 'infinity'
+    ORDER BY d.checked_at LIMIT 100`);
+  if (!due.length) {
+    const over = await maybeOne(d.pool, z.object({ over: z.boolean() }), "SELECT now() >= at + interval '1 day' AS over FROM billing_cutover");
+    carriedAll = over?.over === true;
+    return 0;
+  }
   let carried = 0;
   for (const x of due) {
-    const done = await tx(d.pool, async (c) => {
-      const r = await maybeOne(c, Row, 'SELECT deposit_id, state, record_ciphertext, created_at FROM deposits WHERE owner_id = $1 AND deposit_id = $2 FOR UPDATE', [x.owner_id, x.deposit_id]);
-      if (!r) return false;
-      const rec = record(d, x.owner_id, r);
+    const where = [x.owner_id, x.deposit_id];
+    const outcome = await tx(d.pool, async (c): Promise<{ kind: 'carried' | 'nothing' } | { kind: 'unopened'; error: unknown }> => {
+      const r = await maybeOne(c, Row, 'SELECT deposit_id, state, record_ciphertext, created_at FROM deposits WHERE owner_id = $1 AND deposit_id = $2 FOR UPDATE', where);
+      if (!r) return { kind: 'nothing' };
+      const lookedAt = () => exec(c, "UPDATE deposits SET check_after = 'infinity' WHERE owner_id = $1 AND deposit_id = $2", where);
+      const opened = openKept(d, x.owner_id, x.deposit_id, r.record_ciphertext);
+      if (!opened.ok) { await lookedAt(); return { kind: 'unopened', error: opened.error }; }
+      const { kept, rec } = opened;
       const s = rec.settled;
-      if (!s || s.addedMicroUsd !== null) return false;
+      if (!s || s.addedMicroUsd !== null) { await lookedAt(); return { kind: 'nothing' }; }
       const added = addedFor(rec, { sentMicroUsd: BigInt(s.sentMicroUsd), outMicroUsd: BigInt(s.outMicroUsd), refundedMicroUsd: BigInt(s.refundedMicroUsd) });
       if (added > 0n) await credit(d, c, x.owner_id, Number(added), `Added, ${formatUnits(BigInt(s.sentMicroUsd), 6)} ${rec.route.token}`);
-      await exec(c, 'UPDATE deposits SET record_ciphertext = $3 WHERE owner_id = $1 AND deposit_id = $2',
-        [x.owner_id, x.deposit_id, sealJson(key(d), header(x.owner_id, x.deposit_id), toJson({ ...rec, settled: { ...s, addedMicroUsd: added.toString() } }))]);
-      dlog.warn('top-up the previous release settled added as dollars', { depositId: x.deposit_id });
-      return true;
+      const next = toJson({ ...kept, settled: { ...(kept.settled ?? {}), addedMicroUsd: added.toString() } });
+      await exec(c, "UPDATE deposits SET record_ciphertext = $3, check_after = 'infinity' WHERE owner_id = $1 AND deposit_id = $2",
+        [...where, sealJson(key(d), header(x.owner_id, x.deposit_id), next)]);
+      return { kind: 'carried' };
+    }).catch((e: unknown) => {
+      dlog.warn('top-up from before plans not looked at; it is next time', { depositId: x.deposit_id, err: e });
+      return { kind: 'nothing' as const };
     });
-    if (done) carried++;
+    // Said once it's committed, so each is said once.
+    if (outcome.kind === 'unopened') dlog.error('top-up from before plans can’t be opened, so it wasn’t added as dollars', { depositId: x.deposit_id, err: outcome.error });
+    if (outcome.kind === 'carried') {
+      carried++;
+      dlog.info('top-up a release before plans settled added as dollars', { depositId: x.deposit_id });
+    }
   }
   return carried;
 }
