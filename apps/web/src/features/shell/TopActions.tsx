@@ -10,7 +10,7 @@ import { YourFace } from './YouMenu';
 export function TopActions({ onSearch }: { onSearch: () => void }) {
   return (
     <div className="top-acts">
-      <button type="button" className="top-find" onClick={onSearch} aria-label="Search or ask" title="Search or ask" aria-haspopup="dialog" aria-keyshortcuts={ariaShortcut('K')}>
+      <button type="button" className="top-find" data-tour="ask" onClick={onSearch} aria-label="Search or ask" title="Search or ask" aria-haspopup="dialog" aria-keyshortcuts={ariaShortcut('K')}>
         <Icon name="search" size={16} /><span>Search or ask</span><Kbd>{shortcut('K')}</Kbd>
       </button>
       <YourFace size={32} className="top-me" />

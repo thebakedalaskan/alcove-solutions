@@ -95,5 +95,5 @@ function Compute() {
   const checked = useQuery(q.trust());
   const verified = verifiedAt(checked.data);
   const detail = verified !== null ? `Hardware verified ${hm(new Date(verified))}` : checked.isPending ? 'Checking the hardware…' : 'Audio, transcripts and notes are sealed';
-  return <SealedBadge title="Confidential compute" detail={detail} className="head-seal" data-tour="sealed" />;
+  return <SealedBadge title="Confidential compute" detail={detail} className="head-seal" />;
 }

@@ -41,14 +41,14 @@ export interface NavPlace { to: Place; icon: IconName; label: string; count?: Co
 /** The side panel's places under Start a call: where your own work is. */
 export const NAV: readonly NavPlace[] = [
   { to: '/home', icon: 'home', label: 'Home', count: 'home' },
-  { to: '/calls', icon: 'calls', label: 'Calls', tour: 'notes' },
-  { to: '/drive', icon: 'folderOpen', label: 'Drive', count: 'drive' },
-  { to: '/record', icon: 'recordDot', label: 'Record', count: 'record', tour: 'room' }
+  { to: '/calls', icon: 'calls', label: 'Calls', tour: 'calls' },
+  { to: '/drive', icon: 'folderOpen', label: 'Drive', count: 'drive', tour: 'drive' },
+  { to: '/record', icon: 'recordDot', label: 'Record', count: 'record', tour: 'record' }
 ];
 /** The places at the side panel's foot, above the check: who works with you. */
 export const NAV_FOOT: readonly NavPlace[] = [
   { to: '/team', icon: 'people', label: 'Team' },
-  { to: '/agents', icon: 'agent', label: 'Agents' }
+  { to: '/agents', icon: 'agent', label: 'Agents', tour: 'agents' }
 ];
 
 /** The places someone has: on your own there's no Team page. Until that's known they're all there, so nothing appears late. */
@@ -61,8 +61,8 @@ export interface Tab { to: Place; icon: IconName; label: string; raised?: boolea
  */
 export const TABS: readonly Tab[] = [
   { to: '/home', icon: 'home', label: 'Home' },
-  { to: '/calls', icon: 'calls', label: 'Calls', tour: 'notes' },
-  { to: '/record', icon: 'recordDot', label: 'Record', raised: true, tour: 'room' },
-  { to: '/drive', icon: 'folderOpen', label: 'Drive' },
+  { to: '/calls', icon: 'calls', label: 'Calls', tour: 'calls' },
+  { to: '/record', icon: 'recordDot', label: 'Record', raised: true, tour: 'record' },
+  { to: '/drive', icon: 'folderOpen', label: 'Drive', tour: 'drive' },
   { to: '/team', icon: 'people', label: 'Team' }
 ];

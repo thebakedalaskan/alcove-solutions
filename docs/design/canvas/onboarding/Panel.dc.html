@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>The side panel</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="home.css">
+<link rel="stylesheet" href="nav.css">
+<script src="tokens.js"></script>
+<script src="home.js"></script>
+<script src="nav.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400..700&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<aside class="{{p.kindCls}}" style="{{p.style}}" aria-label="Side panel">
+
+<sc-if value="{{p.full}}" hint-placeholder-val="{{true}}">
+<div class="nv-top">
+<button type="button" class="brand nv-logo" aria-label="Alcove, Home" onClick="{{p.logo}}">
+<svg width="24" height="28" viewBox="0 0 22 26" aria-hidden="true"><defs><clipPath id="nva"><path d="M2 24.6V11a9 9 0 0 1 18 0v13.6z"></path></clipPath><clipPath id="nvu"><rect x="0" y="0" width="22" height="19.2"></rect></clipPath><linearGradient id="nvs" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2A2373"></stop><stop offset=".42" stop-color="#5847DA"></stop><stop offset=".64" stop-color="#C470A9"></stop><stop offset=".74" stop-color="#FFA06A"></stop></linearGradient><radialGradient id="nvn" cx=".42" cy=".38" r=".72"><stop offset="0" stop-color="#FFF6E0"></stop><stop offset=".5" stop-color="#FFD58A"></stop><stop offset="1" stop-color="#FFB547"></stop></radialGradient></defs><g clip-path="url(#nva)"><rect width="22" height="26" fill="url(#nvs)"></rect><g clip-path="url(#nvu)"><circle cx="11" cy="19.2" r="4.4" fill="url(#nvn)"></circle></g><rect y="19.2" width="22" height="7" fill="#231C5E"></rect><rect x="7.2" y="20.5" width="7.6" height=".9" rx=".45" fill="#FFB36E" opacity=".8"></rect><rect x="8.8" y="22.1" width="4.4" height=".8" rx=".4" fill="#FFB36E" opacity=".45"></rect></g><path class="rim" d="M2 24.6V11a9 9 0 0 1 18 0v13.6z" stroke-width="1"></path></svg>
+alcove</button>
+<button type="button" class="nv-hide" aria-label="Hide the side panel" title="Hide the side panel" onClick="{{p.hide}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{p.I.panel}}"></path></svg></button>
+</div>
+
+<sc-if value="{{p.offline}}" hint-placeholder-val="{{false}}">
+<div class="nv-status" role="status"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{p.I.wifiOff}}"></path></svg><span><b>You’re offline</b>Recording still works. Everything else catches up when you’re back.</span></div>
+</sc-if>
+
+<button type="button" class="nv-new" data-tour="new-call" onClick="{{p.start}}"><span class="nv-new-ic"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{p.I.video}}"></path></svg></span><span>Start a call</span><span class="k">N</span></button>
+
+<nav class="nv-places" aria-label="Places">
+<sc-for list="{{p.top}}" as="n" hint-placeholder-count="5">
+<button type="button" class="nv-i{{n.cls}}" aria-current="{{n.current}}" data-tour="{{n.id}}" onClick="{{n.go}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{n.icon}}"></path></svg><span>{{n.label}}</span><sc-if value="{{n.hasCount}}" hint-placeholder-val="{{false}}"><b class="nv-n">{{n.count}}</b></sc-if></button>
+</sc-for>
+</nav>
+
+<div class="nv-mid">
+<sc-if value="{{p.upCard}}" hint-placeholder-val="{{false}}">
+<div class="nv-sec"><h2 class="nv-sec-h">Up next</h2>
+<div class="nv-card">
+<div class="nv-card-t"><span class="nv-arch is-now nv-arch-l" aria-hidden="true"><i></i></span><span class="nv-min0"><b class="clamp1">{{p.card.title}}</b><small>{{p.card.when}}</small></span></div>
+<div class="nv-card-a"><dc-import name="Faces" who="{{p.card.faces}}" size="24" max="3" ring="var(--surface)" hint-size="40px,26px"></dc-import><button type="button" class="b b-line b-sm nv-card-join" onClick="{{p.now.join}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{p.I.video}}"></path></svg>Join</button></div>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{p.hasPins}}" hint-placeholder-val="{{true}}">
+<div class="nv-sec">
+<div class="{{p.pinHeadCls}}"><h2>Pinned</h2><button type="button" class="nv-add" aria-label="Pin a note" title="Pin a note" aria-haspopup="dialog" onClick="{{p.pinAdd}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{p.I.pin}}"></path></svg></button></div>
+<sc-for list="{{p.pins}}" as="r" hint-placeholder-count="2">
+<button type="button" class="nv-l nv-pin{{r.cls}}" onClick="{{r.go}}"><span class="{{r.cover}}" aria-hidden="true"><i></i></span><span class="clamp1">{{r.t}}</span></button>
+</sc-for>
+</div>
+</sc-if>
+
+<sc-if value="{{p.pinHint}}" hint-placeholder-val="{{false}}">
+<div class="nv-sec"><div class="nv-sec-h is-always"><h2>Pinned</h2><button type="button" class="nv-add" aria-label="Pin a note" title="Pin a note" onClick="{{p.pinAdd}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{p.I.pin}}"></path></svg></button></div><p class="nv-hint">Pin notes you keep coming back to, like a weekly call, and they stay here.</p></div>
+</sc-if>
+
+<sc-if value="{{p.hasGroups}}" hint-placeholder-val="{{false}}">
+<div class="nv-sec"><div class="nv-sec-h is-always"><h2>Groups</h2><button type="button" class="nv-add" aria-label="New group" title="New group"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{p.I.plus}}"></path></svg></button></div>
+<sc-for list="{{p.groups}}" as="g" hint-placeholder-count="2"><button type="button" class="nv-l nv-grp"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{p.I.hash}}"></path></svg><span class="clamp1">{{g.t}}</span><b>{{g.n}}</b></button></sc-for>
+</div>
+</sc-if>
+</div>
+
+<sc-if value="{{p.hasLow}}" hint-placeholder-val="{{false}}">
+<nav class="nv-places nv-low" aria-label="Your team and agents">
+<sc-for list="{{p.low}}" as="n" hint-placeholder-count="2">
+<button type="button" class="nv-i{{n.cls}}" aria-current="{{n.current}}" data-tour="{{n.id}}" onClick="{{n.go}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{n.icon}}"></path></svg><span>{{n.label}}</span><sc-if value="{{n.hasCount}}" hint-placeholder-val="{{false}}"><b class="nv-n">{{n.count}}</b></sc-if></button>
+</sc-for>
+</nav>
+</sc-if>
+
+<div class="nv-foot">
+<sc-if value="{{p.hasNow}}" hint-placeholder-val="{{false}}">
+<div class="nv-now{{p.now.cls}}" role="group" aria-label="{{p.now.tip}}">
+<span class="{{p.now.cover}}" aria-hidden="true"><i></i></span>
+<span class="nv-min0"><b class="clamp1">{{p.now.title}}</b><small>{{p.now.when}}</small></span>
+<button type="button" class="b b-tint b-sm nv-join" onClick="{{p.now.join}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{p.I.video}}"></path></svg>Join</button>
+</div>
+</sc-if>
+<p class="nv-seal" data-tour="seal"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{p.I.sealed}}"></path></svg>Confidential compute · verified</p>
+<button type="button" class="nv-left"><span class="{{p.minCls}}"><b>{{p.minutes}}</b> of notes left</span><span class="nv-meter"><i style="{{p.meter}}"></i></span></button>
+</div>
+</sc-if>
+
+<sc-if value="{{p.rail}}" hint-placeholder-val="{{false}}">
+<button type="button" class="nv-r-logo" aria-label="Alcove, Home" onClick="{{p.logo}}">
+<svg width="24" height="28" viewBox="0 0 22 26" aria-hidden="true"><defs><clipPath id="nvra"><path d="M2 24.6V11a9 9 0 0 1 18 0v13.6z"></path></clipPath><clipPath id="nvru"><rect x="0" y="0" width="22" height="19.2"></rect></clipPath><linearGradient id="nvrs" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2A2373"></stop><stop offset=".42" stop-color="#5847DA"></stop><stop offset=".64" stop-color="#C470A9"></stop><stop offset=".74" stop-color="#FFA06A"></stop></linearGradient><radialGradient id="nvrn" cx=".42" cy=".38" r=".72"><stop offset="0" stop-color="#FFF6E0"></stop><stop offset=".5" stop-color="#FFD58A"></stop><stop offset="1" stop-color="#FFB547"></stop></radialGradient></defs><g clip-path="url(#nvra)"><rect width="22" height="26" fill="url(#nvrs)"></rect><g clip-path="url(#nvru)"><circle cx="11" cy="19.2" r="4.4" fill="url(#nvrn)"></circle></g><rect y="19.2" width="22" height="7" fill="#231C5E"></rect></g><path class="rim" d="M2 24.6V11a9 9 0 0 1 18 0v13.6z" stroke-width="1"></path></svg>
+</button>
+<button type="button" class="nv-r-new" onClick="{{p.start}}" aria-label="Start a call"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{p.I.video}}"></path></svg><span class="nv-r-tip">Start a call<span class="k">N</span></span></button>
+<nav class="nv-r-places" aria-label="Places">
+<sc-for list="{{p.top}}" as="n" hint-placeholder-count="6">
+<button type="button" class="nv-r-i{{n.cls}}" aria-current="{{n.current}}" onClick="{{n.go}}"><span class="nv-r-pill"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{n.icon}}"></path></svg><sc-if value="{{n.hasCount}}" hint-placeholder-val="{{false}}"><b class="nv-r-n">{{n.count}}</b></sc-if></span><span class="nv-r-l">{{n.label}}</span></button>
+</sc-for>
+</nav>
+<sc-if value="{{p.hasPins}}" hint-placeholder-val="{{true}}">
+<span class="nv-r-rule" aria-hidden="true"></span>
+<div class="nv-r-pins" role="list" aria-label="Pinned">
+<sc-for list="{{p.pins}}" as="r" hint-placeholder-count="2">
+<button type="button" class="nv-r-pin{{r.cls}}" role="listitem" aria-label="{{r.t}}" onClick="{{r.go}}"><span class="{{r.cover}}" aria-hidden="true"><i></i></span><span class="nv-r-tip">{{r.t}}</span></button>
+</sc-for>
+</div>
+</sc-if>
+<span class="nv-grow"></span>
+<sc-if value="{{p.hasNow}}" hint-placeholder-val="{{false}}">
+<button type="button" class="nv-r-now{{p.now.cls}}" aria-label="{{p.now.tip}}" onClick="{{p.now.join}}"><span class="{{p.now.cover}}" aria-hidden="true"><i></i></span><small>{{p.now.short}}</small><span class="nv-r-tip">{{p.now.tip}}</span></button>
+</sc-if>
+<button type="button" class="{{p.sealCls}}" aria-label="Confidential compute · verified"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{p.I.sealed}}"></path></svg><span class="nv-r-tip">Confidential compute · verified 11:58</span></button>
+<button type="button" class="{{p.ringCls}}" aria-label="{{p.leftTip}}"><svg viewBox="0 0 24 24" aria-hidden="true"><circle class="t" cx="12" cy="12" r="9"></circle><circle class="v" cx="12" cy="12" r="9" stroke-dasharray="{{p.ring}}"></circle></svg><span class="nv-r-tip">{{p.leftTip}}</span></button>
+</sc-if>
+
+</aside>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"p":{"editor":null,"default":null},"v":{"editor":"enum","options":["today","a","b","c"],"default":"b"},"ns":{"editor":"enum","options":["rest","first","soon10","soon4","going","lots","alone","offline","low","waiting","pinHot","pinned","tip","tipNow","tipSeal","tipLeft"],"default":"rest"},"$preview":{"width":256,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    var AH = window.AH, p = this.props.p;
+    if (!p) {
+      var v = this.props.v || 'b', ns = this.props.ns || 'rest';
+      p = AH.NV.panel({ v: v, st: AH.NV.STEPS[ns] || {} });
+    }
+    return { p: p };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>What opens over Home</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="home.css">
+<script src="tokens.js"></script>
+<script src="home.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>body{margin:0}</style>
+</helmet>
+<sc-if value="{{alone}}" hint-placeholder-val="{{false}}"><div style="box-sizing: border-box; min-height: 100vh; padding: 56px 64px; background: oklch(.955 .007 80); color: oklch(.25 .05 268); font: 400 22px/1.4 Georgia, serif">The modals, Ask, the call card and the join screen live here, and open over each layout. You can see them in the step-by-step boards.</div></sc-if>
+<sc-if value="{{o.pageNote}}" hint-placeholder-val="{{false}}">
+<div class="pg">
+<div class="pg-bar"><button type="button" class="go-link" onClick="{{o.backHome}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{o.I.left}}"></path></svg>Home</button><span></span><div class="end"><button type="button" class="b b-line b-sm" onClick="{{o.copied}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{o.I.share}}"></path></svg>Share</button></div></div>
+<article class="pg-in">
+<h1 class="pg-h">{{o.note.title}}</h1>
+<div class="pg-m"><sc-if value="{{o.note.hasFaces}}" hint-placeholder-val="{{true}}"><dc-import name="Faces" who="{{o.note.faces}}" size="24" max="4" ring="var(--ground)" hint-size="40px,26px"></dc-import></sc-if><span>{{o.note.with}}</span><span>{{o.note.at}}</span></div>
+<p class="pg-p">{{o.note.summary}}</p>
+<sc-if value="{{o.hasNoteRows}}" hint-placeholder-val="{{true}}">
+<section class="pg-s">
+<h2>For you</h2>
+<sc-for list="{{o.noteRows}}" as="r" hint-placeholder-count="3">
+<div class="li{{r.cls}}"><div><p class="li-k">{{r.label}}</p><p class="li-t">{{r.text}}</p></div>
+<sc-if value="{{r.open}}" hint-placeholder-val="{{true}}"><div class="li-acts"><button type="button" class="b b-line b-sm" onClick="{{r.goYes}}">{{r.yes}}</button><button type="button" class="act" onClick="{{r.goNo}}">{{r.no}}</button></div></sc-if>
+<sc-if value="{{r.answered}}" hint-placeholder-val="{{false}}"><div class="li-done"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{o.I.check}}"></path></svg>{{r.doneText}}<button type="button" class="act" onClick="{{r.undo}}">Undo</button></div></sc-if>
+</div>
+</sc-for>
+</section>
+</sc-if>
+<section class="pg-s"><h2>Chapters</h2><sc-for list="{{o.note.chapters}}" as="c" hint-placeholder-count="3"><div class="ch"><span>{{c.at}}</span><b style="font-weight: 500">{{c.t}}</b></div></sc-for></section>
+</article>
+</div>
+</sc-if>
+
+<sc-if value="{{o.pageNotes}}" hint-placeholder-val="{{false}}">
+<div class="pg">
+<div class="pg-bar"><button type="button" class="go-link" onClick="{{o.backHome}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{o.I.left}}"></path></svg>Home</button><span></span><span></span></div>
+<div class="pg-in">
+<h1 class="pg-h">Notes</h1>
+<div style="margin-top: 24px">
+<sc-for list="{{o.notes}}" as="n" hint-placeholder-count="1">
+<button type="button" class="nt" onClick="{{n.go}}"><span class="nt-h"><span class="nt-t clamp1">{{n.title}}</span><span class="nt-w">{{n.when}}</span></span><span class="nt-e clamp2">{{n.excerpt}}</span><span class="nt-f">{{n.tag}}</span></button>
+</sc-for>
+<sc-if value="{{noNotes}}" hint-placeholder-val="{{false}}"><p class="li-clear">Your notes show up here after your first call.</p></sc-if>
+</div>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{o.anyModal}}" hint-placeholder-val="{{false}}">
+<div class="scrim">
+<div class="dlg" role="dialog" aria-modal="true" aria-label="Start a call">
+<sc-if value="{{o.mChoose}}" hint-placeholder-val="{{true}}">
+<div class="dlg-h"><h2>Start a call</h2><button type="button" class="dlg-x" aria-label="Close" onClick="{{o.closeModal}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{o.I.x}}"></path></svg></button></div>
+<div class="ways">
+<button type="button" class="way{{o.hotNow}}" onClick="{{o.goNow}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{o.I.video}}"></path></svg><span><b>Start now</b><small>Get a link and go in. Anyone with it can ask to join.</small></span><span class="k">↵</span></button>
+<button type="button" class="way{{o.hotLater}}" onClick="{{o.goLater}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{o.I.cal}}"></path></svg><span><b>Schedule for later</b><small>Pick who and when. It goes on your calendar.</small></span><span class="k">S</span></button>
+</div>
+</sc-if>
+<sc-if value="{{o.mSteps}}" hint-placeholder-val="{{false}}">
+<ol class="steps"><li class="{{o.stepA}}">Who</li><li class="{{o.stepB}}">When</li><li class="{{o.stepC}}">Details</li></ol>
+<button type="button" class="dlg-x card-x" aria-label="Close" onClick="{{o.closeModal}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{o.I.x}}"></path></svg></button>
+</sc-if>
+<sc-if value="{{o.mWho}}" hint-placeholder-val="{{false}}">
+<h2 class="dlg-q">Who’s it with?</h2>
+<div class="dlg-b">
+<div class="field"><sc-if value="{{o.hasInes}}" hint-placeholder-val="{{true}}"><span class="tok"><dc-import name="Faces" who="ines" size="22" hint-size="22px,24px"></dc-import>Ines</span></sc-if><span>Name or email</span></div>
+<p class="lab">People you’ve met</p>
+<button type="button" class="pick" onClick="{{o.toggleInes}}"><dc-import name="Faces" who="ines" size="30" hint-size="30px,33px"></dc-import><span><b>Ines</b><small>Met today</small></span><sc-if value="{{o.hasInes}}" hint-placeholder-val="{{true}}"><svg class="i pick-tick" viewBox="0 0 24 24" aria-hidden="true"><path d="{{o.I.check}}"></path></svg></sc-if></button>
+</div>
+<div class="dlg-f"><button type="button" class="b b-quiet" onClick="{{o.backChoose}}">Back</button><button type="button" class="b b-press{{o.hotNext}}" onClick="{{o.goWhen}}">Next</button></div>
+</sc-if>
+<sc-if value="{{o.mWhen}}" hint-placeholder-val="{{false}}">
+<h2 class="dlg-q">When?</h2>
+<div class="dlg-b">
+<sc-for list="{{o.slotDays}}" as="d" hint-placeholder-count="3">
+<div class="slot-day"><span>{{d.day}}</span><div class="slot-row"><sc-for list="{{d.slots}}" as="s" hint-placeholder-count="2"><button type="button" class="slot{{s.cls}}" aria-pressed="{{s.on}}" onClick="{{s.go}}">{{s.t}}</button></sc-for></div></div>
+</sc-for>
+<p style="margin-top: 8px; font-size: 13px; color: var(--ink-3)">Free on your calendar, 30 minutes.</p>
+</div>
+<div class="dlg-f"><button type="button" class="b b-quiet" onClick="{{o.goWho}}">Back</button><button type="button" class="b b-press{{o.hotNext}}" onClick="{{o.goDetails}}">Next</button></div>
+</sc-if>
+<sc-if value="{{o.mDetails}}" hint-placeholder-val="{{false}}">
+<h2 class="dlg-q">Call with Ines</h2>
+<div class="dlg-b">
+<div class="drow"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{o.I.cal}}"></path></svg><span><b>{{o.slotLabel}}</b></span><span></span></div>
+<div class="drow"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{o.I.people}}"></path></svg><span><b>Ines</b></span><span></span></div>
+<button type="button" class="drow" style="width: 100%" onClick="{{o.toggleNotes}}" aria-pressed="{{o.notesOn}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{o.I.notes}}"></path></svg><span><b>{{o.notesLabel}}</b><small>{{o.notesSub}}</small></span><span class="sw{{swCls}}"></span></button>
+</div>
+<div class="dlg-f"><button type="button" class="b b-quiet" onClick="{{o.goWhen}}">Back</button><button type="button" class="b b-press{{o.hotSchedule}}" onClick="{{o.schedule}}">Schedule</button></div>
+</sc-if>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{o.askOpen}}" hint-placeholder-val="{{false}}">
+<div class="scrim is-top">
+<div class="ask" role="dialog" aria-modal="true" aria-label="Search or ask">
+<div class="ask-in"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{o.I.search}}"></path></svg><input type="text" value="{{o.q}}" placeholder="Search or ask your notes" aria-label="Search or ask your notes" onChange="{{o.typed}}" onKeyDown="{{o.askKey}}"><button type="button" class="dlg-x" style="margin: -6px -8px" aria-label="Close" onClick="{{o.closeAsk}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{o.I.x}}"></path></svg></button></div>
+<sc-if value="{{o.askIdle}}" hint-placeholder-val="{{true}}">
+<div class="ask-qs"><sc-for list="{{o.questions}}" as="q" hint-placeholder-count="3"><button type="button" class="ask-q{{q.hotCls}}" onClick="{{q.go}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{o.I.ask}}"></path></svg>{{q.q}}</button></sc-for></div>
+</sc-if>
+<sc-if value="{{o.askDone}}" hint-placeholder-val="{{false}}">
+<div class="ask-a"><p>{{o.answer.p}}</p><button type="button" class="ask-src{{o.hotSource}}" onClick="{{o.openSource}}">{{o.answer.src}}<span>{{o.answer.at}}</span></button></div>
+</sc-if>
+<div class="ask-f"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{o.I.sealed}}"></path></svg>Answers come from your notes only, in confidential compute.</div>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{o.cardOpen}}" hint-placeholder-val="{{false}}">
+<div class="scrim">
+<div class="dlg" role="dialog" aria-modal="true" aria-label="{{o.card.title}}">
+<button type="button" class="dlg-x card-x" aria-label="Close" onClick="{{o.closeCard}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{o.I.x}}"></path></svg></button>
+<h2 class="card-t">{{o.card.title}}</h2>
+<p class="card-m">{{o.card.when}}</p>
+<div class="card-who"><sc-if value="{{o.cardFaces}}" hint-placeholder-val="{{false}}"><dc-import name="Faces" who="{{o.card.faces}}" size="24" max="4" ring="var(--raised)" hint-size="40px,26px"></dc-import></sc-if><span>{{o.card.who}}</span></div>
+<div class="card-acts">
+<sc-if value="{{o.cardCalendar}}" hint-placeholder-val="{{true}}">
+<button type="button" class="b b-line{{o.hotMove}}" onClick="{{o.moveCard}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{o.I.video}}"></path></svg>Use Alcove instead</button>
+<button type="button" class="b b-quiet" onClick="{{o.calendarLink}}">Open in Google Calendar</button>
+</sc-if>
+<sc-if value="{{o.cardAlcove}}" hint-placeholder-val="{{false}}">
+<button type="button" class="b b-press" onClick="{{o.joinCard}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{o.I.video}}"></path></svg>Join</button>
+<button type="button" class="b b-line" onClick="{{o.copied}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{o.I.link}}"></path></svg>Copy link</button>
+</sc-if>
+</div>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{o.pageLobby}}" hint-placeholder-val="{{false}}">
+<div class="lobby">
+<button type="button" class="b b-quiet b-sm lobby-back" onClick="{{o.backHome}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{o.I.left}}"></path></svg>Home</button>
+<div class="lobby-in">
+<div class="lobby-tile">Your camera shows here</div>
+<div>
+<h1 class="lobby-t">{{o.lobbyTitle}}</h1>
+<div class="lobby-s"><sc-if value="{{o.lobbyHasFaces}}" hint-placeholder-val="{{false}}"><dc-import name="Faces" who="{{o.lobbyFaces}}" size="26" max="3" hint-size="44px,28px"></dc-import></sc-if><span>{{o.lobbySub}}</span></div>
+<p class="lobby-n">{{o.lobbyNotes}}</p>
+<div class="lobby-a"><button type="button" class="b b-press b-lg" onClick="{{o.backHome}}">Join now</button><button type="button" class="b b-quiet b-lg" onClick="{{o.copied}}">Copy link</button></div>
+</div>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{o.hasToast}}" hint-placeholder-val="{{false}}"><div class="toast" role="status"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{o.I.check}}"></path></svg>{{o.toast}}</div></sc-if>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"ov":{"editor":null,"default":null},"$preview":{"width":1000,"height":300}}'>
+class Component extends DCLogic {
+  renderVals() {
+    var o = this.props.ov;
+    return { alone: !o, o: o || {}, swCls: o && o.notesOn ? ' is-on' : '', noNotes: !(o && o.hasNotes) };
+  }
+}
+</script>
+</body>
+</html>

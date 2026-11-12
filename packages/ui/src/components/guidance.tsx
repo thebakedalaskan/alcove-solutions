@@ -141,6 +141,8 @@ export function TourDialog({ slides, onClose }: { slides: TourSlide[]; onClose: 
   const cur = useRef(-1);
   const pending = useRef<How | null>(null);
   const moving = useRef<AnimationPlaybackControls[]>([]);
+  /** The tour and its card fading in. Moving on finishes them: stopped part way, a fade would hold its value. */
+  const fades = useRef<AnimationPlaybackControls[]>([]);
   const busy = useRef(false);
   const closing = useRef(false);
   const lastFocus = useRef<Element | null>(null);
@@ -159,7 +161,13 @@ export function TourDialog({ slides, onClose }: { slides: TourSlide[]; onClose: 
     if (c) c.style.transform = `translate(${pos.current.x}px, ${pos.current.y}px)`;
   }, []);
 
-  const stop = () => { for (const m of moving.current) m.stop(); moving.current = []; gliding.current = false; };
+  const stop = () => {
+    for (const m of moving.current) m.stop();
+    for (const f of fades.current) f.complete();
+    moving.current = [];
+    fades.current = [];
+    gliding.current = false;
+  };
 
   /** Puts the spot, the card and the arrow where slide `i` wants them. False when its target isn't on the page. */
   const layout = useCallback((i: number, how: How): boolean => {
@@ -224,14 +232,14 @@ export function TourDialog({ slides, onClose }: { slides: TourSlide[]; onClose: 
       const from = { ...spot.current };
       const fromY = pos.current.y;
       if (dy) moving.current.push(animate(0, 1, { duration: 0.52, ease: EASE.inOut, onUpdate: (v) => scrollTo(0, y0 + dy * v) }));
-      if (root.current) moving.current.push(animate(root.current, { opacity: [0, 1] }, { duration: 0.32, ease: EASE.out }));
+      if (root.current) fades.current.push(animate(root.current, { opacity: [0, 1] }, { duration: 0.32, ease: EASE.out }));
       moving.current.push(animate(0, 1, {
         duration: 0.62, delay: 0.05, ease: EASE.expo,
         onUpdate: (v) => { spot.current = { x: lerp(from.x, t.x, v), y: lerp(from.y, t.y, v), w: lerp(from.w, t.w, v), h: lerp(from.h, t.h, v), r: lerp(from.r, t.r, v) }; draw(); },
         onComplete: () => showArrow(true)
       }));
       moving.current.push(animate(0, 1, { duration: 0.55, delay: 0.12, ease: EASE.expo, onUpdate: (v) => { pos.current = { x: p.x, y: lerp(fromY, p.y, v) }; draw(); } }));
-      if (c) moving.current.push(animate(c, { opacity: [0, 1] }, { duration: 0.55, delay: 0.12, ease: EASE.expo }));
+      if (c) fades.current.push(animate(c, { opacity: [0, 1] }, { duration: 0.55, delay: 0.12, ease: EASE.expo }));
       return true;
     }
     moving.current.push(animate(0, 1, {

@@ -22,17 +22,17 @@ const Art = ({ children }: { children: ReactNode }) => <div className="ta dark">
 
 const SLIDES: TourSlide[] = [
   {
-    id: 'start', title: 'Start or schedule a call', next: 'Show me notes', target: hook('new-call'), prefer: ['right', 'below'],
-    text: 'Press Start a call to go now, or schedule it for later: who, when, then the details.',
+    id: 'start', title: 'Start or schedule a call', next: 'Show me notes', target: hook('start'), prefer: ['right', 'below'],
+    text: 'Start now goes straight to the call. Schedule suggests times that suit everyone and sends the invites.',
     art: <Art><Faces people={[PRIYA, KOFI, AIKO]} size={56} /></Art>
   },
   {
-    id: 'notes', title: 'Notes for your calls', next: 'Show me the room', target: hook('notes'), prefer: ['right', 'below', 'above'],
-    text: 'Notes are set when you schedule. Everyone in the call can see they’re on, and only the people invited get them.',
+    id: 'notes', title: 'Notes for your calls', next: 'Show me recording', target: hook('calls'), prefer: ['right', 'below', 'above'],
+    text: 'Every call’s notes are in Calls: a summary, decisions and follow-ups, written in confidential compute.',
     art: <Art><span className="flex items-end gap-3"><ArchThumb cover="dawn" width={44} /><ArchThumb cover="morning" width={58} /><ArchThumb cover="dusk" width={44} /></span></Art>
   },
   {
-    id: 'room', title: 'Record in the room', next: 'Start using Alcove', target: hook('room'), prefer: ['right', 'below'],
+    id: 'room', title: 'Record in the room', next: 'Start using Alcove', target: hook('record'), prefer: ['right', 'below'],
     text: 'Meeting in person? Record on your phone, even offline. Notes are written when you’re back online.',
     art: <Art><ArchThumb cover="night" room width={64} /></Art>
   }
@@ -47,7 +47,7 @@ const NOTES = [
 
 const stay = (e: { preventDefault: () => void }) => e.preventDefault();
 
-/** A page standing in for Home: the side panel, Start a call and the latest notes, each with its hook. */
+/** A page standing in for Home: the side panel, Start now and the latest notes, each with its hook. */
 function Page({ onTour }: { onTour: () => void }) {
   return (
     <div className="grid min-h-screen grid-cols-1 content-start gap-6 p-5 sm:grid-cols-[210px_minmax(0,1fr)] sm:gap-10 sm:p-8">
@@ -55,15 +55,15 @@ function Page({ onTour }: { onTour: () => void }) {
         <a href="#home" className="ac-nav-item" aria-current="page" onClick={stay}><NavItemContent icon="home" label="Home" /></a>
         <a href="#calls" className="ac-nav-item" onClick={stay}><NavItemContent icon="calls" label="Calls" /></a>
         <a href="#team" className="ac-nav-item" onClick={stay}><NavItemContent icon="people" label="Team" /></a>
-        <a href="#record" className="ac-nav-item" data-tour="room" onClick={stay}><NavItemContent icon="room" label="Record" /></a>
+        <a href="#record" className="ac-nav-item" data-tour="record" onClick={stay}><NavItemContent icon="room" label="Record" /></a>
       </SidebarNav>
       <main className="grid min-w-0 content-start justify-items-start gap-6">
         <div className="flex w-full flex-wrap items-center justify-between gap-3">
           <h1 className="ac-display-m">Home</h1>
           <Button variant="quiet" icon="compass" onClick={onTour}>Take the tour again</Button>
         </div>
-        <Button variant="primary" icon="video" data-tour="new-call">Start a call</Button>
-        <section className="ac-card w-full max-w-[520px]" data-tour="notes" aria-label="Notes">
+        <Button variant="primary" icon="video" data-tour="start">Start now</Button>
+        <section className="ac-card w-full max-w-[520px]" data-tour="calls" aria-label="Notes">
           <div className="ac-card-head"><h3>Notes</h3></div>
           {NOTES.map((n) => (
             <div key={n.id} className="flex items-center gap-3 py-2">

@@ -85,7 +85,7 @@ export function Sidebar({ hidden, hideRef, onHide, onNew, onPin }: {
         </div>
         <Offline className="sb-offline" />
         {/* In the workspace, N makes a document. */}
-        <button type="button" className={cn(buttonClass(), 'sb-new')} onClick={onNew} aria-label="Start a call" aria-haspopup="dialog" aria-keyshortcuts={inWorkspace(path) ? undefined : 'N'} data-tour="new-call">
+        <button type="button" className={cn(buttonClass(), 'sb-new')} onClick={onNew} aria-label="Start a call" aria-haspopup="dialog" aria-keyshortcuts={inWorkspace(path) ? undefined : 'N'}>
           <span className="sb-new-ic"><Icon name="video" size={16} /></span><span>Start a call</span>{!inWorkspace(path) && <Kbd>N</Kbd>}
         </button>
         <SidebarNav>{NAV.map(link)}</SidebarNav>
@@ -161,7 +161,7 @@ function Foot({ online }: { online: boolean }) {
   const verified = verifiedAt(trust);
   return (
     <div className="sb-foot">
-      {online && <p className="sb-seal" data-tour="sealed" title={verified === null ? undefined : `Hardware checked at ${hm(new Date(verified))}`}><Icon name="sealed" size={15} />{trustLine(trust)}</p>}
+      {online && <p className="sb-seal" title={verified === null ? undefined : `Hardware checked at ${hm(new Date(verified))}`}><Icon name="sealed" size={15} />{trustLine(trust)}</p>}
       {credits && (
         <Link to="/settings" hash="plan" activeOptions={{ includeHash: true }} className="sb-credits">
           <span><b>{hoursAndMinutes(credits.balance / credits.perMinute)}</b> of notes left</span>

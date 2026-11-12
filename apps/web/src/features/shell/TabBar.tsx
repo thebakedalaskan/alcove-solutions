@@ -24,7 +24,7 @@ export function PhoneTop({ onSearch, onNew }: { onSearch: () => void; onNew: () 
         <Link to="/home" className="ph-home" aria-label="Alcove, Home"><Logo size={22} /></Link>
         <span className="ph-end">
           <Tooltip label="Search or ask" side="bottom">
-            <IconButton icon="search" size={20} label="Search or ask" title={undefined} aria-haspopup="dialog" onClick={onSearch} />
+            <IconButton icon="search" size={20} label="Search or ask" title={undefined} aria-haspopup="dialog" onClick={onSearch} data-tour="ask" />
           </Tooltip>
           {scheduling ? null : calls ? (
             <Tooltip label="Schedule a call" side="bottom">
@@ -32,7 +32,7 @@ export function PhoneTop({ onSearch, onNew }: { onSearch: () => void; onNew: () 
             </Tooltip>
           ) : (
             <Tooltip label="Start a call" side="bottom">
-              <IconButton icon="plus" size={20} label="Start a call" title={undefined} aria-haspopup="dialog" onClick={onNew} data-tour="new-call" />
+              <IconButton icon="plus" size={20} label="Start a call" title={undefined} aria-haspopup="dialog" onClick={onNew} />
             </Tooltip>
           )}
           <YourFace size={34} />

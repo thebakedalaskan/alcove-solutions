@@ -30,8 +30,8 @@ export function Start({ first, soon, me, now }: { first: boolean; soon: Ahead | 
     <section className="hm-start" aria-labelledby={h} style={{ '--d': 1 }}>
       {soon && <Soon soon={soon} me={me} now={now} />}
       <h2 id={h}>{first ? 'Start your first call' : 'Start a call'}</h2>
-      <div className="hm-acts">
-        <Button variant={soon ? 'secondary' : 'primary'} size="lg" icon="video" className="hm-go" data-tour="new-call" onClick={(e) => begin(e.currentTarget)}>Start now</Button>
+      <div className="hm-acts" data-tour="start">
+        <Button variant={soon ? 'secondary' : 'primary'} size="lg" icon="video" className="hm-go" onClick={(e) => begin(e.currentTarget)}>Start now</Button>
         <Button variant="secondary" size="lg" icon="cal" aria-haspopup="dialog" onClick={() => flow.start({ later: true })}>Schedule</Button>
       </div>
       {flood}
@@ -43,7 +43,7 @@ export function Start({ first, soon, me, now }: { first: boolean; soon: Ahead | 
 function Soon({ soon, me, now }: { soon: Ahead; me: string | undefined; now: number }) {
   const people = peopleOn(soon, me);
   return (
-    <div className="hm-join">
+    <div className="hm-join" data-tour={soon.kind === 'call' ? 'join' : undefined}>
       {people.length > 0 && <Faces people={people} size={26} max={3} />}
       <span className="hm-join-t">
         <b className="ac-clamp-1" title={soon.title}>{soon.title}</b>
@@ -58,6 +58,6 @@ function Join({ soon }: { soon: Ahead }) {
   const label = <><Icon name="video" />Join<span className="kb" aria-hidden="true">J</span></>;
   const look = buttonClass({ variant: 'primary' });
   return soon.kind === 'call'
-    ? <Link to="/join/$code" params={{ code: soon.call.code }} className={look} aria-keyshortcuts="J" data-tour="join">{label}</Link>
+    ? <Link to="/join/$code" params={{ code: soon.call.code }} className={look} aria-keyshortcuts="J">{label}</Link>
     : <a href={soon.event.join?.url} target="_blank" rel="noopener noreferrer" className={look} aria-keyshortcuts="J">{label}</a>;
 }

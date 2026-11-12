@@ -343,16 +343,18 @@
 .ac-tour-art { position: absolute; inset: 0; }
 .ac-tour-card .body { padding: 20px 24px 18px; }
 .ac-tour-card .body p { margin-top: 8px; color: var(--ink-2); font-size: 15px; line-height: 22px; text-wrap: pretty; }
-.ac-tour-card .foot { display: flex; align-items: center; gap: 8px; padding: 0 20px 20px 24px; }
+.ac-tour-card .foot { display: flex; align-items: center; gap: 6px; padding: 0 20px 20px 24px; }
+/* Eight stops and the longest button still fit on one row. */
+.ac-tour-card .foot .ac-btn.is-quiet { padding: 0 10px; }
 .ac-tour.is-sheet .ac-tour-card { width: 100%; max-width: none; border-radius: var(--radius-xl) var(--radius-xl) 0 0; padding-bottom: env(safe-area-inset-bottom, 0px); }
 .ac-tour.is-sheet .ac-tour-card .art { height: 150px; }
 .ac-tour.is-sheet .ac-tour-card .body { padding: 18px 20px 14px; }
 .ac-tour.is-sheet .ac-tour-card .foot { padding: 0 16px 18px 20px; }
 /* A sheet standing above a target along the bottom, such as a tab bar: a card of the same width, rounded all round. */
 .ac-tour.is-sheet.is-lifted .ac-tour-card { border-radius: var(--radius-xl); padding-bottom: 0; }
-.ac-steps { display: flex; gap: 6px; margin-right: auto; }
-.ac-steps i { width: 6px; height: 6px; border-radius: 3px; background: var(--line-control); transition: width var(--duration-2) var(--ease-out), background-color var(--duration-2); }
-.ac-steps i.is-on { width: 20px; background: var(--ink); }
+.ac-steps { display: flex; gap: 5px; margin-right: auto; }
+.ac-steps i { width: 5px; height: 5px; border-radius: 2.5px; background: var(--line-control); transition: width var(--duration-2) var(--ease-out), background-color var(--duration-2); }
+.ac-steps i.is-on { width: 16px; background: var(--ink); }
 .ac-coach { position: relative; display: inline-block; max-width: 260px; padding: 12px 14px; border-radius: var(--radius-md); background: var(--ink); color: var(--ground); font: 400 13.5px/1.45 var(--font-sans); box-shadow: var(--shadow-3); }
 .ac-coach b { display: block; font-weight: 600; margin-bottom: 2px; }
 .ac-coach::before { content: ""; position: absolute; left: 22px; top: -6px; width: 12px; height: 12px; border-radius: 2px; background: var(--ink); transform: rotate(45deg); }
