@@ -444,8 +444,9 @@
 .set-topup-amt .p { display: flex; align-items: center; gap: var(--space-2); white-space: nowrap; }
 .set-topup-amt .p b { font: 600 14px/1.3 var(--font-sans); color: var(--ink); }
 .set-topup-amt .p .ac-chip { height: 22px; padding: 0 var(--space-2); font-size: 12px; }
-/* Pay with: the token, then a network it's offered on, side by side. */
-.set-topup-pick { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+/* Pay with USDC, its mark beside it, over the network to send it on. */
+.set-topup-pick legend { display: flex; align-items: center; gap: var(--space-2); }
+.set-topup-pick legend .ac-crypto { width: 16px; height: 16px; }
 .set-topup-pick .ac-select { width: 100%; height: 44px; padding-inline: var(--space-3); }
 .set-topup-pick .ac-select .v { flex: 1; }
 /* Waiting on the server: a quiet line with dots. */

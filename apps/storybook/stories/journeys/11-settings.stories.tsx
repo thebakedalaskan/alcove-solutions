@@ -527,9 +527,6 @@ export const AddCredits: PageStory = {
     const sheet = () => screen.findByRole('dialog', { name: 'Add credits' }, SOON);
     await step('Open Add credits and choose USDC on Base', async () => {
       await userEvent.click(await screen.findByRole('button', { name: 'Add credits' }, LATER));
-      await userEvent.click(within(await sheet()).getByRole('button', { name: /^Token:/ }));
-      const tokens = await screen.findByRole('listbox', { name: 'Token' }, SOON);
-      await userEvent.click(within(tokens).getByRole('option', { name: 'USDC' }));
       await userEvent.click(within(await sheet()).getByRole('button', { name: /^Network:/ }));
       const networks = await screen.findByRole('listbox', { name: 'Network' }, SOON);
       await userEvent.click(within(networks).getByRole('option', { name: 'Base' }));

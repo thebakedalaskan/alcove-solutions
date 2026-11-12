@@ -12,7 +12,7 @@ const route = (chain: string, chainName: string, token: TopUpRoute['token'], min
 });
 const BASE = route('base', 'Base', 'USDC');
 const ROUTES: TopUpRoutes = {
-  routes: [BASE, route('sol', 'Solana', 'USDC'), route('eth', 'Ethereum', 'USDC', 20), route('near', 'NEAR', 'USDC'), route('near', 'NEAR', 'USDT'), route('bsc', 'BNB Chain', 'USDT')],
+  routes: [route('near', 'NEAR', 'USDC'), route('eth', 'Ethereum', 'USDC', 20), route('sol', 'Solana', 'USDC'), BASE, route('bsc', 'BNB Chain', 'USDC')],
   tiers: [{ fromCredits: 0, creditsPerUsd: 1000 }, { fromCredits: 50_000, creditsPerUsd: 10_000 / 9 }, { fromCredits: 100_000, creditsPerUsd: 1250 }],
   presets: [10_000, 50_000, 100_000], perMinute: 25
 };

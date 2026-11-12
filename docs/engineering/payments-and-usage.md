@@ -5,7 +5,7 @@
 ## Pricing
 
 Calls are free, with or without anyone else. Notes and room recordings cost **25 credits per recorded minute**.
-New accounts receive **10,000 credits** (about 6½ hours of notes). More credits are bought with USDC or USDT: the
+New accounts receive **10,000 credits** (about 6½ hours of notes). More credits are bought with USDC: the
 person chooses how many credits (10,000, 50,000, 100,000 or their own number, at least what the route's minimum of
 5 USD, 20 on Ethereum, buys), and is asked to send exactly their price. The rate is the tier of the credits bought
 (`TIERS` in `billing.ts`); the price is the credits at that rate, rounded up to a millionth of a USD (`priceFor`):
@@ -45,12 +45,12 @@ support.
 | Minutes charged | The minutes recorded: the seconds of encrypted audio across every segment of the note's recording, rounded up. Time in a call with notes off is free. |
 | Used this month | Working. The balance (`GET /v1/credits`) carries `usedThisMonth`: the credits charged since 00:00 UTC on the 1st of the current month, summed from the history's charges by the time each was made. In minutes of notes, that's `usedThisMonth / perMinute`. |
 | Admission | Not built: nothing checks the balance before recording or transcribing, and a charge can take it below zero |
-| Top-up routes (`GET /v1/credits/routes`) | Working. USDC on NEAR, Ethereum, Base, Arbitrum, Solana, Polygon, BNB Chain, Optimism and Avalanche, and USDT on NEAR, Ethereum, Solana, Tron, Polygon, BNB Chain, Optimism and Avalanche, while 1Click lists them, each with its minimum in tokens and in credits, with the tiers, the presets and credits per minute. A server without `TREASURY_INTENTS_ACCOUNT` answers `unavailable` on every top-up endpoint; `ONECLICK_API_KEY` is optional and only lowers 1Click's fee |
+| Top-up routes (`GET /v1/credits/routes`) | Working. USDC on NEAR, Ethereum, Solana, Base, Arbitrum, Polygon, BNB Chain, Optimism and Avalanche, in that order, while 1Click lists them (USDT isn't offered; a USDT top-up opened before still settles and shows as before), each with its minimum in tokens and in credits, with the tiers, the presets and credits per minute. A server without `TREASURY_INTENTS_ACCOUNT` answers `unavailable` on every top-up endpoint; `ONECLICK_API_KEY` is optional and only lowers 1Click's fee |
 | Opening a top-up (`POST /v1/credits/top-ups`) | Working. For a number of credits (refused with `invalid` below the route's minimum in credits, or above 10,000,000), a 1Click quote paying the treasury exactly their price gives a one-off deposit address on the route's chain, open for 24 hours; the deposit is kept sealed under `Kservice` (`deposits`, record kind `deposit`). At most 10 a minute per account per API instance (then `unavailable`); refused with `conflict` while the account has 15 top-ups waiting for a payment to an address that hasn't expired, or has opened 30 in the last 24 hours (cancelled ones count). Both counts are checked in Postgres, again under a lock on the account in the transaction that inserts the deposit, so they hold across instances and concurrent requests. |
 | Cancelling a top-up (`POST /v1/credits/top-ups/:id/cancel`) | Working. Only a `waiting` top-up (nothing has reached it) can be cancelled; anything else is refused with `conflict`. It becomes `cancelled`: its address is no longer shown, and it no longer counts toward the 15 waiting or among the open top-ups. 1Click can't cancel a quote, so the address still takes a payment until it expires: a cancelled deposit is watched (every 5 minutes), and a payment that reaches it moves it on and is credited by the usual rules. It still counts toward the 30 a day. In one transaction under the deposit's row lock, so it can't race a credit |
 | Crediting a top-up | Working. On `SUCCESS` or `REFUNDED` that passes the checks under Pricing, what was sent is credited by the rules there, in the transaction that marks the deposit `credited`, under its row lock: once, however many checks race. Nothing creditable is `held`; `FAILED` is `failed`, logged at error. A `failed`, `expired` or `cancelled` deposit still credits when 1Click later settles it (logged at warn when it had been given up on) |
 | Watching top-ups | Working. The API checks every open deposit with 1Click (no webhook): every 10 s for 15 minutes, every minute until 2 hours, then every 5 minutes; a cancelled one every 5 minutes. Opening a top-up in the app also checks it, at most every 5 s (the slot is claimed in one statement, so requests at once ask 1Click once), and at most 60 times a minute per account. 24 hours after its address expires, 1Click is asked once more: a finished swap is credited as usual, a deposit 1Click says nothing reached is `expired` (a cancelled one stays `cancelled`), and anything else is `failed`, logged at error. If 1Click can't answer then, the deposit stays as it is (never `expired` without 1Click saying nothing arrived), asked about hourly until 1Click answers, logged at error once. A `failed`, `expired` or `cancelled` deposit is asked about hourly until 30 days after its address expired, so a payment 1Click settles late is still credited The schedule thins out over time: an open deposit every 5 minutes for the rest of its first day, then hourly; a cancelled one every 5 minutes for a day, then hourly; and after `give_up_at` (or once failed or expired) hourly for a day, every 6 hours for a week, then daily. Open deposits are claimed before that long tail, so a payment just sent never waits behind it. Wherever this page says "hourly" for a deposit past its deadline, that's this thinning schedule. |
-| Adding credits in the app | Working. Plan and credits opens a sheet: choose 10,000, 50,000 or 100,000 credits or your own number (each with its notes time and price, and the discount), then a token and its chain, and get an address (with a QR code) for one payment of exactly that price; the sheet follows it until it's added; while it waits for a payment it can be cancelled there; open and recent top-ups are listed there and open the sheet again, and one waiting for a payment can be cancelled from its row |
+| Adding credits in the app | Working. Plan and credits opens a sheet: choose 10,000, 50,000 or 100,000 credits or your own number (each with its notes time and price, and the discount), then the network to send USDC on, and get an address (with a QR code) for one payment of exactly that price; the sheet follows it until it's added; while it waits for a payment it can be cancelled there; open and recent top-ups are listed there and open the sheet again, and one waiting for a payment can be cancelled from its row |
 
 ## Design to implement
 
@@ -65,7 +65,7 @@ support.
 
 ## How a top-up works
 
-1. **Routes.** `GET /v1/credits/routes` lists one route per stablecoin and chain on the allowlist in
+1. **Routes.** `GET /v1/credits/routes` lists one route per chain on the allowlist of USDC in
    `features/billing/oneclick.ts` that 1Click currently lists in `/v0/tokens` (cached for 10 minutes), with its minimum (in
    tokens, and the credits it buys), the tiers, the presets and credits per minute. The app prices a choice from the
    tiers before asking; the server's quote is what counts.
@@ -121,7 +121,7 @@ credited to nobody.
 
 The server never holds a key that can move treasury money. By hand, in near.com, signed in as the treasury account:
 
-- **Refunds.** A refund lands in the treasury's Intents balance as the token that was sent, not USDC. Swap these to
+- **Refunds.** A refund lands in the treasury's Intents balance as the token that was sent, as Intents holds it (Solana's USDC, say), not as USDC on NEAR. Swap these to
   USDC on NEAR from time to time.
 - **Withdrawals.** Withdraw USDC from the Intents balance in batches, when topping up NEAR AI, not after every
   payment: each withdrawal costs a flat 0.004615 USDC.

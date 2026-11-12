@@ -35,7 +35,7 @@ const meta = {
             <SunLine {...args} />
           </SettingRow>
           <SettingRow label="Used this month" control={<SettingFact title="Since 00:00 UTC on the 1st">{share < 1 ? hoursAndMinutes(GRANTED * (1 - share)) : 'None yet'}</SettingFact>} />
-          <SettingRow label="Add credits" help="Pay with a stablecoin from any wallet or exchange." control={<Button size="sm" icon="plus" onClick={did('onAdd')}>Add credits</Button>} />
+          <SettingRow label="Add credits" help="Pay with USDC from any wallet or exchange." control={<Button size="sm" icon="plus" onClick={did('onAdd')}>Add credits</Button>} />
         </SettingsPanel>
       </SettingsGroup>
     );
