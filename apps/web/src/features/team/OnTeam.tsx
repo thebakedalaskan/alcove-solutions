@@ -26,7 +26,7 @@ import { PersonPop, type Between } from './PeopleLine';
 
 const NO_NOTES: NoteSummary[] = [];
 /** The most who stand on the horizon: the rest are an empty arch at the end of the line, and every one of them is a row. */
-const ON_THE_LINE = 12;
+const ON_THE_LINE = 10;
 /** The notes visible to the team listed before Show more. */
 const NOTES = 5;
 

@@ -22,7 +22,7 @@
 }
 .tq .dusk-in { padding-bottom: 96px; }
 /* The low sun stands just past the start of the line, however many stand on it, and never further out than the page. */
-.dusk.tq .hz {
+.tq .hz {
   --tq-line-w: calc(var(--tq-n, 6) * var(--tq-slot, 72px) + (var(--tq-n, 6) - 1) * var(--tq-gap, 12px));
   --hz-sun-r: 40px;
   --hz-sun-x: max(calc(56px - 50cqw), calc(-.5 * var(--tq-line-w) - var(--hz-sun-r) - 26px));
@@ -165,7 +165,7 @@
   .tq-main > :not(.tq-wait, .tq-people, .tq-notes) { order: 4; }
   .tq-main > :is(.tp-s, .tp-gs) { margin-top: -12px; }
   /* The line slides on a phone, so a sun behind it would stand behind whoever slides past: it has set, off to the left. */
-  .dusk.tq .hz { --hz-sun-x: calc(-50cqw - 90px); }
+  .tq .hz { --hz-sun-x: calc(-50cqw - 90px); }
   .tq-h { flex-wrap: wrap; row-gap: 0; }
   .tq-h small { text-align: left; }
   .tq-row .tq-t small { overflow-wrap: anywhere; }
