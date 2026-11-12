@@ -23,7 +23,8 @@ export type ProMonth = z.infer<typeof ProMonthSchema>;
 /**
  * Something about the plan its owner is told, in the app and, if they've turned it on, from the browser
  * (`NotificationPrefs.plan`), until they dismiss it:
- * - `pro-ending`: Pro ends at `until`, a few days from now, and won't renew (renewing is off, or the balance is short).
+ * - `pro-ending`: Pro ends at `until`, a few days from now, and won't renew: renewing is off, the balance is short, or a month
+ *   costs more now than when the last was bought, which renewing never pays without its owner buying at it first.
  * - `pro-renewed`: a month was bought from the balance, so Pro now runs to `until`.
  * - `pro-ended`: Pro ended at `until`; the account is on Free.
  * - `licenses-low` (a team's admin): `count` licenses are left unconsumed, fewer than the team's low mark.
@@ -79,7 +80,10 @@ export const PlanSchema = z.object({
     months: z.array(ProMonthSchema),
     /** When the last month bought ends (null: no Pro bought that hasn't ended). */
     until: ISODateSchema.nullable(),
-    /** Whether a month is bought from the balance as Pro is about to end, while the balance has enough. */
+    /**
+     * Whether renewing is on: a month is bought from the balance as Pro is about to end, while the balance has enough and a
+     * month costs no more than when the last was bought.
+     */
     renew: z.boolean(),
     /** What refunding the months that haven't started would add back to the balance (0: none to refund). */
     refundableMicroUsd: MicroUsdSchema

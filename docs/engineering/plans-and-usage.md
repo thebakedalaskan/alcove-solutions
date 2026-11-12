@@ -199,13 +199,19 @@ reminder or at the end, paid for by the refund itself. Pro then ends when the mo
 days) before Pro ends, never before the last month starts; and Pro's end (the last month's `to`). The record keeps which
 end it has reminded about (`reminded`) and handled (`ended`), so each happens once for each end:
 
-- **At the reminder:** with renewing on and a month's price in the balance, a month is bought after the last ("Pro,
-  renewed for a month") and the owner told `pro-renewed`. Otherwise they're told `pro-ending`. Logged `pro renewed` or
-  `pro ending`.
-- **At the end:** with renewing on and the money now (turned on, or money added, since the reminder), a month is bought
-  from when upkeep comes, `pro-renewed`: that's the end, or later when upkeep is late, so a month already over is never
+- **At the reminder:** when renewing will buy (below), a month is bought after the last at the price in force ("Pro,
+  renewed for a month") and the owner told `pro-renewed`. Otherwise they're told `pro-ending`. Logged `pro renewed`, or
+  `pro ending` with why not (`off`, `price` or `short`).
+- **At the end:** when renewing will buy now (turned on, or money added, since the reminder), a month is bought from
+  when upkeep comes, `pro-renewed`: that's the end, or later when upkeep is late, so a month already over is never
   bought, and a late pass buys one month, not one for each it missed. Otherwise the account is on Free and told
-  `pro-ended`. Logged `pro ended`.
+  `pro-ended`. Logged `pro ended`, with why not.
+
+Renewing buys only while it's on, the balance has the price in force, and that price is no higher than what a month cost
+when the last month was bought (its `monthlyMicroUsd`: a month's price then, so a year bought at $16 a month renews at a
+month's $20 as it was, not at $16). A higher price is never taken from the balance without the owner seeing it: Pro isn't
+renewed, they're told `pro-ending` at the reminder and `pro-ended` at the end, and the money stays in the balance. Once
+they buy at the new price themselves, it's what renewing goes by. A lower price renews, and becomes what it goes by.
 
 **Notices** (`Plan.notices`, newest first, those not dismissed) are shown in the app and, with `NotificationPrefs.plan`
 on (the default), from the browser. `POST /v1/plan/notices/:id/dismiss` hides one; another account's ID, or an unknown

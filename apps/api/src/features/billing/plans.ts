@@ -583,9 +583,23 @@ export async function dismissNotice(d: Service, ownerId: string, noticeId: strin
 }
 
 /**
+ * Why renewing won't buy the next month at `price`, the price in force (null: it will): it's off, a month now costs more
+ * than it did when the last was bought (`monthlyMicroUsd`, a month's price then, whatever that purchase paid a month), or
+ * the balance is short of it. A dearer price is never taken without its owner seeing it: they're told Pro is ending, and
+ * buying at it themselves makes it what renewing goes by.
+ */
+function notRenewed(a: PlanAccount, price: number): 'off' | 'price' | 'short' | null {
+  if (!a.renew) return 'off';
+  const last = a.pro.at(-1);
+  // A month kept before months said a month's price was bought at it: what was paid for it.
+  if (!last || price > (last.monthlyMicroUsd ?? last.microUsd)) return 'price';
+  return a.balanceMicroUsd < price ? 'short' : null;
+}
+
+/**
  * What upkeep does for one account that's due at `now`: ends a grace that's over; at the reminder before Pro ends, buys a
- * month if renewing is on and the balance has it, else tells its owner Pro is ending; at the end, buys a month the same
- * way (renewing turned on, or money added, since), else tells them Pro has ended. Each happens once for each end. A month
+ * month if renewing will (`notRenewed`), else tells its owner Pro is ending; at the end, buys a month the same way
+ * (renewing turned on, or money added, since), else tells them Pro has ended. Each happens once for each end. A month
  * bought at the reminder follows the last; one bought at the end starts now, which is the end unless upkeep is late: a
  * month that's already over is never bought.
  */
@@ -601,12 +615,13 @@ function kept(a: PlanAccount, l: Limits, now: number, ownerId: string): PlanAcco
   if (!atEnd && (next.reminded === end || remindAt(next, l, end) > now)) return pruned(next, now);
   const price = l.get('plan.pro.price_micro_usd');
   const marked = atEnd ? { ...next, reminded: end, ended: end } : { ...next, reminded: end };
-  if (next.renew && next.balanceMicroUsd >= price) {
+  const why = notRenewed(next, price);
+  if (why === null) {
     const renewed = withEntry(withMonths(marked, l, 1, price, now), -price, 'Pro, renewed for a month');
     plog.info('pro renewed', { ownerId });
     return pruned(withNotice(renewed, 'pro-renewed', now, { until: proEnd(renewed) ?? end }), now);
   }
-  plog.info(atEnd ? 'pro ended' : 'pro ending', { ownerId });
+  plog.info(atEnd ? 'pro ended' : 'pro ending', { ownerId, why });
   return pruned(withNotice(marked, atEnd ? 'pro-ended' : 'pro-ending', now, { until: end }), now);
 }
 
