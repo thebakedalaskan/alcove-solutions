@@ -7,9 +7,11 @@
  */
 import type { Meta } from '@storybook/react-vite';
 import { screen } from 'storybook/test';
-import { at, asksForNotes, notesRunningOut, notesStop, says, UNENCRYPTED_MODEL, type Present } from '../../src/api/script';
-import { MORE, inCall, light, phone, plays, press, reach } from '../../src/call';
+import { at, asksForNotes, notesRunningOut, notesStop, run, says, UNENCRYPTED_MODEL, type Present } from '../../src/api/script';
+import { current } from '../../src/api/state';
+import { MORE, clearSide, inCall, light, phone, plays, press, reach } from '../../src/call';
 import { pages, type PageArgs, type PageStory } from '../../src/page';
+import { monthsFrom, notesStopped, overLimits, proPlan, withProMonths } from '../../src/world/plans';
 import { FOLLOW_UP_SCRIPT } from './followUps';
 import { AIKO, CHECK_IN, CHECK_IN_SUMMARY, CHECK_IN_TALK, KOFI, MAYA, PRIYA, REVIEW, REVIEW_SUMMARY, REVIEW_TALK } from './talk';
 
@@ -121,24 +123,62 @@ export const PausedByTheOrganizer = inCall({
 });
 
 /*
- * What the plan says in a call (docs: Plans and usage): a banner from the top, once for the call, that stays until its × is
- * pressed. Notes stopping is said to everyone; notes about to run out, to the organizer alone. While they're stopped, Notes
- * and what's captured say why too, and the organizer can still turn them on (it works once their plan has notes again).
+ * What the plan says in a call (docs: Plans and usage; the plans spec's doors, 4; the canvas's CallOut): a banner from the top,
+ * once for the call, that stays until its × is pressed. Notes stopping is said to everyone; notes about to run out, to the
+ * organizer alone. While they're stopped, a caution bar between Notes' head and its tabs says why, the pill says Stopped and
+ * the sign at the top Notes stopped; the banner waits while Notes is open. Only the organizer has the ways to more (Get Pro,
+ * Add 10 hours · $15, Make room), which open checkout over the call. Once their plan has more, notes come on again by
+ * themselves, and the notes mark where they stopped and came on again. The world's plan stops with the call, as the server's
+ * does: the organizer is Art, so it's his.
  */
+/** Art's notes for the period run out: the world's plan says so too. */
+const planOut = run(() => { current().plan = notesStopped(); });
+/** Art's storage is full, past its grace. */
+const storageOut = run(() => { current().plan = overLimits(); });
+/** A payment for a month of Pro lands, from checkout or a phone: Pro starts now, with its whole allowance. */
+const proBought = run(() => { const w = current(); w.plan = withProMonths(w.plan, monthsFrom(Date.now() - 60_000, 1)); });
+/** 10 more hours of notes for this period, bought from the balance: they add to the period's notes, which aren't stopped now. */
+const hoursBought = run(() => { const w = current(); w.plan = { ...w.plan, notes: { minutesLeft: 600, minutesPerPeriod: w.plan.notes.minutesPerPeriod + 600, stopped: false } }; });
+
 /** Art organizes this review on Free. Three seconds in, Art's notes are about to run out at this call's pace: only Art is told. */
 export const NotesRunningOut = inCall({ scenario: 'call-soon', call: REVIEW, script: { ...LATE, cues: at(3, notesRunningOut()) } });
 export const NotesRunningOutPhone = phone(NotesRunningOut);
-/** Three seconds in, the period's notes run out: they go off for everyone, and the banner says why and offers Upgrade, to the organizer on Free. */
-export const NotesStoppedByTheirPlan = inCall({ scenario: 'call-soon', call: REVIEW, script: { ...LATE, cues: at(3, notesStop('notes')) } });
+/**
+ * Three seconds in, the period's notes run out: they go off for everyone. Notes, open beside the stage, says it over its tabs:
+ * "Notes stopped at this period's 5 hours", the call carries on, with Get Pro and Add 10 hours · $15 for Art, on Free.
+ */
+export const NotesStoppedByTheirPlan = inCall({ scenario: 'call-soon', call: REVIEW, script: { ...LATE, cues: at(3, planOut, notesStop('notes')) } });
+/** On a phone Notes is put away, so the banner over the call says it, with the same two ways to more. */
 export const NotesStoppedByTheirPlanPhone = phone(NotesStoppedByTheirPlan);
-/** Storage ran out instead: the banner says so, and what was said until then is in the notes. */
-export const NotesStoppedStorageFull = inCall({ scenario: 'call-soon', call: REVIEW, script: { ...LATE, cues: at(3, notesStop('storage')) } });
-/** At Priya's check-in Priya's notes run out: everyone is told, you in everyone's words, with nothing to upgrade. */
+/** Your side takes your theme: the bar and its buttons are light, the stage night. */
+export const NotesStoppedByTheirPlanLight = light(NotesStoppedByTheirPlan);
+/** With Notes put away, the banner drops over the stage and says the same, until its × is pressed. */
+export const NotesStoppedBanner = inCall({ scenario: 'call-soon', call: REVIEW, script: { ...LATE, cues: at(3, planOut, notesStop('notes')) } }, { play: clearSide });
+/** On Pro, getting Pro again doesn't help: more hours for this period are the one way to more, filled. */
+export const NotesStoppedOnPro = inCall({
+  scenario: 'call-soon', call: REVIEW,
+  script: { ...LATE, cues: at(3, run(() => { const p = proPlan(); current().plan = { ...p, notes: { ...p.notes, minutesLeft: 0, stopped: true } }; }), notesStop('notes')) }
+});
+/** Storage ran out instead: it says storage, with Get Pro and Make room, which opens the Drive beside the call. */
+export const NotesStoppedStorageFull = inCall({ scenario: 'call-soon', call: REVIEW, script: { ...LATE, cues: at(3, storageOut, notesStop('storage')) } });
+export const NotesStoppedStorageFullPhone = phone(NotesStoppedStorageFull);
+/** At Priya's check-in Priya's notes run out: everyone is told whose notes they were, with nothing to buy. */
 export const NotesStoppedForTheOrganizer = inCall({
   scenario: 'busy', call: CHECK_IN,
   script: { here: CHECKING_IN, talk: { lines: CHECK_IN_TALK }, summary: CHECK_IN_SUMMARY, cues: at(5, notesStop('notes')) }
 });
 export const NotesStoppedForTheOrganizerPhone = phone(NotesStoppedForTheOrganizer);
+export const NotesStoppedForTheOrganizerLight = light(NotesStoppedForTheOrganizer);
+/**
+ * Notes stop three seconds in, and two seconds later Art's payment for Pro lands. Within ten seconds his browser hears it, notes
+ * come on again by themselves, a toast says "You're on Pro. Notes are on again." and the notes mark "Notes stopped" and "Notes
+ * on again", in rec.
+ */
+export const NotesOnAgainWithPro = inCall({ scenario: 'call-soon', call: REVIEW, script: { ...LATE, cues: [...at(3, planOut, notesStop('notes')), ...at(5, proBought)] } });
+export const NotesOnAgainWithProPhone = phone(NotesOnAgainWithPro);
+export const NotesOnAgainWithProLight = light(NotesOnAgainWithPro);
+/** The same with 10 more hours for this period: "Notes are on again." */
+export const NotesOnAgainWithHours = inCall({ scenario: 'call-soon', call: REVIEW, script: { ...LATE, cues: [...at(3, planOut, notesStop('notes')), ...at(5, hoursBought)] } });
 
 /** One actual task, and under it what the call suggests, dashed, with Add and ×. The checklist does not grow until someone adds one. */
 export const FollowUpsAndSuggestions = inCall({ scenario: 'call-soon', call: REVIEW, script: FOLLOW_UP_SCRIPT }, { play: reach('Notes') });

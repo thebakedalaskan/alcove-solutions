@@ -106,3 +106,11 @@ export const StillLoading = page('/home', 'busy', { beforeEach: changing(trouble
 export const StillLoadingPhone = phone(StillLoading);
 /** Alcove couldn't answer: the page didn't load, with Try again. */
 export const DidntLoad = page('/home', 'busy', { beforeEach: changing(troubled({ 'notes.inbox': 'failed' })) });
+
+/*
+ * An hour left (the plans spec's doors, 3): once a period, as the notes left this period drop under an hour, one toast says so
+ * with Get Pro; the side panel's number turns warm by itself. About 20 minutes are left here.
+ */
+export const HourLeft = page('/home', 'plan-low');
+export const HourLeftNight = page('/home', 'plan-low', { globals: { theme: 'dark' } });
+export const HourLeftPhone = phone(HourLeft);

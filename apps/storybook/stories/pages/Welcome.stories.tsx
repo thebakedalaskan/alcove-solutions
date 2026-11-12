@@ -63,6 +63,9 @@ export const YourAgent = at('agents', 'Your agent can use Alcove');
 export const RecordingOffline = at('offline', 'Offline recordings');
 /** The same note, as you see it and as Alcove's servers hold it. */
 export const WhatAlcoveCanSee = at('privacy', 'What Alcove can see');
+/** Plans, in a cove at night with the last of the sun: Free and Pro as small cards, then Start free and Get Pro. */
+export const Plans = at('plans', 'Plans');
+export const PlansPhone = phone(Plans);
 /** Morning comes up behind the last ask, in a cove of its own. */
 export const StartYourFirstCall = at('start', 'Start your first call');
 /** Alcove's front door, signed out: the welcome page. */
