@@ -140,8 +140,8 @@ function Pick({ onStarted }: { onStarted: (id: string) => void }) {
   const microUsd = picked === 'own' ? typedMicroUsd(own) : picked;
   const least = route ? Math.round(Number(route.minimum) * 1_000_000) : 0;
   const below = route !== undefined && microUsd !== null && microUsd < least;
-  /** What `n` comes to in the chosen token, a token a dollar ("20 USDC"), or in dollars until one is chosen. */
-  const price = (n: number) => <span className="p"><b>{token ? `${tokens.format(n / 1_000_000)} ${token}` : usd(n)}</b></span>;
+  /** What `n` comes to in the chosen token, a token a dollar ("20 USDC"): nothing until one is chosen, since it's the amount already. */
+  const price = (n: number) => (token ? <span className="p"><b>{tokens.format(n / 1_000_000)} {token}</b></span> : null);
   const go = () => { if (route && microUsd !== null) start.mutate({ routeId: route.id, microUsd }, { onSuccess: (t) => onStarted(t.id) }); };
   return (
     <>

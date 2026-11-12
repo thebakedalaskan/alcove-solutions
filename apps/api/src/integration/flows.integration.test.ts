@@ -3257,13 +3257,15 @@ describe('deleting an account', () => {
     await b.api.notes.createLink(callNote);
     // A timer preset as the previous release can still write one while a deploy is under way: nothing in this release does.
     await h.pool.query('INSERT INTO timer_presets (owner_id, preset_id, ciphertext) VALUES ($1, $2, $3)', [ownerId, randomBytes(16).toString('base64url'), randomBytes(64)]);
+    // So can its credits row, which nothing in this release reads or writes.
+    await h.pool.query('INSERT INTO billing_accounts (owner_id, state_ciphertext, version) VALUES ($1, $2, 0)', [ownerId, randomBytes(64)]);
     // Every table that keeps an account's rows has some of hers.
     const tables = (await h.pool.query<{ table_name: string }>("SELECT table_name FROM information_schema.columns WHERE table_schema = 'public' AND column_name = 'owner_id' ORDER BY table_name")).rows.map((r) => r.table_name);
     expect(tables).toEqual([
-      'agent_codes', 'agent_grants', 'agent_operations', 'agent_tokens', 'billing_accounts', 'call_attention', 'call_codes', 'call_mls', 'call_moves', 'call_notes',
+      'agent_codes', 'agent_grants', 'agent_operations', 'agent_tokens', 'ai_meters', 'billing_accounts', 'call_attention', 'call_codes', 'call_mls', 'call_moves', 'call_notes',
       'call_private_messages', 'call_rings', 'calls', 'content_jobs', 'deposits', 'document_access', 'document_clients', 'document_snapshots', 'document_updates', 'document_version_parts',
       'document_versions', 'documents', 'drive_call_exports', 'drive_connections', 'drive_export_jobs', 'identities', 'items', 'media_upload_days', 'meeting_access',
-      'note_access', 'note_additions', 'note_links', 'object_gc', 'operations', 'owners', 'personal_notes', 'presenter_frame_notes', 'presenter_notes', 'recording_pieces', 'recordings',
+      'note_access', 'note_additions', 'note_links', 'object_gc', 'operations', 'owners', 'personal_notes', 'plan_accounts', 'presenter_frame_notes', 'presenter_notes', 'recording_pieces', 'recordings',
       'revisions', 'screen_frames', 'screen_pieces', 'screen_shares', 'screen_videos', 'sessions', 'timer_presets', 'transcript_clips', 'transcript_translations',
       'workspace_authors', 'workspace_media', 'workspace_media_pieces', 'workspace_media_previews', 'workspace_media_uses', 'workspace_members', 'workspace_mentions',
       'workspaces'
@@ -3478,9 +3480,9 @@ describe('deleting an account', () => {
     const blocks = async (pid: number) => ((await h.pool.query<{ n: number }>('SELECT count(*)::int AS n FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid))', [pid])).rows[0]?.n ?? 0) > 0;
     const outcome = (p: Promise<void>) => p.then(() => 'deleted', (e: unknown) => code(e));
     try {
-      // The first deletion is held just before it commits, on the account's billing row, which goes with the account.
+      // The first deletion is held just before it commits, on the account's plan row, which goes with the account.
       await hold.query('BEGIN');
-      await hold.query('SELECT 1 FROM billing_accounts WHERE owner_id = $1 FOR UPDATE', [ownerId]);
+      await hold.query('SELECT 1 FROM plan_accounts WHERE owner_id = $1 FOR UPDATE', [ownerId]);
       const first = outcome(racer.api.account.delete());
       await until(async () => blocks(await pidOf(hold)), 'the first deletion to wait');
       // The second arrives signed in, as the account is still there, and reaches the account's profile only once

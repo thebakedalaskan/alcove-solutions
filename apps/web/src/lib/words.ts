@@ -22,5 +22,6 @@ export function roomLabel(bytes: number): string {
 }
 
 const dollars = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
-/** An amount in micro-USD as people read it: "$20.00", "$0.50". */
-export const usd = (microUsd: number): string => dollars.format(microUsd / 1_000_000);
+const wholeDollars = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
+/** An amount in micro-USD as people read it: "$20", "$12.50", "$0.50". */
+export const usd = (microUsd: number): string => (microUsd % 1_000_000 === 0 ? wholeDollars : dollars).format(microUsd / 1_000_000);

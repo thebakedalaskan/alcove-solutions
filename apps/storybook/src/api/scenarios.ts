@@ -333,7 +333,7 @@ function lots(): World {
 
 /**
  * The busy afternoon, with the grace over: Art has more shared workspaces than Free has, so the extra ones are read-only for
- * everyone in them (Design, which he made, and another with nothing in it yet), and storage is over Free's limit.
+ * everyone in them (Design, which Art made, and another with nothing in it yet), and storage is over Free's limit.
  * What the server does for a frozen workspace, its items read for everyone, is here as it is there.
  */
 function overTheLimits(): World {
@@ -393,7 +393,7 @@ export const SCENARIOS: Record<ScenarioName, Scenario> = {
     make: () => ({ world: overTheLimits(), opening: {} })
   },
   'plan-balance': {
-    title: 'A balance', about: 'Art has $60 in his balance, with a $20 top-up waiting for its payment and a $40 one already added.',
+    title: 'A balance', about: 'Art has $60 in their balance, with a $20 top-up waiting for its payment and a $40 one already added.',
     make: () => {
       const world = busy();
       withPayments(world);
@@ -403,7 +403,7 @@ export const SCENARIOS: Record<ScenarioName, Scenario> = {
     }
   },
   payments: {
-    title: 'Adding money', about: 'Art can add money to his balance with a stablecoin; every payment address is an invalid Storybook preview.',
+    title: 'Adding money', about: 'Art can add money to their balance with a stablecoin; every payment address is an invalid Storybook preview.',
     make: () => { const world = busy(); withPayments(world); return { world, opening: {} }; }
   },
   'drive-connected': {

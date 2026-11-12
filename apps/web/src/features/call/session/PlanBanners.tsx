@@ -61,7 +61,7 @@ export function PlanBanners({ state }: { state: CallState }) {
   }
   const shown = banners.filter((b) => !closed.has(b.key));
   return (
-    <div className="ic-banners">
+    <div className="ic-limits">
       <AnimatePresence initial={false}>{shown.map((b) => b.node(b.key))}</AnimatePresence>
     </div>
   );

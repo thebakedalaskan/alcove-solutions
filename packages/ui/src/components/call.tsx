@@ -24,14 +24,14 @@ export function CallBanner({ icon, tone = 'info', title, children, action, onClo
 }) {
   const reduce = useReducedMotion() ?? false;
   return (
-    <motion.div className={cn('ic-banner', tone === 'caution' && 'is-caution')} role={tone === 'caution' ? 'alert' : 'status'}
+    <motion.div className={cn('ic-limit', tone === 'caution' && 'is-caution')} role={tone === 'caution' ? 'alert' : 'status'}
       initial={reduce ? { opacity: 1 } : { opacity: 0, y: -24 }} animate={{ opacity: 1, y: 0 }}
       exit={reduce ? { opacity: 0, transition: { duration: 0 } } : { opacity: 0, y: -16, transition: { duration: 0.24, ease: EASE.out } }}
       transition={reduce ? { duration: 0 } : { duration: 0.42, ease: EASE.out }}>
-      <span className="ic-banner-i"><Icon name={icon} size={18} /></span>
-      <span className="ic-banner-t"><b>{title}</b>{children !== undefined && <small>{children}</small>}</span>
+      <span className="ic-limit-i"><Icon name={icon} size={18} /></span>
+      <span className="ic-limit-t"><b>{title}</b>{children !== undefined && <small>{children}</small>}</span>
       {action}
-      <IconButton icon="x" label="Close" className="ic-banner-x" onClick={onClose} />
+      <IconButton icon="x" label="Close" className="ic-limit-x" onClick={onClose} />
     </motion.div>
   );
 }

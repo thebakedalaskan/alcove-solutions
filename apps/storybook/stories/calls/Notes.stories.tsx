@@ -101,7 +101,7 @@ export const PausedByTheOrganizer = inCall({
  * What the plan says in a call (docs: Plans and usage): a banner from the top, once for the call, that stays until its × is
  * pressed. Notes stopping is said to everyone; notes about to run out, to the organizer alone.
  */
-/** Art organizes this review on Free. Three seconds in, his notes are about to run out at this call's pace: only he is told. */
+/** Art organizes this review on Free. Three seconds in, Art's notes are about to run out at this call's pace: only Art is told. */
 export const NotesRunningOut = inCall({ scenario: 'call-soon', call: REVIEW, script: { ...LATE, cues: at(3, notesRunningOut()) } });
 export const NotesRunningOutPhone = phone(NotesRunningOut);
 /** Three seconds in, the period's notes run out: they go off for everyone, and the banner says why and offers Upgrade, to the organizer on Free. */
@@ -109,7 +109,7 @@ export const NotesStoppedByTheirPlan = inCall({ scenario: 'call-soon', call: REV
 export const NotesStoppedByTheirPlanPhone = phone(NotesStoppedByTheirPlan);
 /** Storage ran out instead: the banner says so, and what was said until then is in the notes. */
 export const NotesStoppedStorageFull = inCall({ scenario: 'call-soon', call: REVIEW, script: { ...LATE, cues: at(3, notesStop('storage')) } });
-/** At Priya's check-in her notes run out: everyone is told, you with her words (the organizer's), and with nothing to upgrade. */
+/** At Priya's check-in Priya's notes run out: everyone is told, you in everyone's words, with nothing to upgrade. */
 export const NotesStoppedForTheOrganizer = inCall({
   scenario: 'busy', call: CHECK_IN,
   script: { here: CHECKING_IN, talk: { lines: CHECK_IN_TALK }, summary: CHECK_IN_SUMMARY, cues: at(5, notesStop('notes')) }
