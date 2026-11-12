@@ -44,6 +44,11 @@ The project must already exist and have billing linked. The script enables APIs 
 - Runtime account `alcove-api@alcove-solutions.iam.gserviceaccount.com`, with Cloud SQL access and
   access to those secrets. The deploy account can publish to the `alcove` registry, manage Cloud Run,
   and act as this runtime account.
+- Access for the runtime account to the two top-up secrets, which only a person creates, with their values:
+  `alcove-treasury-intents-key` (a full access key of the treasury's NEAR account) and `alcove-oneclick-api-key`
+  (1Click's partner key). The script never creates or reads them; one that doesn't exist yet is reported at the end, with
+  the commands that add it, and gets access when the script runs again. Deploys bind both and fail without them
+  ([Deployment](../docs/engineering/deployment-and-acceptance.md)).
 - Workload Identity Federation restricted to repository ID `1442472668`, owner ID `280182442`, this
   repository's deploy workflow on `main`, and its workflow-run/manual-dispatch events. No GCP
   service-account key file is needed.

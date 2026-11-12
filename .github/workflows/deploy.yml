@@ -97,8 +97,10 @@ jobs:
             --set-secrets "$SECRET_BINDINGS" --quiet
           gcloud --project="$GCP_PROJECT_ID" run jobs execute alcove-migrate --region "$GCP_REGION" --wait --quiet
       - name: Deploy the API
+        # Top-ups sign in to 1Click as the treasury with its full access key, beside the partner key: the API service gets
+        # both, and nothing else does (docs/engineering/plans-and-usage.md › Treasury runbook).
         run: |
-          SECRET_BINDINGS='DATABASE_URL=alcove-database-url:latest,KMASTER=alcove-kmaster:latest,KSERVICE=alcove-kservice:latest,OBJECTS_ACCESS_KEY=alcove-objects-access-key:latest,OBJECTS_SECRET_KEY=alcove-objects-secret-key:latest,LIVEKIT_API_KEY=alcove-livekit-api-key:latest,LIVEKIT_API_SECRET=alcove-livekit-api-secret:latest'
+          SECRET_BINDINGS='DATABASE_URL=alcove-database-url:latest,KMASTER=alcove-kmaster:latest,KSERVICE=alcove-kservice:latest,OBJECTS_ACCESS_KEY=alcove-objects-access-key:latest,OBJECTS_SECRET_KEY=alcove-objects-secret-key:latest,LIVEKIT_API_KEY=alcove-livekit-api-key:latest,LIVEKIT_API_SECRET=alcove-livekit-api-secret:latest,TREASURY_INTENTS_KEY=alcove-treasury-intents-key:latest,ONECLICK_API_KEY=alcove-oneclick-api-key:latest'
           if [ "$NEAR_AI_ENABLED" = true ]; then
             SECRET_BINDINGS="$SECRET_BINDINGS,NEAR_AI_API_KEY=alcove-near-ai-api-key:latest"
           fi

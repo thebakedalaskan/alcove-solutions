@@ -131,6 +131,18 @@ gcp_iam projects add-iam-policy-binding "$PROJECT_ID" --member "serviceAccount:$
 for s in alcove-database-url alcove-kmaster alcove-kservice alcove-near-ai-api-key alcove-objects-access-key alcove-objects-secret-key alcove-google-client-id alcove-google-client-secret alcove-google-signup-testers alcove-livekit-api-key alcove-livekit-api-secret; do
   gcp_iam secrets add-iam-policy-binding "$s" --member "serviceAccount:$RUNTIME" --role roles/secretmanager.secretAccessor --condition None >/dev/null
 done
+echo "› Top-up secrets (added by hand; this script never creates or reads them)"
+# The treasury's NEAR full access key, which signs the API in to 1Click as the treasury, and 1Click's partner key. Only a
+# person adds their values, so a secret that doesn't exist yet is reported and left: deploys bind both, and fail without them.
+MISSING_SECRETS=()
+for s in alcove-treasury-intents-key alcove-oneclick-api-key; do
+  if gcp secrets describe "$s" >/dev/null 2>&1; then
+    gcp_iam secrets add-iam-policy-binding "$s" --member "serviceAccount:$RUNTIME" --role roles/secretmanager.secretAccessor --condition None >/dev/null
+  else
+    echo "The secret $s doesn't exist yet, so the API wasn't given access to it. Add it by hand (below), then run this script again." >&2
+    MISSING_SECRETS+=("$s")
+  fi
+done
 gcp_iam projects add-iam-policy-binding "$PROJECT_ID" --member "serviceAccount:$DEPLOY" --role roles/run.admin --condition None >/dev/null
 gcp_iam artifacts repositories add-iam-policy-binding alcove --location "$REGION" --member "serviceAccount:$DEPLOY" --role roles/artifactregistry.writer --condition None >/dev/null
 gcp_iam iam service-accounts add-iam-policy-binding "$RUNTIME" --member "serviceAccount:$DEPLOY" --role roles/iam.serviceAccountUser --condition None >/dev/null
@@ -174,3 +186,15 @@ Optional Google provider credentials and the newline-separated tester roster for
 Set CLOUDFLARE_ACCOUNT_ID as a repository variable and CLOUDFLARE_API_TOKEN as a production environment secret.
 Set DEPLOY_ENABLED=true as a repository variable only after the remaining infrastructure is configured.
 OUT
+
+if (( ${#MISSING_SECRETS[@]} )); then
+  cat >&2 <<OUT
+
+Not done yet, these secrets don't exist: ${MISSING_SECRETS[*]}. Deploys bind both top-up secrets and fail without either.
+Add each that's missing by hand (never print or commit their values), then run this script again to give the API access:
+  printf %s "\$TREASURY_INTENTS_KEY" | gcloud --project="$PROJECT_ID" secrets create alcove-treasury-intents-key --replication-policy automatic --data-file=-
+  printf %s "\$ONECLICK_API_KEY" | gcloud --project="$PROJECT_ID" secrets create alcove-oneclick-api-key --replication-policy automatic --data-file=-
+TREASURY_INTENTS_KEY is a full access key of alcove-treasury.near (ed25519:..., registered for it in intents.near), and
+ONECLICK_API_KEY the partner key from partners.near-intents.org (docs/engineering/deployment-and-acceptance.md).
+OUT
+fi
