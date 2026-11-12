@@ -59,7 +59,7 @@ packages/api/src/
   client.ts          aggregate interface
   errors.ts          shared client errors
   identity/ agents/ meetings/ calls/ notes/ recordings/ workspaces/
-  trust/ credits/ telemetry/ feature-flags/ shared/
+  trust/ plans/ telemetry/ feature-flags/ shared/
 packages/api-http/src/
   index.ts           public exports and client composition
   transport/         request, parse, stream and client options

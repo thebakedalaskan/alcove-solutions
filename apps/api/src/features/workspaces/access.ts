@@ -17,7 +17,7 @@ import { readPass } from '../../callPass';
 import type { Deps, Owner } from '../../context';
 import { b64u, blindIndex, id128, mac, openJson, sealJson, stateKey, toJson, type RecordHeader } from '../../crypto';
 import { bigintText, bytea, exec, maybeOne, rows, tx, type Db } from '../../db';
-import { AppError, AuthError, ConflictError, ForbiddenError, ValidationError, notFound } from '../../errors';
+import { AppError, AuthError, ConflictError, ForbiddenError, PlanLimitError, ValidationError, notFound } from '../../errors';
 import { publish, type Hub } from '../../live/hub';
 import { log } from '../../log';
 import type { MediaToken } from '../../mediaToken';
@@ -202,7 +202,12 @@ export function personIn(o: Owner, r: Reader): Person {
 /* ---------- where someone stands in a workspace ---------- */
 
 /** What a reader has in a workspace: their role, each document given to them beyond it, and of those what isn't only a seat in a call. */
-export interface Standing { role: WorkspaceRole | null; grants: Map<string, DocumentRole>; lasting: Map<string, DocumentRole> }
+/**
+ * Where someone stands in a workspace. `frozen`: the workspace is read-only for everyone, because whoever it counts against
+ * has more shared workspaces than their plan has (features/billing/storage.ts): every role reads, and an admin can still
+ * delete it or change who's in it.
+ */
+export interface Standing { role: WorkspaceRole | null; grants: Map<string, DocumentRole>; lasting: Map<string, DocumentRole>; frozen: boolean }
 const stronger = (a: DocumentRole | undefined, b: DocumentRole | undefined): DocumentRole | undefined => (a === 'edit' || b === 'edit' ? 'edit' : a ?? b);
 /** Whether anything in the workspace opens for them at all. */
 export const canOpen = (s: Standing): boolean => s.role !== null || s.grants.size > 0;
@@ -211,6 +216,7 @@ export const canOpen = (s: Standing): boolean => s.role !== null || s.grants.siz
 export interface Holders {
   members: { email_index: Uint8Array; role: WorkspaceRole }[];
   shares: { principal_index: Uint8Array; document_id: string; role: DocumentRole; kind: 'email' | 'seat' }[];
+  frozen: boolean;
 }
 const MemberRow = z.object({ email_index: bytea, role: z.enum(['admin', 'edit', 'read']) });
 const ShareRow = z.object({ principal_index: bytea, document_id: z.string(), role: z.enum(['edit', 'read']), kind: z.enum(['email', 'seat']) });
@@ -218,7 +224,8 @@ const ShareRow = z.object({ principal_index: bytea, document_id: z.string(), rol
 export async function holdersOf(db: Db, ownerId: string, principals: Uint8Array[]): Promise<Holders> {
   return {
     members: await rows(db, MemberRow, 'SELECT email_index, role FROM workspace_members WHERE owner_id = $1 AND email_index = ANY($2::bytea[])', [ownerId, principals]),
-    shares: await rows(db, ShareRow, 'SELECT principal_index, document_id, role, kind FROM document_access WHERE owner_id = $1 AND principal_index = ANY($2::bytea[])', [ownerId, principals])
+    shares: await rows(db, ShareRow, 'SELECT principal_index, document_id, role, kind FROM document_access WHERE owner_id = $1 AND principal_index = ANY($2::bytea[])', [ownerId, principals]),
+    frozen: (await maybeOne(db, z.object({ frozen: z.boolean() }), 'SELECT frozen_at IS NOT NULL AS frozen FROM workspaces WHERE owner_id = $1', [ownerId]))?.frozen ?? false
   };
 }
 /** How many people are in a workspace. */
@@ -230,16 +237,17 @@ export function standingIn(h: Holders, who: Who): Standing {
   for (const s of h.shares) {
     if (!among(who.principals, s.principal_index)) continue;
     for (const given of s.kind === 'seat' ? [grants] : [grants, lasting]) {
-      const role = stronger(given.get(s.document_id), s.role);
+      const role = stronger(given.get(s.document_id), h.frozen ? 'read' : s.role);
       if (role) given.set(s.document_id, role);
     }
   }
-  return { role: h.members.find((m) => among(who.principals, m.email_index))?.role ?? null, grants, lasting };
+  const role = h.members.find((m) => among(who.principals, m.email_index))?.role ?? null;
+  return { role: h.frozen && role === 'edit' ? 'read' : role, grants, lasting, frozen: h.frozen };
 }
 
 /** What someone can do with one item, or undefined when it doesn't exist for them. */
-export function roleOf(who: Who, s: Pick<Standing, 'role' | 'grants'>, id: string, item: Pick<StoredItem, 'kind' | 'by' | 'restricted' | 'restrictedBy'>): DocumentRole | undefined {
-  const asMember = s.role === null ? undefined : s.role === 'read' ? 'read' : 'edit';
+export function roleOf(who: Who, s: Pick<Standing, 'role' | 'grants' | 'frozen'>, id: string, item: Pick<StoredItem, 'kind' | 'by' | 'restricted' | 'restrictedBy'>): DocumentRole | undefined {
+  const asMember = s.role === null ? undefined : s.role === 'read' || s.frozen ? 'read' : 'edit';
   if (item.kind === 'folder') return asMember;
   const email = who.email?.trim().toLowerCase();
   const mine = email !== undefined && (item.by?.email === email || item.restrictedBy === email);
@@ -393,8 +401,11 @@ export function requireItem(who: Who, w: WorkspaceAs, id: string): Opened {
 }
 const refuse = (w: WorkspaceAs, id: string) => new ForbiddenError('You can read this, but not change it.', { context: { workspaceId: w.workspaceId, itemId: id } });
 /** The same, to change: it needs `edit`, and to be in the tree (`inTrash` when it's fine in Trash). */
+/** What changing a read-only workspace is refused with: whose plan it counts against has more shared workspaces than it has. */
+export const frozenRefusal = (workspaceId: string) => new PlanLimitError('This workspace is read-only: its owner has more shared workspaces than their plan has. It works again once they upgrade or delete one.', 'workspaces', { context: { workspaceId } });
 export function requireEditable(who: Who, w: WorkspaceAs, id: string, inTrash: 'fine' | 'refused' = 'refused'): Opened {
   const found = requireItem(who, w, id);
+  if (w.frozen) throw frozenRefusal(w.workspaceId);
   if (found.role !== 'edit') throw refuse(w, id);
   if (inTrash === 'refused' && trashOf(w.state, id)) throw new ConflictError('This is in Trash. Restore it to change it.', { context: { workspaceId: w.workspaceId, itemId: id } });
   return found;
@@ -412,6 +423,7 @@ export function requireDocument(who: Who, w: WorkspaceAs, documentId: string, ne
 /** What's only for people in the workspace. Anyone else, it doesn't exist for; a role that's too low is refused. */
 export function requireRole(w: WorkspaceAs, need: 'in' | 'edit' | 'admin'): void {
   if (w.role === null) throw missing(w.workspaceId);
+  if (need === 'edit' && w.frozen) throw frozenRefusal(w.workspaceId);
   if ((need === 'admin' && w.role !== 'admin') || (need === 'edit' && w.role === 'read')) throw new ForbiddenError(need === 'admin' ? 'Only an admin can do that.' : 'You can read this workspace, but not change it.', { context: { workspaceId: w.workspaceId, need } });
 }
 /**
@@ -422,7 +434,7 @@ export function requireSharing(who: Who, w: WorkspaceAs, documentId: string): Op
   requireRole(w, 'in');
   const found = requireDocument(who, w, documentId, 'read');
   if (found.role !== 'edit') throw refuse(w, documentId);
-  if (roleOf(who, { role: w.role, grants: w.lasting }, documentId, found.item) !== 'edit') throw new ForbiddenError('You can work on this in the call, but you can’t share it.', { context: { workspaceId: w.workspaceId, itemId: documentId } });
+  if (roleOf(who, { role: w.role, grants: w.lasting, frozen: w.frozen }, documentId, found.item) !== 'edit') throw new ForbiddenError('You can work on this in the call, but you can’t share it.', { context: { workspaceId: w.workspaceId, itemId: documentId } });
   return found;
 }
 

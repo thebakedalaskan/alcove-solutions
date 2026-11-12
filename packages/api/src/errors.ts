@@ -1,5 +1,5 @@
 export type AlcoveErrorCode =
-  | 'unauthenticated' | 'not-found' | 'forbidden' | 'invalid' | 'insufficient-credits' | 'conflict' | 'unavailable'
+  | 'unauthenticated' | 'not-found' | 'forbidden' | 'invalid' | 'plan-limit' | 'conflict' | 'unavailable'
   | 'key-unavailable' | 'too-large' | 'network' | 'unknown';
 
 
@@ -26,7 +26,7 @@ export class AlcoveApiError extends Error {
 export const errorRequestId = (e: unknown): string | undefined => (e instanceof AlcoveApiError ? e.requestId : undefined);
 
 
-export const ALCOVE_ERROR_CODES: readonly AlcoveErrorCode[] = ['unauthenticated', 'not-found', 'forbidden', 'invalid', 'insufficient-credits', 'conflict', 'unavailable', 'key-unavailable', 'too-large', 'network', 'unknown'];
+export const ALCOVE_ERROR_CODES: readonly AlcoveErrorCode[] = ['unauthenticated', 'not-found', 'forbidden', 'invalid', 'plan-limit', 'conflict', 'unavailable', 'key-unavailable', 'too-large', 'network', 'unknown'];
 
 export const isAlcoveErrorCode = (v: unknown): v is AlcoveErrorCode => typeof v === 'string' && ALCOVE_ERROR_CODES.some((c) => c === v);
 

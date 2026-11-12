@@ -1,9 +1,9 @@
 /*
- * Credit top-ups: payments into the treasury through a deposit provider (docs: payments-and-usage). What a deposit is
- * (route, address, memo, the provider's quote) is sealed under Kservice's accounting key, like billing state; its row
- * says only whose it is, its state and when to look at it again.
+ * Top-ups: payments into the treasury through a deposit provider, added to the balance plans are bought with (docs:
+ * Plans and usage), a token as a dollar. What a deposit is (route, address, memo, the provider's quote) is sealed under
+ * Kservice's accounting key, like the plan; its row says only whose it is, its state and when to look at it again.
  */
-import { MAX_TOP_UP_CREDITS, TopUpStateSchema, type TopUp, type TopUpRoutes, type TopUpState } from '@alcove/api';
+import { MAX_TOP_UP_MICRO_USD, TopUpStateSchema, type TopUp, type TopUpRoutes, type TopUpState } from '@alcove/api';
 import { z } from 'zod';
 import type { Deps } from '../../context';
 import { id128, openJson, sealJson, serviceKey, toJson, unb64u } from '../../crypto';
@@ -14,7 +14,8 @@ import {
   depositProviders, formatUnits, fromMicroUsd, PROVIDER_TIMEOUT_MS, toMicroUsd, type DepositAddress, type DepositCheck, type DepositProviderName,
   type DepositProvider, type DepositRoute, type DoubtReason, type OpenDepositState
 } from './provider';
-import { PER_MINUTE, TIERS, credit, creditsAt, creditsForUsd, priceFor, rateFor, type Rate } from './service';
+import { limitsNow } from '../../limits';
+import { credit } from './plans';
 
 const dlog = log.child({ component: 'deposits' });
 /** IDs are 22 characters of base64url; anything else names nothing. */
@@ -29,8 +30,8 @@ const MAX_A_DAY = 30;
  * to credit, in basis points: 1Click's fee and up to 1% slippage on a swap between stablecoins, with room to spare.
  */
 const REACHED_BPS = 9_850n;
-/** Amounts of credits the app offers first. */
-const PRESETS = [10_000, 50_000, 100_000];
+/** Amounts the app offers first, in periods of Pro at its price now. */
+const PRESET_PERIODS = [1, 3, 6];
 const OPEN: readonly TopUpState[] = ['waiting', 'arriving', 'short'];
 const isOpen = (s: TopUpState): s is OpenDepositState => s === 'waiting' || s === 'arriving' || s === 'short';
 /**
@@ -52,21 +53,22 @@ export const DepositRecord = z.object({
   address: z.string(),
   memo: z.string().nullable(),
   expiresAt: z.string(),
-  /** What the person was asked to send, and the least the provider still swaps (its quote's `minAmountIn`). */
+  /**
+   * What the person was asked to send, and the least the provider still swaps (its quote's `minAmountIn`). A deposit
+   * opened before plans also has the credits it promised, which no longer count: it's added as dollars like any other.
+   */
   asked: units,
   minAmountIn: units,
-  /** The credits promised for sending `asked`, and the rate they were priced at (credits per USD), which excess earns. */
-  credits: z.number().int(),
-  rate: z.object({ num: units, den: units }),
   /** The provider's whole quote response, signature included, kept for disputes. */
   quote: z.unknown(),
   /** What the provider last said arrived, while the deposit was still open (micro-USD), or null before it said. */
   seenMicroUsd: units.nullable(),
   /**
    * Once settled: what was sent, what reached the treasury as USDC and what was refunded to it instead (micro-USD,
-   * integer strings), the credits it added (0 when held), and the provider's name for the settlement.
+   * integer strings), what it added to the balance (micro-USD; 0 when held), and the provider's name for the
+   * settlement. One settled before plans added credits instead, and has no `addedMicroUsd`.
    */
-  settled: z.object({ sentMicroUsd: units, outMicroUsd: units, refundedMicroUsd: units, credits: z.number().int(), providerRef: z.string() })
+  settled: z.object({ sentMicroUsd: units, outMicroUsd: units, refundedMicroUsd: units, addedMicroUsd: units.nullable().default(null), providerRef: z.string() })
     .nullable().default(null),
   /** Whether it was logged that the provider couldn't answer past `give_up_at`, so it's logged once. */
   unanswered: z.boolean().default(false),
@@ -78,13 +80,13 @@ export type DepositRecord = z.infer<typeof DepositRecord>;
 /** The providers this server is set up with. Every top-up endpoint is unavailable when top-ups are off here. */
 function providers(d: Deps): DepositProvider[] {
   const p = depositProviders(d.cfg);
-  if (!p) throw new UnavailableError('Adding credits isn’t available on this server.');
+  if (!p) throw new UnavailableError('Adding money isn’t available on this server.');
   return Object.values(p);
 }
-/** The fewest credits a route takes: what its minimum buys. */
-const minimumCredits = (r: { minimum: bigint | string; decimals: number }) => creditsForUsd(toMicroUsd(BigInt(r.minimum), r.decimals));
+/** The least a route takes, in micro-USD: its minimum, a token as a dollar. */
+const minimumOf = (r: { minimum: bigint | string; decimals: number }) => toMicroUsd(BigInt(r.minimum), r.decimals);
 const toRoute = (r: DepositRecord['route'] | DepositRoute) => ({
-  id: r.id, chain: r.chain, chainName: r.chainName, token: r.token, minimum: formatUnits(BigInt(r.minimum), r.decimals), minimumCredits: minimumCredits(r)
+  id: r.id, chain: r.chain, chainName: r.chainName, token: r.token, minimum: formatUnits(BigInt(r.minimum), r.decimals)
 });
 /** A deposit as the person sees it. Its address is shown only while a payment is awaited: one payment per address. */
 function toTopUp(depositId: string, r: DepositRecord, state: TopUpState): TopUp {
@@ -94,22 +96,18 @@ function toTopUp(depositId: string, r: DepositRecord, state: TopUpState): TopUp 
   return {
     id: depositId, route: toRoute(r.route), address: sendable ? r.address : null, memo: sendable ? r.memo : null,
     expiresAt: r.expiresAt, state,
-    asked: { amount: formatUnits(BigInt(r.asked), r.route.decimals), credits: r.credits },
-    received: sent === null ? null : { amount: formatUnits(BigInt(sent), 6), credits: r.settled ? r.settled.credits : null }
+    asked: { amount: formatUnits(BigInt(r.asked), r.route.decimals) },
+    received: sent === null ? null : { amount: formatUnits(BigInt(sent), 6), microUsd: r.settled ? Number(r.settled.addedMicroUsd ?? 0) : null }
   };
 }
 
 export async function routes(d: Deps): Promise<TopUpRoutes> {
   const all = (await Promise.all(providers(d).map((p) => p.routes()))).flat();
-  return {
-    routes: all.map(toRoute),
-    tiers: TIERS.map((t) => ({ fromCredits: t.fromCredits, creditsPerUsd: Number(t.creditsPerUsd.num) / Number(t.creditsPerUsd.den) })),
-    presets: PRESETS,
-    perMinute: PER_MINUTE
-  };
+  const pro = (await limitsNow(d)).get('plan.pro.price_micro_usd');
+  return { routes: all.map(toRoute), presets: pro > 0 ? PRESET_PERIODS.map((n) => n * pro) : [] };
 }
 
-const count = new Intl.NumberFormat('en-US');
+const dollars = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 });
 /**
  * Refuses another top-up while the owner has 15 waiting for a payment to an address that hasn't expired, or opened 30
  * in the last 24 hours (cancelled ones count: each was a quote, and is watched until its address expires). Counted in
@@ -131,27 +129,25 @@ async function withinLimits(db: Db, ownerId: string): Promise<void> {
 }
 
 /**
- * Opens a top-up for `credits` on a route: the provider quotes an address paying the treasury for exactly their price,
- * and the deposit is kept sealed with what was asked for and promised. The limits are checked before asking for a
- * quote, and again under a lock on the owner in the transaction that inserts it, so concurrent requests can't pass them.
+ * Opens a top-up for `microUsd` on a route: the provider quotes an address paying the treasury exactly that, a token as
+ * a dollar, and the deposit is kept sealed with what was asked for. The limits are checked before asking for a quote,
+ * and again under a lock on the owner in the transaction that inserts it, so concurrent requests can't pass them.
  */
-export async function start(d: Deps, ownerId: string, routeId: string, credits: number): Promise<TopUp> {
+export async function start(d: Deps, ownerId: string, routeId: string, microUsd: number): Promise<TopUp> {
   const all = providers(d);
   await withinLimits(d.pool, ownerId);
   const found = (await Promise.all(all.map(async (p) => ({ p, route: (await p.routes()).find((r) => r.id === routeId) })))).find((x) => x.route);
   if (!found?.route) throw invalid('That way to pay isn’t offered.');
-  const least = minimumCredits(found.route);
-  if (credits < least) {
-    throw invalid(`The least you can add with ${found.route.token} on ${found.route.chainName} is ${count.format(least)} credits.`, { reason: 'below-minimum', least });
+  const least = minimumOf(found.route);
+  if (BigInt(microUsd) < least) {
+    throw invalid(`The least you can add with ${found.route.token} on ${found.route.chainName} is ${dollars.format(Number(least) / 1_000_000)}.`, { reason: 'below-minimum', least: Number(least) });
   }
-  const rate = rateFor(credits);
-  const opened = await found.p.open(found.route, fromMicroUsd(priceFor(credits), found.route.decimals));
+  const opened = await found.p.open(found.route, fromMicroUsd(BigInt(microUsd), found.route.decimals));
   const depositId = id128();
   const record: DepositRecord = {
     route: { ...opened.route, minimum: opened.route.minimum.toString() },
     address: opened.address, memo: opened.memo, expiresAt: opened.expiresAt,
-    asked: opened.amountIn.toString(), minAmountIn: opened.minAmountIn.toString(), credits,
-    rate: { num: rate.num.toString(), den: rate.den.toString() },
+    asked: opened.amountIn.toString(), minAmountIn: opened.minAmountIn.toString(),
     quote: opened.quote, seenMicroUsd: null, settled: null, unanswered: false, doubt: null
   };
   const giveUpAt = new Date(Date.parse(opened.expiresAt) + GIVE_UP_AFTER_MS);
@@ -217,41 +213,33 @@ export async function get(d: Deps, ownerId: string, depositId: string): Promise<
 }
 
 /**
- * Credits for `sentMicroUsd` that was swapped on a deposit that asked for `rec.asked`, all at face value of what was
- * sent: at least what was asked, the promised credits plus the excess at the rate they were priced at; within the
- * provider's band (from `minAmountIn`), exactly the promised credits; below it, what the money buys by itself.
+ * What a settled deposit adds to the balance, in micro-USD, at face value of what was sent. When anything was swapped
+ * (even with part refunded, which reaches the treasury too): at least what was asked, all of it; within the provider's
+ * band (from `minAmountIn`), exactly what was asked, as promised; below it, what was sent. When nothing was swapped,
+ * what was refunded to the treasury, however small (held only when that's nothing).
  */
-function creditsForSwap(rec: DepositRecord, sentMicroUsd: bigint): number {
+function addedFor(rec: Pick<DepositRecord, 'asked' | 'minAmountIn' | 'route'>, s: { sentMicroUsd: bigint; outMicroUsd: bigint; refundedMicroUsd: bigint }): bigint {
+  if (s.outMicroUsd === 0n && s.refundedMicroUsd > 0n) return s.refundedMicroUsd;
   const asked = toMicroUsd(BigInt(rec.asked), rec.route.decimals);
-  const rate: Rate = { num: BigInt(rec.rate.num), den: BigInt(rec.rate.den) };
-  if (sentMicroUsd >= asked) return rec.credits + creditsAt(sentMicroUsd - asked, rate);
-  if (sentMicroUsd >= toMicroUsd(BigInt(rec.minAmountIn), rec.route.decimals)) return rec.credits;
-  return creditsForUsd(sentMicroUsd);
+  if (s.sentMicroUsd >= asked) return s.sentMicroUsd;
+  if (s.sentMicroUsd >= toMicroUsd(BigInt(rec.minAmountIn), rec.route.decimals)) return asked;
+  return s.sentMicroUsd;
 }
 /**
- * Credits for a settled deposit. When anything was swapped (even with part refunded, which reaches the treasury too),
- * the whole amount sent follows `creditsForSwap`. When nothing was, the refund is credited for what it buys by
- * itself, however small (held only when that rounds down to no credits).
- */
-function creditsForSettled(rec: DepositRecord, s: Extract<DepositCheck, { state: 'settled' }>): number {
-  if (s.outMicroUsd > 0n || s.refundedMicroUsd === 0n) return creditsForSwap(rec, s.sentMicroUsd);
-  return creditsForUsd(s.refundedMicroUsd);
-}
-/**
- * Why a settled answer can't be credited, or null when it can. Credits go by what was sent, so what reached the
- * treasury (swapped out, plus refunded to it) must be nearly all of it, and no more can be sent than one top-up buys.
+ * Why a settled answer can't be credited, or null when it can. What's added goes by what was sent, so what reached the
+ * treasury (swapped out, plus refunded to it) must be nearly all of it, and no more can be sent than one top-up takes.
  */
 function doubtAbout(s: Extract<DepositCheck, { state: 'settled' }>): DoubtReason | null {
   if (s.sentMicroUsd <= 0n) return 'nothing-sent';
-  if (s.sentMicroUsd > priceFor(MAX_TOP_UP_CREDITS)) return 'more-than-a-top-up-buys';
+  if (s.sentMicroUsd > BigInt(MAX_TOP_UP_MICRO_USD)) return 'more-than-a-top-up-buys';
   if ((s.outMicroUsd + s.refundedMicroUsd) * 10_000n < s.sentMicroUsd * REACHED_BPS) return 'less-reached-treasury-than-sent';
   return null;
 }
 
 /**
  * Records what the provider says, in one transaction with the deposit row locked, so a deposit credits at most once
- * however many watchers and requests race on it. A settled answer that can be trusted credits by `creditsForSettled`
- * (or is held when that comes to no credits) from any state but `credited` or `held`: a payment 1Click settles after
+ * however many watchers and requests race on it. A settled answer that can be trusted adds `addedFor` to the balance
+ * (or is held when that comes to nothing) from any state but `credited` or `held`: a payment 1Click settles after
  * the deposit failed, expired or was cancelled is still credited. A doubtful answer credits nothing: the deposit is
  * `arriving` (a failed or expired one `failed`), logged at error once per reason, and reaches support at its deadline. Otherwise `arriving` never goes
  * back to `waiting`, a cancelled one moves on only when a payment reaches it (and is then due for the watcher at once),
@@ -280,14 +268,14 @@ export async function apply(d: Deps, ownerId: string, depositId: string, check: 
     if (check.state === 'settled') {
       const reason = doubtAbout(check);
       if (reason) return doubted(reason);
-      const credits = creditsForSettled(rec, check);
-      const state: TopUpState = credits > 0 ? 'credited' : 'held';
-      if (credits > 0) await credit(d, c, ownerId, { amount: credits, label: `Credits added, ${formatUnits(check.sentMicroUsd, 6)} ${rec.route.token}` });
+      const added = addedFor(rec, check);
+      const state: TopUpState = added > 0n ? 'credited' : 'held';
+      if (added > 0n) await credit(d, c, ownerId, Number(added), `Added, ${formatUnits(check.sentMicroUsd, 6)} ${rec.route.token}`);
       await save(state, {
         ...rec,
         settled: {
           sentMicroUsd: check.sentMicroUsd.toString(), outMicroUsd: check.outMicroUsd.toString(), refundedMicroUsd: check.refundedMicroUsd.toString(),
-          credits, providerRef: check.providerRef
+          addedMicroUsd: added.toString(), providerRef: check.providerRef
         }
       });
       if (late) dlog.warn('top-up settled after it was given up', { depositId, provider, was: r.state, state });
@@ -544,4 +532,33 @@ export async function list(d: Deps, ownerId: string): Promise<TopUp[]> {
     (SELECT deposit_id, state, record_ciphertext, created_at FROM deposits WHERE owner_id = $1 AND NOT state = ANY($2) ORDER BY created_at DESC LIMIT 10)
     ORDER BY created_at DESC`, [ownerId, OPEN]);
   return found.map((r) => open(d, ownerId, r));
+}
+
+/**
+ * Adds to the balance what a deposit settled by the previous release while this one deployed came to: that release
+ * added credits, which no longer count (billing_cutover says when this release's migration ran, and the previous release
+ * runs only for a while after it). Each once, under its row's lock, by the same rules as any other. Says how many.
+ */
+export async function creditCarried(d: Deps): Promise<number> {
+  const due = await rows(d.pool, z.object({ owner_id: z.string(), deposit_id: z.string() }), `
+    SELECT owner_id, deposit_id FROM deposits d, billing_cutover b
+    WHERE d.state = 'credited' AND d.checked_at >= b.at AND d.checked_at < b.at + interval '1 day' LIMIT 100`);
+  let carried = 0;
+  for (const x of due) {
+    const done = await tx(d.pool, async (c) => {
+      const r = await maybeOne(c, Row, 'SELECT deposit_id, state, record_ciphertext, created_at FROM deposits WHERE owner_id = $1 AND deposit_id = $2 FOR UPDATE', [x.owner_id, x.deposit_id]);
+      if (!r) return false;
+      const rec = record(d, x.owner_id, r);
+      const s = rec.settled;
+      if (!s || s.addedMicroUsd !== null) return false;
+      const added = addedFor(rec, { sentMicroUsd: BigInt(s.sentMicroUsd), outMicroUsd: BigInt(s.outMicroUsd), refundedMicroUsd: BigInt(s.refundedMicroUsd) });
+      if (added > 0n) await credit(d, c, x.owner_id, Number(added), `Added, ${formatUnits(BigInt(s.sentMicroUsd), 6)} ${rec.route.token}`);
+      await exec(c, 'UPDATE deposits SET record_ciphertext = $3 WHERE owner_id = $1 AND deposit_id = $2',
+        [x.owner_id, x.deposit_id, sealJson(key(d), header(x.owner_id, x.deposit_id), toJson({ ...rec, settled: { ...s, addedMicroUsd: added.toString() } }))]);
+      dlog.warn('top-up the previous release settled added as dollars', { depositId: x.deposit_id });
+      return true;
+    });
+    if (done) carried++;
+  }
+  return carried;
 }

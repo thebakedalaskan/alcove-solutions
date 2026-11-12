@@ -16,6 +16,7 @@ import { useScreenCapture } from '../notes/useScreenCapture';
 import { useCallControls } from './useCallControls';
 import { useFloatingWindow } from './floatingWindow';
 import { FloatingCallPortal } from './FloatingCallPortal';
+import { PlanBanners } from './PlanBanners';
 import { asShown, SOMEONE } from './participants';
 import {
   BOARD_SHOT_LIMITS, CALL_LAYOUT_MAX, CAPTION_LANGUAGES, MAIN_PLACE, errorCode, errorMessage, firstName, notesAreOn, type CallAsker, type CallReaction, type CallSession, type CallState, type CaptionLanguage,
@@ -1953,6 +1954,7 @@ export function InCall({ session }: { session: CallSession }) {
               {seam && <PeopleSeam box={seam} small={peopleSmall} onToggle={togglePeople} />}
               <TileHint area={callArea.ref} account={owner} />
               <motion.div className="ic-frame" initial={false} animate={{ left: 0, top: 0, width: clearW, height: size.h }} transition={reduce ? { duration: 0 } : GLIDE}>
+                <PlanBanners state={state} />
                 {hosting && side.view !== 'people' && state.waiting.length > 0 && (
                   <div className="rg-knocks">
                     <AnimatePresence initial={false}>

@@ -15,7 +15,7 @@ import { log } from '~/lib/log';
 import { useNow, useOnline } from '~/lib/live';
 import { sameEmail } from '~/lib/people';
 import { q, trustLine, verifiedAt } from '~/lib/queries';
-import { daysFromToday, hm, hoursAndMinutes, minutesUntil, untilLabel } from '~/lib/time';
+import { daysFromToday, hm, hoursAndMinutes, minutesUntil, shortDay, untilLabel } from '~/lib/time';
 import { NAV, inWorkspace, places, useCounts } from './places';
 
 const KEY = 'alcove-side-panel';
@@ -203,18 +203,24 @@ function Groups() {
   );
 }
 
-/** The check, and the minutes of notes left (Settings' minutes). */
+/**
+ * The check, and about how much of the period's notes is left (Settings' Plan), with Upgrade to Pro above it on Free,
+ * which opens the plans in Settings.
+ */
 function Foot({ online }: { online: boolean }) {
-  const credits = useQuery(q.balance()).data;
+  const plan = useQuery(q.plan()).data;
   const trust = useQuery(q.trust()).data;
   const verified = verifiedAt(trust);
   return (
     <div className="sb-foot">
       {online && <p className="sb-seal" data-tour="sealed" title={verified === null ? undefined : `Hardware checked at ${hm(new Date(verified))}`}><Icon name="sealed" size={15} />{trustLine(trust)}</p>}
-      {credits && (
+      {plan?.kind === 'free' && <Link to="/settings" hash="plan" className="sb-upgrade"><Icon name="arrowUp" size={14} />Upgrade to Pro</Link>}
+      {plan && (
         <Link to="/settings" hash="plan" activeOptions={{ includeHash: true }} className="sb-credits">
-          <span><b>{hoursAndMinutes(credits.balance / credits.perMinute)}</b> of notes left</span>
-          <Meter value={credits.balance / Math.max(1, credits.granted)} />
+          {plan.notes.stopped || plan.notes.minutesLeft <= 0
+            ? <span><b>No notes left</b> until {shortDay(new Date(plan.period.to))}</span>
+            : <span><b>About {hoursAndMinutes(plan.notes.minutesLeft)}</b> of notes left</span>}
+          <Meter value={plan.notes.minutesPerPeriod > 0 ? plan.notes.minutesLeft / plan.notes.minutesPerPeriod : 0} />
         </Link>
       )}
     </div>

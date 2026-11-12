@@ -6,6 +6,7 @@ import { id128 } from '../../crypto';
 import { exec, maybeOne, rows, timestamp, tx, type Db } from '../../db';
 import { ConflictError } from '../../errors';
 import { openOwner } from '../../owners';
+import { limitsNow } from '../../limits';
 import { me, profile } from '../account/account';
 import { portraitFor } from '../account/portraits';
 import { CallSpace, NO_BOARDS, NO_SPACE, withOpenBoards, type WorkedDocument } from './space-state';
@@ -450,6 +451,39 @@ async function reconcileCall(d: Deps, c: LiveCall, rooms: ReadonlySet<string>, n
   if (!end) return false;
   clog.info('call ended without a host', { callId: c.call_id, reason: hostGone ? 'host gone, nobody can host' : 'room gone' });
   return true;
+}
+
+/**
+ * Ends every live call that has run as long as a call can (`call.max_seconds`, docs: Plans and usage): everyone in it was
+ * told 5 minutes before, by when the call said it ends, and its notes are written as when anyone ends it. Says how many
+ * ended. Each on its own: one that can't be ended now is tried again next time.
+ */
+export async function endOverdue(d: Deps): Promise<number> {
+  const longest = (await limitsNow(d)).get('call.max_seconds');
+  const due = await rows(d.pool, z.object({ owner_id: z.string(), call_id: z.string() }),
+    `SELECT owner_id, call_id FROM calls WHERE state = 'live' AND started_at <= now() - make_interval(secs => $1) ORDER BY started_at LIMIT 100`, [longest]);
+  let ended = 0;
+  for (const c of due) {
+    const end = await endCall(await openOwner(d, c.owner_id, undefined), c.call_id).catch((err: unknown) => {
+      clog.warn('a call that ran as long as a call can wasn’t ended; trying again next time', { callId: c.call_id, err });
+      return null;
+    });
+    if (!end) continue;
+    ended++;
+    clog.info('call ended: it ran as long as a call can', { callId: c.call_id, seconds: longest });
+  }
+  return ended;
+}
+/** Ends calls at their longest every 30 seconds, one pass at a time, until stopped. */
+export function startEndingOverdue(d: Deps): () => void {
+  let running = false;
+  const timer = setInterval(() => {
+    if (running) return;
+    running = true;
+    endOverdue(d).catch((err: unknown) => clog.error('ending calls at their longest failed', { err })).finally(() => { running = false; });
+  }, 30_000);
+  timer.unref();
+  return () => clearInterval(timer);
 }
 
 /**

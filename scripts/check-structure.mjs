@@ -28,7 +28,7 @@ const serverRoot = new Set([
 const contractRoot = new Set(['index.ts', 'client.ts', 'errors.ts', 'format.ts', 'search.ts']);
 const sourceHomes = {
   'apps/api/src': new Set(['features', 'http', 'integration', 'live', 'testing']),
-  'packages/api/src': new Set(['identity', 'feature-flags', 'agents', 'meetings', 'calls', 'notes', 'recordings', 'workspaces', 'trust', 'credits', 'telemetry', 'shared']),
+  'packages/api/src': new Set(['identity', 'feature-flags', 'agents', 'meetings', 'calls', 'notes', 'recordings', 'workspaces', 'trust', 'plans', 'telemetry', 'shared']),
   'packages/api-http/src': new Set(['transport', 'account', 'agents', 'meetings', 'calls', 'notes', 'recordings', 'workspaces'])
 };
 const owned = [

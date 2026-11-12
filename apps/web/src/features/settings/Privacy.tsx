@@ -12,8 +12,8 @@ import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { forgetView } from '~/features/call/layout/view';
 import { forgetTour } from '~/features/onboarding/store';
 import { q, topUpOpen, useDeleteAccount, verifiedAt } from '~/lib/queries';
-import { hm, hoursAndMinutes } from '~/lib/time';
-import { plural } from '~/lib/words';
+import { hm } from '~/lib/time';
+import { plural, usd } from '~/lib/words';
 
 const LEDGER = [
   ['Your name, email and photo', 'What was said'],
@@ -86,7 +86,7 @@ function DeleteStep({ shared, onClose }: { shared: boolean; onClose: () => void 
   const notes = useQuery(q.notes()).data;
   const upcoming = useQuery(q.upcoming()).data;
   const prefs = useQuery(q.prefs()).data;
-  const credits = useQuery(q.balance()).data;
+  const plan = useQuery(q.plan()).data;
   const calendar = useQuery(q.calendar()).data;
   const topUps = useQuery(q.topUps()).data;
   const paying = topUps?.some(topUpOpen) ?? false;
@@ -123,8 +123,8 @@ function DeleteStep({ shared, onClose }: { shared: boolean; onClose: () => void 
       : mine > 0 ? `${plural(mine, 'note', 'notes')} you made, with their audio, for everyone who has them` : null,
     calls === undefined ? 'The calls you scheduled, for everyone invited'
       : calls > 0 ? `${plural(calls, 'call', 'calls')} you scheduled, for everyone invited` : null,
-    credits === undefined ? 'The minutes of notes left on your account'
-      : credits.balance > 0 ? `Your ${hoursAndMinutes(credits.balance / credits.perMinute)} of notes left` : null,
+    plan === undefined ? 'Your plan and your balance'
+      : plan.balance.microUsd > 0 ? `Your plan, and your balance of ${usd(plan.balance.microUsd)}` : 'Your plan',
     'Your own notes on every call, and anything you added from them to other people’s notes',
     kept ? 'Your groups and pins' : null,
     spaces === undefined || spaces.length > 0 ? 'Workspaces only you are in, and documents only you can open' : null,

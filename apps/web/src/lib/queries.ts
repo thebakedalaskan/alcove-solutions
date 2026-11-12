@@ -52,7 +52,7 @@ export const qk = {
   allSeries: ['series'] as const,
   series: (id: string) => ['series', id] as const,
   callSeries: (code: string) => ['series', 'call', code] as const,
-  balance: ['credits'] as const,
+  plan: ['plan'] as const,
   topUpRoutes: ['top-ups', 'routes'] as const,
   topUps: ['top-ups', 'list'] as const,
   topUp: (id: string) => ['top-ups', 'one', id] as const,
@@ -114,7 +114,7 @@ export const trustLine = (t: Trust | undefined): string => (verifiedAt(t) === nu
 export const topUpOpen = (t: TopUp): boolean => t.state === 'waiting' || t.state === 'arriving' || t.state === 'short';
 
 /** The top-ups list's key, carrying its type, for reading what it held before. */
-const topUpsKey = queryOptions({ queryKey: qk.topUps, queryFn: (): Promise<TopUp[]> => api.credits.topUps() }).queryKey;
+const topUpsKey = queryOptions({ queryKey: qk.topUps, queryFn: (): Promise<TopUp[]> => api.plans.topUps() }).queryKey;
 
 export const q = {
   drive: () => queryOptions({ queryKey: qk.drive, queryFn: () => api.drive.get(), retry: false }),
@@ -182,24 +182,25 @@ export const q = {
     queryFn: () => api.calls.series(code).catch((e: unknown) => { if (errorCode(e) === 'unauthenticated') return null; throw e; }),
     retry: false, staleTime: 30_000, refetchInterval: 60_000, refetchOnWindowFocus: true
   }),
-  balance: () => queryOptions({ queryKey: qk.balance, queryFn: () => api.credits.balance() }),
+  /** The plan: notes left, storage, shared workspaces and the balance. Read again every minute, so notes left follows calls. */
+  plan: () => queryOptions({ queryKey: qk.plan, queryFn: () => api.plans.plan(), refetchInterval: 60_000 }),
   /**
-   * The ways to pay for credits. A server that can't take payments answers unavailable: nothing says so, the way to
-   * add credits just isn't there, and it isn't asked again for a while.
+   * The ways to add money. A server that can't take payments answers unavailable: nothing says so, the way to
+   * add money just isn't there, and it isn't asked again for a while.
    */
-  topUpRoutes: () => queryOptions({ queryKey: qk.topUpRoutes, queryFn: () => api.credits.routes(), staleTime: 10 * 60_000, retry: false }),
+  topUpRoutes: () => queryOptions({ queryKey: qk.topUpRoutes, queryFn: () => api.plans.routes(), staleTime: 10 * 60_000, retry: false }),
   /**
    * Top-ups still open, and the last few finished; read again every 30 seconds while one is open, so a payment that
-   * settles with the sheet closed shows on Plan and credits. A server that can't take payments answers unavailable:
+   * settles with the sheet closed shows on Plan. A server that can't take payments answers unavailable:
    * there's nothing to show.
    */
   topUps: () => queryOptions({
     queryKey: qk.topUps,
     queryFn: async ({ client }) => {
       const was = client.getQueryData(topUpsKey)?.filter(topUpOpen) ?? [];
-      const list = await api.credits.topUps();
-      // One that was on its way has been credited since: the balance catches up.
-      if (list.some((t) => t.state === 'credited' && was.some((w) => w.id === t.id))) void client.invalidateQueries({ queryKey: qk.balance });
+      const list = await api.plans.topUps();
+      // One that was on its way has been added since: the balance catches up.
+      if (list.some((t) => t.state === 'credited' && was.some((w) => w.id === t.id))) void client.invalidateQueries({ queryKey: qk.plan });
       return list;
     },
     refetchInterval: (query) => (query.state.data?.some(topUpOpen) ? 30_000 : false),
@@ -207,14 +208,14 @@ export const q = {
   }),
   /**
    * One top-up, read again every 5 seconds while money can still arrive. Once it has finished, the list catches up,
-   * and the balance too when credits were added.
+   * and the balance too when money was added.
    */
   topUp: (id: string) => queryOptions({
     queryKey: qk.topUp(id),
     queryFn: async ({ client }) => {
-      const t = await api.credits.topUp(id);
+      const t = await api.plans.topUp(id);
       if (!topUpOpen(t)) void client.invalidateQueries({ queryKey: qk.topUps });
-      if (t.state === 'credited') void client.invalidateQueries({ queryKey: qk.balance });
+      if (t.state === 'credited') void client.invalidateQueries({ queryKey: qk.plan });
       return t;
     },
     refetchInterval: (query) => (query.state.data && topUpOpen(query.state.data) ? 5000 : false)
@@ -471,28 +472,28 @@ export function useInviteTeam() {
   return useMutation({ mutationFn: (emails: string[]) => api.people.inviteToTeam(emails), onSuccess: (t) => qc.setQueryData(qk.team, t) });
 }
 
-/* ---------- credits ---------- */
+/* ---------- adding money ---------- */
 
-/** Opens a top-up on a route: the address to pay to. It joins the open ones on Plan and credits. */
+/** Opens a top-up on a route: the address to pay to. It joins the open ones on Plan. */
 export function useStartTopUp() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ routeId, credits }: { routeId: string; credits: number }) => api.credits.startTopUp(routeId, credits),
+    mutationFn: ({ routeId, microUsd }: { routeId: string; microUsd: number }) => api.plans.startTopUp(routeId, microUsd),
     onSuccess: (t) => { qc.setQueryData(q.topUp(t.id).queryKey, t); void qc.invalidateQueries({ queryKey: qk.topUps }); }
   });
 }
 
-/** Cancels a top-up nothing has reached: it leaves the open ones on Plan and credits. */
+/** Cancels a top-up nothing has reached: it leaves the open ones on Plan. */
 export function useCancelTopUp() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => api.credits.cancelTopUp(id),
+    mutationFn: (id: string) => api.plans.cancelTopUp(id),
     onSuccess: (t) => {
       qc.setQueryData(q.topUp(t.id).queryKey, t);
       // It leaves the open ones at once, before the list is read again.
       qc.setQueryData(topUpsKey, (list) => list?.map((x) => (x.id === t.id ? t : x)));
       void qc.invalidateQueries({ queryKey: qk.topUps });
-      void qc.invalidateQueries({ queryKey: qk.balance });
+      void qc.invalidateQueries({ queryKey: qk.plan });
     },
     // Refused because a payment just reached it, say: read it again, so the address goes now.
     onError: (_e, id) => { void qc.invalidateQueries({ queryKey: qk.topUp(id) }); void qc.invalidateQueries({ queryKey: qk.topUps }); }

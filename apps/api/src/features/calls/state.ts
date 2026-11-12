@@ -109,7 +109,12 @@ export const Stored = z.preprocess((v) => withTimer(withHost(v)), z.object({
     /** The model the organizer chose for the notes (null: the default model). Goes into the note. */
     model: ModelIdSchema.nullable().default(null),
     /** The stretches with notes on but the host's browser out of the call, until another connection hosted. */
-    offline: z.array(capture.OfflineStretch).default([])
+    offline: z.array(capture.OfflineStretch).default([]),
+    /**
+     * The organizer's plan (features/billing): when they were told their notes are about to run out at this call's pace,
+     * and when notes stopped because their notes or their storage ran out (ms), and which. A call stored before plans has neither.
+     */
+    limit: capture.NotesLimit.default(capture.NO_LIMIT)
   })),
   people: z.array(Joined),
   /** Who the organizer put on everyone's main stage, by identity. */

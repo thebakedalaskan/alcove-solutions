@@ -17,28 +17,50 @@ const KiB = 1024;
 const MiB = 1024 * KiB;
 const GiB = 1024 * MiB;
 const TiB = 1024 * GiB;
+const MINUTE = 60;
+const HOUR = 60 * MINUTE;
+const DAY = 24 * HOUR;
 
+/**
+ * What a limit counts. Bytes, money (micro-USD: $0.50 is 500000) and time (seconds) can be written with a unit: `512MiB`,
+ * `$0.50`, `30d`. Minutes and counts are whole numbers.
+ */
+export type LimitUnit = 'bytes' | 'micro-usd' | 'seconds' | 'minutes' | 'count';
 export interface LimitSpec {
   /** What it is while nothing's set. */
   default: number;
   /** What no value can take it below or past. */
   floor: number;
   ceiling: number;
-  /** What it counts. Bytes can be written with a unit: `512MiB`. */
-  unit: 'bytes';
+  unit: LimitUnit;
   /** What it measures, for `limits list`. */
   measures: string;
 }
 
 /**
- * Every limit there is. Storage, so far: a file, a workspace's files, and what one person uploads in a day, the same for
- * everyone, guests included. A ceiling is ten times the default, room to raise it a long way, except a file's: a whole file
+ * Every limit there is (docs: Plans and usage, and Deployment › Changing a limit): each plan's notes, storage, files and
+ * shared workspaces, and its price; what an hour of notes is reckoned at, when AI stops and when an organizer is told
+ * it's close; how long a plan's period and its grace last; the longest call and the most people in one; and what one
+ * person uploads in a day, everywhere. A ceiling leaves room to raise a default a long way, except a file's: a whole file
  * is read in one response, which is cut at 280 seconds and past 16 MiB can't pick up where it stopped, so 512 MiB needs
  * about 15 Mbit/s to download whole and 4 GiB about 120 Mbit/s. Zero is a value: none.
  */
 export const LIMITS = {
-  'media.file_bytes': { default: 512 * MiB, floor: 0, ceiling: MAX_MEDIA_BYTES, unit: 'bytes', measures: 'One file.' },
-  'media.workspace_bytes': { default: 100 * GiB, floor: 0, ceiling: TiB, unit: 'bytes', measures: 'What a workspace stores, sealed (its stored_bytes).' },
+  'plan.free.notes_minutes': { default: 300, floor: 0, ceiling: 60_000, unit: 'minutes', measures: 'Free: the notes a period brings, reckoned at ai.hour_micro_usd an hour.' },
+  'plan.free.storage_bytes': { default: 10 * GiB, floor: 0, ceiling: TiB, unit: 'bytes', measures: 'Free: what an account stores, its uploads and its recordings.' },
+  'plan.free.file_bytes': { default: 512 * MiB, floor: 0, ceiling: MAX_MEDIA_BYTES, unit: 'bytes', measures: 'Free: one file.' },
+  'plan.free.shared_workspaces': { default: 1, floor: 0, ceiling: 1_000, unit: 'count', measures: 'Free: shared workspaces an account makes (a call’s own don’t count).' },
+  'plan.pro.price_micro_usd': { default: 20_000_000, floor: 0, ceiling: 10_000_000_000, unit: 'micro-usd', measures: 'Pro: one period.' },
+  'plan.period_seconds': { default: 30 * DAY, floor: MINUTE, ceiling: 365 * DAY, unit: 'seconds', measures: 'A plan’s period: notes renew, and paid time runs, in these.' },
+  'plan.grace_seconds': { default: 15 * DAY, floor: 0, ceiling: 90 * DAY, unit: 'seconds', measures: 'Once an account is over its plan’s limits: how long until what’s over stops taking more.' },
+  'ai.hour_micro_usd': { default: 500_000, floor: 1, ceiling: 100_000_000, unit: 'micro-usd', measures: 'What an hour of notes is reckoned at, to give the AI allowance as time.' },
+  'ai.stop_micro_usd': { default: 5_000, floor: 0, ceiling: 10_000_000, unit: 'micro-usd', measures: 'What’s left of an allowance when transcription and every AI request stop.' },
+  'ai.warn_seconds': { default: 300, floor: 0, ceiling: HOUR, unit: 'seconds', measures: 'Notes left, at a call’s own pace, when its organizer is told.' },
+  'ai.fallback_input_micro_usd': { default: 1_000_000, floor: 0, ceiling: 100_000_000, unit: 'micro-usd', measures: 'A million input tokens of a model NEAR AI lists no price for.' },
+  'ai.fallback_output_micro_usd': { default: 4_000_000, floor: 0, ceiling: 100_000_000, unit: 'micro-usd', measures: 'A million output tokens of a model NEAR AI lists no price for.' },
+  'ai.image_tokens': { default: 1_500, floor: 0, ceiling: 100_000, unit: 'count', measures: 'The input tokens one image is taken to be at most, before NEAR AI says.' },
+  'call.max_seconds': { default: 10 * HOUR, floor: 10 * MINUTE, ceiling: 48 * HOUR, unit: 'seconds', measures: 'The longest a call runs: it ends then, everyone told 5 minutes before.' },
+  'call.max_people': { default: 100, floor: 2, ceiling: 1_000, unit: 'count', measures: 'The most people in a call at once, those waiting to be let in included.' },
   'media.account_day_bytes': { default: 20 * GiB, floor: 0, ceiling: 200 * GiB, unit: 'bytes', measures: 'What one person uploads in a day (UTC), in every workspace.' }
 } as const satisfies Record<string, LimitSpec>;
 export type LimitName = keyof typeof LIMITS;
@@ -138,28 +160,44 @@ export async function limitsNow(d: Pick<Deps, 'pool' | 'cfg'>): Promise<Limits> 
   return { get: (name) => values.get(name) ?? LIMITS[name].default };
 }
 
-const UNITS: Record<string, number> = { bytes: 1, KiB, MiB, GiB, TiB };
-/** A value as someone types it for `limits set`, or as `limits list` shows it: a whole number, and for bytes maybe a unit (`512MiB`, `100 GiB`). */
+const SIZES: Record<string, number> = { bytes: 1, KiB, MiB, GiB, TiB };
+const TIMES: Record<string, number> = { s: 1, m: MINUTE, h: HOUR, d: DAY };
+/**
+ * A value as someone types it for `limits set`, or as `limits list` shows it: a whole number, for bytes maybe with a unit
+ * (`512MiB`, `100 GiB`), for time maybe with one (`30d`, `10 h`, `90s`), and money maybe in dollars (`$0.50`, `$20`).
+ */
 export function parseValue(name: LimitName, typed: string): number | undefined {
-  const m = /^(\d+)\s*(bytes|KiB|MiB|GiB|TiB)?$/.exec(typed.trim());
+  const unit = LIMITS[name].unit;
+  const dollars = /^\$(\d+)(?:\.(\d{1,6}))?$/.exec(typed.trim());
+  if (dollars) {
+    if (unit !== 'micro-usd') return undefined;
+    const value = Number(dollars[1] ?? '') * 1_000_000 + Number((dollars[2] ?? '').padEnd(6, '0'));
+    return Number.isSafeInteger(value) ? value : undefined;
+  }
+  const m = /^(\d+)\s*(bytes|KiB|MiB|GiB|TiB|s|m|h|d)?$/.exec(typed.trim());
   const digits = m?.[1];
   if (!m || digits === undefined) return undefined;
-  const unit = m[2];
-  const value = Number(digits) * (unit === undefined || LIMITS[name].unit !== 'bytes' ? 1 : UNITS[unit] ?? Number.NaN);
+  const typedUnit = m[2];
+  const scale = typedUnit === undefined ? 1 : unit === 'bytes' ? SIZES[typedUnit] : unit === 'seconds' ? TIMES[typedUnit] : undefined;
+  if (scale === undefined) return undefined;
+  const value = Number(digits) * scale;
   return Number.isSafeInteger(value) ? value : undefined;
 }
 
-/** A value as someone reads it: in the largest unit it's a whole number of. */
+/** A value as someone reads it: bytes and time in the largest unit it's a whole number of, money in dollars. */
 export function shown(name: LimitName, value: number): string {
-  if (LIMITS[name].unit !== 'bytes' || value === 0) return String(value);
-  for (const [unit, size] of [['TiB', TiB], ['GiB', GiB], ['MiB', MiB], ['KiB', KiB]] as const) if (value % size === 0) return `${value / size} ${unit}`;
-  return `${value} bytes`;
+  const unit = LIMITS[name].unit;
+  if (unit === 'micro-usd') return `$${(value / 1_000_000).toFixed(6).replace(/0{1,4}$/, '')}`;
+  if (value === 0 || (unit !== 'bytes' && unit !== 'seconds')) return String(value);
+  const steps = unit === 'bytes' ? [['TiB', TiB], ['GiB', GiB], ['MiB', MiB], ['KiB', KiB]] as const : [['d', DAY], ['h', HOUR], ['m', MINUTE]] as const;
+  for (const [u, size] of steps) if (value % size === 0) return `${value / size} ${u}`;
+  return unit === 'bytes' ? `${value} bytes` : `${value} s`;
 }
 
 /** Why a value can't be set, or nothing if it can: whatever a limit's bounds don't allow is refused here, not held to them. */
 export function refusedValue(name: LimitName, value: number | undefined): string | undefined {
   const { floor, ceiling } = LIMITS[name];
-  if (value === undefined) return 'a value is a whole number, and for bytes may have a unit: 512MiB, 100GiB';
+  if (value === undefined) return 'a value is a whole number; bytes may have a unit (512MiB), time one too (30d, 10h), and money is in dollars ($0.50)';
   if (value < floor || value > ceiling) return `${name} goes from ${shown(name, floor)} to ${shown(name, ceiling)}`;
   return undefined;
 }

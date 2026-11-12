@@ -19,7 +19,7 @@ import { forgetAnswers } from '../meetings/access';
 import { takeAllBack } from '../notes/additions';
 import { forgetAllMade } from '../notes/links';
 import { queueDelete } from '../recordings/audio';
-import { openAccount } from '../billing/service';
+import { open as openPlan } from '../billing/plans';
 import { forgetAccess, grantToRevoke, revokeGrant, unreachable, withdraw } from '../meetings/calendar';
 import { create as createMeeting, findUpcoming } from '../meetings/service';
 import { deleteOwnNote, heldNoteIds } from '../notes/service';
@@ -143,7 +143,7 @@ export async function signIn(d: Deps, { provider, who }: SignIn): Promise<{ owne
     const o = ownerFrom(d, ownerId, root, undefined);
     const p: Profile = { name: who.name, email: who.email, ...(who.photoUrl ? { photoUrl: who.photoUrl } : {}), sample: who.sample, preferences: DEFAULT_PREFERENCES, invited: [] };
     await createItem(o, c, 'profile', p);
-    await openAccount(d, c, ownerId);
+    await openPlan(d, c, ownerId);
     return { ownerId, isNew: true };
   });
 

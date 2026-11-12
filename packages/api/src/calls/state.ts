@@ -312,6 +312,8 @@ export const CallStateSchema = z.object({
   startedAt: ISODateSchema,
   /** Seconds since the call started. */
   elapsed: z.number(),
+  /** When the call ends by itself, at the longest a call runs (docs: Plans and usage): everyone is told 5 minutes before. */
+  endsAt: ISODateSchema,
   phase: z.enum(['in-call', 'ended']),
   participants: z.array(CallParticipantSchema),
   locked: z.boolean(),

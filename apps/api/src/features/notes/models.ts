@@ -12,7 +12,8 @@
  *
  * The default (NEAR_AI_NOTES_MODEL at NEAR_AI_NOTES_URL) is always offered, first, and is what "null" means. The
  * joined list is kept for ten minutes, and a failure to fetch it for 30 seconds. Log lines carry counts, statuses
- * and model IDs.
+ * and model IDs. Every model's price in the catalog, the speech model's included, is kept too, as last listed, for what
+ * each request is charged (features/billing/meter.ts).
  */
 import type { AiModel, AiModels } from '@alcove/api';
 import { z } from 'zod';
@@ -39,7 +40,10 @@ const CatalogEntry = z.object({
   input_modalities: z.array(z.string()).nullish().catch(null),
   architecture: z.object({ inputModalities: z.array(z.string()).nullish().catch(null) }).nullish().catch(null),
   is_ready: z.boolean().nullish().catch(null),
-  pricing: z.object({ input: z.coerce.number().nullish().catch(null) }).nullish().catch(null),
+  // `input` and `output` are USD a million tokens; `input_cache_read` USD a token, as a decimal string.
+  pricing: z.object({
+    input: z.coerce.number().nullish().catch(null), output: z.coerce.number().nullish().catch(null), input_cache_read: z.coerce.number().nullish().catch(null)
+  }).nullish().catch(null),
   supported_sampling_parameters: z.array(z.string()).nullish().catch(null),
   supported_features: z.array(z.string()).nullish().catch(null)
 });
@@ -47,6 +51,12 @@ const Catalog = z.object({ data: z.array(z.unknown()) });
 const Endpoint = z.object({ domain: z.string().regex(/^[A-Za-z0-9.-]+(?::\d+)?$/), models: z.array(z.string()) });
 const Listed = z.object({ models: z.array(z.string()) });
 const Registry = z.object({ endpoints: z.array(z.unknown()) });
+
+/** What a model costs, in micro-USD a million tokens: what's sent, what's sent that NEAR AI had cached, and what comes back. */
+export interface Price { input: number; cached: number; output: number }
+/** Each model's price as NEAR AI last listed it: kept through a failure to list them again, so a price is never forgotten. */
+const prices = new Map<string, Price>();
+const micro = (usd: number) => Math.round(usd * 1_000_000);
 
 const kept = new Map<string, { until: number; models: ModelEntry[] }>();
 const refused = new Map<string, { until: number; error: UnansweredError }>();
@@ -90,6 +100,14 @@ async function load(cfg: Config): Promise<ModelEntry[]> {
     if (e.success) for (const m of e.data.models) if (!hosts.has(m)) hosts.set(m, `${scheme}//${e.data.domain}`);
   }
   const entries = c.data.data.flatMap((x) => { const e = CatalogEntry.safeParse(x); return e.success ? [e.data] : []; });
+  for (const e of entries) {
+    const input = e.pricing?.input;
+    const output = e.pricing?.output;
+    // A price only when it says both ways: half of one would charge nothing for the other.
+    if (typeof input !== 'number' || typeof output !== 'number' || input < 0 || output < 0) continue;
+    const cached = e.pricing?.input_cache_read;
+    prices.set(e.id, { input: micro(input), output: micro(output), cached: typeof cached === 'number' && cached >= 0 ? micro(cached * 1_000_000) : micro(input) });
+  }
   const nameOf = (id: string) => entries.find((e) => e.id === id)?.name?.trim() || id;
   const takes = (e: z.infer<typeof CatalogEntry>, what: string) => [...(e.input_modalities ?? []), ...(e.architecture?.inputModalities ?? [])].includes(what);
   const others = entries
@@ -134,6 +152,20 @@ export async function aiModels(cfg: Config): Promise<ModelEntry[]> {
     .finally(() => running.delete(id));
   running.set(id, made);
   return made;
+}
+
+/**
+ * What a model costs, as NEAR AI's catalog last listed it, read again once the joined list is older than ten minutes.
+ * Null for a model the catalog has never priced (both ways), when the caller falls back to its own price. NEAR AI not
+ * answering leaves the last price in force.
+ */
+export async function priceOf(cfg: Config, model: string): Promise<Price | null> {
+  try {
+    await aiModels(cfg);
+  } catch (e) {
+    if (!(e instanceof UnansweredError)) throw e;
+  }
+  return prices.get(model) ?? null;
 }
 
 const shown = (m: ModelEntry): AiModel => ({ id: m.id, name: m.name, private: m.private });
