@@ -112,7 +112,8 @@ describe('making a team and its licenses', () => {
     await give(ann, LICENSE);
     expect(await refusal(ann.api.teams.buyLicenses(501, LICENSE))).toBe('invalid: Buy 1 to 500 licenses at a time.');
     expect(await refusal(ann.api.teams.buyLicenses(1, 30_000_000))).toBe('conflict: The price of a team license has changed. Look at it again before buying.');
-    expect(await refusal(ann.api.teams.buyLicenses(2, LICENSE))).toBe('conflict: Your balance is short: 2 licenses cost $80 and your balance is $40. Add money first.');
+    // What they cost, never the balance: a refusal's words are logged.
+    expect(await refusal(ann.api.teams.buyLicenses(2, LICENSE))).toBe('conflict: Your balance is short of what 2 team licenses cost ($80). Add money first.');
     expect(await ann.api.plans.plan()).toMatchObject({ balance: { microUsd: LICENSE } });
     expect((await ann.api.teams.buyLicenses(1, LICENSE)).licenses?.unconsumed).toBe(1);
     // One team each: its admin can't make another.
