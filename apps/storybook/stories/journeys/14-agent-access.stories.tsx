@@ -43,7 +43,7 @@ export const ConnectClaude: PageStory = {
     await step('Agents is at the foot of the side panel, after Team. Click it, from any page', async () => {
       await userEvent.click(within(await screen.findByRole('navigation', { name: 'Team and agents' }, LATER)).getByRole('link', { name: 'Agents' }));
     });
-    await step('The agents people use stand on the horizon, dashed until they’re connected. Click Claude', async () => {
+    await step('The agents people use stand on the horizon, dashed until they’re connected, and under it, things to ask them. Click Claude', async () => {
       await screen.findByRole('heading', { name: 'Connect your agent' }, LATER);
       await userEvent.click(await place('Connect Claude'));
     });
@@ -56,6 +56,11 @@ export const ConnectClaude: PageStory = {
     await step('Claude opens Alcove to ask what it can do (14.2). Once it’s allowed, this tab knows too: Claude stands on the horizon, and its popover offers a first question', async () => {
       connects('Claude');
       await within(await popover('Claude')).findByText('Claude is connected', {}, LATER);
+    });
+    await step('Close it. Under the horizon, What your agents did joins the water: Nothing yet, until Claude does something', async () => {
+      await userEvent.keyboard('{Escape}');
+      await screen.findByRole('heading', { name: 'What your agents did' }, LATER);
+      await screen.findByText('Nothing yet', {}, SOON);
     });
   }
 };

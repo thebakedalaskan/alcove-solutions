@@ -402,13 +402,18 @@ Team's evening the other way round: the sun is low and to the right, just past t
   a row for each part of Alcove it asked for, its level at the row's right edge opening a menu of levels with what each
   allows, the disclosure, Allow (filled) and Cancel, and one line of fine print. Allowed, the line closes, solid with a
   tick, and the page says it's taking you back.
-- **The water:**
-  - **What your agents did**, with Only you see this and a lock, grouped by day. Each row is a mark tinted by what was
-    done, a sentence with what it was about as a link, a quiet second line, and the time in a fixed column. Reading is
-    neutral; a booked call takes `sun-text`, a follow-up `horizon` and a decision `rose`. Show more continues it. Empty,
-    it's a dashed window with a bot, Nothing yet, and one line.
-  - **Ask your agent**, beside it: four things to ask, each saying which connected agents can do it (with a tick) or what
-    it needs, with copy.
+- **The water.** Every row on it has the same shape: a mark by kind, the words, and what's at its end in a fixed column.
+  - **What your agents did**, with Only you see this and a lock, grouped by day, once an agent is connected. What agents
+    did goes with them, so with none connected it has nothing to hold and isn't there. Each row is a mark tinted by what
+    was done, a sentence with what it was about as a link, a quiet second line, and the time in a fixed column. Reading is
+    neutral; a booked call takes `sun-text`, a follow-up `horizon` and a decision `rose`. Show more continues it. With
+    nothing in it yet, it's one row where the first will be (`AgentNone`): an empty dashed window for its mark, Nothing
+    yet, and what will show there ("What Claude reads and changes in Alcove shows here, newest first."), never a drawing
+    in the middle of the column. While it looks, dots stand in the mark's place; if it doesn't load, the mark is
+    `caution`, with Try again at the row's end.
+  - **Ask your agent**, beside it (seven parts to five), or on the first day the whole water, two across: four things to
+    ask, each with the mark of the row it will make in what your agents did, and copy. Once an agent is connected, a line
+    under each says which can do it (with a tick), or what they can't ("Claude can’t book calls").
 - Loading is three dashed windows that breathe. A failed load, being offline and a request that ended each say so on the
   sky, with Try again or Show me how.
 - **On a phone** Agents opens from Settings, and its head has a way back there. The line scrolls sideways under the sky,

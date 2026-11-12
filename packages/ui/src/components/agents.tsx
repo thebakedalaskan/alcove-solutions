@@ -366,12 +366,36 @@ export function AgentDid({ icon, tone = 'quiet', at, time, sub, children }: {
   );
 }
 
-/** Something to ask an agent, with who can do it (`can`, with a tick) or what it needs, and Copy. */
-export function AgentQuestion({ question, sub, can, onCopy }: { question: string; sub: string; can: boolean; onCopy: () => void }) {
+/**
+ * What your agents did while there's nothing in it: one row where the first will be, in a row's own shape, never a
+ * drawing in the middle of the column. Its mark is an empty window waiting for an agent, or a caution mark when it didn't
+ * load (`problem`); `children` is its quiet second line, and `action` (Try again) sits at its end.
+ */
+export function AgentNone({ title, problem = false, action, children }: {
+  title: string; problem?: boolean | undefined; action?: ReactNode; children?: ReactNode;
+}) {
+  return (
+    <div className="ag-none">
+      <span className={cn('ag-k', problem ? 'is-caution' : 'is-wait')}><Icon name={problem ? 'alert' : 'agent'} size={problem ? 16 : 15} /></span>
+      <p className="ag-r-t"><b>{title}</b>{children && <small>{children}</small>}</p>
+      {action}
+    </div>
+  );
+}
+
+/**
+ * Something to ask an agent: a mark for what the agent will do, tinted as the row it will make in what your agents did,
+ * the question, and Copy at its end. Once an agent is connected, `sub` says which can do it (`can`, with a tick) or what
+ * they can't.
+ */
+export function AgentQuestion({ icon, tone = 'quiet', question, sub, can = false, onCopy }: {
+  icon: IconName; tone?: AgentDidTone | undefined; question: string; sub?: string | undefined; can?: boolean | undefined; onCopy: () => void;
+}) {
   const id = useId();
   return (
     <li className="ag-q">
-      <p><span id={id}>“{question}”</span><small>{can && <Icon name="check" size={13} />}{sub}</small></p>
+      <span className={cn('ag-k', `is-${tone}`)}><Icon name={icon} size={16} /></span>
+      <p><span id={id}>“{question}”</span>{sub && <small>{can && <Icon name="check" size={13} />}{sub}</small>}</p>
       <IconButton icon="copy" size={17} label="Copy the question" aria-describedby={id} className="ag-ib" onClick={onCopy} />
     </li>
   );

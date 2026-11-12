@@ -3,8 +3,8 @@
  * round with the sun low on the right just past the end of the line. The ones you've connected stand first, solid, then
  * half a place, then the ones people use, dashed, and Another agent: each opens a popover with what it can do, or how to
  * connect it. An agent sends you here to be allowed in (`?request=`): the sky grows to ask, with the agent and you on the
- * horizon. Under the water, what your agents did, only for you, and things to ask them. On a phone Agents opens from
- * Settings, so its head has a way back there.
+ * horizon. On the water, things to ask them, and once one is connected, what your agents did, only for you. On a phone
+ * Agents opens from Settings, so its head has a way back there.
  */
 import { AgentAuthorizationIdSchema, errorCode } from '@alcove/api';
 import { Button, Evening, Icon, useToast } from '@alcove/ui';
@@ -15,7 +15,7 @@ import type { AgentKind } from '~/features/agents/catalogue';
 import { OnTheLine, WaitingLine } from '~/features/agents/OnTheLine';
 import { lineOf, OTHER_KEY, sunOf } from '~/features/agents/line';
 import { useAgentsLine } from '~/features/agents/open';
-import { AskYourAgent, WhatTheyDid } from '~/features/agents/Water';
+import { OnTheWater } from '~/features/agents/Water';
 import { useNow, useOnline } from '~/lib/live';
 import { q } from '~/lib/queries';
 
@@ -100,10 +100,7 @@ function AgentsPage() {
         {/* The agent and you stand on the horizon while it asks; a request that didn't load leaves the line. */}
         {(!phase || phase === 'failed') && standing}
       </div>
-      <div className="ag-water" style={{ '--d': 1 }}>
-        <WhatTheyDid connections={connections} down={trouble !== undefined && !connections} now={new Date(now)} />
-        <AskYourAgent connections={connections ?? []} />
-      </div>
+      <OnTheWater connections={connections} down={trouble !== undefined && !connections} now={new Date(now)} />
     </Evening>
   );
 }

@@ -2289,14 +2289,18 @@ popover under it (a sheet on a phone) with one thing to do.
 6. **Disconnect an agent.** **Disconnect** asks in the same popover: **Disconnect Claude?** *It stops working at once. To use
    it again, connect it again.*, with **Keep Claude** (filled) and **Disconnect**. It leaves the horizon, with what it did,
    and a toast says it can't reach Alcove any more.
-7. **See what your agents did.** Under the horizon, **What your agents did** (*Only you see this*) lists each thing your
-   agents read or changed, by day and newest first: a mark for what was done, a sentence (*Claude booked* **Onboarding
-   review**), a second line (when the call is, or how many it found) and the time. A note in it opens the note, and a call
-   opens its page. Reading is quiet; a booked call is warm, a follow-up in horizon and a decision in rose. **Show more** goes
-   further back. A note or call that's gone, or isn't yours any more, isn't named: it's "a note", *Not there any more*. It
-   keeps 30 days, and the last 1,000 things at most. Before anything's done it says **Nothing yet**. Beside it, **Ask your
-   agent**: four things to ask, naming people you work with, each saying which of your agents can do it (**Claude and Cursor
-   can do this**) or what it needs (**Needs book calls**), with copy. Tokens aren't among them: nobody asks a script.
+7. **See what your agents did.** Once an agent is connected, under the horizon, **What your agents did** (*Only you see
+   this*) lists each thing your agents read or changed, by day and newest first: a mark for what was done, a sentence
+   (*Claude booked* **Onboarding review**), a second line (when the call is, or how many it found) and the time. A note in
+   it opens the note, and a call opens its page. Reading is quiet; a booked call is warm, a follow-up in horizon and a
+   decision in rose. **Show more** goes further back. A note or call that's gone, or isn't yours any more, isn't named: it's
+   "a note", *Not there any more*. It keeps 30 days, and the last 1,000 things at most, and goes with the agent that did
+   it. Before anything's done it's one row, **Nothing yet**: *What Claude reads and changes in Alcove shows here, newest
+   first.* If it doesn't load, its row says **Didn’t load**, with **Try again**. Beside it, **Ask your agent**: four things
+   to ask, naming people you work with, each with the mark of the row it will make, and copy. Once an agent is connected,
+   each says which of your agents can do it (**Claude and Cursor can do this**) or what they can't (**Claude can’t book
+   calls**). Tokens aren't among them: nobody asks a script. With nothing connected there's nothing your agents could have
+   done, so the water is only **Ask your agent**, two across.
 8. **A token for a script.** Press **Another agent**: Alcove's address with **Copy address**, then *A script that can’t sign
    in?* **Create a token**. Give it a name, choose how long it **Lasts** (7, 30 or 90 days; 30 to start) and **What it can
    do** (reading, to start), and press **Create token**. It shows once, hidden but for its ends, with copy, and Alcove's
