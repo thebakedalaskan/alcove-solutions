@@ -44,6 +44,7 @@ Suites: `billing/meter` (`apps/api/src/features/billing/meter.integration.test.t
 | D3″ | A request still on its way after 5 minutes is charged what it held, shown so at once; answered after all, it's charged what it used instead, never both | billing/meter › charges a request still on its way after five minutes… | 1 | Passes |
 | D4 | A model the catalog prices only one way is offered and charged at the fallback (`ai.fallback_*`, raised and charged at again), and said at warn once each time the catalog is read, not with each request | billing/meter › charges a model the catalog prices only one way at the fallback… | 1 | Passes |
 | D5 | A dearer model spends more for the same question | billing/meter › charges at the price of the model that answered… | 1 | Passes |
+| D5′ | A request is charged at the price kept without waiting on NEAR AI's catalog, which is read again behind it once the list is old | billing/meter › charges at the price it has without waiting on NEAR AI’s catalog… | 1 | Passes |
 | D6 | No request reaches NEAR AI without a payer | `Meter` is a required argument of `transcribe`, `complete` and `completeJson`: the typecheck refuses one without | 1 | Enforced by the compiler |
 | **E: running out** |  |  |  |  |
 | E1 | The organizer alone is warned, at the call's pace | billing/meter › tells the organizer alone… | 1 | Passes |

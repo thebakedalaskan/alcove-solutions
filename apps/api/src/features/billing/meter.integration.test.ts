@@ -237,6 +237,30 @@ describe('who pays', () => {
     expect(cached.cost).toBe(Math.ceil((tokens * 6_000 + 200 * 1_200_000) / 1000));
   });
 
+  it('charges at the price it has without waiting on NEAR AI’s catalog, and reads the catalog again behind it', async () => {
+    const ann = await account();
+    const rec = await ann.api.recordings.start({ title: 'Listed' });
+    await rec.transcribe(speech('We agreed to ship on Monday.', 0));
+    await written(ann.api, (await rec.stop()).pendingNoteId);
+    // The list of models is more than ten minutes old, and NEAR AI's catalog doesn't answer until the question has been.
+    let reading = false;
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => { release = () => resolve(); });
+    h.near.holdCatalogNext(async () => { reading = true; await gate; });
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 11 * 60_000 });
+    const from = h.logs.length;
+    const before = (await meter(ann)).byKind['ask'] ?? 0;
+    try {
+      // Answered and charged at the price it had, while the catalog is still being read.
+      expect((await answer(ann.api.notes.askAll('When do we ship?'))).length).toBeGreaterThan(0);
+      expect((await meter(ann)).byKind['ask']).toBeGreaterThan(before);
+      await expect.poll(() => reading).toBe(true);
+      expect(h.logs.slice(from).some((l) => l.includes('models not listed'))).toBe(false);
+    } finally {
+      release();
+    }
+  });
+
   it('charges nothing for a request NEAR AI turned away', async () => {
     const ann = await account();
     const rec = await ann.api.recordings.start({ title: 'Down' });

@@ -73,7 +73,8 @@ bought for a period ([below](#more-notes)) are part of its allowance, and end wi
 
 Prices come from NEAR AI's catalog (`GET /v1/models`: `pricing.input` and `pricing.output` in USD a million tokens,
 `pricing.input_cache_read` a token), read with the list of models and kept as last listed through an outage
-(`features/notes/models.ts` `priceOf`). A model the catalog has never priced both ways is charged at
+(`features/notes/models.ts` `priceOf`). A request whose model has a price kept never waits on the catalog: it's charged
+at that, and the list is read again behind it once it's ten minutes old; only a model never priced waits for the list. A model the catalog has never priced both ways is charged at
 `ai.fallback_input_micro_usd` and `ai.fallback_output_micro_usd`; each time the catalog is read, the models that can be
 charged without a price (the default, the speech model and every one offered) are logged at warn, once (`models not
 priced; charged at the fallback`, with their IDs), never with every request.

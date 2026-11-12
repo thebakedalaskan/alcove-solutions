@@ -115,6 +115,8 @@ export interface FakeNear {
   failNext(n: number, how: Failure, only?: string | undefined): void;
   /** The next `n` chat replies don't say what they used, as a provider sometimes doesn't. */
   withoutUsageNext(n: number): void;
+  /** The next read of the catalog waits for this before it's answered, as a slow or stuck catalog does. */
+  holdCatalogNext(then: () => Promise<void>): void;
   /** The next chat reply says this many of its prompt's tokens were cached (at most all of them), as NEAR AI does for a prompt it has seen. */
   cachedNext(tokens: number): void;
   /** The next transcription says what it used, as NEAR AI may: tokens in and out. */
@@ -598,6 +600,7 @@ export async function startFakeNear(): Promise<FakeNear> {
   let failing = 0;
   /** How many of the next chat replies leave out what they used. */
   let unsaid = 0;
+  let catalogHold: (() => Promise<void>) | null = null;
   /** How many of the next chat reply's prompt tokens it says were cached. */
   let cached = 0;
   /** What the next transcription says it used. */
@@ -773,6 +776,7 @@ export async function startFakeNear(): Promise<FakeNear> {
       // The catalog, as NEAR AI's lists it: what each model takes. Only the ones that take images and have their own
       // endpoint can read shared screens; one entry is broken, as a list from elsewhere can be.
       if (req.method === 'GET' && url.pathname === '/v1/models') {
+        if (catalogHold) { const then = catalogHold; catalogHold = null; await then(); }
         const entry = (id: string, name: string, input: string[], extra: Record<string, unknown> = {}) =>
           ({ id, object: 'model', name, owned_by: id.split('/')[0], input_modalities: input, output_modalities: ['text'], architecture: { inputModalities: input, outputModalities: ['text'] }, supported_sampling_parameters: ['temperature', 'max_tokens'], supported_features: ['json_mode'], pricing: { input: 1, output: 4 }, ...extra });
         return send(res, 200, { object: 'list', data: [
@@ -863,6 +867,7 @@ export async function startFakeNear(): Promise<FakeNear> {
     verdictLifetime(seconds) { n.lifetime = seconds; },
     failNext(count, how, only) { failing = count; failure = how; failingOnly = only; },
     withoutUsageNext(n) { unsaid = n; },
+    holdCatalogNext(then) { catalogHold = then; },
     cachedNext(tokens) { cached = tokens; },
     speechUsageNext(usage) { speechUsage = usage; },
     failDetailsNext() { detailsFailing = true; },

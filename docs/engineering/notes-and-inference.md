@@ -1726,7 +1726,8 @@ registry of the endpoints of the models it runs itself (`NEAR_AI_ENDPOINTS_URL`,
 `https://completions.near.ai/endpoints`, `{"endpoints": [{"domain", "models"}]}`). A model is offered when it
 takes text and images, isn't `is_ready: false`, has a price and its `pricing.input` is at most
 `NEAR_AI_MAX_INPUT_PRICE` (US dollars per million input tokens, 1 by default). The list is kept ten minutes, a
-failure to fetch it 30 seconds. `GET /v1/models` (signed in) returns `{ default, models }`, each
+failure to fetch it 30 seconds. Every metered request asks it for its model's price (`priceOf`): a price it has is used at
+once, the list read again behind it once it's old, so no transcript clip or question waits on the catalog. `GET /v1/models` (signed in) returns `{ default, models }`, each
 `{ id, name, private }`, the default first and the private ones before the unencrypted, each by name. The app
 shows the default as "<name> (default)".
 

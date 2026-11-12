@@ -159,11 +159,18 @@ export async function aiModels(cfg: Config): Promise<ModelEntry[]> {
 }
 
 /**
- * What a model costs, as NEAR AI's catalog last listed it, read again once the joined list is older than ten minutes.
- * Null for a model the catalog has never priced (both ways), when the caller falls back to its own price. NEAR AI not
- * answering leaves the last price in force.
+ * What a model costs, as NEAR AI's catalog last listed it. Every metered request asks, so none waits on the catalog for a
+ * price it has: that one is used at once, and the list is read again behind it once it's older than ten minutes. Only a
+ * model never priced waits for the list, and is null when the catalog doesn't price it (both ways): the caller falls back
+ * to its own price. NEAR AI not answering leaves the last price in force.
  */
 export async function priceOf(cfg: Config, model: string): Promise<Price | null> {
+  const known = prices.get(model);
+  if (known) {
+    // Not answering is logged where it's kept (`aiModels`); anything else is said here, as nobody waits on it.
+    void aiModels(cfg).catch((e: unknown) => { if (!(e instanceof UnansweredError)) mlog.warn('models not listed', { err: e }); });
+    return known;
+  }
   try {
     await aiModels(cfg);
   } catch (e) {
