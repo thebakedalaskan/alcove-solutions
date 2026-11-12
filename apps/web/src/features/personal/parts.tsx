@@ -24,11 +24,13 @@ export function Quote({ m, me }: { m: SourceMoment; me: string | undefined }) {
 /**
  * Writing something for yourself. Who it's for is in the box before you type. Enter keeps it; Shift and Enter starts a
  * new line. The draft is the caller's: it stays where you left it however you move around, and never reaches another box.
+ * `icon` leads the box, and `hint` stands where the button that keeps it is until something's typed.
  */
-export function OwnComposer({ value, onChange, onSend, busy = false, focus = false, said = false }: {
+export function OwnComposer({ value, onChange, onSend, busy = false, focus = false, said = false, placeholder = 'Write something for yourself', icon, hint }: {
   value: string; onChange: (v: string) => void; onSend: (text: string) => void; busy?: boolean; focus?: boolean;
   /** What's around it already says it's only for you. */
   said?: boolean;
+  placeholder?: string | undefined; icon?: IconName | undefined; hint?: ReactNode;
 }) {
   const send = () => { const t = value.trim(); if (t && !busy) onSend(t); };
   const keys = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -37,8 +39,9 @@ export function OwnComposer({ value, onChange, onSend, busy = false, focus = fal
   return (
     <form className="own-compose" autoComplete="off" onSubmit={(e) => { e.preventDefault(); send(); }}>
       {!said && <span className="to"><Scope>Your notes</Scope>Other participants can’t open this</span>}
-      <textarea autoFocus={focus} value={value} rows={rowsFor(value, 34, 5)} maxLength={MAX_PERSONAL_TEXT} placeholder="Write something for yourself" aria-label="Write in your own notes" onChange={(e) => onChange(e.target.value)} onKeyDown={keys} />
-      <button type="submit" className="ac-btn is-secondary" aria-label="Keep it in your notes" title="Keep it in your notes" disabled={!value.trim() || busy}><Icon name={said ? 'arrowUp' : 'sendLine'} size={said ? 15 : 17} /></button>
+      {icon && <Icon name={icon} size={16} />}
+      <textarea autoFocus={focus} value={value} rows={rowsFor(value, 34, 5)} maxLength={MAX_PERSONAL_TEXT} placeholder={placeholder} aria-label="Write in your own notes" onChange={(e) => onChange(e.target.value)} onKeyDown={keys} />
+      {hint && !value.trim() ? hint : <button type="submit" className="ac-btn is-secondary" aria-label="Keep it in your notes" title="Keep it in your notes" disabled={!value.trim() || busy}><Icon name={said ? 'arrowUp' : 'sendLine'} size={said ? 15 : 17} /></button>}
     </form>
   );
 }

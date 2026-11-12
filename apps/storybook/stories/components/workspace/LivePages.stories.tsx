@@ -159,7 +159,7 @@ function Off(args: ComponentProps<typeof WsNotesOff>) {
   );
 }
 type OffStory = StoryObj<typeof WsNotesOff>;
-/** The organizer's: Turn notes on, and the page starts writing. */
+/** The organizer's: Turn on notes, and the page starts writing. */
 export const NotesOffOrganizer: OffStory = { name: 'Notes off: the organizer', args: { organizer: first(CALL.organizer), onTurnOn: did('onTurnOn') }, render: (args) => <Off {...args} /> };
 /** Anyone else's: they can ask Priya. */
 export const NotesOffSomeoneElse: OffStory = { name: 'Notes off: someone else', args: { organizer: first(CALL.organizer), onAsk: did('onAsk') }, render: (args) => <Off {...args} /> };

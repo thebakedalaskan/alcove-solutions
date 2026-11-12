@@ -78,6 +78,26 @@ describe('the full summary', () => {
     expect(text).not.toContain('Then, Kofi');
   });
 
+  it('is told, as the notes and a catch-up are, to leave small talk out', async () => {
+    const org = await account(unique('organizer'));
+    const from = h.near.chats.length;
+    const { code } = await org.api.calls.startNow({ notes: 'on' });
+    const host = await org.api.calls.join(code, { mic: true, cam: false });
+    for (let i = 0; i < 2; i++) await host.appendAudio(audio(i));
+    await host.transcribe(speech('Can you hear me? How was your weekend?', 1), host.ticket.identity);
+    await host.transcribe(speech('We agreed to ship the beta on Friday.', 5), host.ticket.identity);
+    await host.catchUp({ kind: 'all' });
+    await written(org.api, (await host.leave())?.pendingNoteId ?? '');
+    // Each prompt that writes notes carries the same rule, and says what a stretch of nothing but small talk gets.
+    const told = (start: string) => h.near.chats.slice(from).find((c) => c.system.startsWith(start))?.system ?? '';
+    for (const start of ['You write the notes', 'You write the full summary', 'You help someone catch up']) {
+      expect(told(start)).toContain("Small talk isn't part of the notes: greetings, how people are, the weather, weekends");
+    }
+    expect(told('You write the notes')).toContain('a meeting that was only small talk gets one sentence that says so');
+    expect(told('You write the full summary')).toContain('a meeting that was only small talk gets one sentence that says so');
+    expect(told('You help someone catch up')).toContain('the summary says only small talk was said in them');
+  });
+
   it('is left empty, and the notes stand, when it can’t be written', async () => {
     const org = await account(unique('organizer'));
     const logsFrom = h.logs.length;

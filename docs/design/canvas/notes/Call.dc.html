@@ -1,0 +1,300 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>The call</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="call.css">
+<link rel="stylesheet" href="notes.css">
+<script src="icons.js"></script>
+<script src="nc.js"></script>
+<script src="notes.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400..700&amp;family=Newsreader:ital,opsz,wght@0,6..72,300..600;1,6..72,300..600&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<div class="{{v.rootCls}}" style="{{v.rootStyle}}">
+
+<sc-if value="{{v.showTop}}" hint-placeholder-val="{{true}}">
+<header class="nc-top">
+<span class="nc-ttl">{{v.title}}</span>
+<sc-if value="{{v.wide}}" hint-placeholder-val="{{true}}">
+<span class="nc-clock">{{v.clock}}</span>
+<span class="nc-vr"></span>
+<button type="button" class="{{v.sign.cls}}" onClick="{{v.sign.click}}" aria-haspopup="dialog" aria-label="{{v.sign.label}}. What’s captured"><sc-if value="{{v.sign.dot}}" hint-placeholder-val="{{true}}"><i></i></sc-if><sc-if value="{{v.sign.hasIcon}}" hint-placeholder-val="{{false}}"><svg class="i" width="13" height="13" viewBox="0 0 24 24" aria-hidden="true"><path d="{{v.sign.d}}"></path></svg></sc-if>{{v.sign.label}}</button>
+<button type="button" class="nc-shield" aria-label="Confidential compute, verified" title="Confidential compute · verified"><svg class="i" width="19" height="19" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.sealed}}"></path></svg></button>
+<div class="nc-end">
+<div class="nc-yours" role="group" aria-label="Just for you: what opens here, only you see">
+<sc-for list="{{v.yours}}" as="y" hint-placeholder-count="4">
+<sc-if value="{{y.sep}}" hint-placeholder-val="{{false}}"><span class="nc-ysep"></span></sc-if><button type="button" class="{{y.cls}}" onClick="{{y.click}}" aria-label="{{y.label}}" title="{{y.tip}}"><svg class="i" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="{{y.d}}"></path></svg><span class="yl">{{y.label}}</span><sc-if value="{{y.hasBadge}}" hint-placeholder-val="{{false}}"><span class="badge">{{y.badge}}</span></sc-if></button>
+</sc-for>
+<span class="nc-ysep"></span>
+<button type="button" class="{{v.facesCls}}" onClick="{{v.facesClick}}" aria-label="People in this call" title="People · only you"><dc-import name="Faces" who="{{v.facesWho}}" size="24" max="4" ring="#10192B" hint-size="78px,26px"></dc-import><span>{{v.count}}</span></button>
+</div>
+</div>
+</sc-if>
+<sc-if value="{{v.phone}}" hint-placeholder-val="{{false}}">
+<button type="button" class="{{v.sign.cls}}" onClick="{{v.sign.click}}" aria-haspopup="dialog" aria-label="{{v.sign.label}}. What’s captured"><sc-if value="{{v.sign.dot}}" hint-placeholder-val="{{true}}"><i></i></sc-if><sc-if value="{{v.sign.hasIcon}}" hint-placeholder-val="{{false}}"><svg class="i" width="13" height="13" viewBox="0 0 24 24" aria-hidden="true"><path d="{{v.sign.d}}"></path></svg></sc-if></button>
+<div class="nc-end" style="gap: 6px">
+<button type="button" class="{{v.phoneChat.cls}}" onClick="{{v.phoneChat.click}}" aria-label="Chat"><svg class="i" width="19" height="19" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.chat}}"></path></svg><sc-if value="{{v.phoneChat.hasBadge}}" hint-placeholder-val="{{false}}"><span class="badge">{{v.phoneChat.badge}}</span></sc-if></button>
+<button type="button" class="{{v.facesCls}}" onClick="{{v.facesClick}}" aria-label="People in this call"><dc-import name="Faces" who="{{v.facesWho}}" size="24" max="2" ring="#060D1A" hint-size="64px,26px"></dc-import></button>
+</div>
+</sc-if>
+</header>
+</sc-if>
+
+<sc-for list="{{v.tiles}}" as="t" hint-placeholder-count="4">
+<sc-if value="{{t.isPerson}}" hint-placeholder-val="{{true}}">
+<div class="{{t.cls}}" style="{{t.style}}"><div class="fig"><dc-import name="Faces" who="{{t.who}}" figure="{{true}}" hint-size="100%,100%"></dc-import></div><span class="ac-tile-name"><sc-if value="{{t.talk}}" hint-placeholder-val="{{false}}"><span class="ac-level" aria-hidden="true"><i></i><i></i><i></i></span></sc-if>{{t.name}}</span><sc-if value="{{t.hand}}" hint-placeholder-val="{{false}}"><span class="nc-hand"><svg class="i" width="15" height="15" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.hand}}"></path></svg></span></sc-if></div>
+</sc-if>
+<sc-if value="{{t.isThing}}" hint-placeholder-val="{{false}}">
+<div class="{{t.cls}}" style="{{t.style}}"><span class="nc-mini" style="{{t.mStyle}}"><dc-import name="Thing" thing="{{t.thing}}" at="{{t.at}}" page="{{t.page}}" mode="follow" mini="{{true}}" hint-size="880px,550px"></dc-import></span><span class="nc-tback"><sc-if value="{{t.hasIn}}" hint-placeholder-val="{{false}}"><dc-import name="Faces" who="{{t.inWho}}" size="16" max="3" ring="#0E1626" hint-size="40px,18px"></dc-import></sc-if>{{t.go}}</span><span class="ac-tile-name"><svg class="i" width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><path d="{{t.d}}"></path></svg>{{t.label}}<span class="nc-tsub">{{t.sub}}</span></span><button type="button" class="nc-cover" onClick="{{t.click}}" aria-label="{{t.aria}}"></button></div>
+</sc-if>
+</sc-for>
+
+<sc-for list="{{v.frames}}" as="f" hint-placeholder-count="1">
+<section class="{{f.cls}}" style="{{f.style}}" aria-label="{{f.name}}, everyone sees this">
+<div class="nc-fbar">
+<div class="nc-fwho">
+<sc-if value="{{f.hasWho}}" hint-placeholder-val="{{true}}"><dc-import name="Faces" who="{{f.who}}" size="24" ring="transparent" hint-size="24px,26px"></dc-import></sc-if><sc-if value="{{f.hideWho}}" hint-placeholder-val="{{false}}"><span class="nc-fic"><svg class="i" width="15" height="15" viewBox="0 0 24 24" aria-hidden="true"><path d="{{f.icon}}"></path></svg></span></sc-if>
+<button type="button" class="{{f.nameCls}}" onClick="{{f.nameClick}}" aria-haspopup="menu"><span class="nm">{{f.name}}</span><svg class="i" width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.down}}"></path></svg></button>
+<span class="nc-fmeta">{{f.meta}}</span>
+</div>
+<div class="nc-fend">
+<sc-if value="{{f.hasFollowing}}" hint-placeholder-val="{{false}}"><div class="nc-fol"><dc-import name="Faces" who="{{f.who}}" size="20" ring="transparent" hint-size="20px,22px"></dc-import><span class="t">Following {{f.followName}}</span><button type="button" class="{{f.unfollowCls}}" onClick="{{f.followClick}}">Unfollow</button></div></sc-if>
+<sc-if value="{{f.hasFollowBtn}}" hint-placeholder-val="{{false}}"><button type="button" class="{{f.followCls}}" onClick="{{f.followClick}}"><dc-import name="Faces" who="{{f.who}}" size="20" ring="transparent" hint-size="20px,22px"></dc-import><span class="ft"><b>Follow {{f.followName}}</b><small>{{f.followWhere}}</small></span></button></sc-if>
+<sc-if value="{{f.hasPresent}}" hint-placeholder-val="{{false}}"><button type="button" class="{{f.presentCls}}" onClick="{{f.presentClick}}" title="Everyone follows you"><svg class="i" width="15" height="15" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.presentation}}"></path></svg>Present</button></sc-if>
+<sc-if value="{{f.hasFocus}}" hint-placeholder-val="{{true}}"><button type="button" class="{{f.focusCls}}" onClick="{{f.focusClick}}" aria-label="{{f.focusLabel}}" title="{{f.focusLabel}}"><svg class="i" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="{{f.focusIcon}}"></path></svg></button></sc-if>
+<sc-if value="{{f.hasStop}}" hint-placeholder-val="{{false}}"><button type="button" class="{{f.stopCls}}" onClick="{{f.stopClick}}" title="Ends it for everyone">Stop sharing</button></sc-if>
+<sc-if value="{{f.hasClose}}" hint-placeholder-val="{{true}}"><button type="button" class="{{f.closeCls}}" onClick="{{f.closeClick}}" title="{{f.closeTip}}"><svg class="i" width="15" height="15" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.x}}"></path></svg>Close<sc-if value="{{f.closeAsks}}" hint-placeholder-val="{{false}}"><svg class="i" width="13" height="13" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.down}}"></path></svg></sc-if></button></sc-if>
+</div>
+</div>
+<div class="nc-fbody">
+<dc-import name="Thing" thing="{{f.thing}}" mode="{{f.mode}}" at="{{f.at}}" them="{{f.them}}" step="{{f.step}}" page="{{f.page}}" their="{{f.theirPage}}" sharer="{{f.sharer}}" narrow="{{f.narrow}}" bh="{{f.bh}}" bw="{{f.bw}}" hot-page="{{f.hotPage}}" on-page="{{f.onPage}}" hint-size="100%,100%"></dc-import>
+<sc-if value="{{f.hasStepper}}" hint-placeholder-val="{{false}}"><div class="nc-pager nc-float" role="group" aria-label="Step through its frames; everyone following you moves with you"><button type="button" class="{{f.prevCls}}" onClick="{{f.prevClick}}" disabled="{{f.prevOff}}" aria-label="Back a frame"><svg class="i" width="17" height="17" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.left}}"></path></svg></button><span class="nc-pt"><b>{{f.stepTxt}}</b><small>{{f.partName}}</small></span><button type="button" class="{{f.nextCls}}" onClick="{{f.nextClick}}" disabled="{{f.nextOff}}" aria-label="Next frame"><svg class="i" width="17" height="17" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.right}}"></path></svg></button><span class="nc-fsep"></span><button type="button" class="{{f.notesCls}}" onClick="{{f.notesClick}}" aria-label="Your notes, only you see them" title="Your notes · only you"><svg class="i" width="17" height="17" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.notebook}}"></path></svg></button></div></sc-if>
+<sc-if value="{{f.canLook}}" hint-placeholder-val="{{false}}"><button type="button" class="{{f.lookCls}}" onClick="{{f.lookClick}}" aria-label="Look around on your own"></button></sc-if>
+</div>
+</section>
+</sc-for>
+
+<sc-if value="{{v.hasArches}}" hint-placeholder-val="{{false}}">
+<div class="{{v.archesCls}}" style="{{v.archesStyle}}">
+<sc-for list="{{v.arches}}" as="a" hint-placeholder-count="4"><span class="{{a.cls}}"><dc-import name="Faces" who="{{a.who}}" size="{{v.archSize}}" ring="var(--stage)" hint-size="40px,44px"></dc-import></span></sc-for>
+</div>
+</sc-if>
+
+<sc-if value="{{v.scrim}}" hint-placeholder-val="{{false}}"><button type="button" class="nc-scrim" onClick="{{v.scrimClick}}" aria-label="Close"></button></sc-if>
+
+<sc-if value="{{v.hasSide}}" hint-placeholder-val="{{false}}">
+<aside class="{{v.side.cls}}" style="{{v.side.style}}" aria-label="{{v.side.title}}, only you see this">
+<sc-if value="{{v.side.plainHead}}" hint-placeholder-val="{{true}}">
+<div class="nc-sh"><div class="nc-sht"><h2>{{v.side.title}}</h2></div><button type="button" class="{{v.side.closeCls}}" onClick="{{v.side.closeClick}}" aria-label="Close {{v.side.title}}"><svg class="i" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.x}}"></path></svg></button></div>
+</sc-if>
+
+<sc-if value="{{v.side.isNotes}}" hint-placeholder-val="{{false}}"><dc-import name="Notes" m="{{m}}" on-press="{{press}}" hint-size="100%,100%"></dc-import></sc-if>
+
+<sc-if value="{{v.side.isChat}}" hint-placeholder-val="{{false}}">
+<div class="nc-sb">
+<sc-for list="{{v.side.chat}}" as="c" hint-placeholder-count="3"><div class="nc-msg"><dc-import name="Faces" who="{{c.who}}" size="28" ring="transparent" hint-size="28px,30px"></dc-import><div><div class="mh">{{c.name}}<span class="tm">{{c.at}}</span></div><p>{{c.t}}</p></div></div></sc-for>
+</div>
+<div style="padding: 0 16px 16px"><div class="nc-input">Message everyone<span class="go"><svg class="i" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.sendLine}}"></path></svg></span></div></div>
+</sc-if>
+
+<sc-if value="{{v.side.isPeople}}" hint-placeholder-val="{{false}}">
+<div class="nc-sb">
+<div class="nc-ask"><div class="nc-prow"><dc-import name="Faces" who="maya" size="30" ring="transparent" hint-size="30px,33px"></dc-import><div><b>Maya Chen asks to join</b><span class="d">maya@vandelay.industries · gets the notes once let in</span></div></div><div class="act"><button type="button" class="nc-mbtn quiet">Not now</button><button type="button" class="nc-mbtn press">Let in</button></div></div>
+<button type="button" class="nc-rooms" style="width: 100%"><svg class="i" width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.doorOpen}}"></path></svg><div style="flex: 1"><b>Breakout rooms</b><span class="d">Split the call into rooms for a while</span></div><svg class="i" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.chevron}}"></path></svg></button>
+<h3 class="nc-h3">In the call<span class="n">{{v.side.count}}</span></h3>
+<sc-for list="{{v.side.here}}" as="p" hint-placeholder-count="4"><div class="nc-prow"><dc-import name="Faces" who="{{p.who}}" size="30" ring="transparent" hint-size="30px,33px"></dc-import><div><b>{{p.name}}</b><span class="d">{{p.detail}}</span></div><span class="nc-ib" aria-hidden="true"><svg class="i" width="18" height="18" viewBox="0 0 24 24"><path d="{{I.more}}"></path></svg></span></div></sc-for>
+</div>
+<div class="nc-sf"><svg class="i" width="15" height="15" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.lock}}"></path></svg>Video, audio and chat are encrypted end to end.</div>
+</sc-if>
+
+<sc-if value="{{v.side.isMine}}" hint-placeholder-val="{{false}}">
+<div class="nc-sb nc-mine">
+<span class="pos">{{v.side.minePos}} · you're sharing it</span>
+<p class="big">{{v.side.mineNow}}</p>
+<div class="note">{{v.side.mineText}}</div>
+<div class="next"><span class="pos">Next: {{v.side.mineNext}}</span>
+<div class="nx"><span class="nc-mini" style="width: 880px; height: 550px; transform: scale(.37)"><dc-import name="Thing" thing="{{v.side.mineThing}}" at="{{v.side.mineAt}}" step="{{true}}" mini="{{true}}" hint-size="880px,550px"></dc-import></span></div>
+</div>
+</div>
+<div class="nc-sf"><svg class="i" width="15" height="15" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.lock}}"></path></svg>Kept for next time. Only you see them.</div>
+</sc-if>
+</aside>
+</sc-if>
+
+<sc-if value="{{v.card.has}}" hint-placeholder-val="{{false}}"><div class="nk-pop {{v.card.theme}}" style="{{v.card.style}}"><dc-import name="Card" m="{{m}}" on-press="{{press}}" hint-size="344px,360px"></dc-import></div></sc-if>
+
+<sc-if value="{{v.wide}}" hint-placeholder-val="{{true}}">
+<footer class="nc-dockbar">
+<div class="{{v.dockCls}}">
+<span class="nc-split"><button type="button" class="{{v.dk.mic.cls}}" onClick="{{v.dk.mic.click}}" aria-label="{{v.dk.mic.label}}" title="{{v.dk.mic.label}} · M"><svg class="i" width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path d="{{v.dk.mic.d}}"></path></svg></button><sc-if value="{{v.dk.open}}" hint-placeholder-val="{{true}}"><button type="button" class="nc-chev" aria-label="Microphone and speaker"><svg class="i" width="13" height="13" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.up}}"></path></svg></button></sc-if></span>
+<span class="nc-split"><button type="button" class="{{v.dk.cam.cls}}" onClick="{{v.dk.cam.click}}" aria-label="{{v.dk.cam.label}}" title="{{v.dk.cam.label}} · V"><svg class="i" width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path d="{{v.dk.cam.d}}"></path></svg></button><sc-if value="{{v.dk.open}}" hint-placeholder-val="{{true}}"><button type="button" class="nc-chev" aria-label="Camera and background"><svg class="i" width="13" height="13" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.up}}"></path></svg></button></sc-if></span>
+<sc-if value="{{v.dk.open}}" hint-placeholder-val="{{true}}">
+<span class="nc-dsep"></span>
+<button type="button" class="{{v.dk.share.cls}}" onClick="{{v.dk.share.click}}" title="Share with everyone: a screen, a board or a document"><svg class="i" width="19" height="19" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.screen}}"></path></svg>{{v.dk.share.label}}</button>
+<button type="button" class="{{v.dk.hand.cls}}" onClick="{{v.dk.hand.click}}" aria-label="{{v.dk.hand.label}}" title="{{v.dk.hand.label}}"><svg class="i" width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.hand}}"></path></svg></button>
+<button type="button" class="{{v.dk.more.cls}}" onClick="{{v.dk.more.click}}" aria-label="More" title="More: captions, catch up, rooms, devices"><svg class="i" width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.more}}"></path></svg></button>
+<span class="nc-dsep"></span>
+</sc-if>
+<sc-if value="{{v.dk.tucked}}" hint-placeholder-val="{{false}}"><button type="button" class="{{v.dk.back.cls}}" onClick="{{v.dk.back.click}}"><svg class="i" width="15" height="15" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.minimize}}"></path></svg>Show everything</button></sc-if>
+<button type="button" class="{{v.dk.leave.cls}}"><svg class="i" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.leave}}"></path></svg>Leave</button>
+</div>
+</footer>
+</sc-if>
+<sc-if value="{{v.phone}}" hint-placeholder-val="{{false}}">
+<footer class="nc-dockbar">
+<div class="nc-dock">
+<button type="button" class="{{v.dk.mic.cls}}" onClick="{{v.dk.mic.click}}" aria-label="{{v.dk.mic.label}}"><svg class="i" width="21" height="21" viewBox="0 0 24 24" aria-hidden="true"><path d="{{v.dk.mic.d}}"></path></svg></button>
+<button type="button" class="{{v.dk.cam.cls}}" onClick="{{v.dk.cam.click}}" aria-label="{{v.dk.cam.label}}"><svg class="i" width="21" height="21" viewBox="0 0 24 24" aria-hidden="true"><path d="{{v.dk.cam.d}}"></path></svg></button>
+<button type="button" class="{{v.dk.share.cls}}" onClick="{{v.dk.share.click}}" aria-label="Share"><svg class="i" width="21" height="21" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.screen}}"></path></svg></button>
+<button type="button" class="{{v.dk.more.cls}}" onClick="{{v.dk.more.click}}" aria-label="More"><svg class="i" width="21" height="21" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.more}}"></path></svg><sc-if value="{{v.moreBadge}}" hint-placeholder-val="{{false}}"><span class="badge">{{v.unread}}</span></sc-if></button>
+<button type="button" class="{{v.dk.leave.cls}}" aria-label="Leave"><svg class="i" width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.leave}}"></path></svg></button>
+</div>
+</footer>
+</sc-if>
+
+<sc-if value="{{v.anyShare}}" hint-placeholder-val="{{false}}">
+<div class="nc-pop nc-share" style="{{v.shareStyle}}" role="dialog" aria-label="Share with everyone">
+<sc-if value="{{v.isShare}}" hint-placeholder-val="{{true}}">
+<div class="hd"><b>Share with everyone</b><span>Everyone in the call sees what you share, in the middle of their screen.</span></div>
+<sc-if value="{{v.hasMineShare}}" hint-placeholder-val="{{false}}"><div class="nc-mine-row"><svg class="i" width="17" height="17" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.screen}}"></path></svg><span>You’re sharing {{v.share.mine.t}}</span><button type="button" class="{{v.share.mine.cls}}" onClick="{{v.share.mine.click}}">Stop sharing</button></div></sc-if>
+<sc-for list="{{v.share.kinds}}" as="k" hint-placeholder-count="3"><button type="button" class="{{k.cls}}" onClick="{{k.click}}"><span class="sq"><svg class="i" width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path d="{{k.d}}"></path></svg></span><span><b>{{k.t}}</b><small>{{k.sub}}</small></span><sc-if value="{{k.chev}}" hint-placeholder-val="{{true}}"><svg class="i chev" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.chevron}}"></path></svg></sc-if></button></sc-for>
+<div class="foot"><svg class="i" width="15" height="15" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.sealed}}"></path></svg>Sealed. Alcove can’t read what you share.</div>
+</sc-if>
+<sc-if value="{{v.isShareScreen}}" hint-placeholder-val="{{false}}">
+<div class="nc-stephd"><button type="button" class="{{v.share.backCls}}" onClick="{{v.share.backClick}}"><svg class="i" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.left}}"></path></svg>Share</button><b>Your screen</b></div>
+<div class="nc-picks">
+<span class="nc-pick is-on"><span class="pic"><svg class="i" width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.panel}}"></path></svg></span>A tab</span>
+<span class="nc-pick"><span class="pic"><svg class="i" width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.layers}}"></path></svg></span>A window</span>
+<span class="nc-pick"><span class="pic"><svg class="i" width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.monitor}}"></path></svg></span>Your whole screen</span>
+</div>
+<div class="nc-swrow"><span>Also share the tab’s sound</span><span class="nc-sw" aria-hidden="true"></span></div>
+<div class="nc-read"><i></i>Notes are on: what you share is read for the notes.</div>
+<div class="nc-acts"><button type="button" class="nc-quiet" onClick="{{v.share.backClick}}">Back</button><button type="button" class="{{v.share.goScreenCls}}" onClick="{{v.share.goScreenClick}}"><svg class="i" width="17" height="17" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.screen}}"></path></svg>Share</button></div>
+</sc-if>
+<sc-if value="{{v.isShareBoard}}" hint-placeholder-val="{{false}}">
+<div class="nc-stephd"><button type="button" class="{{v.share.backCls}}" onClick="{{v.share.backClick}}"><svg class="i" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.left}}"></path></svg>Share</button><b>A board</b></div>
+<div class="lab" style="padding-top: 4px">New</div>
+<div class="nc-tpls">
+<sc-for list="{{v.share.templates}}" as="b" hint-placeholder-count="4"><button type="button" class="{{b.cls}}" onClick="{{b.click}}"><span class="pic"><sc-for list="{{b.rects}}" as="q" hint-placeholder-count="3"><i style="{{q.s}}"></i></sc-for></span>{{b.t}}</button></sc-for>
+</div>
+<div class="lab">Your team’s boards</div>
+<sc-for list="{{v.share.boards}}" as="r" hint-placeholder-count="2"><button type="button" class="{{r.cls}}" onClick="{{r.click}}"><svg class="i" width="17" height="17" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.presentation}}"></path></svg><b style="font-weight: 600">{{r.t}}<span style="margin-left: 8px; font-weight: 500">{{r.m}}</span></b><span>{{r.w}}</span></button></sc-for>
+<div class="foot"><svg class="i" width="15" height="15" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.sealed}}"></path></svg>Opens for everyone here. Alcove can’t read boards.</div>
+</sc-if>
+</div>
+</sc-if>
+
+<sc-if value="{{v.isBoardPick}}" hint-placeholder-val="{{false}}">
+<div class="nc-pop nc-share nc-bpick" style="{{v.pickStyle}}" role="dialog" aria-label="Open a board, just for you">
+<div class="hd"><b>Open a board</b><span>Only you see it until you present it.</span></div>
+<div class="lab" style="padding-top: 4px">New</div>
+<div class="nc-tpls">
+<sc-for list="{{v.pick.templates}}" as="b" hint-placeholder-count="4"><button type="button" class="{{b.cls}}" onClick="{{b.click}}"><span class="pic"><sc-for list="{{b.rects}}" as="q" hint-placeholder-count="3"><i style="{{q.s}}"></i></sc-for></span>{{b.t}}</button></sc-for>
+</div>
+<div class="lab">Your team’s boards</div>
+<sc-for list="{{v.pick.boards}}" as="r" hint-placeholder-count="2"><button type="button" class="{{r.cls}}" onClick="{{r.click}}"><svg class="i" width="17" height="17" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.presentation}}"></path></svg><b style="font-weight: 600">{{r.t}}<span style="margin-left: 8px; font-weight: 500">{{r.m}}</span></b><span>{{r.w}}</span></button></sc-for>
+<div class="foot"><svg class="i" width="15" height="15" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.sealed}}"></path></svg>Sealed. Alcove can’t read boards.</div>
+</div>
+</sc-if>
+
+<sc-if value="{{v.isMore}}" hint-placeholder-val="{{false}}">
+<div class="nc-pop nc-more" style="{{v.moreStyle}}" role="menu" aria-label="More">
+<sc-if value="{{v.phone}}" hint-placeholder-val="{{false}}">
+<div class="nc-mgrid">
+<sc-for list="{{v.more.grid}}" as="g" hint-placeholder-count="5"><button type="button" class="{{g.cls}}" onClick="{{g.click}}"><svg class="i" width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="{{g.d}}"></path></svg>{{g.t}}<sc-if value="{{g.hasBadge}}" hint-placeholder-val="{{false}}"><span class="badge">{{g.badge}}</span></sc-if></button></sc-for>
+</div>
+<div class="sep"></div>
+</sc-if>
+<sc-for list="{{v.more.rows}}" as="r" hint-placeholder-count="4"><button type="button" class="nc-mi" role="menuitem"><svg class="i" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="{{r.d}}"></path></svg><span class="t">{{r.t}}</span><sc-if value="{{r.hasScope}}" hint-placeholder-val="{{false}}"><span class="scope">{{r.scope}}</span></sc-if><sc-if value="{{r.hasK}}" hint-placeholder-val="{{false}}"><span class="nc-kbd">{{r.k}}</span></sc-if></button></sc-for>
+<div class="sep"></div>
+<sc-for list="{{v.more.rows2}}" as="r" hint-placeholder-count="4"><button type="button" class="nc-mi" role="menuitem"><svg class="i" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="{{r.d}}"></path></svg><span class="t">{{r.t}}</span></button></sc-for>
+</div>
+</sc-if>
+
+<sc-if value="{{v.isView}}" hint-placeholder-val="{{false}}">
+<div class="nc-pop nc-viewm" style="{{v.viewStyle}}" role="dialog" aria-label="Your view">
+<div class="hd"><b>Your view</b><span>Only your screen changes.</span></div>
+<div class="nc-vrow"><span>The people</span><div class="nc-vseg"><b class="on">Auto</b><b>Speaker</b><b>Grid</b></div></div>
+<div class="nc-vrow"><span>Beside what’s shared</span><div class="nc-vseg"><b class="on">Tiles</b><b>Arches</b><b>Hidden</b></div></div>
+<div class="nc-vrow"><span>See yourself</span><div class="nc-vseg"><b class="on">In the grid</b><b>In a corner</b><b>Hidden</b></div></div>
+<div class="sep"></div>
+<button type="button" class="nc-mi"><svg class="i" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.reset}}"></path></svg><span class="t">Reset my view</span></button>
+</div>
+</sc-if>
+
+<sc-if value="{{v.hasFrameMenu}}" hint-placeholder-val="{{false}}">
+<div class="nc-pop nc-fmenu" style="{{v.frameMenuStyle}}" role="menu" aria-label="{{v.frameMenu.head}}">
+<sc-for list="{{v.frameMenu.rows}}" as="r" hint-placeholder-count="5"><sc-if value="{{r.sep}}" hint-placeholder-val="{{false}}"><div class="sep"></div></sc-if><button type="button" class="{{r.cls}}" role="menuitem" onClick="{{r.click}}"><svg class="i" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="{{r.d}}"></path></svg><span class="t">{{r.t}}</span><sc-if value="{{r.hasK}}" hint-placeholder-val="{{false}}"><span class="nc-kbd">{{r.k}}</span></sc-if></button></sc-for>
+</div>
+</sc-if>
+
+<sc-if value="{{v.hasCloseMenu}}" hint-placeholder-val="{{false}}">
+<div class="nc-pop nc-closem" style="{{v.closeMenuStyle}}" role="menu" aria-label="{{v.closeMenu.head}}">
+<div class="hd"><b>{{v.closeMenu.head}}</b></div>
+<sc-for list="{{v.closeMenu.rows}}" as="r" hint-placeholder-count="2"><button type="button" class="{{r.cls}}" role="menuitem" onClick="{{r.click}}"><span class="sq"><svg class="i" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="{{r.d}}"></path></svg></span><span><b>{{r.t}}</b><small>{{r.sub}}</small></span></button></sc-for>
+</div>
+</sc-if>
+
+<sc-if value="{{v.hasToast}}" hint-placeholder-val="{{false}}">
+<div class="nc-toast" role="status"><svg class="i" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="{{v.toast.d}}"></path></svg><span>{{v.toast.text}}</span><sc-if value="{{v.toast.hasAct}}" hint-placeholder-val="{{false}}"><button type="button" class="{{v.toast.actCls}}" onClick="{{v.toast.click}}">{{v.toast.act}}</button></sc-if></div>
+</sc-if>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"step":{"editor":"enum","options":["call","nOn","nSeek","nLineMarked","nYours","nSugAdded","nTicked","nAdding","nTyping","nKept","nMarkedNow","nYoursAll","nAsk","nAskAnswer","nAskKept","nCard","nCardOther","nPaused","nPausedOther","nResumed","nOffOrg","nOffOther","nAsked","nRequested","nPriyaAsked","nOnFromAsk","nUnavailable","nStale","nGuest","nLight","nSign","nIdea","pCall","pMore","pNotesN","pCardN","pTranscript"],"default":"call"},"hot":{"editor":"text","default":""},"m":{"editor":null,"default":null},"onPress":{"editor":null,"default":null},"$preview":{"width":1440,"height":900}}'>
+/* The call at one moment. Give it `step` (and `hot`, what to press next), or a whole moment as `m` with `onPress`; alone, every control works. */
+var EMPTY_PICK = { templates: [], boards: [] };
+var EMPTY_SIDE = { cls: '', style: '', title: '', plainHead: true, notFoot: false, isNotes: false, isChat: false, isPeople: false, isMine: false, tabs: [], decided: [], follow: [], yours: [], lines: [], chips: [], chat: [], here: [], closeCls: '', closeClick: null, markCls: '', shareCls: '', shareClick: null };
+class Component extends DCLogic {
+  key() { return (this.props.step || 'call') + '|' + (this.props.hot || ''); }
+  cur() {
+    if (this.props.m) return this.props.m;
+    var st = this.state || {};
+    if (st.s && st.from === this.key()) return st.s;
+    var h = (!this.props.step || this.props.step === 'call') && typeof location !== 'undefined' ? /step=([A-Za-z]+)(?:&hot=([^&]+))?/.exec(location.hash) : null;
+    if (h) return window.NC.step(h[1], h[2] ? decodeURIComponent(h[2]) : null);
+    return window.NC.step(this.props.step || 'call', this.props.hot || null);
+  }
+  press(id) {
+    if (id === 'noop') return;
+    if (typeof this.props.onPress === 'function') { this.props.onPress(id); return; }
+    this.setState({ s: window.NC.act(this.cur(), id), from: this.key() });
+  }
+  renderVals() {
+    var self = this, NC = window.NC, s = this.cur();
+    var on = function (id) { return function (e) { if (e && e.stopPropagation) e.stopPropagation(); self.press(id); }; };
+    var v = NC.view(s, on);
+    v.closeMenu = v.closeMenu || { head: '', rows: [] };
+    v.frames.forEach(function (f) {
+      f.hideWho = !f.hasWho;
+      f.hotPage = s.hot && s.hot.indexOf('ws.page:') === 0 ? s.hot.slice(8) : '';
+      f.onPage = function (p) { self.press('ws.page:' + p); };
+    });
+    v.side = v.side ? Object.assign({}, EMPTY_SIDE, v.side) : EMPTY_SIDE;
+    v.side.plainHead = !v.side.isNotes;
+    v.side.notFoot = false;
+    v.sign = NC.signView(s, on);
+    v.card = NC.cardPlace(s, v);
+    v.toast = v.toast || { d: '', text: '', hasAct: false, act: '', actCls: '', click: null };
+    v.frameMenu = v.frameMenu || { rows: [], head: '' };
+    v.pick = v.pick || EMPTY_PICK;
+    v.share.mine = v.share.mine || { t: '', cls: '', click: null };
+    v.dockCls = s.focus ? 'nc-dock is-tucked' : 'nc-dock';
+    v.archesCls = s.phone ? 'nc-parches' : v.topArches ? 'nc-tarches' : 'nc-arches';
+    v.archesStyle = v.archesStyle || '';
+    v.archSize = s.phone ? 40 : 36;
+    v.moreBadge = s.phone && s.unread > 0 && s.side !== 'chat';
+    v.unread = s.unread;
+    return { v: v, I: NC.I, m: s, press: function (id) { self.press(id); } };
+  }
+}
+</script>
+</body>
+</html>

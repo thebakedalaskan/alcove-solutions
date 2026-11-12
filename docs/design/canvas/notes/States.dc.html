@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Every state of Notes</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="call.css">
+<link rel="stylesheet" href="notes.css">
+<script src="icons.js"></script>
+<script src="nc.js"></script>
+<script src="notes.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400..700&amp;family=Newsreader:ital,opsz,wght@0,6..72,300..600;1,6..72,300..600&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<div class="ns stage" style="width: 2192px">
+<div class="ns-top"><div>
+<h1>Every state of Notes</h1>
+<p>The panel in each state it can be in, as it sits on your side of the call. Each one works on its own: press anything.</p>
+</div></div>
+
+<div class="ns-grid">
+<sc-for list="{{states}}" as="x" hint-placeholder-count="15">
+<div class="ns-it">
+<div class="ns-cap"><b>{{x.title}}</b><span>{{x.sub}}</span></div>
+<dc-import name="Notes" step="{{x.step}}" hint-size="368px,752px"></dc-import>
+</div>
+</sc-for>
+</div>
+
+<div class="ns-sec">
+<h2>What’s captured</h2>
+<p>The card the pill beside Notes opens, and the sign at the top left of the call. It’s the same for everyone, but for what’s yours to press.</p>
+<div class="ns-cards">
+<sc-for list="{{cards}}" as="c" hint-placeholder-count="5">
+<div class="ns-card">
+<div class="ns-cap"><b>{{c.title}}</b><span>{{c.sub}}</span></div>
+<dc-import name="Card" step="{{c.step}}" hint-size="344px,380px"></dc-import>
+</div>
+</sc-for>
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":2192,"height":3590}}'>
+/* Notes in every state, then what's captured in each of its own. */
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      states: window.NC.NN_STATES,
+      cards: [
+        { step: 'nCard', title: 'Live, as the organizer', sub: 'Pause notes, or turn them off.' },
+        { step: 'nCardOther', title: 'Live, for anyone else', sub: 'Who can pause them, said in the sentence.' },
+        { step: 'nPausedCard', title: 'Paused, as the organizer', sub: 'Resume is the one filled button.' },
+        { step: 'nRequestedCard', title: 'Asked for, as the organizer', sub: 'Who asked, in rose, with Turn on notes.' },
+        { step: 'nSign', title: 'From the sign, at the top left', sub: 'With Open the notes at its foot.' }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1042,9 +1042,10 @@ notes**.
   they're refused (`403 forbidden`) and the app doesn't offer it. Nothing goes into the call's state or tells
   anyone's browser to read the call again. Once the call has ended the same notes are read by the note (`409 conflict` here).
 - **Bookmarks** are pointers, never copies: a line by its ID (line IDs stay the same from the live transcript into the
-  note), a shared screen by its frame, or a moment. "Mark this" (**B**, the dock, **More** on a phone, or **Mark this**
-  in Yours) keeps when it was pressed, where that falls in the recording, and the breakout room if any, and opens at the
-  line just said, up to two minutes back. A mark made while nothing was captured there keeps no place in the recording.
+  note), a shared screen by its frame, or a moment. Marking a moment (**B**, **Mark this moment** in **More**, or the
+  bookmark beside Note to self, at the foot of the call's Notes panel) keeps when it was pressed, where that falls in the
+  recording, and the breakout room if any, and opens at the line just said, up to two minutes back. A mark made while
+  nothing was captured there keeps no place in the recording.
   You can only bookmark what you may read: anything else is `404 not-found`, whether or not it exists. A line or a
   shared screen is bookmarked once: bookmarking it again changes nothing and answers with the same notes. Each bookmark
   says what it points at (`target`: `line`, `screen` or `moment`, from what the record keeps, so nothing stored changed
@@ -1213,11 +1214,13 @@ the notes worker. Accepted tasks, pending suggestions and review decisions are h
   model lists what it still hears as something new, unticked, so it can be ticked again; the note then has both.
 - **While paused or off.** What was written stays readable, nothing is refreshed, and nothing reaches NEAR AI. In a
   breakout room the organizer has paused, the same, for that room alone. Ticking still works: it reaches no AI.
-- **When it fails.** The notes stay as they were, `error` says so (one line whatever went wrong, at the top of the panel, to
-  whoever reads those notes, only while notes are on: the causes are worded for someone who can press something, and here
-  nobody has to, so why is in the log line) and the next look at least 30 seconds later tries again. A reply that isn't what
-  was asked for counts: without words in its summary and all four lists, each item as asked down to the lines it cites,
-  it's a failed refresh, never blank notes.
+- **When it fails.** The notes stay as they were, `error` says so (in the call's Notes panel, the summary's time in
+  caution, "Not updated since 16:12", or, before there are any notes, that the first couldn't be written yet; on the
+  workspace's live Notes page, a caution notice), whatever went wrong, to whoever reads those notes, only while notes are
+  on (the causes are worded for someone who can press something, and here nobody has to, so why is in the log line) and
+  the next look at least 30 seconds
+  later tries again. A reply that isn't what was asked for counts: without words in its summary and all four lists, each
+  item as asked down to the lines it cites, it's a failed refresh, never blank notes.
 - **What it costs.** Nothing. As for catching up and asking, nobody's credits pay for a refresh, whoever is watching and
   whoever's call it is: only the notes written at the end charge the organizer ([The notes worker](#the-notes-worker)).
 
@@ -1233,7 +1236,9 @@ Internally follow-ups keep `review` (`accepted`, `suggested`, `dismissed`), `cha
 
 Review does not mean “I'll do it”. The saved note retains the separate `takenOn` responsibility consent and its existing permissions. People edit an accepted task through the normal change boundary; a model refresh cannot silently change it. Review outcomes and source evidence suppress suggestions already handled when the same conversation is read again. Document and partial-transcript access checks continue to apply before any known text reaches inference.
 
-The app captures a fixed batch when Review opens. It shows Add / Dismiss for a new task and Apply change / Dismiss with before/after values for an amendment. New arrivals wait behind a count. If somebody else resolves or changes a proposal, the row stays in place and says so, rather than moving the next action under the reviewer.
+On the workspace's Follow-ups page and the note, the app captures a fixed batch when Review opens. It shows Add / Dismiss for a new task and Apply change / Dismiss with before/after values for an amendment. New arrivals wait behind a count. If somebody else resolves or changes a proposal, the row stays in place and says so, rather than moving the next action under the reviewer.
+
+The call's Notes panel lists the proposals under its checklist instead (`call/notes/SuggestedFollowUps.tsx`): two at a time, then "N more suggested", each with Add (Apply for an amendment, the current values struck through under the new ones) and Dismiss. While the pointer is over them or focus is in them, or a decision is on its way, the rows shown are a snapshot: arrivals wait behind "N more suggested", a proposal that changed keeps the words that were seen and says "Changed since you saw it.", and one resolved elsewhere says so. The snapshot is let go once the pointer has left and focus has moved out, so changed proposals show their new words. Both surfaces decide through `useFollowUpReview` (`features/notes`), which sends the revision that was shown.
 
 ### Ticking and adding a follow-up
 
@@ -1546,8 +1551,12 @@ The prompts are in `apps/api/src/features/notes/drafting.ts`; read them there. I
   prompt, the series' and the one across notes included, tells the model never to rest a name, number or
   decision on an unclear line alone. A corrected line has neither. The transcript comes between `<transcript>` and `</transcript>`, and every
   prompt that reads one (or captions to translate) tells the model that what's in it, said or shown on a screen, is
-  never an instruction to follow, whatever it asks; nothing said or shown can close the fence. A transcript over
-  120,000 characters (about 30,000 tokens) keeps its beginning and end, with a marker for the lines left out;
+  never an instruction to follow, whatever it asks; nothing said or shown can close the fence. The prompts that write
+  notes, the full summary and a catch-up (so live notes too) say the same about small talk (`SMALL_TALK`): greetings,
+  how people are, the weather, weekends and plans that have nothing to do with the meeting, and talk about the call
+  itself ("you're on mute") are never a decision, question, suggestion, follow-up or chapter, and the summary leaves
+  them out, saying so in one sentence when a meeting was nothing else. A transcript over 120,000 characters (about
+  30,000 tokens) keeps its beginning and end, with a marker for the lines left out;
   during a call the answer says which stretch was skipped and how many lines (`read.skipped`).
 - **Picking moments in shared screens.** The shares, numbered, with whose they were and when they were up, and the
   transcript lines near them. One JSON object, `{moments: [{at, share, cue, why, before}]}`, as

@@ -147,11 +147,11 @@ export const WorkspaceClosedForEveryone: PageStory = {
     step('It closes for everyone', () => toldThat('Closed for everyone.'))),
   name: 'Workspace closed for everyone'
 };
-/** Open, at the top of Notes: the workspace opens on these notes, just for you, as Workspace at the top right would. */
+/** Open, the arrow at the top of Notes: the workspace opens on these notes, just for you, as Workspace at the top right would. */
 export const WorkspaceFromNotes: PageStory = {
   ...inCall(yours(), {
-    play: plays(reach('Notes'), step('Press Open, at the top of Notes: the workspace opens on these notes', async (c) => {
-      await c.userEvent.click(await screen.findByRole('button', { name: 'Open the workspace on these notes' }, SOON));
+    play: plays(reach('Notes'), step('Press Open, the arrow at the top of Notes: the workspace opens on these notes', async (c) => {
+      await c.userEvent.click(await screen.findByRole('button', { name: 'Open in the workspace, just for you' }, SOON));
       await frameOf(WS);
     }))
   }),

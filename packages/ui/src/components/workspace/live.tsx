@@ -112,13 +112,14 @@ export function WsNotesPage({ summary, decided, followUps, allFollowUps, put, no
 /**
  * Follow-ups: everything to do from this call. `mine` filters to yours; `rows` are the ones to show, and the counts are
  * how many there are either way. `children` holds manual additions and optional review. `notice` says what's holding
- * the notes back; `compact` uses the same checklist inside the call's Notes panel.
+ * the notes back.
  */
-export function WsFollowUps({ mine, onMine, everyoneCount, mineCount, rows, notice, onTick, children, compact = false }: {
+export function WsFollowUps({ mine, onMine, everyoneCount, mineCount, rows, notice, onTick, children }: {
   mine: boolean; onMine: (mine: boolean) => void; everyoneCount: number; mineCount: number; rows: WsFollowUp[]; notice?: ReactNode;
-  onTick: (id: string) => void; children?: ReactNode; compact?: boolean | undefined;
+  onTick: (id: string) => void; children?: ReactNode;
 }) {
-  const body = <>
+  return (
+    <LivePage title="Follow-ups">
       {notice}
       <div className="wl-seg" role="group" aria-label="Whose">
         <button type="button" aria-pressed={!mine} onClick={() => onMine(false)}>Everyone <span>{everyoneCount}</span></button>
@@ -127,8 +128,8 @@ export function WsFollowUps({ mine, onMine, everyoneCount, mineCount, rows, noti
       <Written>{rows.map((f) => <FollowUpRow key={f.id} row={f} onTick={onTick} sourced />)}</Written>
       {rows.length === 0 && <p className="wl-s">{mine ? 'Nothing with your name on it yet.' : 'Nothing to do yet.'}</p>}
       {children}
-    </>;
-  return compact ? <div className="wl-compact">{body}</div> : <LivePage title="Follow-ups">{body}</LivePage>;
+    </LivePage>
+  );
 }
 
 /** A line of the transcript. `name` is their first name, `at` the time of day. `flash` glows it, 1.6 s, as a time opened it. */
@@ -174,8 +175,8 @@ export function WsNotesOff({ organizer, onTurnOn, onAsk, onTakeBack }: { organiz
   return (
     <div className="wl">
       <EmptyState className="wd-none" title="Notes are off" art={<WsArch />} action={onTurnOn
-        ? <Button variant="primary" size="sm" onClick={onTurnOn}>Turn notes on</Button>
-        : onTakeBack ? <Button variant="quiet" size="sm" onClick={onTakeBack}>Take it back</Button>
+        ? <Button variant="primary" size="sm" onClick={onTurnOn}>Turn on notes</Button>
+        : onTakeBack ? <Button variant="quiet" size="sm" onClick={onTakeBack}>Take back your ask</Button>
           : onAsk && <Button variant="primary" size="sm" onClick={onAsk}><Icon name="hand" size={15} />Ask {organizer} for notes</Button>}>
         {onTakeBack ? `You asked ${organizer} for notes. Your documents work as usual.` : 'Nothing from this call is being written down. Your documents work as usual.'}
       </EmptyState>

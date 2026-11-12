@@ -398,7 +398,7 @@
 .wl-line.is-now p { color: var(--ink-3); }
 .wl-line.is-now .ws-dots { color: var(--rec); align-self: center; }
 .ws-put { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 7px; color: var(--ink-3); opacity: 0; transition: opacity var(--duration-1); }
-.wl-r:hover .ws-put, .wl-line:hover .ws-put, .ic-nr:hover .ws-put, .tx-l:hover .ws-put, .ws-put:focus-visible { opacity: 1; }
+.wl-r:hover .ws-put, .wl-line:hover .ws-put, .tx-l:hover .ws-put, .ws-put:focus-visible { opacity: 1; }
 .ws-put:hover { background: var(--line); color: var(--ink); }
 
 /* A narrow document: the page gives up its margins first, then the path. */
@@ -491,6 +491,3 @@
 }
 .wl-todo.is-editing { flex-direction: column; }
 .wl-todo > .ac-icon-btn { flex: none; width: 28px; height: 28px; }
-.wl-compact .wl-todo { font-size: 13.5px; }
-.wl-compact .wl-due { font-size: 12px; }
-.wl-compact .wl-todo .who { font-size: 12px; }

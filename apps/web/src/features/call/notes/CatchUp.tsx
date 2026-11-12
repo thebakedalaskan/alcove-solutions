@@ -359,7 +359,6 @@ export function AskView({ asks, ready, paused, modelPrivate, startedAt, range, w
     <>
       {catching && <LiveBar onLive={onLive}><Icon name="history" size={14} />Catching up · only you</LiveBar>}
       <div className="ic-scroll ic-pad">
-        <Notice icon="lock"><b>Only you see this.</b> {backwards ? 'Answers come from the earlier calls you have notes from, Nothing is kept.' : `Answers come from what’s been said in this call, nothing else. ${keeping ? 'Nothing is kept unless you keep it.' : 'Nothing is kept.'}`}</Notice>
         {!modelPrivate && <Notice tone="caution" icon="shieldOff"><b>Not in a secure enclave.</b> Questions go to an AI model Alcove can’t guarantee keeps them private. <Unencrypted compact /></Notice>}
         <div className="ic-qa">
           {!asks.length && paused && <EmptyState title="Notes are paused" className="ic-empty">Nothing goes to the AI, questions included, until they resume.</EmptyState>}
