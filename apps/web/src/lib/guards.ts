@@ -1,7 +1,7 @@
 import { errorCode, type Session } from '@alcove/api';
 import type { QueryClient } from '@tanstack/react-query';
 import { redirect } from '@tanstack/react-router';
-import { linkWaiting, takeAgentReturn, takeReturn } from './afterSignIn';
+import { linkWaiting, takeAgentReturn, takePlansReturn, takeReturn } from './afterSignIn';
 import { signedInHere } from './device';
 import { q } from './queries';
 
@@ -29,7 +29,8 @@ export async function sessionOrOffline(qc: QueryClient): Promise<Session | null 
 
 /**
  * The signed-in account, or off to the welcome screen to sign in. Someone who signed in with Google from a call's join
- * page goes back to it, wherever Google's way back landed them; a preload (a link hovered) never uses that up.
+ * page goes back to it, wherever Google's way back landed them, and someone who pressed Get Pro on the welcome page goes to
+ * Plans with checkout on Pro; a preload (a link hovered) never uses either up.
  * Without a connection, someone signed in on this device carries on offline.
  */
 export async function requireAccount(qc: QueryClient, preload = false): Promise<{ account: Account }> {
@@ -44,6 +45,9 @@ export async function requireAccount(qc: QueryClient, preload = false): Promise<
   if (agent) throw redirect({ to: '/connect', search: { request: agent }, replace: true });
   const back = preload ? null : takeReturn();
   if (back) throw redirect({ to: '/join/$code', params: { code: back }, replace: true });
+  // Get Pro on the welcome page: Plans, with checkout open on Pro (its address, since the page reads it from there).
+  const plans = preload ? null : takePlansReturn();
+  if (plans) throw redirect({ href: `/plans?checkout=${plans}`, replace: true });
   // Signed in from a link to someone's notes, Google's way back lands here: back to the link, which asks before opening them.
   if (!preload && linkWaiting()) throw redirect({ to: '/link', replace: true });
   return { account: { offline: false, session: s } };
