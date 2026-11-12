@@ -170,7 +170,7 @@ export const ScheduleFailed = page('/home', 'busy', { beforeEach: changing(troub
 export const StartFailed = page('/home', 'busy', { beforeEach: changing(troubled({ 'calls.startNow': 'failed' })), play: playing(open, press(/^Start now/, 'Start now')) });
 
 /*
- * No notes left this period (the plans spec's doors, 5): starting or scheduling a call with notes on says so in caution, until
+ * No notes left this period (docs/product/user-flows.md 16.10): starting or scheduling a call with notes on says so in caution, until
  * the period renews, with Get Pro, and on Start now a way on without notes. A call scheduled after the period renews has notes
  * again, so nothing is said there.
  */

@@ -357,7 +357,7 @@ export const PhoneList = page(at('ws-product'), 'busy', { globals: PHONE });
 export const PhoneCouldntSave = page(at('ws-product', 'Pricing page copy'), 'unsaved', { globals: { ...PHONE, theme: 'dark' } });
 
 /*
- * Storage full (the plans spec's doors, 6): past Free's storage, with the grace over, a file added to a document is refused
+ * Storage full (docs/product/user-flows.md 16.11): past Free's storage, with the grace over, a file added to a document is refused
  * before any of it is kept, and the toast says so as the doors do, with Get Pro and how much room Pro has. The block stays,
  * saying it didn't upload, with Try again.
  */

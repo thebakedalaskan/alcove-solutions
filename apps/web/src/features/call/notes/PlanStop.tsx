@@ -1,5 +1,5 @@
 /*
- * When the organizer's plan stops a call's notes (docs: Plans and usage › Running out in a call; the plans spec's doors, 4).
+ * When the organizer's plan stops a call's notes (docs: Plans and usage › Running out in a call; docs/product/user-flows.md 16.9).
  * What's said about it is the same in the banner over the call, at the top of Notes and in what's captured. Whoever organizes
  * has the ways to more (Get Pro, more hours for this period, room), each opening checkout over the call. Once they've bought
  * more, notes come on again by themselves and say so; when the plan has notes again without a purchase (a new period), the

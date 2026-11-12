@@ -1,6 +1,5 @@
 /*
- * The checkout window (docs/superpowers/specs/2026-11-12-plans-frontend-design.md › The checkout window; the canvas's
- * Checkout and PayMotion boards): what checkout.tsx has open, drawn with the kit's CheckoutWindow and its parts, at the
+ * The checkout window (docs/design/pages.md › Checkout; the canvas's Checkout and PayMotion boards): what checkout.tsx has open, drawn with the kit's CheckoutWindow and its parts, at the
  * app's root (routes/__root.tsx), so the call, Settings, Plans and any door open the same window.
  *
  * Choose how long (or how many hours). When the balance covers it, Buy with your balance takes it from there at once.

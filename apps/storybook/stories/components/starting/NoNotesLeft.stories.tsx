@@ -1,5 +1,5 @@
 /*
- * NoNotesLeft: no notes left this period, said where a call with notes on is started or scheduled (the plans spec's doors, 5):
+ * NoNotesLeft: no notes left this period, said where a call with notes on is started or scheduled (docs/product/user-flows.md 16.10):
  * until when they come back, in caution, and under it what to do about it, Get Pro and a way on without notes. Under a Notes
  * switch it says "None left until…"; on its own, under the ways to start, it names them, with its mark, as a note.
  */

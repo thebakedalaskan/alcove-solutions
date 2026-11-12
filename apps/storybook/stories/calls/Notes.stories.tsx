@@ -123,7 +123,7 @@ export const PausedByTheOrganizer = inCall({
 });
 
 /*
- * What the plan says in a call (docs: Plans and usage; the plans spec's doors, 4; the canvas's CallOut): a banner from the top,
+ * What the plan says in a call (docs: Plans and usage; docs/product/user-flows.md 16.9; the canvas's CallOut): a banner from the top,
  * once for the call, that stays until its × is pressed. Notes stopping is said to everyone; notes about to run out, to the
  * organizer alone. While they're stopped, a caution bar between Notes' head and its tabs says why, the pill says Stopped and
  * the sign at the top Notes stopped; the banner waits while Notes is open. Only the organizer has the ways to more (Get Pro,

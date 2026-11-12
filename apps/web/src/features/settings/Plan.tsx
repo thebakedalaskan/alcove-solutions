@@ -1,5 +1,5 @@
 /*
- * Settings › Plan (the canvas's Plan group, docs/superpowers/specs/2026-11-12-plans-frontend-design.md). The first panel is
+ * Settings › Plan (docs/design/pages.md › Settings; docs/product/user-flows.md 16.7, 16.8 and 16.14). The first panel is
  * what you have: the plan and what it brings, about how much of the period's notes is left (with the sun on the row's own
  * hairline), storage against its limit, and on Free more notes for this period. Get Pro, Extend and Add 10 hours open
  * checkout (features/plans/checkout.tsx); See plans opens Plans. Pro about to end is said by the plan itself, with Extend

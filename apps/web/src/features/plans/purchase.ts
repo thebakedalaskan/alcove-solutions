@@ -1,5 +1,5 @@
 /*
- * What a purchase is and costs (docs/superpowers/specs/2026-11-12-plans-frontend-design.md › The checkout window), from the
+ * What a purchase is and costs (docs/design/pages.md › Checkout), from the
  * server's offers: Pro's price a month for that many months (the lower, yearly one from `yearly.fromMonths` on), packs of
  * more notes, what the balance covers and what's left to send, and the words for a purchase that the side panel, Settings
  * and checkout share. Every amount is micro-USD, as the server's; a token is sent as a dollar.

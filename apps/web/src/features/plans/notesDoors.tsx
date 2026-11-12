@@ -1,5 +1,5 @@
 /*
- * Two of the doors into checkout (docs/superpowers/specs/2026-11-12-plans-frontend-design.md › The doors), both about the
+ * Two of the doors into checkout (docs/product/user-flows.md 16.10 and 16.12), both about the
  * period's notes running low: an hour left, said once a period as a toast (3), and none left where a call with notes is
  * started or scheduled (5). Only whoever pays meets them: what's left is your own plan's, and a call's notes are on its
  * organizer's, who is whoever starts or schedules it. Every number is the server's (GET /v1/plan, /v1/plan/offers).
@@ -47,7 +47,7 @@ export function useMoreNotes(plan: Plan | undefined, wanted: boolean): MoreNotes
 }
 
 /**
- * None left (door 5): said where a call with notes on is started or scheduled, once this period's are used and before they
+ * None left (16.10): said where a call with notes on is started or scheduled, once this period's are used and before they
  * come back: until when, in caution, with Get Pro (or more hours on a paid plan) and, where it's given, a way on without
  * notes. The server starts such a call without notes anyway, and says why in it.
  *
@@ -82,7 +82,7 @@ export function NoNotesLeftDoor({ at, alone = false, newTab = false, beforeCheck
 
 
 /**
- * An hour left (door 3): once a period, when the notes left this period drop under an hour, a toast says so with the way to
+ * An hour left (16.12): once a period, when the notes left this period drop under an hour, a toast says so with the way to
  * more (Get Pro on Free, more hours on a paid plan). The side panel's number turns warm by itself. Mounted with the frame
  * round every page, so never in a call; the plan is read again every minute, so it comes as a call's notes use it up.
  */

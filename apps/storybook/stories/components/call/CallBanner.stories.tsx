@@ -2,7 +2,7 @@
  * CallBanner: something about the whole call that stays until its × is pressed, dropped from the top of the stage, centred,
  * always at night. Caution for what has stopped, information for what's coming. Its ways on sit in a row under the words:
  * when the organizer's notes run out, Get Pro (filled) and more hours for this period, which open checkout over the call
- * (the plans spec's doors, 4; the canvas's CallOut).
+ * (docs/product/user-flows.md 16.9; the canvas's CallOut).
  */
 import { Button, CallBanner } from '@alcove/ui';
 import type { Meta, StoryObj } from '@storybook/react-vite';

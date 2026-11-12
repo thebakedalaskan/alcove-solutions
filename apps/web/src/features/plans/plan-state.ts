@@ -1,7 +1,7 @@
 /*
- * How your plan stands now, as the side panel's foot, Settings › Plan, Plans and the doors say it (docs/superpowers/specs/
- * 2026-11-12-plans-frontend-design.md): the time of notes left, whether Pro is about to end, and which of the plan's notices
- * still say something true. What a purchase is and costs is purchase.ts's. Every number is the server's.
+ * How your plan stands now, as the side panel's foot, Settings › Plan, Plans and the doors say it (docs: Plans and usage;
+ * docs/design/pages.md › The frame and › Settings): the time of notes left, whether Pro is about to end, and which of the
+ * plan's notices still say something true. What a purchase is and costs is purchase.ts's. Every number is the server's.
  */
 import type { Plan, PlanKind, PlanNotice, PlanOffers } from '@alcove/api';
 import { daysFromToday, hoursAndMinutes } from '~/lib/time';

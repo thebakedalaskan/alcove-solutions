@@ -1,5 +1,5 @@
 /*
- * Storage full (docs/superpowers/specs/2026-11-12-plans-frontend-design.md › The doors, 6): an upload the server refused
+ * Storage full (docs/product/user-flows.md 16.11): an upload the server refused
  * because the storage it counts against is full (`plan-limit`, docs: Plans and usage › Storage), said the way the doors say
  * it, wherever files go in (a document, Upload files in the Drive, a picture on a board). A file bigger than its plan takes
  * is refused before any of it is sent, in the server's own words with its limit, and offers nothing: Pro's largest file is

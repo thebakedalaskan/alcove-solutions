@@ -1,5 +1,5 @@
 /*
- * Plans, on the welcome page (the plans spec's doors, 1): the cove at night with the last of the sun on its horizon, Free and
+ * Plans, on the welcome page (docs/product/user-flows.md 16.13): the cove at night with the last of the sun on its horizon, Free and
  * Pro on its water as small cards with what each costs and brings, and the two ways in under them: Start free, the sign-in
  * the page already has, and Get Pro, which signs in and then opens Plans with checkout on Pro (lib/afterSignIn.ts carries it
  * through sign-in, wherever Google's way back lands).

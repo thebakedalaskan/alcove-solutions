@@ -1,5 +1,5 @@
 /*
- * Checkout in every stage (docs/superpowers/specs/2026-11-12-plans-frontend-design.md › The checkout window; the canvas's
+ * Checkout in every stage (docs/design/pages.md › Checkout; the canvas's
  * Checkout board, docs/design/canvas/plans/Checkout.dc.html), the app's own window over the app, opened as a door opens
  * it (src/checkout.tsx). A payment on its way is the world's (`plan-waiting`), or one a story opens and the stand-in plays
  * out by itself (`payments` and the `payment-*` scenarios: seen, added and bought a few seconds apart, or less, more,

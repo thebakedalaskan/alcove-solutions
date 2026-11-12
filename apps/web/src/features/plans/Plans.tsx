@@ -1,5 +1,5 @@
 /*
- * Plans (docs/superpowers/specs/2026-11-12-plans-frontend-design.md › The Plans page): the last of the sunset, with the
+ * Plans (docs/design/pages.md › Plans): the last of the sunset, with the
  * plans on the water under it. On the sky, Monthly or Yearly when a year or more costs less, with the last sliver of the sun
  * on the horizon under it; on the water, Free and Pro side by side, their rows lined up (a third card grows when Team is
  * offered); then what every plan has and how paying works. Every number is the server's: the offers, and the plan you're

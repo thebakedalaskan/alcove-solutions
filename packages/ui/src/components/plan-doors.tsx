@@ -1,6 +1,6 @@
 /*
- * The doors into checkout that sit inside other places (docs/superpowers/specs/2026-11-12-plans-frontend-design.md › The
- * doors): what ran out, said where it matters, with the one thing that fixes it. Stateless: the app says when and passes the
+ * The doors into checkout that sit inside other places (docs/product/user-flows.md 16.9–16.13): what ran out, said where it
+ * matters, with the one thing that fixes it. Stateless: the app says when and passes the
  * ways on.
  */
 import type { ReactNode } from 'react';

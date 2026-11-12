@@ -1,5 +1,5 @@
 /*
- * Plans: the last of the sunset, with the plans on the water under it (docs/superpowers/specs/2026-11-12-plans-frontend-design.md).
+ * Plans: the last of the sunset, with the plans on the water under it (docs/design/pages.md › Plans).
  * The plans are light cards side by side whose parts share rows (PlanCards, PlanCard), so the names, prices, buttons and every
  * fact line up across them and they compare row by row. Pro is lifted a little, never lit up: a raised card with a warm edge.
  * Over them on the sky, Monthly or Yearly (PlanCycle), and behind it the last sliver of the sun (PlanSunset, which Plans draws

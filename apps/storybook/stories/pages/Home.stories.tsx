@@ -102,7 +102,7 @@ export const StillLoadingPhone = phone(StillLoading);
 export const DidntLoad = page('/home', 'busy', { beforeEach: changing(troubled({ 'notes.inbox': 'failed' })) });
 
 /*
- * An hour left (the plans spec's doors, 3): once a period, as the notes left this period drop under an hour, one toast says so
+ * An hour left (docs/product/user-flows.md 16.12): once a period, as the notes left this period drop under an hour, one toast says so
  * with Get Pro; the side panel's number turns warm by itself. About 20 minutes are left here.
  */
 export const HourLeft = page('/home', 'plan-low');
