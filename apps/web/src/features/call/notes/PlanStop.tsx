@@ -155,27 +155,31 @@ export function StopMarks({ marks }: { marks: readonly StopMark[] }) {
 
 /* ---------- notes on again, the moment the organizer's plan has more ---------- */
 
-/** What in the organizer's plan can lift a stop: its kind, this period's notes and when it began, and its storage. */
-const roomOf = (p: Plan) => ({ kind: p.kind, minutes: p.notes.minutesPerPeriod, from: p.period.from, storage: p.storage.limitBytes, left: p.notes.minutesLeft });
-
+/** The room notes need to come on again after storage stopped them, as the server asks: 1 MiB. */
+const ROOM_BYTES = 2 ** 20;
+/** Whether the plan has what notes need to come on again: notes left this period, or room in storage. */
+function canGo(reason: 'notes' | 'storage', p: Plan): boolean {
+  return reason === 'storage' ? !p.over.storage && p.storage.limitBytes - p.storage.usedBytes >= ROOM_BYTES : !p.notes.stopped && p.notes.minutesLeft > 0;
+}
 /**
- * Whether the organizer's plan has more than it had when notes stopped: Pro or Team bought, more hours this period, a new
- * period, or more room. Only a plan that has changed is tried, so a plan that showed a minute or two left as notes stopped
- * isn't tried again and again.
+ * Whether the organizer's plan has more than it had (`was`): Pro or Team bought, more hours this period (they add to the
+ * period's notes), a new period, or more room. Only a plan that has changed is tried again, so one that showed a minute or two
+ * left as notes stopped isn't tried over and over.
  */
 function hasMore(reason: 'notes' | 'storage', was: Plan, now: Plan): boolean {
+  if (!canGo(reason, now)) return false;
   if (reason === 'storage') return now.storage.limitBytes > was.storage.limitBytes || now.storage.usedBytes < was.storage.usedBytes || (was.over.storage && !now.over.storage);
-  const a = roomOf(was), b = roomOf(now);
-  return !now.notes.stopped && b.left > 0 && (b.kind !== a.kind || b.minutes > a.minutes || b.from !== a.from || b.left > a.left);
+  return now.kind !== was.kind || now.notes.minutesPerPeriod > was.notes.minutesPerPeriod || now.period.from !== was.period.from || now.notes.minutesLeft > was.notes.minutesLeft;
 }
 
 /**
- * For whoever organizes: notes come on again by themselves the moment their plan has more (bought in checkout over the call,
- * paid from another device, or a new period), and a toast says so: "You're on Pro. Notes are on again." when Pro is what came,
- * else "Notes are on again.". While a stop is in force the plan is read every few seconds, so a payment that lands anywhere
- * is heard soon. Turning them on goes as the organizer's own would; refused (the plan wasn't enough after all), nothing is
- * said and the next change tries again. `hushing()` is true while notes coming on is this, so the call's own notice about it
- * isn't said as well.
+ * For whoever organizes: the server doesn't turn a stopped call's notes on again by itself, so their browser does, the
+ * moment their plan has more (bought in checkout over the call, paid from another device after closing it, more hours, a
+ * new period, or room made), once for each change, and a toast says so: "You're on Pro. Notes are on again." when Pro is
+ * what came, else "Notes are on again.". While a stop is in force the plan is read every 10 s, so a payment that lands
+ * anywhere is heard within seconds. Turning them on is the organizer's own (setNotes); refused (the plan wasn't enough after
+ * all), nothing is said and the next change tries again. `hushing()` is true while notes coming on is this, so the call's
+ * own notice about it isn't said as well.
  */
 export function usePlanRestart(state: CallState, session: Pick<CallSession, 'setNotes'>): { hushing: () => boolean } {
   const toast = useToast();
@@ -188,11 +192,18 @@ export function usePlanRestart(state: CallState, session: Pick<CallSession, 'set
   const stoppedAt = s?.at ?? null;
   const reason = s?.reason ?? null;
   useEffect(() => {
-    if (!host || !stoppedAt || !reason || !plan) return;
+    if (!host || !stoppedAt || !reason || !plan || turning.current) return;
     const was = before.current;
-    if (!was || was.at !== stoppedAt) { before.current = { at: stoppedAt, plan }; return; }
-    if (turning.current || !hasMore(reason, was.plan, plan)) return;
-    turning.current = { pro: was.plan.kind === 'free' && plan.kind === 'pro' };
+    if (was === null || was.at !== stoppedAt) {
+      // The first look at the plan since notes stopped tries once if it has what they need (paid while the page reloaded, say).
+      before.current = { at: stoppedAt, plan };
+      if (!canGo(reason, plan)) return;
+      turning.current = { pro: false };
+    } else {
+      // After that, only a plan with more than before.
+      if (!hasMore(reason, was.plan, plan)) return;
+      turning.current = { pro: was.plan.kind === 'free' && plan.kind === 'pro' };
+    }
     slog.info('the organizer’s plan has more: turning notes on again', { reason, kind: plan.kind });
     session.setNotes(true).catch((e: unknown) => {
       slog.warn('notes didn’t come on again; the next change to the plan tries again', { err: e, reason });
