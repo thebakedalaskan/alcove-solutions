@@ -26,7 +26,7 @@ import { findSession } from '../../sessions';
 import { profile } from '../account/account';
 import { inSeat, seated, seatedIn, seatOfViewer, viewerOf, type Viewer } from '../calls/participants';
 import { tellCall } from '../calls/notifications';
-import { settledHome } from '../calls/workspace-actions';
+import { settledFolder } from '../calls/workspace-actions';
 import { personOf, portraitFor } from '../account/portraits';
 
 const xlog = log.child({ component: 'access' });
@@ -43,7 +43,7 @@ export const TREE_NOTICE = 'tree';
 const Maker = z.object({ name: z.string(), email: z.string() });
 export type Maker = z.infer<typeof Maker>;
 /**
- * What makes a folder a call's own (docs: Calls and recordings › The call's home): which call, whose, and, once it's over,
+ * What makes a folder a call's own (docs: Calls and recordings › The call's folder): which call, whose, and, once it's over,
  * its note. Its pages read the call or the note, through their own access: nothing of either is kept here.
  */
 export const StoredCall = z.object({
@@ -521,15 +521,19 @@ export async function seatsInStep(w: Pick<Workspace, 'owner' | 'workspaceId'>, d
 export interface CallRef { organizer: Owner; callId: string }
 
 /**
- * The call's home, for the server to work in, and the call's folder at the top of it (`folderId`): what the server makes for
- * the call, such as its board, goes in that folder. The meeting's, else a new one made for the call, settled the first time
- * it's asked for. It opens nothing for anyone.
+ * The call's workspace, for the server to work in, and this run's folder at the top of it (`folderId`): what the server makes
+ * for the call, such as its board, goes in that folder. A call with none has nowhere to keep anything new, and nothing makes one
+ * for it: the organizer picks or makes it. It opens nothing for anyone.
  */
 export async function workspaceForCall(d: Deps, call: CallRef): Promise<HeldWorkspace & { folderId: string }> {
-  const { workspaceId, folderId } = await settledHome(call.organizer, call.callId);
-  const w = await serverWorkspace(d, workspaceId);
-  if (!w) throw missing(workspaceId);
-  return { ...w, folderId };
+  const settled = await settledFolder(call.organizer, call.callId);
+  const context = { callId: call.callId, why: settled.kind };
+  if (settled.kind === 'none') throw new ConflictError('This call has no workspace yet, so there’s nowhere to keep a new board. The organizer chooses one.', { context });
+  if (settled.kind === 'shut') throw new ConflictError('This call’s workspace can’t take a new board any more. You can still open one that’s saved.', { context });
+  if (settled.kind === 'full') throw new ConflictError('This call’s workspace has as many things in it as it can hold. You can still open a board that’s saved.', { context });
+  const w = await serverWorkspace(d, settled.workspaceId);
+  if (!w) throw missing(settled.workspaceId);
+  return { ...w, folderId: settled.folderId };
 }
 
 /**

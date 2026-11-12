@@ -86,11 +86,23 @@ export function restoreItem(id: string, itemId: string): void {
   edit(id, (items) => items.map((i) => (i.id === itemId ? { ...i, trashedAt: null, trashedBy: null } : i)));
   sessionsHear([itemId], (s) => ({ ...s, trashed: false }));
 }
-/** A workspace deleted, and everything in it: whoever has something of it open is told it's gone for everyone. */
+/** Whoever hears of workspaces deleted: a call whose workspace it was has none now. */
+const goneListeners = new Set<(id: string) => void>();
+/** Hears of each workspace deleted, until what it returns is called. */
+export function onWorkspaceGone(listener: (id: string) => void): () => void {
+  goneListeners.add(listener);
+  return () => { goneListeners.delete(listener); };
+}
+/**
+ * A workspace deleted, and everything in it: whoever has something of it open is told it's gone for everyone, its own stream
+ * ends for whoever has it open (`closed`, as the server's says it), and a call whose workspace it was has none now.
+ */
 export function removeWorkspace(id: string): void {
   const ids = treeOf(id).items.map((i) => i.id);
   current().workspaces = current().workspaces.filter((x) => x.id !== id);
   sessionsHear(ids, (s) => ({ ...s, closed: 'deleted' }));
+  for (const live of [...watching]) live.gone(id);
+  for (const listener of [...goneListeners]) listener(id);
 }
 export const deleteItem = (id: string, itemId: string) => edit(id, (items) => items.filter((i) => i.id !== itemId && i.parent !== itemId));
 export function duplicateItem(id: string, itemId: string): { id: string } {
@@ -234,6 +246,12 @@ class LiveWorkspace extends Pushed<WorkspaceView> implements WorkspaceLive {
   /** Shown again: nothing here is ever under way, so a stream that's down is only waiting, and tries now, as Try now does. */
   wake = (): void => { this.retry(); };
   refresh(id: string): void { if (id === this.id) this.update((v) => ({ ...v, tree: structuredClone(treeFor(id)), here: hereNow(id), mentions: mentionsIn(id) })); }
+  /** Deleted: the stream says so and ends, showing nothing, and stays ended. */
+  gone(id: string): void {
+    if (id !== this.id) return;
+    this.set({ status: 'closed', tree: null, here: [], mentions: [] });
+    this.close();
+  }
   present(_where: WorkspaceWhere): void { /* Nobody else is here to see where you are. */ }
   async seen(mentionId: string): Promise<void> {
     await pause(60);
@@ -595,6 +613,7 @@ export function forgetDocuments(): void {
   boardSessions.clear();
   sessions.clear();
   watching.clear();
+  goneListeners.clear();
   presence.clear();
   for (const url of urls.values()) URL.revokeObjectURL(url);
   urls.clear();

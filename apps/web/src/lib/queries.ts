@@ -1,5 +1,5 @@
 /* Query keys, fetchers and mutations. Screens read data through these, never through `api` directly. */
-import type { AgentDecisionInput, AgentTokenInput, DriveExportInput, FollowUpReview } from '@alcove/api';
+import type { AgentDecisionInput, AgentTokenInput, DriveExportInput, FileNotes, FollowUpReview, MeetingCreate } from '@alcove/api';
 import { AlcoveApiError, MAX_SORT_STICKIES, MAX_SORT_STICKY, SORT_TOO_FEW, SORT_TOO_MANY, errorCode, type ActionProposal, type ChangeScope, type DecisionProposal, type DemoProvider, type DocumentRole, type FeatureFlagName, type Group, type PresenterFrameNotes, type InstantCallInput, type ISODate, type ItemInput, type ItemPlace, type LinePatch, type MeetingInput, type MentionBody, type NoteKind, type NotesSetting, type Patch, type PersonalInput, type PersonalNotes, type PromoteBody, type QuestionPatch, type TopUp, type RingReply, type Series, type SharedWrite, type ShareTarget, type DocumentLibrary, type WorkspaceRole, type WorkspaceSummary, type WorkspaceTree } from '@alcove/api';
 import { queryOptions, useIsMutating, useMutation, useMutationState, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef } from 'react';
@@ -75,7 +75,7 @@ export const qk = {
 
 /** A saved board someone could bring to a call: where it is, what it's called, whose it is, and when it was last changed. */
 export interface BoardToBring { workspaceId: string; workspace: string | null; id: string; name: string; by: string | null; editedAt: ISODate }
-/** How many of the newest workspaces the board picker looks in: a call's home is new, so what a team has is across the Drive. */
+/** How many of the newest workspaces the board picker looks in: what a team has is across the Drive, whichever the call's is. */
 const BOARD_SPACES = 12;
 /**
  * Every board you could bring from the newest of `spaces` (your Drive, as `q.workspaces` lists it), the most recently changed
@@ -504,7 +504,25 @@ export function useCancelTopUp() {
 
 export function useScheduleCall() {
   const qc = useQueryClient();
-  return useMutation({ networkMode: 'always', mutationFn: (input: MeetingInput) => api.meetings.create(input), onSuccess: () => qc.invalidateQueries({ queryKey: qk.meetings }) });
+  return useMutation({
+    networkMode: 'always', mutationFn: (input: MeetingCreate) => api.meetings.create(input),
+    // A new workspace made for the call is in the Drive now.
+    onSuccess: (_m, input) => { void qc.invalidateQueries({ queryKey: qk.meetings }); if (input.newWorkspace) void qc.invalidateQueries({ queryKey: qk.workspaces, exact: true }); }
+  });
+}
+/**
+ * Files an ended call's notes in a workspace, when it had none: one of yours you can edit in, or a new one. The call's folder
+ * goes there and the workspace is the call's from now on, so the call, the Drive and the note all read again.
+ */
+export function useFileNotes() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { meetingId: string; noteId: string; to: FileNotes }) => api.meetings.file(v.meetingId, v.to),
+    onSuccess: (_m, v) => {
+      for (const queryKey of [qk.meetings, qk.note(v.noteId), qk.allSeries]) void qc.invalidateQueries({ queryKey });
+      void qc.invalidateQueries({ queryKey: qk.workspaces, exact: true });
+    }
+  });
 }
 /** A call changed or went: Home's calls, and any series it's the next call of, catch up. */
 const callsChanged = (qc: QueryClient) => { void qc.invalidateQueries({ queryKey: qk.meetings }); void qc.invalidateQueries({ queryKey: qk.allSeries }); };
@@ -813,6 +831,21 @@ export function useCreateWorkspace() {
 export function useRenameWorkspace() {
   const qc = useQueryClient();
   return useMutation(renameWorkspaceOptions(api, qc, qk));
+}
+/**
+ * Deletes a workspace for good, for everyone, with everything in it: admins only. What was read of it goes, and whatever named
+ * it reads again: the Drive, calls that used it, what can be brought to a call, and storage.
+ */
+export function useDeleteWorkspace() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.workspaces.remove(id),
+    onSuccess: (_r, id) => {
+      qc.removeQueries({ queryKey: ['workspaces', id] });
+      void qc.invalidateQueries({ queryKey: qk.workspaces, exact: true });
+      for (const queryKey of [qk.boardsToBring, qk.meetings, qk.documents, qk.plan]) void qc.invalidateQueries({ queryKey });
+    }
+  });
 }
 /** Only the requested name overlays the live tree. Once that stream acknowledges it, later people’s renames own it. */
 export function useWorkspaceName(id: string, liveName: string, signedIn: boolean) {

@@ -63,6 +63,32 @@ Suites: `billing/meter` (`apps/api/src/features/billing/meter.integration.test.t
 | I3 | Deleting an account deletes its plan and allowance | billing/plans › deleting an account | 1 | Passes |
 | I4 | A live call’s state from the previous release reads (no `notes.limit`), as not stopped, and carries on | billing/plans › reads a live call the previous release stored… | 1 | Passes |
 
+## Workspaces (changed 12 Nov 2026)
+
+A workspace is made only when someone presses New workspace, and a call has one workspace or none
+([Calls and recordings › The call's workspace](calls-and-recordings.md#the-calls-workspace)). The suites below were being
+rewritten for it when this was written, so each row is In progress until the suite has run green on the branch.
+
+| ID | Scenario | Where | Phase | Status |
+| --- | --- | --- | --- | --- |
+| W1 | A call with no workspace has none: opening Workspace, however many at once and whoever does, makes nothing | calls/callWorkspace › which workspace a call uses › is none until its organizer makes or picks one… | 1 | Passes |
+| W2 | The organizer's New workspace in a call makes one for it: named after the call, its folder at the top, everyone invited in it, a guest nowhere | calls/callFolders › a call's workspace › is made by the organizer pressing New workspace… | 1 | Passes |
+| W3 | Scheduling with `newWorkspace` makes one for the call, or for every call of a series, with everyone invited in it | calls/callWorkspace › … is made as a call is scheduled when its organizer asks… | 1 | Passes |
+| W4 | A picked existing workspace gets a folder for each call and lets nobody in | calls/callFolders › … is the workspace chosen when it was scheduled…; calls/callWorkspace › … lets nobody in when the organizer picks one that's there… | 1 | Passes |
+| W5 | Only the organizer picks or makes it; a stand-in, someone not yet in the call, and a read-only role are refused | calls/callWorkspace › … refuses whoever isn't in the call yet, and the organizer's last connection, and a stand-in… | 1 | Passes |
+| W6 | A pick in a call carries to the series' later calls, never earlier ones | calls/callWorkspace › … comes with the meeting, and the organizer's pick in a call carries to the calls after it… | 1 | Passes |
+| W7 | Switching lets the old folder go: removed if empty, a plain ended folder if not; the notes go where the call is | calls/callFolders › … moves with the organizer's pick… | 1 | Passes |
+| W8 | A new board, or rooms' boards, with no workspace are refused (`409`), saved boards still open, and the board is made once the organizer makes one | calls/boards-in-calls › … is nowhere in a call with none…; … still opens: a call and a meeting from before any of this… | 1 | Passes |
+| W9 | A workspace the organizer can't edit in any more takes no folder and no new board | calls/boards-in-calls › … is refused in a call's workspace the organizer can't edit in any more…; calls/callFolders › … takes no folder when it has no room for one… | 1 | Passes |
+| W10 | A call with notes and no workspace ends unfiled (`filed` false), and nothing makes a workspace until the organizer says | calls/callFolders › filing a call's notes › is asked of the organizer… | 1 | Passes |
+| W11 | `meetings.file` puts the folder and its note at the top of a workspace they can edit in, or a new one, and lets nobody in to a picked one | calls/callFolders › filing a call's notes › puts them at the top of a workspace…; … is the organizer's alone… | 1 | Passes |
+| W12 | A call whose workspace was deleted has none, and the notes can be filed again | calls/callWorkspace › … survives its workspace being deleted…; calls/callFolders › … takes a call whose workspace was deleted as one with none | 1 | Passes |
+| W13 | Who's in a workspace made for a call follows its invite; one picked for it doesn't | calls/callFolders › who's in a workspace made for a call | 1 | Passes |
+| W14 | An account makes workspaces up to `workspaces.max_made`, however each was made | workspaces/workspaces › … lets an account make as many workspaces as workspaces.max_made says… | 1 | Passes |
+| W15 | A call from before this (`viewing`, `made`, a home made by the previous release) reads: everyone has the meeting's workspace | calls/callWorkspace › what the previous release stored › … still opens a call that was viewing another workspace than its home…; calls/callFolders › what the previous release stored | 1 | Passes |
+| W16 | Nothing readable in a workspace made for a call (its name, an address) | calls/callFolders › what's kept of a workspace made for a call | 1 | Passes |
+| W17 | Delete workspace from the Drive row, the workspace's menu and the call's frame menu, by an admin alone | workspaces/workspaces › … is deleted by an admin alone…; the three menus by hand | 1 | In progress |
+
 ## Checked by hand
 
 The app run locally on its own ports and database (`pnpm limits` to make a scenario quick), and Storybook for what a live

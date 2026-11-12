@@ -15,6 +15,7 @@ import { loadConfig, loadEnv } from '../config';
 import { b64u, openJson, sealJson, signInAttemptKey, unb64u } from '../crypto';
 import { masterKey } from '../owners';
 import { cookieName } from '../sessions';
+import { withWorkspace } from '../testing/call-workspace';
 import { startFakeDstack } from '../testing/fake-dstack';
 import { acceptNoteSuggestions } from '../testing/follow-ups';
 import { PNG, type GoogleUser, type Spoil } from '../testing/fake-google';
@@ -1844,6 +1845,68 @@ describe('live transcript and written notes', () => {
     const note = await api.notes.get(pendingNoteId);
     expect(note).toMatchObject({ status: 'ready', summary: '', decisions: [], actions: [], chapters: [] });
     expect(note.transcript?.map((l) => l.text)).toEqual(['Nobody will read this summary.']);
+  });
+});
+
+describe('a call nobody made a workspace for', () => {
+  it('makes none, whatever anyone does in it, and its organizer is asked where its notes go', async () => {
+    const org = await account();
+    const kofi = await account();
+    const { code: callCode } = await org.api.calls.startNow({ notes: 'on', guests: [kofi.session.user.email] });
+    const host = await org.api.calls.join(callCode, { mic: true, cam: false });
+    await host.appendAudio(piece(audioBytes('no-workspace'), 0, 0));
+    const k = await kofi.api.calls.join(callCode, { mic: false, cam: false });
+    await settle(host, (s) => s.participants.some((p) => p.id === k.ticket.identity));
+    const jamie = await h.browser().api.calls.join(callCode, { mic: false, cam: false, name: 'Jamie Guest' });
+    await settle(host, (s) => s.waiting.some((w) => w.id === jamie.ticket.identity));
+    await host.admit(jamie.ticket.identity);
+    await settle(host, (s) => s.participants.some((p) => p.id === jamie.ticket.identity));
+
+    // Everyone opens Workspace: there's none, and nothing makes one.
+    await Promise.all([host.openWorkspace(), k.openWorkspace(), jamie.openWorkspace()]);
+    for (const call of [host, k, jamie]) {
+      await call.refresh({ call: true, log: false });
+      expect(call.getSnapshot().workspace).toMatchObject({ id: null, chosen: false, canOpen: false });
+    }
+    // A new board, from the organizer or anyone invited, has nowhere to go.
+    const nowhere = { code: 'conflict', message: 'This call has no workspace yet, so there’s nowhere to keep a new board. The organizer chooses one.' };
+    const refused = (p: Promise<unknown>) => p.then(() => null, (e: unknown) => (e instanceof AlcoveApiError ? { code: e.code, message: e.message } : { code: 'not-an-api-error', message: String(e) }));
+    expect(await refused(host.openBoard({ template: 'retro' }))).toEqual(nowhere);
+    expect(await refused(k.openBoard({ template: 'blank' }))).toEqual(nowhere);
+    // Nor rooms with a board each, or one they share: refused before any room opens. Rooms with nothing to work on open as ever.
+    const rooms = (mode: 'each' | 'shared' | 'none') => org.fetch(`${h.baseUrl}/v1/live/calls/${host.ticket.callId}/actions`, {
+      method: 'POST', headers: { 'content-type': 'application/json', 'x-alcove-call': host.ticket.pass },
+      body: JSON.stringify({ type: 'rooms-open', rooms: [{ name: 'Design', emails: [kofi.session.user.email] }, { name: 'Support', emails: [] }], minutes: 5, board: { mode, template: 'retro' } })
+    });
+    for (const mode of ['each', 'shared'] as const) {
+      const res = await rooms(mode);
+      expect(res.status).toBe(409);
+      expect(await res.text()).toContain('no workspace yet');
+    }
+    await host.refresh({ call: true, log: false });
+    expect(host.getSnapshot().breakouts.open).toBeNull();
+    expect((await rooms('none')).status).toBe(200);
+    expect((await settle(host, (s) => s.breakouts.open !== null)).breakouts.open?.rooms).toHaveLength(2);
+    host.closeRooms();
+    await settle(host, (s) => s.breakouts.open === null);
+
+    // It ends with notes and nowhere to file them: the organizer is asked, and nothing is made.
+    await host.transcribe(speech('Kofi will send the deck to legal by Friday.', 0, 0), host.ticket.identity);
+    const end = await ended(host);
+    expect(end).toMatchObject({ filed: false });
+    const noteId = end.pendingNoteId ?? '';
+    expect((await written(org.api, noteId)).at(-1)?.ready).toBe(true);
+    await new Promise((r) => setTimeout(r, 400));
+    expect(await org.api.workspaces.list()).toEqual([]);
+    expect(await kofi.api.workspaces.list()).toEqual([]);
+    expect((await org.api.meetings.get(end.meetingId)).workspaceId).toBeNull();
+    // The note is in Notes as ever, for everyone invited.
+    expect((await kofi.api.notes.get(noteId)).id).toBe(noteId);
+    // Filed where the organizer says: here, a new workspace made for the call, with everyone invited in it.
+    const filed = await org.api.meetings.file(end.meetingId, { newWorkspace: true });
+    const id = filed.workspaceId ?? '';
+    expect((await kofi.api.workspaces.list()).map((w) => w.id)).toEqual([id]);
+    expect((await kofi.api.workspaces.get(id)).items).toEqual([expect.objectContaining({ kind: 'folder', call: expect.objectContaining({ on: false, noteId }) })]);
   });
 });
 
@@ -3778,6 +3841,7 @@ describe('privacy at rest', () => {
     // and the ideas come back to the call sealed in its state. Nothing of either is in a row, an object or a log.
     const ideasCall = await c.api.calls.join((await c.api.calls.startNow({ notes: 'on' })).code, { mic: true, cam: false });
     for (const at of [0, 1]) await ideasCall.appendAudio(piece(audioBytes('ideas'), 0, at));
+    await withWorkspace(ideasCall);
     await ideasCall.openBoard({ template: 'retro' });
     await ideasCall.transcribe(speech('CANARY-IDEA we should repaint the lobby.', 0, 0), ideasCall.ticket.identity);
     const lookingForIdeas = ideasCall.watchIdeas();
@@ -3812,6 +3876,7 @@ describe('privacy at rest', () => {
     await roomie.api.auth.signIn('sso', { email: 'canary-roomie@canary.example' });
     const roomieCall = await roomie.api.calls.join(roomsCall.code, { mic: false, cam: false });
     await settle(roomsHost, (s) => s.participants.some((p) => p.id === roomieCall.ticket.identity));
+    await withWorkspace(roomsHost);
     roomsHost.openRooms({ rooms: [{ name: 'CANARY-ROOMNAME one', emails: ['canary-roomie@canary.example'] }, { name: 'CANARY-ROOMNAME two', emails: [] }], minutes: 5, board: { mode: 'each', template: 'retro' } });
     const roomBoard = (await settle(roomieCall, (s) => s.board.open?.role === 'edit')).board.open;
     expect(roomBoard?.name).toBe('CANARY-ROOMNAME one board');

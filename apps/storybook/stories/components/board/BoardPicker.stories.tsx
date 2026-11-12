@@ -67,3 +67,8 @@ export const Guest: Story = {
 export const InARoom: Story = { name: 'In a room', args: { inRoom: true } };
 /** Nobody on the team has made a board yet: only the templates. */
 export const NoRecents: Story = { name: 'No recents', args: { recents: undefined } };
+/** A call with no workspace yet: a new board has nowhere to be kept, so New waits; the board in the call and the team's still open. */
+export const NoWorkspace: Story = {
+  name: 'No workspace yet',
+  args: { inCall: { name: 'Launch retro', by: 'Priya · brought it', onOpen: did('Launch retro') }, newWhy: 'Pick or make this call’s workspace first.' }
+};

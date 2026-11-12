@@ -43,7 +43,7 @@ result, and [Changing what's stored](#changing-whats-stored) how it changes with
 | `ai_meters` | owner, `version` | `state_ciphertext` (an `ai-meter` record under the same key: the period's AI allowance in dollars, what's been spent and on which kinds of request, the requests in flight and live calls' notes that hold some of it, and when it ran out). Kept apart from `plan_accounts` so the many small charges of a live call never wait behind a purchase |
 | `billing_cutover` | `at`: when migration `0026` ran, one row | — |
 | `deposits` | owner, deposit, provider (`oneclick`), state (`waiting`/`arriving`/`short`/`credited`/`held`/`failed`/`expired`/`cancelled`), created, when to check next (`check_after`), last checked, when to give up | `record_ciphertext` (a `deposit` record under `Kservice`'s accounting key, below) |
-| `workspaces` | owner, `workspace_id` (the public handle, Id128), `version`, when the oldest thing in its Trash went there (`trash_since`), created, `payer_owner_id` (the account its files count against, and whose plan pays for its AI: whoever made it, or for a call's own workspace the organizer; null while nobody does, after its payer deleted their account). The last is migration `0027_workspace_payers.sql` | `state_ciphertext` (its name and tree: [Workspaces](#workspaces)) |
+| `workspaces` | owner, `workspace_id` (the public handle, Id128), `version`, when the oldest thing in its Trash went there (`trash_since`), created, `payer_owner_id` (the account its files count against, and whose plan pays for its AI: whoever pressed New workspace, which for one made in a call or when scheduling is its organizer; null while nobody does, after its payer deleted their account). The last is migration `0027_workspace_payers.sql` | `state_ciphertext` (its name and tree: [Workspaces](#workspaces)) |
 | `workspace_members` | owner (the workspace), `member_id` (what the API calls them), role (`admin`/`edit`/`read`), created | `email_index`, `person_ciphertext` (their address, their name if the workspace was made by them, and whether a call's invite put them there and nobody has changed their place by hand since: older records read as not) |
 | `documents` | owner (the workspace), `document_id`, `next_seq`, what it comes to in bytes, items and depth of nesting at its snapshot and since (`snapshot_bytes`, `bytes_since_snapshot`, `snapshot_items`, `items_since_snapshot`, `snapshot_nesting`, `nesting_since_snapshot`), how many of its items aren't on its page (`snapshot_retired_items`), `updates_since_snapshot`, how far the newest version reaches and when it was kept (`version_seq`, `version_at`), until when something's restoring it (`held_until`) or it stays closed because it wouldn't open (`closed_until`), created. One row for each document or board in the tree; a folder has none | — |
 | `document_updates` | owner (the workspace), document, `seq`, how much it adds in `bytes`, `items` and `nesting`, `deletes_tag` (a keyed hash of what it deletes, so the same deletes again cost no row), created | `update_ciphertext` (one Yjs update and who sent it: [Documents](#documents)) |
@@ -115,12 +115,12 @@ Its name and tree are one record, `workspace-state`, under the workspace's key: 
 or null when nobody in particular did), `createdAt`, `editedAt`, `trashedAt`, `trashedBy`, `restricted`, `restrictedBy` (the
 address of whoever restricted it, when that wasn't its creator) and `call` (on a call's folder only: whose call it is, by
 the organizer's owner and address and the call's ID, when it started, whether it's over, and its note's ID once it is); and
-`madeFor`, on a workspace made as a call's home: the call's title, when it started, its meeting and series, and `out`, the
+`madeFor`, on a workspace made for a call (in the call, when scheduling it, or for its notes once it's over): the call's title, when it started, its meeting and series, and `out`, the
 addresses taken out of it by hand or that left it, which its invite never puts back (older records take `[]`). Older records
 take `null` for `call` and `madeFor`. To the tree `kind` is only data: a document and a board
 are alike, each a row in `documents` that what it holds hangs off, and nothing here looks inside. A call's folder holds no
 content of its own: its pages read the call and its note through their own access
-([Calls and recordings › The call's home](calls-and-recordings.md#the-calls-home)), and nothing of either is copied here. A tree is small (at most 5,000 items, and folders at most 32 deep, though nothing that walks one
+([Calls and recordings › The call's folder](calls-and-recordings.md#the-calls-folder)), and nothing of either is copied here. A tree is small (at most 5,000 items, and folders at most 32 deep, though nothing that walks one
 relies on that: stored data of any depth reads and clears), so one record is enough, and every change is made
 under the `workspaces` row's lock, which also serialises changes to its people and who has what: an access check made
 under that lock holds until the change commits. The server filters the state for each reader, so nobody is sent a name
@@ -148,7 +148,7 @@ same row, so taking someone out takes their address with them. `workspace_author
 name is on something here, which is how deleting an account finds a workspace it left long ago. When a sign-in brings an
 account a new address, everything under the old hash moves to the new one in that sign-in's transaction, and its name on
 what it made follows. A workspace holds at most 1,000 people, a document is shared with at most 500, and an address can
-have made at most 100 workspaces by hand: a home made for a call doesn't count. Who can do what is in
+have made at most `workspaces.max_made` (1,000) and not deleted, however each was made: a workspace exists only because someone pressed New workspace. Who can do what is in
 [Privacy › Who can open a workspace](privacy-keys-and-sessions.md#who-can-open-a-workspace).
 
 ### Tags
@@ -527,7 +527,7 @@ process readable and is sealed there (`apps/api/src/features/workspaces/media.ts
   without a deploy and are in force everywhere within 30 seconds
   ([Deployment › Changing a limit](deployment-and-acceptance.md#changing-a-limit)): a file, 512 MiB on Free; storage, 10 GiB
   on Free, counted for each account, not each workspace: the account's own `stored_bytes` (its calls' audio and shared
-  screens, its room recordings) and every workspace it pays for, a call's own included, whoever added the files, guests
+  screens, its room recordings) and every workspace it pays for, one made for a call included, whoever added the files, guests
   too ([Plans and usage › Storage](plans-and-usage.md#storage)); and what one person uploads in a day
   (UTC), in every workspace together, 20 GiB. They're the same for everyone, guests in a call included. Each is checked when
   an upload starts, with the whole file, and again on every piece, so uploads going at once pass one by the pieces on their
@@ -807,9 +807,9 @@ dollars, once, if it settled after `billing_cutover`. No column holds anything r
   worked out for them and that call, which nothing stores. A call stored with the old demo catalog's IDs (`vandelay.…`, `own.…`)
   still opens, with those not listed: they look like nothing else, so they find nothing, and they stay in the manifest
   until the organizer next changes what's brought.
-- **The workspace a call uses** is in its meeting manifest (`workspaceId`), with its `agenda`, as IDs. What goes on in it
+- **The workspace a call uses** is in its meeting manifest (`workspaceId`, default null: nothing makes one by itself, so a call has one only when its organizer picked or made it), with its `agenda`, as IDs. What goes on in it
   during the call is in the call's sealed state (`workspace`: who's asking, what's presented and playing, what's been
-  worked on and by whom, and the next agenda while it's being made), and goes when the call ends: what was worked on into the note, if there is one, and nowhere else
+  worked on and by whom, this run's folder in the workspace (`home`: workspace, folder and whether it's made), and the next agenda while it's being made; a previous release's `viewing` and `made` here go unread), and goes when the call ends: what was worked on into the note, if there is one, and nowhere else
   ([Calls and recordings › The call's workspace](calls-and-recordings.md#the-calls-workspace)).
 - **The call's timer** lives in the call's sealed state (`timer`), separate from its boards and workspace: one countdown's
   ID, revision, length with time added, whether it's paused, and its clock on the server, numbers only. Call state from the

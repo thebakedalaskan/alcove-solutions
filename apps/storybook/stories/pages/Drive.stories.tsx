@@ -1,9 +1,10 @@
 /*
- * The Drive: every workspace you're in, newest first. A call's home says which call it was made for and when, one made by
- * hand when it was made; each opens on its own page, and a call's home has the call's folder at its top, whose Notes,
- * Follow-ups and Transcript open the call's note (user-flows 12).
+ * The Drive: every workspace you're in, newest first. One made for a call says which call and when, one made by hand when it
+ * was made; each opens on its own page, and a call's workspace has the call's folder at its top, whose Notes, Follow-ups and
+ * Transcript open the call's note. Whoever runs a workspace deletes it from its row's menu, or its own (user-flows 12).
  */
 import type { Meta } from '@storybook/react-vite';
+import { screen } from 'storybook/test';
 import { changing, page, pages, type PageArgs, type PageStory } from '../../src/page';
 import { standupTwice } from './changes';
 
@@ -38,6 +39,49 @@ export const EmptyPhoneNight = page('/drive', 'first-day', { globals: { ...PHONE
 /** New workspace, named in place, in the sky. */
 export const NewWorkspace = page('/drive', 'busy', {
   play: async ({ canvas, userEvent }) => { await userEvent.click(await canvas.findByRole('button', { name: 'New workspace' })); }
+});
+/** A workspace's menu, at the end of its row, for whoever runs it: Delete workspace. */
+const rowMenu: PageStory['play'] = async ({ canvas, userEvent, step }) => {
+  await step('Press More at the end of Product’s row', async () => {
+    await userEvent.click(await canvas.findByRole('button', { name: 'More for Product' }, { timeout: 8000 }));
+  });
+};
+export const RowMenu = page('/drive', 'busy', { play: rowMenu });
+export const RowMenuNight = page('/drive', 'busy', { play: rowMenu, globals: { theme: 'dark' } });
+export const RowMenuPhone = page('/drive', 'busy', { play: rowMenu, globals: PHONE });
+/** Delete workspace asks first, in the menu's place: it goes for everyone, with every document and board in it. */
+const deleteAsk: PageStory['play'] = async (c) => {
+  await rowMenu?.(c);
+  await c.step('Press Delete workspace. It asks first', async () => {
+    await c.userEvent.click(await screen.findByRole('button', { name: /^Delete workspace/ }, { timeout: 5000 }));
+  });
+};
+export const DeleteAsk = page('/drive', 'busy', { play: deleteAsk });
+export const DeleteAskPhone = page('/drive', 'busy', { play: deleteAsk, globals: PHONE });
+/** Deleted: its row goes, and a toast says it went for everyone. */
+export const Deleted = page('/drive', 'busy', {
+  play: async (c) => {
+    await deleteAsk?.(c);
+    await c.step('Press Delete. Once Alcove says it’s done, the row goes', async () => {
+      await c.userEvent.click(await screen.findByRole('button', { name: 'Delete' }, { timeout: 5000 }));
+      await screen.findByText('Product is deleted for everyone', {}, { timeout: 8000 });
+    });
+  }
+});
+/** Its own menu, at the top of its list, has Delete workspace too, for whoever runs it; deleting it goes back to the Drive. */
+export const DeleteFromItsMenu = page('/drive/ws-product', 'busy', {
+  play: async ({ canvas, userEvent, step }) => {
+    await step('Press Product at the top of its list, then Delete workspace', async () => {
+      const named = await canvas.findAllByRole('button', { name: /^Product/ }, { timeout: 8000 });
+      const top = named.find((b) => b.closest('.wt-head') !== null);
+      if (top) await userEvent.click(top);
+      const remove = await screen.findByRole('menuitem', { name: /^Delete workspace/ }, { timeout: 5000 });
+      // A menu takes no press until its rows have been still for a moment, as the workspaces come in (WsMenu).
+      await new Promise<void>((done) => { setTimeout(done, 800); });
+      remove.scrollIntoView({ block: 'nearest' });
+      await userEvent.click(remove);
+    });
+  }
 });
 /** The standup's home: the call's folder at the top, open on the call's Notes, Follow-ups and Transcript. */
 export const ACallsHome = page('/drive/ws-standup', 'busy', { play: openFolder });

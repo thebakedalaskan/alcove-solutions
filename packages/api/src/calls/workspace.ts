@@ -91,17 +91,14 @@ export type CallWorkspaceAsk = z.infer<typeof CallWorkspaceAskSchema>;
 
 export const CallWorkspaceSchema = z.object({
   /**
-   * The workspace everyone in the call views and edits together: its home, unless the organizer switched to another. Null
-   * until someone first opens Workspace (`CallSession.openWorkspace`), and for anyone who can open nothing in it: to them
-   * it's private, and they aren't told which it is.
+   * The call's workspace, which everyone in the call views and edits together, and where its notes and transcript go, in a
+   * folder of their own. Only the organizer picks or makes it, when scheduling or in the call: nothing makes one by itself.
+   * Null while the call has none (`chosen` false), and for anyone who can open nothing in it: to them it's private, and they
+   * aren't told which it is.
    */
   id: IDSchema.nullable(),
-  /**
-   * The call's home: where its notes and transcript go, in a folder of its own. It's a new workspace made for the call
-   * unless one was chosen when it was scheduled, and it doesn't change during the call, whichever is viewed. Null until it's
-   * settled, and for anyone who can open nothing in it.
-   */
-  home: IDSchema.nullable(),
+  /** The call has a workspace, whether or not you can open anything in it. */
+  chosen: z.boolean(),
   /** Its name, for someone in it. */
   name: z.string().nullable(),
   /** Who chooses it: the organizer, as you see them. */

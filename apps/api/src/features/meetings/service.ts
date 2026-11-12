@@ -6,7 +6,7 @@
  * (./access.ts). A call can offer times instead of settling on one, until someone with its link picks, and calls can
  * repeat, as one series with one link (./repeats.ts).
  */
-import { DEFAULT_NOTES_CHOICES, MAX_CALL_DOCUMENTS, MeetingStatusSchema, NotesChoicesSchema, NotesSettingSchema, firstName, type CallDocument, type ChangeScope, type InstantCallInput, type Meeting, type MeetingInput, type NotesSetting, type Patch, type Person, type Repeat, type Rsvp, type RsvpCounts } from '@alcove/api';
+import { DEFAULT_NOTES_CHOICES, MAX_CALL_DOCUMENTS, MeetingStatusSchema, NotesChoicesSchema, NotesSettingSchema, firstName, type CallDocument, type ChangeScope, type InstantCallInput, type Meeting, type MeetingCreate, type MeetingInput, type NotesSetting, type Patch, type Person, type Repeat, type Rsvp, type RsvpCounts } from '@alcove/api';
 import { z } from 'zod';
 import type { Owner } from '../../context';
 import { id128, random } from '../../crypto';
@@ -18,7 +18,8 @@ import { createItem, findItem, getItem, listItems, lockItem, saveRevision, type 
 import { accessOf, answer as saveAnswer, countsOf, dropInvites, finished, invitedMeetings, inviteKey, locateInvited, reconcileAccess, syncAccess, type Access, type Invited } from './access';
 import { me, preferences, profile, type Profile } from '../account/account';
 import * as calendar from './calendar';
-import { followInvites, invitesOf } from '../calls/workspace';
+import { carryForward, followHome, followInvites, invitesOf, madeForCall } from '../calls/workspace';
+import { createIn } from '../workspaces/service';
 import { indexCode } from './codes';
 import { boardsFrom, documentsFor, keptIds, shownOn, validDocuments } from '../workspaces/library';
 import { personOf } from '../account/portraits';
@@ -251,7 +252,19 @@ async function requireWorkspace(o: Owner, workspaceId: string | null | undefined
   if (workspaceId) requireRole(await workspaceFor(o, await accountReader(o), workspaceId), 'edit');
 }
 
-export async function create(o: Owner, input: MeetingInput): Promise<Meeting> {
+/**
+ * A workspace made for a call as it's scheduled (`newWorkspace`), in the caller's transaction: named after it, with the
+ * organizer its admin and made for it (and its series), so everyone invited is let in once the caller's done (`followHome`).
+ * It's the call's workspace. Its ID.
+ */
+async function workspaceMadeFor(o: Owner, c: Db, meetingId: string): Promise<string> {
+  const m = await getItem(o, c, 'meeting', meetingId, MeetingManifest, 'That meeting');
+  const { id } = await createIn(o, c, m.manifest.title.replace(/\s+/g, ' ').trim().slice(0, 120) || 'Untitled', madeForCall(m, new Date(m.manifest.startsAt)));
+  await updateManifest(o, c, meetingId, (x) => ({ ...x, workspaceId: id }));
+  return id;
+}
+
+export async function create(o: Owner, input: MeetingCreate): Promise<Meeting> {
   if (input.offer && input.repeat) throw new ValidationError('A call that repeats can’t offer times.', { context: { times: input.offer.length } });
   const organizer = await me(o);
   await validDocuments(o, input.documents ?? []);
@@ -262,9 +275,23 @@ export async function create(o: Owner, input: MeetingInput): Promise<Meeting> {
     guests: cleanGuests(input.guests, organizer.email), notes: input.notes, code: makeCode(), status: 'scheduled',
     instant: false, choices: input.choices ?? DEFAULT_NOTES_CHOICES, joinMuted: input.joinMuted ?? false, documents: input.documents ?? [], workspaceId: input.workspaceId ?? null, agenda: null, ...(offered ? { offer: { times: offered } } : {})
   };
-  if (input.repeat) return own(o, await schedule(o, manifest, input.repeat));
-  const itemId = await tx(o.pool, (c) => store(o, c, manifest));
-  mlog.info('meeting scheduled', { meetingId: itemId, guests: manifest.guests.length, notes: manifest.notes, offered: offered?.length ?? 0 });
+  if (input.repeat) {
+    const firstId = await schedule(o, manifest, input.repeat);
+    if (input.newWorkspace) {
+      // The series' calls are there already: the first one's workspace is all of theirs.
+      const workspaceId = await tx(o.pool, (c) => workspaceMadeFor(o, c, firstId));
+      await carryForward(o, firstId, null, workspaceId);
+      await followHome(o, firstId, { add: manifest.guests });
+      mlog.info('call workspace made as it was scheduled', { meetingId: firstId, workspaceId, series: true });
+    }
+    return own(o, firstId);
+  }
+  const { itemId, workspaceId } = await tx(o.pool, async (c) => {
+    const id = await store(o, c, manifest);
+    return { itemId: id, workspaceId: input.newWorkspace ? await workspaceMadeFor(o, c, id) : null };
+  });
+  mlog.info('meeting scheduled', { meetingId: itemId, guests: manifest.guests.length, notes: manifest.notes, offered: offered?.length ?? 0, newWorkspace: workspaceId !== null });
+  if (workspaceId) await followHome(o, itemId, { add: manifest.guests });
   // A call offering times has none to put on a calendar until one is picked.
   if (!offered) await placeOnCalendar(o, itemId);
   return own(o, itemId);

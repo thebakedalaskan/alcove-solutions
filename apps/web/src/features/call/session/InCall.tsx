@@ -948,6 +948,11 @@ export function InCall({ session }: { session: CallSession }) {
   /* Nobody makes or brings in a board while someone else presents one here (the server's rule), and a guest starts none. */
   const boardBy = presentNow?.kind === 'board' && !presentNow.mine ? firstName(presentNow.by.name) : null;
   const boardBlocked = state.role === 'guest' ? 'Guests can’t start a board here.' : boardBy ? `${boardBy} is presenting a board. You can start one once they stop.` : undefined;
+  /**
+   * A call with no workspace has nowhere to keep anything new, a board included, and nothing to present as the workspace: its
+   * organizer picks or makes one. Why not, while it hasn't.
+   */
+  const noSpaceWhy = space.chosen ? undefined : organizer ? 'Pick or make this call’s workspace first.' : `${firstName(space.chosenBy.name)} chooses this call’s workspace.`;
   const callBoardOpen = state.board.open;
   /**
    * Whoever opened the call's board, or the organizer, may take it out of the call while nobody presents it: Close asks them for
@@ -963,12 +968,12 @@ export function InCall({ session }: { session: CallSession }) {
   const pickerOpen = picking && !phone;
   const picked = { onOpenCall: () => stageOpen('board'), onOpenSaved: (b: SavedBoard) => { setSaved(b); stageOpen('saved'); }, onMade: () => stageOpen('board'), onPresented: (name: string) => { stageOpen('board'); sayIt(wsToast.boardOn(name)); }, failed };
   const openPicker = useBoardPicker({
-    session, board, mode: 'open', inRoom: boardInRoom, account: state.role !== 'guest', brought: space.documents, spaceName, showing: pickerOpen || pop === 'board', blocked: boardBlocked, inCall: callBoardRow,
+    session, board, mode: 'open', inRoom: boardInRoom, account: state.role !== 'guest', brought: space.documents, spaceName, showing: pickerOpen || pop === 'board', blocked: boardBlocked, newWhy: noSpaceWhy, inCall: callBoardRow,
     onDone: () => { setPicking(false); setPop(null); }, ...picked
   });
   const sharePicker = useBoardPicker({
     session, board, mode: 'present', inRoom: boardInRoom, account: state.role !== 'guest', brought: space.documents, spaceName, showing: pop === 'shareBoard', blocked: othersWhy ?? boardBlocked,
-    inCall: callBoardRow, onDone: () => setPop(null), ...picked
+    newWhy: noSpaceWhy, inCall: callBoardRow, onDone: () => setPop(null), ...picked
   });
   /** Present, on a saved board just for you: brought into the call first, asking first if some people here can't open it. */
   const [presentAsk, setPresentAsk] = useState<PresentAskProps | null>(null);
@@ -1070,7 +1075,7 @@ export function InCall({ session }: { session: CallSession }) {
       volumes.clear();
       sessions.media = null;
       void qc.invalidateQueries();
-      if (r) setEnded({ noteId: r.pendingNoteId, duration: r.duration });
+      if (r) setEnded({ meetingId: r.meetingId, noteId: r.pendingNoteId, duration: r.duration, filed: r.filed });
       else {
         sessions.call = null;
         // Leaving on the way somewhere, such as to a call that rang, carries on there.
@@ -1516,7 +1521,7 @@ export function InCall({ session }: { session: CallSession }) {
   const roomsBody = () => (open && me && activity
     ? <RoomsLive open={open} elapsed={state.elapsed} members={open.rooms.map((r) => r.members.flatMap((id) => { const p = byId.get(id); return p ? [p] : []; }))}
       chips={roomChips} main={mainPeople} people={byId} activity={activity} onJoin={visit} onRename={renameRoom} onMove={moveTo} onMessage={(t) => session.messageRooms(t)} onClose={() => session.closeRooms()} />
-    : <RoomsSetup people={candidates} me={me?.person ?? SOMEONE} notes={on} boardName={state.board.open?.name ?? null} onOpen={openRooms} />);
+    : <RoomsSetup people={candidates} me={me?.person ?? SOMEONE} notes={on} boardName={state.board.open?.name ?? null} noSpace={!space.chosen} onOpen={openRooms} />);
   /* Notes: its tabs, and Note to self at the foot of all but Ask. This browser's own problems with capture are bars on the notes and the transcript. */
   const notesProblems = [uploadError, heardProblem, screenProblem].filter((x): x is string => !!x);
   const notesTabBody = (t: NotesTab) => {
@@ -1748,8 +1753,8 @@ export function InCall({ session }: { session: CallSession }) {
   const myShareMeta = published ? `You’re presenting · ${surfaceWords}${withSound ? ' with sound' : ''}${myShareRead ? ' · Read for the notes' : ''}` : 'Starting to share…';
   const copyLinkOf = (link: string | undefined) => (link ? () => { void navigator.clipboard.writeText(link).then(() => sayIt(wsToast.linkCopied()), failed); } : undefined);
   const wsLink = space.id ? `${location.origin}/drive/${encodeURIComponent(space.id)}` : undefined;
-  // Anyone who can open the workspace presents it: before anyone's opened it, the call hasn't said which it is yet.
-  const canPresentWs = state.role !== 'guest' && (space.id === null || space.role !== null) && live;
+  // Anyone who can open the call's workspace presents it, once it has one: before anyone's opened it, the call hasn't said which it is yet.
+  const canPresentWs = state.role !== 'guest' && space.chosen && (space.id === null || space.role !== null) && live;
   /* Where the workspace was last, so it stays there, out of sight, while it isn't on your stage. */
   const lastWsBox = useRef<Box | null>(null);
   const wsAt = boxOf('ws');
@@ -1997,7 +2002,7 @@ export function InCall({ session }: { session: CallSession }) {
                 changing: !!m.screen, onShare: share, onBack: () => { setShareTrouble(null); setPop('share'); }
               }}
               board={!canStartBoard ? { why: 'Guests can’t start a board here.' } : othersWhy ? { why: othersWhy } : { picker: sharePicker.picker, onPick: loadBoard }}
-              workspace={!canPresentWs ? { why: 'You can’t open this call’s workspace.' } : othersWhy ? { why: othersWhy } : { onPress: presentWorkspace }} />
+              workspace={state.role !== 'guest' && noSpaceWhy ? { why: noSpaceWhy } : !canPresentWs ? { why: 'You can’t open this call’s workspace.' } : othersWhy ? { why: othersWhy } : { onPress: presentWorkspace }} />
             {!phone && (
               <DockButton icon="hand" label={handLabel} tip={me?.hand ? 'Lower your hand' : roomName && !organizer ? `Raise your hand to ask ${roomsOnBoards && organizerPerson ? callName(organizerPerson) : 'the organizer'} for help` : 'Raise your hand'}
                 on={!!me?.hand} disabled={callControls.pending.hand || !attentionReady || leaving || !!ended} aria-busy={callControls.pending.hand} onClick={() => setHand(!me?.hand)} />

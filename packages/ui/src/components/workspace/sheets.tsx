@@ -284,12 +284,12 @@ export function WsShareSheet({ title, query = '', onQuery, onAdd, matches = [], 
 }
 
 /**
- * One question, in place of the menu, before everyone in a call views another workspace. `name`: that workspace. `current`:
- * this one. `home`: the call's home, where its notes go, when that isn't `name`. `cantOpen`: the first names of people in the
- * call who can't open it.
+ * One question, in place of the menu, before a workspace becomes the call's: everyone views it, and the call's notes and
+ * transcript go there from now on, as do later calls in its series. `name`: that workspace. `current`: the call's now, or null
+ * while it has none. `cantOpen`: the first names of people in the call who can't open it.
  */
-export function WsSwitchSheet({ name, current, home, cantOpen = [], onSwitch, onKeep }: {
-  name: string; current: string; home?: string | undefined; cantOpen?: string[] | undefined; onSwitch: () => void; onKeep: () => void;
+export function WsSwitchSheet({ name, current, cantOpen = [], onSwitch, onKeep }: {
+  name: string; current: string | null; cantOpen?: string[] | undefined; onSwitch: () => void; onKeep: () => void;
 }) {
   const who = cantOpen.length === 1 ? cantOpen[0] : `${cantOpen.length} people`;
   /* It takes the menu's place, and focus with it: on the question, so a stray key or Enter switches nobody. Tab reaches the answers. */
@@ -298,12 +298,15 @@ export function WsSwitchSheet({ name, current, home, cantOpen = [], onSwitch, on
   useEffect(() => { box.current?.focus({ preventScroll: true }); }, []);
   return (
     <div ref={box} className="wv-switch" tabIndex={-1} role="group" aria-labelledby={question}>
-      <b id={question}>Switch this call to {name}?</b>
-      <p>Everyone sees the change. Nobody is disconnected, and nothing moves or is copied.{home ? ` Notes and the transcript still go to ${home}.` : ''}</p>
+      <b id={question}>{current === null ? `Use ${name} for this call?` : `Switch this call to ${name}?`}</b>
+      <p>
+        {current === null ? 'Everyone sees it. ' : 'Everyone sees the change, and nothing moves or is copied. '}
+        The call’s notes and transcript go there from now on, and so do later calls in its series. Nobody is disconnected.
+      </p>
       {cantOpen.length > 0 && <p className="warn"><Icon name="info" size={15} /><span>{who} can’t open {name}. They stay in the call and see that it’s private, not what’s in it.</span></p>}
       <div className="ac">
-        <Button variant="primary" size="sm" onClick={onSwitch}><span className="ac-clamp-1">Switch to {name}</span></Button>
-        <Button variant="quiet" size="sm" onClick={onKeep}><span className="ac-clamp-1">Keep {current}</span></Button>
+        <Button variant="primary" size="sm" onClick={onSwitch}><span className="ac-clamp-1">{current === null ? `Use ${name}` : `Switch to ${name}`}</span></Button>
+        <Button variant="quiet" size="sm" onClick={onKeep}><span className="ac-clamp-1">{current === null ? 'Not now' : `Keep ${current}`}</span></Button>
       </div>
     </div>
   );

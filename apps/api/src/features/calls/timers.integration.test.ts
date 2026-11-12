@@ -3,6 +3,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { openJson, sealJson, stateKey, toJson } from '../../crypto';
 import { openOwner } from '../../owners';
+import { withWorkspace } from '../../testing/call-workspace';
 import { startHarness, type Harness } from '../../testing/harness';
 import { connect, disposeLiveKit, type TestParticipant } from '../../testing/livekit';
 
@@ -105,6 +106,8 @@ describe('the call timer through the real API', () => {
     const { owner, call } = await joined();
     await call.controlTimer({ action: 'start', durationSeconds: 300 });
     const timer = (await read(call)).timer;
+    await withWorkspace(call);
+    expect((await read(call)).timer).toEqual(timer);
     await call.openBoard({ template: 'blank' });
     expect((await read(call)).timer).toEqual(timer);
     await call.closeBoard();

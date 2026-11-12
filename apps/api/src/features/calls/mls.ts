@@ -111,8 +111,8 @@ async function groupsFor(o: Owner, callId: string, row: Row, s: Stored): Promise
 export async function mlsCommit(v: Viewer, callId: string, b: z.infer<typeof CallCommitBodySchema>): Promise<{ epoch: number }> {
   const o = v.organizer;
   const ctx = { callId, generation: b.generation, epoch: b.epoch, added: b.added.length, removed: b.removed.length, room: b.group !== MAIN_PLACE };
-  /** The meeting, and who this put on its invite: a home made for the call lets them in too, as does each workspace made in it. */
-  const invited: { meetingId: string; add: string[]; made: string[] } = { meetingId: '', add: [], made: [] };
+  /** The meeting, and who this put on its invite: a workspace made for the call lets them in too. */
+  const invited: { meetingId: string; add: string[] } = { meetingId: '', add: [] };
   const { room, closed } = await tx(o.pool, async (c) => {
     const { row, state } = await load(o, c, callId, true);
     if (row.state !== 'live') throw new ConflictError('This call has ended.', { context: ctx });
@@ -172,7 +172,6 @@ export async function mlsCommit(v: Viewer, callId: string, b: z.infer<typeof Cal
       for (const x of signedIn) if (added.includes(x.email)) s = withPerson(s, x.id, (j) => ({ ...j, role: 'invited' }));
       invited.meetingId = row.meeting_item_id;
       invited.add.push(...added);
-      invited.made = s.workspace.made;
       clog.info('added to the invite', { callId, meetingId: row.meeting_item_id, noteId: s.notes.noteId, people: added.length });
       // The invite is full: they're in the call, as guests, without the notes.
       if (added.length < wanted.length) clog.warn('invite full; let in without the notes', { callId, meetingId: row.meeting_item_id, people: wanted.length - added.length });
@@ -180,7 +179,7 @@ export async function mlsCommit(v: Viewer, callId: string, b: z.infer<typeof Cal
     return { room: row.room_name, closed: (await saveSettled(o, c, callId, state, s)).closed };
   });
   clog.info('call keys moved on', { ...ctx, next: b.epoch + 1, bytes: b.commit.length + (b.welcome?.length ?? 0) });
-  if (invited.add.length) await space.followHome(o, invited.meetingId, invited, invited.made);
+  if (invited.add.length) await space.followHome(o, invited.meetingId, invited);
   // Rooms whose time ran out closed with it, and come back.
   return afterClosing({ organizer: o, callId }, closed, async () => {
     // Letting someone in doesn't wait for a workspace: a seat lands a moment later, and the call reads itself again when it does.

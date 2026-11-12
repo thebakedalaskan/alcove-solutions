@@ -753,6 +753,8 @@ button.dev-pick:hover, .dev-pick[data-state="open"] { background: color-mix(in s
 .ic-menu .mi .t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ic-menu .mi:hover .ac-scope { background: var(--surface); }
 .ic-menu .mi[disabled] { opacity: .45; pointer-events: none; }
+/* What can't be undone, such as Delete workspace. */
+.ic-menu .mi.is-caution, .ic-menu .mi.is-caution .ac-i { color: var(--caution); }
 .ic-menu .mi .ac-kbd { flex: none; }
 .ic-menu .mi .tick { flex: none; margin-left: auto; color: var(--sun-text); opacity: 0; }
 .ic-menu .mi[aria-checked="true"] .tick { opacity: 1; }
@@ -872,6 +874,10 @@ button.dev-pick:hover, .dev-pick[data-state="open"] { background: color-mix(in s
 .ic-leave .state { display: flex; align-items: center; gap: 10px; margin-top: 14px; font-size: 13.5px; color: var(--ink-3); }
 .ic-leave .state .ac-i { color: var(--sun-text); }
 .ic-leave .state .ok { display: inline-flex; align-items: center; gap: 10px; }
+/* Notes from a call with no workspace: where its organizer files them (note.css's nd-file), in a panel as who gets them is. */
+.ic-leave .filing { margin-top: 16px; padding: 14px; border-radius: var(--radius-md); box-shadow: inset 0 0 0 1px var(--line); }
+.ic-leave .filing p { margin: 0; }
+.ic-leave .filing .nd-file-err { color: var(--caution); }
 /* Whoever hosts, leaving: who takes over (the best person, chosen already), and Change for who else could. */
 .ic-leave .next-host { margin-top: 16px; }
 .ic-leave .next-host .who { margin-top: 0; }

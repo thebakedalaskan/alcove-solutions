@@ -11,8 +11,8 @@ import { type FollowUpCreate, type FollowUpPatch, type FollowUpReview, AlcoveApi
 import { type KeyPackage } from 'ts-mls';
 import { z } from 'zod';
 
-/** Where this browser is, as an IANA name, when it knows and the API would too: the day a call's new home and folder are named after. */
-function hereZone(): { timeZone?: string } {
+/** Where this browser is, as an IANA name, when it knows and the API would too: the day a call's folder and a workspace made for it are named after. */
+export function hereZone(): { timeZone?: string } {
   try {
     const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
     return timeZone && isTimeZone(timeZone) ? { timeZone } : {};
@@ -907,8 +907,8 @@ export class HttpCall extends Live<CallState> implements CallSession {
   private space = async (a: CallAction) => { this.take(await this.t.act(this.state.callId, a)); };
   openWorkspace = () => this.space({ type: 'workspace-open', ...hereZone() });
   previewWorkspace = (workspaceId: string) => this.t.previewWorkspace(this.state.callId, workspaceId);
-  setWorkspace = (workspaceId: string) => this.space({ type: 'workspace-set', workspaceId });
-  newWorkspace = (name?: string | undefined) => this.space({ type: 'workspace-new', ...(name ? { name } : {}) });
+  setWorkspace = (workspaceId: string) => this.space({ type: 'workspace-set', workspaceId, ...hereZone() });
+  newWorkspace = (name?: string | undefined) => this.space({ type: 'workspace-new', ...(name ? { name } : {}), ...hereZone() });
   bringDocument = (documentId: string, brought: boolean) => this.space({ type: 'workspace-bring', documentId, brought });
   askForWorkspace = (up: boolean) => this.space({ type: 'workspace-ask', up });
   grantWorkspaceAsk = (askId: string, documentId: string, role: DocumentRole) => this.space({ type: 'workspace-grant', askId, documentId, role });

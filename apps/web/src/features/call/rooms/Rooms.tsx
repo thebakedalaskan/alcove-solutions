@@ -76,7 +76,7 @@ const placed = (people: RoomCandidate[], n: number, you: number): string[][] => 
 /** "Room 2", "Room 2 or Room 3". */
 const either = (names: string[]) => (names.length > 1 ? `${names.slice(0, -1).join(', ')} or ${names.at(-1) ?? ''}` : names[0] ?? '');
 
-export function RoomsSetup({ people, me, notes, boardName, onOpen }: {
+export function RoomsSetup({ people, me, notes, boardName, noSpace, onOpen }: {
   people: RoomCandidate[];
   /** You, the organizer: on the board in the main room, and in a room if you put yourself in one. */
   me: Person;
@@ -84,12 +84,19 @@ export function RoomsSetup({ people, me, notes, boardName, onOpen }: {
   notes: boolean;
   /** The board open in the main room now, by name: rooms sharing a board share that one. Null when there's none. */
   boardName: string | null;
+  /**
+   * The call has no workspace yet, so there's nowhere to keep a new board: a board in each room, or a shared one with none open,
+   * waits until you pick or make one.
+   */
+  noSpace: boolean;
   /** Opens the rooms with who goes to each (by their place on the board), and the one you go to (by its place), or null for the main room. */
   onOpen: (rooms: { name: string; ids: string[] }[], minutes: number, board: BreakoutBoard, visit: number | null) => void;
 }) {
   const [n, setN] = useState<'2' | '3'>('2');
   const [len, setLen] = useState<'5' | '10' | '15'>('5');
-  const [mode, setMode] = useState<BreakoutBoardMode>('none');
+  const [wanted, setMode] = useState<BreakoutBoardMode>('none');
+  /* A board that would be new needs the call's workspace: until there is one, the rooms only share a board that's open. */
+  const mode: BreakoutBoardMode = !noSpace || wanted === 'none' || (wanted === 'shared' && boardName !== null) ? wanted : 'none';
   const [template, setTemplate] = useState<BoardTemplate>('what-why-next');
   const [names, setNames] = useState(['Room 1', 'Room 2', 'Room 3']);
   const [assign, setAssign] = useState<string[][]>(() => placed(people, 2, MAIN));
@@ -169,8 +176,12 @@ export function RoomsSetup({ people, me, notes, boardName, onOpen }: {
           <span>Length</span>
           <Segmented label="How long" value={len} onChange={setLen} options={[{ value: '5', label: '5 min' }, { value: '10', label: '10 min' }, { value: '15', label: '15 min' }]} />
           <span>Board</span>
-          <Segmented label="Board" className="ic-seg3" value={mode} onChange={setMode} options={[{ value: 'none', label: 'None' }, { value: 'each', label: 'In each room' }, { value: 'shared', label: 'Shared' }]} />
+          <Segmented label="Board" className="ic-seg3" value={mode} onChange={setMode}
+            options={[{ value: 'none', label: 'None' }, { value: 'each', label: 'In each room', disabled: noSpace }, { value: 'shared', label: 'Shared', disabled: noSpace && boardName === null }]} />
         </div>
+        {noSpace && mode === 'none' && (
+          <div className="ic-rline"><span>{boardName === null ? 'A board for the rooms needs this call’s workspace to keep it in. Pick or make one in Workspace first.' : 'A board in each room needs this call’s workspace to keep them in. Pick or make one in Workspace first, or share the open board.'}</span></div>
+        )}
         {mode !== 'none' && (
           <div key={mode} className="ic-rline">
             <span>{BOARD_LINE[mode]}</span>

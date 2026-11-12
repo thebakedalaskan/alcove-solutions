@@ -1,9 +1,10 @@
-import { BusyBodySchema, ChangeScopeSchema, MeetingInputSchema, NextCallBodySchema, NotesSettingSchema, RsvpBodySchema, type Meeting } from '@alcove/api';
+import { BusyBodySchema, ChangeScopeSchema, FileNotesSchema, MeetingCreateSchema, MeetingInputSchema, NextCallBodySchema, NotesSettingSchema, RsvpBodySchema, type Meeting } from '@alcove/api';
 import { Hono, type Context } from 'hono';
 import { z } from 'zod';
 import { ValidationError } from '../../errors';
 import * as calendar from './calendar';
 import * as meetings from './service';
+import { fileNotes } from '../calls/workspace';
 import { type Env } from '../../http/context';
 import { body } from '../../http/body';
 import type { HttpRuntime } from '../../http/runtime';
@@ -11,7 +12,7 @@ import type { HttpRuntime } from '../../http/runtime';
 
 
 export function registerMeetingRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
-  const { makeLimiter, workspaceListLimiter, busyLimiter } = runtime.limits;
+  const { makeLimiter, workspaceLimiter, workspaceListLimiter, busyLimiter } = runtime.limits;
 
   /* meetings */
   /**
@@ -26,7 +27,9 @@ export function registerMeetingRoutes(app: Hono<Env>, runtime: HttpRuntime): voi
 
   app.post('/v1/meetings', async (c) => {
     makeLimiter(c.get('owner').ownerId, 'calls');
-    return changedCall(c, await meetings.create(c.get('owner'), await body(c, MeetingInputSchema)));
+    const input = await body(c, MeetingCreateSchema);
+    if (input.newWorkspace) workspaceLimiter(c.get('owner').ownerId, 'workspace');
+    return changedCall(c, await meetings.create(c.get('owner'), input));
   });
 
   /* How far a change to a call in a series reaches. */
@@ -50,6 +53,15 @@ export function registerMeetingRoutes(app: Hono<Env>, runtime: HttpRuntime): voi
   app.post('/v1/meetings/:id/next', async (c) => {
     makeLimiter(c.get('owner').ownerId, 'calls');
     return changedCall(c, await meetings.scheduleNext(c.get('owner'), c.req.param('id'), (await body(c, NextCallBodySchema)).startsAt));
+  });
+
+  /* An ended call's notes, filed in a workspace by its organizer when it had none (features/calls/workspace.ts). */
+  app.post('/v1/meetings/:id/file', async (c) => {
+    const o = c.get('owner');
+    const to = await body(c, FileNotesSchema);
+    if ('newWorkspace' in to) workspaceLimiter(o.ownerId, 'workspace');
+    await fileNotes(o, c.req.param('id'), 'workspaceId' in to ? { workspaceId: to.workspaceId } : { newWorkspace: true }, to.timeZone);
+    return changedCall(c, await meetings.get(o, c.req.param('id')));
   });
 
   app.post('/v1/meetings/:id/answer', async (c) => c.json(await meetings.answer(c.get('owner'), c.req.param('id'), (await body(c, RsvpBodySchema)).answer)));

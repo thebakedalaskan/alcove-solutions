@@ -13,7 +13,7 @@ import { tileHintKey } from '~/features/call/layout/view';
 import { sessions } from '~/lib/live';
 import { openBrowser } from '../browser';
 import { busyCalls, busyEvents, soonCalls } from '../world/calls';
-import { connected, notConnected, writeNote, type NoteSpec } from '../world/build';
+import { connected, notConnected, spaceMadeFor, writeNote, type NoteSpec } from '../world/build';
 import { iso, on, setClock } from '../world/clock';
 import { clipOf, stillOf } from '../media/screens';
 import { PREFS, session, type BoardSpec, type Kept, type Opening, type Page, type Refused, type Space, type World } from '../world';
@@ -35,7 +35,7 @@ import { withAgentConnections } from './agents';
 import { serve } from './state';
 import { forgetDocuments } from './workspaces';
 
-export type ScenarioName = 'busy' | 'first-day' | 'on-their-own' | 'offline' | 'writing' | 'call-soon' | 'lots' | 'signed-out' | 'unsaved' | 'first-sign-in' | 'agents-connected' | 'drive-connected' | 'payments'
+export type ScenarioName = 'busy' | 'first-day' | 'on-their-own' | 'offline' | 'writing' | 'call-soon' | 'no-workspace' | 'lots' | 'signed-out' | 'unsaved' | 'first-sign-in' | 'agents-connected' | 'drive-connected' | 'payments'
   | 'plan-low' | 'plan-stopped' | 'plan-grace' | 'plan-over' | 'plan-balance';
 
 interface Scenario { title: string; about: string; make: () => { world: World; opening: Partial<Opening> } }
@@ -63,10 +63,10 @@ const STANDUP_AT = iso(0, 9, 0);
 const PRICING_AT = iso(-1, 15, 0);
 const REVIEW_AT = iso(-1, 11, 0);
 /**
- * A call's home, as the API makes one when the call's workspace first opens: named after the call and the day, with the
+ * A workspace made for a call before calls had to pick one, as stored data still has them: named after the call and the day, with the
  * call's folder at its top, whose pages open the call's note once it's over.
  */
-/** What a call's home is called: the call, and the day. */
+/** What such a workspace is called: the call, and the day. */
 const homeName = (title: string, at: string): string => `${title} · ${new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short' }).format(new Date(at))}`;
 function home(id: string, title: string, at: string, organizer: Person, role: WorkspaceRole, people: number, noteId: string, items: WorkspaceItem[]): Space {
   const name = homeName(title, at);
@@ -245,7 +245,7 @@ function files(): Kept[] {
 const TAGGED: MentionNotice[] = [
   { id: 'tag-kofi-fixes', workspaceId: 'ws-standup', document: itemId('Onboarding fixes'), name: 'Onboarding fixes', block: null, by: { id: KOFI.id, name: KOFI.name, email: '', ...(KOFI.portrait ? { portrait: KOFI.portrait } : {}) }, at: iso(0, 15, 40) }
 ];
-/** Who changed what during a call, as its note lists it for Art, in the call's home. */
+/** Who changed what during a call, as its note lists it for Art, in the call's workspace. */
 function workedOn(workspaceId: string, workspace: string, name: string, people: readonly Person[]): NoteWorkedOn {
   return {
     workspaceId, id: itemId(name), kind: 'document', name, by: people.flatMap((p) => (p.portrait ? [{ name: p.name, portrait: p.portrait, isMe: p.id === ART.id }] : [])), workspace, room: null, everyone: true
@@ -360,6 +360,23 @@ function onTheirOwn(): World {
   };
 }
 
+/**
+ * Wednesday morning at 10:26, the design review four minutes away. `withSpace`: Art made it a workspace as he scheduled it
+ * (New workspace), so it's the call's; without, it has none, and he picks or makes one in the call.
+ */
+function callSoon(withSpace: boolean): World {
+  const w = busy();
+  w.notes = w.notes.filter((n) => Date.parse(n.startedAt) < Date.parse(iso(0, 10, 26)) && n.id !== 'n1');
+  w.meetings = soonCalls();
+  const review = w.meetings.find((m) => m.id === 'm-review');
+  if (withSpace && review) {
+    const space = spaceMadeFor(review);
+    w.workspaces.push(space);
+    w.meetings = w.meetings.map((m) => (m.id === review.id ? { ...m, workspaceId: space.id } : m));
+  }
+  return w;
+}
+
 /* ---------- the scenarios ---------- */
 
 export const SCENARIOS: Record<ScenarioName, Scenario> = {
@@ -427,13 +444,14 @@ export const SCENARIOS: Record<ScenarioName, Scenario> = {
     }
   },
   'call-soon': {
-    title: 'A call about to start', about: 'Wednesday at 10:26: the design review with Priya, Kofi and Aiko starts in four minutes, and the day is still ahead.',
-    make: () => {
-      const w = busy();
-      w.notes = w.notes.filter((n) => Date.parse(n.startedAt) < Date.parse(iso(0, 10, 26)) && n.id !== 'n1');
-      w.meetings = soonCalls();
-      return { world: w, opening: { now: on(0, 10, 26) } };
-    }
+    title: 'A call about to start',
+    about: 'Wednesday at 10:26: the design review with Priya, Kofi and Aiko starts in four minutes, in the Design review workspace Art made for it as he scheduled it, and the day is still ahead.',
+    make: () => ({ world: callSoon(true), opening: { now: on(0, 10, 26) } })
+  },
+  'no-workspace': {
+    title: 'A call with no workspace yet',
+    about: 'The same morning, but the design review was scheduled with no workspace: Art picks or makes one in the call, and is asked where its notes go when it ends.',
+    make: () => ({ world: callSoon(false), opening: { now: on(0, 10, 26) } })
   },
   lots: { title: 'Lots of everything', about: 'Thirty people on Alcove, three months of notes, eight pins, a dozen groups, long names.', make: () => ({ world: lots(), opening: {} }) },
   'signed-out': {

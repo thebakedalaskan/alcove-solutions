@@ -320,6 +320,10 @@ circles, and whoever speaks gets the `speak` ring. The camera appears only here 
   faint grip in the gap until you point at it, when the whole seam lights up. Click it, or drag it right to make the people
   smaller and left to make them bigger, as ⇧P does. Nothing floats over them. A narrow stage and a phone keep their arches,
   and have none.
+- **A call with no workspace** shows an empty state where the workspace would be (`WsNoSpace`, with the folder arch). For the
+  organizer it says "This call has no workspace yet", with New workspace, the one filled button, and a way to pick one of theirs;
+  for everyone else it says who chooses it and that it opens here once they do. Nothing makes a workspace by itself. In the
+  Drive a workspace's row menu (⋯) has Delete workspace for its admins, which asks once, in place.
 - **No layouts to choose.** The stage lays itself out, and talking moves nobody: the speak ring says who's talking, and
   only a pin or the organizer's spotlight puts someone on the main stage. You drag a tile to move it and pull its corner
   to make it bigger, and pin from its menu. The first time you point at a tile you can move, a coachmark under it says

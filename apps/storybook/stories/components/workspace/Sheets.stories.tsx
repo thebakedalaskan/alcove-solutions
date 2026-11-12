@@ -238,6 +238,8 @@ export const SwitchEveryone: SwitchStory = { name: 'Switch sheet: everyone can o
 export const SwitchOne: SwitchStory = { name: 'Switch sheet: one person can’t open it', args: { ...SWITCH, cantOpen: ['Maya'] }, render: switching };
 /** Nobody else can open a workspace that's only yours. */
 export const SwitchSeveral: SwitchStory = { name: 'Switch sheet: several can’t open it', args: { ...SWITCH, name: 'Art’s workspace', cantOpen: ['Priya', 'Kofi', 'Aiko', 'Maya'] }, render: switching };
+/** A call with no workspace yet: Use Design for this call, and its notes and transcript go there. */
+export const SwitchFirst: SwitchStory = { name: 'Switch sheet: the call’s first workspace', args: { ...SWITCH, current: null, cantOpen: ['Maya'] }, render: switching };
 
 /** In your own call: choosing Design in the list's head asks this in the menu's place. Switch changes it for everyone. */
 function SwitchInPlace() {

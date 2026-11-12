@@ -4,7 +4,7 @@
  * nothing and drops the draft; a save that fails stays here with the draft intact. Once a call is scheduled it lives
  * in Home's list and opens its card (Card.tsx) from there.
  */
-import { errorMessage, type Document, type Meeting, type MeetingInput, type Person } from '@alcove/api';
+import { errorMessage, type Document, type Meeting, type MeetingCreate, type Person } from '@alcove/api';
 import { Button, FlowFoot, FlowHead, FlowNote, FlowSteps, FlowView, Modal, WayCard, cn, useSmoothHeight, useToast } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -92,7 +92,7 @@ function StartFlow({ open, onClose, people, name, later, documents, board }: {
   /* A call on its way, or saved with the modal still settling away: the steps hold still, and nothing is sent again. A save that failed can be tried again. */
   const sent = useRef(false);
   const notifyDone = useScheduled();
-  const save = async (input: MeetingInput) => {
+  const save = async (input: MeetingCreate) => {
     if (sent.current) return;
     sent.current = true;
     try {

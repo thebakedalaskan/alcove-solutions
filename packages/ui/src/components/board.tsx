@@ -976,6 +976,11 @@ export interface BoardPickerProps {
   access?: BoardPickerAccess | undefined;
   /** Something chosen is on its way, so nothing else can be. */
   busy?: boolean | undefined;
+  /**
+   * Why a new board can't be made here, said under New, whose templates can't be picked; the board in this call and the team's
+   * boards still can: "Pick or make this call’s workspace first."
+   */
+  newWhy?: string | undefined;
   onTemplate: (template: BoardTemplate) => void;
   onRecent?: ((id: string) => void) | undefined;
 }
@@ -986,10 +991,12 @@ export interface BoardPickerProps {
  * call has comes first, then a new one from Blank, Retro, Ideas or Flow, then the team's. As in every menu, a press does
  * nothing for a moment after the rows move (`useSettledPress`).
  */
-export function BoardPicker({ step, inCall, blocked, inRoom = false, recents, access, busy = false, onTemplate, onRecent }: BoardPickerProps) {
+export function BoardPicker({ step, inCall, blocked, inRoom = false, recents, access, busy = false, newWhy, onTemplate, onRecent }: BoardPickerProps) {
   const saved = !access && !inRoom && recents ? recents.boards : [];
   const now = access ? undefined : inCall;
   const off = busy || !!blocked;
+  /* Only a new board needs somewhere to be kept. */
+  const noNew = !blocked && !!newWhy;
   // Opening the board in this call just for you is always yours to do; presenting it, from Share, waits like the rest.
   const nowOff = busy || (!!step && !!blocked);
   const press = useSettledPress([
@@ -1010,9 +1017,10 @@ export function BoardPicker({ step, inCall, blocked, inRoom = false, recents, ac
       )}
       {blocked && <p className="bl-why"><Icon name="info" size={15} /><span>{blocked}</span></p>}
       <div className="bl-sub">New</div>
+      {noNew && <p className="bl-why is-new"><Icon name="info" size={15} /><span>{newWhy}</span></p>}
       <div className="bl-tpl">
         {TEMPLATES.map((t) => (
-          <button key={t.id} type="button" className={cn('bl-c', blocked && 'is-off')} disabled={off} onClick={press(() => onTemplate(t.id))}>
+          <button key={t.id} type="button" className={cn('bl-c', (blocked || noNew) && 'is-off')} disabled={off || noNew} onClick={press(() => onTemplate(t.id))}>
             <span className="bl-th"><svg viewBox="0 0 80 60" aria-hidden="true">{t.art}</svg></span><span className="lb">{t.label}</span>
           </button>
         ))}

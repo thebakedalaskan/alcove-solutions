@@ -16,7 +16,8 @@ export function busyCalls(): Meeting[] {
     call({ id: 'm-sync', title: 'Design sync', startsAt: iso(0, 17, 30), minutes: 30, code: 'dsn-sync-kpr', guests: [PRIYA, KOFI], rsvps: { yes: 2 } }),
     call({ id: 'm-proposal', title: 'Harbourline proposal', startsAt: iso(1, 11, 0), minutes: 45, code: 'hbr-prop-dgo', guests: [PRIYA, DIEGO], rsvps: { yes: 1 } }),
     call({ id: 'm-one', title: '1:1 with Maya', startsAt: iso(1, 15, 30), minutes: 30, code: 'one-maya-art', guests: [MAYA], notes: 'off', rsvps: { yes: 1 } }),
-    call({ id: 'm-standup', title: 'Team standup', startsAt: iso(7, 9, 0), minutes: 20, code: 'std-upwk-art', guests: [PRIYA, KOFI, MAYA], rsvps: { yes: 2, maybe: 1 }, seriesId: 's-standup', repeat: weekly })
+    // The series keeps the workspace today's standup used.
+    { ...call({ id: 'm-standup', title: 'Team standup', startsAt: iso(7, 9, 0), minutes: 20, code: 'std-upwk-art', guests: [PRIYA, KOFI, MAYA], rsvps: { yes: 2, maybe: 1 }, seriesId: 's-standup', repeat: weekly }), workspaceId: 'ws-standup' }
   ];
 }
 /** The rest of the calendar: a meeting someone else runs on Google Meet, and Art's own focus blocks, which Home leaves out. */

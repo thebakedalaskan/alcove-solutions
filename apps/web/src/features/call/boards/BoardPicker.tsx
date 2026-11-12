@@ -9,7 +9,8 @@
  *   touches nothing in the call; presenting one brings it in first, and if some people here can't open it, asks first.
  *
  * Nobody can make or bring in a board while someone else presents one here, and a guest can't start one. In Share, where
- * what's picked is presented, nothing is picked while someone else presents a board or the workspace here.
+ * what's picked is presented, nothing is picked while someone else presents a board or the workspace here. A call with no
+ * workspace yet has nowhere to keep a new board, so New waits until its organizer picks or makes one; saved boards still open.
  */
 import { AlcoveApiError, errorCode, firstName, type BoardCheck, type BoardOpen, type CallBrought, type CallPresent, type CallSession } from '@alcove/api';
 import { Icon, type BoardPickerAccess, type BoardPickerRecent, type BoardPickerInCall, type BoardPickerProps, type BoardTemplate } from '@alcove/ui';
@@ -95,6 +96,8 @@ interface PickerFrom {
   showing: boolean;
   /** Why nothing can be made or brought in now: someone else presents a board here (in Share, or the workspace), or you're a guest. */
   blocked: string | undefined;
+  /** Why a new board can't be made, though a saved one can be opened: the call has no workspace to keep it in yet. */
+  newWhy: string | undefined;
   /** The board in the call, as the picker's first row says it, or nothing. */
   inCall: { name: string; by: string } | null;
   /** The board in the call, on your stage (following whoever presents it). */
@@ -111,7 +114,7 @@ interface PickerFrom {
 }
 
 /** What the board picker offers and does, wherever it opens. `reset` forgets the access question, as the picker closes. */
-export function useBoardPicker({ session, board, mode, inRoom, account, brought, spaceName, showing, blocked, inCall, onOpenCall, onOpenSaved, onMade, onPresented, onDone, failed }: PickerFrom): { picker: BoardPickerProps; reset: () => void } {
+export function useBoardPicker({ session, board, mode, inRoom, account, brought, spaceName, showing, blocked, newWhy, inCall, onOpenCall, onOpenSaved, onMade, onPresented, onDone, failed }: PickerFrom): { picker: BoardPickerProps; reset: () => void } {
   // Your Drive's workspaces, which reaching for the picker read already, then the boards in the newest of them.
   const spaces = useQuery({ ...q.workspaces(), enabled: showing && !inRoom && account }).data;
   const drive = useQuery({ ...q.boardsToBring(spaces ?? []), enabled: showing && !inRoom && account && spaces !== undefined });
@@ -158,7 +161,7 @@ export function useBoardPicker({ session, board, mode, inRoom, account, brought,
     }
   } : undefined;
   return {
-    picker: { inCall: callRow, blocked, inRoom, recents, access: access ?? undefined, busy, onTemplate, onRecent },
+    picker: { inCall: callRow, blocked, newWhy, inRoom, recents, access: access ?? undefined, busy, onTemplate, onRecent },
     reset: () => setAccess(null)
   };
 }

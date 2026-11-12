@@ -309,21 +309,23 @@ export interface CallSession extends LiveStore<CallState> {
   updateFollowUp(id: string, patch: FollowUpPatch): Promise<void>;
   reviewFollowUp(review: FollowUpReview): Promise<void>;
   /**
-   * Opening Workspace, for anyone in the call: the first time, it settles the call's home (the meeting's, else a new one
-   * named after the call and the day, where this browser is), with the call's folder in it, and the next call in a series
-   * finds its new agenda. Resolves with `workspace` up to date, which for someone who can't open it says it's private.
+   * Opening Workspace, for anyone in the call. When the call has a workspace, the first time puts the call's folder in it
+   * (named after the call and the day, where this browser is), and the next call in a series finds its new agenda. A call
+   * with none makes none (`workspace.chosen` false). Resolves with `workspace` up to date, which for someone who can't
+   * open it says it's private.
    */
   openWorkspace(): Promise<void>;
-  /** Organizer only: what viewing another workspace would mean, for the sheet that asks. Changes nothing. */
+  /** Organizer only: what picking another workspace would mean, for the sheet that asks. Changes nothing. */
   previewWorkspace(workspaceId: string): Promise<CallWorkspaceSwitch>;
   /**
-   * Organizer only: everyone views and edits a workspace the organizer can edit in, or the call's home again. The notes and
-   * transcript still go to the home. Nobody is interrupted; what's being presented and played stops.
+   * Organizer only: picks the call's workspace, one the organizer can edit in. Everyone views and edits it, the notes and
+   * transcript go there from now on, and later calls in the series keep it. Nobody is interrupted; what's being presented
+   * and played stops. Nobody is let in by it.
    */
   setWorkspace(workspaceId: string): Promise<void>;
   /**
-   * Organizer only: makes a workspace for this call, named after it unless it's given a name, and everyone views it. As the
-   * call's home does, it has everyone invited in it to edit (a guest without an account isn't), and it follows the invite.
+   * Organizer only: makes a workspace for this call, named after it unless it's given a name, and it's the call's (as
+   * `setWorkspace` makes one). Everyone invited is in it to edit (a guest without an account isn't), and it follows the invite.
    */
   newWorkspace(name?: string | undefined): Promise<void>;
   /** Anyone who can open it: brings a document in the call's workspace to the call, or takes it off (`brought` false). */

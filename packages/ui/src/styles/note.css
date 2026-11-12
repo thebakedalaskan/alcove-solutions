@@ -230,6 +230,19 @@ body:has(.nd-askdock) .ac-toasts:not(.on-stage) { bottom: 92px; }
 
 /* What was worked on in the call (WsWorkedOn): its rows between the note's own hairlines. */
 .nd-worked .ws-ndocs, .nd-worked .ws-ndoc { border-color: var(--nd-hair); }
+
+/*
+ * Notes from a call with no workspace, for its organizer: where to file them, a choice and File them in a row, which wraps on a
+ * narrow screen. On the note it sits in a Notice (`nd-filing`); at the end of the call, in the leave sheet's own panel.
+ */
+.nd-filing { margin-top: 28px; }
+.nd-file { display: grid; gap: 10px; min-width: 0; }
+.nd-file-t { display: flex; align-items: flex-start; gap: 8px; margin: 0; font: 500 14px/1.45 var(--font-sans); color: var(--ink); }
+.nd-file-t.is-done .ac-i { flex: none; margin-top: 2px; color: var(--sun-text); }
+.nd-file-t b { font-weight: 600; overflow-wrap: anywhere; }
+.nd-file-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
+.nd-file-row .nd-file-pick { flex: 1 1 200px; max-width: 320px; }
+.nd-file-err { margin: 0; font: 400 13px/1.4 var(--font-sans); color: var(--caution); }
 .nd-none { padding: 12px 0 2px; border-top: 1px solid var(--nd-hair); font: 400 15px/22px var(--font-sans); color: var(--ink-3); }
 
 /* A row. Text on the left, then the same columns in every list: the moment, what to do, and the menu. */

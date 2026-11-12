@@ -2,7 +2,7 @@
  * Details: the last step reads like the finished call. The name is ready to type over, When and Who step back, and
  * notes and where they go open in place. The button says what it will do, and the line beside it who will hear about it.
  */
-import type { MeetingInput, Person } from '@alcove/api';
+import type { MeetingCreate, Person } from '@alcove/api';
 import { Button, Faces, FlowBody, FlowFoot, FlowNote, FlowRow, NotesSwitches, Select, Switch, SwitchLine } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
@@ -13,9 +13,16 @@ import { callName } from '~/lib/people';
 import { q } from '~/lib/queries';
 import { timeZone } from '~/lib/time';
 import { docNames } from './Documents';
-import { BIG_CALL, peopleLine, repeatInput, ruleOf, titleFor, type Draft } from './draft';
+import { BIG_CALL, peopleLine, repeatInput, ruleOf, titleFor, type Draft, type SpaceChoice } from './draft';
 import { Failed } from './parts';
 import { callCount, invitationLine, notesWord, repeatLine, timeLine } from '../scheduling/words';
+
+/** What each choice of workspace means, under its row. */
+const SPACE_SUB: Record<SpaceChoice['kind'], string> = {
+  none: 'You can pick one in the call.',
+  new: 'Made when you schedule; everyone invited is in it.',
+  pick: 'Its notes and transcript go here.'
+};
 
 /** What Schedule does with this draft, for whoever's on it. Only a calendar that takes the call invites anyone. */
 function footLine(draft: Draft, guests: readonly Person[], invites: boolean): string {
@@ -37,15 +44,16 @@ export function Details({ draft, change, guests, at, invites, connectCalendar, b
   saving: boolean;
   onWhen: () => void; onWho: () => void; onDocs: () => void;
   /** Sends the call, once. It rejects when the call can't be saved. */
-  onSchedule: (input: MeetingInput) => Promise<void>;
+  onSchedule: (input: MeetingCreate) => Promise<void>;
 }) {
   const unencrypted = useMyModelUnencrypted();
   const [failed, setFailed] = useState<unknown>(null);
-  const [open, setOpen] = useState<'notes' | 'big' | 'home' | null>(null);
-  /* A call's home can be one of your workspaces you can make things in: the menu reads them again as it opens. */
-  const spaces = useQuery({ ...q.workspaces(), enabled: open === 'home' }).data ?? [];
+  const [open, setOpen] = useState<'notes' | 'big' | 'space' | null>(null);
+  /* A call's workspace can be one of yours you can make things in: the menu reads them again as it opens. */
+  const spaces = useQuery({ ...q.workspaces(), enabled: open === 'space' }).data ?? [];
   const named = namesIn(spaces);
-  const homes = spaces.flatMap((w) => (w.name !== null && (w.role === 'admin' || w.role === 'edit') ? [{ id: w.id, name: named(w) }] : []));
+  const yours = spaces.flatMap((w) => (w.name !== null && (w.role === 'admin' || w.role === 'edit') ? [{ id: w.id, name: named(w) }] : []));
+  const space = draft.space;
   const name = useRef<HTMLInputElement>(null);
   const zone = timeZone();
   const series = useMemo(() => (draft.offer ? null : repeatInput(draft.repeat, at, zone)), [draft.offer, draft.repeat, at, zone]);
@@ -64,10 +72,11 @@ export function Details({ draft, change, guests, at, invites, connectCalendar, b
 
   const submit = async () => {
     setFailed(null);
-    const input: MeetingInput = {
+    const input: MeetingCreate = {
       title: title.trim() || titleFor(draft.tokens, guests), startsAt: at.toISOString(), durationMinutes: draft.minutes, guests: guests.map((g) => g.email), notes: draft.notes,
       ...(draft.notes === 'on' ? { choices: draft.choices } : {}), ...(big ? { joinMuted: muted } : {}),
-      ...(draft.documents.length ? { documents: draft.documents.map((d) => d.id) } : {}), ...(draft.home ? { workspaceId: draft.home.id } : {}),
+      ...(draft.documents.length ? { documents: draft.documents.map((d) => d.id) } : {}),
+      ...(space.kind === 'pick' ? { workspaceId: space.id } : space.kind === 'new' ? { newWorkspace: true } : {}),
       ...(series ? { repeat: series } : {}), ...(offer ? { offer: offer.map((t) => t.toISOString()) } : {})
     };
     try {
@@ -95,14 +104,20 @@ export function Details({ draft, change, guests, at, invites, connectCalendar, b
           )}
           <FlowRow icon="notes" on={draft.notes === 'on'} title={notesWord(draft)} sub={draft.notes === 'on' ? 'Everyone invited gets them' : 'Nothing is recorded'} expanded={open === 'notes'} onClick={() => setOpen((o) => (o === 'notes' ? null : 'notes'))} />
           {open === 'notes' && <div className="cf-more"><NotesSwitches modelPrivate={!unencrypted} notes={draft.notes} choices={draft.choices} onNotes={(notes) => change({ notes })} onChoices={(choices) => change({ choices })} /></div>}
-          <FlowRow icon="folders" title={draft.home ? draft.home.name : 'New workspace for this call'} sub={draft.home ? 'Its notes and transcript go here, in a folder of their own' : 'Its notes and transcript go there. Everyone invited is in it'}
-            expanded={open === 'home'} onClick={() => setOpen((o) => (o === 'home' ? null : 'home'))} disabled={saving} />
-          {open === 'home' && (
+          <FlowRow icon="folders" title={space.kind === 'pick' ? space.name : space.kind === 'new' ? 'New workspace' : 'No workspace'} sub={SPACE_SUB[space.kind]}
+            expanded={open === 'space'} onClick={() => setOpen((o) => (o === 'space' ? null : 'space'))} disabled={saving} />
+          {open === 'space' && (
             <div className="cf-more">
               <SwitchLine title="Where its notes go" control={
-                <Select label="Where its notes go" value={draft.home?.id ?? 'new'} align="end"
-                  options={[{ value: 'new', label: 'New workspace for this call', icon: 'plus' }, ...homes.map((h) => ({ value: h.id, label: h.name, icon: 'folders' as const }))]}
-                  onChange={(id) => change({ home: id === 'new' ? null : homes.find((h) => h.id === id) ?? null })} />
+                <Select label="Where its notes go" value={space.kind === 'pick' ? space.id : space.kind} align="end"
+                  options={[
+                    { value: 'none', label: 'No workspace', icon: 'minus' }, { value: 'new', label: 'New workspace', icon: 'plus' },
+                    ...yours.map((h) => ({ value: h.id, label: h.name, icon: 'folders' as const }))
+                  ]}
+                  onChange={(id) => {
+                    const picked = yours.find((h) => h.id === id);
+                    change({ space: id === 'new' ? { kind: 'new' } : picked ? { kind: 'pick', ...picked } : { kind: 'none' } });
+                  }} />
               } />
             </div>
           )}

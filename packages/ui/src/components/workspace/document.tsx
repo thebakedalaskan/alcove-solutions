@@ -332,18 +332,20 @@ export function WsPickDocument({ onDocument }: { onDocument?: (() => void) | und
 /** Something in Trash. `sub`: who sent it there, when, and how long it has left. `onRestore` and `onDelete` for someone who can edit it. */
 export interface WsTrashItem { id: string; name: string; sub: string; kind?: keyof typeof WS_ITEM_ICONS | undefined; onOpen?: (() => void) | undefined; onRestore?: (() => void) | undefined; onDelete?: WsPop | undefined }
 
-/** What Delete forever asks, in place of the button. */
-/** Asks once before deleting for good. The keyboard starts on keeping it, so Enter twice loses nothing. */
-export function WsDeleteAsk({ name, onDelete, onKeep }: { name: string; onDelete: () => void; onKeep: () => void }) {
+/**
+ * Asks once before deleting for good, in place of what asked: Delete forever on something in Trash, or Delete workspace. The
+ * keyboard starts on keeping it, so Enter twice loses nothing. `busy`: on its way, until Alcove says it's done.
+ */
+export function WsDeleteAsk({ name, busy = false, onDelete, onKeep }: { name: string; busy?: boolean | undefined; onDelete: () => void; onKeep: () => void }) {
   const keep = useRef<HTMLButtonElement>(null);
   useEffect(() => { keep.current?.focus({ preventScroll: true }); }, []);
   return (
-    <div className="wv-switch">
+    <div className="wv-switch" role="group" aria-label={`Delete ${name}`}>
       <b>Delete {name} for good?</b>
       <p>It goes for everyone, with everything in it. Nobody can bring it back.</p>
       <div className="ac">
-        <Button variant="primary" size="sm" onClick={onDelete}>Delete forever</Button>
-        <Button ref={keep} variant="quiet" size="sm" onClick={onKeep}>Keep it</Button>
+        <Button variant="primary" size="sm" loading={busy} onClick={onDelete}>Delete forever</Button>
+        <Button ref={keep} variant="quiet" size="sm" disabled={busy} onClick={onKeep}>Keep it</Button>
       </div>
     </div>
   );
@@ -390,11 +392,47 @@ export function WsNoAccess({ organizer, asked, onAsk }: { organizer: string; ask
   );
 }
 
-/** The call's organizer, taken out of the workspace it uses: the call keeps it for everyone else until they give it another. */
-export function WsLostSpace({ onNew }: { onNew: () => void }) {
+/** Pick one of yours, beside New workspace: it opens the organizer's workspaces (`pick`) under itself. */
+function PickOne({ pick }: { pick: WsPop }) {
   return (
-    <EmptyState className="wd-none" title="You’re not in this call’s workspace any more" art={<LockedArch />} action={<Button variant="primary" size="sm" icon="plus" onClick={onNew}>New workspace</Button>}>
-      Make a new one and this call uses it. Nobody is disconnected.
+    <WsPopover open={pick.open} onOpenChange={pick.onOpenChange} label="Your workspaces" align="center"
+      anchor={<Button variant="quiet" size="sm" icon="folders">Pick one of yours</Button>}>{pick.content}</WsPopover>
+  );
+}
+
+/** The arch with a folder in it, waiting to be chosen. */
+const FolderArch = () => <WsArch><path d="M21 45.5v12.5h24V48.5H33.5l-3-3z" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /></WsArch>;
+
+/**
+ * The call's workspace, while the call has none: nothing makes one by itself. Its organizer makes one (`onNew`) or picks one of
+ * theirs (`pick`, the menu Pick one of yours opens), and the call's notes, follow-ups and transcript go there. Everyone else is
+ * told who chooses (`organizer`, their first name), and it opens for them by itself once that's done.
+ */
+export function WsNoSpace({ organizer, onNew, pick }: { organizer: string; onNew?: (() => void) | undefined; pick?: WsPop | undefined }) {
+  if (!onNew) {
+    return (
+      <EmptyState className="wd-none" title={`${organizer} chooses the workspace for this call`} art={<FolderArch />}>
+        Nothing’s chosen yet. It opens here as soon as they pick one.
+      </EmptyState>
+    );
+  }
+  return (
+    <EmptyState className="wd-none" title="This call has no workspace yet" art={<FolderArch />}
+      action={<><Button variant="primary" size="sm" icon="plus" onClick={onNew}>New workspace</Button>{pick && <PickOne pick={pick} />}</>}>
+      Pick one of yours, or make a new one. Its notes, follow-ups and transcript go there.
+    </EmptyState>
+  );
+}
+
+/**
+ * The call's organizer, who can't open the workspace it uses any more (they were taken out of it, or it's gone): the call keeps
+ * it for everyone else until they give it another, a new one (`onNew`) or one of theirs (`pick`).
+ */
+export function WsLostSpace({ onNew, pick }: { onNew: () => void; pick?: WsPop | undefined }) {
+  return (
+    <EmptyState className="wd-none" title="You can’t open this call’s workspace any more" art={<LockedArch />}
+      action={<><Button variant="primary" size="sm" icon="plus" onClick={onNew}>New workspace</Button>{pick && <PickOne pick={pick} />}</>}>
+      Make a new one, or pick another of yours, and the call uses it from now on. Nobody is disconnected.
     </EmptyState>
   );
 }

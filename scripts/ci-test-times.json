@@ -98,14 +98,15 @@
    "bringing a board to a call": 1.2
   }
  },
- "src/features/calls/callHomes.integration.test.ts": {
-  "seconds": 15.6,
+ "src/features/calls/callFolders.integration.test.ts": {
+  "seconds": 19.6,
   "groups": {
-   "a call’s home": 5.5,
+   "a call’s workspace": 5.5,
+   "filing a call’s notes": 4.5,
    "the call’s folder": 2.6,
-   "who’s in a home made for a call": 5.7,
+   "who’s in a workspace made for a call": 5.2,
    "who’s who in a workspace’s documents": 0.9,
-   "what’s kept of a home": 0.7,
+   "what’s kept of a workspace made for a call": 0.7,
    "what the previous release stored": 0.2
   }
  },
@@ -200,6 +201,7 @@
    "meetings": 0.3,
    "calls with notes": 9.5,
    "live transcript and written notes": 23.7,
+   "a call nobody made a workspace for": 2.5,
    "in the call: hands, spotlight, breakout rooms and captions": 7.3,
    "verified private inference": 14.0,
    "confirming what the notes say": 1.5,

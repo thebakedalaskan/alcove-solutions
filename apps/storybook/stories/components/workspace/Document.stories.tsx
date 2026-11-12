@@ -4,11 +4,12 @@
  * following someone (WsFollowBar), the connection dropped (WsOfflineBar), someone moved it to Trash (WsGoneBar), or you
  * can only read it (WsReadOnlyBar). Under them it scrolls (WsScroll), with the page in it (WsPage): whose it is
  * (WsDocBy), the editor's text, and the space under the last line (WsTail), or ways to start an empty page
- * (WsTemplates). A workspace with nothing in it (WsEmpty) and one you can't open (WsNoAccess) draw in WsArch.
+ * (WsTemplates). A workspace with nothing in it (WsEmpty), one you can't open (WsNoAccess), a call with none yet (WsNoSpace)
+ * and one its organizer lost (WsLostSpace) draw in WsArch.
  */
 import {
-  WsArch, WsDoc, WsDocBy, WsDocHead, WsDocMenu, WsEmpty, WsFollowBar, WsGoneBar, WsMovePicker, WsNoAccess, WsOfflineBar,
-  WsPage, WsPane, WsPersonCard, WsReadOnlyBar, WsSaveState, WsScroll, WsTail, WsTemplates, WsToasts, wsToast,
+  WsArch, WsDoc, WsDocBy, WsDocHead, WsDocMenu, WsEmpty, WsFollowBar, WsGoneBar, WsLostSpace, WsMovePicker, WsNoAccess, WsNoSpace, WsOfflineBar,
+  WsPage, WsPane, WsPersonCard, WsReadOnlyBar, WsSaveState, WsScroll, WsSpacePicker, WsTail, WsTemplates, WsToasts, wsToast,
   type WsFace, type WsPop, type WsSave
 } from '@alcove/ui';
 import type { Meta, StoryObj } from '@storybook/react-vite';
@@ -68,7 +69,7 @@ function NewPage({ height = 640 }: { height?: number | undefined }) {
 const meta = {
   title: 'Components/Workspace/Document',
   component: WsDoc,
-  subcomponents: { WsDocHead, WsSaveState, WsFollowBar, WsOfflineBar, WsGoneBar, WsReadOnlyBar, WsScroll, WsPage, WsDocBy, WsTail, WsTemplates, WsArch, WsEmpty, WsNoAccess },
+  subcomponents: { WsDocHead, WsSaveState, WsFollowBar, WsOfflineBar, WsGoneBar, WsReadOnlyBar, WsScroll, WsPage, WsDocBy, WsTail, WsTemplates, WsArch, WsEmpty, WsNoAccess, WsNoSpace, WsLostSpace },
   parameters: { layout: 'padded' },
   args: { children: null },
   argTypes: { children: { table: { disable: true } }, className: { table: { disable: true } } }
@@ -326,3 +327,30 @@ const privately: StoryObj<typeof WsNoAccess>['render'] = function Render(args) {
 export const NoAccess: StoryObj<typeof WsNoAccess> = { name: 'No access', args: { organizer: 'Priya', asked: false, onAsk: did('onAsk') }, render: privately };
 /** They asked: it opens by itself once Priya shares something with them. */
 export const NoAccessAsked: StoryObj<typeof WsNoAccess> = { name: 'No access: asked', args: { organizer: 'Priya', asked: true, onAsk: did('onAsk') }, render: privately };
+
+/** Your workspaces, under Pick one of yours. */
+const YOURS = [{ id: 'ws-product', name: 'Product', sub: '6 people' }, { id: 'ws-design', name: 'Design', sub: '4 people' }];
+/** Pick one of yours, opening the organizer's workspaces under itself. */
+function usePick(): WsPop {
+  const [open, setOpen] = useState(false);
+  return { open, onOpenChange: setOpen, content: <WsSpacePicker spaces={YOURS} current={null} canChoose onPick={() => setOpen(false)} onNew={() => setOpen(false)} /> };
+}
+/** A call with no workspace yet: its organizer makes one, or picks one of theirs. Everyone else is told who chooses. */
+function NoSpaceFrame({ organizer, chooses }: { organizer: string; chooses: boolean }) {
+  const pick = usePick();
+  return (
+    <Box width="100%" height={560}>
+      <WsPane>
+        <WsDoc><WsNoSpace organizer={organizer} {...(chooses ? { onNew: did('onNew'), pick } : {})} /></WsDoc>
+      </WsPane>
+    </Box>
+  );
+}
+export const NoSpace: StoryObj<typeof NoSpaceFrame> = { name: 'No workspace yet: the organizer', args: { organizer: 'Art', chooses: true }, render: (args) => <NoSpaceFrame {...args} /> };
+export const NoSpaceOthers: StoryObj<typeof NoSpaceFrame> = { name: 'No workspace yet: everyone else', args: { organizer: 'Priya', chooses: false }, render: (args) => <NoSpaceFrame {...args} /> };
+/** The organizer can't open the call's workspace any more: a new one, or another of theirs. */
+function LostFrame() {
+  const pick = usePick();
+  return <Box width="100%" height={560}><WsPane><WsDoc><WsLostSpace onNew={did('onNew')} pick={pick} /></WsDoc></WsPane></Box>;
+}
+export const LostSpace: StoryObj = { name: 'Lost the call’s workspace', render: () => <LostFrame /> };

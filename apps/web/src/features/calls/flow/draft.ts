@@ -45,9 +45,15 @@ export interface Draft extends Guests {
   /** Set for a big call; null means it was never touched, and the size of the call decides. */
   joinMuted: boolean | null;
   documents: Document[];
-  /** The call's home, where its notes and transcript go: one of your workspaces, or null for a new one made for the call. */
-  home: { id: string; name: string } | null;
+  /**
+   * The call's workspace, where its notes and transcript go: none until someone picks one in the call (the default), a new one
+   * made as it's scheduled, or one of yours.
+   */
+  space: SpaceChoice;
 }
+
+/** Where a call's notes go, as it's scheduled. */
+export type SpaceChoice = { kind: 'none' } | { kind: 'new' } | { kind: 'pick'; id: string; name: string };
 
 export const NOT_REPEATING: Repeating = { kind: 'none', days: [], until: null };
 /** How long a call runs until someone says otherwise. */
@@ -60,7 +66,7 @@ export const BIG_CALL = 25;
 export function newDraft(prefs: Preferences | undefined, preset: { people: readonly Person[]; name?: string | undefined; documents?: readonly Document[] | undefined }): Draft {
   return {
     tokens: tokensFor(preset.people, preset.name), unread: [], at: null, minutes: DEFAULT_MINUTES, repeat: NOT_REPEATING, offer: null, title: '', titled: false,
-    notes: prefs?.notesDefault ?? 'on', choices: DEFAULT_NOTES_CHOICES, joinMuted: null, documents: [...(preset.documents ?? [])], home: null
+    notes: prefs?.notesDefault ?? 'on', choices: DEFAULT_NOTES_CHOICES, joinMuted: null, documents: [...(preset.documents ?? [])], space: { kind: 'none' }
   };
 }
 

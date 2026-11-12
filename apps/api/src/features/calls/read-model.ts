@@ -147,7 +147,7 @@ export async function view(v: Viewer, db: Db, callId: string): Promise<CallState
 }
 
 /** What someone who isn't in the call yet is told of its workspace: nothing. */
-const PRIVATE: CallWorkspace = { id: null, home: null, name: null, chosenBy: { id: 'organizer', name: '', email: '' }, canOpen: false, role: null, documents: [], agenda: null, present: null, ended: null, play: null, asks: [], asked: 'no' };
+const PRIVATE: CallWorkspace = { id: null, chosen: false, name: null, chosenBy: { id: 'organizer', name: '', email: '' }, canOpen: false, role: null, documents: [], agenda: null, present: null, ended: null, play: null, asks: [], asked: 'no' };
 
 /**
  * Who hosts, as this viewer sees it: the connection hosting now and whether it stands in for the organizer, the

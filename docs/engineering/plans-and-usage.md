@@ -2,7 +2,7 @@
 
 [Docs home](../README.md) · [Notes and inference](notes-and-inference.md) · [Privacy, keys and sessions](privacy-keys-and-sessions.md)
 
-Every call gets its own workspace and board on every plan, kept afterwards in the Drive. Plans differ only in how much
+A call's workspace, and the board in it, work the same on every plan, kept afterwards in the Drive. Plans differ only in how much
 they bring: notes and storage. Every feature is on every plan.
 
 | | Free | Pro | Team |

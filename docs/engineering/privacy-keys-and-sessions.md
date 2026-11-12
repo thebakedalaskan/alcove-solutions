@@ -573,12 +573,16 @@ read every note given to it. That's why the demo SSO sign-in takes only example 
   it's removed. An entry for a seat ends with the call: it's deleted when the call ends or that person is taken out of
   it, the pass stops opening it the moment either happens, and maintenance sweeps up any left by a process that stopped.
   Someone who also has it through their account keeps what that gives them.
-- **A call's home.** A workspace made as a call's home has the organizer as its admin and the people invited in it, to
+- **A workspace made for a call.** Nothing makes one by itself: the organizer pressed New workspace, in the call or when
+  scheduling, or to file its notes once it was over. It has the organizer as its admin and the people invited in it, to
   edit: the same people who get the call's notes. Someone let in from the link who goes on the invite is let in too, and
   taken out again when they're taken off it, as is someone taken off a scheduled call or a series. Only someone the invite
   put there is ever taken out, and only while nobody has changed their place by hand; someone an admin took out, or who
   left, is never put back by the invite. A guest without an account gets nothing unless something's shared with their seat.
-  A home the organizer chose keeps its own people.
+  A workspace the organizer picked for the call isn't made for it, so it lets nobody in: its people are its own, and someone
+  invited who can't open it finds it private and can ask the organizer, who gives one document at a time. Only the organizer
+  picks, makes or files a call's workspace: someone standing in as host only hosts, and a call with no workspace opens
+  nothing for anyone.
 - **Who a document names.** Tags, quotes and follow-up lines name people by an ID the server keys under the workspace's own
   keys, never by an address or a plain hash of one, so reading a document says nothing about anyone's address and a guess
   can't be checked against it offline ([Data and storage › Workspaces](data-and-storage.md#workspaces)).
@@ -600,8 +604,8 @@ read every note given to it. That's why the demo SSO sign-in takes only example 
   nothing someone who can't tries says whether one is on; each person is told their own votes and nobody a count until it
   ends; a vote being cast tells nobody else
   ([Calls and recordings › A board's vote](calls-and-recordings.md#a-boards-vote)).
-- **A call adds and lets in only as far as the workspace says.** Anyone invited can make a board in the call's home, while
-  its organizer can edit there ([Calls and recordings › A board in a call](calls-and-recordings.md#a-board-in-a-call)). Letting
+- **A call adds and lets in only as far as the workspace says.** Anyone invited can make a board in the call's workspace, while
+  its organizer can edit there, and a call with none has nowhere to put one (`409`) ([Calls and recordings › A board in a call](calls-and-recordings.md#a-board-in-a-call)). Letting
   people into a saved board needs the right to share it, asked again for everyone who comes later, and each seat ends with the call.
   A board the call made goes on being given to whoever comes only until it's restricted or the organizer can't edit there.
   A breakout room's board is restricted with nobody as its creator: only the seats of whoever is in that room open it, the
@@ -609,7 +613,7 @@ read every note given to it. That's why the demo SSO sign-in takes only example 
   has it by address; a workspace member who wasn't invited never does, nor do the workspace's admins: nothing strands a room's
   board until its call has kept it for everyone invited. What the call writes on a board it didn't make itself, a frame for
   each room on a board they share or the rooms' boards coming back, it writes only while whoever opened that board can still
-  edit it, asked again with the board's workspace held as it's written: otherwise they go on a new board in the call's home,
+  edit it, asked again with the board's workspace held as it's written: otherwise they go on a new board in the call's workspace,
   and never onto a board only someone outside the call can read
   ([Calls and recordings › Boards in breakout rooms](calls-and-recordings.md#boards-in-breakout-rooms)).
 - **What a board links to is named by each reader.** **From your workspace** offers only the board's own workspace, so links
@@ -683,7 +687,7 @@ takes a token out of anything that quotes a file's URL, a browser's report of a 
 
 ### Brought to a call
 
-`features/workspaces/library.ts` shows what's in workspaces to people with calls, and `workspaceAccess.ts` still decides.
+`features/workspaces/library.ts` shows what's in workspaces to people with calls, and `workspaces/access.ts` still decides.
 
 - **The library** (`GET /v1/documents`) is what someone can bring: everything they can open with their account, by
   workspace, as each tree shows it to them, without folders or what's in Trash. A workspace with nothing to bring isn't
@@ -952,7 +956,7 @@ connection](calls-and-recordings.md#recording-without-a-connection)), and so eac
 | Keyed hashes | Equal hashes show the same person. Joining `note_access` to `identities` shows which accounts received which notes from which organizers, and whether by invitation or by sharing. For addresses without an account it still shows the same address receiving several notes. `note_additions.author_index` shows which additions are the same person's, across notes and organizers, and `note_links.maker_index` which links are the same person's. It matches no other column, but comparing the notes those additions are on with `note_access` can narrow down who it is. `call_rings` joins to nothing but itself: the same hash in two rows is the same address rung twice, and its rows last as long as the call. `meeting_access` shows how many people are invited to each call that isn't over, whether each has answered (never what), and the same address on several organizers' calls; its hashes have their own purpose, so it can't be joined to `identities` or `note_access` without `KMASTER`. Joining `workspace_members` and `document_access` the same way shows who's in which workspaces and who has how many of a workspace's documents, at what role; `workspace_authors` shows who has had their name on something in one, or made it, even after leaving. |
 | Workspaces | That a workspace exists, how many people and documents it has and when each came, each one's role, that a document is shared and whether with an address or a seat in which call, how often it changes (`version`), when the oldest thing in its Trash went there, and that someone was tagged in a document and when, until they've heard. How many files it has, when each came, how big each is, and which documents share one. Never a name, a folder, how the tree is arranged, or what a file is called or is. `presenter_notes`, which nothing writes now, shows which accounts kept notes on which documents with an earlier release, and so that those accounts could open them: one row each, of a size, and never what they say. `presenter_frame_notes` shows the same for boards, and how many frames of each someone keeps notes beside, never which frames or what they say. Which calls use which workspaces, and what was worked on in them, is sealed in the meeting, the call and the note |
 | Documents | When each update was made and roughly how big it was and how many pieces it held, until it compacts, so when a document was being worked on and how hard; how big its state and versions are, how many versions it has and when each was kept; how many Yjs clients have written to it, which is about how many sessions, and how much each wrote, with nothing to link two clients to each other or to anyone. A board started from a template has the server's client for it, 2, with how much the template wrote, so which template it started from, and the row stays if a version from before it takes the board's place. Never a word, a title, a mention or a comment, nor anything on a board. Carets and presence pass through Postgres's notice queue sealed, as notices of a size and at a time, each naming the workspace and, for a caret, the document |
-| Plans and money | Which account pays for each workspace (`workspaces.payer_owner_id`), so which account made each shared workspace, or organized a call's own; how many bytes each account stores (`owners.stored_bytes`, and those of the workspaces it pays for); when upkeep next looks at each plan account (`plan_accounts.due_at`: a period or a grace ending); and that a top-up exists, whose it is, its state and when it's next checked. Never a balance, an allowance, what was spent or on which kind of request, a history, an amount, an address or a quote: those are sealed under `Kservice`'s accounting key, which can't open owner content, and the API process opens them for any account because it holds `KSERVICE` |
+| Plans and money | Which account pays for each workspace (`workspaces.payer_owner_id`), so which account made each shared workspace, or organized a call it was made for; how many bytes each account stores (`owners.stored_bytes`, and those of the workspaces it pays for); when upkeep next looks at each plan account (`plan_accounts.due_at`: a period or a grace ending); and that a top-up exists, whose it is, its state and when it's next checked. Never a balance, an allowance, what was spent or on which kind of request, a history, an amount, an address or a quote: those are sealed under `Kservice`'s accounting key, which can't open owner content, and the API process opens them for any account because it holds `KSERVICE` |
 | Object store | Object count, sizes and timing: a recording writes about one object every 5 seconds, a share kept for the notes about one every 5 seconds while it's going, then one per 4 MiB of its joined video once the call is over, and a file one for every 4 MiB |
 | Uploads | How many bytes each account uploaded to workspaces each day, today and yesterday, and each guest in a call, under a blind index that can't be matched to the call, the seat or a name. A file's row says which workspace it's in, how big it is and when it came, and not who uploaded it, but on a quiet day an account's bytes can be matched to one file's size and time, which shows that account uploaded it. And the service's limits, which are numbers and nothing of anyone's |
 | A file's URL | Readable by anyone who sees it, but only opaque IDs: the account or the call, seat and organizer asking, the workspace, document and file, and when it runs out. Alcove keeps it out of its logs, but a browser shows it to whoever opens a file by itself |

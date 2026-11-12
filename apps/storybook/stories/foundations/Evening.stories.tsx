@@ -13,7 +13,7 @@ const MOMENTS = {
   record: { name: 'Record', hz: 235, line: 'Night, in both themes. The recorder is the sun: a dark disc with the last of the light on its rim.' },
   team: { name: 'Team', hz: 165, line: 'The sun low and to the left, behind the people standing on the horizon.' },
   notes: { name: 'Notes', hz: 115, line: 'Just after sunset: only the glow is left, with search in the middle. Stars come out after dark.' },
-  drive: { name: 'Drive', hz: 100, line: 'A little later than Notes: less glow on the water and the first stars, over every workspace and call’s home.' },
+  drive: { name: 'Drive', hz: 100, line: 'A little later than Notes: less glow on the water and the first stars, over every workspace you’re in.' },
   note: { name: 'A note', hz: 85, line: 'A slim band. The horizon is the call itself.' },
   settings: { name: 'Settings', hz: 60, line: 'The last of the light. Mostly page.' }
 } satisfies Record<Moment, { name: string; hz: number; line: string }>;

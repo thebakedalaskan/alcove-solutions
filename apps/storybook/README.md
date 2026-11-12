@@ -92,7 +92,8 @@ Product, then the follow-ups from the retro board's Actions frame.
 | `on-their-own` | Art at a personal address: no team, no groups, recordings and calls with people he meets |
 | `offline` | The busy afternoon opened with no connection, signed in on this browser: Record works, the rest says offline |
 | `writing` | Just after the pricing follow-up: its notes are written over a few seconds; a walkthrough records elsewhere |
-| `call-soon` | Wednesday at 10:26: the design review starts in four minutes |
+| `call-soon` | Wednesday at 10:26: the design review starts in four minutes, in the Design review workspace Art made for it as he scheduled it |
+| `no-workspace` | The same morning, but the design review was scheduled with no workspace: Art picks or makes one in the call, and is asked where its notes go when it ends |
 | `lots` | Thirty people on Alcove, three months of notes, eight pins, a dozen groups, long names |
 | `signed-out` | Nobody signed in on this browser: the welcome page; Microsoft or single sign-on signs Art in to the busy afternoon |
 | `unsaved` | The busy afternoon after Alcove wouldn't take some of Art's edits: the pricing copy's last edits, more interview notes than a document holds, and a line in the handbook he can only read now |

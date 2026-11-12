@@ -2,7 +2,7 @@ import { type NotesSetting } from '../calls/settings';
 import { type Patch } from '../client';
 import { type ID, type ISODate } from '../shared/ids';
 import { type Busy, type Calendar } from './calendar';
-import { type ChangeScope, type Meeting, type MeetingInput, type Rsvp } from './schema';
+import { type ChangeScope, type FileNotes, type Meeting, type MeetingCreate, type MeetingInput, type Rsvp } from './schema';
 export interface MeetingsApi {
   /** Your calls still to come, and the calls you're invited to, soonest first. */
   upcoming(): Promise<Meeting[]>;
@@ -13,8 +13,16 @@ export interface MeetingsApi {
   /**
    * Schedules a call, or with `repeat` a series of them, with one link. With Google Calendar connected it goes on the
    * calendar, which sends everyone invited one invitation. With `offer` it goes on no calendar until a time is picked.
+   * With `newWorkspace` a workspace is made for it now, the call's (and its series'), with everyone invited in it.
    */
-  create(input: MeetingInput): Promise<Meeting>;
+  create(input: MeetingCreate): Promise<Meeting>;
+  /**
+   * Files an ended call's notes in a workspace, when it had none: one of yours you can edit in, or a new one made for it with
+   * everyone invited in it. The call's folder goes at the top, with its notes, follow-ups and transcript, and the workspace is
+   * the call's from now on (and its series' later calls'). Yours alone, on your own calls: `conflict` for a call still going,
+   * one without notes, or one in a workspace already; `not-found` for a workspace you can't reach.
+   */
+  file(id: ID, to: FileNotes): Promise<Meeting>;
   /**
    * Changes a call; a connected calendar sends everyone the update. In a series, `scope: 'following'` changes this
    * call and every later one too, and moving them says how with `repeat`, whose occurrences start at this call.

@@ -20,6 +20,7 @@ import { LIMITS } from '../../limits';
 import { maintain } from '../../maintenance';
 import { MEDIA_LIMITS } from './media';
 import { masterKey } from '../../owners';
+import { withWorkspace } from '../../testing/call-workspace';
 import { pictureJpeg } from '../../testing/video';
 import { ORIGIN, cookieFetch, startHarness, type Browser, type Harness } from '../../testing/harness';
 
@@ -1295,7 +1296,8 @@ describe('guests in a call', () => {
     const { host, guests } = await callWith(org, ['Sam Guest']);
     const [sam] = guests;
     if (!sam) throw new Error('nobody joined');
-    // A board the call opens is made in its home, beside the call's folder.
+    // A board the call opens is made in its workspace, the one the organizer makes in it, in the call's folder.
+    await withWorkspace(host);
     await host.openBoard({ template: 'blank' });
     const id = host.getSnapshot().board.open?.workspaceId ?? '';
     const board = host.getSnapshot().board.open?.documentId ?? '';
@@ -1353,7 +1355,8 @@ describe('guests in a call', () => {
     const { host, guests } = await callWith(org, ['Sam Guest']);
     const [sam] = guests;
     if (!sam) throw new Error('nobody joined');
-    // The board is made in the call's home, and the document that reuses its picture is there too.
+    // The board is made in the call's workspace, and the document that reuses its picture is there too.
+    await withWorkspace(host);
     await host.openBoard({ template: 'blank' });
     const id = host.getSnapshot().board.open?.workspaceId ?? '';
     const board = host.getSnapshot().board.open?.documentId ?? '';

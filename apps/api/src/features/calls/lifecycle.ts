@@ -207,7 +207,9 @@ async function endCall(o: Owner, callId: string, unless?: (r: Row) => boolean): 
   // What's kept of the workspace is the last thing and nobody waits for it: it can take a worker as long as a worker has for
   // each document, and nothing about the call's end depends on it. It says itself when something didn't work.
   if (end.ended) void space.afterCall(o, { callId, meetingId: end.meetingId, worked, noteId: end.pendingNoteId, home, startedAt: end.startedAt });
-  return { meetingId: end.meetingId, pendingNoteId: end.pendingNoteId, duration: end.duration };
+  // Notes with no workspace to go to: its organizer is asked where they go (`meetings.file`), or they stay in Notes.
+  const filed = end.pendingNoteId === null || await space.hasWorkspace(o, end.meetingId);
+  return { meetingId: end.meetingId, pendingNoteId: end.pendingNoteId, duration: end.duration, filed };
 }
 
 /**

@@ -118,11 +118,36 @@ export const LetThemPick = page('/home', 'on-their-own', {
 /** Details: the name ready to type over, When and Who to step back to, notes, and Documents. */
 export const Details = page('/home', 'busy', { play: playing(open, later, priyaAndKofi, findATime, useIt) });
 export const DetailsPhone = phone(Details);
-/** Where its notes go, with the standup's two homes from today: they share a name, so each says when its call started. */
-export const ChoosingAHome = page('/home', 'busy', {
+/**
+ * Where its notes go: No workspace (the default: it can be picked in the call), New workspace (made as it's scheduled, with
+ * everyone invited in it), or one of yours. The standup's two workspaces from today share a name, so each says when its call
+ * started.
+ */
+export const ChoosingAWorkspace = page('/home', 'busy', {
   beforeEach: changing(standupTwice),
-  play: playing(open, later, priyaAndKofi, findATime, useIt, press(/^New workspace for this call/, 'Open New workspace for this call'),
-    press(/^Where its notes go/, 'Open Where its notes go. The standup’s two homes say when each call started'))
+  play: playing(open, later, priyaAndKofi, findATime, useIt, press(/^No workspace/, 'Open No workspace. You can pick one in the call'),
+    press(/^Where its notes go/, 'Open Where its notes go: No workspace, New workspace, then yours'))
+});
+export const ChoosingAWorkspacePhone = phone(ChoosingAWorkspace);
+/** New workspace, chosen: it's made when the call is scheduled, with everyone invited in it. */
+export const ANewWorkspace = page('/home', 'busy', {
+  play: playing(open, later, priyaAndKofi, findATime, useIt, press(/^No workspace/, 'Open No workspace'),
+    press(/^Where its notes go/, 'Open Where its notes go'),
+    async ({ userEvent, step }) => {
+      await step('Choose New workspace. The row says it’s made when you schedule, with everyone invited in it', async () => {
+        await userEvent.click(await screen.findByRole('option', { name: /^New workspace/ }, { timeout: 8000 }));
+      });
+    })
+});
+/** One of yours, chosen: Product. Its notes and transcript go there. */
+export const OneOfYours = page('/home', 'busy', {
+  play: playing(open, later, priyaAndKofi, findATime, useIt, press(/^No workspace/, 'Open No workspace'),
+    press(/^Where its notes go/, 'Open Where its notes go'),
+    async ({ userEvent, step }) => {
+      await step('Choose Product. Its notes and transcript go there', async () => {
+        await userEvent.click(await screen.findByRole('option', { name: /^Product/ }, { timeout: 8000 }));
+      });
+    })
 });
 /** Documents steps out of Details, to the workspace, and back. */
 export const Documents = page('/home', 'busy', { play: playing(open, later, priyaAndKofi, findATime, useIt, press(/^Documents/, 'Open Documents')) });

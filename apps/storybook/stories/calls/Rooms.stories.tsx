@@ -33,6 +33,11 @@ export const SettingUpFromPeople = { ...SettingUp, name: 'Setting up, from Peopl
  */
 export const SettingUpWithAGuest = inCall({ scenario: 'call-soon', call: REVIEW, script: { here: [{ who: KOFI }, { who: MAYA, guest: true }] } }, { name: 'Setting up, with a guest', play: ROOMS });
 export const SettingUpWithAGuestLight = light(SettingUpWithAGuest);
+/**
+ * A call with no workspace yet has nowhere to keep a new board: In each room, and Shared with no board open, can't be chosen,
+ * and the line under them says to pick or make one in Workspace first.
+ */
+export const SettingUpWithNoWorkspace = inCall({ scenario: 'no-workspace', call: REVIEW, script: { here: REVIEWERS } }, { name: 'Setting up, with no workspace', play: ROOMS });
 /** You go to a room as the rooms open: drag yourself into it, or move with the arrow keys. With notes on, the board says the main room isn't heard meanwhile. */
 const intoARoom: Play = async (c) => {
   await c.step('Put yourself in Room 1', async () => {

@@ -24,6 +24,7 @@ import { NewFollowUp, NoteFollowUpReview } from '~/features/notes/NoteFollowUps'
 import { Decisions, FollowUps, Questions } from '~/features/notes/rows';
 import { ScreenMomentRow, ScreenRefChip, ScreenViewer, useScreenViewer } from '~/features/notes/screens';
 import { WorkedOn } from '~/features/notes/WorkedOn';
+import { UnfiledNotice } from '~/features/notes/FileNotes';
 import { PinNote, ShareNote } from '~/features/notes/share';
 import { noteWave } from '~/features/notes/wave';
 import { useWhereYouWrite } from '~/features/notes/whereYouWrite';
@@ -416,6 +417,8 @@ function NoteView({ note, me, at, room, onGone }: { note: Note; me: string | und
             <NoteFollowUpReview noteId={note.id} suggestions={note.suggestions} actions={note.actions} people={note.recipients.map((r) => r.person)} reader={reader} me={me} onSeek={seek} shown={onScreen} />
             {/* Until there's a summary, the boards come after how the notes stand. */}
             {!(ready && written) && boardSection}
+            {/* A call with no workspace: its organizer can file its notes in one, here as at the end of the call. */}
+            {!going && mine && note.kind === 'call' && note.meetingId && <UnfiledNotice meetingId={note.meetingId} noteId={note.id} />}
             {/* What was worked on, under what was decided and what's to do, whether or not the notes are written yet. */}
             {!going && <WorkedOn worked={note.workedOn} />}
           </div>

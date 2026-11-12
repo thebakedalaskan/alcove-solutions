@@ -294,6 +294,12 @@ export const hostHere = (r: Pick<Row, 'state' | 'host_identity' | 'host_left_at'
 export const liveCall = (o: Owner, db: Db, meetingId: string, lock = false) => maybeOne(db, Row,
   `SELECT ${COLUMNS} FROM calls WHERE owner_id = $1 AND meeting_item_id = $2 AND state = 'live' ORDER BY started_at DESC LIMIT 1${lock ? ' FOR UPDATE' : ''}`, [o.ownerId, meetingId]);
 
+/** A meeting's call, live or over, by its meeting: a meeting has one. Which call it is, and when it started. */
+export async function callOfMeeting(o: Owner, db: Db, meetingId: string): Promise<{ callId: string; startedAt: Date } | undefined> {
+  const r = await maybeOne(db, Row.pick({ call_id: true, started_at: true }), 'SELECT call_id, started_at FROM calls WHERE owner_id = $1 AND meeting_item_id = $2', [o.ownerId, meetingId]);
+  return r ? { callId: r.call_id, startedAt: r.started_at } : undefined;
+}
+
 /**
  * What the capture gate needs to know about this call, in one of its parts (`place`): a breakout room captures at most
  * what the call does, and nothing while the organizer has paused it.

@@ -155,7 +155,7 @@ export type Beat =
   | { do: 'tag-you'; who: Person; document: string; block?: string | undefined }
   /**
    * A board in the call (user-flows 6, A board in the call). Someone makes a new one, the board in the main room, from a
-   * template, made in the call's home and filled as the server fills it, with what `draw` puts on it, or one you can't open
+   * template, made in the call's workspace and filled as the server fills it, with what `draw` puts on it, or one you can't open
    * (`closedToYou`), which opens on their stage alone until they present it; adds a sticky to one of the frames of the board where you are, by the frame's title, which puts their
    * pointer by it; and whoever opened it closes it, unless someone else presents it. `standing` opens it here with no
    * connection to it (`offline`), or with Alcove refusing what's added here (`failed`), while the call carries on.
@@ -244,8 +244,8 @@ export interface ScriptWorkspace {
   brought?: readonly string[] | undefined;
   where?: readonly { who: Person; document: string | null; typing?: boolean | undefined; page?: CallPage | undefined }[] | undefined;
   /**
-   * For you, with the link: the documents of the call's home the organizer has let you see, as their card's Let them see does,
-   * which open to you once you're let in. The rest of the home is as the story's world has it, which is as you see it.
+   * For you, with the link: the documents of the call's workspace the organizer has let you see, as their card's Let them see does,
+   * which open to you once you're let in. The rest of it is as the story's world has it, which is as you see it.
    */
   yours?: readonly string[] | undefined;
 }

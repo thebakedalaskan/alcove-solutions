@@ -1,6 +1,7 @@
 import { type HttpTransport } from '../transport/http';
 import { type AlcoveApi, BusySchema, CalendarSchema, type ChangeScope, MeetingSchema } from '@alcove/api';
 import { z } from 'zod';
+import { hereZone } from '../calls/session';
 
 export function createMeetingsApi(t: HttpTransport): Pick<AlcoveApi, 'meetings' | 'calendar'> {
   const { base, req } = t;
@@ -17,7 +18,8 @@ export function createMeetingsApi(t: HttpTransport): Pick<AlcoveApi, 'meetings' 
       update: (id, input, opts) => req(MeetingSchema, 'PATCH', `/meetings/${encodeURIComponent(id)}${inScope(opts)}`, input),
       cancel: async (id, opts) => { await req(z.unknown(), 'DELETE', `/meetings/${encodeURIComponent(id)}${inScope(opts)}`); },
       answer: (id, answer) => req(MeetingSchema, 'POST', `/meetings/${encodeURIComponent(id)}/answer`, { answer }),
-      scheduleNext: (id, startsAt) => req(MeetingSchema, 'POST', `/meetings/${encodeURIComponent(id)}/next`, { startsAt })
+      scheduleNext: (id, startsAt) => req(MeetingSchema, 'POST', `/meetings/${encodeURIComponent(id)}/next`, { startsAt }),
+      file: (id, to) => req(MeetingSchema, 'POST', `/meetings/${encodeURIComponent(id)}/file`, { ...hereZone(), ...to })
     },
     calendar: {
       get: () => req(CalendarSchema, 'GET', '/calendar'),

@@ -430,7 +430,7 @@ export function useWorkspace({ call, organizer = false, start = 'plan', space: s
     setHistory(null);
     const firstDoc = next.find((i) => i.kind === 'document');
     setAt({ id: firstDoc?.id ?? '', area: 'tree' });
-    if (call) say(wsToast.switched(spaces.find((s) => s.id === id)?.name ?? 'Product', id === 'ws-product' ? null : 'Product', () => switchBack(was)));
+    if (call) say(wsToast.switched(spaces.find((s) => s.id === id)?.name ?? 'Product', () => switchBack(was)));
   };
   const switchBack = (id: string) => {
     setSpace(id);
@@ -445,7 +445,7 @@ export function useWorkspace({ call, organizer = false, start = 'plan', space: s
     setBrought([]);
     setOpened(null);
     setAt({ id: '', area: 'tree' });
-    if (call) say(wsToast.newSpace(NEW_SPACE.name, 'Product'));
+    if (call) say(wsToast.newSpace(NEW_SPACE.name));
   };
   /** The workspace picker: in a call, choosing another asks first, in the picker's place. */
   const pick = (id: string) => {

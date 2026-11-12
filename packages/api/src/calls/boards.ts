@@ -108,11 +108,11 @@ export const CallBoardSchema = z.object({ open: CallBoardOpenSchema.nullable(), 
 export type CallBoard = z.infer<typeof CallBoardSchema>;
 
 
-/** A new board from a template, saved in the call's workspace. */
+/** A new board from a template, saved in the call's workspace: a call with none has nowhere to keep one (`conflict`) until the organizer picks one. */
 export const BoardNewSchema = z.object({ template: BoardTemplateSchema });
 
 /**
- * A saved board, from the workspace it's in, whichever that is: a call's own home is new, so what a team has is across the
+ * A saved board, from the workspace it's in, whichever that is, the call's or any other across the
  * Drive. `letIn` gives everyone here who can't open it a seat until the call ends, and anyone let into the call later; it
  * needs the right to share that board.
  */

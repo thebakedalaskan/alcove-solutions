@@ -62,8 +62,8 @@ export interface WorkspaceCall {
    * their own. In the list's own flow it covers none of it, where over the stage it would cover the list.
    */
   foot?: ReactNode;
-  /** The call's home, where its notes go and its folder is, if you can open anything in it. */
-  home: string | null;
+  /** An admin just deleted this workspace from its own menu: the call reads which workspace it has again, which is none now. */
+  onDeleted: () => void;
   /** What's been brought to the call, in order, by its ID in this workspace. */
   documents: readonly string[];
   /** Brings a document to the call, or takes it off. It's in every document's menu. */
@@ -178,6 +178,8 @@ export interface Ws {
   at: WorkspacePlace;
   go: WorkspaceProps['onGo'];
   switchTo: WorkspaceProps['onSwitch'];
+  /** Away from a workspace that's gone, such as one just deleted: on its own page, back to the Drive. */
+  leave: WorkspaceProps['onLeave'];
   /** The signed-in account, if there is one: a guest in a call has none. */
   owner: string | null;
   me: Person | null;

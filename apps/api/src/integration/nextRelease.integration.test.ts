@@ -14,6 +14,7 @@ import { openJson, sealJson, stateKey, toJson } from '../crypto';
 import { NoteManifest } from '../features/notes/service';
 import { openState, sealState, type WorkspaceState } from '../features/workspaces/access';
 import { findOwner, openOwner } from '../owners';
+import { withWorkspace } from '../testing/call-workspace';
 import { speechWav } from '../testing/fake-near';
 import { startHarness, type Browser, type Harness } from '../testing/harness';
 import { disposeLiveKit } from '../testing/livekit';
@@ -110,6 +111,7 @@ describe('what the next release stores', () => {
     const { code: c } = await art.api.calls.startNow({ guests: [kofi.email], notes: 'off' });
     const host = await art.api.calls.join(c, { mic: true, cam: false });
     await inGroup(host);
+    await withWorkspace(host);
     await invited(host, c, kofi);
     await host.openBoard({ template: 'retro' });
     const open = (await settle(host, (s) => s.board.open?.role === 'edit')).board.open;
@@ -155,6 +157,7 @@ describe('what the next release stores', () => {
     const { code: c } = await art.api.calls.startNow({ guests: [kofi.email], notes: 'off' });
     const host = await art.api.calls.join(c, { mic: true, cam: false });
     await inGroup(host);
+    await withWorkspace(host);
     await invited(host, c, kofi);
     await host.openBoard({ template: 'retro' });
     const open = (await settle(host, (s) => s.board.open?.role === 'edit')).board.open;
