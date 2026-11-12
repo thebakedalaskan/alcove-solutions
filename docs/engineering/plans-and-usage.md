@@ -74,7 +74,7 @@ and `ai.fallback_output_micro_usd`, logged at warn.
 | The live transcript, live notes, board ideas and captions in a call, for everyone | The call's organizer |
 | Writing a call's notes, reading its shared screens, comparing it with its series | The organizer |
 | A room recording's transcript and notes | Whoever records |
-| A question or a catch-up in a call | Whoever asks, from their own plan; a guest's, the organizer |
+| A question or a catch-up in a call | Whoever asks, from their own plan; a guest's, the organizer (6 a minute for each guest) |
 | Asking a note, or every note; asking a series; an agent's questions (MCP) | Whoever asks |
 | AI on a document or board (shorter, checklist, what was said, sort into themes) | Whoever the workspace counts against |
 
@@ -107,7 +107,11 @@ The allowance runs down with the call, and notes stop before it's spent rather t
 
 What an account stores is its own row's `stored_bytes` (its calls' audio and shared screens, its room recordings) and
 every workspace it pays for (`workspaces.payer_owner_id`): the shared ones it made, and its calls' own, whose files count
-against the organizer whoever adds them, guests included (`features/billing/storage.ts`).
+against the organizer whoever adds them, guests included (`features/billing/storage.ts`). Only someone in a workspace pays
+for it: when its payer leaves it or is taken out, it counts against whoever made it if they're still in it, else its first
+admin with an account, at once. Upkeep settles any it missed every 5 minutes, whatever made a payer stop being in a
+workspace. A workspace none of whose admins has an account counts against nobody, and takes no files ("Files can't be
+added until one of this workspace's admins signs in to Alcove."), until upkeep's next pass after an admin signs in.
 
 - A file bigger than the payer's plan's file size is refused at its start. A piece that would take the payer past their
   storage is refused (`plan-limit`, "Your storage is full…"), uploads in every workspace they pay for, and call audio and
@@ -161,7 +165,7 @@ is `arriving`, logged at error once with the reason, and fails at its deadline s
 | Cancelling a top-up (`POST /v1/plan/top-ups/:id/cancel`) | Working. Only a `waiting` top-up can be cancelled. Its address is no longer shown and it no longer counts toward the 15 waiting. 1Click can't cancel a quote, so a payment that reaches it is still added. It still counts toward the 30 a day |
 | Adding a top-up | Working. On `SUCCESS` or `REFUNDED` that passes the checks above, what was sent is added by the rules above, in the transaction that marks the deposit `credited`, under its row lock: once, however many checks race. `FAILED` is `failed`, logged at error. A `failed`, `expired` or `cancelled` deposit is still added when 1Click later settles it |
 | Watching top-ups | Working, unchanged: every open deposit is asked about every 10 s for 15 minutes, every minute until 2 hours, then every 5 minutes, thinning out after its deadline (see below) |
-| A top-up the previous release settled while this one deployed | Working. It added credits, which no longer count: upkeep adds it again as dollars, once (`creditCarried`, by `billing_cutover`) |
+| A top-up paid for before plans, or settled by the previous release while this one deployed | Working. It added credits, which no longer count: upkeep adds it again as dollars, once (`creditCarried`: every `credited` deposit settled before a day after `billing_cutover`, looked at once each, then `check_after` infinity) |
 | Adding money in the app | Working. Settings › Plan › Add money opens a sheet: choose $20, $60, $120 or your own, then a token and its chain, and get an address (with a QR code) for one payment of exactly that; the sheet follows it until it's added; while it waits for a payment it can be cancelled there; open and recent top-ups are listed under the balance |
 
 ### How a top-up works
@@ -215,11 +219,12 @@ The server never holds a key that can move treasury money. By hand, in near.com,
   `billing_cutover` with the time it ran. `0027_workspace_payers.sql` adds a nullable `payer_owner_id` to
   `workspaces` and backfills who pays from `workspace_authors` and the first admin. The previous release
   ignores all of it while the deploy migrates.
-- Credits are gone: every account starts on Free at $0, its old balance ignored. `billing_accounts` is no longer read,
-  and goes in a later release.
+- Credits are gone: every account starts on Free at $0, its old balance ignored, and then every top-up it paid for is
+  added again as dollars, at face value (above): welcome credits aren't, and what credits were spent on notes isn't taken
+  off. `billing_accounts` is no longer read, and goes in a later release.
 - An account's plan row is made the first time it's touched, or by upkeep. One already over Free's limits gets the grace
-  first. Workspaces the previous release makes while this one deploys, and those whose payer deletes their account, are
-  settled by upkeep.
-- A deposit record from before keeps its `credits` and `rate` (ignored now); one settled by the previous release has no
-  `addedMicroUsd` and is added again as dollars once if it settled after the cutover (above).
+  first. Workspaces the previous release makes while this one deploys, those whose payer deletes their account, and those
+  whose payer had left them before this release (the backfill counts them against whoever made them) are settled by upkeep.
+- A deposit record from before keeps its `credits` and `rate` (ignored now); one settled by a release before plans has no
+  `addedMicroUsd` and is added again as dollars once (above).
 - A live call's state from before has no `notes.limit`, and reads as not stopped (`.default`).

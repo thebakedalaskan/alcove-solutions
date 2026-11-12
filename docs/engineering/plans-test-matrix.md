@@ -23,6 +23,7 @@ Suites: `billing/meter` (`apps/api/src/features/billing/meter.integration.test.t
 | **B: money** |  |  |  |  |
 | B1 | Every 1Click outcome adds dollars at face value: exact, over, within the band, below it, refunded, part refunded, doubtful, late | billing/topups (53 tests) | 1 | Passes |
 | B2 | A deposit the previous release settled during the deploy is added as dollars, once | billing/plans › money | 1 | Passes |
+| B2′ | A deposit paid for before plans (its credits ignored now) is added as dollars, once | billing/plans › money › adds as dollars a top-up paid for before plans… | 1 | Passes |
 | B3 | Cancelling, the 15 waiting, 30 a day and 10 a minute, races between instances | billing/topups | 1 | Passes |
 | B4 | Buying with too little balance is refused, nothing changes | — | 2 | Not built |
 | B5 | Buying at a price that changed is refused | — | 2 | Not built |
@@ -32,6 +33,9 @@ Suites: `billing/meter` (`apps/api/src/features/billing/meter.integration.test.t
 | C2 | Free makes as many shared workspaces as it likes, and every one works | billing/plans › makes as many shared workspaces…; workspaces (limits) for `workspaces.max_made` | 1 | Passes |
 | C3 | A file over the plan's size is refused; storage fills and refuses, counted against whoever made the workspace | billing/plans › takes files…; workspaces/media (limits); by hand | 1 | Passes |
 | C4 | Call recordings count; full storage stops notes for everyone (reason storage), and notes need 1 MiB to come back | billing/plans › counts call recordings… | 1 | Passes |
+| C5 | A payer who leaves a workspace, or is taken out, stops paying for it; it counts against the admin in charge now | billing/plans › stops counting a workspace against whoever leaves it… | 1 | Passes |
+| C6 | A workspace none of whose admins has an account counts against nobody and takes no files, after upkeep too | billing/plans › takes no files in a workspace none of whose admins… | 1 | Passes |
+| C7 | A guest asks or catches up 6 times a minute; someone signed in, paying for their own, 20 | calls/catchup › lets a guest, whose questions the organizer pays for… | 1 | Passes |
 | **D: metering** |  |  |  |  |
 | D1 | Each request charges the right payer: organizer (transcript, captions, live notes, notes), asker (ask, catch-up, ask a note, ask all), organizer for a guest, workspace's maker for document AI | billing/meter › who pays; calls/liveNotes; calls/callWorkspace; recordings/transcripts; flows | 1 | Passes |
 | D2 | A reply without usage is reckoned and charged | billing/meter › charges what NEAR AI says… | 1 | Passes |

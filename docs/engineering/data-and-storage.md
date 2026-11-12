@@ -535,7 +535,9 @@ process readable and is sealed there (`apps/api/src/features/workspaces/media.ts
   MiB, the most a file can be here.", because only the server knows; a payer with no room left with `402 plan-limit`, "Your
   storage is full. Delete something, or move to a plan with more room."; and a day used up with
   `409 conflict`, "That’s all you can upload today. You can upload more tomorrow." A file size or a day at zero refuses
-  everything with "Files can’t be uploaded right now." Lowering a limit refuses what comes next and deletes nothing. An account's day is counted in `media_upload_days` as its pieces are kept, and
+  everything with "Files can’t be uploaded right now." A workspace that counts against nobody (none of its admins has an
+  account) takes no files: `409 conflict`, "Files can’t be added until one of this workspace’s admins signs in to Alcove."
+  Lowering a limit refuses what comes next and deletes nothing. An account's day is counted in `media_upload_days` as its pieces are kept, and
   a guest's, who has no account, in `media_guest_upload_days`, by a blind index of the person their pass names: either way every
   instance counts the same day, and a restart forgets nothing. A piece
   that takes an account's storage or someone's day past 80% of its limit logs it at warn, once each time it's crossed.

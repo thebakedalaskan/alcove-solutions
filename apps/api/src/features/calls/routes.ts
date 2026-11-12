@@ -29,8 +29,12 @@ import type { HttpRuntime } from '../../http/runtime';
 
 export function registerCallRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
   const { d } = runtime;
-  const { cardLimiter, pickLimiter, carryLimiter, callLimiter, moveOpenLimiter, moveSecretChangeLimiter, moveCheckLimiter, moveSecretCheckLimiter, spaceLimiter, followUpsLimiter, followUpLimiter, askNotesLimiter, othersPointLimiter, nudgeLimiter, statusLimiter, ringLimiter, askSpaceLimiter, chatLimiter, rejoinLimiter, moveLimiter, voiceLimiter, speechLimiter, videoLimiter, shareLimiter, askLimiter, notesWatchLimiter, ideasWatchLimiter, momentLimiter, personalLimiter, captionLimiter } = runtime.limits;
+  const { cardLimiter, pickLimiter, carryLimiter, callLimiter, moveOpenLimiter, moveSecretChangeLimiter, moveCheckLimiter, moveSecretCheckLimiter, spaceLimiter, followUpsLimiter, followUpLimiter, askNotesLimiter, othersPointLimiter, nudgeLimiter, statusLimiter, ringLimiter, askSpaceLimiter, chatLimiter, rejoinLimiter, moveLimiter, voiceLimiter, speechLimiter, videoLimiter, shareLimiter, askLimiter, guestAskLimiter, notesWatchLimiter, ideasWatchLimiter, momentLimiter, personalLimiter, captionLimiter } = runtime.limits;
   const { optionalOwner, signedIn } = runtime.context;
+  /** A guest's question or catch-up, which the organizer pays for: limited for each guest, below what someone signed in gets. */
+  const guestAsking = async (v: callsParticipants.Viewer, what: string) => {
+    if (!(await v.session())) guestAskLimiter(v.pass.identity, what);
+  };
 
   /* LiveKit's webhooks: outside /v1 (no Origin, no session); trusted only by their signature. */
   app.post('/hooks/livekit', async (c) => {
@@ -324,6 +328,7 @@ export function registerCallRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
     const v = c.get('viewer');
     callsParticipants.requireIn(v, 'catch-up');
     askLimiter(v.pass.identity, 'catch-up');
+    await guestAsking(v, 'guest catch-up');
     return c.json(await callsInsights.catchUp(v, c.req.param('id'), (await body(c, CatchUpBodySchema)).range));
   });
 
@@ -331,6 +336,7 @@ export function registerCallRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
     const v = c.get('viewer');
     callsParticipants.requireIn(v, 'ask');
     askLimiter(v.pass.identity, 'ask');
+    await guestAsking(v, 'guest ask');
     const { question, range } = await body(c, AskSoFarBodySchema);
     return c.json(await callsInsights.askSoFar(v, c.req.param('id'), question, range));
   });
