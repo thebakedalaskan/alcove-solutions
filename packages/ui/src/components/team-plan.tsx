@@ -201,13 +201,13 @@ export interface TeamNote {
 
 /**
  * The notes people on the team made visible to it, newest first: who made each visible and when, each opening its note.
- * `link` wraps a row in whatever opens it (the app's link to the note). With none, `empty` says what will show here.
- * `foot` goes under the rows: Show all.
+ * `link` wraps a row in whatever opens it (the app's link to the note). With none, `empty` says what will show here, or why
+ * nothing does, with a way forward when there is one. `foot` goes under the rows: Show more.
  */
 export function TeamNotesList({ notes, link, empty, foot, title = 'Visible to the team', aside = 'Notes people here chose to share with everyone licensed', className }: {
   notes: readonly TeamNote[];
   link: (note: TeamNote, row: ReactElement) => ReactNode;
-  empty: { title: string; line: ReactNode };
+  empty: { title: string; line: ReactNode; action?: ReactNode };
   foot?: ReactNode;
   title?: ReactNode;
   aside?: ReactNode;
@@ -229,7 +229,7 @@ export function TeamNotesList({ notes, link, empty, foot, title = 'Visible to th
             </li>
           ))}
         </TeamRows>
-      ) : <EmptyState title={empty.title} art={null} className="tq-none">{empty.line}</EmptyState>}
+      ) : <EmptyState title={empty.title} art={null} action={empty.action} className="tq-none">{empty.line}</EmptyState>}
     </TeamSection>
   );
 }
@@ -307,7 +307,7 @@ export function TeamInvite({ made, making = false, copied = false, onMake, onCop
       {made ? (
         <>
           <div className="tq-link" role="group" aria-label="Link to join the team">
-            <code>{made.link}</code>
+            <code>{made.link.replace(/^https?:\/\//, '')}</code>
             <Button variant="secondary" size="sm" icon={copied ? 'check' : 'copy'} onClick={onCopy}>{copied ? 'Copied' : 'Copy'}</Button>
           </div>
           <p className="tq-hint">Works once, until {made.until}. <button type="button" className="tq-lnk" disabled={making} onClick={onMake}>Make another</button></p>

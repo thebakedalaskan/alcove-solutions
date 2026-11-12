@@ -23,7 +23,7 @@
 .tq .dusk-in { padding-bottom: 96px; }
 /* The low sun stands just past the start of the line, however many stand on it, and never further out than the page. */
 .dusk.tq .hz {
-  --tq-line-w: calc(var(--tq-n, 6) * var(--tq-slot) + (var(--tq-n, 6) - 1) * var(--tq-gap));
+  --tq-line-w: calc(var(--tq-n, 6) * var(--tq-slot, 72px) + (var(--tq-n, 6) - 1) * var(--tq-gap, 12px));
   --hz-sun-r: 40px;
   --hz-sun-x: max(calc(56px - 50cqw), calc(-.5 * var(--tq-line-w) - var(--hz-sun-r) - 26px));
 }
@@ -40,11 +40,11 @@
  * The line: everyone's feet on the horizon, and their name and license on the water just under it. Wider than the page,
  * it slides sideways (the auto margins centre it only while it fits).
  */
-.tq-line { flex: none; display: flex; align-items: flex-start; gap: var(--tq-gap); height: calc(50px + var(--tq-below)); margin: 0 calc(-1 * var(--tq-edge)) calc(-1 * var(--tq-below)); padding: 0 var(--tq-edge); overflow: auto hidden; overscroll-behavior-x: contain; list-style: none; scrollbar-width: none; scroll-snap-type: x proximity; }
+.tq-line { flex: none; display: flex; align-items: flex-start; gap: var(--tq-gap, 12px); height: calc(50px + var(--tq-below, 40px)); margin: 0 calc(-1 * var(--tq-edge, 0px)) calc(-1 * var(--tq-below, 40px)); padding: 0 var(--tq-edge, 0px); overflow: auto hidden; overscroll-behavior-x: contain; list-style: none; scrollbar-width: none; scroll-snap-type: x proximity; }
 .tq-line::-webkit-scrollbar { display: none; }
 .tq-line > :first-child { margin-left: auto; }
 .tq-line > :last-child { margin-right: auto; }
-.tq-who { flex: none; display: flex; flex-direction: column; align-items: center; width: var(--tq-slot); scroll-snap-align: center; }
+.tq-who { flex: none; display: flex; flex-direction: column; align-items: center; width: var(--tq-slot, 72px); scroll-snap-align: center; }
 .tq-who-b { display: flex; flex-direction: column; align-items: center; width: 100%; padding: 0; border-radius: var(--radius-md); color: inherit; }
 .tq-fig { display: flex; align-items: flex-end; justify-content: center; height: 50px; overflow: hidden; }
 .tq-fig > .ac-avatar { box-shadow: none; animation: tq-up var(--duration-4) var(--ease-out) calc(var(--d, 0) * 46ms) backwards; }
@@ -62,14 +62,14 @@
 .tq-who-b[data-state="open"] .tq-fig, .tq-who-b:hover .tq-fig { overflow: visible; }
 
 /* ------------------------------------------------------------ the water: its people and notes, and beside them the admin's cards */
-.tq-water { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 32px; max-width: 1120px; margin: calc(var(--tq-below) + 34px) auto 0; }
+.tq-water { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 32px; max-width: 1120px; margin: calc(var(--tq-below, 40px) + 34px) auto 0; }
 .tq-water.is-solo { grid-template-columns: minmax(0, 760px); justify-content: center; }
 .tq-main { display: grid; grid-template-columns: minmax(0, 1fr); gap: 30px; align-content: start; min-width: 0; }
 /* One column, whatever the company page's sections ask of its grid. */
 .tq-main > * { grid-column: 1 / -1; grid-row: auto; min-width: 0; }
 .tq-side { display: grid; gap: 16px; align-content: start; min-width: 0; }
 /* The company page's sections, kept on a team (groups, and what's shared with them), sit in the same column. */
-.tq-main > .tp-s { margin-top: -14px; }
+.tq-main > :is(.tp-s, .tp-gs) { margin-top: -14px; }
 
 /* Waiting for a license: why the team's notes and workspaces aren't open, said once at the top of the water. */
 .tq-wait.ac-notice { padding: 11px 14px; border-radius: var(--radius-md); background: color-mix(in oklch, var(--caution) 13%, transparent); font: 400 14px/20px var(--font-sans); color: var(--ink); }
@@ -98,8 +98,8 @@
 .tq-ask .ac-btn.tq-caution { background: transparent; box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--caution) 55%, transparent); color: var(--caution); }
 .tq-ask .ac-btn.tq-caution:hover { background: color-mix(in oklch, var(--caution) 10%, transparent); }
 @keyframes tq-open { from { opacity: 0; transform: translateY(-4px); } }
-/* The foot asks in place too: its question takes the foot's place. */
-.tq-sec > .tq-ask { margin-top: 0; border-top-left-radius: 0; border-top-right-radius: 0; }
+/* The foot asks in place too: its question takes the foot's place, under the hairline. */
+.tq-foot > .tq-ask { flex: 1; min-width: 0; margin-top: 2px; }
 
 .tq-foot { display: flex; align-items: center; gap: 12px; padding-top: 10px; border-top: 1px solid var(--line); font: 400 13px/18px var(--font-sans); color: var(--ink-2); }
 .tq-foot > .ac-btn { flex: none; }
@@ -117,6 +117,7 @@
 .tq-none.ac-empty { justify-items: start; gap: 2px; padding: 12px 0 4px; border-top: 1px solid var(--line); text-align: left; }
 .tq-none.ac-empty b { font: 500 14.5px/20px var(--font-sans); letter-spacing: 0; color: var(--ink); }
 .tq-none.ac-empty p { max-width: none; font-size: 13.5px; line-height: 20px; color: var(--ink-2); }
+.tq-none.ac-empty .ac-empty-act { justify-content: flex-start; margin-top: 8px; }
 .tq-sec > .tq-more { display: flex; justify-content: center; margin-top: 8px; }
 
 /* The admin's cards: the licenses, and invite links. */
@@ -154,14 +155,17 @@
   .tq-hero { padding-bottom: 20px; }
   .tq-hero h2 { font-size: 36px; }
   /* One column. The admin's cards come up under the people, before the notes: what's yours to do, first. */
-  .tq-water { grid-template-columns: minmax(0, 1fr); gap: 26px; margin-top: calc(var(--tq-below) + 26px); }
+  .tq-water { grid-template-columns: minmax(0, 1fr); gap: 26px; margin-top: calc(var(--tq-below, 40px) + 26px); }
   .tq-main, .tq-side { display: contents; }
   .tq-water > * > * { min-width: 0; }
   .tq-wait { order: 0; }
   .tq-people { order: 1; }
   .tq-side > * { order: 2; }
   .tq-notes { order: 3; }
-  .tq-main > .tp-s { order: 4; margin-top: -12px; }
+  .tq-main > :not(.tq-wait, .tq-people, .tq-notes) { order: 4; }
+  .tq-main > :is(.tp-s, .tp-gs) { margin-top: -12px; }
+  /* The line slides on a phone, so a sun behind it would stand behind whoever slides past: it has set, off to the left. */
+  .dusk.tq .hz { --hz-sun-x: calc(-50cqw - 90px); }
   .tq-h { flex-wrap: wrap; row-gap: 0; }
   .tq-h small { text-align: left; }
   .tq-row .tq-t small { overflow-wrap: anywhere; }
@@ -170,9 +174,10 @@
 }
 
 /* ------------------------------------------------------------ joining by a link: one card on the team's evening */
-.tj { --hz: clamp(420px, 62vh, 560px); position: relative; isolation: isolate; display: grid; min-height: 100vh; min-height: 100dvh; overflow: hidden; color: var(--ink); }
+/* The card stands on the sky, its foot just over the horizon, with the sun going down to its left. */
+.tj { --hz: clamp(440px, 62vh, 560px); position: relative; isolation: isolate; display: grid; min-height: 100vh; min-height: 100dvh; overflow: hidden; color: var(--ink); }
 .tj-bar { position: absolute; top: 24px; left: 32px; z-index: 1; }
-.tj-in { display: grid; place-items: center; padding: 96px 16px 64px; }
+.tj-in { display: grid; place-items: start center; padding: 96px 16px 64px; }
 .tj-wait { display: inline-flex; align-items: center; gap: 10px; padding: 10px 16px; border-radius: var(--radius-pill); background: color-mix(in oklch, var(--surface) 82%, transparent); font: 500 14px/20px var(--font-sans); color: var(--ink-2); }
 .tj-card { position: relative; display: grid; justify-items: center; gap: 10px; width: min(480px, 100%); padding: 30px 32px 24px; border-radius: 26px; background: var(--surface); box-shadow: 0 0 0 1px var(--line), var(--shadow-3); text-align: center; animation: ac-rise var(--duration-3) var(--ease-out) both; }
 .tj-faces { margin-bottom: 6px; }
