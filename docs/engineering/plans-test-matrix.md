@@ -163,7 +163,7 @@ drive it end to end.
 | The side panel | App and Storybook › Pages › The side panel | On Free, "About 5 h of notes left" over its meter, then Free plan · See plans; on Pro, Pro's row with its sun and until when |
 | Notes stopped | Storybook › Calls › Notes, wide and phone | The organizer's bar over Notes' tabs with Get Pro and Add 10 hours; everyone else's with nothing to buy; Turn notes on when the plan has notes again without a purchase |
 | About 5 minutes left, and the call's end | Storybook › Calls | The organizer's banner; everyone's "This call ends at…" |
-| The yearly price's and more notes' limits | `pnpm --filter @alcove/server limits list` and `limits set`, on a local database | Listed with their defaults and bounds; `'$16'`, `12`, `600`, `'$15'` and `5` set; 101 packs and 0 minutes a pack refused, out of bounds |
+| The yearly price's and more notes' limits | `pnpm --filter @alcove/server limits list` and `limits set`, on a local database | Listed with their defaults and bounds; `'$16'`, `12`, `600`, `'$15'` and `5` set; 101 packs and 0 minutes a pack refused, out of bounds. Dollars and time, as `list` shows them and `set` takes them back, and a unit of the wrong kind or money past six places refused, are run by workspaces/media › storage limits › is set from the command line… |
 
 ## Found along the way
 
