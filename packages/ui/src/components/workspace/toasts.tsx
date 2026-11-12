@@ -97,11 +97,14 @@ export function WsToast({ toast, className }: { toast: Omit<WsToastData, 'ms'>; 
   );
 }
 
-/** The corner toasts rise into, 10 px over 420 ms. Each needs an `id`. */
-export function WsToasts({ toasts }: { toasts: (Omit<WsToastData, 'ms'> & { id: string | number })[] }) {
+/**
+ * The corner toasts rise into, 10 px over 420 ms. Each needs an `id`. Outside a call, `place` says where the workspace is:
+ * `full`, full screen, beside its own side panel; `beside`, a document beside the app's own page, clear of the app's side panel.
+ */
+export function WsToasts({ toasts, place }: { toasts: (Omit<WsToastData, 'ms'> & { id: string | number })[]; place?: 'full' | 'beside' | undefined }) {
   const move = useMove();
   return (
-    <div className="ws-toasts" aria-live="polite">
+    <div className={cn('ws-toasts', place && `is-${place}`)} aria-live="polite">
       <AnimatePresence>
         {toasts.map((t) => (
           <motion.div key={t.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0, transition: move(3) }} exit={{ opacity: 0, transition: move(2) }}>

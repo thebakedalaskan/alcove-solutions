@@ -42,9 +42,10 @@ declare module '@tanstack/react-router' {
   interface Register { router: ReturnType<typeof getRouter> }
   /**
    * What a page hands the next one in its history entry, never in the address (so it reaches no server and no log).
-   * `searched`: the words typed into the palette when See all opened Notes, which Notes puts in its line. The browser
-   * keeps history state across reloads and restored sessions, so it's unknown here: Notes parses it, and takes it out of
-   * the entry as it reads it.
+   * `searched`: the words typed into the palette when See all opened Calls, which Calls puts in its line, and takes out of
+   * the entry as it reads them. `scheduleWith`: who a call being scheduled starts with, as addresses, which an address
+   * would carry to the web server's logs (features/calls/scheduling/search.ts parses it). The browser keeps history state
+   * across reloads and restored sessions, so each is unknown here.
    */
-  interface HistoryState { searched?: unknown }
+  interface HistoryState { searched?: unknown; scheduleWith?: unknown }
 }

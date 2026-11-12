@@ -385,6 +385,30 @@ describe('follow-ups', () => {
     expect(action(await kofi.api.notes.updateAction(named, cake?.id ?? '', { owner: kofiEmail, seen: read(cake) }), cake?.id ?? '')).toMatchObject({ takenOn: true, owner: { person: { email: kofiEmail } } });
   });
 
+  it('lets whoever took something on take that back, and nobody else: it’s suggested for them again', async () => {
+    const org = await account(at('organizer'));
+    const [kofiEmail, adeEmail] = [at('kofi'), at('ade')];
+    const noteId = await held(org, 'Kofi will send the screens.', [kofiEmail, adeEmail]);
+    const [kofi, ade] = [await account(kofiEmail), await account(adeEmail)];
+    const screens = (await org.api.notes.get(noteId)).actions[0];
+    const id = screens?.id ?? '';
+    expect(action(await kofi.api.notes.updateAction(noteId, id, takeOn(screens)), id)).toMatchObject({ takenOn: true, owner: { person: { email: kofiEmail } } });
+    expect((await kofi.api.notes.inbox()).followUps.map((f) => f.id)).toEqual([id]);
+
+    // Nobody else can take his yes back for him, the organizer included.
+    expect(await outcome(ade.api.notes.updateAction(noteId, id, { takeOn: false }))).toBe('forbidden');
+    expect(await outcome(org.api.notes.updateAction(noteId, id, { takeOn: false }))).toBe('forbidden');
+    // He can: it's his to answer again, still his, and the record says he reopened it.
+    const back = await kofi.api.notes.updateAction(noteId, id, { takeOn: false });
+    expect(action(back, id)).toMatchObject({ takenOn: false, owner: { person: { email: kofiEmail } } });
+    expect(who(action(back, id)).slice(-2)).toEqual([[kofiEmail, 'took-on'], [kofiEmail, 'reopened']]);
+    expect((await kofi.api.notes.inbox()).followUps.map((f) => f.id)).toEqual([id]);
+    // Saying it again changes nothing more.
+    expect(who(action(await kofi.api.notes.updateAction(noteId, id, { takeOn: false }), id))).toEqual(who(action(back, id)));
+    // And he can take it on again.
+    expect(action(await kofi.api.notes.updateAction(noteId, id, takeOn(action(back, id))), id)).toMatchObject({ takenOn: true });
+  });
+
   it('lets anyone with the notes add one, for themselves or as a suggestion for someone else', async () => {
     const org = await account(at('organizer'));
     const [kofiEmail, priyaEmail] = [at('kofi'), at('priya')];

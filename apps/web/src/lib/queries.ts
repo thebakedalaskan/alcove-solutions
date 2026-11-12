@@ -17,6 +17,7 @@ import { log } from './log';
 import { weekOn } from './time';
 import { openGoogleSignIn, waitForGoogleReturn } from './googleSignIn';
 import { answerCallOptions, preferenceOptions, readMeeting, readPreferences, readWorkspaces, readNote, readInbox, refreshChangedNote, renameWorkspaceOptions, updateActionOptions, updateDecisionOptions, type PreferenceChange } from './queryWrites';
+import type { CalendarRange, CallAheadMake, ProposalAnswer } from '@alcove/api';
 
 export const qk = {
   drive: ['google-drive'] as const,
@@ -73,7 +74,19 @@ export const qk = {
   workspaceItem: (id: string, itemId: string) => ['workspaces', id, 'items', itemId] as const,
   workspaceTree: (id: string) => ['workspaces', id, 'tree'] as const,
   boardsToBring: ['workspaces', 'boards'] as const,
-  visionModels: ['models', 'vision'] as const
+  visionModels: ['models', 'vision'] as const,
+
+  calendarRange: (from: ISODate, to: ISODate) => ['meetings', 'calendar', from, to] as const,
+
+  /** What documents say at the top, for the Drive's cards: the IDs asked about, in the order asked. */
+  previews: (id: string, ids: readonly string[]) => ['workspaces', id, 'previews', ...ids] as const,
+  /** What's in Trash in every workspace, for the Drive's Trash. */
+  trashed: ['workspaces', 'trashed'] as const,
+
+  /** What the documents on a workspace's Home say at the top, for their cards. */
+  workspacePreviews: (id: string, items: readonly string[]) => ['workspaces', id, 'previews', items.join(',')] as const,
+  /** The line on what a workspace is for. */
+  workspaceAbout: (id: string) => ['workspaces', id, 'about'] as const,
 };
 
 /**
@@ -304,7 +317,21 @@ export const q = {
    */
   boardsToBring: (spaces: readonly WorkspaceSummary[]) => queryOptions({
     queryKey: [...qk.boardsToBring, spaces.slice(0, BOARD_SPACES).map((w) => w.id).join(' ')], queryFn: () => boardsToBring(spaces), staleTime: 30_000
-  })
+  }),
+
+  /** Your other calendar events between two times, at most 31 days apart: any week the Calls page or scheduling shows. */
+  calendarRange: (range: CalendarRange) => queryOptions({
+    queryKey: qk.calendarRange(range.from, range.to), queryFn: () => api.calendar.get(range), staleTime: 60_000, retry: false, placeholderData: (prev) => prev
+  }),
+
+  /** What documents say at the top, for their cards in the Drive: read from each as it is, and kept only in this tab's memory. */
+  previews: (id: string, ids: readonly string[]) => queryOptions({ queryKey: qk.previews(id, ids), queryFn: () => api.workspaces.previews(id, [...ids]), staleTime: 30_000, enabled: ids.length > 0 }),
+  /** One Trash for every workspace you can open something in. */
+  trashed: () => queryOptions({ queryKey: qk.trashed, queryFn: () => api.workspaces.trashed() }),
+
+  /** Read from each document as it is, for whoever can open it: a few at a time, for the cards on a workspace's Home. */
+  workspacePreviews: (id: string, items: readonly string[]) => queryOptions({ queryKey: qk.workspacePreviews(id, items), queryFn: () => api.workspaces.previews(id, [...items]), staleTime: 30_000 }),
+  workspaceAbout: (id: string) => queryOptions({ queryKey: qk.workspaceAbout(id), queryFn: () => api.workspaces.about(id) }),
 };
 
 /**
@@ -1089,3 +1116,58 @@ export function useRetryDriveExport() {
   return useMutation({ mutationFn: (id: string) => api.drive.retry(id), onSuccess: () => qc.invalidateQueries({ queryKey: qk.drive }) });
 }
 
+/** You, invited, asking the organizer to move a call to another time: they see it on theirs, and can move it there. */
+export function useProposeTime() {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: (v: { id: string; startsAt: ISODate }) => api.meetings.propose(v.id, v.startsAt), onSuccess: (m) => { qc.setQueryData(qk.meeting(m.id), m); callsChanged(qc); } });
+}
+/** The organizer answering a request to move a call: Move it moves the call there, as changing its time does; Keep lets the request go. */
+export function useAnswerProposal() {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: (v: { id: string; email: string; answer: ProposalAnswer }) => api.meetings.answerProposal(v.id, v.email, v.answer), onSuccess: (m) => { qc.setQueryData(qk.meeting(m.id), m); callsChanged(qc); } });
+}
+
+/**
+ * Gets a call ready before it starts, from its page: its home settled, with an agenda, a board or a document for files (`name`)
+ * made there and brought to the call. The call reads again, and so does what you can bring and the workspaces you're in.
+ */
+export function useReadyCall() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { id: string; make: CallAheadMake; name?: string | undefined }) => api.calls.ready(v.id, v.make, v.name),
+    onSuccess: () => { callsChanged(qc); void qc.invalidateQueries({ queryKey: qk.documents }); void qc.invalidateQueries({ queryKey: qk.workspaces }); }
+  });
+}
+
+/**
+ * What the Drive changes in a workspace: making something, renaming it, sending it to Trash and bringing it back. Each reads
+ * again what the Drive shows of it: the library Recent is made of, the workspace's tree, and one Trash.
+ */
+export function useDriveItems() {
+  const qc = useQueryClient();
+  const w = api.workspaces;
+  const reread = (v: { workspaceId: string }) => Promise.all([qk.documents, qk.trashed, qk.workspaceTree(v.workspaceId)].map((queryKey) => qc.invalidateQueries({ queryKey })));
+  return {
+    create: useMutation({ mutationFn: (v: { workspaceId: string; input: ItemInput }) => w.items.create(v.workspaceId, v.input), onSuccess: (_, v) => reread(v) }),
+    rename: useMutation({ mutationFn: (v: { workspaceId: string; id: string; name: string }) => w.items.rename(v.workspaceId, v.id, v.name), onSuccess: (_, v) => reread(v) }),
+    trash: useMutation({ mutationFn: (v: { workspaceId: string; id: string }) => w.items.trash(v.workspaceId, v.id), onSuccess: (_, v) => reread(v) }),
+    restore: useMutation({ mutationFn: (v: { workspaceId: string; id: string }) => w.items.restore(v.workspaceId, v.id), onSuccess: (_, v) => reread(v) })
+  };
+}
+
+/** Says what a workspace is for: the line shows at once, and goes back to what it was if Alcove doesn't take it. */
+export function useSetWorkspaceAbout(id: string) {
+  const qc = useQueryClient();
+  const key = q.workspaceAbout(id).queryKey;
+  return useMutation({
+    mutationFn: (about: string) => api.workspaces.setAbout(id, about),
+    onMutate: async (about) => {
+      await qc.cancelQueries({ queryKey: key });
+      const was = qc.getQueryData(key);
+      qc.setQueryData(key, about.replace(/\s+/g, ' ').trim());
+      return { was };
+    },
+    onError: (_e, _about, context) => { if (context) qc.setQueryData(key, context.was); },
+    onSettled: () => qc.invalidateQueries({ queryKey: key })
+  });
+}

@@ -14,14 +14,14 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {};
-/** Where a note was, as the notes list's preview says it's gone. */
+/** Where a note was, as a call that's gone says so. */
 export const WhereANoteWas: Story = {
   name: 'Where a note was',
   render: () => (
-    <div className="nt-pv-gone">
+    <div className="grid justify-items-center gap-2 px-2 pt-8 pb-4 text-center">
       <GoneArch />
-      <b>These notes aren’t here any more</b>
-      <p>They were deleted, or taken out of your notes.</p>
+      <b className="text-[16px] leading-[1.3] font-semibold text-ink">These notes aren’t here any more</b>
+      <p className="max-w-[34ch] text-[13.5px] leading-[1.5] text-ink-3">They were deleted, or taken out of your notes.</p>
     </div>
   )
 };

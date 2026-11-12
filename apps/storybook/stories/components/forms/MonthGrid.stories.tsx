@@ -1,7 +1,7 @@
 /*
  * MonthGrid: a month to pick a day from, as `@` then Pick a date… opens it in a document, in the list's place, and as
  * pressing a date tag does, to change it. Six weeks, Monday first, the days of the months either side quiet, today in the
- * warm colour of now, and the day picked marked as WeekGrid marks its pick. Any day can be picked, past ones too. The arrow
+ * warm colour of now, and the day picked filled. Any day can be picked, past ones too. The arrow
  * keys move a day (a week up and down), Home and End go to the week's ends, Page Up and Page Down a month (with Shift, a
  * year), Enter picks and Esc goes back. Stories start on Wednesday 4 November 2026, the demo day.
  */

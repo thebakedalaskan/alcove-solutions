@@ -34,6 +34,9 @@ import { AI_MODELS, atTheDoor } from './script';
 import { current, me, nextId, openedAs } from './state';
 import { activityOf, agentRequest, agentsFor, answer as answerRequest, answered, connectionAllowed, EXPIRED_AGENT_REQUEST, forgetAgents, PREVIEW_AGENT_TOKEN, PREVIEW_MCP_ENDPOINT } from './agents';
 import * as spaces from './workspaces';
+import type { CallAheadMake, ProposalAnswer } from '@alcove/api';
+import { readyIn } from '../world/call-page';
+import { previewsIn, trashIn } from './drive';
 
 /* ---------- how every answer comes back ---------- */
 
@@ -320,6 +323,7 @@ function meetingFrom(w: World, input: MeetingInput): Meeting {
     id, title: input.title, startsAt, endsAt: addMinutes(startsAt, input.durationMinutes), organizer: me(), isOrganizer: true, guests, guestCount: guests.length,
     notes: input.notes, choices: input.choices ?? DEFAULT_NOTES_CHOICES, code: newCode(), status: 'scheduled', instant: false, joinMuted: input.joinMuted ?? false,
     documents: documentsFor(w, input.documents), workspaceId: null, rsvps: { yes: 0, maybe: 0, no: 0, waiting: guests.length }, rsvp: null,
+    answers: guests.map((g) => ({ email: g.email, answer: null })), proposals: [],
     ...(input.offer ? { offer: { times: input.offer } } : { calendarUrl: `https://calendar.example.com/events/${id}` }),
     ...(repeat ? { repeat, seriesId: nextId('series'), seriesCode: newCode() } : {})
   };
@@ -517,7 +521,8 @@ export const standIn: AlcoveApi = {
       const guests = input.guests ? input.guests.map(personAt) : m.guests;
       const next: Meeting = {
         ...m, title: input.title ?? m.title, startsAt, endsAt: addMinutes(startsAt, minutes), guests, guestCount: guests.length, notes: input.notes ?? m.notes,
-        choices: input.choices ?? m.choices, joinMuted: input.joinMuted ?? m.joinMuted, documents: input.documents ? documentsFor(w, input.documents) : m.documents
+        choices: input.choices ?? m.choices, joinMuted: input.joinMuted ?? m.joinMuted, documents: input.documents ? documentsFor(w, input.documents) : m.documents,
+        ...followGuests(m, guests.map((g) => g.email), startsAt !== m.startsAt)
       };
       w.meetings = w.meetings.map((x) => (x.id === id ? next : x));
       return next;
@@ -536,10 +541,14 @@ export const standIn: AlcoveApi = {
       w.meetings = [...w.meetings.map((x) => (x.id === id ? { ...x, seriesId } : x)), next];
       w.notes = w.notes.map((n) => (n.meetingId === id ? { ...n, seriesId } : n));
       return next;
-    })
+    }),
+
+    propose: (id: ID, startsAt: string) => answer((w) => proposeIn(w, id, startsAt)),
+    answerProposal: (id: ID, email: string, reply: ProposalAnswer) => answer((w) => answerProposalIn(w, id, email, reply)),
+
   },
   calendar: {
-    get: () => answer((w) => ({ ...w.calendar, events: w.calendar.events.filter((e) => Date.parse(e.endsAt) > Date.now()) })),
+    get: (range) => answer((w) => ({ ...w.calendar, events: w.calendar.events.filter((e) => (range ? e.endsAt > range.from && e.startsAt < range.to : Date.parse(e.endsAt) > Date.now())) })),
     busy: (emails: string[], range) => answer((w) => busyFor(w, emails, range)),
     connectUrl: () => '#connecting-google-calendar',
     disconnect: () => answer((w) => { w.calendar = { source: 'google', needsAccess: true, events: [] }; return w.calendar; }),
@@ -590,7 +599,9 @@ export const standIn: AlcoveApi = {
       const move = new ScriptedMove(spec);
       moves.add(move);
       return move;
-    }
+    },
+    // A call before it starts, made ready from its page (S3 · A call).
+    ready: (meetingId: ID, make: CallAheadMake, name?: string | undefined) => answer((w) => readyIn(w, meetingId, make, name))
   },
   rings: {
     live: () => {
@@ -683,13 +694,13 @@ export const standIn: AlcoveApi = {
       const actions = n.actions.map((a) => {
         if (a.id !== actionId) return a;
         const owner = p.owner === null ? undefined : p.owner ? personAt(p.owner) : a.owner?.person;
-        const changes = [...a.changes, ...(p.takeOn ? [changeBy(n, 'took-on')] : []), ...(p.done !== undefined ? [changeBy(n, p.done ? 'done' : 'undone')] : []),
+        const changes = [...a.changes, ...(p.takeOn ? [changeBy(n, 'took-on')] : []), ...(p.takeOn === false && a.takenOn ? [changeBy(n, 'reopened')] : []), ...(p.done !== undefined ? [changeBy(n, p.done ? 'done' : 'undone')] : []),
           ...(p.owner !== undefined ? [changeBy(n, p.owner === null ? 'declined' : 'reassigned')] : []), ...(p.due !== undefined ? [changeBy(n, 'due', { after: p.due ?? '' })] : []),
           ...(p.text !== undefined ? [changeBy(n, 'reworded', { before: a.text, after: p.text })] : [])];
         const { owner: _was, due: _due, ...rest } = a;
         const due = p.due === null ? undefined : p.due ?? a.due;
         return {
-          ...rest, revision: nextId('revision'), text: p.text ?? a.text, done: p.done ?? a.done, takenOn: p.takeOn ? true : p.owner !== undefined || (a.owner?.person?.email !== me().email && (p.text !== undefined || p.due !== undefined)) ? false : a.takenOn,
+          ...rest, revision: nextId('revision'), text: p.text ?? a.text, done: p.done ?? a.done, takenOn: p.takeOn ? true : p.takeOn === false ? false : p.owner !== undefined || (a.owner?.person?.email !== me().email && (p.text !== undefined || p.due !== undefined)) ? false : a.takenOn,
           ...(owner ? { owner: { name: owner.name, person: owner } } : {}), ...(due ? { due } : {}), changes
         };
       });
@@ -794,7 +805,14 @@ export const standIn: AlcoveApi = {
       w.personal[id] = (w.personal[id] ?? []).map((x) => (x.shared?.additionId === additionId ? { ...x, shared: null } : x));
       return { ...n, additions: n.additions.filter((a) => a.id !== additionId) };
     }),
-    delete: (id: ID) => answer((w) => { noteIn(w, id); w.notes = w.notes.filter((n) => n.id !== id); })
+    delete: (id: ID) => answer((w) => { noteIn(w, id); w.notes = w.notes.filter((n) => n.id !== id); }),
+
+    // The stand-in keeps no video of a share: what's saved is silence as long as its part of the recording, as replay plays.
+    screenVideo: (id: ID, share: ID, segment: number) => answer((w) => {
+      const part = noteIn(w, id).shares.find((s) => s.id === share)?.segments.find((g) => g.segment === segment);
+      return part ? part.until - part.at : 60;
+    }).then(quietAudio),
+
   },
   series: {
     get: (id: ID) => answer((w) => seriesIn(w, id)),
@@ -807,7 +825,8 @@ export const standIn: AlcoveApi = {
         const n = s.notes.find((x) => x.id === p.noteId);
         return n ? [{ type: 'source', noteId: n.id, title: n.title, startedAt: n.startedAt, at: p.at }] : [];
       });
-    })
+    }),
+
   },
   workspaces: {
     list: () => answer(spaces.workspaceList),
@@ -884,7 +903,17 @@ export const standIn: AlcoveApi = {
     versions: (id: ID, documentId: ID, o) => answer(() => spaces.versionsOf(id, documentId), asWho(o)),
     version: (id: ID, documentId: ID, versionId: ID, o) => answer(() => spaces.versionOf(id, documentId, versionId), asWho(o)),
     restoreVersion: (id: ID, _documentId: ID, _versionId: ID, o) => answer(() => { spaces.treeOf(id); }, asWho(o)),
-    searchText: (id: ID) => spaces.searchText(id)
+    searchText: (id: ID) => spaces.searchText(id),
+
+    previews: (id: ID, items: ID[]) => answer((w) => previewsIn(w, id, items)),
+    trashed: () => answer(trashIn),
+
+    about: (id: ID) => answer((w) => { spaces.treeOf(id); return w.workspaces.find((x) => x.id === id)?.about ?? ''; }),
+    setAbout: (id: ID, about: string) => answer((w) => {
+      spaces.treeOf(id);
+      const space = w.workspaces.find((x) => x.id === id);
+      if (space) space.about = about.replace(/\s+/g, ' ').trim();
+    }),
   },
   credits: {
     balance: () => answer((w) => w.credits),
@@ -948,4 +977,38 @@ async function* progressOf(id: string): AsyncIterable<NoteProgress> {
   w.notes = w.notes.map((n) => (n.id === id ? written : n));
   w.writing = null;
   yield steps(4, true);
+}
+
+/**
+ * The organizer's view of who answered and who asked to move a call, kept in step with a change to it as the server
+ * keeps it: someone taken off goes, answer and request with them, and a call that moves lets go of every request.
+ */
+function followGuests(m: Meeting, emails: string[], moved: boolean): Pick<Meeting, 'answers' | 'proposals'> {
+  if (!m.isOrganizer) return {};
+  return {
+    answers: emails.map((email) => m.answers?.find((a) => a.email === email) ?? { email, answer: null }),
+    proposals: moved ? [] : (m.proposals ?? []).filter((p) => emails.includes(p.email))
+  };
+}
+/** You, invited, asking the organizer to move a call: they see it on theirs, and you see your own. */
+function proposeIn(w: World, id: string, startsAt: string): Meeting {
+  const m = meetingIn(w, id);
+  if (m.isOrganizer) throw refused('not-found', 'That call isn’t there any more.');
+  if (m.offer) throw refused('conflict', 'A time is still being picked for this call.');
+  if (Date.parse(startsAt) <= Date.now()) throw refused('invalid', 'Ask for a time that’s still to come.');
+  const next: Meeting = { ...m, proposals: [{ email: me().email, startsAt: new Date(startsAt).toISOString() }] };
+  w.meetings = w.meetings.map((x) => (x.id === id ? next : x));
+  return next;
+}
+/** The organizer answering a request: Move it moves the call there and lets go of every request; Keep lets go of this one. */
+function answerProposalIn(w: World, id: string, email: string, reply: ProposalAnswer): Meeting {
+  const m = meetingIn(w, id);
+  const asked = m.isOrganizer ? m.proposals?.find((p) => p.email === email) : undefined;
+  if (!asked) throw refused('not-found', 'That request to move the call doesn’t exist, or you don’t have access to it.');
+  const minutes = Math.round((Date.parse(m.endsAt) - Date.parse(m.startsAt)) / 60_000);
+  const next: Meeting = reply === 'move'
+    ? { ...m, startsAt: asked.startsAt, endsAt: addMinutes(asked.startsAt, minutes), proposals: [] }
+    : { ...m, proposals: (m.proposals ?? []).filter((p) => p.email !== email) };
+  w.meetings = w.meetings.map((x) => (x.id === id ? next : x));
+  return next;
 }

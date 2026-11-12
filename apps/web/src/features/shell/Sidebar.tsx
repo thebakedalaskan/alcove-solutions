@@ -170,7 +170,7 @@ function Pinned({ onPin }: { onPin: () => void }) {
         <ul className="sb-list">
           {pinned.map((n) => (
             <li key={n.id}>
-              <Link to="/notes/$noteId" params={{ noteId: n.id }} className="sb-link"><ArchThumb cover={coverFor(n.id)} room={n.kind === 'room'} width={15} /><span>{n.title}</span></Link>
+              <Link to="/calls/$noteId" params={{ noteId: n.id }} className="sb-link"><ArchThumb cover={coverFor(n.id)} room={n.kind === 'room'} width={15} /><span>{n.title}</span></Link>
             </li>
           ))}
         </ul>

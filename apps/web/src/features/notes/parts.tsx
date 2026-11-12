@@ -1,13 +1,12 @@
-/* The pieces of a note page, shared by real notes, the example and a series. */
+/* The pieces of a call's notes, shared by its page, the example, a series and the places that link into them. */
 import {
   mayDecide, mayDispute, proposerOf,
-  type ActionItem, type AnswerPart, type CaptureGap, type Chapter, type Decision, type DecisionPatch, type NoteReader, type RoomRef,
+  type ActionItem, type AnswerPart, type CaptureGap, type Decision, type DecisionPatch, type NoteReader, type RoomRef,
   type Question, type Recipient, type ScreenMoment, type ScreenRef, type SeriesAnswerPart, type Speaker, type TranscriptLine
 } from '@alcove/api';
-import { Avatar, CaptureGapMark, Icon, IconButton, ReadMore, UnsureKey, cn } from '@alcove/ui';
+import { Avatar, CaptureGapMark, Icon, IconButton, ReadMore, cn } from '@alcove/ui';
 import { Link } from '@tanstack/react-router';
-import { useReducedMotion } from 'motion/react';
-import { Fragment, createContext, useContext, useEffect, useRef, useState, type PointerEvent, type ReactNode } from 'react';
+import { Fragment, createContext, useContext, useEffect, useRef, useState, type PointerEvent, type ReactNode, type RefObject } from 'react';
 import { KeepAnswer } from '~/features/personal/parts';
 import { gapLabel, gapsAfter, gapsBefore } from '~/lib/capture';
 import { ariaShortcut, withMod } from '~/lib/keys';
@@ -17,26 +16,27 @@ import { AnswerView, useAnswer, type Answer, type Cite } from './answer';
 import { byName, notTheirs } from './entries';
 import { LineRow, type Correcting, type FromLine, type LineMarks } from './lines';
 import { roleLine } from './meta';
-import { usePlayerAt, type PlayerState } from './Player';
 import { capital } from '~/lib/words';
 
-/** A part of the note, with its heading: what kind of thing it holds gives it its colour, and `count` says what's waiting. */
-/** A part of a note under its heading. `id`: where a link goes to it, as a call's folder goes to a note's follow-ups. */
+/** A part of the notes under its heading, with how many there are or what's waiting. `id`: where a link goes to it. */
 export function Section({ title, count, kind, id, className, children }: { title: string; count?: ReactNode; kind?: 'decide' | 'follow' | undefined; id?: string | undefined; className?: string | undefined; children: ReactNode }) {
   return (
-    <section id={id} className={cn('nd-s', kind && `is-${kind}`, className)}>
-      <h2>{title}{count !== undefined && <span className="n">{count}</span>}</h2>
+    <section id={id} className={cn('cd-grp', kind && `is-${kind}`, className)} aria-label={title}>
+      <h2 className="cd-gh">{title}{count !== undefined && <span>{count}</span>}</h2>
       {children}
     </section>
   );
 }
 
-/** A moment as a chip that goes there, from anywhere on the page. With nothing to go to, it isn't drawn. */
-export function Moment({ at, onSeek, plays = false }: { at: number | undefined; onSeek: ((s: number) => void) | undefined; plays?: boolean | undefined }) {
+/**
+ * A moment as a ▶ chip that plays it on the stage, from anywhere on the page, without changing what's open beside it. With no
+ * recording to play (`plays` false) it goes there: the stage and the transcript move to it. With nothing to go to, it isn't drawn.
+ */
+export function Moment({ at, onSeek, plays = true }: { at: number | undefined; onSeek: ((s: number) => void) | undefined; plays?: boolean | undefined }) {
   if (at === undefined || !onSeek) return null;
   return (
-    <button type="button" className="nd-moment" aria-label={plays ? `Play the call from ${position(at)}` : `Go to the moment at ${position(at)}`} title={plays ? 'Play from this moment' : 'Go to this moment'} onClick={() => onSeek(at)}>
-      <Icon name={plays ? 'play' : 'moment'} size={13} />{position(at)}
+    <button type="button" className="cd-tm" aria-label={plays ? `Play the call from ${position(at)}` : `Go to the moment at ${position(at)}`} title={plays ? 'Play it' : 'Go to it'} onClick={() => onSeek(at)}>
+      <Icon name="play" size={9} />{position(at)}
     </button>
   );
 }
@@ -93,7 +93,10 @@ export function actionLine(a: ActionItem, me: string | undefined): string {
   // Nobody with an address can't answer, so nobody is waited for.
   if (!a.owner.person?.email) return `The notes suggest ${them}. They can’t take it on here, so give it to someone who has the notes`;
   const ask = mine ? 'Take it on if it’s yours' : `Waiting for ${them} to take it on`;
-  const last = a.changes.findLast((c) => c.what === 'reopened' || c.what === 'reassigned');
+  const moved = a.changes.findLast((c) => c.what === 'reopened' || c.what === 'reassigned');
+  // Taking back your own yes leaves it as it was: suggested to you.
+  const owner = a.owner.person;
+  const last = moved?.what === 'reopened' && owner && sameEmail(moved.by, owner) ? undefined : moved;
   if (last?.what === 'reopened') return mine ? `${capital(byName(last.by, me))} changed this since you took it on. Take it on again if it’s still yours` : `${capital(byName(last.by, me))} changed this since ${them} took it on. Waiting for them to take it on again`;
   if (last) return `${capital(byName(last.by, me))} gave this to ${them}. ${ask}`;
   const proposer = proposerOf(a);
@@ -101,92 +104,11 @@ export function actionLine(a: ActionItem, me: string | undefined): string {
   return `${capital(who)} ${who === 'you' || !proposer ? 'suggest' : 'suggests'} ${them}. ${ask}`;
 }
 
-/** Lines a written note shows before its whole transcript is opened. */
-const FIRST_LINES = 5;
-
 /** Where the page went, for the transcript to go there too: a new one each time, so going to the same moment again still does. */
 export interface Focus { at: number }
 
 /** The line said at a moment. */
 const lineAt = (lines: TranscriptLine[], at: number) => Math.max(0, lines.findLastIndex((l) => l.at <= at + 0.5));
-
-/**
- * What was said in a call, under a heading: its first lines, and all of it on request, or once something goes to a moment
- * further on. `player` marks the line being said as the recording plays. Pauses and shared screens after the lines shown
- * wait too, and `onScreens` opens the first of them from here meanwhile. `live`: the call is still going. With `correct`, whoever may
- * corrects lines in place (lines.tsx); with `marks`, they bookmark lines for themselves. `kinds` says which lines
- * something in the notes came from. `top` is what goes above the lines. Pressing a line (its words or its time) goes to
- * its moment and plays from there (`onSeek` with `play`), and the line is marked where it is: it's in view already. On a
- * phone, where only one line shows its tools, the line pressed keeps them while the line being said moves on, until
- * another is pressed or it's scrolled out of sight.
- */
-export function Transcript({ lines, gaps, seconds, me, onSeek, focus, player, live = false, screens, onScreens, correct, fromLine, marks, kinds, top }: {
-  lines: TranscriptLine[]; gaps: CaptureGap[]; seconds: number; me: string | undefined; onSeek?: ((s: number, play?: boolean) => void) | undefined; focus?: Focus | undefined; player: PlayerState; live?: boolean | undefined;
-  screens?: ScreensShown | undefined; onScreens?: ((m: ScreenMoment) => void) | undefined; correct?: Correcting | undefined; fromLine?: FromLine | undefined; marks?: LineMarks | undefined; kinds?: LineKinds | undefined; top?: ReactNode;
-}) {
-  const reduce = useReducedMotion();
-  const [open, setOpen] = useState(false);
-  const [went, setWent] = useState<Focus | undefined>(undefined);
-  /** The moment of the line just pressed, which the page then goes to. */
-  const pressed = useRef<number | null>(null);
-  // Going to a line further on opens the rest, in the same drawing, so the line is there to scroll to.
-  if (focus !== went) { setWent(focus); if (focus && lineAt(lines, focus.at) >= FIRST_LINES) setOpen(true); }
-  useEffect(() => {
-    if (!focus) return;
-    // A line that was pressed only scrolls if it's under the strip at the top or the bar at the bottom.
-    const near = pressed.current === focus.at;
-    pressed.current = null;
-    document.getElementById(MOMENT)?.scrollIntoView({ block: near ? 'nearest' : 'center', behavior: reduce ? 'auto' : 'smooth' });
-  }, [focus, reduce]);
-  const plays = player.total > 0;
-  /** The line pressed last, by its ID, until another is pressed or it's out of sight. */
-  const [picked, setPicked] = useState<string | null>(null);
-  const press = onSeek && ((at: number, line: string) => { pressed.current = at; setPicked(line); onSeek(at, plays); });
-  // The line being said, once anyone has gone anywhere or pressed play.
-  const said = usePlayerAt(player, (p) => (p > 0 ? lineAt(lines, p) : -1));
-  const lit = said >= 0 ? said : focus ? lineAt(lines, focus.at) : -1;
-  const all = open || lines.length <= FIRST_LINES;
-  /* Watches the line pressed (this owns the observer, and stops it when another is pressed or the lines change), and lets
-     it go once it has been in sight and isn't any more: a line pressed under the bar is scrolled up into sight first. */
-  const section = useRef<HTMLElement>(null);
-  useEffect(() => {
-    const el = picked ? section.current?.querySelector('.nd-l.is-picked') : null;
-    if (!el) return;
-    let seen = false;
-    const io = new IntersectionObserver(([e]) => {
-      if (e?.isIntersecting) seen = true;
-      else if (seen) setPicked(null);
-    });
-    io.observe(el);
-    return () => io.disconnect();
-  }, [picked, all]);
-  const shown = all ? lines : lines.slice(0, FIRST_LINES);
-  const last = shown.at(-1)?.at ?? 0;
-  const upTo = <T extends { at: number }>(xs: T[]) => (all ? xs : xs.filter((x) => x.at <= last));
-  // A screen attached to a line waits with that line; one whose line isn't in the transcript waits by time.
-  const ids = new Set(lines.map((l) => l.id));
-  const showing = new Set(shown.map((l) => l.id));
-  const waiting = (m: ScreenMoment) => (m.line !== null && ids.has(m.line) ? showing.has(m.line) : m.at <= last);
-  const hidden = (screens?.moments ?? []).filter((m) => !all && !waiting(m));
-  const [nextHidden] = hidden;
-  return (
-    <section ref={section} className="nd-s nd-tr">
-      <div className="nd-sh"><h2>Transcript</h2><UnsureKey words={lines.some((l) => l.unsure?.words)} speaker={lines.some((l) => l.unsure?.speaker)} className="nd-key" /></div>
-      {top}
-      <TranscriptLines lines={shown} gaps={upTo(gaps)} me={me} onSeek={press} plays={plays} focus={focus?.at} lit={lit} picked={picked} screens={screens && { ...screens, moments: all ? screens.moments : screens.moments.filter(waiting) }} correct={correct} fromLine={fromLine} marks={marks} kinds={kinds} />
-      {(lines.length > FIRST_LINES || nextHidden) && (
-        <div className="nd-allrow">
-          {lines.length > FIRST_LINES && (
-            <button type="button" className="nd-all" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
-              {open ? 'Show less' : live ? 'Show all so far' : `Show all ${Math.max(1, Math.round(seconds / 60))} minutes`}<Icon name="down" size={14} />
-            </button>
-          )}
-          {nextHidden && onScreens && <button type="button" className="nd-act nd-scrlink" onClick={() => onScreens(nextHidden)}><Icon name="monitor" size={15} />{hidden.length} shared {hidden.length === 1 ? 'screen' : 'screens'}</button>}
-        </div>
-      )}
-    </section>
-  );
-}
 
 /** Which lines something in the notes came from, by kind, for a mark beside them. */
 export type LineKinds = ReadonlyMap<string, 'decide' | 'follow'>;
@@ -263,29 +185,14 @@ export function TranscriptLines({ lines, gaps = [], me, onSeek, plays = false, f
 }
 
 /**
- * A moment in a call's notes, as a link: they open with the transcript at that line, and the audio waiting there. In a
- * breakout room's section, that room's. `chip`: as the moment chips on a note look, for a page that's a note's neighbour.
+ * A moment in a call, as a link to its page: it opens with the transcript at that line, and the audio waiting there. In a
+ * breakout room's section, that room's.
  */
-export function MomentLink({ noteId, at, room, chip = false }: { noteId: string; at: number; room?: RoomRef | undefined; chip?: boolean | undefined }) {
+export function MomentLink({ noteId, at, room }: { noteId: string; at: number; room?: RoomRef | undefined }) {
   return (
-    <Link to="/notes/$noteId" params={{ noteId }} {...atMoment(at, room)} {...useNotesApart()} className={chip ? 'nd-moment' : 'ac-time-chip'} title={`Open the notes at ${position(at)}${room ? `, in ${room.name}` : ''}`}>
-      {chip && <Icon name="moment" size={13} />}{position(at)}
+    <Link to="/calls/$noteId" params={{ noteId }} {...atMoment(at, room)} {...useNotesApart()} className="ac-time-chip" title={`Open the call at ${position(at)}${room ? `, in ${room.name}` : ''}`}>
+      {position(at)}
     </Link>
-  );
-}
-
-/** The chapters of a call as a list, for a phone: the line has no room for them, or for what they say. */
-export function ChapterList({ chapters, onGo }: { chapters: Chapter[]; onGo: ((c: Chapter) => void) | undefined }) {
-  if (!chapters.length) return null;
-  return (
-    <section className="nd-b nd-chapters">
-      <h2>Chapters</h2>
-      {chapters.map((c) => (
-        <button key={`${c.at}-${c.title}`} type="button" className="nd-chap" disabled={!onGo} onClick={() => onGo?.(c)}>
-          <span className="nd-c-d">{position(c.at)}</span><span><b>{c.title}</b>{c.summary && <small>{c.summary}</small>}</span>
-        </button>
-      ))}
-    </section>
   );
 }
 
@@ -301,17 +208,17 @@ export function Recipients({ recipients, me, fresh }: { recipients: Recipient[];
   const long = recipients.length > FIRST_PEOPLE + 2;
   const shown = !long || all ? recipients : recipients.filter((r, i) => i < FIRST_PEOPLE || fresh?.has(r.person.email));
   return (
-    <section className="nd-b">
+    <section className="cd-who" aria-label="Who has these notes">
       <h2>Who has these notes</h2>
       {shown.map((r) => (
-        <div key={r.person.email} className={cn('nd-p', fresh?.has(r.person.email) && 'is-fresh')}>
+        <div key={r.person.email} className={cn('cd-p', fresh?.has(r.person.email) && 'is-fresh')}>
           <Avatar person={r.person} size={26} />
-          <span className="nd-p-n ac-clamp-1">{r.person.name}{me && sameEmail(r.person, { email: me }) ? ' (you)' : ''}</span>
-          <span className="nd-p-r">{roleLine(r, me)}</span>
+          <span className="cd-p-n ac-clamp-1">{r.person.name}{me && sameEmail(r.person, { email: me }) ? ' (you)' : ''}</span>
+          <span className="cd-p-r">{roleLine(r, me)}</span>
         </div>
       ))}
-      {long && <button type="button" className="nd-act nd-showall" aria-expanded={all} onClick={() => setAll((a) => !a)}>{all ? 'Show fewer' : `Show all ${recipients.length}`}</button>}
-      <p className="nd-open"><Icon name="sealed" size={14} />{onlyThese(recipients.length)}</p>
+      {long && <button type="button" className="cd-act" aria-expanded={all} onClick={() => setAll((a) => !a)}>{all ? 'Show fewer' : `Show all ${recipients.length}`}</button>}
+      <p className="cd-open"><Icon name="sealed" size={14} />{onlyThese(recipients.length)}</p>
     </section>
   );
 }
@@ -324,10 +231,10 @@ export function Summary({ summary, details }: { summary: string; details: string
   const paragraphs = details.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
   return (
     <>
-      <p className="nd-sum">{summary}</p>
+      <p className="cd-sum">{summary}</p>
       {paragraphs.length > 0 && (
-        <ReadMore label="Full summary" className="nd-more-sum">
-          <div className="nd-full">{paragraphs.map((p, i) => <p key={i}>{p}</p>)}</div>
+        <ReadMore label="Full summary" className="cd-more-sum">
+          <div className="cd-full">{paragraphs.map((p, i) => <p key={i}>{p}</p>)}</div>
         </ReadMore>
       )}
     </>
@@ -341,7 +248,7 @@ const citeKey = (c: Cite) => (c.type === 'cite' ? `${c.noteId}@${c.at}` : c.type
 export function SourceLink({ c }: { c: Extract<Cite, { type: 'source' }> }) {
   const day = shortDay(new Date(c.startedAt));
   return (
-    <Link to="/notes/$noteId" params={{ noteId: c.noteId }} {...inNote(c.at, c.room)} {...useNotesApart()} className="src-chip" title={`Open the notes from ${c.title}, ${day}${c.room ? `, in ${c.room.name}` : ''}`}>
+    <Link to="/calls/$noteId" params={{ noteId: c.noteId }} {...inNote(c.at, c.room)} {...useNotesApart()} className="src-chip" title={`Open the notes from ${c.title}, ${day}${c.room ? `, in ${c.room.name}` : ''}`}>
       <Icon name="notes" size={13} />{day}{c.room && <span>{c.room.name}</span>}{c.at !== undefined && <span className="ac-mono">{position(c.at)}</span>}
     </Link>
   );
@@ -352,7 +259,7 @@ export function SourceLink({ c }: { c: Extract<Cite, { type: 'source' }> }) {
  * moments in this call to play, the shared screens they were read on, or the calls (and moments) to open.
  * Only the person asking sees a question or its answer, and neither is kept unless they keep it (`onKeep`).
  */
-export function AskBar({ suggestions, ask, onSeek, shown, label = 'Ask about this call', waiting = 'Reading the call', onKeep }: {
+export function AskBar({ suggestions, ask, onSeek, shown, label = 'Ask about this call', waiting = 'Reading the call', onKeep, end: endOfRead }: {
   suggestions: string[]; ask: (question: string) => AsyncIterable<AnswerPart | SeriesAnswerPart>; onSeek?: ((s: number) => void) | undefined;
   /** Shows a shared screen an answer comes from. */
   shown?: ScreenRefShown | undefined; label?: string | undefined;
@@ -360,6 +267,8 @@ export function AskBar({ suggestions, ask, onSeek, shown, label = 'Ask about thi
   waiting?: string | undefined;
   /** Keeps an answer in your own notes. */
   onKeep?: ((a: Answer) => Promise<unknown>) | undefined;
+  /** Where what's read ends, when it scrolls apart from the bar (a call's right column). Without it, the end is just above the bar. */
+  end?: RefObject<HTMLElement | null> | undefined;
 }) {
   const input = useRef<HTMLInputElement>(null);
   const end = useRef<HTMLDivElement>(null);
@@ -381,30 +290,30 @@ export function AskBar({ suggestions, ask, onSeek, shown, label = 'Ask about thi
   const pointOut = (e: PointerEvent<HTMLElement>) => { if (e.pointerType === 'touch') return; clearTimeout(leaving.current); leaving.current = setTimeout(() => setOver(false), 240); };
   useEffect(() => () => clearTimeout(leaving.current), []);
   useEffect(() => {
-    const el = end.current;
+    const el = endOfRead?.current ?? end.current;
     if (!el) return;
     const seen = new IntersectionObserver(([e]) => setAtEnd(!!e?.isIntersecting));
     seen.observe(el);
     return () => seen.disconnect();
-  }, []);
+  }, [endOfRead]);
   /*
    * The suggestions sit above the bar, over the end of the note, and can wrap to several rows. Their height (and the gap
-   * above the bar) is handed to the page as --nd-chips, which the end of the note pads by, so the last lines can always
+   * above the bar) is handed to the column as --cd-chips, which the end of the note pads by, so the last lines can always
    * scroll clear. They're laid out even when out of sight, so the room doesn't change as they appear. The answer isn't
    * counted: it's dismissed, and it's tall.
    */
   const room = suggestions.length > 0;
   useEffect(() => {
     const el = suggs.current;
-    const page = el?.closest('.nd');
+    const page = el?.closest('.cd-right');
     if (!el || !(page instanceof HTMLElement)) return;
     const measure = (target: Element) => {
-      if (target instanceof HTMLElement && target.offsetHeight > 0) page.style.setProperty('--nd-chips', `${target.offsetHeight + 8}px`);
+      if (target instanceof HTMLElement && target.offsetHeight > 0) page.style.setProperty('--cd-chips', `${target.offsetHeight + 8}px`);
     };
     measure(el);
     const watch = new ResizeObserver((entries) => { for (const entry of entries) measure(entry.target); });
     watch.observe(el);
-    return () => { watch.disconnect(); page.style.removeProperty('--nd-chips'); };
+    return () => { watch.disconnect(); page.style.removeProperty('--cd-chips'); };
   }, [room]);
   // The bar is in view wherever the page is, so going to it never moves the page.
   useEffect(() => {
@@ -420,13 +329,13 @@ export function AskBar({ suggestions, ask, onSeek, shown, label = 'Ask about thi
   };
   return (
     <>
-      <div ref={end} className="nd-end-mark" aria-hidden="true" />
-      <div className="nd-askdock" onPointerEnter={pointIn} onPointerLeave={pointOut}>
-        <div className="nd-up">
+      {!endOfRead && <div ref={end} className="cd-end-mark" aria-hidden="true" />}
+      <div className="cd-askdock" onPointerEnter={pointIn} onPointerLeave={pointOut}>
+        <div className="cd-up">
           {answer && (
-            <AnswerView answer={answer} waiting={waiting} onClose={() => { reset(); input.current?.focus({ preventScroll: true }); }} className="nd-ans">
+            <AnswerView answer={answer} waiting={waiting} onClose={() => { reset(); input.current?.focus({ preventScroll: true }); }} className="cd-ans">
               {(answer.cites.length > 0 || (onKeep && answer.done && answer.text)) && (
-                <div className="nd-ans-f">
+                <div className="cd-ans-f">
                   {answer.cites.map((c) => (c.type === 'cite' ? <Moment key={citeKey(c)} at={c.at} onSeek={onSeek} />
                     : c.type === 'screen' ? <Fragment key={citeKey(c)}>{shown?.({ id: c.id, sure: true, ...(c.region === undefined ? {} : { region: c.region }) })}</Fragment>
                       : <SourceLink key={citeKey(c)} c={c} />))}
@@ -436,17 +345,17 @@ export function AskBar({ suggestions, ask, onSeek, shown, label = 'Ask about thi
             </AnswerView>
           )}
           {room && (
-            <div ref={suggs} className={cn('nd-suggs', !answer && (atEnd || focus || over) && 'is-on')} hidden={!!answer}>
-              {suggestions.slice(0, 3).map((s) => <button key={s} type="button" className="nd-sugg" onMouseDown={(e) => e.preventDefault()} onClick={() => run(s)}>{s}</button>)}
+            <div ref={suggs} className={cn('cd-suggs', !answer && (atEnd || focus || over) && 'is-on')} hidden={!!answer}>
+              {suggestions.slice(0, 3).map((s) => <button key={s} type="button" className="cd-sugg" onMouseDown={(e) => e.preventDefault()} onClick={() => run(s)}>{s}</button>)}
             </div>
           )}
         </div>
-        <div className="nd-ask">
+        <div className="cd-ask">
           <Icon name="ask" size={18} />
           <input ref={input} value={text} onChange={(e) => setText(e.target.value)} onFocus={() => setFocus(true)} onBlur={() => setFocus(false)}
             onKeyDown={(e) => { if (e.key === 'Enter') run(text); }} placeholder={label} autoComplete="off" aria-label={`${label}, for you alone`} aria-keyshortcuts={ariaShortcut('J')} />
-          <span className="nd-only"><Icon name="lock" size={13} />Only you</span>
-          <IconButton icon="arrowUp" label="Ask" className="nd-ask-go" onClick={() => run(text)} />
+          <span className="cd-only"><Icon name="lock" size={13} />Only you</span>
+          <IconButton icon="arrowUp" label="Ask" className="cd-ask-go" onClick={() => run(text)} />
         </div>
       </div>
     </>

@@ -4,10 +4,10 @@
  * address. See WorkspaceProps in context.ts.
  */
 import { firstName, type WorkspaceLive, type WorkspaceMention, type WorkspaceTree, type WorkspaceWhere } from '@alcove/api';
-import { Button, WsCantOpen, WsDoc, WsDocHead, WsDragGhost, WsEmpty, WsOfflineEmpty, WsPane, WsPickDocument, WsToasts, useToast, wsToast, type WsToastData } from '@alcove/ui';
+import { Button, WsCantOpen, WsDoc, WsDragGhost, WsEmpty, WsFrame, WsOfflineEmpty, WsPane, WsPickDocument, WsToasts, useToast, wsToast, type WsToastData } from '@alcove/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { api } from '~/lib/api';
 import { overlayOpen, typing, withMod } from '~/lib/keys';
 import { useLive, useMedia, useOnline } from '~/lib/live';
@@ -24,7 +24,11 @@ import { KeptHere } from './Rescue';
 import { useRowDrag } from './drag';
 import { preloadEditor } from './editor/lazy';
 import { useFollow } from './follow';
+import { homeOf } from './calls';
 import { Find, useFindKeys } from './Find';
+import { Frame } from './Frame';
+import { PaneHead } from './Head';
+import { Home } from './Home';
 import { usePersonIds } from './ids';
 import { Keys } from './Keys';
 import { List } from './List';
@@ -99,7 +103,7 @@ function useGlow(sent: WorkspaceTree | null, mode: WorkspaceProps['mode']): Read
   useEffect(() => { const t = timers.current; return () => { t.forEach(clearTimeout); }; }, []);
   useEffect(() => {
     if (!sent) return;
-    const now = treeOf(sent.items, mode === 'page');
+    const now = treeOf(sent.items, mode !== 'call');
     const was = before.current;
     before.current = now;
     if (!was) return;
@@ -175,7 +179,7 @@ function useFolders(owner: string | null, workspaceId: string) {
 }
 
 /** The workspace once its stream is open. */
-function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, call }: WorkspaceProps & { store: WorkspaceLive }) {
+function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, onExpand, frame, pass, call }: WorkspaceProps & { store: WorkspaceLive }) {
   const view = useLive(store);
   const online = useOnline();
   useListTriesWhenShown(store, call?.closed ?? false);
@@ -183,18 +187,21 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
   const owner = session?.ownerId ?? null;
   const me = session?.user ?? null;
   const { items, change } = useLaidOver(store);
-  const tree = useMemo(() => treeOf(items, mode === 'page'), [items, mode]);
+  /* Boards are listed wherever the workspace isn't in a call, which shows its boards on the stage. */
+  const tree = useMemo(() => treeOf(items, mode !== 'call'), [items, mode]);
   const { toasts, say: sayHere } = useToasts();
   const say = call?.say ?? sayHere;
   const glowing = useGlow(view.tree, mode);
   const { open, setOpen, openAll } = useFolders(owner, workspaceId);
   const [draft, setDraft] = useState<FolderDraft | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
+  const [naming, setNaming] = useState<'new' | 'rename' | null>(null);
   const [blockInto, setBlockInto] = useState<string | null>(null);
   const [ownListOff, setListOff] = useState(() => placesOf(owner).listOff);
   /* In a call the list is one of the things that give way, so the call says whether it shows. */
   const listOff = call?.list.off ?? ownListOff;
-  const phone = useMedia('(max-width: 640px)');
+  /* Full screen the side panel and the page take turns from 860px down, as the app's own frame does; in a call, from 640px. */
+  const phone = useMedia(mode === 'page' ? '(max-width: 860px)' : '(max-width: 640px)');
   const [phoneList, setPhoneList] = useState(at.kind === 'home');
   const justMade = useRef<string | null>(null);
   const openDoc = useRef<Ws['openDoc']['current']>(null);
@@ -213,8 +220,11 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
   const goWith = useCallback((to: WorkspacePlace) => { setPhoneList(false); onGo(to, { replace: true }); }, [onGo]);
   const pane = useRef<HTMLElement>(null);
   const { following, follow, stopFollowing } = useFollow({ others, presenter: call?.presenter ?? null, tree, at, goWith, say, pane });
-  /* Going anywhere puts a phone's list away, even to what's already open behind it, and going yourself stops following. */
-  const go = useCallback<WorkspaceProps['onGo']>((to, how) => { stopFollowing(); setPhoneList(to.kind === 'home'); onGo(to, how); }, [onGo, stopFollowing]);
+  /*
+   * Going anywhere puts a phone's list away, even to what's already open behind it, and going yourself stops following. Full
+   * screen, a workspace's Home is a page like any other, so going there puts the list away too.
+   */
+  const go = useCallback<WorkspaceProps['onGo']>((to, how) => { stopFollowing(); setPhoneList(mode !== 'page' && to.kind === 'home'); onGo(to, how); }, [mode, onGo, stopFollowing]);
   /*
    * Something outside the workspace wants it shown, such as a board's Saved in when the board is kept here: where you left it,
    * the document you were last in here, or else its list, on a phone too. Only for each want after this opened.
@@ -265,19 +275,29 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
    * here, and is outside the workspace, lands on it on a phone too: it opens by itself, as they were told it would.
    */
   const empty = view.tree !== null && tree.kids.size === 0;
-  useEffect(() => { setPhoneList(at.kind === 'home' && !empty); }, [at.kind, documentId, empty]);
+  useEffect(() => {
+    if (mode !== 'page') setPhoneList(at.kind === 'home' && !empty);
+    else if (at.kind !== 'home') setPhoneList(false);
+  }, [mode, at.kind, documentId, empty]);
+  /* Full screen, whether this is a call's own workspace, which has no Home: the Drive's list of workspaces says. */
+  const spaces = useQuery({ ...q.workspaces(), enabled: owner !== null && mode === 'page' });
+  const home = mode === 'page' ? homeOf(spaces.data?.find((w) => w.id === workspaceId), tree) : null;
+  const homeKnown = mode !== 'page' || owner === null || !spaces.isPending;
 
   const arrived = useRef(false);
   const given = call !== undefined && view.tree?.role === null && !view.tree.inCall;
+  const callHome = home !== null;
   useEffect(() => {
     if (at.kind !== 'home') { arrived.current = false; return; }
     if (!view.tree || arrived.current || (phone && !given)) return;
+    /* Full screen a workspace's Home is a page of its own: only a call's own workspace, which has none, opens on what's in it. */
+    if (mode === 'page' && member && (!homeKnown || !callHome)) return;
     arrived.current = true;
     const was = placesOf(owner).documents[workspaceId];
     const docs = documentsIn(tree);
     const next = docs.find((d) => d.id === was) ?? docs[0];
     if (next) onGo({ kind: 'document', id: next.id }, { replace: true });
-  }, [view.tree, at.kind, phone, given, owner, workspaceId, tree, onGo]);
+  }, [view.tree, at.kind, phone, given, owner, workspaceId, tree, onGo, mode, member, homeKnown, callHome]);
 
   /*
    * The tiles show who's here, who's writing and who you're following. The call asks to follow from a tile. Where each is is
@@ -355,14 +375,16 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
   /*
    * N and ⇧N make something outside any folder, or in a call in its own folder (This call), and sleep while you're typing, and
    * while a new document is opening: what's typed then was meant for its title. On a board, N is the board's: a sticky, as the
-   * blank board says. ⌘\ shows or hides the list.
+   * blank board says. In a call, ⌘\ shows or hides the list; full screen, the side panel stays.
    */
   const onBoard = item?.kind === 'board';
-  const asleep = call?.closed ?? false;
+  /* Beside another page of the app's, the keys are that page's: ⌘K is its search, and N doesn't make anything here. */
+  const beside = mode === 'beside';
+  const asleep = beside || (call?.closed ?? false);
   useEffect(() => {
     if (asleep) return;
     const keys = (e: KeyboardEvent) => {
-      if (withMod(e) && e.key === '\\') { e.preventDefault(); toggleList(); return; }
+      if (withMod(e) && e.key === '\\' && mode === 'call') { e.preventDefault(); toggleList(); return; }
       if (e.metaKey || e.ctrlKey || e.altKey || typing(e.target) || overlayOpen() || !canChange || onBoard || justMade.current !== null || e.key.toLowerCase() !== 'n') return;
       e.preventDefault();
       if (e.shiftKey) newFolder();
@@ -370,7 +392,7 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
     };
     addEventListener('keydown', keys);
     return () => removeEventListener('keydown', keys);
-  }, [actions, canChange, onBoard, newFolder, toggleList, asleep, madeIn]);
+  }, [actions, canChange, onBoard, newFolder, toggleList, asleep, mode, madeIn]);
 
   const find = useFindKeys(asleep, call?.finding ?? false, call?.onFinding);
   useWordsFollow(workspaceId, pass, view);
@@ -383,51 +405,59 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
   });
 
   const isPage = mode === 'page';
-  const closedFor = useClosedFor(view.status === 'closed', owner, isPage);
+  /* Full screen, the frame is there from the first moment, its side panel dark until the workspace is in it. */
+  const shell = (content?: ReactNode) => (isPage ? <WsFrame>{content}</WsFrame> : <WsPane beside={beside}>{content}</WsPane>);
+  const closedFor = useClosedFor(view.status === 'closed', owner, mode !== 'call');
   if (view.status === 'closed') {
-    if (closedFor === 'asking') return <WsPane page={isPage} />;
-    const back = <Button size="sm" onClick={onLeave}>{isPage ? 'Back to your workspaces' : 'Back to the call'}</Button>;
+    if (closedFor === 'asking') return shell();
+    const back = <Button size="sm" onClick={onLeave}>{call ? 'Back to the call' : 'Back to your workspaces'}</Button>;
     return (
       <>
-        <WsPane page={isPage}>
-          <WsDoc>{documentId === null ? <WsCantOpen what="workspace" action={back} /> : <KeptHere workspaceId={workspaceId} documentId={documentId} what={known.current.get(documentId)?.board ? 'board' : 'document'} owner={owner} pass={pass} say={say} back={back} />}</WsDoc>
-        </WsPane>
-        {!call && <WsToasts toasts={toasts} />}
+        {shell(<WsDoc>{documentId === null ? <WsCantOpen what="workspace" action={back} /> : <KeptHere workspaceId={workspaceId} documentId={documentId} what={known.current.get(documentId)?.board ? 'board' : 'document'} owner={owner} pass={pass} say={say} back={back} />}</WsDoc>)}
+        {!call && <WsToasts toasts={toasts} place={isPage ? 'full' : 'beside'} />}
       </>
     );
   }
-  if (!view.tree) return <WsPane page={isPage}>{view.status === 'reconnecting' && <WsDoc><WsOfflineEmpty online={online} onTry={store.retry} /></WsDoc>}</WsPane>;
+  if (!view.tree) return shell(view.status === 'reconnecting' && <WsDoc><WsOfflineEmpty online={online} onTry={store.retry} /></WsDoc>);
 
   const ws: Ws = {
     mode, workspaceId, pass, call, sent: view.tree, here: view.here, others, present, following, follow, stopFollowing, items, tree, at, go, switchTo: onSwitch, owner, me,
     self: view.here.find((h) => h.isMe)?.person ?? me, actions, say, canChange, callFolder, madeIn, spaceName, spaceSave, listDown: view.status === 'reconnecting' ? { onTry: online ? store.retry : undefined } : null,
-    open, setOpen, glowing, blockInto, setBlockInto, draft, setDraft, renaming, setRenaming, listOff, toggleList, justMade, openDoc, page, put, lastDocument, openFind: () => find.setFinding(true), pictures, ids
+    open, setOpen, glowing, blockInto, setBlockInto, draft, setDraft, renaming, setRenaming, listOff, toggleList, expand: onExpand, frame, home, showPages: () => setPhoneList(true), naming, setNaming, justMade, openDoc, page, put, lastDocument, openFind: () => find.setFinding(true), pictures, ids
   };
   const host = call ? { live: call.live, at, go, say, here: view.here, workspaceId, put, lastDocument, closed: call.closed, toggleList, ids, following, stopFollowing: () => stopFollowing() } : null;
+  /* Full screen, a workspace's own Home is its page with nothing open; a call's own workspace has none, and opens on what the call made. */
+  const onHome = isPage && member && at.kind === 'home' && homeKnown && !callHome;
+  const opened = at.kind === 'live' ? <LivePage page={at.page} line={at.line} /> : at.kind === 'trash' ? <TrashPage /> : item?.kind === 'board' ? <BoardPane key={item.id} item={item} /> : item && item.kind !== 'folder' ? <DocumentPane key={item.id} item={item} /> : at.kind === 'document' ? (
+    <WsDoc>
+      <PaneHead crumbs={view.tree.name === null ? [] : [spaceName]} save="quiet" />
+      {/* A board that was open here says it's a board it can't open. A document's words can go into a new one; a board's changes have nowhere else to go. */}
+      <KeptHere key={at.id} workspaceId={workspaceId} documentId={at.id} what={known.current.get(at.id)?.board ? 'board' : 'document'} owner={owner} pass={pass} say={say}
+        copyTo={canChange && owner !== null && !known.current.get(at.id)?.board ? { workspaceId, name: () => known.current.get(at.id)?.name ?? null, parent: null, go: (id) => go({ kind: 'document', id }) } : undefined}
+        back={<Button size="sm" onClick={() => go({ kind: 'home' }, { replace: true })}>Back to {spaceName}</Button>} />
+    </WsDoc>
+  ) : onHome ? <Home /> : isPage && member && !homeKnown ? null : (
+    /* Nothing's open, so the head has nothing to say, unless the list has gone: then it has the way back to it. */
+    <WsDoc className={listOff ? undefined : 'is-bare'}>
+      <PaneHead crumbs={[spaceName]} save="quiet" />
+      {empty
+        ? <WsEmpty space={spaceName} page={isPage} onDocument={canChange ? () => actions.newDocument(madeIn) : undefined} onFolder={canChange ? newFolder : undefined} />
+        : <WsPickDocument onDocument={canChange ? () => actions.newDocument(madeIn) : undefined} />}
+    </WsDoc>
+  );
+  const followingOn = following !== null && !following.quiet;
   return (
     <WsContext value={ws}>
      <LiveHostContext value={host}>
-      <WsPane ref={pane} page={isPage} listOff={listOff} listPeek={call?.list.peek} phoneList={phoneList} following={following !== null && !following.quiet}>
-        <List drags={{ drag, arm, ended }} />
-        {at.kind === 'live' ? <LivePage page={at.page} line={at.line} /> : at.kind === 'trash' ? <TrashPage /> : item?.kind === 'board' ? <BoardPane key={item.id} item={item} /> : item && item.kind !== 'folder' ? <DocumentPane key={item.id} item={item} /> : at.kind === 'document' ? (
-          <WsDoc>
-            <WsDocHead crumbs={view.tree.name === null ? [] : [spaceName]} save="quiet" onToggleList={toggleList} />
-            {/* A board that was open here says it's a board it can't open. A document's words can go into a new one; a board's changes have nowhere else to go. */}
-            <KeptHere key={at.id} workspaceId={workspaceId} documentId={at.id} what={known.current.get(at.id)?.board ? 'board' : 'document'} owner={owner} pass={pass} say={say}
-              copyTo={canChange && owner !== null && !known.current.get(at.id)?.board ? { workspaceId, name: () => known.current.get(at.id)?.name ?? null, parent: null, go: (id) => go({ kind: 'document', id }) } : undefined}
-              back={<Button size="sm" onClick={() => go({ kind: 'home' }, { replace: true })}>Back to {spaceName}</Button>} />
-          </WsDoc>
-        ) : (
-          /* Nothing's open, so the head has nothing to say, unless the list has gone: then it has the way back to it. */
-          <WsDoc className={listOff ? undefined : 'is-bare'}>
-            <WsDocHead crumbs={[spaceName]} save="quiet" onToggleList={toggleList} />
-            {empty
-              ? <WsEmpty space={spaceName} page={isPage} onDocument={canChange ? () => actions.newDocument(madeIn) : undefined} onFolder={canChange ? newFolder : undefined} />
-              : <WsPickDocument onDocument={canChange ? () => actions.newDocument(madeIn) : undefined} />}
-          </WsDoc>
-        )}
-      </WsPane>
-      {!call && <WsToasts toasts={toasts} />}
+      {isPage ? (
+        <Frame drags={{ drag, arm, ended }} phoneList={phoneList} home={onHome} following={followingOn} pane={pane}>{opened}</Frame>
+      ) : (
+        <WsPane ref={pane} beside={beside} listOff={listOff} listPeek={call?.list.peek} phoneList={phoneList && !beside} following={followingOn}>
+          {!beside && <List drags={{ drag, arm, ended }} />}
+          {opened}
+        </WsPane>
+      )}
+      {!call && <WsToasts toasts={toasts} place={isPage ? 'full' : 'beside'} />}
       <Find open={find.finding} onOpenChange={find.setFinding} onKeys={() => find.setListing(true)} />
       <Keys open={find.listing} onOpenChange={find.setListing} />
       {drag && <WsDragGhost x={drag.x + 12} y={drag.y + 10} icon={drag.icon} label={drag.label} />}
@@ -463,7 +493,8 @@ function Live(props: WorkspaceProps) {
     return () => { removeEventListener('pagehide', leaving); live.close(); };
   }, [workspaceId, pass]);
   useEffect(preloadEditor, []);
-  return store ? <Pane {...props} store={store} /> : <WsPane page={props.mode === 'page'} />;
+  if (store) return <Pane {...props} store={store} />;
+  return props.mode === 'page' ? <WsFrame /> : <WsPane beside={props.mode === 'beside'} />;
 }
 
 /**

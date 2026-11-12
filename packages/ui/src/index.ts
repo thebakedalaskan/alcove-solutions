@@ -35,7 +35,6 @@ export { useSettledPress } from './components/settle';
 export * from './components/qr';
 export * from './components/board';
 export * from './components/settle';
-export * from './components/noteBoard';
 export * from './components/follow-ups';
 export * from './components/flow';
 export * from './components/backgrounds';
@@ -43,3 +42,8 @@ export * from './components/drive-exports';
 export * from './components/call-timer';
 export * from './components/call-chat';
 export * from './components/call-questions';
+
+export * from './components/calls';
+export * from './components/calls-week';
+export * from './components/files';
+export * from './components/workspace/frame';

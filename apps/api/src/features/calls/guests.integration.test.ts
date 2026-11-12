@@ -515,7 +515,7 @@ describe('what a guest’s pass reaches', () => {
     // workspace a call uses opens to everyone in it. Each one is listed here on purpose, and for a workspace this call doesn't
     // use, with nothing shared, it answers as if the workspace weren't there.
     const BY_PASS = new Set([
-      'GET /v1/workspaces/:id', 'GET /v1/workspaces/:id/live', 'GET /v1/workspaces/:id/items/:item', 'PATCH /v1/workspaces/:id/items/:item', 'POST /v1/workspaces/:id/items/:item/restore',
+      'GET /v1/workspaces/:id', 'GET /v1/workspaces/:id/live', 'GET /v1/workspaces/:id/previews', 'GET /v1/workspaces/:id/items/:item', 'PATCH /v1/workspaces/:id/items/:item', 'POST /v1/workspaces/:id/items/:item/restore',
       'POST /v1/workspaces/:id/items', 'POST /v1/workspaces/:id/items/:item/move', 'POST /v1/workspaces/:id/items/:item/duplicate', 'POST /v1/workspaces/:id/items/:item/trash', 'POST /v1/workspaces/:id/presence', 'GET /v1/workspaces/:id/search',
       'GET /v1/workspaces/:id/documents/:doc/live', 'POST /v1/workspaces/:id/documents/:doc/updates', 'POST /v1/workspaces/:id/documents/:doc/awareness', 'GET /v1/workspaces/:id/documents/:doc/versions',
       'GET /v1/workspaces/:id/documents/:doc/versions/:version', 'POST /v1/workspaces/:id/documents/:doc/versions/:version/restore',
@@ -571,8 +571,10 @@ describe('what a guest’s pass reaches', () => {
       'POST /v1/workspaces/:id/ids': { emails: ['someone@example.com'] },
       'POST /v1/workspaces/:id/items': { kind: 'document', name: 'From a guest', parent: null }, 'POST /v1/workspaces/:id/items/:item/move': { parent: null }
     };
+    // What a read takes in its query, as the bodies above are what the others take.
+    const query: Record<string, string> = { 'GET /v1/workspaces/:id/previews': `?items=${encodeURIComponent(agenda)}` };
     for (const r of passRoutes) {
-      const res = await send(r.method, fill(r.path), JSON.stringify(asking[`${r.method} ${r.path}`] ?? { name: 'Renamed by a guest' }));
+      const res = await send(r.method, `${fill(r.path)}${query[`${r.method} ${r.path}`] ?? ''}`, JSON.stringify(asking[`${r.method} ${r.path}`] ?? { name: 'Renamed by a guest' }));
       expect(`${r.method} ${r.path} → ${res.status}`).toBe(`${r.method} ${r.path} → 404`);
       expect(await res.text()).not.toContain('Standup');
     }

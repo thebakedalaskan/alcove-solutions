@@ -149,7 +149,7 @@ export function AskRow({ item, outcome, busy, me, reader, note, now, run }: {
         <div className="hm-words"><p className="ac-clamp-2">{said}</p></div>
         <Who people={onTheCall(n, me)} room={n.kind === 'room'} />
         <span className="hm-act">
-          <Link to="/notes/$noteId" params={{ noteId: n.id }} className="hm-pill" aria-label={`Read the notes from ${n.title}`}>Read</Link>
+          <Link to="/calls/$noteId" params={{ noteId: n.id }} className="hm-pill" aria-label={`Read the notes from ${n.title}`}>Read</Link>
           <span className="hm-x" aria-hidden="true" />
         </span>
       </li>
@@ -178,7 +178,7 @@ export function AskRow({ item, outcome, busy, me, reader, note, now, run }: {
       title={giver ? `${giver.label} · ${noteTitle}` : `From ${noteTitle}`}>
       <span className="hm-kind" aria-hidden="true"><Icon name={decision ? 'diamond' : 'square'} size={14} /></span>
       <div className="hm-words">
-        <Link to="/notes/$noteId" params={{ noteId }} search={{ at }} className="ac-clamp-2">
+        <Link to="/calls/$noteId" params={{ noteId }} search={{ at }} className="ac-clamp-2">
           {text}{giver && <span className="sr-only">. {giver.label}</span>}
         </Link>
         {!outcome && <SaidMark item={item} me={me} />}

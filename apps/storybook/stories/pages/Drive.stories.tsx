@@ -1,58 +1,91 @@
 /*
- * The Drive: every workspace you're in, newest first. A call's home says which call it was made for and when, one made by
- * hand when it was made; each opens on its own page, and a call's home has the call's folder at its top, whose Notes,
- * Follow-ups and Transcript open the call's note (user-flows 12).
+ * The Drive (docs/design/pages.md › The Drive, user-flows 12): the tree of places beside a sheet of large previews, in the
+ * canvas's world (src/world/drive.ts): Recent by day, Shared with you, a workspace with its folders, calls and files, a
+ * call's own workspace with the call and what it made, one Trash, what a search finds, and the first day. On a phone the
+ * tree becomes chips.
  */
 import type { Meta } from '@storybook/react-vite';
+import { screen } from 'storybook/test';
 import { changing, page, pages, type PageArgs, type PageStory } from '../../src/page';
-import { standupTwice } from './changes';
+import { driveId, withNothingYet, withTheDrive } from '../../src/world/drive';
 
 const meta = { title: 'Pages/Drive', ...pages } satisfies Meta<PageArgs>;
 export default meta;
 
+const DRIVE = { beforeEach: changing(withTheDrive) };
+const FIRST = { beforeEach: changing(withNothingYet) };
+const NIGHT = { theme: 'dark' };
 const PHONE = { viewport: { value: 'phone' } };
-/** Opens the standup's folder in its home's list: the row, not the workspace's own name, which is the same. */
-const openFolder: PageStory['play'] = async ({ canvas, userEvent }) => {
-  const named = await canvas.findAllByRole('button', { name: /^Team standup · / });
-  const folder = named.find((b) => b.closest('.wt-r') !== null);
-  if (folder) await userEvent.click(folder);
-};
-/** Opens the picker at the top of the standup's list: the workspace's own name there, not its call's folder, named the same. */
-const openPicker: PageStory['play'] = async ({ canvas, userEvent }) => {
-  const named = await canvas.findAllByRole('button', { name: /^Team standup · / });
-  const top = named.find((b) => b.closest('.wt-head') !== null);
-  if (top) await userEvent.click(top);
+const TABLET = { viewport: { value: 'tablet' } };
+const WIDE = { viewport: { value: 'wide' } };
+const LATER = { timeout: 8000 };
+
+type Play = NonNullable<PageStory['play']>;
+/** Opens a card's ⋯. */
+const cardMenu = (name: string): Play => async ({ userEvent }) => {
+  await userEvent.click(await screen.findByRole('button', { name: `More for ${name}` }, LATER));
 };
 
-/** The day's calls' homes first, the standup's newest, then the workspaces made by hand. */
-export const Busy = page('/drive', 'busy');
-export const Night = page('/drive', 'busy', { globals: { theme: 'dark' } });
-export const Phone = page('/drive', 'busy', { globals: PHONE });
-export const PhoneNight = page('/drive', 'busy', { globals: { ...PHONE, theme: 'dark' } });
-/** Before the first call: where workspaces come from. */
-export const Empty = page('/drive', 'first-day');
-export const EmptyNight = page('/drive', 'first-day', { globals: { theme: 'dark' } });
-/** On a phone with little in it, the sea still goes down to the tab bar: no seam where the scene would stop. */
-export const EmptyPhone = page('/drive', 'first-day', { globals: PHONE });
-export const EmptyPhoneNight = page('/drive', 'first-day', { globals: { ...PHONE, theme: 'dark' } });
-/** New workspace, named in place, in the sky. */
-export const NewWorkspace = page('/drive', 'busy', {
-  play: async ({ canvas, userEvent }) => { await userEvent.click(await canvas.findByRole('button', { name: 'New workspace' })); }
+/** Recent: everything you can open, by the day it was last edited, as large previews. */
+export const Recent = page('/drive', 'busy', DRIVE);
+export const RecentNight = page('/drive', 'busy', { ...DRIVE, globals: NIGHT });
+export const RecentTablet = page('/drive', 'busy', { ...DRIVE, globals: TABLET });
+export const RecentWide = page('/drive', 'busy', { ...DRIVE, globals: { ...WIDE, ...NIGHT } });
+export const RecentPhone = page('/drive', 'busy', { ...DRIVE, globals: PHONE });
+export const RecentPhoneNight = page('/drive', 'busy', { ...DRIVE, globals: { ...PHONE, ...NIGHT } });
+/** The same as a list. */
+export const RecentAsAList = page('/drive', 'busy', {
+  ...DRIVE, play: async ({ userEvent }) => { await userEvent.click(await screen.findByRole('button', { name: 'As a list' }, LATER)); }
 });
-/** The standup's home: the call's folder at the top, open on the call's Notes, Follow-ups and Transcript. */
-export const ACallsHome = page('/drive/ws-standup', 'busy', { play: openFolder });
-export const ACallsHomePhone = page('/drive/ws-standup', 'busy', { globals: PHONE });
-/** The folder's Notes: the call's note. */
-export const TheCallsNotes = page('/notes/n2', 'busy');
-/** The folder's Follow-ups: the note, at what the call left to do. */
-export const TheCallsFollowUps = page('/notes/n2#follow-ups', 'busy');
-/** The folder's Transcript: the note, at what was said. */
-export const TheCallsTranscript = page('/notes/n2#transcript', 'busy');
-/**
- * The standup twice in one day, each run with a home of its own: the two share a name, so each says when its call started
- * ("Team standup · 4 Nov, 09:00"), to the second if two started in the same minute.
- */
-export const SameCallTwice = page('/drive', 'busy', { beforeEach: changing(standupTwice) });
-export const SameCallTwicePhone = page('/drive', 'busy', { beforeEach: changing(standupTwice), globals: PHONE });
-/** The same in the picker at the top of the standup's list. */
-export const SameCallTwicePicker = page('/drive/ws-standup', 'busy', { beforeEach: changing(standupTwice), play: openPicker });
+/** A card's ⋯: Open, Copy link, Rename, Move to Trash. */
+export const ACardsMenu = page('/drive', 'busy', { ...DRIVE, play: cardMenu('Launch checklist') });
+export const ACardsMenuNight = page('/drive', 'busy', { ...DRIVE, globals: NIGHT, play: cardMenu('Launch checklist') });
+/** New: a document, a board, files, or a workspace. */
+export const New = page('/drive', 'busy', {
+  ...DRIVE, play: async ({ userEvent }) => { await userEvent.click(await screen.findByRole('button', { name: 'New' }, LATER)); }
+});
+/** New, then Document, from Recent: which workspace it goes in. */
+export const NewDocumentWhere = page('/drive', 'busy', {
+  ...DRIVE,
+  play: async ({ userEvent }) => {
+    await userEvent.click(await screen.findByRole('button', { name: 'New' }, LATER));
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Document' }, LATER));
+  }
+});
+
+/** A workspace beside the tree: its folders, the calls kept in it, its files. */
+export const AWorkspace = page('/drive?ws=dv-launch', 'busy', DRIVE);
+export const AWorkspaceNight = page('/drive?ws=dv-launch', 'busy', { ...DRIVE, globals: NIGHT });
+export const AWorkspacePhone = page('/drive?ws=dv-launch', 'busy', { ...DRIVE, globals: PHONE });
+/** A folder in it, under the way back. */
+export const AFolder = page(`/drive?ws=dv-launch&folder=${driveId('Research')}`, 'busy', DRIVE);
+/** A workspace you can only read. */
+export const ReadOnly = page('/drive?ws=dv-handbook', 'busy', DRIVE);
+
+/** A call's own workspace: the call's Notes, Follow-ups and Transcript, what it made, and the standup before. */
+export const ACallsWorkspace = page('/drive?ws=dv-standup', 'busy', DRIVE);
+export const ACallsWorkspaceNight = page('/drive?ws=dv-standup', 'busy', { ...DRIVE, globals: NIGHT });
+export const ACallsWorkspacePhone = page('/drive?ws=dv-standup', 'busy', { ...DRIVE, globals: { ...PHONE, ...NIGHT } });
+/** A document open beside the tree, in the workspace it lives in, with ⤢ to give it the whole screen. */
+export const ADocumentBesideTheTree = page(`/drive?ws=dv-standup&doc=${driveId('Launch checklist')}`, 'busy', DRIVE);
+export const ADocumentBesideTheTreeNight = page(`/drive?ws=dv-standup&doc=${driveId('Launch checklist')}`, 'busy', { ...DRIVE, globals: NIGHT });
+/** Before a call: what's been made for it, and the ways to add to it. */
+export const ACallAhead = page('/drive?ws=dv-checkin', 'busy', DRIVE);
+
+/** What's shared with you from workspaces you're not in. */
+export const SharedWithYou = page('/drive?show=shared', 'busy', DRIVE);
+/** One Trash, across every workspace. */
+export const Trash = page('/drive?show=trash', 'busy', DRIVE);
+export const TrashNight = page('/drive?show=trash', 'busy', { ...DRIVE, globals: NIGHT });
+/** What a search finds, as it's typed. */
+export const Found = page('/drive?q=launch', 'busy', DRIVE);
+export const NothingFound = page('/drive?q=zebra%20crossing', 'busy', DRIVE);
+
+/** On a phone, Workspaces and From calls are places of their own. */
+export const PhoneWorkspaces = page('/drive?show=workspaces', 'busy', { ...DRIVE, globals: PHONE });
+export const PhoneCalls = page('/drive?show=calls', 'busy', { ...DRIVE, globals: { ...PHONE, ...NIGHT } });
+
+/** The first day: Recent, Shared with you, Workspaces with New workspace, Trash, and one empty state. */
+export const FirstDay = page('/drive', 'first-day', FIRST);
+export const FirstDayNight = page('/drive', 'first-day', { ...FIRST, globals: NIGHT });
+export const FirstDayPhone = page('/drive', 'first-day', { ...FIRST, globals: PHONE });

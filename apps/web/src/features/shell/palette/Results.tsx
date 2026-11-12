@@ -66,7 +66,7 @@ const Option = memo(function Option({ row, id, active, terms, words, me, onLight
       const { note, line } = row;
       const speaker = line.speaker ? line.speaker.person ?? { name: line.speaker.name } : undefined;
       return (
-        <Link {...own} tabIndex={-1} to="/notes/$noteId" params={{ noteId: note.id }} {...inNote(line.at, line.room)} onClick={followed}>
+        <Link {...own} tabIndex={-1} to="/calls/$noteId" params={{ noteId: note.id }} {...inNote(line.at, line.room)} onClick={followed}>
           <PaletteMomentLine person={speaker} name={marked(saidBy(row, me), terms, true)} made={line.made} time={position(line.at)}>
             {marked(nearMatch(line.text, terms, LONG, LEAD), terms)}
           </PaletteMomentLine>
@@ -76,7 +76,7 @@ const Option = memo(function Option({ row, id, active, terms, words, me, onLight
     }
     case 'note':
       return (
-        <Link {...own} tabIndex={-1} to="/notes/$noteId" params={{ noteId: row.note.id }} onClick={followed}>
+        <Link {...own} tabIndex={-1} to="/calls/$noteId" params={{ noteId: row.note.id }} onClick={followed}>
           <PaletteNoteLine cover={coverFor(row.note.id)} room={row.note.kind === 'room'} title={marked(row.note.title, terms)} meta={noteLine(row.note)} />
         </Link>
       );
@@ -167,8 +167,8 @@ export function Results({ listed, listId, stale, typed, token, notes, onPick, on
       )}
       {state === 'unsaid' && token && whose && (
         <Nothing icon="quote" title={`Nothing ${whose} said is in your notes`}
-          action={<Link to="/notes" hash={`with=${encodeURIComponent(token.email)}`} hashScrollIntoView={false} className={buttonClass({ variant: 'quiet', size: 'sm' })} onClick={rows.onOpen}>Calls with {whose}</Link>}>
-          Calls with {whose} in Notes lists the notes you both have.
+          action={<Link to="/calls" hash={`with=${encodeURIComponent(token.email)}`} hashScrollIntoView={false} className={buttonClass({ variant: 'quiet', size: 'sm' })} onClick={rows.onOpen}>Calls with {whose}</Link>}>
+          Calls with {whose} lists the calls you’re both on.
         </Nothing>
       )}
       {state === 'failed' && (

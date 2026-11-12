@@ -24,6 +24,8 @@ const PLAN = `/drive/ws-product/${itemId('Launch plan')}`;
 
 /** The board itself, named for it: where everything on it is pressed. */
 const sheet = (name: string) => screen.findByRole('application', { name }, SOON);
+/** What was shared and made in a call, under its stage on the call's page. */
+const made = () => screen.findByRole('region', { name: 'Shared and made in this call' }, SOON);
 
 /** Double-clicks the board `x` and `y` px in from its top left corner, where a person adding a sticky would. */
 async function doubleClick(userEvent: UserEvent, board: HTMLElement, x: number, y: number): Promise<void> {
@@ -305,14 +307,14 @@ export const OnlyToLook: PageStory = {
 
 export const AfterTheCall: PageStory = {
   name: '13.12 After the call: the board on the note',
-  ...page(`/notes/${RETRO_NOTE}`, 'busy', { beforeEach: changing(afterTheRetro) }),
+  ...page(`/calls/${RETRO_NOTE}`, 'busy', { beforeEach: changing(afterTheRetro) }),
   play: async ({ userEvent, step }) => {
-    await step('The note has the board, and the follow-ups taken from its Actions frame. Everyone invited can open it', async () => {
-      await screen.findByRole('heading', { name: 'Follow-ups from the board', level: 2 }, SOON);
-      await screen.findByRole('heading', { name: 'Launch retro', level: 3 }, SOON);
+    await step('The call’s page has the board among what was shared and made in it, and the follow-ups taken from its Actions frame. Everyone invited can open it', async () => {
+      await screen.findByRole('heading', { name: /^Follow-ups from the board/, level: 2 }, SOON);
+      await within(await made()).findByRole('button', { name: 'Launch retro' }, SOON);
     });
     await step('Open the board: the same board on its own page, with no call around it. Start a call here brings it to the next one', async () => {
-      await userEvent.click(await screen.findByRole('button', { name: 'Open the board Launch retro' }, SOON));
+      await userEvent.click(within(await made()).getByRole('button', { name: 'Launch retro' }));
       await sheet('Launch retro');
     });
     await step('Start a call here: the board comes with the call, and opens for you when it starts, ready to present', async () => {
@@ -324,13 +326,13 @@ export const AfterTheCall: PageStory = {
 
 export const RoomsInTheNotes: PageStory = {
   name: '13.13 Each room’s board on the note',
-  ...page(`/notes/${RETRO_NOTE}`, 'busy', { beforeEach: changing(afterTheRetro) }),
+  ...page(`/calls/${RETRO_NOTE}`, 'busy', { beforeEach: changing(afterTheRetro) }),
   play: async ({ userEvent, step }) => {
-    await step('Under the summary, every room’s board, side by side, with what came of the room and who was there', async () => {
-      await screen.findByText('3 breakout rooms · 10 min', {}, SOON);
+    await step('Beside the call’s board, every room’s board, each saying which room it was in, with who worked on it', async () => {
+      await within(await made()).findByText('In Comms', {}, SOON);
     });
-    await step('Click Comms: a room’s board is a saved board like any other, and it can be opened in the next call', async () => {
-      await userEvent.click(await screen.findByRole('button', { name: 'Open the board Comms board' }, SOON));
+    await step('Click Comms board: a room’s board is a saved board like any other, and it can be opened in the next call', async () => {
+      await userEvent.click(within(await made()).getByRole('button', { name: 'Comms board' }));
       await sheet('Comms board');
     });
   }

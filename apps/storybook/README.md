@@ -107,7 +107,7 @@ Product, then the follow-ups from the retro board's Actions frame.
 `stories/components/<group>/<Component>.stories.tsx`, one per component, a story per state, titled
 `Components/<Group>/<Component>`. The groups run from the basics to whole surfaces: icons and marks, actions, forms,
 feedback, overlays, layout, motion, the evening, people, starting a call, ringing and waiting, in a call, notes and
-transcript, record, settings, the workspace and the board. Put a new component in the group a person would look for it in, and
+transcript, search, the Calls page, record, settings, the workspace and the board. Put a new component in the group a person would look for it in, and
 add a new group to `storySort` in `.storybook/preview.tsx` only when none fits. The preview gives it what the app's
 root would (theme, tooltips, toasts). People come from the world, never made up on the spot:
 
@@ -141,11 +141,11 @@ and puts what sits over the sheet (a selection, its bar, the dots) where the sur
 import type { Meta } from '@storybook/react-vite';
 import { page, pages, type PageArgs } from '../../src/page';
 
-const meta = { title: 'Pages/Notes', ...pages } satisfies Meta<PageArgs>;
+const meta = { title: 'Pages/Calls', ...pages } satisfies Meta<PageArgs>;
 export default meta;
 
-export const Busy = page('/notes', 'busy');
-export const FirstDay = page('/notes', 'first-day');
+export const Busy = page('/calls', 'busy');
+export const FirstDay = page('/calls', 'first-day');
 /** Anything else goes in the third argument: here, notifications the browser has blocked, on a phone at night. */
 export const Blocked = page('/settings#notifications', 'busy', {
   parameters: { opening: { browser: { notifications: 'denied' } } },
@@ -153,7 +153,7 @@ export const Blocked = page('/settings#notifications', 'busy', {
 });
 ```
 
-The address is any of the app's (`/notes/n2?at=372`, `/team?group=g-product`, `/call/dsn-revw-pka`). `parameters.opening`
+The address is any of the app's (`/calls/n2?at=372`, `/team?group=g-product`, `/call/dsn-revw-pka`). `parameters.opening`
 changes how the page opens on top of the scenario: `now` (a `Date`, `on(day, hours, minutes)` from `src/world/clock.ts`),
 `browser` (`online`, `devices`, `notifications`), `signedInHere`, `tourSeen` and `latency` (ms). The page answers clicks:
 what you change changes the world for the rest of the story.
@@ -164,7 +164,7 @@ contract (`changing()` in `src/page.tsx`). `stories/pages/changes.ts` has the on
 
 ```tsx
 /** The summary couldn't be written: a note in that state, put into the busy afternoon. */
-export const Unwritten = page(`/notes/${STATES.unwritten}`, 'busy', { beforeEach: changing(inEveryState) });
+export const Unwritten = page(`/calls/${STATES.unwritten}`, 'busy', { beforeEach: changing(inEveryState) });
 /** A part of Alcove that fails (`failed`), can't be reached (`network`) or never answers while the story is open (`hold`). */
 export const Loading = page('/team', 'busy', { beforeEach: changing(troubled({ 'people.team': 'hold' })) });
 /** Recordings kept on this device that haven't uploaded, in every state Record shows. */
@@ -191,7 +191,7 @@ export default meta;
 
 export const StartNow: PageStory = {
   name: '4.1 Start now',
-  ...page('/notes', 'busy'),
+  ...page('/calls', 'busy'),
   play: async ({ userEvent, step }) => {
     await step('Press N, from any page. A small modal asks one thing: now, or later?', async () => {
       await userEvent.keyboard('n');
@@ -416,14 +416,14 @@ connect to a real Alcove account.
 ## Follow-up review
 
 `src/world/follow-ups.ts` supplies one actual task, a new suggestion and a proposed change, reused before and after the call.
-`Calls/Notes/Review in workspace` and `Pages/A note/Reviewing follow-up proposals` open the real app's review, with phone and
+`Calls/Notes/Review in workspace` and `Pages/A call/Reviewing follow-up proposals` open the real app's review, with phone and
 theme variants beside them. `Journeys/6 Follow-up proposals` (6.23–6.25) plays adding and dismissing, an incoming proposal
-waiting behind a fixed batch, and a changed actual task refusing a stale amendment. Notes' journeys 8.44–8.46 show the same
+waiting behind a fixed batch, and a changed actual task refusing a stale amendment. A call's journeys 8.34–8.36 show the same
 review after the call and keep “I'll do it” as a separate choice. The shared editor and review controls have their own
 stories in `Components/Notes and transcript`.
 
 
-Google Drive previews live in **Pages / Settings / Google Drive…** and **Pages / A note / Google Drive…**, including phone,
+Google Drive previews live in **Pages / Settings / Google Drive…** and **Pages / A call / Google Drive…** (from More), including phone,
 night, folder loading failure and reconnect states. **Journeys / 15 Google Drive exports** shows choosing explicit file
 formats, a shared-drive destination, a per-call override, a retry, independent disconnection and a shared reader’s own exports with organizer-only audio. The stand-in holds no
 provider credentials; Google consent and additional folder authorization stop at the external hand-off.

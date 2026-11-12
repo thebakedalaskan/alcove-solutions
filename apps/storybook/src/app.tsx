@@ -24,7 +24,7 @@ function routerAt(path: string) {
 }
 
 export interface AppProps {
-  /** Where the app opens: `/home`, `/notes`, `/notes/n2`, `/team`, `/record`, `/settings`, `/call/<code>`... */
+  /** Where the app opens: `/home`, `/calls`, `/calls/n2`, `/team`, `/record`, `/settings`, `/call/<code>`... */
   path: string;
 }
 

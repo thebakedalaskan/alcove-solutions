@@ -99,7 +99,7 @@ export function TodoRow({ t, now, syncing, fresh, onRisen, onTick }: {
   return (
     <li data-row aria-busy={syncing} className={cn('hm-todo', ticked && 'is-done', rising && 'is-new')}>
       <Check checked={ticked} onChange={onTick} label={`${ticked ? 'Done' : 'Mark done'}: ${t.a.text}`} />
-      <Link to="/notes/$noteId" params={{ noteId: t.a.noteId }} search={{ at: t.a.at }} className="hm-todo-t ac-clamp-1" title={t.a.text}>{t.a.text}</Link>
+      <Link to="/calls/$noteId" params={{ noteId: t.a.noteId }} search={{ at: t.a.at }} className="hm-todo-t ac-clamp-1" title={t.a.text}>{t.a.text}</Link>
       <span className="hm-todo-src ac-clamp-1" title={from}>{from}</span>
       {syncing ? <span className="hm-todo-due" role="status">Saving…</span>
         : <span className={cn('hm-todo-due', day === 'Today' && 'is-now', t.group === 'overdue' && 'is-late')} title={t.a.due}>{day ?? (long && <span className="hm-todo-long ac-clamp-1">{long}</span>)}</span>}

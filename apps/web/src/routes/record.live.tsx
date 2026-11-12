@@ -190,7 +190,7 @@ function Recorder({ rec, media }: { rec: StageRecording; media: LocalMedia }) {
       sessions.recording = null;
       guard.release();
       void qc.invalidateQueries();
-      if (done.kind === 'note') await navigate({ to: '/notes/$noteId', params: { noteId: done.noteId }, replace: true });
+      if (done.kind === 'note') await navigate({ to: '/calls/$noteId', params: { noteId: done.noteId }, replace: true });
       else if (done.kind === 'lost') {
         toast('Recording ended. Nothing was kept: this device was signed out.', { icon: 'x' });
         await navigate({ to: '/welcome', replace: true });

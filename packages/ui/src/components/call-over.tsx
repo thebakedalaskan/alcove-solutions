@@ -296,7 +296,7 @@ function Said({ notes, modelPrivate }: { notes: CallOverNotes; modelPrivate: boo
         <section className="co-panel" aria-label="The notes">
           <div className="co-nh">
             <span className="co-ni"><Icon name="clock" size={17} /></span>
-            <span className="co-nt"><b>Still being written{!modelPrivate && <Unencrypted compact />}</b><small>They’ll be in Notes when they’re ready. You don’t need to wait here.</small></span>
+            <span className="co-nt"><b>Still being written{!modelPrivate && <Unencrypted compact />}</b><small>They’ll be in Calls when they’re ready. You don’t need to wait here.</small></span>
           </div>
         </section>
       );

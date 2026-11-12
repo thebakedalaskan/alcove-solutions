@@ -1,10 +1,11 @@
 /*
- * QuadFaces: a few people in one small square of arches, for a group or a list: beside a group's name in the Who list,
- * and small in a group's token in the Who field. Up to four show; with fewer, the square's other places stay empty.
+ * QuadFaces: a few people in one small square of arches, for a group or a list: beside a group's name in the people under
+ * Who, on the scheduler, and small in a group's token in the Who field. Up to four show; with fewer, the square's other
+ * places stay empty.
  */
-import { FlowBody, FlowView, Icon, QuadFaces } from '@alcove/ui';
+import { Icon, QuadFaces } from '@alcove/ui';
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { ModalFrame, did } from '../../../src/component';
+import { did } from '../../../src/component';
 import { AIKO, INES, KOFI, MAYA, PRIYA } from '../../../src/world/people';
 
 /** The Product group, as the busy afternoon has it. */
@@ -26,30 +27,30 @@ export const Four: Story = {};
 export const Three: Story = { args: { people: [PRIYA, KOFI, INES] } };
 export const Two: Story = { args: { people: [PRIYA, KOFI] } };
 export const One: Story = { args: { people: [MAYA] } };
-/** In the Who list, beside a group's name and how many are in it. */
+/** Under Who, on the scheduler: beside a group's name and how many are in it. */
 export const InTheList: Story = {
   name: 'In the list',
   parameters: { layout: 'padded' },
+  args: { size: 14 },
   render: (args) => (
-    <ModalFrame>
-      <FlowView>
-        <FlowBody>
-          <h2>Who’s it with?</h2>
-          <div className="cf-k">Often with you</div>
-          <div className="cf-list">
-            <button type="button" className="cf-row" onClick={did('onAdd')}>
-              <span className="cf-face"><QuadFaces {...args} /></span>
-              <span className="min-w-0"><b className="ac-clamp-1">Product</b><small className="ac-clamp-1">Group · {args.people.length} {args.people.length === 1 ? 'person' : 'people'}</small></span>
-              <span className="plus"><Icon name="plus" size={17} /></span>
-            </button>
-            <button type="button" className="cf-row" onClick={did('onAdd')}>
-              <span className="cf-face"><QuadFaces people={[PRIYA, KOFI, INES]} size={args.size} /></span>
-              <span className="min-w-0"><b className="ac-clamp-1">Leads</b><small className="ac-clamp-1">Group · 3 people</small></span>
-              <span className="plus"><Icon name="plus" size={17} /></span>
-            </button>
-          </div>
-        </FlowBody>
-      </FlowView>
-    </ModalFrame>
+    <section className="sc-sec" style={{ width: 'min(372px, 100%)' }}>
+      <h3>Who</h3>
+      <div className="cf-field sc-field is-focus">
+        <input type="text" aria-label="Add people" placeholder="Add people, a group or an email" autoComplete="off" spellCheck={false} />
+      </div>
+      <p className="sc-lab">Often with you</p>
+      <div role="listbox" aria-label="People to add" className="sc-pps">
+        <button type="button" role="option" aria-selected={false} className="sc-pp" onClick={did('onAdd')}>
+          <span className="sc-pp-f"><QuadFaces {...args} /></span>
+          <span className="min-w-0"><b className="ac-clamp-1">Product</b><small className="ac-clamp-1">Group · {args.people.length} {args.people.length === 1 ? 'person' : 'people'}</small></span>
+          <Icon name="plus" size={16} />
+        </button>
+        <button type="button" role="option" aria-selected={false} className="sc-pp" onClick={did('onAdd')}>
+          <span className="sc-pp-f"><QuadFaces people={[PRIYA, KOFI, INES]} size={args.size} /></span>
+          <span className="min-w-0"><b className="ac-clamp-1">Leads</b><small className="ac-clamp-1">Group · 3 people</small></span>
+          <Icon name="plus" size={16} />
+        </button>
+      </div>
+    </section>
   )
 };

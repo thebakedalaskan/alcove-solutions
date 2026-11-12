@@ -29,5 +29,5 @@ export const InABusyButton: Story = {
 /** In a note's Play button while the recording is on its way, in the button's own colours. */
 export const InThePlayButton: Story = {
   name: 'In the Play button',
-  render: () => <span className="nd-play" role="img" aria-label="Play, waiting for the recording"><Spinner /></span>
+  render: () => <span className="cd-play" role="img" aria-label="Play, waiting for the recording"><Spinner /></span>
 };

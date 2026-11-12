@@ -36,15 +36,17 @@ export interface WsFace { person: AvatarPerson; card: WsPop }
 
 /**
  * The head of a document. `crumbs`: the path, the document last, as much of it as fits, from the end. `faces`: who's in it,
- * up to four. Share and ⋯ show when they're given (a live page has none), each a button with its popover.
+ * up to four. Share and ⋯ show when they're given (a live page has none), each a button with its popover. Beside the list
+ * it starts with the list's button (`onToggleList`); shown on its own beside something else, such as the Drive's tree, it
+ * has ⤢ instead (`onExpand`), which gives it the whole screen.
  */
-export function WsDocHead({ crumbs, save, faces = [], onToggleList, share, more }: {
-  crumbs: string[]; save: WsSave; faces?: WsFace[] | undefined; onToggleList: () => void;
+export function WsDocHead({ crumbs, save, faces = [], onToggleList, onExpand, share, more }: {
+  crumbs: string[]; save: WsSave; faces?: WsFace[] | undefined; onToggleList?: (() => void) | undefined; onExpand?: (() => void) | undefined;
   share?: WsPop | undefined; more?: WsPop | undefined;
 }) {
   return (
     <header className="wd-head">
-      <IconButton icon="panel" size={17} className="wd-ib" label="Show or hide the document list" title="⌘\" onClick={onToggleList} />
+      {onToggleList && <IconButton icon="panel" size={17} className="wd-ib" label="Show or hide the document list" title="⌘\" onClick={onToggleList} />}
       <nav className="wd-crumbs" aria-label="Where this document is">
         {crumbs.map((c, i) => {
           const last = i === crumbs.length - 1;
@@ -60,6 +62,7 @@ export function WsDocHead({ crumbs, save, faces = [], onToggleList, share, more 
           ))}
         </span>
       )}
+      {onExpand && <IconButton icon="grow" size={16} className="wd-ib" label="Open full screen" title="Open full screen" onClick={onExpand} />}
       {share && <WsPopover open={share.open} onOpenChange={share.onOpenChange} label="Share" align="end" anchor={<Button size="xs">Share</Button>}>{share.content}</WsPopover>}
       {more && <WsPopover open={more.open} onOpenChange={more.onOpenChange} label="More for this document" align="end" anchor={<IconButton icon="more" size={17} className="wd-ib" label="More for this document" />}>{more.content}</WsPopover>}
     </header>

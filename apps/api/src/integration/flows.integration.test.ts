@@ -3769,6 +3769,10 @@ describe('privacy at rest', () => {
     // Someone invited saying whether they're coming: their row shows they answered, and never what.
     const invitation = await c.api.meetings.create({ title: 'CANARY-TITLE invitation', startsAt: new Date(Date.now() + 86_400_000).toISOString(), durationMinutes: 30, guests: members, notes: 'off' });
     expect((await member.api.meetings.answer(invitation.id, 'maybe')).rsvp).toBe('maybe');
+    // And asking to move it: when they'd rather meet is sealed in the same row, and the organizer reads it back.
+    const proposedTime = new Date(Date.UTC(2031, 6, 9, 13, 17)).toISOString();
+    await member.api.meetings.propose(invitation.id, proposedTime);
+    expect((await c.api.meetings.get(invitation.id)).proposals).toEqual([{ email: 'canary-member-one@example.com', startsAt: proposedTime }]);
     const invited = String((await h.pool.query(`SELECT string_agg(row_to_json(x)::text, ' ') AS all FROM meeting_access x`)).rows[0]?.all ?? '');
     expect(invited).not.toBe('');
     // A search and the lines it quotes pass through here, and stay out of every row and log line below.
@@ -3778,6 +3782,8 @@ describe('privacy at rest', () => {
     await c.api.people.search('CANARY-PEOPLE query');
     // A workspace: its name, folders, documents and boards, and who's in it, sealed in its state and beside its rows.
     const space = await c.api.workspaces.create('CANARY-WORKSPACE name');
+    await c.api.workspaces.setAbout(space.id, 'CANARY-WSABOUT what the merger needs');
+    expect(await c.api.workspaces.about(space.id)).toBe('CANARY-WSABOUT what the merger needs');
     await c.api.workspaces.addPerson(space.id, 'canary-ws-member@canary.example', 'edit');
     const spaceFolder = await c.api.workspaces.items.create(space.id, { kind: 'folder', name: 'CANARY-WSFOLDER' });
     const spaceDoc = await c.api.workspaces.items.create(space.id, { kind: 'document', name: 'CANARY-WSDOC', parent: spaceFolder.id });
@@ -3915,6 +3921,11 @@ describe('privacy at rest', () => {
     const googlerToken = h.google.refreshTokens().filter((t) => !issuedBefore.includes(t));
     expect(googlerToken).toHaveLength(1);
     expect((await g.api.meetings.create({ title: 'CANARY-GCAL planning', startsAt: new Date(Date.now() + 86_400_000).toISOString(), durationMinutes: 30, guests: ['canary-gcal-guest@canary.example'], notes: 'off' })).calendarUrl).toMatch(/^https:/);
+    // A call offering times holds them on their calendar until a guest picks: the events' IDs stay sealed with the call.
+    const offering = [2, 3].map((d) => new Date(Date.now() + d * 86_400_000).toISOString());
+    await g.api.meetings.create({ title: 'CANARY-HOLD offered', startsAt: offering[0] ?? '', durationMinutes: 30, guests: ['canary-hold-guest@canary.example'], notes: 'off', offer: offering });
+    const holdIds = h.google.calendar('canary-google-sub-31337').filter((e) => e.summary === 'Hold: CANARY-HOLD offered').map((e) => e.id);
+    expect(holdIds).toHaveLength(2);
     // A series: a question its call left open, the next call in it, and a question asked across it. A
     // recurring Google event's ID, which names its series, stays sealed and out of logged paths.
     const sync = await c.api.calls.join((await c.api.calls.startNow({ notes: 'on' })).code, { mic: true, cam: false });
@@ -3979,14 +3990,15 @@ describe('privacy at rest', () => {
       'CANARY-SERIES-TITLE', 'CANARY-SERIES-RENAMED', 'canary-series-guest', 'Pacific/Apia', series.seriesCode ?? 'no series link',
       '"answer":"maybe"', 'CANARY-OWN-WORDS', 'CANARY-OWN-MARK', 'CANARY-OWN-ASKED', 'CANARY-OWN-ANSWER', 'CANARY-ADDED', 'CANARY-SHARED-WRITE', 'canary-linked',
       'CANARY-PROPOSAL', 'CANARY-ROOMPROPOSAL', 'CANARY-FOLLOWUP', 'CANARY-DUE', 'CANARY-REWORD', 'needs a vote', 'brief the board', 'two votes',
-      'CANARY-WORKSPACE', 'CANARY-WSFOLDER', 'CANARY-WSDOC', 'CANARY-WSBOARD', 'CANARY-WSRENAMED', 'CANARY-WSREFUSED', 'canary-ws-member', 'canary-ws-shared',
+      'CANARY-WORKSPACE', 'CANARY-WSABOUT', 'CANARY-WSFOLDER', 'CANARY-WSDOC', 'CANARY-WSBOARD', 'CANARY-WSRENAMED', 'CANARY-WSREFUSED', 'canary-ws-member', 'canary-ws-shared',
       'CANARY-MEDIA-NAME', 'CANARY-MEDIA-BYTES', 'CANARY-MEDIA-GONE', 'CANARY-MEDIA-DELETED', 'CANARY-MEDIA-PREVIEW',
       'CANARY-WSFRAME', 'CANARY-WSSTICKY', 'CANARY-WSCELL', 'sign by Friday', 'CANARY-WSIDEA', 'pricing tiers', 'CANARY-BOARDPIC-NAME',
       'CANARY-BOARDPIC-BYTES', 'CANARY-BOARDCALL', 'CANARY-BOARDGUEST', 'CANARY-IDEA', 'repaint the lobby', 'CANARY-SORTED',
       'CANARY-BOARDACTION', 'order the doors', 'CANARY-ROOMNAME', 'CANARY-ROOMSTICKY', 'owns the merger', 'canary-roomie', 'CANARY-VOTEFRAME', 'CANARY-VOTESTICKY', voteFrame, voteSticky,
       'CANARY-NOTEDFRAME', 'CANARY-FRAMENOTE', 'thank the support team', notedFrame,
       'CANARY-CUE', 'as you can see the chart', 'CANARY-VIDEO', 'Person’s screen', 'CANARY-LIVEQUESTION', 'private launch',
-      'canary-deposit-address', 'Credits added', 'canary-intent-hash', 'CANARY-AGENT'
+      'canary-deposit-address', 'Credits added', 'canary-intent-hash', 'CANARY-AGENT',
+      proposedTime, 'CANARY-HOLD', 'canary-hold-guest', ...holdIds
     ];
     for (const canary of canaries) for (const enc of encodings(canary)) expect(rowsText.includes(enc), `${canary} as ${enc}`).toBe(false);
     // An answer is one short word, so it has a check of its own, in the only rows that hold one.

@@ -1,7 +1,7 @@
 /*
  * Journeys from the side panel and Search or ask (docs/product/user-flows.md › 2. The side panel). The first four are the
  * search canvas's (docs/design/canvas/StepsSearch.dc.html): find what someone said, search a word and open the moment,
- * see all in Notes, and ask a question and open a cited moment. The rest are the panel's own.
+ * see all in Calls, and ask a question and open a cited moment. The rest are the panel's own.
  */
 import type { Meta } from '@storybook/react-vite';
 import { screen, waitFor, within } from 'storybook/test';
@@ -70,17 +70,17 @@ export const SearchAWord: PageStory = {
   }
 };
 
-export const SeeAllInNotes: PageStory = {
-  name: '2.3 See all in Notes',
+export const SeeAllInCalls: PageStory = {
+  name: '2.3 See all in Calls',
   ...page('/home', 'busy', { globals: LAPTOP }),
   play: async ({ userEvent, step }) => {
     await step('Open Search or ask, and type a word. More than fits? See all, at the foot of the list', async () => {
       await userEvent.click(await screen.findByRole('button', { name: 'Search or ask' }, SOON));
       await userEvent.type(await line(), 'flag');
-      await userEvent.click(await within(await palette()).findByRole('option', { name: /^See all .* in Notes/ }, SOON));
+      await userEvent.click(await within(await palette()).findByRole('option', { name: /^See all .* in Calls/ }, SOON));
     });
-    await step('Notes opens with the same words in its line: every note, each with its moments', async () => {
-      await screen.findByRole('heading', { name: 'Notes', level: 1 }, SOON);
+    await step('Calls opens with the same words in its line: every call that has them, each with its moments', async () => {
+      await screen.findByRole('heading', { name: 'Calls', level: 1 }, SOON);
       await screen.findByDisplayValue('flag', {}, SOON);
     });
   }
@@ -127,7 +127,7 @@ export const PinANote: PageStory = {
 
 export const HideTheSidePanel: PageStory = {
   name: '2.6 Hide the side panel',
-  ...page('/notes', 'busy'),
+  ...page('/calls', 'busy'),
   play: async ({ userEvent, step }) => {
     await step('Hide the side panel. The page has the room', async () => {
       await userEvent.click(await screen.findByRole('button', { name: 'Hide the side panel' }, SOON));

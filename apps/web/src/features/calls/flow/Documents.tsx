@@ -14,7 +14,7 @@ const KIND_ICON: Record<DocumentKind, IconName> = { doc: 'fileText', board: 'sti
 const KIND_WORD: Record<DocumentKind, string> = { doc: 'document', board: 'board' };
 type Called = Pick<CallDocument, 'name' | 'by' | 'kind'>;
 /** What something goes by here: its name, or the app's word until it has one. Whoever can't open it sees whose it is. */
-const called = (d: Called) => (d.name === null ? (d.by ? `${d.by}’s ${KIND_WORD[d.kind]}` : `A ${KIND_WORD[d.kind]}`) : d.name || 'Untitled');
+export const called = (d: Called) => (d.name === null ? (d.by ? `${d.by}’s ${KIND_WORD[d.kind]}` : `A ${KIND_WORD[d.kind]}`) : d.name || 'Untitled');
 /** "Launch plan, Launch checklist" */
 export const docNames = (docs: readonly Called[]) => docs.map(called).join(', ');
 /** The line under a name: that it's a board, and whose it is. */
@@ -22,9 +22,9 @@ const whoseLine = (d: Pick<CallDocument, 'by' | 'kind'>) => [d.kind === 'board' 
 const capital = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 /** Somewhere documents come from, as the picker offers it. */
-interface Place { id: string; label: string; line: string; documents: Document[] }
+export interface Place { id: string; label: string; line: string; documents: Document[] }
 /** Someone outside a workspace isn't told its name, so what's been shared with them sits together, whichever it came from. */
-function placesIn(workspaces: DocumentLibrary['workspaces']): Place[] {
+export function placesIn(workspaces: DocumentLibrary['workspaces']): Place[] {
   const named = workspaces.flatMap((w): Place[] => (w.name === null ? [] : [{ id: w.id, label: w.name, line: `From the ${w.name} workspace`, documents: w.documents }]));
   const shared = workspaces.flatMap((w) => (w.name === null ? w.documents : [])).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   return shared.length ? [...named, { id: 'shared', label: 'Shared with you', line: 'Shared with you', documents: shared }] : named;

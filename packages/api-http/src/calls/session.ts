@@ -12,7 +12,7 @@ import { type KeyPackage } from 'ts-mls';
 import { z } from 'zod';
 
 /** Where this browser is, as an IANA name, when it knows and the API would too: the day a call's new home and folder are named after. */
-function hereZone(): { timeZone?: string } {
+export function hereZone(): { timeZone?: string } {
   try {
     const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
     return timeZone && isTimeZone(timeZone) ? { timeZone } : {};

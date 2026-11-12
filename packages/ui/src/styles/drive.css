@@ -1,48 +1,188 @@
 /*
- * The Drive. The sun's just gone: a band of sky with New workspace in the middle of it, and every workspace you're in on the
- * water below, newest first, a call's home saying which call it was made for and when. The list scrolls under the horizon,
- * so New workspace stays in view. On a phone the page scrolls as one. Classes start with dv-.
+ * The Drive. A slim band of evening holds the title, the search (Newsreader, the page's hero) and New, the one filled
+ * button; on the water under it, the tree of places beside a sheet of large previews. On a laptop the page stays put and the
+ * tree and the sheet scroll on their own; on a phone the tree becomes chips at the top of the sheet and the page scrolls as
+ * one. Classes start with dv-: the sky (dv-sky, dv-q), the tree (dv-t, dv-th, dv-mk), the sheet (dv-sheet, dv-mh, dv-sec),
+ * the grid of the kit's FileCards (dv-grid) and a call's own pages drawn on theirs (dv-cc), rows (dv-row, dv-crow), and what
+ * makes things (dv-make, dv-pop-).
  */
-.dv { --hz: calc(8px + clamp(220px, 26vh, 300px)); height: 100vh; height: 100dvh; }
-.dv .dusk-in { display: flex; flex-direction: column; height: 100%; padding-bottom: 8px; }
+.dv { --hz: 110px; container: drive / inline-size; height: 100vh; height: 100dvh; }
+.dv .dusk-in { display: flex; flex-direction: column; height: 100%; padding-bottom: 26px; }
+/* The sea under the tree stays calm: what moves on the water stops a little under the horizon. */
+.dv .hz > .hz-at, .dv .hz > .hz-light { clip-path: inset(-500px -2400px -14px -2400px); }
+/* The page's own search takes ⌘K here, so the one at the top right steps aside, and you stand level with New. */
+.main:has(> .main-in > .dv) .top-find { display: none; }
+.main:has(> .main-in > .dv) .top-acts { top: 34px; }
 
-/* ------------------------------------------------------------ the sky: one job, in the middle */
-.dv-sky { position: relative; z-index: 5; flex: none; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; height: calc(var(--hz) - 70px); padding-bottom: 14px; text-align: center; }
-.dv-sky p { max-width: 520px; font: 400 15px/1.45 var(--font-sans); color: var(--ink-2); text-wrap: balance; }
-.dv-sky .ac-btn { height: 46px; padding: 0 22px; font-size: 15px; }
-/* Naming a new one, in the button's place: Enter makes it, Esc puts it away. */
-.dv-name { display: flex; align-items: center; gap: 10px; width: min(520px, 100%); height: 52px; padding: 0 8px 0 20px; border-radius: var(--radius-pill); background: color-mix(in oklch, var(--ground) 90%, transparent); box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--ink) 36%, transparent), var(--shadow-2); }
-.dv-name input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; outline: 0; background: none; font: 400 20px/1.2 var(--font-display); color: var(--ink); }
-.dv-name input::placeholder { color: var(--ink-2); opacity: 1; }
-.dv-name .ac-btn { flex: none; height: 38px; padding: 0 16px; font-size: 14px; }
+/* ------------------------------------------------------------ the sky */
+/* The search shrinks before it ever slides under New: the sides keep what they hold, the middle takes what's left. */
+.dv-sky { position: relative; z-index: 6; flex: none; display: grid; grid-template-columns: minmax(max-content, 1fr) minmax(0, 600px) minmax(max-content, 1fr); column-gap: 24px; align-items: center; height: 40px; padding-right: 44px; }
+.dv-sky .dusk-title { justify-self: start; }
+.dv-sky-end { justify-self: end; display: flex; align-items: center; }
+.dv-sky-phone { display: none; }
+.dv-new.ac-btn { height: 40px; padding: 0 14px 0 16px; gap: 7px; }
+.dv-new.is-compact { height: 46px; padding: 0 16px 0 14px; }
+.dv-q { position: relative; display: flex; align-items: center; gap: 11px; height: 48px; min-width: 0; padding: 0 8px 0 18px; border-radius: var(--radius-pill); background: color-mix(in oklch, var(--ground) 64%, transparent); box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--ink) 16%, transparent); color: var(--ink-2); transition: background-color var(--duration-1), box-shadow var(--duration-1); }
+.dv-q:focus-within { background: color-mix(in oklch, var(--ground) 92%, transparent); box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--ink) 36%, transparent), var(--shadow-2); }
+.dv-q > .ac-i { flex: none; }
+.dv-q input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; outline: 0; background: none; font: 400 19px/1.2 var(--font-display); letter-spacing: -.004em; color: var(--ink); }
+.dv-q input::placeholder { color: var(--ink-2); opacity: 1; }
+.dv-q input::-webkit-search-cancel-button { display: none; }
+.dv-q-k { flex: none; margin-right: 8px; }
+.dv-q-x.ac-icon-btn { width: 32px; height: 32px; }
 
-/* ------------------------------------------------------------ the water */
-.dv .hz > .hz-at, .dv .hz > .hz-light { clip-path: inset(-500px -2400px -42px -2400px); }
-.dv-water { position: relative; flex: 1; display: flex; flex-direction: column; min-height: 0; padding-top: 42px; }
-.dv-list { flex: 1; min-height: 0; margin: 0 -24px; padding: 0 24px 34px; overflow: hidden auto; list-style: none; scrollbar-width: thin; scrollbar-color: var(--line-control) transparent; -webkit-mask-image: linear-gradient(to bottom, transparent, black 10px, black calc(100% - 34px), transparent); mask-image: linear-gradient(to bottom, transparent, black 10px, black calc(100% - 34px), transparent); }
-.dv-row { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; column-gap: 14px; align-items: center; margin-inline: -12px; padding: 10px 12px; border-radius: 16px; color: var(--ink); text-decoration: none; transition: background-color var(--duration-1); }
-.dv-row:hover { background: color-mix(in oklch, var(--ink) 6%, transparent); }
-.dv-row:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
-.dv-ic { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 12px; background: color-mix(in oklch, var(--surface) 70%, transparent); box-shadow: inset 0 0 0 1px var(--line); color: var(--ink-2); }
-.dv-row.is-call .dv-ic { color: var(--sun-text); }
-.dv-t { min-width: 0; }
-.dv-t b { font: 600 15px/1.35 var(--font-sans); }
-.dv-t small { display: block; margin-top: 2px; font: 400 13px/1.4 var(--font-sans); color: var(--ink-2); }
-.dv-end { display: flex; align-items: center; gap: 6px; font: 500 13px/1 var(--font-sans); color: var(--ink-3); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.ac-empty.dv-none { padding-top: 12px; }
+/* ------------------------------------------------------------ the split */
+.dv-split { position: relative; z-index: 5; flex: 1; display: grid; grid-template-columns: 256px minmax(0, 1fr); column-gap: 22px; min-height: 0; margin-top: calc(var(--hz) - 54px); }
+@container drive (min-width: 1760px) { .dv-split { grid-template-columns: 280px minmax(0, 1fr); } }
+@container drive (max-width: 1160px) { .dv-split { grid-template-columns: 224px minmax(0, 1fr); column-gap: 18px; } }
 
+/* ------------------------------------------------------------ the tree */
+.dv-tree { min-height: 0; margin-inline: -6px; padding: 0 6px 24px; overflow: hidden auto; scrollbar-width: thin; scrollbar-color: var(--line-control) transparent; }
+.dv-th { display: flex; align-items: center; justify-content: space-between; height: 30px; margin-top: 14px; padding: 0 4px 0 10px; font: 600 12.5px/1 var(--font-sans); color: var(--ink-2); }
+.dv-th .ac-icon-btn, .dv-th-go { display: grid; place-items: center; width: 26px; height: 26px; border-radius: var(--radius-xs); color: var(--ink-2); }
+.dv-th-go:hover { color: var(--ink); background: color-mix(in oklch, var(--ink) 8%, transparent); }
+.dv-t { position: relative; display: grid; grid-template-columns: 14px 22px minmax(0, 1fr) auto; column-gap: 6px; align-items: center; width: 100%; height: 34px; padding: 0 9px 0 calc(6px + var(--depth, 0) * 20px); border-radius: var(--radius-sm); font: 500 14px/1.2 var(--font-sans); color: var(--ink-2); text-align: left; transition: background-color var(--duration-1), color var(--duration-1); }
+.dv-t:hover { color: var(--ink); background: color-mix(in oklch, var(--ink) 6%, transparent); }
+.dv-t:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.dv-t.is-on { color: var(--ink); background: color-mix(in oklch, var(--ink) 10.5%, transparent); }
+.dv-t.is-sub { height: 32px; font-size: 13.5px; }
+.dv-t .dv-cv { color: var(--ink-3); transition: transform var(--duration-1) var(--ease-out); }
+.dv-t .dv-cv.is-open { transform: rotate(90deg); }
+.dv-t .dv-ic { justify-self: center; }
+.dv-t small { font: 600 12px/1 var(--font-sans); color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.dv-t.is-trash { margin-top: 18px; }
+.dv-t.is-new { color: var(--ink-2); }
+.dv-t.is-naming { padding-right: 4px; }
+.dv-t.is-naming:hover { background: none; }
+.dv-mk { display: grid; place-items: center; justify-self: center; width: 20px; height: 20px; border-radius: 6px; font: 700 10.5px/1 var(--font-sans); color: var(--ink); background: color-mix(in oklch, var(--ink) 13%, transparent); }
+.dv-mk.is-big { width: 30px; height: 30px; border-radius: var(--radius-sm); font-size: 14px; }
+.dv-mk.is-row { width: 34px; height: 34px; border-radius: 10px; font-size: 14px; }
+.dv-more { display: block; padding: 6px 10px 2px 34px; font: 500 13px/1.2 var(--font-sans); color: var(--ink-2); text-align: left; }
+.dv-more:hover { color: var(--ink); }
+
+/* ------------------------------------------------------------ the sheet */
+.dv-sheet { position: relative; min-width: 0; min-height: 0; padding: 26px clamp(22px, 2.6cqw, 40px) 56px; overflow: hidden auto; border-radius: var(--radius-lg); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line), var(--shadow-2); scrollbar-width: thin; scrollbar-color: var(--line-control) transparent; }
+.dv-chips { display: none; }
+/* A document open beside the tree fills the sheet, and scrolls in its own page. */
+.dv-sheet.is-doc { display: flex; flex-direction: column; padding: 0; overflow: hidden; }
+.dv-sheet.is-doc > .ws-pane { flex: 1; min-height: 0; }
+.dv-mh { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 16px; align-items: start; margin-bottom: 8px; }
+.dv-mh h2 { display: flex; align-items: center; gap: 12px; min-width: 0; font: 400 clamp(24px, 2.2cqw, 30px)/1.15 var(--font-display); letter-spacing: -.01em; color: var(--ink); }
+.dv-mh-meta p { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 9px; margin-top: 8px; font: 400 14px/1.35 var(--font-sans); color: var(--ink-2); }
+.dv-mh-acts { display: flex; align-items: center; gap: 8px; }
+.dv-full.ac-btn { height: 36px; }
+.dv-view { display: flex; padding: 3px; border-radius: 10px; background: color-mix(in oklch, var(--ink) 7%, transparent); }
+.dv-view .ac-icon-btn { width: 30px; height: 28px; border-radius: 7px; color: var(--ink-3); }
+.dv-view .ac-icon-btn.is-on { background: var(--surface-raised); color: var(--ink); box-shadow: var(--shadow-1); }
+.dv-crumb { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; font: 500 13px/1.3 var(--font-sans); color: var(--ink-2); }
+.dv-crumb button:hover { color: var(--ink); }
+.dv-crumb .ac-i { color: var(--ink-3); }
+.dv-sec + .dv-sec { margin-top: 10px; }
+.dv-sec.is-bare { padding-top: 18px; }
+.dv-gh { display: flex; align-items: center; gap: 10px; padding: 14px 0 6px; margin-bottom: 12px; font: 600 12.5px/18px var(--font-sans); color: var(--ink-2); }
+.dv-gh::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+.dv-loading { display: grid; place-items: center; padding: 48px 0; color: var(--ink-3); }
+.dv-quiet { padding: 4px 0 8px; font: 400 14px/1.4 var(--font-sans); color: var(--ink-3); }
+.ac-empty.dv-none { padding: 48px 0 24px; }
+/* Show N more, under Recent once it's longer than a page: centred, quiet. */
+.dv-show { display: flex; justify-content: center; margin-top: 18px; }
+
+/* ------------------------------------------------------------ cards: the kit's FileCard (fc-), large */
+.dv-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(176px, 1fr)); gap: 20px 18px; }
+.dv-name { position: relative; z-index: 2; flex: 1; min-width: 0; height: 30px; margin: -4px 0; padding: 0 8px; border: 0; border-radius: var(--radius-xs); outline: 2px solid var(--focus); background: var(--surface-raised); font: inherit; color: var(--ink); }
+
+/* A call's own pages, as the picture on their cards: what each says, in a line or two. */
+.dv-grid.is-call { grid-template-columns: repeat(auto-fill, minmax(196px, 1fr)); }
+.dv-grid.is-call .fc { --fc-h: 156px; }
+.dv-cc { display: grid; align-content: start; gap: 7px; padding: 13px 14px; overflow: hidden; }
+.dv-cc .hd { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 1px; font: 600 11px/1 var(--font-sans); color: var(--ink-3); }
+.dv-cc .s { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; font: 400 12px/1.5 var(--font-sans); color: var(--ink-2); }
+.dv-cc .o { display: grid; grid-template-columns: 10px minmax(0, 1fr); column-gap: 7px; align-items: center; font: 500 11.5px/1.35 var(--font-sans); color: var(--ink); }
+.dv-cc .o > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dv-cc .o i { justify-self: center; display: block; }
+.dv-cc .o.is-decision i { width: 7px; height: 7px; border-radius: 1.5px; transform: rotate(45deg); background: var(--rose); }
+.dv-cc .o.is-yours > span { font-weight: 650; }
+.dv-cc .o.is-yours i, .dv-cc .o.is-follow-up i { width: 7px; height: 7px; border-radius: 50%; background: var(--horizon); }
+.dv-cc .o.is-said { grid-template-columns: minmax(0, 1fr); font-weight: 400; color: var(--ink-2); }
+.dv-cc .o.is-said i { display: none; }
+
+/* ------------------------------------------------------------ rows: a list of files, Trash, workspaces, calls */
+.dv-rows { display: grid; }
+.dv-row, .dv-crow { position: relative; display: grid; grid-template-columns: 34px minmax(0, 1fr) auto auto; column-gap: 14px; align-items: center; min-height: 56px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.dv-row-open { position: absolute; inset: 0 -10px; z-index: 1; border-radius: var(--radius-sm); outline: none; }
+.dv-row:has(> .dv-row-open):hover { background: color-mix(in oklch, var(--ink) 4%, transparent); }
+.dv-row:has(> .dv-row-open:focus-visible) { outline: 2px solid var(--focus); outline-offset: -2px; border-radius: var(--radius-sm); }
+.dv-row > :not(.dv-row-open) { position: relative; }
+.dv-row > .ac-icon-btn, .dv-row > .ac-btn, .dv-row .dv-name { z-index: 2; }
+.dv-k { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; background: color-mix(in oklch, var(--ink) 7%, transparent); color: var(--ink-2); }
+.dv-row-t { display: grid; gap: 2px; min-width: 0; }
+.dv-row-t b { font: 600 14px/1.3 var(--font-sans); color: var(--ink); }
+.dv-row-t small { font: 400 12.5px/1.3 var(--font-sans); color: var(--ink-2); }
+.dv-row-by { font: 400 12.5px/1.3 var(--font-sans); color: var(--ink-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.dv-row-menu { z-index: 2; }
+.dv-row-go { color: var(--ink-3); }
+.dv-tag { display: inline-flex; align-items: center; height: 24px; padding: 0 9px; border-radius: var(--radius-pill); background: color-mix(in oklch, var(--ink) 8%, transparent); font: 500 12.5px/1 var(--font-sans); color: var(--ink-2); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.dv-row.is-new .dv-row-t b { font-weight: 500; color: var(--ink-2); }
+.dv-crow { grid-template-columns: 34px minmax(0, 1fr) auto; }
+.dv-go { display: inline-flex; align-items: center; gap: 4px; height: 32px; padding: 0 8px 0 12px; border-radius: var(--radius-pill); font: 600 13.5px/1 var(--font-sans); color: var(--ink-2); white-space: nowrap; }
+.dv-go:hover { color: var(--ink); background: var(--sunk); }
+
+/* ------------------------------------------------------------ a workspace's folders */
+.dv-folders { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; margin-bottom: 8px; }
+.dv-folder { display: flex; align-items: center; gap: 10px; min-width: 0; height: 46px; padding: 0 14px; border-radius: 12px; background: color-mix(in oklch, var(--ink) 5%, transparent); box-shadow: inset 0 0 0 1px var(--line); font: 600 14px/1.2 var(--font-sans); color: var(--ink); text-align: left; transition: background-color var(--duration-1); }
+.dv-folder:hover { background: color-mix(in oklch, var(--ink) 10%, transparent); }
+.dv-folder:focus-visible { outline: 2px solid var(--focus); outline-offset: 0; }
+.dv-folder .ac-i { flex: none; color: var(--ink-2); }
+.dv-folder span { flex: 1; min-width: 0; }
+.dv-folder small { flex: none; font: 500 12.5px/1 var(--font-sans); color: var(--ink-3); }
+
+/* ------------------------------------------------------------ making something */
+.dv-make { display: grid; gap: 8px; align-content: start; }
+.dv-make.is-row { display: flex; flex-wrap: wrap; justify-content: center; margin-top: 14px; }
+.dv-make button { display: flex; align-items: center; gap: 9px; height: 42px; padding: 0 13px; border-radius: 10px; outline: 1.5px dashed color-mix(in oklch, var(--ink) 26%, transparent); outline-offset: -1.5px; font: 500 13.5px/1 var(--font-sans); color: var(--ink-2); text-align: left; transition: background-color var(--duration-1), color var(--duration-1); }
+.dv-make button:hover { color: var(--ink); background: color-mix(in oklch, var(--ink) 6%, transparent); }
+.dv-make button:focus-visible { outline: 2px solid var(--focus); outline-offset: 0; }
+.dv-ways { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+.dv-pop-name { display: grid; gap: 10px; width: 280px; padding: 8px 10px 10px; }
+.dv-pop-head { display: flex; align-items: center; gap: 4px; font: 600 12.5px/1.2 var(--font-sans); color: var(--ink-2); }
+.dv-pop-head .ac-icon-btn { width: 28px; height: 28px; margin-left: -4px; }
+.dv-pop-name input { height: 40px; padding: 0 12px; border: 0; border-radius: var(--radius-sm); background: var(--sunk); outline: none; box-shadow: inset 0 0 0 1px var(--line); font: 400 17px/1.2 var(--font-display); color: var(--ink); }
+.dv-pop-name input:focus { box-shadow: inset 0 0 0 1px var(--line-control), 0 0 0 2px var(--focus); }
+.dv-pop-name .ac-btn { justify-self: end; }
+
+/* ------------------------------------------------------------ narrower */
+@container drive (max-width: 980px) {
+  .dv-row-by { display: none; }
+  .dv-row { grid-template-columns: 34px minmax(0, 1fr) auto; }
+}
+
+/* ------------------------------------------------------------ a phone */
 @media (max-width: 860px) {
-  /* The sky goes up behind the phone's top bar. */
+  /* The sky goes up behind the phone's top bar, and the page scrolls as one. */
   .shell:has(> .main > .main-in > .dv) .ph-head { position: relative; z-index: 1; }
-  .dv { --hz: 260px; --behind: 66px; height: auto; margin-top: -66px; }
+  /* The page's own search is the one: the top bar's steps aside, as it does on Calls. */
+  .shell:has(> .main > .main-in > .dv) .ph-end > :first-child { display: none; }
+  .dv { --hz: 150px; --behind: 66px; height: auto; margin-top: -66px; }
   .dv .dusk-in { display: block; height: auto; padding-top: 66px; padding-bottom: 28px; }
-  .dv .hz > .hz-at, .dv .hz > .hz-light { clip-path: inset(-500px -2400px -30px -2400px); }
-  .dv-sky { height: calc(var(--hz) - 110px); gap: 9px; padding-bottom: 8px; }
-  .dv-sky p { font-size: 14px; }
-  .dv-name { height: 48px; padding-left: 16px; }
-  .dv-name input { font-size: 18px; }
-  .dv-water { display: block; padding-top: 32px; }
-  .dv-list { overflow: visible; margin-inline: -8px; padding: 0 0 12px; -webkit-mask-image: none; mask-image: none; }
-  .dv-row { grid-template-columns: 40px minmax(0, 1fr); column-gap: 12px; margin-inline: 0; padding: 10px 8px; }
-  .dv-end { display: none; }
+  .dv-sky { display: flex; gap: 10px; height: auto; margin-top: 18px; padding-right: 0; }
+  .dv-sky .dusk-title, .dv-sky-end { display: none; }
+  .dv-sky-phone { display: block; }
+  .dv-q { flex: 1; height: 46px; }
+  .dv-q input { font-size: 17px; }
+  .dv-q-k { display: none; }
+  .dv-split { display: block; margin-top: 32px; }
+  .dv-tree { display: none; }
+  .dv-sheet { overflow: visible; padding: 18px 16px 32px; border-radius: 18px; }
+  .dv-chips { display: flex; gap: 6px; margin: 0 -16px 16px; padding: 0 16px 2px; overflow-x: auto; scrollbar-width: none; }
+  .dv-chips::-webkit-scrollbar { display: none; }
+  .dv-chips button { flex: none; height: 34px; padding: 0 13px; border-radius: var(--radius-pill); background: color-mix(in oklch, var(--ink) 7%, transparent); font: 500 13.5px/1 var(--font-sans); color: var(--ink-2); }
+  .dv-chips button.is-on { background: color-mix(in oklch, var(--ink) 12%, transparent); color: var(--ink); font-weight: 600; }
+  .dv-mh h2 { font-size: 24px; }
+  .dv-full .lb, .dv-full.ac-btn { width: 36px; padding: 0; font-size: 0; gap: 0; }
+  .dv-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 12px; }
+  .dv-grid .fc.is-lg { --fc-h: 116px; }
+  .dv-grid.is-call .fc { --fc-h: 140px; }
+  .dv-folders { grid-template-columns: minmax(0, 1fr); }
+  .dv-row-by, .dv-tag { display: none; }
+  .dv-row { grid-template-columns: 34px minmax(0, 1fr) auto; }
 }

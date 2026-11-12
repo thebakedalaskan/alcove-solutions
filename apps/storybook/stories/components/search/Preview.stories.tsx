@@ -3,7 +3,7 @@
  * with what to do pinned at its foot, the one filled button first with ↵ on it. A moment: its call (PalettePreviewHead),
  * the decision or follow-up made there (PaletteMade), and the transcript around it, the moment warm (PaletteExcerpt,
  * PaletteExcerptLine). Someone: PalettePersonPreview. A note: its head and summary (PaletteSummary). Ask: the question
- * (PaletteAskPreview). See all: the words, and what Notes will show (PaletteAllPreview).
+ * (PaletteAskPreview). See all: the words, and what Calls will show (PaletteAllPreview).
  */
 import {
   Button, PaletteAllPreview, PaletteAskPreview, PaletteExcerpt, PaletteExcerptLine, PaletteMade, PalettePersonPreview, PalettePreview,
@@ -164,7 +164,7 @@ export const SeeAll: Story = {
   name: 'See all',
   render: () => (
     <Pane>
-      <PalettePreview actions={<Button variant="primary" size="sm" kb="↵" onClick={did('see all')}>See all in Notes</Button>}>
+      <PalettePreview actions={<Button variant="primary" size="sm" kb="↵" onClick={did('see all')}>See all in Calls</Button>}>
         <PaletteAllPreview words="flag">9 moments in 4 calls, each under its note. Notes can narrow them to someone, or to calls, the room and what was shared with you.</PaletteAllPreview>
       </PalettePreview>
     </Pane>

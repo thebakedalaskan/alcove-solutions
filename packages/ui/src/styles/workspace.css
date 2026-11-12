@@ -290,12 +290,8 @@
 .ac-toast.ws-toast button { flex: none; height: 30px; padding: 0 11px; border-radius: var(--radius-pill); font-weight: 600; color: var(--stage); background: color-mix(in srgb, var(--stage) 10%, transparent); white-space: nowrap; }
 .ac-toast.ws-toast button:hover { background: color-mix(in srgb, var(--stage) 18%, transparent); }
 
-/* In the app, toasts sit in the corner of the page beside the list, clear of the side panel and the sealed line. */
-@media (min-width: 641px) {
-  .main.is-full .ws-toasts { left: calc(var(--side) + var(--pane-left) + 260px); bottom: 36px; max-width: 420px; }
-  .main.is-full:has(.ws-pane.tree-off) .ws-toasts { left: calc(var(--side) + var(--pane-left) + 16px); }
-}
-@media (min-width: 641px) and (max-width: 860px) { .main.is-full .ws-toasts { bottom: 108px; } }
+/* Full screen, toasts sit in the corner of the page beside the workspace's side panel. */
+@media (min-width: 861px) { .ws-toasts.is-full { left: calc(264px + 24px); bottom: 24px; max-width: 420px; } }
 
 /* ------------------------------------------------------------ history and presenting */
 .wh { flex: none; width: 260px; display: flex; flex-direction: column; border-left: 1px solid var(--line); background: var(--surface); animation: ws-side var(--duration-2) var(--ease-out); }
@@ -345,19 +341,14 @@
 /* Where the one player in a call waits while no block on screen holds its picture: playing, heard, and out of sight. */
 .ws-vhold { position: fixed; left: 0; top: 0; width: 2px; height: 2px; overflow: hidden; opacity: 0; pointer-events: none; }
 
-/* ------------------------------------------------------------ outside the call: the same workspace in the app */
-.ws-pane.in-app { background: var(--surface); }
-/* What was worked on in a call, on its note: a row for each document, between hairlines like the note's own lists. */
-.ws-ndocs { display: grid; border-bottom: 1px solid var(--line); }
-.ws-ndoc { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; column-gap: 12px; align-items: center; min-height: 56px; padding: 9px 2px 9px 0; border-top: 1px solid var(--line); text-align: left; color: var(--ink-3); transition: color var(--duration-1) var(--ease-out); }
-.ws-ndoc > .ac-i { flex: none; display: block; }
-.ws-ndoc > .ac-i:first-child { justify-self: center; }
-.ws-ndoc > .ac-i:last-child { transition: transform var(--duration-1) var(--ease-out); }
-.ws-ndoc:hover { color: var(--ink-2); }
-.ws-ndoc:hover > .ac-i:last-child { transform: translateX(2px); }
-.ws-ndoc span { min-width: 0; overflow-wrap: anywhere; }
-.ws-ndoc b { display: block; font: 500 15px/1.4 var(--font-sans); color: var(--ink); }
-.ws-ndoc small { display: block; font: 400 13px/1.4 var(--font-sans); color: var(--ink-3); }
+/* ------------------------------------------------------------ outside a call */
+/*
+ * One document beside something else of the app's (the Drive's tree): no card around it, on whatever it sits on, as tall as
+ * the box it's given. Its toasts keep to the page, clear of the app's side panel.
+ */
+.ws-pane.is-beside { border-radius: 0; background: transparent; box-shadow: none; }
+.ws-pane.is-beside > .wd { background: transparent; }
+@media (min-width: 861px) { .ws-toasts.is-beside { left: calc(var(--side, 0px) + 24px); bottom: 24px; } }
 
 /* ------------------------------------------------------------ Trash */
 .wx-l { margin: 18px -8px 0; padding: 0; list-style: none; display: grid; gap: 2px; }
@@ -455,12 +446,6 @@
 .ws-kbar .sp { flex: 1; }
 @media (max-width: 640px) {
   .ws-pane { border-radius: 22px 22px 0 0; }
-  .ws-pane.in-app { border-radius: 0; box-shadow: none; }
-  .main.is-full, .shell.is-bare .main.is-full { padding: 0 0 calc(82px + env(safe-area-inset-bottom, 0px)); }
-  .main.is-full .ws-toasts { bottom: calc(94px + env(safe-area-inset-bottom, 0px)); }
-  .main.is-full:has(.ws-pane.phone-tree) .ws-toasts { bottom: calc(176px + env(safe-area-inset-bottom, 0px)); }
-  /* Record stands up out of the tab bar, into the foot of the list and of History. */
-  .main.is-full .wt, .main.is-full .wh { padding-bottom: 24px; }
   .wt, .ws-pane.tree-off .wt { position: absolute; z-index: 5; inset: 0; width: 100%; margin-left: 0; border-right: 0; background: var(--surface); visibility: visible; transform: translateX(-100%); transition: transform var(--duration-2) var(--ease-out); }
   .ws-pane.phone-tree .wt { transform: none; }
   .wt-r { height: 44px; }
@@ -506,3 +491,147 @@
 }
 .wl-todo.is-editing { flex-direction: column; }
 .wl-todo > .ac-icon-btn { flex: none; width: 28px; height: 28px; }
+
+/* ------------------------------------------------------------ a workspace, full screen (`wf-`) */
+/*
+ * Its own side panel, dark in both themes like the app's, full height, beside a bar and the page under it. Home's evening
+ * runs up behind the bar, which is clear until the page scrolls under it. On a phone (860px and under) the side panel and
+ * the page take turns, as `data-phone` says, under the bar.
+ */
+.wf { --wf-side: 264px; --wf-bar: 52px; position: fixed; inset: 0; display: grid; grid-template-columns: var(--wf-side) minmax(0, 1fr); grid-template-rows: var(--wf-bar) minmax(0, 1fr); background: var(--ground); color: var(--ink); font: 400 15px/22px var(--font-sans); }
+.wf :where(.ac-i) { flex: none; display: block; }
+.wf-top { position: relative; z-index: 4; grid-column: 2; grid-row: 1; min-width: 0; }
+.wf-main { container: ws-pane / inline-size; position: relative; grid-column: 2; grid-row: 2; display: flex; min-width: 0; min-height: 0; transition: box-shadow var(--duration-2) var(--ease-out); }
+.wf.is-home .wf-main { grid-row: 1 / 3; }
+.wf-main.is-follow { box-shadow: inset 0 0 0 2px var(--speak); transition-duration: var(--duration-3); }
+.wf-main > .wd { background: var(--ground); }
+
+/* The side panel. Wells and hover fills lift off the frame's colour, as in the app's own panel. */
+.wf-side { --sunk: color-mix(in srgb, var(--ink) 9%, var(--frame)); grid-column: 1; grid-row: 1 / 3; display: flex; flex-direction: column; min-width: 0; min-height: 0; padding: 12px 10px 12px; background: var(--frame); color: var(--ink); }
+.wf-brand { flex: none; display: flex; padding: 4px 8px 12px; }
+.wf-brand a { border-radius: var(--radius-sm); }
+.wf-brand .ac-brand { font-size: 19px; gap: 8px; }
+.wf-switch { flex: none; display: grid; grid-template-columns: 26px minmax(0, 1fr) 16px; column-gap: 10px; align-items: center; width: 100%; height: 42px; padding: 0 8px; border-radius: 11px; text-align: left; color: var(--ink-3); transition: background-color var(--duration-1); }
+.wf-switch:hover, .wf-switch[data-state="open"] { background: color-mix(in srgb, var(--ink) 8%, transparent); }
+.wf-switch b { min-width: 0; font: 600 14.5px/1.25 var(--font-sans); color: var(--ink); }
+.wf-side > .wt-space.is-edit { flex: none; height: 42px; padding: 0 8px; border-radius: 11px; }
+.wf-mark { flex: none; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 8px; background: color-mix(in srgb, var(--ink) 12%, transparent); color: var(--ink); font: 650 12px/1 var(--font-sans); }
+.wf-mark.is-call { color: var(--sun-text); }
+.wf-name-save { flex: none; padding: 2px 10px 0 44px; font: 500 11.5px/14px var(--font-sans); color: var(--ink-3); }
+.wf-name-save.is-failed { color: var(--caution); }
+.wf-side > .wt-off { margin: 4px 0 0; }
+.wf-search { flex: none; display: flex; align-items: center; gap: 8px; width: 100%; height: 34px; margin: 8px 0 4px; padding: 0 8px 0 10px; border-radius: 10px; background: color-mix(in srgb, var(--ink) 7%, transparent); color: var(--ink-3); font: 400 13.5px/1 var(--font-sans); transition: background-color var(--duration-1), color var(--duration-1); }
+.wf-search:hover { background: color-mix(in srgb, var(--ink) 11%, transparent); color: var(--ink-2); }
+.wf-search > span { flex: 1; text-align: left; }
+.wf-search .ac-kbd { background: color-mix(in srgb, var(--ink) 10%, transparent); box-shadow: none; }
+.wf-side .wt-scroll { margin: 0 -4px; padding: 4px 4px 12px; scrollbar-color: var(--line-control) transparent; }
+.wf-side .wt-sec { display: flex; align-items: center; justify-content: space-between; min-height: 28px; margin-top: 14px; padding: 0 2px 0 10px; font: 600 12px/1 var(--font-sans); }
+.wf-side .wt-sec .wt-ib { width: 26px; height: 26px; border-radius: 8px; }
+.wf-side .wt-sec .wt-ib:hover { color: var(--ink); }
+.wf-side .wt-r { height: 32px; }
+.wf-side .wt-open { height: 32px; font-size: 14px; }
+.wf-side .wt-r:hover { background: color-mix(in srgb, var(--ink) 7%, transparent); }
+.wf-side .wt-r.is-cur { background: color-mix(in srgb, var(--ink) 11%, transparent); color: var(--ink); }
+.wf-side .wt-r.is-cur .wt-open .ac-i { color: var(--ink-2); }
+.wf-side .wt-f .ac-faces .ac-avatar { --ring: var(--frame); }
+.wt-tag { flex: none; margin-left: auto; padding-left: 6px; font: 600 12px/1 var(--font-sans); color: var(--sun-text); }
+.wt-open .wt-out { margin-left: auto; color: var(--ink-3); }
+.wt-open .wt-c + .wt-out { margin-left: 6px; }
+.wf-foot { flex: none; display: grid; gap: 4px; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
+.wf-foot .wt-bin { padding: 0; }
+.wf-foot .wt-trash { height: 32px; font-size: 14px; color: var(--ink-2); }
+.wf-seal { display: flex; align-items: flex-start; gap: 7px; padding: 6px 10px 0; font: 500 12px/1.35 var(--font-sans); color: var(--ink-3); }
+.wf-seal .ac-i { margin-top: 1px; color: var(--sun-text); }
+
+/* The bar over the page: the way back and the path, then what's said about the page, and you at the far right. */
+.wf-bar { position: relative; display: flex; align-items: center; gap: 8px; height: 100%; padding: 0 14px 0 18px; border-bottom: 1px solid var(--line); background: var(--ground); transition: background-color var(--duration-2) var(--ease-out), border-color var(--duration-2) var(--ease-out); }
+.wf.is-home:not(.is-scrolled) .wf-bar { background: transparent; border-bottom-color: transparent; }
+.wf-path { flex: 1 1 auto; display: flex; align-items: center; gap: 4px; min-width: 0; font: 500 14px/1 var(--font-sans); color: var(--ink-2); }
+.wf-back, .wf-crumb { display: inline-flex; align-items: center; gap: 6px; min-width: 0; height: 32px; padding: 0 8px; border-radius: 9px; white-space: nowrap; transition: background-color var(--duration-1), color var(--duration-1); }
+.wf-back { flex: none; }
+.wf-crumb { flex: 0 1 auto; }
+.wf-crumb > span { min-width: 0; line-height: 1.3; }
+button.wf-back:hover, button.wf-crumb:hover { color: var(--ink); background: color-mix(in srgb, var(--ink) 7%, transparent); }
+.wf-crumb.is-last { font-weight: 600; color: var(--ink); }
+.wf-sep { color: var(--ink-3); }
+.wf-up { display: none; }
+.wf-end { flex: none; display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.wf-end .wd-save { margin-right: 2px; }
+.wf-here { display: inline-flex; align-items: center; gap: 8px; margin-right: 4px; font: 500 12.5px/1 var(--font-sans); color: var(--ink-2); white-space: nowrap; }
+.wf-faces { display: inline-flex; align-items: center; }
+.wf-face { display: inline-flex; margin-left: -6px; border-radius: 8px; }
+.wf-face:first-child { margin-left: 0; }
+.wf-face .ac-avatar { --ring: var(--ground); }
+.wf-share { height: 34px; }
+.wf-ib { width: 34px; height: 34px; color: var(--ink-2); }
+.wf-me { display: inline-flex; margin-left: 4px; }
+.wf-me a { display: inline-flex; border-radius: var(--radius-sm); }
+
+/* Home: the workspace's name on the evening, its line, its people, what was edited lately and its calls. */
+.wf-home-scroll { flex: 1; min-width: 0; min-height: 0; overflow: hidden auto; scrollbar-width: thin; scrollbar-color: var(--line-control) transparent; }
+.wf-band { --hz: 202px; --wf-x: max(56px, calc((100% - 1000px) / 2 + 56px)); position: relative; isolation: isolate; height: 266px; overflow: hidden; -webkit-mask-image: linear-gradient(to bottom, black 72%, transparent); mask-image: linear-gradient(to bottom, black 72%, transparent); }
+/* The evening after sunset, as it is above a page's name: no clouds and no chop, only the last of the light. */
+.wf-band .hz-puff, .wf-band .hz-chop { display: none; }
+.wf-name { position: absolute; left: var(--wf-x); right: 56px; bottom: 86px; font: 400 clamp(36px, 3.4vw, 48px)/1.08 var(--font-display); letter-spacing: -.018em; color: var(--ink); overflow-wrap: anywhere; }
+.wf-home { position: relative; max-width: 1000px; margin: -28px auto 0; padding: 0 56px 64px; }
+.wf-home > * { animation: ac-rise var(--duration-3) var(--ease-out) both; animation-delay: calc(var(--d, 0) * 55ms); }
+.wf-about { display: block; max-width: 46em; font: 400 16px/1.55 var(--font-sans); color: var(--ink-2); text-wrap: pretty; text-align: left; }
+button.wf-about { display: inline-flex; align-items: baseline; gap: 8px; margin: -2px -8px; padding: 2px 8px; border-radius: 8px; transition: background-color var(--duration-1), color var(--duration-1); }
+button.wf-about .ac-i { align-self: center; color: var(--ink-3); opacity: 0; transition: opacity var(--duration-1); }
+button.wf-about:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); color: var(--ink); }
+button.wf-about:hover .ac-i, button.wf-about:focus-visible .ac-i { opacity: 1; }
+.wf-about.is-empty { align-items: center; color: var(--ink-3); }
+.wf-about.is-empty .ac-i { opacity: 1; }
+input.wf-about { width: 100%; height: 40px; margin: -8px -10px; padding: 0 10px; border: 0; border-radius: 10px; background: var(--sunk); color: var(--ink); box-shadow: inset 0 0 0 2px var(--focus); outline: none; }
+input.wf-about::placeholder { color: var(--ink-3); }
+.wf-who { display: flex; align-items: center; gap: 10px; margin-top: 12px; font: 500 13.5px/1.3 var(--font-sans); color: var(--ink-2); text-align: left; }
+button.wf-who { border-radius: 9px; }
+button.wf-who:hover { color: var(--ink); }
+.wf-who .ac-faces .ac-avatar { --ring: var(--ground); }
+.wf-sec { margin-top: 36px; }
+.wf-sh { margin: 0 0 12px; font: 600 15px/1.2 var(--font-sans); color: var(--ink); }
+.wf-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; }
+/* Its calls, as Calls lists them, without a menu column: Home has nothing to do to them but open them. Hairlines between. */
+.wf-rows { display: grid; }
+.wf-rows .cs-row { grid-template-columns: 64px minmax(0, 1fr) 92px; }
+.wf-rows .cs-menu { display: none; }
+.wf-rows .cs-row + .cs-row::before { content: ""; position: absolute; left: 14px; right: 14px; top: 0; height: 1px; background: var(--line); }
+.wf-none { padding: 18px 0 6px; font-size: 14.5px; line-height: 1.5; color: var(--ink-3); }
+
+/* A page in the workspace: wider type than the list's page, on the ground, with its comments in the margin. */
+.wf-main .wd-page { max-width: 780px; padding: 54px 64px 120px; }
+.wf-main .wd-title { font: 400 46px/1.08 var(--font-display); letter-spacing: -.018em; font-variation-settings: normal; }
+.wf-dmeta { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; margin: 14px 0 0; font: 400 13.5px/1.3 var(--font-sans); color: var(--ink-2); }
+.wf-from { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; height: 26px; padding: 0 10px 0 8px; border-radius: var(--radius-pill); background: color-mix(in srgb, var(--ink) 8%, transparent); color: var(--ink); font: 500 12.5px/1 var(--font-sans); transition: background-color var(--duration-1); }
+button.wf-from:hover { background: color-mix(in srgb, var(--ink) 13%, transparent); }
+.wf-from .ac-i { color: var(--ink-2); }
+.wf-by { display: inline-flex; align-items: center; gap: 7px; min-width: 0; }
+.wf-by .n { font-weight: 500; color: var(--ink); }
+.wf-by .d { color: var(--ink-2); }
+.wf-main .wd-by-slot { margin-bottom: 30px; }
+
+@container ws-pane (max-width: 1100px) { .wf-cards { gap: 14px; } }
+@media (max-width: 1100px) { .wf-here-t { display: none; } }
+@media (max-width: 860px) {
+  .wf { grid-template-columns: minmax(0, 1fr); }
+  .wf-top, .wf-side, .wf-main { grid-column: 1; }
+  .wf-side, .wf-main { grid-row: 2; }
+  .wf.is-home .wf-main { grid-row: 1 / 3; }
+  .wf[data-phone="page"] .wf-side, .wf[data-phone="list"] .wf-main { display: none; }
+  .wf-side { padding: 6px 12px calc(12px + env(safe-area-inset-bottom, 0px)); }
+  .wf-side .wt-r, .wf-side .wt-open, .wf-side .wt-tw { height: 44px; }
+  .wf-side .wt-open { font-size: 15px; }
+  .wf-brand { display: none; }
+  .wf-bar { padding: 0 8px 0 10px; }
+  .wf-sep, .wf-crumb { display: none; }
+  .wf-bar.has-up .wf-path { display: none; }
+  .wf-up { display: inline-flex; align-items: center; gap: 6px; min-width: 0; height: 40px; padding: 0 8px; margin-right: auto; border-radius: 9px; font: 600 15px/1 var(--font-sans); color: var(--ink); }
+  .wf-here, .wf-share, .wf-exit, .wf-end .wd-save:not(.is-failed):not(.is-offline) { display: none; }
+  .wf-band { --hz: 132px; --wf-x: 20px; height: 164px; }
+  .wf-name { right: 20px; bottom: 46px; font-size: 34px; }
+  .wf-home { margin-top: 0; padding: 12px 20px 40px; }
+  .wf-cards { grid-template-columns: minmax(0, 1fr); }
+  .wf-rows .cs-row { grid-template-columns: 46px minmax(0, 1fr) auto; }
+  .wf-main .wd-page { padding: 28px 22px 80px; }
+  .wf-main .wd-title { font-size: 34px; }
+}

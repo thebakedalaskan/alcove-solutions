@@ -1,4 +1,4 @@
-import { IconButton, WsDoc, WsOfflineEmpty, WsPane, cn } from '@alcove/ui';
+import { IconButton, cn } from '@alcove/ui';
 import { Outlet, createFileRoute, useRouter, useRouterState } from '@tanstack/react-router';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { CallFlowHost, useCallFlowHost } from '~/features/calls/flow/CallFlow';
@@ -19,9 +19,10 @@ import { takeArrival } from '~/lib/live';
 import { overlayOpen, typing, withMod } from '~/lib/keys';
 
 /*
- * Everything in the frame: the side panel (on a phone, the top bar and the tab bar) beside Home, Notes, a note, the
- * workspace, Record, Team and Settings. Opened without a connection by someone signed in here, Record works and every
- * other page says it's offline; once the connection is back, everything is read again.
+ * Everything in the frame: the side panel (on a phone, the top bar and the tab bar) beside Home, Calls, a call, the Drive,
+ * Record, Team and Settings. A workspace full screen is a frame of its own (features/workspace/Frame.tsx): the app's side
+ * panel, top bar and tab bar give way to its own, and the hosts and guards here stay. Opened without a connection by someone
+ * signed in here, Record works and every other page says it's offline; once the connection is back, everything is read again.
  */
 export const Route = createFileRoute('/_app')({
   beforeLoad: ({ context, preload }) => requireAccount(context.queryClient, preload),
@@ -62,7 +63,7 @@ function Shell() {
   useEffect(() => { paletteOpen.current = palette; }, [palette]);
   const pathNow = useRef(path);
   pathNow.current = path;
-  const full = inWorkspace(path);
+  const full = inWorkspace(path) && !account.offline;
   /*
    * Come from a call's page (Go to Home, Open the notes), the frame settles in once, its side panel easing in after it, in
    * place of its usual fade: the fade isn't put back afterwards, or it would play again. The page said so on its way out, and
@@ -101,20 +102,24 @@ function Shell() {
   return (
     <CallFlowContext.Provider value={flow}>
         {/* Behind a new account's arrival screen until it opens; then in again, as the arch opens. */}
-        <div key={opened} ref={shell} className={cn('shell', arrival === 'none' && 'world-in', side.hidden && 'is-bare')} data-arrive={arrival === 'from-call' ? 'call' : undefined} inert={stage === 'creating'}>
-          <Sidebar hidden={side.hidden} hideRef={side.hideRef} onHide={side.hide} onNew={() => flow.start()} onPin={() => openPalette({ mode: 'pin' })} />
-          {side.hidden && <IconButton ref={side.showRef} icon="panel" label="Show the side panel" className="sb-show" onClick={side.show} />}
-          <PhoneTop onSearch={() => openPalette()} onNew={() => flow.start()} />
-          <main className={cn('main', full && 'is-full')}>
-            {/* With the side panel hidden, its offline notice moves to the top of the page. */}
-            <Offline show={side.hidden} className="main-offline" />
-            <div className="main-top"><TopActions onSearch={() => openPalette()} keyed={!full} /></div>
-            <div key={full ? '/drive/' : path} className="main-in enter">
-              {account.offline && full ? <WsPane page><WsDoc><WsOfflineEmpty /></WsDoc></WsPane> : account.offline && path !== '/record' ? <OfflinePage /> : <Outlet />}
-            </div>
-          </main>
-          <TabBar />
-        </div>
+        {full ? (
+          <div key={opened} className="world-in" inert={stage === 'creating'}><Outlet /></div>
+        ) : (
+          <div key={opened} ref={shell} className={cn('shell', arrival === 'none' && 'world-in', side.hidden && 'is-bare')} data-arrive={arrival === 'from-call' ? 'call' : undefined} inert={stage === 'creating'}>
+            <Sidebar hidden={side.hidden} hideRef={side.hideRef} onHide={side.hide} onNew={() => flow.start()} onPin={() => openPalette({ mode: 'pin' })} />
+            {side.hidden && <IconButton ref={side.showRef} icon="panel" label="Show the side panel" className="sb-show" onClick={side.show} />}
+            <PhoneTop onSearch={() => openPalette()} onNew={() => flow.start()} />
+            <main className="main">
+              {/* With the side panel hidden, its offline notice moves to the top of the page. */}
+              <Offline show={side.hidden} className="main-offline" />
+              <div className="main-top"><TopActions onSearch={() => openPalette()} /></div>
+              <div key={path} className="main-in enter">
+                {account.offline && path !== '/record' ? <OfflinePage /> : <Outlet />}
+              </div>
+            </main>
+            <TabBar />
+          </div>
+        )}
         <CallFlowHost opened={calls.opened} open={calls.open} close={calls.close} />
         <Palette open={palette} onOpenChange={setPalette} start={start} />
         <TourHost />

@@ -1,7 +1,7 @@
 /*
  * Following a call's notes as they're written, on the page a call leaves you on (CallOver.tsx): each step as it's done, from
  * `api.notes.progress`, until they're ready. A stream that stops before then, or notes that take longer than a minute and a
- * half, are `stuck`: they'll be in Notes when they're ready, and nobody needs to wait.
+ * half, are `stuck`: they'll be in Calls when they're ready, and nobody needs to wait.
  */
 import type { NoteProgress } from '@alcove/api';
 import { useEffect, useState } from 'react';

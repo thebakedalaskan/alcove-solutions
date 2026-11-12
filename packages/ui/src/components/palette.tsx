@@ -170,7 +170,7 @@ export function PaletteMoreLine({ children }: { children: ReactNode }) {
   return <><Icon name="down" size={15} /><span className="ac-clamp-1">{children}</span></>;
 }
 
-/** "See all 9 moments in Notes": at the end of the list. */
+/** "See all 9 moments in Calls": at the end of the list. */
 export function PaletteAllLine({ children }: { children: ReactNode }) {
   return <><span className="ac-clamp-1">{children}</span><Icon name="right" size={16} /></>;
 }
@@ -271,12 +271,12 @@ export function PaletteAskPreview({ question, children }: { question: ReactNode;
   );
 }
 
-/** See all's preview: the words, and what Notes will show for them (`children`). */
+/** See all's preview: the words, and what Calls will show for them (`children`). */
 export function PaletteAllPreview({ words, children }: { words: ReactNode; children: ReactNode }) {
   return (
     <div className="pal-askpv">
-      <span className="pal-mark is-big"><Icon name="notes" size={21} /></span>
-      <span className="k">In Notes</span>
+      <span className="pal-mark is-big"><Icon name="calls" size={21} /></span>
+      <span className="k">In Calls</span>
       <blockquote>{words}</blockquote>
       <p>{children}</p>
     </div>

@@ -1,7 +1,7 @@
 /*
  * When the palette has nothing to list: the kit's EmptyState with the palette's art (a dashed arch around an icon) and
  * className="pal-none", a title, one line, and the way on.
- * Nothing matches, with Ask lit above it; someone in the line who said nothing you can read, with their calls in Notes;
+ * Nothing matches, with Ask lit above it; someone in the line who said nothing you can read, with their calls in Calls;
  * the first day, before any call with notes; a search that didn't go through, in caution, with Try again; and offline.
  * While a search has no list yet to keep dimmed, dots (PaletteWaiting).
  */
@@ -34,13 +34,13 @@ export const NothingMatches: Story = {
   )
 };
 
-/** Someone in the line who said nothing you can read: no list, and Calls with Theo opens Notes with the notes you both have. */
+/** Someone in the line who said nothing you can read: no list, and Calls with Theo opens Calls with the calls you’re both on. */
 export const SomeoneWhoSaidNothing: Story = {
   name: 'Someone who said nothing',
   render: () => (
     <Pane>
       <Nothing icon="quote" title="Nothing Theo said is in your notes" action={<Button variant="quiet" size="sm" onClick={did('calls with theo')}>Calls with Theo</Button>}>
-        Calls with Theo in Notes lists the notes you both have.
+        Calls with Theo lists the calls you’re both on.
       </Nothing>
     </Pane>
   )

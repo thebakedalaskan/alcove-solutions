@@ -154,7 +154,7 @@ function OverWords() {
   const close = () => setOpen(false);
   return (
     <Box width={560} height={300}>
-      <WsPane page>
+      <WsPane>
         <WsDoc>
           <WsScroll>
             <WsPage>

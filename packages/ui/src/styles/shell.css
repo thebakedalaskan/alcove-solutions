@@ -35,24 +35,10 @@
 .main { --top-room: 322px; --page-x: clamp(28px, 3.4vw, 60px); --page-max: 1760px; min-width: 0; padding: 30px var(--page-x) 88px; }
 .main-in { max-width: var(--page-max); margin: 0 auto; }
 .main-in.enter > * { animation: ac-rise var(--duration-3) var(--ease-out) both; animation-delay: calc(var(--d, 0) * 55ms); }
-/*
- * A page that fills the frame, like the workspace: it doesn't scroll, it sits 12 px inside the frame, and search and you
- * stay where they are on every page, in the head of what's underneath it.
- */
-.shell:has(> .main.is-full) { height: 100vh; height: 100dvh; min-height: 0; }
-.main.is-full { --pane-left: 12px; display: flex; flex-direction: column; min-height: 0; overflow: clip; padding: 20px 20px 20px var(--pane-left); }
-.main.is-full .main-in { flex: 1; width: 100%; max-width: none; min-height: 0; }
-.main.is-full .main-top { width: 100%; max-width: none; }
-.main.is-full .top-acts { top: 7px; right: 12px; }
-.main.is-full .wd-head { padding-right: var(--top-room); }
-/* History sits under search and you, and the head only keeps clear of what's left of them. */
-.main.is-full .wh { margin-top: 52px; box-shadow: 0 -52px 0 var(--surface); }
-.main.is-full .ws-pane:has(> .wh) .wd-head { padding-right: max(10px, calc(var(--top-room) - 260px)); }
 /* With a document open its own bar says what being offline means for it: one notice is enough. */
 .shell:has(.wd-off) :is(.ph-offline, .main-offline) { display: none; }
 /* With the side panel hidden, its button waits in the top-left corner, clear of the page, and its offline notice tops the page. */
-@media (min-width: 861px) { .shell.is-bare .main:not(:has(> .main-in > .dusk), .is-full) { padding-left: max(72px, var(--page-x)); } }
-.shell.is-bare .main.is-full { --pane-left: 64px; }
+@media (min-width: 861px) { .shell.is-bare .main:not(:has(> .main-in > .dusk)) { padding-left: max(72px, var(--page-x)); } }
 .sb-show { position: fixed; z-index: 20; top: 24px; left: 16px; background: var(--ground); }
 .main-offline { max-width: var(--page-max); margin: 0 auto; }
 .main-offline .sb-status { width: fit-content; max-width: 100%; margin: 0 0 24px; }
@@ -80,7 +66,6 @@
   .top-find { justify-content: center; width: 40px; padding: 0; }
   .top-find > span, .top-find .ac-kbd { display: none; }
 }
-@media (max-width: 860px) { .main.is-full .wh { margin-top: 0; box-shadow: none; } }
 
 /* On paper it's just the page. */
 @media print {
@@ -175,7 +160,6 @@ a.sb-link:hover, a.sb-link[aria-current="page"] { background: color-mix(in srgb,
   .ph-offline .sb-status { margin: 14px 0 0; }
   .tabbar { position: fixed; z-index: 40; left: 0; right: 0; bottom: 0; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); align-items: end; padding: 6px max(6px, env(safe-area-inset-right, 0px)) max(24px, env(safe-area-inset-bottom, 0px)) max(6px, env(safe-area-inset-left, 0px)); background: var(--surface); box-shadow: inset 0 1px 0 var(--line); }
   .shell { --side: 0px; }
-  .main.is-full, .shell.is-bare .main.is-full { --pane-left: 12px; padding: 10px 12px calc(92px + env(safe-area-inset-bottom, 0px)); }
   /* Toasts rise above the tab bar and Record's raised button. */
   body:has(.tabbar) .ac-toasts:not(.on-stage) { bottom: calc(116px + env(safe-area-inset-bottom, 0px)); }
 }
