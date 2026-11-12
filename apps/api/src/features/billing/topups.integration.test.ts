@@ -1280,7 +1280,7 @@ describe('top-ups that buy', () => {
     // One purchase buys fewer months now.
     const bob = await account();
     const many = await bob.api.plans.startTopUp(BASE_USDC, 3 * PRICE, pro(3));
-    await h.setLimit('plan.pro_max_months', 2);
+    await h.setLimit('plan.pro.max_months', 2);
     expect((await paid(bob.api, many, 3 * PRICE)).purchase).toEqual({ buys: pro(3), outcome: 'refused', why: 'Since your payment was made, one purchase buys at most 2 months of Pro. It’s in your balance.' });
     expect(await bob.api.plans.plan()).toMatchObject({ kind: 'free', balance: { microUsd: 3 * PRICE } });
     await h.resetLimits();

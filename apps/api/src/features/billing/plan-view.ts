@@ -50,7 +50,7 @@ export async function offersOf(d: Pick<Deps, 'cfg' | 'pool'>): Promise<PlanOffer
   return {
     periodDays: l.get('plan.period_seconds') / 86_400,
     free: freeAllowance(l),
-    pro: { ...proAllowance(l), microUsdPerMonth: l.get('plan.pro.price_micro_usd'), maxMonths: l.get('plan.pro_max_months'), yearly: yearlyOf(l) },
+    pro: { ...proAllowance(l), microUsdPerMonth: l.get('plan.pro.price_micro_usd'), maxMonths: l.get('plan.pro.max_months'), yearly: yearlyOf(l) },
     hours: hoursOf(l),
     team: { ...teamAllowance(l), microUsdPerLicense: l.get('plan.team.price_micro_usd'), maxLicenses: l.get('team.max_licenses') }
   };

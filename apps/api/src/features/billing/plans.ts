@@ -97,7 +97,7 @@ export function yearlyOf(l: Limits): PlanOffers['pro']['yearly'] {
   const microUsdPerMonth = l.get('plan.pro.yearly_price_micro_usd');
   const fromMonths = l.get('plan.pro.yearly_from_months');
   const lower = microUsdPerMonth > 0 && microUsdPerMonth < l.get('plan.pro.price_micro_usd');
-  return lower && fromMonths <= l.get('plan.pro_max_months') ? { fromMonths, microUsdPerMonth } : null;
+  return lower && fromMonths <= l.get('plan.pro.max_months') ? { fromMonths, microUsdPerMonth } : null;
 }
 /** What a month of Pro costs bought `months` at a time: the yearly price from its `fromMonths`, otherwise a month's. */
 export function proPriceFor(l: Limits, months: number): number {
@@ -177,11 +177,11 @@ export const graceUntil = (a: PlanAccount, p: InForce, l: Limits, now = Date.now
   gracesOf(a, p, l, now).reduce<number | null>((n, g) => (n === null || g.until > n ? g.until : n), null);
 
 /**
- * When Pro's end is told: `plan.pro_remind_seconds` before it, but never before its last month starts, so a month bought
+ * When Pro's end is told: `plan.pro.remind_seconds` before it, but never before its last month starts, so a month bought
  * at the reminder is never due a reminder of its own at once, however the limits are set.
  */
 const remindAt = (a: PlanAccount, l: Limits, end: string): number =>
-  Math.max(Date.parse(end) - l.get('plan.pro_remind_seconds') * 1000, Date.parse(a.pro.at(-1)?.from ?? end));
+  Math.max(Date.parse(end) - l.get('plan.pro.remind_seconds') * 1000, Date.parse(a.pro.at(-1)?.from ?? end));
 
 /** When upkeep should next look at an account: its grace ending, Pro's end to be told, or Pro's end to be handled. */
 function dueAt(a: PlanAccount, l: Limits): Date | null {
@@ -432,7 +432,7 @@ function termsOf(l: Limits, buys: Purchase, buyer: Buyer, now: number): Terms | 
     if (isLive(buyer.license, now)) {
       return refusal('team', 'You’re on your team’s plan while your license lasts, so Pro can’t be bought now.', 'You were on your team’s plan when your payment arrived, so Pro wasn’t bought. It’s in your balance.');
     }
-    const max = l.get('plan.pro_max_months');
+    const max = l.get('plan.pro.max_months');
     if (buys.months > max) {
       return refusal('too-many', `Buy 1 to ${max} months at a time.`, `Since your payment was made, one purchase buys at most ${monthsOf(max)} of Pro. It’s in your balance.`);
     }

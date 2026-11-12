@@ -157,7 +157,7 @@ when the account began, or from the end of the last month of Pro, whichever is l
 with or without upkeep.
 
 **What's offered** (`GET /v1/plan/offers`): the period in days, Free's and Pro's allowances (Pro's file size as enforced),
-the price of a month (`plan.pro.price_micro_usd`, $20) and the most months one purchase buys (`plan.pro_max_months`, 12).
+the price of a month (`plan.pro.price_micro_usd`, $20) and the most months one purchase buys (`plan.pro.max_months`, 12).
 
 **A year or more for less** (`offers.pro.yearly`): a month costs `plan.pro.yearly_price_micro_usd` ($16, 20% off) when one
 purchase buys at least `plan.pro.yearly_from_months` (12): `{ fromMonths, microUsdPerMonth }`. It's `null`, and every
@@ -167,7 +167,7 @@ app works out its "20% off" from the two prices.
 **Buying** (`POST /v1/plan/pro { months, microUsdPerMonth }`) runs in one transaction with the account's `plan_accounts`
 row locked, so buys at once on any instance never spend the same money twice:
 
-1. More than `plan.pro_max_months` is refused (`invalid`, "Buy 1 to 12 months at a time.").
+1. More than `plan.pro.max_months` is refused (`invalid`, "Buy 1 to 12 months at a time.").
 2. A price other than the one in force for that many months (the yearly price from `yearly.fromMonths`, a month's below
    it) is refused (`conflict`, "The price of Pro has changed. Look at it again before buying."): the app sends the price
    it showed, so a change in between charges nothing.
@@ -191,7 +191,7 @@ add, by the same rule. Each month keeps the purchase it was one of, so the recor
 month still to come; the rest of the months that have ended go, as before.
 
 **Renewing** (`PUT /v1/plan/renew { renew }`) is off by default. Upkeep (`upkeep` in `plans.ts`, every 5 minutes, by
-`plan_accounts.due_at`) looks at an account at the earliest of: its release grace ending; `plan.pro_remind_seconds` (3
+`plan_accounts.due_at`) looks at an account at the earliest of: its release grace ending; `plan.pro.remind_seconds` (3
 days) before Pro ends, never before the last month starts; and Pro's end (the last month's `to`). The record keeps which
 end it has reminded about (`reminded`) and handled (`ended`), so each happens once for each end:
 

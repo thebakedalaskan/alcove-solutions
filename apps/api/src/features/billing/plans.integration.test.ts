@@ -496,7 +496,7 @@ describe('Pro', () => {
 
   it('renews from the balance before Pro ends while renewing is on, and ends it when the balance is short', async () => {
     await h.setLimit('plan.period_seconds', 3600);
-    await h.setLimit('plan.pro_remind_seconds', 600);
+    await h.setLimit('plan.pro.remind_seconds', 600);
     // With money for the next month: bought at the reminder, after the last.
     const ann = await account();
     await give(ann, 2 * PRICE);
@@ -547,7 +547,7 @@ describe('Pro', () => {
 
   it('tells its owner before Pro ends and when it has, until they dismiss it, and nobody else can', async () => {
     await h.setLimit('plan.period_seconds', 3600);
-    await h.setLimit('plan.pro_remind_seconds', 600);
+    await h.setLimit('plan.pro.remind_seconds', 600);
     const ann = await account();
     const bob = await account();
     await give(ann, PRICE);
