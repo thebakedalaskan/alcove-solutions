@@ -290,6 +290,10 @@ function fileIn(id: string, documentId: string, mediaId: string) {
 export async function upload(id: string, documentId: string, file: File, o: MediaUploadOptions = {}): Promise<WorkspaceMedia> {
   editable(id, documentId);
   if (file.size > MOST_BYTES) throw new AlcoveApiError('invalid', 'This file is bigger than 512 MiB, the most a file can be.');
+  // As the server's requireRoom (billing/plans.ts): a file that would take whoever pays past their storage is refused, before
+  // any of it is kept. Art is who pays here, so it's the world's plan: over it in `plan-over`, with room on the busy afternoon.
+  const { storage, over } = current().plan;
+  if (over.storage || storage.usedBytes + file.size > storage.limitBytes) throw new AlcoveApiError('plan-limit', 'Your storage is full. Delete something, or move to a plan with more room.');
   const stopped = () => new AlcoveApiError('network', 'That upload was stopped.');
   for (let piece = 1; piece <= UPLOAD_PIECES; piece++) {
     await pause(PIECE_MS);

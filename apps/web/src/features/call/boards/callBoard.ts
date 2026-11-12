@@ -24,6 +24,7 @@ import type { BoardCommenting } from '~/features/board/comments';
 import type { BoardUpload } from '~/features/board/more/items';
 import type { BoardItem } from '~/features/board/more/objects';
 import type { SortAsk } from '~/features/board/useBoard';
+import { useStorageRefusal } from '~/features/plans/storageFull';
 import { usePersonIds } from '~/features/workspace/ids';
 import { canKeepEdits } from '~/features/workspace/keep';
 import { useOpensAgain } from '~/features/workspace/opened';
@@ -398,7 +399,8 @@ export function useCallBoard({ session, stage, saved, state, me, owner, talking,
   const pictures = useMemo<BoardPictures>(() => (workspaceId && documentId ? boardPictures(workspaceId, documentId, drawnPass) : () => Promise.reject(new Error('no board'))), [workspaceId, documentId, drawnPass]);
   /* A picture put on the board is kept in its document, as a picture of a screen is, for whoever can add to it. */
   const canAdd = drawnOpen?.role === 'edit';
-  const upload = useMemo<BoardUpload | undefined>(() => (workspaceId && documentId && canAdd ? boardUpload(workspaceId, documentId, drawnPass) : undefined), [workspaceId, documentId, drawnPass, canAdd]);
+  const storageFull = useStorageRefusal(owner !== null, 'call');
+  const upload = useMemo<BoardUpload | undefined>(() => (workspaceId && documentId && canAdd ? boardUpload(workspaceId, documentId, drawnPass, storageFull) : undefined), [workspaceId, documentId, drawnPass, canAdd, storageFull]);
   /*
    * The board's workspace as you can open it, read once it's open to you: each link's name for you, and what More links to.
    * Someone it isn't open to reads nothing of it.

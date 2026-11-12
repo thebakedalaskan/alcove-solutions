@@ -40,7 +40,8 @@ export const wsToast = {
   restoredBy: (first: string, when: string, onHistory: () => void): WsToastData => ({ icon: 'history', text: `${first} restored the version from ${when}`, action: { label: 'History', onClick: onHistory }, ms: 9000 }),
   restored: () => say('history', 'Restored. Everyone sees it again.'),
   deleted: (name: string) => say('trash', `${name} deleted for good`),
-  failed: (text: string) => say('alert', text),
+  /** `action`: the one thing that helps, such as Get Pro when your storage is full; it stays up longer, so there's time to press it. */
+  failed: (text: string, action?: WsToastData['action']): WsToastData => (action ? { icon: 'alert', text, action, ms: 9000 } : say('alert', text)),
   /** `ask`: it's the call's board, and whoever brought it is here to ask, as the board you can't open asks them, in the chat. */
   presentingPrivate: (first: string, ask?: { who: string; onAsk: () => void } | undefined): WsToastData => (ask
     ? { icon: 'lock', text: `${first} is presenting something you can’t open`, action: { label: `Ask ${ask.who} for access`, onClick: ask.onAsk }, ms: 12000 }

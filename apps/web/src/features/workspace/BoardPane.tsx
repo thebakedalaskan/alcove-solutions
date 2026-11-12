@@ -19,6 +19,7 @@ import type { BoardLinks } from '~/features/board/more/objects';
 import { useBoardPeople } from '~/features/board/people';
 import { FollowingPill, StandingPill } from '~/features/board/pills';
 import { sealedOnPage, standingOf, useChangesSinceSaved, type PopRow, type StandingAction } from '~/features/board/standing';
+import { useStorageRefusal } from '~/features/plans/storageFull';
 import { useCallFlow } from '~/features/shell/context';
 import { useLive, useMedia, useOnline } from '~/lib/live';
 import { log } from '~/lib/log';
@@ -192,7 +193,8 @@ function OpenedBoard({ ws, item, opened, reopen }: { ws: Ws; item: WorkspaceItem
    */
   const { workspaceId, pass, items: inTree, go } = ws;
   const pictures = useMemo(() => boardPictures(workspaceId, item.id, pass), [workspaceId, item.id, pass]);
-  const upload = useMemo(() => (readOnly ? undefined : boardUpload(workspaceId, item.id, pass)), [readOnly, workspaceId, item.id, pass]);
+  const refused = useStorageRefusal(ws.owner !== null, ws.call ? 'call' : 'page');
+  const upload = useMemo(() => (readOnly ? undefined : boardUpload(workspaceId, item.id, pass, refused)), [readOnly, workspaceId, item.id, pass, refused]);
   const linkable = useMemo(() => linkableIn(inTree), [inTree]);
   const links = useMemo((): BoardLinks => {
     const named = new Map(linkable.map((i) => [i.id, i]));
