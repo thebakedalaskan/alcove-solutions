@@ -150,7 +150,9 @@ export function PlanCycle({ value, onChange, off, month = 'Monthly', year = 'Yea
   return (
     <div className={cn('pl-cycle', className)} role="group" aria-label={label}>
       <button type="button" aria-pressed={value === 'month'} onClick={() => onChange('month')}>{month}</button>
-      <button type="button" aria-pressed={value === 'year'} onClick={() => onChange('year')}>{year}{has(off) && <span className="off">{off}</span>}</button>
+      <button type="button" aria-pressed={value === 'year'} onClick={() => onChange('year')}>
+        {year}{has(off) && <><span className="sr-only">, </span><span className="off">{off}</span></>}
+      </button>
     </div>
   );
 }
