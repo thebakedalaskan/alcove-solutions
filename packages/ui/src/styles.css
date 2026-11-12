@@ -48,6 +48,7 @@
 @import "./styles/settings.css";
 @import "./styles/agents.css";
 @import "./styles/flow.css";
+@import "./styles/plan-doors.css";
 @import "./styles/workspace.css";
 @import "./styles/workspace-editor.css";
 @import "./styles/board.css";

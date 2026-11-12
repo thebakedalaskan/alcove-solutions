@@ -7,6 +7,7 @@ import { Button, Faces, FlowBody, FlowFoot, FlowNote, FlowRow, NotesSwitches, Se
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { NoNotesLeftDoor } from '~/features/plans/notesLeft';
 import { namesIn } from '~/features/workspace/List';
 import { useMyModelUnencrypted } from '~/lib/aiModels';
 import { callName } from '~/lib/people';
@@ -103,6 +104,7 @@ export function Details({ draft, change, guests, at, invites, connectCalendar, b
             </>
           )}
           <FlowRow icon="notes" on={draft.notes === 'on'} title={notesWord(draft)} sub={draft.notes === 'on' ? 'Everyone invited gets them' : 'Nothing is recorded'} expanded={open === 'notes'} onClick={() => setOpen((o) => (o === 'notes' ? null : 'notes'))} />
+          {draft.notes === 'on' && <NoNotesLeftDoor at={at} newTab />}
           {open === 'notes' && <div className="cf-more"><NotesSwitches modelPrivate={!unencrypted} notes={draft.notes} choices={draft.choices} onNotes={(notes) => change({ notes })} onChoices={(choices) => change({ choices })} /></div>}
           <FlowRow icon="folders" title={space.kind === 'pick' ? space.name : space.kind === 'new' ? 'New workspace' : 'No workspace'} sub={SPACE_SUB[space.kind]}
             expanded={open === 'space'} onClick={() => setOpen((o) => (o === 'space' ? null : 'space'))} disabled={saving} />

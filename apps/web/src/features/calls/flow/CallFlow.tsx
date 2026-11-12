@@ -4,12 +4,13 @@
  * nothing and drops the draft; a save that fails stays here with the draft intact. Once a call is scheduled it lives
  * in Home's list and opens its card (Card.tsx) from there.
  */
-import { errorMessage, type Document, type Meeting, type MeetingCreate, type Person } from '@alcove/api';
+import { errorMessage, type Document, type Meeting, type MeetingCreate, type NotesSetting, type Person } from '@alcove/api';
 import { Button, FlowFoot, FlowHead, FlowNote, FlowSteps, FlowView, Modal, WayCard, cn, useSmoothHeight, useToast } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useCopyLink } from '~/features/call/session/links';
 import { openWhenStarted } from '~/features/call/session/opening';
+import { NoNotesLeftDoor } from '~/features/plans/notesLeft';
 import { freshCalls, type BoardToOpen, type CallFlow, type StartOptions } from '~/features/shell/context';
 import { someNames } from '~/lib/people';
 import { q, useCancelCall, useScheduleCall, useStartNow } from '~/lib/queries';
@@ -151,11 +152,13 @@ function Choice({ people, name, team, documents, board, onClose, onLater, toast 
   const { go, flood } = useFloodToCall();
   const now = useRef<HTMLButtonElement>(null);
   const starting = useRef(false);
-  const start = (card: Element | null) => {
+  /* A call starts with your notes setting, unless it says otherwise (Start without notes). */
+  const notesOn = useQuery(q.prefs()).data?.notesDefault !== 'off';
+  const start = (card: Element | null, notes?: NotesSetting) => {
     if (starting.current) return;
     starting.current = true;
     go(card, async () => {
-      const { code } = await startNow.mutateAsync({ ...(people.length ? { guests: people.map((p) => p.email) } : {}), ...(documents.length ? { documents: documents.map((d) => d.id) } : {}) });
+      const { code } = await startNow.mutateAsync({ ...(notes ? { notes } : {}), ...(people.length ? { guests: people.map((p) => p.email) } : {}), ...(documents.length ? { documents: documents.map((d) => d.id) } : {}) });
       if (board) openWhenStarted(code, board);
       return code;
     })
@@ -180,6 +183,7 @@ function Choice({ people, name, team, documents, board, onClose, onLater, toast 
         <WayCard art="later" title="Schedule for later" kbd="S" aria-keyshortcuts="S" onClick={onLater}>{team ? 'Find a time that works for everyone.' : 'Pick a time and invite people.'}</WayCard>
       </div>
       {board && <FlowNote tone="info" icon="stickyNote">{board.name || 'Untitled board'} comes with this call. Start now and it opens for you, ready to present.</FlowNote>}
+      {notesOn && <NoNotesLeftDoor alone beforeCheckout={onClose} without={{ label: 'Start without notes', onClick: () => start(now.current, 'off') }} />}
       {flood}
     </>
   );

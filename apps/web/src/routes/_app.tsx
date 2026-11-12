@@ -6,6 +6,7 @@ import { CallFlowHost, useCallFlowHost } from '~/features/calls/flow/CallFlow';
 import { useKeptUploads } from '~/features/record/uploads';
 import { useKeptEdits } from '~/features/workspace/sendKept';
 import { useArrival } from '~/features/onboarding/store';
+import { HourLeft } from '~/features/plans/notesLeft';
 import { TourHost } from '~/features/onboarding/Tour';
 import { Palette } from '~/features/shell/Palette';
 import { OfflinePage } from '~/features/shell/OfflinePage';
@@ -94,6 +95,7 @@ function Shell() {
         <CallFlowHost opened={calls.opened} open={calls.open} close={calls.close} />
         <Palette open={palette} onOpenChange={setPalette} start={start} />
         <TourHost />
+        {!account.offline && <HourLeft ownerId={ownerOf(account)} />}
     </CallFlowContext.Provider>
   );
 }
