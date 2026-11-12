@@ -38,8 +38,15 @@ Not fixed. The first two are the most worth doing before release.
    - Files anyone adds to a workspace count against its payer (item 4).
    - Guests' questions are capped per guest (below), in each API process. A guest who leaves and joins again starts
      over with a new identity: that's deliberate, since the cap is there to slow one person down, not to limit a call.
-   - Main's #275 ("everyone in the call can open and edit its workspace and boards, guests too") widens the first two
-     once `release/plans` takes main.
+   - Main's #275 ("everyone in the call can open and edit its workspace and boards, guests too") widened the first two.
+     With main merged, a call opens its workspace to everyone in it only while the organizer edits there and pays for it
+     (`access.ts › holdersOf`), so that way is closed. Boards are still open: a board the call makes (the main board and
+     the rooms' boards, in the call's home) seats everyone in the call, or the room, while the organizer can edit there, and
+     a saved board someone lets everyone in to seats them on that person's word (`calls/boards.ts`: `stillTheCalls`,
+     `madeMain`, `makeRoomBoards`, `letInHere`). When the home is a workspace someone else pays for (an existing one chosen
+     when the call was scheduled), a guest's files and AI on those boards count against that payer. Fix: seat everyone on
+     a board the call makes only while the organizer pays too, as `holdersOf` does, or refuse files and AI to someone who
+     has a document only through a call's seat unless that call's organizer pays for the workspace.
    - The reverse also works: someone whose own notes have run out can still use document AI in a workspace someone
      else pays for, or ask as a guest.
 
