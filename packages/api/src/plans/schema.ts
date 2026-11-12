@@ -118,6 +118,12 @@ export const PurchaseSchema = z.discriminatedUnion('kind', [
 ]);
 export type Purchase = z.infer<typeof PurchaseSchema>;
 export const RenewBodySchema = z.object({ renew: z.boolean() });
+/**
+ * What the Plans page opens checkout on as it opens (`/plans?checkout=pro`): Pro, or more notes for this period. The welcome
+ * page's Get Pro lands there once signed in.
+ */
+export const CheckoutParamSchema = z.enum(['pro', 'hours']);
+export type CheckoutParam = z.infer<typeof CheckoutParamSchema>;
 
 /* ---------- adding money ---------- */
 

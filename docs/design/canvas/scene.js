@@ -30,6 +30,8 @@
     notes: { sky: [0.30, 0.52], lightSky: [0.40, 0.66], sun: null, glitter: 70, stars: 7, glowW: 980, glowH: 150 },
     note: { sky: [0.24, 0.40], lightSky: [0.30, 0.50], sun: null, glitter: 0, stars: 4, glowW: 760, glowH: 90 },
     settings: { sky: [0.18, 0.32], lightSky: [0.26, 0.42], sun: null, glitter: 0, stars: 0, glowW: 620, glowH: 70 },
+    /* Plans: just after sunset, with a long low glow. The page draws its own sun, over Pro's column. */
+    plans: { sky: [0.32, 0.58], lightSky: [0.42, 0.72], sun: null, glitter: 0, stars: 0, glowW: 1500, glowH: 230 },
     record: { night: true, sky: [0.08, 0.26], lightSky: [0.08, 0.26], sun: { r: 58, x: 0, rec: true }, glitter: 150, stars: 22 }
   };
 
@@ -84,7 +86,7 @@
   };
 
   /* What every new page starts from: the shell Home uses, with the sidebar marking this page and giving way to its one filled button. */
-  var IDS = { home: 'Home', notes: 'Notes', record: 'Record', team: 'Team', note: 'Notes', settings: '' };
+  var IDS = { home: 'Home', notes: 'Notes', record: 'Record', team: 'Team', note: 'Notes', settings: '', plans: '' };
   AH.page = function (c, id, opts) {
     var o = opts || {}, p = c.props || {};
     var v = AH.vm(c, 'home', { pal: 'blue-hour', mode: o.night ? 'dark' : 'dark' });

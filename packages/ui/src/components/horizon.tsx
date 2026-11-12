@@ -14,13 +14,14 @@
  * comes. Shown for itself rather than behind a page (`only`), the scene brings one kind of visitor over and over, or none.
  *
  * `land` stands between the sea and the sky's visitors (the welcome page's `Cove`): everything that sails, leaps or rises
- * passes behind it, and gulls fly in front.
+ * passes behind it, and gulls fly in front. `sky` is drawn on the sky itself, behind the clouds and everything that passes
+ * through: Plans' last sliver of the sun, since its moment has no sun of its own.
  */
 import { useReducedMotion } from 'motion/react';
 import { memo, useEffect, useMemo, useRef, useState, type AnimationEvent, type ComponentProps, type ReactNode } from 'react';
 import { cn } from '../cn';
 
-export type Moment = 'home' | 'team' | 'notes' | 'drive' | 'note' | 'settings' | 'record';
+export type Moment = 'home' | 'team' | 'notes' | 'drive' | 'plans' | 'note' | 'settings' | 'record';
 
 /** A small generator, so the sea is the same on every visit. */
 function seeded(seed: number): () => number {
@@ -54,6 +55,8 @@ const MOMENTS: Record<Moment, Drawing> = {
   },
   notes: { sun: false, glitter: 70, shine: 0.55, chop: 5, stars: 7, streaks: false, clouds: [{ x: 16, at: 0.3, w: 230, rows: 4, takes: 720 }, { x: 72, at: 0.14, w: 170, rows: 3, takes: 900 }] },
   drive: { sun: false, glitter: 50, shine: 0.45, chop: 4, stars: 5, streaks: false, clouds: [{ x: 64, at: 0.24, w: 220, rows: 4, takes: 780 }, { x: 10, at: 0.12, w: 160, rows: 3, takes: 960 }] },
+  /* Just after sunset: a long low glow and a calm sky. The page draws the last sliver of the sun itself (PlanSunset, as `sky`). */
+  plans: { sun: false, glitter: 0, shine: 0, chop: 2, stars: 0, streaks: false, clouds: [] },
   note: { sun: false, glitter: 0, shine: 0, chop: 2, stars: 4, streaks: false, clouds: [{ x: 58, at: 0.2, w: 190, rows: 3, takes: 880 }] },
   settings: { sun: false, glitter: 0, shine: 0, chop: 2, stars: 0, streaks: false, clouds: [{ x: 44, at: 0.26, w: 190, rows: 3, takes: 960 }] },
   record: { sun: true, glitter: 150, shine: 1, chop: 5, stars: 22, streaks: false, clouds: [{ x: 24, at: 0.3, w: 260, rows: 4, takes: 940 }] }
@@ -104,7 +107,7 @@ const drawn = (moment: Moment) => {
   const m = MOMENTS[moment];
   return { ...m, ...drawSea(m), starry: drawStars(m.stars), puffs: m.clouds.map((c, i) => ({ ...c, bars: drawCloud(c, 61 + i * 17) })) };
 };
-const SCENES: Record<Moment, ReturnType<typeof drawn>> = { home: drawn('home'), team: drawn('team'), notes: drawn('notes'), drive: drawn('drive'), note: drawn('note'), settings: drawn('settings'), record: drawn('record') };
+const SCENES: Record<Moment, ReturnType<typeof drawn>> = { home: drawn('home'), team: drawn('team'), notes: drawn('notes'), drive: drawn('drive'), plans: drawn('plans'), note: drawn('note'), settings: drawn('settings'), record: drawn('record') };
 
 /* ------------------------------------------------------- what passes through */
 type Span = readonly [number, number];
@@ -166,6 +169,8 @@ const LIFE: Record<Moment, Life> = {
   team: { quick: ['gulls', 'gulls', 'fish', 'school', 'flyer', 'dolphins'], slow: ['sail', 'steamer', 'trawler', 'tall', 'tug'], gulls: [46, 120], fish: [34, 56] },
   notes: { quick: ['gulls', 'star', 'fish', 'school'], slow: ['sail', 'trawler', 'freighter'], gulls: [16, 44], fish: [16, 34] },
   drive: { quick: ['gulls', 'star', 'fish'], slow: ['sail', 'tug', 'trawler'], gulls: [18, 48], fish: [14, 30] },
+  /* As Notes', with the fish in the band of water between the horizon and the plans. */
+  plans: { quick: ['gulls', 'star', 'fish', 'school'], slow: ['sail', 'trawler', 'freighter'], gulls: [16, 44], fish: [10, 24] },
   note: { quick: ['star'], slow: [], gulls: [0, 0], fish: [0, 0] },
   settings: { quick: [], slow: ['sail', 'freighter'], gulls: [0, 0], fish: [0, 0] },
   record: { quick: ['star', 'star', 'fish', 'whale'], slow: ['sail', 'tall', 'trawler'], gulls: [0, 0], fish: [30, 70] }
@@ -306,7 +311,7 @@ function laneOf(moment: Moment): { quick: Lane<Quick>; slow: Lane<Slow> } {
     slow: { arrive: slowly, first: SLOW_FIRST, gap: SLOW_GAP, already: () => { const kind = pick(ships); return kind && coin() ? slowVisit(kind, between([0.12, 0.5])) : null; } }
   };
 }
-const LANES: Record<Moment, ReturnType<typeof laneOf>> = { home: laneOf('home'), team: laneOf('team'), notes: laneOf('notes'), drive: laneOf('drive'), note: laneOf('note'), settings: laneOf('settings'), record: laneOf('record') };
+const LANES: Record<Moment, ReturnType<typeof laneOf>> = { home: laneOf('home'), team: laneOf('team'), notes: laneOf('notes'), drive: laneOf('drive'), plans: laneOf('plans'), note: laneOf('note'), settings: laneOf('settings'), record: laneOf('record') };
 
 /** One quick visitor, drawn as its kind is. */
 function Quickly({ v, gone }: { v: Quick; gone: () => void }) {
@@ -382,11 +387,16 @@ function Visitors({ moment, only, land }: { moment: Moment; only?: Showing | und
   return only.kind ? <Again moment={moment} kind={only.kind} pace={only.pace ?? 1} land={land} /> : land;
 }
 
-export const Horizon = memo(function Horizon({ moment, only, land }: {
+export const Horizon = memo(function Horizon({ moment, only, land, sky }: {
   moment: Moment;
   only?: Showing | undefined;
   /** Land between the sea and the sky's visitors, such as the welcome page's `Cove`: gulls fly in front of it, all else behind. */
   land?: ReactNode;
+  /**
+   * Drawn on the sky, up to the horizon, behind the clouds and everything that passes through: Plans' last sliver of the sun
+   * (`PlanSunset`). Pass the same element each time (a constant), so the scene isn't drawn again with the page.
+   */
+  sky?: ReactNode;
 }) {
   const scene = SCENES[moment];
   return (
@@ -396,6 +406,7 @@ export const Horizon = memo(function Horizon({ moment, only, land }: {
       <div className="hz-up">
         {scene.starry.map((s) => <i key={`${s.x}-${s.y}`} className="hz-star" style={{ left: `${s.x}%`, top: `${s.y}%`, width: s.s, height: s.s, '--o': s.o, '--every': `${s.every}s`, '--after': `${s.after}s` }} />)}
         <div className="hz-light"><i className="hz-glow" />{scene.sun && <i className="hz-sun" />}</div>
+        {sky}
         {scene.puffs.map((c) => (
           <div key={c.x} className="hz-puff" style={{ top: `calc(var(--hz) * ${c.at})`, '--x': c.x, '--takes': `${c.takes}s` }}>
             <div style={{ left: `${c.x}%` }}>{c.bars.map((b) => <i key={b.y} style={{ left: b.x, top: b.y, width: b.w, '--lit': b.lit }} />)}</div>
@@ -419,11 +430,14 @@ export const Horizon = memo(function Horizon({ moment, only, land }: {
   );
 });
 
-/** A page on the evening: the scene behind it, out to the frame's edges, and the page at its own width in front. */
-export function Evening({ moment, className, children, ...rest }: { moment: Moment; children: ReactNode } & Omit<ComponentProps<'div'>, 'children'>) {
+/**
+ * A page on the evening: the scene behind it, out to the frame's edges, and the page at its own width in front. `sky` is what
+ * the page draws on the sky behind everything that passes through (Horizon's `sky`).
+ */
+export function Evening({ moment, sky, className, children, ...rest }: { moment: Moment; sky?: ReactNode; children: ReactNode } & Omit<ComponentProps<'div'>, 'children'>) {
   return (
     <div {...rest} className={cn('dusk', className)}>
-      <Horizon moment={moment} />
+      <Horizon moment={moment} sky={sky} />
       <div className="dusk-in">{children}</div>
     </div>
   );

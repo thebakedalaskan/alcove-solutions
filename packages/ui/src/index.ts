@@ -41,3 +41,4 @@ export * from './components/drive-exports';
 export * from './components/call-timer';
 export * from './components/call-chat';
 export * from './components/call-questions';
+export * from './components/plans';

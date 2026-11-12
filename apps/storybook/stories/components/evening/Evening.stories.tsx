@@ -6,31 +6,34 @@
  * the whole document dark for it, and here the page is scoped dark and takes its text colour from that scope. Whatever
  * passes through comes at random.
  */
-import { Card, Evening, Faces, type Moment } from '@alcove/ui';
+import { Card, Evening, Faces, PlanSunset, type Moment } from '@alcove/ui';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { AIKO, KOFI, PRIYA } from '../../../src/world/people';
 
-const MOMENTS = ['home', 'team', 'notes', 'drive', 'note', 'settings', 'record'] as const satisfies readonly Moment[];
+const MOMENTS = ['home', 'team', 'notes', 'drive', 'plans', 'note', 'settings', 'record'] as const satisfies readonly Moment[];
 /** Where each page has the horizon, as its stylesheet sets --hz. */
 const PAGE_HZ: Record<Moment, string> = {
   home: 'clamp(352px, 45vh, 540px)',
   team: 'clamp(322px, 40vh, 470px)',
   notes: 'calc(8px + clamp(256px, 30vh, 340px))',
   drive: 'calc(8px + clamp(220px, 26vh, 300px))',
+  plans: '262px',
   note: 'calc(8px + clamp(158px, 18.5vh, 196px))',
   settings: '136px',
   record: 'calc(8px + clamp(424px, 55vh, 700px))'
 };
-const PAGE: Record<Moment, string> = { home: 'Home', team: 'Team', notes: 'Notes', drive: 'Drive', note: 'Design review', settings: 'Settings', record: 'Record' };
+/** What Plans draws on its own sky: the last sliver of the sun, where its moment has none. */
+const SUNSET = <PlanSunset />;
+const PAGE: Record<Moment, string> = { home: 'Home', team: 'Team', notes: 'Notes', drive: 'Drive', plans: 'Plans', note: 'Design review', settings: 'Settings', record: 'Record' };
 
 const meta = {
   title: 'Components/The evening/Evening',
   component: Evening,
   parameters: { layout: 'fullscreen' },
   args: { moment: 'notes', children: null },
-  argTypes: { moment: { control: 'inline-radio', options: MOMENTS }, children: { control: false }, className: { control: false } },
+  argTypes: { moment: { control: 'inline-radio', options: MOMENTS }, children: { control: false }, className: { control: false }, sky: { control: false } },
   render: (args) => (
-    <Evening {...args} className={args.moment === 'record' ? 'dark' : undefined} style={{ '--hz': PAGE_HZ[args.moment], '--page-x': 'clamp(28px, 3.4vw, 60px)', color: 'var(--ink)', minHeight: '100dvh' }}>
+    <Evening {...args} sky={args.sky ?? (args.moment === 'plans' ? SUNSET : undefined)} className={args.moment === 'record' ? 'dark' : undefined} style={{ '--hz': PAGE_HZ[args.moment], '--page-x': 'clamp(28px, 3.4vw, 60px)', color: 'var(--ink)', minHeight: '100dvh' }}>
       {/* The heading stands in the sky, so the card starts on the horizon: the page's top padding is 30px, 6px on a phone. */}
       <header className="flex min-h-[calc(var(--hz)-6px)] items-end pb-6 min-[861px]:min-h-[calc(var(--hz)-30px)]">
         <h1 className="ac-display-m">{PAGE[args.moment]}</h1>
@@ -53,6 +56,8 @@ export const Home: Story = { args: { moment: 'home' } };
 export const Team: Story = { args: { moment: 'team' } };
 /** The Drive: a little later than Notes, less glow on the water and the first stars. */
 export const Drive: Story = { args: { moment: 'drive' } };
+/** Plans: just after sunset, a long low glow, and the last sliver of the sun, which the page draws on the sky (`sky`). */
+export const Plans: Story = { args: { moment: 'plans' } };
 /** A note: a slim band of sky. */
 export const ANote: Story = { name: 'A note', args: { moment: 'note' } };
 /** Settings: the last of the light, mostly page. */
