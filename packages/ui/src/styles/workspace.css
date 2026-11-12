@@ -565,7 +565,6 @@ button.wf-back:hover, button.wf-crumb:hover { color: var(--ink); background: col
 .wf-share { height: 34px; }
 .wf-ib { width: 34px; height: 34px; color: var(--ink-2); }
 .wf-me { display: inline-flex; margin-left: 4px; }
-.wf-me a { display: inline-flex; border-radius: var(--radius-sm); }
 
 /* Home: the workspace's name on the evening, its line, its people, what was edited lately and its calls. */
 .wf-home-scroll { flex: 1; min-width: 0; min-height: 0; overflow: hidden auto; scrollbar-width: thin; scrollbar-color: var(--line-control) transparent; }

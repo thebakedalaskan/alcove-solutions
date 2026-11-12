@@ -276,16 +276,23 @@ function SmallEvening({ theme, corner = false }: { theme: 'light' | 'dark'; corn
   );
 }
 
-/** One choice of appearance: a small evening in its own colours (both, for `system`), named underneath. `pressed` rings the one in use. Three sit in a row. */
-export const ThemePreview = forwardRef<HTMLButtonElement, Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'children'> & { theme: ThemeChoice; pressed: boolean }>(
-  function ThemePreview({ theme, pressed, className, type = 'button', ...rest }, ref) {
+/**
+ * One choice of appearance: a small evening in its own colours (both, for `system`), named underneath. `pressed` rings the
+ * one in use. Three sit in a row. `small` is the window alone, about 40 by 26 (your menu's Theme), named by its tooltip.
+ */
+export const ThemePreview = forwardRef<HTMLButtonElement, Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'children'> & { theme: ThemeChoice; pressed: boolean; small?: boolean | undefined }>(
+  function ThemePreview({ theme, pressed, small = false, className, type = 'button', ...rest }, ref) {
+    const name = THEME_NAME[theme];
+    const art = (
+      <span className="set-win" aria-hidden="true">
+        <SmallEvening theme={theme === 'dark' ? 'dark' : 'light'} />
+        {theme === 'system' && <SmallEvening theme="dark" corner />}
+      </span>
+    );
+    if (!small) return <button ref={ref} type={type} aria-pressed={pressed} className={cn('set-eve', className)} {...rest}>{art}{name}</button>;
     return (
-      <button ref={ref} type={type} aria-pressed={pressed} className={cn('set-eve', className)} {...rest}>
-        <span className="set-win" aria-hidden="true">
-          <SmallEvening theme={theme === 'dark' ? 'dark' : 'light'} />
-          {theme === 'system' && <SmallEvening theme="dark" corner />}
-        </span>
-        {THEME_NAME[theme]}
-      </button>
+      <Tooltip label={name}>
+        <button ref={ref} type={type} aria-pressed={pressed} aria-label={name} className={cn('set-eve is-small', className)} {...rest}>{art}</button>
+      </Tooltip>
     );
   });

@@ -28,12 +28,24 @@ Every signed-in page sits in the same frame (`apps/web/src/features/shell/`, `pa
     day is Home's Upcoming. It comes in under Agents, so the places at the top never move
   - the confidential-compute check and the minutes of notes left
 - **The page** scrolls under a rounded edge. Search ("Search or ask", ⌘K opens the palette) and you (your arch, which opens
-  Settings) sit at its top right on every page, outside the page itself, so moving between pages leaves them alone. A page's
+  your menu) sit at its top right on every page, outside the page itself, so moving between pages leaves them alone. A page's
   title sits at its top left, in the same place on every page, and keeps clear of them with `--top-room`.
+- **Your menu** (`features/shell/YouMenu.tsx`, the `You*` parts in `components/you.tsx`, `styles/you.css` (`ym-`)). Canvas:
+  [you-menu](canvas/you-menu/README.md). A popover under your arch, aligned to its right edge with a caret, 312px wide:
+  - At its top you stand on the horizon in the last of the light, Settings' own moment in small, with your name and address
+    beside you. It says whose account the rest is about, so Sign out never needs to.
+  - Then **Pause notifications**, whose three lengths open in place under it, each with the time it ends in a column of its
+    own; paused, the row says until when, with Resume, and a small crossed-out bell sits on your arch until it ends.
+  - **Theme**, the three small evenings Settings draws, small and unnamed. The page changes at once and the menu stays open.
+  - A hairline, **Settings** and **Take the tour**, a hairline, **Sign out**. Nothing is filled at rest.
+  - Sign out asks in place, in Settings' words, when something on this device would be lost: the rows give way to the
+    question, and its one filled button is Stay signed in.
+  - On Settings your arch isn't at the top right, since you stand on the horizon there with Take the tour and Sign out.
+  - What isn't in it: the minutes of notes left and the confidential-compute check, which the side panel already says.
 - **On a phone** (860px and narrower) a top bar takes the panel's place: the logo, search, Start a call as a plus, and you.
   A tab bar sits at the bottom: Home, Calls, Record (standing up out of the bar as a small night recorder with its red
-  light), Drive and Team. Settings is you in the top bar, and Agents opens from Settings › Connections, so the bar keeps
-  its five.
+  light), Drive and Team. You in the top bar open the same menu as a sheet from the bottom, with Settings in it, and Agents
+  opens from Settings › Connections, so the bar keeps its five.
 - **The palette** (`features/shell/Palette.tsx` and `palette/`, the `Palette*` parts, `styles/palette.css` (`pal-`)).
   Board: `Search.dc.html`. It's solid: an opaque window on `surface-raised` with a hairline, over a page dimmed and never
   blurred, and the field that opens it at the top right is solid too.

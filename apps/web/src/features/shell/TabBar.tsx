@@ -1,19 +1,20 @@
 /*
- * The phone's frame, at 860px and narrower, in place of the side panel: a top bar with the brand, search,
- * Start a call and you (Settings); and the tab bar along the bottom, with Record raised in it. On Calls the plus is
- * Schedule a call, the page's own action, and its search is the page's; while the scheduler is open, it has its own.
+ * The phone's frame, at 860px and narrower, in place of the side panel: a top bar with the brand, search, Start a call
+ * and you (your menu, which rises as a sheet: YouMenu.tsx); and the tab bar along the bottom, with Record raised in it. On
+ * Calls the plus is Schedule a call, the page's own action, and its search is the page's; while the scheduler is open, it
+ * has its own.
  */
-import { Avatar, Icon, IconButton, Logo, Tooltip, cn } from '@alcove/ui';
+import { Icon, IconButton, Logo, Tooltip, cn } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useRouterState } from '@tanstack/react-router';
 import { useOpenScheduling } from '~/features/calls/scheduling/search';
 import { q } from '~/lib/queries';
 import { Offline } from './Sidebar';
 import { TABS, places } from './places';
+import { YourFace } from './YouMenu';
 
 /** The top of the page on a phone. It scrolls away with the page. */
 export function PhoneTop({ onSearch, onNew }: { onSearch: () => void; onNew: () => void }) {
-  const me = useQuery(q.session()).data?.user;
   const schedule = useOpenScheduling();
   const calls = useRouterState({ select: (s) => s.location.pathname === '/calls' });
   const scheduling = useRouterState({ select: (s) => s.location.pathname === '/calls' && 'schedule' in s.location.search });
@@ -34,7 +35,7 @@ export function PhoneTop({ onSearch, onNew }: { onSearch: () => void; onNew: () 
               <IconButton icon="plus" size={20} label="Start a call" title={undefined} aria-haspopup="dialog" onClick={onNew} data-tour="new-call" />
             </Tooltip>
           )}
-          {me && <Link to="/settings" className="ph-me" aria-label={`${me.name}, settings`}><Avatar person={me} size={34} /></Link>}
+          <YourFace size={34} />
         </span>
       </div>
       <Offline className="ph-offline" />

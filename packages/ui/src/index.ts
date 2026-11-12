@@ -28,6 +28,7 @@ export * from './components/screens';
 export * from './components/app';
 export * from './components/palette';
 export * from './components/settings';
+export * from './components/you';
 export * from './components/agents';
 export * from './components/guidance';
 export * from './components/workspace';

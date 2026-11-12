@@ -1,0 +1,129 @@
+{
+  "v": 3,
+  "createdOnFiles": {
+    "v": 1,
+    "at": "2026-11-12T17:33:32Z"
+  },
+  "title": "Your menu, top right",
+  "launch": {
+    "view": "canvas",
+    "page": "menu"
+  },
+  "pages": [
+    {
+      "id": "menu",
+      "name": "Your menu"
+    },
+    {
+      "id": "journeys",
+      "name": "Every journey"
+    },
+    {
+      "id": "states",
+      "name": "Every state"
+    },
+    {
+      "id": "parts",
+      "name": "Parts"
+    }
+  ],
+  "boards": {
+    "Main.dc.html": {
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "title": "Home, with your menu at the top right",
+      "page": "menu",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "Journeys.dc.html": {
+      "x": 0,
+      "y": 0,
+      "w": 4668,
+      "h": 4491,
+      "title": "Your menu, every journey step by step",
+      "page": "journeys"
+    },
+    "States.dc.html": {
+      "x": 0,
+      "y": 0,
+      "w": 4668,
+      "h": 3260,
+      "title": "Your menu, every state",
+      "page": "states"
+    },
+    "Menu.dc.html": {
+      "x": 0,
+      "y": 0,
+      "w": 360,
+      "h": 480,
+      "title": "The menu, by itself",
+      "page": "parts",
+      "is_interactive": true
+    },
+    "Side.dc.html": {
+      "x": 440,
+      "y": 0,
+      "w": 256,
+      "h": 900,
+      "title": "The side panel, as the app draws it",
+      "page": "parts"
+    },
+    "Faces.dc.html": {
+      "x": 776,
+      "y": 0,
+      "w": 1000,
+      "h": 820,
+      "title": "People in the arch",
+      "page": "parts"
+    },
+    "SkyArt.dc.html": {
+      "x": 1856,
+      "y": 0,
+      "w": 1000,
+      "h": 340,
+      "title": "The sunset, drawn",
+      "page": "parts"
+    },
+    "Visitors.dc.html": {
+      "x": 1856,
+      "y": 460,
+      "w": 1200,
+      "h": 420,
+      "title": "What passes through",
+      "page": "parts"
+    },
+    "Scene.dc.html": {
+      "x": 3136,
+      "y": 0,
+      "w": 1200,
+      "h": 420,
+      "title": "The last of the light, Settings' moment",
+      "page": "parts"
+    },
+    "Overlays.dc.html": {
+      "x": 3136,
+      "y": 540,
+      "w": 1000,
+      "h": 300,
+      "title": "What opens over a page",
+      "page": "parts"
+    }
+  },
+  "order": [
+    "Main.dc.html",
+    "Journeys.dc.html",
+    "States.dc.html",
+    "Menu.dc.html",
+    "Side.dc.html",
+    "Faces.dc.html",
+    "SkyArt.dc.html",
+    "Visitors.dc.html",
+    "Scene.dc.html",
+    "Overlays.dc.html"
+  ],
+  "notes": {},
+  "designSystems": []
+}

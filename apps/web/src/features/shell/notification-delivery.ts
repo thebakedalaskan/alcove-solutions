@@ -1,6 +1,7 @@
 /** Owns OS handles, async delivery, atomic receipts, burst grouping and reconciliation for every source. */
 import { BrowserNotificationDataSchema, type BrowserNotificationData, type CallNotificationCategory, type NotificationOpen } from '@alcove/api';
 import { log } from '~/lib/log';
+import { notificationsPauseHolds } from '~/lib/notification-pause';
 import { accountGeneration, onSignedOutElsewhere, signedOut } from '~/lib/signedOut';
 import { claimAlerts, finishAlerts, type ReceiptClaim } from './notified';
 import { notificationOnScreen } from './notification-views';
@@ -15,6 +16,11 @@ export interface NotificationSource {
   readonly token: object; readonly scope: string; readonly owner: string; readonly ownerId: string | null;
   readonly alerts: readonly BrowserAlert[];
   allowed(kind?: BrowserAlertKind, key?: string): boolean;
+  /**
+   * When the account's pause on notifications ends, in ms (as lib/notification-pause.ts reads it), read as it decides; null
+   * for none, and for a guest.
+   */
+  notificationsPauseEnd(): number | null;
   open(data: BrowserNotificationData): void;
   failed(): void;
 }
@@ -44,9 +50,18 @@ function browserWait<T>(task: Promise<T>): Promise<T> {
   });
 }
 const permission = () => typeof Notification !== 'undefined' && Notification.permission === 'granted';
+/**
+ * Paused notifications (lib/notification-pause.ts): while the account's pause holds, nothing reaches you from the browser but
+ * someone asking to join a call you host (only a host is alerted for that). Asked as each alert would show, so they start
+ * again by themselves when the time passes, and one held through the pause shows then if it's still timely.
+ */
+function paused(source: NotificationSource, kind?: BrowserAlertKind, now = Date.now()): boolean {
+  return kind !== undefined && kind !== 'admissions' && notificationsPauseHolds(source.notificationsPauseEnd(), now);
+}
 function allowed(source: NotificationSource, kind?: BrowserAlertKind, key?: string): boolean {
   const origin = origins.get(source.token);
-  return !revoked.has(source.token) && permission() && (source.ownerId === null || (origin?.owner === source.ownerId && origin.generation !== null && !signedOut(source.ownerId) && accountGeneration(source.ownerId) === origin.generation)) && source.allowed(kind, key);
+  return !revoked.has(source.token) && permission() && (source.ownerId === null || (origin?.owner === source.ownerId && origin.generation !== null && !signedOut(source.ownerId) && accountGeneration(source.ownerId) === origin.generation))
+    && !paused(source, kind) && source.allowed(kind, key);
 }
 function current(scope: string, token: object): NotificationSource | null {
   const source = sources.get(scope);
@@ -148,14 +163,19 @@ async function reconcile(): Promise<void> {
     await adopt(source);
     if (!allowed(source)) continue;
     const groups = new Map<BrowserAlertKind, BrowserAlert[]>();
+    let held = 0;
     for (const alert of source.alerts) {
-      if (!alive(alert) || !allowed(source, alert.kind, alert.key)) continue;
+      if (!alive(alert)) continue;
+      // Held by a pause: looked at again as the pause ends, and shown then if it's still timely.
+      const until = paused(source, alert.kind) ? source.notificationsPauseEnd() : null;
+      if (until !== null) { held++; if (until < alert.expiresAt) next = Math.min(next, until); continue; }
+      if (!allowed(source, alert.kind, alert.key)) continue;
       next = Math.min(next, alert.expiresAt);
       const entries = groups.get(alert.kind) ?? [];
       entries.push(alert); groups.set(alert.kind, entries);
     }
-    const diagnostic = JSON.stringify([groups.size, source.alerts.length, source.alerts.filter((alert) => alive(alert)).length]);
-    if (deliveryTraces.get(source.token) !== diagnostic) { deliveryTraces.set(source.token, diagnostic); nlog.debug('notification groups prepared', { groups: groups.size, count: source.alerts.length, timely: source.alerts.filter((alert) => alive(alert)).length }); }
+    const diagnostic = JSON.stringify([groups.size, source.alerts.length, source.alerts.filter((alert) => alive(alert)).length, held]);
+    if (deliveryTraces.get(source.token) !== diagnostic) { deliveryTraces.set(source.token, diagnostic); nlog.debug('notification groups prepared', { groups: groups.size, count: source.alerts.length, timely: source.alerts.filter((alert) => alive(alert)).length, paused: held }); }
     for (const [kind, entries] of groups) {
       const alerts = entries.sort((a, b) => a.raisedAt - b.raisedAt || a.key.localeCompare(b.key));
       const tag = tagOf(source, kind);

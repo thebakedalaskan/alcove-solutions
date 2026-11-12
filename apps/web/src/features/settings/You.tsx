@@ -3,7 +3,7 @@
  * browser. Choosing a theme changes the whole page at once.
  */
 import type { Session } from '@alcove/api';
-import { Icon, ProviderMark, SettingFact, SettingRow, SettingsGroup, SettingsPanel, ThemePreview, useTheme, type ThemeChoice } from '@alcove/ui';
+import { Icon, ProviderMark, SettingFact, SettingRow, SettingsGroup, SettingsPanel, THEMES, ThemePreview, useTheme, type ThemeChoice } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { q } from '~/lib/queries';
@@ -46,7 +46,7 @@ export function YouGroup({ session }: { session: Session }) {
       </SettingsPanel>
       <SettingsPanel title="Appearance" tag={<><Icon name="laptop" size={15} />This browser</>}>
         <Setting wide label="Theme"
-          control={<div className="set-eves" role="group" aria-label="Appearance">{(['system', 'light', 'dark'] satisfies ThemeChoice[]).map((t) => <ThemePreview key={t} theme={t} pressed={theme === t} onClick={() => pick(t)} />)}</div>} />
+          control={<div className="set-eves" role="group" aria-label="Appearance">{THEMES.map((t) => <ThemePreview key={t} theme={t} pressed={theme === t} onClick={() => pick(t)} />)}</div>} />
       </SettingsPanel>
     </SettingsGroup>
   );

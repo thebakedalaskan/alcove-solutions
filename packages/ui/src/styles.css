@@ -9,7 +9,8 @@
  * because its menus, sheets and tooltips are portalled out of it. Record is night too (.rec), and takes the document
  * with it the same way, with search and the phone's bars, which sit outside the page. Components are styled in
  * styles/kit.css with the `ac-` prefix; the frame around every screen (side panel, phone bars, Search or ask) in
- * styles/shell.css; the palette Search or ask opens in styles/palette.css (`pal-`); the evening behind each page in
+ * styles/shell.css; your menu, which your face at the top right opens, in styles/you.css (`ym-`); the palette Search or
+ * ask opens in styles/palette.css (`pal-`); the evening behind each page in
  * styles/horizon.css; the cove the welcome page looks out of, and signing in
  * sailing out of it, in styles/cove.css (`cv-`); Home in styles/home.css; the Team page in styles/team.css (`tp-`);
  * Calls in styles/calls.css (`cs-`); a call's page in styles/note.css (`cd-`); Settings in styles/settings.css (`set-`); Record in styles/record.css
@@ -27,6 +28,7 @@
 @import "./styles/welcome-team.css";
 @import "./styles/welcome-night.css";
 @import "./styles/shell.css";
+@import "./styles/you.css";
 @import "./styles/palette.css";
 @import "./styles/app.css";
 @import "./styles/horizon.css";

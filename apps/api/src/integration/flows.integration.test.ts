@@ -295,7 +295,7 @@ describe('signing in', () => {
       sounds: DEFAULT_SOUND_PREFERENCES,
       notesDefault: 'on', notesLanguage: 'call', addToCalendar: true, showOtherMeetings: true, recordOffline: true,
       notifications: DEFAULT_NOTIFICATION_PREFERENCES,
-      pinned: [], groups: [], model: null
+      pinned: [], groups: [], model: null, notificationsPausedUntil: null
     };
     expect(await api.account.preferences()).toEqual(defaults);
     const patched = await api.account.updatePreferences({

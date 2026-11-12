@@ -1,13 +1,15 @@
 /*
  * Journeys from the side panel and Search or ask (docs/product/user-flows.md › 2. The side panel). The first four are the
  * search canvas's (docs/design/canvas/StepsSearch.dc.html): find what someone said, search a word and open the moment,
- * see all in Calls, and ask a question and open a cited moment. The rest are the panel's own.
+ * see all in Calls, and ask a question and open a cited moment. Then the panel's own, and last your menu's, which your
+ * face at the top right opens (2.9 to 2.13; the design: docs/design/canvas/you-menu).
  */
 import type { Meta } from '@storybook/react-vite';
 import { screen, waitFor, within } from 'storybook/test';
 import { setOnline } from '../../src/browser';
-import { page, pages, type PageArgs, type PageStory } from '../../src/page';
-import { LAPTOP, SOON } from './play';
+import { changing, page, pages, type PageArgs, type PageStory } from '../../src/page';
+import { keptHere } from '../pages/changes';
+import { away, first, LAPTOP, LATER, SOON } from './play';
 
 const meta = { title: 'Journeys/2 The side panel', ...pages } satisfies Meta<PageArgs>;
 export default meta;
@@ -170,6 +172,133 @@ export const TheConnectionDrops: PageStory = {
     await step('It comes back, and so does everything else', async () => {
       setOnline(true);
       await screen.findByRole('button', { name: 'Start now' }, SOON);
+    });
+  }
+};
+
+/* ------------------------------------------------------------------ your menu, at the top right */
+
+const PHONE = { viewport: { value: 'phone', isRotated: false } };
+/** Your face, at the top right of every page (in a phone's top bar): your name, your menu, and while paused, until when. */
+const face = () => screen.findByRole('button', { name: /^Art Vandelay, your menu/ }, SOON);
+const yourMenu = () => screen.findByRole('dialog', { name: 'Your menu' }, SOON);
+/** Something in your menu, by its name: a button, or Settings, which is a link. */
+const inMenu = async (name: string | RegExp, role: 'button' | 'link' = 'button') => within(await yourMenu()).findByRole(role, { name }, SOON);
+/** The welcome page, signed out: it offers every way in, at the top and again at the bottom. */
+const welcome = () => first(screen.findAllByRole('button', { name: 'Continue with Microsoft' }, LATER));
+
+export const OpenYourMenu: PageStory = {
+  name: '2.9 Open your menu, then Settings',
+  ...page('/home', 'busy', { globals: LAPTOP }),
+  play: async ({ userEvent, step }) => {
+    await step('Click your face, at the top right of any page. Your menu opens under it, with a caret: you, then what you reach for from anywhere', async () => {
+      await userEvent.click(await face());
+      await yourMenu();
+    });
+    await step('Click Settings. Settings opens as a page, and your face makes way at the top right: you’re on the horizon', async () => {
+      await userEvent.click(await inMenu('Settings', 'link'));
+      await screen.findByRole('heading', { name: 'Art Vandelay', level: 1 }, SOON);
+    });
+  }
+};
+
+export const PauseForAnHour: PageStory = {
+  name: '2.10 Pause notifications for an hour',
+  ...page('/home', 'busy', { globals: LAPTOP }),
+  play: async ({ userEvent, step }) => {
+    await step('Open your menu and click Pause notifications. How long opens in place, under it: no second menu', async () => {
+      await userEvent.click(await face());
+      await userEvent.click(await inMenu('Pause notifications'));
+      await inMenu(/^For 1 hour/);
+    });
+    await step('Click For 1 hour. Paused until 17:12: alerts and sounds wait until then, on every device you’re signed in on', async () => {
+      await userEvent.click(await inMenu(/^For 1 hour/));
+      await inMenu('Resume notifications');
+    });
+    await step('Press Esc. A small bell on your face says it’s paused, all the time it is', async () => {
+      await userEvent.keyboard('{Escape}');
+      await away('dialog', 'Your menu');
+      await screen.findByRole('button', { name: /^Art Vandelay, your menu\. Notifications paused until/ }, SOON);
+    });
+    await step('Open the menu again and Resume, or it ends by itself at 17:12', async () => {
+      await userEvent.click(await face());
+      await userEvent.click(await inMenu('Resume notifications'));
+      await inMenu('Pause notifications');
+    });
+  }
+};
+
+export const ChangeTheTheme: PageStory = {
+  name: '2.11 Change the theme from your menu',
+  ...page('/home', 'busy', { globals: { ...LAPTOP, theme: 'light' } }),
+  play: async ({ userEvent, step }) => {
+    await step('Open your menu. The three evenings are System, Light and Dark, as in Settings', async () => {
+      await userEvent.click(await face());
+      await within(await yourMenu()).findByRole('group', { name: 'Theme' }, SOON);
+    });
+    await step('Click Dark. The whole page turns at once, and the menu stays open on it', async () => {
+      await userEvent.click(await inMenu('Dark'));
+      await within(await yourMenu()).findByRole('button', { name: 'Dark', pressed: true }, SOON);
+    });
+    await step('Press Esc. It’s kept in this browser, as Settings › You › Appearance keeps it', async () => {
+      await userEvent.keyboard('{Escape}');
+      await away('dialog', 'Your menu');
+    });
+  }
+};
+
+export const SignOutWithRecordings: PageStory = {
+  name: '2.12 Sign out with recordings on this device',
+  ...page('/home', 'busy', { globals: LAPTOP, beforeEach: changing(keptHere) }),
+  play: async ({ userEvent, step }) => {
+    await step('Recordings on this device haven’t uploaded yet. Open your menu and click Sign out', async () => {
+      await userEvent.click(await face());
+      await userEvent.click(await inMenu('Sign out'));
+    });
+    await step('The menu asks in place, in Settings’ own words, under your name. Stay signed in loses nothing, and has the focus', async () => {
+      await inMenu('Stay signed in');
+    });
+    await step('Press Esc: back to the menu’s rows, on Sign out. Press Enter, and it asks again', async () => {
+      await userEvent.keyboard('{Escape}');
+      await inMenu('Sign out');
+      await userEvent.keyboard('{Enter}');
+      await inMenu('Stay signed in');
+    });
+    await step('Sign out and delete them. Only this account’s recordings go', async () => {
+      await userEvent.click(await inMenu('Sign out and delete them'));
+    });
+    await step('Signed out, on the welcome page', async () => {
+      await welcome();
+    });
+  }
+};
+
+export const YourMenuOnAPhone: PageStory = {
+  name: '2.13 Your menu on a phone',
+  ...page('/home', 'busy', { globals: PHONE, beforeEach: changing(keptHere) }),
+  play: async ({ userEvent, step }) => {
+    await step('Tap your face in the top bar. The menu rises as a sheet', async () => {
+      await userEvent.click(await face());
+      await yourMenu();
+    });
+    await step('Tap Pause notifications. How long opens in place', async () => {
+      await userEvent.click(await inMenu('Pause notifications'));
+      await inMenu(/^For 1 hour/);
+    });
+    await step('Tap For 1 hour, and close the sheet. Paused: the bell is on your face', async () => {
+      await userEvent.click(await inMenu(/^For 1 hour/));
+      await inMenu('Resume notifications');
+      await userEvent.keyboard('{Escape}');
+      await screen.findByRole('button', { name: /Notifications paused until/ }, SOON);
+    });
+    await step('Tap your face again, then Sign out. It asks here too: recordings on this phone haven’t uploaded', async () => {
+      await userEvent.click(await face());
+      await userEvent.click(await inMenu('Sign out'));
+      await inMenu('Stay signed in');
+    });
+    await step('Sign out and delete them. Signed out, on the welcome page', async () => {
+      await userEvent.click(await inMenu('Sign out and delete them'));
+      await welcome();
     });
   }
 };

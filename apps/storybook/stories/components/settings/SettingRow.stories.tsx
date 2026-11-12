@@ -8,7 +8,7 @@
  * `onLabel`, pressing the setting's name does what the control does.
  */
 import type { NotesLanguage } from '@alcove/api';
-import { Button, Icon, ProviderMark, Segmented, Select, SettingFact, SettingRow, SettingsPanel, SettingTile, Switch, ThemePreview, type SelectOption, type ThemeChoice } from '@alcove/ui';
+import { Button, Icon, ProviderMark, Segmented, Select, SettingFact, SettingRow, SettingsPanel, SettingTile, Switch, THEMES, ThemePreview, type SelectOption, type ThemeChoice } from '@alcove/ui';
 import type { Decorator, Meta, StoryObj } from '@storybook/react-vite';
 import { useEffect, useState } from 'react';
 import { did } from '../../../src/component';
@@ -40,7 +40,6 @@ const LANGUAGES: SelectOption<NotesLanguage>[] = [
 ];
 /** Each microphone once, by the name people know it by, the system's saying so, as the app lists them. */
 const MICS: SelectOption<string>[] = [{ value: 'built-in', label: 'MacBook Pro Microphone', note: 'Your system’s choice' }, { value: 'usb', label: 'Studio USB Microphone' }];
-const THEMES: readonly ThemeChoice[] = ['system', 'light', 'dark'];
 
 const meta = {
   title: 'Components/Settings/SettingRow',

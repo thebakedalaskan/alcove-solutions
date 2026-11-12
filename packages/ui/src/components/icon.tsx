@@ -15,7 +15,7 @@ import {
   Moon, Navigation, PanelRight, Paperclip, Pilcrow, Quote, SquareCheckBig, Strikethrough, Sun, Table, TextAlignStart, TextQuote, Type, CalendarClock, StickyNote, Hourglass, PhoneCall,
   CircleOff, Droplet, Droplets, BellRing, Bot, Coffee, Ear, Gauge, Headphones, SmilePlus, Layers, MessagesSquare, VenetianMask,
   FileCheck, FilePen, HandHelping, Inbox, Laptop, MessageSquareLock, PhoneIncoming, Share2, ListVideo,
-  BookOpen, CalendarCheck, Plug, Sparkle, SquareTerminal, Terminal, Unplug
+  BookOpen, CalendarCheck, Plug, Sparkle, SquareTerminal, Terminal, Unplug, SunMoon
 } from 'lucide-react';
 import { cn } from '../cn';
 
@@ -47,7 +47,7 @@ const ICONS = {
   filePlus: FilePlus, fileText: FileText, film: Film, folder: Folder, folderInput: FolderInput, folderOpen: FolderOpen, folderPlus: FolderPlus, folders: Folders,
   gripVertical: GripVertical, h1: Heading1, h2: Heading2, h3: Heading3, highlighter: Highlighter, image: Image, imageOff: ImageOff, imagePlus: ImagePlus, info: Info, italic: Italic,
   link2: Link2, list: List, listChecks: ListChecks, listOrdered: ListOrdered, locate: LocateFixed, megaphone: Megaphone, message: MessageSquareText, minus: Minus,
-  moon: Moon, navigate: Navigation, panelRight: PanelRight, para: Pilcrow, presentation: Presentation, quote: Quote, strike: Strikethrough, sun: Sun, table: Table,
+  moon: Moon, navigate: Navigation, panelRight: PanelRight, para: Pilcrow, presentation: Presentation, quote: Quote, strike: Strikethrough, sun: Sun, sunMoon: SunMoon, table: Table,
   textLines: TextAlignStart, textQuote: TextQuote, todo: SquareCheckBig, todos: ListTodo, toggle: ListCollapse, type: Type, calClock: CalendarClock, stickyNote: StickyNote, hourglass: Hourglass, phoneCall: PhoneCall,
   circleOff: CircleOff, droplet: Droplet, droplets: Droplets,
   nudge: BellRing, agent: Bot, away: Coffee, hear: Ear, pace: Gauge, listening: Headphones, layers: Layers,

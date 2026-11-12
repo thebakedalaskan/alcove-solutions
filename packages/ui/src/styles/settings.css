@@ -17,7 +17,7 @@
 /* --sky is the sky at rest, from the top of the window: the page runs on under the frame. The route measures --ask, how tall the question in the sky is, and --bar, the phone's top bar. */
 .set { --sky: 136px; --ask: 0px; --bar: 66px; --idx: 176px; --col: 940px; --hz: var(--sky); transition: --hz var(--duration-3) var(--ease-out); }
 .set > .dusk-in { padding-bottom: 140px; }
-/* You're on the page already, in the sky, so the link to it goes. */
+/* You're in the sky already, with the tour and Sign out beside you, so your face at the top right makes way. */
 .main:has(> .main-in > .set) .top-me { display: none; }
 
 /* The water goes still and becomes the page. */
@@ -276,7 +276,11 @@
 .set-eve:focus-visible .set-win { outline: 2px solid var(--focus); outline-offset: 5px; }
 .set-win { position: relative; display: block; width: 100%; aspect-ratio: 16 / 10; overflow: hidden; border-radius: 12px; box-shadow: 0 0 0 1px var(--line); transition: box-shadow var(--duration-1); }
 .set-eve:hover .set-win { box-shadow: 0 0 0 1px var(--line-control); }
-.set-eve[aria-pressed="true"] .set-win { box-shadow: 0 0 0 2px var(--surface), 0 0 0 3.5px var(--sun); }
+/* The ring stands 2px off the window, on whatever the evenings sit on (`--eve-on`): a panel here, your menu's popover there. */
+.set-eve[aria-pressed="true"] .set-win { box-shadow: 0 0 0 2px var(--eve-on, var(--surface)), 0 0 0 3.5px var(--sun); }
+/* Small (`small`, your menu's Theme): the window alone, named by its tooltip. */
+.set-eve.is-small { display: block; width: 40px; height: 26px; border-radius: 8px; }
+.set-eve.is-small .set-win { height: 100%; aspect-ratio: auto; border-radius: 8px; }
 /* The evening's own colours (styles/horizon.css), here so each is drawn in its theme whatever the page's theme is. */
 .set-art {
   --art-sky: linear-gradient(to bottom in oklch, oklch(0.8 0.062 250) 0%, oklch(0.872 0.042 275) 58%, oklch(0.916 0.051 9.412) 100%);
