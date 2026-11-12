@@ -28,12 +28,13 @@ Each flow below is implemented in `apps/web` and exercised end to end by the int
    left today and which is next, from the connected or sample calendar (no row without calendar access). **Your
    team at** the company, with its size and faces, when it has people in it and has arrived by then (the screen
    doesn't wait for it). **Notes are encrypted in storage** and follow the call’s sharing permissions. Then
-   "You’re in" and the arch opens into Home. **Skip**, **Escape** or **Enter** opens it straight away; with
+   "You’re in" and the arch opens into Home, where the plans to choose from come first, once (16.20). **Skip**,
+   **Escape** or **Enter** opens it straight away; with
    reduced motion the finished screen shows for a moment and Home follows. After that, signing in goes
    straight to Home. From the welcome page it sails out of the cove: the headlands go by, the horizon comes up to
    Home's, the side panel and the page's frame form round the sea, and Home rises in, in about three and a half
    seconds (a press, a key or the wheel ends it at once; with reduced motion Home just opens).
-4. On first arriving in Home, a tour goes through it, one slide at a time: a card with a short animation, and
+4. On first arriving in Home (past the plans), a tour goes through it, one slide at a time: a card with a short animation, and
    the page dimmed around the real thing the slide is about, with an arrow to it. **Start or schedule a call**
    (Start a call, or Start now with the side panel hidden), **Notes for your calls** (the example note before there are
    any, then Notes), **Join a call** (Join, when an Alcove call is on offer at the top of Home), **Record in the room**
@@ -2253,8 +2254,10 @@ the last of the sunset. It's reached from the side panel's **See plans**, Settin
    panel's foot row is the place you're on.
 
 On Pro, Pro says **Your plan**, **Extend** is a second choice, and Free says "Where you’re back to if a plan ends". While Pro is
-ending it says "Ends in 3 days" and **Extend** is filled. While the prices load, the cards wait in place; if they don't load,
-the page says why with **Try again**, and offline they show once you're back.
+ending it says "Ends in 3 days" and **Extend** is filled. On a team license Pro isn't sold, and its card says "Not while you’re on
+your team’s plan" where its button would be. While the prices load, the cards wait in place; if they don't load, the page says
+why with **Try again**, and offline they show once you're back. The first time Home opens for an account, it opens on Plans
+instead, once (16.20).
 
 ### 16.2 Get Pro, paying with USDC
 
@@ -2362,5 +2365,31 @@ top and in the foot until dismissed. When Pro ends without renewing you're back 
 top, with **Get Pro again**, and in the foot. Over Free's storage, everything works as before for a grace, then uploads and
 notes stop until you make room or get Pro again, which lifts it at once.
 
-Storybook's journeys use **16.1–16.14** above. The addresses, payments and networks in it are made up; a real payment through
-1Click needs a hand check with a wallet.
+### 16.20 Choose a plan
+
+The first time Home opens for an account, it opens on the plans instead, once: the plan choice, Plans in Home's place with a
+head of its own. That's every new account, after its arrival (1), and every account from before plans, the first time it opens
+Alcove normally after plans came.
+
+1. Someone with no notes yet reads **Choose a plan**: "Every plan has calls, workspaces and confidential compute. They differ in
+   hours of notes and storage." Someone who has used Alcove reads **Alcove has plans now** and which plan they're on, in the
+   server's numbers: "You’re on Free: about 5 hours of notes a month and 10 GB of storage." Over Free's storage, it says until
+   when everything works as before instead.
+2. Under the head, Plans as ever: Monthly / Yearly, then Free, Pro and Team. The plan you're on leads straight on: **Continue on
+   Free**, quiet, on Free's card (on Pro or Team, **Continue on Pro** or **Continue on Team** on theirs), goes to Home.
+3. **Get Pro** is the one filled button and opens checkout over the plans (16.2), as **Start a team** opens Team's (16.15). Once
+   what was bought is yours and checkout has closed, Home follows, with nothing more to choose. Closing checkout without buying
+   leaves the plans as they were.
+4. A new account's tour of Home (1, step 4) starts once Home is there, never over the plans.
+5. Only Home opens on them. A link to a call, a call's page, a join link, an agent's consent page, a public page or a team
+   invite is never interrupted, and nor is signing in from a call's link or for an agent: the plans wait for the next time Home
+   is reached.
+6. Once the plans have been on screen for a moment (the tab showing, nothing open over them), Alcove is told, and they aren't
+   shown again. Plans itself counts too. If telling Alcove fails, it's tried again quietly, and this tab doesn't show them again;
+   a later visit does. Left before their prices came (still loading, offline, or not loaded), they show again on a later visit.
+
+While the prices load, the cards wait in place and **Continue on Free** is already on Free's; offline it says the plans show once
+you're back, and when they don't load it says why, each with **Continue on Free** to go on.
+
+Storybook's journeys use **16.1–16.14** and **16.20** above. The addresses, payments and networks in it are made up; a real
+payment through 1Click needs a hand check with a wallet.

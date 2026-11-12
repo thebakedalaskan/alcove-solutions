@@ -39,7 +39,7 @@ when an organizer is told it's close; how long a period and a grace last; a call
 | A payment that buys what it was for (Pro, more notes or a team's licenses) once it's added | Working (server; see [A payment that buys](#a-payment-that-buys)) |
 | Teams, licenses, visits, alerts, the pool (server; see [Team](#team)) | Working |
 | Team notes, Ask across them with @-references, team workspaces (server; see [Team](#team)) | Working |
-| Picking a plan at first sign-in | Server working: `Plan.choose` is true for every account until the app says the plans were shown (`POST /v1/plan/chosen`, `PlansApi.chose()`); an account from before plans is shown them once. The tier screen itself isn't built. |
+| Picking a plan at first sign-in | Working. `Plan.choose` is true for every account until the app says the plans were shown (`POST /v1/plan/chosen`, `PlansApi.chose()`); an account from before plans is shown them once. In the app it's the plan choice: Home opens on Plans once, in its place (`apps/web/src/features/plans/PlanChoice.tsx`), and only Home, never a deep link (decided in `features/plans/choice.ts`). Once the plans have been on screen there or on Plans, the app says so, quietly trying again if that fails ([user-flows 16.20](../product/user-flows.md#1620-choose-a-plan)) |
 | Withdrawing the balance | Not built, and not planned yet |
 
 ## Notes: the AI allowance
