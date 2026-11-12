@@ -488,5 +488,7 @@ opened to buy something by itself (`src/api/payments.ts`): seen, then added and 
 was opened, or as the `payment-*` scenarios say; nothing runs on a timer, so nothing carries into the next story.
 `purchaseAt()` and `playsOut()` put one where a story needs it. Every address is a made-up preview no wallet takes.
 **Components / Checkout** has each part of the kit's window, and **Paying, in motion**, the canvas's player, with Slow
-motion and Play again. **Journeys / 16 Checkout** plays 16.2 to 16.6.
+motion and Play again. Section 16's journeys are **Journeys / 16 Plans and paying** (16.1, from the side panel to Plans),
+**16 Checkout** (16.2 to 16.6), **16 Your plan** (16.7, 16.8 and 16.14, in the side panel and Settings) and **16 Where
+checkout shows** (16.9 to 16.13, the doors).
 

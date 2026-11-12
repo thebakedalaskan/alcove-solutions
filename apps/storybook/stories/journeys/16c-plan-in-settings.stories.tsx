@@ -12,7 +12,7 @@ import { receiveTopUp, settlePurchase } from '../../src/world/payments';
 import { proHasEnded, renewedFromBalance } from '../../src/world/plans';
 import { LAPTOP, LATER, SOON } from './play';
 
-const meta = { title: 'Journeys/16 Plans and checkout/Your plan', ...pages, globals: LAPTOP } satisfies Meta<PageArgs>;
+const meta = { title: 'Journeys/16 Your plan', ...pages, globals: LAPTOP } satisfies Meta<PageArgs>;
 export default meta;
 
 /** Settings › Plan. */

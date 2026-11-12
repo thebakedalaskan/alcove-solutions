@@ -8,7 +8,7 @@ import { screen, within } from 'storybook/test';
 import { page, pages, type PageArgs, type PageStory } from '../../src/page';
 import { LAPTOP, SOON } from './play';
 
-const meta = { title: 'Journeys/16 Plans', ...pages, globals: LAPTOP } satisfies Meta<PageArgs>;
+const meta = { title: 'Journeys/16 Plans and paying', ...pages, globals: LAPTOP } satisfies Meta<PageArgs>;
 export default meta;
 
 /** The switch on the plans' sky. */
