@@ -51,7 +51,8 @@ const units = z.string().regex(/^\d+$/);
  */
 const Buys = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('pro'), months: z.number().int(), microUsdPerMonth: z.number().int() }),
-  z.object({ kind: z.literal('hours'), packs: z.number().int(), microUsdPerPack: z.number().int(), minutesPerPack: z.number().int().default(LIMITS['plan.hours.pack_minutes'].default) })
+  z.object({ kind: z.literal('hours'), packs: z.number().int(), microUsdPerPack: z.number().int(), minutesPerPack: z.number().int().default(LIMITS['plan.hours.pack_minutes'].default) }),
+  z.object({ kind: z.literal('licenses'), count: z.number().int(), microUsdPerLicense: z.number().int() })
 ]);
 
 /** What a deposit is, sealed. Token amounts are in the token's smallest unit, as integer strings. */

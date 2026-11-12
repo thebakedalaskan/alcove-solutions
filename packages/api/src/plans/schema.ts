@@ -134,11 +134,13 @@ export const BuyHoursBodySchema = z.object({ packs: z.number().int().min(1).max(
 export type BuyHoursBody = z.infer<typeof BuyHoursBodySchema>;
 /**
  * What a purchase buys, from the balance or once a payment is added, as it was offered when its buyer was shown it: months of
- * Pro at a month's price, or packs of more notes at a pack's price and size.
+ * Pro at a month's price, packs of more notes at a pack's price and size, or licenses for its buyer's team at a license's price.
  */
 export const PurchaseSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('pro'), months: z.number().int().min(1).max(1000), microUsdPerMonth: MicroUsdSchema.min(0) }),
-  z.object({ kind: z.literal('hours'), packs: z.number().int().min(1).max(1000), microUsdPerPack: MicroUsdSchema.min(0), minutesPerPack: z.number().int().min(1) })
+  z.object({ kind: z.literal('hours'), packs: z.number().int().min(1).max(1000), microUsdPerPack: MicroUsdSchema.min(0), minutesPerPack: z.number().int().min(1) }),
+  /** Licenses for the team its buyer is the admin of, at the price they were shown for one (docs: Plans and usage › Team). */
+  z.object({ kind: z.literal('licenses'), count: z.number().int().min(1).max(100_000), microUsdPerLicense: MicroUsdSchema.min(0) })
 ]);
 export type Purchase = z.infer<typeof PurchaseSchema>;
 export const RenewBodySchema = z.object({ renew: z.boolean() });

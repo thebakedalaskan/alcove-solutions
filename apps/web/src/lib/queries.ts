@@ -1,6 +1,6 @@
 /* Query keys, fetchers and mutations. Screens read data through these, never through `api` directly. */
 import type { AgentDecisionInput, AgentTokenInput, DriveExportInput, FileNotes, FollowUpReview, MeetingCreate } from '@alcove/api';
-import { AlcoveApiError, MAX_SORT_STICKIES, MAX_SORT_STICKY, SORT_TOO_FEW, SORT_TOO_MANY, errorCode, type ActionProposal, type ChangeScope, type DecisionProposal, type DemoProvider, type DocumentRole, type FeatureFlagName, type Group, type PresenterFrameNotes, type InstantCallInput, type ISODate, type ItemInput, type ItemPlace, type LinePatch, type MeetingInput, type MentionBody, type NoteKind, type NotesSetting, type Patch, type PersonalInput, type PersonalNotes, type PromoteBody, type Purchase, type QuestionPatch, type TopUp, type RingReply, type Series, type SharedWrite, type ShareTarget, type DocumentLibrary, type WorkspaceRole, type WorkspaceSummary, type WorkspaceTree, type MyTeam, type TeamAccess } from '@alcove/api';
+import { AlcoveApiError, MAX_SORT_STICKIES, MAX_SORT_STICKY, SORT_TOO_FEW, SORT_TOO_MANY, errorCode, type ActionProposal, type ChangeScope, type DecisionProposal, type DemoProvider, type DocumentRole, type FeatureFlagName, type Group, type PresenterFrameNotes, type InstantCallInput, type ISODate, type ItemInput, type ItemPlace, type LinePatch, type MeetingInput, type MentionBody, type NoteKind, type NotesSetting, type Patch, type PersonalInput, type PersonalNotes, type Plan, type PromoteBody, type Purchase, type QuestionPatch, type TopUp, type RingReply, type Series, type SharedWrite, type ShareTarget, type DocumentLibrary, type WorkspaceRole, type WorkspaceSummary, type WorkspaceTree, type MyTeam, type TeamAccess } from '@alcove/api';
 import { queryOptions, useIsMutating, useMutation, useMutationState, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef } from 'react';
 import { forgetAccount } from '~/features/record/offline';
@@ -497,9 +497,18 @@ export function useInviteTeam() {
 export function useBuy() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (b: Purchase) => (b.kind === 'pro' ? api.plans.buyPro(b.months, b.microUsdPerMonth) : api.plans.buyHours(b.packs, b.microUsdPerPack, b.minutesPerPack)),
+    mutationFn: async (b: Purchase): Promise<Plan | null> => {
+      if (b.kind === 'pro') return api.plans.buyPro(b.months, b.microUsdPerMonth);
+      if (b.kind === 'hours') return api.plans.buyHours(b.packs, b.microUsdPerPack, b.minutesPerPack);
+      // Licenses are the team's: the team changes, and the plan is read again below.
+      qc.setQueryData(qk.myTeam, await api.teams.buyLicenses(b.count, b.microUsdPerLicense));
+      return null;
+    },
     // What's open on the plan (the side panel, Settings, a call's notes) follows at once.
-    onSuccess: (p) => { qc.setQueryData(qk.plan, p); void qc.invalidateQueries({ queryKey: qk.topUps }); },
+    onSuccess: (p) => {
+      if (p) qc.setQueryData(qk.plan, p); else void qc.invalidateQueries({ queryKey: qk.plan, exact: true });
+      void qc.invalidateQueries({ queryKey: qk.topUps });
+    },
     // `plan` is the offers' prefix: both are read again.
     onError: () => { void qc.invalidateQueries({ queryKey: qk.plan }); }
   });

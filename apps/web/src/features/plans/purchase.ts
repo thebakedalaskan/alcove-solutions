@@ -28,26 +28,33 @@ export function yearlyOff(offers: PlanOffers): number | null {
 }
 
 /** What a purchase costs at the price it carries. */
-export const costOf = (buys: Purchase): number => (buys.kind === 'pro' ? buys.months * buys.microUsdPerMonth : buys.packs * buys.microUsdPerPack);
+export const costOf = (buys: Purchase): number =>
+  (buys.kind === 'pro' ? buys.months * buys.microUsdPerMonth : buys.kind === 'hours' ? buys.packs * buys.microUsdPerPack : buys.count * buys.microUsdPerLicense);
 
-/** Whether two purchases are on the same terms: a month of Pro at one price, or a pack of notes at one price and size. */
-export const sameTerms = (a: Purchase, b: Purchase): boolean =>
-  (a.kind === 'pro' ? b.kind === 'pro' && a.microUsdPerMonth === b.microUsdPerMonth
-    : b.kind === 'hours' && a.microUsdPerPack === b.microUsdPerPack && a.minutesPerPack === b.minutesPerPack);
+/** Whether two purchases are on the same terms: a month of Pro at one price, a pack of notes at one price and size, or a license at one price. */
+export function sameTerms(a: Purchase, b: Purchase): boolean {
+  if (a.kind === 'pro') return b.kind === 'pro' && a.microUsdPerMonth === b.microUsdPerMonth;
+  if (a.kind === 'hours') return b.kind === 'hours' && a.microUsdPerPack === b.microUsdPerPack && a.minutesPerPack === b.minutesPerPack;
+  return b.kind === 'licenses' && a.microUsdPerLicense === b.microUsdPerLicense;
+}
 
 /** The same purchase on today's terms, or null when it isn't offered any more (more notes switched off). */
 export function repriced(offers: PlanOffers, buys: Purchase): Purchase | null {
   if (buys.kind === 'pro') return { kind: 'pro', months: buys.months, microUsdPerMonth: proPrice(offers, buys.months) };
+  if (buys.kind === 'licenses') return { kind: 'licenses', count: buys.count, microUsdPerLicense: offers.team.microUsdPerLicense };
   return offers.hours ? { kind: 'hours', packs: buys.packs, microUsdPerPack: offers.hours.microUsd, minutesPerPack: offers.hours.minutes } : null;
 }
 
 /** "Pro, 12 months", "10 hours of notes": what a purchase is, as the side panel, Settings and checkout say it. */
 export function purchaseName(buys: Purchase): string {
-  return buys.kind === 'pro' ? `Pro, ${plural(buys.months, 'month')}` : `${hoursOfNotes(buys.packs * buys.minutesPerPack)} of notes`;
+  if (buys.kind === 'pro') return `Pro, ${plural(buys.months, 'month')}`;
+  if (buys.kind === 'licenses') return `Team, ${plural(buys.count, 'license')}`;
+  return `${hoursOfNotes(buys.packs * buys.minutesPerPack)} of notes`;
 }
 
 /** What checkout opens on to see a purchase through. */
-export const checkoutFor = (buys: Purchase): CheckoutFor => (buys.kind === 'pro' ? { plan: 'pro', months: buys.months } : { plan: 'hours', packs: buys.packs });
+export const checkoutFor = (buys: Purchase): CheckoutFor =>
+  (buys.kind === 'pro' ? { plan: 'pro', months: buys.months } : buys.kind === 'hours' ? { plan: 'hours', packs: buys.packs } : { plan: 'team', licenses: buys.count });
 
 /** Whether a payment's address has closed: past its expiry, nothing more can be sent to it, whatever its state says yet. */
 export const lapsed = (t: TopUp, now = Date.now()): boolean => Date.parse(t.expiresAt) <= now;

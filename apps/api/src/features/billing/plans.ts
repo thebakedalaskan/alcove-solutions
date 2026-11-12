@@ -429,6 +429,8 @@ function termsOf(l: Limits, buys: Purchase, license: License | null, now: number
       add: (a, now) => ({ ...withMonths(pruned(a, now), l, months, microUsdPerMonth, now), grace: null })
     };
   }
+  // Licenses are bought with a payment once the server's Team checkout lands (until then, from the balance in Team).
+  if (buys.kind === 'licenses') return refusal('off', 'Licenses can’t be bought with a payment yet.', 'Licenses couldn’t be bought with this payment. It’s in your balance.');
   const offer = hoursOf(l);
   if (!offer) return refusal('off', 'More notes can’t be bought right now.', 'More notes stopped being offered before your payment arrived. It’s in your balance.');
   if (buys.packs > offer.maxPacks) {

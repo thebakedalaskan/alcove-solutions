@@ -20,12 +20,14 @@ import { routerAt } from './app';
 import type { PageArgs } from './page';
 
 export interface CheckoutArgs extends PageArgs {
-  /** What it opens on: Pro, or more notes for this period. */
-  plan: 'pro' | 'hours';
+  /** What it opens on: Pro, more notes for this period, or Team (starting one, or its admin buying licenses). */
+  plan: 'pro' | 'hours' | 'team';
   /** The months of Pro it starts on (Plans' Monthly opens on 1); none: the yearly length when there is one. */
   months?: number | undefined;
   /** The packs of notes it starts on. */
   packs?: number | undefined;
+  /** Team's licenses it starts on. */
+  licenses?: number | undefined;
   /** Where it's opened from: Done says Back to the call from a call, and Compare plans shows away from Plans. */
   from: CheckoutFrom;
   /** A payment on its way, to open on (the side panel's Open): none opens on choosing, or on one already on its way. */
@@ -36,7 +38,7 @@ const FROM: CheckoutFrom[] = ['plans', 'settings', 'side', 'call', 'door', 'welc
 
 /** What a door opens checkout on, from the story's args. */
 function openFrom(a: CheckoutArgs): CheckoutOpen {
-  const what = a.plan === 'pro' ? { plan: 'pro' as const, months: a.months } : { plan: 'hours' as const, packs: a.packs };
+  const what = a.plan === 'pro' ? { plan: 'pro' as const, months: a.months } : a.plan === 'team' ? { plan: 'team' as const, licenses: a.licenses } : { plan: 'hours' as const, packs: a.packs };
   return { what, from: a.from, topUpId: a.topUpId ?? null };
 }
 
@@ -66,7 +68,7 @@ export const checkouts = {
   argTypes: {
     path: { control: 'text', description: 'Where the app opens, behind checkout' },
     scenario: { control: 'select', options: SCENARIO_NAMES, description: 'The world the stand-in serves' },
-    plan: { control: 'inline-radio', options: ['pro', 'hours'], description: 'What checkout opens on' },
+    plan: { control: 'inline-radio', options: ['pro', 'hours', 'team'], description: 'What checkout opens on' },
     months: { control: 'number', description: 'The months of Pro it starts on' },
     packs: { control: 'number', description: 'The packs of notes it starts on' },
     from: { control: 'select', options: FROM, description: 'Where it was opened from' },

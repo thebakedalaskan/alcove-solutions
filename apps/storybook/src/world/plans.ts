@@ -118,8 +118,8 @@ export const hoursOf = (offers: PlanOffers, packs: number): number => (packs * (
  * Whoever calls it has checked that it can be bought.
  */
 export function buyFromBalance(plan: Plan, buys: Purchase, entry: string, now = Date.now()): Plan {
-  const cost = buys.kind === 'pro' ? buys.months * buys.microUsdPerMonth : buys.packs * buys.microUsdPerPack;
-  const label = buys.kind === 'pro' ? `Pro, ${buys.months} ${buys.months === 1 ? 'month' : 'months'}` : `${(buys.packs * buys.minutesPerPack) / 60} more hours of notes`;
+  const cost = buys.kind === 'pro' ? buys.months * buys.microUsdPerMonth : buys.kind === 'licenses' ? buys.count * buys.microUsdPerLicense : buys.packs * buys.microUsdPerPack;
+  const label = buys.kind === 'pro' ? `Pro, ${buys.months} ${buys.months === 1 ? 'month' : 'months'}` : buys.kind === 'licenses' ? `Team, ${buys.count} ${buys.count === 1 ? 'license' : 'licenses'}` : `${(buys.packs * buys.minutesPerPack) / 60} more hours of notes`;
   const line: BalanceEntry = { id: entry, at: new Date(now).toISOString(), label, microUsd: -cost };
   const paid = { ...plan, balance: { microUsd: plan.balance.microUsd - cost, history: [line, ...plan.balance.history] } };
   if (buys.kind === 'pro') {
@@ -127,6 +127,8 @@ export function buyFromBalance(plan: Plan, buys: Purchase, entry: string, now = 
     const from = Number.isFinite(lastTo) && lastTo > now ? lastTo : now;
     return withProMonths(paid, [...plan.pro.months, ...monthsFrom(from, buys.months, buys.microUsdPerMonth)], now);
   }
+  // Licenses go to the team (world/teams.ts); the plan only pays for them.
+  if (buys.kind === 'licenses') return paid;
   const minutes = buys.packs * buys.minutesPerPack;
   return { ...paid, notes: { minutesLeft: plan.notes.minutesLeft + minutes, minutesPerPeriod: plan.notes.minutesPerPeriod + minutes, stopped: false } };
 }

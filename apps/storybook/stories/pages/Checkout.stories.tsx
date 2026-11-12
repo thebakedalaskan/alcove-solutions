@@ -102,7 +102,7 @@ const at = (where: PurchaseAt, more: Partial<CheckoutStory> = {}): CheckoutStory
  * says), as the window would see it: in `scenario`, for `buys` and `asked`.
  */
 const lands = (scenario: CheckoutArgs['scenario'], open: Partial<CheckoutArgs>, play: PaymentPlay = 'pays', buys?: Purchase, asked?: number, more: Partial<CheckoutStory> = {}): CheckoutStory =>
-  checkout(open.path ?? '/home', scenario, { plan: buys?.kind ?? 'pro', topUpId: PREVIEW_TOP_UP, ...open }, {
+  checkout(open.path ?? '/home', scenario, { plan: buys?.kind === 'licenses' ? 'team' : buys?.kind ?? 'pro', topUpId: PREVIEW_TOP_UP, ...open }, {
     beforeEach: changing(purchaseAt('waiting', buys, asked), playsOut(PREVIEW_TOP_UP, play)), ...more
   });
 

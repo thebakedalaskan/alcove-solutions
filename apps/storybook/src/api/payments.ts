@@ -22,7 +22,7 @@ const micro = (amount: string) => Math.round(Number(amount) * 1_000_000);
 /** An amount as the server's refusals say it: "$192", "$12.50". */
 const dollars = (microUsd: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: microUsd % 1_000_000 === 0 ? 0 : 2 }).format(microUsd / 1_000_000);
 /** "12 months of Pro", "20 hours of notes": what a purchase buys, as refusals say it. */
-const amountOf = (buys: Purchase) => (buys.kind === 'pro' ? `${months(buys.months)} of Pro` : `${(buys.packs * buys.minutesPerPack) / 60} hours of notes`);
+const amountOf = (buys: Purchase) => (buys.kind === 'pro' ? `${months(buys.months)} of Pro` : buys.kind === 'licenses' ? `${buys.count} team ${buys.count === 1 ? 'license' : 'licenses'}` : `${(buys.packs * buys.minutesPerPack) / 60} hours of notes`);
 
 /**
  * Why a purchase can't be had on today's terms, as the server's terms say it, or null when it can: when it's asked for
@@ -40,6 +40,8 @@ export function refusalOf(w: World, buys: Purchase): { code: 'invalid' | 'confli
     }
     return null;
   }
+  // Team's licenses: the stand-in's Team checkout says what refuses them (a placeholder until it lands).
+  if (buys.kind === 'licenses') return buys.microUsdPerLicense === o.team.microUsdPerLicense ? null : { code: 'conflict', asked: 'The price of a team license has changed. Look at it again before buying.', arrived: 'The price of a team license changed before your payment arrived. It’s in your balance.' };
   if (!o.hours) return { code: 'conflict', asked: 'More notes can’t be bought right now.', arrived: 'More notes stopped being offered before your payment arrived. It’s in your balance.' };
   if (!Number.isInteger(buys.packs) || buys.packs < 1 || buys.packs > o.hours.maxPacks) {
     return { code: 'invalid', asked: `Buy up to ${hoursOf(o, o.hours.maxPacks)} hours of notes at a time.`, arrived: `Since your payment was made, one purchase buys at most ${hoursOf(o, o.hours.maxPacks)} hours of notes. It’s in your balance.` };
@@ -55,7 +57,7 @@ export function refusalOf(w: World, buys: Purchase): { code: 'invalid' | 'confli
 
 /** Why the balance can't pay for it, or null when it can: as it's asked for, never saying the balance itself. */
 export function shortOf(w: World, buys: Purchase): string | null {
-  const cost = buys.kind === 'pro' ? buys.months * buys.microUsdPerMonth : buys.packs * buys.microUsdPerPack;
+  const cost = buys.kind === 'pro' ? buys.months * buys.microUsdPerMonth : buys.kind === 'licenses' ? buys.count * buys.microUsdPerLicense : buys.packs * buys.microUsdPerPack;
   if (w.plan.balance.microUsd >= cost) return null;
   return `Your balance is short of what ${amountOf(buys)} ${buys.kind === 'pro' && buys.months === 1 ? 'costs' : 'cost'} (${dollars(cost)}). Add money first.`;
 }

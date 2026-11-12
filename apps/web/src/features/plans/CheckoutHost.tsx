@@ -84,6 +84,8 @@ function described(buys: Purchase, offers: PlanOffers): { name: string; brief: s
       : [{ label: `${plural(buys.months, 'month')} at ${usd(buys.microUsdPerMonth)}`, value: usd(costOf(buys)) }];
     return { name: 'Pro', brief: `${plural(buys.months, 'month')}${pct ? ` · ${pct}% off` : ''}`, lines };
   }
+  // Team's licenses: drawn by Team's checkout (a placeholder until it lands).
+  if (buys.kind === 'licenses') return { name: 'Team', brief: plural(buys.count, 'license'), lines: [{ label: `${plural(buys.count, 'license')} at ${usd(buys.microUsdPerLicense)}`, value: usd(costOf(buys)) }] };
   const hours = hoursOfNotes(buys.packs * buys.minutesPerPack);
   const perHour = Math.round((buys.microUsdPerPack * 60) / buys.minutesPerPack);
   return { name: `${hours} of notes`, brief: 'For this period', lines: [{ label: `${hours} at ${usd(perHour)} an hour`, value: usd(costOf(buys)) }] };
@@ -153,7 +155,7 @@ export function CheckoutHost({ open, onClose, onCompare }: { open: CheckoutOpen;
   /** Back to choosing what a payment was for, as it was: the same length or hours, on the same network. */
   const chooseAgain = (old: TopUp) => {
     const b = old.purchase?.buys;
-    if (b?.kind === 'pro') { setMonths(b.months); setOther(!LENGTHS.some((m) => m === b.months)); } else if (b) setPacks(b.packs);
+    if (b?.kind === 'pro') { setMonths(b.months); setOther(!LENGTHS.some((m) => m === b.months)); } else if (b?.kind === 'hours') setPacks(b.packs);
     setRouteId(old.route.id);
     setAsking(false);
     setView({ step: 'choose' });
@@ -224,7 +226,7 @@ export function CheckoutHost({ open, onClose, onCompare }: { open: CheckoutOpen;
   };
   const buy = (b: Purchase) => {
     setSaid(null);
-    const done = (fresh: Plan) => setView({ step: 'bought', plan: fresh, buys: b, at: Date.now() });
+    const done = (fresh: Plan | null) => { if (fresh) setView({ step: 'bought', plan: fresh, buys: b, at: Date.now() }); };
     buying.mutate(b, { onSuccess: done, onError: refused });
   };
   const getAddress = (r: TopUpRoute, microUsd: number, b: Purchase) => {
@@ -264,6 +266,9 @@ export function CheckoutHost({ open, onClose, onCompare }: { open: CheckoutOpen;
       until = boughtUntil(b.months, fresh);
       heading = extend ? `Pro runs to ${shortDate(until)}` : 'You’re on Pro';
       lines.push(`Until ${fullDate(until)}.`);
+    } else if (b.kind === 'licenses') {
+      until = null;
+      heading = plural(b.count, 'license') + ' added';
     } else {
       until = periodEnd;
       heading = moreHoursOfNotes(b.packs * b.minutesPerPack);
