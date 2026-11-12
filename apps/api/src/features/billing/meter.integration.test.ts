@@ -541,6 +541,33 @@ describe('running out', () => {
     expect(code(await ann.api.recordings.start({ title: 'Again' }).catch((e: unknown) => e))).toBe('plan-limit');
   });
 
+  it('leaves notes as they were when their organizer asks to write them again after the allowance is spent, and spends nothing', async () => {
+    await h.setLimit('plan.free.notes_minutes', 1);
+    await h.setLimit('ai.hour_micro_usd', 3600);
+    await h.setLimit('ai.stop_micro_usd', 0);
+    const org = await account(unique('organizer'));
+    const { host } = await call(org);
+    await host.appendAudio(piece('again', 0));
+    await host.transcribe(speech('We agreed to ship on Monday.', 0), host.ticket.identity);
+    await settle(host, (s) => s.capture.stopped !== null);
+    const ended = await host.leave();
+    const noteId = ended?.pendingNoteId ?? '';
+    await written(org.api, noteId);
+    const was = await org.api.notes.get(noteId);
+    expect(was.decisions.map((d) => d.text)).toEqual(['We agreed to ship on Monday.']);
+    const spent = (await meter(org)).spentNano;
+    const sent = h.near.prompts.length;
+    // Writing them again is refused like anything else: the job ends at once, with nothing sent or charged and nothing retried.
+    expect(await org.api.notes.rewrite(noteId)).toMatchObject({ writingAgain: true });
+    await written(org.api, noteId);
+    const after = await org.api.notes.get(noteId);
+    expect(after).toMatchObject({ writingAgain: false, summary: was.summary, writtenAt: was.writtenAt, model: was.model });
+    expect(after.decisions).toEqual(was.decisions);
+    expect(h.near.prompts.length).toBe(sent);
+    expect((await meter(org)).spentNano).toBe(spent);
+    expect((await h.pool.query('SELECT 1 FROM content_jobs WHERE owner_id = $1', [org.session.ownerId])).rowCount).toBe(0);
+  });
+
   it('holds what requests in flight may cost, so several at once never spend past the allowance', async () => {
     // A note to ask about, written while there's plenty.
     await h.setLimit('ai.stop_micro_usd', 0);
