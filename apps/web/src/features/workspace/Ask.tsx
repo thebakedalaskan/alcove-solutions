@@ -8,7 +8,7 @@ import { MAX_DOC_ASK, errorMessage, type AnswerPart, type CallSession, type DocA
 import { WsAskAnswer, WsAskMenu, WsPopover, wsToast } from '@alcove/ui';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { AnswerView, useAnswer } from '~/features/notes/answer';
-import { useAskableNotes } from '~/features/notes/ask-refs';
+import { useAskableNotes } from '~/features/notes/askable';
 import { api } from '~/lib/api';
 import { sessions } from '~/lib/live';
 import type { Ws } from './context';
