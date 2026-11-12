@@ -22,7 +22,9 @@ Every number is a limit (`apps/api/src/limits.ts`, [Deployment › Changing a li
 changeable without a deploy: each plan's notes, storage, files and price; Pro's lower price for a year or more; the most
 months of Pro one purchase buys and how long before Pro ends its owner is told; more notes for a period, their price and
 the most bought at once; the most workspaces one account makes; what an hour of notes is reckoned at; when AI stops and
-when an organizer is told it's close; how long a period and a grace last; a call's longest and its most people.
+when an organizer is told it's close; how long a period and a grace last; a call's longest and its most people. The
+period's length isn't changed in production for now: an account on Free counts its periods from when it began, so a
+change would start a new one at once for every account on Free past its first.
 
 ## Status
 
