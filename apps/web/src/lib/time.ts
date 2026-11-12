@@ -21,6 +21,12 @@ export const dayFullMonth = (d: Date) => `${d.getDate()} ${month(d)}`;
 export const wentAt = (iso: string, now = new Date()): string => { const d = new Date(iso); const n = -daysFromToday(d, now); return n <= 0 ? hm(d) : n < 7 ? `${weekday(d).slice(0, 3)} ${hm(d)}` : dayMonth(d); };
 /** "Tuesday 3 November" */
 export const longDay = (d: Date) => `${weekday(d)} ${d.getDate()} ${month(d)}`;
+/** "Thursday 4 November 2027": a day far enough off to need its year, such as when a plan ends. */
+export const fullDate = (d: Date) => `${longDay(d)} ${d.getFullYear()}`;
+/** "4 Nov 2027" */
+export const shortDate = (d: Date) => `${dayMonth(d)} ${d.getFullYear()}`;
+/** "1 December" */
+export const dayAndMonth = (d: Date) => `${d.getDate()} ${month(d)}`;
 /** For lists of notes: "Today", "Yesterday" or "Fri 30 Oct". */
 export function noteDay(iso: string, now = new Date()): string {
   const d = new Date(iso);

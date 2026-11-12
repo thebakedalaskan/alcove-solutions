@@ -15,7 +15,7 @@ import {
   Moon, Navigation, PanelRight, Paperclip, Pilcrow, Quote, SquareCheckBig, Strikethrough, Sun, Table, TextAlignStart, TextQuote, Type, CalendarClock, StickyNote, Hourglass, PhoneCall,
   CircleOff, Droplet, Droplets, BellRing, Bot, Coffee, Ear, Gauge, Headphones, SmilePlus, Layers, MessagesSquare, VenetianMask,
   FileCheck, FilePen, HandHelping, Laptop, MessageSquareLock, PhoneIncoming, Share2,
-  File as FileIcon, Wallet
+  File as FileIcon, Wallet, Printer
 } from 'lucide-react';
 import { cn } from '../cn';
 
@@ -55,7 +55,8 @@ const ICONS = {
   /* A plan's largest file, and the wallet it's paid from (Plans). */
   file: FileIcon, wallet: Wallet,
   /* Play in outline, beside a level (SoundLevel); `play` is the filled one. */
-  playLine: Play
+  playLine: Play,
+  printer: Printer
 } satisfies Record<string, LucideIcon>;
 
 const FILLED = new Set<IconName>(['dot', 'stop', 'play']);

@@ -28,15 +28,16 @@ import { QUIET } from './empty';
 import { forgetKeptHere } from './kept';
 import { drawnPicture, forgetAudio } from './media';
 import { stopLive } from './standin';
-import { paymentsOff, PREVIEW_PAID_TOP_UP, PREVIEW_TOP_UP, topUpOf, withPayments } from '../world/payments';
-import { freePlan, inGrace, newPlan, notesStopped, overLimits, proEnded, proEnding, proPlan, proRenewed, withBalance, withNotesLeft } from '../world/plans';
+import { buyingWith, paymentsOff, PREVIEW_PAID_TOP_UP, PREVIEW_TOP_UP, topUpOf, withPayments } from '../world/payments';
+import { freePlan, inGrace, newPlan, notesStopped, overLimits, proEnded, proEnding, proExtended, proPlan, proRenewed, PRO_YEARLY_PRICE, withBalance, withNotesLeft } from '../world/plans';
 import { disconnectedDrive, withDriveExports } from '../world/drive-exports';
 import { withAgentConnections } from './agents';
 import { serve } from './state';
 import { forgetDocuments } from './workspaces';
 
 export type ScenarioName = 'busy' | 'first-day' | 'on-their-own' | 'offline' | 'writing' | 'call-soon' | 'no-workspace' | 'lots' | 'signed-out' | 'unsaved' | 'first-sign-in' | 'agents-connected' | 'drive-connected' | 'payments'
-  | 'plan-low' | 'plan-stopped' | 'plan-grace' | 'plan-over' | 'plan-balance' | 'plan-pro' | 'plan-pro-ending' | 'plan-pro-renewed' | 'plan-pro-ended';
+  | 'plan-low' | 'plan-stopped' | 'plan-grace' | 'plan-over' | 'plan-balance' | 'plan-pro' | 'plan-pro-ending' | 'plan-pro-renewed' | 'plan-pro-ended'
+  | 'plan-buying-pro' | 'plan-pro-extended';
 
 interface Scenario { title: string; about: string; make: () => { world: World; opening: Partial<Opening> } }
 
@@ -421,6 +422,19 @@ export const SCENARIOS: Record<ScenarioName, Scenario> = {
   'plan-pro-ended': {
     title: 'Pro ended', about: 'Pro ended two days ago: Art is on Free, over its storage with 14.2 GB, and everything works as before for 13 more days.',
     make: () => { const world = busy(); withPayments(world); world.plan = proEnded(); return { world, opening: {} }; }
+  },
+  'plan-buying-pro': {
+    title: 'Paying for Pro', about: 'Art is on Free and has opened a payment of 192 USDC on Base for a year of Pro at the yearly price, and closed checkout: it waits for the payment.',
+    make: () => {
+      const world = busy();
+      withPayments(world);
+      world.payments.topUps = [buyingWith(PREVIEW_TOP_UP, { kind: 'pro', months: 12, microUsdPerMonth: PRO_YEARLY_PRICE }, 192)];
+      return { world, opening: {} };
+    }
+  },
+  'plan-pro-extended': {
+    title: 'Pro, extended', about: 'Art extended Pro by a year yesterday, paid with 192 USDC on Base at the yearly price: the month running and twelve after it, $5 left.',
+    make: () => { const world = busy(); withPayments(world); world.plan = proExtended(); return { world, opening: {} }; }
   },
   payments: {
     title: 'Adding money', about: 'Art can add money to their balance with a stablecoin; every payment address is an invalid Storybook preview.',

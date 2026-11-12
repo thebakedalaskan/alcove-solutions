@@ -188,3 +188,58 @@ export const proEnded = (): Plan => {
     notices: [notice('sb-notice-ended', 'pro-ended', iso(-2, 10, 0), iso(-2, 10, 0))]
   };
 };
+
+/* ---------- Pro paid for in one go, renewed, ended ---------- */
+
+/** `months` of Pro back to back from `from` (ms), at `microUsd` a month: the yearly price, when a year is bought at once. */
+export function monthsAt(from: number, months: number, microUsd: number): ProMonth[] {
+  return monthsFrom(from, months).map((m) => ({ ...m, microUsd }));
+}
+/** What a month costs when a year or more is bought at once. */
+export const PRO_YEARLY_PRICE = PLAN_OFFERS.pro.yearly?.microUsdPerMonth ?? PRO_PRICE;
+
+/**
+ * Pro extended by a year yesterday, paid with 192 USDC on Base at the yearly price, bought from the payment as it was
+ * added: the month running since 10 days ago, twelve after it that can be refunded, and $5 left in the balance.
+ */
+export const proExtended = (): Plan => {
+  const history: BalanceEntry[] = [
+    { id: 'sb-entry-year', at: iso(-1, 18, 40), label: 'Pro, 12 months', microUsd: -12 * PRO_YEARLY_PRICE },
+    { id: 'sb-entry-paid', at: iso(-1, 18, 40), label: 'Added, 192 USDC', microUsd: 12 * PRO_YEARLY_PRICE },
+    { id: 'sb-entry-pro', at: iso(-10, 10, 0), label: 'Pro, 1 month', microUsd: -PRO_PRICE },
+    { id: 'sb-entry-1', at: iso(-10, 9, 55), label: 'Added, 25 USDC', microUsd: 25_000_000 }
+  ];
+  const first = on(-10, 10, 0).getTime();
+  const months = [...monthsFrom(first, 1), ...monthsAt(first + PERIOD_MS, 12, PRO_YEARLY_PRICE)];
+  const plan = withProMonths({ ...freePlan(), balance: { microUsd: 5_000_000, history } }, months, AFTERNOON());
+  return { ...plan, notes: { ...plan.notes, minutesLeft: 2460 } };
+};
+
+/**
+ * Pro's month ends with renewing on and a month's price in the balance: a month is bought from it, after the last, and
+ * its owner is told it renewed.
+ */
+export function renewedFromBalance(plan: Plan, now = Date.now()): Plan {
+  const end = Date.parse(plan.pro.until ?? '');
+  const from = Number.isFinite(end) && end > now ? end : now;
+  const entry: BalanceEntry = { id: `sb-entry-renew-${from}`, at: new Date(now).toISOString(), label: 'Pro, renewed for a month', microUsd: -PRO_PRICE };
+  const paid: Plan = { ...plan, balance: { microUsd: plan.balance.microUsd - PRO_PRICE, history: [entry, ...plan.balance.history] } };
+  const renewed = withProMonths(paid, [...plan.pro.months, ...monthsFrom(from, 1)], now);
+  return { ...renewed, notices: [notice(`sb-notice-renewed-${from}`, 'pro-renewed', new Date(now).toISOString(), renewed.pro.until ?? new Date(from).toISOString()), ...plan.notices] };
+}
+
+/**
+ * Pro's last month is over, without renewing: back on Free with all of Free's notes, and its owner told. Nothing is deleted.
+ * It ends now, whatever end was bought: a journey moves time on by ending it.
+ */
+export function proHasEnded(plan: Plan, now = Date.now()): Plan {
+  const ended = new Date(now).toISOString();
+  return {
+    ...plan, kind: 'free',
+    period: { from: new Date(now).toISOString(), to: new Date(now + PERIOD_MS).toISOString() },
+    notes: { minutesLeft: FREE.minutes, minutesPerPeriod: FREE.minutes, stopped: false },
+    storage: { ...plan.storage, limitBytes: FREE.storage, fileBytes: FREE.file },
+    pro: { ...NO_PRO, renew: plan.pro.renew },
+    notices: [notice(`sb-notice-ended-${now}`, 'pro-ended', new Date(now).toISOString(), ended), ...plan.notices]
+  };
+}

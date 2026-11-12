@@ -1,12 +1,14 @@
 /*
- * Adding money with a stablecoin: choose how much, then a token and its chain, and get an address for one payment of
- * exactly that, sent from any wallet or exchange. A token is added as a dollar. The sheet follows the payment on its own
- * until it's added (or isn't), and opens again on any top-up from Plan, so closing it loses nothing.
+ * Adding money to the balance with a stablecoin, from Settings › Plan: choose how much, then a token and its chain, and get
+ * an address made for one payment of exactly that, sent from any wallet or exchange. A token is added as a dollar. The
+ * sheet follows the payment on its own until it's added (or isn't), and opens again on it from Plan's payments, so closing
+ * it loses nothing. Buying Pro or more notes is checkout's (features/plans/checkout.tsx), which asks for what it needs.
  */
-import { errorMessage, MAX_TOP_UP_MICRO_USD, type TopUp, type TopUpRoute } from '@alcove/api';
+import { errorMessage, MAX_TOP_UP_MICRO_USD, type TopUpRoute } from '@alcove/api';
 import { Button, Chip, CopyField, CryptoMark, Dots, Icon, IconButton, Notice, QrCode, RequestRef, Select, Sheet, Spinner, type SelectOption } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useId, useState, type ReactNode } from 'react';
+import { restToSend as rest } from '~/features/plans/plan-state';
 import { q, useCancelTopUp, useStartTopUp } from '~/lib/queries';
 import { daysFromToday, hm, minutesUntil, shortDay } from '~/lib/time';
 import { usd } from '~/lib/words';
@@ -14,49 +16,19 @@ import { usd } from '~/lib/words';
 const tokens = new Intl.NumberFormat('en-GB', { maximumFractionDigits: 6, useGrouping: false });
 
 /** "USDC on Base" */
-export const routeName = (r: { token: string; chainName: string }) => `${r.token} on ${r.chainName}`;
+const routeName = (r: { token: string; chainName: string }) => `${r.token} on ${r.chainName}`;
 
 /** "14:30", "tomorrow 14:30", "Thu 12 Nov 14:30": when something will have happened by. */
-function byWhen(iso: string, now: number): string {
+export function byWhen(iso: string, now: number): string {
   const days = daysFromToday(new Date(iso), new Date(now));
   if (days <= 0) return hm(iso);
   return `${days === 1 ? 'tomorrow' : shortDay(new Date(iso))} ${hm(iso)}`;
 }
 
-/** `a` minus `b`, two token amounts as decimal strings ("5" − "1.5" = "3.5"), never below 0. */
-export function amountLeft(a: string, b: string): string {
-  const places = Math.max(a.split('.')[1]?.length ?? 0, b.split('.')[1]?.length ?? 0);
-  const units = (x: string) => { const [w = '0', f = ''] = x.split('.'); return BigInt(w + f.padEnd(places, '0')); };
-  const left = units(a) - units(b);
-  if (left <= 0n) return '0';
-  const digits = left.toString().padStart(places + 1, '0');
-  const whole = digits.slice(0, digits.length - places);
-  const fraction = digits.slice(digits.length - places).replace(/0+$/, '');
-  return fraction ? `${whole}.${fraction}` : whole;
-}
-/** What's still to send on a short top-up: the asked amount less what arrived. */
-const rest = (t: TopUp) => amountLeft(t.asked.amount, t.received?.amount ?? '0');
-
 /** "14:30" today, "tomorrow", "Mon 9 Nov": the day something happens by, for a line that has no room for more. */
-function byDay(iso: string, now: number): string {
+export function byDay(iso: string, now: number): string {
   const days = daysFromToday(new Date(iso), new Date(now));
   return days <= 0 ? hm(iso) : days === 1 ? 'tomorrow' : shortDay(new Date(iso));
-}
-/** How a top-up stands, in a line. The waiting, arriving and short lines are also what Plan lists. */
-export function topUpLine(t: TopUp, now = Date.now()): string {
-  const token = t.route.token;
-  switch (t.state) {
-    case 'waiting': return Date.parse(t.expiresAt) > now ? 'Waiting for your payment' : 'Address expired';
-    case 'arriving': return 'Payment seen, adding it to your balance';
-    case 'short': return Date.parse(t.expiresAt) > now
-      ? `${t.received?.amount ?? 'Part'} of ${t.asked.amount} ${token} arrived · send ${rest(t)} more by ${byDay(t.expiresAt, now)}`
-      : `${t.received?.amount ?? 'Part'} ${token} arrived · address expired, settlement pending`;
-    case 'credited': return `Added ${usd(t.received?.microUsd ?? 0)}`;
-    case 'held': return 'Too little arrived to add';
-    case 'failed': return 'Something went wrong with this payment. Contact support with this reference:';
-    case 'expired': return 'This address expired. Nothing arrived.';
-    case 'cancelled': return 'Cancelled';
-  }
 }
 
 /** The least a custom amount suggests: the smallest any network takes. */
@@ -224,7 +196,7 @@ function Paying({ id, onNew, onClose }: { id: string; onNew: () => void; onClose
     : t.state === 'arriving' ? { label: 'You sent', amount: r?.amount ?? t.asked.amount, more: null }
     : short && lapsed ? { label: 'You sent', amount: r?.amount ?? '0', more: null }
     : short ? { label: 'Send another', amount: rest(t), more: `${r?.amount ?? 'Part'} of ${t.asked.amount} ${token} arrived` }
-    : { label: 'You send', amount: t.asked.amount, more: null };
+    : { label: 'Send exactly', amount: t.asked.amount, more: null };
   // A token is added as a dollar: what was asked, until it's settled, then what was added.
   const added = done && r ? r.microUsd ?? 0 : Math.round(Number(t.asked.amount) * 1_000_000);
 
@@ -237,8 +209,8 @@ function Paying({ id, onNew, onClose }: { id: string; onNew: () => void; onClose
     chip = <Chip icon="clock">Address expired</Chip>;
     next = 'Nothing arrived. To add money, start a new top-up.';
   } else if (t.state === 'waiting') {
-    chip = <Chip tone="horizon"><Dots />Waiting for payment</Chip>;
-    next = <>Scan with a {chainName} wallet, or copy the address below. Send exactly {t.asked.amount} {token}; if your exchange takes a withdrawal fee, add it on top.</>;
+    chip = <Chip tone="horizon"><Dots />Waiting for your payment</Chip>;
+    next = <>Scan it with a {chainName} wallet, or copy the address below. After you paste it, check the first and last characters.</>;
   } else if (short && lapsed) {
     chip = <Chip icon="clock">Address expired</Chip>;
     next = 'Don’t send more to this address. What arrived is added after the payment or refund settles.';
@@ -268,7 +240,7 @@ function Paying({ id, onNew, onClose }: { id: string; onNew: () => void; onClose
   }
   /** Nothing has reached it and its address can still be paid: it can be cancelled. */
   const cancellable = t.state === 'waiting' && !lapsed;
-  const expires = address !== null && <p className="exp"><Icon name="clock" size={15} />Expires {byWhen(t.expiresAt, now)}</p>;
+  const expires = address !== null && <p className="exp"><Icon name="clock" size={15} />Open until {byWhen(t.expiresAt, now)}</p>;
 
   return (
     <>
@@ -295,12 +267,12 @@ function Paying({ id, onNew, onClose }: { id: string; onNew: () => void; onClose
             <div className="set-topup-dest">
               <div className="h">
                 <span>Deposit address · {chainName}</span>
-                {short ? <Chip tone="outline">Same address</Chip> : <Chip tone="horizon" icon="clock">One-time use</Chip>}
+                {short ? <Chip tone="outline">Same address</Chip> : <Chip tone="horizon">Made for this payment</Chip>}
               </div>
               <CopyField value={address} label="Deposit address" />
               {t.memo !== null && <CopyField value={t.memo} label="Memo" />}
             </div>
-            <Notice tone="caution" icon="alert">Only send <b>{routeName(t.route)}</b>. Anything else may be lost.</Notice>
+            <Notice tone="caution" icon="alert">Only send <b>{routeName(t.route)}</b>. Anything else may be lost. Sending from an exchange? Add its withdrawal fee on top.</Notice>
           </>
         ) : (
           <div className="set-topup-how" role="status">{chip}<p>{next}</p>{ref && <RequestRef id={t.id} />}</div>

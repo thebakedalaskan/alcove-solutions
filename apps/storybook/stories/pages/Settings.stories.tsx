@@ -322,18 +322,29 @@ export const NotificationLeafRefused = page('/settings#notifications', 'busy', {
 });
 
 /* ------------------------------------------------------------------ plan */
+/*
+ * The canvas's Plan group by plan (docs/design/canvas/plans/Settings.dc.html): plFree is Plan above, plLow NotesNearlyOut,
+ * plOut NoNotesLeft, plWaiting PaymentForProOnItsWay, plPro OnPro, plEnding ProEnding, plExtended ProExtended, plEnded
+ * ProEnded. Team isn't on sale yet, so it has no story.
+ */
+export const PlanPhoneNight = phoneNight(Plan);
 /** Payments are separate from the default server-without-a-treasury scenario. Every address is an invalid preview. */
 export const Payments = page('/settings#plan', 'payments');
 export const PaymentsNight = night(Payments);
-/** A server without a treasury takes no money: the balance is there, and there's no Add money. */
+/** A server without a treasury takes no money, and on Free with nothing paid there's no balance to show: the plan's panel alone. */
 export const PaymentsUnavailable = page('/settings#plan', 'busy');
-/** Nearly out: about 20 minutes of notes left, and the sun near the start of the line. */
+/** Nearly out: under an hour of notes left, the time and its help warm, and the sun near the start of the line. */
 export const NotesNearlyOut = page('/settings#plan', 'plan-low');
 export const NotesNearlyOutNight = night(NotesNearlyOut);
-/** None left: the period's notes have stopped until it renews, the sun has set, and a little of its light is left at the start of the line. */
+export const NotesNearlyOutPhone = phone(NotesNearlyOut);
+/** None left: calls go on without notes until the period renews, the sun has set, and Get Pro is the one filled button. */
 export const NoNotesLeft = page('/settings#plan', 'plan-stopped');
 export const NoNotesLeftNight = night(NoNotesLeft);
 export const NoNotesLeftPhone = phone(NoNotesLeft);
+/** A payment for a year of Pro on its way: first in the payments, waiting, with Open (checkout, on that payment) and a cancel. */
+export const PaymentForProOnItsWay = page('/settings#plan', 'plan-buying-pro');
+export const PaymentForProOnItsWayNight = night(PaymentForProOnItsWay);
+export const PaymentForProOnItsWayPhone = phone(PaymentForProOnItsWay);
 /** Over Free's storage: 14.2 GB of 10. Everything works as before until the day the note names. */
 export const OverFreesLimitsInGrace = page('/settings#plan', 'plan-grace');
 export const OverFreesLimitsInGraceNight = night(OverFreesLimitsInGrace);
@@ -341,38 +352,39 @@ export const OverFreesLimitsInGracePhone = phone(OverFreesLimitsInGrace);
 /** The grace is over: uploads have stopped, and the note says so. */
 export const OverFreesLimits = page('/settings#plan', 'plan-over');
 export const OverFreesLimitsNight = night(OverFreesLimits);
-/** $60 in the balance, with a $20 top-up waiting for its payment and a $40 one already added, each opening its sheet. */
+/** $60 in the balance: a $20 top-up waiting for its payment, opening the add-money sheet, and the payments that made the balance. */
 export const ABalance = page('/settings#plan', 'plan-balance');
 export const ABalanceNight = night(ABalance);
 export const ABalancePhone = phone(ABalance);
-/* Pro, bought from the balance */
-/** On Free with nothing in the balance: Free and Pro side by side, Buy 1 month greyed out with what's short, and Add money the way on. */
-export const PlansShortOfMoney = page('/settings#plan', 'payments');
-export const PlansShortOfMoneyNight = night(PlansShortOfMoney);
-export const PlansShortOfMoneyPhone = phone(PlansShortOfMoney);
-/** On Free with $60: the balance covers a month, so Buy 1 month is the page's one filled button. */
-export const PlansWithMoney = page('/settings#plan', 'plan-balance');
-export const PlansWithMoneyNight = night(PlansWithMoney);
-/** Buying a month: Art is on Pro at once, with the whole of Pro's notes, and the balance is $20 less. */
-export const BuyAMonth = page('/settings#plan', 'plan-balance', { play: pressing('Buy 1 month', 'Buy a month of Pro from the balance') });
-export const BuyAMonthPhone = phone(BuyAMonth);
-/** On Pro: until when, more months to buy after the last, Renew from balance (off), and the two months after this one to refund. */
+/* Pro */
+/** On Pro: until when, with Extend; the balance, Renew from balance (off), the two months after this one to refund, and the payments. */
 export const OnPro = page('/settings#plan', 'plan-pro');
 export const OnProNight = night(OnPro);
 export const OnProPhone = phone(OnPro);
-/** Renewing from the balance is on. */
+export const OnProPhoneNight = phoneNight(OnPro);
+/** Renewing from the balance is on: the plan says it renews before it ends. */
 export const OnProRenewing = page('/settings#plan', 'plan-pro', { beforeEach: changing((w) => { w.plan = { ...w.plan, pro: { ...w.plan.pro, renew: true } }; }) });
+/** Renewing is on, and the balance is short of a month: the row says Pro won't renew. */
+export const OnProRenewingShort = page('/settings#plan', 'plan-pro', { beforeEach: changing((w) => { w.plan = { ...w.plan, balance: { ...w.plan.balance, microUsd: 5_000_000 }, pro: { ...w.plan.pro, renew: true } }; }) });
 /** Refund asks in place: what goes back to the balance, and when Pro ends. */
 export const RefundAsked = page('/settings#plan', 'plan-pro', { play: pressing(/^Refund \(/, 'Ask to refund the months that haven’t started') });
 export const RefundAskedNight = night(RefundAsked);
-/** Pro ends in 3 days and won't renew: renewing is off and the balance is short of a month. */
+export const RefundAskedPhone = phone(RefundAsked);
+/** A payment's receipt opens over the page, as paper, to print. */
+export const AReceipt = page('/settings#plan', 'plan-pro', { play: pressing(/^Receipt for Pro, 3 months/, 'Press Receipt beside Pro, 3 months') });
+export const AReceiptNight = night(AReceipt);
+export const AReceiptPhone = phone(AReceipt);
+/** Pro ends in 3 days and won't renew: the plan says when, warm, and Extend is the one filled button. */
 export const ProEnding = page('/settings#plan', 'plan-pro-ending');
 export const ProEndingNight = night(ProEnding);
 export const ProEndingPhone = phone(ProEnding);
-/** A month was bought from the balance 3 days before Pro ended. */
+/** Pro extended by a year with a payment yesterday: until a year on, the twelve months to refund, and the payment with its receipt. */
+export const ProExtended = page('/settings#plan', 'plan-pro-extended');
+export const ProExtendedNight = night(ProExtended);
+/** A month was bought from the balance 3 days before Pro ended: said at the top until it's dismissed. */
 export const ProRenewed = page('/settings#plan', 'plan-pro-renewed');
 export const ProRenewedNight = night(ProRenewed);
-/** Pro ended: back on Free, and over Free's storage, so the grace is said too. */
+/** Pro ended: back on Free, said at the top until it's dismissed, Get Pro again, and over Free's storage, so the grace is said too. */
 export const ProEnded = page('/settings#plan', 'plan-pro-ended');
 export const ProEndedNight = night(ProEnded);
 export const ProEndedPhone = phone(ProEnded);
@@ -408,12 +420,23 @@ export const PaymentShort = page('/settings#plan', 'payments', { beforeEach: cha
 /** The address has expired while 1Click is still reporting the short payment: no instruction to send more. */
 export const PaymentShortExpired = page('/settings#plan', 'payments', { beforeEach: changing(withTopUp('short', true)), play: openTopUp });
 export const PaymentShortExpiredPhoneNight = phoneNight(PaymentShortExpired);
-export const PaymentCredited = page('/settings#plan', 'payments', { beforeEach: changing(withTopUp('credited')), play: openTopUp });
-/** Finished payments stay reachable so their support reference can be opened after closing the sheet. */
+/** A payment that was added: in the payments, Added, 20 USDC, with its receipt, and the balance up by $20. */
+export const PaymentCredited = page('/settings#plan', 'payments', { beforeEach: changing(withTopUp('credited')) });
+/** Finished payments that need a person stay reachable, so their support reference can be opened after closing the sheet. */
 export const PaymentFailed = page('/settings#plan', 'payments', { beforeEach: changing(withTopUp('failed')), play: openTopUp });
 export const PaymentHeld = page('/settings#plan', 'payments', { beforeEach: changing(withTopUp('held')), play: openTopUp });
-export const PaymentCancelled = page('/settings#plan', 'payments', { beforeEach: changing(withTopUp('cancelled')), play: openTopUp });
-export const PaymentExpired = page('/settings#plan', 'payments', { beforeEach: changing(withTopUp('expired', true)), play: openTopUp });
+/** Cancelled from the sheet: a payment already sent to its address still counts when it arrives. */
+export const PaymentCancelled = page('/settings#plan', 'payments', {
+  beforeEach: changing(withTopUp('waiting')),
+  play: async (context) => {
+    await openTopUp(context);
+    await context.step('Cancel the top-up', async () => {
+      await context.userEvent.click(await screen.findByRole('button', { name: 'Cancel top-up' }, { timeout: 8000 }));
+    });
+  }
+});
+/** Its address closed with nothing sent: the sheet says so. */
+export const PaymentExpired = page('/settings#plan', 'payments', { beforeEach: changing(withTopUp('waiting', true)), play: openTopUp });
 export const DeleteWithPaymentOnItsWay = page('/settings#privacy', 'payments', {
   beforeEach: changing(withTopUp('arriving')), play: pressing('Delete account', 'Deletion warns that an arriving payment cannot be credited after the account is gone')
 });

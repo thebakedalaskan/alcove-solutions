@@ -11,9 +11,10 @@ import { Button, EmptyState, Evening, EveryPlan, PayingLine, PlanCard, PlanCards
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { useCheckout } from '~/features/plans/checkout';
+import { endsIn, proEnding } from '~/features/plans/plan-state';
 import { useNow, useOnline } from '~/lib/live';
 import { q } from '~/lib/queries';
-import { daysFromToday, hoursAndMinutes } from '~/lib/time';
+import { hoursAndMinutes } from '~/lib/time';
 import { plural, roomLabel, usd } from '~/lib/words';
 
 /** The last of the sun, on the sky behind whatever passes through: one element, so the scene isn't drawn again with the page. */
@@ -72,13 +73,6 @@ function offWords(monthly: number, yearly: number): string | undefined {
   return off >= 1 ? `${off}% off` : undefined;
 }
 
-/** Whether Pro is ending: its owner was told so about the end it has now (an end since put off by more months doesn't count). */
-const endingOf = (p: Plan): boolean => p.kind === 'pro' && p.pro.until !== null && p.notices.some((n) => n.kind === 'pro-ending' && n.until === p.pro.until);
-/** "Ends today", "Ends tomorrow", "Ends in 6 days". */
-function endsIn(until: string, now: number): string {
-  const days = daysFromToday(new Date(until), new Date(now));
-  return days <= 0 ? 'Ends today' : days === 1 ? 'Ends tomorrow' : `Ends in ${days} days`;
-}
 /** "for 1 to 12 months at a time": as many as one purchase buys. */
 const atATime = (maxMonths: number): string => (maxMonths > 1 ? `for 1 to ${maxMonths} months at a time` : 'for a month at a time');
 
@@ -162,7 +156,7 @@ function Offered({ offers: o, plan: p, yearly, now, onBuy }: {
 }) {
   const onFree = p.kind === 'free';
   const onPro = p.kind === 'pro';
-  const ending = endingOf(p);
+  const ending = proEnding(p, o, now);
   const offered = yearlyOf(o);
   const perMonth = yearly ? yearly.microUsdPerMonth : o.pro.microUsdPerMonth;
   const save = yearly
@@ -175,11 +169,11 @@ function Offered({ offers: o, plan: p, yearly, now, onBuy }: {
           action={onFree ? <PlanHere /> : <PlanHere quiet>Where you’re back to if a plan ends</PlanHere>}
           facts={factsOf(o.free, o.periodDays, true)} more={moreNotes(o.hours)} />
         <PlanCard kind="pro" {...PRO} lifted
-          chip={onPro ? (ending && p.pro.until !== null ? endsIn(p.pro.until, now) : 'Your plan') : undefined}
+          chip={onPro ? (ending ? endsIn(ending.days) : 'Your plan') : undefined}
           price={usd(perMonth)} per="a month"
           bill={yearly ? `${usd(perMonth * yearly.fromMonths)} for ${yearly.fromMonths} months.` : 'For as many months as you choose.'} save={save}
           action={(
-            <Button variant={onFree || ending ? 'primary' : 'secondary'} onClick={() => onBuy(yearly ? yearly.fromMonths : 1)}>
+            <Button variant={onFree || ending !== null ? 'primary' : 'secondary'} onClick={() => onBuy(yearly ? yearly.fromMonths : 1)}>
               {onPro ? 'Extend' : 'Get Pro'}
             </Button>
           )}

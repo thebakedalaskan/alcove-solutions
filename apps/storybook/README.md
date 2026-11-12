@@ -108,6 +108,8 @@ Product, then the follow-ups from the retro board's Actions frame.
 | `plan-pro-ending` | Pro ends in 3 days and won't renew (renewing off, $5 doesn't buy a month): a `pro-ending` notice |
 | `plan-pro-renewed` | Renewing is on and a month was bought from the balance 3 days before Pro ended: a `pro-renewed` notice |
 | `plan-pro-ended` | Pro ended two days ago: back on Free, over its storage with 14.2 GB, in the grace, with a `pro-ended` notice |
+| `plan-buying-pro` | Art is on Free and has opened a payment of 192 USDC on Base for a year of Pro at the yearly price, then closed checkout: it waits for the payment, in the side panel and in Settings › Plan |
+| `plan-pro-extended` | Pro extended by a year yesterday, paid with 192 USDC on Base at the yearly price: the month running, twelve after it to refund, $5 left |
 | `agents-connected` | Art has a read-only Workspace assistant connected through OAuth and an unused Scheduling assistant personal token; Settings shows their scopes, expiry and last use |
 | `first-sign-in` | Nobody signed in, and no account yet: signing in makes Art's account on screen, his first day, and Home's tour |
 
