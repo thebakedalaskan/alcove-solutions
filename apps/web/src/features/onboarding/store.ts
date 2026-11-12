@@ -13,8 +13,9 @@ export interface ArrivalState {
   /** creating: the account screen is up. opening: the arch is opening into Home. */
   stage: 'none' | 'creating' | 'opening';
   /**
-   * The account screen went up over a page already showing (the welcome page), so it fades in over it. Otherwise it came
-   * with the app's first render, Google's way back having loaded the app here, and is there at once.
+   * The account screen went up over the app already on the page (the welcome page, or the app's empty frame when Google's
+   * way back loads it here), so it fades in over it. Otherwise the app's root came with the first route, as in Storybook
+   * opening at /ready, and the screen is there at once.
    */
   over: boolean;
   /** Counts arches opened, so the app shell can come in again behind one. */
@@ -37,8 +38,8 @@ const covering = new Set<() => void>();
 export const arrival = {
   /**
    * A new account: the account screen goes up over whatever is there. Settles once it covers the page, so Home loads behind
-   * it unseen rather than showing through it as it fades in: at once when the app hasn't rendered yet, as the screen is
-   * then there from the first frame.
+   * it unseen rather than showing through it as it fades in: at once when the app's root hasn't rendered yet, as the screen
+   * is then there from the first frame.
    */
   begin: (): Promise<void> => {
     if (state.stage === 'none') {

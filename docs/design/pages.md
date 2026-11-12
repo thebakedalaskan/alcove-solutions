@@ -495,7 +495,7 @@ The last of the light, with you in it, then seven groups. Change one thing and l
   agent → while none is. On a phone it's the way to Agents.
 - **Sign out** signs you out at once. Only when recordings haven't uploaded does it ask first: the sky grows to hold the
   question, it says they'll be deleted, and Stay signed in is the filled answer. Signing out (from here or your menu), the
-  page holds still, Sign out spinning, until the welcome page replaces it in one step: it never empties or blanks first.
+  page holds until the welcome page replaces it in one step, rather than blanking or emptying first.
 - **Delete account** sits apart, in its own panel at the end, and opens in place, with what goes beside what stays. The
   shared demo account can't be deleted, and says so.
 

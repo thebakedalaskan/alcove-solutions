@@ -189,9 +189,13 @@ function Creating() {
     const len = rim ? rim.getTotalLength() : 0;
     if (rim) { rim.style.strokeDasharray = `${len}`; rim.style.strokeDashoffset = `${len}`; }
     const root = el.root.current;
-    // Home loads behind the screen once it covers the page (routes/ready.tsx), so it always comes up whole: Skip doesn't stop it.
-    if (root && rise) void animate(root, { opacity: [0, 1] }, { duration: 0.5, ease: E.out2 }).then(arrival.cover);
-    else arrival.cover();
+    // Home loads behind the screen once it covers the page (routes/ready.tsx), so it always comes up whole: Skip doesn't stop
+    // it. It covers by the clock rather than when the fade reports its end: a hidden tab draws no frames, so the fade (and
+    // Home) would wait there. The clock finishes the fade too, so the screen is whole when the tab is seen again.
+    if (root && rise) {
+      const fade = animate(root, { opacity: [0, 1] }, { duration: 0.5, ease: E.out2 });
+      setTimeout(() => { fade.complete(); arrival.cover(); }, 500);
+    } else arrival.cover();
     if (rim) run(animate(rim, { strokeDashoffset: 0 }, { duration: 1.3, delay: 0.1, ease: E.inOut2 }));
     [el.title.current, el.sub.current].forEach((t, i) => { if (t) run(animate(t, { opacity: [0, 1], y: [12, 0] }, { duration: 0.8, delay: 0.3 + i * 0.07, ease: E.expoOut })); });
     if (el.skip.current) run(animate(el.skip.current, { opacity: [0, 1] }, { duration: 0.6, delay: 0.8, ease: E.out2 }));
