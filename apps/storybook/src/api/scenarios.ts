@@ -14,7 +14,7 @@ import { tileHintKey } from '~/features/call/layout/view';
 import { sessions } from '~/lib/live';
 import { openBrowser } from '../browser';
 import { busyCalls, busyEvents, soonCalls } from '../world/calls';
-import { connected, notConnected, spaceMadeFor, writeNote, type NoteSpec } from '../world/build';
+import { connected, notConnected, writeNote, type NoteSpec } from '../world/build';
 import { iso, on, setClock } from '../world/clock';
 import { clipOf, stillOf } from '../media/screens';
 import { PREFS, session, type BoardSpec, type Kept, type Opening, type Page, type Refused, type Space, type World } from '../world';
@@ -32,12 +32,13 @@ import { stopLive } from './standin';
 import { buyingWith, paymentsOff, PREVIEW_PAID_TOP_UP, PREVIEW_TOP_UP, PRO_YEAR, purchaseTopUp, topUpOf, withPayments, type PaymentPlay } from '../world/payments';
 import { freePlan, inGrace, newPlan, notesStopped, overLimits, proEnded, proEnding, proExtended, proPlan, proRenewed, PRO_YEARLY_PRICE, withBalance, withNotesLeft } from '../world/plans';
 import { disconnectedDrive, withDriveExports } from '../world/drive-exports';
-import { withAgentConnections } from './agents';
+import { homesOn } from '../world/call-page';
+import { withAgentConnections, withAgentEnding, withClaudeJustConnected } from './agents';
 import { planWithTeam, priyasTeam, teamView, vandelayTeam, type TeamWorld } from '../world/teams';
 import { serve } from './state';
 import { forgetDocuments } from './workspaces';
 
-export type ScenarioName = 'busy' | 'first-day' | 'on-their-own' | 'offline' | 'writing' | 'call-soon' | 'no-workspace' | 'lots' | 'signed-out' | 'unsaved' | 'first-sign-in' | 'agents-connected' | 'drive-connected' | 'payments'
+export type ScenarioName = 'busy' | 'first-day' | 'on-their-own' | 'offline' | 'writing' | 'call-soon' | 'lots' | 'signed-out' | 'unsaved' | 'first-sign-in' | 'agents-connected' | 'agents-ending' | 'agents-just-connected' | 'drive-connected' | 'payments'
   | 'plan-low' | 'plan-stopped' | 'plan-grace' | 'plan-over' | 'plan-balance' | 'plan-pro' | 'plan-pro-ending' | 'plan-pro-renewed' | 'plan-pro-ended'
   | 'plan-buying-pro' | 'plan-pro-extended'
   | 'plan-waiting' | 'payment-short' | 'payment-over' | 'payment-refused' | 'payment-expired' | 'payment-failed'
@@ -68,19 +69,23 @@ const STANDUP_AT = iso(0, 9, 0);
 const PRICING_AT = iso(-1, 15, 0);
 const REVIEW_AT = iso(-1, 11, 0);
 /**
- * A workspace made for a call before calls had to pick one, as stored data still has them: named after the call and the day, with the
+ * A call's home, as the API makes one when the call's workspace first opens: named after the call and the day, with the
  * call's folder at its top, whose pages open the call's note once it's over.
  */
-/** What such a workspace is called: the call, and the day. */
+/** What a call's home is called: the call, and the day. */
 const homeName = (title: string, at: string): string => `${title} · ${new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short' }).format(new Date(at))}`;
 function home(id: string, title: string, at: string, organizer: Person, role: WorkspaceRole, people: number, noteId: string, items: WorkspaceItem[]): Space {
   const name = homeName(title, at);
   const hours = (Date.parse(iso(0, 16, 12)) - Date.parse(at)) / 3_600_000;
-  return { id, name, role, people, teamAccess: null, createdAt: at, call: { title, at }, items: [item(name, 'folder', organizer, hours, { call: { startedAt: at, on: false, here: false, noteId } }), ...items] };
+  return {
+    id, name, role, inCall: false, people, teamAccess: null, createdAt: at, call: { title, at }, items: [item(name, 'folder', organizer, hours, { call: { startedAt: at, on: false, here: false, noteId } }), ...items],
+    // A call's home is on its organizer's plan.
+    paidBy: organizer
+  };
 }
 /**
- * The workspaces: the homes of the day's calls, the standup's newest; Product, which Art runs; Design, where he edits; and
- * the company handbook, which he can only read.
+ * The workspaces: the homes of the day's calls, the standup's newest; Product, which Art runs; Design, where he edits and Aiko
+ * pays; and the company handbook, which he can only read.
  */
 function workspaces(): Space[] {
   const research = { parent: itemId('Research') };
@@ -92,7 +97,7 @@ function workspaces(): Space[] {
       item('Sidebar screenshots', 'document', KOFI, 28.3), item('Review uploads', 'document', AIKO, 28.9), item('Review checklist', 'document', ART, 28.6)
     ]),
     {
-      id: 'ws-product', name: 'Product', role: 'admin', people: 6, teamAccess: null, createdAt: iso(-120, 10, 0), call: null,
+      id: 'ws-product', name: 'Product', role: 'admin', inCall: false, people: 6, teamAccess: null, createdAt: iso(-120, 10, 0), call: null,
       items: [
         item('Launch plan', 'document', PRIYA, 2, { made: 76 }), item('Launch checklist', 'document', MAYA, 5), item('Research', 'folder', LENA, 300),
         item('Interview notes', 'document', LENA, 120, research), item('Competitor notes', 'document', LENA, 170, research),
@@ -102,11 +107,11 @@ function workspaces(): Space[] {
       ]
     },
     {
-      id: 'ws-design', name: 'Design', role: 'edit', people: 4, teamAccess: null, createdAt: iso(-90, 14, 0), call: null,
+      id: 'ws-design', name: 'Design', role: 'edit', inCall: false, people: 4, teamAccess: null, createdAt: iso(-90, 14, 0), call: null, paidBy: AIKO,
       items: [item('Onboarding flow', 'board', AIKO, 50), item('Empty states', 'document', KOFI, 8)]
     },
     {
-      id: 'ws-handbook', name: 'Company handbook', role: 'read', people: 38, teamAccess: null, createdAt: iso(-400, 9, 0), call: null,
+      id: 'ws-handbook', name: 'Company handbook', role: 'read', inCall: false, people: 38, teamAccess: null, createdAt: iso(-400, 9, 0), call: null,
       items: [item('Holidays', 'document', NADIA, 700, reading), item('Expenses', 'document', NADIA, 1300, reading), item('Working from home', 'document', NADIA, 2100, reading)]
     }
   ];
@@ -250,7 +255,7 @@ function files(): Kept[] {
 const TAGGED: MentionNotice[] = [
   { id: 'tag-kofi-fixes', workspaceId: 'ws-standup', document: itemId('Onboarding fixes'), name: 'Onboarding fixes', block: null, by: { id: KOFI.id, name: KOFI.name, email: '', ...(KOFI.portrait ? { portrait: KOFI.portrait } : {}) }, at: iso(0, 15, 40) }
 ];
-/** Who changed what during a call, as its note lists it for Art, in the call's workspace. */
+/** Who changed what during a call, as its note lists it for Art, in the call's home. */
 function workedOn(workspaceId: string, workspace: string, name: string, people: readonly Person[]): NoteWorkedOn {
   return {
     workspaceId, id: itemId(name), kind: 'document', name, by: people.flatMap((p) => (p.portrait ? [{ name: p.name, portrait: p.portrait, isMe: p.id === ART.id }] : [])), workspace, room: null, everyone: true
@@ -286,13 +291,15 @@ function launchFiles(): Kept[] {
 /** The canvas's busy Wednesday afternoon, at 16:12. */
 function busy(): World {
   const notes = busyNotes();
+  const spaces = workspaces();
   for (const n of notes) {
     if (n.id === 'n2') { n.additions = standupAdditions(); n.workedOn = [workedOn('ws-standup', homeName('Team standup', STANDUP_AT), 'Onboarding fixes', WORKED.standup)]; }
     if (n.id === 'n4') n.workedOn = [workedOn('ws-review', homeName('Design review', REVIEW_AT), 'Sidebar screenshots', WORKED.review), workedOn('ws-review', homeName('Design review', REVIEW_AT), 'Review checklist', WORKED.checklist)];
   }
+  homesOn(notes, spaces);
   return {
     drive: disconnectedDrive(), payments: paymentsOff(), session: session(), prefs: { ...PREFS, pinned: ['n4', 'n6'], groups: GROUPS }, team: teamOf(DIRECTORY), notes, personal: { n2: standupOwn() },
-    meetings: busyCalls(), calendar: connected(busyEvents()), plan: freePlan(), documents: library(), workspaces: workspaces(), pages: pages(), shares: shares(), boards: boards(),
+    meetings: busyCalls(), calendar: connected(busyEvents()), plan: freePlan(), documents: library(), workspaces: spaces, pages: pages(), shares: shares(), boards: boards(),
     mentions: structuredClone(TAGGED), media: files(), rings: [], writing: null,
     // The bandwidth flag is on here and off in every other scenario, so both answers are served.
     featureFlags: ['call.bandwidth_reduction']
@@ -363,23 +370,6 @@ function onTheirOwn(): World {
     meetings: [], calendar: connected([]), plan: freePlan(), documents: { workspaces: [{ id: 'own', name: 'Your documents', documents: [] }] },
     workspaces: [], pages: {}, shares: {}, boards: {}, mentions: [], media: [], rings: [], writing: null
   };
-}
-
-/**
- * Wednesday morning at 10:26, the design review four minutes away. `withSpace`: Art made it a workspace as he scheduled it
- * (New workspace), so it's the call's; without, it has none, and he picks or makes one in the call.
- */
-function callSoon(withSpace: boolean): World {
-  const w = busy();
-  w.notes = w.notes.filter((n) => Date.parse(n.startedAt) < Date.parse(iso(0, 10, 26)) && n.id !== 'n1');
-  w.meetings = soonCalls();
-  const review = w.meetings.find((m) => m.id === 'm-review');
-  if (withSpace && review) {
-    const space = spaceMadeFor(review);
-    w.workspaces.push(space);
-    w.meetings = w.meetings.map((m) => (m.id === review.id ? { ...m, workspaceId: space.id } : m));
-  }
-  return w;
 }
 
 /* ---------- a team ---------- */
@@ -545,8 +535,16 @@ export const SCENARIOS: Record<ScenarioName, Scenario> = {
     make: () => { const world = busy(); withDriveExports(world); return { world, opening: {} }; }
   },
   'agents-connected': {
-    title: 'Agents connected', about: 'Art has a read-only Workspace assistant and a Scheduling assistant token that has not been used yet.',
+    title: 'Agents connected', about: 'Art has Claude signed in (it booked the onboarding review 4 minutes ago), Cursor signed in to read, and a Weekly digest token, with three weeks of what they did.',
     make: () => { const world = busy(); withAgentConnections(world); return { world, opening: {} }; }
+  },
+  'agents-ending': {
+    title: 'An agent’s access ending', about: 'The same three agents, with Cursor’s access ending tomorrow.',
+    make: () => { const world = busy(); withAgentEnding(world); return { world, opening: {} }; }
+  },
+  'agents-just-connected': {
+    title: 'An agent just connected', about: 'Art allowed Claude a few minutes ago and hasn’t asked it anything yet, so it hasn’t done anything.',
+    make: () => { const world = busy(); withClaudeJustConnected(world); return { world, opening: {} }; }
   },
   busy: { title: 'A busy team', about: 'Wednesday afternoon at Vandelay Industries: a day of notes, things waiting on you, a design sync at 17:30.', make: () => ({ world: busy(), opening: {} }) },
   'first-day': {
@@ -574,14 +572,13 @@ export const SCENARIOS: Record<ScenarioName, Scenario> = {
     }
   },
   'call-soon': {
-    title: 'A call about to start',
-    about: 'Wednesday at 10:26: the design review with Priya, Kofi and Aiko starts in four minutes, in the Design review workspace Art made for it as he scheduled it, and the day is still ahead.',
-    make: () => ({ world: callSoon(true), opening: { now: on(0, 10, 26) } })
-  },
-  'no-workspace': {
-    title: 'A call with no workspace yet',
-    about: 'The same morning, but the design review was scheduled with no workspace: Art picks or makes one in the call, and is asked where its notes go when it ends.',
-    make: () => ({ world: callSoon(false), opening: { now: on(0, 10, 26) } })
+    title: 'A call about to start', about: 'Wednesday at 10:26: the design review with Priya, Kofi and Aiko starts in four minutes, and the day is still ahead.',
+    make: () => {
+      const w = busy();
+      w.notes = w.notes.filter((n) => Date.parse(n.startedAt) < Date.parse(iso(0, 10, 26)) && n.id !== 'n1');
+      w.meetings = soonCalls();
+      return { world: w, opening: { now: on(0, 10, 26) } };
+    }
   },
   lots: { title: 'Lots of everything', about: 'Thirty people on Alcove, three months of notes, eight pins, a dozen groups, long names.', make: () => ({ world: lots(), opening: {} }) },
   'signed-out': {
@@ -666,6 +663,7 @@ export function begin(name: ScenarioName, over: Partial<Opening> = {}): Scenario
   sessions.media?.stop();
   sessions.media = null;
   sessions.roomTitle = null;
+  sessions.arrive = null;
   // Recordings the last story kept on this device go with it (`remember` deletes them), and Record lists what's here afresh.
   forgetKeptHere();
   const { world, opening } = SCENARIOS[name].make();

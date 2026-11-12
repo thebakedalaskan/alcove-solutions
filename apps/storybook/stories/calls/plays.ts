@@ -73,7 +73,7 @@ export async function pickBoard(c: Context, name: string): Promise<void> {
   await settle();
   await c.userEvent.click(row);
 }
-/** The board in this call, from Board's picker: on your stage, just for you. */
+/** The board in this call, from Board's picker: on your stage, only on your screen. */
 export async function openCallBoard(c: Context, name: string): Promise<void> {
   await pickBoard(c, name);
   await frameOf(name);
@@ -88,7 +88,7 @@ export async function onTheBar(c: Context, frame: string, button: string | RegEx
   const it = await frameOf(frame);
   await c.userEvent.click(await within(it).findByRole('button', { name: button }, LATER));
 }
-/** Present, on the bar of a board or the workspace open just for you. */
+/** Present, on the bar of a board or the workspace only on your screen. */
 export const present = (c: Context, frame: string) => onTheBar(c, frame, 'Present');
 /** Close, on a frame's bar: it closes, or while you present it, it asks for you or for everyone. */
 export const close = (c: Context, frame: string) => onTheBar(c, frame, `Close ${frame}`);

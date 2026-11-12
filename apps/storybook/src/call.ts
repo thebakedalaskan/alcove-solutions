@@ -22,27 +22,23 @@ import { ringYou, standIn } from './api/standin';
 import { current, me } from './api/state';
 import { page, type PageStory } from './page';
 import type { World } from './world';
-import { call, spaceMadeFor, type CallSpec } from './world/build';
+import { call, type CallSpec } from './world/build';
 
 /**
- * A call the story puts in the world first: a call as `call()` writes it, started just now, set up to join muted, or keeping
- * other than everything in its notes. `workspaceId`: the workspace picked for it when it was scheduled; left out, one its
- * organizer made for it then (`spaceMadeFor`); null, none yet, for its organizer to pick or make in the call.
+ * A call the story puts in the world first: a call as `call()` writes it, started just now, set up to join muted, with a
+ * workspace chosen as its home when it was scheduled, or keeping other than everything in its notes.
  */
-export interface StoryCall extends CallSpec { instant?: boolean | undefined; joinMuted?: boolean | undefined; workspaceId?: string | null | undefined; choices?: NotesChoices | undefined }
+export interface StoryCall extends CallSpec { instant?: boolean | undefined; joinMuted?: boolean | undefined; workspaceId?: string | undefined; choices?: NotesChoices | undefined }
 /** The story's call: one of the scenario's own, by its link's code, or one of its own. */
 type Which = string | StoryCall;
 const codeOf = (c: Which): string => (typeof c === 'string' ? c : c.code);
 
-/** The story's own calls go into the world, as you see them, with the workspace made for each, unless the world has them already. */
+/** The story's own calls go into the world, as you see them, unless the world has them already. */
 function settle(...calls: Which[]): void {
   const w = current();
   for (const c of calls) {
     if (typeof c === 'string' || w.meetings.some((m) => m.code === c.code)) continue;
-    const made = call(c, me());
-    const space = c.workspaceId === undefined ? spaceMadeFor(made) : null;
-    if (space && !w.workspaces.some((x) => x.id === space.id)) w.workspaces.push(space);
-    const m: Meeting = { ...made, instant: c.instant ?? false, joinMuted: c.joinMuted ?? false, workspaceId: space ? space.id : c.workspaceId ?? null, ...(c.choices ? { choices: c.choices } : {}) };
+    const m: Meeting = { ...call(c, me()), instant: c.instant ?? false, joinMuted: c.joinMuted ?? false, workspaceId: c.workspaceId ?? null, ...(c.choices ? { choices: c.choices } : {}) };
     w.meetings.push(m);
   }
 }
@@ -62,8 +58,11 @@ export interface InCall {
   script?: CallScript | undefined;
   /** Other calls the story needs in the world: one that rings you, say. */
   also?: readonly StoryCall[] | undefined;
-  /** Your microphone and camera as you join: the microphone on and the camera off unless it says, so everyone shows in their arch. */
-  you?: { mic?: boolean | undefined; cam?: boolean | undefined } | undefined;
+  /**
+   * Your microphone and camera as you join: the microphone on and the camera off unless it says, so everyone shows in their arch.
+   * `name`: the name you typed, coming in with the link signed out, as a guest does.
+   */
+  you?: { mic?: boolean | undefined; cam?: boolean | undefined; name?: string | undefined } | undefined;
   /** People to ring as you join, as the lobby's Join and ring does. */
   ring?: readonly Person[] | undefined;
   /** Anything you do the moment you're in, before the screen shows (rooms opened, say). */
@@ -84,7 +83,7 @@ export function inCall(o: InCall, more: Omit<PageStory, 'args'> = {}): PageStory
       const media = new LocalMedia();
       await media.start({ mic, cam });
       sessions.media = media;
-      const session = await standIn.calls.join(code, { mic, cam });
+      const session = await standIn.calls.join(code, { mic, cam, ...(o.you?.name ? { name: o.you.name } : {}) });
       sessions.call = { code, session };
       if (o.ring?.length) await session.ring(o.ring.map((p) => p.email));
       o.then?.(session);
@@ -126,14 +125,16 @@ export function rung(o: { scenario: ScenarioName; path: string; call: StoryCall;
 }
 
 type Play = NonNullable<PageStory['play']>;
-type Then = { then?: readonly string[] | undefined; tab?: string | undefined };
+type Then = { then?: readonly (string | RegExp)[] | undefined; tab?: string | undefined };
+/** A button's name as a step says it: a pattern's words, without its anchors. */
+const said = (name: string | RegExp): string => (typeof name === 'string' ? name : name.source.replace(/^\^|\$$/g, ''));
 /** The dock's More, by what its label starts with on any screen. */
 export const MORE = /^More:/;
 
 /** Then any buttons that come up (in a sheet or a menu, which open over the page), and a tab of your side. */
 const andThen = (o: Then): Play => async ({ canvas, userEvent, step }) => {
   for (const next of o.then ?? []) {
-    await step(`Press ${next}`, async () => {
+    await step(`Press ${said(next)}`, async () => {
       await userEvent.click(await screen.findByRole('button', { name: next }, { timeout: 8000 }));
     });
   }
@@ -147,7 +148,7 @@ const andThen = (o: Then): Play => async ({ canvas, userEvent, step }) => {
 
 /** A play that does what a person would: presses a button on the page (in the dock, say), then any that come up after it. */
 export const press = (label: string | RegExp, o: Then = {}): Play => async (c) => {
-  await c.step(`Press ${String(label)}`, async () => {
+  await c.step(`Press ${said(label)}`, async () => {
     await c.userEvent.click(await c.canvas.findByRole('button', { name: label }, { timeout: 10000 }));
   });
   await andThen(o)(c);

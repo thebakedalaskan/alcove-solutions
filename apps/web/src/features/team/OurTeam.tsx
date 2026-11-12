@@ -164,7 +164,7 @@ export function TeamNotes({ team, notes, now }: { team: MyTeam; notes: NoteSumma
               const by = n.received?.by;
               return (
                 <li key={n.id}>
-                  <Link to="/notes/$noteId" params={{ noteId: n.id }} className="tp-nr">
+                  <Link to="/calls/$noteId" params={{ noteId: n.id }} className="tp-nr">
                     {by ? <Avatar person={by} size={26} /> : <Icon name="notes" size={20} />}
                     <span className="tp-nr-t"><b className="ac-clamp-1">{n.title}</b><small className="ac-clamp-1">{by ? `From ${callName(by)}` : 'Yours'}</small></span>
                     <span className="tp-nr-w">{capital(pastDay(n.startedAt, now))}</span>

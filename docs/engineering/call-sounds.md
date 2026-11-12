@@ -54,7 +54,13 @@ volume zero stays silent.
 Settings → Notifications and the call's More → Settings → Notifications offer Sounds (silence, volume, and Play,
 which plays one cue at that volume; unavailable while sounds are off), Quiet mode, and a Sound tick per cue in What
 reaches you. Quiet mode retains only your own microphone confirmations and host admission
-requests, subject to their individual switches. Sound controls never ask for browser notification
+requests, subject to their individual switches. Paused notifications (your menu at the top right,
+`lib/notification-pause.ts`) keep the same two while the account's pause lasts, on every device signed in.
+Every request carries the pause's end (`notificationsPauseEnd`, from `useSoundPreferences`), and `soundAllowed` compares
+it with the clock as the cue is asked for and again as it plays, so sounds come back by themselves when the
+time passes, with nothing to press. A ring's card still shows while paused, silently. Play's preview isn't held,
+and guests have no pause. Calls/Browser notifications › Native browser paused plays a call's cues through a pause
+(browser-notifications.md, Verification). Sound controls never ask for browser notification
 permission. Guests use `alcove.guest.sounds`, validated with the contract's zod schema; an unreadable value
 uses the defaults.
 

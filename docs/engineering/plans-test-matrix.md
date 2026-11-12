@@ -115,31 +115,20 @@ Suites: `billing/meter` (`apps/api/src/features/billing/meter.integration.test.t
 | K8 | A `deposit` record from before purchases (no `purchase`) reads as one that only adds money, and is added as before | billing/topups › top-ups that buy › reads a top-up the previous release stored… | frontend | Passes |
 | K9 | Logs of a purchase by a top-up carry its ID, what it buys and why not, never an amount | billing/topups › top-ups that buy › buys what it was opened for…; … says why it didn’t buy when what it was for changed… | frontend | Passes |
 
-## Workspaces (changed 12 Nov 2026)
+## Workspaces (changed 12 Nov 2026, with main's homes)
 
-A workspace is made only when someone presses New workspace, and a call has one workspace or none
-([Calls and recordings › The call's workspace](calls-and-recordings.md#the-calls-workspace)). The suites below were being
-rewritten for it when this was written, so each row is In progress until the suite has run green on the branch.
+Every call has a home again, made when it's needed, and the call opens the workspace it uses to everyone in it
+([Calls and recordings › The call's workspace](calls-and-recordings.md#the-calls-workspace)). What plans add: the organizer
+pays for a home whoever's action made it, and a call opens a workspace to everyone in it only while its organizer can edit
+there and pays for it. Migration `0030_workspace_payers.sql`'s backfill and upkeep's `settlePayers` give a home the payer
+`makeHome` does, its first admin, the organizer; no test reaches the backfill, since tests start from an empty database.
 
 | ID | Scenario | Where | Phase | Status |
 | --- | --- | --- | --- | --- |
-| W1 | A call with no workspace has none: opening Workspace, however many at once and whoever does, makes nothing | calls/callWorkspace › which workspace a call uses › is none until its organizer makes or picks one… | 1 | Passes |
-| W2 | The organizer's New workspace in a call makes one for it: named after the call, its folder at the top, everyone invited in it, a guest nowhere | calls/callFolders › a call's workspace › is made by the organizer pressing New workspace… | 1 | Passes |
-| W3 | Scheduling with `newWorkspace` makes one for the call, or for every call of a series, with everyone invited in it | calls/callWorkspace › … is made as a call is scheduled when its organizer asks… | 1 | Passes |
-| W4 | A picked existing workspace gets a folder for each call and lets nobody in | calls/callFolders › … is the workspace chosen when it was scheduled…; calls/callWorkspace › … lets nobody in when the organizer picks one that's there… | 1 | Passes |
-| W5 | Only the organizer picks or makes it; a stand-in, someone not yet in the call, and a read-only role are refused | calls/callWorkspace › … refuses whoever isn't in the call yet, and the organizer's last connection, and a stand-in… | 1 | Passes |
-| W6 | A pick in a call carries to the series' later calls, never earlier ones | calls/callWorkspace › … comes with the meeting, and the organizer's pick in a call carries to the calls after it… | 1 | Passes |
-| W7 | Switching lets the old folder go: removed if empty, a plain ended folder if not; the notes go where the call is | calls/callFolders › … moves with the organizer's pick… | 1 | Passes |
-| W8 | A new board, or rooms' boards, with no workspace are refused (`409`), saved boards still open, and the board is made once the organizer makes one | calls/boards-in-calls › … is nowhere in a call with none…; … still opens: a call and a meeting from before any of this… | 1 | Passes |
-| W9 | A workspace the organizer can't edit in any more takes no folder and no new board | calls/boards-in-calls › … is refused in a call's workspace the organizer can't edit in any more…; calls/callFolders › … takes no folder when it has no room for one… | 1 | Passes |
-| W10 | A call with notes and no workspace ends unfiled (`filed` false), and nothing makes a workspace until the organizer says | calls/callFolders › filing a call's notes › is asked of the organizer… | 1 | Passes |
-| W11 | `meetings.file` puts the folder and its note at the top of a workspace they can edit in, or a new one, and lets nobody in to a picked one | calls/callFolders › filing a call's notes › puts them at the top of a workspace…; … is the organizer's alone… | 1 | Passes |
-| W12 | A call whose workspace was deleted has none, and the notes can be filed again | calls/callWorkspace › … survives its workspace being deleted…; calls/callFolders › … takes a call whose workspace was deleted as one with none | 1 | Passes |
-| W13 | Who's in a workspace made for a call follows its invite; one picked for it doesn't | calls/callFolders › who's in a workspace made for a call | 1 | Passes |
-| W14 | An account makes workspaces up to `workspaces.max_made`, however each was made | workspaces/workspaces › … lets an account make as many workspaces as workspaces.max_made says… | 1 | Passes |
-| W15 | A call from before this (`viewing`, `made`, a home made by the previous release) reads: everyone has the meeting's workspace | calls/callWorkspace › what the previous release stored › … still opens a call that was viewing another workspace than its home…; calls/callFolders › what the previous release stored | 1 | Passes |
-| W16 | Nothing readable in a workspace made for a call (its name, an address) | calls/callFolders › what's kept of a workspace made for a call | 1 | Passes |
-| W17 | Delete workspace from the Drive row, the workspace's menu and the call's frame menu, by an admin alone | workspaces/workspaces › … is deleted by an admin alone…; the three menus by hand | 1 | Passes |
+| W1 | A guest in a call opens the organizer's own home, and what they upload there counts against the organizer's storage | calls/callWorkspace › everyone in the call › opens the organizer’s own home to a guest… | 1 | Passes |
+| W2 | A workspace someone else pays for, made the call's by an organizer who can edit there, doesn't open to a guest in the call: they can't open it, upload to it or ask AI in it, and `everyone` is false, in the Switch question too | calls/callWorkspace › everyone in the call › opens only while its organizer pays for it… | 1 | Passes |
+| W3 | An account makes workspaces up to `workspaces.max_made`; leaving one doesn't make room, deleting one does. A call's home doesn't count (`makeHome` notes its author with `made_workspace` false), which no test checks | workspaces/workspaces › … lets an account make as many workspaces as workspaces.max_made says… | 1 | Passes |
+| W4 | A workspace is deleted by an admin alone (`DELETE /v1/workspaces/:id`); the app has no button for it | workspaces/workspaces › … is deleted by an admin alone… | 1 | Passes |
 
 ## Checked by hand
 
@@ -151,7 +140,7 @@ drive it end to end.
 | --- | --- | --- |
 | Signing up | App › Settings › Plan, light and dark, phone | Free, renews in 30 days, about 5 h of notes, under 1 MB of 10 GB, $0 |
 | Storage full (`plan.free.storage_bytes` 1 KiB) | App › a workspace | An upload is refused: "Your storage is full. Delete something, or move to a plan with more room." |
-| The side panel | App and Storybook › Pages › The side panel | On Free, "About 5 h of notes left" over its meter, then Free plan · See plans; on Pro, Pro's row with its sun and until when |
+| The side panel | App and Storybook › Pages › The side panel | One plan row where the minutes left were: on Free, "About 5 h of notes left" over its meter; on Pro, Pro's row with its sun and until when (built on the plans branch's panel; since the merge with main it's on the calmer panel, and that row hasn't been checked by hand again) |
 | Notes stopped | Storybook › Calls › Notes, wide and phone | The organizer's bar over Notes' tabs with Get Pro and Add 10 hours; everyone else's with nothing to buy; Turn notes on when the plan has notes again without a purchase |
 | About 5 minutes left, and the call's end | Storybook › Calls | The organizer's banner; everyone's "This call ends at…" |
 | The yearly price's and more notes' limits | `pnpm --filter @alcove/server limits list` and `limits set`, on a local database | Listed with their defaults and bounds; `'$16'`, `12`, `600`, `'$15'` and `5` set; 101 packs and 0 minutes a pack refused, out of bounds |

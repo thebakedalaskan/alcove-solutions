@@ -78,7 +78,7 @@ These are on the canvas but depend on something outside the repo. They aren't dr
 
 - **Outlook calendar** (and real Microsoft sign-in): a Microsoft Entra app (client ID, secret, redirect URI).
 - **Add minutes** and the **team plan with seats**: a payments provider account (1Click, per
-  [payments and usage](../../engineering/payments-and-usage.md)) and pricing.
+  [plans and usage](../../engineering/plans-and-usage.md)) and pricing.
 - **Invitation emails sent by Alcove itself**: an email provider. Until then, inviting someone opens your own
   email with the invitation.
 - **Telling voices apart** in room recordings: a diarization-capable model on NEAR AI. Room transcripts name nobody

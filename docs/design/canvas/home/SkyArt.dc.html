@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>The sunset, drawn</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="home.css">
+<script src="tokens.js"></script>
+<script src="home.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>body{margin:0}</style>
+</helmet>
+<sc-if value="{{inCard}}" hint-placeholder-val="{{true}}">
+<sc-if value="{{a.isSea}}" hint-placeholder-val="{{true}}">
+<svg class="pn-art" viewBox="{{a.vb}}" preserveAspectRatio="{{a.par}}" aria-hidden="true">
+<defs>
+<linearGradient id="sb-sky" x1="0" y1="0" x2="0" y2="1"><sc-for list="{{a.sky}}" as="s" hint-placeholder-count="3"><stop offset="{{s.o}}" stop-color="{{s.c}}"></stop></sc-for></linearGradient>
+<linearGradient id="sb-water" x1="0" y1="0" x2="0" y2="1"><sc-for list="{{a.water}}" as="s" hint-placeholder-count="2"><stop offset="{{s.o}}" stop-color="{{s.c}}"></stop></sc-for></linearGradient>
+<radialGradient id="sb-glow"><stop offset="0" stop-color="{{a.glow}}"></stop><stop offset="1" stop-color="{{a.glow}}" stop-opacity="0"></stop></radialGradient>
+<linearGradient id="sb-rim" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="{{a.rim}}" stop-opacity="0"></stop><stop offset=".5" stop-color="{{a.rim}}"></stop><stop offset="1" stop-color="{{a.rim}}" stop-opacity="0"></stop></linearGradient>
+<clipPath id="sb-up"><rect width="1000" height="{{a.hz}}"></rect></clipPath>
+</defs>
+<rect width="1000" height="{{a.hz}}" fill="url(#sb-sky)"></rect>
+<g clip-path="url(#sb-up)"><ellipse cx="{{a.sunX}}" cy="{{a.hz}}" rx="380" ry="120" fill="url(#sb-glow)"></ellipse><circle class="pn-sun" cx="{{a.sunX}}" cy="{{a.hz}}" r="36" fill="{{a.sun}}"></circle></g>
+<sc-for list="{{a.clouds}}" as="c" hint-placeholder-count="3"><rect x="{{c.x}}" y="{{c.y}}" width="{{c.w}}" height="3" rx="1.5" fill="{{a.cloudC}}" opacity="{{c.o}}"></rect></sc-for>
+<rect y="{{a.hz}}" width="1000" height="134" fill="url(#sb-water)"></rect>
+<rect x="{{a.rimX}}" y="{{a.hz}}" width="600" height="1.5" fill="url(#sb-rim)"></rect>
+<sc-for list="{{a.chop}}" as="c" hint-placeholder-count="20"><rect x="{{c.x}}" y="{{c.y}}" width="{{c.w}}" height="1.6" rx=".8" fill="{{a.chopC}}" opacity="{{c.o}}"></rect></sc-for>
+<sc-for list="{{a.glints}}" as="g" hint-placeholder-count="20"><rect x="{{g.x}}" y="{{g.y}}" width="{{g.w}}" height="2.4" rx="1.2" fill="{{g.c}}" opacity="{{g.o}}"></rect></sc-for>
+</svg>
+</sc-if>
+<sc-if value="{{a.isRidges}}" hint-placeholder-val="{{false}}">
+<svg class="pn-art" viewBox="{{a.vb}}" preserveAspectRatio="{{a.par}}" aria-hidden="true">
+<defs>
+<linearGradient id="sa-sky" x1="0" y1="0" x2="0" y2="1"><sc-for list="{{a.sky}}" as="s" hint-placeholder-count="3"><stop offset="{{s.o}}" stop-color="{{s.c}}"></stop></sc-for></linearGradient>
+<radialGradient id="sa-glow"><stop offset="0" stop-color="{{a.glow}}"></stop><stop offset="1" stop-color="{{a.glow}}" stop-opacity="0"></stop></radialGradient>
+<sc-for list="{{a.ridges}}" as="r" hint-placeholder-count="4"><linearGradient id="{{r.id}}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="{{r.top}}"></stop><stop offset="1" stop-color="{{r.base}}"></stop></linearGradient></sc-for>
+</defs>
+<rect width="1000" height="340" fill="url(#sa-sky)"></rect>
+<circle cx="760" cy="208" r="150" fill="url(#sa-glow)"></circle>
+<circle class="pn-sun" cx="760" cy="208" r="34" fill="{{a.sun}}"></circle>
+<sc-for list="{{a.ridges}}" as="r" hint-placeholder-count="4"><path d="{{r.d}}" fill="{{r.ref}}"></path></sc-for>
+</svg>
+</sc-if>
+<sc-if value="{{a.isRings}}" hint-placeholder-val="{{false}}">
+<svg class="pn-art" viewBox="{{a.vb}}" preserveAspectRatio="{{a.par}}" aria-hidden="true">
+<sc-for list="{{a.rings}}" as="r" hint-placeholder-count="6"><circle class="pn-ring" cx="{{a.cx}}" cy="{{a.cy}}" r="{{r.r}}" fill="{{r.c}}" style="--i: {{r.i}}"></circle></sc-for>
+</svg>
+</sc-if>
+</sc-if>
+<sc-if value="{{a.page}}" hint-placeholder-val="{{false}}">
+<div class="hm-art" aria-hidden="true">
+<div class="hm-sky" style="background: {{a.skyCss}}"></div>
+<div class="hm-water" style="background: {{a.waterCss}}"></div>
+<svg class="hm-at" width="1" height="1">
+<defs>
+<radialGradient id="pg-glow"><stop offset="0" stop-color="{{a.glow}}"></stop><stop offset="1" stop-color="{{a.glow}}" stop-opacity="0"></stop></radialGradient>
+<linearGradient id="pg-rim" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="{{a.rim}}" stop-opacity="0"></stop><stop offset=".5" stop-color="{{a.rim}}"></stop><stop offset="1" stop-color="{{a.rim}}" stop-opacity="0"></stop></linearGradient>
+<clipPath id="pg-up"><rect x="-3000" y="-3000" width="6000" height="3000"></rect></clipPath>
+<sc-if value="{{a.isRidges}}" hint-placeholder-val="{{false}}"><sc-for list="{{a.ridges}}" as="r" hint-placeholder-count="4"><linearGradient id="{{r.id}}" gradientUnits="userSpaceOnUse" x1="0" y1="{{r.y1}}" x2="0" y2="{{r.y2}}"><stop offset="0" stop-color="{{r.top}}"></stop><stop offset="1" stop-color="{{r.base}}"></stop></linearGradient></sc-for></sc-if>
+</defs>
+<sc-if value="{{a.isSea}}" hint-placeholder-val="{{true}}">
+<g clip-path="url(#pg-up)"><ellipse rx="760" ry="230" fill="url(#pg-glow)"></ellipse><circle class="pn-sun" r="48" fill="{{a.sun}}"></circle></g>
+<sc-for list="{{a.clouds}}" as="c" hint-placeholder-count="3"><rect x="{{c.x}}" y="{{c.y}}" width="{{c.w}}" height="3" rx="1.5" fill="{{a.cloudC}}" opacity="{{c.o}}"></rect></sc-for>
+<rect x="-560" width="1120" height="1.5" fill="url(#pg-rim)"></rect>
+<sc-for list="{{a.chop}}" as="c" hint-placeholder-count="20"><rect x="{{c.x}}" y="{{c.y}}" width="{{c.w}}" height="1.6" rx=".8" fill="{{a.chopC}}" opacity="{{c.o}}"></rect></sc-for>
+<sc-for list="{{a.glints}}" as="g" hint-placeholder-count="20"><rect x="{{g.x}}" y="{{g.y}}" width="{{g.w}}" height="2.6" rx="1.3" fill="{{g.c}}" opacity="{{g.o}}"></rect></sc-for>
+</sc-if>
+<sc-if value="{{a.isRidges}}" hint-placeholder-val="{{false}}">
+<ellipse cy="{{a.sunY}}" rx="560" ry="240" fill="url(#pg-glow)"></ellipse><circle class="pn-sun" cy="{{a.sunY}}" r="46" fill="{{a.sun}}"></circle>
+<sc-for list="{{a.ridges}}" as="r" hint-placeholder-count="4"><path d="{{r.d}}" fill="{{r.ref}}"></path></sc-for>
+</sc-if>
+<sc-if value="{{a.isRings}}" hint-placeholder-val="{{false}}">
+<g clip-path="url(#pg-up)"><sc-for list="{{a.rings}}" as="r" hint-placeholder-count="6"><circle class="pn-ring" r="{{r.r}}" fill="{{r.c}}" style="--i: {{r.i}}"></circle></sc-for></g>
+</sc-if>
+</svg>
+</div>
+</sc-if>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"a":{"editor":null,"default":null},"$preview":{"width":1000,"height":340}}'>
+class Component extends DCLogic {
+  renderVals() {
+    var a = this.props.a || window.AH.art('sea', 'blue-hour', 'dark', 'card');
+    return { a: a, inCard: !a.page };
+  }
+}
+</script>
+</body>
+</html>

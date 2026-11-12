@@ -2,9 +2,25 @@
  * The frame every screen sits in: the side panel on dusk (256px, sticky, dark in both themes, its middle scrolling
  * when it's long) and the page beside it, under a rounded edge the page scrolls beneath. Search and you sit at the
  * top right of every page. At 860px and narrower a top bar that scrolls with the page and a tab bar fixed at the
- * bottom take their place. The palette, which finds notes and asks them, drops from the top.
+ * bottom take their place. The palette that Search or ask opens is in palette.css.
  */
 .world-in { animation: ac-fade var(--duration-3) var(--ease-out) both; }
+/*
+ * Arriving from a call's page (Go to Home, Open the notes), once, with data-arrive="call" on the shell: the frame is there at
+ * once, night lifting off the page under its rounded edge as the page settles in from a touch larger, and the side panel (on a
+ * phone, the tab bar) eases in after it. Opacity and transform only; with reduced motion, short fades.
+ */
+.shell[data-arrive="call"] { animation: none; }
+.shell[data-arrive="call"]::before { content: ""; position: fixed; z-index: 5; inset: 0; background: var(--stage); pointer-events: none; animation: ac-fade-out var(--duration-page-3) var(--ease-in-out) .08s both; }
+.shell[data-arrive="call"] > .main { transform-origin: 50% 50vh; animation: sh-settle var(--duration-page-3) var(--ease-expo) .12s backwards; }
+.shell[data-arrive="call"] .sb-in { animation: sh-ease-in var(--duration-page-3) var(--ease-out) .22s backwards; }
+.shell[data-arrive="call"] > .tabbar { animation: ac-fade var(--duration-page-2) var(--ease-out) .22s backwards; }
+@keyframes sh-settle { from { opacity: 0; transform: scale(1.014); } }
+@keyframes sh-ease-in { from { opacity: 0; transform: translateX(-16px); } }
+@media (prefers-reduced-motion: reduce) {
+  .shell[data-arrive="call"]::before { animation: ac-fade-out var(--duration-2) linear both !important; }
+  .shell[data-arrive="call"] > .main, .shell[data-arrive="call"] .sb-in, .shell[data-arrive="call"] > .tabbar { animation: ac-fade var(--duration-2) linear backwards !important; }
+}
 
 /* ----------------------------------------------------------------- shell */
 .shell { --side: 256px; display: grid; grid-template-columns: var(--side) minmax(0, 1fr); min-height: 100vh; min-height: 100dvh; transition: grid-template-columns var(--duration-3) var(--ease-out); }
@@ -19,24 +35,10 @@
 .main { --top-room: 322px; --page-x: clamp(28px, 3.4vw, 60px); --page-max: 1760px; min-width: 0; padding: 30px var(--page-x) 88px; }
 .main-in { max-width: var(--page-max); margin: 0 auto; }
 .main-in.enter > * { animation: ac-rise var(--duration-3) var(--ease-out) both; animation-delay: calc(var(--d, 0) * 55ms); }
-/*
- * A page that fills the frame, like the workspace: it doesn't scroll, it sits 12 px inside the frame, and search and you
- * stay where they are on every page, in the head of what's underneath it.
- */
-.shell:has(> .main.is-full) { height: 100vh; height: 100dvh; min-height: 0; }
-.main.is-full { --pane-left: 12px; display: flex; flex-direction: column; min-height: 0; overflow: clip; padding: 20px 20px 20px var(--pane-left); }
-.main.is-full .main-in { flex: 1; width: 100%; max-width: none; min-height: 0; }
-.main.is-full .main-top { width: 100%; max-width: none; }
-.main.is-full .top-acts { top: 7px; right: 12px; }
-.main.is-full .wd-head { padding-right: var(--top-room); }
-/* History sits under search and you, and the head only keeps clear of what's left of them. */
-.main.is-full .wh { margin-top: 52px; box-shadow: 0 -52px 0 var(--surface); }
-.main.is-full .ws-pane:has(> .wh) .wd-head { padding-right: max(10px, calc(var(--top-room) - 260px)); }
 /* With a document open its own bar says what being offline means for it: one notice is enough. */
 .shell:has(.wd-off) :is(.ph-offline, .main-offline) { display: none; }
 /* With the side panel hidden, its button waits in the top-left corner, clear of the page, and its offline notice tops the page. */
-@media (min-width: 861px) { .shell.is-bare .main:not(:has(> .main-in > .dusk), .is-full) { padding-left: max(72px, var(--page-x)); } }
-.shell.is-bare .main.is-full { --pane-left: 64px; }
+@media (min-width: 861px) { .shell.is-bare .main:not(:has(> .main-in > .dusk)) { padding-left: max(72px, var(--page-x)); } }
 .sb-show { position: fixed; z-index: 20; top: 24px; left: 16px; background: var(--ground); }
 .main-offline { max-width: var(--page-max); margin: 0 auto; }
 .main-offline .sb-status { width: fit-content; max-width: 100%; margin: 0 0 24px; }
@@ -52,17 +54,16 @@
 @media (min-width: 861px) {
   .head:has(> :nth-child(2)) { min-height: 92px; }
 }
-.top-find { display: flex; align-items: center; gap: 10px; width: 250px; height: 38px; padding: 0 8px 0 13px; border-radius: var(--radius-pill); background: color-mix(in srgb, var(--ink) 8%, transparent); color: var(--ink-2); font: 500 14px/1 var(--font-sans); transition: background-color var(--duration-1); }
-.top-find:hover { background: color-mix(in srgb, var(--ink) 13%, transparent); }
+/* Search or ask is a field, solid over any sky: surface-raised with a hairline, its ⌘K on sunk. */
+.top-find { display: flex; align-items: center; gap: 10px; width: 250px; height: 38px; padding: 0 8px 0 13px; border-radius: var(--radius-pill); background: var(--surface-raised); box-shadow: inset 0 0 0 1px var(--line), var(--shadow-1); color: var(--ink-2); font: 500 14px/1 var(--font-sans); transition: box-shadow var(--duration-1), color var(--duration-1); }
+.top-find:hover { box-shadow: inset 0 0 0 1px var(--line-control), var(--shadow-1); color: var(--ink); }
 .top-find > span { flex: 1; min-width: 0; text-align: left; }
-.top-me { display: inline-flex; border-radius: var(--radius-sm); }
-.top-me[aria-current="page"] { box-shadow: 0 6px 0 -4px var(--ink-2); }
+.top-find .ac-kbd { background: var(--sunk); color: var(--ink-3); box-shadow: none; }
 @media (max-width: 1100px) {
   .main { --top-room: 116px; }
   .top-find { justify-content: center; width: 40px; padding: 0; }
   .top-find > span, .top-find .ac-kbd { display: none; }
 }
-@media (max-width: 860px) { .main.is-full .wh { margin-top: 0; box-shadow: none; } }
 
 /* On paper it's just the page. */
 @media print {
@@ -95,8 +96,9 @@
 .sb-new .ac-kbd { margin-left: auto; background: color-mix(in srgb, var(--ink) 12%, transparent); color: var(--ink); box-shadow: none; opacity: .8; }
 .sb .ac-nav { flex: none; }
 /*
- * Up next, pinned and groups scroll between the places and the foot. A hairline shows at an edge with more
- * beyond it: the frame-coloured covers travel with the list and hide each line while its edge is reached.
+ * What you've pinned scrolls between the places and the foot. A hairline shows at an edge with more beyond it: the
+ * frame-coloured covers travel with the list and hide each line while its edge is reached. With nothing pinned it's
+ * empty room, which keeps Team and Agents at the foot.
  */
 .sb-mid {
   position: relative; flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin;
@@ -112,28 +114,34 @@
 .sb-sec-h { display: flex; align-items: center; justify-content: space-between; min-height: 24px; padding: 0 4px 0 12px; margin-bottom: 4px; }
 .sb-sec-h .ac-icon-btn { width: 26px; height: 26px; border-radius: 8px; color: var(--ink-3); }
 .sb-sec-h .ac-icon-btn:hover { color: var(--ink); }
-.sb-hint { padding: 4px 12px 0; font-size: 12.5px; line-height: 1.45; color: var(--ink-3); }
-.sb-next { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; margin: 0 2px; padding: 12px; border-radius: var(--radius-md); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line), var(--shadow-1); }
-.sb-next-top { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px; align-items: center; }
-.sb-next-top .ac-arch-thumb { box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.18); }
-.sb-next b { display: block; font: 600 14px/1.25 var(--font-sans); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.sb-next small { display: block; margin-top: 4px; font: 500 12px/1 var(--font-sans); font-variant-numeric: tabular-nums; color: var(--sun-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.sb-next-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 36px; }
-.sb-next-foot .ac-btn { margin-left: auto; }
+/* Pinned's pin shows while you point at the list or move through it with the keys; without a pointer it stays. */
+@media (hover: hover) {
+  .sb-pins .sb-sec-h .ac-icon-btn { opacity: 0; transition: opacity var(--duration-1), color var(--duration-1), background-color var(--duration-1); }
+  .sb-pins:is(:hover, :focus-within) .sb-sec-h .ac-icon-btn { opacity: 1; }
+}
+/* Team and Agents, at the foot: who works with you, under what you do. */
+.sb .ac-nav.sb-low { margin-top: 12px; }
+/*
+ * A call about to start, at the foot: its cover, its name and when, and Join. One row with a hairline round it, never a
+ * card, and never filled, so the page's own action stays the one filled button.
+ */
+.sb-now { flex: none; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; column-gap: 11px; align-items: center; min-height: 54px; margin-top: 14px; padding: 7px 8px 7px 10px; border-radius: var(--radius-md); box-shadow: inset 0 0 0 1px var(--line); animation: ac-rise var(--duration-3) var(--ease-out) both; }
+.sb-now .ac-arch-thumb { box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.18); }
+.sb-now b { display: block; font: 600 14px/1.3 var(--font-sans); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sb-now small { display: block; margin-top: 2px; font: 500 12px/1.2 var(--font-sans); font-variant-numeric: tabular-nums; color: var(--sun-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sb-now .ac-btn { gap: 6px; padding-inline: 12px; }
 .sb-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; margin: 0; padding: 0; list-style: none; }
 .sb-link { display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 12px; border-radius: 10px; color: var(--ink-2); font: 500 14px/1 var(--font-sans); transition: background-color var(--duration-1), color var(--duration-1); }
 .sb-link > span { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 a.sb-link:hover, a.sb-link[aria-current="page"] { background: color-mix(in srgb, var(--ink) 8%, transparent); color: var(--ink); }
 .sb-link .ac-arch-thumb { box-shadow: none; }
-.sb-link > .ac-i { color: var(--ink-3); }
-.sb-link .n { flex: none; margin-left: auto; padding-left: 6px; font: 500 12px/1 var(--font-sans); font-variant-numeric: tabular-nums; color: var(--ink-3); }
-.sb-foot { flex: none; display: grid; grid-template-columns: minmax(0, 1fr); gap: 7px; padding-top: 20px; }
-.sb-seal { display: flex; align-items: center; gap: 8px; padding: 0 12px; font: 400 13px/18px var(--font-sans); color: var(--ink-2); }
-.sb-seal .ac-i { flex: none; color: var(--sun-text); }
+.sb-foot { flex: none; display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; padding-top: 20px; }
+.sb-seal { display: flex; align-items: center; gap: 8px; padding: 0 12px 6px; font: 500 12px/1.35 var(--font-sans); color: var(--ink-3); }
+.sb-seal .ac-i { color: var(--sun-text); }
 /*
- * The plan, at the foot, as the places are rows above it: on Free how much of the period's notes is left over a meter, then
- * Free plan with the way to the plans; on Pro one calm row with its own small sun, half set while Pro is ending; a payment
- * on its way says what it's waiting for. On Plans the row is the place you're on, shaded like a place.
+ * The plan, at the foot, in one row where the minutes of notes left were: on Free how much of the period's notes is left over
+ * a meter; on Pro or Team one calm row with its own small sun, half set while it's ending; a payment on its way says what it's
+ * waiting for in the row's place. A notice, while there is one, is a line above it. On Plans the row is the place you're on.
  */
 .sb-said, .sb-left, .sb-wait { margin: 0 12px; font: 400 13px/18px var(--font-sans); color: var(--ink-2); }
 .sb-said b, .sb-left b { font-weight: 600; color: var(--ink); }
@@ -150,7 +158,7 @@ a.sb-said:hover, a.sb-left:hover { color: var(--ink); }
 .sb-wait.is-settling { color: var(--ink-2); }
 .sb-wait .ac-dots { gap: 3px; }
 .sb-wait .ac-dots i { width: 4px; height: 4px; }
-/* Free: Free plan, and the way to the plans at the panel's edge. */
+/* A payment on its way: what it buys, and the way back to it at the panel's edge. */
 .sb-plan { display: flex; align-items: center; justify-content: space-between; gap: 10px; height: 36px; margin-top: 1px; padding: 0 10px 0 12px; border-radius: 10px; color: var(--ink-2); font: 500 13.5px/1 var(--font-sans); white-space: nowrap; transition: background-color var(--duration-1), color var(--duration-1); }
 .sb-plan .go { display: inline-flex; align-items: center; gap: 3px; color: var(--ink); font-weight: 600; }
 /* A paid plan: a row like the places, with its own small sun in the icon column. */
@@ -159,6 +167,7 @@ a.sb-said:hover, a.sb-left:hover { color: var(--ink); }
 .sb-pro b { display: block; font: 400 18px/1.1 var(--font-display); letter-spacing: -.01em; color: var(--ink); }
 .sb-pro small { display: block; margin-top: 2px; font: 400 12.5px/16px var(--font-sans); color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sb-pro small.is-warm { color: var(--sun-text); font-weight: 600; }
+.sb-pro small.is-out { color: var(--caution); font-weight: 600; }
 .sb-pro > .ac-i { color: var(--ink-3); }
 .sb-plan:hover, .sb-pro:hover { background: color-mix(in srgb, var(--ink) 7%, transparent); color: var(--ink); }
 .sb-plan.is-on, .sb-pro.is-on { background: color-mix(in srgb, var(--ink) 12%, transparent); color: var(--ink); }
@@ -191,11 +200,9 @@ a.sb-said:hover, a.sb-left:hover { color: var(--ink); }
   .ph-home { border-radius: var(--radius-sm); }
   .ph-end { display: flex; align-items: center; gap: 6px; }
   .ph-end .ac-icon-btn { width: 44px; height: 44px; border-radius: var(--radius-md); }
-  .ph-me { display: inline-flex; border-radius: var(--radius-sm); }
   .ph-offline .sb-status { margin: 14px 0 0; }
   .tabbar { position: fixed; z-index: 40; left: 0; right: 0; bottom: 0; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); align-items: end; padding: 6px max(6px, env(safe-area-inset-right, 0px)) max(24px, env(safe-area-inset-bottom, 0px)) max(6px, env(safe-area-inset-left, 0px)); background: var(--surface); box-shadow: inset 0 1px 0 var(--line); }
   .shell { --side: 0px; }
-  .main.is-full, .shell.is-bare .main.is-full { --pane-left: 12px; padding: 10px 12px calc(92px + env(safe-area-inset-bottom, 0px)); }
   /* Toasts rise above the tab bar and Record's raised button. */
   body:has(.tabbar) .ac-toasts:not(.on-stage) { bottom: calc(116px + env(safe-area-inset-bottom, 0px)); }
 }
@@ -208,52 +215,3 @@ a.sb-said:hover, a.sb-left:hover { color: var(--ink); }
 .tab-rec { display: grid; place-items: center; width: 56px; height: 56px; margin: -24px auto 2px; border-radius: 50%; background: var(--stage-tile); box-shadow: var(--shadow-2), inset 0 0 0 1px rgb(255 255 255 / 0.1); transition: transform var(--duration-1) var(--ease-out); }
 .tab-rec i { width: 18px; height: 18px; border-radius: 50%; background: radial-gradient(circle at 40% 35%, color-mix(in srgb, var(--rec) 60%, var(--stage-ink)), var(--rec) 60%, color-mix(in srgb, var(--rec) 76%, var(--stage))); box-shadow: 0 0 14px 2px color-mix(in srgb, var(--rec) 45%, transparent); }
 .tab.is-raised:active .tab-rec { transform: scale(.96); }
-
-/* --------------------------------------------------------------- palette */
-.ac-sheet.pal { display: flex; flex-direction: column; width: min(680px, calc(100vw - 28px)); max-height: calc(100dvh - 13vh - 24px); }
-.pal-line { flex: none; margin: 14px 14px 0; box-shadow: inset 0 0 0 1px var(--line); }
-.pal-line .ac-kbd { margin-right: 10px; }
-.pal-body { flex: 1 1 auto; min-height: 0; max-height: 440px; overflow-y: auto; overscroll-behavior: contain; padding: 6px 8px 10px; }
-.pal-grp { padding: 12px 12px 6px; font: 500 12.5px/16px var(--font-sans); color: var(--ink-3); }
-.pal-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 8px 12px; border-radius: 12px; color: var(--ink); cursor: pointer; transition: background-color var(--duration-1); }
-.pal-row.is-active { background: var(--sunk); }
-.pal-row.is-off { cursor: default; }
-.pal-row.is-off .t { opacity: .55; }
-.pal-row .t, .pal-cite .t { min-width: 0; }
-.pal-row b, .pal-cite b { display: block; font: 600 14.5px/1.3 var(--font-sans); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.pal-row small, .pal-cite small { display: block; margin-top: 2px; font-size: 12.5px; line-height: 1.3; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.pal-row mark { background: var(--sun-soft); color: var(--sun-text); border-radius: 4px; padding: 0 2px; }
-.pal-row .go { color: var(--ink-3); opacity: 0; transition: opacity var(--duration-1), transform var(--duration-1); }
-.pal-row.is-active .go { opacity: 1; transform: translateX(2px); }
-/* Pinned notes carry the pin in sun-text, as chosen things do; the row you're on says what Enter does. */
-.pal-pin { display: inline-flex; align-items: center; gap: 8px; font: 600 12.5px/1 var(--font-sans); color: var(--ink-3); white-space: nowrap; }
-.pal-pin > .ac-i { color: var(--sun-text); }
-.pal-act { opacity: 0; transition: opacity var(--duration-1); }
-.pal-row.is-active .pal-act { opacity: 1; }
-[role="listbox"].is-stale { opacity: .6; transition: opacity var(--duration-2); }
-.pal-none { display: grid; justify-items: center; gap: 4px; padding: 26px 18px 22px; font-size: 13.5px; line-height: 1.45; color: var(--ink-3); text-align: center; text-wrap: balance; }
-.pal-none b { font: 600 14.5px/1.4 var(--font-sans); color: var(--ink-2); }
-.pal-none .ac-dots { color: var(--ink-3); }
-/* The answer: the line above already holds the question. */
-.pal .answer { margin: 0; padding: 12px 12px 4px; animation: none; }
-.pal .answer .q { display: none; }
-.pal .answer > p { font-size: 15.5px; line-height: 1.6; color: var(--ink); text-wrap: pretty; }
-.answer .wait { display: inline-flex; align-items: center; gap: 10px; color: var(--ink-3); }
-.pal-src { margin: 12px -12px 0; }
-.pal-src ul { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; margin: 0; padding: 0; list-style: none; }
-.pal-cite { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 8px 12px; border-radius: 12px; }
-.pal-cite .t { border-radius: 6px; }
-.pal-cite .t:hover b { color: var(--sun-text); }
-.pal-cite .at { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; max-width: 220px; }
-.pal-foot { flex: none; display: flex; align-items: center; gap: 12px; padding: 12px 14px 12px 18px; border-top: 1px solid var(--line); }
-.pal-foot .hint { flex: 1; min-width: 0; display: inline-flex; align-items: center; gap: 7px; font-size: 13px; line-height: 1.35; color: var(--ink-3); }
-.pal-foot .hint .ac-i { color: var(--ink-3); }
-.pal-foot .hint.is-sealed .ac-i { color: var(--sun-text); }
-@media (max-width: 600px) {
-  .ac-sheet.pal { top: 12px; max-height: calc(100dvh - 24px); }
-  .pal-body { max-height: none; }
-  .pal-esc, .pal-foot .kb { display: none; }
-  .pal-foot { padding: 12px 12px 12px 16px; }
-  .pal-cite { grid-template-columns: auto minmax(0, 1fr); }
-  .pal-cite .at { grid-column: 2; justify-content: flex-start; max-width: none; }
-}

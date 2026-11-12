@@ -94,13 +94,12 @@ Product, then the follow-ups from the retro board's Actions frame.
 | `on-their-own` | Art at a personal address: no team, no groups, recordings and calls with people he meets |
 | `offline` | The busy afternoon opened with no connection, signed in on this browser: Record works, the rest says offline |
 | `writing` | Just after the pricing follow-up: its notes are written over a few seconds; a walkthrough records elsewhere |
-| `call-soon` | Wednesday at 10:26: the design review starts in four minutes, in the Design review workspace Art made for it as he scheduled it |
-| `no-workspace` | The same morning, but the design review was scheduled with no workspace: Art picks or makes one in the call, and is asked where its notes go when it ends |
+| `call-soon` | Wednesday at 10:26: the design review starts in four minutes |
 | `lots` | Thirty people on Alcove, three months of notes, eight pins, a dozen groups, long names |
 | `signed-out` | Nobody signed in on this browser: the welcome page; Microsoft or single sign-on signs Art in to the busy afternoon |
 | `unsaved` | The busy afternoon after Alcove wouldn't take some of Art's edits: the pricing copy's last edits, more interview notes than a document holds, and a line in the handbook he can only read now |
 | `drive-connected` | Art has a separate Google Drive connection, authorized personal and shared-drive folders, and exports in pending, uploading, uploaded and failed states |
-| `payments` | Adding money is available, with amount and token/network choices; every deposit address is a made-up invalid preview. A payment opened to buy something (checkout) is seen, added and bought a few seconds apart |
+| `payments` | Adding money is available, with networks under Pay with USDC; every deposit address is a made-up invalid preview. A payment opened to buy something (checkout) is seen, added and bought a few seconds apart |
 | `plan-waiting` | Art is on Free with a payment of 192 USDC on Base on its way, opened to buy 12 months of Pro; nothing has been sent yet |
 | `payment-short` | A payment opened to buy something: two thirds of it arrive, and the same address waits for the rest |
 | `payment-over` | A payment opened to buy something: 6 USDC more than asked arrives; it's bought, and the rest stays in the balance |
@@ -125,7 +124,8 @@ Product, then the follow-ups from the retro board's Actions frame.
 | `team-member-unlicensed` | Art's license ended with none to take: on Free, with a `license-needed` notice |
 | `team-join` | Art isn't on a team and has Priya's link to join (stories add it to the tab with `withTeamInvite()`) |
 | `no-team` | The busy afternoon with $60 and payments: Start a team on Team and on Team's card in Settings › Plan |
-| `agents-connected` | Art has a read-only Workspace assistant connected through OAuth and an unused Scheduling assistant personal token; Settings shows their scopes, expiry and last use |
+| `agents-connected` | Art has Claude signed in (it booked the onboarding review 4 minutes ago) and Cursor signed in to read, and a Weekly digest personal token, with three weeks of what they did |
+| `agents-ending` | The same three agents, with Cursor's access ending tomorrow |
 | `first-sign-in` | Nobody signed in, and no account yet: signing in makes Art's account on screen, his first day, and Home's tour |
 
 ## Add a component story
@@ -133,7 +133,7 @@ Product, then the follow-ups from the retro board's Actions frame.
 `stories/components/<group>/<Component>.stories.tsx`, one per component, a story per state, titled
 `Components/<Group>/<Component>`. The groups run from the basics to whole surfaces: icons and marks, actions, forms,
 feedback, overlays, layout, motion, the evening, people, starting a call, ringing and waiting, in a call, notes and
-transcript, record, settings, the workspace and the board. Put a new component in the group a person would look for it in, and
+transcript, search, the Calls page, record, settings, the workspace and the board. Put a new component in the group a person would look for it in, and
 add a new group to `storySort` in `.storybook/preview.tsx` only when none fits. The preview gives it what the app's
 root would (theme, tooltips, toasts). People come from the world, never made up on the spot:
 
@@ -167,11 +167,11 @@ and puts what sits over the sheet (a selection, its bar, the dots) where the sur
 import type { Meta } from '@storybook/react-vite';
 import { page, pages, type PageArgs } from '../../src/page';
 
-const meta = { title: 'Pages/Notes', ...pages } satisfies Meta<PageArgs>;
+const meta = { title: 'Pages/Calls', ...pages } satisfies Meta<PageArgs>;
 export default meta;
 
-export const Busy = page('/notes', 'busy');
-export const FirstDay = page('/notes', 'first-day');
+export const Busy = page('/calls', 'busy');
+export const FirstDay = page('/calls', 'first-day');
 /** Anything else goes in the third argument: here, notifications the browser has blocked, on a phone at night. */
 export const Blocked = page('/settings#notifications', 'busy', {
   parameters: { opening: { browser: { notifications: 'denied' } } },
@@ -179,7 +179,7 @@ export const Blocked = page('/settings#notifications', 'busy', {
 });
 ```
 
-The address is any of the app's (`/notes/n2?at=372`, `/team?group=g-product`, `/call/dsn-revw-pka`). `parameters.opening`
+The address is any of the app's (`/calls/n2?at=372`, `/team?group=g-product`, `/call/dsn-revw-pka`). `parameters.opening`
 changes how the page opens on top of the scenario: `now` (a `Date`, `on(day, hours, minutes)` from `src/world/clock.ts`),
 `browser` (`online`, `devices`, `notifications`), `signedInHere`, `tourSeen` and `latency` (ms). The page answers clicks:
 what you change changes the world for the rest of the story.
@@ -190,7 +190,7 @@ contract (`changing()` in `src/page.tsx`). `stories/pages/changes.ts` has the on
 
 ```tsx
 /** The summary couldn't be written: a note in that state, put into the busy afternoon. */
-export const Unwritten = page(`/notes/${STATES.unwritten}`, 'busy', { beforeEach: changing(inEveryState) });
+export const Unwritten = page(`/calls/${STATES.unwritten}`, 'busy', { beforeEach: changing(inEveryState) });
 /** A part of Alcove that fails (`failed`), can't be reached (`network`) or never answers while the story is open (`hold`). */
 export const Loading = page('/team', 'busy', { beforeEach: changing(troubled({ 'people.team': 'hold' })) });
 /** Recordings kept on this device that haven't uploaded, in every state Record shows. */
@@ -217,7 +217,7 @@ export default meta;
 
 export const StartNow: PageStory = {
   name: '4.1 Start now',
-  ...page('/notes', 'busy'),
+  ...page('/calls', 'busy'),
   play: async ({ userEvent, step }) => {
     await step('Press N, from any page. A small modal asks one thing: now, or later?', async () => {
       await userEvent.keyboard('n');
@@ -293,8 +293,8 @@ export const SomeoneSharing = inCall({
 export const SomeoneSharingPhone = phone(SomeoneSharing);
 /** At the call's link: the organizer comes in eight seconds after the story opens. */
 export const Waiting = atTheDoor({ scenario: 'busy', call: CHECK_IN, script: { door: { hostArrives: 8 } } });
-/** A play that presses a button in the dock, then one in what it opens. */
-export const CallEnded = inCall({ scenario: 'call-soon', call: REVIEW }, { play: press('Leave', { then: ['End call for everyone'] }) });
+/** A play that presses a button in the dock, then one in what it opens (by its name, or the start of it). */
+export const CallEnded = inCall({ scenario: 'call-soon', call: REVIEW }, { play: press('Leave', { then: [/^End for everyone/] }) });
 /** A play that opens what's yours: at the top right, or from the grid at the top of More on a phone, then a tab of your side. */
 export const Transcript = inCall({ scenario: 'call-soon', call: REVIEW }, { play: reach('Notes', { tab: 'Transcript' }) });
 ```
@@ -432,22 +432,26 @@ navigation and reading remain in the full call.
   script's times (counted from joining) can be well under way by then.
 
 
-Agent connection previews live under **Components / Settings**, **Pages / Connect an agent**, and Settings' Agents
-stories. **Journeys / 14 Agent access** shows creating a personal token, disconnecting a connection, and signing in to
-review an OAuth request. The last journey stops at the external-client hand-off. Tokens and request pointers in these
-stories are made-up preview values that cannot connect to a real Alcove account.
+Agents is under **Pages / Agents** and its parts under **Components / Agents**, with the permission chips, the disclosure
+and the sheet `/connect` signs you in on; `/connect` is under **Pages / Connect an agent**, and Settings' one Agents row
+in **Pages / Settings**. **Journeys / 14 Agent access** (14.1 to 14.12) plays Agents from the side panel: connecting
+Claude, Cursor and Claude Code, allowing Claude with less than it asks for, changing, disconnecting and keeping an agent,
+what your agents did, a token for a script, a request that ended, Settings' way there, and a phone. No tab or app opens
+(`keepTabs()` in `stories/journeys/play.ts`), the stand-in connects an agent as one would, and the hand-off back to the
+agent after Allow stays in the frame. Tokens and request pointers in these stories are made-up preview values that cannot
+connect to a real Alcove account.
 
 ## Follow-up review
 
 `src/world/follow-ups.ts` supplies one actual task, a new suggestion and a proposed change, reused before and after the call.
-`Calls/Notes/Review in workspace` and `Pages/A note/Reviewing follow-up proposals` open the real app's review, with phone and
+`Calls/Notes/Review in workspace` and `Pages/A call/Reviewing follow-up proposals` open the real app's review, with phone and
 theme variants beside them. `Journeys/6 Follow-up proposals` (6.23–6.25) plays adding and dismissing, an incoming proposal
-waiting behind a fixed batch, and a changed actual task refusing a stale amendment. Notes' journeys 8.44–8.46 show the same
+waiting behind a fixed batch, and a changed actual task refusing a stale amendment. A call's journeys 8.34–8.36 show the same
 review after the call and keep “I'll do it” as a separate choice. The shared editor and review controls have their own
 stories in `Components/Notes and transcript`.
 
 
-Google Drive previews live in **Pages / Settings / Google Drive…** and **Pages / A note / Google Drive…**, including phone,
+Google Drive previews live in **Pages / Settings / Google Drive…** and **Pages / A call / Google Drive…** (from More), including phone,
 night, folder loading failure and reconnect states. **Journeys / 15 Google Drive exports** shows choosing explicit file
 formats, a shared-drive destination, a per-call override, a retry, independent disconnection and a shared reader’s own exports with organizer-only audio. The stand-in holds no
 provider credentials; Google consent and additional folder authorization stop at the external hand-off.
@@ -462,13 +466,20 @@ late guest's read-only view. **Components / In a call / CallTimerButton** shows 
 starting one, pausing, adding a minute and stopping it, and following it as a participant. Stories remain demonstrations;
 the colocated API/client integration suite verifies the shared clock, permissions, concurrency and older sealed state.
 
-Calls / Leaving and Journeys / 7 End the call and get the notes show one-press departure for invited participants and
-guests, pending and failed departures, a retry, and the confirmation retained by the current host, including a stand-in.
-Calls / Floating call / Participant ready to open and Participant leave refused keep the real native window hand-off
+Calls / Leaving and Journeys / 7 End the call and get the notes show Leave's question over Leave for whoever hosts (leaving
+it going first for a stand-in, End for everyone alone when only guests could take over, Leave ending a call you're alone in at
+once, and any other way out while alone, such as answering a ring, asking first), one-press departure for everyone else,
+pending and failed departures with a retry, and every state of the page a call leaves you on, each reached for real: ended by
+you or without you (the page names nobody as having ended it), left with notes on, paused or off, left with someone hosting,
+ended while you were on it, the notes being written, written or slow, and Rejoin, straight back in as you were, with J muted
+and the camera off, or refused. The stand-in keeps a call you
+leave going (`GoingOn` in `src/api/call.ts`): what's left of its script plays on far enough to end it, which writes its note
+for everyone invited, and joining it again picks it up where it's got to, the pass you left with letting you straight back
+in. Calls / Floating call / Participant ready to open and Participant leave refused keep the real native window hand-off
 available for manual checks of the same behavior.
 
 
-Browser notifications (#88): Calls/Browser notifications shows explicit opt-in, enabled/blocked/unsupported/refused delivery and phone/light variants on the real controls. Journey 6.33 chooses categories without changing sound or local reply alerts. Native browser is a manual development-origin permission/OS story: Enable explicitly, then switch tabs before the 20–65 second scripted activity. Its separate report observes the actual browser constructor's show/error/close events and the content-free call projection. All media is synthetic. Close/disable alerts when finished. These are demonstrations, never browser tests.
+Browser notifications (#88): Calls/Browser notifications shows explicit opt-in, enabled/blocked/unsupported/refused delivery and phone/light variants on the real controls. Journey 6.33 chooses categories without changing sound or local reply alerts. Native browser is a manual development-origin permission/OS story: Enable explicitly, then switch tabs before the 20–65 second scripted activity. Its separate report observes the actual browser constructor's show/error/close events and the content-free call projection. All media is synthetic. Close/disable alerts when finished. Native browser paused is the same call with the account's notifications paused until 50 seconds in: while it holds, only the request to join alerts and sounds (and Mute and Unmute still sound), and what it held that's still timely shows as it ends. These are demonstrations, never browser tests.
 
 Native two tabs is the explicit browser-receipt scene: open it twice, enable once and background both before20seconds. It preserves opaque browser state and shares one demo-clock anchor, like real tabs share a wall clock. Stable event IDs demonstrate cross-tab/reload deduplication; reopening the same scene does not replay those IDs. Native browser uses a new call ID for a fresh delivery demonstration. The report can start/stop the exact application service worker on this development origin; Stop unregisters it and closes its test alerts. Open delivered alert invokes the native notification's actual click callback for routing checks; this is distinct from an OS notification-centre click.
 

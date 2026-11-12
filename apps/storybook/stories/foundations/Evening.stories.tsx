@@ -13,11 +13,13 @@ const MOMENTS = {
   home: { name: 'Home', hz: 215, line: 'The sunset, the sun half risen under Start a call. All sky: this page is one action.' },
   record: { name: 'Record', hz: 235, line: 'Night, in both themes. The recorder is the sun: a dark disc with the last of the light on its rim.' },
   team: { name: 'Team', hz: 165, line: 'The sun low and to the left, behind the people standing on the horizon.' },
-  notes: { name: 'Notes', hz: 115, line: 'Just after sunset: only the glow is left, with search in the middle. Stars come out after dark.' },
-  drive: { name: 'Drive', hz: 100, line: 'A little later than Notes: less glow on the water and the first stars, over every workspace you’re in.' },
+  agents: { name: 'Agents', hz: 168, line: 'Team’s moment the other way round: the sun low on the right, just past the end of the line of agents.' },
+  calls: { name: 'Calls', hz: 115, line: 'Just after sunset: only the glow is left, with search in the middle. Stars come out after dark.' },
+  drive: { name: 'Drive', hz: 100, line: 'A little later than Calls: less glow on the water and the first stars, over every workspace and call’s home.' },
   plans: { name: 'Plans', hz: 95, line: 'Just after sunset: a long low glow and a calm sky. The page draws the last sliver of the sun itself.' },
   note: { name: 'A note', hz: 85, line: 'A slim band. The horizon is the call itself.' },
-  settings: { name: 'Settings', hz: 60, line: 'The last of the light. Mostly page.' }
+  settings: { name: 'Settings', hz: 60, line: 'The last of the light. Mostly page.' },
+  after: { name: 'After a call', hz: 245, line: 'Night, in both themes: no sun, the glow it left on the horizon and its light on the bay, stars and a crescent moon.' }
 } satisfies Record<Moment, { name: string; hz: number; line: string }>;
 const MOMENT_ORDER = Object.keys(MOMENTS).filter((m): m is Moment => m in MOMENTS);
 /** What a page draws on its own sky: Plans' last sliver of the sun, where its moment has none. */
@@ -44,7 +46,7 @@ const ABOUT = {
 
 /** The pages a visitor comes to, in a sentence. */
 function comesTo(moments: readonly Moment[]): string {
-  const names = moments.map((m, i) => (i === 0 ? MOMENTS[m].name : MOMENTS[m].name.replace(/^A /, 'a ')));
+  const names = moments.map((m, i) => (i === 0 ? MOMENTS[m].name : MOMENTS[m].name.replace(/^A(fter)? /, (w) => w.toLowerCase())));
   const list = names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names.at(-1) ?? ''}` : names[0] ?? '';
   return `${list}.`;
 }

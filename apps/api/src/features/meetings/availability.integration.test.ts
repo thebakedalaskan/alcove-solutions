@@ -170,6 +170,51 @@ describe('reading other people’s calendars', () => {
   });
 });
 
+describe('any week of someone’s own calendar', () => {
+  it('lists the events in the stretch asked for, past ones too, as the coming week lists them', async () => {
+    const me = person('ida');
+    const self = { attendees: [{ email: me.email, self: true, responseStatus: 'accepted' }] };
+    h.google.calendar(me.sub).push(
+      event('Planning', at(0, 9), at(0, 10), self),
+      event('Declined', at(1, 9), at(1, 10), { attendees: [{ email: me.email, self: true, responseStatus: 'declined' }] }),
+      event('Focus', at(1, 13), at(1, 15), { eventType: 'focusTime' }),
+      // An Alcove call's own event, and a time held for a call that offers it, are Alcove's: neither is listed as another meeting.
+      event('Ours', at(2, 9), at(2, 10), { extendedProperties: { private: { alcoveMeeting: 'some-call' } } }),
+      event('Hold: Intro', at(2, 11), at(2, 12), { extendedProperties: { private: { alcoveHold: 'some-call' } } }),
+      { id: 'away', summary: 'Away', start: { date: '2030-03-07' }, end: { date: '2030-03-08' } },
+      event('Next week', at(7, 9), at(7, 10))
+    );
+    const b = h.browser();
+    await viaGoogle(b, me);
+    const asked = freeBusyCalls();
+    const week = await b.api.calendar.get(WEEK);
+    expect(week.source).toBe('google');
+    expect(week.events.map((e) => [e.title, e.startsAt, e.endsAt])).toEqual([['Planning', at(0, 9), at(0, 10)]]);
+    expect((await b.api.calendar.get({ from: at(7, 0), to: at(14, 0) })).events.map((e) => e.title)).toEqual(['Next week']);
+    // Without a stretch it's the coming week, and a week in 2030 isn't in it.
+    expect((await b.api.calendar.get()).events).toEqual([]);
+    // Other people's calendars are never read this way: only their busy times are, through busy().
+    expect(freeBusyCalls()).toBe(asked);
+  });
+
+  it('refuses a stretch it can’t read, and reads a demo account’s and one without calendar access as before', async () => {
+    const me = person('jay');
+    const b = h.browser();
+    await viaGoogle(b, me);
+    const refused = (range: { from: string; to: string }) => b.api.calendar.get(range).then(() => 'answered', (e: unknown) => code(e));
+    expect(await refused({ from: at(0, 0), to: at(31, 0) })).toBe('answered');
+    expect(await refused({ from: at(0, 0), to: at(31, 1) })).toBe('invalid');
+    expect(await refused({ from: at(1, 0), to: at(0, 0) })).toBe('invalid');
+    expect(await refused({ from: 'monday', to: at(0, 0) })).toBe('invalid');
+    // One end alone isn't a stretch.
+    expect((await b.fetch(`${h.baseUrl}/v1/calendar?from=${encodeURIComponent(at(0, 0))}`)).status).toBe(400);
+    expect(await (await art()).api.calendar.get(WEEK)).toEqual({ source: 'sample', needsAccess: false, events: [] });
+    const unticked = h.browser();
+    await viaGoogle(unticked, person('kim'), 'no-calendar');
+    expect(await unticked.api.calendar.get(WEEK)).toEqual({ source: 'google', needsAccess: true, events: [] });
+  });
+});
+
 describe('what asking about busy times leaves behind', () => {
   it('refuses a range it can’t read: past 31 days, backwards, or not a time', async () => {
     const b = await account();

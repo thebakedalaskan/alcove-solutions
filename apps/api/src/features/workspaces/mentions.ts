@@ -16,7 +16,7 @@ import { publish } from '../../live/hub';
 import { TOLD } from '../../live/room';
 import { log } from '../../log';
 import {
-  grantsFor, holdersOf, personIn, principalOf, requireDocument, roleOf, standingIn, trashOf, workspaceFor, workspaceKey, type Reader, type Who, type Workspace
+  grantsFor, holdersOf, personIn, principalOf, requireDocument, roleOf, standingIn, trashOf, whoInCall, workspaceFor, workspaceKey, type Reader, type Who, type Workspace
 } from './access';
 
 const tlog = log.child({ component: 'mentions' });
@@ -43,12 +43,15 @@ export async function mention(d: Deps, reader: Reader, workspaceId: string, docu
   const email = target.kind === 'email' ? target.email : reader.seat && await addressIn(reader.seat.viewer, target.seat);
   const seat = principalOf(d, target);
   const principal = email ? principalOf(d, { kind: 'email', email, role: 'read' }) : seat;
-  const who: Who = { email, principals: [...new Set([principal, seat])] };
+  /* Someone in the tagger's call has what the call opens to everyone in it too: the workspace it uses now, the same as the tagger's. */
+  const who: Who = target.kind === 'seat' && reader.seat
+    ? whoInCall(d, reader.seat.callId, { seat: target.seat, email: email ?? null }, reader.seat.workspace)
+    : { email, principals: [...new Set([principal, seat])], calls: [] };
   await tx(d.pool, async (c) => {
     const w = await workspaceFor(d, reader, workspaceId, c, 'hold');
     const { item } = requireDocument(reader, w, documentId, 'edit');
     if (samePerson(who, reader)) return;
-    const theirs = standingIn(await holdersOf(c, w.owner.ownerId, who.principals), who);
+    const theirs = standingIn(await holdersOf(c, w.owner.ownerId, who), who);
     if (!roleOf(who, theirs, documentId, item)) {
       tlog.debug('someone tagged who can’t open this isn’t told', { workspaceId, documentId });
       return;

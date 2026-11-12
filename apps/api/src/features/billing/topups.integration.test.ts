@@ -21,6 +21,8 @@ const BASE_USDC = 'nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.n
 const ETH_USDC = 'nep141:eth-0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48.omft.near';
 const NEAR_USDC = 'nep141:17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1';
 const BNB_USDC = 'nep245:v2_1.omni.hot.tg:56_2w93GqMcEmQFDru84j3HZZWt557r';
+const SOL_USDC = 'nep141:sol-5ce3bf3a31af18be40ba30f721101b4341690186.omft.near';
+/** 1Click lists it; Alcove doesn't take it. */
 const TRON_USDT = 'nep141:tron-d28a265909efecdcee7c5028585214ea0b96f015.omft.near';
 const code = (e: unknown) => (e instanceof AlcoveApiError ? e.code : 'not-an-api-error');
 const failure = (p: Promise<unknown>) => p.then(() => 'succeeded', code);
@@ -96,11 +98,14 @@ async function raceTopUpStarts(ownerId: string, first: AlcoveApi, second: Alcove
 }
 
 describe('top-ups', () => {
-  it('lists the allowlisted routes with their minimum, and the presets: one, three and six periods of Pro', async () => {
+  it('lists the allowlisted routes, USDC only and NEAR, Ethereum and Solana first, with their minimum, and the presets: one, three and six periods of Pro', async () => {
     const { api } = await account();
     const { routes, presets } = await api.plans.routes();
     expect(routes.map((r) => `${r.token} ${r.chain}`)).toContain('USDC base');
     expect(routes.some((r) => r.id === NOT_ALLOWLISTED)).toBe(false);
+    expect(routes.every((r) => r.token === 'USDC')).toBe(true);
+    // 1Click lists Base and Arbitrum before Solana; the allowlist's order is what's offered.
+    expect(routes.map((r) => r.chain)).toEqual(['near', 'eth', 'sol', 'base', 'arb', 'pol', 'bsc', 'op', 'avax']);
     expect(routes.find((r) => r.chain === 'eth' && r.token === 'USDC')).toMatchObject({ minimum: '20' });
     expect(routes.find((r) => r.chain === 'base')).toMatchObject({ minimum: '5' });
     expect(routes.find((r) => r.chain === 'bsc' && r.token === 'USDC')).toMatchObject({ chainName: 'BNB Chain', minimum: '5' });
@@ -163,10 +168,33 @@ describe('top-ups', () => {
     expect((await api.plans.startTopUp(BASE_USDC, MAX_TOP_UP_MICRO_USD)).asked).toEqual({ amount: '8000' });
   });
 
-  it('refuses a route that isn’t offered', async () => {
+  it('refuses a route that isn’t offered, USDT included', async () => {
     const { api, session } = await account();
     expect(await failure(api.plans.startTopUp(NOT_ALLOWLISTED, 10_000_000))).toBe('invalid');
+    expect(await failure(api.plans.startTopUp(TRON_USDT, 10_000_000))).toBe('invalid');
     expect(await depositRows(session.ownerId)).toBe(0);
+  });
+
+  it('still shows and adds a USDT top-up opened before only USDC was offered', async () => {
+    const { api, session } = await account();
+    const t = await api.plans.startTopUp(SOL_USDC, 10_000_000);
+    // Its record as a release before this one sealed a top-up on USDT on Tron.
+    const key = serviceKey(unb64u(h.deps.cfg.KSERVICE, 32), 'accounting');
+    const header = { v: 1, kind: 'deposit', ownerId: session.ownerId, depositId: t.id, keyVersion: '1' } as const;
+    const row = (await h.pool.query<{ record_ciphertext: Buffer }>('SELECT record_ciphertext FROM deposits WHERE deposit_id = $1', [t.id])).rows[0];
+    if (!row) throw new Error(`no deposit ${t.id}`);
+    const before: DepositRecord = {
+      ...openJson(key, header, row.record_ciphertext, DepositRecord),
+      route: { id: TRON_USDT, provider: 'oneclick', chain: 'tron', chainName: 'Tron', token: 'USDT', decimals: 6, minimum: '5000000' }
+    };
+    await h.pool.query('UPDATE deposits SET record_ciphertext = $2 WHERE deposit_id = $1', [t.id, sealJson(key, header, toJson(before))]);
+
+    expect(await api.plans.topUp(t.id)).toMatchObject({ state: 'waiting', route: { token: 'USDT', chain: 'tron', chainName: 'Tron', minimum: '5' }, asked: { amount: '10' } });
+    expect((await api.plans.topUps()).find((x) => x.id === t.id)?.route).toMatchObject({ token: 'USDT', chain: 'tron' });
+    await forgetCheck(t.id);
+    h.oneclick.set(addr(t), 'SUCCESS', { depositedAmount: '10000000', amountOut: '9999000', intentHashes: ['husdt10'] });
+    expect(await api.plans.topUp(t.id)).toMatchObject({ state: 'credited', route: { token: 'USDT' }, received: { amount: '10', microUsd: 10_000_000 } });
+    expect(await balance(api)).toBe(10_000_000);
   });
 
   it('keeps top-ups to their owner', async () => {
@@ -356,30 +384,30 @@ describe('top-ups', () => {
 
   it('adds what was refunded to the treasury, however small, and a swapped part of a payment with the rest', async () => {
     const { api } = await account();
-    const big = await api.plans.startTopUp(TRON_USDT, 45_000_000);
+    const big = await api.plans.startTopUp(SOL_USDC, 45_000_000);
     h.oneclick.set(addr(big), 'REFUNDED', { depositedAmount: '46000000', amountOut: '0', refundedAmount: '46000000', intentHashes: ['h46'] });
     expect(await api.plans.topUp(big.id)).toMatchObject({ state: 'credited', address: null, received: { amount: '46', microUsd: 46_000_000 } });
     expect(await balance(api)).toBe(46_000_000);
 
-    const small = await api.plans.startTopUp(TRON_USDT, 10_000_000);
+    const small = await api.plans.startTopUp(SOL_USDC, 10_000_000);
     h.oneclick.set(addr(small), 'REFUNDED', { depositedAmount: '400000', amountOut: '0', refundedAmount: '400000', intentHashes: ['h04'] });
     expect(await api.plans.topUp(small.id)).toMatchObject({ state: 'credited', address: null, received: { amount: '0.4', microUsd: 400_000 } });
     expect(await balance(api)).toBe(46_000_000 + 400_000);
 
     // Half a thousandth of a dollar is still added.
-    const dust = await api.plans.startTopUp(TRON_USDT, 10_000_000);
+    const dust = await api.plans.startTopUp(SOL_USDC, 10_000_000);
     h.oneclick.set(addr(dust), 'REFUNDED', { depositedAmount: '500', amountOut: '0', refundedAmount: '500', intentHashes: ['h0005'] });
     expect(await api.plans.topUp(dust.id)).toMatchObject({ state: 'credited', address: null, received: { amount: '0.0005', microUsd: 500 } });
     expect(await balance(api)).toBe(46_000_000 + 400_000 + 500);
 
     // 80 sent, 60 swapped and 20 refunded: the whole 80 reached the treasury, and it was all that was asked.
-    const part = await api.plans.startTopUp(TRON_USDT, 80_000_000);
+    const part = await api.plans.startTopUp(SOL_USDC, 80_000_000);
     h.oneclick.set(addr(part), 'REFUNDED', { depositedAmount: '80000000', amountOut: '59990000', refundedAmount: '20000000', intentHashes: ['h80'] });
     expect(await api.plans.topUp(part.id)).toMatchObject({ state: 'credited', address: null, received: { amount: '80', microUsd: 80_000_000 } });
     expect(await balance(api)).toBe(46_000_000 + 400_000 + 500 + 80_000_000);
 
     // With more asked than that, and 80 under the band, the part swapped and refunded adds what was sent.
-    const under = await api.plans.startTopUp(TRON_USDT, 100_000_000);
+    const under = await api.plans.startTopUp(SOL_USDC, 100_000_000);
     h.oneclick.set(addr(under), 'REFUNDED', { depositedAmount: '80000000', amountOut: '59990000', refundedAmount: '20000000', intentHashes: ['h80under'] });
     expect(await api.plans.topUp(under.id)).toMatchObject({ state: 'credited', received: { amount: '80', microUsd: 80_000_000 } });
     expect(await balance(api)).toBe(46_000_000 + 400_000 + 500 + 80_000_000 + 80_000_000);
@@ -1002,7 +1030,7 @@ describe('top-ups', () => {
 
   it('adds a failed swap once 1Click refunds it to the treasury, checking it hourly', async () => {
     const { api } = await account();
-    const t = await api.plans.startTopUp(TRON_USDT, 10_000_000);
+    const t = await api.plans.startTopUp(SOL_USDC, 10_000_000);
     h.oneclick.set(addr(t), 'FAILED', { depositedAmount: '10000000' });
     expect(await api.plans.topUp(t.id)).toMatchObject({ state: 'failed' });
     await dueOnly(t.id);

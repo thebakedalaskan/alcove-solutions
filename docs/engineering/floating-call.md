@@ -19,9 +19,11 @@ speaker or an empty/avatar state. The compact view does not mount another zoom/h
 
 The floating call and the existing share pop-out coordinate their use of the browser's PiP window. Automatic opening must
 not replace a share the person explicitly popped out. Child-window closure only disposes its presentation; it does not
-stop tracks, flush capture or leave the room. Explicit Leave uses the existing confirmation, flush, handoff and rollback
-flow. Reconnect preserves the compact view; termination, removal, device displacement and main-view teardown close it.
-A late browser-window request cannot revive a departed call.
+stop tracks, flush capture or leave the room. Explicit Leave uses the main view's departure: whoever hosts, with anyone
+else in the call, is asked in the window (`LeaveChoices`), and alone ends the call at once, as Leave does on the main
+stage; then the same flush, handoff and rollback. Reconnect preserves the compact view;
+termination, removal, device displacement and main-view teardown close it. A late browser-window request cannot revive a
+departed call.
 
 The compact view shows hands, open Q&A, host-only admission requests and a count labelled Chat for new messages. Each
 count returns to the full call: hands and admission requests open People, and Q&A and Chat open Chat. Shared controls unlock the existing sound output synchronously from

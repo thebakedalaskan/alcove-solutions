@@ -1,10 +1,9 @@
-import { BusyBodySchema, ChangeScopeSchema, FileNotesSchema, MeetingCreateSchema, MeetingInputSchema, NextCallBodySchema, NotesSettingSchema, RsvpBodySchema, type Meeting } from '@alcove/api';
+import { BusyBodySchema, CalendarRangeSchema, ChangeScopeSchema, MeetingInputSchema, NextCallBodySchema, NotesSettingSchema, ProposalAnswerBodySchema, ProposeBodySchema, RsvpBodySchema, type Meeting } from '@alcove/api';
 import { Hono, type Context } from 'hono';
 import { z } from 'zod';
 import { ValidationError } from '../../errors';
 import * as calendar from './calendar';
 import * as meetings from './service';
-import { fileNotes } from '../calls/workspace';
 import { type Env } from '../../http/context';
 import { body } from '../../http/body';
 import type { HttpRuntime } from '../../http/runtime';
@@ -12,7 +11,7 @@ import type { HttpRuntime } from '../../http/runtime';
 
 
 export function registerMeetingRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
-  const { makeLimiter, workspaceLimiter, workspaceListLimiter, busyLimiter } = runtime.limits;
+  const { makeLimiter, workspaceListLimiter, busyLimiter } = runtime.limits;
 
   /* meetings */
   /**
@@ -27,9 +26,7 @@ export function registerMeetingRoutes(app: Hono<Env>, runtime: HttpRuntime): voi
 
   app.post('/v1/meetings', async (c) => {
     makeLimiter(c.get('owner').ownerId, 'calls');
-    const input = await body(c, MeetingCreateSchema);
-    if (input.newWorkspace) workspaceLimiter(c.get('owner').ownerId, 'workspace');
-    return changedCall(c, await meetings.create(c.get('owner'), input));
+    return changedCall(c, await meetings.create(c.get('owner'), await body(c, MeetingInputSchema)));
   });
 
   /* How far a change to a call in a series reaches. */
@@ -55,19 +52,26 @@ export function registerMeetingRoutes(app: Hono<Env>, runtime: HttpRuntime): voi
     return changedCall(c, await meetings.scheduleNext(c.get('owner'), c.req.param('id'), (await body(c, NextCallBodySchema)).startsAt));
   });
 
-  /* An ended call's notes, filed in a workspace by its organizer when it had none (features/calls/workspace.ts). */
-  app.post('/v1/meetings/:id/file', async (c) => {
-    const o = c.get('owner');
-    const to = await body(c, FileNotesSchema);
-    if ('newWorkspace' in to) workspaceLimiter(o.ownerId, 'workspace');
-    await fileNotes(o, c.req.param('id'), 'workspaceId' in to ? { workspaceId: to.workspaceId } : { newWorkspace: true }, to.timeZone);
-    return changedCall(c, await meetings.get(o, c.req.param('id')));
-  });
-
   app.post('/v1/meetings/:id/answer', async (c) => c.json(await meetings.answer(c.get('owner'), c.req.param('id'), (await body(c, RsvpBodySchema)).answer)));
 
+  /* Someone invited asking to move a call: it sets one value, and what comes back is the organizer's call, so it keeps no receipt. */
+  app.post('/v1/meetings/:id/propose', async (c) => c.json(await meetings.propose(c.get('owner'), c.req.param('id'), (await body(c, ProposeBodySchema)).startsAt)));
+
+  /* The organizer answering a request to move one of their calls: moving it is a change like any other. */
+  app.post('/v1/meetings/:id/proposals/answer', async (c) => {
+    const { email, answer } = await body(c, ProposalAnswerBodySchema);
+    return changedCall(c, await meetings.answerProposal(c.get('owner'), c.req.param('id'), email, answer));
+  });
+
   /* calendar: someone's other events, and making one of them an Alcove call */
-  app.get('/v1/calendar', async (c) => { const o = c.get('owner'); return c.json(await calendar.view(o, () => meetings.recurringSeries(o))); });
+  app.get('/v1/calendar', async (c) => {
+    const o = c.get('owner');
+    const [from, to] = [c.req.query('from'), c.req.query('to')];
+    if (from === undefined && to === undefined) return c.json(await calendar.view(o, () => meetings.recurringSeries(o)));
+    const asked = CalendarRangeSchema.safeParse({ from, to });
+    if (!asked.success) throw new ValidationError('Ask for a stretch of your calendar with both its start and its end.');
+    return c.json(await calendar.view(o, () => meetings.recurringSeries(o), calendar.stretch(asked.data.from, asked.data.to)));
+  });
 
   app.delete('/v1/calendar', async (c) => { const o = c.get('owner'); return c.json(await calendar.disconnect(o, () => meetings.recurringSeries(o))); });
 

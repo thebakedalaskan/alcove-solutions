@@ -10,7 +10,7 @@ import { uploads } from '~/features/record/uploads';
 import { recordOfflineHere } from '~/lib/device';
 import { useLive, useOnline } from '~/lib/live';
 import { q } from '~/lib/queries';
-import { hoursAndMinutes, pastDay } from '~/lib/time';
+import { callLength, pastDay } from '~/lib/time';
 
 /*
  * Record, in the side panel: the night, in both themes, with the recorder for a sun. In the sky, the name, Start recording
@@ -75,14 +75,14 @@ function gistOf(n: NoteSummary): string {
 function whenOf(n: NoteSummary): string {
   const day = pastDay(n.startedAt);
   const when = day.charAt(0).toUpperCase() + day.slice(1);
-  return n.status === 'recording' ? when : `${when} · ${hoursAndMinutes(Math.max(1, Math.round(n.duration / 60)))}`;
+  return n.status === 'recording' ? when : `${when} · ${callLength(n.duration)}`;
 }
 
 function RecordedBefore({ notes }: { notes: NoteSummary[] }) {
   const h = useId();
   return (
     <section className="rec-list" aria-labelledby={h}>
-      <div className="rec-h"><h2 id={h}>Recorded before</h2><Link to="/notes" className="rec-more-link">In Notes<Icon name="right" size={15} /></Link></div>
+      <div className="rec-h"><h2 id={h}>Recorded before</h2><Link to="/calls" search={{ view: 'room' }} className="rec-more-link">In Calls<Icon name="right" size={15} /></Link></div>
       <ul className="rec-before">{notes.map((n) => <Recorded key={n.id} n={n} />)}</ul>
     </section>
   );
@@ -98,7 +98,7 @@ function Recorded({ n }: { n: NoteSummary }) {
   return (
     <li>
       {/* Named by its title alone, not by every word in it. */}
-      <Link to="/notes/$noteId" params={{ noteId: n.id }} className={cn('rec-n', n.status === 'pending' && 'is-writing')} aria-labelledby={`${id}-t`} aria-describedby={standing ? `${id}-w ${standing}` : `${id}-w`}
+      <Link to="/calls/$noteId" params={{ noteId: n.id }} className={cn('rec-n', n.status === 'pending' && 'is-writing')} aria-labelledby={`${id}-t`} aria-describedby={standing ? `${id}-w ${standing}` : `${id}-w`}
         onClick={(e) => { if (online) return; e.preventDefault(); toast('Notes open when you’re back online.', { icon: 'wifiOff' }); }}>
         <RecPrint id={n.id} />
         <span className="rec-t"><b id={`${id}-t`} className="ac-clamp-1">{n.title}</b><small id={`${id}-g`} className="ac-clamp-1">{gistOf(n)}</small></span>

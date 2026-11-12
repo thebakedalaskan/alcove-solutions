@@ -1,0 +1,33 @@
+{
+ "v": 3,
+ "createdOnFiles": { "v": 1, "at": "2026-11-12T17:41:29Z" },
+ "title": "Side panel, rethought",
+ "launch": { "view": "canvas", "page": "proposal" },
+ "pages": [
+  { "id": "proposal", "name": "The proposal" },
+  { "id": "b-steps", "name": "B step by step" },
+  { "id": "parts", "name": "Parts" }
+ ],
+ "boards": {
+  "Main.dc.html": { "x": 0, "y": 0, "w": 1904, "h": 1596, "title": "Today, and three ways to calm it", "page": "proposal" },
+  "Home.dc.html": { "x": 0, "y": 1985, "w": 1440, "h": 900, "title": "B on Home, every control working", "page": "proposal", "expand": "fill", "is_interactive": true },
+  "HomeLight.dc.html": { "x": 1520, "y": 1985, "w": 1440, "h": 900, "title": "B on Home, light", "page": "proposal", "expand": "fill", "is_interactive": true },
+  "HomeToday.dc.html": { "x": 0, "y": 3265, "w": 1440, "h": 900, "title": "Today on Home", "page": "proposal", "expand": "fill", "is_interactive": true },
+  "HomeA.dc.html": { "x": 1520, "y": 3265, "w": 1440, "h": 900, "title": "A on Home", "page": "proposal", "expand": "fill", "is_interactive": true },
+  "HomeC.dc.html": { "x": 3040, "y": 3265, "w": 1440, "h": 900, "title": "C on Home", "page": "proposal", "expand": "fill", "is_interactive": true },
+  "States.dc.html": { "x": 0, "y": 0, "w": 2456, "h": 2404, "title": "Every state of B and C's rail", "page": "b-steps" },
+  "Journeys.dc.html": { "x": 0, "y": 2784, "w": 3140, "h": 1918, "title": "B, every journey step by step", "page": "b-steps" },
+  "Panel.dc.html": { "x": 0, "y": 0, "w": 256, "h": 900, "title": "The side panel (v: today, a, b, c)", "page": "parts", "is_interactive": true },
+  "Faces.dc.html": { "x": 336, "y": 0, "w": 1000, "h": 820, "title": "People in the arch", "page": "parts" },
+  "Overlays.dc.html": { "x": 1416, "y": 0, "w": 1000, "h": 300, "title": "What opens over a page", "page": "parts" },
+  "SkyArt.dc.html": { "x": 1416, "y": 420, "w": 1000, "h": 340, "title": "Home's sunset", "page": "parts" },
+  "Visitors.dc.html": { "x": 2496, "y": 0, "w": 1200, "h": 420, "title": "What passes through", "page": "parts" }
+ },
+ "order": ["Main.dc.html", "Home.dc.html", "HomeLight.dc.html", "HomeToday.dc.html", "HomeA.dc.html", "HomeC.dc.html", "States.dc.html", "Journeys.dc.html", "Panel.dc.html", "Faces.dc.html", "Overlays.dc.html", "SkyArt.dc.html", "Visitors.dc.html"],
+ "notes": {
+  "row-b": { "x": 0, "y": 1685, "text": "B, the one recommended, on Home", "kind": "title1", "maxW": 2960, "page": "proposal" },
+  "row-others": { "x": 0, "y": 2965, "text": "Today, A and C on Home", "kind": "title1", "maxW": 4480, "page": "proposal" },
+  "row-journeys": { "x": 0, "y": 2484, "text": "B, every journey", "kind": "title1", "maxW": 3140, "page": "b-steps" }
+ },
+ "designSystems": []
+}

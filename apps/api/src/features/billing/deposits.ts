@@ -55,7 +55,10 @@ const Buys = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('licenses'), count: z.number().int(), microUsdPerLicense: z.number().int() })
 ]);
 
-/** What a deposit is, sealed. Token amounts are in the token's smallest unit, as integer strings. */
+/**
+ * What a deposit is, sealed. Token amounts are in the token's smallest unit, as integer strings. USDT is no longer
+ * offered, but deposits opened with it before still open.
+ */
 export const DepositRecord = z.object({
   route: z.object({
     id: z.string(), provider: z.literal('oneclick'), chain: z.string(), chainName: z.string(), token: z.enum(['USDC', 'USDT']),

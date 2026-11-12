@@ -10,10 +10,12 @@ import { itemId } from '../../src/api/scenarios';
 import { caretAtEnd, changing, page, pages, type PageArgs, type PageStory } from '../../src/page';
 import type { World } from '../../src/world';
 import { iso } from '../../src/world/clock';
+import { HIRING_SYNC, LAUNCH, spaceItem, withWorkspaces } from '../../src/world/workspaces';
 import { troubled } from './changes';
 
 const meta = { title: 'Pages/Workspace', ...pages } satisfies Meta<PageArgs>;
 export default meta;
+
 
 /** A workspace's address, or one of its documents', by the document's name. */
 const at = (workspace: string, name?: string) => `/drive/${workspace}${name === undefined ? '' : `/${itemId(name)}`}`;
@@ -22,6 +24,60 @@ const FIXES = at('ws-standup', 'Onboarding fixes');
 const SHOTS = at('ws-review', 'Sidebar screenshots');
 const UPLOADS = at('ws-review', 'Review uploads');
 const PHONE = { viewport: { value: 'phone' } };
+
+/* ---------- full screen (the canvas's A workspace board) ---------- */
+
+const launch = changing(withWorkspaces);
+const DESKTOP = { viewport: { value: 'laptop', isRotated: false } };
+const WIDE = { viewport: { value: 'wide', isRotated: false } };
+const TABLET = { viewport: { value: 'tablet', isRotated: false } };
+const LAUNCH_HOME = `/drive/${LAUNCH}`;
+const LAUNCH_PLAN_PAGE = `/drive/${LAUNCH}/${spaceItem('Launch plan')}`;
+const STANDUP_MADE = '/drive/ws-standup?from=calls';
+const STANDUP_CHECKLIST = `/drive/ws-standup/${spaceItem('Launch checklist')}`;
+const AGENDA_PAGE = `/drive/${HIRING_SYNC}/${spaceItem('Agenda')}?from=calls`;
+/**
+ * Launch's Home, full screen: its name on the evening after sunset, under a clear bar; who's in it; what was edited lately as
+ * large previews; and the calls kept in it, the next one first. Its pages down the dark side panel, with the calls under Calls.
+ */
+export const Home = page(LAUNCH_HOME, 'busy', { beforeEach: launch, globals: DESKTOP });
+export const HomeNight = page(LAUNCH_HOME, 'busy', { beforeEach: launch, globals: { ...DESKTOP, theme: 'dark' } });
+export const HomeTablet = page(LAUNCH_HOME, 'busy', { beforeEach: launch, globals: TABLET });
+export const HomeWide = page(LAUNCH_HOME, 'busy', { beforeEach: launch, globals: { ...WIDE, theme: 'dark' } });
+/** On a phone a workspace opens on its pages: Home among them, then each page, its calls and Trash. */
+export const HomePhone = page(LAUNCH_HOME, 'busy', { beforeEach: launch, globals: PHONE });
+/** Home on a phone, from its pages: back goes to them. */
+export const HomePhonePage = page(LAUNCH_HOME, 'busy', {
+  beforeEach: launch, globals: { ...PHONE, theme: 'dark' },
+  play: async ({ canvas, userEvent }) => { await userEvent.click(await canvas.findByRole('button', { name: 'Home' }, { timeout: 8000 })); }
+});
+/**
+ * A page, full screen: Launch plan, with which call it came from, who made it, @mentions, ticks and dates, the callout's
+ * comments in the margin, a quote from the call with its moment, and Priya writing in it, her caret in the focus colour.
+ */
+export const APage = page(LAUNCH_PLAN_PAGE, 'busy', { beforeEach: launch, globals: DESKTOP });
+export const APageNight = page(LAUNCH_PLAN_PAGE, 'busy', { beforeEach: launch, globals: { ...DESKTOP, theme: 'dark' } });
+export const APageWide = page(LAUNCH_PLAN_PAGE, 'busy', { beforeEach: launch, globals: WIDE });
+export const APagePhone = page(LAUNCH_PLAN_PAGE, 'busy', { beforeEach: launch, globals: { ...PHONE, theme: 'dark' } });
+/** The callout's thread, opened from its count in the margin. */
+export const APageThread = page(LAUNCH_PLAN_PAGE, 'busy', {
+  beforeEach: launch, globals: DESKTOP,
+  play: async ({ canvas, userEvent }) => {
+    const [count] = await canvas.findAllByRole('button', { name: 'Open the comments' }, { timeout: 8000 });
+    if (count) await userEvent.click(count);
+  }
+});
+/**
+ * A call's own workspace, opened from the call: it has no Home, so it opens on what the call made, with the call itself first
+ * in its list, then what it made, then the standups before it.
+ */
+export const WhatTheCallMade = page(STANDUP_MADE, 'busy', { beforeEach: launch, globals: { ...DESKTOP, theme: 'dark' } });
+export const WhatTheCallMadeLight = page(STANDUP_MADE, 'busy', { beforeEach: launch, globals: DESKTOP });
+/** What the call made, opened full screen from the Drive: the way back says Drive. */
+export const ACallsPage = page(STANDUP_CHECKLIST, 'busy', { beforeEach: launch, globals: DESKTOP });
+/** An agenda just made in Hiring sync's workspace, before its call tomorrow: it's for the call, and Ines is reading it. */
+export const AnAgendaJustMade = page(AGENDA_PAGE, 'busy', { beforeEach: launch, globals: { ...DESKTOP, theme: 'dark' } });
+export const AnAgendaJustMadePhone = page(AGENDA_PAGE, 'busy', { beforeEach: launch, globals: PHONE });
 /** A moment, as a person takes one. */
 const beat = (ms: number) => new Promise<void>((done) => { setTimeout(done, ms); });
 /** Holds a finger on the first block of this kind until its menu opens: a phone has no handles to press. */
@@ -44,7 +100,7 @@ const share: PageStory['play'] = async ({ canvas, userEvent }) => {
 
 /** Launch, a team workspace the whole team is in, made last week, which Art runs (`admin`) or edits in. */
 const withTeamSpace = (role: 'admin' | 'edit') => (w: World): void => {
-  w.workspaces = [...w.workspaces, { id: 'ws-launch', name: 'Launch', role, people: 5, teamAccess: 'team', createdAt: iso(-6, 11, 0), call: null, items: [] }];
+  w.workspaces = [...w.workspaces, { id: 'ws-launch', name: 'Launch', role, inCall: false, people: 5, teamAccess: 'team', createdAt: iso(-6, 11, 0), call: null, items: [] }];
 };
 /** Opens People from the workspace's name at the top of its list. */
 const teamPeople: PageStory['play'] = async ({ canvas, userEvent, step }) => {

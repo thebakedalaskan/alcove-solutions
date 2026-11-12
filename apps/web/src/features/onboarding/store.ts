@@ -1,6 +1,6 @@
 /*
  * A new account's way in, shared between the screens it crosses: the account being created, the arch
- * opening into Home, and the tour of Home after it. Also asks for the tour again from Settings.
+ * opening into Home, and the tour of Home after it. Also asks for the tour again from your menu and Settings.
  * Lives in memory only: a reload lands on Home like any other visit.
  */
 import { HomeTourSchema } from '@alcove/api';
@@ -31,7 +31,7 @@ export const arrival = {
   open: () => set({ stage: 'opening', opened: state.opened + 1 }),
   /** Home is fully in view: the tour follows. */
   done: () => set({ stage: 'none', tour: { n: ++asked, auto: true } }),
-  /** Take the tour (again), from Settings. */
+  /** Take the tour (again), from your menu or Settings. */
   askTour: () => set({ tour: { n: ++asked, auto: false } }),
   /** The tour has been opened for the last request. */
   tourTaken: () => set({ tour: null })

@@ -3,7 +3,7 @@
  * the whole account (`tag`: a laptop and This browser), then one or two panels. `id` is where the index and the address
  * jump to. Groups follow one another 64px apart (48px on a phone).
  */
-import { Icon, ProviderMark, Select, SettingFact, SettingRow, SettingsGroup, SettingsPanel, Switch, ThemePreview, type SelectOption, type ThemeChoice } from '@alcove/ui';
+import { Icon, ProviderMark, Select, SettingFact, SettingRow, SettingsGroup, SettingsPanel, Switch, THEMES, ThemePreview, type SelectOption, type ThemeChoice } from '@alcove/ui';
 import type { Decorator, Meta, StoryObj } from '@storybook/react-vite';
 import { useState } from 'react';
 import { did } from '../../../src/component';
@@ -12,7 +12,6 @@ import { did } from '../../../src/component';
 const column: Decorator = (Story) => <div className="set-groups" style={{ maxWidth: 940, margin: '0 auto' }}><Story /></div>;
 
 const browserOnly = <><Icon name="laptop" />This browser</>;
-const THEMES: readonly ThemeChoice[] = ['system', 'light', 'dark'];
 /** Each microphone once, by the name people know it by, the system's saying so, as the app lists them. */
 const MICS: SelectOption<string>[] = [{ value: 'built-in', label: 'MacBook Pro Microphone', note: 'Your system’s choice' }, { value: 'usb', label: 'Studio USB Microphone' }];
 

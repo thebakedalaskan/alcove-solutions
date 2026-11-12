@@ -2,8 +2,8 @@
  * Files in a workspace: pictures, video, audio and anything else someone puts in a document or on a board (docs: Data and
  * storage › Media). A file is a row, its sealed info, and sealed pieces of 4 MiB in the object store under random names,
  * all under a key of its own from the workspace's root. It belongs to the workspace and is reached only through a document
- * that has it (`workspace_media_uses`): whoever can open that document can read it, because a guest's seat covers one
- * document, and features/workspaces/access.ts says who that is, on every request, each `Range` included.
+ * that has it (`workspace_media_uses`): whoever can open that document can read it, because what someone in a call is given
+ * can be one document, and features/workspaces/access.ts says who that is, on every request, each `Range` included.
  *
  * A use goes with its document, when that's deleted for good, so a version or something in Trash keeps its pictures, or
  * with the file, when someone deletes it. A file nothing uses any more goes in the same transaction, its objects queued in

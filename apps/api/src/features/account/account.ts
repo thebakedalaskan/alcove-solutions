@@ -21,7 +21,7 @@ import { forgetAllMade } from '../notes/links';
 import { queueDelete } from '../recordings/audio';
 import { open as openPlan } from '../billing/plans';
 import { forgetMembership, refuseDeletingAdmin } from '../billing/teams';
-import { forgetAccess, grantToRevoke, revokeGrant, unreachable, withdraw } from '../meetings/calendar';
+import { forgetAccess, grantToRevoke, release, revokeGrant, unreachable, withdraw } from '../meetings/calendar';
 import { create as createMeeting, findUpcoming } from '../meetings/service';
 import { deleteOwnNote, heldNoteIds } from '../notes/service';
 import { photoUrl } from './photos';
@@ -61,7 +61,7 @@ const DEFAULT_PREFERENCES: StoredPreferences = {
   notesDefault: 'on', notesLanguage: 'call', summaryLength: 'short', addToCalendar: true, showOtherMeetings: true, recordOffline: true,
   notifications: DEFAULT_NOTIFICATION_PREFERENCES,
   sounds: DEFAULT_SOUND_PREFERENCES,
-  pinned: [], groups: [], model: null
+  pinned: [], groups: [], model: null, notificationsPausedUntil: null
 };
 
 async function profileItem(o: Owner, db: Db) {
@@ -275,17 +275,19 @@ export async function deleteAccount(o: Owner): Promise<void> {
 /**
  * Cancels on Google Calendar every call Upcoming lists, begun or not, as Cancel call does, so their guests are
  * told. A series' calls go with their recurring event, which tells everyone once. An event the organizer made in
- * Google Calendar and moved to Alcove is theirs, so it's kept as it was (its Alcove link stops working). Google has
+ * Google Calendar and moved to Alcove is theirs, so it's kept as it was (its Alcove link stops working). The times
+ * held for a call waiting for a guest to pick go too, telling nobody, since nobody was invited to them. Google has
  * CANCEL_MS in all: cancelling stops at the first timeout or network
  * failure, or when the time is up. Counts what was cancelled, kept, and not cancelled (failed, left when it
  * stopped, or with no calendar connected any more), with a warning that says why when something went wrong.
  */
 async function withdrawCalls(o: Owner): Promise<{ cancelled: number; kept: number; notCancelled: number }> {
   const out = { cancelled: 0, kept: 0, notCancelled: 0 };
-  const due: { meetingId: string; eventId: string }[] = [];
+  const due: { meetingId: string; eventId: string; held?: boolean }[] = [];
   try {
     const upcoming = await findUpcoming(o);
     for (const m of upcoming) {
+      for (const h of m.manifest.holds) due.push({ meetingId: m.itemId, eventId: h.eventId, held: true });
       const event = m.manifest.calendarEvent;
       if (!event || event.master) continue;
       if (event.adopted) out.kept++;
@@ -301,7 +303,7 @@ async function withdrawCalls(o: Owner): Promise<{ cancelled: number; kept: numbe
   for (const [i, d] of due.entries()) {
     if (budget.aborted) { out.notCancelled += due.length - i; failure = budget.reason; break; }
     try {
-      const r = await withdraw(o, d.eventId, d.meetingId, budget);
+      const r = d.held ? await release(o, d.eventId, budget) : await withdraw(o, d.eventId, d.meetingId, budget);
       if (r === 'cancelled') out.cancelled++;
       else if (r === 'not-connected') out.notCancelled++;
     } catch (e) {
@@ -351,6 +353,8 @@ export async function updatePreferences(o: Owner, patch: Patch<Preferences>): Pr
     sounds: patch.sounds ?? p.preferences.sounds,
     pinned: patch.pinned ?? p.preferences.pinned,
     groups: patch.groups ?? p.preferences.groups,
-    model: patch.model === undefined ? p.preferences.model : patch.model
+    model: patch.model === undefined ? p.preferences.model : patch.model,
+    // Null resumes; a time already past is kept as given and means nothing is paused.
+    notificationsPausedUntil: patch.notificationsPausedUntil === undefined ? p.preferences.notificationsPausedUntil : patch.notificationsPausedUntil
   } }))).preferences;
 }

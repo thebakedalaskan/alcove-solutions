@@ -714,6 +714,38 @@ the same way when it is an unencrypted one.
 
 `ready` is true only when the note is `ready`.
 
+## Search
+
+`POST /v1/notes/search` with `{kind?, text?, by?}` (`NoteSearchBodySchema`: `text` up to 200 characters, `by` an email
+address) lists the notes the person searching has, newest first: their own, and other people's they reach through a
+`note_access` row for their address (`notes.list` in `apps/api/src/features/notes/service.ts`). The words and the address
+travel in the body alone, so they never reach a URL or a log line, and a search is stored nowhere and keeps no receipt.
+It reads each note as the person may read it, so a transcript they can't read finds nothing and is quoted to nobody
+([Without the transcript](#whats-kept-and-for-how-long)).
+
+- **The words.** `searchOf` (`packages/api/src/search.ts`) reads `text`: its words, lower-cased, in any order, and whether
+  it reads as a question (it ends in `?` or starts with a question word), which leaves out words of two letters or fewer and
+  the commonest English ones. A note has a word when it's in its title, summary, a decision's or follow-up's words or
+  anything said, the breakout rooms' included, or when it starts one of the words of the name of someone who spoke in it
+  (`namesIn`: two letters or more, ignoring case). A note is found when it has every word, or for a question any of them.
+- **What was said.** `said` quotes up to ten lines (`SAID_SHOWN`) with any of the words, as `termsSaid` reads a line: in its
+  words, or starting a word of its speaker's name, so a name finds what that person said though nobody said the name. The
+  lines with most of the words come first, then the earliest; `saidCount` says how many lines had any. Without words or
+  `by`, nothing is quoted.
+- **Someone's lines.** With `by`, only lines whose speaker's `person.email` is that address (ignoring case) count: the
+  words are looked for in those lines alone, so a note is found only through one of them, and with no words it's every line
+  they said, in time order. An address reaches nothing in a note the person searching doesn't have.
+- **What a line became.** `made` on a quoted line is `decision` when a decision that isn't rejected rests on it (one of its
+  `lines`), or else `follow-up` when a follow-up does (one that's in the notes' follow-ups, not a suggestion). A line is
+  read against the decisions and follow-ups of the part of the call it was said in: a breakout room's lines, its section's.
+- **In the app.** The palette (`apps/web/src/features/shell/Palette.tsx` and `palette/`) and Notes' line both search
+  through `q.notes(kind, text, by)`. The palette shows a note's lines as moments under its call, a person as a token
+  that sets `by`, and the transcript around a lit moment, read from the note itself (`q.note`). A person's preview asks
+  for their lines (`by`, nothing typed) once they've stayed lit 250 ms, or at once when the keys lit them, and shows only
+  theirs: never another's while theirs are on the way. Its **See all in Notes** hands the words to Notes in the browser's
+  history state, never the address. Notes parses them as a search's words (`NoteSearchBodySchema`'s `text`) and takes them
+  out of the history entry as it reads them, so they don't outlive the page, a sign-out or a restored session.
+
 ## Asking
 
 `POST /v1/notes/:id/ask` with `{question}` (1 to 500 characters, in the body) answers anyone who can read
@@ -763,11 +795,15 @@ prompt in `answerFromNotes` in `drafting.ts`).
   when asking about one note, access is checked again once the answer is written, for every note that was
   sent: if any was deleted or removed from the asker's notes meanwhile, the answer isn't sent
   (`409 conflict`), and asking again reads what's left.
-- **In the app.** The palette asks (`apps/web/src/features/shell/Palette.tsx`, through `useAnswer` in
-  `features/notes/answer.tsx`, which the ask bar on a note and on a series uses too). It lists each cited note once, from
-  the notes list the app already has (a note that isn't there is left out), with its moments in order. Each
-  moment links to `/notes/<id>?at=<seconds>`; the note page parses `at` with `NoteMomentSchema` and opens
-  its player there without playing. A cite at second 0 links to the note without a moment.
+- **In the app.** The palette asks (`apps/web/src/features/shell/palette/Answered.tsx`, through `useAnswer` in
+  `features/notes/answer.tsx`, which the ask bar on a note and on a series uses too). It shows the answer in place of
+  the list, then each cited moment as the line said then, under its call, in the order the answer uses them (`citedOf`
+  in `palette/rows.ts`, which reads the line from the note with `heardAt` and what it became with `madeAt`); a note that
+  isn't in the notes list the app already has is left out. Each moment links to `/calls/<id>?at=<seconds>`; the note
+  page parses `at` with `NoteMomentSchema` and opens its player there without playing, or playing with `play`
+  (`NotePlayParamSchema`), which the palette's **Play from** adds. Once it has played, the note page takes `play` out of
+  the address with a replace, so Back or a reload opens the moment without playing it again. A cite at second 0 links to
+  the note without a moment. The workspace's Ask lists its sources with `Sources`, in `features/workspace/Sources.tsx`.
 
 ## Decisions and follow-ups
 
@@ -807,6 +843,7 @@ manifest, the call's own lists and each breakout room's, so it has no table of i
   | --- | --- |
   | Add one | Anyone with the note; for someone else it's a suggestion, for yourself it's taken on |
   | Take it on ("I'll do it") | Only the person it's for |
+  | Take that back (`takeOn: false`, Undo after I'll do it) | Only whoever took it on: recorded as `reopened`, and it waits on them again |
   | "Not mine" (`owner: null`) | The person it's for: recorded as `declined`, and nobody has it |
   | Say who it's for | The organizer or the person it's for; anyone while nobody has it (a name the notes couldn't tie to an account counts as nobody) |
   | Reword, date or tick it | Anyone invited until it's taken on, and someone given the notes afterwards what they added themselves; then its owner or the organizer |
@@ -876,8 +913,9 @@ manifest, the call's own lists and each breakout room's, so it has no table of i
 - **In the app.** The note says where each decision stands in words as well as colour, who said so, **What was said**
   (the lines and screens, each opening the moment), anything to be careful of, and a history that's reachable by keyboard
   and touch, with what the words were. Only what `grants.ts` allows is offered. A line of the transcript starts a
-  decision or a follow-up from what was said, once the notes are written. Home's **Waiting on you** shows the same, and
-  **I’ll do it** and **Not mine**, and for the organizer, a confirmed decision someone disputes, with **Keep it confirmed**.
+  decision or a follow-up from what was said, once the notes are written. Home's **For you** shows the same under **To
+  answer**, with **I’ll do it** and **Not mine**, and for the organizer, a confirmed decision someone disputes, with
+  **Keep it confirmed**.
 - **Written again.** All of this is what `keepSettled` keeps: anything with a change, so a proposal, a dispute and a "Not
   mine" too, whenever notes are written, even the first time, when someone added to a note whose notes couldn't be
   written. The notes model is told, and a fresh entry like a kept one is dropped, so a follow-up someone turned down isn't
@@ -1462,7 +1500,7 @@ Calendar event moved to Alcove, and a call scheduled as the next one.
 - **Breakout rooms** are part of a call's notes, so they carry over like the rest: each room's decisions, open
   questions and follow-ups come after the call's own, with the room they came from (`room`, its ID and name), and
   everything that goes for the call goes for them: the same note, the same access check, the same state. A room's
-  source opens the note at that room's section (`/notes/<id>?room=<room ID>`, at the moment in its transcript with
+  source opens the note at that room's section (`/calls/<id>?room=<room ID>`, at the moment in its transcript with
   `at`).
 - **Nothing derived is kept.** What carries over is read afresh on each request and stored nowhere, so a note that's
   deleted, removed from someone's notes or never given to them isn't in it. Being invited to one call opens
@@ -1535,12 +1573,11 @@ Calendar event moved to Alcove, and a call scheduled as the next one.
   stopped holding or was answered since the latest call. The pre-join shows the same in brief, and the call's Notes
   view a fold, **From last time**, open until the call has notes of its own, with follow-ups nobody took on as well,
   which says only you see it. Sources there open in a new tab, so the call, or the camera at the pre-join, stays as it
-  is. The Ask view's **Earlier calls** asks across the series. A note
-  says when it's in a series, and offers its organizer **Meet again** when it isn't. The series page
-  (`/notes/series/<id>`) has everything, lets people settle it, and answers questions across the calls; under
-  its calls it says how many older ones aren't shown. When a series follows a recurring Google event and
-  Google Calendar isn't connected any more, the series page and the note say so and offer **Connect Google
-  Calendar**, since Home can't show the next occurrence without it.
+  is. The Ask view's **Earlier calls** asks across the series. A call's page says how its series repeats, as a link to the
+  series' place on Calls, and More offers **Meet again**. The series' place (`/calls?series=<id>`) has everything, lets
+  people settle it, and answers questions across the calls; under its calls it says how many older ones aren't shown. When
+  a series follows a recurring Google event and Google Calendar isn't connected any more, the series' place says so and
+  offers **Connect Google Calendar**, since Home can't show the next occurrence without it.
 
 ## Prompts
 
@@ -2070,17 +2107,26 @@ changed on their own, in length too, surviving a new recurring event, older seri
 its own event taking on how they repeat, a chain of next calls made to repeat, cross-owner refusals,
 two quick changes, a change that outlives its turn, Google failing at each step, occurrences found first or logged when
 they can't be, deleting an account, 60 calls with 300 people, and what's logged.
-`apps/api/src/features/notes/keep.integration.test.ts` covers what a call keeps, looking where it would otherwise still be: every
-revision of the note, opened with its owner's keys, the rows beside it and the bucket. A call that doesn't keep its
-transcript (read by the organizer alone until the notes are written, one revision with no parent after, no clip, job or
-receipt left, asking from the notes, in one note and across them), one whose notes can't be written (kept, hidden from
-everyone invited by every path, then written and deleted), one that doesn't keep its recording (gone when the call
-ends, with or without a notes service; lines, gaps and the bill right), a piece on its way when the call ends, one
-that got in by another way, a refused object delete, shared screens read as scheduled and kept without the audio,
-a call with breakout rooms (every room's transcript gone from every revision, for everyone, asking from each room's
-notes; one room's notes failing, which keeps only its lines, for the organizer, until they're written; the call's
-failing, which keeps them all; a call where only rooms talked; no audio left of the rooms), the defaults, room
-recordings, and a note sealed by the previous release.
+`apps/api/src/features/notes/keep.integration.test.ts` covers what a call keeps, looking where it would otherwise still
+be: every revision of the note, opened with its owner's keys, the rows beside it and the bucket. A call that doesn't
+keep its transcript (read, and found by its words, a speaker's address or their name, by the organizer alone until the
+notes are written, one revision with no parent after, no clip, job or receipt left, asking from the notes, in one note
+and across them), one whose notes can't be written (kept, hidden from everyone invited by every path, then written and
+deleted), one that doesn't keep its recording (gone when the call ends, with or without a notes service; lines, gaps and
+the bill right), a piece on its way when the call ends, one that got in by another way, a refused object delete, shared
+screens read as scheduled and kept without the audio, a call with breakout rooms (every room's transcript gone from
+every revision, for everyone, asking from each room's notes; one room's notes failing, which keeps only its lines, for
+the organizer, until they're written; the call's failing, which keeps them all, for the organizer alone: not even
+whoever said them finds them by their words, address or name; a call where only rooms talked; no audio left of the
+rooms), the defaults, room recordings, and a note sealed by the previous release.
+`apps/api/src/features/notes/search.integration.test.ts` covers [Search](#search): the words in what was said, with who
+said them and when, for everyone with the notes, in any order and in the title too; a question finding notes with any of
+its words; the ten best lines, then the earliest, and how many there were; a decision's or follow-up's words finding
+their note with nothing quoted; a name finding what that person said, from two letters (one finds nothing), with the
+lines that also have a word first, and a link guest's hyphenated name as it's written or by either part; someone's lines across notes by
+their address, however it's written, and a note found only through them, never through another speaker's name; nothing
+by an address in notes the searcher doesn't have, or no longer has; and `made`, for the lines decisions and follow-ups
+rest on as they're added and rejected, and for a breakout room's lines against its own section.
 `apps/api/src/features/notes/carryover.integration.test.ts` covers what carries over into a call: at the pre-join and during it, for
 the organizer and someone with the earlier notes; nothing for someone newly invited, a stranger with the link or
 another organizer's series, and a refusal for a guest; nothing in the card or the call's state; grants per earlier

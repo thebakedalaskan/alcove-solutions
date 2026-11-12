@@ -95,6 +95,8 @@ button.wb-lang:hover, button.wb-lang:focus-visible { background: color-mix(in sr
 @media (hover: none) { .wb-lang.is-plain { opacity: 1; } }
 .wb-hr { flex: 1; height: 1px; margin: 16px 0; border: 0; background: var(--line); }
 .wb-th { position: absolute; left: 100%; top: 2px; margin-left: 10px; display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 7px; border-radius: 7px; background: var(--hl); color: var(--ink-2); font: 600 12px/1 var(--font-sans); }
+/* Who commented shows only on a page's own look, below; in a call the margin keeps its icon. */
+.wb-thf { display: none; }
 .wb-line { position: absolute; left: 0; right: 0; height: 3px; margin-top: -1.5px; border-radius: 3px; background: var(--horizon); pointer-events: none; }
 .wb-line.is-file em { position: absolute; left: 50%; top: 6px; transform: translateX(-50%); padding: 4px 9px; border-radius: 7px; background: var(--horizon); color: var(--surface); font: 600 12px/1 var(--font-sans); font-style: normal; white-space: nowrap; }
 @keyframes ws-blink { 50% { opacity: 0; } }
@@ -262,3 +264,46 @@ button.wb-drop:hover { color: var(--ink-2); box-shadow: inset 0 0 0 1.5px var(--
 .wd-tail { padding: 0; border: 0; background: none; }
 .ws-ed .ac-btn.is-xs, .ws-float .ac-btn.is-xs { height: 30px; padding: 0 10px; border-radius: 8px; font-size: 13px; gap: 6px; }
 .ac-time { font: 400 12.5px/1 var(--font-mono); font-variant-numeric: tabular-nums; }
+
+/* ------------------------------------------------------------ a document outside a call: full screen, or beside the Drive's tree */
+/*
+ * Wider type; @mentions as plain words in the focus colour; ticks in it too, and dates in the colours of time; a callout on a
+ * hairline, not in a box; a quote from a call on a hairline card, saying who said it and in which call; comments in the margin
+ * as a raised count; other people's carets in the focus colour, with their names.
+ */
+:is(.wf-main, .ws-pane.is-beside) .ws-ed .wb-t { font-size: 16.5px; line-height: 28px; }
+:is(.wf-main, .ws-pane.is-beside) .ws-ed :is(.wb.is-h1, .wb.is-h2, .wb.is-h3) { margin-top: 26px; }
+:is(.wf-main, .ws-pane.is-beside) .ws-ed .wb.is-h1 .wb-t { font: 600 28px/36px var(--font-sans); letter-spacing: -.015em; }
+:is(.wf-main, .ws-pane.is-beside) .ws-ed .wb.is-h2 .wb-t { font: 600 21px/30px var(--font-sans); letter-spacing: -.006em; }
+:is(.wf-main, .ws-pane.is-beside) .ws-ed .wb.is-h3 .wb-t { font: 600 17.5px/28px var(--font-sans); }
+:is(.wf-main, .ws-pane.is-beside) .ws-ed .wn { display: inline; height: auto; padding: 0; border-radius: 0; background: none; color: var(--focus); font: inherit; font-weight: 600; vertical-align: baseline; white-space: normal; }
+:is(.wf-main, .ws-pane.is-beside) .ws-ed .wn-f { display: none; }
+:is(.wf-main, .ws-pane.is-beside) .ws-ed .wn b::before { content: "@"; }
+:is(.wf-main, .ws-pane.is-beside) .ws-ed .wn:hover { filter: none; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; }
+:is(.wf-main, .ws-pane.is-beside) .ws-ed .wdt { height: 24px; padding: 0 7px; background: var(--sun-soft); color: var(--sun-text); font-size: 14px; }
+:is(.wf-main, .ws-pane.is-beside) .ws-ed .wdt .ac-i { display: none; }
+:is(.wf-main, .ws-pane.is-beside) .ws-ed .wb-box[aria-checked="true"] { background: var(--focus); color: var(--ground); }
+:is(.wf-main, .ws-pane.is-beside) .ws-ed .wb.is-callout { gap: 8px; margin: 20px 0; padding: 4px 0 4px 16px; border-radius: 0; background: none; box-shadow: inset 2px 0 0 color-mix(in srgb, var(--sun-text) 70%, transparent); }
+:is(.wf-main, .ws-pane.is-beside) .ws-ed .wb.is-callout .wb-ci { padding-top: 5px; color: var(--sun-text); }
+:is(.wf-main, .ws-pane.is-beside) .ws-ed .wb-mom { gap: 12px; margin: 18px 0; padding: 14px 16px; border-radius: 14px; background: none; box-shadow: inset 0 0 0 1px var(--line); }
+:is(.wf-main, .ws-pane.is-beside) .ws-ed .wb-mom p { font: 400 15.5px/1.55 var(--font-sans); }
+:is(.wf-main, .ws-pane.is-beside) .ws-ed .wb-mom .m { gap: 6px 10px; margin-top: 8px; font: 500 12.5px/1.3 var(--font-sans); color: var(--ink-2); }
+:is(.wf-main, .ws-pane.is-beside) .ws-ed .wb-th { left: calc(100% + 18px); top: 0; height: 28px; padding: 0 10px 0 8px; gap: 5px; border-radius: var(--radius-pill); background: var(--surface-raised); box-shadow: 0 0 0 1px var(--line), var(--shadow-1); color: var(--ink-2); }
+:is(.wf-main, .ws-pane.is-beside) .ws-ed .wb-th:hover { color: var(--ink); }
+/* The people who commented, their arches overlapping, before the count, in place of the icon. */
+:is(.wf-main, .ws-pane.is-beside) .ws-ed .wb-th:has(> .wb-thf:not(:empty)) { gap: 6px; padding-left: 5px; }
+:is(.wf-main, .ws-pane.is-beside) .ws-ed .wb-th:has(> .wb-thf:not(:empty)) > svg { display: none; }
+:is(.wf-main, .ws-pane.is-beside) .ws-ed .wb-thf { display: inline-flex; }
+:is(.wf-main, .ws-pane.is-beside) .ws-ed .wb-thf .ac-avatar { --ring: var(--surface-raised); }
+:is(.wf-main, .ws-pane.is-beside) .wb-rc i { background: var(--focus); box-shadow: none; }
+:is(.wf-main, .ws-pane.is-beside) .wb-rc em { background: var(--focus); color: var(--ground); }
+/* Their name flies above the line, as a flag from the caret, so it never covers what they're writing. */
+:is(.wf-main, .ws-pane.is-beside) .wb-rc em { left: -1px; top: auto; bottom: calc(100% + 1px); height: 18px; gap: 3px; padding: 0 6px 0 2px; border-radius: 6px 6px 6px 0; }
+:is(.wf-main, .ws-pane.is-beside) .wb-rc.is-flip em { left: auto; right: -1px; border-radius: 6px 6px 0 6px; }
+@container (max-width: 640px) {
+  :is(.wf-main, .ws-pane.is-beside) .ws-ed .wb-th { left: auto; right: -14px; }
+  /* Faces make the count wider, so a line with them makes that much more room. */
+  :is(.wf-main, .ws-pane.is-beside) .ws-ed .wb:has(> .wb-th > .wb-thf:not(:empty)) { padding-right: 52px; }
+  /* A narrow page keeps only the caret: a name over the line would cover more than it says. */
+  :is(.wf-main, .ws-pane.is-beside) .wb-rc em { display: none; }
+}

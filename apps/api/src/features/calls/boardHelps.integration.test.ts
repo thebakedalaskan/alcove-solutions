@@ -12,7 +12,6 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest
 import { z } from 'zod';
 import { openJson, stateKey } from '../../crypto';
 import { openOwner } from '../../owners';
-import { withWorkspace } from '../../testing/call-workspace';
 import { speechWav } from '../../testing/fake-near';
 import { startHarness, type Harness } from '../../testing/harness';
 import { disposeLiveKit } from '../../testing/livekit';
@@ -66,7 +65,6 @@ async function boardCall(notes: 'on' | 'off' = 'on') {
   const { code } = await art.api.calls.startNow({ notes, guests: [kofi.email] });
   const host = await art.api.calls.join(code, { mic: true, cam: false });
   await inGroup(host);
-  await withWorkspace(host);
   const k = await kofi.api.calls.join(code, { mic: true, cam: false });
   await inGroup(k);
   await settle(host, (s) => s.participants.some((p) => p.id === k.ticket.identity));
@@ -189,7 +187,6 @@ describe('ideas from the call', () => {
     const { code } = await art.api.calls.startNow({ notes: 'on', guests: [kofiEmail, lenaEmail] });
     const host = await art.api.calls.join(code, { mic: true, cam: false });
     await inGroup(host);
-    await withWorkspace(host);
     const kofi = await (await account(kofiEmail)).api.calls.join(code, { mic: true, cam: false });
     await inGroup(kofi);
     const lena = await (await account(lenaEmail)).api.calls.join(code, { mic: true, cam: false });
@@ -223,7 +220,6 @@ describe('ideas from the call', () => {
     const { code } = await art.api.calls.startNow({ notes: 'on', guests: [kofi.email, lena.email] });
     const host = await art.api.calls.join(code, { mic: true, cam: false });
     await inGroup(host);
-    await withWorkspace(host);
     const k = await joins(host, code, kofi);
     const l = await joins(host, code, lena);
     await host.appendAudio(piece(audioBytes('shared'), 0, 0));
@@ -252,7 +248,6 @@ describe('ideas from the call', () => {
     const { code } = await art.api.calls.startNow({ notes: 'on', guests: [kofi.email] });
     const host = await art.api.calls.join(code, { mic: true, cam: false });
     await inGroup(host);
-    await withWorkspace(host);
     const k = await joins(host, code, kofi);
     await host.appendAudio(piece(audioBytes('rooms'), 0, 0));
     host.openRooms({ rooms: [{ name: 'Design', emails: [kofi.email] }, { name: 'Support', emails: [] }], minutes: 10, board: { mode: 'each', template: 'retro' } });

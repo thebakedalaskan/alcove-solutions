@@ -166,8 +166,9 @@ export function useNotifications() {
         const chosen = { ...latest.prefs.prefs, ...notificationPreferenceIntent(owner) };
         return latest.allowed && latest.prefs.ownerId === owner && category(chosen, kind);
       },
+      notificationsPauseEnd: () => context.current.prefs.notificationsPauseEnd,
       open: (data) => context.current.go(data),
       failed: () => context.current.toast('Browser notifications couldn’t be shown. Unread messages and outstanding actions stay in Alcove.', { icon: 'bellOff' })
     });
-  }, [owner, allowed, prefs.prefs, calls, inbox, plan, mentions.data, mentions.dataUpdatedAt, mentions.isPlaceholderData, notes.data, notes.dataUpdatedAt, notes.isPlaceholderData, here, scope, tick]);
+  }, [owner, allowed, prefs.prefs, prefs.notificationsPauseEnd, calls, inbox, plan, mentions.data, mentions.dataUpdatedAt, mentions.isPlaceholderData, notes.data, notes.dataUpdatedAt, notes.isPlaceholderData, here, scope, tick]);
 }

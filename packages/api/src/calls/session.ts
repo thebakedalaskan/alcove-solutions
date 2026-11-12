@@ -8,7 +8,6 @@ import { type AudioPiece, type ScreenPiece, type TranscriptClip } from '../recor
 import { IDSchema } from '../shared/ids';
 import { type LiveStore } from '../shared/live';
 import { z } from '../shared/zod';
-import { type DocumentRole } from '../workspaces/schema';
 import { type BoardCheck, type BoardOpen, type BoardVotesEach, type BreakoutBoard } from './boards';
 import { type CaptionLanguage } from './captions';
 import { type CaptureDevicePart } from './capture';
@@ -309,33 +308,25 @@ export interface CallSession extends LiveStore<CallState> {
   updateFollowUp(id: string, patch: FollowUpPatch): Promise<void>;
   reviewFollowUp(review: FollowUpReview): Promise<void>;
   /**
-   * Opening Workspace, for anyone in the call. When the call has a workspace, the first time puts the call's folder in it
-   * (named after the call and the day, where this browser is), and the next call in a series finds its new agenda. A call
-   * with none makes none (`workspace.chosen` false). Resolves with `workspace` up to date, which for someone who can't
-   * open it says it's private.
+   * Opening Workspace, for anyone in the call: the first time, it settles the call's home (the meeting's, else a new one
+   * named after the call and the day, where this browser is), with the call's folder in it, and the next call in a series
+   * finds its new agenda. Resolves with `workspace` up to date, which for someone who can't open it says it's private.
    */
   openWorkspace(): Promise<void>;
-  /** Organizer only: what picking another workspace would mean, for the sheet that asks. Changes nothing. */
+  /** Organizer only: what viewing another workspace would mean, for the sheet that asks. Changes nothing. */
   previewWorkspace(workspaceId: string): Promise<CallWorkspaceSwitch>;
   /**
-   * Organizer only: picks the call's workspace, one the organizer can edit in. Everyone views and edits it, the notes and
-   * transcript go there from now on, and later calls in the series keep it. Nobody is interrupted; what's being presented
-   * and played stops. Nobody is let in by it.
+   * Organizer only: everyone views and edits a workspace the organizer can edit in, or the call's home again. The notes and
+   * transcript still go to the home. Nobody is interrupted; what's being presented and played stops.
    */
   setWorkspace(workspaceId: string): Promise<void>;
   /**
-   * Organizer only: makes a workspace for this call, named after it unless it's given a name, and it's the call's (as
-   * `setWorkspace` makes one). Everyone invited is in it to edit (a guest without an account isn't), and it follows the invite.
+   * Organizer only: makes a workspace for this call, named after it unless it's given a name, and everyone views it. As the
+   * call's home does, it has everyone invited in it to edit (a guest without an account isn't), and it follows the invite.
    */
   newWorkspace(name?: string | undefined): Promise<void>;
   /** Anyone who can open it: brings a document in the call's workspace to the call, or takes it off (`brought` false). */
   bringDocument(documentId: string, brought: boolean): Promise<void>;
-  /** Asks the organizer to share something from the workspace, or takes the ask back. It names nothing. */
-  askForWorkspace(up: boolean): Promise<void>;
-  /** Organizer only: answers an ask by opening one document to whoever asked, until the call ends or Share takes it back. */
-  grantWorkspaceAsk(askId: string, documentId: string, role: DocumentRole): Promise<void>;
-  /** Organizer only: says not now to an ask. Whoever asked is told. */
-  declineWorkspaceAsk(askId: string): Promise<void>;
   /**
    * Anyone who can open it: presents the workspace everyone views, or the board open where you are, to the part of the call
    * you're in, as a new presentation (`CallPresent.key`). One at a time there: refused while someone else presents either, and

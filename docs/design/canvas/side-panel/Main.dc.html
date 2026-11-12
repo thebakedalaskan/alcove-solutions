@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>The side panel, today and three ways to calm it</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="home.css">
+<link rel="stylesheet" href="nav.css">
+<script src="tokens.js"></script>
+<script src="home.js"></script>
+<script src="nav.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400..700&amp;family=Newsreader:ital,opsz,wght@0,6..72,300..600;1,6..72,300..600&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<div class="nv-board">
+<div class="nv-board-h"><h1>The side panel, calmer</h1></div>
+<p class="nv-board-sub">Today the panel holds six places with three counts, Up next as a card all day, Pinned, Groups and the foot. Each direction keeps every place one press away and removes what the panel only repeated. The panel stays dark in both themes, and the phone’s tab bar doesn’t change.</p>
+
+<div class="nv-cols">
+
+<section class="nv-col" aria-labelledby="nv-today">
+<h2 id="nv-today">Today</h2>
+<p>As the app draws it now, on a busy day.</p>
+<div class="nv-win"><dc-import name="Panel" v="today" ns="rest" hint-size="256px,900px"></dc-import><span class="nv-win-page"></span></div>
+<ul class="nv-what">
+<li>Six places, three with a count. Team’s is a total that never needs anything from you: everyone on it.</li>
+<li>Up next is a card all day, with a second Join, repeating Home’s Upcoming.</li>
+<li>Pinned explains itself while it’s empty.</li>
+<li>Groups repeats Team’s, and only takes you there.</li>
+<li>The check and the minutes of notes left.</li>
+</ul>
+</section>
+
+<section class="nv-col" aria-labelledby="nv-a">
+<h2 id="nv-a">A · Just tidy</h2>
+<p>The same order, with less in it.</p>
+<div class="nv-win"><dc-import name="Panel" v="a" ns="rest" hint-size="256px,900px"></dc-import><span class="nv-win-page"></span></div>
+<ul class="nv-what">
+<li class="is-gone"><b>Counts that are totals.</b> A count means something waits on you: answers on Home, tags in the Drive, recordings to upload.</li>
+<li class="is-moved"><b>Up next</b> comes in at the foot 10 minutes before a call, with Join, until it ends. The rest of the day is on Home.</li>
+<li class="is-moved"><b>Groups</b> stay on Team, where they’re made.</li>
+<li class="is-gone"><b>Pinned’s sentence.</b> Pinned shows once you pin something; its pin shows when you point at it.</li>
+</ul>
+</section>
+
+<section class="nv-col" aria-labelledby="nv-b">
+<h2 id="nv-b">B · Two groups <span class="nv-pick">Recommended</span></h2>
+<p>Your work at the top; Team and Agents at the foot.</p>
+<div class="nv-win"><dc-import name="Panel" v="b" ns="rest" hint-size="256px,900px"></dc-import><span class="nv-win-page"></span></div>
+<ul class="nv-what">
+<li class="is-new"><b>Everything in A</b>, and one more move.</li>
+<li class="is-moved"><b>Team and Agents</b> stand at the foot, above the check: who works with you, under what you do.</li>
+<li>The places you go all day are the first four rows under Start a call, and what you pinned sits right under them.</li>
+<li>When a call is near it comes in under Agents, so the places at the top never move.</li>
+</ul>
+</section>
+
+<section class="nv-col" aria-labelledby="nv-c">
+<h2 id="nv-c">C · A rail</h2>
+<p>Icons with their names under them. The page gets 180px more.</p>
+<div class="nv-win"><dc-import name="Panel" v="c" ns="rest" hint-size="76px,900px"></dc-import><span class="nv-win-page"></span></div>
+<ul class="nv-what">
+<li class="is-new"><b>Everything in A</b>, in a rail 76px wide, the way the phone’s tab bar already works.</li>
+<li class="is-moved"><b>Pinned notes</b> are their arches, named when you point at one.</li>
+<li class="is-moved"><b>The check and the minutes</b> are a shield and a ring at the foot.</li>
+<li>A call that’s near is its arch, with the minutes under it.</li>
+</ul>
+</section>
+
+</div>
+<ul class="nv-what nv-key" aria-label="Key">
+<li class="is-gone">Gone from the panel</li>
+<li class="is-moved">Moved</li>
+<li class="is-new">Added</li>
+</ul>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1904,"height":1596}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

@@ -198,7 +198,7 @@ const LANDING_AGAIN_MS = 30_000;
 /** What the call says when the rooms' boards don't come back where they would. */
 const LANDED_ELSEWHERE = 'The rooms’ boards came back on a new board. The one that was open can’t take them.';
 
-const LANDED_NOWHERE = 'The rooms’ boards didn’t come back: this call’s workspace can’t take a new board. Each one is still saved where it was.';
+const LANDED_NOWHERE = 'The rooms’ boards didn’t come back: this call’s home can’t take a new board any more. Each one is still saved there.';
 
 /** What it says when the rooms share a new board for the same reason. */
 export const ROOMS_ON_NEW_BOARD = 'The rooms share a new board. The one that was open can’t take their frames.';
@@ -233,7 +233,7 @@ async function landingFailed(o: Owner, callId: string, until: number, e: unknown
  * with nothing of the call held; and only then does the call let it go, opening in the main room the board it made, if it made
  * one and nothing else is open there. Landing again changes nothing, so one cut short is done again by the next to ask, or
  * upkeep, once some time has gone by (`landingFailed`). A board open in the main room that isn't the call's to write on any
- * more (`boards.land`'s `elsewhere`) gives way to a new one in the call's workspace, made for them as when nothing is open, which
+ * more (`boards.land`'s `elsewhere`) gives way to a new one in the call's home, made for them as when nothing is open, which
  * opens in its place; and when the home can't take a new board, they come back nowhere. Either way the call says so. Fails on
  * its own, with a log line.
  */
@@ -283,12 +283,12 @@ export async function landRooms(call: CallRef): Promise<void> {
           return true;
         });
         if (told) {
-          clog.info('rooms’ boards not landed: the call’s workspace can’t take a new board', { callId, rooms: l.rooms.length });
+          clog.info('rooms’ boards not landed: the call’s home can’t take a new board', { callId, rooms: l.rooms.length });
           await tellRoom(o, row.room_name, callId, { call: true, log: false });
         }
         return;
       }
-      // The board they were coming back to isn't the call's to write on any more: a new one in the call's workspace, as when nothing's open.
+      // The board they were coming back to isn't the call's to write on any more: a new one in the call's home, as when nothing's open.
       const into = { workspaceId: home?.workspaceId ?? l.rooms[0]?.workspaceId ?? l.into.workspaceId, documentId: id128() };
       const moved = await tx(o.pool, async (c) => {
         const held = await load(o, c, callId, true);

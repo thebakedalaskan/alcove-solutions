@@ -89,7 +89,10 @@ export interface DragState { block: MovingBlock; at: Point; line: number | null;
 export type FileDragState = { line: number; after: string } | { into: string };
 
 /** A comment thread, as the margin and the marks need it. */
-export interface ThreadView { open: boolean; count: number }
+/** A thread as the page shows it: whether it's open, how many messages it has, and who wrote them, each once, the first first. */
+export interface ThreadView { open: boolean; count: number; by: readonly ThreadAuthor[] }
+/** Someone who wrote in a thread: what the workspace calls them, and their name as they wrote it. */
+export interface ThreadAuthor { id: string; name: string }
 
 export class EditorRuntime {
   props: EditorProps;

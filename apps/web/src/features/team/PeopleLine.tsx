@@ -94,7 +94,7 @@ function Standing({ arch: a, person, style, sunny, between, ring }: { arch: Arch
   );
 }
 
-/** Notes listed in a popover before Open in Notes. */
+/** Notes listed in a popover before Open in Calls. */
 const NOTES = 5;
 
 /** What's in someone's popover: who they are, what you can do, and the notes you both have, a step further in. */
@@ -117,10 +117,10 @@ function About({ arch: a, person, between, ring, onLeave }: { arch: Arch; person
         </div>
         <div className="tp-pn">
           {shared.slice(0, NOTES).map((n) => (
-            <Link key={n.id} to="/notes/$noteId" params={{ noteId: n.id }} className="tp-pn-r"><span className="ac-clamp-1">{n.title}</span><small>{noteDay(n.startedAt, now)}</small></Link>
+            <Link key={n.id} to="/calls/$noteId" params={{ noteId: n.id }} className="tp-pn-r"><span className="ac-clamp-1">{n.title}</span><small>{noteDay(n.startedAt, now)}</small></Link>
           ))}
         </div>
-        <Link to="/notes" hash={`with=${encodeURIComponent(person.email)}`} className="tp-pop-l is-all"><span>Open in Notes</span><Icon name="right" size={14} className="go" /></Link>
+        <Link to="/calls" hash={`with=${encodeURIComponent(person.email)}`} className="tp-pop-l is-all"><span>Open in Calls</span><Icon name="right" size={14} className="go" /></Link>
       </>
     );
   }

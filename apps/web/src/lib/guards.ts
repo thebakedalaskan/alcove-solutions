@@ -29,9 +29,9 @@ export async function sessionOrOffline(qc: QueryClient): Promise<Session | null 
 
 /**
  * The signed-in account, or off to the welcome screen to sign in. Someone who signed in with Google from a call's join
- * page goes back to it, wherever Google's way back landed them, and someone who pressed Get Pro on the welcome page goes to
- * Plans with checkout on Pro; a preload (a link hovered) never uses either up.
- * Without a connection, someone signed in on this device carries on offline.
+ * page goes back to it, wherever Google's way back landed them, someone who signed in to let an agent in goes to Agents,
+ * where it asks, and someone who pressed Get Pro on the welcome page goes to Plans with checkout on Pro; a preload (a link
+ * hovered) never uses any of these up. Without a connection, someone signed in on this device carries on offline.
  */
 export async function requireAccount(qc: QueryClient, preload = false): Promise<{ account: Account }> {
   const s = await sessionOrOffline(qc);
@@ -42,7 +42,7 @@ export async function requireAccount(qc: QueryClient, preload = false): Promise<
   }
   if (!s) throw redirect({ to: '/welcome' });
   const agent = preload ? null : takeAgentReturn();
-  if (agent) throw redirect({ to: '/connect', search: { request: agent }, replace: true });
+  if (agent) throw redirect({ to: '/agents', search: { request: agent }, replace: true });
   const back = preload ? null : takeReturn();
   if (back) throw redirect({ to: '/join/$code', params: { code: back }, replace: true });
   // Get Pro on the welcome page: Plans, which opens checkout on what was kept for it.

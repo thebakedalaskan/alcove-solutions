@@ -72,6 +72,9 @@ export function PortraitArt({ p }: { p: PortraitStyle }) {
 
 export type AvatarPerson = Pick<Person, 'name'> & { email?: string | undefined; photoUrl?: string | undefined; portrait?: PortraitStyle | undefined };
 
+/** Names as a sentence says them: "Theo", "Theo and Sam", "Theo, Sam and Kofi". */
+export const andList = (names: readonly string[]): string => (names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names.at(-1) ?? ''}`);
+
 /**
  * A person in the arch: their photo, else their illustrated portrait on their own colour, else their
  * initial. Never a plain circle. A photo that doesn't load (gone, blocked, offline) falls back the same way.

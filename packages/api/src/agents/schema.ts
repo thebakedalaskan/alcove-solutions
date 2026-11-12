@@ -47,7 +47,10 @@ export type AgentTokenResult = z.infer<typeof AgentTokenResultSchema>;
 export const AgentAuthorizationSchema = z.object({
   ownerId: AgentOwnerIdSchema,
   accountEmail: z.email(),
+  /** The name the agent gave itself when it registered: anyone can choose it, so consent never treats it as proof. */
   clientName: z.string().min(1).max(80),
+  /** Where allowing sends the browser back to, and with it the agent's code: the host of its registered callback. */
+  redirectHost: z.string().min(1).max(300),
   scopes: AgentScopesSchema,
   expiresAt: z.iso.datetime()
 });
@@ -67,3 +70,45 @@ export type AgentDecisionResult = z.infer<typeof AgentDecisionResultSchema>;
 
 /** A short-lived consent pointer for this tab's sign-in round trip. It carries no credential. */
 export const AgentReturnStoredSchema = z.object({ requestId: AgentAuthorizationIdSchema, until: z.number() });
+
+/** Changing a connection after it's made: what it can do, another 30 days, or both. */
+export const AgentUpdateInputSchema = z.object({
+  scopes: AgentScopesSchema.optional(),
+  renew: z.literal(true).optional()
+}).refine((input) => input.scopes !== undefined || input.renew !== undefined, 'Change what it can do, or keep it longer.');
+export type AgentUpdateInput = z.infer<typeof AgentUpdateInputSchema>;
+
+/** Every tool an agent can call over MCP, by name: what the activity log records. */
+export const AGENT_TOOLS = [
+  'list_notes', 'get_note', 'ask_note', 'ask_notes', 'get_inbox', 'get_personal_notes', 'propose_decision', 'update_decision', 'propose_action',
+  'update_action', 'update_question', 'correct_transcript', 'rewrite_note', 'add_personal_note', 'edit_personal_note', 'remove_personal_note',
+  'share_note', 'delete_note', 'list_meetings', 'get_meeting', 'find_people', 'schedule_call', 'update_call', 'cancel_call', 'answer_call',
+  'schedule_next_call', 'start_call', 'get_calendar', 'get_availability'
+] as const;
+export const AgentToolSchema = z.enum(AGENT_TOOLS);
+export type AgentTool = z.infer<typeof AgentToolSchema>;
+
+export const AgentActivityIdSchema = z.string().regex(/^[A-Za-z0-9_-]{22}$/);
+/**
+ * One thing an agent did, for its owner alone. The record keeps only the tool, the IDs it touched and a count; a title
+ * is read when the list is, from what the owner can still open, so it's null once that's gone.
+ */
+export const AgentActivitySchema = z.object({
+  id: AgentActivityIdSchema,
+  connectionId: AgentConnectionIdSchema,
+  at: z.iso.datetime(),
+  tool: AgentToolSchema,
+  noteId: z.string().max(64).nullable(),
+  noteTitle: z.string().nullable(),
+  meetingId: z.string().max(64).nullable(),
+  meetingTitle: z.string().nullable(),
+  meetingStartsAt: z.iso.datetime().nullable(),
+  /** How many it found or listed, where that's what it did. */
+  count: z.number().int().min(0).nullable()
+});
+export type AgentActivity = z.infer<typeof AgentActivitySchema>;
+/** A page of activity, newest first. `next` is an opaque cursor for the page after, or null at the end. */
+export const AgentActivityPageSchema = z.object({ items: z.array(AgentActivitySchema), next: z.string().max(200).nullable() });
+export type AgentActivityPage = z.infer<typeof AgentActivityPageSchema>;
+export const AgentActivityQuerySchema = z.object({ before: z.string().max(200).optional(), limit: z.number().int().min(1).max(100).default(40) });
+export type AgentActivityQuery = z.input<typeof AgentActivityQuerySchema>;

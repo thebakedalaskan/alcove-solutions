@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>The side panel, every state</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="home.css">
+<link rel="stylesheet" href="nav.css">
+<script src="tokens.js"></script>
+<script src="home.js"></script>
+<script src="nav.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400..700&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<div class="nv-states">
+<h1>B, in every state</h1>
+<p>The panel at its real size, 256 by 900.</p>
+<div class="nv-row">
+<sc-for list="{{b}}" as="s" hint-placeholder-count="8">
+<div class="nv-st">
+<h3>{{s.t}}</h3>
+<p>{{s.s}}</p>
+<div class="nv-st-win"><dc-import name="Panel" v="b" ns="{{s.ns}}" hint-size="256px,900px"></dc-import></div>
+</div>
+</sc-for>
+</div>
+<h1>C, the rail</h1>
+<p>76 wide. Names show beside what you point at.</p>
+<div class="nv-row">
+<sc-for list="{{c}}" as="s" hint-placeholder-count="4">
+<div class="nv-st is-rail">
+<h3>{{s.t}}</h3>
+<p>{{s.s}}</p>
+<div class="nv-st-win"><dc-import name="Panel" v="c" ns="{{s.ns}}" hint-size="76px,900px"></dc-import></div>
+</div>
+</sc-for>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":2456,"height":2280}}'>
+class Component extends DCLogic {
+  renderVals() {
+    var NV = window.AH.NV;
+    return { b: NV.STATES, c: NV.STATES_C };
+  }
+}
+</script>
+</body>
+</html>

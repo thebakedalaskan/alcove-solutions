@@ -1,6 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 
-export type ThemeChoice = 'light' | 'dark' | 'system';
+/** The themes there are, in the order they're offered: System, Light and Dark, as Settings and your menu draw them. */
+export const THEMES = ['system', 'light', 'dark'] as const;
+export type ThemeChoice = (typeof THEMES)[number];
 const KEY = 'alcove-theme';
 const Ctx = createContext<{ theme: ThemeChoice; resolved: 'light' | 'dark'; setTheme: (t: ThemeChoice) => void; toggle: () => void }>({
   theme: 'system', resolved: 'light', setTheme: () => {}, toggle: () => {}

@@ -53,19 +53,13 @@ export const ScheduleWithSomeone: PageStory = {
       await userEvent.click(await arch('Priya Raman'));
       await userEvent.click(within(await popover('Priya Raman')).getByRole('button', { name: 'Schedule' }));
     });
-    await step('When? Only times you’re both free, with them already picked', async () => {
-      const flow = await screen.findByRole('dialog', { name: 'Schedule a call' }, SOON);
-      await within(flow).findByText('You and Priya are free at these times.', {}, SOON);
-      await userEvent.click(within(flow).getByRole('button', { name: /^Use / }));
+    await step('The scheduler opens on the Calls page with Priya in it: only times you’re both free, the best one picked', async () => {
+      const scheduler = await screen.findByRole('complementary', { name: 'Schedule a call' }, SOON);
+      await within(scheduler).findByText('You and Priya are free at these times.', {}, LATER);
     });
-    await step('Check the details, then Schedule', async () => {
-      const flow = await screen.findByRole('dialog', { name: 'Schedule a call' }, SOON);
-      await within(flow).findByRole('textbox', { name: 'Name the call' }, SOON);
-      await userEvent.click(within(flow).getByRole('button', { name: 'Schedule' }));
-    });
-    await step('Back on Team, and it’s on your calendar: Priya gets an invitation', async () => {
-      await screen.findByText(/^On your Google Calendar\. Priya gets an invitation\./, {}, SOON);
-      await screen.findByRole('heading', { name: 'Vandelay Industries', level: 1 }, SOON);
+    await step('Schedule. It’s on your calendar, and Google Calendar invites Priya', async () => {
+      await userEvent.click(within(await screen.findByRole('complementary', { name: 'Schedule a call' }, SOON)).getByRole('button', { name: 'Schedule' }));
+      await screen.findByText(/Google Calendar invites Priya/, {}, SOON);
     });
   }
 };
@@ -78,9 +72,9 @@ export const NotesYouBothHave: PageStory = {
       await userEvent.click(await arch('Priya Raman'));
       await userEvent.click(within(await popover('Priya Raman')).getByRole('button', { name: /^Notes you both have/ }));
     });
-    await step('The same popover lists them, and the last line opens them all in Notes. Each one opens its note', async () => {
+    await step('The same popover lists them, and the last line opens them all in Calls. Each one opens its note', async () => {
       const notes = await popover('Priya Raman');
-      await within(notes).findByRole('link', { name: 'Open in Notes' }, SOON);
+      await within(notes).findByRole('link', { name: 'Open in Calls' }, SOON);
       await userEvent.click(within(notes).getByRole('link', { name: /^Team standup/ }));
       await screen.findByRole('heading', { name: 'Team standup', level: 1 }, LATER);
     });
@@ -257,7 +251,7 @@ export const OpenAGroup: PageStory = {
   name: '10.12 Open a group in place',
   ...page('/team', 'busy'),
   play: async ({ userEvent, step }) => {
-    await step('Click a group’s tile. It says how many calls had all of them. The side panel’s groups do the same', async () => {
+    await step('Click a group’s tile. It says how many calls had all of them', async () => {
       await within(await groups()).findByText('3 people · 1 call', {}, SOON);
       await userEvent.click(within(await groups()).getByRole('button', { name: 'Open Leads' }));
     });
@@ -326,12 +320,11 @@ export const RenameAGroup: PageStory = {
       await userEvent.type(name, 'Product{Enter}');
       await screen.findByText('You already have a group called Product.', {}, SOON);
     });
-    await step('Renamed. The side panel follows', async () => {
+    await step('Renamed, where it is', async () => {
       const name = screen.getByRole('textbox', { name: 'Group name' });
       await userEvent.clear(name);
       await userEvent.type(name, 'Leadership{Enter}');
       await screen.findByRole('heading', { name: 'Leadership', level: 3 }, SOON);
-      await within(screen.getByRole('complementary', { name: 'Side panel' })).findByRole('link', { name: /^Leadership/ }, SOON);
     });
   }
 };

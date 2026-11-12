@@ -1,28 +1,64 @@
 /*
- * Signing out, from the sky. It deletes what this device kept for the account: recordings that haven't uploaded
+ * Signing out. It deletes what this device kept for the account: recordings that haven't uploaded
  * (features/record/offline.ts), and anything written in the workspace that hasn't reached Alcove
- * (features/workspace/keep.ts). With any of that here it says so first: the sky grows to hold one step, stay signed in,
- * copy what was written, or sign out and delete it, and for a moment the page is that one action. The copy holds only the
- * person's own words, as plain text. Focus goes to staying signed in, the choice that loses nothing; Escape closes the step
- * and goes back to Sign out.
+ * (features/workspace/keep.ts). With any of that here it says so first, and asks: stay signed in, copy what was written,
+ * or sign out and delete it. The copy holds only the person's own words, as plain text. Focus goes to staying signed in,
+ * the choice that loses nothing; Escape closes the question and goes back to Sign out.
+ *
+ * One hook decides (`useSigningOut`): what's waiting here, what to say about it, copying, signing out. Settings' sky
+ * (`useSignOutStep`, below) and your menu at the top right (features/shell/YouMenu.tsx) are two ways of showing it. In the
+ * sky the question grows the sky to hold it, and for a moment the page is that one action.
  */
 import { errorMessage } from '@alcove/api';
 import { Button, Spinner, useToast } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
-import { uploads, type KeptItem } from '~/features/record/uploads';
+import { uploads } from '~/features/record/uploads';
 import { keptDocuments } from '~/features/workspace/keep';
 import { unsentText } from '~/features/workspace/sendKept';
 import { useLive } from '~/lib/live';
 import { q, useSignOut } from '~/lib/queries';
 import { plural } from '~/lib/words';
 
+/** What Sign out asks when something on this device would be lost, in the words both ways of showing it use. */
+export interface SignOutQuestion {
+  /** What signing out deletes. */
+  says: string;
+  /** What staying signed in does: a line for the recordings, and one for what was written, as there are. */
+  lines: readonly string[];
+  /** The way out: Sign out and delete them (or it). */
+  signOutLabel: string;
+  /** Something written hasn't reached Alcove, so it can be copied first. */
+  words: boolean;
+}
+
+export interface SigningOut {
+  /** Sign out, pressed: with nothing here that would be lost it signs out at once; otherwise it asks, or stops asking. */
+  press: () => void;
+  /** What it asks, while it's asking. */
+  question: SignOutQuestion | null;
+  /** Something is waiting here, as far as is known, so Sign out asks before it goes (its `aria-expanded`). */
+  asks: boolean;
+  /** Stay signed in: the question closes, and focus goes back to Sign out. */
+  stay: () => void;
+  /** The question closes and focus stays where it is: what it was asked in has closed (your menu). */
+  dismiss: () => void;
+  /** Signs out, deleting what waits here, onto the welcome page. Without a connection it says so, and nothing happens later. */
+  signOut: () => void;
+  /** Copies what was written that hasn't reached Alcove: only the person's own words, as plain text. */
+  copy: () => void;
+  copying: boolean;
+  /** Signing out. */
+  pending: boolean;
+}
+
 /**
- * The Sign out button, the step it opens when recordings here haven't uploaded yet or something written hasn't reached
- * Alcove, and how tall that step is for the sky to hold it.
+ * Signing out of this device, for Settings' sky and your menu alike. `back` puts focus back on Sign out as the question
+ * closes: when Stay signed in (or Escape) closes it, and when it closes by itself, nothing waiting any more, while focus
+ * was in it (`holding`).
  */
-export function useSignOutStep(): { button: ReactNode; step: ReactNode; asking: boolean; height: number } {
+export function useSigningOut({ back, holding }: { back: () => void; holding: () => boolean }): SigningOut {
   const signOut = useSignOut();
   const navigate = useNavigate();
   const toast = useToast();
@@ -33,11 +69,8 @@ export function useSignOutStep(): { button: ReactNode; step: ReactNode; asking: 
   const [words, setWords] = useState(0);
   const [copying, setCopying] = useState(false);
   const [asking, setAsking] = useState(false);
-  const [height, setHeight] = useState(0);
-  const opener = useRef<HTMLButtonElement>(null);
-  const id = useId();
   const go = () => signOut.mutate(undefined, { onSuccess: () => void navigate({ to: '/welcome', replace: true }), onError: (e) => toast(errorMessage(e), { icon: 'x' }) });
-  const close = () => { setAsking(false); opener.current?.focus(); };
+  const stay = () => { setAsking(false); back(); };
   // Decided on what's really here: a list not read yet would look empty, and sign out without a word.
   const press = () => {
     void Promise.all([uploads.listed(), owner ? keptDocuments(owner) : Promise.resolve([])]).then(([k, kept]) => {
@@ -60,22 +93,27 @@ export function useSignOutStep(): { button: ReactNode; step: ReactNode; asking: 
       .then((kept) => { setWords(kept.length); }, (e: unknown) => { toast(errorMessage(e), { icon: 'x' }); })
       .finally(() => { setCopying(false); });
   };
-  // Nothing waits any more (it uploaded or reached Alcove meanwhile), so the step has nothing left to say: it closes for
-  // good, before it's drawn, and focus that was in it goes back to Sign out.
+  // Nothing waits any more (it uploaded or reached Alcove meanwhile), so the question has nothing left to say: it closes
+  // for good, before it's drawn, and focus that was in it goes back to Sign out.
   useLayoutEffect(() => {
     if (!asking || waiting > 0 || words > 0) return;
-    const inside = document.getElementById(id)?.contains(document.activeElement);
+    const inside = holding();
     setAsking(false);
-    if (inside) opener.current?.focus();
-  }, [asking, waiting, words, id]);
-  const button = (
-    <Button ref={opener} variant="quiet" size="sm" icon="signOut" loading={signOut.isPending && !asking}
-      aria-expanded={waiting > 0 || words > 0 ? asking : undefined} aria-controls={asking ? id : undefined} onClick={press}>Sign out</Button>
-  );
+    if (inside) back();
+  }, [asking, waiting, words, holding, back]);
   return {
-    button, asking, height,
-    step: asking ? <SignOutStep id={id} kept={list} words={words > 0} copying={copying} onCopy={copy} pending={signOut.isPending} onStay={close} onSignOut={go} onHeight={setHeight} /> : null
+    press, stay, dismiss: () => setAsking(false), signOut: go, copy, copying, pending: signOut.isPending, asks: waiting > 0 || words > 0,
+    question: asking ? question(list.length, list.filter((k) => k.status === 'expired' || k.status === 'unreadable').length, words > 0) : null
   };
+}
+
+/** What signing out asks about `count` recordings here (`stuck` of them can't upload), and `words`, something written. */
+function question(count: number, stuck: number, words: boolean): SignOutQuestion {
+  const { says, them } = deletes(count, words);
+  const lines: string[] = [];
+  if (count > 0) lines.push(staying(count, stuck));
+  if (words) lines.push('Stay signed in and it stays here until it can go, or copy it first: only your own words come with it.');
+  return { says, lines, signOutLabel: `Sign out and delete ${them}`, words };
 }
 
 /** What staying signed in does for them: they upload by themselves, unless they're too old or won't open here. */
@@ -104,7 +142,30 @@ function deletes(count: number, words: boolean): { says: string; them: string } 
   return { says: 'Something you wrote hasn’t reached Alcove yet. Signing out deletes it from this browser.', them: 'it' };
 }
 
-function SignOutStep({ id, kept, words, copying, onCopy, pending, onStay, onSignOut, onHeight }: { id: string; kept: readonly KeptItem[]; words: boolean; copying: boolean; onCopy: () => void; pending: boolean; onStay: () => void; onSignOut: () => void; onHeight: (px: number) => void }) {
+/**
+ * Settings' Sign out, in the sky: the button, the step it opens when something here would be lost, and how tall that step
+ * is for the sky to hold it.
+ */
+export function useSignOutStep(): { button: ReactNode; step: ReactNode; asking: boolean; height: number } {
+  const [height, setHeight] = useState(0);
+  const opener = useRef<HTMLButtonElement>(null);
+  const id = useId();
+  const out = useSigningOut({
+    back: () => opener.current?.focus(),
+    holding: () => Boolean(document.getElementById(id)?.contains(document.activeElement))
+  });
+  const asking = out.question !== null;
+  const button = (
+    <Button ref={opener} variant="quiet" size="sm" icon="signOut" loading={out.pending && !asking}
+      aria-expanded={out.asks ? asking : undefined} aria-controls={asking ? id : undefined} onClick={out.press}>Sign out</Button>
+  );
+  return {
+    button, asking, height,
+    step: out.question ? <SignOutStep id={id} question={out.question} copying={out.copying} onCopy={out.copy} pending={out.pending} onStay={out.stay} onSignOut={out.signOut} onHeight={setHeight} /> : null
+  };
+}
+
+function SignOutStep({ id, question, copying, onCopy, pending, onStay, onSignOut, onHeight }: { id: string; question: SignOutQuestion; copying: boolean; onCopy: () => void; pending: boolean; onStay: () => void; onSignOut: () => void; onHeight: (px: number) => void }) {
   const title = useId();
   const box = useRef<HTMLDivElement>(null);
   const stay = useRef<HTMLButtonElement>(null);
@@ -120,24 +181,20 @@ function SignOutStep({ id, kept, words, copying, onCopy, pending, onStay, onSign
     return () => watch.disconnect();
   }, [onHeight]);
   const keys = (e: KeyboardEvent<HTMLDivElement>) => { if (e.key === 'Escape' && !pending) { e.stopPropagation(); onStay(); } };
-  const count = kept.length;
-  const stuck = kept.filter((k) => k.status === 'expired' || k.status === 'unreadable').length;
-  const { says, them } = deletes(count, words);
   return (
     <div ref={box} id={id} className="set-ask" role="group" aria-labelledby={title} onKeyDown={keys}>
-      <b id={title}>{says}</b>
-      {count > 0 && <p>{staying(count, stuck)}</p>}
-      {words && <p>Stay signed in and it stays here until it can go, or copy it first: only your own words come with it.</p>}
+      <b id={title}>{question.says}</b>
+      {question.lines.map((line) => <p key={line}>{line}</p>)}
       <div className="set-ask-a">
         {/* aria-disabled, not disabled, while signing out: focus stays on the button pressed. */}
         <Button ref={stay} variant="primary" aria-disabled={pending || undefined} onClick={() => { if (!pending) onStay(); }}>Stay signed in</Button>
-        {words && (
+        {question.words && (
           <Button aria-disabled={pending || copying || undefined} onClick={() => { if (!pending && !copying) onCopy(); }}>
             {copying && <Spinner />}{copying ? 'Copying' : 'Copy what you wrote'}
           </Button>
         )}
         <Button className="set-sky" aria-disabled={pending || undefined} onClick={() => { if (!pending) onSignOut(); }}>
-          {pending && <Spinner />}{pending ? 'Signing out' : `Sign out and delete ${them}`}
+          {pending && <Spinner />}{pending ? 'Signing out' : question.signOutLabel}
         </Button>
       </div>
     </div>

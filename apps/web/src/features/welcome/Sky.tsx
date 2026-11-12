@@ -8,7 +8,7 @@
  * the sky, measured where the words rest (an entrance doesn't move them), and it's drawn again when they move or the window
  * changes size. What's on the water starts below the cove's reflections (`--cv-reach`).
  */
-import { COVE_REFLECTION, Cove, Horizon, cn, type CoveWords, type Moment, type SailFrom } from '@alcove/ui';
+import { COVE_REFLECTION, Cove, Horizon, cn, restingBox, useCoveFit, type CoveWords, type Moment, type SailFrom } from '@alcove/ui';
 import { useReducedMotion } from 'motion/react';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
@@ -19,19 +19,6 @@ export interface SkyCove { seed: number; foot: (sky: number) => number }
 
 /** The cove as a part draws it, in the part's own px. */
 interface Land { width: number; line: number; foot: number; words: CoveWords[] }
-
-/** Where `el` rests in `part` (px), its own entrance aside: offsets, which no transform moves. */
-function restingBox(el: HTMLElement, part: HTMLElement): CoveWords | null {
-  let x = 0;
-  let y = 0;
-  let at: Element | null = el;
-  while (at instanceof HTMLElement && at !== part) {
-    x += at.offsetLeft;
-    y += at.offsetTop;
-    at = at.offsetParent;
-  }
-  return at === part ? { l: x, r: x + el.offsetWidth, b: y + el.offsetHeight } : null;
-}
 
 /** The words on a part's sky (everything standing on it), and the nav over the top of the page, in the part's px. */
 function wordsOn(part: HTMLElement, sky: HTMLElement): CoveWords[] {
@@ -102,43 +89,17 @@ export function Sky({ moment, sky, children, sun, cove, className, id }: {
 
   /*
    * The cove is drawn as the part is first laid out, and again a moment after anything it keeps clear of changes: the sky's
-   * height, the words (a font arriving, single sign-on opening in place) or the window.
+   * height, the words (a font arriving, or single sign-on opening in place, which brings something new to watch) or the window.
    */
-  useLayoutEffect(() => {
+  useCoveFit(() => {
     const el = box.current, top = up.current;
-    if (!cove || !el || !top) return undefined;
-    let wait = 0;
-    let frame = 0;
-    let gone = false;
-    const later = () => {
-      if (gone) return;
-      clearTimeout(wait);
-      wait = window.setTimeout(() => { cancelAnimationFrame(frame); frame = requestAnimationFrame(draw); }, 140);
-    };
-    /* Each thing on the sky is watched once: single sign-on opening in place brings a new one, and only that is added. */
-    const ro = new ResizeObserver(later);
-    const watched = new Set<Element>();
-    const watch = (els: Element[]) => {
-      for (const w of els) if (!watched.has(w)) { watched.add(w); ro.observe(w); }
-      for (const w of watched) if (!els.includes(w)) { watched.delete(w); ro.unobserve(w); }
-    };
-    function draw() {
-      if (!el || !top || !cove) return;
+    if (!cove || !el || !top) return null;
+    return () => {
       const line = Math.round(top.offsetHeight);
       const next: Land = { width: el.clientWidth, line, foot: Math.round(cove.foot(line)), words: wordsOn(el, top) };
       el.style.setProperty('--cv-reach', `${next.foot - line + COVE_REFLECTION}px`);
       setLand((was) => (sameLand(was, next) ? was : next));
-      watch([top, ...Array.from(top.firstElementChild?.children ?? [])]);
-    }
-    draw();
-    addEventListener('resize', later);
-    void document.fonts.ready.then(later);
-    return () => {
-      gone = true;
-      clearTimeout(wait);
-      cancelAnimationFrame(frame);
-      ro.disconnect();
-      removeEventListener('resize', later);
+      return [top, ...Array.from(top.firstElementChild?.children ?? [])];
     };
   }, [cove]);
 

@@ -45,7 +45,7 @@ function excerpt(line: string, at: number): string {
   return `${start > 0 ? '…' : ''}${line.slice(start, stop).trim()}${stop < line.length ? '…' : ''}`;
 }
 
-/** Where a line has what's looked for, and whether it has it as typed. Words count in any order, as they do in Notes. */
+/** Where a line has what's looked for, and whether it has it as typed. Words count in any order, as they do in Calls' search. */
 function matcher(query: string): (line: string) => { at: number; exact: boolean } | null {
   const terms = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
   const phrase = terms.join(' ');

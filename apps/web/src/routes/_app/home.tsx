@@ -1,58 +1,59 @@
 /*
  * Home: the page is a sunset with starting a call in the middle of it, because that's what people come here to do.
- * Under the water: what's yours to answer and tick off, what's coming up, and your recent notes. The day's calls don't
- * lead: people join from their calendar, so a call only comes near the top in its last few minutes. Signed in from the
- * welcome page, Home opens by sailing out of its cove (features/home/SailOut.tsx).
+ * Under the horizon, three widgets: For you (what's yours to answer, and your follow-ups), Upcoming (a calendar, by day)
+ * and Recent notes (a row of cards). The day's calls don't lead: people join from their calendar, so a call only comes near
+ * the top in its last few minutes. Google sends you back here after connecting the calendar from Upcoming (`?calendar=`,
+ * which Home reads once and drops). Signed in from the welcome page, Home opens by sailing out of its cove
+ * (features/home/SailOut.tsx).
  */
-import type { Inbox } from '@alcove/api';
+import { CalendarConnectResultSchema, type CalendarConnectResult } from '@alcove/api';
 import { Evening, SealedBadge } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useEffect, useRef } from 'react';
-import { ConnectCalendar, useNotNow } from '~/features/home/Calendar';
-import { Coming } from '~/features/home/Coming';
-import { aheadOf, joinable } from '~/features/home/day';
-import { GetSetUp } from '~/features/home/FirstDay';
+import { aheadShown, joinable } from '~/features/home/day';
 import { ForYou } from '~/features/home/ForYou';
 import { Recent } from '~/features/home/Recent';
 import { SailOutHere } from '~/features/home/SailOut';
 import { Start } from '~/features/home/Start';
+import { Upcoming, useCalendarReturn } from '~/features/home/Upcoming';
 import { overlayOpen, typing } from '~/lib/keys';
 import { useNow } from '~/lib/live';
 import { q, verifiedAt } from '~/lib/queries';
 import { hm, longDay } from '~/lib/time';
 
 export const Route = createFileRoute('/_app/home')({
+  validateSearch: (search: Record<string, unknown>): { calendar?: CalendarConnectResult | undefined } => {
+    const calendar = CalendarConnectResultSchema.safeParse(search['calendar']);
+    return { calendar: calendar.success ? calendar.data : undefined };
+  },
   loader: async ({ context: { queryClient: qc } }) => {
     const calendar = qc.ensureQueryData(q.calendar()).catch(() => undefined);
     await Promise.all([
-      qc.ensureQueryData(q.upcoming()), qc.ensureQueryData(q.notes()), qc.ensureQueryData(q.inbox()), qc.ensureQueryData(q.prefs()),
+      qc.ensureQueryData(q.upcoming()), qc.ensureQueryData(q.notes()), qc.ensureQueryData(q.prefs()),
+      // What's waiting on you can fail on its own: For you says so, and the rest of Home still works.
+      qc.ensureQueryData(q.inbox()).catch(() => undefined),
       // Google can be slow: the calendar gets a moment, so the list doesn't change under the reader, and no longer.
       Promise.race([calendar, new Promise((r) => setTimeout(r, 1200))])
     ]);
-    // Home never waits for the team, which only adds people to ring (prefetching doesn't throw).
-    void qc.prefetchQuery(q.team());
   },
   component: Home
 });
 
-const NOTHING: Inbox = { followUps: [], decisions: [] };
-
 function Home() {
+  const { calendar: inAddress } = Route.useSearch();
   const session = useQuery(q.session()).data;
   const notes = useQuery(q.notes()).data ?? [];
   const calls = useQuery(q.upcoming()).data ?? [];
   const calendar = useQuery(q.calendar()).data;
   const prefs = useQuery(q.prefs()).data;
-  const inbox = useQuery(q.inbox()).data ?? NOTHING;
   const navigate = useNavigate();
   const now = useNow();
-  const later = useNotNow();
+  const result = useCalendarReturn(inAddress);
   const me = session?.user.email;
   const evening = useRef<HTMLDivElement>(null);
 
-  const others = prefs?.showOtherMeetings !== false;
-  const items = aheadOf(calls, others ? calendar?.events ?? [] : [], now);
+  const items = aheadShown(calls, calendar?.events, prefs?.showOtherMeetings, now);
   const firstDay = notes.length === 0;
   const soon = joinable(items, me, now);
 
@@ -75,14 +76,10 @@ function Home() {
       <Evening ref={evening} moment="home" className="hm" data-soon={soon ? true : undefined}>
         <header className="dusk-top" style={{ '--d': 0 }}><h1 className="dusk-title">{longDay(new Date(now))}</h1></header>
         <Start first={firstDay} soon={soon} me={me} now={now} />
-        <div className="hm-grid" style={{ '--d': 2 }}>
-          {firstDay ? <GetSetUp /> : <ForYou inbox={inbox} notes={notes} now={now} />}
-          <div className="hm-side">
-            {/* On the first day, Get set up offers this already. */}
-            {!firstDay && calendar?.needsAccess && !later.away && <ConnectCalendar onNotNow={later.notNow} />}
-            <Coming ahead={items} me={me} now={now} />
-            <Recent notes={notes} me={me} />
-          </div>
+        <div className="hm-water" style={{ '--d': 2 }}>
+          <ForYou notes={notes} now={now} />
+          <Upcoming ahead={items} me={me} now={now} result={result} />
+          <Recent notes={notes} me={me} now={now} />
         </div>
         {/* The side panel shows the same check on wide screens; this one is for phones and a hidden panel. */}
         <div className="hm-seal" style={{ '--d': 3 }}><Compute /></div>
@@ -97,5 +94,5 @@ function Compute() {
   const checked = useQuery(q.trust());
   const verified = verifiedAt(checked.data);
   const detail = verified !== null ? `Hardware verified ${hm(new Date(verified))}` : checked.isPending ? 'Checking the hardware…' : 'Audio, transcripts and notes are sealed';
-  return <SealedBadge title="Confidential compute" detail={detail} className="head-seal" data-tour="sealed" />;
+  return <SealedBadge title="Confidential compute" detail={detail} className="head-seal" />;
 }

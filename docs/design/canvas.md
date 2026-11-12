@@ -1,8 +1,8 @@
 # Making a design canvas
 
 How to design a page, a flow or a change to how something looks, as a design canvas: live, clickable boards on
-claude.ai, laid out with every journey step by step. This is how Home, Notes, a note, Team, Record and Settings were
-designed before they were built. Read [principles.md](principles.md) and [pages.md](pages.md) first.
+claude.ai, laid out with every journey step by step. This is how Home, Notes, a note, Team, Record, Settings and Agents
+were designed before they were built. Read [principles.md](principles.md) and [pages.md](pages.md) first.
 
 Make a canvas for anything bigger than a tweak: a new page, a new flow, a redesign of part of a page. Build in the app only
 once the canvas has been looked at.
@@ -57,15 +57,22 @@ is right. It holds:
 | `home.css` | The shared classes: buttons, panels, tiles, checklists, rows, the shell, the side panel, the phone bars and the journey frames |
 | `pages.css` | The page frame (`pg-`), the scene (`sc-`), the evening board (`ev-`), the moving board (`lb-`), and what passes through (`hz-` and `lf-`), generated from the app |
 | `Side`, `Faces`, `Overlays`, `Scene`, `Visitors`, `SkyArt` `.dc.html` | Parts: the side panel, people in arches, what opens over a page (the palette, toasts, the call modal, a call's card, the lobby, and stand-in pages), the scene, what passes through, Home's sunset drawing |
-| `Home`, `Notes`, `Note`, `Team`, `Record`, `Settings` `.dc.html` | One board per page, each interactive at 1440×900 in both themes, with its own `page-<name>.css` and `data-<name>.js` (Home's are in `home.css` and `home.js`) |
+| `Home`, `Notes`, `Note`, `Team`, `Record`, `Settings`, `Agents` `.dc.html` | One board per page, each interactive at 1440×900 in both themes, with its own `page-<name>.css` and `data-<name>.js` (Home's are in `home.css` and `home.js`). `Agents` draws every state of the page through `#step=`, the question an agent asks included, and its catalogue, copy, levels and journeys are in `data-agents.js` |
+| `Search.dc.html` | The palette (Search or ask) over Home, interactive: type anything, and `data-search.js` searches the demo world's notes, people and transcripts. It imports Home, and opens Notes and a note from what you pick |
 | `Series.dc.html` | A series. For now it's a still: it uses a note's files, its buttons aren't wired, and it has no steps or journey board |
-| `Steps<Page>.dc.html` | Every journey of a page, one row each (`StepsPage` is Home's) |
+| `Steps<Page>.dc.html` | Every journey of a page, one row each (`StepsPage` is Home's). `StepsAgents` draws some frames from `Settings`, where the way to Agents starts |
 | `App.dc.html` | Walk the app: every page in one prototype, wired together |
 | `Evening.dc.html` | The moments of the evening side by side |
 | `Life.dc.html` | Everything that moves, each on its own tile, on repeat |
 | `tools/` | `sync-life.py`, which copies what passes through from the app's scene onto the canvas, and `Visitors.template.html`, the board it fills in, where the canvas's shorter waits are set |
 | `call/` | The call, rethought: the in-call screen the call was rebuilt from, with its own model (`nc.js`), boards and seven journeys; its [README](canvas/call/README.md) says what each board is |
 | `notes/` | Notes in the call, rethought: the panel and the card (what's captured) the call's Notes was rebuilt from, with its own model (`notes.js`, on a copy of `call/`'s), boards and seven journeys; its [README](canvas/notes/README.md) says what each board is |
+| `after/` | After the call: the page a call leaves you on, on the call's night over a cove, with its own model (`after.js`), every state, a player and seven journeys; its [README](canvas/after/README.md) says what each board is |
+| `call-access/` | The call's workspace and boards, open to everyone in it: the design the build followed (11 November 2026), the call at any of its moments and four journeys; its [README](canvas/call-access/README.md) says what each board is |
+| `home/` | Home, under the horizon: the three widgets Home's lower half was rebuilt from (For you, Upcoming and Recent notes), with its own model (`water.js`, on a copy of the kit's `home.js`), boards for Home and every state, and eight journeys and a phone row; its [README](canvas/home/README.md) says what each board is |
+| `you-menu/` | Your menu, at the top right: what your face opens (you on a small evening, Pause notifications, Theme, Settings, the tour, Sign out asking in place), drawn over `home/`'s Home with its own model (`account.js`), the menu as a part, every state, six journeys and a phone row; its [README](canvas/you-menu/README.md) says what each board is |
+| `side-panel/` | The side panel, calmer: today's panel beside three directions (A just tidy, B two groups, C a rail) at their real size, B on Home with every control working, B in every state and its journeys, with its own model (`nav.js`, beside Home's canvas files); its [README](canvas/side-panel/README.md) says what each board is |
+| `onboarding/` | The tour, renewed: the account created on screen, the arch opening into Home and the tour over it, every control working (the card, cut-out, arrow and art loops as before, pointed at Start now and Schedule, the call about to start, the example note or Calls, Search or ask, the Drive, Record and Agents), on a phone, and every stop before and now, with its own model (`tour.js`) and art (`tour-art.js`); its [README](canvas/onboarding/README.md) says what each board is |
 | `plans/` | Plans and checkout: the Plans page, the checkout window and paying in motion, Settings › Plan, the side panel's foot, the call when notes run out and every other place checkout opens from, on a copy of the kit with a `plans` moment; its [README](canvas/plans/README.md) says what each board is |
 
 `window.AH` has, among others:
@@ -181,8 +188,9 @@ class Component extends DCLogic {
 ```
 
 - **Which place it lights.** `AH.page(c, id)` lights the side panel's place for `id`: `home`, `notes` (and `note`),
-  `record` or `team`; `settings` lights Settings on the phone's tab bar. Any other id lights nothing until you add it to
-  `IDS` in `scene.js`, and a new place to the side panel in `home.js`.
+  `drive`, `record`, `team` or `agents`; `settings` lights Settings on the phone's tab bar. Any other id lights nothing
+  until you add it to `IDS` in `scene.js`, and a new place to the side panel to `places` in `AH.page`, beside it (Home's
+  own board keeps its side panel in `home.js`).
 - **Its own prefix.** Give the page a class prefix (`bl-` here) and put its styles in `page-<name>.css`. Set its horizon
   there: `.bl .pg-stage { --hz: 136px; }`. Choose the height from what the page is for (see the table in
   [principles.md](principles.md#one-evening)), using `--vh` for the window's height (the journey frames set it).
@@ -190,7 +198,8 @@ class Component extends DCLogic {
   if no existing moment fits. A moment added only to `scene.js` gets Home's visitors on the canvas, so add it to the app's
   `Horizon` too (see [building.md](building.md#put-the-page-on-the-evening)) and run the sync tool.
 - **Its data.** Put the page's data in `data-<name>.js` under a short name of its own, keyed by the same ids as `AH.D`. The
-  kit uses `AH.NT` for Notes, `AH.TM` for Team, `AH.RC` for Record, `AH.ST3` for Settings and `AH.NOTE` for a note.
+  kit uses `AH.NT` for Notes, `AH.TM` for Team, `AH.RC` for Record, `AH.ST3` for Settings, `AH.NOTE` for a note, `AH.SR`
+  for search and `AH.AG` for Agents.
   - Use the demo world's people and notes, so every page tells one story.
   - Every person and every call is made up. Never write a real person's name, the user's included, or copy a real calendar
     or a real call. You are Art Vandelay.
@@ -236,7 +245,8 @@ a page. Each page gets a `Steps<Page>.dc.html` board.
 - **A phone row comes last.**
 - **Journeys are data** in the page's data file. The kit keeps them beside each page's data: `AH.JOURNEYS_HOME`,
   `AH.JOURNEYS_TEAM` with `AH.JOURNEYS_TEAM_PHONE`, `AH.JOURNEYS_NOTE` with `AH.JOURNEYS_NOTE_PHONE`, `AH.RC.JOURNEYS`,
-  `AH.ST3.JOURNEYS`, and inline in `StepsNotes.dc.html`. For a new page:
+  `AH.ST3.JOURNEYS`, `AH.SR.JOURNEYS`, `AH.AG.JOURNEYS` with `AH.AG.JOURNEYS_PHONE`, and inline in `StepsNotes.dc.html`.
+  For a new page:
 
   ```js
   AH.JOURNEYS_BILLING = [

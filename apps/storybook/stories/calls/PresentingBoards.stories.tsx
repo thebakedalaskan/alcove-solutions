@@ -77,7 +77,7 @@ const priyaPresents = inCall({
 });
 /** One labelled step of a play. */
 const step = (label: string, run: (c: Context) => Promise<unknown>): Play => async (c) => { await c.step(label, async () => { await run(c); }); };
-const onTheBoard = step('Press Board, then the retro in this call: it opens just for you', (c) => openCallBoard(c, YOURS));
+const onTheBoard = step('Press Board, then the retro in this call: it opens on your screen', (c) => openCallBoard(c, YOURS));
 const following = step('Priya presents the retro: you follow her view, on the frame she’s on, your tools to hand', () => frameOf(HERS));
 
 /* ---------- Presenting ---------- */

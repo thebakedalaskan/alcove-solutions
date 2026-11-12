@@ -9,11 +9,11 @@ import { WsAskAnswer, WsAskMenu, WsPopover, wsToast } from '@alcove/ui';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { AnswerView, useAnswer } from '~/features/notes/answer';
 import { useAskableNotes } from '~/features/notes/ask-refs';
-import { Sources } from '~/features/shell/Palette';
 import { api } from '~/lib/api';
 import { sessions } from '~/lib/live';
 import type { Ws } from './context';
 import type { AskDraft, EditorProps } from './editor/types';
+import { Sources } from './Sources';
 
 /** How much of the words a question quotes. */
 const QUOTED = 120;

@@ -3,10 +3,9 @@
  * people talk: the summary, what's been decided (a time opens the transcript there, an arrow adds the line to the
  * document you were last in) and the first follow-ups. Follow-ups (WsFollowUps) has everything to do from the call,
  * everyone's or yours, ticked by anyone, with a line to add one. Transcript (WsTranscript) is the call so far, what's
- * being said at the end, and a field to find a line. With notes off the three pages stay and say so (WsNotesOff). After
- * the call, the note says which documents were worked on (WsWorkedOn).
+ * being said at the end, and a field to find a line. With notes off the three pages stay and say so (WsNotesOff).
  */
-import { Button, FollowUpEditor, type FollowUpValues, WsDoc, WsDocHead, WsFollowUps, WsNotesOff, WsNotesPage, WsPane, WsScroll, WsToasts, WsTranscript, WsWorkedOn, wsToast, type WsFollowUp, type WsSave } from '@alcove/ui';
+import { Button, FollowUpEditor, type FollowUpValues, WsDoc, WsDocHead, WsFollowUps, WsNotesOff, WsNotesPage, WsPane, WsScroll, WsToasts, WsTranscript, wsToast, type WsFollowUp, type WsSave } from '@alcove/ui';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useLayoutEffect, useRef, useState, type ComponentProps, type ReactNode } from 'react';
 import { Box, did } from '../../../src/component';
@@ -35,7 +34,7 @@ function LiveFrame({ name, save = 'live', end = false, children }: { name: strin
 const meta = {
   title: 'Components/Workspace/Live pages',
   component: WsNotesPage,
-  subcomponents: { WsFollowUps, WsTranscript, WsNotesOff, WsWorkedOn },
+  subcomponents: { WsFollowUps, WsTranscript, WsNotesOff },
   parameters: { layout: 'padded' }
 } satisfies Meta<typeof WsNotesPage>;
 export default meta;
@@ -164,22 +163,3 @@ export const NotesOffOrganizer: OffStory = { name: 'Notes off: the organizer', a
 /** Anyone else's: they can ask Priya. */
 export const NotesOffSomeoneElse: OffStory = { name: 'Notes off: someone else', args: { organizer: first(CALL.organizer), onAsk: did('onAsk') }, render: (args) => <Off {...args} /> };
 
-/* ---------- after the call ---------- */
-
-type WorkedStory = StoryObj<typeof WsWorkedOn>;
-const WORKED = [
-  { id: 'plan', name: 'Launch plan', sub: 'Priya, Aiko and you edited this' },
-  { id: 'checklist', name: 'Launch checklist', sub: 'Kofi ticked 1 item' },
-  { id: 'pricing', name: 'Pricing page copy', sub: 'Kofi and you edited this' }
-];
-/** On the note after the call, beside what was decided: only documents the reader can open. */
-export const WorkedOn: WorkedStory = {
-  name: 'Worked on: on the note', args: { documents: WORKED, onOpen: did('onOpen') }, argTypes: { documents: { control: 'object' } },
-  render: (args) => <Box width={760} height="auto"><WsWorkedOn {...args} /></Box>
-};
-/** On a phone, one under another. */
-export const WorkedOnPhone: WorkedStory = {
-  name: 'Worked on: on a phone', args: { documents: WORKED, onOpen: did('onOpen') }, argTypes: { documents: { control: 'object' } },
-  globals: { viewport: { value: 'phone', isRotated: false } },
-  render: (args) => <WsWorkedOn {...args} />
-};

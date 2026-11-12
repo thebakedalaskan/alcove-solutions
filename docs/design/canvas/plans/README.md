@@ -10,6 +10,13 @@ taken as each person next opens Alcove (12 November, the second round).
 It's the app's kit (`appdata.js`, `home.css`, `home.js`, `pages.css`, `scene.js`, `tokens.js`, the parts and Settings) with a
 `plans` moment added to the scene, and the plans' own files beside it.
 
+The side panel in `Home.dc.html` and `Side.dc.html` is the one before the calmer panel (#283), and its foot (`FOOT`) is
+drawn on it: Free's notes left and then **Free plan · See plans**, two rows. The build keeps #283's panel and puts the plan
+in one row where the minutes of notes left were: Free's notes left over a meter, opening Settings at your plan; on Pro or
+Team, the plan's small sun and its line (until when, ending, low or out); a payment on its way in the row's place; and a
+notice line above it only while one shows. Plans is reached from Settings › Plan's **See plans** and the doors, not from
+the panel. [The frame](../../pages.md#the-frame) says what was built.
+
 ## What's here
 
 | File | What it is |

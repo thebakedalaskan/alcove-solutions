@@ -8,13 +8,16 @@
  * It's a drawing of plain numbers, the same numbers draw the same cove, and `seed` picks which one. Nothing rises within 24px
  * of the words on the sky: where the words reach across a narrow window, the whole land lies lower instead.
  *
+ * Whatever draws a cove measures the words where they rest (`restingBox`), and draws it again a moment after they or the
+ * window change size, or the fonts arrive (`useCoveFit`): the welcome page's sky and the page a call leaves you on.
+ *
  * `SailOut` is the cove over the real Home just after signing in, starting where the welcome page showed it: the headlands
  * go by on either side, nearest first, the horizon comes up to Home's and the sun eases to Home's size, only ever rising.
  * Then Alcove's frame forms round the sea (the side panel slides in and the page takes its rounded edge), Home's contents
  * rise in, and the sea clears to leave the real Home. It's decorative: it takes no focus, and a press, a key, the wheel or
  * a change of width ends it at once.
  */
-import { memo, useId, useLayoutEffect, useMemo, useRef, type Ref } from 'react';
+import { memo, useId, useLayoutEffect, useMemo, useRef, type DependencyList, type Ref } from 'react';
 import { createPortal } from 'react-dom';
 import { Horizon, type Showing } from './horizon';
 import { EASE } from './motion';
@@ -267,6 +270,70 @@ export const Cove = memo(function Cove({ width, line, sky, foot, words, seed, ou
     </div>
   );
 });
+
+/* ------------------------------------------------------- measuring what a cove keeps clear of */
+
+/** Something on the sky as a box, in px: its left, right, top and bottom edges. */
+export interface RestingBox { l: number; r: number; t: number; b: number }
+
+/**
+ * Where `el` rests in `within` (px), its own entrance aside: offsets, which no transform moves, so words rising in are kept
+ * clear of where they'll stand. Null when `el` isn't laid out inside `within`.
+ */
+export function restingBox(el: HTMLElement, within: HTMLElement): RestingBox | null {
+  let x = 0;
+  let y = 0;
+  let at: Element | null = el;
+  while (at instanceof HTMLElement && at !== within) {
+    x += at.offsetLeft;
+    y += at.offsetTop;
+    at = at.offsetParent;
+  }
+  return at === within ? { l: x, r: x + el.offsetWidth, t: y, b: y + el.offsetHeight } : null;
+}
+
+/** How long a cove waits for what it keeps clear of to settle before it's drawn again (then a frame). */
+const REFIT_MS = 140;
+
+/**
+ * Keeps a cove fitted to what it keeps clear of. `start` runs as the part is laid out, before it shows, and gives the part's
+ * own draw, or null when there's nothing to draw: the draw measures, sets what it measured, and returns what to watch. It
+ * runs at once, and again a moment later (140 ms, then a frame) whenever something the last draw returned changes size, the
+ * window does, or the fonts arrive; something new on the sky is watched from the draw that finds it. It all starts again
+ * when `deps` change, and stops with the part.
+ */
+export function useCoveFit(start: () => (() => readonly (Element | null)[]) | null, deps: DependencyList): void {
+  useLayoutEffect(() => {
+    const draw = start();
+    if (!draw) return undefined;
+    let wait = 0;
+    let frame = 0;
+    let gone = false;
+    const later = () => {
+      if (gone) return;
+      clearTimeout(wait);
+      wait = window.setTimeout(() => { cancelAnimationFrame(frame); frame = requestAnimationFrame(fit); }, REFIT_MS);
+    };
+    const ro = new ResizeObserver(later);
+    const watched = new Set<Element>();
+    const fit = () => {
+      const now: Element[] = [];
+      for (const w of draw()) if (w) now.push(w);
+      for (const w of now) if (!watched.has(w)) { watched.add(w); ro.observe(w); }
+      for (const w of watched) if (!now.includes(w)) { watched.delete(w); ro.unobserve(w); }
+    };
+    fit();
+    addEventListener('resize', later);
+    void document.fonts.ready.then(later);
+    return () => {
+      gone = true;
+      clearTimeout(wait);
+      cancelAnimationFrame(frame);
+      ro.disconnect();
+      removeEventListener('resize', later);
+    };
+  }, deps);
+}
 
 /* ------------------------------------------------------- signing in: out of the cove to Home */
 

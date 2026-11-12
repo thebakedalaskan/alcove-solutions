@@ -32,20 +32,24 @@ export const FirstTime: PageStory = {
       await screen.findByRole('dialog', { name: /^You’re in/ }, LATER);
       await screen.findByRole('region', { name: 'Start your first call' }, LATER);
     });
-    await step('The tour goes through Home a slide at a time, the page dimmed around what each is about', async () => {
+    await step('The tour starts at Start now and Schedule, then moves to the example note, the page dimmed around what each stop is about', async () => {
       await userEvent.click(within(await tourCard('Start or schedule a call')).getByRole('button', { name: 'Show me notes' }));
       await tourCard('Notes for your calls');
     });
-    await step('→ and Enter move through it', async () => {
+    await step('→ and Enter move through it: Search or ask, the Drive, Record and Agents', async () => {
+      await userEvent.keyboard('{ArrowRight}');
+      await tourCard('Search or ask');
+      await userEvent.keyboard('{ArrowRight}');
+      await tourCard('Documents and boards');
       await userEvent.keyboard('{ArrowRight}');
       await tourCard('Record in the room');
       await userEvent.keyboard('{ArrowRight}');
-      await tourCard('Your notes stay yours');
-      await userEvent.keyboard('{ArrowRight}');
+      await tourCard('Bring your agent');
+      await userEvent.click(within(await tourCard('Bring your agent')).getByRole('button', { name: 'Back to the start' }));
     });
     await step('You’re ready: Start using Alcove. It isn’t shown again on this browser', async () => {
       await userEvent.click(within(await tourCard('You’re ready')).getByRole('button', { name: 'Start using Alcove' }));
-      await screen.findByText('You can take the tour again from Settings.', {}, SOON);
+      await screen.findByText('You can take the tour again from your menu.', {}, SOON);
     });
   }
 };
@@ -66,9 +70,9 @@ export const SkipAhead: PageStory = {
       await userEvent.click(await screen.findByRole('button', { name: 'Skip' }, LATER));
       await screen.findByRole('region', { name: 'Start your first call' }, LATER);
     });
-    await step('Skip tour closes the tour, and says Settings plays it again', async () => {
+    await step('Skip tour closes the tour, and says your menu plays it again', async () => {
       await userEvent.click(within(await tourCard('Start or schedule a call')).getByRole('button', { name: 'Skip tour' }));
-      await screen.findByText('Tour closed. You can take it again from Settings.', {}, SOON);
+      await screen.findByText('Tour closed. You can take it again from your menu.', {}, SOON);
     });
   }
 };
@@ -83,7 +87,7 @@ export const SignInAgain: PageStory = {
     });
     await step('Continue. After the first time, signing in goes straight to Home', async () => {
       await userEvent.click(screen.getByRole('button', { name: 'Continue' }));
-      await screen.findByRole('region', { name: 'For you8' }, LATER);
+      await screen.findByRole('region', { name: 'For you' }, LATER);
     });
     await step('Out of the welcome page’s cove to sea: the headlands go by, the horizon comes up to Home’s, the frame forms round it and Home rises in', async () => {
       await pause(SAILING_OUT);

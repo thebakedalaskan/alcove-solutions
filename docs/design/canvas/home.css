@@ -807,3 +807,15 @@
   .nx-a { justify-content: flex-start; }
   .sh .b .k { display: none; }
 }
+
+/* ------------------------------------------------------------------ the side panel as the app has it since #269 */
+/* Start a call is a row like the places, its camera in a warm circle centred on their icons. Never filled or shaded. */
+.sd-new { display: flex; align-items: center; gap: 9px; flex: none; width: 100%; height: 40px; padding: 0 12px 0 7px; border-radius: 11px; color: var(--ink); font: 500 14.5px/1 var(--sans); transition: background-color .14s; }
+.sd-new:hover { background: color-mix(in oklch, var(--ink) 7%, transparent); }
+.sd-new-ic { display: grid; place-items: center; flex: none; width: 26px; height: 26px; border-radius: 50%; background: color-mix(in oklch, var(--now) 24%, transparent); color: var(--now); }
+.sd-new-ic .i { width: 15px; height: 15px; }
+.sd-new .k { margin-left: auto; opacity: .8; }
+.sd-nav { margin-top: 6px; }
+/* A count that isn't waiting on you (notes, people, agents) is quiet. Only Home's is rose. */
+.sd-n.is-quiet { color: var(--ink-3); font-weight: 500; }
+.sd-i.is-hot { outline-offset: 1px; }

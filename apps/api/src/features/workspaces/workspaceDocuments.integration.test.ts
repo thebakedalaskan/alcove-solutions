@@ -72,7 +72,7 @@ async function rewrite(workspaceId: string, change: (s: WorkspaceState) => Works
   await h.pool.query('UPDATE workspaces SET state_ciphertext = $2 WHERE owner_id = $1', [ownerId, sealState(owner, workspaceId, change(openState(owner, workspaceId, row.state_ciphertext)))]);
 }
 /** A workspace as a person with this address has it, for the helpers other modules call. */
-const heldBy = (who: Account, workspaceId: string) => workspaceFor(h.deps, { email: who.email, principals: [blindIndex(masterKey(h.deps), 'email', who.email)] }, workspaceId);
+const heldBy = (who: Account, workspaceId: string) => workspaceFor(h.deps, { email: who.email, principals: [blindIndex(masterKey(h.deps), 'email', who.email)], calls: [] }, workspaceId);
 
 /* ---------- a Yjs document, as an editor would change one ---------- */
 

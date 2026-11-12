@@ -293,9 +293,10 @@ function Payments({ topUps, history, add, onAddMoney }: {
       })}
       {shown.map((e) => {
         const day = shortDate(new Date(e.at));
-        const token = /\b(USDC|USDT)\b/.exec(e.label)?.[1];
+        // Money added in USDC shows its mark; anything else, USDT added before only USDC was taken included, the coins.
+        const usdc = /\bUSDC\b/.test(e.label);
         return (
-          <PaymentRow key={`${e.id} ${e.at}`} mark={token ? <CryptoMark name={token} /> : <Icon name="coins" size={18} />} label={e.label}
+          <PaymentRow key={`${e.id} ${e.at}`} mark={usdc ? <CryptoMark name="usdc" /> : <Icon name="coins" size={18} />} label={e.label}
             detail={`${e.microUsd >= 0 ? '+' : '−'}${usdCents(Math.abs(e.microUsd))} · ${day}`}
             actions={<Button variant="quiet" size="sm" icon="download" aria-label={`Receipt for ${e.label}, ${day}`} onClick={() => setReceipt(e)}>Receipt</Button>} />
         );
