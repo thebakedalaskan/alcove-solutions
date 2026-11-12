@@ -72,7 +72,7 @@ type Service = Pick<Deps, 'cfg' | 'pool'>;
 const key = (d: Pick<Deps, 'cfg'>) => serviceKey(unb64u(d.cfg.KSERVICE, 32), 'accounting');
 const header = (ownerId: string) => ({ v: 1 as const, kind: 'ai-meter', ownerId, keyVersion: '1' });
 
-/** What a plan's minutes of notes are worth, in nano-USD. */
+/** What a period's minutes of notes are worth, in nano-USD: the plan's, and any more bought for the period (plans.ts `inForce`). */
 const allowanceOf = (p: InForce, l: Limits) => Math.round((p.notesMinutes * l.get('ai.hour_micro_usd') * 1000) / 60);
 /** What's left to spend: the allowance, less what's spent and what requests in flight and live sources hold. */
 const leftOf = (m: MeterState) => m.allowanceNano - m.spentNano - m.holds.reduce((n, h) => n + h.nano, 0) - m.sources.reduce((n, s) => n + s.reserveNano, 0);

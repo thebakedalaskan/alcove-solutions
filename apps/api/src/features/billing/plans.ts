@@ -1,18 +1,18 @@
 /*
- * Plans (docs: Plans and usage): which plan each account is on, the USD balance it buys plans with, the months of Pro
- * bought from it, what its owner is told about them, and when upkeep next has something to do for it. Sealed under
- * Kservice's accounting key, never under owner keys: the row says only whose it is and when it's due. An account's row is
- * made when it signs up, or the first time it's touched after the release that brought plans (on Free, with time to get
- * within Free's limits if it's over them).
+ * Plans (docs: Plans and usage): which plan each account is on, the USD balance it buys plans with, the months of Pro and
+ * more notes bought from it, what its owner is told about them, and when upkeep next has something to do for it. Sealed
+ * under Kservice's accounting key, never under owner keys: the row says only whose it is and when it's due. An account's
+ * row is made when it signs up, or the first time it's touched after the release that brought plans (on Free, with time
+ * to get within Free's limits if it's over them).
  */
-import { PlanNoticeKindSchema, type BalanceEntry, type PlanKind, type PlanNoticeKind, type PlanOffers } from '@alcove/api';
+import { PlanKindSchema, PlanNoticeKindSchema, type BalanceEntry, type PlanKind, type PlanNoticeKind, type PlanOffers, type Purchase } from '@alcove/api';
 import { z } from 'zod';
 import type { Deps } from '../../context';
 import { id128, openJson, sealJson, serviceKey, toJson, unb64u } from '../../crypto';
 import { bytea, exec, maybeOne, rows, tx, type Db } from '../../db';
 import { conflict, InternalError, invalid, notFound, PlanLimitError } from '../../errors';
 import { limitsNow, WHOLE_DOWNLOAD_BYTES, type Limits } from '../../limits';
-import { log } from '../../log';
+import { log, type LogContext } from '../../log';
 import { settlePayers, usedBytes } from './storage';
 
 const plog = log.child({ component: 'plans' });
@@ -33,6 +33,8 @@ const Grace = z.object({ until: z.string(), storageBytes: z.number().int().nulla
 const Month = z.object({ id: z.string(), from: z.string(), to: z.string(), microUsd: z.number().int() });
 type Month = z.infer<typeof Month>;
 const Notice = z.object({ id: z.string(), kind: PlanNoticeKindSchema, at: z.string(), until: z.string(), dismissed: z.boolean() });
+/** More notes bought from the balance for one period (its plan and start): minutes added to that period's allowance alone. */
+const Hours = z.object({ plan: PlanKindSchema, from: z.string(), minutes: z.number().int() });
 export const PlanAccount = z.object({
   balanceMicroUsd: z.number().int(),
   history: z.array(Entry),
@@ -49,7 +51,9 @@ export const PlanAccount = z.object({
   notices: z.array(Notice).default([]),
   /** The end of Pro (its last month's `to`) whose reminder upkeep has done, and the one it has handled at the end. */
   reminded: z.string().nullable().default(null),
-  ended: z.string().nullable().default(null)
+  ended: z.string().nullable().default(null),
+  /** More notes bought for the latest period any were bought in: they don't carry over into another. */
+  hours: Hours.nullable().default(null)
 });
 export type PlanAccount = z.infer<typeof PlanAccount>;
 
@@ -61,7 +65,7 @@ const Row = z.object({ state_ciphertext: bytea });
 
 /** An account's plan as it starts: Free from `freeFrom`, nothing bought. */
 const fresh = (freeFrom: string, grace: PlanAccount['grace']): PlanAccount =>
-  ({ balanceMicroUsd: 0, history: [], freeFrom, choose: true, grace, pro: [], renew: false, notices: [], reminded: null, ended: null });
+  ({ balanceMicroUsd: 0, history: [], freeFrom, choose: true, grace, pro: [], renew: false, notices: [], reminded: null, ended: null, hours: null });
 
 /** What a plan brings: notes as minutes a period, storage and the largest file. */
 export interface Allowance { notesMinutes: number; storageBytes: number; fileBytes: number }
@@ -86,6 +90,11 @@ export function proPriceFor(l: Limits, months: number): number {
   const yearly = yearlyOf(l);
   return yearly && months >= yearly.fromMonths ? yearly.microUsdPerMonth : l.get('plan.pro.price_micro_usd');
 }
+/** More notes for the period they're bought in, on any plan, in packs: not offered while a pack's price is 0. */
+export function hoursOf(l: Limits): PlanOffers['hours'] {
+  const microUsd = l.get('plan.hours.price_micro_usd');
+  return microUsd > 0 ? { minutes: l.get('plan.hours.pack_minutes'), microUsd, maxPacks: l.get('plan.hours.max_packs') } : null;
+}
 
 /** The plan an account is on now, the period it's in and what the plan brings. */
 export interface InForce extends Allowance { kind: PlanKind; from: number; to: number }
@@ -98,11 +107,24 @@ const lastEnded = (a: PlanAccount, now: number): number | null =>
 /** When Pro ends: the last month bought's `to` (null: none bought). */
 const proEnd = (a: PlanAccount): string | null => a.pro.at(-1)?.to ?? null;
 
+/** The minutes of more notes bought for the period `p` (0: none). */
+const boughtFor = (a: PlanAccount, p: Pick<InForce, 'kind' | 'from'>): number =>
+  (a.hours && a.hours.plan === p.kind && Date.parse(a.hours.from) === p.from ? a.hours.minutes : 0);
+
 /**
- * The plan in force at `now`: Pro while a month bought covers it, its period that month; otherwise Free, in periods counted
- * from `freeFrom` or the end of the last month of Pro, whichever is later, so Free starts afresh when Pro ends.
+ * The plan in force at `now`, with its notes and any more bought for the period it's in: the allowance the meter keeps
+ * (features/billing/meter.ts) and what a period brings as the plan shows it.
  */
 export function inForce(a: PlanAccount, l: Limits, now = Date.now()): InForce {
+  const p = planAt(a, l, now);
+  return { ...p, notesMinutes: p.notesMinutes + boughtFor(a, p) };
+}
+
+/**
+ * The plan at `now`, as it brings it: Pro while a month bought covers it, its period that month; otherwise Free, in periods
+ * counted from `freeFrom` or the end of the last month of Pro, whichever is later, so Free starts afresh when Pro ends.
+ */
+function planAt(a: PlanAccount, l: Limits, now: number): InForce {
   const month = runningAt(a, now);
   if (month) return { kind: 'pro', from: Date.parse(month.from), to: Date.parse(month.to), ...proAllowance(l) };
   const period = l.get('plan.period_seconds') * 1000;
@@ -216,7 +238,20 @@ function withMonths(a: PlanAccount, l: Limits, months: number, microUsd: number,
   }));
   return { ...a, pro: [...a.pro, ...bought] };
 }
+/**
+ * `minutes` more notes for the period in force at `now`, on top of any bought for it already. More bought for an earlier
+ * period are let go: they ended with it.
+ */
+function withHours(a: PlanAccount, l: Limits, minutes: number, now: number): PlanAccount {
+  const p = planAt(a, l, now);
+  return { ...a, hours: { plan: p.kind, from: new Date(p.from).toISOString(), minutes: boughtFor(a, p) + minutes } };
+}
 const monthsOf = (n: number) => `${n} ${n === 1 ? 'month' : 'months'}`;
+/** Minutes of notes as someone reads them, whole hours as hours: "10 hours", "1 hour", "90 minutes" (`more`: "10 more hours"). */
+function notesTime(minutes: number, more = ''): string {
+  if (minutes % 60 === 0) return `${minutes / 60} ${more}${minutes === 60 ? 'hour' : 'hours'}`;
+  return `${minutes} ${more}${minutes === 1 ? 'minute' : 'minutes'}`;
+}
 /** Dollars as someone reads them: whole dollars bare, otherwise to the cent below. */
 const dollars = (microUsd: number) => {
   const cents = Math.floor(microUsd / 10_000);
@@ -283,25 +318,91 @@ async function changing(d: Service, ownerId: string, change: (a: PlanAccount, l:
 }
 
 /**
+ * Why a purchase from the balance isn't made: what's asked for isn't offered (`off`), is more than one purchase buys
+ * (`too-many`), isn't at the price in force for it (`price`), or costs more than the balance (`short`). `now` is what its
+ * buyer is told as they ask for it.
+ */
+export interface Refusal { why: 'off' | 'too-many' | 'price' | 'short'; now: string }
+/** What a purchase comes to at the limits in force: what it costs, its line in the history, and the account with it. */
+interface Terms {
+  totalMicroUsd: number;
+  label: string;
+  /** What it buys, in words ("3 months of Pro"), and whether that's one of something, for the verb after it. */
+  what: string;
+  one: boolean;
+  add(a: PlanAccount, now: number): PlanAccount;
+}
+
+/**
+ * What `buys` comes to at the limits in force, or why it isn't on offer at the price its buyer was shown. Pro's months go
+ * after any already bought (on Free, from now), each keeping what was paid for it, which is what a refund gives back, and
+ * end any grace: only Pro's limits apply from then. More notes go to the period in force, whatever the plan.
+ */
+function termsOf(l: Limits, buys: Purchase): Terms | Refusal {
+  if (buys.kind === 'pro') {
+    const max = l.get('plan.pro_max_months');
+    if (buys.months > max) return { why: 'too-many', now: `Buy 1 to ${max} months at a time.` };
+    if (buys.microUsdPerMonth !== proPriceFor(l, buys.months)) return { why: 'price', now: 'The price of Pro has changed. Look at it again before buying.' };
+    const { months, microUsdPerMonth } = buys;
+    return {
+      totalMicroUsd: months * microUsdPerMonth, label: `Pro, ${monthsOf(months)}`, what: `${monthsOf(months)} of Pro`, one: months === 1,
+      add: (a, now) => ({ ...withMonths(pruned(a, now), l, months, microUsdPerMonth, now), grace: null })
+    };
+  }
+  const offer = hoursOf(l);
+  if (!offer) return { why: 'off', now: 'More notes can’t be bought right now.' };
+  if (buys.packs > offer.maxPacks) return { why: 'too-many', now: `Buy up to ${notesTime(offer.maxPacks * offer.minutes)} of notes at a time.` };
+  if (buys.microUsdPerPack !== offer.microUsd) return { why: 'price', now: 'The price of more notes has changed. Look at it again before buying.' };
+  const minutes = buys.packs * offer.minutes;
+  return {
+    totalMicroUsd: buys.packs * buys.microUsdPerPack, label: `${notesTime(minutes, 'more ')} of notes`, what: `${notesTime(minutes)} of notes`, one: minutes === 60 || minutes === 1,
+    add: (a, now) => withHours(a, l, minutes, now)
+  };
+}
+
+/** A purchase from the balance: made, for its total, or refused with nothing changed. */
+export type Purchased = { bought: true; totalMicroUsd: number } | { bought: false; refusal: Refusal };
+
+/**
+ * Buys `buys` from the balance, in the caller's transaction, with the account's row locked: the one lock buying and adding
+ * money take, so purchases at once on any instance never spend the same money twice. Refused, changing nothing, when it
+ * isn't on offer at the price its buyer was shown or the balance is short of it.
+ */
+export async function purchase(d: Service, db: Db, ownerId: string, buys: Purchase): Promise<Purchased> {
+  const a = await accountOf(d, db, ownerId, true);
+  const l = await limitsNow(d, db);
+  const t = termsOf(l, buys);
+  if ('why' in t) return { bought: false, refusal: t };
+  if (a.balanceMicroUsd < t.totalMicroUsd) {
+    const now = `Your balance is short: ${t.what} ${t.one ? 'costs' : 'cost'} ${dollars(t.totalMicroUsd)} and your balance is ${dollars(a.balanceMicroUsd)}. Add money first.`;
+    return { bought: false, refusal: { why: 'short', now } };
+  }
+  await save(d, db, ownerId, withEntry(t.add(a, Date.now()), -t.totalMicroUsd, t.label));
+  return { bought: true, totalMicroUsd: t.totalMicroUsd };
+}
+
+/** A purchase refused as it's asked for, as the error its buyer gets: `invalid` past the most one purchase buys, else `conflict`. */
+export const refusedError = (r: Refusal, context: LogContext) =>
+  (r.why === 'too-many' ? invalid(r.now, { ...context, why: r.why }) : conflict(r.now, { ...context, why: r.why }));
+
+/**
  * Buys `months` of Pro from the balance at `microUsdPerMonth`, the price its buyer was shown for that many months (the
- * yearly price from its `fromMonths`), after any already bought (on Free, from now). Each month keeps what was paid for
- * it, which is what a refund gives back. Under the row's lock, so buys at once on any instance never spend the same money
- * twice. Buying ends any grace: only Pro's limits apply from now.
+ * yearly price from its `fromMonths`), after any already bought (on Free, from now).
  */
 export async function buyPro(d: Service, ownerId: string, months: number, microUsdPerMonth: number): Promise<void> {
-  await changing(d, ownerId, (a, l, now) => {
-    const max = l.get('plan.pro_max_months');
-    if (months > max) throw invalid(`Buy 1 to ${max} months at a time.`, { ownerId, months, max });
-    const price = proPriceFor(l, months);
-    if (microUsdPerMonth !== price) throw conflict('The price of Pro has changed. Look at it again before buying.', { ownerId, why: 'price', months });
-    const total = months * price;
-    if (a.balanceMicroUsd < total) {
-      throw conflict(`Your balance is short: ${monthsOf(months)} of Pro ${months === 1 ? 'costs' : 'cost'} ${dollars(total)} and your balance is ${dollars(a.balanceMicroUsd)}. Add money first.`, { ownerId, why: 'balance', months });
-    }
-    const bought = withEntry(withMonths(pruned(a, now), l, months, price, now), -total, `Pro, ${monthsOf(months)}`);
-    plog.info('pro bought', { ownerId, months, microUsd: total });
-    return { ...bought, grace: null };
-  });
+  const r = await tx(d.pool, (c) => purchase(d, c, ownerId, { kind: 'pro', months, microUsdPerMonth }));
+  if (!r.bought) throw refusedError(r.refusal, { ownerId, kind: 'pro', months });
+  plog.info('pro bought', { ownerId, months, microUsd: r.totalMicroUsd });
+}
+
+/**
+ * Buys `packs` of more notes from the balance at `microUsdPerPack`, the price its buyer was shown: each pack's minutes go
+ * to this period's allowance, on any plan, and lift a stop the spent allowance caused. They don't carry into the next.
+ */
+export async function buyHours(d: Service, ownerId: string, packs: number, microUsdPerPack: number): Promise<void> {
+  const r = await tx(d.pool, (c) => purchase(d, c, ownerId, { kind: 'hours', packs, microUsdPerPack }));
+  if (!r.bought) throw refusedError(r.refusal, { ownerId, kind: 'hours', packs });
+  plog.info('notes bought', { ownerId, packs, microUsd: r.totalMicroUsd });
 }
 
 /** Refunds every month of Pro that hasn't started, at what was paid for it. A month that has started isn't refunded. */

@@ -1,14 +1,14 @@
 /*
  * An account's plan as its owner sees it (docs: Plans and usage): notes as time, about what's left of the period's AI
- * allowance once what's been spent is taken off, at what an hour of notes is reckoned at; storage against the plan's limit, with any
- * grace; the balance; the months of Pro bought and what the owner is told about them; and the plans on offer. The
- * allowance itself, in dollars, never leaves the server.
+ * allowance once what's been spent is taken off, at what an hour of notes is reckoned at (a period's minutes include more
+ * bought for it); storage against the plan's limit, with any grace; the balance; the months of Pro bought and what the
+ * owner is told about them; and the plans on offer. The allowance itself, in dollars, never leaves the server.
  */
 import type { Plan, PlanOffers } from '@alcove/api';
 import type { Deps } from '../../context';
 import { limitsNow } from '../../limits';
 import { minutesOf, standing } from './meter';
-import { accountOf, freeAllowance, graceUntil, heldTo, historyOf, inForce, noticesOf, proAllowance, proOf, yearlyOf } from './plans';
+import { accountOf, freeAllowance, graceUntil, heldTo, historyOf, hoursOf, inForce, noticesOf, proAllowance, proOf, yearlyOf } from './plans';
 import { usedBytes } from './storage';
 
 /** How many of the balance's latest changes are shown. */
@@ -42,7 +42,7 @@ export async function planOf(d: Pick<Deps, 'cfg' | 'pool'>, ownerId: string): Pr
 
 /**
  * The plans on offer, from the limits in force: what each brings, what a month of Pro costs, and less for a year or more,
- * and the most months one purchase buys.
+ * the most months one purchase buys, and more notes for a period, on any plan.
  */
 export async function offersOf(d: Pick<Deps, 'cfg' | 'pool'>): Promise<PlanOffers> {
   const l = await limitsNow(d);
@@ -50,6 +50,6 @@ export async function offersOf(d: Pick<Deps, 'cfg' | 'pool'>): Promise<PlanOffer
     periodDays: l.get('plan.period_seconds') / 86_400,
     free: freeAllowance(l),
     pro: { ...proAllowance(l), microUsdPerMonth: l.get('plan.pro.price_micro_usd'), maxMonths: l.get('plan.pro_max_months'), yearly: yearlyOf(l) },
-    hours: null
+    hours: hoursOf(l)
   };
 }

@@ -10,6 +10,7 @@ they bring: notes and storage. Every feature is on every plan.
 | Price | $0 | $20 a month (a period), or $16 a month bought 12 or more at once, from the balance | $40 a person a period |
 | Calls | Unlimited, up to 10 hours each, 100 people | Same | Same |
 | Notes (an estimate: what a call uses varies) | About 5 hours a period | About 50 hours | About 50 hours a person |
+| More notes this period | 10 hours for $15, from the balance, up to 50 hours at a time | Same | Same |
 | Storage (uploads and call recordings) | 10 GB | 100 GB | 100 GB a person, pooled |
 | Largest file | 512 MB | 512 MB, 2 GB once downloads resume | Same as Pro |
 | Shared workspaces not tied to a call | As many as you like (storage is the limit) | Same | Same |
@@ -18,10 +19,10 @@ A period is 30 days from when the plan began; a month of Pro is one period. Team
 what's built now.
 
 Every number is a limit (`apps/api/src/limits.ts`, [Deployment › Changing a limit](deployment-and-acceptance.md#changing-a-limit)),
-changeable without a deploy: each plan's notes, storage, files and price; Pro's lower price for a year or more; the most months of Pro one purchase buys and how
-long before Pro ends its owner is told; the most workspaces one account makes; what an hour of notes is
-reckoned at; when AI stops and when an organizer is told it's close; how long a period and a grace last; a call's longest
-and its most people.
+changeable without a deploy: each plan's notes, storage, files and price; Pro's lower price for a year or more; the most
+months of Pro one purchase buys and how long before Pro ends its owner is told; more notes for a period, their price and
+the most bought at once; the most workspaces one account makes; what an hour of notes is reckoned at; when AI stops and
+when an organizer is told it's close; how long a period and a grace last; a call's longest and its most people.
 
 ## Status
 
@@ -34,6 +35,7 @@ and its most people.
 | A call's 10 hours and 100 people | Working |
 | The USD balance, filled by stablecoin top-ups | Working |
 | Buying Pro, renewing, refunds, reminders, the grace after Pro | Working (server; see [Pro](#pro)) |
+| Pro for a year or more at a lower price; more notes for a period | Working (server; see [Pro](#pro) and [More notes](#more-notes)) |
 | Teams, licenses, team notes and workspaces | Not built (phase 3) |
 | Picking a plan at first sign-in | Not built (phase 4). `Plan.choose` already says who hasn't. |
 | Withdrawing the balance | Not built, and not planned yet |
@@ -48,7 +50,8 @@ spent, so it only goes down in a period. What's held below (for requests on thei
 counts when the meter decides whether to warn or stop, but isn't shown: it's the most each could cost, and showing it
 would make notes left dip while a note is written and rise again once it's charged at what it actually cost. Near the
 end, notes can stop while a minute or two still shows; the banner says so. It doesn't carry over: a new period starts the
-first time the account is touched after the old one ends, or after its plan changes, with all of its allowance.
+first time the account is touched after the old one ends, or after its plan changes, with all of its allowance. More notes
+bought for a period ([below](#more-notes)) are part of its allowance, and end with it.
 
 **Every request to NEAR AI is paid for** (`features/billing/meter.ts`). `inference.ts`'s `transcribe`, `complete` and
 `completeJson` take a required `Meter`, so nothing reaches NEAR AI without naming who pays:
@@ -101,9 +104,9 @@ The allowance runs down with the call, and notes stop before it's spent rather t
   allowance, and what it costs over is Alcove's. Writing them again (after correcting the transcript) is refused like
   anything else, and the notes stay as they were.
 - **Then nothing:** the allowance stays spent for the rest of the period, even when what the call reserved turns out to
-  be more than writing cost; only a bigger allowance (the limits raised, a new period, a bigger plan) lifts it. A call
-  scheduled with notes starts without them and says why; turning notes on, starting a room recording, or asking is
-  refused with "Your notes for this period have run out. They start again when your plan renews."
+  be more than writing cost; only a bigger allowance (more notes bought, the limits raised, a new period, a bigger plan)
+  lifts it. A call scheduled with notes starts without them and says why; turning notes on, starting a room recording,
+  or asking is refused with "Your notes for this period have run out. They start again when your plan renews."
 
 ## Storage
 
@@ -196,6 +199,38 @@ After it, uploads and notes stop while over Free's storage, as above. Buying Pro
 `Plan.pro` gives the months running and bought (oldest first), when the last ends, whether renewing is on and what a
 refund would add. The record keeps the months that haven't ended and the latest that has (the grace and Free's periods
 count from it).
+
+## More notes
+
+More notes for the period running now, on any plan, bought from the balance in packs (`features/billing/plans.ts`
+`buyHours`, the route in `routes.ts`). They don't carry over: the app says "for this period".
+
+**What's offered** (`offers.hours`): a pack's minutes (`plan.hours.pack_minutes`, 600: 10 hours), its price
+(`plan.hours.price_micro_usd`, $15) and the most packs one purchase buys (`plan.hours.max_packs`, 5). `null` while a pack's
+price is 0: none are offered then, and none can be had for nothing.
+
+**Buying** (`POST /v1/plan/hours { packs, microUsdPerPack }`) is what buying Pro is, through the same code (`purchase`): one
+transaction with the account's `plan_accounts` row locked, the one lock buying and adding money take, so a buy of Pro and
+one of more notes at once never spend the same money twice.
+
+1. None offered is refused (`conflict`, "More notes can’t be bought right now.").
+2. More than `plan.hours.max_packs` is refused (`invalid`, "Buy up to 50 hours of notes at a time.").
+3. A price a pack other than the one in force is refused (`conflict`, "The price of more notes has changed. Look at it
+   again before buying.").
+4. A balance short of packs × price is refused (`conflict`, "Your balance is short: 20 hours of notes cost $30 and your
+   balance is $20. Add money first."). Nothing changes.
+5. The minutes go to the period in force (the plan's kind and when its period began), on top of any bought for it already;
+   any bought for an earlier period are let go. The balance goes down by the total, with "10 more hours of notes" in its
+   history (the hours of the whole purchase: "20 more hours of notes" for two packs). Logged `notes bought` with the owner,
+   packs and amount.
+
+The allowance is the period's minutes, the plan's and those bought, at `ai.hour_micro_usd` (`inForce` in `plans.ts` adds
+them, and the meter reads it), so `Plan.notes.minutesPerPeriod` rises by exactly what was bought, and `minutesLeft` by it
+less anything spent past the allowance already (the one note written past it). A stop the spent allowance caused lifts
+once what's left is above `ai.stop_micro_usd` (`notes.stopped` goes false; the meter clears its own stop the next time
+it's touched): a call's notes stay off until its organizer turns them on again, which works from then; nothing turns
+them on by itself. A stop full storage caused stays: more notes don't make room. Buying Pro starts a period of its own,
+so more bought on Free don't reach it, and none reach the period after the one they were bought for.
 
 ## Support
 
@@ -310,3 +345,9 @@ The server never holds a key that can move treasury money. By hand, in near.com,
   (`plan.pro.yearly_from_months`, `plan.pro.yearly_price_micro_usd`), and each month of Pro in a `plan-account` record
   already keeps what was paid for it (`microUsd`), which is what a refund gives back. The previous release, while the
   deploy runs, offers no yearly price and refuses a buy at it as a changed price, charging nothing.
+- More notes need no migration. A `plan-account` record from before has no `hours`: it reads as none bought
+  (`.default(null)`), and the record is written in the new shape the next time it's saved. While the deploy runs, the
+  previous release reads a record this one wrote without them (zod ignores the field), so it doesn't count them, and one
+  it saves then (a top-up it adds, its upkeep, a purchase made there) is saved without them: notes bought in those minutes
+  are lost, the money stays spent. The window is the deploy's few minutes; support sees the purchase in the balance's
+  history (`billing show`) and can give its price back (`billing credit`).

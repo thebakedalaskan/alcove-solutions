@@ -251,6 +251,8 @@ const GiB = 1024 * MiB;
 const PRICE = 20_000_000;
 /** A month of Pro bought 12 or more at once: 20% off. */
 const YEARLY = 16_000_000;
+/** A pack of more notes: 10 hours. */
+const HOURS = 15_000_000;
 const BASE_USDC = 'nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near';
 /** Money in, as a person adds it: a top-up the fake 1Click settles in full. */
 async function deposit(who: Account, microUsd: number): Promise<void> {
@@ -276,7 +278,7 @@ describe('Pro', () => {
       periodDays: 30,
       free: { notesMinutes: 300, storageBytes: 10 * GiB, fileBytes: 512 * MiB },
       pro: { notesMinutes: 3000, storageBytes: 100 * GiB, fileBytes: 512 * MiB, microUsdPerMonth: PRICE, maxMonths: 12, yearly: { fromMonths: 12, microUsdPerMonth: YEARLY } },
-      hours: null
+      hours: { minutes: 600, microUsd: HOURS, maxPacks: 5 }
     });
     expect(await refusal(ann.api.plans.buyPro(1, PRICE))).toBe('conflict: Your balance is short: 1 month of Pro costs $20 and your balance is $0. Add money first.');
     const rec = await ann.api.recordings.start({ title: 'Used' });
@@ -555,7 +557,7 @@ describe('Pro', () => {
     expect(await upload(ann, ours, MiB)).toBe(FULL);
   });
 
-  it('reads a plan the previous release stored, with no months, renewing or notices, and buys Pro on it', async () => {
+  it('reads a plan the previous release stored, with no months, renewing, notices or more notes, and buys Pro and more notes on it', async () => {
     const ann = await account();
     const key = serviceKey(unb64u(h.deps.cfg.KSERVICE, 32), 'accounting');
     const header = { v: 1 as const, kind: 'plan-account', ownerId: ann.session.ownerId, keyVersion: '1' };
@@ -566,6 +568,116 @@ describe('Pro', () => {
     });
     expect(await ann.api.plans.buyPro(1, PRICE)).toMatchObject({ kind: 'pro', balance: { microUsd: 10_000_000 } });
     expect(await labels(ann)).toEqual(['Pro, 1 month', 'Added, 30 USDC']);
+    await give(ann, HOURS);
+    expect(await ann.api.plans.buyHours(1, HOURS)).toMatchObject({ kind: 'pro', notes: { minutesPerPeriod: 3600 }, balance: { microUsd: 10_000_000 } });
+    expect(await labels(ann)).toEqual(['10 more hours of notes', 'Added by support', 'Pro, 1 month', 'Added, 30 USDC']);
+  });
+});
+
+describe('more notes', () => {
+  it('adds notes to this period on any plan, from the balance, and they don’t carry into the next', async () => {
+    await setLimit('plan.period_seconds', 3600);
+    const ann = await account();
+    await give(ann, 3 * HOURS);
+    const more = await ann.api.plans.buyHours(2, HOURS);
+    expect(more).toMatchObject({ kind: 'free', notes: { minutesLeft: 1500, minutesPerPeriod: 1500, stopped: false }, balance: { microUsd: HOURS } });
+    expect(more.balance.history[0]).toMatchObject({ label: '20 more hours of notes', microUsd: -2 * HOURS });
+    // More again this period: on top of what was bought.
+    expect((await ann.api.plans.buyHours(1, HOURS)).notes).toEqual({ minutesLeft: 2100, minutesPerPeriod: 2100, stopped: false });
+    // The next period has the plan's notes alone.
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.parse(more.period.to) + 60_000 });
+    expect(await ann.api.plans.plan()).toMatchObject({ period: { from: more.period.to }, notes: { minutesLeft: 300, minutesPerPeriod: 300 } });
+    vi.useRealTimers();
+
+    // On Pro too. Buying Pro starts a period of its own, which more bought on Free don't reach.
+    const bob = await account();
+    await give(bob, HOURS + PRICE + HOURS);
+    expect((await bob.api.plans.buyHours(1, HOURS)).notes).toMatchObject({ minutesLeft: 900, minutesPerPeriod: 900 });
+    expect((await bob.api.plans.buyPro(1, PRICE)).notes).toMatchObject({ minutesLeft: 3000, minutesPerPeriod: 3000 });
+    expect(await bob.api.plans.buyHours(1, HOURS)).toMatchObject({ kind: 'pro', notes: { minutesLeft: 3600, minutesPerPeriod: 3600 }, balance: { microUsd: 0 } });
+    expect(await labels(bob)).toEqual(['10 more hours of notes', 'Pro, 1 month', '10 more hours of notes', 'Added by support']);
+  });
+
+  it('refuses more than one purchase buys, a price that has changed, a short balance, and buying while none are offered, charging nothing', async () => {
+    const ann = await account();
+    await give(ann, 20_000_000);
+    expect(await refusal(ann.api.plans.buyHours(6, HOURS))).toBe('invalid: Buy up to 50 hours of notes at a time.');
+    expect(await refusal(ann.api.plans.buyHours(1, 10_000_000))).toBe('conflict: The price of more notes has changed. Look at it again before buying.');
+    expect(await refusal(ann.api.plans.buyHours(2, HOURS))).toBe('conflict: Your balance is short: 20 hours of notes cost $30 and your balance is $20. Add money first.');
+    await setLimit('plan.hours.pack_minutes', 60);
+    await setLimit('plan.hours.price_micro_usd', 25_000_000);
+    expect(await refusal(ann.api.plans.buyHours(1, 25_000_000))).toBe('conflict: Your balance is short: 1 hour of notes costs $25 and your balance is $20. Add money first.');
+    // A pack at no price: none are offered, and none can be had for nothing.
+    await setLimit('plan.hours.price_micro_usd', 0);
+    expect((await ann.api.plans.offers()).hours).toBeNull();
+    expect(await refusal(ann.api.plans.buyHours(1, 0))).toBe('conflict: More notes can’t be bought right now.');
+    expect(await ann.api.plans.plan()).toMatchObject({ notes: { minutesPerPeriod: 300 }, balance: { microUsd: 20_000_000, history: [{ label: 'Added by support' }] } });
+  });
+
+  it('a buy of Pro and one of more notes at once, with money for one: they wait on the same lock, and one is refused', async () => {
+    const ann = await account();
+    await give(ann, PRICE);
+    const gate = await h.pool.connect();
+    let pending: Promise<string>[] = [];
+    try {
+      await gate.query('BEGIN');
+      await gate.query('SELECT 1 FROM plan_accounts WHERE owner_id = $1 FOR UPDATE', [ann.session.ownerId]);
+      pending = [refusal(ann.api.plans.buyPro(1, PRICE)), refusal(ann.api.plans.buyHours(1, HOURS))];
+      await expect.poll(async () => (await h.pool.query<{ n: number }>(`
+        SELECT count(*)::int AS n FROM pg_stat_activity
+        WHERE datname = current_database() AND wait_event_type = 'Lock' AND query LIKE '%plan_accounts%'`)).rows[0]?.n, { timeout: 5000 }).toBe(2);
+      await gate.query('COMMIT');
+      const [pro, hours] = await Promise.all(pending);
+      const plan = await ann.api.plans.plan();
+      if (pro === 'succeeded') {
+        expect(hours).toBe('conflict: Your balance is short: 10 hours of notes cost $15 and your balance is $0. Add money first.');
+        expect(plan).toMatchObject({ kind: 'pro', balance: { microUsd: 0 }, notes: { minutesPerPeriod: 3000 } });
+      } else {
+        expect([pro, hours]).toEqual(['conflict: Your balance is short: 1 month of Pro costs $20 and your balance is $5. Add money first.', 'succeeded']);
+        expect(plan).toMatchObject({ kind: 'free', balance: { microUsd: 5_000_000 }, notes: { minutesPerPeriod: 900 } });
+      }
+    } finally {
+      await gate.query('ROLLBACK');
+      gate.release();
+      await Promise.all(pending);
+    }
+  });
+
+  it('lifts a stop the spent allowance caused, so the organizer can turn notes on again, and not one full storage caused', async () => {
+    // A minute of notes at $0.0036 an hour and no stop short of nothing: the call's first clip, holding what writing its
+    // notes will cost, spends it.
+    await setLimit('plan.free.notes_minutes', 1);
+    await setLimit('ai.hour_micro_usd', 3600);
+    await setLimit('ai.stop_micro_usd', 0);
+    const org = await account();
+    const meeting = await org.api.meetings.create({ title: 'Review', startsAt: new Date(Date.now() + 3_600_000).toISOString(), durationMinutes: 30, guests: [], notes: 'on', choices: DEFAULT_NOTES_CHOICES });
+    const host = await org.api.calls.join(meeting.code, { mic: true, cam: false });
+    await host.appendAudio(piece(0));
+    await host.transcribe(speech('We agreed to ship on Monday.', 0), host.ticket.identity);
+    expect((await settle(host, (s) => s.capture.stopped !== null)).capture).toMatchObject({ mode: 'off', stopped: { reason: 'notes' } });
+    expect((await org.api.plans.plan()).notes).toEqual({ minutesLeft: 0, minutesPerPeriod: 1, stopped: true });
+    const ranOut = 'plan-limit: Your notes for this period have run out. They start again when your plan renews.';
+    expect(await refusal(host.setNotes(true))).toBe(ranOut);
+    await give(org, HOURS);
+    const more = await org.api.plans.buyHours(1, HOURS);
+    expect(more.notes).toMatchObject({ minutesPerPeriod: 601, stopped: false });
+    // What the call spent before comes off what was bought.
+    expect(more.notes.minutesLeft).toBeGreaterThan(590);
+    expect(more.notes.minutesLeft).toBeLessThanOrEqual(601);
+    await host.setNotes(true);
+    expect((await settle(host, (s) => s.capture.mode === 'on')).capture).toMatchObject({ mode: 'on', stopped: null });
+
+    // Notes stopped because the organizer's storage is full: more notes don't bring them back.
+    const sam = await account();
+    const theirs = await sam.api.meetings.create({ title: 'Full', startsAt: new Date(Date.now() + 3_600_000).toISOString(), durationMinutes: 30, guests: [], notes: 'on', choices: DEFAULT_NOTES_CHOICES });
+    const hers = await sam.api.calls.join(theirs.code, { mic: true, cam: false });
+    await hers.appendAudio(piece(0, 40 * 1024));
+    await setLimit('plan.free.storage_bytes', 64 * 1024);
+    expect(code(await hers.appendAudio(piece(1, 40 * 1024)).catch((e: unknown) => e))).toBe('plan-limit');
+    expect((await settle(hers, (s) => s.capture.stopped !== null)).capture).toMatchObject({ mode: 'off', stopped: { reason: 'storage' } });
+    await give(sam, HOURS);
+    expect((await sam.api.plans.buyHours(1, HOURS)).notes).toMatchObject({ minutesPerPeriod: 601, stopped: false });
+    expect(await refusal(hers.setNotes(true))).toBe('plan-limit: Your storage is full, so notes can’t be kept. Delete something, or move to a plan with more room.');
   });
 });
 

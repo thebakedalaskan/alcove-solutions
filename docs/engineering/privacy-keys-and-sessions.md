@@ -111,7 +111,7 @@ piece of a file is sealed on the one core every call runs on. A `media-piece` is
 | `workspace-mention` | state key `workspace` | workspace, document, tag (who tagged someone and on which line, until they've heard) |
 | `operation-result` | operation-result key | operation |
 | `billing` | accounting key | owner (the credits account of before plans: no longer read) |
-| `plan-account` | accounting key | owner (the plan, the balance in dollars and its history, any grace, the months of Pro bought, renewing, and the notices about Pro) |
+| `plan-account` | accounting key | owner (the plan, the balance in dollars and its history, any grace, the months of Pro bought, renewing, the notices about Pro, and more notes bought for a period) |
 | `ai-meter` | accounting key | owner (the period's AI allowance in dollars, what's been spent by kind, what requests in flight and live calls hold, and when it ran out) |
 | `deposit` | accounting key | owner, deposit (a top-up's route, address, amounts and the provider's quote), opened without anyone signed in so the watcher can add it |
 | `sign-in-attempt` | sign-in attempt key | provider (`google`); the owner is empty, as nobody is signed in yet |
