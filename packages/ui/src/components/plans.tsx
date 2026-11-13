@@ -163,10 +163,11 @@ export function PlanCycle({ value, onChange, off, month = 'Monthly', year = 'Yea
 
 /**
  * The last sliver of the sun on the horizon, and its long glow over the sky. Plans puts it on the evening behind everything
- * that passes through (`Evening`'s `sky`), at the middle of the horizon (--hz), since its moment has no sun of its own.
+ * that passes through (`Evening`'s `sky`), at the middle of the horizon (--hz), since its moment has no sun of its own. Its sun
+ * is marked `data-sun` (its box as wide as the sun, its top the sun's), so signing in from the welcome page can sail onto it.
  */
 export function PlanSunset({ className }: { className?: string | undefined }) {
-  return <div className={cn('pl-sunset', className)} aria-hidden="true"><i className="pl-sunset-glow" /><i className="pl-sunset-sun" /></div>;
+  return <div className={cn('pl-sunset', className)} aria-hidden="true"><i className="pl-sunset-glow" /><i className="pl-sunset-sun" data-sun="" /></div>;
 }
 
 /* ---------- under the plans ---------- */
