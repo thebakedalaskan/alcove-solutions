@@ -221,4 +221,27 @@ describe('browser notification preferences', () => {
     const [opened] = await listItems(owner, h.pool, 'profile', Profile.extend({ preferences: PreferencesSchema.omit({ notificationsPausedUntil: true }) }));
     expect(opened?.manifest.preferences.notesLanguage).toBe('de');
   });
+  it('opens a profile sealed before Upcoming could show your own events as not showing them, and saves it with the choice', async () => {
+    const browser = h.browser();
+    const { session } = await browser.api.auth.signIn('sso', { email: `before-own-events.${Date.now()}@tests.example` });
+    const owner = await openOwner(h.deps, session.ownerId, undefined);
+    const stored = z.object({ preferences: z.record(z.string(), z.unknown()) });
+    const [item] = await listItems(owner, h.pool, 'profile', Profile);
+    if (!item) throw new Error('No profile to upgrade');
+    // The release before wrote preferences without the field.
+    const { showSoloEvents, ...previous } = item.manifest.preferences;
+    expect(showSoloEvents).toBe(false);
+    await saveRevision(owner, h.pool, item.itemId, item.revisionId, { ...item.manifest, preferences: previous });
+    expect((await listItems(owner, h.pool, 'profile', stored))[0]?.manifest.preferences).not.toHaveProperty('showSoloEvents');
+    expect((await browser.api.account.preferences()).showSoloEvents).toBe(false);
+    // Saved for anything else, it's written in the new shape, not showing them.
+    expect(await browser.api.account.updatePreferences({ notesLanguage: 'de' })).toMatchObject({ notesLanguage: 'de', showSoloEvents: false });
+    expect((await listItems(owner, h.pool, 'profile', stored))[0]?.manifest.preferences).toMatchObject({ notesLanguage: 'de', showSoloEvents: false });
+    // Shown, then hidden again, and the release before still opens the profile while they're shown.
+    expect((await browser.api.account.updatePreferences({ showSoloEvents: true })).showSoloEvents).toBe(true);
+    const [opened] = await listItems(owner, h.pool, 'profile', Profile.extend({ preferences: PreferencesSchema.omit({ showSoloEvents: true }) }));
+    expect(opened?.manifest.preferences.notesLanguage).toBe('de');
+    expect((await browser.api.account.updatePreferences({ showSoloEvents: false })).showSoloEvents).toBe(false);
+    expect((await browser.api.account.preferences()).showSoloEvents).toBe(false);
+  });
 });

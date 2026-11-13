@@ -1,6 +1,7 @@
 /*
  * Journeys on Home (docs/product/user-flows.md › 3. Home), as the canvas's Home board draws them
- * (docs/design/canvas/home/water.js, AH.HW.JOURNEYS). Asking your notes from Search or ask is the side panel's (2.4), and
+ * (docs/design/canvas/home/water.js, AH.HW.JOURNEYS), and 3.8 and 3.9 as Upcoming's own canvas does
+ * (docs/design/canvas/upcoming). Asking your notes from Search or ask is the side panel's (2.4), and
  * Start a call's modal is flow 4's. Google's pages can't open in Storybook, so connecting the calendar plays up to the
  * hand-off; Home as Google sends you back to it is in Pages/Home (Back from Google, Google didn't allow).
  */
@@ -8,7 +9,7 @@ import type { Meta } from '@storybook/react-vite';
 import { screen, within } from 'storybook/test';
 import { notConnected } from '../../src/world/build';
 import { page, pages, type PageArgs, type PageStory } from '../../src/page';
-import { yourMeeting } from '../pages/changes';
+import { onlyOwnEvents, yourMeeting } from '../pages/changes';
 import { before, holding, LATER, SOON } from './play';
 
 const meta = { title: 'Journeys/3 Home', ...pages } satisfies Meta<PageArgs>;
@@ -151,6 +152,36 @@ export const YourFirstDay: PageStory = {
     await step('Read the example note in Recent notes, to see what notes look like', async () => {
       await userEvent.click(within(await widget('Recent notes')).getByRole('link', { name: 'Weekly product call' }));
       await screen.findByRole('heading', { level: 1 }, SOON);
+    });
+  }
+};
+
+export const SeeYourOwnEvents: PageStory = {
+  name: '3.8 See your own events',
+  ...page('/home', 'busy'),
+  play: async ({ userEvent, step }) => {
+    await step('Events with only you on them aren’t calls, so Upcoming counts them at its foot. Click 2 with only you', async () => {
+      await userEvent.click(await within(await widget('Upcoming')).findByRole('button', { name: '2 with only you' }, SOON));
+    });
+    await step('They show in their days, one slim line each after the hatch your own time has when you schedule. It’s a preference, so they stay shown wherever you’re signed in', async () => {
+      await within(await widget('Upcoming')).findAllByRole('link', { name: /Focus time, only you/ }, SOON);
+    });
+    await step('Click 2 with only you again to hide them', async () => {
+      await userEvent.click(within(await widget('Upcoming')).getByRole('button', { name: '2 with only you' }));
+    });
+  }
+};
+
+export const AWeekOfYourOwnEvents: PageStory = {
+  name: '3.9 A week of only your own events',
+  ...page('/home', 'busy'),
+  beforeEach: before(onlyOwnEvents),
+  play: async ({ userEvent, step }) => {
+    await step('Nobody else is on anything this week: Upcoming says so, and how many of your own events it isn’t showing. Click Show them', async () => {
+      await userEvent.click(await within(await widget('Upcoming')).findByRole('button', { name: 'Show them' }, SOON));
+    });
+    await step('Your week, quietly, in its days, with Show 4 more. The count at the foot hides it again', async () => {
+      await within(await widget('Upcoming')).findByRole('button', { name: '12 with only you' }, SOON);
     });
   }
 };

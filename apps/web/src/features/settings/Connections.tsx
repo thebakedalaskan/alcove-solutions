@@ -1,6 +1,6 @@
 /*
  * Connections: what Alcove reaches outside itself, set up once and then left alone. Google first, in one panel: the
- * calendar with its two switches nested under it, then Drive, one line until it's opened. Agents in a panel of their own:
+ * calendar with its switches nested under it, then Drive, one line until it's opened. Agents in a panel of their own:
  * one row that says who's connected and opens Agents, where they're connected and changed. `calendar` and `drive` are how
  * Google sent you back (`?calendar=`, `?drive=` in the address): each says so in its place, and Drive opens.
  */
