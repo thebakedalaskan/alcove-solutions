@@ -227,6 +227,7 @@ everywhere within a minute.
 | `ai.fallback_input_micro_usd` | $1 | $0 | $100 | A million input tokens of a model NEAR AI lists no price for. |
 | `ai.fallback_output_micro_usd` | $4 | $0 | $100 | A million output tokens of a model NEAR AI lists no price for. |
 | `ai.image_tokens` | 1,500 | 0 | 100,000 | The input tokens one image is taken to be at most, before NEAR AI says. |
+| `ai.guests_call_percent` | 10 | 0 | 100 | The most guests in one call spend between them of its organizer's allowance for the period, in percent: their questions, catch-ups, and AI on the call's documents and boards. |
 | `call.max_seconds` | 10 h | 10 m | 48 h | The longest a call runs: it ends then, everyone told 5 minutes before. |
 | `call.max_people` | 100 | 2 | 1,000 | The most people in a call at once, those waiting to be let in included. |
 | `team.max_licenses` | 500 | 1 | 100,000 | The most team licenses one purchase buys. |
@@ -290,6 +291,16 @@ Cloud Run job `alcove-feature-flags`, which each deploy keeps on the current ima
 `gcloud run jobs execute alcove-feature-flags --region "$GCP_REGION" --wait --args=everyone,<feature-flag>,on`. Each instance reads the flags
 again every 30 seconds (`FEATURE_FLAGS_CACHE_MS`). Everything else, building behind a flag, every command and retiring a flag, is in
 [Feature flags](feature-flags.md).
+
+## Support's billing job
+
+Support adds dollars to an account's balance, and says where its plan stands, with `billing` ([Plans and usage ›
+Support](plans-and-usage.md#support)). Locally, `pnpm --filter @alcove/server billing …` with `DATABASE_URL`, `KSERVICE` and
+`KMASTER` from `.env`; in production, the Cloud Run job `alcove-billing`, which each deploy keeps on the current image with only
+`DATABASE_URL` and `KSERVICE` bound, never `KMASTER`, and no retries, so a `credit` is never run twice:
+`gcloud run jobs execute alcove-billing --region "$GCP_REGION" --wait --args=credit,<reference>,<usd>` (or `show,<reference>`). The
+account is named by a top-up's reference or its ID, never an address: what's typed is kept with the execution and in Cloud
+Audit Logs, which Alcove can't delete, and what it prints is kept in Cloud Logging, so it prints no amount, history or address.
 
 ## Acceptance
 

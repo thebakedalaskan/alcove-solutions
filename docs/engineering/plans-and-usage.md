@@ -22,7 +22,7 @@ Every number is a limit (`apps/api/src/limits.ts`, [Deployment › Changing a li
 changeable without a deploy: each plan's notes, storage, files and price; Pro's lower price for a year or more; the most
 months of Pro one purchase buys and how long before Pro ends its owner is told; more notes for a period, their price and
 the most bought at once; the most workspaces one account makes; what an hour of notes is reckoned at; when AI stops and
-when an organizer is told it's close; how long a period and a grace last; a call's longest and its most people. The
+when an organizer is told it's close; how much of an organizer's allowance guests in one call spend; how long a period and a grace last; a call's longest and its most people. The
 period's length isn't changed in production for now: an account on Free counts its periods from when it began, so a
 change would start a new one at once for every account on Free past its first.
 
@@ -83,13 +83,24 @@ and `ai.fallback_output_micro_usd`, logged at warn.
 | The live transcript, live notes, board ideas and captions in a call, for everyone | The call's organizer |
 | Writing a call's notes, reading its shared screens, comparing it with its series | The organizer |
 | A room recording's transcript and notes | Whoever records |
-| A question or a catch-up in a call | Whoever asks, from their own plan; a guest's, the organizer (6 a minute for each guest) |
+| A question or a catch-up in a call | Whoever asks, from their own plan; a guest's, the organizer, out of the guests' share (below), 6 a minute for each guest |
 | Asking a note, or every note; asking a series; an agent's questions (MCP) | Whoever asks |
-| AI on a document or board (shorter, checklist, what was said, sort into themes) | Whoever the workspace counts against |
+| AI on a document or board (shorter, checklist, what was said, sort into themes) | Whoever the workspace counts against; a guest's in a call, out of the guests' share |
 
 Spend is kept by kind (`transcript`, `notes`, `live-notes`, `ideas`, `captions`, `catch-up`, `ask`, `series`,
 `documents`) with the allowance, so it can be explained, and logged when a period closes. Every change is made under the
 meter's row lock (`ai_meters`), so requests at once on any instance can't spend the same money twice.
+
+**Guests' share.** A guest has no plan, so what they ask for in a call (questions, catch-ups, and AI on the call's documents
+and boards) is the organizer's. Every guest in one call spends from one share of the organizer's allowance for the period,
+`ai.guests_call_percent` (10%), kept with the allowance by the call's ID (`Bill.guests` in `meter.ts`): a request that
+would take them past it is refused ("Guests in this call have asked as much as the organizer’s plan allows. Sign in to ask
+from your own plan."), whichever guest asks, and the organizer's own notes keep the rest. On Free that's $0.25 a call, about
+30 minutes of notes, which is dozens of questions about a long call at the default model; a guest is also held to 6
+questions and catch-ups a minute, counted by the call and the person their pass names, so coming back on a new connection
+doesn't start again (`http/limits.ts › guestAskLimiter`, `calls/routes.ts`). Someone signed in asks from their own plan,
+and isn't counted in it. A request that carries no session is a guest's, so a signed-in invitee who leaves theirs off asks
+as a guest, within the same share.
 
 ### Running out in a call
 
@@ -132,7 +143,11 @@ and AI they ask for there is paid by it. So it does that only while the organize
 call is kept in, and the organizer can still edit there (`access.ts › holdersOf`, asked on every request, so a change of
 payer or role takes effect at once). A workspace someone else pays for, made the call's by an organizer who can edit there,
 opens only for its own people; the Switch workspace question says so ("Its files don’t count against your storage, so it
-opens only for its own people."). A team's pool isn't counted as the organizer's here, though a teammate's
+opens only for its own people."). Its boards go by the same payer: a seat the call gives on a board opens it for anyone only
+while the organizer pays for its workspace, asked on every read too, so in one someone else pays for the call seats nobody
+on the boards it makes, and nobody can let everyone in on a saved one (`calls/boards.ts › organizerPays`). The scheduler says
+so when such a workspace is chosen for where a call's notes go ("Its files don’t count against your storage, so its boards
+and files open only for its own people.", `WorkspaceSummary.youPay`). A team's pool isn't counted as the organizer's here, though a teammate's
 workspace counts against the same pool: AI a guest asks for in a team's workspace is paid by the workspace's payer, so a call
 opening one a teammate pays for would spend that teammate's allowance.
 
@@ -158,8 +173,11 @@ only Pro's limits apply on Pro.
 
 A call ends at its longest (`call.max_seconds`, 10 hours): `CallState.endsAt` says when, everyone is told 5 minutes
 before, and upkeep ends it every 30 seconds (`lifecycle.endOverdue`), writing its notes as when anyone ends it. At most
-`call.max_people` (100) are in a call or waiting to be let in: anyone more is refused ("This call is full…") and whoever
-hosts is told, at most once a minute. Someone coming back keeps their place.
+`call.max_people` (100) are in a call or asking to be let in (`joining.ts › guestJoin`, under the call's row lock, so
+several asking at once for the last place can't all take it): anyone more is refused ("This call is full…") and whoever
+hosts is told, at most once a minute. Someone coming back keeps their place. An ask holds a place only while its browser
+keeps saying it's asking: one quiet for 90 seconds (`places.ts › admissionFresh`) can't be seen or let in, so it holds none, and upkeep turns it away (`lifecycle.ts › arrivals`). A reload of someone still asking takes the
+place of their earlier ask, which is turned away, so nobody is kept out by their own ask and whoever hosts is asked once.
 
 ## Pro
 
@@ -394,16 +412,29 @@ falls back to the workspace's payer. Elsewhere the workspace's payer pays, as be
 ## Support
 
 `pnpm --filter @alcove/server billing` (`apps/api/src/billing-cli.ts`, `dist/billing-cli.js` in the image) is support's
-way into an account's plan, in whichever database `DATABASE_URL` names. It needs `KMASTER`, to find the account by the
-address it signs in with as sign-in does (its blind index), and `KSERVICE`, to open and seal the plan: in production run
-it as a one-off job on the API's image with the API's settings bound, so neither key reaches a laptop.
+way into an account's plan, in whichever database `DATABASE_URL` names. It reads only `DATABASE_URL`, `KSERVICE` (to open
+and seal plans), `LIMITS_CACHE_MS` and `LOG_*`, with `KMASTER` where it's set, and none of the API's other settings. In
+production it's the Cloud Run job `alcove-billing`, which each deploy keeps on the current image with only the database and `KSERVICE` bound,
+so the key never reaches a laptop ([Deployment › Support's billing job](deployment-and-acceptance.md#supports-billing-job)).
 
-- `billing show <email>`: the plan, its period, notes and storage, the balance and its latest changes, the months of Pro
-  and the notices. Nothing else about the person; the address isn't repeated.
-- `billing credit <email> <usd>`: adds dollars (`20`, `4.50`, at most $10,000) to the balance, as "Added by support",
-  logged `balance added by support` with the owner and amount. Locally it's the fake money for buying Pro without 1Click.
+`<who>` names the account: a top-up's reference (its deposit ID, which the person gives support), or the account's ID. A
+job's arguments are kept with its execution and in Cloud Audit Logs, which Alcove can't delete, so an address is never one:
+only where `KMASTER` is set too, which is locally, does an address name an account, found as sign-in finds it (its blind
+index). An address signed in to more than one account (through different providers) is refused, and nothing is done.
 
-An address signed in to more than one account (through different providers) is refused, and nothing is done.
+- `billing show <who>`: the account, the top-up it was named by and its state, its plan and whether Pro renews, how many
+  months of Pro aren't over, whether the balance covers a month of Pro at its price now, how many changes to the balance are
+  kept, how many notices wait and how many top-ups it has in each state. What the job prints is kept in Cloud Logging, so
+  that's all it says: what a log may hold, never an amount, a history, a date or an address.
+- `billing credit <who> <usd>`: adds dollars (`20`, `4.50`, at most $10,000) to the balance, as "Added by support", logged
+  `balance added by support` with the owner and the top-up, never the amount. Named by a top-up's reference, that top-up
+  is never asked about again, so a payment 1Click settles for it later can't add it a second time, and one Alcove still
+  watches (open, or cancelled while its address takes a payment) is refused, since what reaches it is added by itself. One
+  that was added already is left as it was: what support adds then is a stray payment of its own. Locally, with an
+  address, it's the fake money for buying Pro without 1Click.
+
+Every refusal (an amount that isn't one, nobody found, more than one account, a top-up still watched) exits 1 and logs
+`billing refused` at warn, with its code or why, never what was typed: it may be an address put in the wrong place.
 
 ## Adding money
 
@@ -529,10 +560,12 @@ The server never holds a key that can move treasury money. By hand, in near.com,
 - **A stray payment** (a second payment to a used address, or one after it expired) reaches the treasury as a 1Click
   refund and isn't added. The person gives support the top-up's reference (its deposit ID). Support opens that deposit's
   sealed record (`deposits`, under `Kservice`'s accounting key) to find its address, confirms the payment in 1Click's
-  status for it, and adds what reached the treasury to their balance with `billing credit` ([Support](#support)).
+  status for it, and adds what reached the treasury to their balance with `billing credit <reference> <usd>` ([Support](#support)).
 - **A failed top-up** (logged at error with its deposit ID and a reason) is one 1Click reported money for that wasn't
-  added. Support opens its record and 1Click's status as above, and adds only what 1Click shows reached the treasury (`billing credit`). If
-  1Click settles it cleanly within 30 days, it's added by itself.
+  added. Support opens its record and 1Click's status as above, and adds only what 1Click shows reached the treasury
+  (`billing credit <reference> <usd>`). Until then, if 1Click settles it cleanly within 30 days, it's added by itself; once
+  support has added it, it never is, so its money is never added twice. It still reads as failed in the person's list of
+  top-ups, and their balance's history says "Added by support".
 - **A depeg (accepted risk).** Every amount sent is valued at face (1 token = 1 USD). When a stablecoin depegs, turn
   top-ups off (take `TREASURY_INTENTS_ACCOUNT` out of the API's settings in `deploy.yml` and redeploy) until it recovers.
 
@@ -558,6 +591,8 @@ The server never holds a key that can move treasury money. By hand, in near.com,
 - A deposit record from before keeps its `credits` and `rate` (ignored now); one settled by a release before plans has no
   `addedMicroUsd` and is added again as dollars once (above).
 - A live call's state from before has no `notes.limit`, and reads as not stopped (`.default`).
+- The guests' share needs no migration: an `ai-meter` record kept without it has no shares and holds for no call's guests,
+  and reads as none spent (`.default`); it's written with them the next time it's saved.
 - Team is migration `0031_teams.sql`: `teams`, `team_members`, `team_invites`, `team_notes`, and `team_id` and
   `team_access` on `workspaces` (null on every workspace there is). The previous release ignores them: while both serve,
   it opens a team's note or workspace only for people who have it otherwise, and its workspaces aren't a team's. A notice in a
@@ -579,8 +614,8 @@ The server never holds a key that can move treasury money. By hand, in near.com,
   (`.default(null)`), and the record is written in the new shape the next time it's saved. While the deploy runs, the
   previous release reads a record this one wrote without them (zod ignores the field), so it doesn't count them, and one
   it saves then (a top-up it adds, its upkeep, a purchase made there) is saved without them: notes bought in those minutes
-  are lost, the money stays spent. The window is the deploy's few minutes; support sees the purchase in the balance's
-  history (`billing show`) and can give its price back (`billing credit`).
+  are lost, the money stays spent. The window is the deploy's few minutes; the person sees the purchase in their balance's
+  history, and support can give its price back (`billing credit`).
 - Payments that buy need no migration. A `deposit` record from before has no `purchase`: it reads as `null`
   (`.default(null)`), a top-up that only adds money, and `TopUp.purchase` says so. A purchase of more notes keeps the
   pack's minutes it was shown at (`minutesPerPack`); one kept without them reads as a pack of the default size

@@ -141,7 +141,8 @@ describe('a workspace', () => {
     const ann = await account();
     const { id } = await ann.api.workspaces.create('  Launch \n plan ');
     expect(id).toMatch(/^[A-Za-z0-9_-]{22}$/);
-    expect(await ann.api.workspaces.list()).toEqual([{ id, name: 'Launch plan', role: 'admin', people: 1, teamAccess: null, createdAt: expect.any(String), call: null }]);
+    // Ann made it, so she pays for it: its files count against her storage, and a call she organizes there opens it to everyone.
+    expect(await ann.api.workspaces.list()).toEqual([{ id, name: 'Launch plan', role: 'admin', people: 1, teamAccess: null, createdAt: expect.any(String), call: null, youPay: true }]);
     expect(await ann.api.workspaces.get(id)).toEqual({ id, name: 'Launch plan', role: 'admin', inCall: false, people: 1, teamAccess: null, items: [] });
     await ann.api.workspaces.rename(id, 'Launch');
     expect((await ann.api.workspaces.get(id)).name).toBe('Launch');
@@ -249,7 +250,7 @@ describe('people in a workspace', () => {
     expect(people.map((p) => [p.person.email, p.role, p.isMe])).toEqual([[ann.email, 'admin', true], [theo.email, 'edit', false], [later, 'read', false]]);
     expect(people[0]?.person.name).toBe(ann.name);
     expect(await ann.api.workspaces.list()).toEqual([expect.objectContaining({ id, people: 3 })]);
-    expect(await theo.api.workspaces.list()).toEqual([{ id, name: 'Ours', role: 'edit', people: 3, teamAccess: null, createdAt: expect.any(String), call: null }]);
+    expect(await theo.api.workspaces.list()).toEqual([{ id, name: 'Ours', role: 'edit', people: 3, teamAccess: null, createdAt: expect.any(String), call: null, youPay: false }]);
     expect((await theo.api.workspaces.people(id)).find((p) => p.isMe)?.person.email).toBe(theo.email);
 
     // Adding someone who's in it sets their role: the same person, not a second one.
@@ -790,7 +791,7 @@ describe('who can open what', () => {
     expect(await w.list()).toEqual([]);
     await ann.api.workspaces.share.set(id, given, [{ email: sam.email }], 'read');
 
-    expect(await w.list()).toEqual([{ id, name: null, role: null, people: null, teamAccess: null, createdAt: null, call: null }]);
+    expect(await w.list()).toEqual([{ id, name: null, role: null, people: null, teamAccess: null, createdAt: null, call: null, youPay: false }]);
     const tree = await w.get(id);
     expect(tree).toMatchObject({ id, name: null, role: null, people: null });
     expect(tree.items.map((i) => [i.id, i.parent, i.role])).toEqual([[given, null, 'read']]);

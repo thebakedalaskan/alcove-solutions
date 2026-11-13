@@ -1414,13 +1414,22 @@ call's is which board is open, kept by part of the call in its sealed state (`bo
 it, by their name, address and seat, and which boards it lets everyone into. What's done is
 `apps/api/src/features/calls/boards.ts`, what's kept is `features/calls/space-state.ts`, and who can open what is
 `features/workspaces/access.ts`, on every read. A board in the workspace the call uses opens to everyone in the call, as
-anything there that isn't restricted does.
+anything there that isn't restricted does. What anyone adds to a board, or asks AI to do on it, is its workspace's payer's
+([Plans and usage › Storage](plans-and-usage.md#storage)), so the call seats everyone on boards only in a workspace its
+organizer pays for (`organizerPays`), as it opens a workspace to everyone only then, and a seat opens what it's given for
+anyone only while that holds, asked on every read (`holdersOf`, `Holders.shares.opens`). In a workspace someone else pays
+for, such as one chosen as the call's home when it was scheduled, the call seats nobody on the boards it makes there, rooms'
+boards included, nobody new is seated, and nobody can let everyone in on a saved board there (`boardCheck` says
+`mayLetIn` false, and `board-open` with `letIn` is `409`: "Its files don’t count against the organizer’s storage, so it
+opens only for its own people."); a seat given there opens only for the workspace's own people. The scheduler says so when
+such a workspace is chosen for a call's notes.
 
 - **`CallState.board.open`** is per viewer, for the part of the call they're in: `workspaceId`, `documentId`, `name` (what it's
   called now), `openedBy` (the connection whoever opened it is on now, or null when they aren't in the call), `canClose`,
   `everyone` (everyone in the call can edit it, anyone let in later too, which is what the board's seal, a blank board and
   the call's toasts say: the call made it and it's still the call's to give, until it's restricted or the organizer can't
-  edit in its workspace; or it's a saved board someone who may share it let everyone into, while they still may
+  edit in its workspace; or it's a saved board someone who may share it let everyone into, while they still may; either only
+  while the organizer pays for its workspace
   (`letsEveryoneIn`). False for a saved board nobody let everyone into, even one everyone here can edit because it's in the
   workspace the call uses, and for anyone who can't open it; a room's own board is everyone in the room's),
   `role`, `seal` (`Sealed`, or `Sealed to this room` on a room's own board), and `frame`: on the one board every room shares,
