@@ -6,9 +6,8 @@
  * on whoever asks it. Every number is the server's (GET /v1/plan, /v1/plan/offers).
  */
 import { errorCode, errorMessage, type Plan } from '@alcove/api';
-import { Button, NoNotesLeft, buttonClass, useToast } from '@alcove/ui';
+import { Button, NoNotesLeft, useToast } from '@alcove/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link } from '@tanstack/react-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { log } from '~/lib/log';
 import { q } from '~/lib/queries';
@@ -54,28 +53,20 @@ export function useMoreNotes(plan: Plan | undefined, wanted: boolean): MoreNotes
  *
  * - `at`: when the call starts (now when left out). A call after the period renews has notes, so nothing is said.
  * - `alone`: nothing beside it says it's about notes (Start now), so it names them.
- * - `newTab`: checkout can't open where this is, inside a window it would stack over: Get Pro opens Plans in a new tab with
- *   checkout on Pro, and what was chosen here stays.
  * - `beforeCheckout`: what to do before checkout opens over the page, such as closing the window this is in.
  * - `without`: the way on without notes, such as Start without notes.
  */
-export function NoNotesLeftDoor({ at, alone = false, newTab = false, beforeCheckout, without, className }: {
-  at?: Date | undefined; alone?: boolean | undefined; newTab?: boolean | undefined; beforeCheckout?: (() => void) | undefined;
+export function NoNotesLeftDoor({ at, alone = false, beforeCheckout, without, className }: {
+  at?: Date | undefined; alone?: boolean | undefined; beforeCheckout?: (() => void) | undefined;
   without?: { label: string; onClick: () => void } | undefined; className?: string | undefined;
 }) {
   const left = useNotesLeft(at);
   const more = useMoreNotes(left.plan, left.none);
   const checkout = useCheckout();
   if (!left.none || !left.until) return null;
-  const away = buttonClass({ variant: 'secondary', size: 'sm' });
   return (
     <NoNotesLeft until={dayFullMonth(left.until)} alone={alone} className={className}>
-      {more && (newTab
-        // In a new tab, Plans opens with checkout on Pro; more hours are bought from Settings › Plan.
-        ? more.what.plan === 'pro'
-          ? <Link className={away} to="/plans" search={{ checkout: 'pro' }} target="_blank" rel="noopener noreferrer">{more.label}</Link>
-          : <Link className={away} to="/settings" hash="plan" target="_blank" rel="noopener noreferrer">{more.label}</Link>
-        : <Button size="sm" variant="secondary" onClick={() => { beforeCheckout?.(); checkout.open(more.what, 'door'); }}>{more.label}</Button>)}
+      {more && <Button size="sm" variant="secondary" onClick={() => { beforeCheckout?.(); checkout.open(more.what, 'door'); }}>{more.label}</Button>}
       {without && <Button size="sm" variant="quiet" onClick={without.onClick}>{without.label}</Button>}
     </NoNotesLeft>
   );
