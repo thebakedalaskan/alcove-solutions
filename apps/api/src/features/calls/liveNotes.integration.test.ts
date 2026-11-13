@@ -158,8 +158,10 @@ describe('one set of live notes for the call', () => {
     whileRefreshing(C, async () => { meanwhile = await settle(kofi, (s) => s.liveNotes.writing); });
     const stop = [host.watchNotes(), kofi.watchNotes()];
     await waitFor(() => runs() > before, 'the notes model to be asked');
-    const seen = await notesOf(host);
+    // Longer than that look waits for (settle's 15 s), so a look that never saw the run says so below.
+    await waitFor(() => meanwhile !== undefined, 'the other browser to look while the run is on its way', 20_000);
     expect(meanwhile?.liveNotes.writing).toBe(true);
+    const seen = await notesOf(host);
     expect(texts(seen.decided)).toEqual([A]);
     expect(seen.next).toEqual([]);
     expect(proposalsOf(host)).toEqual([expect.objectContaining({ text: B, owner: 'Kofi', due: 'Friday', done: false, id: expect.any(String) })]);
