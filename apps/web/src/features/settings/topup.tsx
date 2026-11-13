@@ -22,14 +22,14 @@ const routeName = (r: { token: string; chainName: string }) => `${r.token} on ${
 const MIN_CUSTOM = '5';
 /**
  * What the custom amount field shows for what was typed: dollars and up to two places of cents, no leading zeros, and
- * never more than one top-up can add.
+ * never more than one top-up can add. The whole amount, cents and all, is held to that most ($8,000), however many digits
+ * were typed.
  */
 function dollarsInput(text: string): string {
   const [whole = '', ...rest] = text.replace(/[^\d.]/g, '').split('.');
-  const digits = whole.replace(/^0+(?=\d)/, '').slice(0, 4);
-  const cents = rest.length ? `.${rest.join('').slice(0, 2)}` : '';
-  const max = MAX_TOP_UP_MICRO_USD / 1_000_000;
-  return digits && Number(digits) > max ? String(max) : `${digits}${cents}`;
+  const typed = `${whole.replace(/^0+(?=\d)/, '')}${rest.length ? `.${rest.join('').slice(0, 2)}` : ''}`;
+  const micro = typedMicroUsd(typed);
+  return micro !== null && micro > MAX_TOP_UP_MICRO_USD ? String(MAX_TOP_UP_MICRO_USD / 1_000_000) : typed;
 }
 /** The micro-USD in the custom amount field, or null when it's empty or nothing. */
 function typedMicroUsd(text: string): number | null {
