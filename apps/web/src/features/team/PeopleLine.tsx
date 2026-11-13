@@ -42,10 +42,21 @@ type Ring = (from: Element, email: string) => void;
 export function PeopleLine({ line, sun, company, waiting = false, between }: { line: Line; sun: Sun; company: string | undefined; waiting?: boolean | undefined; between: Between }) {
   const { ring, flood } = useRing();
   const row = useRef<HTMLUListElement>(null);
-  /* On a phone the line is wider than the window: it starts with you in the middle. */
+  /*
+   * On a phone the line is wider than the window: it starts with you in the middle. Safari puts the line back at its start
+   * as the page's rise and the arches standing up finish, so the middle is set again as each of those animations ends,
+   * until the line is moved by hand.
+   */
   useLayoutEffect(() => {
     const r = row.current;
-    if (r) r.scrollLeft = (r.scrollWidth - r.clientWidth) / 2;
+    if (!r) return undefined;
+    const middle = () => { r.scrollLeft = (r.scrollWidth - r.clientWidth) / 2; };
+    middle();
+    const held = new AbortController();
+    const settled = (e: AnimationEvent) => { if (e.target instanceof Node && (e.target.contains(r) || r.contains(e.target))) middle(); };
+    document.addEventListener('animationend', settled, { capture: true, signal: held.signal });
+    for (const hand of ['pointerdown', 'wheel', 'keydown'] as const) r.addEventListener(hand, () => held.abort(), { passive: true, signal: held.signal });
+    return () => held.abort();
   }, [line.arches.length]);
   const gap = { '--k': Math.abs(line.gap).toFixed(3) };
   return (
