@@ -81,7 +81,7 @@ export const LIMITS = {
   'ai.fallback_input_micro_usd': { default: 1_000_000, floor: 0, ceiling: 100_000_000, unit: 'micro-usd', measures: 'A million input tokens of a model NEAR AI lists no price for.' },
   'ai.fallback_output_micro_usd': { default: 4_000_000, floor: 0, ceiling: 100_000_000, unit: 'micro-usd', measures: 'A million output tokens of a model NEAR AI lists no price for.' },
   'ai.image_tokens': { default: 1_500, floor: 0, ceiling: 100_000, unit: 'count', measures: 'The input tokens one image is taken to be at most, before NEAR AI says.' },
-  'ai.guests_call_percent': { default: 10, floor: 0, ceiling: 100, unit: 'count', measures: 'The most guests in one call spend between them of its organizer’s allowance for the period, in percent: their questions, catch-ups, and AI on the call’s documents and boards.' },
+  'ai.guests_call_percent': { default: 10, floor: 0, ceiling: 100, unit: 'count', measures: 'The most guests in one call spend between them of its organizer’s allowance for the period, in percent: their questions, catch-ups, AI on the call’s documents and boards, captions in another language and live notes of their own.' },
   'call.max_seconds': { default: 10 * HOUR, floor: 10 * MINUTE, ceiling: 48 * HOUR, unit: 'seconds', measures: 'The longest a call runs: it ends then, everyone told 5 minutes before.' },
   'call.max_people': { default: 100, floor: 2, ceiling: 1_000, unit: 'count', measures: 'The most people in a call at once, those waiting to be let in included.' },
   'team.max_licenses': { default: 500, floor: 1, ceiling: 100_000, unit: 'count', measures: 'The most team licenses one purchase buys.' },

@@ -43,6 +43,8 @@ const LEASE_SECONDS = 150;
  * who can press something, and here nobody has to, so why is in the log.
  */
 const NOT_UPDATED = 'The notes couldn’t be updated just now. Alcove tries again on its own.';
+/** What a guest's own notes say when guests in the call have used their share of the organizer's plan (billing/meter.ts). */
+const GUESTS_SPENT = 'These notes aren’t being updated: guests in this call have used as much of the organizer’s plan as it allows them.';
 
 /** A point in the notes, as a catch-up gives it. */
 const Point = z.object({ ownerPerson: PersonSchema.nullable().default(null), text: z.string(), owner: z.string().optional(), due: z.string().optional(), evidence: z.array(EvidenceSchema) });
@@ -70,8 +72,12 @@ type Written = z.infer<typeof Written>;
  */
 const Added = Tick.extend({ id: z.string(), text: z.string(), owner: SpeakerSchema.nullable(), due: z.string().nullable().default(null), takenOn: z.boolean().default(true), said: z.number(), tick: Tick.nullable(), shown: z.boolean(), ...FollowUpReviewFields });
 type Added = z.infer<typeof Added>;
-/** The record: the notes, null until they're written, whether the latest refresh didn't work, and what people added. Rows written before people could add have none. */
-const Stored = z.object({ notes: Written.nullable(), failed: z.boolean(), added: z.array(Added).default([]) });
+/**
+ * The record: the notes, null until they're written, whether the latest refresh didn't work, and what people added. Rows written
+ * before people could add have none. `guests`: it didn't work because guests in the call have used their share of the
+ * organizer's plan; rows written before that was said have false.
+ */
+const Stored = z.object({ notes: Written.nullable(), failed: z.boolean(), guests: z.boolean().default(false), added: z.array(Added).default([]) });
 type Stored = z.infer<typeof Stored>;
 /** A line a row left out: when it was said, and who may read it, if not everyone there. */
 const Barred = z.object({ said: z.number(), readers: z.array(z.string()).optional() });
@@ -123,7 +129,7 @@ const WHERE = 'owner_id = $1 AND call_id = $2 AND place = $3';
  * `own` their own row, if they have one, whether or not it's what they read: it's what a look at the notes refreshes, so
  * `writing` and `failed` go by it too. `added` is what people added here, for someone who gets the notes and may read everyone's.
  */
-export interface Found { view: string | null; own: string | null; stored: Stored | null; added: Added[]; writing: boolean; failed: boolean }
+export interface Found { view: string | null; own: string | null; stored: Stored | null; added: Added[]; writing: boolean; failed: boolean; guests: boolean }
 
 /**
  * The row someone reads in a part of the call: of the rows that are theirs, the one that read what was said most
@@ -145,9 +151,12 @@ export async function find(o: Owner, db: Db, callId: string, place: string, r: R
   const newest = written.reduce<(typeof mine)[number] | undefined>((best, x) => ((x.stored?.notes?.last ?? 0) > (best?.stored?.notes?.last ?? -1) ? x : best), undefined);
   const shown = newest ?? ownRow ?? mine[0];
   const added = r.here === null ? mine.find((x) => x.view === ALL)?.stored?.added ?? [] : [];
-  if (shown) return { view: shown.view, own: ownRow?.view ?? null, stored: shown.stored, added, writing: shown.writing || ownRow?.writing === true, failed: shown.stored?.failed === true || ownRow?.stored?.failed === true };
+  if (shown) {
+    const failed = [shown.stored, ownRow?.stored].filter((x) => x?.failed === true);
+    return { view: shown.view, own: ownRow?.view ?? null, stored: shown.stored, added, writing: shown.writing || ownRow?.writing === true, failed: failed.length > 0, guests: failed.some((x) => x?.guests === true) };
+  }
   // Notes they can't read, and none of their own yet: nothing to show, and nothing here says when there's more for them.
-  return { view: here.some((x) => x.view === ALL && x.notes_ciphertext) ? null : ALL, own: null, stored: null, added, writing: false, failed: false };
+  return { view: here.some((x) => x.view === ALL && x.notes_ciphertext) ? null : ALL, own: null, stored: null, added, writing: false, failed: false, guests: false };
 }
 
 const plain = ({ text, owner, ownerPerson, due, evidence }: Point) => ({ text, ownerPerson, ...(owner === undefined ? {} : { owner }), ...(due === undefined ? {} : { due }), evidence });
@@ -161,7 +170,7 @@ export function shownTo(found: Found, capturing: boolean): LiveNotes {
   }));
   const live = (f: FollowUp): LiveFollowUp => ({ ...plain(f), id: f.id, done: f.tick !== null, review: f.review, revision: f.revision, changeOf: f.changeOf, target: f.target, reviewed: f.reviewed });
   const suggestions = (n?.next ?? []).filter((f) => f.shown && isPendingFollowUp(f)).map(live);
-  const out = { added, suggestions, writing: found.writing, error: capturing && found.failed ? NOT_UPDATED : null };
+  const out = { added, suggestions, writing: found.writing, error: capturing && found.failed ? (found.guests ? GUESTS_SPENT : NOT_UPDATED) : null };
   if (!n) return { ...out, notes: null };
   const next = n.next.filter((f) => f.shown && isAcceptedFollowUp(f)).map(live);
   return { ...out, notes: { summary: n.summary, decided: n.decided.map(plain), proposed: n.proposed.map(plain), open: n.open.map(plain), next, read: n.read } };
@@ -322,23 +331,24 @@ export async function keep(o: Owner, callId: string, place: string, view: string
     const added = (stored?.added ?? []).map((a) => ({ ...a, shown: a.shown && whole }));
     const notes: Written = { ...run.notes, next: nextOf(stored?.notes?.next ?? [], run, whole, added) };
     await exec(db, `UPDATE call_notes SET notes_ciphertext = $5, lines_ciphertext = $6, lease_until = NULL WHERE ${WHERE} AND view = $4`,
-      [o.ownerId, callId, place, view, sealed(o, callId, place, view, { notes, failed: false, added }), sealedLines(o, callId, place, view, run.lines, run.barred)]);
+      [o.ownerId, callId, place, view, sealed(o, callId, place, view, { notes, failed: false, guests: false, added }), sealedLines(o, callId, place, view, run.lines, run.barred)]);
     await letGo(o, db, callId, place, view, r);
     return true;
   });
 }
 
 /**
- * A refresh didn't work: the notes stay as they were, everyone reading them is told it didn't, and the next look after
- * the usual wait tries again, with the same lines or more.
+ * A refresh didn't work: the notes stay as they were, everyone reading them is told it didn't, and why when it's that guests
+ * in the call have used their share of the organizer's plan (`why`), and the next look after the usual wait tries again, with
+ * the same lines or more.
  */
-export async function failed(o: Owner, callId: string, place: string, view: string, c: Claim): Promise<boolean> {
+export async function failed(o: Owner, callId: string, place: string, view: string, c: Claim, why: 'error' | 'guests'): Promise<boolean> {
   return tx(o.pool, async (db) => {
     const r = await held(db, o, callId, place, view);
     if (!r || !stands(r, c)) return false;
     const s = opened(o, callId, place, view, r.notes_ciphertext);
     await exec(db, `UPDATE call_notes SET notes_ciphertext = $5, clips_seen = -1, lease_until = NULL WHERE ${WHERE} AND view = $4`,
-      [o.ownerId, callId, place, view, sealed(o, callId, place, view, { notes: s?.notes ?? null, failed: true, added: s?.added ?? [] })]);
+      [o.ownerId, callId, place, view, sealed(o, callId, place, view, { notes: s?.notes ?? null, failed: true, guests: why === 'guests', added: s?.added ?? [] })]);
     return true;
   });
 }
@@ -376,7 +386,7 @@ export interface Adding { text: string; owner: Speaker | null; due: string | nul
 export async function add(o: Owner, c: Db, callId: string, place: string, a: Adding, r: Reader): Promise<void> {
   await exec(c, 'INSERT INTO call_notes (owner_id, call_id, place, view) VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING', [o.ownerId, callId, place, ALL]);
   const row = await held(c, o, callId, place, ALL);
-  const s = opened(o, callId, place, ALL, row?.notes_ciphertext) ?? { notes: null, failed: false, added: [] };
+  const s = opened(o, callId, place, ALL, row?.notes_ciphertext) ?? { notes: null, failed: false, guests: false, added: [] };
   const ctx = { callId, room: place !== MAIN_PLACE };
   if (!mayChange(r, s, linesOf(o, callId, place, ALL, row?.lines_ciphertext))) throw new ForbiddenError('You can add follow-ups here once you can read all of the notes.', { context: ctx });
   if (s.added.some((x) => x.shown && x.text === a.text) || s.notes?.next.some((x) => x.shown && isAcceptedFollowUp(x) && x.text === a.text)) return;

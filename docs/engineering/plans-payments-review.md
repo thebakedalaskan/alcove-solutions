@@ -40,8 +40,10 @@ Not fixed. The first two are the most worth doing before release.
    - Guests' questions are capped per guest (below), in each API process, counted by the call and the person their pass
      names, so a guest who comes back on a new connection with their earlier pass doesn't start over. Every guest in one
      call spends from one share of the organizer's allowance, `ai.guests_call_percent` (10% of the period's), questions,
-     catch-ups and AI on the call's documents and boards together ([Plans and usage › Guests' share](plans-and-usage.md)),
-     so one call's guests can't spend the organizer's notes.
+     catch-ups, AI on the call's documents and boards, captions in another language and live notes of their own together
+     ([Plans and usage › Guests' share](plans-and-usage.md)), so one call's guests can't spend the organizer's notes.
+     What's left outside it is the call's, for everyone: everyone's live notes (one refresh a part of the call at most every
+     30 seconds, however many watch), board ideas, and invited people's captions.
    - Main's #275 ("everyone in the call can open and edit its workspace and boards, guests too") widened the first two.
      With main merged, a call opens its workspace to everyone in it only while the organizer edits there and pays for it
      (`access.ts › holdersOf`), so that way is closed. Boards follow the same rule, so that way is closed too (it was open:
@@ -155,4 +157,6 @@ Fixed in the commit that added this page, with integration tests (rows B2′ and
    a call are limited to 6 a minute per guest (`guestAskLimiter` in `http/limits.ts`, applied in
    `features/calls/routes.ts`), counted by the call and the person their pass names. Someone signed in pays for their own
    and keeps 20 a minute. What all the guests in one call spend between them is capped at a share of the organizer's
-   allowance (`ai.guests_call_percent`, 10%), so even a 100-person call's guests can't stop the organizer's notes.
+   allowance (`ai.guests_call_percent`, 10%): their questions and catch-ups, AI on the call's documents and boards, and what
+   the call does for a guest alone, captions in another language and live notes of their own (from less than everyone's
+   read). So even a 100-person call's guests can't stop the organizer's notes.

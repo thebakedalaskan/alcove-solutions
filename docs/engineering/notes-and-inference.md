@@ -1269,8 +1269,11 @@ the notes worker. Accepted tasks, pending suggestions and review decisions are h
   summary and all four lists, each item as asked down to the lines it cites, it's a failed refresh, never blank notes.
 - **What it costs.** The call's organizer pays for it, whoever is watching: each refresh is a request to NEAR AI, charged to
   their AI allowance with the transcript, captions and the notes written at the end ([The notes worker](#the-notes-worker)).
-  When that's spent, refreshes stop with everything else the organizer pays for ([Plans and usage](plans-and-usage.md)). Catching up and
-  asking are paid for by whoever asks.
+  When that's spent, refreshes stop with everything else the organizer pays for ([Plans and usage](plans-and-usage.md)). A view
+  of its own refreshed for a guest's look is for that guest alone, so it comes out of the share every guest in the call spends
+  from (`ai.guests_call_percent`, [Plans and usage › Guests' share](plans-and-usage.md#notes-the-ai-allowance)): past it nothing
+  is sent, and those notes say "These notes aren’t being updated: guests in this call have used as much of the organizer’s plan
+  as it allows them." until there's room, while everyone's go on. Catching up and asking are paid for by whoever asks.
 
 ### Follow-ups keep their IDs
 
@@ -1408,7 +1411,8 @@ asking. Lines already translated into that language come from their sealed `tran
 the rest go to the notes model in one request, sealed to its verified key like every request, and are kept
 the same way, until the recording stops. Line IDs
 that aren't in this call's live transcript, or that the person asking may not read, are left out. 90 requests a minute per account; the call's organizer pays for it,
-and no operation receipt is kept. Refused while notes are paused, when nothing goes to the AI.
+a guest's out of the share every guest in the call spends from (lines already translated cost nothing), and no operation receipt
+is kept. Refused while notes are paused, when nothing goes to the AI.
 
 ## Series
 

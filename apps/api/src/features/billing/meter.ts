@@ -13,8 +13,9 @@
  * it holds and is charged comes out of what the call held for it, and counts on top only once it's past that.
  *
  * Guests in a call ask from its organizer's allowance (docs: Plans and usage › Notes), so what every guest in one call spends
- * between them is a share of it, `ai.guests_call_percent`, kept with the allowance by the call's ID: past it, guests' asks
- * there are refused, and the organizer's own notes keep the rest.
+ * between them is a share of it, `ai.guests_call_percent`, kept with the allowance by the call's ID: their questions, catch-ups,
+ * AI on documents and boards, captions in another language and live notes of their own. Past it, what guests ask for there is
+ * refused, and the organizer's own notes keep the rest.
  *
  * Every change is made under the meter's row lock, so requests at once on any instance can't spend the same money
  * twice. A new period starts the first time a meter is touched after its period ends, or after its plan changes:
@@ -66,7 +67,10 @@ export interface Bill {
    * logged, and the request goes on.
    */
   onLimit?: ((what: Limit) => Promise<void>) | undefined;
-  /** A guest's request in a call, by the call's ID: every guest there spends from the one share of the payer's allowance. */
+  /**
+   * A guest's request in a call, by the call's ID: every guest there spends from the one share of the payer's allowance. Their
+   * questions, catch-ups and AI on documents and boards, and their captions in another language and live notes of their own.
+   */
   guests?: string | undefined;
 }
 /** A limit an allowance reached: about to run out at a source's pace, or spent. */
@@ -200,6 +204,14 @@ const SHORT: Record<Whose, string> = {
   organizer: 'What’s left of the organizer’s notes this period isn’t enough for this.',
   workspace: 'What’s left of the notes this workspace’s AI is paid from isn’t enough for this.'
 };
+/**
+ * What a guest is told once guests in a call have spent their share of the organizer's allowance: what they ask (questions,
+ * catch-ups, AI on documents) they can ask from a plan of their own by signing in; captions in another language and live notes
+ * of their own just stop for guests.
+ */
+const guestsRefusal = (spend: Spend): string => (spend === 'captions' || spend === 'live-notes'
+  ? 'Guests in this call have used as much of the organizer’s plan as it allows them.'
+  : 'Guests in this call have asked as much as the organizer’s plan allows. Sign in to ask from your own plan.');
 /** The refusal when an allowance is spent, worded for whoever asked (`whose`). */
 export const ranOut = (whose: Whose, context: Record<string, string | number | null>): PlanLimitError => new PlanLimitError(SPENT[whose], 'notes', { context });
 
@@ -244,7 +256,7 @@ export function meterFor(d: Service, bill: Bill): Meter {
       if (held === 'refused') throw new PlanLimitError(SHORT[bill.whose], 'notes', { context: { ...context, why: 'short' } });
       if (held === 'guests') {
         alog.info('guests in a call asked as much as its share allows', { ownerId: bill.payer, callId: bill.guests ?? null, spend: bill.spend });
-        throw new PlanLimitError('Guests in this call have asked as much as the organizer’s plan allows. Sign in to ask from your own plan.', 'notes', { context: { ...context, why: 'guests' } });
+        throw new PlanLimitError(guestsRefusal(bill.spend), 'notes', { context: { ...context, why: 'guests' } });
       }
       // What it cost, charged under the lock; what that came to is said once it's saved.
       const charge = (cost: (m: MeterState) => number, what: string) => changing(d, bill.payer, (m, _l, now): { m: MeterState; result: Limit | null } => {

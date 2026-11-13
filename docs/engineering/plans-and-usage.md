@@ -86,7 +86,7 @@ fallback`, with their IDs), never with every request.
 
 | Request | Paid by |
 | --- | --- |
-| The live transcript, live notes, board ideas and captions in a call, for everyone | The call's organizer |
+| The live transcript, live notes, board ideas and captions in a call, for everyone | The call's organizer; a guest's captions in another language and live notes of their own (from less than everyone's read), the organizer, out of the guests' share (below) |
 | Writing a call's notes, reading its shared screens, comparing it with its series | The organizer |
 | A room recording's transcript and notes | Whoever records |
 | A question or a catch-up in a call | Whoever asks, from their own plan; a guest's, the organizer, out of the guests' share (below), 6 a minute for each guest |
@@ -98,10 +98,16 @@ Spend is kept by kind (`transcript`, `notes`, `live-notes`, `ideas`, `captions`,
 meter's row lock (`ai_meters`), so requests at once on any instance can't spend the same money twice.
 
 **Guests' share.** A guest has no plan, so what they ask for in a call (questions, catch-ups, and AI on the call's documents
-and boards) is the organizer's. Every guest in one call spends from one share of the organizer's allowance for the period,
-`ai.guests_call_percent` (10%), kept with the allowance by the call's ID (`Bill.guests` in `meter.ts`): a request that
-would take them past it is refused ("Guests in this call have asked as much as the organizer’s plan allows. Sign in to ask
-from your own plan."), whichever guest asks, and the organizer's own notes keep the rest. On Free that's $0.25 a call, about
+and boards) is the organizer's, and so is what the call does for a guest alone: captions in another language (each line once
+a language, so one already translated costs nothing again), and live notes of their own, which a guest who came late, or
+left and came back, gets because they can't read all of everyone's. Every guest in one call spends from one share of the
+organizer's allowance for the period, `ai.guests_call_percent` (10%), kept with the allowance by the call's ID (`Bill.guests`
+in `meter.ts`, `callMeter`'s `guests` in `calls/recording.ts`): a request that would take them past it is refused ("Guests in
+this call have asked as much as the organizer’s plan allows. Sign in to ask from your own plan."; for captions and notes of
+their own, "Guests in this call have used as much of the organizer’s plan as it allows them.", and those notes say "These notes
+aren’t being updated: …" until there's room again), whichever guest asks, and the organizer's own notes keep the rest.
+Everyone's live notes, board ideas and the captions of anyone invited are the call's, for everyone, and the organizer's to pay
+for outside the share. A guest here is anyone in the call who isn't invited (`role` guest). On Free that's $0.25 a call, about
 30 minutes of notes, which is dozens of questions about a long call at the default model; a guest is also held to 6
 questions, catch-ups and asks of AI on a document or board a minute between them, counted by the call and the person their
 pass names, so coming back on a new connection doesn't start again (`http/limits.ts › guestAskLimiter`, `calls/routes.ts`,
@@ -628,7 +634,9 @@ The server never holds a key that can move treasury money. By hand, in near.com,
   `addedMicroUsd` and is added again as dollars once (above).
 - A live call's state from before has no `notes.limit`, and reads as not stopped (`.default`).
 - The guests' share needs no migration: an `ai-meter` record kept without it has no shares and holds for no call's guests,
-  and reads as none spent (`.default`); it's written with them the next time it's saved.
+  and reads as none spent (`.default`); it's written with them the next time it's saved. A live call's `call-notes` record kept
+  without `guests` (why its last refresh didn't work) reads as false (`.default`), so a view that failed before says what it
+  always did; the previous release, while both serve, ignores the field, and a record it writes reads as false.
 - Team is migration `0031_teams.sql`: `teams`, `team_members`, `team_invites`, `team_notes`, and `team_id` and
   `team_access` on `workspaces` (null on every workspace there is). The previous release ignores them: while both serve,
   it opens a team's note or workspace only for people who have it otherwise, and its workspaces aren't a team's. A notice in a
