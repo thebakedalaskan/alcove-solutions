@@ -27,8 +27,8 @@ RUN case "$TARGETARCH" in \
 # The web app, built for the API it talks to. csp.mjs writes its Content-Security-Policy into dist/client/_headers, with
 # that API's origin and LiveKit's host and the hashes of exactly this build's inline scripts; the API serves the files
 # with those headers (WEB_DIR). The whole workspace is installed, as CI's build does: the client's MLS library finds
-# @noble/hashes only where a full install hoists it. The build prerenders pages from a preview server on localhost, which
-# the build sandbox resolves to ::1 for the server and 127.0.0.1 for the request unless IPv4 comes first.
+# @noble/hashes only where a full install hoists it. The build prerenders pages from a preview server on 127.0.0.1
+# (apps/web/vite.config.ts says why).
 FROM node:24-slim@sha256:c86ecead9e55a5210ac1727de38a4ca840bf03dcaf34dc9749addbf383b1920c AS web
 ARG WEB_API_URL=http://localhost:8787
 ARG WEB_LIVEKIT_URL=ws://localhost:7880
@@ -37,7 +37,7 @@ WORKDIR /repo
 RUN corepack enable
 COPY . .
 RUN pnpm install --frozen-lockfile \
-  && NODE_OPTIONS=--dns-result-order=ipv4first VITE_ALCOVE_API_URL="$WEB_API_URL" \
+  && VITE_ALCOVE_API_URL="$WEB_API_URL" \
     VITE_ALCOVE_DEMO_AUTH_ENABLED="$WEB_DEMO_AUTH_ENABLED" pnpm --filter @alcove/web build \
   && node apps/web/scripts/csp.mjs apps/web/dist/client "$WEB_API_URL" "$WEB_LIVEKIT_URL"
 
