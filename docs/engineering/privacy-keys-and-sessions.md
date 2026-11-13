@@ -562,7 +562,8 @@ one row per person: `(owner_id, note_item_id, email_index, role)`.
   author's keys, read only by a request with that author's session, and there's no route that names anyone else's:
   the organizer and everyone else who has the note get `404 not-found` for an entry that isn't theirs. What a bookmark
   or a kept answer points at goes through the rules above each time it's read. Something leaves them only when its
-  author adds it to the shared notes, after a preview that says who reads it; from then on it's part of the note
+  author adds it to the shared notes, after a preview that says who reads it, the team the note is visible to included,
+  sealed to exactly that; from then on it's part of the note
   ([Notes and inference › Your own notes](notes-and-inference.md#your-own-notes)).
 - **Series.** What carries over from one call to the next is put together on each request from the notes
   the asker can read at that moment, through this same check, and kept nowhere

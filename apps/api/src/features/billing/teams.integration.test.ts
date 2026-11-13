@@ -524,6 +524,40 @@ describe('team notes, Ask and team workspaces', () => {
     expect((await h.pool.query('SELECT count(*)::int AS n FROM team_notes WHERE note_item_id = $1', [id])).rows[0]).toEqual({ n: 0 });
   });
 
+  it('G18: tells anyone adding to a note that the team it’s visible to reads it, and holds what they add to who they were told', async () => {
+    const [ann, bob, cy, eve] = await Promise.all([account(), account(), account(), account()]);
+    await team(ann, 2);
+    await joined(ann, bob);
+    await joined(ann, cy);
+    const id = await note(bob, 'Harbour launch', 'We agreed the harbour opens on Friday.');
+    await bob.api.notes.share(id, { emails: [eve.email] });
+    // Eve, from outside the team, is told who reads what she adds: Bob and herself, and no team.
+    const box = await eve.api.notes.sharedAudience(id);
+    expect(box).toMatchObject({ audience: [{ email: bob.email }, { email: eve.email }], team: null });
+    const own = await eve.api.notes.personal(id).add({ kind: 'note', text: 'Ferry times, from Eve.' });
+    const entry = own.entries.find((e) => e.kind === 'note')?.id ?? 'no entry';
+    const preview = await eve.api.notes.previewAddition(id, entry);
+    expect(preview.team).toBeNull();
+    // Bob makes the notes visible to his team before she posts: her words would reach Cy, so what she was shown no longer holds.
+    await bob.api.notes.setTeamVisible(id, true);
+    expect(await refusal(eve.api.notes.writeShared(id, { text: 'The ferry leaves at nine.', seal: box.seal }))).toBe('conflict: Someone got these notes since you started writing. Look at who reads it now, then post it.');
+    expect(await refusal(eve.api.notes.addToShared(id, entry, { text: 'Ferry times, from Eve.', seal: preview.seal }))).toBe('conflict: Who has these notes changed since the preview, or what this points at did. Look again before you add it.');
+    expect((await cy.api.notes.get(id)).additions).toEqual([]);
+    // Looked at again, the team is named, with how many licensed on it aren't listed: Cy.
+    const now = await eve.api.notes.sharedAudience(id);
+    expect(now).toMatchObject({ audience: [{ email: bob.email }, { email: eve.email }], team: { name: 'Vandelay Industries', people: 1 } });
+    const again = await eve.api.notes.previewAddition(id, entry);
+    expect(again.team).toEqual({ name: 'Vandelay Industries', people: 1 });
+    // Posted with what she was shown, it reaches Cy, and only now.
+    await eve.api.notes.writeShared(id, { text: 'The ferry leaves at nine.', seal: now.seal });
+    await eve.api.notes.addToShared(id, entry, { text: 'Ferry times, from Eve.', seal: again.seal });
+    expect((await cy.api.notes.get(id)).additions.map((a) => a.text)).toEqual(['The ferry leaves at nine.', 'Ferry times, from Eve.']);
+    // Made not visible again, it's another change in who reads it.
+    await bob.api.notes.setTeamVisible(id, false);
+    expect(await refusal(eve.api.notes.writeShared(id, { text: 'One more.', seal: now.seal }))).toBe('conflict: Someone got these notes since you started writing. Look at who reads it now, then post it.');
+    expect((await eve.api.notes.sharedAudience(id)).team).toBeNull();
+  });
+
   it('G11: Ask reads the team’s notes too; @-references go first, at most 5, and one you can’t open is refused', async () => {
     const [ann, bob, cy] = await Promise.all([account(), account(), account()]);
     await team(ann, 2);

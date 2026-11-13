@@ -414,6 +414,10 @@ with their account, and with the team. Notes find it third, after their own and 
 (`notes/service.ts › locateToRead`): a live-licensed member of that team can read it (`Note`, audio, shared screens,
 progress), ask about it, and Ask across notes reads it. `NoteSummary.teamVisible` says whether it's visible;
 `received` is `{ role: 'team', by: the organizer, at: when it was made visible }` for someone who has it only that way.
+Everyone else who has the note and adds to its shared notes is told the team reads what they add (`PromotionPreview.team`,
+`SharedAudience.team`: its name and how many licensed on it aren't otherwise listed), and the seal they add with covers the
+team, so making the note visible, or not, after they looked (under the note's lock, `setTeamVisible`) refuses their add
+(`409`) until they've seen who reads it now.
 Everything else, every change and anything of the reader's on it (sharing, links and their list, decisions, follow-ups,
 questions, transcript lines, writing it again, additions and who'd read them, their own notes on it, Drive exports,
 removing it from their notes), goes through `locate`, which refuses a note they have only through the team: `forbidden`,

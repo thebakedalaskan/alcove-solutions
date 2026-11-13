@@ -553,6 +553,21 @@ export async function licensedOn(db: Db, ownerId: string, now = Date.now()): Pro
 }
 
 /**
+ * Who on a team reads a note made visible to it, for someone adding to the note to see before they do (docs: Notes and
+ * inference › Your own notes): its name, and how many people live-licensed on it at `now` don't sign in with any of `listed`
+ * (keyed hashes of addresses, as `identities` keeps them: the people the note names already). Null for a team that's gone.
+ */
+export async function teamReaders(d: Service, db: Db, teamId: string, listed: Uint8Array[], now = Date.now()): Promise<{ name: string; people: number } | null> {
+  const t = await teamRow(db, teamId);
+  if (!t) return null;
+  const n = await maybeOne(db, z.object({ n: z.number() }), `SELECT count(*)::int AS n FROM team_members m
+    WHERE m.team_id = $1 AND m.licensed_from <= $2 AND m.licensed_until > $2
+      AND NOT EXISTS (SELECT 1 FROM identities i WHERE i.owner_id = m.account_owner_id AND i.email_index = ANY($3::bytea[]))`, [teamId, new Date(now), listed]);
+  const team = await teamKeyOf(d, t);
+  try { return { name: nameIn(team, t), people: n?.n ?? 0 }; } finally { close(team); }
+}
+
+/**
  * The same, for whoever signs in with these addresses (keyed hashes, as workspace access knows people): each address that
  * signs in to an account live-licensed on a team at `now`, which team, and when that license ends.
  */

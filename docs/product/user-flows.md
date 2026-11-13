@@ -1568,14 +1568,17 @@ another call while in one; 7.7 the call ends while they're on its page; 7.8 alon
   shared and made as a **Shared** tab, and the page scrolls as one.
 - **Add to the shared notes** on anything in Your notes shows, in place of the box you write in, exactly what goes:
   the words, which you can cut down, the moment they point at, **Shared notes** on this note, and everyone who
-  has the notes. Nothing goes until **Add for 3 people**; only what's in the box goes, and never a question you asked.
-  If someone got the notes since, it says so and shows them. An answer goes only if the moments behind it are in the
+  has the notes, with "everyone on Vandelay Industries" when the organizer made them visible to their team, whose
+  licensed people read them too. Nothing goes until **Add for 3 people** (the team's people counted in); only what's in the
+  box goes, and never a question you asked. If someone got the notes since, or the notes were made visible to the team, it
+  says so and shows them. An answer goes only if the moments behind it are in the
   notes. Once the notes are written is when this can be done: until then the people who'll get them aren't settled.
 - **Shared notes** (**Everyone with the notes**) shows what people wrote there or added from their own notes, with who
   and when, for everyone with the notes, and once the notes are written, a box of its own: before anything is typed it
-  says who reads it (their faces and names, "and anyone they share the notes with"), and Enter posts it for all of them
-  in one step. If someone got the notes after the box showed, posting is refused, the words stay in the box, and it says
-  who got them since; Enter again posts it for them too. What's posted can't be changed. **Take back** removes yours for
+  says who reads it (their faces and names, "everyone on Vandelay Industries" when the notes are visible to the team, "and
+  anyone they share the notes with"), and Enter posts it for all of them in one step. If someone got the notes after the box
+  showed, or the team can read them since, posting is refused, the words stay in the box, and it says who got them since;
+  Enter again posts it for them too. What's posted can't be changed. **Take back** removes yours for
   everyone, once you say so in the row; something added from Your notes stays there. The organizer can **Remove** any
   of them the same way. During a call the shared place to write is the call's workspace pages.
 - A call's page (`/calls/<note ID>`) is a slim band of sky over its head: the way back (**Calls**), **Share**, **Download**
