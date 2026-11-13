@@ -168,8 +168,8 @@ too: the audit logs say which image used a key, and each environment's VMs are a
 `principalSet://iam.googleapis.com/projects/745505907878/locations/global/workloadIdentityPools/alcove/attribute.service_account/<the VM's account>`.
 Production's (`alcove-cs@alcove-solutions.iam.gserviceaccount.com`) may encrypt and decrypt with `alcove-master` (encrypt
 too, or whoever could encrypt could plant a master of their choosing in the database) and read exactly the secrets in
-production's `SECRETS`, plus `alcove-kmaster` and `alcove-kservice` while they're carried. Staging's
-(`alcove-cs-staging@…`) may use only `alcove-master-staging` and staging's own secrets. Nothing is granted to the whole pool
+production's `SECRETS` (and, until they were retired and deleted on 2026-11-13, `alcove-kmaster` and `alcove-kservice`).
+Staging's (`alcove-cs-staging@…`) may use only `alcove-master-staging` and staging's own secrets, its old keys included. Nothing is granted to the whole pool
 or to the other environment: setup.sh takes any such grant away. So a staging VM, whatever image it runs, gets nothing of
 production's.
 
@@ -189,7 +189,8 @@ Staging's is a second token, made the same way ([Staging](#staging)).
 
 ## First setup
 
-Production, once. Use the `alcove` gcloud configuration (`CLOUDSDK_ACTIVE_CONFIG_NAME=alcove`) for every command here.
+Production, once: done on 2026-11-13, and kept as the record of how. Use the `alcove` gcloud configuration
+(`CLOUDSDK_ACTIVE_CONFIG_NAME=alcove`) for every command here.
 
 1. Run `infra/bootstrap-gcp.sh` again ([infra/README.md](../README.md#gcp-setup-and-recovery)): it lets `refresh.yml` through
    the GitHub provider, gives the deploy account `run.developer`, and makes the secret for the Cloudflare token. Remove its
@@ -217,9 +218,10 @@ Production, once. Use the `alcove` gcloud configuration (`CLOUDSDK_ACTIVE_CONFIG
 9. Until the user confirms the switch, leave what the way back needs as it is: Cloud Run's `alcove-api`, the zone's Single
    Redirect for www (it does nothing while www is DNS only), Universal SSL on, and no CAA record
    ([Rolling back](#rolling-back)).
-10. Once the user confirms: scale Cloud Run's `alcove-api` to zero (`gcloud run services update alcove-api
-    --region=us-central1 --min=0 --max=1`), remove the zone's Single Redirect for www (the API redirects www itself), pin
-    certificate issuance ([Certificates](#certificates)), then [The old keys](#the-old-keys).
+10. Once the user confirms: delete Cloud Run's `alcove-api` (`gcloud run services delete alcove-api --region=us-central1`;
+    scaling it to zero would make a new revision, which can't start on the migrated database), remove the zone's Single
+    Redirect for www (the API redirects www itself), pin certificate issuance ([Certificates](#certificates)), then
+    [The old keys](#the-old-keys).
 
 ## Deploying
 
@@ -257,21 +259,12 @@ only the ones that read.
   migration it doesn't have ([Data and storage › Changing what's stored](../../docs/engineering/data-and-storage.md#changing-whats-stored)).
   So a release goes back only to one with the same migrations; past a release that added one, fix forward. It also needs
   the same `CS_LEGACY`: a template made while the old keys were carried passes `LEGACY_SECRETS`, which the API refuses once
-  they're retired. Within that, roll onto one of the five kept templates, which hold the environment and account their
+  they're retired (production's were, and their secrets deleted, on 2026-11-13). Within that, roll onto one of the five kept templates, which hold the environment and account their
   image was deployed with: `gcloud --project=alcove-solutions compute instance-groups managed rolling-action start-update
   alcove-api --zone=us-central1-a --version=template=<template> --max-surge=1 --max-unavailable=0`. (`deploy.sh` with an
   earlier image would make its template from this checkout's env.sh, which that image's label may not allow.)
-- **The switch.** Back to Cloud Run and Pages only while Cloud Run's instance from before the first deploy is still running,
-  since it can't start again on the migrated database, and only while `LEGACY_SECRETS` is set: Cloud Run opens what the
-  TEE wrote only because new accounts then get an envelope under the old master too, and the index key, the photo token
-  key and `KSERVICE` are the old ones (the TEE checks the old master on five accounts, and `KSERVICE` on billing, before it
-  seals them). Before step 10 of [First setup](#first-setup) nothing else has changed:
-  `dns.sh production --rollback-file dns-rollback-production-<time>.json` puts the apex, www and api back. If issuance was
-  already pinned or the www redirect removed, undo those first, in Cloudflare's dashboard: delete the CAA record on the apex
-  (it lets only the TEE's ACME account issue, so neither Cloudflare's edge certificate nor Google's for Cloud Run's domain
-  mapping could be issued or renewed), turn Universal SSL back on (SSL/TLS › Edge Certificates; the restored proxied records
-  need it), and add back the Single Redirect from www to the apex. Once Cloud Run is scaled to zero, or the old master is
-  retired, there's no going back.
+- **The switch.** There's no going back to Cloud Run: on 2026-11-13 its service was deleted and the old master retired,
+  and its release couldn't start on the migrated database anyway. Fix forward.
 
 ## Staging
 
@@ -333,13 +326,18 @@ Before Confidential Space, `KMASTER` and `KSERVICE` lived in Secret Manager (`al
   masters.
 - **`retired`** (production since 2026-11-13), only once `remaining` is 0, the switch is confirmed and the user agrees: set `CS_LEGACY=retired` for
   production in env.sh and merge. The deploy runs with `RETIRE_LEGACY_KMASTER=true` and no `LEGACY_SECRETS`; the API
-  refuses while any account lacks the new envelope, then forgets the old master for good. Then delete the secrets
-  (`gcloud --project=alcove-solutions secrets delete alcove-kmaster` and `alcove-kservice`, which takes their grants with
-  them). Delete Cloud Run's `alcove-api` service, the `alcove-feature-flags` job and the Pages project `alcove-web`, with
-  the repository's `CLOUDFLARE_*` variables and secret. In infra/bootstrap-gcp.sh, stop making the two secrets, and grant
-  the Cloud Run runtime account, which then only runs the migration job, `alcove-database-url` alone; remove its other
-  secret bindings by hand. Feature flags are switched through the API
+  refuses while any account lacks the new envelope, then forgets the old master for good (`old master retired`). Then
+  delete the secrets (`gcloud --project=alcove-solutions secrets delete alcove-kmaster` and `alcove-kservice`, which takes
+  their grants with them), Cloud Run's `alcove-api` service, the `alcove-feature-flags` job and the Pages project
+  `alcove-web`, with the repository's `CLOUDFLARE_*` variables and secret. The Cloud Run runtime account then only runs
+  the migration job: infra/bootstrap-gcp.sh grants it `alcove-database-url` alone, and its other secret bindings come off
+  by hand. Feature flags are switched through the API
   ([Feature flags › In production](../../docs/engineering/feature-flags.md#in-production)).
+
+  Production did all of this on 2026-11-13, but for the Pages project: the Cloudflare token can't manage Pages, so
+  `alcove-web` goes in Cloudflare's dashboard (Workers & Pages › alcove-web › Settings › Delete). Until then
+  `alcove-web.pages.dev` serves an old build of the app, which can't reach the API: its CORS allows only
+  `https://alcove.solutions`.
 
 ## Refreshing
 
@@ -434,6 +432,12 @@ balancer keeps no request logs, so it logs no client addresses either.
   pins issuance to our ACME account, whose key only the VM holds.
 - **Attestation quota.** Google Cloud Attestation allows 5 requests a second per project per region, and a token costs two.
   The API holds one token and refreshes it when it's 10 minutes old; every browser gets that one.
+- **The VMs' clocks run behind.** On 2026-11-13 every production VM ran 7–9.5 s behind Google's clock, drifting about a
+  second a day, and nothing in the workload can set it. A token another service dates by its own clock looked as if it
+  came from the future: every NVIDIA verdict was refused, so every model check failed from the move until the fix (the
+  first one tried was at 16:16 UTC), and LiveKit's webhooks were within half a second of refused. Every check of such a token now allows a minute
+  (`evidence.ts`, `livekit.ts`, `google.ts`), and each start logs `clock offset` (`behindGoogleS`), at warn past 30 s.
+  A VM lives until the next deploy or the monthly refresh, so drift stays well inside that.
 - **Maintenance stops a TDX VM.** TDX VMs don't live-migrate: a host maintenance event stops the VM, with 7 days' notice
   (`curl -H Metadata-Flavor:Google http://metadata.google.internal/computeMetadata/v1/instance/maintenance-event`), and the
   group recreates it. With one VM, that's a few minutes without the API. TDX VMs can't use reservations, so capacity in

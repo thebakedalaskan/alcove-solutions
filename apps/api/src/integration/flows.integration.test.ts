@@ -2399,6 +2399,39 @@ describe('verified private inference', () => {
       await own.close();
     }
   });
+
+  it('checks models out while NVIDIA’s clock is up to a minute ahead of the API’s, and refuses a verdict dated further ahead', async () => {
+    // Confidential Space's VMs ran 7–9.5 s behind (2026-11-13). Every verdict NVIDIA issued holds from the moment it's
+    // issued, which looked still to come, so no model checked out and Ask couldn't verify NEAR AI's private model.
+    const own = await ownNear();
+    try {
+      own.near.nvidiaAhead(30);
+      const rec = await own.api.recordings.start({ title: 'Clocks apart' });
+      await rec.transcribe(speech('We agreed the clocks are apart.', 0, 0));
+      expect(rec.getSnapshot().transcript.map((l) => l.text)).toEqual(['We agreed the clocks are apart.']);
+      const { pendingNoteId } = await rec.stop();
+      await written(own.api, pendingNoteId);
+      expect((await own.api.notes.get(pendingNoteId)).inference.map((x) => x.task)).toEqual(['transcript', 'notes']);
+      expect((await asked(own.api, pendingNoteId, 'What did we agree?'))[0]).toEqual({ type: 'text', text: 'From the call: We agreed the clocks are apart.' });
+    } finally {
+      await own.close();
+    }
+
+    const far = await ownNear();
+    try {
+      far.near.nvidiaAhead(5 * 60);
+      const rec = await far.api.recordings.start({ title: 'Clocks too far apart' });
+      const from = h.logs.length;
+      const e = await rec.transcribe(speech('CANARY-AHEAD the merger closes on Friday.', 0, 0)).catch((x: unknown) => x);
+      expect([code(e), said(e)]).toEqual(['unavailable', 'We couldn’t verify NEAR AI’s private model, so nothing was sent. Try again in a moment.']);
+      expect(logsSince(from).find((l) => l.msg === 'model evidence refused')).toMatchObject({ model: 'openai/whisper-large-v3', task: 'transcript', code: 'gpu' });
+      expect(far.near.calls).toEqual([]);
+      unreadable(far.near.received, 'CANARY-AHEAD', 'merger closes');
+      await rec.discard();
+    } finally {
+      await far.close();
+    }
+  });
 });
 
 describe('confirming what the notes say', () => {

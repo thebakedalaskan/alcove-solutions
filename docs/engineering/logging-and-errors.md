@@ -169,7 +169,9 @@ throw new KeyError('This key can’t open that data.', { cause: err, context: { 
   anything else `billing failed` at error. Never an amount, and never what was typed, which may be an address
   ([Plans and usage › Support](plans-and-usage.md#support)).
 - Inside a TEE, start-up logs `secrets read` with the names of the settings read from Secret Manager (`component: 'gcp'`),
-  never a value, and `attestation exchanged for an access token` with how long it lasts. Whatever stops it starting (a secret
+  never a value, `attestation exchanged for an access token` with how long it lasts, and `clock offset` with how many
+  seconds the VM's clock is behind Google's (`behindGoogleS`, by Google's Date header), at warn past 30: checks of other
+  services' tokens allow a minute ([Known limits](../../infra/confidential-space/README.md#known-limits)). Whatever stops it starting (a secret
   Secret Manager won't give, an attestation the Security Token Service refuses, or Cloud KMS refusing the master, each a
   `KeyError` naming the secret, the provider or the key) is `refused to start`, at error, with Google's status codes only.
   The shared attestation token logs `attestation token issued` with when it was issued and runs out, and `no attestation

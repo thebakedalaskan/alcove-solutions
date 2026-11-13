@@ -198,11 +198,12 @@ populated separately. An installation without them sets the flag false and needs
 button then explains that sign-in isn't set up. The API also needs `API_URL`, its public base URL, from which the
 Google redirect URI is built.
 
-The GCP `_Default` sink excludes Cloud Run's managed request logs for `alcove-api` because raw URLs can contain
-call codes or OAuth callback queries; keep it while that service exists. The load balancer in front of the VMs keeps no
-request logs. Application structured logs remain ([Logging and errors › Where production logs are](logging-and-errors.md#where-production-logs-are)).
-The exclusion is configured outside bootstrap and needs separate verification; additional log sinks must also avoid
-retaining raw request URLs.
+The load balancer in front of the VMs keeps no request logs, because raw URLs can contain call codes or OAuth callback
+queries. The GCP `_Default` sink still excludes the request logs of Cloud Run's `alcove-api`, for the same reason; the
+service was deleted on 2026-11-13, so the exclusion matches nothing now. Application structured logs remain
+([Logging and errors › Where production logs are](logging-and-errors.md#where-production-logs-are)). The exclusion is
+configured outside bootstrap and needs separate verification; additional log sinks must also avoid retaining raw
+request URLs.
 
 ## Changing a limit
 
@@ -320,11 +321,10 @@ Support adds dollars to an account's balance, and says where its plan stands, wi
 Support](plans-and-usage.md#support)). Locally, `pnpm --filter @alcove/server billing …` with `DATABASE_URL`, `KSERVICE` and
 `KMASTER` from `.env`. In production there's no job for it: the API runs in Confidential Space, and `KSERVICE` is in its
 server keys, sealed under the master only the VM gets ([Privacy › Moving to confidential computing](privacy-keys-and-sessions.md#moving-to-confidential-computing)).
-The old `alcove-kservice` secret holds the same key only while the old keys are carried, and goes when they're retired, so a
-job bound to it would stop working then. Production's support needs a way in through the API, as feature flags have
-(the operator route), which isn't built: until it is, a credit there is added by hand, outside the deploy, and is support's
-to arrange. Named by a top-up's reference or its ID, never an address, and printing no amount, history or address, as
-before.
+The old `alcove-kservice` secret, which held the same key, was deleted when the old keys were retired (2026-11-13), so
+nothing outside the VM has it. Production's support needs a way in through the API, as feature flags have (the operator
+route), which isn't built: until it is, support can't add a credit in production. Built, it names a top-up by its
+reference or its ID, never an address, and prints no amount, history or address, as the CLI does.
 
 ## Acceptance
 
@@ -365,7 +365,7 @@ live transcript and written notes.
 | The model code NEAR AI runs pinned to published provenance | **Not implemented**: the OS image is pinned, but its compose manager starts model code NEAR AI chooses |
 | Multi-party end-to-end encrypted calls: keys only in browsers, commits only from the browser that hosts (the organizer's, or a stand-in's), a new key with every join and leave, chat unreadable to the server and to later joiners, media unreadable without the key (LiveKit included), asking to join, no names to LiveKit | API integration tests against a real LiveKit server, with MLS clients and encrypted media; verify two browsers on each release |
 | Invitation emails from Alcove | **Not implemented** (with a connected Google Calendar, Google sends the invitations) |
-| Attested confidential compute, with the master key released only to it | **Required for the confidential production release**. Until DNS moves to Confidential Space, the public beta on Cloud Run reports `tee: none`, and whoever operates it can access its keys. In Confidential Space: every deploy and monthly refresh checks the server through the load balancer with `infra/confidential-space/verify-server.ts` (the attestation token and the image's signed entry in Rekor, as the app checks them; the TLS key the server presents is the attested one; the commit and image deployed). Staging tries a release first, its first start included, on its own empty database with nothing of production's ([Confidential Space runbook › Staging](../../infra/confidential-space/README.md#staging)). The project's Owners can still use the Cloud KMS key that wraps the master, and every use is in Cloud KMS's audit log ([Known limits](../../infra/confidential-space/README.md#known-limits)). See [Privacy › Moving to confidential computing](privacy-keys-and-sessions.md#moving-to-confidential-computing) |
+| Attested confidential compute, with the master key released only to it | **Working** since 2026-11-13: production runs in Confidential Space and reports `tee: confidential-space`, every account's root key is wrapped under the TEE's master, and the keys from before it are retired and deleted. Every deploy and monthly refresh checks the server through the load balancer with `infra/confidential-space/verify-server.ts` (the attestation token and the image's signed entry in Rekor, as the app checks them; the TLS key the server presents is the attested one; the commit and image deployed). Staging tries a release first, its first start included, on its own empty database with nothing of production's ([Confidential Space runbook › Staging](../../infra/confidential-space/README.md#staging)). The project's Owners can still use the Cloud KMS key that wraps the master, and every use is in Cloud KMS's audit log ([Known limits](../../infra/confidential-space/README.md#known-limits)). See [Privacy › Moving to confidential computing](privacy-keys-and-sessions.md#moving-to-confidential-computing) |
 
 The public beta uses verified Google sign-in. The API and website disable demo sign-in in production.
 Demo accounts are available in local and Storybook builds.
