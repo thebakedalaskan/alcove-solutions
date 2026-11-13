@@ -371,12 +371,12 @@ export const RefundedRenewing = page('/settings#plan', 'plan-pro', {
 export const AReceipt = page('/settings#plan', 'plan-pro', { play: pressing(/^Receipt for Pro, 3 months/, 'Press Receipt beside Pro, 3 months') });
 export const AReceiptNight = night(AReceipt);
 export const AReceiptPhone = phone(AReceipt);
-/** Pro ends in 3 days and won't renew: the plan says when, warm, and Extend is the one filled button. */
+/** Pro ends in 6 days and won't renew: the plan says when, warm, and Extend is the one filled button. */
 export const ProEnding = page('/settings#plan', 'plan-pro-ending');
 export const ProEndingNight = night(ProEnding);
 export const ProEndingPhone = phone(ProEnding);
 /**
- * Pro ends in 3 days though renewing is on with the money for a month: a month costs $24 now, more than the last did, so it
+ * Pro ends in 6 days though renewing is on with the money for a month: a month costs $24 now, more than the last did, so it
  * won't renew by itself. The plan says when, warm, and Renew from balance says why.
  */
 export const ProEndingPriceRose = page('/settings#plan', 'plan-pro-ending-price');
@@ -384,7 +384,7 @@ export const ProEndingPriceRoseNight = night(ProEndingPriceRose);
 /** Pro extended by a year with a payment yesterday: until a year on, the twelve months to refund, and the payment with its receipt. */
 export const ProExtended = page('/settings#plan', 'plan-pro-extended');
 export const ProExtendedNight = night(ProExtended);
-/** A month was bought from the balance 3 days before Pro ended: said at the top until it's dismissed. */
+/** A month was bought from the balance a week before Pro was to end: said at the top until it's dismissed. */
 export const ProRenewed = page('/settings#plan', 'plan-pro-renewed');
 export const ProRenewedNight = night(ProRenewed);
 /** Pro ended: back on Free, said at the top until it's dismissed, Get Pro again, and over Free's storage, so the grace is said too. */

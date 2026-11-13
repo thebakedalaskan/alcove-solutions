@@ -204,46 +204,52 @@ export const proPlan = (): Plan => {
   return { ...plan, notes: { ...plan.notes, minutesLeft: 2460 } };
 };
 
-/** The month a period before 3 days from now, so Pro ends then. */
-const endingIn3Days = (months: number) => monthsFrom(on(3, 10, 0).getTime() - PERIOD_MS, months);
+/**
+ * The month a period before 6 days from now (Tuesday 10 November), so Pro ends then. Its first reminder, a week before the
+ * end, came yesterday; the second comes a day before it.
+ */
+const endingIn6Days = (months: number) => monthsFrom(on(6, 10, 0).getTime() - PERIOD_MS, months);
 
-/** Pro's last month ends in 3 days and won't renew: renewing is off, and $5 doesn't buy a month. */
+/**
+ * Pro's last month ends in 6 days and won't renew: renewing is off, and $5 doesn't buy a month. Art was told yesterday, a
+ * week before.
+ */
 export const proEnding = (): Plan => {
-  const months = endingIn3Days(1);
+  const months = endingIn6Days(1);
   const history: BalanceEntry[] = [
-    { id: 'sb-entry-pro', at: iso(-27, 10, 0), label: 'Pro, 1 month', microUsd: -PRO_PRICE },
-    { id: 'sb-entry-1', at: iso(-27, 9, 55), label: 'Added, 25 USDC', microUsd: 25_000_000 }
+    { id: 'sb-entry-pro', at: iso(-24, 10, 0), label: 'Pro, 1 month', microUsd: -PRO_PRICE },
+    { id: 'sb-entry-1', at: iso(-24, 9, 55), label: 'Added, 25 USDC', microUsd: 25_000_000 }
   ];
   const plan = withProMonths({ ...freePlan(), balance: { microUsd: 5_000_000, history } }, months, AFTERNOON());
-  return { ...plan, notes: { ...plan.notes, minutesLeft: 940 }, notices: [notice('sb-notice-ending', 'pro-ending', iso(0, 10, 0), months[0]?.to ?? iso(3, 10, 0))] };
+  return { ...plan, notes: { ...plan.notes, minutesLeft: 940 }, notices: [notice('sb-notice-ending', 'pro-ending', iso(-1, 10, 0), months[0]?.to ?? iso(6, 10, 0))] };
 };
 
 /**
- * Pro's last month ends in 3 days and won't renew, though renewing is on and $60 is in the balance: a month costs more now
+ * Pro's last month ends in 6 days and won't renew, though renewing is on and $60 is in the balance: a month costs more now
  * than the $20 the last did (the scenario raises the price), and renewing never pays more without Art buying at it first.
  * Art is told Pro is ending.
  */
 export const proEndingPriceRose = (): Plan => {
   const plan = proEnding();
   const history: BalanceEntry[] = [
-    { id: 'sb-entry-pro', at: iso(-27, 10, 0), label: 'Pro, 1 month', microUsd: -PRO_PRICE },
-    { id: 'sb-entry-1', at: iso(-27, 9, 55), label: 'Added, 80 USDC', microUsd: 80_000_000 }
+    { id: 'sb-entry-pro', at: iso(-24, 10, 0), label: 'Pro, 1 month', microUsd: -PRO_PRICE },
+    { id: 'sb-entry-1', at: iso(-24, 9, 55), label: 'Added, 80 USDC', microUsd: 80_000_000 }
   ];
   return { ...plan, balance: { microUsd: 60_000_000, history }, pro: { ...plan.pro, renew: true } };
 };
 
-/** Renewing is on, so this morning, 3 days before Pro was to end, a month was bought from the balance: Pro runs a month further. */
+/** Renewing is on, so yesterday, a week before Pro was to end, a month was bought from the balance: Pro runs a month further. */
 export const proRenewed = (): Plan => {
-  const months = endingIn3Days(2);
+  const months = endingIn6Days(2);
   const history: BalanceEntry[] = [
-    { id: 'sb-entry-renew', at: iso(0, 10, 0), label: 'Pro, renewed for a month', microUsd: -PRO_PRICE },
-    { id: 'sb-entry-pro', at: iso(-27, 10, 0), label: 'Pro, 1 month', microUsd: -PRO_PRICE },
-    { id: 'sb-entry-1', at: iso(-27, 9, 55), label: 'Added, 60 USDC', microUsd: 60_000_000 }
+    { id: 'sb-entry-renew', at: iso(-1, 10, 0), label: 'Pro, renewed for a month', microUsd: -PRO_PRICE },
+    { id: 'sb-entry-pro', at: iso(-24, 10, 0), label: 'Pro, 1 month', microUsd: -PRO_PRICE },
+    { id: 'sb-entry-1', at: iso(-24, 9, 55), label: 'Added, 60 USDC', microUsd: 60_000_000 }
   ];
   const plan = withProMonths({ ...freePlan(), balance: { microUsd: 20_000_000, history } }, months, AFTERNOON());
   return {
     ...plan, notes: { ...plan.notes, minutesLeft: 940 }, pro: { ...plan.pro, renew: true },
-    notices: [notice('sb-notice-renewed', 'pro-renewed', iso(0, 10, 0), months[1]?.to ?? iso(33, 10, 0))]
+    notices: [notice('sb-notice-renewed', 'pro-renewed', iso(-1, 10, 0), months[1]?.to ?? iso(36, 10, 0))]
   };
 };
 

@@ -42,7 +42,7 @@ export const Pro = foot('/home', 'plan-pro');
 export const ProNight = night(Pro);
 /** Pro extended by a year: the same row, until a year on. */
 export const ProExtended = foot('/home', 'plan-pro-extended');
-/** Pro ending in 3 days and not renewing: the sun half set, and Extend, which opens checkout. */
+/** Pro ending in 6 days and not renewing, told a week before: the sun half set, and Extend, which opens checkout. */
 export const ProEnding = foot('/home', 'plan-pro-ending');
 export const ProEndingNight = night(ProEnding);
 /** Pro ending after its price went up, though renewing is on with the money: the same, since it won't renew at the new price by itself. */
