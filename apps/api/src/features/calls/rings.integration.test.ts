@@ -6,6 +6,7 @@
  */
 import { AlcoveApiError, RingsSnapshotSchema, type CallSession, type CallState, type IncomingRing, type LiveStore } from '@alcove/api';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
 import { maintain } from '../../maintenance';
 import { MAX_GUESTS } from '../meetings/service';
 import type { GoogleUser } from '../../testing/fake-google';
@@ -673,6 +674,7 @@ describe('the stream', () => {
   it('says something every 20 seconds, so a browser can tell a quiet stream from a dead one', async () => {
     const theo = await account(THEO);
     const stop = new AbortController();
+    const asked = Date.now();
     const res = await theo.fetch(`${h.baseUrl}/v1/rings`, { signal: stop.signal });
     // The app and the API are different origins in production, and nothing may keep a copy of this.
     expect(Object.fromEntries(['access-control-allow-origin', 'access-control-allow-credentials', 'content-type', 'cache-control'].map((n) => [n, res.headers.get(n)]))).toEqual({
@@ -683,12 +685,38 @@ describe('the stream', () => {
     if (!reader) throw new Error('no stream');
     const text = new TextDecoder();
     let said = '';
-    const t0 = Date.now();
-    while (said.split('\n').length < 3) { const { value, done } = await reader.read(); if (done) throw new Error('the stream ended early'); said += text.decode(value, { stream: true }); }
-    stop.abort();
+    const reading = (async () => { for (;;) { const { value, done } = await reader.read(); if (done) return; said += text.decode(value, { stream: true }); } })().catch(() => undefined);
+    /** Waits by the clock the stand-in one below leaves alone. */
+    const until = async (ok: () => boolean, what: string) => {
+      for (const by = performance.now() + 15_000; !ok();) { if (performance.now() > by) throw new Error(`timed out waiting for ${what}`); await sleep(20); }
+    };
+    await until(() => said.endsWith('\n'), 'the first line');
+    const heard = Date.now();
+    expect(said).toBe('{"rings":[]}\n');
+    // Nothing changes, so it says the same again once it's been quiet for 20 seconds by the server's clock. That's this
+    // process's clock, moved on here instead of waited out, while the streams' ticker, a real timer, goes round each second.
+    const Line = z.object({ msg: z.string(), requestId: z.string().optional(), sql: z.string().optional() });
+    /** Rounds the ticker has made since `from`: each reads what's ringing, as no request. */
+    const rounds = (from: number) => h.logs.slice(from).filter((l) => {
+      const r = Line.safeParse(JSON.parse(l));
+      return r.success && r.data.requestId === undefined && r.data.msg.endsWith('query') && (r.data.sql ?? '').startsWith('SELECT owner_id, ring_id');
+    }).length;
+    try {
+      // At most 19 seconds after it said anything: two rounds go by, and it says nothing more.
+      vi.useFakeTimers({ toFake: ['Date'], now: asked + 19_000 });
+      const from = h.logs.length;
+      await until(() => rounds(from) >= 2, 'two rounds of the ticker');
+      expect(said).toBe('{"rings":[]}\n');
+      // At least 20 seconds after: it says the same again.
+      vi.setSystemTime(heard + 20_000);
+      await until(() => said.split('\n').length >= 3, 'the same again');
+    } finally {
+      vi.useRealTimers();
+      stop.abort();
+      await reading;
+    }
     expect(said).toBe('{"rings":[]}\n{"rings":[]}\n');
-    expect(Date.now() - t0).toBeGreaterThan(19_000);
-  }, 40_000);
+  });
 
   it('gives up on a stream that’s gone quiet and opens another, as a laptop waking up must', async () => {
     const org = await account(atVandelay());
@@ -787,9 +815,10 @@ describe('the stream', () => {
     const second = await h.secondServer({}, stopping.signal);
     const { browser: b, asked } = routed(() => second.baseUrl);
     await b.api.auth.signIn('sso', { email: KOFI });
+    // Held by the process, not only asked for: shutting down ends the streams it holds.
+    const marker = h.logs.length;
     const stream = ringsOf(b);
-    await waitFor(() => asked.includes('/v1/rings'), 'the stream to open');
-    await sleep(100);
+    await waitFor(() => h.logs.slice(marker).some((l) => l.includes('rings stream opened')), 'the stream to open');
     const opened = asked.filter((p) => p === '/v1/rings').length;
     stopping.abort();
     await waitFor(() => asked.filter((p) => p === '/v1/rings').length > opened, 'the browser to reconnect');
