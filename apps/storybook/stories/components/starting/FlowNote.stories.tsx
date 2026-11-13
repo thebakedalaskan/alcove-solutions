@@ -4,7 +4,7 @@
  * sits above the foot, with its reference to quote.
  */
 import { MAX_CALL_DOCUMENTS, MAX_GUESTS } from '@alcove/api';
-import { Button, FlowBody, FlowFoot, FlowHead, FlowNote, FlowView, ICON_NAMES, Icon, PersonToken, RequestRef, type IconName } from '@alcove/ui';
+import { Button, FlowBody, FlowFoot, FlowHead, FlowNote, FlowView, ICON_NAMES, Icon, PersonToken, RequestRef, SchedField, SchedFoot, SchedGroup, SchedNote, SchedPanel, SchedRow, type IconName } from '@alcove/ui';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import type { ReactNode } from 'react';
 import { ModalFrame, did } from '../../../src/component';
@@ -12,27 +12,27 @@ import { KOFI, MANY, PRIYA } from '../../../src/world/people';
 
 const TOO_MANY = 312;
 
-/** The scheduler's column: what's in it, then its foot. */
+/** The scheduler's editor, on its sheet: what's in it, then its foot. */
 function Scheduler({ children, foot }: { children: ReactNode; foot?: ReactNode }) {
   return (
-    <aside className="sc-comp" style={{ width: 'min(372px, 100%)' }}>
-      <div className="sc-scroll">{children}</div>
-      {foot}
-    </aside>
+    <div className="sc-sheet" style={{ margin: 0, width: 'min(356px, 100%)', height: 560, gridTemplateColumns: 'minmax(0, 1fr)' }}>
+      <SchedPanel kicker="New call" label="Schedule a call" onClose={did('onClose')} foot={foot}>{children}</SchedPanel>
+    </div>
   );
 }
-/** Who, on the scheduler, with a pasted list in the field. */
+/** Who, on the scheduler, with a pasted list in the field, and the note under it. */
 function Who({ children, over = false }: { children: ReactNode; over?: boolean | undefined }) {
   return (
     <Scheduler>
-      <section className="sc-sec">
-        <h3>Who</h3>
-        <div className="cf-field sc-field">
-          <PersonToken people={MANY.slice(0, 4).map((c) => c.person)} label="Pasted list" count={over ? TOO_MANY : 6} removeLabel="Remove Pasted list" onRemove={did('onRemove')} />
-          <input type="text" aria-label="Add people" placeholder="Add someone else" autoComplete="off" spellCheck={false} />
-        </div>
-        {children}
-      </section>
+      <SchedGroup label="Who">
+        <SchedRow icon="people">
+          <SchedField>
+            <PersonToken people={MANY.slice(0, 4).map((c) => c.person)} label="Pasted list" count={over ? TOO_MANY : 6} removeLabel="Remove Pasted list" onRemove={did('onRemove')} />
+            <input type="text" aria-label="Add people" placeholder="Add someone" autoComplete="off" spellCheck={false} />
+          </SchedField>
+        </SchedRow>
+        <SchedNote>{children}</SchedNote>
+      </SchedGroup>
     </Scheduler>
   );
 }
@@ -54,7 +54,6 @@ const meta = {
   args: {
     tone: 'caution',
     icon: 'people',
-    className: 'sc-why',
     children: `A call can invite ${MAX_GUESTS} people at most, and this is ${TOO_MANY}. Remove the pasted list and paste a shorter one to go on.`
   },
   argTypes: {
@@ -111,25 +110,23 @@ export const WithActions: Story = {
 /** A save that didn't go through: in place above the scheduler's foot, with the reference to quote. Nothing chosen is lost. */
 export const FailedSave: Story = {
   name: 'A failed save',
-  args: { icon: 'alert', children: 'Can’t reach Alcove. Check your connection.', actions: <RequestRef id="sb-req-7f3a9c" />, className: 'cf-fail' },
+  args: { icon: 'alert', children: 'Can’t reach Alcove. Check your connection.', actions: <RequestRef id="sb-req-7f3a9c" /> },
   render: (args) => (
     <Scheduler foot={(
-      <>
-        <FlowNote {...args} />
-        <footer className="sc-foot">
-          <p>Google Calendar invites Priya and Kofi.</p>
-          <Button variant="primary" onClick={did('onSchedule')}>Schedule</Button>
-        </footer>
-      </>
+      <SchedFoot notice={<FlowNote {...args} />} line="Google Calendar invites Priya and Kofi.">
+        <Button variant="quiet" onClick={did('onCancel')}>Cancel</Button>
+        <Button variant="primary" onClick={did('onSchedule')}>Schedule</Button>
+      </SchedFoot>
     )}>
-      <section className="sc-sec">
-        <h3>Who</h3>
-        <div className="cf-field sc-field">
-          <PersonToken people={[PRIYA]} label="Priya" title={PRIYA.email} onRemove={did('onRemove')} />
-          <PersonToken people={[KOFI]} label="Kofi" title={KOFI.email} onRemove={did('onRemove')} />
-          <input type="text" aria-label="Add people" placeholder="Add someone else" autoComplete="off" spellCheck={false} />
-        </div>
-      </section>
+      <SchedGroup label="Who">
+        <SchedRow icon="people">
+          <SchedField>
+            <PersonToken people={[PRIYA]} label="Priya" title={PRIYA.email} onRemove={did('onRemove')} />
+            <PersonToken people={[KOFI]} label="Kofi" title={KOFI.email} onRemove={did('onRemove')} />
+            <input type="text" aria-label="Add people" placeholder="Add someone" autoComplete="off" spellCheck={false} />
+          </SchedField>
+        </SchedRow>
+      </SchedGroup>
     </Scheduler>
   )
 };

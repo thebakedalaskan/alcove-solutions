@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>The sidebar</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="home.css">
+<script src="tokens.js"></script>
+<script src="home.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400..700&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<aside class="sd" style="{{s.style}}" aria-label="Side panel">
+<button type="button" class="brand sd-logo" aria-label="Alcove, Home">
+<svg width="24" height="28" viewBox="0 0 22 26" aria-hidden="true"><defs><clipPath id="sda"><path d="M2 24.6V11a9 9 0 0 1 18 0v13.6z"></path></clipPath><clipPath id="sdu"><rect x="0" y="0" width="22" height="19.2"></rect></clipPath><linearGradient id="sds" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2A2373"></stop><stop offset=".42" stop-color="#5847DA"></stop><stop offset=".64" stop-color="#C470A9"></stop><stop offset=".74" stop-color="#FFA06A"></stop></linearGradient><radialGradient id="sdn" cx=".42" cy=".38" r=".72"><stop offset="0" stop-color="#FFF6E0"></stop><stop offset=".5" stop-color="#FFD58A"></stop><stop offset="1" stop-color="#FFB547"></stop></radialGradient></defs><g clip-path="url(#sda)"><rect width="22" height="26" fill="url(#sds)"></rect><g clip-path="url(#sdu)"><circle cx="11" cy="19.2" r="4.4" fill="url(#sdn)"></circle></g><rect y="19.2" width="22" height="7" fill="#231C5E"></rect><rect x="7.2" y="20.5" width="7.6" height=".9" rx=".45" fill="#FFB36E" opacity=".8"></rect><rect x="8.8" y="22.1" width="4.4" height=".8" rx=".4" fill="#FFB36E" opacity=".45"></rect></g><path class="rim" d="M2 24.6V11a9 9 0 0 1 18 0v13.6z" stroke-width="1"></path></svg>
+alcove</button>
+<button type="button" class="sd-hide" aria-label="Hide the side panel"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM9 3v18"></path></svg></button>
+<button type="button" class="sd-new{{s.hotStart}}" onClick="{{s.start}}"><span class="sd-new-ic"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{s.I.video}}"></path></svg></span>Start a call<span class="k">N</span></button>
+<nav class="sd-nav" aria-label="Main">
+<sc-for list="{{s.nav}}" as="n" hint-placeholder-count="4">
+<button type="button" class="sd-i{{n.cls}}" aria-current="{{n.current}}" onClick="{{n.go}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{n.icon}}"></path></svg><span>{{n.label}}</span><sc-if value="{{n.hasCount}}" hint-placeholder-val="{{false}}"><b class="sd-n">{{n.count}}</b></sc-if></button>
+</sc-for>
+</nav>
+<sc-if value="{{s.hasPinned}}" hint-placeholder-val="{{false}}">
+<div class="sd-sec"><h2>Pinned</h2><sc-for list="{{s.pinned}}" as="p" hint-placeholder-count="2"><button type="button" class="sd-l" onClick="{{p.go}}"><span class="clamp1">{{p.t}}</span></button></sc-for></div>
+</sc-if>
+<sc-if value="{{s.hasGroups}}" hint-placeholder-val="{{false}}">
+<div class="sd-sec"><h2>Groups</h2><sc-for list="{{s.groups}}" as="g" hint-placeholder-count="2"><button type="button" class="sd-l" onClick="{{g.go}}"><span class="clamp1">{{g.t}}</span><b>{{g.n}}</b></button></sc-for></div>
+</sc-if>
+<span class="sd-grow"></span>
+<div class="sd-foot">
+<p class="sd-seal"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{s.I.sealed}}"></path></svg>Confidential compute</p>
+<p class="sd-min"><b>6 h 26 min</b> of notes left</p>
+<span class="sd-meter"><i></i></span>
+</div>
+</aside>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"s":{"editor":null,"default":null},"$preview":{"width":256,"height":800}}'>
+class Component extends DCLogic {
+  renderVals() {
+    var s = this.props.s;
+    if (!s) {
+      var host = { props: { scene: 'soon' }, state: null, setState: function () {} };
+      s = window.AH.vm(host, 'side', { pal: 'blue-hour', mode: 'dark' }).side;
+      s = window.AH.assign({}, s, { style: s.style + '; background: ' + window.AH.ok(window.AH.PALS['blue-hour'].dark.well) + '; height: 100vh; font-family: "Hanken Grotesk", system-ui, sans-serif' });
+    }
+    return { s: s };
+  }
+}
+</script>
+</body>
+</html>

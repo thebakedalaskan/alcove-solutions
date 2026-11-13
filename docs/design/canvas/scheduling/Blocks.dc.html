@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Time first</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="home.css">
+<link rel="stylesheet" href="sched.css">
+<script src="tokens.js"></script>
+<script src="home.js"></script>
+<script src="sched.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400..700&amp;family=Newsreader:ital,opsz,wght@0,6..72,300..600;1,6..72,300..600&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<div class="ah kb" data-mode="{{mode}}" style="{{rootStyle}}">
+<h1>Time first, at every length</h1>
+<p class="kb-lede">The same blocks at the week’s real size, before and now: one of your calls, the call being made, and the outline that follows the pointer.</p>
+<div class="kb-grid">
+<span></span><span class="kb-head">Before</span><span class="kb-head">Now</span>
+<span></span><div class="kb-kinds"><span>One of your calls</span><span>The call being made</span><span>Pointing at a time</span></div><div class="kb-kinds"><span>One of your calls</span><span>The call being made</span><span>Pointing at a time</span></div>
+<sc-for list="{{rows}}" as="r" hint-placeholder-count="5">
+<span class="kb-len">{{r.label}}</span>
+<div class="kb-cell" style="{{r.cellStyle}}">
+<sc-for list="{{r.before}}" as="b" hint-placeholder-count="3">
+<div class="kb-col"><span class="kb-old{{b.cls}}" style="{{b.style}}"><b>{{b.first}}</b><small>{{b.second}}</small></span></div>
+</sc-for>
+</div>
+<div class="kb-cell" style="{{r.cellStyle}}">
+<sc-for list="{{r.now}}" as="b" hint-placeholder-count="3">
+<div class="kb-col">
+<span class="wx-bk{{b.cls}}" style="{{b.style}}">
+<span class="wx-tx{{b.txCls}}"><b class="t">{{b.time}}</b><sc-if value="{{b.hasName}}" hint-placeholder-val="{{true}}"><span class="n" style="{{b.nStyle}}">{{b.name}}</span></sc-if></span>
+<sc-if value="{{b.grip}}" hint-placeholder-val="{{false}}"><i class="grip"></i></sc-if>
+</span>
+</div>
+</sc-for>
+</div>
+</sc-for>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"mode":{"editor":"enum","options":["dark","light"],"default":"dark"},"$preview":{"width":1440,"height":660}}'>
+/* The rule the week uses: how many lines fit, time first. Kept in step with fit() in Main.dc.html. */
+function fit(h) {
+  if (h >= 36) return 1 + Math.max(1, Math.floor((h - 8 - 15) / 13));
+  if (h >= 18) return 1;
+  if (h >= 12) return -1;
+  return 0;
+}
+class Component extends DCLogic {
+  renderVals() {
+    var AH = window.AH, SK = AH.SK, p = this.props || {}, mode = AH.hash().mode || p.mode || 'dark';
+    var HP = 56, W = 150;
+    var rows = [15, 30, 45, 60, 90].map(function (len) {
+      var h = len / 60 * HP - 3, s = 630, e = s + len;
+      var range = SK.clock(s) + ' – ' + SK.clock(e), range0 = range;
+      /* Before: your call put its name first and dropped its time under 48 minutes; the rest cut their second line wherever the block ended. */
+      var oldH = Math.max(h, 22), short = len / 60 < 0.8;
+      var before = [
+        { first: 'Design review', second: short ? '' : SK.clock(s), cls: ' is-ev' + (short ? ' is-short' : '') },
+        { first: range, second: short ? '' : 'Call with Priya and Kofi', cls: ' is-call' + (short ? ' is-short' : '') },
+        { first: range, second: 'Free for all of you', cls: ' is-ghost' }
+      ].map(function (b) { return Object.assign(b, { style: 'height: ' + oldH.toFixed(1) + 'px' }); });
+      var hNow = len / 60 * HP - 2, n = fit(hNow);
+      var mk = function (o) {
+        var inner = W - 4 - 2 - (o.ev ? 16 : 14), range = n !== -1 && !(o.startOnly && n === 1) && inner >= 68;
+        var room = inner - (range ? 68 : n === -1 ? 26 : 29) - 6;
+        return {
+          cls: o.cls + (n === -1 ? ' is-tight' : n === 0 ? ' is-tiny' : ''), txCls: n >= 2 ? '' : n === 1 ? ' is-one' : n === -1 ? ' is-tight' : '',
+          style: '--s: 0; --e: ' + len + '; --hp: ' + HP + 'px', time: n === 0 ? '' : range ? range0 : SK.clock(s),
+          hasName: n >= 2 || (n === 1 && room >= 28), name: o.name,
+          nStyle: '-webkit-line-clamp: ' + Math.max(1, n - 1) + '; max-height: ' + 13 * Math.max(1, n - 1) + 'px', grip: !!o.grip
+        };
+      };
+      return {
+        label: SK.lenLabel(len), cellStyle: 'height: ' + Math.max(oldH, h) + 'px',
+        before: before,
+        now: [mk({ cls: ' is-ev is-soon', ev: true, name: 'Design review', startOnly: true }), mk({ cls: ' is-call', name: 'Call with Priya and Kofi', grip: true }), mk({ cls: ' is-ghost', name: 'All 3 free' })]
+      };
+    });
+    return { mode: mode, rootStyle: AH.rootStyle('blue-hour', mode, 18) + '; --frame: ' + AH.ok(AH.PALS['blue-hour'].dark.well), rows: rows };
+  }
+}
+</script>
+</body>
+</html>

@@ -45,6 +45,8 @@ src/component.tsx         what component stories share: `onStage`, `PopSurface`,
 src/call.ts               what call stories share: `inCall()`, `atTheDoor()`, `rung()`, `phone()`, `light()`, `press()`, `reach()`,
                           `settings()`
 src/board.tsx             what board stories share: `BoardScene`, the real surface on a board, and `whereItShows`
+src/scheduling.ts         what scheduling stories share: the week pressed, pointed at, dragged and held at its edge where a
+                          person's pointer would be, and the steps of a scheduling play (`playing()`, `adding()`, `pressingAt()`)
 stories/foundations/      colour, type, icons, scales, the evening and what passes through
 stories/components/       one file per @alcove/ui component, a story per state, in a folder per group
 stories/pages/            one file per page, a story per state
@@ -94,7 +96,7 @@ Product, then the follow-ups from the retro board's Actions frame.
 
 | Name | What it is |
 |---|---|
-| `busy` | Wednesday afternoon at Vandelay Industries: a day of notes, things waiting on you, a design sync at 17:30, and two photos and a file in the Product workspace's Launch plan |
+| `busy` | Wednesday afternoon at Vandelay Industries: a day of notes, things waiting on you, a design sync at 17:30, and two photos and a file in the Product workspace's Launch plan. Priya's, Kofi's, Maya's, Aiko's and Ines's calendars say when they're busy from tomorrow to next Tuesday (`calendars`, src/world/scheduling.ts) |
 | `first-day` | Art has just signed in and carried on with Free: no notes or calls, a team not on Alcove yet, no calendar access |
 | `on-their-own` | Art at a personal address: no team, no groups, recordings and calls with people Art meets |
 | `offline` | The busy afternoon opened with no connection, signed in on this browser: Record works, the rest says offline |
@@ -532,3 +534,40 @@ off, telling Alcove the plans were seen failing (they aren't shown again in that
 offline, in both themes and on a phone. The first sign-in's journeys (1.1, 1.2) pass through it too. **Components / The evening /
 SailOut / Onto the plans** sails out of the cove onto a stand-in for it, the sun easing down to the plans' last sliver.
 
+
+## Scheduling
+
+**Pages / Scheduling** is the scheduler on the Calls page in every state its design
+(`docs/superpowers/specs/2026-11-13-scheduling-rethought-design.md`) names: **New**, open on the soonest half hour Art is
+free (at night, at 1024 at night, and on a phone), **Pointing** (the call's outline under the pointer), **With Priya And
+Kofi** (the call follows them; wide, night and phone too), **Clash** and **Clash With Yours** (who's busy, and Next free),
+**Next Free** pressed, **Next Free On Another Day** ("Next free: Fri 09:00"), **Outside Working Hours** ("You're all free,
+outside working hours"), **Stopped At Midnight**, **Scrolled Late** (the hours down to midnight, and the pill saying where
+the call is), **The Week After**, **Pick A Day** (the month), **Across The Year** (headed "30 Dec 2026 – 5 Jan 2027"),
+**Start List** and **End List**, **End Before Start** (an end typed before the start, refused), **Repeats**, **Notes
+Kept** and **Notes In Someone Elses**, **Bringing** (Add an agenda), **Someone From Outside**, **Two From Outside** ("You
+can't see the calendars of Jonas and Ana."), **Nobody By That Name** and **On Your Own** (the people under Who: nobody
+found, and People you've met), **Letting A Guest Pick** (off, with Jonas in Berlin), **Picking Time 2** (at night, and on a
+phone, where time 2's own day and start set it), **Length Each**, **Left Out** and **Offering Without A Calendar** ("You
+get a link to send to Jonas."), **A Big Call** (Everyone joins muted), **From The Week**, **Without A Calendar**,
+**Reading Calendars**, **Calendars Unreadable** (the busy times failed), **On A Sample Calendar** ("Priya and Kofi get an
+invitation."), **Schedule Failed**, **Meet Again**, **Move A Call** (with Aiko's ask), **Move It There**, **Move A Call
+Nobody Else** ("Nobody else is invited."), **Move A Series Call**, **Cancel This Call**, **Propose Another Time**, **No
+Notes Left** and **Call Gone**. Their dark variants are named Night, as every page's are. **Pages / Calls** has the Calls
+page's own week: **Week** (2 – 8 Nov, at night and on a phone too), **Week After** (9 – 15 Nov, with Today) and **Week
+Evening** (scrolled to midnight).
+
+**Journeys / 4 Start or schedule a call** plays flow 4 as user-flows numbers its journeys: 4.1 to 4.15, then the design
+canvas's: **4.16 Press a time, keep the length**, **4.17 Stop at midnight**, **4.18 Drag it to another day**, **4.19 Carry
+it into next week** (the call held at the week's right edge until the next week slides in under it), **4.20 Scroll the
+day, pick a start**, **4.21 Go to another week, or day**, **4.22 Find the next free time** and **4.23 Choose the times to
+offer**; then **4.24 Stop letting a guest pick** (the call keeps the time that was lit, turned off or with someone added)
+and **4.25 Type the time** (typed starts and ends, and the times that can't be used).
+**Journeys / 8 Calls / 8.3 See the week** walks the Calls page's week.
+
+The week works out a time from where the pointer is, so `src/scheduling.ts` presses, points and drags where a person's
+pointer would be: the middle of a half hour (found by how its name starts, "Thursday 5 November, 14:00"), on whatever is on
+top there, with the hours scrolled to it first. `grabbing()` holds the pointer down for a drag (`over`, `toEdge`, `drop`),
+and a hold at the edge rests the pointer there until the next week's half hours are on the page. Other people's busy time is
+the world's `calendars`: tomorrow Art is free from 09:00, with Priya from 10:00, and with Priya and Kofi not until 14:00,
+and at 12:00 only Priya is busy. On a day the world doesn't say, everyone has the stand-in's made-up working day.

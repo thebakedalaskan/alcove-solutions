@@ -6,7 +6,7 @@
  */
 import {
   TopUpSchema, TopUpRoutesSchema, PlanOffersSchema, ISODateSchema, DriveExportChoiceSchema, DriveExportJobSchema, DriveFolderSchema, DriveSettingsSchema, FILE_TYPE, CalendarSchema,
-  DocumentLibrarySchema, IncomingRingSchema, MeetingSchema, NoteSchema, PersonalEntrySchema, PlanSchema, PreferencesSchema, MentionNoticeSchema, SessionSchema, ShareEntrySchema, TeamSchema,
+  DocumentLibrarySchema, IncomingRingSchema, IntervalSchema, MeetingSchema, NoteSchema, PersonalEntrySchema, PlanSchema, PreferencesSchema, MentionNoticeSchema, SessionSchema, ShareEntrySchema, TeamSchema,
   WorkspaceMediaSchema, WorkspaceSummarySchema, WorkspaceTreeSchema, type DocumentLibrary, type DocumentRole, type Group, type ItemCall, type MentionNotice, type NoteRoom, type NoteWorkedOn,
   type Person, type ShareEntry, type WorkspaceItem, type WorkspaceRole, MyTeamSchema, type PlanNotice
 } from '@alcove/api';
@@ -34,6 +34,7 @@ import { buyingWith, paymentsOff, PREVIEW_PAID_TOP_UP, PREVIEW_TOP_UP, PRO_YEAR,
 import { carriedOver, freePlan, inGrace, newPlan, notesStopped, overLimits, proEnded, proEnding, proEndingPriceRose, proExtended, proPlan, proRenewed, PRO_YEARLY_PRICE, withBalance, withNotesLeft } from '../world/plans';
 import { disconnectedDrive, withDriveExports } from '../world/drive-exports';
 import { homesOn } from '../world/call-page';
+import { calendars } from '../world/scheduling';
 import { withAgentConnections, withAgentEnding, withClaudeJustConnected } from './agents';
 import { planWithTeam, priyasTeam, startedTeam, teamView, vandelayTeam, type TeamWorld } from '../world/teams';
 import { serve } from './state';
@@ -301,7 +302,7 @@ function busy(): World {
   homesOn(notes, spaces);
   return {
     drive: disconnectedDrive(), payments: paymentsOff(), session: session(), prefs: { ...PREFS, pinned: ['n4', 'n6'], groups: GROUPS }, team: teamOf(DIRECTORY), notes, personal: { n2: standupOwn() },
-    meetings: busyCalls(), calendar: connected(busyEvents()), plan: freePlan(), documents: library(), workspaces: spaces, pages: pages(), shares: shares(), boards: boards(),
+    meetings: busyCalls(), calendar: connected(busyEvents()), calendars: calendars(), plan: freePlan(), documents: library(), workspaces: spaces, pages: pages(), shares: shares(), boards: boards(),
     mentions: structuredClone(TAGGED), media: files(), rings: [], writing: null,
     // The bandwidth flag is on here and off in every other scenario, so both answers are served.
     featureFlags: ['call.bandwidth_reduction']
@@ -657,6 +658,7 @@ export function checked(w: World): World {
     ['drive jobs', DriveExportJobSchema.array().safeParse(w.drive.jobs)], ['drive overrides', DriveExportChoiceSchema.array().safeParse(Object.values(w.drive.overrides))],
     ['session', SessionSchema.nullable().safeParse(w.session)], ['prefs', PreferencesSchema.safeParse(w.prefs)], ['team', TeamSchema.nullable().safeParse(w.team)],
     ['notes', NoteSchema.array().safeParse(w.notes)], ['meetings', MeetingSchema.array().safeParse(w.meetings)], ['calendar', CalendarSchema.safeParse(w.calendar)],
+    ['calendars', IntervalSchema.array().safeParse(Object.values(w.calendars ?? {}).flat())],
     ['payment routes', TopUpRoutesSchema.nullable().safeParse(w.payments.routes)], ['top-ups', TopUpSchema.array().safeParse(w.payments.topUps)],
     ['offers', PlanOffersSchema.safeParse(w.payments.offers)],
     ['plan', PlanSchema.safeParse(w.plan)], ['documents', DocumentLibrarySchema.safeParse(w.documents)], ['workspaces', WorkspaceTreeSchema.array().safeParse(w.workspaces)],

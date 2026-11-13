@@ -298,90 +298,152 @@ send to anyone".
    floods out from the card that was pressed. If the call can't be made, the modal stays and says why.
 2. **Scheduling happens on the Calls page**, not in a window. **Schedule for later** closes the modal and opens it there
    with whoever was picked, and so do **Schedule a call** on Calls, **Schedule** and **+** on Home, **Schedule** in
-   someone's popover on Team, dragging across a free time on the Calls page's week (it opens with that time), **Meet
-   again** on a past call (the same people and name), and **Change the time** on a call (step 11). The scheduler takes
-   the rail's place and the sheet becomes the week. **← Calls** closes it, keeping nothing. The address says what it's
-   doing (`/calls?schedule=new`, `move` or `again`); who it's with never goes in it.
-3. **The name** is at the top, large, ready to type over: "Call with Priya and Kofi" once people are in, until you
-   type your own. Enter schedules.
-4. **Who** is one field. Typing finds people in the company directory, people from past calls, groups, and the whole
+   someone's popover on Team, pressing or dragging across a free time on the Calls page's week (it opens with that time,
+   as long as the drag), **Meet again** on a past call (the same people and name), and **Change the time** on a call
+   (step 11). The page's sky keeps only its title, and one sheet fills the rest of the page: the week on the left
+   (step 6) and the call's editor beside it, which says at its top what it's doing (**New call**, **Move a call** or
+   **Ask to move a call**). Its **×** (Close, back to Calls) and **Cancel** close it, keeping nothing; moving a call has
+   only **×**, as **Cancel this call** is in its foot (step 11). What opens from the editor (the people to add, a month, a
+   list of times, a menu) opens one at a time, under what opened it, and **Escape** or pressing outside closes it, with
+   focus back where it was. The address says what it's doing (`/calls?schedule=new`, `move` or `again`); who it's with
+   never goes in it.
+3. **The name** is at the top, large: "Add a title" while it's empty, then "Call with Priya and Kofi" as people are
+   added, until you type your own. Enter schedules.
+4. **Who** is one field of tokens (an arch, a first name, ×): "Add people" while it's empty, "Add someone" after.
+   Pressing it or typing opens the people under it: **Often with you** while nobody's in (on your own, **People you've
+   met**), **Add someone else** after the first, without anyone already in, and **People and groups** while you type.
+   Each row is a face (a group shows two of its faces, and its line says how many), the name, what they do or their
+   address, and **+**. Typing finds people in the company directory, people from past calls, groups, and the whole
    company ("Everyone at Vandelay"; without a directory, "Everyone you meet at Harbourline"); on your own it's the
-   people you've met and any address. With nobody in yet, **Often with you** lists people and groups under the field
-   (on your own, **People you've met**); after the first, **Add someone else** brings the list back while you're adding,
-   without anyone already in. A group adds everyone in it, each their own token. Pasting a list of addresses reads it at
-   once: commas, semicolons, spaces and lines, `Name <address>` as mail programs write it, each address once. A list
-   stays one token however long it is, and what can't be read is flagged one at a time with **Use it** when the list
-   gives a fix away, or **Leave out**. Groups, the company and a list can overlap, and everyone counts once. On an
-   empty field, Backspace selects the last token and a second Backspace removes it. A call can invite 300 people; past
-   that it says so and waits, and a list is removed whole and pasted again shorter. Someone outside the company, whose
-   calendar can't be read, gets a line saying so and **Where are they?**: once you've said, their token reads "Berlin,
-   1 h ahead". Nobody at all is fine: pick a time, and the call gets a link to share.
-5. **When** shows once someone's in or a time is picked. One line says what's true: "All 3 of you are free at these
-   times.", "You and Priya are free at these times.", how many are free under each time, that other calendars can't be
-   read and the times are free on yours, or "Nothing is free in the next two weeks. Pick a time on the week." Three
-   times follow as cards, soonest first, the best already picked: never in the past, inside 9 to 17 on weekdays where you
-   are, never when you're busy. They're the times that suit the most people, on different days while there are days to
-   spread over, the sooner day first and today last (it leaves people the least notice). When that doesn't tell them
-   apart, as with no calendar connected, each day takes an hour the others haven't, from the hours people find easiest
-   (10:00, then 14:00, 11:00, 15:00 and so on). A time picked on the week takes the place of the last card. Under the
-   cards the time picked reads as it will, "Tomorrow, [10:00] – [10:45]": its start and its end can be typed, as 24-hour
-   times like every other time here (14:15, or 1415), to the nearest 5 minutes, and count once you leave the field or
-   press Enter; the up and down arrows move one 5 minutes. A start moves the call and keeps its length; an end sets the
-   length, any from 5 minutes to 10 hours (earlier than the start, it's the next day's, for a call past midnight). A
-   start that's gone, an end before the start, or a length past those limits says why under the line, and what was
-   picked stays; so does anything a 24-hour clock doesn't say ("9", "2pm", "25:00"), with "Type a 24-hour time, like
-   14:15.", and a field left empty goes back to what was picked. A call starts at 45 min; 30 min, 45 min and 1 h are a
-   press away, and any other length shows beside them ("1 h 15 min"). **Doesn't repeat** opens in place: Every
-   Thursday, Every 2 weeks on Thursday, Every month on the first Thursday (a fifth one is "the last") or Days you pick,
-   and **Ends after 6 calls**, which counts once you leave the field or press Enter. Repeats keep their clock time where
-   you are when the clocks change, and one repeat is at most 60 calls. With no calendar connected, the line is a note:
-   these are open working hours, with **Connect Google Calendar**, which opens Google in a new tab (it comes back to
-   Settings with the result) and keeps the draft.
-6. **The week** beside it runs Monday to Sunday, 08:00 to 19:00 (further when the call does), with the hours outside
-   9 to 17 greyed. Your own calls and meetings show by name, dimmed; everyone else's busy time is hatched, never what it
-   is, and the key says whose ("Priya and Kofi busy"). The three times glow, and the call being made is solid, with a
-   grip on its bottom edge to drag its end a quarter hour at a time, as far as 10 hours (Shift with the up and down
-   arrows on its half hour does the same, and a screen reader hears where it ends). Pointing at a free time shows the
-   call there and who's free then ("All 3 free", or who's busy); pressing it picks it, and dragging across free time
-   picks the start and the length. Every half hour can be reached with the arrow keys; the arrows at its head go a week
-   at a time and **Today** comes back. On a phone there's no week: the scheduler is one column, and its foot stays above
-   the tabs.
-7. **Details** shows once someone's in or a time is picked. **Notes** is a switch ("Everyone invited gets them", or
-   "Nothing is recorded"), and **What the notes keep** opens under it: **Keep the transcript** (without it, it's used to
-   write the notes and then deleted), **Keep the recording**, **Read shared screens** (whoever shares is asked whether
-   theirs goes in the notes), and **Where they go** (a new workspace, or one of yours). One someone else pays for says so
-   once under it: "Its files don’t count against your storage, so its boards and files open only for its own people." Past
-   25 people, **Everyone joins muted** is on. **Bring** adds an agenda, documents and boards you can open, as chips, up to 12; anyone who can't open
-   one is told whose it is, without seeing its name, so they can ask for it.
-8. **The foot** says what will happen beside the one button: "Google Calendar invites Priya and Kofi." and
-   **Schedule** (**Schedule 6 calls** for a repeat). With nobody and no time the button waits and the line says "Add who
-   it's with, or skip that and share a link."; with nobody and a time, "Nobody's invited: you get a link to share."; with
-   no calendar, "Without a calendar, nobody is told. Share the link yourself."
+   people you've met and any address. A group adds everyone in it, each their own token. Pasting a list of addresses
+   reads it at once: commas, semicolons, spaces and lines, `Name <address>` as mail programs write it, each address
+   once. A list stays one token however long it is, and what can't be read is flagged one at a time with **Use it** when
+   the list gives a fix away, or **Leave out**. Groups, the company and a list can overlap, and everyone counts once. On
+   an empty field, Backspace selects the last token and a second Backspace removes it. A call can invite 300 people;
+   past that it says so and waits, and a list is removed whole and pasted again shorter. When someone's calendar can't
+   be read, it says so: for one guest from outside the company, inside **Let Jonas pick the time** (step 10), "You can't
+   see Jonas's calendar."; among other people, in a line under the field ("You can't see the calendars of Jonas and
+   Ines." for more than one). That one guest's token says where they are once you've said: pressing its place ("Where?"
+   until then) lists the places. Nobody at all is fine: the call gets a link to share.
+5. **When** is ready from the start. A new call opens on the soonest free half hour: the first time on the hour or half
+   hour at least 10 minutes from now, on a weekday from 09:00 with the call over by 17:00 where you are, when you and
+   everyone whose calendar can be read are free. If nothing in the next 15 days suits everyone it's the soonest you're
+   free, and failing that the next working half hour. It moves to the new soonest time whenever who's invited changes or
+   the calendars are read, until you set a time or a length yourself (on the week, the day, the start or end, the
+   lengths, **Next free**); from then on it stays where you put it.
+   - **The day**, "Thu 12 Nov" with "Today" or "Tomorrow" quietly after it, opens a month: Monday first, the days gone
+     greyed, today marked and the call's day filled. A day picked keeps the clock time; if that time has gone, the call
+     goes to the next half hour at least 10 minutes off.
+   - **The time** is the start and the end, with how long it is quietly after them ("11:30 – 12:15 45 min"). The start
+     and the end can be typed, as 24-hour times like every other time here (14:15, or 1415), to the nearest 5 minutes,
+     and count once you leave the field or press Enter. Pressing one lists every quarter hour, scrolled to the one
+     picked: starts from 00:00 to 23:45, those gone greyed, and ends from a quarter hour after the start to 24:00, each
+     with the length it makes ("12:15, 45 min"). A start moves the call and keeps its length; an end sets the length,
+     any from 5 minutes to 10 hours. A start that's gone, an end before the start, or a length past those limits says
+     why under the time, and what was picked stays; so does anything a 24-hour clock doesn't say ("9", "2pm", "25:00"),
+     with "Type a 24-hour time, like 14:15.", and a field left empty goes back to what was picked. A call starts at 45
+     min, and ends on the day it starts: one whose end would pass midnight stops at 24:00 and says "It stops at
+     midnight: a call ends on the day it starts.", keeping the length it should have, so moving it earlier gives it
+     back.
+   - **A line under the time** says what's true, only when there's something to say: "Reading calendars…" while they're
+     read; with people whose calendars can be read, "The soonest time you're all free", or "You're all free" once you've
+     picked the time yourself (with ", outside working hours" when it is). On a clash it says so in caution ("Priya is
+     busy then", "You have Design review then"), with **Next free: 16:00** ("Next free: Fri 10:00" on another day), the
+     soonest free half hour from then on for everyone the clash is about, which moves the call there.
+   - **Doesn't repeat** opens a menu: Every Thursday, Every 2 weeks on Thursday, Every month on the first Thursday (a
+     fifth one is "the last") or Days you pick, whose day letters open in place. Once it repeats, **Ends after 4 calls**
+     counts once you leave the field or press Enter, and the row reads "Every Thursday · 4 calls". Repeats keep their
+     clock time where you are when the clocks change, and one repeat is at most 60 calls.
+   - With no calendar connected, the line is "Only your Alcove calls are known without a calendar." with **Connect
+     Google Calendar**, which opens Google in a new tab (it comes back to Settings with the result) and keeps the draft.
+6. **The week** shows seven days from today, so every day on it can take the call, each as wide as the others (with too
+   little room, only the weekdays of those seven). Its heading is the days it shows ("12 – 18 Nov"; across months "30
+   Nov – 6 Dec"); **›** goes seven days on, **‹** comes back but never before today, and **Today** shows beside them
+   once you've moved off this week. The day is a scroll box of all 24 hours that opens on 08:00 to 18:00 and never
+   grows: scrolling reaches 00:00 and 24:00, so 23:30 can be pressed, and the row of days stays at its top. Now is a tag
+   in the hours ("11:10") and a line across today. The hours outside 09:00 to 17:00 on weekdays, and the weekend, are
+   greyed, and the past is veiled. Your own calls and meetings are neutral blocks, so the call is the one thing in
+   colour; everyone else's busy time is hatched and says whose it is ("Priya, Kofi"), never what it is. Every block says
+   its time first, the range when it fits ("10:30 – 11:30") or else its start, and a name only when a whole line of it
+   fits; blocks that overlap stand side by side. The call is solid, "11:30 – 12:15" with its name under it when there's
+   room, a grip along its bottom edge, and a caution ring when it clashes.
+   - Pointing at a free time shows the call there in outline, with its time and who's free ("All 3 free", "Kofi busy",
+     "Free on your calendar"). Pressing anywhere, a free time or the call itself, moves its start to that half hour and
+     keeps its length: 12:00 – 14:00 pressed at 13:00 is 13:00 – 15:00.
+   - Dragging the call takes it to any time on any day, a quarter hour at a time, and it lands where it's let go. Held
+     at the left or right edge of the days, the week turns back or on, and keeps turning while it's held, taking the
+     call with it; never into the past.
+   - The grip drags the end a quarter hour at a time, at least a quarter hour after the start and at most 24:00.
+     Dragging across free time gives the call that stretch, 15 minutes at least.
+   - When the call is above or below the hours in view, a pill at the top or bottom says where it is ("↑ 07:00 – 07:45")
+     and scrolls to it. When the call moves from the editor (the day's month, the start list, **Next free**, a new
+     soonest time), the week turns to it and scrolls it into view.
+   - A finger scrolls the week rather than dragging the call; a press still moves it.
+   - Every half hour can be reached with the arrow keys, as one tab stop, with Home and End for the day's first and
+     last. Enter or Space moves the call there, and Shift with ↑ or ↓ on its first half hour moves its end a quarter
+     hour. Each half hour says the day, the time and who's free ("Thursday 12 November, 14:00, All 3 free"), and a
+     screen reader hears where the call went and where it ends.
+
+   On a phone there's no week: the editor is the page, one column, with its foot above the tabs, and every time can be
+   set from its own controls (the day's month, the start and end lists).
+7. **Details**: **Notes** is a switch (its tooltip says "Everyone invited gets the notes"), and while it's on **What the
+   notes keep** opens in place under it: **Keep the transcript** (without it, it's used to write the notes and then
+   deleted), **Keep the recording**, **Read shared screens** (whoever shares is asked whether theirs goes in the notes),
+   and **Where they go** (a new workspace, or one of yours), then a line saying the notes are written in confidential
+   compute, or by a model outside a secure enclave. One someone else pays for says so once under it: "Its files don’t
+   count against your storage, so its boards and files open only for its own people." Past 25 people, **Everyone joins
+   muted** is on. **Add an agenda** opens your documents and boards to search and pick from, and lists what's picked
+   under it, each with ×, up to 12; anyone who can't open one is told whose it is, without seeing its name, so they can
+   ask for it.
+8. **The foot** comes after the editor's last row, and stays at the bottom when the editor has to scroll: one line on
+   what will happen, then **Cancel** and the one filled button, **Schedule** (**Schedule 4 calls** for a repeat). The
+   line says "Google Calendar invites Priya and Kofi."; with nobody invited, "You'll get a link to share."; with no
+   calendar, "Without a calendar, nobody is told. Share the link yourself."; and on a demo account's sample calendar,
+   "Priya and Kofi get an invitation."
 9. **Once it's scheduled** the scheduler closes, the call is on Calls marked **Just scheduled**, and a toast says what
    happened, and only that: "Scheduled for tomorrow at 14:00. Google Calendar invites Priya.", with **Undo** for a
    moment. With no calendar connected, or with **Put calls I schedule on my calendar** off (Settings), nobody has been
    told: the toast says so and offers **Copy link**. With nobody invited, the link is copied. While it saves the button
    waits, so it can't be sent twice; if it can't be saved, the error stays above the foot with its reference, and nothing
    chosen is lost.
-10. **Let a guest pick.** With one guest whose calendar can't be read, **Let Jonas pick** is on: the cards become tick
-    boxes, all three ticked, each with what Jonas's clock says then once you've said where he is ("12:00 for Jonas"),
-    and two or three stay ticked. The button reads **Send Jonas the times**, and the foot says they're held on your
-    calendar until he picks, and the others clear then. Each time offered goes on your Google Calendar as a hold that
-    invites nobody; when Jonas picks from the call's link the holds go and the call takes his time, and cancelling the
-    call clears them too. The link is copied to send him, and the call waits under **Waiting for a time** in Coming up.
-11. **Move a call** (**Change the time** on your call): "Move Hiring sync", with "Was Thu 5 Nov, 10:00 – 10:45" struck
-    through; who's on it, read only, each with their answer (**Going**, **Not going**, **Maybe**, **No answer yet**);
-    then When, with four times, a time someone asked for first ("Aiko asked"). The week shows where it is now dashed and
-    where it's going solid. In a series it asks **This call** or **This and later calls**, and how the later ones repeat.
-    **Move to tomorrow 15:30**: "Google Calendar tells Ines and Aiko.", and **Undo** puts one call back; a change to
-    later calls has none. **Cancel this call** waits at the foot and asks once, in place. A call that has started, or is
-    waiting for a guest to pick, can't be moved, and a call that's gone says so, with the way back to Calls.
-12. **Propose another time** (on a call you're invited to) opens the same scheduler for asking: "Another time for
-    Design crit", who's on it (the organizer, and who else is invited), the times that suit you and anyone whose
-    calendar can be read, and **Ask to move it to tomorrow 15:30**. The organizer sees the ask on the call's row, "Aiko
-    asks to move it to 11:00" in rose, with **Move it** and **Keep 10:00**: **Move it** moves the call there and Google
-    Calendar tells everyone; **Keep** turns it down. Asking again replaces your last ask, a call that moves drops every
-    ask, and only the organizer sees anyone else's.
+10. **Let a guest pick.** With one guest whose calendar can't be read, **Let Jonas pick the time** sits under Who, off
+    until you turn it on: until then the call has one time, like any other. On, three times take the place of the day,
+    the time and how it repeats: the time you had, then the same time on each of the next two weekdays you're free then
+    (or the soonest you're free that day). They're rows numbered 1 to 3, never re-sorted or replaced. Each says its day
+    ("Today", "Tomorrow", "Mon 16 Nov") and its time, then what Jonas's clock says once you've said where Jonas is
+    ("12:30 for Jonas"), or in caution what of yours it clashes with, and has a tick of its own. The first is the active
+    one to start: lit in sun here, and solid on the week, where the others are outlined. Pressing another row, or
+    another of the times on the week, makes it the active one until you press another, and "Press the week to move
+    time 2." says what the week does then: pressing or dragging anywhere else on it moves the active time, and each
+    keeps the time it was given. Unticked, a time is left out, struck through here and dashed on the week, and two at
+    least stay ticked ("Offer at least two times"). **45 min each** sets one length for them all (30 min, 45 min, 1 h, 1
+    h 30 min, 2 h, or the length they have). Turned off, the call keeps the active time, and adding or removing someone
+    turns it off the same way. The button reads **Send Jonas the times**, and the foot says "Your calendar holds the
+    times until Jonas picks." (with no calendar, "You get a link to send to Jonas."). Each time offered goes on your
+    Google Calendar as a hold that invites nobody; when Jonas picks from the call's link the holds go and the call takes
+    that time, and cancelling the call clears them too. The link is copied to send Jonas, and the call waits under
+    **Waiting for a time** in Coming up.
+11. **Move a call** (**Change the time** on your call) opens the scheduler with the call where it is, and nothing moves
+    until you move it. Its top says **Move a call**, its title is the call's name, and once the time changes, "Was Thu 5
+    Nov, 10:00 – 10:45" is struck through under it. Who's on it are tokens to read, each with their answer (**Going**,
+    **Not going**, **Maybe**, **No answer yet**). The week shows where it is now dashed ("Now 10:00") and where it's
+    going solid. When someone invited has asked for another time, the line under the time says so, "Aiko asked for Fri
+    11:00", with **Move it there**. In a series **This call** and **This and later calls** sit at the top of When, and
+    moving later calls can change how they repeat, though not stop them repeating. The button reads **Move** until the
+    time changes, then **Move to tomorrow 15:30**, and the foot says "Google Calendar tells Ines and Aiko." (or "Nobody
+    else is invited."); once it's moved, **Undo** puts one call back, and a change to later calls has none. **Cancel
+    this call** waits in the foot, in caution, and asks once, in place (**Keep it** or **Cancel the call**). There's no
+    quiet **Cancel** beside the button, since a second Cancel would read as the same thing: **×** closes it. A call that
+    has started, or is waiting for a guest to pick, can't be moved, and a call that's gone says so, with the way back to
+    Calls.
+12. **Propose another time** (on a call you're invited to) opens the same scheduler for asking: its top says **Ask to
+    move a call**, then the call's name, who's on it (the organizer, and who else is invited) and the call where it is,
+    with the busy time of anyone whose calendar can be read hatched on the week. The button reads **Ask to move it**
+    until you move the call, then **Ask to move it to tomorrow 15:30**, and the foot says "Kofi sees it, and can move
+    the call there." The organizer sees the ask on the call's row, "Aiko asks to move it to 11:00" in rose, with **Move
+    it** and **Keep 10:00**: **Move it** moves the call there and Google Calendar tells everyone; **Keep** turns it
+    down. Asking again replaces your last ask, a call that moves drops every ask, and only the organizer sees anyone
+    else's.
 13. **A scheduled call opens its page from its row** (`/calls/upcoming/<meeting ID>`, from Home's Upcoming and Calls),
     for the organizer and for anyone invited: who's invited and how they answered, the link and **Join**, the agenda
     and the notes (flow 8, before a call).
@@ -399,6 +461,16 @@ send to anyone".
 
 Alcove sends no emails of its own yet, so without a connected calendar nobody hears about the call, and calls
 started now don't go on the calendar: share the link. Everyone invited gets the notes (flow 7).
+
+Storybook's journeys use these numbers: **4.1 Start now**, **4.2 Schedule a call**, **4.3 Pick a time on the week**,
+**4.4 Start from the week**, **4.5 Repeat a call**, **4.6 Let a guest pick**, **4.7 Move a call**, **4.8 Answer a request
+to move**, **4.9 Propose another time**, **4.10 Meet again**, **4.11 Share a link instead**, **4.12 Paste a list of
+addresses**, **4.13 Change a scheduled call**, **4.14 Cancel a scheduled call**, **4.15 Answer an invitation**, **4.16
+Press a time, keep the length**, **4.17 Stop at midnight**, **4.18 Drag it to another day**, **4.19 Carry it into next
+week**, **4.20 Scroll the day, pick a start**, **4.21 Go to another week, or day**, **4.22 Find the next free time**,
+**4.23 Choose the times to offer**, **4.24 Stop letting a guest pick** (off again, and someone added while Jonas would
+pick: the call keeps the time that was lit) and **4.25 Type the time** (a start and an end typed, an end before the
+start, a time a 24-hour clock doesn't say, and 24:00).
 
 ## 5. Join
 
@@ -1521,12 +1593,17 @@ another call while in one; 7.7 the call ends while they're on its page; 7.8 alon
   waiting for a guest, **Copy the link for Jonas**; on a call that happened, **Meet again** (scheduling, with the same
   people and name) and **Share the notes**.
 - **Schedule a call**, on the sky or the phone's plus, opens the scheduler in place of the rail and the sheet (flow 4),
-  and **← Calls** goes back to the place that was open.
-- **Week** (from **List / Week** at the sheet's top right) shows Monday to Sunday, 08:00 to 19:00: what happened, with a
-  rose diamond for a decision to confirm and a blue dot for a follow-up, Alcove calls ahead, the calendar's meetings,
-  invitations, and times held for a guest, with the sun at now. **Last week**, **Today** and **Next week** move it; on a
-  phone it's today and the next two days. Pressing a call opens it; pressing a free time, or dragging across one, opens the
-  scheduler there, as long as the drag.
+  and its **×** or **Cancel** goes back to the place that was open.
+- **Week** (from **List / Week** at the sheet's top right) shows Monday to Sunday, each day as wide as the others, under
+  its days ("9 – 15 Nov"; across months "30 Nov – 6 Dec"). **‹** and **›** move it a week, and **Today** shows beside
+  them once you've moved off this week; on a phone it's today and the next two days. The day is a scroll box of all 24
+  hours that opens on 08:00 to 18:00 and never grows, with a tag in the hours and a line across today at now. It shows
+  what happened, with a rose diamond for a decision to confirm and a blue dot for a follow-up, Alcove calls ahead, the
+  calendar's meetings, invitations, times held for a guest and a call just scheduled, each with its own mark, which the
+  key under the week names; what's over fades. Every block says its time first, and a name only when a whole line of it
+  fits; blocks that overlap stand side by side. Pressing a call opens it; pressing a free time, or dragging across one,
+  opens the scheduler there, as long as the drag. From the keyboard every half hour is a button, reached with the arrow
+  keys, and Enter or Space starts scheduling there.
 - **Search every call, or ask** is the line in the middle of the sky (**⌘K** on a Mac, **Ctrl+K** elsewhere goes to it;
   **↓** goes from it to the list, and **Escape** clears it). Coming from the palette's **See all in Calls** (flow 2), it
   already holds the palette's words. It finds the words, not just the call: every word typed has to be somewhere in the

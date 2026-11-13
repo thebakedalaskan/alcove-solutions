@@ -1,0 +1,889 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Schedule a call</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="home.css">
+<link rel="stylesheet" href="pages.css">
+<link rel="stylesheet" href="page-cd.css">
+<link rel="stylesheet" href="sched.css">
+<script src="tokens.js"></script>
+<script src="home.js"></script>
+<script src="scene.js"></script>
+<script src="appdata.js"></script>
+<script src="sched.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400..700&amp;family=Newsreader:ital,opsz,wght@0,6..72,300..600;1,6..72,300..600&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<div class="ah sh kc sk{{pageCls}}" data-mode="{{mode}}" style="{{shellStyle}}" onKeyDown="{{onKey}}">
+<div class="sh-frame">
+<dc-import name="Side" s="{{side}}" hint-size="256px,100%"></dc-import>
+<main class="sh-panel">
+<div class="ah-scroll">
+<div class="pg-stage">
+<dc-import name="Scene" a="{{scene}}" hint-size="100%,100%"></dc-import>
+<div class="sh-bar">
+<span class="brand"><svg width="22" height="26" viewBox="0 0 22 26" aria-hidden="true"><defs><clipPath id="skA"><path d="M2 24.6V11a9 9 0 0 1 18 0v13.6z"></path></clipPath><linearGradient id="skS" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2A2373"></stop><stop offset=".42" stop-color="#5847DA"></stop><stop offset=".64" stop-color="#C470A9"></stop><stop offset=".74" stop-color="#FFA06A"></stop></linearGradient></defs><g clip-path="url(#skA)"><rect width="22" height="26" fill="url(#skS)"></rect><circle cx="11" cy="19.2" r="4.4" fill="#FFD58A"></circle><rect y="19.2" width="22" height="7" fill="#231C5E"></rect></g></svg>alcove</span>
+<div class="top-end"><button type="button" class="kc-ib" aria-label="Schedule a call" onClick="{{openSched}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.plus}}"></path></svg></button><button type="button" class="me" aria-label="Art, your menu"><dc-import name="Faces" who="art" size="30" hint-size="30px,33px"></dc-import></button></div>
+</div>
+<div class="pg-in">
+<header class="kc-top">
+<h1 class="pg-title">Calls</h1>
+<div class="kc-q">
+<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.search}}"></path></svg>
+<input type="text" placeholder="Search every call, or ask" aria-label="Search every call, or ask" autoComplete="off" spellCheck="false">
+<span class="k">⌘K</span>
+</div>
+<div class="top-end">
+<sc-if value="{{browsing}}" hint-placeholder-val="{{false}}"><button type="button" class="b b-press{{hot.schedule}}" onClick="{{openSched}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.cal}}"></path></svg>Schedule a call</button></sc-if>
+<button type="button" class="me" aria-label="Art, your menu"><dc-import name="Faces" who="art" size="30" hint-size="30px,33px"></dc-import></button>
+</div>
+</header>
+
+<div class="sk-split{{splitCls}}">
+<sc-if value="{{browsing}}" hint-placeholder-val="{{false}}">
+<nav class="sk-rail dv-tree" aria-label="Your calls">
+<sc-for list="{{rail}}" as="p" hint-placeholder-count="5"><button type="button" class="dv-t{{p.cls}}" aria-current="{{p.current}}" onClick="{{p.go}}"><span></span><svg class="i ic" viewBox="0 0 24 24" aria-hidden="true"><path d="{{p.icon}}"></path></svg><span>{{p.label}}</span><small class="{{p.nCls}}">{{p.n}}</small></button></sc-for>
+<p class="dv-th">Series</p>
+<sc-for list="{{series}}" as="s" hint-placeholder-count="3"><button type="button" class="dv-t" onClick="{{s.go}}"><span></span><svg class="i ic" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.repeat}}"></path></svg><span>{{s.title}}</span><small>{{s.next}}</small></button></sc-for>
+<button type="button" class="cs-cal" onClick="{{calSettings}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.cal}}"></path></svg><span><b>Google Calendar</b><small>Connected</small></span><svg class="i chev" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.chev}}"></path></svg></button>
+</nav>
+</sc-if>
+
+<section class="kc-sheet sk-sheet{{sheetCls}}" aria-label="{{wk.range}}">
+<div class="sk-cal">
+<div class="wx-head">
+<h2>{{wk.range}}</h2>
+<div class="wx-nav">
+<sc-if value="{{wk.away}}" hint-placeholder-val="{{false}}"><button type="button" class="wx-today{{hot.today}}" onClick="{{wk.today}}">Today</button></sc-if>
+<button type="button" class="wx-arrow" aria-label="The week before" title="The week before" disabled="{{wk.noPrev}}" onClick="{{wk.prev}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.chevL}}"></path></svg></button>
+<button type="button" class="wx-arrow{{hot.nextWeek}}" aria-label="The week after" title="The week after" onClick="{{wk.next}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.chev}}"></path></svg></button>
+<sc-if value="{{browsing}}" hint-placeholder-val="{{false}}"><div class="cs-view" role="group" aria-label="Show as" style="margin-left: 8px"><button type="button" aria-pressed="false" onClick="{{asList}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.list}}"></path></svg><span>List</span></button><button type="button" class="is-on" aria-pressed="true"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.cal}}"></path></svg><span>Week</span></button></div></sc-if>
+</div>
+</div>
+<div class="wx" style="{{wk.vars}}">
+<div class="wx-box" ref="{{boxRef}}" data-k="{{uid}}" onScroll="{{onScroll}}">
+<div class="wx-dh"><span></span><sc-for list="{{wk.days}}" as="d" hint-placeholder-count="7"><span class="wx-day{{d.cls}}">{{d.wd}}<b>{{d.n}}</b></span></sc-for></div>
+<div class="wx-grid">
+<div class="wx-hours" aria-hidden="true"><sc-for list="{{wk.hours}}" as="h" hint-placeholder-count="24"><span class="wx-hl{{h.cls}}" style="{{h.style}}">{{h.t}}</span></sc-for><sc-if value="{{wk.hasNowTag}}" hint-placeholder-val="{{false}}"><span class="wx-nowtag" style="{{wk.nowTagStyle}}">{{wk.nowTag}}</span></sc-if></div>
+<div class="wx-cols" ref="{{colsRef}}" role="group" aria-label="{{wk.label}}">
+<sc-for list="{{wk.cols}}" as="c" hint-placeholder-count="7">
+<div class="wx-col{{c.cls}}" data-d="{{c.d}}" onPointerDown="{{c.down}}" onPointerMove="{{c.move}}" onPointerUp="{{c.up}}" onPointerLeave="{{c.leave}}" onPointerCancel="{{c.cancel}}">
+<sc-for list="{{c.z}}" as="z" hint-placeholder-count="2"><span class="wx-z{{z.cls}}" style="{{z.style}}"><sc-if value="{{z.hasLabel}}" hint-placeholder-val="{{false}}"><small>{{z.label}}</small></sc-if></span></sc-for>
+<sc-for list="{{c.bk}}" as="b" hint-placeholder-count="2">
+<span class="wx-bk{{b.cls}}" style="{{b.style}}" title="{{b.title}}" data-role="{{b.role}}" data-i="{{b.i}}">
+<span class="wx-tx{{b.txCls}}"><b class="t"><sc-if value="{{b.hasNum}}" hint-placeholder-val="{{false}}"><i class="nb">{{b.num}}</i></sc-if>{{b.time}}</b><sc-if value="{{b.hasName}}" hint-placeholder-val="{{true}}"><span class="n" style="{{b.nStyle}}">{{b.name}}</span></sc-if></span>
+<sc-if value="{{b.grip}}" hint-placeholder-val="{{false}}"><i class="grip{{b.gripHot}}" data-role="grip"></i></sc-if>
+</span>
+</sc-for>
+<sc-if value="{{c.hasNow}}" hint-placeholder-val="{{false}}"><span class="wx-now" style="{{c.nowStyle}}"><i></i></span></sc-if>
+</div>
+</sc-for>
+</div>
+</div>
+</div>
+<sc-if value="{{wk.pillUp}}" hint-placeholder-val="{{false}}"><button type="button" class="wx-pill is-up" onClick="{{wk.goCall}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.arrowUp}}"></path></svg>{{wk.pillText}}</button></sc-if>
+<sc-if value="{{wk.pillDown}}" hint-placeholder-val="{{false}}"><button type="button" class="wx-pill is-down" onClick="{{wk.goCall}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.arrowDown}}"></path></svg>{{wk.pillText}}</button></sc-if>
+<sc-if value="{{wk.edgeNext}}" hint-placeholder-val="{{false}}"><span class="wx-edge is-next" aria-hidden="true"><svg class="i" viewBox="0 0 24 24"><path d="{{I.chev}}"></path></svg></span></sc-if>
+<sc-if value="{{wk.edgePrev}}" hint-placeholder-val="{{false}}"><span class="wx-edge is-prev" aria-hidden="true"><svg class="i" viewBox="0 0 24 24"><path d="{{I.chevL}}"></path></svg></span></sc-if>
+</div>
+<sc-if value="{{browsing}}" hint-placeholder-val="{{false}}"><p class="wx-key"><sc-for list="{{wk.key}}" as="k" hint-placeholder-count="4"><span><i class="k {{k.cls}}"></i>{{k.t}}</span></sc-for></p></sc-if>
+</div>
+
+<sc-if value="{{scheduling}}" hint-placeholder-val="{{true}}">
+<aside class="ce" aria-label="New call" onPointerDown="{{cpDown}}">
+<div class="ce-top"><span class="ce-kicker">New call</span><button type="button" class="ce-x" aria-label="Close, back to Calls" title="Close" onClick="{{close}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.x}}"></path></svg></button></div>
+<div class="ce-body">
+<input class="ce-title" type="text" value="{{titleVal}}" placeholder="Add a title" aria-label="The call’s name" autoComplete="off" onChange="{{typeTitle}}">
+
+<div class="ce-grp" aria-label="Who">
+<div class="ce-row">
+<svg class="i ce-ic" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.users}}"></path></svg>
+<div class="ce-val">
+<div class="ce-people{{who.fieldCls}}" onClick="{{who.focus}}">
+<sc-for list="{{who.tokens}}" as="t" hint-placeholder-count="0">
+<span class="ce-tok">
+<sc-if value="{{t.face}}" hint-placeholder-val="{{true}}"><dc-import name="Faces" who="{{t.id}}" size="20" hint-size="20px,22px"></dc-import></sc-if>
+<sc-if value="{{t.ghost}}" hint-placeholder-val="{{false}}"><span class="ce-ghost">{{t.initial}}</span></sc-if>
+<span>{{t.name}}</span>
+<sc-if value="{{t.hasPlace}}" hint-placeholder-val="{{false}}"><small>{{t.place}}</small></sc-if>
+<button type="button" aria-label="{{t.removeLabel}}" onClick="{{t.remove}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.x}}"></path></svg></button>
+</span>
+</sc-for>
+<input class="ce-q" type="text" value="{{who.q}}" placeholder="{{who.ph}}" aria-label="Add people, a group or an email" autoComplete="off" onChange="{{who.type}}" onFocus="{{who.open}}" onKeyDown="{{who.key}}">
+</div>
+<sc-if value="{{who.showList}}" hint-placeholder-val="{{false}}">
+<div class="ce-pop is-people" role="listbox" aria-label="People to add">
+<p class="ce-pp-h">{{who.lab}}</p>
+<sc-for list="{{who.list}}" as="p" hint-placeholder-count="4">
+<button type="button" class="ce-pp{{p.hotCls}}" role="option" aria-selected="false" onClick="{{p.add}}">
+<span class="ce-pp-f">
+<sc-if value="{{p.faces}}" hint-placeholder-val="{{true}}"><dc-import name="Faces" who="{{p.who}}" size="22" max="2" hint-size="46px,24px"></dc-import></sc-if>
+<sc-if value="{{p.ghost}}" hint-placeholder-val="{{false}}"><span class="ce-ghost" style="--gs: 22px">{{p.initial}}</span></sc-if>
+</span>
+<span><b>{{p.name}}</b><small>{{p.sub}}</small></span>
+<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.plus}}"></path></svg>
+</button>
+</sc-for>
+<sc-if value="{{who.none}}" hint-placeholder-val="{{false}}"><p class="ce-pp-none">Nobody by that name. An email address invites someone from outside.</p></sc-if>
+</div>
+</sc-if>
+</div>
+</div>
+<sc-if value="{{who.showHint}}" hint-placeholder-val="{{false}}"><div class="ce-row is-meta"><span></span><p class="ce-meta">{{who.outsideLine}}</p></div></sc-if>
+<sc-if value="{{w.canPick}}" hint-placeholder-val="{{false}}">
+<div class="ce-row"><span></span><div class="ce-val"><button type="button" class="ce-switch has-sub{{hot.pick}}" aria-pressed="{{w.pickAttr}}" onClick="{{w.togglePick}}"><span><b>{{w.pickTitle}}</b><small>{{w.pickSub}}</small></span><i class="sw{{w.swCls}}"></i></button></div></div>
+</sc-if>
+</div>
+
+<div class="ce-grp" aria-label="When">
+<sc-if value="{{w.single}}" hint-placeholder-val="{{true}}">
+<div class="ce-row">
+<svg class="i ce-ic" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.cal}}"></path></svg>
+<div class="ce-val">
+<span class="ce-anchor"><button type="button" class="ce-btn{{hot.date}}" aria-haspopup="dialog" aria-expanded="{{w.dateAttr}}" aria-label="{{w.dayLabel}}" onClick="{{w.openDate}}">{{w.day}}<sc-if value="{{w.hasRel}}" hint-placeholder-val="{{true}}"><small class="rel">{{w.rel}}</small></sc-if><svg class="i dv" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.chevDown}}"></path></svg></button>
+<sc-if value="{{w.menuDate}}" hint-placeholder-val="{{false}}">
+<div class="ce-pop is-cal" role="dialog" aria-label="Pick a day">
+<div class="ce-cal-h"><span>{{w.calTitle}}</span><span class="ce-cal-nav"><button type="button" aria-label="The month before" disabled="{{w.calNoPrev}}" onClick="{{w.calPrev}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.chevL}}"></path></svg></button><button type="button" aria-label="The month after" onClick="{{w.calNext}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.chev}}"></path></svg></button></span></div>
+<div class="ce-cal-g">
+<span class="wd">M</span><span class="wd">T</span><span class="wd">W</span><span class="wd">T</span><span class="wd">F</span><span class="wd">S</span><span class="wd">S</span>
+<sc-for list="{{w.calDays}}" as="c" hint-placeholder-count="35"><button type="button" class="{{c.cls}}" disabled="{{c.off}}" aria-label="{{c.label}}" aria-pressed="{{c.on}}" onClick="{{c.go}}">{{c.n}}</button></sc-for>
+</div>
+</div>
+</sc-if>
+</span>
+</div>
+</div>
+<div class="ce-row">
+<svg class="i ce-ic" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.clock}}"></path></svg>
+<div class="ce-val">
+<span class="ce-anchor"><button type="button" class="ce-btn{{hot.start}}" aria-haspopup="listbox" aria-expanded="{{w.startAttr}}" aria-label="{{w.startLabel}}" onClick="{{w.openStart}}">{{w.start}}</button>
+<sc-if value="{{w.menuStart}}" hint-placeholder-val="{{false}}"><div class="ce-pop is-list" role="listbox" aria-label="Starts"><sc-for list="{{w.startList}}" as="o" hint-placeholder-count="12"><button type="button" class="ce-li{{o.cls}}" role="option" aria-selected="{{o.on}}" disabled="{{o.off}}" onClick="{{o.go}}">{{o.t}}</button></sc-for></div></sc-if>
+</span>
+<span class="ce-dash" aria-hidden="true">–</span>
+<span class="ce-anchor"><button type="button" class="ce-btn{{hot.end}}" aria-haspopup="listbox" aria-expanded="{{w.endAttr}}" aria-label="{{w.endLabel}}" onClick="{{w.openEnd}}">{{w.end}}</button>
+<sc-if value="{{w.menuEnd}}" hint-placeholder-val="{{false}}"><div class="ce-pop is-list" role="listbox" aria-label="Ends"><sc-for list="{{w.endList}}" as="o" hint-placeholder-count="12"><button type="button" class="ce-li{{o.cls}}" role="option" aria-selected="{{o.on}}" onClick="{{o.go}}">{{o.t}}<small>{{o.len}}</small></button></sc-for></div></sc-if>
+</span>
+<span class="ce-len">{{w.lenText}}</span>
+</div>
+</div>
+<sc-if value="{{w.hasStatus}}" hint-placeholder-val="{{false}}"><div class="ce-row is-meta"><span></span><p class="ce-status{{w.statusCls}}"><span>{{w.status}}</span><sc-if value="{{w.hasNext}}" hint-placeholder-val="{{false}}"><button type="button" class="ce-link{{hot.next}}" onClick="{{w.goNext}}">{{w.nextLabel}}</button></sc-if></p></div></sc-if>
+<sc-if value="{{w.cut}}" hint-placeholder-val="{{false}}"><div class="ce-row is-meta"><span></span><p class="ce-meta">It stops at midnight: a call ends on the day it starts.</p></div></sc-if>
+<div class="ce-row">
+<svg class="i ce-ic" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.repeat}}"></path></svg>
+<div class="ce-val">
+<span class="ce-anchor"><button type="button" class="ce-quiet" aria-haspopup="listbox" aria-expanded="{{w.repAttr}}" onClick="{{w.openRepeat}}">{{w.repLabel}}<svg class="i dv" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.chevDown}}"></path></svg></button>
+<sc-if value="{{w.menuRepeat}}" hint-placeholder-val="{{false}}"><div class="ce-pop is-menu" role="listbox" aria-label="How it repeats"><sc-for list="{{w.reps}}" as="r" hint-placeholder-count="4"><button type="button" class="ce-li{{r.cls}}" role="option" aria-selected="{{r.on}}" onClick="{{r.go}}">{{r.t}}<small>{{r.sub}}</small></button></sc-for></div></sc-if>
+</span>
+</div>
+</div>
+</sc-if>
+<sc-if value="{{w.picking}}" hint-placeholder-val="{{false}}">
+<div class="ce-row is-top">
+<svg class="i ce-ic" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.cal}}"></path></svg>
+<div class="ce-val is-col">
+<div class="ce-opts" role="group" aria-label="Times to offer">
+<sc-for list="{{w.opts}}" as="o" hint-placeholder-count="3">
+<div class="ce-opt{{o.cls}}">
+<button type="button" class="ce-opt-main{{o.hotCls}}" aria-pressed="{{o.activeAttr}}" aria-label="{{o.label}}" onClick="{{o.select}}">
+<i class="nb">{{o.n}}</i>
+<span><b class="od">{{o.day}}</b><span class="ot">{{o.time}}</span></span>
+<sc-if value="{{o.warn}}" hint-placeholder-val="{{false}}"><small class="warn"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.alert}}"></path></svg>{{o.warnText}}</small></sc-if>
+<sc-if value="{{o.calm}}" hint-placeholder-val="{{true}}"><small>{{o.side}}</small></sc-if>
+</button>
+<button type="button" class="ce-tick{{o.tickCls}}" role="checkbox" aria-checked="{{o.onAttr}}" aria-label="{{o.tickLabel}}" title="{{o.tickTitle}}" disabled="{{o.lock}}" onClick="{{o.tick}}"><span><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.check}}"></path></svg></span></button>
+</div>
+</sc-for>
+</div>
+</div>
+</div>
+<div class="ce-row is-meta"><span></span><p class="ce-meta">{{w.tip}}</p></div>
+<div class="ce-row">
+<svg class="i ce-ic" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.clock}}"></path></svg>
+<div class="ce-val">
+<span class="ce-anchor"><button type="button" class="ce-quiet{{hot.len}}" aria-haspopup="listbox" aria-expanded="{{w.lenAttr}}" onClick="{{w.openLen}}">{{w.lenEach}}<svg class="i dv" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.chevDown}}"></path></svg></button>
+<sc-if value="{{w.menuLen}}" hint-placeholder-val="{{false}}"><div class="ce-pop is-list" role="listbox" aria-label="How long"><sc-for list="{{w.lenList}}" as="o" hint-placeholder-count="5"><button type="button" class="ce-li{{o.cls}}" role="option" aria-selected="{{o.on}}" onClick="{{o.go}}">{{o.t}}</button></sc-for></div></sc-if>
+</span>
+</div>
+</div>
+</sc-if>
+</div>
+
+<div class="ce-grp" aria-label="Details">
+<div class="ce-row">
+<svg class="i ce-ic{{d.notesIcon}}" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.notes}}"></path></svg>
+<div class="ce-val"><button type="button" class="ce-switch" aria-pressed="{{d.notesAttr}}" title="Everyone invited gets the notes" onClick="{{d.toggleNotes}}"><span>{{d.notesLabel}}</span><i class="sw{{d.notesSw}}"></i></button></div>
+</div>
+<div class="ce-row">
+<svg class="i ce-ic" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.doc}}"></path></svg>
+<div class="ce-val"><button type="button" class="ce-quiet" onClick="{{d.bring}}">Add an agenda</button></div>
+</div>
+</div>
+</div>
+<footer class="ce-foot">
+<p>{{foot.line}}</p>
+<div class="ce-acts"><button type="button" class="b b-quiet" onClick="{{close}}">Cancel</button><button type="button" class="b b-press{{hot.go}}" onClick="{{foot.go}}">{{foot.label}}</button></div>
+</footer>
+</aside>
+</sc-if>
+</section>
+</div>
+</div>
+</div>
+</div>
+</main>
+</div>
+<nav class="phone-tabs" aria-label="Main">
+<sc-for list="{{nav}}" as="n" hint-placeholder-count="5"><button type="button" class="phone-tab{{n.cls}}" onClick="{{n.go}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{n.icon}}"></path></svg>{{n.label}}</button></sc-for>
+</nav>
+<sc-if value="{{hasToast}}" hint-placeholder-val="{{false}}"><div class="sk-toast" role="status"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.cal}}"></path></svg><span>{{toast}}</span><sc-if value="{{hasUndo}}" hint-placeholder-val="{{false}}"><button type="button" class="b b-quiet" onClick="{{undo}}">Undo</button></sc-if></div></sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"go":{"editor":null,"default":null},"mode":{"editor":"enum","options":["dark","light"],"default":"dark"},"step":{"editor":null,"default":"open"},"$preview":{"width":1440,"height":900}}'>
+/*
+ * The Calls page while a call is made: the week, and beside it the call's editor on the same sheet. Every control works:
+ * Who, the day and times (from their lists, or pressed and dragged on the week, into any day or week), letting an outside
+ * guest pick, Schedule; and the Calls page's week it comes back to. `step` (or #step=) starts it in any state a journey
+ * draws; the states are AH.SK.STEPS in sched.js.
+ */
+var K15 = function (m) { return Math.round(m / 15) * 15; };
+var cap = function (s) { return s.charAt(0).toUpperCase() + s.slice(1); };
+/* How a block this many pixels tall holds its words: 2+ the time over (n - 1) lines of name, 1 one line, -1 one small line, 0 none. */
+function fit(h) {
+  if (h >= 36) return 1 + Math.max(1, Math.floor((h - 8 - 14) / 14));
+  if (h >= 18) return 1;
+  if (h >= 12) return -1;
+  return 0;
+}
+/* Side by side where they overlap, as calendars lay them out: each block's lane, and how many lanes its run needs. */
+function lanes(items) {
+  var run = [], end = -1;
+  var close = function () { var of = 1; run.forEach(function (r) { of = Math.max(of, r.lane + 1); }); run.forEach(function (r) { r.of = of; }); run = []; end = -1; };
+  items.slice().sort(function (a, b) { return a.s - b.s || b.e - a.e; }).forEach(function (b) {
+    if (run.length && b.s >= end) close();
+    var taken = run.filter(function (r) { return r.e > b.s; }).map(function (r) { return r.lane; });
+    var lane = 0;
+    while (taken.indexOf(lane) >= 0) lane++;
+    b.lane = lane;
+    run.push(b);
+    end = Math.max(end, b.e);
+  });
+  if (run.length) close();
+}
+
+class Component extends DCLogic {
+  componentDidMount() {
+    var self = this;
+    this.alive = true;
+    var tries = 0;
+    var tick = function () {
+      if (!self.alive) return;
+      if (!self.box || !self.box.clientHeight) { if (tries++ < 120) requestAnimationFrame(tick); return; }
+      self.measure(true);
+      if (window.ResizeObserver) { self.ro = new ResizeObserver(function () { self.measure(false); }); self.ro.observe(self.box); }
+    };
+    requestAnimationFrame(tick);
+  }
+  componentWillUnmount() { this.alive = false; if (this.ro) this.ro.disconnect(); clearTimeout(this.toastT); clearTimeout(this.edgeT); }
+  componentDidUpdate() {
+    var el = this.box;
+    if (!el) return;
+    if (this.pendingTop != null) { el.scrollTop = this.pendingTop * this.hp() - 2; this.topHour = this.pendingTop; this.pendingTop = null; }
+    if (this.pendingShow != null) { var t = this.pendingShow; this.pendingShow = null; this.show(t, true); }
+    this.checkPill();
+    /* A list of times opens on the one picked. */
+    var menu = this.st().menu || '';
+    if (menu !== this.lastMenu) {
+      this.lastMenu = menu;
+      var root = el.closest('.sk'), list = root && root.querySelector('.ce-pop.is-list'), on = list && (list.querySelector('.is-hot') || list.querySelector('.is-on'));
+      if (list && on) list.scrollTop = Math.max(0, on.offsetTop - list.clientHeight / 2 + on.offsetHeight / 2);
+    }
+  }
+  hp() { return (this.state && this.state.hp) || 54; }
+  headH() { var h = this.box && this.box.querySelector('.wx-dh'); return h ? h.offsetHeight : 44; }
+  weekFor(t) {
+    var SK = window.AH.SK, m = this.m;
+    return m && m.scheduling ? Math.max(0, Math.floor((SK.dayOf(t) - SK.dayOf(SK.NOW)) / 7)) : SK.weekOf(t);
+  }
+  /* Ten hours fill the week's box, whatever its height: 08:00 to 18:00 to start. */
+  measure(first) {
+    var el = this.box;
+    if (!el) return;
+    var hp = Math.max(30, Math.min(84, (el.clientHeight - this.headH()) / 10));
+    var cols = el.querySelector('.wx-cols'), daysW = cols ? cols.clientWidth : 600;
+    var top = first ? this.st().scroll : (this.topHour != null ? this.topHour : 8);
+    if (!first && Math.abs(hp - this.hp()) < 0.5 && Math.abs(daysW - ((this.state && this.state.daysW) || 0)) < 1) return;
+    this.pendingTop = top;
+    this.setState({ hp: hp, daysW: daysW });
+  }
+  onScroll() {
+    if (!this.box) return;
+    this.topHour = this.box.scrollTop / this.hp();
+    this.checkPill();
+  }
+  /* The call is above or below what's in view, on the days shown: a chip says where, and takes you there. */
+  checkPill() {
+    var el = this.box, m = this.m;
+    if (!el || !m) return;
+    var SK = window.AH.SK, pill = '';
+    if (m.scheduling && m.shownDays && m.shownDays.indexOf(SK.dayOf(m.cur)) >= 0) {
+      var hp = this.hp(), mm = m.cur - SK.dayOf(m.cur) * SK.DAY, top = mm / 60 * hp, bottom = (mm + m.curLen) / 60 * hp;
+      var viewTop = el.scrollTop, viewBottom = el.scrollTop + el.clientHeight - this.headH();
+      if (bottom < viewTop + 6) pill = 'up';
+      else if (top > viewBottom - 6) pill = 'down';
+    }
+    if (pill !== ((this.state && this.state.pill) || '')) this.setState({ pill: pill });
+  }
+  /* Scroll the week so the call at t is in view, if it isn't. */
+  show(t, smooth) {
+    var el = this.box, SK = window.AH.SK, m = this.m;
+    if (!el || !m) return;
+    var hp = this.hp(), mm = t - SK.dayOf(t) * SK.DAY, top = mm / 60 * hp, bottom = (mm + SK.lenAt(t, m.len)) / 60 * hp;
+    var vis = el.clientHeight - this.headH();
+    if (top >= el.scrollTop + 8 && bottom <= el.scrollTop + vis - 8) return;
+    var to = Math.max(0, Math.min(24 * hp - vis, top - Math.max(16, (vis - (bottom - top)) / 2)));
+    if (smooth && el.scrollTo) el.scrollTo({ top: to, behavior: 'smooth' }); else el.scrollTop = to;
+  }
+  st() {
+    var AH = window.AH, p = this.props || {}, h = AH.hash(), step = h.step || p.step || 'open';
+    return Object.assign({ mode: 'sched', who: [], len: 45, week: 0, scroll: 8, rep: 'none', notes: true, calMonth: 0, menu: '' }, AH.SK.STEPS[step] || {}, this.state || {});
+  }
+  /* Anything pressed puts away what was open: one list at a time. */
+  set(patch) { this.setState(Object.assign({ hot: '', menu: '' }, patch)); }
+  toast(msg, undo) {
+    var self = this;
+    clearTimeout(this.toastT);
+    this.set({ toast: msg, undo: !!undo });
+    this.toastT = setTimeout(function () { if (self.alive) self.setState({ toast: '', undo: false }); }, 7000);
+  }
+
+  /* ---------------- moving the call */
+  moveTo(t, follow) {
+    var SK = window.AH.SK, m = this.m;
+    if (t < SK.NOW) return;
+    if (m.picking) {
+      var opts = m.opts.map(function (o) { return { t: o.t, on: o.on }; });
+      opts[m.active] = { t: t, on: true };
+      this.set({ opts: opts, hover: null });
+    } else this.set({ t: t, touched: true, hover: null });
+    if (follow) {
+      if (this.weekFor(t) !== m.week) this.setState({ week: this.weekFor(t) });
+      this.pendingShow = t;
+    }
+  }
+  setLen(len) {
+    var m = this.m;
+    if (m.picking) this.set({ len: len, opts: m.opts.map(function (o) { return { t: o.t, on: o.on }; }) });
+    else this.set({ len: len, t: m.cur, touched: true });
+  }
+  setRange(t, len) {
+    var m = this.m;
+    if (m.picking) {
+      var opts = m.opts.map(function (o) { return { t: o.t, on: o.on }; });
+      opts[m.active] = { t: t, on: true };
+      this.set({ opts: opts, len: len, hover: null });
+    } else this.set({ t: t, len: len, touched: true, hover: null });
+  }
+  /* A day picked from the month: the call goes there at the same time, or the first time left today. */
+  pickDay(d) {
+    var SK = window.AH.SK, m = this.m, min = m.cur - SK.dayOf(m.cur) * SK.DAY, t = d * SK.DAY + min;
+    if (t < SK.NOW) t = Math.ceil((SK.NOW + 10) / 30) * 30;
+    this.moveTo(t, true);
+  }
+  toggleMenu(name) { var open = this.st().menu === name; this.setState({ menu: open ? '' : name, hot: '' }); }
+
+  /* ---------------- who */
+  addPick(p) {
+    var SK = window.AH.SK, m = this.m, st = this.st();
+    var ids = p.indexOf('g:') === 0 ? SK.GROUPS[p.slice(2)].people : [p];
+    var who = (st.who || []).slice();
+    ids.forEach(function (id) { if (who.indexOf(id) < 0) who.push(id); });
+    var patch = { who: who, q: '', menu: 'who' };
+    if (m.picking) Object.assign(patch, { t: m.cur, touched: true, pick: false, opts: null, active: 0 });
+    this.set(patch);
+  }
+  removePerson(id) {
+    var m = this.m, st = this.st();
+    var patch = { who: (st.who || []).filter(function (x) { return x !== id; }) };
+    if (m.picking) Object.assign(patch, { t: m.cur, touched: true, pick: false, opts: null, active: 0 });
+    this.set(patch);
+  }
+  togglePick() {
+    var SK = window.AH.SK, m = this.m;
+    if (m.picking) this.set({ pick: false, t: m.cur, touched: true, opts: null, active: 0 });
+    else this.set({ pick: true, opts: SK.offerFrom(m.single, m.len).map(function (t) { return { t: t, on: true }; }), active: 0 });
+  }
+
+  /* ---------------- pressing and dragging on the week */
+  at(e) {
+    var col = e.currentTarget, r = col.getBoundingClientRect();
+    var y = (e.clientY - r.top) * (col.offsetHeight / (r.height || 1));
+    return Math.max(0, Math.min(window.AH.SK.DAY - 1, y / this.hp() * 60));
+  }
+  /* The day under the pointer, from the layout itself: right under any zoom or scale the canvas puts on the board. */
+  dayAt(e, d) {
+    var cont = this.colsEl;
+    if (!cont) return d;
+    var r = cont.getBoundingClientRect(), x = (e.clientX - r.left) * (cont.offsetWidth / (r.width || 1));
+    var cols = cont.querySelectorAll('.wx-col');
+    for (var i = 0; i < cols.length; i++) { var c = cols[i]; if (x >= c.offsetLeft && x < c.offsetLeft + c.offsetWidth) return Number(c.getAttribute('data-d')); }
+    if (!cols.length) return d;
+    return Number((x < 0 ? cols[0] : cols[cols.length - 1]).getAttribute('data-d'));
+  }
+  /* Holding the call at the week's edge carries it into the next week, or back, a week at a time while it's held there. */
+  edgeAt(e) {
+    var cont = this.colsEl, m = this.m;
+    if (!cont || !m || !m.scheduling) return;
+    var r = cont.getBoundingClientRect(), zone = 18 * ((r.width || 1) / (cont.offsetWidth || 1));
+    var edge = e.clientX > r.right - zone ? 'next' : e.clientX < r.left + zone && m.week > 0 ? 'prev' : '';
+    if (edge === (this.edge || '')) return;
+    this.edge = edge;
+    clearTimeout(this.edgeT);
+    this.setState({ edge: edge });
+    if (edge) this.armFlip();
+  }
+  armFlip() {
+    var self = this;
+    clearTimeout(this.edgeT);
+    this.edgeT = setTimeout(function () {
+      var SK = window.AH.SK, m = self.m;
+      if (!self.alive || !self.drag || !self.edge || !m) return;
+      var step = self.edge === 'next' ? 1 : -1, wk = Math.max(0, m.week + step);
+      if (wk === m.week) return;
+      var dt = (self.state || {}).dragT;
+      var moved = dt == null ? dt : Math.max(Math.ceil(SK.NOW / 15) * 15, dt + step * 7 * SK.DAY);
+      self.setState({ week: wk, dragT: moved });
+      self.armFlip();
+    }, 650);
+  }
+  endEdge() { this.edge = ''; clearTimeout(this.edgeT); if ((this.state || {}).edge) this.setState({ edge: '' }); }
+  roleOf(e) {
+    var el = e.target && e.target.closest ? e.target.closest('[data-role]') : null;
+    return el ? { role: el.getAttribute('data-role') || '', i: Number(el.getAttribute('data-i')), title: el.getAttribute('title') || '' } : { role: '', i: -1, title: '' };
+  }
+  down(e, d) {
+    if (e.button !== 0) return;
+    var SK = window.AH.SK, m = this.m, mm = this.at(e), r = this.roleOf(e);
+    if (this.st().menu) this.setState({ menu: '' });
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch (x) { /* a synthetic event can't be captured */ }
+    if (!m.scheduling) { this.drag = { kind: 'browse', d: d, m0: mm, role: r.role, title: r.title }; return; }
+    if (r.role === 'grip') { e.preventDefault(); this.drag = { kind: 'resize', start: m.cur }; this.set({ hover: null }); return; }
+    if (r.role === 'opt' && r.i !== m.active) { this.drag = null; this.set({ active: r.i, opts: m.opts.map(function (o) { return { t: o.t, on: o.on }; }), hover: null }); return; }
+    if (r.role === 'call' || r.role === 'opt') { e.preventDefault(); this.drag = { kind: 'grab', d: d, m0: mm, t0: m.cur, y0: e.clientY, x0: e.clientX }; return; }
+    if (d * SK.DAY + Math.floor(mm / 30) * 30 < SK.NOW) { this.drag = null; return; }
+    e.preventDefault();
+    this.drag = { kind: 'press', d: d, m0: mm, y0: e.clientY };
+  }
+  move(e, d) {
+    var SK = window.AH.SK, DAY = SK.DAY, dr = this.drag, st = this.state || {};
+    if (!dr) { this.hoverAt(e, d); return; }
+    var mm = this.at(e);
+    if (dr.kind === 'press') { if (Math.abs(e.clientY - dr.y0) > 6) dr.kind = 'range'; else return; }
+    if (dr.kind === 'range') {
+      var a = K15(Math.min(dr.m0, mm)), b = K15(Math.max(dr.m0, mm)), least = Math.ceil((SK.NOW - dr.d * DAY) / 15) * 15;
+      a = Math.max(a, least, 0);
+      if (b - a < 15) b = a + 15;
+      b = Math.min(b, DAY);
+      var g = st.range;
+      if (!g || g.d !== dr.d || g.s !== a || g.e !== b) this.setState({ range: { d: dr.d, s: a, e: b }, hover: null });
+      return;
+    }
+    if (dr.kind === 'grab') {
+      if (!dr.moved && Math.abs(e.clientY - dr.y0) < 5 && Math.abs(e.clientX - dr.x0) < 5) return;
+      dr.moved = true;
+      var dd = this.dayAt(e, dr.d), start = (dr.t0 - SK.dayOf(dr.t0) * DAY) + (mm - dr.m0);
+      var nt = dd * DAY + Math.max(0, Math.min(DAY - 15, K15(start)));
+      if (nt < SK.NOW) nt = Math.ceil(SK.NOW / 15) * 15;
+      if (st.dragT !== nt) this.setState({ dragT: nt, hover: null });
+      this.edgeAt(e);
+      return;
+    }
+    if (dr.kind === 'resize') {
+      var sm = dr.start - SK.dayOf(dr.start) * DAY, end = Math.min(DAY, Math.max(sm + 15, K15(mm)));
+      if (st.dragLen !== end - sm) this.setState({ dragLen: end - sm });
+    }
+  }
+  up(e, d) {
+    var SK = window.AH.SK, DAY = SK.DAY, dr = this.drag, st = this.state || {}, m = this.m;
+    this.drag = null;
+    this.endEdge();
+    if (!dr) return;
+    if (dr.kind === 'press') { this.moveTo(dr.d * DAY + Math.floor(dr.m0 / 30) * 30); return; }
+    if (dr.kind === 'range') { var g = st.range; this.setState({ range: null }); if (g) this.setRange(g.d * DAY + g.s, g.e - g.s); return; }
+    if (dr.kind === 'grab') {
+      if (dr.moved) { var nt = st.dragT; this.setState({ dragT: null }); if (nt != null) this.moveTo(nt); return; }
+      var t = dr.d * DAY + Math.floor(dr.m0 / 30) * 30;
+      if (t !== m.cur && t >= SK.NOW) this.moveTo(t);
+      return;
+    }
+    if (dr.kind === 'resize') { var l = st.dragLen; this.setState({ dragLen: null }); if (l) this.setLen(l); return; }
+    if (dr.kind === 'browse') {
+      if (dr.role === 'ev' || dr.role === 'made') { this.toast(dr.title.split(',')[0] + ' opens its page.'); return; }
+      var tb = dr.d * DAY + Math.floor(dr.m0 / 30) * 30;
+      if (tb >= SK.NOW) this.openSched(tb);
+    }
+  }
+  hoverAt(e, d) {
+    var SK = window.AH.SK, m = this.m, mm = this.at(e), r = this.roleOf(e);
+    var slot = Math.floor(mm / 30) * 30, t = d * SK.DAY + slot, h = null;
+    var over = r.role === 'grip' || (r.role === 'opt' && r.i !== m.active) || (!m.scheduling && (r.role === 'ev' || r.role === 'made'));
+    if (t >= SK.NOW && !over && !(m.scheduling && t === m.cur)) h = { d: d, m: slot };
+    var old = (this.state || {}).hover;
+    if ((old && h && old.d === h.d && old.m === h.m) || (!old && !h)) return;
+    this.setState({ hover: h });
+  }
+  openSched(t) {
+    this.pendingTop = t == null ? 8 : null;
+    this.set({ mode: 'sched', who: [], q: '', t: t == null ? null : t, touched: t != null, len: 45, pick: false, opts: null, active: 0, title: '', titled: false, toast: '', undo: false, hover: null, range: null, rep: 'none', notes: true, calMonth: 0, week: t == null ? 0 : Math.max(0, Math.floor((window.AH.SK.dayOf(t) - window.AH.SK.dayOf(window.AH.SK.NOW)) / 7)) });
+    if (t != null) this.pendingShow = t;
+  }
+
+  renderVals() {
+    var AH = window.AH, SK = AH.SK, I = AH.I, self = this, DAY = SK.DAY, NOW = SK.NOW;
+    var p = this.props || {}, st = this.st();
+    if (!this.uid) this.uid = 'sk' + Math.random().toString(36).slice(2, 9);
+    /* The frame and the evening behind it change only with the theme: made once, so pointing at the week stays light. */
+    var vKey = (AH.hash().mode || p.mode || 'dark');
+    if (!this.vCache || this.vCache.key !== vKey) {
+      var host = { props: { mode: p.mode, go: p.go }, state: null, setState: function () {} };
+      this.vCache = { key: vKey, v: AH.page(host, 'calls', { moment: 'notes' }) };
+    }
+    var v = this.vCache.v;
+    var hot = function (k) { return st.hot === k ? ' is-hot' : ''; };
+    var scheduling = st.mode === 'sched', hp = this.hp(), menu = st.menu || '';
+    var P = SK.PEOPLE, first = function (id) { return P[id].first; };
+    var today = SK.dayOf(NOW);
+
+    /* ---------------- who */
+    var people = SK.expand(st.who || []);
+    var readable = people.filter(function (id) { return !P[id].outside; });
+    var outside = people.filter(function (id) { return P[id].outside; });
+    var canPick = people.length === 1 && outside.length === 1, guest = canPick ? P[outside[0]] : null;
+    var picking = canPick && !!st.pick;
+
+    /* ---------------- when: one time, or the times a guest picks from */
+    var len = st.len;
+    var single = st.touched && st.t != null ? st.t : SK.soonest(len, readable);
+    var opts = st.opts || SK.offerFrom(single, len).map(function (t, i) {
+      var mv = st.moved && st.moved[i];
+      return { t: mv != null ? mv : t, on: !(st.off && st.off[i]) };
+    });
+    var active = Math.max(0, Math.min(st.active || 0, opts.length - 1));
+    var cur = picking ? opts[active].t : single;
+    var curLen = SK.lenAt(cur, len), curDay = SK.dayOf(cur), curMin = cur - curDay * DAY;
+    var week = st.week || 0;
+    this.m = { scheduling: scheduling, picking: picking, opts: opts, active: active, cur: cur, curLen: curLen, len: len, single: single, week: week };
+
+    var clashMine = SK.mineIn(cur, cur + curLen), clashWho = SK.busyIn(readable, cur, cur + curLen);
+    var status, statusKind = 'ok', nextT = null;
+    var offHours = SK.wdOf(curDay) > 4 || curMin < SK.WORK_FROM || curMin + curLen > SK.WORK_TO;
+    if (clashMine.length) { statusKind = 'clash'; status = 'You have ' + clashMine[0].t + ' then'; }
+    else if (clashWho.length) { statusKind = 'clash'; status = SK.names(clashWho.map(first)) + (clashWho.length === 1 ? ' is' : ' are') + ' busy then'; }
+    else if (picking) status = 'You’re free then';
+    else if (!st.touched) status = readable.length === 0 ? 'The soonest time you’re free' : readable.length === 1 ? 'The soonest time you’re both free' : 'The soonest time you’re all free';
+    else status = (readable.length === 0 ? 'You’re free' : readable.length === 1 ? 'You’re both free' : 'You’re all free') + (offHours ? ', outside working hours' : '');
+    if (statusKind === 'clash') nextT = SK.soonestFrom(cur, len, readable);
+    var nextLabel = nextT === null ? '' : 'Next free: ' + (SK.dayOf(nextT) === curDay ? SK.hm(nextT) : SK.dayWord(SK.dayOf(nextT)) + ' ' + SK.hm(nextT));
+    var ticked = opts.filter(function (o) { return o.on; }).length;
+
+    var wdLong = SK.WD_LONG[SK.wdOf(curDay)], nth = ['first', 'second', 'third', 'fourth', 'last'][Math.min(4, Math.ceil(new Date(2026, 10, 9 + curDay).getDate() / 7) - 1)];
+    var REPS = [{ k: 'none', t: 'Doesn’t repeat', sub: '' }, { k: 'week', t: 'Every ' + wdLong, sub: '10 calls' }, { k: 'two', t: 'Every 2 weeks on ' + wdLong, sub: '10 calls' }, { k: 'month', t: 'Every month on the ' + nth + ' ' + wdLong, sub: '10 calls' }];
+    var rep = REPS.filter(function (r) { return r.k === st.rep; })[0] || REPS[0], repeating = rep.k !== 'none' && !picking;
+
+    /* The month the day is picked from: Monday first, the days gone greyed, today in sun, the call's day filled. */
+    var MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    var cm = Math.max(0, st.calMonth || 0), cy = 2026 + Math.floor((10 + cm) / 12), cmo = (10 + cm) % 12;
+    var firstDow = (new Date(cy, cmo, 1).getDay() + 6) % 7, inMonth = new Date(cy, cmo + 1, 0).getDate(), base = new Date(2026, 10, 9).getTime();
+    var calDays = [];
+    for (var b0 = 0; b0 < firstDow; b0++) calDays.push({ n: '', cls: 'is-blank', off: true, on: 'false', label: '', go: function () {} });
+    for (var dn = 1; dn <= inMonth; dn++) {
+      (function (dn) {
+        var di = Math.round((new Date(cy, cmo, dn).getTime() - base) / 86400000);
+        calDays.push({ n: dn, off: di < today, on: di === curDay ? 'true' : 'false', label: SK.WD_LONG[SK.wdOf(di)] + ' ' + MONTHS[cmo] + ' ' + dn,
+          cls: (di === curDay ? 'is-on' : di === today ? 'is-today' : '') + hot('cal-' + di), go: function () { self.pickDay(di); } });
+      })(dn);
+    }
+    var curDate = new Date(2026, 10, 9 + curDay), curMonth = (curDate.getFullYear() - 2026) * 12 + curDate.getMonth() - 10;
+
+    /* The times to pick from: every quarter hour of the day for the start (those gone, greyed); for the end, each with how long it makes the call. */
+    var dayStart0 = curDay * DAY, startList = [], endList = [];
+    for (var q = 0; q < DAY; q += 15) {
+      (function (q) {
+        var at = dayStart0 + q;
+        startList.push({ t: SK.clock(q), cls: (q === curMin ? ' is-on' : '') + hot('st-' + q), on: q === curMin ? 'true' : 'false', off: at < NOW, go: function () { self.moveTo(at, true); } });
+      })(q);
+    }
+    for (var e2 = curMin + 15; e2 <= DAY; e2 += 15) {
+      (function (e2) {
+        var l = e2 - curMin;
+        endList.push({ t: SK.clock(e2), len: SK.lenLabel(l), cls: l === curLen ? ' is-on' : '', on: l === curLen ? 'true' : 'false', go: function () { self.setLen(l); } });
+      })(e2);
+    }
+    var LENS = [30, 45, 60, 90, 120];
+    if (LENS.indexOf(len) < 0) LENS.push(len);
+    LENS.sort(function (a, b) { return a - b; });
+
+    var w = {
+      canPick: canPick, single: !picking, picking: picking,
+      pickAttr: picking ? 'true' : 'false', swCls: picking ? ' is-on' : '',
+      pickTitle: guest ? 'Let ' + guest.first + ' pick the time' : '',
+      pickSub: guest ? 'You can’t see ' + guest.first + '’s calendar.' : '',
+      togglePick: function () { self.togglePick(); },
+      day: SK.WD[SK.wdOf(curDay)] + ', ' + SK.monthDay(curDay), rel: curDay === today ? 'Today' : curDay === today + 1 ? 'Tomorrow' : '', hasRel: curDay <= today + 1,
+      dayLabel: 'Day: ' + SK.dayWord(curDay) + '. Pick another',
+      menuDate: menu === 'date', dateAttr: menu === 'date' ? 'true' : 'false', openDate: function () { self.setState({ menu: menu === 'date' ? '' : 'date', calMonth: Math.max(0, curMonth), hot: '' }); },
+      calTitle: MONTHS[cmo] + ' ' + cy, calNoPrev: cm <= 0, calDays: calDays,
+      calPrev: function () { self.setState({ calMonth: Math.max(0, cm - 1), hot: '' }); },
+      calNext: function () { self.setState({ calMonth: cm + 1, hot: '' }); },
+      start: SK.hm(cur), end: SK.endHm(cur + curLen), lenText: SK.lenLabel(curLen),
+      startLabel: 'Starts ' + SK.hm(cur) + '. Pick another time', endLabel: 'Ends ' + SK.endHm(cur + curLen) + '. Pick another time',
+      menuStart: menu === 'start', startAttr: menu === 'start' ? 'true' : 'false', openStart: function () { self.toggleMenu('start'); }, startList: startList,
+      menuEnd: menu === 'end', endAttr: menu === 'end' ? 'true' : 'false', openEnd: function () { self.toggleMenu('end'); }, endList: endList,
+      menuLen: menu === 'len', lenAttr: menu === 'len' ? 'true' : 'false', openLen: function () { self.toggleMenu('len'); }, lenEach: SK.lenLabel(len) + ' each',
+      lenList: LENS.map(function (l) { return { t: SK.lenLabel(l), cls: (l === len ? ' is-on' : '') + hot('lenopt-' + l), on: l === len ? 'true' : 'false', go: function () { self.setLen(l); } }; }),
+      menuRepeat: menu === 'repeat', repAttr: menu === 'repeat' ? 'true' : 'false', openRepeat: function () { self.toggleMenu('repeat'); },
+      repLabel: rep.t + (repeating ? ' · ' + rep.sub : ''),
+      reps: REPS.map(function (r) { return { t: r.t, sub: r.sub, cls: r.k === rep.k ? ' is-on' : '', on: r.k === rep.k ? 'true' : 'false', go: function () { self.set({ rep: r.k }); } }; }),
+      hasStatus: !picking && (readable.length > 0 || statusKind === 'clash'), status: status, statusCls: statusKind === 'clash' ? ' is-clash' : '',
+      hasNext: nextT !== null && !picking, nextLabel: nextLabel, goNext: function () { if (nextT !== null) self.moveTo(nextT, true); },
+      cut: curLen < len,
+      tip: 'Press the week to move time ' + (active + 1) + '.',
+      opts: opts.map(function (o, i) {
+        var l = SK.lenAt(o.t, len), d = SK.dayOf(o.t), cmine = SK.mineIn(o.t, o.t + l), lock = o.on && ticked <= 2;
+        var label = SK.dayWord(d) + ', ' + SK.hm(o.t) + ' to ' + SK.endHm(o.t + l);
+        return {
+          n: i + 1, day: SK.dayWord(d), time: SK.hm(o.t) + ' – ' + SK.endHm(o.t + l),
+          side: guest ? SK.hm(o.t + guest.ahead) + ' for ' + guest.first : '', warn: cmine.length > 0, calm: !cmine.length, warnText: cmine.length ? cmine[0].t : '',
+          cls: (i === active ? ' is-active' : '') + (o.on ? '' : ' is-off'), hotCls: hot('opt-' + i), activeAttr: i === active ? 'true' : 'false',
+          label: 'Time ' + (i + 1) + ': ' + label + (i === active ? ', the one the week moves' : ''),
+          onAttr: o.on ? 'true' : 'false', tickCls: (o.on ? ' is-on' : '') + hot('tick-' + i), lock: lock,
+          tickLabel: 'Offer time ' + (i + 1), tickTitle: lock ? 'Offer at least two times' : o.on ? 'Leave this time out' : 'Offer this time',
+          select: function () { self.set({ active: i, opts: opts.map(function (x) { return { t: x.t, on: x.on }; }) }); },
+          tick: function () {
+            if (lock) return;
+            var next = opts.map(function (x) { return { t: x.t, on: x.on }; });
+            next[i].on = !next[i].on;
+            self.set({ opts: next });
+          }
+        };
+      })
+    };
+
+    /* ---------------- who, drawn */
+    var qq = (st.q || '').trim().toLowerCase();
+    var list = SK.OFTEN.filter(function (k) {
+      if (k.indexOf('g:') === 0) { var g = SK.GROUPS[k.slice(2)]; return !g.people.every(function (id) { return people.indexOf(id) >= 0; }) && (!qq || g.name.toLowerCase().indexOf(qq) >= 0); }
+      return people.indexOf(k) < 0 && (!qq || P[k].name.toLowerCase().indexOf(qq) >= 0);
+    }).slice(0, people.length ? 4 : 6);
+    var who = {
+      fieldCls: menu === 'who' ? ' is-open' : '',
+      tokens: people.map(function (id) {
+        var x = P[id];
+        return { id: id, name: x.first, face: !x.outside, ghost: !!x.outside, initial: x.first.charAt(0), hasPlace: !!x.outside, place: x.place || '', removeLabel: 'Remove ' + x.first, remove: function (e) { if (e && e.stopPropagation) e.stopPropagation(); self.removePerson(id); } };
+      }),
+      q: st.q || '', ph: people.length ? 'Add someone' : 'Add people',
+      type: function (e) { self.setState({ q: e.target.value, menu: 'who' }); },
+      open: function () { if (self.st().menu !== 'who') self.setState({ menu: 'who' }); },
+      focus: function (e) { var f = e.currentTarget.querySelector('input'); if (f && e.target === e.currentTarget) f.focus(); },
+      key: function (e) {
+        if (e.key === 'Escape') { self.setState({ menu: '', q: '' }); e.target.blur(); }
+        if (e.key === 'Enter' && list.length) { e.preventDefault(); self.addPick(list[0]); }
+        if (e.key === 'Backspace' && !e.target.value && people.length) self.removePerson(people[people.length - 1]);
+      },
+      showList: menu === 'who' && scheduling, none: !list.length,
+      lab: qq ? 'People and groups' : people.length ? 'Add someone else' : 'Often with you',
+      list: list.map(function (k) {
+        var isG = k.indexOf('g:') === 0, g = isG ? SK.GROUPS[k.slice(2)] : null, x = isG ? null : P[k];
+        return {
+          name: isG ? g.name : x.name, sub: isG ? 'Group · ' + g.people.length + ' people' : x.sub,
+          faces: isG || !x.outside, who: isG ? g.people.slice(0, 2).join(',') : k, ghost: !isG && !!x.outside, initial: isG ? '' : x.first.charAt(0),
+          hotCls: hot('p-' + (isG ? k.slice(2) : k)), add: function () { self.addPick(k); }
+        };
+      }),
+      hasOutside: outside.length > 0, showHint: outside.length > 0 && !canPick,
+      outsideLine: outside.length === 1 ? 'You can’t see ' + first(outside[0]) + '’s calendar.' : outside.length ? 'You can’t see the calendars of ' + SK.names(outside.map(first)) + '.' : ''
+    };
+
+    /* ---------------- the foot */
+    var firsts = people.map(first);
+    var named = st.titled ? st.title : people.length ? 'Call with ' + (firsts.length > 3 ? firsts.slice(0, 2).join(', ') + ' and ' + (firsts.length - 2) + ' others' : SK.names(firsts)) : '';
+    var foot;
+    if (picking) foot = { line: 'Your calendar holds the times until ' + guest.first + ' picks.', label: 'Send ' + guest.first + ' the times' };
+    else if (!people.length) foot = { line: 'You’ll get a link to share.', label: repeating ? 'Schedule 10 calls' : 'Schedule' };
+    else foot = { line: 'Google Calendar invites ' + SK.names(firsts) + '.', label: repeating ? 'Schedule 10 calls' : 'Schedule' };
+    foot.go = function () {
+      var title = named || 'Art’s call';
+      if (picking) {
+        var held = opts.filter(function (o) { return o.on; }).map(function (o) { return o.t; });
+        self.set({ mode: 'calls', held: held, heldLen: len, heldTitle: 'Held for ' + guest.first, made: null, hover: null, week: SK.weekOf(held[0]) });
+        self.toast('Link copied for ' + guest.first + '. The call waits until ' + guest.first + ' picks a time.');
+        return;
+      }
+      self.set({ mode: 'calls', made: { t: cur, len: curLen, title: title }, held: null, hover: null, week: SK.weekOf(cur) });
+      self.toast('Scheduled for ' + SK.atWords(cur) + '. ' + (people.length ? 'Google Calendar invites ' + SK.names(firsts) + '.' : 'Link copied.'), true);
+    };
+
+    /* ---------------- the week */
+    /* Scheduling, the week starts today, so every day on it can take the call. Calls' own week runs Monday to Sunday. */
+    var d0 = scheduling ? today + week * 7 : week * 7, daysW = st.daysW || 600, five = daysW < 392;
+    var shownDays = [0, 1, 2, 3, 4, 5, 6].map(function (i) { return d0 + i; }).filter(function (d) { return !five || SK.wdOf(d) < 5; });
+    var colW = daysW / shownDays.length;
+    var cols = shownDays.map(function () { return 'minmax(0, 1fr)'; }).join(' ');
+    this.m.shownDays = shownDays;
+    var freeNote = function (t, l) {
+      var cmine = SK.mineIn(t, t + l), bw = SK.busyIn(readable, t, t + l);
+      if (cmine.length) return { t: cmine[0].t, busy: true };
+      if (bw.length) return { t: SK.names(bw.map(first)) + ' busy', busy: true };
+      if (!readable.length) return { t: outside.length ? 'Free on your calendar' : 'Free', busy: false };
+      return { t: readable.length === 1 ? 'Both free' : 'All ' + (readable.length + 1) + ' free', busy: false };
+    };
+    /* Words for a block: the time first, the range when it fits on a line, a name only when a whole line of it fits. */
+    var words = function (o, cw) {
+      var hpx = (o.e - o.s) / 60 * hp - 2, n = fit(hpx);
+      var inner = (cw - 4) / (o.of || 1) - 2 - (o.ev ? 16 : 14), numW = o.num != null ? 19 : 0;
+      var range = n !== -1 && !(o.startOnly && n === 1) && inner >= 64 + numW;
+      var tW = range ? 64 : n === -1 ? 24 : 28, showNum = o.num != null && inner >= tW + numW;
+      var room = inner - tW - (showNum ? numW : 0) - 6;
+      var name = o.name || (o.endName && !range ? o.endName : '');
+      var hasName = !!name && (n >= 2 ? inner >= 30 : n === 1 ? room >= (o.name ? 28 : 46) : false);
+      return {
+        cls: o.cls + (n === -1 ? ' is-tight' : n === 0 ? ' is-tiny' : ''), txCls: n >= 2 ? '' : n === 1 ? ' is-one' : n === -1 ? ' is-tight' : '',
+        style: '--s: ' + o.s + '; --e: ' + o.e + (o.of ? '; --lane: ' + o.lane + '; --of: ' + o.of : ''),
+        title: o.title || '', role: o.role || '', i: o.i == null ? -1 : o.i,
+        time: n === 0 ? '' : range ? o.range : o.start, hasNum: showNum && n !== 0, num: o.num,
+        hasName: hasName, name: name, nStyle: '-webkit-line-clamp: ' + Math.max(1, n - 1) + '; max-height: ' + (14 * Math.max(1, n - 1)) + 'px',
+        grip: !!o.grip, gripHot: hot('grip')
+      };
+    };
+    var dragT = st.dragT, dragLen = st.dragLen, moving = dragT != null || dragLen != null;
+    var colsOut = shownDays.map(function (d) {
+      var we = SK.wdOf(d) > 4, dayStart = d * DAY, z = [], items = [], over = [], cw = colW;
+      if (scheduling) {
+        if (we) z.push({ s: 0, e: DAY, k: 'off' });
+        else { z.push({ s: 0, e: SK.WORK_FROM, k: 'off' }); z.push({ s: SK.WORK_TO, e: DAY, k: 'off' }); }
+        /* Other people's busy time, merged into bands, each saying whose it is: never what. */
+        var spans = [];
+        readable.forEach(function (id) { (SK.BUSY[id] || []).forEach(function (x) { if (x.d === d && x.e > NOW - dayStart) spans.push({ s: Math.max(x.s, NOW - dayStart), e: x.e }); }); });
+        spans.sort(function (a, b) { return a.s - b.s; });
+        var merged = [];
+        spans.forEach(function (x) { var last = merged[merged.length - 1]; if (last && x.s <= last.e) last.e = Math.max(last.e, x.e); else merged.push({ s: x.s, e: x.e }); });
+        merged.forEach(function (x) { z.push({ s: x.s, e: x.e, k: 'busy', label: SK.busyIn(readable, dayStart + x.s, dayStart + x.e).map(first).join(', ') }); });
+        if (d < today) z.push({ s: 0, e: DAY, k: 'past' });
+        else if (d === today) z.push({ s: 0, e: NOW - dayStart, k: 'past' });
+      }
+      /* Your calendar. */
+      SK.MINE.forEach(function (x) {
+        if (x.d !== d) return;
+        items.push({ s: x.s, e: x.e, ev: true, cls: ' is-ev is-' + (x.k === 'past' ? 'cal' : x.k) + (dayStart + x.e <= NOW ? ' is-gone' : ''), range: SK.clock(x.s) + ' – ' + SK.clock(x.e), start: SK.clock(x.s), name: x.t, title: x.t + ', ' + SK.clock(x.s) + ' to ' + SK.clock(x.e), role: 'ev', startOnly: true });
+      });
+      if (!scheduling && st.made && SK.dayOf(st.made.t) === d) {
+        var ms = st.made.t - dayStart;
+        items.push({ s: ms, e: ms + st.made.len, ev: true, cls: ' is-ev is-fresh', range: SK.clock(ms) + ' – ' + SK.endHm(st.made.t + st.made.len), start: SK.clock(ms), name: st.made.title, title: st.made.title + ', just scheduled', role: 'made' });
+      }
+      if (!scheduling && st.held) st.held.forEach(function (t) {
+        if (SK.dayOf(t) !== d) return;
+        var hs = t - dayStart, he = hs + SK.lenAt(t, st.heldLen || 45);
+        items.push({ s: hs, e: he, ev: true, cls: ' is-ev is-hold', range: SK.clock(hs) + ' – ' + SK.endHm(t + he - hs), start: SK.clock(hs), name: st.heldTitle || 'Held for Jonas', title: (st.heldTitle || 'Held for Jonas') + ', until a time is picked', role: 'made', startOnly: true });
+      });
+      /* The call being made, or the times offered. */
+      if (scheduling && !picking) {
+        var ct = dragT != null ? dragT : cur, cl = SK.lenAt(ct, dragLen != null ? dragLen : len);
+        if (SK.dayOf(ct) === d) {
+          var cs = ct - dayStart, clash = SK.mineIn(ct, ct + cl).length > 0 || SK.busyIn(readable, ct, ct + cl).length > 0;
+          items.push({ s: cs, e: cs + cl, cls: ' is-call' + (clash ? ' is-clash' : '') + (moving ? ' is-moving' : ''), range: SK.clock(cs) + ' – ' + SK.endHm(ct + cl), start: SK.clock(cs), name: named || 'New call', role: 'call', grip: true });
+        }
+      }
+      if (scheduling && picking) opts.forEach(function (o, k) {
+        var isActive = k === active, ot = isActive && dragT != null ? dragT : o.t, ol = SK.lenAt(ot, isActive && dragLen != null ? dragLen : len);
+        if (SK.dayOf(ot) !== d) return;
+        var os = ot - dayStart, oclash = SK.mineIn(ot, ot + ol).length > 0;
+        items.push({ s: os, e: os + ol, cls: isActive ? ' is-call' + (oclash ? ' is-clash' : '') + (moving ? ' is-moving' : '') : ' is-opt' + (o.on ? '' : ' is-off'), range: SK.clock(os) + ' – ' + SK.endHm(ot + ol), start: SK.clock(os), num: k + 1, endName: 'to ' + SK.endHm(ot + ol), title: 'Time ' + (k + 1), role: 'opt', i: k, grip: isActive });
+      });
+      lanes(items);
+      /* A busy band's label sits at the first stretch of it no block covers, or not at all. */
+      z.forEach(function (x) {
+        if (x.k !== 'busy') return;
+        var lt = x.s, moved = true;
+        while (moved) { moved = false; items.forEach(function (b) { if (b.s <= lt + 4 && b.e > lt) { lt = b.e; moved = true; } }); }
+        x.lt = lt - x.s;
+        x.tall = (x.e - lt) / 60 * hp >= 22;
+      });
+      /* What a press would do: the call's outline where it would go, or the stretch being dragged across. */
+      var g = st.range && st.range.d === d ? st.range : null;
+      if (g) {
+        var gn = freeNote(dayStart + g.s, g.e - g.s);
+        over.push({ s: g.s, e: g.e, cls: ' is-ghost is-drag' + (scheduling && gn.busy ? ' is-busy' : ''), range: SK.clock(g.s) + ' – ' + SK.clock(g.e), start: SK.clock(g.s), name: SK.lenLabel(g.e - g.s) });
+      } else if (st.hover && st.hover.d === d && !moving) {
+        var ht = dayStart + st.hover.m, hl = SK.lenAt(ht, scheduling ? len : 45), hn = freeNote(ht, hl);
+        over.push({ s: st.hover.m, e: st.hover.m + hl, cls: ' is-ghost' + (scheduling && hn.busy ? ' is-busy' : ''), range: SK.clock(st.hover.m) + ' – ' + SK.endHm(ht + hl), start: SK.clock(st.hover.m), name: scheduling ? hn.t : 'New call' });
+      }
+      return {
+        d: d, cls: (d === today ? ' is-today' : '') + (we ? ' is-end' : '') + (scheduling ? '' : ' is-browse'),
+        z: z.map(function (x) { return { cls: ' is-' + x.k, style: '--s: ' + x.s + '; --e: ' + x.e + (x.lt ? '; --lt: ' + x.lt : ''), hasLabel: !!x.tall && !!x.label, label: x.label || '' }; }),
+        bk: items.concat(over).map(function (o) { return words(o, cw); }),
+        hasNow: d === today, nowStyle: '--s: ' + (NOW - dayStart),
+        down: function (e) { self.down(e, d); }, move: function (e) { self.move(e, d); }, up: function (e) { self.up(e, d); },
+        leave: function () { if (!self.drag && (self.state || {}).hover) self.setState({ hover: null }); },
+        cancel: function () { self.drag = null; self.endEdge(); self.setState({ range: null, dragT: null, dragLen: null }); }
+      };
+    });
+    var pill = scheduling && (st.pill === 'up' || st.pill === 'down') ? st.pill : '';
+    /* Now, in the hours: its time on a tag, and the hour label it would sit on, hidden. */
+    var nowIn = shownDays.indexOf(today) >= 0, nowY = (NOW - today * DAY) / 60 * hp;
+    var wk = {
+      range: SK.monthDay(shownDays[0]) + ' – ' + SK.monthDay(shownDays[shownDays.length - 1]), label: scheduling ? 'Pick a time' : 'Your week',
+      away: week !== 0, noPrev: week <= 0,
+      prev: function () { self.set({ week: Math.max(0, week - 1), hover: null }); },
+      next: function () { self.set({ week: week + 1, hover: null }); },
+      today: function () { self.set({ week: 0, hover: null }); },
+      vars: '--hp: ' + hp.toFixed(2) + 'px; --cols: ' + cols,
+      days: shownDays.map(function (d) { return { n: new Date(2026, 10, 9 + d).getDate(), wd: SK.WD[SK.wdOf(d)], cls: (d === today ? ' is-today' : '') + (SK.wdOf(d) > 4 ? ' is-end' : '') + (d < today ? ' is-gone' : '') }; }),
+      hours: Array.from({ length: 24 }, function (_, h) { return { t: SK.clock(h * 60), style: '--h: ' + h, cls: nowIn && Math.abs(h * hp + 10 - nowY) < 15 ? ' is-hid' : '' }; }),
+      hasNowTag: nowIn, nowTag: SK.hm(NOW), nowTagStyle: '--s: ' + (NOW - today * DAY),
+      cols: colsOut,
+      key: [{ cls: 'is-soon', t: 'Alcove call' }, { cls: 'is-cal', t: 'From your calendar' }, { cls: 'is-invite', t: 'Waiting for your answer' }, { cls: 'is-hold', t: 'Held until a guest picks' }],
+      pillUp: pill === 'up', pillDown: pill === 'down', pillText: SK.dayWord(curDay) + ', ' + SK.hm(cur) + ' – ' + SK.endHm(cur + curLen),
+      goCall: function () { self.show(cur, true); },
+      edgeNext: !!moving && st.edge === 'next', edgePrev: !!moving && st.edge === 'prev'
+    };
+
+    /* ---------------- the rail, browsing */
+    var railItem = function (label, icon, n, on, sub) { return { label: label, icon: icon, n: n, nCls: '', cls: (on ? ' is-on' : '') + (sub ? ' is-sub' : ''), current: on ? 'page' : 'false', go: function () { self.toast(label + ' opens in the list.'); } }; };
+    var rail = [railItem('All calls', I.calls, '', false), railItem('Coming up', I.cal, '14', true), railItem('Past calls', I.clock, '', false), railItem('In the room', I.mic, '3', false, true), railItem('Shared with you', I.share, '2', false, true)];
+    var series = [{ title: 'Team standup', next: 'Fri 09:30' }, { title: 'Launch planning', next: 'Tue 11:00' }, { title: 'Design review', next: 'Thu 10:30' }].map(function (s) { return Object.assign({}, s, { go: function () { self.toast(s.title + ' opens: its next call, and what carries over.'); } }); });
+
+    return Object.assign({}, v, {
+      I: I, uid: this.uid, mode: v.mode, pageCls: scheduling ? ' is-sched' : ' is-calls',
+      browsing: !scheduling, scheduling: scheduling, splitCls: scheduling ? '' : ' is-calls', sheetCls: scheduling ? ' is-sched' : '',
+      hot: { schedule: hot('schedule'), next: hot('next'), go: hot('go'), pick: hot('pick'), today: hot('today'), nextWeek: hot('next-week'), date: hot('date'), start: hot('start'), end: hot('end'), len: hot('len') },
+      openSched: function () { self.openSched(null); },
+      close: function () { self.set({ mode: 'calls', hover: null, range: null, toast: '', week: 0 }); },
+      cpDown: function (e) { if (self.st().menu && !(e.target.closest && e.target.closest('.ce-anchor, .ce-pop, .ce-people'))) self.setState({ menu: '' }); },
+      calSettings: function () { self.toast('Settings opens at Google Calendar.'); },
+      asList: function () { self.toast('List shows the same calls, by day.'); },
+      titleVal: named, typeTitle: function (e) { self.setState({ title: e.target.value, titled: true }); },
+      who: who, w: w, foot: foot,
+      d: {
+        notesAttr: st.notes ? 'true' : 'false', notesSw: st.notes ? ' is-on' : '', notesIcon: st.notes ? ' is-rec' : '',
+        notesLabel: 'Notes',
+        toggleNotes: function () { self.set({ notes: !st.notes }); },
+        bring: function () { self.toast('Your workspaces open, to pick what the call brings.'); }
+      },
+      wk: wk, rail: rail, series: series,
+      boxRef: function (el) { if (el) self.box = el; },
+      colsRef: function (el) { if (el) self.colsEl = el; },
+      onScroll: function () { self.onScroll(); },
+      onKey: function (e) { if (e.key === 'Escape' && self.st().menu) self.setState({ menu: '', q: '' }); },
+      hasToast: !!st.toast, toast: st.toast || '', hasUndo: !!st.undo,
+      undo: function () { clearTimeout(self.toastT); self.setState({ made: null, toast: 'Call cancelled. Nobody was told.', undo: false }); self.toastT = setTimeout(function () { if (self.alive) self.setState({ toast: '' }); }, 4000); }
+    });
+  }
+}
+</script>
+</body>
+</html>

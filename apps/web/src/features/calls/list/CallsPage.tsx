@@ -9,8 +9,8 @@
  * first, and so does someone after `#with=` (the palette's and the Team page's Calls with Maya). See all in the palette hands
  * its words over in history state. None of it reaches the address.
  *
- * Scheduling a call happens here too: while the address says `schedule`, the scheduler takes the rail and the sheet
- * (features/calls/scheduling), and ← Calls goes back to the place that was open.
+ * Scheduling a call happens here too: while the address says `schedule`, the sky keeps only its title and one sheet holds
+ * the week and the call's editor (features/calls/scheduling); × or Cancel goes back to the place that was open.
  */
 import { EmailParamSchema, MAX_QUESTION, MAX_SEARCH_TEXT, NoteSearchBodySchema, errorCode, errorMessage, firstName, searchOf, type AnswerPart, type NoteFound, type Person } from '@alcove/api';
 import { Avatar, Button, CallRow, CallsGroup, CallsMore, CallsSheet, Evening, IconButton, Segmented, SheetHead, SkyBar, SkySearch } from '@alcove/ui';
@@ -151,10 +151,10 @@ export function CallsPage({ search }: { search: CallsSearch }) {
   const [week, setWeek] = useState(0);
   useEffect(() => { if (!scheduling && (mode.kind !== 'view' || mode.view !== 'week')) setWeek(0); }, [modeKey, scheduling]);
 
-  /* The line takes ⌘K here, in the capture phase, so the shell doesn't open the palette as well. */
+  /* The line takes ⌘K here, in the capture phase, so the shell doesn't open the palette as well. While scheduling there's no line, and the palette opens. */
   useEffect(() => {
     const on = (e: globalThis.KeyboardEvent) => {
-      if (!withMod(e) || e.key.toLowerCase() !== 'k' || overlayOpen()) return;
+      if (!withMod(e) || e.key.toLowerCase() !== 'k' || overlayOpen() || !line.current) return;
       e.preventDefault();
       e.stopPropagation();
       line.current?.focus();
@@ -316,7 +316,7 @@ export function CallsPage({ search }: { search: CallsSearch }) {
   return (
     <Evening moment="calls" className="cs">
       <SkyBar title="Calls"
-        search={(
+        search={scheduling ? null : (
           <SkySearch inputRef={line} value={text} placeholder="Search every call, or ask" maxLength={MAX_QUESTION} keyHint={shortcut('K')} keyShortcuts={ariaShortcut('K')}
             asked={asked} asking={!!answer && !answer.done} onChange={change} onKeyDown={keys} onClear={() => { clear(); line.current?.focus(); }} onAsk={run}
             token={token && <span className="cs-q-tok"><Avatar person={token} size={22} /><span>{callName(token)}</span><IconButton icon="x" size={14} label="Show everyone’s calls" onClick={unpick} /></span>} />
@@ -327,7 +327,7 @@ export function CallsPage({ search }: { search: CallsSearch }) {
         <div className="cs-split" style={{ '--d': 1 }}>
           <Rail lit={lit} first={first} soon={ahead.length} rooms={notes.filter(inTheRoom).length} shared={notes.filter(sharedWithYou).length} series={seriesAhead(ahead)}
             calendar={google ? 'google' : calendar?.source === 'sample' ? 'sample' : null} now={now} onGo={() => { if (text) clear(); else if (answer || lost) putAway(); }} />
-          <CallsSheet ref={sheet} label="Your calls">
+          <CallsSheet ref={sheet} label="Your calls" className={isWeek && !first ? 'cw-sheet' : undefined}>
             <Chips lit={lit} onGo={() => { if (text) clear(); }} />
             {ranOut.out && !answer && <NoNotesLeftDoor alone className="cs-door" />}
             {body}

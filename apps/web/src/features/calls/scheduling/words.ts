@@ -1,8 +1,8 @@
 /* What starting and scheduling a call says: sentences that depend on the call, so every view says them the same way. */
-import type { Meeting, Person, Repeat, RepeatRule, RsvpCounts } from '@alcove/api';
-import { callName, someNames } from '~/lib/people';
+import type { Meeting, Person, Repeat, RepeatRule } from '@alcove/api';
+import { callName, listNames, someNames } from '~/lib/people';
 import { daysFromToday, hm, shortDay, timeZone, weekday } from '~/lib/time';
-import { localWeekday, monthlyRule, type Slot, type Untimely } from './times';
+import { dayEnd, localWeekday, monthlyRule, type Untimely } from './times';
 
 /** What cancelling a call does, said before it's done, and said once it's done. */
 export const cancelNote = (m: Meeting, many = false) => `${many ? 'They come' : 'It comes'} off your calendar${m.calendarUrl ? ', and everyone invited is told' : ''}.`;
@@ -19,8 +19,20 @@ export function dayWord(at: Date, now: Date): string {
 export function shortTime(at: Date, now: Date): string {
   return daysFromToday(at, now) < 7 ? `${weekday(at).slice(0, 3)} ${hm(at)}` : `${shortDay(at)}, ${hm(at)}`;
 }
+/** "today 15:30", "tomorrow 15:30", "Fri 15:30", "Fri 20 Nov, 15:30": when, as the scheduler's button says it. */
+export function whenWords(at: Date, now: Date): string {
+  const n = daysFromToday(at, now);
+  return n === 0 ? `today ${hm(at)}` : n === 1 ? `tomorrow ${hm(at)}` : shortTime(at, now);
+}
+/** Where a call `minutes` long ends, as a clock says it: one that ends at midnight ends at 24:00, not at the next day's 00:00. */
+export const endHm = (at: Date, minutes: number): string => {
+  const end = new Date(at.getTime() + minutes * 60_000);
+  return end.getTime() === dayEnd(at).getTime() ? '24:00' : hm(end);
+};
 /** "Thu 5 Nov, 14:00 – 14:45" */
-export const timeLine = (at: Date, minutes: number) => `${shortDay(at)}, ${hm(at)} – ${hm(new Date(at.getTime() + minutes * 60_000))}`;
+export const timeLine = (at: Date, minutes: number) => `${shortDay(at)}, ${hm(at)} – ${endHm(at, minutes)}`;
+/** "45 min", "1 h", "1 h 15 min" */
+export const lengthLabel = (m: number) => (m < 60 ? `${m} min` : m % 60 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${m / 60} h`);
 
 const ORDINAL = { 1: 'first', 2: 'second', 3: 'third', 4: 'fourth', [-1]: 'last' } as const;
 const dayName = (day: number) => weekday(new Date(2026, 10, 1 + day));
@@ -48,34 +60,64 @@ export function repeatLineHere(repeat: Repeat, at: Date): string {
 /** "1 call", "4 calls" */
 export const callCount = (n: number) => `${n} ${n === 1 ? 'call' : 'calls'}`;
 
-const invited = (n: number) => (n === 1 ? 'gets' : 'get');
-/** "Jamie gets an invitation.", "7 people get an invitation." */
-export function invitationLine(guests: readonly Person[]): string {
-  const [one] = guests;
-  return `${one && guests.length === 1 ? callName(one) : `${guests.length} people`} ${invited(guests.length)} an invitation.`;
-}
+/* ---------- the scheduler's lines ---------- */
 
-/** Above the times: who they suit, in as many words as are true. */
-export function whenLine({ guests, slots, source, failed, unknown }: {
-  guests: readonly Person[]; slots: readonly Slot[]; source: 'google' | 'sample' | 'none'; failed: boolean;
-  /** How many guests' calendars can't be read. */
-  unknown: number;
-}): string {
-  if (failed) return 'Calendars can’t be read just now, so these are open working hours.';
-  if (source === 'none') return 'No calendar is connected, so these are open working hours.';
-  const [one] = guests;
-  if (!one) return 'These times are free on your calendar.';
-  if (unknown === guests.length) return `You can’t see ${guests.length === 1 ? `${callName(one)}’s calendar` : 'their calendars'}. These times are free on yours.`;
-  const [best] = slots;
-  const all = slots.length > 0 && slots.every((s) => s.free === s.of);
-  const guarded = unknown ? ' Guests’ calendars stay private.' : '';
-  if (all && !unknown) return guests.length === 1 ? `You and ${callName(one)} are free at these times.` : `All ${guests.length + 1} of you are free at these times.`;
-  if (all) return `Everyone whose calendar you can see is free at these times.${guarded}`;
-  if (!best) return '';
-  return slots.every((s) => s.free * 2 > s.of) ? `Most of you are free at these times.${guarded}` : `These times suit the most people.${guarded}`;
+/**
+ * Under the time once people whose calendars you can see are in: the soonest time you're all free, until you pick one
+ * yourself, and then whether you're all free, outside working hours or not. When some calendars can't be read, it names
+ * whose it counts: "The soonest time you and Priya are free".
+ */
+export function freeLine({ seen, everyone, picked, outside }: { seen: readonly Person[]; everyone: boolean; picked: boolean; outside: boolean }): string {
+  const who = everyone ? (seen.length === 1 ? 'you’re both' : 'you’re all') : `you and ${listNames([...seen])} are`;
+  return picked ? `${who.charAt(0).toUpperCase()}${who.slice(1)} free${outside ? ', outside working hours' : ''}` : `The soonest time ${who} free`;
 }
-/** Under a time, when it doesn't suit everyone. */
-export const freeLine = (s: Slot) => (s.of > 1 && s.free < s.of ? `${s.free} of ${s.of} free` : '');
+/** On a clash: what you have then ("You have Design review then"), or who's busy ("Priya and Kofi are busy then"). */
+export function busyLine({ yours, busy, people }: { yours: string | undefined; busy: boolean; people: readonly Person[] }): string {
+  if (yours) return `You have ${yours} then`;
+  if (busy) return 'You’re busy then';
+  return `${listNames([...people])} ${people.length === 1 ? 'is' : 'are'} busy then`;
+}
+/** "Next free: 16:00" on the same day, "Next free: Fri 10:00" on another. */
+export const nextFreeLabel = (next: Date, from: Date, now: Date) => `Next free: ${daysFromToday(next, from) === 0 ? hm(next) : shortTime(next, now)}`;
+/** "You can’t see Jonas’s calendar.", "You can’t see the calendars of Jonas and Ines." */
+export function unseenLine(people: readonly Person[]): string {
+  const [one] = people;
+  return one && people.length === 1 ? `You can’t see ${callName(one)}’s calendar.` : `You can’t see the calendars of ${listNames([...people])}.`;
+}
+/** "Aiko asked for Fri 11:00" */
+export const askedLine = (who: Person | undefined, at: Date, now: Date) => `${who ? callName(who) : 'Someone'} asked for ${shortTime(at, now)}`;
+/** "Doesn’t repeat", "Every Thursday · 4 calls" */
+export const repeatWords = (rule: RepeatRule | null, calls: number) => (rule ? `${repeatLine(rule)} · ${callCount(calls)}` : 'Doesn’t repeat');
+
+/** Who hears about a call as it's scheduled: Google's invitations, a demo calendar's, or nobody without one. */
+export type Telling = 'google' | 'sample' | 'nobody';
+/** The foot's line: what will happen when the button is pressed. */
+export function footLine(f:
+  | { kind: 'new'; guests: readonly Person[]; telling: Telling }
+  | { kind: 'offer'; guest: Person | undefined; telling: Telling }
+  | { kind: 'move'; meeting: Meeting; telling: Telling }
+  | { kind: 'propose'; organizer: Person | undefined }): string {
+  switch (f.kind) {
+    case 'propose': return `${f.organizer ? callName(f.organizer) : 'The organizer'} sees it, and can move the call there.`;
+    case 'move': {
+      const m = f.meeting;
+      if (!m.guestCount) return 'Nobody else is invited.';
+      if (m.calendarUrl) return `Google Calendar tells ${listNames(m.guests)}.`;
+      return f.telling === 'sample' ? `Your calendar tells ${listNames(m.guests)}.` : 'Nobody’s told until you send them the link.';
+    }
+    case 'offer': {
+      const who = f.guest ? callName(f.guest) : 'your guest';
+      return f.telling === 'google' ? `Your calendar holds the times until ${who} picks.` : `You get a link to send to ${who}.`;
+    }
+    case 'new': {
+      if (!f.guests.length) return 'You’ll get a link to share.';
+      const names = listNames([...f.guests]);
+      if (f.telling === 'google') return `Google Calendar invites ${names}.`;
+      if (f.telling === 'sample') return `${names} ${f.guests.length === 1 ? 'gets' : 'get'} an invitation.`;
+      return 'Without a calendar, nobody is told. Share the link yourself.';
+    }
+  }
+}
 
 /** Why a time typed can't be used, under it. */
 const UNTIMELY: Record<Untimely, string> = {
@@ -86,18 +128,6 @@ const UNTIMELY: Record<Untimely, string> = {
   short: 'A call lasts at least 5 minutes.'
 };
 export const untimelyLine = (why: Untimely): string => UNTIMELY[why];
-
-/** "5 coming, 1 maybe, 1 hasn’t answered" */
-export function answersLine(r: RsvpCounts): string {
-  const parts = [
-    r.yes && `${r.yes} coming`, r.maybe && `${r.maybe} maybe`, r.no && `${r.no} can’t come`,
-    r.waiting && `${r.waiting} ${r.waiting === 1 ? 'hasn’t' : 'haven’t'} answered`
-  ].filter((p) => typeof p === 'string');
-  return parts.join(', ');
-}
-
-/** What a call's notes keep, in a row's words. */
-export const notesWord = (m: { notes: 'on' | 'off'; choices: { keepTranscript: boolean } }) => (m.notes === 'off' ? 'No notes' : m.choices.keepTranscript ? 'Notes and transcript' : 'Notes only');
 
 /** Who a guest is, in "Waiting for Jamie to pick". */
 export const pickerName = (m: Meeting) => (m.guests.length ? someNames(m.guests, 1) : 'your guest');

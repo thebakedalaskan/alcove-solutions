@@ -1,26 +1,14 @@
 /*
  * SwitchLine: a switch with what it does: the title, a line under it when that needs saying, and the Switch itself
- * (`control`) at its end. What a call's notes keep is a few of these, opened under Notes on the scheduler, and on the
- * Notes view of a scheduled call's card.
+ * (`control`) at its end. What a call's notes keep is a few of these, on the Notes view of a scheduled call's page
+ * (`NotesSwitches`).
  */
-import { Icon, Switch, SwitchLine } from '@alcove/ui';
+import { Switch, SwitchLine } from '@alcove/ui';
 import type { Decorator, Meta, StoryObj } from '@storybook/react-vite';
 import { useState } from 'react';
-import { did } from '../../../src/component';
 
-/** Opened in place under Notes, in the scheduler's Details: What the notes keep. */
-const opened: Decorator = (Story) => (
-  <section className="sc-sec" style={{ width: 'min(372px, 100%)' }}>
-    <h3>Details</h3>
-    <div className="sc-row is-switch">
-      <Icon name="notes" size={17} className="is-rec" />
-      <span className="min-w-0"><b>Notes</b><small>Everyone invited gets them</small></span>
-      <Switch checked label="Notes" onChange={did('onNotes')} />
-    </div>
-    <button type="button" className="sc-more" aria-expanded onClick={did('onWhatTheyKeep')}>What the notes keep<Icon name="chevron" size={14} /></button>
-    <div className="sc-keep"><Story /></div>
-  </section>
-);
+/** As wide as the Notes view of a scheduled call's page, where a call's switches are. */
+const opened: Decorator = (Story) => <div style={{ width: 'min(372px, 100%)' }}><Story /></div>;
 
 const meta = {
   title: 'Components/Forms/SwitchLine',

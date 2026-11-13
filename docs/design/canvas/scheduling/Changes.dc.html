@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>What changes</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="home.css">
+<script src="tokens.js"></script>
+<script src="home.js"></script>
+<script src="sched.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400..700&amp;family=Newsreader:ital,opsz,wght@0,6..72,300..600;1,6..72,300..600&amp;display=swap">
+<style>
+body{margin:0}
+.tc { --sans: "Hanken Grotesk", ui-sans-serif, system-ui, sans-serif; --serif: "Newsreader", Georgia, serif; --ink: oklch(.25 .05 268); --ink2: oklch(.45 .035 268); --line: oklch(.25 .05 268 / .13); --now: oklch(.52 .12 50); --rose: oklch(.53 .15 0); --focus: oklch(.48 .12 250); box-sizing: border-box; width: 1440px; min-height: 920px; padding: 56px 64px 60px; background: oklch(.955 .007 80); color: var(--ink); font: 400 15px/1.45 var(--sans); -webkit-font-smoothing: antialiased; }
+.tc *, .tc *::before { box-sizing: border-box; margin: 0; }
+.tc h1 { font: 400 40px/1.1 var(--serif); letter-spacing: -.012em; }
+.tc-grid { display: grid; grid-template-columns: 36px minmax(0, 5fr) minmax(0, 8fr) 120px; column-gap: 28px; margin-top: 34px; }
+.tc-h { padding-bottom: 12px; border-bottom: 1px solid var(--line); font: 600 13px/1.2 var(--sans); color: var(--ink2); }
+.tc-n, .tc-said, .tc-now, .tc-j { padding: 15px 0 14px; border-bottom: 1px solid var(--line); }
+.tc-n { font: 600 14px/1.4 var(--sans); color: var(--ink2); font-variant-numeric: tabular-nums; }
+.tc-said { display: grid; grid-template-columns: 18px minmax(0, 1fr); column-gap: 8px; font: 400 15px/1.45 var(--sans); color: var(--ink2); }
+.tc-now { display: grid; grid-template-columns: 18px minmax(0, 1fr); column-gap: 8px; font: 500 15px/1.45 var(--sans); color: var(--ink); }
+.tc .i { width: 16px; height: 16px; margin-top: 3px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.tc-said .i { color: var(--rose); }
+.tc-now .i { color: var(--focus); }
+.tc-j { font: 500 13.5px/1.45 var(--sans); color: var(--ink2); }
+.tc-j b { font-weight: 600; color: var(--ink); }
+</style>
+</helmet>
+<div class="tc">
+<h1>Scheduling a call: what testers said, and what changes</h1>
+<div class="tc-grid">
+<span class="tc-h"></span><span class="tc-h">What testers said</span><span class="tc-h">What the scheduler does now</span><span class="tc-h">Step by step</span>
+<sc-for list="{{rows}}" as="r" hint-placeholder-count="9">
+<span class="tc-n">{{r.n}}</span>
+<p class="tc-said"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.x}}"></path></svg><span>{{r.said}}</span></p>
+<p class="tc-now"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.check}}"></path></svg><span>{{r.now}}</span></p>
+<p class="tc-j"><b>{{r.j}}</b></p>
+</sc-for>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":940}}'>
+class Component extends DCLogic {
+  renderVals() {
+    var SK = window.AH.SK;
+    return {
+      I: window.AH.I,
+      rows: SK.CHANGES.map(function (c, i) { return { n: i + 1, said: c.said, now: c.now, j: c.j === 'Blocks' ? 'Blocks, below' : c.j.indexOf('·') > 0 ? 'Rows ' + c.j.replace(' · ', ' and ') : 'Row ' + c.j }; })
+    };
+  }
+}
+</script>
+</body>
+</html>

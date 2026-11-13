@@ -15,6 +15,11 @@ export const hms = (d: Date | string) => new Date(d).toLocaleTimeString('en-GB',
 export const shortDay = (d: Date) => `${weekday(d).slice(0, 3)} ${d.getDate()} ${month(d).slice(0, 3)}`;
 /** "3 Nov" */
 export const dayMonth = (d: Date) => `${d.getDate()} ${month(d).slice(0, 3)}`;
+/** The days a week shows: "12 – 18 Nov", "30 Nov – 6 Dec", "28 Dec 2026 – 3 Jan 2027". */
+export function daysSpan(first: Date, last: Date): string {
+  if (first.getFullYear() !== last.getFullYear()) return `${dayMonth(first)} ${first.getFullYear()} – ${dayMonth(last)} ${last.getFullYear()}`;
+  return first.getMonth() === last.getMonth() ? `${first.getDate()} – ${dayMonth(last)}` : `${dayMonth(first)} – ${dayMonth(last)}`;
+}
 /** "3 November": a day said in a sentence, such as when notes come back. */
 export const dayFullMonth = (d: Date) => `${d.getDate()} ${month(d)}`;
 /** "Nov" */

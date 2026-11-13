@@ -127,41 +127,27 @@ export function QuadFaces({ people, size = 18 }: { people: AvatarPerson[]; size?
 
 /**
  * Someone, a group or a list in the Who field: one token, however many people it stands for (`count`), in their arch.
- * `state` says something beside the name: where an outside guest is ("Berlin, 1 h ahead"), or what someone answered
- * ("Going"). `outside` rings someone whose calendar can't be read. `held` shows it's selected, one press from going.
+ * `state` says what someone answered, beside the name ("Going"). `place` is what sits after the name for someone from
+ * outside: where they are, a button that says so (Where? until it's said). `held` shows it's selected, one press from going.
  * Without `onRemove` it's only read: someone on a call being moved.
  */
-export function PersonToken({ people, label, count, title, state, outside = false, held = false, onRemove, removeLabel }: {
-  people: AvatarPerson[]; label: string; count?: number | undefined; title?: string | undefined; state?: string | undefined; outside?: boolean | undefined;
+export function PersonToken({ people, label, count, title, state, place, held = false, onRemove, removeLabel }: {
+  people: AvatarPerson[]; label: string; count?: number | undefined; title?: string | undefined; state?: string | undefined; place?: ReactNode;
   held?: boolean | undefined; onRemove?: (() => void) | undefined; removeLabel?: string | undefined;
 }) {
   return (
-    <span className={cn('cf-tok', held && 'is-held', outside && 'is-out', !onRemove && 'is-fixed')} title={title}>
+    <span className={cn('cf-tok', held && 'is-held', !onRemove && 'is-fixed')} title={title}>
       <span className="cf-face">{count === undefined ? <Faces people={people} size={20} max={1} /> : <QuadFaces people={people} size={10} />}</span>
       <span className="t ac-clamp-1">{label}</span>
       {count !== undefined && <small>{count}</small>}
       {state && <small>{state}</small>}
+      {place}
       {onRemove && <button type="button" className="x" aria-label={removeLabel ?? `Remove ${label}`} onClick={(e) => { e.stopPropagation(); onRemove(); }}><Icon name="x" size={13} /></button>}
     </span>
   );
 }
 
-/* ---------- times ---------- */
-
-/**
- * A time to pick: the day, the time, and a line under it. It fills when it's picked, and its tick pops. As one of the times
- * a guest picks from (`box`), it's a tick box: ticked, or empty.
- */
-export function TimeCard({ day, time, note, picked, box = false, ...rest }: Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'children'> & { day: ReactNode; time: ReactNode; note?: ReactNode; picked: boolean; box?: boolean | undefined }) {
-  return (
-    <button type="button" aria-pressed={picked} className={cn('cf-time', picked && 'on', box && 'is-box')} {...rest}>
-      <span className="d">{day}</span><b>{time}</b><small>{note}</small>
-      {(picked || box) && <span className="tk">{picked && <Icon name="check" size={12} />}</span>}
-    </button>
-  );
-}
-/** Where a time card will be, while calendars are being read. */
-export const TimeCardWaiting = () => <span className="cf-time is-wait" aria-hidden="true"><i /><i /><i /></span>;
+/* ---------- switches ---------- */
 
 /** A switch with what it does: `control` is the Switch. */
 export function SwitchLine({ title, sub, control }: { title: ReactNode; sub?: ReactNode; control: ReactNode }) {

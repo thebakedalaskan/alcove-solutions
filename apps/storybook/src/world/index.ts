@@ -5,8 +5,8 @@ import { DEFAULT_NOTIFICATION_PREFERENCES, DEFAULT_SOUND_PREFERENCES } from '@al
  * every page reads it from here again.
  */
 import type {
-  Calendar, DocRefusal, DocumentLibrary, FeatureFlagName, IncomingRing, Meeting, MentionNotice, MoveIn, MoveMedia, Note, NoteLink, Person, PersonalEntry, Plan, Preferences, Session, ShareEntry, Team,
-  WorkspaceMedia, WorkspaceSummary, WorkspaceTree
+  Calendar, DocRefusal, DocumentLibrary, FeatureFlagName, IncomingRing, Interval, Meeting, MentionNotice, MoveIn, MoveMedia, Note, NoteLink, Person, PersonalEntry, Plan, Preferences, Session,
+  ShareEntry, Team, WorkspaceMedia, WorkspaceSummary, WorkspaceTree
 } from '@alcove/api';
 import type { PaymentsWorld } from './payments';
 import type { TeamInviteWorld, TeamWorld } from './teams';
@@ -104,6 +104,11 @@ export interface World {
   /** Every Alcove call: the ones to come, and the ones that happened. */
   meetings: Meeting[];
   calendar: Calendar;
+  /**
+   * What other people's calendars say, as busy time only, by address (src/world/scheduling.ts): on a day none of someone's
+   * times fall on, theirs is the stand-in's own made-up working day, as it is for everyone at the company not here.
+   */
+  calendars?: Record<string, Interval[]> | undefined;
   /** The plan Art is on, and what's left of it (src/world/plans.ts). */
   plan: Plan;
   documents: DocumentLibrary;

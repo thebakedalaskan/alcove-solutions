@@ -1,9 +1,9 @@
 /*
- * QuadFaces: a few people in one small square of arches, for a group or a list: beside a group's name in the people under
- * Who, on the scheduler, and small in a group's token in the Who field. Up to four show; with fewer, the square's other
- * places stay empty.
+ * QuadFaces: a few people in one small square of arches, for a group or a list: small in its token in the Who field, on
+ * the scheduler. Up to four show; with fewer, the square's other places stay empty. (The people under the field show a
+ * group as two of its faces.)
  */
-import { Icon, QuadFaces } from '@alcove/ui';
+import { PersonToken, QuadFaces, SchedField, SchedGroup, SchedRow } from '@alcove/ui';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { did } from '../../../src/component';
 import { AIKO, INES, KOFI, MAYA, PRIYA } from '../../../src/world/people';
@@ -27,30 +27,21 @@ export const Four: Story = {};
 export const Three: Story = { args: { people: [PRIYA, KOFI, INES] } };
 export const Two: Story = { args: { people: [PRIYA, KOFI] } };
 export const One: Story = { args: { people: [MAYA] } };
-/** Under Who, on the scheduler: beside a group's name and how many are in it. */
-export const InTheList: Story = {
-  name: 'In the list',
+/** In the Who field, on the scheduler: a group's token, with how many are in it. */
+export const InAToken: Story = {
+  name: 'In a token',
   parameters: { layout: 'padded' },
-  args: { size: 14 },
   render: (args) => (
-    <section className="sc-sec" style={{ width: 'min(372px, 100%)' }}>
-      <h3>Who</h3>
-      <div className="cf-field sc-field is-focus">
-        <input type="text" aria-label="Add people" placeholder="Add people, a group or an email" autoComplete="off" spellCheck={false} />
-      </div>
-      <p className="sc-lab">Often with you</p>
-      <div role="listbox" aria-label="People to add" className="sc-pps">
-        <button type="button" role="option" aria-selected={false} className="sc-pp" onClick={did('onAdd')}>
-          <span className="sc-pp-f"><QuadFaces {...args} /></span>
-          <span className="min-w-0"><b className="ac-clamp-1">Product</b><small className="ac-clamp-1">Group · {args.people.length} {args.people.length === 1 ? 'person' : 'people'}</small></span>
-          <Icon name="plus" size={16} />
-        </button>
-        <button type="button" role="option" aria-selected={false} className="sc-pp" onClick={did('onAdd')}>
-          <span className="sc-pp-f"><QuadFaces people={[PRIYA, KOFI, INES]} size={args.size} /></span>
-          <span className="min-w-0"><b className="ac-clamp-1">Leads</b><small className="ac-clamp-1">Group · 3 people</small></span>
-          <Icon name="plus" size={16} />
-        </button>
-      </div>
-    </section>
+    <div className="sc-body" style={{ width: 'min(356px, 100%)' }}>
+      <SchedGroup label="Who">
+        <SchedRow icon="people">
+          <SchedField>
+            <PersonToken people={args.people} label="Product" count={args.people.length} removeLabel="Remove Product" onRemove={did('onRemove')} />
+            <PersonToken people={[PRIYA, KOFI, INES]} label="Leads" count={3} removeLabel="Remove Leads" onRemove={did('onRemove')} />
+            <input type="text" aria-label="Add people" placeholder="Add someone" autoComplete="off" spellCheck={false} />
+          </SchedField>
+        </SchedRow>
+      </SchedGroup>
+    </div>
   )
 };

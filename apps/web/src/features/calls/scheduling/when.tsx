@@ -1,69 +1,98 @@
 /*
- * When, in the scheduler: three times as cards (ticks when a guest picks from them), the time picked as it will read with
- * its start and end to type, how long, and how it repeats, opening in place. What a call can be and what each says are
- * times.ts and words.ts; these only draw them and take what's typed or pressed.
+ * When, in the scheduler's editor: the day (a month to pick from), the start and end (typed, or picked from their lists),
+ * how it repeats (a menu), and letting a guest pick, how long each time offered is. What a call can be and what each says
+ * are times.ts and words.ts; these only draw them and take what's typed or pressed. Which of them is open is the
+ * scheduler's: one at a time.
  */
 import { MAX_SERIES_CALLS } from '@alcove/api';
-import { FlowNote, Icon, Segmented, TimeCard } from '@alcove/ui';
-import { useId, useState } from 'react';
-import { hm, timeZone } from '~/lib/time';
+import { MonthGrid, Popover, SchedLine, SchedPop, SchedQuiet, SchedRow, SchedTimes, SchedValue, type SchedTime } from '@alcove/ui';
+import { useId, useRef, useState, type KeyboardEvent, type RefObject } from 'react';
+import { hm, longDay, shortDay, timeZone } from '~/lib/time';
 import { repeatInput, ruleOf, type RepeatKind, type Repeating } from '../flow/draft';
-import { TYPED_STEP, localWeekday, monthlyRule, retime } from './times';
-import { callCount, dayWord, repeatLine, untimelyLine } from './words';
+import { LONGEST_CALL, SHORTEST_CALL, TYPED_STEP, dayEnd, lengthAt, localWeekday, monthlyRule, retime } from './times';
+import { dayWord, endHm, lengthLabel, repeatLine, repeatWords, untimelyLine } from './words';
 
-const LENGTHS = [30, 45, 60] as const;
-/** "45 min", "1 h", "1 h 15 min" */
-export const lengthLabel = (m: number) => (m < 60 ? `${m} min` : m % 60 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${m / 60} h`);
+/** What in When is open: one at a time, as everything the scheduler opens. */
+export type WhenMenu = 'day' | 'start' | 'end' | 'repeat' | 'length';
+/** The lengths a guest's times can have, beside any other the call has. */
+const LENGTHS = [30, 45, 60, 90, 120] as const;
 const DAY_LETTERS = [['M', 1], ['T', 2], ['W', 3], ['T', 4], ['F', 5], ['S', 6], ['S', 0]] as const;
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'] as const;
+const MINUTE = 60_000;
 
-/** A time on a card: when, and, when a guest picks, what their clock says then. */
-export interface CardTime { at: Date; note?: string | undefined; guest?: string | undefined }
+const pad = (n: number) => String(n).padStart(2, '0');
+/** A day as MonthGrid takes it. */
+const isoOf = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+/** "09:15" for minutes from midnight. */
+const clockOf = (m: number) => `${pad(Math.floor(m / 60))}:${pad(m % 60)}`;
 
 /**
- * Three times to pick from, soonest first, the picked one filled with a tick. Letting a guest pick, each is a tick box
- * instead (`ticked`), with the guest's own time under it.
+ * Opening and closing one of When's menus. Closing closes only that one: pressing another while it's open opens the other,
+ * whichever of the two hears the press first.
  */
-export function TimeCards({ times, now, picked, ticks, onPick }: {
-  times: readonly CardTime[]; now: Date; picked: Date | null;
-  /** Letting a guest pick: which are ticked. */
-  ticks?: ((at: Date) => boolean) | undefined;
-  onPick: (at: Date) => void;
-}) {
+export interface WhenOpen { menu: WhenMenu | null; onMenu: (m: WhenMenu) => void; onShut: (m: WhenMenu) => void }
+
+/**
+ * The day: "Thu 12 Nov", with Today or Tomorrow quietly after it, opening a month. Days gone are greyed; a day picked keeps
+ * the clock time (the scheduler moves it on when that time has gone there).
+ */
+export function DayRow({ at, now, menu, onMenu, onShut, onPick }: WhenOpen & { at: Date; now: Date; onPick: (day: Date) => void }) {
+  const rel = dayWord(at, now);
   return (
-    <div className="cf-times sc-cards" role="group" aria-label={ticks ? 'Times to offer' : 'Times that work'}>
-      {times.map((t) => (
-        <TimeCard key={t.at.getTime()} day={dayWord(t.at, now)} time={hm(t.at)} note={t.guest ?? t.note} box={!!ticks}
-          picked={ticks ? ticks(t.at) : picked?.getTime() === t.at.getTime()} onClick={() => onPick(t.at)} />
-      ))}
-    </div>
+    <SchedRow icon="cal">
+      <Popover open={menu === 'day'} onOpenChange={(o) => (o ? onMenu('day') : onShut('day'))} label="Pick a day" align="start" className="sc-pop is-cal"
+        anchor={<SchedValue chevron quiet={rel === 'Today' || rel === 'Tomorrow' ? rel : undefined} aria-label={`Day, ${longDay(at)}. Pick another`}>{shortDay(at)}</SchedValue>}>
+        <MonthGrid value={isoOf(at)} today={isoOf(now)} from={isoOf(now)} label="Pick a day" autoFocus onCancel={() => onShut('day')}
+          onPick={(iso) => {
+            const [y, m, d] = iso.split('-').map(Number);
+            onShut('day');
+            onPick(new Date(y ?? at.getFullYear(), (m ?? at.getMonth() + 1) - 1, d ?? at.getDate()));
+          }} />
+      </Popover>
+    </SchedRow>
   );
 }
 
 /**
- * The time picked, as it will read: its day, then its start and its end, each typed as a 24-hour time like every other time
- * here ("14:15", or "1415"), to the nearest 5 minutes; the up and down arrows move it 5 minutes. A start moves the call and
- * keeps its length; an end sets the length. What's typed counts once it's finished, on leaving the field or with Enter; a
- * time that can't be read or used says why, and what was there stays, as it does, saying nothing, for a field left empty.
+ * The time: its start and its end, each typed as a 24-hour time like every other time here ("14:15", or "1415") to the
+ * nearest 5 minutes, or picked from its list in quarter hours; then how long it is, quietly. A start moves the call and keeps
+ * its length; an end sets it, and can't pass midnight. What's typed counts once it's finished, on leaving the field or with
+ * Enter; one that can't be read or used says why, and what was there stays. The up and down arrows move one 5 minutes;
+ * Alt with ↓ (or F4) goes into its list. `fixedEnd` shows the end without changing it: asking to move someone else's call
+ * asks for a start. `startRef` is the start's field, for the keyboard to go to when what it was on goes.
  */
-export function StartEnd({ at, minutes, now, onChange }: { at: Date; minutes: number; now: Date; onChange: (c: { at: Date; minutes: number }) => void }) {
+export function TimeRow({ at, minutes, now, menu, onMenu, onShut, onStart, onEnd, fixedEnd = false, startRef }: WhenOpen & {
+  at: Date;
+  /** How long it's meant to be: past midnight, it stops there. */
+  minutes: number;
+  now: Date;
+  onStart: (at: Date) => void;
+  onEnd: (minutes: number) => void;
+  fixedEnd?: boolean | undefined;
+  startRef?: RefObject<HTMLInputElement | null> | undefined;
+}) {
+  const length = lengthAt(at, minutes);
   const [typed, setTyped] = useState<{ start: string | null; end: string | null }>({ start: null, end: null });
   const [why, setWhy] = useState<string | null>(null);
-  /* Picked anew (a card, the week, a length, or what was typed): what's half typed, and why one couldn't be used, go. */
-  const picked = `${at.getTime()}:${minutes}`;
+  const [keyed, setKeyed] = useState(false);
+  /* Picked anew (on the week, from a list, or what was typed): what's half typed, and why one couldn't be used, go. */
+  const picked = `${at.getTime()}:${length}`;
   const [seen, setSeen] = useState(picked);
   if (picked !== seen) {
     setSeen(picked);
     setTyped({ start: null, end: null });
     setWhy(null);
   }
-  const end = new Date(at.getTime() + minutes * 60_000);
+  const fields = { start: useRef<HTMLInputElement>(null), end: useRef<HTMLInputElement>(null) };
+  const lists = { start: useRef<HTMLDivElement>(null), end: useRef<HTMLDivElement>(null) };
+  const ids = { start: useId(), end: useId() };
   const type = (which: 'start' | 'end', value: string | null) => setTyped((t) => (which === 'start' ? { ...t, start: value } : { ...t, end: value }));
+
   const use = (which: 'start' | 'end', value: string) => {
     const next = retime(at, minutes, which, value, new Date());
     if (!next.ok) { setWhy(untimelyLine(next.why)); return; }
     setWhy(null);
-    if (next.at.getTime() !== at.getTime() || next.minutes !== minutes) onChange({ at: next.at, minutes: next.minutes });
+    if (which === 'start') { if (next.at.getTime() !== at.getTime()) onStart(next.at); } else if (next.minutes !== length) onEnd(next.minutes);
   };
   const commit = (which: 'start' | 'end') => {
     const value = typed[which];
@@ -71,31 +100,87 @@ export function StartEnd({ at, minutes, now, onChange }: { at: Date; minutes: nu
     if (value?.trim()) use(which, value);
     else if (value !== null) setWhy(null);
   };
-  const field = (which: 'start' | 'end', label: string, value: Date) => (
-    <input className="sc-in" type="text" inputMode="numeric" autoComplete="off" spellCheck={false} maxLength={5} aria-label={label} value={typed[which] ?? hm(value)}
-      onChange={(e) => type(which, e.target.value)} onFocus={(e) => e.currentTarget.select()} onBlur={() => commit(which)}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') { e.preventDefault(); commit(which); }
-        if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
-        e.preventDefault();
-        type(which, null);
-        // A start stays on its day; an end past midnight is the next day's, as when it's typed.
-        const next = new Date(value.getTime() + (e.key === 'ArrowUp' ? TYPED_STEP : -TYPED_STEP) * 60_000);
-        if (which === 'end' || next.toDateString() === at.toDateString()) use(which, hm(next));
-      }} />
-  );
+  /* Put away from inside its list (Escape, or a time picked), the keyboard goes back to its field. */
+  const close = (which: 'start' | 'end') => {
+    if (lists[which].current?.contains(document.activeElement)) fields[which].current?.focus({ preventScroll: true });
+    setKeyed(false);
+    onShut(which);
+  };
+  const keys = (which: 'start' | 'end', e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') { e.preventDefault(); commit(which); onShut(which); return; }
+    if ((e.key === 'ArrowDown' && e.altKey) || e.key === 'F4') { e.preventDefault(); setKeyed(true); onMenu(which); return; }
+    if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+    e.preventDefault();
+    type(which, null);
+    const step = e.key === 'ArrowUp' ? TYPED_STEP : -TYPED_STEP;
+    if (which === 'start') {
+      const next = new Date(at.getTime() + step * MINUTE);
+      if (next.toDateString() === at.toDateString()) use('start', hm(next));
+      return;
+    }
+    /* An end stays on its day, between 5 minutes after the start and midnight. */
+    const next = length + step;
+    if (next >= SHORTEST_CALL && next <= LONGEST_CALL && at.getTime() + next * MINUTE <= dayEnd(at).getTime()) onEnd(next);
+  };
+
+  const day = (m: number) => new Date(at.getFullYear(), at.getMonth(), at.getDate(), Math.floor(m / 60), m % 60);
+  const startClock = at.getHours() * 60 + at.getMinutes();
+  const starts: SchedTime[] = Array.from({ length: 96 }, (_, i) => ({ value: clockOf(i * 15), label: clockOf(i * 15), gone: day(i * 15).getTime() <= now.getTime() }));
+  /* Ends from a quarter hour after the start to midnight, each with the length it makes, as long as a call can be. */
+  const toMidnight = Math.round((dayEnd(at).getTime() - at.getTime()) / MINUTE);
+  const lengths = [...new Set([...Array.from({ length: 40 }, (_, i) => (i + 1) * 15), toMidnight])].filter((l) => l <= Math.min(toMidnight, LONGEST_CALL)).sort((a, b) => a - b);
+  const ends: SchedTime[] = lengths.map((l) => ({ value: String(l), label: endHm(at, l), note: lengthLabel(l) }));
+
+  const field = (which: 'start' | 'end') => {
+    const label = which === 'start' ? 'Starts' : 'Ends';
+    const open = menu === which;
+    const shown = which === 'start' ? hm(at) : endHm(at, length);
+    const options = which === 'start' ? starts : ends;
+    const value = which === 'start' ? (startClock % 15 ? null : clockOf(startClock)) : (ends.some((o) => o.value === String(length)) ? String(length) : null);
+    const near = which === 'start' ? clockOf(Math.min(95, Math.ceil(startClock / 15)) * 15) : ends.find((o) => Number(o.value) >= length)?.value;
+    return (
+      <SchedPop open={open} onClose={() => close(which)} label={label} className="is-list"
+        anchor={(
+          <input ref={(el) => { fields[which].current = el; if (which === 'start' && startRef) startRef.current = el; }} className="sc-in" type="text" inputMode="numeric" autoComplete="off" spellCheck={false} maxLength={5} aria-label={label}
+            aria-haspopup="listbox" aria-controls={open ? ids[which] : undefined} value={typed[which] ?? shown}
+            onChange={(e) => type(which, e.target.value)} onFocus={(e) => e.currentTarget.select()} onBlur={() => commit(which)}
+            onPointerDown={() => { if (!open) { setKeyed(false); onMenu(which); } }} onKeyDown={(e) => keys(which, e)} />
+        )}>
+        <SchedTimes id={ids[which]} listRef={lists[which]} label={label} options={options} value={value} near={near} autoFocus={keyed}
+          onPick={(v) => {
+            close(which);
+            fields[which].current?.focus({ preventScroll: true });
+            if (which === 'start') onStart(day(Number(v.slice(0, 2)) * 60 + Number(v.slice(3))));
+            else onEnd(Number(v));
+          }} />
+      </SchedPop>
+    );
+  };
+
   return (
     <>
-      <p className="sc-time"><span>{dayWord(at, now)},</span>{field('start', 'Starts', at)}<span className="dash" aria-hidden="true">–</span>{field('end', 'Ends', end)}</p>
-      {why && <FlowNote icon="clock" className="sc-why">{why}</FlowNote>}
+      <SchedRow icon="clock">
+        {field('start')}
+        <span className="sc-dash" aria-hidden="true">–</span>
+        {fixedEnd ? <span className="sc-end">{endHm(at, length)}</span> : field('end')}
+        <span className="sc-len">{lengthLabel(length)}</span>
+      </SchedRow>
+      {why && <SchedLine tone="caution">{why}</SchedLine>}
     </>
   );
 }
 
-/** How long: 30 min, 45 min and 1 h, and any other length the call has (typed, or dragged on the week) beside them. */
-export function Lengths({ minutes, onChange }: { minutes: number; onChange: (m: number) => void }) {
+/** Letting a guest pick, how long each time offered is: one length for all of them. */
+export function LengthRow({ minutes, menu, onMenu, onShut, onChange }: WhenOpen & { minutes: number; onChange: (minutes: number) => void }) {
   const options = [...new Set<number>([...LENGTHS, minutes])].sort((a, b) => a - b).map((m) => ({ value: String(m), label: lengthLabel(m) }));
-  return <Segmented className="sc-lens" value={String(minutes)} onChange={(v) => onChange(Number(v))} options={options} label="How long" />;
+  return (
+    <SchedRow icon="clock">
+      <Popover open={menu === 'length'} onOpenChange={(o) => (o ? onMenu('length') : onShut('length'))} label="How long" align="start" className="sc-pop is-list"
+        anchor={<SchedQuiet chevron>{lengthLabel(minutes)} each</SchedQuiet>}>
+        <SchedTimes label="How long" options={options} value={String(minutes)} autoFocus onPick={(v) => { onShut('length'); onChange(Number(v)); }} />
+      </Popover>
+    </SchedRow>
+  );
 }
 
 /** "Every Thursday", "Every 2 weeks on Thursday", "Every month on the first Thursday": each choice as it reads for this call. */
@@ -109,18 +194,17 @@ function choiceLabel(kind: RepeatKind, at: Date, zone: string): string {
 }
 
 /**
- * How a call repeats: a row that opens in place, with Every Thursday, Every 2 weeks on Thursday, Every month on the first
- * Thursday and Days you pick, and how many calls it runs for. `keep` is a series already, which stays one.
+ * How a call repeats: "Doesn’t repeat", or "Every Thursday · 4 calls", opening a menu with Every Thursday, Every 2 weeks on
+ * Thursday, Every month on the first Thursday and Days you pick (the days, in place), and Ends after 4 calls once it repeats.
+ * `keep` is a series already, which stays one.
  */
-export function RepeatChoice({ repeat, at, zone = timeZone(), keep = false, onChange }: {
+export function RepeatRow({ repeat, at, zone = timeZone(), keep = false, menu, onMenu, onShut, onChange }: WhenOpen & {
   repeat: Repeating; at: Date;
   /** Where the organizer is: the calls keep their clock time there. */
   zone?: string | undefined;
   keep?: boolean | undefined;
   onChange: (r: Repeating) => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const id = useId();
   const rule = ruleOf(repeat, at, zone);
   const series = repeatInput(repeat, at, zone);
   const today = localWeekday(at, zone);
@@ -134,41 +218,35 @@ export function RepeatChoice({ repeat, at, zone = timeZone(), keep = false, onCh
   };
   const toggle = (day: number) => onChange({ ...repeat, days: repeat.days.includes(day) ? repeat.days.filter((d) => d !== day) : [...repeat.days, day] });
   return (
-    <>
-      <button type="button" className="sc-row" aria-expanded={open} aria-controls={id} onClick={() => setOpen((o) => !o)}>
-        <Icon name="repeat" size={17} />
-        <span className="min-w-0"><b className="ac-clamp-1">{rule ? repeatLine(rule) : 'Doesn’t repeat'}</b>{series && <small>{callCount(count)}</small>}</span>
-        <span className="chev"><Icon name="chevron" size={15} /></span>
-      </button>
-      {open && (
-        <div id={id} className="sc-reps">
-          <div role="radiogroup" aria-label="How it repeats">
-            {kinds.map((k) => (
-              <button key={k} type="button" role="radio" aria-checked={repeat.kind === k} className="sc-rep" onClick={() => onChange({ ...repeat, kind: k })}>
-                <i aria-hidden="true" />{choiceLabel(k, at, zone)}
-              </button>
+    <SchedRow icon="repeat">
+      <Popover open={menu === 'repeat'} onOpenChange={(o) => (o ? onMenu('repeat') : onShut('repeat'))} label="How it repeats" align="start" className="sc-pop is-menu"
+        anchor={<SchedQuiet chevron><span>{repeatWords(rule, count)}</span></SchedQuiet>}>
+        <div className="sc-reps" role="radiogroup" aria-label="How it repeats">
+          {kinds.map((k) => (
+            <button key={k} type="button" role="radio" aria-checked={repeat.kind === k} className="sc-rep" onClick={() => onChange({ ...repeat, kind: k })}>
+              <i aria-hidden="true" />{choiceLabel(k, at, zone)}
+            </button>
+          ))}
+        </div>
+        {repeat.kind === 'days' && (
+          <div className="sc-days" role="group" aria-label="Which days">
+            {DAY_LETTERS.map(([letter, day]) => (
+              <button key={day} type="button" className="sc-day" aria-label={DAY_NAMES[day]} aria-pressed={day === today || repeat.days.includes(day)} disabled={day === today}
+                title={day === today ? 'The first call is on this day' : undefined} onClick={() => toggle(day)}>{letter}</button>
             ))}
           </div>
-          {repeat.kind === 'days' && (
-            <div className="sc-days" role="group" aria-label="Which days">
-              {DAY_LETTERS.map(([letter, day]) => (
-                <button key={day} type="button" className="sc-day" aria-label={DAY_NAMES[day]} aria-pressed={day === today || repeat.days.includes(day)} disabled={day === today}
-                  title={day === today ? 'The first call is on this day' : undefined} onClick={() => toggle(day)}>{letter}</button>
-              ))}
-            </div>
-          )}
-          {series && (
-            <label className="sc-ends">
-              Ends after
-              <input className="sc-in" type="text" inputMode="numeric" maxLength={2} aria-label="How many calls" value={typed ?? String(count)}
-                onChange={(e) => setTyped(e.target.value)} onFocus={(e) => e.currentTarget.select()} onBlur={commit}
-                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commit(); } }} />
-              {count === 1 ? 'call' : 'calls'}
-              {count === MAX_SERIES_CALLS && <small>The most one repeat can have</small>}
-            </label>
-          )}
-        </div>
-      )}
-    </>
+        )}
+        {series && (
+          <label className="sc-ends">
+            Ends after
+            <input type="text" inputMode="numeric" maxLength={2} aria-label="How many calls" value={typed ?? String(count)}
+              onChange={(e) => setTyped(e.target.value)} onFocus={(e) => e.currentTarget.select()} onBlur={commit}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commit(); } }} />
+            {count === 1 ? 'call' : 'calls'}
+            {count === MAX_SERIES_CALLS && <small>The most one repeat can have</small>}
+          </label>
+        )}
+      </Popover>
+    </SchedRow>
   );
 }

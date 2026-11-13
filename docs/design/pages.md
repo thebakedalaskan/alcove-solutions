@@ -172,7 +172,7 @@ The page doesn't scroll; the rail and the sheet each do.
   page's hero: "Search every call, or ask". ⌘K focuses it here, so the top search pill is hidden on this page. At the right,
   Schedule a call, the one filled button, with you level with it. It opens the scheduler (see
   [Starting and scheduling a call](#starting-and-scheduling-a-call)) in place of the rail and the sheet, and the sky keeps
-  only the title and the search, so the scheduler's own button is the one filled.
+  only its title, so the scheduler's own button is the one filled.
 - **The rail** (`PlaceTree`, `PlaceRow`): All calls; Coming up, with how many; Past calls, with In the room and Shared with
   you under it, with how many; then Series, each with its next call ("Fri 15:00"). At its foot Google Calendar ·
   Connected (`PlaceFoot`), which opens Settings at Google Calendar; with none connected the foot is empty. No sentences in
@@ -183,11 +183,15 @@ The page doesn't scroll; the rail and the sheet each do.
     then the calls that happened, by day: Earlier today, Yesterday, Earlier this week, Last week, then the date.
   - **Coming up**: Waiting for a time first (a call whose guest is picking), then each day. Alcove calls and, with Google
     Calendar connected, the meetings on it with someone else. List and Week sit at the sheet's top right.
-  - **Week** (`CallsWeek`): Monday to Sunday, 08:00 to 19:00, with Last week, Today and Next week. What happened is
-    filled, with a rose diamond for a decision to confirm and a blue dot for a follow-up; Alcove calls ahead have a sun
-    edge, the calendar's meetings are outlined, an invitation is dashed in rose and a time held for a guest is dashed. The
-    sun on a line is now. Pressing a call opens it; pressing or dragging across a free time starts scheduling there. Week
-    keeps Coming up lit in the rail.
+  - **Week** (`CallsWeek` under `CallsWeekHead`): Monday to Sunday, every day as wide. The head is the days it shows in
+    Newsreader ("9 – 15 Nov"; "30 Nov – 6 Dec" across months), then ‹ and ›, Today beside them only once you've moved off
+    this week, and List and Week at its end. The day is a scroll box of all 24 hours that opens on 08:00 to 18:00 (ten
+    hours fill it) and never grows, with the row of days at its top. Every block says its time first, and blocks that
+    overlap stand side by side. What happened is filled, with a rose diamond for a decision to confirm and a blue dot for
+    a follow-up; Alcove calls ahead have a sun edge, the calendar's meetings are outlined, an invitation is dashed in rose,
+    a time held for a guest is dashed and a call just scheduled is lit; what's over fades, and a key under the week names
+    each mark. Now is a `sun-text` tag in the hours and a line across today. Pressing a call opens it; pressing or
+    dragging across a free time starts scheduling there. Week keeps Coming up lit in the rail.
   - **Past calls**, **In the room** and **Shared with you** list what happened, by day.
   - **A series** (`/calls?series=<id>`): its name, how it repeats and how many calls, and Change the series for its
     organizer. Next, the next call's row (or Schedule next week's call when none is). So far, rows led by their date, with
@@ -670,10 +674,11 @@ failing to, use the same sheet. Storybook records its states under **Pages / Con
 
 ## Starting and scheduling a call
 
-`features/calls/flow/` (Start a call) and `features/calls/scheduling/` (the scheduler, on the Calls page),
-`styles/flow.css` (`cf-` the modal, `sc-` the scheduler, `cw-` the week), with the lobby and ringing in
-`styles/ringing.css` (`rg-`). Designed in the Calls and Drive spec
-([§2](../superpowers/specs/2026-11-12-calls-and-drive-design.md#2-scheduling)).
+`features/calls/flow/` (Start a call, in `styles/flow.css`, `cf-`) and `features/calls/scheduling/` (the scheduler, on
+the Calls page), drawing the editor's parts in `components/scheduler.tsx` (`styles/scheduler.css`, `sc-`) and the week in
+`components/calls-week.tsx` (`styles/calls-week.css`, `cw-`), with the lobby and ringing in `styles/ringing.css` (`rg-`).
+Scheduling is designed in [Scheduling a call, rethought](../superpowers/specs/2026-11-13-scheduling-rethought-design.md).
+Boards: [canvas/scheduling/](canvas/scheduling/README.md).
 
 Start a call is one small modal with one question, and a sheet on a phone.
 - It opens on Start now (↵) or Schedule for later (S). Starting floods the screen into the night of the call.
@@ -683,24 +688,50 @@ Start a call is one small modal with one question, and a sheet on a phone.
   switch says the same, with Get Pro or more hours, for a call that starts before they come back (`NoNotesLeft`).
 - Ringing someone puts a card on their screen on any page, over a modal if one is open.
 
-Scheduling isn't in a window. It takes the Calls page's rail, and the sheet becomes the week.
-- **The scheduler** is a column where the rail was: ← Calls, the name large in Newsreader and ready to type over, then Who,
-  When and Details, each a small heading over a hairline. Who is a field of tokens (an arch, a first name, ×) with the
-  people to add listed under it. When is one line on who's free, three times as cards, the time picked as it will read
-  with its start and end to type, the lengths, and how it repeats, opening in place. Details is the Notes switch, what
-  the notes keep opening under it, and Bring's chips.
-- **The foot** holds the column's bottom: what will happen, then the one filled button, which says what it does
-  (Schedule, Schedule 6 calls, Send Jonas the times, Move to tomorrow 15:30, Ask to move it to tomorrow 15:30). Moving a
-  call, Cancel this call sits above it in caution and asks in place.
-- **The week** (`CallsWeek`, `components/calls-week.tsx`) fills the sheet: Monday to Sunday, 08:00 to 19:00, the weekend
-  narrow and the hours outside the working day greyed. Your own things are dimmed, other people's busy time is hatched
-  (never what it is), the suggested times glow in sun, the call being made is solid sun with a grip on its end, and where
-  a call is now is dashed. A line under the heading says whose busy time is shaded, and a key under the week names each
-  mark. The Calls page's Week is the same component, browsing.
-- **Letting a guest pick**, the cards become tick boxes, each with the guest's own time. **Moving a call**, the title
-  says Move, the old time is struck through under it, and who's on it are tokens to read, each with their answer.
-  **Proposing another time** is the same, for asking.
-- **On a phone** it's one column with no week, and the foot sits above the tabs.
+Scheduling isn't in a window. While it's open the Calls page's sky keeps only its title, and one sheet fills the rest of
+the page, as a calendar app has it: the week on the left and the call's editor on the right (356px, or 316px under 1100px
+wide), on the same surface with a hairline between them. Only the week's hours scroll, and the editor's body when it has
+to.
+- **The editor** (`SchedPanel`) lists the call's properties between two edges: the outer edge holds the kicker, the title,
+  the hairlines and the foot, and every value starts on the inner one. A row (`SchedRow`) is an icon in an 18px column and
+  its value; a line that carries on the row above (`SchedLine`: a status, a note) has no icon. Whatever can be pressed
+  keeps its text on the edge and lets its hover reach 10px past it. Its sections (`SchedGroup`) have no headings: they're
+  18px apart, with a hairline. From the top:
+  - **The top**, pinned: the kicker (New call, Move a call, Ask to move a call) and ×.
+  - **The title**, in Newsreader 24px (`SchedTitle`): "Add a title" while it's empty, then "Call with Priya and Kofi" as
+    people are added, until you type your own. Moving or asking, it's the call's name, with its old time struck through
+    under it once the time changes.
+  - **Who**: a field of tokens (an arch, a first name, ×) whose people open under it as a popover, each row a face in a
+    centred column, the name, what they do or their address, and +. One guest from outside gets Let Jonas pick the time
+    (`SchedSwitch`, its line inside it), and their token says where they are.
+  - **When**: the day (`SchedValue`, "Thu 12 Nov" with "Today" quietly after it), which opens `MonthGrid`; the start and
+    the end, each typed or picked from a list (`SchedTimes`, every quarter hour, the picked one in view), with the length
+    quietly after them; a line under them only when there's something to say (who's free, or a clash in caution with
+    Next free in horizon); and how it repeats (`SchedQuiet`), a menu. Letting a guest pick, the times offered take the
+    day's and the time's place (`SchedOffer`): a number in a circle, the day and the time, the guest's own time or a clash
+    at the end, and a tick of its own. The one the week moves has a sun ring and tint, and one left out is struck through.
+    Under them, one length for all of them.
+  - **Details**: Notes, a switch whose icon is in `rec` while it's on, with What the notes keep opening in place; Everyone
+    joins muted past 25 people; and Add an agenda, which opens the library as a popover and lists what's picked under it.
+  - **The foot** (`SchedFoot`) comes after the content and pins to the bottom when the body scrolls: one line on what will
+    happen, Cancel, and the one filled button, which says what it does (Schedule, Schedule 4 calls, Send Jonas the times,
+    Move to tomorrow 15:30, Ask to move it to tomorrow 15:30). Moving a call, Cancel this call sits in it in caution and
+    asks in place, and there's no quiet Cancel beside the button, which would read as the same thing: × closes it. A failed
+    save stays above it.
+
+  One thing opens from it at a time, under what opened it; Escape or pressing outside closes it.
+- **The week** (`CallsWeek` under `CallsWeekHead`) is the Calls page's Week, scheduling: seven days from today, so every
+  day on it can take the call, headed by their dates ("12 – 18 Nov"), every day as wide, and only the weekdays of those
+  seven when there's too little room. It has no key and no line under its head. The hours outside 09:00 to 17:00 on
+  weekdays, and the weekend, are faintly greyed, and the past is under a veil. Your own blocks are neutral, so the call is
+  the one thing in colour; everyone else's busy time is merged into hatched bands, each saying whose it is ("Priya,
+  Kofi"), never what it is. The call is a solid sun block, time first, with a grip along its foot and a caution ring when
+  it clashes. Moving a call, where it is now is dashed ("Now 10:00"). Letting a guest pick, the times offered are numbered
+  1 to 3: the one the week moves is solid with its grip, the others outlined, and one left out dashed and faded. Pointing
+  at a free half hour shows the call there as a dashed outline, with who's free. When the call is above or below the
+  hours in view, a pill at the top or bottom says where it is and scrolls to it, and holding the call at the left or right
+  edge of the days turns the week.
+- **On a phone** there's no week: the editor is the page, one column, and its foot sits above the tabs.
 
 ## A call
 

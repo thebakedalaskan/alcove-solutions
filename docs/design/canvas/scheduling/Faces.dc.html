@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>People in the arch</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="home.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>body{margin:0}</style>
+</helmet>
+<sc-if value="{{group}}" hint-placeholder-val="{{true}}">
+<span class="ac-faces">
+<sc-for list="{{people}}" as="p" hint-placeholder-count="1">
+<span class="ac-avatar" title="{{p.name}}" style="--size: {{p.size}}px; background: {{p.bg}}; margin-left: {{p.ml}}px; --ring: {{p.ring}}">
+<sc-if value="{{p.art}}" hint-placeholder-val="{{true}}">
+<svg viewBox="20 26 160 166" aria-hidden="true"><path d="{{p.back}}" fill="{{p.hair}}"></path><path d="M26 240C28 180 61 152 100 152C139 152 172 180 174 240Z" fill="{{p.shirt}}"></path><path d="M26 240C28 180 61 152 100 152C76 160 56 186 52 240Z" fill="{{p.shirtDark}}" opacity=".35"></path><path d="M88 122V148C92 153 108 153 112 148V122Z" fill="{{p.skin}}"></path><path d="M88 130C95 138 105 138 112 130V124C105 132 95 132 88 124Z" fill="{{p.skinDark}}" opacity=".45"></path><path d="M85 151C90 160 110 160 115 151C110 154 90 154 85 151Z" fill="{{p.shirtDark}}" opacity=".5"></path><ellipse cx="67" cy="101" rx="5.5" ry="8" fill="{{p.skinDark}}"></ellipse><ellipse cx="133" cy="101" rx="5.5" ry="8" fill="{{p.skinDark}}"></ellipse><ellipse cx="100" cy="97" rx="33" ry="38.5" fill="{{p.skin}}"></ellipse><path d="M100 58.5C118 58.5 133 75 133 97C133 120 118 135.5 100 135.5C112 128 120 112 120 97C120 80 112 66 100 58.5Z" fill="{{p.skinDark}}" opacity=".18"></path><path d="{{p.beard1}}" fill="{{p.hair}}" opacity=".92"></path><path d="{{p.beard2}}" fill="{{p.hair}}"></path><circle cx="83" cy="113" r="6.5" fill="#F07C7C" opacity=".16"></circle><circle cx="117" cy="113" r="6.5" fill="#F07C7C" opacity=".16"></circle><ellipse cx="88" cy="100" rx="3.1" ry="3.8" fill="#2A201B"></ellipse><ellipse cx="112" cy="100" rx="3.1" ry="3.8" fill="#2A201B"></ellipse><circle cx="89.1" cy="98.8" r=".9" fill="#fff" opacity=".7"></circle><circle cx="113.1" cy="98.8" r=".9" fill="#fff" opacity=".7"></circle><path d="M80 89.5Q88 85 95.5 88.5M104.5 88.5Q112 85 120 89.5" stroke="{{p.hairDark}}" stroke-width="2.6" stroke-linecap="round" fill="none" opacity=".9"></path><path d="M100 103Q96.5 112 101 114.5" stroke="{{p.skinDark}}" stroke-width="2" stroke-linecap="round" fill="none" opacity=".75"></path><path d="M91 121.5Q100 128 109 121.5" stroke="#7A3A2E" stroke-width="2.5" stroke-linecap="round" fill="none"></path><path d="{{p.front}}" fill="{{p.hair}}"></path><path d="{{p.bun}}" fill="{{p.hair}}"></path><path d="{{p.bunShade}}" fill="{{p.hairDark}}" opacity=".6"></path><path d="{{p.glasses}}" fill="#fff" fill-opacity=".12" stroke="#2A201B" stroke-width="2.2"></path><path d="{{p.bridge}}" stroke="#2A201B" stroke-width="2.2" fill="none"></path><path d="{{p.earrings}}" fill="#FFC35E"></path></svg>
+</sc-if>
+<sc-if value="{{p.initial}}" hint-placeholder-val="{{false}}"><span class="initial">{{p.letter}}</span></sc-if>
+</span>
+</sc-for>
+<sc-if value="{{hasMore}}" hint-placeholder-val="{{false}}"><span class="more">+{{more}}</span></sc-if>
+</span>
+</sc-if>
+<sc-if value="{{sheet}}" hint-placeholder-val="{{false}}">
+<div style="min-height: 100vh; box-sizing: border-box; padding: 36px; background: oklch(.955 .007 80); color: oklch(.25 .05 268); font-family: &quot;Hanken Grotesk&quot;, system-ui, sans-serif">
+<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 22px 12px">
+<sc-for list="{{people}}" as="p" hint-placeholder-count="8">
+<div style="display: grid; justify-items: center; gap: 10px; text-align: center">
+<span class="ac-avatar" title="{{p.name}}" style="--size: {{p.size}}px; background: {{p.bg}}">
+<sc-if value="{{p.art}}" hint-placeholder-val="{{true}}">
+<svg viewBox="20 26 160 166" aria-hidden="true"><path d="{{p.back}}" fill="{{p.hair}}"></path><path d="M26 240C28 180 61 152 100 152C139 152 172 180 174 240Z" fill="{{p.shirt}}"></path><path d="M26 240C28 180 61 152 100 152C76 160 56 186 52 240Z" fill="{{p.shirtDark}}" opacity=".35"></path><path d="M88 122V148C92 153 108 153 112 148V122Z" fill="{{p.skin}}"></path><path d="M88 130C95 138 105 138 112 130V124C105 132 95 132 88 124Z" fill="{{p.skinDark}}" opacity=".45"></path><path d="M85 151C90 160 110 160 115 151C110 154 90 154 85 151Z" fill="{{p.shirtDark}}" opacity=".5"></path><ellipse cx="67" cy="101" rx="5.5" ry="8" fill="{{p.skinDark}}"></ellipse><ellipse cx="133" cy="101" rx="5.5" ry="8" fill="{{p.skinDark}}"></ellipse><ellipse cx="100" cy="97" rx="33" ry="38.5" fill="{{p.skin}}"></ellipse><path d="M100 58.5C118 58.5 133 75 133 97C133 120 118 135.5 100 135.5C112 128 120 112 120 97C120 80 112 66 100 58.5Z" fill="{{p.skinDark}}" opacity=".18"></path><path d="{{p.beard1}}" fill="{{p.hair}}" opacity=".92"></path><path d="{{p.beard2}}" fill="{{p.hair}}"></path><circle cx="83" cy="113" r="6.5" fill="#F07C7C" opacity=".16"></circle><circle cx="117" cy="113" r="6.5" fill="#F07C7C" opacity=".16"></circle><ellipse cx="88" cy="100" rx="3.1" ry="3.8" fill="#2A201B"></ellipse><ellipse cx="112" cy="100" rx="3.1" ry="3.8" fill="#2A201B"></ellipse><circle cx="89.1" cy="98.8" r=".9" fill="#fff" opacity=".7"></circle><circle cx="113.1" cy="98.8" r=".9" fill="#fff" opacity=".7"></circle><path d="M80 89.5Q88 85 95.5 88.5M104.5 88.5Q112 85 120 89.5" stroke="{{p.hairDark}}" stroke-width="2.6" stroke-linecap="round" fill="none" opacity=".9"></path><path d="M100 103Q96.5 112 101 114.5" stroke="{{p.skinDark}}" stroke-width="2" stroke-linecap="round" fill="none" opacity=".75"></path><path d="M91 121.5Q100 128 109 121.5" stroke="#7A3A2E" stroke-width="2.5" stroke-linecap="round" fill="none"></path><path d="{{p.front}}" fill="{{p.hair}}"></path><path d="{{p.bun}}" fill="{{p.hair}}"></path><path d="{{p.bunShade}}" fill="{{p.hairDark}}" opacity=".6"></path><path d="{{p.glasses}}" fill="#fff" fill-opacity=".12" stroke="#2A201B" stroke-width="2.2"></path><path d="{{p.bridge}}" stroke="#2A201B" stroke-width="2.2" fill="none"></path><path d="{{p.earrings}}" fill="#FFC35E"></path></svg>
+</sc-if>
+<sc-if value="{{p.initial}}" hint-placeholder-val="{{false}}"><span class="initial">{{p.letter}}</span></sc-if>
+</span>
+<span style="font: 600 12.5px/1.25 &quot;Hanken Grotesk&quot;, system-ui, sans-serif; color: oklch(.42 .04 268)">{{p.name}}</span>
+</div>
+</sc-for>
+</div>
+</div>
+</sc-if>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"who":{"editor":"text","default":""},"size":{"editor":"int","default":28,"min":16,"max":96},"max":{"editor":"int","default":4,"min":1,"max":12},"ring":{"editor":null,"default":""},"$preview":{"width":1000,"height":820}}'>
+/* The app's PortraitArt, drawn per person: an illustrated portrait in the arch on their own colour. People without one get their initial. */
+var P = {
+  art: { name: 'Art Vandelay', skin: '#EBC8A8', hair: '#4A3222', style: 'short', shirt: '#2B3F73', bg: '#FFE3CF' },
+  ines: { name: 'Ines Moreau', skin: '#DDAE8A', hair: '#3B261C', style: 'wavy', shirt: '#B4506E', bg: '#FFE4D6' },
+  art: { name: 'Art Vandelay', skin: '#E9C4A3', hair: '#3A2A22', style: 'short', shirt: '#4B3C9E', bg: '#FFE3CF', glasses: true },
+  priya: { name: 'Priya Raman', skin: '#B47A55', hair: '#1A120E', style: 'bun', shirt: '#9C4A86', bg: '#F8D6E4', earrings: true },
+  theo: { name: 'Theo Martin', skin: '#E8C2A0', hair: '#5B3B25', style: 'short', shirt: '#2E3A8C', bg: '#D5DEFF', beard: true },
+  kofi: { name: 'Kofi Asante', skin: '#7B4F35', hair: '#141010', style: 'buzz', shirt: '#3D35A8', bg: '#FFE1C4', glasses: true },
+  aiko: { name: 'Aiko Tanaka', skin: '#F0D0B4', hair: '#15110F', style: 'bob', shirt: '#D98CB8', bg: '#E8E2FF' },
+  maya: { name: 'Maya Chen', skin: '#F1CBA8', hair: '#231813', style: 'long', shirt: '#4859D6', bg: '#E2E7FF' },
+  lena: { name: 'Lena Fischer', skin: '#F3D6BE', hair: '#B87B43', style: 'wavy', shirt: '#6A4FC9', bg: '#FBE3EE' },
+  sam: { name: 'Sam Ortiz', skin: '#8A5A3C', hair: '#1B1310', style: 'side', shirt: '#4A6BD6', bg: '#FFEBD8' },
+  diego: { name: 'Diego Ruiz', skin: '#C68A62', hair: '#2A1B12', style: 'curly', shirt: '#C0587A', bg: '#FFE1C8', beard: true },
+  nadia: { name: 'Nadia Haddad', skin: '#D9A47E', hair: '#2B1B14', style: 'long', shirt: '#8E3B6E', bg: '#FCE0EA', earrings: true },
+  omar: { name: 'Omar Farouk', skin: '#A86F4C', hair: '#1E1612', style: 'short', shirt: '#2F3C9E', bg: '#E3E5FF', beard: true, glasses: true },
+  elena: { name: 'Elena Petrova', skin: '#F4D9C4', hair: '#8C5A2E', style: 'bob', shirt: '#7A4FD0', bg: '#FFE6D6', glasses: true },
+  tom: { name: 'Tom Becker', skin: '#EFCDB0', hair: '#C08A4B', style: 'side', shirt: '#3E57B8', bg: '#FFF0D9' },
+  zara: { name: 'Zara Ahmed', skin: '#9C6644', hair: '#120D0B', style: 'curly', shirt: '#B04F7E', bg: '#EDE4FF', earrings: true },
+  felix: { name: 'Felix Wagner', skin: '#F2D2B6', hair: '#6B4A2F', style: 'buzz', shirt: '#574AB8', bg: '#DDE6FF', glasses: true },
+  jamie: { name: 'Jamie Lee' },
+  ruth: { name: 'Ruth Okoye' },
+  ivan: { name: 'Ivan Sokolov' },
+  mei: { name: 'Mei Lin' },
+  pablo: { name: 'Pablo Ortega' },
+  hana: { name: 'Hana Novak' }
+};
+var HB = { long: 'M62 100C57 58 78 49 100 49C122 49 143 58 138 100L147 176C135 168 122 162 114 156H86C78 162 65 168 53 176Z', bob: 'M61 102C58 62 79 51 100 51C121 51 142 62 139 102L140 132C132 130 126 125 124 119H76C74 125 68 130 60 132Z', wavy: 'M63 106C57 64 79 51 100 51C122 51 143 64 137 106C142 120 134 129 129 134C127 121 125 112 123 106H77C75 114 73 123 71 134C65 127 58 119 63 106Z' };
+var HF = { long: 'M100 57C80 57 67 70 66 99C71 84 81 70 100 65ZM100 57C120 57 133 70 134 99C129 84 119 70 100 65Z', short: 'M66 95C63 66 81 53 102 53C124 53 139 67 135 95C132 82 126 74 115 72C103 70 88 72 78 78C72 82 68 88 66 95ZM83 60C92 49 113 49 123 58C112 55 98 57 89 64Z', bun: 'M66 97C64 68 80 56 100 56C120 56 136 68 134 97C130 80 118 68 100 68C82 68 70 80 66 97Z', buzz: 'M67 93C66 68 82 58 100 58C118 58 134 68 133 93C128 78 116 70 100 70C84 70 72 78 67 93Z', side: 'M66 95C64 66 82 54 104 55C126 56 138 70 134 95C130 79 120 69 106 70L95 66C82 70 70 80 66 95Z', bob: 'M68 92C70 66 84 57 100 57C116 57 130 66 132 92C124 81 112 76 100 76C88 76 76 81 68 92Z', wavy: 'M68 95C66 70 82 58 100 58C117 58 132 66 134 90C126 76 116 72 104 74C94 70 80 78 68 95Z' };
+var CB = [[69, 86, 16], [79, 65, 17], [100, 57, 18], [121, 65, 17], [131, 86, 16], [63, 108, 13], [137, 108, 13], [68, 127, 11], [132, 127, 11]];
+var CF = [[83, 70, 10], [100, 65, 11], [117, 70, 10]];
+var NONE = 'M0 0';
+function circ(c) { var x = c[0], y = c[1], r = c[2]; return 'M' + (x - r) + ' ' + y + 'a' + r + ' ' + r + ' 0 1 0 ' + 2 * r + ' 0a' + r + ' ' + r + ' 0 1 0 ' + -2 * r + ' 0'; }
+function rr(x, y, w, h, r) { return 'M' + (x + r) + ' ' + y + 'h' + (w - 2 * r) + 'a' + r + ' ' + r + ' 0 0 1 ' + r + ' ' + r + 'v' + (h - 2 * r) + 'a' + r + ' ' + r + ' 0 0 1 ' + -r + ' ' + r + 'h' + -(w - 2 * r) + 'a' + r + ' ' + r + ' 0 0 1 ' + -r + ' ' + -r + 'v' + -(h - 2 * r) + 'a' + r + ' ' + r + ' 0 0 1 ' + r + ' ' + -r + 'z'; }
+function shade(hex, amt) {
+  var n = parseInt(hex.slice(1), 16), f = function (v) { return Math.max(0, Math.min(255, Math.round(v + amt * 255))); };
+  return '#' + ((1 << 24) | (f(n >> 16) << 16) | (f((n >> 8) & 255) << 8) | f(n & 255)).toString(16).slice(1);
+}
+function person(id, size, ml, ring) {
+  var p = P[id] || { name: id };
+  var base = { name: p.name, letter: (p.name || '?').charAt(0).toUpperCase(), size: size, ml: ml, ring: ring, art: !!p.skin, initial: !p.skin, bg: p.bg || 'var(--sunk)' };
+  if (!p.skin) return base;
+  var curly = p.style === 'curly';
+  base.hair = p.hair; base.skin = p.skin; base.shirt = p.shirt;
+  base.skinDark = shade(p.skin, -0.12); base.hairDark = shade(p.hair, -0.06); base.shirtDark = shade(p.shirt, -0.1);
+  base.back = curly ? CB.map(circ).join('') : HB[p.style] || NONE;
+  base.front = curly ? CF.map(circ).join('') : HF[p.style] || NONE;
+  base.beard1 = p.beard ? 'M69 106C71 131 85 144 100 144C115 144 129 131 131 106C127 119 116 126 100 127C84 126 73 119 69 106Z' : NONE;
+  base.beard2 = p.beard ? 'M90 118Q100 113 110 118Q100 121 90 118Z' : NONE;
+  base.bun = p.style === 'bun' ? circ([100, 47, 15]) : NONE;
+  base.bunShade = p.style === 'bun' ? 'M91 60a9 3 0 1 0 18 0a9 3 0 1 0 -18 0' : NONE;
+  base.glasses = p.glasses ? rr(76.5, 92, 21, 16, 6) + rr(102.5, 92, 21, 16, 6) : NONE;
+  base.bridge = p.glasses ? 'M97.5 99.5H102.5' : NONE;
+  base.earrings = p.earrings ? circ([67, 112.5, 2.7]) + circ([133, 112.5, 2.7]) : NONE;
+  return base;
+}
+class Component extends DCLogic {
+  renderVals() {
+    var who = String(this.props.who || '').split(',').map(function (s) { return s.trim(); }).filter(Boolean);
+    var sheet = who.length === 0;
+    var size = Number(this.props.size) || (sheet ? 64 : 28);
+    var max = Number(this.props.max) || 4;
+    var ids = sheet ? Object.keys(P) : who;
+    var shown = sheet ? ids : ids.slice(0, max);
+    var ring = this.props.ring || (shown.length > 1 ? 'var(--surface)' : 'transparent');
+    var overlap = Math.max(5, Math.round(size * 0.2));
+    return {
+      group: !sheet,
+      sheet: sheet,
+      people: shown.map(function (id, i) { return person(id, sheet ? 64 : size, sheet || i === 0 ? 0 : -overlap, ring); }),
+      more: ids.length - shown.length,
+      hasMore: !sheet && ids.length > shown.length
+    };
+  }
+}
+</script>
+</body>
+</html>
